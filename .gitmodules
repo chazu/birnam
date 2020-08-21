@@ -1,0 +1,12 @@
+[submodule "vendor/tinycc"]
+	path = vendor/tinycc
+	url = git://repo.or.cz/tinycc.git
+[submodule "vendor/PackCC"]
+	path = vendor/PackCC
+	url = https://github.com/Leandros/PackCC.git
+[submodule "vendor/libelf"]
+	path = vendor/libelf
+	url = https://github.com/WolfgangSt/libelf.git
+[submodule "vendor/dyncall"]
+	path = vendor/dyncall
+	url = https://github.com/chazu/dyncall.git
