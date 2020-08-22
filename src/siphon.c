@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <readline/readline.h>
+#include <readline/history.h>
 
 int main() {
   void (*fptr)();
@@ -15,18 +16,21 @@ int main() {
   char symbol_name[100];
 
   char token_delim[] = " ";
-  char *prompt = "=> ";
+  char *prompt = ">> ";
+  char *input;
 
+  int done = 0;
   printf("[SIPHON] Starting...\n");
 
-  while (1) {
-
-    char *input = readline(prompt);
+  while (!done) {
+    input = readline(prompt);
 
     if (input == NULL) {
       // Handle ctrl-d
       printf("\n");
       break;
+    } else {
+      add_history(input);
     }
 
     char *token;
@@ -44,7 +48,7 @@ int main() {
       if (error != NULL) {
         printf("[SIPHON] Error: %s\n", error);
       } else {
-        printf("[SIPHON] No Error loading target.\n");
+        printf("[SIPHON] Load OK.\n");
         // TODO enumerate symbols in library
       }
     } else if (strcmp(token, "call") == 0) {
@@ -55,21 +59,9 @@ int main() {
       (*fptr)();
     }
 
-    /* printf(input); */
-    /* printf("\n\n"); */
+    free(input);
   }
-  /* gets(target_path); */
-  /* handle = dlopen(target_path, RTLD_LAZY); */
-  /* error = dlerror(); */
 
-  /* if (error != NULL) { */
-  /*   printf("[SIPHON] Error: %s\n", error); */
-  /* } else { */
-  /*   printf("[SIPHON] No Error loading target.\n"); */
-  /* } */
-
-  /* // *(void **)(&fptr) = dlsym(handle, "begin"); */
-  /* // (*fptr)(); */
   printf("[SIPHON] Done...\n");
   return 0;
 }
