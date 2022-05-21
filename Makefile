@@ -9,7 +9,8 @@ build: build_toy build_siphon build_vendored_libs
 
 build_siphon:
 	tcc -L/usr/lib/x86_64-linux-gnu/ \
-		-L /usr/local/lib -ldl -lreadline src/siphon.c
+	 	-rdynamic \
+		-L /usr/local/lib -ldl -lreadline -g src/siphon.c
 	mv a.out bin/siphon
 
 build_libelf:
@@ -19,12 +20,11 @@ build_libelf:
 	cd -
 
 build_vendored_libs:
-	tcc -rdynamic -shared -soname=packcc -o packcc.so vendor/PackCC/src/packcc.c
-
+	tcc -fPIC -shared -rdynamic -soname=packcc -Wl -o bin/packcc.so vendor/PackCC/src/packcc.c
         # tcc -rdynamic -shared -soname=libelf -o libelf.so vendor/
 
 build_toy:
-	tcc -shared src/toy.c
+	tcc -fPIC -shared -rdynamic -Wl -g src/toy.c
 	mv a.out bin/toy.so
 run:
 	docker run --rm -it birnam /app/siphon

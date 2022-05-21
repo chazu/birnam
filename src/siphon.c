@@ -11,16 +11,11 @@ int main() {
   void *handle;
   char *error;
 
-  char target_path[100];
-  char input_buffer[100];
-  char symbol_name[100];
-
   char token_delim[] = " ";
   char *prompt = ">> ";
   char *input;
 
   int done = 0;
-  printf("[SIPHON] Starting...\n");
 
   while (!done) {
     input = readline(prompt);
@@ -57,11 +52,15 @@ int main() {
       // TODO Ensure token exists
       *(void **)(&fptr) = dlsym(handle, token);
       (*fptr)();
+    } else if (strcmp(token, "show") == 0) {
+      const char symbol;
+      token = strtok(NULL, token_delim);
+      symbol = dlsym(handle, token);
+      printf("%s = %s\n", token, symbol);
     }
 
     free(input);
   }
 
-  printf("[SIPHON] Done...\n");
   return 0;
 }
