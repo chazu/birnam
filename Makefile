@@ -8,9 +8,11 @@ build_docker:
 build: build_toy build_siphon build_vendored_libs
 
 build_siphon:
-	tcc -L/usr/lib/x86_64-linux-gnu/ \
+	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
 	 	-rdynamic \
-		-L /usr/local/lib -ldl -lreadline -g src/siphon.c
+		-I ./vendor/tinycc \
+		-L /usr/local/lib -ldl -lreadline -ltcc \
+		-g src/siphon.c
 	mv a.out bin/siphon
 
 build_libelf:

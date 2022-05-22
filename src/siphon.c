@@ -1,9 +1,11 @@
 // Siphon -
 
 #include <dlfcn.h>
+#include <libtcc.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <libtcc.h>
 #include <readline/history.h>
 #include <readline/readline.h>
 
@@ -41,8 +43,16 @@ int main(int argc, char **argv) {
 
   if (options.compile_mode) {
     // Compile the target file using libtcc
+    TCCState *s;
+    int (*func)(int);
+    void *mem;
+    int size;
 
-
+    s = tcc_new();
+    if (!s) {
+        fprintf(stderr, "Could not create tcc state\n");
+        exit(1);
+    }
     return 0;
   }
   //
