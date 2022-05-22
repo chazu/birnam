@@ -1,4 +1,4 @@
-default: build_docker
+default: build
 
 build_docker:
 	docker build --target base -t birnam_base .

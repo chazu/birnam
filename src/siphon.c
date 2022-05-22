@@ -3,10 +3,19 @@
 #include <dlfcn.h>
 #include <stdio.h>
 #include <string.h>
-#include <readline/readline.h>
+#include <unistd.h>
 #include <readline/history.h>
+#include <readline/readline.h>
 
-int main() {
+typedef struct Options {
+  int compile_mode;
+  int repl;
+} Options;
+
+int main(int argc, char **argv) {
+  Options options;
+  int c;
+
   void (*fptr)();
   void *handle;
   char *error;
@@ -17,6 +26,28 @@ int main() {
 
   int done = 0;
 
+  //
+  // Parse options into the options object
+  //
+  while ((c = getopt(argc, argv, "c:")) != -1) {
+    int this_option_optind = optind ? optind : 1;
+    switch (c) {
+    case 'c':
+      printf("Compiling %s\n", optarg);
+      options.compile_mode = 1;
+      break;
+    }
+  }
+
+  if (options.compile_mode) {
+    // Compile the target file using libtcc
+
+
+    return 0;
+  }
+  //
+  // Commence the REPLin'
+  //
   while (!done) {
     input = readline(prompt);
 
@@ -29,7 +60,6 @@ int main() {
     }
 
     char *token;
-
     token = strtok(input, token_delim);
 
     if (strcmp(token, "load") == 0) {
