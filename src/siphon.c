@@ -2,17 +2,36 @@
 
 #include <dlfcn.h>
 #include <libtcc.h>
+//#include <readline/history.h>
+//#include <readline/readline.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <libtcc.h>
-#include <readline/history.h>
-#include <readline/readline.h>
 
 typedef struct Options {
   int compile_mode;
   int repl;
 } Options;
+
+int compileString(char *str) {
+  TCCState *s;
+  int (*func)(int);
+  void *mem;
+  int size;
+
+  s = tcc_new();
+  if (!s) {
+    fprintf(stderr, "Could not create tcc state\n");
+    exit(1);
+  }
+
+  /*The output type must be set before any compilation*/
+  tcc_set_output_type(s, TCC_OUTPUT_EXE);
+  if (tcc_compile_string(s, str) == -1)
+    return 1;
+
+  return 0;
+}
 
 int main(int argc, char **argv) {
   Options options;
@@ -42,18 +61,6 @@ int main(int argc, char **argv) {
   }
 
   if (options.compile_mode) {
-    // Compile the target file using libtcc
-    TCCState *s;
-    int (*func)(int);
-    void *mem;
-    int size;
-
-    s = tcc_new();
-    if (!s) {
-        fprintf(stderr, "Could not create tcc state\n");
-        exit(1);
-    }
-    return 0;
   }
   //
   // Commence the REPLin'
@@ -86,6 +93,24 @@ int main(int argc, char **argv) {
         printf("[SIPHON] Load OK.\n");
         // TODO enumerate symbols in library
       }
+    } else if (strcmp(token, "compile") == 0) {
+
+      token = strtok(NULL, token_delim);
+
+      FILE *f = fopen(token, "ro");
+      char *buffer = NULL;
+      size_t len;
+      ssize_t bytes_read = getdelim(&buffer, &len, '\0', f);
+
+      if (bytes_read != -1) {
+        printf("Successfully read info buffer...");
+        compileString(buffer);
+      }
+
+      return 0;
+
+      /* *(void **)(&fptr) = dlsym(handle, token); */
+      /* (*fptr)(); */
     } else if (strcmp(token, "call") == 0) {
       token = strtok(NULL, token_delim);
 
