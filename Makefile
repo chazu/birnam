@@ -10,6 +10,7 @@ build: build_toy build_siphon build_vendored_libs
 build_siphon:
 	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
 	 	-rdynamic \
+		-I ./vendor/ \
 		-I ./vendor/tinycc \
 		-L /usr/local/lib -ldl -lreadline -ltcc \
 		-g src/siphon.c
