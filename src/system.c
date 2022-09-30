@@ -62,6 +62,7 @@ int main(int argc, char **argv) {
 
   if (options.compile_mode) {
   }
+
   //
   // Commence the REPLin'
   //
@@ -103,7 +104,7 @@ int main(int argc, char **argv) {
       ssize_t bytes_read = getdelim(&buffer, &len, '\0', f);
 
       if (bytes_read != -1) {
-        printf("Successfully read info buffer...");
+        printf("Successfully read info buffer %ld bytes...", bytes_read);
         compileString(buffer);
       }
 
