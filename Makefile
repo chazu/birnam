@@ -5,16 +5,16 @@ build_docker:
 	docker build --target tcc -t birnam_tcc .
 	docker build --target birnam0 -t birnam .
 
-build: build_toy build_siphon build_vendored_libs
+build: build_toy build_system build_vendored_libs
 
-build_siphon:
+build_system:
 	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
 	 	-rdynamic \
 		-I ./vendor/ \
 		-I ./vendor/tinycc \
 		-L /usr/local/lib -ldl -lreadline -ltcc \
-		-g src/siphon.c
-	mv a.out bin/siphon
+		-g src/system.c
+	mv a.out bin/system
 
 build_libelf:
 	cd vendor/libelf
@@ -30,7 +30,7 @@ build_toy:
 	tcc -fPIC -shared -rdynamic -Wl -g src/toy.c
 	mv a.out bin/toy.so
 run:
-	docker run --rm -it birnam /app/siphon
+	docker run --rm -it birnam /app/system
 
 shell:
 	docker run --rm -it birnam bash
