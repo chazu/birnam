@@ -3,6 +3,8 @@ _A_ system is a binary object that can be run as an executable OR loaded dynamic
 
 # TODO
 ## Phase -1 - WTF Am I Doing?
+ - system is an executable that loads the core of the system into a harness. therefore
+   - it loads obj
  - system can accept commands:
    - compile <file> - compiles file into a.out or whatever
      - cant find crt01.o on compilation of helloworld.c - figure that out.

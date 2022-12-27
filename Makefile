@@ -5,7 +5,7 @@ build_docker:
 	docker build --target tcc -t birnam_tcc .
 	docker build --target birnam0 -t birnam .
 
-build: build_toy build_system build_vendored_libs
+build: build_obj build_system build_vendored_libs
 
 build_system:
 	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
@@ -26,9 +26,9 @@ build_vendored_libs:
 	tcc -fPIC -shared -rdynamic -soname=packcc -Wl -o bin/packcc.so vendor/PackCC/src/packcc.c
         # tcc -rdynamic -shared -soname=libelf -o libelf.so vendor/
 
-build_toy:
-	tcc -fPIC -shared -rdynamic -Wl -g src/toy.c
-	mv a.out bin/toy.so
+build_obj:
+	tcc -fPIC -shared -rdynamic -Wl -g src/obj.c
+	mv a.out bin/obj.so
 run:
 	docker run --rm -it birnam /app/system
 
