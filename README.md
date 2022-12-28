@@ -2,6 +2,12 @@
 _A_ system is a binary object that can be run as an executable OR loaded dynamically, and which exposes a complete - and completely adaptive - system.
 
 # TODO
+## Phase -2 - What have I done?!
+   - System loads obj and calls begin DONE
+   - System gets the contents of the symbol table when loading obj
+   - System calls into obj to initialize its contents into the system, if applicable
+   - System can access objects and call _methods_ inside of obj at runtime, via repl
+     How do we do this?
 ## Phase -1 - WTF Am I Doing?
  - system is an executable that loads the core of the system into a harness. therefore
    - it loads obj

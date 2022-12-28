@@ -74,6 +74,7 @@ struct object *vtable_lookup(struct vtable *self, struct object *key);
     method(r, ##ARGS);                                                         \
   })
 #endif
+
 #if MCACHE
 struct entry {
   struct vtable *vtable;
@@ -164,8 +165,7 @@ struct object *symbol_intern(struct object *self, char *string) {
 
 // Entrypoint into code compiled for birnam
 int begin() {
-
-  printf("[TOY] Inside begin\n");
+  printf("[OBJ] Inside begin\n");
   metavtable = vtable_delegated(0);
   metavtable->_vt[-1] = metavtable;
   object_vt = vtable_delegated(0);
@@ -185,6 +185,6 @@ int begin() {
   s_delegated = send(symbol, s_intern, (struct object *)"delegated");
 
   send(metavtable, s_addMethod, s_delegated, vtable_delegated);
-  printf("[TOY] Still inside begin!\n");
+  printf("[OBJ] Still inside begin!\n");
   return 0;
 }

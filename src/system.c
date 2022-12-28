@@ -1,9 +1,11 @@
+  // /home/chazu/dev/c/birnam/bin/obj.so
+
 // System
 #define KGFLAGS_IMPLEMENTATION
 #include <kgflags.h>
 
 #include <dlfcn.h>
-#include <libelf.h>
+// #include <libelf.h>
 #include <libtcc.h>
 //#include <readline/history.h>
 //#include <readline/readline.h>
@@ -11,13 +13,6 @@
 #include <string.h>
 #include <unistd.h>
 
-void listSymbols() {
-  Elf *e;
-  Elf_Kind ek;
-
-  int fd
-
-}
 // Loads symbols from shared object file
 // TODO probably want to return a handle to the dl
 void *loadSymbols(char *str) {
@@ -25,7 +20,7 @@ void *loadSymbols(char *str) {
   char *error;
 
   printf("[SYS] Loading: %s\n", str);
-  handle = dlopen(str, RTLD_LAZY);
+  handle = dlopen(str, RTLD_LAZY | RTLD_GLOBAL);
   error = dlerror();
 
   if (error != NULL) {
@@ -33,6 +28,8 @@ void *loadSymbols(char *str) {
   } else {
     printf("[SYS] Load OK.\n");
   }
+
+  return handle;
 }
 
 int compileString(char *str) {
@@ -105,19 +102,9 @@ int main(int argc, char **argv) {
     token = strtok(input, token_delim);
 
     if (strcmp(token, "load") == 0) {
-
       token = strtok(NULL, token_delim);
-      // TODO Ensure token exists
-      printf("[SYS] Loading: %s\n", token);
-      handle = dlopen(token, RTLD_LAZY);
-      error = dlerror();
 
-      if (error != NULL) {
-        printf("[SYS] Error: %s\n", error);
-      } else {
-        printf("[SYS] Load OK.\n");
-        // TODO enumerate symbols in library
-      }
+      loadSymbols(token);
     } else if (strcmp(token, "compile") == 0) {
 
       token = strtok(NULL, token_delim);
