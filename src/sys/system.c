@@ -5,10 +5,10 @@
 #include <kgflags.h>
 
 #include <dlfcn.h>
-// #include <libelf.h>
+#include <libelf.h>
 #include <libtcc.h>
-//#include <readline/history.h>
-//#include <readline/readline.h>
+#include <readline/history.h>
+#include <readline/readline.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -54,6 +54,8 @@ int main(int argc, char **argv) {
   const char *compile_flag = NULL;
   bool repl_mode = false;
 
+
+
   kgflags_string("compile", NULL, "Unit to compile", false, &compile_flag);
   kgflags_bool("repl", true, "Run REPL", false, &repl_mode);
 
@@ -79,6 +81,7 @@ int main(int argc, char **argv) {
   /* load obj */
   /************/
   // TODO handle relative paths lol
+  listSymbols("/home/chazu/dev/c/birnam/bin/obj.so");
   loadSymbols("/home/chazu/dev/c/birnam/bin/obj.so");
 
   /* if (options.compile_mode) { */
@@ -95,7 +98,7 @@ int main(int argc, char **argv) {
       printf("\n");
       break;
     } else {
-      add_history(input);
+      // add_history(input);
     }
 
     char *token;

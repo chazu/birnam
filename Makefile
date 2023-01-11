@@ -12,8 +12,10 @@ build_system:
 	 	-rdynamic \
 		-I ./vendor/ \
 		-I ./vendor/tinycc \
-		-L /usr/local/lib -ldl -lreadline -ltcc \
-		-g src/system.c
+		-L /usr/lib \
+		-L /usr/local/lib -ldl -ltcc -ldynload -lreadline -g \
+		src/sys/elf.c \
+		src/sys/system.c -vv
 	mv a.out bin/system
 
 build_libelf:

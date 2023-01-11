@@ -1,0 +1,2 @@
+/usr/local/lib/libdynload_s.a
+/usr/local/include/dynload.h
