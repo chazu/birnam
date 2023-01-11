@@ -4,7 +4,7 @@ _A_ system is a binary object that can be run as an executable OR loaded dynamic
 # TODO
 ## Phase -2 - What have I done?!
    [x] DONE System loads obj and calls begin
-   [ ] System can get the contents of the symbol table(s) when loading obj
+   [x] System can get the contents of the symbol table(s) when loading obj
    [ ] System calls into obj to initialize its contents into the system, if applicable - see Eli Benderskis C plugin articles
    [ ] System can access objects and call _methods_ inside of obj at runtime, via repl. How do we do this? Some standard contract between system and module
 ### Files we'll create
