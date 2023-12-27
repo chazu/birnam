@@ -137,10 +137,12 @@ int main(int argc, char **argv) {
       token = strtok(NULL, token_delim);
       symbol = dlsym(handle, token);
       printf("%s = %s\n", token, symbol);
+    }  else if (strcmp(token, "list") == 0) {
+      listSymbols("/home/chazu/dev/c/birnam/bin/toy.so");
     }
 
     free(input);
-  }
 
-  return 0;
+  }
+    return 0;
 }

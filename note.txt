@@ -1,0 +1,36 @@
+Thinking about parser generators -
+
+what do i want to be able to do with birnam?
+
+well, compile binaries using a smalltalk-like syntax, for one.
+develop my binary live inside of my own binary - this gives rise to the question of the relationship between the binary and its source code, of course.
+
+i want to be able to compile regular binaries which _dont_ contain any of the birnam system. but more importantly
+
+i want to be able to develop a binary _as a system_, meaning the language is the runtime is the binary all at once.
+
+Version 0.0:
+- Is a binary
+- It can be bootstrapped from C source with tcc
+- contains minimal message-passing syntax
+- has libtcc and packcc bundled into it
+- can be loaded as a library and run as an executable
+- when run as an executable, can reload itself as a library
+- when loaded as a library, has a C API
+- allows the user to specify a program in two ways:
+  - 1 message passing syntax
+    - as external source code
+  - 2 PEG grammar plus message passing syntax for that grammar
+    - As external source code
+- In case 1, the system is run and watches files, recompiling them and hot-reloading them. A special module implements the system startup itself when a message is passed from the main entrypoint. If this message send is not performed, the self-hosting nature of the system is not injected into the resulting binary. Users can specify the --implicit-system flag to inject the message send immediately before running their entrypoint. The implementation of the system bootstrapping can of course be overwritten live by the user.
+- Case 2 is similar except that it outputs a system which replaces the default message-passing syntax with the syntax specified in the PEG file. This is a little fuzzy, but the idea is that the user can define a module which transforms their custom syntax into a binary using the underlying message passing syntax, then use that module to write programs, which can also be systems. It should of course be possible to overwrite the original message-passing syntax implementation using this new grammar.
+- A system should be able to spit out its source code after compilation - perhaps with the exception of some primitives (packcc and tcc obviously come to mind) - a relatively easy way to do this would be to just bundle it in the elf binary
+
+What should the message-passing syntax include?
+- system calls
+- ability to define objects
+- ability to send messages to objects
+- ability to inspect objects via message passing
+- ability to update objects
+
+at some level of maturity we want closures, i think. i reckon we want garbage collection, at some point, or something.
