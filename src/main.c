@@ -41,4 +41,5 @@ void entrypoint(void *data) {
 
   // Load object system
   loadId();
+  entrypoint_peg();
 }

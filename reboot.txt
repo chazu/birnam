@@ -1,6 +1,6 @@
 See note.txt for notes on this 'reboot' of the birnam codebase.
 
-12/31/2023
+12/31/2023 Part 1
 ----------
 [DONE] - Is a binary
 [DONE] - It can be bootstrapped from C source with tcc
@@ -14,6 +14,15 @@ This version also contains `src/id.c`, which is renamed from `obj.c` - and it bo
 TODO - id.c should conform to the module API - that is, it should have an entrypoint we can call just like any module would. Should we also compile it separately and load it at runtime? We could...
 
 
+NEXT - add a peg parser library to the mix. Wrap it in a module that we can load from the brn entrypoint, giving us the ability to parse a grammar and load it.
+ - document the C ID API - we should be using it in the peg module
+
+
+12/31/2023 Part 2
+I've added packcc.c directly to the src dir - and i've added `peg.c` as a proto-module. its entrypoint is merely running a function to generate a parser (.c and .h files) - we have yet to then compile the code.
+
+TODO - encapsulate compilation in a module using the ID C API.
+-------
 
 - contains minimal message-passing syntax
 - has libtcc and packcc bundled into it

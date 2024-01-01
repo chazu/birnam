@@ -7,6 +7,7 @@ reboot:
 		-L /usr/local/lib -ldl -ltcc -ldynload -lreadline -g \
 		-o brn \
 		src/id.c \
+		src/peg.c \
 		src/main.c -vv
 
 
