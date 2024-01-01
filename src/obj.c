@@ -164,8 +164,8 @@ struct object *symbol_intern(struct object *self, char *string) {
 #define trace() printf("%s %d\n", __FUNCTION__, __LINE__); fflush(stdout);
 
 // Entrypoint into code compiled for birnam
-int begin() {
-  printf("[OBJ] Inside begin\n");
+int loadId() {
+  printf("Loading ID...");
   metavtable = vtable_delegated(0);
   metavtable->_vt[-1] = metavtable;
   object_vt = vtable_delegated(0);
@@ -185,6 +185,6 @@ int begin() {
   s_delegated = send(symbol, s_intern, (struct object *)"delegated");
 
   send(metavtable, s_addMethod, s_delegated, vtable_delegated);
-  printf("[OBJ] Still inside begin!\n");
+  printf("Done.\n");
   return 0;
 }

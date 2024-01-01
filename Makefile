@@ -1,3 +1,15 @@
+reboot:
+	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
+	 	-rdynamic \
+		-I ./vendor/ \
+		-I ./vendor/tinycc \
+		-L /usr/lib \
+		-L /usr/local/lib -ldl -ltcc -ldynload -lreadline -g \
+		-o brn \
+		src/id.c \
+		src/main.c -vv
+
+
 default: build
 
 build_docker:

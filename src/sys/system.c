@@ -43,7 +43,7 @@ int compileString(char *str) {
   }
 
   /*The output type must be set before any compilation*/
-  tcc_set_output_type(s, TCC_OUTPUT_EXE);
+  tcc_set_output_type(s, TCC_OUTPUT_DLL);
   if (tcc_compile_string(s, str) == -1)
     return 1;
 
