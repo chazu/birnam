@@ -13,6 +13,10 @@ This version also contains `src/id.c`, which is renamed from `obj.c` - and it bo
 
 TODO - id.c should conform to the module API - that is, it should have an entrypoint we can call just like any module would. Should we also compile it separately and load it at runtime? We could...
 
+Sidebar - What is this 'module system'? - See the comments in main.c for `load_module` for more info. a module is just a dynamically loadable object file with
+a symbol called entrypoint which accepts some opaque pointer.
+
+Note - a module should be an object, too - that is, it has a vtable, and we can send messages to it, right?
 
 NEXT - add a peg parser library to the mix. Wrap it in a module that we can load from the brn entrypoint, giving us the ability to parse a grammar and load it.
  - document the C ID API - we should be using it in the peg module
@@ -21,7 +25,11 @@ NEXT - add a peg parser library to the mix. Wrap it in a module that we can load
 12/31/2023 Part 2
 I've added packcc.c directly to the src dir - and i've added `peg.c` as a proto-module. its entrypoint is merely running a function to generate a parser (.c and .h files) - we have yet to then compile the code.
 
+Not sure what to do next - either encapsulate the necessary compilation functionality for compiling the parser source and then figure out how to inject that functionality into the peg module...yeah, thats what to do next.
+
 TODO - encapsulate compilation in a module using the ID C API.
+
+NEXT - Decide how we're going to inject state into a module - for consistency when hot reloading as well as dependency injection
 -------
 
 - contains minimal message-passing syntax

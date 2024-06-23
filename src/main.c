@@ -25,15 +25,20 @@ int compileString(char *str, char *outputFile) {
   return 0;
 }
 
+int load_module(char *name, void *state) {
+    void *module = dlopen(name, RTLD_NOW);
+    module_entrypoint *module_main = dlsym(module, "entrypoint");
+    module_main(state);
+}
+
 int main(void) {
   // State is whatever we want to persist across the reload
   void *state = NULL;
-  char *moduleName = "brn";
 
   // Load ourselves, find the entrypoint and call it.
-    void *module = dlopen("brn", RTLD_NOW);
-    module_entrypoint *module_main = dlsym(module, "entrypoint");
-    module_main(state);
+  load_module("brn", state);
+  load_module("peg", state);
+  load_module("testgrammar", state);
 }
 
 void entrypoint(void *data) {
