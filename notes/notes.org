@@ -1,0 +1,15 @@
+
+
+Bind and Lookup
+
+
+There is mutual recursion between bind and lookup. Bind sends the message lookup to a vtable
+
+bind(object, message)
+  sends lookup(message) to the object's vtable, returning a function implementation
+
+lookup protocol
+- lookup
+- methodAtPut
+- intern
+- allocate

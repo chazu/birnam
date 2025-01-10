@@ -1,3 +1,4 @@
+NOTE see bottom of file for latest note about unfucking things.
 
 _A_ system is a binary object that can be run as an executable OR loaded dynamically, and which exposes a complete - and completely adaptive - system.
 
@@ -52,3 +53,7 @@ vendor libtecla
 # Bootstrapping Birnam
 - Compile libtcc as a dynamic library
 - Compile system
+
+# No really, bootstrapping it
+- Seems like u need dynload - which iirc is a pain to compile into a dynamic library
+- i think i need to re-jigger this whole thing so that the object system "bootstraps" itself (via libtcc, so not really bootstrapping) without needing _any_ external deps beyond libtcc. in other words, reimplement elf.c without using dynload.
