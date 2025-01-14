@@ -1,3 +1,19 @@
+IMPORTANT
+
+- If you wish to dynamically link libtcc, make sure you are configuring tinycc to build a dynamic object via ./configure --disable-static
+
+
+
+[] Take first pass at defining the module interface
+[] Rework obj.c so it follows the module interface
+[] Move repl out of main
+
+[] Load obj.c as a module into system - without using send
+[] in system, expose module api in terms of object system
+[] rewrite system to follow module interface
+[] once object system is pulled into system, reinitialize system in terms of object system
+--------------------
+
 NOTE see bottom of file for latest note about unfucking things.
 
 _A_ system is a binary object that can be run as an executable OR loaded dynamically, and which exposes a complete - and completely adaptive - system.

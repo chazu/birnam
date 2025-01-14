@@ -5,16 +5,14 @@ build_docker:
 	docker build --target tcc -t birnam_tcc .
 	docker build --target birnam0 -t birnam .
 
-build: build_obj build_system build_vendored_libs
+build: obj system vendored_libs
 
-build_system:
-	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
+system:
+	tcc 	-L/usr/lib/ \
 	 	-rdynamic \
-		-I ./vendor/ \
-		-I ./vendor/tinycc \
+		-I /usr/local/include/ \
 		-L /usr/lib \
-		-L /usr/local/lib -ldl -ltcc -ldynload -lreadline -g \
-		src/sys/elf.c \
+		-L /usr/local/lib -ldl -ltcc -lreadline -g \
 		src/sys/system.c -vv
 	mv a.out bin/system
 
@@ -24,11 +22,11 @@ build_libelf:
 	make
 	cd -
 
-build_vendored_libs:
+vendored_libs:
 	tcc -fPIC -shared -rdynamic -soname=packcc -Wl -o bin/packcc.so vendor/PackCC/src/packcc.c
         # tcc -rdynamic -shared -soname=libelf -o libelf.so vendor/
 
-build_obj:
+obj:
 	tcc -fPIC -shared -rdynamic -Wl -g src/obj.c
 	mv a.out bin/obj.so
 run:

@@ -1,12 +1,12 @@
-  // /home/chazu/dev/c/birnam/bin/obj.so
+
+// /home/chazu/dev/c/birnam/bin/obj.so
 
 // System
-#define KGFLAGS_IMPLEMENTATION
-#include <kgflags.h>
-
 #include <dlfcn.h>
-#include <libelf.h>
 #include <libtcc.h>
+#include <mach-o/dyld.h>
+#include <mach-o/getsect.h>
+#include <mach-o/nlist.h>
 #include <readline/history.h>
 #include <readline/readline.h>
 #include <stdio.h>
@@ -14,8 +14,7 @@
 #include <unistd.h>
 
 // Loads symbols from shared object file
-// TODO probably want to return a handle to the dl
-void *loadSymbols(char *str) {
+void *load_symbols(char *str) {
   void *handle;
   char *error;
 
@@ -30,6 +29,61 @@ void *loadSymbols(char *str) {
   }
 
   return handle;
+}
+
+// Iterate through symbols in the loaded object
+// and print them
+void list_symbols(void *handle) {
+  unsigned long size;
+  handle =
+      dlopen("/Users/chazu/dev/c/birnam/bin/obj.so", RTLD_LAZY | RTLD_GLOBAL);
+
+  // Iterate through loaded images to find the corresponding one
+  for (uint32_t i = 0; i < _dyld_image_count(); i++) {
+    const char *image_name = _dyld_get_image_name(i);
+    if (image_name && strcmp(image_name, "/Users/chazu/dev/c/birnam/bin/obj.so") == 0) {
+      const struct mach_header_64 *header =
+          (const struct mach_header_64 *)_dyld_get_image_header(i);
+      if (!header) {
+        fprintf(stderr, "Failed to get Mach-O header.\n");
+        dlclose(handle);
+        return;
+      }
+
+      const struct load_command *lc =
+          (const struct load_command *)((char *)header +
+                                        sizeof(struct mach_header_64));
+      struct symtab_command *symtab = NULL;
+
+      // Iterate over load commands to find LC_SYMTAB
+      for (uint32_t j = 0; j < header->ncmds; j++) {
+        if (lc->cmd == LC_SYMTAB) {
+          symtab = (struct symtab_command *)lc;
+          break;
+        }
+        lc = (const struct load_command *)((char *)lc + lc->cmdsize);
+      }
+
+      if (!symtab) {
+        fprintf(stderr, "Failed to find symbol table in Mach-O file.\n");
+        dlclose(handle);
+        return;
+      }
+
+      // Get pointers to the symbol and string tables
+      const struct nlist_64 *symbols =
+          (const struct nlist_64 *)((char *)header + symtab->symoff);
+      const char *strtab = (const char *)((char *)header + symtab->stroff);
+
+      // Print each symbol
+      for (uint32_t k = 0; k < symtab->nsyms; k++) {
+        if (symbols[k].n_un.n_strx != 0) {
+          printf("%s\n", strtab + symbols[k].n_un.n_strx);
+        }
+      }
+      break;
+    }
+  }
 }
 
 int compileString(char *str) {
@@ -51,20 +105,6 @@ int compileString(char *str) {
 }
 
 int main(int argc, char **argv) {
-  const char *compile_flag = NULL;
-  bool repl_mode = false;
-
-
-
-  kgflags_string("compile", NULL, "Unit to compile", false, &compile_flag);
-  kgflags_bool("repl", true, "Run REPL", false, &repl_mode);
-
-  if (!kgflags_parse(argc, argv)) {
-    kgflags_print_errors();
-    kgflags_print_usage();
-    return 1;
-  }
-
   int c;
 
   void (*fptr)();
@@ -74,15 +114,13 @@ int main(int argc, char **argv) {
   char token_delim[] = " ";
   char *prompt = ">> ";
   char *input;
-
   int done = 0;
 
   /************/
   /* load obj */
   /************/
   // TODO handle relative paths lol
-  listSymbols("/home/chazu/dev/c/birnam/bin/obj.so");
-  loadSymbols("/home/chazu/dev/c/birnam/bin/obj.so");
+  handle = load_symbols("/Users/chazu/dev/c/birnam/bin/obj.so");
 
   /* if (options.compile_mode) { */
   /* } */
@@ -104,11 +142,11 @@ int main(int argc, char **argv) {
     char *token;
     token = strtok(input, token_delim);
 
-    if (strcmp(token, "load") == 0) {
+    if (strcmp(token, "!load") == 0) {
       token = strtok(NULL, token_delim);
 
-      loadSymbols(token);
-    } else if (strcmp(token, "compile") == 0) {
+      load_symbols(token);
+    } else if (strcmp(token, "!compile") == 0) {
 
       token = strtok(NULL, token_delim);
 
@@ -126,17 +164,23 @@ int main(int argc, char **argv) {
 
       /* *(void **)(&fptr) = dlsym(handle, token); */
       /* (*fptr)(); */
-    } else if (strcmp(token, "call") == 0) {
+    } else if (strcmp(token, "!call") == 0) {
       token = strtok(NULL, token_delim);
 
       // TODO Ensure token exists
       *(void **)(&fptr) = dlsym(handle, token);
       (*fptr)();
-    } else if (strcmp(token, "show") == 0) {
+    } else if (strcmp(token, "!show") == 0) {
       const char symbol;
       token = strtok(NULL, token_delim);
       symbol = dlsym(handle, token);
       printf("%s = %s\n", token, symbol);
+    } else if (strcmp(token, "!list") == 0) {
+      list_symbols(handle);
+    } else if (strcmp(token, "!exit") == 0) {
+      done = 1;
+    } else {
+      printf("Unknown command: %s\n", token);
     }
 
     free(input);
