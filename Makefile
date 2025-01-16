@@ -29,25 +29,7 @@ reboot: reboot_id reboot_peg
 		src/main.c -vv
 
 
-default: build
-
-build_docker:
-	docker build --target base -t birnam_base .
-	docker build --target tcc -t birnam_tcc .
-	docker build --target birnam0 -t birnam .
-
-build: build_obj build_system build_vendored_libs
-
-build_system:
-	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
-	 	-rdynamic \
-		-I ./vendor/ \
-		-I ./vendor/tinycc \
-		-L /usr/lib \
-		-L /usr/local/lib -ldl -ltcc -ldynload -lreadline -g \
-		src/sys/elf.c \
-		src/sys/system.c -vv
-	mv a.out bin/system
+default: reboot
 
 build_libelf:
 	cd vendor/libelf
