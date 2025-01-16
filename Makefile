@@ -1,14 +1,16 @@
-reboot_id:
-	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
+.PHONY: id
+id:
+	tcc -L/usr/lib/x86_64-linux-gnu/ \
 	 	-rdynamic \
 		-I ./vendor/ \
 		-I ./vendor/tinycc \
 		-L /usr/lib \
 		-L /usr/local/lib -ldl -ltcc -g \
 		-o bin/id \
-		src/id.c \
+		src/id.c -v
 
-reboot_peg:
+.PHONY: peg
+peg:
 	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
 	 	-rdynamic \
 		-I ./vendor/ \
@@ -16,20 +18,21 @@ reboot_peg:
 		-L /usr/lib \
 		-L /usr/local/lib -ldl -ltcc -g \
 		-o bin/peg \
-		src/peg.c \
+		src/peg.c -v
 
-reboot: reboot_id reboot_peg
+.PHONY: build
+build: id peg
 	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
 	 	-rdynamic \
 		-I ./vendor/ \
 		-I ./vendor/tinycc \
 		-L /usr/lib \
-		-L /usr/local/lib -ldl -ltcc -ldynload -lreadline -g \
+		-L /usr/local/lib -ldl -ltcc -ldynload_s -lreadline -g \
 		-o bin/brn \
-		src/main.c -vv
+		src/main.c -v
 
-
-default: reboot
+.PHONY: default
+default: build
 
 build_libelf:
 	cd vendor/libelf

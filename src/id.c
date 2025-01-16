@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct vtable;
-struct object;
-struct symbol;
+ static struct vtable;
+ static struct object;
+ static struct symbol;
 
 // Define function pointer type for function objects
 typedef struct object *(*oop)(struct object *receiver, ...);
@@ -28,33 +28,34 @@ struct symbol {
 };
 
 // Define primitives for object system
-struct vtable *metavtable = 0;
-struct vtable *object_vt = 0;
-struct vtable *symbol_vt = 0;
+static struct vtable *metavtable = 0;
+static struct vtable *object_vt = 0;
+static struct vtable *symbol_vt = 0;
 
-struct object *s_addMethod = 0;
-struct object *s_allocate = 0;
-struct object *s_delegated = 0;
-struct object *s_lookup = 0;
-struct object *s_intern = 0;
+static struct object *s_addMethod = 0;
+static struct object *s_allocate = 0;
+static struct object *s_delegated = 0;
+static struct object *s_lookup = 0;
+static struct object *s_intern = 0;
 
-struct object *symbol = 0;
+static struct object *symbol = 0;
 
-struct vtable *SymbolList = 0;
+static struct vtable *SymbolList = 0;
 
-extern inline void *alloc(size_t size) {
+static inline void *alloc(size_t size) {
   struct vtable **ppvt =
       (struct vtable **)calloc(1, sizeof(struct vtable *) + size);
   return (void *)(ppvt + 1);
 }
 
-struct object *symbol_new(char *string) {
+static struct object *symbol_new(char *string) {
   struct symbol *symbol = (struct symbol *)alloc(sizeof(struct symbol));
   symbol->_vt[-1] = symbol_vt;
   symbol->string = strdup(string);
   return (struct object *)symbol;
 }
-struct object *vtable_lookup(struct vtable *self, struct object *key);
+
+static struct object *vtable_lookup(struct vtable *self, struct object *key);
 
 #if ICACHE
 #define send(RCV, MSG, ARGS...)                                                \
@@ -76,14 +77,14 @@ struct object *vtable_lookup(struct vtable *self, struct object *key);
 #endif
 
 #if MCACHE
-struct entry {
+static struct entry {
   struct vtable *vtable;
   struct object *selector;
   oop method;
 } MethodCache[8192];
 #endif
 
-oop _bind(struct object *rcv, struct object *msg) {
+static oop _bind(struct object *rcv, struct object *msg) {
   oop method;
   struct vtable *vt = rcv->_vt[-1];
 #if MCACHE
@@ -104,12 +105,13 @@ oop _bind(struct object *rcv, struct object *msg) {
   return method;
 }
 
-struct object *vtable_allocate(struct vtable *self, int payloadSize) {
+static struct object *vtable_allocate(struct vtable *self, int payloadSize) {
   struct object *object = (struct object *)alloc(payloadSize);
   object->_vt[-1] = self;
   return object;
 }
-struct vtable *vtable_delegated(struct vtable *self) {
+
+static struct vtable *vtable_delegated(struct vtable *self) {
   struct vtable *child =
       (struct vtable *)vtable_allocate(self, sizeof(struct vtable));
   child->_vt[-1] = self ? self->_vt[-1] : 0;
@@ -121,7 +123,7 @@ struct vtable *vtable_delegated(struct vtable *self) {
   child->parent = self;
   return child;
 }
-struct object *vtable_addMethod(struct vtable *self, struct object *key,
+static struct object *vtable_addMethod(struct vtable *self, struct object *key,
                                 struct object *method) {
   int i;
   for (i = 0; i < self->tally; ++i)
@@ -138,7 +140,7 @@ struct object *vtable_addMethod(struct vtable *self, struct object *key,
   self->values[self->tally++] = method;
   return method;
 }
-struct object *vtable_lookup(struct vtable *self, struct object *key) {
+static struct object *vtable_lookup(struct vtable *self, struct object *key) {
   int i;
   for (i = 0; i < self->tally; ++i)
     if (key == self->keys[i])
@@ -149,7 +151,8 @@ struct object *vtable_lookup(struct vtable *self, struct object *key) {
           ((struct symbol *)key)->string);
   return 0;
 }
-struct object *symbol_intern(struct object *self, char *string) {
+
+static struct object *symbol_intern(struct object *self, char *string) {
   struct object *symbol;
   int i;
   for (i = 0; i < SymbolList->tally; ++i) {
@@ -189,7 +192,8 @@ int LoadID() {
   return 0;
 }
 
-void entrypoint(void *state) {
+static void entrypoint(void *state) {
+  printf("In entrypoint for id\n");
   LoadID();
 }
 
