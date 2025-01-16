@@ -167,28 +167,31 @@ static struct object *symbol_intern(struct object *self, char *string) {
 #define trace() printf("%s %d\n", __FUNCTION__, __LINE__); fflush(stdout);
 
 // When id is compiled into brn, it will be loaded here
-int LoadID() {
-  printf("Loading ID...");
+static int LoadID() {
+  printf("Loading ID...\n");
   metavtable = vtable_delegated(0);
   metavtable->_vt[-1] = metavtable;
   object_vt = vtable_delegated(0);
+
   object_vt->_vt[-1] = metavtable;
   metavtable->parent = object_vt;
   symbol_vt = vtable_delegated(object_vt);
   SymbolList = vtable_delegated(0);
   s_lookup = symbol_intern(0, "lookup");
   vtable_addMethod(metavtable, s_lookup, (struct object *)vtable_lookup);
+
   s_addMethod = symbol_intern(0, "addMethod");
   vtable_addMethod(metavtable, s_addMethod, (struct object *)vtable_addMethod);
   s_allocate = symbol_intern(0, "allocate");
-  send(metavtable, s_addMethod, s_allocate, vtable_allocate);
-  symbol = send(symbol_vt, s_allocate, sizeof(struct symbol));
-  s_intern = symbol_intern(0, "intern");
-  send(symbol_vt, s_addMethod, s_intern, symbol_intern);
-  s_delegated = send(symbol, s_intern, (struct object *)"delegated");
 
-  send(metavtable, s_addMethod, s_delegated, vtable_delegated);
-  printf("Done.\n");
+  send(metavtable, s_addMethod, s_allocate, vtable_allocate);
+  /* symbol = send(symbol_vt, s_allocate, sizeof(struct symbol)); */
+  /* s_intern = symbol_intern(0, "intern"); */
+  /* send(symbol_vt, s_addMethod, s_intern, symbol_intern); */
+  /* s_delegated = send(symbol, s_intern, (struct object *)"delegated"); */
+
+  /* send(metavtable, s_addMethod, s_delegated, vtable_delegated); */
+  /* printf("Done.\n"); */
   return 0;
 }
 
