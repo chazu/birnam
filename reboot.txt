@@ -16,6 +16,8 @@ TODO - id.c should conform to the module API - that is, it should have an entryp
 Sidebar - What is this 'module system'? - See the comments in main.c for `load_module` for more info. a module is just a dynamically loadable object file with
 a symbol called entrypoint which accepts some opaque pointer.
 
+6/22/2024 - The problem with using a symbol called `entrypoint` in every module is that uh, well, as we've written load_module, it can't differentiate between the entrypoint of any given module - birnam's entrypoint just gets called over and over again. for all we know, the value returned by dlsym is a reference to the birnam module entrypoint! seems unlikely, but we either need to dig into how to absolutely load the right module entrypoint instead of the birnam one, or we need different names for each module entrypoint, based on some convention, and once we get a level above C we can make that part of the compilation. fuck if i know.
+
 Note - a module should be an object, too - that is, it has a vtable, and we can send messages to it, right?
 
 NEXT - add a peg parser library to the mix. Wrap it in a module that we can load from the brn entrypoint, giving us the ability to parse a grammar and load it.

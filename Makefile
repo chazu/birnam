@@ -1,13 +1,31 @@
-reboot:
+reboot_id:
+	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
+	 	-rdynamic \
+		-I ./vendor/ \
+		-I ./vendor/tinycc \
+		-L /usr/lib \
+		-L /usr/local/lib -ldl -ltcc -g \
+		-o bin/id \
+		src/id.c \
+
+reboot_peg:
+	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
+	 	-rdynamic \
+		-I ./vendor/ \
+		-I ./vendor/tinycc \
+		-L /usr/lib \
+		-L /usr/local/lib -ldl -ltcc -g \
+		-o bin/peg \
+		src/peg.c \
+
+reboot: reboot_id reboot_peg
 	tcc 	-L/usr/lib/x86_64-linux-gnu/ \
 	 	-rdynamic \
 		-I ./vendor/ \
 		-I ./vendor/tinycc \
 		-L /usr/lib \
 		-L /usr/local/lib -ldl -ltcc -ldynload -lreadline -g \
-		-o brn \
-		src/id.c \
-		src/peg.c \
+		-o bin/brn \
 		src/main.c -vv
 
 

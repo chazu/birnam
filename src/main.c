@@ -25,26 +25,32 @@ int compileString(char *str, char *outputFile) {
   return 0;
 }
 
+// A module is just a dynamically linkable binary file
+// with a function called entrypoint that takes an opaque
+// pointer containing the state of the running system.
+// What that state looks like and is, beyond obviously
+// the currently loaded modules, vtables, message passing
+// system, we don't know yet.
 int load_module(char *name, void *state) {
     void *module = dlopen(name, RTLD_NOW);
     module_entrypoint *module_main = dlsym(module, "entrypoint");
     module_main(state);
 }
 
-int main(void) {
-  // State is whatever we want to persist across the reload
-  void *state = NULL;
-
+void entrypoint(void *state) {
+  printf("Birnam Entrypoint\n");
   // Load ourselves, find the entrypoint and call it.
-  load_module("brn", state);
-  load_module("peg", state);
-  load_module("testgrammar", state);
+  // load_module("brn", state);
+  // load_module("testgrammar", state);
 }
 
-void entrypoint(void *data) {
-  printf("BIRNAM --\n");
+int main(void) {
+  printf("Birnam Main\n");
+  void *state = NULL;
+  // State is whatever we want to persist across the reload
+  load_module("id", state);
+  load_module("peg", state);
+  //entrypoint(state);
+  return 0;
 
-  // Load object system
-  loadId();
-  entrypoint_peg();
 }

@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "packcc.c"
+#include "libtcc.h"
 
 int generate_parser() {
     const char *iname = "test.peg";
@@ -53,14 +54,38 @@ char* read_file(const char* filename) {
     return contents;
 }
 
+int compileString(char *str, char *outputFile) {
+  TCCState *s;
+  int (*func)(int);
+
+  s = tcc_new();
+  if (!s) {
+    fprintf(stderr, "Could not create tcc state\n");
+    exit(1);
+  }
+
+  /*The output type must be set before any compilation*/
+  tcc_set_output_type(s, TCC_OUTPUT_DLL);
+  if (tcc_compile_string(s, str) == -1)
+    return 1;
+
+  tcc_output_file(s, outputFile);
+  return 0;
+}
+
 int compile_parser() {
   char *code = read_file("testgrammar.so.c");
   compileString(code, "testgrammar");
   return 0;
 }
 
-void entrypoint_peg(void *data) {
-  printf("In PEG entrypoint");
+void entrypoint(void *state) {
+  printf("PEG entrypoint");
   generate_parser();
   compile_parser();
+}
+
+int main() {
+  entrypoint(NULL);
+  return 0;
 }

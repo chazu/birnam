@@ -1,4 +1,4 @@
-  // /home/chazu/dev/c/birnam/bin/obj.so
+// This is an older attempt - integrating a repl of sorts. I've abandoned this in favor of a more elementary approach - see reboot.txt and main.c
 
 // System
 #define KGFLAGS_IMPLEMENTATION

@@ -6,8 +6,8 @@ struct vtable;
 struct object;
 struct symbol;
 
-// Define function pointer type for method
-typedef struct object *(*method_t)(struct object *receiver, ...);
+// Define function pointer type for function objects
+typedef struct object *(*oop)(struct object *receiver, ...);
 
 struct vtable {
   struct vtable *_vt[0];
@@ -62,7 +62,7 @@ struct object *vtable_lookup(struct vtable *self, struct object *key);
     struct object *r = (struct object *)(RCV);                                 \
     struct vtable *thisVT = r->_vt[-1];                                        \
     static struct vtable *prevVT = 0;                                          \
-    static method_t method = 0;                                                \
+    static oop method = 0;                                                \
     (thisVT == prevVT ? method : (prevVT = thisVT, method = _bind(r, (MSG))))( \
         r, ##ARGS);                                                            \
   })
@@ -70,7 +70,7 @@ struct object *vtable_lookup(struct vtable *self, struct object *key);
 #define send(RCV, MSG, ARGS...)                                                \
   ({                                                                           \
     struct object *r = (struct object *)(RCV);                                 \
-    method_t method = _bind(r, (MSG));                                         \
+    oop method = _bind(r, (MSG));                                         \
     method(r, ##ARGS);                                                         \
   })
 #endif
@@ -79,12 +79,12 @@ struct object *vtable_lookup(struct vtable *self, struct object *key);
 struct entry {
   struct vtable *vtable;
   struct object *selector;
-  method_t method;
+  oop method;
 } MethodCache[8192];
 #endif
 
-method_t _bind(struct object *rcv, struct object *msg) {
-  method_t method;
+oop _bind(struct object *rcv, struct object *msg) {
+  oop method;
   struct vtable *vt = rcv->_vt[-1];
 #if MCACHE
   unsigned int hash = (((unsigned)vt << 2) ^ ((unsigned)msg >> 3)) &
@@ -94,8 +94,8 @@ method_t _bind(struct object *rcv, struct object *msg) {
     return line->method;
 #endif
   method = ((msg == s_lookup) && (rcv == (struct object *)metavtable))
-               ? (method_t)vtable_lookup(vt, msg)
-               : (method_t)send(vt, s_lookup, msg);
+               ? (oop)vtable_lookup(vt, msg)
+               : (oop)send(vt, s_lookup, msg);
 #if MCACHE
   line->vtable = vt;
   line->selector = msg;
@@ -163,8 +163,8 @@ struct object *symbol_intern(struct object *self, char *string) {
 }
 #define trace() printf("%s %d\n", __FUNCTION__, __LINE__); fflush(stdout);
 
-// Entrypoint into code compiled for birnam
-int loadId() {
+// When id is compiled into brn, it will be loaded here
+int LoadID() {
   printf("Loading ID...");
   metavtable = vtable_delegated(0);
   metavtable->_vt[-1] = metavtable;
@@ -186,5 +186,14 @@ int loadId() {
 
   send(metavtable, s_addMethod, s_delegated, vtable_delegated);
   printf("Done.\n");
+  return 0;
+}
+
+void entrypoint(void *state) {
+  LoadID();
+}
+
+int main() {
+  entrypoint(NULL);
   return 0;
 }

@@ -6,8 +6,8 @@ struct vtable;
 struct object;
 struct symbol;
 
-// Define function pointer type for method
-typedef struct object *(*method_t)(struct object *receiver, ...);
+// Define function pointer type for object function
+typedef struct object *(*oop)(struct object *receiver, ...);
 
 struct vtable {
   struct vtable *_vt[0];
@@ -32,6 +32,8 @@ struct vtable *metavtable = 0;
 struct vtable *object_vt = 0;
 struct vtable *symbol_vt = 0;
 
+struct vtable *SymbolList = 0;
+
 struct object *s_addMethod = 0;
 struct object *s_allocate = 0;
 struct object *s_delegated = 0;
@@ -39,8 +41,6 @@ struct object *s_lookup = 0;
 struct object *s_intern = 0;
 
 struct object *symbol = 0;
-
-struct vtable *SymbolList = 0;
 
 extern inline void *alloc(size_t size) {
   struct vtable **ppvt =
@@ -62,7 +62,7 @@ struct object *vtable_lookup(struct vtable *self, struct object *key);
     struct object *r = (struct object *)(RCV);                                 \
     struct vtable *thisVT = r->_vt[-1];                                        \
     static struct vtable *prevVT = 0;                                          \
-    static method_t method = 0;                                                \
+    static oop method = 0;                                                \
     (thisVT == prevVT ? method : (prevVT = thisVT, method = _bind(r, (MSG))))( \
         r, ##ARGS);                                                            \
   })
@@ -70,7 +70,7 @@ struct object *vtable_lookup(struct vtable *self, struct object *key);
 #define send(RCV, MSG, ARGS...)                                                \
   ({                                                                           \
     struct object *r = (struct object *)(RCV);                                 \
-    method_t method = _bind(r, (MSG));                                         \
+    oop method = _bind(r, (MSG));                                         \
     method(r, ##ARGS);                                                         \
   })
 #endif
@@ -78,12 +78,12 @@ struct object *vtable_lookup(struct vtable *self, struct object *key);
 struct entry {
   struct vtable *vtable;
   struct object *selector;
-  method_t method;
+  oop method;
 } MethodCache[8192];
 #endif
 
-method_t _bind(struct object *rcv, struct object *msg) {
-  method_t method;
+oop _bind(struct object *rcv, struct object *msg) {
+  oop method;
   struct vtable *vt = rcv->_vt[-1];
 #if MCACHE
   unsigned int hash = (((unsigned)vt << 2) ^ ((unsigned)msg >> 3)) &
@@ -93,8 +93,8 @@ method_t _bind(struct object *rcv, struct object *msg) {
     return line->method;
 #endif
   method = ((msg == s_lookup) && (rcv == (struct object *)metavtable))
-               ? (method_t)vtable_lookup(vt, msg)
-               : (method_t)send(vt, s_lookup, msg);
+               ? (oop)vtable_lookup(vt, msg)
+               : (oop)send(vt, s_lookup, msg);
 #if MCACHE
   line->vtable = vt;
   line->selector = msg;
@@ -137,6 +137,7 @@ struct object *vtable_addMethod(struct vtable *self, struct object *key,
   self->values[self->tally++] = method;
   return method;
 }
+
 struct object *vtable_lookup(struct vtable *self, struct object *key) {
   int i;
   for (i = 0; i < self->tally; ++i)
@@ -148,6 +149,7 @@ struct object *vtable_lookup(struct vtable *self, struct object *key) {
           ((struct symbol *)key)->string);
   return 0;
 }
+
 struct object *symbol_intern(struct object *self, char *string) {
   struct object *symbol;
   int i;
@@ -160,6 +162,7 @@ struct object *symbol_intern(struct object *self, char *string) {
   vtable_addMethod(SymbolList, symbol, 0);
   return symbol;
 }
+
 #define trace() printf("%s %d\n", __FUNCTION__, __LINE__); fflush(stdout);
 
 // Entrypoint into code compiled for birnam
