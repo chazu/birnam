@@ -192,7 +192,7 @@ int LoadID() {
   return 0;
 }
 
-static void entrypoint(void *state) {
+void entrypoint(void *state) {
   printf("In entrypoint for id\n");
   LoadID();
 }

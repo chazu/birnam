@@ -29,7 +29,7 @@ build: id peg
 		-L /usr/lib \
 		-L /usr/local/lib -ldl -ltcc -ldynload_s -lreadline -g \
 		-o bin/brn \
-		src/main.c -v
+		src/main.c src/load/load.c -v
 
 .PHONY: default
 default: build

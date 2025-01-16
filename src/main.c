@@ -42,21 +42,23 @@ int compileString(char *str, char *outputFile) {
 // the currently loaded modules, vtables, message passing
 // system, we don't know yet.
 void load_module(char *name, void *state) {
+  char *symName = "entrypoint";
   printf("Loading module %s\n", name);
   void *module = dlopen(name, RTLD_NOW);
 
-  //list_symbols(module);
   if (!module) {
     fprintf(stderr, "Failed to load module %s: %s\n", name, dlerror());
     return;
   }
-  printf("Getting module entrypoint...\n");
-  module_entrypoint *module_main = dlsym(module, "entrypoint");
+
+  module_entrypoint *module_main = dlsym(module, symName);
+
   if (!module_main) {
     fprintf(stderr, "Failed to find entrypoint in module %s: %s\n", name, dlerror());
     dlclose(module);
     return;
   }
+
   printf("Invoking module entrypoint...\n");
   module_main(state);
 }
