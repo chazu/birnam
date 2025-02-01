@@ -180,7 +180,8 @@ static struct object *vtable_allocate(struct vtable *self, int payloadSize) {
   trace();
 
   struct object *object = (struct object *)alloc(payloadSize);
-  object->_vt[-1] = self;
+  ((struct vtable **)object)[-1] = self;
+  //object->_vt[-1] = self;
   return object;
 }
 
