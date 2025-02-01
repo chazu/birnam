@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +14,7 @@ struct symbol;
 
 // Define function pointer types
 
-typedef struct object *(*oop)(struct object *receiver, ...);
+typedef struct object *(*oop)(struct object *receiver, struct object *args);
 
 struct vtable {
   struct vtable *_vt[0];
@@ -33,23 +34,66 @@ struct symbol {
   char *string;
 };
 
-#define send(RCV, MSG, ...)                                                    \
-  ({                                                                           \
-    struct object *r = (struct object *)RCV;                                   \
-    oop method = _bind(r, MSG);                                              \
-    if (!method) {                       \
-      raise(SIGTRAP); \
-      printf("ERROR in send: \n");       \
-      exit(1);                           \
-    };                                   \
-    method(r, __VA_ARGS__);            \
-  })
+static oop _bind(struct object *rcv, struct object *msg, struct object *args);
+static struct object *vtable_at_put(struct vtable *self, struct object *idx, struct object *item);
+static struct vtable *vtable_delegated(struct vtable *self);
+struct object *_send(struct object *rcv, struct object *msg,
+                     struct object *args);
 
-/* oop send(void *RCV, void *MSG, ...) { */
-/*     struct object *r = (struct object *)RCV; */
-/*     oop method = _bind(r, (MSG)); */
-/*     method(r, __VA_ARGS__); */
-/* } */
+/*
+  Outer send function - encapsulates the use of vtables for
+  argument passing
+*/
+struct object *send(struct object *args) {
+  // TODO if args is less than two, abort!
+  uint64_t i = 0;
+  struct object *rcv;
+  struct object *msg;
+  struct vtable * arg_table = vtable_delegated(0);
+
+  if (!args) {
+    printf("Error in send - no receiver specified!");
+  }
+  rcv = args++;
+
+  if (!args) {
+    printf("Error in send - no message specified!");
+  }
+  msg = args++;
+
+  while (args != NULL) {
+    vtable_at_put(arg_table, (struct object *)i, args++);
+    i++;
+  }
+
+  // Make sure the vtable pointer is set
+  arg_table->_vt[-1] = arg_table;
+
+  return _send(rcv, msg, (struct object *)arg_table);
+}
+
+/*
+  Send macro which adds null-termination so we dont have to
+  use va_list. One possible TODO is enforcing min 2 args
+  here
+*/
+#define send(...) send((struct object *[]){__VA_ARGS__, NULL})
+
+/* The inner send function: all extra arguments must be packed into a (v)table */
+struct object *_send(struct object *rcv, struct object *msg, struct object *args) {
+
+    // Look up the method pointer.
+  oop method = _bind(rcv, msg, args);
+  if (!method) {
+    raise(SIGTRAP);
+    fprintf(stderr, "ERROR in send: method not found for message\n");
+    exit(1);
+  }
+
+  // Call the method with the receiver and the va_list.
+  struct object *result = method(rcv, args);
+  return result;
+}
 
 // Define primitives for object system
 static struct vtable *metavtable = 0;
@@ -61,6 +105,9 @@ static struct object *s_allocate = 0;
 static struct object *s_delegated = 0;
 static struct object *s_lookup = 0;
 static struct object *s_intern = 0;
+
+// TODO s_atPut for vtable
+// TODO s_at for vtable
 
 static struct object *symbol = 0;
 
@@ -97,7 +144,7 @@ static struct object *symbol_new(char *string) {
 
 static struct object *vtable_lookup(struct vtable *self, struct object *key);
 
-static oop _bind(struct object *rcv, struct object *msg) {
+static oop _bind(struct object *rcv, struct object *msg, struct object *args) {
   trace();
   printf("Bind Operation - message: %s\n", ((struct symbol *)msg)->string);
   if (!rcv) {
@@ -126,6 +173,18 @@ static struct object *vtable_allocate(struct vtable *self, int payloadSize) {
   struct object *object = (struct object *)alloc(payloadSize);
   object->_vt[-1] = self;
   return object;
+}
+
+static struct object *vtable_at_put(struct vtable *self, struct object *idx, struct object *item) {
+  if (self->tally == self->size) {
+    self->size *= 2;
+    self->keys   = (struct object **)realloc(self->keys, sizeof(struct object *) *self->size);
+    self->values = (struct object **)realloc(self->values, sizeof(struct object *) * self->size);
+  }
+
+  self->keys[self->tally] = idx;
+  self->values[self->tally++] = item;
+  return (struct object*)self;
 }
 
 static struct vtable *vtable_delegated(struct vtable *self) {
@@ -235,6 +294,7 @@ static int LoadID() {
 
   printf("NOW THE PAIN BEGINS\n");
   // TODO addMethod is not returning its implementation from call to _bind in send on next line
+
   send(metavtable, s_addMethod, s_allocate, vtable_allocate);
   /* printf("Now the pain should be over\n"); */
   /* symbol = send(symbol_vt, s_allocate, sizeof(struct symbol)); */
