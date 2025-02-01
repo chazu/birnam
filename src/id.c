@@ -12,6 +12,11 @@ struct symbol;
   printf("%s %d\n", __FUNCTION__, __LINE__);                                   \
   fflush(stdout);
 
+#define DEBUG(...) \
+    fprintf(stderr, "[DEBUG] %s:%d: ", __FUNCTION__, __LINE__); \
+    fprintf(stderr, __VA_ARGS__); \
+    fprintf(stderr, "\n");
+
 // Define function pointer types
 
 typedef struct object *(*oop)(struct object *receiver, struct object *args);
@@ -44,7 +49,8 @@ struct object *_send(struct object *rcv, struct object *msg,
   Outer send function - encapsulates the use of vtables for
   argument passing
 */
-struct object *send(struct object *args) {
+struct object *send(struct object **args) {
+  trace();
   // TODO if args is less than two, abort!
   uint64_t i = 0;
   struct object *rcv;
@@ -54,14 +60,16 @@ struct object *send(struct object *args) {
   if (!args) {
     printf("Error in send - no receiver specified!");
   }
-  rcv = args++;
+  rcv = *args;
+  args++;
 
   if (!args) {
     printf("Error in send - no message specified!");
   }
-  msg = args++;
+  msg = *args;
+  args++;
 
-  while (args != NULL) {
+  while (*args != NULL) {
     vtable_at_put(arg_table, (struct object *)i, args++);
     i++;
   }
@@ -81,7 +89,7 @@ struct object *send(struct object *args) {
 
 /* The inner send function: all extra arguments must be packed into a (v)table */
 struct object *_send(struct object *rcv, struct object *msg, struct object *args) {
-
+  trace();
     // Look up the method pointer.
   oop method = _bind(rcv, msg, args);
   if (!method) {
@@ -126,12 +134,12 @@ static inline void *alloc(size_t size) {
 }
 
 void print_vtable(struct vtable *vt) {
-  printf("VTable %p\n", vt);
+  printf("***VTable %p***\n", vt);
   for (int i = 0; i < vt->tally; i++) {
     printf("  %s : %p\n", ((struct symbol *)vt->keys[i])->string,
            vt->values[i]);
   }
-  printf("End VTable %p\n", vt);
+  printf("***End VTable %p***\n", vt);
 }
 
 static struct object *symbol_new(char *string) {
@@ -170,13 +178,16 @@ static oop _bind(struct object *rcv, struct object *msg, struct object *args) {
 
 static struct object *vtable_allocate(struct vtable *self, int payloadSize) {
   trace();
+
   struct object *object = (struct object *)alloc(payloadSize);
   object->_vt[-1] = self;
   return object;
 }
 
 static struct object *vtable_at_put(struct vtable *self, struct object *idx, struct object *item) {
+  DEBUG("self=%p idx=%i item=%p", self, idx, item);
   if (self->tally == self->size) {
+    trace();
     self->size *= 2;
     self->keys   = (struct object **)realloc(self->keys, sizeof(struct object *) *self->size);
     self->values = (struct object **)realloc(self->values, sizeof(struct object *) * self->size);
@@ -217,6 +228,7 @@ static struct object *vtable_addMethod(struct vtable *self, struct object *key,
   return method;
 }
 static struct object *vtable_lookup(struct vtable *self, struct object *key) {
+  DEBUG("self=%p key=%p", self, key);
   trace();
   int i;
   printf("===Performing VTable Lookup===\n");
@@ -229,10 +241,12 @@ static struct object *vtable_lookup(struct vtable *self, struct object *key) {
     fprintf(stderr, "null key pointer in vtable_lookup\n");
     return 0;
   }
-
+  trace();
   print_vtable(self);
   for (i = 0; i < self->tally; ++i) {
+    trace();
     if (!self->keys[i])
+      trace();
       continue;
     // print current key and target key
     printf("  Target key %s\n", ((struct symbol *)key)->string);
