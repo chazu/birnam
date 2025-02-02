@@ -61,8 +61,10 @@ struct symbol;
                 fprintf(stderr, " (value is NULL)"); \
             } \
             fprintf(stderr, "\n"); \
-            if (v && !v->_vt) { \
-                fprintf(stderr, "  Warning: value has NULL vtable\n"); \
+            if (v && ((struct vtable **)v)[-1]) { \
+                if (!((struct vtable **)v)[-1]) { \
+                    fprintf(stderr, "  Warning: value has NULL vtable\n"); \
+                } \
             } \
         } \
     } \
