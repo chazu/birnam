@@ -127,7 +127,7 @@ struct object *send(struct object **args) {
   }
 
   // Make sure the vtable pointer is set
-  arg_table->_vt[-1] = arg_table;
+  arg_table->_vt[-1] = metavtable;  // Set vtable to metavtable instead of self-reference
 
   return _send(rcv, msg, (struct object *)arg_table);
 }
@@ -145,7 +145,7 @@ struct object *_send(struct object *rcv, struct object *msg,
                      struct object *args) {
   trace();
   // Look up the method pointer.
-  oop method = _bind(rcv, msg, args);
+  oop method = _bind(rcv, msg, (struct object *)args);
   if (!method) {
     raise(SIGTRAP);
     fprintf(stderr, "ERROR in send: method not found for message\n");
