@@ -1,8 +1,8 @@
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
 
 struct vtable;
 struct object;
@@ -12,10 +12,58 @@ struct symbol;
   printf("%s %d\n", __FUNCTION__, __LINE__);                                   \
   fflush(stdout);
 
-#define DEBUG(...) \
-    fprintf(stderr, "[DEBUG] %s:%d: ", __FUNCTION__, __LINE__); \
-    fprintf(stderr, __VA_ARGS__); \
-    fprintf(stderr, "\n");
+#define DEBUG(...)                                                             \
+  fprintf(stderr, "[DEBUG] %s:%d: ", __FUNCTION__, __LINE__);                  \
+  fprintf(stderr, __VA_ARGS__);                                                \
+  fprintf(stderr, "\n");
+
+#define DEBUG_ARGS(vt) do { \
+    if (!(vt)) { \
+        fprintf(stderr, "DEBUG_ARGS: vtable is NULL\n"); \
+    } else { \
+        fprintf(stderr, "DEBUG_ARGS: vtable at %p, tally=%d, size=%d\n", (void*)(vt), (vt)->tally, (vt)->size); \
+        for (int _i = 0; _i < (vt)->tally; _i++) { \
+            struct object *k = (vt)->keys[_i]; \
+            struct object *v = (vt)->values[_i]; \
+            fprintf(stderr, "  Arg[%d]: key=%p", _i, (void*)k); \
+            if (k) { \
+                struct symbol *symKey = (struct symbol *)k; \
+                if (symKey->string) { \
+                    fprintf(stderr, " (key string: %s)", symKey->string); \
+                } else { \
+                    fprintf(stderr, " (key has no string)"); \
+                } \
+            } else { \
+                fprintf(stderr, " (key is NULL)"); \
+            } \
+            fprintf(stderr, ", value=%p", (void*)v); \
+            if (v) { \
+                /* Retrieve the hidden pointer (the object's type pointer) */ \
+                struct vtable *val_vt = *((struct vtable **)((char *)v - sizeof(void*))); \
+                if (val_vt == symbol_vt) { \
+                    struct symbol *symVal = (struct symbol *)v; \
+                    fprintf(stderr, " (symbol: %s)", symVal->string ? symVal->string : "NULL"); \
+                    if (SymbolList) { \
+                        int found = 0; \
+                        for (int _j = 0; _j < SymbolList->tally; _j++) { \
+                            if (SymbolList->keys[_j] == v) { \
+                                found = 1; break; \
+                            } \
+                        } \
+                        fprintf(stderr, " [in SymbolList: %s]", found ? "yes" : "no"); \
+                    } else { \
+                        fprintf(stderr, " [SymbolList is NULL]"); \
+                    } \
+                } else { \
+                    fprintf(stderr, " (not a symbol)"); \
+                } \
+            } else { \
+                fprintf(stderr, " (value is NULL)"); \
+            } \
+            fprintf(stderr, "\n"); \
+        } \
+    } \
+} while(0)
 
 // Define function pointer types
 
@@ -40,7 +88,8 @@ struct symbol {
 };
 
 static oop _bind(struct object *rcv, struct object *msg, struct object *args);
-static struct object *vtable_at_put(struct vtable *self, struct object *idx, struct object *item);
+static struct object *vtable_at_put(struct vtable *self, struct object *idx,
+                                    struct object *item);
 static struct vtable *vtable_delegated(struct vtable *self);
 struct object *_send(struct object *rcv, struct object *msg,
                      struct object *args);
@@ -55,7 +104,7 @@ struct object *send(struct object **args) {
   uint64_t i = 0;
   struct object *rcv;
   struct object *msg;
-  struct vtable * arg_table = vtable_delegated(0);
+  struct vtable *arg_table = vtable_delegated(0);
 
   if (!args) {
     printf("Error in send - no receiver specified!");
@@ -87,10 +136,12 @@ struct object *send(struct object **args) {
 */
 #define send(...) send((struct object *[]){__VA_ARGS__, NULL})
 
-/* The inner send function: all extra arguments must be packed into a (v)table */
-struct object *_send(struct object *rcv, struct object *msg, struct object *args) {
+/* The inner send function: all extra arguments must be packed into a (v)table
+ */
+struct object *_send(struct object *rcv, struct object *msg,
+                     struct object *args) {
   trace();
-    // Look up the method pointer.
+  // Look up the method pointer.
   oop method = _bind(rcv, msg, args);
   if (!method) {
     raise(SIGTRAP);
@@ -124,13 +175,12 @@ static struct vtable *SymbolList = 0;
 static inline void *alloc(size_t size) {
   if (size == 0)
     return NULL;
-  struct vtable **ppvt =
-      (struct vtable **)calloc(1, sizeof(struct vtable *) + size);
-  if (!ppvt) {
+  char *p = calloc(1, sizeof(void *) + size);
+  if (!p) {
     fprintf(stderr, "Memory allocation failed\n");
     exit(1);
   }
-  return (void *)(ppvt + 1);
+  return (void *)(p + sizeof(void *));
 }
 
 void print_vtable(struct vtable *vt) {
@@ -154,6 +204,7 @@ static struct object *vtable_lookup(struct vtable *self, struct object *key);
 
 static oop _bind(struct object *rcv, struct object *msg, struct object *args) {
   trace();
+
   printf("Bind Operation - message: %s\n", ((struct symbol *)msg)->string);
   if (!rcv) {
     fprintf(stderr, "Null receiver in _bind\n");
@@ -166,10 +217,24 @@ static oop _bind(struct object *rcv, struct object *msg, struct object *args) {
   oop method;
   struct vtable *vt = rcv->_vt[-1];
   if ((msg == s_lookup) && (rcv == (struct object *)metavtable)) {
-    printf("in bind, bottoming out with lookup for message %s\n", ((struct symbol *)msg)->string);
-    method = (oop)vtable_lookup(vt, msg);
+    // Extract the lookup key from args
+    struct vtable *arg_table = (struct vtable *)args;
+    DEBUG_ARGS(arg_table);
+    struct object *key = arg_table->values[0];
+
+    // Debug to detect null symbols
+    if (key == NULL) {
+      fprintf(stderr, "key is NULL!\n");
+    } else {
+      printf("Key’s string is: %s\n", ((struct symbol *)key)->string);
+    }
+
+    printf("in bind, bottoming out with lookup for message %s\n",
+           ((struct symbol *)msg)->string);
+    method = (oop)vtable_lookup(vt, key);
   } else {
-    printf("In bind, About to send lookup message for message %s\n", ((struct symbol *)msg)->string);
+    printf("In bind, About to send lookup message for message %s\n",
+           ((struct symbol *)msg)->string);
     print_vtable(vt);
     method = (oop)send(vt, s_lookup, msg);
   }
@@ -180,28 +245,36 @@ static struct object *vtable_allocate(struct vtable *self, int payloadSize) {
   trace();
 
   struct object *object = (struct object *)alloc(payloadSize);
-  ((struct vtable **)object)[-1] = self;
-  //object->_vt[-1] = self;
+
+  /* Instead of doing negative indexing on a zero-length array,
+     subtract the number of bytes corresponding to one pointer */
+  *((struct vtable **)((char *)object - sizeof(struct vtable *))) = self;
+  // ((struct vtable **)object)[-1] = self;
+  // object->_vt[-1] = self;
   return object;
 }
 
-static struct object *vtable_at_put(struct vtable *self, struct object *idx, struct object *item) {
+static struct object *vtable_at_put(struct vtable *self, struct object *idx,
+                                    struct object *item) {
   DEBUG("self=%p idx=%i item=%p", self, idx, item);
   if (self->tally == self->size) {
     trace();
     self->size *= 2;
-    self->keys   = (struct object **)realloc(self->keys, sizeof(struct object *) *self->size);
-    self->values = (struct object **)realloc(self->values, sizeof(struct object *) * self->size);
+    self->keys = (struct object **)realloc(self->keys, sizeof(struct object *) *
+                                                           self->size);
+    self->values = (struct object **)realloc(
+        self->values, sizeof(struct object *) * self->size);
   }
 
   self->keys[self->tally] = idx;
   self->values[self->tally++] = item;
-  return (struct object*)self;
+  return (struct object *)self;
 }
 
 static struct vtable *vtable_delegated(struct vtable *self) {
   trace();
-  struct vtable *child = (struct vtable *)vtable_allocate(self, sizeof(struct vtable));
+  struct vtable *child =
+      (struct vtable *)vtable_allocate(self, sizeof(struct vtable));
   child->_vt[-1] = self ? self->_vt[-1] : 0;
   child->size = 2;
   child->tally = 0;
@@ -220,8 +293,10 @@ static struct object *vtable_addMethod(struct vtable *self, struct object *key,
       return self->values[i] = (struct object *)method;
   if (self->tally == self->size) {
     self->size *= 2;
-    self->keys   = (struct object **)realloc(self->keys, sizeof(struct object *) *self->size);
-    self->values = (struct object **)realloc(self->values, sizeof(struct object *) * self->size);
+    self->keys = (struct object **)realloc(self->keys, sizeof(struct object *) *
+                                                           self->size);
+    self->values = (struct object **)realloc(
+        self->values, sizeof(struct object *) * self->size);
   }
 
   self->keys[self->tally] = key;
@@ -248,7 +323,7 @@ static struct object *vtable_lookup(struct vtable *self, struct object *key) {
     trace();
     if (!self->keys[i])
       trace();
-      continue;
+    continue;
     // print current key and target key
     printf("  Target key %s\n", ((struct symbol *)key)->string);
     printf("  Current key %s\n", ((struct symbol *)self->keys[i])->string);
@@ -307,8 +382,9 @@ static int LoadID() {
   vtable_addMethod(metavtable, s_lookup, (struct object *)vtable_lookup);
   vtable_addMethod(metavtable, s_addMethod, (struct object *)vtable_addMethod);
 
-  printf("NOW THE PAIN BEGINS\n");
-  // TODO addMethod is not returning its implementation from call to _bind in send on next line
+  printf("============NOW THE PAIN BEGINS=============\n");
+  // TODO addMethod is not returning its implementation from call to _bind in
+  // send on next line
 
   send(metavtable, s_addMethod, s_allocate, vtable_allocate);
   /* printf("Now the pain should be over\n"); */
