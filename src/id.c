@@ -104,7 +104,7 @@ struct object *send(struct object **args) {
   uint64_t i = 0;
   struct object *rcv;
   struct object *msg;
-  struct vtable *arg_table = vtable_delegated(0);
+  struct vtable *arg_table = (struct vtable *)vtable_delegated(0);
 
   if (!args) {
     printf("Error in send - no receiver specified!");
@@ -393,7 +393,7 @@ static int LoadID() {
   // TODO addMethod is not returning its implementation from call to _bind in
   // send on next line
 
-  send(metavtable, s_addMethod, s_allocate, vtable_allocate);
+  send(metavtable, s_addMethod, s_allocate, (struct object *)vtable_allocate);
   /* printf("Now the pain should be over\n"); */
   /* symbol = send(symbol_vt, s_allocate, sizeof(struct symbol)); */
 
