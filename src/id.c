@@ -178,13 +178,15 @@ static struct vtable *SymbolList = 0;
 static inline void *alloc(size_t size) {
   if (size == 0)
     return NULL;
-  char *p = calloc(1, sizeof(void *) + size);
+  // Allocate space for vtable pointer + requested size, aligned to 8 bytes
+  size_t total_size = (sizeof(void *) + size + 7) & ~7;
+  void *p = calloc(1, total_size);
   if (!p) {
     fprintf(stderr, "Memory allocation failed\n");
     exit(1);
   }
   // Return pointer after the vtable pointer
-  return p + 1;
+  return (char *)p + sizeof(void *);
 }
 
 void print_vtable(struct vtable *vt) {
@@ -281,7 +283,9 @@ static struct vtable *vtable_delegated(struct vtable *self) {
   trace();
   struct vtable *child =
       (struct vtable *)vtable_allocate(self, sizeof(struct vtable));
-  child->_vt[-1] = self ? self->_vt[-1] : 0;
+  // Store vtable pointer safely
+  struct vtable **vt_ptr = (struct vtable **)child;
+  vt_ptr[-1] = self ? self->_vt[-1] : 0;
   child->size = 2;
   child->tally = 0;
   child->keys = (struct object **)calloc(child->size, sizeof(struct object *));
@@ -374,6 +378,7 @@ static struct object *symbol_intern(struct object *self, char *string) {
 
 // When id is compiled into brn, it will be loaded here
 static int LoadID() {
+  int result = 0; // Initialize return value
   printf("Loading ID...\n");
   metavtable = vtable_delegated(0);
   printf("metavtable after vtable_delegated: %p\n", metavtable);
@@ -410,7 +415,7 @@ static int LoadID() {
 
   /* send(metavtable, s_addMethod, s_delegated, vtable_delegated); */
   /* printf("Done.\n"); */
-  /* return 0; */
+  return result;
 }
 
 void entrypoint(void *state) {
