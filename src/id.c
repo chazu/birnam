@@ -321,12 +321,19 @@ static struct object *vtable_lookup(struct vtable *self, struct object *key) {
   print_vtable(self);
   for (i = 0; i < self->tally; ++i) {
     trace();
-    if (!self->keys[i])
+    if (!self->keys[i]) {
       trace();
-    continue;
+      continue;
+    }
     // print current key and target key
-    printf("  Target key %s\n", ((struct symbol *)key)->string);
-    printf("  Current key %s\n", ((struct symbol *)self->keys[i])->string);
+    struct symbol *targetSym = (struct symbol *)key;
+    struct symbol *currentSym = (struct symbol *)self->keys[i];
+    if (!targetSym->string || !currentSym->string) {
+      fprintf(stderr, "Warning: Null string in symbol comparison\n");
+      continue;
+    }
+    printf("  Target key %s\n", targetSym->string);
+    printf("  Current key %s\n", currentSym->string);
     if (key == self->keys[i]) {
       printf("  Target key found! returning...\n");
       printf("===VTable Lookup Complete===\n");
