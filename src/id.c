@@ -70,7 +70,7 @@ struct symbol;
 
 // Define function pointer types
 
-typedef struct object *(*oop)(struct object *receiver, struct object *msg, struct object *args);
+typedef struct object *(*oop)(struct object *receiver, struct object *args);
 
 struct vtable {
   struct vtable *_vt[0];
