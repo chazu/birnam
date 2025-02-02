@@ -183,7 +183,8 @@ static inline void *alloc(size_t size) {
     fprintf(stderr, "Memory allocation failed\n");
     exit(1);
   }
-  return (void *)(p + sizeof(void *));
+  // Return pointer after the vtable pointer
+  return p + 1;
 }
 
 void print_vtable(struct vtable *vt) {
@@ -251,7 +252,9 @@ static struct object *vtable_allocate(struct vtable *self, int payloadSize) {
 
   /* Instead of doing negative indexing on a zero-length array,
      subtract the number of bytes corresponding to one pointer */
-  *((struct vtable **)((char *)object - sizeof(struct vtable *))) = self;
+  // Store the vtable pointer safely
+  struct vtable **vt_ptr = (struct vtable **)object;
+  vt_ptr[-1] = self;
   // ((struct vtable **)object)[-1] = self;
   // object->_vt[-1] = self;
   return object;
@@ -375,7 +378,9 @@ static int LoadID() {
   metavtable = vtable_delegated(0);
   printf("metavtable after vtable_delegated: %p\n", metavtable);
 
-  metavtable->_vt[-1] = metavtable;
+  // Initialize the vtable pointer safely
+  struct vtable **vt_ptr = (struct vtable **)metavtable;
+  vt_ptr[-1] = metavtable;
   printf("metavtable: %p\n", metavtable);
   object_vt = vtable_delegated(0);
   object_vt->_vt[-1] = metavtable;
