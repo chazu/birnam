@@ -211,15 +211,17 @@ static struct object *vtable_lookup(struct vtable *self, struct object *key);
 static oop _bind(struct object *rcv, struct object *msg, struct object *args) {
   trace();
 
+  if (!rcv || !msg) {
+    fprintf(stderr, "Null receiver or message in _bind\n");
+    return NULL;
+  }
+
+  if (!rcv->_vt) {
+    fprintf(stderr, "Receiver has null vtable in _bind\n");
+    return NULL;
+  }
+
   printf("Bind Operation - message: %s\n", ((struct symbol *)msg)->string);
-  if (!rcv) {
-    fprintf(stderr, "Null receiver in _bind\n");
-    return NULL;
-  }
-  if (!msg) {
-    fprintf(stderr, "Null message in _bind\n");
-    return NULL;
-  }
   oop method;
   struct vtable *vt = rcv->_vt[-1];
   if ((msg == s_lookup) && (rcv == (struct object *)metavtable)) {
@@ -283,14 +285,30 @@ static struct vtable *vtable_delegated(struct vtable *self) {
   trace();
   struct vtable *child =
       (struct vtable *)vtable_allocate(self, sizeof(struct vtable));
-  // Store vtable pointer safely
-  struct vtable **vt_ptr = (struct vtable **)child;
-  vt_ptr[-1] = self ? self->_vt[-1] : 0;
+  
+  if (!child) {
+    fprintf(stderr, "Failed to allocate child vtable\n");
+    return NULL;
+  }
+
+  // Initialize vtable pointer
+  if (self) {
+    child->_vt[-1] = self->_vt[-1];
+  } else {
+    child->_vt[-1] = metavtable;  // Use metavtable as default parent
+  }
+
   child->size = 2;
   child->tally = 0;
   child->keys = (struct object **)calloc(child->size, sizeof(struct object *));
-  child->values =
-      (struct object **)calloc(child->size, sizeof(struct object *));
+  child->values = (struct object **)calloc(child->size, sizeof(struct object *));
+  
+  if (!child->keys || !child->values) {
+    fprintf(stderr, "Failed to allocate vtable arrays\n");
+    free(child);
+    return NULL;
+  }
+
   child->parent = self;
   return child;
 }
@@ -380,12 +398,18 @@ static struct object *symbol_intern(struct object *self, char *string) {
 static int LoadID() {
   int result = 0; // Initialize return value
   printf("Loading ID...\n");
+  
+  // Create metavtable first
   metavtable = vtable_delegated(0);
+  if (!metavtable) {
+    fprintf(stderr, "Failed to create metavtable\n");
+    return 1;
+  }
   printf("metavtable after vtable_delegated: %p\n", metavtable);
 
-  // Initialize the vtable pointer safely
-  struct vtable **vt_ptr = (struct vtable **)metavtable;
-  vt_ptr[-1] = metavtable;
+  // Initialize metavtable's vtable pointer to point to itself
+  metavtable->_vt[-1] = metavtable;
+  printf("Set metavtable's vtable pointer to: %p\n", metavtable->_vt[-1]);
   printf("metavtable: %p\n", metavtable);
   object_vt = vtable_delegated(0);
   object_vt->_vt[-1] = metavtable;
