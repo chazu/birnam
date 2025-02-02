@@ -61,13 +61,16 @@ struct symbol;
                 fprintf(stderr, " (value is NULL)"); \
             } \
             fprintf(stderr, "\n"); \
+            if (v && !v->_vt) { \
+                fprintf(stderr, "  Warning: value has NULL vtable\n"); \
+            } \
         } \
     } \
 } while(0)
 
 // Define function pointer types
 
-typedef struct object *(*oop)(struct object *receiver, struct object *msg, struct object *args);
+typedef struct object *(*oop)(struct object *receiver, struct object *args);
 
 struct vtable {
   struct vtable *_vt[0];
