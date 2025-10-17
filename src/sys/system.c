@@ -260,6 +260,8 @@ int main(int argc, char **argv) {
       list_symbols(handle);
     } else if (strcmp(token, "!exit") == 0) {
       done = 1;
+    } else if (strcmp(token, "!help") == 0) {
+      printf("Commands: !load !compile !call !show !list !exit !help");
     } else {
       printf("Unknown command: %s\n", token);
     }
