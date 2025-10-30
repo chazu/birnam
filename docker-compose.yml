@@ -1,7 +1,0 @@
-version: "3.7"
-services:
-  birnam:
-    build: .
-    volumes:
-      - .:/app
-    command: tail -f /dev/null

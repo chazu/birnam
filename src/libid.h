@@ -1,5 +1,5 @@
-#ifndef __LIBID_ENHANCED_H
-#define __LIBID_ENHANCED_H
+#ifndef __LIBID_H
+#define __LIBID_H
 
 /* Non-variadic debug printf macros */
 #if DEBUG_ALL
@@ -158,4 +158,4 @@ oop _libid_superv_dispatch(oop type, oop selector, oop receiver, int argc, oop *
 oop _libid_send_dispatch(oop selector, oop receiver, int argc, oop *argv);
 oop _libid_super_dispatch(oop type, oop selector, oop receiver, int argc, oop *argv);
 
-#endif /* __LIBID_ENHANCED_H */
+#endif /* __LIBID_H */

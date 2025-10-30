@@ -13,7 +13,7 @@ libid:
 		-DPREFIX='"/usr/local/lib/"' \
 		-DSYSARCH='"aarch64"' \
 		-DSYSOS='"darwin"' \
-		src/libid_enhanced.c \
+		src/libid.c \
 		-L/opt/homebrew/lib -lgc \
 		-o bin/libid.so
 

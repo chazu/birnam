@@ -16,7 +16,7 @@
 
 #include <stdarg.h>
 
-#include "libid_enhanced.h"
+#include "libid.h"
 
 // Redefine macros to use the global _libid struct directly (not a pointer)
 #undef _sendv0
