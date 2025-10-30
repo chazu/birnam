@@ -15,6 +15,7 @@
 
 // libid object system
 #include "../id.h"
+#include "../id_internal.h"
 
 // Global libid API
 struct __libid *libid = NULL;
@@ -26,32 +27,6 @@ typedef struct {
   void *modules[32]; // Track loaded module handles
   int module_count;
 } System;
-
-// Helper structures for accessing libid internals
-typedef struct {
-  oop _vtable[0];
-  size_t tally;
-  oop bindings;  // _vector of _assoc
-  oop delegate;
-} _vtable_t;
-
-typedef struct {
-  oop _vtable[0];
-  size_t size;
-  oop elements[0];  // inline array
-} _vector_t;
-
-typedef struct {
-  oop _vtable[0];
-  oop key;    // selector
-  oop value;  // the exported object
-} _assoc_t;
-
-typedef struct {
-  oop _vtable[0];
-  size_t size;
-  char *elements;
-} _selector_t;
 
 // Global system instance
 static oop system_obj = NULL;

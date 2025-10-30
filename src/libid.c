@@ -2,6 +2,7 @@
 
 #define IN_LIBID 1
 #include "id.h"
+#include "id_internal.h"
 #include <signal.h>
 
 #define GLOBAL_MCACHE	1024
@@ -151,72 +152,24 @@ static oop s_describe= 0;
 static oop s_doesNotUnderstand_= 0;
 static oop s__delegate= 0;
 
-typedef struct t__object   _object_t;
-typedef struct t__selector _selector_t;
-typedef struct t__closure  _closure_t;
-typedef struct t__assoc    _assoc_t;
-typedef struct t__vector   _vector_t;
-typedef struct t__vtable   _vtable_t;
+// Struct definitions now in id_internal.h
 
 static struct __libid _libid;
-
-struct t__selector
-{
-  size_t	 size;
-  char	 	*elements;
-};
 
 static oop _selector_vtable= 0;
 static oop _selector= 0;
 
-struct t__assoc
-{
-  oop		 key;
-  oop		 value;
-};
-
 static oop _assoc_vtable= 0;
 static oop _assoc= 0;
-
-struct t__closure
-{
-  oop		 method;
-  oop		 data;
-};
 
 static oop _closure_vtable= 0;
 static oop _closure= 0;
 
-struct t__vector
-{
-  size_t	 size;
-  oop		 elements[0];	/* INLINE */
-};
-
 static oop _vector_vtable= 0;
 static oop _vector= 0;
 
-struct t__vtable
-{
-  size_t	 tally;
-  oop		 bindings;
-  oop		 delegate;
-};
-
 static oop _vtable_vtable= 0;
 static oop _vtable= 0;
-
-struct t__object
-{
-  union {
-    oop		_vtable[0];
-    _closure_t	 closure;
-    _selector_t	 selector;
-    _assoc_t	 assoc;
-    _vector_t	 vector;
-    _vtable_t	 vtable;
-  };
-};
 
 static oop _object_vtable= 0;
 static oop _object= 0;
