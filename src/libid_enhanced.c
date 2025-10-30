@@ -218,7 +218,7 @@ oop _libid_nil_vtable= 0;
 oop _libid_tag_vtable= 0;
 
 static oop _selector_Table= 0;
-static oop _object_Table= 0;
+oop _object_Table= 0;  // Made non-static for introspection
 
 #if GLOBAL_MCACHE
 

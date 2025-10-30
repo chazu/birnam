@@ -5,15 +5,26 @@ build_docker:
 	docker build --target tcc -t birnam_tcc .
 	docker build --target birnam0 -t birnam .
 
-build: obj system vendored_libs
+build: libid system vendored_libs
+
+libid:
+	tcc -fPIC -shared -rdynamic -g \
+		-I/opt/homebrew/include \
+		-DPREFIX='"/usr/local/lib/"' \
+		-DSYSARCH='"aarch64"' \
+		-DSYSOS='"darwin"' \
+		src/libid_enhanced.c \
+		-L/opt/homebrew/lib -lgc \
+		-o bin/libid.so
 
 system:
 	tcc 	-L/usr/lib/ \
 	 	-rdynamic \
 		-I /usr/local/include/ \
+		-I/opt/homebrew/include \
 		-L /usr/lib \
 		-L /usr/local/lib -ldl -ltcc -lreadline -g \
-		src/sys/system.c -vv
+		src/sys/system.c
 	mv a.out bin/system
 
 build_libelf:
@@ -21,6 +32,12 @@ build_libelf:
 	./configure
 	make
 	cd -
+
+hello_module:
+	tcc -fPIC -shared -rdynamic -g \
+		-I/opt/homebrew/include \
+		src/hello_module.c \
+		-o bin/hello_module.so
 
 vendored_libs:
 	tcc -fPIC -shared -rdynamic -soname=packcc -Wl -o bin/packcc.so vendor/PackCC/src/packcc.c
