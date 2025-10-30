@@ -33,12 +33,11 @@ While mutating the 'system' portions of Birnam should be considered a core featu
 
 A 'system' refers to a birnam executable which contains the birnam language and environment itself. This is in opposition to the term 'application', which refers to an executable (or dynamically or statically loadable) artifact which is created _by_ the system but which no longer contains the core portions of the Birnam environment which make it live and fully malleable.
 
-A system is both a dynamically linked object and an executable object.
+A system is both a dynamically linked object and an executable object compiled via tcc/libtcc.
 
 #### Module
 
 A module is code loaded by birnam. This can take the form of dynamically loadable object or one or more source files.
-
 
 ### Bootstrapping
 
