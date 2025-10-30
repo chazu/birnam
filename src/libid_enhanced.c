@@ -121,6 +121,10 @@ char		  *_libid_backtrace(void);
 void		   _libid_infos(struct __methodinfo *first, struct __methodinfo *last);
 void		  *_libid_infoList(void);
 
+/* Forward declarations for internal functions */
+static oop _vtable__lookup_(oop _thunk, oop state, oop self, oop selector);
+static oop _vector__grow(oop _thunk, oop state, oop self);
+
 /* Old variadic _sendv macro removed - now using numbered macros from libid_enhanced.h */
 
 static int    id_argc= 0;
@@ -141,6 +145,9 @@ static oop s__alloc_= 0;
 static oop s__beTagType= 0;
 static oop s__beNilType= 0;
 static oop s__import_= 0;
+static oop s_methods= 0;
+static oop s_respondsTo_= 0;
+static oop s_describe= 0;
 static oop s_doesNotUnderstand_= 0;
 static oop s__delegate= 0;
 
@@ -396,6 +403,108 @@ static oop _object___delegated_(oop _thunk, oop state, oop self, size_t size)
 {
   oop obj= _vtable__delegated(0, self->_vtable[-1], self->_vtable[-1]);
   return _vtable___alloc_(0, obj, obj, size);
+}
+
+/* Object introspection methods - message-passing based */
+static oop _object__methods(oop _thunk, oop state, oop self)
+{
+  oop vtable;
+  _vtable_t *vt;
+  _vector_t *bindings;
+  oop result;
+  size_t count= 0;
+  size_t i;
+
+  /* Get vtable safely */
+  if (!self) return 0;
+  if ((long)self & 1) return 0;  /* Tagged integer, no methods */
+
+  vtable= self->_vtable[-1];
+  if (!vtable) return 0;
+
+  result= new__(_vector, sizeof(oop) * 16, 16);
+
+  /* Walk the vtable delegation chain */
+  while (vtable)
+    {
+      /* Check if this looks like a valid vtable */
+      if ((long)vtable & 1) break;  /* Tagged integer, can't be vtable */
+
+      vt= (_vtable_t *)vtable;
+      bindings= (_vector_t *)vt->bindings;
+
+      if (!bindings) break;
+
+      for (i= 0; i < vt->tally; i++)
+	{
+	  _assoc_t *assoc= (_assoc_t *)bindings->elements[i];
+	  if (assoc && assoc->key)
+	    {
+	      /* Grow vector if needed */
+	      if (count >= result->vector.size)
+		result= _vector__grow(0, result, result);
+	      result->vector.elements[count++]= assoc->key;
+	    }
+	}
+
+      vtable= vt->delegate;
+    }
+
+  return result;
+}
+
+static oop _object__respondsTo_(oop _thunk, oop state, oop self, oop selector)
+{
+  oop vtable= self ? (((long)self & 1) ? _libid_tag_vtable : self->_vtable[-1]) : _libid_nil_vtable;
+  if (!vtable || !selector) return 0;
+
+  oop assoc= _vtable__lookup_(0, vtable, vtable, selector);
+  return assoc ? (oop)1 : 0;
+}
+
+static oop _object__describe(oop _thunk, oop state, oop self)
+{
+  oop vtable;
+  oop methods;
+  size_t i;
+
+  /* Get vtable safely */
+  if (!self)
+    {
+      printf("\nObject: NULL\n");
+      return self;
+    }
+
+  if ((long)self & 1)
+    {
+      printf("\nObject: %p (tagged integer)\n", (void *)self);
+      printf("Value:  %ld\n", (long)self >> 1);
+      return self;
+    }
+
+  vtable= self->_vtable[-1];
+
+  printf("\nObject: %p\n", (void *)self);
+  printf("Type:   %p\n", (void *)vtable);
+
+  /* Print methods by calling _object__methods */
+  methods= _object__methods(_thunk, state, self);
+  if (methods && methods->vector.size > 0)
+    {
+      printf("Methods (%zu):\n", methods->vector.size);
+      for (i= 0; i < methods->vector.size; i++)
+	{
+	  _selector_t *sel= (_selector_t *)methods->vector.elements[i];
+	  if (sel && sel->elements)
+	    printf("  - %s\n", sel->elements);
+	}
+    }
+  else
+    {
+      printf("Methods: (none)\n");
+    }
+
+  return self;
 }
 
 static oop _vtable__findKeyOrNil_(oop _thunk, oop state, oop self, oop key)
@@ -1258,6 +1367,9 @@ struct __libid *_libid_init(int *argcp, char ***argvp, char ***envpp)
   method(_object,   "_beTagType", 	  _beTagType);
   method(_object,   "_beNilType", 	  _beNilType);
   method(_object,   "_import:",   	  _import_);
+  method(_object,   "methods",    	  methods);
+  method(_object,   "respondsTo:",	  respondsTo_);
+  method(_object,   "describe",   	  describe);
 # undef method
 
   s_doesNotUnderstand_= _selector___intern_(0, _selector, _selector, "doesNotUnderstand:");

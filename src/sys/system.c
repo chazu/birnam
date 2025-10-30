@@ -56,6 +56,32 @@ typedef struct {
 // Global system instance
 static oop system_obj = NULL;
 
+/************************/
+/* Message-passing helpers */
+/************************/
+
+/* Helper to send unary messages */
+static oop send_message(oop receiver, const char *selector_name)
+{
+  oop sel = libid->intern(selector_name);
+  struct __closure *closure = libid->bind(sel, receiver);
+  if (!closure) return NULL;
+  return closure->method((oop)closure, receiver, receiver);
+}
+
+/* Helper to send messages with one argument */
+static oop send_message_with_arg(oop receiver, const char *selector_name, oop arg)
+{
+  oop sel = libid->intern(selector_name);
+  struct __closure *closure = libid->bind(sel, receiver);
+  if (!closure) return NULL;
+  return closure->method((oop)closure, receiver, receiver, arg);
+}
+
+/************************/
+/* Symbol loading utilities */
+/************************/
+
 // Loads symbols from shared object file
 void *load_symbols(char *str) {
   void *handle;
@@ -240,12 +266,15 @@ int compileString(char *str) {
 static oop system_help(oop closure, oop state, oop self)
 {
   printf("\nBirnam System Commands:\n");
-  printf("  help            - Show this help message\n");
-  printf("  objects         - List all exported objects with addresses\n");
-  printf("  list            - List loaded modules\n");
-  printf("  load: <path>    - Load a module from path\n");
-  printf("  show: <name>    - Show symbol information\n");
-  printf("  exit            - Exit the system\n");
+  printf("  help                    - Show this help message\n");
+  printf("  objects                 - List all exported objects with addresses\n");
+  printf("  inspect: <name>         - Inspect object (show type and methods)\n");
+  printf("  methodsOf: <name>       - List methods of an object\n");
+  printf("  respondsTo: <obj> with: <sel> - Check if object responds to selector\n");
+  printf("  list                    - List loaded modules\n");
+  printf("  load: <path>            - Load a module from path\n");
+  printf("  show: <name>            - Show symbol information\n");
+  printf("  exit                    - Exit the system\n");
   printf("\n");
   return self;
 }
@@ -377,25 +406,26 @@ static oop system_objects(oop closure, oop state, oop self)
   return self;
 }
 
-/* System inspect: - basic object inspection
- * NOTE: Detailed vtable introspection deferred - causes segfault
- * For now, just shows if object exists and its address
- */
+/* System inspect: - object introspection using pure message passing */
 static oop system_inspect(oop closure, oop state, oop self, oop name_oop)
 {
+  _selector_t *name_sel;
+  const char *name;
+  oop obj;
+
   if (!name_oop) {
     printf("\n  Error: NULL name\n\n");
     return self;
   }
 
   // Extract string from selector oop
-  _selector_t *name_sel = (_selector_t *)name_oop;
+  name_sel = (_selector_t *)name_oop;
   if (!name_sel || !name_sel->elements) {
     printf("\n  Error: Invalid selector\n\n");
     return self;
   }
 
-  const char *name = name_sel->elements;
+  name = name_sel->elements;
   printf("\n[SYSTEM] Inspecting: %s\n", name);
 
   // Check if exported
@@ -404,14 +434,77 @@ static oop system_inspect(oop closure, oop state, oop self, oop name_oop)
     return self;
   }
 
-  // Import and show address
-  oop obj = libid->import(name);
+  // Import the object
+  obj = libid->import(name);
   printf("  Status:   Exported\n");
-  printf("  Address:  %p\n", obj);
-  printf("  (Use 'objects' to see all exported objects)\n");
+  printf("  Address:  %p\n\n", obj);
+
+  // Send 'describe' message to the object - pure message passing!
+  send_message(obj, "describe");
 
   printf("\n");
   return self;
+}
+
+/* System methodsOf: - list methods of an exported object */
+static oop system_methodsOf(oop closure, oop state, oop self, oop name_oop)
+{
+  _selector_t *name_sel = (_selector_t *)name_oop;
+  const char *name = name_sel->elements;
+
+  if (!libid->isExported(name)) {
+    printf("  Object '%s' not found\n", name);
+    return self;
+  }
+
+  oop obj = libid->import(name);
+
+  // Send 'methods' message to get vector of selectors
+  oop methods_vec = send_message(obj, "methods");
+
+  if (!methods_vec) {
+    printf("  Object doesn't respond to 'methods'\n");
+    return self;
+  }
+
+  // Cast to vector (we know what we got back)
+  _vector_t *methods = (_vector_t *)methods_vec;
+
+  printf("\nMethods of '%s' (%zu):\n", name, methods->size);
+  for (size_t i = 0; i < methods->size; i++) {
+    _selector_t *sel = (_selector_t *)methods->elements[i];
+    if (sel && sel->elements) {
+      printf("  %s\n", sel->elements);
+    }
+  }
+  printf("\n");
+
+  return self;
+}
+
+/* System respondsTo:with: - check if object responds to selector */
+static oop system_respondsTo_with(oop closure, oop state, oop self, oop name_oop, oop selector_oop)
+{
+  _selector_t *name_sel = (_selector_t *)name_oop;
+  const char *name = name_sel->elements;
+
+  if (!libid->isExported(name)) {
+    printf("  Object '%s' not found\n", name);
+    return (oop)0;
+  }
+
+  oop obj = libid->import(name);
+
+  // Send 'respondsTo:' message with the selector as argument
+  oop result = send_message_with_arg(obj, "respondsTo:", selector_oop);
+
+  _selector_t *sel = (_selector_t *)selector_oop;
+  printf("  %s %s to '%s'\n",
+    name,
+    result ? "responds" : "does not respond",
+    sel->elements);
+
+  return result;
 }
 
 int main(int argc, char **argv, char **envp) {
@@ -468,7 +561,9 @@ int main(int argc, char **argv, char **envp) {
   // Register System methods
   libid->method(system_proto, libid->intern("help"), (_imp_t)system_help);
   libid->method(system_proto, libid->intern("objects"), (_imp_t)system_objects);
-  // libid->method(system_proto, libid->intern("inspect:"), (_imp_t)system_inspect);  // TODO: Fix segfault
+  libid->method(system_proto, libid->intern("inspect:"), (_imp_t)system_inspect);
+  libid->method(system_proto, libid->intern("methodsOf:"), (_imp_t)system_methodsOf);
+  libid->method(system_proto, libid->intern("respondsTo:with:"), (_imp_t)system_respondsTo_with);
   libid->method(system_proto, libid->intern("list"), (_imp_t)system_list);
   libid->method(system_proto, libid->intern("load:"), (_imp_t)system_load);
   libid->method(system_proto, libid->intern("show:"), (_imp_t)system_show);
@@ -623,8 +718,9 @@ int main(int argc, char **argv, char **envp) {
     if (arg && strlen(arg) > 0) {
       // Intern the string argument to convert to oop
       oop arg_oop = libid->intern(arg);
-      // Call with argument
-      closure->method((oop)closure, system_obj, system_obj, arg_oop);
+      // Call with argument - cast to typed function pointer to avoid variadic calling convention issues
+      typedef oop (*method_1arg_t)(oop, oop, oop, oop);
+      ((method_1arg_t)closure->method)((oop)closure, system_obj, system_obj, arg_oop);
     } else {
       // Call without argument
       closure->method((oop)closure, system_obj, system_obj);
