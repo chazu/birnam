@@ -40,6 +40,24 @@ pub fn build(b: *std.Build) void {
     const run_rrb_tests = b.addRunArtifact(rrb_tests);
     test_step.dependOn(&run_rrb_tests.step);
 
+    const ref_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/ref_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const ref_tests = b.addTest(.{ .root_module = ref_test_mod });
+    const run_ref_tests = b.addRunArtifact(ref_tests);
+    test_step.dependOn(&run_ref_tests.step);
+
+    const ot_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/object_table_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const ot_tests = b.addTest(.{ .root_module = ot_test_mod });
+    const run_ot_tests = b.addRunArtifact(ot_tests);
+    test_step.dependOn(&run_ot_tests.step);
+
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
     const bench_step = b.step("bench", "Run microbenchmarks (ReleaseFast)");
