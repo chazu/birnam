@@ -60,6 +60,21 @@ Attributes are entities. Schema itself is facts. Self-describing. Selectors doub
 
 Value primitives: `ref`, `int`, `str`, `bytes`, `keyword`, `bool`. Six. Adequate.
 
+### No-NULL Discipline
+
+Following Codd and CJ Date: the fact store contains no NULL values. Ever.
+
+- **Absence of a fact** is how birnam models "no value known." Querying for an entity's attribute returns either a value or an empty result; never a NULL marker.
+- **NIL the entity** (well-known EID 0) is a real, addressable object you can dispatch to (`[nil isNil] → true`). It is the singleton "nothing object," not absence.
+- **NIL the value of a fact** — `[e :a NIL]` — is forbidden. Assert is a no-op in release, panics in debug, if asked to store a NIL in the `v` column.
+- **Materialized slots** only exist for attributes that have asserted facts. There are no uninitialized slots, no "missing field" sentinels in object layout.
+
+Why this is feasible (and cheap): SQL has NULL because tabular rows are fixed-shape. EAV fact stores have no fixed shape — an attribute is asserted or it isn't. Date's principle reinforces what the substrate already wants.
+
+Why this is worth it: queries stay sound 2VL, diffs are exact (no spurious NULL→value transitions), reflection queries return only what was asserted, and the relational layer carries no hidden 3VL trap.
+
+API cost: callers can't "return NIL if not found." Instead they return empty collections, take `ifAbsent:` blocks, or raise. Zig API surface uses `?Ref` for the `not-found` case — already the HAMT's contract.
+
 ### Persistent Collections
 
 Two persistent structures form the kernel substrate:
