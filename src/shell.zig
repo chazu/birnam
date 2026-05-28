@@ -204,25 +204,27 @@ fn installSignalHandler() void {
 // -- Main -------------------------------------------------------------------
 
 pub fn main() !void {
-    stderrPrint("[birnam] shell starting\n", .{});
+    stderrPrint("[birnam] shell starting (kernel not yet built — Phase 1 territory)\n", .{});
 
     installSignalHandler();
 
-    // Parse args: first arg is module path, default to ./zig-out/lib/libbirnam_id.dylib
+    // Optional module path argument. Without it, shell runs with no modules
+    // — useful for Phase 0..1 work before the id kernel exists again.
     var args = std.process.args();
     _ = args.next(); // skip argv[0]
-    const module_path: [*:0]const u8 = if (args.next()) |p| p else "./zig-out/lib/libbirnam_id.dylib";
+    const maybe_path_slice = args.next();
 
-    // Load the initial module
-    if (!shellLoadModule(module_path)) {
-        stderrPrint("[birnam] fatal: could not load initial module\n", .{});
-        std.process.exit(1);
-    }
-
-    // Set up file watcher
     var kq = Kqueue.create();
-    if (kq) |*watcher| {
-        watcher.watchFile(module_path);
+
+    if (maybe_path_slice) |path_slice| {
+        const module_path: [*:0]const u8 = path_slice.ptr;
+        if (!shellLoadModule(module_path)) {
+            stderrPrint("[birnam] fatal: could not load initial module\n", .{});
+            std.process.exit(1);
+        }
+        if (kq) |*watcher| watcher.watchFile(module_path);
+    } else {
+        stderrPrint("[birnam] no module argument — running bare. Pass a .dylib path to load.\n", .{});
     }
 
     stderrPrint("[birnam] entering main loop (^C to quit, SIGHUP to reload)\n", .{});
