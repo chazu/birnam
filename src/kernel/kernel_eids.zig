@@ -63,4 +63,10 @@ pub const ATTR_MODULE: u64 = 24;
 /// collide with the attribute fact.
 pub const SEL_VTABLE: u64 = 25;
 
-// 26..63 reserved for future kernel selectors / attributes
+/// Saved-query infrastructure (Phase 7.3). A saved query is an entity with:
+///   [saved_eid :saved-query-name <interned-name-EID-Ref>]
+///   [saved_eid :saved-query-spec <pointer-Ref-to-*Query>]
+pub const ATTR_SAVED_QUERY_NAME: u64 = 26;
+pub const ATTR_SAVED_QUERY_SPEC: u64 = 27;
+
+// 28..63 reserved for future kernel selectors / attributes

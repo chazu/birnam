@@ -150,6 +150,14 @@ pub const IdApi = extern struct {
     // pointer (the value stashed in slot 0 of a libid-wrapped RRB object).
     rrb_count: *const fn (?*anyopaque) callconv(.c) u64,
     rrb_at: *const fn (?*anyopaque, u64) callconv(.c) Ref,
+
+    // -- Phase 7.3: saved queries -------------------------------------------
+    // Caller passes the Query handle; the kernel takes ownership until
+    // explicit retract of the saved-query entity.
+    save_query: *const fn ([*]const u8, usize, ?*anyopaque) callconv(.c) u64,
+    /// Look up + execute a saved query by name. Returns a Result handle, or
+    /// null if no saved query exists with that name.
+    run_query: *const fn ([*]const u8, usize) callconv(.c) ?*anyopaque,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -226,6 +234,9 @@ pub fn populate() IdApi {
         .query_add_find_aggregate = &cQueryAddFindAggregate,
         .rrb_count = &cRrbCount,
         .rrb_at = &cRrbAt,
+
+        .save_query = &cSaveQuery,
+        .run_query = &cRunQuery,
 
         .query_execute = &cQueryExecute,
         .result_count = &cResultCount,
@@ -540,6 +551,34 @@ fn cRrbAt(handle: ?*anyopaque, idx: u64) callconv(.c) Ref {
     const r: *aggregate_mod.RrbRef = @ptrCast(@alignCast(handle orelse return ref_mod.NIL));
     if (idx >= r.count()) return ref_mod.NIL;
     return r.nth(idx);
+}
+
+const saved_query_mod = @import("saved_query.zig");
+
+fn cSaveQuery(name_ptr: [*]const u8, name_len: usize, q_ptr: ?*anyopaque) callconv(.c) u64 {
+    const q: *query.Query = @ptrCast(@alignCast(q_ptr orelse return 0));
+    const i = g_interner orelse return 0;
+    const s = send_mod.storePtr() orelse return 0;
+    const t = send_mod.tablePtr() orelse return 0;
+    const name = name_ptr[0..name_len];
+    const name_eid = i.intern(s, t, name) catch return 0;
+    return saved_query_mod.saveQuery(s, t, name_eid, q) catch 0;
+}
+
+fn cRunQuery(name_ptr: [*]const u8, name_len: usize) callconv(.c) ?*anyopaque {
+    const i = g_interner orelse return null;
+    const s = send_mod.storePtr() orelse return null;
+    const t = send_mod.tablePtr() orelse return null;
+    const a = send_mod.kernelAllocator() orelse return null;
+    const name = name_ptr[0..name_len];
+    const name_eid = i.intern(s, t, name) catch return null;
+    const q = saved_query_mod.lookupQuery(s, name_eid) orelse return null;
+    const r = a.create(query.Result) catch return null;
+    r.* = query.execute(q, s) catch {
+        a.destroy(r);
+        return null;
+    };
+    return @ptrCast(r);
 }
 
 fn cQueryExecute(p: ?*anyopaque) callconv(.c) ?*anyopaque {

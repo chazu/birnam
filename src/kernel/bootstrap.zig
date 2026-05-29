@@ -130,6 +130,8 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_INIT, "init");
     try interner.seed(store, kernel_eids.SEL_ALLOCATE, "allocate");
     try interner.seed(store, kernel_eids.SEL_VTABLE, "vtable");
+    try interner.seed(store, kernel_eids.ATTR_SAVED_QUERY_NAME, "saved-query-name");
+    try interner.seed(store, kernel_eids.ATTR_SAVED_QUERY_SPEC, "saved-query-spec");
 
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);
