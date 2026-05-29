@@ -466,26 +466,65 @@ COLA dream made concrete: interactively absorb any C library into the object wor
 
 ---
 
-## Phase 9.5 — Multi-Platform FFI + Schema + Unload
+## Phase 9.5 — Module Wrapper + Multi-Platform FFI + Schema + Unload
 
-**Goal:** Round out Phase 9: ELF reader for linux, FFI unload semantics, and schema-driven multi-cardinality attributes. Bundled because schema lands close to Phase 10 language work.
+**Goal:** Land the Module entity wrapper deferred from Phase 9, ELF reader for linux, FFI unload semantics, and schema-driven multi-cardinality attributes. Bundled because schema lands close to Phase 10 language work.
 
-### Work items
+### Open questions (DRAFT — decision doc not yet locked)
 
-9.5.1 **ELF reader** (~300 LOC): mirror Mach-O iterator interface; magic-byte dispatch in `Module load:`.
+Four sub-bundles, each with its own design questions. Tradeoffs + leans to be locked in a follow-up table before code.
 
-9.5.2 **CI gate flip**: linux FFI tests turn on; Mach-O tests skip-gated to darwin.
+#### A. Module entity wrapper
 
-9.5.3 **Module unload**: `Module>>unload` refuses while `ffi_depth > 0`. Post-unload, boxed FFI-pointer objects mark `:ffi-stale? true`; deref-stale = NIL + error fact. Per Phase 9 Q6 deferral.
+A1. **Module vt structure.** One shared `MODULE_VT` for all loaded libs, OR per-instance delegate-vt (child of `MODULE_VT`) so wrap installs are scoped to the specific Module?
 
-9.5.4 Schema cardinality (existing 9.5 plan):
-- `:cardinality` schema attribute on every attribute entity. Default `:one`; set to `:many` for accumulators.
-- Update `assert` to dispatch on cardinality. `:one` keeps existing implicit-retract; `:many` appends.
-- Update queries to return iterators on multi-valued attrs.
-- Tests: `:many` accumulation, mixed-cardinality queries, schema-driven dispatch.
+A2. **API surface.** Minimum: `Module load:`, `Module>>wrap:as:sig:`, `Module>>symbols`. Optional: `path`, `handle`, `unload`. What ships in 9.5?
+
+A3. **Wrap target vt.** Wrap installs the dispatch closure on the Module's own vt only (`[mod sqrt:]` works) OR a `wrap:as:sig:onVt:` variant lets the user extend any class.
+
+#### B. ELF reader
+
+B1. **Symbol-table source.** `.symtab` (debug-only, often stripped from prod libs) vs `.dynsym` (always present in shared libs; matches what dlsym sees).
+
+B2. **Reader unification.** Mach-O `Reader.symbols()` returns a typed iterator. Define a shared `Symbol` + iter type with a `loader.zig` magic-byte dispatcher so callers stay format-agnostic.
+
+#### C. Module unload
+
+C1. **Pointer-ownership tracking.** Need `[ffi_ptr_obj :ffi-owner <mod_eid>]` on every boxed FFI pointer to know what to invalidate at unload. Other approaches?
+
+C2. **Stale-flag check location.** Check `:ffi-stale?` once at `pushArg`-pointer time (per-call cost, simple) vs inside `untagFfiPtr` (every deref) vs a debug-only assert.
+
+C3. **Refuse-unload criterion.** `ffi_depth > 0` alone (Phase 8 primitive), OR `ffi_depth > 0` OR any live-boxed-ptr-from-mod still around.
+
+#### D. Schema / multi-cardinality
+
+D1. **Default cardinality.** Absence of `:cardinality` fact = `:one` (backward-compat) vs explicit `:one` required everywhere.
+
+D2. **`currentValue` semantics for `:many` attrs.** Returns latest (existing single-value callers unchanged) vs returns NIL vs errors. Plus new `currentValues(e, a)` iterator either way.
+
+D3. **Retroactive schema change.** Asserting `:cardinality :many` on an existing single-value attribute: does it convert past asserts? Or forward-only?
+
+D4. **Scope creep.** Phase 9.5 also adds `:unique`, `:index?`, other Datomic-style schema attrs? Or cardinality only.
+
+#### E. Cross-bundle build order
+
+E1. Module wrapper depends on Mach-O reader (have). ELF reader independent. Unload depends on Module wrapper + per-ptr ownership. Schema fully independent.
+Proposed order: **Module → Schema → ELF → Unload.** Or interleave?
+
+### Work items (placeholder — to be expanded after decision doc lock)
+
+9.5.1 Module wrapper (A1, A2, A3) — new `src/modules/ffi/` dylib or kernel-side `Module` entity.
+
+9.5.2 Schema cardinality (D1, D2, D3, D4).
+
+9.5.3 ELF reader + `loader.zig` dispatcher (B1, B2).
+
+9.5.4 CI gate flip: linux FFI tests turn on; Mach-O tests skip-gated to darwin.
+
+9.5.5 Module unload (C1, C2, C3) — `Module>>unload` + stale-pointer flag + deref-check.
 
 ### Reasoning
-Schema lands here because Phase 10's user-defined types want `[parent :children ?]` semantics. ELF + unload finish what Phase 9 deferred for spike scope. Bundled phase keeps the platform-parity story coherent.
+Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatchable surface (`[Module load: "path"]`, `[mod wrap: #sqrt: as: "sqrt" signature: "d)d"]`). Schema lands here because Phase 10's user-defined types want `[parent :children ?]` semantics. ELF + unload finish what Phase 9 deferred for spike scope. Bundled phase keeps the platform-parity story coherent.
 
 ## Phase 10 — Language Module
 
