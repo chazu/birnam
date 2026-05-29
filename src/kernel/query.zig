@@ -78,6 +78,14 @@ pub const Binding = struct {
 
 // -- Query -------------------------------------------------------------------
 
+const BuilderFrameKind = enum { negation, disjunction, branch };
+
+const BuilderFrame = struct {
+    kind: BuilderFrameKind,
+    clauses: std.ArrayList(Clause) = .{},
+    branches: std.ArrayList([]const Clause) = .{},
+};
+
 pub const Query = struct {
     allocator: std.mem.Allocator,
     var_count: u32 = 0,
@@ -85,6 +93,9 @@ pub const Query = struct {
     var_index_to_name: std.ArrayList([]const u8),
     find: std.ArrayList(u32),
     where: std.ArrayList(Clause),
+    /// Stack of in-progress nested-clause builders. Empty = appending
+    /// directly to `where`. Non-empty top frame is the current dest.
+    builder_stack: std.ArrayList(BuilderFrame),
     asof: ?u64 = null,
     since: ?u64 = null,
     between: ?[2]u64 = null,
@@ -103,6 +114,7 @@ pub const Query = struct {
             .var_index_to_name = .{},
             .find = .{},
             .where = .{},
+            .builder_stack = .{},
         };
     }
 
@@ -116,6 +128,61 @@ pub const Query = struct {
         self.find.deinit(self.allocator);
         // Caller-owned: clauses use slices from caller's arena; we don't recursively free.
         self.where.deinit(self.allocator);
+        for (self.builder_stack.items) |*frame| {
+            frame.clauses.deinit(self.allocator);
+            frame.branches.deinit(self.allocator);
+        }
+        self.builder_stack.deinit(self.allocator);
+    }
+
+    fn currentDest(self: *Query) *std.ArrayList(Clause) {
+        if (self.builder_stack.items.len == 0) return &self.where;
+        const top = &self.builder_stack.items[self.builder_stack.items.len - 1];
+        return &top.clauses;
+    }
+
+    pub fn beginNegation(self: *Query) !void {
+        try self.builder_stack.append(self.allocator, .{ .kind = .negation });
+    }
+
+    pub fn endNegation(self: *Query) !void {
+        std.debug.assert(self.builder_stack.items.len > 0);
+        var frame = self.builder_stack.pop().?;
+        std.debug.assert(frame.kind == .negation);
+        const slice = try frame.clauses.toOwnedSlice(self.allocator);
+        frame.branches.deinit(self.allocator);
+        try self.currentDest().append(self.allocator, .{ .negation = slice });
+    }
+
+    pub fn beginDisjunction(self: *Query) !void {
+        try self.builder_stack.append(self.allocator, .{ .kind = .disjunction });
+    }
+
+    pub fn beginBranch(self: *Query) !void {
+        std.debug.assert(self.builder_stack.items.len > 0);
+        std.debug.assert(self.builder_stack.items[self.builder_stack.items.len - 1].kind == .disjunction);
+        try self.builder_stack.append(self.allocator, .{ .kind = .branch });
+    }
+
+    pub fn endBranch(self: *Query) !void {
+        std.debug.assert(self.builder_stack.items.len > 0);
+        var frame = self.builder_stack.pop().?;
+        std.debug.assert(frame.kind == .branch);
+        const slice = try frame.clauses.toOwnedSlice(self.allocator);
+        frame.branches.deinit(self.allocator);
+        // Parent must be disjunction.
+        const parent = &self.builder_stack.items[self.builder_stack.items.len - 1];
+        std.debug.assert(parent.kind == .disjunction);
+        try parent.branches.append(self.allocator, slice);
+    }
+
+    pub fn endDisjunction(self: *Query) !void {
+        std.debug.assert(self.builder_stack.items.len > 0);
+        var frame = self.builder_stack.pop().?;
+        std.debug.assert(frame.kind == .disjunction);
+        const slice = try frame.branches.toOwnedSlice(self.allocator);
+        frame.clauses.deinit(self.allocator);
+        try self.currentDest().append(self.allocator, .{ .disjunction = slice });
     }
 
     /// Get or allocate a variable index by name. Build-time incremental.
@@ -134,23 +201,31 @@ pub const Query = struct {
     }
 
     pub fn addTriple(self: *Query, e: Term, a: Term, v: Term) !void {
-        try self.where.append(self.allocator, .{ .triple = .{ .e = e, .a = a, .v = v } });
+        try self.currentDest().append(self.allocator, .{ .triple = .{ .e = e, .a = a, .v = v } });
     }
 
     pub fn addPredicate(self: *Query, op: PredicateOp, lhs: Term, rhs: Term) !void {
-        try self.where.append(self.allocator, .{ .predicate = .{ .op = op, .lhs = lhs, .rhs = rhs } });
+        try self.currentDest().append(self.allocator, .{ .predicate = .{ .op = op, .lhs = lhs, .rhs = rhs } });
     }
 
     pub fn addNegation(self: *Query, inner: []const Clause) !void {
-        try self.where.append(self.allocator, .{ .negation = inner });
+        try self.currentDest().append(self.allocator, .{ .negation = inner });
     }
 
     pub fn addDisjunction(self: *Query, branches: []const []const Clause) !void {
-        try self.where.append(self.allocator, .{ .disjunction = branches });
+        try self.currentDest().append(self.allocator, .{ .disjunction = branches });
     }
 
     pub fn addRuleInvocation(self: *Query, name_eid: u64, args: []const Term) !void {
-        try self.where.append(self.allocator, .{ .rule_invocation = .{ .name_eid = name_eid, .args = args } });
+        try self.currentDest().append(self.allocator, .{ .rule_invocation = .{ .name_eid = name_eid, .args = args } });
+    }
+
+    pub fn setSince(self: *Query, tx: u64) void {
+        self.since = tx;
+    }
+
+    pub fn setBetween(self: *Query, from: u64, to: u64) void {
+        self.between = .{ from, to };
     }
 
     pub fn setRules(self: *Query, registry: *const @import("rule.zig").Registry) void {
@@ -163,14 +238,6 @@ pub const Query = struct {
 
     pub fn setAsOf(self: *Query, tx: u64) void {
         self.asof = tx;
-    }
-
-    pub fn setSince(self: *Query, tx: u64) void {
-        self.since = tx;
-    }
-
-    pub fn setBetween(self: *Query, from: u64, to: u64) void {
-        self.between = .{ from, to };
     }
 
     pub fn setInModule(self: *Query, m: u64) void {
@@ -200,12 +267,32 @@ fn isBound(t: Term, b: Binding) bool {
 
 /// Evaluate a triple clause against the current binding `b`. For each matching
 /// fact in the store, produce an extended binding. Append into `out`.
+fn historyFilter(
+    store: *fact_store.FactStore,
+    e: u64,
+    a: u64,
+    since: ?u64,
+    between: ?[2]u64,
+) bool {
+    if (since == null and between == null) return true;
+    const tx = store.lastTouchTx(e, a) orelse return false;
+    if (since) |s| {
+        if (tx <= s) return false;
+    }
+    if (between) |bt| {
+        if (tx < bt[0] or tx > bt[1]) return false;
+    }
+    return true;
+}
+
 fn evalTriple(
     allocator: std.mem.Allocator,
     store: *fact_store.FactStore,
     triple: Triple,
     b: Binding,
     asof: ?u64,
+    since: ?u64,
+    between: ?[2]u64,
     in_module: ?u64,
     out: *std.ArrayList(Binding),
 ) !void {
@@ -231,8 +318,8 @@ fn evalTriple(
         const got = get_current(store, e_eid, a_eid, asof);
         if (got) |v| {
             if (!matchOrBind(v_term, v, b)) return;
+            if (!historyFilter(store, e_eid, a_eid, since, between)) return;
             if (in_module) |m_filter| {
-                // Module filter requires checking MEAT.
                 if (!moduleMatches(store, m_filter, e_eid, a_eid, v)) return;
             }
             var nb = try b.dup(allocator);
@@ -252,6 +339,7 @@ fn evalTriple(
             const eff_v = if (asof) |tx| (store.currentValueAsOf(e_eid, entry.a, tx) orelse continue) else entry.v;
             if (!matchOrBind(a_term, ref_mod.mkEid(entry.a), b)) continue;
             if (!matchOrBind(v_term, eff_v, b)) continue;
+            if (!historyFilter(store, e_eid, entry.a, since, between)) continue;
             if (in_module) |m_filter| {
                 if (!moduleMatches(store, m_filter, e_eid, entry.a, eff_v)) continue;
             }
@@ -273,6 +361,7 @@ fn evalTriple(
             const eff_v = if (asof) |tx| (store.currentValueAsOf(entry.e, a_eid, tx) orelse continue) else entry.v;
             if (!matchOrBind(e_term, ref_mod.mkEid(entry.e), b)) continue;
             if (!matchOrBind(v_term, eff_v, b)) continue;
+            if (!historyFilter(store, entry.e, a_eid, since, between)) continue;
             if (in_module) |m_filter| {
                 if (!moduleMatches(store, m_filter, entry.e, a_eid, eff_v)) continue;
             }
@@ -442,12 +531,14 @@ fn evalClause(
     clause: Clause,
     b: Binding,
     asof: ?u64,
+    since: ?u64,
+    between: ?[2]u64,
     in_module: ?u64,
     derived: ?*const DerivedMap,
     out: *std.ArrayList(Binding),
 ) anyerror!void {
     switch (clause) {
-        .triple => |t| try evalTriple(allocator, store, t, b, asof, in_module, out),
+        .triple => |t| try evalTriple(allocator, store, t, b, asof, since, between, in_module, out),
         .predicate => |p| {
             if (evalPredicate(p, b)) try out.append(allocator, try b.dup(allocator));
         },
@@ -457,14 +548,14 @@ fn evalClause(
                 for (inner_out.items) |ib| allocator.free(ib.values);
                 inner_out.deinit(allocator);
             }
-            try evalAllClauses(allocator, store, inner, b, asof, in_module, derived, &inner_out);
+            try evalAllClauses(allocator, store, inner, b, asof, since, between, in_module, derived, &inner_out);
             if (inner_out.items.len == 0) {
                 try out.append(allocator, try b.dup(allocator));
             }
         },
         .disjunction => |branches| {
             for (branches) |branch| {
-                try evalAllClauses(allocator, store, branch, b, asof, in_module, derived, out);
+                try evalAllClauses(allocator, store, branch, b, asof, since, between, in_module, derived, out);
             }
         },
         .rule_invocation => |ri| {
@@ -479,6 +570,8 @@ fn evalAllClauses(
     clauses: []const Clause,
     b: Binding,
     asof: ?u64,
+    since: ?u64,
+    between: ?[2]u64,
     in_module: ?u64,
     derived: ?*const DerivedMap,
     out: *std.ArrayList(Binding),
@@ -497,7 +590,7 @@ fn evalAllClauses(
     for (clauses) |c| {
         var next = std.ArrayList(Binding){};
         for (current.items) |cb| {
-            try evalClause(allocator, store, c, cb, asof, in_module, derived, &next);
+            try evalClause(allocator, store, c, cb, asof, since, between, in_module, derived, &next);
         }
         for (current.items) |cb| allocator.free(cb.values);
         current.deinit(allocator);
@@ -601,6 +694,8 @@ fn materializeRules(
                     rule.body,
                     seed_binding,
                     query.asof,
+                    query.since,
+                    query.between,
                     query.in_module,
                     &derived,
                     &rule_out,
@@ -641,6 +736,19 @@ fn freeDerivedMap(allocator: std.mem.Allocator, dm: *DerivedMap) void {
     dm.deinit();
 }
 
+fn collectInvokedNames(clauses: []const Clause, out: *std.AutoHashMap(u64, void)) !void {
+    for (clauses) |c| {
+        switch (c) {
+            .triple, .predicate => {},
+            .negation => |inner| try collectInvokedNames(inner, out),
+            .disjunction => |branches| {
+                for (branches) |b| try collectInvokedNames(b, out);
+            },
+            .rule_invocation => |ri| try out.put(ri.name_eid, {}),
+        }
+    }
+}
+
 // -- Execution + projection --------------------------------------------------
 
 pub const Result = struct {
@@ -664,6 +772,20 @@ pub const Result = struct {
 };
 
 pub fn execute(q: *Query, store: *fact_store.FactStore) !Result {
+    // Stratification check (lazy at query-execute time per Phase 7.1 Q3).
+    if (q.rules) |reg| {
+        var seed_names = std.ArrayList(u64){};
+        defer seed_names.deinit(q.allocator);
+        var ns = std.AutoHashMap(u64, void).init(q.allocator);
+        defer ns.deinit();
+        try collectInvokedNames(q.where.items, &ns);
+        var nit = ns.iterator();
+        while (nit.next()) |entry| try seed_names.append(q.allocator, entry.key_ptr.*);
+        if (seed_names.items.len > 0) {
+            try @import("rule.zig").checkStratified(q.allocator, reg, seed_names.items);
+        }
+    }
+
     // First: materialize all rules referenced by the query (if any).
     var derived = try materializeRules(q.allocator, store, q);
     defer freeDerivedMap(q.allocator, &derived);
@@ -681,7 +803,7 @@ pub fn execute(q: *Query, store: *fact_store.FactStore) !Result {
     for (q.where.items) |clause| {
         var next = std.ArrayList(Binding){};
         for (bindings.items) |cb| {
-            try evalClause(q.allocator, store, clause, cb, q.asof, q.in_module, &derived, &next);
+            try evalClause(q.allocator, store, clause, cb, q.asof, q.since, q.between, q.in_module, &derived, &next);
         }
         for (bindings.items) |b| q.allocator.free(b.values);
         bindings.deinit(q.allocator);

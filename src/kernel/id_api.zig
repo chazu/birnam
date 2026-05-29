@@ -111,6 +111,36 @@ pub const IdApi = extern struct {
     result_arity: *const fn (?*anyopaque) callconv(.c) u32,
     result_at: *const fn (?*anyopaque, u64, u32) callconv(.c) Ref,
     free_result: *const fn (?*anyopaque) callconv(.c) void,
+
+    // -- Phase 7.1 polish (added at end to preserve dylib ABI offsets) -----
+    query_set_since: *const fn (?*anyopaque, u64) callconv(.c) void,
+    query_set_between: *const fn (?*anyopaque, u64, u64) callconv(.c) void,
+    query_set_max_iter: *const fn (?*anyopaque, u32) callconv(.c) void,
+    query_set_max_tuples: *const fn (?*anyopaque, u64) callconv(.c) void,
+
+    query_begin_negation: *const fn (?*anyopaque) callconv(.c) void,
+    query_end_negation: *const fn (?*anyopaque) callconv(.c) void,
+    query_begin_disjunction: *const fn (?*anyopaque) callconv(.c) void,
+    query_begin_branch: *const fn (?*anyopaque) callconv(.c) void,
+    query_end_branch: *const fn (?*anyopaque) callconv(.c) void,
+    query_end_disjunction: *const fn (?*anyopaque) callconv(.c) void,
+
+    query_add_rule_invocation: *const fn (
+        ?*anyopaque,
+        u64,
+        usize,
+        [*]const u32,
+        [*]const u64,
+    ) callconv(.c) void,
+
+    define_rule: *const fn (
+        ?*anyopaque,
+        u64,
+        u32,
+        u32,
+    ) callconv(.c) bool,
+
+    query_use_global_rules: *const fn (?*anyopaque) callconv(.c) void,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -167,7 +197,22 @@ pub fn populate() IdApi {
         .query_add_predicate = &cQueryAddPredicate,
         .query_add_find = &cQueryAddFind,
         .query_set_asof = &cQuerySetAsof,
+        .query_set_since = &cQuerySetSince,
+        .query_set_between = &cQuerySetBetween,
         .query_set_in_module = &cQuerySetInModule,
+        .query_set_max_iter = &cQuerySetMaxIter,
+        .query_set_max_tuples = &cQuerySetMaxTuples,
+
+        .query_begin_negation = &cQueryBeginNegation,
+        .query_end_negation = &cQueryEndNegation,
+        .query_begin_disjunction = &cQueryBeginDisjunction,
+        .query_begin_branch = &cQueryBeginBranch,
+        .query_end_branch = &cQueryEndBranch,
+        .query_end_disjunction = &cQueryEndDisjunction,
+
+        .query_add_rule_invocation = &cQueryAddRuleInvocation,
+        .define_rule = &cDefineRule,
+        .query_use_global_rules = &cQueryUseGlobalRules,
 
         .query_execute = &cQueryExecute,
         .result_count = &cResultCount,
@@ -357,9 +402,104 @@ fn cQuerySetAsof(p: ?*anyopaque, tx: u64) callconv(.c) void {
     q.setAsOf(tx);
 }
 
+fn cQuerySetSince(p: ?*anyopaque, tx: u64) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.setSince(tx);
+}
+
+fn cQuerySetBetween(p: ?*anyopaque, from: u64, to: u64) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.setBetween(from, to);
+}
+
 fn cQuerySetInModule(p: ?*anyopaque, m: u64) callconv(.c) void {
     const q: *query.Query = @ptrCast(@alignCast(p orelse return));
     q.setInModule(m);
+}
+
+fn cQuerySetMaxIter(p: ?*anyopaque, n: u32) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.max_iter = n;
+}
+
+fn cQuerySetMaxTuples(p: ?*anyopaque, n: u64) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.max_tuples = n;
+}
+
+fn cQueryBeginNegation(p: ?*anyopaque) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.beginNegation() catch {};
+}
+fn cQueryEndNegation(p: ?*anyopaque) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.endNegation() catch {};
+}
+fn cQueryBeginDisjunction(p: ?*anyopaque) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.beginDisjunction() catch {};
+}
+fn cQueryBeginBranch(p: ?*anyopaque) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.beginBranch() catch {};
+}
+fn cQueryEndBranch(p: ?*anyopaque) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.endBranch() catch {};
+}
+fn cQueryEndDisjunction(p: ?*anyopaque) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.endDisjunction() catch {};
+}
+
+const rule_mod = @import("rule.zig");
+
+/// Module-global rule registry. Initialized by the shell at boot; modules
+/// add rules via `define_rule`.
+var g_registry: ?*rule_mod.Registry = null;
+
+pub fn setRegistry(r: *rule_mod.Registry) void {
+    g_registry = r;
+}
+
+fn cQueryAddRuleInvocation(
+    p: ?*anyopaque,
+    name_eid: u64,
+    n_args: usize,
+    arg_kinds: [*]const u32,
+    arg_vals: [*]const u64,
+) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    const a = q.allocator;
+    const terms = a.alloc(query.Term, n_args) catch return;
+    for (0..n_args) |i| {
+        terms[i] = switch (arg_kinds[i]) {
+            0 => .{ .constant = arg_vals[i] },
+            1 => .{ .variable = @intCast(arg_vals[i]) },
+            else => .wildcard,
+        };
+    }
+    q.addRuleInvocation(name_eid, terms) catch {};
+}
+
+fn cDefineRule(p: ?*anyopaque, name_eid: u64, n_params: u32, max_var: u32) callconv(.c) bool {
+    const reg = g_registry orelse return false;
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return false));
+    // Snapshot the where: clauses as the rule body. Caller still owns the
+    // Query; freeing the Query later will only release its non-where state
+    // because we transfer ownership of the clauses slice here.
+    const body_slice = q.where.toOwnedSlice(q.allocator) catch return false;
+    reg.define(name_eid, .{
+        .n_params = n_params,
+        .body = body_slice,
+        .max_var = max_var,
+    }) catch return false;
+    return true;
+}
+
+fn cQueryUseGlobalRules(p: ?*anyopaque) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    if (g_registry) |r| q.setRules(r);
 }
 
 fn cQueryExecute(p: ?*anyopaque) callconv(.c) ?*anyopaque {

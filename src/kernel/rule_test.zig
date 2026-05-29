@@ -229,6 +229,45 @@ test "max_iter bound trips on a contrived rule" {
 
 // -- No rules → empty results --------------------------------------------
 
+// -- Stratification ---------------------------------------------------------
+
+test "stratification rejects rule with negation cycle" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var store = fact_store.FactStore.init(a);
+    var registry = rule_mod.Registry.init(a);
+    defer registry.deinit();
+
+    // bad(?x) :- person(?x), not bad(?x).
+    // Negation through self-recursion → must be rejected.
+    const body = try a.alloc(Clause, 2);
+    body[0] = .{ .triple = .{
+        .e = .{ .variable = 0 },
+        .a = .{ .constant = ref_mod.mkEid(A_FLAG) },
+        .v = .{ .wildcard = {} },
+    } };
+    const neg_inner = try a.alloc(Clause, 1);
+    const neg_args = try a.alloc(query.Term, 1);
+    neg_args[0] = .{ .variable = 0 };
+    neg_inner[0] = .{ .rule_invocation = .{ .name_eid = NAME_LOOPS, .args = neg_args } };
+    body[1] = .{ .negation = neg_inner };
+    try registry.define(NAME_LOOPS, .{ .n_params = 1, .body = body, .max_var = 0 });
+
+    var q = query.Query.init(a);
+    defer q.deinit();
+    q.setRules(&registry);
+    const vx = try q.variable("x");
+    try q.addFind(vx);
+    const args = try a.alloc(query.Term, 1);
+    args[0] = .{ .variable = vx };
+    try q.addRuleInvocation(NAME_LOOPS, args);
+
+    const result = query.execute(&q, &store);
+    try testing.expectError(error.NegativeCycle, result);
+}
+
 test "rule_invocation with no registry yields no bindings" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

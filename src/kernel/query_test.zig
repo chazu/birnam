@@ -209,6 +209,47 @@ test "duplicate-producing clauses are deduplicated by set semantics" {
 
 // -- History (asOf) --------------------------------------------------------
 
+test "since: filter includes only facts modified after the watermark" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const store = try setupStore(&arena);
+    const tx1 = try store.assert(E1, A_NAME, smallInt(1), M);
+    _ = try store.assert(E2, A_NAME, smallInt(2), M); // after tx1
+    _ = try store.assert(E3, A_NAME, smallInt(3), M); // after tx1
+
+    var q = query.Query.init(arena.allocator());
+    defer q.deinit();
+    const ve = try q.variable("e");
+    try q.addFind(ve);
+    try q.addTriple(.{ .variable = ve }, .{ .constant = ref_mod.mkEid(A_NAME) }, .{ .wildcard = {} });
+    q.setSince(tx1);
+
+    var r = try query.execute(&q, store);
+    defer r.deinit();
+    try testing.expectEqual(@as(usize, 2), r.count()); // E2, E3 only
+}
+
+test "between: filter includes only facts in the tx range" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const store = try setupStore(&arena);
+    _ = try store.assert(E1, A_NAME, smallInt(1), M); // tx 1
+    const tx2 = try store.assert(E2, A_NAME, smallInt(2), M); // tx 2
+    const tx3 = try store.assert(E3, A_NAME, smallInt(3), M); // tx 3
+    _ = try store.assert(999, A_NAME, smallInt(4), M); // tx 4 (later, distinct entity)
+
+    var q = query.Query.init(arena.allocator());
+    defer q.deinit();
+    const ve = try q.variable("e");
+    try q.addFind(ve);
+    try q.addTriple(.{ .variable = ve }, .{ .constant = ref_mod.mkEid(A_NAME) }, .{ .wildcard = {} });
+    q.setBetween(tx2, tx3);
+
+    var r = try query.execute(&q, store);
+    defer r.deinit();
+    try testing.expectEqual(@as(usize, 2), r.count()); // E2, E3
+}
+
 test "asOf modifier filters to a historical view" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -249,6 +290,60 @@ test "no match returns empty result" {
 }
 
 // -- Wildcard --------------------------------------------------------------
+
+test "begin/end negation builder produces equivalent results" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const store = try setupStore(&arena);
+    _ = try store.assert(E1, A_NAME, smallInt(1), M);
+    _ = try store.assert(E2, A_NAME, smallInt(2), M);
+    _ = try store.assert(E1, A_AGE, smallInt(30), M);
+
+    var q = query.Query.init(arena.allocator());
+    defer q.deinit();
+    const ve = try q.variable("e");
+    try q.addFind(ve);
+    try q.addTriple(.{ .variable = ve }, .{ .constant = ref_mod.mkEid(A_NAME) }, .{ .wildcard = {} });
+
+    try q.beginNegation();
+    try q.addTriple(.{ .variable = ve }, .{ .constant = ref_mod.mkEid(A_AGE) }, .{ .wildcard = {} });
+    try q.endNegation();
+
+    var r = try query.execute(&q, store);
+    defer r.deinit();
+    try testing.expectEqual(@as(usize, 1), r.count());
+    try testing.expectEqual(ref_mod.mkEid(E2), r.at(0, 0));
+}
+
+test "begin/end disjunction builder produces union of branches" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const store = try setupStore(&arena);
+    const k1 = smallInt(1);
+    const k2 = smallInt(2);
+    const k3 = smallInt(3);
+    _ = try store.assert(E1, A_KIND, k1, M);
+    _ = try store.assert(E2, A_KIND, k2, M);
+    _ = try store.assert(E3, A_KIND, k3, M);
+
+    var q = query.Query.init(arena.allocator());
+    defer q.deinit();
+    const ve = try q.variable("e");
+    try q.addFind(ve);
+
+    try q.beginDisjunction();
+    try q.beginBranch();
+    try q.addTriple(.{ .variable = ve }, .{ .constant = ref_mod.mkEid(A_KIND) }, .{ .constant = k1 });
+    try q.endBranch();
+    try q.beginBranch();
+    try q.addTriple(.{ .variable = ve }, .{ .constant = ref_mod.mkEid(A_KIND) }, .{ .constant = k2 });
+    try q.endBranch();
+    try q.endDisjunction();
+
+    var r = try query.execute(&q, store);
+    defer r.deinit();
+    try testing.expectEqual(@as(usize, 2), r.count());
+}
 
 test "wildcard does not bind, but matches" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);

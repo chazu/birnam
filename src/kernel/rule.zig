@@ -114,6 +114,8 @@ fn renameTerm(t: Term, offset: u32) Term {
 
 pub const StratificationError = error{NegativeCycle};
 
+const Edge = struct { from: u64, to: u64, neg: bool };
+
 /// Build the rule-dependency graph and check for negative cycles.
 /// `seen_rules` is the set of rule names invoked by the top-level query.
 /// We walk transitively. A negative edge is a rule invocation inside a
@@ -124,7 +126,7 @@ pub fn checkStratified(
     seed_names: []const u64,
 ) !void {
     // Build edges: (from_name, to_name, negated).
-    var edges = std.ArrayList(struct { from: u64, to: u64, neg: bool }){};
+    var edges = std.ArrayList(Edge){};
     defer edges.deinit(allocator);
 
     var visited = std.AutoHashMap(u64, void).init(allocator);
@@ -161,23 +163,27 @@ fn collectEdges(
     clauses: []const Clause,
     from: u64,
     in_negation: bool,
-    edges: *std.ArrayList(struct { from: u64, to: u64, neg: bool }),
+    edges: *std.ArrayList(Edge),
     stack: *std.ArrayList(u64),
 ) anyerror!void {
-    _ = from;
-    _ = in_negation;
-    _ = edges;
-    _ = stack;
-    _ = clauses;
-    _ = allocator;
-    // Phase 7.1: rule-invocation clauses don't exist yet in query.zig's
-    // Clause union — we add them as part of integration. The full graph
-    // walk lands when the Clause type gets `.rule_invocation`.
+    for (clauses) |c| {
+        switch (c) {
+            .triple, .predicate => {},
+            .negation => |inner| try collectEdges(allocator, inner, from, true, edges, stack),
+            .disjunction => |branches| {
+                for (branches) |b| try collectEdges(allocator, b, from, in_negation, edges, stack);
+            },
+            .rule_invocation => |ri| {
+                try edges.append(allocator, .{ .from = from, .to = ri.name_eid, .neg = in_negation });
+                try stack.append(allocator, ri.name_eid);
+            },
+        }
+    }
 }
 
 fn canReach(
     allocator: std.mem.Allocator,
-    edges: []const struct { from: u64, to: u64, neg: bool },
+    edges: []const Edge,
     start: u64,
     target: u64,
 ) !bool {

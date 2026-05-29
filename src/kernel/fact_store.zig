@@ -136,6 +136,16 @@ pub const FactStore = struct {
         return cell.current_v;
     }
 
+    /// Returns the tx of the most recent mutation (assert or retract) on
+    /// (e, a), or null if the cell has no history.
+    pub fn lastTouchTx(self: *const FactStore, e: u64, a: u64) ?u64 {
+        const inner = self.eavt.get(e) orelse return null;
+        const cell = inner.get(a) orelse return null;
+        const n = cell.history.count();
+        if (n == 0) return null;
+        return cell.history.nth(n - 1).tx;
+    }
+
     /// Value of (e, a) as of the end of `as_of_tx` (i.e. counting only history
     /// entries with `tx <= as_of_tx`). Returns null if absent at that time.
     pub fn currentValueAsOf(self: *const FactStore, e: u64, a: u64, as_of_tx: u64) ?Ref {

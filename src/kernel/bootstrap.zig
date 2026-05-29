@@ -24,6 +24,8 @@ const kernel_eids = @import("kernel_eids.zig");
 const send_mod = @import("send.zig");
 const mcache = @import("mcache.zig");
 const interner_mod = @import("interner.zig");
+const rule_mod = @import("rule.zig");
+const id_api_mod = @import("id_api.zig");
 
 const Ref = ref_mod.Ref;
 const Closure = closure_mod.Closure;
@@ -45,12 +47,18 @@ pub const Kernel = struct {
 ///   - kernel vtables are materialized + registered
 ///   - kernel methods are installed and dispatchable
 ///   - kernel selectors carry `:name` facts so `intern("lookup:") -> SEL_LOOKUP`
+/// Module-global rule registry. The shell creates one and the bootstrap
+/// hands it to the IdApi layer. Modules add rules via `api.define_rule`.
 pub fn boot(
     allocator: std.mem.Allocator,
     store: *fact_store.FactStore,
     table: *object_table.ObjectTable,
     interner: *interner_mod.Interner,
 ) !Kernel {
+    // Phase 7.1: provision a kernel-side rule registry for IdApi.
+    const registry = try allocator.create(rule_mod.Registry);
+    registry.* = rule_mod.Registry.init(allocator);
+    id_api_mod.setRegistry(registry);
     // Wire mcache invalidation hook into the fact store.
     store.on_attr_mutate = &mcache.flushSel;
 
