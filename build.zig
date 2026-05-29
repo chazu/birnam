@@ -46,6 +46,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(repl_lib);
 
+    // -- Query dylib (Phase 7) ------------------------------------------------
+
+    const query_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/query/query.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const query_lib = b.addLibrary(.{
+        .name = "birnam_query",
+        .root_module = query_mod,
+        .linkage = .dynamic,
+    });
+    b.installArtifact(query_lib);
+
     // -- Tests ---------------------------------------------------------------
 
     const test_step = b.step("test", "Run unit tests");
@@ -142,6 +156,16 @@ pub fn build(b: *std.Build) void {
     const query_tests = b.addTest(.{ .root_module = query_test_mod });
     const run_query_tests = b.addRunArtifact(query_tests);
     test_step.dependOn(&run_query_tests.step);
+
+    const qmod_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/query_module_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const qmod_tests = b.addTest(.{ .root_module = qmod_test_mod });
+    const run_qmod_tests = b.addRunArtifact(qmod_tests);
+    run_qmod_tests.step.dependOn(b.getInstallStep());
+    test_step.dependOn(&run_qmod_tests.step);
 
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 

@@ -77,6 +77,40 @@ pub const IdApi = extern struct {
     send1: *const fn (Ref, u64, Ref) callconv(.c) Ref,
     send2: *const fn (Ref, u64, Ref, Ref) callconv(.c) Ref,
     send3: *const fn (Ref, u64, Ref, Ref, Ref) callconv(.c) Ref,
+
+    // Object slot ops
+    slot_at: *const fn (?*anyopaque, usize) callconv(.c) Ref,
+    set_slot: *const fn (?*anyopaque, usize, Ref) callconv(.c) void,
+
+    // Query construction + execution (Phase 7).
+    // Term encoding: kind 0 = constant (val=Ref), 1 = variable (val=var_idx),
+    // 2 = wildcard (val ignored).
+    make_query: *const fn () callconv(.c) ?*anyopaque,
+    free_query: *const fn (?*anyopaque) callconv(.c) void,
+    query_variable: *const fn (?*anyopaque, [*]const u8, usize) callconv(.c) u32,
+    query_add_triple: *const fn (
+        ?*anyopaque,
+        u32, u64, // e
+        u32, u64, // a
+        u32, u64, // v
+    ) callconv(.c) void,
+    query_add_predicate: *const fn (
+        ?*anyopaque,
+        u32, // op (0=eq,1=ne,2=lt,3=le,4=gt,5=ge)
+        u32, u64, // lhs
+        u32, u64, // rhs
+    ) callconv(.c) void,
+    query_add_find: *const fn (?*anyopaque, u32) callconv(.c) void,
+    query_set_asof: *const fn (?*anyopaque, u64) callconv(.c) void,
+    query_set_in_module: *const fn (?*anyopaque, u64) callconv(.c) void,
+
+    /// Execute the query. Returns a Result handle (raw pointer Ref). Caller
+    /// must `free_result` when done.
+    query_execute: *const fn (?*anyopaque) callconv(.c) ?*anyopaque,
+    result_count: *const fn (?*anyopaque) callconv(.c) u64,
+    result_arity: *const fn (?*anyopaque) callconv(.c) u32,
+    result_at: *const fn (?*anyopaque, u64, u32) callconv(.c) Ref,
+    free_result: *const fn (?*anyopaque) callconv(.c) void,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -122,6 +156,24 @@ pub fn populate() IdApi {
         .send1 = &cSend1,
         .send2 = &cSend2,
         .send3 = &cSend3,
+
+        .slot_at = &cSlotAt,
+        .set_slot = &cSetSlot,
+
+        .make_query = &cMakeQuery,
+        .free_query = &cFreeQuery,
+        .query_variable = &cQueryVariable,
+        .query_add_triple = &cQueryAddTriple,
+        .query_add_predicate = &cQueryAddPredicate,
+        .query_add_find = &cQueryAddFind,
+        .query_set_asof = &cQuerySetAsof,
+        .query_set_in_module = &cQuerySetInModule,
+
+        .query_execute = &cQueryExecute,
+        .result_count = &cResultCount,
+        .result_arity = &cResultArity,
+        .result_at = &cResultAt,
+        .free_result = &cFreeResult,
     };
 }
 
@@ -221,6 +273,128 @@ fn cSend2(receiver: Ref, sel: u64, a1: Ref, a2: Ref) callconv(.c) Ref {
 }
 fn cSend3(receiver: Ref, sel: u64, a1: Ref, a2: Ref, a3: Ref) callconv(.c) Ref {
     return send_mod.send3(receiver, sel, a1, a2, a3);
+}
+
+// -- Slot ops ---------------------------------------------------------------
+
+fn cSlotAt(obj_ptr: ?*anyopaque, idx: usize) callconv(.c) Ref {
+    const obj: object.ObjPtr = @ptrCast(@alignCast(obj_ptr orelse return ref_mod.NIL));
+    return object.slotAt(obj, idx);
+}
+
+fn cSetSlot(obj_ptr: ?*anyopaque, idx: usize, v: Ref) callconv(.c) void {
+    const obj: object.ObjPtr = @ptrCast(@alignCast(obj_ptr orelse return));
+    object.setSlot(obj, idx, v);
+}
+
+// -- Query construction -----------------------------------------------------
+
+const query = @import("query.zig");
+
+fn cMakeQuery() callconv(.c) ?*anyopaque {
+    const a = send_mod.kernelAllocator() orelse return null;
+    const q = a.create(query.Query) catch return null;
+    q.* = query.Query.init(a);
+    return @ptrCast(q);
+}
+
+fn cFreeQuery(p: ?*anyopaque) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    const a = send_mod.kernelAllocator() orelse return;
+    q.deinit();
+    a.destroy(q);
+}
+
+fn cQueryVariable(p: ?*anyopaque, name: [*]const u8, len: usize) callconv(.c) u32 {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return 0));
+    return q.variable(name[0..len]) catch 0;
+}
+
+fn termFromExtern(kind: u32, val: u64) query.Term {
+    return switch (kind) {
+        0 => .{ .constant = val },
+        1 => .{ .variable = @intCast(val) },
+        else => .wildcard,
+    };
+}
+
+fn cQueryAddTriple(
+    p: ?*anyopaque,
+    ek: u32, ev: u64,
+    ak: u32, av: u64,
+    vk: u32, vv: u64,
+) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.addTriple(termFromExtern(ek, ev), termFromExtern(ak, av), termFromExtern(vk, vv)) catch {};
+}
+
+fn cQueryAddPredicate(
+    p: ?*anyopaque,
+    op: u32,
+    lk: u32, lv: u64,
+    rk: u32, rv: u64,
+) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    const pred_op: query.PredicateOp = switch (op) {
+        0 => .eq,
+        1 => .ne,
+        2 => .lt,
+        3 => .le,
+        4 => .gt,
+        5 => .ge,
+        else => return,
+    };
+    q.addPredicate(pred_op, termFromExtern(lk, lv), termFromExtern(rk, rv)) catch {};
+}
+
+fn cQueryAddFind(p: ?*anyopaque, var_idx: u32) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.addFind(var_idx) catch {};
+}
+
+fn cQuerySetAsof(p: ?*anyopaque, tx: u64) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.setAsOf(tx);
+}
+
+fn cQuerySetInModule(p: ?*anyopaque, m: u64) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    q.setInModule(m);
+}
+
+fn cQueryExecute(p: ?*anyopaque) callconv(.c) ?*anyopaque {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return null));
+    const store = send_mod.storePtr() orelse return null;
+    const a = send_mod.kernelAllocator() orelse return null;
+    const r = a.create(query.Result) catch return null;
+    r.* = query.execute(q, store) catch {
+        a.destroy(r);
+        return null;
+    };
+    return @ptrCast(r);
+}
+
+fn cResultCount(p: ?*anyopaque) callconv(.c) u64 {
+    const r: *query.Result = @ptrCast(@alignCast(p orelse return 0));
+    return r.count();
+}
+
+fn cResultArity(p: ?*anyopaque) callconv(.c) u32 {
+    const r: *query.Result = @ptrCast(@alignCast(p orelse return 0));
+    return r.arity;
+}
+
+fn cResultAt(p: ?*anyopaque, row: u64, col: u32) callconv(.c) Ref {
+    const r: *query.Result = @ptrCast(@alignCast(p orelse return ref_mod.NIL));
+    if (row >= r.count() or col >= r.arity) return ref_mod.NIL;
+    return r.at(@intCast(row), col);
+}
+
+fn cFreeResult(p: ?*anyopaque) callconv(.c) void {
+    const r: *query.Result = @ptrCast(@alignCast(p orelse return));
+    const a = send_mod.kernelAllocator() orelse return;
+    r.deinit();
+    a.destroy(r);
 }
 
 fn cFactsOfModule(m: u64, cb: *const FactCallback, ctx: ?*anyopaque) callconv(.c) usize {
