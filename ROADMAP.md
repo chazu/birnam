@@ -25,7 +25,7 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 
 **Test count: 186/186 across 48 build steps.**
 
-**Next: Phase 9 — alien `.so` absorption.** ffi_enter/ffi_exit primitives ready from Phase 8; bind override ready from 7.5. Mach-O/ELF readers + dyncall integration.
+**Next: Phase 9 — alien `.so` absorption** (macOS-only first pass). Decision doc locked: dyncall, boxed-f64 Float, boxed FFI pointer, constrained variadic with arm64 risk noted, lazy symbol enum, unload deferred to 9.5.
 
 ---
 
@@ -420,45 +420,70 @@ Until promotion is working, every dispatch goes through index query (~30ns). Acc
 
 ## Phase 9 — Alien `.so` Absorption
 
-**Goal:** Iterative wrapping of arbitrary shared libraries from the REPL.
+**Goal:** Iteratively wrap arbitrary shared libraries from the REPL. macOS-only first pass; linux follows in Phase 9.5.
+
+### Decisions locked (Phase 9 decision doc, 2026-05-29)
+
+| Q | Decision |
+|---|---|
+| Q1 FFI lib | **dyncall** vendored as static lib (~3k LOC C, BSD-licensed) |
+| Q2 Float repr | **Boxed f64** via new `FLOAT_VT` on pointer-tagged object |
+| Q3 C pointer | **Boxed FFI pointer** via new `FFI_PTR_VT` (raw addr in slot 0; metadata via facts) |
+| Q4 Variadics | **Constrained per-wrap shape** (sig-string + `:ffi-variadic?` flag). Fall back to **punt** if dyncall arm64 darwin ellipsis is broken |
+| Q5 Symbol enum | **Hybrid**: dlsym for wrap-by-name; lazy fact-materialization on first `Module>>symbols` send; `:ffi-symbols-enumerated?` flag caches |
+| Q6 Unload | **Deferred to Phase 9.5**: dlopen handle held forever; process exit cleans up |
+| Q7 Platform | **macOS-only** Phase 9 (Mach-O reader). ELF + linux gate flip → Phase 9.5 |
+
+### Documented risks
+
+1. **dyncall arm64 darwin variadic ABI.** Tested in 9.7 via printf. If broken, demote Q4 to punt-all-variadics, document in commit, ship fixed-arity only.
+2. **macOS code-signing / hardened runtime.** System libs (libSystem) fine; custom test `.dylib` fixtures may need `codesign -s -`. Address if hit.
+3. **Long-running image leak.** No unload = leak across many `Module load:` cycles. Acceptable until 9.5.
+4. **Boxed float / FFI-ptr alloc churn.** Invisible at Phase 9 scope. Revisit only if Phase 11+ profiling shows hot-loop boxing.
 
 ### Work items
 
-9.1 Symbol enumeration: bundled Mach-O reader (~300 LOC) and ELF reader (~300 LOC). Returns iterator of `(name, addr, kind)`.
+9.0 Vendor dyncall (`vendor/dyncall/`); wire static lib into `build.zig`.
 
-9.2 `Module load: <path>` returns a Module object with `symbols` query.
+9.1 `src/kernel/macho.zig` (~300 LOC): magic-bytes check, parse `LC_SYMTAB`, walk `nlist_64`, yield `(name, addr, kind)` iterator.
 
-9.3 Integrate dyncall (or libffi) for unknown-signature calls. Vendor as submodule.
+9.2 New ref types: `mkFloat` / `untagFloat` / `isFloat` via pointer-boxed f64 (`FLOAT_VT`); `mkFfiPtr` / `untagFfiPtr` / `isFfiPtr` via pointer-boxed addr (`FFI_PTR_VT`). Bootstrap allocates both vts.
 
-9.4 `Module>>wrap:as:signature:` records the binding as facts: target selector, libc signature, target symbol.
+9.3 `Module load:` (in `src/modules/ffi/` or extension to query module): dlopen path; assert `[mod :ffi-handle <ptr-Ref> :ffi-path <str>]`. `Module>>wrap: sel as: name signature: sig`: dlsym + sig-parse + fact assertion.
 
-9.5 Dispatch path: when sending a wrap message, materialize a tiny shim closure that marshals args via dyncall.
+9.4 Sig-string parser. Tokens per dyncall convention (`i`, `l`, `d`, `Z`, `p`, `)`, `e` or `...` for variadic). Output = arg-type array + return-type. Stored as facts for walk-back.
 
-9.6 FFI pinning: while a call is outstanding, the involved objects must stay materialized (don't demote mid-call). Refcount during FFI boundary.
+9.5 Dispatch shim: when wrap selector dispatched, materialize tiny closure that marshals Refs → dyncall types, calls `dcCallX`, marshals return → Ref. Cached per wrap. Bracketed with `promotion.ffiEnter()` / `ffiExit()` (Phase 8 primitive).
 
-9.7 Tests: load libm, wrap `sqrt`, call. Load libc, wrap `printf` (variadic — punt or constrain).
+9.6 `Module>>symbols`: first call walks Mach-O sym table via 9.1, asserts `[mod :ffi-has-symbol <sym>]` per entry; sets `:ffi-symbols-enumerated?`. Subsequent calls = query.
+
+9.7 Tests: libm `sqrt` (float in/out); libSystem `strlen` (Z→i fixed); libSystem `printf` (variadic shape `"Zi)i"`). Skip on non-darwin via `builtin.os.tag` gate. If printf fails on arm64, demote per Q4.
 
 ### Reasoning
-This is the COLA dream made concrete: interactively absorb any C library into the object world. Mach-O + ELF readers are small (no libelf dependency); dyncall is well-trodden territory. FFI pinning prevents the worst correctness hazard of the materialization layer.
+COLA dream made concrete: interactively absorb any C library into the object world. dyncall is well-trodden; Mach-O reader is bounded (~300 LOC). FFI pin (Phase 8) prevents demotion mid-call. Boxed-on-pointer for Float and FFI-pointer keeps Ref tag-space intact for future immediates.
 
 ---
 
-## Phase 9.5 — Schema with Multi-Cardinality Attributes
+## Phase 9.5 — Multi-Platform FFI + Schema + Unload
 
-**Goal:** Promote single-valued attributes (Phase 3 default) to a schema-driven mix of single + multi-valued.
+**Goal:** Round out Phase 9: ELF reader for linux, FFI unload semantics, and schema-driven multi-cardinality attributes. Bundled because schema lands close to Phase 10 language work.
 
 ### Work items
 
-9.5.1 Add a `:cardinality` schema attribute on every attribute entity. Default `:one`. Set to `:many` for relations that accumulate.
+9.5.1 **ELF reader** (~300 LOC): mirror Mach-O iterator interface; magic-byte dispatch in `Module load:`.
 
-9.5.2 Update `assert` to check the attribute's cardinality. `:one` → existing semantics (new assert implicitly retracts old). `:many` → assert appends, no implicit retract.
+9.5.2 **CI gate flip**: linux FFI tests turn on; Mach-O tests skip-gated to darwin.
 
-9.5.3 Update queries to return iterators where multi-valued attrs are involved.
+9.5.3 **Module unload**: `Module>>unload` refuses while `ffi_depth > 0`. Post-unload, boxed FFI-pointer objects mark `:ffi-stale? true`; deref-stale = NIL + error fact. Per Phase 9 Q6 deferral.
 
-9.5.4 Tests: `:many` accumulation, mixed-cardinality queries, schema-driven dispatch in fact_store.
+9.5.4 Schema cardinality (existing 9.5 plan):
+- `:cardinality` schema attribute on every attribute entity. Default `:one`; set to `:many` for accumulators.
+- Update `assert` to dispatch on cardinality. `:one` keeps existing implicit-retract; `:many` appends.
+- Update queries to return iterators on multi-valued attrs.
+- Tests: `:many` accumulation, mixed-cardinality queries, schema-driven dispatch.
 
 ### Reasoning
-Phase 3 ships single-valued only — sufficient for vtable/method facts (one method per (vt, sel)) and the bootstrap kernel. Multi-cardinality is a user-modeling feature, not a kernel concern. By Phase 9.5, the language module (Phase 10) is about to land and user code will start modeling things like `[parent :children ?]` that genuinely need accumulation. Schema-driven (not blanket) keeps Date-discipline intact.
+Schema lands here because Phase 10's user-defined types want `[parent :children ?]` semantics. ELF + unload finish what Phase 9 deferred for spike scope. Bundled phase keeps the platform-parity story coherent.
 
 ## Phase 10 — Language Module
 
