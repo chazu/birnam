@@ -167,6 +167,15 @@ pub fn build(b: *std.Build) void {
     run_qmod_tests.step.dependOn(b.getInstallStep());
     test_step.dependOn(&run_qmod_tests.step);
 
+    const rule_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/rule_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rule_tests = b.addTest(.{ .root_module = rule_test_mod });
+    const run_rule_tests = b.addRunArtifact(rule_tests);
+    test_step.dependOn(&run_rule_tests.step);
+
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
     const bench_step = b.step("bench", "Run microbenchmarks (ReleaseFast)");

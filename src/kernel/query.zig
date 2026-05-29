@@ -36,11 +36,19 @@ pub const PredicateClause = struct {
     rhs: Term,
 };
 
+pub const RuleInvocation = struct {
+    /// EID of the rule's interned name. The Registry maps this to one or
+    /// more `Rule`s (definitional disjunction).
+    name_eid: u64,
+    args: []const Term,
+};
+
 pub const Clause = union(enum) {
     triple: Triple,
     negation: []const Clause,
     disjunction: []const []const Clause,
     predicate: PredicateClause,
+    rule_invocation: RuleInvocation,
 };
 
 // -- Bindings ----------------------------------------------------------------
@@ -81,6 +89,12 @@ pub const Query = struct {
     since: ?u64 = null,
     between: ?[2]u64 = null,
     in_module: ?u64 = null,
+    /// Optional rule registry; queries with rule-invocation clauses must
+    /// provide one. Owned by caller.
+    rules: ?*const @import("rule.zig").Registry = null,
+    /// Termination safety bounds for the rule fixpoint.
+    max_iter: u32 = 100,
+    max_tuples: u64 = 1_000_000,
 
     pub fn init(allocator: std.mem.Allocator) Query {
         return .{
@@ -133,6 +147,14 @@ pub const Query = struct {
 
     pub fn addDisjunction(self: *Query, branches: []const []const Clause) !void {
         try self.where.append(self.allocator, .{ .disjunction = branches });
+    }
+
+    pub fn addRuleInvocation(self: *Query, name_eid: u64, args: []const Term) !void {
+        try self.where.append(self.allocator, .{ .rule_invocation = .{ .name_eid = name_eid, .args = args } });
+    }
+
+    pub fn setRules(self: *Query, registry: *const @import("rule.zig").Registry) void {
+        self.rules = registry;
     }
 
     pub fn addFind(self: *Query, var_idx: u32) !void {
@@ -334,6 +356,86 @@ fn evalPredicate(p: PredicateClause, b: Binding) bool {
 
 // -- Clause dispatch ---------------------------------------------------------
 
+const DerivedMap = std.AutoHashMap(u64, *DerivedSet);
+
+const DerivedSet = struct {
+    allocator: std.mem.Allocator,
+    /// Each entry is a `[]Ref` of length `n_params`. Allocated from `allocator`.
+    tuples: std.ArrayList([]Ref),
+    /// Hash → count map for dedup-by-content.
+    seen: std.AutoHashMap(u64, void),
+    n_params: u32,
+
+    pub fn init(allocator: std.mem.Allocator, n_params: u32) DerivedSet {
+        return .{
+            .allocator = allocator,
+            .tuples = .{},
+            .seen = std.AutoHashMap(u64, void).init(allocator),
+            .n_params = n_params,
+        };
+    }
+
+    pub fn deinit(self: *DerivedSet) void {
+        for (self.tuples.items) |t| self.allocator.free(t);
+        self.tuples.deinit(self.allocator);
+        self.seen.deinit();
+    }
+
+    fn hashTuple(t: []const Ref) u64 {
+        var h: u64 = 0x9E3779B97F4A7C15;
+        for (t) |v| h = (h ^ v) *% 0xBF58476D1CE4E5B9;
+        return h;
+    }
+
+    pub fn add(self: *DerivedSet, tuple: []const Ref) !bool {
+        const h = hashTuple(tuple);
+        if (self.seen.contains(h)) return false;
+        try self.seen.put(h, {});
+        const owned = try self.allocator.dupe(Ref, tuple);
+        try self.tuples.append(self.allocator, owned);
+        return true;
+    }
+};
+
+fn evalRuleInvocation(
+    allocator: std.mem.Allocator,
+    ri: RuleInvocation,
+    b: Binding,
+    derived: *const DerivedMap,
+    out: *std.ArrayList(Binding),
+) !void {
+    const set = derived.get(ri.name_eid) orelse return;
+    for (set.tuples.items) |tuple| {
+        if (tuple.len != ri.args.len) continue;
+        var nb = try b.dup(allocator);
+        var ok = true;
+        for (ri.args, tuple) |arg, val| {
+            switch (arg) {
+                .constant => |c| if (c != val) {
+                    ok = false;
+                    break;
+                },
+                .variable => |idx| {
+                    if (nb.get(idx)) |existing| {
+                        if (existing != val) {
+                            ok = false;
+                            break;
+                        }
+                    } else {
+                        nb.set(idx, val);
+                    }
+                },
+                .wildcard => {},
+            }
+        }
+        if (ok) {
+            try out.append(allocator, nb);
+        } else {
+            allocator.free(nb.values);
+        }
+    }
+}
+
 fn evalClause(
     allocator: std.mem.Allocator,
     store: *fact_store.FactStore,
@@ -341,6 +443,7 @@ fn evalClause(
     b: Binding,
     asof: ?u64,
     in_module: ?u64,
+    derived: ?*const DerivedMap,
     out: *std.ArrayList(Binding),
 ) anyerror!void {
     switch (clause) {
@@ -349,18 +452,23 @@ fn evalClause(
             if (evalPredicate(p, b)) try out.append(allocator, try b.dup(allocator));
         },
         .negation => |inner| {
-            // Evaluate inner against b. If any binding is produced, the negation fails.
             var inner_out = std.ArrayList(Binding){};
-            defer inner_out.deinit(allocator);
-            try evalAllClauses(allocator, store, inner, b, asof, in_module, &inner_out);
+            defer {
+                for (inner_out.items) |ib| allocator.free(ib.values);
+                inner_out.deinit(allocator);
+            }
+            try evalAllClauses(allocator, store, inner, b, asof, in_module, derived, &inner_out);
             if (inner_out.items.len == 0) {
                 try out.append(allocator, try b.dup(allocator));
             }
         },
         .disjunction => |branches| {
             for (branches) |branch| {
-                try evalAllClauses(allocator, store, branch, b, asof, in_module, out);
+                try evalAllClauses(allocator, store, branch, b, asof, in_module, derived, out);
             }
+        },
+        .rule_invocation => |ri| {
+            if (derived) |d| try evalRuleInvocation(allocator, ri, b, d, out);
         },
     }
 }
@@ -372,6 +480,7 @@ fn evalAllClauses(
     b: Binding,
     asof: ?u64,
     in_module: ?u64,
+    derived: ?*const DerivedMap,
     out: *std.ArrayList(Binding),
 ) !void {
     if (clauses.len == 0) {
@@ -379,18 +488,157 @@ fn evalAllClauses(
         return;
     }
     var current = std.ArrayList(Binding){};
-    defer current.deinit(allocator);
+    defer {
+        for (current.items) |cb| allocator.free(cb.values);
+        current.deinit(allocator);
+    }
     try current.append(allocator, try b.dup(allocator));
 
     for (clauses) |c| {
         var next = std.ArrayList(Binding){};
         for (current.items) |cb| {
-            try evalClause(allocator, store, c, cb, asof, in_module, &next);
+            try evalClause(allocator, store, c, cb, asof, in_module, derived, &next);
         }
+        for (current.items) |cb| allocator.free(cb.values);
         current.deinit(allocator);
         current = next;
     }
     for (current.items) |cb| try out.append(allocator, cb);
+    current.items.len = 0;
+}
+
+// -- Semi-naive rule materialization -----------------------------------------
+
+const rule_mod = @import("rule.zig");
+
+pub const RuleError = error{
+    MaxIterations,
+    MaxTuples,
+    NoRegistry,
+};
+
+fn collectRuleNamesInClauses(
+    allocator: std.mem.Allocator,
+    clauses: []const Clause,
+    names: *std.AutoHashMap(u64, void),
+    registry: *const rule_mod.Registry,
+) !void {
+    for (clauses) |c| {
+        switch (c) {
+            .triple, .predicate => {},
+            .negation => |inner| try collectRuleNamesInClauses(allocator, inner, names, registry),
+            .disjunction => |branches| {
+                for (branches) |b| try collectRuleNamesInClauses(allocator, b, names, registry);
+            },
+            .rule_invocation => |ri| {
+                if (!names.contains(ri.name_eid)) {
+                    try names.put(ri.name_eid, {});
+                    if (registry.lookup(ri.name_eid)) |rules| {
+                        for (rules) |rule| {
+                            try collectRuleNamesInClauses(allocator, rule.body, names, registry);
+                        }
+                    }
+                }
+            },
+        }
+    }
+}
+
+fn materializeRules(
+    allocator: std.mem.Allocator,
+    store: *fact_store.FactStore,
+    query: *Query,
+) !DerivedMap {
+    var derived = DerivedMap.init(allocator);
+    const registry = query.rules orelse return derived; // No rules, no work.
+
+    // Collect rule names referenced by the query (transitively).
+    var names = std.AutoHashMap(u64, void).init(allocator);
+    defer names.deinit();
+    try collectRuleNamesInClauses(allocator, query.where.items, &names, registry);
+
+    if (names.count() == 0) return derived;
+
+    // Initialize empty derived sets per name.
+    var nit = names.iterator();
+    while (nit.next()) |entry| {
+        const name = entry.key_ptr.*;
+        const rules = registry.lookup(name) orelse continue;
+        // n_params from first rule (all rules with same name must agree;
+        // enforce in registry.define later).
+        const n_params = rules[0].n_params;
+        const set = try allocator.create(DerivedSet);
+        set.* = DerivedSet.init(allocator, n_params);
+        try derived.put(name, set);
+    }
+
+    // Fixpoint loop.
+    var iter: u32 = 0;
+    var total: u64 = 0;
+    var changed = true;
+    while (changed) {
+        changed = false;
+        iter += 1;
+        if (iter > query.max_iter) return error.MaxIterations;
+
+        nit = names.iterator();
+        while (nit.next()) |entry| {
+            const name = entry.key_ptr.*;
+            const rules = registry.lookup(name) orelse continue;
+            const set = derived.get(name).?;
+            for (rules) |rule| {
+                const seed = try allocator.alloc(Ref, rule.max_var + 1);
+                @memset(seed, UNBOUND);
+                const seed_binding = Binding{ .values = seed };
+                var rule_out = std.ArrayList(Binding){};
+                defer {
+                    for (rule_out.items) |b| allocator.free(b.values);
+                    rule_out.deinit(allocator);
+                }
+                try evalAllClauses(
+                    allocator,
+                    store,
+                    rule.body,
+                    seed_binding,
+                    query.asof,
+                    query.in_module,
+                    &derived,
+                    &rule_out,
+                );
+                allocator.free(seed);
+
+                // Project each output binding to the first n_params vars.
+                const tuple_buf = try allocator.alloc(Ref, rule.n_params);
+                defer allocator.free(tuple_buf);
+                for (rule_out.items) |b| {
+                    var ok = true;
+                    for (0..rule.n_params) |i| {
+                        const v = b.get(@intCast(i)) orelse {
+                            ok = false;
+                            break;
+                        };
+                        tuple_buf[i] = v;
+                    }
+                    if (!ok) continue;
+                    if (try set.add(tuple_buf)) {
+                        changed = true;
+                        total += 1;
+                        if (total > query.max_tuples) return error.MaxTuples;
+                    }
+                }
+            }
+        }
+    }
+    return derived;
+}
+
+fn freeDerivedMap(allocator: std.mem.Allocator, dm: *DerivedMap) void {
+    var it = dm.iterator();
+    while (it.next()) |entry| {
+        entry.value_ptr.*.deinit();
+        allocator.destroy(entry.value_ptr.*);
+    }
+    dm.deinit();
 }
 
 // -- Execution + projection --------------------------------------------------
@@ -416,27 +664,24 @@ pub const Result = struct {
 };
 
 pub fn execute(q: *Query, store: *fact_store.FactStore) !Result {
+    // First: materialize all rules referenced by the query (if any).
+    var derived = try materializeRules(q.allocator, store, q);
+    defer freeDerivedMap(q.allocator, &derived);
+
     var bindings = std.ArrayList(Binding){};
     defer {
         for (bindings.items) |b| q.allocator.free(b.values);
         bindings.deinit(q.allocator);
     }
 
-    // Seed with empty binding.
     const seed = try q.allocator.alloc(Ref, q.var_count);
     @memset(seed, UNBOUND);
     try bindings.append(q.allocator, .{ .values = seed });
 
-    // Reorder clauses: predicates and negations after their dependencies.
-    // For Phase 7 simplicity: stable left-to-right plus a single pre-pass
-    // that moves predicates after the first triple that binds their vars.
-    // Skipping the reorder for the spike — caller is expected to write
-    // clauses in dependency order.
-
     for (q.where.items) |clause| {
         var next = std.ArrayList(Binding){};
         for (bindings.items) |cb| {
-            try evalClause(q.allocator, store, clause, cb, q.asof, q.in_module, &next);
+            try evalClause(q.allocator, store, clause, cb, q.asof, q.in_module, &derived, &next);
         }
         for (bindings.items) |b| q.allocator.free(b.values);
         bindings.deinit(q.allocator);
