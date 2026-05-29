@@ -160,6 +160,8 @@ pub fn boot(
     try interner.seed(store, kernel_eids.ATTR_PROMOTE_THRESHOLD, "promote-threshold");
     try interner.seed(store, kernel_eids.ATTR_BIND, "bind-impl");
     try interner.seed(store, kernel_eids.SEL_BIND, "bind:");
+    try interner.seed(store, kernel_eids.ATTR_FFI_ADDR, "ffi-addr");
+    try interner.seed(store, kernel_eids.ATTR_FFI_SIG, "ffi-sig");
 
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);

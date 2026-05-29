@@ -116,4 +116,12 @@ pub const ATTR_PROMOTE_THRESHOLD: u64 = 36;
 pub const ATTR_BIND: u64 = 37;
 pub const SEL_BIND: u64 = 38;
 
-// 39..63 reserved for future kernel selectors / attributes
+/// Phase 9: FFI wrap-entity facts.
+///   [wrap_eid :ffi-addr <FfiPtr boxed Ref>]      — symbol address
+///   [wrap_eid :ffi-sig  <pointer Ref to Sig>]   — parsed dyncall sig
+/// Closures registered via `ffi.registerWrap` carry `.data = mkEid(wrap_eid)`
+/// and dispatch through a per-arity shim that reads these facts.
+pub const ATTR_FFI_ADDR: u64 = 39;
+pub const ATTR_FFI_SIG: u64 = 40;
+
+// 41..63 reserved for future kernel selectors / attributes

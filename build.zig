@@ -289,6 +289,18 @@ pub fn build(b: *std.Build) void {
     const run_ffi_tests = b.addRunArtifact(ffi_tests);
     test_step.dependOn(&run_ffi_tests.step);
 
+    const macho_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/macho_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const macho_tests = b.addTest(.{ .root_module = macho_test_mod });
+    const run_macho_tests = b.addRunArtifact(macho_tests);
+    // Mach-O tests read libbirnam_hello.dylib from zig-out/lib; ensure the
+    // install step has run first.
+    run_macho_tests.step.dependOn(b.getInstallStep());
+    test_step.dependOn(&run_macho_tests.step);
+
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
     const bench_step = b.step("bench", "Run microbenchmarks (ReleaseFast)");

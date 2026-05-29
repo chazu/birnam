@@ -269,3 +269,107 @@ pub fn invoke(
     }
     return callAndWrap(allocator, vm, sig.ret, addr);
 }
+
+// -- Wrap registry + per-arity dispatch shims -------------------------------
+
+const send_mod = @import("send.zig");
+const fact_store_mod = @import("fact_store.zig");
+const object_table_mod = @import("object_table.zig");
+const closure_mod = @import("closure.zig");
+const kernel_eids = @import("kernel_eids.zig");
+
+/// Resolve a wrap_eid (carried in `s.closure.data`) back to its addr +
+/// parsed Sig. Returns null on any fact-store lookup miss.
+fn resolveWrap(
+    store: *fact_store_mod.FactStore,
+    wrap_eid: u64,
+) ?struct { addr: usize, sig: *const Sig } {
+    const addr_ref = store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_ADDR) orelse return null;
+    if (!boxed.isFfiPtr(addr_ref)) return null;
+    const addr = boxed.untagFfiPtr(addr_ref);
+    const sig_ref = store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_SIG) orelse return null;
+    if (!ref_mod.isPointer(sig_ref)) return null;
+    const sig: *const Sig = @ptrCast(@alignCast(ref_mod.untagPointer(sig_ref)));
+    return .{ .addr = addr, .sig = sig };
+}
+
+fn shimDispatch(s: *send_mod.Send, args: []const Ref) Ref {
+    const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const c = s.closure orelse return ref_mod.NIL;
+    if (!ref_mod.isEid(c.data)) return ref_mod.NIL;
+    const wrap_eid = ref_mod.untagEid(c.data);
+    const w = resolveWrap(store, wrap_eid) orelse return ref_mod.NIL;
+    return invoke(alloc, w.addr, w.sig.*, args);
+}
+
+fn shim0(s: *send_mod.Send) callconv(.c) Ref {
+    return shimDispatch(s, &.{});
+}
+fn shim1(s: *send_mod.Send, a1: Ref) callconv(.c) Ref {
+    return shimDispatch(s, &.{a1});
+}
+fn shim2(s: *send_mod.Send, a1: Ref, a2: Ref) callconv(.c) Ref {
+    return shimDispatch(s, &.{ a1, a2 });
+}
+fn shim3(s: *send_mod.Send, a1: Ref, a2: Ref, a3: Ref) callconv(.c) Ref {
+    return shimDispatch(s, &.{ a1, a2, a3 });
+}
+
+pub const RegisterError = error{
+    OutOfMemory,
+    ArityTooHigh,
+    SigParseFailure,
+};
+
+/// Register a wrap: parse sig, allocate wrap entity + facts, allocate
+/// dispatch closure with the right per-arity shim, return closure EID.
+/// Caller installs the closure as a method via the standard assert
+/// `[vt sel mkEid(closure_eid)]` pattern.
+///
+/// Phase 9 arity limit: 0..3 (matches send0..send3). Higher arity needs
+/// either send-N expansion (future) or arg-vector dispatch.
+pub fn registerWrap(
+    allocator: std.mem.Allocator,
+    store: *fact_store_mod.FactStore,
+    table: *object_table_mod.ObjectTable,
+    addr: usize,
+    sig_str: []const u8,
+) anyerror!u64 {
+    var sig = parseSig(allocator, sig_str) catch return error.SigParseFailure;
+    if (sig.args.len > 3) {
+        sig.deinit(allocator);
+        return error.ArityTooHigh;
+    }
+    // Stash the parsed Sig on the heap so the shim can reference it via
+    // pointer Ref. Caller owns lifetime via the kernel allocator.
+    const sig_holder = try allocator.create(Sig);
+    sig_holder.* = sig;
+
+    const wrap_eid = table.alloc();
+    const addr_ref = try boxed.mkFfiPtr(allocator, addr);
+    _ = try store.assert(wrap_eid, kernel_eids.ATTR_FFI_ADDR, addr_ref, kernel_eids.M_BOOTSTRAP);
+    _ = try store.assert(wrap_eid, kernel_eids.ATTR_FFI_SIG, ref_mod.mkPointer(@ptrCast(sig_holder)), kernel_eids.M_BOOTSTRAP);
+
+    const method_ptr: *const anyopaque = switch (sig.args.len) {
+        0 => @ptrCast(&shim0),
+        1 => @ptrCast(&shim1),
+        2 => @ptrCast(&shim2),
+        3 => @ptrCast(&shim3),
+        else => unreachable,
+    };
+
+    // Allocate a Closure with .data = mkEid(wrap_eid). Match the kernel's
+    // closure-as-libid-object layout: [vt_ref][method][data].
+    const total = 3 * @sizeOf(Ref);
+    const buf = try allocator.alignedAlloc(u8, .of(Ref), total);
+    @memset(buf, 0);
+    const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
+    vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
+    const c: *closure_mod.Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
+    c.method = method_ptr;
+    c.data = ref_mod.mkEid(wrap_eid);
+    const closure_eid = table.alloc();
+    try table.put(closure_eid, ref_mod.mkPointer(@ptrCast(c)));
+    return closure_eid;
+}

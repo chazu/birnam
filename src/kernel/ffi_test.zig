@@ -123,6 +123,107 @@ test "invoke: libSystem strlen via dyncall" {
     ffi.shutdown();
 }
 
+// -- Wrap + send-dispatch end-to-end ----------------------------------------
+
+const send_mod = @import("send.zig");
+const object = @import("object.zig");
+const fact_store = @import("fact_store.zig");
+const object_table = @import("object_table.zig");
+const interner_mod = @import("interner.zig");
+const bootstrap = @import("bootstrap.zig");
+const kernel_eids = @import("kernel_eids.zig");
+
+fn makeUserVtAndReceiver(
+    a: std.mem.Allocator,
+    store: *fact_store.FactStore,
+    table: *object_table.ObjectTable,
+) !struct { vt: u64, recv: u64 } {
+    const vt = table.alloc();
+    const obj_ptr = try object.allocObject(a, ref_mod.mkEid(kernel_eids.VTABLE_VT), 0);
+    try table.put(vt, object.toRef(obj_ptr));
+    _ = try store.assert(vt, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.VTABLE_VT), kernel_eids.M_BOOTSTRAP);
+    _ = try store.assert(vt, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP);
+
+    const recv = table.alloc();
+    _ = try store.assert(recv, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(vt), kernel_eids.M_BOOTSTRAP);
+    return .{ .vt = vt, .recv = recv };
+}
+
+test "wrap + send: sqrt(16) via send1 dispatch" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var store = fact_store.FactStore.init(a);
+    var table = object_table.ObjectTable.init(a);
+    var interner = interner_mod.Interner.init(a);
+    _ = try bootstrap.boot(a, &store, &table, &interner);
+
+    var lib = dlopenSelf() orelse return error.SkipZigTest;
+    defer lib.close();
+    const sym_ptr = lib.lookup(*anyopaque, "sqrt") orelse return error.SkipZigTest;
+    const addr: usize = @intFromPtr(sym_ptr);
+
+    const closure_eid = try ffi.registerWrap(a, &store, &table, addr, "d)d");
+
+    const fix = try makeUserVtAndReceiver(a, &store, &table);
+    const sel = try interner.intern(&store, &table, "sqrt:");
+    _ = try store.assert(fix.vt, sel, ref_mod.mkEid(closure_eid), kernel_eids.M_BOOTSTRAP);
+
+    const arg = try boxed.mkFloat(a, 16.0);
+    const r = send_mod.send1(ref_mod.mkEid(fix.recv), sel, arg);
+    try testing.expect(boxed.isFloat(r));
+    try testing.expectEqual(@as(f64, 4.0), boxed.untagFloat(r));
+
+    ffi.shutdown();
+}
+
+test "wrap + send: strlen via send1 dispatch" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var store = fact_store.FactStore.init(a);
+    var table = object_table.ObjectTable.init(a);
+    var interner = interner_mod.Interner.init(a);
+    _ = try bootstrap.boot(a, &store, &table, &interner);
+
+    var lib = dlopenSelf() orelse return error.SkipZigTest;
+    defer lib.close();
+    const sym_ptr = lib.lookup(*anyopaque, "strlen") orelse return error.SkipZigTest;
+    const addr: usize = @intFromPtr(sym_ptr);
+
+    const closure_eid = try ffi.registerWrap(a, &store, &table, addr, "Z)l");
+
+    const fix = try makeUserVtAndReceiver(a, &store, &table);
+    const sel = try interner.intern(&store, &table, "strlen:");
+    _ = try store.assert(fix.vt, sel, ref_mod.mkEid(closure_eid), kernel_eids.M_BOOTSTRAP);
+
+    const cstr = "birnam";
+    const cstr_ptr = try boxed.mkFfiPtr(a, @intFromPtr(cstr.ptr));
+    const r = send_mod.send1(ref_mod.mkEid(fix.recv), sel, cstr_ptr);
+    try testing.expect(ref_mod.isSmallInt(r));
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(r));
+
+    ffi.shutdown();
+}
+
+test "wrap: arity > 3 rejected" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var store = fact_store.FactStore.init(a);
+    var table = object_table.ObjectTable.init(a);
+    var interner = interner_mod.Interner.init(a);
+    _ = try bootstrap.boot(a, &store, &table, &interner);
+
+    const r = ffi.registerWrap(a, &store, &table, 0x1000, "iiii)i");
+    try testing.expectError(error.ArityTooHigh, r);
+}
+
 test "invoke: variadic printf via dyncall arm64 darwin" {
     if (!is_darwin) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
