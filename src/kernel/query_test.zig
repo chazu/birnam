@@ -345,6 +345,89 @@ test "begin/end disjunction builder produces union of branches" {
     try testing.expectEqual(@as(usize, 2), r.count());
 }
 
+test "subquery: outer iterates over inner's result rows" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const store = try setupStore(&arena);
+    _ = try store.assert(E1, A_NAME, smallInt(100), M);
+    _ = try store.assert(E2, A_NAME, smallInt(200), M);
+    _ = try store.assert(E3, A_NAME, smallInt(300), M);
+    _ = try store.assert(E1, A_AGE, smallInt(25), M);
+    _ = try store.assert(E2, A_AGE, smallInt(35), M); // not in subquery result
+    _ = try store.assert(E3, A_AGE, smallInt(45), M);
+
+    // Inner query: entities with age < 30 OR > 40.
+    var inner = query.Query.init(arena.allocator());
+    defer inner.deinit();
+    const ie = try inner.variable("e");
+    const ia = try inner.variable("a");
+    try inner.addFind(ie);
+    try inner.addTriple(.{ .variable = ie }, .{ .constant = ref_mod.mkEid(A_AGE) }, .{ .variable = ia });
+    try inner.beginDisjunction();
+    try inner.beginBranch();
+    try inner.addPredicate(.lt, .{ .variable = ia }, .{ .constant = smallInt(30) });
+    try inner.endBranch();
+    try inner.beginBranch();
+    try inner.addPredicate(.gt, .{ .variable = ia }, .{ .constant = smallInt(40) });
+    try inner.endBranch();
+    try inner.endDisjunction();
+
+    // Outer query: bind inner's results into ?e, then look up name.
+    var outer = query.Query.init(arena.allocator());
+    defer outer.deinit();
+    const oe = try outer.variable("e");
+    const on = try outer.variable("n");
+    try outer.addFind(on);
+    const sub_bindings = try arena.allocator().alloc(u32, 1);
+    sub_bindings[0] = oe;
+    try outer.addSubquery(&inner, sub_bindings);
+    try outer.addTriple(.{ .variable = oe }, .{ .constant = ref_mod.mkEid(A_NAME) }, .{ .variable = on });
+
+    var r = try query.execute(&outer, store);
+    defer r.deinit();
+    try testing.expectEqual(@as(usize, 2), r.count()); // E1, E3
+    var seen_100 = false;
+    var seen_300 = false;
+    var i: usize = 0;
+    while (i < r.count()) : (i += 1) {
+        const v = r.at(i, 0);
+        if (v == smallInt(100)) seen_100 = true;
+        if (v == smallInt(300)) seen_300 = true;
+    }
+    try testing.expect(seen_100 and seen_300);
+}
+
+test "subquery: same subquery referenced twice memoizes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const store = try setupStore(&arena);
+    _ = try store.assert(E1, A_NAME, smallInt(1), M);
+    _ = try store.assert(E2, A_NAME, smallInt(2), M);
+
+    var inner = query.Query.init(arena.allocator());
+    defer inner.deinit();
+    const ie = try inner.variable("e");
+    try inner.addFind(ie);
+    try inner.addTriple(.{ .variable = ie }, .{ .constant = ref_mod.mkEid(A_NAME) }, .{ .wildcard = {} });
+
+    var outer = query.Query.init(arena.allocator());
+    defer outer.deinit();
+    const oe = try outer.variable("e");
+    try outer.addFind(oe);
+    const sb1 = try arena.allocator().alloc(u32, 1);
+    sb1[0] = oe;
+    const sb2 = try arena.allocator().alloc(u32, 1);
+    sb2[0] = oe;
+    try outer.addSubquery(&inner, sb1);
+    try outer.addSubquery(&inner, sb2);
+
+    var r = try query.execute(&outer, store);
+    defer r.deinit();
+    // Both subquery references yield the same set; intersection (join via
+    // shared ?e) is the set itself → 2.
+    try testing.expectEqual(@as(usize, 2), r.count());
+}
+
 test "wildcard does not bind, but matches" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

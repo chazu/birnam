@@ -51,12 +51,21 @@ pub const RuleInvocation = struct {
     args: []const Term,
 };
 
+/// Subquery clause: execute `inner` as a sub-relation, then for each result
+/// row, bind the outer query's variables (listed in `bindings`) to the row's
+/// columns positionally. `bindings.len` must equal `inner.find.items.len`.
+pub const Subquery = struct {
+    inner: *Query,
+    bindings: []const u32,
+};
+
 pub const Clause = union(enum) {
     triple: Triple,
     negation: []const Clause,
     disjunction: []const []const Clause,
     predicate: PredicateClause,
     rule_invocation: RuleInvocation,
+    subquery: Subquery,
 };
 
 // -- Bindings ----------------------------------------------------------------
@@ -226,6 +235,10 @@ pub const Query = struct {
 
     pub fn addRuleInvocation(self: *Query, name_eid: u64, args: []const Term) !void {
         try self.currentDest().append(self.allocator, .{ .rule_invocation = .{ .name_eid = name_eid, .args = args } });
+    }
+
+    pub fn addSubquery(self: *Query, inner: *Query, bindings: []const u32) !void {
+        try self.currentDest().append(self.allocator, .{ .subquery = .{ .inner = inner, .bindings = bindings } });
     }
 
     pub fn setSince(self: *Query, tx: u64) void {
@@ -457,6 +470,8 @@ fn evalPredicate(p: PredicateClause, b: Binding) bool {
 
 // -- Clause dispatch ---------------------------------------------------------
 
+pub const SubqueryMemo = std.AutoHashMap(*const Query, *Result);
+
 const DerivedMap = std.AutoHashMap(u64, *DerivedSet);
 
 const DerivedSet = struct {
@@ -537,6 +552,62 @@ fn evalRuleInvocation(
     }
 }
 
+fn evalSubquery(
+    allocator: std.mem.Allocator,
+    store: *fact_store.FactStore,
+    sq: Subquery,
+    b: Binding,
+    memo: ?*SubqueryMemo,
+    out: *std.ArrayList(Binding),
+) !void {
+    if (sq.bindings.len != sq.inner.find.items.len) return;
+    // Look up or compute the subquery's result.
+    var result_ptr: *Result = undefined;
+    var owned = false;
+    if (memo) |m| {
+        if (m.get(sq.inner)) |cached| {
+            result_ptr = cached;
+        } else {
+            const fresh = try allocator.create(Result);
+            fresh.* = try execute(sq.inner, store);
+            try m.put(sq.inner, fresh);
+            result_ptr = fresh;
+        }
+    } else {
+        const fresh = try allocator.create(Result);
+        fresh.* = try execute(sq.inner, store);
+        result_ptr = fresh;
+        owned = true;
+    }
+    defer if (owned) {
+        result_ptr.deinit();
+        allocator.destroy(result_ptr);
+    };
+
+    const r = result_ptr;
+    var row: usize = 0;
+    while (row < r.count()) : (row += 1) {
+        var nb = try b.dup(allocator);
+        var ok = true;
+        for (sq.bindings, 0..) |outer_var, col| {
+            const v = r.at(row, @intCast(col));
+            if (nb.get(outer_var)) |existing| {
+                if (existing != v) {
+                    ok = false;
+                    break;
+                }
+            } else {
+                nb.set(outer_var, v);
+            }
+        }
+        if (ok) {
+            try out.append(allocator, nb);
+        } else {
+            allocator.free(nb.values);
+        }
+    }
+}
+
 fn evalClause(
     allocator: std.mem.Allocator,
     store: *fact_store.FactStore,
@@ -547,6 +618,7 @@ fn evalClause(
     between: ?[2]u64,
     in_module: ?u64,
     derived: ?*const DerivedMap,
+    memo: ?*SubqueryMemo,
     out: *std.ArrayList(Binding),
 ) anyerror!void {
     switch (clause) {
@@ -560,19 +632,20 @@ fn evalClause(
                 for (inner_out.items) |ib| allocator.free(ib.values);
                 inner_out.deinit(allocator);
             }
-            try evalAllClauses(allocator, store, inner, b, asof, since, between, in_module, derived, &inner_out);
+            try evalAllClauses(allocator, store, inner, b, asof, since, between, in_module, derived, memo, &inner_out);
             if (inner_out.items.len == 0) {
                 try out.append(allocator, try b.dup(allocator));
             }
         },
         .disjunction => |branches| {
             for (branches) |branch| {
-                try evalAllClauses(allocator, store, branch, b, asof, since, between, in_module, derived, out);
+                try evalAllClauses(allocator, store, branch, b, asof, since, between, in_module, derived, memo, out);
             }
         },
         .rule_invocation => |ri| {
             if (derived) |d| try evalRuleInvocation(allocator, ri, b, d, out);
         },
+        .subquery => |sq| try evalSubquery(allocator, store, sq, b, memo, out),
     }
 }
 
@@ -586,6 +659,7 @@ fn evalAllClauses(
     between: ?[2]u64,
     in_module: ?u64,
     derived: ?*const DerivedMap,
+    memo: ?*SubqueryMemo,
     out: *std.ArrayList(Binding),
 ) !void {
     if (clauses.len == 0) {
@@ -602,7 +676,7 @@ fn evalAllClauses(
     for (clauses) |c| {
         var next = std.ArrayList(Binding){};
         for (current.items) |cb| {
-            try evalClause(allocator, store, c, cb, asof, since, between, in_module, derived, &next);
+            try evalClause(allocator, store, c, cb, asof, since, between, in_module, derived, memo, &next);
         }
         for (current.items) |cb| allocator.free(cb.values);
         current.deinit(allocator);
@@ -630,7 +704,7 @@ fn collectRuleNamesInClauses(
 ) !void {
     for (clauses) |c| {
         switch (c) {
-            .triple, .predicate => {},
+            .triple, .predicate, .subquery => {},
             .negation => |inner| try collectRuleNamesInClauses(allocator, inner, names, registry),
             .disjunction => |branches| {
                 for (branches) |b| try collectRuleNamesInClauses(allocator, b, names, registry);
@@ -710,6 +784,7 @@ fn materializeRules(
                     query.between,
                     query.in_module,
                     &derived,
+                    null, // no memo inside rule body materialization
                     &rule_out,
                 );
                 allocator.free(seed);
@@ -751,7 +826,7 @@ fn freeDerivedMap(allocator: std.mem.Allocator, dm: *DerivedMap) void {
 fn collectInvokedNames(clauses: []const Clause, out: *std.AutoHashMap(u64, void)) !void {
     for (clauses) |c| {
         switch (c) {
-            .triple, .predicate => {},
+            .triple, .predicate, .subquery => {},
             .negation => |inner| try collectInvokedNames(inner, out),
             .disjunction => |branches| {
                 for (branches) |b| try collectInvokedNames(b, out);
@@ -812,10 +887,20 @@ pub fn execute(q: *Query, store: *fact_store.FactStore) !Result {
     @memset(seed, UNBOUND);
     try bindings.append(q.allocator, .{ .values = seed });
 
+    var memo = SubqueryMemo.init(q.allocator);
+    defer {
+        var mit = memo.iterator();
+        while (mit.next()) |e| {
+            e.value_ptr.*.deinit();
+            q.allocator.destroy(e.value_ptr.*);
+        }
+        memo.deinit();
+    }
+
     for (q.where.items) |clause| {
         var next = std.ArrayList(Binding){};
         for (bindings.items) |cb| {
-            try evalClause(q.allocator, store, clause, cb, q.asof, q.since, q.between, q.in_module, &derived, &next);
+            try evalClause(q.allocator, store, clause, cb, q.asof, q.since, q.between, q.in_module, &derived, &memo, &next);
         }
         for (bindings.items) |b| q.allocator.free(b.values);
         bindings.deinit(q.allocator);
