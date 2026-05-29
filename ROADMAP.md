@@ -510,6 +510,27 @@ D1. **Default cardinality.** Absence of `:cardinality` fact = `:one` (backward-c
 
 D2. **`currentValue` semantics for `:many` attrs.** Returns latest (existing single-value callers unchanged) vs returns NIL vs errors. Plus new `currentValues(e, a)` iterator either way.
 
+> **ADR-9.5-D2 (2026-05-29).** Locked: `currentValue(e, a)` returns a
+> polymorphic Ref. `:one` returns the value Ref (Phase 0-9 behavior
+> unchanged). `:many` returns an RRB-Ref materialized from multiple
+> stored `(v, tx, op)` entries — **storage stays atomic per-tuple**
+> (Datomic-style multi-datom), materialization is a derived view at
+> read time. Empty `:many` returns an interned empty-RRB constant
+> (distinguishable from NIL = never-asserted). Caller discriminates via
+> `isRrbRef(r)`.
+>
+> **Date 1NF preserved** because storage is atomic tuples, not
+> RRB-in-cell. **COLA-compliant** because dispatch is via Ref tag
+> (already-used substrate pattern), cardinality is itself a fact
+> (`[attr :cardinality :many]`) introspectable from REPL — no hidden
+> Zig-side switch. **NIL admissible** because birnam NIL = the
+> nothing-entity at well-known EID 0 (a real domain value), not
+> SQL-NULL three-valued-logic absence.
+>
+> Cost accepted: one RRB head allocation per `:many` read in the spike.
+> Optimization (intern per (e, a, latest-tx)) deferred until profiling
+> shows it matters.
+
 D3. **Retroactive schema change.** Asserting `:cardinality :many` on an existing single-value attribute: does it convert past asserts? Or forward-only?
 
 D4. **Scope creep.** Phase 9.5 also adds `:unique`, `:index?`, other Datomic-style schema attrs? Or cardinality only.
