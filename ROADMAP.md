@@ -361,7 +361,9 @@ VM gives us portability and AOT. Bytecode-as-facts means the compiler is also qu
 
 12.4 Selector identity across reload: kernel selectors use well-known EIDs; user selectors re-intern via relocation table.
 
-12.5 Tests: save → kill → load → run → identical behavior.
+12.5 **Arena split for strings.** Phase 4.5 ships strings via the kernel allocator. Split here: strings get a dedicated arena → separate mmap segment, faster image load, page-cache-friendly, easy memory accounting, and (in AOT) a read-only data segment. No runtime perf change — pure lifecycle win.
+
+12.6 Tests: save → kill → load → run → identical behavior; verify strings segment is mmap-able and survives reload.
 
 ### Reasoning
 Image persistence is what makes birnam a real Smalltalk-style environment vs. a script that has to rebuild state every run. Structural sharing in the persistent structures makes incremental snapshots cheap.

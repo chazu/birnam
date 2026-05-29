@@ -26,7 +26,8 @@ pub const Tag = enum(u3) {
     smallint = 0b001,
     eid = 0b010,
     keyword = 0b011,
-    // 0b100..0b111 reserved
+    string = 0b100, // ptr to StringHeader, see strings.zig
+    // 0b101..0b111 reserved
 };
 
 pub const TAG_MASK: u64 = 0b111;

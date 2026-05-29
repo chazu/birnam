@@ -9,12 +9,14 @@ const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const bootstrap = @import("bootstrap.zig");
+const interner_mod = @import("interner.zig");
 
 const Ref = ref_mod.Ref;
 
 fn setup(arena: *std.heap.ArenaAllocator) !struct {
     store: *fact_store.FactStore,
     table: *object_table.ObjectTable,
+    interner: *interner_mod.Interner,
     kernel: bootstrap.Kernel,
 } {
     const allocator = arena.allocator();
@@ -22,8 +24,10 @@ fn setup(arena: *std.heap.ArenaAllocator) !struct {
     store.* = fact_store.FactStore.init(allocator);
     const table = try allocator.create(object_table.ObjectTable);
     table.* = object_table.ObjectTable.init(allocator);
-    const k = try bootstrap.boot(allocator, store, table);
-    return .{ .store = store, .table = table, .kernel = k };
+    const interner = try allocator.create(interner_mod.Interner);
+    interner.* = interner_mod.Interner.init(allocator);
+    const k = try bootstrap.boot(allocator, store, table, interner);
+    return .{ .store = store, .table = table, .interner = interner, .kernel = k };
 }
 
 // -- Bootstrap returns valid kernel handles ----------------------------------

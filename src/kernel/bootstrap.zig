@@ -23,6 +23,7 @@ const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const send_mod = @import("send.zig");
 const mcache = @import("mcache.zig");
+const interner_mod = @import("interner.zig");
 
 const Ref = ref_mod.Ref;
 const Closure = closure_mod.Closure;
@@ -43,10 +44,12 @@ pub const Kernel = struct {
 ///   - send / bind are wired and operational
 ///   - kernel vtables are materialized + registered
 ///   - kernel methods are installed and dispatchable
+///   - kernel selectors carry `:name` facts so `intern("lookup:") -> SEL_LOOKUP`
 pub fn boot(
     allocator: std.mem.Allocator,
     store: *fact_store.FactStore,
     table: *object_table.ObjectTable,
+    interner: *interner_mod.Interner,
 ) !Kernel {
     // Wire mcache invalidation hook into the fact store.
     store.on_attr_mutate = &mcache.flushSel;
@@ -107,7 +110,15 @@ pub fn boot(
     try installMethod(allocator, store, table, kernel_eids.VTABLE_VT, kernel_eids.SEL_DELEGATED, @ptrCast(&vtableDelegatedImpl));
     try installMethod(allocator, store, table, kernel_eids.VTABLE_VT, kernel_eids.SEL_METHOD_AT_PUT_WITH, @ptrCast(&vtableMethodAtPutWithImpl));
 
-    // -- Stage 8: enable dispatch ----------------------------------------
+    // -- Stage 8: seed selector names ------------------------------------
+    try interner.seed(store, kernel_eids.SEL_LOOKUP, "lookup:");
+    try interner.seed(store, kernel_eids.SEL_METHOD_AT_PUT_WITH, "methodAt:put:with:");
+    try interner.seed(store, kernel_eids.SEL_DELEGATED, "delegated");
+    try interner.seed(store, kernel_eids.SEL_INIT, "init");
+    try interner.seed(store, kernel_eids.SEL_ALLOCATE, "allocate");
+    try interner.seed(store, kernel_eids.SEL_VTABLE, "vtable");
+
+    // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);
 
     return .{
