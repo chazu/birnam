@@ -22,12 +22,12 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Phase 7.4: predicates + functions (builtin arith/min2/max2 + user native preds) ✓
 - Phase 8: promotion/demotion (hotness counter, threshold auto-promote, FFI pin, shape-change demote) ✓
 - Phase 7.5: metacircular bind (`:bind` override along delegate chain, recursion guard limit=4, full mcache flush on mutate) ✓
-- Phase 9 (partial): boxed Float + FFI pointer (FLOAT_VT, FFI_PTR_VT); dyncall 1.4 vendored as static lib; sig-string parser; engine `invoke(addr, sig, args) Ref`; arm64 darwin variadic ABI validated via printf ✓
-   - Remaining: 9.1 Mach-O reader, 9.3 Module dylib + wrap, 9.5 bind-override shim, 9.6 lazy enum
+- Phase 9 (substantial): boxed Float + FFI pointer; dyncall 1.4 vendored; sig-string parser; ffi.invoke engine; ffi.registerWrap + per-arity shim closures; send-dispatched sqrt/strlen end-to-end; Mach-O 64-bit reader with symbol iterator ✓
+   - Deferred to 9.5: Module entity wrapper (`Module load:`/`wrap:as:signature:` as send-dispatchable selectors) and lazy `Module>>symbols` enumeration via the Mach-O reader
 
-**Test count: 200/200 across 55 build steps.**
+**Test count: 208/208 across 57 build steps.**
 
-**Next: complete Phase 9** — Module dylib (`Module load:`/`wrap:as:signature:`), bind-override shim, Mach-O reader for lazy symbol enumeration.
+**Next: Phase 9.5** — Module dylib (entity-level wrap of registerWrap), lazy Module>>symbols using shipped Mach-O reader, ELF reader for linux gate flip, Module unload + stale-pointer flags, schema/multi-cardinality.
 
 ---
 
