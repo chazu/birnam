@@ -69,4 +69,14 @@ pub const SEL_VTABLE: u64 = 25;
 pub const ATTR_SAVED_QUERY_NAME: u64 = 26;
 pub const ATTR_SAVED_QUERY_SPEC: u64 = 27;
 
-// 28..63 reserved for future kernel selectors / attributes
+/// Rule storage walk-back (Phase 7.3.7). Rules are fact-entities:
+///   [rule_eid :rule-name <interned-name-EID-Ref>]
+///   [rule_eid :rule-params <SmallInt n_params>]
+///   [rule_eid :rule-max-var <SmallInt max_var>]
+///   [rule_eid :rule-body <pointer Ref to []const Clause>]
+pub const ATTR_RULE_NAME: u64 = 28;
+pub const ATTR_RULE_PARAMS: u64 = 29;
+pub const ATTR_RULE_MAX_VAR: u64 = 30;
+pub const ATTR_RULE_BODY: u64 = 31;
+
+// 32..63 reserved for future kernel selectors / attributes

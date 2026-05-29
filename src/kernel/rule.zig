@@ -9,6 +9,10 @@
 const std = @import("std");
 const hamt = @import("hamt.zig");
 const query_mod = @import("query.zig");
+const fact_store = @import("fact_store.zig");
+const object_table = @import("object_table.zig");
+const ref_mod = @import("ref.zig");
+const kernel_eids = @import("kernel_eids.zig");
 
 pub const Clause = query_mod.Clause;
 pub const Term = query_mod.Term;
@@ -26,43 +30,71 @@ pub const Rule = struct {
     max_var: u32,
 };
 
-/// Per-name list of rules (definitional disjunction).
-const RuleList = std.ArrayList(Rule);
-
-/// HAMT keyed by rule-name EID → list of rules.
+/// Phase 7.3.7: fact-backed rule storage. Rules live as entities in the
+/// fact store; the Registry is a thin lookup helper. Module unload retracts
+/// the rule facts via the regular Phase 5 mechanism.
+///
+/// Trade-off accepted for the spike: rule bodies are still stored as a
+/// pointer-Ref to a heap `[]const Clause` slice (the body's clause-tree is
+/// not yet fact-shaped). Phase 9.5+ may walk clause storage back to facts
+/// fully; for now, registry definition is fact-shaped, body remains heap.
 pub const Registry = struct {
     allocator: std.mem.Allocator,
-    map: std.AutoHashMap(u64, *RuleList),
+    store: *fact_store.FactStore,
+    table: *object_table.ObjectTable,
 
-    pub fn init(allocator: std.mem.Allocator) Registry {
-        return .{
-            .allocator = allocator,
-            .map = std.AutoHashMap(u64, *RuleList).init(allocator),
-        };
+    pub fn init(
+        allocator: std.mem.Allocator,
+        store: *fact_store.FactStore,
+        table: *object_table.ObjectTable,
+    ) Registry {
+        return .{ .allocator = allocator, .store = store, .table = table };
     }
 
     pub fn deinit(self: *Registry) void {
-        var it = self.map.iterator();
-        while (it.next()) |entry| {
-            entry.value_ptr.*.deinit(self.allocator);
-            self.allocator.destroy(entry.value_ptr.*);
-        }
-        self.map.deinit();
+        _ = self;
+        // No persistent state to free; rule body slices are owned by the
+        // caller's arena (or kernel allocator) and live alongside the
+        // facts referencing them.
     }
 
     pub fn define(self: *Registry, name_eid: u64, rule: Rule) !void {
-        const gop = try self.map.getOrPut(name_eid);
-        if (!gop.found_existing) {
-            const list = try self.allocator.create(RuleList);
-            list.* = .{};
-            gop.value_ptr.* = list;
-        }
-        try gop.value_ptr.*.append(self.allocator, rule);
+        const rule_eid = self.table.alloc();
+        // Heap-allocate a slice header so the pointer remains stable.
+        const body_holder = try self.allocator.create([]const Clause);
+        body_holder.* = rule.body;
+
+        _ = try self.store.assert(rule_eid, kernel_eids.ATTR_RULE_NAME, ref_mod.mkEid(name_eid), kernel_eids.M_BOOTSTRAP);
+        _ = try self.store.assert(rule_eid, kernel_eids.ATTR_RULE_PARAMS, ref_mod.mkSmallInt(@intCast(rule.n_params)).?, kernel_eids.M_BOOTSTRAP);
+        _ = try self.store.assert(rule_eid, kernel_eids.ATTR_RULE_MAX_VAR, ref_mod.mkSmallInt(@intCast(rule.max_var)).?, kernel_eids.M_BOOTSTRAP);
+        _ = try self.store.assert(rule_eid, kernel_eids.ATTR_RULE_BODY, ref_mod.mkPointer(@ptrCast(body_holder)), kernel_eids.M_BOOTSTRAP);
     }
 
-    pub fn lookup(self: *const Registry, name_eid: u64) ?[]const Rule {
-        const list = self.map.get(name_eid) orelse return null;
-        return list.items;
+    /// Look up all rules currently registered under `name_eid`. Returns a
+    /// fresh owned slice (caller frees via `allocator.free`). Empty slice
+    /// when no rules match.
+    pub fn lookup(
+        self: *const Registry,
+        allocator: std.mem.Allocator,
+        name_eid: u64,
+    ) ![]Rule {
+        var out = std.ArrayList(Rule){};
+        var it = self.store.entitiesMatching(kernel_eids.ATTR_RULE_NAME, ref_mod.mkEid(name_eid));
+        while (it.next()) |r_eid| {
+            const params = self.store.currentValue(r_eid, kernel_eids.ATTR_RULE_PARAMS) orelse continue;
+            const max_var = self.store.currentValue(r_eid, kernel_eids.ATTR_RULE_MAX_VAR) orelse continue;
+            const body = self.store.currentValue(r_eid, kernel_eids.ATTR_RULE_BODY) orelse continue;
+            if (!ref_mod.isSmallInt(params)) continue;
+            if (!ref_mod.isSmallInt(max_var)) continue;
+            if (!ref_mod.isPointer(body)) continue;
+            const body_holder: *const []const Clause = @ptrCast(@alignCast(ref_mod.untagPointer(body)));
+            try out.append(allocator, .{
+                .n_params = @intCast(ref_mod.untagSmallInt(params)),
+                .max_var = @intCast(ref_mod.untagSmallInt(max_var)),
+                .body = body_holder.*,
+            });
+        }
+        return out.toOwnedSlice(allocator);
     }
 };
 
@@ -141,7 +173,8 @@ pub fn checkStratified(
     while (stack.pop()) |name| {
         if (visited.contains(name)) continue;
         try visited.put(name, {});
-        const rules = registry.lookup(name) orelse continue;
+        const rules = try registry.lookup(allocator, name);
+        defer allocator.free(rules);
         for (rules) |r| {
             try collectEdges(allocator, r.body, name, false, &edges, &stack);
         }

@@ -57,7 +57,7 @@ pub fn boot(
 ) !Kernel {
     // Phase 7.1: provision a kernel-side rule registry for IdApi.
     const registry = try allocator.create(rule_mod.Registry);
-    registry.* = rule_mod.Registry.init(allocator);
+    registry.* = rule_mod.Registry.init(allocator, store, table);
     id_api_mod.setRegistry(registry);
     // Wire mcache invalidation hook into the fact store.
     store.on_attr_mutate = &mcache.flushSel;
@@ -135,6 +135,10 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_VTABLE, "vtable");
     try interner.seed(store, kernel_eids.ATTR_SAVED_QUERY_NAME, "saved-query-name");
     try interner.seed(store, kernel_eids.ATTR_SAVED_QUERY_SPEC, "saved-query-spec");
+    try interner.seed(store, kernel_eids.ATTR_RULE_NAME, "rule-name");
+    try interner.seed(store, kernel_eids.ATTR_RULE_PARAMS, "rule-params");
+    try interner.seed(store, kernel_eids.ATTR_RULE_MAX_VAR, "rule-max-var");
+    try interner.seed(store, kernel_eids.ATTR_RULE_BODY, "rule-body");
 
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);

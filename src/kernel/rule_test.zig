@@ -3,6 +3,7 @@ const testing = std.testing;
 
 const ref_mod = @import("ref.zig");
 const fact_store = @import("fact_store.zig");
+const object_table = @import("object_table.zig");
 const query = @import("query.zig");
 const rule_mod = @import("rule.zig");
 
@@ -66,7 +67,8 @@ test "ancestor: 4-deep parent chain produces 3 ancestors of alice" {
     _ = try store.assert(BOB, A_PARENT, ref_mod.mkEid(CAROL), M);
     _ = try store.assert(CAROL, A_PARENT, ref_mod.mkEid(DAVE), M);
 
-    var registry = rule_mod.Registry.init(a);
+    var table = object_table.ObjectTable.init(a);
+    var registry = rule_mod.Registry.init(a, &store, &table);
     defer registry.deinit();
 
     try registry.define(NAME_ANCESTOR, .{
@@ -119,7 +121,8 @@ test "ancestor: with bound descendant, finds direct chain only" {
     _ = try store.assert(ALICE, A_PARENT, ref_mod.mkEid(BOB), M);
     _ = try store.assert(BOB, A_PARENT, ref_mod.mkEid(CAROL), M);
 
-    var registry = rule_mod.Registry.init(a);
+    var table = object_table.ObjectTable.init(a);
+    var registry = rule_mod.Registry.init(a, &store, &table);
     defer registry.deinit();
     try registry.define(NAME_ANCESTOR, .{ .n_params = 2, .body = try makeAncestorRule_Base(a), .max_var = 1 });
     try registry.define(NAME_ANCESTOR, .{ .n_params = 2, .body = try makeAncestorRule_Recursive(a), .max_var = 2 });
@@ -151,7 +154,8 @@ test "rules with same name union their derived tuples" {
     _ = try store.assert(ALICE, A_FLAG, ref_mod.mkSmallInt(1).?, M);
     _ = try store.assert(BOB, A_FLAG, ref_mod.mkSmallInt(2).?, M);
 
-    var registry = rule_mod.Registry.init(a);
+    var table = object_table.ObjectTable.init(a);
+    var registry = rule_mod.Registry.init(a, &store, &table);
     defer registry.deinit();
 
     // flagged(?e) :- flag(?e, 1).
@@ -200,7 +204,8 @@ test "max_iter bound trips on a contrived rule" {
         _ = try store.assert(1000 + i, A_FLAG, ref_mod.mkSmallInt(@intCast(i)).?, M);
     }
 
-    var registry = rule_mod.Registry.init(a);
+    var table = object_table.ObjectTable.init(a);
+    var registry = rule_mod.Registry.init(a, &store, &table);
     defer registry.deinit();
 
     // flagged(?e) :- flag(?e, _).
@@ -237,7 +242,8 @@ test "stratification rejects rule with negation cycle" {
     const a = arena.allocator();
 
     var store = fact_store.FactStore.init(a);
-    var registry = rule_mod.Registry.init(a);
+    var table = object_table.ObjectTable.init(a);
+    var registry = rule_mod.Registry.init(a, &store, &table);
     defer registry.deinit();
 
     // bad(?x) :- person(?x), not bad(?x).
@@ -266,6 +272,37 @@ test "stratification rejects rule with negation cycle" {
 
     const result = query.execute(&q, &store);
     try testing.expectError(error.NegativeCycle, result);
+}
+
+// -- Walk-back: rules are fact-shaped (Phase 7.3.7) ------------------------
+
+test "walk-back: define asserts rule facts queryable via the store" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store = fact_store.FactStore.init(a);
+    var table = object_table.ObjectTable.init(a);
+    var registry = rule_mod.Registry.init(a, &store, &table);
+    defer registry.deinit();
+
+    const body = try a.alloc(Clause, 1);
+    body[0] = .{ .triple = .{
+        .e = .{ .variable = 0 },
+        .a = .{ .constant = ref_mod.mkEid(A_FLAG) },
+        .v = .{ .wildcard = {} },
+    } };
+    try registry.define(NAME_LOOPS, .{ .n_params = 1, .body = body, .max_var = 0 });
+
+    // Query the store directly: a rule-name fact must exist for this rule.
+    var it = store.entitiesMatching(@import("kernel_eids.zig").ATTR_RULE_NAME, ref_mod.mkEid(NAME_LOOPS));
+    const rule_entity = it.next().?;
+    try testing.expect(rule_entity != 0);
+
+    // :rule-params should be 1, :rule-max-var should be 0.
+    const params_ref = store.currentValue(rule_entity, @import("kernel_eids.zig").ATTR_RULE_PARAMS).?;
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(params_ref));
+    const mv_ref = store.currentValue(rule_entity, @import("kernel_eids.zig").ATTR_RULE_MAX_VAR).?;
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(mv_ref));
 }
 
 test "rule_invocation with no registry yields no bindings" {

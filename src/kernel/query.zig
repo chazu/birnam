@@ -753,10 +753,10 @@ fn collectRuleNamesInClauses(
             .rule_invocation => |ri| {
                 if (!names.contains(ri.name_eid)) {
                     try names.put(ri.name_eid, {});
-                    if (registry.lookup(ri.name_eid)) |rules| {
-                        for (rules) |rule| {
-                            try collectRuleNamesInClauses(allocator, rule.body, names, registry);
-                        }
+                    const rules = try registry.lookup(allocator, ri.name_eid);
+                    defer allocator.free(rules);
+                    for (rules) |rule| {
+                        try collectRuleNamesInClauses(allocator, rule.body, names, registry);
                     }
                 }
             },
@@ -779,13 +779,26 @@ fn materializeRules(
 
     if (names.count() == 0) return derived;
 
-    // Initialize empty derived sets per name.
+    // Cache the per-name rule list once. Lookups query the fact store
+    // (Phase 7.3.7 walk-back); we materialize once per execute() and
+    // reuse across the fixpoint iterations.
+    var rule_cache = std.AutoHashMap(u64, []rule_mod.Rule).init(allocator);
+    defer {
+        var cit = rule_cache.iterator();
+        while (cit.next()) |e| allocator.free(e.value_ptr.*);
+        rule_cache.deinit();
+    }
+
+    // Initialize empty derived sets per name + populate rule_cache.
     var nit = names.iterator();
     while (nit.next()) |entry| {
         const name = entry.key_ptr.*;
-        const rules = registry.lookup(name) orelse continue;
-        // n_params from first rule (all rules with same name must agree;
-        // enforce in registry.define later).
+        const rules = try registry.lookup(allocator, name);
+        if (rules.len == 0) {
+            allocator.free(rules);
+            continue;
+        }
+        try rule_cache.put(name, rules);
         const n_params = rules[0].n_params;
         const set = try allocator.create(DerivedSet);
         set.* = DerivedSet.init(allocator, n_params);
@@ -804,7 +817,7 @@ fn materializeRules(
         nit = names.iterator();
         while (nit.next()) |entry| {
             const name = entry.key_ptr.*;
-            const rules = registry.lookup(name) orelse continue;
+            const rules = rule_cache.get(name) orelse continue;
             const set = derived.get(name).?;
             for (rules) |rule| {
                 const seed = try allocator.alloc(Ref, rule.max_var + 1);
