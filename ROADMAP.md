@@ -251,6 +251,10 @@ Datalog is as central as the object model — it's how birnam introspects itself
 
 ### Work items
 
+7.1.0 **Phase 7 polish prologue.** Two items deferred from Phase 7 ship:
+  - Wire `since:` and `between:` modifier execution in `query.execute` (mirror the existing asOf code paths).
+  - Add IdApi builders for negation and disjunction clauses. Reuses the nested-clause ABI design needed for rule bodies in 7.1.4 — solve once. Likely shape: `query_begin_negation(*Query)` / `query_end_negation(*Query)` plus `query_begin_disjunction(*Query)` / `query_begin_branch(*Query)` / `query_end_branch(*Query)` / `query_end_disjunction(*Query)`. Internal builder maintains a stack of in-progress clause-lists.
+
 7.1.1 Open questions per DATALOG.md §8.2: rule definition syntax (lean: assert-and-name), empty-match semantics (lean: silent empty), stratification timing (lean: lazy at query-execute).
 
 7.1.2 `src/kernel/rule.zig`: Rule type, registry. Rule = parameterized clause-body persisted as facts (multiple rules per name = definitional disjunction, Datomic-style).
@@ -307,7 +311,7 @@ Without aggregation, analytical queries (counts, sums, top-N) drop back to imper
 
 7.3.6 Tests per DATALOG.md §5.5: saved-query round-trip, subquery pipeline, pull with flat + recursive specs.
 
-7.3.7 **Fact reification + per-triple module filtering.** Phase 7 ships query-wide `inModule:` only. By Phase 7.3 the saved-query / subquery work has cleared the conceptual ground for facts-as-entities (VISION.md §Reification gap explicitly defers this as additive). Take it on here:
+7.3.7 **Fact reification + per-triple module filtering + inModule MEAT optimization.** Phase 7 ships query-wide `inModule:` only, implemented as a linear scan of `factsOfModule` per fact check (O(N) per triple). By Phase 7.3 the saved-query / subquery work has cleared the conceptual ground for facts-as-entities (VISION.md §Reification gap explicitly defers this as additive). Take all three on here:
   - Promote `m` column from tuple field to a regular fact about the fact entity: `[fact_eid :module <module-eid>]`.
   - Each triple clause may add modifier clauses operating on the fact entity itself.
   - Surface: `[?vt :name ?n :as ?fact][?fact :module <module-eid>]` — reified fact bound to a variable, then queried as any other entity.
