@@ -222,24 +222,123 @@ REPL-as-object is a litmus test for the substrate. If REPL works as a real fact-
 
 ---
 
-## Phase 7 — Query Module
+## Phase 7 — Datalog Core (Relational + Negation + Disjunction + History)
 
-**Goal:** Datalog as object messages.
+**Goal:** Ship the relational core of birnam's Datalog system. ~80% of reflection queries become expressible. See `DATALOG.md` for full semantics.
 
 ### Work items
 
-7.1 Surface syntax: `db query: { find: #(?m), where: [[vt #lookup: ?m]] }` — keyword-message API initially.
+7.1 Decide Phase 7 open questions (DATALOG.md §8.1): variable-index assignment timing, clause encoding in IdApi (lean: opaque builder), result-Ref identity (lean: fresh per execution), inequality types (lean: SmallInts), history-of-everything modifier (lean: separate `historyOf:`), MEAT-scoped query syntax (lean: `inModule:`).
 
-7.2 Query planner: trivial join on small queries. Pick indexes per clause. No optimizer yet.
+7.2 `src/kernel/query.zig`: Query / Term / Clause types per DATALOG.md §2.1-§2.6. Builder API. Index selection table per §2.9. Naive nested-loop join engine per §2.7-§2.8.
 
-7.3 Query executor: walk indexes per the plan, materialize results as RRB-Tree.
+7.3 `src/kernel/result.zig`: materialized RRB-of-Refs result type. Multi-var tuple wrapper.
 
-7.4 Cursor protocol for streaming large result sets.
+7.4 IdApi extensions: query-builder fns (make_query, query_add_*), execute, count, first. Plus result iteration helpers.
 
-7.5 Tests: equality joins, multi-clause joins, negation (later), aggregations (later).
+7.5 `src/modules/query/query.zig`: `db` singleton with `findAll:where:`, `find:where:`, `count:where:`, `findAll:where:asOf:`, `findAll:where:since:`, `findAll:where:inModule:`. Bracket-array clause parser (extended from Phase 6 REPL parser).
+
+7.6 Tests per DATALOG.md §2.14: identity, multi-var, multi-clause join, negation (vtables without init), disjunction (named-Point-OR-Vector), predicate (age < 30), history (asOf restored prior value), set semantics, unsafe-negation rejection, mismatched-disjunction rejection.
 
 ### Reasoning
-Reflection-as-query is one of the major wins of the relational substrate. Get a working subset (point queries + simple joins) before designing the surface syntax in earnest. Real Datalog (recursion, negation, aggregation) can wait.
+Datalog is as central as the object model — it's how birnam introspects itself. Phase 7 delivers Datomic-level expressiveness short of rules, recursion, and aggregation. Without negation and disjunction, the query language is a toy; with them, ~80% of useful queries work. Rules/recursion (Phase 7.1) and aggregation (Phase 7.2) layer on additively without redesign.
+
+---
+
+## Phase 7.1 — Rules + Recursion
+
+**Goal:** Add rule definitions, recursive evaluation, stratified-negation check. Datalog proper.
+
+### Work items
+
+7.1.1 Open questions per DATALOG.md §8.2: rule definition syntax (lean: assert-and-name), empty-match semantics (lean: silent empty), stratification timing (lean: lazy at query-execute).
+
+7.1.2 `src/kernel/rule.zig`: Rule type, registry. Rule = parameterized clause-body persisted as facts (multiple rules per name = definitional disjunction, Datomic-style).
+
+7.1.3 Rule-invocation clause type added to Clause union. Planner walks rule-dependency graph, runs semi-naive fixpoint.
+
+7.1.4 Stratification check at query execution: build rule-dependency graph annotated with negative edges; reject programs with negative cycles.
+
+7.1.5 Termination guards: max-iteration / max-derived-tuple safety bounds. User-configurable; default 10^6.
+
+7.1.6 Tests per DATALOG.md §3.6: transitive closure (ancestor), delegation-chain walk, mutual recursion (even/odd), stratification rejection, safety-bound trip.
+
+### Reasoning
+Recursion makes Datalog Datalog. Transitive properties (delegation chains, dependency graphs, reachability) become one-line queries instead of hand-coded walks. Stratified-negation check protects users from undecidable programs.
+
+---
+
+## Phase 7.2 — Aggregation
+
+**Goal:** Aggregate functions in find clauses with implicit group-by. Datomic-style.
+
+### Work items
+
+7.2.1 Open questions per DATALOG.md §8.3: distinct-vs-bag aggregation (lean: distinct matches set semantics), type strictness (lean: error on type mismatch).
+
+7.2.2 `src/kernel/aggregate.zig`: aggregate function registry. Built-ins: count, count-distinct, sum, min, max, avg, collect, sample.
+
+7.2.3 Find-element extension: `AggregateSpec` alongside `var_idx`. Parser recognizes `(count ?m)` form in find list.
+
+7.2.4 Group-by engine: post-process binding-set into partitions keyed by non-aggregated find vars. Apply aggregate per partition.
+
+7.2.5 Tests per DATALOG.md §4.5: count by group, sum, max-tx, collect-into-RRB, multi-aggregate per group.
+
+### Reasoning
+Without aggregation, analytical queries (counts, sums, top-N) drop back to imperative code. Implicit group-by matches Datomic and feels natural in birnam.
+
+---
+
+## Phase 7.3 — Subqueries + Saved Queries + Pull
+
+**Goal:** Compose queries. Persist named queries. Return hierarchical results.
+
+### Work items
+
+7.3.1 Open questions per DATALOG.md §8.4: pull recursion bound (lean: explicit `...:` marker + depth limit), saved-query args (lean: positional), subquery result shape (lean: multi-var via tuples).
+
+7.3.2 `src/kernel/saved_query.zig`: Query stored as fact-entity. Name → query lookup. Resolve at call site. Module ownership (unload retracts saved queries).
+
+7.3.3 Subquery support: clause references another query's result, fed in as virtual table.
+
+7.3.4 `src/kernel/pull.zig`: pull-spec parser, recursive tree walker, materialized-map output. Recursion bounded by spec syntax.
+
+7.3.5 Methods on db: `run: <name>`, `run: <name> withArgs: <vec>`, `runQuery: <q>`, plus pull spec in find clause.
+
+7.3.6 Tests per DATALOG.md §5.5: saved-query round-trip, subquery pipeline, pull with flat + recursive specs.
+
+7.3.7 **Fact reification + per-triple module filtering.** Phase 7 ships query-wide `inModule:` only. By Phase 7.3 the saved-query / subquery work has cleared the conceptual ground for facts-as-entities (VISION.md §Reification gap explicitly defers this as additive). Take it on here:
+  - Promote `m` column from tuple field to a regular fact about the fact entity: `[fact_eid :module <module-eid>]`.
+  - Each triple clause may add modifier clauses operating on the fact entity itself.
+  - Surface: `[?vt :name ?n :as ?fact][?fact :module <module-eid>]` — reified fact bound to a variable, then queried as any other entity.
+  - This subsumes per-triple module filtering and opens fact-level metadata (provenance, justification, belief markers) as future feature.
+  - Migration: existing 6-column tuples continue to work; reification is opt-in via the `:as` modifier.
+
+### Reasoning
+Composition is what turns queries from one-off into building blocks. Pull syntax matches the way users want to read graph data (hierarchical, not flat). Fact reification (7.3.7) preserves relational-model expressiveness — without it, the `m` column is special-case storage that resists the same query mechanisms applied to every other attribute. Date discipline holds: reification is additive, breaks no existing query.
+
+---
+
+## Phase 7.4 — Predicates + Functions
+
+**Goal:** Inline custom predicates and computed bindings. Round out Datalog expressivity.
+
+### Work items
+
+7.4.1 Open questions per DATALOG.md §8.5: predicate ownership (lean: facts, module-tagged), purity convention (lean: convention only), predicate composition (lean: no formal termination check).
+
+7.4.2 **Reopen Phase 7 Q4**: inequality types. Phase 7 shipped SmallInt-only `<`/`<=`/`>`/`>=`. By Phase 7.4 the predicate framework is in place; decide then whether to add tag-aware total order (string lex, EID numeric, etc.) as additional built-in predicates rather than overloading the comparison operators. Likely: built-in predicates `stringLessThan`, `eidLessThan`, etc. — explicit, type-tagged, no operator overloading.
+
+7.4.2 `src/kernel/predicate.zig`: predicate registry. User predicates registered as facts with closure refs. Built-in arithmetic + comparison + string fns pre-registered.
+
+7.4.3 Predicate clause: `[(pred-name ?args...)]` form. Caller binds args, predicate returns truth.
+
+7.4.4 Function clause: `[(fn-name ?args...) ?target]` form. Computes target binding from inputs.
+
+7.4.5 Tests per DATALOG.md §6.3: user predicate hit/miss, arithmetic chains, predicate over function result.
+
+### Reasoning
+Final piece of Datalog parity. Custom predicates let users embed domain logic in queries; function expressions remove need to materialize intermediate facts just to compose values.
 
 ---
 
