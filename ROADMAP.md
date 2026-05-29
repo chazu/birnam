@@ -426,7 +426,7 @@ Until promotion is working, every dispatch goes through index query (~30ns). Acc
 
 | Q | Decision |
 |---|---|
-| Q1 FFI lib | **dyncall** vendored as static lib (~3k LOC C, BSD-licensed) |
+| Q1 FFI lib | **dyncall** vendored as static lib (~3k LOC C, BSD-licensed). Fallback: **typed-dispatch table** (Zig-comptime wrappers per (arg-kinds, return-kind) tuple) if dyncall vendor causes build pain or arm64 darwin variadic ABI breaks. Fallback is platform-portable but bounded to enumerated sigs; covers Phase 9 test plan (sqrt, strlen, printf) trivially. |
 | Q2 Float repr | **Boxed f64** via new `FLOAT_VT` on pointer-tagged object |
 | Q3 C pointer | **Boxed FFI pointer** via new `FFI_PTR_VT` (raw addr in slot 0; metadata via facts) |
 | Q4 Variadics | **Constrained per-wrap shape** (sig-string + `:ffi-variadic?` flag). Fall back to **punt** if dyncall arm64 darwin ellipsis is broken |

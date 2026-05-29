@@ -4,6 +4,34 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // -- dyncall static lib (Phase 9 vendored FFI engine) --------------------
+    // Macro-driven preprocessor selects the right arch source per platform.
+    // arm64 darwin and x86_64 darwin/linux carried; other archs trimmed.
+    const dyncall_lib = b.addLibrary(.{
+        .name = "dyncall",
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
+    dyncall_lib.addCSourceFiles(.{
+        .root = b.path("vendor/dyncall-1.4/dyncall"),
+        .files = &.{
+            "dyncall_api.c",
+            "dyncall_callf.c",
+            "dyncall_callvm.c",
+            "dyncall_callvm_base.c",
+            "dyncall_vector.c",
+            "dyncall_aggregate.c",
+            "dyncall_call.S",
+        },
+        .flags = &.{"-std=c99"},
+    });
+    dyncall_lib.addIncludePath(b.path("vendor/dyncall-1.4/dyncall"));
+    b.installArtifact(dyncall_lib);
+
     // -- Shell executable ----------------------------------------------------
 
     const shell_mod = b.createModule(.{
@@ -16,6 +44,8 @@ pub fn build(b: *std.Build) void {
         .name = "birnam",
         .root_module = shell_mod,
     });
+    shell.linkLibrary(dyncall_lib);
+    shell.linkLibC();
     b.installArtifact(shell);
 
     // -- Hello dylib (Phase 5 smoke-test module) -----------------------------
@@ -247,6 +277,17 @@ pub fn build(b: *std.Build) void {
     const boxed_tests = b.addTest(.{ .root_module = boxed_test_mod });
     const run_boxed_tests = b.addRunArtifact(boxed_tests);
     test_step.dependOn(&run_boxed_tests.step);
+
+    const ffi_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/ffi_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const ffi_tests = b.addTest(.{ .root_module = ffi_test_mod });
+    ffi_tests.linkLibrary(dyncall_lib);
+    ffi_tests.linkLibC();
+    const run_ffi_tests = b.addRunArtifact(ffi_tests);
+    test_step.dependOn(&run_ffi_tests.step);
 
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
