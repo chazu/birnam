@@ -123,6 +123,92 @@ test "query: build via IdApi, execute via [db execute: q], iterate via result me
     try testing.expectEqual(ref_mod.mkEid(E1), at_ref);
 }
 
+test "query: aggregate count via send-dispatched [db execute: q] -> [result at:0]" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const s = try fullSetup(&arena);
+    const mod_eid = try loadQuery(s);
+
+    const M_TEST: u64 = 999;
+    const A_AGE: u64 = 9020;
+    _ = try s.store.assert(9300, A_AGE, ref_mod.mkSmallInt(10).?, M_TEST);
+    _ = try s.store.assert(9301, A_AGE, ref_mod.mkSmallInt(20).?, M_TEST);
+    _ = try s.store.assert(9302, A_AGE, ref_mod.mkSmallInt(30).?, M_TEST);
+
+    const api = s.api;
+    const q = api.make_query().?;
+    defer api.free_query(q);
+    const ve = api.query_variable(q, "e", 1);
+    const va = api.query_variable(q, "a", 1);
+    api.query_add_find_aggregate(q, 0, va); // 0 = count
+    api.query_add_triple(q,
+        1, ve,
+        0, ref_mod.mkEid(A_AGE),
+        1, va,
+    );
+
+    const sel_db = try s.interner.intern(s.store, s.table, "db");
+    const db_ref = s.store.currentValue(mod_eid, sel_db).?;
+    const sel_execute = try s.interner.intern(s.store, s.table, "execute:");
+    const sel_at = try s.interner.intern(s.store, s.table, "at:");
+
+    const result_ref = send_mod.send1(db_ref, sel_execute, @as(Ref, @intFromPtr(q)));
+    const cell_ref = send_mod.send1(result_ref, sel_at, ref_mod.mkSmallInt(0).?);
+    try testing.expect(ref_mod.isSmallInt(cell_ref));
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(cell_ref));
+}
+
+test "query: collect aggregate -> [result at:0] returns RRB; [rrb count]/[rrb at:i]" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const s = try fullSetup(&arena);
+    const mod_eid = try loadQuery(s);
+
+    const M_TEST: u64 = 999;
+    const A_TAG: u64 = 9030;
+    _ = try s.store.assert(9400, A_TAG, ref_mod.mkSmallInt(100).?, M_TEST);
+    _ = try s.store.assert(9401, A_TAG, ref_mod.mkSmallInt(200).?, M_TEST);
+    _ = try s.store.assert(9402, A_TAG, ref_mod.mkSmallInt(300).?, M_TEST);
+
+    const api = s.api;
+    const q = api.make_query().?;
+    defer api.free_query(q);
+    const ve = api.query_variable(q, "e", 1);
+    const va = api.query_variable(q, "a", 1);
+    api.query_add_find_aggregate(q, 5, va); // 5 = collect
+    api.query_add_triple(q,
+        1, ve,
+        0, ref_mod.mkEid(A_TAG),
+        1, va,
+    );
+
+    const sel_db = try s.interner.intern(s.store, s.table, "db");
+    const db_ref = s.store.currentValue(mod_eid, sel_db).?;
+    const sel_execute = try s.interner.intern(s.store, s.table, "execute:");
+    const sel_at = try s.interner.intern(s.store, s.table, "at:");
+    const sel_count = try s.interner.intern(s.store, s.table, "count");
+
+    const result_ref = send_mod.send1(db_ref, sel_execute, @as(Ref, @intFromPtr(q)));
+    const rrb_ref = send_mod.send1(result_ref, sel_at, ref_mod.mkSmallInt(0).?);
+    // RRB wrapper is a pointer-tagged Ref.
+    try testing.expect(ref_mod.isPointer(rrb_ref));
+
+    // [rrb count] -> 3
+    const rrb_count_ref = send_mod.send0(rrb_ref, sel_count);
+    try testing.expect(ref_mod.isSmallInt(rrb_count_ref));
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(rrb_count_ref));
+
+    // [rrb at: 0/1/2] returns the collected SmallInts in some order; sum must be 600.
+    var sum: i64 = 0;
+    var i: i64 = 0;
+    while (i < 3) : (i += 1) {
+        const v = send_mod.send1(rrb_ref, sel_at, ref_mod.mkSmallInt(i).?);
+        try testing.expect(ref_mod.isSmallInt(v));
+        sum += ref_mod.untagSmallInt(v);
+    }
+    try testing.expectEqual(@as(i64, 600), sum);
+}
+
 test "query: multi-result findAll, full iteration via send-dispatched methods" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

@@ -84,6 +84,9 @@ pub fn boot(
     const nil_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
     try table.put(kernel_eids.NIL_VT, object.toRef(nil_vt_ptr));
 
+    const rrb_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.RRB_VT, object.toRef(rrb_vt_ptr));
+
     // -- Stage 4: assert :vtable facts for every entity bind may dispatch on
     // Each kernel vtable's :vtable is VTABLE_VT (so sending a message to
     // mkEid(SOME_VT) lands in vtable_vt's method table).
@@ -96,6 +99,7 @@ pub fn boot(
     _ = try store.assert(kernel_eids.VECTOR_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
     _ = try store.assert(kernel_eids.ASSOC_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
     _ = try store.assert(kernel_eids.NIL_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.RRB_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
 
     // -- Stage 5: delegation chain ---------------------------------------
     // Top of chain (object_vt) has NO :delegate fact — Date: absence = no parent.
@@ -107,6 +111,7 @@ pub fn boot(
     _ = try store.assert(kernel_eids.VECTOR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.ASSOC_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.NIL_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.RRB_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
 
     // -- Stage 6: NIL's :vtable ------------------------------------------
     _ = try store.assert(kernel_eids.NIL, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.NIL_VT), m_boot);

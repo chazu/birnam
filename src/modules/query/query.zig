@@ -103,7 +103,27 @@ const IdApi = extern struct {
     result_arity: *const fn (?*anyopaque) callconv(.c) u32,
     result_at: *const fn (?*anyopaque, u64, u32) callconv(.c) Ref,
     free_result: *const fn (?*anyopaque) callconv(.c) void,
+
+    // Phase 7.1 polish + 7.2 extensions appended at end.
+    query_set_since: *const fn (?*anyopaque, u64) callconv(.c) void,
+    query_set_between: *const fn (?*anyopaque, u64, u64) callconv(.c) void,
+    query_set_max_iter: *const fn (?*anyopaque, u32) callconv(.c) void,
+    query_set_max_tuples: *const fn (?*anyopaque, u64) callconv(.c) void,
+    query_begin_negation: *const fn (?*anyopaque) callconv(.c) void,
+    query_end_negation: *const fn (?*anyopaque) callconv(.c) void,
+    query_begin_disjunction: *const fn (?*anyopaque) callconv(.c) void,
+    query_begin_branch: *const fn (?*anyopaque) callconv(.c) void,
+    query_end_branch: *const fn (?*anyopaque) callconv(.c) void,
+    query_end_disjunction: *const fn (?*anyopaque) callconv(.c) void,
+    query_add_rule_invocation: *const fn (?*anyopaque, u64, usize, [*]const u32, [*]const u64) callconv(.c) void,
+    define_rule: *const fn (?*anyopaque, u64, u32, u32) callconv(.c) bool,
+    query_use_global_rules: *const fn (?*anyopaque) callconv(.c) void,
+    query_add_find_aggregate: *const fn (?*anyopaque, u32, u32) callconv(.c) void,
+    rrb_count: *const fn (?*anyopaque) callconv(.c) u64,
+    rrb_at: *const fn (?*anyopaque, u64) callconv(.c) Ref,
 };
+
+const RRB_VT_EID: u64 = 9;
 
 const Send = extern struct {
     selector: u64,
@@ -162,6 +182,30 @@ fn resultArityImpl(s: *Send) callconv(.c) Ref {
     return mkSmallInt(@intCast(api.result_arity(handle)));
 }
 
+/// `[rrb count]` — wraps slot 0 (raw RRB pointer) and calls api.rrb_count.
+fn rrbCountImpl(s: *Send) callconv(.c) Ref {
+    const api = g_api orelse return NIL;
+    if (!isPointer(s.receiver)) return NIL;
+    const obj = untagPointer(s.receiver) orelse return NIL;
+    const handle_ref = api.slot_at(obj, 0);
+    if (!isPointer(handle_ref)) return NIL;
+    const handle = untagPointer(handle_ref) orelse return NIL;
+    return mkSmallInt(@intCast(api.rrb_count(handle)));
+}
+
+fn rrbAtImpl(s: *Send, idx_ref: Ref) callconv(.c) Ref {
+    const api = g_api orelse return NIL;
+    if (!isPointer(s.receiver)) return NIL;
+    if (!isSmallInt(idx_ref)) return NIL;
+    const obj = untagPointer(s.receiver) orelse return NIL;
+    const handle_ref = api.slot_at(obj, 0);
+    if (!isPointer(handle_ref)) return NIL;
+    const handle = untagPointer(handle_ref) orelse return NIL;
+    const idx = untagSmallInt(idx_ref);
+    if (idx < 0) return NIL;
+    return api.rrb_at(handle, @intCast(idx));
+}
+
 /// `[result at: <SmallInt row>]` — returns the Ref at row, column 0.
 /// (Multi-column results: row*arity + col exposure is Phase 7 polish.)
 fn resultAtImpl(s: *Send, idx_ref: Ref) callconv(.c) Ref {
@@ -209,6 +253,11 @@ export fn birnam_module_init(
 
     const sel_execute = api.intern("execute:", 8);
     _ = api.assert_fact(g_db_vt, sel_execute, mkEid(api.make_closure(@ptrCast(&dbExecuteImpl), NIL)), module_eid);
+
+    // Install count + at: methods on the kernel-reserved RRB_VT so collect
+    // aggregate results behave as sendable objects.
+    _ = api.assert_fact(RRB_VT_EID, sel_count, mkEid(api.make_closure(@ptrCast(&rrbCountImpl), NIL)), module_eid);
+    _ = api.assert_fact(RRB_VT_EID, sel_at, mkEid(api.make_closure(@ptrCast(&rrbAtImpl), NIL)), module_eid);
 
     // db singleton instance.
     g_db_eid = api.alloc_eid();

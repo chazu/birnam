@@ -30,7 +30,12 @@ pub const NIL_VT: u64 = 7;
 /// kernel bootstrap. User-loaded modules get user-range EIDs.
 pub const M_BOOTSTRAP: u64 = 8;
 
-// 9..15 reserved for future kernel vtables / well-known entities
+/// RRB-Tree wrapper vtable. Kernel reserves the EID and pre-materializes
+/// the struct in bootstrap; dylibs install methods (count, at:) on it
+/// so collect-aggregate results behave like normal sendable objects.
+pub const RRB_VT: u64 = 9;
+
+// 10..15 reserved for future kernel vtables / well-known entities
 
 // -- Kernel selectors / attributes (16..63) -----------------------------------
 

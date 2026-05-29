@@ -13,8 +13,12 @@
 
 const std = @import("std");
 const ref_mod = @import("ref.zig");
+const rrb = @import("rrb.zig");
+const object = @import("object.zig");
+const kernel_eids = @import("kernel_eids.zig");
 
 pub const Ref = ref_mod.Ref;
+pub const RrbRef = rrb.Rrb(Ref);
 
 pub const AggregateKind = enum(u32) {
     count = 0,
@@ -22,6 +26,7 @@ pub const AggregateKind = enum(u32) {
     min = 2,
     max = 3,
     avg = 4,
+    collect = 5,
 };
 
 pub const AggregateSpec = struct {
@@ -38,13 +43,18 @@ pub const AggregateError = error{
 /// Compute an aggregate over a set of distinct values. Caller is responsible
 /// for distinct semantics (deduplicating before calling). Numeric aggregates
 /// require all values to be SmallInt Refs.
-pub fn compute(kind: AggregateKind, values: []const Ref) !Ref {
+///
+/// For `collect`, the allocator builds an RRB + libid wrapper object and
+/// returns a pointer-tagged Ref to it. For all other kinds, the allocator
+/// is unused.
+pub fn compute(allocator: std.mem.Allocator, kind: AggregateKind, values: []const Ref) !Ref {
     return switch (kind) {
         .count => ref_mod.mkSmallInt(@intCast(values.len)).?,
         .sum => try aggSum(values),
         .min => try aggMin(values),
         .max => try aggMax(values),
         .avg => try aggAvg(values),
+        .collect => try aggCollect(allocator, values),
     };
 }
 
@@ -91,4 +101,28 @@ fn aggAvg(values: []const Ref) !Ref {
     var s: i64 = 0;
     for (values) |v| s += ref_mod.untagSmallInt(v);
     return ref_mod.mkSmallInt(@divTrunc(s, @as(i64, @intCast(values.len)))).?;
+}
+
+/// Build an RRB-Tree from `values` (distinct, per Date), allocate a libid
+/// wrapper, return a pointer-tagged Ref to the wrapper. The wrapper layout:
+/// `[vt_ref][rrb_struct_ptr]` where vt_ref = mkEid(RRB_VT). Slot 0 holds the
+/// rrb pointer as a pointer-tagged Ref so dylib methods can read it via
+/// `slot_at(obj, 0)` and untag.
+///
+/// Ordering: insertion order from the caller's slice. Date discipline:
+/// no stability guarantee documented.
+fn aggCollect(allocator: std.mem.Allocator, values: []const Ref) !Ref {
+    var r = RrbRef.empty(allocator);
+    for (values) |v| {
+        r = try r.push(v);
+    }
+    // Heap-allocate the RRB struct itself so the pointer is stable across
+    // wrapper lifetime.
+    const r_ptr = try allocator.create(RrbRef);
+    r_ptr.* = r;
+
+    // Allocate libid wrapper with vt at -1, 1 slot for the rrb pointer Ref.
+    const obj_ptr = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.RRB_VT), 1);
+    object.setSlot(obj_ptr, 0, ref_mod.mkPointer(@ptrCast(r_ptr)));
+    return object.toRef(obj_ptr);
 }

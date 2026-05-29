@@ -143,8 +143,13 @@ pub const IdApi = extern struct {
     query_use_global_rules: *const fn (?*anyopaque) callconv(.c) void,
 
     // -- Phase 7.2: aggregation -----------------------------------------------
-    // kind = AggregateKind: 0 count, 1 sum, 2 min, 3 max, 4 avg.
+    // kind = AggregateKind: 0 count, 1 sum, 2 min, 3 max, 4 avg, 5 collect.
     query_add_find_aggregate: *const fn (?*anyopaque, u32, u32) callconv(.c) void,
+
+    // RRB-Tree accessors for collect-aggregate results. `handle` is a raw
+    // pointer (the value stashed in slot 0 of a libid-wrapped RRB object).
+    rrb_count: *const fn (?*anyopaque) callconv(.c) u64,
+    rrb_at: *const fn (?*anyopaque, u64) callconv(.c) Ref,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -219,6 +224,8 @@ pub fn populate() IdApi {
         .query_use_global_rules = &cQueryUseGlobalRules,
 
         .query_add_find_aggregate = &cQueryAddFindAggregate,
+        .rrb_count = &cRrbCount,
+        .rrb_at = &cRrbAt,
 
         .query_execute = &cQueryExecute,
         .result_count = &cResultCount,
@@ -516,9 +523,23 @@ fn cQueryAddFindAggregate(p: ?*anyopaque, kind: u32, var_idx: u32) callconv(.c) 
         2 => .min,
         3 => .max,
         4 => .avg,
+        5 => .collect,
         else => return,
     };
     q.addFindAggregate(k, var_idx) catch {};
+}
+
+const aggregate_mod = @import("aggregate.zig");
+
+fn cRrbCount(handle: ?*anyopaque) callconv(.c) u64 {
+    const r: *aggregate_mod.RrbRef = @ptrCast(@alignCast(handle orelse return 0));
+    return r.count();
+}
+
+fn cRrbAt(handle: ?*anyopaque, idx: u64) callconv(.c) Ref {
+    const r: *aggregate_mod.RrbRef = @ptrCast(@alignCast(handle orelse return ref_mod.NIL));
+    if (idx >= r.count()) return ref_mod.NIL;
+    return r.nth(idx);
 }
 
 fn cQueryExecute(p: ?*anyopaque) callconv(.c) ?*anyopaque {

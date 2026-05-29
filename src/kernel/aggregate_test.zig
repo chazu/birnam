@@ -210,6 +210,36 @@ test "sum over non-numeric raises NonNumericInAggregate" {
 
 // -- multi-aggregate --------------------------------------------------------
 
+test "collect returns a wrapped RRB Ref over distinct values" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var store = fact_store.FactStore.init(a);
+    _ = try store.assert(E1, A_AGE, smallInt(10), M);
+    _ = try store.assert(E2, A_AGE, smallInt(20), M);
+    _ = try store.assert(E3, A_AGE, smallInt(30), M);
+
+    var q = query.Query.init(a);
+    defer q.deinit();
+    const ve = try q.variable("e");
+    const va = try q.variable("a");
+    try q.addFindAggregate(.collect, va);
+    try q.addTriple(.{ .variable = ve }, .{ .constant = ref_mod.mkEid(A_AGE) }, .{ .variable = va });
+
+    var r = try query.execute(&q, &store);
+    defer r.deinit();
+    try testing.expectEqual(@as(usize, 1), r.count());
+    const collect_ref = r.at(0, 0);
+    try testing.expect(ref_mod.isPointer(collect_ref));
+    // -1 slot should hold mkEid(RRB_VT).
+    const obj_ptr = @import("object.zig").fromRef(collect_ref);
+    try testing.expectEqual(
+        ref_mod.mkEid(@import("kernel_eids.zig").RRB_VT),
+        @import("object.zig").vtableOf(obj_ptr),
+    );
+}
+
 test "multiple aggregates over the same group" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

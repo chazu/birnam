@@ -951,7 +951,7 @@ fn projectAggregates(q: *Query, bindings: []const Binding) !Result {
                     defer values.deinit(allocator);
                     var dit = distinct_set.iterator();
                     while (dit.next()) |de| try values.append(allocator, de.key_ptr.*);
-                    const result = try aggregate.compute(spec.kind, values.items);
+                    const result = try aggregate.compute(allocator, spec.kind, values.items);
                     try rows.append(allocator, result);
                 },
             }
