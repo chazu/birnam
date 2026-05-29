@@ -21,10 +21,11 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Phase 7.3: subqueries, saved queries, pull, reification, rule walk-back ✓
 - Phase 7.4: predicates + functions (builtin arith/min2/max2 + user native preds) ✓
 - Phase 8: promotion/demotion (hotness counter, threshold auto-promote, FFI pin, shape-change demote) ✓
+- Phase 7.5: metacircular bind (`:bind` override along delegate chain, recursion guard limit=4, full mcache flush on mutate) ✓
 
-**Test count: 180/180 across 46 build steps.**
+**Test count: 186/186 across 48 build steps.**
 
-**Next: Phase 7.5 — metacircular bind** (can now reorder, since Phase 7 done) OR **Phase 9 — alien .so absorption** (Phase 8 ffi_enter/ffi_exit primitives ready). Lean: 7.5 first (smaller, lets language Phase 10 build on a self-modifiable dispatch).
+**Next: Phase 9 — alien `.so` absorption.** ffi_enter/ffi_exit primitives ready from Phase 8; bind override ready from 7.5. Mach-O/ELF readers + dyncall integration.
 
 ---
 
