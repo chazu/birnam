@@ -540,20 +540,45 @@ Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatc
 
 ### Work items
 
-10.1 Reuse existing PEG module for grammar definition (already fact-shaped after Phase 5).
+10.0 **PEG module (prerequisite — ships first as a standalone Zig dylib).**
+A general-purpose PEG engine in Zig, loadable as a birnam module like
+`hello`, `repl`, and `query`. Surface:
+  - Grammar definition API: assert rules as facts (rule-name → ordered
+    list of alternatives; each alternative = sequence of atoms;
+    atoms = literal, rule-ref, `*`/`+`/`?` repetition, `&`/`!` lookahead,
+    char class).
+  - Parser runner: `(grammar_eid, input_string, entry_rule) → AST`.
+  - AST representation: per-parse EID + entity-per-node + parent/child
+    + node-kind + source-span facts (fact-shaped, queryable, walk-backable).
+  - Packrat memoization (per-parse cache keyed by (rule, position)).
+  - Error reporting via diagnostic facts (Phase 7.8 pattern).
+PEG itself is grammar-agnostic — Phase 10.1 plugs the birnam grammar in
+on top. This separation lets later modules (config parsing, doc
+extraction, embedded DSLs) reuse the same engine.
 
-10.2 Birnam grammar (Smalltalk-ish): unary, binary, keyword messages; cascades; blocks; literals; assignments. PEG rules asserted as facts.
+10.1 Birnam grammar (Smalltalk-ish): unary, binary, keyword messages;
+cascades; blocks; literals; assignments. Grammar asserted as PEG facts
+via Phase 10.0 surface.
 
-10.3 Parser run: source string → AST nodes asserted as facts under a per-parse EID.
+10.2 Parser run: source string → AST nodes asserted as facts under a
+per-parse EID. Uses Phase 10.0 runner.
 
-10.4 Evaluator: walks AST facts, asserts/queries at each node. Simple, slow, correct first.
+10.3 Evaluator: walks AST facts, asserts/queries at each node. Simple,
+slow, correct first.
 
-10.5 Method definition syntax: source → method body facts → installed as `assert_method`.
+10.4 Method definition syntax: source → method body facts → installed
+as `assert_method`.
 
-10.6 Tests: classic Smalltalk-y exercises (Fibonacci, list operations, Point prototype definition — Self/idst style, no class/instance split).
+10.5 Tests: classic Smalltalk-y exercises (Fibonacci, list operations,
+Point prototype definition — Self/idst style, no class/instance split).
 
 ### Reasoning
-Once the language module works, the system is self-hosting in the sense that future modules can be written in birnam rather than Zig. Tree-walking interpreter is intentionally simple; bytecode + VM come later in Phase 11.
+Putting PEG before the birnam grammar keeps the layering clean — the
+engine is a reusable substrate, not entangled with one language's AST
+shape. Once the language module works, the system is self-hosting in
+the sense that future modules can be written in birnam rather than Zig.
+Tree-walking interpreter is intentionally simple; bytecode + VM come
+later in Phase 11.
 
 ---
 
