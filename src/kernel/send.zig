@@ -20,6 +20,7 @@ const mcache = @import("mcache.zig");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const promotion = @import("promotion.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const Closure = closure_mod.Closure;
@@ -131,6 +132,20 @@ fn vtableEidOf(r: Ref) ?u64 {
     }
     if (ref_mod.isEid(r)) {
         const receiver_eid = ref_mod.untagEid(r);
+        // Phase 8 promotion shortcut: if the entity has been materialized,
+        // its vtable Ref lives at slot -1 of the struct. Skip the EAVT hit.
+        if (g_table) |table| {
+            if (table.get(receiver_eid)) |ptr_ref| {
+                if (ref_mod.isPointer(ptr_ref)) {
+                    const obj = object.fromRef(ptr_ref);
+                    const vt_ref = object.vtableOf(obj);
+                    if (ref_mod.isEid(vt_ref)) return ref_mod.untagEid(vt_ref);
+                }
+            }
+            // Cold: bump hotness, maybe auto-promote.
+            table.bumpHotness(receiver_eid);
+            promotion.maybeAutoPromote(receiver_eid);
+        }
         const store = g_store.?;
         const vt_ref = store.currentValue(receiver_eid, kernel_eids.ATTR_VTABLE) orelse return null;
         if (!ref_mod.isEid(vt_ref)) return null;

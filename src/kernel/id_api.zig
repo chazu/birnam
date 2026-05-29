@@ -183,6 +183,14 @@ pub const IdApi = extern struct {
     /// Register a native function by interned name. impl_ptr is a
     /// `*const fn ([*]const Ref, usize) callconv(.c) Ref`.
     register_fn: *const fn (u64, ?*const anyopaque) callconv(.c) u64,
+
+    // -- Phase 8: promotion / FFI pin --------------------------------------
+    promote_eid: *const fn (u64) callconv(.c) bool,
+    demote_eid: *const fn (u64) callconv(.c) void,
+    hotness_of: *const fn (u64) callconv(.c) u32,
+    is_materialized: *const fn (u64) callconv(.c) bool,
+    ffi_enter: *const fn () callconv(.c) void,
+    ffi_exit: *const fn () callconv(.c) void,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -267,6 +275,13 @@ pub fn populate() IdApi {
         .query_add_fn_call = &cQueryAddFnCall,
         .register_pred = &cRegisterPred,
         .register_fn = &cRegisterFn,
+
+        .promote_eid = &cPromote_8,
+        .demote_eid = &cDemote_8,
+        .hotness_of = &cHotnessOf,
+        .is_materialized = &cIsMaterialized,
+        .ffi_enter = &cFfiEnter,
+        .ffi_exit = &cFfiExit,
 
         .query_execute = &cQueryExecute,
         .result_count = &cResultCount,
@@ -707,6 +722,36 @@ fn cRegisterFn(name_eid: u64, impl_ptr: ?*const anyopaque) callconv(.c) u64 {
     const a = send_mod.kernelAllocator() orelse return 0;
     const f: predicate_mod.NativeFnFn = @ptrCast(@alignCast(ip));
     return predicate_mod.defineFnNative(a, s, t, name_eid, f) catch 0;
+}
+
+// -- Phase 8: promotion + FFI pin -------------------------------------------
+
+const promotion_mod = @import("promotion.zig");
+
+fn cPromote_8(eid: u64) callconv(.c) bool {
+    promotion_mod.promote(eid) catch return false;
+    return true;
+}
+
+fn cDemote_8(eid: u64) callconv(.c) void {
+    promotion_mod.demote(eid);
+}
+
+fn cHotnessOf(eid: u64) callconv(.c) u32 {
+    const t = send_mod.tablePtr() orelse return 0;
+    return t.hotnessOf(eid);
+}
+
+fn cIsMaterialized(eid: u64) callconv(.c) bool {
+    return promotion_mod.isMaterialized(eid);
+}
+
+fn cFfiEnter() callconv(.c) void {
+    promotion_mod.ffiEnter();
+}
+
+fn cFfiExit() callconv(.c) void {
+    promotion_mod.ffiExit();
 }
 
 fn cFactsOfModule(m: u64, cb: *const FactCallback, ctx: ?*anyopaque) callconv(.c) usize {

@@ -26,6 +26,7 @@ const mcache = @import("mcache.zig");
 const interner_mod = @import("interner.zig");
 const rule_mod = @import("rule.zig");
 const predicate_mod = @import("predicate.zig");
+const promotion_mod = @import("promotion.zig");
 const id_api_mod = @import("id_api.zig");
 
 const Ref = ref_mod.Ref;
@@ -144,12 +145,24 @@ pub fn boot(
     try interner.seed(store, kernel_eids.ATTR_PRED_IMPL, "predicate-impl");
     try interner.seed(store, kernel_eids.ATTR_FN_NAME, "function-name");
     try interner.seed(store, kernel_eids.ATTR_FN_IMPL, "function-impl");
+    try interner.seed(store, kernel_eids.ATTR_PROMOTE_THRESHOLD, "promote-threshold");
 
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);
 
     // -- Stage 10: register Phase 7.4 built-in functions ------------------
     try predicate_mod.registerBuiltins(allocator, store, table, interner);
+
+    // -- Stage 11: Phase 8 promotion init --------------------------------
+    // Seed the default threshold BEFORE installing the promotion hook so
+    // the hook doesn't fire on its own seed write.
+    _ = try store.assert(
+        kernel_eids.M_BOOTSTRAP,
+        kernel_eids.ATTR_PROMOTE_THRESHOLD,
+        ref_mod.mkSmallInt(100).?,
+        kernel_eids.M_BOOTSTRAP,
+    );
+    try promotion_mod.init(allocator, store, table);
 
     return .{
         .vtable_vt_ref = object.toRef(vt_vt_ptr),

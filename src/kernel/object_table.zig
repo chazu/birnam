@@ -32,13 +32,39 @@ pub const ObjectTable = struct {
     /// Monotonic EID counter. Starts at USER_EID_START; bootstrap is
     /// responsible for `put`-ing kernel EIDs (0..63) before any `alloc`.
     next_eid: u64,
+    /// Phase 8: per-EID hotness counter. Bumped on cold-EID dispatch.
+    /// Transient — not snapshot-persisted. Saturates at u32 max.
+    hotness: std.AutoHashMap(u64, u32),
 
     pub fn init(allocator: std.mem.Allocator) ObjectTable {
         return .{
             .allocator = allocator,
             .map = Map.empty(allocator, .{}),
             .next_eid = kernel_eids.USER_EID_START,
+            .hotness = std.AutoHashMap(u64, u32).init(allocator),
         };
+    }
+
+    pub fn deinit(self: *ObjectTable) void {
+        self.hotness.deinit();
+    }
+
+    /// Bump hotness counter for `eid`. Saturates at u32 max.
+    pub fn bumpHotness(self: *ObjectTable, eid: u64) void {
+        const gop = self.hotness.getOrPut(eid) catch return;
+        if (!gop.found_existing) {
+            gop.value_ptr.* = 1;
+        } else if (gop.value_ptr.* < std.math.maxInt(u32)) {
+            gop.value_ptr.* += 1;
+        }
+    }
+
+    pub fn hotnessOf(self: *const ObjectTable, eid: u64) u32 {
+        return self.hotness.get(eid) orelse 0;
+    }
+
+    pub fn resetHotness(self: *ObjectTable, eid: u64) void {
+        _ = self.hotness.remove(eid);
     }
 
     /// Mint a new EID. Does not touch the table — minted EIDs may be cold

@@ -89,4 +89,10 @@ pub const ATTR_PRED_IMPL: u64 = 33;
 pub const ATTR_FN_NAME: u64 = 34;
 pub const ATTR_FN_IMPL: u64 = 35;
 
-// 36..63 reserved for future kernel selectors / attributes
+/// Phase 8: promotion threshold. Asserted on M_BOOTSTRAP at boot:
+///   [M_BOOTSTRAP :promote-threshold <SmallInt N>]
+/// Kernel caches the value; re-reads on mutate. Below threshold = cold,
+/// at-or-above = auto-promote on next cold dispatch.
+pub const ATTR_PROMOTE_THRESHOLD: u64 = 36;
+
+// 37..63 reserved for future kernel selectors / attributes

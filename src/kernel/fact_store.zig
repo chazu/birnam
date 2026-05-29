@@ -59,6 +59,11 @@ pub const FactStore = struct {
     /// coherent. Decoupled (FactStore doesn't import the kernel).
     on_attr_mutate: ?*const fn (a: u64) void = null,
 
+    /// Phase 8: optional entity-level hook fired alongside `on_attr_mutate`
+    /// with both `(e, a)`. Promotion module installs this to demote any
+    /// materialized entity whose facts change.
+    on_entity_mutate: ?*const fn (e: u64, a: u64) callconv(.c) void = null,
+
     /// Phase 7.3 reification: lazy fact-EID side index. Populated on first
     /// `:as` resolution. Key = hashTriple(e, a, v).
     fact_eids: std.AutoHashMap(u64, u64),
@@ -79,6 +84,7 @@ pub const FactStore = struct {
             .vaet = AVETish.empty(allocator, .{}),
             .meat = MEATish.empty(allocator, .{}),
             .on_attr_mutate = null,
+            .on_entity_mutate = null,
             .fact_eids = std.AutoHashMap(u64, u64).init(allocator),
             .fact_modules = std.AutoHashMap(u64, u64).init(allocator),
         };
@@ -180,6 +186,7 @@ pub const FactStore = struct {
         self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert });
 
         if (self.on_attr_mutate) |cb| cb(a);
+        if (self.on_entity_mutate) |cb| cb(e, a);
 
         return tx;
     }
@@ -201,6 +208,7 @@ pub const FactStore = struct {
         self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract });
 
         if (self.on_attr_mutate) |cb| cb(a);
+        if (self.on_entity_mutate) |cb| cb(e, a);
 
         return tx;
     }
