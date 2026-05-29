@@ -194,6 +194,15 @@ pub fn build(b: *std.Build) void {
     const run_sq_tests = b.addRunArtifact(sq_tests);
     test_step.dependOn(&run_sq_tests.step);
 
+    const pull_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/pull_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const pull_tests = b.addTest(.{ .root_module = pull_test_mod });
+    const run_pull_tests = b.addRunArtifact(pull_tests);
+    test_step.dependOn(&run_pull_tests.step);
+
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
     const bench_step = b.step("bench", "Run microbenchmarks (ReleaseFast)");
