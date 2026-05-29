@@ -132,6 +132,16 @@ fn renameClause(allocator: std.mem.Allocator, c: Clause, offset: u32) anyerror!C
             for (branches, 0..) |b, i| new_branches[i] = try renameClauses(allocator, b, offset);
             break :blk .{ .disjunction = new_branches };
         },
+        .pred_call => |pc| blk: {
+            const new_args = try allocator.alloc(query_mod.Term, pc.args.len);
+            for (pc.args, 0..) |t, i| new_args[i] = renameTerm(t, offset);
+            break :blk .{ .pred_call = .{ .name_eid = pc.name_eid, .args = new_args } };
+        },
+        .fn_call => |fc| blk: {
+            const new_args = try allocator.alloc(query_mod.Term, fc.args.len);
+            for (fc.args, 0..) |t, i| new_args[i] = renameTerm(t, offset);
+            break :blk .{ .fn_call = .{ .name_eid = fc.name_eid, .args = new_args, .target = fc.target + offset } };
+        },
         .rule_invocation, .subquery => c, // pass through; full handling deferred
     };
 }
@@ -202,7 +212,7 @@ fn collectEdges(
 ) anyerror!void {
     for (clauses) |c| {
         switch (c) {
-            .triple, .predicate, .subquery => {},
+            .triple, .predicate, .subquery, .pred_call, .fn_call => {},
             .negation => |inner| try collectEdges(allocator, inner, from, true, edges, stack),
             .disjunction => |branches| {
                 for (branches) |b| try collectEdges(allocator, b, from, in_negation, edges, stack);

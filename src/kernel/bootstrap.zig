@@ -25,6 +25,7 @@ const send_mod = @import("send.zig");
 const mcache = @import("mcache.zig");
 const interner_mod = @import("interner.zig");
 const rule_mod = @import("rule.zig");
+const predicate_mod = @import("predicate.zig");
 const id_api_mod = @import("id_api.zig");
 
 const Ref = ref_mod.Ref;
@@ -139,9 +140,16 @@ pub fn boot(
     try interner.seed(store, kernel_eids.ATTR_RULE_PARAMS, "rule-params");
     try interner.seed(store, kernel_eids.ATTR_RULE_MAX_VAR, "rule-max-var");
     try interner.seed(store, kernel_eids.ATTR_RULE_BODY, "rule-body");
+    try interner.seed(store, kernel_eids.ATTR_PRED_NAME, "predicate-name");
+    try interner.seed(store, kernel_eids.ATTR_PRED_IMPL, "predicate-impl");
+    try interner.seed(store, kernel_eids.ATTR_FN_NAME, "function-name");
+    try interner.seed(store, kernel_eids.ATTR_FN_IMPL, "function-impl");
 
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);
+
+    // -- Stage 10: register Phase 7.4 built-in functions ------------------
+    try predicate_mod.registerBuiltins(allocator, store, table, interner);
 
     return .{
         .vtable_vt_ref = object.toRef(vt_vt_ptr),

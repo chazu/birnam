@@ -14,6 +14,7 @@ const rrb = @import("rrb.zig");
 const hamt = @import("hamt.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const aggregate = @import("aggregate.zig");
+const predicate_mod = @import("predicate.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const AggregateKind = aggregate.AggregateKind;
@@ -66,6 +67,23 @@ pub const Subquery = struct {
     bindings: []const u32,
 };
 
+/// Phase 7.4: user-defined predicate call `[(name ?a ?b ...)]`.
+/// All `args` must resolve to bound values at evaluation time; clause
+/// passes iff the named predicate impl returns true.
+pub const PredCall = struct {
+    name_eid: u64,
+    args: []const Term,
+};
+
+/// Phase 7.4: function call with target binding `[(name ?a ?b ...) ?target]`.
+/// All `args` must resolve to bound values; result binds `target` (must be
+/// unbound or equal-to-result for the binding to survive).
+pub const FnCall = struct {
+    name_eid: u64,
+    args: []const Term,
+    target: u32,
+};
+
 pub const Clause = union(enum) {
     triple: Triple,
     negation: []const Clause,
@@ -73,6 +91,8 @@ pub const Clause = union(enum) {
     predicate: PredicateClause,
     rule_invocation: RuleInvocation,
     subquery: Subquery,
+    pred_call: PredCall,
+    fn_call: FnCall,
 };
 
 // -- Bindings ----------------------------------------------------------------
@@ -250,6 +270,14 @@ pub const Query = struct {
 
     pub fn addSubquery(self: *Query, inner: *Query, bindings: []const u32) !void {
         try self.currentDest().append(self.allocator, .{ .subquery = .{ .inner = inner, .bindings = bindings } });
+    }
+
+    pub fn addPredCall(self: *Query, name_eid: u64, args: []const Term) !void {
+        try self.currentDest().append(self.allocator, .{ .pred_call = .{ .name_eid = name_eid, .args = args } });
+    }
+
+    pub fn addFnCall(self: *Query, name_eid: u64, args: []const Term, target: u32) !void {
+        try self.currentDest().append(self.allocator, .{ .fn_call = .{ .name_eid = name_eid, .args = args, .target = target } });
     }
 
     pub fn setSince(self: *Query, tx: u64) void {
@@ -509,6 +537,59 @@ fn evalPredicate(p: PredicateClause, b: Binding) bool {
     };
 }
 
+// -- Phase 7.4: pred-call / fn-call evaluators -------------------------------
+
+/// Resolve all `args` to bound Refs. Returns null if any arg is unbound.
+/// Caller frees `out` via the supplied allocator.
+fn resolveArgs(
+    allocator: std.mem.Allocator,
+    args: []const Term,
+    b: Binding,
+) !?[]Ref {
+    const buf = try allocator.alloc(Ref, args.len);
+    for (args, 0..) |t, i| {
+        const v = resolveTerm(t, b) orelse {
+            allocator.free(buf);
+            return null;
+        };
+        buf[i] = v;
+    }
+    return buf;
+}
+
+fn evalPredCall(
+    allocator: std.mem.Allocator,
+    store: *fact_store.FactStore,
+    pc: PredCall,
+    b: Binding,
+    out: *std.ArrayList(Binding),
+) !void {
+    const arg_refs = (try resolveArgs(allocator, pc.args, b)) orelse return;
+    defer allocator.free(arg_refs);
+    const result = predicate_mod.invokePred(store, pc.name_eid, arg_refs) orelse return;
+    if (result) try out.append(allocator, try b.dup(allocator));
+}
+
+fn evalFnCall(
+    allocator: std.mem.Allocator,
+    store: *fact_store.FactStore,
+    fc: FnCall,
+    b: Binding,
+    out: *std.ArrayList(Binding),
+) !void {
+    const arg_refs = (try resolveArgs(allocator, fc.args, b)) orelse return;
+    defer allocator.free(arg_refs);
+    const result = predicate_mod.invokeFn(store, fc.name_eid, arg_refs) orelse return;
+    if (b.get(fc.target)) |existing| {
+        if (existing != result) return;
+        try out.append(allocator, try b.dup(allocator));
+    } else {
+        var nb = try b.dup(allocator);
+        nb.set(fc.target, result);
+        try out.append(allocator, nb);
+    }
+}
+
 // -- Clause dispatch ---------------------------------------------------------
 
 pub const SubqueryMemo = std.AutoHashMap(*const Query, *Result);
@@ -687,6 +768,8 @@ fn evalClause(
             if (derived) |d| try evalRuleInvocation(allocator, ri, b, d, out);
         },
         .subquery => |sq| try evalSubquery(allocator, store, sq, b, memo, out),
+        .pred_call => |pc| try evalPredCall(allocator, store, pc, b, out),
+        .fn_call => |fc| try evalFnCall(allocator, store, fc, b, out),
     }
 }
 
@@ -745,7 +828,7 @@ fn collectRuleNamesInClauses(
 ) !void {
     for (clauses) |c| {
         switch (c) {
-            .triple, .predicate, .subquery => {},
+            .triple, .predicate, .subquery, .pred_call, .fn_call => {},
             .negation => |inner| try collectRuleNamesInClauses(allocator, inner, names, registry),
             .disjunction => |branches| {
                 for (branches) |b| try collectRuleNamesInClauses(allocator, b, names, registry);
@@ -880,7 +963,7 @@ fn freeDerivedMap(allocator: std.mem.Allocator, dm: *DerivedMap) void {
 fn collectInvokedNames(clauses: []const Clause, out: *std.AutoHashMap(u64, void)) !void {
     for (clauses) |c| {
         switch (c) {
-            .triple, .predicate, .subquery => {},
+            .triple, .predicate, .subquery, .pred_call, .fn_call => {},
             .negation => |inner| try collectInvokedNames(inner, out),
             .disjunction => |branches| {
                 for (branches) |b| try collectInvokedNames(b, out);

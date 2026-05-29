@@ -79,4 +79,14 @@ pub const ATTR_RULE_PARAMS: u64 = 29;
 pub const ATTR_RULE_MAX_VAR: u64 = 30;
 pub const ATTR_RULE_BODY: u64 = 31;
 
-// 32..63 reserved for future kernel selectors / attributes
+/// Phase 7.4: predicates + functions as fact-shaped entities.
+///   [pred_eid :predicate-name <interned-name-EID-Ref>]
+///   [pred_eid :predicate-impl <pointer-Ref to native NativePredBox, OR EID-Ref to closure>]
+/// Same shape for functions with ATTR_FN_*. Native pointer Refs are
+/// distinguished from closure Refs by tag at resolve time.
+pub const ATTR_PRED_NAME: u64 = 32;
+pub const ATTR_PRED_IMPL: u64 = 33;
+pub const ATTR_FN_NAME: u64 = 34;
+pub const ATTR_FN_IMPL: u64 = 35;
+
+// 36..63 reserved for future kernel selectors / attributes

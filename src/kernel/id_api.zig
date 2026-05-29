@@ -158,6 +158,31 @@ pub const IdApi = extern struct {
     /// Look up + execute a saved query by name. Returns a Result handle, or
     /// null if no saved query exists with that name.
     run_query: *const fn ([*]const u8, usize) callconv(.c) ?*anyopaque,
+
+    // -- Phase 7.4: predicates + functions ---------------------------------
+    /// Add a `[(name a b ...)]` predicate-call clause.
+    query_add_pred_call: *const fn (
+        ?*anyopaque,
+        u64, // name_eid
+        usize,
+        [*]const u32,
+        [*]const u64,
+    ) callconv(.c) void,
+    /// Add a `[(name a b ...) ?target]` function-call clause.
+    query_add_fn_call: *const fn (
+        ?*anyopaque,
+        u64, // name_eid
+        usize,
+        [*]const u32,
+        [*]const u64,
+        u32, // target var idx
+    ) callconv(.c) void,
+    /// Register a native predicate by interned name. impl_ptr is a
+    /// `*const fn ([*]const Ref, usize) callconv(.c) bool`.
+    register_pred: *const fn (u64, ?*const anyopaque) callconv(.c) u64,
+    /// Register a native function by interned name. impl_ptr is a
+    /// `*const fn ([*]const Ref, usize) callconv(.c) Ref`.
+    register_fn: *const fn (u64, ?*const anyopaque) callconv(.c) u64,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -237,6 +262,11 @@ pub fn populate() IdApi {
 
         .save_query = &cSaveQuery,
         .run_query = &cRunQuery,
+
+        .query_add_pred_call = &cQueryAddPredCall,
+        .query_add_fn_call = &cQueryAddFnCall,
+        .register_pred = &cRegisterPred,
+        .register_fn = &cRegisterFn,
 
         .query_execute = &cQueryExecute,
         .result_count = &cResultCount,
@@ -614,6 +644,69 @@ fn cFreeResult(p: ?*anyopaque) callconv(.c) void {
     const a = send_mod.kernelAllocator() orelse return;
     r.deinit();
     a.destroy(r);
+}
+
+// -- Phase 7.4: predicate / function clauses + registration -----------------
+
+const predicate_mod = @import("predicate.zig");
+
+fn cQueryAddPredCall(
+    p: ?*anyopaque,
+    name_eid: u64,
+    n_args: usize,
+    arg_kinds: [*]const u32,
+    arg_vals: [*]const u64,
+) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    const a = q.allocator;
+    const terms = a.alloc(query.Term, n_args) catch return;
+    for (0..n_args) |i| {
+        terms[i] = switch (arg_kinds[i]) {
+            0 => .{ .constant = arg_vals[i] },
+            1 => .{ .variable = @intCast(arg_vals[i]) },
+            else => .wildcard,
+        };
+    }
+    q.addPredCall(name_eid, terms) catch {};
+}
+
+fn cQueryAddFnCall(
+    p: ?*anyopaque,
+    name_eid: u64,
+    n_args: usize,
+    arg_kinds: [*]const u32,
+    arg_vals: [*]const u64,
+    target: u32,
+) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    const a = q.allocator;
+    const terms = a.alloc(query.Term, n_args) catch return;
+    for (0..n_args) |i| {
+        terms[i] = switch (arg_kinds[i]) {
+            0 => .{ .constant = arg_vals[i] },
+            1 => .{ .variable = @intCast(arg_vals[i]) },
+            else => .wildcard,
+        };
+    }
+    q.addFnCall(name_eid, terms, target) catch {};
+}
+
+fn cRegisterPred(name_eid: u64, impl_ptr: ?*const anyopaque) callconv(.c) u64 {
+    const ip = impl_ptr orelse return 0;
+    const s = send_mod.storePtr() orelse return 0;
+    const t = send_mod.tablePtr() orelse return 0;
+    const a = send_mod.kernelAllocator() orelse return 0;
+    const f: predicate_mod.NativePredFn = @ptrCast(@alignCast(ip));
+    return predicate_mod.definePredNative(a, s, t, name_eid, f) catch 0;
+}
+
+fn cRegisterFn(name_eid: u64, impl_ptr: ?*const anyopaque) callconv(.c) u64 {
+    const ip = impl_ptr orelse return 0;
+    const s = send_mod.storePtr() orelse return 0;
+    const t = send_mod.tablePtr() orelse return 0;
+    const a = send_mod.kernelAllocator() orelse return 0;
+    const f: predicate_mod.NativeFnFn = @ptrCast(@alignCast(ip));
+    return predicate_mod.defineFnNative(a, s, t, name_eid, f) catch 0;
 }
 
 fn cFactsOfModule(m: u64, cb: *const FactCallback, ctx: ?*anyopaque) callconv(.c) usize {

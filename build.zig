@@ -212,6 +212,15 @@ pub fn build(b: *std.Build) void {
     const run_reify_tests = b.addRunArtifact(reify_tests);
     test_step.dependOn(&run_reify_tests.step);
 
+    const pred_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/predicate_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const pred_tests = b.addTest(.{ .root_module = pred_test_mod });
+    const run_pred_tests = b.addRunArtifact(pred_tests);
+    test_step.dependOn(&run_pred_tests.step);
+
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
     const bench_step = b.step("bench", "Run microbenchmarks (ReleaseFast)");
