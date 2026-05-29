@@ -127,6 +127,31 @@ Bootstrap is the single trickiest piece of code in the system. Doing it right me
 
 ---
 
+## Phase 4.5 — Strings, Interning, Named Selectors
+
+**Goal:** Add the string Ref type and selector-name intern table so user code can declare new selectors. Prerequisite for Phase 5 (modules want to introduce new selector names at load time).
+
+### Work items
+
+4.5.1 String storage. Option A: strings as entities with a `:bytes` byte-array attribute. Option B: dedicated tagged-pointer Ref encoding pointing at heap-allocated `[u8]`. Decide before coding — likely B (smaller, no per-string fact bloat).
+
+4.5.2 Bytes / string Ref encoding. Pick a tag code from the reserved 100..111 range, or extend an existing one with a sub-tag scheme.
+
+4.5.3 String intern table: `Hamt([]const u8, u64)` mapping byte content → selector EID. Reverse map (EID → bytes) so selectors can be printed.
+
+4.5.4 Assert `:name` facts for kernel selectors (the hardcoded 16..21 block) so reflection queries can name them.
+
+4.5.5 `intern(str) → u64` API: lookup-or-mint. New EIDs allocate from user range. Persistent: same string always returns the same EID across a session.
+
+4.5.6 Extend `IdApi` with `intern` and `selector_name` accessors.
+
+4.5.7 Tests: round-trip intern, kernel selectors carry correct `:name`, idempotence across calls, AVET-backed reverse lookup `[?sel :name "lookup:"]`.
+
+### Reasoning
+Phase 4 deliberately ships with kernel-only selectors (hardcoded EID constants) so bootstrap stays minimal. Phase 4.5 is the smallest additive layer that makes the kernel usable from new modules — exactly what Phase 5 needs. Separating it keeps Phase 4's bootstrap debugging surface as small as possible.
+
+---
+
 ## Phase 5 — Module System Rewrite
 
 **Goal:** Modules are fact subsets. Hot reload = retract+assert.
@@ -189,6 +214,27 @@ REPL-as-object is a litmus test for the substrate. If REPL works as a real fact-
 
 ### Reasoning
 Reflection-as-query is one of the major wins of the relational substrate. Get a working subset (point queries + simple joins) before designing the surface syntax in earnest. Real Datalog (recursion, negation, aggregation) can wait.
+
+---
+
+## Phase 7.5 — Metacircular Bind
+
+**Goal:** Allow `bind` to be redefined from birnam code, closing the metacircular hole left open by Phase 4.
+
+### Work items
+
+7.5.1 Cold-path bind checks EAVT for `[vt_eid :bind ?method]` before falling through to the Zig primitive. If a method is installed, use it.
+
+7.5.2 Bind-of-bind: the override method itself eventually calls `lookup:`/`bind`. The recursion guard (already scaffolded in Phase 4) kicks in here — when guard > 0, bind unconditionally takes the Zig-primitive path.
+
+7.5.3 Default `:bind` method on `vtable_vt`: a birnam stub that delegates to the primitive. Lets users wrap it (call super + extra logic) rather than replace it whole.
+
+7.5.4 Mcache invalidation extended to flush on `(?, :bind, ?)` assert/retract — touching bind invalidates everything.
+
+7.5.5 Tests: install a no-op `:bind` override; install a logging override; install a broken override that triggers the recursion guard; restore primitive via retract.
+
+### Reasoning
+The metacircular property is the soul of COLA/idst. Phase 4's primitive-only bind is a deliberate simplification. By Phase 7.5, we have queries (Phase 7) for introspection and Phase 5/6 modules for staging the override. Metacircular bind becomes the first real exercise of "rewrite the kernel from birnam." Acceptable risk of breaking dispatch is bounded by the recursion guard and easy retract-to-restore.
 
 ---
 

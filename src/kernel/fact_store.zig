@@ -54,6 +54,11 @@ pub const FactStore = struct {
     vaet: AVETish, // same shape as AVET, keys are (v, a, e)
     meat: MEATish,
 
+    /// Optional hook invoked after every assert/retract with the attribute
+    /// EID. Kernel sets this to `mcache.flushSel` to keep dispatch-cache
+    /// coherent. Decoupled (FactStore doesn't import the kernel).
+    on_attr_mutate: ?*const fn (a: u64) void = null,
+
     pub fn init(allocator: std.mem.Allocator) FactStore {
         return .{
             .allocator = allocator,
@@ -63,6 +68,7 @@ pub const FactStore = struct {
             .avet = AVETish.empty(allocator, .{}),
             .vaet = AVETish.empty(allocator, .{}),
             .meat = MEATish.empty(allocator, .{}),
+            .on_attr_mutate = null,
         };
     }
 
@@ -95,6 +101,8 @@ pub const FactStore = struct {
         self.avet = try updatePresenceLeaf(self.allocator, self.avet, a, v, e, true, .{ .tx = tx, .op = .assert });
         self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert });
 
+        if (self.on_attr_mutate) |cb| cb(a);
+
         return tx;
     }
 
@@ -113,6 +121,8 @@ pub const FactStore = struct {
         self.meat = try updateMeat(self.allocator, self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
         self.avet = try updatePresenceLeaf(self.allocator, self.avet, a, v, e, false, .{ .tx = tx, .op = .retract });
         self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract });
+
+        if (self.on_attr_mutate) |cb| cb(a);
 
         return tx;
     }

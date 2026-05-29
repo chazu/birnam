@@ -24,14 +24,25 @@ pub const SELECTOR_VT: u64 = 3;
 pub const CLOSURE_VT: u64 = 4;
 pub const VECTOR_VT: u64 = 5;
 pub const ASSOC_VT: u64 = 6;
-// 7..15 reserved for future kernel vtables
+pub const NIL_VT: u64 = 7;
+
+/// Bootstrap module — owns the `m` column of every fact asserted during
+/// kernel bootstrap. User-loaded modules get user-range EIDs.
+pub const M_BOOTSTRAP: u64 = 8;
+
+// 9..15 reserved for future kernel vtables / well-known entities
 
 // -- Kernel selectors / attributes (16..63) -----------------------------------
 
 pub const SEL_LOOKUP: u64 = 16;
 pub const SEL_METHOD_AT_PUT_WITH: u64 = 17;
 pub const SEL_DELEGATED: u64 = 18;
-pub const SEL_VTABLE: u64 = 19;
+
+/// `:vtable` attribute. Value is the entity's vtable EID. Used by bind's
+/// cold-path dispatch on EID-tagged receivers. Distinct from `SEL_VTABLE`
+/// (the message selector "vtable" — see below) so method installs on the
+/// `:vtable` selector don't collide with `:vtable` facts.
+pub const ATTR_VTABLE: u64 = 19;
 pub const SEL_INIT: u64 = 20;
 pub const SEL_ALLOCATE: u64 = 21;
 
@@ -42,4 +53,9 @@ pub const ATTR_NAME: u64 = 23;
 /// `:module` — appears in the `m` column of every fact (see VISION.md §Fact).
 pub const ATTR_MODULE: u64 = 24;
 
-// 25..63 reserved for future kernel selectors / attributes
+/// `vtable` message selector — returns the receiver's vtable when sent.
+/// EID kept distinct from ATTR_VTABLE so methods on this selector don't
+/// collide with the attribute fact.
+pub const SEL_VTABLE: u64 = 25;
+
+// 26..63 reserved for future kernel selectors / attributes
