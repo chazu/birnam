@@ -4,6 +4,28 @@ Detailed work sequence from current zig/birnam (linear-scan vtables, no fact sto
 
 This roadmap follows VISION.md. Open questions in VISION.md must be resolved before starting Phase 1.
 
+## Status (as of 2026-05-29)
+
+**Completed:**
+- Phase 0: demolition + scaffolding ✓
+- Phase 1: HAMT + RRB persistent collections ✓
+- Phase 2: tagged pointers + object table + kernel EIDs ✓
+- Phase 3: fact store with 5 indexes + tx engine ✓
+- Phase 4: id kernel bootstrap atop fact store ✓
+- Phase 4.5: strings, interning, named selectors ✓
+- Phase 5: module system rewrite (modules as fact subsets) ✓
+- Phase 6: REPL module (REPL as fact-shaped object) ✓
+- Phase 7: Datalog relational core (negation, disjunction, history, set semantics) ✓
+- Phase 7.1: rules + recursion + stratification ✓
+- Phase 7.2: aggregation (Date-aligned, distinct-by-default) ✓
+- Phase 7.3: subqueries, saved queries, pull, reification, rule walk-back ✓
+
+**Test count: 167/167 across 42 build steps.**
+
+**Next: Phase 7.4 — predicates + functions** (final Datalog phase; tag-aware comparison Q4 reopens here).
+
+---
+
 ---
 
 ## Phase 0 — Demolition + Scaffolding
