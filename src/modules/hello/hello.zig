@@ -77,14 +77,55 @@ fn mkEid(eid: u64) Ref {
     return (eid << 3) | 0b010;
 }
 
+fn mkSmallInt(n: i64) Ref {
+    return @as(u64, @bitCast(n << 3)) | 0b001;
+}
+
+fn untagSmallInt(r: Ref) i64 {
+    return @as(i64, @bitCast(r)) >> 3;
+}
+
+fn isEid(r: Ref) bool {
+    return (r & 0b111) == 0b010;
+}
+
+fn isSmallInt(r: Ref) bool {
+    return (r & 0b111) == 0b001;
+}
+
+fn untagEid(r: Ref) u64 {
+    return r >> 3;
+}
+
 // -- The greet method --------------------------------------------------------
 
 var g_api: ?*const IdApi = null;
+var g_module_eid: u64 = 0;
 var g_greeting_str: Ref = NIL;
+var g_attr_count_value: u64 = 0;
 
 fn greetImpl(s: *Send) callconv(.c) Ref {
     _ = s;
     return g_greeting_str;
+}
+
+fn incImpl(s: *Send) callconv(.c) Ref {
+    const api = g_api orelse return NIL;
+    if (!isEid(s.receiver)) return NIL;
+    const eid = untagEid(s.receiver);
+    const current = api.query_eavt(eid, g_attr_count_value);
+    const n: i64 = if (isSmallInt(current)) untagSmallInt(current) else 0;
+    const new_val = mkSmallInt(n + 1);
+    _ = api.assert_fact(eid, g_attr_count_value, new_val, g_module_eid);
+    return new_val;
+}
+
+fn countImpl(s: *Send) callconv(.c) Ref {
+    const api = g_api orelse return NIL;
+    if (!isEid(s.receiver)) return NIL;
+    const eid = untagEid(s.receiver);
+    const v = api.query_eavt(eid, g_attr_count_value);
+    return if (isSmallInt(v)) v else mkSmallInt(0);
 }
 
 // -- Module entry point ------------------------------------------------------
@@ -95,24 +136,45 @@ export fn birnam_module_init(
     module_eid: u64,
 ) void {
     g_api = api;
+    g_module_eid = module_eid;
     ctx.log("[hello] initializing");
 
     // Pre-build the greeting string and stash its Ref.
     const greeting = "hello, birnam!";
     g_greeting_str = api.make_string(greeting.ptr, greeting.len);
 
-    // Create the Hello vtable. We mint an EID for it, then assert its
-    // :vtable and :delegate facts so bind's cold path can dispatch.
+    // Create the Hello vtable.
     const hello_vt = api.alloc_eid();
     _ = api.assert_fact(hello_vt, api.attr_vtable, mkEid(api.vtable_vt_eid), module_eid);
     _ = api.assert_fact(hello_vt, api.attr_delegate, mkEid(api.object_vt_eid), module_eid);
 
-    // Intern the `greet` selector and install the method.
+    // greet method.
     const sel_greet = api.intern("greet", 5);
-    const closure_eid = api.make_closure(@ptrCast(&greetImpl), NIL);
-    _ = api.assert_fact(hello_vt, sel_greet, mkEid(closure_eid), module_eid);
+    const c_greet = api.make_closure(@ptrCast(&greetImpl), NIL);
+    _ = api.assert_fact(hello_vt, sel_greet, mkEid(c_greet), module_eid);
 
-    // Export ourselves as a fact: `[module :hello_vt hello_vt_ref]`.
+    // Export Hello_vt.
     const sel_hello_vt = api.intern("hello_vt", 8);
     _ = api.assert_fact(module_eid, sel_hello_vt, mkEid(hello_vt), module_eid);
+
+    // Counter vtable + methods + instance.
+    g_attr_count_value = api.intern("count_value", 11);
+    const counter_vt = api.alloc_eid();
+    _ = api.assert_fact(counter_vt, api.attr_vtable, mkEid(api.vtable_vt_eid), module_eid);
+    _ = api.assert_fact(counter_vt, api.attr_delegate, mkEid(api.object_vt_eid), module_eid);
+
+    const sel_inc = api.intern("inc", 3);
+    const sel_count = api.intern("count", 5);
+    const c_inc = api.make_closure(@ptrCast(&incImpl), NIL);
+    const c_count = api.make_closure(@ptrCast(&countImpl), NIL);
+    _ = api.assert_fact(counter_vt, sel_inc, mkEid(c_inc), module_eid);
+    _ = api.assert_fact(counter_vt, sel_count, mkEid(c_count), module_eid);
+
+    // Singleton counter instance, count_value = 0.
+    const counter_eid = api.alloc_eid();
+    _ = api.assert_fact(counter_eid, api.attr_vtable, mkEid(counter_vt), module_eid);
+    _ = api.assert_fact(counter_eid, g_attr_count_value, mkSmallInt(0), module_eid);
+
+    const sel_counter = api.intern("counter", 7);
+    _ = api.assert_fact(module_eid, sel_counter, mkEid(counter_eid), module_eid);
 }

@@ -32,6 +32,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(hello_lib);
 
+    // -- REPL dylib (Phase 6) -------------------------------------------------
+
+    const repl_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/repl/repl.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const repl_lib = b.addLibrary(.{
+        .name = "birnam_repl",
+        .root_module = repl_mod,
+        .linkage = .dynamic,
+    });
+    b.installArtifact(repl_lib);
+
     // -- Tests ---------------------------------------------------------------
 
     const test_step = b.step("test", "Run unit tests");
@@ -109,6 +123,16 @@ pub fn build(b: *std.Build) void {
     const run_mod_tests = b.addRunArtifact(mod_tests);
     run_mod_tests.step.dependOn(b.getInstallStep());
     test_step.dependOn(&run_mod_tests.step);
+
+    const repl_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/repl_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const repl_tests = b.addTest(.{ .root_module = repl_test_mod });
+    const run_repl_tests = b.addRunArtifact(repl_tests);
+    run_repl_tests.step.dependOn(b.getInstallStep());
+    test_step.dependOn(&run_repl_tests.step);
 
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 

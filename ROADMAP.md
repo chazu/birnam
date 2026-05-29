@@ -194,19 +194,28 @@ Phase 5 ships simple semantics: unload retracts; superseded values are gone for 
 
 ## Phase 6 — REPL Module
 
-**Goal:** REPL is an object, not a shell loop.
+**Goal:** REPL is an object, not a shell loop. Proves the substrate by making the user-facing front-end a fact-shaped module.
 
 ### Work items
 
-6.1 Decide minimum surface syntax for the REPL: unary, binary, keyword, cascade, block. Final syntax later.
+6.1 Minimum surface syntax: bare selector (unary), keyword-with-arg (single keyword), `quit`/EOF, `target: <eid>`. Arg literals: integer → SmallInt; identifier → interned-selector EID; quoted → string Ref. No precedence, no cascades, no blocks. Full syntax is Phase 10.
 
-6.2 Implement a tiny tokenizer/parser in birnam? No — too early. Use a hand-rolled Zig parser in the REPL module for now; replace when language module lands.
+6.2 Tiny hand-rolled Zig parser inside the repl module (`src/modules/repl/parser.zig`). Intentional throwaway — replaced when Phase 10 language module ships.
 
-6.3 REPL prototype object with `run`, `setPrompt:`, `setTarget:`, `stop`, `describe` methods (mirroring C-birnam's repl.c, but as facts).
+6.3 REPL prototype with `run`, `setPrompt:`, `setTarget:`, `stop` methods, materialized struct with `prompt`/`target`/`running` slots (REPL is hot — promote rather than EAVT-look-up per keypress).
 
-6.4 Shell drops its built-in REPL once `repl` module loads.
+6.4 Shell hands every input line to the REPL module via the existing `set_repl_handler` slot. Shell's main loop becomes a thin reader.
 
-6.5 Tests: REPL handles unknown selector gracefully; can invoke any installed method.
+6.5 Extend `hello` (or add `repl_test` dylib) with a counter object: `inc` / `count` methods, mutable slot. Provides something the REPL session can actually exercise.
+
+6.6 Tests: unary send, keyword send, target switch, EOF exit, unknown-selector graceful error, scripted multi-line stdin pipe.
+
+### Open-question resolutions (Phase 6 design)
+
+- **Result printing**: minimal `Ref → string` printer handling SmallInt, EID, string, NIL, pointer-shows-as-`<obj #eid>`. Improve incrementally; no specific later phase pinned.
+- **Unknown selector**: print `unknown selector: X` and continue. Proper `doesNotUnderstand:` lands in Phase 7+ when reflection is richer.
+- **Line editing / history**: skip in Phase 6 (naked stdin only). Add libtecla or similar when REPL is the primary interface — likely as part of Phase 10's user-experience polish.
+- **Multi-line input** (blocks, methods): single-line only in Phase 6. Multi-line arrives with the real language in Phase 10.
 
 ### Reasoning
 REPL-as-object is a litmus test for the substrate. If REPL works as a real fact-shaped object with mutable methods, the rest of the user-facing system follows the same template. Hand-rolled Zig parser is intentional throwaway — replaced when the language module is built atop birnam itself.
