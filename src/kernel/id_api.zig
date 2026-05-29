@@ -141,6 +141,10 @@ pub const IdApi = extern struct {
     ) callconv(.c) bool,
 
     query_use_global_rules: *const fn (?*anyopaque) callconv(.c) void,
+
+    // -- Phase 7.2: aggregation -----------------------------------------------
+    // kind = AggregateKind: 0 count, 1 sum, 2 min, 3 max, 4 avg.
+    query_add_find_aggregate: *const fn (?*anyopaque, u32, u32) callconv(.c) void,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -213,6 +217,8 @@ pub fn populate() IdApi {
         .query_add_rule_invocation = &cQueryAddRuleInvocation,
         .define_rule = &cDefineRule,
         .query_use_global_rules = &cQueryUseGlobalRules,
+
+        .query_add_find_aggregate = &cQueryAddFindAggregate,
 
         .query_execute = &cQueryExecute,
         .result_count = &cResultCount,
@@ -500,6 +506,19 @@ fn cDefineRule(p: ?*anyopaque, name_eid: u64, n_params: u32, max_var: u32) callc
 fn cQueryUseGlobalRules(p: ?*anyopaque) callconv(.c) void {
     const q: *query.Query = @ptrCast(@alignCast(p orelse return));
     if (g_registry) |r| q.setRules(r);
+}
+
+fn cQueryAddFindAggregate(p: ?*anyopaque, kind: u32, var_idx: u32) callconv(.c) void {
+    const q: *query.Query = @ptrCast(@alignCast(p orelse return));
+    const k: query.AggregateKind = switch (kind) {
+        0 => .count,
+        1 => .sum,
+        2 => .min,
+        3 => .max,
+        4 => .avg,
+        else => return,
+    };
+    q.addFindAggregate(k, var_idx) catch {};
 }
 
 fn cQueryExecute(p: ?*anyopaque) callconv(.c) ?*anyopaque {

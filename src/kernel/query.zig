@@ -13,8 +13,16 @@ const fact_store = @import("fact_store.zig");
 const rrb = @import("rrb.zig");
 const hamt = @import("hamt.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const aggregate = @import("aggregate.zig");
 
 pub const Ref = ref_mod.Ref;
+pub const AggregateKind = aggregate.AggregateKind;
+pub const AggregateSpec = aggregate.AggregateSpec;
+
+pub const FindElement = union(enum) {
+    var_idx: u32,
+    aggregate: AggregateSpec,
+};
 
 // -- Term --------------------------------------------------------------------
 
@@ -91,7 +99,7 @@ pub const Query = struct {
     var_count: u32 = 0,
     var_names: std.StringHashMap(u32),
     var_index_to_name: std.ArrayList([]const u8),
-    find: std.ArrayList(u32),
+    find: std.ArrayList(FindElement),
     where: std.ArrayList(Clause),
     /// Stack of in-progress nested-clause builders. Empty = appending
     /// directly to `where`. Non-empty top frame is the current dest.
@@ -233,7 +241,11 @@ pub const Query = struct {
     }
 
     pub fn addFind(self: *Query, var_idx: u32) !void {
-        try self.find.append(self.allocator, var_idx);
+        try self.find.append(self.allocator, .{ .var_idx = var_idx });
+    }
+
+    pub fn addFindAggregate(self: *Query, kind: AggregateKind, var_idx: u32) !void {
+        try self.find.append(self.allocator, .{ .aggregate = .{ .kind = kind, .var_idx = var_idx } });
     }
 
     pub fn setAsOf(self: *Query, tx: u64) void {
@@ -810,37 +822,145 @@ pub fn execute(q: *Query, store: *fact_store.FactStore) !Result {
         bindings = next;
     }
 
-    // Project to find variables, dedupe (set semantics).
     const arity: u32 = @intCast(q.find.items.len);
-    var seen = std.AutoHashMap(u64, void).init(q.allocator);
-    defer seen.deinit();
 
-    var rows = std.ArrayList(Ref){};
-    defer rows.deinit(q.allocator);
+    // Phase 7.2: detect aggregates in find clause. If none, original
+    // distinct-projection path. Otherwise: group-by aggregation.
+    var has_aggregate = false;
+    for (q.find.items) |fe| {
+        if (fe == .aggregate) {
+            has_aggregate = true;
+            break;
+        }
+    }
 
-    for (bindings.items) |b| {
-        // Build projection row.
-        var row_buf = std.ArrayList(Ref){};
-        defer row_buf.deinit(q.allocator);
-        var hash: u64 = 0;
+    if (!has_aggregate) {
+        var seen = std.AutoHashMap(u64, void).init(q.allocator);
+        defer seen.deinit();
+        var rows = std.ArrayList(Ref){};
+        defer rows.deinit(q.allocator);
+        for (bindings.items) |b| {
+            var row_buf = std.ArrayList(Ref){};
+            defer row_buf.deinit(q.allocator);
+            var hash: u64 = 0;
+            var ok = true;
+            for (q.find.items) |fe| {
+                const var_idx = fe.var_idx;
+                const v = b.get(var_idx) orelse {
+                    ok = false;
+                    break;
+                };
+                try row_buf.append(q.allocator, v);
+                hash = hash *% 0x9E3779B97F4A7C15 ^ v;
+            }
+            if (!ok) continue;
+            if (seen.contains(hash)) continue;
+            try seen.put(hash, {});
+            try rows.appendSlice(q.allocator, row_buf.items);
+        }
+        return .{
+            .allocator = q.allocator,
+            .arity = arity,
+            .rows = try rows.toOwnedSlice(q.allocator),
+        };
+    }
+
+    return try projectAggregates(q, bindings.items);
+}
+
+/// Group-by aggregation. Partitions bindings by their projection onto
+/// non-aggregate find vars, then computes each aggregate per group over
+/// distinct values (Date discipline).
+fn projectAggregates(q: *Query, bindings: []const Binding) !Result {
+    const arity: u32 = @intCast(q.find.items.len);
+    const allocator = q.allocator;
+
+    // Collect group-key (non-aggregate) find element positions.
+    var group_positions = std.ArrayList(usize){};
+    defer group_positions.deinit(allocator);
+    for (q.find.items, 0..) |fe, i| {
+        if (fe == .var_idx) try group_positions.append(allocator, i);
+    }
+
+    // Build group hash key for a binding. If group_positions is empty,
+    // returns a fixed sentinel hash so all bindings land in one group.
+    const universal_hash: u64 = 0xC0FFEE_BABE;
+
+    const Group = struct {
+        bindings: std.ArrayList(Binding),
+        // For result emission, remember any binding (we just need one to
+        // read group-key values).
+    };
+
+    var groups = std.AutoHashMap(u64, *Group).init(allocator);
+    defer {
+        var it = groups.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.*.bindings.deinit(allocator);
+            allocator.destroy(entry.value_ptr.*);
+        }
+        groups.deinit();
+    }
+
+    for (bindings) |b| {
+        // Skip bindings that don't satisfy group keys.
         var ok = true;
-        for (q.find.items) |var_idx| {
+        var hash: u64 = if (group_positions.items.len == 0) universal_hash else 0;
+        for (group_positions.items) |pos| {
+            const var_idx = q.find.items[pos].var_idx;
             const v = b.get(var_idx) orelse {
                 ok = false;
                 break;
             };
-            try row_buf.append(q.allocator, v);
             hash = hash *% 0x9E3779B97F4A7C15 ^ v;
         }
         if (!ok) continue;
-        if (seen.contains(hash)) continue;
-        try seen.put(hash, {});
-        try rows.appendSlice(q.allocator, row_buf.items);
+        const gop = try groups.getOrPut(hash);
+        if (!gop.found_existing) {
+            const g = try allocator.create(Group);
+            g.* = .{ .bindings = .{} };
+            gop.value_ptr.* = g;
+        }
+        try gop.value_ptr.*.bindings.append(allocator, b);
+    }
+
+    // Emit one row per group.
+    var rows = std.ArrayList(Ref){};
+    defer rows.deinit(allocator);
+
+    var git = groups.iterator();
+    while (git.next()) |entry| {
+        const g = entry.value_ptr.*;
+        if (g.bindings.items.len == 0) continue;
+        const sample = g.bindings.items[0];
+        for (q.find.items) |fe| {
+            switch (fe) {
+                .var_idx => |idx| {
+                    const v = sample.get(idx) orelse return error.UnboundGroupVar;
+                    try rows.append(allocator, v);
+                },
+                .aggregate => |spec| {
+                    // Collect distinct values of spec.var_idx across this group.
+                    var distinct_set = std.AutoHashMap(Ref, void).init(allocator);
+                    defer distinct_set.deinit();
+                    for (g.bindings.items) |gb| {
+                        const v = gb.get(spec.var_idx) orelse continue;
+                        try distinct_set.put(v, {});
+                    }
+                    var values = std.ArrayList(Ref){};
+                    defer values.deinit(allocator);
+                    var dit = distinct_set.iterator();
+                    while (dit.next()) |de| try values.append(allocator, de.key_ptr.*);
+                    const result = try aggregate.compute(spec.kind, values.items);
+                    try rows.append(allocator, result);
+                },
+            }
+        }
     }
 
     return .{
         .allocator = q.allocator,
         .arity = arity,
-        .rows = try rows.toOwnedSlice(q.allocator),
+        .rows = try rows.toOwnedSlice(allocator),
     };
 }
