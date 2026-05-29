@@ -230,6 +230,15 @@ pub fn build(b: *std.Build) void {
     const run_promo_tests = b.addRunArtifact(promo_tests);
     test_step.dependOn(&run_promo_tests.step);
 
+    const mbind_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/metabind_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const mbind_tests = b.addTest(.{ .root_module = mbind_test_mod });
+    const run_mbind_tests = b.addRunArtifact(mbind_tests);
+    test_step.dependOn(&run_mbind_tests.step);
+
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
     const bench_step = b.step("bench", "Run microbenchmarks (ReleaseFast)");

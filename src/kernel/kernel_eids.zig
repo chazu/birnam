@@ -95,4 +95,15 @@ pub const ATTR_FN_IMPL: u64 = 35;
 /// at-or-above = auto-promote on next cold dispatch.
 pub const ATTR_PROMOTE_THRESHOLD: u64 = 36;
 
-// 37..63 reserved for future kernel selectors / attributes
+/// Phase 7.5: metacircular bind override.
+///   `:bind` attribute on a vtable carries the closure-EID Ref of an
+///   override method. `bind` consults the delegate chain for this attribute
+///   BEFORE falling through to the Zig primitive. Override returns the
+///   target closure-EID Ref, or NIL to defer to the primitive.
+///   ATTR_BIND vs SEL_BIND mirrors the ATTR_VTABLE / SEL_VTABLE split so
+///   sending `bind` to a vtable (introspection) doesn't collide with
+///   installing an override.
+pub const ATTR_BIND: u64 = 37;
+pub const SEL_BIND: u64 = 38;
+
+// 39..63 reserved for future kernel selectors / attributes

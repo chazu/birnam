@@ -49,9 +49,23 @@ var g_store: ?*fact_store.FactStore = null;
 var g_table: ?*object_table.ObjectTable = null;
 var g_allocator: ?std.mem.Allocator = null;
 
-/// Recursion guard. Scaffolded for Phase 7.5 where bind becomes
-/// redefinable. In Phase 4 it is bumped but never consulted.
+/// Recursion guard. Phase 7.5: consulted before invoking `:bind` override.
+/// Above the threshold, bind unconditionally takes the Zig-primitive path
+/// — this bounds the depth of override-of-override-of-bind recursion.
 var g_recursion: u32 = 0;
+pub const BIND_RECURSION_LIMIT: u32 = 4;
+
+/// Phase 7.5: fact-store mutate hook. Routes most attribute mutations to
+/// the standard mcache per-sel flush, but for `:bind` mutations flushes
+/// the entire cache — an override installed on a high vtable can affect
+/// dispatch for every (vt, sel) pair beneath it.
+pub fn onAttrMutate(a: u64) void {
+    if (a == kernel_eids.ATTR_BIND) {
+        mcache.clearAll();
+    } else {
+        mcache.flushSel(a);
+    }
+}
 
 pub fn initDispatch(
     store: *fact_store.FactStore,
@@ -93,6 +107,17 @@ pub fn bind(s: *Send) ?*Closure {
         return c;
     }
 
+    // Phase 7.5: try `:bind` override along vt's delegate chain. Skipped
+    // when recursion guard is tripped so the override can call back into
+    // bind without infinite recursion.
+    if (g_recursion <= BIND_RECURSION_LIMIT) {
+        if (tryBindOverride(s, vt_eid)) |c| {
+            mcache.store(vt_eid, s.selector, c);
+            s.closure = c;
+            return c;
+        }
+    }
+
     // Cold path: walk vt + delegation chain.
     var cur_vt = vt_eid;
     while (cur_vt != kernel_eids.NIL) {
@@ -115,6 +140,38 @@ pub fn bind(s: *Send) ?*Closure {
         } else {
             return null;
         }
+    }
+    return null;
+}
+
+/// Phase 7.5: walk vt's delegate chain looking for an `:bind` override
+/// closure. Invoke it with the Send frame; expect closure-EID Ref or NIL.
+/// NIL → fallthrough (let primitive lookup handle it). Pointer/other →
+/// treat as NIL.
+fn tryBindOverride(s: *Send, vt_eid: u64) ?*Closure {
+    const store = g_store.?;
+    const table = g_table.?;
+    var cur_vt = vt_eid;
+    while (cur_vt != kernel_eids.NIL) {
+        if (store.currentValue(cur_vt, kernel_eids.ATTR_BIND)) |method_ref| {
+            if (!ref_mod.isEid(method_ref)) return null;
+            const override_eid = ref_mod.untagEid(method_ref);
+            const override_ptr_ref = table.get(override_eid) orelse return null;
+            if (!ref_mod.isPointer(override_ptr_ref)) return null;
+            const override_c: *Closure = @ptrCast(@alignCast(ref_mod.untagPointer(override_ptr_ref)));
+            const m: Imp = @ptrCast(@alignCast(override_c.method));
+            const result = m(s);
+            if (ref_mod.isNil(result)) return null;
+            if (!ref_mod.isEid(result)) return null;
+            const result_eid = ref_mod.untagEid(result);
+            const result_ptr_ref = table.get(result_eid) orelse return null;
+            if (!ref_mod.isPointer(result_ptr_ref)) return null;
+            return @ptrCast(@alignCast(ref_mod.untagPointer(result_ptr_ref)));
+        }
+        if (store.currentValue(cur_vt, kernel_eids.ATTR_DELEGATE)) |d| {
+            if (!ref_mod.isEid(d)) return null;
+            cur_vt = ref_mod.untagEid(d);
+        } else return null;
     }
     return null;
 }

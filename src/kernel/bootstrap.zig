@@ -62,7 +62,7 @@ pub fn boot(
     registry.* = rule_mod.Registry.init(allocator, store, table);
     id_api_mod.setRegistry(registry);
     // Wire mcache invalidation hook into the fact store.
-    store.on_attr_mutate = &mcache.flushSel;
+    store.on_attr_mutate = &send_mod.onAttrMutate;
 
     // Wire fact-store EID allocator for lazy reification (Phase 7.3).
     store.setEidAllocTable(table);
@@ -146,6 +146,8 @@ pub fn boot(
     try interner.seed(store, kernel_eids.ATTR_FN_NAME, "function-name");
     try interner.seed(store, kernel_eids.ATTR_FN_IMPL, "function-impl");
     try interner.seed(store, kernel_eids.ATTR_PROMOTE_THRESHOLD, "promote-threshold");
+    try interner.seed(store, kernel_eids.ATTR_BIND, "bind-impl");
+    try interner.seed(store, kernel_eids.SEL_BIND, "bind:");
 
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);
