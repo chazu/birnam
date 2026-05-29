@@ -22,10 +22,12 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Phase 7.4: predicates + functions (builtin arith/min2/max2 + user native preds) ✓
 - Phase 8: promotion/demotion (hotness counter, threshold auto-promote, FFI pin, shape-change demote) ✓
 - Phase 7.5: metacircular bind (`:bind` override along delegate chain, recursion guard limit=4, full mcache flush on mutate) ✓
+- Phase 9 (partial): boxed Float + FFI pointer (FLOAT_VT, FFI_PTR_VT); dyncall 1.4 vendored as static lib; sig-string parser; engine `invoke(addr, sig, args) Ref`; arm64 darwin variadic ABI validated via printf ✓
+   - Remaining: 9.1 Mach-O reader, 9.3 Module dylib + wrap, 9.5 bind-override shim, 9.6 lazy enum
 
-**Test count: 186/186 across 48 build steps.**
+**Test count: 200/200 across 55 build steps.**
 
-**Next: Phase 9 — alien `.so` absorption** (macOS-only first pass). Decision doc locked: dyncall, boxed-f64 Float, boxed FFI pointer, constrained variadic with arm64 risk noted, lazy symbol enum, unload deferred to 9.5.
+**Next: complete Phase 9** — Module dylib (`Module load:`/`wrap:as:signature:`), bind-override shim, Mach-O reader for lazy symbol enumeration.
 
 ---
 
