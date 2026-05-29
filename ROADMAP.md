@@ -19,10 +19,11 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Phase 7.1: rules + recursion + stratification ✓
 - Phase 7.2: aggregation (Date-aligned, distinct-by-default) ✓
 - Phase 7.3: subqueries, saved queries, pull, reification, rule walk-back ✓
+- Phase 7.4: predicates + functions (builtin arith/min2/max2 + user native preds) ✓
 
-**Test count: 167/167 across 42 build steps.**
+**Test count: 173/173 across 44 build steps.**
 
-**Next: Phase 7.4 — predicates + functions** (final Datalog phase; tag-aware comparison Q4 reopens here).
+**Next: Phase 8 — image format + snapshot/load.** Full Datalog substrate is now in place.
 
 ---
 
