@@ -474,13 +474,21 @@ COLA dream made concrete: interactively absorb any C library into the object wor
 
 Four sub-bundles, each with its own design questions. Tradeoffs + leans to be locked in a follow-up table before code.
 
+> **Terminology note:** birnam is strictly prototype-based (COLA / idst /
+> Piumarta lineage per VISION.md). There are objects (with `vt` at offset
+> `-1`) and vtables (themselves objects, themselves with vts). No class /
+> instance split — a vtable IS a prototype, delegation via `:delegate`
+> chain replaces inheritance. Whenever Phase 9.5 discussions say "Module
+> vt" they mean the prototype-vtable that loaded-library objects delegate
+> to, not a Smalltalk-80 metaclass.
+
 #### A. Module entity wrapper
 
 A1. **Module vt structure.** One shared `MODULE_VT` for all loaded libs, OR per-instance delegate-vt (child of `MODULE_VT`) so wrap installs are scoped to the specific Module?
 
 A2. **API surface.** Minimum: `Module load:`, `Module>>wrap:as:sig:`, `Module>>symbols`. Optional: `path`, `handle`, `unload`. What ships in 9.5?
 
-A3. **Wrap target vt.** Wrap installs the dispatch closure on the Module's own vt only (`[mod sqrt:]` works) OR a `wrap:as:sig:onVt:` variant lets the user extend any class.
+A3. **Wrap target vt.** Wrap installs the dispatch closure on the Module's own vt only (`[mod sqrt:]` works) OR a `wrap:as:sig:onVt:` variant lets the user install on any existing vt (extending an existing prototype).
 
 #### B. ELF reader
 
@@ -542,7 +550,7 @@ Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatc
 
 10.5 Method definition syntax: source → method body facts → installed as `assert_method`.
 
-10.6 Tests: classic Smalltalk-y exercises (Fibonacci, list operations, point class definition).
+10.6 Tests: classic Smalltalk-y exercises (Fibonacci, list operations, Point prototype definition — Self/idst style, no class/instance split).
 
 ### Reasoning
 Once the language module works, the system is self-hosting in the sense that future modules can be written in birnam rather than Zig. Tree-walking interpreter is intentionally simple; bytecode + VM come later in Phase 11.
