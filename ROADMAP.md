@@ -20,10 +20,11 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Phase 7.2: aggregation (Date-aligned, distinct-by-default) ✓
 - Phase 7.3: subqueries, saved queries, pull, reification, rule walk-back ✓
 - Phase 7.4: predicates + functions (builtin arith/min2/max2 + user native preds) ✓
+- Phase 8: promotion/demotion (hotness counter, threshold auto-promote, FFI pin, shape-change demote) ✓
 
-**Test count: 173/173 across 44 build steps.**
+**Test count: 180/180 across 46 build steps.**
 
-**Next: Phase 8 — image format + snapshot/load.** Full Datalog substrate is now in place.
+**Next: Phase 7.5 — metacircular bind** (can now reorder, since Phase 7 done) OR **Phase 9 — alien .so absorption** (Phase 8 ffi_enter/ffi_exit primitives ready). Lean: 7.5 first (smaller, lets language Phase 10 build on a self-modifiable dispatch).
 
 ---
 
