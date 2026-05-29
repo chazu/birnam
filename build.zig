@@ -58,6 +58,15 @@ pub fn build(b: *std.Build) void {
     const run_ot_tests = b.addRunArtifact(ot_tests);
     test_step.dependOn(&run_ot_tests.step);
 
+    const fs_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/fact_store_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const fs_tests = b.addTest(.{ .root_module = fs_test_mod });
+    const run_fs_tests = b.addRunArtifact(fs_tests);
+    test_step.dependOn(&run_fs_tests.step);
+
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
     const bench_step = b.step("bench", "Run microbenchmarks (ReleaseFast)");

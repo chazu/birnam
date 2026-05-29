@@ -240,6 +240,23 @@ This is the COLA dream made concrete: interactively absorb any C library into th
 
 ---
 
+## Phase 9.5 — Schema with Multi-Cardinality Attributes
+
+**Goal:** Promote single-valued attributes (Phase 3 default) to a schema-driven mix of single + multi-valued.
+
+### Work items
+
+9.5.1 Add a `:cardinality` schema attribute on every attribute entity. Default `:one`. Set to `:many` for relations that accumulate.
+
+9.5.2 Update `assert` to check the attribute's cardinality. `:one` → existing semantics (new assert implicitly retracts old). `:many` → assert appends, no implicit retract.
+
+9.5.3 Update queries to return iterators where multi-valued attrs are involved.
+
+9.5.4 Tests: `:many` accumulation, mixed-cardinality queries, schema-driven dispatch in fact_store.
+
+### Reasoning
+Phase 3 ships single-valued only — sufficient for vtable/method facts (one method per (vt, sel)) and the bootstrap kernel. Multi-cardinality is a user-modeling feature, not a kernel concern. By Phase 9.5, the language module (Phase 10) is about to land and user code will start modeling things like `[parent :children ?]` that genuinely need accumulation. Schema-driven (not blanket) keeps Date-discipline intact.
+
 ## Phase 10 — Language Module
 
 **Goal:** Birnam source syntax, parsed into facts, evaluated against fact store.
