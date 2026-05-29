@@ -175,6 +175,23 @@ Modules are how birnam stays composable. They must be fact-shaped to gain diff/h
 
 ---
 
+## Phase 5.5 — Module-Stack Fact Restoration (enhancement)
+
+**Goal:** When module B's assertion supersedes module A's, unloading B restores A's value instead of leaving the attribute absent.
+
+### Work items
+
+5.5.1 Walk MEAT history on retract: if the retracted (e, a) was last asserted by the unloading module, scan for the most recent assert from a still-loaded module and restore it.
+
+5.5.2 Alternatively: maintain a per-(e, a) module-shadow stack so restoration is O(1) instead of a history walk. Pick implementation based on workload patterns observed in Phase 5+.
+
+5.5.3 Tests: A asserts, B supersedes, unload B → A's value visible; chains of 3+ modules; module unload order independence.
+
+### Reasoning
+Phase 5 ships simple semantics: unload retracts; superseded values are gone for good. Real dev workflows may demand restoration so that "load A, load B (shadows A), unload B" returns to A's view — matching mental model of stacking patches. Defer until pain shows up. Likely interacts with schema (Phase 9.5) — a per-attribute `:retain-on-unload` flag could opt in.
+
+---
+
 ## Phase 6 — REPL Module
 
 **Goal:** REPL is an object, not a shell loop.

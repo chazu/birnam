@@ -18,6 +18,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(shell);
 
+    // -- Hello dylib (Phase 5 smoke-test module) -----------------------------
+
+    const hello_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/hello/hello.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const hello_lib = b.addLibrary(.{
+        .name = "birnam_hello",
+        .root_module = hello_mod,
+        .linkage = .dynamic,
+    });
+    b.installArtifact(hello_lib);
+
     // -- Tests ---------------------------------------------------------------
 
     const test_step = b.step("test", "Run unit tests");
@@ -84,6 +98,17 @@ pub fn build(b: *std.Build) void {
     const str_tests = b.addTest(.{ .root_module = str_test_mod });
     const run_str_tests = b.addRunArtifact(str_tests);
     test_step.dependOn(&run_str_tests.step);
+
+    // Module integration tests depend on the hello dylib being installed.
+    const mod_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/module_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const mod_tests = b.addTest(.{ .root_module = mod_test_mod });
+    const run_mod_tests = b.addRunArtifact(mod_tests);
+    run_mod_tests.step.dependOn(b.getInstallStep());
+    test_step.dependOn(&run_mod_tests.step);
 
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
