@@ -35,7 +35,17 @@ pub const M_BOOTSTRAP: u64 = 8;
 /// so collect-aggregate results behave like normal sendable objects.
 pub const RRB_VT: u64 = 9;
 
-// 10..15 reserved for future kernel vtables / well-known entities
+/// Phase 9: boxed f64 (full-precision float). Pointer-tagged Ref points
+/// at a struct whose slot 0 holds the raw bit-pattern of the double.
+pub const FLOAT_VT: u64 = 10;
+
+/// Phase 9: boxed foreign (C) pointer. Slot 0 holds the raw address as
+/// a usize. Distinct from kernel pointer Refs (which carry a -1 vt slot
+/// to a kernel object) so dispatch never tries to read -1 from a foreign
+/// address.
+pub const FFI_PTR_VT: u64 = 11;
+
+// 12..15 reserved for future kernel vtables / well-known entities
 
 // -- Kernel selectors / attributes (16..63) -----------------------------------
 

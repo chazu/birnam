@@ -42,6 +42,8 @@ pub const Kernel = struct {
     vector_vt_ref: Ref,
     assoc_vt_ref: Ref,
     nil_vt_ref: Ref,
+    float_vt_ref: Ref,
+    ffi_ptr_vt_ref: Ref,
 };
 
 /// Bootstrap the kernel. After this call:
@@ -92,6 +94,12 @@ pub fn boot(
     const rrb_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
     try table.put(kernel_eids.RRB_VT, object.toRef(rrb_vt_ptr));
 
+    const float_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.FLOAT_VT, object.toRef(float_vt_ptr));
+
+    const ffi_ptr_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.FFI_PTR_VT, object.toRef(ffi_ptr_vt_ptr));
+
     // -- Stage 4: assert :vtable facts for every entity bind may dispatch on
     // Each kernel vtable's :vtable is VTABLE_VT (so sending a message to
     // mkEid(SOME_VT) lands in vtable_vt's method table).
@@ -105,6 +113,8 @@ pub fn boot(
     _ = try store.assert(kernel_eids.ASSOC_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
     _ = try store.assert(kernel_eids.NIL_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
     _ = try store.assert(kernel_eids.RRB_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.FLOAT_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
 
     // -- Stage 5: delegation chain ---------------------------------------
     // Top of chain (object_vt) has NO :delegate fact — Date: absence = no parent.
@@ -117,6 +127,8 @@ pub fn boot(
     _ = try store.assert(kernel_eids.ASSOC_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.NIL_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.RRB_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.FLOAT_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
 
     // -- Stage 6: NIL's :vtable ------------------------------------------
     _ = try store.assert(kernel_eids.NIL, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.NIL_VT), m_boot);
@@ -174,6 +186,8 @@ pub fn boot(
         .vector_vt_ref = object.toRef(vec_vt_ptr),
         .assoc_vt_ref = object.toRef(ass_vt_ptr),
         .nil_vt_ref = object.toRef(nil_vt_ptr),
+        .float_vt_ref = object.toRef(float_vt_ptr),
+        .ffi_ptr_vt_ref = object.toRef(ffi_ptr_vt_ptr),
     };
 }
 

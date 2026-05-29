@@ -239,6 +239,15 @@ pub fn build(b: *std.Build) void {
     const run_mbind_tests = b.addRunArtifact(mbind_tests);
     test_step.dependOn(&run_mbind_tests.step);
 
+    const boxed_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/boxed_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const boxed_tests = b.addTest(.{ .root_module = boxed_test_mod });
+    const run_boxed_tests = b.addRunArtifact(boxed_tests);
+    test_step.dependOn(&run_boxed_tests.step);
+
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
     const bench_step = b.step("bench", "Run microbenchmarks (ReleaseFast)");
