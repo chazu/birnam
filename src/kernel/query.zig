@@ -34,7 +34,14 @@ pub const Term = union(enum) {
 
 // -- Clauses -----------------------------------------------------------------
 
-pub const Triple = struct { e: Term, a: Term, v: Term };
+pub const Triple = struct {
+    e: Term,
+    a: Term,
+    v: Term,
+    /// Phase 7.3 reification: when set, binds this variable to the fact-EID
+    /// for the matched (e, a, v). Lazy: fact-EID minted on first match.
+    as_var: ?u32 = null,
+};
 
 pub const PredicateOp = enum { eq, ne, lt, le, gt, ge };
 
@@ -221,6 +228,10 @@ pub const Query = struct {
         try self.currentDest().append(self.allocator, .{ .triple = .{ .e = e, .a = a, .v = v } });
     }
 
+    pub fn addTripleAs(self: *Query, e: Term, a: Term, v: Term, as_var: u32) !void {
+        try self.currentDest().append(self.allocator, .{ .triple = .{ .e = e, .a = a, .v = v, .as_var = as_var } });
+    }
+
     pub fn addPredicate(self: *Query, op: PredicateOp, lhs: Term, rhs: Term) !void {
         try self.currentDest().append(self.allocator, .{ .predicate = .{ .op = op, .lhs = lhs, .rhs = rhs } });
     }
@@ -340,6 +351,20 @@ fn evalTriple(
         if (!ref_mod.isEid(e_val) or !ref_mod.isEid(a_val)) return;
         const e_eid = ref_mod.untagEid(e_val);
         const a_eid = ref_mod.untagEid(a_val);
+
+        // Reverse reification: if e is a registered fact-EID and a is
+        // ATTR_MODULE, serve from fact_modules side index.
+        if (a_eid == kernel_eids.ATTR_MODULE) {
+            if (store.moduleOfFactEid(e_eid)) |m_val| {
+                const v_ref = ref_mod.mkEid(m_val);
+                if (!matchOrBind(v_term, v_ref, b)) return;
+                var nb = try b.dup(allocator);
+                bindIfVariable(v_term, v_ref, &nb);
+                try out.append(allocator, nb);
+                return;
+            }
+        }
+
         const got = get_current(store, e_eid, a_eid, asof);
         if (got) |v| {
             if (!matchOrBind(v_term, v, b)) return;
@@ -349,6 +374,12 @@ fn evalTriple(
             }
             var nb = try b.dup(allocator);
             bindIfVariable(v_term, v, &nb);
+            // :as ?fact — lazy reify and bind.
+            if (triple.as_var) |as_idx| {
+                if (store.ensureFactEid(e_eid, a_eid, v)) |fact_eid| {
+                    nb.set(as_idx, ref_mod.mkEid(fact_eid));
+                }
+            }
             try out.append(allocator, nb);
         }
         return;
@@ -371,6 +402,11 @@ fn evalTriple(
             var nb = try b.dup(allocator);
             bindIfVariable(a_term, ref_mod.mkEid(entry.a), &nb);
             bindIfVariable(v_term, eff_v, &nb);
+            if (triple.as_var) |as_idx| {
+                if (store.ensureFactEid(e_eid, entry.a, eff_v)) |fact_eid| {
+                    nb.set(as_idx, ref_mod.mkEid(fact_eid));
+                }
+            }
             try out.append(allocator, nb);
         }
         return;
@@ -393,6 +429,11 @@ fn evalTriple(
             var nb = try b.dup(allocator);
             bindIfVariable(e_term, ref_mod.mkEid(entry.e), &nb);
             bindIfVariable(v_term, eff_v, &nb);
+            if (triple.as_var) |as_idx| {
+                if (store.ensureFactEid(entry.e, a_eid, eff_v)) |fact_eid| {
+                    nb.set(as_idx, ref_mod.mkEid(fact_eid));
+                }
+            }
             try out.append(allocator, nb);
         }
         return;

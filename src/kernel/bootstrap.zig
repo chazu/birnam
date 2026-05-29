@@ -62,6 +62,9 @@ pub fn boot(
     // Wire mcache invalidation hook into the fact store.
     store.on_attr_mutate = &mcache.flushSel;
 
+    // Wire fact-store EID allocator for lazy reification (Phase 7.3).
+    store.setEidAllocTable(table);
+
     // -- Stage 1+2+3: allocate kernel vtables, set -1, register ---------
     const vt_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
     try table.put(kernel_eids.VTABLE_VT, object.toRef(vt_vt_ptr));

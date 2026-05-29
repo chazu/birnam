@@ -59,6 +59,16 @@ pub const FactStore = struct {
     /// coherent. Decoupled (FactStore doesn't import the kernel).
     on_attr_mutate: ?*const fn (a: u64) void = null,
 
+    /// Phase 7.3 reification: lazy fact-EID side index. Populated on first
+    /// `:as` resolution. Key = hashTriple(e, a, v).
+    fact_eids: std.AutoHashMap(u64, u64),
+    /// Reverse mapping populated alongside fact_eids: fact_eid -> module.
+    fact_modules: std.AutoHashMap(u64, u64),
+    /// Optional object table for minting fresh fact-EIDs during lazy
+    /// reification. If null, ensureFactEid returns null (caller can pre-
+    /// register manually for tests).
+    eid_alloc_table: ?*@import("object_table.zig").ObjectTable = null,
+
     pub fn init(allocator: std.mem.Allocator) FactStore {
         return .{
             .allocator = allocator,
@@ -69,7 +79,75 @@ pub const FactStore = struct {
             .vaet = AVETish.empty(allocator, .{}),
             .meat = MEATish.empty(allocator, .{}),
             .on_attr_mutate = null,
+            .fact_eids = std.AutoHashMap(u64, u64).init(allocator),
+            .fact_modules = std.AutoHashMap(u64, u64).init(allocator),
         };
+    }
+
+    // -- Phase 7.3 reification helpers ---------------------------------------
+
+    fn hashTriple(e: u64, a: u64, v: Ref) u64 {
+        var h: u64 = 0x9E3779B97F4A7C15;
+        h = (h ^ e) *% 0xBF58476D1CE4E5B9;
+        h = (h ^ a) *% 0xBF58476D1CE4E5B9;
+        h = (h ^ v) *% 0xBF58476D1CE4E5B9;
+        return h;
+    }
+
+    /// Look up existing fact-EID for (e, a, v), or null if not yet reified.
+    pub fn lookupFactEid(self: *const FactStore, e: u64, a: u64, v: Ref) ?u64 {
+        return self.fact_eids.get(hashTriple(e, a, v));
+    }
+
+    /// Register a freshly minted fact-EID with its module. Caller (query
+    /// engine) allocates the EID via object_table.alloc.
+    pub fn registerFactEid(
+        self: *FactStore,
+        e: u64,
+        a: u64,
+        v: Ref,
+        fact_eid: u64,
+        module_eid: u64,
+    ) !void {
+        try self.fact_eids.put(hashTriple(e, a, v), fact_eid);
+        try self.fact_modules.put(fact_eid, module_eid);
+    }
+
+    /// Reverse lookup: find the module that asserted a fact, by walking
+    /// MEAT. Used by lazy reification to populate fact_modules cache.
+    /// O(modules × facts_per_module) — Phase 7.3 spike accepts the slow
+    /// path; the proper 7.3.7 reification work eliminates it.
+    pub fn findModuleOfFact(self: *FactStore, e: u64, a: u64, v: Ref) ?u64 {
+        var m_iter = self.meat.iter();
+        while (m_iter.next()) |entry| {
+            const m = entry.key;
+            const e_map = entry.value;
+            const inner = e_map.get(e) orelse continue;
+            const cell = inner.get(a) orelse continue;
+            if (cell.current_v) |cv| {
+                if (cv == v) return m;
+            }
+        }
+        return null;
+    }
+
+    pub fn moduleOfFactEid(self: *const FactStore, fact_eid: u64) ?u64 {
+        return self.fact_modules.get(fact_eid);
+    }
+
+    pub fn setEidAllocTable(self: *FactStore, t: *@import("object_table.zig").ObjectTable) void {
+        self.eid_alloc_table = t;
+    }
+
+    /// Look up an existing fact-EID; mint one (and record its module) if
+    /// absent. Returns null only if no eid_alloc_table is configured.
+    pub fn ensureFactEid(self: *FactStore, e: u64, a: u64, v: Ref) ?u64 {
+        if (self.lookupFactEid(e, a, v)) |existing| return existing;
+        const table = self.eid_alloc_table orelse return null;
+        const new_eid = table.alloc();
+        const m = self.findModuleOfFact(e, a, v) orelse 0;
+        self.registerFactEid(e, a, v, new_eid, m) catch return null;
+        return new_eid;
     }
 
     // -- Mutations -----------------------------------------------------------
