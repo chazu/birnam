@@ -157,6 +157,12 @@ export fn birnam_module_init(
     const sel_hello_vt = api.intern("hello_vt", 8);
     _ = api.assert_fact(module_eid, sel_hello_vt, mkEid(hello_vt), module_eid);
 
+    // Singleton hello instance (so REPL can target it for `greet`).
+    const hello_eid = api.alloc_eid();
+    _ = api.assert_fact(hello_eid, api.attr_vtable, mkEid(hello_vt), module_eid);
+    const sel_hello = api.intern("hello", 5);
+    _ = api.assert_fact(module_eid, sel_hello, mkEid(hello_eid), module_eid);
+
     // Counter vtable + methods + instance.
     g_attr_count_value = api.intern("count_value", 11);
     const counter_vt = api.alloc_eid();
@@ -177,4 +183,9 @@ export fn birnam_module_init(
 
     const sel_counter = api.intern("counter", 7);
     _ = api.assert_fact(module_eid, sel_counter, mkEid(counter_eid), module_eid);
+
+    // Print discoverable EIDs so the REPL user can target them.
+    var buf: [128]u8 = undefined;
+    const msg = std.fmt.bufPrintZ(&buf, "[hello] counter eid = {d}, hello instance eid = {d}", .{ counter_eid, hello_eid }) catch return;
+    ctx.log(msg);
 }

@@ -1,46 +1,31 @@
+//! Shell entry point.
+//!
+//! Boots the kernel, builds the IdApi, manages loaded modules via the
+//! Phase 5 module system. Each `birnam` invocation:
+//!   1. Allocates FactStore + ObjectTable + Interner.
+//!   2. Runs bootstrap.boot to wire kernel vtables, selectors, mcache,
+//!      send/bind, and the rule registry.
+//!   3. Populates IdApi from the kernel side.
+//!   4. Loads each module path passed on the command line, in order, via
+//!      the Module Manager (assigns each its own EID for `m`-column tagging).
+//!   5. Enters a stdin line loop. Each line is handed to the dylib-registered
+//!      REPL handler (if any) or echoed as "no repl handler registered."
+//!
+//! Multiple module args are supported. Order matters: a REPL module should
+//! come after any module it intends to inspect, because the REPL handler
+//! is registered at REPL init.
+
 const std = @import("std");
 const posix = std.posix;
 
-// -- Module registry --------------------------------------------------------
+const fact_store = @import("kernel/fact_store.zig");
+const object_table = @import("kernel/object_table.zig");
+const interner_mod = @import("kernel/interner.zig");
+const bootstrap = @import("kernel/bootstrap.zig");
+const id_api_mod = @import("kernel/id_api.zig");
+const module = @import("kernel/module.zig");
 
-const MAX_MODULES = 16;
-const MAX_EXPORTS = 32;
-
-const ModuleInfo = struct {
-    lib: ?std.DynLib = null,
-    path: [*:0]const u8 = "",
-    init_fn: ?*const fn (*ShellContext) callconv(.c) void = null,
-};
-
-const ExportEntry = struct {
-    name: ?[*:0]const u8 = null,
-    value: ?*anyopaque = null,
-};
-
-const ShellContext = extern struct {
-    load_module: *const fn ([*:0]const u8) callconv(.c) bool,
-    set_repl_handler: *const fn (?*const fn ([*:0]const u8) callconv(.c) void) callconv(.c) void,
-    log: *const fn ([*:0]const u8) callconv(.c) void,
-    export_value: *const fn ([*:0]const u8, ?*anyopaque) callconv(.c) void,
-    import_value: *const fn ([*:0]const u8) callconv(.c) ?*anyopaque,
-};
-
-var module_infos: [MAX_MODULES]ModuleInfo = [_]ModuleInfo{.{}} ** MAX_MODULES;
-var module_count: usize = 0;
-var repl_handler: ?*const fn ([*:0]const u8) callconv(.c) void = null;
-
-var export_table: [MAX_EXPORTS]ExportEntry = [_]ExportEntry{.{}} ** MAX_EXPORTS;
-var export_count: usize = 0;
-
-var shell_context = ShellContext{
-    .load_module = &shellLoadModule,
-    .set_repl_handler = &shellSetReplHandler,
-    .log = &shellLog,
-    .export_value = &shellExportValue,
-    .import_value = &shellImportValue,
-};
-
-// -- Shell callbacks --------------------------------------------------------
+// -- Shell callbacks ---------------------------------------------------------
 
 fn stderrPrint(comptime fmt: []const u8, args: anytype) void {
     const w = std.fs.File.stderr().deprecatedWriter();
@@ -56,135 +41,18 @@ fn shellLog(msg: [*:0]const u8) callconv(.c) void {
     stderrPrint("[birnam] {s}\n", .{msg});
 }
 
+var repl_handler: ?*const fn ([*:0]const u8) callconv(.c) void = null;
+
 fn shellSetReplHandler(handler: ?*const fn ([*:0]const u8) callconv(.c) void) callconv(.c) void {
     repl_handler = handler;
 }
 
-fn shellExportValue(name: [*:0]const u8, value: ?*anyopaque) callconv(.c) void {
-    const key = std.mem.span(name);
-    // Update existing entry if name matches
-    for (export_table[0..export_count]) |*entry| {
-        if (entry.name) |n| {
-            if (std.mem.eql(u8, std.mem.span(n), key)) {
-                entry.value = value;
-                return;
-            }
-        }
-    }
-    // Add new entry
-    if (export_count < MAX_EXPORTS) {
-        export_table[export_count] = .{ .name = name, .value = value };
-        export_count += 1;
-    } else {
-        shellLog("error: export table full");
-    }
-}
-
-fn shellImportValue(name: [*:0]const u8) callconv(.c) ?*anyopaque {
-    const key = std.mem.span(name);
-    for (export_table[0..export_count]) |entry| {
-        if (entry.name) |n| {
-            if (std.mem.eql(u8, std.mem.span(n), key)) {
-                return entry.value;
-            }
-        }
-    }
-    return null;
-}
-
-fn shellLoadModule(path: [*:0]const u8) callconv(.c) bool {
-    if (module_count >= MAX_MODULES) {
-        shellLog("error: module registry full");
-        return false;
-    }
-
-    var lib = std.DynLib.open(std.mem.span(path)) catch {
-        stderrPrint("[birnam] error: could not load '{s}'\n", .{path});
-        return false;
-    };
-
-    const init_fn = lib.lookup(*const fn (*ShellContext) callconv(.c) void, "birnam_module_init") orelse {
-        stderrPrint("[birnam] error: '{s}' has no birnam_module_init\n", .{path});
-        lib.close();
-        return false;
-    };
-
-    module_infos[module_count] = .{
-        .lib = lib,
-        .path = path,
-        .init_fn = init_fn,
-    };
-    module_count += 1;
-
-    // Call init
-    init_fn(&shell_context);
-
-    return true;
-}
-
-fn reloadModule(info: *ModuleInfo) bool {
-    // Close old handle
-    if (info.lib) |*lib| {
-        lib.close();
-        info.lib = null;
-    }
-
-    // Reopen
-    var lib = std.DynLib.open(std.mem.span(info.path)) catch {
-        shellLog("error: reload failed - could not reopen library");
-        return false;
-    };
-
-    const init_fn = lib.lookup(*const fn (*ShellContext) callconv(.c) void, "birnam_module_init") orelse {
-        shellLog("error: reload failed - no birnam_module_init");
-        lib.close();
-        return false;
-    };
-
-    info.lib = lib;
-    info.init_fn = init_fn;
-
-    // Re-init
-    init_fn(&shell_context);
-    return true;
-}
-
-// -- kqueue file watcher ----------------------------------------------------
-
-const Kqueue = struct {
-    kq: posix.fd_t,
-
-    fn create() ?Kqueue {
-        const kq = posix.kqueue() catch return null;
-        return .{ .kq = kq };
-    }
-
-    fn watchFile(self: *Kqueue, path: [*:0]const u8) void {
-        const fd = posix.openZ(path, .{ .ACCMODE = .RDONLY }, 0) catch return;
-        var changelist = [_]posix.Kevent{.{
-            .ident = @intCast(fd),
-            .filter = posix.system.EVFILT.VNODE,
-            .flags = posix.system.EV.ADD | posix.system.EV.CLEAR,
-            .fflags = posix.system.NOTE.WRITE | posix.system.NOTE.RENAME,
-            .data = 0,
-            .udata = 0,
-        }};
-        _ = posix.kevent(self.kq, &changelist, &.{}, null) catch {};
-    }
-
-    fn poll(self: *Kqueue) bool {
-        var events: [4]posix.Kevent = undefined;
-        const timeout = posix.timespec{ .sec = 0, .nsec = 100_000_000 }; // 100ms
-        const n = posix.kevent(self.kq, &.{}, &events, &timeout) catch return false;
-        return n > 0;
-    }
-
-    fn deinit(self: *Kqueue) void {
-        posix.close(self.kq);
-    }
+var shell_context = id_api_mod.ShellContext{
+    .log = &shellLog,
+    .set_repl_handler = &shellSetReplHandler,
 };
 
-// -- Signal handling --------------------------------------------------------
+// -- Signal handling (kept from Phase 0) ------------------------------------
 
 var reload_requested: bool = false;
 
@@ -201,65 +69,69 @@ fn installSignalHandler() void {
     posix.sigaction(posix.SIG.HUP, &act, null);
 }
 
-// -- Main -------------------------------------------------------------------
+// -- Main --------------------------------------------------------------------
 
 pub fn main() !void {
-    stderrPrint("[birnam] shell starting (kernel not yet built — Phase 1 territory)\n", .{});
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    stderrPrint("[birnam] shell starting\n", .{});
 
     installSignalHandler();
 
-    // Optional module path argument. Without it, shell runs with no modules
-    // — useful for Phase 0..1 work before the id kernel exists again.
+    // -- Boot the kernel -----------------------------------------------------
+    const store = try allocator.create(fact_store.FactStore);
+    store.* = fact_store.FactStore.init(allocator);
+
+    const table = try allocator.create(object_table.ObjectTable);
+    table.* = object_table.ObjectTable.init(allocator);
+
+    const interner = try allocator.create(interner_mod.Interner);
+    interner.* = interner_mod.Interner.init(allocator);
+
+    _ = try bootstrap.boot(allocator, store, table, interner);
+    id_api_mod.setInterner(interner);
+
+    const api = id_api_mod.populate();
+
+    var manager = module.Manager.init(allocator, &shell_context, api);
+    defer manager.deinit();
+
+    // -- Load modules from argv ----------------------------------------------
     var args = std.process.args();
     _ = args.next(); // skip argv[0]
-    const maybe_path_slice = args.next();
-
-    var kq = Kqueue.create();
-
-    if (maybe_path_slice) |path_slice| {
-        const module_path: [*:0]const u8 = path_slice.ptr;
-        if (!shellLoadModule(module_path)) {
-            stderrPrint("[birnam] fatal: could not load initial module\n", .{});
-            std.process.exit(1);
+    var any_module = false;
+    while (args.next()) |path_slice| {
+        const path_z = try allocator.dupeZ(u8, path_slice);
+        defer allocator.free(path_z);
+        if (try manager.load(path_z)) |mod_eid| {
+            stderrPrint("[birnam] loaded {s} (eid {d})\n", .{ path_z, mod_eid });
+            any_module = true;
+        } else {
+            stderrPrint("[birnam] could not load {s}\n", .{path_z});
         }
-        if (kq) |*watcher| watcher.watchFile(module_path);
-    } else {
-        stderrPrint("[birnam] no module argument — running bare. Pass a .dylib path to load.\n", .{});
+    }
+    if (!any_module) {
+        stderrPrint("[birnam] no modules loaded — pass one or more .dylib paths\n", .{});
     }
 
-    stderrPrint("[birnam] entering main loop (^C to quit, SIGHUP to reload)\n", .{});
+    stderrPrint("[birnam] entering main loop (^D to quit)\n", .{});
 
-    // Main loop
+    // -- REPL loop -----------------------------------------------------------
     const reader = std.fs.File.stdin().deprecatedReader();
     var buf: [4096]u8 = undefined;
 
     while (true) {
-        // Check for SIGHUP reload
         if (reload_requested) {
             reload_requested = false;
-            stderrPrint("[birnam] reloading modules...\n", .{});
-            for (module_infos[0..module_count]) |*m| {
-                _ = reloadModule(m);
-            }
+            stderrPrint("[birnam] SIGHUP — reload requested (not implemented in this build)\n", .{});
         }
 
-        // Check for file changes
-        if (kq) |*watcher| {
-            if (watcher.poll()) {
-                stderrPrint("[birnam] file change detected, reloading...\n", .{});
-                for (module_infos[0..module_count]) |*m| {
-                    _ = reloadModule(m);
-                }
-            }
-        }
-
-        // Prompt
         stdoutPrint("birnam> ", .{});
-
         const line = reader.readUntilDelimiterOrEof(&buf, '\n') catch continue;
         if (line) |l| {
             if (repl_handler) |handler| {
-                // Null-terminate for C callback
                 if (l.len < buf.len) {
                     buf[l.len] = 0;
                     handler(@ptrCast(buf[0 .. l.len + 1].ptr));
@@ -268,12 +140,8 @@ pub fn main() !void {
                 if (std.mem.eql(u8, l, "quit") or std.mem.eql(u8, l, "exit")) break;
                 stderrPrint("[birnam] no repl handler registered\n", .{});
             }
-        } else {
-            break; // EOF
-        }
+        } else break; // EOF
     }
 
-    // Cleanup
-    if (kq) |*watcher| watcher.deinit();
     stderrPrint("[birnam] goodbye\n", .{});
 }
