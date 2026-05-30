@@ -44,7 +44,9 @@ const AST_KEYWORD_SEND_VT: u64 = 108;
 const AST_UNARY_SEND_VT: u64 = 109;
 const AST_BINARY_SEND_VT: u64 = 110;
 const AST_BLOCK_VT: u64 = 112;
+const AST_LET_VT: u64 = 113;
 const ATTR_AST_BLOCK_BODY: u64 = 124;
+const ATTR_AST_LET_INIT: u64 = 125;
 const CLOSURE_VT: u64 = 4;
 const VTABLE_VT: u64 = 1;
 const OBJECT_VT: u64 = 2;
@@ -207,6 +209,8 @@ var rn_block_param: u64 = 0;
 var rn_block_params: u64 = 0;
 var rn_block_with_params: u64 = 0;
 var rn_bracket_binary: u64 = 0;
+var rn_let_statement: u64 = 0;
+var rn_top_form: u64 = 0;
 var ATTR_AST_BLOCK_PARAMS_CONST: u64 = 123;
 
 // Cached selector EIDs.
@@ -368,7 +372,7 @@ fn buildGrammar() void {
     // -- Reserved-word literals (G4) with !alphanumeric tail --------------
     // Each kw rule = literal "X" !alphanumeric. Ensures "true2" is an
     // identifier, not a true literal followed by 2.
-    inline for ([_][]const u8{ "nil", "true", "false", "self" }) |kw| {
+    inline for ([_][]const u8{ "nil", "true", "false", "self", "let" }) |kw| {
         const parts = [_]u64{
             untagEid(peg_literal(kw)),
             untagEid(peg_not(peg_rule_ref("alphanumeric"))),
@@ -381,6 +385,9 @@ fn buildGrammar() void {
     //      | identifier
     // Ordered choice — reserved words first so "self" doesn't get eaten as
     // identifier.
+    // Note: kw-let is excluded from atom intentionally. `let` is a
+    // statement keyword only — appearing in expression position is an
+    // error. let-statement is at top-form level.
     {
         const atom_alts = [_]u64{
             untagEid(peg_rule_ref("integer")),
@@ -574,11 +581,35 @@ fn buildGrammar() void {
         defineRule(grammar, "expression", peg_choice(&alts));
     }
 
-    // start = ws expression ws eof
+    // let-statement = kw-let ws identifier ws ":=" ws expression
+    {
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("kw-let")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("identifier")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal(":=")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+        };
+        defineRule(grammar, "let-statement", peg_seq(&parts));
+    }
+
+    // top-form = let-statement | expression  (ordered — let must come first
+    // because "let" otherwise gets eaten as a kw-let-failing identifier).
+    {
+        const alts = [_]u64{
+            untagEid(peg_rule_ref("let-statement")),
+            untagEid(peg_rule_ref("expression")),
+        };
+        defineRule(grammar, "top-form", peg_choice(&alts));
+    }
+
+    // start = ws top-form ws eof
     {
         const start_parts = [_]u64{
             untagEid(peg_rule_ref("ws")),
-            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_rule_ref("top-form")),
             untagEid(peg_rule_ref("ws")),
             untagEid(peg_eof()),
         };
@@ -753,7 +784,32 @@ fn desugar(cst_eid: u64) u64 {
         }
         return ast;
     }
-    if (rn == rn_atom or rn == rn_expression or rn == rn_bracket_form or rn == rn_start) {
+    if (rn == rn_let_statement) {
+        // Children include kw-let CST + ws + identifier + ws + ":=" (no CST)
+        // + ws + expression. Skip kw-let and ws, find identifier + expression.
+        var c = cstFirstChild(cst_eid);
+        var name_eid: u64 = 0;
+        var init_ast: u64 = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn == rn_identifier and name_eid == 0) {
+                const id_span = cstByteRange(c);
+                const bytes = g_source[id_span.start..id_span.end];
+                name_eid = api.intern(bytes.ptr, bytes.len);
+            } else if (crn == rn_expression) {
+                init_ast = desugar(c);
+            }
+        }
+        const ast = newAstNode(AST_LET_VT, span.start, span.end);
+        if (name_eid != 0) {
+            _ = api.assert_fact(ast, ATTR_AST_NAME, mkEid(name_eid), g_module_eid);
+        }
+        if (init_ast != 0) {
+            _ = api.assert_fact(ast, ATTR_AST_LET_INIT, mkEid(init_ast), g_module_eid);
+        }
+        return ast;
+    }
+    if (rn == rn_atom or rn == rn_expression or rn == rn_bracket_form or rn == rn_start or rn == rn_top_form) {
         const child = cstFirstChild(cst_eid);
         // For start: children are ws, expression, ws (ws-CST). Skip ws-shaped children.
         var c = child;
@@ -936,6 +992,8 @@ fn cacheRuleNames() void {
     rn_block_params = api.intern("block-params".ptr, 12);
     rn_block_with_params = api.intern("block-with-params".ptr, 17);
     rn_bracket_binary = api.intern("bracket-binary".ptr, 14);
+    rn_let_statement = api.intern("let-statement".ptr, 13);
+    rn_top_form = api.intern("top-form".ptr, 8);
 }
 
 // -- Eval (Phase 10.3 minimal) -----------------------------------------------
@@ -1243,6 +1301,22 @@ fn evalBlockImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     return allocBlockClosure(s.receiver, currentScope(args, n_args));
 }
 
+/// `let name := expr` — eval init, push (name, init_value) into the
+/// current scope, return the bound value.
+fn evalLetImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    const api = g_api.?;
+    if (!isEid(s.receiver)) return NIL;
+    const ast_eid = s.receiver >> 3;
+    const scope_ref = currentScope(args, n_args);
+    if (!isEid(scope_ref)) return NIL;
+    const name_ref = api.query_eavt(ast_eid, ATTR_AST_NAME);
+    const init_ref = api.query_eavt(ast_eid, ATTR_AST_LET_INIT);
+    if (!isEid(name_ref) or !isEid(init_ref)) return NIL;
+    const init_val = api.send1(init_ref, sel_eval, scope_ref);
+    pushScopeBinding(scope_ref >> 3, name_ref >> 3, init_val);
+    return init_val;
+}
+
 // -- Method install ---------------------------------------------------------
 
 /// `[vt method: #sel do: blockClosureRef]` — installs the block as a method
@@ -1360,6 +1434,7 @@ fn installMethods() void {
     _ = api.assert_fact(AST_KEYWORD_SEND_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalKeywordSendImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_BLOCK_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalBlockImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_VAR_REF_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalVarRefImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(AST_LET_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalLetImpl), NIL)), g_module_eid);
 
     // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
     const negate_sel = api.intern("negate".ptr, 6);
@@ -1473,7 +1548,7 @@ fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
         if (g_log) |log| log("[lang] => error");
         return;
     }
-    const val = api.send0(ast_ref, sel_eval);
+    const val = api.send1(ast_ref, sel_eval, mkEid(g_top_scope_eid));
     if (g_log) |log| {
         var buf: [256]u8 = undefined;
         const m = formatValue(&buf, val) catch return;

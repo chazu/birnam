@@ -444,6 +444,61 @@ test "DEMO 10.x: ifTrue:ifFalse: branches correctly" {
     }
 }
 
+test "DEMO 10.4.5 S3: let binding + REPL-style persistence + closure capture" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    // Top-level scope EID is module-static in the lang dylib; the test must
+    // resolve a scope-Ref by sending parseExpr+eval against the lang module.
+    // For persistence across calls, each eval threads through the same
+    // top-level scope automatically since send1(ast, eval) with no scope-arg
+    // defaults to the singleton.
+    inline for (.{
+        .{ "let x := 42", 42 },
+        .{ "x", 42 },
+        .{ "[x squared]", 1764 },
+        .{ "let y := [x + 8]", 50 },
+        .{ "y", 50 },
+    }) |pair| {
+        const src_ref = try strings.mkString(a, pair[0]);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, pair[1]), ref_mod.untagSmallInt(val));
+    }
+}
+
+test "DEMO 10.4.5 S3: closure-over-enclosing-scope — makeAdder" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    inline for (.{
+        "let makeAdder := [:a | [:b | [a + b]]]",
+        "let add10 := [makeAdder value: 10]",
+    }) |line| {
+        const src_ref = try strings.mkString(a, line);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        _ = send_mod.send0(ast_ref, sel_eval);
+    }
+
+    // [add10 value: 5] → 15 (a=10 captured, b=5 supplied).
+    const src_ref = try strings.mkString(a, "[add10 value: 5]");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expectEqual(@as(i64, 15), ref_mod.untagSmallInt(val));
+}
+
 test "lang grammar: start fails on \"!!\" (no atom matches)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
