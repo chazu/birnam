@@ -223,7 +223,7 @@ Query example:
 | `?name` | pattern variable (query) |
 | `:name` | block argument |
 | `#foo` | literal selector / keyword |
-| `'foo'` | string literal (idst tradition) |
+| `"foo"` | string literal |
 | `#( ... )` | literal array |
 
 ### Why
@@ -275,7 +275,7 @@ Source → PEG parse → AST facts → desugar (asserts more facts) → IR facts
 
 REPL is an object. Its `run` method reads a line, parses to a message send, dispatches to a target object. Shell-level REPL is bootstrap front door until the REPL module loads.
 
-Syntax: idst/Smalltalk-derived. Bracket-delimited message sends, keyword selectors, unary/binary/keyword forms, cascades, block closures, pattern-sends for queries (see §Query Surface — Pattern Sends). Reserved prefixes and literal forms are locked. Full grammar (precedence, operator set, literal extensions) is designed in Phase 10 (language module) as PEG facts.
+Syntax: idst/Smalltalk-derived, visually Obj-C-y. Bracket-delimited message sends, keyword selectors, unary/binary/keyword forms, block closures, pattern-sends for queries (see §Query Surface — Pattern Sends). Statement separator `;`. No cascades (dropped Phase 10 decision; multi-send-to-same-receiver via repeated `[obj msg]` sends). Reserved prefixes and literal forms are locked. Full grammar (precedence, operator set, literal extensions) is designed in Phase 10 (language module) as PEG facts.
 
 ## Build Outputs
 
@@ -287,7 +287,7 @@ Syntax: idst/Smalltalk-derived. Bracket-delimited message sends, keyword selecto
 ## Non-Goals (For Now)
 
 - Multi-writer / distributed images. Single-process, single-writer. All txs serialized through one channel.
-- Threads / actors / concurrency. **Deferred, not refused.** Multi-threaded operation is on the table eventually; nothing in the current design should foreclose it. When the time comes, the global recursion guard becomes thread-local, the FFI pause counter becomes per-thread, and tx serialization moves to a single-writer queue with concurrent readers (Datomic-style). Designed-in, not committed-to.
+- Threads / actors / concurrency. **Deferred, not refused.** Multi-threaded operation is on the table eventually; nothing in the current design should foreclose it. When the time comes, the global recursion guard, the FFI pause counter, the Phase 10.3 non-local-return `g_unwinding` side-channel, and any other single-threaded-only counters become per-thread, and tx serialization moves to a single-writer queue with concurrent readers (Datomic-style). Designed-in, not committed-to.
 - Sandboxing.
 - Beating C performance. Smalltalk-VM ballpark is fine.
 
