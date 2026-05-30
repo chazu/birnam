@@ -470,9 +470,7 @@ COLA dream made concrete: interactively absorb any C library into the object wor
 
 **Goal:** Land the Module entity wrapper deferred from Phase 9, ELF reader for linux, FFI unload semantics, and schema-driven multi-cardinality attributes. Bundled because schema lands close to Phase 10 language work.
 
-### Open questions (DRAFT — decision doc not yet locked)
-
-Four sub-bundles, each with its own design questions. Tradeoffs + leans to be locked in a follow-up table before code.
+### Decisions locked (Phase 9.5 decision doc, 2026-05-29)
 
 > **Terminology note:** birnam is strictly prototype-based (COLA / idst /
 > Piumarta lineage per VISION.md). There are objects (with `vt` at offset
@@ -481,6 +479,34 @@ Four sub-bundles, each with its own design questions. Tradeoffs + leans to be lo
 > chain replaces inheritance. Whenever Phase 9.5 discussions say "Module
 > vt" they mean the prototype-vtable that loaded-library objects delegate
 > to, not a Smalltalk-80 metaclass.
+
+| Q | Decision |
+|---|---|
+| A1 Module vt structure | **Per-Module delegate vt.** Each `load:` mints a fresh vt that delegates to `MODULE_VT`. Wraps scoped to instance. |
+| A2a load: failure | **Error-entity Ref** with `:error-kind :ffi-load-failure :error-message <str> :error-path <str>` (Phase 7.8 diagnostic pattern). |
+| A2b wrap: failure | **Return receiver on success, error-entity on failure.** Kinds: `:ffi-arity-too-high`, `:ffi-sig-parse-failure`, `:ffi-symbol-not-found`. Chainable on success. |
+| A2c symbols return | **RRB of symbol-entity Refs.** Lazy fact-materialization on first send; `:ffi-symbols-enumerated?` flag caches. New EIDs: ATTR_FFI_SYMBOL_NAME/ADDR/KIND/EXTERNAL/MODULE, ATTR_FFI_SYMBOLS_ENUMERATED. |
+| A2d path / handle | **Boxed types via fact-storage queries.** path = boxed string Ref via `[mod :ffi-path …]`; handle = boxed FfiPtr via `[mod :ffi-handle …]`. |
+| A3 wrap target vt | **Module-scoped only.** `wrap:as:sig:` installs on receiver's instance vt. `onVt:` variant deferred (needs send4 + receiver-as-arg coercion convention). |
+| B1 ELF symbol table | **`.dynsym`** — always present, matches dlsym view. Mach-O reader also aligned to drop N_STAB so both readers expose only callable symbols. |
+| B2 Reader unification | **Fact-dispatched registry.** Each reader self-registers at boot: `[reader_eid :reader-magic <SmallInt>] [reader_eid :reader-impl <fn-ptr-Ref>]`. Shared `loader.Symbol` + `loader.SymbolIter` data contract. New file `src/kernel/loader.zig` (~30 LOC dispatcher). COLA-correct: no hardcoded switch. |
+| C1 Pointer ownership | **`:ffi-owner` fact** per boxed FFI pointer via `boxed.mkFfiPtrOwned(allocator, addr, owner_mod) → Ref` variant. AVET indexes mod→ptrs lookup. New EID ATTR_FFI_OWNER. |
+| C2 Stale-flag check | **At pushArg time** when a Ref crosses into a C call. Failure returns error-entity with `:error-kind :ffi-stale-pointer`. New EID ATTR_FFI_STALE. |
+| C3 Refuse-unload | **`ffi_depth > 0` only** (Phase 8 primitive). C2 stale-flag protects post-unload use. |
+| D1 Default cardinality | **Absence of `:cardinality` fact = `:one`.** Zero-migration; assert hot path early-outs when no cardinality fact exists. |
+| D2 currentValue for :many | **Polymorphic Ref return.** See ADR-9.5-D2 below: `:one` returns value Ref unchanged; `:many` returns RRB-Ref materialized from atomic per-tuple storage (Datomic-style multi-datom); empty `:many` returns interned empty-RRB constant; NIL = never-asserted. 1NF preserved at storage layer. |
+| D3 Retroactive schema | **Forward-only.** Schema change applies to future asserts only. Past history immutable (Date discipline). Storage already supports mixed-era datoms via multi-datom shape. |
+| D4 Schema scope | **Cardinality only for Phase 9.5.** `:unique`, `:no-history` deferred to Phase 11.x with their own decision rounds. `:doc` works today without kernel changes. `:index?`/`:value-type` redundant in birnam's substrate. |
+| E1 Build order | **Module → Schema → Module symbols → loader/ELF → Unload.** Module ships earliest user-visible win; Schema settles substrate before symbols (uses `:many`) and unload (uses `currentValues`). |
+
+### Documented risks
+
+1. **`:many` read-path allocation.** Every `currentValue` on a `:many` attr allocates one RRB head. Hot reads = churn. Spike accepts; intern by (e, a, latest-tx) later if profiling shows it matters.
+2. **Mixed-era datoms.** An attr flipped from `:one` to `:many` mid-life will have history with both implicit-retract-on-overwrite (`:one`-era) and append-without-retract (`:many`-era) shapes. Both correct in their era. Documented for users.
+3. **macOS shared cache.** Mach-O reader can't read libSystem from disk on Big Sur+; symbol enumeration tests use a build-fixture dylib (already in Phase 9 pattern).
+4. **Schema migration ergonomics.** Forward-only cardinality means converting old single-value history to `:many` semantics requires a user-side migration script (assert new datoms explicitly). Substrate enforces nothing.
+
+
 
 #### A. Module entity wrapper
 
@@ -540,17 +566,17 @@ D4. **Scope creep.** Phase 9.5 also adds `:unique`, `:index?`, other Datomic-sty
 E1. Module wrapper depends on Mach-O reader (have). ELF reader independent. Unload depends on Module wrapper + per-ptr ownership. Schema fully independent.
 Proposed order: **Module → Schema → ELF → Unload.** Or interleave?
 
-### Work items (placeholder — to be expanded after decision doc lock)
+### Work items (locked per E1 ordering)
 
-9.5.1 Module wrapper (A1, A2, A3) — new `src/modules/ffi/` dylib or kernel-side `Module` entity.
+9.5.1 **Module wrapper.** Bootstrap allocates `MODULE_VT` proto-vt (delegates to `OBJECT_VT`). `Module load:` mints per-instance delegate vt + asserts `[mod :vtable <instance_vt>] [mod :ffi-handle <FfiPtr>] [mod :ffi-path <string>]`. Installs `load:`/`wrap:as:sig:`/`path`/`handle` methods on `MODULE_VT`. `wrap:as:sig:` uses Phase 9 `ffi.registerWrap` under the hood, installs returned closure on receiver's instance vt. Failure-mode entities per A2a/A2b.
 
-9.5.2 Schema cardinality (D1, D2, D3, D4).
+9.5.2 **Schema cardinality.** New EIDs `ATTR_CARDINALITY`, keyword EIDs `KW_ONE` / `KW_MANY`. EAVT cell shape adjusted: `:many` attrs store multiple `(v, tx, op)` entries at same (e, a). `currentValue` becomes polymorphic per ADR-9.5-D2. New `currentValues(e, a) → iterator`. Forward-only schema (D3).
 
-9.5.3 ELF reader + `loader.zig` dispatcher (B1, B2).
+9.5.3 **Module symbols method.** `[mod symbols]` walks Mach-O reader on first call, asserts `[mod :ffi-has-symbol <sym_eid>]` (`:many` cardinality), one symbol entity per entry with `:ffi-symbol-name/addr/kind/external/module` facts. Subsequent calls = pure query via `currentValues`. Caches via `[mod :ffi-symbols-enumerated? true]`.
 
-9.5.4 CI gate flip: linux FFI tests turn on; Mach-O tests skip-gated to darwin.
+9.5.4 **Reader registry + ELF reader.** New `src/kernel/loader.zig`: fact-dispatched registry per B2. Each reader self-registers `[reader_eid :reader-magic <SmallInt>] [reader_eid :reader-impl <fn-ptr-Ref>]` at boot. Existing `macho.zig` lifts its `Symbol` type into `loader.zig`; aligns to drop N_STAB (B1). New `src/kernel/elf.zig` (~300 LOC) parses ELF64 `.dynsym`. Magic-byte dispatcher invokes correct reader. Linux FFI tests turn on; Mach-O tests skip-gate to darwin.
 
-9.5.5 Module unload (C1, C2, C3) — `Module>>unload` + stale-pointer flag + deref-check.
+9.5.5 **Module unload.** New EIDs `ATTR_FFI_OWNER`, `ATTR_FFI_STALE`. Variant `boxed.mkFfiPtrOwned` threads owner via `:ffi-owner` fact at every pointer allocation (return values from FFI calls). `ffi.pushArg` for `.pointer`/`.cstring` checks `:ffi-stale?`; on stale, returns error-entity. `Module>>unload`: refuses when `promotion.ffiDepth() > 0`; otherwise walks `[?p :ffi-owner mod]` via `currentValues`, asserts `:ffi-stale? true` on each, retracts wrap closure facts, `dlclose`s handle, retains Module entity for walk-back.
 
 ### Reasoning
 Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatchable surface (`[Module load: "path"]`, `[mod wrap: #sqrt: as: "sqrt" signature: "d)d"]`). Schema lands here because Phase 10's user-defined types want `[parent :children ?]` semantics. ELF + unload finish what Phase 9 deferred for spike scope. Bundled phase keeps the platform-parity story coherent.
