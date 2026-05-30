@@ -262,28 +262,22 @@ fn buildGrammar() void {
     const grammar = api.send0(mkEid(PEG_EID), sel_new_grammar);
     g_grammar_eid = untagEid(grammar);
 
-    // -- Primitives via charsets ------------------------------------------
-    // whitespace-char = [ \t\n\r]
+    // -- Primitives -------------------------------------------------------
     const ws_ranges = [_]u8{ ' ', ' ', '\t', '\t', '\n', '\n', '\r', '\r' };
     defineRule(grammar, "whitespace-char", peg_charset(&ws_ranges));
-    // whitespace = whitespace-char*
-    defineRule(grammar, "whitespace", peg_star(peg_rule_ref("whitespace-char")));
+    defineRule(grammar, "ws", peg_star(peg_rule_ref("whitespace-char")));
 
-    // digit = [0-9]
     const digit_ranges = [_]u8{ '0', '9' };
     defineRule(grammar, "digit", peg_charset(&digit_ranges));
 
-    // letter = [a-zA-Z_]
     const letter_ranges = [_]u8{ 'a', 'z', 'A', 'Z', '_', '_' };
     defineRule(grammar, "letter", peg_charset(&letter_ranges));
 
-    // alphanumeric = letter | digit
     {
         const alts = [_]u64{ untagEid(peg_rule_ref("letter")), untagEid(peg_rule_ref("digit")) };
         defineRule(grammar, "alphanumeric", peg_choice(&alts));
     }
 
-    // identifier = letter alphanumeric*
     {
         const parts = [_]u64{
             untagEid(peg_rule_ref("letter")),
@@ -292,37 +286,138 @@ fn buildGrammar() void {
         defineRule(grammar, "identifier", peg_seq(&parts));
     }
 
-    // integer = digit+
     defineRule(grammar, "integer", peg_plus(peg_rule_ref("digit")));
 
-    // -- Keyword literals (G4 reserved set) --------------------------------
-    defineRule(grammar, "kw-nil", peg_literal("nil"));
-    defineRule(grammar, "kw-true", peg_literal("true"));
-    defineRule(grammar, "kw-false", peg_literal("false"));
+    // -- String literal: "..." (no escapes for spike) ---------------------
+    // string = '"' (!'"' any)* '"'
+    {
+        const quote_char = [_]u8{ '"', '"' };
+        const quote = peg_charset(&quote_char);
+        const not_quote = peg_not(peg_charset(&quote_char));
+        const body_step = [_]u64{
+            untagEid(not_quote),
+            untagEid(peg_any()),
+        };
+        const body = peg_seq(&body_step);
+        const body_star = peg_star(body);
+        const string_parts = [_]u64{
+            untagEid(quote),
+            untagEid(body_star),
+            untagEid(peg_charset(&quote_char)),
+        };
+        defineRule(grammar, "string", peg_seq(&string_parts));
+    }
 
-    // atom = integer | kw-nil | kw-true | kw-false | identifier
-    //                                              (order matters — PEG)
-    // To avoid "true" being eaten as an identifier first, keyword rules
-    // come before identifier in the choice. The proper fix (followed by
-    // !alphanumeric in a keyword's seq) lands when reserved-word handling
-    // is wired in a follow-up.
+    // -- Reserved-word literals (G4) with !alphanumeric tail --------------
+    // Each kw rule = literal "X" !alphanumeric. Ensures "true2" is an
+    // identifier, not a true literal followed by 2.
+    inline for ([_][]const u8{ "nil", "true", "false", "self" }) |kw| {
+        const parts = [_]u64{
+            untagEid(peg_literal(kw)),
+            untagEid(peg_not(peg_rule_ref("alphanumeric"))),
+        };
+        defineRule(grammar, "kw-" ++ kw, peg_seq(&parts));
+    }
+
+    // -- Atom = literal-shaped atomic value -------------------------------
+    // atom = integer | string | kw-nil | kw-true | kw-false | kw-self
+    //      | identifier
+    // Ordered choice — reserved words first so "self" doesn't get eaten as
+    // identifier.
     {
         const atom_alts = [_]u64{
             untagEid(peg_rule_ref("integer")),
+            untagEid(peg_rule_ref("string")),
             untagEid(peg_rule_ref("kw-nil")),
             untagEid(peg_rule_ref("kw-true")),
             untagEid(peg_rule_ref("kw-false")),
+            untagEid(peg_rule_ref("kw-self")),
             untagEid(peg_rule_ref("identifier")),
         };
         defineRule(grammar, "atom", peg_choice(&atom_alts));
     }
 
-    // start = whitespace atom whitespace eof
+    // -- Bracket forms ----------------------------------------------------
+    // kw-suffix = identifier ":"
+    {
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("identifier")),
+            untagEid(peg_literal(":")),
+        };
+        defineRule(grammar, "kw-suffix", peg_seq(&parts));
+    }
+
+    // kw-arg = ws kw-suffix ws expression
+    {
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("kw-suffix")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+        };
+        defineRule(grammar, "kw-arg", peg_seq(&parts));
+    }
+
+    // unary-tail = ws identifier (!":" so we don't eat a kw-suffix)
+    {
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("identifier")),
+            untagEid(peg_not(peg_literal(":"))),
+        };
+        defineRule(grammar, "unary-tail", peg_seq(&parts));
+    }
+
+    // bracket-keyword = "[" ws expression kw-arg+ ws "]"
+    {
+        const parts = [_]u64{
+            untagEid(peg_literal("[")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_plus(peg_rule_ref("kw-arg"))),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal("]")),
+        };
+        defineRule(grammar, "bracket-keyword", peg_seq(&parts));
+    }
+
+    // bracket-unary = "[" ws expression unary-tail+ ws "]"
+    {
+        const parts = [_]u64{
+            untagEid(peg_literal("[")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_plus(peg_rule_ref("unary-tail"))),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal("]")),
+        };
+        defineRule(grammar, "bracket-unary", peg_seq(&parts));
+    }
+
+    // bracket-form = bracket-keyword | bracket-unary
+    {
+        const alts = [_]u64{
+            untagEid(peg_rule_ref("bracket-keyword")),
+            untagEid(peg_rule_ref("bracket-unary")),
+        };
+        defineRule(grammar, "bracket-form", peg_choice(&alts));
+    }
+
+    // expression = bracket-form | atom (ordered: try the heavier form first)
+    {
+        const alts = [_]u64{
+            untagEid(peg_rule_ref("bracket-form")),
+            untagEid(peg_rule_ref("atom")),
+        };
+        defineRule(grammar, "expression", peg_choice(&alts));
+    }
+
+    // start = ws expression ws eof
     {
         const start_parts = [_]u64{
-            untagEid(peg_rule_ref("whitespace")),
-            untagEid(peg_rule_ref("atom")),
-            untagEid(peg_rule_ref("whitespace")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_rule_ref("ws")),
             untagEid(peg_eof()),
         };
         defineRule(grammar, "start", peg_seq(&start_parts));

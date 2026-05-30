@@ -136,6 +136,81 @@ test "lang grammar: start matches \"true\" via atom choice" {
     try testing.expectEqual(@as(i64, 4), ref_mod.untagSmallInt(end_ref));
 }
 
+test "lang grammar: string literal \"\\\"hello\\\"\"" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const ast = ref_mod.untagEid(parseVia(s, "\"hello\"", "string", lang_mod_eid, a));
+    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(end_ref));
+}
+
+test "lang grammar: reserved-word boundary — \"self2\" parses as identifier, not kw-self" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // kw-self alone on "self2" must fail (because the trailing "2" is alphanumeric).
+    const r = parseVia(s, "self2", "kw-self", lang_mod_eid, a);
+    const err = ref_mod.untagEid(r);
+    try testing.expectEqual(kernel_eids.ERROR_VT, ref_mod.untagEid(s.store.currentValue(err, kernel_eids.ATTR_VTABLE).?));
+
+    // identifier should match the whole thing.
+    const ok = ref_mod.untagEid(parseVia(s, "self2", "identifier", lang_mod_eid, a));
+    const end_ref = s.store.currentValue(ok, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 5), ref_mod.untagSmallInt(end_ref));
+}
+
+test "lang grammar: bracket-unary \"[3 squared]\"" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const ast = ref_mod.untagEid(parseVia(s, "[3 squared]", "start", lang_mod_eid, a));
+    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 11), ref_mod.untagSmallInt(end_ref));
+}
+
+test "lang grammar: bracket-keyword \"[obj at: 0 put: nil]\" (compound keyword)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const ast = ref_mod.untagEid(parseVia(s, "[obj at: 0 put: nil]", "start", lang_mod_eid, a));
+    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 20), ref_mod.untagSmallInt(end_ref));
+}
+
+test "lang grammar: nested send \"[[1 succ] squared]\"" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const ast = ref_mod.untagEid(parseVia(s, "[[1 succ] squared]", "start", lang_mod_eid, a));
+    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 18), ref_mod.untagSmallInt(end_ref));
+}
+
 test "lang grammar: start fails on \"!!\" (no atom matches)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
