@@ -499,6 +499,55 @@ test "DEMO 10.4.5 S3: closure-over-enclosing-scope — makeAdder" {
     try testing.expectEqual(@as(i64, 15), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 10.x: whileTrue: counts to 5" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    inline for (.{
+        "let n := 0",
+        "[[| [n < 5]] whileTrue: [| n := [n + 1]]]",
+    }) |line| {
+        const src_ref = try strings.mkString(a, line);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        _ = send_mod.send0(ast_ref, sel_eval);
+    }
+    const src_ref = try strings.mkString(a, "n");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expectEqual(@as(i64, 5), ref_mod.untagSmallInt(val));
+}
+
+test "DEMO 10.x: sum-to-10 via whileTrue: + multi-stmt block body" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    inline for (.{
+        "let sum := 0",
+        "let i := 1",
+        "[[| [i < 11]] whileTrue: [| sum := [sum + i]; i := [i + 1]]]",
+    }) |line| {
+        const src_ref = try strings.mkString(a, line);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        _ = send_mod.send0(ast_ref, sel_eval);
+    }
+    const src_ref = try strings.mkString(a, "sum");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expectEqual(@as(i64, 55), ref_mod.untagSmallInt(val));
+}
+
 test "lang grammar: start fails on \"!!\" (no atom matches)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

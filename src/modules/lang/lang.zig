@@ -46,6 +46,8 @@ const AST_BINARY_SEND_VT: u64 = 110;
 const AST_BLOCK_VT: u64 = 112;
 const AST_LET_VT: u64 = 113;
 const AST_ASSIGN_VT: u64 = 114;
+const AST_STMT_SEQ_VT: u64 = 117;
+const ATTR_AST_STMT_FIRST: u64 = 134;
 const ATTR_AST_BLOCK_BODY: u64 = 124;
 const ATTR_AST_LET_INIT: u64 = 125;
 const ATTR_AST_ASSIGN_VALUE: u64 = 127;
@@ -214,6 +216,7 @@ var rn_bracket_binary: u64 = 0;
 var rn_let_statement: u64 = 0;
 var rn_top_form: u64 = 0;
 var rn_assignment: u64 = 0;
+var rn_stmt_list: u64 = 0;
 var ATTR_AST_BLOCK_PARAMS_CONST: u64 = 123;
 
 // Cached selector EIDs.
@@ -487,14 +490,30 @@ fn buildGrammar() void {
         defineRule(grammar, "symbol-literal", peg_seq(&parts));
     }
 
-    // block-bare = "[" ws "|" ws expression ws "]"  (no params)
+    // stmt-list = top-form (ws ";" ws top-form)*
+    {
+        const tail_parts = [_]u64{
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal(";")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("top-form")),
+        };
+        const tail = peg_seq(&tail_parts);
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("top-form")),
+            untagEid(peg_star(tail)),
+        };
+        defineRule(grammar, "stmt-list", peg_seq(&parts));
+    }
+
+    // block-bare = "[" ws "|" ws stmt-list ws "]"  (no params)
     {
         const parts = [_]u64{
             untagEid(peg_literal("[")),
             untagEid(peg_rule_ref("ws")),
             untagEid(peg_literal("|")),
             untagEid(peg_rule_ref("ws")),
-            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_rule_ref("stmt-list")),
             untagEid(peg_rule_ref("ws")),
             untagEid(peg_literal("]")),
         };
@@ -524,7 +543,7 @@ fn buildGrammar() void {
         defineRule(grammar, "block-params", peg_seq(&parts));
     }
 
-    // block-with-params = "[" ws block-params ws "|" ws expression ws "]"
+    // block-with-params = "[" ws block-params ws "|" ws stmt-list ws "]"
     {
         const parts = [_]u64{
             untagEid(peg_literal("[")),
@@ -533,7 +552,7 @@ fn buildGrammar() void {
             untagEid(peg_rule_ref("ws")),
             untagEid(peg_literal("|")),
             untagEid(peg_rule_ref("ws")),
-            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_rule_ref("stmt-list")),
             untagEid(peg_rule_ref("ws")),
             untagEid(peg_literal("]")),
         };
@@ -736,11 +755,11 @@ fn desugar(cst_eid: u64) u64 {
         return ast;
     }
     if (rn == rn_block_bare) {
-        // Children include: ws-CST + expression-CST (the body). Find the
-        // expression child and desugar it as the body.
+        // Body is now stmt-list (was: single expression). Find stmt-list
+        // child and use its desugared AST as the body.
         var c = cstFirstChild(cst_eid);
         while (c != 0) : (c = cstNextSibling(c)) {
-            if (cstRuleName(c) == rn_expression) {
+            if (cstRuleName(c) == rn_stmt_list) {
                 const body_ast = desugar(c);
                 const ast = newAstNode(AST_BLOCK_VT, span.start, span.end);
                 _ = api.assert_fact(ast, ATTR_AST_BLOCK_BODY, mkEid(body_ast), g_module_eid);
@@ -786,7 +805,7 @@ fn desugar(cst_eid: u64) u64 {
                         }
                     }
                 }
-            } else if (crn == rn_expression) {
+            } else if (crn == rn_stmt_list) {
                 body_ast = desugar(c);
             }
         }
@@ -847,6 +866,34 @@ fn desugar(cst_eid: u64) u64 {
             _ = api.assert_fact(ast, ATTR_AST_LET_INIT, mkEid(init_ast), g_module_eid);
         }
         return ast;
+    }
+    if (rn == rn_stmt_list) {
+        // Collect each top-form child's desugared AST. Single child → return
+        // that AST directly. Multiple children → wrap in AST_STMT_SEQ_VT
+        // linked via :ast-stmt-first + :ast-next-sibling.
+        var c = cstFirstChild(cst_eid);
+        var first_child_ast: u64 = 0;
+        var last_child_ast: u64 = 0;
+        var count: usize = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn != rn_top_form) continue;
+            const stmt_ast = desugar(c);
+            if (stmt_ast == 0) continue;
+            count += 1;
+            if (first_child_ast == 0) {
+                first_child_ast = stmt_ast;
+            } else {
+                _ = api.assert_fact(last_child_ast, ATTR_AST_NEXT_SIBLING, mkEid(stmt_ast), g_module_eid);
+            }
+            last_child_ast = stmt_ast;
+        }
+        if (count == 1) return first_child_ast;
+        const seq_ast = newAstNode(AST_STMT_SEQ_VT, span.start, span.end);
+        if (first_child_ast != 0) {
+            _ = api.assert_fact(seq_ast, ATTR_AST_STMT_FIRST, mkEid(first_child_ast), g_module_eid);
+        }
+        return seq_ast;
     }
     if (rn == rn_atom or rn == rn_expression or rn == rn_bracket_form or rn == rn_start or rn == rn_top_form) {
         const child = cstFirstChild(cst_eid);
@@ -1034,6 +1081,7 @@ fn cacheRuleNames() void {
     rn_let_statement = api.intern("let-statement".ptr, 13);
     rn_top_form = api.intern("top-form".ptr, 8);
     rn_assignment = api.intern("assignment".ptr, 10);
+    rn_stmt_list = api.intern("stmt-list".ptr, 9);
 }
 
 // -- Eval (Phase 10.3 minimal) -----------------------------------------------
@@ -1390,6 +1438,40 @@ fn evalAssignImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     return NIL;
 }
 
+/// Multi-statement sequence — walk linked list, eval each, return last value.
+fn evalStmtSeqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    const api = g_api.?;
+    if (!isEid(s.receiver)) return NIL;
+    const ast_eid = s.receiver >> 3;
+    const scope_ref = currentScope(args, n_args);
+    var cur_ref = api.query_eavt(ast_eid, ATTR_AST_STMT_FIRST);
+    var last_val: Ref = NIL;
+    while (isEid(cur_ref) and cur_ref != NIL) {
+        last_val = api.send1(cur_ref, sel_eval, scope_ref);
+        const cur_eid = cur_ref >> 3;
+        cur_ref = api.query_eavt(cur_eid, ATTR_AST_NEXT_SIBLING);
+    }
+    return last_val;
+}
+
+/// `[condBlock whileTrue: bodyBlock]` — Zig-native iteration primitive.
+/// Loops: eval cond → if TRUE_EID then eval body and continue, else return NIL.
+/// User-overrideable via [CLOSURE_VT method:#whileTrue: do:[...]].
+fn closureWhileTrueImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const api = g_api.?;
+    const body_ref = args[0];
+    var safety_counter: u64 = 0;
+    const SAFETY_LIMIT: u64 = 10_000_000;
+    while (safety_counter < SAFETY_LIMIT) : (safety_counter += 1) {
+        const cond_val = api.send0(s.receiver, sel_value_g);
+        if (!isEid(cond_val)) return NIL;
+        if ((cond_val >> 3) != TRUE_EID) return NIL;
+        _ = api.send0(body_ref, sel_value_g);
+    }
+    return NIL;
+}
+
 fn evalLetImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     const api = g_api.?;
     if (!isEid(s.receiver)) return NIL;
@@ -1523,6 +1605,7 @@ fn installMethods() void {
     _ = api.assert_fact(AST_VAR_REF_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalVarRefImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_LET_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalLetImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_ASSIGN_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalAssignImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(AST_STMT_SEQ_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalStmtSeqImpl), NIL)), g_module_eid);
 
     // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
     const negate_sel = api.intern("negate".ptr, 6);
@@ -1563,6 +1646,9 @@ fn installMethods() void {
     _ = api.assert_fact(CLOSURE_VT, sel_value_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
     _ = api.assert_fact(CLOSURE_VT, value_of_sel, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
     _ = api.assert_fact(CLOSURE_VT, value_of_of_sel, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
+
+    const while_true_sel = api.intern("whileTrue:".ptr, 10);
+    _ = api.assert_fact(CLOSURE_VT, while_true_sel, mkEid(api.make_closure(@ptrCast(&closureWhileTrueImpl), NIL)), g_module_eid);
 
     // Boolean control-flow methods. Per Phase 10.0.x lock: birnam-source
     // one-liners are the spec, but native fn-ptrs ship the same semantics
