@@ -234,6 +234,18 @@ pub fn build(b: *std.Build) void {
     run_qmod_tests.step.dependOn(b.getInstallStep());
     test_step.dependOn(&run_qmod_tests.step);
 
+    const pmod_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/peg_module_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const pmod_tests = b.addTest(.{ .root_module = pmod_test_mod });
+    pmod_tests.linkLibrary(dyncall_lib);
+    pmod_tests.linkLibC();
+    const run_pmod_tests = b.addRunArtifact(pmod_tests);
+    run_pmod_tests.step.dependOn(b.getInstallStep());
+    test_step.dependOn(&run_pmod_tests.step);
+
     const rule_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/rule_test.zig"),
         .target = target,
