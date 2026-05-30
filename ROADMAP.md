@@ -816,10 +816,17 @@ later in Phase 11.
 
 11.4 Inline caching at call sites in bytecode (per-pc mcache).
 
-11.5 Tests: VM matches tree-walker output on the Phase 10 test suite.
+11.5 **Non-local return replacement (Phase 10.3 deferred work).** Per ADR-10-E4 locked in Phase 10.3, the tree-walker ships non-local return via a single-threaded side-channel global (`g_unwinding`) plus a sentinel-Ref-propagation protocol. Phase 11 replaces this with a proper bytecode mechanism:
+- Dedicated `RETURN_FROM_METHOD <frame_offset>` opcode unwinds the call stack to the named frame, drops intermediate block activations, and resumes there with the return value.
+- Each method invocation pushes a frame on the VM call-stack; `^` compiles to the unwind opcode with the static method-frame-depth resolved at compile time.
+- The "escaped block returning from dead method" edge case is detected by checking the VM call-stack for an active matching frame; absent → emit ERROR_VT entity (`:error-kind :return-from-dead-method`), matching the tree-walker's diagnostic.
+- Side-channel global retired; non-local return becomes per-VM-thread (forward-compatible with concurrency landing later — VISION §multi-thread already calls this out).
+Tests: parity with tree-walker behavior across all Phase 10 non-local-return test cases, plus VM-only escape detection.
+
+11.6 Tests: VM matches tree-walker output on the Phase 10 test suite.
 
 ### Reasoning
-VM gives us portability and AOT. Bytecode-as-facts means the compiler is also queryable and diffable — we get a "what changed in the compiled form?" view for free.
+VM gives us portability and AOT. Bytecode-as-facts means the compiler is also queryable and diffable — we get a "what changed in the compiled form?" view for free. Bytecode also lets us retire two Phase 10 spike concessions: the side-channel `g_unwinding` global for non-local return (11.5), and tree-walker stack overflow on deep recursion (proper VM stack handles it natively).
 
 ---
 
