@@ -203,4 +203,85 @@ pub const ATTR_FFI_OWNER: u64 = 64;
 pub const ATTR_FFI_STALE: u64 = 65;
 pub const SEL_UNLOAD: u64 = 66;
 
-// 67..255 reserved for future kernel selectors / attributes
+// -- Phase 10.0 kernel vtables + singletons (67..76) -------------------------
+
+/// `BLOCK_VT` — vtable for block closures (Phase 10.3 evaluator). User
+/// `[:x | body]` literals materialize as closure entities with this vtable.
+pub const BLOCK_VT: u64 = 67;
+
+/// `SMALLINT_VT` — vtable for immediate-tag SmallInts. `send.vtableEidOf`
+/// resolves any SmallInt tag to this EID so arithmetic methods install
+/// uniformly via the standard `[vt sel closure]` shape.
+pub const SMALLINT_VT: u64 = 68;
+
+/// `BOOLEAN_VT` — common-delegate prototype for True / False. Carries
+/// default `not`, `and:`, `or:` impls in terms of `ifTrue:ifFalse:`.
+/// True / False each `:delegate` to BOOLEAN_VT.
+pub const BOOLEAN_VT: u64 = 69;
+
+/// `TRUE_VT` — prototype-vt for the true singleton. Overrides
+/// `ifTrue:ifFalse:` (+ `ifTrue:`, `ifFalse:`).
+pub const TRUE_VT: u64 = 70;
+
+/// `FALSE_VT` — prototype-vt for the false singleton.
+pub const FALSE_VT: u64 = 71;
+
+/// `TRUE_EID` / `FALSE_EID` — the true / false singleton instances.
+/// Distinct EIDs from their vtables (matches NIL / NIL_VT precedent).
+/// `[TRUE_EID :vtable TRUE_VT]` asserted at boot; same for FALSE_EID.
+pub const TRUE_EID: u64 = 72;
+pub const FALSE_EID: u64 = 73;
+
+/// `GRAMMAR_VT` — prototype-vt for PEG grammars (Phase 10.0). Each grammar
+/// is an entity carrying a linked-list of rule entities.
+pub const GRAMMAR_VT: u64 = 74;
+
+/// `PEG_VT` — module-singleton vtable for the PEG engine façade. Holds the
+/// send-dispatched API surface (`[Grammar new]`, etc.), bound at PEG dylib
+/// load (10.0) / 10.1 install sequence.
+pub const PEG_VT: u64 = 75;
+
+/// `M_PEG` — module-provenance entity for the PEG dylib. Used as the `m`
+/// column on every fact asserted by the PEG engine.
+pub const M_PEG: u64 = 76;
+
+// -- Phase 10.0 PEG pattern + grammar attributes (77..88) -------------------
+
+/// `[pat :pattern-kind <interned-keyword>]` — combinator tag for a pattern
+/// entity. Values: `literal`, `seq`, `choice`, `star`, `plus`, `opt`, `and`,
+/// `not`, `rule-ref`, `charset`, `any`, `eof` (P7 locked set of 12).
+pub const ATTR_PATTERN_KIND: u64 = 77;
+/// `[pat :pattern-first-child <child_eid>]` / `:pattern-next-sibling` form
+/// a linked-list of sub-patterns under a sequence / choice / unary-wrapper
+/// combinator (P3 shape, matches AST child encoding).
+pub const ATTR_PATTERN_FIRST_CHILD: u64 = 78;
+pub const ATTR_PATTERN_NEXT_SIBLING: u64 = 79;
+/// `[pat :literal-value <boxed-string Ref>]` — the literal byte-string a
+/// `:literal` combinator matches.
+pub const ATTR_LITERAL_VALUE: u64 = 80;
+/// `[pat :rule-ref-name <interned-name-EID>]` — the rule a `:rule-ref`
+/// pattern resolves to (looked up in the enclosing grammar at match time).
+pub const ATTR_RULE_REF_NAME: u64 = 81;
+/// Charset (P6): linked-list of range entities, each carrying a u8 code
+/// point range. `[cs :charset-first-range <range_eid>]`,
+/// `[range :charset-next-range ?]`, `[range :charset-range-lo <SmallInt>]`,
+/// `[range :charset-range-hi <SmallInt>]`.
+pub const ATTR_CHARSET_FIRST_RANGE: u64 = 82;
+pub const ATTR_CHARSET_NEXT_RANGE: u64 = 83;
+pub const ATTR_CHARSET_RANGE_LO: u64 = 84;
+pub const ATTR_CHARSET_RANGE_HI: u64 = 85;
+/// `[grammar :grammar-first-rule <rule_eid>]` — head of grammar's rule list.
+/// `[rule :rule-next <rule_eid>]` chains rules within a grammar.
+/// `[rule :rule-pattern <pat_eid>]` points at the rule's root pattern.
+/// Rule entities reuse `ATTR_RULE_NAME` (already at 28, Phase 7.3) — disjoint
+/// attribute sets with datalog rules, no semantic collision.
+pub const ATTR_GRAMMAR_FIRST_RULE: u64 = 86;
+pub const ATTR_RULE_NEXT: u64 = 87;
+pub const ATTR_RULE_PATTERN: u64 = 88;
+
+// -- Phase 10.0 PEG selectors (89..90) --------------------------------------
+
+pub const SEL_DEFINE_RULE_AS: u64 = 89;
+pub const SEL_PARSE_FROM: u64 = 90;
+
+// 91..255 reserved for future kernel selectors / attributes

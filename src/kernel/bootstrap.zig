@@ -251,6 +251,75 @@ pub fn boot(
     try loader_mod.registerReader(allocator, store, table, macho_mod.MAGIC_64, &macho_mod.openSymbolsAdapter);
     try loader_mod.registerReader(allocator, store, table, elf_mod.MAGIC, &elf_mod.openSymbolsAdapter);
 
+    // -- Stage 16: Phase 10.0 kernel vtables + booleans + PEG slots -----
+    // All the vts reserved for Phase 10 work are pre-materialized here so
+    // their EIDs are usable by lang dylib / PEG dylib at load time. No
+    // methods installed yet — those live in their respective dylibs (lang
+    // for booleans/blocks/smallint arithmetic, PEG for grammar dispatch).
+    const block_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.BLOCK_VT, object.toRef(block_vt_ptr));
+    const smallint_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.SMALLINT_VT, object.toRef(smallint_vt_ptr));
+    const boolean_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.BOOLEAN_VT, object.toRef(boolean_vt_ptr));
+    const true_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.TRUE_VT, object.toRef(true_vt_ptr));
+    const false_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.FALSE_VT, object.toRef(false_vt_ptr));
+    const grammar_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.GRAMMAR_VT, object.toRef(grammar_vt_ptr));
+    const peg_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.PEG_VT, object.toRef(peg_vt_ptr));
+
+    // :vtable facts for each new vt (so [SMALLINT_VT vtable] etc dispatch correctly)
+    _ = try store.assert(kernel_eids.BLOCK_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.SMALLINT_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.BOOLEAN_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.TRUE_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.FALSE_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.GRAMMAR_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.PEG_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+
+    // :delegate chain: BOOLEAN_VT, BLOCK_VT, SMALLINT_VT, GRAMMAR_VT, PEG_VT
+    // all delegate directly to OBJECT_VT. TRUE_VT and FALSE_VT delegate to
+    // BOOLEAN_VT (common-delegate pattern from Phase 10 decision MD4 area).
+    const boolean_vt_ref = ref_mod.mkEid(kernel_eids.BOOLEAN_VT);
+    _ = try store.assert(kernel_eids.BLOCK_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.SMALLINT_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.BOOLEAN_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.TRUE_VT, kernel_eids.ATTR_DELEGATE, boolean_vt_ref, m_boot);
+    _ = try store.assert(kernel_eids.FALSE_VT, kernel_eids.ATTR_DELEGATE, boolean_vt_ref, m_boot);
+    _ = try store.assert(kernel_eids.GRAMMAR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.PEG_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+
+    // TRUE_EID and FALSE_EID singletons: distinct EIDs from their vts
+    // (matches NIL / NIL_VT precedent). Asserted with :vtable so EID-tag
+    // dispatch on the singleton lands in TRUE_VT / FALSE_VT.
+    _ = try store.assert(kernel_eids.TRUE_EID, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.TRUE_VT), m_boot);
+    _ = try store.assert(kernel_eids.FALSE_EID, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.FALSE_VT), m_boot);
+
+    // Seed Phase 10 selector + attribute names so user code can intern them
+    // by string and recover the kernel EID (Phase 4.5 interner pattern).
+    try interner.seed(store, kernel_eids.SEL_DEFINE_RULE_AS, "defineRule:as:");
+    try interner.seed(store, kernel_eids.SEL_PARSE_FROM, "parse:from:");
+    try interner.seed(store, kernel_eids.ATTR_PATTERN_KIND, "pattern-kind");
+    try interner.seed(store, kernel_eids.ATTR_PATTERN_FIRST_CHILD, "pattern-first-child");
+    try interner.seed(store, kernel_eids.ATTR_PATTERN_NEXT_SIBLING, "pattern-next-sibling");
+    try interner.seed(store, kernel_eids.ATTR_LITERAL_VALUE, "literal-value");
+    try interner.seed(store, kernel_eids.ATTR_RULE_REF_NAME, "rule-ref-name");
+    try interner.seed(store, kernel_eids.ATTR_CHARSET_FIRST_RANGE, "charset-first-range");
+    try interner.seed(store, kernel_eids.ATTR_CHARSET_NEXT_RANGE, "charset-next-range");
+    try interner.seed(store, kernel_eids.ATTR_CHARSET_RANGE_LO, "charset-range-lo");
+    try interner.seed(store, kernel_eids.ATTR_CHARSET_RANGE_HI, "charset-range-hi");
+    try interner.seed(store, kernel_eids.ATTR_GRAMMAR_FIRST_RULE, "grammar-first-rule");
+    try interner.seed(store, kernel_eids.ATTR_RULE_NEXT, "rule-next");
+    try interner.seed(store, kernel_eids.ATTR_RULE_PATTERN, "rule-pattern");
+
+    // Also intern the bare boolean names so user-source `true` / `false` AST
+    // literal-nodes can resolve to the singleton EIDs at parse time.
+    try interner.seed(store, kernel_eids.TRUE_EID, "true");
+    try interner.seed(store, kernel_eids.FALSE_EID, "false");
+
     return .{
         .vtable_vt_ref = object.toRef(vt_vt_ptr),
         .object_vt_ref = object.toRef(obj_vt_ptr),

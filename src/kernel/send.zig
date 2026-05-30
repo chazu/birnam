@@ -179,7 +179,8 @@ fn tryBindOverride(s: *Send, vt_eid: u64) ?*Closure {
 /// Determine the vtable EID of a receiver Ref, by tag:
 ///   - pointer: read `obj[-1]`, which is an EID Ref by convention.
 ///   - eid: query `[receiver :vtable ?vt_eid]` in EAVT.
-///   - smallint/keyword: future kernel-vtable EIDs (not in Phase 4 — return null).
+///   - smallint: kernel-fixed SMALLINT_VT (Phase 10.0 — arithmetic methods).
+///   - keyword: future kernel-vtable EID (not in Phase 10 — return null).
 fn vtableEidOf(r: Ref) ?u64 {
     if (ref_mod.isPointer(r)) {
         const obj = object.fromRef(r);
@@ -208,7 +209,8 @@ fn vtableEidOf(r: Ref) ?u64 {
         if (!ref_mod.isEid(vt_ref)) return null;
         return ref_mod.untagEid(vt_ref);
     }
-    // smallint, keyword, reserved — Phase 4 has no vtables for these yet.
+    if (ref_mod.isSmallInt(r)) return kernel_eids.SMALLINT_VT;
+    // keyword, reserved — no kernel vt yet.
     return null;
 }
 
