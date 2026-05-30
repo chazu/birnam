@@ -181,6 +181,39 @@ birnam> [3 /* block comment */ + 4]
 => 7
 ```
 
+Float literals + non-local return `^`:
+
+```
+birnam> 3.14
+=> 3.14
+
+birnam> [[3 vtable] method: #early do: [| ^99; 100]]
+=> <eid:NNN>
+
+birnam> [7 early]
+=> 99
+
+birnam> [[3 vtable] method: #viablock do: [| [[| ^88] value]]]
+=> <eid:NNN>
+
+birnam> [5 viablock]
+=> 88
+```
+
+The `early` method's body is `^99; 100` — a two-statement block. The
+`^99` sets the unwinding sentinel and returns; the second statement
+`100` never runs. Method-frame shim catches the sentinel and returns
+99 to the caller.
+
+The `viablock` method's body invokes an inner block via `[block value]`.
+The inner block's body is `^88`. The inner block runs inside a
+value-frame (selector = `value`), so its shim *propagates* the
+sentinel instead of catching. The outer method-frame catches and
+returns 88. Classic Smalltalk non-local return semantics.
+
+ADR-10-E4: this is the `g_unwinding` side-channel — minimum viable
+interim. Phase 11 bytecode VM retires it for proper VM unwind opcodes.
+
 That last sequence is the classic closure-over-enclosing-scope demo:
 `makeAdder` is a 1-param block that returns a 1-param block. The
 returned block closes over `a` from the outer activation. When
@@ -378,10 +411,11 @@ Open `ROADMAP.md`. Show:
   AST_STMT_SEQ_VT
 - ✓ Line comments `// ...` + block comments `/* ... */` skipped
   by `ws`
+- ✓ Float literals (`make_float` IdApi extension + grammar)
+- ✓ Non-local return `^` (ADR-10-E4 `g_unwinding` interim, retires
+  in Phase 11)
 - 🗓 Phase 10.4.5 S5 — parse-time slot resolution (speed layer,
   optional perf optimization)
-- 🗓 Non-local return `^` (ADR-10-E4 `g_unwinding`)
-- 🗓 Float literals (`make_float` IdApi extension + grammar)
 - 🗓 Phase 11 — bytecode VM
 - 🗓 Phase 12 — image snapshot
 - 🗓 Phase 13 — pruning + reachability GC
@@ -391,11 +425,6 @@ Open `ROADMAP.md`. Show:
 
 (So the audience knows what's coming.)
 
-- **Non-local return `^`.** ADR-10-E4: `g_unwinding` side-channel +
-  `:ast-method-frame` back-pointer. Spec-locked, not implemented.
-- **Float literals.** Need `make_float` IdApi extension exposing
-  kernel's boxed Float allocator to dylib, plus grammar rule for
-  `digit+ "." digit+ ("e" digit+)?`. Defer until needed.
 - **Parse-time slot resolution (Phase 10.4.5 S5).** Speed-layer
   optimization. Truth-layer (S1-S4) shipped — every binding lives
   as a BINDING_VT entity. S5 annotates AST_VAR_REF_VT nodes with

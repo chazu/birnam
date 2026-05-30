@@ -48,6 +48,8 @@ const AST_LET_VT: u64 = 113;
 const AST_ASSIGN_VT: u64 = 114;
 const AST_STMT_SEQ_VT: u64 = 117;
 const ATTR_AST_STMT_FIRST: u64 = 134;
+const AST_RETURN_VT: u64 = 115;
+const ATTR_AST_RETURN_VALUE: u64 = 128;
 const ATTR_AST_BLOCK_BODY: u64 = 124;
 const ATTR_AST_LET_INIT: u64 = 125;
 const ATTR_AST_ASSIGN_VALUE: u64 = 127;
@@ -179,6 +181,7 @@ const IdApi = extern struct {
 
     sendN: *const fn (Ref, u64, [*]const Ref, usize) callconv(.c) Ref,
     object_at_eid: *const fn (u64) callconv(.c) Ref,
+    make_float: *const fn (f64) callconv(.c) Ref,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -217,6 +220,23 @@ var rn_let_statement: u64 = 0;
 var rn_top_form: u64 = 0;
 var rn_assignment: u64 = 0;
 var rn_stmt_list: u64 = 0;
+var rn_float_literal: u64 = 0;
+var rn_return_statement: u64 = 0;
+
+// Phase 10.3 ADR-10-E4 interim — `g_unwinding` side-channel for `^expr`.
+// Phase 11 bytecode VM retires this with proper unwind opcodes per
+// ROADMAP 11.5. The minimum-viable spike catches at the first
+// method-frame shim (where dispatch selector is NOT a value-family
+// selector). Inner block invocations (via [block value]) propagate.
+var g_unwinding: bool = false;
+var g_unwind_value: Ref = 0;
+
+var sel_value_of_g: u64 = 0;
+var sel_value_value_g: u64 = 0;
+
+fn isValueSelector(sel: u64) bool {
+    return sel == sel_value_g or sel == sel_value_of_g or sel == sel_value_value_g;
+}
 var ATTR_AST_BLOCK_PARAMS_CONST: u64 = 123;
 
 // Cached selector EIDs.
@@ -394,6 +414,16 @@ fn buildGrammar() void {
 
     defineRule(grammar, "integer", peg_plus(peg_rule_ref("digit")));
 
+    // float-literal = digit+ "." digit+   (no exponent yet — spike scope)
+    {
+        const parts = [_]u64{
+            untagEid(peg_plus(peg_rule_ref("digit"))),
+            untagEid(peg_literal(".")),
+            untagEid(peg_plus(peg_rule_ref("digit"))),
+        };
+        defineRule(grammar, "float-literal", peg_seq(&parts));
+    }
+
     // -- String literal: "..." (no escapes for spike) ---------------------
     // string = '"' (!'"' any)* '"'
     {
@@ -435,6 +465,7 @@ fn buildGrammar() void {
     // error. let-statement is at top-form level.
     {
         const atom_alts = [_]u64{
+            untagEid(peg_rule_ref("float-literal")),
             untagEid(peg_rule_ref("integer")),
             untagEid(peg_rule_ref("string")),
             untagEid(peg_rule_ref("symbol-literal")),
@@ -668,10 +699,21 @@ fn buildGrammar() void {
         defineRule(grammar, "assignment", peg_seq(&parts));
     }
 
-    // top-form = let-statement | assignment | expression  (ordered).
+    // return-statement = "^" ws expression  (G4 reserved word `^`)
+    {
+        const parts = [_]u64{
+            untagEid(peg_literal("^")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+        };
+        defineRule(grammar, "return-statement", peg_seq(&parts));
+    }
+
+    // top-form = let-statement | return-statement | assignment | expression  (ordered).
     {
         const alts = [_]u64{
             untagEid(peg_rule_ref("let-statement")),
+            untagEid(peg_rule_ref("return-statement")),
             untagEid(peg_rule_ref("assignment")),
             untagEid(peg_rule_ref("expression")),
         };
@@ -746,6 +788,13 @@ fn desugar(cst_eid: u64) u64 {
         for (bytes) |c| n = n * 10 + (c - '0');
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
         _ = api.assert_fact(ast, ATTR_AST_VALUE, mkSmallInt(n), g_module_eid);
+        return ast;
+    }
+    if (rn == rn_float_literal) {
+        const bytes = g_source[span.start..span.end];
+        const f = std.fmt.parseFloat(f64, bytes) catch 0.0;
+        const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, api.make_float(f), g_module_eid);
         return ast;
     }
     if (rn == rn_string) {
@@ -854,6 +903,22 @@ fn desugar(cst_eid: u64) u64 {
         }
         if (first_param_eid != 0) {
             _ = api.assert_fact(ast, ATTR_AST_BLOCK_PARAMS_CONST, mkEid(first_param_eid), g_module_eid);
+        }
+        return ast;
+    }
+    if (rn == rn_return_statement) {
+        // Children: "^" (no CST) + ws + expression.
+        var c = cstFirstChild(cst_eid);
+        var value_ast: u64 = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            if (cstRuleName(c) == rn_expression) {
+                value_ast = desugar(c);
+                break;
+            }
+        }
+        const ast = newAstNode(AST_RETURN_VT, span.start, span.end);
+        if (value_ast != 0) {
+            _ = api.assert_fact(ast, ATTR_AST_RETURN_VALUE, mkEid(value_ast), g_module_eid);
         }
         return ast;
     }
@@ -1121,6 +1186,8 @@ fn cacheRuleNames() void {
     rn_top_form = api.intern("top-form".ptr, 8);
     rn_assignment = api.intern("assignment".ptr, 10);
     rn_stmt_list = api.intern("stmt-list".ptr, 9);
+    rn_float_literal = api.intern("float-literal".ptr, 13);
+    rn_return_statement = api.intern("return-statement".ptr, 16);
 }
 
 // -- Eval (Phase 10.3 minimal) -----------------------------------------------
@@ -1415,7 +1482,18 @@ fn blockEvalShim(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     }
 
     const body_ref = api.query_eavt(block_ast_eid, ATTR_AST_BLOCK_BODY);
-    return api.send1(body_ref, sel_eval, new_scope_ref);
+    const result = api.send1(body_ref, sel_eval, new_scope_ref);
+    // ADR-10-E4 interim catch: method-frame shims (dispatched via any
+    // selector OTHER than value/value:/value:value:) catch the
+    // unwinding sentinel and return the carried value. Value-family
+    // shims propagate so `^` escapes outward.
+    if (g_unwinding and !isValueSelector(s.selector)) {
+        const carried = g_unwind_value;
+        g_unwinding = false;
+        g_unwind_value = NIL;
+        return carried;
+    }
+    return result;
 }
 
 fn isNil(r: Ref) bool {
@@ -1478,6 +1556,8 @@ fn evalAssignImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
 }
 
 /// Multi-statement sequence — walk linked list, eval each, return last value.
+/// Breaks early on g_unwinding (ADR-10-E4 sentinel) so subsequent stmts
+/// don't execute after ^.
 fn evalStmtSeqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     const api = g_api.?;
     if (!isEid(s.receiver)) return NIL;
@@ -1487,10 +1567,30 @@ fn evalStmtSeqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
     var last_val: Ref = NIL;
     while (isEid(cur_ref) and cur_ref != NIL) {
         last_val = api.send1(cur_ref, sel_eval, scope_ref);
+        if (g_unwinding) return last_val;
         const cur_eid = cur_ref >> 3;
         cur_ref = api.query_eavt(cur_eid, ATTR_AST_NEXT_SIBLING);
     }
     return last_val;
+}
+
+/// `^expr` — sets the unwinding sentinel and carries the value out.
+/// Per ADR-10-E4 interim: the first non-value-selector shim frame
+/// catches; value-family frames propagate. Phase 11 retires this with
+/// proper VM unwind opcodes.
+fn evalReturnImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    const api = g_api.?;
+    if (!isEid(s.receiver)) return NIL;
+    const ast_eid = s.receiver >> 3;
+    const value_ref = api.query_eavt(ast_eid, ATTR_AST_RETURN_VALUE);
+    const scope_ref = currentScope(args, n_args);
+    const val = if (isEid(value_ref) and value_ref != NIL)
+        api.send1(value_ref, sel_eval, scope_ref)
+    else
+        NIL;
+    g_unwinding = true;
+    g_unwind_value = val;
+    return val;
 }
 
 /// `[condBlock whileTrue: bodyBlock]` — Zig-native iteration primitive.
@@ -1687,6 +1787,7 @@ fn installMethods() void {
     _ = api.assert_fact(AST_LET_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalLetImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_ASSIGN_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalAssignImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_STMT_SEQ_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalStmtSeqImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(AST_RETURN_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalReturnImpl), NIL)), g_module_eid);
 
     // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
     const negate_sel = api.intern("negate".ptr, 6);
@@ -1722,11 +1823,11 @@ fn installMethods() void {
     // closureValueImpl re-targets s.closure at the receiver and forwards to
     // blockEvalShim. Param-arity disambiguation falls out of the variadic ABI.
     sel_value_g = api.intern("value".ptr, 5);
-    const value_of_sel = api.intern("value:".ptr, 6);
-    const value_of_of_sel = api.intern("value:value:".ptr, 12);
+    sel_value_of_g = api.intern("value:".ptr, 6);
+    sel_value_value_g = api.intern("value:value:".ptr, 12);
     _ = api.assert_fact(CLOSURE_VT, sel_value_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
-    _ = api.assert_fact(CLOSURE_VT, value_of_sel, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
-    _ = api.assert_fact(CLOSURE_VT, value_of_of_sel, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(CLOSURE_VT, sel_value_of_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(CLOSURE_VT, sel_value_value_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
 
     const while_true_sel = api.intern("whileTrue:".ptr, 10);
     const while_false_sel = api.intern("whileFalse:".ptr, 11);
@@ -1768,6 +1869,19 @@ const LANG_VT: u64 = 103;
 
 const ERROR_VT: u64 = 13;
 const NIL_VT_EID: u64 = 7;
+const FLOAT_VT: u64 = 10;
+
+fn isFloatRef(r: Ref) bool {
+    if ((r & 0b111) != 0) return false;
+    if (r == 0) return false;
+    const vt_ptr: *const Ref = @ptrFromInt(r - @sizeOf(Ref));
+    return vt_ptr.* == mkEid(FLOAT_VT);
+}
+
+fn floatRefValue(r: Ref) f64 {
+    const bits_ptr: *const u64 = @ptrFromInt(r);
+    return @bitCast(bits_ptr.*);
+}
 
 fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
     const api = g_api.?;
@@ -1796,7 +1910,10 @@ fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
         return;
     }
 
-    // Parse + eval.
+    // Parse + eval. Clear unwinding state per-line so stray ^ at REPL
+    // top level doesn't poison subsequent lines.
+    g_unwinding = false;
+    g_unwind_value = NIL;
     const src_ref = api.make_string(line.ptr, line.len);
     const ast_ref = api.send1(mkEid(g_module_eid), sel_parse_expr_g, src_ref);
     if (!isEid(ast_ref)) {
@@ -1821,6 +1938,9 @@ fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
 fn formatValue(buf: []u8, val: Ref) ![:0]u8 {
     if (isSmallInt(val)) {
         return std.fmt.bufPrintZ(buf, "=> {d}", .{untagSmallInt(val)});
+    }
+    if (isFloatRef(val)) {
+        return std.fmt.bufPrintZ(buf, "=> {d}", .{floatRefValue(val)});
     }
     if (val == NIL) return std.fmt.bufPrintZ(buf, "=> nil", .{});
     if (isEid(val)) {

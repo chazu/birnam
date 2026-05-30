@@ -620,6 +620,71 @@ test "DEMO 10.x: line + block comments skipped" {
     }
 }
 
+test "DEMO 10.x: float literal parses + prints" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    const src_ref = try strings.mkString(a, "3.14");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    // val is a pointer Ref (tag 0) — not SmallInt, not EID.
+    try testing.expect((val & 0b111) == 0);
+    try testing.expect(val != 0);
+}
+
+test "DEMO 10.x: ^ short-circuits stmt-list; method returns 99" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    // Install: [SmallInt method:#early do:[| ^99; 100]]
+    inline for (.{
+        "[[3 vtable] method: #early do: [| ^99; 100]]",
+    }) |line| {
+        const src_ref = try strings.mkString(a, line);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        _ = send_mod.send0(ast_ref, sel_eval);
+    }
+    const src_ref = try strings.mkString(a, "[7 early]");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expectEqual(@as(i64, 99), ref_mod.untagSmallInt(val));
+}
+
+test "DEMO 10.x: ^ escapes through inner value-frame to method frame" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    inline for (.{
+        "[[3 vtable] method: #viablock do: [| [[| ^88] value]]]",
+    }) |line| {
+        const src_ref = try strings.mkString(a, line);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        _ = send_mod.send0(ast_ref, sel_eval);
+    }
+    const src_ref = try strings.mkString(a, "[5 viablock]");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expectEqual(@as(i64, 88), ref_mod.untagSmallInt(val));
+}
+
 test "lang grammar: start fails on \"!!\" (no atom matches)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

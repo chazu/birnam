@@ -24,8 +24,10 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Iteration primitives ✓ (`whileTrue:` / `whileFalse:` on CLOSURE_VT; `timesRepeat:` / `to:do:` on SMALLINT_VT — all Zig-native per 10.0.x lock, user-overrideable)
 - `;` statement separator + multi-stmt block bodies via AST_STMT_SEQ_VT ✓
 - Line comments `// ...` + block comments `/* ... */` ✓
+- Float literals `3.14` ✓ (`make_float` IdApi extension; AST_LITERAL_VT carries boxed Float Ref)
+- Non-local return `^expr` ✓ (ADR-10-E4 `g_unwinding` interim — first non-value-selector shim frame catches, value-frame shims propagate; Phase 11 retires per 11.5)
 
-**Test count: 287/287 across 73 build steps.**
+**Test count: 290/290 across 73 build steps.**
 
 **Demoable today (live REPL via `./zig-out/bin/birnam libbirnam_peg libbirnam_lang`):**
 - Arithmetic + comparisons + branching
@@ -35,9 +37,10 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - REPL persistence across lines
 
 **Deferred (not blocking demo):**
-- Phase 10.4.5 S5 — parse-time slot resolution (speed layer)
-- Non-local return `^` (ADR-10-E4 `g_unwinding`)
-- Float literals (needs `make_float` IdApi extension)
+- Phase 10.4.5 S5 — parse-time slot resolution (speed-layer perf optimization)
+- Floats with exponent notation (`1.5e10`); current grammar covers `digit+ "." digit+` only
+
+**Phase 10 substantially closed.** Remaining items are perf polish (S5) or grammar nicities (float exponents). The language now has: arithmetic, comparisons, control flow, blocks with params, closures-over-enclosing-scope, mutation, recursion via method install, iteration primitives, statement sequencing, comments, floats, and non-local return.
 
 **Next milestones (pick by priority):**
 - Phase 10.4.5 S5 — optional perf optimization

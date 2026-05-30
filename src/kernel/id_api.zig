@@ -219,6 +219,11 @@ pub const IdApi = extern struct {
     /// Used by closure-as-receiver methods (block value/value:/value:value:)
     /// that need to recover the closure's pointer from its EID receiver.
     object_at_eid: *const fn (u64) callconv(.c) Ref,
+
+    /// Allocate a boxed Float (vt = FLOAT_VT) and return its pointer Ref.
+    /// Used by the lang dylib at parse time to pre-allocate float literals
+    /// stored on AST_LITERAL_VT nodes per X5 lock.
+    make_float: *const fn (f64) callconv(.c) Ref,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -324,7 +329,15 @@ pub fn populate() IdApi {
 
         .sendN = &cSendN,
         .object_at_eid = &cObjectAtEid,
+        .make_float = &cMakeFloat,
     };
+}
+
+const boxed = @import("boxed.zig");
+
+fn cMakeFloat(value: f64) callconv(.c) Ref {
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    return boxed.mkFloat(a, value) catch ref_mod.NIL;
 }
 
 fn cSendN(receiver: Ref, sel: u64, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
