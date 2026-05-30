@@ -208,6 +208,11 @@ pub const IdApi = extern struct {
     peg_mk_seq: *const fn ([*]const u64, usize) callconv(.c) u64,
     peg_mk_choice: *const fn ([*]const u64, usize) callconv(.c) u64,
     peg_mk_charset: *const fn ([*]const u8, usize) callconv(.c) u64,
+
+    /// Phase 10.2.5: variadic send. send0..send3 remain as thin packers
+    /// for convenience; sendN is the canonical entry for arbitrary-arity
+    /// dispatch from user-source compound keyword sends.
+    sendN: *const fn (Ref, u64, [*]const Ref, usize) callconv(.c) Ref,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -310,7 +315,13 @@ pub fn populate() IdApi {
         .peg_mk_seq = &cPegMkSeq,
         .peg_mk_choice = &cPegMkChoice,
         .peg_mk_charset = &cPegMkCharset,
+
+        .sendN = &cSendN,
     };
+}
+
+fn cSendN(receiver: Ref, sel: u64, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    return send_mod.sendN(receiver, sel, args, n_args);
 }
 
 /// Storage for the interner so the C wrappers can find it. Shell calls this

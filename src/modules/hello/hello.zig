@@ -104,12 +104,16 @@ var g_module_eid: u64 = 0;
 var g_greeting_str: Ref = NIL;
 var g_attr_count_value: u64 = 0;
 
-fn greetImpl(s: *Send) callconv(.c) Ref {
+fn greetImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
+    _ = args;
+    _ = n_args;
     return g_greeting_str;
 }
 
-fn incImpl(s: *Send) callconv(.c) Ref {
+fn incImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     const api = g_api orelse return NIL;
     if (!isEid(s.receiver)) return NIL;
     const eid = untagEid(s.receiver);
@@ -120,7 +124,9 @@ fn incImpl(s: *Send) callconv(.c) Ref {
     return new_val;
 }
 
-fn countImpl(s: *Send) callconv(.c) Ref {
+fn countImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     const api = g_api orelse return NIL;
     if (!isEid(s.receiver)) return NIL;
     const eid = untagEid(s.receiver);

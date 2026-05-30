@@ -146,8 +146,10 @@ var g_result_vt: u64 = 0;
 
 /// `[db execute: query_handle_ref]` — runs the query, returns a result
 /// object Ref whose count/at: methods walk the rows.
-fn dbExecuteImpl(s: *Send, q_ref: Ref) callconv(.c) Ref {
+fn dbExecuteImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
+    _ = n_args;
+    const q_ref = args[0];
     const api = g_api orelse return NIL;
     if (!isPointer(q_ref)) return NIL;
     const q_ptr = untagPointer(q_ref) orelse return NIL;
@@ -161,7 +163,9 @@ fn dbExecuteImpl(s: *Send, q_ref: Ref) callconv(.c) Ref {
 
 // -- Methods on result_vt ----------------------------------------------------
 
-fn resultCountImpl(s: *Send) callconv(.c) Ref {
+fn resultCountImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     const api = g_api orelse return NIL;
     if (!isPointer(s.receiver)) return NIL;
     const obj = untagPointer(s.receiver) orelse return NIL;
@@ -172,7 +176,9 @@ fn resultCountImpl(s: *Send) callconv(.c) Ref {
     return mkSmallInt(@intCast(c));
 }
 
-fn resultArityImpl(s: *Send) callconv(.c) Ref {
+fn resultArityImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     const api = g_api orelse return NIL;
     if (!isPointer(s.receiver)) return NIL;
     const obj = untagPointer(s.receiver) orelse return NIL;
@@ -183,7 +189,9 @@ fn resultArityImpl(s: *Send) callconv(.c) Ref {
 }
 
 /// `[rrb count]` — wraps slot 0 (raw RRB pointer) and calls api.rrb_count.
-fn rrbCountImpl(s: *Send) callconv(.c) Ref {
+fn rrbCountImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     const api = g_api orelse return NIL;
     if (!isPointer(s.receiver)) return NIL;
     const obj = untagPointer(s.receiver) orelse return NIL;
@@ -193,7 +201,9 @@ fn rrbCountImpl(s: *Send) callconv(.c) Ref {
     return mkSmallInt(@intCast(api.rrb_count(handle)));
 }
 
-fn rrbAtImpl(s: *Send, idx_ref: Ref) callconv(.c) Ref {
+fn rrbAtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const idx_ref = args[0];
     const api = g_api orelse return NIL;
     if (!isPointer(s.receiver)) return NIL;
     if (!isSmallInt(idx_ref)) return NIL;
@@ -208,7 +218,9 @@ fn rrbAtImpl(s: *Send, idx_ref: Ref) callconv(.c) Ref {
 
 /// `[result at: <SmallInt row>]` — returns the Ref at row, column 0.
 /// (Multi-column results: row*arity + col exposure is Phase 7 polish.)
-fn resultAtImpl(s: *Send, idx_ref: Ref) callconv(.c) Ref {
+fn resultAtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const idx_ref = args[0];
     const api = g_api orelse return NIL;
     if (!isPointer(s.receiver)) return NIL;
     const obj = untagPointer(s.receiver) orelse return NIL;

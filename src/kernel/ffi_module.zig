@@ -172,7 +172,9 @@ pub fn isErrorEntity(store: *const fact_store_mod.FactStore, r: Ref) bool {
 /// entities + `:ffi-has-symbol` facts (`:many` cardinality). Subsequent
 /// calls are pure queries via `currentValue` thanks to the cardinality
 /// machinery returning the materialized RRB directly.
-fn methodSymbols(s: *Send) callconv(.c) Ref {
+fn methodSymbols(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
     const table = send_mod.tablePtr() orelse return ref_mod.NIL;
     const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
@@ -271,14 +273,18 @@ fn enumerateSymbols(
 }
 
 /// `[mod path]` — return the boxed string Ref stored on the Module.
-fn methodPath(s: *Send) callconv(.c) Ref {
+fn methodPath(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
     if (!ref_mod.isEid(s.receiver)) return ref_mod.NIL;
     return store.currentValue(ref_mod.untagEid(s.receiver), kernel_eids.ATTR_FFI_PATH) orelse ref_mod.NIL;
 }
 
 /// `[mod handle]` — return the boxed FfiPtr Ref stored on the Module.
-fn methodHandle(s: *Send) callconv(.c) Ref {
+fn methodHandle(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
     if (!ref_mod.isEid(s.receiver)) return ref_mod.NIL;
     return store.currentValue(ref_mod.untagEid(s.receiver), kernel_eids.ATTR_FFI_HANDLE) orelse ref_mod.NIL;
@@ -288,7 +294,11 @@ fn methodHandle(s: *Send) callconv(.c) Ref {
 /// Looks up the symbol via dlsym, calls `ffi.registerWrap`, installs the
 /// returned closure on the receiver Module's instance vt at `sel`. Returns
 /// `self` on success, an `ERROR_VT` entity on failure.
-fn methodWrapAsSig(s: *Send, sel_ref: Ref, name_ref: Ref, sig_ref: Ref) callconv(.c) Ref {
+fn methodWrapAsSig(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const sel_ref = args[0];
+    const name_ref = args[1];
+    const sig_ref = args[2];
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
     const table = send_mod.tablePtr() orelse return ref_mod.NIL;
     const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
@@ -365,7 +375,9 @@ fn methodWrapAsSig(s: *Send, sel_ref: Ref, name_ref: Ref, sig_ref: Ref) callconv
 /// closures so subsequent sends miss method lookup, then `dlclose` the
 /// handle. The Module entity itself is retained for walk-back ("this
 /// path was loaded at tx N, unloaded at tx M").
-fn methodUnload(s: *send_mod.Send) callconv(.c) Ref {
+fn methodUnload(s: *send_mod.Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
     const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
     const interner = id_api_mod.internerPtr() orelse return ref_mod.NIL;

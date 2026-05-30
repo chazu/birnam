@@ -208,21 +208,27 @@ const Send = extern struct {
     closure: ?*anyopaque,
 };
 
-fn replSetTargetImpl(s: *Send, target_ref: Ref) callconv(.c) Ref {
+fn replSetTargetImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
+    _ = n_args;
+    const target_ref = args[0];
     const api = g_api orelse return NIL;
     _ = api.assert_fact(g_repl_eid, g_attr_target, target_ref, g_module_eid);
     return target_ref;
 }
 
-fn replStopImpl(s: *Send) callconv(.c) Ref {
+fn replStopImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
+    _ = args;
+    _ = n_args;
     if (g_log) |log| log("[repl] stop");
     return NIL;
 }
 
-fn replRunImpl(s: *Send) callconv(.c) Ref {
+fn replRunImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
+    _ = args;
+    _ = n_args;
     // Shell-driven loop; nothing to do.
     if (g_log) |log| log("[repl] run (shell-driven; no-op)");
     return NIL;

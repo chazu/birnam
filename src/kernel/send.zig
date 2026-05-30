@@ -38,10 +38,11 @@ pub const Send = extern struct {
     closure: ?*Closure,
 };
 
-pub const Imp = *const fn (*Send) callconv(.c) Ref;
-pub const Imp1 = *const fn (*Send, Ref) callconv(.c) Ref;
-pub const Imp2 = *const fn (*Send, Ref, Ref) callconv(.c) Ref;
-pub const Imp3 = *const fn (*Send, Ref, Ref, Ref) callconv(.c) Ref;
+/// Variadic Imp signature (Phase 10.2.5 — β option locked in
+/// ADR-10-Send-Arity). Every method takes the Send frame plus a flat
+/// argument buffer + count. `args[0..n_args]` are caller-managed; method
+/// reads positionally. Zero-arg methods discard `args` and `n_args`.
+pub const Imp = *const fn (*Send, [*]const Ref, usize) callconv(.c) Ref;
 
 // -- Globals ---------------------------------------------------------------
 
@@ -160,7 +161,8 @@ fn tryBindOverride(s: *Send, vt_eid: u64) ?*Closure {
             if (!ref_mod.isPointer(override_ptr_ref)) return null;
             const override_c: *Closure = @ptrCast(@alignCast(ref_mod.untagPointer(override_ptr_ref)));
             const m: Imp = @ptrCast(@alignCast(override_c.method));
-            const result = m(s);
+            var empty: [0]Ref = .{};
+            const result = m(s, @ptrCast(&empty), 0);
             if (ref_mod.isNil(result)) return null;
             if (!ref_mod.isEid(result)) return null;
             const result_eid = ref_mod.untagEid(result);
@@ -216,54 +218,37 @@ fn vtableEidOf(r: Ref) ?u64 {
 
 // -- Convenience send wrappers --------------------------------------------
 
-pub fn send0(receiver: Ref, sel: Selector) Ref {
+/// Core variadic dispatch. Binds, then invokes the resolved closure with
+/// `args[0..n_args]`. send0..send3 are thin packers calling this.
+pub fn sendN(receiver: Ref, sel: Selector, args: [*]const Ref, n_args: usize) Ref {
     var s = Send{
         .selector = sel,
         .receiver = receiver,
-        .n_args = 0,
+        .n_args = @intCast(n_args),
         .state = receiver,
         .closure = null,
     };
     const c = bind(&s) orelse return ref_mod.NIL;
     const m: Imp = @ptrCast(@alignCast(c.method));
-    return m(&s);
+    return m(&s, args, n_args);
+}
+
+pub fn send0(receiver: Ref, sel: Selector) Ref {
+    var empty: [0]Ref = .{};
+    return sendN(receiver, sel, @ptrCast(&empty), 0);
 }
 
 pub fn send1(receiver: Ref, sel: Selector, a1: Ref) Ref {
-    var s = Send{
-        .selector = sel,
-        .receiver = receiver,
-        .n_args = 1,
-        .state = receiver,
-        .closure = null,
-    };
-    const c = bind(&s) orelse return ref_mod.NIL;
-    const m: Imp1 = @ptrCast(@alignCast(c.method));
-    return m(&s, a1);
+    var args: [1]Ref = .{a1};
+    return sendN(receiver, sel, &args, 1);
 }
 
 pub fn send2(receiver: Ref, sel: Selector, a1: Ref, a2: Ref) Ref {
-    var s = Send{
-        .selector = sel,
-        .receiver = receiver,
-        .n_args = 2,
-        .state = receiver,
-        .closure = null,
-    };
-    const c = bind(&s) orelse return ref_mod.NIL;
-    const m: Imp2 = @ptrCast(@alignCast(c.method));
-    return m(&s, a1, a2);
+    var args: [2]Ref = .{ a1, a2 };
+    return sendN(receiver, sel, &args, 2);
 }
 
 pub fn send3(receiver: Ref, sel: Selector, a1: Ref, a2: Ref, a3: Ref) Ref {
-    var s = Send{
-        .selector = sel,
-        .receiver = receiver,
-        .n_args = 3,
-        .state = receiver,
-        .closure = null,
-    };
-    const c = bind(&s) orelse return ref_mod.NIL;
-    const m: Imp3 = @ptrCast(@alignCast(c.method));
-    return m(&s, a1, a2, a3);
+    var args: [3]Ref = .{ a1, a2, a3 };
+    return sendN(receiver, sel, &args, 3);
 }

@@ -481,7 +481,9 @@ fn installMethod(
 
 /// `[obj vtable]` — return the receiver's vtable Ref.
 /// Works for pointer receivers (reads -1) and EID receivers (queries :vtable).
-fn objectVtableImpl(s: *Send) callconv(.c) Ref {
+fn objectVtableImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     if (ref_mod.isPointer(s.receiver)) {
         return object.vtableOf(object.fromRef(s.receiver));
     }
@@ -496,13 +498,17 @@ fn objectVtableImpl(s: *Send) callconv(.c) Ref {
 }
 
 /// `[obj init]` — identity.
-fn objectInitImpl(s: *Send) callconv(.c) Ref {
+fn objectInitImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     return s.receiver;
 }
 
 /// `[vt lookup: sel]` — return the method Ref currently bound to `sel` on `vt`,
 /// or NIL if absent. Walks the delegation chain, mirroring `bind`'s cold path.
-fn vtableLookupImpl(s: *Send, sel_ref: Ref) callconv(.c) Ref {
+fn vtableLookupImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const sel_ref = args[0];
     if (!ref_mod.isEid(s.receiver) or !ref_mod.isEid(sel_ref)) return ref_mod.NIL;
     const sel_eid = ref_mod.untagEid(sel_ref);
     var cur_vt = ref_mod.untagEid(s.receiver);
@@ -519,7 +525,9 @@ fn vtableLookupImpl(s: *Send, sel_ref: Ref) callconv(.c) Ref {
 
 /// `[vt delegated]` — allocate a fresh child vtable delegating to `vt`.
 /// Returns the new vtable's EID Ref.
-fn vtableDelegatedImpl(s: *Send) callconv(.c) Ref {
+fn vtableDelegatedImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
     if (!ref_mod.isEid(s.receiver)) return ref_mod.NIL;
     const parent_eid = ref_mod.untagEid(s.receiver);
     const allocator = send_mod.kernelAllocator() orelse return ref_mod.NIL;
@@ -540,8 +548,11 @@ fn vtableDelegatedImpl(s: *Send) callconv(.c) Ref {
 /// `[vt methodAt: sel put: method_ref with: data]` — install a method on `vt`.
 /// `method_ref` must already be an EID Ref to a registered closure. `data` is
 /// ignored in this Phase 4 stub (closures carry their own data at allocation).
-fn vtableMethodAtPutWithImpl(s: *Send, sel_ref: Ref, method_ref: Ref, data_ref: Ref) callconv(.c) Ref {
-    _ = data_ref;
+fn vtableMethodAtPutWithImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const sel_ref = args[0];
+    const method_ref = args[1];
+    // data_ref = args[2] — ignored
     if (!ref_mod.isEid(s.receiver) or !ref_mod.isEid(sel_ref) or !ref_mod.isEid(method_ref)) return ref_mod.NIL;
     const vt_eid = ref_mod.untagEid(s.receiver);
     const sel_eid = ref_mod.untagEid(sel_ref);

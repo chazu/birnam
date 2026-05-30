@@ -114,6 +114,14 @@ const IdApi = extern struct {
 
     // Phase 10.0 step 4 — appended.
     peg_install_send_api: *const fn (u64) callconv(.c) void,
+
+    // Phase 10.1.b procedural escape hatch.
+    peg_mk_seq: *const fn ([*]const u64, usize) callconv(.c) u64,
+    peg_mk_choice: *const fn ([*]const u64, usize) callconv(.c) u64,
+    peg_mk_charset: *const fn ([*]const u8, usize) callconv(.c) u64,
+
+    // Phase 10.2.5 — variadic send.
+    sendN: *const fn (Ref, u64, [*]const Ref, usize) callconv(.c) Ref,
 };
 
 export fn birnam_module_init(

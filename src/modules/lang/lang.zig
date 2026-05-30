@@ -141,6 +141,8 @@ const IdApi = extern struct {
     peg_mk_seq: *const fn ([*]const u64, usize) callconv(.c) u64,
     peg_mk_choice: *const fn ([*]const u64, usize) callconv(.c) u64,
     peg_mk_charset: *const fn ([*]const u8, usize) callconv(.c) u64,
+
+    sendN: *const fn (Ref, u64, [*]const Ref, usize) callconv(.c) Ref,
 };
 
 // -- Module-static state -----------------------------------------------------

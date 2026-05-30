@@ -617,7 +617,10 @@ fn allocNativeClosure(
 /// source bytes starting at the named rule. Returns the CST root EID
 /// on success or an ERROR_VT EID on failure (caller introspects
 /// `:vtable` to discriminate).
-fn parseFromImpl(s: *Send, source_ref: Ref, rule_name_ref: Ref) callconv(.c) Ref {
+fn parseFromImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const source_ref = args[0];
+    const rule_name_ref = args[1];
     var st = &(g_install orelse return ref_mod.NIL);
     if (!ref_mod.isEid(s.receiver)) return ref_mod.NIL;
     if (!strings.isString(source_ref) or !strings.isString(rule_name_ref)) return ref_mod.NIL;
@@ -633,7 +636,10 @@ fn parseFromImpl(s: *Send, source_ref: Ref, rule_name_ref: Ref) callconv(.c) Ref
 
 /// `[grammar defineRule: name as: pat]` — appends a rule to grammar's
 /// linked-list. Returns rule EID Ref.
-fn defineRuleAsImpl(s: *Send, name_ref: Ref, pat_ref: Ref) callconv(.c) Ref {
+fn defineRuleAsImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const name_ref = args[0];
+    const pat_ref = args[1];
     var st = &(g_install orelse return ref_mod.NIL);
     if (!ref_mod.isEid(s.receiver) or !strings.isString(name_ref) or !ref_mod.isEid(pat_ref)) return ref_mod.NIL;
     const grammar = ref_mod.untagEid(s.receiver);
@@ -648,38 +654,48 @@ fn defineRuleAsImpl(s: *Send, name_ref: Ref, pat_ref: Ref) callconv(.c) Ref {
 // Ref. Argument validation: string Refs for literal/ruleRef name, EID Refs
 // for star/plus/opt/and/not child.
 
-fn newGrammarImpl(s: *Send) callconv(.c) Ref {
+fn newGrammarImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
+    _ = args;
+    _ = n_args;
     var st = &(g_install orelse return ref_mod.NIL);
     const g = mkGrammar(&st.engine) catch return ref_mod.NIL;
     return ref_mod.mkEid(g);
 }
 
-fn literalImpl(s: *Send, v_ref: Ref) callconv(.c) Ref {
+fn literalImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
+    _ = n_args;
+    const v_ref = args[0];
     var st = &(g_install orelse return ref_mod.NIL);
     if (!strings.isString(v_ref)) return ref_mod.NIL;
     const pat = mkLiteral(&st.engine, strings.bytes(v_ref)) catch return ref_mod.NIL;
     return ref_mod.mkEid(pat);
 }
 
-fn ruleRefImpl(s: *Send, name_ref: Ref) callconv(.c) Ref {
+fn ruleRefImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
+    _ = n_args;
+    const name_ref = args[0];
     var st = &(g_install orelse return ref_mod.NIL);
     if (!strings.isString(name_ref)) return ref_mod.NIL;
     const pat = mkRuleRef(&st.engine, strings.bytes(name_ref)) catch return ref_mod.NIL;
     return ref_mod.mkEid(pat);
 }
 
-fn anyByteImpl(s: *Send) callconv(.c) Ref {
+fn anyByteImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
+    _ = args;
+    _ = n_args;
     var st = &(g_install orelse return ref_mod.NIL);
     const pat = mkAny(&st.engine) catch return ref_mod.NIL;
     return ref_mod.mkEid(pat);
 }
 
-fn eofImpl(s: *Send) callconv(.c) Ref {
+fn eofImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
+    _ = args;
+    _ = n_args;
     var st = &(g_install orelse return ref_mod.NIL);
     const pat = mkEof(&st.engine) catch return ref_mod.NIL;
     return ref_mod.mkEid(pat);
@@ -695,23 +711,28 @@ fn unaryImpl(
     return ref_mod.mkEid(pat);
 }
 
-fn starImpl(s: *Send, arg: Ref) callconv(.c) Ref {
+fn starImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
-    return unaryImpl(arg, mkStar);
+    _ = n_args;
+    return unaryImpl(args[0], mkStar);
 }
-fn plusImpl(s: *Send, arg: Ref) callconv(.c) Ref {
+fn plusImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
-    return unaryImpl(arg, mkPlus);
+    _ = n_args;
+    return unaryImpl(args[0], mkPlus);
 }
-fn optImpl(s: *Send, arg: Ref) callconv(.c) Ref {
+fn optImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
-    return unaryImpl(arg, mkOpt);
+    _ = n_args;
+    return unaryImpl(args[0], mkOpt);
 }
-fn andImpl(s: *Send, arg: Ref) callconv(.c) Ref {
+fn andImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
-    return unaryImpl(arg, mkAnd);
+    _ = n_args;
+    return unaryImpl(args[0], mkAnd);
 }
-fn notImpl(s: *Send, arg: Ref) callconv(.c) Ref {
+fn notImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
-    return unaryImpl(arg, mkNot);
+    _ = n_args;
+    return unaryImpl(args[0], mkNot);
 }

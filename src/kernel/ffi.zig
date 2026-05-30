@@ -376,17 +376,11 @@ fn shimDispatch(s: *send_mod.Send, args: []const Ref) Ref {
     return invokeWithOwner(alloc, store, table, w.addr, w.sig.*, args, owner_mod);
 }
 
-fn shim0(s: *send_mod.Send) callconv(.c) Ref {
-    return shimDispatch(s, &.{});
-}
-fn shim1(s: *send_mod.Send, a1: Ref) callconv(.c) Ref {
-    return shimDispatch(s, &.{a1});
-}
-fn shim2(s: *send_mod.Send, a1: Ref, a2: Ref) callconv(.c) Ref {
-    return shimDispatch(s, &.{ a1, a2 });
-}
-fn shim3(s: *send_mod.Send, a1: Ref, a2: Ref, a3: Ref) callconv(.c) Ref {
-    return shimDispatch(s, &.{ a1, a2, a3 });
+/// All FFI shims now share the variadic Imp signature; arity comes from
+/// `n_args` and args are read from the buffer. The wrap's expected arity
+/// is in its `:ffi-sig` slot, so distinct per-arity shims aren't needed.
+fn shimAny(s: *send_mod.Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    return shimDispatch(s, args[0..n_args]);
 }
 
 pub const RegisterError = error{
@@ -424,13 +418,9 @@ pub fn registerWrap(
     _ = try store.assert(wrap_eid, kernel_eids.ATTR_FFI_ADDR, addr_ref, kernel_eids.M_BOOTSTRAP);
     _ = try store.assert(wrap_eid, kernel_eids.ATTR_FFI_SIG, ref_mod.mkPointer(@ptrCast(sig_holder)), kernel_eids.M_BOOTSTRAP);
 
-    const method_ptr: *const anyopaque = switch (sig.args.len) {
-        0 => @ptrCast(&shim0),
-        1 => @ptrCast(&shim1),
-        2 => @ptrCast(&shim2),
-        3 => @ptrCast(&shim3),
-        else => unreachable,
-    };
+    // All arities go through the variadic shim — Phase 10.2.5 unified Imp.
+    if (sig.args.len > 3) return error.ArityTooHigh;
+    const method_ptr: *const anyopaque = @ptrCast(&shimAny);
 
     // Allocate a Closure with .data = mkEid(wrap_eid). Match the kernel's
     // closure-as-libid-object layout: [vt_ref][method][data].
