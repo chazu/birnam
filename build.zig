@@ -334,6 +334,8 @@ pub fn build(b: *std.Build) void {
     ffi_mod_tests.linkLibrary(dyncall_lib);
     ffi_mod_tests.linkLibC();
     const run_ffi_mod_tests = b.addRunArtifact(ffi_mod_tests);
+    // Symbols-enumeration tests read libbirnam_hello.dylib from zig-out/lib.
+    run_ffi_mod_tests.step.dependOn(b.getInstallStep());
     test_step.dependOn(&run_ffi_mod_tests.step);
 
     const card_test_mod = b.createModule(.{

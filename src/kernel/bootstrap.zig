@@ -176,6 +176,14 @@ pub fn boot(
     try interner.seed(store, kernel_eids.ATTR_FFI_ADDR, "ffi-addr");
     try interner.seed(store, kernel_eids.ATTR_FFI_SIG, "ffi-sig");
     try interner.seed(store, kernel_eids.ATTR_CARDINALITY, "cardinality");
+    try interner.seed(store, kernel_eids.ATTR_FFI_HAS_SYMBOL, "ffi-has-symbol");
+    try interner.seed(store, kernel_eids.ATTR_FFI_SYMBOL_NAME, "ffi-symbol-name");
+    try interner.seed(store, kernel_eids.ATTR_FFI_SYMBOL_ADDR, "ffi-symbol-addr");
+    try interner.seed(store, kernel_eids.ATTR_FFI_SYMBOL_KIND, "ffi-symbol-kind");
+    try interner.seed(store, kernel_eids.ATTR_FFI_SYMBOL_EXTERNAL, "ffi-symbol-external?");
+    try interner.seed(store, kernel_eids.ATTR_FFI_SYMBOL_MODULE, "ffi-symbol-module");
+    try interner.seed(store, kernel_eids.ATTR_FFI_SYMBOLS_ENUMERATED, "ffi-symbols-enumerated?");
+    try interner.seed(store, kernel_eids.SEL_SYMBOLS, "symbols");
     try interner.seed(store, kernel_eids.ATTR_FFI_HANDLE, "ffi-handle");
     try interner.seed(store, kernel_eids.ATTR_FFI_PATH, "ffi-path");
     try interner.seed(store, kernel_eids.ATTR_ERROR_KIND, "error-kind");
@@ -218,6 +226,15 @@ pub fn boot(
         .attr_eid = kernel_eids.ATTR_CARDINALITY,
         .many_value = ref_mod.mkEid(many_eid),
     });
+
+    // -- Stage 14: declare :many attrs (Phase 9.5.3+) --------------------
+    // `:ffi-has-symbol` accumulates one fact per enumerated symbol per Module.
+    _ = try store.assert(
+        kernel_eids.ATTR_FFI_HAS_SYMBOL,
+        kernel_eids.ATTR_CARDINALITY,
+        ref_mod.mkEid(many_eid),
+        kernel_eids.M_BOOTSTRAP,
+    );
 
     return .{
         .vtable_vt_ref = object.toRef(vt_vt_ptr),

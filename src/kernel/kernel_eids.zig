@@ -170,4 +170,18 @@ pub const SEL_HANDLE: u64 = 52;
 /// Phase 0-9 implicit-retract-on-overwrite default.
 pub const ATTR_CARDINALITY: u64 = 53;
 
-// 54..63 reserved for future kernel selectors / attributes
+/// Phase 9.5.3: lazy symbol enumeration. After `[mod symbols]` is sent,
+/// the Mach-O reader walks the lib once and asserts one symbol entity
+/// per nlist with `:ffi-symbol-name/-addr/-kind/-external?/-module` facts.
+/// `:ffi-has-symbol` is :many cardinality on the Module entity itself.
+/// `:ffi-symbols-enumerated?` caches the one-shot enumeration.
+pub const ATTR_FFI_HAS_SYMBOL: u64 = 54;
+pub const ATTR_FFI_SYMBOL_NAME: u64 = 55;
+pub const ATTR_FFI_SYMBOL_ADDR: u64 = 56;
+pub const ATTR_FFI_SYMBOL_KIND: u64 = 57;
+pub const ATTR_FFI_SYMBOL_EXTERNAL: u64 = 58;
+pub const ATTR_FFI_SYMBOL_MODULE: u64 = 59;
+pub const ATTR_FFI_SYMBOLS_ENUMERATED: u64 = 60;
+pub const SEL_SYMBOLS: u64 = 61;
+
+// 62..63 reserved for future kernel selectors / attributes

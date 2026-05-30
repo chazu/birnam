@@ -29,6 +29,7 @@ const kernel_eids = @import("kernel_eids.zig");
 const send_mod = @import("send.zig");
 const ffi = @import("ffi.zig");
 const id_api_mod = @import("id_api.zig");
+const macho = @import("macho.zig");
 
 const Ref = ref_mod.Ref;
 const Send = send_mod.Send;
@@ -164,6 +165,112 @@ pub fn isErrorEntity(store: *const fact_store_mod.FactStore, r: Ref) bool {
 
 // -- Method impls installed on MODULE_VT ------------------------------------
 
+/// `[mod symbols]` — return an RRB-Ref of symbol-entity Refs for this Module.
+/// First call walks Mach-O via the bundled reader and asserts symbol
+/// entities + `:ffi-has-symbol` facts (`:many` cardinality). Subsequent
+/// calls are pure queries via `currentValue` thanks to the cardinality
+/// machinery returning the materialized RRB directly.
+fn methodSymbols(s: *Send) callconv(.c) Ref {
+    const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    const table = send_mod.tablePtr() orelse return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    if (!ref_mod.isEid(s.receiver)) return ref_mod.NIL;
+    const mod_eid = ref_mod.untagEid(s.receiver);
+
+    // Cache check.
+    const already = store.currentValue(mod_eid, kernel_eids.ATTR_FFI_SYMBOLS_ENUMERATED) != null;
+    if (!already) {
+        enumerateSymbols(alloc, store, table, mod_eid) catch {
+            // On any failure (file read, parse, OOM), surface as NIL.
+            // Tests that exercise the failure path use moduleLoad's error
+            // path; symbols enumeration on a successfully-loaded lib is
+            // expected to succeed.
+            return ref_mod.NIL;
+        };
+    }
+
+    // After enumeration, currentValue on a :many attr returns RRB-Ref.
+    return store.currentValue(mod_eid, kernel_eids.ATTR_FFI_HAS_SYMBOL) orelse ref_mod.NIL;
+}
+
+/// Walk the Module's on-disk image via `macho.Reader.symbols()`, allocate
+/// one symbol entity per nlist, assert facts, and mark the Module's
+/// enumeration cache flag.
+fn enumerateSymbols(
+    allocator: std.mem.Allocator,
+    store: *fact_store_mod.FactStore,
+    table: *object_table_mod.ObjectTable,
+    mod_eid: u64,
+) !void {
+    const path_ref = store.currentValue(mod_eid, kernel_eids.ATTR_FFI_PATH) orelse return error.NoPath;
+    if (!strings.isString(path_ref)) return error.NoPath;
+    const path = strings.bytes(path_ref);
+
+    const bytes_buf = try macho.readFile(allocator, path);
+    defer allocator.free(bytes_buf);
+
+    var reader = try macho.Reader.init(bytes_buf);
+    var it = try reader.symbols();
+    while (it.next()) |sym| {
+        // Skip empty / debug entries.
+        if (sym.name.len == 0) continue;
+        if (sym.kind == .stab) continue;
+
+        const sym_eid = table.alloc();
+        _ = try store.assert(
+            sym_eid,
+            kernel_eids.ATTR_FFI_SYMBOL_NAME,
+            try strings.mkString(allocator, sym.name),
+            kernel_eids.M_BOOTSTRAP,
+        );
+        _ = try store.assert(
+            sym_eid,
+            kernel_eids.ATTR_FFI_SYMBOL_ADDR,
+            try boxed.mkFfiPtr(allocator, @intCast(sym.addr)),
+            kernel_eids.M_BOOTSTRAP,
+        );
+        // Kind: store as SmallInt enum tag so it's queryable.
+        const kind_tag: i64 = switch (sym.kind) {
+            .section => 1,
+            .absolute => 2,
+            .undefined_ => 3,
+            .stab => 4,
+            .other => 5,
+        };
+        _ = try store.assert(
+            sym_eid,
+            kernel_eids.ATTR_FFI_SYMBOL_KIND,
+            ref_mod.mkSmallInt(kind_tag).?,
+            kernel_eids.M_BOOTSTRAP,
+        );
+        _ = try store.assert(
+            sym_eid,
+            kernel_eids.ATTR_FFI_SYMBOL_EXTERNAL,
+            ref_mod.mkSmallInt(if (sym.external) 1 else 0).?,
+            kernel_eids.M_BOOTSTRAP,
+        );
+        _ = try store.assert(
+            sym_eid,
+            kernel_eids.ATTR_FFI_SYMBOL_MODULE,
+            ref_mod.mkEid(mod_eid),
+            kernel_eids.M_BOOTSTRAP,
+        );
+        _ = try store.assert(
+            mod_eid,
+            kernel_eids.ATTR_FFI_HAS_SYMBOL,
+            ref_mod.mkEid(sym_eid),
+            kernel_eids.M_BOOTSTRAP,
+        );
+    }
+
+    _ = try store.assert(
+        mod_eid,
+        kernel_eids.ATTR_FFI_SYMBOLS_ENUMERATED,
+        ref_mod.mkSmallInt(1).?,
+        kernel_eids.M_BOOTSTRAP,
+    );
+}
+
 /// `[mod path]` — return the boxed string Ref stored on the Module.
 fn methodPath(s: *Send) callconv(.c) Ref {
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
@@ -275,4 +382,5 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_PATH, @ptrCast(&methodPath));
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_HANDLE, @ptrCast(&methodHandle));
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_WRAP_AS_SIG, @ptrCast(&methodWrapAsSig));
+    try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_SYMBOLS, @ptrCast(&methodSymbols));
 }

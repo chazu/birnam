@@ -39,6 +39,7 @@ fn setup(arena: *std.heap.ArenaAllocator) !Fix {
 }
 
 const LIBSYSTEM = "/usr/lib/libSystem.B.dylib";
+const HELLO_DYLIB = "zig-out/lib/libbirnam_hello.dylib";
 
 // -- Module load: ------------------------------------------------------------
 
@@ -153,6 +154,77 @@ test "[mod wrap:] on missing symbol returns ERROR_VT entity" {
     const kind_ref = fix.store.currentValue(ref_mod.untagEid(result), kernel_eids.ATTR_ERROR_KIND).?;
     const kind_name = fix.interner.nameOf(ref_mod.untagEid(kind_ref)).?;
     try testing.expect(std.mem.eql(u8, kind_name, "ffi-symbol-not-found"));
+}
+
+// -- [mod symbols] lazy enumeration -----------------------------------------
+
+test "[mod symbols] returns an RRB-Ref of symbol entities" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, HELLO_DYLIB) catch return error.SkipZigTest;
+    if (ffi_module.isErrorEntity(fix.store, mod)) return error.SkipZigTest;
+
+    const r = send_mod.send0(mod, kernel_eids.SEL_SYMBOLS);
+    try testing.expect(boxed.isRrbRef(r));
+    const rrb = boxed.untagRrbRef(r);
+    try testing.expect(rrb.count() > 0);
+}
+
+test "[mod symbols] enumerates _birnam_module_init as a section + external symbol" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, HELLO_DYLIB) catch return error.SkipZigTest;
+    if (ffi_module.isErrorEntity(fix.store, mod)) return error.SkipZigTest;
+
+    const r = send_mod.send0(mod, kernel_eids.SEL_SYMBOLS);
+    const rrb = boxed.untagRrbRef(r);
+
+    var found_init = false;
+    var i: usize = 0;
+    while (i < rrb.count()) : (i += 1) {
+        const sym_ref = rrb.nth(i);
+        try testing.expect(ref_mod.isEid(sym_ref));
+        const sym_eid = ref_mod.untagEid(sym_ref);
+        const name_ref = fix.store.currentValue(sym_eid, kernel_eids.ATTR_FFI_SYMBOL_NAME) orelse continue;
+        if (!strings.isString(name_ref)) continue;
+        if (std.mem.eql(u8, strings.bytes(name_ref), "_birnam_module_init")) {
+            const kind = fix.store.currentValue(sym_eid, kernel_eids.ATTR_FFI_SYMBOL_KIND).?;
+            try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(kind)); // .section
+            const ext = fix.store.currentValue(sym_eid, kernel_eids.ATTR_FFI_SYMBOL_EXTERNAL).?;
+            try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(ext));
+            const owner = fix.store.currentValue(sym_eid, kernel_eids.ATTR_FFI_SYMBOL_MODULE).?;
+            try testing.expectEqual(mod, owner);
+            found_init = true;
+        }
+    }
+    try testing.expect(found_init);
+}
+
+test "[mod symbols] idempotent — second call doesn't double the count" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, HELLO_DYLIB) catch return error.SkipZigTest;
+    if (ffi_module.isErrorEntity(fix.store, mod)) return error.SkipZigTest;
+
+    const r1 = send_mod.send0(mod, kernel_eids.SEL_SYMBOLS);
+    const r2 = send_mod.send0(mod, kernel_eids.SEL_SYMBOLS);
+    try testing.expectEqual(boxed.untagRrbRef(r1).count(), boxed.untagRrbRef(r2).count());
+
+    // The enumerated-flag fact is set after the first call.
+    const flag = fix.store.currentValue(ref_mod.untagEid(mod), kernel_eids.ATTR_FFI_SYMBOLS_ENUMERATED);
+    try testing.expect(flag != null);
 }
 
 test "[mod wrap:] with arity-too-high sig returns ERROR_VT entity" {
