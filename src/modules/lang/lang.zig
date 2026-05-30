@@ -134,6 +134,13 @@ const IdApi = extern struct {
     ffi_exit: *const fn () callconv(.c) void,
 
     peg_install_send_api: *const fn (u64) callconv(.c) void,
+
+    // Phase 10.1.b procedural escape hatch — bootstrap-only, see
+    // ADR-10-Send-Arity in ROADMAP. User-facing seq/choice/charset land
+    // via the send-dispatched surface once Phase 10.2.5 (sendN) ships.
+    peg_mk_seq: *const fn ([*]const u64, usize) callconv(.c) u64,
+    peg_mk_choice: *const fn ([*]const u64, usize) callconv(.c) u64,
+    peg_mk_charset: *const fn ([*]const u8, usize) callconv(.c) u64,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -205,48 +212,98 @@ fn defineRule(grammar: Ref, name: []const u8, pat: Ref) void {
     _ = api.send2(grammar, sel_define_rule_as, api.make_string(name.ptr, name.len), pat);
 }
 
+// Procedural seq/choice/charset (10.1.b escape hatch — bootstrap-only).
+fn peg_seq(children: []const u64) Ref {
+    const eid = g_api.?.peg_mk_seq(children.ptr, children.len);
+    return mkEid(eid);
+}
+
+fn peg_choice(children: []const u64) Ref {
+    const eid = g_api.?.peg_mk_choice(children.ptr, children.len);
+    return mkEid(eid);
+}
+
+fn peg_charset(ranges: []const u8) Ref {
+    const eid = g_api.?.peg_mk_charset(ranges.ptr, ranges.len);
+    return mkEid(eid);
+}
+
+fn untagEid(r: Ref) u64 {
+    return r >> 3;
+}
+
 // -- Birnam grammar construction --------------------------------------------
 
 fn buildGrammar() void {
     const api = g_api.?;
     const grammar = api.send0(mkEid(PEG_EID), sel_new_grammar);
-    g_grammar_eid = grammar >> 3; // untag (EID tag 010 in low 3 bits)
+    g_grammar_eid = untagEid(grammar);
 
-    // For the 10.1.b minimal subset we wire ~10 rules. seq/choice support
-    // is deferred (need Vector-arg sends on PEG_VT), so we use rules that
-    // need only unary combinators. star/plus over single-byte matches is
-    // sufficient for whitespace, digits, letters; identifier-shape is
-    // approximated as `letter+` (no internal digits yet — full rule lands
-    // when seq: lands).
+    // -- Primitives via charsets ------------------------------------------
+    // whitespace-char = [ \t\n\r]
+    const ws_ranges = [_]u8{ ' ', ' ', '\t', '\t', '\n', '\n', '\r', '\r' };
+    defineRule(grammar, "whitespace-char", peg_charset(&ws_ranges));
+    // whitespace = whitespace-char*
+    defineRule(grammar, "whitespace", peg_star(peg_rule_ref("whitespace-char")));
 
-    // whitespace = (any* but not real ws — placeholder; will become
-    // [ \t\n] charset+ when charset send lands).
-    // For now we put a no-op rule "any-byte" that matches one byte.
-    defineRule(grammar, "any-byte", peg_any());
+    // digit = [0-9]
+    const digit_ranges = [_]u8{ '0', '9' };
+    defineRule(grammar, "digit", peg_charset(&digit_ranges));
 
-    // EOF rule.
-    defineRule(grammar, "eof", peg_eof());
+    // letter = [a-zA-Z_]
+    const letter_ranges = [_]u8{ 'a', 'z', 'A', 'Z', '_', '_' };
+    defineRule(grammar, "letter", peg_charset(&letter_ranges));
 
-    // identifier-letter — single letter "x" literal, placeholder until
-    // charset send wired. Demonstrates rule definition shape.
-    defineRule(grammar, "letter-x", peg_literal("x"));
+    // alphanumeric = letter | digit
+    {
+        const alts = [_]u64{ untagEid(peg_rule_ref("letter")), untagEid(peg_rule_ref("digit")) };
+        defineRule(grammar, "alphanumeric", peg_choice(&alts));
+    }
 
-    // identifier-x — one-or-more "x" (proxy for identifier shape).
-    defineRule(grammar, "identifier-x", peg_plus(peg_rule_ref("letter-x")));
+    // identifier = letter alphanumeric*
+    {
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("letter")),
+            untagEid(peg_star(peg_rule_ref("alphanumeric"))),
+        };
+        defineRule(grammar, "identifier", peg_seq(&parts));
+    }
 
-    // nil / true / false keyword literals.
+    // integer = digit+
+    defineRule(grammar, "integer", peg_plus(peg_rule_ref("digit")));
+
+    // -- Keyword literals (G4 reserved set) --------------------------------
     defineRule(grammar, "kw-nil", peg_literal("nil"));
     defineRule(grammar, "kw-true", peg_literal("true"));
     defineRule(grammar, "kw-false", peg_literal("false"));
 
-    // optional-letter — opt combinator demo.
-    defineRule(grammar, "opt-letter-x", peg_opt(peg_rule_ref("letter-x")));
+    // atom = integer | kw-nil | kw-true | kw-false | identifier
+    //                                              (order matters — PEG)
+    // To avoid "true" being eaten as an identifier first, keyword rules
+    // come before identifier in the choice. The proper fix (followed by
+    // !alphanumeric in a keyword's seq) lands when reserved-word handling
+    // is wired in a follow-up.
+    {
+        const atom_alts = [_]u64{
+            untagEid(peg_rule_ref("integer")),
+            untagEid(peg_rule_ref("kw-nil")),
+            untagEid(peg_rule_ref("kw-true")),
+            untagEid(peg_rule_ref("kw-false")),
+            untagEid(peg_rule_ref("identifier")),
+        };
+        defineRule(grammar, "atom", peg_choice(&atom_alts));
+    }
 
-    // not-x-then-any — negative-lookahead combinator demo.
-    defineRule(grammar, "not-x-then-any", peg_not(peg_rule_ref("letter-x")));
-
-    // start = identifier-x — entry rule for the minimal subset.
-    defineRule(grammar, "start", peg_rule_ref("identifier-x"));
+    // start = whitespace atom whitespace eof
+    {
+        const start_parts = [_]u64{
+            untagEid(peg_rule_ref("whitespace")),
+            untagEid(peg_rule_ref("atom")),
+            untagEid(peg_rule_ref("whitespace")),
+            untagEid(peg_eof()),
+        };
+        defineRule(grammar, "start", peg_seq(&start_parts));
+    }
 }
 
 // -- Module init -------------------------------------------------------------

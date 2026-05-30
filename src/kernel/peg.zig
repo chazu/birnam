@@ -523,6 +523,14 @@ const InstallState = struct {
 
 var g_install: ?InstallState = null;
 
+/// Borrow the engine cached at installSendApi time. Returns null if the
+/// PEG dylib hasn't loaded yet (procedural escape hatch via IdApi expects
+/// the install to have happened first).
+pub fn installedEngine() ?*Engine {
+    if (g_install) |*st| return &st.engine;
+    return null;
+}
+
 /// Installs `parse:from:` on GRAMMAR_VT and caches the engine state. The
 /// dylib calls this at module-init via the appended IdApi entry; tests
 /// call it directly. Multiple calls overwrite the cached engine state —

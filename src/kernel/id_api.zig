@@ -199,6 +199,15 @@ pub const IdApi = extern struct {
     /// in the kernel layer that already owns the engine code (see P10
     /// deviation note in peg.zig).
     peg_install_send_api: *const fn (u64) callconv(.c) void,
+
+    // -- Phase 10.1.b: PEG variadic-pattern procedural escape hatch --------
+    // Bootstrap-only conveniences for the lang dylib to build seq/choice/
+    // charset patterns at grammar-assembly time, until Phase 10.2.5 (sendN)
+    // ships the send-dispatched variadic surface. NOT user-facing.
+    // See ADR-10-Send-Arity in ROADMAP.md.
+    peg_mk_seq: *const fn ([*]const u64, usize) callconv(.c) u64,
+    peg_mk_choice: *const fn ([*]const u64, usize) callconv(.c) u64,
+    peg_mk_charset: *const fn ([*]const u8, usize) callconv(.c) u64,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -298,6 +307,9 @@ pub fn populate() IdApi {
         .free_result = &cFreeResult,
 
         .peg_install_send_api = &cPegInstallSendApi,
+        .peg_mk_seq = &cPegMkSeq,
+        .peg_mk_choice = &cPegMkChoice,
+        .peg_mk_charset = &cPegMkCharset,
     };
 }
 
@@ -789,4 +801,29 @@ fn cPegInstallSendApi(module_eid: u64) callconv(.c) void {
     const t = send_mod.tablePtr() orelse return;
     const i = g_interner orelse return;
     peg_mod.installSendApi(a, s, t, i, module_eid) catch {};
+}
+
+fn cPegMkSeq(children: [*]const u64, count: usize) callconv(.c) u64 {
+    const eng = peg_mod.installedEngine() orelse return 0;
+    return peg_mod.mkSeq(eng, children[0..count]) catch 0;
+}
+
+fn cPegMkChoice(children: [*]const u64, count: usize) callconv(.c) u64 {
+    const eng = peg_mod.installedEngine() orelse return 0;
+    return peg_mod.mkChoice(eng, children[0..count]) catch 0;
+}
+
+/// Charset ranges encoded as flat u8 pairs: `[lo0, hi0, lo1, hi1, ...]`,
+/// `count` = total length of the buffer (must be even).
+fn cPegMkCharset(ranges: [*]const u8, count: usize) callconv(.c) u64 {
+    if (count == 0 or (count & 1) != 0) return 0;
+    const eng = peg_mod.installedEngine() orelse return 0;
+    const allocator = send_mod.kernelAllocator() orelse return 0;
+    const n_ranges = count / 2;
+    const buf = allocator.alloc(peg_mod.Range, n_ranges) catch return 0;
+    defer allocator.free(buf);
+    for (0..n_ranges) |k| {
+        buf[k] = .{ .lo = ranges[2 * k], .hi = ranges[2 * k + 1] };
+    }
+    return peg_mod.mkCharset(eng, buf) catch 0;
 }

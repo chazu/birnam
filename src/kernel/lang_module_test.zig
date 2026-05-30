@@ -67,34 +67,19 @@ test "lang dylib: loads after PEG, exports grammar on module entity" {
     try testing.expect(ref_mod.isEid(g_ref));
 }
 
-test "lang dylib: parse \"xxx\" via the asserted identifier-x rule" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-    const s = try fullSetup(&arena);
-
-    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
-    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
-
+fn parseVia(s: anytype, src: []const u8, rule: []const u8, lang_mod_eid: u64, a: std.mem.Allocator) Ref {
     const sel_grammar = s.interner.str_to_eid.get("grammar").?;
     const sel_parse = s.interner.str_to_eid.get("parse:from:").?;
     const grammar = s.store.currentValue(lang_mod_eid, sel_grammar).?;
-
-    const result = send_mod.send2(
+    return send_mod.send2(
         grammar,
         sel_parse,
-        try strings.mkString(a, "xxx"),
-        try strings.mkString(a, "start"),
+        strings.mkString(a, src) catch unreachable,
+        strings.mkString(a, rule) catch unreachable,
     );
-    try testing.expect(ref_mod.isEid(result));
-    const ast = ref_mod.untagEid(result);
-    // Success → no :vtable on CST node.
-    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
-    const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
-    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(end_ref));
 }
 
-test "lang dylib: parse \"true\" via kw-true literal rule" {
+test "lang grammar: identifier matches \"hello\"" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -103,18 +88,64 @@ test "lang dylib: parse \"true\" via kw-true literal rule" {
     _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
     const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
 
-    const sel_grammar = s.interner.str_to_eid.get("grammar").?;
-    const sel_parse = s.interner.str_to_eid.get("parse:from:").?;
-    const grammar = s.store.currentValue(lang_mod_eid, sel_grammar).?;
+    const ast_ref = parseVia(s, "hello", "identifier", lang_mod_eid, a);
+    const ast = ref_mod.untagEid(ast_ref);
+    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 5), ref_mod.untagSmallInt(end_ref));
+}
 
-    const result = send_mod.send2(
-        grammar,
-        sel_parse,
-        try strings.mkString(a, "true"),
-        try strings.mkString(a, "kw-true"),
-    );
-    const ast = ref_mod.untagEid(result);
+test "lang grammar: integer matches \"42\"" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const ast = ref_mod.untagEid(parseVia(s, "42", "integer", lang_mod_eid, a));
+    const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(end_ref));
+}
+
+test "lang grammar: start matches \"  42  \" (whitespace-wrapped atom)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const ast = ref_mod.untagEid(parseVia(s, "  42  ", "start", lang_mod_eid, a));
+    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(end_ref));
+}
+
+test "lang grammar: start matches \"true\" via atom choice" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const ast = ref_mod.untagEid(parseVia(s, "true", "start", lang_mod_eid, a));
     try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
     const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
     try testing.expectEqual(@as(i64, 4), ref_mod.untagSmallInt(end_ref));
+}
+
+test "lang grammar: start fails on \"!!\" (no atom matches)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const result = parseVia(s, "!!", "start", lang_mod_eid, a);
+    const err = ref_mod.untagEid(result);
+    const vt = s.store.currentValue(err, kernel_eids.ATTR_VTABLE).?;
+    try testing.expectEqual(kernel_eids.ERROR_VT, ref_mod.untagEid(vt));
 }
