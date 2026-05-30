@@ -585,7 +585,7 @@ Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatc
 
 **Goal:** Birnam source syntax, parsed into facts, evaluated against fact store.
 
-### Open questions (DRAFT — decision doc not yet locked)
+### Decisions locked (Phase 10 decision doc, 2026-05-29)
 
 > **Terminology note:** birnam is strictly prototype-based (COLA / idst /
 > Piumarta lineage per VISION.md). No class / instance split — vtables
@@ -593,6 +593,93 @@ Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatc
 > "Define Point as a Smalltalk class" = "mint a Point prototype-vt and
 > install methods on it." Phase 10 grammar / evaluator MUST NOT
 > introduce a class metamodel.
+
+| Q | Decision |
+|---|---|
+| P1 Grammar encoding | **Pure facts.** Each PEG pattern is an entity with `:pattern-kind <keyword>` + combinator-specific facts. Phase 11+ materialization caching deferred. |
+| P2 Packrat memo | **Transient AutoHashMap per parse**, freed at end. Memo is hot-path cache, lives outside facts (Phase 8 derived-state pattern). |
+| P3 AST children | **`:ast-first-child` + `:ast-next-sibling`** linked list. All `:one`. Random access O(N). Pattern children use `:pattern-first-child` + `:pattern-next-sibling` (same shape). |
+| P4 Source spans | **Byte `(start, end)` only.** Line/col derived on demand via `lineCol(source, offset)` helper. |
+| P5 Parse failure | **Furthest-failure + `:peg-expected :many` set** of expected rule/literal name-EIDs at that position. Single diagnostic entity per failure. |
+| P6 Charset encoding | **Fact-shaped range list**: linked list of range entities via `:charset-first-range` + `:charset-next-range`, each carrying `:charset-range-lo` / `:charset-range-hi` SmallInt code points. Renamed from `:char-class` per prototype tenet. |
+| P7 Combinator scope | **Core 12 only**: `:literal`, `:seq`, `:choice`, `:star`, `:plus`, `:opt`, `:and`, `:not`, `:rule-ref`, `:charset`, `:any`, `:eof`. Captures / cut / actions / recovery deferred. |
+| P8 Multi-grammar | **Multiple grammars coexist** as entities. Each parser invocation names one entry rule on one grammar. |
+| P9 PEG API | **Both surfaces.** Kernel procedural API via IdApi for tests / engine internals; send-dispatched `Grammar>>defineRule:as:` / `Grammar>>parse:from:` for user code. |
+| P10 Code location | **`src/modules/peg/` dylib** loaded after kernel boot. PEG is malleable-layer per VISION §296. Not in `src/kernel/`. |
+| G2 Birnam syntax | **Visually Obj-C-y, semantically Smalltalk.** Bracket message sends `[recv msg: a with: b]`; Smalltalk blocks `[:x \| body]` or `[\| body]` (mandatory `\|` or `:` to disambiguate from sends, see below); strings `"..."` (no `@` prefix); assignment `:=`; statement separator `;`; comments `// ...` and `/* ... */`; messages-as-control-flow (no `if`/`while`/`for` keywords — `[cond ifTrue:[a] ifFalse:[b]]`); return `^`; no cascades; method definition via send (`[Point method: #foo do: [:x \| body]]`). |
+| G2 Bracket collision | **Blocks must carry `\|` or leading `:`.** `[recv msg]` → message send. `[:x \| body]` or `[\| body]` → block. `[?e :attr ?v]` → pattern-send. Unambiguous via ordered choice in PEG. |
+| G3 Keyword folding | **Smalltalk-standard compound folding.** `[obj a: 1 b: 2]` parses as single send of compound selector `a:b:` with 2 args. |
+| G4 Reserved words | **Minimal**: `self`, `super`, `nil`, `true`, `false`, `^`, `let`. C-style control-flow words (`if`/`while`/`for`/`return`/etc.) are FREE — control flow is messages. |
+| G5 Pattern-send | **`?ident` variable marker.** PEG ordered choice discriminates `[?...]` as pattern-send before falling through to message send. |
+| PR1 AST lifetime | **Permanent**, until Phase 13 prune. `:ast-parse <parse_eid>` back-ref enables per-parse retraction. |
+| PR2 Source lifetime | **Method install copies its substring** to `[method :method-source <string Ref>]`. Parse-level source string is droppable independently. |
+| E1 Eval dispatch | **vtable + send.** Each AST kind has its own vt (e.g. `AST_KEYWORD_SEND_VT`, `AST_BLOCK_VT`, ...), eval is `[ast_node eval]`. COLA-pure dispatch; Phase 7.5 metabind directly enables per-kind overrides. |
+| E2 Scope | **ADR-10-E2 (see below).** Fact-shaped binding entities for truth + parse-time slot resolution for runtime fast path. Two layers. |
+| E3 Closures | **By reference**, Smalltalk-standard. Block holds `:block-scope <enclosing_scope_eid>`. Lifetime: Phase 13 reachability sweep (Phase 13.3). |
+| E4 Non-local return | **Single-threaded side-channel `g_unwinding` + sentinel-Ref propagation** through eval frames. Phase 10.3 ship. Phase 11.5 retires this in favor of proper VM unwind opcode. |
+| E5 Stack depth | **Depth guard at 8192** with `:stack-overflow` ERROR_VT entity on overflow. Phase 11 VM has no inherent limit (retires this). |
+| E6 Error model | **ERROR_VT entities** (Phase 7.8 / 9.5.1 model, already shipped). Eval upgrades `bind`-returns-NIL on method-not-found to `:method-not-found` ERROR_VT at the eval layer for user-source sends only — kernel internals unchanged. |
+| MD1 Install syntax | **`[vt method: #sel do: [block]]`** send. No special parser case. Symbol literals via `#ident` and `#kw1:kw2:` forms. |
+| MD2 Install target | **Receiver = target vt** (no `onVt:` variant). Kernel-vt names (`Object`, `Vtable`, `Block`, `Float`, `FfiPtr`, `Module`, `Error`, ...) **pre-bound in top-level scope** at language-dylib init. User-shadowing via lexical scope. |
+| MD3 Source provenance | **`:method-source` fact on closure entity** at install time. New selector `source` on `CLOSURE_VT` returns the boxed-string Ref (or NIL for anonymous closures). Also `:method-name`, `:method-installed-tx`. |
+| T1 Test corpus | **Minimum**: literals, arithmetic + binary ops, variable binding + assignment, block create + invoke, method install + dispatch, recursion (Fibonacci), control-flow messages, non-local return, pattern-send, error paths (every ERROR_VT kind). **Stretch**: hello-world print, Cons cell with `map`/`fold`, mutual recursion, block-closure-capture-aliasing. **Sub-dependency**: `SMALLINT_VT` + arithmetic methods + `FLOAT_VT` arithmetic + mixed-type coercion landed as Phase 10.0 prereq (10.0.x). |
+| T2 REPL integration | **Phase 10 REPL is default**, with `:` prefix for Phase 6 kernel-debug commands (`:quit`, `:reload`, `:prompt`, `:scope`, `:tx`, `:reset`, `:source`, `:trace`). Multi-line input via PEG furthest-failure-at-EOF detection. |
+| X1 PEG bootstrap | **Post-boot dylib**, loaded by shell before language module. Frozen kernel doctrine (VISION §296). |
+| X2 Grammar persistence | **Asserted from Zig** at language-dylib init. ~50 rules. Module-owned (`MOD_LANG`); reload retracts + re-asserts. `.peg` source file format deferred to Phase 10.x / 11+. |
+| X3 AST GC | **Reachable-from-roots mark-sweep via Phase 13.4** (now spelled out in Phase 13 work items). Root attribute set + edges to follow documented there. |
+| X4 Left recursion | **Right-recursive rewrite** of birnam grammar (binary + unary chains only — keyword sends are bracket-delimited so no LR exposure). Warth packrat-with-left-rec deferred to Phase 11+ if grammar authors need it. |
+| X5 Float literals | **Dot or exponent triggers Float**. `1.5`, `1e10`, `1.5e-3` → boxed Float Ref (Phase 9.2 type). Integer underscores `1_000_000` supported. Boxed Ref pre-allocated at parse, stored on AST node as `:literal-value`. |
+| X6 Self-hosting | **Trajectory documented, no committed phase.** Phase 10 ships interpreted (PEG + grammar + eval in Zig). E1 iii (vt + send) enables per-AST-kind eval override from birnam day one — partial self-host free. PEG / compiler / AOT live in malleable layer; can be rewritten in birnam as Phase 11.x evolution. Frozen kernel never self-hosts by design (VISION §296). |
+
+### Documented risks
+
+1. **PEG parse cost.** Pattern-graph traversal = 2 fact lookups per node visit. At spike scale invisible; Phase 11+ struct-cache materialization addresses if needed.
+2. **AST entity accumulation.** Permanent ASTs grow until Phase 13 prune. REPL session memory creep accepted for spike.
+3. **Scope leak via captured blocks.** Phase 13.3 reachability sweep cleans up. Spike-level scope accumulation accepted.
+4. **Non-local return single-threaded.** `g_unwinding` global is single-threaded-only; matches birnam's broader single-threaded image assumption. Phase 11 VM goes per-thread.
+5. **Stack overflow hard limit at 8192.** Pathological deep recursion fails gracefully via diagnostic entity, not crash. Phase 11 VM removes limit.
+6. **Float precision.** `0.1 + 0.2 != 0.3` per f64 semantics. Document at user-language level; not a substrate issue.
+
+> **ADR-10-E2 (2026-05-29).** Locked: fact-shaped binding entities for
+> the truth layer + parse-time slot resolution for the runtime fast
+> path. Two-layer design.
+>
+> **Truth layer:** each scope is an entity `[scope :scope-parent ?p]`.
+> Each binding is its own entity with `:one` cardinality:
+> `[bind :bind-scope scope] [bind :bind-name <interned-EID>]
+> [bind :bind-value <Ref>]`. Walk-back, REPL introspection, debugger
+> reach-back, and Phase 13 prune all work over this.
+>
+> **Speed layer:** at parse time, every variable reference resolves to
+> `(scope-depth, slot-index)` against the lexical chain. Each `let x`
+> in a scope claims `next_slot_index++`. AST nodes for variable
+> references carry `:ast-bind-depth` + `:ast-bind-slot` + (debug-only)
+> `:ast-bind-name`. Runtime scope = an array of `Ref` indexed by slot.
+> Lookup = O(depth) frame-hops + O(1) slot read; depth is typically
+> ≤ 4 for birnam methods. Effectively as fast as a Zig AutoHashMap
+> while keeping the fact layer COLA-pure.
+>
+> **Mitigation across phases:**
+>
+> | Phase | Capability |
+> |---|---|
+> | 10.2 parser | tracks per-scope slot table during parse; resolves names → `(depth, slot)` in AST |
+> | 10.3 evaluator | slot-indexed access at runtime; falls back to fact-query for REPL top-level / dynamic eval only |
+> | 10.4 method install | method-body AST has fully resolved slots; method execution = pure slot lookups |
+> | Phase 11 bytecode | compiles slot lookups to bytecode operands; no AST walk at runtime |
+>
+> **Assignment to undefined** = parse-time error (static scope).
+> **Block closures:** parse-time slot resolution already accounts for
+> the enclosing chain; block carries `:block-scope` Ref, invocation
+> chains parents, slot access transparent.
+>
+> **Phase 8 promote not used here:** scopes are write-heavy by nature
+> and would constantly demote under D6's any-mutation-demotes spike
+> rule. Instead, the compiler-side slot resolution is the mitigation —
+> facts truth, compiled slots are the cache. Same separation Phase 8
+> uses, different mechanism.
+
+#### Original draft questions (preserved for context)
 
 #### 10.0 — PEG module
 
