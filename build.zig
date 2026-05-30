@@ -104,6 +104,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(peg_lib);
 
+    // -- Lang dylib (Phase 10.1) ---------------------------------------------
+
+    const lang_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/lang/lang.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const lang_lib = b.addLibrary(.{
+        .name = "birnam_lang",
+        .root_module = lang_mod,
+        .linkage = .dynamic,
+    });
+    b.installArtifact(lang_lib);
+
     // -- Tests ---------------------------------------------------------------
 
     const test_step = b.step("test", "Run unit tests");

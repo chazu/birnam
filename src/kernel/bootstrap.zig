@@ -302,6 +302,90 @@ pub fn boot(
     // dispatches against PEG_VT's installed methods (10.0 step 5).
     _ = try store.assert(kernel_eids.PEG_EID, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.PEG_VT), m_boot);
 
+    // -- Stage 17: Phase 10.1 lang-module kernel slots ------------------
+    // All vts pre-materialized as empty prototypes; methods install at
+    // lang-dylib init (or via the user via [vt method:do:] in user code).
+    // Delegation: every new vt → OBJECT_VT (top of chain).
+    const phase_10_1_vts = [_]u64{
+        kernel_eids.BINDING_VT,
+        kernel_eids.SCOPE_VT,
+        kernel_eids.LANG_VT,
+        kernel_eids.AST_LITERAL_VT,
+        kernel_eids.AST_VAR_REF_VT,
+        kernel_eids.AST_SELF_VT,
+        kernel_eids.AST_KEYWORD_SEND_VT,
+        kernel_eids.AST_UNARY_SEND_VT,
+        kernel_eids.AST_BINARY_SEND_VT,
+        kernel_eids.AST_PATTERN_SEND_VT,
+        kernel_eids.AST_BLOCK_VT,
+        kernel_eids.AST_LET_VT,
+        kernel_eids.AST_ASSIGN_VT,
+        kernel_eids.AST_RETURN_VT,
+        kernel_eids.AST_SUPER_SEND_VT,
+        kernel_eids.AST_STMT_SEQ_VT,
+    };
+    for (phase_10_1_vts) |vt_eid| {
+        const ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+        try table.put(vt_eid, object.toRef(ptr));
+        _ = try store.assert(vt_eid, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+        _ = try store.assert(vt_eid, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    }
+
+    // LANG_EID singleton — language-module factory receiver. Methods on
+    // LANG_VT dispatch when user code sends to the bound `Lang` name (10.4+).
+    _ = try store.assert(kernel_eids.LANG_EID, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.LANG_VT), m_boot);
+
+    // Seed AST attr + binding/scope attr names so user code can intern them
+    // by string and recover the kernel EID.
+    try interner.seed(store, kernel_eids.ATTR_AST_VALUE, "ast-value");
+    try interner.seed(store, kernel_eids.ATTR_AST_NAME, "ast-name");
+    try interner.seed(store, kernel_eids.ATTR_AST_RECEIVER, "ast-receiver");
+    try interner.seed(store, kernel_eids.ATTR_AST_SELECTOR, "ast-selector");
+    try interner.seed(store, kernel_eids.ATTR_AST_FIRST_ARG, "ast-first-arg");
+    try interner.seed(store, kernel_eids.ATTR_AST_BLOCK_PARAMS, "ast-block-params");
+    try interner.seed(store, kernel_eids.ATTR_AST_BLOCK_BODY, "ast-block-body");
+    try interner.seed(store, kernel_eids.ATTR_AST_LET_INIT, "ast-let-init");
+    try interner.seed(store, kernel_eids.ATTR_AST_ASSIGN_TARGET, "ast-assign-target");
+    try interner.seed(store, kernel_eids.ATTR_AST_ASSIGN_VALUE, "ast-assign-value");
+    try interner.seed(store, kernel_eids.ATTR_AST_RETURN_VALUE, "ast-return-value");
+    try interner.seed(store, kernel_eids.ATTR_AST_BIND_DEPTH, "ast-bind-depth");
+    try interner.seed(store, kernel_eids.ATTR_AST_BIND_SLOT, "ast-bind-slot");
+    try interner.seed(store, kernel_eids.ATTR_AST_BIND_NAME, "ast-bind-name");
+    try interner.seed(store, kernel_eids.ATTR_AST_METHOD_FRAME, "ast-method-frame");
+    try interner.seed(store, kernel_eids.ATTR_AST_SUPER_VT, "ast-super-vt");
+    try interner.seed(store, kernel_eids.ATTR_AST_STMT_FIRST, "ast-stmt-first");
+
+    try interner.seed(store, kernel_eids.ATTR_BIND_SCOPE, "bind-scope");
+    try interner.seed(store, kernel_eids.ATTR_BIND_NAME, "bind-name");
+    try interner.seed(store, kernel_eids.ATTR_BIND_VALUE, "bind-value");
+    try interner.seed(store, kernel_eids.ATTR_SCOPE_PARENT, "scope-parent");
+    try interner.seed(store, kernel_eids.ATTR_SCOPE_TOP_LEVEL, "scope-top-level");
+
+    // Seed control-flow + arithmetic + boolean selectors so lang dylib (and
+    // user code) can `intern("+")` etc and get the kernel-fixed EID.
+    try interner.seed(store, kernel_eids.SEL_VALUE, "value");
+    try interner.seed(store, kernel_eids.SEL_VALUE_OF, "value:");
+    try interner.seed(store, kernel_eids.SEL_IF_TRUE, "ifTrue:");
+    try interner.seed(store, kernel_eids.SEL_IF_FALSE, "ifFalse:");
+    try interner.seed(store, kernel_eids.SEL_IF_TRUE_IF_FALSE, "ifTrue:ifFalse:");
+    try interner.seed(store, kernel_eids.SEL_WHILE_TRUE, "whileTrue:");
+    try interner.seed(store, kernel_eids.SEL_WHILE_FALSE, "whileFalse:");
+    try interner.seed(store, kernel_eids.SEL_TIMES_REPEAT, "timesRepeat:");
+    try interner.seed(store, kernel_eids.SEL_TO_DO, "to:do:");
+    try interner.seed(store, kernel_eids.SEL_NOT, "not");
+    try interner.seed(store, kernel_eids.SEL_AND, "and:");
+    try interner.seed(store, kernel_eids.SEL_OR, "or:");
+    try interner.seed(store, kernel_eids.SEL_PLUS, "+");
+    try interner.seed(store, kernel_eids.SEL_MINUS, "-");
+    try interner.seed(store, kernel_eids.SEL_TIMES, "*");
+    try interner.seed(store, kernel_eids.SEL_DIVIDE, "/");
+    try interner.seed(store, kernel_eids.SEL_MOD, "mod");
+    try interner.seed(store, kernel_eids.SEL_EQ, "=");
+    try interner.seed(store, kernel_eids.SEL_LT, "<");
+    try interner.seed(store, kernel_eids.SEL_GT, ">");
+    try interner.seed(store, kernel_eids.SEL_LE, "<=");
+    try interner.seed(store, kernel_eids.SEL_GE, ">=");
+
     // Seed Phase 10 selector + attribute names so user code can intern them
     // by string and recover the kernel EID (Phase 4.5 interner pattern).
     try interner.seed(store, kernel_eids.SEL_DEFINE_RULE_AS, "defineRule:as:");

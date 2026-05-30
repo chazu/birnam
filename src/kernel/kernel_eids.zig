@@ -317,4 +317,86 @@ pub const ATTR_PEG_POSITION: u64 = 98;
 /// top-level scope per MD2.
 pub const PEG_EID: u64 = 99;
 
-// 100..255 reserved for future kernel selectors / attributes
+// -- Phase 10.1 — language module kernel slots (100..161) -------------------
+
+// Binding + scope (ADR-10-E2 truth layer).
+pub const BINDING_VT: u64 = 100;
+pub const SCOPE_VT: u64 = 101;
+
+// Lang module provenance + singleton.
+pub const M_LANG: u64 = 102;
+pub const LANG_VT: u64 = 103;
+pub const LANG_EID: u64 = 104;
+
+// AST kind vtables (E1 — per-kind eval dispatch).
+/// Generic literal — `:ast-value` carries the immediate Ref (SmallInt,
+/// boxed Float, string, symbol EID, pre-built Vector Ref, NIL, TRUE_EID,
+/// FALSE_EID). Eval = return `:ast-value`.
+pub const AST_LITERAL_VT: u64 = 105;
+pub const AST_VAR_REF_VT: u64 = 106;
+pub const AST_SELF_VT: u64 = 107;
+pub const AST_KEYWORD_SEND_VT: u64 = 108;
+pub const AST_UNARY_SEND_VT: u64 = 109;
+pub const AST_BINARY_SEND_VT: u64 = 110;
+pub const AST_PATTERN_SEND_VT: u64 = 111;
+pub const AST_BLOCK_VT: u64 = 112;
+pub const AST_LET_VT: u64 = 113;
+pub const AST_ASSIGN_VT: u64 = 114;
+pub const AST_RETURN_VT: u64 = 115;
+pub const AST_SUPER_SEND_VT: u64 = 116;
+pub const AST_STMT_SEQ_VT: u64 = 117;
+
+// AST attributes (Phase 10.1 — extends Phase 10.0's generic :ast-* set).
+pub const ATTR_AST_VALUE: u64 = 118;
+pub const ATTR_AST_NAME: u64 = 119;
+pub const ATTR_AST_RECEIVER: u64 = 120;
+pub const ATTR_AST_SELECTOR: u64 = 121;
+pub const ATTR_AST_FIRST_ARG: u64 = 122;
+pub const ATTR_AST_BLOCK_PARAMS: u64 = 123;
+pub const ATTR_AST_BLOCK_BODY: u64 = 124;
+pub const ATTR_AST_LET_INIT: u64 = 125;
+pub const ATTR_AST_ASSIGN_TARGET: u64 = 126;
+pub const ATTR_AST_ASSIGN_VALUE: u64 = 127;
+pub const ATTR_AST_RETURN_VALUE: u64 = 128;
+/// Parse-time slot resolution (ADR-10-E2 speed layer).
+pub const ATTR_AST_BIND_DEPTH: u64 = 129;
+pub const ATTR_AST_BIND_SLOT: u64 = 130;
+pub const ATTR_AST_BIND_NAME: u64 = 131;
+/// Parse-time enclosing-method back-pointer on `^` AST nodes.
+pub const ATTR_AST_METHOD_FRAME: u64 = 132;
+/// Parse-time enclosing-method vt on `[super …]` AST nodes (MD4).
+pub const ATTR_AST_SUPER_VT: u64 = 133;
+pub const ATTR_AST_STMT_FIRST: u64 = 134;
+
+// Binding + scope attrs.
+pub const ATTR_BIND_SCOPE: u64 = 135;
+pub const ATTR_BIND_NAME: u64 = 136;
+pub const ATTR_BIND_VALUE: u64 = 137;
+pub const ATTR_SCOPE_PARENT: u64 = 138;
+pub const ATTR_SCOPE_TOP_LEVEL: u64 = 139;
+
+// Selectors (control flow + arithmetic + booleans + block iteration).
+pub const SEL_VALUE: u64 = 140;
+pub const SEL_VALUE_OF: u64 = 141; // "value:"
+pub const SEL_IF_TRUE: u64 = 142;
+pub const SEL_IF_FALSE: u64 = 143;
+pub const SEL_IF_TRUE_IF_FALSE: u64 = 144;
+pub const SEL_WHILE_TRUE: u64 = 145;
+pub const SEL_WHILE_FALSE: u64 = 146;
+pub const SEL_TIMES_REPEAT: u64 = 147;
+pub const SEL_TO_DO: u64 = 148;
+pub const SEL_NOT: u64 = 149;
+pub const SEL_AND: u64 = 150;
+pub const SEL_OR: u64 = 151;
+pub const SEL_PLUS: u64 = 152;
+pub const SEL_MINUS: u64 = 153;
+pub const SEL_TIMES: u64 = 154;
+pub const SEL_DIVIDE: u64 = 155;
+pub const SEL_MOD: u64 = 156;
+pub const SEL_EQ: u64 = 157;
+pub const SEL_LT: u64 = 158;
+pub const SEL_GT: u64 = 159;
+pub const SEL_LE: u64 = 160;
+pub const SEL_GE: u64 = 161;
+
+// 162..255 reserved for future kernel selectors / attributes

@@ -12,9 +12,9 @@ const kernel_eids = @import("kernel_eids.zig");
 const Ref = ref_mod.Ref;
 const Term = query.Term;
 
-const A_NAME: u64 = 200;
-const E1: u64 = 100;
-const E2: u64 = 101;
+const A_NAME: u64 = 1200;
+const E1: u64 = 1100;
+const E2: u64 = 1101;
 
 fn setup(arena: *std.heap.ArenaAllocator) !struct {
     store: *fact_store.FactStore,
