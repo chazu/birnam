@@ -332,7 +332,46 @@ fn buildGrammar() void {
     // -- Primitives -------------------------------------------------------
     const ws_ranges = [_]u8{ ' ', ' ', '\t', '\t', '\n', '\n', '\r', '\r' };
     defineRule(grammar, "whitespace-char", peg_charset(&ws_ranges));
-    defineRule(grammar, "ws", peg_star(peg_rule_ref("whitespace-char")));
+
+    // line-comment = "//" (!"\n" any)* "\n"?  (trailing newline optional for EOF)
+    {
+        const not_nl_ranges = [_]u8{ '\n', '\n' };
+        const not_nl = peg_not(peg_charset(&not_nl_ranges));
+        const step_parts = [_]u64{ untagEid(not_nl), untagEid(peg_any()) };
+        const step = peg_seq(&step_parts);
+        const newline_or_eof = peg_opt(peg_charset(&not_nl_ranges));
+        const parts = [_]u64{
+            untagEid(peg_literal("//")),
+            untagEid(peg_star(step)),
+            untagEid(newline_or_eof),
+        };
+        defineRule(grammar, "line-comment", peg_seq(&parts));
+    }
+
+    // block-comment = "/*" (!"*/" any)* "*/"
+    {
+        const not_close = peg_not(peg_literal("*/"));
+        const step_parts = [_]u64{ untagEid(not_close), untagEid(peg_any()) };
+        const step = peg_seq(&step_parts);
+        const parts = [_]u64{
+            untagEid(peg_literal("/*")),
+            untagEid(peg_star(step)),
+            untagEid(peg_literal("*/")),
+        };
+        defineRule(grammar, "block-comment", peg_seq(&parts));
+    }
+
+    // ws-token = whitespace-char | line-comment | block-comment
+    {
+        const alts = [_]u64{
+            untagEid(peg_rule_ref("whitespace-char")),
+            untagEid(peg_rule_ref("line-comment")),
+            untagEid(peg_rule_ref("block-comment")),
+        };
+        defineRule(grammar, "ws-token", peg_choice(&alts));
+    }
+
+    defineRule(grammar, "ws", peg_star(peg_rule_ref("ws-token")));
 
     const digit_ranges = [_]u8{ '0', '9' };
     defineRule(grammar, "digit", peg_charset(&digit_ranges));
@@ -1472,6 +1511,48 @@ fn closureWhileTrueImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c
     return NIL;
 }
 
+fn closureWhileFalseImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const api = g_api.?;
+    const body_ref = args[0];
+    var safety_counter: u64 = 0;
+    const SAFETY_LIMIT: u64 = 10_000_000;
+    while (safety_counter < SAFETY_LIMIT) : (safety_counter += 1) {
+        const cond_val = api.send0(s.receiver, sel_value_g);
+        if (!isEid(cond_val)) return NIL;
+        if ((cond_val >> 3) != FALSE_EID) return NIL;
+        _ = api.send0(body_ref, sel_value_g);
+    }
+    return NIL;
+}
+
+/// `[N timesRepeat: bodyBlock]` — invoke body N times. Receiver is the
+/// SmallInt count.
+fn smallintTimesRepeatImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const api = g_api.?;
+    const body_ref = args[0];
+    var count = untagSmallInt(s.receiver);
+    while (count > 0) : (count -= 1) {
+        _ = api.send0(body_ref, sel_value_g);
+    }
+    return s.receiver;
+}
+
+/// `[start to: end do: bodyBlock]` — body invoked with the current
+/// SmallInt index from start to end inclusive.
+fn smallintToDoImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const api = g_api.?;
+    const end = untagSmallInt(args[0]);
+    const body_ref = args[1];
+    var i = untagSmallInt(s.receiver);
+    while (i <= end) : (i += 1) {
+        _ = api.send1(body_ref, sel_value_g, mkSmallInt(i));
+    }
+    return s.receiver;
+}
+
 fn evalLetImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     const api = g_api.?;
     if (!isEid(s.receiver)) return NIL;
@@ -1648,7 +1729,14 @@ fn installMethods() void {
     _ = api.assert_fact(CLOSURE_VT, value_of_of_sel, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
 
     const while_true_sel = api.intern("whileTrue:".ptr, 10);
+    const while_false_sel = api.intern("whileFalse:".ptr, 11);
     _ = api.assert_fact(CLOSURE_VT, while_true_sel, mkEid(api.make_closure(@ptrCast(&closureWhileTrueImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(CLOSURE_VT, while_false_sel, mkEid(api.make_closure(@ptrCast(&closureWhileFalseImpl), NIL)), g_module_eid);
+
+    const times_repeat_sel = api.intern("timesRepeat:".ptr, 12);
+    const to_do_sel = api.intern("to:do:".ptr, 6);
+    _ = api.assert_fact(SMALLINT_VT, times_repeat_sel, mkEid(api.make_closure(@ptrCast(&smallintTimesRepeatImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, to_do_sel, mkEid(api.make_closure(@ptrCast(&smallintToDoImpl), NIL)), g_module_eid);
 
     // Boolean control-flow methods. Per Phase 10.0.x lock: birnam-source
     // one-liners are the spec, but native fn-ptrs ship the same semantics

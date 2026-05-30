@@ -144,6 +144,43 @@ birnam> [add10 value: 5]
 => 15
 ```
 
+Iteration, multi-statement blocks, comments:
+
+```
+birnam> let sum := 0
+=> 0
+
+birnam> [1 to: 10 do: [:i | sum := [sum + i]]]
+=> 1
+
+birnam> sum
+=> 55
+
+birnam> let n := 0
+=> 0
+
+birnam> [3 timesRepeat: [| n := [n + 7]]]
+=> 3
+
+birnam> n
+=> 21
+
+birnam> let i := 0
+=> 0
+
+birnam> [[| [i < 5]] whileTrue: [| i := [i + 1]]]
+=> nil
+
+birnam> i
+=> 5
+
+birnam> 42 // line comment after expression
+=> 42
+
+birnam> [3 /* block comment */ + 4]
+=> 7
+```
+
 That last sequence is the classic closure-over-enclosing-scope demo:
 `makeAdder` is a 1-param block that returns a 1-param block. The
 returned block closes over `a` from the outer activation. When
@@ -335,11 +372,16 @@ Open `ROADMAP.md`. Show:
 - ✓ Phase 10.4.5 S1-S4 (fact-shaped scope chain via SCOPE_VT +
   BINDING_VT entities, closure capture by reference, `let`,
   `:=` assignment, REPL persistence across lines)
+- ✓ Iteration primitives (`whileTrue:` / `whileFalse:` on
+  CLOSURE_VT; `timesRepeat:` / `to:do:` on SMALLINT_VT)
+- ✓ `;` statement separator + multi-stmt block bodies via
+  AST_STMT_SEQ_VT
+- ✓ Line comments `// ...` + block comments `/* ... */` skipped
+  by `ws`
 - 🗓 Phase 10.4.5 S5 — parse-time slot resolution (speed layer,
   optional perf optimization)
-- 🗓 Phase 10.3 rest — `whileTrue:`, non-local return `^`
-  (ADR-10-E4 `g_unwinding`), `;` statement separator, comments,
-  float literals
+- 🗓 Non-local return `^` (ADR-10-E4 `g_unwinding`)
+- 🗓 Float literals (`make_float` IdApi extension + grammar)
 - 🗓 Phase 11 — bytecode VM
 - 🗓 Phase 12 — image snapshot
 - 🗓 Phase 13 — pruning + reachability GC
@@ -349,14 +391,11 @@ Open `ROADMAP.md`. Show:
 
 (So the audience knows what's coming.)
 
-- **`whileTrue:` + iteration primitives.** Eval methods on Block
-  for value-loops. Demo-able once landed.
 - **Non-local return `^`.** ADR-10-E4: `g_unwinding` side-channel +
   `:ast-method-frame` back-pointer. Spec-locked, not implemented.
-- **`;` statement separator + multi-stmt block body.** Eval
-  AST_STMT_SEQ_VT walks linked-list of statements.
-- **Comments + float literals.** Grammar extensions; eval reuses
-  existing literal path.
+- **Float literals.** Need `make_float` IdApi extension exposing
+  kernel's boxed Float allocator to dylib, plus grammar rule for
+  `digit+ "." digit+ ("e" digit+)?`. Defer until needed.
 - **Parse-time slot resolution (Phase 10.4.5 S5).** Speed-layer
   optimization. Truth-layer (S1-S4) shipped — every binding lives
   as a BINDING_VT entity. S5 annotates AST_VAR_REF_VT nodes with

@@ -21,8 +21,11 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Phase 10.5 ✓ (REPL — lang dylib drives stdin)
 - Phase 10.x ✓ (binary ops `+ - * / < > =`, `ifTrue:ifFalse:`, `[block value]`)
 - Phase 10.4.5 S1-S4 ✓ (fact-shaped SCOPE_VT / BINDING_VT entities, closure capture by reference, `let`, `:=` assignment, REPL persistence — ADR-10-E2 truth layer RESOLVED)
+- Iteration primitives ✓ (`whileTrue:` / `whileFalse:` on CLOSURE_VT; `timesRepeat:` / `to:do:` on SMALLINT_VT — all Zig-native per 10.0.x lock, user-overrideable)
+- `;` statement separator + multi-stmt block bodies via AST_STMT_SEQ_VT ✓
+- Line comments `// ...` + block comments `/* ... */` ✓
 
-**Test count: 282/282 across 73 build steps.**
+**Test count: 287/287 across 73 build steps.**
 
 **Demoable today (live REPL via `./zig-out/bin/birnam libbirnam_peg libbirnam_lang`):**
 - Arithmetic + comparisons + branching
@@ -33,10 +36,8 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 
 **Deferred (not blocking demo):**
 - Phase 10.4.5 S5 — parse-time slot resolution (speed layer)
-- `whileTrue:` / iteration block-methods
 - Non-local return `^` (ADR-10-E4 `g_unwinding`)
-- `;` statement separator + multi-stmt block body
-- Comments + float literals
+- Float literals (needs `make_float` IdApi extension)
 
 **Next milestones (pick by priority):**
 - Phase 10.4.5 S5 — optional perf optimization

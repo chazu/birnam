@@ -548,6 +548,78 @@ test "DEMO 10.x: sum-to-10 via whileTrue: + multi-stmt block body" {
     try testing.expectEqual(@as(i64, 55), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 10.x: 1 to: 10 do: sums to 55 via to:do:" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    inline for (.{
+        "let sum := 0",
+        "[1 to: 10 do: [:i | sum := [sum + i]]]",
+    }) |line| {
+        const src_ref = try strings.mkString(a, line);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        _ = send_mod.send0(ast_ref, sel_eval);
+    }
+    const src_ref = try strings.mkString(a, "sum");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expectEqual(@as(i64, 55), ref_mod.untagSmallInt(val));
+}
+
+test "DEMO 10.x: 3 timesRepeat: adds 7 three times" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+    inline for (.{
+        "let n := 0",
+        "[3 timesRepeat: [| n := [n + 7]]]",
+    }) |line| {
+        const src_ref = try strings.mkString(a, line);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        _ = send_mod.send0(ast_ref, sel_eval);
+    }
+    const src_ref = try strings.mkString(a, "n");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expectEqual(@as(i64, 21), ref_mod.untagSmallInt(val));
+}
+
+test "DEMO 10.x: line + block comments skipped" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+    // line comment after expression
+    {
+        const src_ref = try strings.mkString(a, "42 // the answer");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(val));
+    }
+    // block comment in the middle
+    {
+        const src_ref = try strings.mkString(a, "[3 /* doubled */ + 4]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(val));
+    }
+}
+
 test "lang grammar: start fails on \"!!\" (no atom matches)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
