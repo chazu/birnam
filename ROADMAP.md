@@ -719,6 +719,70 @@ Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatc
 > facts truth, compiled slots are the cache. Same separation Phase 8
 > uses, different mechanism.
 
+> **ADR-10-E2-Interim (2026-05-30).** Phase 10.3 minimal eval + Phase
+> 10.4 method install shipped a stub scope mechanism that is NOT the
+> full ADR-10-E2 spec. Tracking this gap explicitly so the path to the
+> locked design stays visible.
+>
+> **What shipped (interim, lang/lang.zig):**
+> 1. **`args[0] = current self Ref` threading.** Every eval method
+>    takes a variadic Imp signature; the first argument carries the
+>    current `self`. Threaded through nested send/keyword/literal
+>    eval calls. AST_SELF_VT eval returns `args[0]`. Top-level eval
+>    callers pass NIL (no self at the REPL prompt).
+> 2. **`g_scope` flat module-static stack** (64 entries × `{name_eid,
+>    value}` ScopeEntry). Pushed by blockEvalShim per param on
+>    invocation; popped at return. AST_VAR_REF_VT eval consults it
+>    via linear walk. Sufficient for block-as-method invocation;
+>    insufficient for everything else.
+>
+> **What ADR-10-E2 spec requires (not shipped):**
+> - **Truth layer**: per-scope SCOPE_VT entity with `:scope-parent`,
+>   per-binding BINDING_VT entity with `:bind-scope` + `:bind-name`
+>   + `:bind-value`. Kernel-EID slots reserved (100, 101, 135–139)
+>   but no entity allocation or eval-path use yet.
+> - **Speed layer**: parse-time slot resolution annotating AST_VAR_REF_VT
+>   nodes with `:ast-bind-depth` + `:ast-bind-slot`. Kernel-EID slots
+>   reserved (129–131) but parser doesn't compute or store them.
+> - **REPL top-level persistence**: T2b singleton scope with
+>   `:scope-top-level true`. Interim REPL has no persistent
+>   bindings between lines.
+> - **Closure-over-enclosing-scope** (E3 by-reference). Interim
+>   blocks see only their own params (pushed at invocation) — they
+>   cannot reference outer lexical bindings. A block defined inside
+>   a method body has no link back to that method's params or temps.
+> - **Method-frame back-pointer** on `^` (E4 + 13.4 reachability).
+>   Parser doesn't emit `:ast-method-frame` because non-local return
+>   isn't implemented yet.
+>
+> **Migration path (Phase 10.3+ scope-chain commit, deferred):**
+> 1. Replace `args[0] = self_ref` with `args[0] = scope_eid` (a
+>    SCOPE_VT entity). Add `:scope-self` attr; AST_SELF_VT eval reads
+>    `[scope :scope-self ?]`.
+> 2. Replace `g_scope` flat stack with BINDING_VT entity allocation
+>    per block invocation. blockEvalShim asserts
+>    `[bind :bind-scope new_scope :bind-name p_name :bind-value
+>    args[i]]` for each param. AST_VAR_REF_VT eval queries
+>    `[? :bind-scope <chain> :bind-name <n> :bind-value ?]`.
+> 3. Add parse-time slot resolution as a second pass over the AST;
+>    use the slot/depth annotations as fast-path lookups when present,
+>    fall back to fact-query for REPL top-level dynamic eval.
+> 4. The args[0] threading IS the path — once it carries a scope-Ref
+>    instead of a self-Ref, every nested eval picks up the right
+>    lexical chain automatically. No additional plumbing change.
+>
+> **Risk profile**: medium. Touches every eval method (10–15 file
+> edits) and adds entity allocation per block invocation (perf cost
+> until Phase 8 promotion kicks in or Phase 11 bytecode flattens it).
+> Drops g_scope and the flat-stack code path. Bigger than 10.2.5
+> sendN but smaller than its β refactor since dispatch ABI is
+> unchanged.
+>
+> **What it unblocks**: closure capture of enclosing scope (E3),
+> `:=` assignment (mutates existing binding), `let` introducing a
+> new binding, REPL top-level persistence, full Smalltalk-class
+> demo programs.
+
 #### Original draft questions (preserved for context)
 
 #### 10.0 — PEG module
@@ -926,6 +990,16 @@ IdApi additions: `peg_define_rule`, `peg_parse`, `peg_grammar_new`.
 **10.3 Evaluator.** Eval = `[ast_node eval]` send dispatched via each kind-vt's installed `eval` method (E1). Top-level scope pre-bound with full locked kernel-vt name list per MD2. Runtime scope = array of `Ref` indexed by parse-time slot (ADR-10-E2 fast path). Block closures hold `:block-scope <enclosing_scope_eid>` by reference (E3). Non-local return via `g_unwinding` side-channel + sentinel-Ref propagation (E4); `^` eval reads `:ast-method-frame` to identify unwind target frame; diagnostic on escaped-block-return (`:return-from-dead-method`). Depth guard at 8192 with `:stack-overflow` ERROR_VT on overflow (E5). Method-not-found upgraded from NIL to `:method-not-found` ERROR_VT at eval layer (E6). Error entities snapshot diagnostic data (E6b) — never hold AST Refs. Error propagation via value-pass-up (`isErrorEntity` check after sub-eval). **Requires Phase 10.2.5 (sendN)** for >3-arg keyword sends.
 
 **10.4 Method install.** `[vt method: #sel do: [block]]` send (MD1). Method install asserts `[vt sel mkEid(closure_eid)]` (Phase 4 dispatch shape unchanged). Closure also carries `:method-name`, `:method-source` (substring copied per PR2), `:method-installed-tx` (MD3). New selector `source` on `CLOSURE_VT` returns the boxed-string Ref. Block-as-method-body picks up enclosing scope at install for free (Smalltalk capture semantics). Method body AST has fully resolved slots so dispatch = slot-index access (ADR-10-E2).
+
+**10.4.5 Full scope chain (ADR-10-E2 spec).** Retires the Phase 10.3/10.4 interim — `args[0]=self_ref` threading + `g_scope` flat stack — in favor of the locked design.
+- Replace args[0]=self_ref with args[0]=scope_eid (a SCOPE_VT entity). New attr `:scope-self`; AST_SELF_VT eval reads from the current scope entity.
+- BINDING_VT entity allocation per block invocation + per let. Asserts `:bind-scope` + `:bind-name` + `:bind-value`. AST_VAR_REF_VT eval queries via the scope chain.
+- Parse-time slot resolution second pass annotates AST_VAR_REF_VT with `:ast-bind-depth` + `:ast-bind-slot`. Eval reads slots fast-path; falls back to fact query for REPL top-level / dynamic eval.
+- T2b REPL top-level scope singleton with `:scope-top-level true`. Phase 13.4 GC root.
+- E3 closure-over-enclosing-scope: block carries `:block-scope` Ref captured at AST_BLOCK_VT eval time (currently NIL).
+- `:=` assignment + `let` binding desugar paths (depend on this; defer until scope ships).
+- Method-install body's slot resolution runs at install time so dispatch is pure slot lookups.
+- ADR-10-E2-Interim block in the Phase 10 risks section is marked RESOLVED when this lands.
 
 **10.5 REPL replacement.** Replaces Phase 6 REPL surface: PEG-driven multi-line input, top-level scope persists across inputs, eval prints result or ERROR_VT diagnostic, `:` prefix for kernel-debug commands (`:quit`, `:reload <module>`, `:prompt <str>`, `:scope`, `:tx`, `:reset`, `:source <sel>`, `:trace <sel> <on|off>`) (T2). Multi-line continuation detection via PEG furthest-failure-at-EOF (T2).
 
