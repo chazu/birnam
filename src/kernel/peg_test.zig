@@ -323,6 +323,65 @@ test "rule-ref: nested rules produce nested CST" {
     try testing.expectEqualStrings("word", interner.nameOf(word_name_eid).?);
 }
 
+test "parse:from: dispatches through send and returns CST EID" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store: fact_store_mod.FactStore = undefined;
+    var table: object_table_mod.ObjectTable = undefined;
+    var interner: interner_mod.Interner = undefined;
+    var engine = try bootAndEngine(a, &store, &table, &interner);
+
+    // Build grammar: start = "hi"
+    const g = try peg.mkGrammar(&engine);
+    _ = try peg.defineRule(&engine, g, "start", try peg.mkLiteral(&engine, "hi"));
+
+    // Install send-dispatched parse:from: on GRAMMAR_VT.
+    try peg.installSendApi(a, &store, &table, &interner, M_TEST);
+
+    const send_mod = @import("send.zig");
+    const strings_mod = @import("strings.zig");
+    const sel_parse = interner.str_to_eid.get("parse:from:").?;
+    const src_ref = try strings_mod.mkString(a, "hi");
+    const rule_ref = try strings_mod.mkString(a, "start");
+
+    const result = send_mod.send2(ref_mod.mkEid(g), sel_parse, src_ref, rule_ref);
+    try testing.expect(ref_mod.isEid(result));
+    const ast_eid = ref_mod.untagEid(result);
+    const vt_ref = store.currentValue(ast_eid, kernel_eids.ATTR_VTABLE);
+    // Success path: AST entity has no :vtable fact (CST nodes aren't typed
+    // entities). Failure would have :vtable = ERROR_VT.
+    try testing.expect(vt_ref == null);
+    const end_ref = store.currentValue(ast_eid, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(end_ref));
+}
+
+test "parse:from: returns ERROR_VT EID on failure" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store: fact_store_mod.FactStore = undefined;
+    var table: object_table_mod.ObjectTable = undefined;
+    var interner: interner_mod.Interner = undefined;
+    var engine = try bootAndEngine(a, &store, &table, &interner);
+
+    const g = try peg.mkGrammar(&engine);
+    _ = try peg.defineRule(&engine, g, "start", try peg.mkLiteral(&engine, "yes"));
+    try peg.installSendApi(a, &store, &table, &interner, M_TEST);
+
+    const send_mod = @import("send.zig");
+    const strings_mod = @import("strings.zig");
+    const sel_parse = interner.str_to_eid.get("parse:from:").?;
+    const src_ref = try strings_mod.mkString(a, "no");
+    const rule_ref = try strings_mod.mkString(a, "start");
+
+    const result = send_mod.send2(ref_mod.mkEid(g), sel_parse, src_ref, rule_ref);
+    try testing.expect(ref_mod.isEid(result));
+    const err_eid = ref_mod.untagEid(result);
+    const vt_ref = store.currentValue(err_eid, kernel_eids.ATTR_VTABLE).?;
+    try testing.expectEqual(kernel_eids.ERROR_VT, ref_mod.untagEid(vt_ref));
+}
+
 test "ERROR_VT carries expected-set at furthest position" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

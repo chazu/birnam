@@ -500,5 +500,87 @@ fn mkErrorEntity(e: *Engine, entry_rule: []const u8, expected: []const u64, posi
     return err;
 }
 
-// Dylib export lives in src/modules/peg/peg.zig (façade calls into this
-// engine via IdApi once step 4 lands the send-dispatched method install).
+// -- Send-dispatched API surface (Phase 10.0 step 4) -----------------------
+//
+// The PEG dylib (src/modules/peg/peg.zig) calls `installSendApi` at module-
+// init time via a single appended IdApi field (`peg_install_send_api`).
+// Caching the engine state here lets the installed method closures reach
+// allocator + interner + cached combinator-kind EIDs without threading
+// them through each send.
+
+const closure_mod = @import("closure.zig");
+const send_mod = @import("send.zig");
+const Closure = closure_mod.Closure;
+const Send = send_mod.Send;
+
+const InstallState = struct {
+    allocator: std.mem.Allocator,
+    store: *FactStore,
+    table: *ObjectTable,
+    interner: *Interner,
+    engine: Engine,
+};
+
+var g_install: ?InstallState = null;
+
+/// Installs `parse:from:` on GRAMMAR_VT and caches the engine state. The
+/// dylib calls this at module-init via the appended IdApi entry; tests
+/// call it directly. Multiple calls overwrite the cached engine state —
+/// the engine has no resources of its own beyond the cached EIDs.
+pub fn installSendApi(
+    allocator: std.mem.Allocator,
+    store: *FactStore,
+    table: *ObjectTable,
+    interner: *Interner,
+    module_eid: u64,
+) !void {
+    const engine = try Engine.init(allocator, store, table, interner, module_eid);
+    g_install = .{
+        .allocator = allocator,
+        .store = store,
+        .table = table,
+        .interner = interner,
+        .engine = engine,
+    };
+
+    // `parse:from:` method on GRAMMAR_VT — see send.zig for the dispatch path.
+    const sel = try interner.intern(store, table, "parse:from:");
+    const closure_eid = try allocNativeClosure(allocator, table, @ptrCast(&parseFromImpl));
+    _ = try store.assert(kernel_eids.GRAMMAR_VT, sel, ref_mod.mkEid(closure_eid), module_eid);
+}
+
+fn allocNativeClosure(
+    allocator: std.mem.Allocator,
+    table: *ObjectTable,
+    method_fn: *const anyopaque,
+) !u64 {
+    const total = 3 * @sizeOf(Ref);
+    const buf = try allocator.alignedAlloc(u8, .of(Ref), total);
+    @memset(buf, 0);
+    const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
+    vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
+    const c: *Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
+    c.method = method_fn;
+    c.data = ref_mod.NIL;
+    const eid = table.alloc();
+    try table.put(eid, ref_mod.mkPointer(@ptrCast(c)));
+    return eid;
+}
+
+/// `[grammar parse: source from: ruleName]` — runs the engine against
+/// source bytes starting at the named rule. Returns the CST root EID
+/// on success or an ERROR_VT EID on failure (caller introspects
+/// `:vtable` to discriminate).
+fn parseFromImpl(s: *Send, source_ref: Ref, rule_name_ref: Ref) callconv(.c) Ref {
+    var st = &(g_install orelse return ref_mod.NIL);
+    if (!ref_mod.isEid(s.receiver)) return ref_mod.NIL;
+    if (!strings.isString(source_ref) or !strings.isString(rule_name_ref)) return ref_mod.NIL;
+    const grammar = ref_mod.untagEid(s.receiver);
+    const src = strings.bytes(source_ref);
+    const rule = strings.bytes(rule_name_ref);
+    const outcome = parse(&st.engine, grammar, src, rule) catch return ref_mod.NIL;
+    return switch (outcome) {
+        .success => |ast| ref_mod.mkEid(ast),
+        .failure => |err| ref_mod.mkEid(err),
+    };
+}

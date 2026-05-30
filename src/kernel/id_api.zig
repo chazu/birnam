@@ -191,6 +191,14 @@ pub const IdApi = extern struct {
     is_materialized: *const fn (u64) callconv(.c) bool,
     ffi_enter: *const fn () callconv(.c) void,
     ffi_exit: *const fn () callconv(.c) void,
+
+    // -- Phase 10.0 step 4: PEG send-dispatched surface install ------------
+    /// Called by the PEG dylib at module-init to install `parse:from:` on
+    /// GRAMMAR_VT (caches engine state in kernel/peg.zig module-static).
+    /// The dylib never holds the engine pointer directly — caching lives
+    /// in the kernel layer that already owns the engine code (see P10
+    /// deviation note in peg.zig).
+    peg_install_send_api: *const fn (u64) callconv(.c) void,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -288,6 +296,8 @@ pub fn populate() IdApi {
         .result_arity = &cResultArity,
         .result_at = &cResultAt,
         .free_result = &cFreeResult,
+
+        .peg_install_send_api = &cPegInstallSendApi,
     };
 }
 
@@ -769,4 +779,14 @@ fn cFactsOfModule(m: u64, cb: *const FactCallback, ctx: ?*anyopaque) callconv(.c
         n += 1;
     }
     return n;
+}
+
+const peg_mod = @import("peg.zig");
+
+fn cPegInstallSendApi(module_eid: u64) callconv(.c) void {
+    const a = send_mod.kernelAllocator() orelse return;
+    const s = send_mod.storePtr() orelse return;
+    const t = send_mod.tablePtr() orelse return;
+    const i = g_interner orelse return;
+    peg_mod.installSendApi(a, s, t, i, module_eid) catch {};
 }
