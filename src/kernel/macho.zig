@@ -175,6 +175,66 @@ pub const SymbolIter = struct {
     }
 };
 
+// -- loader.SymbolIter adapter (Phase 9.5.4) -------------------------------
+
+const loader = @import("loader.zig");
+
+/// Per-iteration context held by the heap-allocated adapter. Carries the
+/// owned `Reader` (which itself just borrows the file bytes) and the
+/// underlying nlist-walking iter.
+const MachoCtx = struct {
+    reader: Reader,
+    inner: SymbolIter,
+};
+
+fn mapKind(k: Kind) loader.Kind {
+    return switch (k) {
+        .section => .section,
+        .absolute => .absolute,
+        .undefined_ => .undefined_,
+        .stab, .other => .other,
+    };
+}
+
+fn machoNext(ctx_raw: *anyopaque) ?loader.Symbol {
+    const ctx: *MachoCtx = @ptrCast(@alignCast(ctx_raw));
+    while (ctx.inner.next()) |sym| {
+        // Drop STAB (debug) and empty-name entries — readers expose only
+        // callable symbols per Phase 9.5 decision-doc B1.
+        if (sym.kind == .stab) continue;
+        if (sym.name.len == 0) continue;
+        return .{
+            .name = sym.name,
+            .addr = sym.addr,
+            .kind = mapKind(sym.kind),
+            .external = sym.external,
+        };
+    }
+    return null;
+}
+
+fn machoDeinit(ctx_raw: *anyopaque, allocator: std.mem.Allocator) void {
+    const ctx: *MachoCtx = @ptrCast(@alignCast(ctx_raw));
+    allocator.destroy(ctx);
+}
+
+/// Format-reader entrypoint registered with `loader.registerReader` at boot.
+pub fn openSymbolsAdapter(
+    allocator: std.mem.Allocator,
+    bytes: []const u8,
+) anyerror!loader.SymbolIter {
+    var reader = try Reader.init(bytes);
+    const inner = try reader.symbols();
+    const ctx = try allocator.create(MachoCtx);
+    ctx.* = .{ .reader = reader, .inner = inner };
+    return .{
+        .ctx = @ptrCast(ctx),
+        .next_fn = &machoNext,
+        .deinit_fn = &machoDeinit,
+        .allocator = allocator,
+    };
+}
+
 // -- File-loading convenience -----------------------------------------------
 
 pub fn readFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {

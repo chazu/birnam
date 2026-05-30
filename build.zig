@@ -349,6 +349,18 @@ pub fn build(b: *std.Build) void {
     const run_card_tests = b.addRunArtifact(card_tests);
     test_step.dependOn(&run_card_tests.step);
 
+    const loader_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/loader_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const loader_tests = b.addTest(.{ .root_module = loader_test_mod });
+    loader_tests.linkLibrary(dyncall_lib);
+    loader_tests.linkLibC();
+    const run_loader_tests = b.addRunArtifact(loader_tests);
+    run_loader_tests.step.dependOn(b.getInstallStep());
+    test_step.dependOn(&run_loader_tests.step);
+
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
     const bench_step = b.step("bench", "Run microbenchmarks (ReleaseFast)");

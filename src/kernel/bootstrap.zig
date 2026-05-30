@@ -28,6 +28,9 @@ const rule_mod = @import("rule.zig");
 const predicate_mod = @import("predicate.zig");
 const promotion_mod = @import("promotion.zig");
 const ffi_module_mod = @import("ffi_module.zig");
+const loader_mod = @import("loader.zig");
+const macho_mod = @import("macho.zig");
+const elf_mod = @import("elf.zig");
 const id_api_mod = @import("id_api.zig");
 
 const Ref = ref_mod.Ref;
@@ -184,6 +187,8 @@ pub fn boot(
     try interner.seed(store, kernel_eids.ATTR_FFI_SYMBOL_MODULE, "ffi-symbol-module");
     try interner.seed(store, kernel_eids.ATTR_FFI_SYMBOLS_ENUMERATED, "ffi-symbols-enumerated?");
     try interner.seed(store, kernel_eids.SEL_SYMBOLS, "symbols");
+    try interner.seed(store, kernel_eids.ATTR_READER_MAGIC, "reader-magic");
+    try interner.seed(store, kernel_eids.ATTR_READER_IMPL, "reader-impl");
     try interner.seed(store, kernel_eids.ATTR_FFI_HANDLE, "ffi-handle");
     try interner.seed(store, kernel_eids.ATTR_FFI_PATH, "ffi-path");
     try interner.seed(store, kernel_eids.ATTR_ERROR_KIND, "error-kind");
@@ -235,6 +240,13 @@ pub fn boot(
         ref_mod.mkEid(many_eid),
         kernel_eids.M_BOOTSTRAP,
     );
+
+    // -- Stage 15: register binary-format readers (Phase 9.5.4) ----------
+    // Fact-dispatched registry: format = magic-bytes; impl = fn ptr Ref.
+    // Adding a future format = one `registerReader` call (or even just
+    // asserting two facts from a user module).
+    try loader_mod.registerReader(allocator, store, table, macho_mod.MAGIC_64, &macho_mod.openSymbolsAdapter);
+    try loader_mod.registerReader(allocator, store, table, elf_mod.MAGIC, &elf_mod.openSymbolsAdapter);
 
     return .{
         .vtable_vt_ref = object.toRef(vt_vt_ptr),

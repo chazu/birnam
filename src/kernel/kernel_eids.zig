@@ -184,4 +184,11 @@ pub const ATTR_FFI_SYMBOL_MODULE: u64 = 59;
 pub const ATTR_FFI_SYMBOLS_ENUMERATED: u64 = 60;
 pub const SEL_SYMBOLS: u64 = 61;
 
-// 62..63 reserved for future kernel selectors / attributes
+/// Phase 9.5.4: fact-dispatched binary-format reader registry per
+/// decision-doc B2. Each reader self-registers at boot:
+///   [reader_eid :reader-magic <SmallInt> :reader-impl <fn-ptr Ref>]
+/// `loader.openSymbols` sniffs the first 4 bytes of an input buffer and
+/// dispatches via fact query, so adding a new format (PE, COFF, etc.) is
+/// a fact assertion — no hardcoded switch in the kernel.
+pub const ATTR_READER_MAGIC: u64 = 62;
+pub const ATTR_READER_IMPL: u64 = 63;

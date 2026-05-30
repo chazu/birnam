@@ -30,6 +30,7 @@ const send_mod = @import("send.zig");
 const ffi = @import("ffi.zig");
 const id_api_mod = @import("id_api.zig");
 const macho = @import("macho.zig");
+const loader = @import("loader.zig");
 
 const Ref = ref_mod.Ref;
 const Send = send_mod.Send;
@@ -209,13 +210,11 @@ fn enumerateSymbols(
     const bytes_buf = try macho.readFile(allocator, path);
     defer allocator.free(bytes_buf);
 
-    var reader = try macho.Reader.init(bytes_buf);
-    var it = try reader.symbols();
+    // Format-agnostic: loader.openSymbols sniffs magic + dispatches via
+    // the fact-shaped reader registry. Mach-O on darwin, ELF on linux.
+    var it = try loader.openSymbols(allocator, store, bytes_buf);
+    defer it.deinit();
     while (it.next()) |sym| {
-        // Skip empty / debug entries.
-        if (sym.name.len == 0) continue;
-        if (sym.kind == .stab) continue;
-
         const sym_eid = table.alloc();
         _ = try store.assert(
             sym_eid,
@@ -234,8 +233,7 @@ fn enumerateSymbols(
             .section => 1,
             .absolute => 2,
             .undefined_ => 3,
-            .stab => 4,
-            .other => 5,
+            .other => 4,
         };
         _ = try store.assert(
             sym_eid,
