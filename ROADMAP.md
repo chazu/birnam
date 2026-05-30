@@ -848,7 +848,7 @@ Image persistence is what makes birnam a real Smalltalk-style environment vs. a 
 
 ## Phase 13 — Pruning
 
-**Goal:** History excise.
+**Goal:** History excise + entity reachability sweep.
 
 ### Work items
 
@@ -856,10 +856,15 @@ Image persistence is what makes birnam a real Smalltalk-style environment vs. a 
 
 13.2 Pruning runs as a separate tx that rewrites indexes excluding pruned facts. Old index roots become unreferenced and GC-able.
 
-13.3 Tests: pruning preserves reachable state, removes excised entities, query results match pre-prune for non-excised data.
+13.3 **Closure-scope reachability sweep (Phase 10.3 deferred work).** Per ADR-10-E3 locked in Phase 10.3, block closures capture by reference — each block holds a `:block-scope` Ref. Scope entities are reachable iff any live block holds them or any reachable scope chains to them. The reachable-from-roots pruning policy (13.1) must walk:
+- `[?b :vtable BLOCK_VT] [?b :block-scope ?s]` — every live block roots its captured scope
+- `[?s :scope-parent ?p]` — transitively root parent scopes via chain
+Any scope entity not reached by this walk is dead and gets pruned along with its `:bind-*` binding entities. Tests must include: block-outlives-method (scope stays alive), block-dies-with-method (scope sweepable), nested-blocks (parent chain reachability), block-of-block (transitive root).
+
+13.4 Tests: pruning preserves reachable state, removes excised entities, query results match pre-prune for non-excised data. Plus the closure-reachability cases above.
 
 ### Reasoning
-History grows forever otherwise. Pruning must be user-initiated (don't surprise the user with lost history). AOT prune (most aggressive variant) reuses this machinery.
+History grows forever otherwise. Pruning must be user-initiated (don't surprise the user with lost history). AOT prune (most aggressive variant) reuses this machinery. The closure-reachability sweep is the substrate's GC-by-reachability — Phase 10.3 accepts spike-level scope leak; Phase 13 cleans up via reachability walk over the fact graph.
 
 ---
 
