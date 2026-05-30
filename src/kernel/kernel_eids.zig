@@ -284,4 +284,30 @@ pub const ATTR_RULE_PATTERN: u64 = 88;
 pub const SEL_DEFINE_RULE_AS: u64 = 89;
 pub const SEL_PARSE_FROM: u64 = 90;
 
-// 91..255 reserved for future kernel selectors / attributes
+// -- Phase 10.0 generic AST / CST attributes (91..98) -----------------------
+
+/// `[ast :ast-rule-name <interned-name-EID>]` — for CST nodes produced by
+/// a rule-ref match, the name of the rule that produced this node. NIL
+/// for anonymous sub-patterns (seq / choice / star / etc. don't emit CST
+/// nodes, only their containing rule does).
+pub const ATTR_AST_RULE_NAME: u64 = 91;
+/// AST children encoded as a singly-linked list via these two attrs (P3).
+pub const ATTR_AST_FIRST_CHILD: u64 = 92;
+pub const ATTR_AST_NEXT_SIBLING: u64 = 93;
+/// `[ast :ast-byte-start <SmallInt>]` / `:ast-byte-end` — byte span into
+/// the parse-time source string (P4). Line/col derived on demand via the
+/// `lineCol(source, offset)` helper at the lang layer.
+pub const ATTR_AST_BYTE_START: u64 = 94;
+pub const ATTR_AST_BYTE_END: u64 = 95;
+/// `[ast :ast-parse <parse_eid>]` — back-reference to the enclosing parse
+/// entity for Phase 13.4 mark-sweep grouping. Permitted to be NIL when
+/// the engine is invoked without a parse-bracketing entity (e.g. tests).
+pub const ATTR_AST_PARSE: u64 = 96;
+/// Parse failure diagnostic — `[err :peg-expected <interned-name-EID>]`
+/// asserted with `:many` cardinality (one fact per expected rule/literal
+/// at the furthest-failure position). `:peg-position` carries the byte
+/// offset (SmallInt).
+pub const ATTR_PEG_EXPECTED: u64 = 97;
+pub const ATTR_PEG_POSITION: u64 = 98;
+
+// 99..255 reserved for future kernel selectors / attributes

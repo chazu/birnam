@@ -314,6 +314,23 @@ pub fn boot(
     try interner.seed(store, kernel_eids.ATTR_GRAMMAR_FIRST_RULE, "grammar-first-rule");
     try interner.seed(store, kernel_eids.ATTR_RULE_NEXT, "rule-next");
     try interner.seed(store, kernel_eids.ATTR_RULE_PATTERN, "rule-pattern");
+    try interner.seed(store, kernel_eids.ATTR_AST_RULE_NAME, "ast-rule-name");
+    try interner.seed(store, kernel_eids.ATTR_AST_FIRST_CHILD, "ast-first-child");
+    try interner.seed(store, kernel_eids.ATTR_AST_NEXT_SIBLING, "ast-next-sibling");
+    try interner.seed(store, kernel_eids.ATTR_AST_BYTE_START, "ast-byte-start");
+    try interner.seed(store, kernel_eids.ATTR_AST_BYTE_END, "ast-byte-end");
+    try interner.seed(store, kernel_eids.ATTR_AST_PARSE, "ast-parse");
+    try interner.seed(store, kernel_eids.ATTR_PEG_EXPECTED, "peg-expected");
+    try interner.seed(store, kernel_eids.ATTR_PEG_POSITION, "peg-position");
+
+    // Phase 10.0: :peg-expected is :many cardinality (multiple expected names
+    // at the furthest-failure position).
+    _ = try store.assert(
+        kernel_eids.ATTR_PEG_EXPECTED,
+        kernel_eids.ATTR_CARDINALITY,
+        ref_mod.mkEid(many_eid),
+        kernel_eids.M_BOOTSTRAP,
+    );
 
     // Also intern the bare boolean names so user-source `true` / `false` AST
     // literal-nodes can resolve to the singleton EIDs at parse time.
