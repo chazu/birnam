@@ -668,6 +668,45 @@ E2. **Scope representation.** Transient AutoHashMap during eval vs
 persistent scope-entity chain (`:scope-parent` + `:scope-binding`
 `:many`).
 
+> **ADR-10-E2 (2026-05-29).** Locked: fact-shaped binding entities for
+> the truth layer + parse-time slot resolution for the runtime fast
+> path. Two-layer design.
+>
+> **Truth layer:** each scope is an entity `[scope :scope-parent ?p]`.
+> Each binding is its own entity with `:one` cardinality:
+> `[bind :bind-scope scope] [bind :bind-name <interned-EID>]
+> [bind :bind-value <Ref>]`. Walk-back, REPL introspection, debugger
+> reach-back, and Phase 13 prune all work over this.
+>
+> **Speed layer:** at parse time, every variable reference resolves to
+> `(scope-depth, slot-index)` against the lexical chain. Each `let x`
+> in a scope claims `next_slot_index++`. AST nodes for variable
+> references carry `:ast-bind-depth` + `:ast-bind-slot` + (debug-only)
+> `:ast-bind-name`. Runtime scope = an array of `Ref` indexed by slot.
+> Lookup = O(depth) frame-hops + O(1) slot read; depth is typically
+> ≤ 4 for birnam methods. Effectively as fast as a Zig AutoHashMap
+> while keeping the fact layer COLA-pure.
+>
+> **Mitigation across phases:**
+>
+> | Phase | Capability |
+> |---|---|
+> | 10.2 parser | tracks per-scope slot table during parse; resolves names → `(depth, slot)` in AST |
+> | 10.3 evaluator | slot-indexed access at runtime; falls back to fact-query for REPL top-level / dynamic eval only |
+> | 10.4 method install | method-body AST has fully resolved slots; method execution = pure slot lookups |
+> | Phase 11 bytecode | compiles slot lookups to bytecode operands; no AST walk at runtime |
+>
+> **Assignment to undefined** = parse-time error (static scope).
+> **Block closures:** parse-time slot resolution already accounts for
+> the enclosing chain; block carries `:block-scope` Ref, invocation
+> chains parents, slot access transparent.
+>
+> **Phase 8 promote not used here:** scopes are write-heavy by nature
+> and would constantly demote under D6's any-mutation-demotes spike
+> rule. Instead, the compiler-side slot resolution is the mitigation —
+> facts truth, compiled slots are the cache. Same separation Phase 8
+> uses, different mechanism.
+
 E3. **Block closure capture.** By-value vs by-reference (Smalltalk-style
 aliasing — captured vars are shared mutable storage).
 
