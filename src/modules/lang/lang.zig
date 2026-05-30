@@ -45,8 +45,10 @@ const AST_UNARY_SEND_VT: u64 = 109;
 const AST_BINARY_SEND_VT: u64 = 110;
 const AST_BLOCK_VT: u64 = 112;
 const AST_LET_VT: u64 = 113;
+const AST_ASSIGN_VT: u64 = 114;
 const ATTR_AST_BLOCK_BODY: u64 = 124;
 const ATTR_AST_LET_INIT: u64 = 125;
+const ATTR_AST_ASSIGN_VALUE: u64 = 127;
 const CLOSURE_VT: u64 = 4;
 const VTABLE_VT: u64 = 1;
 const OBJECT_VT: u64 = 2;
@@ -211,6 +213,7 @@ var rn_block_with_params: u64 = 0;
 var rn_bracket_binary: u64 = 0;
 var rn_let_statement: u64 = 0;
 var rn_top_form: u64 = 0;
+var rn_assignment: u64 = 0;
 var ATTR_AST_BLOCK_PARAMS_CONST: u64 = 123;
 
 // Cached selector EIDs.
@@ -595,11 +598,23 @@ fn buildGrammar() void {
         defineRule(grammar, "let-statement", peg_seq(&parts));
     }
 
-    // top-form = let-statement | expression  (ordered — let must come first
-    // because "let" otherwise gets eaten as a kw-let-failing identifier).
+    // assignment = identifier ws ":=" ws expression
+    {
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("identifier")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal(":=")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+        };
+        defineRule(grammar, "assignment", peg_seq(&parts));
+    }
+
+    // top-form = let-statement | assignment | expression  (ordered).
     {
         const alts = [_]u64{
             untagEid(peg_rule_ref("let-statement")),
+            untagEid(peg_rule_ref("assignment")),
             untagEid(peg_rule_ref("expression")),
         };
         defineRule(grammar, "top-form", peg_choice(&alts));
@@ -781,6 +796,30 @@ fn desugar(cst_eid: u64) u64 {
         }
         if (first_param_eid != 0) {
             _ = api.assert_fact(ast, ATTR_AST_BLOCK_PARAMS_CONST, mkEid(first_param_eid), g_module_eid);
+        }
+        return ast;
+    }
+    if (rn == rn_assignment) {
+        // Children: identifier + ws + ":=" (no CST) + ws + expression.
+        var c = cstFirstChild(cst_eid);
+        var name_eid: u64 = 0;
+        var value_ast: u64 = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn == rn_identifier and name_eid == 0) {
+                const id_span = cstByteRange(c);
+                const bytes = g_source[id_span.start..id_span.end];
+                name_eid = api.intern(bytes.ptr, bytes.len);
+            } else if (crn == rn_expression) {
+                value_ast = desugar(c);
+            }
+        }
+        const ast = newAstNode(AST_ASSIGN_VT, span.start, span.end);
+        if (name_eid != 0) {
+            _ = api.assert_fact(ast, ATTR_AST_NAME, mkEid(name_eid), g_module_eid);
+        }
+        if (value_ast != 0) {
+            _ = api.assert_fact(ast, ATTR_AST_ASSIGN_VALUE, mkEid(value_ast), g_module_eid);
         }
         return ast;
     }
@@ -994,6 +1033,7 @@ fn cacheRuleNames() void {
     rn_bracket_binary = api.intern("bracket-binary".ptr, 14);
     rn_let_statement = api.intern("let-statement".ptr, 13);
     rn_top_form = api.intern("top-form".ptr, 8);
+    rn_assignment = api.intern("assignment".ptr, 10);
 }
 
 // -- Eval (Phase 10.3 minimal) -----------------------------------------------
@@ -1303,6 +1343,53 @@ fn evalBlockImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
 
 /// `let name := expr` — eval init, push (name, init_value) into the
 /// current scope, return the bound value.
+/// Walk scope chain looking for an existing binding; mutate :bind-value
+/// on success. Returns true if mutated. Phase 8 cardinality `:one` already
+/// implicit-retracts on overwrite for non-`:many` attrs.
+fn mutateBinding(scope_eid: u64, name_eid: u64, new_value: Ref) bool {
+    const api = g_api.?;
+    var cur = scope_eid;
+    while (cur != 0) {
+        var b_ref = api.query_eavt(cur, ATTR_SCOPE_FIRST_BINDING);
+        while (isEid(b_ref) and b_ref != NIL) {
+            const b_eid = b_ref >> 3;
+            const name_r = api.query_eavt(b_eid, ATTR_BIND_NAME);
+            if (isEid(name_r) and (name_r >> 3) == name_eid) {
+                const old_val = api.query_eavt(b_eid, ATTR_BIND_VALUE);
+                if (old_val != NIL) {
+                    _ = api.retract_fact(b_eid, ATTR_BIND_VALUE, old_val, g_module_eid);
+                }
+                _ = api.assert_fact(b_eid, ATTR_BIND_VALUE, new_value, g_module_eid);
+                return true;
+            }
+            b_ref = api.query_eavt(b_eid, ATTR_BIND_NEXT);
+        }
+        const parent_ref = api.query_eavt(cur, ATTR_SCOPE_PARENT);
+        if (!isEid(parent_ref) or parent_ref == NIL) return false;
+        cur = parent_ref >> 3;
+    }
+    return false;
+}
+
+/// `name := expr` — eval rhs, walk scope chain for existing binding,
+/// retract old value + assert new. Assignment to undefined returns NIL
+/// (full parse-time check awaits S5 slot-resolution).
+fn evalAssignImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    const api = g_api.?;
+    if (!isEid(s.receiver)) return NIL;
+    const ast_eid = s.receiver >> 3;
+    const scope_ref = currentScope(args, n_args);
+    if (!isEid(scope_ref)) return NIL;
+    const name_ref = api.query_eavt(ast_eid, ATTR_AST_NAME);
+    const value_ref = api.query_eavt(ast_eid, ATTR_AST_ASSIGN_VALUE);
+    if (!isEid(name_ref) or !isEid(value_ref)) return NIL;
+    const new_val = api.send1(value_ref, sel_eval, scope_ref);
+    if (mutateBinding(scope_ref >> 3, name_ref >> 3, new_val)) {
+        return new_val;
+    }
+    return NIL;
+}
+
 fn evalLetImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     const api = g_api.?;
     if (!isEid(s.receiver)) return NIL;
@@ -1435,6 +1522,7 @@ fn installMethods() void {
     _ = api.assert_fact(AST_BLOCK_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalBlockImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_VAR_REF_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalVarRefImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_LET_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalLetImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(AST_ASSIGN_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalAssignImpl), NIL)), g_module_eid);
 
     // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
     const negate_sel = api.intern("negate".ptr, 6);
