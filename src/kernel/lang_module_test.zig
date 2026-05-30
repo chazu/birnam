@@ -378,6 +378,72 @@ test "DEMO 10.4: install method via [vt method: #sel do: [| body]], then dispatc
     }
 }
 
+test "DEMO 10.x: binary ops [3 + 4] → 7, [10 - 7] → 3, [2 * 5] → 10" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    inline for (.{ .{ "[3 + 4]", 7 }, .{ "[10 - 7]", 3 }, .{ "[2 * 5]", 10 }, .{ "[20 / 4]", 5 } }) |pair| {
+        const src_ref = try strings.mkString(a, pair[0]);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, pair[1]), ref_mod.untagSmallInt(val));
+    }
+}
+
+test "DEMO 10.x: comparisons return TRUE_EID / FALSE_EID" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    inline for (.{ .{ "[3 < 5]", 72 }, .{ "[3 = 3]", 72 }, .{ "[3 > 5]", 73 } }) |pair| {
+        const src_ref = try strings.mkString(a, pair[0]);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(pair[1], ref_mod.untagEid(val));
+    }
+}
+
+test "DEMO 10.x: ifTrue:ifFalse: branches correctly" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    {
+        const src_ref = try strings.mkString(a, "[true ifTrue: [| 100] ifFalse: [| 200]]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, 100), ref_mod.untagSmallInt(val));
+    }
+    {
+        const src_ref = try strings.mkString(a, "[false ifTrue: [| 100] ifFalse: [| 200]]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, 200), ref_mod.untagSmallInt(val));
+    }
+    {
+        const src_ref = try strings.mkString(a, "[[3 < 5] ifTrue: [| 999] ifFalse: [| 0]]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, 999), ref_mod.untagSmallInt(val));
+    }
+}
+
 test "lang grammar: start fails on \"!!\" (no atom matches)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

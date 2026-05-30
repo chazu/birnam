@@ -171,6 +171,7 @@ const IdApi = extern struct {
     peg_mk_charset: *const fn ([*]const u8, usize) callconv(.c) u64,
 
     sendN: *const fn (Ref, u64, [*]const Ref, usize) callconv(.c) Ref,
+    object_at_eid: *const fn (u64) callconv(.c) Ref,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -204,6 +205,7 @@ var rn_block_bare: u64 = 0;
 var rn_block_param: u64 = 0;
 var rn_block_params: u64 = 0;
 var rn_block_with_params: u64 = 0;
+var rn_bracket_binary: u64 = 0;
 var ATTR_AST_BLOCK_PARAMS_CONST: u64 = 123;
 
 // Cached selector EIDs.
@@ -527,12 +529,36 @@ fn buildGrammar() void {
         defineRule(grammar, "block-with-params", peg_seq(&parts));
     }
 
-    // bracket-form = block-with-params | block-bare | bracket-keyword | bracket-unary
+    // binary-op = [+\-*/<>=]   (single-char operator)
+    {
+        const op_ranges = [_]u8{ '+', '+', '-', '-', '*', '*', '/', '/', '<', '<', '>', '>', '=', '=' };
+        defineRule(grammar, "binary-op", peg_charset(&op_ranges));
+    }
+
+    // bracket-binary = "[" ws expression ws binary-op ws expression ws "]"
+    {
+        const parts = [_]u64{
+            untagEid(peg_literal("[")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("binary-op")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal("]")),
+        };
+        defineRule(grammar, "bracket-binary", peg_seq(&parts));
+    }
+
+    // bracket-form = block-with-params | block-bare | bracket-keyword
+    //             | bracket-binary | bracket-unary
     {
         const alts = [_]u64{
             untagEid(peg_rule_ref("block-with-params")),
             untagEid(peg_rule_ref("block-bare")),
             untagEid(peg_rule_ref("bracket-keyword")),
+            untagEid(peg_rule_ref("bracket-binary")),
             untagEid(peg_rule_ref("bracket-unary")),
         };
         defineRule(grammar, "bracket-form", peg_choice(&alts));
@@ -778,6 +804,42 @@ fn desugar(cst_eid: u64) u64 {
         }
         return receiver_ast;
     }
+    if (rn == rn_bracket_binary) {
+        // Children (after ws-skip): expression (receiver), binary-op, expression (arg).
+        var c = cstFirstChild(cst_eid);
+        var receiver_ast: u64 = 0;
+        var arg_ast: u64 = 0;
+        var op_sel_eid: u64 = 0;
+        var phase: u8 = 0; // 0 = receiver, 1 = op, 2 = arg
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn == rn_ws) continue;
+            if (phase == 0 and crn == rn_expression) {
+                receiver_ast = desugar(c);
+                phase = 1;
+                continue;
+            }
+            if (phase == 1) {
+                // binary-op CST — its byte-span IS the operator character.
+                const op_span = cstByteRange(c);
+                const op_bytes = g_source[op_span.start..op_span.end];
+                op_sel_eid = api.intern(op_bytes.ptr, op_bytes.len);
+                phase = 2;
+                continue;
+            }
+            if (phase == 2 and crn == rn_expression) {
+                arg_ast = desugar(c);
+                break;
+            }
+        }
+        const send_ast = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
+        _ = api.assert_fact(send_ast, ATTR_AST_RECEIVER, mkEid(receiver_ast), g_module_eid);
+        _ = api.assert_fact(send_ast, ATTR_AST_SELECTOR, mkEid(op_sel_eid), g_module_eid);
+        if (arg_ast != 0) {
+            _ = api.assert_fact(send_ast, ATTR_AST_FIRST_ARG, mkEid(arg_ast), g_module_eid);
+        }
+        return send_ast;
+    }
     if (rn == rn_bracket_keyword) {
         var c = cstFirstChild(cst_eid);
         var receiver_ast: u64 = 0;
@@ -872,6 +934,7 @@ fn cacheRuleNames() void {
     rn_block_param = api.intern("block-param".ptr, 11);
     rn_block_params = api.intern("block-params".ptr, 12);
     rn_block_with_params = api.intern("block-with-params".ptr, 17);
+    rn_bracket_binary = api.intern("bracket-binary".ptr, 14);
 }
 
 // -- Eval (Phase 10.3 minimal) -----------------------------------------------
@@ -886,6 +949,9 @@ const Send = extern struct {
 
 var sel_eval: u64 = 0;
 var sel_parse_expr_g: u64 = 0;
+var sel_value_g: u64 = 0;
+const TRUE_VT: u64 = 70;
+const FALSE_VT: u64 = 71;
 
 // Transient binding scope — flat stack pushed by block invocation, popped
 // at end. AST_VAR_REF_VT eval walks it for name lookups. Phase 10.x full
@@ -1028,6 +1094,29 @@ fn smallintTimesImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) R
     return mkSmallInt(a_ * b_);
 }
 
+fn smallintMinusImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    return mkSmallInt(untagSmallInt(s.receiver) - untagSmallInt(args[0]));
+}
+fn smallintDivImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const b_ = untagSmallInt(args[0]);
+    if (b_ == 0) return NIL;
+    return mkSmallInt(@divTrunc(untagSmallInt(s.receiver), b_));
+}
+fn smallintEqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    return if (untagSmallInt(s.receiver) == untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+fn smallintLtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    return if (untagSmallInt(s.receiver) < untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+fn smallintGtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    return if (untagSmallInt(s.receiver) > untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+
 fn smallintVtableImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
     _ = args;
@@ -1103,6 +1192,59 @@ fn vtMethodDoImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     return s.receiver;
 }
 
+/// `[block value]` / `[block value: x]` / `[block value: x value: y]`
+/// dispatches via standard send.bind. The installed method's impl needs to
+/// re-target s.closure at the receiver block (bind set it to the value-
+/// method's own closure) before delegating to blockEvalShim.
+fn closureValueImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    const api = g_api.?;
+    if (!isEid(s.receiver)) return NIL;
+    const closure_ptr_ref = api.object_at_eid(s.receiver >> 3);
+    if ((closure_ptr_ref & 0b111) != 0) return NIL;
+    if (closure_ptr_ref == 0) return NIL;
+    var new_s = s.*;
+    new_s.closure = @ptrFromInt(closure_ptr_ref);
+    return blockEvalShim(&new_s, args, n_args);
+}
+
+fn trueIfTrueIfFalseImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = n_args;
+    return g_api.?.send0(args[0], sel_value_g);
+}
+
+fn falseIfTrueIfFalseImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = n_args;
+    return g_api.?.send0(args[1], sel_value_g);
+}
+
+fn trueIfTrueImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = n_args;
+    return g_api.?.send0(args[0], sel_value_g);
+}
+
+fn falseIfTrueImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = args;
+    _ = n_args;
+    return NIL;
+}
+
+fn trueIfFalseImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = args;
+    _ = n_args;
+    return NIL;
+}
+
+fn falseIfFalseImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = n_args;
+    return g_api.?.send0(args[0], sel_value_g);
+}
+
 // -- parseExpr method ------------------------------------------------------
 
 fn parseExprImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
@@ -1165,6 +1307,16 @@ fn installMethods() void {
     _ = api.assert_fact(SMALLINT_VT, succ_sel, mkEid(api.make_closure(@ptrCast(&smallintSuccImpl), NIL)), g_module_eid);
     _ = api.assert_fact(SMALLINT_VT, plus_sel, mkEid(api.make_closure(@ptrCast(&smallintPlusImpl), NIL)), g_module_eid);
     _ = api.assert_fact(SMALLINT_VT, times_sel, mkEid(api.make_closure(@ptrCast(&smallintTimesImpl), NIL)), g_module_eid);
+    const minus_sel = api.intern("-".ptr, 1);
+    const div_sel = api.intern("/".ptr, 1);
+    const eq_sel = api.intern("=".ptr, 1);
+    const lt_sel = api.intern("<".ptr, 1);
+    const gt_sel = api.intern(">".ptr, 1);
+    _ = api.assert_fact(SMALLINT_VT, minus_sel, mkEid(api.make_closure(@ptrCast(&smallintMinusImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, div_sel, mkEid(api.make_closure(@ptrCast(&smallintDivImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, eq_sel, mkEid(api.make_closure(@ptrCast(&smallintEqImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, lt_sel, mkEid(api.make_closure(@ptrCast(&smallintLtImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, gt_sel, mkEid(api.make_closure(@ptrCast(&smallintGtImpl), NIL)), g_module_eid);
 
     const vt_sel = api.intern("vtable".ptr, 6);
     _ = api.assert_fact(SMALLINT_VT, vt_sel, mkEid(api.make_closure(@ptrCast(&smallintVtableImpl), NIL)), g_module_eid);
@@ -1173,6 +1325,29 @@ fn installMethods() void {
     // symbol + block closure. `[<some-vt> method: #sel do: [| body]]`.
     const method_do_sel = api.intern("method:do:".ptr, 10);
     _ = api.assert_fact(VTABLE_VT, method_do_sel, mkEid(api.make_closure(@ptrCast(&vtMethodDoImpl), NIL)), g_module_eid);
+
+    // Block-invocation methods on CLOSURE_VT — receiver is mkEid(closure_eid),
+    // closureValueImpl re-targets s.closure at the receiver and forwards to
+    // blockEvalShim. Param-arity disambiguation falls out of the variadic ABI.
+    sel_value_g = api.intern("value".ptr, 5);
+    const value_of_sel = api.intern("value:".ptr, 6);
+    const value_of_of_sel = api.intern("value:value:".ptr, 12);
+    _ = api.assert_fact(CLOSURE_VT, sel_value_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(CLOSURE_VT, value_of_sel, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(CLOSURE_VT, value_of_of_sel, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
+
+    // Boolean control-flow methods. Per Phase 10.0.x lock: birnam-source
+    // one-liners are the spec, but native fn-ptrs ship the same semantics
+    // and stay user-overrideable via [TRUE_VT method:do:].
+    const if_true_sel = api.intern("ifTrue:".ptr, 7);
+    const if_false_sel = api.intern("ifFalse:".ptr, 8);
+    const if_true_if_false_sel = api.intern("ifTrue:ifFalse:".ptr, 15);
+    _ = api.assert_fact(TRUE_VT, if_true_sel, mkEid(api.make_closure(@ptrCast(&trueIfTrueImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(TRUE_VT, if_false_sel, mkEid(api.make_closure(@ptrCast(&trueIfFalseImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(TRUE_VT, if_true_if_false_sel, mkEid(api.make_closure(@ptrCast(&trueIfTrueIfFalseImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, if_true_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfFalseImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, if_true_if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueIfFalseImpl), NIL)), g_module_eid);
 
     // Install parseExpr: on the lang module entity itself so callers
     // reach the desugar pipeline via send.

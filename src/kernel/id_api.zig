@@ -214,6 +214,11 @@ pub const IdApi = extern struct {
     /// for convenience; sendN is the canonical entry for arbitrary-arity
     /// dispatch from user-source compound keyword sends.
     sendN: *const fn (Ref, u64, [*]const Ref, usize) callconv(.c) Ref,
+
+    /// Look up the object-table Ref stored at `eid`, or NIL if absent.
+    /// Used by closure-as-receiver methods (block value/value:/value:value:)
+    /// that need to recover the closure's pointer from its EID receiver.
+    object_at_eid: *const fn (u64) callconv(.c) Ref,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -318,11 +323,17 @@ pub fn populate() IdApi {
         .peg_mk_charset = &cPegMkCharset,
 
         .sendN = &cSendN,
+        .object_at_eid = &cObjectAtEid,
     };
 }
 
 fn cSendN(receiver: Ref, sel: u64, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     return send_mod.sendN(receiver, sel, args, n_args);
+}
+
+fn cObjectAtEid(eid: u64) callconv(.c) Ref {
+    const t = send_mod.tablePtr() orelse return ref_mod.NIL;
+    return t.get(eid) orelse ref_mod.NIL;
 }
 
 /// Storage for the interner so the C wrappers can find it. Shell calls this
