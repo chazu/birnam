@@ -279,6 +279,66 @@ test "DEMO: parse + eval bare integer literal → 42" {
     try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 10.4b: block params — [3 doubled] via method that takes param" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    // Install a 1-param block as method `+`: [SmallInt method:#plusOne do:[:x| [x succ]]]
+    // Then [3 plusOne: 0] would need keyword send dispatch — but plusOne: is
+    // installed. Just test [3 plusOne: 0] returns 4 via x = 0... wait, the
+    // block ignores x and does [x succ]. So [3 plusOne: 7] returns 8.
+    {
+        const src = "[[3 vtable] method: #plusOne: do: [:x | [x succ]]]";
+        const src_ref = try strings.mkString(a, src);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        try testing.expect(ref_mod.isEid(ast_ref));
+        _ = send_mod.send0(ast_ref, sel_eval);
+    }
+
+    {
+        const src = "[3 plusOne: 7]";
+        const src_ref = try strings.mkString(a, src);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, 8), ref_mod.untagSmallInt(val));
+    }
+}
+
+test "DEMO 10.4c: 2-param block via method install + invoke" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    // Method `pick:or:` on SmallInt; body returns second param.
+    // Validates 2-param binding (a bound but unused, b returned).
+    {
+        const src = "[[3 vtable] method: #pick:or: do: [:a :b | b]]";
+        const src_ref = try strings.mkString(a, src);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        try testing.expect(ref_mod.isEid(ast_ref));
+        _ = send_mod.send0(ast_ref, sel_eval);
+    }
+
+    {
+        const src = "[3 pick: 10 or: 20]";
+        const src_ref = try strings.mkString(a, src);
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, 20), ref_mod.untagSmallInt(val));
+    }
+}
+
 test "DEMO 10.4: install method via [vt method: #sel do: [| body]], then dispatch" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

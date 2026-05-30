@@ -201,6 +201,10 @@ var rn_start: u64 = 0;
 var rn_ws: u64 = 0;
 var rn_symbol_literal: u64 = 0;
 var rn_block_bare: u64 = 0;
+var rn_block_param: u64 = 0;
+var rn_block_params: u64 = 0;
+var rn_block_with_params: u64 = 0;
+var ATTR_AST_BLOCK_PARAMS_CONST: u64 = 123;
 
 // Cached selector EIDs.
 var sel_new_grammar: u64 = 0;
@@ -445,16 +449,32 @@ fn buildGrammar() void {
         defineRule(grammar, "bracket-unary", peg_seq(&parts));
     }
 
-    // symbol-literal = "#" identifier
+    // symbol-keyword-tail = identifier ":"
     {
         const parts = [_]u64{
-            untagEid(peg_literal("#")),
             untagEid(peg_rule_ref("identifier")),
+            untagEid(peg_literal(":")),
+        };
+        defineRule(grammar, "symbol-keyword-tail", peg_seq(&parts));
+    }
+    // symbol-keyword = symbol-keyword-tail+
+    {
+        defineRule(grammar, "symbol-keyword", peg_plus(peg_rule_ref("symbol-keyword-tail")));
+    }
+    // symbol-literal = "#" (symbol-keyword | identifier)
+    {
+        const inner_alts = [_]u64{
+            untagEid(peg_rule_ref("symbol-keyword")),
+            untagEid(peg_rule_ref("identifier")),
+        };
+        const parts = [_]u64{
+            untagEid(peg_literal("#")),
+            untagEid(peg_choice(&inner_alts)),
         };
         defineRule(grammar, "symbol-literal", peg_seq(&parts));
     }
 
-    // block-bare = "[" ws "|" ws expression ws "]"  (minimal — no params)
+    // block-bare = "[" ws "|" ws expression ws "]"  (no params)
     {
         const parts = [_]u64{
             untagEid(peg_literal("[")),
@@ -468,9 +488,49 @@ fn buildGrammar() void {
         defineRule(grammar, "block-bare", peg_seq(&parts));
     }
 
-    // bracket-form = block-bare | bracket-keyword | bracket-unary
+    // block-param = ":" identifier
+    {
+        const parts = [_]u64{
+            untagEid(peg_literal(":")),
+            untagEid(peg_rule_ref("identifier")),
+        };
+        defineRule(grammar, "block-param", peg_seq(&parts));
+    }
+
+    // block-params = block-param (ws block-param)*
+    {
+        const more_parts = [_]u64{
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("block-param")),
+        };
+        const more = peg_seq(&more_parts);
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("block-param")),
+            untagEid(peg_star(more)),
+        };
+        defineRule(grammar, "block-params", peg_seq(&parts));
+    }
+
+    // block-with-params = "[" ws block-params ws "|" ws expression ws "]"
+    {
+        const parts = [_]u64{
+            untagEid(peg_literal("[")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("block-params")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal("|")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal("]")),
+        };
+        defineRule(grammar, "block-with-params", peg_seq(&parts));
+    }
+
+    // bracket-form = block-with-params | block-bare | bracket-keyword | bracket-unary
     {
         const alts = [_]u64{
+            untagEid(peg_rule_ref("block-with-params")),
             untagEid(peg_rule_ref("block-bare")),
             untagEid(peg_rule_ref("bracket-keyword")),
             untagEid(peg_rule_ref("bracket-unary")),
@@ -590,17 +650,13 @@ fn desugar(cst_eid: u64) u64 {
         return ast;
     }
     if (rn == rn_symbol_literal) {
-        // Children: literal "#" (no CST entity) + identifier CST.
-        var c = cstFirstChild(cst_eid);
-        while (c != 0) : (c = cstNextSibling(c)) {
-            if (cstRuleName(c) == rn_identifier) {
-                const id_span = cstByteRange(c);
-                const bytes = g_source[id_span.start..id_span.end];
-                const name_eid = api.intern(bytes.ptr, bytes.len);
-                const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-                _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(name_eid), g_module_eid);
-                return ast;
-            }
+        // Span = "#" + (identifier | kw1:kw2:...). Strip the leading "#".
+        if (span.end > span.start + 1) {
+            const bytes = g_source[span.start + 1 .. span.end];
+            const name_eid = api.intern(bytes.ptr, bytes.len);
+            const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+            _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(name_eid), g_module_eid);
+            return ast;
         }
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
         _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, g_module_eid);
@@ -620,6 +676,54 @@ fn desugar(cst_eid: u64) u64 {
         }
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
         _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, g_module_eid);
+        return ast;
+    }
+    if (rn == rn_block_with_params) {
+        // Children: ws + block-params + ws + expression. Find block-params
+        // entry (list of block-param children, each carrying an identifier),
+        // then expression as the body.
+        var c = cstFirstChild(cst_eid);
+        var first_param_eid: u64 = 0;
+        var last_param_eid: u64 = 0;
+        var body_ast: u64 = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn == rn_block_params) {
+                // Walk block-params children — each block-param has an
+                // identifier child whose name we intern.
+                var p = cstFirstChild(c);
+                while (p != 0) : (p = cstNextSibling(p)) {
+                    if (cstRuleName(p) != rn_block_param) continue;
+                    var ic = cstFirstChild(p);
+                    while (ic != 0) : (ic = cstNextSibling(ic)) {
+                        if (cstRuleName(ic) == rn_identifier) {
+                            const id_span = cstByteRange(ic);
+                            const bytes = g_source[id_span.start..id_span.end];
+                            const name_eid = api.intern(bytes.ptr, bytes.len);
+                            // Allocate a param-entry entity carrying the name.
+                            const pe = api.alloc_eid();
+                            _ = api.assert_fact(pe, ATTR_AST_NAME, mkEid(name_eid), g_module_eid);
+                            if (first_param_eid == 0) {
+                                first_param_eid = pe;
+                            } else {
+                                _ = api.assert_fact(last_param_eid, ATTR_AST_NEXT_SIBLING, mkEid(pe), g_module_eid);
+                            }
+                            last_param_eid = pe;
+                            break;
+                        }
+                    }
+                }
+            } else if (crn == rn_expression) {
+                body_ast = desugar(c);
+            }
+        }
+        const ast = newAstNode(AST_BLOCK_VT, span.start, span.end);
+        if (body_ast != 0) {
+            _ = api.assert_fact(ast, ATTR_AST_BLOCK_BODY, mkEid(body_ast), g_module_eid);
+        }
+        if (first_param_eid != 0) {
+            _ = api.assert_fact(ast, ATTR_AST_BLOCK_PARAMS_CONST, mkEid(first_param_eid), g_module_eid);
+        }
         return ast;
     }
     if (rn == rn_atom or rn == rn_expression or rn == rn_bracket_form or rn == rn_start) {
@@ -765,6 +869,9 @@ fn cacheRuleNames() void {
     rn_ws = api.intern("ws".ptr, 2);
     rn_symbol_literal = api.intern("symbol-literal".ptr, 14);
     rn_block_bare = api.intern("block-bare".ptr, 10);
+    rn_block_param = api.intern("block-param".ptr, 11);
+    rn_block_params = api.intern("block-params".ptr, 12);
+    rn_block_with_params = api.intern("block-with-params".ptr, 17);
 }
 
 // -- Eval (Phase 10.3 minimal) -----------------------------------------------
@@ -778,6 +885,40 @@ const Send = extern struct {
 };
 
 var sel_eval: u64 = 0;
+
+// Transient binding scope — flat stack pushed by block invocation, popped
+// at end. AST_VAR_REF_VT eval walks it for name lookups. Phase 10.x full
+// scope chain (ADR-10-E2 truth + speed layers) lands later; this minimal
+// shape covers block-as-method invocation.
+const ScopeEntry = extern struct {
+    name_eid: u64,
+    value: Ref,
+};
+var g_scope: [64]ScopeEntry = undefined;
+var g_scope_top: usize = 0;
+
+fn pushBinding(name_eid: u64, value: Ref) void {
+    if (g_scope_top >= g_scope.len) return;
+    g_scope[g_scope_top] = .{ .name_eid = name_eid, .value = value };
+    g_scope_top += 1;
+}
+
+fn popBindings(count: usize) void {
+    if (count > g_scope_top) {
+        g_scope_top = 0;
+    } else {
+        g_scope_top -= count;
+    }
+}
+
+fn lookupBinding(name_eid: u64) ?Ref {
+    var i: usize = g_scope_top;
+    while (i > 0) {
+        i -= 1;
+        if (g_scope[i].name_eid == name_eid) return g_scope[i].value;
+    }
+    return null;
+}
 
 /// Every eval method takes `args[0]` = current `self` Ref (or NIL at top
 /// level). Threads through nested sends so AST_SELF_VT can return it.
@@ -797,6 +938,18 @@ fn evalLiteralImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
 fn evalSelfImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
     return currentSelf(args, n_args);
+}
+
+fn evalVarRefImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const api = g_api.?;
+    if (!isEid(s.receiver)) return NIL;
+    const ast_eid = s.receiver >> 3;
+    const name_ref = api.query_eavt(ast_eid, ATTR_AST_NAME);
+    if (!isEid(name_ref)) return NIL;
+    const name_eid = name_ref >> 3;
+    return lookupBinding(name_eid) orelse NIL;
 }
 
 fn evalUnarySendImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
@@ -883,41 +1036,56 @@ fn smallintVtableImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) 
 
 // -- AST_BLOCK_VT eval + block-invocation shim ----------------------------
 
-/// Closure layout matches the kernel's: [vt_ref][method][data]. Total = 3
-/// pointer-sized words; vt_ref at offset 0 = mkEid(CLOSURE_VT), method at
-/// offset 1 = fn ptr, data at offset 2 = arbitrary Ref.
-fn allocBlockClosure(body_ast_ref: Ref) Ref {
+/// Closure data stores mkEid(block_ast_eid), so the shim can look up both
+/// the body AST and the param-list at invocation time. Reading param-list
+/// each call is wasteful but acceptable for the spike; Phase 11 bytecode
+/// VM compiles params away.
+fn allocBlockClosure(block_ast_ref: Ref) Ref {
     const api = g_api.?;
-    // We don't expose a kernel-allocator from the dylib's IdApi cleanly, so
-    // we use make_closure (kernel-side) which allocates the struct and
-    // registers it in the object table. data = mkEid(body_ast_eid).
-    const closure_eid = api.make_closure(@ptrCast(&blockEvalShim), body_ast_ref);
+    const closure_eid = api.make_closure(@ptrCast(&blockEvalShim), block_ast_ref);
     return mkEid(closure_eid);
 }
 
-/// Block-invocation shim. `s.closure.data` carries mkEid(body_ast_eid).
-/// On invocation: dispatch `[body_ast eval]`. The body_ast.eval method
-/// reads `s.state` for `self` references, which `bind` already set to
-/// the original send receiver.
+/// Block-invocation shim. `s.closure.data` = mkEid(block_ast_eid).
+/// On invocation: walk :ast-block-params, push each name→arg binding,
+/// eval :ast-block-body, pop bindings, return result.
 fn blockEvalShim(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
-    _ = args;
-    _ = n_args;
     const api = g_api.?;
     const closure_ptr = s.closure orelse return NIL;
     const slot_base: [*]const Ref = @ptrCast(@alignCast(closure_ptr));
-    const data_ref = slot_base[1];
-    // Thread receiver through as `self`. eval methods take args[0] = self.
-    return api.send1(data_ref, sel_eval, s.receiver);
+    const block_ast_ref = slot_base[1];
+    if (!isEid(block_ast_ref)) return NIL;
+    const block_ast_eid = block_ast_ref >> 3;
+
+    var pushed: usize = 0;
+    var cur_ref = api.query_eavt(block_ast_eid, ATTR_AST_BLOCK_PARAMS_CONST);
+    var idx: usize = 0;
+    while (isEid(cur_ref) and !isNil(cur_ref) and idx < n_args) : (idx += 1) {
+        const pe = cur_ref >> 3;
+        const name_ref = api.query_eavt(pe, ATTR_AST_NAME);
+        if (isEid(name_ref) and !isNil(name_ref)) {
+            pushBinding(name_ref >> 3, args[idx]);
+            pushed += 1;
+        }
+        cur_ref = api.query_eavt(pe, ATTR_AST_NEXT_SIBLING);
+    }
+
+    const body_ref = api.query_eavt(block_ast_eid, ATTR_AST_BLOCK_BODY);
+    const result = api.send1(body_ref, sel_eval, s.receiver);
+    popBindings(pushed);
+    return result;
+}
+
+fn isNil(r: Ref) bool {
+    return r == NIL;
 }
 
 fn evalBlockImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = args;
     _ = n_args;
-    const api = g_api.?;
     if (!isEid(s.receiver)) return NIL;
-    const ast_eid = s.receiver >> 3;
-    const body_ref = api.query_eavt(ast_eid, ATTR_AST_BLOCK_BODY);
-    return allocBlockClosure(body_ref);
+    // Pass the AST_BLOCK_VT entity Ref into the closure's data slot.
+    return allocBlockClosure(s.receiver);
 }
 
 // -- Method install ---------------------------------------------------------
@@ -983,6 +1151,7 @@ fn installMethods() void {
     _ = api.assert_fact(AST_UNARY_SEND_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalUnarySendImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_KEYWORD_SEND_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalKeywordSendImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_BLOCK_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalBlockImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(AST_VAR_REF_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalVarRefImpl), NIL)), g_module_eid);
 
     // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
     const negate_sel = api.intern("negate".ptr, 6);
