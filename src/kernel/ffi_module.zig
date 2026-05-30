@@ -31,6 +31,7 @@ const ffi = @import("ffi.zig");
 const id_api_mod = @import("id_api.zig");
 const macho = @import("macho.zig");
 const loader = @import("loader.zig");
+const promotion_mod = @import("promotion.zig");
 
 const Ref = ref_mod.Ref;
 const Send = send_mod.Send;
@@ -331,6 +332,24 @@ fn methodWrapAsSig(s: *Send, sel_ref: Ref, name_ref: Ref, sig_ref: Ref) callconv
         return errorEntity(alloc, store, table, interner, kind, "registerWrap failed", &.{}) catch ref_mod.NIL;
     };
 
+    // Tag the wrap entity with its owning Module so `ffi.shimDispatch`
+    // can thread owner_mod_eid through `invokeWithOwner` for return-
+    // pointer boxing and arg-pointer stale-flag checks.
+    //
+    // Important: assert on the WRAP entity (which carries :ffi-addr /
+    // :ffi-sig), NOT on the closure entity. The closure is materialized
+    // in the object_table; mutating its facts would trigger Phase 8
+    // demotion and silently lose the dispatch target.
+    if (table.get(closure_eid)) |c_ptr_ref| {
+        if (ref_mod.isPointer(c_ptr_ref)) {
+            const c: *const closure_mod.Closure = @ptrCast(@alignCast(ref_mod.untagPointer(c_ptr_ref)));
+            if (ref_mod.isEid(c.data)) {
+                const wrap_eid = ref_mod.untagEid(c.data);
+                _ = store.assert(wrap_eid, kernel_eids.ATTR_FFI_OWNER, ref_mod.mkEid(mod_eid), kernel_eids.M_BOOTSTRAP) catch {};
+            }
+        }
+    }
+
     // Install the closure on the receiver's instance vt at sel.
     const instance_vt_ref = store.currentValue(mod_eid, kernel_eids.ATTR_VTABLE) orelse return ref_mod.NIL;
     if (!ref_mod.isEid(instance_vt_ref)) return ref_mod.NIL;
@@ -338,6 +357,60 @@ fn methodWrapAsSig(s: *Send, sel_ref: Ref, name_ref: Ref, sig_ref: Ref) callconv
     _ = store.assert(instance_vt, ref_mod.untagEid(sel_ref), ref_mod.mkEid(closure_eid), kernel_eids.M_BOOTSTRAP) catch return ref_mod.NIL;
 
     return s.receiver; // chainable
+}
+
+/// `[mod unload]` — refuse while `ffi_depth > 0`; otherwise walk all
+/// boxed FFI pointers minted by this Module (`[?p :ffi-owner mod]`),
+/// stale them by asserting `[p :ffi-stale? mkSmallInt(1)]`, retract wrap
+/// closures so subsequent sends miss method lookup, then `dlclose` the
+/// handle. The Module entity itself is retained for walk-back ("this
+/// path was loaded at tx N, unloaded at tx M").
+fn methodUnload(s: *send_mod.Send) callconv(.c) Ref {
+    const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const interner = id_api_mod.internerPtr() orelse return ref_mod.NIL;
+    const table = send_mod.tablePtr() orelse return ref_mod.NIL;
+    _ = table;
+
+    if (!ref_mod.isEid(s.receiver)) return ref_mod.NIL;
+    const mod_eid = ref_mod.untagEid(s.receiver);
+
+    // Refuse if any FFI call is currently active.
+    if (promotion_mod.ffiDepth() > 0) {
+        return errorEntity(
+            alloc,
+            store,
+            send_mod.tablePtr().?,
+            interner,
+            "ffi-unload-blocked-active-call",
+            "Module unload refused: ffi_depth > 0",
+            &.{},
+        ) catch ref_mod.NIL;
+    }
+
+    // Walk owned entities and stale all of them. The owned set is whatever
+    // has `[?e :ffi-owner mkEid(mod)]` — covers boxed FFI pointers AND
+    // wrap entities (both get the fact at allocation time).
+    const owner_ref = ref_mod.mkEid(mod_eid);
+    var it = store.entitiesMatching(kernel_eids.ATTR_FFI_OWNER, owner_ref);
+    const stale_true = ref_mod.mkSmallInt(1).?;
+    while (it.next()) |owned_eid| {
+        _ = store.assert(owned_eid, kernel_eids.ATTR_FFI_STALE, stale_true, kernel_eids.M_BOOTSTRAP) catch {};
+    }
+
+    // dlclose the handle. std.DynLib copy was heap-allocated in moduleLoad.
+    if (store.currentValue(mod_eid, kernel_eids.ATTR_FFI_HANDLE)) |handle_ref| {
+        if (boxed.isFfiPtr(handle_ref)) {
+            const lib_ptr_addr = boxed.untagFfiPtr(handle_ref);
+            const lib: *std.DynLib = @ptrFromInt(lib_ptr_addr);
+            lib.close();
+        }
+    }
+
+    // Mark the Module itself as unloaded (a stale flag at Module scope).
+    _ = store.assert(mod_eid, kernel_eids.ATTR_FFI_STALE, stale_true, kernel_eids.M_BOOTSTRAP) catch {};
+
+    return s.receiver; // self
 }
 
 // -- Bootstrap-time method install ------------------------------------------
@@ -381,4 +454,5 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_HANDLE, @ptrCast(&methodHandle));
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_WRAP_AS_SIG, @ptrCast(&methodWrapAsSig));
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_SYMBOLS, @ptrCast(&methodSymbols));
+    try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_UNLOAD, @ptrCast(&methodUnload));
 }

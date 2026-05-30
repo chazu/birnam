@@ -227,6 +227,129 @@ test "[mod symbols] idempotent — second call doesn't double the count" {
     try testing.expect(flag != null);
 }
 
+// -- Phase 9.5.5: Module unload + stale-pointer machinery -----------------
+
+const promotion_mod = @import("promotion.zig");
+
+test "[mod unload] succeeds when ffi_depth = 0; marks Module :ffi-stale?" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, HELLO_DYLIB) catch return error.SkipZigTest;
+    if (ffi_module.isErrorEntity(fix.store, mod)) return error.SkipZigTest;
+
+    const r = send_mod.send0(mod, kernel_eids.SEL_UNLOAD);
+    try testing.expectEqual(mod, r); // unload returns self
+
+    const stale = fix.store.currentValue(ref_mod.untagEid(mod), kernel_eids.ATTR_FFI_STALE);
+    try testing.expect(stale != null);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(stale.?));
+}
+
+test "[mod unload] refuses with error-entity when ffi_depth > 0" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, HELLO_DYLIB) catch return error.SkipZigTest;
+    if (ffi_module.isErrorEntity(fix.store, mod)) return error.SkipZigTest;
+
+    promotion_mod.ffiEnter();
+    defer promotion_mod.ffiExit();
+
+    const r = send_mod.send0(mod, kernel_eids.SEL_UNLOAD);
+    try testing.expect(ffi_module.isErrorEntity(fix.store, r));
+    const kind_ref = fix.store.currentValue(ref_mod.untagEid(r), kernel_eids.ATTR_ERROR_KIND).?;
+    const kind_name = fix.interner.nameOf(ref_mod.untagEid(kind_ref)).?;
+    try testing.expect(std.mem.eql(u8, kind_name, "ffi-unload-blocked-active-call"));
+}
+
+test "[mod unload] stales wraps and ffi-owned boxed pointers" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM) catch return error.SkipZigTest;
+    if (ffi_module.isErrorEntity(fix.store, mod)) return error.SkipZigTest;
+    const mod_eid = ref_mod.untagEid(mod);
+
+    // Install a strdup wrap so we get an owned FFI pointer back.
+    const dup_sel = try fix.interner.intern(fix.store, fix.table, "strdup:");
+    _ = send_mod.send3(
+        mod,
+        kernel_eids.SEL_WRAP_AS_SIG,
+        ref_mod.mkEid(dup_sel),
+        try strings.mkString(a, "strdup"),
+        try strings.mkString(a, "Z)p"),
+    );
+    const cstr = "hi";
+    const cstr_ptr = try boxed.mkFfiPtr(a, @intFromPtr(cstr.ptr));
+    const returned_ptr = send_mod.send1(mod, dup_sel, cstr_ptr);
+    try testing.expect(boxed.isFfiPtr(returned_ptr));
+    const box_eid = boxed.ffiPtrBoxEid(returned_ptr);
+    try testing.expect(box_eid != 0);
+
+    // Sanity: the returned ptr's :ffi-owner is mod_eid.
+    const owner = fix.store.currentValue(box_eid, kernel_eids.ATTR_FFI_OWNER).?;
+    try testing.expectEqual(ref_mod.mkEid(mod_eid), owner);
+
+    // Unload.
+    _ = send_mod.send0(mod, kernel_eids.SEL_UNLOAD);
+
+    // Returned pointer is now stale.
+    const stale = fix.store.currentValue(box_eid, kernel_eids.ATTR_FFI_STALE);
+    try testing.expect(stale != null);
+
+    ffi.shutdown();
+}
+
+test "pushArg refuses stale pointers — dispatch returns NIL" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM) catch return error.SkipZigTest;
+    if (ffi_module.isErrorEntity(fix.store, mod)) return error.SkipZigTest;
+    const mod_eid = ref_mod.untagEid(mod);
+
+    // Wrap strlen so we can pass a pointer back.
+    const len_sel = try fix.interner.intern(fix.store, fix.table, "strlen:");
+    _ = send_mod.send3(
+        mod,
+        kernel_eids.SEL_WRAP_AS_SIG,
+        ref_mod.mkEid(len_sel),
+        try strings.mkString(a, "strlen"),
+        try strings.mkString(a, "Z)l"),
+    );
+
+    // Mint an owned FFI pointer that lives long enough.
+    const cstr = "birnam";
+    const owned_ptr = try boxed.mkFfiPtrOwned(a, fix.store, fix.table, @intFromPtr(cstr.ptr), mod_eid);
+    const box_eid = boxed.ffiPtrBoxEid(owned_ptr);
+
+    // Pre-stale: dispatch returns 6.
+    const r_ok = send_mod.send1(mod, len_sel, owned_ptr);
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(r_ok));
+
+    // Stale the pointer manually (simulates post-unload).
+    _ = try fix.store.assert(box_eid, kernel_eids.ATTR_FFI_STALE, ref_mod.mkSmallInt(1).?, kernel_eids.M_BOOTSTRAP);
+
+    // Post-stale: pushArg refuses, invoke returns NIL.
+    const r_stale = send_mod.send1(mod, len_sel, owned_ptr);
+    try testing.expectEqual(ref_mod.NIL, r_stale);
+
+    ffi.shutdown();
+}
+
 test "[mod wrap:] with arity-too-high sig returns ERROR_VT entity" {
     if (!is_darwin) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);

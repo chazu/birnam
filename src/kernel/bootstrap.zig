@@ -189,6 +189,9 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_SYMBOLS, "symbols");
     try interner.seed(store, kernel_eids.ATTR_READER_MAGIC, "reader-magic");
     try interner.seed(store, kernel_eids.ATTR_READER_IMPL, "reader-impl");
+    try interner.seed(store, kernel_eids.ATTR_FFI_OWNER, "ffi-owner");
+    try interner.seed(store, kernel_eids.ATTR_FFI_STALE, "ffi-stale?");
+    try interner.seed(store, kernel_eids.SEL_UNLOAD, "unload");
     try interner.seed(store, kernel_eids.ATTR_FFI_HANDLE, "ffi-handle");
     try interner.seed(store, kernel_eids.ATTR_FFI_PATH, "ffi-path");
     try interner.seed(store, kernel_eids.ATTR_ERROR_KIND, "error-kind");

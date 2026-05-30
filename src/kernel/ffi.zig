@@ -153,6 +153,33 @@ pub fn shutdown() void {
 
 // -- Ref → dyncall arg marshaling -----------------------------------------
 
+/// Push `value` into the VM as `kind`. Returns false on type mismatch OR
+/// on a stale FFI pointer (Phase 9.5.5: pointer Refs whose owning Module
+/// has been unloaded carry `[box_eid :ffi-stale? ?]` facts). Caller
+/// distinguishes the two via `out_stale_box_eid` (0 = type mismatch,
+/// non-zero = stale box).
+fn pushArgChecked(
+    store: *fact_store_mod.FactStore,
+    vm: *DCCallVM,
+    kind: Kind,
+    value: Ref,
+    out_stale_box_eid: *u64,
+) bool {
+    out_stale_box_eid.* = 0;
+    if (kind == .pointer or kind == .cstring) {
+        if (boxed.isFfiPtr(value)) {
+            const box_eid = boxed.ffiPtrBoxEid(value);
+            if (box_eid != 0) {
+                if (store.currentValue(box_eid, kernel_eids.ATTR_FFI_STALE)) |_| {
+                    out_stale_box_eid.* = box_eid;
+                    return false;
+                }
+            }
+        }
+    }
+    return pushArg(vm, kind, value);
+}
+
 /// Push `value` into the VM as `kind`. Returns false on type mismatch so the
 /// caller can abort + return NIL.
 fn pushArg(vm: *DCCallVM, kind: Kind, value: Ref) bool {
@@ -201,7 +228,20 @@ fn pushArg(vm: *DCCallVM, kind: Kind, value: Ref) bool {
 
 /// Dispatch the appropriate dcCallX based on return kind. Returns the raw
 /// C-side value boxed/tagged into a birnam Ref.
-fn callAndWrap(allocator: std.mem.Allocator, vm: *DCCallVM, ret: Kind, addr: usize) Ref {
+///
+/// `owner_mod_eid` (Phase 9.5.5): when non-zero, returned pointer values
+/// (`.pointer` / `.cstring`) are boxed via `mkFfiPtrOwned`, asserting
+/// `[box :ffi-owner mod]` so Module unload can find + stale them. When
+/// zero, fall back to unowned `mkFfiPtr` (Phase 9 behavior).
+fn callAndWrap(
+    allocator: std.mem.Allocator,
+    store: ?*fact_store_mod.FactStore,
+    table: ?*object_table_mod.ObjectTable,
+    vm: *DCCallVM,
+    ret: Kind,
+    addr: usize,
+    owner_mod_eid: u64,
+) Ref {
     const fnp: *const anyopaque = @ptrFromInt(addr);
     switch (ret) {
         .void_ => {
@@ -243,6 +283,9 @@ fn callAndWrap(allocator: std.mem.Allocator, vm: *DCCallVM, ret: Kind, addr: usi
         .pointer, .cstring => {
             const r = dcCallPointer(vm, fnp);
             const addr_ret: usize = @intFromPtr(r);
+            if (owner_mod_eid != 0 and store != null and table != null) {
+                return boxed.mkFfiPtrOwned(allocator, store.?, table.?, addr_ret, owner_mod_eid) catch ref_mod.NIL;
+            }
             return boxed.mkFfiPtr(allocator, addr_ret) catch ref_mod.NIL;
         },
     }
@@ -250,11 +293,28 @@ fn callAndWrap(allocator: std.mem.Allocator, vm: *DCCallVM, ret: Kind, addr: usi
 
 /// Top-level invocation. Resolves the kernel-global VM, configures variadic
 /// mode if the sig is variadic, marshals args, calls, wraps return.
+///
+/// Phase 9.5.5: `store`/`owner_mod_eid` are threaded through so per-arg
+/// stale-pointer checks (`:ffi-stale?`) and per-return owned-pointer
+/// boxing both work. Passing `store = null` or `owner_mod_eid = 0`
+/// preserves Phase 9 ownerless behavior.
 pub fn invoke(
     allocator: std.mem.Allocator,
     addr: usize,
     sig: Sig,
     args: []const Ref,
+) Ref {
+    return invokeWithOwner(allocator, null, null, addr, sig, args, 0);
+}
+
+pub fn invokeWithOwner(
+    allocator: std.mem.Allocator,
+    store: ?*fact_store_mod.FactStore,
+    table: ?*object_table_mod.ObjectTable,
+    addr: usize,
+    sig: Sig,
+    args: []const Ref,
+    owner_mod_eid: u64,
 ) Ref {
     if (args.len != sig.args.len) return ref_mod.NIL;
     const vm = ensureVm() orelse return ref_mod.NIL;
@@ -265,9 +325,14 @@ pub fn invoke(
         if (is_variadic and i == sig.variadic_at.?) {
             dcMode(vm, DC_CALL_C_ELLIPSIS_VARARGS);
         }
-        if (!pushArg(vm, kind, value)) return ref_mod.NIL;
+        if (store) |s| {
+            var stale_box: u64 = 0;
+            if (!pushArgChecked(s, vm, kind, value, &stale_box)) return ref_mod.NIL;
+        } else {
+            if (!pushArg(vm, kind, value)) return ref_mod.NIL;
+        }
     }
-    return callAndWrap(allocator, vm, sig.ret, addr);
+    return callAndWrap(allocator, store, table, vm, sig.ret, addr, owner_mod_eid);
 }
 
 // -- Wrap registry + per-arity dispatch shims -------------------------------
@@ -295,12 +360,20 @@ fn resolveWrap(
 
 fn shimDispatch(s: *send_mod.Send, args: []const Ref) Ref {
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    const table = send_mod.tablePtr() orelse return ref_mod.NIL;
     const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
     const c = s.closure orelse return ref_mod.NIL;
     if (!ref_mod.isEid(c.data)) return ref_mod.NIL;
     const wrap_eid = ref_mod.untagEid(c.data);
     const w = resolveWrap(store, wrap_eid) orelse return ref_mod.NIL;
-    return invoke(alloc, w.addr, w.sig.*, args);
+    // Phase 9.5.5: thread the wrap's owning Module through so return
+    // pointers can be tagged with `:ffi-owner` and arg pointers can be
+    // checked for `:ffi-stale?`. Owner = 0 keeps Phase 9 behavior.
+    var owner_mod: u64 = 0;
+    if (store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_OWNER)) |owner_ref| {
+        if (ref_mod.isEid(owner_ref)) owner_mod = ref_mod.untagEid(owner_ref);
+    }
+    return invokeWithOwner(alloc, store, table, w.addr, w.sig.*, args, owner_mod);
 }
 
 fn shim0(s: *send_mod.Send) callconv(.c) Ref {

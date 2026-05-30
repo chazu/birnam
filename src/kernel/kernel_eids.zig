@@ -1,16 +1,18 @@
 //! Well-known kernel EIDs.
 //!
-//! Locked in VISION.md §Open Questions: kernel EIDs occupy 0..63;
-//! user EIDs allocate from 64+. Renumbering this block is a
-//! breaking image-format change.
+//! Locked in VISION.md §Open Questions: kernel EIDs occupy 0..255;
+//! user EIDs allocate from 256+. Renumbering this block is a
+//! breaking image-format change — accepted in Phase 9.5.5 (no image
+//! artifacts exist yet, Phase 12 has not shipped).
 //!
 //! Layout convention:
-//!   0       NIL (the nothing-entity)
-//!   1..15   kernel vtables
-//!   16..63  kernel selectors and well-known attributes
-//!   64+     user-allocated
+//!   0        NIL (the nothing-entity)
+//!   1..15    kernel vtables
+//!   16..63   kernel selectors and well-known attributes (Phase 0-9.5.4)
+//!   64..255  expansion slots (Phase 9.5.5+)
+//!   256+     user-allocated
 
-pub const USER_EID_START: u64 = 64;
+pub const USER_EID_START: u64 = 256;
 
 // -- Entities -----------------------------------------------------------------
 
@@ -192,3 +194,13 @@ pub const SEL_SYMBOLS: u64 = 61;
 /// a fact assertion — no hardcoded switch in the kernel.
 pub const ATTR_READER_MAGIC: u64 = 62;
 pub const ATTR_READER_IMPL: u64 = 63;
+
+/// Phase 9.5.5: Module unload + stale-pointer machinery.
+///   [ffi_ptr_obj :ffi-owner <mod_eid>]  — every boxed FFI ptr knows
+///                                         which Module minted it.
+///   [ffi_ptr_obj :ffi-stale? :true]    — set on unload; pushArg checks.
+pub const ATTR_FFI_OWNER: u64 = 64;
+pub const ATTR_FFI_STALE: u64 = 65;
+pub const SEL_UNLOAD: u64 = 66;
+
+// 67..255 reserved for future kernel selectors / attributes
