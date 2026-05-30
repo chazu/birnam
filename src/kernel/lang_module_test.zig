@@ -279,6 +279,45 @@ test "DEMO: parse + eval bare integer literal → 42" {
     try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 10.4: install method via [vt method: #sel do: [| body]], then dispatch" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    // Install `neg` on SmallInt's vt: [[3 vtable] method: #neg do: [| [self negate]]]
+    {
+        const src_ref = try strings.mkString(a, "[[3 vtable] method: #neg do: [| [self negate]]]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        try testing.expect(ref_mod.isEid(ast_ref));
+        const result = send_mod.send0(ast_ref, sel_eval);
+        // result is the vt-Ref (since [vt method:do:] returns receiver)
+        try testing.expect(ref_mod.isEid(result));
+    }
+
+    // Now `[3 neg]` should dispatch the block and return -3.
+    {
+        const src_ref = try strings.mkString(a, "[3 neg]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expect(ref_mod.isSmallInt(val));
+        try testing.expectEqual(@as(i64, -3), ref_mod.untagSmallInt(val));
+    }
+
+    // `[5 neg]` reuses the same installed method → -5.
+    {
+        const src_ref = try strings.mkString(a, "[5 neg]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, -5), ref_mod.untagSmallInt(val));
+    }
+}
+
 test "lang grammar: start fails on \"!!\" (no atom matches)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
