@@ -4,30 +4,44 @@ Detailed work sequence from current zig/birnam (linear-scan vtables, no fact sto
 
 This roadmap follows VISION.md. Open questions in VISION.md must be resolved before starting Phase 1.
 
-## Status (as of 2026-05-29)
+## Status (as of 2026-05-30)
 
-**Completed:**
-- Phase 0: demolition + scaffolding ✓
-- Phase 1: HAMT + RRB persistent collections ✓
-- Phase 2: tagged pointers + object table + kernel EIDs ✓
-- Phase 3: fact store with 5 indexes + tx engine ✓
-- Phase 4: id kernel bootstrap atop fact store ✓
-- Phase 4.5: strings, interning, named selectors ✓
-- Phase 5: module system rewrite (modules as fact subsets) ✓
-- Phase 6: REPL module (REPL as fact-shaped object) ✓
-- Phase 7: Datalog relational core (negation, disjunction, history, set semantics) ✓
-- Phase 7.1: rules + recursion + stratification ✓
-- Phase 7.2: aggregation (Date-aligned, distinct-by-default) ✓
-- Phase 7.3: subqueries, saved queries, pull, reification, rule walk-back ✓
-- Phase 7.4: predicates + functions (builtin arith/min2/max2 + user native preds) ✓
-- Phase 8: promotion/demotion (hotness counter, threshold auto-promote, FFI pin, shape-change demote) ✓
-- Phase 7.5: metacircular bind (`:bind` override along delegate chain, recursion guard limit=4, full mcache flush on mutate) ✓
-- Phase 9 (substantial): boxed Float + FFI pointer; dyncall 1.4 vendored; sig-string parser; ffi.invoke engine; ffi.registerWrap + per-arity shim closures; send-dispatched sqrt/strlen end-to-end; Mach-O 64-bit reader with symbol iterator ✓
-- Phase 9.5 (complete, all 5 sub-bundles): Module entity wrapper (delegate-vt + load:/wrap:as:sig:/path/handle); schema multi-cardinality (:one / :many with polymorphic currentValue per ADR-9.5-D2); Module>>symbols lazy enumeration via :many cardinality; fact-dispatched reader registry + ELF reader + linux gate scaffolding; Module unload + stale-pointer machinery (:ffi-owner / :ffi-stale? / SEL_UNLOAD). USER_EID_START bumped from 64 to 256 to make room for Phase 10+. ✓
+**Completed (substrate):**
+- Phase 0–7.5 ✓ (collections, fact store, kernel, datalog, FFI, modules)
+- Phase 9 / 9.5 ✓ (boxed Float + FFI ptr, dyncall, Mach-O / ELF readers, Module wrapper, schema cardinality, unload)
 
-**Test count: 239/239 across 63 build steps.**
+**Completed (Phase 10 — language):**
+- Phase 10.0 ✓ (PEG engine + send-dispatched grammar surface)
+- Phase 10.1.a ✓ (kernel slot block — 62 EIDs)
+- Phase 10.1.b ✓ (real birnam grammar — ~25 rules)
+- Phase 10.2.5 ✓ (variadic sendN — ABI-deep β refactor, ADR-10-Send-Arity RESOLVED)
+- Phase 10.2 ✓ (desugar — CST → typed AST with kind-vts)
+- Phase 10.3 minimal ✓ (eval methods on AST kind-vts, SmallInt primitives)
+- Phase 10.4 ✓ (method install via `[vt method:#sel do:[block]]`, block params, compound symbols)
+- Phase 10.5 ✓ (REPL — lang dylib drives stdin)
+- Phase 10.x ✓ (binary ops `+ - * / < > =`, `ifTrue:ifFalse:`, `[block value]`)
+- Phase 10.4.5 S1-S4 ✓ (fact-shaped SCOPE_VT / BINDING_VT entities, closure capture by reference, `let`, `:=` assignment, REPL persistence — ADR-10-E2 truth layer RESOLVED)
 
-**Next: Phase 10.0 — PEG module.** Standalone Zig PEG engine loadable as a birnam module. First step toward the language module.
+**Test count: 282/282 across 73 build steps.**
+
+**Demoable today (live REPL via `./zig-out/bin/birnam libbirnam_peg libbirnam_lang`):**
+- Arithmetic + comparisons + branching
+- `let` bindings + `:=` mutation
+- User-defined methods via `[vt method:#sel do:[block]]`
+- Closures-over-enclosing-scope (`makeAdder := [:a | [:b | [a + b]]]`)
+- REPL persistence across lines
+
+**Deferred (not blocking demo):**
+- Phase 10.4.5 S5 — parse-time slot resolution (speed layer)
+- `whileTrue:` / iteration block-methods
+- Non-local return `^` (ADR-10-E4 `g_unwinding`)
+- `;` statement separator + multi-stmt block body
+- Comments + float literals
+
+**Next milestones (pick by priority):**
+- Phase 10.4.5 S5 — optional perf optimization
+- Phase 11 — bytecode VM (retires `g_unwinding` for non-local return, retires Zig-native iteration prims)
+- Phase 12 — image snapshot + load (makes startup fast + preserves state across runs)
 
 ---
 
@@ -719,10 +733,15 @@ Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatc
 > facts truth, compiled slots are the cache. Same separation Phase 8
 > uses, different mechanism.
 
-> **ADR-10-E2-Interim (2026-05-30).** Phase 10.3 minimal eval + Phase
-> 10.4 method install shipped a stub scope mechanism that is NOT the
-> full ADR-10-E2 spec. Tracking this gap explicitly so the path to the
-> locked design stays visible.
+> **ADR-10-E2-Interim (2026-05-30) — RESOLVED at truth-layer 2026-05-30 (S1-S4 shipped).**
+> Phase 10.4.5 S1-S4 retired the interim. SCOPE_VT and BINDING_VT
+> entities are now allocated per activation. Closure capture, `let`,
+> `:=`, REPL persistence all work end-to-end. S5 (speed layer —
+> parse-time slot resolution) remains deferred as a perf optimization;
+> truth-layer correctness ships today.
+>
+> Historical record of the interim and its gaps preserved below for
+> migration-path context.
 >
 > **What shipped (interim, lang/lang.zig):**
 > 1. **`args[0] = current self Ref` threading.** Every eval method
@@ -991,7 +1010,7 @@ IdApi additions: `peg_define_rule`, `peg_parse`, `peg_grammar_new`.
 
 **10.4 Method install.** `[vt method: #sel do: [block]]` send (MD1). Method install asserts `[vt sel mkEid(closure_eid)]` (Phase 4 dispatch shape unchanged). Closure also carries `:method-name`, `:method-source` (substring copied per PR2), `:method-installed-tx` (MD3). New selector `source` on `CLOSURE_VT` returns the boxed-string Ref. Block-as-method-body picks up enclosing scope at install for free (Smalltalk capture semantics). Method body AST has fully resolved slots so dispatch = slot-index access (ADR-10-E2).
 
-**10.4.5 Full scope chain (ADR-10-E2 spec).** Retires the Phase 10.3/10.4 interim — `args[0]=self_ref` threading + `g_scope` flat stack — in favor of the locked design.
+**10.4.5 Full scope chain (ADR-10-E2 spec). — S1-S4 ✓ shipped 2026-05-30; S5 deferred.** Retired the Phase 10.3/10.4 interim — `args[0]=self_ref` threading + `g_scope` flat stack — in favor of the locked design.
 - Replace args[0]=self_ref with args[0]=scope_eid (a SCOPE_VT entity). New attr `:scope-self`; AST_SELF_VT eval reads from the current scope entity.
 - BINDING_VT entity allocation per block invocation + per let. Asserts `:bind-scope` + `:bind-name` + `:bind-value`. AST_VAR_REF_VT eval queries via the scope chain.
 - Parse-time slot resolution second pass annotates AST_VAR_REF_VT with `:ast-bind-depth` + `:ast-bind-slot`. Eval reads slots fast-path; falls back to fact query for REPL top-level / dynamic eval.

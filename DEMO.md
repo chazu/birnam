@@ -97,6 +97,64 @@ birnam> "hello"
 => "hello"
 ```
 
+Phase 10.4.5 — `let` bindings, `:=` assignment, closure capture,
+control flow, binary ops:
+
+```
+birnam> let x := 42
+=> 42
+
+birnam> [x squared]
+=> 1764
+
+birnam> x := 99
+=> 99
+
+birnam> [x + 1]
+=> 100
+
+birnam> let counter := 0
+=> 0
+
+birnam> counter := [counter + 1]
+=> 1
+
+birnam> counter := [counter + 1]
+=> 2
+
+birnam> counter := [counter + 1]
+=> 3
+
+birnam> counter
+=> 3
+
+birnam> [3 + 4]
+=> 7
+
+birnam> [[3 < 5] ifTrue: [| 999] ifFalse: [| 0]]
+=> 999
+
+birnam> let makeAdder := [:a | [:b | [a + b]]]
+=> <eid:NNN>
+
+birnam> let add10 := [makeAdder value: 10]
+=> <eid:NNN>
+
+birnam> [add10 value: 5]
+=> 15
+```
+
+That last sequence is the classic closure-over-enclosing-scope demo:
+`makeAdder` is a 1-param block that returns a 1-param block. The
+returned block closes over `a` from the outer activation. When
+`makeAdder value: 10` runs, the inner block captures the scope where
+`a = 10`. Subsequent `add10 value: 5` finds `a = 10` two scopes up
+the chain via `:scope-parent` linkage, returns `10 + 5 = 15`.
+
+Everything above runs through the same pipeline: PEG parse → CST →
+typed AST → eval, with SCOPE_VT and BINDING_VT entities materialized
+as facts in the store at each block invocation.
+
 What just happened:
 
 - The `[[3 vtable] method: #neg do: [| [self negate]]]` line
@@ -270,12 +328,18 @@ Open `ROADMAP.md`. Show:
 - ✓ Phase 10.2 (parser/desugar) + 10.3 minimal (eval)
 - ✓ Phase 10.4 (method install via `[vt method:#sel do:[block]]`)
 - ✓ Phase 10.4 follow-up (block params `[:x :y | body]` + compound
-  symbols `#kw1:kw2:` + transient scope stack)
+  symbols `#kw1:kw2:`)
 - ✓ Phase 10.5 (REPL — lang dylib drives the stdin loop)
-- 🗓 Phase 10.3 rest — booleans (`ifTrue:ifFalse:`), `whileTrue:`,
-  full scope chain (ADR-10-E2 truth + speed layers), non-local
-  return `^` (ADR-10-E4 `g_unwinding`), `:=` assignment, `;`
-  statement separator, binary operators, comments, float literals
+- ✓ Phase 10.x (binary ops `+ - * / < > =`, `ifTrue:ifFalse:`,
+  block `[block value: x]`)
+- ✓ Phase 10.4.5 S1-S4 (fact-shaped scope chain via SCOPE_VT +
+  BINDING_VT entities, closure capture by reference, `let`,
+  `:=` assignment, REPL persistence across lines)
+- 🗓 Phase 10.4.5 S5 — parse-time slot resolution (speed layer,
+  optional perf optimization)
+- 🗓 Phase 10.3 rest — `whileTrue:`, non-local return `^`
+  (ADR-10-E4 `g_unwinding`), `;` statement separator, comments,
+  float literals
 - 🗓 Phase 11 — bytecode VM
 - 🗓 Phase 12 — image snapshot
 - 🗓 Phase 13 — pruning + reachability GC
@@ -285,23 +349,19 @@ Open `ROADMAP.md`. Show:
 
 (So the audience knows what's coming.)
 
-- **Booleans + Block + iteration primitives.** `[true ifTrue:[…]
-  ifFalse:[…]]` needs eval methods installed on TRUE_VT / FALSE_VT
-  and Block-value dispatch. Vts are wired (Phase 10.1.a) but
-  the method bodies haven't been installed yet.
-- **Full scope chain.** Current implementation uses a flat module-
-  static stack (`g_scope`, 64 entries) that's pushed/popped on each
-  block invocation. ADR-10-E2 truth-layer (BINDING_VT / SCOPE_VT
-  entities) and speed-layer (parse-time slot resolution) is
-  spec-locked but not implemented. The flat stack covers block-as-
-  method invocation but not block-closes-over-enclosing-scope or
-  REPL top-level persistence.
+- **`whileTrue:` + iteration primitives.** Eval methods on Block
+  for value-loops. Demo-able once landed.
 - **Non-local return `^`.** ADR-10-E4: `g_unwinding` side-channel +
   `:ast-method-frame` back-pointer. Spec-locked, not implemented.
-- **`:=` assignment, `;` statements, binary operators, comments,
-  floats.** Grammar can be extended incrementally — the substrate
-  doesn't care; each adds a few rules in `buildGrammar()` and a few
-  branches in `desugar()`.
+- **`;` statement separator + multi-stmt block body.** Eval
+  AST_STMT_SEQ_VT walks linked-list of statements.
+- **Comments + float literals.** Grammar extensions; eval reuses
+  existing literal path.
+- **Parse-time slot resolution (Phase 10.4.5 S5).** Speed-layer
+  optimization. Truth-layer (S1-S4) shipped — every binding lives
+  as a BINDING_VT entity. S5 annotates AST_VAR_REF_VT nodes with
+  (depth, slot) for fast lookup; eval falls back to fact-query
+  walk otherwise (current behavior).
 - **Multi-line REPL input.** Currently one expression per line.
   T2-locked path: PEG furthest-failure-at-EOF detection. Land
   alongside scope-chain work.
