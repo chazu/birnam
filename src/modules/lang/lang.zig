@@ -953,44 +953,95 @@ var sel_value_g: u64 = 0;
 const TRUE_VT: u64 = 70;
 const FALSE_VT: u64 = 71;
 
-// Transient binding scope — flat stack pushed by block invocation, popped
-// at end. AST_VAR_REF_VT eval walks it for name lookups. Phase 10.x full
-// scope chain (ADR-10-E2 truth + speed layers) lands later; this minimal
-// shape covers block-as-method invocation.
-const ScopeEntry = extern struct {
-    name_eid: u64,
-    value: Ref,
-};
-var g_scope: [64]ScopeEntry = undefined;
-var g_scope_top: usize = 0;
+// ADR-10-E2 scope chain — Phase 10.4.5 S1.
+//
+// Replaces the Phase 10.3/10.4 interim (args[0]=self_ref threading +
+// g_scope flat stack) with fact-shaped scope entities.
+//
+// Each invocation allocates a SCOPE_VT entity carrying:
+//   [scope :vtable SCOPE_VT]
+//   [scope :scope-parent <enclosing>]  (NIL for top-level)
+//   [scope :scope-self <receiver Ref>] (self for AST_SELF_VT eval)
+//   [scope :scope-first-binding <head BINDING_VT eid>]
+//
+// Each binding allocates a BINDING_VT entity carrying:
+//   [bind :vtable BINDING_VT]
+//   [bind :bind-name <interned-name EID>]
+//   [bind :bind-value <Ref>]
+//   [bind :bind-next <next BINDING_VT eid>]
+//
+// AST_VAR_REF_VT eval walks the scope chain. AST_SELF_VT eval queries
+// :scope-self on the current scope.
 
-fn pushBinding(name_eid: u64, value: Ref) void {
-    if (g_scope_top >= g_scope.len) return;
-    g_scope[g_scope_top] = .{ .name_eid = name_eid, .value = value };
-    g_scope_top += 1;
-}
+const SCOPE_VT: u64 = 101;
+const BINDING_VT: u64 = 100;
+const ATTR_SCOPE_PARENT: u64 = 138;
+const ATTR_SCOPE_SELF: u64 = 162;
+const ATTR_SCOPE_FIRST_BINDING: u64 = 163;
+const ATTR_SCOPE_TOP_LEVEL: u64 = 139;
+const ATTR_BIND_NAME: u64 = 136;
+const ATTR_BIND_VALUE: u64 = 137;
+const ATTR_BIND_NEXT: u64 = 164;
 
-fn popBindings(count: usize) void {
-    if (count > g_scope_top) {
-        g_scope_top = 0;
-    } else {
-        g_scope_top -= count;
+// Singleton top-level scope EID, allocated at lang-dylib init.
+var g_top_scope_eid: u64 = 0;
+
+fn newScopeEntity(parent_scope_ref: Ref, self_ref: Ref) u64 {
+    const api = g_api.?;
+    const eid = api.alloc_eid();
+    _ = api.assert_fact(eid, ATTR_VTABLE, mkEid(SCOPE_VT), g_module_eid);
+    if (parent_scope_ref != NIL) {
+        _ = api.assert_fact(eid, ATTR_SCOPE_PARENT, parent_scope_ref, g_module_eid);
     }
+    // Date discipline — only assert when self is non-NIL (absence = no self).
+    if (self_ref != NIL) {
+        _ = api.assert_fact(eid, ATTR_SCOPE_SELF, self_ref, g_module_eid);
+    }
+    return eid;
 }
 
-fn lookupBinding(name_eid: u64) ?Ref {
-    var i: usize = g_scope_top;
-    while (i > 0) {
-        i -= 1;
-        if (g_scope[i].name_eid == name_eid) return g_scope[i].value;
+fn pushScopeBinding(scope_eid: u64, name_eid: u64, value: Ref) void {
+    const api = g_api.?;
+    const bind_eid = api.alloc_eid();
+    _ = api.assert_fact(bind_eid, ATTR_VTABLE, mkEid(BINDING_VT), g_module_eid);
+    _ = api.assert_fact(bind_eid, ATTR_BIND_NAME, mkEid(name_eid), g_module_eid);
+    _ = api.assert_fact(bind_eid, ATTR_BIND_VALUE, value, g_module_eid);
+    // Push at head — link new binding's :bind-next to current head, update head.
+    const cur_head = api.query_eavt(scope_eid, ATTR_SCOPE_FIRST_BINDING);
+    if (cur_head != NIL) {
+        _ = api.assert_fact(bind_eid, ATTR_BIND_NEXT, cur_head, g_module_eid);
+    }
+    _ = api.assert_fact(scope_eid, ATTR_SCOPE_FIRST_BINDING, mkEid(bind_eid), g_module_eid);
+}
+
+fn lookupInScope(scope_eid: u64, name_eid: u64) ?Ref {
+    const api = g_api.?;
+    var cur = scope_eid;
+    while (cur != 0) {
+        var b_ref = api.query_eavt(cur, ATTR_SCOPE_FIRST_BINDING);
+        while (isEid(b_ref) and b_ref != NIL) {
+            const b_eid = b_ref >> 3;
+            const name_ref = api.query_eavt(b_eid, ATTR_BIND_NAME);
+            if (isEid(name_ref) and (name_ref >> 3) == name_eid) {
+                return api.query_eavt(b_eid, ATTR_BIND_VALUE);
+            }
+            b_ref = api.query_eavt(b_eid, ATTR_BIND_NEXT);
+        }
+        // Walk to parent.
+        const parent_ref = api.query_eavt(cur, ATTR_SCOPE_PARENT);
+        if (!isEid(parent_ref) or parent_ref == NIL) return null;
+        cur = parent_ref >> 3;
     }
     return null;
 }
 
-/// Every eval method takes `args[0]` = current `self` Ref (or NIL at top
-/// level). Threads through nested sends so AST_SELF_VT can return it.
-fn currentSelf(args: [*]const Ref, n_args: usize) Ref {
-    if (n_args == 0) return NIL;
+/// Every eval method takes `args[0]` = current scope-Ref (a SCOPE_VT
+/// entity Ref). When called with no args (top-level test invocations),
+/// defaults to the singleton top-level scope. AST_SELF_VT eval queries
+/// `:scope-self` on this scope; AST_VAR_REF_VT walks scope chain via
+/// `:scope-parent`.
+fn currentScope(args: [*]const Ref, n_args: usize) Ref {
+    if (n_args == 0) return mkEid(g_top_scope_eid);
     return args[0];
 }
 
@@ -1004,50 +1055,53 @@ fn evalLiteralImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
 
 fn evalSelfImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
-    return currentSelf(args, n_args);
+    const api = g_api.?;
+    const scope_ref = currentScope(args, n_args);
+    if (!isEid(scope_ref)) return NIL;
+    return api.query_eavt(scope_ref >> 3, ATTR_SCOPE_SELF);
 }
 
 fn evalVarRefImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
-    _ = args;
-    _ = n_args;
     const api = g_api.?;
     if (!isEid(s.receiver)) return NIL;
     const ast_eid = s.receiver >> 3;
     const name_ref = api.query_eavt(ast_eid, ATTR_AST_NAME);
     if (!isEid(name_ref)) return NIL;
     const name_eid = name_ref >> 3;
-    return lookupBinding(name_eid) orelse NIL;
+    const scope_ref = currentScope(args, n_args);
+    if (!isEid(scope_ref)) return NIL;
+    return lookupInScope(scope_ref >> 3, name_eid) orelse NIL;
 }
 
 fn evalUnarySendImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     const api = g_api.?;
     if (!isEid(s.receiver)) return NIL;
-    const self_ref = currentSelf(args, n_args);
+    const scope_ref = currentScope(args, n_args);
     const ast_eid = s.receiver >> 3;
     const recv_ast_ref = api.query_eavt(ast_eid, ATTR_AST_RECEIVER);
     const sel_ref = api.query_eavt(ast_eid, ATTR_AST_SELECTOR);
     if (!isEid(sel_ref)) return NIL;
     const sel_eid = sel_ref >> 3;
-    const recv_val = api.send1(recv_ast_ref, sel_eval, self_ref);
+    const recv_val = api.send1(recv_ast_ref, sel_eval, scope_ref);
     return api.send0(recv_val, sel_eid);
 }
 
 fn evalKeywordSendImpl(s: *Send, args_in: [*]const Ref, n_args_in: usize) callconv(.c) Ref {
     const api = g_api.?;
     if (!isEid(s.receiver)) return NIL;
-    const self_ref = currentSelf(args_in, n_args_in);
+    const scope_ref = currentScope(args_in, n_args_in);
     const ast_eid = s.receiver >> 3;
     const recv_ast_ref = api.query_eavt(ast_eid, ATTR_AST_RECEIVER);
     const sel_ref = api.query_eavt(ast_eid, ATTR_AST_SELECTOR);
     if (!isEid(sel_ref)) return NIL;
     const sel_eid = sel_ref >> 3;
-    const recv_val = api.send1(recv_ast_ref, sel_eval, self_ref);
+    const recv_val = api.send1(recv_ast_ref, sel_eval, scope_ref);
     var buf: [16]Ref = undefined;
     var count: usize = 0;
     var cur_ref = api.query_eavt(ast_eid, ATTR_AST_FIRST_ARG);
     while (isEid(cur_ref) and count < buf.len) : (count += 1) {
         const ast_arg = cur_ref >> 3;
-        buf[count] = api.send1(cur_ref, sel_eval, self_ref);
+        buf[count] = api.send1(cur_ref, sel_eval, scope_ref);
         cur_ref = api.query_eavt(ast_arg, ATTR_AST_NEXT_SIBLING);
     }
     return api.sendN(recv_val, sel_eid, &buf, count);
@@ -1147,23 +1201,27 @@ fn blockEvalShim(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     if (!isEid(block_ast_ref)) return NIL;
     const block_ast_eid = block_ast_ref >> 3;
 
-    var pushed: usize = 0;
+    // Allocate a fresh scope for this activation. :scope-parent = NIL
+    // (S2 will fill in the captured enclosing scope). :scope-self =
+    // s.receiver (whatever bound to receive this send — typically the
+    // dispatch receiver for blocks-as-methods).
+    const new_scope_eid = newScopeEntity(NIL, s.receiver);
+    const new_scope_ref = mkEid(new_scope_eid);
+
+    // Push param bindings into the new scope.
     var cur_ref = api.query_eavt(block_ast_eid, ATTR_AST_BLOCK_PARAMS_CONST);
     var idx: usize = 0;
     while (isEid(cur_ref) and !isNil(cur_ref) and idx < n_args) : (idx += 1) {
         const pe = cur_ref >> 3;
         const name_ref = api.query_eavt(pe, ATTR_AST_NAME);
         if (isEid(name_ref) and !isNil(name_ref)) {
-            pushBinding(name_ref >> 3, args[idx]);
-            pushed += 1;
+            pushScopeBinding(new_scope_eid, name_ref >> 3, args[idx]);
         }
         cur_ref = api.query_eavt(pe, ATTR_AST_NEXT_SIBLING);
     }
 
     const body_ref = api.query_eavt(block_ast_eid, ATTR_AST_BLOCK_BODY);
-    const result = api.send1(body_ref, sel_eval, s.receiver);
-    popBindings(pushed);
-    return result;
+    return api.send1(body_ref, sel_eval, new_scope_ref);
 }
 
 fn isNil(r: Ref) bool {
@@ -1377,7 +1435,12 @@ fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
     // `:` prefix = debug command (Phase 10.5 minimum: :reset clears scope).
     if (line[0] == ':') {
         if (std.mem.eql(u8, line, ":reset")) {
-            g_scope_top = 0;
+            // Retract :scope-first-binding on the top-level scope; existing
+            // BINDING_VT entities become unreachable (Phase 13.4 sweep).
+            const cur = api.query_eavt(g_top_scope_eid, ATTR_SCOPE_FIRST_BINDING);
+            if (cur != NIL) {
+                _ = api.retract_fact(g_top_scope_eid, ATTR_SCOPE_FIRST_BINDING, cur, g_module_eid);
+            }
             if (g_log) |log| log("[lang] scope reset");
             return;
         }
@@ -1463,6 +1526,12 @@ export fn birnam_module_init(
     buildGrammar();
     cacheRuleNames();
     installMethods();
+
+    // Allocate the singleton top-level scope (T2b). REPL persistent
+    // bindings live here. AST_VAR_REF_VT resolves against this scope
+    // when no enclosing scope is active.
+    g_top_scope_eid = newScopeEntity(NIL, NIL);
+    _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_TOP_LEVEL, mkEid(TRUE_EID), module_eid);
 
     // Export grammar EID on the module entity: `[<module_eid> grammar]`
     // returns mkEid(g_grammar_eid). Phase 10.2 parser bootstrap reads it.

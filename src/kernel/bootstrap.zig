@@ -386,6 +386,11 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_LE, "<=");
     try interner.seed(store, kernel_eids.SEL_GE, ">=");
 
+    // Phase 10.4.5 scope attrs.
+    try interner.seed(store, kernel_eids.ATTR_SCOPE_SELF, "scope-self");
+    try interner.seed(store, kernel_eids.ATTR_SCOPE_FIRST_BINDING, "scope-first-binding");
+    try interner.seed(store, kernel_eids.ATTR_BIND_NEXT, "bind-next");
+
     // Seed Phase 10 selector + attribute names so user code can intern them
     // by string and recover the kernel EID (Phase 4.5 interner pattern).
     try interner.seed(store, kernel_eids.SEL_DEFINE_RULE_AS, "defineRule:as:");

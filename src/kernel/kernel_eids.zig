@@ -399,4 +399,18 @@ pub const SEL_GT: u64 = 159;
 pub const SEL_LE: u64 = 160;
 pub const SEL_GE: u64 = 161;
 
-// 162..255 reserved for future kernel selectors / attributes
+// -- Phase 10.4.5 ADR-10-E2 scope chain (162..164) --------------------------
+
+/// `[scope :scope-self <receiver Ref>]` — current `self` for the activation
+/// behind this scope. AST_SELF_VT eval queries this attribute on `args[0]`
+/// (the current scope-Ref threaded through every eval method).
+pub const ATTR_SCOPE_SELF: u64 = 162;
+/// `[scope :scope-first-binding <BINDING_VT eid>]` — head of the scope's
+/// binding linked-list. Bindings chain via `:bind-next`. AST_VAR_REF_VT eval
+/// walks this list, then walks `:scope-parent` if no match.
+pub const ATTR_SCOPE_FIRST_BINDING: u64 = 163;
+/// `[bind :bind-next <BINDING_VT eid>]` — linked-list tail pointer between
+/// bindings in a single scope.
+pub const ATTR_BIND_NEXT: u64 = 164;
+
+// 165..255 reserved for future kernel selectors / attributes
