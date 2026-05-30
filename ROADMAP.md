@@ -585,6 +585,140 @@ Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatc
 
 **Goal:** Birnam source syntax, parsed into facts, evaluated against fact store.
 
+### Open questions (DRAFT — decision doc not yet locked)
+
+> **Terminology note:** birnam is strictly prototype-based (COLA / idst /
+> Piumarta lineage per VISION.md). No class / instance split — vtables
+> ARE prototypes, delegation via `:delegate` chain replaces inheritance.
+> "Define Point as a Smalltalk class" = "mint a Point prototype-vt and
+> install methods on it." Phase 10 grammar / evaluator MUST NOT
+> introduce a class metamodel.
+
+#### 10.0 — PEG module
+
+P1. **Grammar-as-facts encoding.** Pattern nodes as fact entities (each
+with `:pattern-kind` + child relations) vs pointer-Ref to Zig pattern
+structs (Phase 7.1 rule-body pattern). Tradeoff: queryability /
+walk-back vs allocation cost in parse hot path.
+
+P2. **Packrat memo storage.** Transient per-parse AutoHashMap vs
+fact-shaped persistent memo. Memo is hot read/write — fact-shaped
+likely too slow.
+
+P3. **AST representation.** `:ast-child` `:many` ordered (uses 9.5.2
+cardinality) vs `:ast-first-child` + `:ast-next-sibling` linked-list.
+Ordered-`:many` retrieval semantics need definition.
+
+P4. **Source-span representation.** Byte (start, end) only, or line/col
+too.
+
+P5. **Parse failure reporting.** One diagnostic entity per failure vs
+every-alternative-attempt entities. Stop-on-first vs recover-and-resume.
+
+P6. **Char-class encoding.** Fact-shaped u8 ranges vs pointer-Ref to a
+bitset.
+
+P7. **PEG combinator scope.** Minimum (lit, seq, /, *, +, ?, &, !,
+rule-ref, class) vs extras (named captures, semantic actions, error
+recovery).
+
+P8. **Multi-grammar coexistence.** Single global grammar vs many
+grammars as entities. Birnam grammar + future config DSL + ...
+
+P9. **PEG API surface.** Kernel procedural API (Zig fns via IdApi) vs
+send-dispatched proto methods on a `PEG_VT` proto. Both?
+
+P10. **Code location.** `src/modules/peg/` dylib only vs `src/kernel/
+peg.zig` engine + thin dylib wrapper (Phase 7 query pattern).
+
+#### 10.1 — Birnam grammar
+
+G1. **Grammar source.** Inline Zig-asserted at module init vs `.peg`
+source file. Bootstrap concern: parser-of-grammar is itself a grammar —
+the first one is hand-coded.
+
+G2. **Smalltalk syntax choices.** Exact precedence; cascade syntax;
+block param syntax (`[:x|...]`); literal forms; comment style
+(`" ... "` vs `// ...`); assignment (`:=` vs `<-`).
+
+G3. **Keyword-message folding.** `[obj a: 1 b: 2]` parsed as a single
+2-keyword `a:b:` send (Smalltalk-standard).
+
+G4. **Reserved words.** `self`, `super`, `nil`, `true`, `false`,
+`thisContext` reserved, or all bindings.
+
+G5. **Pattern-send syntax.** Phase 7 query brackets `[?e :attr ?v]`
+need parser-level recognition. `?`-prefix as var marker.
+
+#### 10.2 — Parser runner
+
+PR1. **AST entity lifetime.** Per-parse arena vs permanent. Phase 13
+pruning later.
+
+PR2. **Source-string lifetime.** Boxed-string Ref retained alongside
+AST so byte offsets stay valid for `[method source]` introspection.
+
+#### 10.3 — Evaluator
+
+E1. **Evaluation strategy.** Recursive Zig per node-kind vs
+fact-dispatched (`[node :eval-impl ...]`). COLA tension: hardcoded
+switch vs malleable dispatch.
+
+E2. **Scope representation.** Transient AutoHashMap during eval vs
+persistent scope-entity chain (`:scope-parent` + `:scope-binding`
+`:many`).
+
+E3. **Block closure capture.** By-value vs by-reference (Smalltalk-style
+aliasing — captured vars are shared mutable storage).
+
+E4. **Non-local return.** Smalltalk `^` returns from enclosing method,
+not just block. Ship in 10 or defer.
+
+E5. **Tail calls / recursion depth.** Tree-walker blows stack on deep
+recursion; bytecode VM (Phase 11) fixes. Document.
+
+E6. **Error model.** ERROR_VT entities per Phase 7.8 / 9.5
+ERROR_VT pattern (locked — already shipped).
+
+#### 10.4 — Method definition
+
+MD1. **Install syntax.** Source-form vs send-form
+(`[Point method:#x do:[...]]`).
+
+MD2. **Install target.** Receiver's own vt only vs explicit `onVt:`.
+
+MD3. **Source provenance.** Keep `:ast-source-string-ref` on installed
+closures for `[method source]` introspection.
+
+#### 10.5 — Tests
+
+T1. **Test corpus.** Fibonacci (recursion), Point prototype +
+arithmetic, hello-string, scope/block capture, error path.
+
+T2. **REPL integration.** Phase 6 REPL's hand-rolled line parser →
+real PEG-driven parser. Replace or coexist (debug + production
+parsers).
+
+#### Cross-phase
+
+X1. **PEG bootstrap order.** Kernel-bootstrap install of PEG facts vs
+post-boot dylib load (like Phase 7 query module).
+
+X2. **Birnam grammar persistence.** Asserted at language-dylib init,
+once.
+
+X3. **AST garbage collection.** Phase 13 pruning problem; Phase 10
+spike leaks.
+
+X4. **Left-recursion handling.** PEG natively can't express it.
+Right-recursive rewrite vs PEG-extension (Packrat-with-left-rec).
+
+X5. **Float literals.** `1.5` parses to boxed Float (Phase 9.5 type
+already shipped).
+
+X6. **Self-hosting trajectory.** Compiler rewritten in birnam: Phase
+10 / 11 / 14? Doc only, not committing.
+
 ### Work items
 
 10.0 **PEG module (prerequisite — ships first as a standalone Zig dylib).**
