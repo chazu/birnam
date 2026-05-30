@@ -310,4 +310,11 @@ pub const ATTR_AST_PARSE: u64 = 96;
 pub const ATTR_PEG_EXPECTED: u64 = 97;
 pub const ATTR_PEG_POSITION: u64 = 98;
 
-// 99..255 reserved for future kernel selectors / attributes
+/// `PEG_EID` — singleton instance entity for the PEG factory namespace.
+/// `[PEG_EID :vtable PEG_VT]`; pattern-constructor send-dispatched methods
+/// (`literal:`, `ruleRef:`, `star:`, …) live on PEG_VT. The Phase 10.1
+/// lang dylib binds `Pattern` (and `Grammar`) to this singleton in the
+/// top-level scope per MD2.
+pub const PEG_EID: u64 = 99;
+
+// 100..255 reserved for future kernel selectors / attributes

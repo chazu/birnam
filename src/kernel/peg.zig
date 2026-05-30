@@ -544,9 +544,47 @@ pub fn installSendApi(
     };
 
     // `parse:from:` method on GRAMMAR_VT — see send.zig for the dispatch path.
-    const sel = try interner.intern(store, table, "parse:from:");
-    const closure_eid = try allocNativeClosure(allocator, table, @ptrCast(&parseFromImpl));
-    _ = try store.assert(kernel_eids.GRAMMAR_VT, sel, ref_mod.mkEid(closure_eid), module_eid);
+    const sel_parse = try interner.intern(store, table, "parse:from:");
+    _ = try store.assert(
+        kernel_eids.GRAMMAR_VT,
+        sel_parse,
+        ref_mod.mkEid(try allocNativeClosure(allocator, table, @ptrCast(&parseFromImpl))),
+        module_eid,
+    );
+
+    // `defineRule:as:` on GRAMMAR_VT (receiver = grammar EID).
+    _ = try store.assert(
+        kernel_eids.GRAMMAR_VT,
+        kernel_eids.SEL_DEFINE_RULE_AS,
+        ref_mod.mkEid(try allocNativeClosure(allocator, table, @ptrCast(&defineRuleAsImpl))),
+        module_eid,
+    );
+
+    // Pattern-constructor methods on PEG_VT (receiver = PEG_EID singleton).
+    try installPegMethod(allocator, store, table, interner, module_eid, "newGrammar", @ptrCast(&newGrammarImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "literal:", @ptrCast(&literalImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "ruleRef:", @ptrCast(&ruleRefImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "anyByte", @ptrCast(&anyByteImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "eof", @ptrCast(&eofImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "star:", @ptrCast(&starImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "plus:", @ptrCast(&plusImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "opt:", @ptrCast(&optImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "and:", @ptrCast(&andImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "not:", @ptrCast(&notImpl));
+}
+
+fn installPegMethod(
+    allocator: std.mem.Allocator,
+    store: *FactStore,
+    table: *ObjectTable,
+    interner: *Interner,
+    module_eid: u64,
+    sel_name: []const u8,
+    method_fn: *const anyopaque,
+) !void {
+    const sel = try interner.intern(store, table, sel_name);
+    const closure_eid = try allocNativeClosure(allocator, table, method_fn);
+    _ = try store.assert(kernel_eids.PEG_VT, sel, ref_mod.mkEid(closure_eid), module_eid);
 }
 
 fn allocNativeClosure(
@@ -583,4 +621,89 @@ fn parseFromImpl(s: *Send, source_ref: Ref, rule_name_ref: Ref) callconv(.c) Ref
         .success => |ast| ref_mod.mkEid(ast),
         .failure => |err| ref_mod.mkEid(err),
     };
+}
+
+/// `[grammar defineRule: name as: pat]` — appends a rule to grammar's
+/// linked-list. Returns rule EID Ref.
+fn defineRuleAsImpl(s: *Send, name_ref: Ref, pat_ref: Ref) callconv(.c) Ref {
+    var st = &(g_install orelse return ref_mod.NIL);
+    if (!ref_mod.isEid(s.receiver) or !strings.isString(name_ref) or !ref_mod.isEid(pat_ref)) return ref_mod.NIL;
+    const grammar = ref_mod.untagEid(s.receiver);
+    const pat = ref_mod.untagEid(pat_ref);
+    const name = strings.bytes(name_ref);
+    const rule_eid = defineRule(&st.engine, grammar, name, pat) catch return ref_mod.NIL;
+    return ref_mod.mkEid(rule_eid);
+}
+
+// -- PEG_VT constructor methods --------------------------------------------
+// All take `s.receiver` = PEG_EID (ignored) and return a pattern / grammar EID
+// Ref. Argument validation: string Refs for literal/ruleRef name, EID Refs
+// for star/plus/opt/and/not child.
+
+fn newGrammarImpl(s: *Send) callconv(.c) Ref {
+    _ = s;
+    var st = &(g_install orelse return ref_mod.NIL);
+    const g = mkGrammar(&st.engine) catch return ref_mod.NIL;
+    return ref_mod.mkEid(g);
+}
+
+fn literalImpl(s: *Send, v_ref: Ref) callconv(.c) Ref {
+    _ = s;
+    var st = &(g_install orelse return ref_mod.NIL);
+    if (!strings.isString(v_ref)) return ref_mod.NIL;
+    const pat = mkLiteral(&st.engine, strings.bytes(v_ref)) catch return ref_mod.NIL;
+    return ref_mod.mkEid(pat);
+}
+
+fn ruleRefImpl(s: *Send, name_ref: Ref) callconv(.c) Ref {
+    _ = s;
+    var st = &(g_install orelse return ref_mod.NIL);
+    if (!strings.isString(name_ref)) return ref_mod.NIL;
+    const pat = mkRuleRef(&st.engine, strings.bytes(name_ref)) catch return ref_mod.NIL;
+    return ref_mod.mkEid(pat);
+}
+
+fn anyByteImpl(s: *Send) callconv(.c) Ref {
+    _ = s;
+    var st = &(g_install orelse return ref_mod.NIL);
+    const pat = mkAny(&st.engine) catch return ref_mod.NIL;
+    return ref_mod.mkEid(pat);
+}
+
+fn eofImpl(s: *Send) callconv(.c) Ref {
+    _ = s;
+    var st = &(g_install orelse return ref_mod.NIL);
+    const pat = mkEof(&st.engine) catch return ref_mod.NIL;
+    return ref_mod.mkEid(pat);
+}
+
+fn unaryImpl(
+    arg_ref: Ref,
+    ctor: *const fn (*Engine, u64) anyerror!u64,
+) Ref {
+    var st = &(g_install orelse return ref_mod.NIL);
+    if (!ref_mod.isEid(arg_ref)) return ref_mod.NIL;
+    const pat = ctor(&st.engine, ref_mod.untagEid(arg_ref)) catch return ref_mod.NIL;
+    return ref_mod.mkEid(pat);
+}
+
+fn starImpl(s: *Send, arg: Ref) callconv(.c) Ref {
+    _ = s;
+    return unaryImpl(arg, mkStar);
+}
+fn plusImpl(s: *Send, arg: Ref) callconv(.c) Ref {
+    _ = s;
+    return unaryImpl(arg, mkPlus);
+}
+fn optImpl(s: *Send, arg: Ref) callconv(.c) Ref {
+    _ = s;
+    return unaryImpl(arg, mkOpt);
+}
+fn andImpl(s: *Send, arg: Ref) callconv(.c) Ref {
+    _ = s;
+    return unaryImpl(arg, mkAnd);
+}
+fn notImpl(s: *Send, arg: Ref) callconv(.c) Ref {
+    _ = s;
+    return unaryImpl(arg, mkNot);
 }

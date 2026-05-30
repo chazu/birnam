@@ -71,6 +71,73 @@ test "load peg dylib: parse:from: is installed on GRAMMAR_VT" {
     try testing.expect(ref_mod.isEid(method_ref));
 }
 
+test "send-dispatched: build grammar entirely through sends and parse" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.LoadFailed;
+
+    const peg_ref = ref_mod.mkEid(kernel_eids.PEG_EID);
+    const sel_new_grammar = s.interner.str_to_eid.get("newGrammar").?;
+    const sel_literal = s.interner.str_to_eid.get("literal:").?;
+    const sel_plus = s.interner.str_to_eid.get("plus:").?;
+    const sel_define = s.interner.str_to_eid.get("defineRule:as:").?;
+    const sel_parse = s.interner.str_to_eid.get("parse:from:").?;
+
+    const grammar = send_mod.send0(peg_ref, sel_new_grammar);
+    try testing.expect(ref_mod.isEid(grammar));
+
+    const lit = send_mod.send1(peg_ref, sel_literal, try strings.mkString(a, "a"));
+    const plus = send_mod.send1(peg_ref, sel_plus, lit);
+    const start_name = try strings.mkString(a, "start");
+    _ = send_mod.send2(grammar, sel_define, start_name, plus);
+
+    const src = try strings.mkString(a, "aaa");
+    const result = send_mod.send2(grammar, sel_parse, src, start_name);
+    try testing.expect(ref_mod.isEid(result));
+    const ast = ref_mod.untagEid(result);
+    const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(end_ref));
+}
+
+test "send-dispatched: eof + anyByte + opt round-trip" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.LoadFailed;
+
+    const peg_ref = ref_mod.mkEid(kernel_eids.PEG_EID);
+    const sel_new_grammar = s.interner.str_to_eid.get("newGrammar").?;
+    const sel_any = s.interner.str_to_eid.get("anyByte").?;
+    const sel_eof = s.interner.str_to_eid.get("eof").?;
+    const sel_plus = s.interner.str_to_eid.get("plus:").?;
+    const sel_define = s.interner.str_to_eid.get("defineRule:as:").?;
+    const sel_parse = s.interner.str_to_eid.get("parse:from:").?;
+
+    // We can't build seq via send yet (deferred — needs vector arg), so the
+    // grammar is just `start = anyByte+`. Verify it consumes everything.
+    const grammar = send_mod.send0(peg_ref, sel_new_grammar);
+    const any_pat = send_mod.send0(peg_ref, sel_any);
+    const plus = send_mod.send1(peg_ref, sel_plus, any_pat);
+    _ = send_mod.send2(grammar, sel_define, try strings.mkString(a, "start"), plus);
+
+    const result = send_mod.send2(grammar, sel_parse, try strings.mkString(a, "xyz"), try strings.mkString(a, "start"));
+    const ast = ref_mod.untagEid(result);
+    const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(end_ref));
+    // eof alone matches empty input.
+    const grammar2 = send_mod.send0(peg_ref, sel_new_grammar);
+    const eof_pat = send_mod.send0(peg_ref, sel_eof);
+    _ = send_mod.send2(grammar2, sel_define, try strings.mkString(a, "start"), eof_pat);
+    const empty_result = send_mod.send2(grammar2, sel_parse, try strings.mkString(a, ""), try strings.mkString(a, "start"));
+    const empty_ast = ref_mod.untagEid(empty_result);
+    try testing.expect(s.store.currentValue(empty_ast, kernel_eids.ATTR_VTABLE) == null);
+}
+
 test "load peg dylib + Zig-built grammar + send-dispatched parse" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

@@ -298,6 +298,10 @@ pub fn boot(
     _ = try store.assert(kernel_eids.TRUE_EID, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.TRUE_VT), m_boot);
     _ = try store.assert(kernel_eids.FALSE_EID, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.FALSE_VT), m_boot);
 
+    // PEG_EID singleton — pattern-constructor receiver. `[PEG literal: ...]`
+    // dispatches against PEG_VT's installed methods (10.0 step 5).
+    _ = try store.assert(kernel_eids.PEG_EID, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.PEG_VT), m_boot);
+
     // Seed Phase 10 selector + attribute names so user code can intern them
     // by string and recover the kernel EID (Phase 4.5 interner pattern).
     try interner.seed(store, kernel_eids.SEL_DEFINE_RULE_AS, "defineRule:as:");
