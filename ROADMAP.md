@@ -23,11 +23,11 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Phase 8: promotion/demotion (hotness counter, threshold auto-promote, FFI pin, shape-change demote) ✓
 - Phase 7.5: metacircular bind (`:bind` override along delegate chain, recursion guard limit=4, full mcache flush on mutate) ✓
 - Phase 9 (substantial): boxed Float + FFI pointer; dyncall 1.4 vendored; sig-string parser; ffi.invoke engine; ffi.registerWrap + per-arity shim closures; send-dispatched sqrt/strlen end-to-end; Mach-O 64-bit reader with symbol iterator ✓
-   - Deferred to 9.5: Module entity wrapper (`Module load:`/`wrap:as:signature:` as send-dispatchable selectors) and lazy `Module>>symbols` enumeration via the Mach-O reader
+- Phase 9.5 (complete, all 5 sub-bundles): Module entity wrapper (delegate-vt + load:/wrap:as:sig:/path/handle); schema multi-cardinality (:one / :many with polymorphic currentValue per ADR-9.5-D2); Module>>symbols lazy enumeration via :many cardinality; fact-dispatched reader registry + ELF reader + linux gate scaffolding; Module unload + stale-pointer machinery (:ffi-owner / :ffi-stale? / SEL_UNLOAD). USER_EID_START bumped from 64 to 256 to make room for Phase 10+. ✓
 
-**Test count: 208/208 across 57 build steps.**
+**Test count: 239/239 across 63 build steps.**
 
-**Next: Phase 9.5** — Module dylib (entity-level wrap of registerWrap), lazy Module>>symbols using shipped Mach-O reader, ELF reader for linux gate flip, Module unload + stale-pointer flags, schema/multi-cardinality.
+**Next: Phase 10.0 — PEG module.** Standalone Zig PEG engine loadable as a birnam module. First step toward the language module.
 
 ---
 
