@@ -41,30 +41,92 @@ Produces:
 - `zig-out/lib/libbirnam_repl.dylib`  — Phase 6 REPL (Phase 10.5 replaces)
 - `zig-out/lib/libbirnam_hello.dylib` — smoke-test module
 
-## Run the demo (via test runner)
+## Run the demo
 
-The end-to-end demo lives in `src/kernel/lang_module_test.zig`. To
-run just the 4 DEMO cases:
-
-```
-zig build test 2>&1 | tail -20
-```
-
-You'll see `Build Summary: 73/73 steps succeeded; 274/274 tests
-passed`. The DEMO cases are buried in that 274 — they prove these
-inputs eval to the expected SmallInts:
-
-| Input source       | Result | What it demonstrates           |
-|--------------------|--------|--------------------------------|
-| `"42"`             | 42     | bare literal                   |
-| `"[3 squared]"`    | 9      | unary send + SmallInt primitive |
-| `"[3 succ]"`       | 4      | another unary primitive        |
-| `"[[3 succ] squared]"` | 16 | nested send (receiver is itself a send) |
-
-To run a specific demo case interactively:
+### Interactive REPL (preferred — Phase 10.5)
 
 ```
-zig build test --summary all 2>&1 | grep "DEMO:"
+./zig-out/bin/birnam \
+    ./zig-out/lib/libbirnam_peg.dylib \
+    ./zig-out/lib/libbirnam_lang.dylib
+```
+
+You get a `birnam>` prompt. Each line is parsed by the PEG engine,
+desugared into a typed AST, and evaluated by the send-dispatched
+eval methods. Type expressions; results print as `=> value`. Lines
+starting with `:` are debug commands (`:reset` clears the scope
+stack — others land in follow-ups). Ctrl+D exits.
+
+Try these in order:
+
+```
+birnam> 42
+=> 42
+
+birnam> [3 squared]
+=> 9
+
+birnam> [5 succ]
+=> 6
+
+birnam> [[3 succ] squared]
+=> 16
+
+birnam> [[3 vtable] method: #neg do: [| [self negate]]]
+=> <eid:68>
+
+birnam> [7 neg]
+=> -7
+
+birnam> [12 neg]
+=> -12
+
+birnam> [[3 vtable] method: #pick:or: do: [:a :b | b]]
+=> <eid:68>
+
+birnam> [99 pick: 10 or: 20]
+=> 20
+
+birnam> nil
+=> nil
+
+birnam> true
+=> true
+
+birnam> "hello"
+=> "hello"
+```
+
+What just happened:
+
+- The `[[3 vtable] method: #neg do: [| [self negate]]]` line
+  *installed a user-defined method* on the kernel-fixed SmallInt
+  vtable from inside the running image. The block `[| [self
+  negate]]` evaluated to a kernel-shaped closure whose body is the
+  AST entity for `[self negate]`.
+- `[7 neg]` then dispatched against the installed method. The
+  block-invocation shim bound `self` to `7`, evaluated the body,
+  and returned `-7`.
+- `[[3 vtable] method: #pick:or: do: [:a :b | b]]` installed a
+  2-parameter block as a compound-keyword method. `[99 pick: 10
+  or: 20]` invoked it with `a = 10`, `b = 20`, returned `b`.
+
+The image you're typing into is the same fact store the test runner
+uses; you're just driving it via stdin instead of a Zig test.
+
+### Test-runner mode (CI)
+
+```
+zig build test
+```
+
+Final line should read `Build Summary: 73/73 steps succeeded;
+277/277 tests passed`. The DEMO-labelled cases in the test output
+exercise the same path as the REPL — useful for CI regression
+checks. List them with:
+
+```
+zig build test --summary all 2>&1 | grep "DEMO"
 ```
 
 ## What to look at (suggested walk)
@@ -167,10 +229,14 @@ Each eval method is a regular fact installed at lang-dylib init —
 user code can override any of them via `[<kind-vt> method: #eval
 do: [...]]` once Phase 10.4 method-install ships.
 
-### 6. The substrate moment (2 minutes)
+### 6. The substrate moment (2 minutes) — drive it live
 
-Open `src/kernel/lang_module_test.zig`, run the `DEMO: parse + eval
-[3 squared] → 9` test. Walk what happens:
+Open a terminal, run `./zig-out/bin/birnam ./zig-out/lib/
+libbirnam_peg.dylib ./zig-out/lib/libbirnam_lang.dylib`, and type at
+the prompt. The session in the "Run the demo" section above is the
+walk script. Show the install line, then dispatch through the user-
+defined method, then add a second method with parameters and
+dispatch it. Each prompt-and-result pair is one full trip through:
 
 ```
 src_ref = mkString("[3 squared]")
@@ -202,9 +268,14 @@ Open `ROADMAP.md`. Show:
 - ✓ Phase 10.2.5 (variadic dispatch — kernel-deep edit per
   ADR-10-Send-Arity)
 - ✓ Phase 10.2 (parser/desugar) + 10.3 minimal (eval)
-- 🗓 Phase 10.3 rest — booleans, blocks, scope, non-local return, `^`
-- 🗓 Phase 10.4 — method install in user source
-- 🗓 Phase 10.5 — REPL replacement (parseExpr + eval per line)
+- ✓ Phase 10.4 (method install via `[vt method:#sel do:[block]]`)
+- ✓ Phase 10.4 follow-up (block params `[:x :y | body]` + compound
+  symbols `#kw1:kw2:` + transient scope stack)
+- ✓ Phase 10.5 (REPL — lang dylib drives the stdin loop)
+- 🗓 Phase 10.3 rest — booleans (`ifTrue:ifFalse:`), `whileTrue:`,
+  full scope chain (ADR-10-E2 truth + speed layers), non-local
+  return `^` (ADR-10-E4 `g_unwinding`), `:=` assignment, `;`
+  statement separator, binary operators, comments, float literals
 - 🗓 Phase 11 — bytecode VM
 - 🗓 Phase 12 — image snapshot
 - 🗓 Phase 13 — pruning + reachability GC
@@ -215,23 +286,29 @@ Open `ROADMAP.md`. Show:
 (So the audience knows what's coming.)
 
 - **Booleans + Block + iteration primitives.** `[true ifTrue:[…]
-  ifFalse:[…]]` needs `AST_BLOCK_VT` eval + scope chain. Wired in
-  the kernel-EID block (Phase 10.1.a) but methods not installed yet.
-- **Scope + binding entities.** Currently `AST_VAR_REF_VT` desugars
-  but eval doesn't walk a scope chain. ADR-10-E2 truth-layer
-  entities and parse-time slot resolution are spec-locked but not
-  implemented.
+  ifFalse:[…]]` needs eval methods installed on TRUE_VT / FALSE_VT
+  and Block-value dispatch. Vts are wired (Phase 10.1.a) but
+  the method bodies haven't been installed yet.
+- **Full scope chain.** Current implementation uses a flat module-
+  static stack (`g_scope`, 64 entries) that's pushed/popped on each
+  block invocation. ADR-10-E2 truth-layer (BINDING_VT / SCOPE_VT
+  entities) and speed-layer (parse-time slot resolution) is
+  spec-locked but not implemented. The flat stack covers block-as-
+  method invocation but not block-closes-over-enclosing-scope or
+  REPL top-level persistence.
 - **Non-local return `^`.** ADR-10-E4: `g_unwinding` side-channel +
   `:ast-method-frame` back-pointer. Spec-locked, not implemented.
-- **Method install in user source.** `[Point method: #foo do: [block]]`
-  — Phase 10.4. Today methods install via direct fact-assertion from
-  Zig at lang-dylib init.
-- **REPL.** Phase 6's hand-rolled stdin parser is still wired; Phase
-  10.5 swaps in `parseExpr:` + `eval` per line + multi-line
-  furthest-failure detection.
+- **`:=` assignment, `;` statements, binary operators, comments,
+  floats.** Grammar can be extended incrementally — the substrate
+  doesn't care; each adds a few rules in `buildGrammar()` and a few
+  branches in `desugar()`.
+- **Multi-line REPL input.** Currently one expression per line.
+  T2-locked path: PEG furthest-failure-at-EOF detection. Land
+  alongside scope-chain work.
 - **Image snapshot / load.** Phase 12 — fact-store roots + mmappable
   segment files. Without it, every demo invocation rebuilds the
-  whole tower from scratch.
+  whole tower from scratch. (For the demo, this is actually a *
+  feature* — every birnam invocation comes up identical.)
 
 ## What's interesting beyond the demo
 
