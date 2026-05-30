@@ -36,6 +36,30 @@ fn mkEid(eid: u64) Ref {
 // Kernel-fixed EIDs (mirror src/kernel/kernel_eids.zig).
 const PEG_EID: u64 = 99;
 
+// AST kind vts + binding/scope vts + singletons.
+const AST_LITERAL_VT: u64 = 105;
+const AST_VAR_REF_VT: u64 = 106;
+const AST_SELF_VT: u64 = 107;
+const AST_KEYWORD_SEND_VT: u64 = 108;
+const AST_UNARY_SEND_VT: u64 = 109;
+const AST_BINARY_SEND_VT: u64 = 110;
+const SMALLINT_VT: u64 = 68;
+const TRUE_EID: u64 = 72;
+const FALSE_EID: u64 = 73;
+
+const ATTR_AST_VALUE: u64 = 118;
+const ATTR_AST_NAME: u64 = 119;
+const ATTR_AST_RECEIVER: u64 = 120;
+const ATTR_AST_SELECTOR: u64 = 121;
+const ATTR_AST_FIRST_ARG: u64 = 122;
+const ATTR_AST_NEXT_SIBLING: u64 = 93;
+const ATTR_AST_FIRST_CHILD: u64 = 92;
+const ATTR_AST_RULE_NAME: u64 = 91;
+const ATTR_AST_BYTE_START: u64 = 94;
+const ATTR_AST_BYTE_END: u64 = 95;
+const ATTR_VTABLE: u64 = 19;
+const ATTR_DELEGATE: u64 = 22;
+
 const ShellContext = extern struct {
     log: *const fn ([*:0]const u8) callconv(.c) void,
     set_repl_handler: *const fn (?*const fn ([*:0]const u8) callconv(.c) void) callconv(.c) void,
@@ -151,6 +175,26 @@ var g_api: ?*const IdApi = null;
 var g_log: ?*const fn ([*:0]const u8) callconv(.c) void = null;
 var g_module_eid: u64 = 0;
 var g_grammar_eid: u64 = 0;
+var g_source: []const u8 = "";
+
+// Cached rule-name EIDs (interned at module init).
+var rn_integer: u64 = 0;
+var rn_string: u64 = 0;
+var rn_kw_nil: u64 = 0;
+var rn_kw_true: u64 = 0;
+var rn_kw_false: u64 = 0;
+var rn_kw_self: u64 = 0;
+var rn_identifier: u64 = 0;
+var rn_atom: u64 = 0;
+var rn_expression: u64 = 0;
+var rn_bracket_form: u64 = 0;
+var rn_bracket_unary: u64 = 0;
+var rn_bracket_keyword: u64 = 0;
+var rn_unary_tail: u64 = 0;
+var rn_kw_arg: u64 = 0;
+var rn_kw_suffix: u64 = 0;
+var rn_start: u64 = 0;
+var rn_ws: u64 = 0;
 
 // Cached selector EIDs.
 var sel_new_grammar: u64 = 0;
@@ -424,6 +468,417 @@ fn buildGrammar() void {
     }
 }
 
+// -- Desugar (CST → typed AST) -----------------------------------------------
+
+fn cstRuleName(cst_eid: u64) u64 {
+    const api = g_api.?;
+    const ref = api.query_eavt(cst_eid, ATTR_AST_RULE_NAME);
+    if ((ref & 0b111) != 0b010) return 0;
+    return ref >> 3;
+}
+
+fn cstByteRange(cst_eid: u64) struct { start: usize, end: usize } {
+    const api = g_api.?;
+    const sr = api.query_eavt(cst_eid, ATTR_AST_BYTE_START);
+    const er = api.query_eavt(cst_eid, ATTR_AST_BYTE_END);
+    const start: usize = @intCast(untagSmallInt(sr));
+    const end: usize = @intCast(untagSmallInt(er));
+    return .{ .start = start, .end = end };
+}
+
+fn untagSmallInt(r: Ref) i64 {
+    return @as(i64, @bitCast(r)) >> 3;
+}
+
+fn cstFirstChild(cst_eid: u64) u64 {
+    const ref = g_api.?.query_eavt(cst_eid, ATTR_AST_FIRST_CHILD);
+    if ((ref & 0b111) != 0b010) return 0;
+    return ref >> 3;
+}
+
+fn cstNextSibling(cst_eid: u64) u64 {
+    const ref = g_api.?.query_eavt(cst_eid, ATTR_AST_NEXT_SIBLING);
+    if ((ref & 0b111) != 0b010) return 0;
+    return ref >> 3;
+}
+
+fn newAstNode(kind_vt: u64, byte_start: usize, byte_end: usize) u64 {
+    const api = g_api.?;
+    const eid = api.alloc_eid();
+    _ = api.assert_fact(eid, ATTR_VTABLE, mkEid(kind_vt), g_module_eid);
+    _ = api.assert_fact(eid, ATTR_AST_BYTE_START, mkSmallInt(@intCast(byte_start)), g_module_eid);
+    _ = api.assert_fact(eid, ATTR_AST_BYTE_END, mkSmallInt(@intCast(byte_end)), g_module_eid);
+    return eid;
+}
+
+/// Walk a CST node, return a typed AST node EID.
+fn desugar(cst_eid: u64) u64 {
+    const api = g_api.?;
+    const rn = cstRuleName(cst_eid);
+    const span = cstByteRange(cst_eid);
+
+    if (rn == rn_integer) {
+        // Parse digits between span.start..span.end.
+        const bytes = g_source[span.start..span.end];
+        var n: i64 = 0;
+        for (bytes) |c| n = n * 10 + (c - '0');
+        const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkSmallInt(n), g_module_eid);
+        return ast;
+    }
+    if (rn == rn_string) {
+        // Strip surrounding quotes — span.start+1 .. span.end-1.
+        const bytes = g_source[span.start + 1 .. span.end - 1];
+        const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, api.make_string(bytes.ptr, bytes.len), g_module_eid);
+        return ast;
+    }
+    if (rn == rn_kw_nil) {
+        const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, g_module_eid);
+        return ast;
+    }
+    if (rn == rn_kw_true) {
+        const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(TRUE_EID), g_module_eid);
+        return ast;
+    }
+    if (rn == rn_kw_false) {
+        const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(FALSE_EID), g_module_eid);
+        return ast;
+    }
+    if (rn == rn_kw_self) {
+        return newAstNode(AST_SELF_VT, span.start, span.end);
+    }
+    if (rn == rn_identifier) {
+        const bytes = g_source[span.start..span.end];
+        const name_eid = api.intern(bytes.ptr, bytes.len);
+        const ast = newAstNode(AST_VAR_REF_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_NAME, mkEid(name_eid), g_module_eid);
+        return ast;
+    }
+    if (rn == rn_atom or rn == rn_expression or rn == rn_bracket_form or rn == rn_start) {
+        const child = cstFirstChild(cst_eid);
+        // For start: children are ws, expression, ws (ws-CST). Skip ws-shaped children.
+        var c = child;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn == rn_ws) continue;
+            return desugar(c);
+        }
+        // Fallback: literal NIL node.
+        const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, g_module_eid);
+        return ast;
+    }
+    if (rn == rn_bracket_unary) {
+        // Children include: expression (receiver) + N unary-tail entries
+        // (each containing a ws + identifier). Walk children, ignore ws.
+        var c = cstFirstChild(cst_eid);
+        // Find the receiver (first expression).
+        var receiver_ast: u64 = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn == rn_ws) continue;
+            if (crn == rn_expression) {
+                receiver_ast = desugar(c);
+                c = cstNextSibling(c);
+                break;
+            }
+        }
+        // Now iterate unary-tails — each contributes a selector name. Fold
+        // left so chained `[1 succ squared]` = (1 succ) squared.
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn != rn_unary_tail) continue;
+            // unary-tail's children: identifier (the selector name).
+            const tail_first = cstFirstChild(c);
+            var tc = tail_first;
+            while (tc != 0) : (tc = cstNextSibling(tc)) {
+                if (cstRuleName(tc) == rn_identifier) {
+                    const id_span = cstByteRange(tc);
+                    const sel_bytes = g_source[id_span.start..id_span.end];
+                    const sel_eid = api.intern(sel_bytes.ptr, sel_bytes.len);
+                    const send_ast = newAstNode(AST_UNARY_SEND_VT, span.start, id_span.end);
+                    _ = api.assert_fact(send_ast, ATTR_AST_RECEIVER, mkEid(receiver_ast), g_module_eid);
+                    _ = api.assert_fact(send_ast, ATTR_AST_SELECTOR, mkEid(sel_eid), g_module_eid);
+                    receiver_ast = send_ast;
+                    break;
+                }
+            }
+        }
+        return receiver_ast;
+    }
+    if (rn == rn_bracket_keyword) {
+        var c = cstFirstChild(cst_eid);
+        var receiver_ast: u64 = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn == rn_ws) continue;
+            if (crn == rn_expression) {
+                receiver_ast = desugar(c);
+                c = cstNextSibling(c);
+                break;
+            }
+        }
+        // Build compound selector + args list from kw-arg children.
+        // Each kw-arg's children: ws, kw-suffix, ws, expression.
+        // kw-suffix's children: identifier (+ literal ":").
+        var sel_buf: [128]u8 = undefined;
+        var sel_len: usize = 0;
+        var first_arg_ast: u64 = 0;
+        var last_arg_ast: u64 = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            if (cstRuleName(c) != rn_kw_arg) continue;
+            // Walk kw-arg's children.
+            var ac = cstFirstChild(c);
+            var arg_ast: u64 = 0;
+            while (ac != 0) : (ac = cstNextSibling(ac)) {
+                const acrn = cstRuleName(ac);
+                if (acrn == rn_kw_suffix) {
+                    // suffix-id is the first identifier child of kw-suffix.
+                    var sc = cstFirstChild(ac);
+                    while (sc != 0) : (sc = cstNextSibling(sc)) {
+                        if (cstRuleName(sc) == rn_identifier) {
+                            const id_span = cstByteRange(sc);
+                            const name_bytes = g_source[id_span.start..id_span.end];
+                            if (sel_len + name_bytes.len + 1 < sel_buf.len) {
+                                @memcpy(sel_buf[sel_len .. sel_len + name_bytes.len], name_bytes);
+                                sel_len += name_bytes.len;
+                                sel_buf[sel_len] = ':';
+                                sel_len += 1;
+                            }
+                            break;
+                        }
+                    }
+                } else if (acrn == rn_expression) {
+                    arg_ast = desugar(ac);
+                }
+            }
+            if (arg_ast != 0) {
+                if (first_arg_ast == 0) {
+                    first_arg_ast = arg_ast;
+                } else {
+                    _ = api.assert_fact(last_arg_ast, ATTR_AST_NEXT_SIBLING, mkEid(arg_ast), g_module_eid);
+                }
+                last_arg_ast = arg_ast;
+            }
+        }
+        const sel_eid = api.intern(sel_buf[0..sel_len].ptr, sel_len);
+        const send_ast = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
+        _ = api.assert_fact(send_ast, ATTR_AST_RECEIVER, mkEid(receiver_ast), g_module_eid);
+        _ = api.assert_fact(send_ast, ATTR_AST_SELECTOR, mkEid(sel_eid), g_module_eid);
+        if (first_arg_ast != 0) {
+            _ = api.assert_fact(send_ast, ATTR_AST_FIRST_ARG, mkEid(first_arg_ast), g_module_eid);
+        }
+        return send_ast;
+    }
+    // Unknown rule — fallback to NIL literal.
+    const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+    _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, g_module_eid);
+    return ast;
+}
+
+fn cacheRuleNames() void {
+    const api = g_api.?;
+    rn_integer = api.intern("integer".ptr, 7);
+    rn_string = api.intern("string".ptr, 6);
+    rn_kw_nil = api.intern("kw-nil".ptr, 6);
+    rn_kw_true = api.intern("kw-true".ptr, 7);
+    rn_kw_false = api.intern("kw-false".ptr, 8);
+    rn_kw_self = api.intern("kw-self".ptr, 7);
+    rn_identifier = api.intern("identifier".ptr, 10);
+    rn_atom = api.intern("atom".ptr, 4);
+    rn_expression = api.intern("expression".ptr, 10);
+    rn_bracket_form = api.intern("bracket-form".ptr, 12);
+    rn_bracket_unary = api.intern("bracket-unary".ptr, 13);
+    rn_bracket_keyword = api.intern("bracket-keyword".ptr, 15);
+    rn_unary_tail = api.intern("unary-tail".ptr, 10);
+    rn_kw_arg = api.intern("kw-arg".ptr, 6);
+    rn_kw_suffix = api.intern("kw-suffix".ptr, 9);
+    rn_start = api.intern("start".ptr, 5);
+    rn_ws = api.intern("ws".ptr, 2);
+}
+
+// -- Eval (Phase 10.3 minimal) -----------------------------------------------
+
+const Send = extern struct {
+    selector: u64,
+    receiver: Ref,
+    n_args: u8,
+    state: Ref,
+    closure: ?*anyopaque,
+};
+
+var sel_eval: u64 = 0;
+
+fn evalLiteralImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const api = g_api.?;
+    if (!isEid(s.receiver)) return NIL;
+    return api.query_eavt(s.receiver >> 3, ATTR_AST_VALUE);
+}
+
+fn evalSelfImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    return s.state;
+}
+
+fn evalUnarySendImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const api = g_api.?;
+    if (!isEid(s.receiver)) return NIL;
+    const ast_eid = s.receiver >> 3;
+    const recv_ast_ref = api.query_eavt(ast_eid, ATTR_AST_RECEIVER);
+    const sel_ref = api.query_eavt(ast_eid, ATTR_AST_SELECTOR);
+    if (!isEid(sel_ref)) return NIL;
+    const sel_eid = sel_ref >> 3;
+    // Eval the receiver AST.
+    const recv_val = api.send0(recv_ast_ref, sel_eval);
+    return api.send0(recv_val, sel_eid);
+}
+
+fn evalKeywordSendImpl(s: *Send, args_in: [*]const Ref, n_args_in: usize) callconv(.c) Ref {
+    _ = args_in;
+    _ = n_args_in;
+    const api = g_api.?;
+    if (!isEid(s.receiver)) return NIL;
+    const ast_eid = s.receiver >> 3;
+    const recv_ast_ref = api.query_eavt(ast_eid, ATTR_AST_RECEIVER);
+    const sel_ref = api.query_eavt(ast_eid, ATTR_AST_SELECTOR);
+    if (!isEid(sel_ref)) return NIL;
+    const sel_eid = sel_ref >> 3;
+    const recv_val = api.send0(recv_ast_ref, sel_eval);
+    // Collect args.
+    var buf: [16]Ref = undefined;
+    var count: usize = 0;
+    var cur_ref = api.query_eavt(ast_eid, ATTR_AST_FIRST_ARG);
+    while (isEid(cur_ref) and count < buf.len) : (count += 1) {
+        const ast_arg = cur_ref >> 3;
+        buf[count] = api.send0(cur_ref, sel_eval);
+        cur_ref = api.query_eavt(ast_arg, ATTR_AST_NEXT_SIBLING);
+    }
+    return api.sendN(recv_val, sel_eid, &buf, count);
+}
+
+fn isEid(r: Ref) bool {
+    return (r & 0b111) == 0b010;
+}
+
+// -- SmallInt primitives installed by lang dylib --------------------------
+
+fn smallintNegateImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const n = untagSmallInt(s.receiver);
+    return mkSmallInt(-n);
+}
+
+fn smallintSquaredImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const n = untagSmallInt(s.receiver);
+    return mkSmallInt(n * n);
+}
+
+fn smallintSuccImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const n = untagSmallInt(s.receiver);
+    return mkSmallInt(n + 1);
+}
+
+fn smallintPlusImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const a_ = untagSmallInt(s.receiver);
+    const b_ = untagSmallInt(args[0]);
+    return mkSmallInt(a_ + b_);
+}
+
+fn smallintTimesImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const a_ = untagSmallInt(s.receiver);
+    const b_ = untagSmallInt(args[0]);
+    return mkSmallInt(a_ * b_);
+}
+
+// -- parseExpr method ------------------------------------------------------
+
+fn parseExprImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = n_args;
+    const api = g_api.?;
+    const src_ref = args[0];
+    if (!isString(src_ref)) return NIL;
+    const src = stringBytes(src_ref);
+    g_source = src;
+
+    // Parse via PEG.
+    const src_dup = api.make_string(src.ptr, src.len);
+    const rule = api.make_string("start".ptr, 5);
+    const cst_result = api.send2(mkEid(g_grammar_eid), internSel("parse:from:"), src_dup, rule);
+    if (!isEid(cst_result)) return NIL;
+    const cst_eid = cst_result >> 3;
+    // Check it's not an ERROR.
+    const vt = api.query_eavt(cst_eid, ATTR_VTABLE);
+    if (vt != NIL) return cst_result; // pass-through ERROR_VT
+    return mkEid(desugar(cst_eid));
+}
+
+fn isString(r: Ref) bool {
+    return (r & 0b111) == 0b100;
+}
+
+const StringHeader = extern struct {
+    len: u64,
+};
+
+fn stringBytes(r: Ref) []const u8 {
+    const addr = r & ~@as(u64, 0b111);
+    const header: *const StringHeader = @ptrFromInt(addr);
+    const payload: [*]const u8 = @as([*]const u8, @ptrCast(header)) + @sizeOf(StringHeader);
+    return payload[0..header.len];
+}
+
+fn installMethods() void {
+    const api = g_api.?;
+    sel_eval = api.intern("eval".ptr, 4);
+
+    // Install eval methods on each AST kind-vt.
+    const sel_eval_eid = sel_eval;
+    _ = api.assert_fact(AST_LITERAL_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalLiteralImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(AST_SELF_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalSelfImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(AST_UNARY_SEND_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalUnarySendImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(AST_KEYWORD_SEND_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalKeywordSendImpl), NIL)), g_module_eid);
+
+    // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
+    const negate_sel = api.intern("negate".ptr, 6);
+    const squared_sel = api.intern("squared".ptr, 7);
+    const succ_sel = api.intern("succ".ptr, 4);
+    const plus_sel = api.intern("+".ptr, 1);
+    const times_sel = api.intern("*".ptr, 1);
+    _ = api.assert_fact(SMALLINT_VT, negate_sel, mkEid(api.make_closure(@ptrCast(&smallintNegateImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, squared_sel, mkEid(api.make_closure(@ptrCast(&smallintSquaredImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, succ_sel, mkEid(api.make_closure(@ptrCast(&smallintSuccImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, plus_sel, mkEid(api.make_closure(@ptrCast(&smallintPlusImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, times_sel, mkEid(api.make_closure(@ptrCast(&smallintTimesImpl), NIL)), g_module_eid);
+
+    // Install parseExpr: on the lang module entity itself so callers
+    // reach the desugar pipeline via send.
+    const sel_parse_expr = api.intern("parseExpr:".ptr, 10);
+    // The module entity needs a vt that responds to parseExpr:. Reuse
+    // LANG_VT (singleton). Install on LANG_VT, then assert lang module's
+    // :vtable = LANG_VT.
+    _ = api.assert_fact(g_module_eid, ATTR_VTABLE, mkEid(LANG_VT), g_module_eid);
+    _ = api.assert_fact(LANG_VT, sel_parse_expr, mkEid(api.make_closure(@ptrCast(&parseExprImpl), NIL)), g_module_eid);
+}
+
+const LANG_VT: u64 = 103;
+
 // -- Module init -------------------------------------------------------------
 
 export fn birnam_module_init(
@@ -452,6 +907,8 @@ export fn birnam_module_init(
     sel_define_rule_as = internSel("defineRule:as:");
 
     buildGrammar();
+    cacheRuleNames();
+    installMethods();
 
     // Export grammar EID on the module entity: `[<module_eid> grammar]`
     // returns mkEid(g_grammar_eid). Phase 10.2 parser bootstrap reads it.

@@ -211,6 +211,74 @@ test "lang grammar: nested send \"[[1 succ] squared]\"" {
     try testing.expectEqual(@as(i64, 18), ref_mod.untagSmallInt(end_ref));
 }
 
+test "DEMO: parse + eval [3 squared] → 9" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    const src_ref = try strings.mkString(a, "[3 squared]");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    try testing.expect(ref_mod.isEid(ast_ref));
+
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expect(ref_mod.isSmallInt(val));
+    try testing.expectEqual(@as(i64, 9), ref_mod.untagSmallInt(val));
+}
+
+test "DEMO: parse + eval [3 succ] → 4" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+    const src_ref = try strings.mkString(a, "[3 succ]");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expectEqual(@as(i64, 4), ref_mod.untagSmallInt(val));
+}
+
+test "DEMO: parse + eval [[3 succ] squared] → 16" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+    const src_ref = try strings.mkString(a, "[[3 succ] squared]");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expectEqual(@as(i64, 16), ref_mod.untagSmallInt(val));
+}
+
+test "DEMO: parse + eval bare integer literal → 42" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+    const src_ref = try strings.mkString(a, "42");
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+    const val = send_mod.send0(ast_ref, sel_eval);
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(val));
+}
+
 test "lang grammar: start fails on \"!!\" (no atom matches)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
