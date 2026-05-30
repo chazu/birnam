@@ -260,6 +260,18 @@ pub fn build(b: *std.Build) void {
     run_pmod_tests.step.dependOn(b.getInstallStep());
     test_step.dependOn(&run_pmod_tests.step);
 
+    const lmod_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/lang_module_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const lmod_tests = b.addTest(.{ .root_module = lmod_test_mod });
+    lmod_tests.linkLibrary(dyncall_lib);
+    lmod_tests.linkLibC();
+    const run_lmod_tests = b.addRunArtifact(lmod_tests);
+    run_lmod_tests.step.dependOn(b.getInstallStep());
+    test_step.dependOn(&run_lmod_tests.step);
+
     const rule_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/rule_test.zig"),
         .target = target,
