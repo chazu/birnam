@@ -26,8 +26,10 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Line comments `// ...` + block comments `/* ... */` ✓
 - Float literals `3.14` ✓ (`make_float` IdApi extension; AST_LITERAL_VT carries boxed Float Ref)
 - Non-local return `^expr` ✓ (ADR-10-E4 `g_unwinding` interim — first non-value-selector shim frame catches, value-frame shims propagate; Phase 11 retires per 11.5)
+- Float methods on FLOAT_VT ✓ (`+`, `-`, `*`, `/`, `=`, `<`, `>`, `negate`, `asInt`, `exp:`). SmallInt args auto-coerce to f64. `asFloat` on SmallInt. `[1.5 exp: 10]` substitutes for grammar exponent notation `1.5e10`.
+- Phase 10.4.5 S5 superseded by Phase 11 ✓ (see note below — no interpreter implementation needed)
 
-**Test count: 290/290 across 73 build steps.**
+**Test count: 291/291 across 73 build steps.**
 
 **Demoable today (live REPL via `./zig-out/bin/birnam libbirnam_peg libbirnam_lang`):**
 - Arithmetic + comparisons + branching
@@ -36,11 +38,17 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Closures-over-enclosing-scope (`makeAdder := [:a | [:b | [a + b]]]`)
 - REPL persistence across lines
 
-**Deferred (not blocking demo):**
-- Phase 10.4.5 S5 — parse-time slot resolution (speed-layer perf optimization)
-- Floats with exponent notation (`1.5e10`); current grammar covers `digit+ "." digit+` only
+**Deferred (no remaining blockers — both items resolved as "won't ship in interpreter"):**
+- Phase 10.4.5 S5 (parse-time slot resolution): **superseded by Phase 11**. The bytecode VM compiles `AST_VAR_REF_VT` nodes directly to bytecode slot-load operands. Implementing S5 in the tree-walker would just be thrown away when Phase 11 lands. Truth-layer correctness (S1-S4) is sufficient for the spike interpreter; speed comes from Phase 11 codegen, not from annotated AST nodes.
+- Float exponent notation (`1.5e10`): **superseded by `exp:` method**. User writes `[1.5 exp: 10]` instead. Grammar simpler, no overlap with `e`-as-identifier-start ambiguity.
 
-**Phase 10 substantially closed.** Remaining items are perf polish (S5) or grammar nicities (float exponents). The language now has: arithmetic, comparisons, control flow, blocks with params, closures-over-enclosing-scope, mutation, recursion via method install, iteration primitives, statement sequencing, comments, floats, and non-local return.
+**Phase 10 closed.** The language has: arithmetic + comparisons on SmallInt and Float (with mixed-type coercion), control flow via `ifTrue:ifFalse:`, blocks with parameters, closures-over-enclosing-scope captured by reference, mutation via `:=`, recursion via method install, iteration primitives (`whileTrue:`, `whileFalse:`, `timesRepeat:`, `to:do:`), statement sequencing via `;`, comments (`//` and `/* */`), string literals, symbol literals (including compound `#kw1:kw2:`), float literals, non-local return `^`, and full user-overridable method install via `[vt method:#sel do:[block]]`. REPL drives the stdin loop with persistent top-level bindings. All ~28 demo cases run in 73 build steps with 291 passing tests.
+
+**Next major arcs (in dependency order):**
+1. Phase 11 — bytecode VM (retires `g_unwinding`, fixes tree-walker stack overflow, makes execution faster, supersedes 10.4.5 S5 as a side effect)
+2. Phase 12 — image snapshot + load (mmappable fact-store segments, fast startup, state survives across runs)
+3. Phase 13 — pruning + reachability GC (AST/scope mark-sweep, history excise)
+4. Phase 14 — AOT (stripped binaries, no compiler at runtime)
 
 **Next milestones (pick by priority):**
 - Phase 10.4.5 S5 — optional perf optimization

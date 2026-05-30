@@ -685,6 +685,46 @@ test "DEMO 10.x: ^ escapes through inner value-frame to method frame" {
     try testing.expectEqual(@as(i64, 88), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 10.x: float arithmetic + comparisons" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    // [3.14 asInt] returns SmallInt 3
+    {
+        const src_ref = try strings.mkString(a, "[3.14 asInt]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(val));
+    }
+    // [[1.5 exp: 10] asInt] returns SmallInt 15000000000
+    {
+        const src_ref = try strings.mkString(a, "[[1.5 exp: 10] asInt]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, 15_000_000_000), ref_mod.untagSmallInt(val));
+    }
+    // [3.0 < 5.0] returns TRUE_EID
+    {
+        const src_ref = try strings.mkString(a, "[3.0 < 5.0]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(u64, 72), ref_mod.untagEid(val));
+    }
+    // SmallInt + Float coerces: [3 asFloat] + 0.14 = 3.14 (then asInt = 3)
+    {
+        const src_ref = try strings.mkString(a, "[[[3 asFloat] + 0.14] asInt]");
+        const ast_ref = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse_expr, src_ref);
+        const val = send_mod.send0(ast_ref, sel_eval);
+        try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(val));
+    }
+}
+
 test "lang grammar: start fails on \"!!\" (no atom matches)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

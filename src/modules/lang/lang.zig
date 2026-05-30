@@ -1424,6 +1424,74 @@ fn smallintGtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     return if (untagSmallInt(s.receiver) > untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
 }
 
+fn smallintAsFloatImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const api = g_api.?;
+    return api.make_float(@floatFromInt(untagSmallInt(s.receiver)));
+}
+
+// -- FLOAT_VT primitives --------------------------------------------------
+// Float arithmetic coerces SmallInt args to f64 automatically.
+
+fn argAsF64(r: Ref) f64 {
+    if (isSmallInt(r)) return @floatFromInt(untagSmallInt(r));
+    if (isFloatRef(r)) return floatRefValue(r);
+    return 0.0;
+}
+
+fn floatPlusImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    return g_api.?.make_float(floatRefValue(s.receiver) + argAsF64(args[0]));
+}
+fn floatMinusImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    return g_api.?.make_float(floatRefValue(s.receiver) - argAsF64(args[0]));
+}
+fn floatTimesImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    return g_api.?.make_float(floatRefValue(s.receiver) * argAsF64(args[0]));
+}
+fn floatDivImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const b_ = argAsF64(args[0]);
+    if (b_ == 0.0) return NIL;
+    return g_api.?.make_float(floatRefValue(s.receiver) / b_);
+}
+fn floatEqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    return if (floatRefValue(s.receiver) == argAsF64(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+fn floatLtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    return if (floatRefValue(s.receiver) < argAsF64(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+fn floatGtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    return if (floatRefValue(s.receiver) > argAsF64(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+
+fn floatAsIntImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const f = floatRefValue(s.receiver);
+    return mkSmallInt(@intFromFloat(f));
+}
+
+fn floatNegateImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    return g_api.?.make_float(-floatRefValue(s.receiver));
+}
+
+/// `[f exp: power]` — replaces float-literal exponent grammar. User writes
+/// `[1.5 exp: 10]` for `1.5 * 10^10`.
+fn floatExpImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    const power = argAsF64(args[0]);
+    return g_api.?.make_float(floatRefValue(s.receiver) * std.math.pow(f64, 10.0, power));
+}
+
 fn smallintVtableImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
     _ = args;
@@ -1810,6 +1878,22 @@ fn installMethods() void {
     _ = api.assert_fact(SMALLINT_VT, eq_sel, mkEid(api.make_closure(@ptrCast(&smallintEqImpl), NIL)), g_module_eid);
     _ = api.assert_fact(SMALLINT_VT, lt_sel, mkEid(api.make_closure(@ptrCast(&smallintLtImpl), NIL)), g_module_eid);
     _ = api.assert_fact(SMALLINT_VT, gt_sel, mkEid(api.make_closure(@ptrCast(&smallintGtImpl), NIL)), g_module_eid);
+    const as_float_sel = api.intern("asFloat".ptr, 7);
+    _ = api.assert_fact(SMALLINT_VT, as_float_sel, mkEid(api.make_closure(@ptrCast(&smallintAsFloatImpl), NIL)), g_module_eid);
+
+    // Float arithmetic + comparisons + asInt + negate + exp:
+    _ = api.assert_fact(FLOAT_VT, plus_sel, mkEid(api.make_closure(@ptrCast(&floatPlusImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, minus_sel, mkEid(api.make_closure(@ptrCast(&floatMinusImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, times_sel, mkEid(api.make_closure(@ptrCast(&floatTimesImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, div_sel, mkEid(api.make_closure(@ptrCast(&floatDivImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, eq_sel, mkEid(api.make_closure(@ptrCast(&floatEqImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, lt_sel, mkEid(api.make_closure(@ptrCast(&floatLtImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, gt_sel, mkEid(api.make_closure(@ptrCast(&floatGtImpl), NIL)), g_module_eid);
+    const as_int_sel = api.intern("asInt".ptr, 5);
+    _ = api.assert_fact(FLOAT_VT, as_int_sel, mkEid(api.make_closure(@ptrCast(&floatAsIntImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, negate_sel, mkEid(api.make_closure(@ptrCast(&floatNegateImpl), NIL)), g_module_eid);
+    const exp_sel = api.intern("exp:".ptr, 4);
+    _ = api.assert_fact(FLOAT_VT, exp_sel, mkEid(api.make_closure(@ptrCast(&floatExpImpl), NIL)), g_module_eid);
 
     const vt_sel = api.intern("vtable".ptr, 6);
     _ = api.assert_fact(SMALLINT_VT, vt_sel, mkEid(api.make_closure(@ptrCast(&smallintVtableImpl), NIL)), g_module_eid);

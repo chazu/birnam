@@ -181,11 +181,26 @@ birnam> [3 /* block comment */ + 4]
 => 7
 ```
 
-Float literals + non-local return `^`:
+Float literals + arithmetic + comparisons + non-local return `^`:
 
 ```
 birnam> 3.14
 => 3.14
+
+birnam> [3.14 + 2.0]
+=> 5.140000000000001
+
+birnam> [[3 asFloat] + 0.14]
+=> 3.14
+
+birnam> [1.5 exp: 10]                      // 1.5 × 10^10 — replaces exponent grammar
+=> 15000000000
+
+birnam> [3.14 asInt]
+=> 3
+
+birnam> [3.0 < 5.0]
+=> true
 
 birnam> [[3 vtable] method: #early do: [| ^99; 100]]
 => <eid:NNN>
@@ -411,11 +426,14 @@ Open `ROADMAP.md`. Show:
   AST_STMT_SEQ_VT
 - ✓ Line comments `// ...` + block comments `/* ... */` skipped
   by `ws`
-- ✓ Float literals (`make_float` IdApi extension + grammar)
+- ✓ Float literals + Float methods on FLOAT_VT (`+ - * / = < >`,
+  `negate`, `asInt`, `asFloat` on SmallInt, `exp:` for exponent)
+  with SmallInt mixed-type coercion
 - ✓ Non-local return `^` (ADR-10-E4 `g_unwinding` interim, retires
   in Phase 11)
-- 🗓 Phase 10.4.5 S5 — parse-time slot resolution (speed layer,
-  optional perf optimization)
+- ~~Phase 10.4.5 S5~~ — superseded by Phase 11 bytecode VM
+  (compiles AST_VAR_REF_VT to bytecode slot operands; tree-walker
+  optimization redundant)
 - 🗓 Phase 11 — bytecode VM
 - 🗓 Phase 12 — image snapshot
 - 🗓 Phase 13 — pruning + reachability GC
@@ -425,11 +443,10 @@ Open `ROADMAP.md`. Show:
 
 (So the audience knows what's coming.)
 
-- **Parse-time slot resolution (Phase 10.4.5 S5).** Speed-layer
-  optimization. Truth-layer (S1-S4) shipped — every binding lives
-  as a BINDING_VT entity. S5 annotates AST_VAR_REF_VT nodes with
-  (depth, slot) for fast lookup; eval falls back to fact-query
-  walk otherwise (current behavior).
+- **Phase 11 bytecode VM.** Will retire `g_unwinding` interim for
+  proper VM unwind opcodes. Phase 11 codegen compiles AST_VAR_REF_VT
+  nodes directly to slot-load operands, making Phase 10.4.5 S5
+  parse-time slot resolution unnecessary.
 - **Multi-line REPL input.** Currently one expression per line.
   T2-locked path: PEG furthest-failure-at-EOF detection. Land
   alongside scope-chain work.
