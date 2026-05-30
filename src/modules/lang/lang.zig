@@ -47,6 +47,7 @@ const AST_BLOCK_VT: u64 = 112;
 const ATTR_AST_BLOCK_BODY: u64 = 124;
 const CLOSURE_VT: u64 = 4;
 const VTABLE_VT: u64 = 1;
+const OBJECT_VT: u64 = 2;
 const SMALLINT_VT: u64 = 68;
 const TRUE_EID: u64 = 72;
 const FALSE_EID: u64 = 73;
@@ -1180,13 +1181,20 @@ fn smallintVtableImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) 
 
 // -- AST_BLOCK_VT eval + block-invocation shim ----------------------------
 
-/// Closure data stores mkEid(block_ast_eid), so the shim can look up both
-/// the body AST and the param-list at invocation time. Reading param-list
-/// each call is wasteful but acceptable for the spike; Phase 11 bytecode
-/// VM compiles params away.
-fn allocBlockClosure(block_ast_ref: Ref) Ref {
+/// Closure data is a pointer Ref to a 2-slot wrapper object:
+///   slot 0 = block AST entity Ref (mkEid)
+///   slot 1 = captured-scope Ref (mkEid of SCOPE_VT entity)
+/// The block-shim reads both at invocation time. Capturing the enclosing
+/// scope at block-eval time (instead of at block-invocation time) is what
+/// gives closures their Smalltalk semantics — inner blocks see outer
+/// lexical bindings through the chain (ADR-10-E2 S2 / E3 by-reference).
+fn allocBlockClosure(block_ast_ref: Ref, captured_scope: Ref) Ref {
     const api = g_api.?;
-    const closure_eid = api.make_closure(@ptrCast(&blockEvalShim), block_ast_ref);
+    const obj = api.alloc_object(mkEid(OBJECT_VT), 2) orelse return NIL;
+    api.set_slot(obj, 0, block_ast_ref);
+    api.set_slot(obj, 1, captured_scope);
+    const wrapper_ref = api.object_to_ref(obj);
+    const closure_eid = api.make_closure(@ptrCast(&blockEvalShim), wrapper_ref);
     return mkEid(closure_eid);
 }
 
@@ -1197,18 +1205,19 @@ fn blockEvalShim(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     const api = g_api.?;
     const closure_ptr = s.closure orelse return NIL;
     const slot_base: [*]const Ref = @ptrCast(@alignCast(closure_ptr));
-    const block_ast_ref = slot_base[1];
+    const wrapper_ref = slot_base[1]; // closure.data — pointer Ref to wrapper obj
+    if ((wrapper_ref & 0b111) != 0) return NIL;
+    const wrapper_obj: ?*anyopaque = @ptrFromInt(wrapper_ref);
+    const block_ast_ref = api.slot_at(wrapper_obj, 0);
+    const captured_scope_ref = api.slot_at(wrapper_obj, 1);
     if (!isEid(block_ast_ref)) return NIL;
     const block_ast_eid = block_ast_ref >> 3;
 
-    // Allocate a fresh scope for this activation. :scope-parent = NIL
-    // (S2 will fill in the captured enclosing scope). :scope-self =
-    // s.receiver (whatever bound to receive this send — typically the
-    // dispatch receiver for blocks-as-methods).
-    const new_scope_eid = newScopeEntity(NIL, s.receiver);
+    // Activation scope: parent = captured-at-eval-time enclosing scope.
+    // This is what lets inner blocks see outer lexical bindings (E3 by-ref).
+    const new_scope_eid = newScopeEntity(captured_scope_ref, s.receiver);
     const new_scope_ref = mkEid(new_scope_eid);
 
-    // Push param bindings into the new scope.
     var cur_ref = api.query_eavt(block_ast_eid, ATTR_AST_BLOCK_PARAMS_CONST);
     var idx: usize = 0;
     while (isEid(cur_ref) and !isNil(cur_ref) and idx < n_args) : (idx += 1) {
@@ -1229,11 +1238,9 @@ fn isNil(r: Ref) bool {
 }
 
 fn evalBlockImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
-    _ = args;
-    _ = n_args;
     if (!isEid(s.receiver)) return NIL;
-    // Pass the AST_BLOCK_VT entity Ref into the closure's data slot.
-    return allocBlockClosure(s.receiver);
+    // Capture the current scope at eval-time (E3 by-reference closure).
+    return allocBlockClosure(s.receiver, currentScope(args, n_args));
 }
 
 // -- Method install ---------------------------------------------------------
