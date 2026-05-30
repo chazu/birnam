@@ -336,6 +336,17 @@ pub fn build(b: *std.Build) void {
     const run_ffi_mod_tests = b.addRunArtifact(ffi_mod_tests);
     test_step.dependOn(&run_ffi_mod_tests.step);
 
+    const card_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/cardinality_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const card_tests = b.addTest(.{ .root_module = card_test_mod });
+    card_tests.linkLibrary(dyncall_lib);
+    card_tests.linkLibC();
+    const run_card_tests = b.addRunArtifact(card_tests);
+    test_step.dependOn(&run_card_tests.step);
+
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 
     const bench_step = b.step("bench", "Run microbenchmarks (ReleaseFast)");

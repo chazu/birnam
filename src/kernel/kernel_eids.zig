@@ -165,4 +165,9 @@ pub const SEL_WRAP_AS_SIG: u64 = 50;
 pub const SEL_PATH: u64 = 51;
 pub const SEL_HANDLE: u64 = 52;
 
-// 53..63 reserved for future kernel selectors / attributes
+/// Phase 9.5.2: schema cardinality. `[attr :cardinality :many]` opts an
+/// attribute into multi-value semantics; absence (or `:one`) keeps the
+/// Phase 0-9 implicit-retract-on-overwrite default.
+pub const ATTR_CARDINALITY: u64 = 53;
+
+// 54..63 reserved for future kernel selectors / attributes

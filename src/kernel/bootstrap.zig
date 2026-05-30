@@ -175,6 +175,7 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_BIND, "bind:");
     try interner.seed(store, kernel_eids.ATTR_FFI_ADDR, "ffi-addr");
     try interner.seed(store, kernel_eids.ATTR_FFI_SIG, "ffi-sig");
+    try interner.seed(store, kernel_eids.ATTR_CARDINALITY, "cardinality");
     try interner.seed(store, kernel_eids.ATTR_FFI_HANDLE, "ffi-handle");
     try interner.seed(store, kernel_eids.ATTR_FFI_PATH, "ffi-path");
     try interner.seed(store, kernel_eids.ATTR_ERROR_KIND, "error-kind");
@@ -207,6 +208,16 @@ pub fn boot(
 
     // -- Stage 12: install Phase 9.5 Module methods on MODULE_VT ---------
     try ffi_module_mod.installMethods(allocator, store, table);
+
+    // -- Stage 13: Phase 9.5.2 cardinality schema injection --------------
+    // Intern "many" so its EID is stable, then hand the fact store the
+    // (attr_eid, many_value_ref) pair so assert/currentValue can branch.
+    const many_eid = try interner.intern(store, table, "many");
+    _ = try interner.intern(store, table, "one");
+    store.setCardinalitySchema(.{
+        .attr_eid = kernel_eids.ATTR_CARDINALITY,
+        .many_value = ref_mod.mkEid(many_eid),
+    });
 
     return .{
         .vtable_vt_ref = object.toRef(vt_vt_ptr),

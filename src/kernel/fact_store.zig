@@ -22,6 +22,7 @@ const hamt = @import("hamt.zig");
 const rrb = @import("rrb.zig");
 const ref_mod = @import("ref.zig");
 const fact = @import("fact.zig");
+const boxed = @import("boxed.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const Op = fact.Op;
@@ -43,6 +44,18 @@ const AVETish = hamt.Hamt(u64, MidPresenceMap, hamt.U64Ctx);
 
 const MEATish = hamt.Hamt(u64, EAVTish, hamt.U64Ctx);
 
+// -- Cardinality schema (Phase 9.5.2) ----------------------------------------
+
+pub const Cardinality = enum { one, many };
+
+pub const CardinalitySchema = struct {
+    /// EID of the `:cardinality` attribute (kernel_eids.ATTR_CARDINALITY).
+    attr_eid: u64,
+    /// Ref value that marks an attribute as `:many`. Comparison is by
+    /// Ref-equality; anything else (including absence) → `:one`.
+    many_value: Ref,
+};
+
 // -- FactStore ---------------------------------------------------------------
 
 pub const FactStore = struct {
@@ -63,6 +76,15 @@ pub const FactStore = struct {
     /// with both `(e, a)`. Promotion module installs this to demote any
     /// materialized entity whose facts change.
     on_entity_mutate: ?*const fn (e: u64, a: u64) callconv(.c) void = null,
+
+    /// Phase 9.5.2: cardinality schema injection. When non-null, `assert`
+    /// and `currentValue` branch on the cardinality of the attribute being
+    /// touched. Cardinality is stored as a fact `[a :cardinality :many]`.
+    /// Absence (or `:one`) keeps Phase 0-9 single-value semantics; `:many`
+    /// flips to multi-datom storage with RRB-Ref read materialization
+    /// (ADR-9.5-D2). The schema is fact-shaped — bootstrap injects the
+    /// well-known EIDs after interning so this module stays kernel-decoupled.
+    cardinality_schema: ?CardinalitySchema = null,
 
     /// Phase 7.3 reification: lazy fact-EID side index. Populated on first
     /// `:as` resolution. Key = hashTriple(e, a, v).
@@ -165,10 +187,15 @@ pub const FactStore = struct {
         const tx = self.next_tx;
         self.next_tx += 1;
 
-        // Snapshot the previous value before any writes.
-        const prev_v = self.currentValue(e, a);
+        // Snapshot the previous value before any writes. Use raw lookup
+        // so `:many` attrs (where currentValue materializes an RRB)
+        // don't fool the implicit-retract logic below.
+        const prev_v = self.rawCurrentValue(e, a);
+        const is_many = self.cardinalityOfAttr(a) == .many;
 
         // EAVT / AEVT: append (v, tx, assert) to the value-cell at (e,a) / (a,e).
+        // For `:many` attrs the cell's current_v is just "latest assert"
+        // and not the canonical truth; AVET drives reads.
         self.eavt = try updateValueLeaf(self.allocator, self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert });
         self.aevt = try updateValueLeaf(self.allocator, self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert });
 
@@ -176,10 +203,14 @@ pub const FactStore = struct {
         self.meat = try updateMeat(self.allocator, self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert });
 
         // AVET / VAET: presence-cell maintenance.
-        if (prev_v) |pv| {
-            if (pv != v) {
-                self.avet = try updatePresenceLeaf(self.allocator, self.avet, a, pv, e, false, .{ .tx = tx, .op = .retract });
-                self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, pv, a, e, false, .{ .tx = tx, .op = .retract });
+        //   `:one` (default) — implicit-retract the previous distinct value.
+        //   `:many` — never implicit-retract; multiple values coexist as present.
+        if (!is_many) {
+            if (prev_v) |pv| {
+                if (pv != v) {
+                    self.avet = try updatePresenceLeaf(self.allocator, self.avet, a, pv, e, false, .{ .tx = tx, .op = .retract });
+                    self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, pv, a, e, false, .{ .tx = tx, .op = .retract });
+                }
             }
         }
         self.avet = try updatePresenceLeaf(self.allocator, self.avet, a, v, e, true, .{ .tx = tx, .op = .assert });
@@ -195,12 +226,13 @@ pub const FactStore = struct {
         const tx = self.next_tx;
         self.next_tx += 1;
 
-        // If (e,a) doesn't currently hold `v`, this is a no-op (logically: nothing to retract).
-        // We still record the retract in history if (e,a,v) was ever asserted, but for the
-        // spike: only act if current value matches.
-        const prev_v = self.currentValue(e, a);
-        if (prev_v == null or prev_v.? != v) return tx;
+        // No-op if (e, a, v) isn't currently present (AVET is authoritative
+        // for both `:one` and `:many`).
+        if (!self.hasFact(e, a, v)) return tx;
 
+        // EAVT/AEVT current_v: for `:one` this nulls the cache (no remaining
+        // value at (e, a)). For `:many` it makes current_v stale relative to
+        // AVET — that's fine; reads consult cardinality.
         self.eavt = try updateValueLeaf(self.allocator, self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
         self.aevt = try updateValueLeaf(self.allocator, self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract });
         self.meat = try updateMeat(self.allocator, self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
@@ -213,13 +245,84 @@ pub const FactStore = struct {
         return tx;
     }
 
-    // -- Point queries -------------------------------------------------------
+    // -- Cardinality (Phase 9.5.2) -------------------------------------------
 
-    /// Current value of (e, a), or null if absent (never asserted or retracted).
-    pub fn currentValue(self: *const FactStore, e: u64, a: u64) ?Ref {
+    pub fn setCardinalitySchema(self: *FactStore, schema: CardinalitySchema) void {
+        self.cardinality_schema = schema;
+    }
+
+    /// Lookup raw EAVT current_v without consulting cardinality. Used by
+    /// internal code paths (assert/retract implicit-retract logic;
+    /// `cardinalityOfAttr` itself) to break recursion.
+    pub fn rawCurrentValue(self: *const FactStore, e: u64, a: u64) ?Ref {
         const inner = self.eavt.get(e) orelse return null;
         const cell = inner.get(a) orelse return null;
         return cell.current_v;
+    }
+
+    /// Cardinality of attribute `a`. Defaults to `.one` when no schema is
+    /// injected or no `:cardinality` fact has been asserted on `a`.
+    pub fn cardinalityOfAttr(self: *const FactStore, a: u64) Cardinality {
+        const schema = self.cardinality_schema orelse return .one;
+        // Base case: the cardinality attribute itself is single-valued.
+        if (a == schema.attr_eid) return .one;
+        const v = self.rawCurrentValue(a, schema.attr_eid) orelse return .one;
+        return if (v == schema.many_value) .many else .one;
+    }
+
+    // -- Point queries -------------------------------------------------------
+
+    /// Current value of (e, a). Polymorphic per ADR-9.5-D2:
+    ///   - `:one` (default): single value Ref, or null when absent.
+    ///   - `:many`: an RRB-Ref containing every currently-asserted value;
+    ///     empty RRB-Ref when all values have been retracted; null only
+    ///     when the attribute has never been touched on `e`.
+    pub fn currentValue(self: *const FactStore, e: u64, a: u64) ?Ref {
+        if (self.cardinalityOfAttr(a) == .many) {
+            return self.materializeManyCurrent(e, a) catch null;
+        }
+        return self.rawCurrentValue(e, a);
+    }
+
+    /// Walk AVET[a] for every value `v` where `(a, v, e).present == true`,
+    /// collect into an RRB-Ref. Returns null if `e` has never touched `a`
+    /// (no presence cell ever existed for any v at this (a, e)).
+    fn materializeManyCurrent(self: *const FactStore, e: u64, a: u64) !?Ref {
+        const mid = self.avet.get(a) orelse return null;
+        var any_cell_seen = false;
+        var collected = std.ArrayList(Ref){};
+        defer collected.deinit(self.allocator);
+        var it = mid.iter();
+        while (it.next()) |entry| {
+            const v: Ref = entry.key;
+            const leaf = entry.value;
+            const cell = leaf.get(e) orelse continue;
+            any_cell_seen = true;
+            if (cell.present) try collected.append(self.allocator, v);
+        }
+        if (!any_cell_seen) return null;
+        return try boxed.mkRrb(self.allocator, collected.items);
+    }
+
+    /// Iterator over the currently-asserted values of (e, a). Works for
+    /// any cardinality — `:one` yields 0 or 1 value, `:many` yields N.
+    pub const CurrentValuesIter = struct {
+        outer: ?MidPresenceMap.Iterator,
+        e: u64,
+
+        pub fn next(self: *CurrentValuesIter) ?Ref {
+            const it = &(self.outer orelse return null);
+            while (it.next()) |entry| {
+                const cell = entry.value.get(self.e) orelse continue;
+                if (cell.present) return entry.key;
+            }
+            return null;
+        }
+    };
+
+    pub fn currentValuesIter(self: *const FactStore, e: u64, a: u64) CurrentValuesIter {
+        const mid = self.avet.get(a) orelse return .{ .outer = null, .e = e };
+        return .{ .outer = mid.iter(), .e = e };
     }
 
     /// Returns the tx of the most recent mutation (assert or retract) on
