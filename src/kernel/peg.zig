@@ -579,6 +579,13 @@ pub fn installSendApi(
     try installPegMethod(allocator, store, table, interner, module_eid, "opt:", @ptrCast(&optImpl));
     try installPegMethod(allocator, store, table, interner, module_eid, "and:", @ptrCast(&andImpl));
     try installPegMethod(allocator, store, table, interner, module_eid, "not:", @ptrCast(&notImpl));
+
+    // Phase 10.2.5 — variadic constructors. Replace the IdApi procedural
+    // escape hatch (peg_mk_seq / peg_mk_choice / peg_mk_charset) with the
+    // send-dispatched user-facing surface.
+    try installPegMethod(allocator, store, table, interner, module_eid, "seq:", @ptrCast(&seqImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "choice:", @ptrCast(&choiceImpl));
+    try installPegMethod(allocator, store, table, interner, module_eid, "charset:", @ptrCast(&charsetImpl));
 }
 
 fn installPegMethod(
@@ -735,4 +742,54 @@ fn notImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
     _ = n_args;
     return unaryImpl(args[0], mkNot);
+}
+
+/// `[PEG seq: pat1 ... patN]` — variadic. Every arg must be an EID Ref
+/// pointing at a pattern entity.
+fn seqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    var st = &(g_install orelse return ref_mod.NIL);
+    const buf = st.allocator.alloc(u64, n_args) catch return ref_mod.NIL;
+    defer st.allocator.free(buf);
+    for (0..n_args) |i| {
+        if (!ref_mod.isEid(args[i])) return ref_mod.NIL;
+        buf[i] = ref_mod.untagEid(args[i]);
+    }
+    const pat = mkSeq(&st.engine, buf) catch return ref_mod.NIL;
+    return ref_mod.mkEid(pat);
+}
+
+fn choiceImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    var st = &(g_install orelse return ref_mod.NIL);
+    const buf = st.allocator.alloc(u64, n_args) catch return ref_mod.NIL;
+    defer st.allocator.free(buf);
+    for (0..n_args) |i| {
+        if (!ref_mod.isEid(args[i])) return ref_mod.NIL;
+        buf[i] = ref_mod.untagEid(args[i]);
+    }
+    const pat = mkChoice(&st.engine, buf) catch return ref_mod.NIL;
+    return ref_mod.mkEid(pat);
+}
+
+/// `[PEG charset: lo1 hi1 ... loN hiN]` — even count of SmallInt args
+/// (each lo/hi pair becomes one Range). Each SmallInt must fit in a u8.
+fn charsetImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    if (n_args == 0 or (n_args & 1) != 0) return ref_mod.NIL;
+    var st = &(g_install orelse return ref_mod.NIL);
+    const n_ranges = n_args / 2;
+    const buf = st.allocator.alloc(Range, n_ranges) catch return ref_mod.NIL;
+    defer st.allocator.free(buf);
+    for (0..n_ranges) |k| {
+        const lo_ref = args[2 * k];
+        const hi_ref = args[2 * k + 1];
+        if (!ref_mod.isSmallInt(lo_ref) or !ref_mod.isSmallInt(hi_ref)) return ref_mod.NIL;
+        const lo_i = ref_mod.untagSmallInt(lo_ref);
+        const hi_i = ref_mod.untagSmallInt(hi_ref);
+        if (lo_i < 0 or lo_i > 255 or hi_i < 0 or hi_i > 255) return ref_mod.NIL;
+        buf[k] = .{ .lo = @intCast(lo_i), .hi = @intCast(hi_i) };
+    }
+    const pat = mkCharset(&st.engine, buf) catch return ref_mod.NIL;
+    return ref_mod.mkEid(pat);
 }

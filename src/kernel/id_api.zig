@@ -200,11 +200,12 @@ pub const IdApi = extern struct {
     /// deviation note in peg.zig).
     peg_install_send_api: *const fn (u64) callconv(.c) void,
 
-    // -- Phase 10.1.b: PEG variadic-pattern procedural escape hatch --------
-    // Bootstrap-only conveniences for the lang dylib to build seq/choice/
-    // charset patterns at grammar-assembly time, until Phase 10.2.5 (sendN)
-    // ships the send-dispatched variadic surface. NOT user-facing.
-    // See ADR-10-Send-Arity in ROADMAP.md.
+    // -- DEPRECATED (Phase 10.2.5 superseded these) ------------------------
+    // Procedural escape hatch from Phase 10.1.b. Retained for ABI discipline
+    // (do NOT remove fields mid-life — appended-only struct). New callers
+    // MUST use sendN against PEG_VT's seq:/choice:/charset: methods. The
+    // ADR-10-Send-Arity resolution notes the migration path; this section
+    // becomes purgeable at the next image-format breaking change.
     peg_mk_seq: *const fn ([*]const u64, usize) callconv(.c) u64,
     peg_mk_choice: *const fn ([*]const u64, usize) callconv(.c) u64,
     peg_mk_charset: *const fn ([*]const u8, usize) callconv(.c) u64,

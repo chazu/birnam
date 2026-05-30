@@ -650,10 +650,17 @@ Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatc
 6. **Float precision.** `0.1 + 0.2 != 0.3` per f64 semantics. Document at user-language level; not a substrate issue.
 7. **Send arity cap until 10.2.5.** Kernel `send0..send3` cap dispatch at 3 args. Phase 10.1.b lang grammar build sidesteps this with a procedural-IdApi alternative (`peg_mk_seq` / `peg_mk_choice` / `peg_mk_charset`) that takes a C array. The send-dispatched user surface for vector-arg PEG constructors is GATED on Phase 10.2.5 (sendN). Any user-source code attempting `[obj a: x b: y c: z d: w]` before 10.2.5 ships will hit the same cap. Phase 10.3 evaluator cannot land until 10.2.5 does.
 
-> **ADR-10-Send-Arity (2026-05-30).** Locked: variadic `sendN` is a
-> Phase 10.2.5 scheduled item, kernel-deep. Phase 10.1.b uses a
-> procedural IdApi escape hatch for grammar construction. Send-
-> dispatched vector-arg constructors are NOT a 10.1.b deliverable.
+> **ADR-10-Send-Arity (2026-05-30) — RESOLVED 2026-05-30.** Phase
+> 10.2.5 shipped β (single variadic ABI). All 37 existing method
+> impls migrated to `fn(*Send, [*]const Ref, usize) Ref`. send0..send3
+> retained as thin packers. PEG `seq:`/`choice:`/`charset:` installed
+> on PEG_VT via the variadic surface. Lang dylib's grammar build
+> migrated off the procedural `peg_mk_*` IdApi entries onto sendN
+> against PEG_VT. The deprecated IdApi entries remain in the struct
+> (ABI discipline — appended-only) and are purgeable at the next
+> image-format breaking change.
+>
+> Original decision context preserved below.
 >
 > **Why deferred from 10.1.b**: A.iii (variadic sendN) touches
 > `send.zig`, `bind`, `mcache`, and closure ABI — frozen-kernel hot

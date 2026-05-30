@@ -163,6 +163,9 @@ var sel_plus: u64 = 0;
 var sel_opt: u64 = 0;
 var sel_and_p: u64 = 0;
 var sel_not_p: u64 = 0;
+var sel_seq: u64 = 0;
+var sel_choice: u64 = 0;
+var sel_charset: u64 = 0;
 var sel_define_rule_as: u64 = 0;
 
 fn internSel(comptime name: []const u8) u64 {
@@ -214,20 +217,38 @@ fn defineRule(grammar: Ref, name: []const u8, pat: Ref) void {
     _ = api.send2(grammar, sel_define_rule_as, api.make_string(name.ptr, name.len), pat);
 }
 
-// Procedural seq/choice/charset (10.1.b escape hatch — bootstrap-only).
+// Phase 10.2.5: seq/choice/charset now go through sendN against PEG_VT.
+// (The peg_mk_* IdApi entries remain available but are deprecated — see
+// ADR-10-Send-Arity resolution note in ROADMAP.)
+
+fn mkSmallInt(n: i64) Ref {
+    return @as(u64, @bitCast(n << 3)) | 0b001;
+}
+
 fn peg_seq(children: []const u64) Ref {
-    const eid = g_api.?.peg_mk_seq(children.ptr, children.len);
-    return mkEid(eid);
+    const api = g_api.?;
+    // Convert child EIDs to EID-tagged Refs in a stack buffer.
+    var buf: [16]Ref = undefined;
+    if (children.len > buf.len) return NIL;
+    for (children, 0..) |c, i| buf[i] = mkEid(c);
+    return api.sendN(mkEid(PEG_EID), sel_seq, &buf, children.len);
 }
 
 fn peg_choice(children: []const u64) Ref {
-    const eid = g_api.?.peg_mk_choice(children.ptr, children.len);
-    return mkEid(eid);
+    const api = g_api.?;
+    var buf: [16]Ref = undefined;
+    if (children.len > buf.len) return NIL;
+    for (children, 0..) |c, i| buf[i] = mkEid(c);
+    return api.sendN(mkEid(PEG_EID), sel_choice, &buf, children.len);
 }
 
 fn peg_charset(ranges: []const u8) Ref {
-    const eid = g_api.?.peg_mk_charset(ranges.ptr, ranges.len);
-    return mkEid(eid);
+    const api = g_api.?;
+    // charset takes lo/hi pairs as SmallInts.
+    var buf: [32]Ref = undefined;
+    if (ranges.len > buf.len) return NIL;
+    for (ranges, 0..) |b, i| buf[i] = mkSmallInt(@intCast(b));
+    return api.sendN(mkEid(PEG_EID), sel_charset, &buf, ranges.len);
 }
 
 fn untagEid(r: Ref) u64 {
@@ -330,6 +351,9 @@ export fn birnam_module_init(
     sel_opt = internSel("opt:");
     sel_and_p = internSel("and:");
     sel_not_p = internSel("not:");
+    sel_seq = internSel("seq:");
+    sel_choice = internSel("choice:");
+    sel_charset = internSel("charset:");
     sel_define_rule_as = internSel("defineRule:as:");
 
     buildGrammar();
