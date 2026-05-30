@@ -885,6 +885,7 @@ const Send = extern struct {
 };
 
 var sel_eval: u64 = 0;
+var sel_parse_expr_g: u64 = 0;
 
 // Transient binding scope — flat stack pushed by block invocation, popped
 // at end. AST_VAR_REF_VT eval walks it for name lookups. Phase 10.x full
@@ -1176,6 +1177,7 @@ fn installMethods() void {
     // Install parseExpr: on the lang module entity itself so callers
     // reach the desugar pipeline via send.
     const sel_parse_expr = api.intern("parseExpr:".ptr, 10);
+    sel_parse_expr_g = sel_parse_expr;
     // The module entity needs a vt that responds to parseExpr:. Reuse
     // LANG_VT (singleton). Install on LANG_VT, then assert lang module's
     // :vtable = LANG_VT.
@@ -1184,6 +1186,77 @@ fn installMethods() void {
 }
 
 const LANG_VT: u64 = 103;
+
+// -- Phase 10.5 REPL handler -----------------------------------------------
+
+const ERROR_VT: u64 = 13;
+const NIL_VT_EID: u64 = 7;
+
+fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
+    const api = g_api.?;
+    var len: usize = 0;
+    while (line_z[len] != 0) : (len += 1) {}
+    if (len == 0) return;
+    const line = line_z[0..len];
+
+    // `:` prefix = debug command (Phase 10.5 minimum: :reset clears scope).
+    if (line[0] == ':') {
+        if (std.mem.eql(u8, line, ":reset")) {
+            g_scope_top = 0;
+            if (g_log) |log| log("[lang] scope reset");
+            return;
+        }
+        if (g_log) |log| {
+            var buf: [128]u8 = undefined;
+            const m = std.fmt.bufPrintZ(&buf, "[lang] unknown debug command: {s}", .{line}) catch return;
+            log(m);
+        }
+        return;
+    }
+
+    // Parse + eval.
+    const src_ref = api.make_string(line.ptr, line.len);
+    const ast_ref = api.send1(mkEid(g_module_eid), sel_parse_expr_g, src_ref);
+    if (!isEid(ast_ref)) {
+        if (g_log) |log| log("[lang] parse failed (non-eid result)");
+        return;
+    }
+    const ast_eid = ast_ref >> 3;
+    // Check for ERROR_VT.
+    const vt = api.query_eavt(ast_eid, ATTR_VTABLE);
+    if (vt == mkEid(ERROR_VT)) {
+        if (g_log) |log| log("[lang] => error");
+        return;
+    }
+    const val = api.send0(ast_ref, sel_eval);
+    if (g_log) |log| {
+        var buf: [256]u8 = undefined;
+        const m = formatValue(&buf, val) catch return;
+        log(m);
+    }
+}
+
+fn formatValue(buf: []u8, val: Ref) ![:0]u8 {
+    if (isSmallInt(val)) {
+        return std.fmt.bufPrintZ(buf, "=> {d}", .{untagSmallInt(val)});
+    }
+    if (val == NIL) return std.fmt.bufPrintZ(buf, "=> nil", .{});
+    if (isEid(val)) {
+        const e = val >> 3;
+        if (e == TRUE_EID) return std.fmt.bufPrintZ(buf, "=> true", .{});
+        if (e == FALSE_EID) return std.fmt.bufPrintZ(buf, "=> false", .{});
+        return std.fmt.bufPrintZ(buf, "=> <eid:{d}>", .{e});
+    }
+    if (isString(val)) {
+        const bytes = stringBytes(val);
+        return std.fmt.bufPrintZ(buf, "=> \"{s}\"", .{bytes});
+    }
+    return std.fmt.bufPrintZ(buf, "=> <ref:0x{x}>", .{val});
+}
+
+fn isSmallInt(r: Ref) bool {
+    return (r & 0b111) == 0b001;
+}
 
 // -- Module init -------------------------------------------------------------
 
@@ -1220,6 +1293,12 @@ export fn birnam_module_init(
     // returns mkEid(g_grammar_eid). Phase 10.2 parser bootstrap reads it.
     const sel_grammar = api.intern("grammar", 7);
     _ = api.assert_fact(module_eid, sel_grammar, mkEid(g_grammar_eid), module_eid);
+
+    // Phase 10.5: register the birnam-source REPL handler. The shell's
+    // stdin loop now drives parseExpr + eval per line, formats the result
+    // via formatValue, and writes via ctx.log. `:reset` clears the scope
+    // stack; future `:scope`/`:quit`/`:tx` debug commands land here too.
+    ctx.set_repl_handler(&replHandler);
 
     ctx.log("[lang] ready");
 }
