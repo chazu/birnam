@@ -648,6 +648,30 @@ Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatc
 4. **Non-local return single-threaded.** `g_unwinding` global is single-threaded-only; matches birnam's broader single-threaded image assumption. Phase 11 VM goes per-thread.
 5. **Stack overflow hard limit at 8192.** Pathological deep recursion fails gracefully via diagnostic entity, not crash. Phase 11 VM removes limit.
 6. **Float precision.** `0.1 + 0.2 != 0.3` per f64 semantics. Document at user-language level; not a substrate issue.
+7. **Send arity cap until 10.2.5.** Kernel `send0..send3` cap dispatch at 3 args. Phase 10.1.b lang grammar build sidesteps this with a procedural-IdApi alternative (`peg_mk_seq` / `peg_mk_choice` / `peg_mk_charset`) that takes a C array. The send-dispatched user surface for vector-arg PEG constructors is GATED on Phase 10.2.5 (sendN). Any user-source code attempting `[obj a: x b: y c: z d: w]` before 10.2.5 ships will hit the same cap. Phase 10.3 evaluator cannot land until 10.2.5 does.
+
+> **ADR-10-Send-Arity (2026-05-30).** Locked: variadic `sendN` is a
+> Phase 10.2.5 scheduled item, kernel-deep. Phase 10.1.b uses a
+> procedural IdApi escape hatch for grammar construction. Send-
+> dispatched vector-arg constructors are NOT a 10.1.b deliverable.
+>
+> **Why deferred from 10.1.b**: A.iii (variadic sendN) touches
+> `send.zig`, `bind`, `mcache`, and closure ABI — frozen-kernel hot
+> path. Landing it the same day as 10.1 grammar work risks regressing
+> the entire dispatch surface (300+ tests gate on send0..send3 paths).
+> Splitting into its own sub-phase between 10.2 (parser) and 10.3
+> (evaluator) isolates re-validation and keeps the grammar build
+> moving today.
+>
+> **Why scheduled before 10.3**: the evaluator's `[ast eval]` path
+> for `AST_KEYWORD_SEND_VT` MUST be able to dispatch >3-arg keyword
+> sends (e.g. `[obj at:put:into:withDefault:]`). Without sendN, the
+> evaluator's compound-keyword dispatch is capped at 3 keywords.
+>
+> **Procedural IdApi entries in 10.1.b** (`peg_mk_seq`,
+> `peg_mk_choice`, `peg_mk_charset`) are bootstrap-only conveniences.
+> They are NOT user-facing. User-facing seq/choice/charset come via
+> the send-dispatched surface once 10.2.5 ships.
 
 > **ADR-10-E2 (2026-05-29).** Locked: fact-shaped binding entities for
 > the truth layer + parse-time slot resolution for the runtime fast
@@ -877,7 +901,22 @@ IdApi additions: `peg_define_rule`, `peg_parse`, `peg_grammar_new`.
 
 **10.2 Parser runner.** Walks input source through the grammar via Phase 10.0 engine. Produces fact-shaped AST per P1+P3+P4 leans. Each AST node gets a kind-vt assigned per E1. **Parse-time slot resolution** (ADR-10-E2 speed layer): tracks per-scope slot table; variable references resolve to `(scope-depth, slot-index)` annotations on AST nodes (`:ast-bind-depth`, `:ast-bind-slot`, debug-only `:ast-bind-name`). Assignment to undeclared name → parse-time error. **Method-frame back-pointer**: parser tracks enclosing-method context during walk; every `^expr` AST node receives `:ast-method-frame <method_eid>` (new attr `ATTR_AST_METHOD_FRAME`) for E4 unwind-target resolution + 13.4 reachability. `^` outside any method body → parse-time ERROR_VT `:return-outside-method`. **Single tx per parse call** (PR3): all AST + binding + literal-Ref asserts commit atomically; parse failure aborts tx. Parse-failure → ERROR_VT entity with `:peg-parse-failure` kind + `:peg-expected :many` set (P5). AST entities permanent until prune (PR1) with `:ast-parse` back-ref.
 
-**10.3 Evaluator.** Eval = `[ast_node eval]` send dispatched via each kind-vt's installed `eval` method (E1). Top-level scope pre-bound with full locked kernel-vt name list per MD2. Runtime scope = array of `Ref` indexed by parse-time slot (ADR-10-E2 fast path). Block closures hold `:block-scope <enclosing_scope_eid>` by reference (E3). Non-local return via `g_unwinding` side-channel + sentinel-Ref propagation (E4); `^` eval reads `:ast-method-frame` to identify unwind target frame; diagnostic on escaped-block-return (`:return-from-dead-method`). Depth guard at 8192 with `:stack-overflow` ERROR_VT on overflow (E5). Method-not-found upgraded from NIL to `:method-not-found` ERROR_VT at eval layer (E6). Error entities snapshot diagnostic data (E6b) — never hold AST Refs. Error propagation via value-pass-up (`isErrorEntity` check after sub-eval).
+**10.2.5 Variadic send (sendN) kernel extension.** Hard prerequisite for 10.3 — the evaluator must dispatch arbitrary-arity keyword sends from user source (`[obj a: x b: y c: z d: w]` is already 4 args). Current kernel caps at `send3` (matches Phase 9 FFI cap). Scope:
+- New `Imp` signature variant for variadic-arity closures: `fn(*Send, [*]const Ref, usize) callconv(.c) Ref`.
+- New `send.sendN(receiver, sel, args_ptr, count) Ref` dispatch path. Same `bind` lookup (mcache key is `(vt, sel)`, no change), but invokes the variadic Imp signature.
+- Closure ABI: closures carry an arity-mode marker so `bind` can dispatch to the correct Imp signature. Either (a) reuse a slot on the closure struct (least disruptive — add `mode: u8` field, default = fixed-arity), or (b) reserve a separate kernel vt (`CLOSURE_VARIADIC_VT`) and discriminate by vt at dispatch.
+- Existing `send0`..`send3` paths preserved unchanged — they remain the fast path for arity ≤ 3 (mcache hit + tail-call). `sendN` is the slow path that pays one extra indirection (vararg pack).
+- IdApi: append `sendN` fn ptr; existing `send0..send3` unchanged.
+- Bootstrap method-install: existing `installMethod` helper unchanged (installs fixed-arity); new `installMethodVariadic` for the variadic ABI.
+- Tests: send-arity-4..send-arity-7 round-trip, mcache hits across mixed-arity sends on the same vt, fixed-arity-3 path unaffected by sendN's presence.
+
+**Risk profile**: touches frozen-kernel hot dispatch path (`send.zig`, `bind`, `mcache`, closure ABI). Single-commit kernel-deep edit. Re-validates every existing test path under the extended dispatch surface. Comparable to Phase 7.5 metacircular bind in scope. ~500–800 LOC across `send.zig` + `closure.zig` + `id_api.zig` + `bootstrap.zig` + new tests. Probable: 2 sessions.
+
+**Unblocks**: 10.3 N-arg keyword send dispatch; 10.4 method-install for >3-arg method bodies; 10.4+ user-source PEG grammar mutation via send-dispatched seq/choice (`[PEG seqWith: a with: b with: c with: d with: e]` no longer arity-capped); future Phase 9 FFI arity expansion.
+
+**Scheduled here (between 10.2 parser and 10.3 evaluator)** rather than rolled into 10.3 because the kernel-deep change is independent of the eval logic and warrants its own re-validation pass before evaluator work begins. Phase 10.1.b (lang grammar) ships the procedural-IdApi alternative (`peg_mk_seq` / `peg_mk_choice` / `peg_mk_charset`) so the grammar build is unblocked TODAY without waiting for sendN — but those IdApi entries are bootstrap-only conveniences and stay procedural; the send-dispatched user surface for vector-arg PEG constructors lands once 10.2.5 ships.
+
+**10.3 Evaluator.** Eval = `[ast_node eval]` send dispatched via each kind-vt's installed `eval` method (E1). Top-level scope pre-bound with full locked kernel-vt name list per MD2. Runtime scope = array of `Ref` indexed by parse-time slot (ADR-10-E2 fast path). Block closures hold `:block-scope <enclosing_scope_eid>` by reference (E3). Non-local return via `g_unwinding` side-channel + sentinel-Ref propagation (E4); `^` eval reads `:ast-method-frame` to identify unwind target frame; diagnostic on escaped-block-return (`:return-from-dead-method`). Depth guard at 8192 with `:stack-overflow` ERROR_VT on overflow (E5). Method-not-found upgraded from NIL to `:method-not-found` ERROR_VT at eval layer (E6). Error entities snapshot diagnostic data (E6b) — never hold AST Refs. Error propagation via value-pass-up (`isErrorEntity` check after sub-eval). **Requires Phase 10.2.5 (sendN)** for >3-arg keyword sends.
 
 **10.4 Method install.** `[vt method: #sel do: [block]]` send (MD1). Method install asserts `[vt sel mkEid(closure_eid)]` (Phase 4 dispatch shape unchanged). Closure also carries `:method-name`, `:method-source` (substring copied per PR2), `:method-installed-tx` (MD3). New selector `source` on `CLOSURE_VT` returns the boxed-string Ref. Block-as-method-body picks up enclosing scope at install for free (Smalltalk capture semantics). Method body AST has fully resolved slots so dispatch = slot-index access (ADR-10-E2).
 
