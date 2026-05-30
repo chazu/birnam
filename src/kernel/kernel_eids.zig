@@ -45,7 +45,19 @@ pub const FLOAT_VT: u64 = 10;
 /// address.
 pub const FFI_PTR_VT: u64 = 11;
 
-// 12..15 reserved for future kernel vtables / well-known entities
+/// Phase 9.5: prototype vtable for loaded FFI Modules. Each `Module load:`
+/// mints a fresh per-instance delegate-vt that delegates to MODULE_VT;
+/// instance wraps live on the delegate-vt, shared methods (path, handle,
+/// wrap:as:sig:) on MODULE_VT itself.
+pub const MODULE_VT: u64 = 12;
+
+/// Phase 9.5: diagnostic-entity vtable. Failure paths (Module load: missing
+/// file, wrap: bad sig, FFI stale pointer) return a fresh entity with
+/// vtable = ERROR_VT plus `:error-kind` and contextual facts. Discriminated
+/// by `[res vtable] == mkEid(ERROR_VT)`.
+pub const ERROR_VT: u64 = 13;
+
+// 14..15 reserved for future kernel vtables / well-known entities
 
 // -- Kernel selectors / attributes (16..63) -----------------------------------
 
@@ -124,4 +136,33 @@ pub const SEL_BIND: u64 = 38;
 pub const ATTR_FFI_ADDR: u64 = 39;
 pub const ATTR_FFI_SIG: u64 = 40;
 
-// 41..63 reserved for future kernel selectors / attributes
+// -- Phase 9.5: Module wrapper attributes ------------------------------------
+
+/// `[mod :ffi-handle <FfiPtr Ref>]` — raw dlopen handle for a loaded Module.
+pub const ATTR_FFI_HANDLE: u64 = 41;
+/// `[mod :ffi-path <boxed string Ref>]` — filesystem path the Module was loaded from.
+pub const ATTR_FFI_PATH: u64 = 42;
+
+// -- Phase 9.5: diagnostic-entity attributes (Phase 7.8 pattern) -------------
+
+/// `:error-kind <Ref-to-interned-EID>` — short symbolic kind name.
+pub const ATTR_ERROR_KIND: u64 = 43;
+/// `:error-message <boxed string Ref>` — human-readable description.
+pub const ATTR_ERROR_MESSAGE: u64 = 44;
+/// `:error-path <boxed string Ref>` — file path context (ffi-load-failure).
+pub const ATTR_ERROR_PATH: u64 = 45;
+/// `:error-name <boxed string Ref>` — symbol name context (ffi-symbol-not-found).
+pub const ATTR_ERROR_NAME: u64 = 46;
+/// `:error-arity <SmallInt>` — arity context (ffi-arity-too-high).
+pub const ATTR_ERROR_ARITY: u64 = 47;
+/// `:error-detail <boxed string Ref>` — additional detail (sig-parse-failure).
+pub const ATTR_ERROR_DETAIL: u64 = 48;
+
+// -- Phase 9.5: Module selectors --------------------------------------------
+
+pub const SEL_LOAD: u64 = 49;
+pub const SEL_WRAP_AS_SIG: u64 = 50;
+pub const SEL_PATH: u64 = 51;
+pub const SEL_HANDLE: u64 = 52;
+
+// 53..63 reserved for future kernel selectors / attributes

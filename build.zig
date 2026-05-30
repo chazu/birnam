@@ -127,6 +127,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const ot_tests = b.addTest(.{ .root_module = ot_test_mod });
+    ot_tests.linkLibrary(dyncall_lib);
+    ot_tests.linkLibC();
     const run_ot_tests = b.addRunArtifact(ot_tests);
     test_step.dependOn(&run_ot_tests.step);
 
@@ -145,6 +147,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const boot_tests = b.addTest(.{ .root_module = boot_test_mod });
+    boot_tests.linkLibrary(dyncall_lib);
+    boot_tests.linkLibC();
     const run_boot_tests = b.addRunArtifact(boot_tests);
     test_step.dependOn(&run_boot_tests.step);
 
@@ -154,6 +158,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const str_tests = b.addTest(.{ .root_module = str_test_mod });
+    str_tests.linkLibrary(dyncall_lib);
+    str_tests.linkLibC();
     const run_str_tests = b.addRunArtifact(str_tests);
     test_step.dependOn(&run_str_tests.step);
 
@@ -164,6 +170,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const mod_tests = b.addTest(.{ .root_module = mod_test_mod });
+    mod_tests.linkLibrary(dyncall_lib);
+    mod_tests.linkLibC();
     const run_mod_tests = b.addRunArtifact(mod_tests);
     run_mod_tests.step.dependOn(b.getInstallStep());
     test_step.dependOn(&run_mod_tests.step);
@@ -174,6 +182,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const repl_tests = b.addTest(.{ .root_module = repl_test_mod });
+    repl_tests.linkLibrary(dyncall_lib);
+    repl_tests.linkLibC();
     const run_repl_tests = b.addRunArtifact(repl_tests);
     run_repl_tests.step.dependOn(b.getInstallStep());
     test_step.dependOn(&run_repl_tests.step);
@@ -193,6 +203,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const qmod_tests = b.addTest(.{ .root_module = qmod_test_mod });
+    qmod_tests.linkLibrary(dyncall_lib);
+    qmod_tests.linkLibC();
     const run_qmod_tests = b.addRunArtifact(qmod_tests);
     run_qmod_tests.step.dependOn(b.getInstallStep());
     test_step.dependOn(&run_qmod_tests.step);
@@ -221,6 +233,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const sq_tests = b.addTest(.{ .root_module = sq_test_mod });
+    sq_tests.linkLibrary(dyncall_lib);
+    sq_tests.linkLibC();
     const run_sq_tests = b.addRunArtifact(sq_tests);
     test_step.dependOn(&run_sq_tests.step);
 
@@ -239,6 +253,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const reify_tests = b.addTest(.{ .root_module = reify_test_mod });
+    reify_tests.linkLibrary(dyncall_lib);
+    reify_tests.linkLibC();
     const run_reify_tests = b.addRunArtifact(reify_tests);
     test_step.dependOn(&run_reify_tests.step);
 
@@ -248,6 +264,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const pred_tests = b.addTest(.{ .root_module = pred_test_mod });
+    pred_tests.linkLibrary(dyncall_lib);
+    pred_tests.linkLibC();
     const run_pred_tests = b.addRunArtifact(pred_tests);
     test_step.dependOn(&run_pred_tests.step);
 
@@ -257,6 +275,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const promo_tests = b.addTest(.{ .root_module = promo_test_mod });
+    promo_tests.linkLibrary(dyncall_lib);
+    promo_tests.linkLibC();
     const run_promo_tests = b.addRunArtifact(promo_tests);
     test_step.dependOn(&run_promo_tests.step);
 
@@ -266,6 +286,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const mbind_tests = b.addTest(.{ .root_module = mbind_test_mod });
+    mbind_tests.linkLibrary(dyncall_lib);
+    mbind_tests.linkLibC();
     const run_mbind_tests = b.addRunArtifact(mbind_tests);
     test_step.dependOn(&run_mbind_tests.step);
 
@@ -275,6 +297,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const boxed_tests = b.addTest(.{ .root_module = boxed_test_mod });
+    boxed_tests.linkLibrary(dyncall_lib);
+    boxed_tests.linkLibC();
     const run_boxed_tests = b.addRunArtifact(boxed_tests);
     test_step.dependOn(&run_boxed_tests.step);
 
@@ -300,6 +324,17 @@ pub fn build(b: *std.Build) void {
     // install step has run first.
     run_macho_tests.step.dependOn(b.getInstallStep());
     test_step.dependOn(&run_macho_tests.step);
+
+    const ffi_mod_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/ffi_module_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const ffi_mod_tests = b.addTest(.{ .root_module = ffi_mod_test_mod });
+    ffi_mod_tests.linkLibrary(dyncall_lib);
+    ffi_mod_tests.linkLibC();
+    const run_ffi_mod_tests = b.addRunArtifact(ffi_mod_tests);
+    test_step.dependOn(&run_ffi_mod_tests.step);
 
     // -- Benchmarks (ReleaseFast, separate step) ------------------------------
 

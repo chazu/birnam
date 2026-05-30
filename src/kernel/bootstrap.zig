@@ -27,6 +27,7 @@ const interner_mod = @import("interner.zig");
 const rule_mod = @import("rule.zig");
 const predicate_mod = @import("predicate.zig");
 const promotion_mod = @import("promotion.zig");
+const ffi_module_mod = @import("ffi_module.zig");
 const id_api_mod = @import("id_api.zig");
 
 const Ref = ref_mod.Ref;
@@ -44,6 +45,8 @@ pub const Kernel = struct {
     nil_vt_ref: Ref,
     float_vt_ref: Ref,
     ffi_ptr_vt_ref: Ref,
+    module_vt_ref: Ref,
+    error_vt_ref: Ref,
 };
 
 /// Bootstrap the kernel. After this call:
@@ -100,6 +103,12 @@ pub fn boot(
     const ffi_ptr_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
     try table.put(kernel_eids.FFI_PTR_VT, object.toRef(ffi_ptr_vt_ptr));
 
+    const module_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.MODULE_VT, object.toRef(module_vt_ptr));
+
+    const error_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
+    try table.put(kernel_eids.ERROR_VT, object.toRef(error_vt_ptr));
+
     // -- Stage 4: assert :vtable facts for every entity bind may dispatch on
     // Each kernel vtable's :vtable is VTABLE_VT (so sending a message to
     // mkEid(SOME_VT) lands in vtable_vt's method table).
@@ -115,6 +124,8 @@ pub fn boot(
     _ = try store.assert(kernel_eids.RRB_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
     _ = try store.assert(kernel_eids.FLOAT_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
     _ = try store.assert(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.MODULE_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.ERROR_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
 
     // -- Stage 5: delegation chain ---------------------------------------
     // Top of chain (object_vt) has NO :delegate fact — Date: absence = no parent.
@@ -129,6 +140,8 @@ pub fn boot(
     _ = try store.assert(kernel_eids.RRB_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.FLOAT_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.MODULE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.ERROR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
 
     // -- Stage 6: NIL's :vtable ------------------------------------------
     _ = try store.assert(kernel_eids.NIL, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.NIL_VT), m_boot);
@@ -162,6 +175,18 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_BIND, "bind:");
     try interner.seed(store, kernel_eids.ATTR_FFI_ADDR, "ffi-addr");
     try interner.seed(store, kernel_eids.ATTR_FFI_SIG, "ffi-sig");
+    try interner.seed(store, kernel_eids.ATTR_FFI_HANDLE, "ffi-handle");
+    try interner.seed(store, kernel_eids.ATTR_FFI_PATH, "ffi-path");
+    try interner.seed(store, kernel_eids.ATTR_ERROR_KIND, "error-kind");
+    try interner.seed(store, kernel_eids.ATTR_ERROR_MESSAGE, "error-message");
+    try interner.seed(store, kernel_eids.ATTR_ERROR_PATH, "error-path");
+    try interner.seed(store, kernel_eids.ATTR_ERROR_NAME, "error-name");
+    try interner.seed(store, kernel_eids.ATTR_ERROR_ARITY, "error-arity");
+    try interner.seed(store, kernel_eids.ATTR_ERROR_DETAIL, "error-detail");
+    try interner.seed(store, kernel_eids.SEL_LOAD, "load:");
+    try interner.seed(store, kernel_eids.SEL_WRAP_AS_SIG, "wrap:as:signature:");
+    try interner.seed(store, kernel_eids.SEL_PATH, "path");
+    try interner.seed(store, kernel_eids.SEL_HANDLE, "handle");
 
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);
@@ -180,6 +205,9 @@ pub fn boot(
     );
     try promotion_mod.init(allocator, store, table);
 
+    // -- Stage 12: install Phase 9.5 Module methods on MODULE_VT ---------
+    try ffi_module_mod.installMethods(allocator, store, table);
+
     return .{
         .vtable_vt_ref = object.toRef(vt_vt_ptr),
         .object_vt_ref = object.toRef(obj_vt_ptr),
@@ -190,6 +218,8 @@ pub fn boot(
         .nil_vt_ref = object.toRef(nil_vt_ptr),
         .float_vt_ref = object.toRef(float_vt_ptr),
         .ffi_ptr_vt_ref = object.toRef(ffi_ptr_vt_ptr),
+        .module_vt_ref = object.toRef(module_vt_ptr),
+        .error_vt_ref = object.toRef(error_vt_ptr),
     };
 }
 

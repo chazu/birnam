@@ -300,6 +300,10 @@ pub fn setInterner(i: *interner_mod.Interner) void {
     g_interner = i;
 }
 
+pub fn internerPtr() ?*interner_mod.Interner {
+    return g_interner;
+}
+
 // -- C wrappers --------------------------------------------------------------
 
 fn cAllocEid() callconv(.c) u64 {
