@@ -845,47 +845,41 @@ already shipped).
 X6. **Self-hosting trajectory.** Compiler rewritten in birnam: Phase
 10 / 11 / 14? Doc only, not committing.
 
-### Work items
+### Work items (locked per decision table)
 
-10.0 **PEG module (prerequisite — ships first as a standalone Zig dylib).**
-A general-purpose PEG engine in Zig, loadable as a birnam module like
-`hello`, `repl`, and `query`. Surface:
-  - Grammar definition API: assert rules as facts (rule-name → ordered
-    list of alternatives; each alternative = sequence of atoms;
-    atoms = literal, rule-ref, `*`/`+`/`?` repetition, `&`/`!` lookahead,
-    char class).
-  - Parser runner: `(grammar_eid, input_string, entry_rule) → AST`.
-  - AST representation: per-parse EID + entity-per-node + parent/child
-    + node-kind + source-span facts (fact-shaped, queryable, walk-backable).
-  - Packrat memoization (per-parse cache keyed by (rule, position)).
-  - Error reporting via diagnostic facts (Phase 7.8 pattern).
-PEG itself is grammar-agnostic — Phase 10.1 plugs the birnam grammar in
-on top. This separation lets later modules (config parsing, doc
-extraction, embedded DSLs) reuse the same engine.
+**10.0 PEG module + arithmetic prerequisites.** Ships first as `src/modules/peg/peg.zig` dylib loaded by shell after kernel boot, before language module (X1, P10). New kernel EIDs:
+- Combinator-kind keywords: `:literal`, `:seq`, `:choice`, `:star`, `:plus`, `:opt`, `:and`, `:not`, `:rule-ref`, `:charset`, `:any`, `:eof` (P7).
+- Pattern attributes: `ATTR_PATTERN_KIND`, `ATTR_PATTERN_FIRST_CHILD`, `ATTR_PATTERN_NEXT_SIBLING`, `ATTR_PATTERN_CHILD`, `ATTR_LITERAL_VALUE`, `ATTR_RULE_REF_NAME` (P1, P3).
+- Charset attributes: `ATTR_CHARSET_FIRST_RANGE`, `ATTR_CHARSET_NEXT_RANGE`, `ATTR_CHARSET_RANGE_LO`, `ATTR_CHARSET_RANGE_HI` (P6).
+- Grammar entity + selectors: `GRAMMAR_VT`, `PEG_VT`, `SEL_DEFINE_RULE_AS`, `SEL_PARSE_FROM` (P8, P9).
+- Failure diagnostic kind: `:peg-parse-failure` (P5) and `ATTR_PEG_EXPECTED` (`:many` cardinality).
+Engine: pattern matcher in Zig, traverses fact-shaped patterns; per-parse `AutoHashMap(MemoKey, MemoResult)` for packrat (P2); furthest-failure tracking with expected-set; AST node allocation per match.
+IdApi additions: `peg_define_rule`, `peg_parse`, `peg_grammar_new`.
 
-10.1 Birnam grammar (Smalltalk-ish): unary, binary, keyword messages;
-cascades; blocks; literals; assignments. Grammar asserted as PEG facts
-via Phase 10.0 surface.
+**10.0.x SmallInt + Float arithmetic prereq.** Before T1 tests can run any expression: new `SMALLINT_VT` kernel vtable + `FLOAT_VT` methods. Install `+`, `-`, `*`, `/`, `mod`, `=`, `<`, `>`, `<=`, `>=` on both. SmallInt + Float mixed dispatch via type-check in each method. `send.vtableEidOf` for SmallInt tags returns `SMALLINT_VT` (extends Phase 4 vtable resolution to immediate tags).
 
-10.2 Parser run: source string → AST nodes asserted as facts under a
-per-parse EID. Uses Phase 10.0 runner.
+**10.1 Birnam grammar.** ~50 PEG rules asserted from `src/modules/lang/lang.zig` at module init (X2). Encodes G2's locked syntax: bracket message sends with greedy compound-keyword folding (G3), Smalltalk blocks `[:x|body]` / `[|body]` with mandatory `|` or leading `:` to disambiguate from sends (G2-collision), pattern-sends `[?...]` (G5), strings `"..."`, numbers (X5 dot/exponent), symbols `#ident` / `#kw1:kw2:` (MD1), `:=` assignment, `;` separator, `//` + `/* */` comments, `^` return, reserved set (G4). Right-recursive rewrite for binary + unary chains to avoid left recursion (X4). New EIDs: `BLOCK_VT`, kind-vts for each AST node-kind (E1), `BINDING_VT`, `SCOPE_VT` (E2 truth layer).
 
-10.3 Evaluator: walks AST facts, asserts/queries at each node. Simple,
-slow, correct first.
+**10.2 Parser runner.** Walks input source through the grammar via Phase 10.0 engine. Produces fact-shaped AST per P1+P3+P4 leans. Each AST node gets a kind-vt assigned per E1. **Parse-time slot resolution** (ADR-10-E2 speed layer): tracks per-scope slot table; variable references resolve to `(scope-depth, slot-index)` annotations on AST nodes (`:ast-bind-depth`, `:ast-bind-slot`, debug-only `:ast-bind-name`). Assignment to undeclared name → parse-time error. Parse-failure → ERROR_VT entity with `:peg-parse-failure` kind + `:peg-expected :many` set (P5). AST entities permanent until prune (PR1) with `:ast-parse` back-ref.
 
-10.4 Method definition syntax: source → method body facts → installed
-as `assert_method`.
+**10.3 Evaluator.** Eval = `[ast_node eval]` send dispatched via each kind-vt's installed `eval` method (E1). Top-level scope pre-bound with kernel-vt names: `Object`, `Vtable`, `Block`, `Float`, `FfiPtr`, `Module`, `Error`, `Scope`, `Binding`, `Nil`, `RRB`, etc. (MD2). Runtime scope = array of `Ref` indexed by parse-time slot (ADR-10-E2 fast path). Block closures hold `:block-scope <enclosing_scope_eid>` by reference (E3). Non-local return via `g_unwinding` side-channel + sentinel-Ref propagation (E4); diagnostic on escaped-block-return. Depth guard at 8192 with `:stack-overflow` ERROR_VT on overflow (E5). Method-not-found upgraded from NIL to `:method-not-found` ERROR_VT at eval layer (E6). Error propagation via value-pass-up (`isErrorEntity` check after sub-eval).
 
-10.5 Tests: classic Smalltalk-y exercises (Fibonacci, list operations,
-Point prototype definition — Self/idst style, no class/instance split).
+**10.4 Method install.** `[vt method: #sel do: [block]]` send (MD1). Method install asserts `[vt sel mkEid(closure_eid)]` (Phase 4 dispatch shape unchanged). Closure also carries `:method-name`, `:method-source` (substring copied per PR2), `:method-installed-tx` (MD3). New selector `source` on `CLOSURE_VT` returns the boxed-string Ref. Block-as-method-body picks up enclosing scope at install for free (Smalltalk capture semantics). Method body AST has fully resolved slots so dispatch = slot-index access (ADR-10-E2).
+
+**10.5 REPL replacement.** Replaces Phase 6 REPL surface: PEG-driven multi-line input, top-level scope persists across inputs, eval prints result or ERROR_VT diagnostic, `:` prefix for kernel-debug commands (`:quit`, `:reload <module>`, `:prompt <str>`, `:scope`, `:tx`, `:reset`, `:source <sel>`, `:trace <sel> <on|off>`) (T2). Multi-line continuation detection via PEG furthest-failure-at-EOF (T2).
+
+**10.6 Tests.**
+- *PEG engine*: pattern-match correctness across all 12 combinators, packrat-memo hits, furthest-failure error localization, multi-grammar coexistence.
+- *Birnam grammar*: parse every G2 syntactic construct round-trips; bracket-disambiguation cases (block vs send vs pattern-send) work; left-recursive rewrite produces correct AST.
+- *Parser*: AST shape per kind, source-span correctness, slot resolution coords, assignment-to-undeclared errors.
+- *Evaluator*: T1 minimum corpus — literals, arithmetic on SmallInt and Float, mixed-type, variable binding + assignment, block create/invoke, method install + dispatch, Fibonacci recursion, control-flow messages (`ifTrue:ifFalse:`, `whileTrue:`, `do:`, `timesRepeat:`), non-local return from `do:`, pattern-send returns a Query value, every ERROR_VT kind tested. T1 stretch — Cons cell with `map`/`fold`, mutual recursion, block-closure-capture-aliasing.
+- *Method install*: install + invoke round-trip, `[method source]` returns original substring, `:method-installed-tx` set.
+- *REPL*: multi-line input with continued blocks, error display, `:` commands route correctly.
 
 ### Reasoning
-Putting PEG before the birnam grammar keeps the layering clean — the
-engine is a reusable substrate, not entangled with one language's AST
-shape. Once the language module works, the system is self-hosting in
-the sense that future modules can be written in birnam rather than Zig.
-Tree-walking interpreter is intentionally simple; bytecode + VM come
-later in Phase 11.
+Putting PEG before the birnam grammar keeps the layering clean — the engine is a reusable substrate, not entangled with one language's AST shape (X1 + P10 lean). Once the language module works, partial self-hosting is free: E1's vt+send eval dispatch means a user `[AST_KEYWORD_SEND_VT method: #eval do: [...]]` override works from day one (X6 trajectory). Full self-hosting trajectory: PEG / compiler / AOT all in malleable layer, can be rewritten in birnam as Phase 11.x evolution — kernel never self-hosts per VISION §296 frozen-layer doctrine.
+
+Phase 11 inherits two spike concessions from Phase 10.3 — the `g_unwinding` side-channel for non-local return (replaced by proper VM unwind opcode per 11.5) and tree-walker stack overflow (replaced by VM stack). Phase 13 inherits AST mark-sweep + closure-scope reachability sweep (13.3 + 13.4).
 
 ---
 
