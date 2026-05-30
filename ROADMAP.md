@@ -868,7 +868,15 @@ Image persistence is what makes birnam a real Smalltalk-style environment vs. a 
 - `[?s :scope-parent ?p]` — transitively root parent scopes via chain
 Any scope entity not reached by this walk is dead and gets pruned along with its `:bind-*` binding entities. Tests must include: block-outlives-method (scope stays alive), block-dies-with-method (scope sweepable), nested-blocks (parent chain reachability), block-of-block (transitive root).
 
-13.4 Tests: pruning preserves reachable state, removes excised entities, query results match pre-prune for non-excised data. Plus the closure-reachability cases above.
+13.4 **AST mark-sweep (Phase 10 deferred work).** Per PR1 / X3 locked in Phase 10.2/10.3, AST entities live permanently until pruned. The reachable-from-roots policy must walk from the following root attributes and mark every transitively-reached AST node before sweeping unmarked nodes tagged `:ast-parse <parse_eid>`. Edges to follow: `:ast-first-child`, `:ast-next-sibling`, `:ast-method-frame` (Phase 10.3 E4 frame-reference back-pointer on `^` nodes), `:pattern-first-child`, `:pattern-next-sibling`, `:charset-first-range`, `:charset-next-range`. Root attribute set:
+- `[?m :method-body-ast ?]` — installed methods (Phase 10.4)
+- `[?b :vtable BLOCK_VT] [?b :block-body ?]` — live blocks (Phase 10.3)
+- `[?s :saved-query-spec ?]` — saved queries (Phase 7.3, already shipped)
+- `[?r :rule-pattern ?]` — grammar rule patterns (Phase 10.0)
+- `[?w :ffi-sig ?]` — FFI wrap entities carry a pointer-Ref to a heap Sig struct (Phase 9.3 — special-case: not an AST root proper but lives in the same prune sweep; needs Zig-side free callback registered with the sweep)
+Tests: every-root-keeps-its-tree (one test per root attribute), orphan-AST-pruned (parse without install), grammar-rule-protected (rules survive prune), refloating method (re-install via `method:do:` reroots).
+
+13.5 Tests: pruning preserves reachable state, removes excised entities, query results match pre-prune for non-excised data. Plus the closure-reachability cases above and the AST mark-sweep cases.
 
 ### Reasoning
 History grows forever otherwise. Pruning must be user-initiated (don't surprise the user with lost history). AOT prune (most aggressive variant) reuses this machinery. The closure-reachability sweep is the substrate's GC-by-reachability — Phase 10.3 accepts spike-level scope leak; Phase 13 cleans up via reachability walk over the fact graph.
