@@ -90,6 +90,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(query_lib);
 
+    // -- PEG dylib (Phase 10.0) ----------------------------------------------
+
+    const peg_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/peg/peg.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const peg_lib = b.addLibrary(.{
+        .name = "birnam_peg",
+        .root_module = peg_mod,
+        .linkage = .dynamic,
+    });
+    b.installArtifact(peg_lib);
+
     // -- Tests ---------------------------------------------------------------
 
     const test_step = b.step("test", "Run unit tests");
