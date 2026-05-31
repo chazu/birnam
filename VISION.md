@@ -298,7 +298,7 @@ Syntax: idst/Smalltalk-derived, visually Obj-C-y. Bracket-delimited message send
 
 ## Malleability Boundary
 
-The **frozen layer** (kernel, Zig, ~1500 LOC pre-Phase-11; ~2100 LOC post-Phase-11; ~3000 LOC at Phase 14) contains: HAMT, RRB-Tree, fact store, four indexes, object table, tx engine, tag/untag, allocation, materialized-struct arena, dispatch mechanics, mcache primitives. **Phase 11 adds:** bytecode bytestream walker, ~20 opcode handlers (tail-call dispatch via `@call(.always_tail, ...)`), atomic mcache (16-byte stores), per-thread `Vm` struct, atomic EID/tx counters. To change any of these requires rebuilding the kernel — same constraint Piumarta had at the C boundary, just at a different boundary.
+The **frozen layer** (kernel, Zig, ~1500 LOC pre-Phase-11; ~2400 LOC post-Phase-11 per ADR-11 addendum re-estimate; ~3200 LOC at Phase 14) contains: HAMT, RRB-Tree, fact store, four indexes, object table, tx engine, tag/untag, allocation, materialized-struct arena, dispatch mechanics, mcache primitives. **Phase 11 adds:** bytecode bytestream walker, ~20 opcode handlers (tail-call dispatch via `@call(.always_tail, ...)`), atomic mcache (16-byte stores), per-thread `Vm` struct, atomic EID/tx counters. To change any of these requires rebuilding the kernel — same constraint Piumarta had at the C boundary, just at a different boundary.
 
 The **malleable tower** (everything above) is fact-shaped and live-replaceable: vtables, methods, dispatch policy (`bind` itself is a method), method-cache strategy, promotion/demotion heuristics, schema, parser, AST, IR, bytecode, compiler, VM, modules, REPL, history policy, pruning policy.
 

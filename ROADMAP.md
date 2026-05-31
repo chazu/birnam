@@ -61,6 +61,15 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - JIT explicitly out of scope (user direction). VM and AOT only.
 - Naming locked: `birnam` = executable; `.brn` = source extension; `.brnimg` = image archive.
 
+**ADR-11 addendum — pre-implementation review 2026-05-31:**
+1. Blocks = own bytecode-method entities (separate `:bytecode-stream` per block). MAKE_BLOCK pool-idx → block-method-ref. INVOKE_BLOCK = standard frame push.
+2. AST edge name = `:method-body-ast` (reused from Phase 10.4). Drop the ADR-11 #1 `:source-ast` synonym.
+3. `:method-ast-range` = cardinality-many Ref to range-entity (`:range-method`, `:range-pc-start`, `:range-pc-end`, `:range-ast`). 13.4 sweep gains `:range-ast` edge.
+4. Opcode set frozen at 16 ops (4 spare). Selectors = inline u32 EID in SEND_*. Constant pool = vec of Refs only. New annotations: `:method-send-site-count`, `:method-local-count`, `:method-arg-count`.
+5. mcache reader = re-check-vt 3-load (vt1, method, vt2; accept iff vt1==vt2==target). Writer 16B atomic store defensive. Invalidation = walk-on-`:method-install` tx hook (mcache stays 16B per entry).
+6. Metacircular `bind` = kernel `bind_default` Imp + optional `:vt-bind` slot looked up via raw EAVT (no send recursion).
+7. Carry-overs: thread-mode tag in `manifest.txt` only (drop from roots.bin); `--strip=malleable` cascade-retracts `:method-body-ast` + `:method-ast-range` + range-entities; tail-call probe failure = build error (no fallback dispatch); selector intern runs under transactor; reify-stack is single-thread today, thread-safe variant deferred; frozen-layer LOC budget revised to ~2400 post-Phase-11; bytecode-format-version in manifest.txt.
+
 ---
 
 ---
@@ -1073,13 +1082,60 @@ Phase 11 inherits two spike concessions from Phase 10.3 — the `g_unwinding` si
 
 ### Work items
 
-11.1 **Bytecode encoding (ADR-11 #1).** Define `:bytecode-stream` attr (Ref to materialized byte array). Define constant-pool attr (Ref to vec of Refs). Spec ~20 opcodes: `PUSH_CONST`, `PUSH_LOCAL`, `POP`, `STORE_LOCAL`, `LOAD_SELF`, `SEND_0`/`SEND_1`/`SEND_N`, `RETURN`, `RETURN_FROM_METHOD`, `JUMP`, `BRANCH_IF_FALSE`, `MAKE_BLOCK`, `INVOKE_BLOCK`, `LOAD_CONST_TRUE`/`FALSE`/`NIL`. Annotation facts: `:method-sends ?sel`, `:method-reads-slot ?slot-eid`, `:method-ast-range <pc-start> <pc-end> <ast-eid>` (for debugger source mapping + reachability sweep).
+11.1 **Bytecode encoding (ADR-11 #1, addendum-locked).** Define `:bytecode-stream` attr (Ref to materialized byte array in bytecode arena per 12.5). Define `:constant-pool` attr (Ref to RRB vec of Refs only — number/string literal entities, block-method Refs, symbol entities; selectors NOT in pool). Method entity also carries `:method-body-ast <ast-eid>` (reused from Phase 10.4 — provenance + 13.4 sweep root).
+
+Opcode set (16, addendum-locked):
+
+| Opcode | Operands | Size | Notes |
+|---|---|---|---|
+| `PUSH_CONST` | pool-idx u16 | 3 B | non-smallint literals via pool |
+| `PUSH_SMALLINT_I32` | i32 | 5 B | inline smallints, skip pool |
+| `PUSH_LOCAL` | slot u8 | 2 B | local/arg slot |
+| `STORE_LOCAL` | slot u8 | 2 B | |
+| `POP` | — | 1 B | |
+| `LOAD_SELF` | — | 1 B | |
+| `LOAD_CONST_TRUE` / `FALSE` / `NIL` | — | 1 B each | dedicated, no pool hit |
+| `SEND_0` | sel-eid u32, site-idx u16 | 7 B | unary |
+| `SEND_1` | sel-eid u32, site-idx u16 | 7 B | binary |
+| `SEND_N` | sel-eid u32, arg-count u8, site-idx u16 | 8 B | keyword |
+| `RETURN` | — | 1 B | from current frame |
+| `RETURN_FROM_METHOD` | method-frame-depth u8 | 2 B | non-local |
+| `JUMP` | offset i16 | 3 B | |
+| `BRANCH_IF_FALSE` | offset i16 | 3 B | |
+| `MAKE_BLOCK` | pool-idx u16 | 3 B | pool slot = block-method Ref |
+| `INVOKE_BLOCK` | arg-count u8, site-idx u16 | 4 B | block frame push |
+
+Annotation facts (compiler-emitted, recompile-retracted):
+- `:method-sends ?sel` — cardinality-many; selectors this method sends
+- `:method-reads-slot ?slot-eid` — cardinality-many; slot reads
+- `:method-ast-range ?range-eid` — cardinality-many; debugger source mapping
+- Each `range-eid` entity: `:range-method`, `:range-pc-start u32`, `:range-pc-end u32`, `:range-ast <ast-eid>`
+- `:method-send-site-count u16` — mcache sizing
+- `:method-local-count u8` — frame sizing
+- `:method-arg-count u8` — caller arg-pop count
+
+Block-method entities (addendum #1): each source `[: args | body]` compiles to its own method-entity with `:bytecode-stream`, `:constant-pool`, `:method-body-ast`, the annotations above, plus `:block-parent-method <method-eid>` (for `RETURN_FROM_METHOD` static depth resolution).
 
 11.2 **Compiler.** Birnam module that walks AST facts, emits bytecode bytestream + constant pool + annotation facts in one tx. Reuses Phase 10.4.5 scope chain — `AST_VAR_REF_VT` lowered to `PUSH_LOCAL <slot>` resolving against compile-time scope walk (this also retires the Phase 10.4.5 S5 "superseded" status — slot resolution moves from never-implemented tree-walker to compiler pass).
 
 11.3 **VM interpreter (ADR-11 #4).** Zig kernel: per-opcode handler fns with signature `fn(*Vm, [*]const u8 bytecode, usize pc) callconv(.c) Ref`. Dispatch table indexed by opcode byte. Tail-call lowering verified by build-time probe. `Vm` struct per ADR-11 #2.
 
-11.4 **mcache (ADR-11 #3).** Per-bytecode-method `mcache: []MCEntry` parallel to send-site pc indices. Atomic 16-byte fill on miss. Race-tolerant read: load `(vt, method)` non-atomic, check `vt == receiver_vt`; mismatch → full `bind`, refill.
+11.4 **mcache (ADR-11 #3, addendum-locked).** Per-bytecode-method `mcache: [N]MCEntry` where `N = :method-send-site-count`. Lazy-allocated in bump arena on first method execution. `MCEntry { vt: Ref, method_impl: Imp }` = 16 bytes, 16-byte aligned.
+
+Writer (mcache fill on miss): `@atomicStore(u128, &entry.full, pack(vt, imp), .release)`. Defensive — x86_64 `movdqa` aligned is atomic; arm64 `stp` may tear pre-8.1; reader catches either way.
+
+Reader (3-load re-check-vt):
+```
+vt1 = atomicLoad(entry.vt, .monotonic)
+imp = atomicLoad(entry.imp, .monotonic)
+vt2 = atomicLoad(entry.vt, .monotonic)
+if (vt1 == receiver_vt and vt1 == vt2) tail-call imp(...)
+else fall through to miss-handler
+```
+
+Miss-handler (metacircular bind, addendum #6): raw EAVT lookup of `[receiver-vt :vt-bind ?custom]`. If present, invoke as bytecode method (push frame, run, capture Imp from return). Else call kernel `bind_default` Imp directly. Result fills mcache, dispatches.
+
+Invalidation on recompile (addendum #5): `:method-install` tx commit hook walks all live methods' mcaches; entries with `method_impl == old_impl` zeroed via 16B atomic store. Methods currently executing on stack keep running old Imp until RETURN (Smalltalk-80 semantics).
 
 11.5 **Non-local return retirement (Phase 10.3 deferred).** Per ADR-10-E4: tree-walker `g_unwinding` global retired. Phase 11 replacement:
 - `RETURN_FROM_METHOD <method-frame-id>` opcode unwinds VM stack to named method frame, drops intermediate block activations, resumes with value.
@@ -1100,7 +1156,7 @@ Phase 11 inherits two spike concessions from Phase 10.3 — the `g_unwinding` si
 
 11.8 **Annotation facts as compile-time emit.** Compiler emits `:method-sends`, `:method-reads-slot`, `:method-ast-range` in same tx as bytestream. On recompile: prior annotations retracted, fresh set asserted.
 
-11.9 **Build-time tail-call probe.** Build step compiles probe with two opcode handlers, disassembles output, asserts final instruction is `jmp` not `call` on host arch. CI gate.
+11.9 **Build-time tail-call probe.** Build step compiles probe with two opcode handlers, disassembles output, asserts final instruction is `jmp` not `call` on target arch. CI gate. **Probe failure = build error, no fallback dispatch** (ADR-11 addendum). Port-blocker by design: an arch where Zig can't tail-call requires kernel re-architecture before that arch is supported.
 
 11.10 Tests:
 - VM-vs-tree-walker parity across full Phase 10 test suite (~50 tests).
@@ -1134,11 +1190,11 @@ VM gives portability + AOT. **C-shape bytecode (bytestream + annotations)** keep
 ### Work items
 
 12.1 **Image format.** Archive (directory or single concatenated file):
-- `roots.bin` — EAVT/AEVT/AVET/VAET root pointers + tx counter + EID allocator state + selector-table-head Ref + thread-mode tag (`single` / `datomic`).
+- `roots.bin` — EAVT/AEVT/AVET/VAET root pointers + tx counter + EID allocator state + selector-table-head Ref. (Thread-mode tag NOT here — manifest.txt only, per ADR-11 addendum.)
 - `segments/` — arena segments, mmappable (HAMT/RRB pages, materialized struct arena slabs).
 - `strings/` — dedicated string arena (split from 12.5 below).
 - `bytecode/` — bytecode bytestream arena (split for AOT RO segment future).
-- `manifest.txt` — dylib dep list with platform-native names, version tags, ABI hashes; thread-mode marker; image format version.
+- `manifest.txt` — dylib dep list with platform-native names, version tags, ABI hashes; thread-mode marker (`mode: single|datomic`); image format version; bytecode-format version (separate counter — opcode set evolution).
 
 12.2 **Snapshot writer.** Walk persistent index roots, identify dirty segments since last snapshot, write only those. Manifest regenerated each snapshot.
 
@@ -1179,7 +1235,7 @@ Implementation deferred — needs real workload to pick defaults. Policy lives a
 - `[?s :scope-parent ?p]` — transitively root parent scopes via chain
 Any scope entity not reached by this walk is dead and gets pruned along with its `:bind-*` binding entities. Tests must include: block-outlives-method (scope stays alive), block-dies-with-method (scope sweepable), nested-blocks (parent chain reachability), block-of-block (transitive root).
 
-13.4 **AST mark-sweep (Phase 10 deferred work).** Per PR1 / X3 locked in Phase 10.2/10.3, AST entities live permanently until pruned. The reachable-from-roots policy must walk from the following root attributes and mark every transitively-reached AST node before sweeping unmarked nodes tagged `:ast-parse <parse_eid>`. Edges to follow: `:ast-first-child`, `:ast-next-sibling`, `:ast-method-frame` (Phase 10.3 E4 frame-reference back-pointer on `^` nodes), `:pattern-first-child`, `:pattern-next-sibling`, `:charset-first-range`, `:charset-next-range`. Root attribute set:
+13.4 **AST mark-sweep (Phase 10 deferred work).** Per PR1 / X3 locked in Phase 10.2/10.3, AST entities live permanently until pruned. The reachable-from-roots policy must walk from the following root attributes and mark every transitively-reached AST node before sweeping unmarked nodes tagged `:ast-parse <parse_eid>`. Edges to follow: `:ast-first-child`, `:ast-next-sibling`, `:ast-method-frame` (Phase 10.3 E4 frame-reference back-pointer on `^` nodes), `:pattern-first-child`, `:pattern-next-sibling`, `:charset-first-range`, `:charset-next-range`, `:range-ast` (Phase 11 ADR-11 addendum — bytecode→AST debug pointer via range-entity). Root attribute set:
 - `[?m :method-body-ast ?]` — installed methods (Phase 10.4)
 - `[?b :vtable BLOCK_VT] [?b :block-body ?]` — live blocks (Phase 10.3)
 - `[?s :saved-query-spec ?]` — saved queries (Phase 7.3, already shipped)
@@ -1223,7 +1279,7 @@ CLI: `birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] <input
 Final step: invoke `zig build-exe` to link kernel + emitted source + (static-only) module dylibs.
 
 14.2 **`--strip=malleable` implementation.**
-- Skip serializing entities tagged `:ast-parse ?p` (AST nodes), `:rule-pattern ?` (PEG grammar), `:pattern-kind ?` (PEG patterns), `:method-body-ast ?` (source back-refs).
+- Skip serializing entities tagged `:ast-parse ?p` (AST nodes), `:rule-pattern ?` (PEG grammar), `:pattern-kind ?` (PEG patterns), `:method-body-ast ?` (source back-refs), `:method-ast-range ?` + reachable range-entities (ADR-11 addendum cascade — debug-only, dangling without AST).
 - Skip baking parser/compiler/REPL module dylibs (`--aot=static` link list excludes them).
 - For `--aot=dynamic` + `--strip=malleable`: skip parser/compiler/REPL from manifest; keep `method:do:` selector exposed for runtime dylib-load API.
 - Reachability pre-pass (reuses Phase 13.4 mark-sweep machinery) — anything only reachable from stripped roots gets dropped.
