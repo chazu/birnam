@@ -45,15 +45,21 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 **Phase 10 closed.** The language has: arithmetic + comparisons on SmallInt and Float (with mixed-type coercion), control flow via `ifTrue:ifFalse:`, blocks with parameters, closures-over-enclosing-scope captured by reference, mutation via `:=`, recursion via method install, iteration primitives (`whileTrue:`, `whileFalse:`, `timesRepeat:`, `to:do:`), statement sequencing via `;`, comments (`//` and `/* */`), string literals, symbol literals (including compound `#kw1:kw2:`), float literals, non-local return `^`, and full user-overridable method install via `[vt method:#sel do:[block]]`. REPL drives the stdin loop with persistent top-level bindings. All ~28 demo cases run in 73 build steps with 291 passing tests.
 
 **Next major arcs (in dependency order):**
-1. Phase 11 — bytecode VM (retires `g_unwinding`, fixes tree-walker stack overflow, makes execution faster, supersedes 10.4.5 S5 as a side effect)
-2. Phase 12 — image snapshot + load (mmappable fact-store segments, fast startup, state survives across runs)
-3. Phase 13 — pruning + reachability GC (AST/scope mark-sweep, history excise)
-4. Phase 14 — AOT (stripped binaries, no compiler at runtime)
+1. Phase 11 — bytecode VM (ADR-11 decisions 1-7 locked 2026-05-30; retires `g_unwinding`, retires tree-walker stack overflow, supersedes 10.4.5 S5)
+2. Phase 12 — image snapshot + load (`.brnimg` D3 format; mmappable segments + manifest; pure-data save, no `cc` required)
+3. Phase 13 — pruning + reachability GC (AST/scope mark-sweep, history excise; AOT prune mode reuses)
+4. Phase 14 — AOT (`birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history]`; four sensible outputs)
 
-**Next milestones (pick by priority):**
-- Phase 10.4.5 S5 — optional perf optimization
-- Phase 11 — bytecode VM (retires `g_unwinding` for non-local return, retires Zig-native iteration prims)
-- Phase 12 — image snapshot + load (makes startup fast + preserves state across runs)
+**ADR-11 — Phase 11/12/14 design decisions locked 2026-05-30:**
+1. Bytecode encoding = bytestream + indexable annotations (queryable compiled artifact at tool-relevant granularity, fast dispatch)
+2. Frame rep = native per-thread stack + on-demand reification (Phase 7.3 pattern at execution layer)
+3. mcache = native Zig array, atomic 16-byte writes, race-tolerant reads
+4. Dispatch = tail-call (`@call(.always_tail, ...)`), build-time `jmp`-not-`call` probe
+5. Image shape = D3 hybrid `.brnimg` (data + manifest; AOT wraps same bytes as executable)
+6. AOT strip = `--strip=malleable` (parser/AST/compiler/REPL) + orthogonal `--strip=history`
+7. Multi-thread shape = Datomic (single-writer transactor + per-thread `Vm`); Phase 11 ships single-threaded with seven keep-viable items
+- JIT explicitly out of scope (user direction). VM and AOT only.
+- Naming locked: `birnam` = executable; `.brn` = source extension; `.brnimg` = image archive.
 
 ---
 
@@ -1051,52 +1057,110 @@ Phase 11 inherits two spike concessions from Phase 10.3 — the `g_unwinding` si
 
 ## Phase 11 — Bytecode + VM
 
-**Goal:** Compile AST facts → bytecode facts; execute via VM.
+**Goal:** Compile AST facts → bytecode facts; execute via VM. Lock thread/AOT-compatible substrate.
+
+### ADR-11 — Decisions locked 2026-05-30
+
+| # | Decision | Choice | Tenet check |
+|---|----------|--------|-------------|
+| 1 | Bytecode encoding | **C: bytestream + indexable annotations** — method entity holds `:bytecode-stream <byte-array-Ref>`, `:constant-pool <vec-Ref>`, `:source-ast <ast-eid>`, plus annotation facts (`:method-sends ?sel`, `:method-reads-slot ?slot-eid`, `:method-ast-range <pc> <ast-eid>`) regenerated each recompile. | Date 1NF: bytestream is single-value attr (Ref to byte array). Annotations are normal triples. COLA: substrate carries data + annotations; materialization (VM) walks bytestream. |
+| 2 | Frame representation | **C: native per-thread stack + on-demand reification** — `Vm.frames: []Frame { pc, method_ref, self_ref, bp, locals_inline }` in bump arena. Reified via `(reify-stack)` API → transient frame entities (retracted on next reify). | COLA layering clean: native = materialization, reified = substrate. Date 1NF on reified entity. |
+| 3 | mcache location | **B + i: native Zig array, atomic 16-byte writes** — per-method parallel `mcache[pc]` of `{ vt: Ref, method: Imp }`. Atomic store on fill, race-tolerant on read (mismatch → fall through to `bind`). | Materialization only. -1 vt trick + mcache co-exist (different fast paths). |
+| 4 | Dispatch style | **C: tail-call (`@call(.always_tail, ...)`)** — each opcode = own handler fn with variadic-β-ABI shape, ends with tail-call into next handler via dispatch table. Build-time probe asserts Zig lowers to `jmp` not `call` on x86_64 + arm64. | Pure Zig in frozen kernel. No inline asm. Multi-thread safe (stateless handlers, `Vm*` carried). |
+| 5 | Image shape | **D3 hybrid: `.brnimg` archive (roots.bin + segments/ + manifest.txt) for live save; AOT wraps same data bytes as executable shell.** Pure data write — no `cc` needed at save time. | Substrate identity across modes preserved. |
+| 6 | AOT strip set | **`--strip=malleable` (drops parser/AST/compiler/REPL; keeps `method:do:` via dylib API per `--aot=dynamic`) + orthogonal `--strip=history` (collapses to latest tx, drops `tx`/`op` columns, RO indexes).** Two flags, four combinations. | Substrate untouched even at max strip; materialization (annotations, AST, parser) optionally removed. |
+| 7 | Multi-thread shape | **C: Datomic — single-writer transactor + concurrent readers + per-thread `Vm`.** Seven keep-viable items (see 11.7). Phase 11 ships single-threaded; design choices forbid single-thread-only state. | VISION §290 alignment. Persistent indexes already lock-free for readers. |
 
 ### Work items
 
-11.1 Bytecode design: stack-based, ~20 opcodes (push, pop, send, return, jump, branch, load_local, store_local, push_const, etc.). Each opcode is an entity.
+11.1 **Bytecode encoding (ADR-11 #1).** Define `:bytecode-stream` attr (Ref to materialized byte array). Define constant-pool attr (Ref to vec of Refs). Spec ~20 opcodes: `PUSH_CONST`, `PUSH_LOCAL`, `POP`, `STORE_LOCAL`, `LOAD_SELF`, `SEND_0`/`SEND_1`/`SEND_N`, `RETURN`, `RETURN_FROM_METHOD`, `JUMP`, `BRANCH_IF_FALSE`, `MAKE_BLOCK`, `INVOKE_BLOCK`, `LOAD_CONST_TRUE`/`FALSE`/`NIL`. Annotation facts: `:method-sends ?sel`, `:method-reads-slot ?slot-eid`, `:method-ast-range <pc-start> <pc-end> <ast-eid>` (for debugger source mapping + reachability sweep).
 
-11.2 Compiler: birnam module that walks AST facts, emits bytecode facts.
+11.2 **Compiler.** Birnam module that walks AST facts, emits bytecode bytestream + constant pool + annotation facts in one tx. Reuses Phase 10.4.5 scope chain — `AST_VAR_REF_VT` lowered to `PUSH_LOCAL <slot>` resolving against compile-time scope walk (this also retires the Phase 10.4.5 S5 "superseded" status — slot resolution moves from never-implemented tree-walker to compiler pass).
 
-11.3 VM: Zig primitive interpreter (initial), can be replaced by a birnam module later. Threaded-code dispatch on hot path.
+11.3 **VM interpreter (ADR-11 #4).** Zig kernel: per-opcode handler fns with signature `fn(*Vm, [*]const u8 bytecode, usize pc) callconv(.c) Ref`. Dispatch table indexed by opcode byte. Tail-call lowering verified by build-time probe. `Vm` struct per ADR-11 #2.
 
-11.4 Inline caching at call sites in bytecode (per-pc mcache).
+11.4 **mcache (ADR-11 #3).** Per-bytecode-method `mcache: []MCEntry` parallel to send-site pc indices. Atomic 16-byte fill on miss. Race-tolerant read: load `(vt, method)` non-atomic, check `vt == receiver_vt`; mismatch → full `bind`, refill.
 
-11.5 **Non-local return replacement (Phase 10.3 deferred work).** Per ADR-10-E4 locked in Phase 10.3, the tree-walker ships non-local return via a single-threaded side-channel global (`g_unwinding`) plus a sentinel-Ref-propagation protocol. Phase 11 replaces this with a proper bytecode mechanism:
-- Dedicated `RETURN_FROM_METHOD <frame_offset>` opcode unwinds the call stack to the named frame, drops intermediate block activations, and resumes there with the return value.
-- Each method invocation pushes a frame on the VM call-stack; `^` compiles to the unwind opcode with the static method-frame-depth resolved at compile time.
-- The "escaped block returning from dead method" edge case is detected by checking the VM call-stack for an active matching frame; absent → emit ERROR_VT entity (`:error-kind :return-from-dead-method`), matching the tree-walker's diagnostic.
-- Side-channel global retired; non-local return becomes per-VM-thread (forward-compatible with concurrency landing later — VISION §multi-thread already calls this out).
-Tests: parity with tree-walker behavior across all Phase 10 non-local-return test cases, plus VM-only escape detection.
+11.5 **Non-local return retirement (Phase 10.3 deferred).** Per ADR-10-E4: tree-walker `g_unwinding` global retired. Phase 11 replacement:
+- `RETURN_FROM_METHOD <method-frame-id>` opcode unwinds VM stack to named method frame, drops intermediate block activations, resumes with value.
+- Compiler resolves `^expr` to this opcode with static method-frame-depth via Phase 10.4.5 scope chain walk.
+- Escaped-block edge case: VM checks call-stack for active matching frame; absent → emit ERROR_VT entity (`:error-kind :return-from-dead-method`), matching tree-walker diagnostic.
+- `unwinding` flag moves from global → `Vm.unwinding` (per-thread by construction).
 
-11.6 Tests: VM matches tree-walker output on the Phase 10 test suite.
+11.6 **Reify-stack API.** `(reify-stack vm)` materializes current `Vm.frames` to transient entities with `:frame-pc`, `:frame-method`, `:frame-self`, `:frame-parent`. Retracted on next reify or debugger exit. Builds on Phase 7.3 lazy-fact-EID pattern.
+
+11.7 **Multi-thread keep-viable items (ADR-11 #7).** All shipped in Phase 11 even though execution stays single-threaded:
+- **i.** `Vm` struct holds all per-thread state (`frames`, `pc`, `current_self`, `unwinding`, `recursion_guard`, `ffi_pause`, `bump_arena_slot`). No new globals.
+- **ii.** `g_unwinding` global retired (subsumed by 11.5).
+- **iii.** Existing recursion guard + FFI pause counter migrate from globals to `Vm` fields.
+- **iv.** EID allocator + tx counter become `std.atomic.Value(u64)`. No-op on single-thread; forward-compat.
+- **v.** Tx commit path consolidates to single function (`tx_engine.commit(...)`). Single-threaded today; channel-receiver tomorrow without scattered changes.
+- **vi.** Selector intern table: single-writer + atomic-published root pointer. Readers lock-free.
+- **vii.** Image manifest carries `mode: single|datomic` tag. Default `single`. Forward-compat to transactor introduction without format break.
+
+11.8 **Annotation facts as compile-time emit.** Compiler emits `:method-sends`, `:method-reads-slot`, `:method-ast-range` in same tx as bytestream. On recompile: prior annotations retracted, fresh set asserted.
+
+11.9 **Build-time tail-call probe.** Build step compiles probe with two opcode handlers, disassembles output, asserts final instruction is `jmp` not `call` on host arch. CI gate.
+
+11.10 Tests:
+- VM-vs-tree-walker parity across full Phase 10 test suite (~50 tests).
+- Bytecode encoding round-trip: AST → bytecode → execute = AST → tree-walk.
+- mcache atomic fill correctness (single-threaded micro-bench + race-tolerant property).
+- `^` escape-detection (matching method frame absent → ERROR_VT entity).
+- Reify-stack produces correct frame chain.
+- Annotation facts query: `[?m :method-sends #foo]` returns all methods sending `#foo`.
+- `Vm` struct passes through all per-thread state without globals (grep test).
 
 ### Reasoning
-VM gives us portability and AOT. Bytecode-as-facts means the compiler is also queryable and diffable — we get a "what changed in the compiled form?" view for free. Bytecode also lets us retire two Phase 10 spike concessions: the side-channel `g_unwinding` global for non-local return (11.5), and tree-walker stack overflow on deep recursion (proper VM stack handles it natively).
+VM gives portability + AOT. **C-shape bytecode (bytestream + annotations)** keeps execution fast while preserving "compiler is queryable" property at the granularity that matters for tooling (which methods touch what). **Native per-thread `Vm` + atomic counters** unlocks the Datomic multi-thread future without committing to it now. **Tail-call dispatch in pure Zig** keeps frozen-kernel boundary clean (no inline asm). All seven decisions cross-checked against Date 1NF + COLA layering + VISION §290 multi-thread + VISION §296 frozen layer.
+
+**Accepted costs:**
+1. **No in-place opcode patching.** Live-patch of single opcode requires full-method recompile (bytestream is per-method Ref). Smalltalk doesn't do this either; annotation set still mutable for tooling.
+2. **Reified frames stale immediately.** Debugger must re-reify each step. Same pattern as Phase 7.3 rule walk-back.
+3. **mcache lost on image reload.** Rebuilds lazily on first send-site execution per method (Phase 12.3 already specified).
 
 ---
 
-## Phase 12 — Image Snapshot
+## Phase 12 — Image Snapshot (`.brnimg`)
 
-**Goal:** Save and reload entire image state.
+**Goal:** Save and reload entire image state. Pure data format — no `cc` required at save.
+
+### Decisions locked (ADR-11 #5)
+
+- **Extension:** `.brnimg` (avoiding `.bri` per personal-name overlap).
+- **Shape D3:** archive used for Mode 1 live save AND as data input to AOT pipeline. Same bytes underneath both.
+- **Save is pure write:** segments mmap-flushable, manifest is text, roots are fixed-layout binary. No toolchain dependency.
 
 ### Work items
 
-12.1 Image format: directory with `roots.bin` (index roots + tx counter + selector table head) + `segments/` (arena segments mmappable).
+12.1 **Image format.** Archive (directory or single concatenated file):
+- `roots.bin` — EAVT/AEVT/AVET/VAET root pointers + tx counter + EID allocator state + selector-table-head Ref + thread-mode tag (`single` / `datomic`).
+- `segments/` — arena segments, mmappable (HAMT/RRB pages, materialized struct arena slabs).
+- `strings/` — dedicated string arena (split from 12.5 below).
+- `bytecode/` — bytecode bytestream arena (split for AOT RO segment future).
+- `manifest.txt` — dylib dep list with platform-native names, version tags, ABI hashes; thread-mode marker; image format version.
 
-12.2 Snapshot writer: walk persistent structures, identify dirty segments since last snapshot, write only those.
+12.2 **Snapshot writer.** Walk persistent index roots, identify dirty segments since last snapshot, write only those. Manifest regenerated each snapshot.
 
-12.3 Snapshot loader: mmap segments, restore roots, rebuild mcache lazily (empty).
+12.3 **Snapshot loader.** Parse manifest → `dlopen` each module by name (verify ABI hash on load) → mmap segments → patch root pointers → fresh mcache (rebuild lazily per Phase 11 ADR #3).
 
-12.4 Selector identity across reload: kernel selectors use well-known EIDs; user selectors re-intern via relocation table.
+12.4 **Selector identity across reload.** Kernel selectors at well-known EIDs (already done — `kernel_eids.zig` range 0..255). User selectors re-intern via relocation table embedded in manifest (old-EID → new-EID).
 
-12.5 **Arena split for strings.** Phase 4.5 ships strings via the kernel allocator. Split here: strings get a dedicated arena → separate mmap segment, faster image load, page-cache-friendly, easy memory accounting, and (in AOT) a read-only data segment. No runtime perf change — pure lifecycle win.
+12.5 **Arena split.** Strings, bytecode, regular fact-store segments live in separate arenas → separate mmap segments → faster load, page-cache-friendly, RO-segment-ready for AOT.
 
-12.6 Tests: save → kill → load → run → identical behavior; verify strings segment is mmap-able and survives reload.
+12.6 **Incremental save policy (note for future implementation, gated on perf measurement).** Once 12.1-12.5 ship, layer policy on top:
+- `manual` — explicit `:save-image` call only (Phase 12 default).
+- `per-tx` — every committed tx triggers segment flush. Worst write-amplification; debugging crash-safety.
+- `per-gc-sweep` — snapshot after each Phase 13 sweep. Memory-stable checkpoints.
+- `per-n-tx` — every N txs. Tunable middle ground.
+- `idle-fsync` — background snapshot when tx queue idle.
+
+Implementation deferred — needs real workload to pick defaults. Policy lives as fact-store config entity; switchable at runtime.
+
+12.7 Tests: save → kill → load → run → identical behavior; strings segment mmap-able; bytecode segment mmap-able; manifest ABI hash mismatch rejected at load; thread-mode tag round-trips.
 
 ### Reasoning
-Image persistence is what makes birnam a real Smalltalk-style environment vs. a script that has to rebuild state every run. Structural sharing in the persistent structures makes incremental snapshots cheap.
+`.brnimg` makes birnam a real Smalltalk-style environment vs. a script that rebuilds state every run. **D3 hybrid** unifies live save and AOT input — same bytes underneath. **Pure data write** (no `cc`) makes save cheap, no toolchain pin. **Arena split** sets up Phase 14 RO segments. **Incremental save policy noted but not specced** — needs perf data first.
 
 ---
 
@@ -1133,20 +1197,64 @@ History grows forever otherwise. Pruning must be user-initiated (don't surprise 
 
 ## Phase 14 — AOT
 
-**Goal:** Ship standalone binaries.
+**Goal:** Ship standalone executables. Two link modes × two strip flags = four sensible artifacts.
+
+### Decisions locked (ADR-11 #5 + #6)
+
+CLI: `birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] <input.brnimg> --entry=<module>:<selector> -o <output>`
+
+| `--aot=` | `--strip=` | Result |
+|----------|------------|--------|
+| static | (none) | Single executable, kernel + all modules + data linked in, full malleable tower kept (compiler, parser, AST present and runnable). |
+| static | malleable | Single executable, no parser/AST/compiler/REPL. Pure VM over bytecode. `method:do:` not exposed. |
+| static | malleable + history | Same as above, plus `tx`/`op` columns stripped, RO indexes, smallest possible binary. End-user "ship the app" target. |
+| dynamic | (none) | Executable + dylibs loaded at runtime per baked manifest. Full malleable tower. |
+| dynamic | malleable | Executable + dylibs. Parser/compiler gone but `method:do:` survives — runtime-loaded dylibs can install bytecode methods via API. |
+| dynamic | malleable + history | Executable + dylibs, no source compile, no history. Runtime method install still works. |
 
 ### Work items
 
-14.1 AOT compiler: walk live image, emit shell + VM + frozen image as a single executable.
+14.1 **AOT compiler driver.** Reads `.brnimg`, validates entry selector exists, emits Zig source `aot_image.zig` containing:
+- Baked `roots.bin` as `const ROOTS: [...]u8 = .{ ... };` (or `@embedFile`).
+- Baked segments as RO arrays.
+- For `--aot=static`: linked-in module init calls.
+- For `--aot=dynamic`: embedded `manifest.txt` for runtime `dlopen`.
+- `main()` that bootstraps kernel from baked data, calls entry selector.
+Final step: invoke `zig build-exe` to link kernel + emitted source + (static-only) module dylibs.
 
-14.2 Strip history attribute, demote all objects to facts (or pre-materialize all and freeze — decide per-AOT-mode).
+14.2 **`--strip=malleable` implementation.**
+- Skip serializing entities tagged `:ast-parse ?p` (AST nodes), `:rule-pattern ?` (PEG grammar), `:pattern-kind ?` (PEG patterns), `:method-body-ast ?` (source back-refs).
+- Skip baking parser/compiler/REPL module dylibs (`--aot=static` link list excludes them).
+- For `--aot=dynamic` + `--strip=malleable`: skip parser/compiler/REPL from manifest; keep `method:do:` selector exposed for runtime dylib-load API.
+- Reachability pre-pass (reuses Phase 13.4 mark-sweep machinery) — anything only reachable from stripped roots gets dropped.
 
-14.3 Freeze indexes into read-only segments embedded in the binary.
+14.3 **`--strip=history` implementation.**
+- Collapse all history into latest-tx snapshot (reuses Phase 13.1 pruning machinery — "AOT prune" mode).
+- Drop `tx`/`op` columns from index segments; freeze indexes as RO.
+- Skip baking tx engine writer path; baked tx counter at final value.
+- Compile-time assert: no live entity carries `:history-required` flag.
 
-14.4 Tests: AOT'd binary runs without compiler, without history, with same observable behavior on a test workload.
+14.4 **Static link mode.**
+- Link kernel + all listed module dylibs as `.a` static libs (or compile from source; Zig handles either).
+- Resulting executable has no dynamic deps beyond libc/libSystem.
+
+14.5 **Dynamic link mode.**
+- Kernel + baked data linked in.
+- Module list loaded from embedded manifest at startup via `dlopen`.
+- Allows post-ship plugin dylibs (user can drop new `.dylib` next to binary, kernel `dlopen`s on demand if `method:do:` exposed).
+
+14.6 **Manifest embedding (dynamic mode).** Embedded text section: dylib search paths, dep list with ABI hashes, runtime `dlopen` policy (eager vs lazy).
+
+14.7 Tests:
+- `--aot=static` builds Phase 10 hello-world, runs, no dylib deps (`otool -L` clean except libSystem).
+- `--aot=dynamic` builds, loads dylibs at startup, runs.
+- `--strip=malleable` removes parser symbols (`nm` check); attempting `[lang parse: ...]` in resulting binary fails as expected.
+- `--strip=history` removes tx writer symbols; binary cannot mutate facts.
+- `--strip=malleable` + `--aot=dynamic`: runtime-loaded dylib successfully installs a method via `method:do:` API.
+- Same Phase 10 test workload run under each combination produces identical user-visible output.
 
 ### Reasoning
-This is the deliverable that takes birnam from "interesting toy" to "real systems language." If we can emit `<app>` as a stripped binary, then we can ship things written in birnam.
+**This is the deliverable that takes birnam from "interesting toy" to "real systems language."** Two-flag combinatorial surface kept small (four sensible outputs) instead of knob-soup. `--aot=dynamic` preserves your stated AOT-with-runtime-dylib-loading requirement. `--strip=malleable` + `--aot=dynamic` is the "ship a plugin host" preset. `--strip=malleable` + `--strip=history` + `--aot=static` is the "ship a frozen end-user app" preset. Both extremes natural; not bolted on.
 
 ---
 

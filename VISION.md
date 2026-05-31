@@ -142,13 +142,17 @@ Two-tier dispatch: pointer-fast for hot stable code, query-uniform for everythin
 
 ## Execution Modes
 
-| Mode | Use | Indexes | History | Compiler |
-|------|-----|---------|---------|----------|
-| **Live image** | Development, REPL, wrapping, exploration | full | full | yes |
-| **Bytecode VM** | Portable execution, default AOT target | frozen | stripped | no |
-| **Native AOT** | Stripped applications, fast startup | frozen | stripped | no |
+| Mode | Use | Indexes | History | Compiler | Parser/AST |
+|------|-----|---------|---------|----------|-----------|
+| **Mode 1 — dev** | Development, REPL, exploration, source compile | full | full | yes | yes |
+| **Mode 2 — AOT (default)** | AOT-baked image, full malleable tower kept | full | full | yes | yes |
+| **Mode 2 + `--strip=malleable`** | AOT, no source compile at runtime; method install via dylib still works | full | full | no | no |
+| **Mode 2 + `--strip=history`** | AOT, time-travel queries dropped, indexes RO | RO | none | yes | yes |
+| **Mode 2 + both strips** | Smallest end-user AOT binary, pure VM over frozen facts | RO | none | no | no |
 
-All three share the same fact store and object model. Native AOT is bytecode + precompiled VM + frozen image, or (later) direct native lowering.
+Mode 2 sub-variants: `--aot=static` (kernel + modules + data all linked into one executable) and `--aot=dynamic` (kernel + data baked; modules `dlopen`ed at runtime from baked manifest). Both work with or without strips.
+
+All modes share the same fact store, object model, bytecode format, and `.brnimg` data layout. AOT = wrap-Mode-1-image-as-executable; same data bytes underneath.
 
 ## Architecture
 
@@ -279,21 +283,22 @@ Syntax: idst/Smalltalk-derived, visually Obj-C-y. Bracket-delimited message send
 
 ## Build Outputs
 
-- `birnam` — shell executable
-- `libbirnam_<module>.dylib` — runtime modules
-- `image.bir` — snapshot directory (roots + segments + tx log)
-- `<app>` — AOT-compiled application (shell + VM + frozen image, stripped)
+- `birnam` — shell executable (Mode 1 host: loads kernel + dylibs, runs REPL or `-M main.dylib --entry=...`)
+- `.brn` — source file extension
+- `libbirnam_<module>.dylib` / `.so` / `.dll` — runtime modules (platform-native suffix)
+- `<name>.brnimg` — image archive (Mode 1 save format; `roots.bin` + `segments/` + `manifest.txt` with dylib deps + thread-mode tag). Pure data — saving requires no `cc`.
+- `<app>` — AOT-compiled executable (`birnam --aot=static|dynamic [--strip=malleable] [--strip=history] image.brnimg → <app>`)
 
 ## Non-Goals (For Now)
 
 - Multi-writer / distributed images. Single-process, single-writer. All txs serialized through one channel.
-- Threads / actors / concurrency. **Deferred, not refused.** Multi-threaded operation is on the table eventually; nothing in the current design should foreclose it. When the time comes, the global recursion guard, the FFI pause counter, the Phase 10.3 non-local-return `g_unwinding` side-channel, and any other single-threaded-only counters become per-thread, and tx serialization moves to a single-writer queue with concurrent readers (Datomic-style). Designed-in, not committed-to.
+- Threads / actors / concurrency. **Deferred, not refused. Target shape locked in ADR-11.** Multi-threaded operation is on the table eventually; nothing post-Phase-11 should foreclose it. Locked target: **Datomic shape** — one designated transactor thread owns the tx engine; reader threads access persistent indexes lock-free; each thread carries its own `Vm` struct (call stack, `pc`, `current_self`, `unwinding` flag, recursion guard, FFI pause counter, bump-arena slot); mcache shared with atomic 16-byte writes (race-tolerant — mismatch falls through to `bind`); EID allocator + tx counter atomic monotonic; selector intern table single-writer + atomic root pointer. Image manifest carries `mode: single|datomic` so the format survives transactor introduction. Phase 11 ships single-threaded but with all seven keep-viable items in place.
 - Sandboxing.
 - Beating C performance. Smalltalk-VM ballpark is fine.
 
 ## Malleability Boundary
 
-The **frozen layer** (kernel, Zig, ~1500 LOC) contains: HAMT, RRB-Tree, fact store, four indexes, object table, tx engine, tag/untag, allocation, materialized-struct arena, dispatch mechanics, mcache primitives. To change any of these requires rebuilding the kernel — same constraint Piumarta had at the C boundary, just at a different boundary.
+The **frozen layer** (kernel, Zig, ~1500 LOC pre-Phase-11; ~2100 LOC post-Phase-11; ~3000 LOC at Phase 14) contains: HAMT, RRB-Tree, fact store, four indexes, object table, tx engine, tag/untag, allocation, materialized-struct arena, dispatch mechanics, mcache primitives. **Phase 11 adds:** bytecode bytestream walker, ~20 opcode handlers (tail-call dispatch via `@call(.always_tail, ...)`), atomic mcache (16-byte stores), per-thread `Vm` struct, atomic EID/tx counters. To change any of these requires rebuilding the kernel — same constraint Piumarta had at the C boundary, just at a different boundary.
 
 The **malleable tower** (everything above) is fact-shaped and live-replaceable: vtables, methods, dispatch policy (`bind` itself is a method), method-cache strategy, promotion/demotion heuristics, schema, parser, AST, IR, bytecode, compiler, VM, modules, REPL, history policy, pruning policy.
 
