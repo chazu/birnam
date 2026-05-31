@@ -3,6 +3,7 @@
 const std = @import("std");
 const testing = std.testing;
 const vm = @import("vm.zig");
+const ref_mod = @import("ref.zig");
 
 test "Vm: per-thread state defaults" {
     vm.reset();
@@ -54,4 +55,89 @@ test "Vm: opcode byte values stable (bytecode-format-version anchor)" {
     // bytecode-format-version in manifest.txt per ADR-11 addendum.
     try testing.expectEqual(@as(u8, 0), @intFromEnum(vm.Opcode.PUSH_CONST));
     try testing.expectEqual(@as(u8, 17), @intFromEnum(vm.Opcode.INVOKE_BLOCK));
+}
+
+// -- mcache tests -----------------------------------------------------------
+
+fn stubMethodA(_: u32) callconv(.c) u32 {
+    return 1;
+}
+fn stubMethodB(_: u32) callconv(.c) u32 {
+    return 2;
+}
+
+test "mcache: empty lookup returns null" {
+    var mc = try vm.MethodMCache.alloc(testing.allocator, 4);
+    defer mc.deinit(testing.allocator);
+    try testing.expect(mc.lookup(0, 100) == null);
+    try testing.expect(mc.lookup(3, 999) == null);
+}
+
+test "mcache: store + lookup hit" {
+    var mc = try vm.MethodMCache.alloc(testing.allocator, 4);
+    defer mc.deinit(testing.allocator);
+    const impl: *const anyopaque = @ptrCast(&stubMethodA);
+    mc.store(2, 42, impl);
+    const got = mc.lookup(2, 42);
+    try testing.expect(got != null);
+    try testing.expectEqual(impl, got.?);
+}
+
+test "mcache: vt mismatch returns null" {
+    var mc = try vm.MethodMCache.alloc(testing.allocator, 4);
+    defer mc.deinit(testing.allocator);
+    mc.store(1, 42, @ptrCast(&stubMethodA));
+    try testing.expect(mc.lookup(1, 99) == null);
+}
+
+test "mcache: out-of-range site_idx safe" {
+    var mc = try vm.MethodMCache.alloc(testing.allocator, 2);
+    defer mc.deinit(testing.allocator);
+    mc.store(5, 42, @ptrCast(&stubMethodA));
+    try testing.expect(mc.lookup(5, 42) == null);
+}
+
+test "mcache: invalidateImpl walks and zeros matching entries" {
+    var mc = try vm.MethodMCache.alloc(testing.allocator, 4);
+    defer mc.deinit(testing.allocator);
+    const impl_a: *const anyopaque = @ptrCast(&stubMethodA);
+    const impl_b: *const anyopaque = @ptrCast(&stubMethodB);
+    mc.store(0, 10, impl_a);
+    mc.store(1, 20, impl_b);
+    mc.store(2, 30, impl_a);
+    mc.store(3, 40, impl_b);
+
+    mc.invalidateImpl(impl_a);
+
+    try testing.expect(mc.lookup(0, 10) == null);
+    try testing.expect(mc.lookup(2, 30) == null);
+    // B entries survive.
+    const got1 = mc.lookup(1, 20);
+    const got3 = mc.lookup(3, 40);
+    try testing.expect(got1 != null);
+    try testing.expect(got3 != null);
+    try testing.expectEqual(impl_b, got1.?);
+    try testing.expectEqual(impl_b, got3.?);
+}
+
+test "mcache: 16-byte alignment + size invariants" {
+    try testing.expectEqual(@as(usize, 16), @sizeOf(vm.MCEntry));
+    try testing.expect(@alignOf(vm.MCEntry) >= 16);
+}
+
+// -- Frame tests ------------------------------------------------------------
+
+test "Frame: defaults" {
+    const f = vm.Frame{
+        .bytecode = null,
+        .pc = 0,
+        .method_eid = 0,
+        .self_ref = ref_mod.NIL,
+        .bp = 0,
+        .local_count = 0,
+        .parent_method_frame = null,
+    };
+    try testing.expectEqual(@as(usize, 0), f.pc);
+    try testing.expectEqual(@as(u64, 0), f.method_eid);
+    try testing.expect(f.parent_method_frame == null);
 }

@@ -15,6 +15,127 @@ const ref_mod = @import("ref.zig");
 
 pub const Ref = ref_mod.Ref;
 
+// -- Phase 11.3 — frame + value stack ---------------------------------------
+
+/// Per-activation frame. Phase 11.3 (ADR-11 #2). One per active method or
+/// block invocation. Frames live in the Vm's bump arena; slice into the
+/// shared value stack via `bp`.
+pub const Frame = extern struct {
+    /// Pointer to current method's `:bytecode-stream` materialized bytes.
+    /// Null only for the synthetic sentinel frame at stack base.
+    bytecode: ?[*]const u8,
+    /// Program counter into `bytecode`.
+    pc: usize,
+    /// EID of the method (or block-method) currently executing.
+    method_eid: u64,
+    /// Receiver of this activation.
+    self_ref: Ref,
+    /// Base pointer into Vm.value_stack: locals[0..local_count] follow.
+    bp: usize,
+    /// Number of locals + args reserved on the value stack.
+    local_count: u8,
+    /// Padding to keep struct size a multiple of 8.
+    _pad: [7]u8 = [_]u8{0} ** 7,
+    /// For block-method frames: pointer to enclosing method frame for
+    /// RETURN_FROM_METHOD unwind (ADR-11 addendum #1). Null for method
+    /// frames (they ARE the unwind target).
+    parent_method_frame: ?*Frame,
+};
+
+/// Initial value-stack capacity. Grows via reallocation when exceeded.
+/// Bytecode bound at compile time via `:method-local-count` — never
+/// recurses unboundedly.
+pub const DEFAULT_VALUE_STACK_CAP: usize = 4096;
+
+/// Maximum frame depth before forced ERROR_VT emission. Mirrors the
+/// tree-walker's 8192 limit (ADR-10-E5) until the bytecode VM proves
+/// stable enough to remove it.
+pub const FRAME_STACK_LIMIT: usize = 8192;
+
+// -- Phase 11.4 — per-method method cache (mcache) --------------------------
+
+/// 16-byte aligned cache entry. ADR-11 #3: writer does a single 16-byte
+/// atomic store (`movdqa` on x86_64 / `stp` paired on arm64). Reader uses
+/// the 3-load re-check-vt pattern from ADR-11 addendum #5; the writer
+/// atomicity is defensive — torn writes on weaker arches still get
+/// caught by `vt1 != vt2` in the reader.
+pub const MCEntry = extern struct {
+    /// Receiver vtable EID. Zero = empty slot.
+    vt: u64 align(16),
+    /// Resolved method Imp as opaque pointer. Caller casts to the right
+    /// Imp signature at the call site (same convention as Closure.method).
+    method_impl: ?*const anyopaque,
+};
+
+comptime {
+    if (@sizeOf(MCEntry) != 16) @compileError("MCEntry must be 16 bytes for atomic 128-bit store");
+    if (@alignOf(MCEntry) < 16) @compileError("MCEntry must be 16-byte aligned");
+}
+
+/// Per-method method cache. Sized at first execution from the method's
+/// `:method-send-site-count` annotation. Lazy-allocated in caller's
+/// allocator (per-thread bump arena under the Datomic shape).
+pub const MethodMCache = struct {
+    entries: []align(16) MCEntry,
+
+    pub fn alloc(allocator: std.mem.Allocator, site_count: usize) !MethodMCache {
+        const entries = try allocator.alignedAlloc(MCEntry, .@"16", site_count);
+        @memset(entries, MCEntry{ .vt = 0, .method_impl = null });
+        return .{ .entries = entries };
+    }
+
+    pub fn deinit(self: *MethodMCache, allocator: std.mem.Allocator) void {
+        allocator.free(self.entries);
+        self.entries = &[_]MCEntry{};
+    }
+
+    /// 3-load re-check-vt reader (ADR-11 addendum #5). Returns method Imp
+    /// on hit (vt1 == receiver_vt and vt1 == vt2). Mismatch — either
+    /// genuine vt mismatch or a torn write — returns null; caller falls
+    /// through to miss handler (bind).
+    pub inline fn lookup(self: *const MethodMCache, site_idx: usize, receiver_vt: u64) ?*const anyopaque {
+        if (site_idx >= self.entries.len) return null;
+        const e = &self.entries[site_idx];
+        const vt1 = @atomicLoad(u64, &e.vt, .monotonic);
+        if (vt1 != receiver_vt) return null;
+        const impl_ptr: ?*const anyopaque = @atomicLoad(?*const anyopaque, &e.method_impl, .monotonic);
+        const vt2 = @atomicLoad(u64, &e.vt, .monotonic);
+        if (vt1 != vt2) return null;
+        return impl_ptr;
+    }
+
+    /// Defensive 16-byte atomic store. Pairs with the reader's re-check
+    /// pattern: if this store tears (arm64 pre-8.1 `stp`), the reader
+    /// catches vt1 != vt2 and falls through.
+    pub inline fn store(self: *MethodMCache, site_idx: usize, vt: u64, impl: *const anyopaque) void {
+        if (site_idx >= self.entries.len) return;
+        const e = &self.entries[site_idx];
+        const packed_value = packEntry(vt, impl);
+        const raw: *align(16) u128 = @ptrCast(@alignCast(e));
+        @atomicStore(u128, raw, packed_value, .release);
+    }
+
+    /// Walk-on-install invalidation (ADR-11 addendum #5). Called by the
+    /// method-install hook for every live MethodMCache when a method's
+    /// Imp is replaced. Entries pointing at the old Imp are atomic-zeroed.
+    /// Methods currently executing on the stack keep their old Imp until
+    /// RETURN (Smalltalk-80 semantics).
+    pub fn invalidateImpl(self: *MethodMCache, old_impl: *const anyopaque) void {
+        for (self.entries, 0..) |*e, i| {
+            if (e.method_impl == old_impl) {
+                const raw: *align(16) u128 = @ptrCast(@alignCast(e));
+                @atomicStore(u128, raw, 0, .release);
+                _ = i;
+            }
+        }
+    }
+};
+
+fn packEntry(vt: u64, impl: *const anyopaque) u128 {
+    const impl_bits: u64 = @intFromPtr(impl);
+    return @as(u128, vt) | (@as(u128, impl_bits) << 64);
+}
+
 /// Per-thread VM state. Forward-compat field set per ADR-11 #2 + #7.
 pub const Vm = struct {
     // -- Phase 11 bytecode VM (stub fields, wired in 11.3) ------------------
