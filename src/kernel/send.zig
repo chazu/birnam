@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const ref_mod = @import("ref.zig");
+const vm_mod = @import("vm.zig");
 const object = @import("object.zig");
 const closure_mod = @import("closure.zig");
 const mcache = @import("mcache.zig");
@@ -50,10 +51,11 @@ var g_store: ?*fact_store.FactStore = null;
 var g_table: ?*object_table.ObjectTable = null;
 var g_allocator: ?std.mem.Allocator = null;
 
-/// Recursion guard. Phase 7.5: consulted before invoking `:bind` override.
-/// Above the threshold, bind unconditionally takes the Zig-primitive path
-/// — this bounds the depth of override-of-override-of-bind recursion.
-var g_recursion: u32 = 0;
+/// Recursion guard limit. Phase 7.5: consulted before invoking `:bind`
+/// override. Above the threshold, bind unconditionally takes the
+/// Zig-primitive path — this bounds the depth of override-of-override-of-bind
+/// recursion. The counter itself lives in `Vm.recursion_guard` (Phase
+/// 11.7.i — ADR-11 #7 per-thread state).
 pub const BIND_RECURSION_LIMIT: u32 = 4;
 
 /// Phase 7.5: fact-store mutate hook. Routes most attribute mutations to
@@ -77,7 +79,7 @@ pub fn initDispatch(
     g_table = table;
     g_allocator = allocator;
     mcache.clearAll();
-    g_recursion = 0;
+    vm_mod.reset();
 }
 
 // Accessors for kernel methods that need fact-store / object-table / allocator.
@@ -96,8 +98,9 @@ pub fn kernelAllocator() ?std.mem.Allocator {
 /// Resolve the closure for `s.receiver` + `s.selector`. Returns null on
 /// "method not found." Populates `s.closure` and `s.state` on success.
 pub fn bind(s: *Send) ?*Closure {
-    g_recursion += 1;
-    defer g_recursion -= 1;
+    const vm = vm_mod.current();
+    vm.recursion_guard += 1;
+    defer vm.recursion_guard -= 1;
 
     const vt_eid = vtableEidOf(s.receiver) orelse return null;
     s.state = s.receiver;
@@ -111,7 +114,7 @@ pub fn bind(s: *Send) ?*Closure {
     // Phase 7.5: try `:bind` override along vt's delegate chain. Skipped
     // when recursion guard is tripped so the override can call back into
     // bind without infinite recursion.
-    if (g_recursion <= BIND_RECURSION_LIMIT) {
+    if (vm.recursion_guard <= BIND_RECURSION_LIMIT) {
         if (tryBindOverride(s, vt_eid)) |c| {
             mcache.store(vt_eid, s.selector, c);
             s.closure = c;

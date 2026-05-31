@@ -23,6 +23,7 @@ const object = @import("object.zig");
 const fact_store_mod = @import("fact_store.zig");
 const object_table_mod = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const vm_mod = @import("vm.zig");
 
 const Ref = ref_mod.Ref;
 
@@ -40,7 +41,6 @@ var g_store: ?*fact_store_mod.FactStore = null;
 var g_table: ?*object_table_mod.ObjectTable = null;
 var g_layouts: ?*std.AutoHashMap(u64, Layout) = null;
 var g_threshold: u32 = 100;
-var g_ffi_depth: u32 = 0;
 /// Reentry guard — demotion fires from the fact-store mutate hook; we
 /// must not re-enter via our own fact mutations (none today, but cheap
 /// insurance for future evolution).
@@ -59,7 +59,7 @@ pub fn init(
     g_store = store;
     g_table = table;
     g_layouts = layouts;
-    g_ffi_depth = 0;
+    vm_mod.current().ffi_pause = 0;
     g_in_hook = false;
     // Read initial threshold from facts.
     refreshThreshold();
@@ -101,15 +101,16 @@ fn refreshThreshold() void {
 // -- FFI pin ---------------------------------------------------------------
 
 pub fn ffiEnter() void {
-    g_ffi_depth += 1;
+    vm_mod.current().ffi_pause += 1;
 }
 
 pub fn ffiExit() void {
-    if (g_ffi_depth > 0) g_ffi_depth -= 1;
+    const vm = vm_mod.current();
+    if (vm.ffi_pause > 0) vm.ffi_pause -= 1;
 }
 
 pub fn ffiDepth() u32 {
-    return g_ffi_depth;
+    return vm_mod.current().ffi_pause;
 }
 
 // -- Promote ---------------------------------------------------------------
@@ -171,10 +172,10 @@ pub fn promote(eid: u64) anyerror!void {
 // -- Demote ----------------------------------------------------------------
 
 /// Free `eid`'s materialized struct and remove it from the object_table.
-/// No-op if not materialized. Blocked when `g_ffi_depth > 0` to preserve
-/// in-flight FFI pointers.
+/// No-op if not materialized. Blocked when current Vm's `ffi_pause > 0`
+/// to preserve in-flight FFI pointers.
 pub fn demote(eid: u64) void {
-    if (g_ffi_depth > 0) return;
+    if (vm_mod.current().ffi_pause > 0) return;
     const allocator = g_allocator orelse return;
     const table = g_table orelse return;
     const layouts = g_layouts orelse return;
@@ -211,7 +212,7 @@ pub fn isMaterialized(eid: u64) bool {
 /// Called from send.zig cold path after bumping hotness. Checks threshold;
 /// if exceeded and not yet materialized and not in FFI, promotes.
 pub fn maybeAutoPromote(eid: u64) void {
-    if (g_ffi_depth > 0) return;
+    if (vm_mod.current().ffi_pause > 0) return;
     const table = g_table orelse return;
     if (table.get(eid) != null) return;
     if (table.hotnessOf(eid) < g_threshold) return;
