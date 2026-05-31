@@ -413,4 +413,57 @@ pub const ATTR_SCOPE_FIRST_BINDING: u64 = 163;
 /// bindings in a single scope.
 pub const ATTR_BIND_NEXT: u64 = 164;
 
-// 165..255 reserved for future kernel selectors / attributes
+// -- Phase 11 — bytecode VM (165..182) --------------------------------------
+
+/// `[method :bytecode-stream <byte-array-Ref>]` — pointer-Ref to a
+/// materialized byte slice in the bytecode arena. ADR-11 #1.
+pub const ATTR_BYTECODE_STREAM: u64 = 165;
+/// `[method :constant-pool <vec-Ref>]` — RRB-Tree Ref to vec of Refs
+/// (number/string literal entities, block-method Refs, symbol entities).
+/// Selectors NOT in pool — inline u32 in SEND_* opcodes per ADR-11 addendum.
+pub const ATTR_CONSTANT_POOL: u64 = 166;
+/// `[method :method-body-ast <ast-eid>]` — provenance back-pointer to the
+/// AST root the compiler lowered. Phase 13.4 mark-sweep root. ADR-11
+/// addendum reuses this name (drops the original `:source-ast` synonym).
+pub const ATTR_METHOD_BODY_AST: u64 = 167;
+/// `[method :method-sends ?sel-eid]` cardinality :many — every selector
+/// this method statically sends. Tooling/queryable-compiler annotation.
+pub const ATTR_METHOD_SENDS: u64 = 168;
+/// `[method :method-reads-slot ?slot-eid]` cardinality :many.
+pub const ATTR_METHOD_READS_SLOT: u64 = 169;
+/// `[method :method-ast-range ?range-eid]` cardinality :many. Each range
+/// entity carries :range-method / :range-pc-start / :range-pc-end /
+/// :range-ast (ADR-11 addendum, Date 1NF over the 3-tuple).
+pub const ATTR_METHOD_AST_RANGE: u64 = 170;
+/// `[method :method-send-site-count <SmallInt>]` — drives mcache sizing
+/// on first execution (lazy alloc per ADR-11 addendum #5).
+pub const ATTR_METHOD_SEND_SITE_COUNT: u64 = 171;
+/// `[method :method-local-count <SmallInt>]` — frame locals_inline size.
+pub const ATTR_METHOD_LOCAL_COUNT: u64 = 172;
+/// `[method :method-arg-count <SmallInt>]` — caller arg-pop count after
+/// SEND_N (SEND_0/SEND_1 bake arg count into opcode).
+pub const ATTR_METHOD_ARG_COUNT: u64 = 173;
+/// `[block-method :block-parent-method <method-eid>]` — enclosing method
+/// for RETURN_FROM_METHOD static depth resolution. ADR-11 addendum #1
+/// (block = own bytecode-method entity).
+pub const ATTR_BLOCK_PARENT_METHOD: u64 = 174;
+
+/// Range-entity attributes — sub-entity that encodes (pc-start, pc-end,
+/// ast) per Date 1NF (ADR-11 addendum #2).
+pub const ATTR_RANGE_METHOD: u64 = 175;
+pub const ATTR_RANGE_PC_START: u64 = 176;
+pub const ATTR_RANGE_PC_END: u64 = 177;
+pub const ATTR_RANGE_AST: u64 = 178;
+
+// -- Phase 11.6 — reify-stack frame entities (179..182) ----------------------
+
+/// `[frame :frame-pc <SmallInt>]` — program counter at the moment of reify.
+pub const ATTR_FRAME_PC: u64 = 179;
+/// `[frame :frame-method <method-eid>]` — currently-executing method.
+pub const ATTR_FRAME_METHOD: u64 = 180;
+/// `[frame :frame-self <Ref>]` — receiver of the current activation.
+pub const ATTR_FRAME_SELF: u64 = 181;
+/// `[frame :frame-parent <frame-eid>]` — calling frame in the reified chain.
+pub const ATTR_FRAME_PARENT: u64 = 182;
+
+// 183..255 reserved for future kernel selectors / attributes

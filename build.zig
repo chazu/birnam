@@ -149,6 +149,15 @@ pub fn build(b: *std.Build) void {
     const run_ref_tests = b.addRunArtifact(ref_tests);
     test_step.dependOn(&run_ref_tests.step);
 
+    const vm_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/vm_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const vm_tests = b.addTest(.{ .root_module = vm_test_mod });
+    const run_vm_tests = b.addRunArtifact(vm_tests);
+    test_step.dependOn(&run_vm_tests.step);
+
     const ot_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/object_table_test.zig"),
         .target = target,
