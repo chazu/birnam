@@ -60,7 +60,11 @@ pub const CardinalitySchema = struct {
 
 pub const FactStore = struct {
     allocator: std.mem.Allocator,
-    next_tx: u64, // monotonic; starts at 1
+    /// Monotonic tx counter; starts at 1. Atomic per Phase 11.7.iv
+    /// (ADR-11 #7 forward-compat). Single-writer transactor under the
+    /// Datomic shape; atomic now keeps non-transactor read paths safe
+    /// without a barrier change later.
+    next_tx: std.atomic.Value(u64),
     eavt: EAVTish,
     aevt: EAVTish, // same shape as EAVT, keys are (a, e)
     avet: AVETish,
@@ -99,7 +103,7 @@ pub const FactStore = struct {
     pub fn init(allocator: std.mem.Allocator) FactStore {
         return .{
             .allocator = allocator,
-            .next_tx = 1,
+            .next_tx = std.atomic.Value(u64).init(1),
             .eavt = EAVTish.empty(allocator, .{}),
             .aevt = EAVTish.empty(allocator, .{}),
             .avet = AVETish.empty(allocator, .{}),
@@ -184,8 +188,7 @@ pub const FactStore = struct {
         if (builtin.mode == .Debug) {
             if (ref_mod.isNil(v)) @panic("FactStore.assert: NIL value forbidden (Date discipline)");
         }
-        const tx = self.next_tx;
-        self.next_tx += 1;
+        const tx = self.next_tx.fetchAdd(1, .monotonic);
 
         // Snapshot the previous value before any writes. Use raw lookup
         // so `:many` attrs (where currentValue materializes an RRB)
@@ -223,8 +226,7 @@ pub const FactStore = struct {
     }
 
     pub fn retract(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !u64 {
-        const tx = self.next_tx;
-        self.next_tx += 1;
+        const tx = self.next_tx.fetchAdd(1, .monotonic);
 
         // No-op if (e, a, v) isn't currently present (AVET is authoritative
         // for both `:one` and `:many`).
@@ -499,7 +501,7 @@ pub const FactStore = struct {
     // -- Misc accessors ------------------------------------------------------
 
     pub fn currentTx(self: *const FactStore) u64 {
-        return self.next_tx - 1;
+        return self.next_tx.load(.monotonic) - 1;
     }
 };
 

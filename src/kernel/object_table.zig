@@ -31,7 +31,10 @@ pub const ObjectTable = struct {
     map: Map,
     /// Monotonic EID counter. Starts at USER_EID_START; bootstrap is
     /// responsible for `put`-ing kernel EIDs (0..63) before any `alloc`.
-    next_eid: u64,
+    /// Atomic per Phase 11.7.iv (ADR-11 #7 forward-compat). No-op on
+    /// single-thread; ready for non-transactor EID needs (reify-stack
+    /// transients) under the Datomic shape.
+    next_eid: std.atomic.Value(u64),
     /// Phase 8: per-EID hotness counter. Bumped on cold-EID dispatch.
     /// Transient — not snapshot-persisted. Saturates at u32 max.
     hotness: std.AutoHashMap(u64, u32),
@@ -40,7 +43,7 @@ pub const ObjectTable = struct {
         return .{
             .allocator = allocator,
             .map = Map.empty(allocator, .{}),
-            .next_eid = kernel_eids.USER_EID_START,
+            .next_eid = std.atomic.Value(u64).init(kernel_eids.USER_EID_START),
             .hotness = std.AutoHashMap(u64, u32).init(allocator),
         };
     }
@@ -71,9 +74,7 @@ pub const ObjectTable = struct {
     /// (fact-only) at allocation time. Callers wanting a materialized
     /// object should `put` immediately after.
     pub fn alloc(self: *ObjectTable) u64 {
-        const eid = self.next_eid;
-        self.next_eid += 1;
-        return eid;
+        return self.next_eid.fetchAdd(1, .monotonic);
     }
 
     /// Returns the materialized `Ref` for an EID, or null if the entity
