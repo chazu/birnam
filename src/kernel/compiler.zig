@@ -125,8 +125,48 @@ fn compileExpr(state: *State, ast_eid: u64) CompileError!void {
 
     switch (vt) {
         kernel_eids.AST_LITERAL_VT => try compileLiteral(state, ast_eid),
+        kernel_eids.AST_STMT_SEQ_VT => try compileStmtSeq(state, ast_eid),
+        kernel_eids.AST_RETURN_VT => try compileReturn(state, ast_eid),
+        kernel_eids.AST_SELF_VT => state.encoder.loadSelf(state.allocator) catch return error.OutOfMemory,
         else => return error.UnknownAstKind,
     }
+}
+
+/// Compile a statement sequence. Each non-last statement's value is
+/// popped; the last statement's value remains on stack as the seq's
+/// result. Empty seq pushes nil.
+fn compileStmtSeq(state: *State, ast_eid: u64) CompileError!void {
+    const first = state.store.currentValue(ast_eid, kernel_eids.ATTR_AST_STMT_FIRST);
+    if (first == null) {
+        state.encoder.loadNil(state.allocator) catch return error.OutOfMemory;
+        return;
+    }
+
+    var cur = first.?;
+    while (true) {
+        if (!ref_mod.isEid(cur)) return error.UnknownAstKind;
+        const cur_eid = ref_mod.untagEid(cur);
+
+        const next_ref = state.store.currentValue(cur_eid, kernel_eids.ATTR_AST_NEXT_SIBLING);
+        try compileExpr(state, cur_eid);
+
+        if (next_ref) |nx| {
+            // Not the last stmt — drop value before next iter.
+            state.encoder.pop(state.allocator) catch return error.OutOfMemory;
+            cur = nx;
+        } else break;
+    }
+}
+
+/// Compile `^expr`. Phase A2 lowers to plain RETURN inside a method
+/// body. Non-local return from inside a block is wired in Phase A6
+/// (RETURN_FROM_METHOD opcode).
+fn compileReturn(state: *State, ast_eid: u64) CompileError!void {
+    const value_ref = state.store.currentValue(ast_eid, kernel_eids.ATTR_AST_RETURN_VALUE) orelse
+        return error.AstMissingValue;
+    if (!ref_mod.isEid(value_ref)) return error.UnknownAstKind;
+    try compileExpr(state, ref_mod.untagEid(value_ref));
+    state.encoder.ret(state.allocator) catch return error.OutOfMemory;
 }
 
 /// Emit code to push the literal entity's value. SmallInt literals lower

@@ -96,6 +96,90 @@ test "compile big int literal → PUSH_CONST through pool" {
     try testing.expectEqual(big, m.constant_pool[0]);
 }
 
+test "compile stmt-seq: pops intermediate values, leaves last" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    // Three literal stmts: 1; 2; 3 — bytes should be:
+    //   PUSH_SMALLINT_I32 1, POP, PUSH_SMALLINT_I32 2, POP, PUSH_SMALLINT_I32 3, RETURN
+    try mkLiteralAst(&store, 6001, ref_mod.mkSmallInt(1).?);
+    try mkLiteralAst(&store, 6002, ref_mod.mkSmallInt(2).?);
+    try mkLiteralAst(&store, 6003, ref_mod.mkSmallInt(3).?);
+    _ = try store.assert(6001, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(6002), MODULE_EID);
+    _ = try store.assert(6002, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(6003), MODULE_EID);
+
+    const seq = 6000;
+    _ = try store.assert(seq, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_STMT_SEQ_VT), MODULE_EID);
+    _ = try store.assert(seq, kernel_eids.ATTR_AST_STMT_FIRST, ref_mod.mkEid(6001), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, seq);
+    defer m.deinit(testing.allocator);
+
+    // 5 + 1 + 5 + 1 + 5 + 1 = 18 bytes
+    try testing.expectEqual(@as(usize, 18), m.bytecode.len);
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 0));
+    try testing.expectEqual(@as(i32, 1), bytecode.readI32(m.bytecode, 1));
+    try testing.expectEqual(bytecode.Opcode.POP, bytecode.readOpcode(m.bytecode, 5));
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 6));
+    try testing.expectEqual(@as(i32, 2), bytecode.readI32(m.bytecode, 7));
+    try testing.expectEqual(bytecode.Opcode.POP, bytecode.readOpcode(m.bytecode, 11));
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 12));
+    try testing.expectEqual(@as(i32, 3), bytecode.readI32(m.bytecode, 13));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 17));
+}
+
+test "compile empty stmt-seq → LOAD_CONST_NIL + RETURN" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    _ = try store.assert(7000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_STMT_SEQ_VT), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, 7000);
+    defer m.deinit(testing.allocator);
+
+    try testing.expectEqual(@as(usize, 2), m.bytecode.len);
+    try testing.expectEqual(bytecode.Opcode.LOAD_CONST_NIL, bytecode.readOpcode(m.bytecode, 0));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 1));
+}
+
+test "compile return-expr lowers to expr + RETURN" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    try mkLiteralAst(&store, 8001, ref_mod.mkSmallInt(7).?);
+    _ = try store.assert(8000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_RETURN_VT), MODULE_EID);
+    _ = try store.assert(8000, kernel_eids.ATTR_AST_RETURN_VALUE, ref_mod.mkEid(8001), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, 8000);
+    defer m.deinit(testing.allocator);
+
+    // PUSH_SMALLINT_I32 7, RETURN (explicit), RETURN (implicit). Second
+    // RETURN is unreachable but harmless.
+    try testing.expectEqual(@as(usize, 7), m.bytecode.len);
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 0));
+    try testing.expectEqual(@as(i32, 7), bytecode.readI32(m.bytecode, 1));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 5));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 6));
+}
+
+test "compile self → LOAD_SELF + RETURN" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    _ = try store.assert(9000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_SELF_VT), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, 9000);
+    defer m.deinit(testing.allocator);
+
+    try testing.expectEqual(@as(usize, 2), m.bytecode.len);
+    try testing.expectEqual(bytecode.Opcode.LOAD_SELF, bytecode.readOpcode(m.bytecode, 0));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 1));
+}
+
 test "compile rejects unknown AST kind" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
