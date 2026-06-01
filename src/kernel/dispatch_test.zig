@@ -27,7 +27,7 @@ fn compileMaterializeRun(
     var m = try compiler.compileMethod(allocator, store, ast_eid);
     defer m.deinit(allocator);
     const method_eid = try compiler.materialize(allocator, store, table, &m, MODULE_EID);
-    return dispatch.runMethod(allocator, store, ref_mod.NIL, method_eid, &.{});
+    return dispatch.runMethod(allocator, store, ref_mod.NIL, method_eid, &.{}, &[_]ref_mod.Ref{});
 }
 
 test "dispatch: smallint literal" {
@@ -102,7 +102,7 @@ test "dispatch: LOAD_SELF returns receiver" {
     const method_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
 
     const receiver = ref_mod.mkSmallInt(99).?;
-    const result = try dispatch.runMethod(arena.allocator(), &store, receiver, method_eid, &.{});
+    const result = try dispatch.runMethod(arena.allocator(), &store, receiver, method_eid, &.{}, &[_]ref_mod.Ref{});
     try testing.expectEqual(receiver, result);
 }
 
@@ -156,7 +156,7 @@ test "reify-stack: captures active frame at SEND-time" {
     const method_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
 
     g_reified_eids = &[_]u64{};
-    _ = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, method_eid, &.{});
+    _ = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, method_eid, &.{}, &[_]ref_mod.Ref{});
 
     // At SEND-time, exactly one frame (the active method) is on the stack.
     try testing.expectEqual(@as(usize, 1), g_reified_eids.len);
@@ -168,6 +168,53 @@ test "reify-stack: captures active frame at SEND-time" {
     const pc_ref = store.currentValue(f_eid, kernel_eids.ATTR_FRAME_PC).?;
     try testing.expect(ref_mod.untagSmallInt(pc_ref) > 0);
     try testing.expect(store.currentValue(f_eid, kernel_eids.ATTR_FRAME_PARENT) == null);
+}
+
+test "dispatch: closure captures outer let-binding (by-value)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    // Build: let x = 5; [x] value
+    // → inner block captures x, returns it. Outer evaluates the block.
+    const x_name: u64 = 850;
+
+    // let x = 5
+    try mkLiteralAst(&store, 1, ref_mod.mkSmallInt(5).?);
+    _ = try store.assert(2, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LET_VT), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(x_name), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_LET_INIT, ref_mod.mkEid(1), MODULE_EID);
+
+    // inner block [x]: var-ref(x) as body
+    _ = try store.assert(3, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(3, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(x_name), MODULE_EID);
+    _ = try store.assert(4, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_BLOCK_VT), MODULE_EID);
+    _ = try store.assert(4, kernel_eids.ATTR_AST_BLOCK_BODY, ref_mod.mkEid(3), MODULE_EID);
+    // No block-params on this block.
+
+    _ = try store.assert(2, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(4), MODULE_EID);
+    _ = try store.assert(5, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_STMT_SEQ_VT), MODULE_EID);
+    _ = try store.assert(5, kernel_eids.ATTR_AST_STMT_FIRST, ref_mod.mkEid(2), MODULE_EID);
+
+    // Compile + materialize outer method — returns the block.
+    var m = try compiler.compileMethod(arena.allocator(), &store, 5);
+    defer m.deinit(arena.allocator());
+    const outer_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
+
+    // Outer returns the BytecodeBlock pointer Ref (or eid for non-capturing).
+    const blk_ref = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{}, &[_]ref_mod.Ref{});
+
+    // Inner block captures x → blk_ref must be pointer-tagged (carries captures).
+    try testing.expect(ref_mod.isPointer(blk_ref));
+    const inner_method_eid = @import("vm.zig").blockMethodEidFromRef(blk_ref);
+    const captures_slice = @import("vm.zig").blockCapturesFromRef(blk_ref);
+    try testing.expectEqual(@as(usize, 1), captures_slice.len);
+    try testing.expectEqual(ref_mod.mkSmallInt(5).?, captures_slice[0]);
+
+    // Invoke inner directly: pass captures from the BytecodeBlock.
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, inner_method_eid, &.{}, captures_slice);
+    try testing.expectEqual(ref_mod.mkSmallInt(5).?, result);
 }
 
 test "dispatch: compile + run block with params" {
@@ -194,7 +241,7 @@ test "dispatch: compile + run block with params" {
     const outer_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
 
     // Run outer → top of stack should be the block-method-eid Ref.
-    const block_ref = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{});
+    const block_ref = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{}, &[_]ref_mod.Ref{});
     try testing.expect(ref_mod.isEid(block_ref));
     const block_eid = ref_mod.untagEid(block_ref);
 
@@ -203,7 +250,7 @@ test "dispatch: compile + run block with params" {
     try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(arg_ref));
 
     // Invoke block with arg 55 → expect 55.
-    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, block_eid, &.{ref_mod.mkSmallInt(55).?});
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, block_eid, &.{ref_mod.mkSmallInt(55).?}, &[_]ref_mod.Ref{});
     try testing.expectEqual(ref_mod.mkSmallInt(55).?, result);
 }
 
@@ -306,7 +353,7 @@ test "dispatch: compileBlockAsMethod handles [:x | [x succ]] shape" {
     try testing.expectEqual(@as(u8, 1), m.arg_count);
 
     // Invoke as if dispatched: receiver=3, args=[7] → expect 8.
-    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.mkSmallInt(3).?, method_eid, &.{ref_mod.mkSmallInt(7).?});
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.mkSmallInt(3).?, method_eid, &.{ref_mod.mkSmallInt(7).?}, &[_]ref_mod.Ref{});
     try testing.expectEqual(ref_mod.mkSmallInt(8).?, result);
 }
 
@@ -347,7 +394,7 @@ test "dispatch: SEND into compiled bytecode method via bytecode dispatcher" {
     defer outer_m.deinit(arena.allocator());
     const outer_eid = try compiler.materialize(arena.allocator(), &store, &table, &outer_m, MODULE_EID);
 
-    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{});
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{}, &[_]ref_mod.Ref{});
     try testing.expectEqual(ref_mod.mkSmallInt(88).?, result);
 }
 
@@ -458,7 +505,7 @@ test "dispatch: MAKE_BLOCK + INVOKE_BLOCK runs block and returns value" {
     const pool = [_]ref_mod.Ref{ref_mod.mkEid(block_eid)};
     const outer_eid = try installBytecodeMethod(arena.allocator(), &store, &table, &outer_body, &pool);
 
-    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{});
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{}, &[_]ref_mod.Ref{});
     try testing.expectEqual(ref_mod.mkSmallInt(99).?, result);
 }
 
@@ -485,7 +532,7 @@ test "dispatch: INVOKE_BLOCK passes args as locals" {
     const pool = [_]ref_mod.Ref{ref_mod.mkEid(block_eid)};
     const outer_eid = try installBytecodeMethod(arena.allocator(), &store, &table, &outer_body, &pool);
 
-    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{});
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{}, &[_]ref_mod.Ref{});
     try testing.expectEqual(ref_mod.mkSmallInt(77).?, result);
 }
 
@@ -520,7 +567,7 @@ test "dispatch: RETURN_FROM_METHOD from block unwinds to enclosing method" {
     vm.unwind_target_remaining = 0;
     vm.unwind_value = ref_mod.NIL;
 
-    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{});
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{}, &[_]ref_mod.Ref{});
     try testing.expectEqual(ref_mod.mkSmallInt(7).?, result);
     try testing.expectEqual(false, vm.unwinding);
 }
@@ -577,7 +624,7 @@ test "dispatch: SEND_0 unary message returns receiver via stub method" {
     defer m.deinit(arena.allocator());
     const method_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
 
-    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, method_eid, &.{});
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, method_eid, &.{}, &[_]ref_mod.Ref{});
     try testing.expectEqual(ref_mod.mkEid(recv_eid), result);
 }
 

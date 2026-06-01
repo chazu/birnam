@@ -466,4 +466,14 @@ pub const ATTR_FRAME_SELF: u64 = 181;
 /// `[frame :frame-parent <frame-eid>]` — calling frame in the reified chain.
 pub const ATTR_FRAME_PARENT: u64 = 182;
 
-// 183..255 reserved for future kernel selectors / attributes
+// -- Phase 11.11 — closure scope capture (183) -------------------------------
+
+/// `[method :method-captures-ptr <pointer-Ref>]` — single-value pointer to
+/// a heap-allocated CaptureSpecArray (extern struct `{ len: u32, _pad,
+/// [len]CaptureSpec }`). Each CaptureSpec carries `(parent_slot,
+/// local_slot)` telling MAKE_BLOCK which parent-frame local to read and
+/// runMethod which child-frame slot to write the captured value into.
+/// Omitted (Date 1NF) when the method captures nothing.
+pub const ATTR_METHOD_CAPTURES_PTR: u64 = 183;
+
+// 184..255 reserved for future kernel selectors / attributes

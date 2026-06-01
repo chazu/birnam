@@ -36,13 +36,15 @@ pub const RunError = error{
 
 /// Execute a bytecode method. Returns the value on top of the value
 /// stack at RETURN. `receiver` becomes the frame's self_ref. `args` are
-/// pushed as locals[0..args.len].
+/// loaded as locals[0..args.len]; `captures` are copied per the method's
+/// `:method-captures-ptr` spec into their assigned local slots.
 pub fn runMethod(
     allocator: std.mem.Allocator,
     store: *const FactStore,
     receiver: Ref,
     method_eid: u64,
     args: []const Ref,
+    captures: []const Ref,
 ) RunError!Ref {
     const bc_ref = store.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM) orelse
         return error.MissingBytecode;
@@ -65,6 +67,17 @@ pub fn runMethod(
     var locals = std.ArrayList(Ref){};
     defer locals.deinit(allocator);
     for (args) |a| try locals.append(allocator, a);
+
+    // Phase 11.11 — copy captures into the slots the compiler assigned.
+    // Capture spec is a heap-allocated CaptureSpecArray pointer-Ref.
+    if (store.currentValue(method_eid, kernel_eids.ATTR_METHOD_CAPTURES_PTR)) |spec_ref| {
+        const specs = vm_mod.captureSpecsFromRef(spec_ref);
+        for (specs, 0..) |sp, i| {
+            if (i >= captures.len) break;
+            while (locals.items.len <= sp.local_slot) try locals.append(allocator, ref_mod.NIL);
+            locals.items[sp.local_slot] = captures[i];
+        }
+    }
 
     var value_stack = std.ArrayList(Ref){};
     defer value_stack.deinit(allocator);
@@ -197,11 +210,31 @@ pub fn runMethod(
             .MAKE_BLOCK => {
                 const idx = bytecode.readU16(code, pc + 1);
                 if (idx >= pool_items.len) return error.BadFrame;
-                // A8b spike: block representation = the block-method-eid
-                // Ref straight from the pool. INVOKE_BLOCK runs it via
-                // runMethod. Full Block-obj allocation with scope capture
-                // lands once closures-over-outer-locals are wired.
-                try value_stack.append(allocator, pool_items[idx]);
+                const method_ref = pool_items[idx];
+                if (!ref_mod.isEid(method_ref)) return error.BadFrame;
+                const block_method_eid = ref_mod.untagEid(method_ref);
+                // Phase 11.11 — read capture spec; if any, allocate a
+                // BytecodeBlock carrying the captured values from this
+                // frame. Otherwise push the bare method-eid Ref (fast
+                // path for non-capturing blocks).
+                const spec_opt = store.currentValue(block_method_eid, kernel_eids.ATTR_METHOD_CAPTURES_PTR);
+                if (spec_opt) |spec_ref| {
+                    const specs = vm_mod.captureSpecsFromRef(spec_ref);
+                    if (specs.len > 0) {
+                        const blk = try vm_mod.allocBytecodeBlock(allocator, block_method_eid, @intCast(specs.len));
+                        for (specs, 0..) |sp, i| {
+                            if (sp.parent_slot >= locals.items.len) {
+                                blk.captures_tail[i] = ref_mod.NIL;
+                            } else {
+                                blk.captures_tail[i] = locals.items[sp.parent_slot];
+                            }
+                        }
+                        try value_stack.append(allocator, blk.ref);
+                        pc += 3;
+                        continue;
+                    }
+                }
+                try value_stack.append(allocator, method_ref);
                 pc += 3;
             },
             .INVOKE_BLOCK => {
@@ -211,14 +244,24 @@ pub fn runMethod(
                 const top = value_stack.items.len;
                 const args_start = top - @as(usize, n_args);
                 const block_ref = value_stack.items[args_start - 1];
-                if (!ref_mod.isEid(block_ref)) return error.BadFrame;
-                const block_eid = ref_mod.untagEid(block_ref);
+                // Block ref is either mkEid(method_eid) (no captures) or
+                // a pointer Ref to BytecodeBlock (with captures).
+                var block_eid: u64 = 0;
+                var block_captures: []const Ref = &[_]Ref{};
+                if (ref_mod.isEid(block_ref)) {
+                    block_eid = ref_mod.untagEid(block_ref);
+                } else if (ref_mod.isPointer(block_ref)) {
+                    block_eid = vm_mod.blockMethodEidFromRef(block_ref);
+                    block_captures = vm_mod.blockCapturesFromRef(block_ref);
+                } else {
+                    return error.BadFrame;
+                }
                 // Snapshot args before shrinking the stack.
                 const args_snapshot = try allocator.dupe(Ref, value_stack.items[args_start..top]);
                 defer allocator.free(args_snapshot);
                 value_stack.shrinkRetainingCapacity(args_start - 1);
                 // Block sees the enclosing frame's self.
-                const result = try runMethod(allocator, store, receiver, block_eid, args_snapshot);
+                const result = try runMethod(allocator, store, receiver, block_eid, args_snapshot, block_captures);
                 // Non-local return propagation: if the block triggered
                 // RETURN_FROM_METHOD, the inner runMethod returned its
                 // unwind_value. Decide here whether we are the target
@@ -275,7 +318,7 @@ pub fn bytecodeDispatcherImpl(
     const method_eid = ref_mod.untagEid(closure.data);
     const allocator = send_mod.kernelAllocator() orelse return ref_mod.NIL;
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
-    const result = runMethod(allocator, store, s.receiver, method_eid, args[0..n_args]) catch
+    const result = runMethod(allocator, store, s.receiver, method_eid, args[0..n_args], &[_]Ref{}) catch
         return ref_mod.NIL;
     return result;
 }

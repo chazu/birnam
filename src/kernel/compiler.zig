@@ -24,6 +24,7 @@ const strings = @import("strings.zig");
 const boxed = @import("boxed.zig");
 const closure_mod = @import("closure.zig");
 const dispatch = @import("dispatch.zig");
+const vm_mod = @import("vm.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store_mod.FactStore;
@@ -53,17 +54,26 @@ pub const CompiledMethod = struct {
     /// materialized method-Ref must be written before the parent's
     /// pool is realized. Tree is depth-first.
     block_children: []BlockChild,
+    /// Phase 11.11 — variables captured from the enclosing method's
+    /// frame at MAKE_BLOCK time. Each spec maps a parent-frame slot
+    /// (where the value lives in the enclosing activation) to this
+    /// method's local slot (where the value gets copied to at INVOKE_BLOCK).
+    captures: []CaptureSpec,
 
     pub fn deinit(self: *CompiledMethod, allocator: std.mem.Allocator) void {
         for (self.block_children) |*child| child.compiled.deinit(allocator);
         allocator.free(self.block_children);
         allocator.free(self.bytecode);
         allocator.free(self.constant_pool);
+        allocator.free(self.captures);
         self.bytecode = &[_]u8{};
         self.constant_pool = &[_]Ref{};
         self.block_children = &[_]BlockChild{};
+        self.captures = &[_]CaptureSpec{};
     }
 };
+
+pub const CaptureSpec = vm_mod.CaptureSpec;
 
 pub const BlockChild = struct {
     pool_idx: u16,
@@ -88,11 +98,17 @@ const State = struct {
     /// EID-Ref.
     block_children: std.ArrayList(BlockChild),
     /// Compile-time scope map: name-EID → frame-local slot. Filled by
-    /// AST_LET_VT; consulted by AST_VAR_REF_VT and AST_ASSIGN_VT. Phase
-    /// A4 scope covers locals declared in the current method only;
-    /// captured outer-scope references require closure machinery and
-    /// are deferred to a follow-up landing.
+    /// AST_LET_VT, block params, and capture-emit (Phase 11.11).
     scope: std.AutoHashMap(u64, u8),
+    /// Enclosing compile state (block-method-nesting chain). Null for
+    /// a top-level method. Phase 11.11 — compileVarRef walks this chain
+    /// when the name misses in current scope, recording a capture-spec
+    /// at each intermediate level so the chain stays flat at runtime
+    /// (each block frame only ever reads from its immediate parent).
+    parent_state: ?*State = null,
+    /// Capture specs for this method (parent-slot → my-local-slot).
+    /// Ordered: spec index = position in the runtime captures array.
+    captures: std.ArrayList(CaptureSpec),
 
     fn deinit(self: *State) void {
         self.encoder.deinit(self.allocator);
@@ -100,6 +116,7 @@ const State = struct {
         for (self.block_children.items) |*c| c.compiled.deinit(self.allocator);
         self.block_children.deinit(self.allocator);
         self.scope.deinit();
+        self.captures.deinit(self.allocator);
     }
 
     /// Allocate the next frame-local slot. u8 ceiling matches the
@@ -141,7 +158,7 @@ pub fn compileMethod(
     store: *const FactStore,
     ast_root_eid: u64,
 ) CompileError!CompiledMethod {
-    return compileMethodInner(allocator, store, ast_root_eid, null);
+    return compileMethodInner(allocator, store, ast_root_eid, null, null);
 }
 
 /// Compile an AST_BLOCK_VT entity as a top-level method: block params
@@ -163,16 +180,19 @@ pub fn compileBlockAsMethod(
         if (ref_mod.isEid(p_ref)) first_param = ref_mod.untagEid(p_ref);
     }
 
-    return compileMethodInner(allocator, store, body_eid, first_param);
+    return compileMethodInner(allocator, store, body_eid, first_param, null);
 }
 
 /// Internal variant — supports a pre-populated parameter list for
-/// block-method compilation (block params occupy locals[0..n]).
+/// block-method compilation (block params occupy locals[0..n]) and a
+/// pointer to the enclosing method's compile state for closure scope
+/// capture (Phase 11.11).
 fn compileMethodInner(
     allocator: std.mem.Allocator,
     store: *const FactStore,
     ast_root_eid: u64,
     first_param_eid: ?u64,
+    parent_state: ?*State,
 ) CompileError!CompiledMethod {
     var state = State{
         .allocator = allocator,
@@ -181,6 +201,8 @@ fn compileMethodInner(
         .constant_pool = std.ArrayList(Ref){},
         .block_children = std.ArrayList(BlockChild){},
         .scope = std.AutoHashMap(u64, u8).init(allocator),
+        .parent_state = parent_state,
+        .captures = std.ArrayList(CaptureSpec){},
     };
     // defer (not errdefer) so the scope map is always freed; the
     // owned lists are emptied by toOwnedSlice and become no-op cleanups.
@@ -213,6 +235,7 @@ fn compileMethodInner(
     const bytes = state.encoder.toOwnedSlice(allocator) catch return error.OutOfMemory;
     const pool = state.constant_pool.toOwnedSlice(allocator) catch return error.OutOfMemory;
     const children = state.block_children.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    const captures = state.captures.toOwnedSlice(allocator) catch return error.OutOfMemory;
 
     const local_count: u8 = if (state.max_local_slot < 0) 0 else @intCast(state.max_local_slot + 1);
 
@@ -224,6 +247,7 @@ fn compileMethodInner(
         .local_count = local_count,
         .send_site_count = state.send_site_count,
         .block_children = children,
+        .captures = captures,
     };
 }
 
@@ -333,17 +357,38 @@ fn compileLet(state: *State, ast_eid: u64) CompileError!void {
     state.encoder.pushLocal(state.allocator, slot) catch return error.OutOfMemory;
 }
 
-/// Compile a variable reference. Phase A4 covers locals in the
-/// current method's scope. Captured outer-scope refs require the
-/// closure machinery deferred to a follow-up landing.
+/// Compile a variable reference. Looks up the name in the current
+/// method's scope first, then walks the enclosing-method chain
+/// (Phase 11.11). On a parent-chain hit, each intermediate level
+/// captures the name from its own parent so the runtime chain stays
+/// flat — each block frame only ever reads from its immediate parent.
 fn compileVarRef(state: *State, ast_eid: u64) CompileError!void {
     const name_eid = try readNameEid(state, ast_eid);
-    const slot = state.scope.get(name_eid) orelse return error.VarNotInScope;
+    const slot = try resolveVarSlot(state, name_eid);
     state.encoder.pushLocal(state.allocator, slot) catch return error.OutOfMemory;
 }
 
+/// Find or capture-emit a slot for `name_eid`. Returns the slot index
+/// in `state`'s frame. Recurses up the parent chain; each level
+/// records a CaptureSpec mapping parent's slot to its own.
+fn resolveVarSlot(state: *State, name_eid: u64) CompileError!u8 {
+    if (state.scope.get(name_eid)) |slot| return slot;
+
+    const parent = state.parent_state orelse return error.VarNotInScope;
+    const parent_slot = try resolveVarSlot(parent, name_eid);
+
+    // Allocate a local slot in our frame to hold the captured value.
+    const local_slot = state.allocSlot() catch return error.TooManyLocals;
+    state.scope.put(name_eid, local_slot) catch return error.OutOfMemory;
+    state.captures.append(state.allocator, .{ .parent_slot = parent_slot, .local_slot = local_slot }) catch return error.OutOfMemory;
+    return local_slot;
+}
+
 /// Compile `name := expr`. Value of the assign expression is the
-/// stored value.
+/// stored value. Same capture-walk semantics as compileVarRef — but
+/// note that captured-then-written values are by-value under Phase
+/// 11.11 semantics (mutations don't propagate to outer scope).
+/// Reference semantics is a Phase 11.12 follow-up.
 fn compileAssign(state: *State, ast_eid: u64) CompileError!void {
     const name_eid = try readNameEid(state, ast_eid);
     const value_ref = state.store.currentValue(ast_eid, kernel_eids.ATTR_AST_ASSIGN_VALUE) orelse
@@ -352,7 +397,7 @@ fn compileAssign(state: *State, ast_eid: u64) CompileError!void {
 
     try compileExpr(state, ref_mod.untagEid(value_ref));
 
-    const slot = state.scope.get(name_eid) orelse return error.VarNotInScope;
+    const slot = try resolveVarSlot(state, name_eid);
     state.encoder.storeLocal(state.allocator, slot) catch return error.OutOfMemory;
     state.encoder.pushLocal(state.allocator, slot) catch return error.OutOfMemory;
 }
@@ -381,8 +426,10 @@ fn compileBlock(state: *State, ast_eid: u64) CompileError!void {
         if (ref_mod.isEid(p_ref)) first_param = ref_mod.untagEid(p_ref);
     }
 
-    // Recursively compile the block body as its own method.
-    var child = try compileMethodInner(state.allocator, state.store, body_eid, first_param);
+    // Recursively compile the block body as its own method, threading
+    // current state as parent so VAR_REF in the body can resolve outer
+    // locals via the capture chain.
+    var child = try compileMethodInner(state.allocator, state.store, body_eid, first_param, state);
     errdefer child.deinit(state.allocator);
 
     // Reserve pool slot + record child for materialize-time patching.
@@ -484,7 +531,28 @@ fn materializeInner(
         storeAssert(store, method_eid, kernel_eids.ATTR_BLOCK_PARENT_METHOD, ref_mod.mkEid(pme), module_eid) catch return error.StoreError;
     }
 
+    // Phase 11.11 — capture-spec array. Heap-allocate a CaptureSpecArray
+    // (extern struct with inline tail) and store its pointer Ref under
+    // :method-captures-ptr. Date 1NF preserved by omitting the attr
+    // entirely when nothing is captured.
+    if (m.captures.len > 0) {
+        const ptr_ref = try allocCaptureSpecArrayRef(allocator, m.captures);
+        storeAssert(store, method_eid, kernel_eids.ATTR_METHOD_CAPTURES_PTR, ptr_ref, module_eid) catch return error.StoreError;
+    }
+
     return method_eid;
+}
+
+fn allocCaptureSpecArrayRef(allocator: std.mem.Allocator, specs: []const CaptureSpec) MaterializeError!Ref {
+    const header_sz = @sizeOf(vm_mod.CaptureSpecArrayHeader);
+    const total = header_sz + @sizeOf(CaptureSpec) * specs.len;
+    const buf = allocator.alignedAlloc(u8, .of(vm_mod.CaptureSpecArrayHeader), total) catch return error.OutOfMemory;
+    const header: *vm_mod.CaptureSpecArrayHeader = @ptrCast(@alignCast(buf.ptr));
+    header.* = .{ .len = @intCast(specs.len) };
+    const tail_addr: usize = @intFromPtr(buf.ptr) + header_sz;
+    const tail: [*]CaptureSpec = @ptrFromInt(tail_addr);
+    for (specs, 0..) |sp, i| tail[i] = sp;
+    return ref_mod.mkPointer(@ptrCast(buf.ptr));
 }
 
 inline fn storeAssert(store: *FactStore, e: u64, a: u64, v: Ref, mod_eid: u64) !void {

@@ -136,6 +136,75 @@ fn packEntry(vt: u64, impl: *const anyopaque) u128 {
     return @as(u128, vt) | (@as(u128, impl_bits) << 64);
 }
 
+// -- Phase 11.11 — closure scope capture ---------------------------------
+
+/// Mapping from a parent-frame local slot to this method's own local
+/// slot. Recorded by the compiler each time an inner block references
+/// a name declared in an enclosing block.
+pub const CaptureSpec = extern struct {
+    parent_slot: u8,
+    local_slot: u8,
+    _pad: u16 = 0,
+};
+
+/// Runtime layout for the heap-allocated capture-spec array carried by
+/// `:method-captures-ptr`. Header is followed inline by `len` CaptureSpec
+/// records.
+pub const CaptureSpecArrayHeader = extern struct {
+    len: u32,
+    _pad: u32 = 0,
+};
+
+/// Block object pushed by MAKE_BLOCK when the block-method captures
+/// outer locals. Carries the method EID plus the captured values copied
+/// from the enclosing frame at MAKE_BLOCK time (Phase 11.11 by-value
+/// semantics — by-reference is Phase 11.12).
+pub const BytecodeBlock = extern struct {
+    method_eid: u64,
+    captures_len: u32,
+    _pad: u32 = 0,
+    // [captures_len]Ref follows inline
+};
+
+/// Decode a capture-spec pointer Ref into the spec slice.
+pub fn captureSpecsFromRef(ptr_ref: Ref) []const CaptureSpec {
+    if (!ref_mod.isPointer(ptr_ref)) return &[_]CaptureSpec{};
+    const base_ptr = ref_mod.untagPointer(ptr_ref);
+    const header: *const CaptureSpecArrayHeader = @ptrCast(@alignCast(base_ptr));
+    const tail_addr: usize = @intFromPtr(base_ptr) + @sizeOf(CaptureSpecArrayHeader);
+    const tail: [*]const CaptureSpec = @ptrFromInt(tail_addr);
+    return tail[0..header.len];
+}
+
+/// Capture values out of a BytecodeBlock pointer Ref.
+pub fn blockCapturesFromRef(ptr_ref: Ref) []const Ref {
+    if (!ref_mod.isPointer(ptr_ref)) return &[_]Ref{};
+    const base_ptr = ref_mod.untagPointer(ptr_ref);
+    const header: *const BytecodeBlock = @ptrCast(@alignCast(base_ptr));
+    const tail_addr: usize = @intFromPtr(base_ptr) + @sizeOf(BytecodeBlock);
+    const tail: [*]const Ref = @ptrFromInt(tail_addr);
+    return tail[0..header.captures_len];
+}
+
+/// Decode a BytecodeBlock pointer Ref → its method EID.
+pub fn blockMethodEidFromRef(ptr_ref: Ref) u64 {
+    if (!ref_mod.isPointer(ptr_ref)) return 0;
+    const header: *const BytecodeBlock = @ptrCast(@alignCast(ref_mod.untagPointer(ptr_ref)));
+    return header.method_eid;
+}
+
+/// Allocate a BytecodeBlock + inline captures. Caller copies captures
+/// into the returned tail slot. Returns the pointer Ref.
+pub fn allocBytecodeBlock(allocator: std.mem.Allocator, method_eid: u64, n_captures: u32) !struct { ref: Ref, captures_tail: [*]Ref } {
+    const total = @sizeOf(BytecodeBlock) + @sizeOf(Ref) * n_captures;
+    const buf = try allocator.alignedAlloc(u8, .of(BytecodeBlock), total);
+    const header: *BytecodeBlock = @ptrCast(@alignCast(buf.ptr));
+    header.* = .{ .method_eid = method_eid, .captures_len = n_captures };
+    const tail_addr: usize = @intFromPtr(buf.ptr) + @sizeOf(BytecodeBlock);
+    const tail: [*]Ref = @ptrFromInt(tail_addr);
+    return .{ .ref = ref_mod.mkPointer(@ptrCast(buf.ptr)), .captures_tail = tail };
+}
+
 /// Per-thread VM state. Forward-compat field set per ADR-11 #2 + #7.
 pub const Vm = struct {
     // -- Phase 11 bytecode VM ----------------------------------------------
