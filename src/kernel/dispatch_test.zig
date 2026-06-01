@@ -260,6 +260,43 @@ test "dispatch: compile + run assign updates binding" {
     try testing.expectEqual(ref_mod.mkSmallInt(42).?, try compileMaterializeRun(arena.allocator(), &store, &table, 6));
 }
 
+test "dispatch: SEND into compiled bytecode method via bytecode dispatcher" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
+
+    // Compile a "callee" method: literal 88 + RETURN.
+    try mkLiteralAst(&store, 1, ref_mod.mkSmallInt(88).?);
+    var callee_m = try compiler.compileMethod(arena.allocator(), &store, 1);
+    defer callee_m.deinit(arena.allocator());
+    const callee_eid = try compiler.materialize(arena.allocator(), &store, &table, &callee_m, MODULE_EID);
+
+    // Install [test_vt :foo callee_eid].
+    const test_vt: u64 = kernel_eids.OBJECT_VT;
+    const sel_foo: u64 = kernel_eids.SEL_NOT; // reuse any sel EID
+    _ = try store.assert(test_vt, sel_foo, ref_mod.mkEid(callee_eid), MODULE_EID);
+
+    // Receiver entity with :vtable test_vt.
+    const recv_eid: u64 = 700;
+    _ = try store.assert(recv_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(test_vt), MODULE_EID);
+
+    // Outer method: [recv foo] — should dispatch into callee via bytecode dispatcher.
+    _ = try store.assert(2, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LITERAL_VT), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_VALUE, ref_mod.mkEid(recv_eid), MODULE_EID);
+    _ = try store.assert(3, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_UNARY_SEND_VT), MODULE_EID);
+    _ = try store.assert(3, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(2), MODULE_EID);
+    _ = try store.assert(3, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(sel_foo), MODULE_EID);
+
+    var outer_m = try compiler.compileMethod(arena.allocator(), &store, 3);
+    defer outer_m.deinit(arena.allocator());
+    const outer_eid = try compiler.materialize(arena.allocator(), &store, &table, &outer_m, MODULE_EID);
+
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{});
+    try testing.expectEqual(ref_mod.mkSmallInt(88).?, result);
+}
+
 fn stubSmallintPlusImpl(s: *send_mod.Send, args: [*]const ref_mod.Ref, _: usize) callconv(.c) ref_mod.Ref {
     const a = ref_mod.untagSmallInt(s.receiver);
     const b = ref_mod.untagSmallInt(args[0]);

@@ -256,6 +256,30 @@ pub fn runMethod(
     return error.BadFrame;
 }
 
+// -- Bytecode dispatcher Imp ------------------------------------------------
+
+/// Closure body for compiled bytecode methods. When a bytecode-method
+/// entity is installed via `[vt sel mkEid(method_eid)]` and the method's
+/// object-table slot holds a pointer to `Closure { method =
+/// &bytecodeDispatcherImpl, data = mkEid(method_eid) }`, sending `sel`
+/// to a `vt`-tagged receiver dispatches here. The closure's `data`
+/// field carries the method EID — used to look up bytecode + constant
+/// pool from the fact store.
+pub fn bytecodeDispatcherImpl(
+    s: *send_mod.Send,
+    args: [*]const Ref,
+    n_args: usize,
+) callconv(.c) Ref {
+    const closure = s.closure orelse return ref_mod.NIL;
+    if (!ref_mod.isEid(closure.data)) return ref_mod.NIL;
+    const method_eid = ref_mod.untagEid(closure.data);
+    const allocator = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    const result = runMethod(allocator, store, s.receiver, method_eid, args[0..n_args]) catch
+        return ref_mod.NIL;
+    return result;
+}
+
 // -- Phase 11.6 — reify-stack API ------------------------------------------
 
 /// Materialize the current Vm frame stack as transient fact-entities.

@@ -22,6 +22,8 @@ const kernel_eids = @import("kernel_eids.zig");
 const bytecode = @import("bytecode.zig");
 const strings = @import("strings.zig");
 const boxed = @import("boxed.zig");
+const closure_mod = @import("closure.zig");
+const dispatch = @import("dispatch.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store_mod.FactStore;
@@ -417,6 +419,13 @@ fn materializeInner(
     parent_method_eid: ?u64,
 ) MaterializeError!u64 {
     const method_eid = table.alloc();
+
+    // Install a Closure so [vt sel mkEid(method_eid)] dispatches into
+    // bytecode via the bytecode dispatcher Imp. Closure.data carries
+    // the method EID; the dispatcher reads it to locate :bytecode-stream.
+    const c_ptr = allocator.create(closure_mod.Closure) catch return error.OutOfMemory;
+    c_ptr.* = .{ .method = @ptrCast(&dispatch.bytecodeDispatcherImpl), .data = ref_mod.mkEid(method_eid) };
+    table.put(method_eid, ref_mod.mkPointer(@ptrCast(c_ptr))) catch return error.StoreError;
 
     // Walk block children first: each produces a method-eid that gets
     // patched into our constant pool. Children carry :block-parent-method
