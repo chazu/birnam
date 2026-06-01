@@ -47,15 +47,18 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 
 **Lang switchover infrastructure shipped:** `IdApi.compile_block_as_method(block_ast_eid) → method_eid` appended (ABI discipline preserved). Kernel-side `cCompileBlockAsMethod` calls `compiler.compileBlockAsMethod` + `materialize`. Lang dylib mirror struct updated. `vtMethodDoImpl` switchover NOT YET wired — blocked on closure-scope-capture support in the bytecode compiler (see Phase 11.11 below).
 
-**Phase 11.11 — closure scope capture (next landing, blocks lang switchover):**
-Birnam's tree-walker captures by reference via `:block-scope` Ref + `:scope-parent` chain (ADR-10-E2 / E3). Bytecode compiler today only resolves names in the current method's local scope — inner blocks accessing outer locals raise `VarNotInScope` at compile time. Three concrete pieces:
-1. **Compile-time outer-scope analysis.** `compileBlockAsMethod` accepts a `parent_state` reference. On `compileVarRef` miss in local scope, walk `parent_state.scope` chain; on hit, emit a new opcode that loads from the captured-scope chain instead of the local frame.
-2. **New opcode for outer-local load.** Options: (a) new `LOAD_CAPTURED <slot_in_parent> <depth>` op, OR (b) reuse existing block-scope-entity machinery — emit at runtime a `:scope-parent`-chained scope entity per block invocation, load via send-dispatched `[scope at: name]`. (a) is faster, (b) reuses Phase 10.4.5 S1-S4 truth-layer with no new opcode.
-3. **MAKE_BLOCK runtime captures parent frame.** Today MAKE_BLOCK just pushes the block-method-eid Ref. Closure variant pushes a `Block` obj carrying `(block-method-eid, captured-scope-ref)`. INVOKE_BLOCK installs the captured scope into the activation's lookup chain.
+**Phase 11.11 ✓ — closure scope capture (by-value, 2026-06-01):**
+- Compiler `State` gains `parent_state` chain. `resolveVarSlot` walks parents recursively; each intermediate level records a `CaptureSpec` so the runtime chain stays flat (each block frame reads only from its immediate parent).
+- `CompiledMethod.captures: []CaptureSpec` materializes to a heap `CaptureSpecArrayHeader` + inline tail, pointer-Ref stored under `:method-captures-ptr`.
+- `MAKE_BLOCK` reads spec at runtime; if non-empty, allocates a `BytecodeBlock` (extern struct: method_eid + captures_len + inline `[]Ref` tail), copies parent-frame locals at `parent_slot`, pushes the pointer Ref. Non-capturing blocks stay on the fast `mkEid(method_eid)` path.
+- `INVOKE_BLOCK` tag-dispatches on the block Ref (EID = no captures, Pointer = with captures), extracts captures, threads through `runMethod` which copies them into the compiler-assigned local slots.
+- End-to-end test: `let x = 5; [x]` returns a `BytecodeBlock` pointer Ref with captures=[5]; invoking it returns 5.
+- **By-reference semantics deferred to Phase 11.12** — captured-then-mutated values don't propagate to outer scope. Phase 11.12 will replace the per-MAKE_BLOCK copy with a shared scope-entity heap allocation (or pointer-to-locals + escape-analysis).
 
-Test 10.4b `[:x | [x succ]]` is the canonical canary — the inner `[x succ]` block (if parsed as a nested block, not a bracket-send) needs to read `x` from the outer block's frame. Once 11.11 ships, the lang switchover wiring in `vtMethodDoImpl` becomes the one-line edit it was meant to be.
+**Lang switchover regression (Phase 11.11.tail — unblocked but unwired):**
+Kernel-side mirror test of `[:x | [x succ]]` compiles and runs correctly through the bytecode VM. Wiring the same path through lang dylib's `vtMethodDoImpl` triggers a runtime regression in DEMO 10.4b that the kernel mirror doesn't reproduce. Suspected cross-dylib boundary issue (allocator scope or closure-pointer reach), not a compiler bug. Switchover infrastructure (`IdApi.compile_block_as_method`) stays committed; wire-up at `vtMethodDoImpl` reverted pending targeted instrumentation.
 
-**Test count: 349/349 across 85 build steps.**
+**Test count: 350/350 across 85 build steps.**
 
 ---
 

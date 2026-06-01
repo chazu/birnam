@@ -1745,11 +1745,14 @@ fn evalLetImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
 /// `[vt method: #sel do: blockClosureRef]` — installs the block as a method
 /// on `vt`. Returns the receiver (target vt) for chaining.
 ///
-/// Phase 11.2 switchover infrastructure (api.compile_block_as_method) is
-/// in place; full switchover currently regresses existing tree-walker
-/// tests in edge cases (likely block-body desugar shape mismatch with
-/// the bytecode compiler's expectations — needs investigation). Keep
-/// tree-walker install path until the regression is debugged.
+/// Phase 11.2 + 11.11 switchover infrastructure is in place — closure
+/// scope capture (11.11) closes the compile-time blocker. Wiring at the
+/// vtMethodDoImpl call site still triggers a runtime regression in
+/// DEMO 10.4b that the kernel-side `[:x | [x succ]]` mirror test
+/// doesn't reproduce. Likely a cross-dylib state issue
+/// (allocator/closure-pointer/EID resolution) that needs targeted
+/// instrumentation. Keep tree-walker install path until the
+/// regression's root cause is found.
 fn vtMethodDoImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
     const api = g_api.?;
