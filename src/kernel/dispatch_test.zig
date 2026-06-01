@@ -260,6 +260,68 @@ test "dispatch: compile + run assign updates binding" {
     try testing.expectEqual(ref_mod.mkSmallInt(42).?, try compileMaterializeRun(arena.allocator(), &store, &table, 6));
 }
 
+fn stubSmallintPlusImpl(s: *send_mod.Send, args: [*]const ref_mod.Ref, _: usize) callconv(.c) ref_mod.Ref {
+    const a = ref_mod.untagSmallInt(s.receiver);
+    const b = ref_mod.untagSmallInt(args[0]);
+    return ref_mod.mkSmallInt(a + b).?;
+}
+
+test "dispatch: composite let + binary send (1 + 2 + 3 = 6)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
+
+    // Install stub + on SMALLINT_VT.
+    const closure_eid = table.alloc();
+    const c_ptr = try arena.allocator().create(closure_mod.Closure);
+    c_ptr.* = .{ .method = @ptrCast(&stubSmallintPlusImpl), .data = ref_mod.NIL };
+    try table.put(closure_eid, ref_mod.mkPointer(@ptrCast(c_ptr)));
+    _ = try store.assert(kernel_eids.SMALLINT_VT, kernel_eids.SEL_PLUS, ref_mod.mkEid(closure_eid), MODULE_EID);
+
+    // AST: let x = 1; let y = 2; (x + y) + 3
+    const x_name: u64 = 700;
+    const y_name: u64 = 701;
+
+    try mkLiteralAst(&store, 1, ref_mod.mkSmallInt(1).?);
+    _ = try store.assert(2, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LET_VT), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(x_name), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_LET_INIT, ref_mod.mkEid(1), MODULE_EID);
+
+    try mkLiteralAst(&store, 3, ref_mod.mkSmallInt(2).?);
+    _ = try store.assert(4, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LET_VT), MODULE_EID);
+    _ = try store.assert(4, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(y_name), MODULE_EID);
+    _ = try store.assert(4, kernel_eids.ATTR_AST_LET_INIT, ref_mod.mkEid(3), MODULE_EID);
+
+    // x var-ref
+    _ = try store.assert(5, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(5, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(x_name), MODULE_EID);
+    // y var-ref
+    _ = try store.assert(6, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(6, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(y_name), MODULE_EID);
+    // x + y
+    _ = try store.assert(7, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_BINARY_SEND_VT), MODULE_EID);
+    _ = try store.assert(7, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(5), MODULE_EID);
+    _ = try store.assert(7, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(kernel_eids.SEL_PLUS), MODULE_EID);
+    _ = try store.assert(7, kernel_eids.ATTR_AST_FIRST_ARG, ref_mod.mkEid(6), MODULE_EID);
+
+    // (x + y) + 3
+    try mkLiteralAst(&store, 8, ref_mod.mkSmallInt(3).?);
+    _ = try store.assert(9, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_BINARY_SEND_VT), MODULE_EID);
+    _ = try store.assert(9, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(7), MODULE_EID);
+    _ = try store.assert(9, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(kernel_eids.SEL_PLUS), MODULE_EID);
+    _ = try store.assert(9, kernel_eids.ATTR_AST_FIRST_ARG, ref_mod.mkEid(8), MODULE_EID);
+
+    _ = try store.assert(2, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(4), MODULE_EID);
+    _ = try store.assert(4, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(9), MODULE_EID);
+
+    _ = try store.assert(10, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_STMT_SEQ_VT), MODULE_EID);
+    _ = try store.assert(10, kernel_eids.ATTR_AST_STMT_FIRST, ref_mod.mkEid(2), MODULE_EID);
+
+    try testing.expectEqual(ref_mod.mkSmallInt(6).?, try compileMaterializeRun(arena.allocator(), &store, &table, 10));
+}
+
 // -- MAKE_BLOCK + INVOKE_BLOCK ---------------------------------------------
 
 const strings = @import("strings.zig");
