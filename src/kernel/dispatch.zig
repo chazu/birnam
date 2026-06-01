@@ -68,8 +68,34 @@ pub fn runMethod(
     var value_stack = std.ArrayList(Ref){};
     defer value_stack.deinit(allocator);
 
+    // Phase 11.6 — track this activation on Vm.frames for reify-stack.
+    // Capacity reserved upfront so pointers stay stable for pc write-
+    // through during the loop.
+    const vm = vm_mod.current();
+    try vm_mod.ensureFrameCapacity(allocator, vm.frames.items.len + 16);
+    try vm.frames.append(allocator, vm_mod.Frame{
+        .bytecode = code.ptr,
+        .pc = 0,
+        .method_eid = method_eid,
+        .self_ref = receiver,
+        .bp = 0,
+        .local_count = 0,
+        .parent_method_frame = null,
+    });
+    const frame_idx = vm.frames.items.len - 1;
+    defer {
+        _ = vm.frames.pop();
+        // When the stack drains, release the backing buffer so a
+        // subsequent runMethod call from a different allocator scope
+        // doesn't reallocate against a dead allocator. Reify-stack only
+        // sees active frames, so freeing on drain is consistent with the
+        // semantics.
+        if (vm.frames.items.len == 0) vm_mod.freeFrames(allocator);
+    }
+
     var pc: usize = 0;
     while (pc < code.len) {
+        vm.frames.items[frame_idx].pc = pc;
         const op = bytecode.readOpcode(code, pc);
         switch (op) {
             .PUSH_SMALLINT_I32 => {
@@ -196,7 +222,6 @@ pub fn runMethod(
                 // RETURN_FROM_METHOD, the inner runMethod returned its
                 // unwind_value. Decide here whether we are the target
                 // method frame.
-                const vm = vm_mod.current();
                 if (vm.unwinding) {
                     if (vm.unwind_target_remaining == 0) {
                         // We ARE the target method. Catch, return the
@@ -216,7 +241,6 @@ pub fn runMethod(
                 const depth: u8 = bytecode.readU8(code, pc + 1);
                 if (value_stack.items.len == 0) return error.StackUnderflow;
                 const v = value_stack.pop().?;
-                const vm = vm_mod.current();
                 vm.unwinding = true;
                 vm.unwind_value = v;
                 vm.unwind_target_remaining = depth;
@@ -229,6 +253,50 @@ pub fn runMethod(
         }
     }
     return error.BadFrame;
+}
+
+// -- Phase 11.6 — reify-stack API ------------------------------------------
+
+/// Materialize the current Vm frame stack as transient fact-entities.
+/// Returns the EIDs of the asserted frame entities, deepest-frame-first
+/// (caller frame at index 0, current/innermost at end). Caller owns the
+/// returned slice.
+///
+/// Asserted facts per frame (under `module_eid` provenance):
+///   [f :vtable ?]                 (left null — frames have no vt yet)
+///   [f :frame-pc <SmallInt>]
+///   [f :frame-method <method-eid-Ref>]
+///   [f :frame-self <Ref>]         (omitted if NIL — Date discipline)
+///   [f :frame-parent <prev-frame-eid-Ref>]  (omitted for stack base)
+///
+/// Phase 11.6 ships single-thread semantics — the snapshot is taken
+/// from the current Vm only. Multi-thread "snapshot under tx" lands
+/// when the Datomic transactor introduces the channel boundary.
+pub fn reifyStack(
+    allocator: std.mem.Allocator,
+    store: *FactStore,
+    table: *ObjectTable,
+    module_eid: u64,
+) ![]u64 {
+    const vm = vm_mod.current();
+    const n = vm.frames.items.len;
+    var eids = try allocator.alloc(u64, n);
+    errdefer allocator.free(eids);
+
+    for (vm.frames.items, 0..) |f, i| {
+        const eid = table.alloc();
+        eids[i] = eid;
+        const pc_ref = ref_mod.mkSmallInt(@intCast(f.pc)) orelse return error.OutOfMemory;
+        _ = try store.assert(eid, kernel_eids.ATTR_FRAME_PC, pc_ref, module_eid);
+        _ = try store.assert(eid, kernel_eids.ATTR_FRAME_METHOD, ref_mod.mkEid(f.method_eid), module_eid);
+        if (!ref_mod.isNil(f.self_ref)) {
+            _ = try store.assert(eid, kernel_eids.ATTR_FRAME_SELF, f.self_ref, module_eid);
+        }
+        if (i > 0) {
+            _ = try store.assert(eid, kernel_eids.ATTR_FRAME_PARENT, ref_mod.mkEid(eids[i - 1]), module_eid);
+        }
+    }
+    return eids;
 }
 
 inline fn applyJump(after: usize, offset: i16) usize {

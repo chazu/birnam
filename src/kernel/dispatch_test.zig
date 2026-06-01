@@ -106,6 +106,70 @@ test "dispatch: LOAD_SELF returns receiver" {
     try testing.expectEqual(receiver, result);
 }
 
+// -- Phase 11.6 reify-stack -----------------------------------------------
+
+/// Installs a method whose Imp captures Vm.frames at execution time and
+/// reifies them as transient entities. Verifies the frame chain shape.
+var g_reified_eids: []u64 = &[_]u64{};
+var g_reify_store: ?*fact_store_mod.FactStore = null;
+var g_reify_table: ?*object_table_mod.ObjectTable = null;
+var g_reify_allocator: std.mem.Allocator = undefined;
+
+fn reifyAtCallImpl(_: *@import("send.zig").Send, _: [*]const ref_mod.Ref, _: usize) callconv(.c) ref_mod.Ref {
+    g_reified_eids = dispatch.reifyStack(g_reify_allocator, g_reify_store.?, g_reify_table.?, MODULE_EID) catch &[_]u64{};
+    return ref_mod.NIL;
+}
+
+test "reify-stack: captures active frame at SEND-time" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
+
+    g_reify_store = &store;
+    g_reify_table = &table;
+    g_reify_allocator = arena.allocator();
+
+    // Install reify-at-call as method on test vt.
+    const test_vt: u64 = kernel_eids.OBJECT_VT;
+    const sel: u64 = kernel_eids.SEL_NOT;
+    const closure_eid = table.alloc();
+    const c_ptr = try arena.allocator().create(closure_mod.Closure);
+    c_ptr.* = .{ .method = @ptrCast(&reifyAtCallImpl), .data = ref_mod.NIL };
+    try table.put(closure_eid, ref_mod.mkPointer(@ptrCast(c_ptr)));
+    _ = try store.assert(test_vt, sel, ref_mod.mkEid(closure_eid), MODULE_EID);
+
+    // Receiver with :vtable test_vt.
+    const recv_eid: u64 = 600;
+    _ = try store.assert(recv_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(test_vt), MODULE_EID);
+
+    // Method body: [recv SEL_NOT] — a unary send.
+    _ = try store.assert(1, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LITERAL_VT), MODULE_EID);
+    _ = try store.assert(1, kernel_eids.ATTR_AST_VALUE, ref_mod.mkEid(recv_eid), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_UNARY_SEND_VT), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(1), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(sel), MODULE_EID);
+
+    var m = try compiler.compileMethod(arena.allocator(), &store, 2);
+    defer m.deinit(arena.allocator());
+    const method_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
+
+    g_reified_eids = &[_]u64{};
+    _ = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, method_eid, &.{});
+
+    // At SEND-time, exactly one frame (the active method) is on the stack.
+    try testing.expectEqual(@as(usize, 1), g_reified_eids.len);
+
+    // That frame should reference method_eid + have a non-zero pc.
+    const f_eid = g_reified_eids[0];
+    const fm = store.currentValue(f_eid, kernel_eids.ATTR_FRAME_METHOD).?;
+    try testing.expectEqual(ref_mod.mkEid(method_eid), fm);
+    const pc_ref = store.currentValue(f_eid, kernel_eids.ATTR_FRAME_PC).?;
+    try testing.expect(ref_mod.untagSmallInt(pc_ref) > 0);
+    try testing.expect(store.currentValue(f_eid, kernel_eids.ATTR_FRAME_PARENT) == null);
+}
+
 test "dispatch: compile + run let-binding stmt-seq" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

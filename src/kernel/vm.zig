@@ -138,9 +138,12 @@ fn packEntry(vt: u64, impl: *const anyopaque) u128 {
 
 /// Per-thread VM state. Forward-compat field set per ADR-11 #2 + #7.
 pub const Vm = struct {
-    // -- Phase 11 bytecode VM (stub fields, wired in 11.3) ------------------
-    /// Active bytecode frame stack base; null until 11.3 lands.
-    frames: ?*anyopaque = null,
+    // -- Phase 11 bytecode VM ----------------------------------------------
+    /// Active bytecode frame stack. Pushed/popped by dispatch.runMethod
+    /// around every invocation (top-level and INVOKE_BLOCK). Capacity is
+    /// reserved upfront via `ensureFrameCapacity` so pointers into the
+    /// list stay stable for the current dispatch loop's pc write-through.
+    frames: std.ArrayList(Frame) = .{},
     /// Program counter into current frame's bytecode.
     pc: usize = 0,
     /// Bytecode bytes for the current frame; null until 11.3 lands.
@@ -185,9 +188,33 @@ pub inline fn current() *Vm {
 }
 
 /// Reset all per-Vm state to defaults. Called from `initDispatch` and
-/// `promotion.init` so test boundaries see a clean slate.
+/// `promotion.init` so test boundaries see a clean slate. Leaks any
+/// frames currently allocated — callers are expected to have unwound
+/// the frame stack before reset (i.e., reset is a clean-slate signal,
+/// not a panic-cleanup).
 pub fn reset() void {
-    g_current_vm = .{};
+    g_current_vm.frames = .{};
+    g_current_vm.recursion_guard = 0;
+    g_current_vm.ffi_pause = 0;
+    g_current_vm.unwinding = false;
+    g_current_vm.unwind_value = ref_mod.NIL;
+    g_current_vm.unwind_target_remaining = 0;
+    g_current_vm.pc = 0;
+    g_current_vm.bytecode = null;
+    g_current_vm.current_self = ref_mod.NIL;
+    g_current_vm.bump_arena_slot = null;
+}
+
+/// Reserve frame-stack capacity so subsequent appends never realloc
+/// during a dispatch loop. Idempotent — repeated calls only grow.
+pub fn ensureFrameCapacity(allocator: std.mem.Allocator, n: usize) !void {
+    try g_current_vm.frames.ensureTotalCapacity(allocator, n);
+}
+
+/// Free any frame storage. Tests call this in tear-down.
+pub fn freeFrames(allocator: std.mem.Allocator) void {
+    g_current_vm.frames.deinit(allocator);
+    g_current_vm.frames = .{};
 }
 
 // -- Phase 11 bytecode opcodes -----------------------------------------------
