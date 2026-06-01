@@ -106,6 +106,59 @@ test "dispatch: LOAD_SELF returns receiver" {
     try testing.expectEqual(receiver, result);
 }
 
+test "dispatch: compile + run let-binding stmt-seq" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    // let x = 5; x
+    const name_eid: u64 = 800;
+    try mkLiteralAst(&store, 1, ref_mod.mkSmallInt(5).?);
+    _ = try store.assert(2, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LET_VT), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_LET_INIT, ref_mod.mkEid(1), MODULE_EID);
+
+    _ = try store.assert(3, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(3, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+
+    _ = try store.assert(2, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(3), MODULE_EID);
+    _ = try store.assert(4, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_STMT_SEQ_VT), MODULE_EID);
+    _ = try store.assert(4, kernel_eids.ATTR_AST_STMT_FIRST, ref_mod.mkEid(2), MODULE_EID);
+
+    try testing.expectEqual(ref_mod.mkSmallInt(5).?, try compileMaterializeRun(arena.allocator(), &store, &table, 4));
+}
+
+test "dispatch: compile + run assign updates binding" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    // let y = 1; y := 42; y
+    const name_eid: u64 = 850;
+    try mkLiteralAst(&store, 1, ref_mod.mkSmallInt(1).?);
+    _ = try store.assert(2, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LET_VT), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_LET_INIT, ref_mod.mkEid(1), MODULE_EID);
+
+    try mkLiteralAst(&store, 3, ref_mod.mkSmallInt(42).?);
+    _ = try store.assert(4, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_ASSIGN_VT), MODULE_EID);
+    _ = try store.assert(4, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+    _ = try store.assert(4, kernel_eids.ATTR_AST_ASSIGN_VALUE, ref_mod.mkEid(3), MODULE_EID);
+
+    _ = try store.assert(5, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(5, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+
+    _ = try store.assert(2, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(4), MODULE_EID);
+    _ = try store.assert(4, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(5), MODULE_EID);
+
+    _ = try store.assert(6, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_STMT_SEQ_VT), MODULE_EID);
+    _ = try store.assert(6, kernel_eids.ATTR_AST_STMT_FIRST, ref_mod.mkEid(2), MODULE_EID);
+
+    try testing.expectEqual(ref_mod.mkSmallInt(42).?, try compileMaterializeRun(arena.allocator(), &store, &table, 6));
+}
+
 // -- MAKE_BLOCK + INVOKE_BLOCK ---------------------------------------------
 
 const strings = @import("strings.zig");
