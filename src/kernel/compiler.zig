@@ -20,6 +20,8 @@ const object_table_mod = @import("object_table.zig");
 const ref_mod = @import("ref.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const bytecode = @import("bytecode.zig");
+const strings = @import("strings.zig");
+const boxed = @import("boxed.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store_mod.FactStore;
@@ -204,6 +206,66 @@ fn bumpSendSite(state: *State) CompileError!u16 {
     if (idx == std.math.maxInt(u16)) return error.OutOfMemory;
     state.send_site_count += 1;
     return idx;
+}
+
+// -- Materialization (Phase 11.8 — annotation emit) ------------------------
+
+pub const MaterializeError = error{
+    OutOfMemory,
+    StoreError,
+};
+
+/// Persist a CompiledMethod into the fact store as a method entity.
+/// Returns the minted method EID.
+///
+/// Asserted facts (all under `module_eid` for provenance):
+///   [m :vtable CLOSURE_VT]
+///   [m :bytecode-stream <string-Ref>]
+///   [m :constant-pool <rrb-Ref>]                  (only if pool non-empty)
+///   [m :method-body-ast <ast-eid-Ref>]
+///   [m :method-arg-count <SmallInt>]
+///   [m :method-local-count <SmallInt>]
+///   [m :method-send-site-count <SmallInt>]
+///
+/// The CompiledMethod's owned byte slice and pool slice are duplicated
+/// into `allocator` via `strings.mkString` / `boxed.mkRrb` (which build
+/// long-lived heap copies). Caller can deinit the CompiledMethod
+/// immediately after materialize returns.
+pub fn materialize(
+    allocator: std.mem.Allocator,
+    store: *FactStore,
+    table: *ObjectTable,
+    m: *const CompiledMethod,
+    module_eid: u64,
+) MaterializeError!u64 {
+    const method_eid = table.alloc();
+
+    const bytes_ref = strings.mkString(allocator, m.bytecode) catch return error.OutOfMemory;
+    const pool_ref: ?Ref = if (m.constant_pool.len == 0)
+        null
+    else
+        boxed.mkRrb(allocator, m.constant_pool) catch return error.OutOfMemory;
+
+    storeAssert(store, method_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.CLOSURE_VT), module_eid) catch return error.StoreError;
+    storeAssert(store, method_eid, kernel_eids.ATTR_BYTECODE_STREAM, bytes_ref, module_eid) catch return error.StoreError;
+    if (pool_ref) |p| {
+        storeAssert(store, method_eid, kernel_eids.ATTR_CONSTANT_POOL, p, module_eid) catch return error.StoreError;
+    }
+    storeAssert(store, method_eid, kernel_eids.ATTR_METHOD_BODY_AST, ref_mod.mkEid(m.method_body_ast), module_eid) catch return error.StoreError;
+    storeAssertSmallInt(store, method_eid, kernel_eids.ATTR_METHOD_ARG_COUNT, m.arg_count, module_eid) catch return error.StoreError;
+    storeAssertSmallInt(store, method_eid, kernel_eids.ATTR_METHOD_LOCAL_COUNT, m.local_count, module_eid) catch return error.StoreError;
+    storeAssertSmallInt(store, method_eid, kernel_eids.ATTR_METHOD_SEND_SITE_COUNT, m.send_site_count, module_eid) catch return error.StoreError;
+
+    return method_eid;
+}
+
+inline fn storeAssert(store: *FactStore, e: u64, a: u64, v: Ref, mod_eid: u64) !void {
+    _ = try store.assert(e, a, v, mod_eid);
+}
+
+inline fn storeAssertSmallInt(store: *FactStore, e: u64, a: u64, n: u16, mod_eid: u64) !void {
+    const r = ref_mod.mkSmallInt(@as(i64, n)) orelse return error.OutOfMemory;
+    _ = try store.assert(e, a, r, mod_eid);
 }
 
 /// Compile a statement sequence. Each non-last statement's value is

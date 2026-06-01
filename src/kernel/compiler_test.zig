@@ -5,8 +5,11 @@ const testing = std.testing;
 const compiler = @import("compiler.zig");
 const bytecode = @import("bytecode.zig");
 const fact_store_mod = @import("fact_store.zig");
+const object_table_mod = @import("object_table.zig");
 const ref_mod = @import("ref.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const strings = @import("strings.zig");
+const boxed = @import("boxed.zig");
 
 const MODULE_EID: u64 = kernel_eids.M_BOOTSTRAP;
 
@@ -288,6 +291,61 @@ test "compile nested sends: site_idx increments per send" {
     try testing.expectEqual(@as(u16, 0), bytecode.readU16(m.bytecode, 15));
     try testing.expectEqual(bytecode.Opcode.SEND_1, bytecode.readOpcode(m.bytecode, 22));
     try testing.expectEqual(@as(u16, 1), bytecode.readU16(m.bytecode, 27));
+}
+
+test "materialize: persists method entity with bytecode + annotations" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    try mkLiteralAst(&store, 20001, ref_mod.mkSmallInt(42).?);
+    var m = try compiler.compileMethod(arena.allocator(), &store, 20001);
+    // Don't deinit — arena owns it.
+
+    const method_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
+    try testing.expect(method_eid >= kernel_eids.USER_EID_START);
+
+    // :vtable CLOSURE_VT
+    const vt = store.currentValue(method_eid, kernel_eids.ATTR_VTABLE).?;
+    try testing.expectEqual(ref_mod.mkEid(kernel_eids.CLOSURE_VT), vt);
+
+    // :bytecode-stream — string Ref carrying the emitted bytes
+    const bc_ref = store.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM).?;
+    try testing.expect(strings.isString(bc_ref));
+    try testing.expectEqualSlices(u8, m.bytecode, strings.bytes(bc_ref));
+
+    // :method-body-ast → ast eid
+    const body = store.currentValue(method_eid, kernel_eids.ATTR_METHOD_BODY_AST).?;
+    try testing.expectEqual(ref_mod.mkEid(20001), body);
+
+    // sizing annotations
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(store.currentValue(method_eid, kernel_eids.ATTR_METHOD_ARG_COUNT).?));
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(store.currentValue(method_eid, kernel_eids.ATTR_METHOD_LOCAL_COUNT).?));
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(store.currentValue(method_eid, kernel_eids.ATTR_METHOD_SEND_SITE_COUNT).?));
+
+    // No :constant-pool (empty pool)
+    try testing.expect(store.currentValue(method_eid, kernel_eids.ATTR_CONSTANT_POOL) == null);
+}
+
+test "materialize: pool emitted when non-empty" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    // Big int forces pool entry.
+    const big = ref_mod.mkSmallInt(@as(i64, std.math.maxInt(i32)) + 1).?;
+    try mkLiteralAst(&store, 21001, big);
+    var m = try compiler.compileMethod(arena.allocator(), &store, 21001);
+
+    const method_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
+
+    const pool_ref = store.currentValue(method_eid, kernel_eids.ATTR_CONSTANT_POOL).?;
+    try testing.expect(boxed.isRrbRef(pool_ref));
+    const rrb = boxed.untagRrbRef(pool_ref);
+    try testing.expectEqual(@as(usize, 1), rrb.count());
+    try testing.expectEqual(big, rrb.nth(0));
 }
 
 test "compile rejects unknown AST kind" {
