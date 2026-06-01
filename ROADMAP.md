@@ -4,7 +4,7 @@ Detailed work sequence from current zig/birnam (linear-scan vtables, no fact sto
 
 This roadmap follows VISION.md. Open questions in VISION.md must be resolved before starting Phase 1.
 
-## Status (as of 2026-05-30)
+## Status (as of 2026-06-01)
 
 **Completed (substrate):**
 - Phase 0–7.5 ✓ (collections, fact store, kernel, datalog, FFI, modules)
@@ -29,7 +29,37 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - Float methods on FLOAT_VT ✓ (`+`, `-`, `*`, `/`, `=`, `<`, `>`, `negate`, `asInt`, `exp:`). SmallInt args auto-coerce to f64. `asFloat` on SmallInt. `[1.5 exp: 10]` substitutes for grammar exponent notation `1.5e10`.
 - Phase 10.4.5 S5 superseded by Phase 11 ✓ (see note below — no interpreter implementation needed)
 
-**Test count: 291/291 across 73 build steps.**
+**Phase 11 — substrate substantially shipped (2026-05-31 / 2026-06-01):**
+- 11.1 ✓ — opcode set (16 ops, ADR-11 addendum locked), annotation EIDs (kernel_eids 165..182), bytecode encoder/decoder API.
+- 11.2 ✓ — AST → bytecode compiler. Coverage: literals (smallint inline + pool), stmt-seq, return-expr, self, sends (0/1/N with site_idx), blocks (separate bytecode-method entities, `:block-parent-method`), let / var-ref / assign with compile-time scope map, block params as locals[0..n]. Deferred: AST_SUPER_SEND_VT, **closure scope capture** (see below).
+- 11.3 ✓ — VM dispatch (while+switch loop; all 16 opcodes; tail-call refactor deferred — probe already validates lowering). `bytecodeDispatcherImpl` makes compiled methods first-class via SEND through existing send.bind + mcache.
+- 11.4 ✓ — per-method MethodMCache structure (16B-aligned MCEntry, 16B atomic store writer, 3-load re-check-vt reader, walk-invalidate). In-band wiring at SEND_* deferred (today routes through send.sendN's global mcache); structure ready when bench warrants.
+- 11.5 partial — `RETURN_FROM_METHOD` opcode + `Vm.unwind_value` / `unwind_target_remaining` shipped. Tree-walker `g_unwinding` global stays alive until lang module switches over to bytecode dispatch.
+- 11.6 ✓ — reify-stack API + real `Vm.frames` tracking. `runMethod` push/pop, pc write-through, frees on drain. `reifyStack(...) → []u64` asserts `:frame-pc` / `:frame-method` / `:frame-self` / `:frame-parent`.
+- 11.7.i ✓ — `Vm` struct (frames + pc + bytecode + current_self + unwinding + recursion_guard + ffi_pause + bump_arena_slot). `g_recursion` migrated from send.zig; `g_ffi_depth` from promotion.zig.
+- 11.7.iv ✓ — atomic EID + tx counters via `std.atomic.Value(u64)`.
+- 11.7.v ✓ — `tx_engine.commit(op)` consolidated entry point.
+- 11.7.vi ✓ — `Interner.writer_lock` (`std.Thread.Mutex`) + lock-free reader fast path with under-lock recheck.
+- 11.7.vii — image manifest mode tag; gated on Phase 12 (no image format yet).
+- 11.8 ✓ — annotation emit at materialize time (`:bytecode-stream`, `:constant-pool`, `:method-body-ast`, three sizing SmallInts, `:block-parent-method`).
+- 11.9 ✓ — tail-call probe CI gate (1M-depth two-handler chain, ReleaseFast). Failure = build error per ADR-11 addendum #7.
+- 11.10 partial — kernel-side end-to-end tests cover every opcode + composite programs (let + binary send → 6). Full parity vs tree-walker = lang module switchover gate.
+
+**Lang switchover infrastructure shipped:** `IdApi.compile_block_as_method(block_ast_eid) → method_eid` appended (ABI discipline preserved). Kernel-side `cCompileBlockAsMethod` calls `compiler.compileBlockAsMethod` + `materialize`. Lang dylib mirror struct updated. `vtMethodDoImpl` switchover NOT YET wired — blocked on closure-scope-capture support in the bytecode compiler (see Phase 11.11 below).
+
+**Phase 11.11 — closure scope capture (next landing, blocks lang switchover):**
+Birnam's tree-walker captures by reference via `:block-scope` Ref + `:scope-parent` chain (ADR-10-E2 / E3). Bytecode compiler today only resolves names in the current method's local scope — inner blocks accessing outer locals raise `VarNotInScope` at compile time. Three concrete pieces:
+1. **Compile-time outer-scope analysis.** `compileBlockAsMethod` accepts a `parent_state` reference. On `compileVarRef` miss in local scope, walk `parent_state.scope` chain; on hit, emit a new opcode that loads from the captured-scope chain instead of the local frame.
+2. **New opcode for outer-local load.** Options: (a) new `LOAD_CAPTURED <slot_in_parent> <depth>` op, OR (b) reuse existing block-scope-entity machinery — emit at runtime a `:scope-parent`-chained scope entity per block invocation, load via send-dispatched `[scope at: name]`. (a) is faster, (b) reuses Phase 10.4.5 S1-S4 truth-layer with no new opcode.
+3. **MAKE_BLOCK runtime captures parent frame.** Today MAKE_BLOCK just pushes the block-method-eid Ref. Closure variant pushes a `Block` obj carrying `(block-method-eid, captured-scope-ref)`. INVOKE_BLOCK installs the captured scope into the activation's lookup chain.
+
+Test 10.4b `[:x | [x succ]]` is the canonical canary — the inner `[x succ]` block (if parsed as a nested block, not a bracket-send) needs to read `x` from the outer block's frame. Once 11.11 ships, the lang switchover wiring in `vtMethodDoImpl` becomes the one-line edit it was meant to be.
+
+**Test count: 349/349 across 85 build steps.**
+
+---
+
+**Pre-Phase-11 baseline (for historical reference, 2026-05-30): 291/291 across 73 build steps.**
 
 **Demoable today (live REPL via `./zig-out/bin/birnam libbirnam_peg libbirnam_lang`):**
 - Arithmetic + comparisons + branching

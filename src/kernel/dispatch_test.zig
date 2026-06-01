@@ -260,6 +260,60 @@ test "dispatch: compile + run assign updates binding" {
     try testing.expectEqual(ref_mod.mkSmallInt(42).?, try compileMaterializeRun(arena.allocator(), &store, &table, 6));
 }
 
+test "dispatch: compileBlockAsMethod handles [:x | [x succ]] shape" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
+
+    // Install succ as a stub on SMALLINT_VT that returns receiver + 1.
+    const closure_eid = table.alloc();
+    const c_ptr = try arena.allocator().create(closure_mod.Closure);
+    c_ptr.* = .{ .method = @ptrCast(&stubSuccImpl), .data = ref_mod.NIL };
+    try table.put(closure_eid, ref_mod.mkPointer(@ptrCast(c_ptr)));
+    const succ_sel: u64 = 12345; // arbitrary EID; tests own it
+    _ = try store.assert(kernel_eids.SMALLINT_VT, succ_sel, ref_mod.mkEid(closure_eid), MODULE_EID);
+
+    const x_name: u64 = 999;
+
+    // param entity: :ast-name = mkEid(x_name)
+    _ = try store.assert(100, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(x_name), MODULE_EID);
+
+    // var-ref x: :vtable AST_VAR_REF_VT, :ast-name = mkEid(x_name)
+    _ = try store.assert(101, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(101, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(x_name), MODULE_EID);
+
+    // bracket-unary [x succ]: AST_UNARY_SEND_VT, recv=101, sel=succ_sel
+    _ = try store.assert(102, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_UNARY_SEND_VT), MODULE_EID);
+    _ = try store.assert(102, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(101), MODULE_EID);
+    _ = try store.assert(102, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(succ_sel), MODULE_EID);
+
+    // Wrap body in STMT_SEQ — lang parser desugars block body to a stmt-list.
+    _ = try store.assert(110, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_STMT_SEQ_VT), MODULE_EID);
+    _ = try store.assert(110, kernel_eids.ATTR_AST_STMT_FIRST, ref_mod.mkEid(102), MODULE_EID);
+
+    // outer block [:x | [x succ]]: AST_BLOCK_VT, params=100, body=stmt-seq(102)
+    _ = try store.assert(103, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_BLOCK_VT), MODULE_EID);
+    _ = try store.assert(103, kernel_eids.ATTR_AST_BLOCK_PARAMS, ref_mod.mkEid(100), MODULE_EID);
+    _ = try store.assert(103, kernel_eids.ATTR_AST_BLOCK_BODY, ref_mod.mkEid(110), MODULE_EID);
+
+    // Use the same entry as the IdApi switchover path.
+    var m = try compiler.compileBlockAsMethod(arena.allocator(), &store, 103);
+    defer m.deinit(arena.allocator());
+    const method_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
+
+    try testing.expectEqual(@as(u8, 1), m.arg_count);
+
+    // Invoke as if dispatched: receiver=3, args=[7] → expect 8.
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.mkSmallInt(3).?, method_eid, &.{ref_mod.mkSmallInt(7).?});
+    try testing.expectEqual(ref_mod.mkSmallInt(8).?, result);
+}
+
+fn stubSuccImpl(s: *send_mod.Send, _: [*]const ref_mod.Ref, _: usize) callconv(.c) ref_mod.Ref {
+    return ref_mod.mkSmallInt(ref_mod.untagSmallInt(s.receiver) + 1).?;
+}
+
 test "dispatch: SEND into compiled bytecode method via bytecode dispatcher" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
