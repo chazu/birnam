@@ -25,6 +25,14 @@ pub const Interner = struct {
     allocator: std.mem.Allocator,
     str_to_eid: Str2Eid,
     eid_to_str: Eid2Str,
+    /// Phase 11.7.vi (ADR-11 #7): single-writer discipline. Acquired
+    /// around any mutation of `str_to_eid` / `eid_to_str`. Readers
+    /// (`get` / `nameOf`) walk the persistent HAMT lock-free — the root
+    /// pointer reassignment is the publication point, atomic on every
+    /// supported arch (aligned 64-bit pointer store). Under the Datomic
+    /// shape the transactor thread is the sole acquirer; today the
+    /// single application thread acquires uncontended.
+    writer_lock: std.Thread.Mutex = .{},
 
     pub fn init(allocator: std.mem.Allocator) Interner {
         return .{
@@ -42,6 +50,8 @@ pub const Interner = struct {
         eid: u64,
         name: []const u8,
     ) !void {
+        self.writer_lock.lock();
+        defer self.writer_lock.unlock();
         const dup = try self.allocator.dupe(u8, name);
         self.str_to_eid = try self.str_to_eid.assoc(dup, eid);
         self.eid_to_str = try self.eid_to_str.assoc(eid, dup);
@@ -57,7 +67,16 @@ pub const Interner = struct {
         table: *object_table.ObjectTable,
         name: []const u8,
     ) !u64 {
+        // Lock-free fast path — concurrent readers + this writer alike
+        // see a complete HAMT snapshot via the root pointer.
         if (self.str_to_eid.get(name)) |eid| return eid;
+
+        self.writer_lock.lock();
+        defer self.writer_lock.unlock();
+        // Re-check under lock — another writer may have interned between
+        // the lock-free probe and the acquire.
+        if (self.str_to_eid.get(name)) |eid| return eid;
+
         const dup = try self.allocator.dupe(u8, name);
         const eid = table.alloc();
         self.str_to_eid = try self.str_to_eid.assoc(dup, eid);
