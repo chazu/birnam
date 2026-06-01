@@ -44,13 +44,26 @@ pub const CompiledMethod = struct {
     arg_count: u8,
     local_count: u8,
     send_site_count: u16,
+    /// Child block-methods compiled inline as part of this method.
+    /// Each carries the parent's constant-pool index where its
+    /// materialized method-Ref must be written before the parent's
+    /// pool is realized. Tree is depth-first.
+    block_children: []BlockChild,
 
     pub fn deinit(self: *CompiledMethod, allocator: std.mem.Allocator) void {
+        for (self.block_children) |*child| child.compiled.deinit(allocator);
+        allocator.free(self.block_children);
         allocator.free(self.bytecode);
         allocator.free(self.constant_pool);
         self.bytecode = &[_]u8{};
         self.constant_pool = &[_]Ref{};
+        self.block_children = &[_]BlockChild{};
     }
+};
+
+pub const BlockChild = struct {
+    pool_idx: u16,
+    compiled: CompiledMethod,
 };
 
 /// Per-compile mutable state. One CompilerState per method (or block-
@@ -65,10 +78,17 @@ const State = struct {
     /// Highest local slot index seen. Final local_count = highest + 1.
     /// -1 sentinel = no locals seen yet.
     max_local_slot: i32 = -1,
+    /// Block-method children awaiting materialization. Each child's
+    /// `compiled` field is fully populated; `pool_idx` is the parent's
+    /// constant-pool slot reserved for the materialized block method's
+    /// EID-Ref.
+    block_children: std.ArrayList(BlockChild),
 
     fn deinit(self: *State) void {
         self.encoder.deinit(self.allocator);
         self.constant_pool.deinit(self.allocator);
+        for (self.block_children.items) |*c| c.compiled.deinit(self.allocator);
+        self.block_children.deinit(self.allocator);
     }
 
     /// Add a Ref to the constant pool and return its index. Deduplicates
@@ -81,6 +101,15 @@ const State = struct {
         const idx: usize = self.constant_pool.items.len;
         if (idx > std.math.maxInt(u16)) return error.OutOfMemory;
         try self.constant_pool.append(self.allocator, r);
+        return @intCast(idx);
+    }
+
+    /// Reserve a pool slot for a block-method ref. Materialization fills
+    /// the slot once the child method's EID is known.
+    fn reservePoolSlot(self: *State) !u16 {
+        const idx: usize = self.constant_pool.items.len;
+        if (idx > std.math.maxInt(u16)) return error.OutOfMemory;
+        try self.constant_pool.append(self.allocator, ref_mod.NIL);
         return @intCast(idx);
     }
 };
@@ -97,6 +126,7 @@ pub fn compileMethod(
         .store = store,
         .encoder = bytecode.Encoder.init(allocator),
         .constant_pool = std.ArrayList(Ref){},
+        .block_children = std.ArrayList(BlockChild){},
     };
     errdefer state.deinit();
 
@@ -105,6 +135,7 @@ pub fn compileMethod(
 
     const bytes = state.encoder.toOwnedSlice(allocator) catch return error.OutOfMemory;
     const pool = state.constant_pool.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    const children = state.block_children.toOwnedSlice(allocator) catch return error.OutOfMemory;
 
     const local_count: u8 = if (state.max_local_slot < 0) 0 else @intCast(state.max_local_slot + 1);
 
@@ -115,6 +146,7 @@ pub fn compileMethod(
         .arg_count = 0,
         .local_count = local_count,
         .send_site_count = state.send_site_count,
+        .block_children = children,
     };
 }
 
@@ -133,6 +165,7 @@ fn compileExpr(state: *State, ast_eid: u64) CompileError!void {
         kernel_eids.AST_UNARY_SEND_VT => try compileSend(state, ast_eid, 0),
         kernel_eids.AST_BINARY_SEND_VT => try compileSend(state, ast_eid, 1),
         kernel_eids.AST_KEYWORD_SEND_VT => try compileKeywordSend(state, ast_eid),
+        kernel_eids.AST_BLOCK_VT => try compileBlock(state, ast_eid),
         else => return error.UnknownAstKind,
     }
 }
@@ -201,6 +234,32 @@ fn readSelectorEid(state: *State, send_ast_eid: u64) CompileError!u32 {
     return @intCast(sel_eid);
 }
 
+/// Compile a `[: params | body]` block literal. The block body is
+/// compiled as its own CompiledMethod and stored in `state.block_children`
+/// to be materialized later (parent's materialize patches the pool slot
+/// with the block's method-eid). MAKE_BLOCK opcode pushes the
+/// reified block value at runtime.
+fn compileBlock(state: *State, ast_eid: u64) CompileError!void {
+    const body_ref = state.store.currentValue(ast_eid, kernel_eids.ATTR_AST_BLOCK_BODY) orelse
+        return error.UnknownAstKind;
+    if (!ref_mod.isEid(body_ref)) return error.UnknownAstKind;
+    const body_eid = ref_mod.untagEid(body_ref);
+
+    // Recursively compile the block body as its own method.
+    var child = compileMethod(state.allocator, state.store, body_eid) catch |err| switch (err) {
+        error.UnknownAstKind => return error.UnknownAstKind,
+        error.AstMissingValue => return error.AstMissingValue,
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    errdefer child.deinit(state.allocator);
+
+    // Reserve pool slot + record child for materialize-time patching.
+    const slot = state.reservePoolSlot() catch return error.OutOfMemory;
+    state.block_children.append(state.allocator, .{ .pool_idx = slot, .compiled = child }) catch return error.OutOfMemory;
+
+    state.encoder.makeBlock(state.allocator, slot) catch return error.OutOfMemory;
+}
+
 fn bumpSendSite(state: *State) CompileError!u16 {
     const idx = state.send_site_count;
     if (idx == std.math.maxInt(u16)) return error.OutOfMemory;
@@ -238,13 +297,40 @@ pub fn materialize(
     m: *const CompiledMethod,
     module_eid: u64,
 ) MaterializeError!u64 {
+    return materializeInner(allocator, store, table, m, module_eid, null);
+}
+
+fn materializeInner(
+    allocator: std.mem.Allocator,
+    store: *FactStore,
+    table: *ObjectTable,
+    m: *const CompiledMethod,
+    module_eid: u64,
+    parent_method_eid: ?u64,
+) MaterializeError!u64 {
     const method_eid = table.alloc();
 
+    // Walk block children first: each produces a method-eid that gets
+    // patched into our constant pool. Children carry :block-parent-method
+    // back-pointer to us for non-local-return resolution.
+    var patched_pool: []Ref = blk: {
+        if (m.constant_pool.len == 0) break :blk &[_]Ref{};
+        const copy = allocator.dupe(Ref, m.constant_pool) catch return error.OutOfMemory;
+        break :blk copy;
+    };
+    errdefer if (patched_pool.len > 0) allocator.free(patched_pool);
+
+    for (m.block_children) |*child| {
+        const child_eid = try materializeInner(allocator, store, table, &child.compiled, module_eid, method_eid);
+        patched_pool[child.pool_idx] = ref_mod.mkEid(child_eid);
+    }
+
     const bytes_ref = strings.mkString(allocator, m.bytecode) catch return error.OutOfMemory;
-    const pool_ref: ?Ref = if (m.constant_pool.len == 0)
+    const pool_ref: ?Ref = if (patched_pool.len == 0)
         null
     else
-        boxed.mkRrb(allocator, m.constant_pool) catch return error.OutOfMemory;
+        boxed.mkRrb(allocator, patched_pool) catch return error.OutOfMemory;
+    if (patched_pool.len > 0) allocator.free(patched_pool);
 
     storeAssert(store, method_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.CLOSURE_VT), module_eid) catch return error.StoreError;
     storeAssert(store, method_eid, kernel_eids.ATTR_BYTECODE_STREAM, bytes_ref, module_eid) catch return error.StoreError;
@@ -255,6 +341,9 @@ pub fn materialize(
     storeAssertSmallInt(store, method_eid, kernel_eids.ATTR_METHOD_ARG_COUNT, m.arg_count, module_eid) catch return error.StoreError;
     storeAssertSmallInt(store, method_eid, kernel_eids.ATTR_METHOD_LOCAL_COUNT, m.local_count, module_eid) catch return error.StoreError;
     storeAssertSmallInt(store, method_eid, kernel_eids.ATTR_METHOD_SEND_SITE_COUNT, m.send_site_count, module_eid) catch return error.StoreError;
+    if (parent_method_eid) |pme| {
+        storeAssert(store, method_eid, kernel_eids.ATTR_BLOCK_PARENT_METHOD, ref_mod.mkEid(pme), module_eid) catch return error.StoreError;
+    }
 
     return method_eid;
 }

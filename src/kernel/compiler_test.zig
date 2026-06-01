@@ -348,6 +348,70 @@ test "materialize: pool emitted when non-empty" {
     try testing.expectEqual(big, rrb.nth(0));
 }
 
+test "compile block: emits MAKE_BLOCK + child compiled method" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    // Block body = literal 99.
+    try mkLiteralAst(&store, 30001, ref_mod.mkSmallInt(99).?);
+
+    // [ 99 ] block — AST_BLOCK_VT with :ast-block-body → 30001.
+    _ = try store.assert(30000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_BLOCK_VT), MODULE_EID);
+    _ = try store.assert(30000, kernel_eids.ATTR_AST_BLOCK_BODY, ref_mod.mkEid(30001), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, 30000);
+    defer m.deinit(testing.allocator);
+
+    // Outer method: MAKE_BLOCK 0, RETURN.
+    try testing.expectEqual(@as(usize, 4), m.bytecode.len);
+    try testing.expectEqual(bytecode.Opcode.MAKE_BLOCK, bytecode.readOpcode(m.bytecode, 0));
+    try testing.expectEqual(@as(u16, 0), bytecode.readU16(m.bytecode, 1));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 3));
+
+    // One block-child queued; pool reserved slot 0.
+    try testing.expectEqual(@as(usize, 1), m.block_children.len);
+    try testing.expectEqual(@as(u16, 0), m.block_children[0].pool_idx);
+    try testing.expectEqual(@as(usize, 1), m.constant_pool.len);
+    try testing.expectEqual(ref_mod.NIL, m.constant_pool[0]); // placeholder
+
+    // Child bytecode = PUSH_SMALLINT_I32 99, RETURN.
+    const child = m.block_children[0].compiled;
+    try testing.expectEqual(@as(usize, 6), child.bytecode.len);
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(child.bytecode, 0));
+    try testing.expectEqual(@as(i32, 99), bytecode.readI32(child.bytecode, 1));
+}
+
+test "materialize block: patches pool + asserts :block-parent-method" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    try mkLiteralAst(&store, 31001, ref_mod.mkSmallInt(7).?);
+    _ = try store.assert(31000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_BLOCK_VT), MODULE_EID);
+    _ = try store.assert(31000, kernel_eids.ATTR_AST_BLOCK_BODY, ref_mod.mkEid(31001), MODULE_EID);
+
+    var m = try compiler.compileMethod(arena.allocator(), &store, 31000);
+    const parent_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
+
+    // Parent's constant_pool[0] should now hold mkEid(child-method-eid).
+    const pool_ref = store.currentValue(parent_eid, kernel_eids.ATTR_CONSTANT_POOL).?;
+    const rrb = boxed.untagRrbRef(pool_ref);
+    try testing.expectEqual(@as(usize, 1), rrb.count());
+    const child_ref = rrb.nth(0);
+    try testing.expect(ref_mod.isEid(child_ref));
+    const child_eid = ref_mod.untagEid(child_ref);
+
+    // Child carries :block-parent-method back to parent.
+    const parent_back = store.currentValue(child_eid, kernel_eids.ATTR_BLOCK_PARENT_METHOD).?;
+    try testing.expectEqual(ref_mod.mkEid(parent_eid), parent_back);
+
+    // Child has its own bytecode entity.
+    const child_bc = store.currentValue(child_eid, kernel_eids.ATTR_BYTECODE_STREAM).?;
+    try testing.expect(strings.isString(child_bc));
+}
+
 test "compile rejects unknown AST kind" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
