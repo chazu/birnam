@@ -166,6 +166,34 @@ pub fn runMethod(
                 try value_stack.append(allocator, result);
                 pc += 8;
             },
+            .MAKE_BLOCK => {
+                const idx = bytecode.readU16(code, pc + 1);
+                if (idx >= pool_items.len) return error.BadFrame;
+                // A8b spike: block representation = the block-method-eid
+                // Ref straight from the pool. INVOKE_BLOCK runs it via
+                // runMethod. Full Block-obj allocation with scope capture
+                // lands once closures-over-outer-locals are wired.
+                try value_stack.append(allocator, pool_items[idx]);
+                pc += 3;
+            },
+            .INVOKE_BLOCK => {
+                const n_args: u8 = bytecode.readU8(code, pc + 1);
+                _ = bytecode.readU16(code, pc + 2); // site_idx — unused in spike
+                if (value_stack.items.len < @as(usize, n_args) + 1) return error.StackUnderflow;
+                const top = value_stack.items.len;
+                const args_start = top - @as(usize, n_args);
+                const block_ref = value_stack.items[args_start - 1];
+                if (!ref_mod.isEid(block_ref)) return error.BadFrame;
+                const block_eid = ref_mod.untagEid(block_ref);
+                // Snapshot args before shrinking the stack.
+                const args_snapshot = try allocator.dupe(Ref, value_stack.items[args_start..top]);
+                defer allocator.free(args_snapshot);
+                value_stack.shrinkRetainingCapacity(args_start - 1);
+                // Block sees the enclosing frame's self.
+                const result = try runMethod(allocator, store, receiver, block_eid, args_snapshot);
+                try value_stack.append(allocator, result);
+                pc += 4;
+            },
             .RETURN => {
                 if (value_stack.items.len == 0) return ref_mod.NIL;
                 return value_stack.items[value_stack.items.len - 1];

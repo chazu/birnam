@@ -106,6 +106,82 @@ test "dispatch: LOAD_SELF returns receiver" {
     try testing.expectEqual(receiver, result);
 }
 
+// -- MAKE_BLOCK + INVOKE_BLOCK ---------------------------------------------
+
+const strings = @import("strings.zig");
+const boxed = @import("boxed.zig");
+
+fn installBytecodeMethod(
+    allocator: std.mem.Allocator,
+    store: *fact_store_mod.FactStore,
+    table: *object_table_mod.ObjectTable,
+    bytes: []const u8,
+    pool: []const ref_mod.Ref,
+) !u64 {
+    const eid = table.alloc();
+    const bc_ref = try strings.mkString(allocator, bytes);
+    _ = try store.assert(eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.CLOSURE_VT), MODULE_EID);
+    _ = try store.assert(eid, kernel_eids.ATTR_BYTECODE_STREAM, bc_ref, MODULE_EID);
+    if (pool.len > 0) {
+        const pool_ref = try boxed.mkRrb(allocator, pool);
+        _ = try store.assert(eid, kernel_eids.ATTR_CONSTANT_POOL, pool_ref, MODULE_EID);
+    }
+    return eid;
+}
+
+test "dispatch: MAKE_BLOCK + INVOKE_BLOCK runs block and returns value" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    // Block method body: PUSH_SMALLINT_I32 99, RETURN.
+    const block_body = [_]u8{
+        @intFromEnum(bytecode.Opcode.PUSH_SMALLINT_I32), 99, 0, 0, 0,
+        @intFromEnum(bytecode.Opcode.RETURN),
+    };
+    const block_eid = try installBytecodeMethod(arena.allocator(), &store, &table, &block_body, &.{});
+
+    // Outer method: MAKE_BLOCK 0, INVOKE_BLOCK args=0 site=0, RETURN.
+    const outer_body = [_]u8{
+        @intFromEnum(bytecode.Opcode.MAKE_BLOCK), 0, 0,
+        @intFromEnum(bytecode.Opcode.INVOKE_BLOCK), 0, 0, 0,
+        @intFromEnum(bytecode.Opcode.RETURN),
+    };
+    const pool = [_]ref_mod.Ref{ref_mod.mkEid(block_eid)};
+    const outer_eid = try installBytecodeMethod(arena.allocator(), &store, &table, &outer_body, &pool);
+
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{});
+    try testing.expectEqual(ref_mod.mkSmallInt(99).?, result);
+}
+
+test "dispatch: INVOKE_BLOCK passes args as locals" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    // Block body: PUSH_LOCAL 0, RETURN. Expects 1 arg, returns it.
+    const block_body = [_]u8{
+        @intFromEnum(bytecode.Opcode.PUSH_LOCAL), 0,
+        @intFromEnum(bytecode.Opcode.RETURN),
+    };
+    const block_eid = try installBytecodeMethod(arena.allocator(), &store, &table, &block_body, &.{});
+
+    // Outer: MAKE_BLOCK 0, PUSH_SMALLINT_I32 77, INVOKE_BLOCK args=1, RETURN.
+    const outer_body = [_]u8{
+        @intFromEnum(bytecode.Opcode.MAKE_BLOCK), 0, 0,
+        @intFromEnum(bytecode.Opcode.PUSH_SMALLINT_I32), 77, 0, 0, 0,
+        @intFromEnum(bytecode.Opcode.INVOKE_BLOCK), 1, 0, 0,
+        @intFromEnum(bytecode.Opcode.RETURN),
+    };
+    const pool = [_]ref_mod.Ref{ref_mod.mkEid(block_eid)};
+    const outer_eid = try installBytecodeMethod(arena.allocator(), &store, &table, &outer_body, &pool);
+
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{});
+    try testing.expectEqual(ref_mod.mkSmallInt(77).?, result);
+}
+
 // -- SEND tests: install a stub method, dispatch through send.zig --------
 
 const send_mod = @import("send.zig");
