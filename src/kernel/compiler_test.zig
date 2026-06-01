@@ -180,6 +180,116 @@ test "compile self → LOAD_SELF + RETURN" {
     try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 1));
 }
 
+test "compile unary send: receiver + SEND_0" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    try mkLiteralAst(&store, 10001, ref_mod.mkSmallInt(5).?);
+    _ = try store.assert(10000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_UNARY_SEND_VT), MODULE_EID);
+    _ = try store.assert(10000, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(10001), MODULE_EID);
+    _ = try store.assert(10000, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(kernel_eids.SEL_NOT), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, 10000);
+    defer m.deinit(testing.allocator);
+
+    // PUSH_SMALLINT_I32 5, SEND_0 sel=SEL_NOT site=0, RETURN
+    try testing.expectEqual(@as(usize, 13), m.bytecode.len);
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 0));
+    try testing.expectEqual(bytecode.Opcode.SEND_0, bytecode.readOpcode(m.bytecode, 5));
+    try testing.expectEqual(@as(u32, kernel_eids.SEL_NOT), bytecode.readU32(m.bytecode, 6));
+    try testing.expectEqual(@as(u16, 0), bytecode.readU16(m.bytecode, 10));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 12));
+    try testing.expectEqual(@as(u16, 1), m.send_site_count);
+}
+
+test "compile binary send: recv + arg + SEND_1" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    try mkLiteralAst(&store, 11001, ref_mod.mkSmallInt(3).?);
+    try mkLiteralAst(&store, 11002, ref_mod.mkSmallInt(4).?);
+    _ = try store.assert(11000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_BINARY_SEND_VT), MODULE_EID);
+    _ = try store.assert(11000, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(11001), MODULE_EID);
+    _ = try store.assert(11000, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(kernel_eids.SEL_PLUS), MODULE_EID);
+    _ = try store.assert(11000, kernel_eids.ATTR_AST_FIRST_ARG, ref_mod.mkEid(11002), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, 11000);
+    defer m.deinit(testing.allocator);
+
+    // PUSH 3 (5), PUSH 4 (5), SEND_1 (7), RETURN (1) = 18 bytes
+    try testing.expectEqual(@as(usize, 18), m.bytecode.len);
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 0));
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 5));
+    try testing.expectEqual(bytecode.Opcode.SEND_1, bytecode.readOpcode(m.bytecode, 10));
+    try testing.expectEqual(@as(u32, kernel_eids.SEL_PLUS), bytecode.readU32(m.bytecode, 11));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 17));
+}
+
+test "compile keyword send with 2 args: SEND_N arg_count=2" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    try mkLiteralAst(&store, 12001, ref_mod.mkSmallInt(1).?); // receiver
+    try mkLiteralAst(&store, 12002, ref_mod.mkSmallInt(2).?); // arg1
+    try mkLiteralAst(&store, 12003, ref_mod.mkSmallInt(3).?); // arg2
+    _ = try store.assert(12002, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(12003), MODULE_EID);
+
+    _ = try store.assert(12000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_KEYWORD_SEND_VT), MODULE_EID);
+    _ = try store.assert(12000, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(12001), MODULE_EID);
+    _ = try store.assert(12000, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(kernel_eids.SEL_IF_TRUE_IF_FALSE), MODULE_EID);
+    _ = try store.assert(12000, kernel_eids.ATTR_AST_FIRST_ARG, ref_mod.mkEid(12002), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, 12000);
+    defer m.deinit(testing.allocator);
+
+    // PUSH 1, PUSH 2, PUSH 3, SEND_N sel=SEL_IF_TRUE_IF_FALSE arg=2 site=0, RETURN
+    try testing.expectEqual(@as(usize, 24), m.bytecode.len);
+    try testing.expectEqual(bytecode.Opcode.SEND_N, bytecode.readOpcode(m.bytecode, 15));
+    try testing.expectEqual(@as(u32, kernel_eids.SEL_IF_TRUE_IF_FALSE), bytecode.readU32(m.bytecode, 16));
+    try testing.expectEqual(@as(u8, 2), bytecode.readU8(m.bytecode, 20));
+    try testing.expectEqual(@as(u16, 0), bytecode.readU16(m.bytecode, 21));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 23));
+}
+
+test "compile nested sends: site_idx increments per send" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    // (1 + 2) * 3 — two binary sends, expect site_idx 0 and 1.
+    try mkLiteralAst(&store, 13001, ref_mod.mkSmallInt(1).?);
+    try mkLiteralAst(&store, 13002, ref_mod.mkSmallInt(2).?);
+    try mkLiteralAst(&store, 13003, ref_mod.mkSmallInt(3).?);
+
+    // inner: 1 + 2
+    const inner = 13100;
+    _ = try store.assert(inner, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_BINARY_SEND_VT), MODULE_EID);
+    _ = try store.assert(inner, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(13001), MODULE_EID);
+    _ = try store.assert(inner, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(kernel_eids.SEL_PLUS), MODULE_EID);
+    _ = try store.assert(inner, kernel_eids.ATTR_AST_FIRST_ARG, ref_mod.mkEid(13002), MODULE_EID);
+
+    // outer: inner * 3
+    const outer = 13101;
+    _ = try store.assert(outer, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_BINARY_SEND_VT), MODULE_EID);
+    _ = try store.assert(outer, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(inner), MODULE_EID);
+    _ = try store.assert(outer, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(kernel_eids.SEL_TIMES), MODULE_EID);
+    _ = try store.assert(outer, kernel_eids.ATTR_AST_FIRST_ARG, ref_mod.mkEid(13003), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, outer);
+    defer m.deinit(testing.allocator);
+
+    try testing.expectEqual(@as(u16, 2), m.send_site_count);
+    // First send (inner) site = 0; second send (outer) site = 1.
+    // inner SEND_1 at offset 10; outer SEND_1 after another PUSH (5 bytes) at 22.
+    try testing.expectEqual(bytecode.Opcode.SEND_1, bytecode.readOpcode(m.bytecode, 10));
+    try testing.expectEqual(@as(u16, 0), bytecode.readU16(m.bytecode, 15));
+    try testing.expectEqual(bytecode.Opcode.SEND_1, bytecode.readOpcode(m.bytecode, 22));
+    try testing.expectEqual(@as(u16, 1), bytecode.readU16(m.bytecode, 27));
+}
+
 test "compile rejects unknown AST kind" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

@@ -128,8 +128,82 @@ fn compileExpr(state: *State, ast_eid: u64) CompileError!void {
         kernel_eids.AST_STMT_SEQ_VT => try compileStmtSeq(state, ast_eid),
         kernel_eids.AST_RETURN_VT => try compileReturn(state, ast_eid),
         kernel_eids.AST_SELF_VT => state.encoder.loadSelf(state.allocator) catch return error.OutOfMemory,
+        kernel_eids.AST_UNARY_SEND_VT => try compileSend(state, ast_eid, 0),
+        kernel_eids.AST_BINARY_SEND_VT => try compileSend(state, ast_eid, 1),
+        kernel_eids.AST_KEYWORD_SEND_VT => try compileKeywordSend(state, ast_eid),
         else => return error.UnknownAstKind,
     }
+}
+
+/// Compile a unary or binary send. n_args is 0 or 1.
+fn compileSend(state: *State, ast_eid: u64, n_args: u8) CompileError!void {
+    try compileReceiver(state, ast_eid);
+
+    if (n_args > 0) {
+        const first_arg_ref = state.store.currentValue(ast_eid, kernel_eids.ATTR_AST_FIRST_ARG) orelse
+            return error.UnknownAstKind;
+        if (!ref_mod.isEid(first_arg_ref)) return error.UnknownAstKind;
+        try compileExpr(state, ref_mod.untagEid(first_arg_ref));
+    }
+
+    const sel_eid = try readSelectorEid(state, ast_eid);
+    const site_idx = try bumpSendSite(state);
+
+    if (n_args == 0) {
+        state.encoder.send0(state.allocator, @intCast(sel_eid), site_idx) catch return error.OutOfMemory;
+    } else {
+        state.encoder.send1(state.allocator, @intCast(sel_eid), site_idx) catch return error.OutOfMemory;
+    }
+}
+
+/// Compile a keyword send. Arg count = length of :ast-first-arg /
+/// :ast-next-sibling chain. SEND_N opcode carries arg-count operand.
+fn compileKeywordSend(state: *State, ast_eid: u64) CompileError!void {
+    try compileReceiver(state, ast_eid);
+
+    const first_arg_ref = state.store.currentValue(ast_eid, kernel_eids.ATTR_AST_FIRST_ARG) orelse
+        return error.UnknownAstKind;
+    if (!ref_mod.isEid(first_arg_ref)) return error.UnknownAstKind;
+
+    var n_args: u8 = 0;
+    var cur: u64 = first_arg_ref;
+    while (true) {
+        if (!ref_mod.isEid(cur)) return error.UnknownAstKind;
+        const cur_eid = ref_mod.untagEid(cur);
+        try compileExpr(state, cur_eid);
+        if (n_args == std.math.maxInt(u8)) return error.OutOfMemory;
+        n_args += 1;
+        const next_ref = state.store.currentValue(cur_eid, kernel_eids.ATTR_AST_NEXT_SIBLING);
+        if (next_ref == null) break;
+        cur = next_ref.?;
+    }
+
+    const sel_eid = try readSelectorEid(state, ast_eid);
+    const site_idx = try bumpSendSite(state);
+    state.encoder.sendN(state.allocator, @intCast(sel_eid), n_args, site_idx) catch return error.OutOfMemory;
+}
+
+fn compileReceiver(state: *State, send_ast_eid: u64) CompileError!void {
+    const recv_ref = state.store.currentValue(send_ast_eid, kernel_eids.ATTR_AST_RECEIVER) orelse
+        return error.UnknownAstKind;
+    if (!ref_mod.isEid(recv_ref)) return error.UnknownAstKind;
+    try compileExpr(state, ref_mod.untagEid(recv_ref));
+}
+
+fn readSelectorEid(state: *State, send_ast_eid: u64) CompileError!u32 {
+    const sel_ref = state.store.currentValue(send_ast_eid, kernel_eids.ATTR_AST_SELECTOR) orelse
+        return error.UnknownAstKind;
+    if (!ref_mod.isEid(sel_ref)) return error.UnknownAstKind;
+    const sel_eid = ref_mod.untagEid(sel_ref);
+    if (sel_eid > std.math.maxInt(u32)) return error.OutOfMemory;
+    return @intCast(sel_eid);
+}
+
+fn bumpSendSite(state: *State) CompileError!u16 {
+    const idx = state.send_site_count;
+    if (idx == std.math.maxInt(u16)) return error.OutOfMemory;
+    state.send_site_count += 1;
+    return idx;
 }
 
 /// Compile a statement sequence. Each non-last statement's value is
