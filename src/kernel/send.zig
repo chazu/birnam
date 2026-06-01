@@ -186,7 +186,7 @@ fn tryBindOverride(s: *Send, vt_eid: u64) ?*Closure {
 ///   - eid: query `[receiver :vtable ?vt_eid]` in EAVT.
 ///   - smallint: kernel-fixed SMALLINT_VT (Phase 10.0 — arithmetic methods).
 ///   - keyword: future kernel-vtable EID (not in Phase 10 — return null).
-fn vtableEidOf(r: Ref) ?u64 {
+pub fn vtableEidOf(r: Ref) ?u64 {
     if (ref_mod.isPointer(r)) {
         const obj = object.fromRef(r);
         const vt_ref = object.vtableOf(obj);

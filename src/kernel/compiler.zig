@@ -139,6 +139,17 @@ pub fn compileMethod(
     store: *const FactStore,
     ast_root_eid: u64,
 ) CompileError!CompiledMethod {
+    return compileMethodInner(allocator, store, ast_root_eid, null);
+}
+
+/// Internal variant — supports a pre-populated parameter list for
+/// block-method compilation (block params occupy locals[0..n]).
+fn compileMethodInner(
+    allocator: std.mem.Allocator,
+    store: *const FactStore,
+    ast_root_eid: u64,
+    first_param_eid: ?u64,
+) CompileError!CompiledMethod {
     var state = State{
         .allocator = allocator,
         .store = store,
@@ -150,6 +161,27 @@ pub fn compileMethod(
     // defer (not errdefer) so the scope map is always freed; the
     // owned lists are emptied by toOwnedSlice and become no-op cleanups.
     defer state.deinit();
+
+    // Block params occupy locals[0..n_params] before the body compiles.
+    var arg_count: u8 = 0;
+    if (first_param_eid) |first| {
+        var cur: u64 = first;
+        while (true) {
+            const name_ref = state.store.currentValue(cur, kernel_eids.ATTR_AST_NAME) orelse
+                return error.AstMissingValue;
+            if (!ref_mod.isEid(name_ref)) return error.UnknownAstKind;
+            const name_eid = ref_mod.untagEid(name_ref);
+
+            const slot = state.allocSlot() catch return error.TooManyLocals;
+            state.scope.put(name_eid, slot) catch return error.OutOfMemory;
+            arg_count += 1;
+
+            const next_ref = state.store.currentValue(cur, kernel_eids.ATTR_AST_NEXT_SIBLING);
+            if (next_ref == null) break;
+            if (!ref_mod.isEid(next_ref.?)) return error.UnknownAstKind;
+            cur = ref_mod.untagEid(next_ref.?);
+        }
+    }
 
     try compileExpr(&state, ast_root_eid);
     state.encoder.ret(allocator) catch return error.OutOfMemory;
@@ -164,7 +196,7 @@ pub fn compileMethod(
         .bytecode = bytes,
         .constant_pool = pool,
         .method_body_ast = ast_root_eid,
-        .arg_count = 0,
+        .arg_count = arg_count,
         .local_count = local_count,
         .send_site_count = state.send_site_count,
         .block_children = children,
@@ -319,8 +351,14 @@ fn compileBlock(state: *State, ast_eid: u64) CompileError!void {
     if (!ref_mod.isEid(body_ref)) return error.UnknownAstKind;
     const body_eid = ref_mod.untagEid(body_ref);
 
+    // Block params (zero or more) populate the block-method's locals[0..n].
+    var first_param: ?u64 = null;
+    if (state.store.currentValue(ast_eid, kernel_eids.ATTR_AST_BLOCK_PARAMS)) |p_ref| {
+        if (ref_mod.isEid(p_ref)) first_param = ref_mod.untagEid(p_ref);
+    }
+
     // Recursively compile the block body as its own method.
-    var child = try compileMethod(state.allocator, state.store, body_eid);
+    var child = try compileMethodInner(state.allocator, state.store, body_eid, first_param);
     errdefer child.deinit(state.allocator);
 
     // Reserve pool slot + record child for materialize-time patching.

@@ -18,6 +18,7 @@ const strings = @import("strings.zig");
 const boxed = @import("boxed.zig");
 const send_mod = @import("send.zig");
 const vm_mod = @import("vm.zig");
+const closure_mod = @import("closure.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const Opcode = bytecode.Opcode;

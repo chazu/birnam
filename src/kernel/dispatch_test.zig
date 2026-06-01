@@ -170,6 +170,43 @@ test "reify-stack: captures active frame at SEND-time" {
     try testing.expect(store.currentValue(f_eid, kernel_eids.ATTR_FRAME_PARENT) == null);
 }
 
+test "dispatch: compile + run block with params" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    // [: x | x] body uses param x — slot 0.
+    const x_name: u64 = 900;
+    _ = try store.assert(100, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(x_name), MODULE_EID);
+
+    // body: x (var-ref)
+    _ = try store.assert(101, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(101, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(x_name), MODULE_EID);
+
+    _ = try store.assert(102, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_BLOCK_VT), MODULE_EID);
+    _ = try store.assert(102, kernel_eids.ATTR_AST_BLOCK_BODY, ref_mod.mkEid(101), MODULE_EID);
+    _ = try store.assert(102, kernel_eids.ATTR_AST_BLOCK_PARAMS, ref_mod.mkEid(100), MODULE_EID);
+
+    // Compile block as method-body so MAKE_BLOCK emits.
+    var m = try compiler.compileMethod(arena.allocator(), &store, 102);
+    defer m.deinit(arena.allocator());
+    const outer_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
+
+    // Run outer → top of stack should be the block-method-eid Ref.
+    const block_ref = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{});
+    try testing.expect(ref_mod.isEid(block_ref));
+    const block_eid = ref_mod.untagEid(block_ref);
+
+    // Verify block's :method-arg-count = 1.
+    const arg_ref = store.currentValue(block_eid, kernel_eids.ATTR_METHOD_ARG_COUNT).?;
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(arg_ref));
+
+    // Invoke block with arg 55 → expect 55.
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, block_eid, &.{ref_mod.mkSmallInt(55).?});
+    try testing.expectEqual(ref_mod.mkSmallInt(55).?, result);
+}
+
 test "dispatch: compile + run let-binding stmt-seq" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
