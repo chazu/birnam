@@ -16,6 +16,7 @@ const kernel_eids = @import("kernel_eids.zig");
 const bytecode = @import("bytecode.zig");
 const strings = @import("strings.zig");
 const boxed = @import("boxed.zig");
+const send_mod = @import("send.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const Opcode = bytecode.Opcode;
@@ -128,6 +129,42 @@ pub fn runMethod(
                 const off = bytecode.readI16(code, pc + 1);
                 const after = pc + 3;
                 pc = if (isFalsey(v)) applyJump(after, off) else after;
+            },
+            .SEND_0 => {
+                const sel_eid: u64 = bytecode.readU32(code, pc + 1);
+                _ = bytecode.readU16(code, pc + 5); // site_idx — mcache integration in a later phase
+                if (value_stack.items.len == 0) return error.StackUnderflow;
+                const recv = value_stack.pop().?;
+                const result = send_mod.send0(recv, sel_eid);
+                try value_stack.append(allocator, result);
+                pc += 7;
+            },
+            .SEND_1 => {
+                const sel_eid: u64 = bytecode.readU32(code, pc + 1);
+                _ = bytecode.readU16(code, pc + 5);
+                if (value_stack.items.len < 2) return error.StackUnderflow;
+                const arg = value_stack.pop().?;
+                const recv = value_stack.pop().?;
+                const result = send_mod.send1(recv, sel_eid, arg);
+                try value_stack.append(allocator, result);
+                pc += 7;
+            },
+            .SEND_N => {
+                const sel_eid: u64 = bytecode.readU32(code, pc + 1);
+                const n_args: u8 = bytecode.readU8(code, pc + 5);
+                _ = bytecode.readU16(code, pc + 6);
+                if (value_stack.items.len < @as(usize, n_args) + 1) return error.StackUnderflow;
+                // Args were pushed left-to-right; they sit at top with the
+                // last one on top. Pass a contiguous slice to sendN.
+                const top = value_stack.items.len;
+                const args_start = top - @as(usize, n_args);
+                const args_ptr: [*]const Ref = value_stack.items.ptr + args_start;
+                const recv = value_stack.items[args_start - 1];
+                const result = send_mod.sendN(recv, sel_eid, args_ptr, n_args);
+                // Pop args + recv, push result.
+                value_stack.shrinkRetainingCapacity(args_start - 1);
+                try value_stack.append(allocator, result);
+                pc += 8;
             },
             .RETURN => {
                 if (value_stack.items.len == 0) return ref_mod.NIL;

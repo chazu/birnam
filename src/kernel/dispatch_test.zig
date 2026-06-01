@@ -106,6 +106,62 @@ test "dispatch: LOAD_SELF returns receiver" {
     try testing.expectEqual(receiver, result);
 }
 
+// -- SEND tests: install a stub method, dispatch through send.zig --------
+
+const send_mod = @import("send.zig");
+const closure_mod = @import("closure.zig");
+
+fn stubAdd1Impl(_: *send_mod.Send, args: [*]const ref_mod.Ref, n: usize) callconv(.c) ref_mod.Ref {
+    _ = n;
+    // recv + arg as smallint. Test harness drives values; assume both smallints.
+    const recv = args[0]; // n=1 → args[0]=arg; receiver came via state in Send. For simplicity, treat arg as the only input.
+    return recv;
+}
+
+fn stubEchoImpl(s: *send_mod.Send, _: [*]const ref_mod.Ref, _: usize) callconv(.c) ref_mod.Ref {
+    // Unary send returns receiver verbatim.
+    return s.receiver;
+}
+
+test "dispatch: SEND_0 unary message returns receiver via stub method" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    // Wire send.zig globals so bind works inside this test.
+    send_mod.initDispatch(&store, &table, arena.allocator());
+
+    // Install :vtable on receiver (use a small test EID with a vt set).
+    const test_vt: u64 = kernel_eids.OBJECT_VT;
+    const recv_eid: u64 = 500;
+    _ = try store.assert(recv_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(test_vt), MODULE_EID);
+
+    // Install stub method [test_vt sel_echo closure_ref].
+    const sel_echo: u64 = kernel_eids.SEL_NOT; // pick any sel EID; the stub ignores it
+    const closure_eid = table.alloc();
+    const c_ptr = try arena.allocator().create(closure_mod.Closure);
+    c_ptr.* = .{ .method = @ptrCast(&stubEchoImpl), .data = ref_mod.NIL };
+    try table.put(closure_eid, ref_mod.mkPointer(@ptrCast(c_ptr)));
+    _ = try store.assert(test_vt, sel_echo, ref_mod.mkEid(closure_eid), MODULE_EID);
+
+    // AST: [recv_eid SEL_NOT] — receiver loaded as literal AST containing
+    // mkEid(recv_eid). For now we hand-build the AST.
+    _ = try store.assert(1, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LITERAL_VT), MODULE_EID);
+    _ = try store.assert(1, kernel_eids.ATTR_AST_VALUE, ref_mod.mkEid(recv_eid), MODULE_EID);
+
+    _ = try store.assert(2, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_UNARY_SEND_VT), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_RECEIVER, ref_mod.mkEid(1), MODULE_EID);
+    _ = try store.assert(2, kernel_eids.ATTR_AST_SELECTOR, ref_mod.mkEid(sel_echo), MODULE_EID);
+
+    var m = try compiler.compileMethod(arena.allocator(), &store, 2);
+    defer m.deinit(arena.allocator());
+    const method_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
+
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, method_eid, &.{});
+    try testing.expectEqual(ref_mod.mkEid(recv_eid), result);
+}
+
 test "dispatch: big int literal via constant pool" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
