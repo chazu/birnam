@@ -167,6 +167,15 @@ pub fn build(b: *std.Build) void {
     const run_bytecode_tests = b.addRunArtifact(bytecode_tests);
     test_step.dependOn(&run_bytecode_tests.step);
 
+    const tx_engine_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/tx_engine_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const tx_engine_tests = b.addTest(.{ .root_module = tx_engine_test_mod });
+    const run_tx_engine_tests = b.addRunArtifact(tx_engine_tests);
+    test_step.dependOn(&run_tx_engine_tests.step);
+
     const ot_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/object_table_test.zig"),
         .target = target,
