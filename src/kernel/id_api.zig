@@ -366,7 +366,6 @@ fn cCompileBlockAsMethod(block_ast_eid: u64) callconv(.c) u64 {
     const store = send_mod.storePtr() orelse return 0;
     const table = send_mod.tablePtr() orelse return 0;
 
-    // Sanity check — caller is supposed to pass an AST_BLOCK_VT entity.
     const vt_ref = store.currentValue(block_ast_eid, kernel_eids_mod.ATTR_VTABLE) orelse return 0;
     if (!ref_mod.isEid(vt_ref)) return 0;
     if (ref_mod.untagEid(vt_ref) != kernel_eids_mod.AST_BLOCK_VT) return 0;

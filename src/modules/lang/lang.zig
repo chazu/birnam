@@ -1759,8 +1759,40 @@ fn vtMethodDoImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     if (!isEid(s.receiver) or !isEid(args[0]) or !isEid(args[1])) return NIL;
     const vt_eid = s.receiver >> 3;
     const sel_eid = args[0] >> 3;
+
+    // Switchover gated off — installing bytecode methods works (the
+    // promotion.onEntityMutate→demote bug is fixed by put-after-asserts in
+    // compiler.materialize). But blocks returned by bytecode methods get
+    // sent `value` via tree-walker's closureValueImpl, which calls
+    // blockEvalShim — and blockEvalShim doesn't understand bytecode
+    // closures (closure.data is mkEid(method_eid), not a pointer to a
+    // wrapper obj). Wiring `value`/`value:` to dispatch into bytecode
+    // requires either (a) extending the closure layout to carry parent
+    // self_ref + frame ref for RETURN_FROM_METHOD, or (b) a tree-walker-
+    // compatible block-wrapper around the bytecode method. Both are
+    // Phase 11.12 by-reference-closure work.
     _ = api.assert_fact(vt_eid, sel_eid, args[1], g_module_eid);
     return s.receiver;
+}
+
+fn extractBlockAstEidForCompile(closure_ref: Ref) ?u64 {
+    const api = g_api.?;
+    if (!isEid(closure_ref)) return null;
+    const closure_eid = closure_ref >> 3;
+    const closure_ptr_ref = api.object_at_eid(closure_eid);
+    if ((closure_ptr_ref & 0b111) != 0) return null;
+    if (closure_ptr_ref == 0) return null;
+    const slot_base: [*]const Ref = @ptrFromInt(closure_ptr_ref);
+    const wrapper_ref = slot_base[1];
+    if ((wrapper_ref & 0b111) != 0) return null;
+    const wrapper_obj: ?*anyopaque = @ptrFromInt(wrapper_ref);
+    const block_ast_ref = api.slot_at(wrapper_obj, 0);
+    if (!isEid(block_ast_ref)) return null;
+    const block_ast_eid = block_ast_ref >> 3;
+    const vt_ref = api.query_eavt(block_ast_eid, ATTR_VTABLE);
+    if (!isEid(vt_ref)) return null;
+    if ((vt_ref >> 3) != AST_BLOCK_VT) return null;
+    return block_ast_eid;
 }
 
 /// `[block value]` / `[block value: x]` / `[block value: x value: y]`

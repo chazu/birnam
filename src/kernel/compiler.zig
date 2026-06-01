@@ -489,13 +489,6 @@ fn materializeInner(
 ) MaterializeError!u64 {
     const method_eid = table.alloc();
 
-    // Install a Closure so [vt sel mkEid(method_eid)] dispatches into
-    // bytecode via the bytecode dispatcher Imp. Closure.data carries
-    // the method EID; the dispatcher reads it to locate :bytecode-stream.
-    const c_ptr = allocator.create(closure_mod.Closure) catch return error.OutOfMemory;
-    c_ptr.* = .{ .method = @ptrCast(&dispatch.bytecodeDispatcherImpl), .data = ref_mod.mkEid(method_eid) };
-    table.put(method_eid, ref_mod.mkPointer(@ptrCast(c_ptr))) catch return error.StoreError;
-
     // Walk block children first: each produces a method-eid that gets
     // patched into our constant pool. Children carry :block-parent-method
     // back-pointer to us for non-local-return resolution.
@@ -539,6 +532,26 @@ fn materializeInner(
         const ptr_ref = try allocCaptureSpecArrayRef(allocator, m.captures);
         storeAssert(store, method_eid, kernel_eids.ATTR_METHOD_CAPTURES_PTR, ptr_ref, module_eid) catch return error.StoreError;
     }
+
+    // Install the Closure LAST: every fact assertion above triggers
+    // promotion.onEntityMutate which demotes any materialized entity
+    // (clearing its object-table entry). Putting the closure after all
+    // facts means demote-on-mutate can't undo our work — the entity is
+    // not yet in the table during the asserts.
+    //
+    // Layout matches the kernel's libid-object convention: `[vt_ref]
+    // [method][data]` with `vt_ref` at offset -1 so `vtableEidOf` finds
+    // CLOSURE_VT for any send to a method-eid Ref (the value/value:/
+    // whileTrue: methods on CLOSURE_VT work as if the bytecode method
+    // were a block closure).
+    const total = 3 * @sizeOf(Ref);
+    const buf = allocator.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
+    @memset(buf, 0);
+    const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
+    vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
+    const c_ptr: *closure_mod.Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
+    c_ptr.* = .{ .method = @ptrCast(&dispatch.bytecodeDispatcherImpl), .data = ref_mod.mkEid(method_eid) };
+    table.put(method_eid, ref_mod.mkPointer(@ptrCast(c_ptr))) catch return error.StoreError;
 
     return method_eid;
 }
