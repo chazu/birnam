@@ -144,6 +144,28 @@ pub fn compileMethod(
     return compileMethodInner(allocator, store, ast_root_eid, null);
 }
 
+/// Compile an AST_BLOCK_VT entity as a top-level method: block params
+/// become locals[0..n] and block body becomes the method body. Used by
+/// the IdApi entry that lang dylib calls to lower
+/// `[vt method:do: block]` installs into bytecode-method installs.
+pub fn compileBlockAsMethod(
+    allocator: std.mem.Allocator,
+    store: *const FactStore,
+    block_ast_eid: u64,
+) CompileError!CompiledMethod {
+    const body_ref = store.currentValue(block_ast_eid, kernel_eids.ATTR_AST_BLOCK_BODY) orelse
+        return error.AstMissingValue;
+    if (!ref_mod.isEid(body_ref)) return error.UnknownAstKind;
+    const body_eid = ref_mod.untagEid(body_ref);
+
+    var first_param: ?u64 = null;
+    if (store.currentValue(block_ast_eid, kernel_eids.ATTR_AST_BLOCK_PARAMS)) |p_ref| {
+        if (ref_mod.isEid(p_ref)) first_param = ref_mod.untagEid(p_ref);
+    }
+
+    return compileMethodInner(allocator, store, body_eid, first_param);
+}
+
 /// Internal variant — supports a pre-populated parameter list for
 /// block-method compilation (block params occupy locals[0..n]).
 fn compileMethodInner(

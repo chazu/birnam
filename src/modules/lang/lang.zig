@@ -182,6 +182,11 @@ const IdApi = extern struct {
     sendN: *const fn (Ref, u64, [*]const Ref, usize) callconv(.c) Ref,
     object_at_eid: *const fn (u64) callconv(.c) Ref,
     make_float: *const fn (f64) callconv(.c) Ref,
+
+    /// Phase 11.2 — compile a block AST as a bytecode method. Returns
+    /// method-EID for installation via [vt sel mkEid(method_eid)].
+    /// Append-only ABI discipline (Phase 9.5.5).
+    compile_block_as_method: *const fn (block_ast_eid: u64) callconv(.c) u64,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -1739,6 +1744,12 @@ fn evalLetImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
 
 /// `[vt method: #sel do: blockClosureRef]` — installs the block as a method
 /// on `vt`. Returns the receiver (target vt) for chaining.
+///
+/// Phase 11.2 switchover infrastructure (api.compile_block_as_method) is
+/// in place; full switchover currently regresses existing tree-walker
+/// tests in edge cases (likely block-body desugar shape mismatch with
+/// the bytecode compiler's expectations — needs investigation). Keep
+/// tree-walker install path until the regression is debugged.
 fn vtMethodDoImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
     const api = g_api.?;

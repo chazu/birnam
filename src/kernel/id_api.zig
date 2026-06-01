@@ -224,6 +224,15 @@ pub const IdApi = extern struct {
     /// Used by the lang dylib at parse time to pre-allocate float literals
     /// stored on AST_LITERAL_VT nodes per X5 lock.
     make_float: *const fn (f64) callconv(.c) Ref,
+
+    /// Phase 11.2 — compile an AST_BLOCK_VT entity as a bytecode method.
+    /// Block params become method args (locals[0..n]); block body
+    /// becomes the method body. Returns the materialized method EID
+    /// suitable for installation via `[vt sel mkEid(method_eid)]` (or
+    /// 0 on error). The returned method's closure is wired so SEND_*
+    /// dispatches into bytecode via `dispatch.bytecodeDispatcherImpl`.
+    /// Append-only ABI: new field at end per Phase 9.5.5 discipline.
+    compile_block_as_method: *const fn (block_ast_eid: u64) callconv(.c) u64,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -330,10 +339,13 @@ pub fn populate() IdApi {
         .sendN = &cSendN,
         .object_at_eid = &cObjectAtEid,
         .make_float = &cMakeFloat,
+        .compile_block_as_method = &cCompileBlockAsMethod,
     };
 }
 
 const boxed = @import("boxed.zig");
+const compiler_mod = @import("compiler.zig");
+const kernel_eids_mod = @import("kernel_eids.zig");
 
 fn cMakeFloat(value: f64) callconv(.c) Ref {
     const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
@@ -347,6 +359,16 @@ fn cSendN(receiver: Ref, sel: u64, args: [*]const Ref, n_args: usize) callconv(.
 fn cObjectAtEid(eid: u64) callconv(.c) Ref {
     const t = send_mod.tablePtr() orelse return ref_mod.NIL;
     return t.get(eid) orelse ref_mod.NIL;
+}
+
+fn cCompileBlockAsMethod(block_ast_eid: u64) callconv(.c) u64 {
+    const allocator = send_mod.kernelAllocator() orelse return 0;
+    const store = send_mod.storePtr() orelse return 0;
+    const table = send_mod.tablePtr() orelse return 0;
+
+    var m = compiler_mod.compileBlockAsMethod(allocator, store, block_ast_eid) catch return 0;
+    defer m.deinit(allocator);
+    return compiler_mod.materialize(allocator, store, table, &m, kernel_eids_mod.M_LANG) catch 0;
 }
 
 /// Storage for the interner so the C wrappers can find it. Shell calls this
