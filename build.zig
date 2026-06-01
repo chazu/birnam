@@ -176,6 +176,15 @@ pub fn build(b: *std.Build) void {
     const run_tx_engine_tests = b.addRunArtifact(tx_engine_tests);
     test_step.dependOn(&run_tx_engine_tests.step);
 
+    const compiler_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/compiler_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const compiler_tests = b.addTest(.{ .root_module = compiler_test_mod });
+    const run_compiler_tests = b.addRunArtifact(compiler_tests);
+    test_step.dependOn(&run_compiler_tests.step);
+
     // Phase 11.9 tail-call probe — CI gate. ReleaseFast forces the optimizer
     // to honor `@call(.always_tail, ...)`. Debug mode also runs the probe
     // via the regular test step but tolerates the deeper frames since
