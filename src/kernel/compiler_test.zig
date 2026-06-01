@@ -417,8 +417,90 @@ test "compile rejects unknown AST kind" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
 
-    // AST_VAR_REF_VT not yet supported in A1.
-    _ = try store.assert(4000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    // AST_SUPER_SEND_VT not yet supported.
+    _ = try store.assert(4000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_SUPER_SEND_VT), MODULE_EID);
     const r = compiler.compileMethod(testing.allocator, &store, 4000);
     try testing.expectError(error.UnknownAstKind, r);
+}
+
+test "compile let + var-ref: stores then reloads from slot 0" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    const name_eid: u64 = 800; // arbitrary; treated as opaque name EID
+    // let x = 5
+    try mkLiteralAst(&store, 40001, ref_mod.mkSmallInt(5).?);
+    _ = try store.assert(40002, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LET_VT), MODULE_EID);
+    _ = try store.assert(40002, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+    _ = try store.assert(40002, kernel_eids.ATTR_AST_LET_INIT, ref_mod.mkEid(40001), MODULE_EID);
+
+    // x (var-ref)
+    _ = try store.assert(40003, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(40003, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+
+    // stmt-seq: let x = 5; x
+    _ = try store.assert(40002, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(40003), MODULE_EID);
+    _ = try store.assert(40000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_STMT_SEQ_VT), MODULE_EID);
+    _ = try store.assert(40000, kernel_eids.ATTR_AST_STMT_FIRST, ref_mod.mkEid(40002), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, 40000);
+    defer m.deinit(testing.allocator);
+
+    try testing.expectEqual(@as(u8, 1), m.local_count); // one local
+    // Bytecode: PUSH 5 (5), STORE_LOCAL 0 (2), PUSH_LOCAL 0 (2),
+    //           POP (1), PUSH_LOCAL 0 (2), RETURN (1) = 13.
+    try testing.expectEqual(@as(usize, 13), m.bytecode.len);
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 0));
+    try testing.expectEqual(bytecode.Opcode.STORE_LOCAL, bytecode.readOpcode(m.bytecode, 5));
+    try testing.expectEqual(@as(u8, 0), bytecode.readU8(m.bytecode, 6));
+    try testing.expectEqual(bytecode.Opcode.PUSH_LOCAL, bytecode.readOpcode(m.bytecode, 7));
+    try testing.expectEqual(bytecode.Opcode.POP, bytecode.readOpcode(m.bytecode, 9));
+    try testing.expectEqual(bytecode.Opcode.PUSH_LOCAL, bytecode.readOpcode(m.bytecode, 10));
+    try testing.expectEqual(@as(u8, 0), bytecode.readU8(m.bytecode, 11));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 12));
+}
+
+test "compile var-ref out of scope → VarNotInScope" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    _ = try store.assert(41000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(41000, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(900), MODULE_EID);
+
+    const r = compiler.compileMethod(testing.allocator, &store, 41000);
+    try testing.expectError(error.VarNotInScope, r);
+}
+
+test "compile assign: stores + reloads bound slot" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    const name_eid: u64 = 850;
+    // let y = 1; y := 99; y
+    try mkLiteralAst(&store, 42001, ref_mod.mkSmallInt(1).?);
+    _ = try store.assert(42002, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LET_VT), MODULE_EID);
+    _ = try store.assert(42002, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+    _ = try store.assert(42002, kernel_eids.ATTR_AST_LET_INIT, ref_mod.mkEid(42001), MODULE_EID);
+
+    try mkLiteralAst(&store, 42003, ref_mod.mkSmallInt(99).?);
+    _ = try store.assert(42004, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_ASSIGN_VT), MODULE_EID);
+    _ = try store.assert(42004, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+    _ = try store.assert(42004, kernel_eids.ATTR_AST_ASSIGN_VALUE, ref_mod.mkEid(42003), MODULE_EID);
+
+    _ = try store.assert(42005, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(42005, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+
+    _ = try store.assert(42002, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(42004), MODULE_EID);
+    _ = try store.assert(42004, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(42005), MODULE_EID);
+
+    _ = try store.assert(42000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_STMT_SEQ_VT), MODULE_EID);
+    _ = try store.assert(42000, kernel_eids.ATTR_AST_STMT_FIRST, ref_mod.mkEid(42002), MODULE_EID);
+
+    var m = try compiler.compileMethod(testing.allocator, &store, 42000);
+    defer m.deinit(testing.allocator);
+
+    try testing.expectEqual(@as(u8, 1), m.local_count);
 }

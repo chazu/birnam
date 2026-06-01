@@ -31,6 +31,8 @@ pub const Opcode = bytecode.Opcode;
 pub const CompileError = error{
     UnknownAstKind,
     AstMissingValue,
+    VarNotInScope,
+    TooManyLocals,
     OutOfMemory,
 };
 
@@ -83,12 +85,28 @@ const State = struct {
     /// constant-pool slot reserved for the materialized block method's
     /// EID-Ref.
     block_children: std.ArrayList(BlockChild),
+    /// Compile-time scope map: name-EID → frame-local slot. Filled by
+    /// AST_LET_VT; consulted by AST_VAR_REF_VT and AST_ASSIGN_VT. Phase
+    /// A4 scope covers locals declared in the current method only;
+    /// captured outer-scope references require closure machinery and
+    /// are deferred to a follow-up landing.
+    scope: std.AutoHashMap(u64, u8),
 
     fn deinit(self: *State) void {
         self.encoder.deinit(self.allocator);
         self.constant_pool.deinit(self.allocator);
         for (self.block_children.items) |*c| c.compiled.deinit(self.allocator);
         self.block_children.deinit(self.allocator);
+        self.scope.deinit();
+    }
+
+    /// Allocate the next frame-local slot. u8 ceiling matches the
+    /// PUSH_LOCAL / STORE_LOCAL operand width.
+    fn allocSlot(self: *State) !u8 {
+        const next: i32 = self.max_local_slot + 1;
+        if (next > std.math.maxInt(u8)) return error.TooManyLocals;
+        self.max_local_slot = next;
+        return @intCast(next);
     }
 
     /// Add a Ref to the constant pool and return its index. Deduplicates
@@ -127,8 +145,11 @@ pub fn compileMethod(
         .encoder = bytecode.Encoder.init(allocator),
         .constant_pool = std.ArrayList(Ref){},
         .block_children = std.ArrayList(BlockChild){},
+        .scope = std.AutoHashMap(u64, u8).init(allocator),
     };
-    errdefer state.deinit();
+    // defer (not errdefer) so the scope map is always freed; the
+    // owned lists are emptied by toOwnedSlice and become no-op cleanups.
+    defer state.deinit();
 
     try compileExpr(&state, ast_root_eid);
     state.encoder.ret(allocator) catch return error.OutOfMemory;
@@ -166,6 +187,9 @@ fn compileExpr(state: *State, ast_eid: u64) CompileError!void {
         kernel_eids.AST_BINARY_SEND_VT => try compileSend(state, ast_eid, 1),
         kernel_eids.AST_KEYWORD_SEND_VT => try compileKeywordSend(state, ast_eid),
         kernel_eids.AST_BLOCK_VT => try compileBlock(state, ast_eid),
+        kernel_eids.AST_LET_VT => try compileLet(state, ast_eid),
+        kernel_eids.AST_VAR_REF_VT => try compileVarRef(state, ast_eid),
+        kernel_eids.AST_ASSIGN_VT => try compileAssign(state, ast_eid),
         else => return error.UnknownAstKind,
     }
 }
@@ -234,6 +258,56 @@ fn readSelectorEid(state: *State, send_ast_eid: u64) CompileError!u32 {
     return @intCast(sel_eid);
 }
 
+/// Compile `let x = expr`. Allocates a fresh frame-local slot, stores
+/// the init value, and reloads it as the let-expression's result.
+fn compileLet(state: *State, ast_eid: u64) CompileError!void {
+    const name_eid = try readNameEid(state, ast_eid);
+    const init_ref = state.store.currentValue(ast_eid, kernel_eids.ATTR_AST_LET_INIT) orelse
+        return error.AstMissingValue;
+    if (!ref_mod.isEid(init_ref)) return error.UnknownAstKind;
+
+    try compileExpr(state, ref_mod.untagEid(init_ref));
+
+    // Allocate slot AFTER compiling init — the init expression cannot
+    // legally reference the binding being introduced.
+    const slot = state.allocSlot() catch return error.TooManyLocals;
+    state.scope.put(name_eid, slot) catch return error.OutOfMemory;
+
+    state.encoder.storeLocal(state.allocator, slot) catch return error.OutOfMemory;
+    state.encoder.pushLocal(state.allocator, slot) catch return error.OutOfMemory;
+}
+
+/// Compile a variable reference. Phase A4 covers locals in the
+/// current method's scope. Captured outer-scope refs require the
+/// closure machinery deferred to a follow-up landing.
+fn compileVarRef(state: *State, ast_eid: u64) CompileError!void {
+    const name_eid = try readNameEid(state, ast_eid);
+    const slot = state.scope.get(name_eid) orelse return error.VarNotInScope;
+    state.encoder.pushLocal(state.allocator, slot) catch return error.OutOfMemory;
+}
+
+/// Compile `name := expr`. Value of the assign expression is the
+/// stored value.
+fn compileAssign(state: *State, ast_eid: u64) CompileError!void {
+    const name_eid = try readNameEid(state, ast_eid);
+    const value_ref = state.store.currentValue(ast_eid, kernel_eids.ATTR_AST_ASSIGN_VALUE) orelse
+        return error.AstMissingValue;
+    if (!ref_mod.isEid(value_ref)) return error.UnknownAstKind;
+
+    try compileExpr(state, ref_mod.untagEid(value_ref));
+
+    const slot = state.scope.get(name_eid) orelse return error.VarNotInScope;
+    state.encoder.storeLocal(state.allocator, slot) catch return error.OutOfMemory;
+    state.encoder.pushLocal(state.allocator, slot) catch return error.OutOfMemory;
+}
+
+fn readNameEid(state: *State, ast_eid: u64) CompileError!u64 {
+    const name_ref = state.store.currentValue(ast_eid, kernel_eids.ATTR_AST_NAME) orelse
+        return error.AstMissingValue;
+    if (!ref_mod.isEid(name_ref)) return error.UnknownAstKind;
+    return ref_mod.untagEid(name_ref);
+}
+
 /// Compile a `[: params | body]` block literal. The block body is
 /// compiled as its own CompiledMethod and stored in `state.block_children`
 /// to be materialized later (parent's materialize patches the pool slot
@@ -246,11 +320,7 @@ fn compileBlock(state: *State, ast_eid: u64) CompileError!void {
     const body_eid = ref_mod.untagEid(body_ref);
 
     // Recursively compile the block body as its own method.
-    var child = compileMethod(state.allocator, state.store, body_eid) catch |err| switch (err) {
-        error.UnknownAstKind => return error.UnknownAstKind,
-        error.AstMissingValue => return error.AstMissingValue,
-        error.OutOfMemory => return error.OutOfMemory,
-    };
+    var child = try compileMethod(state.allocator, state.store, body_eid);
     errdefer child.deinit(state.allocator);
 
     // Reserve pool slot + record child for materialize-time patching.
