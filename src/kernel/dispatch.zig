@@ -17,6 +17,7 @@ const bytecode = @import("bytecode.zig");
 const strings = @import("strings.zig");
 const boxed = @import("boxed.zig");
 const send_mod = @import("send.zig");
+const vm_mod = @import("vm.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const Opcode = bytecode.Opcode;
@@ -191,14 +192,40 @@ pub fn runMethod(
                 value_stack.shrinkRetainingCapacity(args_start - 1);
                 // Block sees the enclosing frame's self.
                 const result = try runMethod(allocator, store, receiver, block_eid, args_snapshot);
+                // Non-local return propagation: if the block triggered
+                // RETURN_FROM_METHOD, the inner runMethod returned its
+                // unwind_value. Decide here whether we are the target
+                // method frame.
+                const vm = vm_mod.current();
+                if (vm.unwinding) {
+                    if (vm.unwind_target_remaining == 0) {
+                        // We ARE the target method. Catch, return the
+                        // unwind value as our normal result.
+                        vm.unwinding = false;
+                        return vm.unwind_value;
+                    } else {
+                        // Pass through — caller is a still-inner frame.
+                        vm.unwind_target_remaining -= 1;
+                        return result;
+                    }
+                }
                 try value_stack.append(allocator, result);
                 pc += 4;
+            },
+            .RETURN_FROM_METHOD => {
+                const depth: u8 = bytecode.readU8(code, pc + 1);
+                if (value_stack.items.len == 0) return error.StackUnderflow;
+                const v = value_stack.pop().?;
+                const vm = vm_mod.current();
+                vm.unwinding = true;
+                vm.unwind_value = v;
+                vm.unwind_target_remaining = depth;
+                return v;
             },
             .RETURN => {
                 if (value_stack.items.len == 0) return ref_mod.NIL;
                 return value_stack.items[value_stack.items.len - 1];
             },
-            else => return error.OpcodeNotImplemented,
         }
     }
     return error.BadFrame;

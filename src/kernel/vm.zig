@@ -149,8 +149,19 @@ pub const Vm = struct {
     current_self: Ref = ref_mod.NIL,
     /// Non-local return flag. Per-thread by construction
     /// (ADR-11 addendum #5 retires `lang.zig` g_unwinding via
-    /// RETURN_FROM_METHOD opcode at 11.5).
+    /// RETURN_FROM_METHOD opcode at 11.5). When set, the active
+    /// dispatch loop exits early; the calling block-frame's
+    /// dispatcher decrements `unwind_target_remaining` and either
+    /// catches (depth = 0 → clear flag, value becomes result) or
+    /// propagates (depth > 0 → re-exit).
     unwinding: bool = false,
+    /// Value carried by an active non-local return.
+    unwind_value: Ref = ref_mod.NIL,
+    /// Number of additional frame pops remaining before the unwind
+    /// target is reached. RETURN_FROM_METHOD opcode loads its
+    /// method-frame-depth operand into this field. Each enclosing
+    /// block frame decrements on catch.
+    unwind_target_remaining: u8 = 0,
     /// Bump arena slot for transient per-thread allocations.
     bump_arena_slot: ?*anyopaque = null,
 

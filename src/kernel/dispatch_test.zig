@@ -182,6 +182,42 @@ test "dispatch: INVOKE_BLOCK passes args as locals" {
     try testing.expectEqual(ref_mod.mkSmallInt(77).?, result);
 }
 
+test "dispatch: RETURN_FROM_METHOD from block unwinds to enclosing method" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+    var table = object_table_mod.ObjectTable.init(arena.allocator());
+
+    // Block body: PUSH_SMALLINT_I32 7, RETURN_FROM_METHOD depth=0.
+    const block_body = [_]u8{
+        @intFromEnum(bytecode.Opcode.PUSH_SMALLINT_I32), 7, 0, 0, 0,
+        @intFromEnum(bytecode.Opcode.RETURN_FROM_METHOD), 0,
+    };
+    const block_eid = try installBytecodeMethod(arena.allocator(), &store, &table, &block_body, &.{});
+
+    // Outer: MAKE_BLOCK 0, INVOKE_BLOCK 0 0, PUSH_SMALLINT_I32 99, RETURN.
+    // If non-local return catches at INVOKE_BLOCK, outer returns 7.
+    // If it falls through, outer would return 99 — test catches the
+    // regression.
+    const outer_body = [_]u8{
+        @intFromEnum(bytecode.Opcode.MAKE_BLOCK), 0, 0,
+        @intFromEnum(bytecode.Opcode.INVOKE_BLOCK), 0, 0, 0,
+        @intFromEnum(bytecode.Opcode.PUSH_SMALLINT_I32), 99, 0, 0, 0,
+        @intFromEnum(bytecode.Opcode.RETURN),
+    };
+    const pool = [_]ref_mod.Ref{ref_mod.mkEid(block_eid)};
+    const outer_eid = try installBytecodeMethod(arena.allocator(), &store, &table, &outer_body, &pool);
+
+    const vm = @import("vm.zig").current();
+    vm.unwinding = false;
+    vm.unwind_target_remaining = 0;
+    vm.unwind_value = ref_mod.NIL;
+
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{});
+    try testing.expectEqual(ref_mod.mkSmallInt(7).?, result);
+    try testing.expectEqual(false, vm.unwinding);
+}
+
 // -- SEND tests: install a stub method, dispatch through send.zig --------
 
 const send_mod = @import("send.zig");
