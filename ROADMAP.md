@@ -1361,19 +1361,41 @@ Approach A (bytecode methods as `BYTECODE_METHOD_VT`, removing the fn-ptr indire
 
 13.2 Pruning runs as a separate tx that rewrites indexes excluding pruned facts. Old index roots become unreferenced and GC-able.
 
-13.3 **Closure-scope reachability sweep (Phase 10.3 deferred work).** Per ADR-10-E3 locked in Phase 10.3, block closures capture by reference — each block holds a `:block-scope` Ref. Scope entities are reachable iff any live block holds them or any reachable scope chains to them. The reachable-from-roots pruning policy (13.1) must walk:
-- `[?b :vtable BLOCK_VT] [?b :block-scope ?s]` — every live block roots its captured scope
-- `[?s :scope-parent ?p]` — transitively root parent scopes via chain
-Any scope entity not reached by this walk is dead and gets pruned along with its `:bind-*` binding entities. Tests must include: block-outlives-method (scope stays alive), block-dies-with-method (scope sweepable), nested-blocks (parent chain reachability), block-of-block (transitive root).
+**Roots/edges re-derivation (2026-06-02) — bytecode-closure + provenance model.** The original 13.3/13.4 (below, struck) were written in the Phase 10.3 tree-walker era and reference representations Phase 11.11/11.12 + 12.0 superseded: `:block-scope`/`:block-body`/`BLOCK_VT` (gone — blocks are bytecode-method entities referenced via constant-pool + `:block-parent-method`), `:bind-scope` (the live model is the `:scope-first-binding`/`:bind-next` head-chain), and grammar-rule/kernel-method roots (now CODE, reconstructed every boot — not garbage). Three simplifications fall out: execution uses frame locals + `CaptureSpec` so there are **no per-block scope entities to GC**; **prune scope = M_USER entities only** (CODE is rebuilt by module load); AST is debug-only now (bytecode is canonical), so orphan-AST sweep is hygiene, not correctness.
 
-13.4 **AST mark-sweep (Phase 10 deferred work).** Per PR1 / X3 locked in Phase 10.2/10.3, AST entities live permanently until pruned. The reachable-from-roots policy must walk from the following root attributes and mark every transitively-reached AST node before sweeping unmarked nodes tagged `:ast-parse <parse_eid>`. Edges to follow: `:ast-first-child`, `:ast-next-sibling`, `:ast-method-frame` (Phase 10.3 E4 frame-reference back-pointer on `^` nodes), `:pattern-first-child`, `:pattern-next-sibling`, `:charset-first-range`, `:charset-next-range`, `:range-ast` (Phase 11 ADR-11 addendum — bytecode→AST debug pointer via range-entity). Root attribute set:
-- `[?m :method-body-ast ?]` — installed methods (Phase 10.4)
-- `[?b :vtable BLOCK_VT] [?b :block-body ?]` — live blocks (Phase 10.3)
-- `[?s :saved-query-spec ?]` — saved queries (Phase 7.3, already shipped)
-- `[?r :rule-pattern ?]` — grammar rule patterns (Phase 10.0)
-- `[?s :scope-top-level true] [?b :bind-scope ?s] [?b :bind-value ?v]` — REPL top-level bindings (Phase 10.5 T2b)
-- `[?w :ffi-sig ?]` — FFI wrap entities carry a pointer-Ref to a heap Sig struct (Phase 9.3 — special-case: not an AST root proper but lives in the same prune sweep; needs Zig-side free callback registered with the sweep)
-Tests: every-root-keeps-its-tree (one test per root attribute), orphan-AST-pruned (parse without install), grammar-rule-protected (rules survive prune), refloating method (re-install via `method:do:` reroots).
+13.3 **Scope/binding reachability (re-derived).** The only persistent scope is the top-level REPL scope at the stable `TOP_SCOPE_EID` (12.4a) — always a live root. Walk its binding chain and mark:
+- `[TOP_SCOPE_EID :scope-first-binding ?b]` then `[?b :bind-next ?b2]*` — the live REPL bindings (head-chain, not `:bind-scope`)
+- each binding's `[?b :bind-value ?v]` roots `?v` — if `?v` is `mkEid(?m)` with `[?m :bytecode-stream]`, that method (and its closure) is live; follow into 13.4's method walk
+- `[?s :scope-parent ?p]` / `[?s :scope-self ?v]` — only if transient nested SCOPE_VT entities persist (tree-walker path); chain to parents
+A binding shadowed by a later `:=` (replaced head) leaves the old binding entity unreachable → swept. Tests: live-binding-kept, shadowed-binding-swept, binding-holding-a-method keeps the method, redefined-binding drops the old value's method if otherwise unreferenced.
+
+13.4 **Entity mark-sweep over M_USER (re-derived).** Mark every transitively-reachable M_USER entity from the roots below; sweep unmarked M_USER entities (orphan AST, dead methods/blocks, dead range/scope/binding entities). CODE entities are out of scope.
+
+Roots:
+- **Installed methods** — M_USER facts `[?vt ?sel mkEid(?m)]` where `[?m :bytecode-stream]`. `?vt` may be a stable kernel vt or a user vt. (Replaces the `:method-body-ast` root: a method is live because it's *dispatchable*, not because it has an AST.)
+- **REPL bindings** — the 13.3 chain from `TOP_SCOPE_EID`.
+- **Saved queries** — `[?s :saved-query-spec ?]`.
+- **FFI wraps (M_USER only)** — `[?w :ffi-sig ?]`; the `:ffi-sig` value is a pointer to a heap Sig struct → needs a Zig-side free callback on sweep. (Module-installed wraps are CODE — skipped.)
+- (Dropped vs old spec: grammar-rule patterns and kernel/primitive methods — both CODE, reconstructed each boot.)
+
+Forward edges (transitive mark):
+- bytecode method → `:constant-pool` (RRB): for each element that is `mkEid(?c)` with `[?c :bytecode-stream]`, mark `?c` (block child — recurse). Literal pool entries (strings/floats/smallints) are owned data.
+- bytecode method → `:method-body-ast` → AST subtree (debug); → `:method-ast-range` → range entity → `:range-ast` → AST node.
+- AST subtree edges: `:ast-first-child`, `:ast-next-sibling`, `:ast-stmt-first`, `:ast-receiver`, `:ast-first-arg`, `:ast-block-body`, `:ast-block-params`, `:ast-let-init`, `:ast-assign-target`, `:ast-assign-value`, `:ast-return-value`, `:ast-method-frame`, `:ast-name`/`:ast-value` (only follow eid values that are themselves swept-class entities; `:ast-selector` → interned selector, **not** swept).
+- `:block-parent-method` is a **back-edge** (non-local-return target) — NOT a mark edge.
+- `:method-captures-ptr` → heap CaptureSpecArray (owned data, no entity edge).
+
+Tests: installed-method-kept + its block children (via pool) + its AST; orphan-AST-pruned (parsed, never installed); redefined-method drops the old method_eid; M_USER-only (a CODE grammar-rule entity is untouched by the sweep); FFI-sig free callback fires once on sweep.
+
+---
+
+<details><summary>Superseded 13.3/13.4 (Phase 10.3-era, pre-bytecode — kept for history)</summary>
+
+13.3 (old) Closure-scope reachability over `[?b :vtable BLOCK_VT][?b :block-scope ?s]` + `:scope-parent`. Dead: blocks are no longer BLOCK_VT entities with `:block-scope` Refs.
+
+13.4 (old) AST mark-sweep rooted at `:method-body-ast`, `[?b :block-body ?]`, `:saved-query-spec`, `:rule-pattern`, `[?b :bind-scope ?s]`, `:ffi-sig`. Stale roots: `:block-body`, `:bind-scope`, and the grammar-rule root (CODE).
+
+</details>
 
 13.5 Tests: pruning preserves reachable state, removes excised entities, query results match pre-prune for non-excised data. Plus the closure-reachability cases above and the AST mark-sweep cases.
 
