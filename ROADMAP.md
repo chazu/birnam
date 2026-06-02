@@ -1264,6 +1264,20 @@ This keeps Phase 12 minimal and low-risk: the non-serializable surface collapses
 
 **Amends 12.1 / 12.3 below** per Approach B.
 
+### Format refinement (2026-06-02) — single self-describing file, manifest embedded
+
+ADR-11 #5 sketched `.brnimg` as a *directory archive* (`roots.bin` + `manifest.txt` + `segments/`). Revised: **one self-describing file** with the manifest as an embedded header **section**, not a sidecar. Rationale: the snapshot is already a single byte stream; one file = atomic write, no multi-file consistency to manage, still "pure data, no toolchain." Layout (format v4, shipped in `image.zig`):
+
+```
+[MAGIC 8][format_version u32]
+[manifest: bytecode_format_version u32, thread_mode u8,
+           module_count u32, {name_len u32, name bytes, abi_hash u64}*]
+[counters: next_tx u64, next_eid u64]
+[facts: count u64, {m,e,a, value_kind u8, value...}*]
+```
+
+This does **not** preclude the future mmap fast-path (12.5): make sections page-aligned and add an offset table to the header — still one file. `manifest.txt` as a separate artifact is dropped; the thread-mode tag (ADR-11 addendum) and bytecode-format-version live in the embedded manifest. `image.load` returns the parsed `Manifest` (module deps + names allocated in the store allocator) so the loader can `dlopen`+verify before replaying facts.
+
 **Open detail for the format spec (not a blocker):** block-closure captures are raw `Ref`s copied from locals (`dispatch.zig:242`); a capture may be a pointer (boxed float / scope entity). Persisted captures must be fact-backed eids (scope/binding entities are — 10.4.5), or the capture's referent must itself rematerialize from facts. Resolve when specifying capture serialization. **Snapshot is only coherent at rest** (`vm.frames` empty — `parent_frame_id` is a live-stack id); assert this at save.
 
 **Orthogonality note (corrects a prior read):** finishing the lang switchover / retiring `g_unwinding` (11.5) does *not* remove the fn-ptr problem — `.method` holds a fn ptr regardless of which dispatcher it points at. Phase 12 serialization is independent of 11.5; do not gate one on the other.

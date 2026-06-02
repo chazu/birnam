@@ -30,6 +30,7 @@ const kernel_eids = @import("kernel_eids.zig");
 const object_table = @import("object_table.zig");
 const closure_mod = @import("closure.zig");
 const dispatch = @import("dispatch.zig");
+const bytecode = @import("bytecode.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store.FactStore;
@@ -38,7 +39,30 @@ pub const ObjectTable = object_table.ObjectTable;
 /// Bump on any incompatible change to the on-disk layout below.
 /// v2 (slice 2): per-fact value-kind tag; string values serialize bytes.
 /// v3 (slice 3): boxed float + RRB vector (recursive element values).
-pub const FORMAT_VERSION: u32 = 3;
+/// v4: embedded manifest section (single self-describing file — no
+///     sidecar manifest.txt; refines ADR-11 #5's directory archive).
+pub const FORMAT_VERSION: u32 = 4;
+
+/// Single-writer transactor shape (ADR-11 #7). Recorded in the manifest so
+/// a load knows whether the image expects the Datomic multi-thread shape.
+pub const ThreadMode = enum(u8) { single = 0, datomic = 1 };
+
+/// One module the image depends on. The loader must `dlopen` each by name
+/// and verify `abi_hash` before replaying facts (the module's CODE is
+/// reconstructed by its init; its DATA was persisted under M_USER).
+pub const ModuleDep = struct {
+    name: []const u8,
+    abi_hash: u64,
+};
+
+/// Self-describing header embedded at the front of every `.brnimg`.
+/// Carries everything a load needs before touching facts: which VM the
+/// bytecode targets, the transactor shape, and the module dependency set.
+pub const Manifest = struct {
+    bytecode_format_version: u32 = bytecode.FORMAT_VERSION,
+    thread_mode: ThreadMode = .single,
+    modules: []const ModuleDep = &.{},
+};
 
 /// Value encoding discriminant. Recursive: an RRB element is itself one
 /// of these kinds.
@@ -50,7 +74,7 @@ const VK_RRB: u8 = 3; // u32 count + `count` recursively-encoded values
 const MAGIC: [8]u8 = .{ 'B', 'R', 'N', 'I', 'M', 'G', 0, 1 };
 
 pub const WriteError = error{OutOfMemory};
-pub const ReadError = error{ BadMagic, BadVersion, Truncated, BadValueKind, StoreError, OutOfMemory };
+pub const ReadError = error{ BadMagic, BadVersion, BadManifest, Truncated, BadValueKind, StoreError, OutOfMemory };
 
 pub const WriteResult = struct {
     bytes: []u8,
@@ -67,6 +91,9 @@ pub const LoadResult = struct {
     /// to its allocator.
     next_tx: u64,
     next_eid: u64,
+    /// The embedded manifest. `modules` (and their names) are allocated in
+    /// the store's allocator, so they outlive the `bytes` buffer.
+    manifest: Manifest,
 };
 
 /// A value Ref is a self-describing immediate (eid / smallint / keyword /
@@ -142,19 +169,32 @@ fn readValue(store: *FactStore, cur: *Cursor) ReadError!Ref {
 
 // -- Writer -----------------------------------------------------------------
 
-/// Serialize the store's current facts plus the runtime counters. The
-/// caller supplies `next_eid` (read from its object table) so this module
-/// need not depend on the allocator. Returns owned bytes; caller frees.
+/// Serialize the store's current facts, the embedded manifest, and the
+/// runtime counters. The caller supplies `next_eid` (read from its object
+/// table) so this module need not depend on the allocator, and `manifest`
+/// (module deps + versions). Returns owned bytes; caller frees.
 pub fn write(
     allocator: std.mem.Allocator,
     store: *const FactStore,
     next_eid: u64,
+    manifest: Manifest,
 ) WriteError!WriteResult {
     var buf = std.ArrayList(u8){};
     errdefer buf.deinit(allocator);
 
     try buf.appendSlice(allocator, &MAGIC);
     try appendU32(allocator, &buf, FORMAT_VERSION);
+
+    // Embedded manifest section (self-describing: no sidecar file).
+    try appendU32(allocator, &buf, manifest.bytecode_format_version);
+    try buf.append(allocator, @intFromEnum(manifest.thread_mode));
+    try appendU32(allocator, &buf, @intCast(manifest.modules.len));
+    for (manifest.modules) |dep| {
+        try appendU32(allocator, &buf, @intCast(dep.name.len));
+        try buf.appendSlice(allocator, dep.name);
+        try appendU64(allocator, &buf, dep.abi_hash);
+    }
+
     try appendU64(allocator, &buf, store.currentTx() + 1); // == next_tx
     try appendU64(allocator, &buf, next_eid);
 
@@ -206,6 +246,26 @@ pub fn load(store: *FactStore, bytes: []const u8) ReadError!LoadResult {
     const version = try cur.readU32();
     if (version != FORMAT_VERSION) return error.BadVersion;
 
+    // Embedded manifest. Module names + the dep slice are allocated in the
+    // store's allocator so they outlive `bytes`.
+    const bc_version = try cur.readU32();
+    const thread_mode_raw = (try cur.take(1))[0];
+    if (thread_mode_raw > @intFromEnum(ThreadMode.datomic)) return error.BadManifest;
+    const module_count = try cur.readU32();
+    const deps = store.allocator.alloc(ModuleDep, module_count) catch return error.OutOfMemory;
+    var d: u32 = 0;
+    while (d < module_count) : (d += 1) {
+        const name_len = try cur.readU32();
+        const name_src = try cur.take(name_len);
+        const name = store.allocator.dupe(u8, name_src) catch return error.OutOfMemory;
+        deps[d] = .{ .name = name, .abi_hash = try cur.readU64() };
+    }
+    const manifest = Manifest{
+        .bytecode_format_version = bc_version,
+        .thread_mode = @enumFromInt(thread_mode_raw),
+        .modules = deps,
+    };
+
     const next_tx = try cur.readU64();
     const next_eid = try cur.readU64();
     const fact_count = try cur.readU64();
@@ -223,7 +283,7 @@ pub fn load(store: *FactStore, bytes: []const u8) ReadError!LoadResult {
     // from the saved high-water mark.
     store.next_tx.store(next_tx, .monotonic);
 
-    return .{ .facts_loaded = fact_count, .next_tx = next_tx, .next_eid = next_eid };
+    return .{ .facts_loaded = fact_count, .next_tx = next_tx, .next_eid = next_eid, .manifest = manifest };
 }
 
 // -- Approach B: rematerialize closures from facts --------------------------

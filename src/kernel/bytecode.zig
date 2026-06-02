@@ -11,6 +11,12 @@ const vm = @import("vm.zig");
 
 pub const Opcode = vm.Opcode;
 
+/// Bytecode wire-format version. Bump on any opcode-set or operand-encoding
+/// change. Recorded in the image manifest (Phase 12) so a loaded image is
+/// rejected if its bytecode predates an incompatible VM change. v1 = the
+/// 16-opcode set frozen in ADR-11 addendum.
+pub const FORMAT_VERSION: u32 = 1;
+
 // -- Encoder -----------------------------------------------------------------
 
 /// Mutable byte buffer for emitting bytecode during compile. Caller owns
