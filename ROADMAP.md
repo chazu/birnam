@@ -55,22 +55,23 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - End-to-end test: `let x = 5; [x]` returns a `BytecodeBlock` pointer Ref with captures=[5]; invoking it returns 5.
 - **By-reference semantics deferred to Phase 11.12** — captured-then-mutated values don't propagate to outer scope. Phase 11.12 will replace the per-MAKE_BLOCK copy with a shared scope-entity heap allocation (or pointer-to-locals + escape-analysis).
 
-**Lang switchover debug — two real materialize bugs fixed; one true blocker remains (2026-06-01):**
+**Phase 11.12 ✓ — by-reference closures + lang switchover lives (2026-06-01):**
 
-Targeted instrumentation through `cCompileBlockAsMethod` + `vtMethodDoImpl` + `send.bind` + `compiler.materialize` exposed two real defects in materialize plus a deeper closure-shape mismatch:
+`BytecodeClosure` carries `(method_eid, parent_self_ref, parent_frame_id, captures)`. `MAKE_BLOCK` always allocates a real CLOSURE_VT entity wrapping the `BytecodeClosure` and pushes `mkEid(closure_eid)` so `[block value]` dispatches uniformly via `send.bind` regardless of caller context (tree-walker or bytecode).
 
-1. **`promotion.onEntityMutate` demotion race (fixed).** Bootstrap installs an entity-mutate hook that demotes any materialized entity on every fact assert. Previous materialize put the closure FIRST then asserted `:vtable` / `:bytecode-stream` / sizing facts — each assert triggered demote which cleared the table entry. Closure pointer gone by the time the method was invoked. Fix: put closure LAST, after all asserts. Demote-on-mutate now can't reach the entity (not yet in the table during assert window).
+`bytecodeDispatcherImpl` branches on `closure.data` shape:
+- `isEid` (direct method install): `self = s.receiver`, no captures.
+- `isPointer` (block from MAKE_BLOCK): `self = parent_self_ref` from the BytecodeClosure, captures from inline tail. Smalltalk-semantic `self` inside the block matches the enclosing method's receiver.
 
-2. **Closure missing vt-slot at offset -1 (fixed).** Materialize previously allocated a raw `Closure { method, data }`. The libid-object convention is `[vt_ref][method][data]` with `vt_ref` at offset -1. Without the slot, `send.vtableEidOf` read garbage memory before the struct on every send to a method-eid Ref. Fixed by mirroring `id_api.cMakeClosure` layout: 3-Ref buffer with `mkEid(CLOSURE_VT)` at -1.
+`closureValueImpl` in lang.zig polymorphic: dispatches through the receiver's `closure.method` (function pointer). Tree-walker blocks route to `blockEvalShim`; bytecode methods route to `bytecodeDispatcherImpl`. Same Imp signature, single indirect call.
 
-3. **Block-value-with-self closure shape mismatch (TRUE BLOCKER, Phase 11.12 work).** With (1)+(2) fixed, `DEMO 10.4b` (`[3 plusOne: 7]` → 8) passes under switchover — direct method invocation works correctly. But `DEMO 10.x` (non-local-return through value-frame: `[block value]` where block was returned by a bytecode method) still fails. `[block value]` dispatches via `send.bind` → `[CLOSURE_VT :value]` → tree-walker `closureValueImpl` → `blockEvalShim`. Those tree-walker handlers read `closure.data` as a pointer-to-wrapper carrying `(block_ast, captured_scope)`. My bytecode-method closure has `closure.data = mkEid(method_eid)` — different shape; `blockEvalShim` returns NIL.
+Non-local return propagation through SEND: `handleSendUnwind` helper runs after every `SEND_*` opcode. `Vm.unwind_target_remaining` counts down through nested frames; depth==0 catches and returns `unwind_value` as the method's normal result. `Vm.next_frame_id` + `Frame.frame_id` give RETURN_FROM_METHOD stable target identity (currently informational; full unwind-by-id is a follow-up).
 
-Three architectural paths to close (3), all Phase 11.12:
-- (a) Extend `closure.data` for bytecode methods to a heap struct carrying `method_eid + parent_self_ref + parent_frame_ref` so `value`/`value:` can dispatch into bytecode with the correct `self` and a non-local-return unwind target.
-- (b) Ship a tree-walker-compatible wrapper around the bytecode method (`blockEvalShim` sees a real wrapper, calls back via a new IdApi entry to run the bytecode).
-- (c) Replace `[CLOSURE_VT :value]` with a bytecode-aware version that branches on closure shape. Requires IdApi exposure of `runMethod`.
+**Lang switchover at `vtMethodDoImpl` LIVES.** All 32 lang_module_tests pass including DEMO 10.4b (`[3 plusOne: 7]` → 8) and DEMO 10.x (`^88` through value-frame to enclosing method). Bytecode VM substrate is now the real eval path for user-installed methods.
 
-Switchover wire-up at `vtMethodDoImpl` reverted; infrastructure (`IdApi.compile_block_as_method`, `compileBlockAsMethod`, closure-scope-capture, fixed materialize) stays committed.
+**Materialize correctness fixes (2026-06-01, found during 11.12 debug):**
+1. `promotion.onEntityMutate` demotes any materialized entity on every fact assert. Previous materialize put the closure FIRST then asserted facts → demote cleared the table entry. Fix: put closure LAST.
+2. Closure must conform to libid-object layout `[vt_ref][method][data]` with `vt_ref` at offset -1. Materialize previously allocated raw Closure → `send.vtableEidOf` read garbage memory before the struct. Fix: 3-Ref buffer with `mkEid(CLOSURE_VT)` at -1, mirroring `id_api.cMakeClosure`.
 
 **Test count: 350/350 across 85 build steps.**
 
