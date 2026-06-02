@@ -187,6 +187,28 @@ test "image: persists M_USER facts only, skips code-module provenance" {
     try testing.expect(dst.currentValue(E_B, A_NUM) == null);
 }
 
+test "provenance: module unload (retractAllOf) leaves M_USER data intact" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var store = fs.FactStore.init(a);
+    // A code-module install fact + a user-data fact on the same entity.
+    _ = try store.assert(E_A, A_NUM, vi(100), M_CODE);
+    _ = try store.assert(E_A, A_REF, ref.mkEid(E_B), M_USER);
+
+    // Mirror Manager.retractAllOf(M_CODE): retract every fact owned by the
+    // code module. M_USER facts live in a disjoint meat subtree, so they
+    // are unreachable from this walk.
+    var it = try store.factsOfModule(M_CODE, a);
+    defer it.deinit();
+    while (it.next()) |t| _ = try store.retract(t.e, t.a, t.v, M_CODE);
+
+    // Code fact gone; user data survives the unload.
+    try testing.expect(store.currentValue(E_A, A_NUM) == null);
+    try testing.expectEqual(ref.mkEid(E_B), store.currentValue(E_A, A_REF).?);
+}
+
 test "image: rejects bad magic and version" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
