@@ -178,6 +178,15 @@ pub fn build(b: *std.Build) void {
     const run_image_tests = b.addRunArtifact(image_tests);
     test_step.dependOn(&run_image_tests.step);
 
+    const prune_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/prune_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const prune_tests = b.addTest(.{ .root_module = prune_test_mod });
+    const run_prune_tests = b.addRunArtifact(prune_tests);
+    test_step.dependOn(&run_prune_tests.step);
+
     const tx_engine_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/tx_engine_test.zig"),
         .target = target,

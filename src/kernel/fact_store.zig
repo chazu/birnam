@@ -545,6 +545,50 @@ pub const FactStore = struct {
     pub fn meatIter(self: *const FactStore) AllFactsIter {
         return .{ .m_it = self.meat.iter() };
     }
+
+    pub const CompactStats = struct { kept: usize, dropped: usize };
+
+    /// Phase 13.2 — rewrite the indexes keeping only facts for which
+    /// `keep(ctx, m, e, a, v)` returns true. Snapshots current facts,
+    /// resets all five indexes to empty, and re-asserts the kept set at a
+    /// fresh tx sequence. History collapses to current values (the kept
+    /// facts), and the old persistent-index roots become unreferenced (GC).
+    /// Callers that GC materialized structs should clear the object-table
+    /// entries for dropped entities separately. `scratch` holds the
+    /// transient snapshot; the store keeps using `self.allocator`.
+    pub fn compact(
+        self: *FactStore,
+        scratch: std.mem.Allocator,
+        ctx: anytype,
+        comptime keep: fn (@TypeOf(ctx), m: u64, e: u64, a: u64, v: Ref) bool,
+    ) !CompactStats {
+        const Snap = struct { m: u64, e: u64, a: u64, v: Ref };
+        var facts = std.ArrayList(Snap){};
+        defer facts.deinit(scratch);
+        var it = self.meatIter();
+        while (it.next()) |f| try facts.append(scratch, .{ .m = f.m, .e = f.e, .a = f.a, .v = f.v });
+
+        // Reset indexes + reification side tables. next_tx restarts at 1.
+        self.eavt = EAVTish.empty(self.allocator, .{});
+        self.aevt = EAVTish.empty(self.allocator, .{});
+        self.avet = AVETish.empty(self.allocator, .{});
+        self.vaet = AVETish.empty(self.allocator, .{});
+        self.meat = MEATish.empty(self.allocator, .{});
+        self.next_tx.store(1, .monotonic);
+        self.fact_eids.clearRetainingCapacity();
+        self.fact_modules.clearRetainingCapacity();
+
+        var stats = CompactStats{ .kept = 0, .dropped = 0 };
+        for (facts.items) |f| {
+            if (keep(ctx, f.m, f.e, f.a, f.v)) {
+                _ = try self.assert(f.e, f.a, f.v, f.m);
+                stats.kept += 1;
+            } else {
+                stats.dropped += 1;
+            }
+        }
+        return stats;
+    }
 };
 
 // -- Internal helpers --------------------------------------------------------
