@@ -1474,6 +1474,34 @@ Final step: invoke `zig build-exe` to link kernel + emitted source + (static-onl
 - `--strip=malleable` + `--aot=dynamic`: runtime-loaded dylib successfully installs a method via `method:do:` API.
 - Same Phase 10 test workload run under each combination produces identical user-visible output.
 
+### Re-spec (2026-06-02) — align to what Phases 12/13 shipped
+
+The CLI/matrix above stays locked. The work-item *mechanism* (14.1–14.7) was written against the pre-Phase-12 archive sketch (`roots.bin` + `segments/` + `manifest.txt` + RO mmap) and before the load path existed. Reality is simpler and partly already built. Supersedes the mechanism bullets:
+
+**M1 — AOT driver = embed `.brnimg` + reuse the boot/load path (replaces 14.1's roots.bin/segment baking).** Phase 12 ships a single self-describing `.brnimg` (embedded manifest + interner, replay-based, no `roots.bin`/segments). So the emitted `aot_image.zig` is small:
+- `@embedFile("app.brnimg")` the snapshot bytes (RO `const`);
+- `main()`: construct store/table/interner → `bootstrap.boot` → run kept module inits (see M3) → `image.load(store, BYTES, interner)` → restore `next_eid` → `image.rematerializeClosures` → send the entry selector.
+- `zig build-exe` links kernel + emitted source + (static) the kept module sources.
+All four of those load steps already exist and are tested. RO mmap segments (old 14.1) depend on the deferred 12.5 — **not required**; replay-load works.
+
+**M2 — `--strip=malleable` is two distinct strips, not one.** The old 14.2 conflated them:
+- **Code strip** (don't link/run parser + compiler + tree-walker eval): a module-init tiering problem — see M3.
+- **Data strip** (drop the user's parsed AST trees, which are M_USER data): reuse the Phase 13.4 mark-sweep as a pre-bake prune that treats AST roots as dead. `prune.compact` already does the rewrite.
+
+**M3 — `lang` must expose a tiered init (the key new work).** `lang.birnam_module_init` currently bundles, in one symbol: (a) **primitives** — SmallInt/Float/Bool/Closure arithmetic + control + iteration (`installMethods`' method installs); (b) **method-install** — `vtMethodDoImpl` (`method:do:`); (c) **parser/compiler/eval** — `buildGrammar`, the `AST_*_VT` eval closures, `parseExpr:`/grammar export, the REPL handler. `--strip=malleable` must keep (a) [+ (b) under `--aot=dynamic`] and drop (c) — but (a) lives *inside* the same init, so dropping the module wholesale would kill arithmetic. Split `lang` init into callable tiers:
+  - `installPrimitives(api, eid)` — always linked/run.
+  - `installMethodDo(api, eid)` — kept under dynamic; dropped under static+malleable (no runtime install).
+  - `installFrontend(api, eid)` — grammar + AST-eval + parseExpr + REPL; dropped under any `--strip=malleable`.
+  The dylib `birnam_module_init` calls all three (unchanged behavior). The AOT generator calls the tier subset per flags. `peg` (pure parser) is dropped entirely under `--strip=malleable`.
+
+**M4 — static link via Zig namespacing (replaces 14.4's `.a` story).** Don't fight the shared `birnam_module_init` export symbol. The emitted `aot_image.zig` `@import`s each kept module by source path and calls its init (or chosen tier) namespace-qualified — separate Zig namespaces, no symbol collision, no `dlopen`. `--aot=dynamic` keeps today's `dlopen` + manifest path (Phase 12 manifest already embedded — 14.6 mostly done).
+
+**M5 — `--strip=history` is largely free on data.** The replay-based image is *already* current-values-only (no tx/op persisted). So the data effect of history-strip is the default. What remains is the symbol/RO-index optimization (skip the tx-writer path, freeze indexes) — depends on 12.5 RO segments; **deferred**. v1 `--strip=history` = run a prune-collapse (Phase 13) before bake; no-op-ish on the already-current image.
+
+**M6 — entry-point semantics (was undefined).** `--entry=module:selector`: the AOT driver assigns module eids in a fixed init order, so it bakes the entry module's eid + the interned selector eid. `main()` sends the selector to `mkEid(entry_module_eid)` with zero args after load. Result → exit code: SmallInt → low 8 bits; anything else → 0; method-not-found → nonzero error code.
+
+**Net:** Phases 12/13 de-risked 14's hard parts (serialization, closure rebuild, prune all done + tested). Remaining real work: the `lang` init tiering (M3), the AOT driver/codegen (M1/M4/M6), and the data-strip pre-pass wiring (M2). `:history-required` flag (old 14.3) — drop; not needed.
+
 ### Reasoning
 **This is the deliverable that takes birnam from "interesting toy" to "real systems language."** Two-flag combinatorial surface kept small (four sensible outputs) instead of knob-soup. `--aot=dynamic` preserves your stated AOT-with-runtime-dylib-loading requirement. `--strip=malleable` + `--aot=dynamic` is the "ship a plugin host" preset. `--strip=malleable` + `--strip=history` + `--aot=static` is the "ship a frozen end-user app" preset. Both extremes natural; not bolted on.
 
