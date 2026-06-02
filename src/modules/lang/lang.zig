@@ -72,6 +72,9 @@ const ATTR_AST_BYTE_START: u64 = 94;
 const ATTR_AST_BYTE_END: u64 = 95;
 const ATTR_VTABLE: u64 = 19;
 const ATTR_DELEGATE: u64 = 22;
+/// Mirror of kernel_eids.M_USER (184) — provenance tag for runtime DATA
+/// facts. Phase 12.0 provenance split.
+const M_USER: u64 = 184;
 
 const ShellContext = extern struct {
     log: *const fn ([*:0]const u8) callconv(.c) void,
@@ -774,9 +777,9 @@ fn cstNextSibling(cst_eid: u64) u64 {
 fn newAstNode(kind_vt: u64, byte_start: usize, byte_end: usize) u64 {
     const api = g_api.?;
     const eid = api.alloc_eid();
-    _ = api.assert_fact(eid, ATTR_VTABLE, mkEid(kind_vt), g_module_eid);
-    _ = api.assert_fact(eid, ATTR_AST_BYTE_START, mkSmallInt(@intCast(byte_start)), g_module_eid);
-    _ = api.assert_fact(eid, ATTR_AST_BYTE_END, mkSmallInt(@intCast(byte_end)), g_module_eid);
+    _ = api.assert_fact(eid, ATTR_VTABLE, mkEid(kind_vt), M_USER);
+    _ = api.assert_fact(eid, ATTR_AST_BYTE_START, mkSmallInt(@intCast(byte_start)), M_USER);
+    _ = api.assert_fact(eid, ATTR_AST_BYTE_END, mkSmallInt(@intCast(byte_end)), M_USER);
     return eid;
 }
 
@@ -792,36 +795,36 @@ fn desugar(cst_eid: u64) u64 {
         var n: i64 = 0;
         for (bytes) |c| n = n * 10 + (c - '0');
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkSmallInt(n), g_module_eid);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkSmallInt(n), M_USER);
         return ast;
     }
     if (rn == rn_float_literal) {
         const bytes = g_source[span.start..span.end];
         const f = std.fmt.parseFloat(f64, bytes) catch 0.0;
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, api.make_float(f), g_module_eid);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, api.make_float(f), M_USER);
         return ast;
     }
     if (rn == rn_string) {
         // Strip surrounding quotes — span.start+1 .. span.end-1.
         const bytes = g_source[span.start + 1 .. span.end - 1];
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, api.make_string(bytes.ptr, bytes.len), g_module_eid);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, api.make_string(bytes.ptr, bytes.len), M_USER);
         return ast;
     }
     if (rn == rn_kw_nil) {
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, g_module_eid);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
         return ast;
     }
     if (rn == rn_kw_true) {
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(TRUE_EID), g_module_eid);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(TRUE_EID), M_USER);
         return ast;
     }
     if (rn == rn_kw_false) {
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(FALSE_EID), g_module_eid);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(FALSE_EID), M_USER);
         return ast;
     }
     if (rn == rn_kw_self) {
@@ -831,7 +834,7 @@ fn desugar(cst_eid: u64) u64 {
         const bytes = g_source[span.start..span.end];
         const name_eid = api.intern(bytes.ptr, bytes.len);
         const ast = newAstNode(AST_VAR_REF_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_NAME, mkEid(name_eid), g_module_eid);
+        _ = api.assert_fact(ast, ATTR_AST_NAME, mkEid(name_eid), M_USER);
         return ast;
     }
     if (rn == rn_symbol_literal) {
@@ -840,11 +843,11 @@ fn desugar(cst_eid: u64) u64 {
             const bytes = g_source[span.start + 1 .. span.end];
             const name_eid = api.intern(bytes.ptr, bytes.len);
             const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-            _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(name_eid), g_module_eid);
+            _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(name_eid), M_USER);
             return ast;
         }
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, g_module_eid);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
         return ast;
     }
     if (rn == rn_block_bare) {
@@ -855,12 +858,12 @@ fn desugar(cst_eid: u64) u64 {
             if (cstRuleName(c) == rn_stmt_list) {
                 const body_ast = desugar(c);
                 const ast = newAstNode(AST_BLOCK_VT, span.start, span.end);
-                _ = api.assert_fact(ast, ATTR_AST_BLOCK_BODY, mkEid(body_ast), g_module_eid);
+                _ = api.assert_fact(ast, ATTR_AST_BLOCK_BODY, mkEid(body_ast), M_USER);
                 return ast;
             }
         }
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, g_module_eid);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
         return ast;
     }
     if (rn == rn_block_with_params) {
@@ -887,11 +890,11 @@ fn desugar(cst_eid: u64) u64 {
                             const name_eid = api.intern(bytes.ptr, bytes.len);
                             // Allocate a param-entry entity carrying the name.
                             const pe = api.alloc_eid();
-                            _ = api.assert_fact(pe, ATTR_AST_NAME, mkEid(name_eid), g_module_eid);
+                            _ = api.assert_fact(pe, ATTR_AST_NAME, mkEid(name_eid), M_USER);
                             if (first_param_eid == 0) {
                                 first_param_eid = pe;
                             } else {
-                                _ = api.assert_fact(last_param_eid, ATTR_AST_NEXT_SIBLING, mkEid(pe), g_module_eid);
+                                _ = api.assert_fact(last_param_eid, ATTR_AST_NEXT_SIBLING, mkEid(pe), M_USER);
                             }
                             last_param_eid = pe;
                             break;
@@ -904,10 +907,10 @@ fn desugar(cst_eid: u64) u64 {
         }
         const ast = newAstNode(AST_BLOCK_VT, span.start, span.end);
         if (body_ast != 0) {
-            _ = api.assert_fact(ast, ATTR_AST_BLOCK_BODY, mkEid(body_ast), g_module_eid);
+            _ = api.assert_fact(ast, ATTR_AST_BLOCK_BODY, mkEid(body_ast), M_USER);
         }
         if (first_param_eid != 0) {
-            _ = api.assert_fact(ast, ATTR_AST_BLOCK_PARAMS_CONST, mkEid(first_param_eid), g_module_eid);
+            _ = api.assert_fact(ast, ATTR_AST_BLOCK_PARAMS_CONST, mkEid(first_param_eid), M_USER);
         }
         return ast;
     }
@@ -923,7 +926,7 @@ fn desugar(cst_eid: u64) u64 {
         }
         const ast = newAstNode(AST_RETURN_VT, span.start, span.end);
         if (value_ast != 0) {
-            _ = api.assert_fact(ast, ATTR_AST_RETURN_VALUE, mkEid(value_ast), g_module_eid);
+            _ = api.assert_fact(ast, ATTR_AST_RETURN_VALUE, mkEid(value_ast), M_USER);
         }
         return ast;
     }
@@ -944,10 +947,10 @@ fn desugar(cst_eid: u64) u64 {
         }
         const ast = newAstNode(AST_ASSIGN_VT, span.start, span.end);
         if (name_eid != 0) {
-            _ = api.assert_fact(ast, ATTR_AST_NAME, mkEid(name_eid), g_module_eid);
+            _ = api.assert_fact(ast, ATTR_AST_NAME, mkEid(name_eid), M_USER);
         }
         if (value_ast != 0) {
-            _ = api.assert_fact(ast, ATTR_AST_ASSIGN_VALUE, mkEid(value_ast), g_module_eid);
+            _ = api.assert_fact(ast, ATTR_AST_ASSIGN_VALUE, mkEid(value_ast), M_USER);
         }
         return ast;
     }
@@ -969,10 +972,10 @@ fn desugar(cst_eid: u64) u64 {
         }
         const ast = newAstNode(AST_LET_VT, span.start, span.end);
         if (name_eid != 0) {
-            _ = api.assert_fact(ast, ATTR_AST_NAME, mkEid(name_eid), g_module_eid);
+            _ = api.assert_fact(ast, ATTR_AST_NAME, mkEid(name_eid), M_USER);
         }
         if (init_ast != 0) {
-            _ = api.assert_fact(ast, ATTR_AST_LET_INIT, mkEid(init_ast), g_module_eid);
+            _ = api.assert_fact(ast, ATTR_AST_LET_INIT, mkEid(init_ast), M_USER);
         }
         return ast;
     }
@@ -993,14 +996,14 @@ fn desugar(cst_eid: u64) u64 {
             if (first_child_ast == 0) {
                 first_child_ast = stmt_ast;
             } else {
-                _ = api.assert_fact(last_child_ast, ATTR_AST_NEXT_SIBLING, mkEid(stmt_ast), g_module_eid);
+                _ = api.assert_fact(last_child_ast, ATTR_AST_NEXT_SIBLING, mkEid(stmt_ast), M_USER);
             }
             last_child_ast = stmt_ast;
         }
         if (count == 1) return first_child_ast;
         const seq_ast = newAstNode(AST_STMT_SEQ_VT, span.start, span.end);
         if (first_child_ast != 0) {
-            _ = api.assert_fact(seq_ast, ATTR_AST_STMT_FIRST, mkEid(first_child_ast), g_module_eid);
+            _ = api.assert_fact(seq_ast, ATTR_AST_STMT_FIRST, mkEid(first_child_ast), M_USER);
         }
         return seq_ast;
     }
@@ -1015,7 +1018,7 @@ fn desugar(cst_eid: u64) u64 {
         }
         // Fallback: literal NIL node.
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, g_module_eid);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
         return ast;
     }
     if (rn == rn_bracket_unary) {
@@ -1047,8 +1050,8 @@ fn desugar(cst_eid: u64) u64 {
                     const sel_bytes = g_source[id_span.start..id_span.end];
                     const sel_eid = api.intern(sel_bytes.ptr, sel_bytes.len);
                     const send_ast = newAstNode(AST_UNARY_SEND_VT, span.start, id_span.end);
-                    _ = api.assert_fact(send_ast, ATTR_AST_RECEIVER, mkEid(receiver_ast), g_module_eid);
-                    _ = api.assert_fact(send_ast, ATTR_AST_SELECTOR, mkEid(sel_eid), g_module_eid);
+                    _ = api.assert_fact(send_ast, ATTR_AST_RECEIVER, mkEid(receiver_ast), M_USER);
+                    _ = api.assert_fact(send_ast, ATTR_AST_SELECTOR, mkEid(sel_eid), M_USER);
                     receiver_ast = send_ast;
                     break;
                 }
@@ -1085,10 +1088,10 @@ fn desugar(cst_eid: u64) u64 {
             }
         }
         const send_ast = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
-        _ = api.assert_fact(send_ast, ATTR_AST_RECEIVER, mkEid(receiver_ast), g_module_eid);
-        _ = api.assert_fact(send_ast, ATTR_AST_SELECTOR, mkEid(op_sel_eid), g_module_eid);
+        _ = api.assert_fact(send_ast, ATTR_AST_RECEIVER, mkEid(receiver_ast), M_USER);
+        _ = api.assert_fact(send_ast, ATTR_AST_SELECTOR, mkEid(op_sel_eid), M_USER);
         if (arg_ast != 0) {
-            _ = api.assert_fact(send_ast, ATTR_AST_FIRST_ARG, mkEid(arg_ast), g_module_eid);
+            _ = api.assert_fact(send_ast, ATTR_AST_FIRST_ARG, mkEid(arg_ast), M_USER);
         }
         return send_ast;
     }
@@ -1142,23 +1145,23 @@ fn desugar(cst_eid: u64) u64 {
                 if (first_arg_ast == 0) {
                     first_arg_ast = arg_ast;
                 } else {
-                    _ = api.assert_fact(last_arg_ast, ATTR_AST_NEXT_SIBLING, mkEid(arg_ast), g_module_eid);
+                    _ = api.assert_fact(last_arg_ast, ATTR_AST_NEXT_SIBLING, mkEid(arg_ast), M_USER);
                 }
                 last_arg_ast = arg_ast;
             }
         }
         const sel_eid = api.intern(sel_buf[0..sel_len].ptr, sel_len);
         const send_ast = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
-        _ = api.assert_fact(send_ast, ATTR_AST_RECEIVER, mkEid(receiver_ast), g_module_eid);
-        _ = api.assert_fact(send_ast, ATTR_AST_SELECTOR, mkEid(sel_eid), g_module_eid);
+        _ = api.assert_fact(send_ast, ATTR_AST_RECEIVER, mkEid(receiver_ast), M_USER);
+        _ = api.assert_fact(send_ast, ATTR_AST_SELECTOR, mkEid(sel_eid), M_USER);
         if (first_arg_ast != 0) {
-            _ = api.assert_fact(send_ast, ATTR_AST_FIRST_ARG, mkEid(first_arg_ast), g_module_eid);
+            _ = api.assert_fact(send_ast, ATTR_AST_FIRST_ARG, mkEid(first_arg_ast), M_USER);
         }
         return send_ast;
     }
     // Unknown rule — fallback to NIL literal.
     const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-    _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, g_module_eid);
+    _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
     return ast;
 }
 
@@ -1247,13 +1250,13 @@ var g_top_scope_eid: u64 = 0;
 fn newScopeEntity(parent_scope_ref: Ref, self_ref: Ref) u64 {
     const api = g_api.?;
     const eid = api.alloc_eid();
-    _ = api.assert_fact(eid, ATTR_VTABLE, mkEid(SCOPE_VT), g_module_eid);
+    _ = api.assert_fact(eid, ATTR_VTABLE, mkEid(SCOPE_VT), M_USER);
     if (parent_scope_ref != NIL) {
-        _ = api.assert_fact(eid, ATTR_SCOPE_PARENT, parent_scope_ref, g_module_eid);
+        _ = api.assert_fact(eid, ATTR_SCOPE_PARENT, parent_scope_ref, M_USER);
     }
     // Date discipline — only assert when self is non-NIL (absence = no self).
     if (self_ref != NIL) {
-        _ = api.assert_fact(eid, ATTR_SCOPE_SELF, self_ref, g_module_eid);
+        _ = api.assert_fact(eid, ATTR_SCOPE_SELF, self_ref, M_USER);
     }
     return eid;
 }
@@ -1261,15 +1264,15 @@ fn newScopeEntity(parent_scope_ref: Ref, self_ref: Ref) u64 {
 fn pushScopeBinding(scope_eid: u64, name_eid: u64, value: Ref) void {
     const api = g_api.?;
     const bind_eid = api.alloc_eid();
-    _ = api.assert_fact(bind_eid, ATTR_VTABLE, mkEid(BINDING_VT), g_module_eid);
-    _ = api.assert_fact(bind_eid, ATTR_BIND_NAME, mkEid(name_eid), g_module_eid);
-    _ = api.assert_fact(bind_eid, ATTR_BIND_VALUE, value, g_module_eid);
+    _ = api.assert_fact(bind_eid, ATTR_VTABLE, mkEid(BINDING_VT), M_USER);
+    _ = api.assert_fact(bind_eid, ATTR_BIND_NAME, mkEid(name_eid), M_USER);
+    _ = api.assert_fact(bind_eid, ATTR_BIND_VALUE, value, M_USER);
     // Push at head — link new binding's :bind-next to current head, update head.
     const cur_head = api.query_eavt(scope_eid, ATTR_SCOPE_FIRST_BINDING);
     if (cur_head != NIL) {
-        _ = api.assert_fact(bind_eid, ATTR_BIND_NEXT, cur_head, g_module_eid);
+        _ = api.assert_fact(bind_eid, ATTR_BIND_NEXT, cur_head, M_USER);
     }
-    _ = api.assert_fact(scope_eid, ATTR_SCOPE_FIRST_BINDING, mkEid(bind_eid), g_module_eid);
+    _ = api.assert_fact(scope_eid, ATTR_SCOPE_FIRST_BINDING, mkEid(bind_eid), M_USER);
 }
 
 fn lookupInScope(scope_eid: u64, name_eid: u64) ?Ref {
@@ -1595,9 +1598,9 @@ fn mutateBinding(scope_eid: u64, name_eid: u64, new_value: Ref) bool {
             if (isEid(name_r) and (name_r >> 3) == name_eid) {
                 const old_val = api.query_eavt(b_eid, ATTR_BIND_VALUE);
                 if (old_val != NIL) {
-                    _ = api.retract_fact(b_eid, ATTR_BIND_VALUE, old_val, g_module_eid);
+                    _ = api.retract_fact(b_eid, ATTR_BIND_VALUE, old_val, M_USER);
                 }
-                _ = api.assert_fact(b_eid, ATTR_BIND_VALUE, new_value, g_module_eid);
+                _ = api.assert_fact(b_eid, ATTR_BIND_VALUE, new_value, M_USER);
                 return true;
             }
             b_ref = api.query_eavt(b_eid, ATTR_BIND_NEXT);
@@ -1767,12 +1770,12 @@ fn vtMethodDoImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     if (extractBlockAstEidForCompile(args[1])) |block_ast_eid| {
         const method_eid = api.compile_block_as_method(block_ast_eid);
         if (method_eid != 0) {
-            _ = api.assert_fact(vt_eid, sel_eid, mkEid(method_eid), g_module_eid);
+            _ = api.assert_fact(vt_eid, sel_eid, mkEid(method_eid), M_USER);
             return s.receiver;
         }
     }
 
-    _ = api.assert_fact(vt_eid, sel_eid, args[1], g_module_eid);
+    _ = api.assert_fact(vt_eid, sel_eid, args[1], M_USER);
     return s.receiver;
 }
 
@@ -2038,7 +2041,7 @@ fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
             // BINDING_VT entities become unreachable (Phase 13.4 sweep).
             const cur = api.query_eavt(g_top_scope_eid, ATTR_SCOPE_FIRST_BINDING);
             if (cur != NIL) {
-                _ = api.retract_fact(g_top_scope_eid, ATTR_SCOPE_FIRST_BINDING, cur, g_module_eid);
+                _ = api.retract_fact(g_top_scope_eid, ATTR_SCOPE_FIRST_BINDING, cur, M_USER);
             }
             if (g_log) |log| log("[lang] scope reset");
             return;

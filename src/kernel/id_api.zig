@@ -372,7 +372,10 @@ fn cCompileBlockAsMethod(block_ast_eid: u64) callconv(.c) u64 {
 
     var m = compiler_mod.compileBlockAsMethod(allocator, store, block_ast_eid) catch return 0;
     defer m.deinit(allocator);
-    return compiler_mod.materialize(allocator, store, table, &m, kernel_eids_mod.M_LANG) catch 0;
+    // Phase 12.0 provenance split: user-compiled methods are runtime DATA
+    // (persisted by the image), not module code. Tag under M_USER so the
+    // snapshot captures them and module unload can't retract them.
+    return compiler_mod.materialize(allocator, store, table, &m, kernel_eids_mod.M_USER) catch 0;
 }
 
 /// Storage for the interner so the C wrappers can find it. Shell calls this
