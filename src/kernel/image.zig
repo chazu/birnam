@@ -31,17 +31,21 @@ const object_table = @import("object_table.zig");
 const closure_mod = @import("closure.zig");
 const dispatch = @import("dispatch.zig");
 const bytecode = @import("bytecode.zig");
+const interner_mod = @import("interner.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store.FactStore;
 pub const ObjectTable = object_table.ObjectTable;
+pub const Interner = interner_mod.Interner;
 
 /// Bump on any incompatible change to the on-disk layout below.
 /// v2 (slice 2): per-fact value-kind tag; string values serialize bytes.
 /// v3 (slice 3): boxed float + RRB vector (recursive element values).
 /// v4: embedded manifest section (single self-describing file — no
 ///     sidecar manifest.txt; refines ADR-11 #5's directory archive).
-pub const FORMAT_VERSION: u32 = 4;
+/// v5: interner section (name↔eid bijection) so user names keep their eids
+///     across reload — required for binding/method-name identity.
+pub const FORMAT_VERSION: u32 = 5;
 
 /// Single-writer transactor shape (ADR-11 #7). Recorded in the manifest so
 /// a load knows whether the image expects the Datomic multi-thread shape.
@@ -178,6 +182,7 @@ pub fn write(
     store: *const FactStore,
     next_eid: u64,
     manifest: Manifest,
+    interner: ?*const Interner,
 ) WriteError!WriteResult {
     var buf = std.ArrayList(u8){};
     errdefer buf.deinit(allocator);
@@ -193,6 +198,21 @@ pub fn write(
         try appendU32(allocator, &buf, @intCast(dep.name.len));
         try buf.appendSlice(allocator, dep.name);
         try appendU64(allocator, &buf, dep.abi_hash);
+    }
+
+    // Interner section: the name↔eid bijection. Backfill the count slot.
+    const intern_count_slot = buf.items.len;
+    try appendU32(allocator, &buf, 0);
+    var intern_count: u32 = 0;
+    if (interner) |intr| {
+        var it = intr.eid_to_str.iter();
+        while (it.next()) |kv| {
+            try appendU64(allocator, &buf, kv.key);
+            try appendU32(allocator, &buf, @intCast(kv.value.len));
+            try buf.appendSlice(allocator, kv.value);
+            intern_count += 1;
+        }
+        std.mem.writeInt(u32, buf.items[intern_count_slot..][0..4], intern_count, .little);
     }
 
     try appendU64(allocator, &buf, store.currentTx() + 1); // == next_tx
@@ -238,7 +258,7 @@ pub fn write(
 /// their original (e, a, v, module). Returns the counters to restore;
 /// the caller sets `next_tx` on the store and `next_eid` on its table
 /// AFTER this returns (replay itself burns tx numbers we then overwrite).
-pub fn load(store: *FactStore, bytes: []const u8) ReadError!LoadResult {
+pub fn load(store: *FactStore, bytes: []const u8, interner: ?*Interner) ReadError!LoadResult {
     var cur = Cursor{ .bytes = bytes };
 
     const magic = try cur.take(8);
@@ -265,6 +285,18 @@ pub fn load(store: *FactStore, bytes: []const u8) ReadError!LoadResult {
         .thread_mode = @enumFromInt(thread_mode_raw),
         .modules = deps,
     };
+
+    // Interner section: restore the name↔eid bijection so user names keep
+    // their original eids. Entries boot already seeded are overwritten with
+    // identical data; user names are re-added.
+    const intern_count = try cur.readU32();
+    var ic: u32 = 0;
+    while (ic < intern_count) : (ic += 1) {
+        const eid = try cur.readU64();
+        const name_len = try cur.readU32();
+        const name = try cur.take(name_len);
+        if (interner) |intr| intr.restoreEntry(eid, name) catch return error.OutOfMemory;
+    }
 
     const next_tx = try cur.readU64();
     const next_eid = try cur.readU64();
@@ -298,8 +330,9 @@ pub fn saveToFile(
     store: *const FactStore,
     next_eid: u64,
     manifest: Manifest,
+    interner: ?*const Interner,
 ) (WriteError || FileError)!WriteResult {
-    const res = try write(allocator, store, next_eid, manifest);
+    const res = try write(allocator, store, next_eid, manifest, interner);
     errdefer allocator.free(res.bytes);
     const f = std.fs.cwd().createFile(path, .{ .truncate = true }) catch return error.FileOpenFailed;
     defer f.close();
@@ -314,12 +347,13 @@ pub fn loadFromFile(
     allocator: std.mem.Allocator,
     path: []const u8,
     store: *FactStore,
+    interner: ?*Interner,
 ) (ReadError || FileError)!LoadResult {
     const f = std.fs.cwd().openFile(path, .{}) catch return error.FileOpenFailed;
     defer f.close();
     const bytes = f.readToEndAlloc(allocator, std.math.maxInt(usize)) catch return error.FileReadFailed;
     defer allocator.free(bytes);
-    return load(store, bytes);
+    return load(store, bytes, interner);
 }
 
 // -- Approach B: rematerialize closures from facts --------------------------

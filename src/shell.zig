@@ -38,6 +38,7 @@ fn handleImageCommand(
     allocator: std.mem.Allocator,
     store: *fact_store.FactStore,
     table: *object_table.ObjectTable,
+    interner: *interner_mod.Interner,
     manager: *const module.Manager,
 ) bool {
     if (std.mem.startsWith(u8, line, ":save ")) {
@@ -52,7 +53,7 @@ fn handleImageCommand(
         for (manager.modules.items, 0..) |m, i| deps[i] = .{ .name = m.name, .abi_hash = 0 };
         const manifest = image.Manifest{ .modules = deps };
 
-        const res = image.saveToFile(allocator, path, store, table.next_eid.load(.monotonic), manifest) catch {
+        const res = image.saveToFile(allocator, path, store, table.next_eid.load(.monotonic), manifest, interner) catch {
             stderrPrint("[birnam] :save failed for {s}\n", .{path});
             return true;
         };
@@ -62,7 +63,7 @@ fn handleImageCommand(
     }
     if (std.mem.startsWith(u8, line, ":load ")) {
         const path = std.mem.trim(u8, line[6..], " ");
-        const loaded = image.loadFromFile(allocator, path, store) catch {
+        const loaded = image.loadFromFile(allocator, path, store, interner) catch {
             stderrPrint("[birnam] :load failed for {s}\n", .{path});
             return true;
         };
@@ -183,7 +184,7 @@ pub fn main() !void {
         stdoutPrint("birnam> ", .{});
         const line = reader.readUntilDelimiterOrEof(&buf, '\n') catch continue;
         if (line) |l| {
-            if (handleImageCommand(l, allocator, store, table, &manager)) continue;
+            if (handleImageCommand(l, allocator, store, table, interner, &manager)) continue;
             if (repl_handler) |handler| {
                 if (l.len < buf.len) {
                     buf[l.len] = 0;

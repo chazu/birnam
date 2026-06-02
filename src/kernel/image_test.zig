@@ -39,13 +39,13 @@ test "image: immediate-valued facts round-trip with counters" {
     _ = try src.assert(E_B, A_KW, ref.mkKeyword(99), M_USER);
 
     const SAVED_NEXT_EID: u64 = 512;
-    const res = try image.write(a, &src, SAVED_NEXT_EID, .{});
+    const res = try image.write(a, &src, SAVED_NEXT_EID, .{}, null);
 
     try testing.expectEqual(@as(u64, 4), res.facts_written);
     try testing.expectEqual(@as(u64, 0), res.skipped_pointer_values);
 
     var dst = fs.FactStore.init(a);
-    const loaded = try image.load(&dst, res.bytes);
+    const loaded = try image.load(&dst, res.bytes, null);
 
     try testing.expectEqual(@as(u64, 4), loaded.facts_loaded);
     try testing.expectEqual(SAVED_NEXT_EID, loaded.next_eid);
@@ -69,12 +69,12 @@ test "image: boxed float values round-trip (slice 3)" {
     _ = try src.assert(E_A, A_REF, try boxed.mkFloat(a, 3.14159), M_USER);
     _ = try src.assert(E_B, A_REF, try boxed.mkFloat(a, -0.0), M_USER);
 
-    const res = try image.write(a, &src, 256, .{});
+    const res = try image.write(a, &src, 256, .{}, null);
     try testing.expectEqual(@as(u64, 2), res.facts_written);
     try testing.expectEqual(@as(u64, 0), res.skipped_pointer_values);
 
     var dst = fs.FactStore.init(a);
-    _ = try image.load(&dst, res.bytes);
+    _ = try image.load(&dst, res.bytes, null);
 
     const got = dst.currentValue(E_A, A_REF).?;
     try testing.expect(boxed.isFloat(got));
@@ -98,12 +98,12 @@ test "image: RRB vector values round-trip incl mixed + nested (slice 3)" {
     const outer = try boxed.mkRrb(a, &.{ inner, ref.mkEid(E_B) });
     _ = try src.assert(E_A, A_REF, outer, M_USER);
 
-    const res = try image.write(a, &src, 256, .{});
+    const res = try image.write(a, &src, 256, .{}, null);
     try testing.expectEqual(@as(u64, 1), res.facts_written);
     try testing.expectEqual(@as(u64, 0), res.skipped_pointer_values);
 
     var dst = fs.FactStore.init(a);
-    _ = try image.load(&dst, res.bytes);
+    _ = try image.load(&dst, res.bytes, null);
 
     const got_outer = dst.currentValue(E_A, A_REF).?;
     try testing.expect(boxed.isRrbRef(got_outer));
@@ -134,12 +134,12 @@ test "image: still-deferred pointer classes counted as skipped, never dropped" {
     try testing.expect(ref.isPointer(ffi));
     _ = try src.assert(E_A, A_REF, ffi, M_USER);
 
-    const res = try image.write(a, &src, 256, .{});
+    const res = try image.write(a, &src, 256, .{}, null);
     try testing.expectEqual(@as(u64, 1), res.facts_written);
     try testing.expectEqual(@as(u64, 1), res.skipped_pointer_values);
 
     var dst = fs.FactStore.init(a);
-    _ = try image.load(&dst, res.bytes);
+    _ = try image.load(&dst, res.bytes, null);
     try testing.expectEqual(vi(1), dst.currentValue(E_A, A_NUM).?);
     try testing.expect(dst.currentValue(E_A, A_REF) == null);
 }
@@ -156,12 +156,12 @@ test "image: string-valued facts round-trip by bytes (slice 2)" {
     _ = try src.assert(E_B, A_REF, s2, M_USER);
     _ = try src.assert(E_A, A_NUM, vi(5), M_USER); // mixed immediate + string
 
-    const res = try image.write(a, &src, 256, .{});
+    const res = try image.write(a, &src, 256, .{}, null);
     try testing.expectEqual(@as(u64, 3), res.facts_written);
     try testing.expectEqual(@as(u64, 0), res.skipped_pointer_values);
 
     var dst = fs.FactStore.init(a);
-    _ = try image.load(&dst, res.bytes);
+    _ = try image.load(&dst, res.bytes, null);
 
     const got1 = dst.currentValue(E_A, A_REF).?;
     const got2 = dst.currentValue(E_B, A_REF).?;
@@ -183,11 +183,11 @@ test "image: persists M_USER facts only, skips code-module provenance" {
     _ = try src.assert(E_A, A_NUM, vi(1), M_USER); // user data — persist
     _ = try src.assert(E_B, A_NUM, vi(2), M_CODE); // code fact — reconstructed on load, skip
 
-    const res = try image.write(a, &src, 256, .{});
+    const res = try image.write(a, &src, 256, .{}, null);
     try testing.expectEqual(@as(u64, 1), res.facts_written);
 
     var dst = fs.FactStore.init(a);
-    _ = try image.load(&dst, res.bytes);
+    _ = try image.load(&dst, res.bytes, null);
     try testing.expectEqual(vi(1), dst.currentValue(E_A, A_NUM).?);
     // The code-module fact was not persisted (init rebuilds it).
     try testing.expect(dst.currentValue(E_B, A_NUM) == null);
@@ -233,10 +233,10 @@ test "loader: bytecode-method closure rebuilds from facts (Approach B)" {
     try testing.expect(tbl_a.get(method_eid) != null); // closure live in A
 
     // Round-trip facts into a fresh store B (no object table content).
-    const res = try image.write(a, &src, 256, .{});
+    const res = try image.write(a, &src, 256, .{}, null);
     var dst = fs.FactStore.init(a);
     var tbl_b = object_table.ObjectTable.init(a);
-    _ = try image.load(&dst, res.bytes);
+    _ = try image.load(&dst, res.bytes, null);
 
     // Method facts present, but the closure is NOT (object table not saved).
     try testing.expect(dst.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM) != null);
@@ -293,7 +293,7 @@ test "end-to-end: user method survives save -> reboot -> load -> dispatch" {
     var no_args: [0]ref.Ref = .{};
     try testing.expectEqual(vi(42), send_mod.sendN(vi(0), SEL, &no_args, 0));
 
-    const res = try image.write(al, store_a, table_a.next_eid.load(.monotonic), .{});
+    const res = try image.write(al, store_a, table_a.next_eid.load(.monotonic), .{}, intern_a);
 
     // ---- Reboot B: fresh kernel (no lang dylib), load image. ----
     const store_b = try al.create(fs.FactStore);
@@ -304,7 +304,7 @@ test "end-to-end: user method survives save -> reboot -> load -> dispatch" {
     intern_b.* = interner_mod.Interner.init(al);
     _ = try bootstrap.boot(al, store_b, table_b, intern_b); // initDispatch: globals->B, mcache cleared, Vm reset
 
-    const loaded = try image.load(store_b, res.bytes);
+    const loaded = try image.load(store_b, res.bytes, intern_b);
     table_b.next_eid.store(loaded.next_eid, .monotonic); // restore eid allocator
     _ = try image.rematerializeClosures(al, store_b, table_b); // Approach B
 
@@ -330,10 +330,10 @@ test "image: embedded manifest round-trips (modules, versions, thread mode)" {
         .thread_mode = .single,
         .modules = &deps,
     };
-    const res = try image.write(a, &src, 256, manifest);
+    const res = try image.write(a, &src, 256, manifest, null);
 
     var dst = fs.FactStore.init(a);
-    const loaded = try image.load(&dst, res.bytes);
+    const loaded = try image.load(&dst, res.bytes, null);
 
     try testing.expectEqual(@as(u32, 1), loaded.manifest.bytecode_format_version);
     try testing.expectEqual(image.ThreadMode.single, loaded.manifest.thread_mode);
@@ -362,10 +362,10 @@ test "image: save/load through a real .brnimg file on disk" {
     _ = try src.assert(E_A, A_NUM, vi(99), M_USER);
 
     const deps = [_]image.ModuleDep{.{ .name = "libbirnam_lang.dylib", .abi_hash = 0x42 }};
-    _ = try image.saveToFile(a, full, &src, 256, .{ .modules = &deps });
+    _ = try image.saveToFile(a, full, &src, 256, .{ .modules = &deps }, null);
 
     var dst = fs.FactStore.init(a);
-    const loaded = try image.loadFromFile(a, full, &dst);
+    const loaded = try image.loadFromFile(a, full, &dst, null);
 
     try testing.expectEqual(@as(u64, 2), loaded.facts_loaded);
     try testing.expectEqualStrings("on disk", strings.bytes(dst.currentValue(E_A, A_REF).?));
@@ -378,6 +378,6 @@ test "image: rejects bad magic and version" {
     defer arena.deinit();
     var dst = fs.FactStore.init(arena.allocator());
 
-    try testing.expectError(error.BadMagic, image.load(&dst, "not an image"));
-    try testing.expectError(error.Truncated, image.load(&dst, "BRN"));
+    try testing.expectError(error.BadMagic, image.load(&dst, "not an image", null));
+    try testing.expectError(error.Truncated, image.load(&dst, "BRN", null));
 }

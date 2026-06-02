@@ -94,4 +94,18 @@ pub const Interner = struct {
     pub fn count(self: *const Interner) usize {
         return self.str_to_eid.count();
     }
+
+    /// Restore a name↔EID entry directly into the maps without asserting a
+    /// `:name` fact. Phase 12 image load uses this to rebuild the interner
+    /// from a serialized snapshot so user-interned names keep their original
+    /// EIDs across save/load (the eid↔name bijection is otherwise
+    /// session-local). Idempotent for entries boot already seeded (overwrite
+    /// with identical data).
+    pub fn restoreEntry(self: *Interner, eid: u64, name: []const u8) !void {
+        self.writer_lock.lock();
+        defer self.writer_lock.unlock();
+        const dup = try self.allocator.dupe(u8, name);
+        self.str_to_eid = try self.str_to_eid.assoc(dup, eid);
+        self.eid_to_str = try self.eid_to_str.assoc(eid, dup);
+    }
 };
