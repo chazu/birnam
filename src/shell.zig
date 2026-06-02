@@ -25,6 +25,7 @@ const bootstrap = @import("kernel/bootstrap.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
 const image = @import("kernel/image.zig");
+const prune = @import("kernel/prune.zig");
 
 // -- Image save/load commands ------------------------------------------------
 
@@ -59,6 +60,14 @@ fn handleImageCommand(
         };
         allocator.free(res.bytes);
         stdoutPrint("[birnam] saved {s} ({d} facts, {d} modules)\n", .{ path, res.facts_written, deps.len });
+        return true;
+    }
+    if (std.mem.eql(u8, line, ":prune")) {
+        const stats = prune.pruneReachable(store, table, allocator) catch {
+            stderrPrint("[birnam] :prune failed\n", .{});
+            return true;
+        };
+        stdoutPrint("[birnam] pruned ({d} facts kept, {d} dropped, {d} entities swept)\n", .{ stats.kept, stats.dropped_facts, stats.swept_entities });
         return true;
     }
     if (std.mem.startsWith(u8, line, ":load ")) {

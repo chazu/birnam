@@ -100,6 +100,38 @@ test "prune: REPL binding chain + its bound method kept" {
     try testing.expect(stats.swept_entities >= 1);
 }
 
+var g_demote_table: ?*ot.ObjectTable = null;
+fn demoteHook(e: u64, a: u64) callconv(.c) void {
+    _ = a;
+    if (g_demote_table) |t| t.clear(e) catch {};
+}
+
+test "prune: kept entity's materialized slot survives compact (demote suppressed)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store = fs.FactStore.init(a);
+    var table = ot.ObjectTable.init(a);
+    // Wire a promotion-style demote-on-mutate hook.
+    store.on_entity_mutate = &demoteHook;
+    g_demote_table = &table;
+    defer g_demote_table = null;
+
+    try fakeMethod(&store, a, 500);
+    _ = try store.assert(ke.SMALLINT_VT, 9999, ref.mkEid(500), M_USER); // install (live)
+    try table.put(500, ref.mkEid(1)); // materialized closure slot
+
+    // Sanity: a normal mutation demotes (clears the slot).
+    _ = try store.assert(500, 9998, vi(0), M_USER);
+    try testing.expect(table.get(500) == null);
+    try table.put(500, ref.mkEid(1)); // re-materialize
+
+    // Prune re-asserts every kept fact via compact — must NOT demote the
+    // kept method, or it'd be undispatchable until re-materialized.
+    _ = try prune.pruneReachable(&store, &table, a);
+    try testing.expect(table.get(500) != null); // slot survived
+}
+
 test "prune: CODE facts are never swept" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

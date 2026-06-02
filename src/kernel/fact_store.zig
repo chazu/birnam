@@ -578,6 +578,14 @@ pub const FactStore = struct {
         self.fact_eids.clearRetainingCapacity();
         self.fact_modules.clearRetainingCapacity();
 
+        // Suppress entity-demotion during re-assert: kept entities keep
+        // their materialized object-table slots (re-asserting the same
+        // facts must not churn the cache). on_attr_mutate (mcache flush)
+        // stays active so dispatch caches refresh.
+        const saved_entity_hook = self.on_entity_mutate;
+        self.on_entity_mutate = null;
+        defer self.on_entity_mutate = saved_entity_hook;
+
         var stats = CompactStats{ .kept = 0, .dropped = 0 };
         for (facts.items) |f| {
             if (keep(ctx, f.m, f.e, f.a, f.v)) {
