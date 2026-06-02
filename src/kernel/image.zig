@@ -32,6 +32,7 @@ const closure_mod = @import("closure.zig");
 const dispatch = @import("dispatch.zig");
 const bytecode = @import("bytecode.zig");
 const interner_mod = @import("interner.zig");
+const vm_mod = @import("vm.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store.FactStore;
@@ -74,6 +75,9 @@ const VK_IMMEDIATE: u8 = 0; // self-describing Ref stored verbatim (u64)
 const VK_STRING: u8 = 1; // u32 len + len bytes, rebuilt on load
 const VK_FLOAT: u8 = 2; // f64 bit pattern (u64), re-boxed on load
 const VK_RRB: u8 = 3; // u32 count + `count` recursively-encoded values
+const VK_CAPTURES: u8 = 4; // CaptureSpecArray (u32 len + len*(u8 parent, u8 local))
+// emitted only for :method-captures-ptr facts (attribute-aware — the value
+// is a bare vt-less pointer that can't be discriminated by tag).
 
 const MAGIC: [8]u8 = .{ 'B', 'R', 'N', 'I', 'M', 'G', 0, 1 };
 
@@ -144,12 +148,45 @@ fn writeValue(allocator: std.mem.Allocator, buf: *std.ArrayList(u8), v: Ref) Wri
     }
 }
 
+/// Encode a `:method-captures-ptr` value: the pointed-to CaptureSpecArray
+/// (header.len + inline CaptureSpec records).
+fn writeCaptures(allocator: std.mem.Allocator, buf: *std.ArrayList(u8), v: Ref) WriteError!void {
+    const base: [*]const u8 = @ptrCast(@alignCast(ref_mod.untagPointer(v)));
+    const header: *const vm_mod.CaptureSpecArrayHeader = @ptrCast(@alignCast(base));
+    const tail: [*]const vm_mod.CaptureSpec = @ptrFromInt(@intFromPtr(base) + @sizeOf(vm_mod.CaptureSpecArrayHeader));
+    try buf.append(allocator, VK_CAPTURES);
+    try appendU32(allocator, buf, header.len);
+    var i: u32 = 0;
+    while (i < header.len) : (i += 1) {
+        try buf.append(allocator, tail[i].parent_slot);
+        try buf.append(allocator, tail[i].local_slot);
+    }
+}
+
 /// Decode one value, rebuilding heap objects in the store's allocator so
 /// the Ref outlives load. Recursive for RRB.
 fn readValue(store: *FactStore, cur: *Cursor) ReadError!Ref {
     const kind = (try cur.take(1))[0];
     switch (kind) {
         VK_IMMEDIATE => return try cur.readU64(),
+        VK_CAPTURES => {
+            const len = try cur.readU32();
+            const header_sz = @sizeOf(vm_mod.CaptureSpecArrayHeader);
+            const total = header_sz + @sizeOf(vm_mod.CaptureSpec) * len;
+            // 8-align (Ref) so mkPointer's tag invariant holds — the header
+            // itself only needs 4, but a tagged pointer needs the low 3 bits clear.
+            const out = store.allocator.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
+            const header: *vm_mod.CaptureSpecArrayHeader = @ptrCast(@alignCast(out.ptr));
+            header.* = .{ .len = len };
+            const tail: [*]vm_mod.CaptureSpec = @ptrFromInt(@intFromPtr(out.ptr) + header_sz);
+            var i: u32 = 0;
+            while (i < len) : (i += 1) {
+                const p = (try cur.take(1))[0];
+                const l = (try cur.take(1))[0];
+                tail[i] = .{ .parent_slot = p, .local_slot = l };
+            }
+            return ref_mod.mkPointer(@ptrCast(out.ptr));
+        },
         VK_STRING => {
             const len = try cur.readU32();
             const s = try cur.take(len);
@@ -232,6 +269,19 @@ pub fn write(
     var m_it = store.meatIter();
     while (m_it.next()) |entry| {
         if (entry.m != kernel_eids.M_USER) continue;
+
+        // Attribute-aware: a :method-captures-ptr value is a bare vt-less
+        // heap pointer to a CaptureSpecArray — serialize its contents so
+        // capturing methods round-trip (else they rebuild as captureless).
+        if (entry.a == kernel_eids.ATTR_METHOD_CAPTURES_PTR and ref_mod.isPointer(entry.v)) {
+            try appendU64(allocator, &buf, entry.m);
+            try appendU64(allocator, &buf, entry.e);
+            try appendU64(allocator, &buf, entry.a);
+            try writeCaptures(allocator, &buf, entry.v);
+            facts_written += 1;
+            continue;
+        }
+
         if (!valueSupported(entry.v)) {
             skipped += 1;
             continue;

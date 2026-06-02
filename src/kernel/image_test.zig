@@ -14,6 +14,7 @@ const object = @import("object.zig");
 const bootstrap = @import("bootstrap.zig");
 const interner_mod = @import("interner.zig");
 const send_mod = @import("send.zig");
+const vm = @import("vm.zig");
 
 fn vi(n: i64) ref.Ref {
     return ref.mkSmallInt(n).?;
@@ -371,6 +372,44 @@ test "image: save/load through a real .brnimg file on disk" {
     try testing.expectEqualStrings("on disk", strings.bytes(dst.currentValue(E_A, A_REF).?));
     try testing.expectEqual(vi(99), dst.currentValue(E_A, A_NUM).?);
     try testing.expectEqualStrings("libbirnam_lang.dylib", loaded.manifest.modules[0].name);
+}
+
+test "image: :method-captures-ptr (CaptureSpecArray) round-trips" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const METHOD_E: u64 = 350;
+
+    // Hand-build a CaptureSpecArray {len=2, [(1,0),(3,2)]}.
+    const header_sz = @sizeOf(vm.CaptureSpecArrayHeader);
+    const total = header_sz + 2 * @sizeOf(vm.CaptureSpec);
+    const buf = try a.alignedAlloc(u8, .of(vm.CaptureSpecArrayHeader), total);
+    const h: *vm.CaptureSpecArrayHeader = @ptrCast(@alignCast(buf.ptr));
+    h.* = .{ .len = 2 };
+    const tail: [*]vm.CaptureSpec = @ptrFromInt(@intFromPtr(buf.ptr) + header_sz);
+    tail[0] = .{ .parent_slot = 1, .local_slot = 0 };
+    tail[1] = .{ .parent_slot = 3, .local_slot = 2 };
+
+    var src = fs.FactStore.init(a);
+    _ = try src.assert(METHOD_E, kernel_eids.ATTR_METHOD_CAPTURES_PTR, ref.mkPointer(@ptrCast(buf.ptr)), M_USER);
+
+    const res = try image.write(a, &src, 256, .{}, null);
+    try testing.expectEqual(@as(u64, 1), res.facts_written);
+    try testing.expectEqual(@as(u64, 0), res.skipped_pointer_values); // captures handled, not skipped
+
+    var dst = fs.FactStore.init(a);
+    _ = try image.load(&dst, res.bytes, null);
+
+    const got = dst.currentValue(METHOD_E, kernel_eids.ATTR_METHOD_CAPTURES_PTR).?;
+    try testing.expect(ref.isPointer(got));
+    const gbase: [*]const u8 = @ptrCast(@alignCast(ref.untagPointer(got)));
+    const gh: *const vm.CaptureSpecArrayHeader = @ptrCast(@alignCast(gbase));
+    try testing.expectEqual(@as(u32, 2), gh.len);
+    const gtail: [*]const vm.CaptureSpec = @ptrFromInt(@intFromPtr(gbase) + header_sz);
+    try testing.expectEqual(@as(u8, 1), gtail[0].parent_slot);
+    try testing.expectEqual(@as(u8, 0), gtail[0].local_slot);
+    try testing.expectEqual(@as(u8, 3), gtail[1].parent_slot);
+    try testing.expectEqual(@as(u8, 2), gtail[1].local_slot);
 }
 
 test "image: rejects bad magic and version" {
