@@ -1250,14 +1250,19 @@ VM gives portability + AOT. **C-shape bytecode (bytestream + annotations)** keep
 
 For native primitives, the unserializable fn ptr is *correct and inherent* — native code cannot be data. For bytecode methods, the fn ptr (`&bytecodeDispatcherImpl`, `dispatch.zig:338`) is an artifact of the uniform representation; the real content (`method_eid` → bytecode facts) is fully serializable.
 
-**Decision — bytecode methods are their own entity kind, not fn-ptr closures.**
-- Introduce `BYTECODE_METHOD_VT`. A bytecode-method entity carries `vt_ref` at −1 (trick preserved) and its body is the `method_eid` / bytecode + pool — all already in facts.
-- Dispatch branches on the resolved target's vt at the `bind`/`sendN` boundary (`send.zig:234`): native-closure → call `.method`; bytecode-method → enter the VM directly. The isEid/isPointer branch currently inside `bytecodeDispatcherImpl` (`dispatch.zig:366`) lifts up to this boundary; the fn-ptr indirection for compiled methods is removed.
-- Stop minting fn-ptr closures at `compile_block_as_method` / `allocClosureEntity` (`dispatch.zig:330`) for the *method* case. A block *closure* remains an entity, but its persisted form is `(method_eid, parent_self, captures)` — pure data — not a fn ptr.
+**Decision (chosen 2026-06-02) — Approach B: rematerialize closures from facts on load. Representation unchanged at runtime.**
 
-**Consequence for the image format:** the non-serializable set collapses to **only the kernel primitives** (~60 fn-ptr closures: 54 lang + 6 query + 3 repl). Those belong to the *loaded module, not the user image* — they are reinstalled by module init on every load (12.3 already `dlopen`s modules). User bytecode methods and at-rest block closures become plain facts that serialize for free. No symbolic fn-ptr table for user code; no EID-stability trap for user methods.
+The fn-ptr-in-`.method` problem is a *serialization* problem, not a runtime one. A bytecode method already stores its behavior as facts (`:bytecode-stream`, `:constant-pool`, … on `method_eid` — `compiler.zig:514`); the fn-ptr Closure `{&bytecodeDispatcherImpl, mkEid(method_eid)}` is a *cache* over those facts (`compiler.zig:553`). So we never serialize the fn ptr — we rebuild it on load:
 
-**Amends 12.1 / 12.3 below:** the materialized struct arena (closures specifically) is **not** persisted and pointer-patched. Closures rematerialize from facts on load. `12.3` loader gains: after `dlopen`, re-run each module's primitive-install so primitive closures exist at known eids before user facts resolve their `mkEid(closure_eid)` references.
+- Closures are **excluded from the persisted struct arena** (12.1). They are not pointer-patched.
+- `12.3` loader, after `dlopen`: (a) re-run each module's primitive-install so the ~60 native fn-ptr closures (54 lang + 6 query + 3 repl) exist at known eids; (b) for every entity carrying `:bytecode-stream`, re-run the materialize tail to re-mint its fn-ptr Closure against the freshly-loaded module. User bytecode methods + at-rest block closures round-trip as **plain facts**; the fn ptr is reconstructed, never stored.
+- **No hot-dispatch change.** `bind`/`sendN`/mcache and the `CLOSURE_VT` `value`/`whileTrue:` path stay exactly as 11.12 shipped.
+
+This keeps Phase 12 minimal and low-risk: the non-serializable surface collapses to "things rebuilt by running module code on load," which native primitives already need anyway.
+
+**Deferred — Approach A (future cleanup, own work item): bytecode methods as a distinct entity kind.** Introduce `BYTECODE_METHOD_VT`; lift the isEid/isPointer branch out of `bytecodeDispatcherImpl` (`dispatch.zig:366`) up to the `bind`/`sendN` boundary (`send.zig:234`); enter the VM directly for compiled methods; stop minting fn-ptr closures for the *method* case (`allocClosureEntity`, `dispatch.zig:330`). Removes the native/data conflation at the representation layer and simplifies Phase 14 AOT codegen (methods emit as data, no fn-ptr reversal). Touches hot dispatch + mcache `*Closure` rep + the `value`/`whileTrue:`-on-`CLOSURE_VT` path, so it earns its own design+commit pass rather than riding Phase 12. **Not required for image round-trip — B already gets that.** Revisit before/with Phase 14.
+
+**Amends 12.1 / 12.3 below** per Approach B.
 
 **Open detail for the format spec (not a blocker):** block-closure captures are raw `Ref`s copied from locals (`dispatch.zig:242`); a capture may be a pointer (boxed float / scope entity). Persisted captures must be fact-backed eids (scope/binding entities are — 10.4.5), or the capture's referent must itself rematerialize from facts. Resolve when specifying capture serialization. **Snapshot is only coherent at rest** (`vm.frames` empty — `parent_frame_id` is a live-stack id); assert this at save.
 
@@ -1274,7 +1279,7 @@ For native primitives, the unserializable fn ptr is *correct and inherent* — n
 
 12.2 **Snapshot writer.** Walk persistent index roots, identify dirty segments since last snapshot, write only those. Manifest regenerated each snapshot.
 
-12.3 **Snapshot loader.** Parse manifest → `dlopen` each module by name (verify ABI hash on load) → **re-run each module's primitive-install so native fn-ptr closures exist at known eids (Framing decision 2026-06-02)** → mmap segments → patch root pointers → fresh mcache (rebuild lazily per Phase 11 ADR #3). User bytecode methods + block closures rematerialize from facts on first send.
+12.3 **Snapshot loader.** Parse manifest → `dlopen` each module by name (verify ABI hash on load) → **re-run each module's primitive-install so native fn-ptr closures exist at known eids (Framing decision 2026-06-02, Approach B)** → mmap segments → patch root pointers → **rematerialize every `:bytecode-stream` entity's fn-ptr Closure from its facts** → fresh mcache (rebuild lazily per Phase 11 ADR #3). User bytecode methods + block closures rebuild from facts; the fn ptr is never serialized.
 
 12.4 **Selector identity across reload.** Kernel selectors at well-known EIDs (already done — `kernel_eids.zig` range 0..255). User selectors re-intern via relocation table embedded in manifest (old-EID → new-EID).
 
@@ -1289,7 +1294,9 @@ For native primitives, the unserializable fn ptr is *correct and inherent* — n
 
 Implementation deferred — needs real workload to pick defaults. Policy lives as fact-store config entity; switchable at runtime.
 
-12.7 Tests: save → kill → load → run → identical behavior; strings segment mmap-able; bytecode segment mmap-able; manifest ABI hash mismatch rejected at load; thread-mode tag round-trips.
+12.7 Tests: save → kill → load → run → identical behavior; strings segment mmap-able; bytecode segment mmap-able; manifest ABI hash mismatch rejected at load; thread-mode tag round-trips. **Closure round-trip: install user method → save → kill → load → send → identical result (fn-ptr Closure rebuilt from facts, not from saved bytes).**
+
+12.8 **(Deferred — Approach A cleanup, own commit) Bytecode methods as `BYTECODE_METHOD_VT`.** Not required for image round-trip (12.3 Approach B handles that). Lift isEid/isPointer branch out of `bytecodeDispatcherImpl` to the `bind`/`sendN` boundary; enter VM directly for compiled methods; retire the fn-ptr indirection for the method case. Removes native/data conflation; simplifies Phase 14 AOT codegen. Earns its own design pass (hot dispatch + mcache rep + `value`/`whileTrue:`-on-`CLOSURE_VT`). Revisit before/with Phase 14.
 
 ### Reasoning
 `.brnimg` makes birnam a real Smalltalk-style environment vs. a script that rebuilds state every run. **D3 hybrid** unifies live save and AOT input — same bytes underneath. **Pure data write** (no `cc`) makes save cheap, no toolchain pin. **Arena split** sets up Phase 14 RO segments. **Incremental save policy noted but not specced** — needs perf data first.
