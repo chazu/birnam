@@ -24,6 +24,58 @@ const interner_mod = @import("kernel/interner.zig");
 const bootstrap = @import("kernel/bootstrap.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
+const image = @import("kernel/image.zig");
+
+// -- Image save/load commands ------------------------------------------------
+
+/// Intercept `:save <path>` / `:load <path>` REPL commands. Returns true if
+/// the line was an image command (handled here, not forwarded to a module).
+/// The shell owns store/table/manager, so it is the natural home: it can
+/// build the manifest from the loaded-module set and drive Approach-B
+/// closure rematerialization on load.
+fn handleImageCommand(
+    line: []const u8,
+    allocator: std.mem.Allocator,
+    store: *fact_store.FactStore,
+    table: *object_table.ObjectTable,
+    manager: *const module.Manager,
+) bool {
+    if (std.mem.startsWith(u8, line, ":save ")) {
+        const path = std.mem.trim(u8, line[6..], " ");
+        // Manifest = the currently-loaded module set (abi_hash placeholder
+        // until a real ABI-hash mechanism lands; verification is a TODO).
+        const deps = allocator.alloc(image.ModuleDep, manager.modules.items.len) catch {
+            stderrPrint("[birnam] :save — out of memory\n", .{});
+            return true;
+        };
+        defer allocator.free(deps);
+        for (manager.modules.items, 0..) |m, i| deps[i] = .{ .name = m.name, .abi_hash = 0 };
+        const manifest = image.Manifest{ .modules = deps };
+
+        const res = image.saveToFile(allocator, path, store, table.next_eid.load(.monotonic), manifest) catch {
+            stderrPrint("[birnam] :save failed for {s}\n", .{path});
+            return true;
+        };
+        allocator.free(res.bytes);
+        stdoutPrint("[birnam] saved {s} ({d} facts, {d} modules)\n", .{ path, res.facts_written, deps.len });
+        return true;
+    }
+    if (std.mem.startsWith(u8, line, ":load ")) {
+        const path = std.mem.trim(u8, line[6..], " ");
+        const loaded = image.loadFromFile(allocator, path, store) catch {
+            stderrPrint("[birnam] :load failed for {s}\n", .{path});
+            return true;
+        };
+        // Restore the eid allocator high-water mark, then rebuild fn-ptr
+        // closures for loaded bytecode methods against this process's kernel.
+        const cur = table.next_eid.load(.monotonic);
+        if (loaded.next_eid > cur) table.next_eid.store(loaded.next_eid, .monotonic);
+        const n = image.rematerializeClosures(allocator, store, table) catch 0;
+        stdoutPrint("[birnam] loaded {s} ({d} facts, {d} methods rebuilt)\n", .{ path, loaded.facts_loaded, n });
+        return true;
+    }
+    return false;
+}
 
 // -- Shell callbacks ---------------------------------------------------------
 
@@ -131,6 +183,7 @@ pub fn main() !void {
         stdoutPrint("birnam> ", .{});
         const line = reader.readUntilDelimiterOrEof(&buf, '\n') catch continue;
         if (line) |l| {
+            if (handleImageCommand(l, allocator, store, table, &manager)) continue;
             if (repl_handler) |handler| {
                 if (l.len < buf.len) {
                     buf[l.len] = 0;
