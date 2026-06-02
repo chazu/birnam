@@ -27,9 +27,13 @@ const fact_store = @import("fact_store.zig");
 const strings = @import("strings.zig");
 const boxed = @import("boxed.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const object_table = @import("object_table.zig");
+const closure_mod = @import("closure.zig");
+const dispatch = @import("dispatch.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store.FactStore;
+pub const ObjectTable = object_table.ObjectTable;
 
 /// Bump on any incompatible change to the on-disk layout below.
 /// v2 (slice 2): per-fact value-kind tag; string values serialize bytes.
@@ -220,6 +224,57 @@ pub fn load(store: *FactStore, bytes: []const u8) ReadError!LoadResult {
     store.next_tx.store(next_tx, .monotonic);
 
     return .{ .facts_loaded = fact_count, .next_tx = next_tx, .next_eid = next_eid };
+}
+
+// -- Approach B: rematerialize closures from facts --------------------------
+
+pub const RematError = error{ OutOfMemory, StoreError };
+
+/// Rebuild the fn-ptr Closure for every bytecode-method entity from its
+/// facts (Phase 12 Framing decision 2026-06-02, Approach B). The image
+/// never serializes the closure struct (it holds a raw fn ptr into the
+/// module's .text); instead, after load, each `:bytecode-stream` entity's
+/// object-table slot is re-minted to point at `bytecodeDispatcherImpl` of
+/// the freshly-loaded kernel, with `data = mkEid(method_eid)`.
+///
+/// Layout mirrors compiler.materialize's install tail:
+///   [vt_ref = CLOSURE_VT][method = &bytecodeDispatcherImpl][data]
+/// with `vt_ref` at offset -1 so `vtableEidOf(mkEid(method_eid))` resolves
+/// CLOSURE_VT and `[method value]` / send.bind dispatch uniformly.
+///
+/// Idempotent: entities already materialized (e.g. by a prior init) are
+/// left untouched. Returns the count rebuilt.
+///
+/// NOTE: methods that capture (carry `:method-captures-ptr`) are not yet
+/// handled — that pointer fact is not serialized (slice deferred). Such a
+/// method is rebuilt as captureless here; full capture round-trip needs a
+/// fact-shaped capture-spec form. Captureless methods (the common case)
+/// round-trip fully.
+pub fn rematerializeClosures(
+    allocator: std.mem.Allocator,
+    store: *const FactStore,
+    table: *ObjectTable,
+) RematError!usize {
+    var count: usize = 0;
+    var it = store.entitiesWith(kernel_eids.ATTR_BYTECODE_STREAM);
+    while (it.next()) |entry| {
+        const method_eid = entry.e;
+        if (table.get(method_eid) != null) continue; // already live
+
+        const total = 3 * @sizeOf(Ref);
+        const buf = allocator.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
+        @memset(buf, 0);
+        const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
+        vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
+        const c_ptr: *closure_mod.Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
+        c_ptr.* = .{
+            .method = @ptrCast(&dispatch.bytecodeDispatcherImpl),
+            .data = ref_mod.mkEid(method_eid),
+        };
+        table.put(method_eid, ref_mod.mkPointer(@ptrCast(c_ptr))) catch return error.StoreError;
+        count += 1;
+    }
+    return count;
 }
 
 // -- byte helpers -----------------------------------------------------------

@@ -8,6 +8,9 @@ const ref = @import("ref.zig");
 const boxed = @import("boxed.zig");
 const strings = @import("strings.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const compiler = @import("compiler.zig");
+const object_table = @import("object_table.zig");
+const object = @import("object.zig");
 
 fn vi(n: i64) ref.Ref {
     return ref.mkSmallInt(n).?;
@@ -207,6 +210,51 @@ test "provenance: module unload (retractAllOf) leaves M_USER data intact" {
     // Code fact gone; user data survives the unload.
     try testing.expect(store.currentValue(E_A, A_NUM) == null);
     try testing.expectEqual(ref.mkEid(E_B), store.currentValue(E_A, A_REF).?);
+}
+
+test "loader: bytecode-method closure rebuilds from facts (Approach B)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Build + materialize a trivial method (`^42`) under M_USER in store A.
+    var src = fs.FactStore.init(a);
+    var tbl_a = object_table.ObjectTable.init(a);
+    const ast: u64 = 1000;
+    _ = try src.assert(ast, kernel_eids.ATTR_VTABLE, ref.mkEid(kernel_eids.AST_LITERAL_VT), M_USER);
+    _ = try src.assert(ast, kernel_eids.ATTR_AST_VALUE, vi(42), M_USER);
+
+    var m = try compiler.compileMethod(a, &src, ast);
+    defer m.deinit(a);
+    const method_eid = try compiler.materialize(a, &src, &tbl_a, &m, M_USER);
+    try testing.expect(tbl_a.get(method_eid) != null); // closure live in A
+
+    // Round-trip facts into a fresh store B (no object table content).
+    const res = try image.write(a, &src, 256);
+    var dst = fs.FactStore.init(a);
+    var tbl_b = object_table.ObjectTable.init(a);
+    _ = try image.load(&dst, res.bytes);
+
+    // Method facts present, but the closure is NOT (object table not saved).
+    try testing.expect(dst.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM) != null);
+    try testing.expect(tbl_b.get(method_eid) == null);
+
+    // Approach B: rebuild the fn-ptr closure from facts.
+    const n = try image.rematerializeClosures(a, &dst, &tbl_b);
+    try testing.expectEqual(@as(usize, 1), n);
+
+    // Closure now live with the correct libid-object shape: vt at -1 ==
+    // CLOSURE_VT, data == mkEid(method_eid).
+    const ptr_ref = tbl_b.get(method_eid).?;
+    try testing.expect(ref.isPointer(ptr_ref));
+    // Closure { method, data }: slot 0 = fn ptr, slot 1 = data.
+    const obj = object.fromRef(ptr_ref);
+    try testing.expectEqual(ref.mkEid(kernel_eids.CLOSURE_VT), object.vtableOf(obj));
+    try testing.expect(object.slotAt(obj, 0) != 0); // method fn ptr present
+    try testing.expectEqual(ref.mkEid(method_eid), object.slotAt(obj, 1)); // data
+
+    // Idempotent: a second pass rebuilds nothing.
+    try testing.expectEqual(@as(usize, 0), try image.rematerializeClosures(a, &dst, &tbl_b));
 }
 
 test "image: rejects bad magic and version" {
