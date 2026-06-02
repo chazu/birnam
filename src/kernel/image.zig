@@ -24,17 +24,23 @@
 const std = @import("std");
 const ref_mod = @import("ref.zig");
 const fact_store = @import("fact_store.zig");
+const strings = @import("strings.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store.FactStore;
 
 /// Bump on any incompatible change to the on-disk layout below.
-pub const FORMAT_VERSION: u32 = 1;
+/// v2 (slice 2): per-fact value-kind tag; string values serialize bytes.
+pub const FORMAT_VERSION: u32 = 2;
+
+/// Per-fact value encoding discriminant.
+const VK_IMMEDIATE: u8 = 0; // self-describing Ref stored verbatim (u64)
+const VK_STRING: u8 = 1; // string: u32 len + len bytes, rebuilt on load
 
 const MAGIC: [8]u8 = .{ 'B', 'R', 'N', 'I', 'M', 'G', 0, 1 };
 
 pub const WriteError = error{OutOfMemory};
-pub const ReadError = error{ BadMagic, BadVersion, Truncated, StoreError, OutOfMemory };
+pub const ReadError = error{ BadMagic, BadVersion, Truncated, BadValueKind, StoreError, OutOfMemory };
 
 pub const WriteResult = struct {
     bytes: []u8,
@@ -53,10 +59,11 @@ pub const LoadResult = struct {
     next_eid: u64,
 };
 
-/// A value Ref round-trips verbatim iff it is a self-describing immediate.
-/// Pointer-tagged Refs encode a heap address — meaningless across a
-/// process boundary — and are deferred to later slices.
-fn isSerializableValue(v: Ref) bool {
+/// A value Ref round-trips verbatim iff it is a self-describing immediate
+/// (eid / smallint / keyword / nil). Strings (slice 2) round-trip by
+/// serializing their bytes. Remaining heap-pointer classes (boxed float,
+/// RRB vector, closure, FFI ptr, capture-spec array) are deferred.
+fn isImmediateValue(v: Ref) bool {
     return ref_mod.isEid(v) or ref_mod.isSmallInt(v) or ref_mod.isKeyword(v) or ref_mod.isNil(v);
 }
 
@@ -88,14 +95,25 @@ pub fn write(
     // `meat` keys facts by module first, giving (m, e, a, v) directly.
     var m_it = store.meatIter();
     while (m_it.next()) |entry| {
-        if (!isSerializableValue(entry.v)) {
+        const v = entry.v;
+        if (isImmediateValue(v)) {
+            try appendU64(allocator, &buf, entry.m);
+            try appendU64(allocator, &buf, entry.e);
+            try appendU64(allocator, &buf, entry.a);
+            try buf.append(allocator, VK_IMMEDIATE);
+            try appendU64(allocator, &buf, v);
+        } else if (strings.isString(v)) {
+            const s = strings.bytes(v);
+            try appendU64(allocator, &buf, entry.m);
+            try appendU64(allocator, &buf, entry.e);
+            try appendU64(allocator, &buf, entry.a);
+            try buf.append(allocator, VK_STRING);
+            try appendU32(allocator, &buf, @intCast(s.len));
+            try buf.appendSlice(allocator, s);
+        } else {
             skipped += 1;
             continue;
         }
-        try appendU64(allocator, &buf, entry.m);
-        try appendU64(allocator, &buf, entry.e);
-        try appendU64(allocator, &buf, entry.a);
-        try appendU64(allocator, &buf, entry.v);
         facts_written += 1;
     }
 
@@ -131,7 +149,17 @@ pub fn load(store: *FactStore, bytes: []const u8) ReadError!LoadResult {
         const m = try cur.readU64();
         const e = try cur.readU64();
         const a = try cur.readU64();
-        const v = try cur.readU64();
+        const kind = (try cur.take(1))[0];
+        const v: Ref = switch (kind) {
+            VK_IMMEDIATE => try cur.readU64(),
+            VK_STRING => blk: {
+                const len = try cur.readU32();
+                const s = try cur.take(len);
+                // Rebuilt in the store's allocator so the Ref outlives load.
+                break :blk strings.mkString(store.allocator, s) catch return error.OutOfMemory;
+            },
+            else => return error.BadValueKind,
+        };
         _ = store.assert(e, a, v, m) catch return error.StoreError;
     }
 

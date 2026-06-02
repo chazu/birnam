@@ -6,6 +6,7 @@ const image = @import("image.zig");
 const fs = @import("fact_store.zig");
 const ref = @import("ref.zig");
 const boxed = @import("boxed.zig");
+const strings = @import("strings.zig");
 
 fn vi(n: i64) ref.Ref {
     return ref.mkSmallInt(n).?;
@@ -73,6 +74,36 @@ test "image: pointer-valued facts are counted as skipped, never dropped silently
     try testing.expectEqual(vi(1), dst.currentValue(E_A, A_NUM).?);
     // The pointer fact did not round-trip (deferred to a later slice).
     try testing.expect(dst.currentValue(E_A, A_REF) == null);
+}
+
+test "image: string-valued facts round-trip by bytes (slice 2)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var src = fs.FactStore.init(a);
+    const s1 = try strings.mkString(a, "hello world");
+    const s2 = try strings.mkString(a, ""); // empty string edge case
+    _ = try src.assert(E_A, A_REF, s1, M_USER);
+    _ = try src.assert(E_B, A_REF, s2, M_USER);
+    _ = try src.assert(E_A, A_NUM, vi(5), M_USER); // mixed immediate + string
+
+    const res = try image.write(a, &src, 256);
+    try testing.expectEqual(@as(u64, 3), res.facts_written);
+    try testing.expectEqual(@as(u64, 0), res.skipped_pointer_values);
+
+    var dst = fs.FactStore.init(a);
+    _ = try image.load(&dst, res.bytes);
+
+    const got1 = dst.currentValue(E_A, A_REF).?;
+    const got2 = dst.currentValue(E_B, A_REF).?;
+    try testing.expect(strings.isString(got1));
+    try testing.expectEqualStrings("hello world", strings.bytes(got1));
+    try testing.expectEqualStrings("", strings.bytes(got2));
+    try testing.expectEqual(vi(5), dst.currentValue(E_A, A_NUM).?);
+
+    // Rebuilt string is a fresh allocation, not the original pointer.
+    try testing.expect(got1 != s1);
 }
 
 test "image: rejects bad magic and version" {
