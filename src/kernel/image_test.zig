@@ -52,18 +52,79 @@ test "image: immediate-valued facts round-trip with counters" {
     try testing.expectEqual(src.currentTx(), dst.currentTx());
 }
 
-test "image: pointer-valued facts are counted as skipped, never dropped silently" {
+test "image: boxed float values round-trip (slice 3)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var src = fs.FactStore.init(a);
+    _ = try src.assert(E_A, A_REF, try boxed.mkFloat(a, 3.14159), M_USER);
+    _ = try src.assert(E_B, A_REF, try boxed.mkFloat(a, -0.0), M_USER);
+
+    const res = try image.write(a, &src, 256);
+    try testing.expectEqual(@as(u64, 2), res.facts_written);
+    try testing.expectEqual(@as(u64, 0), res.skipped_pointer_values);
+
+    var dst = fs.FactStore.init(a);
+    _ = try image.load(&dst, res.bytes);
+
+    const got = dst.currentValue(E_A, A_REF).?;
+    try testing.expect(boxed.isFloat(got));
+    try testing.expectEqual(@as(f64, 3.14159), boxed.untagFloat(got));
+    try testing.expectEqual(@as(f64, -0.0), boxed.untagFloat(dst.currentValue(E_B, A_REF).?));
+}
+
+test "image: RRB vector values round-trip incl mixed + nested (slice 3)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var src = fs.FactStore.init(a);
+    // Mixed-element vector: smallint, string, float — like a constant pool.
+    const inner = try boxed.mkRrb(a, &.{
+        vi(7),
+        try strings.mkString(a, "pool-entry"),
+        try boxed.mkFloat(a, 2.5),
+    });
+    // Nested: a vector containing the inner vector + an eid.
+    const outer = try boxed.mkRrb(a, &.{ inner, ref.mkEid(E_B) });
+    _ = try src.assert(E_A, A_REF, outer, M_USER);
+
+    const res = try image.write(a, &src, 256);
+    try testing.expectEqual(@as(u64, 1), res.facts_written);
+    try testing.expectEqual(@as(u64, 0), res.skipped_pointer_values);
+
+    var dst = fs.FactStore.init(a);
+    _ = try image.load(&dst, res.bytes);
+
+    const got_outer = dst.currentValue(E_A, A_REF).?;
+    try testing.expect(boxed.isRrbRef(got_outer));
+    const ro = boxed.untagRrbRef(got_outer);
+    try testing.expectEqual(@as(usize, 2), ro.count());
+
+    var oit = ro.iter();
+    const got_inner = oit.next().?;
+    try testing.expectEqual(ref.mkEid(E_B), oit.next().?);
+    try testing.expect(boxed.isRrbRef(got_inner));
+    const ri = boxed.untagRrbRef(got_inner);
+    try testing.expectEqual(@as(usize, 3), ri.count());
+    var iit = ri.iter();
+    try testing.expectEqual(vi(7), iit.next().?);
+    try testing.expectEqualStrings("pool-entry", strings.bytes(iit.next().?));
+    try testing.expectEqual(@as(f64, 2.5), boxed.untagFloat(iit.next().?));
+}
+
+test "image: still-deferred pointer classes counted as skipped, never dropped" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
     var src = fs.FactStore.init(a);
     _ = try src.assert(E_A, A_NUM, vi(1), M_USER);
-    // A boxed float materializes as a heap pointer Ref — not serializable
-    // in slice 1.
-    const float_ref = try boxed.mkFloat(a, 3.14);
-    try testing.expect(ref.isPointer(float_ref));
-    _ = try src.assert(E_A, A_REF, float_ref, M_USER);
+    // FFI pointer is a heap-pointer class not yet handled by the image.
+    const ffi = try boxed.mkFfiPtr(a, 0xCAFE);
+    try testing.expect(ref.isPointer(ffi));
+    _ = try src.assert(E_A, A_REF, ffi, M_USER);
 
     const res = try image.write(a, &src, 256);
     try testing.expectEqual(@as(u64, 1), res.facts_written);
@@ -72,7 +133,6 @@ test "image: pointer-valued facts are counted as skipped, never dropped silently
     var dst = fs.FactStore.init(a);
     _ = try image.load(&dst, res.bytes);
     try testing.expectEqual(vi(1), dst.currentValue(E_A, A_NUM).?);
-    // The pointer fact did not round-trip (deferred to a later slice).
     try testing.expect(dst.currentValue(E_A, A_REF) == null);
 }
 

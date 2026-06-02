@@ -25,17 +25,22 @@ const std = @import("std");
 const ref_mod = @import("ref.zig");
 const fact_store = @import("fact_store.zig");
 const strings = @import("strings.zig");
+const boxed = @import("boxed.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store.FactStore;
 
 /// Bump on any incompatible change to the on-disk layout below.
 /// v2 (slice 2): per-fact value-kind tag; string values serialize bytes.
-pub const FORMAT_VERSION: u32 = 2;
+/// v3 (slice 3): boxed float + RRB vector (recursive element values).
+pub const FORMAT_VERSION: u32 = 3;
 
-/// Per-fact value encoding discriminant.
+/// Value encoding discriminant. Recursive: an RRB element is itself one
+/// of these kinds.
 const VK_IMMEDIATE: u8 = 0; // self-describing Ref stored verbatim (u64)
-const VK_STRING: u8 = 1; // string: u32 len + len bytes, rebuilt on load
+const VK_STRING: u8 = 1; // u32 len + len bytes, rebuilt on load
+const VK_FLOAT: u8 = 2; // f64 bit pattern (u64), re-boxed on load
+const VK_RRB: u8 = 3; // u32 count + `count` recursively-encoded values
 
 const MAGIC: [8]u8 = .{ 'B', 'R', 'N', 'I', 'M', 'G', 0, 1 };
 
@@ -59,12 +64,75 @@ pub const LoadResult = struct {
     next_eid: u64,
 };
 
-/// A value Ref round-trips verbatim iff it is a self-describing immediate
-/// (eid / smallint / keyword / nil). Strings (slice 2) round-trip by
-/// serializing their bytes. Remaining heap-pointer classes (boxed float,
-/// RRB vector, closure, FFI ptr, capture-spec array) are deferred.
+/// A value Ref is a self-describing immediate (eid / smallint / keyword /
+/// nil) — stored verbatim. Other supported classes (string, float, RRB)
+/// serialize their contents; see `valueSupported`.
 fn isImmediateValue(v: Ref) bool {
     return ref_mod.isEid(v) or ref_mod.isSmallInt(v) or ref_mod.isKeyword(v) or ref_mod.isNil(v);
+}
+
+/// Can this value round-trip? Recursive for RRB: supported iff every
+/// element is supported. Remaining heap classes (closure, FFI ptr,
+/// capture-spec array) are deferred and reported as skipped.
+fn valueSupported(v: Ref) bool {
+    if (isImmediateValue(v) or strings.isString(v) or boxed.isFloat(v)) return true;
+    if (boxed.isRrbRef(v)) {
+        var it = boxed.untagRrbRef(v).iter();
+        while (it.next()) |elem| {
+            if (!valueSupported(elem)) return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+/// Encode one value (assumes `valueSupported(v)`). Recursive for RRB.
+fn writeValue(allocator: std.mem.Allocator, buf: *std.ArrayList(u8), v: Ref) WriteError!void {
+    if (isImmediateValue(v)) {
+        try buf.append(allocator, VK_IMMEDIATE);
+        try appendU64(allocator, buf, v);
+    } else if (strings.isString(v)) {
+        const s = strings.bytes(v);
+        try buf.append(allocator, VK_STRING);
+        try appendU32(allocator, buf, @intCast(s.len));
+        try buf.appendSlice(allocator, s);
+    } else if (boxed.isFloat(v)) {
+        try buf.append(allocator, VK_FLOAT);
+        try appendU64(allocator, buf, @bitCast(boxed.untagFloat(v)));
+    } else { // RRB (guaranteed by valueSupported)
+        const r = boxed.untagRrbRef(v);
+        try buf.append(allocator, VK_RRB);
+        try appendU32(allocator, buf, @intCast(r.count()));
+        var it = r.iter();
+        while (it.next()) |elem| try writeValue(allocator, buf, elem);
+    }
+}
+
+/// Decode one value, rebuilding heap objects in the store's allocator so
+/// the Ref outlives load. Recursive for RRB.
+fn readValue(store: *FactStore, cur: *Cursor) ReadError!Ref {
+    const kind = (try cur.take(1))[0];
+    switch (kind) {
+        VK_IMMEDIATE => return try cur.readU64(),
+        VK_STRING => {
+            const len = try cur.readU32();
+            const s = try cur.take(len);
+            return strings.mkString(store.allocator, s) catch return error.OutOfMemory;
+        },
+        VK_FLOAT => {
+            const bits = try cur.readU64();
+            return boxed.mkFloat(store.allocator, @bitCast(bits)) catch return error.OutOfMemory;
+        },
+        VK_RRB => {
+            const n = try cur.readU32();
+            const elems = store.allocator.alloc(Ref, n) catch return error.OutOfMemory;
+            defer store.allocator.free(elems);
+            var i: u32 = 0;
+            while (i < n) : (i += 1) elems[i] = try readValue(store, cur);
+            return boxed.mkRrb(store.allocator, elems) catch return error.OutOfMemory;
+        },
+        else => return error.BadValueKind,
+    }
 }
 
 // -- Writer -----------------------------------------------------------------
@@ -95,25 +163,14 @@ pub fn write(
     // `meat` keys facts by module first, giving (m, e, a, v) directly.
     var m_it = store.meatIter();
     while (m_it.next()) |entry| {
-        const v = entry.v;
-        if (isImmediateValue(v)) {
-            try appendU64(allocator, &buf, entry.m);
-            try appendU64(allocator, &buf, entry.e);
-            try appendU64(allocator, &buf, entry.a);
-            try buf.append(allocator, VK_IMMEDIATE);
-            try appendU64(allocator, &buf, v);
-        } else if (strings.isString(v)) {
-            const s = strings.bytes(v);
-            try appendU64(allocator, &buf, entry.m);
-            try appendU64(allocator, &buf, entry.e);
-            try appendU64(allocator, &buf, entry.a);
-            try buf.append(allocator, VK_STRING);
-            try appendU32(allocator, &buf, @intCast(s.len));
-            try buf.appendSlice(allocator, s);
-        } else {
+        if (!valueSupported(entry.v)) {
             skipped += 1;
             continue;
         }
+        try appendU64(allocator, &buf, entry.m);
+        try appendU64(allocator, &buf, entry.e);
+        try appendU64(allocator, &buf, entry.a);
+        try writeValue(allocator, &buf, entry.v);
         facts_written += 1;
     }
 
@@ -149,17 +206,7 @@ pub fn load(store: *FactStore, bytes: []const u8) ReadError!LoadResult {
         const m = try cur.readU64();
         const e = try cur.readU64();
         const a = try cur.readU64();
-        const kind = (try cur.take(1))[0];
-        const v: Ref = switch (kind) {
-            VK_IMMEDIATE => try cur.readU64(),
-            VK_STRING => blk: {
-                const len = try cur.readU32();
-                const s = try cur.take(len);
-                // Rebuilt in the store's allocator so the Ref outlives load.
-                break :blk strings.mkString(store.allocator, s) catch return error.OutOfMemory;
-            },
-            else => return error.BadValueKind,
-        };
+        const v = try readValue(store, &cur);
         _ = store.assert(e, a, v, m) catch return error.StoreError;
     }
 
