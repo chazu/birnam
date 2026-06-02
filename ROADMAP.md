@@ -1311,7 +1311,8 @@ This does **not** preclude the future mmap fast-path (12.5): make sections page-
 
 12.3 **Snapshot loader.** Parse manifest → `dlopen` each module by name (verify ABI hash on load) → **re-run each module's primitive-install so native fn-ptr closures exist at known eids (Framing decision 2026-06-02, Approach B)** → mmap segments → patch root pointers → **rematerialize every `:bytecode-stream` entity's fn-ptr Closure from its facts** → fresh mcache (rebuild lazily per Phase 11 ADR #3). User bytecode methods + block closures rebuild from facts; the fn ptr is never serialized.
 
-12.4 **Selector identity across reload.** Kernel selectors at well-known EIDs (already done — `kernel_eids.zig` range 0..255). User selectors re-intern via relocation table embedded in manifest (old-EID → new-EID).
+12.4 **Selector + entity identity across reload.** Kernel selectors at well-known EIDs (already done — `kernel_eids.zig` range 0..255). User selectors re-intern via relocation table embedded in manifest (old-EID → new-EID).
+- **Finding (2026-06-02, from `:load` smoke):** the same unstable-eid hazard hits the **lang top-level scope**. REPL top-level bindings are persisted M_USER data, but they reference the lang module's `g_top_scope_eid`, which is allocated fresh each session — so a reloaded binding dangles against the new session's scope. Fix options: (a) give the top-level scope a **stable well-known eid** (kernel constant, like `M_USER`) so bindings re-attach automatically; (b) relocation-remap scope eids on load alongside selectors. (a) is simplest and mirrors how the method-on-kernel-vt case already round-trips (stable target eid). Methods installed on stable kernel vts work today; user bindings + methods-on-user-vts need this fix.
 
 12.5 **Arena split.** Strings, bytecode, regular fact-store segments live in separate arenas → separate mmap segments → faster load, page-cache-friendly, RO-segment-ready for AOT.
 
