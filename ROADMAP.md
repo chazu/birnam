@@ -1399,6 +1399,18 @@ Tests: installed-method-kept + its block children (via pool) + its AST; orphan-A
 
 13.5 Tests: pruning preserves reachable state, removes excised entities, query results match pre-prune for non-excised data. Plus the closure-reachability cases above and the AST mark-sweep cases.
 
+### Status (2026-06-02) — reachable-from-roots shipped
+
+**Shipped (`src/kernel/prune.zig`, `FactStore.compact`, shell `:prune`):**
+- 13.2 mechanism ✓ — `compact(keep)` rebuilds all five indexes from current facts keeping the accepted set; history collapses; old persistent roots GC. Suppresses demote-on-mutate during re-assert so kept materialized closures survive.
+- 13.1 **reachable-from-roots** policy ✓ — the primary policy. 13.3 (scope/binding chain from `TOP_SCOPE_EID`) + 13.4 (M_USER entity mark-sweep: roots = installed methods + their install subjects, REPL bindings, saved queries, FFI wraps; conservative forward eid-edge walk) folded into `prune.pruneReachable`. CODE never swept; object-table slots for swept entities cleared.
+- 13.5 tests ✓ — orphan-AST swept; redefined-method drops old + clears slot; binding chain + bound method kept; CODE-never-swept; demote-suppression.
+
+**Deferred:**
+- 13.1 other policies — **keep-last-N-tx** (compact currently collapses *all* history to current = "keep-current-only"; granular N-tx retention needs per-fact history replay) and **manual-excise-named-entities**.
+- **FFI Sig free callback** — sweeping an M_USER FFI-wrap drops `:ffi-sig` but doesn't yet free the heap Sig struct (leak on prune; FFI wraps are usually CODE so rarely hit). Needs a Zig-side free hook registered with the sweep.
+- Mark precision — currently conservative "follow all eid-valued facts" (safe over-marking). Tighten to the typed edge set (constant-pool/`:method-body-ast`/`:range-ast`/scope chain) if a workload shows retained garbage.
+
 ### Reasoning
 History grows forever otherwise. Pruning must be user-initiated (don't surprise the user with lost history). AOT prune (most aggressive variant) reuses this machinery. The closure-reachability sweep is the substrate's GC-by-reachability — Phase 10.3 accepts spike-level scope leak; Phase 13 cleans up via reachability walk over the fact graph.
 
