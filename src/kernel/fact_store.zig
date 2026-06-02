@@ -503,6 +503,48 @@ pub const FactStore = struct {
     pub fn currentTx(self: *const FactStore) u64 {
         return self.next_tx.load(.monotonic) - 1;
     }
+
+    /// Flatten every current (module, entity, attribute, value) fact in
+    /// `meat`. Phase 12.1 image writer's enumeration source — `meat` keys
+    /// by module first, so a single nested walk yields the module column
+    /// for free. Current values only (no history).
+    pub const AllFactsIter = struct {
+        m_it: MEATish.Iterator,
+        e_it: ?EAVTish.Iterator = null,
+        a_it: ?InnerValueMap.Iterator = null,
+        cur_m: u64 = 0,
+        cur_e: u64 = 0,
+
+        pub const MEAV = struct { m: u64, e: u64, a: u64, v: Ref };
+
+        pub fn next(self: *AllFactsIter) ?MEAV {
+            while (true) {
+                if (self.a_it) |*ait| {
+                    while (ait.next()) |a_kv| {
+                        if (a_kv.value.current_v) |v| {
+                            return .{ .m = self.cur_m, .e = self.cur_e, .a = a_kv.key, .v = v };
+                        }
+                    }
+                    self.a_it = null;
+                }
+                if (self.e_it) |*eit| {
+                    if (eit.next()) |e_kv| {
+                        self.cur_e = e_kv.key;
+                        self.a_it = e_kv.value.iter();
+                        continue;
+                    }
+                    self.e_it = null;
+                }
+                const m_kv = self.m_it.next() orelse return null;
+                self.cur_m = m_kv.key;
+                self.e_it = m_kv.value.iter();
+            }
+        }
+    };
+
+    pub fn meatIter(self: *const FactStore) AllFactsIter {
+        return .{ .m_it = self.meat.iter() };
+    }
 };
 
 // -- Internal helpers --------------------------------------------------------
