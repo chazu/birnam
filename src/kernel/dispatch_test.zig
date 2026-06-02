@@ -35,6 +35,7 @@ test "dispatch: smallint literal" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     try mkLiteralAst(&store, 1, ref_mod.mkSmallInt(42).?);
     const result = try compileMaterializeRun(arena.allocator(), &store, &table, 1);
@@ -46,6 +47,7 @@ test "dispatch: true / false / nil literals" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     try mkLiteralAst(&store, 1, ref_mod.mkEid(kernel_eids.TRUE_EID));
     try testing.expectEqual(ref_mod.mkEid(kernel_eids.TRUE_EID), try compileMaterializeRun(arena.allocator(), &store, &table, 1));
@@ -63,6 +65,7 @@ test "dispatch: stmt-seq returns last value" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     try mkLiteralAst(&store, 1, ref_mod.mkSmallInt(10).?);
     try mkLiteralAst(&store, 2, ref_mod.mkSmallInt(20).?);
@@ -81,6 +84,7 @@ test "dispatch: explicit return short-circuits" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     try mkLiteralAst(&store, 1, ref_mod.mkSmallInt(7).?);
     _ = try store.assert(2, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_RETURN_VT), MODULE_EID);
@@ -94,6 +98,7 @@ test "dispatch: LOAD_SELF returns receiver" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     _ = try store.assert(1, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_SELF_VT), MODULE_EID);
 
@@ -125,6 +130,7 @@ test "reify-stack: captures active frame at SEND-time" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
     send_mod.initDispatch(&store, &table, arena.allocator());
 
     g_reify_store = &store;
@@ -175,6 +181,8 @@ test "dispatch: closure captures outer let-binding (by-value)" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     // Build: let x = 5; [x] value
     // → inner block captures x, returns it. Outer evaluates the block.
@@ -202,17 +210,20 @@ test "dispatch: closure captures outer let-binding (by-value)" {
     defer m.deinit(arena.allocator());
     const outer_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
 
-    // Outer returns the BytecodeBlock pointer Ref (or eid for non-capturing).
+    // Phase 11.12 — outer returns a closure-EID Ref. Look up the closure
+    // entity in the object table, extract its BytecodeClosure data, and
+    // verify the captured value.
     const blk_ref = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{}, &[_]ref_mod.Ref{});
-
-    // Inner block captures x → blk_ref must be pointer-tagged (carries captures).
-    try testing.expect(ref_mod.isPointer(blk_ref));
-    const inner_method_eid = @import("vm.zig").blockMethodEidFromRef(blk_ref);
-    const captures_slice = @import("vm.zig").blockCapturesFromRef(blk_ref);
+    try testing.expect(ref_mod.isEid(blk_ref));
+    const closure_ptr_ref = table.get(ref_mod.untagEid(blk_ref)).?;
+    const closure_base: [*]const ref_mod.Ref = @ptrCast(@alignCast(ref_mod.untagPointer(closure_ptr_ref)));
+    const data = closure_base[1];
+    try testing.expect(ref_mod.isPointer(data));
+    const inner_method_eid = @import("vm.zig").blockMethodEidFromRef(data);
+    const captures_slice = @import("vm.zig").blockCapturesFromRef(data);
     try testing.expectEqual(@as(usize, 1), captures_slice.len);
     try testing.expectEqual(ref_mod.mkSmallInt(5).?, captures_slice[0]);
 
-    // Invoke inner directly: pass captures from the BytecodeBlock.
     const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, inner_method_eid, &.{}, captures_slice);
     try testing.expectEqual(ref_mod.mkSmallInt(5).?, result);
 }
@@ -222,6 +233,8 @@ test "dispatch: compile + run block with params" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     // [: x | x] body uses param x — slot 0.
     const x_name: u64 = 900;
@@ -240,17 +253,22 @@ test "dispatch: compile + run block with params" {
     defer m.deinit(arena.allocator());
     const outer_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
 
-    // Run outer → top of stack should be the block-method-eid Ref.
+    // Phase 11.12 — outer returns a closure EID. Look up to recover
+    // the block-method EID from the closure's BytecodeClosure data.
     const block_ref = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, outer_eid, &.{}, &[_]ref_mod.Ref{});
     try testing.expect(ref_mod.isEid(block_ref));
-    const block_eid = ref_mod.untagEid(block_ref);
+    const closure_eid = ref_mod.untagEid(block_ref);
+    const closure_ptr_ref = table.get(closure_eid).?;
+    const closure_base: [*]const ref_mod.Ref = @ptrCast(@alignCast(ref_mod.untagPointer(closure_ptr_ref)));
+    const data = closure_base[1];
+    const block_method_eid = @import("vm.zig").blockMethodEidFromRef(data);
 
     // Verify block's :method-arg-count = 1.
-    const arg_ref = store.currentValue(block_eid, kernel_eids.ATTR_METHOD_ARG_COUNT).?;
+    const arg_ref = store.currentValue(block_method_eid, kernel_eids.ATTR_METHOD_ARG_COUNT).?;
     try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(arg_ref));
 
-    // Invoke block with arg 55 → expect 55.
-    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, block_eid, &.{ref_mod.mkSmallInt(55).?}, &[_]ref_mod.Ref{});
+    // Invoke block-method directly with arg 55.
+    const result = try dispatch.runMethod(arena.allocator(), &store, ref_mod.NIL, block_method_eid, &.{ref_mod.mkSmallInt(55).?}, &[_]ref_mod.Ref{});
     try testing.expectEqual(ref_mod.mkSmallInt(55).?, result);
 }
 
@@ -259,6 +277,7 @@ test "dispatch: compile + run let-binding stmt-seq" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     // let x = 5; x
     const name_eid: u64 = 800;
@@ -282,6 +301,7 @@ test "dispatch: compile + run assign updates binding" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     // let y = 1; y := 42; y
     const name_eid: u64 = 850;
@@ -312,6 +332,7 @@ test "dispatch: compileBlockAsMethod handles [:x | [x succ]] shape" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
     send_mod.initDispatch(&store, &table, arena.allocator());
 
     // Install succ as a stub on SMALLINT_VT that returns receiver + 1.
@@ -367,6 +388,7 @@ test "dispatch: SEND into compiled bytecode method via bytecode dispatcher" {
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
     send_mod.initDispatch(&store, &table, arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     // Compile a "callee" method: literal 88 + RETURN.
     try mkLiteralAst(&store, 1, ref_mod.mkSmallInt(88).?);
@@ -409,6 +431,7 @@ test "dispatch: composite let + binary send (1 + 2 + 3 = 6)" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
     send_mod.initDispatch(&store, &table, arena.allocator());
 
     // Install stub + on SMALLINT_VT.
@@ -488,6 +511,7 @@ test "dispatch: MAKE_BLOCK + INVOKE_BLOCK runs block and returns value" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     // Block method body: PUSH_SMALLINT_I32 99, RETURN.
     const block_body = [_]u8{
@@ -514,6 +538,7 @@ test "dispatch: INVOKE_BLOCK passes args as locals" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     // Block body: PUSH_LOCAL 0, RETURN. Expects 1 arg, returns it.
     const block_body = [_]u8{
@@ -541,6 +566,7 @@ test "dispatch: RETURN_FROM_METHOD from block unwinds to enclosing method" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     // Block body: PUSH_SMALLINT_I32 7, RETURN_FROM_METHOD depth=0.
     const block_body = [_]u8{
@@ -594,6 +620,7 @@ test "dispatch: SEND_0 unary message returns receiver via stub method" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     // Wire send.zig globals so bind works inside this test.
     send_mod.initDispatch(&store, &table, arena.allocator());
@@ -633,6 +660,7 @@ test "dispatch: big int literal via constant pool" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
     var table = object_table_mod.ObjectTable.init(arena.allocator());
+    send_mod.initDispatch(&store, &table, arena.allocator());
 
     const big = ref_mod.mkSmallInt(@as(i64, std.math.maxInt(i32)) + 1).?;
     try mkLiteralAst(&store, 1, big);

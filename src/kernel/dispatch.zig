@@ -87,6 +87,8 @@ pub fn runMethod(
     // through during the loop.
     const vm = vm_mod.current();
     try vm_mod.ensureFrameCapacity(allocator, vm.frames.items.len + 16);
+    const this_frame_id = vm.next_frame_id;
+    vm.next_frame_id += 1;
     try vm.frames.append(allocator, vm_mod.Frame{
         .bytecode = code.ptr,
         .pc = 0,
@@ -95,6 +97,7 @@ pub fn runMethod(
         .bp = 0,
         .local_count = 0,
         .parent_method_frame = null,
+        .frame_id = this_frame_id,
     });
     const frame_idx = vm.frames.items.len - 1;
     defer {
@@ -173,10 +176,11 @@ pub fn runMethod(
             },
             .SEND_0 => {
                 const sel_eid: u64 = bytecode.readU32(code, pc + 1);
-                _ = bytecode.readU16(code, pc + 5); // site_idx — mcache integration in a later phase
+                _ = bytecode.readU16(code, pc + 5);
                 if (value_stack.items.len == 0) return error.StackUnderflow;
                 const recv = value_stack.pop().?;
                 const result = send_mod.send0(recv, sel_eid);
+                if (try handleSendUnwind(vm, result)) |caught| return caught;
                 try value_stack.append(allocator, result);
                 pc += 7;
             },
@@ -187,6 +191,7 @@ pub fn runMethod(
                 const arg = value_stack.pop().?;
                 const recv = value_stack.pop().?;
                 const result = send_mod.send1(recv, sel_eid, arg);
+                if (try handleSendUnwind(vm, result)) |caught| return caught;
                 try value_stack.append(allocator, result);
                 pc += 7;
             },
@@ -195,15 +200,13 @@ pub fn runMethod(
                 const n_args: u8 = bytecode.readU8(code, pc + 5);
                 _ = bytecode.readU16(code, pc + 6);
                 if (value_stack.items.len < @as(usize, n_args) + 1) return error.StackUnderflow;
-                // Args were pushed left-to-right; they sit at top with the
-                // last one on top. Pass a contiguous slice to sendN.
                 const top = value_stack.items.len;
                 const args_start = top - @as(usize, n_args);
                 const args_ptr: [*]const Ref = value_stack.items.ptr + args_start;
                 const recv = value_stack.items[args_start - 1];
                 const result = send_mod.sendN(recv, sel_eid, args_ptr, n_args);
-                // Pop args + recv, push result.
                 value_stack.shrinkRetainingCapacity(args_start - 1);
+                if (try handleSendUnwind(vm, result)) |caught| return caught;
                 try value_stack.append(allocator, result);
                 pc += 8;
             },
@@ -213,55 +216,74 @@ pub fn runMethod(
                 const method_ref = pool_items[idx];
                 if (!ref_mod.isEid(method_ref)) return error.BadFrame;
                 const block_method_eid = ref_mod.untagEid(method_ref);
-                // Phase 11.11 — read capture spec; if any, allocate a
-                // BytecodeBlock carrying the captured values from this
-                // frame. Otherwise push the bare method-eid Ref (fast
-                // path for non-capturing blocks).
-                const spec_opt = store.currentValue(block_method_eid, kernel_eids.ATTR_METHOD_CAPTURES_PTR);
-                if (spec_opt) |spec_ref| {
-                    const specs = vm_mod.captureSpecsFromRef(spec_ref);
-                    if (specs.len > 0) {
-                        const blk = try vm_mod.allocBytecodeBlock(allocator, block_method_eid, @intCast(specs.len));
-                        for (specs, 0..) |sp, i| {
-                            if (sp.parent_slot >= locals.items.len) {
-                                blk.captures_tail[i] = ref_mod.NIL;
-                            } else {
-                                blk.captures_tail[i] = locals.items[sp.parent_slot];
-                            }
-                        }
-                        try value_stack.append(allocator, blk.ref);
-                        pc += 3;
-                        continue;
+
+                // Phase 11.12 — every MAKE_BLOCK allocates a real closure
+                // entity wrapping a BytecodeClosure heap struct that
+                // carries (method_eid, parent_self_ref, parent_frame_id,
+                // captures). Closure entity has :vtable CLOSURE_VT so
+                // `[block value]` dispatches via send.bind +
+                // closureValueImpl + bytecodeDispatcherImpl uniformly,
+                // whether the value-send originates from tree-walker
+                // or bytecode context.
+                var n_captures: u32 = 0;
+                var specs: []const vm_mod.CaptureSpec = &[_]vm_mod.CaptureSpec{};
+                if (store.currentValue(block_method_eid, kernel_eids.ATTR_METHOD_CAPTURES_PTR)) |spec_ref| {
+                    specs = vm_mod.captureSpecsFromRef(spec_ref);
+                    n_captures = @intCast(specs.len);
+                }
+
+                const parent_self = receiver;
+                const parent_frame_id = vm.frames.items[frame_idx].frame_id;
+                const blk = try vm_mod.allocBytecodeBlock(allocator, block_method_eid, parent_self, parent_frame_id, n_captures);
+                for (specs, 0..) |sp, i| {
+                    if (sp.parent_slot >= locals.items.len) {
+                        blk.captures_tail[i] = ref_mod.NIL;
+                    } else {
+                        blk.captures_tail[i] = locals.items[sp.parent_slot];
                     }
                 }
-                try value_stack.append(allocator, method_ref);
+
+                // Wrap the BytecodeClosure ptr in a libid-object closure
+                // ([vt_ref][method=bytecodeDispatcherImpl][data=blk_ref])
+                // and register a fresh closure-eid. Push mkEid(closure_eid).
+                const closure_eid = try allocClosureEntity(allocator, blk.ref);
+                try value_stack.append(allocator, ref_mod.mkEid(closure_eid));
                 pc += 3;
             },
             .INVOKE_BLOCK => {
                 const n_args: u8 = bytecode.readU8(code, pc + 1);
-                _ = bytecode.readU16(code, pc + 2); // site_idx — unused in spike
+                _ = bytecode.readU16(code, pc + 2);
                 if (value_stack.items.len < @as(usize, n_args) + 1) return error.StackUnderflow;
                 const top = value_stack.items.len;
                 const args_start = top - @as(usize, n_args);
                 const block_ref = value_stack.items[args_start - 1];
-                // Block ref is either mkEid(method_eid) (no captures) or
-                // a pointer Ref to BytecodeBlock (with captures).
+                if (!ref_mod.isEid(block_ref)) return error.BadFrame;
+                // Look up the closure entity to recover method_eid, self,
+                // captures from its BytecodeClosure data.
+                const closure_eid = ref_mod.untagEid(block_ref);
+                const tbl = send_mod.tablePtr() orelse return error.BadFrame;
+                const closure_ptr_ref = tbl.get(closure_eid) orelse return error.BadFrame;
+                if (!ref_mod.isPointer(closure_ptr_ref)) return error.BadFrame;
+                const closure_base: [*]const Ref = @ptrCast(@alignCast(ref_mod.untagPointer(closure_ptr_ref)));
+                const data = closure_base[1];
+
                 var block_eid: u64 = 0;
                 var block_captures: []const Ref = &[_]Ref{};
-                if (ref_mod.isEid(block_ref)) {
-                    block_eid = ref_mod.untagEid(block_ref);
-                } else if (ref_mod.isPointer(block_ref)) {
-                    block_eid = vm_mod.blockMethodEidFromRef(block_ref);
-                    block_captures = vm_mod.blockCapturesFromRef(block_ref);
+                var block_self: Ref = receiver;
+                if (ref_mod.isEid(data)) {
+                    block_eid = ref_mod.untagEid(data);
+                } else if (ref_mod.isPointer(data)) {
+                    block_eid = vm_mod.blockMethodEidFromRef(data);
+                    block_captures = vm_mod.blockCapturesFromRef(data);
+                    block_self = vm_mod.blockParentSelfFromRef(data);
                 } else {
                     return error.BadFrame;
                 }
-                // Snapshot args before shrinking the stack.
+
                 const args_snapshot = try allocator.dupe(Ref, value_stack.items[args_start..top]);
                 defer allocator.free(args_snapshot);
                 value_stack.shrinkRetainingCapacity(args_start - 1);
-                // Block sees the enclosing frame's self.
-                const result = try runMethod(allocator, store, receiver, block_eid, args_snapshot, block_captures);
+                const result = try runMethod(allocator, store, block_self, block_eid, args_snapshot, block_captures);
                 // Non-local return propagation: if the block triggered
                 // RETURN_FROM_METHOD, the inner runMethod returned its
                 // unwind_value. Decide here whether we are the target
@@ -299,6 +321,26 @@ pub fn runMethod(
     return error.BadFrame;
 }
 
+// -- MAKE_BLOCK helper ------------------------------------------------------
+
+/// Mint a closure entity wrapping a BytecodeClosure pointer. Returns the
+/// fresh closure EID. The entity's object-table slot points at a
+/// libid-object-style `[vt_ref][method][data]` 3-Ref buffer with vt =
+/// CLOSURE_VT, method = bytecodeDispatcherImpl, data = closure_data_ref.
+fn allocClosureEntity(allocator: std.mem.Allocator, closure_data_ref: Ref) RunError!u64 {
+    const table = send_mod.tablePtr() orelse return error.BadFrame;
+    const total = 3 * @sizeOf(Ref);
+    const buf = allocator.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
+    @memset(buf, 0);
+    const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
+    vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
+    const c_ptr: *closure_mod.Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
+    c_ptr.* = .{ .method = @ptrCast(&bytecodeDispatcherImpl), .data = closure_data_ref };
+    const eid = table.alloc();
+    table.put(eid, ref_mod.mkPointer(@ptrCast(c_ptr))) catch return error.OutOfMemory;
+    return eid;
+}
+
 // -- Bytecode dispatcher Imp ------------------------------------------------
 
 /// Closure body for compiled bytecode methods. When a bytecode-method
@@ -314,11 +356,28 @@ pub fn bytecodeDispatcherImpl(
     n_args: usize,
 ) callconv(.c) Ref {
     const closure = s.closure orelse return ref_mod.NIL;
-    if (!ref_mod.isEid(closure.data)) return ref_mod.NIL;
-    const method_eid = ref_mod.untagEid(closure.data);
     const allocator = send_mod.kernelAllocator() orelse return ref_mod.NIL;
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
-    const result = runMethod(allocator, store, s.receiver, method_eid, args[0..n_args], &[_]Ref{}) catch
+
+    var method_eid: u64 = 0;
+    var self_ref: Ref = s.receiver;
+    var captures: []const Ref = &[_]Ref{};
+
+    if (ref_mod.isEid(closure.data)) {
+        // Direct method invocation (closure installed by compiler.materialize).
+        // `self` = caller-supplied receiver.
+        method_eid = ref_mod.untagEid(closure.data);
+    } else if (ref_mod.isPointer(closure.data)) {
+        // Block closure (allocated at MAKE_BLOCK). `self` comes from the
+        // enclosing method's frame at MAKE_BLOCK time.
+        method_eid = vm_mod.blockMethodEidFromRef(closure.data);
+        self_ref = vm_mod.blockParentSelfFromRef(closure.data);
+        captures = vm_mod.blockCapturesFromRef(closure.data);
+    } else {
+        return ref_mod.NIL;
+    }
+
+    const result = runMethod(allocator, store, self_ref, method_eid, args[0..n_args], captures) catch
         return ref_mod.NIL;
     return result;
 }
@@ -365,6 +424,21 @@ pub fn reifyStack(
         }
     }
     return eids;
+}
+
+/// Phase 11.12 — non-local return propagation after a SEND. If the
+/// inner method invoked `^expr` and `unwind_target_remaining` is zero,
+/// this frame is the target — catch by returning the unwind value.
+/// Otherwise decrement the depth and propagate by exiting our own
+/// dispatch loop with the inner result.
+inline fn handleSendUnwind(vm: *vm_mod.Vm, inner_result: Ref) RunError!?Ref {
+    if (!vm.unwinding) return null;
+    if (vm.unwind_target_remaining == 0) {
+        vm.unwinding = false;
+        return vm.unwind_value;
+    }
+    vm.unwind_target_remaining -= 1;
+    return inner_result;
 }
 
 inline fn applyJump(after: usize, offset: i16) usize {

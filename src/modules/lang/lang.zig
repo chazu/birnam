@@ -1760,17 +1760,18 @@ fn vtMethodDoImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     const vt_eid = s.receiver >> 3;
     const sel_eid = args[0] >> 3;
 
-    // Switchover gated off — installing bytecode methods works (the
-    // promotion.onEntityMutate→demote bug is fixed by put-after-asserts in
-    // compiler.materialize). But blocks returned by bytecode methods get
-    // sent `value` via tree-walker's closureValueImpl, which calls
-    // blockEvalShim — and blockEvalShim doesn't understand bytecode
-    // closures (closure.data is mkEid(method_eid), not a pointer to a
-    // wrapper obj). Wiring `value`/`value:` to dispatch into bytecode
-    // requires either (a) extending the closure layout to carry parent
-    // self_ref + frame ref for RETURN_FROM_METHOD, or (b) a tree-walker-
-    // compatible block-wrapper around the bytecode method. Both are
-    // Phase 11.12 by-reference-closure work.
+    // Phase 11.12 — bytecode switchover. If the closure wraps an
+    // AST_BLOCK_VT entity, compile to bytecode and install the
+    // bytecode method. closureValueImpl + bytecodeDispatcherImpl
+    // handle the value/value: path uniformly.
+    if (extractBlockAstEidForCompile(args[1])) |block_ast_eid| {
+        const method_eid = api.compile_block_as_method(block_ast_eid);
+        if (method_eid != 0) {
+            _ = api.assert_fact(vt_eid, sel_eid, mkEid(method_eid), g_module_eid);
+            return s.receiver;
+        }
+    }
+
     _ = api.assert_fact(vt_eid, sel_eid, args[1], g_module_eid);
     return s.receiver;
 }
@@ -1807,7 +1808,17 @@ fn closureValueImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Re
     if (closure_ptr_ref == 0) return NIL;
     var new_s = s.*;
     new_s.closure = @ptrFromInt(closure_ptr_ref);
-    return blockEvalShim(&new_s, args, n_args);
+    // Phase 11.12 — dispatch polymorphically through the receiver's own
+    // closure method. Tree-walker block closures route to blockEvalShim;
+    // bytecode-method closures route to the kernel's
+    // bytecodeDispatcherImpl. Both have the same Imp signature so a
+    // single indirect call suffices.
+    const Imp = *const fn (*Send, [*]const Ref, usize) callconv(.c) Ref;
+    const c = new_s.closure orelse return NIL;
+    const slot_base: [*]const Ref = @ptrCast(@alignCast(c));
+    const method_ptr_u64 = slot_base[0];
+    const imp: Imp = @ptrFromInt(@as(usize, method_ptr_u64));
+    return imp(&new_s, args, n_args);
 }
 
 fn trueIfTrueIfFalseImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {

@@ -40,6 +40,8 @@ pub const Frame = extern struct {
     /// RETURN_FROM_METHOD unwind (ADR-11 addendum #1). Null for method
     /// frames (they ARE the unwind target).
     parent_method_frame: ?*Frame,
+    /// Monotonic frame id (Phase 11.12) for non-local-return targeting.
+    frame_id: u64 = 0,
 };
 
 /// Initial value-stack capacity. Grows via reallocation when exceeded.
@@ -155,16 +157,32 @@ pub const CaptureSpecArrayHeader = extern struct {
     _pad: u32 = 0,
 };
 
-/// Block object pushed by MAKE_BLOCK when the block-method captures
-/// outer locals. Carries the method EID plus the captured values copied
-/// from the enclosing frame at MAKE_BLOCK time (Phase 11.11 by-value
-/// semantics — by-reference is Phase 11.12).
-pub const BytecodeBlock = extern struct {
+/// Heap-allocated payload referenced by a bytecode-block closure's
+/// `closure.data`. Carries everything `bytecodeDispatcherImpl` needs to
+/// invoke the block: which method to run, what `self` should be inside
+/// the block (the enclosing method's receiver — Smalltalk semantics),
+/// and the captured outer-scope values copied at MAKE_BLOCK time.
+///
+/// Phase 11.12 — parent_self_ref + parent_frame_id make `[block value]`
+/// from arbitrary tree-walker or bytecode contexts dispatch with the
+/// correct self and a frame target for non-local return.
+pub const BytecodeClosure = extern struct {
     method_eid: u64,
+    /// `self` inside the block body — the enclosing method's receiver.
+    parent_self_ref: Ref,
+    /// Unique monotonic identifier of the enclosing frame at MAKE_BLOCK
+    /// time. Used by RETURN_FROM_METHOD to identify the target frame
+    /// even after intermediate frames pop and push. 0 = no target
+    /// (block doesn't escape).
+    parent_frame_id: u64,
     captures_len: u32,
     _pad: u32 = 0,
     // [captures_len]Ref follows inline
 };
+
+/// Back-compat alias — keeps existing callers of vm.BytecodeBlock
+/// (current dispatch tests) building during the Phase 11.12 transition.
+pub const BytecodeBlock = BytecodeClosure;
 
 /// Decode a capture-spec pointer Ref into the spec slice.
 pub fn captureSpecsFromRef(ptr_ref: Ref) []const CaptureSpec {
@@ -176,31 +194,61 @@ pub fn captureSpecsFromRef(ptr_ref: Ref) []const CaptureSpec {
     return tail[0..header.len];
 }
 
-/// Capture values out of a BytecodeBlock pointer Ref.
+/// Capture values out of a BytecodeClosure pointer Ref.
 pub fn blockCapturesFromRef(ptr_ref: Ref) []const Ref {
     if (!ref_mod.isPointer(ptr_ref)) return &[_]Ref{};
     const base_ptr = ref_mod.untagPointer(ptr_ref);
-    const header: *const BytecodeBlock = @ptrCast(@alignCast(base_ptr));
-    const tail_addr: usize = @intFromPtr(base_ptr) + @sizeOf(BytecodeBlock);
+    const header: *const BytecodeClosure = @ptrCast(@alignCast(base_ptr));
+    const tail_addr: usize = @intFromPtr(base_ptr) + @sizeOf(BytecodeClosure);
     const tail: [*]const Ref = @ptrFromInt(tail_addr);
     return tail[0..header.captures_len];
 }
 
-/// Decode a BytecodeBlock pointer Ref → its method EID.
+/// Decode a BytecodeClosure pointer Ref → its method EID.
 pub fn blockMethodEidFromRef(ptr_ref: Ref) u64 {
     if (!ref_mod.isPointer(ptr_ref)) return 0;
-    const header: *const BytecodeBlock = @ptrCast(@alignCast(ref_mod.untagPointer(ptr_ref)));
+    const header: *const BytecodeClosure = @ptrCast(@alignCast(ref_mod.untagPointer(ptr_ref)));
     return header.method_eid;
 }
 
-/// Allocate a BytecodeBlock + inline captures. Caller copies captures
-/// into the returned tail slot. Returns the pointer Ref.
-pub fn allocBytecodeBlock(allocator: std.mem.Allocator, method_eid: u64, n_captures: u32) !struct { ref: Ref, captures_tail: [*]Ref } {
-    const total = @sizeOf(BytecodeBlock) + @sizeOf(Ref) * n_captures;
-    const buf = try allocator.alignedAlloc(u8, .of(BytecodeBlock), total);
-    const header: *BytecodeBlock = @ptrCast(@alignCast(buf.ptr));
-    header.* = .{ .method_eid = method_eid, .captures_len = n_captures };
-    const tail_addr: usize = @intFromPtr(buf.ptr) + @sizeOf(BytecodeBlock);
+/// Decode a BytecodeClosure pointer Ref → its parent (enclosing-method)
+/// self_ref. Used by `bytecodeDispatcherImpl` as the block frame's
+/// `self_ref` so the Smalltalk-semantic `self` inside a block matches
+/// the enclosing method's receiver.
+pub fn blockParentSelfFromRef(ptr_ref: Ref) Ref {
+    if (!ref_mod.isPointer(ptr_ref)) return ref_mod.NIL;
+    const header: *const BytecodeClosure = @ptrCast(@alignCast(ref_mod.untagPointer(ptr_ref)));
+    return header.parent_self_ref;
+}
+
+/// Decode a BytecodeClosure pointer Ref → parent_frame_id (the frame
+/// to unwind to on RETURN_FROM_METHOD). 0 = no target.
+pub fn blockParentFrameIdFromRef(ptr_ref: Ref) u64 {
+    if (!ref_mod.isPointer(ptr_ref)) return 0;
+    const header: *const BytecodeClosure = @ptrCast(@alignCast(ref_mod.untagPointer(ptr_ref)));
+    return header.parent_frame_id;
+}
+
+/// Allocate a BytecodeClosure + inline captures. Returns the
+/// pointer Ref plus a writable tail handle for the caller to copy
+/// captured values into.
+pub fn allocBytecodeBlock(
+    allocator: std.mem.Allocator,
+    method_eid: u64,
+    parent_self_ref: Ref,
+    parent_frame_id: u64,
+    n_captures: u32,
+) !struct { ref: Ref, captures_tail: [*]Ref } {
+    const total = @sizeOf(BytecodeClosure) + @sizeOf(Ref) * n_captures;
+    const buf = try allocator.alignedAlloc(u8, .of(BytecodeClosure), total);
+    const header: *BytecodeClosure = @ptrCast(@alignCast(buf.ptr));
+    header.* = .{
+        .method_eid = method_eid,
+        .parent_self_ref = parent_self_ref,
+        .parent_frame_id = parent_frame_id,
+        .captures_len = n_captures,
+    };
+    const tail_addr: usize = @intFromPtr(buf.ptr) + @sizeOf(BytecodeClosure);
     const tail: [*]Ref = @ptrFromInt(tail_addr);
     return .{ .ref = ref_mod.mkPointer(@ptrCast(buf.ptr)), .captures_tail = tail };
 }
@@ -236,6 +284,10 @@ pub const Vm = struct {
     unwind_target_remaining: u8 = 0,
     /// Bump arena slot for transient per-thread allocations.
     bump_arena_slot: ?*anyopaque = null,
+    /// Monotonic frame-id counter — incremented on every runMethod push.
+    /// Stored on each Frame so RETURN_FROM_METHOD can identify the
+    /// target frame via stable id even if the frame stack churns.
+    next_frame_id: u64 = 1,
 
     // -- Live state migrated from kernel globals ---------------------------
     /// Recursion guard for `:bind` override (Phase 7.5). Was `g_recursion`
@@ -272,6 +324,7 @@ pub fn reset() void {
     g_current_vm.bytecode = null;
     g_current_vm.current_self = ref_mod.NIL;
     g_current_vm.bump_arena_slot = null;
+    g_current_vm.next_frame_id = 1;
 }
 
 /// Reserve frame-stack capacity so subsequent appends never realloc
