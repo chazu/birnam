@@ -173,6 +173,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const image_tests = b.addTest(.{ .root_module = image_test_mod });
+    image_tests.linkLibrary(dyncall_lib); // bootstrap → ffi → dyncall
+    image_tests.linkLibC();
     const run_image_tests = b.addRunArtifact(image_tests);
     test_step.dependOn(&run_image_tests.step);
 

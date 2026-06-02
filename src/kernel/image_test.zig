@@ -11,6 +11,9 @@ const kernel_eids = @import("kernel_eids.zig");
 const compiler = @import("compiler.zig");
 const object_table = @import("object_table.zig");
 const object = @import("object.zig");
+const bootstrap = @import("bootstrap.zig");
+const interner_mod = @import("interner.zig");
+const send_mod = @import("send.zig");
 
 fn vi(n: i64) ref.Ref {
     return ref.mkSmallInt(n).?;
@@ -255,6 +258,59 @@ test "loader: bytecode-method closure rebuilds from facts (Approach B)" {
 
     // Idempotent: a second pass rebuilds nothing.
     try testing.expectEqual(@as(usize, 0), try image.rematerializeClosures(a, &dst, &tbl_b));
+}
+
+test "end-to-end: user method survives save -> reboot -> load -> dispatch" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const al = arena.allocator();
+
+    // An arbitrary selector eid, stable across boots, above the kernel
+    // range and far above any allocated user eid. bind() uses it purely as
+    // an attribute key, so no interned name is required.
+    const SEL: u64 = 1 << 20;
+    const AST: u64 = 700;
+
+    // ---- Boot A: define `answer = ^42` on SMALLINT_VT, save image. ----
+    const store_a = try al.create(fs.FactStore);
+    store_a.* = fs.FactStore.init(al);
+    const table_a = try al.create(object_table.ObjectTable);
+    table_a.* = object_table.ObjectTable.init(al);
+    const intern_a = try al.create(interner_mod.Interner);
+    intern_a.* = interner_mod.Interner.init(al);
+    _ = try bootstrap.boot(al, store_a, table_a, intern_a);
+
+    // Method body AST = literal 42 (compiles to PUSH 42; RETURN).
+    _ = try store_a.assert(AST, kernel_eids.ATTR_VTABLE, ref.mkEid(kernel_eids.AST_LITERAL_VT), M_USER);
+    _ = try store_a.assert(AST, kernel_eids.ATTR_AST_VALUE, vi(42), M_USER);
+    var m = try compiler.compileMethod(al, store_a, AST);
+    defer m.deinit(al);
+    const method_eid = try compiler.materialize(al, store_a, table_a, &m, M_USER);
+    // Install on SMALLINT_VT under the chosen selector (user DATA).
+    _ = try store_a.assert(kernel_eids.SMALLINT_VT, SEL, ref.mkEid(method_eid), M_USER);
+
+    // Pre-save dispatch works.
+    var no_args: [0]ref.Ref = .{};
+    try testing.expectEqual(vi(42), send_mod.sendN(vi(0), SEL, &no_args, 0));
+
+    const res = try image.write(al, store_a, table_a.next_eid.load(.monotonic));
+
+    // ---- Reboot B: fresh kernel (no lang dylib), load image. ----
+    const store_b = try al.create(fs.FactStore);
+    store_b.* = fs.FactStore.init(al);
+    const table_b = try al.create(object_table.ObjectTable);
+    table_b.* = object_table.ObjectTable.init(al);
+    const intern_b = try al.create(interner_mod.Interner);
+    intern_b.* = interner_mod.Interner.init(al);
+    _ = try bootstrap.boot(al, store_b, table_b, intern_b); // initDispatch: globals->B, mcache cleared, Vm reset
+
+    const loaded = try image.load(store_b, res.bytes);
+    table_b.next_eid.store(loaded.next_eid, .monotonic); // restore eid allocator
+    _ = try image.rematerializeClosures(al, store_b, table_b); // Approach B
+
+    // The fn ptr was never serialized; it was rebuilt against this boot's
+    // kernel. Re-sending the selector dispatches the restored method.
+    try testing.expectEqual(vi(42), send_mod.sendN(vi(0), SEL, &no_args, 0));
 }
 
 test "image: rejects bad magic and version" {
