@@ -476,4 +476,16 @@ pub const ATTR_FRAME_PARENT: u64 = 182;
 /// Omitted (Date 1NF) when the method captures nothing.
 pub const ATTR_METHOD_CAPTURES_PTR: u64 = 183;
 
-// 184..255 reserved for future kernel selectors / attributes
+// -- Phase 12.0 — provenance split (184) -------------------------------------
+
+/// `M_USER` — module-provenance tag for runtime-created DATA facts (parsed
+/// AST, scope/binding entities, user-installed methods, REPL mutations).
+/// Distinct from any code-module eid (bootstrap, the dlopen-assigned module
+/// eids, `M_LANG`/`M_PEG`): CODE facts are reconstructed every boot by
+/// re-running module init, so they ride the unstable runtime module eid;
+/// DATA facts must ride this stable well-known eid so the image snapshot
+/// (Phase 12) can find them and so module unload can't retract them. The
+/// image writer persists `m == M_USER` facts only.
+pub const M_USER: u64 = 184;
+
+// 185..255 reserved for future kernel selectors / attributes

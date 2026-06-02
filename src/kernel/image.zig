@@ -26,6 +26,7 @@ const ref_mod = @import("ref.zig");
 const fact_store = @import("fact_store.zig");
 const strings = @import("strings.zig");
 const boxed = @import("boxed.zig");
+const kernel_eids = @import("kernel_eids.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store.FactStore;
@@ -161,8 +162,12 @@ pub fn write(
     var skipped: u64 = 0;
 
     // `meat` keys facts by module first, giving (m, e, a, v) directly.
+    // Provenance split (Phase 12.0): persist DATA facts only. CODE facts
+    // (bootstrap + module-init installs) are reconstructed on load by
+    // re-running module init, so they are never serialized.
     var m_it = store.meatIter();
     while (m_it.next()) |entry| {
+        if (entry.m != kernel_eids.M_USER) continue;
         if (!valueSupported(entry.v)) {
             skipped += 1;
             continue;

@@ -7,12 +7,14 @@ const fs = @import("fact_store.zig");
 const ref = @import("ref.zig");
 const boxed = @import("boxed.zig");
 const strings = @import("strings.zig");
+const kernel_eids = @import("kernel_eids.zig");
 
 fn vi(n: i64) ref.Ref {
     return ref.mkSmallInt(n).?;
 }
 
-const M_USER: u64 = 2;
+const M_USER: u64 = kernel_eids.M_USER;
+const M_CODE: u64 = kernel_eids.M_LANG; // a code-module tag — must NOT persist
 const E_A: u64 = 300;
 const E_B: u64 = 301;
 const A_REF: u64 = 400;
@@ -164,6 +166,25 @@ test "image: string-valued facts round-trip by bytes (slice 2)" {
 
     // Rebuilt string is a fresh allocation, not the original pointer.
     try testing.expect(got1 != s1);
+}
+
+test "image: persists M_USER facts only, skips code-module provenance" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var src = fs.FactStore.init(a);
+    _ = try src.assert(E_A, A_NUM, vi(1), M_USER); // user data — persist
+    _ = try src.assert(E_B, A_NUM, vi(2), M_CODE); // code fact — reconstructed on load, skip
+
+    const res = try image.write(a, &src, 256);
+    try testing.expectEqual(@as(u64, 1), res.facts_written);
+
+    var dst = fs.FactStore.init(a);
+    _ = try image.load(&dst, res.bytes);
+    try testing.expectEqual(vi(1), dst.currentValue(E_A, A_NUM).?);
+    // The code-module fact was not persisted (init rebuilds it).
+    try testing.expect(dst.currentValue(E_B, A_NUM) == null);
 }
 
 test "image: rejects bad magic and version" {

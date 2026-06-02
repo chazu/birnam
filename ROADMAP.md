@@ -1268,7 +1268,23 @@ This keeps Phase 12 minimal and low-risk: the non-serializable surface collapses
 
 **Orthogonality note (corrects a prior read):** finishing the lang switchover / retiring `g_unwinding` (11.5) does *not* remove the fn-ptr problem — `.method` holds a fn ptr regardless of which dispatcher it points at. Phase 12 serialization is independent of 11.5; do not gate one on the other.
 
+### Partition decision (2026-06-02) — provenance split, image persists data only
+
+**Problem found:** the module (`m`) column does not separate user data from module code. Each module's runtime-assigned `g_module_eid` (`module.zig:63`) tags *both* its code facts (primitive installs, grammar rules, kind-vt wiring — reconstructed by re-running init) *and* user data facts (parsed AST, scope/binding entities, REPL state — must persist). User compiled methods use a third tag, fixed `M_LANG` (`id_api.zig:373`). No clean line exists; reachability-from-roots doesn't escape it (distinguishing a user vt-method override from a primitive still needs provenance).
+
+**Latent bug it also exposes:** `retractAllOf(module_eid)` (`module.zig:121`) retracts *every* fact under a module eid on unload — including user data sharing `g_module_eid`. Unloading lang would delete user state.
+
+**Decision (full split):** introduce well-known **`M_USER`** (fixed kernel eid). Classify by **assert call-context**, not by attribute:
+- **CODE** (stays under the code-module eid; rebuilt every boot by `dlopen`+init): any fact asserted *inside module init*. May ride the unstable runtime `g_module_eid` — it is reconstructed, never replayed, so a fresh eid each boot is fine.
+- **DATA** (→ `M_USER`; persisted by the image): any fact asserted *in a runtime Imp path* (parse, eval, `method:do:` install, `:=`, bind, REPL mutation). Must ride the stable `M_USER` eid so the image finds it and it survives a module-eid reassignment.
+
+**Image rule: persist `M_USER`-tagged facts only.** Loader: boot kernel + `dlopen`+init (rebuilds all CODE) → replay `M_USER` facts → Approach-B rematerialize closures. Cross-references from DATA to CODE entities resolve because they point at stable kernel eids (kind-vts, kernel vts) or other persisted `M_USER` entities; the rare DATA→runtime-module-eid reference (e.g. REPL `:target` on the repl module's own eid) is session state, not persisted.
+
+**Bonus:** the split fixes the `retractAllOf` unload bug — unloading a code module no longer touches `M_USER` data.
+
 ### Work items
+
+12.0 **Provenance split (prerequisite).** Add `M_USER`; sweep every runtime-data assert across lang/peg/repl/query from `g_module_eid`/`M_LANG` to `M_USER` (parsed AST, scope, bindings, user methods, counters), leaving init/code installs under code-module eids. Image writer filters to `m == M_USER`. Verify unload no longer retracts `M_USER` data.
 
 12.1 **Image format.** Archive (directory or single concatenated file):
 - `roots.bin` — EAVT/AEVT/AVET/VAET root pointers + tx counter + EID allocator state + selector-table-head Ref. (Thread-mode tag NOT here — manifest.txt only, per ADR-11 addendum.)
