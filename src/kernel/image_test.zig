@@ -346,6 +346,33 @@ test "image: embedded manifest round-trips (modules, versions, thread mode)" {
     try testing.expectEqual(vi(1), dst.currentValue(E_A, A_NUM).?);
 }
 
+test "image: save/load through a real .brnimg file on disk" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path = try tmp.dir.realpath(".", &path_buf);
+    const full = try std.fs.path.join(a, &.{ path, "test.brnimg" });
+
+    var src = fs.FactStore.init(a);
+    _ = try src.assert(E_A, A_REF, try strings.mkString(a, "on disk"), M_USER);
+    _ = try src.assert(E_A, A_NUM, vi(99), M_USER);
+
+    const deps = [_]image.ModuleDep{.{ .name = "libbirnam_lang.dylib", .abi_hash = 0x42 }};
+    _ = try image.saveToFile(a, full, &src, 256, .{ .modules = &deps });
+
+    var dst = fs.FactStore.init(a);
+    const loaded = try image.loadFromFile(a, full, &dst);
+
+    try testing.expectEqual(@as(u64, 2), loaded.facts_loaded);
+    try testing.expectEqualStrings("on disk", strings.bytes(dst.currentValue(E_A, A_REF).?));
+    try testing.expectEqual(vi(99), dst.currentValue(E_A, A_NUM).?);
+    try testing.expectEqualStrings("libbirnam_lang.dylib", loaded.manifest.modules[0].name);
+}
+
 test "image: rejects bad magic and version" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

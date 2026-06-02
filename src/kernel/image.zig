@@ -286,6 +286,42 @@ pub fn load(store: *FactStore, bytes: []const u8) ReadError!LoadResult {
     return .{ .facts_loaded = fact_count, .next_tx = next_tx, .next_eid = next_eid, .manifest = manifest };
 }
 
+// -- On-disk file I/O -------------------------------------------------------
+
+pub const FileError = error{ FileOpenFailed, FileWriteFailed, FileReadFailed };
+
+/// Write a snapshot to `path` as a single `.brnimg` file. Pure data write —
+/// no toolchain. Returns the WriteResult (caller frees `.bytes`).
+pub fn saveToFile(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    store: *const FactStore,
+    next_eid: u64,
+    manifest: Manifest,
+) (WriteError || FileError)!WriteResult {
+    const res = try write(allocator, store, next_eid, manifest);
+    errdefer allocator.free(res.bytes);
+    const f = std.fs.cwd().createFile(path, .{ .truncate = true }) catch return error.FileOpenFailed;
+    defer f.close();
+    f.writeAll(res.bytes) catch return error.FileWriteFailed;
+    return res;
+}
+
+/// Read a `.brnimg` file and replay it into `store`. The file bytes are
+/// read into `allocator` and freed before returning (facts/strings are
+/// copied into the store's allocator during load).
+pub fn loadFromFile(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    store: *FactStore,
+) (ReadError || FileError)!LoadResult {
+    const f = std.fs.cwd().openFile(path, .{}) catch return error.FileOpenFailed;
+    defer f.close();
+    const bytes = f.readToEndAlloc(allocator, std.math.maxInt(usize)) catch return error.FileReadFailed;
+    defer allocator.free(bytes);
+    return load(store, bytes);
+}
+
 // -- Approach B: rematerialize closures from facts --------------------------
 
 pub const RematError = error{ OutOfMemory, StoreError };
