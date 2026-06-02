@@ -18,6 +18,7 @@ const kernel_eids = @import("kernel_eids.zig");
 const bootstrap = @import("bootstrap.zig");
 const send_mod = @import("send.zig");
 const strings = @import("strings.zig");
+const image = @import("image.zig");
 
 const Ref = ref_mod.Ref;
 
@@ -737,4 +738,45 @@ test "lang grammar: start fails on \"!!\" (no atom matches)" {
     const err = ref_mod.untagEid(result);
     const vt = s.store.currentValue(err, kernel_eids.ATTR_VTABLE).?;
     try testing.expectEqual(kernel_eids.ERROR_VT, ref_mod.untagEid(vt));
+}
+
+fn evalLine(s: anytype, lang_eid: u64, src: []const u8, a: std.mem.Allocator) Ref {
+    const sel_parse_expr = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+    const src_ref = strings.mkString(a, src) catch unreachable;
+    const ast_ref = send_mod.send1(ref_mod.mkEid(lang_eid), sel_parse_expr, src_ref);
+    return send_mod.send1(ast_ref, sel_eval, ref_mod.mkEid(kernel_eids.TOP_SCOPE_EID));
+}
+
+// Phase 12 — automated regression for the REPL-binding round-trip that the
+// shell `:save`/`:load` smoke proved manually. Two independent boots (fresh
+// store/table/interner each) with peg+lang loaded; a binding defined in the
+// first survives image save → reload into the second.
+test "image: REPL binding survives save -> fresh boot -> load (lang-driven)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // ---- Session A: define `let x := 41`, snapshot. ----
+    const sa = try fullSetup(&arena);
+    _ = (try sa.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_a = (try sa.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    try testing.expectEqual(@as(i64, 41), ref_mod.untagSmallInt(evalLine(sa, lang_a, "let x := 41", a)));
+    try testing.expectEqual(@as(i64, 41), ref_mod.untagSmallInt(evalLine(sa, lang_a, "x", a))); // same-session sanity
+
+    const res = try image.write(a, sa.store, sa.table.next_eid.load(.monotonic), .{}, sa.interner);
+
+    // ---- Session B: fresh boot + modules, load image, re-resolve `x`. ----
+    const sb = try fullSetup(&arena);
+    _ = (try sb.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_b = (try sb.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const loaded = try image.load(sb.store, res.bytes, sb.interner);
+    if (loaded.next_eid > sb.table.next_eid.load(.monotonic)) sb.table.next_eid.store(loaded.next_eid, .monotonic);
+    _ = try image.rematerializeClosures(a, sb.store, sb.table);
+
+    // The binding (M_USER) re-attaches to the stable top-level scope and the
+    // interned name `x` keeps its eid → `x` resolves to 41 in the new session.
+    try testing.expectEqual(@as(i64, 41), ref_mod.untagSmallInt(evalLine(sb, lang_b, "x", a)));
 }
