@@ -1244,7 +1244,11 @@ const ATTR_BIND_NAME: u64 = 136;
 const ATTR_BIND_VALUE: u64 = 137;
 const ATTR_BIND_NEXT: u64 = 164;
 
-// Singleton top-level scope EID, allocated at lang-dylib init.
+/// Mirror of kernel_eids.TOP_SCOPE_EID (185) — stable well-known eid for the
+/// top-level REPL scope so persisted bindings survive save/load.
+const TOP_SCOPE_EID: u64 = 185;
+
+// Singleton top-level scope EID — set to TOP_SCOPE_EID at lang-dylib init.
 var g_top_scope_eid: u64 = 0;
 
 fn newScopeEntity(parent_scope_ref: Ref, self_ref: Ref) u64 {
@@ -2135,10 +2139,14 @@ export fn birnam_module_init(
     cacheRuleNames();
     installMethods();
 
-    // Allocate the singleton top-level scope (T2b). REPL persistent
-    // bindings live here. AST_VAR_REF_VT resolves against this scope
-    // when no enclosing scope is active.
-    g_top_scope_eid = newScopeEntity(NIL, NIL);
+    // The singleton top-level scope (T2b) lives at a STABLE well-known eid
+    // (Phase 12). REPL persistent bindings hang off it as M_USER data; the
+    // scope entity's structural facts are CODE (module_eid) — reconstructed
+    // here every boot at the fixed eid so reloaded bindings re-attach.
+    // AST_VAR_REF_VT resolves against this scope when no enclosing scope is
+    // active.
+    g_top_scope_eid = TOP_SCOPE_EID;
+    _ = api.assert_fact(g_top_scope_eid, ATTR_VTABLE, mkEid(SCOPE_VT), module_eid);
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_TOP_LEVEL, mkEid(TRUE_EID), module_eid);
 
     // Export grammar EID on the module entity: `[<module_eid> grammar]`

@@ -488,4 +488,12 @@ pub const ATTR_METHOD_CAPTURES_PTR: u64 = 183;
 /// image writer persists `m == M_USER` facts only.
 pub const M_USER: u64 = 184;
 
-// 185..255 reserved for future kernel selectors / attributes
+/// `TOP_SCOPE_EID` — stable well-known eid for the lang module's top-level
+/// REPL scope. Phase 12: REPL bindings are persisted M_USER data and hang
+/// off this scope (`[TOP_SCOPE :scope-first-binding ...]`). The scope entity
+/// itself is reconstructed each boot by lang init (CODE), but at this fixed
+/// eid — so reloaded bindings re-attach instead of dangling on a
+/// freshly-allocated scope eid.
+pub const TOP_SCOPE_EID: u64 = 185;
+
+// 186..255 reserved for future kernel selectors / attributes
