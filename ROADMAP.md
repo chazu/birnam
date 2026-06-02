@@ -40,7 +40,7 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - 11.7.iv ✓ — atomic EID + tx counters via `std.atomic.Value(u64)`.
 - 11.7.v ✓ — `tx_engine.commit(op)` consolidated entry point.
 - 11.7.vi ✓ — `Interner.writer_lock` (`std.Thread.Mutex`) + lock-free reader fast path with under-lock recheck.
-- 11.7.vii — image manifest mode tag; gated on Phase 12 (no image format yet).
+- 11.7.vii — image manifest mode tag; gated on Phase 12 (no image format yet). See Phase 12 Framing decision (2026-06-02) — closure fn-ptr serialization boundary resolved as "bytecode methods = own entity kind; only native primitives relink on load."
 - 11.8 ✓ — annotation emit at materialize time (`:bytecode-stream`, `:constant-pool`, `:method-body-ast`, three sizing SmallInts, `:block-parent-method`).
 - 11.9 ✓ — tail-call probe CI gate (1M-depth two-handler chain, ReleaseFast). Failure = build error per ADR-11 addendum #7.
 - 11.10 partial — kernel-side end-to-end tests cover every opcode + composite programs (let + binary send → 6). Full parity vs tree-walker = lang module switchover gate.
@@ -1235,18 +1235,46 @@ VM gives portability + AOT. **C-shape bytecode (bytestream + annotations)** keep
 - **Shape D3:** archive used for Mode 1 live save AND as data input to AOT pipeline. Same bytes underneath both.
 - **Save is pure write:** segments mmap-flushable, manifest is text, roots are fixed-layout binary. No toolchain dependency.
 
+### Framing decision (2026-06-02) — callable representation & the fn-ptr serialization boundary
+
+**Forced by serialization analysis.** The object table (materialization layer) holds every materialized entity as `mkPointer(addr)` — a raw heap address. This is correct: it is a *cache*, and facts are canonical (the locked vision). On load, the cache is rebuilt from facts; nothing in the object table is serialized verbatim. Every entity obeys one invariant: **the materialized struct is pure cache; its truth lives in facts.** A boxed float caches an `f64` that is also a fact; a string, an RRB node — same. Throw the struct away, rebuild from facts.
+
+**One entity violates the invariant: the closure.** `Closure { method: *const anyopaque, data: Ref }` (`closure.zig:16`) holds a **raw function pointer** in `.method`, and that pointer is *not* a fact and *not* derivable from facts. It is the only materialized state that cannot be rebuilt from the fact store. It is also the one pointer class that points *outside the image* — into a dylib's `.text` — so it cannot be relocated by mmap + pointer-patch the way intra-image arena pointers can. It must be symbolically relinked against the freshly-`dlopen`'d module, or avoided.
+
+**Root cause is a representation choice, not the `-1` trick.** The `-1` trick (vt_ref at offset −1, `send.zig:190`) is pure class-lookup and is orthogonal — it works for any body shape. The misfit is that Phase 11.12 dressed *every* callable in the same `Closure{fnptr, data}` costume so all dispatch funnels through one fn-ptr call (`send.zig:235`). That conflates two fundamentally different kinds of callable:
+
+| kind | behavior lives in | `.method` fn ptr is… |
+|---|---|---|
+| **native primitive** (e.g. `smallintPlusImpl`) | dylib `.text` (machine code) | **irreducible** — there is no data form, and there should not be |
+| **bytecode method** (user `[vt method:#sel do:[…]]`) | **facts** (`:bytecode-stream`, `:constant-pool` — 11.8) | **redundant** — a dispatch shim over data already canonical |
+
+For native primitives, the unserializable fn ptr is *correct and inherent* — native code cannot be data. For bytecode methods, the fn ptr (`&bytecodeDispatcherImpl`, `dispatch.zig:338`) is an artifact of the uniform representation; the real content (`method_eid` → bytecode facts) is fully serializable.
+
+**Decision — bytecode methods are their own entity kind, not fn-ptr closures.**
+- Introduce `BYTECODE_METHOD_VT`. A bytecode-method entity carries `vt_ref` at −1 (trick preserved) and its body is the `method_eid` / bytecode + pool — all already in facts.
+- Dispatch branches on the resolved target's vt at the `bind`/`sendN` boundary (`send.zig:234`): native-closure → call `.method`; bytecode-method → enter the VM directly. The isEid/isPointer branch currently inside `bytecodeDispatcherImpl` (`dispatch.zig:366`) lifts up to this boundary; the fn-ptr indirection for compiled methods is removed.
+- Stop minting fn-ptr closures at `compile_block_as_method` / `allocClosureEntity` (`dispatch.zig:330`) for the *method* case. A block *closure* remains an entity, but its persisted form is `(method_eid, parent_self, captures)` — pure data — not a fn ptr.
+
+**Consequence for the image format:** the non-serializable set collapses to **only the kernel primitives** (~60 fn-ptr closures: 54 lang + 6 query + 3 repl). Those belong to the *loaded module, not the user image* — they are reinstalled by module init on every load (12.3 already `dlopen`s modules). User bytecode methods and at-rest block closures become plain facts that serialize for free. No symbolic fn-ptr table for user code; no EID-stability trap for user methods.
+
+**Amends 12.1 / 12.3 below:** the materialized struct arena (closures specifically) is **not** persisted and pointer-patched. Closures rematerialize from facts on load. `12.3` loader gains: after `dlopen`, re-run each module's primitive-install so primitive closures exist at known eids before user facts resolve their `mkEid(closure_eid)` references.
+
+**Open detail for the format spec (not a blocker):** block-closure captures are raw `Ref`s copied from locals (`dispatch.zig:242`); a capture may be a pointer (boxed float / scope entity). Persisted captures must be fact-backed eids (scope/binding entities are — 10.4.5), or the capture's referent must itself rematerialize from facts. Resolve when specifying capture serialization. **Snapshot is only coherent at rest** (`vm.frames` empty — `parent_frame_id` is a live-stack id); assert this at save.
+
+**Orthogonality note (corrects a prior read):** finishing the lang switchover / retiring `g_unwinding` (11.5) does *not* remove the fn-ptr problem — `.method` holds a fn ptr regardless of which dispatcher it points at. Phase 12 serialization is independent of 11.5; do not gate one on the other.
+
 ### Work items
 
 12.1 **Image format.** Archive (directory or single concatenated file):
 - `roots.bin` — EAVT/AEVT/AVET/VAET root pointers + tx counter + EID allocator state + selector-table-head Ref. (Thread-mode tag NOT here — manifest.txt only, per ADR-11 addendum.)
-- `segments/` — arena segments, mmappable (HAMT/RRB pages, materialized struct arena slabs).
+- `segments/` — arena segments, mmappable (HAMT/RRB pages, materialized struct arena slabs). **Closures excluded — rematerialized from facts on load, not persisted (see Framing decision 2026-06-02).**
 - `strings/` — dedicated string arena (split from 12.5 below).
 - `bytecode/` — bytecode bytestream arena (split for AOT RO segment future).
 - `manifest.txt` — dylib dep list with platform-native names, version tags, ABI hashes; thread-mode marker (`mode: single|datomic`); image format version; bytecode-format version (separate counter — opcode set evolution).
 
 12.2 **Snapshot writer.** Walk persistent index roots, identify dirty segments since last snapshot, write only those. Manifest regenerated each snapshot.
 
-12.3 **Snapshot loader.** Parse manifest → `dlopen` each module by name (verify ABI hash on load) → mmap segments → patch root pointers → fresh mcache (rebuild lazily per Phase 11 ADR #3).
+12.3 **Snapshot loader.** Parse manifest → `dlopen` each module by name (verify ABI hash on load) → **re-run each module's primitive-install so native fn-ptr closures exist at known eids (Framing decision 2026-06-02)** → mmap segments → patch root pointers → fresh mcache (rebuild lazily per Phase 11 ADR #3). User bytecode methods + block closures rematerialize from facts on first send.
 
 12.4 **Selector identity across reload.** Kernel selectors at well-known EIDs (already done — `kernel_eids.zig` range 0..255). User selectors re-intern via relocation table embedded in manifest (old-EID → new-EID).
 
