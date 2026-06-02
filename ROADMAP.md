@@ -1332,6 +1332,23 @@ Implementation deferred — needs real workload to pick defaults. Policy lives a
 ### Reasoning
 `.brnimg` makes birnam a real Smalltalk-style environment vs. a script that rebuilds state every run. **D3 hybrid** unifies live save and AOT input — same bytes underneath. **Pure data write** (no `cc`) makes save cheap, no toolchain pin. **Arena split** sets up Phase 14 RO segments. **Incremental save policy noted but not specced** — needs perf data first.
 
+### Status (2026-06-02) — core complete
+
+**Shipped (`src/kernel/image.zig`, format v5, single self-describing file):**
+- 12.0 provenance split (`M_USER`) ✓ — DATA persisted, CODE reconstructed; fixes unload bug.
+- 12.1 value codec ✓ — eid/smallint/keyword/nil, string, float, recursive RRB, and `:method-captures-ptr` (CaptureSpecArray, attribute-aware). Embedded **manifest** section + **interner** section. On-disk `saveToFile`/`loadFromFile`.
+- 12.3 loader ✓ (Approach B) — `rematerializeClosures` rebuilds fn-ptr closures from `:bytecode-stream` facts; shell `:save`/`:load` commands wired (shell builds manifest from loaded modules).
+- 12.4 identity ✓ — stable `TOP_SCOPE_EID` (185) + interner persistence so user names/bindings keep eids across reload.
+- **Proven**: kernel e2e (`^42` survives save→reboot→dispatch); lang-driven REPL-binding regression test (`let x := 41` survives fresh-boot reload); verified through the real `birnam` binary.
+
+**Deferred (intentionally — not blocking the core round-trip):**
+- **ABI-hash verify (12.3).** Manifest carries an `abi_hash` field (placeholder 0 today). NOT enforced: a dylib *content* hash would false-reject after any recompile; a correct check needs a module-exported **ABI-surface** hash (stable across compatible rebuilds), which is its own mechanism. Field stands ready; verification lands with that mechanism.
+- **mmap fast-path / arena split (12.5).** Format is replay-based today (correct, simple). mmap is a perf optimization — gated on perf data per this section's own reasoning. Single-file layout already supports it later (page-aligned sections + offset table).
+- **Incremental save policy (12.6).** Deferred until a real workload picks defaults.
+
+### Reasoning (Approach A revisit)
+Approach A (bytecode methods as `BYTECODE_METHOD_VT`, removing the fn-ptr indirection — see Framing decision) remains deferred to item 12.8 / Phase 14. Not needed: Approach B round-trips everything, proven.
+
 ---
 
 ## Phase 13 — Pruning
