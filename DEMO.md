@@ -1,31 +1,34 @@
 # birnam — demo
 
-End-to-end demonstration of the relational-fact-store substrate
-running a tiny Smalltalk-ish language built on top of itself.
+End-to-end demonstration of the relational-fact-store substrate running a tiny
+Smalltalk-ish language built on top of itself — one that you can mutate live,
+snapshot to disk, reload in a fresh process, wrap C libraries with, and freeze
+into a standalone binary.
 
 ## What this demo proves
 
-Birnam parses, desugars, and evaluates source code through a stack
-that is *entirely fact-shaped* — grammar rules, AST nodes, method
-tables, dispatch state, even error diagnostics live as facts in a
-HAMT-backed store. No bespoke data structures above the kernel.
+Birnam parses, desugars, compiles, and runs source code through a stack that is
+*entirely fact-shaped* — grammar rules, AST nodes, bytecode, method tables,
+dispatch state, even error diagnostics live as facts in a HAMT/RRB-backed
+store. No bespoke data structures above the kernel.
 
 The pipeline:
 
 ```
 source string
   → PEG engine (fact-shaped patterns + packrat memo)
-  → concrete syntax tree (entities with :ast-rule-name, byte spans,
-    linked-list children)
+  → concrete syntax tree (entities: :ast-rule-name, byte spans, linked children)
   → desugar pass (CST → typed AST with per-kind vtables)
-  → eval (send-dispatched per AST kind-vt, primitives on SmallInt)
+  → compile block bodies → bytecode (stored as facts)
+  → eval: top-level AST is tree-walked; user methods run on the stack VM
   → result Ref
 ```
 
-Every stage above the kernel substrate is malleable — patterns,
-grammar rules, AST kind-vt methods, SmallInt primitives are all
-asserted as facts at module-init and can be retracted + replaced
-live without a kernel restart.
+Every stage above the kernel substrate is malleable — patterns, grammar rules,
+AST kind-vt methods, SmallInt primitives, user methods are all asserted as facts
+and can be retracted + replaced live without a kernel restart. And because the
+whole image *is* the fact store, it persists: `:save` writes it, `:load` brings
+it back in a fresh process, `:freeze` compiles a wrapper into a dylib.
 
 ## Build
 
@@ -33,17 +36,14 @@ live without a kernel restart.
 zig build
 ```
 
-Produces:
+Produces `zig-out/bin/birnam` (the shell) and module dylibs in `zig-out/lib/`:
 
-- `zig-out/lib/libbirnam_peg.dylib`   — PEG engine façade
-- `zig-out/lib/libbirnam_lang.dylib`  — birnam grammar + desugar + eval
-- `zig-out/lib/libbirnam_query.dylib` — datalog query module (Phase 7)
-- `zig-out/lib/libbirnam_repl.dylib`  — Phase 6 REPL (Phase 10.5 replaces)
-- `zig-out/lib/libbirnam_hello.dylib` — smoke-test module
+- `libbirnam_peg.dylib`   — PEG engine façade
+- `libbirnam_lang.dylib`  — birnam grammar + desugar + bytecode compiler + eval + REPL
+- `libbirnam_query.dylib` — datalog query module (Phase 7)
+- `libbirnam_hello.dylib` — smoke-test module
 
 ## Run the demo
-
-### Interactive REPL (preferred — Phase 10.5)
 
 ```
 ./zig-out/bin/birnam \
@@ -51,211 +51,198 @@ Produces:
     ./zig-out/lib/libbirnam_lang.dylib
 ```
 
-You get a `birnam>` prompt. Each line is parsed by the PEG engine,
-desugared into a typed AST, and evaluated by the send-dispatched
-eval methods. Type expressions; results print as `=> value`. Lines
-starting with `:` are debug commands (`:reset` clears the scope
-stack — others land in follow-ups). Ctrl+D exits.
+A `birnam>` prompt. Each line is parsed by the PEG engine, desugared to a typed
+AST, and evaluated; results print as `=> value`. Lines starting with `:` are
+commands (see below). Ctrl-D exits. (Load `libbirnam_query.dylib` too for
+collection accessors like `count`/`at:`.)
 
-Try these in order:
+### 1. The language
 
 ```
 birnam> 42
 => 42
-
 birnam> [3 squared]
 => 9
-
-birnam> [5 succ]
-=> 6
-
 birnam> [[3 succ] squared]
 => 16
-
-birnam> [[3 vtable] method: #neg do: [| [self negate]]]
-=> <eid:68>
-
-birnam> [7 neg]
-=> -7
-
-birnam> [12 neg]
-=> -12
-
-birnam> [[3 vtable] method: #pick:or: do: [:a :b | b]]
-=> <eid:68>
-
-birnam> [99 pick: 10 or: 20]
-=> 20
-
-birnam> nil
-=> nil
-
-birnam> true
-=> true
-
 birnam> "hello"
 => "hello"
 ```
 
-Phase 10.4.5 — `let` bindings, `:=` assignment, closure capture,
-control flow, binary ops:
+`let` bindings, `:=` assignment, binary ops, control flow:
 
 ```
 birnam> let x := 42
 => 42
-
 birnam> [x squared]
 => 1764
-
 birnam> x := 99
 => 99
-
-birnam> [x + 1]
-=> 100
-
-birnam> let counter := 0
-=> 0
-
-birnam> counter := [counter + 1]
-=> 1
-
-birnam> counter := [counter + 1]
-=> 2
-
-birnam> counter := [counter + 1]
-=> 3
-
-birnam> counter
-=> 3
-
 birnam> [3 + 4]
 => 7
-
 birnam> [[3 < 5] ifTrue: [| 999] ifFalse: [| 0]]
 => 999
+```
 
+Closures over the enclosing scope:
+
+```
 birnam> let makeAdder := [:a | [:b | [a + b]]]
-=> <eid:NNN>
-
 birnam> let add10 := [makeAdder value: 10]
-=> <eid:NNN>
-
 birnam> [add10 value: 5]
 => 15
 ```
 
-Iteration, multi-statement blocks, comments:
+Iteration + multi-statement blocks + comments:
 
 ```
 birnam> let sum := 0
-=> 0
-
 birnam> [1 to: 10 do: [:i | sum := [sum + i]]]
-=> 1
-
 birnam> sum
 => 55
-
-birnam> let n := 0
-=> 0
-
-birnam> [3 timesRepeat: [| n := [n + 7]]]
-=> 3
-
-birnam> n
-=> 21
-
 birnam> let i := 0
-=> 0
-
 birnam> [[| [i < 5]] whileTrue: [| i := [i + 1]]]
-=> nil
-
 birnam> i
 => 5
-
-birnam> 42 // line comment after expression
+birnam> 42 // line comment
 => 42
-
 birnam> [3 /* block comment */ + 4]
 => 7
 ```
 
-Float literals + arithmetic + comparisons + non-local return `^`:
+Floats (with mixed-type coercion) + non-local return `^`:
 
 ```
-birnam> 3.14
-=> 3.14
-
 birnam> [3.14 + 2.0]
 => 5.140000000000001
-
-birnam> [[3 asFloat] + 0.14]
-=> 3.14
-
-birnam> [1.5 exp: 10]                      // 1.5 × 10^10 — replaces exponent grammar
-=> 15000000000
-
 birnam> [3.14 asInt]
 => 3
-
-birnam> [3.0 < 5.0]
-=> true
-
 birnam> [[3 vtable] method: #early do: [| ^99; 100]]
-=> <eid:NNN>
-
 birnam> [7 early]
 => 99
-
 birnam> [[3 vtable] method: #viablock do: [| [[| ^88] value]]]
-=> <eid:NNN>
-
 birnam> [5 viablock]
 => 88
 ```
 
-The `early` method's body is `^99; 100` — a two-statement block. The
-`^99` sets the unwinding sentinel and returns; the second statement
-`100` never runs. Method-frame shim catches the sentinel and returns
-99 to the caller.
+`early`'s body `^99; 100` is two statements; `^99` sets the unwind sentinel and
+the method-frame catches it — `100` never runs. `viablock` invokes an inner
+block whose body is `^88`; the value-frame *propagates* the sentinel, the
+enclosing method-frame catches — classic Smalltalk non-local return.
 
-The `viablock` method's body invokes an inner block via `[block value]`.
-The inner block's body is `^88`. The inner block runs inside a
-value-frame (selector = `value`), so its shim *propagates* the
-sentinel instead of catching. The outer method-frame catches and
-returns 88. Classic Smalltalk non-local return semantics.
+### 2. Defining methods live
 
-ADR-10-E4: this is the `g_unwinding` side-channel — minimum viable
-interim. Phase 11 bytecode VM retires it for proper VM unwind opcodes.
+`[<recv> vtable]` is the receiver's vtable; install a method on it. Live
+immediately for every value of that type — the install is just asserting facts,
+and the body compiles to bytecode:
 
-That last sequence is the classic closure-over-enclosing-scope demo:
-`makeAdder` is a 1-param block that returns a 1-param block. The
-returned block closes over `a` from the outer activation. When
-`makeAdder value: 10` runs, the inner block captures the scope where
-`a = 10`. Subsequent `add10 value: 5` finds `a = 10` two scopes up
-the chain via `:scope-parent` linkage, returns `10 + 5 = 15`.
+```
+birnam> [[3 vtable] method: #neg do: [| [self negate]]]
+birnam> [7 neg]
+=> -7
+birnam> [[3 vtable] method: #pick:or: do: [:a :b | b]]
+birnam> [99 pick: 10 or: 20]
+=> 20
+```
 
-Everything above runs through the same pipeline: PEG parse → CST →
-typed AST → eval, with SCOPE_VT and BINDING_VT entities materialized
-as facts in the store at each block invocation.
+### 3. The image is persistent — `:save` / `:load`
 
-What just happened:
+Your bindings and installed methods are facts; the whole image snapshots to a
+single self-describing `.brnimg` file and survives a process restart.
 
-- The `[[3 vtable] method: #neg do: [| [self negate]]]` line
-  *installed a user-defined method* on the kernel-fixed SmallInt
-  vtable from inside the running image. The block `[| [self
-  negate]]` evaluated to a kernel-shaped closure whose body is the
-  AST entity for `[self negate]`.
-- `[7 neg]` then dispatched against the installed method. The
-  block-invocation shim bound `self` to `7`, evaluated the body,
-  and returned `-7`.
-- `[[3 vtable] method: #pick:or: do: [:a :b | b]]` installed a
-  2-parameter block as a compound-keyword method. `[99 pick: 10
-  or: 20]` invoked it with `a = 10`, `b = 20`, returned `b`.
+```
+birnam> let answer := 42
+birnam> [[3 vtable] method: #double do: [| [self + self]]]
+birnam> :save app.brnimg
+[birnam] saved app.brnimg (56 facts, 2 modules)
+```
 
-The image you're typing into is the same fact store the test runner
-uses; you're just driving it via stdin instead of a Zig test.
+```
+# fresh process
+birnam> :load app.brnimg
+[birnam] loaded app.brnimg (56 facts, 1 methods rebuilt)
+birnam> answer
+=> 42
+birnam> [5 double]
+=> 10
+```
+
+Pure data write — no compiler/toolchain to save. On load the fact store is
+rebuilt and method closures are re-linked against the running kernel.
+
+### 4. Wrapping a C library — FFI from the REPL
+
+`Module` is a prototype (no classes). `load:` mints a module object; `wrap:as:
+signature:` declares a method bound to a C symbol (dyncall signature string,
+`"d)d"` = `double → double`):
+
+```
+birnam> let m := [Module load: "/usr/lib/libSystem.B.dylib"]
+birnam> [m wrap: #sqrt: as: "sqrt" signature: "d)d"]
+birnam> [m sqrt: 144.0]
+=> 12
+birnam> [m symbols]            // RRB of symbol entities (needs query module)
+```
+
+Wraps are **declarative facts** (symbol name + signature + selector). The
+`dlopen`/`dlsym` is deferred to a commit step, so they persist across `:save`/
+`:load` and **re-link by symbol name** in the new process — never a stale
+cached address.
+
+### 5. File-in — `:in` / `:in!`
+
+A wrapper (or any birnam unit) is a file of `;`-separated statements. File it in:
+
+```
+// libfoo.birnam
+let foo := [Module load: "libfoo.dylib"];
+[foo wrap: #open:  as: "foo_open"  signature: "p)p"];
+[foo wrap: #close: as: "foo_close" signature: "p)i"]
+```
+
+```
+birnam> :in libfoo.birnam
+[lang] filed in 3 forms (0 errors)
+```
+
+`:in` is atomic — a parse/eval error aborts the unit and applies nothing (the
+deferred `dlopen` never fires, so no half-open state). `:in!` is best-effort:
+evaluate every good form, report the rest.
+
+### 6. Freeze — compile a wrapper into a dylib
+
+`:freeze` turns the live wraps into a standalone wrapper **module dylib**:
+
+```
+birnam> let lib := [Module load: "/usr/lib/libSystem.B.dylib"]
+birnam> [lib wrap: #sqrt: as: "sqrt" signature: "d)d"]
+birnam> :freeze foo
+[birnam] froze 1 module(s), 1 wrap(s) -> foo.birnam + foo.zig
+[birnam] compiled libfoo.dylib
+```
+
+It reconstructs canonical source from the wrap facts (`foo.birnam`), emits a
+wrapper module (`foo.zig`) + the ABI mirror, and `zig build-lib`s `libfoo.dylib`.
+Load that dylib after peg/lang and its `birnam_module_init` re-files-in the
+wraps — `dlopen`ing the alien lib and binding the symbols:
+
+```
+./zig-out/bin/birnam …/libbirnam_peg.dylib …/libbirnam_lang.dylib ./libfoo.dylib
+birnam> [lib sqrt: 49.0]
+=> 7
+```
+
+No new kernel ABI — the frozen module replays the same `load:`/`wrap:` sends.
+
+### REPL commands
+
+| Command | Effect |
+|---|---|
+| `:save <path>` / `:load <path>` | snapshot / restore the image |
+| `:prune` | reachability GC: drop unreachable entities + collapse history |
+| `:reset` | clear the top-level scope (globals like `Module` survive) |
+| `:in <path>` / `:in! <path>` | file in a source unit (atomic / best-effort) |
+| `:freeze <base>` | freeze FFI wraps into a wrapper module dylib |
 
 ### Test-runner mode (CI)
 
@@ -263,10 +250,8 @@ uses; you're just driving it via stdin instead of a Zig test.
 zig build test
 ```
 
-Final line should read `Build Summary: 73/73 steps succeeded;
-277/277 tests passed`. The DEMO-labelled cases in the test output
-exercise the same path as the REPL — useful for CI regression
-checks. List them with:
+Should end `376/376 tests passed`. The DEMO-labelled cases exercise the same
+path as the REPL:
 
 ```
 zig build test --summary all 2>&1 | grep "DEMO"
@@ -274,213 +259,85 @@ zig build test --summary all 2>&1 | grep "DEMO"
 
 ## What to look at (suggested walk)
 
-For a recorded or live demo, the punchy story arc:
+### 1. The vision
 
-### 1. The vision (5 minutes)
+`VISION.md`. Two non-negotiable claims: **the image is a database** (code,
+methods, vtables, history — all in one HAMT/RRB fact store, no bolt-on log) and
+**everything is an object via prototypes** (vtables ARE prototypes, Piumarta/Self
+lineage — no class/instance split).
 
-Read `VISION.md`. The two non-negotiable claims:
+### 2. The kernel — `src/kernel/`
 
-- Tenet 0: "The image is a database." Everything — code, methods,
-  vtables, history — lives in a HAMT+RRB-backed relational fact
-  store. No bolt-on log, no separate metadata. (`VISION.md §6`.)
-- Tenet 1: "Everything is an object." Vtables ARE prototypes
-  (Piumarta/Self lineage). No class/instance split. (`VISION.md
-  §94-105`.)
-
-### 2. The kernel (10 minutes)
-
-Walk `src/kernel/` top to bottom:
-
-- `hamt.zig`, `rrb.zig` — two persistent collections, ~500 LOC each
-- `ref.zig` — 3-bit tagged pointers (pointer / SmallInt / EID /
-  keyword / string / reserved)
-- `fact_store.zig` — five indexes (EAVT/AEVT/AVET/VAET/MEAT),
-  6-column tuples with module-provenance
+- `hamt.zig`, `rrb.zig` — two persistent collections
+- `ref.zig` — 3-bit tagged pointers (pointer / SmallInt / EID / keyword / string)
+- `fact_store.zig` — five indexes (EAVT/AEVT/AVET/VAET/MEAT), 6-column tuples
+  with module-provenance + per-fact tx/op history
 - `object_table.zig` — EID → Ref HAMT with hotness counters
-- `send.zig` — variadic dispatch (`Imp = fn(*Send, [*]const Ref,
-  usize) Ref`) shipped in Phase 10.2.5 via β refactor of 37 method
-  impls. mcache hit on hot path, fact-store lookup on cold.
-- `bootstrap.zig` — brings up vtables, asserts seed facts, installs
-  ~5 native kernel methods. Stage 17 reserves the Phase 10.1 EID
-  block.
+- `send.zig` — variadic dispatch; mcache hit on hot path, fact-store on cold
+- `bytecode.zig` + `compiler.zig` — block bodies compile to bytecode (stored as
+  facts); `dispatch.zig` runs the stack VM with an inline method cache
+- `image.zig` — `.brnimg` snapshot/load (M_USER facts + interner + manifest)
+- `prune.zig` — reachability mark-sweep + `compact`
+- `ffi.zig` / `ffi_module.zig` — dyncall FFI + the `Module` prototype + declarative
+  deferred-resolve wraps; `freeze.zig` — wrapper-dylib emission
+- `bootstrap.zig` — brings up vtables + seed facts + native methods
 
-Show the line where the kernel becomes alive:
+The line where the kernel becomes alive: `send_mod.initDispatch(store, table, allocator)`.
 
-```
-send_mod.initDispatch(store, table, allocator);
-```
+### 3. The PEG engine — `src/kernel/peg.zig`
 
-After that one line, `[obj vtable]` works via the full dispatch path.
-
-### 3. The PEG engine (5 minutes)
-
-Walk `src/kernel/peg.zig`:
-
-- Patterns are entities. `:pattern-kind` is an interned keyword
-  (`:literal`, `:seq`, `:choice`, `:star`, …). 12 combinators.
-- `matchPattern` is a recursive Zig walker that reads `:pattern-kind`
-  off the receiver and dispatches.
-- Packrat memo lives in an `AutoHashMap(MemoKey, MemoEntry)` —
-  hot-path cache, NOT fact-shaped. (Phase 8 derived-state separation.)
-- CST nodes get `:ast-rule-name`, `:ast-byte-start/end`,
-  `:ast-first-child` + `:ast-next-sibling` linked-list children.
-- Failure emits an `ERROR_VT` entity with `:peg-position` +
-  `:peg-expected :many`.
-
-User-facing surface via send-dispatch on `PEG_VT` / `GRAMMAR_VT`:
+Patterns are entities (`:pattern-kind` keyword, 12 combinators). `matchPattern`
+is a recursive walker; packrat memo is a hot-path cache (not fact-shaped). CST
+nodes carry `:ast-rule-name`, byte spans, linked children. User surface:
 
 ```
-[PEG newGrammar]              → grammar entity EID
-[PEG literal: "true"]         → pattern entity EID
-[PEG seq: a b c …]            → variadic pattern entity EID
-[PEG charset: 'a' 'z' '0' '9'] → range-list pattern entity EID
-[grammar defineRule: "ident" as: pattern]  → rule entity EID
-[grammar parse: source from: "start"]      → AST root EID | ERROR_VT EID
+[PEG newGrammar] / [PEG literal: "x"] / [PEG seq: …] / [PEG charset: …]
+[grammar defineRule: "ident" as: pattern]
+[grammar parse: source from: "start"]   → AST root EID | ERROR_VT EID
 ```
 
-### 4. The grammar (3 minutes)
+### 4. The grammar + pipeline — `src/modules/lang/lang.zig`
 
-Walk `src/modules/lang/lang.zig` `buildGrammar()`. The grammar is
-~20 PEG rules, asserted from Zig via send-dispatched PEG calls. No
-DSL file — `[grammar defineRule: ...]` sends do the assembly.
+`buildGrammar()` asserts ~25 PEG rules via send-dispatched PEG calls — no DSL
+file, the same surface a user mutates at runtime. `parseExprImpl` runs
+parse → CST → `desugar` → typed AST; block bodies go through the compiler to
+bytecode. The `language` prototype hosts file-in (`fileIn:` / `fileInSource:`).
 
-This is the same surface a user would use to mutate the grammar at
-runtime, which is the point: there's no privileged "the grammar"
-that lives somewhere other than the fact store.
+### 5. The roadmap — `ROADMAP.md`
 
-Show how a single rule like `bracket-keyword` decomposes into a
-sequence of literal + ws + expression + kw-arg+ + ws + literal
-patterns, each of which is itself a fact.
-
-### 5. The pipeline (5 minutes)
-
-Walk through `parseExprImpl` in `src/modules/lang/lang.zig`:
-
-1. Receive source string Ref.
-2. `[grammar parse: src from: "start"]` returns CST root EID.
-3. `desugar(cst_eid)` walks the CST, builds typed AST with kind-vts.
-4. Returns typed AST root EID.
-
-Then `[ast eval]` dispatches per kind-vt:
-
-- `AST_LITERAL_VT eval` → return `:ast-value`
-- `AST_UNARY_SEND_VT eval` → eval receiver, send selector
-- `AST_KEYWORD_SEND_VT eval` → eval receiver, eval args, sendN
-- `AST_SELF_VT eval` → return `s.state`
-
-Each eval method is a regular fact installed at lang-dylib init —
-user code can override any of them via `[<kind-vt> method: #eval
-do: [...]]` once Phase 10.4 method-install ships.
-
-### 6. The substrate moment (2 minutes) — drive it live
-
-Open a terminal, run `./zig-out/bin/birnam ./zig-out/lib/
-libbirnam_peg.dylib ./zig-out/lib/libbirnam_lang.dylib`, and type at
-the prompt. The session in the "Run the demo" section above is the
-walk script. Show the install line, then dispatch through the user-
-defined method, then add a second method with parameters and
-dispatch it. Each prompt-and-result pair is one full trip through:
-
-```
-src_ref = mkString("[3 squared]")
-ast_ref = send1(<lang_module>, parseExpr:, src_ref)
-        → grammar.parse:from: → CST entities asserted under M_PEG
-        → desugar() walks CST, asserts typed AST under M_LANG
-val     = send0(ast_ref, eval)
-        → AST_UNARY_SEND_VT.eval
-            → recurse send0(receiver_ast, eval)
-                → AST_LITERAL_VT.eval → returns SmallInt(3)
-            → send0(SmallInt(3), squared)
-                → SMALLINT_VT.squared → returns SmallInt(9)
-val == SmallInt(9)
-```
-
-Every arrow above is a fact-store query + a method dispatch. Every
-intermediate result is an entity (or an immediate). The CST nodes
-and AST nodes are *still in the store* after eval completes — you
-can query history to see what was parsed, what shape it had, what
-got asserted under which module's provenance.
-
-### 7. The roadmap (2 minutes)
-
-Open `ROADMAP.md`. Show:
-
-- ✓ Phases 0–9.5 (substrate + datalog + alien-code absorption)
-- ✓ Phase 10.0 (PEG engine)
-- ✓ Phase 10.1 (grammar + slot block)
-- ✓ Phase 10.2.5 (variadic dispatch — kernel-deep edit per
-  ADR-10-Send-Arity)
-- ✓ Phase 10.2 (parser/desugar) + 10.3 minimal (eval)
-- ✓ Phase 10.4 (method install via `[vt method:#sel do:[block]]`)
-- ✓ Phase 10.4 follow-up (block params `[:x :y | body]` + compound
-  symbols `#kw1:kw2:`)
-- ✓ Phase 10.5 (REPL — lang dylib drives the stdin loop)
-- ✓ Phase 10.x (binary ops `+ - * / < > =`, `ifTrue:ifFalse:`,
-  block `[block value: x]`)
-- ✓ Phase 10.4.5 S1-S4 (fact-shaped scope chain via SCOPE_VT +
-  BINDING_VT entities, closure capture by reference, `let`,
-  `:=` assignment, REPL persistence across lines)
-- ✓ Iteration primitives (`whileTrue:` / `whileFalse:` on
-  CLOSURE_VT; `timesRepeat:` / `to:do:` on SMALLINT_VT)
-- ✓ `;` statement separator + multi-stmt block bodies via
-  AST_STMT_SEQ_VT
-- ✓ Line comments `// ...` + block comments `/* ... */` skipped
-  by `ws`
-- ✓ Float literals + Float methods on FLOAT_VT (`+ - * / = < >`,
-  `negate`, `asInt`, `asFloat` on SmallInt, `exp:` for exponent)
-  with SmallInt mixed-type coercion
-- ✓ Non-local return `^` (ADR-10-E4 `g_unwinding` interim, retires
-  in Phase 11)
-- ~~Phase 10.4.5 S5~~ — superseded by Phase 11 bytecode VM
-  (compiles AST_VAR_REF_VT to bytecode slot operands; tree-walker
-  optimization redundant)
-- 🗓 Phase 11 — bytecode VM
-- 🗓 Phase 12 — image snapshot
-- 🗓 Phase 13 — pruning + reachability GC
-- 🗓 Phase 14 — AOT
+- ✓ Phases 0–9.5 — substrate, datalog, FFI, modules, schema
+- ✓ Phase 9.5.6 — FFI reachable from the language, file-in, declarative
+  relink-by-name wraps, **freeze**
+- ✓ Phase 10 — PEG engine, grammar, desugar, eval, method install, scope chain
+- ✓ Phase 11 — bytecode VM (user methods dispatch through the VM)
+- ✓ Phase 12 — image snapshot (`:save`/`:load`)
+- ✓ Phase 13 — pruning + reachability GC (`:prune`)
+- 🟡 Phase 14 — AOT (static + `--strip=malleable` shipped; driver + variants pending)
+- 🗓 Phase 15 — native codegen · Phase 16 — GC
 
 ## What's NOT in the demo yet
 
-(So the audience knows what's coming.)
-
-- **Multi-line REPL input.** The interactive REPL is still one
-  expression per line; multi-statement units come in via file-in
-  (`:in`, `;`-separated forms), not yet inline at the prompt.
-- **Auto-generated wrappers (UC3).** `[mod symbols]` enumerates a
-  dylib's symbols, but generating a wrapper unit from them needs a
-  signature source (headers / sig DB / placeholders) — not built.
-- **Native codegen (Phase 15) + GC (Phase 16).** Bytecode runs on a
-  stack VM; process-lifetime allocations are currently just leaked.
-
-(Shipped since this walk was written: Phase 11 bytecode VM, Phase 12
-image snapshot `:save`/`:load`, Phase 13 prune, FFI-from-language +
-file-in + freeze — see the FFI bullet below and ROADMAP.)
+- **Multi-line REPL input.** The interactive prompt is still one expression per
+  line; multi-statement units come in via file-in (`:in`), not inline.
+- **Auto-generated wrappers.** `[mod symbols]` enumerates a dylib's symbols, but
+  generating a wrapper from them needs a signature source (headers / sig DB /
+  placeholders) — not built.
+- **Native codegen (Phase 15) + GC (Phase 16).** Bytecode runs on a stack VM;
+  process-lifetime allocations are currently just leaked.
 
 ## What's interesting beyond the demo
 
-- The fact store is queryable as Datalog. `[db findAll: ?vt where:
-  #([?vt :name 'Point'])]` (Phase 7).
-- History is free and as-of-able. Every assert carries a `tx`
-  column; querying as-of an older `tx` shows the world at that
-  point.
-- Dyncall-backed FFI, reachable from the language (Phase 9 / 9.5.6).
-  `let m := [Module load: "/usr/lib/libSystem.B.dylib"]` then
-  `[m wrap: #sqrt: as: "sqrt" signature: "d)d"]` → `[m sqrt: 144.0]`
-  ⇒ 12. Wraps are declarative facts (deferred `dlopen`, relink by
-  symbol name across `:save`/`:load`). `:in libfoo.birnam` files in a
-  wrapper unit; `:freeze foo` compiles it to a standalone wrapper
-  dylib that re-establishes the wraps on load.
-- Predicates + functions as fact entities (Phase 7.4). Override-able
-  bind via `:bind` attribute (Phase 7.5).
-- Schema-driven multi-cardinality attributes (Phase 9.5.2,
-  ADR-9.5-D2 polymorphic currentValue).
+- The fact store is queryable as Datalog (Phase 7), with free, as-of-able
+  history — every assert carries a `tx` column.
+- Predicates + functions as fact entities (7.4); override-able `bind` (7.5).
+- Schema-driven multi-cardinality attributes (9.5.2).
+- AOT: `zig build aot` → `birnam-aot` (REPL over a baked image) and
+  `birnam-aot-malleable` (parser/compiler stripped, runs baked bytecode).
 
 ## Files to skim if you have 30 seconds
 
-- `VISION.md` — design rationale
-- `ROADMAP.md` — phase-by-phase plan + locked decisions + ADRs
+- `VISION.md` — design rationale · `ROADMAP.md` — phases + ADRs
 - `src/kernel/peg.zig` — engine + send-dispatched constructors
-- `src/modules/lang/lang.zig` — grammar build + desugar + eval +
-  SmallInt primitives, all in one file. ~900 LOC. The whole
-  malleable tower above the substrate.
-- `src/kernel/lang_module_test.zig` — DEMO cases
+- `src/modules/lang/lang.zig` — grammar + desugar + eval + file-in, one file
+- `src/kernel/ffi_module.zig` + `freeze.zig` — the Module prototype + freeze
+- `src/kernel/lang_module_test.zig` — DEMO cases (incl. FFI / file-in / freeze)
