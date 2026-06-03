@@ -80,6 +80,47 @@ fn markReachable(store: *const FactStore, scratch: std.mem.Allocator) PruneError
     return marked;
 }
 
+// -- Phase 14 M2: AST data strip (--strip=malleable) ------------------------
+
+fn isAstAttr(a: u64) bool {
+    return a == kernel_eids.ATTR_METHOD_BODY_AST or a == kernel_eids.ATTR_METHOD_AST_RANGE;
+}
+
+fn keepNonAst(astSet: *MarkSet, m: u64, e: u64, a: u64, v: Ref) bool {
+    _ = v;
+    if (m != kernel_eids.M_USER) return true; // CODE untouched
+    if (astSet.contains(e)) return false; // AST node / range entity
+    if (isAstAttr(a)) return false; // method -> AST debug back-ref
+    return true;
+}
+
+/// Drop the user's parsed AST trees + bytecode→AST debug back-refs from the
+/// store (Phase 14 M2). A pure-VM (`--strip=malleable`) binary runs bytecode,
+/// never the AST, so these are dead weight. Methods keep their
+/// `:bytecode-stream`/`:constant-pool`. Returns facts dropped.
+pub fn stripAst(
+    store: *FactStore,
+    table: *ObjectTable,
+    scratch: std.mem.Allocator,
+) PruneError!usize {
+    // AST nodes carry :ast-byte-start; range entities carry :range-method.
+    var astSet = MarkSet.init(scratch);
+    defer astSet.deinit();
+    var it = store.meatIter();
+    while (it.next()) |f| {
+        if (f.m != kernel_eids.M_USER) continue;
+        if (f.a == kernel_eids.ATTR_AST_BYTE_START or f.a == kernel_eids.ATTR_RANGE_METHOD)
+            try astSet.put(f.e, {});
+    }
+    // Clear object-table slots for AST entities (rarely materialized, but
+    // be safe), then rewrite.
+    var keys = astSet.keyIterator();
+    while (keys.next()) |e| table.clear(e.*) catch {};
+
+    const cs = store.compact(scratch, &astSet, keepNonAst) catch return error.OutOfMemory;
+    return cs.dropped;
+}
+
 fn keep(marked: *MarkSet, m: u64, e: u64, a: u64, v: Ref) bool {
     _ = a;
     _ = v;

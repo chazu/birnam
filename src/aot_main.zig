@@ -19,6 +19,10 @@ const interner_mod = @import("kernel/interner.zig");
 const bootstrap = @import("kernel/bootstrap.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const image = @import("kernel/image.zig");
+const prune = @import("kernel/prune.zig");
+const send_mod = @import("kernel/send.zig");
+const ref_mod = @import("kernel/ref.zig");
+const bopts = @import("build_opts");
 
 // Modules linked statically (self-contained — import only std, talk via the
 // C-ABI IdApi). Init is called namespace-qualified; the kernel's ShellContext
@@ -72,11 +76,45 @@ pub fn main() !void {
     id_api_mod.setInterner(interner);
     const api = id_api_mod.populate();
 
-    // Static module init (same order as the dylib load: peg before lang).
+    if (bopts.strip_malleable) {
+        // --strip=malleable: pure-VM binary. No peg, no frontend (parser /
+        // AST-eval / REPL). Load the image FIRST so the restored interner
+        // makes primitive selector interns resolve to the image's eids, THEN
+        // install primitives (M3 langPrimitivesTier).
+        lang.langSetup(@ptrCast(&shell_context), @ptrCast(&api), table.alloc());
+        const loaded = image.load(store, BakedImage, interner) catch |e| {
+            stderrPrint("[aot] image load failed: {}\n", .{e});
+            return e;
+        };
+        if (loaded.next_eid > table.next_eid.load(.monotonic)) table.next_eid.store(loaded.next_eid, .monotonic);
+        _ = prune.stripAst(store, table, allocator) catch {}; // M2: drop user AST trees
+        lang.langPrimitivesTier();
+        _ = image.rematerializeClosures(allocator, store, table) catch {};
+        stderrPrint("[aot] malleable: loaded baked image ({d} facts), AST stripped\n", .{loaded.facts_loaded});
+
+        // M6 (minimal): send the entry selector to a SmallInt receiver,
+        // exit with the result. (General module-entity entry: pending.)
+        if (bopts.entry_selector.len > 0) {
+            const sel = interner.str_to_eid.get(bopts.entry_selector) orelse {
+                stderrPrint("[aot] entry selector '{s}' not in image\n", .{bopts.entry_selector});
+                return;
+            };
+            const recv = ref_mod.mkSmallInt(bopts.entry_recv).?;
+            var no_args: [0]ref_mod.Ref = .{};
+            const result = send_mod.sendN(recv, sel, &no_args, 0);
+            if (ref_mod.isSmallInt(result)) {
+                const n = ref_mod.untagSmallInt(result);
+                stdoutPrint("[aot] {s} {d} => {d}\n", .{ bopts.entry_selector, bopts.entry_recv, n });
+                std.process.exit(@intCast(@as(u8, @truncate(@as(u64, @bitCast(n))))));
+            }
+        }
+        return;
+    }
+
+    // No-strip: full tower. Static module init (peg before lang), then load.
     initModule(peg, &shell_context, &api, table.alloc());
     initModule(lang, &shell_context, &api, table.alloc());
 
-    // Load the baked snapshot: restore interner + facts, rebuild closures.
     const loaded = image.load(store, BakedImage, interner) catch |e| {
         stderrPrint("[aot] image load failed: {}\n", .{e});
         return e;

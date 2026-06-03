@@ -100,6 +100,29 @@ test "prune: REPL binding chain + its bound method kept" {
     try testing.expect(stats.swept_entities >= 1);
 }
 
+test "stripAst: drops AST nodes + method->AST back-refs, keeps bytecode" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store = fs.FactStore.init(a);
+    var table = ot.ObjectTable.init(a);
+
+    // Method 500 with bytecode + an AST back-ref to AST node 510.
+    try fakeMethod(&store, a, 500);
+    _ = try store.assert(500, ke.ATTR_METHOD_BODY_AST, ref.mkEid(510), M_USER);
+    _ = try store.assert(510, ke.ATTR_AST_BYTE_START, vi(0), M_USER); // marks 510 as AST
+    _ = try store.assert(510, ke.ATTR_AST_VALUE, vi(42), M_USER);
+    _ = try store.assert(ke.SMALLINT_VT, 9999, ref.mkEid(500), M_USER); // install
+
+    _ = try prune.stripAst(&store, &table, a);
+
+    // Bytecode + install kept; AST node + the :method-body-ast back-ref gone.
+    try testing.expect(store.currentValue(500, ke.ATTR_BYTECODE_STREAM) != null);
+    try testing.expectEqual(ref.mkEid(500), store.currentValue(ke.SMALLINT_VT, 9999).?);
+    try testing.expect(store.currentValue(500, ke.ATTR_METHOD_BODY_AST) == null);
+    try testing.expect(store.currentValue(510, ke.ATTR_AST_VALUE) == null);
+}
+
 var g_demote_table: ?*ot.ObjectTable = null;
 fn demoteHook(e: u64, a: u64) callconv(.c) void {
     _ = a;

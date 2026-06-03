@@ -59,20 +59,45 @@ pub fn build(b: *std.Build) void {
     // statically-linked modules).
     const dylib_init_opts = b.addOptions();
     dylib_init_opts.addOption(bool, "export_init", true);
-    const static_init_opts = b.addOptions();
-    static_init_opts.addOption(bool, "export_init", false);
 
-    const aot_mod = b.createModule(.{
+    const aot_step = b.step("aot", "Build the static AOT executables (embed src/aot_embed.brnimg)");
+
+    // No-strip artifact: full tower, REPL over baked state.
+    const full_opts = b.addOptions();
+    full_opts.addOption(bool, "export_init", false);
+    full_opts.addOption(bool, "strip_malleable", false);
+    full_opts.addOption([]const u8, "entry_selector", "");
+    full_opts.addOption(i64, "entry_recv", 0);
+    full_opts.addOption(bool, "strip_ast", false);
+    const aot_full_mod = b.createModule(.{
         .root_source_file = b.path("src/aot_main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    aot_mod.addOptions("build_opts", static_init_opts); // peg/lang @import resolve here
-    const aot_exe = b.addExecutable(.{ .name = "birnam-aot", .root_module = aot_mod });
-    aot_exe.linkLibrary(dyncall_lib);
-    aot_exe.linkLibC();
-    const aot_step = b.step("aot", "Build the static AOT executable (embeds src/aot_embed.brnimg)");
-    aot_step.dependOn(&b.addInstallArtifact(aot_exe, .{}).step);
+    aot_full_mod.addOptions("build_opts", full_opts); // peg/lang @import resolve here
+    const aot_full = b.addExecutable(.{ .name = "birnam-aot", .root_module = aot_full_mod });
+    aot_full.linkLibrary(dyncall_lib);
+    aot_full.linkLibC();
+    aot_step.dependOn(&b.addInstallArtifact(aot_full, .{}).step);
+
+    // --strip=malleable artifact: pure-VM, no parser/frontend; entry sends
+    // `double` to SmallInt 5 (=> 10) to demonstrate baked bytecode dispatch.
+    const mall_opts = b.addOptions();
+    mall_opts.addOption(bool, "export_init", false);
+    mall_opts.addOption(bool, "strip_malleable", true);
+    mall_opts.addOption([]const u8, "entry_selector", "double");
+    mall_opts.addOption(bool, "strip_ast", false);
+    mall_opts.addOption(i64, "entry_recv", 5);
+    const aot_mall_mod = b.createModule(.{
+        .root_source_file = b.path("src/aot_main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    aot_mall_mod.addOptions("build_opts", mall_opts);
+    const aot_mall = b.addExecutable(.{ .name = "birnam-aot-malleable", .root_module = aot_mall_mod });
+    aot_mall.linkLibrary(dyncall_lib);
+    aot_mall.linkLibC();
+    aot_step.dependOn(&b.addInstallArtifact(aot_mall, .{}).step);
 
     // -- Hello dylib (Phase 5 smoke-test module) -----------------------------
 

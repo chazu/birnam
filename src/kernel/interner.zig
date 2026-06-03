@@ -104,6 +104,17 @@ pub const Interner = struct {
     pub fn restoreEntry(self: *Interner, eid: u64, name: []const u8) !void {
         self.writer_lock.lock();
         defer self.writer_lock.unlock();
+        // Never let a restored entry shadow a kernel-seeded selector. Kernel
+        // selectors (e.g. SEL_PLUS) live at fixed eids < USER_EID_START and
+        // are re-seeded deterministically by boot; the compiler emits those
+        // fixed eids in bytecode. An image may carry a stray duplicate
+        // (same name interned again at a user eid) — restoring it would
+        // remap `str_to_eid[name]` to the user eid, breaking dispatch when
+        // primitives are installed after load (AOT --strip=malleable). If
+        // the name already binds to a kernel eid, keep it.
+        if (self.str_to_eid.get(name)) |existing| {
+            if (existing < kernel_eids.USER_EID_START) return;
+        }
         const dup = try self.allocator.dupe(u8, name);
         self.str_to_eid = try self.str_to_eid.assoc(dup, eid);
         self.eid_to_str = try self.eid_to_str.assoc(eid, dup);
