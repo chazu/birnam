@@ -1502,6 +1502,11 @@ All four of those load steps already exist and are tested. RO mmap segments (old
 
 **Net:** Phases 12/13 de-risked 14's hard parts (serialization, closure rebuild, prune all done + tested). Remaining real work: the `lang` init tiering (M3), the AOT driver/codegen (M1/M4/M6), and the data-strip pre-pass wiring (M2). `:history-required` flag (old 14.3) — drop; not needed.
 
+### Status (2026-06-02)
+- **M3 tiering ✓** — `lang` init split into `langSetup` / `langPrimitivesTier` / `langMethodDoTier` / `langFrontendTier`; dylib path calls all (unchanged, 373/373).
+- **M1 + M4 ✓ (static, no-strip artifact)** — `src/aot_main.zig` + `zig build aot` produce `birnam-aot`: a standalone exe (`otool -L`: no birnam/dyncall deps) that `@embedFile`s a `.brnimg`, statically inits peg+lang (namespaced `moduleInitImpl`, no dlopen), loads the snapshot, rematerializes, runs the REPL over baked state. Export-collision solved by gating the `birnam_module_init` C export on `build_opts.export_init` (true=dylib, false=static). Proven: baked `answer` resolves to 42 in the standalone binary.
+- **Remaining:** M2 data-strip pre-pass (prune AST roots before bake); tier-selective init for `--strip=malleable` (call `langPrimitivesTier` w/o `langFrontendTier` — the AOT must run `image.load` *before* `langPrimitivesTier` so primitive interns resolve to the restored interner's eids); M6 entry-selector semantics; M5 `--strip=history` (largely free); the `birnam --aot=…` driver that copies the image to the embed path + invokes `zig build aot` per-app (today it's a fixed-fixture build target).
+
 ### Reasoning
 **This is the deliverable that takes birnam from "interesting toy" to "real systems language."** Two-flag combinatorial surface kept small (four sensible outputs) instead of knob-soup. `--aot=dynamic` preserves your stated AOT-with-runtime-dylib-loading requirement. `--strip=malleable` + `--aot=dynamic` is the "ship a plugin host" preset. `--strip=malleable` + `--strip=history` + `--aot=static` is the "ship a frozen end-user app" preset. Both extremes natural; not bolted on.
 
