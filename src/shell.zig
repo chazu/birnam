@@ -26,6 +26,7 @@ const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
 const image = @import("kernel/image.zig");
 const prune = @import("kernel/prune.zig");
+const ffi_module = @import("kernel/ffi_module.zig");
 const kernel_eids = @import("kernel/kernel_eids.zig");
 const send_mod = @import("kernel/send.zig");
 const strings = @import("kernel/strings.zig");
@@ -85,6 +86,10 @@ fn handleImageCommand(
         const cur = table.next_eid.load(.monotonic);
         if (loaded.next_eid > cur) table.next_eid.store(loaded.next_eid, .monotonic);
         const n = image.rematerializeClosures(allocator, store, table) catch 0;
+        // Re-link FFI wraps by name in THIS process: re-dlopen each module +
+        // re-dlsym its declarative wraps (persisted :ffi-addr would be a stale
+        // pointer from the saving process).
+        ffi_module.resolveAllPending(allocator, store, table) catch {};
         stdoutPrint("[birnam] loaded {s} ({d} facts, {d} methods rebuilt)\n", .{ path, loaded.facts_loaded, n });
         return true;
     }

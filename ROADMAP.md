@@ -4,9 +4,10 @@ Detailed work sequence from current zig/birnam (linear-scan vtables, no fact sto
 
 This roadmap follows VISION.md. Open questions in VISION.md must be resolved before starting Phase 1.
 
-## Status (as of 2026-06-02)
+## Status (as of 2026-06-03)
 
 **Headline — Phases 0–13 complete; Phase 14 (AOT) in progress. 374/374 tests.**
+- **9.5.6** ✓ — FFI surface reachable from the language + file-in. `Module` prototype bound globally (`Module load:`/`resolve`), `language` prototype with `fileIn:`/`fileIn:onError:`, shell `:in`/`:in!`. FFI wraps refactored to **declarative facts** (`:ffi-wrap-symbol`/`:ffi-sig-str`/`:wrap-selector`, M_USER) with **deferred `dlopen`**: a single `resolveModule` does the open+`dlsym`+install at commit (REPL line / file-in / image load). Wraps now **relink by symbol name** across processes (fixes stale-`:ffi-addr` persistence; foundation for freezing a wrapper into a module dylib). Also fixed a latent keyword-send arg-arity overrun (stale `mkEid(0)` `:next-sibling` on recycled eids). No "class" concept — prototypes only. See the Phase 9.5.6 §Status block.
 - **0–11** ✓ — substrate, datalog, FFI, modules, language, bytecode VM. Phase 11.12 shipped the lang switchover: user methods dispatch through the bytecode VM (not the tree-walker). Loose ends (in-band mcache wiring, full `g_unwinding` retirement, tail-call refactor) deferred, non-blocking.
 - **12** ✓ — image snapshot (`.brnimg`, single self-describing file: facts + embedded manifest + interner). Provenance split (`M_USER`), Approach-B closure rebuild, shell `:save`/`:load`. A REPL session survives process restart (proven). See the Phase 12 §Status block.
 - **13** ✓ — pruning: reachable-from-roots mark-sweep + `FactStore.compact` + shell `:prune`. Re-derived roots/edges for the bytecode-closure model. See Phase 13 §Status.
@@ -17,6 +18,7 @@ The per-phase **§Status** blocks (Phases 12/13/14) are the authoritative curren
 **Completed (substrate):**
 - Phase 0–7.5 ✓ (collections, fact store, kernel, datalog, FFI, modules)
 - Phase 9 / 9.5 ✓ (boxed Float + FFI ptr, dyncall, Mach-O / ELF readers, Module wrapper, schema cardinality, unload)
+- Phase 9.5.6 ✓ (FFI reachable from language: `Module`/`language` prototypes, file-in `:in`/`:in!`, declarative deferred-resolve wraps, relink-by-name across save/load)
 
 **Completed (Phase 10 — language):**
 - Phase 10.0 ✓ (PEG engine + send-dispatched grammar surface)

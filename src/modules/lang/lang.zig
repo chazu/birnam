@@ -2071,9 +2071,10 @@ fn isEvalError(val: Ref) bool {
 
 /// Core file-in: read `path`, split into `;`-separated top-forms, parse+eval
 /// each against the top-level scope. Atomic mode (`continue_on_error == false`)
-/// stops at the first error; continue mode evaluates every good form and
-/// reports each error. Returns SmallInt(# forms evaluated OK), or NIL if the
-/// path is unreadable / atomic-aborted.
+/// resolves pending FFI modules ONLY if every form succeeded — so a failed unit
+/// applies no `dlopen`/wrap side effects (deferred-dlopen = no broken state).
+/// Continue mode evaluates all forms, reports each error, and resolves whatever
+/// bound. Returns SmallInt(# forms evaluated OK), or NIL if the path is bad.
 fn doFileIn(path_ref: Ref, continue_on_error: bool) Ref {
     const api = g_api.?;
     if (!isString(path_ref)) return NIL;
@@ -2120,14 +2121,17 @@ fn doFileIn(path_ref: Ref, continue_on_error: bool) Ref {
                 log(m);
             }
             if (!continue_on_error) {
-                if (g_log) |log| log("[lang] fileIn: aborted (atomic) at first error");
-                return NIL;
+                if (g_log) |log| log("[lang] fileIn: aborted (atomic) — no modules resolved");
+                return NIL; // deferred dlopen never ran → nothing applied
             }
         } else {
             ok += 1;
         }
     }
 
+    // Commit: bind FFI modules declared by this unit. Atomic mode only reaches
+    // here when errors == 0.
+    resolvePendingModules();
     if (g_log) |log| {
         var buf: [160]u8 = undefined;
         const m = std.fmt.bufPrintZ(&buf, "[lang] filed in {d} forms ({d} errors)", .{ ok, errors }) catch return mkSmallInt(ok);
@@ -2310,11 +2314,21 @@ fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
         return;
     }
     const val = api.send1(ast_ref, sel_eval, mkEid(g_top_scope_eid));
+    // Line-commit: bind any FFI modules/wraps declared on this line (deferred
+    // dlopen → resolve here for interactive eager feel). No-op without FFI.
+    resolvePendingModules();
     if (g_log) |log| {
         var buf: [256]u8 = undefined;
         const m = formatValue(&buf, val) catch return;
         log(m);
     }
+}
+
+/// Send `[Module resolve]` — opens + binds any pending FFI modules. Invoked at
+/// each commit boundary (REPL line, file-in commit). Cheap no-op without FFI.
+fn resolvePendingModules() void {
+    const api = g_api orelse return;
+    _ = api.send0(mkEid(MODULE_PROTO_EID), api.intern("resolve".ptr, 7));
 }
 
 fn formatValue(buf: []u8, val: Ref) ![:0]u8 {

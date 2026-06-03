@@ -20,6 +20,7 @@ const bootstrap = @import("kernel/bootstrap.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const image = @import("kernel/image.zig");
 const prune = @import("kernel/prune.zig");
+const ffi_module = @import("kernel/ffi_module.zig");
 const send_mod = @import("kernel/send.zig");
 const ref_mod = @import("kernel/ref.zig");
 const bopts = @import("build_opts");
@@ -90,6 +91,7 @@ pub fn main() !void {
         _ = prune.stripAst(store, table, allocator) catch {}; // M2: drop user AST trees
         lang.langPrimitivesTier();
         _ = image.rematerializeClosures(allocator, store, table) catch {};
+        ffi_module.resolveAllPending(allocator, store, table) catch {};
         stderrPrint("[aot] malleable: loaded baked image ({d} facts), AST stripped\n", .{loaded.facts_loaded});
 
         // M6 (minimal): send the entry selector to a SmallInt receiver,
@@ -121,6 +123,7 @@ pub fn main() !void {
     };
     if (loaded.next_eid > table.next_eid.load(.monotonic)) table.next_eid.store(loaded.next_eid, .monotonic);
     _ = image.rematerializeClosures(allocator, store, table) catch {};
+    ffi_module.resolveAllPending(allocator, store, table) catch {};
     stderrPrint("[aot] loaded baked image ({d} facts), entering REPL\n", .{loaded.facts_loaded});
 
     // REPL over the baked state.

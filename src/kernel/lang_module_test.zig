@@ -20,6 +20,7 @@ const send_mod = @import("send.zig");
 const strings = @import("strings.zig");
 const image = @import("image.zig");
 const boxed = @import("boxed.zig");
+const ffi_module = @import("ffi_module.zig");
 
 const Ref = ref_mod.Ref;
 
@@ -804,12 +805,58 @@ test "FFI: [Module load:] + wrap + [m sqrt: 16.0] via parse+eval -> 4.0" {
     try testing.expect(ref_mod.isEid(mod_ref));
 
     // Wrap sqrt — a 3-arg keyword send (selector / name / signature).
+    // Declarative: records facts only, no dlsym/install yet.
     _ = evalLine(s, lang, "[m wrap: #sqrt: as: \"sqrt\" signature: \"d)d\"]", a);
+
+    // Commit: dlopen + dlsym + install. evalLine bypasses the REPL handler's
+    // auto-resolve, so drive it explicitly (same send the handler does).
+    _ = evalLine(s, lang, "[Module resolve]", a);
 
     // Call — the 1-arg keyword send that the arg-arity fix unblocks.
     const r = evalLine(s, lang, "[m sqrt: 16.0]", a);
     try testing.expect(boxed.isFloat(r));
     try testing.expectApproxEqAbs(@as(f64, 4.0), boxed.untagFloat(r), 1e-9);
+}
+
+// Freeze foundation: an FFI wrap survives save → fresh boot → load by
+// RELINKING via symbol name. The saving process's :ffi-addr is a raw pointer
+// meaningless in the loading process; only the declarative facts (:ffi-path /
+// :ffi-wrap-symbol / :ffi-sig-str / :wrap-selector, all M_USER) persist, and
+// resolveAllPending re-`dlopen`s + re-`dlsym`s on load. This is exactly what a
+// frozen wrapper-dylib's init will do.
+test "FFI: wrap survives save -> fresh boot -> load via relink-by-name" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // ---- Session A: declare + resolve + sanity-call, then snapshot. ----
+    const sa = try fullSetup(&arena);
+    _ = (try sa.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_a = (try sa.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    _ = evalLine(sa, lang_a, "let m := [Module load: \"/usr/lib/libSystem.B.dylib\"]", a);
+    _ = evalLine(sa, lang_a, "[m wrap: #sqrt: as: \"sqrt\" signature: \"d)d\"]", a);
+    _ = evalLine(sa, lang_a, "[Module resolve]", a);
+    const r_a = evalLine(sa, lang_a, "[m sqrt: 16.0]", a);
+    try testing.expect(boxed.isFloat(r_a)); // sanity: works in session A
+
+    const res = try image.write(a, sa.store, sa.table.next_eid.load(.monotonic), .{}, sa.interner);
+
+    // ---- Session B: fresh boot + modules, load image, relink, re-call. ----
+    const sb = try fullSetup(&arena);
+    _ = (try sb.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_b = (try sb.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const loaded = try image.load(sb.store, res.bytes, sb.interner);
+    if (loaded.next_eid > sb.table.next_eid.load(.monotonic)) sb.table.next_eid.store(loaded.next_eid, .monotonic);
+    _ = try image.rematerializeClosures(a, sb.store, sb.table);
+    // The relink: re-dlopen + re-dlsym by NAME (saved addr is stale here).
+    try ffi_module.resolveAllPending(a, sb.store, sb.table);
+
+    const r_b = evalLine(sb, lang_b, "[m sqrt: 81.0]", a);
+    try testing.expect(boxed.isFloat(r_b));
+    try testing.expectApproxEqAbs(@as(f64, 9.0), boxed.untagFloat(r_b), 1e-9);
 }
 
 // file-in (no FFI → portable). `;`-separated forms eval into the top scope.

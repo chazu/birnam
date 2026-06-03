@@ -163,6 +163,36 @@ Pure data write — no compiler/toolchain needed to save. On load, the fact stor
 | `:load <path>` | load an image into the running session |
 | `:prune` | reachability GC: drop unreachable entities + collapse history |
 | `:reset` | clear the top-level scope |
+| `:in <path>` | file in a birnam source unit (atomic: aborts on first error, applies nothing) |
+| `:in! <path>` | file in best-effort (evaluate every good form, report errors) |
+
+## Calling C libraries (FFI)
+
+Wrap an existing shared object and call into it — interactively or from a filed-in unit. `Module` is a prototype; sending `load:` mints a module object; `wrap:as:signature:` declares a method bound to a C symbol (dyncall signature string, e.g. `"d)d"` = `double → double`):
+
+```
+birnam> let m := [Module load: "/usr/lib/libSystem.B.dylib"]
+birnam> [m wrap: #sqrt: as: "sqrt" signature: "d)d"]
+birnam> [m sqrt: 144.0]
+=> 12
+birnam> [m symbols]                 // enumerate the lib's symbol table (load query module)
+```
+
+A **wrapper unit** is just a source file of such sends; file it in to install the whole binding:
+
+```
+// libfoo.birnam
+let foo := [Module load: "libfoo.dylib"];
+[foo wrap: #open:  as: "foo_open"  signature: "p)p"];
+[foo wrap: #close: as: "foo_close" signature: "p)i"]
+```
+
+```
+birnam> :in libfoo.birnam
+[lang] filed in 3 forms (0 errors)
+```
+
+Wraps are **declarative facts** (symbol name + signature + selector), so they persist across `:save`/`:load` and **re-link by symbol name** on load — the `dlopen`/`dlsym` is deferred to a commit step, never a stale cached address. This is the foundation for freezing a wrapper into a standalone module dylib (planned).
 
 ## Ahead-of-time compilation
 

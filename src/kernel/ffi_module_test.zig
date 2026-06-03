@@ -41,9 +41,16 @@ fn setup(arena: *std.heap.ArenaAllocator) !Fix {
 const LIBSYSTEM = "/usr/lib/libSystem.B.dylib";
 const HELLO_DYLIB = "zig-out/lib/libbirnam_hello.dylib";
 
+/// Commit a module's declarative wraps: dlopen + dlsym + install. The deferred
+/// model means `Module load:` / `wrap:as:signature:` only assert facts; this is
+/// the binding step (run for real at REPL line-commit / file-in / image load).
+fn resolve(fix: Fix, mod: Ref, a: std.mem.Allocator) void {
+    ffi_module.resolveModule(a, fix.store, fix.table, ref_mod.untagEid(mod)) catch {};
+}
+
 // -- Module load: ------------------------------------------------------------
 
-test "Module load: returns a Module Ref with :ffi-handle and :ffi-path facts" {
+test "Module load: records :ffi-path (deferred); resolve opens + sets :ffi-handle" {
     if (!is_darwin) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -53,33 +60,35 @@ test "Module load: returns a Module Ref with :ffi-handle and :ffi-path facts" {
     const mod = try ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM);
     try testing.expect(ref_mod.isEid(mod));
     try testing.expect(!ffi_module.isErrorEntity(fix.store, mod));
-
     const mod_eid = ref_mod.untagEid(mod);
-    const handle = fix.store.currentValue(mod_eid, kernel_eids.ATTR_FFI_HANDLE).?;
-    try testing.expect(boxed.isFfiPtr(handle));
 
+    // Deferred: :ffi-path recorded, but NO dlopen / :ffi-handle yet.
     const path = fix.store.currentValue(mod_eid, kernel_eids.ATTR_FFI_PATH).?;
     try testing.expect(strings.isString(path));
     try testing.expect(std.mem.eql(u8, strings.bytes(path), LIBSYSTEM));
+    try testing.expect(fix.store.currentValue(mod_eid, kernel_eids.ATTR_FFI_HANDLE) == null);
+
+    // Resolve = the deferred dlopen.
+    resolve(fix, mod, a);
+    const handle = fix.store.currentValue(mod_eid, kernel_eids.ATTR_FFI_HANDLE).?;
+    try testing.expect(boxed.isFfiPtr(handle));
 }
 
-test "Module load: nonexistent path returns ERROR_VT diagnostic entity" {
+test "Module load: bad path — load succeeds (deferred); resolve leaves it unopened" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
     const fix = try setup(&arena);
+    // dlopen is deferred, so load of a bad path is NOT an error — it just
+    // records the path. The open failure surfaces (silently) at resolve.
     const r = try ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, "/no/such/path.dylib");
-    try testing.expect(ffi_module.isErrorEntity(fix.store, r));
+    try testing.expect(ref_mod.isEid(r));
+    try testing.expect(!ffi_module.isErrorEntity(fix.store, r));
 
-    const err_eid = ref_mod.untagEid(r);
-    const kind_ref = fix.store.currentValue(err_eid, kernel_eids.ATTR_ERROR_KIND).?;
-    try testing.expect(ref_mod.isEid(kind_ref));
-    const kind_name = fix.interner.nameOf(ref_mod.untagEid(kind_ref)).?;
-    try testing.expect(std.mem.eql(u8, kind_name, "ffi-load-failure"));
-
-    const err_path = fix.store.currentValue(err_eid, kernel_eids.ATTR_ERROR_PATH).?;
-    try testing.expect(strings.isString(err_path));
+    resolve(fix, r, a);
+    // dlopen failed → no handle installed; the module stays unopened/inert.
+    try testing.expect(fix.store.currentValue(ref_mod.untagEid(r), kernel_eids.ATTR_FFI_HANDLE) == null);
 }
 
 // -- [mod path] and [mod handle] via send dispatch --------------------------
@@ -105,6 +114,7 @@ test "[mod handle] returns the boxed FfiPtr Ref via send dispatch" {
 
     const fix = try setup(&arena);
     const mod = try ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM);
+    resolve(fix, mod, a); // handle only exists after the deferred dlopen
     const r = send_mod.send0(mod, kernel_eids.SEL_HANDLE);
     try testing.expect(boxed.isFfiPtr(r));
     try testing.expect(boxed.untagFfiPtr(r) != 0);
@@ -125,8 +135,11 @@ test "[mod wrap:as:signature:] installs method; [mod sqrt:] dispatches via FFI" 
     const name_ref = try strings.mkString(a, "sqrt");
     const sig_ref = try strings.mkString(a, "d)d");
     const result = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, ref_mod.mkEid(sqrt_sel), name_ref, sig_ref);
-    // Chainable: returns receiver (mod) on success.
+    // Chainable: wrap: is declarative, returns receiver (mod).
     try testing.expectEqual(mod, result);
+
+    // Commit: dlopen + dlsym + install. Only now is the method dispatchable.
+    resolve(fix, mod, a);
 
     const arg = try boxed.mkFloat(a, 16.0);
     const r = send_mod.send1(mod, sqrt_sel, arg);
@@ -136,7 +149,7 @@ test "[mod wrap:as:signature:] installs method; [mod sqrt:] dispatches via FFI" 
     ffi.shutdown();
 }
 
-test "[mod wrap:] on missing symbol returns ERROR_VT entity" {
+test "[mod wrap:] on missing symbol — resolve leaves the wrap unbound" {
     if (!is_darwin) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -148,12 +161,33 @@ test "[mod wrap:] on missing symbol returns ERROR_VT entity" {
 
     const name_ref = try strings.mkString(a, "nonexistent_symbol_xyz");
     const sig_ref = try strings.mkString(a, "d)d");
+    // Declarative wrap: succeeds (returns self) — the symbol isn't checked yet.
     const result = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, ref_mod.mkEid(bogus_sel), name_ref, sig_ref);
+    try testing.expectEqual(mod, result);
+
+    // At resolve, dlsym misses → the wrap is left unbound (no install). Sending
+    // the selector finds no method → NIL. No crash, no broken state.
+    resolve(fix, mod, a);
+    const r = send_mod.send1(mod, bogus_sel, ref_mod.mkSmallInt(1).?);
+    try testing.expectEqual(ref_mod.NIL, r);
+}
+
+test "[mod wrap:] non-string arg still returns ERROR_VT synchronously" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = try ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM);
+    const sel = try fix.interner.intern(fix.store, fix.table, "bad:");
+    // sig arg is a SmallInt, not a string → arg-shape error at wrap: time.
+    const result = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, ref_mod.mkEid(sel), try strings.mkString(a, "x"), ref_mod.mkSmallInt(0).?);
     try testing.expect(ffi_module.isErrorEntity(fix.store, result));
 
     const kind_ref = fix.store.currentValue(ref_mod.untagEid(result), kernel_eids.ATTR_ERROR_KIND).?;
     const kind_name = fix.interner.nameOf(ref_mod.untagEid(kind_ref)).?;
-    try testing.expect(std.mem.eql(u8, kind_name, "ffi-symbol-not-found"));
+    try testing.expect(std.mem.eql(u8, kind_name, "ffi-sig-parse-failure"));
 }
 
 // -- [mod symbols] lazy enumeration -----------------------------------------
@@ -289,6 +323,7 @@ test "[mod unload] stales wraps and ffi-owned boxed pointers" {
         try strings.mkString(a, "strdup"),
         try strings.mkString(a, "Z)p"),
     );
+    resolve(fix, mod, a); // bind the declarative wrap
     const cstr = "hi";
     const cstr_ptr = try boxed.mkFfiPtr(a, @intFromPtr(cstr.ptr));
     const returned_ptr = send_mod.send1(mod, dup_sel, cstr_ptr);
@@ -330,6 +365,7 @@ test "pushArg refuses stale pointers — dispatch returns NIL" {
         try strings.mkString(a, "strlen"),
         try strings.mkString(a, "Z)l"),
     );
+    resolve(fix, mod, a); // bind the declarative wrap
 
     // Mint an owned FFI pointer that lives long enough.
     const cstr = "birnam";
@@ -350,7 +386,7 @@ test "pushArg refuses stale pointers — dispatch returns NIL" {
     ffi.shutdown();
 }
 
-test "[mod wrap:] with arity-too-high sig returns ERROR_VT entity" {
+test "[mod wrap:] with arity-too-high sig — resolve rejects it, wrap unbound" {
     if (!is_darwin) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -361,12 +397,13 @@ test "[mod wrap:] with arity-too-high sig returns ERROR_VT entity" {
     const sel = try fix.interner.intern(fix.store, fix.table, "manyArg:");
 
     const name_ref = try strings.mkString(a, "printf");
-    // 4 args = ArityTooHigh
+    // 4 args = ArityTooHigh. Declarative wrap still records (returns self);
+    // the arity limit is enforced at resolve (buildWrapClosure), which skips
+    // the install — the selector stays unbound.
     const sig_ref = try strings.mkString(a, "iiii)i");
     const result = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, ref_mod.mkEid(sel), name_ref, sig_ref);
-    try testing.expect(ffi_module.isErrorEntity(fix.store, result));
+    try testing.expectEqual(mod, result);
 
-    const kind_ref = fix.store.currentValue(ref_mod.untagEid(result), kernel_eids.ATTR_ERROR_KIND).?;
-    const kind_name = fix.interner.nameOf(ref_mod.untagEid(kind_ref)).?;
-    try testing.expect(std.mem.eql(u8, kind_name, "ffi-arity-too-high"));
+    resolve(fix, mod, a);
+    try testing.expectEqual(ref_mod.NIL, send_mod.send1(mod, sel, ref_mod.mkSmallInt(0).?));
 }

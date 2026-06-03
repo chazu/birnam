@@ -53,9 +53,11 @@ fn mintInstanceVt(
     return vt_eid;
 }
 
-/// Top-level `Module load:` — opens `path` via `dlopen`, mints a Module
-/// object, returns its EID Ref. On failure, returns a diagnostic entity Ref
-/// tagged with `ERROR_VT`.
+/// Top-level `Module load:` — mints a Module object recording only the
+/// DECLARATIVE `:ffi-path` (M_USER, persisted). NO `dlopen` here: the
+/// side-effecting open is deferred to `resolveModule` (run at REPL line-commit,
+/// file-in commit, image load). The fresh module still gets a per-instance
+/// vtable now so `wrap:`/`path`/`symbols` dispatch before resolution.
 pub fn moduleLoad(
     allocator: std.mem.Allocator,
     store: *fact_store_mod.FactStore,
@@ -63,28 +65,98 @@ pub fn moduleLoad(
     interner: *interner_mod.Interner,
     path: []const u8,
 ) !Ref {
-    const lib = std.DynLib.open(path) catch {
-        return try errorEntity(
-            allocator,
-            store,
-            table,
-            interner,
-            "ffi-load-failure",
-            "dlopen failed",
-            &.{.{ .attr = kernel_eids.ATTR_ERROR_PATH, .value = try strings.mkString(allocator, path) }},
-        );
-    };
-    // Heap-copy the DynLib so the handle survives this frame.
-    const copy = allocator.create(std.DynLib) catch unreachable;
-    copy.* = lib;
-    const handle_addr: usize = @intFromPtr(copy);
-
+    _ = interner;
     const mod_eid = table.alloc();
+    // :ffi-path is the durable truth (M_USER → persisted, freezable).
+    _ = try store.assert(
+        mod_eid,
+        kernel_eids.ATTR_FFI_PATH,
+        try strings.mkString(allocator, path),
+        kernel_eids.M_USER,
+    );
+    _ = try ensureInstanceVt(allocator, store, table, mod_eid);
+    return ref_mod.mkEid(mod_eid);
+}
+
+/// Ensure `mod_eid` has a materialized per-instance vtable (delegating to
+/// `MODULE_VT`) and a `:vtable` fact pointing at it. Idempotent: reuses an
+/// existing materialized vt; re-mints when the vt is absent (fresh load) or
+/// its object was not restored (image reload — vt facts are transient
+/// M_BOOTSTRAP). Returns the instance-vt EID.
+fn ensureInstanceVt(
+    allocator: std.mem.Allocator,
+    store: *fact_store_mod.FactStore,
+    table: *object_table_mod.ObjectTable,
+    mod_eid: u64,
+) !u64 {
+    if (store.currentValue(mod_eid, kernel_eids.ATTR_VTABLE)) |vt_ref| {
+        if (ref_mod.isEid(vt_ref)) {
+            const vt_eid = ref_mod.untagEid(vt_ref);
+            if (table.get(vt_eid) != null) return vt_eid; // live + materialized
+        }
+    }
     const instance_vt = try mintInstanceVt(allocator, store, table);
     _ = try store.assert(mod_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(instance_vt), kernel_eids.M_BOOTSTRAP);
-    _ = try store.assert(mod_eid, kernel_eids.ATTR_FFI_HANDLE, try boxed.mkFfiPtr(allocator, handle_addr), kernel_eids.M_BOOTSTRAP);
-    _ = try store.assert(mod_eid, kernel_eids.ATTR_FFI_PATH, try strings.mkString(allocator, path), kernel_eids.M_BOOTSTRAP);
-    return ref_mod.mkEid(mod_eid);
+    return instance_vt;
+}
+
+/// Resolve one module: materialize its vt, `dlopen` the lib if not already
+/// open this process, then for each declarative wrap lacking a resolved
+/// `:ffi-addr`, `dlsym` the symbol and install a dispatch closure. Idempotent
+/// and incremental (new wraps on an already-open module just get installed).
+/// On a missing dylib / symbol the wrap is skipped (left unresolved); callers
+/// that need hard errors should check separately.
+pub fn resolveModule(
+    allocator: std.mem.Allocator,
+    store: *fact_store_mod.FactStore,
+    table: *object_table_mod.ObjectTable,
+    mod_eid: u64,
+) !void {
+    const instance_vt = try ensureInstanceVt(allocator, store, table, mod_eid);
+
+    // dlopen once per process. Handle is transient (M_BOOTSTRAP, never saved).
+    if (store.currentValue(mod_eid, kernel_eids.ATTR_FFI_HANDLE) == null) {
+        const path_ref = store.currentValue(mod_eid, kernel_eids.ATTR_FFI_PATH) orelse return;
+        if (!strings.isString(path_ref)) return;
+        const lib = std.DynLib.open(strings.bytes(path_ref)) catch return;
+        const copy = try allocator.create(std.DynLib);
+        copy.* = lib;
+        _ = try store.assert(
+            mod_eid,
+            kernel_eids.ATTR_FFI_HANDLE,
+            try boxed.mkFfiPtr(allocator, @intFromPtr(copy)),
+            kernel_eids.M_BOOTSTRAP,
+        );
+    }
+
+    // Install each unresolved wrap. Wraps are entities tagged
+    // [wrap :ffi-owner mod] carrying :ffi-wrap-symbol / :ffi-sig-str /
+    // :wrap-selector. A wrap already carrying :ffi-addr is resolved — skip.
+    var it = store.entitiesMatching(kernel_eids.ATTR_FFI_OWNER, ref_mod.mkEid(mod_eid));
+    while (it.next()) |wrap_eid| {
+        if (store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_ADDR) != null) continue;
+        const sym_ref = store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_WRAP_SYMBOL) orelse continue;
+        const sig_ref = store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_SIG_STR) orelse continue;
+        const sel_ref = store.currentValue(wrap_eid, kernel_eids.ATTR_WRAP_SELECTOR) orelse continue;
+        if (!strings.isString(sym_ref) or !strings.isString(sig_ref) or !ref_mod.isEid(sel_ref)) continue;
+
+        const name_z = allocator.dupeZ(u8, strings.bytes(sym_ref)) catch continue;
+        defer allocator.free(name_z);
+        const addr = moduleSymbolAddr(store, mod_eid, name_z) orelse continue;
+        const closure_eid = ffi.buildWrapClosure(allocator, store, table, wrap_eid, addr, strings.bytes(sig_ref)) catch continue;
+        _ = store.assert(instance_vt, ref_mod.untagEid(sel_ref), ref_mod.mkEid(closure_eid), kernel_eids.M_BOOTSTRAP) catch continue;
+    }
+}
+
+/// Resolve every pending module: any entity carrying `:ffi-path`. Run at REPL
+/// line-commit, file-in commit, and image load.
+pub fn resolveAllPending(
+    allocator: std.mem.Allocator,
+    store: *fact_store_mod.FactStore,
+    table: *object_table_mod.ObjectTable,
+) !void {
+    var it = store.entitiesWith(kernel_eids.ATTR_FFI_PATH);
+    while (it.next()) |e| try resolveModule(allocator, store, table, e.e);
 }
 
 /// Look up a symbol via the DynLib stored on the Module. Returns null
@@ -287,9 +359,12 @@ fn methodHandle(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
 }
 
 /// `[mod wrap: <sel-Ref> as: <name-string-Ref> signature: <sig-string-Ref>]`
-/// Looks up the symbol via dlsym, calls `ffi.registerWrap`, installs the
-/// returned closure on the receiver Module's instance vt at `sel`. Returns
-/// `self` on success, an `ERROR_VT` entity on failure.
+/// DECLARATIVE: mints a wrap entity carrying the durable, relinkable facts
+/// (`:ffi-owner` / `:ffi-wrap-symbol` / `:ffi-sig-str` / `:wrap-selector`) — all
+/// M_USER so they persist into images and survive cross-process freeze. NO
+/// `dlsym`, NO closure install here; the actual binding happens in
+/// `resolveModule` (deferred to commit). Returns `self` (chainable). Sig is
+/// validated lazily at resolve time, so a bad symbol/sig surfaces there.
 fn methodWrapAsSig(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
     const sel_ref = args[0];
@@ -310,50 +385,30 @@ fn methodWrapAsSig(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
     if (!strings.isString(sig_ref)) {
         return errorEntity(alloc, store, table, interner, "ffi-sig-parse-failure", "wrap: sig not a string", &.{}) catch ref_mod.NIL;
     }
-    const name_slice = strings.bytes(name_ref);
-    const sig_slice = strings.bytes(sig_ref);
 
-    const name_z = alloc.dupeZ(u8, name_slice) catch return ref_mod.NIL;
-    defer alloc.free(name_z);
-    const addr = moduleSymbolAddr(store, mod_eid, name_z) orelse {
-        return errorEntity(
-            alloc,
-            store,
-            table,
-            interner,
-            "ffi-symbol-not-found",
-            "dlsym returned null",
-            &.{.{ .attr = kernel_eids.ATTR_ERROR_NAME, .value = strings.mkString(alloc, name_slice) catch return ref_mod.NIL }},
-        ) catch ref_mod.NIL;
-    };
-
-    const closure_eid = ffi.registerWrap(alloc, store, table, addr, sig_slice) catch |err| {
-        const kind: []const u8 = switch (err) {
-            error.ArityTooHigh => "ffi-arity-too-high",
-            error.SigParseFailure => "ffi-sig-parse-failure",
-            else => "ffi-wrap-failure",
-        };
-        return errorEntity(alloc, store, table, interner, kind, "registerWrap failed", &.{}) catch ref_mod.NIL;
-    };
-
-    // Tag the WRAP entity (not the closure) with its owning Module so
-    // shimDispatch can thread owner_mod_eid for stale-pointer checks.
-    if (table.get(closure_eid)) |c_ptr_ref| {
-        if (ref_mod.isPointer(c_ptr_ref)) {
-            const c: *const closure_mod.Closure = @ptrCast(@alignCast(ref_mod.untagPointer(c_ptr_ref)));
-            if (ref_mod.isEid(c.data)) {
-                const wrap_eid = ref_mod.untagEid(c.data);
-                _ = store.assert(wrap_eid, kernel_eids.ATTR_FFI_OWNER, ref_mod.mkEid(mod_eid), kernel_eids.M_BOOTSTRAP) catch {};
-            }
-        }
-    }
-
-    const instance_vt_ref = store.currentValue(mod_eid, kernel_eids.ATTR_VTABLE) orelse return ref_mod.NIL;
-    if (!ref_mod.isEid(instance_vt_ref)) return ref_mod.NIL;
-    const instance_vt = ref_mod.untagEid(instance_vt_ref);
-    _ = store.assert(instance_vt, ref_mod.untagEid(sel_ref), ref_mod.mkEid(closure_eid), kernel_eids.M_BOOTSTRAP) catch return ref_mod.NIL;
+    // Mint the declarative wrap. Dup the strings into kernel-owned storage
+    // (the source Refs may be arena-scoped to the calling form).
+    const wrap_eid = table.alloc();
+    const name_dup = strings.mkString(alloc, strings.bytes(name_ref)) catch return ref_mod.NIL;
+    const sig_dup = strings.mkString(alloc, strings.bytes(sig_ref)) catch return ref_mod.NIL;
+    _ = store.assert(wrap_eid, kernel_eids.ATTR_FFI_OWNER, ref_mod.mkEid(mod_eid), kernel_eids.M_USER) catch return ref_mod.NIL;
+    _ = store.assert(wrap_eid, kernel_eids.ATTR_FFI_WRAP_SYMBOL, name_dup, kernel_eids.M_USER) catch return ref_mod.NIL;
+    _ = store.assert(wrap_eid, kernel_eids.ATTR_FFI_SIG_STR, sig_dup, kernel_eids.M_USER) catch return ref_mod.NIL;
+    _ = store.assert(wrap_eid, kernel_eids.ATTR_WRAP_SELECTOR, sel_ref, kernel_eids.M_USER) catch return ref_mod.NIL;
 
     return s.receiver; // chainable
+}
+
+/// `[Module resolve]` (class-side, MODULE_PROTO_VT) — resolve all pending
+/// modules (open libs + bind declarative wraps). Returns `self`.
+fn methodResolve(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    const table = send_mod.tablePtr() orelse return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    resolveAllPending(alloc, store, table) catch {};
+    return s.receiver;
 }
 
 /// `[mod unload]` — refuse while `ffi_depth > 0`; otherwise walk all
@@ -459,12 +514,14 @@ pub fn installMethods(
     // MODULE_PROTO_VT is a normal vtable (its own :vtable is VTABLE_VT,
     // delegates to OBJECT_VT — NOT MODULE_VT, so the prototype doesn't inherit
     // per-instance methods). MODULE_PROTO is the object the lang frontend binds
-    // the global name `Module` to. Sending `load:` mints a new module object.
+    // the global name `Module` to. Sending `load:` mints a new module object;
+    // `resolve` opens + binds all pending modules.
     const proto_vt_obj = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.VTABLE_VT), 0);
     try table.put(kernel_eids.MODULE_PROTO_VT, object.toRef(proto_vt_obj));
     _ = try store.assert(kernel_eids.MODULE_PROTO_VT, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.VTABLE_VT), kernel_eids.M_BOOTSTRAP);
     _ = try store.assert(kernel_eids.MODULE_PROTO_VT, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP);
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_LOAD, @ptrCast(&methodLoad));
+    try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_RESOLVE, @ptrCast(&methodResolve));
 
     // The prototype object — only needs a :vtable fact (dispatch reads it).
     _ = try store.assert(kernel_eids.MODULE_PROTO, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.MODULE_PROTO_VT), kernel_eids.M_BOOTSTRAP);

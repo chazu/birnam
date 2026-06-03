@@ -505,7 +505,24 @@ pub const M_USER: u64 = 184;
 /// freshly-allocated scope eid.
 pub const TOP_SCOPE_EID: u64 = 185;
 
-// 187..190 reserved (relinkable-wrap schema lands with the deferred refactor).
+/// Phase 9.5.6 — relinkable-wrap schema. An FFI wrap is a DECLARATIVE entity;
+/// the side-effecting `dlopen`/`dlsym` is deferred to `resolveModule`. Durable
+/// (M_USER, persisted in images) facts on a wrap entity:
+///   [wrap :ffi-owner <module_eid>]        (ATTR_FFI_OWNER — already defined)
+///   [wrap :ffi-wrap-symbol "foo_open"]    symbol name → re-`dlsym`able
+///   [wrap :ffi-sig-str "p)p"]             dyncall sig string → re-parseable
+///   [wrap :wrap-selector #open:]          where to install on the module vt
+/// The transient resolved facts ([wrap :ffi-addr <ptr>], [wrap :ffi-sig <Sig*>],
+/// [module :ffi-handle <DynLib*>]) are M_BOOTSTRAP and rebuilt every process by
+/// `resolveModule` — so persistence/freeze relinks by NAME, never by address.
+pub const ATTR_FFI_WRAP_SYMBOL: u64 = 187;
+pub const ATTR_FFI_SIG_STR: u64 = 188;
+pub const ATTR_WRAP_SELECTOR: u64 = 189;
+
+/// `resolve` selector on `MODULE_PROTO_VT` — `dlopen`s every pending module and
+/// `dlsym`s its declarative wraps, installing dispatch closures. Idempotent;
+/// run at REPL line-commit, file-in commit, and image load.
+pub const SEL_RESOLVE: u64 = 190;
 
 /// Phase 9.5.6 — file-in. The `language` prototype object (lang owns the
 /// methods: `fileIn:` / `fileIn:onError:`); kernel only reserves the well-known

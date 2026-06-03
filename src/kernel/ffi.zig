@@ -389,17 +389,21 @@ pub const RegisterError = error{
     SigParseFailure,
 };
 
-/// Register a wrap: parse sig, allocate wrap entity + facts, allocate
-/// dispatch closure with the right per-arity shim, return closure EID.
-/// Caller installs the closure as a method via the standard assert
-/// `[vt sel mkEid(closure_eid)]` pattern.
+/// Resolve a single declarative wrap: parse `sig_str`, assert the TRANSIENT
+/// resolved facts (`:ffi-addr`, `:ffi-sig` pointer) onto the EXISTING
+/// `wrap_eid`, and build the dispatch closure. The wrap entity's durable
+/// facts (`:ffi-wrap-symbol` / `:ffi-sig-str` / `:wrap-selector` / `:ffi-owner`)
+/// are asserted earlier by `wrap:as:signature:`; this only adds the
+/// process-local resolution. Returns the closure EID for the caller to install
+/// via `[vt sel mkEid(closure_eid)]`.
 ///
 /// Phase 9 arity limit: 0..3 (matches send0..send3). Higher arity needs
 /// either send-N expansion (future) or arg-vector dispatch.
-pub fn registerWrap(
+pub fn buildWrapClosure(
     allocator: std.mem.Allocator,
     store: *fact_store_mod.FactStore,
     table: *object_table_mod.ObjectTable,
+    wrap_eid: u64,
     addr: usize,
     sig_str: []const u8,
 ) anyerror!u64 {
@@ -409,17 +413,15 @@ pub fn registerWrap(
         return error.ArityTooHigh;
     }
     // Stash the parsed Sig on the heap so the shim can reference it via
-    // pointer Ref. Caller owns lifetime via the kernel allocator.
+    // pointer Ref. Transient (process-local); not persisted.
     const sig_holder = try allocator.create(Sig);
     sig_holder.* = sig;
 
-    const wrap_eid = table.alloc();
     const addr_ref = try boxed.mkFfiPtr(allocator, addr);
     _ = try store.assert(wrap_eid, kernel_eids.ATTR_FFI_ADDR, addr_ref, kernel_eids.M_BOOTSTRAP);
     _ = try store.assert(wrap_eid, kernel_eids.ATTR_FFI_SIG, ref_mod.mkPointer(@ptrCast(sig_holder)), kernel_eids.M_BOOTSTRAP);
 
     // All arities go through the variadic shim — Phase 10.2.5 unified Imp.
-    if (sig.args.len > 3) return error.ArityTooHigh;
     const method_ptr: *const anyopaque = @ptrCast(&shimAny);
 
     // Allocate a Closure with .data = mkEid(wrap_eid). Match the kernel's
@@ -435,4 +437,17 @@ pub fn registerWrap(
     const closure_eid = table.alloc();
     try table.put(closure_eid, ref_mod.mkPointer(@ptrCast(c)));
     return closure_eid;
+}
+
+/// Legacy one-shot: mint a fresh wrap entity then resolve it. Retained for
+/// direct callers/tests that bypass the declarative `wrap:as:signature:` path.
+pub fn registerWrap(
+    allocator: std.mem.Allocator,
+    store: *fact_store_mod.FactStore,
+    table: *object_table_mod.ObjectTable,
+    addr: usize,
+    sig_str: []const u8,
+) anyerror!u64 {
+    const wrap_eid = table.alloc();
+    return buildWrapClosure(allocator, store, table, wrap_eid, addr, sig_str);
 }
