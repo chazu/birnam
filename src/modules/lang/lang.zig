@@ -2015,6 +2015,7 @@ fn installParseSurface() void {
     _ = api.assert_fact(LANGUAGE_PROTO_VT, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
     _ = api.assert_fact(LANGUAGE_PROTO_VT, api.intern("fileIn:".ptr, 7), mkEid(api.make_closure(@ptrCast(&fileInImpl), NIL)), g_module_eid);
     _ = api.assert_fact(LANGUAGE_PROTO_VT, api.intern("fileIn:onError:".ptr, 15), mkEid(api.make_closure(@ptrCast(&fileInOnErrorImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(LANGUAGE_PROTO_VT, api.intern("fileInSource:".ptr, 13), mkEid(api.make_closure(@ptrCast(&fileInSourceImpl), NIL)), g_module_eid);
     _ = api.assert_fact(LANGUAGE_PROTO_EID, ATTR_VTABLE, mkEid(LANGUAGE_PROTO_VT), g_module_eid);
     pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("language".ptr, 8), mkEid(LANGUAGE_PROTO_EID));
 }
@@ -2069,32 +2070,14 @@ fn isEvalError(val: Ref) bool {
     return g_api.?.query_eavt(val >> 3, ATTR_VTABLE) == mkEid(ERROR_VT);
 }
 
-/// Core file-in: read `path`, split into `;`-separated top-forms, parse+eval
-/// each against the top-level scope. Atomic mode (`continue_on_error == false`)
-/// resolves pending FFI modules ONLY if every form succeeded — so a failed unit
-/// applies no `dlopen`/wrap side effects (deferred-dlopen = no broken state).
-/// Continue mode evaluates all forms, reports each error, and resolves whatever
-/// bound. Returns SmallInt(# forms evaluated OK), or NIL if the path is bad.
-fn doFileIn(path_ref: Ref, continue_on_error: bool) Ref {
+/// Core: split `src` into `;`-separated top-forms, parse+eval each against the
+/// top-level scope, then (commit) resolve pending FFI modules. Atomic mode
+/// (`continue_on_error == false`) stops at the first error and returns NIL
+/// WITHOUT resolving — so a failed unit applies no `dlopen`/wrap side effects
+/// (deferred-dlopen = no broken state). Continue mode evaluates every good form
+/// and reports each error. Returns SmallInt(# forms evaluated OK).
+fn doFileInSource(src: []const u8, continue_on_error: bool) Ref {
     const api = g_api.?;
-    if (!isString(path_ref)) return NIL;
-    const path = stringBytes(path_ref);
-
-    const src = std.fs.cwd().readFileAlloc(std.heap.page_allocator, path, 1 << 20) catch {
-        if (g_log) |log| {
-            var buf: [256]u8 = undefined;
-            const m = std.fmt.bufPrintZ(&buf, "[lang] fileIn: cannot read {s}", .{path}) catch return NIL;
-            log(m);
-        }
-        return NIL;
-    };
-    defer std.heap.page_allocator.free(src);
-
-    // Record the filed-in unit (durable source for re-edit / freeze).
-    const unit = api.alloc_eid();
-    _ = api.assert_fact(unit, ATTR_FILED_IN_PATH, api.make_string(path.ptr, path.len), M_USER);
-    _ = api.assert_fact(unit, ATTR_FILED_IN_SOURCE, api.make_string(src.ptr, src.len), M_USER);
-
     var ok: i64 = 0;
     var errors: i64 = 0;
     var form_no: i64 = 0;
@@ -2140,11 +2123,44 @@ fn doFileIn(path_ref: Ref, continue_on_error: bool) Ref {
     return mkSmallInt(ok);
 }
 
+/// Read `path` and file it in (records a `:filed-in-unit` carrying path +
+/// source for re-edit / freeze). Returns NIL if the path is unreadable.
+fn doFileIn(path_ref: Ref, continue_on_error: bool) Ref {
+    const api = g_api.?;
+    if (!isString(path_ref)) return NIL;
+    const path = stringBytes(path_ref);
+
+    const src = std.fs.cwd().readFileAlloc(std.heap.page_allocator, path, 1 << 20) catch {
+        if (g_log) |log| {
+            var buf: [256]u8 = undefined;
+            const m = std.fmt.bufPrintZ(&buf, "[lang] fileIn: cannot read {s}", .{path}) catch return NIL;
+            log(m);
+        }
+        return NIL;
+    };
+    defer std.heap.page_allocator.free(src);
+
+    const unit = api.alloc_eid();
+    _ = api.assert_fact(unit, ATTR_FILED_IN_PATH, api.make_string(path.ptr, path.len), M_USER);
+    _ = api.assert_fact(unit, ATTR_FILED_IN_SOURCE, api.make_string(src.ptr, src.len), M_USER);
+    return doFileInSource(src, continue_on_error);
+}
+
 /// `[language fileIn: <path-string>]` — atomic file-in.
 fn fileInImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
     _ = n_args;
     return doFileIn(args[0], false);
+}
+
+/// `[language fileInSource: <source-string>]` — atomic file-in of a source
+/// string (no file read). Frozen wrapper modules call this with their embedded
+/// source at `birnam_module_init` to re-establish the wraps.
+fn fileInSourceImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = n_args;
+    if (!isString(args[0])) return NIL;
+    return doFileInSource(stringBytes(args[0]), false);
 }
 
 /// `[language fileIn: <path> onError: <#continue|#abort>]` — `#continue` keeps

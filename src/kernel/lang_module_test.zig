@@ -20,6 +20,7 @@ const send_mod = @import("send.zig");
 const strings = @import("strings.zig");
 const image = @import("image.zig");
 const boxed = @import("boxed.zig");
+const freeze = @import("freeze.zig");
 const ffi_module = @import("ffi_module.zig");
 
 const Ref = ref_mod.Ref;
@@ -891,4 +892,72 @@ test "fileIn: language proto evaluates ;-separated forms (atomic + continue)" {
     // -- continue mode: form 3 applies despite the form-2 error. --
     _ = evalLine(s, lang, "[language fileIn: \"test_filein_bad.birnam\" onError: #continue]", a);
     try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(evalLine(s, lang, "c", a)));
+}
+
+// freeze (1/2): reconstruct canonical source from a live wrapper's facts, then
+// re-install it in a FRESH session via fileInSource: — no compiler involved.
+test "freeze: reconstructSource round-trips a wrap via fileInSource:" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Session A: declare + resolve a sqrt wrap, then reconstruct source.
+    const sa = try fullSetup(&arena);
+    _ = (try sa.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_a = (try sa.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    _ = evalLine(sa, lang_a, "let lib := [Module load: \"/usr/lib/libSystem.B.dylib\"]", a);
+    _ = evalLine(sa, lang_a, "[lib wrap: #sqrt: as: \"sqrt\" signature: \"d)d\"]", a);
+
+    const src = try freeze.reconstructSource(a, sa.store, sa.interner);
+    try testing.expect(std.mem.indexOf(u8, src, "Module load:") != null);
+    try testing.expect(std.mem.indexOf(u8, src, "#sqrt:") != null);
+
+    // Session B: fresh boot; fileInSource: the reconstructed wrapper, then call.
+    const sb = try fullSetup(&arena);
+    _ = (try sb.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_b = (try sb.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel = sb.interner.str_to_eid.get("fileInSource:").?;
+    _ = send_mod.send1(ref_mod.mkEid(kernel_eids.LANGUAGE_PROTO), sel, try strings.mkString(a, src));
+
+    const r = evalLine(sb, lang_b, "[m0 sqrt: 16.0]", a);
+    try testing.expect(boxed.isFloat(r));
+    try testing.expectApproxEqAbs(@as(f64, 4.0), boxed.untagFloat(r), 1e-9);
+}
+
+// freeze (2/2): the full loop — emit + `zig build-lib` a wrapper dylib, then
+// load it into a fresh session; its birnam_module_init re-establishes the wrap.
+test "freeze: compiled wrapper dylib re-establishes wraps on load" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const tmp = "test_freeze_tmp";
+    std.fs.cwd().makeDir(tmp) catch {};
+    defer std.fs.cwd().deleteTree(tmp) catch {};
+
+    // Session A: build a wrap, emit + compile the wrapper dylib.
+    const sa = try fullSetup(&arena);
+    _ = (try sa.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_a = (try sa.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    _ = evalLine(sa, lang_a, "let lib := [Module load: \"/usr/lib/libSystem.B.dylib\"]", a);
+    _ = evalLine(sa, lang_a, "[lib wrap: #sqrt: as: \"sqrt\" signature: \"d)d\"]", a);
+
+    var dir = try std.fs.cwd().openDir(tmp, .{});
+    defer dir.close();
+    _ = try freeze.writeArtifacts(a, sa.store, sa.interner, dir, "foo");
+    const term = freeze.compile(a, tmp, "foo") catch return error.SkipZigTest;
+    if (!(term == .Exited and term.Exited == 0)) return error.SkipZigTest; // zig unavailable
+
+    // Session B: fresh boot; load the compiled wrapper dylib. Its init
+    // re-files-in the wrap; then the call works against a re-dlopened lib.
+    const sb = try fullSetup(&arena);
+    _ = (try sb.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_b = (try sb.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    _ = (try sb.manager.load(tmp ++ "/libfoo.dylib")) orelse return error.WrapperLoadFailed;
+
+    const r = evalLine(sb, lang_b, "[m0 sqrt: 64.0]", a);
+    try testing.expect(boxed.isFloat(r));
+    try testing.expectApproxEqAbs(@as(f64, 8.0), boxed.untagFloat(r), 1e-9);
 }

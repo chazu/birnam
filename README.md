@@ -42,7 +42,7 @@ You get a `birnam>` prompt. Each line is parsed by the PEG engine, desugared to 
 zig build test
 ```
 
-374 tests across the kernel and modules.
+376 tests across the kernel and modules.
 
 ## Language tour
 
@@ -165,6 +165,7 @@ Pure data write — no compiler/toolchain needed to save. On load, the fact stor
 | `:reset` | clear the top-level scope |
 | `:in <path>` | file in a birnam source unit (atomic: aborts on first error, applies nothing) |
 | `:in! <path>` | file in best-effort (evaluate every good form, report errors) |
+| `:freeze <base>` | freeze the image's FFI wraps into a standalone wrapper module dylib |
 
 ## Calling C libraries (FFI)
 
@@ -192,7 +193,29 @@ birnam> :in libfoo.birnam
 [lang] filed in 3 forms (0 errors)
 ```
 
-Wraps are **declarative facts** (symbol name + signature + selector), so they persist across `:save`/`:load` and **re-link by symbol name** on load — the `dlopen`/`dlsym` is deferred to a commit step, never a stale cached address. This is the foundation for freezing a wrapper into a standalone module dylib (planned).
+Wraps are **declarative facts** (symbol name + signature + selector), so they persist across `:save`/`:load` and **re-link by symbol name** on load — the `dlopen`/`dlsym` is deferred to a commit step, never a stale cached address.
+
+### Freezing a wrapper into a dylib
+
+`:freeze` turns the live wraps into a standalone **wrapper module dylib**:
+
+```
+birnam> let lib := [Module load: "/usr/lib/libSystem.B.dylib"]
+birnam> [lib wrap: #sqrt: as: "sqrt" signature: "d)d"]
+birnam> :freeze foo
+[birnam] froze 1 module(s), 1 wrap(s) -> foo.birnam + foo.zig
+[birnam] compiled libfoo.dylib
+```
+
+It emits `foo.birnam` (canonical, re-editable source), `foo.zig` (a module that embeds it), and `birnam_module_abi.zig`, then `zig build-lib`s `libfoo.dylib`. Load that dylib after `peg`/`lang` and its `birnam_module_init` re-files-in the wraps — `dlopen`ing the alien lib and binding the symbols:
+
+```
+./zig-out/bin/birnam …/libbirnam_peg.dylib …/libbirnam_lang.dylib ./libfoo.dylib
+birnam> [lib sqrt: 49.0]
+=> 7
+```
+
+No new kernel ABI — the frozen module just replays the same `load:`/`wrap:` sends. Because wraps relink by name, the frozen dylib is portable across processes.
 
 ## Ahead-of-time compilation
 

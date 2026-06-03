@@ -27,6 +27,7 @@ const module = @import("kernel/module.zig");
 const image = @import("kernel/image.zig");
 const prune = @import("kernel/prune.zig");
 const ffi_module = @import("kernel/ffi_module.zig");
+const freeze = @import("kernel/freeze.zig");
 const kernel_eids = @import("kernel/kernel_eids.zig");
 const send_mod = @import("kernel/send.zig");
 const strings = @import("kernel/strings.zig");
@@ -117,6 +118,34 @@ fn handleImageCommand(
                 return true;
             };
             _ = send_mod.send1(proto, sel, path_ref);
+        }
+        return true;
+    }
+    // `:freeze <outbase>` — emit a standalone wrapper module dylib that, when
+    // loaded after peg + lang, re-establishes the image's FFI wraps. Writes
+    // <outbase>.birnam + <outbase>.zig + birnam_module_abi.zig, then compiles.
+    if (std.mem.startsWith(u8, line, ":freeze ")) {
+        const outbase = std.mem.trim(u8, line[8..], " ");
+        const dir_path = std.fs.path.dirname(outbase) orelse ".";
+        const base = std.fs.path.basename(outbase);
+        var dir = std.fs.cwd().openDir(dir_path, .{}) catch {
+            stderrPrint("[birnam] :freeze — cannot open dir {s}\n", .{dir_path});
+            return true;
+        };
+        defer dir.close();
+        const stats = freeze.writeArtifacts(allocator, store, interner, dir, base) catch {
+            stderrPrint("[birnam] :freeze failed\n", .{});
+            return true;
+        };
+        stdoutPrint("[birnam] froze {d} module(s), {d} wrap(s) -> {s}.birnam + {s}.zig\n", .{ stats.modules, stats.wraps, base, base });
+        const term = freeze.compile(allocator, dir_path, base) catch {
+            stdoutPrint("[birnam] (compile skipped — run: zig build-lib {s}.zig -dynamic --name {s})\n", .{ base, base });
+            return true;
+        };
+        if (term == .Exited and term.Exited == 0) {
+            stdoutPrint("[birnam] compiled lib{s}.dylib\n", .{base});
+        } else {
+            stdoutPrint("[birnam] compile failed; artifacts written\n", .{});
         }
         return true;
     }
