@@ -1249,6 +1249,23 @@ const ATTR_BIND_NEXT: u64 = 164;
 /// top-level REPL scope so persisted bindings survive save/load.
 const TOP_SCOPE_EID: u64 = 185;
 
+/// Mirror of kernel_eids.GLOBALS_SCOPE_EID (186) — parent of TOP_SCOPE; holds
+/// built-in global bindings (e.g. `Module`). Kept out of the top scope so
+/// `:reset` and image `:load` (which touch only TOP_SCOPE's binding chain)
+/// don't disturb globals.
+const GLOBALS_SCOPE_EID: u64 = 186;
+
+/// Mirror of kernel_eids.MODULE_PROTO (15) — the `Module` prototype object the
+/// FFI surface installs `load:` on. Bound to the global name `Module`.
+const MODULE_PROTO_EID: u64 = 15;
+
+/// Mirrors of kernel_eids — the `language` prototype (file-in) + filed-in-unit
+/// attributes. lang owns the `fileIn:` methods; the kernel just reserves eids.
+const LANGUAGE_PROTO_VT: u64 = 191;
+const LANGUAGE_PROTO_EID: u64 = 192;
+const ATTR_FILED_IN_PATH: u64 = 193;
+const ATTR_FILED_IN_SOURCE: u64 = 194;
+
 // Singleton top-level scope EID — set to TOP_SCOPE_EID at lang-dylib init.
 var g_top_scope_eid: u64 = 0;
 
@@ -1278,6 +1295,34 @@ fn pushScopeBinding(scope_eid: u64, name_eid: u64, value: Ref) void {
         _ = api.assert_fact(bind_eid, ATTR_BIND_NEXT, cur_head, M_USER);
     }
     _ = api.assert_fact(scope_eid, ATTR_SCOPE_FIRST_BINDING, mkEid(bind_eid), M_USER);
+}
+
+/// Push a binding with CODE provenance (g_module_eid) instead of M_USER.
+/// Used for built-in globals so they are reconstructed each boot and never
+/// persisted into images (which save M_USER facts only).
+fn pushGlobalBinding(scope_eid: u64, name_eid: u64, value: Ref) void {
+    const api = g_api.?;
+    const bind_eid = api.alloc_eid();
+    _ = api.assert_fact(bind_eid, ATTR_VTABLE, mkEid(BINDING_VT), g_module_eid);
+    _ = api.assert_fact(bind_eid, ATTR_BIND_NAME, mkEid(name_eid), g_module_eid);
+    _ = api.assert_fact(bind_eid, ATTR_BIND_VALUE, value, g_module_eid);
+    const cur_head = api.query_eavt(scope_eid, ATTR_SCOPE_FIRST_BINDING);
+    if (cur_head != NIL) {
+        _ = api.assert_fact(bind_eid, ATTR_BIND_NEXT, cur_head, g_module_eid);
+    }
+    _ = api.assert_fact(scope_eid, ATTR_SCOPE_FIRST_BINDING, mkEid(bind_eid), g_module_eid);
+}
+
+/// Build the globals scope (parent of TOP_SCOPE) and install built-in global
+/// bindings. CODE provenance throughout; idempotent across reboots because it
+/// runs at a fixed eid each boot.
+fn installGlobals() void {
+    const api = g_api.?;
+    _ = api.assert_fact(GLOBALS_SCOPE_EID, ATTR_VTABLE, mkEid(SCOPE_VT), g_module_eid);
+    _ = api.assert_fact(GLOBALS_SCOPE_EID, ATTR_SCOPE_TOP_LEVEL, mkEid(TRUE_EID), g_module_eid);
+    // `Module` → the prototype object (kernel-side MODULE_PROTO).
+    const name_module = api.intern("Module".ptr, 6);
+    pushGlobalBinding(GLOBALS_SCOPE_EID, name_module, mkEid(MODULE_PROTO_EID));
 }
 
 fn lookupInScope(scope_eid: u64, name_eid: u64) ?Ref {
@@ -1364,8 +1409,14 @@ fn evalKeywordSendImpl(s: *Send, args_in: [*]const Ref, n_args_in: usize) callco
     const recv_val = api.send1(recv_ast_ref, sel_eval, scope_ref);
     var buf: [16]Ref = undefined;
     var count: usize = 0;
+    // Walk the arg sibling-chain. The null link is mkEid(0) (PEG's CST
+    // terminator convention; see cstNextSibling) — NOT bare NIL — because an
+    // AST node minted onto a recycled CST eid can retain that node's stale
+    // `:next-sibling mkEid(0)` fact. Guarding only on isEid() would accept
+    // mkEid(0) as a phantom arg and overrun the buffer (latent everywhere,
+    // but only strict-arity consumers like FFI wraps observe it).
     var cur_ref = api.query_eavt(ast_eid, ATTR_AST_FIRST_ARG);
-    while (isEid(cur_ref) and count < buf.len) : (count += 1) {
+    while (isEid(cur_ref) and (cur_ref >> 3) != 0 and count < buf.len) : (count += 1) {
         const ast_arg = cur_ref >> 3;
         buf[count] = api.send1(cur_ref, sel_eval, scope_ref);
         cur_ref = api.query_eavt(ast_arg, ATTR_AST_NEXT_SIBLING);
@@ -1553,7 +1604,9 @@ fn blockEvalShim(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
 
     var cur_ref = api.query_eavt(block_ast_eid, ATTR_AST_BLOCK_PARAMS_CONST);
     var idx: usize = 0;
-    while (isEid(cur_ref) and !isNil(cur_ref) and idx < n_args) : (idx += 1) {
+    // (cur_ref >> 3) != 0 also rejects a stale mkEid(0) null-link sibling;
+    // idx < n_args already bounds this loop, but keep the terminator uniform.
+    while (isEid(cur_ref) and (cur_ref >> 3) != 0 and idx < n_args) : (idx += 1) {
         const pe = cur_ref >> 3;
         const name_ref = api.query_eavt(pe, ATTR_AST_NAME);
         if (isEid(name_ref) and !isNil(name_ref)) {
@@ -1646,7 +1699,11 @@ fn evalStmtSeqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
     const scope_ref = currentScope(args, n_args);
     var cur_ref = api.query_eavt(ast_eid, ATTR_AST_STMT_FIRST);
     var last_val: Ref = NIL;
-    while (isEid(cur_ref) and cur_ref != NIL) {
+    // mkEid(0) is the null-link terminator (see the arg walk in
+    // evalKeywordSendImpl). Guarding only on != NIL would treat a stale
+    // mkEid(0) `:next-sibling` (left on a recycled eid) as a live node and
+    // loop forever sending `eval` to entity 0.
+    while (isEid(cur_ref) and (cur_ref >> 3) != 0) {
         last_val = api.send1(cur_ref, sel_eval, scope_ref);
         if (g_unwinding) return last_val;
         const cur_eid = cur_ref >> 3;
@@ -1950,6 +2007,155 @@ fn installParseSurface() void {
     sel_parse_expr_g = sel_parse_expr;
     _ = api.assert_fact(g_module_eid, ATTR_VTABLE, mkEid(LANG_VT), g_module_eid);
     _ = api.assert_fact(LANG_VT, sel_parse_expr, mkEid(api.make_closure(@ptrCast(&parseExprImpl), NIL)), g_module_eid);
+
+    // `language` prototype (file-in). Pure facts (CODE / g_module_eid),
+    // reconstructed each boot. fileIn: reads + evaluates a source file form by
+    // form; needs the parser, so it lives in the frontend tier.
+    _ = api.assert_fact(LANGUAGE_PROTO_VT, ATTR_VTABLE, mkEid(VTABLE_VT), g_module_eid);
+    _ = api.assert_fact(LANGUAGE_PROTO_VT, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    _ = api.assert_fact(LANGUAGE_PROTO_VT, api.intern("fileIn:".ptr, 7), mkEid(api.make_closure(@ptrCast(&fileInImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(LANGUAGE_PROTO_VT, api.intern("fileIn:onError:".ptr, 15), mkEid(api.make_closure(@ptrCast(&fileInOnErrorImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(LANGUAGE_PROTO_EID, ATTR_VTABLE, mkEid(LANGUAGE_PROTO_VT), g_module_eid);
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("language".ptr, 8), mkEid(LANGUAGE_PROTO_EID));
+}
+
+// -- file-in -----------------------------------------------------------------
+
+/// Return the byte index of the end of the current top-form starting at
+/// `start`: the next `;` at bracket-depth 0 that is not inside a string or
+/// comment, or `src.len`. `;` is the statement separator the grammar already
+/// uses inside blocks (stmt-list); splitting on it gives per-form granularity
+/// for error reporting while letting forms span lines.
+fn formEnd(src: []const u8, start: usize) usize {
+    var i = start;
+    var depth: i32 = 0;
+    while (i < src.len) {
+        const c = src[i];
+        if (c == '"') { // string literal — no escapes in birnam grammar
+            i += 1;
+            while (i < src.len and src[i] != '"') : (i += 1) {}
+            i += 1;
+            continue;
+        }
+        if (c == '/' and i + 1 < src.len and src[i + 1] == '/') { // line comment
+            i += 2;
+            while (i < src.len and src[i] != '\n') : (i += 1) {}
+            continue;
+        }
+        if (c == '/' and i + 1 < src.len and src[i + 1] == '*') { // block comment
+            i += 2;
+            while (i + 1 < src.len and !(src[i] == '*' and src[i + 1] == '/')) : (i += 1) {}
+            i += 2;
+            continue;
+        }
+        if (c == '[') depth += 1;
+        if (c == ']') depth -= 1;
+        if (c == ';' and depth == 0) return i;
+        i += 1;
+    }
+    return src.len;
+}
+
+/// A parse result must be an AST eid that is not an ERROR_VT diagnostic.
+fn isParseError(ast: Ref) bool {
+    if (!isEid(ast)) return true;
+    return g_api.?.query_eavt(ast >> 3, ATTR_VTABLE) == mkEid(ERROR_VT);
+}
+
+/// An eval result is an error only if it is an ERROR_VT entity. A bare value
+/// (SmallInt / float / string / nil) is a perfectly good result, not a failure.
+fn isEvalError(val: Ref) bool {
+    if (!isEid(val)) return false;
+    return g_api.?.query_eavt(val >> 3, ATTR_VTABLE) == mkEid(ERROR_VT);
+}
+
+/// Core file-in: read `path`, split into `;`-separated top-forms, parse+eval
+/// each against the top-level scope. Atomic mode (`continue_on_error == false`)
+/// stops at the first error; continue mode evaluates every good form and
+/// reports each error. Returns SmallInt(# forms evaluated OK), or NIL if the
+/// path is unreadable / atomic-aborted.
+fn doFileIn(path_ref: Ref, continue_on_error: bool) Ref {
+    const api = g_api.?;
+    if (!isString(path_ref)) return NIL;
+    const path = stringBytes(path_ref);
+
+    const src = std.fs.cwd().readFileAlloc(std.heap.page_allocator, path, 1 << 20) catch {
+        if (g_log) |log| {
+            var buf: [256]u8 = undefined;
+            const m = std.fmt.bufPrintZ(&buf, "[lang] fileIn: cannot read {s}", .{path}) catch return NIL;
+            log(m);
+        }
+        return NIL;
+    };
+    defer std.heap.page_allocator.free(src);
+
+    // Record the filed-in unit (durable source for re-edit / freeze).
+    const unit = api.alloc_eid();
+    _ = api.assert_fact(unit, ATTR_FILED_IN_PATH, api.make_string(path.ptr, path.len), M_USER);
+    _ = api.assert_fact(unit, ATTR_FILED_IN_SOURCE, api.make_string(src.ptr, src.len), M_USER);
+
+    var ok: i64 = 0;
+    var errors: i64 = 0;
+    var form_no: i64 = 0;
+    var cursor: usize = 0;
+    while (cursor < src.len) {
+        const end = formEnd(src, cursor);
+        const raw = src[cursor..end];
+        cursor = end + 1; // skip the ';'
+        const form = std.mem.trim(u8, raw, " \t\r\n");
+        if (form.len == 0) continue;
+        form_no += 1;
+
+        const ast = api.send1(mkEid(g_module_eid), sel_parse_expr_g, api.make_string(form.ptr, form.len));
+        var failed = isParseError(ast);
+        if (!failed) {
+            const val = api.send1(ast, sel_eval, mkEid(g_top_scope_eid));
+            failed = isEvalError(val);
+        }
+        if (failed) {
+            errors += 1;
+            if (g_log) |log| {
+                var buf: [320]u8 = undefined;
+                const m = std.fmt.bufPrintZ(&buf, "[lang] fileIn: error at form {d}: {s}", .{ form_no, form }) catch continue;
+                log(m);
+            }
+            if (!continue_on_error) {
+                if (g_log) |log| log("[lang] fileIn: aborted (atomic) at first error");
+                return NIL;
+            }
+        } else {
+            ok += 1;
+        }
+    }
+
+    if (g_log) |log| {
+        var buf: [160]u8 = undefined;
+        const m = std.fmt.bufPrintZ(&buf, "[lang] filed in {d} forms ({d} errors)", .{ ok, errors }) catch return mkSmallInt(ok);
+        log(m);
+    }
+    return mkSmallInt(ok);
+}
+
+/// `[language fileIn: <path-string>]` — atomic file-in.
+fn fileInImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = n_args;
+    return doFileIn(args[0], false);
+}
+
+/// `[language fileIn: <path> onError: <#continue|#abort>]` — `#continue` keeps
+/// going past errors (debug arbitrary files); anything else is atomic.
+fn fileInOnErrorImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = n_args;
+    const api = g_api.?;
+    // args[1] is the mode selector/symbol Ref. #continue interns to "continue".
+    var continue_mode = false;
+    if (isEid(args[1])) {
+        const want = api.intern("continue".ptr, 8);
+        if ((args[1] >> 3) == want) continue_mode = true;
+    }
+    return doFileIn(args[0], continue_mode);
 }
 
 /// Runtime value methods — always kept (a stripped binary still does
@@ -2162,6 +2368,10 @@ pub fn langPrimitivesTier() void {
     g_top_scope_eid = TOP_SCOPE_EID;
     _ = api.assert_fact(g_top_scope_eid, ATTR_VTABLE, mkEid(SCOPE_VT), g_module_eid);
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_TOP_LEVEL, mkEid(TRUE_EID), g_module_eid);
+    // Built-in globals live in a parent scope so :reset / image :load (which
+    // touch only TOP_SCOPE's binding chain) don't disturb them. CODE facts.
+    installGlobals();
+    _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_PARENT, mkEid(GLOBALS_SCOPE_EID), g_module_eid);
 }
 
 /// `method:do:` install tier — kept under --aot=dynamic, dropped under

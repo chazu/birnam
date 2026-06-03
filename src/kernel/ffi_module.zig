@@ -54,8 +54,8 @@ fn mintInstanceVt(
 }
 
 /// Top-level `Module load:` — opens `path` via `dlopen`, mints a Module
-/// entity, returns its EID Ref. On failure, returns a diagnostic
-/// entity Ref tagged with `ERROR_VT`.
+/// object, returns its EID Ref. On failure, returns a diagnostic entity Ref
+/// tagged with `ERROR_VT`.
 pub fn moduleLoad(
     allocator: std.mem.Allocator,
     store: *fact_store_mod.FactStore,
@@ -63,8 +63,7 @@ pub fn moduleLoad(
     interner: *interner_mod.Interner,
     path: []const u8,
 ) !Ref {
-    // dlopen via std.DynLib. On failure, return error-entity.
-    var lib = std.DynLib.open(path) catch {
+    const lib = std.DynLib.open(path) catch {
         return try errorEntity(
             allocator,
             store,
@@ -72,41 +71,19 @@ pub fn moduleLoad(
             interner,
             "ffi-load-failure",
             "dlopen failed",
-            &.{ .{ .attr = kernel_eids.ATTR_ERROR_PATH, .value = try strings.mkString(allocator, path) } },
+            &.{.{ .attr = kernel_eids.ATTR_ERROR_PATH, .value = try strings.mkString(allocator, path) }},
         );
     };
-    // Stash the handle pointer. std.DynLib.open returns a value with a
-    // platform-specific inner; we treat its address as the foreign handle.
-    // For macOS, this wraps dlopen's void* result.
-    const handle_addr: usize = blk: {
-        // std.DynLib has a `handle` field on darwin (DlDynLib uses void*).
-        // Pull it out via the public `inner` if available; fall back to
-        // a stable pointer cast.
-        const lib_ptr = &lib;
-        const raw: usize = @intFromPtr(lib_ptr);
-        _ = raw;
-        // Use a heap-allocated copy of the DynLib struct so the handle
-        // survives this function frame.
-        const copy = allocator.create(std.DynLib) catch unreachable;
-        copy.* = lib;
-        break :blk @intFromPtr(copy);
-    };
+    // Heap-copy the DynLib so the handle survives this frame.
+    const copy = allocator.create(std.DynLib) catch unreachable;
+    copy.* = lib;
+    const handle_addr: usize = @intFromPtr(copy);
 
     const mod_eid = table.alloc();
     const instance_vt = try mintInstanceVt(allocator, store, table);
     _ = try store.assert(mod_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(instance_vt), kernel_eids.M_BOOTSTRAP);
-    _ = try store.assert(
-        mod_eid,
-        kernel_eids.ATTR_FFI_HANDLE,
-        try boxed.mkFfiPtr(allocator, handle_addr),
-        kernel_eids.M_BOOTSTRAP,
-    );
-    _ = try store.assert(
-        mod_eid,
-        kernel_eids.ATTR_FFI_PATH,
-        try strings.mkString(allocator, path),
-        kernel_eids.M_BOOTSTRAP,
-    );
+    _ = try store.assert(mod_eid, kernel_eids.ATTR_FFI_HANDLE, try boxed.mkFfiPtr(allocator, handle_addr), kernel_eids.M_BOOTSTRAP);
+    _ = try store.assert(mod_eid, kernel_eids.ATTR_FFI_PATH, try strings.mkString(allocator, path), kernel_eids.M_BOOTSTRAP);
     return ref_mod.mkEid(mod_eid);
 }
 
@@ -123,6 +100,25 @@ pub fn moduleSymbolAddr(
     const lib: *std.DynLib = @ptrFromInt(lib_ptr_addr);
     const sym = lib.lookup(*anyopaque, name) orelse return null;
     return @intFromPtr(sym);
+}
+
+/// `[Module load: <path-string-Ref>]` — class-side method installed on
+/// `MODULE_CLASS_VT`. Decodes the boxed-string path arg and delegates to
+/// `moduleLoad`. Returns the new Module entity Ref, or an `ERROR_VT` entity
+/// (bad-arg / dlopen failure).
+fn methodLoad(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = n_args;
+    const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    const table = send_mod.tablePtr() orelse return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const interner = id_api_mod.internerPtr() orelse return ref_mod.NIL;
+
+    const path_ref = args[0];
+    if (!strings.isString(path_ref)) {
+        return errorEntity(alloc, store, table, interner, "ffi-load-failure", "load: path not a string", &.{}) catch ref_mod.NIL;
+    }
+    return moduleLoad(alloc, store, table, interner, strings.bytes(path_ref)) catch ref_mod.NIL;
 }
 
 // -- Diagnostic entities ----------------------------------------------------
@@ -308,7 +304,6 @@ fn methodWrapAsSig(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
     if (!ref_mod.isEid(sel_ref)) return ref_mod.NIL;
     const mod_eid = ref_mod.untagEid(s.receiver);
 
-    // Decode name (boxed string) and sig (boxed string) into slices.
     if (!strings.isString(name_ref)) {
         return errorEntity(alloc, store, table, interner, "ffi-sig-parse-failure", "wrap: name not a string", &.{}) catch ref_mod.NIL;
     }
@@ -318,7 +313,6 @@ fn methodWrapAsSig(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
     const name_slice = strings.bytes(name_ref);
     const sig_slice = strings.bytes(sig_ref);
 
-    // Build a null-terminated copy of the name for DynLib.lookup.
     const name_z = alloc.dupeZ(u8, name_slice) catch return ref_mod.NIL;
     defer alloc.free(name_z);
     const addr = moduleSymbolAddr(store, mod_eid, name_z) orelse {
@@ -342,14 +336,8 @@ fn methodWrapAsSig(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
         return errorEntity(alloc, store, table, interner, kind, "registerWrap failed", &.{}) catch ref_mod.NIL;
     };
 
-    // Tag the wrap entity with its owning Module so `ffi.shimDispatch`
-    // can thread owner_mod_eid through `invokeWithOwner` for return-
-    // pointer boxing and arg-pointer stale-flag checks.
-    //
-    // Important: assert on the WRAP entity (which carries :ffi-addr /
-    // :ffi-sig), NOT on the closure entity. The closure is materialized
-    // in the object_table; mutating its facts would trigger Phase 8
-    // demotion and silently lose the dispatch target.
+    // Tag the WRAP entity (not the closure) with its owning Module so
+    // shimDispatch can thread owner_mod_eid for stale-pointer checks.
     if (table.get(closure_eid)) |c_ptr_ref| {
         if (ref_mod.isPointer(c_ptr_ref)) {
             const c: *const closure_mod.Closure = @ptrCast(@alignCast(ref_mod.untagPointer(c_ptr_ref)));
@@ -360,7 +348,6 @@ fn methodWrapAsSig(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
         }
     }
 
-    // Install the closure on the receiver's instance vt at sel.
     const instance_vt_ref = store.currentValue(mod_eid, kernel_eids.ATTR_VTABLE) orelse return ref_mod.NIL;
     if (!ref_mod.isEid(instance_vt_ref)) return ref_mod.NIL;
     const instance_vt = ref_mod.untagEid(instance_vt_ref);
@@ -467,4 +454,18 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_WRAP_AS_SIG, @ptrCast(&methodWrapAsSig));
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_SYMBOLS, @ptrCast(&methodSymbols));
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_UNLOAD, @ptrCast(&methodUnload));
+
+    // -- Prototype side: the `Module` object + its vt with `load:`/`resolve`. -
+    // MODULE_PROTO_VT is a normal vtable (its own :vtable is VTABLE_VT,
+    // delegates to OBJECT_VT — NOT MODULE_VT, so the prototype doesn't inherit
+    // per-instance methods). MODULE_PROTO is the object the lang frontend binds
+    // the global name `Module` to. Sending `load:` mints a new module object.
+    const proto_vt_obj = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.VTABLE_VT), 0);
+    try table.put(kernel_eids.MODULE_PROTO_VT, object.toRef(proto_vt_obj));
+    _ = try store.assert(kernel_eids.MODULE_PROTO_VT, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.VTABLE_VT), kernel_eids.M_BOOTSTRAP);
+    _ = try store.assert(kernel_eids.MODULE_PROTO_VT, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP);
+    try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_LOAD, @ptrCast(&methodLoad));
+
+    // The prototype object — only needs a :vtable fact (dispatch reads it).
+    _ = try store.assert(kernel_eids.MODULE_PROTO, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.MODULE_PROTO_VT), kernel_eids.M_BOOTSTRAP);
 }

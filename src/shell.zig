@@ -26,6 +26,10 @@ const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
 const image = @import("kernel/image.zig");
 const prune = @import("kernel/prune.zig");
+const kernel_eids = @import("kernel/kernel_eids.zig");
+const send_mod = @import("kernel/send.zig");
+const strings = @import("kernel/strings.zig");
+const ref_mod = @import("kernel/ref.zig");
 
 // -- Image save/load commands ------------------------------------------------
 
@@ -82,6 +86,33 @@ fn handleImageCommand(
         if (loaded.next_eid > cur) table.next_eid.store(loaded.next_eid, .monotonic);
         const n = image.rematerializeClosures(allocator, store, table) catch 0;
         stdoutPrint("[birnam] loaded {s} ({d} facts, {d} methods rebuilt)\n", .{ path, loaded.facts_loaded, n });
+        return true;
+    }
+    // `:in <path>` (atomic) / `:in! <path>` (continue-on-error). Both delegate
+    // to the lang `language` prototype's fileIn: — the parser lives there. The
+    // shell just drives the send (it links the kernel send path directly).
+    if (std.mem.startsWith(u8, line, ":in! ") or std.mem.startsWith(u8, line, ":in ")) {
+        const bang = line[3] == '!';
+        const path = std.mem.trim(u8, line[(if (bang) @as(usize, 5) else 4)..], " ");
+        const path_ref = strings.mkString(allocator, path) catch {
+            stderrPrint("[birnam] :in — out of memory\n", .{});
+            return true;
+        };
+        const proto = ref_mod.mkEid(kernel_eids.LANGUAGE_PROTO);
+        if (bang) {
+            const sel = interner.str_to_eid.get("fileIn:onError:") orelse {
+                stderrPrint("[birnam] :in! unavailable (lang not loaded)\n", .{});
+                return true;
+            };
+            const cont = interner.intern(store, table, "continue") catch return true;
+            _ = send_mod.send2(proto, sel, path_ref, ref_mod.mkEid(cont));
+        } else {
+            const sel = interner.str_to_eid.get("fileIn:") orelse {
+                stderrPrint("[birnam] :in unavailable (lang not loaded)\n", .{});
+                return true;
+            };
+            _ = send_mod.send1(proto, sel, path_ref);
+        }
         return true;
     }
     return false;

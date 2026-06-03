@@ -19,6 +19,7 @@ const bootstrap = @import("bootstrap.zig");
 const send_mod = @import("send.zig");
 const strings = @import("strings.zig");
 const image = @import("image.zig");
+const boxed = @import("boxed.zig");
 
 const Ref = ref_mod.Ref;
 
@@ -779,4 +780,68 @@ test "image: REPL binding survives save -> fresh boot -> load (lang-driven)" {
     // The binding (M_USER) re-attaches to the stable top-level scope and the
     // interned name `x` keeps its eid → `x` resolves to 41 in the new session.
     try testing.expectEqual(@as(i64, 41), ref_mod.untagSmallInt(evalLine(sb, lang_b, "x", a)));
+}
+
+// Phase 9.5.6 — the `Module load:` wire from REPL source. Proves the full
+// chain: the global `Module` resolves (a binding in the GLOBALS parent scope),
+// `load:` dispatches to ffi_module.moduleLoad, and a wrapped FFI fn is callable
+// via a keyword send. Doubles as the regression guard for the keyword-send
+// arg-arity fix: `[m sqrt: 16.0]` must deliver EXACTLY one arg, or the FFI
+// wrap's strict arity check rejects it (NIL). Pre-fix, a recycled-eid stale
+// `:next-sibling mkEid(0)` fact made the arg walk overrun to 16.
+test "FFI: [Module load:] + wrap + [m sqrt: 16.0] via parse+eval -> 4.0" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // `Module` resolves as a global (GLOBALS scope, parent of TOP_SCOPE).
+    const mod_ref = evalLine(s, lang, "let m := [Module load: \"/usr/lib/libSystem.B.dylib\"]", a);
+    try testing.expect(ref_mod.isEid(mod_ref));
+
+    // Wrap sqrt — a 3-arg keyword send (selector / name / signature).
+    _ = evalLine(s, lang, "[m wrap: #sqrt: as: \"sqrt\" signature: \"d)d\"]", a);
+
+    // Call — the 1-arg keyword send that the arg-arity fix unblocks.
+    const r = evalLine(s, lang, "[m sqrt: 16.0]", a);
+    try testing.expect(boxed.isFloat(r));
+    try testing.expectApproxEqAbs(@as(f64, 4.0), boxed.untagFloat(r), 1e-9);
+}
+
+// file-in (no FFI → portable). `;`-separated forms eval into the top scope.
+// Atomic mode stops at the first error (later forms not applied); continue
+// mode evaluates every good form. Source spans multiple lines per form.
+test "fileIn: language proto evaluates ;-separated forms (atomic + continue)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // -- happy path: all forms apply. --
+    const ok_path = "test_filein_ok.birnam";
+    try std.fs.cwd().writeFile(.{ .sub_path = ok_path, .data = "let a := 10;\n[a squared];\nlet b := [a + 5]\n" });
+    defer std.fs.cwd().deleteFile(ok_path) catch {};
+    _ = evalLine(s, lang, "[language fileIn: \"test_filein_ok.birnam\"]", a);
+    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(evalLine(s, lang, "a", a)));
+    try testing.expectEqual(@as(i64, 15), ref_mod.untagSmallInt(evalLine(s, lang, "b", a)));
+
+    // -- atomic abort: form 2 is garbage → form 3 never runs (c stays unbound). --
+    const bad_path = "test_filein_bad.birnam";
+    try std.fs.cwd().writeFile(.{ .sub_path = bad_path, .data = "let g := 1;\n@@nonsense@@;\nlet c := 7\n" });
+    defer std.fs.cwd().deleteFile(bad_path) catch {};
+    const atomic_res = evalLine(s, lang, "[language fileIn: \"test_filein_bad.birnam\"]", a);
+    try testing.expectEqual(ref_mod.NIL, atomic_res); // aborted
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "g", a))); // form 1 ran
+    try testing.expectEqual(ref_mod.NIL, evalLine(s, lang, "c", a)); // form 3 skipped → unbound
+
+    // -- continue mode: form 3 applies despite the form-2 error. --
+    _ = evalLine(s, lang, "[language fileIn: \"test_filein_bad.birnam\" onError: #continue]", a);
+    try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(evalLine(s, lang, "c", a)));
 }

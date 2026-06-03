@@ -200,6 +200,8 @@ pub fn boot(
     try interner.seed(store, kernel_eids.ATTR_ERROR_NAME, "error-name");
     try interner.seed(store, kernel_eids.ATTR_ERROR_ARITY, "error-arity");
     try interner.seed(store, kernel_eids.ATTR_ERROR_DETAIL, "error-detail");
+    try interner.seed(store, kernel_eids.ATTR_FILED_IN_PATH, "filed-in-path");
+    try interner.seed(store, kernel_eids.ATTR_FILED_IN_SOURCE, "filed-in-source");
     try interner.seed(store, kernel_eids.SEL_LOAD, "load:");
     try interner.seed(store, kernel_eids.SEL_WRAP_AS_SIG, "wrap:as:signature:");
     try interner.seed(store, kernel_eids.SEL_PATH, "path");

@@ -59,7 +59,16 @@ pub const MODULE_VT: u64 = 12;
 /// by `[res vtable] == mkEid(ERROR_VT)`.
 pub const ERROR_VT: u64 = 13;
 
-// 14..15 reserved for future kernel vtables / well-known entities
+/// Phase 9.5.6: the `Module` prototype object. `MODULE_PROTO` is a singleton
+/// object (birnam has prototypes, not classes) whose vtable (`MODULE_PROTO_VT`)
+/// carries `load:` (→ `ffi_module.moduleLoad`) and `resolve` (→ resolve all
+/// pending modules). The lang frontend binds the global name `Module` to
+/// `mkEid(MODULE_PROTO)` so `Module load: "lib.dylib"` is reachable from
+/// REPL/source. Sending `load:` mints a NEW module object — not class
+/// instantiation. Distinct from `MODULE_VT` (per-module instance side:
+/// path/handle/symbols/wrap:as:signature:/unload).
+pub const MODULE_PROTO_VT: u64 = 14;
+pub const MODULE_PROTO: u64 = 15;
 
 // -- Kernel selectors / attributes (16..63) -----------------------------------
 
@@ -496,4 +505,24 @@ pub const M_USER: u64 = 184;
 /// freshly-allocated scope eid.
 pub const TOP_SCOPE_EID: u64 = 185;
 
-// 186..255 reserved for future kernel selectors / attributes
+// 187..190 reserved (relinkable-wrap schema lands with the deferred refactor).
+
+/// Phase 9.5.6 — file-in. The `language` prototype object (lang owns the
+/// methods: `fileIn:` / `fileIn:onError:`); kernel only reserves the well-known
+/// eids so they survive the eid allocator. A filed-in unit is recorded as an
+/// entity `[unit :filed-in-path "p"] [unit :filed-in-source "..."]` (M_USER) so
+/// the wrapper stays re-editable / re-emittable (freeze).
+pub const LANGUAGE_PROTO_VT: u64 = 191;
+pub const LANGUAGE_PROTO: u64 = 192;
+pub const ATTR_FILED_IN_PATH: u64 = 193;
+pub const ATTR_FILED_IN_SOURCE: u64 = 194;
+
+/// `GLOBALS_SCOPE_EID` — stable well-known eid for the lang module's globals
+/// scope: the *parent* of `TOP_SCOPE_EID`. Built-in global bindings (e.g.
+/// `Module`) live here, not in the top scope, so that `:reset` (which clears
+/// only TOP_SCOPE's binding chain) and image `:load` (which replays the
+/// persisted M_USER TOP_SCOPE first-binding pointer) leave globals intact.
+/// Reconstructed each boot by lang init as CODE; never persisted.
+pub const GLOBALS_SCOPE_EID: u64 = 186;
+
+// 195..255 reserved for future kernel selectors / attributes
