@@ -196,6 +196,7 @@ const IdApi = extern struct {
 
 var g_api: ?*const IdApi = null;
 var g_log: ?*const fn ([*:0]const u8) callconv(.c) void = null;
+var g_ctx: ?*ShellContext = null;
 var g_module_eid: u64 = 0;
 var g_grammar_eid: u64 = 0;
 var g_source: []const u8 = "";
@@ -1904,11 +1905,21 @@ fn stringBytes(r: Ref) []const u8 {
     return payload[0..header.len];
 }
 
-fn installMethods() void {
+// -- Tiered init (Phase 14 M3) ----------------------------------------------
+// installMethods is split so AOT can keep runtime primitives while stripping
+// the parser/compiler/eval frontend under --strip=malleable:
+//   installPrimitives   — SmallInt/Float/Bool/Closure value methods (always)
+//   installMethodDo     — VTABLE_VT method:do: (kept under --aot=dynamic)
+//   installEvalMethods  — AST_*_VT tree-walker eval (frontend; stripped)
+//   installParseSurface — parseExpr: on LANG_VT (frontend; stripped)
+// Regrouping changes intern order vs. the old single fn, which is safe: the
+// image carries the interner (Phase 12.4b), so selector eids are portable.
+
+/// Tree-walker eval methods on the AST kind-vts. Frontend tier (stripped
+/// under --strip=malleable — a pure-VM binary runs bytecode, not the AST).
+fn installEvalMethods() void {
     const api = g_api.?;
     sel_eval = api.intern("eval".ptr, 4);
-
-    // Install eval methods on each AST kind-vt.
     const sel_eval_eid = sel_eval;
     _ = api.assert_fact(AST_LITERAL_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalLiteralImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_SELF_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalSelfImpl), NIL)), g_module_eid);
@@ -1920,7 +1931,31 @@ fn installMethods() void {
     _ = api.assert_fact(AST_ASSIGN_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalAssignImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_STMT_SEQ_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalStmtSeqImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_RETURN_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalReturnImpl), NIL)), g_module_eid);
+}
 
+/// VTABLE_VT method:do: — user method install. Kept under --aot=dynamic
+/// (runtime-loaded dylibs install bytecode methods); dropped under
+/// static+malleable (frozen app, no install).
+fn installMethodDo() void {
+    const api = g_api.?;
+    const method_do_sel = api.intern("method:do:".ptr, 10);
+    _ = api.assert_fact(VTABLE_VT, method_do_sel, mkEid(api.make_closure(@ptrCast(&vtMethodDoImpl), NIL)), g_module_eid);
+}
+
+/// parseExpr: on the lang module entity. Frontend tier (stripped under
+/// --strip=malleable — no source compilation in the shipped binary).
+fn installParseSurface() void {
+    const api = g_api.?;
+    const sel_parse_expr = api.intern("parseExpr:".ptr, 10);
+    sel_parse_expr_g = sel_parse_expr;
+    _ = api.assert_fact(g_module_eid, ATTR_VTABLE, mkEid(LANG_VT), g_module_eid);
+    _ = api.assert_fact(LANG_VT, sel_parse_expr, mkEid(api.make_closure(@ptrCast(&parseExprImpl), NIL)), g_module_eid);
+}
+
+/// Runtime value methods — always kept (a stripped binary still does
+/// arithmetic, control flow, iteration, block invocation).
+fn installPrimitives() void {
+    const api = g_api.?;
     // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
     const negate_sel = api.intern("negate".ptr, 6);
     const squared_sel = api.intern("squared".ptr, 7);
@@ -1962,11 +1997,6 @@ fn installMethods() void {
     const vt_sel = api.intern("vtable".ptr, 6);
     _ = api.assert_fact(SMALLINT_VT, vt_sel, mkEid(api.make_closure(@ptrCast(&smallintVtableImpl), NIL)), g_module_eid);
 
-    // Method install on VTABLE_VT: receiver is the target vt, args are
-    // symbol + block closure. `[<some-vt> method: #sel do: [| body]]`.
-    const method_do_sel = api.intern("method:do:".ptr, 10);
-    _ = api.assert_fact(VTABLE_VT, method_do_sel, mkEid(api.make_closure(@ptrCast(&vtMethodDoImpl), NIL)), g_module_eid);
-
     // Block-invocation methods on CLOSURE_VT — receiver is mkEid(closure_eid),
     // closureValueImpl re-targets s.closure at the receiver and forwards to
     // blockEvalShim. Param-arity disambiguation falls out of the variadic ABI.
@@ -1999,16 +2029,14 @@ fn installMethods() void {
     _ = api.assert_fact(FALSE_VT, if_true_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueImpl), NIL)), g_module_eid);
     _ = api.assert_fact(FALSE_VT, if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfFalseImpl), NIL)), g_module_eid);
     _ = api.assert_fact(FALSE_VT, if_true_if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueIfFalseImpl), NIL)), g_module_eid);
+}
 
-    // Install parseExpr: on the lang module entity itself so callers
-    // reach the desugar pipeline via send.
-    const sel_parse_expr = api.intern("parseExpr:".ptr, 10);
-    sel_parse_expr_g = sel_parse_expr;
-    // The module entity needs a vt that responds to parseExpr:. Reuse
-    // LANG_VT (singleton). Install on LANG_VT, then assert lang module's
-    // :vtable = LANG_VT.
-    _ = api.assert_fact(g_module_eid, ATTR_VTABLE, mkEid(LANG_VT), g_module_eid);
-    _ = api.assert_fact(LANG_VT, sel_parse_expr, mkEid(api.make_closure(@ptrCast(&parseExprImpl), NIL)), g_module_eid);
+/// Full method install (dylib / non-AOT path) — every tier.
+fn installMethods() void {
+    installEvalMethods();
+    installPrimitives();
+    installMethodDo();
+    installParseSurface();
 }
 
 const LANG_VT: u64 = 103;
@@ -2110,16 +2138,42 @@ fn isSmallInt(r: Ref) bool {
 
 // -- Module init -------------------------------------------------------------
 
-export fn birnam_module_init(
-    ctx: *ShellContext,
-    api: *const IdApi,
-    module_eid: u64,
-) void {
+// -- Tiered init entry points (Phase 14 M3) ---------------------------------
+// The AOT generator composes these per --aot/--strip flags; the dylib path
+// (birnam_module_init) calls them all. langSetup must run first; the AOT
+// driver runs image.load between langSetup and langPrimitivesTier so the
+// interner is restored and primitive selector interns resolve to the image's
+// eids.
+
+/// Wire module globals only — no interning, no installs.
+pub fn langSetup(ctx: *ShellContext, api: *const IdApi, module_eid: u64) void {
     g_api = api;
     g_log = ctx.log;
+    g_ctx = ctx;
     g_module_eid = module_eid;
-    ctx.log("[lang] initializing");
+}
 
+/// Always-kept tier: runtime value methods + the stable top-level scope.
+pub fn langPrimitivesTier() void {
+    const api = g_api.?;
+    installPrimitives();
+    // Stable top-level REPL scope (Phase 12.4a) — CODE facts at a fixed eid
+    // so persisted M_USER bindings re-attach on reload.
+    g_top_scope_eid = TOP_SCOPE_EID;
+    _ = api.assert_fact(g_top_scope_eid, ATTR_VTABLE, mkEid(SCOPE_VT), g_module_eid);
+    _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_TOP_LEVEL, mkEid(TRUE_EID), g_module_eid);
+}
+
+/// `method:do:` install tier — kept under --aot=dynamic, dropped under
+/// static+malleable.
+pub fn langMethodDoTier() void {
+    installMethodDo();
+}
+
+/// Frontend tier — grammar + tree-walker eval + parseExpr + REPL handler.
+/// Dropped under --strip=malleable.
+pub fn langFrontendTier() void {
+    const api = g_api.?;
     sel_new_grammar = internSel("newGrammar");
     sel_literal = internSel("literal:");
     sel_rule_ref = internSel("ruleRef:");
@@ -2137,28 +2191,26 @@ export fn birnam_module_init(
 
     buildGrammar();
     cacheRuleNames();
-    installMethods();
+    installEvalMethods();
+    installParseSurface();
 
-    // The singleton top-level scope (T2b) lives at a STABLE well-known eid
-    // (Phase 12). REPL persistent bindings hang off it as M_USER data; the
-    // scope entity's structural facts are CODE (module_eid) — reconstructed
-    // here every boot at the fixed eid so reloaded bindings re-attach.
-    // AST_VAR_REF_VT resolves against this scope when no enclosing scope is
-    // active.
-    g_top_scope_eid = TOP_SCOPE_EID;
-    _ = api.assert_fact(g_top_scope_eid, ATTR_VTABLE, mkEid(SCOPE_VT), module_eid);
-    _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_TOP_LEVEL, mkEid(TRUE_EID), module_eid);
-
-    // Export grammar EID on the module entity: `[<module_eid> grammar]`
-    // returns mkEid(g_grammar_eid). Phase 10.2 parser bootstrap reads it.
+    // Export grammar EID on the module entity for the parser bootstrap.
     const sel_grammar = api.intern("grammar", 7);
-    _ = api.assert_fact(module_eid, sel_grammar, mkEid(g_grammar_eid), module_eid);
+    _ = api.assert_fact(g_module_eid, sel_grammar, mkEid(g_grammar_eid), g_module_eid);
 
-    // Phase 10.5: register the birnam-source REPL handler. The shell's
-    // stdin loop now drives parseExpr + eval per line, formats the result
-    // via formatValue, and writes via ctx.log. `:reset` clears the scope
-    // stack; future `:scope`/`:quit`/`:tx` debug commands land here too.
-    ctx.set_repl_handler(&replHandler);
+    // Register the birnam-source REPL handler (drives parseExpr + eval).
+    if (g_ctx) |ctx| ctx.set_repl_handler(&replHandler);
+}
 
+export fn birnam_module_init(
+    ctx: *ShellContext,
+    api: *const IdApi,
+    module_eid: u64,
+) void {
+    langSetup(ctx, api, module_eid);
+    ctx.log("[lang] initializing");
+    langFrontendTier();
+    langPrimitivesTier();
+    langMethodDoTier();
     ctx.log("[lang] ready");
 }
