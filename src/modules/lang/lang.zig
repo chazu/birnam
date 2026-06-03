@@ -2202,15 +2202,22 @@ pub fn langFrontendTier() void {
     if (g_ctx) |ctx| ctx.set_repl_handler(&replHandler);
 }
 
-export fn birnam_module_init(
+// Phase 14 M4: C entry exported only for dylib builds (see peg.zig).
+const build_opts = @import("build_opts");
+
+pub fn moduleInitImpl(
     ctx: *ShellContext,
     api: *const IdApi,
     module_eid: u64,
-) void {
+) callconv(.c) void {
     langSetup(ctx, api, module_eid);
     ctx.log("[lang] initializing");
     langFrontendTier();
     langPrimitivesTier();
     langMethodDoTier();
     ctx.log("[lang] ready");
+}
+
+comptime {
+    if (build_opts.export_init) @export(&moduleInitImpl, .{ .name = "birnam_module_init" });
 }

@@ -124,12 +124,22 @@ const IdApi = extern struct {
     sendN: *const fn (Ref, u64, [*]const Ref, usize) callconv(.c) Ref,
 };
 
-export fn birnam_module_init(
+// Phase 14 M4: export the C entry only for dylib builds. When statically
+// `@import`ed into the AOT binary (build_opts.export_init = false), the
+// caller invokes `moduleInitImpl` directly — avoids a duplicate
+// `birnam_module_init` symbol across statically-linked modules.
+const build_opts = @import("build_opts");
+
+pub fn moduleInitImpl(
     ctx: *ShellContext,
     api: *const IdApi,
     module_eid: u64,
-) void {
+) callconv(.c) void {
     ctx.log("[peg] initializing");
     api.peg_install_send_api(module_eid);
     ctx.log("[peg] ready");
+}
+
+comptime {
+    if (build_opts.export_init) @export(&moduleInitImpl, .{ .name = "birnam_module_init" });
 }

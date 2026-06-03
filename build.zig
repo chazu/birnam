@@ -48,6 +48,32 @@ pub fn build(b: *std.Build) void {
     shell.linkLibC();
     b.installArtifact(shell);
 
+    // -- Phase 14 M1: AOT static executable (baked image + modules) ----------
+    // `zig build aot` produces a standalone binary embedding src/aot_embed.brnimg
+    // with peg + lang statically linked (no dylibs). Slice: --aot=static,
+    // no strip.
+    //
+    // M4: gate the `birnam_module_init` C export. Dylib builds export it
+    // (dlopen entry); the static AOT binary imports module sources and calls
+    // moduleInitImpl directly, so it must NOT export (duplicate symbol across
+    // statically-linked modules).
+    const dylib_init_opts = b.addOptions();
+    dylib_init_opts.addOption(bool, "export_init", true);
+    const static_init_opts = b.addOptions();
+    static_init_opts.addOption(bool, "export_init", false);
+
+    const aot_mod = b.createModule(.{
+        .root_source_file = b.path("src/aot_main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    aot_mod.addOptions("build_opts", static_init_opts); // peg/lang @import resolve here
+    const aot_exe = b.addExecutable(.{ .name = "birnam-aot", .root_module = aot_mod });
+    aot_exe.linkLibrary(dyncall_lib);
+    aot_exe.linkLibC();
+    const aot_step = b.step("aot", "Build the static AOT executable (embeds src/aot_embed.brnimg)");
+    aot_step.dependOn(&b.addInstallArtifact(aot_exe, .{}).step);
+
     // -- Hello dylib (Phase 5 smoke-test module) -----------------------------
 
     const hello_mod = b.createModule(.{
@@ -97,6 +123,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    peg_mod.addOptions("build_opts", dylib_init_opts);
     const peg_lib = b.addLibrary(.{
         .name = "birnam_peg",
         .root_module = peg_mod,
@@ -111,6 +138,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    lang_mod.addOptions("build_opts", dylib_init_opts);
     const lang_lib = b.addLibrary(.{
         .name = "birnam_lang",
         .root_module = lang_mod,
