@@ -443,17 +443,18 @@ Open `ROADMAP.md`. Show:
 
 (So the audience knows what's coming.)
 
-- **Phase 11 bytecode VM.** Will retire `g_unwinding` interim for
-  proper VM unwind opcodes. Phase 11 codegen compiles AST_VAR_REF_VT
-  nodes directly to slot-load operands, making Phase 10.4.5 S5
-  parse-time slot resolution unnecessary.
-- **Multi-line REPL input.** Currently one expression per line.
-  T2-locked path: PEG furthest-failure-at-EOF detection. Land
-  alongside scope-chain work.
-- **Image snapshot / load.** Phase 12 — fact-store roots + mmappable
-  segment files. Without it, every demo invocation rebuilds the
-  whole tower from scratch. (For the demo, this is actually a *
-  feature* — every birnam invocation comes up identical.)
+- **Multi-line REPL input.** The interactive REPL is still one
+  expression per line; multi-statement units come in via file-in
+  (`:in`, `;`-separated forms), not yet inline at the prompt.
+- **Auto-generated wrappers (UC3).** `[mod symbols]` enumerates a
+  dylib's symbols, but generating a wrapper unit from them needs a
+  signature source (headers / sig DB / placeholders) — not built.
+- **Native codegen (Phase 15) + GC (Phase 16).** Bytecode runs on a
+  stack VM; process-lifetime allocations are currently just leaked.
+
+(Shipped since this walk was written: Phase 11 bytecode VM, Phase 12
+image snapshot `:save`/`:load`, Phase 13 prune, FFI-from-language +
+file-in + freeze — see the FFI bullet below and ROADMAP.)
 
 ## What's interesting beyond the demo
 
@@ -462,9 +463,13 @@ Open `ROADMAP.md`. Show:
 - History is free and as-of-able. Every assert carries a `tx`
   column; querying as-of an older `tx` shows the world at that
   point.
-- Dyncall-backed FFI (Phase 9). `[Module load: "/usr/lib/…"]` mints
-  a Module entity with `[mod wrap: 'name' as: 'sel' signature:
-  'd)d']` installs FFI shims. Stale-pointer detection on unload.
+- Dyncall-backed FFI, reachable from the language (Phase 9 / 9.5.6).
+  `let m := [Module load: "/usr/lib/libSystem.B.dylib"]` then
+  `[m wrap: #sqrt: as: "sqrt" signature: "d)d"]` → `[m sqrt: 144.0]`
+  ⇒ 12. Wraps are declarative facts (deferred `dlopen`, relink by
+  symbol name across `:save`/`:load`). `:in libfoo.birnam` files in a
+  wrapper unit; `:freeze foo` compiles it to a standalone wrapper
+  dylib that re-establishes the wraps on load.
 - Predicates + functions as fact entities (Phase 7.4). Override-able
   bind via `:bind` attribute (Phase 7.5).
 - Schema-driven multi-cardinality attributes (Phase 9.5.2,
