@@ -4,7 +4,15 @@ Detailed work sequence from current zig/birnam (linear-scan vtables, no fact sto
 
 This roadmap follows VISION.md. Open questions in VISION.md must be resolved before starting Phase 1.
 
-## Status (as of 2026-06-01)
+## Status (as of 2026-06-02)
+
+**Headline — Phases 0–13 complete; Phase 14 (AOT) in progress. 374/374 tests.**
+- **0–11** ✓ — substrate, datalog, FFI, modules, language, bytecode VM. Phase 11.12 shipped the lang switchover: user methods dispatch through the bytecode VM (not the tree-walker). Loose ends (in-band mcache wiring, full `g_unwinding` retirement, tail-call refactor) deferred, non-blocking.
+- **12** ✓ — image snapshot (`.brnimg`, single self-describing file: facts + embedded manifest + interner). Provenance split (`M_USER`), Approach-B closure rebuild, shell `:save`/`:load`. A REPL session survives process restart (proven). See the Phase 12 §Status block.
+- **13** ✓ — pruning: reachable-from-roots mark-sweep + `FactStore.compact` + shell `:prune`. Re-derived roots/edges for the bytecode-closure model. See Phase 13 §Status.
+- **14** 🟡 — AOT. Shipped: `static`/no-strip (`birnam-aot`, REPL over baked state) and `static`/`--strip=malleable` (`birnam-aot-malleable`, pure-VM, baked bytecode dispatch). Remaining: `--strip=history` flag, general entry semantics, the `birnam --aot=…` driver wrapper, `--aot=dynamic` variants. See Phase 14 §Status.
+
+The per-phase **§Status** blocks (Phases 12/13/14) are the authoritative current state. The detailed Phase 10/11 notes below are kept as history.
 
 **Completed (substrate):**
 - Phase 0–7.5 ✓ (collections, fact store, kernel, datalog, FFI, modules)
@@ -40,12 +48,12 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 - 11.7.iv ✓ — atomic EID + tx counters via `std.atomic.Value(u64)`.
 - 11.7.v ✓ — `tx_engine.commit(op)` consolidated entry point.
 - 11.7.vi ✓ — `Interner.writer_lock` (`std.Thread.Mutex`) + lock-free reader fast path with under-lock recheck.
-- 11.7.vii — image manifest mode tag; gated on Phase 12 (no image format yet). See Phase 12 Framing decision (2026-06-02) — closure fn-ptr serialization boundary resolved as "bytecode methods = own entity kind; only native primitives relink on load."
+- 11.7.vii — image manifest mode tag; folded into Phase 12 (embedded manifest carries the thread-mode tag). The closure fn-ptr serialization boundary was resolved via **Approach B** (rebuild closures from facts on load), not Approach A — see Phase 12 §Framing decision.
 - 11.8 ✓ — annotation emit at materialize time (`:bytecode-stream`, `:constant-pool`, `:method-body-ast`, three sizing SmallInts, `:block-parent-method`).
 - 11.9 ✓ — tail-call probe CI gate (1M-depth two-handler chain, ReleaseFast). Failure = build error per ADR-11 addendum #7.
 - 11.10 partial — kernel-side end-to-end tests cover every opcode + composite programs (let + binary send → 6). Full parity vs tree-walker = lang module switchover gate.
 
-**Lang switchover infrastructure shipped:** `IdApi.compile_block_as_method(block_ast_eid) → method_eid` appended (ABI discipline preserved). Kernel-side `cCompileBlockAsMethod` calls `compiler.compileBlockAsMethod` + `materialize`. Lang dylib mirror struct updated. `vtMethodDoImpl` switchover NOT YET wired — blocked on closure-scope-capture support in the bytecode compiler (see Phase 11.11 below).
+**Lang switchover infrastructure shipped:** `IdApi.compile_block_as_method(block_ast_eid) → method_eid` appended (ABI discipline preserved). Kernel-side `cCompileBlockAsMethod` calls `compiler.compileBlockAsMethod` + `materialize`. Lang dylib mirror struct updated. **`vtMethodDoImpl` switchover now LIVES (Phase 11.12 below) — this "NOT YET wired" note is historical.**
 
 **Phase 11.11 ✓ — closure scope capture (by-value, 2026-06-01):**
 - Compiler `State` gains `parent_state` chain. `resolveVarSlot` walks parents recursively; each intermediate level records a `CaptureSpec` so the runtime chain stays flat (each block frame reads only from its immediate parent).
@@ -92,11 +100,12 @@ Non-local return propagation through SEND: `handleSendUnwind` helper runs after 
 
 **Phase 10 closed.** The language has: arithmetic + comparisons on SmallInt and Float (with mixed-type coercion), control flow via `ifTrue:ifFalse:`, blocks with parameters, closures-over-enclosing-scope captured by reference, mutation via `:=`, recursion via method install, iteration primitives (`whileTrue:`, `whileFalse:`, `timesRepeat:`, `to:do:`), statement sequencing via `;`, comments (`//` and `/* */`), string literals, symbol literals (including compound `#kw1:kw2:`), float literals, non-local return `^`, and full user-overridable method install via `[vt method:#sel do:[block]]`. REPL drives the stdin loop with persistent top-level bindings. All ~28 demo cases run in 73 build steps with 291 passing tests.
 
-**Next major arcs (in dependency order):**
-1. Phase 11 — bytecode VM (ADR-11 decisions 1-7 locked 2026-05-30; retires `g_unwinding`, retires tree-walker stack overflow, supersedes 10.4.5 S5)
-2. Phase 12 — image snapshot + load (`.brnimg` D3 format; mmappable segments + manifest; pure-data save, no `cc` required)
-3. Phase 13 — pruning + reachability GC (AST/scope mark-sweep, history excise; AOT prune mode reuses)
-4. Phase 14 — AOT (`birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history]`; four sensible outputs)
+**Next major arcs (in dependency order):** *(2026-06-02: 11 ✓, 12 ✓, 13 ✓; 14 in progress — see per-phase §Status)*
+1. Phase 11 ✓ — bytecode VM (ADR-11 decisions 1-7 locked 2026-05-30; retires `g_unwinding`, retires tree-walker stack overflow, supersedes 10.4.5 S5)
+2. Phase 12 ✓ — image snapshot + load (`.brnimg`; pure-data save, no `cc` required)
+3. Phase 13 ✓ — pruning + reachability GC (AST/scope mark-sweep, history excise; AOT prune mode reuses)
+4. Phase 14 🟡 — AOT (`birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history]`; four sensible outputs)
+5. Phase 15/16 — native codegen + GC (Later — optional polish)
 
 **ADR-11 — Phase 11/12/14 design decisions locked 2026-05-30:**
 1. Bytecode encoding = bytestream + indexable annotations (queryable compiled artifact at tool-relevant granularity, fast dispatch)
