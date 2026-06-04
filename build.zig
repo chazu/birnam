@@ -272,6 +272,15 @@ pub fn build(b: *std.Build) void {
     const run_prune_tests = b.addRunArtifact(prune_tests);
     test_step.dependOn(&run_prune_tests.step);
 
+    const arena_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/arena_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const arena_tests = b.addTest(.{ .root_module = arena_test_mod });
+    const run_arena_tests = b.addRunArtifact(arena_tests);
+    test_step.dependOn(&run_arena_tests.step);
+
     const tx_engine_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/tx_engine_test.zig"),
         .target = target,
