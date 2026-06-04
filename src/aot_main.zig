@@ -121,6 +121,22 @@ fn runEntry(interner: *interner_mod.Interner, api: *const id_api_mod.IdApi) void
     std.process.exit(0);
 }
 
+/// Load the embedded image, choosing the frozen (no tx-writer / history)
+/// replay under `--strip=history`. Comptime-selected so a non-history build
+/// never references `loadFrozen` and vice-versa.
+fn loadBaked(store: *fact_store.FactStore, interner: *interner_mod.Interner) image.ReadError!image.LoadResult {
+    return if (comptime bopts.strip_history)
+        image.loadFrozen(store, BakedImage, interner)
+    else
+        image.load(store, BakedImage, interner);
+}
+
+/// Lock the store read-only after a frozen load completes (FFI resolve, which
+/// writes during load, has already run). No-op unless `--strip=history`.
+fn freezeIfHistoryStripped(store: *fact_store.FactStore) void {
+    if (comptime bopts.strip_history) store.freeze();
+}
+
 /// Drive a line-oriented REPL over the baked state via the lang module's
 /// registered handler. Shared by the static-full and dynamic (full-tower)
 /// paths.
@@ -147,7 +163,7 @@ fn replLoop() void {
 /// primitives (M3 langPrimitivesTier).
 fn runStaticMalleable(allocator: std.mem.Allocator, store: *fact_store.FactStore, table: *object_table.ObjectTable, interner: *interner_mod.Interner, api: *const id_api_mod.IdApi) !void {
     lang.langSetup(@ptrCast(&shell_context), @ptrCast(api), table.alloc());
-    const loaded = image.load(store, BakedImage, interner) catch |e| {
+    const loaded = loadBaked(store, interner) catch |e| {
         stderrPrint("[aot] image load failed: {}\n", .{e});
         return e;
     };
@@ -156,6 +172,7 @@ fn runStaticMalleable(allocator: std.mem.Allocator, store: *fact_store.FactStore
     lang.langPrimitivesTier();
     _ = image.rematerializeClosures(allocator, store, table) catch {};
     ffi_module.resolveAllPending(allocator, store, table) catch {};
+    freezeIfHistoryStripped(store); // --strip=history: lock read-only last
     stderrPrint("[aot] malleable: loaded baked image ({d} facts), AST stripped\n", .{loaded.facts_loaded});
 
     // M6: send the entry selector to the resolved receiver, exit with the
@@ -169,13 +186,14 @@ fn runStaticFull(allocator: std.mem.Allocator, store: *fact_store.FactStore, tab
     initModule(peg, &shell_context, api, table.alloc());
     initModule(lang, &shell_context, api, table.alloc());
 
-    const loaded = image.load(store, BakedImage, interner) catch |e| {
+    const loaded = loadBaked(store, interner) catch |e| {
         stderrPrint("[aot] image load failed: {}\n", .{e});
         return e;
     };
     if (loaded.next_eid > table.next_eid.load(.monotonic)) table.next_eid.store(loaded.next_eid, .monotonic);
     _ = image.rematerializeClosures(allocator, store, table) catch {};
     ffi_module.resolveAllPending(allocator, store, table) catch {};
+    freezeIfHistoryStripped(store); // --strip=history: lock read-only last
 
     runEntry(interner, api);
     stderrPrint("[aot] loaded baked image ({d} facts), entering REPL\n", .{loaded.facts_loaded});
@@ -222,13 +240,14 @@ fn runDynamic(allocator: std.mem.Allocator, store: *fact_store.FactStore, table:
         stderrPrint("[aot] dynamic: loaded {s}\n", .{base});
     }
 
-    const loaded = image.load(store, BakedImage, interner) catch |e| {
+    const loaded = loadBaked(store, interner) catch |e| {
         stderrPrint("[aot] image load failed: {}\n", .{e});
         return e;
     };
     if (loaded.next_eid > table.next_eid.load(.monotonic)) table.next_eid.store(loaded.next_eid, .monotonic);
     _ = image.rematerializeClosures(allocator, store, table) catch {};
     ffi_module.resolveAllPending(allocator, store, table) catch {};
+    freezeIfHistoryStripped(store); // --strip=history: lock read-only last
 
     runEntry(interner, api);
     stderrPrint("[aot] dynamic: loaded baked image ({d} facts), entering REPL\n", .{loaded.facts_loaded});

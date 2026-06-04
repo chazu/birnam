@@ -314,3 +314,25 @@ test "10k assertions over 1k entities" {
     // Tx counter = 10000 + 1
     try testing.expectEqual(@as(u64, 10_000), store.currentTx());
 }
+
+// -- Phase 14 --strip=history: frozen read-only store ------------------------
+
+test "frozenInsert builds indexes; freeze rejects further mutation" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var store = fs.FactStore.init(arena.allocator());
+
+    // Bulk-build via the frozen path (no tx churn — counter stays at 1).
+    try store.frozenInsert(E1, A_NAME, vi(42), M_FOO);
+    try store.frozenInsert(E2, A_AGE, vi(7), M_FOO);
+    try testing.expectEqual(vi(42), store.currentValue(E1, A_NAME).?);
+    try testing.expectEqual(vi(7), store.currentValue(E2, A_AGE).?);
+    try testing.expectEqual(@as(u64, 0), store.currentTx()); // never bumped (assert would)
+
+    // Freeze → writes rejected.
+    store.freeze();
+    try testing.expectError(error.ReadOnly, store.assert(E3, A_NAME, vi(99), M_FOO));
+    try testing.expectError(error.ReadOnly, store.retract(E1, A_NAME, vi(42), M_FOO));
+    // Reads still work after freeze.
+    try testing.expectEqual(vi(42), store.currentValue(E1, A_NAME).?);
+}

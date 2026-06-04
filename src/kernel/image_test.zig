@@ -347,6 +347,26 @@ test "image: embedded manifest round-trips (modules, versions, thread mode)" {
     try testing.expectEqual(vi(1), dst.currentValue(E_A, A_NUM).?);
 }
 
+test "image: loadFrozen replays facts without the tx-writer (Phase 14 --strip=history)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var src = fs.FactStore.init(a);
+    _ = try src.assert(E_A, A_NUM, vi(42), M_USER);
+    _ = try src.assert(E_A, A_REF, try strings.mkString(a, "frozen"), M_USER);
+    const res = try image.write(a, &src, 256, .{}, null);
+
+    var dst = fs.FactStore.init(a);
+    const loaded = try image.loadFrozen(&dst, res.bytes, null);
+    try testing.expectEqual(@as(u64, 2), loaded.facts_loaded);
+    try testing.expectEqual(vi(42), dst.currentValue(E_A, A_NUM).?);
+
+    // The loader leaves the store mutable; the AOT path freezes it last.
+    dst.freeze();
+    try testing.expectError(error.ReadOnly, dst.assert(E_A, A_NUM, vi(0), M_USER));
+}
+
 test "image: peekManifest reads module deps without replaying facts" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

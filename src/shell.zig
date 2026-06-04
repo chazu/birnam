@@ -261,7 +261,7 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
         stderrPrint("[birnam] --aot: no output (-o <path>)\n", .{});
         return;
     };
-    if (strip_history) stderrPrint("[birnam] --strip=history: no-op (image is current-values-only)\n", .{});
+    if (strip_history) stdoutPrint("[birnam] --strip=history: freezing store read-only (no tx-writer / history)\n", .{});
 
     // Stage the image at the per-app embed path (gitignored; not the fixture).
     const embed_rel = ".aot_app.brnimg";
@@ -277,6 +277,7 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
     try argv.appendSlice(allocator, &.{ "zig", "build", "aot-build", "-Daot-embed=" ++ embed_rel, "-Daot-name=birnam-aot-app" });
     if (strip_malleable) try argv.appendSlice(allocator, &.{ "-Daot-strip-malleable=true", "-Daot-strip-ast=true" });
     if (is_dynamic) try argv.append(allocator, "-Daot-dynamic=true");
+    if (strip_history) try argv.append(allocator, "-Daot-strip-history=true");
     if (entry_sel.len > 0) {
         try argv.append(allocator, try std.fmt.allocPrint(allocator, "-Daot-entry-selector={s}", .{entry_sel}));
         if (entry_recv_name.len > 0) {

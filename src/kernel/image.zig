@@ -309,6 +309,19 @@ pub fn write(
 /// the caller sets `next_tx` on the store and `next_eid` on its table
 /// AFTER this returns (replay itself burns tx numbers we then overwrite).
 pub fn load(store: *FactStore, bytes: []const u8, interner: ?*Interner) ReadError!LoadResult {
+    return loadImpl(false, store, bytes, interner);
+}
+
+/// Frozen load (Phase 14 `--strip=history`): replay facts through the lean
+/// `frozenInsert` bulk path (no tx churn / history / mutate hooks) instead of
+/// `assert`. Under a comptime-frozen build this is the only load referenced,
+/// so the tx-writer path stays out of the hot replay. Caller `freeze()`s the
+/// store afterward (once FFI resolve, which legitimately writes, has run).
+pub fn loadFrozen(store: *FactStore, bytes: []const u8, interner: ?*Interner) ReadError!LoadResult {
+    return loadImpl(true, store, bytes, interner);
+}
+
+fn loadImpl(comptime frozen: bool, store: *FactStore, bytes: []const u8, interner: ?*Interner) ReadError!LoadResult {
     var cur = Cursor{ .bytes = bytes };
 
     const magic = try cur.take(8);
@@ -358,11 +371,15 @@ pub fn load(store: *FactStore, bytes: []const u8, interner: ?*Interner) ReadErro
         const e = try cur.readU64();
         const a = try cur.readU64();
         const v = try readValue(store, &cur);
-        _ = store.assert(e, a, v, m) catch return error.StoreError;
+        if (frozen) {
+            store.frozenInsert(e, a, v, m) catch return error.StoreError;
+        } else {
+            _ = store.assert(e, a, v, m) catch return error.StoreError;
+        }
     }
 
     // Overwrite the tx counter burned during replay so live txs continue
-    // from the saved high-water mark.
+    // from the saved high-water mark. (Frozen load never bumped it.)
     store.next_tx.store(next_tx, .monotonic);
 
     return .{ .facts_loaded = fact_count, .next_tx = next_tx, .next_eid = next_eid, .manifest = manifest };

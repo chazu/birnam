@@ -71,6 +71,12 @@ pub const FactStore = struct {
     vaet: AVETish, // same shape as AVET, keys are (v, a, e)
     meat: MEATish,
 
+    /// Phase 14 `--strip=history`: once frozen, the store is read-only —
+    /// `assert`/`retract` reject with `error.ReadOnly`. Set by `freeze()`
+    /// after an AOT `loadFrozen` (+ FFI resolve) completes. A frozen
+    /// end-user app reads its baked facts and never mutates them.
+    read_only: bool = false,
+
     /// Optional hook invoked after every assert/retract with the attribute
     /// EID. Kernel sets this to `mcache.flushSel` to keep dispatch-cache
     /// coherent. Decoupled (FactStore doesn't import the kernel).
@@ -184,7 +190,29 @@ pub const FactStore = struct {
 
     // -- Mutations -----------------------------------------------------------
 
+    /// Frozen bulk insert (Phase 14 `--strip=history`). Builds the five
+    /// indexes directly — single tx (=1), no history churn, no implicit-
+    /// retract, no mutate hooks. Safe only over a current-values-only image
+    /// replay: one fact per (e,a) for `:one` attrs (so there's nothing to
+    /// implicit-retract), values accrete for `:many`. `loadFrozen` is its
+    /// only caller; it never references `assert`, so the tx-writer path is
+    /// skipped during a frozen load.
+    pub fn frozenInsert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !void {
+        self.eavt = try updateValueLeaf(self.allocator, self.eavt, e, a, v, .{ .v = v, .tx = 1, .op = .assert });
+        self.aevt = try updateValueLeaf(self.allocator, self.aevt, a, e, v, .{ .v = v, .tx = 1, .op = .assert });
+        self.meat = try updateMeat(self.allocator, self.meat, m, e, a, v, .{ .v = v, .tx = 1, .op = .assert });
+        self.avet = try updatePresenceLeaf(self.allocator, self.avet, a, v, e, true, .{ .tx = 1, .op = .assert });
+        self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, v, a, e, true, .{ .tx = 1, .op = .assert });
+    }
+
+    /// Lock the store read-only (Phase 14 `--strip=history`). After this,
+    /// `assert`/`retract` reject. Idempotent.
+    pub fn freeze(self: *FactStore) void {
+        self.read_only = true;
+    }
+
     pub fn assert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !u64 {
+        if (self.read_only) return error.ReadOnly;
         if (builtin.mode == .Debug) {
             if (ref_mod.isNil(v)) @panic("FactStore.assert: NIL value forbidden (Date discipline)");
         }
@@ -226,6 +254,7 @@ pub const FactStore = struct {
     }
 
     pub fn retract(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !u64 {
+        if (self.read_only) return error.ReadOnly;
         const tx = self.next_tx.fetchAdd(1, .monotonic);
 
         // No-op if (e, a, v) isn't currently present (AVET is authoritative
