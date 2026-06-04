@@ -108,7 +108,10 @@ Non-local return propagation through SEND: `handleSendUnwind` helper runs after 
 2. Phase 12 ✓ — image snapshot + load (`.brnimg`; pure-data save, no `cc` required)
 3. Phase 13 ✓ — pruning + reachability GC (AST/scope mark-sweep, history excise; AOT prune mode reuses)
 4. Phase 14 🟡 — AOT (`birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history]`; four sensible outputs)
-5. Phase 15/16 — native codegen + GC (Later — optional polish)
+5. Phase 15 — GC (**required**: real heap reclamation; today process-lifetime allocations leak — see Phase 16-era note)
+6. Phase 16 — Collections (language-level: list/vector proto + literal + `do:`/`collect:`/`inject:`/`size`; spec TBD)
+7. Phase 17 — Standard Library (strings, printing/`displayString`, comparison, `doesNotUnderstand:`, core protocols; spec TBD)
+8. Phase 18 — Native codegen (final: bytecode → machine code)
 
 **ADR-11 — Phase 11/12/14 design decisions locked 2026-05-30:**
 1. Bytecode encoding = bytestream + indexable annotations (queryable compiled artifact at tool-relevant granularity, fast dispatch)
@@ -1526,37 +1529,101 @@ All four of those load steps already exist and are tested. RO mmap segments (old
 
 ---
 
-## Phase 15 — Native Codegen (Later)
+## Phase 15 — GC (required)
 
-**Goal:** Lower IR facts to machine code.
+**Goal:** Reclaim heap memory during a live session. Today every parse, binding
+mutation, method (re)definition, closure, and FFI sig holder allocates and is
+never freed — process-lifetime leak (tolerable for short REPL runs, not for
+sustained exploration / long-running images). `:prune` (Phase 13) is *logical*
+GC over the fact store; it does NOT free the underlying heap. This phase does.
+
+**Promoted from optional → required (2026-06-03):** sustained use of the live
+image (the whole point of a Smalltalk-style environment) needs real reclamation.
 
 ### Work items
 
-15.1 Choose lowering target: hand-rolled emitter, QBE, or LLVM. Default: hand-rolled for x86_64 + arm64. Fall back to QBE if time-constrained.
+15.1 Mark materialized-arena reachability from the object table + currently-pinned (FFI) refs.
 
-15.2 Lowering passes: AST → SSA-ish IR → machine code. Each pass is a birnam module.
+15.2 Sweep unreachable structs; demote them (facts already preserve identity — the struct is just cache).
 
-15.3 Replace bytecode VM with native code for hot methods.
+15.3 Reclaim dead fact-store / interner / AST allocations orphaned by `:prune` and method redefinition (prune currently drops facts + clears object-table slots but leaks the backing allocations).
+
+15.4 Trigger heuristic: arena fill threshold; manual `:gc` debug command.
 
 ### Reasoning
-Native codegen is performance polish, not a requirement. Smalltalk-VM ballpark (which we get from bytecode + inline caching) is enough for self-hosting. Defer until everything else works.
+Persistent structures + pruning remove most GC *pressure*; demotion is the
+natural reclaim path for materialized structs (facts are canonical, the struct
+is cache). But the parse/eval/redefine churn above the substrate is unbounded
+and must be collected for the image to be a place you live in, not restart.
 
 ---
 
-## Phase 16 — GC (Later)
+## Phase 16 — Collections (spec TBD)
 
-**Goal:** Reclaim materialized-struct memory.
+**Goal:** Language-level collections — the thing you reach for first when
+exploring. The persistent-collection KERNEL (HAMT/RRB, Phase 1) already exists;
+this exposes a user-facing protocol on top of it. NOT previously a roadmap phase
+(the original intent was "build Cons cells in birnam" — T1 stretch); promoted to
+a real phase 2026-06-03.
+
+### Work items (to flesh out)
+
+16.1 A vector/list prototype (`VECTOR_VT` already kernel-reserved) with a literal syntax (e.g. `#[a b c]`) and grammar rule.
+
+16.2 Core protocol: `size`, `at:`, `at:put:`, `do:`, `collect:`, `select:`, `inject:into:`, `,` (concat).
+
+16.3 Decide persistent-vs-mutable semantics + how it sits on RRB (structural sharing) vs a materialized array.
+
+16.4 Maps / associations (`ASSOC_VT` reserved) + a dictionary protocol.
+
+### Reasoning
+Can't meaningfully explore a language without data structures + iteration. Kernel
+substrate is ready; this is surface + a small set of primitives (or birnam-source
+methods over the RRB).
+
+---
+
+## Phase 17 — Standard Library (spec TBD)
+
+**Goal:** The minimal surface that makes the language pleasant to explore and
+self-document. Largely buildable IN birnam once collections land; some primitives
+needed. Promoted to a real phase 2026-06-03 (was "improve incrementally, no phase
+pinned" — ROADMAP §4.5/§Phase 6 notes).
+
+### Work items (to flesh out)
+
+17.1 Printing/inspection: `displayString` / `printString` / a `print:` primitive (see intermediate values inside code, not just the REPL's final auto-print).
+
+17.2 String operations: `size`, `at:`, `,` (concat), `=`, `asSymbol`/`asString`, substring.
+
+17.3 General equality + comparison protocol across types; `doesNotUnderstand:` (deferred since Phase 4.5 — ROADMAP §343-344) for graceful unknown-selector handling + reflection.
+
+17.4 Number protocol fill-out (modulo, abs, min:/max:, range helpers).
+
+### Reasoning
+These are the affordances "explore the language" actually needs. Deliberately
+deferred off the infra roadmap; now first-class so they get specced + built
+rather than accreting ad hoc.
+
+---
+
+## Phase 18 — Native Codegen (final)
+
+**Goal:** Lower IR facts to machine code. The capstone optimization phase — after
+semantics, collections, and stdlib are settled.
 
 ### Work items
 
-16.1 Mark materialized arena reachability from object table + currently-pinned (FFI) refs.
+18.1 Choose lowering target: hand-rolled emitter, QBE, or LLVM. Default: hand-rolled for x86_64 + arm64. Fall back to QBE if time-constrained.
 
-16.2 Sweep unreachable structs; demote them (facts already preserve identity).
+18.2 Lowering passes: AST/bytecode → SSA-ish IR → machine code. Each pass is a birnam module.
 
-16.3 Trigger heuristic: arena fill threshold.
+18.3 Replace bytecode VM with native code for hot methods.
 
 ### Reasoning
-Persistent structures + pruning replace most GC pressure. Materialized arena is the one place we still allocate freely. Demotion is the natural reclaim path — facts are the canonical form, the struct is just cache.
+Performance polish, not correctness. Bytecode + inline caching gets us to
+Smalltalk-VM ballpark, enough for self-hosting. Final phase — optimize once the
+language + library are stable.
 
 ---
 
@@ -1593,8 +1660,13 @@ Phase 6  (REPL)         Phase 7  (query)
               ↓
          Phase 14 (AOT)
               ↓
-         Phase 15 (native codegen) — optional polish
-         Phase 16 (GC) — optional polish
+         Phase 15 (GC) — required
+              ↓
+         Phase 16 (collections) ──┐
+              ↓                    │
+         Phase 17 (stdlib) ←───────┘
+              ↓
+         Phase 18 (native codegen) — final
 ```
 
 ## Rough size estimate
