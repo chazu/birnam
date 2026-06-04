@@ -219,15 +219,19 @@ No new kernel ABI — the frozen module just replays the same `load:`/`wrap:` se
 
 ## Ahead-of-time compilation
 
-`zig build aot` produces standalone executables with the image + modules linked in (no dylibs at runtime):
+Compile any image into a standalone executable (kernel + modules + data linked in, no dylibs at runtime) with the `birnam --aot` driver:
 
 ```
-zig build aot
-./zig-out/bin/birnam-aot              # full tower: REPL over the baked state
-./zig-out/bin/birnam-aot-malleable    # pure-VM: parser/compiler stripped, runs baked bytecode
+# save an image, then freeze it into a binary
+birnam … :save app.brnimg
+birnam --aot=static app.brnimg -o myapp            # full tower: REPL over baked state
+birnam --aot=static --strip=malleable app.brnimg --entry=double:5 -o myapp
+                                                   # pure-VM one-shot: parser/compiler/AST stripped
 ```
 
-Both embed `src/aot_embed.brnimg`. The malleable build drops the parser, AST, and compiler (a frozen end-user app that runs bytecode but can't compile new source). This is an early slice of the full AOT surface — see `ROADMAP.md` Phase 14 for the planned `birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history]` driver.
+The driver copies the image to a per-app embed path, runs the parameterized `zig build aot-build` (so it needs the repo + `zig` on PATH), and writes the binary to `-o`. `--strip=malleable` drops the parser/AST/compiler (a frozen end-user app that runs bytecode but can't compile new source); `--entry=<selector>[:<recv>]` sends a selector to a SmallInt receiver and exits with the result.
+
+`--aot=dynamic` (exe + runtime-`dlopen` dylibs) and a real `--strip=history` optimization are pending — see `ROADMAP.md` Phase 14. The fixed demo artifacts (`zig build aot` → `birnam-aot` / `birnam-aot-malleable`, embedding `src/aot_embed.brnimg`) still exist for the test fixtures.
 
 ## Architecture
 

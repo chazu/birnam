@@ -331,8 +331,11 @@ bytecode. The `language` prototype hosts file-in (`fileIn:` / `fileInSource:`).
   history — every assert carries a `tx` column.
 - Predicates + functions as fact entities (7.4); override-able `bind` (7.5).
 - Schema-driven multi-cardinality attributes (9.5.2).
-- AOT: `zig build aot` → `birnam-aot` (REPL over a baked image) and
-  `birnam-aot-malleable` (parser/compiler stripped, runs baked bytecode).
+- AOT: `birnam --aot=static [--strip=malleable] <image.brnimg> -o <out>`
+  compiles any image into a standalone executable (no dylib deps); driver
+  copies the image to a per-app embed + runs `zig build aot-build`. The fixed
+  `zig build aot` demo artifacts (`birnam-aot` / `birnam-aot-malleable`) remain
+  for fixtures. `--aot=dynamic` + real history-strip pending.
 
 ## Files to skim if you have 30 seconds
 

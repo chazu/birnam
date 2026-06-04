@@ -196,12 +196,121 @@ fn installSignalHandler() void {
     posix.sigaction(posix.SIG.HUP, &act, null);
 }
 
+// -- `birnam --aot` driver ---------------------------------------------------
+
+/// Compile a user `.brnimg` into a standalone executable. Usage:
+///   birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] \
+///          <image.brnimg> [--entry=<selector>[:<recv>]] -o <out>
+/// Mechanism (M1/M4): copy the image to a per-app embed path, run the
+/// parameterized `zig build aot-build` with the strip/entry flags, then copy
+/// the resulting binary to <out>. Must run from the repo root (needs build.zig
+/// + src/ + a `zig` on PATH). Static modes only for now.
+fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var aot_mode: []const u8 = "static";
+    var strip_malleable = false;
+    var strip_history = false;
+    var input: ?[]const u8 = null;
+    var out: ?[]const u8 = null;
+    var entry_sel: []const u8 = "";
+    var entry_recv: i64 = 0;
+
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const a = args[i];
+        if (std.mem.startsWith(u8, a, "--aot=")) {
+            aot_mode = a["--aot=".len..];
+        } else if (std.mem.eql(u8, a, "--strip=malleable")) {
+            strip_malleable = true;
+        } else if (std.mem.eql(u8, a, "--strip=history")) {
+            strip_history = true;
+        } else if (std.mem.startsWith(u8, a, "--entry=")) {
+            const spec = a["--entry=".len..];
+            if (std.mem.indexOfScalar(u8, spec, ':')) |c| {
+                entry_sel = spec[0..c];
+                entry_recv = std.fmt.parseInt(i64, spec[c + 1 ..], 10) catch 0;
+            } else entry_sel = spec;
+        } else if (std.mem.eql(u8, a, "-o")) {
+            i += 1;
+            if (i < args.len) out = args[i];
+        } else if (!std.mem.startsWith(u8, a, "-")) {
+            input = a;
+        }
+    }
+
+    if (std.fs.cwd().access("src/aot_main.zig", .{})) |_| {} else |_| {
+        stderrPrint("[birnam] --aot must run from the repo root (src/aot_main.zig not found)\n", .{});
+        return;
+    }
+    if (std.mem.eql(u8, aot_mode, "dynamic")) {
+        stderrPrint("[birnam] --aot=dynamic not yet implemented (static only)\n", .{});
+        return;
+    }
+    const img_path = input orelse {
+        stderrPrint("[birnam] --aot: no input image (give a .brnimg path)\n", .{});
+        return;
+    };
+    const out_path = out orelse {
+        stderrPrint("[birnam] --aot: no output (-o <path>)\n", .{});
+        return;
+    };
+    if (strip_history) stderrPrint("[birnam] --strip=history: no-op (image is current-values-only)\n", .{});
+
+    // Stage the image at the per-app embed path (gitignored; not the fixture).
+    const embed_rel = ".aot_app.brnimg";
+    std.fs.cwd().copyFile(img_path, std.fs.cwd(), "src/" ++ embed_rel, .{}) catch {
+        stderrPrint("[birnam] --aot: cannot read image {s}\n", .{img_path});
+        return;
+    };
+    defer std.fs.cwd().deleteFile("src/" ++ embed_rel) catch {};
+
+    // Build the parameterized AOT exe.
+    var argv = std.ArrayList([]const u8){};
+    defer argv.deinit(allocator);
+    try argv.appendSlice(allocator, &.{ "zig", "build", "aot-build", "-Daot-embed=" ++ embed_rel, "-Daot-name=birnam-aot-app" });
+    if (strip_malleable) try argv.appendSlice(allocator, &.{ "-Daot-strip-malleable=true", "-Daot-strip-ast=true" });
+    if (entry_sel.len > 0) {
+        try argv.append(allocator, try std.fmt.allocPrint(allocator, "-Daot-entry-selector={s}", .{entry_sel}));
+        try argv.append(allocator, try std.fmt.allocPrint(allocator, "-Daot-entry-recv={d}", .{entry_recv}));
+    }
+
+    stdoutPrint("[birnam] --aot=static{s}: building {s} -> {s}\n", .{ if (strip_malleable) " --strip=malleable" else "", img_path, out_path });
+    var child = std.process.Child.init(argv.items, allocator);
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+    try child.spawn();
+    const term = try child.wait();
+    if (!(term == .Exited and term.Exited == 0)) {
+        stderrPrint("[birnam] --aot: zig build failed\n", .{});
+        return;
+    }
+
+    // Copy the built binary to the user's -o path (preserve exec bit).
+    std.fs.cwd().copyFile("zig-out/bin/birnam-aot-app", std.fs.cwd(), out_path, .{ .override_mode = 0o755 }) catch {
+        stderrPrint("[birnam] --aot: built ok but could not write {s}\n", .{out_path});
+        return;
+    };
+    stdoutPrint("[birnam] --aot: wrote {s}\n", .{out_path});
+}
+
 // -- Main --------------------------------------------------------------------
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+
+    // `birnam --aot=… <image.brnimg> -o <out>` is a build-time driver, not a
+    // REPL session — branch before booting the kernel.
+    {
+        const argv = try std.process.argsAlloc(allocator);
+        defer std.process.argsFree(allocator, argv);
+        for (argv[1..]) |arg| {
+            if (std.mem.startsWith(u8, arg, "--aot")) return runAotDriver(allocator, argv[1..]);
+        }
+    }
 
     stderrPrint("[birnam] shell starting\n", .{});
 

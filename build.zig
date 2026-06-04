@@ -69,6 +69,7 @@ pub fn build(b: *std.Build) void {
     full_opts.addOption([]const u8, "entry_selector", "");
     full_opts.addOption(i64, "entry_recv", 0);
     full_opts.addOption(bool, "strip_ast", false);
+    full_opts.addOption([]const u8, "embed_path", "aot_embed.brnimg");
     const aot_full_mod = b.createModule(.{
         .root_source_file = b.path("src/aot_main.zig"),
         .target = target,
@@ -88,6 +89,7 @@ pub fn build(b: *std.Build) void {
     mall_opts.addOption([]const u8, "entry_selector", "double");
     mall_opts.addOption(bool, "strip_ast", false);
     mall_opts.addOption(i64, "entry_recv", 5);
+    mall_opts.addOption([]const u8, "embed_path", "aot_embed.brnimg");
     const aot_mall_mod = b.createModule(.{
         .root_source_file = b.path("src/aot_main.zig"),
         .target = target,
@@ -98,6 +100,27 @@ pub fn build(b: *std.Build) void {
     aot_mall.linkLibrary(dyncall_lib);
     aot_mall.linkLibC();
     aot_step.dependOn(&b.addInstallArtifact(aot_mall, .{}).step);
+
+    // Parameterized AOT build for the `birnam --aot` driver. The driver copies
+    // the user's image to `-Daot-embed`, sets strip/entry flags, runs this
+    // step, then copies zig-out/bin/<aot-name> to the user's -o path.
+    {
+        const opts = b.addOptions();
+        opts.addOption(bool, "export_init", false);
+        opts.addOption(bool, "strip_malleable", b.option(bool, "aot-strip-malleable", "AOT: drop parser/compiler/frontend") orelse false);
+        opts.addOption(bool, "strip_ast", b.option(bool, "aot-strip-ast", "AOT: drop user AST trees") orelse false);
+        opts.addOption([]const u8, "entry_selector", b.option([]const u8, "aot-entry-selector", "AOT: entry selector") orelse "");
+        opts.addOption(i64, "entry_recv", b.option(i64, "aot-entry-recv", "AOT: entry SmallInt receiver") orelse 0);
+        opts.addOption([]const u8, "embed_path", b.option([]const u8, "aot-embed", "AOT: image to embed (relative to src/)") orelse "aot_embed.brnimg");
+        const name = b.option([]const u8, "aot-name", "AOT: output executable name") orelse "birnam-aot-app";
+        const mod = b.createModule(.{ .root_source_file = b.path("src/aot_main.zig"), .target = target, .optimize = optimize });
+        mod.addOptions("build_opts", opts);
+        const exe = b.addExecutable(.{ .name = name, .root_module = mod });
+        exe.linkLibrary(dyncall_lib);
+        exe.linkLibC();
+        const build_step = b.step("aot-build", "Parameterized AOT build (driven by `birnam --aot`)");
+        build_step.dependOn(&b.addInstallArtifact(exe, .{}).step);
+    }
 
     // -- Hello dylib (Phase 5 smoke-test module) -----------------------------
 

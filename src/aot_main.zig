@@ -31,7 +31,9 @@ const bopts = @import("build_opts");
 const peg = @import("modules/peg/peg.zig");
 const lang = @import("modules/lang/lang.zig");
 
-const BakedImage = @embedFile("aot_embed.brnimg");
+// Embed path is a build option so the `birnam --aot` driver can point it at a
+// per-app image (default = the in-repo demo fixture).
+const BakedImage = @embedFile(bopts.embed_path);
 
 fn stderrPrint(comptime fmt: []const u8, args: anytype) void {
     var buf: [512]u8 = undefined;
