@@ -8,6 +8,7 @@ const ot = @import("object_table.zig");
 const ref = @import("ref.zig");
 const ke = @import("kernel_eids.zig");
 const strings = @import("strings.zig");
+const promotion = @import("promotion.zig");
 
 fn vi(n: i64) ref.Ref {
     return ref.mkSmallInt(n).?;
@@ -153,6 +154,34 @@ test "prune: kept entity's materialized slot survives compact (demote suppressed
     // kept method, or it'd be undispatchable until re-materialized.
     _ = try prune.pruneReachable(&store, &table, a);
     try testing.expect(table.get(500) != null); // slot survived
+}
+
+test "prune: swept entity's materialized struct is freed (15.4)" {
+    // The fact store / object table have no deinit (HAMT), so they live on an
+    // arena. The materialized struct is routed through std.testing.allocator,
+    // which is leak-checked at test teardown: if prune sweeps the entity but
+    // leaks its struct (the pre-15.4 bug), this test fails on a detected leak.
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store = fs.FactStore.init(a);
+    var table = ot.ObjectTable.init(a);
+
+    try promotion.init(testing.allocator, &store, &table);
+    defer promotion.deinit();
+
+    // Unreachable M_USER entity (no root: no bytecode-stream, scope, query, or
+    // ffi-sig), given a vtable + one slot, then materialized.
+    const e: u64 = 700;
+    _ = try store.assert(e, ke.ATTR_VTABLE, ref.mkEid(ke.OBJECT_VT), M_USER);
+    _ = try store.assert(e, ke.ATTR_AST_VALUE, vi(9), M_USER);
+    try promotion.promote(e);
+    try testing.expect(ref.isPointer(table.get(e).?)); // struct-backed
+
+    const stats = try prune.pruneReachable(&store, &table, a);
+
+    try testing.expect(stats.swept_entities >= 1);
+    try testing.expect(table.get(e) == null); // slot cleared, struct freed
 }
 
 test "prune: CODE facts are never swept" {
