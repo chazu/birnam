@@ -250,7 +250,7 @@ No new kernel ABI — the frozen module replays the same `load:`/`wrap:` sends.
 zig build test
 ```
 
-Should end `376/376 tests passed`. The DEMO-labelled cases exercise the same
+Should end `379/379 tests passed`. The DEMO-labelled cases exercise the same
 path as the REPL:
 
 ```
@@ -312,8 +312,8 @@ bytecode. The `language` prototype hosts file-in (`fileIn:` / `fileInSource:`).
 - ✓ Phase 11 — bytecode VM (user methods dispatch through the VM)
 - ✓ Phase 12 — image snapshot (`:save`/`:load`)
 - ✓ Phase 13 — pruning + reachability GC (`:prune`)
-- 🟡 Phase 14 — AOT (static + `--strip=malleable` shipped; driver + variants pending)
-- 🗓 Phase 15 — native codegen · Phase 16 — GC
+- ✓ Phase 14 — AOT (`birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] --entry=…`)
+- 🗓 Phase 15 — GC · 16 — collections · 17 — stdlib · 18 — native codegen
 
 ## What's NOT in the demo yet
 
@@ -322,7 +322,7 @@ bytecode. The `language` prototype hosts file-in (`fileIn:` / `fileInSource:`).
 - **Auto-generated wrappers.** `[mod symbols]` enumerates a dylib's symbols, but
   generating a wrapper from them needs a signature source (headers / sig DB /
   placeholders) — not built.
-- **Native codegen (Phase 15) + GC (Phase 16).** Bytecode runs on a stack VM;
+- **GC (Phase 15) + native codegen (Phase 18).** Bytecode runs on a stack VM;
   process-lifetime allocations are currently just leaked.
 
 ## What's interesting beyond the demo
@@ -331,11 +331,13 @@ bytecode. The `language` prototype hosts file-in (`fileIn:` / `fileInSource:`).
   history — every assert carries a `tx` column.
 - Predicates + functions as fact entities (7.4); override-able `bind` (7.5).
 - Schema-driven multi-cardinality attributes (9.5.2).
-- AOT: `birnam --aot=static [--strip=malleable] <image.brnimg> -o <out>`
-  compiles any image into a standalone executable (no dylib deps); driver
-  copies the image to a per-app embed + runs `zig build aot-build`. The fixed
-  `zig build aot` demo artifacts (`birnam-aot` / `birnam-aot-malleable`) remain
-  for fixtures. `--aot=dynamic` + real history-strip pending.
+- AOT: `birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] <image.brnimg> [--entry=<sel>[:<recv>]] -o <out>`
+  compiles any image into a standalone executable. `static` links everything in
+  (no dylib deps); `dynamic` ships a portable bundle that `dlopen`s its modules
+  at startup (resolved via `$BIRNAM_DYLIB_PATH` / exe-relative). `--strip=malleable`
+  drops the parser/compiler; `--strip=history` freezes the store read-only.
+  `--entry` sends a selector to a SmallInt or a named top-level binding and exits
+  with the result. Only the 12.5 mmap-relocation RO-segment perf path is deferred.
 
 ## Files to skim if you have 30 seconds
 

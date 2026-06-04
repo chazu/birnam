@@ -42,7 +42,7 @@ You get a `birnam>` prompt. Each line is parsed by the PEG engine, desugared to 
 zig build test
 ```
 
-376 tests across the kernel and modules.
+379 tests across the kernel and modules.
 
 ## Language tour
 
@@ -224,14 +224,24 @@ Compile any image into a standalone executable (kernel + modules + data linked i
 ```
 # save an image, then freeze it into a binary
 birnam … :save app.brnimg
-birnam --aot=static app.brnimg -o myapp            # full tower: REPL over baked state
-birnam --aot=static --strip=malleable app.brnimg --entry=double:5 -o myapp
-                                                   # pure-VM one-shot: parser/compiler/AST stripped
+birnam --aot=static  app.brnimg -o myapp                 # full tower: REPL over baked state
+birnam --aot=static  --strip=malleable app.brnimg --entry=double:5 -o myapp
+                                                         # pure-VM one-shot: parser/compiler/AST stripped
+birnam --aot=static  --strip=history  app.brnimg -o myapp   # read-only frozen store (no tx-writer)
+birnam --aot=dynamic app.brnimg -o dist/myapp            # portable bundle: dlopen modules at startup
 ```
 
-The driver copies the image to a per-app embed path, runs the parameterized `zig build aot-build` (so it needs the repo + `zig` on PATH), and writes the binary to `-o`. `--strip=malleable` drops the parser/AST/compiler (a frozen end-user app that runs bytecode but can't compile new source); `--entry=<selector>[:<recv>]` sends a selector to a SmallInt receiver and exits with the result.
+The driver copies the image to a per-app embed path, runs the parameterized `zig build aot-build` (so it needs the repo + `zig` on PATH), and writes the binary to `-o`.
 
-`--aot=dynamic` (exe + runtime-`dlopen` dylibs) and a real `--strip=history` optimization are pending — see `ROADMAP.md` Phase 14. The fixed demo artifacts (`zig build aot` → `birnam-aot` / `birnam-aot-malleable`, embedding `src/aot_embed.brnimg`) still exist for the test fixtures.
+| flag | effect |
+|---|---|
+| `--aot=static` | kernel + modules + data linked in; no dylibs at runtime |
+| `--aot=dynamic` | kernel + data linked in; modules `dlopen`'d at startup from the image manifest. The driver **stages the dylibs beside the binary** so the bundle is portable; the exe resolves them by basename via `$BIRNAM_DYLIB_PATH` (PATH-like; defaults to the cwd + below), then exe-relative |
+| `--strip=malleable` | drop the parser/AST/compiler — a frozen app that runs bytecode but can't compile new source |
+| `--strip=history` | freeze the fact store read-only (no tx-writer / history); the app reads its baked facts and never mutates them |
+| `--entry=<sel>[:<recv>]` | send `<sel>` to `<recv>` and exit with the result. `<recv>` is a SmallInt (`double:5`) or a **top-level binding name** (`run:app` → send `#run` to whatever `app` is bound to) |
+
+The only deferred slice is the mmap-relocation RO-*segment* optimization (load-time perf, Phase 12.5) — not an AOT capability. The fixed demo artifacts (`zig build aot` → `birnam-aot` / `birnam-aot-malleable`, embedding `src/aot_embed.brnimg`) still exist for the test fixtures.
 
 ## Architecture
 
@@ -254,7 +264,7 @@ birnam (shell)              dlopen modules, drive stdin
 | Doc | Contents |
 |---|---|
 | `VISION.md` | the locked design vision (relational substrate, tenets) |
-| `ROADMAP.md` | phase-by-phase work plan + status (Phases 0–13 done, 14 in progress) |
+| `ROADMAP.md` | phase-by-phase work plan + status (Phases 0–14 done; Phase 15 GC next) |
 | `DEMO.md` | end-to-end REPL walkthrough |
 | `DATALOG.md` | the Datalog query system |
 
