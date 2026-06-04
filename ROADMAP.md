@@ -106,9 +106,9 @@ Non-local return propagation through SEND: `handleSendUnwind` helper runs after 
 **Next major arcs (in dependency order):** *(2026-06-04: 11 ✓, 12 ✓, 13 ✓, 14 ✓ — Phase 15 GC next; see per-phase §Status)*
 1. Phase 11 ✓ — bytecode VM (ADR-11 decisions 1-7 locked 2026-05-30; retires `g_unwinding`, retires tree-walker stack overflow, supersedes 10.4.5 S5)
 2. Phase 12 ✓ — image snapshot + load (`.brnimg`; pure-data save, no `cc` required)
-3. Phase 13 ✓ — pruning + reachability GC (AST/scope mark-sweep, history excise; AOT prune mode reuses)
+3. Phase 13 ✓ — **logical prune** (fact-level reachability mark-sweep: AST/scope, history excise; AOT prune mode reuses). *Note: drops facts + clears object-table slots; does NOT free backing heap — that is Phase 15.*
 4. Phase 14 ✓ — AOT (`birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history]`; all six matrix cells driver-built; only the 12.5 mmap-relocation perf path deferred)
-5. Phase 15 — GC (**required**: real heap reclamation; today process-lifetime allocations leak — see Phase 16-era note)
+5. Phase 15 — **heap GC** (**required**: real heap reclamation of the allocations Phase 13's logical prune orphans; today process-lifetime leak. Depends on Phase 12.5 arena substrate — pulled forward, see Phase 15 §Substrate). Distinct from Phase 13: 13 reclaims *facts*, 15 reclaims *bytes*.
 6. Phase 16 — Collections (language-level: list/vector proto + literal + `do:`/`collect:`/`inject:`/`size`; spec TBD)
 7. Phase 17 — Standard Library (strings, printing/`displayString`, comparison, `doesNotUnderstand:`, core protocols; spec TBD)
 8. Phase 18 — Native codegen (final: bytecode → machine code)
@@ -720,7 +720,7 @@ Module wrapper turns Phase 9's flat `registerWrap` primitive into a send-dispatc
 | PR1 AST lifetime | **Permanent**, until Phase 13 prune. `:ast-parse <parse_eid>` back-ref enables per-parse retraction. |
 | PR2 Source lifetime | **Method install copies its substring** to `[method :method-source <string Ref>]`. Parse-level source string is droppable independently. |
 | PR3 Parse tx boundary | **One tx per parse call.** All AST-node + binding + literal-Ref asserts commit atomically. Parse failure → tx aborts, nothing persists. Eval-of-assignment and method-install are separate downstream txs (not folded). Tx-per-parse overhead is negligible (u64 increment + single RRB tx-log append). |
-| PR4 Phase 10 GC interim | **Manual only in Phase 10.** `:reset` (full top-level wipe) and `:gc` (Phase 13.4 mark-sweep, user-triggered) debug-commands. Phase 13 lands the auto-policy: `:gc` runs automatically after every REPL line eval once 13.4 ships. Risk #2 (REPL session creep) accepted for Phase 10 spike period. |
+| PR4 Phase 10 GC interim | **Manual only in Phase 10.** `:reset` (full top-level wipe) and `:prune` (Phase 13.4 logical mark-sweep over facts, user-triggered) debug-commands. Phase 13 lands the auto-policy: logical prune runs automatically after every REPL line eval once 13.4 ships. Risk #2 (REPL session creep) accepted for Phase 10 spike period. **Command-naming locked (2026-06-04):** `:prune` = logical (fact) reclaim; `:gc` reserved for Phase 15 **heap** reclaim — do not double-bind `:gc` to prune. |
 | E1 Eval dispatch | **vtable + send.** Each AST kind has its own vt (e.g. `AST_KEYWORD_SEND_VT`, `AST_BLOCK_VT`, ...), eval is `[ast_node eval]`. COLA-pure dispatch; Phase 7.5 metabind directly enables per-kind overrides. |
 | E2 Scope | **ADR-10-E2 (see below).** Fact-shaped binding entities for truth + parse-time slot resolution for runtime fast path. Two layers. |
 | E3 Closures | **By reference**, Smalltalk-standard. Block holds `:block-scope <enclosing_scope_eid>`. Lifetime: Phase 13 reachability sweep (Phase 13.3). |
@@ -1423,7 +1423,7 @@ Tests: installed-method-kept + its block children (via pool) + its AST; orphan-A
 
 **Deferred:**
 - 13.1 other policies — **keep-last-N-tx** (compact currently collapses *all* history to current = "keep-current-only"; granular N-tx retention needs per-fact history replay) and **manual-excise-named-entities**.
-- **FFI Sig free callback** — sweeping an M_USER FFI-wrap drops `:ffi-sig` but doesn't yet free the heap Sig struct (leak on prune; FFI wraps are usually CODE so rarely hit). Needs a Zig-side free hook registered with the sweep.
+- **FFI Sig free callback** — sweeping an M_USER FFI-wrap drops `:ffi-sig` but doesn't yet free the heap Sig struct (leak on prune; FFI wraps are usually CODE so rarely hit). Needs a Zig-side free hook registered with the sweep. **→ moved to Phase 15.4** (heap reclaim, not logical prune's job).
 - Mark precision — currently conservative "follow all eid-valued facts" (safe over-marking). Tighten to the typed edge set (constant-pool/`:method-body-ast`/`:range-ast`/scope chain) if a workload shows retained garbage.
 
 ### Reasoning
@@ -1535,32 +1535,120 @@ All six matrix cells now driver-built per-app: `static`/`dynamic` × `(none)`/`m
 
 ---
 
-## Phase 15 — GC (required)
+## Phase 15 — heap GC (required)
 
-**Goal:** Reclaim heap memory during a live session. Today every parse, binding
-mutation, method (re)definition, closure, and FFI sig holder allocates and is
-never freed — process-lifetime leak (tolerable for short REPL runs, not for
-sustained exploration / long-running images). `:prune` (Phase 13) is *logical*
-GC over the fact store; it does NOT free the underlying heap. This phase does.
+**Goal:** Reclaim **heap bytes** during a live session. Phase 13's `:prune` is
+*logical* GC — it drops facts and clears object-table slots but leaks every
+backing allocation. This phase frees the bytes. Distinct mechanism, distinct
+command (`:gc`, not `:prune`).
 
 **Promoted from optional → required (2026-06-03):** sustained use of the live
 image (the whole point of a Smalltalk-style environment) needs real reclamation.
 
+### Ground truth (audited 2026-06-04)
+
+The only heap reclaimed today is the **materialized struct** — `demote()` frees
+it correctly (`promotion.zig:197-198`), and that path is already reachability-
+respecting and FFI-pin-aware (`ffi_pause`). **Everything else leaks.** The actual
+leakers — none in the object table, none with a defined root:
+
+| Leaker | Allocated | Reachability root |
+|---|---|---|
+| interner string dupes + name boxes | `interner.zig:80,84` | live iff EID still interned / fact references it |
+| string / float boxes | `strings.zig`, `boxed.zig` | fact `v` column + materialized slots |
+| constant-pool RRB nodes | `compiler.zig` | live method's `:constant-pool` |
+| BytecodeClosure / capture arrays | `vm.zig:235`, `:method-captures-ptr` | live closure entity / enclosing method |
+| FFI `Sig` struct + args | `ffi.zig:417` | live `:ffi-sig` wrap entity |
+| abandoned HAMT/RRB index nodes | every `FactStore.compact()` (`fact_store.zig:601-605`) | structural-sharing-reachable from current roots |
+
+So 15.1's original "mark materialized-arena reachability from the object table"
+targeted the **one already-solved case** and missed all of the above. Rewritten
+below. **Hard constraint:** HAMT/RRB use structural sharing — old roots cannot be
+naively freed; live nodes are shared with the new tree and across snapshots.
+
+### §Substrate — Phase 12.5 arenas pulled forward (decided 2026-06-04)
+
+GC reclaims by **arena epoch**, not per-allocation GPA tracking. Build the
+12.5 arena split first (it also unlocks the AOT mmap RO-segment perf path):
+
+- **S1 — segmented arenas.** Replace scattered GPA `create`/`alloc` with named
+  arenas: `struct` (materialized objects — partly exists via demote), `strings`
+  (interner dupes + string/name boxes), `boxes` (float/ffi-ptr), `bytecode`
+  (streams + constant pools), `captures` (closure capture arrays), `index`
+  (HAMT/RRB nodes per epoch), `sig` (FFI Sig holders). `Vm.bump_arena_slot`
+  (today a null placeholder) becomes the per-thread transient arena.
+- **S2 — epoch tagging.** Each `compact()` / prune opens a new index-arena epoch;
+  survivors copy forward, the prior epoch's whole arena frees wholesale once no
+  live root references it. Resolves the structural-sharing free problem (don't
+  free nodes — free epochs).
+- **S3 — snapshot/load reset.** `:load` over a live session frees the prior
+  session's arenas before replaying (today: leak).
+
+### §Collector — non-moving mark-sweep (locked 2026-06-04)
+
+**Decision: non-moving now; a compacting pass deferred until fragmentation measurably bites.** Allocations never relocate — a Ref is a stable address for life. Sweep frees unmarked cells in place (per-arena free-list / occupancy bitmap).
+
+Rationale (substrate-specific, not generic GC):
+- **Refs live in the immutable fact HAMT.** Non-moving never rewrites it. A moving collector only gets the index rewrite "free" *during* `compact()`, welding it to prune cadence — it could not run on demand mid-session.
+- **FFI hands raw box addresses to alien C** (FfiPtr slot 0, strings as `char*`). Non-moving keeps those valid; moving would require a mandatory pin set + movable/pinned arena split.
+- **A live image is mostly-live** (long-lived methods/facts/interned names) → non-moving's sweep-the-heap pause is competitive; moving's win is on mostly-garbage heaps.
+- **Highest churn = method redefine** (fresh closure + constant-pool + bytecode each time). Only non-moving frees it eagerly (15.5) without waiting for a prune.
+- **Target = Smalltalk-VM ballpark.** Fragmentation is the least-urgent problem; the arena-per-type split (S1) already bounds it (fixed-cell box/Sig arenas barely fragment).
+
+Deferred compactor (future, if frag bites) reuses the same arena epochs; it would forward Refs across the four holder kinds (fact HAMT during compact, struct slots, RRB-pool internals, closure captures) with a forwarding-pointer protocol + FFI pin set. Out of scope for Phase 15.
+
 ### Work items
 
-15.1 Mark materialized-arena reachability from the object table + currently-pinned (FFI) refs.
+**Scope (resolved 2026-06-04).** The sweep reclaims **immutable, non-cache heap only**: string/float/ffiptr boxes, BytecodeClosures, capture arrays, constant-pool RRB, bytecode streams, FFI Sig structs. Materialized **structs are NOT in the sweep** — they are pure cache, reclaimed by `demote` (Q3 below). The fact-store's own HAMT/RRB index nodes are NOT in the sweep — reclaimed by arena epoch on compact (S2 above). Mark runs over the **current-value reachable set**; `:gc` presupposes a history collapse (Q2 below).
 
-15.2 Sweep unreachable structs; demote them (facts already preserve identity — the struct is just cache).
+15.1 **Arena substrate (S1–S3 above).** Thread the named arenas through kernel allocation sites: `strings`, `boxes` (float/ffiptr), `bytecode`, `captures`, `sig`, plus the existing `struct` path and per-epoch `index`. Each arena segregates one allocation type → an address self-types by which arena holds it (removes any reliance on vt-at-`-1` for the raw-pointer kinds: Sig/captures/pool/bytecode). This is the bulk of the phase.
 
-15.3 Reclaim dead fact-store / interner / AST allocations orphaned by `:prune` and method redefinition (prune currently drops facts + clears object-table slots but leaks the backing allocations).
+15.2 **Mark.** Single-threaded stop-the-world mark over a worklist of Refs into a per-arena liveness bitmap (Q5: fixed-cell arenas → bit-per-cell; variable-size `strings`/`bytecode`/`struct` → alloc header carries size, addr→bit via arena offset).
 
-15.4 Trigger heuristic: arena fill threshold; manual `:gc` debug command.
+  **Roots (seed):**
+  - **R1 — object table.** Every live (non-cleared) slot's pointer Ref.
+  - **R2 — current facts only** (latest non-retracted assert per `(e,a)`; NOT the MEAT history — see Q2 gate). Every value Ref that is heap-owning: tag-`100` strings; tag-`000` boxes; and the four raw-pointer attrs `:ffi-sig` / `:method-captures-ptr` / `:constant-pool` / `:bytecode-stream`.
+  - **R3 — FFI-pinned set.** Every Ref live under `ffi_pause > 0` — conservative pin, never swept (an address may be held by alien C).
+
+  **Follow (pop Ref, dispatch by arena/tag/vt):**
+  | Ref kind | typed by | action |
+  |---|---|---|
+  | string box (tag 100) | tag | leaf — mark |
+  | float / ffiptr box | vt @ -1 | leaf — mark |
+  | closure / BytecodeClosure | vt @ -1 | mark; push `data` + each capture + `parent_self_ref` |
+  | constant-pool RRB | arena | mark spine nodes; push each element Ref (recurse children) |
+  | capture array | arena | mark; push each Ref |
+  | Sig | arena | leaf (`args` = kind enums, no Refs) — mark |
+  | bytecode stream | arena | leaf bytes — mark |
+  | materialized struct (tag 000, user/kernel vt) | vt @ -1 | **mark source only** — push each slot Ref; struct itself reclaimed by demote, not freed here |
+  | eid / smallint / keyword / nil | tag | skip — not heap |
+
+  **Invariant relied on:** the raw-pointer kinds (Sig/captures/pool/bytecode) appear *only* as attribute values on entities (reached via R2), never nested inside a struct slot or RRB leaf — so transitive following meets only self-typed Refs. The arena-as-type split (15.1) makes this robust even if the invariant is later violated.
+
+15.3 **Sweep.** Per box-arena, free every cell whose liveness bit is clear. Skip the `struct` arena (demote owns it) and FFI-pinned cells (R3). Non-moving — survivors stay put, Refs never rewritten (see §Collector).
+
+15.4 **Integrate with logical prune + prune-demotes fix. ✓ (2026-06-04).** `:prune` (Phase 13) cleared an entity's object-table slot **without demoting → leaked its struct alloc**, and `demote` can't fix it afterward (`table.get(eid)` already cleared). **Fixed:** `pruneReachable` + `stripAst` now `promotion.demote(e)` each swept entity *before* clearing its slot (no-op if promotion uninitialized / entity not materialized). Proven by a leak-checked test (struct on `std.testing.allocator`, store/table on arena). No orphaned structs remain → 15.3 needn't scan the struct arena.
+  - **FFI Sig free hook → moved to 15.5.** The Phase 13 §loose-end imagined freeing a *swept* FFI-wrap's `:ffi-sig`, but FFI wraps are seeded as **roots** in `markReachable` — a wrap is never swept by prune. A Sig leaks only on wrap **retract / redefine / module-unload**, so the free hook belongs with the redefine/retract reclaim (15.5), not the prune sweep.
+
+15.5 **Eager free on method redefine.** Redefining a method supersedes its old BytecodeClosure / constant-pool / bytecode-stream. `promotion.onEntityMutate` demotes on mutate but does not free these immutable allocations → the highest-churn leak. Free the superseded cells eagerly at the redefine tx (cheap under non-moving — the dead allocs are known exactly), so churn doesn't wait for a full sweep.
+
+15.6 **Trigger + `:gc` command.** Manual `:gc` debug command (distinct from `:prune`; `:prune` = logical/fact reclaim, `:gc` = heap reclaim). `:gc` runs 15.2–15.4 and **requires/implies a current-only store** (Q2). Auto-trigger on per-arena fill threshold. Always respect `ffi_pause`.
+
+### Resolved design questions (2026-06-04)
+- **Collector — non-moving** (locked, see §Collector). Compacting pass deferred until fragmentation measurably bites.
+- **Q2 — as-of history: current-values-only, gated.** Mark roots = current facts (R2), not retained MEAT. `:gc` presupposes a history collapse — safe because heap reclaim is the "make the image small" op, run exactly when history is dropped (matches the shipped keep-current-only prune policy). When **keep-last-N retention** ships, marking over MEAT-within-window is a purely **additive** widening of R2 — no redesign.
+- **Q3 — structs left to demote.** Sweep reclaims immutable boxes only; structs are cache, reclaimed via `demote` (manual now, pressure-driven in Phase 8). The one gap — prune orphaning struct allocs — closed by the 15.4 prune-demotes-before-clear fix.
 
 ### Reasoning
-Persistent structures + pruning remove most GC *pressure*; demotion is the
+Persistent structures + logical prune remove most GC *pressure*; demotion is the
 natural reclaim path for materialized structs (facts are canonical, the struct
-is cache). But the parse/eval/redefine churn above the substrate is unbounded
-and must be collected for the image to be a place you live in, not restart.
+is cache). But the parse/eval/redefine churn above the substrate is unbounded and
+must be collected for the image to be a place you live in, not restart. The
+arena-epoch model (vs. per-allocation tracking) sidesteps structural-sharing free
+hazards and reuses the same page-aligned segments AOT needs for mmap relocation
+(Phase 12.5) — one mechanism, two payoffs. Non-moving keeps the immutable fact
+HAMT and alien-held FFI addresses untouched; the box arenas self-type by segment,
+so the mark walk needs no per-allocation type tag.
 
 ---
 
@@ -1666,7 +1754,7 @@ Phase 6  (REPL)         Phase 7  (query)
               ↓
          Phase 14 (AOT)
               ↓
-         Phase 15 (GC) — required
+         Phase 15 (heap GC) — required
               ↓
          Phase 16 (collections) ──┐
               ↓                    │

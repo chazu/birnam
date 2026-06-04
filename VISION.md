@@ -181,9 +181,12 @@ Every module imports `id_api` from the kernel and exports its own API. Modules c
 
 ## Memory
 
-- **Arenas for index segments.** Persistent structures allocate into per-segment arenas. Old segments dropped wholesale on prune.
-- **Materialized struct arena**: separate region for promoted objects. Demotion frees individual structs; full reset on snapshot reload.
-- **No GC.** Persistent indexes + pruning replace it. Garbage = retracted facts whose tx is older than the prune threshold.
+- **Arenas for index segments.** Persistent structures allocate into per-segment arenas (named: index, strings, boxes, bytecode, captures, struct, sig). Old epochs dropped wholesale on prune. *(Substrate built in Phase 12.5 / Phase 15 — pre-Phase-15 the kernel allocates everything from one GPA; the segmented arenas are the Phase 15 reclamation substrate.)*
+- **Materialized struct arena**: separate region for promoted objects. Demotion frees individual structs (`promotion.demote` — the one reclaim path that exists pre-Phase-15); full reset on snapshot reload.
+- **Two reclamation layers, not one.**
+  - **Logical reclaim (pruning, Phase 13).** Drops facts + clears object-table slots. Garbage = retracted facts whose tx is older than the prune threshold, or entities unreachable from roots. Does **not** free backing heap.
+  - **Heap reclaim (GC, Phase 15 — required).** Frees the bytes the logical layer orphans (boxes, closures, constant pools, FFI Sigs, abandoned index epochs, interned strings). Arena-epoch model: free epochs, not structurally-shared nodes. Honors FFI pinning.
+  - Persistent indexes + pruning remove most *pressure*; they do not replace heap GC. Earlier drafts said "No GC" — that referred only to the logical layer and was superseded when sustained-live-image use made heap reclaim mandatory (2026-06-03).
 - **Pruning policy** (configurable, user-initiated):
   - Keep last N txs.
   - Keep all txs touching entities reachable from designated roots.
@@ -249,7 +252,7 @@ Designed in detail when Phase 7 starts; the surface syntax is locked.
 
 - **Image** = serialized index roots + segment files + tx counter + interned-attribute table + object table.
 - **Snapshot** is cheap: persistent structures share with prior snapshots; only new segments written.
-- **Load** = mmap segments, restore roots, re-establish mcache (empty, lazy fill).
+- **Load** = restore roots, re-establish mcache (empty, lazy fill). *(Today replay-based — facts re-asserted into fresh indexes on load. The mmap-segment fast path is a Phase 12.5 perf optimization gated on data, not yet built; the single-file page-aligned layout already supports it later.)*
 - **Module unit** is the `m` column on every fact (see §Fact). A module is the set of facts with a given `m` EID. No separate per-image module-bookkeeping required.
 
 ## Compilation Path
