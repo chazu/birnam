@@ -252,10 +252,7 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
         stderrPrint("[birnam] --aot must run from the repo root (src/aot_main.zig not found)\n", .{});
         return;
     }
-    if (std.mem.eql(u8, aot_mode, "dynamic")) {
-        stderrPrint("[birnam] --aot=dynamic not yet implemented (static only)\n", .{});
-        return;
-    }
+    const is_dynamic = std.mem.eql(u8, aot_mode, "dynamic");
     const img_path = input orelse {
         stderrPrint("[birnam] --aot: no input image (give a .brnimg path)\n", .{});
         return;
@@ -279,6 +276,7 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
     defer argv.deinit(allocator);
     try argv.appendSlice(allocator, &.{ "zig", "build", "aot-build", "-Daot-embed=" ++ embed_rel, "-Daot-name=birnam-aot-app" });
     if (strip_malleable) try argv.appendSlice(allocator, &.{ "-Daot-strip-malleable=true", "-Daot-strip-ast=true" });
+    if (is_dynamic) try argv.append(allocator, "-Daot-dynamic=true");
     if (entry_sel.len > 0) {
         try argv.append(allocator, try std.fmt.allocPrint(allocator, "-Daot-entry-selector={s}", .{entry_sel}));
         if (entry_recv_name.len > 0) {
@@ -288,7 +286,7 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
         }
     }
 
-    stdoutPrint("[birnam] --aot=static{s}: building {s} -> {s}\n", .{ if (strip_malleable) " --strip=malleable" else "", img_path, out_path });
+    stdoutPrint("[birnam] --aot={s}{s}: building {s} -> {s}\n", .{ if (is_dynamic) "dynamic" else "static", if (strip_malleable) " --strip=malleable" else "", img_path, out_path });
     var child = std.process.Child.init(argv.items, allocator);
     child.stdout_behavior = .Inherit;
     child.stderr_behavior = .Inherit;
@@ -305,6 +303,40 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
         return;
     };
     stdoutPrint("[birnam] --aot: wrote {s}\n", .{out_path});
+
+    // Dynamic mode: stage the module dylibs beside the binary so the bundle is
+    // portable (the exe resolves them exe-relative + via $BIRNAM_DYLIB_PATH).
+    if (is_dynamic) stageDylibs(allocator, "src/" ++ embed_rel, out_path);
+}
+
+/// Copy each module dylib named in the staged image's manifest next to
+/// `out_path`. Source is the saved path if it still exists, else
+/// `zig-out/lib/<basename>`, else `<basename>` in cwd. Best-effort: a missing
+/// source warns (the user may stage it manually / set BIRNAM_DYLIB_PATH).
+fn stageDylibs(allocator: std.mem.Allocator, staged_img: []const u8, out_path: []const u8) void {
+    const f = std.fs.cwd().openFile(staged_img, .{}) catch return;
+    defer f.close();
+    const bytes = f.readToEndAlloc(allocator, std.math.maxInt(usize)) catch return;
+    const manifest = image.peekManifest(allocator, bytes) catch {
+        stderrPrint("[birnam] --aot: could not read image manifest for dylib staging\n", .{});
+        return;
+    };
+    const out_dir = std.fs.path.dirname(out_path) orelse ".";
+    for (manifest.modules) |dep| {
+        const base = std.fs.path.basename(dep.name);
+        const dst = std.fs.path.join(allocator, &.{ out_dir, base }) catch continue;
+        // Candidate sources in priority order.
+        const lib_rel = std.fs.path.join(allocator, &.{ "zig-out", "lib", base }) catch base;
+        const candidates = [_][]const u8{ dep.name, lib_rel, base };
+        var staged = false;
+        for (candidates) |src| {
+            std.fs.cwd().copyFile(src, std.fs.cwd(), dst, .{}) catch continue;
+            stdoutPrint("[birnam] --aot: staged {s}\n", .{base});
+            staged = true;
+            break;
+        }
+        if (!staged) stderrPrint("[birnam] --aot: WARNING could not stage {s} (place it beside the binary or set BIRNAM_DYLIB_PATH)\n", .{base});
+    }
 }
 
 // -- Main --------------------------------------------------------------------

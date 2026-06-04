@@ -347,6 +347,26 @@ test "image: embedded manifest round-trips (modules, versions, thread mode)" {
     try testing.expectEqual(vi(1), dst.currentValue(E_A, A_NUM).?);
 }
 
+test "image: peekManifest reads module deps without replaying facts" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var src = fs.FactStore.init(a);
+    _ = try src.assert(E_A, A_NUM, vi(7), M_USER);
+    const deps = [_]image.ModuleDep{
+        .{ .name = "./zig-out/lib/libbirnam_peg.dylib", .abi_hash = 0x11 },
+        .{ .name = "./zig-out/lib/libbirnam_lang.dylib", .abi_hash = 0x22 },
+    };
+    const res = try image.write(a, &src, 256, .{ .modules = &deps }, null);
+
+    // peek parses only the manifest — no FactStore needed for the deps.
+    const m = try image.peekManifest(a, res.bytes);
+    try testing.expectEqual(@as(usize, 2), m.modules.len);
+    try testing.expectEqualStrings("./zig-out/lib/libbirnam_peg.dylib", m.modules[0].name);
+    try testing.expectEqual(@as(u64, 0x22), m.modules[1].abi_hash);
+}
+
 test "image: save/load through a real .brnimg file on disk" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

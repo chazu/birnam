@@ -368,6 +368,36 @@ pub fn load(store: *FactStore, bytes: []const u8, interner: ?*Interner) ReadErro
     return .{ .facts_loaded = fact_count, .next_tx = next_tx, .next_eid = next_eid, .manifest = manifest };
 }
 
+/// Parse only the embedded manifest (magic + version + manifest section),
+/// without restoring the interner or replaying facts. The dynamic AOT loader
+/// uses this to learn the module dependency set *before* `dlopen` + replay,
+/// since modules must init before their DATA facts are replayed. Names in
+/// `manifest.modules` are allocated with `allocator`.
+pub fn peekManifest(allocator: std.mem.Allocator, bytes: []const u8) ReadError!Manifest {
+    var cur = Cursor{ .bytes = bytes };
+    const magic = try cur.take(8);
+    if (!std.mem.eql(u8, magic, &MAGIC)) return error.BadMagic;
+    const version = try cur.readU32();
+    if (version != FORMAT_VERSION) return error.BadVersion;
+    const bc_version = try cur.readU32();
+    const thread_mode_raw = (try cur.take(1))[0];
+    if (thread_mode_raw > @intFromEnum(ThreadMode.datomic)) return error.BadManifest;
+    const module_count = try cur.readU32();
+    const deps = allocator.alloc(ModuleDep, module_count) catch return error.OutOfMemory;
+    var d: u32 = 0;
+    while (d < module_count) : (d += 1) {
+        const name_len = try cur.readU32();
+        const name_src = try cur.take(name_len);
+        const name = allocator.dupe(u8, name_src) catch return error.OutOfMemory;
+        deps[d] = .{ .name = name, .abi_hash = try cur.readU64() };
+    }
+    return .{
+        .bytecode_format_version = bc_version,
+        .thread_mode = @enumFromInt(thread_mode_raw),
+        .modules = deps,
+    };
+}
+
 // -- On-disk file I/O -------------------------------------------------------
 
 pub const FileError = error{ FileOpenFailed, FileWriteFailed, FileReadFailed };
