@@ -68,6 +68,7 @@ pub fn build(b: *std.Build) void {
     full_opts.addOption(bool, "strip_malleable", false);
     full_opts.addOption([]const u8, "entry_selector", "");
     full_opts.addOption(i64, "entry_recv", 0);
+    full_opts.addOption([]const u8, "entry_recv_name", "");
     full_opts.addOption(bool, "strip_ast", false);
     full_opts.addOption([]const u8, "embed_path", "aot_embed.brnimg");
     const aot_full_mod = b.createModule(.{
@@ -89,6 +90,7 @@ pub fn build(b: *std.Build) void {
     mall_opts.addOption([]const u8, "entry_selector", "double");
     mall_opts.addOption(bool, "strip_ast", false);
     mall_opts.addOption(i64, "entry_recv", 5);
+    mall_opts.addOption([]const u8, "entry_recv_name", "");
     mall_opts.addOption([]const u8, "embed_path", "aot_embed.brnimg");
     const aot_mall_mod = b.createModule(.{
         .root_source_file = b.path("src/aot_main.zig"),
@@ -111,6 +113,7 @@ pub fn build(b: *std.Build) void {
         opts.addOption(bool, "strip_ast", b.option(bool, "aot-strip-ast", "AOT: drop user AST trees") orelse false);
         opts.addOption([]const u8, "entry_selector", b.option([]const u8, "aot-entry-selector", "AOT: entry selector") orelse "");
         opts.addOption(i64, "entry_recv", b.option(i64, "aot-entry-recv", "AOT: entry SmallInt receiver") orelse 0);
+        opts.addOption([]const u8, "entry_recv_name", b.option([]const u8, "aot-entry-recv-name", "AOT: entry receiver = top-level binding name") orelse "");
         opts.addOption([]const u8, "embed_path", b.option([]const u8, "aot-embed", "AOT: image to embed (relative to src/)") orelse "aot_embed.brnimg");
         const name = b.option([]const u8, "aot-name", "AOT: output executable name") orelse "birnam-aot-app";
         const mod = b.createModule(.{ .root_source_file = b.path("src/aot_main.zig"), .target = target, .optimize = optimize });

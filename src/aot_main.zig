@@ -23,6 +23,7 @@ const prune = @import("kernel/prune.zig");
 const ffi_module = @import("kernel/ffi_module.zig");
 const send_mod = @import("kernel/send.zig");
 const ref_mod = @import("kernel/ref.zig");
+const kernel_eids = @import("kernel/kernel_eids.zig");
 const bopts = @import("build_opts");
 
 // Modules linked statically (self-contained — import only std, talk via the
@@ -63,6 +64,61 @@ fn initModule(comptime M: type, ctx: *id_api_mod.ShellContext, api: *const id_ap
     f(@ptrCast(ctx), @ptrCast(api), eid);
 }
 
+/// Walk a scope's binding chain (and parents) for `name_eid`, returning the
+/// bound value Ref. Mirrors lang's `lookupInScope` but uses the kernel IdApi
+/// directly (no lang dependency under --strip=malleable).
+fn lookupBinding(api: *const id_api_mod.IdApi, scope_eid0: u64, name_eid: u64) ?ref_mod.Ref {
+    var cur = scope_eid0;
+    while (cur != 0) {
+        var b_ref = api.query_eavt(cur, kernel_eids.ATTR_SCOPE_FIRST_BINDING);
+        while (ref_mod.isEid(b_ref) and b_ref != ref_mod.NIL) {
+            const b_eid = b_ref >> 3;
+            const name_ref = api.query_eavt(b_eid, kernel_eids.ATTR_BIND_NAME);
+            if (ref_mod.isEid(name_ref) and (name_ref >> 3) == name_eid) {
+                return api.query_eavt(b_eid, kernel_eids.ATTR_BIND_VALUE);
+            }
+            b_ref = api.query_eavt(b_eid, kernel_eids.ATTR_BIND_NEXT);
+        }
+        const parent = api.query_eavt(cur, kernel_eids.ATTR_SCOPE_PARENT);
+        if (!ref_mod.isEid(parent) or parent == ref_mod.NIL) return null;
+        cur = parent >> 3;
+    }
+    return null;
+}
+
+/// M6 entry point. `--entry=<selector>[:<recv>]`: send `<selector>` (zero args)
+/// to the receiver, then exit with the result's low 8 bits (SmallInt) or 0.
+/// `<recv>` resolves as: a bare integer → SmallInt; an identifier → the value
+/// bound to that name in the top-level scope (a Module, a user object, …) — the
+/// general module-entity entry. Absent → SmallInt 0. Exits the process; returns
+/// only when no `--entry` was baked in (so the caller falls through to a REPL).
+fn runEntry(interner: *interner_mod.Interner, api: *const id_api_mod.IdApi) void {
+    if (bopts.entry_selector.len == 0) return;
+    const sel = interner.str_to_eid.get(bopts.entry_selector) orelse {
+        stderrPrint("[aot] entry selector '{s}' not in image\n", .{bopts.entry_selector});
+        std.process.exit(70);
+    };
+    const recv = if (bopts.entry_recv_name.len > 0) blk: {
+        const name_eid = interner.str_to_eid.get(bopts.entry_recv_name) orelse {
+            stderrPrint("[aot] entry receiver '{s}' not bound in image\n", .{bopts.entry_recv_name});
+            std.process.exit(70);
+        };
+        break :blk lookupBinding(api, kernel_eids.TOP_SCOPE_EID, name_eid) orelse {
+            stderrPrint("[aot] entry receiver '{s}' not bound in image\n", .{bopts.entry_recv_name});
+            std.process.exit(70);
+        };
+    } else ref_mod.mkSmallInt(bopts.entry_recv).?;
+
+    var no_args: [0]ref_mod.Ref = .{};
+    const result = send_mod.sendN(recv, sel, &no_args, 0);
+    if (ref_mod.isSmallInt(result)) {
+        const n = ref_mod.untagSmallInt(result);
+        stdoutPrint("[aot] {s} => {d}\n", .{ bopts.entry_selector, n });
+        std.process.exit(@as(u8, @truncate(@as(u64, @bitCast(n)))));
+    }
+    std.process.exit(0);
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -96,22 +152,9 @@ pub fn main() !void {
         ffi_module.resolveAllPending(allocator, store, table) catch {};
         stderrPrint("[aot] malleable: loaded baked image ({d} facts), AST stripped\n", .{loaded.facts_loaded});
 
-        // M6 (minimal): send the entry selector to a SmallInt receiver,
-        // exit with the result. (General module-entity entry: pending.)
-        if (bopts.entry_selector.len > 0) {
-            const sel = interner.str_to_eid.get(bopts.entry_selector) orelse {
-                stderrPrint("[aot] entry selector '{s}' not in image\n", .{bopts.entry_selector});
-                return;
-            };
-            const recv = ref_mod.mkSmallInt(bopts.entry_recv).?;
-            var no_args: [0]ref_mod.Ref = .{};
-            const result = send_mod.sendN(recv, sel, &no_args, 0);
-            if (ref_mod.isSmallInt(result)) {
-                const n = ref_mod.untagSmallInt(result);
-                stdoutPrint("[aot] {s} {d} => {d}\n", .{ bopts.entry_selector, bopts.entry_recv, n });
-                std.process.exit(@intCast(@as(u8, @truncate(@as(u64, @bitCast(n))))));
-            }
-        }
+        // M6: send the entry selector to the resolved receiver, exit with the
+        // result. No entry baked → nothing to drive (no REPL under malleable).
+        runEntry(interner, &api);
         return;
     }
 
@@ -126,6 +169,10 @@ pub fn main() !void {
     if (loaded.next_eid > table.next_eid.load(.monotonic)) table.next_eid.store(loaded.next_eid, .monotonic);
     _ = image.rematerializeClosures(allocator, store, table) catch {};
     ffi_module.resolveAllPending(allocator, store, table) catch {};
+
+    // M6: an `--entry` baked into a full-tower build runs and exits (run-and-
+    // exit semantics); otherwise drive the REPL over the baked state.
+    runEntry(interner, &api);
     stderrPrint("[aot] loaded baked image ({d} facts), entering REPL\n", .{loaded.facts_loaded});
 
     // REPL over the baked state.

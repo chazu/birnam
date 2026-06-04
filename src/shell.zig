@@ -216,6 +216,7 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
     var out: ?[]const u8 = null;
     var entry_sel: []const u8 = "";
     var entry_recv: i64 = 0;
+    var entry_recv_name: []const u8 = "";
 
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
@@ -230,7 +231,14 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
             const spec = a["--entry=".len..];
             if (std.mem.indexOfScalar(u8, spec, ':')) |c| {
                 entry_sel = spec[0..c];
-                entry_recv = std.fmt.parseInt(i64, spec[c + 1 ..], 10) catch 0;
+                const recv_spec = spec[c + 1 ..];
+                // recv is either a bare integer (SmallInt) or an identifier
+                // (resolved as a top-level binding in the baked image).
+                if (std.fmt.parseInt(i64, recv_spec, 10)) |n| {
+                    entry_recv = n;
+                } else |_| {
+                    entry_recv_name = recv_spec;
+                }
             } else entry_sel = spec;
         } else if (std.mem.eql(u8, a, "-o")) {
             i += 1;
@@ -273,7 +281,11 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
     if (strip_malleable) try argv.appendSlice(allocator, &.{ "-Daot-strip-malleable=true", "-Daot-strip-ast=true" });
     if (entry_sel.len > 0) {
         try argv.append(allocator, try std.fmt.allocPrint(allocator, "-Daot-entry-selector={s}", .{entry_sel}));
-        try argv.append(allocator, try std.fmt.allocPrint(allocator, "-Daot-entry-recv={d}", .{entry_recv}));
+        if (entry_recv_name.len > 0) {
+            try argv.append(allocator, try std.fmt.allocPrint(allocator, "-Daot-entry-recv-name={s}", .{entry_recv_name}));
+        } else {
+            try argv.append(allocator, try std.fmt.allocPrint(allocator, "-Daot-entry-recv={d}", .{entry_recv}));
+        }
     }
 
     stdoutPrint("[birnam] --aot=static{s}: building {s} -> {s}\n", .{ if (strip_malleable) " --strip=malleable" else "", img_path, out_path });
