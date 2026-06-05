@@ -183,15 +183,23 @@ Every module imports `id_api` from the kernel and exports its own API. Modules c
 
 - **Arenas for index segments.** Persistent structures allocate into per-segment arenas (named: index, strings, boxes, bytecode, captures, struct, sig). Old epochs dropped wholesale on prune. *(Substrate built in Phase 12.5 / Phase 15 — pre-Phase-15 the kernel allocates everything from one GPA; the segmented arenas are the Phase 15 reclamation substrate.)*
 - **Materialized struct arena**: separate region for promoted objects. Demotion frees individual structs (`promotion.demote` — the one reclaim path that exists pre-Phase-15); full reset on snapshot reload.
-- **Two reclamation layers, not one.**
-  - **Logical reclaim (pruning, Phase 13).** Drops facts + clears object-table slots. Garbage = retracted facts whose tx is older than the prune threshold, or entities unreachable from roots. Does **not** free backing heap.
-  - **Heap reclaim (GC, Phase 15 — required).** Frees the bytes the logical layer orphans (boxes, closures, constant pools, FFI Sigs, abandoned index epochs, interned strings). Arena-epoch model: free epochs, not structurally-shared nodes. Honors FFI pinning.
-  - Persistent indexes + pruning remove most *pressure*; they do not replace heap GC. Earlier drafts said "No GC" — that referred only to the logical layer and was superseded when sustained-live-image use made heap reclaim mandatory (2026-06-03).
-- **Pruning policy** (configurable, user-initiated):
-  - Keep last N txs.
-  - Keep all txs touching entities reachable from designated roots.
-  - Manual excise of named entities or tx ranges.
-- AOT prune = the most aggressive variant: collapse all history into a single latest-tx snapshot, drop the `tx` and `op` columns, freeze indexes into read-only segments, demote all objects to EID form (or pre-materialize all-and-freeze, depending on AOT mode).
+- **Three reclamation concerns, not one — and only ONE of them is "GC."** Treating the whole story as garbage collection is the trap: it works for box-heap but mis-frames the fact layer, which is a temporal database, not an object graph.
+  - **Value-heap reclaim (GC, Phase 15 — shipped core).** Real garbage collection of language *values*: float/ffiptr boxes, strings, closures, FFI Sigs. Reachability **is** liveness here — these are ordinary objects. Non-moving mark-sweep over per-type arenas; honors FFI pinning (`ffi_pause`). This is the only layer where "GC" is the right word.
+  - **Index-structure reclaim (epoch arena, Phase 15.I).** Pure plumbing, no user semantics. The persistent HAMT/RRB path-copies on every mutation, abandoning old spine nodes; `compact()` rebuilds the index fresh. **Epoch model:** index nodes allocate into an arena epoch; a rebuild swaps to a new epoch and frees the old one *wholesale* — never reason about per-node structural sharing. **Critical:** the free is gated on the **oldest retained basis-T** (see retention, below), not unconditional — an epoch is freed only when no retained snapshot still references it. Today (current-only) that reduces to "free on compact," but the gate is what keeps cheap time-travel from being silently foreclosed.
+  - **Fact/history retention (policy, NOT GC).** Which *facts* survive is a temporal/semantic decision, not a reachability one. History accretes; `prune` is "collapse history before basis-T," a user-meaningful op (Datomic-shaped). See §Retention.
+  - Persistent indexes + retention remove most value-heap *pressure*; they do not replace value-heap GC. Earlier drafts said "No GC" — that referred only to the logical/fact layer and was superseded when sustained-live-image use made value-heap reclaim mandatory (2026-06-03). The "GC for a database" mislabel was corrected 2026-06-05.
+
+### Retention, snapshots, excision (the Datomic bargain)
+
+The persistent substrate's superpower is that **an index root pointer IS a complete zero-copy snapshot of the whole store at its tx** (structural sharing). Reclamation must not throw this away. So the fact-layer model is retention + snapshot-pinning + excision, **tiered so it stays invisible until you reach for history:**
+
+- **Default (current-only): invisible.** A user who only wants "now" never sees retention. History collapses continuously (auto-prune cadence), index epochs free on compact, value-heap GC runs in the background. No DBA surface. This is today's behavior.
+- **Snapshots are values.** Capturing a db-value (`as-of tx`, or `db now`) yields an immutable handle that **pins the storage it needs** — exactly like any held object pins its heap. A retained snapshot holds its index epoch alive; the epoch-arena free skips any epoch at-or-after the oldest retained basis-T. Reachability-of-roots, not reachability-of-nodes.
+- **Retention horizon (policy, opt-in):** keep-last-N-txs / keep-since-T / keep-reachable-from-roots. Sets the floor below which history is collectible. Surfaced only when a user opts into time-travel.
+- **Excision (explicit, rare):** hard-delete of named entities or tx ranges (GDPR-shaped). Distinct from prune — it removes facts *within* the retained window, on purpose, and is the one op that can invalidate held snapshots. Always user-invoked, never automatic.
+- **On-disk cold-history tier (runtime).** History older than the live retention horizon but still inside the retention *policy* spills to disk **during runtime**, not just at image-save: warm/current indexes stay in memory; cold tx epochs are written to segment files and dropped from RAM, faulted back only when an `as-of` query reaches that far. Keeps a long-lived image's resident set bounded by the working set, not by total history. The single-file page-aligned image layout (§Image) is the substrate; segments are epoch-granular so a cold epoch is one contiguous write/evict.
+
+- **AOT prune = the most aggressive variant:** collapse all history into a single latest-tx snapshot, drop the `tx` and `op` columns, freeze indexes into read-only segments, demote all objects to EID form (or pre-materialize all-and-freeze, depending on AOT mode). This is retention-horizon = "now" made permanent.
 
 ## Bootstrap
 
@@ -252,6 +260,7 @@ Designed in detail when Phase 7 starts; the surface syntax is locked.
 
 - **Image** = serialized index roots + segment files + tx counter + interned-attribute table + object table.
 - **Snapshot** is cheap: persistent structures share with prior snapshots; only new segments written.
+- **A snapshot is a first-class value, and holding it pins its storage.** Capturing `as-of tx` / `db now` yields an immutable db-value = the index roots at that tx. While held, its index epoch(s) are reachable, so the epoch-arena free (§Memory) skips them and the cold-history tier keeps (or faults in) their segments. Dropping the last reference to a snapshot makes its now-unreferenced epochs collectible at the next compact. This is the reachability question for the fact layer — over retained *roots*, not over nodes — and it is what makes the index-structure reclaim safe in the presence of time-travel.
 - **Load** = restore roots, re-establish mcache (empty, lazy fill). *(Today replay-based — facts re-asserted into fresh indexes on load. The mmap-segment fast path is a Phase 12.5 perf optimization gated on data, not yet built; the single-file page-aligned layout already supports it later.)*
 - **Module unit** is the `m` column on every fact (see §Fact). A module is the set of facts with a given `m` EID. No separate per-image module-bookkeeping required.
 
