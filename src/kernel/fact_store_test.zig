@@ -336,3 +336,60 @@ test "frozenInsert builds indexes; freeze rejects further mutation" {
     // Reads still work after freeze.
     try testing.expectEqual(vi(42), store.currentValue(E1, A_NAME).?);
 }
+
+// -- Phase 15.I — index epoch arena -----------------------------------------
+
+const KeepAll = struct {
+    fn keep(_: void, _: u64, _: u64, _: u64, _: ref.Ref) bool {
+        return true;
+    }
+};
+
+test "index epoch arena: compact frees old epoch wholesale; values survive" {
+    // Store directly on the leak-checked allocator. The index lives on the
+    // epoch arena; if compact fails to free the old epoch (or deinit the
+    // current one), testing.allocator flags the leak. Reify maps freed below.
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    // 1000 asserts (each (e,a) rewritten once → spine garbage + history churn,
+    // all accumulating in epoch 1).
+    var i: u64 = 0;
+    while (i < 500) : (i += 1) {
+        _ = try store.assert(100 + i, 5, vi(@intCast(i)), M_BOOT);
+        _ = try store.assert(100 + i, 5, vi(@intCast(i + 1000)), M_BOOT);
+    }
+    try testing.expectEqual(vi(1000), store.currentValue(100, 5).?);
+
+    const old_epoch_ptr = store.index_arena.?;
+    const stats = try store.compact(a, {}, KeepAll.keep);
+    try testing.expectEqual(@as(usize, 500), stats.kept); // current-only collapse
+    // Epoch swapped (old freed; pointer value compared, not dereferenced).
+    try testing.expect(store.index_arena.? != old_epoch_ptr);
+
+    // No corruption / UAF across the swap+free.
+    try testing.expectEqual(vi(1000), store.currentValue(100, 5).?);
+    try testing.expectEqual(vi(1499), store.currentValue(599, 5).?);
+    try testing.expect(store.currentValue(99, 5) == null);
+}
+
+test "index epoch arena: retain_history gate skips the free (no swap)" {
+    // Backing arena reclaims the intentionally-retained epoch at teardown.
+    var backing = std.heap.ArenaAllocator.init(testing.allocator);
+    defer backing.deinit();
+    const a = backing.allocator();
+    var store = fs.FactStore.init(a);
+    try store.enableIndexArena();
+    store.retain_history = true;
+
+    _ = try store.assert(1, 2, vi(3), M_BOOT);
+    const epoch = store.index_arena.?;
+    _ = try store.compact(a, {}, KeepAll.keep);
+
+    try testing.expect(store.index_arena.? == epoch); // NOT swapped, old kept
+    try testing.expectEqual(vi(3), store.currentValue(1, 2).?);
+}

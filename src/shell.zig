@@ -378,6 +378,7 @@ pub fn main() !void {
     // -- Boot the kernel -----------------------------------------------------
     const store = try allocator.create(fact_store.FactStore);
     store.* = fact_store.FactStore.init(allocator);
+    try store.enableIndexArena(); // Phase 15.I: index nodes → freeable epoch arena
 
     const table = try allocator.create(object_table.ObjectTable);
     table.* = object_table.ObjectTable.init(allocator);

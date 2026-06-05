@@ -60,6 +60,29 @@ pub const CardinalitySchema = struct {
 
 pub const FactStore = struct {
     allocator: std.mem.Allocator,
+
+    /// Phase 15.I — index epoch arena. When non-null, all FIVE persistent
+    /// index structures (eavt/aevt/avet/vaet/meat, incl. their nested maps +
+    /// `ValueHistVec`/`PresenceHistVec` history) allocate from this arena
+    /// instead of `allocator`. `compact()` swaps to a fresh arena and frees
+    /// the old one WHOLESALE — reclaiming both per-mutation path-copy garbage
+    /// and the old current tree in one shot (the new tree shares no node with
+    /// the old, so the old epoch is entirely dead). Opt-in (live entry points
+    /// call `enableIndexArena`); unit tests leave it null → index on
+    /// `allocator`, freed by the test's own arena teardown as before.
+    ///
+    /// A plain `ArenaAllocator` (wholesale free), NOT the recording `arena.zig`
+    /// (that one is per-cell mark-sweep for the value heap). Heap-boxed so the
+    /// pointer survives `FactStore` value copies and can be swapped in place.
+    index_arena: ?*std.heap.ArenaAllocator = null,
+
+    /// Phase 15.I/15.R gate. While false (current-only, the default and only
+    /// mode today), `compact` frees the old index epoch unconditionally — no
+    /// retained snapshot can reference it. When 15.R lands retained snapshots
+    /// this flips true and the free becomes gated on the oldest retained
+    /// basis-T; until that machinery exists, `true` conservatively SKIPS the
+    /// free (leak, never corrupt — honors the never-free-live tenet).
+    retain_history: bool = false,
     /// Monotonic tx counter; starts at 1. Atomic per Phase 11.7.iv
     /// (ADR-11 #7 forward-compat). Single-writer transactor under the
     /// Datomic shape; atomic now keeps non-transactor read paths safe
@@ -120,6 +143,45 @@ pub const FactStore = struct {
             .fact_eids = std.AutoHashMap(u64, u64).init(allocator),
             .fact_modules = std.AutoHashMap(u64, u64).init(allocator),
         };
+    }
+
+    /// The allocator the five persistent indexes (and their nested maps +
+    /// history vecs) allocate from: the index epoch arena when enabled, else
+    /// `allocator`. Query results and transient collectors deliberately stay
+    /// on `allocator` (they outlive / are independent of an index epoch).
+    pub fn indexAlloc(self: *const FactStore) std.mem.Allocator {
+        return if (self.index_arena) |ia| ia.allocator() else self.allocator;
+    }
+
+    /// Phase 15.I — route index allocation to a dedicated epoch arena. MUST be
+    /// called on an empty store (right after `init`, before any assert) so the
+    /// five roots are rebuilt on the arena and every later node lands there.
+    /// Live entry points (shell/aot) call this; tests opt in explicitly.
+    pub fn enableIndexArena(self: *FactStore) !void {
+        if (self.index_arena != null) return;
+        const ia = try self.allocator.create(std.heap.ArenaAllocator);
+        ia.* = std.heap.ArenaAllocator.init(self.allocator);
+        self.index_arena = ia;
+        const a = ia.allocator();
+        // Rebuild the (empty) roots so their STORED allocator is the arena —
+        // assoc/dissoc path-copy via the stored allocator, not the call param.
+        self.eavt = EAVTish.empty(a, .{});
+        self.aevt = EAVTish.empty(a, .{});
+        self.avet = AVETish.empty(a, .{});
+        self.vaet = AVETish.empty(a, .{});
+        self.meat = MEATish.empty(a, .{});
+    }
+
+    /// Release the index epoch arena (if any). The live store never calls this
+    /// (process exit reclaims); tests that `enableIndexArena` call it to stay
+    /// leak-clean. Index nodes on `allocator` (arena disabled) are not owned
+    /// here — the caller's allocator frees them.
+    pub fn deinitIndexArena(self: *FactStore) void {
+        if (self.index_arena) |ia| {
+            ia.deinit();
+            self.allocator.destroy(ia);
+            self.index_arena = null;
+        }
     }
 
     // -- Phase 7.3 reification helpers ---------------------------------------
@@ -198,11 +260,11 @@ pub const FactStore = struct {
     /// only caller; it never references `assert`, so the tx-writer path is
     /// skipped during a frozen load.
     pub fn frozenInsert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !void {
-        self.eavt = try updateValueLeaf(self.allocator, self.eavt, e, a, v, .{ .v = v, .tx = 1, .op = .assert });
-        self.aevt = try updateValueLeaf(self.allocator, self.aevt, a, e, v, .{ .v = v, .tx = 1, .op = .assert });
-        self.meat = try updateMeat(self.allocator, self.meat, m, e, a, v, .{ .v = v, .tx = 1, .op = .assert });
-        self.avet = try updatePresenceLeaf(self.allocator, self.avet, a, v, e, true, .{ .tx = 1, .op = .assert });
-        self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, v, a, e, true, .{ .tx = 1, .op = .assert });
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = 1, .op = .assert });
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = 1, .op = .assert });
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = 1, .op = .assert });
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = 1, .op = .assert });
+        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = 1, .op = .assert });
     }
 
     /// Lock the store read-only (Phase 14 `--strip=history`). After this,
@@ -227,11 +289,11 @@ pub const FactStore = struct {
         // EAVT / AEVT: append (v, tx, assert) to the value-cell at (e,a) / (a,e).
         // For `:many` attrs the cell's current_v is just "latest assert"
         // and not the canonical truth; AVET drives reads.
-        self.eavt = try updateValueLeaf(self.allocator, self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert });
-        self.aevt = try updateValueLeaf(self.allocator, self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert });
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert });
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert });
 
         // MEAT: same pattern but three-level (m, e, a).
-        self.meat = try updateMeat(self.allocator, self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert });
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert });
 
         // AVET / VAET: presence-cell maintenance.
         //   `:one` (default) — implicit-retract the previous distinct value.
@@ -239,13 +301,13 @@ pub const FactStore = struct {
         if (!is_many) {
             if (prev_v) |pv| {
                 if (pv != v) {
-                    self.avet = try updatePresenceLeaf(self.allocator, self.avet, a, pv, e, false, .{ .tx = tx, .op = .retract });
-                    self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, pv, a, e, false, .{ .tx = tx, .op = .retract });
+                    self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, pv, e, false, .{ .tx = tx, .op = .retract });
+                    self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, pv, a, e, false, .{ .tx = tx, .op = .retract });
                 }
             }
         }
-        self.avet = try updatePresenceLeaf(self.allocator, self.avet, a, v, e, true, .{ .tx = tx, .op = .assert });
-        self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert });
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = tx, .op = .assert });
+        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert });
 
         if (self.on_attr_mutate) |cb| cb(a);
         if (self.on_entity_mutate) |cb| cb(e, a);
@@ -264,11 +326,11 @@ pub const FactStore = struct {
         // EAVT/AEVT current_v: for `:one` this nulls the cache (no remaining
         // value at (e, a)). For `:many` it makes current_v stale relative to
         // AVET — that's fine; reads consult cardinality.
-        self.eavt = try updateValueLeaf(self.allocator, self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
-        self.aevt = try updateValueLeaf(self.allocator, self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract });
-        self.meat = try updateMeat(self.allocator, self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
-        self.avet = try updatePresenceLeaf(self.allocator, self.avet, a, v, e, false, .{ .tx = tx, .op = .retract });
-        self.vaet = try updatePresenceLeaf(self.allocator, self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract });
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract });
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, false, .{ .tx = tx, .op = .retract });
+        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract });
 
         if (self.on_attr_mutate) |cb| cb(a);
         if (self.on_entity_mutate) |cb| cb(e, a);
@@ -596,13 +658,32 @@ pub const FactStore = struct {
         defer facts.deinit(scratch);
         var it = self.meatIter();
         while (it.next()) |f| try facts.append(scratch, .{ .m = f.m, .e = f.e, .a = f.a, .v = f.v });
+        // `facts` holds (m,e,a,v) by value — v is a Ref (u64). No pointer into
+        // the old index escapes, so the old epoch is safe to free below.
+
+        // Phase 15.I — swap to a fresh index epoch. Re-asserting kept facts
+        // rebuilds the index entirely in the new epoch (shares no node with the
+        // old), so the old epoch becomes wholly dead and is freed at the end —
+        // reclaiming BOTH the old current tree AND all path-copy spine garbage
+        // accumulated since the last compact. Skipped when the arena is
+        // disabled (tests → index on `self.allocator` as before) or when
+        // `retain_history` is set (15.R gate: keep the old epoch, leak-not-
+        // corrupt, until basis-T-gated freeing exists).
+        var old_epoch: ?*std.heap.ArenaAllocator = null;
+        if (self.index_arena != null and !self.retain_history) {
+            const fresh = try self.allocator.create(std.heap.ArenaAllocator);
+            fresh.* = std.heap.ArenaAllocator.init(self.allocator);
+            old_epoch = self.index_arena;
+            self.index_arena = fresh; // indexAlloc() now hands out the new epoch
+        }
 
         // Reset indexes + reification side tables. next_tx restarts at 1.
-        self.eavt = EAVTish.empty(self.allocator, .{});
-        self.aevt = EAVTish.empty(self.allocator, .{});
-        self.avet = AVETish.empty(self.allocator, .{});
-        self.vaet = AVETish.empty(self.allocator, .{});
-        self.meat = MEATish.empty(self.allocator, .{});
+        const ia = self.indexAlloc();
+        self.eavt = EAVTish.empty(ia, .{});
+        self.aevt = EAVTish.empty(ia, .{});
+        self.avet = AVETish.empty(ia, .{});
+        self.vaet = AVETish.empty(ia, .{});
+        self.meat = MEATish.empty(ia, .{});
         self.next_tx.store(1, .monotonic);
         self.fact_eids.clearRetainingCapacity();
         self.fact_modules.clearRetainingCapacity();
@@ -623,6 +704,14 @@ pub const FactStore = struct {
             } else {
                 stats.dropped += 1;
             }
+        }
+
+        // Free the old epoch wholesale now that the new index is fully built
+        // and references only new-epoch nodes. (Gated above: only set when the
+        // arena is enabled and history isn't retained.)
+        if (old_epoch) |old| {
+            old.deinit();
+            self.allocator.destroy(old);
         }
         return stats;
     }
