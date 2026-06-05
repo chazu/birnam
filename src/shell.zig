@@ -386,6 +386,7 @@ pub fn main() !void {
     // boxes route through the `strings` arena (GC-enumerable); index maps +
     // interner key dups stay on the kernel allocator.
     try arenas.init(allocator);
+    gc.resetAutoTrigger();
 
     const interner = try allocator.create(interner_mod.Interner);
     interner.* = interner_mod.Interner.init(allocator);
@@ -437,6 +438,14 @@ pub fn main() !void {
                 if (l.len < buf.len) {
                     buf[l.len] = 0;
                     handler(@ptrCast(buf[0 .. l.len + 1].ptr));
+                }
+                // 15.6 auto-trigger: the line boundary is quiescent (empty value
+                // stack), the one safe point to sweep. Growth-gated; silent
+                // unless it actually reclaims.
+                if (gc.maybeCollect(store, table, allocator)) |st| {
+                    if (!st.skipped and (st.boxes_freed + st.closures_freed + st.wrappers_freed > 0)) {
+                        stderrPrint("[birnam] auto-gc ({d} boxes, {d} closures, {d} wrappers freed)\n", .{ st.boxes_freed, st.closures_freed, st.wrappers_freed });
+                    }
                 }
             } else {
                 if (std.mem.eql(u8, l, "quit") or std.mem.eql(u8, l, "exit")) break;

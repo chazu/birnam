@@ -63,6 +63,53 @@ const Ctx = struct {
     scratch: std.mem.Allocator,
 };
 
+// -- 15.6 auto-trigger ------------------------------------------------------
+//
+// Run the collector when the sweepable arenas have grown past a threshold
+// since the last collection, at a caller-chosen quiescent point (the shell's
+// REPL line boundary — empty value stack). Growth-gated, not absolute: a large
+// but stable live set never re-triggers. `collectBoxes` itself re-checks
+// `ffi_pause`, so a fired-but-skipped collection leaves the baseline untouched.
+
+/// Cells of net growth across the swept arenas that arm an auto-collection.
+pub const GC_GROWTH_THRESHOLD: usize = 50_000;
+
+var last_live: usize = 0;
+
+fn sweepableLive() usize {
+    var n: usize = 0;
+    if (arenas.arena(.boxes)) |a| n += a.liveCount();
+    if (arenas.arena(.captures)) |a| n += a.liveCount();
+    if (arenas.arena(.closures_vt)) |a| n += a.liveCount();
+    return n;
+}
+
+/// Reset the growth baseline (call after `arenas.init`, so a fresh process
+/// doesn't inherit a stale high-water mark).
+pub fn resetAutoTrigger() void {
+    last_live = 0;
+}
+
+/// Collect iff net arena growth since the last collection crossed the
+/// threshold. Returns the stats when it ran (skipped stats if `ffi_pause`
+/// blocked it), or null when below threshold. Updates the baseline to the
+/// post-sweep live count only when a real collection happened.
+pub fn maybeCollect(
+    store: *fact_store.FactStore,
+    table: *object_table.ObjectTable,
+    scratch: std.mem.Allocator,
+) ?GcStats {
+    if (!arenas.ready()) return null;
+    const live = sweepableLive();
+    if (live <= last_live + GC_GROWTH_THRESHOLD) {
+        if (live < last_live) last_live = live; // shrank (e.g. manual :gc) → track down
+        return null;
+    }
+    const st = collectBoxes(store, table, scratch);
+    if (!st.skipped) last_live = sweepableLive();
+    return st;
+}
+
 pub fn collectBoxes(
     store: *fact_store.FactStore,
     table: *object_table.ObjectTable,

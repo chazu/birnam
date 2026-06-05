@@ -144,6 +144,22 @@ test "gc: live wrapper pins its inner block; orphan wrapper + inner freed" {
     try testing.expectEqual(@as(usize, 1), st.closures_kept); // live_inner via wrapper
 }
 
+test "gc: maybeCollect stays null below the growth threshold" {
+    try freshArenas();
+    defer arenas.deinit();
+    gc.resetAutoTrigger();
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store = fs.FactStore.init(a);
+    var table = ot.ObjectTable.init(a);
+
+    // A handful of boxes — well under GC_GROWTH_THRESHOLD — must not arm a sweep.
+    var i: usize = 0;
+    while (i < 8) : (i += 1) _ = try boxed.mkFloat(FAIL, @floatFromInt(i));
+    try testing.expect(gc.maybeCollect(&store, &table, a) == null);
+}
+
 test "gc: no-op when boxes arena registry is absent" {
     if (arenas.ready()) arenas.deinit();
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
