@@ -505,7 +505,13 @@ fn materializeInner(
         patched_pool[child.pool_idx] = ref_mod.mkEid(child_eid);
     }
 
-    const bytes_ref = strings.mkString(allocator, m.bytecode) catch return error.OutOfMemory;
+    // Route the bytecode-stream string box to the swept strings arena (Phase
+    // 15.D-followon): it's a `[method :bytecode-stream str]` fact value (R1),
+    // so :gc reclaims it when the method is pruned. Safe — a frame's raw
+    // `bytecode` pointer into the payload exists only while that method runs,
+    // never at the quiescent gc point. The HAMT key dup stays on `allocator`.
+    const sa = if (arenas.ready()) arenas.strings() else allocator;
+    const bytes_ref = strings.mkString(sa, m.bytecode) catch return error.OutOfMemory;
     const pool_ref: ?Ref = if (patched_pool.len == 0)
         null
     else
