@@ -449,6 +449,10 @@ fn methodUnload(s: *send_mod.Send, args: [*]const Ref, n_args: usize) callconv(.
     var it = store.entitiesMatching(kernel_eids.ATTR_FFI_OWNER, owner_ref);
     const stale_true = ref_mod.mkSmallInt(1).?;
     while (it.next()) |owned_eid| {
+        // Phase 15.E: free the wrap's heap Sig holder before staling. No-op for
+        // owned boxed-ffi-ptr entities (no :ffi-sig). ffi_depth==0 here (checked
+        // above), so no in-flight call holds the Sig.
+        ffi.freeSig(store, alloc, owned_eid);
         _ = store.assert(owned_eid, kernel_eids.ATTR_FFI_STALE, stale_true, kernel_eids.M_BOOTSTRAP) catch {};
     }
 

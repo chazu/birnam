@@ -358,6 +358,29 @@ fn resolveWrap(
     return .{ .addr = addr, .sig = sig };
 }
 
+/// Phase 15.E — free a wrap's heap `Sig` holder (struct + its `args` slice).
+/// Safe targeted free, not arena-sweep: a Sig holds an internal slice that is
+/// not Ref-reachable (so a sweep couldn't keep it), and it is referenced ONLY
+/// via `[wrap :ffi-sig ptr]`, never captured. Callers invoke this exactly when
+/// the wrap's Sig is being superseded (re-resolve) or torn down (module unload)
+/// — both quiescent points (unload refuses while `ffi_depth > 0`). No-op when
+/// the wrap has no current `:ffi-sig`. Uses the same allocator that created it.
+pub fn freeSig(
+    store: *fact_store_mod.FactStore,
+    allocator: std.mem.Allocator,
+    wrap_eid: u64,
+) void {
+    const sig_ref = store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_SIG) orelse return;
+    if (!ref_mod.isPointer(sig_ref)) return;
+    const sig: *Sig = @ptrCast(@alignCast(ref_mod.untagPointer(sig_ref)));
+    sig.deinit(allocator);
+    allocator.destroy(sig);
+    // Retract the now-dangling fact so `resolveWrap` returns null (the shim has
+    // no stale-guard and would otherwise read freed memory on a post-unload
+    // call). On re-resolve the caller asserts a fresh `:ffi-sig` right after.
+    _ = store.retract(wrap_eid, kernel_eids.ATTR_FFI_SIG, sig_ref, kernel_eids.M_BOOTSTRAP) catch {};
+}
+
 fn shimDispatch(s: *send_mod.Send, args: []const Ref) Ref {
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
     const table = send_mod.tablePtr() orelse return ref_mod.NIL;
@@ -412,6 +435,10 @@ pub fn buildWrapClosure(
         sig.deinit(allocator);
         return error.ArityTooHigh;
     }
+    // Phase 15.E: re-resolving an already-wrapped eid (image reload, relink)
+    // supersedes its `:ffi-sig`; free the prior holder first so it doesn't leak.
+    freeSig(store, allocator, wrap_eid);
+
     // Stash the parsed Sig on the heap so the shim can reference it via
     // pointer Ref. Transient (process-local); not persisted.
     const sig_holder = try allocator.create(Sig);

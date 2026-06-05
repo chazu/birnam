@@ -251,3 +251,26 @@ test "invoke: variadic printf via dyncall arm64 darwin" {
 
     ffi.shutdown();
 }
+
+// -- Phase 15.E — Sig free hook ---------------------------------------------
+
+test "freeSig: frees the heap Sig holder and retracts :ffi-sig" {
+    // Store on an arena (auto-freed); the Sig holder on the leak-checked
+    // testing allocator, so a missed free of struct+args is flagged.
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store.FactStore.init(arena.allocator());
+
+    const wrap_eid: u64 = 4242;
+    const sig = try ffi.parseSig(testing.allocator, "d)d"); // allocates sig.args
+    const holder = try testing.allocator.create(ffi.Sig);
+    holder.* = sig;
+    _ = try store.assert(wrap_eid, kernel_eids.ATTR_FFI_SIG, ref_mod.mkPointer(@ptrCast(holder)), kernel_eids.M_BOOTSTRAP);
+
+    ffi.freeSig(&store, testing.allocator, wrap_eid);
+
+    // Fact retracted → resolveWrap would miss → shim safely returns NIL.
+    try testing.expect(store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_SIG) == null);
+    // freeSig on a wrap with no :ffi-sig is a no-op.
+    ffi.freeSig(&store, testing.allocator, 9999);
+}

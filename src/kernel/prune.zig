@@ -18,12 +18,17 @@
 //! Sweep = `FactStore.compact` (13.2): rebuild indexes keeping CODE facts +
 //! marked M_USER facts; history collapses; object-table entries for swept
 //! entities are cleared.
+//!
+//! Phase 15.4: swept entities are `promotion.demote`d before their slot is
+//! cleared, so a materialized struct's heap is reclaimed (clearing the slot
+//! alone leaked it — demote can't run once the slot is gone).
 
 const std = @import("std");
 const ref_mod = @import("ref.zig");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const promotion = @import("promotion.zig");
 
 const Ref = ref_mod.Ref;
 const FactStore = fact_store.FactStore;
@@ -115,7 +120,10 @@ pub fn stripAst(
     // Clear object-table slots for AST entities (rarely materialized, but
     // be safe), then rewrite.
     var keys = astSet.keyIterator();
-    while (keys.next()) |e| table.clear(e.*) catch {};
+    while (keys.next()) |e| {
+        promotion.demote(e.*); // 15.4: free a materialized AST struct, if any
+        table.clear(e.*) catch {};
+    }
 
     const cs = store.compact(scratch, &astSet, keepNonAst) catch return error.OutOfMemory;
     return cs.dropped;
@@ -152,7 +160,16 @@ pub fn pruneReachable(
     }
 
     const cs = store.compact(scratch, &marked, keep) catch return error.OutOfMemory;
-    for (swept.items) |e| table.clear(e) catch {};
+    // Phase 15.4: demote each swept entity BEFORE clearing its slot, so its
+    // materialized struct heap is reclaimed. `table.clear` alone leaks the
+    // struct — and `demote` can't run afterward (it reads `table.get(eid)`,
+    // already gone). `demote` is a no-op when promotion is uninitialized or
+    // the entity was never materialized; `table.clear` is the fallback for
+    // the cold (EID-slot) case demote leaves untouched.
+    for (swept.items) |e| {
+        promotion.demote(e);
+        table.clear(e) catch {};
+    }
 
     return .{ .kept = cs.kept, .dropped_facts = cs.dropped, .swept_entities = swept.items.len };
 }

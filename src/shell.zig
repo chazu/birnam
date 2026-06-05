@@ -21,11 +21,13 @@ const posix = std.posix;
 const fact_store = @import("kernel/fact_store.zig");
 const object_table = @import("kernel/object_table.zig");
 const interner_mod = @import("kernel/interner.zig");
+const arenas = @import("kernel/arenas.zig");
 const bootstrap = @import("kernel/bootstrap.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
 const image = @import("kernel/image.zig");
 const prune = @import("kernel/prune.zig");
+const gc = @import("kernel/gc.zig");
 const ffi_module = @import("kernel/ffi_module.zig");
 const freeze = @import("kernel/freeze.zig");
 const kernel_eids = @import("kernel/kernel_eids.zig");
@@ -74,6 +76,18 @@ fn handleImageCommand(
             return true;
         };
         stdoutPrint("[birnam] pruned ({d} facts kept, {d} dropped, {d} entities swept)\n", .{ stats.kept, stats.dropped_facts, stats.swept_entities });
+        return true;
+    }
+    if (std.mem.eql(u8, line, ":gc")) {
+        // Heap reclaim (distinct from :prune's logical reclaim). Sweeps the
+        // boxes arena. Best run after :prune so dropped facts no longer pin
+        // their boxes (Phase 15 §Q2 current-values gate).
+        const st = gc.collectBoxes(store, table, allocator);
+        if (st.skipped) {
+            stdoutPrint("[birnam] :gc skipped (no arena registry or FFI in flight)\n", .{});
+        } else {
+            stdoutPrint("[birnam] gc ({d} boxes freed/{d} kept, {d} closures freed/{d} kept, {d} wrappers freed/{d} kept, {d} strings freed/{d} kept)\n", .{ st.boxes_freed, st.boxes_kept, st.closures_freed, st.closures_kept, st.wrappers_freed, st.wrappers_kept, st.strings_freed, st.strings_kept });
+        }
         return true;
     }
     if (std.mem.startsWith(u8, line, ":load ")) {
@@ -368,8 +382,15 @@ pub fn main() !void {
     const table = try allocator.create(object_table.ObjectTable);
     table.* = object_table.ObjectTable.init(allocator);
 
+    // Phase 15.1b: live process gets the segmented arena registry. String
+    // boxes route through the `strings` arena (GC-enumerable); index maps +
+    // interner key dups stay on the kernel allocator.
+    try arenas.init(allocator);
+    gc.resetAutoTrigger();
+
     const interner = try allocator.create(interner_mod.Interner);
     interner.* = interner_mod.Interner.init(allocator);
+    interner.setStringAllocator(arenas.strings());
 
     _ = try bootstrap.boot(allocator, store, table, interner);
     id_api_mod.setInterner(interner);
@@ -417,6 +438,14 @@ pub fn main() !void {
                 if (l.len < buf.len) {
                     buf[l.len] = 0;
                     handler(@ptrCast(buf[0 .. l.len + 1].ptr));
+                }
+                // 15.6 auto-trigger: the line boundary is quiescent (empty value
+                // stack), the one safe point to sweep. Growth-gated; silent
+                // unless it actually reclaims.
+                if (gc.maybeCollect(store, table, allocator)) |st| {
+                    if (!st.skipped and (st.boxes_freed + st.closures_freed + st.wrappers_freed + st.strings_freed > 0)) {
+                        stderrPrint("[birnam] auto-gc ({d} boxes, {d} closures, {d} wrappers, {d} strings freed)\n", .{ st.boxes_freed, st.closures_freed, st.wrappers_freed, st.strings_freed });
+                    }
                 }
             } else {
                 if (std.mem.eql(u8, l, "quit") or std.mem.eql(u8, l, "exit")) break;

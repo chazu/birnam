@@ -19,6 +19,7 @@ const boxed = @import("boxed.zig");
 const send_mod = @import("send.zig");
 const vm_mod = @import("vm.zig");
 const closure_mod = @import("closure.zig");
+const arenas = @import("arenas.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const Opcode = bytecode.Opcode;
@@ -330,7 +331,11 @@ pub fn runMethod(
 fn allocClosureEntity(allocator: std.mem.Allocator, closure_data_ref: Ref) RunError!u64 {
     const table = send_mod.tablePtr() orelse return error.BadFrame;
     const total = 3 * @sizeOf(Ref);
-    const buf = allocator.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
+    // Bytecode block wrappers churn per `value`/`whileTrue:`; route to the swept
+    // closures_vt arena when live so :gc reclaims dead ones (Phase 15.A). Its
+    // `data` is the captures-arena BytecodeClosure, pinned via consider(data).
+    const a = if (arenas.ready()) arenas.closuresVt() else allocator;
+    const buf = a.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
     @memset(buf, 0);
     const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
     vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);

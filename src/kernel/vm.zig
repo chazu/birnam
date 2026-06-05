@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const ref_mod = @import("ref.zig");
+const arenas = @import("arenas.zig");
 
 pub const Ref = ref_mod.Ref;
 
@@ -240,7 +241,11 @@ pub fn allocBytecodeBlock(
     n_captures: u32,
 ) !struct { ref: Ref, captures_tail: [*]Ref } {
     const total = @sizeOf(BytecodeClosure) + @sizeOf(Ref) * n_captures;
-    const buf = try allocator.alignedAlloc(u8, .of(BytecodeClosure), total);
+    // Phase 15.1b/15.3: route to the captures arena (live) so the collector
+    // can conservatively scan closure capture tails for boxed Refs. Fallback
+    // to the passed allocator in bare unit tests (no registry).
+    const ba = if (arenas.ready()) arenas.captures() else allocator;
+    const buf = try ba.alignedAlloc(u8, .of(BytecodeClosure), total);
     const header: *BytecodeClosure = @ptrCast(@alignCast(buf.ptr));
     header.* = .{
         .method_eid = method_eid,
