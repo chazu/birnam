@@ -25,6 +25,7 @@ const boxed = @import("boxed.zig");
 const closure_mod = @import("closure.zig");
 const dispatch = @import("dispatch.zig");
 const vm_mod = @import("vm.zig");
+const arenas = @import("arenas.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const FactStore = fact_store_mod.FactStore;
@@ -545,7 +546,13 @@ fn materializeInner(
     // whileTrue: methods on CLOSURE_VT work as if the bytecode method
     // were a block closure).
     const total = 3 * @sizeOf(Ref);
-    const buf = allocator.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
+    // Route the method-closure wrapper to the swept closures_vt arena (Phase
+    // 15.5): when a method is redefined and the superseded entity is later
+    // pruned (slot cleared) and uncaptured, :gc reclaims this wrapper. Eager
+    // free at the redefine tx is unsafe — a captured inner block resolves its
+    // method-eid through this slot, and only a full mark knows if it survives.
+    const ca = if (arenas.ready()) arenas.closuresVt() else allocator;
+    const buf = ca.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
     @memset(buf, 0);
     const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
     vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
