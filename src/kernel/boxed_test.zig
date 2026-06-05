@@ -8,6 +8,33 @@ const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const arenas = @import("arenas.zig");
+
+// -- Phase 15.1b: boxes arena routing ----------------------------------------
+
+test "mkFloat/mkFfiPtr route to the boxes arena when the registry is live" {
+    if (arenas.ready()) arenas.deinit(); // start clean
+    try arenas.init(testing.allocator);
+    defer arenas.deinit(); // frees the boxes below → leak-clean
+
+    // The passed allocator is a fallback; with the registry up it is ignored
+    // and the box lands in the boxes arena.
+    const f = try boxed.mkFloat(testing.failing_allocator, 2.5);
+    const p = try boxed.mkFfiPtr(testing.failing_allocator, 0x1000);
+
+    const boxes = arenas.arena(.boxes).?;
+    try testing.expectEqual(@as(usize, 2), boxes.liveCount());
+    // A box Ref points at the payload (slot 0); the allocation base — what the
+    // arena records — is one Ref-word earlier (the vt slot at -1). The 15.2
+    // mark walk will do this same payload→base mapping.
+    const ref_sz = @sizeOf(ref_mod.Ref);
+    const f_base = @intFromPtr(ref_mod.untagPointer(f)) - ref_sz;
+    const p_base = @intFromPtr(ref_mod.untagPointer(p)) - ref_sz;
+    try testing.expect(boxes.contains(f_base));
+    try testing.expect(boxes.contains(p_base));
+    // Values still read back correctly through the arena-backed payload.
+    try testing.expectEqual(@as(f64, 2.5), boxed.untagFloat(f));
+}
 
 // -- Float -------------------------------------------------------------------
 

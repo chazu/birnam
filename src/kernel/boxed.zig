@@ -17,8 +17,19 @@ const std = @import("std");
 const ref_mod = @import("ref.zig");
 const object = @import("object.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const arenas = @import("arenas.zig");
 
 pub const Ref = ref_mod.Ref;
+
+/// Phase 15.1b: float/ffiptr box payloads route to the `boxes` arena when the
+/// live registry is up, so they are GC-enumerable. `demote` frees the owning
+/// materialized struct but NOT the separate box allocations its slots point at,
+/// so boxes are pure leak until swept — and sweep needs the arena to enumerate
+/// them. Falls back to `fallback` (kernel/test allocator) when no registry, so
+/// bare unit tests stay on their own allocator and free locally.
+fn boxAlloc(fallback: std.mem.Allocator) std.mem.Allocator {
+    return if (arenas.ready()) arenas.boxes() else fallback;
+}
 
 // -- Float ------------------------------------------------------------------
 
@@ -26,7 +37,7 @@ pub const Ref = ref_mod.Ref;
 /// indirectly via the kernel allocator — typical use is from the kernel
 /// arena that lasts the image lifetime.
 pub fn mkFloat(allocator: std.mem.Allocator, value: f64) !Ref {
-    const obj_ptr = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.FLOAT_VT), 1);
+    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.FLOAT_VT), 1);
     const bits: u64 = @bitCast(value);
     object.setSlot(obj_ptr, 0, bits);
     return object.toRef(obj_ptr);
@@ -59,7 +70,7 @@ pub fn untagFloat(r: Ref) f64 {
 /// in exchange `pushArg`'s stale check is a constant-time slot read plus
 /// a single fact-store lookup.
 pub fn mkFfiPtr(allocator: std.mem.Allocator, addr: usize) !Ref {
-    const obj_ptr = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.FFI_PTR_VT), 2);
+    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.FFI_PTR_VT), 2);
     object.setSlot(obj_ptr, 0, @as(u64, @intCast(addr)));
     object.setSlot(obj_ptr, 1, 0); // unowned
     return object.toRef(obj_ptr);
@@ -77,7 +88,7 @@ pub fn mkFfiPtrOwned(
     addr: usize,
     owner_mod_eid: u64,
 ) !Ref {
-    const obj_ptr = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.FFI_PTR_VT), 2);
+    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.FFI_PTR_VT), 2);
     object.setSlot(obj_ptr, 0, @as(u64, @intCast(addr)));
     const box_eid = table.alloc();
     object.setSlot(obj_ptr, 1, box_eid);
