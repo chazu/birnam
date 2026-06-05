@@ -1,11 +1,16 @@
 //! Phase 15.2/15.3/15.5 — non-moving mark-sweep heap GC.
 //!
-//! Reclaims two arenas, non-moving (survivors stay put, Refs never rewritten):
-//!   - `boxes`    — float / ffiptr boxes.
-//!   - `captures` — BytecodeClosures (the redefine-/block-churn leak: when a
-//!                  method is redefined or a scope dies, `:prune` clears the
-//!                  closure's object-table slot but `demote` cannot free the
-//!                  allocation — closures carry no layout — so it leaks here).
+//! Reclaims three arenas, non-moving (survivors stay put, Refs never rewritten):
+//!   - `boxes`       — float / ffiptr boxes.
+//!   - `captures`    — BytecodeClosures (the redefine-/block-churn leak: when a
+//!                     method is redefined or a scope dies, `:prune` clears the
+//!                     closure's object-table slot but `demote` cannot free the
+//!                     allocation — closures carry no layout — so it leaks here).
+//!   - `closures_vt` — CLOSURE_VT wrappers `[vt][method][data]` (tree-walker
+//!                     block closures via `cMakeClosure`, and bytecode-block
+//!                     wrappers via `allocClosureEntity`). The wrapper's `data`
+//!                     handle is followed in the mark so the inner captures-arena
+//!                     BytecodeClosure (reachable ONLY through it) is pinned.
 //!
 //! Mark roots:
 //!   R1 — fact `v`-column (every value; over-marks history → safe; under a
@@ -43,14 +48,17 @@ pub const GcStats = struct {
     boxes_kept: usize = 0,
     closures_freed: usize = 0,
     closures_kept: usize = 0,
+    wrappers_freed: usize = 0,
+    wrappers_kept: usize = 0,
     skipped: bool = false,
 };
 
-/// Marking context — the two swept arenas plus a worklist of live-closure
+/// Marking context — the swept arenas plus a worklist of live-closure
 /// allocation bases still to scan.
 const Ctx = struct {
     boxes: *Arena,
     caps: ?*Arena,
+    closures: ?*Arena, // CLOSURE_VT wrappers (tree-walker + bytecode blocks)
     work: *std.ArrayList(usize),
     scratch: std.mem.Allocator,
 };
@@ -66,7 +74,13 @@ pub fn collectBoxes(
 
     var work = std.ArrayList(usize){};
     defer work.deinit(scratch);
-    var ctx = Ctx{ .boxes = boxes, .caps = arenas.arena(.captures), .work = &work, .scratch = scratch };
+    var ctx = Ctx{
+        .boxes = boxes,
+        .caps = arenas.arena(.captures),
+        .closures = arenas.arena(.closures_vt),
+        .work = &work,
+        .scratch = scratch,
+    };
 
     // -- Mark --------------------------------------------------------------
     // R1: every fact value.
@@ -101,6 +115,11 @@ pub fn collectBoxes(
         st.closures_freed = c.sweep();
         st.closures_kept = caps_before - st.closures_freed;
     }
+    if (ctx.closures) |cv| {
+        const cv_before = cv.liveCount();
+        st.wrappers_freed = cv.sweep();
+        st.wrappers_kept = cv_before - st.wrappers_freed;
+    }
     return st;
 }
 
@@ -124,8 +143,28 @@ fn consider(ctx: *Ctx, r: Ref) void {
         }
     }
 
-    // Now p is a libid-object payload (box / struct / RRB): vt lives at p-1,
-    // safe to read.
+    // Now p is a libid-object payload (box / struct / RRB / CLOSURE_VT wrapper):
+    // vt lives at p-1, safe to read.
+    //
+    // A CLOSURE_VT wrapper is `[vt][method][data]` with the Ref at the payload
+    // (method slot, base+8). Its `data` is the actual capture handle — for a
+    // bytecode block it is the captures-arena BytecodeClosure, which is ONLY
+    // reachable through this wrapper. So we must follow `data` or that live
+    // inner closure would be swept under a live wrapper (use-after-free).
+    if (isClosureVt(r)) {
+        const base = p - REF_SZ;
+        if (ctx.closures) |cv| {
+            if (cv.contains(base)) {
+                if (!cv.mark(base)) return; // owned + already visited → break cycle
+            }
+            // owned+newly-marked, or wrapper not arena-owned (boot/compiler/ffi
+            // closures, permanently kept): fall through and follow `data`.
+        }
+        const data = @as(*const Ref, @ptrFromInt(p + REF_SZ)).*;
+        consider(ctx, data);
+        return;
+    }
+
     if (boxed.isFloat(r) or boxed.isFfiPtr(r)) {
         _ = ctx.boxes.mark(p - REF_SZ);
         return;
@@ -145,6 +184,11 @@ fn consider(ctx: *Ctx, r: Ref) void {
 fn isRrb(r: Ref) bool {
     const vt = object.vtableOf(object.fromRef(r));
     return ref_mod.isEid(vt) and ref_mod.untagEid(vt) == kernel_eids.RRB_VT;
+}
+
+fn isClosureVt(r: Ref) bool {
+    const vt = object.vtableOf(object.fromRef(r));
+    return ref_mod.isEid(vt) and ref_mod.untagEid(vt) == kernel_eids.CLOSURE_VT;
 }
 
 /// Conservatively scan a live closure's allocation words. Each word that looks

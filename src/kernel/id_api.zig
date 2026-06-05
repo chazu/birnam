@@ -17,6 +17,7 @@ const send_mod = @import("send.zig");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
+const arenas = @import("arenas.zig");
 
 pub const Ref = ref_mod.Ref;
 
@@ -422,7 +423,9 @@ fn cObjectToRef(p: ?*anyopaque) callconv(.c) Ref {
 const Closure = @import("closure.zig").Closure;
 
 fn cMakeClosure(method_fn: ?*const anyopaque, data: Ref) callconv(.c) u64 {
-    const a = send_mod.kernelAllocator() orelse return 0;
+    // Tree-walker block closures are the redefine/block churn leak: route them
+    // to the swept `closures_vt` arena when the registry is live (Phase 15.A).
+    const a = if (arenas.ready()) arenas.closuresVt() else (send_mod.kernelAllocator() orelse return 0);
     const t = send_mod.tablePtr() orelse return 0;
     const fn_ptr = method_fn orelse return 0;
     // Closure has the libid-object layout: [vt_ref][method][data].

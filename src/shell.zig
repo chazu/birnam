@@ -86,7 +86,7 @@ fn handleImageCommand(
         if (st.skipped) {
             stdoutPrint("[birnam] :gc skipped (no arena registry or FFI in flight)\n", .{});
         } else {
-            stdoutPrint("[birnam] gc ({d} boxes freed/{d} kept, {d} closures freed/{d} kept)\n", .{ st.boxes_freed, st.boxes_kept, st.closures_freed, st.closures_kept });
+            stdoutPrint("[birnam] gc ({d} boxes freed/{d} kept, {d} closures freed/{d} kept, {d} wrappers freed/{d} kept)\n", .{ st.boxes_freed, st.boxes_kept, st.closures_freed, st.closures_kept, st.wrappers_freed, st.wrappers_kept });
         }
         return true;
     }

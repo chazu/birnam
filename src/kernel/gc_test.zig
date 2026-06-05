@@ -12,10 +12,28 @@ const ke = @import("kernel_eids.zig");
 const ref = @import("ref.zig");
 
 const FAIL = testing.failing_allocator; // boxes/closures route to arenas; param unused
+const REF_SZ = @sizeOf(ref.Ref);
 
 fn freshArenas() !void {
     if (arenas.ready()) arenas.deinit();
     try arenas.init(testing.allocator);
+}
+
+/// Build a CLOSURE_VT wrapper `[vt][method][data]` in the closures_vt arena,
+/// mirroring `cMakeClosure`/`allocClosureEntity`. Returns the wrapper Ref
+/// (points at the payload = base+8).
+fn makeWrapper(data: ref.Ref) !ref.Ref {
+    const a = arenas.closuresVt();
+    const buf = try a.alignedAlloc(u8, .of(ref.Ref), 3 * REF_SZ);
+    @memset(buf, 0);
+    const vt_slot: *ref.Ref = @ptrCast(@alignCast(buf.ptr));
+    vt_slot.* = ref.mkEid(ke.CLOSURE_VT);
+    const payload = buf.ptr + REF_SZ;
+    const method_slot: *usize = @ptrCast(@alignCast(payload));
+    method_slot.* = 0xdead; // dummy fn ptr — never called in the mark
+    const data_slot: *ref.Ref = @ptrCast(@alignCast(payload + REF_SZ));
+    data_slot.* = data;
+    return ref.mkPointer(@ptrCast(payload));
 }
 
 test "gc: frees orphan boxes, keeps fact-referenced ones" {
@@ -92,6 +110,38 @@ test "gc: sweeps orphan closures, keeps table-referenced; live captures pin boxe
     try testing.expectEqual(@as(usize, 1), st.boxes_freed); // dead_box
     try testing.expectEqual(@as(usize, 1), st.boxes_kept); // cap_box via live closure
     try testing.expectEqual(@as(f64, 4.5), boxed.untagFloat(cap_box)); // still valid
+}
+
+test "gc: live wrapper pins its inner block; orphan wrapper + inner freed" {
+    try freshArenas();
+    defer arenas.deinit();
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store = fs.FactStore.init(a);
+    var table = ot.ObjectTable.init(a);
+
+    // Live: CLOSURE_VT wrapper in the table, data = inner BytecodeClosure.
+    // The inner block is reachable ONLY through the wrapper's `data`.
+    const live_inner = try vm.allocBytecodeBlock(FAIL, 600, ref.NIL, 0, 0);
+    const live_wrap = try makeWrapper(live_inner.ref);
+    const wrap_eid = table.alloc();
+    try table.put(wrap_eid, live_wrap);
+
+    // Orphan: wrapper referenced by nothing, wrapping its own block.
+    const dead_inner = try vm.allocBytecodeBlock(FAIL, 601, ref.NIL, 0, 0);
+    _ = try makeWrapper(dead_inner.ref);
+
+    try testing.expectEqual(@as(usize, 2), arenas.arena(.captures).?.liveCount());
+    try testing.expectEqual(@as(usize, 2), arenas.arena(.closures_vt).?.liveCount());
+
+    const st = gc.collectBoxes(&store, &table, a);
+    try testing.expect(!st.skipped);
+    // Live wrapper + its inner block kept; orphan wrapper + its inner freed.
+    try testing.expectEqual(@as(usize, 1), st.wrappers_freed);
+    try testing.expectEqual(@as(usize, 1), st.wrappers_kept);
+    try testing.expectEqual(@as(usize, 1), st.closures_freed); // dead_inner
+    try testing.expectEqual(@as(usize, 1), st.closures_kept); // live_inner via wrapper
 }
 
 test "gc: no-op when boxes arena registry is absent" {

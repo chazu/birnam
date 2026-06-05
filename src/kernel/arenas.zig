@@ -25,6 +25,7 @@ pub const Registry = struct {
     boxes: Arena,
     bytecode: Arena,
     captures: Arena,
+    closures_vt: Arena,
     sig: Arena,
     structs: Arena,
     index: Arena,
@@ -35,6 +36,7 @@ pub const Registry = struct {
             .boxes = Arena.init(backing, .boxes),
             .bytecode = Arena.init(backing, .bytecode),
             .captures = Arena.init(backing, .captures),
+            .closures_vt = Arena.init(backing, .closures_vt),
             .sig = Arena.init(backing, .sig),
             .structs = Arena.init(backing, .structs),
             .index = Arena.init(backing, .index),
@@ -46,6 +48,7 @@ pub const Registry = struct {
         self.boxes.deinit();
         self.bytecode.deinit();
         self.captures.deinit();
+        self.closures_vt.deinit();
         self.sig.deinit();
         self.structs.deinit();
         self.index.deinit();
@@ -104,6 +107,9 @@ pub fn bytecode() std.mem.Allocator {
 pub fn captures() std.mem.Allocator {
     return arenaPtr("captures").allocator();
 }
+pub fn closuresVt() std.mem.Allocator {
+    return arenaPtr("closures_vt").allocator();
+}
 pub fn sig() std.mem.Allocator {
     return arenaPtr("sig").allocator();
 }
@@ -124,6 +130,7 @@ pub fn arena(kind: Kind) ?*Arena {
         .boxes => &reg.boxes,
         .bytecode => &reg.bytecode,
         .captures => &reg.captures,
+        .closures_vt => &reg.closures_vt,
         .sig => &reg.sig,
         .structs => &reg.structs,
         .index => &reg.index,

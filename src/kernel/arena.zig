@@ -38,6 +38,7 @@ pub const Kind = enum {
     boxes, // float / ffiptr boxes (vt at -1, but kept segregated)
     bytecode, // bytecode byte streams
     captures, // closure capture arrays / BytecodeClosure
+    closures_vt, // CLOSURE_VT wrappers ([vt][method][data], Ref=payload=base+8)
     sig, // FFI Sig holders
     structs, // materialized objects (also reclaimed via demote)
     index, // HAMT/RRB index nodes (epoch-freed on compact)
