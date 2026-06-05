@@ -1,7 +1,15 @@
 //! Phase 15.2/15.3/15.5 — non-moving mark-sweep heap GC.
 //!
-//! Reclaims three arenas, non-moving (survivors stay put, Refs never rewritten):
+//! Reclaims four arenas, non-moving (survivors stay put, Refs never rewritten):
 //!   - `boxes`       — float / ffiptr boxes.
+//!   - `strings`     — interner `:name` string boxes. SAFE to sweep because the
+//!                     strings arena is fed ONLY by `interner.seed`/`intern`,
+//!                     each of which immediately asserts `[eid :name box]` — so
+//!                     every box here is a current fact value reached by R1 (and
+//!                     captured strings are marked in scanWords). FFI/module
+//!                     `make_string` (cMakeString) allocates off the kernel
+//!                     allocator, NOT this arena, so module-held string boxes
+//!                     are never swept.
 //!   - `captures`    — BytecodeClosures (the redefine-/block-churn leak: when a
 //!                     method is redefined or a scope dies, `:prune` clears the
 //!                     closure's object-table slot but `demote` cannot free the
@@ -32,6 +40,7 @@ const std = @import("std");
 const ref_mod = @import("ref.zig");
 const object = @import("object.zig");
 const boxed = @import("boxed.zig");
+const strings = @import("strings.zig");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
@@ -50,6 +59,8 @@ pub const GcStats = struct {
     closures_kept: usize = 0,
     wrappers_freed: usize = 0,
     wrappers_kept: usize = 0,
+    strings_freed: usize = 0,
+    strings_kept: usize = 0,
     skipped: bool = false,
 };
 
@@ -59,6 +70,7 @@ const Ctx = struct {
     boxes: *Arena,
     caps: ?*Arena,
     closures: ?*Arena, // CLOSURE_VT wrappers (tree-walker + bytecode blocks)
+    strs: ?*Arena, // interner `:name` string boxes (every box here is a fact value)
     work: *std.ArrayList(usize),
     scratch: std.mem.Allocator,
 };
@@ -81,6 +93,7 @@ fn sweepableLive() usize {
     if (arenas.arena(.boxes)) |a| n += a.liveCount();
     if (arenas.arena(.captures)) |a| n += a.liveCount();
     if (arenas.arena(.closures_vt)) |a| n += a.liveCount();
+    if (arenas.arena(.strings)) |a| n += a.liveCount();
     return n;
 }
 
@@ -125,6 +138,7 @@ pub fn collectBoxes(
         .boxes = boxes,
         .caps = arenas.arena(.captures),
         .closures = arenas.arena(.closures_vt),
+        .strs = arenas.arena(.strings),
         .work = &work,
         .scratch = scratch,
     };
@@ -167,6 +181,11 @@ pub fn collectBoxes(
         st.wrappers_freed = cv.sweep();
         st.wrappers_kept = cv_before - st.wrappers_freed;
     }
+    if (ctx.strs) |s| {
+        const s_before = s.liveCount();
+        st.strings_freed = s.sweep();
+        st.strings_kept = s_before - st.strings_freed;
+    }
     return st;
 }
 
@@ -176,7 +195,15 @@ pub fn collectBoxes(
 const PTR_ADDR_MASK: u64 = ~@as(u64, 0b111);
 
 fn consider(ctx: *Ctx, r: Ref) void {
-    if (!ref_mod.isPointer(r)) return; // strings (tag 100) / eids / ints
+    // String boxes (tag 100) are not "pointers" but ARE a swept arena. Every
+    // box in the strings arena is an interner `:name` fact value, so reaching
+    // one here (R1/R3/R4) marks it live; the rest sweep. Base = r & addr-mask
+    // (StringHeader is the allocation base, see strings.encode).
+    if (strings.isString(r)) {
+        if (ctx.strs) |s| _ = s.mark(r & PTR_ADDR_MASK);
+        return;
+    }
+    if (!ref_mod.isPointer(r)) return; // eids / ints / keywords
     const p = r & PTR_ADDR_MASK; // address bits only — avoids untagPointer's null assert
     if (p == 0) return; // a tag-000 zero word (e.g. a frame id), not a heap ref
 
@@ -245,6 +272,12 @@ fn scanWords(ctx: *Ctx, base: usize, len: usize) void {
     var off: usize = 0;
     while (off + REF_SZ <= len) : (off += REF_SZ) {
         const w: u64 = @as(*const u64, @ptrFromInt(base + off)).*;
+        // A captured string Ref (tag 100) isn't a "pointer" but is sweepable;
+        // mark its box so a string held only by a live closure survives.
+        if (strings.isString(w)) {
+            if (ctx.strs) |s| _ = s.mark(w & PTR_ADDR_MASK);
+            continue;
+        }
         if (!ref_mod.isPointer(w)) continue;
         const payload = w & PTR_ADDR_MASK;
         if (payload == 0) continue;

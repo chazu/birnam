@@ -144,6 +144,31 @@ test "gc: live wrapper pins its inner block; orphan wrapper + inner freed" {
     try testing.expectEqual(@as(usize, 1), st.closures_kept); // live_inner via wrapper
 }
 
+test "gc: frees orphan string boxes, keeps fact-referenced ones" {
+    try freshArenas();
+    defer arenas.deinit();
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store = fs.FactStore.init(a);
+    var table = ot.ObjectTable.init(a);
+
+    const strs = arenas.strings();
+    const kept = try @import("strings.zig").mkString(strs, "live");
+    const orphan = try @import("strings.zig").mkString(strs, "dead");
+    try testing.expectEqual(@as(usize, 2), arenas.arena(.strings).?.liveCount());
+
+    // Only `kept` is referenced by a current fact (mirrors interner :name).
+    _ = try store.assert(300, ke.ATTR_NAME, kept, ke.M_BOOTSTRAP);
+
+    const st = gc.collectBoxes(&store, &table, a);
+    try testing.expect(!st.skipped);
+    try testing.expectEqual(@as(usize, 1), st.strings_freed); // orphan
+    try testing.expectEqual(@as(usize, 1), st.strings_kept); // kept
+    try testing.expectEqualStrings("live", @import("strings.zig").bytes(kept));
+    _ = orphan;
+}
+
 test "gc: maybeCollect stays null below the growth threshold" {
     try freshArenas();
     defer arenas.deinit();

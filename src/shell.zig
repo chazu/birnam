@@ -86,7 +86,7 @@ fn handleImageCommand(
         if (st.skipped) {
             stdoutPrint("[birnam] :gc skipped (no arena registry or FFI in flight)\n", .{});
         } else {
-            stdoutPrint("[birnam] gc ({d} boxes freed/{d} kept, {d} closures freed/{d} kept, {d} wrappers freed/{d} kept)\n", .{ st.boxes_freed, st.boxes_kept, st.closures_freed, st.closures_kept, st.wrappers_freed, st.wrappers_kept });
+            stdoutPrint("[birnam] gc ({d} boxes freed/{d} kept, {d} closures freed/{d} kept, {d} wrappers freed/{d} kept, {d} strings freed/{d} kept)\n", .{ st.boxes_freed, st.boxes_kept, st.closures_freed, st.closures_kept, st.wrappers_freed, st.wrappers_kept, st.strings_freed, st.strings_kept });
         }
         return true;
     }
@@ -443,8 +443,8 @@ pub fn main() !void {
                 // stack), the one safe point to sweep. Growth-gated; silent
                 // unless it actually reclaims.
                 if (gc.maybeCollect(store, table, allocator)) |st| {
-                    if (!st.skipped and (st.boxes_freed + st.closures_freed + st.wrappers_freed > 0)) {
-                        stderrPrint("[birnam] auto-gc ({d} boxes, {d} closures, {d} wrappers freed)\n", .{ st.boxes_freed, st.closures_freed, st.wrappers_freed });
+                    if (!st.skipped and (st.boxes_freed + st.closures_freed + st.wrappers_freed + st.strings_freed > 0)) {
+                        stderrPrint("[birnam] auto-gc ({d} boxes, {d} closures, {d} wrappers, {d} strings freed)\n", .{ st.boxes_freed, st.closures_freed, st.wrappers_freed, st.strings_freed });
                     }
                 }
             } else {
