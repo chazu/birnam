@@ -166,4 +166,21 @@ pub const Arena = struct {
     pub fn liveCount(self: *const Arena) usize {
         return self.live.count();
     }
+
+    pub const Allocation = struct { base: usize, len: usize };
+
+    pub const Iterator = struct {
+        inner: std.AutoHashMapUnmanaged(usize, Entry).Iterator,
+        pub fn next(self: *Iterator) ?Allocation {
+            if (self.inner.next()) |e| return .{ .base = e.key_ptr.*, .len = e.value_ptr.len };
+            return null;
+        }
+    };
+
+    /// Walk every live allocation (base + len). Used by the collector to
+    /// conservatively scan Ref-bearing arenas (e.g. closure captures) for
+    /// pointers into another arena.
+    pub fn iterate(self: *Arena) Iterator {
+        return .{ .inner = self.live.iterator() };
+    }
 };

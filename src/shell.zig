@@ -27,6 +27,7 @@ const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
 const image = @import("kernel/image.zig");
 const prune = @import("kernel/prune.zig");
+const gc = @import("kernel/gc.zig");
 const ffi_module = @import("kernel/ffi_module.zig");
 const freeze = @import("kernel/freeze.zig");
 const kernel_eids = @import("kernel/kernel_eids.zig");
@@ -75,6 +76,18 @@ fn handleImageCommand(
             return true;
         };
         stdoutPrint("[birnam] pruned ({d} facts kept, {d} dropped, {d} entities swept)\n", .{ stats.kept, stats.dropped_facts, stats.swept_entities });
+        return true;
+    }
+    if (std.mem.eql(u8, line, ":gc")) {
+        // Heap reclaim (distinct from :prune's logical reclaim). Sweeps the
+        // boxes arena. Best run after :prune so dropped facts no longer pin
+        // their boxes (Phase 15 §Q2 current-values gate).
+        const st = gc.collectBoxes(store, table);
+        if (st.skipped) {
+            stdoutPrint("[birnam] :gc skipped (no arena registry or FFI in flight)\n", .{});
+        } else {
+            stdoutPrint("[birnam] gc ({d} boxes freed, {d} kept)\n", .{ st.boxes_freed, st.boxes_kept });
+        }
         return true;
     }
     if (std.mem.startsWith(u8, line, ":load ")) {

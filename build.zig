@@ -290,6 +290,15 @@ pub fn build(b: *std.Build) void {
     const run_arenas_tests = b.addRunArtifact(arenas_tests);
     test_step.dependOn(&run_arenas_tests.step);
 
+    const gc_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/gc_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const gc_tests = b.addTest(.{ .root_module = gc_test_mod });
+    const run_gc_tests = b.addRunArtifact(gc_tests);
+    test_step.dependOn(&run_gc_tests.step);
+
     const tx_engine_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/tx_engine_test.zig"),
         .target = target,
