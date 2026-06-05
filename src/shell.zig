@@ -82,11 +82,11 @@ fn handleImageCommand(
         // Heap reclaim (distinct from :prune's logical reclaim). Sweeps the
         // boxes arena. Best run after :prune so dropped facts no longer pin
         // their boxes (Phase 15 §Q2 current-values gate).
-        const st = gc.collectBoxes(store, table);
+        const st = gc.collectBoxes(store, table, allocator);
         if (st.skipped) {
             stdoutPrint("[birnam] :gc skipped (no arena registry or FFI in flight)\n", .{});
         } else {
-            stdoutPrint("[birnam] gc ({d} boxes freed, {d} kept)\n", .{ st.boxes_freed, st.boxes_kept });
+            stdoutPrint("[birnam] gc ({d} boxes freed/{d} kept, {d} closures freed/{d} kept)\n", .{ st.boxes_freed, st.boxes_kept, st.closures_freed, st.closures_kept });
         }
         return true;
     }

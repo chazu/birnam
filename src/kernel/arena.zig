@@ -131,13 +131,22 @@ pub const Arena = struct {
     }
 
     /// Mark `addr` live for the current sweep. No-op if not owned (an address
-    /// from another arena / an immediate). Returns whether it was owned.
+    /// from another arena / an immediate). Returns true iff this call *newly*
+    /// marked an owned allocation (owned AND previously unmarked) — the
+    /// collector uses that to enqueue a freshly-reached allocation exactly once.
     pub fn mark(self: *Arena, addr: usize) bool {
         if (self.live.getPtr(addr)) |e| {
+            const was = e.marked;
             e.marked = true;
-            return true;
+            return !was;
         }
         return false;
+    }
+
+    /// Recorded length of the allocation based at `addr`, if owned.
+    pub fn lenOf(self: *const Arena, addr: usize) ?usize {
+        if (self.live.get(addr)) |e| return e.len;
+        return null;
     }
 
     /// Free every unmarked allocation and clear marks on survivors. Returns the

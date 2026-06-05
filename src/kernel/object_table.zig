@@ -83,6 +83,13 @@ pub const ObjectTable = struct {
         return self.map.get(eid);
     }
 
+    /// Walk every live (eid → Ref) slot. Used by the heap collector to mark
+    /// materialized objects (closures, direct boxes) reachable from the table.
+    pub const Iterator = Map.Iterator;
+    pub fn iterator(self: *const ObjectTable) Map.Iterator {
+        return self.map.iter();
+    }
+
     /// Register a materialized pointer for an EID. Used by both bootstrap
     /// (pre-materializing kernel vtables) and runtime promotion.
     pub fn put(self: *ObjectTable, eid: u64, r: Ref) !void {
