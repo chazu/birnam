@@ -22,7 +22,14 @@ const Str2Eid = hamt.Hamt([]const u8, u64, hamt.StrCtx);
 const Eid2Str = hamt.Hamt(u64, []const u8, hamt.U64Ctx);
 
 pub const Interner = struct {
+    /// Backs the index maps (`str_to_eid` / `eid_to_str`) and the interned
+    /// key `dup`s. These are referenced by the persistent HAMTs and must never
+    /// be reclaimed by a reachability sweep — kept on the kernel allocator.
     allocator: std.mem.Allocator,
+    /// Backs `mkString` string *boxes* (the `:name` fact values). Phase 15.1b:
+    /// the live entry points point this at the `strings` arena so the boxes are
+    /// GC-enumerable; defaults to `allocator` so bare unit tests are unchanged.
+    string_allocator: std.mem.Allocator,
     str_to_eid: Str2Eid,
     eid_to_str: Eid2Str,
     /// Phase 11.7.vi (ADR-11 #7): single-writer discipline. Acquired
@@ -37,9 +44,17 @@ pub const Interner = struct {
     pub fn init(allocator: std.mem.Allocator) Interner {
         return .{
             .allocator = allocator,
+            .string_allocator = allocator,
             .str_to_eid = Str2Eid.empty(allocator, .{}),
             .eid_to_str = Eid2Str.empty(allocator, .{}),
         };
+    }
+
+    /// Point string-box allocation at a dedicated allocator (the `strings`
+    /// arena, live). Index maps + key dups stay on `allocator`. Call right
+    /// after `init`, before any `intern`/`seed`.
+    pub fn setStringAllocator(self: *Interner, a: std.mem.Allocator) void {
+        self.string_allocator = a;
     }
 
     /// Pre-seed: register an existing well-known EID with a name. Used by
@@ -55,7 +70,7 @@ pub const Interner = struct {
         const dup = try self.allocator.dupe(u8, name);
         self.str_to_eid = try self.str_to_eid.assoc(dup, eid);
         self.eid_to_str = try self.eid_to_str.assoc(eid, dup);
-        const str_ref = try strings.mkString(self.allocator, dup);
+        const str_ref = try strings.mkString(self.string_allocator, dup);
         _ = try store.assert(eid, kernel_eids.ATTR_NAME, str_ref, kernel_eids.M_BOOTSTRAP);
     }
 
@@ -81,7 +96,7 @@ pub const Interner = struct {
         const eid = table.alloc();
         self.str_to_eid = try self.str_to_eid.assoc(dup, eid);
         self.eid_to_str = try self.eid_to_str.assoc(eid, dup);
-        const str_ref = try strings.mkString(self.allocator, dup);
+        const str_ref = try strings.mkString(self.string_allocator, dup);
         _ = try store.assert(eid, kernel_eids.ATTR_NAME, str_ref, kernel_eids.M_BOOTSTRAP);
         return eid;
     }

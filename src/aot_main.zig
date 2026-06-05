@@ -16,6 +16,7 @@ const std = @import("std");
 const fact_store = @import("kernel/fact_store.zig");
 const object_table = @import("kernel/object_table.zig");
 const interner_mod = @import("kernel/interner.zig");
+const arenas = @import("kernel/arenas.zig");
 const bootstrap = @import("kernel/bootstrap.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const image = @import("kernel/image.zig");
@@ -263,8 +264,10 @@ pub fn main() !void {
     store.* = fact_store.FactStore.init(allocator);
     const table = try allocator.create(object_table.ObjectTable);
     table.* = object_table.ObjectTable.init(allocator);
+    try arenas.init(allocator); // Phase 15.1b: string boxes → strings arena
     const interner = try allocator.create(interner_mod.Interner);
     interner.* = interner_mod.Interner.init(allocator);
+    interner.setStringAllocator(arenas.strings());
 
     _ = try bootstrap.boot(allocator, store, table, interner);
     id_api_mod.setInterner(interner);

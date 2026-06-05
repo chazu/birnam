@@ -21,6 +21,7 @@ const posix = std.posix;
 const fact_store = @import("kernel/fact_store.zig");
 const object_table = @import("kernel/object_table.zig");
 const interner_mod = @import("kernel/interner.zig");
+const arenas = @import("kernel/arenas.zig");
 const bootstrap = @import("kernel/bootstrap.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
@@ -368,8 +369,14 @@ pub fn main() !void {
     const table = try allocator.create(object_table.ObjectTable);
     table.* = object_table.ObjectTable.init(allocator);
 
+    // Phase 15.1b: live process gets the segmented arena registry. String
+    // boxes route through the `strings` arena (GC-enumerable); index maps +
+    // interner key dups stay on the kernel allocator.
+    try arenas.init(allocator);
+
     const interner = try allocator.create(interner_mod.Interner);
     interner.* = interner_mod.Interner.init(allocator);
+    interner.setStringAllocator(arenas.strings());
 
     _ = try bootstrap.boot(allocator, store, table, interner);
     id_api_mod.setInterner(interner);
