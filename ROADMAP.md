@@ -1597,6 +1597,14 @@ Rationale (substrate-specific, not generic GC):
 
 Deferred compactor (future, if frag bites) reuses the same arena epochs; it would forward Refs across the four holder kinds (fact HAMT during compact, struct slots, RRB-pool internals, closure captures) with a forwarding-pointer protocol + FFI pin set. Out of scope for Phase 15.
 
+### §Threading-compat (note, 2026-06-04 — does NOT preclude the ADR-11 Datomic shape)
+
+The arena registry is single-threaded today but aligns with the locked Datomic target; the evolution is additive. Requirements threading will impose (recorded so they aren't re-derived):
+- **Shared arenas are transactor-owned, single-writer.** `Arena.live` is a plain hashmap (not thread-safe). Under Datomic, mutations of a shared arena serialize through the transactor — same discipline as the tx engine. The `index` arena is already single-writer (only the transactor commits facts). The cross-image shared registry (§Registry-sharing / IdApi) is the transactor-owned registry in embryo, not an obstacle.
+- **Transient eval allocations move per-thread.** `Vm.bump_arena_slot` (ADR-11 #2, reserved, currently a null placeholder) is the home for closures/boxes created mid-eval that never escape — freed at frame/thread boundaries, no GC. Only **escaping** values (e.g. a float box bound into a committed fact) move into the shared transactor arena at commit.
+- **GC is a transactor safepoint op.** Sweep mutates arena liveness + frees → must run single-writer, and the mark must reach **every thread's `Vm` roots** (frames/stack), not just the object table + current facts (single-thread today: stack empty at `:gc`). Non-moving (chosen) helps: stable addresses mean a reader thread holding a box pointer isn't invalidated by a concurrent sweep of *other* boxes, provided its own roots are marked.
+- **Invariant to preserve:** box/closure allocation must stay behind the `arenas.X()` accessor (never a hardcoded global deref at call sites), so the per-thread/transactor split is a registry-internal change. Already followed (`boxAlloc`, `vm.allocBytecodeBlock`, interner `string_allocator`).
+
 ### Work items
 
 **Scope (resolved 2026-06-04).** The sweep reclaims **immutable, non-cache heap only**: string/float/ffiptr boxes, BytecodeClosures, capture arrays, constant-pool RRB, bytecode streams, FFI Sig structs. Materialized **structs are NOT in the sweep** — they are pure cache, reclaimed by `demote` (Q3 below). The fact-store's own HAMT/RRB index nodes are NOT in the sweep — reclaimed by arena epoch on compact (S2 above). Mark runs over the **current-value reachable set**; `:gc` presupposes a history collapse (Q2 below).
