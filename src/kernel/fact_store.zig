@@ -75,7 +75,9 @@ pub const IndexRoots = struct {
 /// it holds. Freed wholesale once nothing references it. The arena is the same
 /// plain `ArenaAllocator` the live epoch used while writable.
 pub const RetainedEpoch = struct {
-    arena: *std.heap.ArenaAllocator,
+    /// The epoch's arena while HOT (in RAM). `null` when spilled COLD to disk
+    /// (R4) — `roots` are then invalid until `faultInEpoch` rebuilds them.
+    arena: ?*std.heap.ArenaAllocator,
     /// Generation number (monotonic; the writable epoch's gen at swap-out).
     gen: u64,
     /// Lowest basis-T this epoch can serve a read for (basis-T when it became
@@ -86,8 +88,11 @@ pub const RetainedEpoch = struct {
     /// Number of live snapshots pinning this epoch.
     refcount: u32,
     /// The index roots at swap-out — this epoch as a queryable history archive
-    /// (R2). Valid as long as the epoch is retained (arena not freed).
+    /// (R2). Valid only while HOT (`arena != null`).
     roots: IndexRoots,
+    /// Phase 15.R R4 — segment file path when this epoch is spilled COLD; null
+    /// when hot. Faulted back into a fresh arena on demand.
+    cold_path: ?[]const u8 = null,
 };
 
 // -- Retention policy (Phase 15.R R2) ----------------------------------------
@@ -298,12 +303,8 @@ pub const FactStore = struct {
             self.allocator.destroy(ia);
             self.index_arena = null;
         }
-        // 15.R: free any still-pinned retained epochs (test teardown; a live
-        // process exit reclaims regardless).
-        for (self.retained_epochs.items) |re| {
-            re.arena.deinit();
-            self.allocator.destroy(re.arena);
-        }
+        // 15.R: free any still-retained epochs (hot arena or cold segment).
+        for (self.retained_epochs.items) |*re| self.freeRetainedEpoch(re);
         self.retained_epochs.deinit(self.allocator);
         self.retained_epochs = .{};
     }
@@ -381,12 +382,175 @@ pub const FactStore = struct {
             if (re.gen == gen) {
                 if (re.refcount > 0) re.refcount -= 1;
                 if (re.refcount == 0 and re.max_basis < self.oldestRetainedBasisT()) {
-                    re.arena.deinit();
-                    self.allocator.destroy(re.arena);
+                    self.freeRetainedEpoch(re);
                     _ = self.retained_epochs.swapRemove(i);
                 }
                 return;
             }
+        }
+    }
+
+    /// Free a retained epoch's backing — the hot arena, or the cold segment
+    /// file + its path string. Does not touch the list slot.
+    fn freeRetainedEpoch(self: *FactStore, re: *RetainedEpoch) void {
+        if (re.arena) |ar| {
+            ar.deinit();
+            self.allocator.destroy(ar);
+            re.arena = null;
+        }
+        if (re.cold_path) |p| {
+            std.fs.cwd().deleteFile(p) catch {};
+            self.allocator.free(p);
+            re.cold_path = null;
+        }
+    }
+
+    // -- Cold-history tier (Phase 15.R R4) -----------------------------------
+
+    /// One recorded history event. The full ordered log of an epoch — replaying
+    /// it through `applyAssert`/`applyRetract` in `tx` order rebuilds the epoch
+    /// index byte-faithfully (same algorithm that built it).
+    pub const EpochEvent = struct { m: u64, e: u64, a: u64, v: Ref, tx: u64, basis: u64, op: Op };
+
+    /// Collect the full ordered event log of an epoch's roots (walk MEAT — it
+    /// carries the module column and the same per-cell history as EAVT). Sorted
+    /// by `tx`. Caller frees the returned slice with `alloc`.
+    fn collectEpochEvents(roots: IndexRoots, alloc: std.mem.Allocator) ![]EpochEvent {
+        var events = std.ArrayList(EpochEvent){};
+        errdefer events.deinit(alloc);
+        var mit = roots.meat.iter();
+        while (mit.next()) |m_kv| {
+            const m = m_kv.key;
+            var eit = m_kv.value.iter();
+            while (eit.next()) |e_kv| {
+                const e = e_kv.key;
+                var ait = e_kv.value.iter();
+                while (ait.next()) |a_kv| {
+                    const a = a_kv.key;
+                    const cell = a_kv.value;
+                    const n = cell.history.count();
+                    var i: usize = 0;
+                    while (i < n) : (i += 1) {
+                        const h = cell.history.nth(i);
+                        try events.append(alloc, .{ .m = m, .e = e, .a = a, .v = h.v, .tx = h.tx, .basis = h.basis, .op = h.op });
+                    }
+                }
+            }
+        }
+        const slice = try events.toOwnedSlice(alloc);
+        std.mem.sort(EpochEvent, slice, {}, struct {
+            fn lt(_: void, x: EpochEvent, y: EpochEvent) bool {
+                return x.tx < y.tx;
+            }
+        }.lt);
+        return slice;
+    }
+
+    /// Serialize an event log to a flat byte buffer (segment payload). Caller
+    /// frees. Format: u64 count, then per event m,e,a,v,tx,basis (u64 LE) + op
+    /// (u8).
+    fn serializeEvents(events: []const EpochEvent, alloc: std.mem.Allocator) ![]u8 {
+        var buf = std.ArrayList(u8){};
+        errdefer buf.deinit(alloc);
+        var hdr: [8]u8 = undefined;
+        std.mem.writeInt(u64, &hdr, events.len, .little);
+        try buf.appendSlice(alloc, &hdr);
+        for (events) |ev| {
+            inline for (.{ ev.m, ev.e, ev.a, @as(u64, ev.v), ev.tx, ev.basis }) |word| {
+                var w: [8]u8 = undefined;
+                std.mem.writeInt(u64, &w, word, .little);
+                try buf.appendSlice(alloc, &w);
+            }
+            try buf.append(alloc, @intFromEnum(ev.op));
+        }
+        return buf.toOwnedSlice(alloc);
+    }
+
+    fn deserializeEvents(bytes: []const u8, alloc: std.mem.Allocator) ![]EpochEvent {
+        if (bytes.len < 8) return error.CorruptSegment;
+        const count = std.mem.readInt(u64, bytes[0..8], .little);
+        const rec = 6 * 8 + 1;
+        if (bytes.len < 8 + count * rec) return error.CorruptSegment;
+        const out = try alloc.alloc(EpochEvent, count);
+        errdefer alloc.free(out);
+        var off: usize = 8;
+        var i: usize = 0;
+        while (i < count) : (i += 1) {
+            const m = std.mem.readInt(u64, bytes[off..][0..8], .little);
+            const e = std.mem.readInt(u64, bytes[off + 8 ..][0..8], .little);
+            const a = std.mem.readInt(u64, bytes[off + 16 ..][0..8], .little);
+            const v = std.mem.readInt(u64, bytes[off + 24 ..][0..8], .little);
+            const tx = std.mem.readInt(u64, bytes[off + 32 ..][0..8], .little);
+            const basis = std.mem.readInt(u64, bytes[off + 40 ..][0..8], .little);
+            const op: Op = @enumFromInt(bytes[off + 48]);
+            out[i] = .{ .m = m, .e = e, .a = a, .v = v, .tx = tx, .basis = basis, .op = op };
+            off += rec;
+        }
+        return out;
+    }
+
+    /// Replay an event log into a FRESH index epoch arena, returning the arena
+    /// and rebuilt roots. Uses a throwaway FactStore as the replay vehicle so
+    /// `applyAssert`/`applyRetract` (the live index algorithm) reconstruct the
+    /// epoch faithfully. Events must be tx-sorted.
+    fn faultInEvents(self: *FactStore, events: []const EpochEvent) !struct { arena: *std.heap.ArenaAllocator, roots: IndexRoots } {
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        var tmp = FactStore.init(arena.allocator());
+        tmp.cardinality_schema = self.cardinality_schema; // faithful :many handling
+        for (events) |ev| {
+            switch (ev.op) {
+                .assert => try tmp.applyAssert(ev.e, ev.a, ev.v, ev.m, ev.tx, ev.basis),
+                .retract => _ = try tmp.applyRetract(ev.e, ev.a, ev.v, ev.m, ev.tx, ev.basis),
+            }
+        }
+        return .{ .arena = arena, .roots = .{ .eavt = tmp.eavt, .aevt = tmp.aevt, .avet = tmp.avet, .vaet = tmp.vaet, .meat = tmp.meat } };
+    }
+
+    /// Spill a retained epoch COLD: serialize its event log to a segment file
+    /// under `dir`, free the in-RAM arena, and mark it cold. Bounds resident
+    /// set by working set (VISION §Memory ¶cold-history). No-op if already cold
+    /// or not found. The mmap RO fast path (vs replay) is Phase 12.5.
+    pub fn spillEpoch(self: *FactStore, gen: u64, dir: []const u8) !void {
+        for (self.retained_epochs.items) |*re| {
+            if (re.gen != gen) continue;
+            if (re.arena == null) return; // already cold
+            const events = try collectEpochEvents(re.roots, self.allocator);
+            defer self.allocator.free(events);
+            const bytes = try serializeEvents(events, self.allocator);
+            defer self.allocator.free(bytes);
+            const path = try std.fmt.allocPrint(self.allocator, "{s}/birnam-epoch-{d}.seg", .{ dir, gen });
+            errdefer self.allocator.free(path);
+            try std.fs.cwd().writeFile(.{ .sub_path = path, .data = bytes });
+            re.arena.?.deinit();
+            self.allocator.destroy(re.arena.?);
+            re.arena = null;
+            re.roots = undefined; // invalid until fault-in
+            re.cold_path = path;
+            return;
+        }
+    }
+
+    /// Fault a cold epoch back into RAM: read its segment, replay into a fresh
+    /// arena, restore `roots`. No-op if hot or not found. Deletes the segment
+    /// (it will be re-spilled if evicted again).
+    pub fn faultInEpoch(self: *FactStore, gen: u64) !void {
+        for (self.retained_epochs.items) |*re| {
+            if (re.gen != gen) continue;
+            const path = re.cold_path orelse return; // already hot
+            const bytes = try std.fs.cwd().readFileAlloc(self.allocator, path, 1 << 34);
+            defer self.allocator.free(bytes);
+            const events = try deserializeEvents(bytes, self.allocator);
+            defer self.allocator.free(events);
+            const res = try self.faultInEvents(events);
+            re.arena = res.arena;
+            re.roots = res.roots;
+            std.fs.cwd().deleteFile(path) catch {};
+            self.allocator.free(path);
+            re.cold_path = null;
+            return;
         }
     }
 
@@ -434,7 +598,9 @@ pub const FactStore = struct {
         self.meat = cur.meat;
 
         // Every retained history archive too (none are pinned — checked above).
+        // Cold archives must be faulted in first so the scrub reaches them.
         for (self.retained_epochs.items) |*re| {
+            if (re.cold_path != null) try self.faultInEpoch(re.gen);
             _ = try exciseEntityFromRoots(&re.roots, e, scratch);
         }
 
@@ -489,9 +655,11 @@ pub const FactStore = struct {
                 .meat = self.meat,
             }, basis, self.index_epoch_gen, basis);
         }
-        // Otherwise find a retained archive epoch covering `basis`.
+        // Otherwise find a retained archive epoch covering `basis`, faulting it
+        // back from disk first if it has been spilled cold (R4).
         for (self.retained_epochs.items) |*re| {
             if (basis >= re.min_basis and basis <= re.max_basis) {
+                if (re.cold_path != null) try self.faultInEpoch(re.gen);
                 return self.buildSnapshot(re.roots, basis, re.gen, basis);
             }
         }
@@ -637,32 +805,16 @@ pub const FactStore = struct {
         self.read_only = true;
     }
 
-    pub fn assert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !u64 {
-        if (self.read_only) return error.ReadOnly;
-        if (builtin.mode == .Debug) {
-            if (ref_mod.isNil(v)) @panic("FactStore.assert: NIL value forbidden (Date discipline)");
-        }
-        const tx = self.next_tx.fetchAdd(1, .monotonic);
-        const bt = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
-
-        // Snapshot the previous value before any writes. Use raw lookup
-        // so `:many` attrs (where currentValue materializes an RRB)
-        // don't fool the implicit-retract logic below.
+    /// Core index maintenance for an assert at explicit (tx, basis), no
+    /// counter bump / no read_only check / no hooks. Shared by `assert` (live)
+    /// and `replayEvent` (R4 fault-in) so a faulted-in epoch is rebuilt by the
+    /// EXACT same algorithm that built it — faithful by construction.
+    fn applyAssert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64, tx: u64, bt: u64) !void {
         const prev_v = self.rawCurrentValue(e, a);
         const is_many = self.cardinalityOfAttr(a) == .many;
-
-        // EAVT / AEVT: append (v, tx, assert) to the value-cell at (e,a) / (a,e).
-        // For `:many` attrs the cell's current_v is just "latest assert"
-        // and not the canonical truth; AVET drives reads.
         self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
         self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
-
-        // MEAT: same pattern but three-level (m, e, a).
         self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
-
-        // AVET / VAET: presence-cell maintenance.
-        //   `:one` (default) — implicit-retract the previous distinct value.
-        //   `:many` — never implicit-retract; multiple values coexist as present.
         if (!is_many) {
             if (prev_v) |pv| {
                 if (pv != v) {
@@ -673,10 +825,31 @@ pub const FactStore = struct {
         }
         self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = tx, .op = .assert, .basis = bt });
         self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert, .basis = bt });
+    }
 
+    /// Core index maintenance for a retract at explicit (tx, basis). Returns
+    /// whether it applied (false = no current (e,a,v) to retract). Shared by
+    /// `retract` and `replayEvent`.
+    fn applyRetract(self: *FactStore, e: u64, a: u64, v: Ref, m: u64, tx: u64, bt: u64) !bool {
+        if (!self.hasFact(e, a, v)) return false;
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
+        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
+        return true;
+    }
+
+    pub fn assert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !u64 {
+        if (self.read_only) return error.ReadOnly;
+        if (builtin.mode == .Debug) {
+            if (ref_mod.isNil(v)) @panic("FactStore.assert: NIL value forbidden (Date discipline)");
+        }
+        const tx = self.next_tx.fetchAdd(1, .monotonic);
+        const bt = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
+        try self.applyAssert(e, a, v, m, tx, bt);
         if (self.on_attr_mutate) |cb| cb(a);
         if (self.on_entity_mutate) |cb| cb(e, a);
-
         return tx;
     }
 
@@ -684,23 +857,9 @@ pub const FactStore = struct {
         if (self.read_only) return error.ReadOnly;
         const tx = self.next_tx.fetchAdd(1, .monotonic);
         const bt = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
-
-        // No-op if (e, a, v) isn't currently present (AVET is authoritative
-        // for both `:one` and `:many`).
-        if (!self.hasFact(e, a, v)) return tx;
-
-        // EAVT/AEVT current_v: for `:one` this nulls the cache (no remaining
-        // value at (e, a)). For `:many` it makes current_v stale relative to
-        // AVET — that's fine; reads consult cardinality.
-        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
-        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
-        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
-        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
-        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
-
+        if (!try self.applyRetract(e, a, v, m, tx, bt)) return tx;
         if (self.on_attr_mutate) |cb| cb(a);
         if (self.on_entity_mutate) |cb| cb(e, a);
-
         return tx;
     }
 
@@ -1120,8 +1279,8 @@ pub const FactStore = struct {
             const pinned = old.refcount > 0;
             const below_horizon = old.max_basis < self.oldestRetainedBasisT();
             if (!pinned and below_horizon) {
-                old.arena.deinit();
-                self.allocator.destroy(old.arena);
+                old.arena.?.deinit(); // a freshly swapped-out epoch is always hot
+                self.allocator.destroy(old.arena.?);
             } else {
                 try self.retained_epochs.append(self.allocator, old);
             }

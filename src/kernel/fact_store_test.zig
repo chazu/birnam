@@ -659,6 +659,69 @@ test "excision (R3): scrubs retained history archives too (GDPR)" {
     try testing.expectEqual(vi(99), store.currentValue(2, 5).?);
 }
 
+test "cold tier (R4): spill epoch to disk, fault back with exact fidelity" {
+    const a = testing.allocator; // leak-checked
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    store.setRetention(.keep_all);
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2  (e=1 history: 10,20)
+    _ = try store.assert(2, 5, vi(30), M_BOOT); // basis 3  (e=2)
+    _ = try store.compact(a, {}, KeepAll.keep); // archive epoch gen 0 retained
+    try testing.expectEqual(@as(usize, 1), store.retained_epochs.items.len);
+    const gen = store.retained_epochs.items[0].gen;
+
+    // Spill the archive to disk → in-RAM arena freed, marked cold.
+    try store.spillEpoch(gen, ".");
+    try testing.expect(store.retained_epochs.items[0].arena == null);
+    try testing.expect(store.retained_epochs.items[0].cold_path != null);
+
+    // asOf a past basis auto-faults the cold epoch back and reads exactly.
+    {
+        const past = try store.snapshotAsOf(1);
+        defer past.deinit(a);
+        try testing.expectEqual(vi(10), past.get(1, 5).?); // e=1 as of basis 1
+        try testing.expect(past.get(2, 5) == null); // e=2 didn't exist yet
+    }
+    // Now hot again; reads still exact at basis 2.
+    try testing.expect(store.retained_epochs.items[0].arena != null);
+    try testing.expect(store.retained_epochs.items[0].cold_path == null);
+    {
+        const at2 = try store.snapshotAsOf(2);
+        defer at2.deinit(a);
+        try testing.expectEqual(vi(20), at2.get(1, 5).?);
+    }
+    // Live store unaffected.
+    try testing.expectEqual(vi(20), store.currentValue(1, 5).?);
+    try testing.expectEqual(vi(30), store.currentValue(2, 5).?);
+}
+
+test "cold tier (R4): excision faults in + scrubs a cold archive" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    store.setRetention(.keep_all);
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2
+    _ = try store.compact(a, {}, KeepAll.keep);
+    try store.spillEpoch(store.retained_epochs.items[0].gen, ".");
+    try testing.expect(store.retained_epochs.items[0].arena == null);
+
+    // GDPR excise must reach into the cold archive.
+    try store.exciseEntity(1, a);
+    const past = try store.snapshotAsOf(1);
+    defer past.deinit(a);
+    try testing.expect(past.get(1, 5) == null); // scrubbed from the faulted archive
+}
+
 test "index epoch arena: retain_history gate skips the free (no swap)" {
     // Backing arena reclaims the intentionally-retained epoch at teardown.
     var backing = std.heap.ArenaAllocator.init(testing.allocator);
