@@ -1414,3 +1414,51 @@ test "DEMO 17.3: equality (default + vector) / string < / sort / sortBy:" {
     // copyFrom:to: substring.
     try expectTrue(s, lang, "[[\"hello\" copyFrom: 1 to: 3] = \"el\"]", a);
 }
+
+test "DEMO 17 strings: escapes + split/join/indexOf/trim/case/predicates" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Lexer escapes: \n \t \" \\ decode to single bytes.
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[\"a\\nb\" size]", a)));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "[\"\\t\" size]", a)));
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[\"a\\\"b\" size]", a))); // a " b
+    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(evalLine(s, lang, "[\"a\\nb\" at: 1]", a))); // newline byte
+
+    // indexOf: (+ ifAbsent: no-NULL).
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang, "[\"hello\" indexOf: \"ll\"]", a)));
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(evalLine(s, lang, "[\"hello\" indexOf: \"z\" ifAbsent: [| [1 negate]]]", a)));
+
+    // asInteger / asNumber.
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalLine(s, lang, "[\"42\" asInteger]", a)));
+    try testing.expectEqual(@as(i64, -7), ref_mod.untagSmallInt(evalLine(s, lang, "[\"-7\" asNumber]", a)));
+    try testing.expect(ref_mod.isNil(evalLine(s, lang, "[\"xyz\" asInteger]", a))); // unparseable → nil
+
+    // case fold, trim, reverse.
+    try expectTrue(s, lang, "[[\"abc\" asUppercase] = \"ABC\"]", a);
+    try expectTrue(s, lang, "[[\"ABC\" asLowercase] = \"abc\"]", a);
+    try expectTrue(s, lang, "[[\"  hi  \" trim] = \"hi\"]", a);
+    try expectTrue(s, lang, "[[\"abc\" reverse] = \"cba\"]", a);
+
+    // split: / join: (native), round-trip.
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"a,b,c\" split: \",\"] size]", a)));
+    try expectTrue(s, lang, "[[[\"a,b,c\" split: \",\"] at: 1] = \"b\"]", a);
+    try expectTrue(s, lang, "[[#[\"a\" \"b\" \"c\"] join: \"-\"] = \"a-b-c\"]", a);
+
+    // Birnam-composed predicates + ordering + replace + lines/words.
+    try expectTrue(s, lang, "[\"hello\" startsWith: \"he\"]", a);
+    try expectTrue(s, lang, "[\"hello\" endsWith: \"lo\"]", a);
+    try expectTrue(s, lang, "[\"hello\" includes: \"ell\"]", a);
+    try expectFalse(s, lang, "[\"hello\" includes: \"z\"]", a);
+    try expectTrue(s, lang, "[\"\" isEmpty]", a);
+    try expectFalse(s, lang, "[\"x\" isEmpty]", a);
+    try expectTrue(s, lang, "[\"a\" <= \"a\"]", a);
+    try expectTrue(s, lang, "[\"b\" > \"a\"]", a);
+    try expectTrue(s, lang, "[[\"a,b,c\" replace: \",\" with: \"-\"] = \"a-b-c\"]", a);
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"a\\nb\\nc\" lines] size]", a)));
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"  a  b \" words] size]", a)));
+}

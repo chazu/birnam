@@ -1986,9 +1986,23 @@ order ≠ roadmap order). Item-by-item:
   `displayString` (strings unquoted), `asString` (= displayString), `print`
   (writes displayString+newline to output, returns self → intermediate values
   visible in code). On OBJECT_VT + immediates (SmallInt/True/False/nil).
-- **17.2 strings — SHIPPED** (`size`/`at:`/`,`/`=`/`asSymbol` in Tier-deferred;
-  `<` lexicographic + `copyFrom:to:` substring added 17.1 batch). `asString`
-  covered by 17.1.
+- **17.2 strings — SHIPPED (full batch 2026-06-06, branch phase-17-stdlib).**
+  Core `size`/`at:`/`,`/`=`/`asSymbol` (Tier-deferred) + `<`/`copyFrom:to:` (17.1
+  batch) + the string batch below.
+  - **Zig (native — byte-level/alloc-loops/lexer):** string-literal **escapes**
+    `\n \t \r \\ \" \0` (PEG `string` rule now `'"' (('\' any)/(!'"' !'\' any))* '"'`
+    + `decodeStringLiteral`; `formEnd` form-splitter skips escaped quotes);
+    `indexOf:`/`indexOf:ifAbsent:`, `asInteger`/`asNumber`, `asUppercase`/
+    `asLowercase`, `trim`/`trimLeft`/`trimRight`, `split:`, `join:` (on vectors),
+    `reverse`. id_api appended 7 fns (string_index_of/to_int/case/trim/split/
+    join/reverse).
+  - **Birnam (prelude — composed over byte primitives + natives):** `isEmpty`
+    (generic), `startsWith:`, `endsWith:`, `includes:`, string `<=`/`>`/`>=`,
+    `replace:with:` (= split+join), `lines` (split `\n`), `words` (split+select
+    non-empty).
+  - **Grammar enhancement:** `binary-op` now matches **one or two** operator
+    chars (`op-char op-char?`), so 2-char selectors like `<=`/`>=` tokenize as
+    one. Also gave SmallInt native `<=`/`>=` (had only `<`/`>`/`=`).
 - **17.3 equality + comparison — SHIPPED 2026-06-06:** default identity `=` on
   OBJECT_VT + singletons; structural `=` on RRB_VT (size + recursive elementwise);
   string lexicographic `<`. `sort` / `sortBy:` on vectors (comparison protocol =
@@ -2003,8 +2017,9 @@ order ≠ roadmap order). Item-by-item:
   zip:/whenAll:.
 
 **Remaining:** `&`/`|` (grammar collision); a general `compare:`/`<=>` three-way
-+ sorted-collection type (sort over `<` covers the common case today); deeper
-string ops (split/join/trim) if needed. None blocking.
++ sorted-collection type (sort over `<` covers the common case today); string
+`format:`/interpolation if needed (split/join/trim/case/search/escapes all done).
+None blocking.
 
 **Goal:** The minimal surface that makes the language pleasant to explore and
 self-document. Largely buildable IN birnam once collections land; some primitives
