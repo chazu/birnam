@@ -493,12 +493,10 @@ pub const FactStore = struct {
     /// and rebuilt roots. Uses a throwaway FactStore as the replay vehicle so
     /// `applyAssert`/`applyRetract` (the live index algorithm) reconstruct the
     /// epoch faithfully. Events must be tx-sorted.
-    fn faultInEvents(self: *FactStore, events: []const EpochEvent) !struct { arena: *std.heap.ArenaAllocator, roots: IndexRoots } {
-        const arena = try self.allocator.create(std.heap.ArenaAllocator);
-        errdefer self.allocator.destroy(arena);
-        arena.* = std.heap.ArenaAllocator.init(self.allocator);
-        errdefer arena.deinit();
-        var tmp = FactStore.init(arena.allocator());
+    /// Replay an event log into fresh roots on `alloc` (the live index
+    /// algorithm via a throwaway FactStore vehicle). Events must be tx-sorted.
+    fn replayEventsInto(self: *FactStore, events: []const EpochEvent, alloc: std.mem.Allocator) !IndexRoots {
+        var tmp = FactStore.init(alloc);
         tmp.cardinality_schema = self.cardinality_schema; // faithful :many handling
         for (events) |ev| {
             switch (ev.op) {
@@ -506,7 +504,21 @@ pub const FactStore = struct {
                 .retract => _ = try tmp.applyRetract(ev.e, ev.a, ev.v, ev.m, ev.tx, ev.basis),
             }
         }
-        return .{ .arena = arena, .roots = .{ .eavt = tmp.eavt, .aevt = tmp.aevt, .avet = tmp.avet, .vaet = tmp.vaet, .meat = tmp.meat } };
+        return .{ .eavt = tmp.eavt, .aevt = tmp.aevt, .avet = tmp.avet, .vaet = tmp.vaet, .meat = tmp.meat };
+    }
+
+    fn faultInEvents(self: *FactStore, events: []const EpochEvent) !struct { arena: *std.heap.ArenaAllocator, roots: IndexRoots } {
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const roots = try self.replayEventsInto(events, arena.allocator());
+        return .{ .arena = arena, .roots = roots };
+    }
+
+    /// The current writable epoch's roots as an `IndexRoots`.
+    fn currentRoots(self: *const FactStore) IndexRoots {
+        return .{ .eavt = self.eavt, .aevt = self.aevt, .avet = self.avet, .vaet = self.vaet, .meat = self.meat };
     }
 
     /// Spill a retained epoch COLD: serialize its event log to a segment file
@@ -608,6 +620,86 @@ pub const FactStore = struct {
         // any materialized struct for e.
         if (self.on_attr_mutate) |cb| for (attrs.items) |a| cb(a);
         if (self.on_entity_mutate) |cb| cb(e, 0);
+    }
+
+    /// Phase 15.R R3 — hard-delete every history event whose basis-T falls in
+    /// `[from_basis, to_basis]` (inclusive), from the live index AND every
+    /// retained archive. Rebuilds each affected index by replaying its event
+    /// log with the in-range events removed — so current values correctly
+    /// revert to whatever survived (an in-range assert removed reverts to the
+    /// prior out-of-range value). Refuses while a live snapshot pins an epoch
+    /// (Decision C). `scratch` holds the transient event log.
+    pub fn exciseTxRange(self: *FactStore, from_basis: u64, to_basis: u64, scratch: std.mem.Allocator) !void {
+        if (self.read_only) return error.ReadOnly;
+        if (self.hasLiveSnapshots()) return error.SnapshotPins;
+        if (from_basis > to_basis) return;
+
+        var flush_attrs = std.AutoHashMap(u64, void).init(scratch);
+        defer flush_attrs.deinit();
+
+        // Live (current) epoch.
+        try self.rewriteCurrentExcludingRange(from_basis, to_basis, scratch, &flush_attrs);
+        // Retained archives (fault cold ones in first).
+        for (self.retained_epochs.items) |*re| {
+            if (re.cold_path != null) try self.faultInEpoch(re.gen);
+            try self.rewriteArchiveExcludingRange(re, from_basis, to_basis, scratch, &flush_attrs);
+        }
+
+        if (self.on_attr_mutate) |cb| {
+            var it = flush_attrs.keyIterator();
+            while (it.next()) |a| cb(a.*);
+        }
+    }
+
+    /// Collect an epoch's events minus those in [from,to]; record dropped attrs.
+    fn filteredEvents(roots: IndexRoots, from: u64, to: u64, scratch: std.mem.Allocator, flush_attrs: *std.AutoHashMap(u64, void)) ![]EpochEvent {
+        const all = try collectEpochEvents(roots, scratch);
+        defer scratch.free(all);
+        var kept = std.ArrayList(EpochEvent){};
+        errdefer kept.deinit(scratch);
+        for (all) |ev| {
+            if (ev.basis >= from and ev.basis <= to) {
+                try flush_attrs.put(ev.a, {});
+            } else {
+                try kept.append(scratch, ev);
+            }
+        }
+        return kept.toOwnedSlice(scratch);
+    }
+
+    fn rewriteCurrentExcludingRange(self: *FactStore, from: u64, to: u64, scratch: std.mem.Allocator, flush_attrs: *std.AutoHashMap(u64, void)) !void {
+        const kept = try filteredEvents(self.currentRoots(), from, to, scratch, flush_attrs);
+        defer scratch.free(kept);
+        if (self.index_arena) |_| {
+            const res = try self.faultInEvents(kept); // new arena + roots
+            const old = self.index_arena.?;
+            self.index_arena = res.arena;
+            self.eavt = res.roots.eavt;
+            self.aevt = res.roots.aevt;
+            self.avet = res.roots.avet;
+            self.vaet = res.roots.vaet;
+            self.meat = res.roots.meat;
+            old.deinit();
+            self.allocator.destroy(old);
+        } else {
+            const roots = try self.replayEventsInto(kept, self.allocator);
+            self.eavt = roots.eavt;
+            self.aevt = roots.aevt;
+            self.avet = roots.avet;
+            self.vaet = roots.vaet;
+            self.meat = roots.meat;
+        }
+    }
+
+    fn rewriteArchiveExcludingRange(self: *FactStore, re: *RetainedEpoch, from: u64, to: u64, scratch: std.mem.Allocator, flush_attrs: *std.AutoHashMap(u64, void)) !void {
+        const kept = try filteredEvents(re.roots, from, to, scratch, flush_attrs);
+        defer scratch.free(kept);
+        const res = try self.faultInEvents(kept); // new arena + roots
+        const old = re.arena.?;
+        re.arena = res.arena;
+        re.roots = res.roots;
+        old.deinit();
+        self.allocator.destroy(old);
     }
 
     // -- Snapshots (Phase 15.R R1c) ------------------------------------------
