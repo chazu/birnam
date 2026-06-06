@@ -68,6 +68,7 @@ const RRB_VT: u64 = 9;
 const ASSOC_VT: u64 = 6; // Phase 16 Tier C — map vtable (mirror)
 const SEL_DNU: u64 = 198; // Phase 16 Tier D — doesNotUnderstand: (mirror)
 const RANGE_VT: u64 = 200; // Phase 16 deferred — integer range vtable (mirror)
+const STRING_VT: u64 = 201; // Phase 16 deferred — string vtable (mirror)
 const ATTR_ERROR_MESSAGE: u64 = 44; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
 
 const ATTR_AST_VALUE: u64 = 118;
@@ -232,6 +233,11 @@ const IdApi = extern struct {
     make_range: *const fn (i64, i64, i64) callconv(.c) Ref,
     range_len: *const fn (Ref) callconv(.c) u64,
     range_nth: *const fn (Ref, u64) callconv(.c) Ref,
+    string_len: *const fn (Ref) callconv(.c) u64,
+    string_byte_at: *const fn (Ref, u64) callconv(.c) Ref,
+    string_concat: *const fn (Ref, Ref) callconv(.c) Ref,
+    string_eq: *const fn (Ref, Ref) callconv(.c) bool,
+    string_as_symbol: *const fn (Ref) callconv(.c) Ref,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -2679,6 +2685,54 @@ fn rangeInjectIntoImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     return acc;
 }
 
+// -- Phase 16 deferred: string ops (STRING_VT) ----------------------------
+
+fn strSizeImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return mkSmallInt(@intCast(g_api.?.string_len(s.receiver)));
+}
+fn strAtImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const i = untagSmallInt(a[0]);
+    const len: i64 = @intCast(api.string_len(s.receiver));
+    if (i < 0 or i >= len) return mkRuntimeError("string index out of bounds");
+    return api.string_byte_at(s.receiver, @intCast(i)); // byte as SmallInt
+}
+fn strConcatImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.string_concat(s.receiver, a[0]);
+}
+fn strEqImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return if (g_api.?.string_eq(s.receiver, a[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+fn strAsSymbolImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.string_as_symbol(s.receiver);
+}
+fn strDoImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const len = api.string_len(s.receiver);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) _ = api.send1(a[0], sel_value_of_g, api.string_byte_at(s.receiver, i));
+    return s.receiver;
+}
+fn strInjectIntoImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    var acc = a[0];
+    const block = a[1];
+    const len = api.string_len(s.receiver);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) {
+        acc = api.send2(block, sel_value_value_g, acc, api.string_byte_at(s.receiver, i));
+        if (api.is_reduced(acc)) return api.reduced_value(acc);
+    }
+    return acc;
+}
+
 // Map fold over VALUES — gives maps the generic seq protocol (collect:/select:).
 fn mapInjectIntoImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = n;
@@ -2924,6 +2978,21 @@ fn installCollections() void {
     for (range_methods) |m| {
         const sel = api.intern(m.name.ptr, m.name.len);
         _ = api.assert_fact(RANGE_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+    // Strings: byte-seq protocol + concat/eq/asSymbol. do:/inject:into: give
+    // strings the generic OBJECT_VT seq protocol (collect: → vector of bytes).
+    const str_methods = [_]M{
+        .{ .name = "size", .impl = @ptrCast(&strSizeImpl) },
+        .{ .name = "at:", .impl = @ptrCast(&strAtImpl) },
+        .{ .name = ",", .impl = @ptrCast(&strConcatImpl) },
+        .{ .name = "=", .impl = @ptrCast(&strEqImpl) },
+        .{ .name = "asSymbol", .impl = @ptrCast(&strAsSymbolImpl) },
+        .{ .name = "do:", .impl = @ptrCast(&strDoImpl) },
+        .{ .name = "inject:into:", .impl = @ptrCast(&strInjectIntoImpl) },
+    };
+    for (str_methods) |m| {
+        const sel = api.intern(m.name.ptr, m.name.len);
+        _ = api.assert_fact(STRING_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
     }
 }
 

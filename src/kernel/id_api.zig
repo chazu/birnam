@@ -297,6 +297,13 @@ pub const IdApi = extern struct {
     make_range: *const fn (i64, i64, i64) callconv(.c) Ref,
     range_len: *const fn (Ref) callconv(.c) u64,
     range_nth: *const fn (Ref, u64) callconv(.c) Ref,
+
+    // -- Phase 16 deferred: string ops (append-only) -----------------------
+    string_len: *const fn (Ref) callconv(.c) u64,
+    string_byte_at: *const fn (Ref, u64) callconv(.c) Ref,
+    string_concat: *const fn (Ref, Ref) callconv(.c) Ref,
+    string_eq: *const fn (Ref, Ref) callconv(.c) bool,
+    string_as_symbol: *const fn (Ref) callconv(.c) Ref,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -430,7 +437,46 @@ pub fn populate() IdApi {
         .make_range = &cMakeRange,
         .range_len = &cRangeLen,
         .range_nth = &cRangeNth,
+        .string_len = &cStringLen,
+        .string_byte_at = &cStringByteAt,
+        .string_concat = &cStringConcat,
+        .string_eq = &cStringEq,
+        .string_as_symbol = &cStringAsSymbol,
     };
+}
+
+fn cStringLen(r: Ref) callconv(.c) u64 {
+    if (!strings.isString(r)) return 0;
+    return @intCast(strings.bytes(r).len);
+}
+fn cStringByteAt(r: Ref, i: u64) callconv(.c) Ref {
+    if (!strings.isString(r)) return ref_mod.NIL;
+    const b = strings.bytes(r);
+    if (i >= b.len) return ref_mod.NIL;
+    return ref_mod.mkSmallInt(b[@intCast(i)]) orelse ref_mod.NIL;
+}
+fn cStringConcat(x: Ref, y: Ref) callconv(.c) Ref {
+    if (!strings.isString(x) or !strings.isString(y)) return ref_mod.NIL;
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const bx = strings.bytes(x);
+    const by = strings.bytes(y);
+    const buf = a.alloc(u8, bx.len + by.len) catch return ref_mod.NIL;
+    defer a.free(buf);
+    @memcpy(buf[0..bx.len], bx);
+    @memcpy(buf[bx.len..], by);
+    return strings.mkString(a, buf) catch ref_mod.NIL;
+}
+fn cStringEq(x: Ref, y: Ref) callconv(.c) bool {
+    if (!strings.isString(x) or !strings.isString(y)) return false;
+    return std.mem.eql(u8, strings.bytes(x), strings.bytes(y));
+}
+fn cStringAsSymbol(r: Ref) callconv(.c) Ref {
+    if (!strings.isString(r)) return ref_mod.NIL;
+    const i = g_interner orelse return ref_mod.NIL;
+    const s = send_mod.storePtr() orelse return ref_mod.NIL;
+    const t = send_mod.tablePtr() orelse return ref_mod.NIL;
+    const eid = i.intern(s, t, strings.bytes(r)) catch return ref_mod.NIL;
+    return ref_mod.mkEid(eid);
 }
 
 fn cMakeRange(lo: i64, hi: i64, step: i64) callconv(.c) Ref {

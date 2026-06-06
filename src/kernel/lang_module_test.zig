@@ -235,6 +235,37 @@ test "DEMO: parse + eval [3 squared] → 9" {
     try testing.expectEqual(@as(i64, 9), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 16 deferred: strings — size/at:/,/=/asSymbol + seq protocol" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    const Case = struct { src: []const u8, want: i64 };
+    const cases = [_]Case{
+        .{ .src = "[ \"hello\" size]", .want = 5 },
+        .{ .src = "[ \"hello\" at: 0]", .want = 104 }, // 'h'
+        .{ .src = "[ [\"foo\" , \"bar\"] size]", .want = 6 },
+        // inject over bytes: 'a'+'b'+'c' = 97+98+99
+        .{ .src = "[ \"abc\" inject: 0 into: [:acc :c | [acc + c]]]", .want = 294 },
+        // collect: via OBJECT_VT (strings provide inject:into:) → vector of bytes
+        .{ .src = "[ [\"abc\" collect: [:c | [c + 1]]] size]", .want = 3 },
+    };
+    for (cases) |c| {
+        const src = try strings.mkString(a, c.src);
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        try testing.expectEqual(c.want, ref_mod.untagSmallInt(send_mod.send0(ast, sel_eval)));
+    }
+    // equality returns booleans
+    const eqsrc = try strings.mkString(a, "[ \"x\" = \"x\"]");
+    const eqast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, eqsrc);
+    try testing.expectEqual(kernel_eids.TRUE_EID, ref_mod.untagEid(send_mod.send0(eqast, sel_eval)));
+}
+
 test "DEMO 16 deferred: ranges + seq-unification (collect:/select: across types)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
