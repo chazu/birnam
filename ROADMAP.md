@@ -1694,7 +1694,45 @@ so the mark walk needs no per-allocation type tag.
 
 ---
 
-## Phase 15.R — Retention / Snapshots / Excision (spec)
+## Phase 15.R — Retention / Snapshots / Excision (R1–R4 SHIPPED 2026-06-06)
+
+### §Status (2026-06-06) — R1–R4 kernel mechanism shipped, 413/413, 0 leaked
+
+Branch `phase-15r-retention`. The full retention/snapshot/excision/cold-tier
+kernel mechanism is implemented + tested. Commits R1a→R4:
+- **R1a** separate monotonic `basis_t` (never resets on compact; `next_tx`
+  stays the per-epoch coordinate).
+- **R1b** refcounted index epoch registry; `compact` frees an old epoch only
+  when `refcount==0 && max_basis < oldestRetainedBasisT()` (no-snapshot path =
+  identical to 15.I). `pinEpoch`/`unpinEpoch`.
+- **R1c** first-class pinning `Snapshot` = read-only FactStore view capturing
+  the 5 roots by value; `snapshotNow()` pins its epoch so compact retains it.
+  Because a Snapshot IS a FactStore, all datalog/iterators work against it
+  (Decision B).
+- **R2** `basis` added to history entries → exact `currentValueAsOfBasis`.
+  `RetentionPolicy {current_only|keep_all|keep_since_basis|keep_last_n}` +
+  `setRetention`; `compact` rebuild via `compactInsert` (single collapse basis);
+  retained epochs store their `IndexRoots` → queryable history archives;
+  `snapshotAsOf(basis)` routes to the covering epoch.
+- **R3** `exciseEntity` (GDPR) — surgical removal from live index AND every
+  retained archive; refuses (`error.SnapshotPins`) while a live snapshot pins
+  an epoch (Decision C).
+- **R1d** shell surface: `:retain`, `:excise`, `:asof` (kernel-linked, zero
+  module-ABI risk).
+- **R4** on-disk cold tier: `applyAssert`/`applyRetract` extracted so replay is
+  faithful; `spillEpoch`/`faultInEpoch` serialize an epoch's event log to a
+  segment file, free RAM, fault back on demand; `snapshotAsOf`/`exciseEntity`
+  auto-fault cold archives.
+
+**Follow-ons (own passes, non-blocking):** held db-value as a SNAPSHOT_VT object
+with `[db now]`/`[db asOf: t]`/`[snap find:where:]` message-send sugar + value-
+heap GC auto-release on last drop (R1d elegant tier); `exciseTxRange` (basis-
+range history surgery — entity excise is the primary GDPR case); the mmap RO
+fast path vs replay (Phase 12.5); auto-eviction cadence (when to spill — today
+spill is an explicit trigger). Image-format persistence of `basis_t` (today
+re-derived on load; snapshots don't cross saves).
+
+---
 
 **Why a distinct phase.** The persistent (HAMT/RRB) substrate was chosen so that history, snapshots, and time-travel are free (an index root = a zero-copy snapshot). Phase 13/15 framed reclamation as "GC for a database" — correct for the value-heap, but a category error for the fact layer. The fact layer's question is not "is this byte reachable?" but "which history do we keep, for how long, and where does it live?" That is **retention policy + snapshot pinning + excision**, the Datomic bargain. This phase makes it real and keeps it **tiered: invisible by default, surfaced only when a user reaches for time-travel** (a user who only wants "now" never becomes a DBA). See VISION §Memory ¶Retention + §Image/Snapshot.
 
