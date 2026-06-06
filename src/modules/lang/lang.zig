@@ -661,9 +661,9 @@ fn buildGrammar() void {
         defineRule(grammar, "block-with-params", peg_seq(&parts));
     }
 
-    // binary-op = [+\-*/<>=]   (single-char operator)
+    // binary-op = [+\-*/<>=,]   (single-char operator; `,` = concat, Phase 16)
     {
-        const op_ranges = [_]u8{ '+', '+', '-', '-', '*', '*', '/', '/', '<', '<', '>', '>', '=', '=' };
+        const op_ranges = [_]u8{ '+', '+', '-', '-', '*', '*', '/', '/', '<', '<', '>', '>', '=', '=', ',', ',' };
         defineRule(grammar, "binary-op", peg_charset(&op_ranges));
     }
 
@@ -2402,6 +2402,37 @@ fn installCollections() void {
     }
 }
 
+/// Phase 16 Tier B — install a method whose BODY is birnam source, compiled to
+/// bytecode. The receiver-vt + selector are given by Zig (no `vtable` reflection
+/// needed in source); the body self-hosts over the Tier A primitives. `src` is
+/// a block literal `[:params | body]` (or `[| body]` for unary). Best-effort:
+/// a parse/compile failure logs and skips (the prelude is vetted source).
+fn installSourceMethod(vt: u64, sel_name: []const u8, src: []const u8) void {
+    const api = g_api.?;
+    const src_ref = api.make_string(src.ptr, src.len);
+    const ast = api.send1(mkEid(g_module_eid), sel_parse_expr_g, src_ref);
+    if (!isEid(ast)) {
+        if (g_log) |log| log("[lang] prelude parse failed");
+        return;
+    }
+    const method_eid = api.compile_block_as_method(ast >> 3);
+    if (method_eid == 0) {
+        if (g_log) |log| log("[lang] prelude compile failed");
+        return;
+    }
+    _ = api.assert_fact(vt, api.intern(sel_name.ptr, sel_name.len), mkEid(method_eid), g_module_eid);
+}
+
+/// Phase 16 Tier B — the self-hosted collection protocol: `collect:`, `select:`,
+/// `count`, `,` derived in birnam source over Tier A's `do:`/`inject:into:`/
+/// `with:`/`size`. `self` inside each body = the receiver vector.
+fn installPrelude() void {
+    installSourceMethod(RRB_VT, "collect:", "[:f | [self inject: #[] into: [:acc :x | [acc with: [f value: x]]]]]");
+    installSourceMethod(RRB_VT, "select:", "[:p | [self inject: #[] into: [:acc :x | [[p value: x] ifTrue: [| [acc with: x]] ifFalse: [| acc]]]]]");
+    installSourceMethod(RRB_VT, "count", "[| [self size]]");
+    installSourceMethod(RRB_VT, ",", "[:other | [other inject: self into: [:acc :x | [acc with: x]]]]");
+}
+
 fn installPrimitives() void {
     const api = g_api.?;
     // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
@@ -2700,6 +2731,7 @@ pub fn moduleInitImpl(
     langFrontendTier();
     langPrimitivesTier();
     langMethodDoTier();
+    installPrelude(); // Phase 16 Tier B — self-hosted collection protocol
     ctx.log("[lang] ready");
 }
 
