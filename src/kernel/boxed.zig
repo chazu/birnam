@@ -133,11 +133,35 @@ pub const RrbRef = rrb.Rrb(Ref);
 pub fn mkRrb(allocator: std.mem.Allocator, values: []const Ref) !Ref {
     var r = RrbRef.empty(allocator);
     for (values) |v| r = try r.push(v);
+    return wrapRrb(allocator, r);
+}
+
+/// Wrap an already-built `RrbRef` in a libid object (vt = RRB_VT) + return a
+/// pointer-tagged Ref. Shared by `mkRrb` and `rrbWith` (Phase 16).
+pub fn wrapRrb(allocator: std.mem.Allocator, r: RrbRef) !Ref {
     const r_ptr = try allocator.create(RrbRef);
     r_ptr.* = r;
     const obj_ptr = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.RRB_VT), 1);
     object.setSlot(obj_ptr, 0, ref_mod.mkPointer(@ptrCast(r_ptr)));
     return object.toRef(obj_ptr);
+}
+
+/// Phase 16 — immutable append: a NEW vector = `vec` with `elem` at the end
+/// (structural sharing). `vec` must be an RRB Ref.
+pub fn rrbWith(allocator: std.mem.Allocator, vec: Ref, elem: Ref) !Ref {
+    var r = untagRrbRef(vec).*;
+    r = try r.push(elem);
+    return wrapRrb(allocator, r);
+}
+
+/// Phase 16 — element count of an RRB Ref.
+pub fn rrbLen(vec: Ref) usize {
+    return untagRrbRef(vec).count();
+}
+
+/// Phase 16 — element at `idx` (caller bounds-checks; asserts in Debug).
+pub fn rrbNth(vec: Ref, idx: usize) Ref {
+    return untagRrbRef(vec).nth(idx);
 }
 
 pub fn isRrbRef(r: Ref) bool {

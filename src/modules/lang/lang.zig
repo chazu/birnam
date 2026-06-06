@@ -63,6 +63,9 @@ const FALSE_EID: u64 = 73;
 const SNAPSHOT_VT: u64 = 195;
 const DB_PROTO_VT: u64 = 196;
 const DB_PROTO: u64 = 197;
+// Phase 16 — RRB-backed vector vtable (mirror of kernel_eids.RRB_VT).
+const RRB_VT: u64 = 9;
+const ATTR_ERROR_MESSAGE: u64 = 44; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
 
 const ATTR_AST_VALUE: u64 = 118;
 const ATTR_AST_NAME: u64 = 119;
@@ -203,6 +206,12 @@ const IdApi = extern struct {
     snapshot_release: *const fn (Ref) callconv(.c) void,
     set_retention: *const fn (u32, u64) callconv(.c) void,
     excise_entity: *const fn (u64) callconv(.c) bool,
+
+    // -- Phase 16 Tier A: vectors (append-only) ----------------------------
+    make_rrb: *const fn ([*]const Ref, usize) callconv(.c) Ref,
+    rrb_with: *const fn (Ref, Ref) callconv(.c) Ref,
+    rrb_len: *const fn (Ref) callconv(.c) u64,
+    rrb_nth: *const fn (Ref, u64) callconv(.c) Ref,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -238,6 +247,7 @@ var rn_block_param: u64 = 0;
 var rn_block_params: u64 = 0;
 var rn_block_with_params: u64 = 0;
 var rn_bracket_binary: u64 = 0;
+var rn_vector_literal: u64 = 0;
 var rn_let_statement: u64 = 0;
 var rn_top_form: u64 = 0;
 var rn_assignment: u64 = 0;
@@ -686,10 +696,31 @@ fn buildGrammar() void {
         defineRule(grammar, "bracket-form", peg_choice(&alts));
     }
 
-    // expression = bracket-form | atom (ordered: try the heavier form first)
+    // -- Phase 16: vector literal -----------------------------------------
+    // vector-literal = "#[" ws (expression ws)* "]"
+    // Elements are expressions, evaluated at eval time (Clojure-like). Using a
+    // star over (expression ws) handles zero elements without a nullable opt.
+    {
+        const elem_parts = [_]u64{
+            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_rule_ref("ws")),
+        };
+        const elem = peg_seq(&elem_parts);
+        const parts = [_]u64{
+            untagEid(peg_literal("#[")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_star(elem)),
+            untagEid(peg_literal("]")),
+        };
+        defineRule(grammar, "vector-literal", peg_seq(&parts));
+    }
+
+    // expression = bracket-form | vector-literal | atom
+    // (ordered: heavier forms first; `#[` is tried before atom's symbol-literal)
     {
         const alts = [_]u64{
             untagEid(peg_rule_ref("bracket-form")),
+            untagEid(peg_rule_ref("vector-literal")),
             untagEid(peg_rule_ref("atom")),
         };
         defineRule(grammar, "expression", peg_choice(&alts));
@@ -1173,6 +1204,28 @@ fn desugar(cst_eid: u64) u64 {
         }
         return send_ast;
     }
+    if (rn == rn_vector_literal) {
+        // #[e0 e1 ...] desugars to a left-nested `with:` chain over an empty
+        // vector literal: [[[ #[] with: e0] with: e1] ...]. Pure sends +
+        // literal → no new AST kind / opcode; works in tree-walker AND
+        // bytecode unchanged. Empty vector is a constant on the literal node.
+        const empty_ast = newAstNode(AST_LITERAL_VT, span.start, span.start);
+        _ = api.assert_fact(empty_ast, ATTR_AST_VALUE, api.make_rrb(&[_]Ref{}, 0), M_USER);
+        const with_sel = api.intern("with:".ptr, 5);
+        var recv_ast = empty_ast;
+        var c = cstFirstChild(cst_eid);
+        while (c != 0) : (c = cstNextSibling(c)) {
+            if (cstRuleName(c) != rn_expression) continue;
+            const elem_ast = desugar(c);
+            const send = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
+            _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(recv_ast), M_USER);
+            _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(with_sel), M_USER);
+            _ = api.assert_fact(send, ATTR_AST_FIRST_ARG, mkEid(elem_ast), M_USER);
+            recv_ast = send;
+        }
+        return recv_ast;
+    }
+
     // Unknown rule — fallback to NIL literal.
     const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
     _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
@@ -1204,6 +1257,7 @@ fn cacheRuleNames() void {
     rn_block_params = api.intern("block-params".ptr, 12);
     rn_block_with_params = api.intern("block-with-params".ptr, 17);
     rn_bracket_binary = api.intern("bracket-binary".ptr, 14);
+    rn_vector_literal = api.intern("vector-literal".ptr, 14);
     rn_let_statement = api.intern("let-statement".ptr, 13);
     rn_top_form = api.intern("top-form".ptr, 8);
     rn_assignment = api.intern("assignment".ptr, 10);
@@ -2276,6 +2330,78 @@ fn installDbSurface() void {
     pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("db".ptr, 2), mkEid(DB_PROTO));
 }
 
+// -- Phase 16 Tier A: persistent vector (RRB_VT) methods ------------------
+
+/// Build a runtime ERROR_VT diagnostic carrying `msg`. The no-NULL "raise"
+/// surface until a proper exception mechanism lands (Tier D).
+fn mkRuntimeError(msg: []const u8) Ref {
+    const api = g_api.?;
+    const e = api.alloc_eid();
+    _ = api.assert_fact(e, ATTR_VTABLE, mkEid(ERROR_VT), M_USER);
+    _ = api.assert_fact(e, ATTR_ERROR_MESSAGE, api.make_string(msg.ptr, msg.len), M_USER);
+    return mkEid(e);
+}
+
+fn vecWithImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.rrb_with(s.receiver, args[0]);
+}
+fn vecSizeImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return mkSmallInt(@intCast(g_api.?.rrb_len(s.receiver)));
+}
+fn vecAtImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const i = untagSmallInt(args[0]);
+    const len: i64 = @intCast(api.rrb_len(s.receiver));
+    if (i < 0 or i >= len) return mkRuntimeError("vector index out of bounds");
+    return api.rrb_nth(s.receiver, @intCast(i));
+}
+fn vecAtIfAbsentImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const i = untagSmallInt(args[0]);
+    const len: i64 = @intCast(api.rrb_len(s.receiver));
+    if (i < 0 or i >= len) return api.send0(args[1], sel_value_g); // 0-arg ifAbsent block
+    return api.rrb_nth(s.receiver, @intCast(i));
+}
+fn vecDoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const len = api.rrb_len(s.receiver);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) _ = api.send1(args[0], sel_value_of_g, api.rrb_nth(s.receiver, i));
+    return s.receiver;
+}
+fn vecInjectIntoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    var acc = args[0];
+    const block = args[1];
+    const len = api.rrb_len(s.receiver);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) acc = api.send2(block, sel_value_value_g, acc, api.rrb_nth(s.receiver, i));
+    return acc;
+}
+
+fn installCollections() void {
+    const api = g_api.?;
+    const M = struct { name: []const u8, impl: *const anyopaque };
+    const methods = [_]M{
+        .{ .name = "with:", .impl = @ptrCast(&vecWithImpl) },
+        .{ .name = "size", .impl = @ptrCast(&vecSizeImpl) },
+        .{ .name = "at:", .impl = @ptrCast(&vecAtImpl) },
+        .{ .name = "at:ifAbsent:", .impl = @ptrCast(&vecAtIfAbsentImpl) },
+        .{ .name = "do:", .impl = @ptrCast(&vecDoImpl) },
+        .{ .name = "inject:into:", .impl = @ptrCast(&vecInjectIntoImpl) },
+    };
+    for (methods) |m| {
+        const sel = api.intern(m.name.ptr, m.name.len);
+        _ = api.assert_fact(RRB_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+}
+
 fn installPrimitives() void {
     const api = g_api.?;
     // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
@@ -2351,6 +2477,8 @@ fn installPrimitives() void {
     _ = api.assert_fact(FALSE_VT, if_true_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueImpl), NIL)), g_module_eid);
     _ = api.assert_fact(FALSE_VT, if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfFalseImpl), NIL)), g_module_eid);
     _ = api.assert_fact(FALSE_VT, if_true_if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueIfFalseImpl), NIL)), g_module_eid);
+
+    installCollections(); // Phase 16 Tier A — RRB_VT vector methods
 }
 
 /// Full method install (dylib / non-AOT path) — every tier.
@@ -2443,25 +2571,45 @@ fn resolvePendingModules() void {
     _ = api.send0(mkEid(MODULE_PROTO_EID), api.intern("resolve".ptr, 7));
 }
 
-fn formatValue(buf: []u8, val: Ref) ![:0]u8 {
-    if (isSmallInt(val)) {
-        return std.fmt.bufPrintZ(buf, "=> {d}", .{untagSmallInt(val)});
+/// Phase 16 — a Ref is a vector iff it's pointer-tagged with vt = RRB_VT at -1
+/// (mirrors isFloatRef).
+fn isVectorRef(r: Ref) bool {
+    if ((r & 0b111) != 0) return false;
+    if (r == 0) return false;
+    const vt_ptr: *const Ref = @ptrFromInt(r - @sizeOf(Ref));
+    return vt_ptr.* == mkEid(RRB_VT);
+}
+
+/// Append a human display of `val` into `buf` at `off`, returning the new
+/// offset. Best-effort (truncates on overflow). Recurses into vectors → `#[..]`.
+fn appendRef(buf: []u8, off: usize, val: Ref) usize {
+    if (isSmallInt(val)) return off + (std.fmt.bufPrint(buf[off..], "{d}", .{untagSmallInt(val)}) catch return off).len;
+    if (isFloatRef(val)) return off + (std.fmt.bufPrint(buf[off..], "{d}", .{floatRefValue(val)}) catch return off).len;
+    if (val == NIL) return off + (std.fmt.bufPrint(buf[off..], "nil", .{}) catch return off).len;
+    if (isVectorRef(val)) {
+        var o = off + (std.fmt.bufPrint(buf[off..], "#[", .{}) catch return off).len;
+        const len = g_api.?.rrb_len(val);
+        var i: u64 = 0;
+        while (i < len) : (i += 1) {
+            if (i > 0) o += (std.fmt.bufPrint(buf[o..], " ", .{}) catch return o).len;
+            o = appendRef(buf, o, g_api.?.rrb_nth(val, i));
+        }
+        return o + (std.fmt.bufPrint(buf[o..], "]", .{}) catch return o).len;
     }
-    if (isFloatRef(val)) {
-        return std.fmt.bufPrintZ(buf, "=> {d}", .{floatRefValue(val)});
-    }
-    if (val == NIL) return std.fmt.bufPrintZ(buf, "=> nil", .{});
     if (isEid(val)) {
         const e = val >> 3;
-        if (e == TRUE_EID) return std.fmt.bufPrintZ(buf, "=> true", .{});
-        if (e == FALSE_EID) return std.fmt.bufPrintZ(buf, "=> false", .{});
-        return std.fmt.bufPrintZ(buf, "=> <eid:{d}>", .{e});
+        if (e == TRUE_EID) return off + (std.fmt.bufPrint(buf[off..], "true", .{}) catch return off).len;
+        if (e == FALSE_EID) return off + (std.fmt.bufPrint(buf[off..], "false", .{}) catch return off).len;
+        return off + (std.fmt.bufPrint(buf[off..], "<eid:{d}>", .{e}) catch return off).len;
     }
-    if (isString(val)) {
-        const bytes = stringBytes(val);
-        return std.fmt.bufPrintZ(buf, "=> \"{s}\"", .{bytes});
-    }
-    return std.fmt.bufPrintZ(buf, "=> <ref:0x{x}>", .{val});
+    if (isString(val)) return off + (std.fmt.bufPrint(buf[off..], "\"{s}\"", .{stringBytes(val)}) catch return off).len;
+    return off + (std.fmt.bufPrint(buf[off..], "<ref:0x{x}>", .{val}) catch return off).len;
+}
+
+fn formatValue(buf: []u8, val: Ref) ![:0]u8 {
+    var tmp: [1024]u8 = undefined;
+    const n = appendRef(&tmp, 0, val);
+    return std.fmt.bufPrintZ(buf, "=> {s}", .{tmp[0..n]});
 }
 
 fn isSmallInt(r: Ref) bool {

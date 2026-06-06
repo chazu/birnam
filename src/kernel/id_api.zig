@@ -254,6 +254,16 @@ pub const IdApi = extern struct {
     /// Hard-delete an entity (current + history + archives). Returns true on
     /// success, false if refused (a live snapshot pins) or errored.
     excise_entity: *const fn (u64) callconv(.c) bool,
+
+    // -- Phase 16 Tier A: persistent vectors (append-only) -----------------
+    /// Build a vector (RRB Ref, vt RRB_VT) from `n` element Refs.
+    make_rrb: *const fn ([*]const Ref, usize) callconv(.c) Ref,
+    /// Immutable append → a NEW vector with `elem` at the end.
+    rrb_with: *const fn (Ref, Ref) callconv(.c) Ref,
+    /// Element count of a vector.
+    rrb_len: *const fn (Ref) callconv(.c) u64,
+    /// Element at `idx` (caller bounds-checks).
+    rrb_nth: *const fn (Ref, u64) callconv(.c) Ref,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -368,7 +378,32 @@ pub fn populate() IdApi {
         .snapshot_release = &cSnapshotRelease,
         .set_retention = &cSetRetention,
         .excise_entity = &cExciseEntity,
+        .make_rrb = &cMakeRrb,
+        .rrb_with = &cRrbWith,
+        .rrb_len = &cRrbLen,
+        .rrb_nth = &cRrbNth,
     };
+}
+
+// -- Phase 16 Tier A: vector primitives ------------------------------------
+
+fn cMakeRrb(elems: [*]const Ref, n: usize) callconv(.c) Ref {
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    return boxed.mkRrb(a, elems[0..n]) catch ref_mod.NIL;
+}
+fn cRrbWith(vec: Ref, elem: Ref) callconv(.c) Ref {
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    if (!boxed.isRrbRef(vec)) return ref_mod.NIL;
+    return boxed.rrbWith(a, vec, elem) catch ref_mod.NIL;
+}
+fn cRrbLen(vec: Ref) callconv(.c) u64 {
+    if (!boxed.isRrbRef(vec)) return 0;
+    return @intCast(boxed.rrbLen(vec));
+}
+fn cRrbNth(vec: Ref, idx: u64) callconv(.c) Ref {
+    if (!boxed.isRrbRef(vec)) return ref_mod.NIL;
+    if (idx >= boxed.rrbLen(vec)) return ref_mod.NIL;
+    return boxed.rrbNth(vec, @intCast(idx));
 }
 
 // -- Phase 15.R R1d: snapshot object wrap/unwrap + db ops -------------------
