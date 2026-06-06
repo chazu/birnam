@@ -314,6 +314,25 @@ pub const IdApi = extern struct {
     cell_history: *const fn (u64, u64) callconv(.c) Ref,
     /// Current basis-T (durable time coordinate). Backs `db basisT` / cells.
     basis_now: *const fn () callconv(.c) u64,
+
+    // -- Phase 17 string batch (append-only) -------------------------------
+    /// Byte index of first occurrence of `needle` in `hay`, or -1 if absent
+    /// (empty needle → 0). Backs `indexOf:`/`indexOf:ifAbsent:`.
+    string_index_of: *const fn (Ref, Ref) callconv(.c) i64,
+    /// Parse a base-10 integer (optional leading `-`) → SmallInt Ref, or NIL if
+    /// not a clean integer. Backs `asInteger`/`asNumber`.
+    string_to_int: *const fn (Ref) callconv(.c) Ref,
+    /// ASCII upper/lower-cased copy. `mode` 0 = upper, 1 = lower.
+    string_case: *const fn (Ref, u32) callconv(.c) Ref,
+    /// Whitespace-trimmed copy. `mode` 0 = both ends, 1 = left, 2 = right.
+    string_trim: *const fn (Ref, u32) callconv(.c) Ref,
+    /// Split `hay` on `sep` → vector (RRB) of string Refs. Empty sep → the whole
+    /// string as one element. Backs `split:`.
+    string_split: *const fn (Ref, Ref) callconv(.c) Ref,
+    /// Join a vector of strings with `sep` → one string. Backs `join:`.
+    string_join: *const fn (Ref, Ref) callconv(.c) Ref,
+    /// Byte-reversed copy. Backs `reverse`.
+    string_reverse: *const fn (Ref) callconv(.c) Ref,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -455,7 +474,91 @@ pub fn populate() IdApi {
         .current_value_as_of = &cCurrentValueAsOf,
         .cell_history = &cCellHistory,
         .basis_now = &cBasisNow,
+        .string_index_of = &cStringIndexOf,
+        .string_to_int = &cStringToInt,
+        .string_case = &cStringCase,
+        .string_trim = &cStringTrim,
+        .string_split = &cStringSplit,
+        .string_join = &cStringJoin,
+        .string_reverse = &cStringReverse,
     };
+}
+
+fn cStringIndexOf(hay: Ref, needle: Ref) callconv(.c) i64 {
+    if (!strings.isString(hay) or !strings.isString(needle)) return -1;
+    const h = strings.bytes(hay);
+    const n = strings.bytes(needle);
+    if (n.len == 0) return 0;
+    const idx = std.mem.indexOf(u8, h, n) orelse return -1;
+    return @intCast(idx);
+}
+fn cStringToInt(r: Ref) callconv(.c) Ref {
+    if (!strings.isString(r)) return ref_mod.NIL;
+    const b = strings.bytes(r);
+    const v = std.fmt.parseInt(i64, b, 10) catch return ref_mod.NIL;
+    return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
+}
+fn cStringCase(r: Ref, mode: u32) callconv(.c) Ref {
+    if (!strings.isString(r)) return ref_mod.NIL;
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const b = strings.bytes(r);
+    const buf = a.alloc(u8, b.len) catch return ref_mod.NIL;
+    defer a.free(buf);
+    for (b, 0..) |c, i| buf[i] = if (mode == 0) std.ascii.toUpper(c) else std.ascii.toLower(c);
+    return strings.mkString(a, buf) catch ref_mod.NIL;
+}
+fn cStringTrim(r: Ref, mode: u32) callconv(.c) Ref {
+    if (!strings.isString(r)) return ref_mod.NIL;
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const ws = " \t\r\n";
+    const b = strings.bytes(r);
+    const out = switch (mode) {
+        1 => std.mem.trimLeft(u8, b, ws),
+        2 => std.mem.trimRight(u8, b, ws),
+        else => std.mem.trim(u8, b, ws),
+    };
+    return strings.mkString(a, out) catch ref_mod.NIL;
+}
+fn cStringSplit(hay: Ref, sep: Ref) callconv(.c) Ref {
+    if (!strings.isString(hay) or !strings.isString(sep)) return ref_mod.NIL;
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const h = strings.bytes(hay);
+    const s = strings.bytes(sep);
+    var parts = std.ArrayList(Ref){};
+    defer parts.deinit(a);
+    if (s.len == 0) {
+        parts.append(a, strings.mkString(a, h) catch return ref_mod.NIL) catch return ref_mod.NIL;
+    } else {
+        var it = std.mem.splitSequence(u8, h, s);
+        while (it.next()) |piece| {
+            parts.append(a, strings.mkString(a, piece) catch return ref_mod.NIL) catch return ref_mod.NIL;
+        }
+    }
+    return boxed.mkRrb(a, parts.items) catch ref_mod.NIL;
+}
+fn cStringJoin(vec: Ref, sep: Ref) callconv(.c) Ref {
+    if (!strings.isString(sep)) return ref_mod.NIL;
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const s = strings.bytes(sep);
+    const len = boxed.rrbLen(vec);
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(a);
+    var i: usize = 0;
+    while (i < len) : (i += 1) {
+        if (i > 0) buf.appendSlice(a, s) catch return ref_mod.NIL;
+        const e = boxed.rrbNth(vec, i);
+        if (strings.isString(e)) buf.appendSlice(a, strings.bytes(e)) catch return ref_mod.NIL;
+    }
+    return strings.mkString(a, buf.items) catch ref_mod.NIL;
+}
+fn cStringReverse(r: Ref) callconv(.c) Ref {
+    if (!strings.isString(r)) return ref_mod.NIL;
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const b = strings.bytes(r);
+    const buf = a.alloc(u8, b.len) catch return ref_mod.NIL;
+    defer a.free(buf);
+    for (b, 0..) |c, i| buf[b.len - 1 - i] = c;
+    return strings.mkString(a, buf) catch ref_mod.NIL;
 }
 
 fn cCurrentValueAsOf(e: u64, a: u64, as_of_tx: u64) callconv(.c) Ref {

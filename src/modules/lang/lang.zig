@@ -248,6 +248,15 @@ const IdApi = extern struct {
     current_value_as_of: *const fn (u64, u64, u64) callconv(.c) Ref,
     cell_history: *const fn (u64, u64) callconv(.c) Ref,
     basis_now: *const fn () callconv(.c) u64,
+
+    // -- Phase 17 string batch (append-only) -------------------------------
+    string_index_of: *const fn (Ref, Ref) callconv(.c) i64,
+    string_to_int: *const fn (Ref) callconv(.c) Ref,
+    string_case: *const fn (Ref, u32) callconv(.c) Ref,
+    string_trim: *const fn (Ref, u32) callconv(.c) Ref,
+    string_split: *const fn (Ref, Ref) callconv(.c) Ref,
+    string_join: *const fn (Ref, Ref) callconv(.c) Ref,
+    string_reverse: *const fn (Ref) callconv(.c) Ref,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -501,18 +510,29 @@ fn buildGrammar() void {
         defineRule(grammar, "float-literal", peg_seq(&parts));
     }
 
-    // -- String literal: "..." (no escapes for spike) ---------------------
-    // string = '"' (!'"' any)* '"'
+    // -- String literal: "..." with backslash escapes (Phase 17) ----------
+    // string = '"' ( ('\' any) / (!'"' !'\' any) )* '"'
+    // The escape alternative consumes `\` + any byte so `\"` / `\\` don't
+    // terminate; decodeStringLiteral turns \n \t \r \\ \" into bytes.
     {
         const quote_char = [_]u8{ '"', '"' };
+        const bs_char = [_]u8{ '\\', '\\' };
         const quote = peg_charset(&quote_char);
-        const not_quote = peg_not(peg_charset(&quote_char));
-        const body_step = [_]u64{
-            untagEid(not_quote),
+        // escape = '\' any
+        const escape_step = [_]u64{
+            untagEid(peg_charset(&bs_char)),
             untagEid(peg_any()),
         };
-        const body = peg_seq(&body_step);
-        const body_star = peg_star(body);
+        const escape = peg_seq(&escape_step);
+        // plain = !'"' !'\' any
+        const plain_step = [_]u64{
+            untagEid(peg_not(peg_charset(&quote_char))),
+            untagEid(peg_not(peg_charset(&bs_char))),
+            untagEid(peg_any()),
+        };
+        const plain = peg_seq(&plain_step);
+        const alt = [_]u64{ untagEid(escape), untagEid(plain) };
+        const body_star = peg_star(peg_choice(&alt));
         const string_parts = [_]u64{
             untagEid(quote),
             untagEid(body_star),
@@ -706,10 +726,16 @@ fn buildGrammar() void {
         defineRule(grammar, "block-with-params", peg_seq(&parts));
     }
 
-    // binary-op = [+\-*/<>=,]   (single-char operator; `,` = concat, Phase 16)
+    // binary-op = op-char op-char?   — one or two operator chars, so 2-char
+    // operators like `<=` / `>=` tokenize as one selector (Phase 17). The
+    // optional second char only matches another op-char, so `[a + b]` (space
+    // after `+`) still reads a single `+`. The CST byte-span IS the selector.
     {
         const op_ranges = [_]u8{ '+', '+', '-', '-', '*', '*', '/', '/', '<', '<', '>', '>', '=', '=', ',', ',' };
-        defineRule(grammar, "binary-op", peg_charset(&op_ranges));
+        const op_one = peg_charset(&op_ranges);
+        const op_two = peg_charset(&op_ranges);
+        const op_parts = [_]u64{ untagEid(op_one), untagEid(peg_opt(op_two)) };
+        defineRule(grammar, "binary-op", peg_seq(&op_parts));
     }
 
     // bracket-binary = "[" ws expression ws binary-op ws expression ws "]"
@@ -1068,10 +1094,11 @@ fn desugar(cst_eid: u64) u64 {
         return ast;
     }
     if (rn == rn_string) {
-        // Strip surrounding quotes — span.start+1 .. span.end-1.
+        // Strip surrounding quotes — span.start+1 .. span.end-1 — and decode
+        // backslash escapes (\n \t \r \\ \" ; unknown \x → x literal).
         const bytes = g_source[span.start + 1 .. span.end - 1];
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, api.make_string(bytes.ptr, bytes.len), M_USER);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, decodeStringLiteral(bytes), M_USER);
         return ast;
     }
     if (rn == rn_kw_nil) {
@@ -2364,6 +2391,35 @@ fn isString(r: Ref) bool {
     return (r & 0b111) == 0b100;
 }
 
+/// Phase 17 — decode a string-literal body (quotes already stripped): turn
+/// `\n \t \r \\ \"` into their bytes, `\0` into NUL; an unknown `\x` becomes a
+/// literal `x`. Fast path (no backslash, or body > 4096) copies raw.
+fn decodeStringLiteral(bytes: []const u8) Ref {
+    const api = g_api.?;
+    if (bytes.len > 4096 or std.mem.indexOfScalar(u8, bytes, '\\') == null) {
+        return api.make_string(bytes.ptr, bytes.len);
+    }
+    var buf: [4096]u8 = undefined;
+    var o: usize = 0;
+    var i: usize = 0;
+    while (i < bytes.len) : (i += 1) {
+        if (bytes[i] == '\\' and i + 1 < bytes.len) {
+            i += 1;
+            buf[o] = switch (bytes[i]) {
+                'n' => '\n',
+                't' => '\t',
+                'r' => '\r',
+                '0' => 0,
+                else => bytes[i], // \\ \" and unknown → the char itself
+            };
+        } else {
+            buf[o] = bytes[i];
+        }
+        o += 1;
+    }
+    return api.make_string(buf[0..o].ptr, o);
+}
+
 const StringHeader = extern struct {
     len: u64,
 };
@@ -2445,9 +2501,11 @@ fn formEnd(src: []const u8, start: usize) usize {
     var depth: i32 = 0;
     while (i < src.len) {
         const c = src[i];
-        if (c == '"') { // string literal — no escapes in birnam grammar
+        if (c == '"') { // string literal — skip body, honoring \" / \\ escapes
             i += 1;
-            while (i < src.len and src[i] != '"') : (i += 1) {}
+            while (i < src.len and src[i] != '"') {
+                if (src[i] == '\\' and i + 1 < src.len) i += 2 else i += 1;
+            }
             i += 1;
             continue;
         }
@@ -2837,6 +2895,263 @@ fn installCellSurface() void {
     // `Xf` transducer factory singleton.
     _ = api.assert_fact(XF_PROTO, ATTR_VTABLE, mkEid(XF_VT), g_module_eid);
     pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("Xf".ptr, 2), mkEid(XF_PROTO));
+}
+
+// -- Phase 17: stdlib — printing, equality/comparison, sort ---------------
+
+var sel_eq_g: u64 = 0;
+var sel_lt_g: u64 = 0;
+
+/// `[x printString]` — render any value to a string Ref via the canonical
+/// `appendRef` formatter (strings quoted, `#[..]` / `{k: v}` recursive).
+fn printStringImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    var buf: [4096]u8 = undefined;
+    const len = appendRef(&buf, 0, s.receiver);
+    return g_api.?.make_string(buf[0..len].ptr, len);
+}
+
+/// `[x displayString]` — human form: a string renders WITHOUT quotes; every
+/// other value matches printString.
+fn displayStringImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    if (isString(s.receiver)) return s.receiver;
+    var buf: [4096]u8 = undefined;
+    const len = appendRef(&buf, 0, s.receiver);
+    return g_api.?.make_string(buf[0..len].ptr, len);
+}
+
+/// `[x print]` — write displayString + newline to output; return self
+/// (chainable, so intermediate values are visible inside code).
+fn printImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    var buf: [4096]u8 = undefined;
+    var len: usize = 0;
+    if (isString(s.receiver)) {
+        const b = stringBytes(s.receiver);
+        len = @min(b.len, buf.len - 1);
+        @memcpy(buf[0..len], b[0..len]);
+    } else {
+        len = appendRef(&buf, 0, s.receiver);
+    }
+    buf[@min(len, buf.len - 1)] = 0;
+    if (g_log) |log| log(@ptrCast(&buf));
+    return s.receiver;
+}
+
+/// `[x = y]` default — Ref identity (covers cells/eids/singletons). SmallInt /
+/// String / Vector override with value semantics on their own vtables.
+fn objEqImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return if (s.receiver == args[0]) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+
+/// `[v = w]` for vectors — structural: same size and elementwise `=` (recursive
+/// via the `=` selector, so nested vectors compare deeply).
+fn vecEqImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const b = args[0];
+    if (!isVectorRef(b)) return mkEid(FALSE_EID);
+    const la = api.rrb_len(s.receiver);
+    if (la != api.rrb_len(b)) return mkEid(FALSE_EID);
+    var i: u64 = 0;
+    while (i < la) : (i += 1) {
+        if (api.send1(api.rrb_nth(s.receiver, i), sel_eq_g, api.rrb_nth(b, i)) != mkEid(TRUE_EID)) {
+            return mkEid(FALSE_EID);
+        }
+    }
+    return mkEid(TRUE_EID);
+}
+
+/// `[a < b]` for strings — lexicographic (byte order).
+fn strLtImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isString(args[0])) return mkEid(FALSE_EID);
+    const order = std.mem.order(u8, stringBytes(s.receiver), stringBytes(args[0]));
+    return if (order == .lt) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+
+/// `[s copyFrom: lo to: hi]` — substring `[lo, hi)` (byte indices, clamped).
+fn strCopyFromToImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const b = stringBytes(s.receiver);
+    const raw_lo = untagSmallInt(args[0]);
+    const raw_hi = untagSmallInt(args[1]);
+    const lo: usize = if (raw_lo < 0) 0 else @min(@as(usize, @intCast(raw_lo)), b.len);
+    const hi: usize = if (raw_hi < 0) 0 else @min(@as(usize, @intCast(raw_hi)), b.len);
+    if (hi <= lo) return api.make_string(b.ptr, 0);
+    return api.make_string(b[lo..hi].ptr, hi - lo);
+}
+
+const SortCtx = struct { key: Ref };
+fn sortLessThan(ctx: SortCtx, a: Ref, b: Ref) bool {
+    const api = g_api.?;
+    var ka = a;
+    var kb = b;
+    if (ctx.key != NIL) {
+        ka = api.send1(ctx.key, sel_value_of_g, a);
+        kb = api.send1(ctx.key, sel_value_of_g, b);
+    }
+    return api.send1(ka, sel_lt_g, kb) == mkEid(TRUE_EID);
+}
+
+/// Shared sort core for `sort` (key=NIL) and `sortBy:` (key=block). Comparison
+/// rides the `<` message — any element type answering `<` is sortable.
+fn sortInto(receiver: Ref, key: Ref) Ref {
+    const api = g_api.?;
+    const len = api.rrb_len(receiver);
+    if (len > 1024) return mkRuntimeError("sort: vector too large (>1024)");
+    var buf: [1024]Ref = undefined;
+    var i: u64 = 0;
+    while (i < len) : (i += 1) buf[i] = api.rrb_nth(receiver, i);
+    std.mem.sort(Ref, buf[0..len], SortCtx{ .key = key }, sortLessThan);
+    var result = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+    i = 0;
+    while (i < len) : (i += 1) result = api.rrb_with(result, buf[i]);
+    return result;
+}
+
+/// `[v sort]` — ascending, via `<` on elements.
+fn vecSortImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return sortInto(s.receiver, NIL);
+}
+
+/// `[v sortBy: keyBlock]` — ascending by the 1-arg key block's result.
+fn vecSortByImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return sortInto(s.receiver, args[0]);
+}
+
+// -- Phase 17 string batch: native impls (byte-level / alloc-loops) --------
+
+fn smallintLeImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return if (untagSmallInt(s.receiver) <= untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+fn smallintGeImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return if (untagSmallInt(s.receiver) >= untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+
+/// `[s indexOf: sub ifAbsent: blk]` — byte index, or the block's value (no-NULL).
+fn strIndexOfIfAbsentImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const idx = g_api.?.string_index_of(s.receiver, args[0]);
+    if (idx < 0) return g_api.?.send0(args[1], sel_value_g);
+    return mkSmallInt(idx);
+}
+/// `[s indexOf: sub]` — byte index, raises (domain error) when absent.
+fn strIndexOfImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const idx = g_api.?.string_index_of(s.receiver, args[0]);
+    if (idx < 0) return mkRuntimeError("indexOf: substring not found");
+    return mkSmallInt(idx);
+}
+fn strAsIntegerImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.string_to_int(s.receiver);
+}
+fn strUpperImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.string_case(s.receiver, 0);
+}
+fn strLowerImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.string_case(s.receiver, 1);
+}
+fn strTrimImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.string_trim(s.receiver, 0);
+}
+fn strTrimLeftImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.string_trim(s.receiver, 1);
+}
+fn strTrimRightImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.string_trim(s.receiver, 2);
+}
+fn strSplitImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.string_split(s.receiver, args[0]);
+}
+fn strReverseImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.string_reverse(s.receiver);
+}
+/// `[aVectorOfStrings join: sep]` — concatenate with `sep` between elements.
+fn vecJoinImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.string_join(s.receiver, args[0]);
+}
+
+/// Install Phase 17 stdlib: printString/displayString/print + asString on
+/// OBJECT_VT (+ immediates), default `=`, vector `=`/sort/sortBy:, string
+/// `<`/copyFrom:to:.
+fn installStdlib() void {
+    const api = g_api.?;
+    sel_eq_g = api.intern("=".ptr, 1);
+    sel_lt_g = api.intern("<".ptr, 1);
+    const Pair = struct { name: []const u8, impl: *const anyopaque };
+
+    // Printing + asString on every value (OBJECT_VT) and the non-delegating
+    // immediates (SMALLINT_VT / TRUE_VT / FALSE_VT / NIL_VT).
+    const print_methods = [_]Pair{
+        .{ .name = "printString", .impl = @ptrCast(&printStringImpl) },
+        .{ .name = "displayString", .impl = @ptrCast(&displayStringImpl) },
+        .{ .name = "asString", .impl = @ptrCast(&displayStringImpl) },
+        .{ .name = "print", .impl = @ptrCast(&printImpl) },
+    };
+    for ([_]u64{ OBJECT_VT, SMALLINT_VT, TRUE_VT, FALSE_VT, NIL_VT_EID }) |vt| {
+        for (print_methods) |m| {
+            _ = api.assert_fact(vt, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+        }
+    }
+
+    // Default identity `=` on OBJECT_VT + non-delegating immediates that lack
+    // their own (SmallInt/String have value `=` already; TRUE/FALSE/NIL use
+    // identity, which is correct — they are singletons).
+    for ([_]u64{ OBJECT_VT, TRUE_VT, FALSE_VT, NIL_VT_EID }) |vt| {
+        _ = api.assert_fact(vt, sel_eq_g, mkEid(api.make_closure(@ptrCast(&objEqImpl), NIL)), g_module_eid);
+    }
+
+    // Vector value-equality + sorting.
+    _ = api.assert_fact(RRB_VT, sel_eq_g, mkEid(api.make_closure(@ptrCast(&vecEqImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(RRB_VT, api.intern("sort".ptr, 4), mkEid(api.make_closure(@ptrCast(&vecSortImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(RRB_VT, api.intern("sortBy:".ptr, 7), mkEid(api.make_closure(@ptrCast(&vecSortByImpl), NIL)), g_module_eid);
+
+    // String comparison + substring.
+    _ = api.assert_fact(STRING_VT, sel_lt_g, mkEid(api.make_closure(@ptrCast(&strLtImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(STRING_VT, api.intern("copyFrom:to:".ptr, 12), mkEid(api.make_closure(@ptrCast(&strCopyFromToImpl), NIL)), g_module_eid);
+
+    // SmallInt `<=` / `>=` (completeness — had only `<`/`>`/`=`).
+    _ = api.assert_fact(SMALLINT_VT, api.intern("<=".ptr, 2), mkEid(api.make_closure(@ptrCast(&smallintLeImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, api.intern(">=".ptr, 2), mkEid(api.make_closure(@ptrCast(&smallintGeImpl), NIL)), g_module_eid);
+
+    // Phase 17 string batch — native (byte-level). Birnam-composed string
+    // methods (startsWith:/endsWith:/includes:/replace:with:/lines/words/<=,>,>=)
+    // live in installPrelude over these + the byte primitives.
+    const str_native = [_]Pair{
+        .{ .name = "indexOf:ifAbsent:", .impl = @ptrCast(&strIndexOfIfAbsentImpl) },
+        .{ .name = "indexOf:", .impl = @ptrCast(&strIndexOfImpl) },
+        .{ .name = "asInteger", .impl = @ptrCast(&strAsIntegerImpl) },
+        .{ .name = "asNumber", .impl = @ptrCast(&strAsIntegerImpl) },
+        .{ .name = "asUppercase", .impl = @ptrCast(&strUpperImpl) },
+        .{ .name = "asLowercase", .impl = @ptrCast(&strLowerImpl) },
+        .{ .name = "trim", .impl = @ptrCast(&strTrimImpl) },
+        .{ .name = "trimLeft", .impl = @ptrCast(&strTrimLeftImpl) },
+        .{ .name = "trimRight", .impl = @ptrCast(&strTrimRightImpl) },
+        .{ .name = "split:", .impl = @ptrCast(&strSplitImpl) },
+        .{ .name = "reverse", .impl = @ptrCast(&strReverseImpl) },
+    };
+    for (str_native) |m| {
+        _ = api.assert_fact(STRING_VT, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+    // join: lives on vectors (receiver = vector of strings).
+    _ = api.assert_fact(RRB_VT, api.intern("join:".ptr, 5), mkEid(api.make_closure(@ptrCast(&vecJoinImpl), NIL)), g_module_eid);
 }
 
 // -- Phase 16 Tier A: persistent vector (RRB_VT) methods ------------------
@@ -3317,6 +3632,21 @@ fn installPrelude() void {
     installSourceMethod(XF_VT, "take:", "[:nn | [:rf | [:acc :x | [[[acc size] < nn] ifTrue: [| [rf value: acc value: x]] ifFalse: [| [acc reduced]]]]]]");
     installSourceMethod(CLOSURE_VT, "then:", "[:other | [:rf | [self value: [other value: rf]]]]");
     installSourceMethod(OBJECT_VT, "transduce:", "[:xf | [self inject: #[] into: [xf value: [:acc :x | [acc with: x]]]]]");
+
+    // -- Phase 17 string batch: composed over byte primitives + natives ----
+    // isEmpty is generic (any sized seq).
+    installSourceMethod(OBJECT_VT, "isEmpty", "[| [[self size] = 0]]");
+    installSourceMethod(STRING_VT, "startsWith:", "[:p | [[[p size] > [self size]] ifTrue: [| false] ifFalse: [| [[self copyFrom: 0 to: [p size]] = p]]]]");
+    installSourceMethod(STRING_VT, "endsWith:", "[:p | [[[p size] > [self size]] ifTrue: [| false] ifFalse: [| [[self copyFrom: [[self size] - [p size]] to: [self size]] = p]]]]");
+    installSourceMethod(STRING_VT, "includes:", "[:sub | [[[self indexOf: sub ifAbsent: [| [1 negate]]] < 0] not]]");
+    // String ordering over `<` + `=` (SmallInt-style triad).
+    installSourceMethod(STRING_VT, "<=", "[:o | [[self < o] or: [| [self = o]]]]");
+    installSourceMethod(STRING_VT, ">", "[:o | [o < self]]");
+    installSourceMethod(STRING_VT, ">=", "[:o | [[o < self] or: [| [self = o]]]]");
+    // replace:with: = split on old, join with new. lines/words derive from split:.
+    installSourceMethod(STRING_VT, "replace:with:", "[:old :new | [[self split: old] join: new]]");
+    installSourceMethod(STRING_VT, "lines", "[| [self split: \"\\n\"]]");
+    installSourceMethod(STRING_VT, "words", "[| [[self split: \" \"] select: [:w | [[[w size] = 0] not]]]]");
 }
 
 fn installPrimitives() void {
@@ -3619,6 +3949,7 @@ pub fn langPrimitivesTier() void {
     installGlobals();
     installDbSurface(); // Phase 15.R R1d — `db` prototype + snapshot methods
     installCellSurface(); // Phase 16 Tier E — cells/metadata/applicative/Xf
+    installStdlib(); // Phase 17 — printing, equality/comparison, sort
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_PARENT, mkEid(GLOBALS_SCOPE_EID), g_module_eid);
 }
 

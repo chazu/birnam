@@ -1974,7 +1974,52 @@ and by the one-seq-protocol tenet (vector/map/string/range/query-result all answ
 
 ---
 
-## Phase 17 — Standard Library (spec TBD)
+## Phase 17 — Standard Library
+
+### §Status — Phase 17 SUBSTANTIALLY COMPLETE 2026-06-06 (432/432)
+
+Most of Phase 17 shipped early (pulled forward into Phase 16 Tiers D/E — build
+order ≠ roadmap order). Item-by-item:
+
+- **17.1 printing — SHIPPED 2026-06-06** (branch phase-17-stdlib): `printString`
+  (renders any value to a string via the canonical `appendRef` formatter),
+  `displayString` (strings unquoted), `asString` (= displayString), `print`
+  (writes displayString+newline to output, returns self → intermediate values
+  visible in code). On OBJECT_VT + immediates (SmallInt/True/False/nil).
+- **17.2 strings — SHIPPED (full batch 2026-06-06, branch phase-17-stdlib).**
+  Core `size`/`at:`/`,`/`=`/`asSymbol` (Tier-deferred) + `<`/`copyFrom:to:` (17.1
+  batch) + the string batch below.
+  - **Zig (native — byte-level/alloc-loops/lexer):** string-literal **escapes**
+    `\n \t \r \\ \" \0` (PEG `string` rule now `'"' (('\' any)/(!'"' !'\' any))* '"'`
+    + `decodeStringLiteral`; `formEnd` form-splitter skips escaped quotes);
+    `indexOf:`/`indexOf:ifAbsent:`, `asInteger`/`asNumber`, `asUppercase`/
+    `asLowercase`, `trim`/`trimLeft`/`trimRight`, `split:`, `join:` (on vectors),
+    `reverse`. id_api appended 7 fns (string_index_of/to_int/case/trim/split/
+    join/reverse).
+  - **Birnam (prelude — composed over byte primitives + natives):** `isEmpty`
+    (generic), `startsWith:`, `endsWith:`, `includes:`, string `<=`/`>`/`>=`,
+    `replace:with:` (= split+join), `lines` (split `\n`), `words` (split+select
+    non-empty).
+  - **Grammar enhancement:** `binary-op` now matches **one or two** operator
+    chars (`op-char op-char?`), so 2-char selectors like `<=`/`>=` tokenize as
+    one. Also gave SmallInt native `<=`/`>=` (had only `<`/`>`/`=`).
+- **17.3 equality + comparison — SHIPPED 2026-06-06:** default identity `=` on
+  OBJECT_VT + singletons; structural `=` on RRB_VT (size + recursive elementwise);
+  string lexicographic `<`. `sort` / `sortBy:` on vectors (comparison protocol =
+  "any type answering `<`"; ≤1024 elems else raise). `doesNotUnderstand:` already
+  shipped Tier D (SEL_DNU=198).
+- **17.4 number protocol — SHIPPED** (Tier D): mod:/sqrt/floor/ceil/round/abs/
+  even/odd + min:/max:/between:and:.
+- **17.5 bool/nil — SHIPPED** (Tier D): and:/or:/not, isNil/ifNil:/ifNotNil:.
+  **`&`/`|` still deferred** — eager `|` collides with the block-param bar;
+  and:/or: cover the need.
+- **17.6 applicative patterns — SHIPPED** (Tier E): validate: (accumulate),
+  zip:/whenAll:.
+
+**Remaining:** `&`/`|` (grammar collision); a general `compare:`/`<=>` three-way
++ sorted-collection type (sort over `<` covers the common case today); string
+`format:`/interpolation if needed (split/join/trim/case/search/escapes all done).
+None blocking.
 
 **Goal:** The minimal surface that makes the language pleasant to explore and
 self-document. Largely buildable IN birnam once collections land; some primitives

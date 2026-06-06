@@ -1353,3 +1353,112 @@ test "DEMO 16 Tier E: transducers — map: / filter: / take: / then: / transduce
     try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang,
         "[[#[1 2 3 4 5] transduce: [[Xf map: [:x | [x * 10]]] then: [Xf filter: [:x | [x > 20]]]]] size]", a)));
 }
+
+// -- Phase 17: stdlib — printing, equality/comparison, sort -------------------
+
+fn expectTrue(s: anytype, lang: u64, src: []const u8, a: std.mem.Allocator) !void {
+    try testing.expectEqual(kernel_eids.TRUE_EID, ref_mod.untagEid(evalLine(s, lang, src, a)));
+}
+fn expectFalse(s: anytype, lang: u64, src: []const u8, a: std.mem.Allocator) !void {
+    try testing.expectEqual(kernel_eids.FALSE_EID, ref_mod.untagEid(evalLine(s, lang, src, a)));
+}
+
+test "DEMO 17.1: printString / displayString / print" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // printString renders any value to a string.
+    try expectTrue(s, lang, "[[42 printString] = \"42\"]", a);
+    try expectTrue(s, lang, "[[#[1 2 3] printString] = \"#[1 2 3]\"]", a);
+    // printString quotes a string (4 chars: "hi"); displayString does not (2).
+    try testing.expectEqual(@as(i64, 4), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"hi\" printString] size]", a)));
+    try expectTrue(s, lang, "[[\"hi\" displayString] = \"hi\"]", a);
+    // asString = displayString.
+    try expectTrue(s, lang, "[[99 asString] = \"99\"]", a);
+    // print returns self (chainable).
+    try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(evalLine(s, lang, "[7 print]", a)));
+}
+
+test "DEMO 17.3: equality (default + vector) / string < / sort / sortBy:" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Default identity `=` on entities (cells).
+    _ = evalLine(s, lang, "let c := [db cell: 1]", a);
+    try expectTrue(s, lang, "[c = c]", a);
+    try expectFalse(s, lang, "[c = [db cell: 1]]", a);
+
+    // Vector structural `=` (incl. nested).
+    try expectTrue(s, lang, "[#[1 2 3] = #[1 2 3]]", a);
+    try expectFalse(s, lang, "[#[1 2] = #[1 2 3]]", a);
+    try expectTrue(s, lang, "[#[#[1] #[2]] = #[#[1] #[2]]]", a);
+
+    // String lexicographic `<`.
+    try expectTrue(s, lang, "[\"a\" < \"b\"]", a);
+    try expectFalse(s, lang, "[\"b\" < \"a\"]", a);
+
+    // sort ascending via `<`.
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "[[#[3 1 2] sort] at: 0]", a)));
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[[#[3 1 2] sort] at: 2]", a)));
+    // sortBy: with a key block → descending via negate.
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[[#[3 1 2] sortBy: [:x | [x negate]]] at: 0]", a)));
+
+    // copyFrom:to: substring.
+    try expectTrue(s, lang, "[[\"hello\" copyFrom: 1 to: 3] = \"el\"]", a);
+}
+
+test "DEMO 17 strings: escapes + split/join/indexOf/trim/case/predicates" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Lexer escapes: \n \t \" \\ decode to single bytes.
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[\"a\\nb\" size]", a)));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "[\"\\t\" size]", a)));
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[\"a\\\"b\" size]", a))); // a " b
+    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(evalLine(s, lang, "[\"a\\nb\" at: 1]", a))); // newline byte
+
+    // indexOf: (+ ifAbsent: no-NULL).
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang, "[\"hello\" indexOf: \"ll\"]", a)));
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(evalLine(s, lang, "[\"hello\" indexOf: \"z\" ifAbsent: [| [1 negate]]]", a)));
+
+    // asInteger / asNumber.
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalLine(s, lang, "[\"42\" asInteger]", a)));
+    try testing.expectEqual(@as(i64, -7), ref_mod.untagSmallInt(evalLine(s, lang, "[\"-7\" asNumber]", a)));
+    try testing.expect(ref_mod.isNil(evalLine(s, lang, "[\"xyz\" asInteger]", a))); // unparseable → nil
+
+    // case fold, trim, reverse.
+    try expectTrue(s, lang, "[[\"abc\" asUppercase] = \"ABC\"]", a);
+    try expectTrue(s, lang, "[[\"ABC\" asLowercase] = \"abc\"]", a);
+    try expectTrue(s, lang, "[[\"  hi  \" trim] = \"hi\"]", a);
+    try expectTrue(s, lang, "[[\"abc\" reverse] = \"cba\"]", a);
+
+    // split: / join: (native), round-trip.
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"a,b,c\" split: \",\"] size]", a)));
+    try expectTrue(s, lang, "[[[\"a,b,c\" split: \",\"] at: 1] = \"b\"]", a);
+    try expectTrue(s, lang, "[[#[\"a\" \"b\" \"c\"] join: \"-\"] = \"a-b-c\"]", a);
+
+    // Birnam-composed predicates + ordering + replace + lines/words.
+    try expectTrue(s, lang, "[\"hello\" startsWith: \"he\"]", a);
+    try expectTrue(s, lang, "[\"hello\" endsWith: \"lo\"]", a);
+    try expectTrue(s, lang, "[\"hello\" includes: \"ell\"]", a);
+    try expectFalse(s, lang, "[\"hello\" includes: \"z\"]", a);
+    try expectTrue(s, lang, "[\"\" isEmpty]", a);
+    try expectFalse(s, lang, "[\"x\" isEmpty]", a);
+    try expectTrue(s, lang, "[\"a\" <= \"a\"]", a);
+    try expectTrue(s, lang, "[\"b\" > \"a\"]", a);
+    try expectTrue(s, lang, "[[\"a,b,c\" replace: \",\" with: \"-\"] = \"a-b-c\"]", a);
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"a\\nb\\nc\" lines] size]", a)));
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"  a  b \" words] size]", a)));
+}
