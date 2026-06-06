@@ -429,6 +429,91 @@ test "epoch registry (R1b): compact does not advance basis_t" {
     try testing.expect(store.currentTx() < basis_before);
 }
 
+test "snapshot (R1c): frozen view is isolated from later live mutation" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT);
+    const snap = try store.snapshotNow();
+    defer snap.deinit(a);
+
+    // Mutate live AFTER the snapshot.
+    _ = try store.assert(1, 5, vi(20), M_BOOT);
+    _ = try store.assert(2, 5, vi(99), M_BOOT); // entity not present at snapshot
+
+    // Snapshot still sees the captured state; live sees the new state.
+    try testing.expectEqual(vi(10), snap.view.currentValue(1, 5).?);
+    try testing.expectEqual(vi(20), store.currentValue(1, 5).?);
+    try testing.expect(snap.view.currentValue(2, 5) == null); // didn't exist yet
+    try testing.expectEqual(vi(99), store.currentValue(2, 5).?);
+    try testing.expectEqual(@as(u64, 1), snap.basis_t); // one commit at capture
+}
+
+test "snapshot (R1c): pin survives compact; release frees the epoch" {
+    const a = testing.allocator; // leak-checked
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT);
+    _ = try store.assert(2, 5, vi(20), M_BOOT);
+    const snap = try store.snapshotNow();
+
+    // Live churns then compacts — the snapshot's epoch is pinned, so compact
+    // retains it rather than freeing it.
+    _ = try store.assert(1, 5, vi(11), M_BOOT);
+    _ = try store.compact(a, {}, KeepAll.keep);
+    try testing.expectEqual(@as(usize, 1), store.retained_epochs.items.len);
+
+    // Snapshot reads remain valid across the compact (no UAF) — it reads the
+    // RETAINED old epoch's nodes, not the new live epoch.
+    try testing.expectEqual(vi(10), snap.view.currentValue(1, 5).?);
+    try testing.expectEqual(vi(20), snap.view.currentValue(2, 5).?);
+    // Live shows the post-churn current value.
+    try testing.expectEqual(vi(11), store.currentValue(1, 5).?);
+
+    // Release → epoch refcount hits 0, below horizon → freed + dropped.
+    snap.deinit(a);
+    try testing.expectEqual(@as(usize, 0), store.retained_epochs.items.len);
+    try testing.expectEqual(vi(11), store.currentValue(1, 5).?); // live intact
+}
+
+test "snapshot (R1c): datalog query runs against the frozen view" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    const attr_kind: u64 = 5;
+    _ = try store.assert(100, attr_kind, vi(7), M_BOOT);
+    _ = try store.assert(101, attr_kind, vi(7), M_BOOT);
+    const snap = try store.snapshotNow();
+    defer snap.deinit(a);
+
+    // After the snapshot, a third entity gets the same value on the LIVE store.
+    _ = try store.assert(102, attr_kind, vi(7), M_BOOT);
+
+    // entitiesMatching against the view sees exactly the 2 captured entities;
+    // the live store sees 3. (Iterator-level datalog primitive over the view.)
+    var snap_count: usize = 0;
+    var sit = snap.view.entitiesMatching(attr_kind, vi(7));
+    while (sit.next()) |_| snap_count += 1;
+    try testing.expectEqual(@as(usize, 2), snap_count);
+
+    var live_count: usize = 0;
+    var lit = store.entitiesMatching(attr_kind, vi(7));
+    while (lit.next()) |_| live_count += 1;
+    try testing.expectEqual(@as(usize, 3), live_count);
+}
+
 test "index epoch arena: retain_history gate skips the free (no swap)" {
     // Backing arena reclaims the intentionally-retained epoch at teardown.
     var backing = std.heap.ArenaAllocator.init(testing.allocator);

@@ -75,6 +75,29 @@ pub const RetainedEpoch = struct {
     refcount: u32,
 };
 
+// -- Snapshot (Phase 15.R R1c) -----------------------------------------------
+
+/// An immutable, first-class db-value: the store as of `basis_t`. `view` is a
+/// read-only `FactStore` holding the five index roots captured by value, so
+/// every existing point-read / iterator / datalog path works against it
+/// unchanged (Decision B — full datalog-over-snapshot). Holding a Snapshot
+/// pins its index `epoch_gen` against `compact()`; `deinit` releases the pin.
+pub const Snapshot = struct {
+    view: FactStore,
+    basis_t: u64,
+    epoch_gen: u64,
+    /// The live store this was captured from — for unpinning on release.
+    store: *FactStore,
+
+    /// Unpin the epoch (making it collectible at the next compact if nothing
+    /// else holds it) and free the snapshot. `allocator` must be the one that
+    /// allocated it (the live store's allocator).
+    pub fn deinit(self: *Snapshot, allocator: std.mem.Allocator) void {
+        self.store.unpinEpoch(self.epoch_gen);
+        allocator.destroy(self);
+    }
+};
+
 // -- FactStore ---------------------------------------------------------------
 
 pub const FactStore = struct {
@@ -288,6 +311,46 @@ pub const FactStore = struct {
                 return;
             }
         }
+    }
+
+    // -- Snapshots (Phase 15.R R1c) ------------------------------------------
+
+    /// Capture an immutable zero-copy snapshot of the store as of NOW. The
+    /// returned `Snapshot` owns a read-only `FactStore` view that holds the
+    /// five index roots BY VALUE — structural sharing means later live
+    /// mutations (path-copy) leave the snapshot's roots seeing the old state.
+    /// The snapshot PINS its index epoch (refcount), so `compact()` keeps that
+    /// epoch alive instead of freeing it — this is the reachability question
+    /// for the fact layer, over retained roots not nodes (VISION §Memory).
+    /// Caller owns the returned pointer; `snap.deinit(allocator)` unpins +
+    /// frees. (R1d hands ownership to a SNAPSHOT_VT object the value-heap GC
+    /// sweeps, calling deinit on collection.)
+    ///
+    /// `snapshotNow` is the frozen-roots path (state as-of the capture basis,
+    /// readable forever even after the live store prunes). Arbitrary
+    /// `asOf: <past basis>` reconstruction is a follow-on (needs a snapshot
+    /// taken at that basis, or history-walk-backed reads — see R2).
+    pub fn snapshotNow(self: *FactStore) !*Snapshot {
+        const snap = try self.allocator.create(Snapshot);
+        errdefer self.allocator.destroy(snap);
+        var v = self.*; // copies the 5 roots by value → frozen view
+        v.read_only = true;
+        v.eid_alloc_table = null; // no reification mutation through a snapshot
+        v.on_attr_mutate = null;
+        v.on_entity_mutate = null;
+        v.retained_epochs = .{}; // view owns no epochs (don't alias live's list)
+        // Independent, lazily-allocated reification maps so a snapshot read
+        // never aliases (or is invalidated by) the live store's maps.
+        v.fact_eids = std.AutoHashMap(u64, u64).init(self.allocator);
+        v.fact_modules = std.AutoHashMap(u64, u64).init(self.allocator);
+        const gen = self.pinCurrentEpoch();
+        snap.* = .{
+            .view = v,
+            .basis_t = self.currentBasisT(),
+            .epoch_gen = gen,
+            .store = self,
+        };
+        return snap;
     }
 
     // -- Phase 7.3 reification helpers ---------------------------------------
