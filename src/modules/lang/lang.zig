@@ -280,6 +280,9 @@ var rn_pipe_tail: u64 = 0;
 var rn_pipe_expr: u64 = 0;
 var rn_map_literal: u64 = 0;
 var rn_map_entry: u64 = 0;
+var rn_let_destructure: u64 = 0;
+var rn_destructure_pattern: u64 = 0;
+var g_destructure_counter: u64 = 0;
 var rn_let_statement: u64 = 0;
 var rn_top_form: u64 = 0;
 var rn_assignment: u64 = 0;
@@ -867,9 +870,38 @@ fn buildGrammar() void {
         defineRule(grammar, "return-statement", peg_seq(&parts));
     }
 
-    // top-form = let-statement | return-statement | assignment | expression  (ordered).
+    // -- Phase 16 deferred: let destructuring ----------------------------
+    // destructure-pattern = "#[" ws (identifier ws)* "]"
+    // let-destructure     = kw-let ws destructure-pattern ws ":=" ws expression
+    {
+        const id_parts = [_]u64{
+            untagEid(peg_rule_ref("identifier")),
+            untagEid(peg_rule_ref("ws")),
+        };
+        const id = peg_seq(&id_parts);
+        const pat_parts = [_]u64{
+            untagEid(peg_literal("#[")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_star(id)),
+            untagEid(peg_literal("]")),
+        };
+        defineRule(grammar, "destructure-pattern", peg_seq(&pat_parts));
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("kw-let")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("destructure-pattern")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal(":=")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+        };
+        defineRule(grammar, "let-destructure", peg_seq(&parts));
+    }
+
+    // top-form = let-destructure | let-statement | return-statement | assignment | expression
     {
         const alts = [_]u64{
+            untagEid(peg_rule_ref("let-destructure")),
             untagEid(peg_rule_ref("let-statement")),
             untagEid(peg_rule_ref("return-statement")),
             untagEid(peg_rule_ref("assignment")),
@@ -1176,6 +1208,60 @@ fn desugar(cst_eid: u64) u64 {
             _ = api.assert_fact(ast, ATTR_AST_ASSIGN_VALUE, mkEid(value_ast), M_USER);
         }
         return ast;
+    }
+    if (rn == rn_let_destructure) {
+        // `let #[a b c] := expr` → a STMT_SEQ: bind a fresh temp to expr (once),
+        // then `let <id_k> := [tmp at: k]` for each pattern name in order.
+        var c = cstFirstChild(cst_eid);
+        var pattern_eid: u64 = 0;
+        var init_ast: u64 = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn == rn_destructure_pattern) {
+                pattern_eid = c;
+            } else if (crn == rn_expression) {
+                init_ast = desugar(c);
+            }
+        }
+        // Fresh temp name (gensym) to evaluate the source exactly once.
+        var nbuf: [24]u8 = undefined;
+        const tmp_name = std.fmt.bufPrint(&nbuf, "__dt{d}", .{g_destructure_counter}) catch "__dt";
+        g_destructure_counter += 1;
+        const tmp_eid = api.intern(tmp_name.ptr, tmp_name.len);
+        const at_sel = api.intern("at:".ptr, 3);
+
+        const tmp_let = newAstNode(AST_LET_VT, span.start, span.end);
+        _ = api.assert_fact(tmp_let, ATTR_AST_NAME, mkEid(tmp_eid), M_USER);
+        if (init_ast != 0) _ = api.assert_fact(tmp_let, ATTR_AST_LET_INIT, mkEid(init_ast), M_USER);
+
+        var last = tmp_let;
+        var k: i64 = 0;
+        if (pattern_eid != 0) {
+            var pc = cstFirstChild(pattern_eid);
+            while (pc != 0) : (pc = cstNextSibling(pc)) {
+                if (cstRuleName(pc) != rn_identifier) continue;
+                const id_span = cstByteRange(pc);
+                const nb = g_source[id_span.start..id_span.end];
+                const name_eid = api.intern(nb.ptr, nb.len);
+                const tmp_ref = newAstNode(AST_VAR_REF_VT, span.start, span.end);
+                _ = api.assert_fact(tmp_ref, ATTR_AST_NAME, mkEid(tmp_eid), M_USER);
+                const idx_lit = newAstNode(AST_LITERAL_VT, span.start, span.end);
+                _ = api.assert_fact(idx_lit, ATTR_AST_VALUE, mkSmallInt(k), M_USER);
+                const send = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
+                _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(tmp_ref), M_USER);
+                _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(at_sel), M_USER);
+                _ = api.assert_fact(send, ATTR_AST_FIRST_ARG, mkEid(idx_lit), M_USER);
+                const binding = newAstNode(AST_LET_VT, span.start, span.end);
+                _ = api.assert_fact(binding, ATTR_AST_NAME, mkEid(name_eid), M_USER);
+                _ = api.assert_fact(binding, ATTR_AST_LET_INIT, mkEid(send), M_USER);
+                _ = api.assert_fact(last, ATTR_AST_NEXT_SIBLING, mkEid(binding), M_USER);
+                last = binding;
+                k += 1;
+            }
+        }
+        const seq = newAstNode(AST_STMT_SEQ_VT, span.start, span.end);
+        _ = api.assert_fact(seq, ATTR_AST_STMT_FIRST, mkEid(tmp_let), M_USER);
+        return seq;
     }
     if (rn == rn_let_statement) {
         // Children include kw-let CST + ws + identifier + ws + ":=" (no CST)
@@ -1506,6 +1592,8 @@ fn cacheRuleNames() void {
     rn_pipe_expr = api.intern("pipe-expr".ptr, 9);
     rn_map_literal = api.intern("map-literal".ptr, 11);
     rn_map_entry = api.intern("map-entry".ptr, 9);
+    rn_let_destructure = api.intern("let-destructure".ptr, 15);
+    rn_destructure_pattern = api.intern("destructure-pattern".ptr, 19);
     rn_let_statement = api.intern("let-statement".ptr, 13);
     rn_top_form = api.intern("top-form".ptr, 8);
     rn_assignment = api.intern("assignment".ptr, 10);

@@ -235,6 +235,40 @@ test "DEMO: parse + eval [3 squared] → 9" {
     try testing.expectEqual(@as(i64, 9), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 16 deferred: let destructuring — #[a b] := seq" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    // Destructure into the top scope, then read the bindings back. Each form is
+    // parsed + evaluated against the persistent REPL scope in sequence.
+    const prog = [_][]const u8{
+        "let #[a b c] := #[10 20 30]",
+        "[a + [b + c]]", // 10+20+30 = 60
+    };
+    var result: ref_mod.Ref = ref_mod.NIL;
+    for (prog) |line| {
+        const src = try strings.mkString(a, line);
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        result = send_mod.send0(ast, sel_eval);
+    }
+    try testing.expectEqual(@as(i64, 60), ref_mod.untagSmallInt(result));
+
+    // Destructure a range too.
+    {
+        const l1 = try strings.mkString(a, "let #[x y] := [1 to: 9]");
+        _ = send_mod.send0(send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, l1), sel_eval);
+        const l2 = try strings.mkString(a, "[x + y]"); // 1 + 2
+        const r = send_mod.send0(send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, l2), sel_eval);
+        try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(r));
+    }
+}
+
 test "DEMO 16 deferred: strings — size/at:/,/=/asSymbol + seq protocol" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
