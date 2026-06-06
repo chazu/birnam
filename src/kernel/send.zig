@@ -22,6 +22,7 @@ const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const promotion = @import("promotion.zig");
+const strings_mod = @import("strings.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const Closure = closure_mod.Closure;
@@ -215,6 +216,7 @@ pub fn vtableEidOf(r: Ref) ?u64 {
         return ref_mod.untagEid(vt_ref);
     }
     if (ref_mod.isSmallInt(r)) return kernel_eids.SMALLINT_VT;
+    if (strings_mod.isString(r)) return kernel_eids.STRING_VT; // Phase 16: strings dispatch
     // keyword, reserved — no kernel vt yet.
     return null;
 }

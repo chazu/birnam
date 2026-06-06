@@ -1831,7 +1831,18 @@ Take Clojure's ideas, but don't import them as a checklist — most either fall 
 
 **16.0 — the `|>` pipe operator (the immutable replacement for the dropped cascade).** Cascades (`;`, many messages to one *mutable* receiver) were dropped for poor syntactic fit — correct, because immutable values *thread* (each op returns a NEW value → wants it as the next *receiver*), they don't cascade. The real hole: **keyword messages don't chain** — `coll with: 1` returns a new coll, and chaining means `[[coll with: 1] with: 2]` (nested-bracket hell), exactly the dominant immutable-collection shape. `|>` fixes it: `x |> with: 1 |> with: 2 |> select: even` desugars to `[[[x with: 1] with: 2] select: even]`. **Thread-as-receiver** (Clojure `->`, not `->>`), because birnam collections ARE the receiver. ONE operator (don't pre-build a thread-last twin — that's the "two ways" trap). Pure grammar + desugar, no kernel change.
 
-### §Status — Tiers A+B+C+D SHIPPED 2026-06-06 (A-C merged; D on branch phase-16-tier-d, 423/423)
+### §Status — Phase 16 COMPLETE 2026-06-06 (A-D merged; deferred items on branch phase-16-deferred, 426/426)
+
+**Deferred items all done (branch phase-16-deferred):** (1) `reduced` early-out
+sentinel (inject:into: stops + unwraps; detect: uses it). (2) integer ranges
+`[lo to: hi]`/`to:by:` (lazy RANGE_VT seq) + **seq-unification** — collect:/
+select:/count/detect:/asVector moved to OBJECT_VT over `inject:into:`, so
+vectors/ranges/maps/strings all answer one protocol (each provides inject:into:).
+(3) strings dispatch (STRING_VT) — size/at:/`,`/`=`/asSymbol/do:/inject:into:
+(byte seq). (4) `let #[a b] := seq` destructuring (desugar → temp + indexed
+lets). Remaining nicety: block-param destructuring (param-position pattern).
+
+### Tiers A+B+C+D SHIPPED 2026-06-06 (A-D merged)
 
 **Tier D (ergonomics + reflection):** D1 bool/nil — `isNil`/`ifNil:`/`ifNotNil:`
 (default on OBJECT_VT + immediates, override on NIL_VT), bool `not`/`and:`/`or:`

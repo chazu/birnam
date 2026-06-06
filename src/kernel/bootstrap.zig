@@ -145,6 +145,8 @@ pub fn boot(
     _ = try store.assert(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.MODULE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.ERROR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.RANGE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot); // Phase 16: seq protocol
+    _ = try store.assert(kernel_eids.STRING_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot); // Phase 16: strings
 
     // -- Stage 6: NIL's :vtable ------------------------------------------
     _ = try store.assert(kernel_eids.NIL, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.NIL_VT), m_boot);

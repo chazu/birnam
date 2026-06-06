@@ -559,4 +559,14 @@ pub const DB_PROTO: u64 = 197;
 /// a symbol Ref.
 pub const SEL_DNU: u64 = 198;
 
-// 199..255 reserved for future kernel selectors / attributes
+/// `REDUCED_VT` — vtable of a `reduced` early-out sentinel (Phase 16): a 1-slot
+/// box wrapping the final fold value; `inject:into:` stops when it sees one.
+pub const REDUCED_VT: u64 = 199;
+/// `RANGE_VT` — vtable of an integer range value (`[lo to: hi]` / `to:by:`),
+/// a lazy seq answering the `do:`/`inject:into:` protocol (Phase 16).
+pub const RANGE_VT: u64 = 200;
+/// `STRING_VT` — vtable for tag-100 string Refs. Dispatch (`vtableEidOf`)
+/// returns it for any string so strings answer messages (Phase 16).
+pub const STRING_VT: u64 = 201;
+
+// 202..255 reserved for future kernel selectors / attributes
