@@ -65,6 +65,7 @@ const DB_PROTO_VT: u64 = 196;
 const DB_PROTO: u64 = 197;
 // Phase 16 — RRB-backed vector vtable (mirror of kernel_eids.RRB_VT).
 const RRB_VT: u64 = 9;
+const ASSOC_VT: u64 = 6; // Phase 16 Tier C — map vtable (mirror)
 const ATTR_ERROR_MESSAGE: u64 = 44; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
 
 const ATTR_AST_VALUE: u64 = 118;
@@ -212,6 +213,17 @@ const IdApi = extern struct {
     rrb_with: *const fn (Ref, Ref) callconv(.c) Ref,
     rrb_len: *const fn (Ref) callconv(.c) u64,
     rrb_nth: *const fn (Ref, u64) callconv(.c) Ref,
+
+    // -- Phase 16 Tier C: maps (append-only) -------------------------------
+    make_map: *const fn () callconv(.c) Ref,
+    map_put: *const fn (Ref, Ref, Ref) callconv(.c) Ref,
+    map_get: *const fn (Ref, Ref) callconv(.c) Ref,
+    map_has: *const fn (Ref, Ref) callconv(.c) bool,
+    map_len: *const fn (Ref) callconv(.c) u64,
+    map_keys: *const fn (Ref) callconv(.c) Ref,
+    map_values: *const fn (Ref) callconv(.c) Ref,
+    map_merge: *const fn (Ref, Ref) callconv(.c) Ref,
+    symbol_name: *const fn (u64) callconv(.c) Ref,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -252,6 +264,8 @@ var rn_pipe_primary: u64 = 0;
 var rn_pipe_kw_arg: u64 = 0;
 var rn_pipe_tail: u64 = 0;
 var rn_pipe_expr: u64 = 0;
+var rn_map_literal: u64 = 0;
+var rn_map_entry: u64 = 0;
 var rn_let_statement: u64 = 0;
 var rn_top_form: u64 = 0;
 var rn_assignment: u64 = 0;
@@ -719,6 +733,30 @@ fn buildGrammar() void {
         defineRule(grammar, "vector-literal", peg_seq(&parts));
     }
 
+    // -- Phase 16 Tier C: map literal -------------------------------------
+    // map-entry   = kw-suffix ws expression
+    // map-literal = "{" ws (map-entry ws)* "}"   (keyword-keyed, space-sep)
+    {
+        const me_parts = [_]u64{
+            untagEid(peg_rule_ref("kw-suffix")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+        };
+        defineRule(grammar, "map-entry", peg_seq(&me_parts));
+        const entry_parts = [_]u64{
+            untagEid(peg_rule_ref("map-entry")),
+            untagEid(peg_rule_ref("ws")),
+        };
+        const entry = peg_seq(&entry_parts);
+        const parts = [_]u64{
+            untagEid(peg_literal("{")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_star(entry)),
+            untagEid(peg_literal("}")),
+        };
+        defineRule(grammar, "map-literal", peg_seq(&parts));
+    }
+
     // -- Phase 16: |> pipe operator ---------------------------------------
     // Thread-as-receiver (Clojure ->). `x |> with: 1 |> select: even`
     // desugars to `[[x with: 1] select: even]`. The piped message's keyword
@@ -728,6 +766,7 @@ fn buildGrammar() void {
         const alts = [_]u64{
             untagEid(peg_rule_ref("bracket-form")),
             untagEid(peg_rule_ref("vector-literal")),
+            untagEid(peg_rule_ref("map-literal")),
             untagEid(peg_rule_ref("atom")),
         };
         defineRule(grammar, "pipe-primary", peg_choice(&alts));
@@ -772,6 +811,7 @@ fn buildGrammar() void {
             untagEid(peg_rule_ref("pipe-expr")),
             untagEid(peg_rule_ref("bracket-form")),
             untagEid(peg_rule_ref("vector-literal")),
+            untagEid(peg_rule_ref("map-literal")),
             untagEid(peg_rule_ref("atom")),
         };
         defineRule(grammar, "expression", peg_choice(&alts));
@@ -1367,6 +1407,50 @@ fn desugar(cst_eid: u64) u64 {
         return recv_ast;
     }
 
+    if (rn == rn_map_literal) {
+        // {k: v ...} desugars to a left-nested at:put: chain over an empty map
+        // literal: [[ {} at: #k put: v] at: #k2 put: v2]. Pure sends + literals
+        // → works in tree-walker AND bytecode.
+        const empty_ast = newAstNode(AST_LITERAL_VT, span.start, span.start);
+        _ = api.assert_fact(empty_ast, ATTR_AST_VALUE, api.make_map(), M_USER);
+        const at_put_sel = api.intern("at:put:".ptr, 7);
+        var recv_ast = empty_ast;
+        var c = cstFirstChild(cst_eid);
+        while (c != 0) : (c = cstNextSibling(c)) {
+            if (cstRuleName(c) != rn_map_entry) continue;
+            // map-entry children: kw-suffix, ws, expression.
+            var key_eid: u64 = 0;
+            var val_ast: u64 = 0;
+            var ec = cstFirstChild(c);
+            while (ec != 0) : (ec = cstNextSibling(ec)) {
+                const ecrn = cstRuleName(ec);
+                if (ecrn == rn_kw_suffix) {
+                    var sc = cstFirstChild(ec);
+                    while (sc != 0) : (sc = cstNextSibling(sc)) {
+                        if (cstRuleName(sc) == rn_identifier) {
+                            const ids = cstByteRange(sc);
+                            const nb = g_source[ids.start..ids.end];
+                            key_eid = api.intern(nb.ptr, nb.len);
+                            break;
+                        }
+                    }
+                } else if (ecrn == rn_expression) {
+                    val_ast = desugar(ec);
+                }
+            }
+            if (key_eid == 0 or val_ast == 0) continue;
+            const key_ast = newAstNode(AST_LITERAL_VT, span.start, span.start);
+            _ = api.assert_fact(key_ast, ATTR_AST_VALUE, mkEid(key_eid), M_USER);
+            const send = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
+            _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(recv_ast), M_USER);
+            _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(at_put_sel), M_USER);
+            _ = api.assert_fact(send, ATTR_AST_FIRST_ARG, mkEid(key_ast), M_USER);
+            _ = api.assert_fact(key_ast, ATTR_AST_NEXT_SIBLING, mkEid(val_ast), M_USER);
+            recv_ast = send;
+        }
+        return recv_ast;
+    }
+
     // Unknown rule — fallback to NIL literal.
     const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
     _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
@@ -1403,6 +1487,8 @@ fn cacheRuleNames() void {
     rn_pipe_kw_arg = api.intern("pipe-kw-arg".ptr, 11);
     rn_pipe_tail = api.intern("pipe-tail".ptr, 9);
     rn_pipe_expr = api.intern("pipe-expr".ptr, 9);
+    rn_map_literal = api.intern("map-literal".ptr, 11);
+    rn_map_entry = api.intern("map-entry".ptr, 9);
     rn_let_statement = api.intern("let-statement".ptr, 13);
     rn_top_form = api.intern("top-form".ptr, 8);
     rn_assignment = api.intern("assignment".ptr, 10);
@@ -2530,10 +2616,58 @@ fn vecInjectIntoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return acc;
 }
 
+// -- Phase 16 Tier C: map (ASSOC_VT) methods ------------------------------
+
+fn mapAtPutImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.map_put(s.receiver, args[0], args[1]);
+}
+fn mapAtImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    if (api.map_has(s.receiver, args[0])) return api.map_get(s.receiver, args[0]);
+    return mkRuntimeError("map key not found");
+}
+fn mapAtIfAbsentImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    if (api.map_has(s.receiver, args[0])) return api.map_get(s.receiver, args[0]);
+    return api.send0(args[1], sel_value_g);
+}
+fn mapIncludesKeyImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return if (g_api.?.map_has(s.receiver, args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+fn mapSizeImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return mkSmallInt(@intCast(g_api.?.map_len(s.receiver)));
+}
+fn mapKeysImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.map_keys(s.receiver);
+}
+fn mapValuesImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.map_values(s.receiver);
+}
+fn mapMergeImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.map_merge(s.receiver, args[0]);
+}
+fn mapDoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const vals = api.map_values(s.receiver); // iterate VALUES (Smalltalk Dict do:)
+    const len = api.rrb_len(vals);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) _ = api.send1(args[0], sel_value_of_g, api.rrb_nth(vals, i));
+    return s.receiver;
+}
+
 fn installCollections() void {
     const api = g_api.?;
     const M = struct { name: []const u8, impl: *const anyopaque };
-    const methods = [_]M{
+    const vec_methods = [_]M{
         .{ .name = "with:", .impl = @ptrCast(&vecWithImpl) },
         .{ .name = "size", .impl = @ptrCast(&vecSizeImpl) },
         .{ .name = "at:", .impl = @ptrCast(&vecAtImpl) },
@@ -2541,9 +2675,24 @@ fn installCollections() void {
         .{ .name = "do:", .impl = @ptrCast(&vecDoImpl) },
         .{ .name = "inject:into:", .impl = @ptrCast(&vecInjectIntoImpl) },
     };
-    for (methods) |m| {
+    for (vec_methods) |m| {
         const sel = api.intern(m.name.ptr, m.name.len);
         _ = api.assert_fact(RRB_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+    const map_methods = [_]M{
+        .{ .name = "at:put:", .impl = @ptrCast(&mapAtPutImpl) },
+        .{ .name = "at:", .impl = @ptrCast(&mapAtImpl) },
+        .{ .name = "at:ifAbsent:", .impl = @ptrCast(&mapAtIfAbsentImpl) },
+        .{ .name = "includesKey:", .impl = @ptrCast(&mapIncludesKeyImpl) },
+        .{ .name = "size", .impl = @ptrCast(&mapSizeImpl) },
+        .{ .name = "keys", .impl = @ptrCast(&mapKeysImpl) },
+        .{ .name = "values", .impl = @ptrCast(&mapValuesImpl) },
+        .{ .name = "merge:", .impl = @ptrCast(&mapMergeImpl) },
+        .{ .name = "do:", .impl = @ptrCast(&mapDoImpl) },
+    };
+    for (map_methods) |m| {
+        const sel = api.intern(m.name.ptr, m.name.len);
+        _ = api.assert_fact(ASSOC_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
     }
 }
 
@@ -2756,6 +2905,13 @@ fn isVectorRef(r: Ref) bool {
     return vt_ptr.* == mkEid(RRB_VT);
 }
 
+fn isMapRef(r: Ref) bool {
+    if ((r & 0b111) != 0) return false;
+    if (r == 0) return false;
+    const vt_ptr: *const Ref = @ptrFromInt(r - @sizeOf(Ref));
+    return vt_ptr.* == mkEid(ASSOC_VT);
+}
+
 /// Append a human display of `val` into `buf` at `off`, returning the new
 /// offset. Best-effort (truncates on overflow). Recurses into vectors → `#[..]`.
 fn appendRef(buf: []u8, off: usize, val: Ref) usize {
@@ -2772,10 +2928,38 @@ fn appendRef(buf: []u8, off: usize, val: Ref) usize {
         }
         return o + (std.fmt.bufPrint(buf[o..], "]", .{}) catch return o).len;
     }
+    if (isMapRef(val)) {
+        var o = off + (std.fmt.bufPrint(buf[off..], "{{", .{}) catch return off).len;
+        const ks = g_api.?.map_keys(val);
+        const vs = g_api.?.map_values(val);
+        const len = g_api.?.rrb_len(ks);
+        var i: u64 = 0;
+        while (i < len) : (i += 1) {
+            if (i > 0) o += (std.fmt.bufPrint(buf[o..], " ", .{}) catch return o).len;
+            // Map key: render a keyword bare (`name:`), else generic.
+            const k = g_api.?.rrb_nth(ks, i);
+            if (isEid(k)) {
+                const nm = g_api.?.symbol_name(k >> 3);
+                if (nm != NIL and isString(nm)) {
+                    o += (std.fmt.bufPrint(buf[o..], "{s}: ", .{stringBytes(nm)}) catch return o).len;
+                } else {
+                    o = appendRef(buf, o, k);
+                    o += (std.fmt.bufPrint(buf[o..], ": ", .{}) catch return o).len;
+                }
+            } else {
+                o = appendRef(buf, o, k);
+                o += (std.fmt.bufPrint(buf[o..], ": ", .{}) catch return o).len;
+            }
+            o = appendRef(buf, o, g_api.?.rrb_nth(vs, i));
+        }
+        return o + (std.fmt.bufPrint(buf[o..], "}}", .{}) catch return o).len;
+    }
     if (isEid(val)) {
         const e = val >> 3;
         if (e == TRUE_EID) return off + (std.fmt.bufPrint(buf[off..], "true", .{}) catch return off).len;
         if (e == FALSE_EID) return off + (std.fmt.bufPrint(buf[off..], "false", .{}) catch return off).len;
+        const nm = g_api.?.symbol_name(e);
+        if (nm != NIL and isString(nm)) return off + (std.fmt.bufPrint(buf[off..], "#{s}", .{stringBytes(nm)}) catch return off).len;
         return off + (std.fmt.bufPrint(buf[off..], "<eid:{d}>", .{e}) catch return off).len;
     }
     if (isString(val)) return off + (std.fmt.bufPrint(buf[off..], "\"{s}\"", .{stringBytes(val)}) catch return off).len;

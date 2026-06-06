@@ -264,6 +264,29 @@ pub const IdApi = extern struct {
     rrb_len: *const fn (Ref) callconv(.c) u64,
     /// Element at `idx` (caller bounds-checks).
     rrb_nth: *const fn (Ref, u64) callconv(.c) Ref,
+
+    // -- Phase 16 Tier C: persistent maps (append-only) --------------------
+    /// Empty keyword-keyed map (ASSOC_VT Ref).
+    make_map: *const fn () callconv(.c) Ref,
+    /// Immutable put → a NEW map with `key`→`val`.
+    map_put: *const fn (Ref, Ref, Ref) callconv(.c) Ref,
+    /// Value for `key`, or NIL if absent (use `map_has` to disambiguate a
+    /// stored nil from absence — no-NULL).
+    map_get: *const fn (Ref, Ref) callconv(.c) Ref,
+    /// Whether `key` is present.
+    map_has: *const fn (Ref, Ref) callconv(.c) bool,
+    /// Entry count.
+    map_len: *const fn (Ref) callconv(.c) u64,
+    /// Keys as a vector (RRB Ref).
+    map_keys: *const fn (Ref) callconv(.c) Ref,
+    /// Values as a vector (RRB Ref).
+    map_values: *const fn (Ref) callconv(.c) Ref,
+    /// Merge two maps → a NEW map (`b` overrides `a`).
+    map_merge: *const fn (Ref, Ref) callconv(.c) Ref,
+
+    /// Interned name of `eid` as a string Ref, or NIL if not interned. Lets the
+    /// display layer render keyword/selector eids by name (Phase 16 Tier C).
+    symbol_name: *const fn (u64) callconv(.c) Ref,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -382,7 +405,62 @@ pub fn populate() IdApi {
         .rrb_with = &cRrbWith,
         .rrb_len = &cRrbLen,
         .rrb_nth = &cRrbNth,
+        .make_map = &cMakeMap,
+        .map_put = &cMapPut,
+        .map_get = &cMapGet,
+        .map_has = &cMapHas,
+        .map_len = &cMapLen,
+        .map_keys = &cMapKeys,
+        .map_values = &cMapValues,
+        .map_merge = &cMapMerge,
+        .symbol_name = &cSymbolName,
     };
+}
+
+fn cSymbolName(eid: u64) callconv(.c) Ref {
+    const i = g_interner orelse return ref_mod.NIL;
+    const name = i.nameOf(eid) orelse return ref_mod.NIL;
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    return strings.mkString(a, name) catch ref_mod.NIL;
+}
+
+// -- Phase 16 Tier C: map primitives ---------------------------------------
+
+fn cMakeMap() callconv(.c) Ref {
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    return boxed.mkMap(a) catch ref_mod.NIL;
+}
+fn cMapPut(map: Ref, key: Ref, val: Ref) callconv(.c) Ref {
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    if (!boxed.isMapRef(map)) return ref_mod.NIL;
+    return boxed.mapPut(a, map, key, val) catch ref_mod.NIL;
+}
+fn cMapGet(map: Ref, key: Ref) callconv(.c) Ref {
+    if (!boxed.isMapRef(map)) return ref_mod.NIL;
+    return boxed.mapGet(map, key) orelse ref_mod.NIL;
+}
+fn cMapHas(map: Ref, key: Ref) callconv(.c) bool {
+    if (!boxed.isMapRef(map)) return false;
+    return boxed.mapGet(map, key) != null;
+}
+fn cMapLen(map: Ref) callconv(.c) u64 {
+    if (!boxed.isMapRef(map)) return 0;
+    return @intCast(boxed.mapLen(map));
+}
+fn cMapKeys(map: Ref) callconv(.c) Ref {
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    if (!boxed.isMapRef(map)) return ref_mod.NIL;
+    return boxed.mapKeys(a, map) catch ref_mod.NIL;
+}
+fn cMapValues(map: Ref) callconv(.c) Ref {
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    if (!boxed.isMapRef(map)) return ref_mod.NIL;
+    return boxed.mapValues(a, map) catch ref_mod.NIL;
+}
+fn cMapMerge(x: Ref, y: Ref) callconv(.c) Ref {
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    if (!boxed.isMapRef(x) or !boxed.isMapRef(y)) return ref_mod.NIL;
+    return boxed.mapMerge(a, x, y) catch ref_mod.NIL;
 }
 
 // -- Phase 16 Tier A: vector primitives ------------------------------------

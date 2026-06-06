@@ -164,6 +164,79 @@ pub fn rrbNth(vec: Ref, idx: usize) Ref {
     return untagRrbRef(vec).nth(idx);
 }
 
+// -- Phase 16 Tier C: persistent map (ASSOC_VT) --------------------------
+
+const hamt = @import("hamt.zig");
+
+/// Keyword-keyed persistent map VALUE. Keys are Refs by-value (a keyword
+/// `#name` is an `mkEid` Ref); the HAMT key is the key Ref's bits.
+pub const MapRef = hamt.Hamt(u64, Ref, hamt.U64Ctx);
+
+pub fn wrapMap(allocator: std.mem.Allocator, m: MapRef) !Ref {
+    const m_ptr = try allocator.create(MapRef);
+    m_ptr.* = m;
+    const obj_ptr = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.ASSOC_VT), 1);
+    object.setSlot(obj_ptr, 0, ref_mod.mkPointer(@ptrCast(m_ptr)));
+    return object.toRef(obj_ptr);
+}
+
+pub fn mkMap(allocator: std.mem.Allocator) !Ref {
+    return wrapMap(allocator, MapRef.empty(allocator, .{}));
+}
+
+pub fn isMapRef(r: Ref) bool {
+    if (!ref_mod.isPointer(r)) return false;
+    const obj = object.fromRef(r);
+    const vt = object.vtableOf(obj);
+    if (!ref_mod.isEid(vt)) return false;
+    return ref_mod.untagEid(vt) == kernel_eids.ASSOC_VT;
+}
+
+pub fn untagMapRef(r: Ref) *const MapRef {
+    std.debug.assert(isMapRef(r));
+    const obj = object.fromRef(r);
+    const inner = object.slotAt(obj, 0);
+    std.debug.assert(ref_mod.isPointer(inner));
+    return @ptrCast(@alignCast(ref_mod.untagPointer(inner)));
+}
+
+/// Immutable put: a NEW map = `map` with `key` → `val` (structural sharing).
+pub fn mapPut(allocator: std.mem.Allocator, map: Ref, key: Ref, val: Ref) !Ref {
+    var m = untagMapRef(map).*;
+    m = try m.assoc(key, val);
+    return wrapMap(allocator, m);
+}
+
+pub fn mapGet(map: Ref, key: Ref) ?Ref {
+    return untagMapRef(map).get(key);
+}
+
+pub fn mapLen(map: Ref) usize {
+    return untagMapRef(map).count();
+}
+
+/// Collect a map's keys (true) or values (false) into a fresh RRB vector.
+fn mapColumn(allocator: std.mem.Allocator, map: Ref, want_keys: bool) !Ref {
+    var r = RrbRef.empty(allocator);
+    var it = untagMapRef(map).iter();
+    while (it.next()) |kv| r = try r.push(if (want_keys) kv.key else kv.value);
+    return wrapRrb(allocator, r);
+}
+pub fn mapKeys(allocator: std.mem.Allocator, map: Ref) !Ref {
+    return mapColumn(allocator, map, true);
+}
+pub fn mapValues(allocator: std.mem.Allocator, map: Ref) !Ref {
+    return mapColumn(allocator, map, false);
+}
+
+/// Merge: `b`'s entries override `a`'s → a NEW map.
+pub fn mapMerge(allocator: std.mem.Allocator, a: Ref, b: Ref) !Ref {
+    var m = untagMapRef(a).*;
+    var it = untagMapRef(b).iter();
+    while (it.next()) |kv| m = try m.assoc(kv.key, kv.value);
+    return wrapMap(allocator, m);
+}
+
 pub fn isRrbRef(r: Ref) bool {
     if (!ref_mod.isPointer(r)) return false;
     const obj = object.fromRef(r);
