@@ -1831,7 +1831,18 @@ Take Clojure's ideas, but don't import them as a checklist — most either fall 
 
 **16.0 — the `|>` pipe operator (the immutable replacement for the dropped cascade).** Cascades (`;`, many messages to one *mutable* receiver) were dropped for poor syntactic fit — correct, because immutable values *thread* (each op returns a NEW value → wants it as the next *receiver*), they don't cascade. The real hole: **keyword messages don't chain** — `coll with: 1` returns a new coll, and chaining means `[[coll with: 1] with: 2]` (nested-bracket hell), exactly the dominant immutable-collection shape. `|>` fixes it: `x |> with: 1 |> with: 2 |> select: even` desugars to `[[[x with: 1] with: 2] select: even]`. **Thread-as-receiver** (Clojure `->`, not `->>`), because birnam collections ARE the receiver. ONE operator (don't pre-build a thread-last twin — that's the "two ways" trap). Pure grammar + desugar, no kernel change.
 
-### §Status — Tiers A+B SHIPPED 2026-06-06 (branch phase-16-tier-a, 420/420)
+### §Status — Tiers A+B+C SHIPPED 2026-06-06 (branch phase-16-tier-a, 421/421)
+
+**Tier C (maps):** `{k: v}` keyword-keyed HAMT map literal + ASSOC_VT dict
+protocol (`at:put:`/`at:`/`at:ifAbsent:`/`includesKey:`/`size`/`keys`/`values`/
+`merge:`/`do:`). Literal desugars to an `at:put:` chain (works tree-walker +
+bytecode). `map_has` disambiguates stored-nil vs absent (no-NULL). REPL renders
+`{k: v}` with keyword keys by name (new `symbol_name` IdApi); symbols print
+`#name`. **Seq-unification deferred to Tier D** — strings/ranges answering
+`do:`/`reduce:` need string-char iteration + a range type (both Tier D); query
+results already materialize as RRB vectors.
+
+### Tiers A+B SHIPPED 2026-06-06 (branch phase-16-tier-a)
 
 **Tier B (self-hosting + pipe):** `collect:`/`select:`/`count`/`,` (concat) on
 RRB_VT derived in BIRNAM SOURCE over Tier A's `inject:into:`/`with:`/`size`
