@@ -66,6 +66,7 @@ const DB_PROTO: u64 = 197;
 // Phase 16 — RRB-backed vector vtable (mirror of kernel_eids.RRB_VT).
 const RRB_VT: u64 = 9;
 const ASSOC_VT: u64 = 6; // Phase 16 Tier C — map vtable (mirror)
+const SEL_DNU: u64 = 198; // Phase 16 Tier D — doesNotUnderstand: (mirror)
 const ATTR_ERROR_MESSAGE: u64 = 44; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
 
 const ATTR_AST_VALUE: u64 = 118;
@@ -2752,8 +2753,28 @@ fn installNumberProtocol() void {
     _ = api.assert_fact(FLOAT_VT, api.intern("round".ptr, 5), mkEid(api.make_closure(@ptrCast(&floatRoundImpl), NIL)), g_module_eid);
 }
 
+/// Phase 16 Tier D — default doesNotUnderstand:. `a[0]` = the missing selector
+/// as a symbol. Returns an ERROR_VT diagnostic naming the selector.
+fn dnuImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    const sel_ref = a[0];
+    const nm = if (isEid(sel_ref)) api.symbol_name(sel_ref >> 3) else NIL;
+    var buf: [160]u8 = undefined;
+    const msg = if (nm != NIL and isString(nm))
+        (std.fmt.bufPrint(&buf, "does not understand: #{s}", .{stringBytes(nm)}) catch "does not understand")
+    else
+        "does not understand (unknown selector)";
+    return mkRuntimeError(msg);
+}
+
 fn installBoolNil() void {
     const api = g_api.?;
+    // Tier D — default doesNotUnderstand: on OBJECT_VT (delegating types) + the
+    // non-delegating immediates. Unknown selectors → graceful ERROR_VT.
+    for ([_]u64{ OBJECT_VT, SMALLINT_VT, TRUE_VT, FALSE_VT }) |vt| {
+        _ = api.assert_fact(vt, SEL_DNU, mkEid(api.make_closure(@ptrCast(&dnuImpl), NIL)), g_module_eid);
+    }
     const isnil = api.intern("isNil".ptr, 5);
     const ifnil = api.intern("ifNil:".ptr, 6);
     const ifnotnil = api.intern("ifNotNil:".ptr, 9);
@@ -3088,6 +3109,8 @@ fn appendRef(buf: []u8, off: usize, val: Ref) usize {
         const e = val >> 3;
         if (e == TRUE_EID) return off + (std.fmt.bufPrint(buf[off..], "true", .{}) catch return off).len;
         if (e == FALSE_EID) return off + (std.fmt.bufPrint(buf[off..], "false", .{}) catch return off).len;
+        const em = g_api.?.query_eavt(e, ATTR_ERROR_MESSAGE);
+        if (em != NIL and isString(em)) return off + (std.fmt.bufPrint(buf[off..], "error: {s}", .{stringBytes(em)}) catch return off).len;
         const nm = g_api.?.symbol_name(e);
         if (nm != NIL and isString(nm)) return off + (std.fmt.bufPrint(buf[off..], "#{s}", .{stringBytes(nm)}) catch return off).len;
         return off + (std.fmt.bufPrint(buf[off..], "<eid:{d}>", .{e}) catch return off).len;

@@ -235,6 +235,32 @@ test "DEMO: parse + eval [3 squared] → 9" {
     try testing.expectEqual(@as(i64, 9), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 16 Tier D: doesNotUnderstand: — unknown selector → ERROR_VT, known unaffected" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    // Unknown selector → an ERROR_VT diagnostic (not a crash, not NIL).
+    {
+        const src = try strings.mkString(a, "[5 frobnicate]");
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        const val = send_mod.send0(ast, sel_eval);
+        try testing.expect(ref_mod.isEid(val));
+        try testing.expectEqual(kernel_eids.ERROR_VT, ref_mod.untagEid(s.store.currentValue(ref_mod.untagEid(val), kernel_eids.ATTR_VTABLE).?));
+    }
+    // Known selector still dispatches normally.
+    {
+        const src = try strings.mkString(a, "[5 squared]");
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        try testing.expectEqual(@as(i64, 25), ref_mod.untagSmallInt(send_mod.send0(ast, sel_eval)));
+    }
+}
+
 test "DEMO 16 Tier D: bool/nil ergonomics — isNil/ifNil:/ifNotNil:/not/and:/or:" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

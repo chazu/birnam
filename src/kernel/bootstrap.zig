@@ -161,6 +161,7 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_METHOD_AT_PUT_WITH, "methodAt:put:with:");
     try interner.seed(store, kernel_eids.SEL_DELEGATED, "delegated");
     try interner.seed(store, kernel_eids.SEL_INIT, "init");
+    try interner.seed(store, kernel_eids.SEL_DNU, "doesNotUnderstand:");
     try interner.seed(store, kernel_eids.SEL_ALLOCATE, "allocate");
     try interner.seed(store, kernel_eids.SEL_VTABLE, "vtable");
     try interner.seed(store, kernel_eids.ATTR_SAVED_QUERY_NAME, "saved-query-name");

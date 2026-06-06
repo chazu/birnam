@@ -231,7 +231,24 @@ pub fn sendN(receiver: Ref, sel: Selector, args: [*]const Ref, n_args: usize) Re
         .state = receiver,
         .closure = null,
     };
-    const c = bind(&s) orelse return ref_mod.NIL;
+    const c = bind(&s) orelse {
+        // Phase 16 Tier D — method not found: route to `doesNotUnderstand:`
+        // with the missing selector as a symbol, IF a handler is installed.
+        // Falls back to NIL (the historical miss result) when none exists, and
+        // never recurses on a missing DNU itself.
+        if (sel == kernel_eids.SEL_DNU) return ref_mod.NIL;
+        var dnu = Send{
+            .selector = kernel_eids.SEL_DNU,
+            .receiver = receiver,
+            .n_args = 1,
+            .state = receiver,
+            .closure = null,
+        };
+        const dc = bind(&dnu) orelse return ref_mod.NIL;
+        const dm: Imp = @ptrCast(@alignCast(dc.method));
+        var dargs: [1]Ref = .{ref_mod.mkEid(sel)};
+        return dm(&dnu, &dargs, 1);
+    };
     const m: Imp = @ptrCast(@alignCast(c.method));
     return m(&s, args, n_args);
 }

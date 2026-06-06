@@ -553,4 +553,10 @@ pub const DB_PROTO_VT: u64 = 196;
 /// `DB_PROTO` — the singleton `db` prototype object, bound to the global `db`.
 pub const DB_PROTO: u64 = 197;
 
-// 198..255 reserved for future kernel selectors / attributes
+/// `doesNotUnderstand:` selector — sent to a receiver when dispatch finds no
+/// method for a selector (Phase 16 Tier D). Seeded at boot so `send.zig` (which
+/// can't intern) can reference it. The handler receives the missing selector as
+/// a symbol Ref.
+pub const SEL_DNU: u64 = 198;
+
+// 199..255 reserved for future kernel selectors / attributes
