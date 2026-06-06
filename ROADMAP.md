@@ -1694,7 +1694,45 @@ so the mark walk needs no per-allocation type tag.
 
 ---
 
-## Phase 15.R — Retention / Snapshots / Excision (spec)
+## Phase 15.R — Retention / Snapshots / Excision (R1–R4 SHIPPED 2026-06-06)
+
+### §Status (2026-06-06) — R1–R4 kernel mechanism shipped, 413/413, 0 leaked
+
+Branch `phase-15r-retention`. The full retention/snapshot/excision/cold-tier
+kernel mechanism is implemented + tested. Commits R1a→R4:
+- **R1a** separate monotonic `basis_t` (never resets on compact; `next_tx`
+  stays the per-epoch coordinate).
+- **R1b** refcounted index epoch registry; `compact` frees an old epoch only
+  when `refcount==0 && max_basis < oldestRetainedBasisT()` (no-snapshot path =
+  identical to 15.I). `pinEpoch`/`unpinEpoch`.
+- **R1c** first-class pinning `Snapshot` = read-only FactStore view capturing
+  the 5 roots by value; `snapshotNow()` pins its epoch so compact retains it.
+  Because a Snapshot IS a FactStore, all datalog/iterators work against it
+  (Decision B).
+- **R2** `basis` added to history entries → exact `currentValueAsOfBasis`.
+  `RetentionPolicy {current_only|keep_all|keep_since_basis|keep_last_n}` +
+  `setRetention`; `compact` rebuild via `compactInsert` (single collapse basis);
+  retained epochs store their `IndexRoots` → queryable history archives;
+  `snapshotAsOf(basis)` routes to the covering epoch.
+- **R3** `exciseEntity` (GDPR) — surgical removal from live index AND every
+  retained archive; refuses (`error.SnapshotPins`) while a live snapshot pins
+  an epoch (Decision C).
+- **R1d** shell surface: `:retain`, `:excise`, `:asof` (kernel-linked, zero
+  module-ABI risk).
+- **R4** on-disk cold tier: `applyAssert`/`applyRetract` extracted so replay is
+  faithful; `spillEpoch`/`faultInEpoch` serialize an epoch's event log to a
+  segment file, free RAM, fault back on demand; `snapshotAsOf`/`exciseEntity`
+  auto-fault cold archives.
+
+**Follow-ons (own passes, non-blocking):** held db-value as a SNAPSHOT_VT object
+with `[db now]`/`[db asOf: t]`/`[snap find:where:]` message-send sugar + value-
+heap GC auto-release on last drop (R1d elegant tier); `exciseTxRange` (basis-
+range history surgery — entity excise is the primary GDPR case); the mmap RO
+fast path vs replay (Phase 12.5); auto-eviction cadence (when to spill — today
+spill is an explicit trigger). Image-format persistence of `basis_t` (today
+re-derived on load; snapshots don't cross saves).
+
+---
 
 **Why a distinct phase.** The persistent (HAMT/RRB) substrate was chosen so that history, snapshots, and time-travel are free (an index root = a zero-copy snapshot). Phase 13/15 framed reclamation as "GC for a database" — correct for the value-heap, but a category error for the fact layer. The fact layer's question is not "is this byte reachable?" but "which history do we keep, for how long, and where does it live?" That is **retention policy + snapshot pinning + excision**, the Datomic bargain. This phase makes it real and keeps it **tiered: invisible by default, surfaced only when a user reaches for time-travel** (a user who only wants "now" never becomes a DBA). See VISION §Memory ¶Retention + §Image/Snapshot.
 
@@ -1711,6 +1749,44 @@ Milestones (each its own design+commit pass; order is dependency order):
 - **R3 — explicit excision.** Hard-delete of named entities or `tx` ranges within the retained window (GDPR-shaped). The ONE op that can invalidate a held snapshot — so it is always user-invoked, never automatic, and either refuses or explicitly tombstones when a live snapshot covers the excised range. Distinct from `prune` (which only collapses *below* the horizon).
 
 - **R4 — on-disk cold-history tier (runtime).** History inside the retention policy but older than the live working set spills to disk *at runtime*: warm/current epochs stay in RAM; cold tx-epochs are written to epoch-granular segment files and evicted from RAM, faulted back only when an `as-of` query reaches them. Bounds a long-lived image's resident set by working set, not total history. Substrate = the single-file page-aligned image layout (Phase 12); the epoch arena's epoch granularity is exactly the spill/evict unit. Interacts with the deferred Phase 12.5 mmap-segment fast path (a cold epoch can be `mmap`'d RO rather than replayed).
+
+### Work items (fleshed 2026-06-06)
+
+**Substrate baseline (15.I, shipped).** `FactStore.index_arena: ?*ArenaAllocator` (single epoch), `retain_history: bool`, and `compact()` which (a) snapshots current facts via `meatIter()`, (b) swaps to a fresh epoch, (c) **resets `next_tx` to 1**, (d) rebuilds current-only, (e) frees the old epoch iff `index_arena != null and !retain_history`. 15.R generalizes (a)/(c)/(e) and replaces the bool gate with `oldestRetainedBasisT()`.
+
+**Data-model changes that thread through all of R1–R4:**
+- **Monotonic basis-T.** A **separate** global commit counter (Decision A, locked 2026-06-06) that **does NOT reset on compact** — distinct from `next_tx`, which stays free to reset to 1 on compact as today. `basis_t` is the durable user-facing time coordinate for `asOf:`, snapshot identity, and epoch `min_basis_t`; `next_tx` remains per-epoch internal. Smaller blast radius on existing compact logic; image format gains one `basis_t` field.
+- **Epoch list, refcounted.** Replace the single `index_arena` + transient `old_epoch` with `epochs: []Epoch` where `Epoch = { arena, min_basis_t, refcount }`. Head = current (writable). compact pushes a new head; old epochs live until their refcount hits 0 AND they're below `oldestRetainedBasisT()`.
+- **`oldestRetainedBasisT()`** = `min(` live-snapshot basis-Ts, retention-horizon floor, AOT `--strip=history` floor `)`; defaults to "now" (current-only) so all machinery is inert until opted in.
+
+#### R1 — db-value as a first-class pinning snapshot
+- **R1.1 Snapshot value.** Reserve `SNAPSHOT_VT` kernel eid. A snapshot entity wraps `{ eavt, aevt, avet, vaet, meat (5 roots by value), basis_t, epoch_idx }`. Constructed by `[db now]` and `[db asOf: tx]`. Immutable; an ordinary GC object (value-heap, Phase 15).
+- **R1.2 Snapshot registry.** `SnapshotRegistry` in fact_store: live snapshots → their `(basis_t, epoch_idx)`. `register()` on snapshot construct (incr epoch refcount); `unregister()` when the SNAPSHOT_VT wrapper is GC-swept (hook in `gc.zig` sweep of SNAPSHOT_VT). `oldestRetainedBasisT()` reads the min.
+- **R1.3 Epoch pinning + gate swap.** Generalize `index_arena` → epoch list (above). `compact()` free condition changes from `!retain_history` to: free epoch E iff `E.refcount == 0 && E.min_basis_t < oldestRetainedBasisT()`. (Today, no snapshots held → reduces to "free on compact," identical to 15.I behavior — must stay green.)
+- **R1.4 Read-through-snapshot — full datalog (Decision B, locked 2026-06-06).** The query engine takes an optional root-set; `[snap find: ?x where: #( ... )]` runs ANY datalog clause against the snapshot's own 5 roots, not the live store. Touches `query.zig` dispatch (thread a root-set param through clause evaluation instead of reading `store.eavt` etc. globally). Time-travel is fully usable on landing — the headline feature complete in R1, not a follow-on.
+- **API:** `[db now] → snapshot`, `[db asOf: tx] → snapshot`, `[snap get:attr:]` (point read), `[snap find:where:]` (full datalog), `[snap basisT]`. Releasing the last ref → epoch collectible at next compact.
+
+#### R2 — retention horizon policy
+- **R2.1 Policy value.** `RetentionPolicy = current-only (default) | keep-last-N-txs | keep-since-T | keep-reachable-from-roots`. Stored on the store; settable via `[db retain: <policy>]`.
+- **R2.2 Horizon feeds the one gate.** `oldestRetainedBasisT()` folds horizon floor with the live-snapshot min + AOT strip floor. No new free path.
+- **R2.3 compact preserves history within window.** The meaty change: when horizon > now, `compact()` must replay **history facts within the window** (not just `meatIter()` current values) into the new epoch, and must **stop resetting basis-T**. Below the horizon, history still collapses (this is `prune`). Default current-only → unchanged from 15.I.
+
+#### R3 — explicit excision (GDPR-shaped)
+- **R3.1** `[db excise: entity]` / `[db exciseTxRange: a to: b]` — hard-delete of facts WITHIN the retained window (distinct from `prune`, which only collapses below the horizon).
+- **R3.2 Snapshot safety — refuse (Decision C, locked 2026-06-06).** Excise **errors** if any live snapshot covers the excised range; the user must drop those snapshots first. A snapshot value is never silently corrupted — no invalid-snapshot state to handle anywhere. Conservative default; can relax to tombstone-and-invalidate later if GDPR-delete-always-wins is needed. Always user-invoked, never automatic.
+- **R3.3** Excise rewrites affected epochs (can't structurally-share a hole) → forces the touched epoch(s) to rebuild.
+
+#### R4 — on-disk cold-history tier (runtime)
+- **R4.1 Epoch → segment spill.** An epoch below the live working set but within policy spills to a page-aligned segment file (Phase 12 image layout is the substrate; epoch granularity = spill unit) and is evicted from RAM.
+- **R4.2 Fault-in.** An `asOf:` query reaching a cold basis-T faults its segment back — replay-based first; the `mmap` RO fast path ties to the deferred Phase 12.5 work.
+- **R4.3** Resident set bounded by working set, not total history. Verify with a long-lived-image growth test.
+
+**Existing-code touchpoints (for the implementer):** `fact_store.zig` — `index_arena`→epoch list, `indexAlloc()`, `compact()` free gate + no-reset basis-T + history-window replay; `next_tx` semantics. `gc.zig` — SNAPSHOT_VT sweep → registry unregister. `kernel_eids.zig` — `SNAPSHOT_VT`. `query.zig` — optional root-set injection (Decision B). Shell — `:asof`, `:retain`, `:excise` commands mirroring the db-value API.
+
+### Decisions locked (2026-06-06)
+- **A — basis-T identity:** SEPARATE global `basis_t` counter (never resets); `next_tx` stays free to reset on compact. Smaller blast radius.
+- **B — R1 read scope:** FULL datalog-over-snapshot in R1 (query engine takes an optional root-set). Headline feature complete on landing.
+- **C — excise vs live snapshot:** REFUSE when a held snapshot covers the range (user drops snapshots first). No invalid-snapshot state.
 
 **Non-goals / explicitly deferred:** distributed/multi-peer history (Datomic's transactor/peer split — ADR-11 threading note covers the single-transactor shape only); cryptographic history integrity; per-attribute `:no-history` (Phase 11.x schema item, orthogonal).
 
@@ -1736,22 +1812,56 @@ Take Clojure's ideas, but don't import them as a checklist — most either fall 
 
 **16.0 — the `|>` pipe operator (the immutable replacement for the dropped cascade).** Cascades (`;`, many messages to one *mutable* receiver) were dropped for poor syntactic fit — correct, because immutable values *thread* (each op returns a NEW value → wants it as the next *receiver*), they don't cascade. The real hole: **keyword messages don't chain** — `coll with: 1` returns a new coll, and chaining means `[[coll with: 1] with: 2]` (nested-bracket hell), exactly the dominant immutable-collection shape. `|>` fixes it: `x |> with: 1 |> with: 2 |> select: even` desugars to `[[[x with: 1] with: 2] select: even]`. **Thread-as-receiver** (Clojure `->`, not `->>`), because birnam collections ARE the receiver. ONE operator (don't pre-build a thread-last twin — that's the "two ways" trap). Pure grammar + desugar, no kernel change.
 
-### Work items (to flesh out)
+### Build order (fleshed 2026-06-06 — supersedes the literal 16.1→16.5 numbering)
 
-16.1 A vector/list prototype (`VECTOR_VT` already kernel-reserved) with a literal syntax (e.g. `#[a b c]`) and grammar rule. Persistent (RRB-backed), value-returning.
+The roadmap-number order is NOT the build order. Two Phase-17 items (`printString`, bool/nil + `doesNotUnderstand:`) are prerequisites for *exploring* Phase 16 and are pulled forward; `|>` (numbered 16.5) is the ergonomic linchpin and moves up next to the first value-returning keyword message. **15.R ships first** (decided 2026-06-06) so reference types (Tier E) debut with full `asOf:`/`history` time-travel.
 
-16.2 Core protocol on the `reduce:` kernel: `size`, `at:`, `do:`, `collect:`, `select:`, `detect:`, `inject:into:`, `,` (concat), and element-add — **naming: `with:`** (immutable "augmented copy", Smalltalk-resonant; provisional, but explicitly NOT `conj` — avoid the on-the-nose Clojure tell). `at:put:` returns a new collection (or is transient-only).
+**No-NULL resolution (locked 2026-06-06, Date-exact — see VISION §No-NULL):** nil is a value, absence is not. nil-object is freely storable/returnable; absence rides a separate channel (`ifAbsent:` / empty-result / raise), never a value. This governs every `at:`-shaped API below.
 
-16.3 Persistent semantics on RRB (structural sharing) is the default; a materialized/transient array is the explicit escape hatch (Clojure transients).
+**Bracket-literal family — LOCKED (all four designed now, even though set ships later):**
 
-16.4 Maps / associations (`ASSOC_VT` reserved) + a dictionary protocol + the `{k: v}` map literal (keyword-keyed HAMT value). `get: at: with: merge: keys values`.
+| form | meaning | built |
+|---|---|---|
+| `#( ... )` | quoted literal array (query clause lists) | exists |
+| `#[a b c]` | persistent **vector** value (RRB-backed) | A (16.1) |
+| `{k: v}` | keyword-keyed **map** value (HAMT) | C (16.4) |
+| `#{ a b }` | **set** value (HAMT) | grammar reserved in A; proto later |
 
-16.5 `|>` pipe operator (16.0 above) — grammar rule + desugar.
+Reader discipline: `#(`=quote-array, `#[`=vector, `#{`=set, `{`=map. `{` is the only non-`#`-prefixed literal — confirm no collision in the PEG `atom`/`expression` rules before adding (today `{` is unused → safe). Set proto is a thin layer over the same HAMT the map uses, so reserving its literal now costs one grammar rule.
+
+#### Tier A — make a collection exist and visible
+- **16.1 Vector** (`VECTOR_VT` kernel-reserved) + `#[a b c]` literal (PEG rule + desugar). Persistent (RRB), value-returning. `at:` **raises** out-of-bounds (domain error, not absence); `at:ifAbsent:` = checked variant. `size`.
+- **16.2a `reduce:` primitive** + `reduced` early-out sentinel. The kernel of the whole protocol; a thin Zig RRB-walk primitive (`inject:into:` is the seeded form). Everything else derives from it.
+- **17.1↑ `printString` / `displayString` / `print:`** (pulled forward — can't debug a collection you can't print). Small primitive + birnam-source recursion over `do:`.
+
+#### Tier B — derive the protocol in birnam SOURCE
+- **16.2b** `do: collect: select: detect: count , (concat)` written **in birnam over `reduce:`** — the self-hosting payoff, not Zig. Element-add **naming: `with:`** (immutable augmented copy; explicitly NOT `conj`). `at:put:` returns a new collection (or transient-only).
+- **16.5↑ `|>` pipe** (16.0 above) — grammar rule + desugar. `x |> with:1 |> with:2 |> select: even` → `[[[x with:1] with:2] select: even]`. Thread-as-receiver (`->`). **ONE operator** (no thread-last twin). Pure grammar, zero kernel. Moves here because the moment `with:`/`collect:` return new receivers, nested-bracket hell appears.
+
+#### Tier C — second collection + the unification payoff
+- **16.4 Map / assoc** (`ASSOC_VT` reserved) + `{k: v}` literal (keyword-keyed HAMT *value*, distinct from a heavyweight entity). Protocol: `at:ifAbsent:` (**primary**), `at:` = `at:ifAbsent:[raise]`, `includesKey:`, `with:` (assoc), `merge:`, `keys`, `values`. **Map values may be nil-object** (real value); stored-nil vs absent stays distinguishable via `ifAbsent:`.
+- **16.x seq unification** — extend the one `seq`/iteration protocol to **strings + ranges + query-results** so a datalog answer and a vector answer the same `do:`/`reduce:`. Query results already exist (Phase 7). Highest-leverage glue in the arc; nearly free once 16.2 exists. (Tenet 3 proof.)
+
+#### Tier D — ergonomics + escape hatch
+- **17.5↑ bool/nil** (pulled forward) — `and:`/`or:` (short-circuit), `not`, `&`/`|`; `isNil`/`ifNil:`/`ifNotNil:`. Cheap, high-use, needed throughout collection exploration.
+- **17.3 `doesNotUnderstand:`** + equality/comparison protocol across types — foundational reflection + graceful unknown-selector handling; underlies sort / `min:` / `max:` / sorted collections.
+- **destructuring** in `let` + block params (`[:a :b | ...]` from a seq, map destructure) — grammar + desugar. DNA cheap-steal, biggest ergonomics-per-effort win.
+- **17.4 number protocol** — `abs modulo min: max: sqrt floor ceil round even odd between:and:`. Mostly birnam-source over existing SmallInt/Float primitives.
+- **16.3 transients** — locally-mutable build, frozen on publish (Clojure transients). The explicit escape hatch; persistent RRB sharing is the default. Build only when bulk-build perf bites.
+
+#### Tier E — gated / later (post-15.R)
+- **reference types** `cell`/`ref`/`atom` = thin sugar over entity+attr+tx. **Lead feature.** read = `currentValue`, update = assert (new tx). Full `@thing asOf: tx` / `[thing history]` — works day one because 15.R already shipped. Coordinated multi-entity change = one transactor `transact:` block (no STM — subsumed by single-transactor).
+- **17.6 applicative *patterns*** (NOT the abstraction) — `validate:` (accumulate ALL failures, pairs with schema-as-facts 9.5.2); `zip`/`whenAll:` (independent combination → parallelizable over future transactor threads). `|>` = sequential pipe; `zip`/`whenAll:` = independent combinator.
+- **transducers** — refactor `map/filter/take` onto a transducer core (eager, no intermediate allocs); expose `comp` only once channels justify the decoupling. DNA "later".
+- **metadata** `withMeta:`/`meta` — free (just more facts; equality already ignores it). Anytime.
 
 ### Reasoning
 Can't meaningfully explore a language without data structures + iteration. Kernel
-substrate is ready; this is surface + a small set of primitives (or birnam-source
-methods over the RRB).
+substrate is ready; this is surface + a small set of primitives (`reduce:`, literals)
+with the bulk derived in birnam source over the RRB. Order is driven by *what you
+need to see/debug a collection* (printString, bool/nil, `|>`) ahead of breadth,
+and by the one-seq-protocol tenet (vector/map/string/range/query-result all answer
+`do:`).
 
 ---
 

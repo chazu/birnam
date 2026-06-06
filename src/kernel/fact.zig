@@ -36,14 +36,21 @@ pub const Op = enum(u8) {
 /// EAVT/AEVT/MEAT keys don't include `v`.
 pub const ValueHist = struct {
     v: Ref,
+    /// Epoch-local tx (resets on compact). Per-epoch coordinate.
     tx: u64,
     op: Op,
+    /// Phase 15.R — durable basis-T (never resets on compact). Exact `asOf:`
+    /// walks history by this. 0 for entries written before basis tracking
+    /// (e.g. `frozenInsert`, which is read-only afterward).
+    basis: u64 = 0,
 };
 
 /// History entry for a `PresenceCell`. No value needed — it's in the key path.
 pub const PresenceHist = struct {
     tx: u64,
     op: Op,
+    /// Phase 15.R — durable basis-T (see `ValueHist.basis`).
+    basis: u64 = 0,
 };
 
 pub const ValueHistVec = rrb.Rrb(ValueHist);

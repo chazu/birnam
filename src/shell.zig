@@ -135,6 +135,79 @@ fn handleImageCommand(
         }
         return true;
     }
+    // `:retain current|all|since <basis>|last <n>` — Phase 15.R R2 retention
+    // policy. Opt into time-travel beyond "now". Shell links the kernel so it
+    // calls store.setRetention directly (no module ABI surface needed).
+    if (std.mem.startsWith(u8, line, ":retain ")) {
+        const arg = std.mem.trim(u8, line[8..], " ");
+        if (std.mem.eql(u8, arg, "current")) {
+            store.setRetention(.current_only);
+            stdoutPrint("[birnam] retention: current-only\n", .{});
+        } else if (std.mem.eql(u8, arg, "all")) {
+            store.setRetention(.keep_all);
+            stdoutPrint("[birnam] retention: keep-all\n", .{});
+        } else if (std.mem.startsWith(u8, arg, "since ")) {
+            const n = std.fmt.parseInt(u64, std.mem.trim(u8, arg[6..], " "), 10) catch {
+                stderrPrint("[birnam] :retain since <basis> — bad number\n", .{});
+                return true;
+            };
+            store.setRetention(.{ .keep_since_basis = n });
+            stdoutPrint("[birnam] retention: keep-since basis {d}\n", .{n});
+        } else if (std.mem.startsWith(u8, arg, "last ")) {
+            const n = std.fmt.parseInt(u64, std.mem.trim(u8, arg[5..], " "), 10) catch {
+                stderrPrint("[birnam] :retain last <n> — bad number\n", .{});
+                return true;
+            };
+            store.setRetention(.{ .keep_last_n = n });
+            stdoutPrint("[birnam] retention: keep-last {d} txs\n", .{n});
+        } else {
+            stderrPrint("[birnam] :retain current|all|since <basis>|last <n>\n", .{});
+        }
+        return true;
+    }
+    // `:excise <eid>` — Phase 15.R R3. Hard-delete an entity (current + history,
+    // incl. retained archives). Refuses if a live snapshot pins an epoch.
+    if (std.mem.startsWith(u8, line, ":excise ")) {
+        const eid = std.fmt.parseInt(u64, std.mem.trim(u8, line[8..], " "), 10) catch {
+            stderrPrint("[birnam] :excise <eid> — bad number\n", .{});
+            return true;
+        };
+        store.exciseEntity(eid, allocator) catch |e| {
+            stderrPrint("[birnam] :excise failed: {s}\n", .{@errorName(e)});
+            return true;
+        };
+        stdoutPrint("[birnam] excised entity {d}\n", .{eid});
+        return true;
+    }
+    // `:asof <basis> <eid> <attr-eid>` — Phase 15.R R1/R2. Exact time-travel
+    // point read: snapshot as of `basis`, read (eid, attr). The held db-value /
+    // `[db asOf: t]` message-send sugar + GC-auto-release is the follow-on.
+    if (std.mem.startsWith(u8, line, ":asof ")) {
+        var it = std.mem.tokenizeScalar(u8, std.mem.trim(u8, line[6..], " "), ' ');
+        const basis = std.fmt.parseInt(u64, it.next() orelse "", 10) catch {
+            stderrPrint("[birnam] :asof <basis> <eid> <attr-eid>\n", .{});
+            return true;
+        };
+        const eid = std.fmt.parseInt(u64, it.next() orelse "", 10) catch {
+            stderrPrint("[birnam] :asof <basis> <eid> <attr-eid>\n", .{});
+            return true;
+        };
+        const attr = std.fmt.parseInt(u64, it.next() orelse "", 10) catch {
+            stderrPrint("[birnam] :asof <basis> <eid> <attr-eid>\n", .{});
+            return true;
+        };
+        const snap = store.snapshotAsOf(basis) catch |e| {
+            stderrPrint("[birnam] :asof failed: {s}\n", .{@errorName(e)});
+            return true;
+        };
+        defer snap.deinit(allocator);
+        if (snap.get(eid, attr)) |v| {
+            stdoutPrint("[birnam] asof basis {d}: ({d}, {d}) = ref 0x{x}\n", .{ snap.basis_t, eid, attr, v });
+        } else {
+            stdoutPrint("[birnam] asof basis {d}: ({d}, {d}) = (absent)\n", .{ snap.basis_t, eid, attr });
+        }
+        return true;
+    }
     // `:freeze <outbase>` — emit a standalone wrapper module dylib that, when
     // loaded after peg + lang, re-establishes the image's FFI wraps. Writes
     // <outbase>.birnam + <outbase>.zig + birnam_module_abi.zig, then compiles.

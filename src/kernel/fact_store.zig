@@ -56,6 +56,93 @@ pub const CardinalitySchema = struct {
     many_value: Ref,
 };
 
+// -- Index epoch registry (Phase 15.R R1b) -----------------------------------
+
+/// The five index root pointers captured by value — a zero-copy snapshot of
+/// the whole store (structural sharing). Held by a `RetainedEpoch` so a
+/// swapped-out epoch stays queryable as a history archive (R2), and by a
+/// `Snapshot` view.
+pub const IndexRoots = struct {
+    eavt: EAVTish,
+    aevt: EAVTish,
+    avet: AVETish,
+    vaet: AVETish,
+    meat: MEATish,
+};
+
+/// An index epoch swapped out by `compact()` but kept alive because a live
+/// snapshot pins it (refcount > 0) or the retention horizon needs the history
+/// it holds. Freed wholesale once nothing references it. The arena is the same
+/// plain `ArenaAllocator` the live epoch used while writable.
+pub const RetainedEpoch = struct {
+    /// The epoch's arena while HOT (in RAM). `null` when spilled COLD to disk
+    /// (R4) — `roots` are then invalid until `faultInEpoch` rebuilds them.
+    arena: ?*std.heap.ArenaAllocator,
+    /// Generation number (monotonic; the writable epoch's gen at swap-out).
+    gen: u64,
+    /// Lowest basis-T this epoch can serve a read for (basis-T when it became
+    /// the writable epoch). Reads with `basis_t >= min_basis` are valid.
+    min_basis: u64,
+    /// Highest basis-T committed while this epoch was writable.
+    max_basis: u64,
+    /// Number of live snapshots pinning this epoch.
+    refcount: u32,
+    /// The index roots at swap-out — this epoch as a queryable history archive
+    /// (R2). Valid only while HOT (`arena != null`).
+    roots: IndexRoots,
+    /// Phase 15.R R4 — segment file path when this epoch is spilled COLD; null
+    /// when hot. Faulted back into a fresh arena on demand.
+    cold_path: ?[]const u8 = null,
+};
+
+// -- Retention policy (Phase 15.R R2) ----------------------------------------
+
+/// How far back history is retained. The floor it implies feeds
+/// `oldestRetainedBasisT()`, which gates epoch freeing in `compact()`.
+pub const RetentionPolicy = union(enum) {
+    /// Keep only "now" (default). Compact collapses + frees old epochs (15.I).
+    current_only,
+    /// Keep all history forever (never free an epoch on horizon grounds).
+    keep_all,
+    /// Keep history with basis-T >= this value.
+    keep_since_basis: u64,
+    /// Keep the last N basis-Ts of history (floor tracks the live basis).
+    keep_last_n: u64,
+};
+
+// -- Snapshot (Phase 15.R R1c) -----------------------------------------------
+
+/// An immutable, first-class db-value: the store as of `basis_t`. `view` is a
+/// read-only `FactStore` holding the five index roots captured by value, so
+/// every existing point-read / iterator / datalog path works against it
+/// unchanged (Decision B — full datalog-over-snapshot). Holding a Snapshot
+/// pins its index `epoch_gen` against `compact()`; `deinit` releases the pin.
+pub const Snapshot = struct {
+    view: FactStore,
+    basis_t: u64,
+    epoch_gen: u64,
+    /// Set when this is an `asOf:<past>` snapshot — reads are history-walked to
+    /// this basis. Null for a "now" snapshot (read the frozen current roots).
+    as_of_basis: ?u64 = null,
+    /// The live store this was captured from — for unpinning on release.
+    store: *FactStore,
+
+    /// Exact point read honoring `as_of_basis`. For a "now" snapshot this is
+    /// the frozen current value; for an `asOf:` snapshot it walks history.
+    pub fn get(self: *const Snapshot, e: u64, a: u64) ?Ref {
+        if (self.as_of_basis) |b| return self.view.currentValueAsOfBasis(e, a, b);
+        return self.view.currentValue(e, a);
+    }
+
+    /// Unpin the epoch (making it collectible at the next compact if nothing
+    /// else holds it) and free the snapshot. `allocator` must be the one that
+    /// allocated it (the live store's allocator).
+    pub fn deinit(self: *Snapshot, allocator: std.mem.Allocator) void {
+        self.store.unpinEpoch(self.epoch_gen);
+        allocator.destroy(self);
+    }
+};
+
 // -- FactStore ---------------------------------------------------------------
 
 pub const FactStore = struct {
@@ -83,11 +170,44 @@ pub const FactStore = struct {
     /// basis-T; until that machinery exists, `true` conservatively SKIPS the
     /// free (leak, never corrupt — honors the never-free-live tenet).
     retain_history: bool = false,
+
+    /// Phase 15.R R1b — generation of the current (writable) index epoch.
+    /// Bumped each `compact()`. The writable epoch's arena is `index_arena`.
+    index_epoch_gen: u64 = 0,
+    /// Lowest basis-T the current writable epoch can serve (basis-T when it
+    /// became writable; 1 at init, the compact basis-T thereafter).
+    index_epoch_min_basis: u64 = 1,
+    /// Live snapshots pinning the current writable epoch. Carried into a
+    /// `RetainedEpoch` when this epoch is swapped out at compact.
+    index_epoch_refcount: u32 = 0,
+    /// Epochs swapped out by `compact()` but still pinned by a live snapshot
+    /// (or the retention horizon). Freed when their refcount hits 0 and they
+    /// fall below `oldestRetainedBasisT()`. Empty in the no-snapshot path, so
+    /// behavior reduces exactly to 15.I (free-on-compact).
+    retained_epochs: std.ArrayList(RetainedEpoch) = .{},
+
+    /// Phase 15.R R2 — retention horizon policy. `current_only` (default) keeps
+    /// only "now": compact collapses + frees old epochs (inert retention, the
+    /// 15.I behavior). Other policies set a basis-T floor below which history is
+    /// collectible; epochs covering the floor are retained (as queryable history
+    /// archives) instead of freed. Derived floor folds into
+    /// `oldestRetainedBasisT()`.
+    retention_policy: RetentionPolicy = .current_only,
     /// Monotonic tx counter; starts at 1. Atomic per Phase 11.7.iv
     /// (ADR-11 #7 forward-compat). Single-writer transactor under the
     /// Datomic shape; atomic now keeps non-transactor read paths safe
-    /// without a barrier change later.
+    /// without a barrier change later. RESETS to 1 on `compact()` (the
+    /// per-epoch internal tx coordinate).
     next_tx: std.atomic.Value(u64),
+
+    /// Phase 15.R — separate monotonic basis-T counter (Decision A, locked
+    /// 2026-06-06). Unlike `next_tx`, this **never resets on compact**. It is
+    /// the durable user-facing time coordinate for `asOf:`, snapshot identity,
+    /// and epoch `min_basis_t`. Bumped once per commit (assert/retract). Starts
+    /// at 1; basis-T 0 means "before time". Not persisted across image save/load
+    /// (snapshots are in-memory pins that don't cross a save) — re-asserts on
+    /// load bump it from 1, preserving in-session monotonicity.
+    basis_t: std.atomic.Value(u64),
     eavt: EAVTish,
     aevt: EAVTish, // same shape as EAVT, keys are (a, e)
     avet: AVETish,
@@ -133,6 +253,7 @@ pub const FactStore = struct {
         return .{
             .allocator = allocator,
             .next_tx = std.atomic.Value(u64).init(1),
+            .basis_t = std.atomic.Value(u64).init(1),
             .eavt = EAVTish.empty(allocator, .{}),
             .aevt = EAVTish.empty(allocator, .{}),
             .avet = AVETish.empty(allocator, .{}),
@@ -182,6 +303,399 @@ pub const FactStore = struct {
             self.allocator.destroy(ia);
             self.index_arena = null;
         }
+        // 15.R: free any still-retained epochs (hot arena or cold segment).
+        for (self.retained_epochs.items) |*re| self.freeRetainedEpoch(re);
+        self.retained_epochs.deinit(self.allocator);
+        self.retained_epochs = .{};
+    }
+
+    // -- Index epoch management (Phase 15.R R1b) -----------------------------
+
+    /// The smallest basis-T that must be retained. Any epoch whose entire
+    /// basis range falls below this is collectible. Default (no retention,
+    /// no live snapshots) = `currentBasisT() + 1` → keep only "now", so a
+    /// swapped-out historical epoch is freed immediately (identical to 15.I).
+    /// Snapshots (R1c) and the retention horizon (R2) lower this floor.
+    pub fn oldestRetainedBasisT(self: *const FactStore) u64 {
+        if (self.retain_history) return 1; // legacy "retain all" gate
+        var oldest = self.currentBasisT() +| 1;
+        // Live snapshots pin epochs directly via refcount; the retention
+        // horizon floor is folded in here. The AOT `--strip=history` floor
+        // (= now) is already the default.
+        if (self.retentionFloor()) |floor| oldest = @min(oldest, floor);
+        return oldest;
+    }
+
+    /// The basis-T floor implied by the retention policy, or null for
+    /// current-only. `keep_last_n` is computed against the live basis so the
+    /// window slides forward as the store advances.
+    pub fn retentionFloor(self: *const FactStore) ?u64 {
+        return switch (self.retention_policy) {
+            .current_only => null,
+            .keep_all => 1,
+            .keep_since_basis => |b| b,
+            .keep_last_n => |n| blk: {
+                const cur = self.currentBasisT();
+                break :blk if (cur >= n) cur - n + 1 else 1;
+            },
+        };
+    }
+
+    /// Set the retention policy (R2). Opt into time-travel beyond "now".
+    pub fn setRetention(self: *FactStore, policy: RetentionPolicy) void {
+        self.retention_policy = policy;
+    }
+
+    /// Pin the current writable epoch (a snapshot captured it). Returns the
+    /// generation so the holder can `unpinEpoch` exactly that epoch later.
+    pub fn pinCurrentEpoch(self: *FactStore) u64 {
+        self.index_epoch_refcount += 1;
+        return self.index_epoch_gen;
+    }
+
+    /// Pin epoch `gen` — the current writable epoch or a retained archive.
+    pub fn pinEpoch(self: *FactStore, gen: u64) void {
+        if (gen == self.index_epoch_gen) {
+            self.index_epoch_refcount += 1;
+            return;
+        }
+        for (self.retained_epochs.items) |*re| {
+            if (re.gen == gen) {
+                re.refcount += 1;
+                return;
+            }
+        }
+    }
+
+    /// Release a pin on epoch `gen`. If that epoch is a swapped-out retained
+    /// epoch whose refcount reaches 0 and which falls below the retention
+    /// floor, free it wholesale and drop it from the list. A pin on the
+    /// still-current epoch just decrements its counter.
+    pub fn unpinEpoch(self: *FactStore, gen: u64) void {
+        if (gen == self.index_epoch_gen) {
+            if (self.index_epoch_refcount > 0) self.index_epoch_refcount -= 1;
+            return;
+        }
+        var i: usize = 0;
+        while (i < self.retained_epochs.items.len) : (i += 1) {
+            const re = &self.retained_epochs.items[i];
+            if (re.gen == gen) {
+                if (re.refcount > 0) re.refcount -= 1;
+                if (re.refcount == 0 and re.max_basis < self.oldestRetainedBasisT()) {
+                    self.freeRetainedEpoch(re);
+                    _ = self.retained_epochs.swapRemove(i);
+                }
+                return;
+            }
+        }
+    }
+
+    /// Free a retained epoch's backing — the hot arena, or the cold segment
+    /// file + its path string. Does not touch the list slot.
+    fn freeRetainedEpoch(self: *FactStore, re: *RetainedEpoch) void {
+        if (re.arena) |ar| {
+            ar.deinit();
+            self.allocator.destroy(ar);
+            re.arena = null;
+        }
+        if (re.cold_path) |p| {
+            std.fs.cwd().deleteFile(p) catch {};
+            self.allocator.free(p);
+            re.cold_path = null;
+        }
+    }
+
+    // -- Cold-history tier (Phase 15.R R4) -----------------------------------
+
+    /// One recorded history event. The full ordered log of an epoch — replaying
+    /// it through `applyAssert`/`applyRetract` in `tx` order rebuilds the epoch
+    /// index byte-faithfully (same algorithm that built it).
+    pub const EpochEvent = struct { m: u64, e: u64, a: u64, v: Ref, tx: u64, basis: u64, op: Op };
+
+    /// Collect the full ordered event log of an epoch's roots (walk MEAT — it
+    /// carries the module column and the same per-cell history as EAVT). Sorted
+    /// by `tx`. Caller frees the returned slice with `alloc`.
+    fn collectEpochEvents(roots: IndexRoots, alloc: std.mem.Allocator) ![]EpochEvent {
+        var events = std.ArrayList(EpochEvent){};
+        errdefer events.deinit(alloc);
+        var mit = roots.meat.iter();
+        while (mit.next()) |m_kv| {
+            const m = m_kv.key;
+            var eit = m_kv.value.iter();
+            while (eit.next()) |e_kv| {
+                const e = e_kv.key;
+                var ait = e_kv.value.iter();
+                while (ait.next()) |a_kv| {
+                    const a = a_kv.key;
+                    const cell = a_kv.value;
+                    const n = cell.history.count();
+                    var i: usize = 0;
+                    while (i < n) : (i += 1) {
+                        const h = cell.history.nth(i);
+                        try events.append(alloc, .{ .m = m, .e = e, .a = a, .v = h.v, .tx = h.tx, .basis = h.basis, .op = h.op });
+                    }
+                }
+            }
+        }
+        const slice = try events.toOwnedSlice(alloc);
+        std.mem.sort(EpochEvent, slice, {}, struct {
+            fn lt(_: void, x: EpochEvent, y: EpochEvent) bool {
+                return x.tx < y.tx;
+            }
+        }.lt);
+        return slice;
+    }
+
+    /// Serialize an event log to a flat byte buffer (segment payload). Caller
+    /// frees. Format: u64 count, then per event m,e,a,v,tx,basis (u64 LE) + op
+    /// (u8).
+    fn serializeEvents(events: []const EpochEvent, alloc: std.mem.Allocator) ![]u8 {
+        var buf = std.ArrayList(u8){};
+        errdefer buf.deinit(alloc);
+        var hdr: [8]u8 = undefined;
+        std.mem.writeInt(u64, &hdr, events.len, .little);
+        try buf.appendSlice(alloc, &hdr);
+        for (events) |ev| {
+            inline for (.{ ev.m, ev.e, ev.a, @as(u64, ev.v), ev.tx, ev.basis }) |word| {
+                var w: [8]u8 = undefined;
+                std.mem.writeInt(u64, &w, word, .little);
+                try buf.appendSlice(alloc, &w);
+            }
+            try buf.append(alloc, @intFromEnum(ev.op));
+        }
+        return buf.toOwnedSlice(alloc);
+    }
+
+    fn deserializeEvents(bytes: []const u8, alloc: std.mem.Allocator) ![]EpochEvent {
+        if (bytes.len < 8) return error.CorruptSegment;
+        const count = std.mem.readInt(u64, bytes[0..8], .little);
+        const rec = 6 * 8 + 1;
+        if (bytes.len < 8 + count * rec) return error.CorruptSegment;
+        const out = try alloc.alloc(EpochEvent, count);
+        errdefer alloc.free(out);
+        var off: usize = 8;
+        var i: usize = 0;
+        while (i < count) : (i += 1) {
+            const m = std.mem.readInt(u64, bytes[off..][0..8], .little);
+            const e = std.mem.readInt(u64, bytes[off + 8 ..][0..8], .little);
+            const a = std.mem.readInt(u64, bytes[off + 16 ..][0..8], .little);
+            const v = std.mem.readInt(u64, bytes[off + 24 ..][0..8], .little);
+            const tx = std.mem.readInt(u64, bytes[off + 32 ..][0..8], .little);
+            const basis = std.mem.readInt(u64, bytes[off + 40 ..][0..8], .little);
+            const op: Op = @enumFromInt(bytes[off + 48]);
+            out[i] = .{ .m = m, .e = e, .a = a, .v = v, .tx = tx, .basis = basis, .op = op };
+            off += rec;
+        }
+        return out;
+    }
+
+    /// Replay an event log into a FRESH index epoch arena, returning the arena
+    /// and rebuilt roots. Uses a throwaway FactStore as the replay vehicle so
+    /// `applyAssert`/`applyRetract` (the live index algorithm) reconstruct the
+    /// epoch faithfully. Events must be tx-sorted.
+    fn faultInEvents(self: *FactStore, events: []const EpochEvent) !struct { arena: *std.heap.ArenaAllocator, roots: IndexRoots } {
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        var tmp = FactStore.init(arena.allocator());
+        tmp.cardinality_schema = self.cardinality_schema; // faithful :many handling
+        for (events) |ev| {
+            switch (ev.op) {
+                .assert => try tmp.applyAssert(ev.e, ev.a, ev.v, ev.m, ev.tx, ev.basis),
+                .retract => _ = try tmp.applyRetract(ev.e, ev.a, ev.v, ev.m, ev.tx, ev.basis),
+            }
+        }
+        return .{ .arena = arena, .roots = .{ .eavt = tmp.eavt, .aevt = tmp.aevt, .avet = tmp.avet, .vaet = tmp.vaet, .meat = tmp.meat } };
+    }
+
+    /// Spill a retained epoch COLD: serialize its event log to a segment file
+    /// under `dir`, free the in-RAM arena, and mark it cold. Bounds resident
+    /// set by working set (VISION §Memory ¶cold-history). No-op if already cold
+    /// or not found. The mmap RO fast path (vs replay) is Phase 12.5.
+    pub fn spillEpoch(self: *FactStore, gen: u64, dir: []const u8) !void {
+        for (self.retained_epochs.items) |*re| {
+            if (re.gen != gen) continue;
+            if (re.arena == null) return; // already cold
+            const events = try collectEpochEvents(re.roots, self.allocator);
+            defer self.allocator.free(events);
+            const bytes = try serializeEvents(events, self.allocator);
+            defer self.allocator.free(bytes);
+            const path = try std.fmt.allocPrint(self.allocator, "{s}/birnam-epoch-{d}.seg", .{ dir, gen });
+            errdefer self.allocator.free(path);
+            try std.fs.cwd().writeFile(.{ .sub_path = path, .data = bytes });
+            re.arena.?.deinit();
+            self.allocator.destroy(re.arena.?);
+            re.arena = null;
+            re.roots = undefined; // invalid until fault-in
+            re.cold_path = path;
+            return;
+        }
+    }
+
+    /// Fault a cold epoch back into RAM: read its segment, replay into a fresh
+    /// arena, restore `roots`. No-op if hot or not found. Deletes the segment
+    /// (it will be re-spilled if evicted again).
+    pub fn faultInEpoch(self: *FactStore, gen: u64) !void {
+        for (self.retained_epochs.items) |*re| {
+            if (re.gen != gen) continue;
+            const path = re.cold_path orelse return; // already hot
+            const bytes = try std.fs.cwd().readFileAlloc(self.allocator, path, 1 << 34);
+            defer self.allocator.free(bytes);
+            const events = try deserializeEvents(bytes, self.allocator);
+            defer self.allocator.free(events);
+            const res = try self.faultInEvents(events);
+            re.arena = res.arena;
+            re.roots = res.roots;
+            std.fs.cwd().deleteFile(path) catch {};
+            self.allocator.free(path);
+            re.cold_path = null;
+            return;
+        }
+    }
+
+    // -- Excision (Phase 15.R R3) --------------------------------------------
+
+    /// True if any index epoch (current or retained) is pinned by a live
+    /// snapshot. Excise refuses while this holds (Decision C): a snapshot's
+    /// view captured roots BY VALUE, so we cannot reach in to scrub them —
+    /// the user must drop those snapshots first.
+    pub fn hasLiveSnapshots(self: *const FactStore) bool {
+        if (self.index_epoch_refcount > 0) return true;
+        for (self.retained_epochs.items) |re| {
+            if (re.refcount > 0) return true;
+        }
+        return false;
+    }
+
+    /// Phase 15.R R3 — hard-delete every fact (current AND history) for entity
+    /// `e`, from the live index AND every retained history archive (GDPR-shaped
+    /// "forget this entity"). Distinct from `retract` (logical, keeps history)
+    /// and `prune` (collapses below the horizon). Refuses with
+    /// `error.SnapshotPins` if a live snapshot could still expose `e`
+    /// (Decision C). Surgical: touches only `e`'s index paths, leaving every
+    /// other entity's current values and history untouched. `scratch` holds
+    /// transient (a, v) collections.
+    pub fn exciseEntity(self: *FactStore, e: u64, scratch: std.mem.Allocator) !void {
+        if (self.read_only) return error.ReadOnly;
+        if (self.hasLiveSnapshots()) return error.SnapshotPins;
+
+        // Collect e's current attrs first (for the post-removal mcache flush).
+        var attrs = std.ArrayList(u64){};
+        defer attrs.deinit(scratch);
+        if (self.eavt.get(e)) |inner| {
+            var ait = inner.iter();
+            while (ait.next()) |kv| try attrs.append(scratch, kv.key);
+        }
+
+        // Live (current) roots.
+        var cur = IndexRoots{ .eavt = self.eavt, .aevt = self.aevt, .avet = self.avet, .vaet = self.vaet, .meat = self.meat };
+        _ = try exciseEntityFromRoots(&cur, e, scratch);
+        self.eavt = cur.eavt;
+        self.aevt = cur.aevt;
+        self.avet = cur.avet;
+        self.vaet = cur.vaet;
+        self.meat = cur.meat;
+
+        // Every retained history archive too (none are pinned — checked above).
+        // Cold archives must be faulted in first so the scrub reaches them.
+        for (self.retained_epochs.items) |*re| {
+            if (re.cold_path != null) try self.faultInEpoch(re.gen);
+            _ = try exciseEntityFromRoots(&re.roots, e, scratch);
+        }
+
+        // Flush dispatch caches keyed by e's (now-gone) attributes, and demote
+        // any materialized struct for e.
+        if (self.on_attr_mutate) |cb| for (attrs.items) |a| cb(a);
+        if (self.on_entity_mutate) |cb| cb(e, 0);
+    }
+
+    // -- Snapshots (Phase 15.R R1c) ------------------------------------------
+
+    /// Capture an immutable zero-copy snapshot of the store as of NOW. The
+    /// returned `Snapshot` owns a read-only `FactStore` view that holds the
+    /// five index roots BY VALUE — structural sharing means later live
+    /// mutations (path-copy) leave the snapshot's roots seeing the old state.
+    /// The snapshot PINS its index epoch (refcount), so `compact()` keeps that
+    /// epoch alive instead of freeing it — this is the reachability question
+    /// for the fact layer, over retained roots not nodes (VISION §Memory).
+    /// Caller owns the returned pointer; `snap.deinit(allocator)` unpins +
+    /// frees. (R1d hands ownership to a SNAPSHOT_VT object the value-heap GC
+    /// sweeps, calling deinit on collection.)
+    ///
+    /// `snapshotNow` is the frozen-roots path (state as-of the capture basis,
+    /// readable forever even after the live store prunes). Arbitrary
+    /// `asOf: <past basis>` reconstruction is a follow-on (needs a snapshot
+    /// taken at that basis, or history-walk-backed reads — see R2).
+    pub fn snapshotNow(self: *FactStore) !*Snapshot {
+        return self.buildSnapshot(.{
+            .eavt = self.eavt,
+            .aevt = self.aevt,
+            .avet = self.avet,
+            .vaet = self.vaet,
+            .meat = self.meat,
+        }, self.currentBasisT(), self.index_epoch_gen, null);
+    }
+
+    /// Phase 15.R R2 — capture a snapshot as of a PAST basis-T. Routes to the
+    /// epoch whose basis range covers `basis` (the current writable epoch, or a
+    /// retained history archive), pins it, and returns a view whose reads are
+    /// `asOf:`-walked to `basis`. Requires that history reached `basis` is still
+    /// retained (the retention policy governs that) — otherwise
+    /// `error.HistoryNotRetained`. `basis >= now` degrades to `snapshotNow`.
+    pub fn snapshotAsOf(self: *FactStore, basis: u64) !*Snapshot {
+        if (basis >= self.currentBasisT()) return self.snapshotNow();
+        // Current writable epoch holds history back to its min_basis.
+        if (basis >= self.index_epoch_min_basis) {
+            return self.buildSnapshot(.{
+                .eavt = self.eavt,
+                .aevt = self.aevt,
+                .avet = self.avet,
+                .vaet = self.vaet,
+                .meat = self.meat,
+            }, basis, self.index_epoch_gen, basis);
+        }
+        // Otherwise find a retained archive epoch covering `basis`, faulting it
+        // back from disk first if it has been spilled cold (R4).
+        for (self.retained_epochs.items) |*re| {
+            if (basis >= re.min_basis and basis <= re.max_basis) {
+                if (re.cold_path != null) try self.faultInEpoch(re.gen);
+                return self.buildSnapshot(re.roots, basis, re.gen, basis);
+            }
+        }
+        return error.HistoryNotRetained;
+    }
+
+    /// Build a Snapshot over `roots`, pinning epoch `gen`. `as_of` null = read
+    /// current values of those roots (a "now" snapshot of that epoch); non-null
+    /// = `asOf:`-walk reads to that basis.
+    fn buildSnapshot(self: *FactStore, roots: IndexRoots, basis: u64, gen: u64, as_of: ?u64) !*Snapshot {
+        const snap = try self.allocator.create(Snapshot);
+        errdefer self.allocator.destroy(snap);
+        var v = self.*; // copies scalar config (allocator, schema, etc.)
+        v.eavt = roots.eavt;
+        v.aevt = roots.aevt;
+        v.avet = roots.avet;
+        v.vaet = roots.vaet;
+        v.meat = roots.meat;
+        v.read_only = true;
+        v.eid_alloc_table = null; // no reification mutation through a snapshot
+        v.on_attr_mutate = null;
+        v.on_entity_mutate = null;
+        v.retained_epochs = .{}; // view owns no epochs (don't alias live's list)
+        // Independent, lazily-allocated reification maps so a snapshot read
+        // never aliases (or is invalidated by) the live store's maps.
+        v.fact_eids = std.AutoHashMap(u64, u64).init(self.allocator);
+        v.fact_modules = std.AutoHashMap(u64, u64).init(self.allocator);
+        self.pinEpoch(gen);
+        snap.* = .{
+            .view = v,
+            .basis_t = basis,
+            .epoch_gen = gen,
+            .as_of_basis = as_of,
+            .store = self,
+        };
+        return snap;
     }
 
     // -- Phase 7.3 reification helpers ---------------------------------------
@@ -267,10 +781,63 @@ pub const FactStore = struct {
         self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = 1, .op = .assert });
     }
 
+    /// Phase 15.R — compact's collapse insert. Like `frozenInsert` but writes
+    /// an explicit `tx` (sequential per-epoch coordinate) and `basis` (the
+    /// single collapse basis, so `asOf:` reads of the collapsed epoch are
+    /// correct), fires `on_attr_mutate` (mcache flush) but never
+    /// `on_entity_mutate` (no demote churn during a rebuild). No implicit-
+    /// retract: the collapse source is current-only (one value per (e,a) for
+    /// `:one`; `:many` accretes as present). Does not touch the tx/basis
+    /// counters — `compact` manages those.
+    fn compactInsert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64, tx: u64, basis: u64) !void {
+        const ia = self.indexAlloc();
+        self.eavt = try updateValueLeaf(ia, self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis });
+        self.aevt = try updateValueLeaf(ia, self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis });
+        self.meat = try updateMeat(ia, self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis });
+        self.avet = try updatePresenceLeaf(ia, self.avet, a, v, e, true, .{ .tx = tx, .op = .assert, .basis = basis });
+        self.vaet = try updatePresenceLeaf(ia, self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert, .basis = basis });
+        if (self.on_attr_mutate) |cb| cb(a);
+    }
+
     /// Lock the store read-only (Phase 14 `--strip=history`). After this,
     /// `assert`/`retract` reject. Idempotent.
     pub fn freeze(self: *FactStore) void {
         self.read_only = true;
+    }
+
+    /// Core index maintenance for an assert at explicit (tx, basis), no
+    /// counter bump / no read_only check / no hooks. Shared by `assert` (live)
+    /// and `replayEvent` (R4 fault-in) so a faulted-in epoch is rebuilt by the
+    /// EXACT same algorithm that built it — faithful by construction.
+    fn applyAssert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64, tx: u64, bt: u64) !void {
+        const prev_v = self.rawCurrentValue(e, a);
+        const is_many = self.cardinalityOfAttr(a) == .many;
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
+        if (!is_many) {
+            if (prev_v) |pv| {
+                if (pv != v) {
+                    self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, pv, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
+                    self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, pv, a, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
+                }
+            }
+        }
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = tx, .op = .assert, .basis = bt });
+        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert, .basis = bt });
+    }
+
+    /// Core index maintenance for a retract at explicit (tx, basis). Returns
+    /// whether it applied (false = no current (e,a,v) to retract). Shared by
+    /// `retract` and `replayEvent`.
+    fn applyRetract(self: *FactStore, e: u64, a: u64, v: Ref, m: u64, tx: u64, bt: u64) !bool {
+        if (!self.hasFact(e, a, v)) return false;
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
+        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
+        return true;
     }
 
     pub fn assert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !u64 {
@@ -279,62 +846,20 @@ pub const FactStore = struct {
             if (ref_mod.isNil(v)) @panic("FactStore.assert: NIL value forbidden (Date discipline)");
         }
         const tx = self.next_tx.fetchAdd(1, .monotonic);
-
-        // Snapshot the previous value before any writes. Use raw lookup
-        // so `:many` attrs (where currentValue materializes an RRB)
-        // don't fool the implicit-retract logic below.
-        const prev_v = self.rawCurrentValue(e, a);
-        const is_many = self.cardinalityOfAttr(a) == .many;
-
-        // EAVT / AEVT: append (v, tx, assert) to the value-cell at (e,a) / (a,e).
-        // For `:many` attrs the cell's current_v is just "latest assert"
-        // and not the canonical truth; AVET drives reads.
-        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert });
-        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert });
-
-        // MEAT: same pattern but three-level (m, e, a).
-        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert });
-
-        // AVET / VAET: presence-cell maintenance.
-        //   `:one` (default) — implicit-retract the previous distinct value.
-        //   `:many` — never implicit-retract; multiple values coexist as present.
-        if (!is_many) {
-            if (prev_v) |pv| {
-                if (pv != v) {
-                    self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, pv, e, false, .{ .tx = tx, .op = .retract });
-                    self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, pv, a, e, false, .{ .tx = tx, .op = .retract });
-                }
-            }
-        }
-        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = tx, .op = .assert });
-        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert });
-
+        const bt = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
+        try self.applyAssert(e, a, v, m, tx, bt);
         if (self.on_attr_mutate) |cb| cb(a);
         if (self.on_entity_mutate) |cb| cb(e, a);
-
         return tx;
     }
 
     pub fn retract(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !u64 {
         if (self.read_only) return error.ReadOnly;
         const tx = self.next_tx.fetchAdd(1, .monotonic);
-
-        // No-op if (e, a, v) isn't currently present (AVET is authoritative
-        // for both `:one` and `:many`).
-        if (!self.hasFact(e, a, v)) return tx;
-
-        // EAVT/AEVT current_v: for `:one` this nulls the cache (no remaining
-        // value at (e, a)). For `:many` it makes current_v stale relative to
-        // AVET — that's fine; reads consult cardinality.
-        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
-        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract });
-        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
-        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, false, .{ .tx = tx, .op = .retract });
-        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract });
-
+        const bt = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
+        if (!try self.applyRetract(e, a, v, m, tx, bt)) return tx;
         if (self.on_attr_mutate) |cb| cb(a);
         if (self.on_entity_mutate) |cb| cb(e, a);
-
         return tx;
     }
 
@@ -440,6 +965,26 @@ pub const FactStore = struct {
             i -= 1;
             const ent = cell.history.nth(i);
             if (ent.tx <= as_of_tx) {
+                return if (ent.op == .assert) ent.v else null;
+            }
+        }
+        return null;
+    }
+
+    /// Phase 15.R — exact value of (e, a) as of basis-T `basis` (the durable,
+    /// non-resetting coordinate). Walks the cell history by `basis`. Returns
+    /// null if absent at that basis. Reaches only as far back as history is
+    /// retained (the retention horizon governs how far that is); entries
+    /// written before basis tracking carry basis 0 and read as "from the
+    /// beginning of time".
+    pub fn currentValueAsOfBasis(self: *const FactStore, e: u64, a: u64, basis: u64) ?Ref {
+        const inner = self.eavt.get(e) orelse return null;
+        const cell = inner.get(a) orelse return null;
+        var i: usize = cell.history.count();
+        while (i > 0) {
+            i -= 1;
+            const ent = cell.history.nth(i);
+            if (ent.basis <= basis) {
                 return if (ent.op == .assert) ent.v else null;
             }
         }
@@ -595,6 +1140,12 @@ pub const FactStore = struct {
         return self.next_tx.load(.monotonic) - 1;
     }
 
+    /// Phase 15.R — current basis-T (the durable, non-resetting time
+    /// coordinate). Equals the basis-T of the most recent commit.
+    pub fn currentBasisT(self: *const FactStore) u64 {
+        return self.basis_t.load(.monotonic) - 1;
+    }
+
     /// Flatten every current (module, entity, attribute, value) fact in
     /// `meat`. Phase 12.1 image writer's enumeration source — `meat` keys
     /// by module first, so a single nested walk yields the module column
@@ -661,20 +1212,32 @@ pub const FactStore = struct {
         // `facts` holds (m,e,a,v) by value — v is a Ref (u64). No pointer into
         // the old index escapes, so the old epoch is safe to free below.
 
-        // Phase 15.I — swap to a fresh index epoch. Re-asserting kept facts
+        // Phase 15.I/R1b — swap to a fresh index epoch. Re-asserting kept facts
         // rebuilds the index entirely in the new epoch (shares no node with the
-        // old), so the old epoch becomes wholly dead and is freed at the end —
-        // reclaiming BOTH the old current tree AND all path-copy spine garbage
-        // accumulated since the last compact. Skipped when the arena is
-        // disabled (tests → index on `self.allocator` as before) or when
-        // `retain_history` is set (15.R gate: keep the old epoch, leak-not-
-        // corrupt, until basis-T-gated freeing exists).
-        var old_epoch: ?*std.heap.ArenaAllocator = null;
+        // old). The OLD epoch is then either freed wholesale (nothing pins it —
+        // the 15.I current-only path) or moved to `retained_epochs` (a live
+        // snapshot pins it, or the retention horizon needs its history — 15.R).
+        // Skipped when the arena is disabled (tests → index on `self.allocator`)
+        // or when `retain_history` is set (legacy 15.I no-swap leak-in-place).
+        const basis_at_compact = self.currentBasisT();
+        var old_meta: ?RetainedEpoch = null;
         if (self.index_arena != null and !self.retain_history) {
             const fresh = try self.allocator.create(std.heap.ArenaAllocator);
             fresh.* = std.heap.ArenaAllocator.init(self.allocator);
-            old_epoch = self.index_arena;
+            old_meta = .{
+                .arena = self.index_arena.?,
+                .gen = self.index_epoch_gen,
+                .min_basis = self.index_epoch_min_basis,
+                .max_basis = basis_at_compact,
+                .refcount = self.index_epoch_refcount,
+                // Capture the OLD roots NOW (before the reset below) so a
+                // retained epoch stays queryable as a history archive.
+                .roots = .{ .eavt = self.eavt, .aevt = self.aevt, .avet = self.avet, .vaet = self.vaet, .meat = self.meat },
+            };
             self.index_arena = fresh; // indexAlloc() now hands out the new epoch
+            self.index_epoch_gen += 1;
+            self.index_epoch_refcount = 0;
+            self.index_epoch_min_basis = basis_at_compact; // collapse point
         }
 
         // Reset indexes + reification side tables. next_tx restarts at 1.
@@ -684,40 +1247,122 @@ pub const FactStore = struct {
         self.avet = AVETish.empty(ia, .{});
         self.vaet = AVETish.empty(ia, .{});
         self.meat = MEATish.empty(ia, .{});
-        self.next_tx.store(1, .monotonic);
         self.fact_eids.clearRetainingCapacity();
         self.fact_modules.clearRetainingCapacity();
 
-        // Suppress entity-demotion during re-assert: kept entities keep
-        // their materialized object-table slots (re-asserting the same
-        // facts must not churn the cache). on_attr_mutate (mcache flush)
-        // stays active so dispatch caches refresh.
-        const saved_entity_hook = self.on_entity_mutate;
-        self.on_entity_mutate = null;
-        defer self.on_entity_mutate = saved_entity_hook;
-
+        // Rebuild via `compactInsert`, NOT `assert`: it (a) writes every base
+        // fact at the single collapse basis `basis_at_compact` (so `asOf:` any
+        // basis >= the collapse point sees the whole collapsed state — a
+        // monotonically-increasing per-fact basis would make mid-range asOf
+        // queries spuriously absent), and (b) leaves the basis_t counter
+        // untouched (a rebuild is not a semantic mutation; next_tx is the
+        // per-epoch coordinate and uses a sequential tx here). on_entity_mutate
+        // (demote) stays suppressed; on_attr_mutate (mcache flush) fires.
         var stats = CompactStats{ .kept = 0, .dropped = 0 };
+        var tx: u64 = 1;
         for (facts.items) |f| {
             if (keep(ctx, f.m, f.e, f.a, f.v)) {
-                _ = try self.assert(f.e, f.a, f.v, f.m);
+                try self.compactInsert(f.e, f.a, f.v, f.m, tx, basis_at_compact);
+                tx += 1;
                 stats.kept += 1;
             } else {
                 stats.dropped += 1;
             }
         }
+        self.next_tx.store(tx, .monotonic);
 
-        // Free the old epoch wholesale now that the new index is fully built
-        // and references only new-epoch nodes. (Gated above: only set when the
-        // arena is enabled and history isn't retained.)
-        if (old_epoch) |old| {
-            old.deinit();
-            self.allocator.destroy(old);
+        // Old epoch: free wholesale if nothing references it, else retain.
+        // The new index is fully built and references only new-epoch nodes,
+        // so the old epoch is internally dead — only an external pin (live
+        // snapshot refcount) or the retention horizon can keep it alive.
+        if (old_meta) |old| {
+            const pinned = old.refcount > 0;
+            const below_horizon = old.max_basis < self.oldestRetainedBasisT();
+            if (!pinned and below_horizon) {
+                old.arena.?.deinit(); // a freshly swapped-out epoch is always hot
+                self.allocator.destroy(old.arena.?);
+            } else {
+                try self.retained_epochs.append(self.allocator, old);
+            }
         }
         return stats;
     }
 };
 
 // -- Internal helpers --------------------------------------------------------
+
+/// Surgically remove every trace of entity `e` from one set of index roots
+/// (Phase 15.R R3). Walks `e`'s full EAVT history to find every (a, v) pair it
+/// ever held, then `dissoc`s `e` from the matching AVET/VAET leaves, AEVT
+/// attr-maps, MEAT module-maps, and finally the EAVT entry itself. dissoc
+/// path-copies via each map's stored allocator (the epoch arena), so the roots
+/// are rewritten in place without touching any other entity. Returns whether
+/// `e` was present. `scratch` holds transient collections.
+fn exciseEntityFromRoots(roots: *IndexRoots, e: u64, scratch: std.mem.Allocator) !bool {
+    const inner = roots.eavt.get(e) orelse return false;
+
+    const AV = struct { a: u64, v: Ref };
+    var pairs = std.ArrayList(AV){};
+    defer pairs.deinit(scratch);
+    var attrs = std.ArrayList(u64){};
+    defer attrs.deinit(scratch);
+
+    var ait = inner.iter();
+    while (ait.next()) |kv| {
+        try attrs.append(scratch, kv.key);
+        const cell = kv.value;
+        const n = cell.history.count();
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            try pairs.append(scratch, .{ .a = kv.key, .v = cell.history.nth(i).v });
+        }
+        // current_v may post-date the collected history in pathological cases;
+        // include it defensively.
+        if (cell.current_v) |cv| try pairs.append(scratch, .{ .a = kv.key, .v = cv });
+    }
+
+    // VAET[v][a] : dissoc e
+    for (pairs.items) |p| {
+        if (roots.vaet.get(p.v)) |mid| {
+            if (mid.get(p.a)) |leaf| {
+                const new_mid = try mid.assoc(p.a, try leaf.dissoc(e));
+                roots.vaet = try roots.vaet.assoc(p.v, new_mid);
+            }
+        }
+    }
+    // AVET[a][v] : dissoc e
+    for (pairs.items) |p| {
+        if (roots.avet.get(p.a)) |mid| {
+            if (mid.get(p.v)) |leaf| {
+                const new_mid = try mid.assoc(p.v, try leaf.dissoc(e));
+                roots.avet = try roots.avet.assoc(p.a, new_mid);
+            }
+        }
+    }
+    // AEVT[a] : dissoc e
+    for (attrs.items) |a| {
+        if (roots.aevt.get(a)) |amap| {
+            roots.aevt = try roots.aevt.assoc(a, try amap.dissoc(e));
+        }
+    }
+    // MEAT[m] : dissoc e (for every module that owned a fact of e)
+    {
+        var mods = std.ArrayList(u64){};
+        defer mods.deinit(scratch);
+        var mit = roots.meat.iter();
+        while (mit.next()) |kv| {
+            if (kv.value.get(e) != null) try mods.append(scratch, kv.key);
+        }
+        for (mods.items) |m| {
+            if (roots.meat.get(m)) |emap| {
+                roots.meat = try roots.meat.assoc(m, try emap.dissoc(e));
+            }
+        }
+    }
+    // EAVT : dissoc e wholesale
+    roots.eavt = try roots.eavt.dissoc(e);
+    return true;
+}
 
 fn updateValueLeaf(
     allocator: std.mem.Allocator,

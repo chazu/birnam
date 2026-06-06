@@ -377,6 +377,351 @@ test "index epoch arena: compact frees old epoch wholesale; values survive" {
     try testing.expect(store.currentValue(99, 5) == null);
 }
 
+test "epoch registry (R1b): pin retains old epoch across compact; unpin frees it" {
+    // Leak-checked allocator: a retained epoch that is never freed (or freed
+    // twice) trips the allocator. Proves the refcount gate keeps a pinned
+    // epoch alive across compact and frees it exactly once on unpin.
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT);
+    _ = try store.assert(2, 5, vi(20), M_BOOT);
+
+    // Pin the current (writable) epoch, then compact. The old epoch is pinned
+    // → moved to retained_epochs, NOT freed.
+    const gen = store.pinCurrentEpoch();
+    const old_ptr = store.index_arena.?;
+    _ = try store.compact(a, {}, KeepAll.keep);
+
+    try testing.expect(store.index_arena.? != old_ptr); // swapped to fresh epoch
+    try testing.expectEqual(@as(usize, 1), store.retained_epochs.items.len);
+    try testing.expectEqual(@as(u32, 1), store.retained_epochs.items[0].refcount);
+    // New epoch serves current values fine.
+    try testing.expectEqual(vi(10), store.currentValue(1, 5).?);
+    try testing.expectEqual(vi(20), store.currentValue(2, 5).?);
+
+    // Unpin → refcount 0 and below the (current-only) horizon → freed + dropped.
+    store.unpinEpoch(gen);
+    try testing.expectEqual(@as(usize, 0), store.retained_epochs.items.len);
+    try testing.expectEqual(vi(10), store.currentValue(1, 5).?); // no UAF
+}
+
+test "epoch registry (R1b): compact does not advance basis_t" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // rewrite (1,5) thrice → churn
+    _ = try store.assert(1, 5, vi(11), M_BOOT);
+    _ = try store.assert(1, 5, vi(12), M_BOOT);
+    _ = try store.assert(2, 5, vi(20), M_BOOT);
+    const basis_before = store.currentBasisT(); // 4 commits
+    _ = try store.compact(a, {}, KeepAll.keep); // keeps 2 current facts
+    try testing.expectEqual(basis_before, store.currentBasisT()); // unchanged
+    // next_tx legitimately reset to the per-epoch coordinate (2 < 4).
+    try testing.expect(store.currentTx() < basis_before);
+}
+
+test "snapshot (R1c): frozen view is isolated from later live mutation" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT);
+    const snap = try store.snapshotNow();
+    defer snap.deinit(a);
+
+    // Mutate live AFTER the snapshot.
+    _ = try store.assert(1, 5, vi(20), M_BOOT);
+    _ = try store.assert(2, 5, vi(99), M_BOOT); // entity not present at snapshot
+
+    // Snapshot still sees the captured state; live sees the new state.
+    try testing.expectEqual(vi(10), snap.view.currentValue(1, 5).?);
+    try testing.expectEqual(vi(20), store.currentValue(1, 5).?);
+    try testing.expect(snap.view.currentValue(2, 5) == null); // didn't exist yet
+    try testing.expectEqual(vi(99), store.currentValue(2, 5).?);
+    try testing.expectEqual(@as(u64, 1), snap.basis_t); // one commit at capture
+}
+
+test "snapshot (R1c): pin survives compact; release frees the epoch" {
+    const a = testing.allocator; // leak-checked
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT);
+    _ = try store.assert(2, 5, vi(20), M_BOOT);
+    const snap = try store.snapshotNow();
+
+    // Live churns then compacts — the snapshot's epoch is pinned, so compact
+    // retains it rather than freeing it.
+    _ = try store.assert(1, 5, vi(11), M_BOOT);
+    _ = try store.compact(a, {}, KeepAll.keep);
+    try testing.expectEqual(@as(usize, 1), store.retained_epochs.items.len);
+
+    // Snapshot reads remain valid across the compact (no UAF) — it reads the
+    // RETAINED old epoch's nodes, not the new live epoch.
+    try testing.expectEqual(vi(10), snap.view.currentValue(1, 5).?);
+    try testing.expectEqual(vi(20), snap.view.currentValue(2, 5).?);
+    // Live shows the post-churn current value.
+    try testing.expectEqual(vi(11), store.currentValue(1, 5).?);
+
+    // Release → epoch refcount hits 0, below horizon → freed + dropped.
+    snap.deinit(a);
+    try testing.expectEqual(@as(usize, 0), store.retained_epochs.items.len);
+    try testing.expectEqual(vi(11), store.currentValue(1, 5).?); // live intact
+}
+
+test "snapshot (R1c): datalog query runs against the frozen view" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    const attr_kind: u64 = 5;
+    _ = try store.assert(100, attr_kind, vi(7), M_BOOT);
+    _ = try store.assert(101, attr_kind, vi(7), M_BOOT);
+    const snap = try store.snapshotNow();
+    defer snap.deinit(a);
+
+    // After the snapshot, a third entity gets the same value on the LIVE store.
+    _ = try store.assert(102, attr_kind, vi(7), M_BOOT);
+
+    // entitiesMatching against the view sees exactly the 2 captured entities;
+    // the live store sees 3. (Iterator-level datalog primitive over the view.)
+    var snap_count: usize = 0;
+    var sit = snap.view.entitiesMatching(attr_kind, vi(7));
+    while (sit.next()) |_| snap_count += 1;
+    try testing.expectEqual(@as(usize, 2), snap_count);
+
+    var live_count: usize = 0;
+    var lit = store.entitiesMatching(attr_kind, vi(7));
+    while (lit.next()) |_| live_count += 1;
+    try testing.expectEqual(@as(usize, 3), live_count);
+}
+
+test "retention (R2): currentValueAsOfBasis is exact per basis" {
+    var backing = std.heap.ArenaAllocator.init(testing.allocator);
+    defer backing.deinit();
+    const a = backing.allocator();
+    var store = fs.FactStore.init(a);
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2
+    _ = try store.assert(1, 5, vi(30), M_BOOT); // basis 3
+
+    try testing.expect(store.currentValueAsOfBasis(1, 5, 0) == null);
+    try testing.expectEqual(vi(10), store.currentValueAsOfBasis(1, 5, 1).?);
+    try testing.expectEqual(vi(20), store.currentValueAsOfBasis(1, 5, 2).?);
+    try testing.expectEqual(vi(30), store.currentValueAsOfBasis(1, 5, 3).?);
+    try testing.expectEqual(vi(30), store.currentValueAsOfBasis(1, 5, 99).?);
+}
+
+test "retention (R2): keep_all retains archive epoch; asOf reads past basis" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    store.setRetention(.keep_all);
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2
+
+    // Compact: keep_all → old epoch retained as a history archive (not freed).
+    _ = try store.compact(a, {}, KeepAll.keep);
+    try testing.expectEqual(@as(usize, 1), store.retained_epochs.items.len);
+
+    // asOf a past basis routes to the retained archive and reads exactly.
+    const past = try store.snapshotAsOf(1);
+    defer past.deinit(a);
+    try testing.expectEqual(vi(10), past.get(1, 5).?);
+    try testing.expectEqual(@as(u64, 1), past.basis_t);
+
+    // asOf the collapse basis routes to the current epoch.
+    const at2 = try store.snapshotAsOf(2);
+    defer at2.deinit(a);
+    try testing.expectEqual(vi(20), at2.get(1, 5).?);
+
+    // Live still current.
+    try testing.expectEqual(vi(20), store.currentValue(1, 5).?);
+}
+
+test "retention (R2): current_only frees history; asOf past errors" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    // Default current_only.
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2
+    _ = try store.compact(a, {}, KeepAll.keep); // frees old epoch
+    try testing.expectEqual(@as(usize, 0), store.retained_epochs.items.len);
+
+    // History below the collapse is gone → asOf(1) has no archive.
+    try testing.expectError(error.HistoryNotRetained, store.snapshotAsOf(1));
+}
+
+test "excision (R3): removes entity + history; other entities untouched" {
+    var backing = std.heap.ArenaAllocator.init(testing.allocator);
+    defer backing.deinit();
+    const a = backing.allocator();
+    var store = fs.FactStore.init(a);
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // e=1 history: 10 then 20
+    _ = try store.assert(1, 5, vi(20), M_BOOT);
+    _ = try store.assert(1, 6, vi(77), M_BOOT); // second attr on e=1
+    _ = try store.assert(2, 5, vi(30), M_BOOT); // bystander
+
+    try store.exciseEntity(1, a);
+
+    // e=1 wholly gone (current + both attrs).
+    try testing.expect(!store.entityExists(1));
+    try testing.expect(store.currentValue(1, 5) == null);
+    try testing.expect(store.currentValue(1, 6) == null);
+    // Bystander intact.
+    try testing.expectEqual(vi(30), store.currentValue(2, 5).?);
+
+    // AVET scrubbed: neither historical value of e=1 maps back to it.
+    var m20 = store.entitiesMatching(5, vi(20));
+    try testing.expect(m20.next() == null);
+    var m10 = store.entitiesMatching(5, vi(10));
+    try testing.expect(m10.next() == null);
+    // VAET scrubbed: nothing points via the old values to e=1.
+    var pa = try store.pointingAt(vi(20), a);
+    defer pa.deinit();
+    try testing.expect(pa.next() == null);
+    // Bystander still AVET-findable.
+    var m30 = store.entitiesMatching(5, vi(30));
+    try testing.expectEqual(@as(u64, 2), m30.next().?);
+}
+
+test "excision (R3): refuses while a live snapshot pins an epoch" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT);
+    const snap = try store.snapshotNow();
+
+    try testing.expectError(error.SnapshotPins, store.exciseEntity(1, a));
+
+    snap.deinit(a); // drop the snapshot...
+    try store.exciseEntity(1, a); // ...now it succeeds
+    try testing.expect(!store.entityExists(1));
+}
+
+test "excision (R3): scrubs retained history archives too (GDPR)" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    store.setRetention(.keep_all);
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2
+    _ = try store.assert(2, 5, vi(99), M_BOOT); // bystander, basis 3
+    _ = try store.compact(a, {}, KeepAll.keep); // archive retained
+    try testing.expectEqual(@as(usize, 1), store.retained_epochs.items.len);
+
+    try store.exciseEntity(1, a);
+
+    // Gone from the live store AND from the retained archive.
+    try testing.expect(!store.entityExists(1));
+    const past = try store.snapshotAsOf(1); // basis 1 → retained archive
+    defer past.deinit(a);
+    try testing.expect(past.get(1, 5) == null); // scrubbed from the archive
+    try testing.expect(!past.view.entityExists(1)); // fully gone from archive
+    // Bystander survives in the live store (it was asserted at basis 3).
+    try testing.expectEqual(vi(99), store.currentValue(2, 5).?);
+}
+
+test "cold tier (R4): spill epoch to disk, fault back with exact fidelity" {
+    const a = testing.allocator; // leak-checked
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    store.setRetention(.keep_all);
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2  (e=1 history: 10,20)
+    _ = try store.assert(2, 5, vi(30), M_BOOT); // basis 3  (e=2)
+    _ = try store.compact(a, {}, KeepAll.keep); // archive epoch gen 0 retained
+    try testing.expectEqual(@as(usize, 1), store.retained_epochs.items.len);
+    const gen = store.retained_epochs.items[0].gen;
+
+    // Spill the archive to disk → in-RAM arena freed, marked cold.
+    try store.spillEpoch(gen, ".");
+    try testing.expect(store.retained_epochs.items[0].arena == null);
+    try testing.expect(store.retained_epochs.items[0].cold_path != null);
+
+    // asOf a past basis auto-faults the cold epoch back and reads exactly.
+    {
+        const past = try store.snapshotAsOf(1);
+        defer past.deinit(a);
+        try testing.expectEqual(vi(10), past.get(1, 5).?); // e=1 as of basis 1
+        try testing.expect(past.get(2, 5) == null); // e=2 didn't exist yet
+    }
+    // Now hot again; reads still exact at basis 2.
+    try testing.expect(store.retained_epochs.items[0].arena != null);
+    try testing.expect(store.retained_epochs.items[0].cold_path == null);
+    {
+        const at2 = try store.snapshotAsOf(2);
+        defer at2.deinit(a);
+        try testing.expectEqual(vi(20), at2.get(1, 5).?);
+    }
+    // Live store unaffected.
+    try testing.expectEqual(vi(20), store.currentValue(1, 5).?);
+    try testing.expectEqual(vi(30), store.currentValue(2, 5).?);
+}
+
+test "cold tier (R4): excision faults in + scrubs a cold archive" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    store.setRetention(.keep_all);
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2
+    _ = try store.compact(a, {}, KeepAll.keep);
+    try store.spillEpoch(store.retained_epochs.items[0].gen, ".");
+    try testing.expect(store.retained_epochs.items[0].arena == null);
+
+    // GDPR excise must reach into the cold archive.
+    try store.exciseEntity(1, a);
+    const past = try store.snapshotAsOf(1);
+    defer past.deinit(a);
+    try testing.expect(past.get(1, 5) == null); // scrubbed from the faulted archive
+}
+
 test "index epoch arena: retain_history gate skips the free (no swap)" {
     // Backing arena reclaims the intentionally-retained epoch at teardown.
     var backing = std.heap.ArenaAllocator.init(testing.allocator);
