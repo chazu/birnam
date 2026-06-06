@@ -63,6 +63,10 @@ const FALSE_EID: u64 = 73;
 const SNAPSHOT_VT: u64 = 195;
 const DB_PROTO_VT: u64 = 196;
 const DB_PROTO: u64 = 197;
+// Phase 16 — RRB-backed vector vtable (mirror of kernel_eids.RRB_VT).
+const RRB_VT: u64 = 9;
+const ASSOC_VT: u64 = 6; // Phase 16 Tier C — map vtable (mirror)
+const ATTR_ERROR_MESSAGE: u64 = 44; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
 
 const ATTR_AST_VALUE: u64 = 118;
 const ATTR_AST_NAME: u64 = 119;
@@ -203,6 +207,23 @@ const IdApi = extern struct {
     snapshot_release: *const fn (Ref) callconv(.c) void,
     set_retention: *const fn (u32, u64) callconv(.c) void,
     excise_entity: *const fn (u64) callconv(.c) bool,
+
+    // -- Phase 16 Tier A: vectors (append-only) ----------------------------
+    make_rrb: *const fn ([*]const Ref, usize) callconv(.c) Ref,
+    rrb_with: *const fn (Ref, Ref) callconv(.c) Ref,
+    rrb_len: *const fn (Ref) callconv(.c) u64,
+    rrb_nth: *const fn (Ref, u64) callconv(.c) Ref,
+
+    // -- Phase 16 Tier C: maps (append-only) -------------------------------
+    make_map: *const fn () callconv(.c) Ref,
+    map_put: *const fn (Ref, Ref, Ref) callconv(.c) Ref,
+    map_get: *const fn (Ref, Ref) callconv(.c) Ref,
+    map_has: *const fn (Ref, Ref) callconv(.c) bool,
+    map_len: *const fn (Ref) callconv(.c) u64,
+    map_keys: *const fn (Ref) callconv(.c) Ref,
+    map_values: *const fn (Ref) callconv(.c) Ref,
+    map_merge: *const fn (Ref, Ref) callconv(.c) Ref,
+    symbol_name: *const fn (u64) callconv(.c) Ref,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -238,6 +259,13 @@ var rn_block_param: u64 = 0;
 var rn_block_params: u64 = 0;
 var rn_block_with_params: u64 = 0;
 var rn_bracket_binary: u64 = 0;
+var rn_vector_literal: u64 = 0;
+var rn_pipe_primary: u64 = 0;
+var rn_pipe_kw_arg: u64 = 0;
+var rn_pipe_tail: u64 = 0;
+var rn_pipe_expr: u64 = 0;
+var rn_map_literal: u64 = 0;
+var rn_map_entry: u64 = 0;
 var rn_let_statement: u64 = 0;
 var rn_top_form: u64 = 0;
 var rn_assignment: u64 = 0;
@@ -651,9 +679,9 @@ fn buildGrammar() void {
         defineRule(grammar, "block-with-params", peg_seq(&parts));
     }
 
-    // binary-op = [+\-*/<>=]   (single-char operator)
+    // binary-op = [+\-*/<>=,]   (single-char operator; `,` = concat, Phase 16)
     {
-        const op_ranges = [_]u8{ '+', '+', '-', '-', '*', '*', '/', '/', '<', '<', '>', '>', '=', '=' };
+        const op_ranges = [_]u8{ '+', '+', '-', '-', '*', '*', '/', '/', '<', '<', '>', '>', '=', '=', ',', ',' };
         defineRule(grammar, "binary-op", peg_charset(&op_ranges));
     }
 
@@ -686,10 +714,104 @@ fn buildGrammar() void {
         defineRule(grammar, "bracket-form", peg_choice(&alts));
     }
 
-    // expression = bracket-form | atom (ordered: try the heavier form first)
+    // -- Phase 16: vector literal -----------------------------------------
+    // vector-literal = "#[" ws (expression ws)* "]"
+    // Elements are expressions, evaluated at eval time (Clojure-like). Using a
+    // star over (expression ws) handles zero elements without a nullable opt.
+    {
+        const elem_parts = [_]u64{
+            untagEid(peg_rule_ref("expression")),
+            untagEid(peg_rule_ref("ws")),
+        };
+        const elem = peg_seq(&elem_parts);
+        const parts = [_]u64{
+            untagEid(peg_literal("#[")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_star(elem)),
+            untagEid(peg_literal("]")),
+        };
+        defineRule(grammar, "vector-literal", peg_seq(&parts));
+    }
+
+    // -- Phase 16 Tier C: map literal -------------------------------------
+    // map-entry   = kw-suffix ws expression
+    // map-literal = "{" ws (map-entry ws)* "}"   (keyword-keyed, space-sep)
+    {
+        const me_parts = [_]u64{
+            untagEid(peg_rule_ref("kw-suffix")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("expression")),
+        };
+        defineRule(grammar, "map-entry", peg_seq(&me_parts));
+        const entry_parts = [_]u64{
+            untagEid(peg_rule_ref("map-entry")),
+            untagEid(peg_rule_ref("ws")),
+        };
+        const entry = peg_seq(&entry_parts);
+        const parts = [_]u64{
+            untagEid(peg_literal("{")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_star(entry)),
+            untagEid(peg_literal("}")),
+        };
+        defineRule(grammar, "map-literal", peg_seq(&parts));
+    }
+
+    // -- Phase 16: |> pipe operator ---------------------------------------
+    // Thread-as-receiver (Clojure ->). `x |> with: 1 |> select: even`
+    // desugars to `[[x with: 1] select: even]`. The piped message's keyword
+    // args are pipe-primary (non-pipe) so the chain stays LEFT-associative
+    // (the arg doesn't swallow the next `|>`).
     {
         const alts = [_]u64{
             untagEid(peg_rule_ref("bracket-form")),
+            untagEid(peg_rule_ref("vector-literal")),
+            untagEid(peg_rule_ref("map-literal")),
+            untagEid(peg_rule_ref("atom")),
+        };
+        defineRule(grammar, "pipe-primary", peg_choice(&alts));
+    }
+    {
+        // pipe-kw-arg = ws kw-suffix ws pipe-primary
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("kw-suffix")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("pipe-primary")),
+        };
+        defineRule(grammar, "pipe-kw-arg", peg_seq(&parts));
+    }
+    {
+        // pipe-tail = ws "|>" ws (pipe-kw-arg+ | identifier)
+        const msg_alts = [_]u64{
+            untagEid(peg_plus(peg_rule_ref("pipe-kw-arg"))),
+            untagEid(peg_rule_ref("identifier")),
+        };
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal("|>")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_choice(&msg_alts)),
+        };
+        defineRule(grammar, "pipe-tail", peg_seq(&parts));
+    }
+    {
+        // pipe-expr = pipe-primary pipe-tail+
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("pipe-primary")),
+            untagEid(peg_plus(peg_rule_ref("pipe-tail"))),
+        };
+        defineRule(grammar, "pipe-expr", peg_seq(&parts));
+    }
+
+    // expression = pipe-expr | bracket-form | vector-literal | atom
+    // (pipe-expr first; it needs ≥1 `|>`, else backtracks to the others)
+    {
+        const alts = [_]u64{
+            untagEid(peg_rule_ref("pipe-expr")),
+            untagEid(peg_rule_ref("bracket-form")),
+            untagEid(peg_rule_ref("vector-literal")),
+            untagEid(peg_rule_ref("map-literal")),
             untagEid(peg_rule_ref("atom")),
         };
         defineRule(grammar, "expression", peg_choice(&alts));
@@ -798,6 +920,76 @@ fn newAstNode(kind_vt: u64, byte_start: usize, byte_end: usize) u64 {
 }
 
 /// Walk a CST node, return a typed AST node EID.
+/// Phase 16 — build one piped send (`recv |> <tail>`): keyword send when the
+/// tail holds pipe-kw-arg children, else unary send from its identifier.
+fn desugarPipeTail(recv_ast: u64, tail_eid: u64) u64 {
+    const api = g_api.?;
+    const span = cstByteRange(tail_eid);
+    var sel_buf: [128]u8 = undefined;
+    var sel_len: usize = 0;
+    var first_arg_ast: u64 = 0;
+    var last_arg_ast: u64 = 0;
+    var saw_kw = false;
+    var c = cstFirstChild(tail_eid);
+    while (c != 0) : (c = cstNextSibling(c)) {
+        if (cstRuleName(c) != rn_pipe_kw_arg) continue;
+        saw_kw = true;
+        var ac = cstFirstChild(c);
+        var arg_ast: u64 = 0;
+        while (ac != 0) : (ac = cstNextSibling(ac)) {
+            const acrn = cstRuleName(ac);
+            if (acrn == rn_kw_suffix) {
+                var sc = cstFirstChild(ac);
+                while (sc != 0) : (sc = cstNextSibling(sc)) {
+                    if (cstRuleName(sc) == rn_identifier) {
+                        const ids = cstByteRange(sc);
+                        const nb = g_source[ids.start..ids.end];
+                        if (sel_len + nb.len + 1 < sel_buf.len) {
+                            @memcpy(sel_buf[sel_len .. sel_len + nb.len], nb);
+                            sel_len += nb.len;
+                            sel_buf[sel_len] = ':';
+                            sel_len += 1;
+                        }
+                        break;
+                    }
+                }
+            } else if (acrn == rn_pipe_primary) {
+                arg_ast = desugar(ac);
+            }
+        }
+        if (arg_ast != 0) {
+            if (first_arg_ast == 0) {
+                first_arg_ast = arg_ast;
+            } else {
+                _ = api.assert_fact(last_arg_ast, ATTR_AST_NEXT_SIBLING, mkEid(arg_ast), M_USER);
+            }
+            last_arg_ast = arg_ast;
+        }
+    }
+    if (saw_kw) {
+        const sel_eid = api.intern(sel_buf[0..sel_len].ptr, sel_len);
+        const send = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
+        _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(recv_ast), M_USER);
+        _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(sel_eid), M_USER);
+        if (first_arg_ast != 0) _ = api.assert_fact(send, ATTR_AST_FIRST_ARG, mkEid(first_arg_ast), M_USER);
+        return send;
+    }
+    // Unary: the lone identifier child is the selector.
+    c = cstFirstChild(tail_eid);
+    while (c != 0) : (c = cstNextSibling(c)) {
+        if (cstRuleName(c) == rn_identifier) {
+            const ids = cstByteRange(c);
+            const nb = g_source[ids.start..ids.end];
+            const sel_eid = api.intern(nb.ptr, nb.len);
+            const send = newAstNode(AST_UNARY_SEND_VT, span.start, span.end);
+            _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(recv_ast), M_USER);
+            _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(sel_eid), M_USER);
+            return send;
+        }
+    }
+    return recv_ast;
+}
+
 fn desugar(cst_eid: u64) u64 {
     const api = g_api.?;
     const rn = cstRuleName(cst_eid);
@@ -1021,7 +1213,27 @@ fn desugar(cst_eid: u64) u64 {
         }
         return seq_ast;
     }
-    if (rn == rn_atom or rn == rn_expression or rn == rn_bracket_form or rn == rn_start or rn == rn_top_form) {
+    if (rn == rn_pipe_expr) {
+        // pipe-primary, then pipe-tail+. Fold left: each tail wraps the
+        // accumulated receiver in a unary/keyword send.
+        var c = cstFirstChild(cst_eid);
+        var recv_ast: u64 = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn == rn_ws) continue;
+            if (crn == rn_pipe_primary) {
+                recv_ast = desugar(c);
+                c = cstNextSibling(c);
+                break;
+            }
+        }
+        while (c != 0) : (c = cstNextSibling(c)) {
+            if (cstRuleName(c) != rn_pipe_tail) continue;
+            recv_ast = desugarPipeTail(recv_ast, c);
+        }
+        return recv_ast;
+    }
+    if (rn == rn_atom or rn == rn_expression or rn == rn_bracket_form or rn == rn_start or rn == rn_top_form or rn == rn_pipe_primary) {
         const child = cstFirstChild(cst_eid);
         // For start: children are ws, expression, ws (ws-CST). Skip ws-shaped children.
         var c = child;
@@ -1173,6 +1385,72 @@ fn desugar(cst_eid: u64) u64 {
         }
         return send_ast;
     }
+    if (rn == rn_vector_literal) {
+        // #[e0 e1 ...] desugars to a left-nested `with:` chain over an empty
+        // vector literal: [[[ #[] with: e0] with: e1] ...]. Pure sends +
+        // literal → no new AST kind / opcode; works in tree-walker AND
+        // bytecode unchanged. Empty vector is a constant on the literal node.
+        const empty_ast = newAstNode(AST_LITERAL_VT, span.start, span.start);
+        _ = api.assert_fact(empty_ast, ATTR_AST_VALUE, api.make_rrb(&[_]Ref{}, 0), M_USER);
+        const with_sel = api.intern("with:".ptr, 5);
+        var recv_ast = empty_ast;
+        var c = cstFirstChild(cst_eid);
+        while (c != 0) : (c = cstNextSibling(c)) {
+            if (cstRuleName(c) != rn_expression) continue;
+            const elem_ast = desugar(c);
+            const send = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
+            _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(recv_ast), M_USER);
+            _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(with_sel), M_USER);
+            _ = api.assert_fact(send, ATTR_AST_FIRST_ARG, mkEid(elem_ast), M_USER);
+            recv_ast = send;
+        }
+        return recv_ast;
+    }
+
+    if (rn == rn_map_literal) {
+        // {k: v ...} desugars to a left-nested at:put: chain over an empty map
+        // literal: [[ {} at: #k put: v] at: #k2 put: v2]. Pure sends + literals
+        // → works in tree-walker AND bytecode.
+        const empty_ast = newAstNode(AST_LITERAL_VT, span.start, span.start);
+        _ = api.assert_fact(empty_ast, ATTR_AST_VALUE, api.make_map(), M_USER);
+        const at_put_sel = api.intern("at:put:".ptr, 7);
+        var recv_ast = empty_ast;
+        var c = cstFirstChild(cst_eid);
+        while (c != 0) : (c = cstNextSibling(c)) {
+            if (cstRuleName(c) != rn_map_entry) continue;
+            // map-entry children: kw-suffix, ws, expression.
+            var key_eid: u64 = 0;
+            var val_ast: u64 = 0;
+            var ec = cstFirstChild(c);
+            while (ec != 0) : (ec = cstNextSibling(ec)) {
+                const ecrn = cstRuleName(ec);
+                if (ecrn == rn_kw_suffix) {
+                    var sc = cstFirstChild(ec);
+                    while (sc != 0) : (sc = cstNextSibling(sc)) {
+                        if (cstRuleName(sc) == rn_identifier) {
+                            const ids = cstByteRange(sc);
+                            const nb = g_source[ids.start..ids.end];
+                            key_eid = api.intern(nb.ptr, nb.len);
+                            break;
+                        }
+                    }
+                } else if (ecrn == rn_expression) {
+                    val_ast = desugar(ec);
+                }
+            }
+            if (key_eid == 0 or val_ast == 0) continue;
+            const key_ast = newAstNode(AST_LITERAL_VT, span.start, span.start);
+            _ = api.assert_fact(key_ast, ATTR_AST_VALUE, mkEid(key_eid), M_USER);
+            const send = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
+            _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(recv_ast), M_USER);
+            _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(at_put_sel), M_USER);
+            _ = api.assert_fact(send, ATTR_AST_FIRST_ARG, mkEid(key_ast), M_USER);
+            _ = api.assert_fact(key_ast, ATTR_AST_NEXT_SIBLING, mkEid(val_ast), M_USER);
+            recv_ast = send;
+        }
+        return recv_ast;
+    }
+
     // Unknown rule — fallback to NIL literal.
     const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
     _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
@@ -1204,6 +1482,13 @@ fn cacheRuleNames() void {
     rn_block_params = api.intern("block-params".ptr, 12);
     rn_block_with_params = api.intern("block-with-params".ptr, 17);
     rn_bracket_binary = api.intern("bracket-binary".ptr, 14);
+    rn_vector_literal = api.intern("vector-literal".ptr, 14);
+    rn_pipe_primary = api.intern("pipe-primary".ptr, 12);
+    rn_pipe_kw_arg = api.intern("pipe-kw-arg".ptr, 11);
+    rn_pipe_tail = api.intern("pipe-tail".ptr, 9);
+    rn_pipe_expr = api.intern("pipe-expr".ptr, 9);
+    rn_map_literal = api.intern("map-literal".ptr, 11);
+    rn_map_entry = api.intern("map-entry".ptr, 9);
     rn_let_statement = api.intern("let-statement".ptr, 13);
     rn_top_form = api.intern("top-form".ptr, 8);
     rn_assignment = api.intern("assignment".ptr, 10);
@@ -2276,6 +2561,172 @@ fn installDbSurface() void {
     pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("db".ptr, 2), mkEid(DB_PROTO));
 }
 
+// -- Phase 16 Tier A: persistent vector (RRB_VT) methods ------------------
+
+/// Build a runtime ERROR_VT diagnostic carrying `msg`. The no-NULL "raise"
+/// surface until a proper exception mechanism lands (Tier D).
+fn mkRuntimeError(msg: []const u8) Ref {
+    const api = g_api.?;
+    const e = api.alloc_eid();
+    _ = api.assert_fact(e, ATTR_VTABLE, mkEid(ERROR_VT), M_USER);
+    _ = api.assert_fact(e, ATTR_ERROR_MESSAGE, api.make_string(msg.ptr, msg.len), M_USER);
+    return mkEid(e);
+}
+
+fn vecWithImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.rrb_with(s.receiver, args[0]);
+}
+fn vecSizeImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return mkSmallInt(@intCast(g_api.?.rrb_len(s.receiver)));
+}
+fn vecAtImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const i = untagSmallInt(args[0]);
+    const len: i64 = @intCast(api.rrb_len(s.receiver));
+    if (i < 0 or i >= len) return mkRuntimeError("vector index out of bounds");
+    return api.rrb_nth(s.receiver, @intCast(i));
+}
+fn vecAtIfAbsentImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const i = untagSmallInt(args[0]);
+    const len: i64 = @intCast(api.rrb_len(s.receiver));
+    if (i < 0 or i >= len) return api.send0(args[1], sel_value_g); // 0-arg ifAbsent block
+    return api.rrb_nth(s.receiver, @intCast(i));
+}
+fn vecDoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const len = api.rrb_len(s.receiver);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) _ = api.send1(args[0], sel_value_of_g, api.rrb_nth(s.receiver, i));
+    return s.receiver;
+}
+fn vecInjectIntoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    var acc = args[0];
+    const block = args[1];
+    const len = api.rrb_len(s.receiver);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) acc = api.send2(block, sel_value_value_g, acc, api.rrb_nth(s.receiver, i));
+    return acc;
+}
+
+// -- Phase 16 Tier C: map (ASSOC_VT) methods ------------------------------
+
+fn mapAtPutImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.map_put(s.receiver, args[0], args[1]);
+}
+fn mapAtImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    if (api.map_has(s.receiver, args[0])) return api.map_get(s.receiver, args[0]);
+    return mkRuntimeError("map key not found");
+}
+fn mapAtIfAbsentImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    if (api.map_has(s.receiver, args[0])) return api.map_get(s.receiver, args[0]);
+    return api.send0(args[1], sel_value_g);
+}
+fn mapIncludesKeyImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return if (g_api.?.map_has(s.receiver, args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+fn mapSizeImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return mkSmallInt(@intCast(g_api.?.map_len(s.receiver)));
+}
+fn mapKeysImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.map_keys(s.receiver);
+}
+fn mapValuesImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.map_values(s.receiver);
+}
+fn mapMergeImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.map_merge(s.receiver, args[0]);
+}
+fn mapDoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const vals = api.map_values(s.receiver); // iterate VALUES (Smalltalk Dict do:)
+    const len = api.rrb_len(vals);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) _ = api.send1(args[0], sel_value_of_g, api.rrb_nth(vals, i));
+    return s.receiver;
+}
+
+fn installCollections() void {
+    const api = g_api.?;
+    const M = struct { name: []const u8, impl: *const anyopaque };
+    const vec_methods = [_]M{
+        .{ .name = "with:", .impl = @ptrCast(&vecWithImpl) },
+        .{ .name = "size", .impl = @ptrCast(&vecSizeImpl) },
+        .{ .name = "at:", .impl = @ptrCast(&vecAtImpl) },
+        .{ .name = "at:ifAbsent:", .impl = @ptrCast(&vecAtIfAbsentImpl) },
+        .{ .name = "do:", .impl = @ptrCast(&vecDoImpl) },
+        .{ .name = "inject:into:", .impl = @ptrCast(&vecInjectIntoImpl) },
+    };
+    for (vec_methods) |m| {
+        const sel = api.intern(m.name.ptr, m.name.len);
+        _ = api.assert_fact(RRB_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+    const map_methods = [_]M{
+        .{ .name = "at:put:", .impl = @ptrCast(&mapAtPutImpl) },
+        .{ .name = "at:", .impl = @ptrCast(&mapAtImpl) },
+        .{ .name = "at:ifAbsent:", .impl = @ptrCast(&mapAtIfAbsentImpl) },
+        .{ .name = "includesKey:", .impl = @ptrCast(&mapIncludesKeyImpl) },
+        .{ .name = "size", .impl = @ptrCast(&mapSizeImpl) },
+        .{ .name = "keys", .impl = @ptrCast(&mapKeysImpl) },
+        .{ .name = "values", .impl = @ptrCast(&mapValuesImpl) },
+        .{ .name = "merge:", .impl = @ptrCast(&mapMergeImpl) },
+        .{ .name = "do:", .impl = @ptrCast(&mapDoImpl) },
+    };
+    for (map_methods) |m| {
+        const sel = api.intern(m.name.ptr, m.name.len);
+        _ = api.assert_fact(ASSOC_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+}
+
+/// Phase 16 Tier B — install a method whose BODY is birnam source, compiled to
+/// bytecode. The receiver-vt + selector are given by Zig (no `vtable` reflection
+/// needed in source); the body self-hosts over the Tier A primitives. `src` is
+/// a block literal `[:params | body]` (or `[| body]` for unary). Best-effort:
+/// a parse/compile failure logs and skips (the prelude is vetted source).
+fn installSourceMethod(vt: u64, sel_name: []const u8, src: []const u8) void {
+    const api = g_api.?;
+    const src_ref = api.make_string(src.ptr, src.len);
+    const ast = api.send1(mkEid(g_module_eid), sel_parse_expr_g, src_ref);
+    if (!isEid(ast)) {
+        if (g_log) |log| log("[lang] prelude parse failed");
+        return;
+    }
+    const method_eid = api.compile_block_as_method(ast >> 3);
+    if (method_eid == 0) {
+        if (g_log) |log| log("[lang] prelude compile failed");
+        return;
+    }
+    _ = api.assert_fact(vt, api.intern(sel_name.ptr, sel_name.len), mkEid(method_eid), g_module_eid);
+}
+
+/// Phase 16 Tier B — the self-hosted collection protocol: `collect:`, `select:`,
+/// `count`, `,` derived in birnam source over Tier A's `do:`/`inject:into:`/
+/// `with:`/`size`. `self` inside each body = the receiver vector.
+fn installPrelude() void {
+    installSourceMethod(RRB_VT, "collect:", "[:f | [self inject: #[] into: [:acc :x | [acc with: [f value: x]]]]]");
+    installSourceMethod(RRB_VT, "select:", "[:p | [self inject: #[] into: [:acc :x | [[p value: x] ifTrue: [| [acc with: x]] ifFalse: [| acc]]]]]");
+    installSourceMethod(RRB_VT, "count", "[| [self size]]");
+    installSourceMethod(RRB_VT, ",", "[:other | [other inject: self into: [:acc :x | [acc with: x]]]]");
+}
+
 fn installPrimitives() void {
     const api = g_api.?;
     // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
@@ -2351,6 +2802,8 @@ fn installPrimitives() void {
     _ = api.assert_fact(FALSE_VT, if_true_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueImpl), NIL)), g_module_eid);
     _ = api.assert_fact(FALSE_VT, if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfFalseImpl), NIL)), g_module_eid);
     _ = api.assert_fact(FALSE_VT, if_true_if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueIfFalseImpl), NIL)), g_module_eid);
+
+    installCollections(); // Phase 16 Tier A — RRB_VT vector methods
 }
 
 /// Full method install (dylib / non-AOT path) — every tier.
@@ -2443,25 +2896,80 @@ fn resolvePendingModules() void {
     _ = api.send0(mkEid(MODULE_PROTO_EID), api.intern("resolve".ptr, 7));
 }
 
-fn formatValue(buf: []u8, val: Ref) ![:0]u8 {
-    if (isSmallInt(val)) {
-        return std.fmt.bufPrintZ(buf, "=> {d}", .{untagSmallInt(val)});
+/// Phase 16 — a Ref is a vector iff it's pointer-tagged with vt = RRB_VT at -1
+/// (mirrors isFloatRef).
+fn isVectorRef(r: Ref) bool {
+    if ((r & 0b111) != 0) return false;
+    if (r == 0) return false;
+    const vt_ptr: *const Ref = @ptrFromInt(r - @sizeOf(Ref));
+    return vt_ptr.* == mkEid(RRB_VT);
+}
+
+fn isMapRef(r: Ref) bool {
+    if ((r & 0b111) != 0) return false;
+    if (r == 0) return false;
+    const vt_ptr: *const Ref = @ptrFromInt(r - @sizeOf(Ref));
+    return vt_ptr.* == mkEid(ASSOC_VT);
+}
+
+/// Append a human display of `val` into `buf` at `off`, returning the new
+/// offset. Best-effort (truncates on overflow). Recurses into vectors → `#[..]`.
+fn appendRef(buf: []u8, off: usize, val: Ref) usize {
+    if (isSmallInt(val)) return off + (std.fmt.bufPrint(buf[off..], "{d}", .{untagSmallInt(val)}) catch return off).len;
+    if (isFloatRef(val)) return off + (std.fmt.bufPrint(buf[off..], "{d}", .{floatRefValue(val)}) catch return off).len;
+    if (val == NIL) return off + (std.fmt.bufPrint(buf[off..], "nil", .{}) catch return off).len;
+    if (isVectorRef(val)) {
+        var o = off + (std.fmt.bufPrint(buf[off..], "#[", .{}) catch return off).len;
+        const len = g_api.?.rrb_len(val);
+        var i: u64 = 0;
+        while (i < len) : (i += 1) {
+            if (i > 0) o += (std.fmt.bufPrint(buf[o..], " ", .{}) catch return o).len;
+            o = appendRef(buf, o, g_api.?.rrb_nth(val, i));
+        }
+        return o + (std.fmt.bufPrint(buf[o..], "]", .{}) catch return o).len;
     }
-    if (isFloatRef(val)) {
-        return std.fmt.bufPrintZ(buf, "=> {d}", .{floatRefValue(val)});
+    if (isMapRef(val)) {
+        var o = off + (std.fmt.bufPrint(buf[off..], "{{", .{}) catch return off).len;
+        const ks = g_api.?.map_keys(val);
+        const vs = g_api.?.map_values(val);
+        const len = g_api.?.rrb_len(ks);
+        var i: u64 = 0;
+        while (i < len) : (i += 1) {
+            if (i > 0) o += (std.fmt.bufPrint(buf[o..], " ", .{}) catch return o).len;
+            // Map key: render a keyword bare (`name:`), else generic.
+            const k = g_api.?.rrb_nth(ks, i);
+            if (isEid(k)) {
+                const nm = g_api.?.symbol_name(k >> 3);
+                if (nm != NIL and isString(nm)) {
+                    o += (std.fmt.bufPrint(buf[o..], "{s}: ", .{stringBytes(nm)}) catch return o).len;
+                } else {
+                    o = appendRef(buf, o, k);
+                    o += (std.fmt.bufPrint(buf[o..], ": ", .{}) catch return o).len;
+                }
+            } else {
+                o = appendRef(buf, o, k);
+                o += (std.fmt.bufPrint(buf[o..], ": ", .{}) catch return o).len;
+            }
+            o = appendRef(buf, o, g_api.?.rrb_nth(vs, i));
+        }
+        return o + (std.fmt.bufPrint(buf[o..], "}}", .{}) catch return o).len;
     }
-    if (val == NIL) return std.fmt.bufPrintZ(buf, "=> nil", .{});
     if (isEid(val)) {
         const e = val >> 3;
-        if (e == TRUE_EID) return std.fmt.bufPrintZ(buf, "=> true", .{});
-        if (e == FALSE_EID) return std.fmt.bufPrintZ(buf, "=> false", .{});
-        return std.fmt.bufPrintZ(buf, "=> <eid:{d}>", .{e});
+        if (e == TRUE_EID) return off + (std.fmt.bufPrint(buf[off..], "true", .{}) catch return off).len;
+        if (e == FALSE_EID) return off + (std.fmt.bufPrint(buf[off..], "false", .{}) catch return off).len;
+        const nm = g_api.?.symbol_name(e);
+        if (nm != NIL and isString(nm)) return off + (std.fmt.bufPrint(buf[off..], "#{s}", .{stringBytes(nm)}) catch return off).len;
+        return off + (std.fmt.bufPrint(buf[off..], "<eid:{d}>", .{e}) catch return off).len;
     }
-    if (isString(val)) {
-        const bytes = stringBytes(val);
-        return std.fmt.bufPrintZ(buf, "=> \"{s}\"", .{bytes});
-    }
-    return std.fmt.bufPrintZ(buf, "=> <ref:0x{x}>", .{val});
+    if (isString(val)) return off + (std.fmt.bufPrint(buf[off..], "\"{s}\"", .{stringBytes(val)}) catch return off).len;
+    return off + (std.fmt.bufPrint(buf[off..], "<ref:0x{x}>", .{val}) catch return off).len;
+}
+
+fn formatValue(buf: []u8, val: Ref) ![:0]u8 {
+    var tmp: [1024]u8 = undefined;
+    const n = appendRef(&tmp, 0, val);
+    return std.fmt.bufPrintZ(buf, "=> {s}", .{tmp[0..n]});
 }
 
 fn isSmallInt(r: Ref) bool {
@@ -2552,6 +3060,7 @@ pub fn moduleInitImpl(
     langFrontendTier();
     langPrimitivesTier();
     langMethodDoTier();
+    installPrelude(); // Phase 16 Tier B — self-hosted collection protocol
     ctx.log("[lang] ready");
 }
 

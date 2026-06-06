@@ -235,6 +235,105 @@ test "DEMO: parse + eval [3 squared] → 9" {
     try testing.expectEqual(@as(i64, 9), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 16 Tier C: maps — {k: v} literal, at:, at:ifAbsent:, includesKey:, merge:, keys/values" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    const Case = struct { src: []const u8, want: i64 };
+    const cases = [_]Case{
+        .{ .src = "[ {a: 1 b: 2} at: #a]", .want = 1 },
+        .{ .src = "[ {a: 1 b: 2} at: #b]", .want = 2 },
+        .{ .src = "[ {a: 1} at: #z ifAbsent: [| 99]]", .want = 99 },
+        .{ .src = "[ {a: 1 b: 2 c: 3} size]", .want = 3 },
+        .{ .src = "[ [{a: 1} merge: {b: 2}] size]", .want = 2 },
+        .{ .src = "[ [{x: 10 y: 20} values] inject: 0 into: [:s :v | [s + v]]]", .want = 30 },
+        // at:put: returns a new map; original unchanged (immutability)
+        .{ .src = "[ [{a: 1} at: #b put: 2] at: #b]", .want = 2 },
+        // |> pipe on a map
+        .{ .src = "{a: 5} |> at: #a", .want = 5 },
+    };
+    for (cases) |c| {
+        const src = try strings.mkString(a, c.src);
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        const val = send_mod.send0(ast, sel_eval);
+        try testing.expect(ref_mod.isSmallInt(val));
+        try testing.expectEqual(c.want, ref_mod.untagSmallInt(val));
+    }
+    // includesKey: returns a boolean
+    {
+        const src = try strings.mkString(a, "[ {a: 1} includesKey: #a]");
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        const val = send_mod.send0(ast, sel_eval);
+        try testing.expectEqual(kernel_eids.TRUE_EID, ref_mod.untagEid(val));
+    }
+}
+
+test "DEMO 16 Tier B: self-hosted collect/select/count/concat + |> pipe" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    const Case = struct { src: []const u8, want: i64 };
+    const cases = [_]Case{
+        // collect squares then sum: #[1 4 9] inject 0 → 14
+        .{ .src = "[ [#[1 2 3] collect: [:x | [x * x]]] inject: 0 into: [:a :x | [a + x]]]", .want = 14 },
+        // select evens-ish (>2): #[3 4] size = 2
+        .{ .src = "[ [#[1 2 3 4] select: [:x | [x > 2]]] size]", .want = 2 },
+        .{ .src = "[ #[1 2 3] count]", .want = 3 },
+        .{ .src = "[ [#[1 2] , #[3 4 5]] size]", .want = 5 },
+        // |> pipe: left-assoc chain, then size (bare — pipe is an expression)
+        .{ .src = "#[1 2 3] |> collect: [:x | [x * x]] |> select: [:x | [x > 3]] |> size", .want = 2 },
+        // |> unary
+        .{ .src = "#[5 6 7] |> size", .want = 3 },
+    };
+    for (cases) |c| {
+        const src = try strings.mkString(a, c.src);
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        const val = send_mod.send0(ast, sel_eval);
+        try testing.expect(ref_mod.isSmallInt(val));
+        try testing.expectEqual(c.want, ref_mod.untagSmallInt(val));
+    }
+}
+
+test "DEMO 16: vectors — #[..] literal, size, at:, with:, inject:into:" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    const Case = struct { src: []const u8, want: i64 };
+    const cases = [_]Case{
+        .{ .src = "[ #[1 2 3] size]", .want = 3 },
+        .{ .src = "[ #[] size]", .want = 0 },
+        .{ .src = "[ #[10 20 30] at: 1]", .want = 20 },
+        .{ .src = "[ #[10 20 30] at: 9 ifAbsent: [| 99]]", .want = 99 },
+        .{ .src = "[ [#[1 2] with: 3] size]", .want = 3 },
+        .{ .src = "[ #[1 2 3 4] inject: 0 into: [:acc :x | [acc + x]]]", .want = 10 },
+    };
+    for (cases) |c| {
+        const src = try strings.mkString(a, c.src);
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        const val = send_mod.send0(ast, sel_eval);
+        try testing.expect(ref_mod.isSmallInt(val));
+        try testing.expectEqual(c.want, ref_mod.untagSmallInt(val));
+    }
+}
+
 test "DEMO 15.R: db surface — [[db now] basisT] is a SmallInt, [db retainAll] is self" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
