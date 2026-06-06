@@ -2808,6 +2808,13 @@ fn installPrelude() void {
     installSourceMethod(RRB_VT, "select:", "[:p | [self inject: #[] into: [:acc :x | [[p value: x] ifTrue: [| [acc with: x]] ifFalse: [| acc]]]]]");
     installSourceMethod(RRB_VT, "count", "[| [self size]]");
     installSourceMethod(RRB_VT, ",", "[:other | [other inject: self into: [:acc :x | [acc with: x]]]]");
+    // Tier D — detect: first element matching pred, else nil (scans all; the
+    // `reduced` early-out is a later refinement). Self-hosts over isNil (D1).
+    installSourceMethod(RRB_VT, "detect:", "[:pred | [self inject: nil into: [:acc :x | [[acc isNil] ifTrue: [| [[pred value: x] ifTrue: [| x] ifFalse: [| nil]]] ifFalse: [| acc]]]]]");
+    // Tier D — numeric comparison helpers, self-hosted over `<` + bool/nil.
+    installSourceMethod(SMALLINT_VT, "min:", "[:other | [[self < other] ifTrue: [| self] ifFalse: [| other]]]");
+    installSourceMethod(SMALLINT_VT, "max:", "[:other | [[self < other] ifTrue: [| other] ifFalse: [| self]]]");
+    installSourceMethod(SMALLINT_VT, "between:and:", "[:lo :hi | [[[self < lo] not] and: [| [[hi < self] not]]]]");
 }
 
 fn installPrimitives() void {
