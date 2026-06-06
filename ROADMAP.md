@@ -1831,7 +1831,21 @@ Take Clojure's ideas, but don't import them as a checklist — most either fall 
 
 **16.0 — the `|>` pipe operator (the immutable replacement for the dropped cascade).** Cascades (`;`, many messages to one *mutable* receiver) were dropped for poor syntactic fit — correct, because immutable values *thread* (each op returns a NEW value → wants it as the next *receiver*), they don't cascade. The real hole: **keyword messages don't chain** — `coll with: 1` returns a new coll, and chaining means `[[coll with: 1] with: 2]` (nested-bracket hell), exactly the dominant immutable-collection shape. `|>` fixes it: `x |> with: 1 |> with: 2 |> select: even` desugars to `[[[x with: 1] with: 2] select: even]`. **Thread-as-receiver** (Clojure `->`, not `->>`), because birnam collections ARE the receiver. ONE operator (don't pre-build a thread-last twin — that's the "two ways" trap). Pure grammar + desugar, no kernel change.
 
-### §Status — Tiers A+B+C SHIPPED 2026-06-06 (branch phase-16-tier-a, 421/421)
+### §Status — Tiers A+B+C+D SHIPPED 2026-06-06 (A-C merged; D on branch phase-16-tier-d, 423/423)
+
+**Tier D (ergonomics + reflection):** D1 bool/nil — `isNil`/`ifNil:`/`ifNotNil:`
+(default on OBJECT_VT + immediates, override on NIL_VT), bool `not`/`and:`/`or:`
+(short-circuit blocks); also fixed a latent debug panic where the `nil` literal
+asserted a NIL value. D2 `detect:` (self-hosted via isNil) + `min:`/`max:`/
+`between:and:` (over `<`). D3 number protocol — `mod:` / Float `sqrt`/`floor`/
+`ceil`/`round` (Zig prims) + `abs`/`even`/`odd` (self-hosted). D4
+`doesNotUnderstand:` — sendN routes a dispatch miss to SEL_DNU (kernel eid 198)
+if a handler exists (else NIL); default ERROR_VT diagnostic rendered by message.
+**Deferred:** destructuring `[:a :b|]` (syntax-heavy), seq-unification for
+strings/ranges (needs those types), `reduced` early-out, `&`/`|` (`|` collides
+with the block-param bar).
+
+### Tiers A+B+C SHIPPED 2026-06-06 (branch phase-16-tier-a, merged)
 
 **Tier C (maps):** `{k: v}` keyword-keyed HAMT map literal + ASSOC_VT dict
 protocol (`at:put:`/`at:`/`at:ifAbsent:`/`includesKey:`/`size`/`keys`/`values`/

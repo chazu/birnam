@@ -66,6 +66,7 @@ const DB_PROTO: u64 = 197;
 // Phase 16 — RRB-backed vector vtable (mirror of kernel_eids.RRB_VT).
 const RRB_VT: u64 = 9;
 const ASSOC_VT: u64 = 6; // Phase 16 Tier C — map vtable (mirror)
+const SEL_DNU: u64 = 198; // Phase 16 Tier D — doesNotUnderstand: (mirror)
 const ATTR_ERROR_MESSAGE: u64 = 44; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
 
 const ATTR_AST_VALUE: u64 = 118;
@@ -1020,7 +1021,8 @@ fn desugar(cst_eid: u64) u64 {
     }
     if (rn == rn_kw_nil) {
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
+        // nil literal: store no value (absent → evalLiteral returns NIL; a NIL
+        // value is forbidden by Date discipline — asserting it panics in debug).
         return ast;
     }
     if (rn == rn_kw_true) {
@@ -1053,7 +1055,8 @@ fn desugar(cst_eid: u64) u64 {
             return ast;
         }
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
+        // nil literal: store no value (absent → evalLiteral returns NIL; a NIL
+        // value is forbidden by Date discipline — asserting it panics in debug).
         return ast;
     }
     if (rn == rn_block_bare) {
@@ -1069,7 +1072,8 @@ fn desugar(cst_eid: u64) u64 {
             }
         }
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
+        // nil literal: store no value (absent → evalLiteral returns NIL; a NIL
+        // value is forbidden by Date discipline — asserting it panics in debug).
         return ast;
     }
     if (rn == rn_block_with_params) {
@@ -1244,7 +1248,8 @@ fn desugar(cst_eid: u64) u64 {
         }
         // Fallback: literal NIL node.
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
+        // nil literal: store no value (absent → evalLiteral returns NIL; a NIL
+        // value is forbidden by Date discipline — asserting it panics in debug).
         return ast;
     }
     if (rn == rn_bracket_unary) {
@@ -1451,9 +1456,8 @@ fn desugar(cst_eid: u64) u64 {
         return recv_ast;
     }
 
-    // Unknown rule — fallback to NIL literal.
+    // Unknown rule — fallback to a nil literal (no value asserted → NIL).
     const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-    _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
     return ast;
 }
 
@@ -2664,6 +2668,140 @@ fn mapDoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return s.receiver;
 }
 
+// -- Phase 16 Tier D: bool / nil ergonomics -------------------------------
+
+fn nilIsNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(TRUE_EID);
+}
+fn objIsNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(FALSE_EID);
+}
+fn nilIfNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    return g_api.?.send0(a[0], sel_value_g); // eval the ifNil block
+}
+fn objIfNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return s.receiver; // non-nil → unchanged
+}
+fn nilIfNotNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return NIL;
+}
+fn objIfNotNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.send1(a[0], sel_value_of_g, s.receiver); // pass self to block
+}
+fn trueNotImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(FALSE_EID);
+}
+fn falseNotImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(TRUE_EID);
+}
+fn trueAndImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    return g_api.?.send0(a[0], sel_value_g); // short-circuit: eval rhs block
+}
+fn falseAndImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(FALSE_EID);
+}
+fn trueOrImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(TRUE_EID);
+}
+fn falseOrImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    return g_api.?.send0(a[0], sel_value_g);
+}
+
+// -- Phase 16 Tier D: number protocol -------------------------------------
+
+fn smallintModImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const d = untagSmallInt(a[0]);
+    if (d == 0) return NIL;
+    return mkSmallInt(@mod(untagSmallInt(s.receiver), d));
+}
+fn floatSqrtImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.make_float(@sqrt(floatRefValue(s.receiver)));
+}
+fn floatFloorImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.make_float(@floor(floatRefValue(s.receiver)));
+}
+fn floatCeilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.make_float(@ceil(floatRefValue(s.receiver)));
+}
+fn floatRoundImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.make_float(@round(floatRefValue(s.receiver)));
+}
+
+fn installNumberProtocol() void {
+    const api = g_api.?;
+    _ = api.assert_fact(SMALLINT_VT, api.intern("mod:".ptr, 4), mkEid(api.make_closure(@ptrCast(&smallintModImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, api.intern("sqrt".ptr, 4), mkEid(api.make_closure(@ptrCast(&floatSqrtImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, api.intern("floor".ptr, 5), mkEid(api.make_closure(@ptrCast(&floatFloorImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, api.intern("ceil".ptr, 4), mkEid(api.make_closure(@ptrCast(&floatCeilImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, api.intern("round".ptr, 5), mkEid(api.make_closure(@ptrCast(&floatRoundImpl), NIL)), g_module_eid);
+}
+
+/// Phase 16 Tier D — default doesNotUnderstand:. `a[0]` = the missing selector
+/// as a symbol. Returns an ERROR_VT diagnostic naming the selector.
+fn dnuImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    const sel_ref = a[0];
+    const nm = if (isEid(sel_ref)) api.symbol_name(sel_ref >> 3) else NIL;
+    var buf: [160]u8 = undefined;
+    const msg = if (nm != NIL and isString(nm))
+        (std.fmt.bufPrint(&buf, "does not understand: #{s}", .{stringBytes(nm)}) catch "does not understand")
+    else
+        "does not understand (unknown selector)";
+    return mkRuntimeError(msg);
+}
+
+fn installBoolNil() void {
+    const api = g_api.?;
+    // Tier D — default doesNotUnderstand: on OBJECT_VT (delegating types) + the
+    // non-delegating immediates. Unknown selectors → graceful ERROR_VT.
+    for ([_]u64{ OBJECT_VT, SMALLINT_VT, TRUE_VT, FALSE_VT }) |vt| {
+        _ = api.assert_fact(vt, SEL_DNU, mkEid(api.make_closure(@ptrCast(&dnuImpl), NIL)), g_module_eid);
+    }
+    const isnil = api.intern("isNil".ptr, 5);
+    const ifnil = api.intern("ifNil:".ptr, 6);
+    const ifnotnil = api.intern("ifNotNil:".ptr, 9);
+    // Default (not-nil): OBJECT_VT (covers delegating types) + the
+    // non-delegating immediates SMALLINT_VT / TRUE_VT / FALSE_VT.
+    const default_vts = [_]u64{ OBJECT_VT, SMALLINT_VT, TRUE_VT, FALSE_VT };
+    for (default_vts) |vt| {
+        _ = api.assert_fact(vt, isnil, mkEid(api.make_closure(@ptrCast(&objIsNilImpl), NIL)), g_module_eid);
+        _ = api.assert_fact(vt, ifnil, mkEid(api.make_closure(@ptrCast(&objIfNilImpl), NIL)), g_module_eid);
+        _ = api.assert_fact(vt, ifnotnil, mkEid(api.make_closure(@ptrCast(&objIfNotNilImpl), NIL)), g_module_eid);
+    }
+    // nil overrides on NIL_VT.
+    _ = api.assert_fact(NIL_VT_EID, isnil, mkEid(api.make_closure(@ptrCast(&nilIsNilImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(NIL_VT_EID, ifnil, mkEid(api.make_closure(@ptrCast(&nilIfNilImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(NIL_VT_EID, ifnotnil, mkEid(api.make_closure(@ptrCast(&nilIfNotNilImpl), NIL)), g_module_eid);
+    // Boolean: not / and: / or: (and:/or: take a block — short-circuit).
+    const not_sel = api.intern("not".ptr, 3);
+    const and_sel = api.intern("and:".ptr, 4);
+    const or_sel = api.intern("or:".ptr, 3);
+    _ = api.assert_fact(TRUE_VT, not_sel, mkEid(api.make_closure(@ptrCast(&trueNotImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, not_sel, mkEid(api.make_closure(@ptrCast(&falseNotImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(TRUE_VT, and_sel, mkEid(api.make_closure(@ptrCast(&trueAndImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, and_sel, mkEid(api.make_closure(@ptrCast(&falseAndImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(TRUE_VT, or_sel, mkEid(api.make_closure(@ptrCast(&trueOrImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, or_sel, mkEid(api.make_closure(@ptrCast(&falseOrImpl), NIL)), g_module_eid);
+}
+
 fn installCollections() void {
     const api = g_api.?;
     const M = struct { name: []const u8, impl: *const anyopaque };
@@ -2725,6 +2863,17 @@ fn installPrelude() void {
     installSourceMethod(RRB_VT, "select:", "[:p | [self inject: #[] into: [:acc :x | [[p value: x] ifTrue: [| [acc with: x]] ifFalse: [| acc]]]]]");
     installSourceMethod(RRB_VT, "count", "[| [self size]]");
     installSourceMethod(RRB_VT, ",", "[:other | [other inject: self into: [:acc :x | [acc with: x]]]]");
+    // Tier D — detect: first element matching pred, else nil (scans all; the
+    // `reduced` early-out is a later refinement). Self-hosts over isNil (D1).
+    installSourceMethod(RRB_VT, "detect:", "[:pred | [self inject: nil into: [:acc :x | [[acc isNil] ifTrue: [| [[pred value: x] ifTrue: [| x] ifFalse: [| nil]]] ifFalse: [| acc]]]]]");
+    // Tier D — numeric comparison helpers, self-hosted over `<` + bool/nil.
+    installSourceMethod(SMALLINT_VT, "min:", "[:other | [[self < other] ifTrue: [| self] ifFalse: [| other]]]");
+    installSourceMethod(SMALLINT_VT, "max:", "[:other | [[self < other] ifTrue: [| other] ifFalse: [| self]]]");
+    installSourceMethod(SMALLINT_VT, "between:and:", "[:lo :hi | [[[self < lo] not] and: [| [[hi < self] not]]]]");
+    // Tier D — abs/even/odd, self-hosted over `<`/negate/mod:/`=`.
+    installSourceMethod(SMALLINT_VT, "abs", "[| [[self < 0] ifTrue: [| [self negate]] ifFalse: [| self]]]");
+    installSourceMethod(SMALLINT_VT, "even", "[| [[self mod: 2] = 0]]");
+    installSourceMethod(SMALLINT_VT, "odd", "[| [[self mod: 2] = 1]]");
 }
 
 fn installPrimitives() void {
@@ -2803,7 +2952,9 @@ fn installPrimitives() void {
     _ = api.assert_fact(FALSE_VT, if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfFalseImpl), NIL)), g_module_eid);
     _ = api.assert_fact(FALSE_VT, if_true_if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueIfFalseImpl), NIL)), g_module_eid);
 
-    installCollections(); // Phase 16 Tier A — RRB_VT vector methods
+    installCollections(); // Phase 16 Tier A/C — vector + map methods
+    installBoolNil(); // Phase 16 Tier D — bool/nil ergonomics
+    installNumberProtocol(); // Phase 16 Tier D — mod: + Float sqrt/floor/ceil/round
 }
 
 /// Full method install (dylib / non-AOT path) — every tier.
@@ -2958,6 +3109,8 @@ fn appendRef(buf: []u8, off: usize, val: Ref) usize {
         const e = val >> 3;
         if (e == TRUE_EID) return off + (std.fmt.bufPrint(buf[off..], "true", .{}) catch return off).len;
         if (e == FALSE_EID) return off + (std.fmt.bufPrint(buf[off..], "false", .{}) catch return off).len;
+        const em = g_api.?.query_eavt(e, ATTR_ERROR_MESSAGE);
+        if (em != NIL and isString(em)) return off + (std.fmt.bufPrint(buf[off..], "error: {s}", .{stringBytes(em)}) catch return off).len;
         const nm = g_api.?.symbol_name(e);
         if (nm != NIL and isString(nm)) return off + (std.fmt.bufPrint(buf[off..], "#{s}", .{stringBytes(nm)}) catch return off).len;
         return off + (std.fmt.bufPrint(buf[off..], "<eid:{d}>", .{e}) catch return off).len;

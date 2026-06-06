@@ -235,6 +235,75 @@ test "DEMO: parse + eval [3 squared] → 9" {
     try testing.expectEqual(@as(i64, 9), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 16 Tier D: doesNotUnderstand: — unknown selector → ERROR_VT, known unaffected" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    // Unknown selector → an ERROR_VT diagnostic (not a crash, not NIL).
+    {
+        const src = try strings.mkString(a, "[5 frobnicate]");
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        const val = send_mod.send0(ast, sel_eval);
+        try testing.expect(ref_mod.isEid(val));
+        try testing.expectEqual(kernel_eids.ERROR_VT, ref_mod.untagEid(s.store.currentValue(ref_mod.untagEid(val), kernel_eids.ATTR_VTABLE).?));
+    }
+    // Known selector still dispatches normally.
+    {
+        const src = try strings.mkString(a, "[5 squared]");
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        try testing.expectEqual(@as(i64, 25), ref_mod.untagSmallInt(send_mod.send0(ast, sel_eval)));
+    }
+}
+
+test "DEMO 16 Tier D: bool/nil ergonomics — isNil/ifNil:/ifNotNil:/not/and:/or:" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    const IntCase = struct { src: []const u8, want: i64 };
+    const int_cases = [_]IntCase{
+        .{ .src = "[nil ifNil: [| 7]]", .want = 7 },
+        .{ .src = "[5 ifNil: [| 7]]", .want = 5 },
+        .{ .src = "[5 ifNotNil: [:v | [v + 1]]]", .want = 6 },
+    };
+    for (int_cases) |c| {
+        const src = try strings.mkString(a, c.src);
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        try testing.expectEqual(c.want, ref_mod.untagSmallInt(send_mod.send0(ast, sel_eval)));
+    }
+    const BoolCase = struct { src: []const u8, want: u64 };
+    const bool_cases = [_]BoolCase{
+        .{ .src = "[nil isNil]", .want = kernel_eids.TRUE_EID },
+        .{ .src = "[5 isNil]", .want = kernel_eids.FALSE_EID },
+        .{ .src = "[#[1 2] isNil]", .want = kernel_eids.FALSE_EID }, // delegation to OBJECT_VT
+        .{ .src = "[true not]", .want = kernel_eids.FALSE_EID },
+        .{ .src = "[false and: [| true]]", .want = kernel_eids.FALSE_EID }, // short-circuit
+        .{ .src = "[true and: [| true]]", .want = kernel_eids.TRUE_EID },
+        .{ .src = "[false or: [| true]]", .want = kernel_eids.TRUE_EID },
+    };
+    for (bool_cases) |c| {
+        const src = try strings.mkString(a, c.src);
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        try testing.expectEqual(c.want, ref_mod.untagEid(send_mod.send0(ast, sel_eval)));
+    }
+    {
+        const src = try strings.mkString(a, "[nil ifNotNil: [:v | [v + 1]]]");
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        try testing.expectEqual(ref_mod.NIL, send_mod.send0(ast, sel_eval));
+    }
+}
+
 test "DEMO 16 Tier C: maps — {k: v} literal, at:, at:ifAbsent:, includesKey:, merge:, keys/values" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
