@@ -73,7 +73,11 @@ Why this is feasible (and cheap): SQL has NULL because tabular rows are fixed-sh
 
 Why this is worth it: queries stay sound 2VL, diffs are exact (no spurious NULL→value transitions), reflection queries return only what was asserted, and the relational layer carries no hidden 3VL trap.
 
-API cost: callers can't "return NIL if not found." Instead they return empty collections, take `ifAbsent:` blocks, or raise. Zig API surface uses `?Ref` for the `not-found` case — already the HAMT's contract.
+API discipline — **nil is a value; absence is not.** The sin is letting one token mean both (nil-as-not-found-sentinel = nil-as-NULL = the 3VL trap). So:
+- **nil-the-object is freely storable and returnable as a value.** `{a: nil}` stores the EID-0 ref — a real 2VL object, allowed. A lookup that legitimately holds nil returns nil.
+- **Absence rides a separate channel**, never a value: empty result (zero rows), an `ifAbsent:` block, or a raise. `at:ifAbsent:` is the primary keyed-access form; `at:` alone = `at:ifAbsent:[raise]` (absence is not a value, so refusing to manufacture one is the correct default). Because absence routes through `ifAbsent:` while nil stays a real value, **stored-nil vs absent remains exactly distinguishable** — that exactness is the Date payoff (sound diffs, no 3VL).
+- Out-of-bounds on a sequence is a domain error (index outside `0..size`), not absence-of-fact → raise; `at:ifAbsent:` is the checked variant. No nil sentinel.
+- Zig API surface uses `?Ref` for the `not-found` case — already the HAMT's contract; the `null` there is Zig's optional, not a stored fact value.
 
 ### Persistent Collections
 
