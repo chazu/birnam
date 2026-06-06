@@ -566,6 +566,33 @@ pub const FactStore = struct {
         }
     }
 
+    /// Phase 15.R R4 — auto-eviction cadence. Keep the `keep_hot_n` newest
+    /// retained epochs (by gen) in RAM; spill the rest to `dir` IF they are hot
+    /// and unpinned. A PINNED epoch is never spilled — a live snapshot's view
+    /// holds its roots by value, so freeing the arena would dangle it; pinned
+    /// epochs stay hot regardless of age. No-op under current-only retention
+    /// (no retained epochs). Returns the number spilled. Call at a quiescent
+    /// point (the shell line boundary, like `gc.maybeCollect`).
+    pub fn maybeSpillEpochs(self: *FactStore, dir: []const u8, keep_hot_n: usize, scratch: std.mem.Allocator) !usize {
+        const n = self.retained_epochs.items.len;
+        if (n <= keep_hot_n) return 0;
+        // cutoff = the keep_hot_n-th highest gen; epochs with gen < cutoff are
+        // spill candidates (gens are unique → exactly keep_hot_n stay hot).
+        var gens = try scratch.alloc(u64, n);
+        defer scratch.free(gens);
+        for (self.retained_epochs.items, 0..) |re, i| gens[i] = re.gen;
+        std.mem.sort(u64, gens, {}, comptime std.sort.desc(u64));
+        const cutoff = gens[keep_hot_n - 1];
+        var spilled: usize = 0;
+        for (self.retained_epochs.items) |re| {
+            if (re.gen < cutoff and re.arena != null and re.refcount == 0) {
+                try self.spillEpoch(re.gen, dir);
+                spilled += 1;
+            }
+        }
+        return spilled;
+    }
+
     // -- Excision (Phase 15.R R3) --------------------------------------------
 
     /// True if any index epoch (current or retained) is pinned by a live

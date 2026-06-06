@@ -763,6 +763,39 @@ test "exciseTxRange (R3): refuses while a live snapshot pins" {
     try testing.expect(store.currentValue(1, 5) == null);
 }
 
+test "auto-eviction (R4): maybeSpillEpochs keeps N newest hot, spills rest" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    store.setRetention(.keep_all);
+    // Three compacts → three retained archive epochs (gens 0,1,2).
+    var i: u64 = 0;
+    while (i < 3) : (i += 1) {
+        _ = try store.assert(1, 5, vi(@intCast(10 + i)), M_BOOT);
+        _ = try store.compact(a, {}, KeepAll.keep);
+    }
+    try testing.expectEqual(@as(usize, 3), store.retained_epochs.items.len);
+
+    // Keep 1 newest hot → spill the 2 older.
+    const spilled = try store.maybeSpillEpochs(".", 1, a);
+    try testing.expectEqual(@as(usize, 2), spilled);
+    var hot: usize = 0;
+    var cold: usize = 0;
+    for (store.retained_epochs.items) |re| {
+        if (re.arena != null) hot += 1 else cold += 1;
+    }
+    try testing.expectEqual(@as(usize, 1), hot);
+    try testing.expectEqual(@as(usize, 2), cold);
+
+    // Idempotent: re-running spills nothing new.
+    try testing.expectEqual(@as(usize, 0), try store.maybeSpillEpochs(".", 1, a));
+    // deinitIndexArena cleans hot arenas + cold segment files.
+}
+
 test "index epoch arena: retain_history gate skips the free (no swap)" {
     // Backing arena reclaims the intentionally-retained epoch at teardown.
     var backing = std.heap.ArenaAllocator.init(testing.allocator);

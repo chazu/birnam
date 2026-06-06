@@ -521,6 +521,11 @@ pub fn main() !void {
                         stderrPrint("[birnam] auto-gc ({d} boxes, {d} closures, {d} wrappers, {d} strings freed)\n", .{ st.boxes_freed, st.closures_freed, st.wrappers_freed, st.strings_freed });
                     }
                 }
+                // 15.R R4 auto-eviction: spill old retained history epochs to
+                // disk, keeping the 2 newest hot. No-op under current-only
+                // retention. Same quiescent line boundary.
+                const spilled = store.maybeSpillEpochs(".", 2, allocator) catch 0;
+                if (spilled > 0) stderrPrint("[birnam] cold-tier: spilled {d} epoch(s) to disk\n", .{spilled});
             } else {
                 if (std.mem.eql(u8, l, "quit") or std.mem.eql(u8, l, "exit")) break;
                 stderrPrint("[birnam] no repl handler registered\n", .{});
