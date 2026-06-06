@@ -292,6 +292,11 @@ pub const IdApi = extern struct {
     make_reduced: *const fn (Ref) callconv(.c) Ref,
     is_reduced: *const fn (Ref) callconv(.c) bool,
     reduced_value: *const fn (Ref) callconv(.c) Ref,
+
+    // -- Phase 16 deferred: integer ranges (append-only) -------------------
+    make_range: *const fn (i64, i64, i64) callconv(.c) Ref,
+    range_len: *const fn (Ref) callconv(.c) u64,
+    range_nth: *const fn (Ref, u64) callconv(.c) Ref,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -422,7 +427,24 @@ pub fn populate() IdApi {
         .make_reduced = &cMakeReduced,
         .is_reduced = &cIsReduced,
         .reduced_value = &cReducedValue,
+        .make_range = &cMakeRange,
+        .range_len = &cRangeLen,
+        .range_nth = &cRangeNth,
     };
+}
+
+fn cMakeRange(lo: i64, hi: i64, step: i64) callconv(.c) Ref {
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    return boxed.mkRange(a, lo, hi, step) catch ref_mod.NIL;
+}
+fn cRangeLen(r: Ref) callconv(.c) u64 {
+    if (!boxed.isRange(r)) return 0;
+    return @intCast(boxed.rangeLen(r));
+}
+fn cRangeNth(r: Ref, i: u64) callconv(.c) Ref {
+    if (!boxed.isRange(r)) return ref_mod.NIL;
+    if (i >= boxed.rangeLen(r)) return ref_mod.NIL;
+    return boxed.rangeNth(r, @intCast(i));
 }
 
 fn cMakeReduced(val: Ref) callconv(.c) Ref {

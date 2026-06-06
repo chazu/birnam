@@ -235,6 +235,37 @@ test "DEMO: parse + eval [3 squared] → 9" {
     try testing.expectEqual(@as(i64, 9), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 16 deferred: ranges + seq-unification (collect:/select: across types)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    const Case = struct { src: []const u8, want: i64 };
+    const cases = [_]Case{
+        .{ .src = "[ [1 to: 5] size]", .want = 5 },
+        .{ .src = "[ [1 to: 5] at: 2]", .want = 3 },
+        .{ .src = "[ [1 to: 10 by: 2] size]", .want = 5 },
+        .{ .src = "[ [1 to: 5] inject: 0 into: [:acc :x | [acc + x]]]", .want = 15 },
+        .{ .src = "[ [[1 to: 4] collect: [:x | [x * x]]] inject: 0 into: [:a :x | [a + x]]]", .want = 30 },
+        .{ .src = "[ [[1 to: 100] select: [:x | [x < 4]]] size]", .want = 3 },
+        .{ .src = "[ [1 to: 100] detect: [:x | [x > 50]]]", .want = 51 },
+        .{ .src = "[ {a: 10 b: 20 c: 30} inject: 0 into: [:acc :v | [acc + v]]]", .want = 60 },
+        .{ .src = "[ [{a: 1 b: 2} collect: [:v | [v * 100]]] inject: 0 into: [:a :v | [a + v]]]", .want = 300 },
+    };
+    for (cases) |c| {
+        const src = try strings.mkString(a, c.src);
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        const val = send_mod.send0(ast, sel_eval);
+        try testing.expect(ref_mod.isSmallInt(val));
+        try testing.expectEqual(c.want, ref_mod.untagSmallInt(val));
+    }
+}
+
 test "DEMO 16 Tier D: doesNotUnderstand: — unknown selector → ERROR_VT, known unaffected" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

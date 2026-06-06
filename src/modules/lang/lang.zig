@@ -67,6 +67,7 @@ const DB_PROTO: u64 = 197;
 const RRB_VT: u64 = 9;
 const ASSOC_VT: u64 = 6; // Phase 16 Tier C — map vtable (mirror)
 const SEL_DNU: u64 = 198; // Phase 16 Tier D — doesNotUnderstand: (mirror)
+const RANGE_VT: u64 = 200; // Phase 16 deferred — integer range vtable (mirror)
 const ATTR_ERROR_MESSAGE: u64 = 44; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
 
 const ATTR_AST_VALUE: u64 = 118;
@@ -228,6 +229,9 @@ const IdApi = extern struct {
     make_reduced: *const fn (Ref) callconv(.c) Ref,
     is_reduced: *const fn (Ref) callconv(.c) bool,
     reduced_value: *const fn (Ref) callconv(.c) Ref,
+    make_range: *const fn (i64, i64, i64) callconv(.c) Ref,
+    range_len: *const fn (Ref) callconv(.c) u64,
+    range_nth: *const fn (Ref, u64) callconv(.c) Ref,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -2631,6 +2635,66 @@ fn objReducedImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     return g_api.?.make_reduced(s.receiver);
 }
 
+// -- Phase 16 deferred: integer ranges (RANGE_VT) -------------------------
+
+fn smallintToImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.make_range(untagSmallInt(s.receiver), untagSmallInt(a[0]), 1);
+}
+fn smallintToByImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.make_range(untagSmallInt(s.receiver), untagSmallInt(a[0]), untagSmallInt(a[1]));
+}
+fn rangeSizeImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return mkSmallInt(@intCast(g_api.?.range_len(s.receiver)));
+}
+fn rangeAtImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const i = untagSmallInt(a[0]);
+    const len: i64 = @intCast(api.range_len(s.receiver));
+    if (i < 0 or i >= len) return mkRuntimeError("range index out of bounds");
+    return api.range_nth(s.receiver, @intCast(i));
+}
+fn rangeDoImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const len = api.range_len(s.receiver);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) _ = api.send1(a[0], sel_value_of_g, api.range_nth(s.receiver, i));
+    return s.receiver;
+}
+fn rangeInjectIntoImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    var acc = a[0];
+    const block = a[1];
+    const len = api.range_len(s.receiver);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) {
+        acc = api.send2(block, sel_value_value_g, acc, api.range_nth(s.receiver, i));
+        if (api.is_reduced(acc)) return api.reduced_value(acc);
+    }
+    return acc;
+}
+
+// Map fold over VALUES — gives maps the generic seq protocol (collect:/select:).
+fn mapInjectIntoImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    var acc = a[0];
+    const block = a[1];
+    const vals = api.map_values(s.receiver);
+    const len = api.rrb_len(vals);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) {
+        acc = api.send2(block, sel_value_value_g, acc, api.rrb_nth(vals, i));
+        if (api.is_reduced(acc)) return api.reduced_value(acc);
+    }
+    return acc;
+}
+
 // -- Phase 16 Tier C: map (ASSOC_VT) methods ------------------------------
 
 fn mapAtPutImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
@@ -2845,6 +2909,22 @@ fn installCollections() void {
         const sel = api.intern(m.name.ptr, m.name.len);
         _ = api.assert_fact(ASSOC_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
     }
+    // Maps fold over values → inherit the generic seq protocol (OBJECT_VT).
+    _ = api.assert_fact(ASSOC_VT, api.intern("inject:into:".ptr, 12), mkEid(api.make_closure(@ptrCast(&mapInjectIntoImpl), NIL)), g_module_eid);
+
+    // Ranges: to:/to:by: constructors on SmallInt; the seq protocol on RANGE_VT.
+    _ = api.assert_fact(SMALLINT_VT, api.intern("to:".ptr, 3), mkEid(api.make_closure(@ptrCast(&smallintToImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, api.intern("to:by:".ptr, 6), mkEid(api.make_closure(@ptrCast(&smallintToByImpl), NIL)), g_module_eid);
+    const range_methods = [_]M{
+        .{ .name = "size", .impl = @ptrCast(&rangeSizeImpl) },
+        .{ .name = "at:", .impl = @ptrCast(&rangeAtImpl) },
+        .{ .name = "do:", .impl = @ptrCast(&rangeDoImpl) },
+        .{ .name = "inject:into:", .impl = @ptrCast(&rangeInjectIntoImpl) },
+    };
+    for (range_methods) |m| {
+        const sel = api.intern(m.name.ptr, m.name.len);
+        _ = api.assert_fact(RANGE_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
 }
 
 /// Phase 16 Tier B — install a method whose BODY is birnam source, compiled to
@@ -2872,13 +2952,17 @@ fn installSourceMethod(vt: u64, sel_name: []const u8, src: []const u8) void {
 /// `count`, `,` derived in birnam source over Tier A's `do:`/`inject:into:`/
 /// `with:`/`size`. `self` inside each body = the receiver vector.
 fn installPrelude() void {
-    installSourceMethod(RRB_VT, "collect:", "[:f | [self inject: #[] into: [:acc :x | [acc with: [f value: x]]]]]");
-    installSourceMethod(RRB_VT, "select:", "[:p | [self inject: #[] into: [:acc :x | [[p value: x] ifTrue: [| [acc with: x]] ifFalse: [| acc]]]]]");
-    installSourceMethod(RRB_VT, "count", "[| [self size]]");
+    // Seq unification: the derived protocol lives on OBJECT_VT, written once
+    // over `self inject:into:`. ANY type providing inject:into: (vectors,
+    // ranges, maps-over-values, future strings) inherits collect:/select:/
+    // count/detect:/asVector via delegation. Results materialize as vectors.
+    installSourceMethod(OBJECT_VT, "collect:", "[:f | [self inject: #[] into: [:acc :x | [acc with: [f value: x]]]]]");
+    installSourceMethod(OBJECT_VT, "select:", "[:p | [self inject: #[] into: [:acc :x | [[p value: x] ifTrue: [| [acc with: x]] ifFalse: [| acc]]]]]");
+    installSourceMethod(OBJECT_VT, "count", "[| [self inject: 0 into: [:n :x | [n + 1]]]]");
+    installSourceMethod(OBJECT_VT, "detect:", "[:pred | [self inject: nil into: [:acc :x | [[pred value: x] ifTrue: [| [x reduced]] ifFalse: [| acc]]]]]");
+    installSourceMethod(OBJECT_VT, "asVector", "[| [self inject: #[] into: [:acc :x | [acc with: x]]]]");
+    // Vector-specific concat (result is a vector; needs `with:` on the accumulator).
     installSourceMethod(RRB_VT, ",", "[:other | [other inject: self into: [:acc :x | [acc with: x]]]]");
-    // Tier D — detect: first element matching pred, else nil (scans all; the
-    // `reduced` early-out is a later refinement). Self-hosts over isNil (D1).
-    installSourceMethod(RRB_VT, "detect:", "[:pred | [self inject: nil into: [:acc :x | [[pred value: x] ifTrue: [| [x reduced]] ifFalse: [| acc]]]]]");
     // Tier D — numeric comparison helpers, self-hosted over `<` + bool/nil.
     installSourceMethod(SMALLINT_VT, "min:", "[:other | [[self < other] ifTrue: [| self] ifFalse: [| other]]]");
     installSourceMethod(SMALLINT_VT, "max:", "[:other | [[self < other] ifTrue: [| other] ifFalse: [| self]]]");
@@ -3076,6 +3160,13 @@ fn isMapRef(r: Ref) bool {
     return vt_ptr.* == mkEid(ASSOC_VT);
 }
 
+fn isRangeRef(r: Ref) bool {
+    if ((r & 0b111) != 0) return false;
+    if (r == 0) return false;
+    const vt_ptr: *const Ref = @ptrFromInt(r - @sizeOf(Ref));
+    return vt_ptr.* == mkEid(RANGE_VT);
+}
+
 /// Append a human display of `val` into `buf` at `off`, returning the new
 /// offset. Best-effort (truncates on overflow). Recurses into vectors → `#[..]`.
 fn appendRef(buf: []u8, off: usize, val: Ref) usize {
@@ -3091,6 +3182,15 @@ fn appendRef(buf: []u8, off: usize, val: Ref) usize {
             o = appendRef(buf, o, g_api.?.rrb_nth(val, i));
         }
         return o + (std.fmt.bufPrint(buf[o..], "]", .{}) catch return o).len;
+    }
+    if (isRangeRef(val)) {
+        const len = g_api.?.range_len(val);
+        if (len == 0) return off + (std.fmt.bufPrint(buf[off..], "(empty range)", .{}) catch return off).len;
+        var o = off + (std.fmt.bufPrint(buf[off..], "(", .{}) catch return off).len;
+        o = appendRef(buf, o, g_api.?.range_nth(val, 0));
+        o += (std.fmt.bufPrint(buf[o..], " to: ", .{}) catch return o).len;
+        o = appendRef(buf, o, g_api.?.range_nth(val, len - 1));
+        return o + (std.fmt.bufPrint(buf[o..], ")", .{}) catch return o).len;
     }
     if (isMapRef(val)) {
         var o = off + (std.fmt.bufPrint(buf[off..], "{{", .{}) catch return off).len;

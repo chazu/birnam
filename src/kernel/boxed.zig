@@ -258,6 +258,39 @@ pub fn reducedValue(r: Ref) Ref {
     return object.slotAt(object.fromRef(r), 0);
 }
 
+// -- Phase 16: integer range (RANGE_VT) -----------------------------------
+
+/// Inclusive integer range `lo, lo+step, ... <= hi` (or `>= hi` for step<0).
+/// A 3-slot box (lo, hi, step as SmallInts). A lazy seq — no materialization.
+pub fn mkRange(allocator: std.mem.Allocator, lo: i64, hi: i64, step: i64) !Ref {
+    const obj_ptr = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.RANGE_VT), 3);
+    object.setSlot(obj_ptr, 0, ref_mod.mkSmallInt(lo) orelse ref_mod.NIL);
+    object.setSlot(obj_ptr, 1, ref_mod.mkSmallInt(hi) orelse ref_mod.NIL);
+    object.setSlot(obj_ptr, 2, ref_mod.mkSmallInt(step) orelse ref_mod.NIL);
+    return object.toRef(obj_ptr);
+}
+pub fn isRange(r: Ref) bool {
+    if (!ref_mod.isPointer(r)) return false;
+    const obj = object.fromRef(r);
+    const vt = object.vtableOf(obj);
+    if (!ref_mod.isEid(vt)) return false;
+    return ref_mod.untagEid(vt) == kernel_eids.RANGE_VT;
+}
+fn rangeSlot(r: Ref, i: usize) i64 {
+    return ref_mod.untagSmallInt(object.slotAt(object.fromRef(r), i));
+}
+pub fn rangeLen(r: Ref) usize {
+    const lo = rangeSlot(r, 0);
+    const hi = rangeSlot(r, 1);
+    const step = rangeSlot(r, 2);
+    if (step == 0) return 0;
+    if (step > 0) return if (hi >= lo) @intCast(@divFloor(hi - lo, step) + 1) else 0;
+    return if (lo >= hi) @intCast(@divFloor(lo - hi, -step) + 1) else 0;
+}
+pub fn rangeNth(r: Ref, i: usize) Ref {
+    return ref_mod.mkSmallInt(rangeSlot(r, 0) + @as(i64, @intCast(i)) * rangeSlot(r, 2)) orelse ref_mod.NIL;
+}
+
 pub fn isRrbRef(r: Ref) bool {
     if (!ref_mod.isPointer(r)) return false;
     const obj = object.fromRef(r);
