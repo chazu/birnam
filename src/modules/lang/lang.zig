@@ -2718,6 +2718,40 @@ fn falseOrImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     return g_api.?.send0(a[0], sel_value_g);
 }
 
+// -- Phase 16 Tier D: number protocol -------------------------------------
+
+fn smallintModImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const d = untagSmallInt(a[0]);
+    if (d == 0) return NIL;
+    return mkSmallInt(@mod(untagSmallInt(s.receiver), d));
+}
+fn floatSqrtImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.make_float(@sqrt(floatRefValue(s.receiver)));
+}
+fn floatFloorImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.make_float(@floor(floatRefValue(s.receiver)));
+}
+fn floatCeilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.make_float(@ceil(floatRefValue(s.receiver)));
+}
+fn floatRoundImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.make_float(@round(floatRefValue(s.receiver)));
+}
+
+fn installNumberProtocol() void {
+    const api = g_api.?;
+    _ = api.assert_fact(SMALLINT_VT, api.intern("mod:".ptr, 4), mkEid(api.make_closure(@ptrCast(&smallintModImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, api.intern("sqrt".ptr, 4), mkEid(api.make_closure(@ptrCast(&floatSqrtImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, api.intern("floor".ptr, 5), mkEid(api.make_closure(@ptrCast(&floatFloorImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, api.intern("ceil".ptr, 4), mkEid(api.make_closure(@ptrCast(&floatCeilImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, api.intern("round".ptr, 5), mkEid(api.make_closure(@ptrCast(&floatRoundImpl), NIL)), g_module_eid);
+}
+
 fn installBoolNil() void {
     const api = g_api.?;
     const isnil = api.intern("isNil".ptr, 5);
@@ -2815,6 +2849,10 @@ fn installPrelude() void {
     installSourceMethod(SMALLINT_VT, "min:", "[:other | [[self < other] ifTrue: [| self] ifFalse: [| other]]]");
     installSourceMethod(SMALLINT_VT, "max:", "[:other | [[self < other] ifTrue: [| other] ifFalse: [| self]]]");
     installSourceMethod(SMALLINT_VT, "between:and:", "[:lo :hi | [[[self < lo] not] and: [| [[hi < self] not]]]]");
+    // Tier D — abs/even/odd, self-hosted over `<`/negate/mod:/`=`.
+    installSourceMethod(SMALLINT_VT, "abs", "[| [[self < 0] ifTrue: [| [self negate]] ifFalse: [| self]]]");
+    installSourceMethod(SMALLINT_VT, "even", "[| [[self mod: 2] = 0]]");
+    installSourceMethod(SMALLINT_VT, "odd", "[| [[self mod: 2] = 1]]");
 }
 
 fn installPrimitives() void {
@@ -2895,6 +2933,7 @@ fn installPrimitives() void {
 
     installCollections(); // Phase 16 Tier A/C — vector + map methods
     installBoolNil(); // Phase 16 Tier D — bool/nil ergonomics
+    installNumberProtocol(); // Phase 16 Tier D — mod: + Float sqrt/floor/ceil/round
 }
 
 /// Full method install (dylib / non-AOT path) — every tier.
