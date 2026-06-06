@@ -514,6 +514,72 @@ test "snapshot (R1c): datalog query runs against the frozen view" {
     try testing.expectEqual(@as(usize, 3), live_count);
 }
 
+test "retention (R2): currentValueAsOfBasis is exact per basis" {
+    var backing = std.heap.ArenaAllocator.init(testing.allocator);
+    defer backing.deinit();
+    const a = backing.allocator();
+    var store = fs.FactStore.init(a);
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2
+    _ = try store.assert(1, 5, vi(30), M_BOOT); // basis 3
+
+    try testing.expect(store.currentValueAsOfBasis(1, 5, 0) == null);
+    try testing.expectEqual(vi(10), store.currentValueAsOfBasis(1, 5, 1).?);
+    try testing.expectEqual(vi(20), store.currentValueAsOfBasis(1, 5, 2).?);
+    try testing.expectEqual(vi(30), store.currentValueAsOfBasis(1, 5, 3).?);
+    try testing.expectEqual(vi(30), store.currentValueAsOfBasis(1, 5, 99).?);
+}
+
+test "retention (R2): keep_all retains archive epoch; asOf reads past basis" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    store.setRetention(.keep_all);
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2
+
+    // Compact: keep_all → old epoch retained as a history archive (not freed).
+    _ = try store.compact(a, {}, KeepAll.keep);
+    try testing.expectEqual(@as(usize, 1), store.retained_epochs.items.len);
+
+    // asOf a past basis routes to the retained archive and reads exactly.
+    const past = try store.snapshotAsOf(1);
+    defer past.deinit(a);
+    try testing.expectEqual(vi(10), past.get(1, 5).?);
+    try testing.expectEqual(@as(u64, 1), past.basis_t);
+
+    // asOf the collapse basis routes to the current epoch.
+    const at2 = try store.snapshotAsOf(2);
+    defer at2.deinit(a);
+    try testing.expectEqual(vi(20), at2.get(1, 5).?);
+
+    // Live still current.
+    try testing.expectEqual(vi(20), store.currentValue(1, 5).?);
+}
+
+test "retention (R2): current_only frees history; asOf past errors" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    // Default current_only.
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2
+    _ = try store.compact(a, {}, KeepAll.keep); // frees old epoch
+    try testing.expectEqual(@as(usize, 0), store.retained_epochs.items.len);
+
+    // History below the collapse is gone → asOf(1) has no archive.
+    try testing.expectError(error.HistoryNotRetained, store.snapshotAsOf(1));
+}
+
 test "index epoch arena: retain_history gate skips the free (no swap)" {
     // Backing arena reclaims the intentionally-retained epoch at teardown.
     var backing = std.heap.ArenaAllocator.init(testing.allocator);

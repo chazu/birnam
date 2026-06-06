@@ -58,6 +58,18 @@ pub const CardinalitySchema = struct {
 
 // -- Index epoch registry (Phase 15.R R1b) -----------------------------------
 
+/// The five index root pointers captured by value — a zero-copy snapshot of
+/// the whole store (structural sharing). Held by a `RetainedEpoch` so a
+/// swapped-out epoch stays queryable as a history archive (R2), and by a
+/// `Snapshot` view.
+pub const IndexRoots = struct {
+    eavt: EAVTish,
+    aevt: EAVTish,
+    avet: AVETish,
+    vaet: AVETish,
+    meat: MEATish,
+};
+
 /// An index epoch swapped out by `compact()` but kept alive because a live
 /// snapshot pins it (refcount > 0) or the retention horizon needs the history
 /// it holds. Freed wholesale once nothing references it. The arena is the same
@@ -73,6 +85,24 @@ pub const RetainedEpoch = struct {
     max_basis: u64,
     /// Number of live snapshots pinning this epoch.
     refcount: u32,
+    /// The index roots at swap-out — this epoch as a queryable history archive
+    /// (R2). Valid as long as the epoch is retained (arena not freed).
+    roots: IndexRoots,
+};
+
+// -- Retention policy (Phase 15.R R2) ----------------------------------------
+
+/// How far back history is retained. The floor it implies feeds
+/// `oldestRetainedBasisT()`, which gates epoch freeing in `compact()`.
+pub const RetentionPolicy = union(enum) {
+    /// Keep only "now" (default). Compact collapses + frees old epochs (15.I).
+    current_only,
+    /// Keep all history forever (never free an epoch on horizon grounds).
+    keep_all,
+    /// Keep history with basis-T >= this value.
+    keep_since_basis: u64,
+    /// Keep the last N basis-Ts of history (floor tracks the live basis).
+    keep_last_n: u64,
 };
 
 // -- Snapshot (Phase 15.R R1c) -----------------------------------------------
@@ -86,8 +116,18 @@ pub const Snapshot = struct {
     view: FactStore,
     basis_t: u64,
     epoch_gen: u64,
+    /// Set when this is an `asOf:<past>` snapshot — reads are history-walked to
+    /// this basis. Null for a "now" snapshot (read the frozen current roots).
+    as_of_basis: ?u64 = null,
     /// The live store this was captured from — for unpinning on release.
     store: *FactStore,
+
+    /// Exact point read honoring `as_of_basis`. For a "now" snapshot this is
+    /// the frozen current value; for an `asOf:` snapshot it walks history.
+    pub fn get(self: *const Snapshot, e: u64, a: u64) ?Ref {
+        if (self.as_of_basis) |b| return self.view.currentValueAsOfBasis(e, a, b);
+        return self.view.currentValue(e, a);
+    }
 
     /// Unpin the epoch (making it collectible at the next compact if nothing
     /// else holds it) and free the snapshot. `allocator` must be the one that
@@ -141,11 +181,13 @@ pub const FactStore = struct {
     /// behavior reduces exactly to 15.I (free-on-compact).
     retained_epochs: std.ArrayList(RetainedEpoch) = .{},
 
-    /// Phase 15.R R2 — retention horizon floor (basis-T). When set, history
-    /// at or above this basis is kept by `compact()` and epochs covering it are
-    /// not freed. `null` = current-only (the default); folded into
+    /// Phase 15.R R2 — retention horizon policy. `current_only` (default) keeps
+    /// only "now": compact collapses + frees old epochs (inert retention, the
+    /// 15.I behavior). Other policies set a basis-T floor below which history is
+    /// collectible; epochs covering the floor are retained (as queryable history
+    /// archives) instead of freed. Derived floor folds into
     /// `oldestRetainedBasisT()`.
-    retention_floor: ?u64 = null,
+    retention_policy: RetentionPolicy = .current_only,
     /// Monotonic tx counter; starts at 1. Atomic per Phase 11.7.iv
     /// (ADR-11 #7 forward-compat). Single-writer transactor under the
     /// Datomic shape; atomic now keeps non-transactor read paths safe
@@ -276,10 +318,31 @@ pub const FactStore = struct {
     pub fn oldestRetainedBasisT(self: *const FactStore) u64 {
         if (self.retain_history) return 1; // legacy "retain all" gate
         var oldest = self.currentBasisT() +| 1;
-        // Live snapshots pin epochs directly via refcount; the horizon (R2)
-        // and any extra floor are folded in here when those land.
-        if (self.retention_floor) |floor| oldest = @min(oldest, floor);
+        // Live snapshots pin epochs directly via refcount; the retention
+        // horizon floor is folded in here. The AOT `--strip=history` floor
+        // (= now) is already the default.
+        if (self.retentionFloor()) |floor| oldest = @min(oldest, floor);
         return oldest;
+    }
+
+    /// The basis-T floor implied by the retention policy, or null for
+    /// current-only. `keep_last_n` is computed against the live basis so the
+    /// window slides forward as the store advances.
+    pub fn retentionFloor(self: *const FactStore) ?u64 {
+        return switch (self.retention_policy) {
+            .current_only => null,
+            .keep_all => 1,
+            .keep_since_basis => |b| b,
+            .keep_last_n => |n| blk: {
+                const cur = self.currentBasisT();
+                break :blk if (cur >= n) cur - n + 1 else 1;
+            },
+        };
+    }
+
+    /// Set the retention policy (R2). Opt into time-travel beyond "now".
+    pub fn setRetention(self: *FactStore, policy: RetentionPolicy) void {
+        self.retention_policy = policy;
     }
 
     /// Pin the current writable epoch (a snapshot captured it). Returns the
@@ -287,6 +350,20 @@ pub const FactStore = struct {
     pub fn pinCurrentEpoch(self: *FactStore) u64 {
         self.index_epoch_refcount += 1;
         return self.index_epoch_gen;
+    }
+
+    /// Pin epoch `gen` — the current writable epoch or a retained archive.
+    pub fn pinEpoch(self: *FactStore, gen: u64) void {
+        if (gen == self.index_epoch_gen) {
+            self.index_epoch_refcount += 1;
+            return;
+        }
+        for (self.retained_epochs.items) |*re| {
+            if (re.gen == gen) {
+                re.refcount += 1;
+                return;
+            }
+        }
     }
 
     /// Release a pin on epoch `gen`. If that epoch is a swapped-out retained
@@ -331,9 +408,54 @@ pub const FactStore = struct {
     /// `asOf: <past basis>` reconstruction is a follow-on (needs a snapshot
     /// taken at that basis, or history-walk-backed reads — see R2).
     pub fn snapshotNow(self: *FactStore) !*Snapshot {
+        return self.buildSnapshot(.{
+            .eavt = self.eavt,
+            .aevt = self.aevt,
+            .avet = self.avet,
+            .vaet = self.vaet,
+            .meat = self.meat,
+        }, self.currentBasisT(), self.index_epoch_gen, null);
+    }
+
+    /// Phase 15.R R2 — capture a snapshot as of a PAST basis-T. Routes to the
+    /// epoch whose basis range covers `basis` (the current writable epoch, or a
+    /// retained history archive), pins it, and returns a view whose reads are
+    /// `asOf:`-walked to `basis`. Requires that history reached `basis` is still
+    /// retained (the retention policy governs that) — otherwise
+    /// `error.HistoryNotRetained`. `basis >= now` degrades to `snapshotNow`.
+    pub fn snapshotAsOf(self: *FactStore, basis: u64) !*Snapshot {
+        if (basis >= self.currentBasisT()) return self.snapshotNow();
+        // Current writable epoch holds history back to its min_basis.
+        if (basis >= self.index_epoch_min_basis) {
+            return self.buildSnapshot(.{
+                .eavt = self.eavt,
+                .aevt = self.aevt,
+                .avet = self.avet,
+                .vaet = self.vaet,
+                .meat = self.meat,
+            }, basis, self.index_epoch_gen, basis);
+        }
+        // Otherwise find a retained archive epoch covering `basis`.
+        for (self.retained_epochs.items) |*re| {
+            if (basis >= re.min_basis and basis <= re.max_basis) {
+                return self.buildSnapshot(re.roots, basis, re.gen, basis);
+            }
+        }
+        return error.HistoryNotRetained;
+    }
+
+    /// Build a Snapshot over `roots`, pinning epoch `gen`. `as_of` null = read
+    /// current values of those roots (a "now" snapshot of that epoch); non-null
+    /// = `asOf:`-walk reads to that basis.
+    fn buildSnapshot(self: *FactStore, roots: IndexRoots, basis: u64, gen: u64, as_of: ?u64) !*Snapshot {
         const snap = try self.allocator.create(Snapshot);
         errdefer self.allocator.destroy(snap);
-        var v = self.*; // copies the 5 roots by value → frozen view
+        var v = self.*; // copies scalar config (allocator, schema, etc.)
+        v.eavt = roots.eavt;
+        v.aevt = roots.aevt;
+        v.avet = roots.avet;
+        v.vaet = roots.vaet;
+        v.meat = roots.meat;
         v.read_only = true;
         v.eid_alloc_table = null; // no reification mutation through a snapshot
         v.on_attr_mutate = null;
@@ -343,11 +465,12 @@ pub const FactStore = struct {
         // never aliases (or is invalidated by) the live store's maps.
         v.fact_eids = std.AutoHashMap(u64, u64).init(self.allocator);
         v.fact_modules = std.AutoHashMap(u64, u64).init(self.allocator);
-        const gen = self.pinCurrentEpoch();
+        self.pinEpoch(gen);
         snap.* = .{
             .view = v,
-            .basis_t = self.currentBasisT(),
+            .basis_t = basis,
             .epoch_gen = gen,
+            .as_of_basis = as_of,
             .store = self,
         };
         return snap;
@@ -436,6 +559,24 @@ pub const FactStore = struct {
         self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = 1, .op = .assert });
     }
 
+    /// Phase 15.R — compact's collapse insert. Like `frozenInsert` but writes
+    /// an explicit `tx` (sequential per-epoch coordinate) and `basis` (the
+    /// single collapse basis, so `asOf:` reads of the collapsed epoch are
+    /// correct), fires `on_attr_mutate` (mcache flush) but never
+    /// `on_entity_mutate` (no demote churn during a rebuild). No implicit-
+    /// retract: the collapse source is current-only (one value per (e,a) for
+    /// `:one`; `:many` accretes as present). Does not touch the tx/basis
+    /// counters — `compact` manages those.
+    fn compactInsert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64, tx: u64, basis: u64) !void {
+        const ia = self.indexAlloc();
+        self.eavt = try updateValueLeaf(ia, self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis });
+        self.aevt = try updateValueLeaf(ia, self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis });
+        self.meat = try updateMeat(ia, self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis });
+        self.avet = try updatePresenceLeaf(ia, self.avet, a, v, e, true, .{ .tx = tx, .op = .assert, .basis = basis });
+        self.vaet = try updatePresenceLeaf(ia, self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert, .basis = basis });
+        if (self.on_attr_mutate) |cb| cb(a);
+    }
+
     /// Lock the store read-only (Phase 14 `--strip=history`). After this,
     /// `assert`/`retract` reject. Idempotent.
     pub fn freeze(self: *FactStore) void {
@@ -448,7 +589,7 @@ pub const FactStore = struct {
             if (ref_mod.isNil(v)) @panic("FactStore.assert: NIL value forbidden (Date discipline)");
         }
         const tx = self.next_tx.fetchAdd(1, .monotonic);
-        _ = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
+        const bt = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
 
         // Snapshot the previous value before any writes. Use raw lookup
         // so `:many` attrs (where currentValue materializes an RRB)
@@ -459,11 +600,11 @@ pub const FactStore = struct {
         // EAVT / AEVT: append (v, tx, assert) to the value-cell at (e,a) / (a,e).
         // For `:many` attrs the cell's current_v is just "latest assert"
         // and not the canonical truth; AVET drives reads.
-        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert });
-        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert });
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
 
         // MEAT: same pattern but three-level (m, e, a).
-        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert });
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
 
         // AVET / VAET: presence-cell maintenance.
         //   `:one` (default) — implicit-retract the previous distinct value.
@@ -471,13 +612,13 @@ pub const FactStore = struct {
         if (!is_many) {
             if (prev_v) |pv| {
                 if (pv != v) {
-                    self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, pv, e, false, .{ .tx = tx, .op = .retract });
-                    self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, pv, a, e, false, .{ .tx = tx, .op = .retract });
+                    self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, pv, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
+                    self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, pv, a, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
                 }
             }
         }
-        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = tx, .op = .assert });
-        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert });
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = tx, .op = .assert, .basis = bt });
+        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert, .basis = bt });
 
         if (self.on_attr_mutate) |cb| cb(a);
         if (self.on_entity_mutate) |cb| cb(e, a);
@@ -488,7 +629,7 @@ pub const FactStore = struct {
     pub fn retract(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !u64 {
         if (self.read_only) return error.ReadOnly;
         const tx = self.next_tx.fetchAdd(1, .monotonic);
-        _ = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
+        const bt = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
 
         // No-op if (e, a, v) isn't currently present (AVET is authoritative
         // for both `:one` and `:many`).
@@ -497,11 +638,11 @@ pub const FactStore = struct {
         // EAVT/AEVT current_v: for `:one` this nulls the cache (no remaining
         // value at (e, a)). For `:many` it makes current_v stale relative to
         // AVET — that's fine; reads consult cardinality.
-        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
-        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract });
-        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract });
-        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, false, .{ .tx = tx, .op = .retract });
-        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract });
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
+        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
 
         if (self.on_attr_mutate) |cb| cb(a);
         if (self.on_entity_mutate) |cb| cb(e, a);
@@ -611,6 +752,26 @@ pub const FactStore = struct {
             i -= 1;
             const ent = cell.history.nth(i);
             if (ent.tx <= as_of_tx) {
+                return if (ent.op == .assert) ent.v else null;
+            }
+        }
+        return null;
+    }
+
+    /// Phase 15.R — exact value of (e, a) as of basis-T `basis` (the durable,
+    /// non-resetting coordinate). Walks the cell history by `basis`. Returns
+    /// null if absent at that basis. Reaches only as far back as history is
+    /// retained (the retention horizon governs how far that is); entries
+    /// written before basis tracking carry basis 0 and read as "from the
+    /// beginning of time".
+    pub fn currentValueAsOfBasis(self: *const FactStore, e: u64, a: u64, basis: u64) ?Ref {
+        const inner = self.eavt.get(e) orelse return null;
+        const cell = inner.get(a) orelse return null;
+        var i: usize = cell.history.count();
+        while (i > 0) {
+            i -= 1;
+            const ent = cell.history.nth(i);
+            if (ent.basis <= basis) {
                 return if (ent.op == .assert) ent.v else null;
             }
         }
@@ -856,6 +1017,9 @@ pub const FactStore = struct {
                 .min_basis = self.index_epoch_min_basis,
                 .max_basis = basis_at_compact,
                 .refcount = self.index_epoch_refcount,
+                // Capture the OLD roots NOW (before the reset below) so a
+                // retained epoch stays queryable as a history archive.
+                .roots = .{ .eavt = self.eavt, .aevt = self.aevt, .avet = self.avet, .vaet = self.vaet, .meat = self.meat },
             };
             self.index_arena = fresh; // indexAlloc() now hands out the new epoch
             self.index_epoch_gen += 1;
@@ -870,31 +1034,29 @@ pub const FactStore = struct {
         self.avet = AVETish.empty(ia, .{});
         self.vaet = AVETish.empty(ia, .{});
         self.meat = MEATish.empty(ia, .{});
-        self.next_tx.store(1, .monotonic);
         self.fact_eids.clearRetainingCapacity();
         self.fact_modules.clearRetainingCapacity();
 
-        // Suppress entity-demotion during re-assert: kept entities keep
-        // their materialized object-table slots (re-asserting the same
-        // facts must not churn the cache). on_attr_mutate (mcache flush)
-        // stays active so dispatch caches refresh.
-        const saved_entity_hook = self.on_entity_mutate;
-        self.on_entity_mutate = null;
-        defer self.on_entity_mutate = saved_entity_hook;
-
+        // Rebuild via `compactInsert`, NOT `assert`: it (a) writes every base
+        // fact at the single collapse basis `basis_at_compact` (so `asOf:` any
+        // basis >= the collapse point sees the whole collapsed state — a
+        // monotonically-increasing per-fact basis would make mid-range asOf
+        // queries spuriously absent), and (b) leaves the basis_t counter
+        // untouched (a rebuild is not a semantic mutation; next_tx is the
+        // per-epoch coordinate and uses a sequential tx here). on_entity_mutate
+        // (demote) stays suppressed; on_attr_mutate (mcache flush) fires.
         var stats = CompactStats{ .kept = 0, .dropped = 0 };
+        var tx: u64 = 1;
         for (facts.items) |f| {
             if (keep(ctx, f.m, f.e, f.a, f.v)) {
-                _ = try self.assert(f.e, f.a, f.v, f.m);
+                try self.compactInsert(f.e, f.a, f.v, f.m, tx, basis_at_compact);
+                tx += 1;
                 stats.kept += 1;
             } else {
                 stats.dropped += 1;
             }
         }
-        // compact is a rebuild, not a semantic mutation: the re-asserts above
-        // bumped basis_t; restore it so the user-facing timeline is unchanged
-        // (next_tx legitimately restarts at 1 — the per-epoch coordinate).
-        self.basis_t.store(basis_at_compact + 1, .monotonic);
+        self.next_tx.store(tx, .monotonic);
 
         // Old epoch: free wholesale if nothing references it, else retain.
         // The new index is fully built and references only new-epoch nodes,
