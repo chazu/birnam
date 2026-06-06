@@ -287,6 +287,11 @@ pub const IdApi = extern struct {
     /// Interned name of `eid` as a string Ref, or NIL if not interned. Lets the
     /// display layer render keyword/selector eids by name (Phase 16 Tier C).
     symbol_name: *const fn (u64) callconv(.c) Ref,
+
+    // -- Phase 16 deferred: reduced early-out (append-only) -----------------
+    make_reduced: *const fn (Ref) callconv(.c) Ref,
+    is_reduced: *const fn (Ref) callconv(.c) bool,
+    reduced_value: *const fn (Ref) callconv(.c) Ref,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -414,7 +419,22 @@ pub fn populate() IdApi {
         .map_values = &cMapValues,
         .map_merge = &cMapMerge,
         .symbol_name = &cSymbolName,
+        .make_reduced = &cMakeReduced,
+        .is_reduced = &cIsReduced,
+        .reduced_value = &cReducedValue,
     };
+}
+
+fn cMakeReduced(val: Ref) callconv(.c) Ref {
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    return boxed.mkReduced(a, val) catch ref_mod.NIL;
+}
+fn cIsReduced(r: Ref) callconv(.c) bool {
+    return boxed.isReduced(r);
+}
+fn cReducedValue(r: Ref) callconv(.c) Ref {
+    if (!boxed.isReduced(r)) return r;
+    return boxed.reducedValue(r);
 }
 
 fn cSymbolName(eid: u64) callconv(.c) Ref {

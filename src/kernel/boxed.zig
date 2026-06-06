@@ -237,6 +237,27 @@ pub fn mapMerge(allocator: std.mem.Allocator, a: Ref, b: Ref) !Ref {
     return wrapMap(allocator, m);
 }
 
+// -- Phase 16: `reduced` early-out sentinel -------------------------------
+
+/// Wrap `val` in a REDUCED_VT box (1 slot). `inject:into:` returning one stops
+/// the fold and unwraps it.
+pub fn mkReduced(allocator: std.mem.Allocator, val: Ref) !Ref {
+    const obj_ptr = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.REDUCED_VT), 1);
+    object.setSlot(obj_ptr, 0, val);
+    return object.toRef(obj_ptr);
+}
+pub fn isReduced(r: Ref) bool {
+    if (!ref_mod.isPointer(r)) return false;
+    const obj = object.fromRef(r);
+    const vt = object.vtableOf(obj);
+    if (!ref_mod.isEid(vt)) return false;
+    return ref_mod.untagEid(vt) == kernel_eids.REDUCED_VT;
+}
+pub fn reducedValue(r: Ref) Ref {
+    std.debug.assert(isReduced(r));
+    return object.slotAt(object.fromRef(r), 0);
+}
+
 pub fn isRrbRef(r: Ref) bool {
     if (!ref_mod.isPointer(r)) return false;
     const obj = object.fromRef(r);

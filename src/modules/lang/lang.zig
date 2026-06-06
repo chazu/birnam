@@ -225,6 +225,9 @@ const IdApi = extern struct {
     map_values: *const fn (Ref) callconv(.c) Ref,
     map_merge: *const fn (Ref, Ref) callconv(.c) Ref,
     symbol_name: *const fn (u64) callconv(.c) Ref,
+    make_reduced: *const fn (Ref) callconv(.c) Ref,
+    is_reduced: *const fn (Ref) callconv(.c) bool,
+    reduced_value: *const fn (Ref) callconv(.c) Ref,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -2616,8 +2619,16 @@ fn vecInjectIntoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     const block = args[1];
     const len = api.rrb_len(s.receiver);
     var i: u64 = 0;
-    while (i < len) : (i += 1) acc = api.send2(block, sel_value_value_g, acc, api.rrb_nth(s.receiver, i));
+    while (i < len) : (i += 1) {
+        acc = api.send2(block, sel_value_value_g, acc, api.rrb_nth(s.receiver, i));
+        if (api.is_reduced(acc)) return api.reduced_value(acc); // early-out
+    }
     return acc;
+}
+
+fn objReducedImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.make_reduced(s.receiver);
 }
 
 // -- Phase 16 Tier C: map (ASSOC_VT) methods ------------------------------
@@ -2780,11 +2791,13 @@ fn installBoolNil() void {
     const ifnotnil = api.intern("ifNotNil:".ptr, 9);
     // Default (not-nil): OBJECT_VT (covers delegating types) + the
     // non-delegating immediates SMALLINT_VT / TRUE_VT / FALSE_VT.
+    const reduced_sel = api.intern("reduced".ptr, 7);
     const default_vts = [_]u64{ OBJECT_VT, SMALLINT_VT, TRUE_VT, FALSE_VT };
     for (default_vts) |vt| {
         _ = api.assert_fact(vt, isnil, mkEid(api.make_closure(@ptrCast(&objIsNilImpl), NIL)), g_module_eid);
         _ = api.assert_fact(vt, ifnil, mkEid(api.make_closure(@ptrCast(&objIfNilImpl), NIL)), g_module_eid);
         _ = api.assert_fact(vt, ifnotnil, mkEid(api.make_closure(@ptrCast(&objIfNotNilImpl), NIL)), g_module_eid);
+        _ = api.assert_fact(vt, reduced_sel, mkEid(api.make_closure(@ptrCast(&objReducedImpl), NIL)), g_module_eid);
     }
     // nil overrides on NIL_VT.
     _ = api.assert_fact(NIL_VT_EID, isnil, mkEid(api.make_closure(@ptrCast(&nilIsNilImpl), NIL)), g_module_eid);
@@ -2865,7 +2878,7 @@ fn installPrelude() void {
     installSourceMethod(RRB_VT, ",", "[:other | [other inject: self into: [:acc :x | [acc with: x]]]]");
     // Tier D — detect: first element matching pred, else nil (scans all; the
     // `reduced` early-out is a later refinement). Self-hosts over isNil (D1).
-    installSourceMethod(RRB_VT, "detect:", "[:pred | [self inject: nil into: [:acc :x | [[acc isNil] ifTrue: [| [[pred value: x] ifTrue: [| x] ifFalse: [| nil]]] ifFalse: [| acc]]]]]");
+    installSourceMethod(RRB_VT, "detect:", "[:pred | [self inject: nil into: [:acc :x | [[pred value: x] ifTrue: [| [x reduced]] ifFalse: [| acc]]]]]");
     // Tier D — numeric comparison helpers, self-hosted over `<` + bool/nil.
     installSourceMethod(SMALLINT_VT, "min:", "[:other | [[self < other] ifTrue: [| self] ifFalse: [| other]]]");
     installSourceMethod(SMALLINT_VT, "max:", "[:other | [[self < other] ifTrue: [| other] ifFalse: [| self]]]");
