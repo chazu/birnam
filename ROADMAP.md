@@ -1831,6 +1831,21 @@ Take Clojure's ideas, but don't import them as a checklist — most either fall 
 
 **16.0 — the `|>` pipe operator (the immutable replacement for the dropped cascade).** Cascades (`;`, many messages to one *mutable* receiver) were dropped for poor syntactic fit — correct, because immutable values *thread* (each op returns a NEW value → wants it as the next *receiver*), they don't cascade. The real hole: **keyword messages don't chain** — `coll with: 1` returns a new coll, and chaining means `[[coll with: 1] with: 2]` (nested-bracket hell), exactly the dominant immutable-collection shape. `|>` fixes it: `x |> with: 1 |> with: 2 |> select: even` desugars to `[[[x with: 1] with: 2] select: even]`. **Thread-as-receiver** (Clojure `->`, not `->>`), because birnam collections ARE the receiver. ONE operator (don't pre-build a thread-last twin — that's the "two ways" trap). Pure grammar + desugar, no kernel change.
 
+### §Status — Tier A SHIPPED 2026-06-06 (branch phase-16-tier-a, 419/419)
+
+Vectors are live: `#[a b c]` literal, `size`, `at:` (raises OOB via ERROR_VT),
+`at:ifAbsent:` (primary, no-NULL), `with:` (immutable append), `do:`,
+`inject:into:`. Vectors = RRB Refs (methods on RRB_VT). The literal desugars to a
+left-nested `with:` chain over an empty-RRB literal → works in tree-walker AND
+bytecode with NO new AST kind / opcode / compiler change (verified inside
+compiled methods). REPL renders `#[..]` recursively. boxed
+`wrapRrb`/`rrbWith`/`rrbLen`/`rrbNth`; IdApi appended
+`make_rrb`/`rrb_with`/`rrb_len`/`rrb_nth`. NOT merged to main yet.
+
+Deferred from Tier A → Tier B (all derivable in birnam source over
+`do:`/`inject:into:`): `reduced` early-out sentinel,
+`collect:`/`select:`/`detect:`/`count`/`,`, `printString`-as-method.
+
 ### Build order (fleshed 2026-06-06 — supersedes the literal 16.1→16.5 numbering)
 
 The roadmap-number order is NOT the build order. Two Phase-17 items (`printString`, bool/nil + `doesNotUnderstand:`) are prerequisites for *exploring* Phase 16 and are pulled forward; `|>` (numbered 16.5) is the ergonomic linchpin and moves up next to the first value-returning keyword message. **15.R ships first** (decided 2026-06-06) so reference types (Tier E) debut with full `asOf:`/`history` time-travel.
