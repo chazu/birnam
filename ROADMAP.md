@@ -1606,6 +1606,19 @@ The arena registry is single-threaded today but aligns with the locked Datomic t
 - **GC is a transactor safepoint op.** Sweep mutates arena liveness + frees → must run single-writer, and the mark must reach **every thread's `Vm` roots** (frames/stack), not just the object table + current facts (single-thread today: stack empty at `:gc`). Non-moving (chosen) helps: stable addresses mean a reader thread holding a box pointer isn't invalidated by a concurrent sweep of *other* boxes, provided its own roots are marked.
 - **Invariant to preserve:** box/closure allocation must stay behind the `arenas.X()` accessor (never a hardcoded global deref at call sites), so the per-thread/transactor split is a registry-internal change. Already followed (`boxAlloc`, `vm.allocBytecodeBlock`, interner `string_allocator`).
 
+### §Single-transactor — rationale + escape-hatch ladder (note, 2026-06-05)
+
+**Don't frame the single writer as a bottleneck to overcome — it is load-bearing for the time-travel feature, and for the image-as-runtime use case it is a non-issue.** Recorded so the reasoning isn't re-litigated:
+
+- **It's a non-issue for the design center.** Writes are human-/program-paced; a single transactor sustains thousands–tens-of-thousands tx/sec. A REPL / live image / dev runtime never approaches that ceiling. Optimizing write concurrency now is premature.
+- **It is what makes `as-of` cheap.** One writer = one global total order on `tx` = a clean linear history. That is *exactly* what makes time-travel / `diff` / audit trivial (Phase 15.R). Going multi-writer forfeits the single global timeline → `as-of` then needs vector clocks / per-shard timelines / merge semantics. So the single transactor is the **enabling condition** for the headline temporal story, not a tax paid for simplicity. You'd be trading the crown jewel for write throughput the use case doesn't need.
+- **Not a dead end — the persistent/snapshot substrate makes the escape hatches unusually cheap, in order:**
+  1. **Group commit / batching.** One thread, many logical tx per physical sync. 10–100× write throughput with zero loss of serialization or global order. Always the first move.
+  2. **Shard by `m` (module/namespace).** Disjoint data → N transactors, each single-writer internally with its *own* clean timeline. The shard key already exists (the fact `m` column). Per-shard `as-of` stays clean; only *cross*-shard temporal queries need coordination (rare).
+  3. **Per-entity serialization (actor/grain model).** Each aggregate is its own tiny transactor; independent entities commit in parallel. Drops global snapshots unless coordinated — fine for workloads that don't need them.
+  4. **Branch/merge optimistic concurrency (the ambitious one).** Persistent values are mergeable: concurrent writers each branch from a snapshot, write independently, a merge reconciles (per-`(e,a)` LWW / conflict detection / CRDT-style). This is **Irmin** (OCaml's Git-like mergeable immutable store) — existence proof, and birnam's substrate is already the right shape. The transactor's job shrinks to *adjudicating conflicts*, not serializing every write.
+- **The ONE thing to protect, starting now:** the lock-free-reader + immutable-snapshot discipline. Never introduce ad-hoc locks or shared-mutable state "for convenience" — that is the only thing that forfeits the ladder above. Keep single-writer + immutable and overcoming it later stays a *choice*, not a rewrite. Revisit only when a concrete high-write workload appears; first two moves are group-commit then `m`-sharding.
+
 ### Work items
 
 **Scope (resolved 2026-06-04).** The sweep reclaims **immutable, non-cache heap only**: string/float/ffiptr boxes, BytecodeClosures, capture arrays, constant-pool RRB, bytecode streams, FFI Sig structs. Materialized **structs are NOT in the sweep** — they are pure cache, reclaimed by `demote` (Q3 below). The fact-store's own HAMT/RRB index nodes are NOT in the sweep — reclaimed by arena epoch on compact (S2 above). Mark runs over the **current-value reachable set**; `:gc` presupposes a history collapse (Q2 below).
@@ -1709,15 +1722,31 @@ this exposes a user-facing protocol on top of it. NOT previously a roadmap phase
 (the original intent was "build Cons cells in birnam" — T1 stretch); promoted to
 a real phase 2026-06-03.
 
+### Stdlib design DNA — Clojure, *adapted* to a message-passing fact store (2026-06-05)
+
+Take Clojure's ideas, but don't import them as a checklist — most either fall out of the substrate or are subsumed by it. Principles that govern Phase 16/17:
+
+- **Immutable-first is the default, not an option.** Canonical aggregates = persistent vector / map / set (kernel HAMT/RRB), value-returning APIs. Mutable arrays are the rare explicit escape hatch (steal Clojure **transients**: locally-mutable build, frozen on publish = "build in a scratch arena, freeze"). Do NOT expose a mutable `at:put:` array as the *primary* collection.
+- **`reduce:`/`inject:into:` is the kernel of the protocol** (with an early-out `reduced`-style sentinel). `do: collect: select: detect: count` derive from it — written **in birnam source**, not Zig. Build a single `seq`/iteration protocol unifying vector/map/set, **query results**, strings, ranges — so a datalog answer and a vector answer the same `do:`/`reduce:`.
+- **Reference types = thin sugar over entity+attribute+tx, NOT new machinery.** `cell`/`ref`/`atom`-style identities: read = `currentValue`, update = assert (new tx). They get for free what Clojure's atoms structurally can't: `@thing asOf: tx`, `[thing history]`, durable + queryable. **Lead with this** — it's the realization of Clojure's epochal time model that beats Clojure. Coordinated multi-entity change = one transactor tx (`transact:` block); no STM engine (see §Single-transactor — STM is subsumed, do NOT port refs/MVCC/retries).
+- **Transducers — later, as the implementation substrate.** Good fit (no intermediate allocs, composable across collections + future channels) but premature before `collect:/select:` exist. Order: eager reduce-based protocol → refactor `map/filter/take` onto a transducer core → expose `comp` once channels exist to justify the decoupling.
+- **Laziness is opt-in** (explicit `lazy`/ranges/streams), not pervasive. Transducers give the no-intermediate-alloc win *eagerly*, which suits a message-passing language better than Clojure's pervasive lazy seqs (head-retention / side-effect-timing footguns).
+- **Steal the map literal, keep the objects.** A lightweight persistent map literal (`{name: "x", n: 3}` → a keyword-keyed HAMT *value*, distinct from a heavyweight entity) gives ad-hoc structured data without minting entities. But you still *send messages* to it — don't clone Clojure's function-centric shape (`(map f coll)`). birnam is `[coll collect: f]`: the collection is the receiver. Steal the semantics (persistent, reduce-based), not the syntax (global fns + `->>`). Two ways to do everything = a confused stdlib.
+- **Cheap syntactic steals:** **destructuring** in `let` + block params (`[:a :b]` from a seq, map destructuring) — biggest ergonomics-per-effort win; **metadata** = just more facts on the entity (`withMeta:`/`meta` free, equality already ignores it). Threading macros — skip (message chaining is already left-to-right).
+
+**16.0 — the `|>` pipe operator (the immutable replacement for the dropped cascade).** Cascades (`;`, many messages to one *mutable* receiver) were dropped for poor syntactic fit — correct, because immutable values *thread* (each op returns a NEW value → wants it as the next *receiver*), they don't cascade. The real hole: **keyword messages don't chain** — `coll with: 1` returns a new coll, and chaining means `[[coll with: 1] with: 2]` (nested-bracket hell), exactly the dominant immutable-collection shape. `|>` fixes it: `x |> with: 1 |> with: 2 |> select: even` desugars to `[[[x with: 1] with: 2] select: even]`. **Thread-as-receiver** (Clojure `->`, not `->>`), because birnam collections ARE the receiver. ONE operator (don't pre-build a thread-last twin — that's the "two ways" trap). Pure grammar + desugar, no kernel change.
+
 ### Work items (to flesh out)
 
-16.1 A vector/list prototype (`VECTOR_VT` already kernel-reserved) with a literal syntax (e.g. `#[a b c]`) and grammar rule.
+16.1 A vector/list prototype (`VECTOR_VT` already kernel-reserved) with a literal syntax (e.g. `#[a b c]`) and grammar rule. Persistent (RRB-backed), value-returning.
 
-16.2 Core protocol: `size`, `at:`, `at:put:`, `do:`, `collect:`, `select:`, `inject:into:`, `,` (concat).
+16.2 Core protocol on the `reduce:` kernel: `size`, `at:`, `do:`, `collect:`, `select:`, `detect:`, `inject:into:`, `,` (concat), and element-add — **naming: `with:`** (immutable "augmented copy", Smalltalk-resonant; provisional, but explicitly NOT `conj` — avoid the on-the-nose Clojure tell). `at:put:` returns a new collection (or is transient-only).
 
-16.3 Decide persistent-vs-mutable semantics + how it sits on RRB (structural sharing) vs a materialized array.
+16.3 Persistent semantics on RRB (structural sharing) is the default; a materialized/transient array is the explicit escape hatch (Clojure transients).
 
-16.4 Maps / associations (`ASSOC_VT` reserved) + a dictionary protocol.
+16.4 Maps / associations (`ASSOC_VT` reserved) + a dictionary protocol + the `{k: v}` map literal (keyword-keyed HAMT value). `get: at: with: merge: keys values`.
+
+16.5 `|>` pipe operator (16.0 above) — grammar rule + desugar.
 
 ### Reasoning
 Can't meaningfully explore a language without data structures + iteration. Kernel
@@ -1741,12 +1770,22 @@ pinned" — ROADMAP §4.5/§Phase 6 notes).
 
 17.3 General equality + comparison protocol across types; `doesNotUnderstand:` (deferred since Phase 4.5 — ROADMAP §343-344) for graceful unknown-selector handling + reflection.
 
-17.4 Number protocol fill-out (modulo, abs, min:/max:, range helpers).
+17.4 Number protocol fill-out (modulo, abs, min:/max:, range helpers, `sqrt`/`floor`/`ceil`/`round`, `even`/`odd`, `between:and:`).
+
+17.5 Boolean + nil ergonomics: `and:`/`or:` (short-circuit), `not`, `&`/`|`; `isNil`/`ifNil:`/`ifNotNil:`. (Today True/False have only `ifTrue:`/`ifFalse:`; nil has nothing.)
+
+17.6 **Applicative *patterns* — steal them, do NOT reify the abstraction.** The formal Applicative (`pure`/`<*>`) needs higher-kinded types + a typeclass mechanism birnam doesn't have and shouldn't grow; naming anything "applicative" would be cargo-culting Haskell vocab. But the three things applicatives *buy* are each worth shipping as plain APIs:
+- **Error-accumulating validation** (Haskell `Validation` — the #1 real applicative use). A `validate:` / spec surface that gathers ALL failures instead of short-circuiting at the first (monadic = stop at first; applicative = collect all). Pairs directly with schema-as-facts (9.5.2).
+- **Independent combination / `zip` / `whenAll:`** — combine results that DON'T depend on each other (vs the sequential dependency `|>` expresses). The independence is the point: it's what makes the stages *parallelizable* (→ over the future transactor-threaded futures/agents). Encode "these stages are independent" as a verb; don't make the user reach for a monad.
+- **Parser combinators** — the PEG `seq` combinator already IS the applicative parser. Shipped without the name. Leave it.
+  Net: `|>` is the *sequential* pipe (16.0); `zip`/`whenAll:` is the *independent* combinator. That pair is the honest dynamic-language version of "monad vs applicative" without the typeclass tax.
 
 ### Reasoning
 These are the affordances "explore the language" actually needs. Deliberately
 deferred off the infra roadmap; now first-class so they get specced + built
-rather than accreting ad hoc.
+rather than accreting ad hoc. Stdlib design DNA (immutable-first, reduce/seq
+spine, reference-types-over-tx, transducers-later, `|>` pipe) lives in the
+Phase 16 §Stdlib design DNA block.
 
 ---
 
