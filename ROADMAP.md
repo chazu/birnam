@@ -1831,9 +1831,38 @@ Take Clojure's ideas, but don't import them as a checklist — most either fall 
 
 **16.0 — the `|>` pipe operator (the immutable replacement for the dropped cascade).** Cascades (`;`, many messages to one *mutable* receiver) were dropped for poor syntactic fit — correct, because immutable values *thread* (each op returns a NEW value → wants it as the next *receiver*), they don't cascade. The real hole: **keyword messages don't chain** — `coll with: 1` returns a new coll, and chaining means `[[coll with: 1] with: 2]` (nested-bracket hell), exactly the dominant immutable-collection shape. `|>` fixes it: `x |> with: 1 |> with: 2 |> select: even` desugars to `[[[x with: 1] with: 2] select: even]`. **Thread-as-receiver** (Clojure `->`, not `->>`), because birnam collections ARE the receiver. ONE operator (don't pre-build a thread-last twin — that's the "two ways" trap). Pure grammar + desugar, no kernel change.
 
-### §Status — Phase 16 COMPLETE 2026-06-06 (A-D merged; deferred items on branch phase-16-deferred, 426/426)
+### §Status — Phase 16 FULLY COMPLETE 2026-06-06 (A–E merged; 430/430)
 
-**Deferred items all done (branch phase-16-deferred):** (1) `reduced` early-out
+**Tier E (reference types + applicative + transducers + metadata) SHIPPED
+2026-06-06 (branch phase-16-tier-e):** the lead feature.
+
+- **Reference cells** (`CELL_VT`=202, `:cell-value`=203). A cell **IS an
+  entity** carrying `[cell :vtable CELL_VT]` + `[cell :cell-value v]`, returned
+  as an EID Ref so its messages dispatch to CELL_VT (no new boxed type — pure
+  fact-store sugar). `db cell: v` / `ref: v` / `atom: v` all mint one (single-
+  transactor subsumes Clojure's atom/ref/agent split). `[c value]` =
+  `currentValue`; `[c set: v]` = `assert` (new tx, chainable); `[c asOf: tx]` =
+  history-walked read; `[c history]` = vector of every value held, oldest→newest
+  — **time-travel rides 15.R per-cell history for free**. `db transact: aBlock`
+  = coordinated change (single-transactor → atomic by construction, no STM).
+  Cells refuse a NIL value (the store forbids it — Date); seed with a real value.
+- **Metadata** (`:meta`=204) — `withMeta:` / `meta` on OBJECT_VT (entities only;
+  immediates answer self). Free: just another fact; equality ignores it.
+- **Applicative *patterns* (17.6, not the abstraction):** `validate:` (error-
+  ACCUMULATING — gathers ALL failures vs short-circuit; pairs with schema-as-
+  facts 9.5.2), `zip:` (independent positional pairing), `whenAll:` (apply only
+  when every element present). `|>` is the sequential pipe; `zip`/`whenAll:` the
+  independent combinator.
+- **Transducers** (`Xf` factory, `XF_VT`=205/`XF_PROTO`=206): `Xf map:` /
+  `filter:` / `take:` return rf→rf' transducers; `coll transduce: xf` runs one
+  eagerly in a **single fold (no intermediate vectors)**; `take:` counts via the
+  accumulator's own size + `reduced` early-out (no mutable cell). Composition =
+  `aXf then: bXf` on CLOSURE_VT (data flows self-then-other). **`comp` deferred
+  per DNA** — `then:` is the honest 2-ary compose until channels justify `comp`.
+
+**Earlier deferred items (branch phase-16-deferred, merged):**
+
+(1) `reduced` early-out
 sentinel (inject:into: stops + unwraps; detect: uses it). (2) integer ranges
 `[lo to: hi]`/`to:by:` (lazy RANGE_VT seq) + **seq-unification** — collect:/
 select:/count/detect:/asVector moved to OBJECT_VT over `inject:into:`, so
