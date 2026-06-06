@@ -61,6 +61,32 @@ test "image: immediate-valued facts round-trip with counters" {
     try testing.expectEqual(src.currentTx(), dst.currentTx());
 }
 
+test "image (R1a): basis_t stays a monotonic floor >= next_tx after load" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Churn so tx high-water (next_tx) exceeds the current-fact count: one (e,a)
+    // rewritten 4x → 4 commits, 1 current fact.
+    var src = fs.FactStore.init(a);
+    _ = try src.assert(E_A, A_NUM, vi(1), M_USER);
+    _ = try src.assert(E_A, A_NUM, vi(2), M_USER);
+    _ = try src.assert(E_A, A_NUM, vi(3), M_USER);
+    _ = try src.assert(E_A, A_NUM, vi(4), M_USER);
+
+    const res = try image.write(a, &src, 256, .{}, null);
+    var dst = fs.FactStore.init(a);
+    const loaded = try image.load(&dst, res.bytes, null);
+
+    // Only 1 current fact replayed, but basis_t must be raised to the tx floor.
+    try testing.expectEqual(@as(u64, 1), loaded.facts_loaded);
+    try testing.expect(dst.currentBasisT() + 1 >= loaded.next_tx);
+    // A snapshot taken post-load gets a sane basis (not below the tx floor).
+    const snap = try dst.snapshotNow();
+    defer snap.deinit(a);
+    try testing.expect(snap.basis_t + 1 >= loaded.next_tx);
+}
+
 test "image: boxed float values round-trip (slice 3)" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
