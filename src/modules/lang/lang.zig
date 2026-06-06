@@ -1020,7 +1020,8 @@ fn desugar(cst_eid: u64) u64 {
     }
     if (rn == rn_kw_nil) {
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
+        // nil literal: store no value (absent → evalLiteral returns NIL; a NIL
+        // value is forbidden by Date discipline — asserting it panics in debug).
         return ast;
     }
     if (rn == rn_kw_true) {
@@ -1053,7 +1054,8 @@ fn desugar(cst_eid: u64) u64 {
             return ast;
         }
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
+        // nil literal: store no value (absent → evalLiteral returns NIL; a NIL
+        // value is forbidden by Date discipline — asserting it panics in debug).
         return ast;
     }
     if (rn == rn_block_bare) {
@@ -1069,7 +1071,8 @@ fn desugar(cst_eid: u64) u64 {
             }
         }
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
+        // nil literal: store no value (absent → evalLiteral returns NIL; a NIL
+        // value is forbidden by Date discipline — asserting it panics in debug).
         return ast;
     }
     if (rn == rn_block_with_params) {
@@ -1244,7 +1247,8 @@ fn desugar(cst_eid: u64) u64 {
         }
         // Fallback: literal NIL node.
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-        _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
+        // nil literal: store no value (absent → evalLiteral returns NIL; a NIL
+        // value is forbidden by Date discipline — asserting it panics in debug).
         return ast;
     }
     if (rn == rn_bracket_unary) {
@@ -1451,9 +1455,8 @@ fn desugar(cst_eid: u64) u64 {
         return recv_ast;
     }
 
-    // Unknown rule — fallback to NIL literal.
+    // Unknown rule — fallback to a nil literal (no value asserted → NIL).
     const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
-    _ = api.assert_fact(ast, ATTR_AST_VALUE, NIL, M_USER);
     return ast;
 }
 
@@ -2664,6 +2667,86 @@ fn mapDoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return s.receiver;
 }
 
+// -- Phase 16 Tier D: bool / nil ergonomics -------------------------------
+
+fn nilIsNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(TRUE_EID);
+}
+fn objIsNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(FALSE_EID);
+}
+fn nilIfNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    return g_api.?.send0(a[0], sel_value_g); // eval the ifNil block
+}
+fn objIfNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return s.receiver; // non-nil → unchanged
+}
+fn nilIfNotNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return NIL;
+}
+fn objIfNotNilImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.send1(a[0], sel_value_of_g, s.receiver); // pass self to block
+}
+fn trueNotImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(FALSE_EID);
+}
+fn falseNotImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(TRUE_EID);
+}
+fn trueAndImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    return g_api.?.send0(a[0], sel_value_g); // short-circuit: eval rhs block
+}
+fn falseAndImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(FALSE_EID);
+}
+fn trueOrImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(TRUE_EID);
+}
+fn falseOrImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    return g_api.?.send0(a[0], sel_value_g);
+}
+
+fn installBoolNil() void {
+    const api = g_api.?;
+    const isnil = api.intern("isNil".ptr, 5);
+    const ifnil = api.intern("ifNil:".ptr, 6);
+    const ifnotnil = api.intern("ifNotNil:".ptr, 9);
+    // Default (not-nil): OBJECT_VT (covers delegating types) + the
+    // non-delegating immediates SMALLINT_VT / TRUE_VT / FALSE_VT.
+    const default_vts = [_]u64{ OBJECT_VT, SMALLINT_VT, TRUE_VT, FALSE_VT };
+    for (default_vts) |vt| {
+        _ = api.assert_fact(vt, isnil, mkEid(api.make_closure(@ptrCast(&objIsNilImpl), NIL)), g_module_eid);
+        _ = api.assert_fact(vt, ifnil, mkEid(api.make_closure(@ptrCast(&objIfNilImpl), NIL)), g_module_eid);
+        _ = api.assert_fact(vt, ifnotnil, mkEid(api.make_closure(@ptrCast(&objIfNotNilImpl), NIL)), g_module_eid);
+    }
+    // nil overrides on NIL_VT.
+    _ = api.assert_fact(NIL_VT_EID, isnil, mkEid(api.make_closure(@ptrCast(&nilIsNilImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(NIL_VT_EID, ifnil, mkEid(api.make_closure(@ptrCast(&nilIfNilImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(NIL_VT_EID, ifnotnil, mkEid(api.make_closure(@ptrCast(&nilIfNotNilImpl), NIL)), g_module_eid);
+    // Boolean: not / and: / or: (and:/or: take a block — short-circuit).
+    const not_sel = api.intern("not".ptr, 3);
+    const and_sel = api.intern("and:".ptr, 4);
+    const or_sel = api.intern("or:".ptr, 3);
+    _ = api.assert_fact(TRUE_VT, not_sel, mkEid(api.make_closure(@ptrCast(&trueNotImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, not_sel, mkEid(api.make_closure(@ptrCast(&falseNotImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(TRUE_VT, and_sel, mkEid(api.make_closure(@ptrCast(&trueAndImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, and_sel, mkEid(api.make_closure(@ptrCast(&falseAndImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(TRUE_VT, or_sel, mkEid(api.make_closure(@ptrCast(&trueOrImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, or_sel, mkEid(api.make_closure(@ptrCast(&falseOrImpl), NIL)), g_module_eid);
+}
+
 fn installCollections() void {
     const api = g_api.?;
     const M = struct { name: []const u8, impl: *const anyopaque };
@@ -2803,7 +2886,8 @@ fn installPrimitives() void {
     _ = api.assert_fact(FALSE_VT, if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfFalseImpl), NIL)), g_module_eid);
     _ = api.assert_fact(FALSE_VT, if_true_if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueIfFalseImpl), NIL)), g_module_eid);
 
-    installCollections(); // Phase 16 Tier A — RRB_VT vector methods
+    installCollections(); // Phase 16 Tier A/C — vector + map methods
+    installBoolNil(); // Phase 16 Tier D — bool/nil ergonomics
 }
 
 /// Full method install (dylib / non-AOT path) — every tier.
