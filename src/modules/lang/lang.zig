@@ -2839,6 +2839,174 @@ fn installCellSurface() void {
     pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("Xf".ptr, 2), mkEid(XF_PROTO));
 }
 
+// -- Phase 17: stdlib — printing, equality/comparison, sort ---------------
+
+var sel_eq_g: u64 = 0;
+var sel_lt_g: u64 = 0;
+
+/// `[x printString]` — render any value to a string Ref via the canonical
+/// `appendRef` formatter (strings quoted, `#[..]` / `{k: v}` recursive).
+fn printStringImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    var buf: [4096]u8 = undefined;
+    const len = appendRef(&buf, 0, s.receiver);
+    return g_api.?.make_string(buf[0..len].ptr, len);
+}
+
+/// `[x displayString]` — human form: a string renders WITHOUT quotes; every
+/// other value matches printString.
+fn displayStringImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    if (isString(s.receiver)) return s.receiver;
+    var buf: [4096]u8 = undefined;
+    const len = appendRef(&buf, 0, s.receiver);
+    return g_api.?.make_string(buf[0..len].ptr, len);
+}
+
+/// `[x print]` — write displayString + newline to output; return self
+/// (chainable, so intermediate values are visible inside code).
+fn printImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    var buf: [4096]u8 = undefined;
+    var len: usize = 0;
+    if (isString(s.receiver)) {
+        const b = stringBytes(s.receiver);
+        len = @min(b.len, buf.len - 1);
+        @memcpy(buf[0..len], b[0..len]);
+    } else {
+        len = appendRef(&buf, 0, s.receiver);
+    }
+    buf[@min(len, buf.len - 1)] = 0;
+    if (g_log) |log| log(@ptrCast(&buf));
+    return s.receiver;
+}
+
+/// `[x = y]` default — Ref identity (covers cells/eids/singletons). SmallInt /
+/// String / Vector override with value semantics on their own vtables.
+fn objEqImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return if (s.receiver == args[0]) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+
+/// `[v = w]` for vectors — structural: same size and elementwise `=` (recursive
+/// via the `=` selector, so nested vectors compare deeply).
+fn vecEqImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const b = args[0];
+    if (!isVectorRef(b)) return mkEid(FALSE_EID);
+    const la = api.rrb_len(s.receiver);
+    if (la != api.rrb_len(b)) return mkEid(FALSE_EID);
+    var i: u64 = 0;
+    while (i < la) : (i += 1) {
+        if (api.send1(api.rrb_nth(s.receiver, i), sel_eq_g, api.rrb_nth(b, i)) != mkEid(TRUE_EID)) {
+            return mkEid(FALSE_EID);
+        }
+    }
+    return mkEid(TRUE_EID);
+}
+
+/// `[a < b]` for strings — lexicographic (byte order).
+fn strLtImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isString(args[0])) return mkEid(FALSE_EID);
+    const order = std.mem.order(u8, stringBytes(s.receiver), stringBytes(args[0]));
+    return if (order == .lt) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+
+/// `[s copyFrom: lo to: hi]` — substring `[lo, hi)` (byte indices, clamped).
+fn strCopyFromToImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const b = stringBytes(s.receiver);
+    const raw_lo = untagSmallInt(args[0]);
+    const raw_hi = untagSmallInt(args[1]);
+    const lo: usize = if (raw_lo < 0) 0 else @min(@as(usize, @intCast(raw_lo)), b.len);
+    const hi: usize = if (raw_hi < 0) 0 else @min(@as(usize, @intCast(raw_hi)), b.len);
+    if (hi <= lo) return api.make_string(b.ptr, 0);
+    return api.make_string(b[lo..hi].ptr, hi - lo);
+}
+
+const SortCtx = struct { key: Ref };
+fn sortLessThan(ctx: SortCtx, a: Ref, b: Ref) bool {
+    const api = g_api.?;
+    var ka = a;
+    var kb = b;
+    if (ctx.key != NIL) {
+        ka = api.send1(ctx.key, sel_value_of_g, a);
+        kb = api.send1(ctx.key, sel_value_of_g, b);
+    }
+    return api.send1(ka, sel_lt_g, kb) == mkEid(TRUE_EID);
+}
+
+/// Shared sort core for `sort` (key=NIL) and `sortBy:` (key=block). Comparison
+/// rides the `<` message — any element type answering `<` is sortable.
+fn sortInto(receiver: Ref, key: Ref) Ref {
+    const api = g_api.?;
+    const len = api.rrb_len(receiver);
+    if (len > 1024) return mkRuntimeError("sort: vector too large (>1024)");
+    var buf: [1024]Ref = undefined;
+    var i: u64 = 0;
+    while (i < len) : (i += 1) buf[i] = api.rrb_nth(receiver, i);
+    std.mem.sort(Ref, buf[0..len], SortCtx{ .key = key }, sortLessThan);
+    var result = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+    i = 0;
+    while (i < len) : (i += 1) result = api.rrb_with(result, buf[i]);
+    return result;
+}
+
+/// `[v sort]` — ascending, via `<` on elements.
+fn vecSortImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return sortInto(s.receiver, NIL);
+}
+
+/// `[v sortBy: keyBlock]` — ascending by the 1-arg key block's result.
+fn vecSortByImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return sortInto(s.receiver, args[0]);
+}
+
+/// Install Phase 17 stdlib: printString/displayString/print + asString on
+/// OBJECT_VT (+ immediates), default `=`, vector `=`/sort/sortBy:, string
+/// `<`/copyFrom:to:.
+fn installStdlib() void {
+    const api = g_api.?;
+    sel_eq_g = api.intern("=".ptr, 1);
+    sel_lt_g = api.intern("<".ptr, 1);
+    const Pair = struct { name: []const u8, impl: *const anyopaque };
+
+    // Printing + asString on every value (OBJECT_VT) and the non-delegating
+    // immediates (SMALLINT_VT / TRUE_VT / FALSE_VT / NIL_VT).
+    const print_methods = [_]Pair{
+        .{ .name = "printString", .impl = @ptrCast(&printStringImpl) },
+        .{ .name = "displayString", .impl = @ptrCast(&displayStringImpl) },
+        .{ .name = "asString", .impl = @ptrCast(&displayStringImpl) },
+        .{ .name = "print", .impl = @ptrCast(&printImpl) },
+    };
+    for ([_]u64{ OBJECT_VT, SMALLINT_VT, TRUE_VT, FALSE_VT, NIL_VT_EID }) |vt| {
+        for (print_methods) |m| {
+            _ = api.assert_fact(vt, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+        }
+    }
+
+    // Default identity `=` on OBJECT_VT + non-delegating immediates that lack
+    // their own (SmallInt/String have value `=` already; TRUE/FALSE/NIL use
+    // identity, which is correct — they are singletons).
+    for ([_]u64{ OBJECT_VT, TRUE_VT, FALSE_VT, NIL_VT_EID }) |vt| {
+        _ = api.assert_fact(vt, sel_eq_g, mkEid(api.make_closure(@ptrCast(&objEqImpl), NIL)), g_module_eid);
+    }
+
+    // Vector value-equality + sorting.
+    _ = api.assert_fact(RRB_VT, sel_eq_g, mkEid(api.make_closure(@ptrCast(&vecEqImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(RRB_VT, api.intern("sort".ptr, 4), mkEid(api.make_closure(@ptrCast(&vecSortImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(RRB_VT, api.intern("sortBy:".ptr, 7), mkEid(api.make_closure(@ptrCast(&vecSortByImpl), NIL)), g_module_eid);
+
+    // String comparison + substring.
+    _ = api.assert_fact(STRING_VT, sel_lt_g, mkEid(api.make_closure(@ptrCast(&strLtImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(STRING_VT, api.intern("copyFrom:to:".ptr, 12), mkEid(api.make_closure(@ptrCast(&strCopyFromToImpl), NIL)), g_module_eid);
+}
+
 // -- Phase 16 Tier A: persistent vector (RRB_VT) methods ------------------
 
 /// Build a runtime ERROR_VT diagnostic carrying `msg`. The no-NULL "raise"
@@ -3619,6 +3787,7 @@ pub fn langPrimitivesTier() void {
     installGlobals();
     installDbSurface(); // Phase 15.R R1d — `db` prototype + snapshot methods
     installCellSurface(); // Phase 16 Tier E — cells/metadata/applicative/Xf
+    installStdlib(); // Phase 17 — printing, equality/comparison, sort
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_PARENT, mkEid(GLOBALS_SCOPE_EID), g_module_eid);
 }
 
