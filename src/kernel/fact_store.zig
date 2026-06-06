@@ -390,6 +390,60 @@ pub const FactStore = struct {
         }
     }
 
+    // -- Excision (Phase 15.R R3) --------------------------------------------
+
+    /// True if any index epoch (current or retained) is pinned by a live
+    /// snapshot. Excise refuses while this holds (Decision C): a snapshot's
+    /// view captured roots BY VALUE, so we cannot reach in to scrub them —
+    /// the user must drop those snapshots first.
+    pub fn hasLiveSnapshots(self: *const FactStore) bool {
+        if (self.index_epoch_refcount > 0) return true;
+        for (self.retained_epochs.items) |re| {
+            if (re.refcount > 0) return true;
+        }
+        return false;
+    }
+
+    /// Phase 15.R R3 — hard-delete every fact (current AND history) for entity
+    /// `e`, from the live index AND every retained history archive (GDPR-shaped
+    /// "forget this entity"). Distinct from `retract` (logical, keeps history)
+    /// and `prune` (collapses below the horizon). Refuses with
+    /// `error.SnapshotPins` if a live snapshot could still expose `e`
+    /// (Decision C). Surgical: touches only `e`'s index paths, leaving every
+    /// other entity's current values and history untouched. `scratch` holds
+    /// transient (a, v) collections.
+    pub fn exciseEntity(self: *FactStore, e: u64, scratch: std.mem.Allocator) !void {
+        if (self.read_only) return error.ReadOnly;
+        if (self.hasLiveSnapshots()) return error.SnapshotPins;
+
+        // Collect e's current attrs first (for the post-removal mcache flush).
+        var attrs = std.ArrayList(u64){};
+        defer attrs.deinit(scratch);
+        if (self.eavt.get(e)) |inner| {
+            var ait = inner.iter();
+            while (ait.next()) |kv| try attrs.append(scratch, kv.key);
+        }
+
+        // Live (current) roots.
+        var cur = IndexRoots{ .eavt = self.eavt, .aevt = self.aevt, .avet = self.avet, .vaet = self.vaet, .meat = self.meat };
+        _ = try exciseEntityFromRoots(&cur, e, scratch);
+        self.eavt = cur.eavt;
+        self.aevt = cur.aevt;
+        self.avet = cur.avet;
+        self.vaet = cur.vaet;
+        self.meat = cur.meat;
+
+        // Every retained history archive too (none are pinned — checked above).
+        for (self.retained_epochs.items) |*re| {
+            _ = try exciseEntityFromRoots(&re.roots, e, scratch);
+        }
+
+        // Flush dispatch caches keyed by e's (now-gone) attributes, and demote
+        // any materialized struct for e.
+        if (self.on_attr_mutate) |cb| for (attrs.items) |a| cb(a);
+        if (self.on_entity_mutate) |cb| cb(e, 0);
+    }
+
     // -- Snapshots (Phase 15.R R1c) ------------------------------------------
 
     /// Capture an immutable zero-copy snapshot of the store as of NOW. The
@@ -1077,6 +1131,79 @@ pub const FactStore = struct {
 };
 
 // -- Internal helpers --------------------------------------------------------
+
+/// Surgically remove every trace of entity `e` from one set of index roots
+/// (Phase 15.R R3). Walks `e`'s full EAVT history to find every (a, v) pair it
+/// ever held, then `dissoc`s `e` from the matching AVET/VAET leaves, AEVT
+/// attr-maps, MEAT module-maps, and finally the EAVT entry itself. dissoc
+/// path-copies via each map's stored allocator (the epoch arena), so the roots
+/// are rewritten in place without touching any other entity. Returns whether
+/// `e` was present. `scratch` holds transient collections.
+fn exciseEntityFromRoots(roots: *IndexRoots, e: u64, scratch: std.mem.Allocator) !bool {
+    const inner = roots.eavt.get(e) orelse return false;
+
+    const AV = struct { a: u64, v: Ref };
+    var pairs = std.ArrayList(AV){};
+    defer pairs.deinit(scratch);
+    var attrs = std.ArrayList(u64){};
+    defer attrs.deinit(scratch);
+
+    var ait = inner.iter();
+    while (ait.next()) |kv| {
+        try attrs.append(scratch, kv.key);
+        const cell = kv.value;
+        const n = cell.history.count();
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            try pairs.append(scratch, .{ .a = kv.key, .v = cell.history.nth(i).v });
+        }
+        // current_v may post-date the collected history in pathological cases;
+        // include it defensively.
+        if (cell.current_v) |cv| try pairs.append(scratch, .{ .a = kv.key, .v = cv });
+    }
+
+    // VAET[v][a] : dissoc e
+    for (pairs.items) |p| {
+        if (roots.vaet.get(p.v)) |mid| {
+            if (mid.get(p.a)) |leaf| {
+                const new_mid = try mid.assoc(p.a, try leaf.dissoc(e));
+                roots.vaet = try roots.vaet.assoc(p.v, new_mid);
+            }
+        }
+    }
+    // AVET[a][v] : dissoc e
+    for (pairs.items) |p| {
+        if (roots.avet.get(p.a)) |mid| {
+            if (mid.get(p.v)) |leaf| {
+                const new_mid = try mid.assoc(p.v, try leaf.dissoc(e));
+                roots.avet = try roots.avet.assoc(p.a, new_mid);
+            }
+        }
+    }
+    // AEVT[a] : dissoc e
+    for (attrs.items) |a| {
+        if (roots.aevt.get(a)) |amap| {
+            roots.aevt = try roots.aevt.assoc(a, try amap.dissoc(e));
+        }
+    }
+    // MEAT[m] : dissoc e (for every module that owned a fact of e)
+    {
+        var mods = std.ArrayList(u64){};
+        defer mods.deinit(scratch);
+        var mit = roots.meat.iter();
+        while (mit.next()) |kv| {
+            if (kv.value.get(e) != null) try mods.append(scratch, kv.key);
+        }
+        for (mods.items) |m| {
+            if (roots.meat.get(m)) |emap| {
+                roots.meat = try roots.meat.assoc(m, try emap.dissoc(e));
+            }
+        }
+    }
+    // EAVT : dissoc e wholesale
+    roots.eavt = try roots.eavt.dissoc(e);
+    return true;
+}
 
 fn updateValueLeaf(
     allocator: std.mem.Allocator,

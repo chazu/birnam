@@ -580,6 +580,85 @@ test "retention (R2): current_only frees history; asOf past errors" {
     try testing.expectError(error.HistoryNotRetained, store.snapshotAsOf(1));
 }
 
+test "excision (R3): removes entity + history; other entities untouched" {
+    var backing = std.heap.ArenaAllocator.init(testing.allocator);
+    defer backing.deinit();
+    const a = backing.allocator();
+    var store = fs.FactStore.init(a);
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // e=1 history: 10 then 20
+    _ = try store.assert(1, 5, vi(20), M_BOOT);
+    _ = try store.assert(1, 6, vi(77), M_BOOT); // second attr on e=1
+    _ = try store.assert(2, 5, vi(30), M_BOOT); // bystander
+
+    try store.exciseEntity(1, a);
+
+    // e=1 wholly gone (current + both attrs).
+    try testing.expect(!store.entityExists(1));
+    try testing.expect(store.currentValue(1, 5) == null);
+    try testing.expect(store.currentValue(1, 6) == null);
+    // Bystander intact.
+    try testing.expectEqual(vi(30), store.currentValue(2, 5).?);
+
+    // AVET scrubbed: neither historical value of e=1 maps back to it.
+    var m20 = store.entitiesMatching(5, vi(20));
+    try testing.expect(m20.next() == null);
+    var m10 = store.entitiesMatching(5, vi(10));
+    try testing.expect(m10.next() == null);
+    // VAET scrubbed: nothing points via the old values to e=1.
+    var pa = try store.pointingAt(vi(20), a);
+    defer pa.deinit();
+    try testing.expect(pa.next() == null);
+    // Bystander still AVET-findable.
+    var m30 = store.entitiesMatching(5, vi(30));
+    try testing.expectEqual(@as(u64, 2), m30.next().?);
+}
+
+test "excision (R3): refuses while a live snapshot pins an epoch" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT);
+    const snap = try store.snapshotNow();
+
+    try testing.expectError(error.SnapshotPins, store.exciseEntity(1, a));
+
+    snap.deinit(a); // drop the snapshot...
+    try store.exciseEntity(1, a); // ...now it succeeds
+    try testing.expect(!store.entityExists(1));
+}
+
+test "excision (R3): scrubs retained history archives too (GDPR)" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    store.setRetention(.keep_all);
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // basis 1
+    _ = try store.assert(1, 5, vi(20), M_BOOT); // basis 2
+    _ = try store.assert(2, 5, vi(99), M_BOOT); // bystander, basis 3
+    _ = try store.compact(a, {}, KeepAll.keep); // archive retained
+    try testing.expectEqual(@as(usize, 1), store.retained_epochs.items.len);
+
+    try store.exciseEntity(1, a);
+
+    // Gone from the live store AND from the retained archive.
+    try testing.expect(!store.entityExists(1));
+    const past = try store.snapshotAsOf(1); // basis 1 → retained archive
+    defer past.deinit(a);
+    try testing.expect(past.get(1, 5) == null); // scrubbed from the archive
+    try testing.expect(!past.view.entityExists(1)); // fully gone from archive
+    // Bystander survives in the live store (it was asserted at basis 3).
+    try testing.expectEqual(vi(99), store.currentValue(2, 5).?);
+}
+
 test "index epoch arena: retain_history gate skips the free (no swap)" {
     // Backing arena reclaims the intentionally-retained epoch at teardown.
     var backing = std.heap.ArenaAllocator.init(testing.allocator);
