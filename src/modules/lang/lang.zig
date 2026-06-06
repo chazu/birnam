@@ -59,6 +59,10 @@ const OBJECT_VT: u64 = 2;
 const SMALLINT_VT: u64 = 68;
 const TRUE_EID: u64 = 72;
 const FALSE_EID: u64 = 73;
+// Phase 15.R R1d — mirrors of kernel_eids.
+const SNAPSHOT_VT: u64 = 195;
+const DB_PROTO_VT: u64 = 196;
+const DB_PROTO: u64 = 197;
 
 const ATTR_AST_VALUE: u64 = 118;
 const ATTR_AST_NAME: u64 = 119;
@@ -190,6 +194,15 @@ const IdApi = extern struct {
     /// method-EID for installation via [vt sel mkEid(method_eid)].
     /// Append-only ABI discipline (Phase 9.5.5).
     compile_block_as_method: *const fn (block_ast_eid: u64) callconv(.c) u64,
+
+    // -- Phase 15.R R1d: db-value surface (append-only) --------------------
+    snapshot_now: *const fn () callconv(.c) Ref,
+    snapshot_as_of: *const fn (u64) callconv(.c) Ref,
+    snapshot_get: *const fn (Ref, u64, u64) callconv(.c) Ref,
+    snapshot_basis: *const fn (Ref) callconv(.c) Ref,
+    snapshot_release: *const fn (Ref) callconv(.c) void,
+    set_retention: *const fn (u32, u64) callconv(.c) void,
+    excise_entity: *const fn (u64) callconv(.c) bool,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -2180,6 +2193,89 @@ fn fileInOnErrorImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) R
 
 /// Runtime value methods — always kept (a stripped binary still does
 /// arithmetic, control flow, iteration, block invocation).
+// -- Phase 15.R R1d: db prototype + snapshot methods ----------------------
+
+fn dbNowImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, args, n };
+    return g_api.?.snapshot_now();
+}
+fn dbAsOfImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    return g_api.?.snapshot_as_of(@intCast(untagSmallInt(args[0])));
+}
+fn dbRetainAllImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    g_api.?.set_retention(1, 0);
+    return s.receiver;
+}
+fn dbRetainCurrentImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    g_api.?.set_retention(0, 0);
+    return s.receiver;
+}
+fn dbKeepLastImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    g_api.?.set_retention(3, @intCast(untagSmallInt(args[0])));
+    return s.receiver;
+}
+fn dbKeepSinceImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    g_api.?.set_retention(2, @intCast(untagSmallInt(args[0])));
+    return s.receiver;
+}
+fn dbExciseImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const ok = g_api.?.excise_entity(@intCast(untagSmallInt(args[0])));
+    return if (ok) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+fn snapBasisImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.snapshot_basis(s.receiver);
+}
+fn snapGetAttrImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.snapshot_get(s.receiver, @intCast(untagSmallInt(args[0])), @intCast(untagSmallInt(args[1])));
+}
+fn snapReleaseImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    g_api.?.snapshot_release(s.receiver);
+    return NIL;
+}
+
+/// Install the `db` prototype + its methods + SNAPSHOT_VT methods, and bind the
+/// global `db`. Phase 15.R R1d.
+fn installDbSurface() void {
+    const api = g_api.?;
+    // db prototype object → its vtable.
+    _ = api.assert_fact(DB_PROTO, ATTR_VTABLE, mkEid(DB_PROTO_VT), g_module_eid);
+
+    const Pair = struct { name: []const u8, impl: *const anyopaque };
+    const db_methods = [_]Pair{
+        .{ .name = "now", .impl = @ptrCast(&dbNowImpl) },
+        .{ .name = "asOf:", .impl = @ptrCast(&dbAsOfImpl) },
+        .{ .name = "retainAll", .impl = @ptrCast(&dbRetainAllImpl) },
+        .{ .name = "retainCurrent", .impl = @ptrCast(&dbRetainCurrentImpl) },
+        .{ .name = "keepLast:", .impl = @ptrCast(&dbKeepLastImpl) },
+        .{ .name = "keepSince:", .impl = @ptrCast(&dbKeepSinceImpl) },
+        .{ .name = "excise:", .impl = @ptrCast(&dbExciseImpl) },
+    };
+    for (db_methods) |m| {
+        const sel = api.intern(m.name.ptr, m.name.len);
+        _ = api.assert_fact(DB_PROTO_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+    const snap_methods = [_]Pair{
+        .{ .name = "basisT", .impl = @ptrCast(&snapBasisImpl) },
+        .{ .name = "get:attr:", .impl = @ptrCast(&snapGetAttrImpl) },
+        .{ .name = "release", .impl = @ptrCast(&snapReleaseImpl) },
+    };
+    for (snap_methods) |m| {
+        const sel = api.intern(m.name.ptr, m.name.len);
+        _ = api.assert_fact(SNAPSHOT_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("db".ptr, 2), mkEid(DB_PROTO));
+}
+
 fn installPrimitives() void {
     const api = g_api.?;
     // SmallInt primitives (10.0.x prereq — lang dylib owns the install).
@@ -2401,6 +2497,7 @@ pub fn langPrimitivesTier() void {
     // Built-in globals live in a parent scope so :reset / image :load (which
     // touch only TOP_SCOPE's binding chain) don't disturb them. CODE facts.
     installGlobals();
+    installDbSurface(); // Phase 15.R R1d — `db` prototype + snapshot methods
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_PARENT, mkEid(GLOBALS_SCOPE_EID), g_module_eid);
 }
 

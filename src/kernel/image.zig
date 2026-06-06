@@ -382,6 +382,14 @@ fn loadImpl(comptime frozen: bool, store: *FactStore, bytes: []const u8, interne
     // from the saved high-water mark. (Frozen load never bumped it.)
     store.next_tx.store(next_tx, .monotonic);
 
+    // Phase 15.R — keep basis_t a consistent monotonic floor across load. It is
+    // re-derived (snapshots are in-memory pins that don't cross a save, so the
+    // exact pre-save basis need not persist), but it must stay >= next_tx so the
+    // basis-T timeline never reuses a coordinate below the tx floor. The replay
+    // above bumped basis_t per assert (non-frozen) or left it at init (frozen);
+    // raise it to the tx high-water mark.
+    if (store.basis_t.load(.monotonic) < next_tx) store.basis_t.store(next_tx, .monotonic);
+
     return .{ .facts_loaded = fact_count, .next_tx = next_tx, .next_eid = next_eid, .manifest = manifest };
 }
 

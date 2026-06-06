@@ -542,4 +542,15 @@ pub const ATTR_FILED_IN_SOURCE: u64 = 194;
 /// Reconstructed each boot by lang init as CODE; never persisted.
 pub const GLOBALS_SCOPE_EID: u64 = 186;
 
-// 195..255 reserved for future kernel selectors / attributes
+// -- Phase 15.R R1d: db-value language surface -------------------------------
+/// `SNAPSHOT_VT` — vtable of a first-class snapshot object. The object is a
+/// materialized `[vt][snap_ptr]` libid pair (vt at -1, like a closure) whose
+/// `snap_ptr` slot holds a raw pointer to a kernel `FactStore.Snapshot`.
+pub const SNAPSHOT_VT: u64 = 195;
+/// `DB_PROTO_VT` — vtable carrying the `db` prototype's methods (now / asOf: /
+/// retain: / excise:).
+pub const DB_PROTO_VT: u64 = 196;
+/// `DB_PROTO` — the singleton `db` prototype object, bound to the global `db`.
+pub const DB_PROTO: u64 = 197;
+
+// 198..255 reserved for future kernel selectors / attributes

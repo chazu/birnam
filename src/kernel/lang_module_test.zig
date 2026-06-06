@@ -235,6 +235,33 @@ test "DEMO: parse + eval [3 squared] → 9" {
     try testing.expectEqual(@as(i64, 9), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 15.R: db surface — [[db now] basisT] is a SmallInt, [db retainAll] is self" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    // [db now] yields a SNAPSHOT_VT object; basisT reads its basis-T.
+    {
+        const src = try strings.mkString(a, "[[db now] basisT]");
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        const val = send_mod.send0(ast, sel_eval);
+        try testing.expect(ref_mod.isSmallInt(val));
+        try testing.expect(ref_mod.untagSmallInt(val) >= 1);
+    }
+    // [db retainAll] returns the db prototype itself (self).
+    {
+        const src = try strings.mkString(a, "[db retainAll]");
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        const val = send_mod.send0(ast, sel_eval);
+        try testing.expectEqual(kernel_eids.DB_PROTO, ref_mod.untagEid(val));
+    }
+}
+
 test "DEMO: parse + eval [3 succ] → 4" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

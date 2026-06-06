@@ -1694,12 +1694,39 @@ so the mark walk needs no per-allocation type tag.
 
 ---
 
-## Phase 15.R — Retention / Snapshots / Excision (R1–R4 SHIPPED 2026-06-06)
+## Phase 15.R — Retention / Snapshots / Excision (R1–R4 + F1–F4 SHIPPED 2026-06-06)
 
-### §Status (2026-06-06) — R1–R4 kernel mechanism shipped, 413/413, 0 leaked
+### §Status (2026-06-06) — COMPLETE. 418/418, 0 leaked
 
-Branch `phase-15r-retention`. The full retention/snapshot/excision/cold-tier
-kernel mechanism is implemented + tested. Commits R1a→R4:
+Phase 15.R is finished. Two branches: `phase-15r-retention` (R1–R4, merged
+`7e83a90`) then `phase-15r-finish` (F1–F4, the deferred follow-ons).
+
+**Finish pass (F1–F4):**
+- **F1** `exciseTxRange(from,to)` — basis-range hard-delete via event collect →
+  filter-out range → replay (current value reverts correctly); live + archives;
+  refuses while pinned.
+- **F2** auto-eviction cadence — `maybeSpillEpochs(dir, keep_hot_n)` keeps the N
+  newest retained epochs hot, spills the rest (unpinned only); wired into the
+  shell line boundary (keep_hot_n=2).
+- **F3** `basis_t` clamped to a monotonic floor (>= next_tx) across image load
+  (re-derived, no format bump — snapshots don't cross saves).
+- **F4** db-value language surface: `SNAPSHOT_VT`/`DB_PROTO` objects; `[db now]`,
+  `[db asOf: t]`, `[snap basisT]`, `[snap get: e attr: a]`, `[snap release]`,
+  `[db retainAll|retainCurrent|keepLast:|keepSince:]`, `[db excise: e]`. IdApi
+  appended (snapshot/retention/excise C fns); db prototype installed in the
+  always-kept primitives tier.
+
+**Genuinely remaining (each its own pass, non-blocking):**
+- **Snapshot GC auto-release** — needs a value-heap sweep FINALIZER (Arena.sweep
+  only frees cells; a `*Snapshot` is a separate alloc needing `unpin`). Until
+  then, `[snap release]` is explicit (correct + leak-free).
+- **`[snap find: ?x where: #(...)]`** — datalog-over-snapshot from the language
+  (point `[snap get:attr:]` ships now; the kernel already supports full datalog
+  over a snapshot view — only the lang→query-module wiring remains).
+- **mmap RO segment fast path** vs replay-based fault-in — this is Phase 12.5,
+  not 15.R.
+
+### R1–R4 kernel mechanism (commits R1a→R4)
 - **R1a** separate monotonic `basis_t` (never resets on compact; `next_tx`
   stays the per-epoch coordinate).
 - **R1b** refcounted index epoch registry; `compact` frees an old epoch only
@@ -1723,14 +1750,6 @@ kernel mechanism is implemented + tested. Commits R1a→R4:
   faithful; `spillEpoch`/`faultInEpoch` serialize an epoch's event log to a
   segment file, free RAM, fault back on demand; `snapshotAsOf`/`exciseEntity`
   auto-fault cold archives.
-
-**Follow-ons (own passes, non-blocking):** held db-value as a SNAPSHOT_VT object
-with `[db now]`/`[db asOf: t]`/`[snap find:where:]` message-send sugar + value-
-heap GC auto-release on last drop (R1d elegant tier); `exciseTxRange` (basis-
-range history surgery — entity excise is the primary GDPR case); the mmap RO
-fast path vs replay (Phase 12.5); auto-eviction cadence (when to spill — today
-spill is an explicit trigger). Image-format persistence of `basis_t` (today
-re-derived on load; snapshots don't cross saves).
 
 ---
 
