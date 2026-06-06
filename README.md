@@ -1,5 +1,11 @@
 # Birnam
 
+> “If you will permit a small philosophical digression ... Only things exist, and their relations.
+>
+> The first thing a society did upon entering an era of technological acceleration was to disturb the living environment...This did not have to mean stagnation: the environment was an obedient guardian, and to the extent that it was able, it could change itself according to wishes or demands. Could it change so that “progress” would take place? We had no answer for that...Could one call [progress] a situation in which intellectual, creative, cognitive, and constructional activities were so specialized that in each profession one dug deeper in an ever-narrower plot of ground? If machines counted faster and better than a living being, why should the living being count?...A civilization in such sociolysis did not broadcast in every direction of the heavens its recipe for the perfect life. And why should it, when it no longer even existed as a union formed by a unsatisfied hunger of stomachs and minds? The result would be not a society but an enormous collection of individuals...Such an artificial environment would be no one, like a meadow, forest, or steppe—with the difference that it would grow and blossom not on its own, not for itself, but for someone. For beings. Would they become stupid from this, turning into dull-witted gluttons that whiled away their hours with toys provided by the planetary guardian? Not necessarily. It depended on the point of view.
+>
+> Stanislaw Lem, _Fiasco_
+
 A tiny Smalltalk-ish language running on a **relational fact-store substrate**, implemented in Zig.
 
 Everything above the kernel is fact-shaped: grammar rules, AST nodes, method tables, bytecode, dispatch state, even error diagnostics live as facts in a HAMT/RRB-backed store. There are no bespoke data structures above the substrate — the language is built out of the same relational primitives it exposes. The result is a live, malleable image (define methods, mutate state, `:save` it, reload it, ship it as a standalone binary) in the Smalltalk tradition, but with a Datomic-style fact store underneath.
