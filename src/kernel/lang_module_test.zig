@@ -235,6 +235,38 @@ test "DEMO: parse + eval [3 squared] → 9" {
     try testing.expectEqual(@as(i64, 9), ref_mod.untagSmallInt(val));
 }
 
+test "DEMO 16 Tier B: self-hosted collect/select/count/concat + |> pipe" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    const sel_parse = s.interner.str_to_eid.get("parseExpr:").?;
+    const sel_eval = s.interner.str_to_eid.get("eval").?;
+
+    const Case = struct { src: []const u8, want: i64 };
+    const cases = [_]Case{
+        // collect squares then sum: #[1 4 9] inject 0 → 14
+        .{ .src = "[ [#[1 2 3] collect: [:x | [x * x]]] inject: 0 into: [:a :x | [a + x]]]", .want = 14 },
+        // select evens-ish (>2): #[3 4] size = 2
+        .{ .src = "[ [#[1 2 3 4] select: [:x | [x > 2]]] size]", .want = 2 },
+        .{ .src = "[ #[1 2 3] count]", .want = 3 },
+        .{ .src = "[ [#[1 2] , #[3 4 5]] size]", .want = 5 },
+        // |> pipe: left-assoc chain, then size (bare — pipe is an expression)
+        .{ .src = "#[1 2 3] |> collect: [:x | [x * x]] |> select: [:x | [x > 3]] |> size", .want = 2 },
+        // |> unary
+        .{ .src = "#[5 6 7] |> size", .want = 3 },
+    };
+    for (cases) |c| {
+        const src = try strings.mkString(a, c.src);
+        const ast = send_mod.send1(ref_mod.mkEid(lang_mod_eid), sel_parse, src);
+        const val = send_mod.send0(ast, sel_eval);
+        try testing.expect(ref_mod.isSmallInt(val));
+        try testing.expectEqual(c.want, ref_mod.untagSmallInt(val));
+    }
+}
+
 test "DEMO 16: vectors — #[..] literal, size, at:, with:, inject:into:" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

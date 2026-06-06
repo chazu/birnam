@@ -248,6 +248,10 @@ var rn_block_params: u64 = 0;
 var rn_block_with_params: u64 = 0;
 var rn_bracket_binary: u64 = 0;
 var rn_vector_literal: u64 = 0;
+var rn_pipe_primary: u64 = 0;
+var rn_pipe_kw_arg: u64 = 0;
+var rn_pipe_tail: u64 = 0;
+var rn_pipe_expr: u64 = 0;
 var rn_let_statement: u64 = 0;
 var rn_top_form: u64 = 0;
 var rn_assignment: u64 = 0;
@@ -715,10 +719,57 @@ fn buildGrammar() void {
         defineRule(grammar, "vector-literal", peg_seq(&parts));
     }
 
-    // expression = bracket-form | vector-literal | atom
-    // (ordered: heavier forms first; `#[` is tried before atom's symbol-literal)
+    // -- Phase 16: |> pipe operator ---------------------------------------
+    // Thread-as-receiver (Clojure ->). `x |> with: 1 |> select: even`
+    // desugars to `[[x with: 1] select: even]`. The piped message's keyword
+    // args are pipe-primary (non-pipe) so the chain stays LEFT-associative
+    // (the arg doesn't swallow the next `|>`).
     {
         const alts = [_]u64{
+            untagEid(peg_rule_ref("bracket-form")),
+            untagEid(peg_rule_ref("vector-literal")),
+            untagEid(peg_rule_ref("atom")),
+        };
+        defineRule(grammar, "pipe-primary", peg_choice(&alts));
+    }
+    {
+        // pipe-kw-arg = ws kw-suffix ws pipe-primary
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("kw-suffix")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_rule_ref("pipe-primary")),
+        };
+        defineRule(grammar, "pipe-kw-arg", peg_seq(&parts));
+    }
+    {
+        // pipe-tail = ws "|>" ws (pipe-kw-arg+ | identifier)
+        const msg_alts = [_]u64{
+            untagEid(peg_plus(peg_rule_ref("pipe-kw-arg"))),
+            untagEid(peg_rule_ref("identifier")),
+        };
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_literal("|>")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_choice(&msg_alts)),
+        };
+        defineRule(grammar, "pipe-tail", peg_seq(&parts));
+    }
+    {
+        // pipe-expr = pipe-primary pipe-tail+
+        const parts = [_]u64{
+            untagEid(peg_rule_ref("pipe-primary")),
+            untagEid(peg_plus(peg_rule_ref("pipe-tail"))),
+        };
+        defineRule(grammar, "pipe-expr", peg_seq(&parts));
+    }
+
+    // expression = pipe-expr | bracket-form | vector-literal | atom
+    // (pipe-expr first; it needs ≥1 `|>`, else backtracks to the others)
+    {
+        const alts = [_]u64{
+            untagEid(peg_rule_ref("pipe-expr")),
             untagEid(peg_rule_ref("bracket-form")),
             untagEid(peg_rule_ref("vector-literal")),
             untagEid(peg_rule_ref("atom")),
@@ -829,6 +880,76 @@ fn newAstNode(kind_vt: u64, byte_start: usize, byte_end: usize) u64 {
 }
 
 /// Walk a CST node, return a typed AST node EID.
+/// Phase 16 — build one piped send (`recv |> <tail>`): keyword send when the
+/// tail holds pipe-kw-arg children, else unary send from its identifier.
+fn desugarPipeTail(recv_ast: u64, tail_eid: u64) u64 {
+    const api = g_api.?;
+    const span = cstByteRange(tail_eid);
+    var sel_buf: [128]u8 = undefined;
+    var sel_len: usize = 0;
+    var first_arg_ast: u64 = 0;
+    var last_arg_ast: u64 = 0;
+    var saw_kw = false;
+    var c = cstFirstChild(tail_eid);
+    while (c != 0) : (c = cstNextSibling(c)) {
+        if (cstRuleName(c) != rn_pipe_kw_arg) continue;
+        saw_kw = true;
+        var ac = cstFirstChild(c);
+        var arg_ast: u64 = 0;
+        while (ac != 0) : (ac = cstNextSibling(ac)) {
+            const acrn = cstRuleName(ac);
+            if (acrn == rn_kw_suffix) {
+                var sc = cstFirstChild(ac);
+                while (sc != 0) : (sc = cstNextSibling(sc)) {
+                    if (cstRuleName(sc) == rn_identifier) {
+                        const ids = cstByteRange(sc);
+                        const nb = g_source[ids.start..ids.end];
+                        if (sel_len + nb.len + 1 < sel_buf.len) {
+                            @memcpy(sel_buf[sel_len .. sel_len + nb.len], nb);
+                            sel_len += nb.len;
+                            sel_buf[sel_len] = ':';
+                            sel_len += 1;
+                        }
+                        break;
+                    }
+                }
+            } else if (acrn == rn_pipe_primary) {
+                arg_ast = desugar(ac);
+            }
+        }
+        if (arg_ast != 0) {
+            if (first_arg_ast == 0) {
+                first_arg_ast = arg_ast;
+            } else {
+                _ = api.assert_fact(last_arg_ast, ATTR_AST_NEXT_SIBLING, mkEid(arg_ast), M_USER);
+            }
+            last_arg_ast = arg_ast;
+        }
+    }
+    if (saw_kw) {
+        const sel_eid = api.intern(sel_buf[0..sel_len].ptr, sel_len);
+        const send = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
+        _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(recv_ast), M_USER);
+        _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(sel_eid), M_USER);
+        if (first_arg_ast != 0) _ = api.assert_fact(send, ATTR_AST_FIRST_ARG, mkEid(first_arg_ast), M_USER);
+        return send;
+    }
+    // Unary: the lone identifier child is the selector.
+    c = cstFirstChild(tail_eid);
+    while (c != 0) : (c = cstNextSibling(c)) {
+        if (cstRuleName(c) == rn_identifier) {
+            const ids = cstByteRange(c);
+            const nb = g_source[ids.start..ids.end];
+            const sel_eid = api.intern(nb.ptr, nb.len);
+            const send = newAstNode(AST_UNARY_SEND_VT, span.start, span.end);
+            _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(recv_ast), M_USER);
+            _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(sel_eid), M_USER);
+            return send;
+        }
+    }
+    return recv_ast;
+}
+
 fn desugar(cst_eid: u64) u64 {
     const api = g_api.?;
     const rn = cstRuleName(cst_eid);
@@ -1052,7 +1173,27 @@ fn desugar(cst_eid: u64) u64 {
         }
         return seq_ast;
     }
-    if (rn == rn_atom or rn == rn_expression or rn == rn_bracket_form or rn == rn_start or rn == rn_top_form) {
+    if (rn == rn_pipe_expr) {
+        // pipe-primary, then pipe-tail+. Fold left: each tail wraps the
+        // accumulated receiver in a unary/keyword send.
+        var c = cstFirstChild(cst_eid);
+        var recv_ast: u64 = 0;
+        while (c != 0) : (c = cstNextSibling(c)) {
+            const crn = cstRuleName(c);
+            if (crn == rn_ws) continue;
+            if (crn == rn_pipe_primary) {
+                recv_ast = desugar(c);
+                c = cstNextSibling(c);
+                break;
+            }
+        }
+        while (c != 0) : (c = cstNextSibling(c)) {
+            if (cstRuleName(c) != rn_pipe_tail) continue;
+            recv_ast = desugarPipeTail(recv_ast, c);
+        }
+        return recv_ast;
+    }
+    if (rn == rn_atom or rn == rn_expression or rn == rn_bracket_form or rn == rn_start or rn == rn_top_form or rn == rn_pipe_primary) {
         const child = cstFirstChild(cst_eid);
         // For start: children are ws, expression, ws (ws-CST). Skip ws-shaped children.
         var c = child;
@@ -1258,6 +1399,10 @@ fn cacheRuleNames() void {
     rn_block_with_params = api.intern("block-with-params".ptr, 17);
     rn_bracket_binary = api.intern("bracket-binary".ptr, 14);
     rn_vector_literal = api.intern("vector-literal".ptr, 14);
+    rn_pipe_primary = api.intern("pipe-primary".ptr, 12);
+    rn_pipe_kw_arg = api.intern("pipe-kw-arg".ptr, 11);
+    rn_pipe_tail = api.intern("pipe-tail".ptr, 9);
+    rn_pipe_expr = api.intern("pipe-expr".ptr, 9);
     rn_let_statement = api.intern("let-statement".ptr, 13);
     rn_top_form = api.intern("top-form".ptr, 8);
     rn_assignment = api.intern("assignment".ptr, 10);
