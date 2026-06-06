@@ -56,6 +56,25 @@ pub const CardinalitySchema = struct {
     many_value: Ref,
 };
 
+// -- Index epoch registry (Phase 15.R R1b) -----------------------------------
+
+/// An index epoch swapped out by `compact()` but kept alive because a live
+/// snapshot pins it (refcount > 0) or the retention horizon needs the history
+/// it holds. Freed wholesale once nothing references it. The arena is the same
+/// plain `ArenaAllocator` the live epoch used while writable.
+pub const RetainedEpoch = struct {
+    arena: *std.heap.ArenaAllocator,
+    /// Generation number (monotonic; the writable epoch's gen at swap-out).
+    gen: u64,
+    /// Lowest basis-T this epoch can serve a read for (basis-T when it became
+    /// the writable epoch). Reads with `basis_t >= min_basis` are valid.
+    min_basis: u64,
+    /// Highest basis-T committed while this epoch was writable.
+    max_basis: u64,
+    /// Number of live snapshots pinning this epoch.
+    refcount: u32,
+};
+
 // -- FactStore ---------------------------------------------------------------
 
 pub const FactStore = struct {
@@ -83,6 +102,27 @@ pub const FactStore = struct {
     /// basis-T; until that machinery exists, `true` conservatively SKIPS the
     /// free (leak, never corrupt — honors the never-free-live tenet).
     retain_history: bool = false,
+
+    /// Phase 15.R R1b — generation of the current (writable) index epoch.
+    /// Bumped each `compact()`. The writable epoch's arena is `index_arena`.
+    index_epoch_gen: u64 = 0,
+    /// Lowest basis-T the current writable epoch can serve (basis-T when it
+    /// became writable; 1 at init, the compact basis-T thereafter).
+    index_epoch_min_basis: u64 = 1,
+    /// Live snapshots pinning the current writable epoch. Carried into a
+    /// `RetainedEpoch` when this epoch is swapped out at compact.
+    index_epoch_refcount: u32 = 0,
+    /// Epochs swapped out by `compact()` but still pinned by a live snapshot
+    /// (or the retention horizon). Freed when their refcount hits 0 and they
+    /// fall below `oldestRetainedBasisT()`. Empty in the no-snapshot path, so
+    /// behavior reduces exactly to 15.I (free-on-compact).
+    retained_epochs: std.ArrayList(RetainedEpoch) = .{},
+
+    /// Phase 15.R R2 — retention horizon floor (basis-T). When set, history
+    /// at or above this basis is kept by `compact()` and epochs covering it are
+    /// not freed. `null` = current-only (the default); folded into
+    /// `oldestRetainedBasisT()`.
+    retention_floor: ?u64 = null,
     /// Monotonic tx counter; starts at 1. Atomic per Phase 11.7.iv
     /// (ADR-11 #7 forward-compat). Single-writer transactor under the
     /// Datomic shape; atomic now keeps non-transactor read paths safe
@@ -192,6 +232,61 @@ pub const FactStore = struct {
             ia.deinit();
             self.allocator.destroy(ia);
             self.index_arena = null;
+        }
+        // 15.R: free any still-pinned retained epochs (test teardown; a live
+        // process exit reclaims regardless).
+        for (self.retained_epochs.items) |re| {
+            re.arena.deinit();
+            self.allocator.destroy(re.arena);
+        }
+        self.retained_epochs.deinit(self.allocator);
+        self.retained_epochs = .{};
+    }
+
+    // -- Index epoch management (Phase 15.R R1b) -----------------------------
+
+    /// The smallest basis-T that must be retained. Any epoch whose entire
+    /// basis range falls below this is collectible. Default (no retention,
+    /// no live snapshots) = `currentBasisT() + 1` → keep only "now", so a
+    /// swapped-out historical epoch is freed immediately (identical to 15.I).
+    /// Snapshots (R1c) and the retention horizon (R2) lower this floor.
+    pub fn oldestRetainedBasisT(self: *const FactStore) u64 {
+        if (self.retain_history) return 1; // legacy "retain all" gate
+        var oldest = self.currentBasisT() +| 1;
+        // Live snapshots pin epochs directly via refcount; the horizon (R2)
+        // and any extra floor are folded in here when those land.
+        if (self.retention_floor) |floor| oldest = @min(oldest, floor);
+        return oldest;
+    }
+
+    /// Pin the current writable epoch (a snapshot captured it). Returns the
+    /// generation so the holder can `unpinEpoch` exactly that epoch later.
+    pub fn pinCurrentEpoch(self: *FactStore) u64 {
+        self.index_epoch_refcount += 1;
+        return self.index_epoch_gen;
+    }
+
+    /// Release a pin on epoch `gen`. If that epoch is a swapped-out retained
+    /// epoch whose refcount reaches 0 and which falls below the retention
+    /// floor, free it wholesale and drop it from the list. A pin on the
+    /// still-current epoch just decrements its counter.
+    pub fn unpinEpoch(self: *FactStore, gen: u64) void {
+        if (gen == self.index_epoch_gen) {
+            if (self.index_epoch_refcount > 0) self.index_epoch_refcount -= 1;
+            return;
+        }
+        var i: usize = 0;
+        while (i < self.retained_epochs.items.len) : (i += 1) {
+            const re = &self.retained_epochs.items[i];
+            if (re.gen == gen) {
+                if (re.refcount > 0) re.refcount -= 1;
+                if (re.refcount == 0 and re.max_basis < self.oldestRetainedBasisT()) {
+                    re.arena.deinit();
+                    self.allocator.destroy(re.arena);
+                    _ = self.retained_epochs.swapRemove(i);
+                }
+                return;
+            }
         }
     }
 
@@ -680,20 +775,29 @@ pub const FactStore = struct {
         // `facts` holds (m,e,a,v) by value — v is a Ref (u64). No pointer into
         // the old index escapes, so the old epoch is safe to free below.
 
-        // Phase 15.I — swap to a fresh index epoch. Re-asserting kept facts
+        // Phase 15.I/R1b — swap to a fresh index epoch. Re-asserting kept facts
         // rebuilds the index entirely in the new epoch (shares no node with the
-        // old), so the old epoch becomes wholly dead and is freed at the end —
-        // reclaiming BOTH the old current tree AND all path-copy spine garbage
-        // accumulated since the last compact. Skipped when the arena is
-        // disabled (tests → index on `self.allocator` as before) or when
-        // `retain_history` is set (15.R gate: keep the old epoch, leak-not-
-        // corrupt, until basis-T-gated freeing exists).
-        var old_epoch: ?*std.heap.ArenaAllocator = null;
+        // old). The OLD epoch is then either freed wholesale (nothing pins it —
+        // the 15.I current-only path) or moved to `retained_epochs` (a live
+        // snapshot pins it, or the retention horizon needs its history — 15.R).
+        // Skipped when the arena is disabled (tests → index on `self.allocator`)
+        // or when `retain_history` is set (legacy 15.I no-swap leak-in-place).
+        const basis_at_compact = self.currentBasisT();
+        var old_meta: ?RetainedEpoch = null;
         if (self.index_arena != null and !self.retain_history) {
             const fresh = try self.allocator.create(std.heap.ArenaAllocator);
             fresh.* = std.heap.ArenaAllocator.init(self.allocator);
-            old_epoch = self.index_arena;
+            old_meta = .{
+                .arena = self.index_arena.?,
+                .gen = self.index_epoch_gen,
+                .min_basis = self.index_epoch_min_basis,
+                .max_basis = basis_at_compact,
+                .refcount = self.index_epoch_refcount,
+            };
             self.index_arena = fresh; // indexAlloc() now hands out the new epoch
+            self.index_epoch_gen += 1;
+            self.index_epoch_refcount = 0;
+            self.index_epoch_min_basis = basis_at_compact; // collapse point
         }
 
         // Reset indexes + reification side tables. next_tx restarts at 1.
@@ -724,13 +828,24 @@ pub const FactStore = struct {
                 stats.dropped += 1;
             }
         }
+        // compact is a rebuild, not a semantic mutation: the re-asserts above
+        // bumped basis_t; restore it so the user-facing timeline is unchanged
+        // (next_tx legitimately restarts at 1 — the per-epoch coordinate).
+        self.basis_t.store(basis_at_compact + 1, .monotonic);
 
-        // Free the old epoch wholesale now that the new index is fully built
-        // and references only new-epoch nodes. (Gated above: only set when the
-        // arena is enabled and history isn't retained.)
-        if (old_epoch) |old| {
-            old.deinit();
-            self.allocator.destroy(old);
+        // Old epoch: free wholesale if nothing references it, else retain.
+        // The new index is fully built and references only new-epoch nodes,
+        // so the old epoch is internally dead — only an external pin (live
+        // snapshot refcount) or the retention horizon can keep it alive.
+        if (old_meta) |old| {
+            const pinned = old.refcount > 0;
+            const below_horizon = old.max_basis < self.oldestRetainedBasisT();
+            if (!pinned and below_horizon) {
+                old.arena.deinit();
+                self.allocator.destroy(old.arena);
+            } else {
+                try self.retained_epochs.append(self.allocator, old);
+            }
         }
         return stats;
     }

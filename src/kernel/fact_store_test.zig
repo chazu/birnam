@@ -377,6 +377,58 @@ test "index epoch arena: compact frees old epoch wholesale; values survive" {
     try testing.expect(store.currentValue(99, 5) == null);
 }
 
+test "epoch registry (R1b): pin retains old epoch across compact; unpin frees it" {
+    // Leak-checked allocator: a retained epoch that is never freed (or freed
+    // twice) trips the allocator. Proves the refcount gate keeps a pinned
+    // epoch alive across compact and frees it exactly once on unpin.
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT);
+    _ = try store.assert(2, 5, vi(20), M_BOOT);
+
+    // Pin the current (writable) epoch, then compact. The old epoch is pinned
+    // → moved to retained_epochs, NOT freed.
+    const gen = store.pinCurrentEpoch();
+    const old_ptr = store.index_arena.?;
+    _ = try store.compact(a, {}, KeepAll.keep);
+
+    try testing.expect(store.index_arena.? != old_ptr); // swapped to fresh epoch
+    try testing.expectEqual(@as(usize, 1), store.retained_epochs.items.len);
+    try testing.expectEqual(@as(u32, 1), store.retained_epochs.items[0].refcount);
+    // New epoch serves current values fine.
+    try testing.expectEqual(vi(10), store.currentValue(1, 5).?);
+    try testing.expectEqual(vi(20), store.currentValue(2, 5).?);
+
+    // Unpin → refcount 0 and below the (current-only) horizon → freed + dropped.
+    store.unpinEpoch(gen);
+    try testing.expectEqual(@as(usize, 0), store.retained_epochs.items.len);
+    try testing.expectEqual(vi(10), store.currentValue(1, 5).?); // no UAF
+}
+
+test "epoch registry (R1b): compact does not advance basis_t" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    _ = try store.assert(1, 5, vi(10), M_BOOT); // rewrite (1,5) thrice → churn
+    _ = try store.assert(1, 5, vi(11), M_BOOT);
+    _ = try store.assert(1, 5, vi(12), M_BOOT);
+    _ = try store.assert(2, 5, vi(20), M_BOOT);
+    const basis_before = store.currentBasisT(); // 4 commits
+    _ = try store.compact(a, {}, KeepAll.keep); // keeps 2 current facts
+    try testing.expectEqual(basis_before, store.currentBasisT()); // unchanged
+    // next_tx legitimately reset to the per-epoch coordinate (2 < 4).
+    try testing.expect(store.currentTx() < basis_before);
+}
+
 test "index epoch arena: retain_history gate skips the free (no swap)" {
     // Backing arena reclaims the intentionally-retained epoch at teardown.
     var backing = std.heap.ArenaAllocator.init(testing.allocator);
