@@ -304,6 +304,16 @@ pub const IdApi = extern struct {
     string_concat: *const fn (Ref, Ref) callconv(.c) Ref,
     string_eq: *const fn (Ref, Ref) callconv(.c) bool,
     string_as_symbol: *const fn (Ref) callconv(.c) Ref,
+
+    // -- Phase 16 Tier E: reference cells (append-only) --------------------
+    /// Value of (e, a) as of the end of tx `as_of_tx` (history-walked). NIL if
+    /// absent at that time. Backs `[cell asOf: tx]`.
+    current_value_as_of: *const fn (u64, u64, u64) callconv(.c) Ref,
+    /// Every value (e, a) ever held, oldest→newest, as an RRB vector Ref.
+    /// Retracts skipped. Backs `[cell history]`.
+    cell_history: *const fn (u64, u64) callconv(.c) Ref,
+    /// Current basis-T (durable time coordinate). Backs `db basisT` / cells.
+    basis_now: *const fn () callconv(.c) u64,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -442,7 +452,23 @@ pub fn populate() IdApi {
         .string_concat = &cStringConcat,
         .string_eq = &cStringEq,
         .string_as_symbol = &cStringAsSymbol,
+        .current_value_as_of = &cCurrentValueAsOf,
+        .cell_history = &cCellHistory,
+        .basis_now = &cBasisNow,
     };
+}
+
+fn cCurrentValueAsOf(e: u64, a: u64, as_of_tx: u64) callconv(.c) Ref {
+    const s = send_mod.storePtr() orelse return ref_mod.NIL;
+    return s.currentValueAsOf(e, a, as_of_tx) orelse ref_mod.NIL;
+}
+fn cCellHistory(e: u64, a: u64) callconv(.c) Ref {
+    const s = send_mod.storePtr() orelse return ref_mod.NIL;
+    return s.valueHistory(e, a) catch ref_mod.NIL;
+}
+fn cBasisNow() callconv(.c) u64 {
+    const s = send_mod.storePtr() orelse return 0;
+    return s.currentBasisT();
 }
 
 fn cStringLen(r: Ref) callconv(.c) u64 {

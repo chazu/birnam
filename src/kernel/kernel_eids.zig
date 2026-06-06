@@ -569,4 +569,27 @@ pub const RANGE_VT: u64 = 200;
 /// returns it for any string so strings answer messages (Phase 16).
 pub const STRING_VT: u64 = 201;
 
-// 202..255 reserved for future kernel selectors / attributes
+/// `CELL_VT` — vtable for reference cells (Phase 16 Tier E). A cell IS an
+/// entity: `[cell :vtable CELL_VT] [cell :cell-value <v>]`. Reads
+/// (`value`) = `currentValue`; writes (`set:`) = `assert` (new tx). Time
+/// travel (`asOf:`/`history`) rides 15.R per-cell history for free. `cell:`
+/// / `ref:` / `atom:` on the `db` prototype all mint one (single-transactor
+/// subsumes Clojure's atom/ref/agent distinction).
+pub const CELL_VT: u64 = 202;
+/// `:cell-value` — the one attribute a cell entity carries.
+pub const ATTR_CELL_VALUE: u64 = 203;
+
+/// `:meta` — metadata attribute (Phase 16 Tier E). `withMeta:` asserts it,
+/// `meta` reads it. Free: just another fact; equality already ignores it.
+pub const ATTR_META: u64 = 204;
+
+/// `XF_VT` / `XF_PROTO` — the transducer factory (Phase 16 Tier E). `Xf` is a
+/// singleton prototype whose vtable carries `map:`/`filter:`/`take:`
+/// constructors (each returns a transducer closure). A transducer is an
+/// rf→rf' block; `coll transduce: xf` runs it eagerly in one fold (no
+/// intermediate vectors). `comp` is deferred per ROADMAP DNA — composition
+/// rides `aXf then: bXf` on CLOSURE_VT until channels justify `comp`.
+pub const XF_VT: u64 = 205;
+pub const XF_PROTO: u64 = 206;
+
+// 207..255 reserved for future kernel selectors / attributes

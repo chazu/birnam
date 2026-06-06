@@ -69,6 +69,11 @@ const ASSOC_VT: u64 = 6; // Phase 16 Tier C — map vtable (mirror)
 const SEL_DNU: u64 = 198; // Phase 16 Tier D — doesNotUnderstand: (mirror)
 const RANGE_VT: u64 = 200; // Phase 16 deferred — integer range vtable (mirror)
 const STRING_VT: u64 = 201; // Phase 16 deferred — string vtable (mirror)
+const CELL_VT: u64 = 202; // Phase 16 Tier E — reference cell vtable (mirror)
+const ATTR_CELL_VALUE: u64 = 203; // Phase 16 Tier E — cell value attr (mirror)
+const ATTR_META: u64 = 204; // Phase 16 Tier E — metadata attr (mirror)
+const XF_VT: u64 = 205; // Phase 16 Tier E — transducer factory vtable (mirror)
+const XF_PROTO: u64 = 206; // Phase 16 Tier E — `Xf` singleton (mirror)
 const ATTR_ERROR_MESSAGE: u64 = 44; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
 
 const ATTR_AST_VALUE: u64 = 118;
@@ -238,6 +243,11 @@ const IdApi = extern struct {
     string_concat: *const fn (Ref, Ref) callconv(.c) Ref,
     string_eq: *const fn (Ref, Ref) callconv(.c) bool,
     string_as_symbol: *const fn (Ref) callconv(.c) Ref,
+
+    // -- Phase 16 Tier E: reference cells (append-only) --------------------
+    current_value_as_of: *const fn (u64, u64, u64) callconv(.c) Ref,
+    cell_history: *const fn (u64, u64) callconv(.c) Ref,
+    basis_now: *const fn () callconv(.c) u64,
 };
 
 // -- Module-static state -----------------------------------------------------
@@ -2666,6 +2676,169 @@ fn installDbSurface() void {
     pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("db".ptr, 2), mkEid(DB_PROTO));
 }
 
+// -- Phase 16 Tier E: reference cells, metadata, applicative --------------
+
+/// `db cell: v` / `ref: v` / `atom: v` — mint a reference cell. A cell IS an
+/// entity carrying `[cell :vtable CELL_VT]` + `[cell :cell-value v]`; returned
+/// as an EID Ref so its messages dispatch to CELL_VT. (Single-transactor
+/// subsumes Clojure's atom/ref/agent split — all three names mint the same
+/// thing.) nil-as-initial is refused: the store forbids a NIL value (Date),
+/// so seed with a real value and use absence channels for "empty".
+fn dbCellImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (isNil(args[0])) return mkRuntimeError("cell cannot be seeded with nil (Date: store forbids NIL value)");
+    const e = api.alloc_eid();
+    _ = api.assert_fact(e, ATTR_VTABLE, mkEid(CELL_VT), M_USER);
+    _ = api.assert_fact(e, ATTR_CELL_VALUE, args[0], M_USER);
+    return mkEid(e);
+}
+
+/// `db transact: aBlock` — coordinated change. Single-transactor: the block's
+/// sets run sequentially with no interleaving, so the group is atomic by
+/// construction (no STM). Returns the block's value.
+fn dbTransactImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    return g_api.?.send0(args[0], sel_value_g);
+}
+
+/// `[cell value]` — current value (a cell always holds one — no-NULL).
+fn cellValueImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.query_eavt(untagEid(s.receiver), ATTR_CELL_VALUE);
+}
+
+/// `[cell set: v]` — assert a new value (new tx); returns the cell (chainable).
+fn cellSetImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    if (isNil(args[0])) return mkRuntimeError("cell cannot hold nil (Date: store forbids NIL value)");
+    _ = api.assert_fact(untagEid(s.receiver), ATTR_CELL_VALUE, args[0], M_USER);
+    return s.receiver;
+}
+
+/// `[cell asOf: tx]` — value as of the end of tx `tx` (time travel, 15.R).
+fn cellAsOfImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return g_api.?.current_value_as_of(untagEid(s.receiver), ATTR_CELL_VALUE, @intCast(untagSmallInt(args[0])));
+}
+
+/// `[cell history]` — vector of every value held, oldest→newest (15.R history).
+fn cellHistoryImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    return g_api.?.cell_history(untagEid(s.receiver), ATTR_CELL_VALUE);
+}
+
+/// `[obj withMeta: m]` — attach metadata (just another fact). Returns obj.
+/// Only entities carry meta; immediates (SmallInt etc.) answer self unchanged.
+fn withMetaImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isEid(s.receiver) or isNil(args[0])) return s.receiver;
+    _ = g_api.?.assert_fact(untagEid(s.receiver), ATTR_META, args[0], M_USER);
+    return s.receiver;
+}
+
+/// `[obj meta]` — metadata, or nil if none / not an entity.
+fn metaImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    if (!isEid(s.receiver)) return NIL;
+    return g_api.?.query_eavt(untagEid(s.receiver), ATTR_META);
+}
+
+/// `aVector zip: bVector` — vector of `#[a_i b_i]` pairs, length = min(len).
+/// The independent-combination primitive (17.6): pairs positions with no
+/// cross-dependency.
+fn vecZipImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const a = s.receiver;
+    const b = args[0];
+    const la = api.rrb_len(a);
+    const lb = api.rrb_len(b);
+    const m: u64 = if (la < lb) la else lb;
+    var result = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+    var i: u64 = 0;
+    while (i < m) : (i += 1) {
+        var pair = [2]Ref{ api.rrb_nth(a, i), api.rrb_nth(b, i) };
+        result = api.rrb_with(result, api.make_rrb(&pair, 2));
+    }
+    return result;
+}
+
+/// `aVector whenAll: aBlock` — if every element is non-nil (all "succeeded"),
+/// apply the 1-arg block to the whole vector; else nil. The applicative
+/// "combine independent results only when all present" verb (17.6).
+fn vecWhenAllImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const v = s.receiver;
+    const len = api.rrb_len(v);
+    var i: u64 = 0;
+    while (i < len) : (i += 1) {
+        if (isNil(api.rrb_nth(v, i))) return NIL;
+    }
+    return api.send1(args[0], sel_value_of_g, v);
+}
+
+/// `aVector reverse` — a new vector, elements in reverse order. Plumbing for
+/// transducer composition order (and generally useful).
+fn vecReverseImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    const api = g_api.?;
+    const v = s.receiver;
+    const len = api.rrb_len(v);
+    var result = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+    var i: u64 = len;
+    while (i > 0) {
+        i -= 1;
+        result = api.rrb_with(result, api.rrb_nth(v, i));
+    }
+    return result;
+}
+
+/// Install Tier E: cell constructors + transact: on DB_PROTO_VT, cell methods
+/// on CELL_VT, metadata on OBJECT_VT, zip:/whenAll:/reverse on RRB_VT, and the
+/// `Xf` transducer factory. Phase 16 Tier E.
+fn installCellSurface() void {
+    const api = g_api.?;
+    const Pair = struct { name: []const u8, impl: *const anyopaque };
+
+    const db_methods = [_]Pair{
+        .{ .name = "cell:", .impl = @ptrCast(&dbCellImpl) },
+        .{ .name = "ref:", .impl = @ptrCast(&dbCellImpl) },
+        .{ .name = "atom:", .impl = @ptrCast(&dbCellImpl) },
+        .{ .name = "transact:", .impl = @ptrCast(&dbTransactImpl) },
+    };
+    for (db_methods) |m| {
+        const sel = api.intern(m.name.ptr, m.name.len);
+        _ = api.assert_fact(DB_PROTO_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+
+    const cell_methods = [_]Pair{
+        .{ .name = "value", .impl = @ptrCast(&cellValueImpl) },
+        .{ .name = "set:", .impl = @ptrCast(&cellSetImpl) },
+        .{ .name = "asOf:", .impl = @ptrCast(&cellAsOfImpl) },
+        .{ .name = "history", .impl = @ptrCast(&cellHistoryImpl) },
+    };
+    for (cell_methods) |m| {
+        const sel = api.intern(m.name.ptr, m.name.len);
+        _ = api.assert_fact(CELL_VT, sel, mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+
+    // Metadata — on OBJECT_VT so every entity-shaped value answers it.
+    _ = api.assert_fact(OBJECT_VT, api.intern("withMeta:".ptr, 9), mkEid(api.make_closure(@ptrCast(&withMetaImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(OBJECT_VT, api.intern("meta".ptr, 4), mkEid(api.make_closure(@ptrCast(&metaImpl), NIL)), g_module_eid);
+
+    // Applicative independent-combination + reverse on RRB_VT.
+    _ = api.assert_fact(RRB_VT, api.intern("zip:".ptr, 4), mkEid(api.make_closure(@ptrCast(&vecZipImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(RRB_VT, api.intern("whenAll:".ptr, 8), mkEid(api.make_closure(@ptrCast(&vecWhenAllImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(RRB_VT, api.intern("reverse".ptr, 7), mkEid(api.make_closure(@ptrCast(&vecReverseImpl), NIL)), g_module_eid);
+
+    // `Xf` transducer factory singleton.
+    _ = api.assert_fact(XF_PROTO, ATTR_VTABLE, mkEid(XF_VT), g_module_eid);
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("Xf".ptr, 2), mkEid(XF_PROTO));
+}
+
 // -- Phase 16 Tier A: persistent vector (RRB_VT) methods ------------------
 
 /// Build a runtime ERROR_VT diagnostic carrying `msg`. The no-NULL "raise"
@@ -3128,6 +3301,22 @@ fn installPrelude() void {
     installSourceMethod(SMALLINT_VT, "abs", "[| [[self < 0] ifTrue: [| [self negate]] ifFalse: [| self]]]");
     installSourceMethod(SMALLINT_VT, "even", "[| [[self mod: 2] = 0]]");
     installSourceMethod(SMALLINT_VT, "odd", "[| [[self mod: 2] = 1]]");
+
+    // -- Tier E: applicative + transducers (self-hosted) -----------------
+    // validate: — error-ACCUMULATING (vs short-circuit). `check` answers nil
+    // for OK, an error value for failure; result = vector of ALL failures
+    // (empty = valid). Pairs with schema-as-facts (9.5.2).
+    installSourceMethod(OBJECT_VT, "validate:", "[:check | [self inject: #[] into: [:acc :x | let r := [check value: x] ; [[r isNil] ifTrue: [| acc] ifFalse: [| [acc with: r]]]]]]");
+    // Transducers — a transducer is an rf→rf' block. The factory `Xf`
+    // constructs them; `then:` composes (data flows self-then-other);
+    // `transduce:` runs one eagerly with `with:` as the base reducer (single
+    // fold, no intermediate vectors). `take:` uses a cell counter + `reduced`
+    // early-out. comp deferred per ROADMAP DNA — `then:` is the 2-ary compose.
+    installSourceMethod(XF_VT, "map:", "[:f | [:rf | [:acc :x | [rf value: acc value: [f value: x]]]]]");
+    installSourceMethod(XF_VT, "filter:", "[:p | [:rf | [:acc :x | [[p value: x] ifTrue: [| [rf value: acc value: x]] ifFalse: [| acc]]]]]");
+    installSourceMethod(XF_VT, "take:", "[:nn | [:rf | [:acc :x | [[[acc size] < nn] ifTrue: [| [rf value: acc value: x]] ifFalse: [| [acc reduced]]]]]]");
+    installSourceMethod(CLOSURE_VT, "then:", "[:other | [:rf | [self value: [other value: rf]]]]");
+    installSourceMethod(OBJECT_VT, "transduce:", "[:xf | [self inject: #[] into: [xf value: [:acc :x | [acc with: x]]]]]");
 }
 
 fn installPrimitives() void {
@@ -3429,6 +3618,7 @@ pub fn langPrimitivesTier() void {
     // touch only TOP_SCOPE's binding chain) don't disturb them. CODE facts.
     installGlobals();
     installDbSurface(); // Phase 15.R R1d — `db` prototype + snapshot methods
+    installCellSurface(); // Phase 16 Tier E — cells/metadata/applicative/Xf
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_PARENT, mkEid(GLOBALS_SCOPE_EID), g_module_eid);
 }
 

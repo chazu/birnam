@@ -1110,6 +1110,24 @@ pub const FactStore = struct {
         return null;
     }
 
+    /// Phase 16 Tier E — every asserted value of (e, a) over time, oldest →
+    /// newest, as an RRB vector Ref. Retracts are skipped (only the values a
+    /// cell ever held). Empty vector when the cell has no history. Backs
+    /// `[cell history]`; reaches only as far as the retention horizon keeps.
+    pub fn valueHistory(self: *const FactStore, e: u64, a: u64) !Ref {
+        const inner = self.eavt.get(e) orelse return boxed.mkRrb(self.allocator, &.{});
+        const cell = inner.get(a) orelse return boxed.mkRrb(self.allocator, &.{});
+        var collected = std.ArrayList(Ref){};
+        defer collected.deinit(self.allocator);
+        var i: usize = 0;
+        const n = cell.history.count();
+        while (i < n) : (i += 1) {
+            const ent = cell.history.nth(i);
+            if (ent.op == .assert) try collected.append(self.allocator, ent.v);
+        }
+        return boxed.mkRrb(self.allocator, collected.items);
+    }
+
     // -- Existence / presence ------------------------------------------------
 
     /// True if entity `e` currently has any asserted attribute.

@@ -1252,3 +1252,104 @@ test "freeze: compiled wrapper dylib re-establishes wraps on load" {
     try testing.expect(boxed.isFloat(r));
     try testing.expectApproxEqAbs(@as(f64, 8.0), boxed.untagFloat(r), 1e-9);
 }
+
+// -- Phase 16 Tier E: reference cells -----------------------------------------
+
+test "DEMO 16 Tier E: cell — create / value / set: / history / asOf:" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Create a cell, read it back.
+    _ = evalLine(s, lang, "let c := [db cell: 10]", a);
+    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(evalLine(s, lang, "[c value]", a)));
+
+    // Mutate twice (each set: = a new tx).
+    _ = evalLine(s, lang, "[c set: 20]", a);
+    _ = evalLine(s, lang, "[c set: 30]", a);
+    try testing.expectEqual(@as(i64, 30), ref_mod.untagSmallInt(evalLine(s, lang, "[c value]", a)));
+
+    // History = every value held, oldest→newest: #[10 20 30].
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[[c history] size]", a)));
+    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(evalLine(s, lang, "[[c history] at: 0]", a)));
+    try testing.expectEqual(@as(i64, 30), ref_mod.untagSmallInt(evalLine(s, lang, "[[c history] at: 2]", a)));
+
+    // asOf: 0 — before any write — is absent (nil); a high tx sees the latest.
+    try testing.expect(ref_mod.isNil(evalLine(s, lang, "[c asOf: 0]", a)));
+    try testing.expectEqual(@as(i64, 30), ref_mod.untagSmallInt(evalLine(s, lang, "[c asOf: 100000]", a)));
+
+    // ref:/atom: are synonyms (single-transactor subsumes the split).
+    _ = evalLine(s, lang, "let r := [db ref: 7]", a);
+    try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(evalLine(s, lang, "[r value]", a)));
+
+    // transact: returns the block value; sets inside are atomic-by-construction.
+    const t = evalLine(s, lang, "[db transact: [| [c set: 99] ; [c value]]]", a);
+    try testing.expectEqual(@as(i64, 99), ref_mod.untagSmallInt(t));
+}
+
+test "DEMO 16 Tier E: metadata — withMeta: / meta on an entity" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    _ = evalLine(s, lang, "let c := [db cell: 1]", a);
+    try testing.expect(ref_mod.isNil(evalLine(s, lang, "[c meta]", a))); // none yet
+    _ = evalLine(s, lang, "[c withMeta: 42]", a);
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalLine(s, lang, "[c meta]", a)));
+    // Meta is orthogonal to the cell value.
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "[c value]", a)));
+}
+
+test "DEMO 16 Tier E: applicative — validate: (accumulate) / zip: / whenAll:" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // validate: gathers ALL failures (odd numbers here), not just the first.
+    // check answers nil for OK (even), the value for failure (odd).
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang,
+        "[[#[1 2 3 4] validate: [:x | [[x even] ifTrue: [| nil] ifFalse: [| x]]]] size]", a)));
+
+    // zip: pairs positions independently; length = min.
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang,
+        "[[#[1 2 3] zip: #[10 20 30]] size]", a)));
+    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(evalLine(s, lang,
+        "[[[#[1 2 3] zip: #[10 20 30]] at: 0] at: 1]", a)));
+
+    // whenAll: applies the block only when every element is present.
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang,
+        "[#[1 2 3] whenAll: [:v | [v size]]]", a)));
+    try testing.expect(ref_mod.isNil(evalLine(s, lang,
+        "[#[1 nil 3] whenAll: [:v | [v size]]]", a)));
+}
+
+test "DEMO 16 Tier E: transducers — map: / filter: / take: / then: / transduce:" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // map transducer, run eagerly in one fold.
+    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(evalLine(s, lang,
+        "[[#[1 2 3 4 5] transduce: [Xf map: [:x | [x * 10]]]] at: 0]", a)));
+    // filter transducer.
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang,
+        "[[#[1 2 3 4 5] transduce: [Xf filter: [:x | [x even]]]] size]", a)));
+    // take transducer (stateful counter + reduced early-out).
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang,
+        "[[#[1 2 3 4 5] transduce: [Xf take: 2]] size]", a)));
+    // then: composes — map *10 then keep > 20 → #[30 40 50].
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang,
+        "[[#[1 2 3 4 5] transduce: [[Xf map: [:x | [x * 10]]] then: [Xf filter: [:x | [x > 20]]]]] size]", a)));
+}
