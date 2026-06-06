@@ -234,6 +234,26 @@ pub const IdApi = extern struct {
     /// dispatches into bytecode via `dispatch.bytecodeDispatcherImpl`.
     /// Append-only ABI: new field at end per Phase 9.5.5 discipline.
     compile_block_as_method: *const fn (block_ast_eid: u64) callconv(.c) u64,
+
+    // -- Phase 15.R R1d: db-value language surface (append-only) ------------
+    /// Capture a NOW snapshot; returns a SNAPSHOT_VT object Ref (mkEid), or NIL.
+    snapshot_now: *const fn () callconv(.c) Ref,
+    /// Capture a snapshot as of basis-T; returns a SNAPSHOT_VT Ref, or NIL when
+    /// the history is no longer retained.
+    snapshot_as_of: *const fn (u64) callconv(.c) Ref,
+    /// Exact point read (e, a) through a snapshot Ref; NIL if absent / bad ref.
+    snapshot_get: *const fn (Ref, u64, u64) callconv(.c) Ref,
+    /// Snapshot basis-T as a SmallInt Ref.
+    snapshot_basis: *const fn (Ref) callconv(.c) Ref,
+    /// Release a snapshot (unpin its epoch + free the object). Idempotent-ish:
+    /// a bad/already-released ref is a no-op.
+    snapshot_release: *const fn (Ref) callconv(.c) void,
+    /// Set retention policy: code 0=current_only, 1=keep_all, 2=keep_since(arg),
+    /// 3=keep_last_n(arg).
+    set_retention: *const fn (u32, u64) callconv(.c) void,
+    /// Hard-delete an entity (current + history + archives). Returns true on
+    /// success, false if refused (a live snapshot pins) or errored.
+    excise_entity: *const fn (u64) callconv(.c) bool,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -341,7 +361,107 @@ pub fn populate() IdApi {
         .object_at_eid = &cObjectAtEid,
         .make_float = &cMakeFloat,
         .compile_block_as_method = &cCompileBlockAsMethod,
+        .snapshot_now = &cSnapshotNow,
+        .snapshot_as_of = &cSnapshotAsOf,
+        .snapshot_get = &cSnapshotGet,
+        .snapshot_basis = &cSnapshotBasis,
+        .snapshot_release = &cSnapshotRelease,
+        .set_retention = &cSetRetention,
+        .excise_entity = &cExciseEntity,
     };
+}
+
+// -- Phase 15.R R1d: snapshot object wrap/unwrap + db ops -------------------
+
+/// Wrap a kernel `*Snapshot` in a SNAPSHOT_VT libid object `[vt][snap_ptr]`
+/// (vt at -1, mirroring a closure) and register it in the object table.
+/// Returns the object eid, or 0 on failure (snapshot freed by caller then).
+fn makeSnapshotObj(snap: *fact_store.Snapshot) u64 {
+    const a = send_mod.kernelAllocator() orelse return 0;
+    const t = send_mod.tablePtr() orelse return 0;
+    const total = 2 * @sizeOf(Ref);
+    const buf = a.alignedAlloc(u8, .of(Ref), total) catch return 0;
+    const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
+    vt_slot.* = ref_mod.mkEid(kernel_eids.SNAPSHOT_VT);
+    const data_slot: *Ref = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
+    data_slot.* = ref_mod.mkPointer(@ptrCast(snap));
+    const eid = t.alloc();
+    t.put(eid, ref_mod.mkPointer(@ptrCast(data_slot))) catch return 0;
+    return eid;
+}
+
+/// Recover the `*Snapshot` from a SNAPSHOT_VT object Ref (an eid or the payload
+/// pointer). Returns null if `r` isn't a live snapshot object.
+fn snapshotFromRef(r: Ref) ?*fact_store.Snapshot {
+    var payload: Ref = r;
+    if (ref_mod.isEid(r)) {
+        const t = send_mod.tablePtr() orelse return null;
+        payload = t.get(ref_mod.untagEid(r)) orelse return null;
+    }
+    if (!ref_mod.isPointer(payload)) return null;
+    const data_slot: *Ref = @ptrCast(@alignCast(ref_mod.untagPointer(payload)));
+    // vt sits one Ref before the payload slot.
+    const vt_slot: *Ref = @ptrFromInt(@intFromPtr(data_slot) - @sizeOf(Ref));
+    if (!ref_mod.isEid(vt_slot.*) or ref_mod.untagEid(vt_slot.*) != kernel_eids.SNAPSHOT_VT) return null;
+    if (!ref_mod.isPointer(data_slot.*)) return null;
+    return @ptrCast(@alignCast(ref_mod.untagPointer(data_slot.*)));
+}
+
+fn cSnapshotNow() callconv(.c) Ref {
+    const s = send_mod.storePtr() orelse return ref_mod.NIL;
+    const snap = s.snapshotNow() catch return ref_mod.NIL;
+    const eid = makeSnapshotObj(snap);
+    if (eid == 0) {
+        snap.deinit(s.allocator);
+        return ref_mod.NIL;
+    }
+    return ref_mod.mkEid(eid);
+}
+
+fn cSnapshotAsOf(basis: u64) callconv(.c) Ref {
+    const s = send_mod.storePtr() orelse return ref_mod.NIL;
+    const snap = s.snapshotAsOf(basis) catch return ref_mod.NIL;
+    const eid = makeSnapshotObj(snap);
+    if (eid == 0) {
+        snap.deinit(s.allocator);
+        return ref_mod.NIL;
+    }
+    return ref_mod.mkEid(eid);
+}
+
+fn cSnapshotGet(snap_ref: Ref, e: u64, a: u64) callconv(.c) Ref {
+    const snap = snapshotFromRef(snap_ref) orelse return ref_mod.NIL;
+    return snap.get(e, a) orelse ref_mod.NIL;
+}
+
+fn cSnapshotBasis(snap_ref: Ref) callconv(.c) Ref {
+    const snap = snapshotFromRef(snap_ref) orelse return ref_mod.NIL;
+    return ref_mod.mkSmallInt(@intCast(snap.basis_t)) orelse ref_mod.NIL;
+}
+
+fn cSnapshotRelease(snap_ref: Ref) callconv(.c) void {
+    const s = send_mod.storePtr() orelse return;
+    const snap = snapshotFromRef(snap_ref) orelse return;
+    snap.deinit(s.allocator); // unpin epoch + free the Snapshot
+    // The SNAPSHOT_VT object pair itself leaks until value-heap GC reclaims it;
+    // the epoch pin (the costly resource) is released here.
+}
+
+fn cSetRetention(code: u32, arg: u64) callconv(.c) void {
+    const s = send_mod.storePtr() orelse return;
+    s.setRetention(switch (code) {
+        1 => .keep_all,
+        2 => .{ .keep_since_basis = arg },
+        3 => .{ .keep_last_n = arg },
+        else => .current_only,
+    });
+}
+
+fn cExciseEntity(eid: u64) callconv(.c) bool {
+    const s = send_mod.storePtr() orelse return false;
+    const a = send_mod.kernelAllocator() orelse return false;
+    s.exciseEntity(eid, a) catch return false;
+    return true;
 }
 
 const boxed = @import("boxed.zig");
