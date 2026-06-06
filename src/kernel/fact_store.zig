@@ -86,8 +86,18 @@ pub const FactStore = struct {
     /// Monotonic tx counter; starts at 1. Atomic per Phase 11.7.iv
     /// (ADR-11 #7 forward-compat). Single-writer transactor under the
     /// Datomic shape; atomic now keeps non-transactor read paths safe
-    /// without a barrier change later.
+    /// without a barrier change later. RESETS to 1 on `compact()` (the
+    /// per-epoch internal tx coordinate).
     next_tx: std.atomic.Value(u64),
+
+    /// Phase 15.R — separate monotonic basis-T counter (Decision A, locked
+    /// 2026-06-06). Unlike `next_tx`, this **never resets on compact**. It is
+    /// the durable user-facing time coordinate for `asOf:`, snapshot identity,
+    /// and epoch `min_basis_t`. Bumped once per commit (assert/retract). Starts
+    /// at 1; basis-T 0 means "before time". Not persisted across image save/load
+    /// (snapshots are in-memory pins that don't cross a save) — re-asserts on
+    /// load bump it from 1, preserving in-session monotonicity.
+    basis_t: std.atomic.Value(u64),
     eavt: EAVTish,
     aevt: EAVTish, // same shape as EAVT, keys are (a, e)
     avet: AVETish,
@@ -133,6 +143,7 @@ pub const FactStore = struct {
         return .{
             .allocator = allocator,
             .next_tx = std.atomic.Value(u64).init(1),
+            .basis_t = std.atomic.Value(u64).init(1),
             .eavt = EAVTish.empty(allocator, .{}),
             .aevt = EAVTish.empty(allocator, .{}),
             .avet = AVETish.empty(allocator, .{}),
@@ -279,6 +290,7 @@ pub const FactStore = struct {
             if (ref_mod.isNil(v)) @panic("FactStore.assert: NIL value forbidden (Date discipline)");
         }
         const tx = self.next_tx.fetchAdd(1, .monotonic);
+        _ = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
 
         // Snapshot the previous value before any writes. Use raw lookup
         // so `:many` attrs (where currentValue materializes an RRB)
@@ -318,6 +330,7 @@ pub const FactStore = struct {
     pub fn retract(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !u64 {
         if (self.read_only) return error.ReadOnly;
         const tx = self.next_tx.fetchAdd(1, .monotonic);
+        _ = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
 
         // No-op if (e, a, v) isn't currently present (AVET is authoritative
         // for both `:one` and `:many`).
@@ -593,6 +606,12 @@ pub const FactStore = struct {
 
     pub fn currentTx(self: *const FactStore) u64 {
         return self.next_tx.load(.monotonic) - 1;
+    }
+
+    /// Phase 15.R — current basis-T (the durable, non-resetting time
+    /// coordinate). Equals the basis-T of the most recent commit.
+    pub fn currentBasisT(self: *const FactStore) u64 {
+        return self.basis_t.load(.monotonic) - 1;
     }
 
     /// Flatten every current (module, entity, attribute, value) fact in
