@@ -2165,13 +2165,25 @@ is the open architectural work this ADR exists to flag.
 
 ### Context
 A perf review of the dispatch/state path (triggered by the FFI instance-vt
-churn). Cost model read from the code:
+churn). Cost model read from the code, **then measured** (ReleaseFast, arm64,
+GeneralPurposeAllocator + index epoch arena = production config; harnesses
+`src/kernel/kernel_bench.zig` + `kernel_write_bench.zig`, commits eb32d3e /
+d6f65b8):
 
-| Op | Now | Native/Smalltalk | Ratio |
-|---|---|---|---|
-| Send (warm) | `vtableEidOf` + global direct-mapped mcache probe + indirect call | call-site inline cache | ~2–5× |
-| Field read | `currentValue(e,a)` = 2 nested-HAMT gets (log-depth pointer chase, cache-hostile) | 1 load at fixed offset | ~10–50× |
-| Field write | `assert` = path-copy **5** persistent indexes (eavt/aevt/avet/vaet/meat) + history append + demote hook + mcache flush | 1 store | **~100–1000×** |
+| Op | What it does | Native baseline | **Measured** | Ratio |
+|---|---|---|---|---|
+| Field read | `currentValue(e,a)` = nested-HAMT gets | hashmap get ~2 ns | **~18 ns/op** | **~9.6×** |
+| Send (warm) | `vtableEidOf` (object-table HAMT get!) + mcache hit + indirect call | indirect call ~1.3 ns | **~30 ns/op** | **~22.6×** |
+| Field write (add) | `assert` = path-copy 5 indexes + history + hooks + mcache flush | store ~5–20 ns | **~1.8 µs/op** | **~100–360×** |
+| Field write (`:=`) | retract + assert (lang's mutateBinding) | — | **~3.0 µs/op** | — |
+
+A write costs **~100× a read** (~1800 ns vs ~18 ns). Warm dispatch came in
+**worse than the original 2–5× estimate (~22×)** because eid-receiver dispatch
+does an object-table HAMT lookup *per send*, not a slot load — exactly what
+perf-1.6 (inline caches / pointer-tagged shape) removes. **Sustained mutation is
+bounded only with prune-in-loop + the index epoch arena** (churn+prune holds
+~114 MiB at both 100k and 500k iters); raw mutation grows without bound (finding
+#1 — what crashed the machine in the first, un-fenced benchmarking attempt).
 
 ### The foundational tension
 The fact store is **both** the durable/queryable/time-traveled projection **and**
