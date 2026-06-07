@@ -92,7 +92,19 @@ fn ensureInstanceVt(
     if (store.currentValue(mod_eid, kernel_eids.ATTR_VTABLE)) |vt_ref| {
         if (ref_mod.isEid(vt_ref)) {
             const vt_eid = ref_mod.untagEid(vt_ref);
-            if (table.get(vt_eid) != null) return vt_eid; // live + materialized
+            // Reuse the vt if it still EXISTS as a vtable entity (its own
+            // `:vtable` fact is present), NOT if it is merely materialized in the
+            // object table. The two are different: `mintInstanceVt` materializes
+            // the vt then asserts its `:vtable`/`:delegate` facts, and the Phase-8
+            // D6 hook demotes any materialized entity that an assert touches — so
+            // the vt is demoted (table slot cleared) the instant it is created.
+            // It stays a perfectly valid, dispatchable entity (dispatch is
+            // fact-based; cold entities resolve via the fact store). Testing
+            // `table.get != null` here therefore failed every time and re-minted a
+            // fresh empty vt on every resolve, dropping all installed selectors.
+            // The `:vtable` fact is M_BOOTSTRAP (transient) — absent after an
+            // image `:load`, so reload correctly re-mints.
+            if (store.currentValue(vt_eid, kernel_eids.ATTR_VTABLE) != null) return vt_eid;
         }
     }
     const instance_vt = try mintInstanceVt(allocator, store, table);

@@ -441,6 +441,37 @@ test "FFI_PTR alloc/poke/peek/address/isNull/free round-trip via send" {
     _ = send_mod.send0(cell, kernel_eids.SEL_FFI_FREE);
 }
 
+test "resolve reuses the instance vt across passes (no churn; cold-but-valid)" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = try ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM);
+    const mod_eid = ref_mod.untagEid(mod);
+    const sqrt_sel = try fix.interner.intern(fix.store, fix.table, "sqrt:");
+    _ = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, ref_mod.mkEid(sqrt_sel), try strings.mkString(a, "sqrt"), try strings.mkString(a, "d)d"));
+
+    resolve(fix, mod, a);
+    const vt1 = ref_mod.untagEid(fix.store.currentValue(mod_eid, kernel_eids.ATTR_VTABLE).?);
+
+    // The vt is demoted by the D6 hook the moment it is created (its own
+    // :vtable/:delegate asserts touch the freshly-materialized entity), so it is
+    // NOT in the object table — yet it is a valid, dispatchable entity.
+    try testing.expect(fix.table.get(vt1) == null);
+
+    // Re-resolving (as every REPL line-commit does) must REUSE vt1, not re-mint.
+    resolve(fix, mod, a);
+    const vt2 = ref_mod.untagEid(fix.store.currentValue(mod_eid, kernel_eids.ATTR_VTABLE).?);
+    try testing.expectEqual(vt1, vt2);
+
+    // And the selector still dispatches through the reused cold vt.
+    try testing.expectEqual(@as(f64, 5.0), boxed.untagFloat(send_mod.send1(mod, sqrt_sel, try boxed.mkFloat(a, 25.0))));
+
+    ffi.shutdown();
+}
+
 test "resolve re-installs onto a re-minted instance vt (self-healing)" {
     if (!is_darwin) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
