@@ -2219,11 +2219,9 @@ and is rejected.
   promotion a net loss for them. FFI-pin-guarded; binary-searches the sorted
   layout for the slot index. Down payment on write-back (A makes the struct
   writable; write-back adds dirty-tracking + deferred reconcile).
-- **perf-1.3 (OPEN, highest leverage, design-not-code):** draw the projection vs
-  representation boundary — audit what *must* be a fact (durable/queryable/
-  time-traveled) vs what is incidentally one today (every local, temp,
-  intermediate, non-escaping object). Do this *before* more of the language
-  assumes write-through.
+- **perf-1.3 (DESIGN RESOLVED 2026-06-07; implementation gated on 1.4):** the
+  projection-vs-representation boundary. Decided: **time-travel is opt-in.** Full
+  tier model + opt-in API in the subsection below. This unblocks 1.4/1.5.
 - **perf-1.4 (OPEN): write-back tier.** Hot mutable slots live in the struct;
   writes patch + mark dirty; facts reconciled lazily at tx/query/save boundaries.
   Per-assignment DB cost → per-commit DB cost.
@@ -2231,6 +2229,84 @@ and is rejected.
   objects never become facts (Clojure transients / V8 stack objects).
 - **perf-1.6 (OPEN): call-site inline caches + shape/hidden-class** for field
   offsets, ahead of / alongside Phase-18 JIT.
+
+### perf-1.3 deliverable — tier model + opt-in API (RESOLVED 2026-06-07)
+
+**Decision: time-travel is opt-in.** The fact store is the truth for *structure*
+and *temporal* data, and a *projection* for working object values. This is the
+one inversion the whole performance story rests on; it is accepted.
+
+#### Three tiers + two triggers
+
+- **Tier 1 — heap / transient (default for new values + locals).** No eid, no
+  facts. Collections (HAMT/RRB), boxed scalars, method args/temps (already frame
+  slots), non-escaping objects. Pure speed. (Note: object *instantiation* today
+  mints a fact-entity eagerly — 1.5 makes that lazy/escape-driven.)
+- **Tier 2 — materialized entity (default for escaped user objects).** Has an
+  eid; **runtime truth is the materialized struct (write-back); facts are a
+  projection reconciled at boundaries.** No per-mutation history. Most user
+  objects. This is the new tier 1.4 builds.
+- **Tier 3 — temporal entity (opt-in).** Write-through to the historied 5-index
+  store (today's `assert` behavior). Gets `asOf:`/`history`. Reference cells
+  (Tier E) are the shipped instance of this.
+
+Triggers: **1→2 = escape** (stored into another entity's attr, returned past its
+frame, or queried — perf-1.5). **2↔3 = declaration** (default 2; opt into 3).
+
+Current fact categories → tiers: **meta-level** (vtables, AST, bytecode, methods,
+grammar) stays **write-through** — it is write-once-at-definition so the cost is
+moot, AND `bind` dispatches by reading those facts, so it cannot be naively
+write-back. "Default = tier-2" is a statement about **base-level user objects**,
+not kernel structure. **User objects = tier-2. Reference cells / audited entities
+= tier-3. Locals / non-escaping = tier-1.**
+
+#### Opt-in API — one bit, three granularities
+
+Tier-3 is a single per-entity flag, `:temporal?`. The write router reads it:
+set → write-through + historied; unset (default) → write-back. Everything below is
+just *how you set the bit*.
+
+1. **Per-instance:** `[obj beTemporal]` → asserts `[obj :temporal? true]`.
+2. **Per-kind (prototype):** `[Account beTemporal]` marks the prototype;
+   instances **stamp the bit at `new`** (copy proto's `:temporal?` into the
+   instance — not a delegation walk per write, so the hot-path check stays a
+   single local bit read).
+3. **Per-field:** use a reference cell (`db cell: v`) — a built-in always-temporal
+   micro-entity (its prototype `CELL_VT` has `:temporal?` set). The object slot
+   holds the cell's eid (stable; doesn't churn on value change), so temporal
+   write cost lands only on the small cell, leaving the rest of the object tier-2.
+
+**Unification:** there is one mechanism. A cell is just an entity whose prototype
+carries `:temporal?` by default; `beTemporal` is the general form. Want a few
+audited fields → cells; a whole object/kind → `beTemporal`; speed → do nothing.
+
+#### Implementation notes
+
+- **Bit placement:** stamp `:temporal?` on the materialized-struct header (a
+  reserved slot/bit) at promote/`new`, so the write router never does a fact
+  lookup to choose write-through vs write-back.
+- **Inheritance:** `new` reads the prototype's `:temporal?` and stamps the
+  instance.
+- **Reconcile (tier-2 only):** dirty-set flushed to facts at **query /
+  tx-commit / save**. Tier-3 needs no reconcile (always current in facts).
+  Queries become a flush barrier over the dirty set (bounded).
+
+#### Semantics locked
+
+- **History begins at opt-in.** `beTemporal` after writes → no retroactive
+  timeline; audit starts now.
+- **`asOf:` / `history` on a tier-2 entity is empty/error** — no opt-in, no
+  timeline. This is the explicit capability given up in exchange for native-speed
+  mutation; accepted.
+- **Cost is local** — only opted-in entities pay write-through.
+
+#### Tenet alignment
+
+Datomic shape (peers hold working values, transact deltas at boundaries) = tier-2
+write-back turned inward — consistent with the locked threading target (ADR-11).
+Storage-vs-materialization ([[feedback_verify_tenets]]): the tier-2 struct is
+*materialization*; facts stay 1NF at the *storage* layer. idst/COLA malleability:
+untouched — shape lives in facts.
 
 ### Consequences
 Promotion's current sweet spot is immutable-after-setup entities (vtables,
