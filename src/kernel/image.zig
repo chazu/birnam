@@ -2,7 +2,7 @@
 //!
 //! Serializes the *current-value* fact set of a `FactStore` to a flat
 //! byte buffer and replays it into a fresh store. This is the semantic
-//! baseline for `.brnimg` (ADR-11 #5 D3 hybrid); the mmap-segment fast
+//! baseline for `.bim` (ADR-11 #5 D3 hybrid); the mmap-segment fast
 //! path (12.2 / 12.5) is a later optimization layered over the same
 //! logical content.
 //!
@@ -60,7 +60,7 @@ pub const ModuleDep = struct {
     abi_hash: u64,
 };
 
-/// Self-describing header embedded at the front of every `.brnimg`.
+/// Self-describing header embedded at the front of every `.bim`.
 /// Carries everything a load needs before touching facts: which VM the
 /// bytecode targets, the transactor shape, and the module dependency set.
 pub const Manifest = struct {
@@ -427,7 +427,7 @@ pub fn peekManifest(allocator: std.mem.Allocator, bytes: []const u8) ReadError!M
 
 pub const FileError = error{ FileOpenFailed, FileWriteFailed, FileReadFailed };
 
-/// Write a snapshot to `path` as a single `.brnimg` file. Pure data write —
+/// Write a snapshot to `path` as a single `.bim` file. Pure data write —
 /// no toolchain. Returns the WriteResult (caller frees `.bytes`).
 pub fn saveToFile(
     allocator: std.mem.Allocator,
@@ -445,7 +445,7 @@ pub fn saveToFile(
     return res;
 }
 
-/// Read a `.brnimg` file and replay it into `store`. The file bytes are
+/// Read a `.bim` file and replay it into `store`. The file bytes are
 /// read into `allocator` and freed before returning (facts/strings are
 /// copied into the store's allocator during load).
 pub fn loadFromFile(

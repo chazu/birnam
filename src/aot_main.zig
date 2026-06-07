@@ -1,6 +1,6 @@
 //! Phase 14 M1 — AOT static entry point (no-strip slice).
 //!
-//! A standalone executable with kernel + modules + a `.brnimg` snapshot all
+//! A standalone executable with kernel + modules + a `.bim` snapshot all
 //! linked in. No `dlopen`: modules are statically `@import`ed and their init
 //! called namespace-qualified (M4 — the shared `birnam_module_init` export
 //! symbol doesn't collide because these are intra-Zig calls). The image is

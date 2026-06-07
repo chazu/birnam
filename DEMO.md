@@ -148,19 +148,19 @@ birnam> [99 pick: 10 or: 20]
 ### 3. The image is persistent — `:save` / `:load`
 
 Your bindings and installed methods are facts; the whole image snapshots to a
-single self-describing `.brnimg` file and survives a process restart.
+single self-describing `.bim` file and survives a process restart.
 
 ```
 birnam> let answer := 42
 birnam> [[3 vtable] method: #double do: [| [self + self]]]
-birnam> :save app.brnimg
-[birnam] saved app.brnimg (56 facts, 2 modules)
+birnam> :save app.bim
+[birnam] saved app.bim (56 facts, 2 modules)
 ```
 
 ```
 # fresh process
-birnam> :load app.brnimg
-[birnam] loaded app.brnimg (56 facts, 1 methods rebuilt)
+birnam> :load app.bim
+[birnam] loaded app.bim (56 facts, 1 methods rebuilt)
 birnam> answer
 => 42
 birnam> [5 double]
@@ -276,7 +276,7 @@ lineage — no class/instance split).
 - `send.zig` — variadic dispatch; mcache hit on hot path, fact-store on cold
 - `bytecode.zig` + `compiler.zig` — block bodies compile to bytecode (stored as
   facts); `dispatch.zig` runs the stack VM with an inline method cache
-- `image.zig` — `.brnimg` snapshot/load (M_USER facts + interner + manifest)
+- `image.zig` — `.bim` snapshot/load (M_USER facts + interner + manifest)
 - `prune.zig` — reachability mark-sweep + `compact`
 - `ffi.zig` / `ffi_module.zig` — dyncall FFI + the `Module` prototype + declarative
   deferred-resolve wraps; `freeze.zig` — wrapper-dylib emission
@@ -331,7 +331,7 @@ bytecode. The `language` prototype hosts file-in (`fileIn:` / `fileInSource:`).
   history — every assert carries a `tx` column.
 - Predicates + functions as fact entities (7.4); override-able `bind` (7.5).
 - Schema-driven multi-cardinality attributes (9.5.2).
-- AOT: `birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] <image.brnimg> [--entry=<sel>[:<recv>]] -o <out>`
+- AOT: `birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] <image.bim> [--entry=<sel>[:<recv>]] -o <out>`
   compiles any image into a standalone executable. `static` links everything in
   (no dylib deps); `dynamic` ships a portable bundle that `dlopen`s its modules
   at startup (resolved via `$BIRNAM_DYLIB_PATH` / exe-relative). `--strip=malleable`

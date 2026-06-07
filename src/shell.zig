@@ -285,9 +285,9 @@ fn installSignalHandler() void {
 
 // -- `birnam --aot` driver ---------------------------------------------------
 
-/// Compile a user `.brnimg` into a standalone executable. Usage:
+/// Compile a user `.bim` into a standalone executable. Usage:
 ///   birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] \
-///          <image.brnimg> [--entry=<selector>[:<recv>]] -o <out>
+///          <image.bim> [--entry=<selector>[:<recv>]] -o <out>
 /// Mechanism (M1/M4): copy the image to a per-app embed path, run the
 /// parameterized `zig build aot-build` with the strip/entry flags, then copy
 /// the resulting binary to <out>. Must run from the repo root (needs build.zig
@@ -341,7 +341,7 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
     }
     const is_dynamic = std.mem.eql(u8, aot_mode, "dynamic");
     const img_path = input orelse {
-        stderrPrint("[birnam] --aot: no input image (give a .brnimg path)\n", .{});
+        stderrPrint("[birnam] --aot: no input image (give a .bim path)\n", .{});
         return;
     };
     const out_path = out orelse {
@@ -351,7 +351,7 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
     if (strip_history) stdoutPrint("[birnam] --strip=history: freezing store read-only (no tx-writer / history)\n", .{});
 
     // Stage the image at the per-app embed path (gitignored; not the fixture).
-    const embed_rel = ".aot_app.brnimg";
+    const embed_rel = ".aot_app.bim";
     std.fs.cwd().copyFile(img_path, std.fs.cwd(), "src/" ++ embed_rel, .{}) catch {
         stderrPrint("[birnam] --aot: cannot read image {s}\n", .{img_path});
         return;
@@ -434,7 +434,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // `birnam --aot=… <image.brnimg> -o <out>` is a build-time driver, not a
+    // `birnam --aot=… <image.bim> -o <out>` is a build-time driver, not a
     // REPL session — branch before booting the kernel.
     {
         const argv = try std.process.argsAlloc(allocator);

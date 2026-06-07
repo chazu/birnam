@@ -413,7 +413,7 @@ test "image: peekManifest reads module deps without replaying facts" {
     try testing.expectEqual(@as(u64, 0x22), m.modules[1].abi_hash);
 }
 
-test "image: save/load through a real .brnimg file on disk" {
+test "image: save/load through a real .bim file on disk" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -422,7 +422,7 @@ test "image: save/load through a real .brnimg file on disk" {
     defer tmp.cleanup();
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
     const path = try tmp.dir.realpath(".", &path_buf);
-    const full = try std.fs.path.join(a, &.{ path, "test.brnimg" });
+    const full = try std.fs.path.join(a, &.{ path, "test.bim" });
 
     var src = fs.FactStore.init(a);
     _ = try src.assert(E_A, A_REF, try strings.mkString(a, "on disk"), M_USER);

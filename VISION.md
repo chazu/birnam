@@ -156,7 +156,7 @@ Two-tier dispatch: pointer-fast for hot stable code, query-uniform for everythin
 
 Mode 2 sub-variants: `--aot=static` (kernel + modules + data all linked into one executable) and `--aot=dynamic` (kernel + data baked; modules `dlopen`ed at runtime from baked manifest). Both work with or without strips.
 
-All modes share the same fact store, object model, bytecode format, and `.brnimg` data layout. AOT = wrap-Mode-1-image-as-executable; same data bytes underneath.
+All modes share the same fact store, object model, bytecode format, and `.bim` data layout. AOT = wrap-Mode-1-image-as-executable; same data bytes underneath.
 
 ## Architecture
 
@@ -302,8 +302,8 @@ Syntax: idst/Smalltalk-derived, visually Obj-C-y. Bracket-delimited message send
 - `birnam` — shell executable (Mode 1 host: loads kernel + dylibs, runs REPL or `-M main.dylib --entry=...`)
 - `.brn` — source file extension
 - `libbirnam_<module>.dylib` / `.so` / `.dll` — runtime modules (platform-native suffix)
-- `<name>.brnimg` — image archive (Mode 1 save format; `roots.bin` + `segments/` + `manifest.txt` with dylib deps + thread-mode tag). Pure data — saving requires no `cc`.
-- `<app>` — AOT-compiled executable (`birnam --aot=static|dynamic [--strip=malleable] [--strip=history] image.brnimg → <app>`)
+- `<name>.bim` — image archive (Mode 1 save format; `roots.bin` + `segments/` + `manifest.txt` with dylib deps + thread-mode tag). Pure data — saving requires no `cc`.
+- `<app>` — AOT-compiled executable (`birnam --aot=static|dynamic [--strip=malleable] [--strip=history] image.bim → <app>`)
 
 ## Non-Goals (For Now)
 

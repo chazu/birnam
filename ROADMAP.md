@@ -9,7 +9,7 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 **Headline — Phases 0–14 complete; Phase 15 (heap GC) SHIPPED + merged: four-arena value-heap mark-sweep (:gc + auto-trigger, FFI Sig free) + index epoch arena (15.I, compact frees the old HAMT tree wholesale, future-proofed for retained snapshots). Remaining: const-pool RRB finalizer + AST-drop policy (gated on 15.R retention). New arc Phase 15.R = retention/snapshots/excision/cold-history. 400/400 tests, 0 leaked.**
 - **9.5.6** ✓ — FFI surface reachable from the language + file-in. `Module` prototype bound globally (`Module load:`/`resolve`), `language` prototype with `fileIn:`/`fileIn:onError:`, shell `:in`/`:in!`. FFI wraps refactored to **declarative facts** (`:ffi-wrap-symbol`/`:ffi-sig-str`/`:wrap-selector`, M_USER) with **deferred `dlopen`**: a single `resolveModule` does the open+`dlsym`+install at commit (REPL line / file-in / image load). Wraps now **relink by symbol name** across processes (fixes stale-`:ffi-addr` persistence; foundation for freezing a wrapper into a module dylib). Also fixed a latent keyword-send arg-arity overrun (stale `mkEid(0)` `:next-sibling` on recycled eids). No "class" concept — prototypes only. See the Phase 9.5.6 §Status block.
 - **0–11** ✓ — substrate, datalog, FFI, modules, language, bytecode VM. Phase 11.12 shipped the lang switchover: user methods dispatch through the bytecode VM (not the tree-walker). Loose ends (in-band mcache wiring, full `g_unwinding` retirement, tail-call refactor) deferred, non-blocking.
-- **12** ✓ — image snapshot (`.brnimg`, single self-describing file: facts + embedded manifest + interner). Provenance split (`M_USER`), Approach-B closure rebuild, shell `:save`/`:load`. A REPL session survives process restart (proven). See the Phase 12 §Status block.
+- **12** ✓ — image snapshot (`.bim`, single self-describing file: facts + embedded manifest + interner). Provenance split (`M_USER`), Approach-B closure rebuild, shell `:save`/`:load`. A REPL session survives process restart (proven). See the Phase 12 §Status block.
 - **13** ✓ — pruning: reachable-from-roots mark-sweep + `FactStore.compact` + shell `:prune`. Re-derived roots/edges for the bytecode-closure model. See Phase 13 §Status.
 - **14** ✓ — AOT. `birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] <image> [--entry=<sel>[:<recv>]] -o <out>`. All six matrix cells driver-built per-app: static + dynamic (portable dlopen-at-startup bundle via `$BIRNAM_DYLIB_PATH`/exe-relative), `--strip=malleable` (pure-VM, AST/frontend stripped), `--strip=history` (RO-frozen store). General `--entry` resolves a SmallInt or a named top-level binding. Only the mmap-relocation RO-*segment* perf path is deferred → Phase 12.5 (not a capability gap). See Phase 14 §Status.
 
@@ -105,7 +105,7 @@ Non-local return propagation through SEND: `handleSendUnwind` helper runs after 
 
 **Next major arcs (in dependency order):** *(2026-06-04: 11 ✓, 12 ✓, 13 ✓, 14 ✓ — Phase 15 GC next; see per-phase §Status)*
 1. Phase 11 ✓ — bytecode VM (ADR-11 decisions 1-7 locked 2026-05-30; retires `g_unwinding`, retires tree-walker stack overflow, supersedes 10.4.5 S5)
-2. Phase 12 ✓ — image snapshot + load (`.brnimg`; pure-data save, no `cc` required)
+2. Phase 12 ✓ — image snapshot + load (`.bim`; pure-data save, no `cc` required)
 3. Phase 13 ✓ — **logical prune** (fact-level reachability mark-sweep: AST/scope, history excise; AOT prune mode reuses). *Note: drops facts + clears object-table slots; does NOT free backing heap — that is Phase 15.*
 4. Phase 14 ✓ — AOT (`birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history]`; all six matrix cells driver-built; only the 12.5 mmap-relocation perf path deferred)
 5. Phase 15 — **heap GC** — core SHIPPED + merged. Four-arena non-moving mark-sweep (boxes/captures/closures_vt/strings), `:gc` + growth-gated auto-trigger, FFI Sig free. Remaining standalone items: `index` epoch arena, const-pool RRB finalizer, AST-drop policy (see §shipped-vs-remaining). Distinct from Phase 13: 13 reclaims *facts*, 15 reclaims *bytes*.
@@ -119,11 +119,11 @@ Non-local return propagation through SEND: `handleSendUnwind` helper runs after 
 2. Frame rep = native per-thread stack + on-demand reification (Phase 7.3 pattern at execution layer)
 3. mcache = native Zig array, atomic 16-byte writes, race-tolerant reads
 4. Dispatch = tail-call (`@call(.always_tail, ...)`), build-time `jmp`-not-`call` probe
-5. Image shape = D3 hybrid `.brnimg` (data + manifest; AOT wraps same bytes as executable)
+5. Image shape = D3 hybrid `.bim` (data + manifest; AOT wraps same bytes as executable)
 6. AOT strip = `--strip=malleable` (parser/AST/compiler/REPL) + orthogonal `--strip=history`
 7. Multi-thread shape = Datomic (single-writer transactor + per-thread `Vm`); Phase 11 ships single-threaded with seven keep-viable items
 - JIT explicitly out of scope (user direction). VM and AOT only.
-- Naming locked: `birnam` = executable; `.brn` = source extension; `.brnimg` = image archive.
+- Naming locked: `birnam` = executable; `.brn` = source extension; `.bim` = image archive.
 
 **ADR-11 addendum — pre-implementation review 2026-05-31:**
 1. Blocks = own bytecode-method entities (separate `:bytecode-stream` per block). MAKE_BLOCK pool-idx → block-method-ref. INVOKE_BLOCK = standard frame push.
@@ -1140,7 +1140,7 @@ Phase 11 inherits two spike concessions from Phase 10.3 — the `g_unwinding` si
 | 2 | Frame representation | **C: native per-thread stack + on-demand reification** — `Vm.frames: []Frame { pc, method_ref, self_ref, bp, locals_inline }` in bump arena. Reified via `(reify-stack)` API → transient frame entities (retracted on next reify). | COLA layering clean: native = materialization, reified = substrate. Date 1NF on reified entity. |
 | 3 | mcache location | **B + i: native Zig array, atomic 16-byte writes** — per-method parallel `mcache[pc]` of `{ vt: Ref, method: Imp }`. Atomic store on fill, race-tolerant on read (mismatch → fall through to `bind`). | Materialization only. -1 vt trick + mcache co-exist (different fast paths). |
 | 4 | Dispatch style | **C: tail-call (`@call(.always_tail, ...)`)** — each opcode = own handler fn with variadic-β-ABI shape, ends with tail-call into next handler via dispatch table. Build-time probe asserts Zig lowers to `jmp` not `call` on x86_64 + arm64. | Pure Zig in frozen kernel. No inline asm. Multi-thread safe (stateless handlers, `Vm*` carried). |
-| 5 | Image shape | **D3 hybrid: `.brnimg` archive (roots.bin + segments/ + manifest.txt) for live save; AOT wraps same data bytes as executable shell.** Pure data write — no `cc` needed at save time. | Substrate identity across modes preserved. |
+| 5 | Image shape | **D3 hybrid: `.bim` archive (roots.bin + segments/ + manifest.txt) for live save; AOT wraps same data bytes as executable shell.** Pure data write — no `cc` needed at save time. | Substrate identity across modes preserved. |
 | 6 | AOT strip set | **`--strip=malleable` (drops parser/AST/compiler/REPL; keeps `method:do:` via dylib API per `--aot=dynamic`) + orthogonal `--strip=history` (collapses to latest tx, drops `tx`/`op` columns, RO indexes).** Two flags, four combinations. | Substrate untouched even at max strip; materialization (annotations, AST, parser) optionally removed. |
 | 7 | Multi-thread shape | **C: Datomic — single-writer transactor + concurrent readers + per-thread `Vm`.** Seven keep-viable items (see 11.7). Phase 11 ships single-threaded; design choices forbid single-thread-only state. | VISION §290 alignment. Persistent indexes already lock-free for readers. |
 
@@ -1241,13 +1241,13 @@ VM gives portability + AOT. **C-shape bytecode (bytestream + annotations)** keep
 
 ---
 
-## Phase 12 — Image Snapshot (`.brnimg`)
+## Phase 12 — Image Snapshot (`.bim`)
 
 **Goal:** Save and reload entire image state. Pure data format — no `cc` required at save.
 
 ### Decisions locked (ADR-11 #5)
 
-- **Extension:** `.brnimg` (avoiding `.bri` per personal-name overlap).
+- **Extension:** `.bim` (avoiding `.bri` per personal-name overlap).
 - **Shape D3:** archive used for Mode 1 live save AND as data input to AOT pipeline. Same bytes underneath both.
 - **Save is pure write:** segments mmap-flushable, manifest is text, roots are fixed-layout binary. No toolchain dependency.
 
@@ -1282,7 +1282,7 @@ This keeps Phase 12 minimal and low-risk: the non-serializable surface collapses
 
 ### Format refinement (2026-06-02) — single self-describing file, manifest embedded
 
-ADR-11 #5 sketched `.brnimg` as a *directory archive* (`roots.bin` + `manifest.txt` + `segments/`). Revised: **one self-describing file** with the manifest as an embedded header **section**, not a sidecar. Rationale: the snapshot is already a single byte stream; one file = atomic write, no multi-file consistency to manage, still "pure data, no toolchain." Layout (format v4, shipped in `image.zig`):
+ADR-11 #5 sketched `.bim` as a *directory archive* (`roots.bin` + `manifest.txt` + `segments/`). Revised: **one self-describing file** with the manifest as an embedded header **section**, not a sidecar. Rationale: the snapshot is already a single byte stream; one file = atomic write, no multi-file consistency to manage, still "pure data, no toolchain." Layout (format v4, shipped in `image.zig`):
 
 ```
 [MAGIC 8][format_version u32]
@@ -1346,7 +1346,7 @@ Implementation deferred — needs real workload to pick defaults. Policy lives a
 12.8 **(Deferred — Approach A cleanup, own commit) Bytecode methods as `BYTECODE_METHOD_VT`.** Not required for image round-trip (12.3 Approach B handles that). Lift isEid/isPointer branch out of `bytecodeDispatcherImpl` to the `bind`/`sendN` boundary; enter VM directly for compiled methods; retire the fn-ptr indirection for the method case. Removes native/data conflation; simplifies Phase 14 AOT codegen. Earns its own design pass (hot dispatch + mcache rep + `value`/`whileTrue:`-on-`CLOSURE_VT`). Revisit before/with Phase 14.
 
 ### Reasoning
-`.brnimg` makes birnam a real Smalltalk-style environment vs. a script that rebuilds state every run. **D3 hybrid** unifies live save and AOT input — same bytes underneath. **Pure data write** (no `cc`) makes save cheap, no toolchain pin. **Arena split** sets up Phase 14 RO segments. **Incremental save policy noted but not specced** — needs perf data first.
+`.bim` makes birnam a real Smalltalk-style environment vs. a script that rebuilds state every run. **D3 hybrid** unifies live save and AOT input — same bytes underneath. **Pure data write** (no `cc`) makes save cheap, no toolchain pin. **Arena split** sets up Phase 14 RO segments. **Incremental save policy noted but not specced** — needs perf data first.
 
 ### Status (2026-06-02) — core complete
 
@@ -1438,7 +1438,7 @@ History grows forever otherwise. Pruning must be user-initiated (don't surprise 
 
 ### Decisions locked (ADR-11 #5 + #6)
 
-CLI: `birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] <input.brnimg> --entry=<module>:<selector> -o <output>`
+CLI: `birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] <input.bim> --entry=<module>:<selector> -o <output>`
 
 | `--aot=` | `--strip=` | Result |
 |----------|------------|--------|
@@ -1451,7 +1451,7 @@ CLI: `birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history] <input
 
 ### Work items
 
-14.1 **AOT compiler driver.** Reads `.brnimg`, validates entry selector exists, emits Zig source `aot_image.zig` containing:
+14.1 **AOT compiler driver.** Reads `.bim`, validates entry selector exists, emits Zig source `aot_image.zig` containing:
 - Baked `roots.bin` as `const ROOTS: [...]u8 = .{ ... };` (or `@embedFile`).
 - Baked segments as RO arrays.
 - For `--aot=static`: linked-in module init calls.
@@ -1494,8 +1494,8 @@ Final step: invoke `zig build-exe` to link kernel + emitted source + (static-onl
 
 The CLI/matrix above stays locked. The work-item *mechanism* (14.1–14.7) was written against the pre-Phase-12 archive sketch (`roots.bin` + `segments/` + `manifest.txt` + RO mmap) and before the load path existed. Reality is simpler and partly already built. Supersedes the mechanism bullets:
 
-**M1 — AOT driver = embed `.brnimg` + reuse the boot/load path (replaces 14.1's roots.bin/segment baking).** Phase 12 ships a single self-describing `.brnimg` (embedded manifest + interner, replay-based, no `roots.bin`/segments). So the emitted `aot_image.zig` is small:
-- `@embedFile("app.brnimg")` the snapshot bytes (RO `const`);
+**M1 — AOT driver = embed `.bim` + reuse the boot/load path (replaces 14.1's roots.bin/segment baking).** Phase 12 ships a single self-describing `.bim` (embedded manifest + interner, replay-based, no `roots.bin`/segments). So the emitted `aot_image.zig` is small:
+- `@embedFile("app.bim")` the snapshot bytes (RO `const`);
 - `main()`: construct store/table/interner → `bootstrap.boot` → run kept module inits (see M3) → `image.load(store, BYTES, interner)` → restore `next_eid` → `image.rematerializeClosures` → send the entry selector.
 - `zig build-exe` links kernel + emitted source + (static) the kept module sources.
 All four of those load steps already exist and are tested. RO mmap segments (old 14.1) depend on the deferred 12.5 — **not required**; replay-load works.
@@ -1520,10 +1520,10 @@ All four of those load steps already exist and are tested. RO mmap segments (old
 
 ### Status (2026-06-02)
 - **M3 tiering ✓** — `lang` init split into `langSetup` / `langPrimitivesTier` / `langMethodDoTier` / `langFrontendTier`; dylib path calls all (unchanged, 373/373).
-- **M1 + M4 ✓ (static, no-strip artifact)** — `src/aot_main.zig` + `zig build aot` produce `birnam-aot`: a standalone exe (`otool -L`: no birnam/dyncall deps) that `@embedFile`s a `.brnimg`, statically inits peg+lang (namespaced `moduleInitImpl`, no dlopen), loads the snapshot, rematerializes, runs the REPL over baked state. Export-collision solved by gating the `birnam_module_init` C export on `build_opts.export_init` (true=dylib, false=static). Proven: baked `answer` resolves to 42 in the standalone binary.
+- **M1 + M4 ✓ (static, no-strip artifact)** — `src/aot_main.zig` + `zig build aot` produce `birnam-aot`: a standalone exe (`otool -L`: no birnam/dyncall deps) that `@embedFile`s a `.bim`, statically inits peg+lang (namespaced `moduleInitImpl`, no dlopen), loads the snapshot, rematerializes, runs the REPL over baked state. Export-collision solved by gating the `birnam_module_init` C export on `build_opts.export_init` (true=dylib, false=static). Proven: baked `answer` resolves to 42 in the standalone binary.
 - **M2 + strip=malleable artifact ✓** — `birnam-aot-malleable`: comptime-stripped pure-VM binary (skips peg + `langFrontendTier`; `image.load` runs before `langPrimitivesTier` so primitive interns hit the restored interner). `prune.stripAst` drops user AST trees + `:method-body-ast`/`:method-ast-range` back-refs (M2). Minimal M6 entry: send selector to a SmallInt, exit with result. Proven: `nm` shows 0 `parseExprImpl`, AST stripped, baked `double 5 => 10` (exit 10).
 - **Interner fix (load-before-primitives)** — `restoreEntry` refuses to shadow a kernel-seeded selector (eid < `USER_EID_START`): an image can carry a stray duplicate of e.g. `+` at both `SEL_PLUS=152` (compiler-baked) and a user eid; without the guard, post-load primitive installs went to the user eid while bytecode sent 152.
-- **`birnam --aot` driver ✓ (2026-06-03)** — `birnam --aot=static [--strip=malleable] [--strip=history] <image.brnimg> [--entry=<sel>[:<recv>]] -o <out>`. Copies the image to a per-app embed path (`src/.aot_app.brnimg`, gitignored — not the fixture), runs the parameterized `zig build aot-build -D…` (embed/strip/entry options; `@embedFile(build_opts.embed_path)`), copies `zig-out/bin/birnam-aot-app` → `<out>`. Proven e2e: a user image → standalone exe (`otool -L` clean), full-REPL (no-strip) and one-shot (`--strip=malleable --entry=double:5` → exit 10, `nm` parser-free) both work. Driver lives in `shell.zig` (branches before kernel boot); needs repo root + `zig` on PATH (build-time tool, like `:freeze`).
+- **`birnam --aot` driver ✓ (2026-06-03)** — `birnam --aot=static [--strip=malleable] [--strip=history] <image.bim> [--entry=<sel>[:<recv>]] -o <out>`. Copies the image to a per-app embed path (`src/.aot_app.bim`, gitignored — not the fixture), runs the parameterized `zig build aot-build -D…` (embed/strip/entry options; `@embedFile(build_opts.embed_path)`), copies `zig-out/bin/birnam-aot-app` → `<out>`. Proven e2e: a user image → standalone exe (`otool -L` clean), full-REPL (no-strip) and one-shot (`--strip=malleable --entry=double:5` → exit 10, `nm` parser-free) both work. Driver lives in `shell.zig` (branches before kernel boot); needs repo root + `zig` on PATH (build-time tool, like `:freeze`).
 - **General M6 entry ✓ (2026-06-03)** — `--entry=<sel>:<recv>` now takes an identifier for `<recv>`, resolved as a top-level binding in the baked image (send to a Module / user object), not just a SmallInt. Driver parses recv as int-or-name; `aot_main` resolves a name via a `TOP_SCOPE` binding-chain walk (`api.query_eavt`, no lang dependency → works under `--strip=malleable`). Entry runs-and-exits in the full-tower path too (was REPL-only); result low-8-bits → exit code. Proven: `run:app` → 42 across static / malleable / SmallInt-recv.
 - **`--aot=dynamic` ✓ (2026-06-03)** — portable dlopen-at-startup artifact. Kernel + baked image linked in; modules `dlopen`'d at startup from the image's embedded manifest (`image.peekManifest` parses it before replay), resolved by basename via `src/dylib_search.zig` (a PATH-like resolver: `$BIRNAM_DYLIB_PATH`, then cwd + below, then the exe's own dir). `aot_main` is comptime-branched (dynamic | static-malleable | static-full) so the static-tower helpers that reference peg/lang are *not analyzed* under `-Daot-dynamic` → not linked (`nm`: 0 frontend symbols vs 3 in static). The driver stages each manifest dylib beside the `-o` binary. Proven: bundle runs from a foreign cwd (exe-relative resolve) and via `$BIRNAM_DYLIB_PATH`; entry → 42; REPL (`[6+7]`→13). Note: the manifest travels *in the image* (self-describing); a loaded dylib declaring its own further deps (nested manifest) is the natural transitive-dep extension — peg/lang are leaf modules so unused today.
 - **`--strip=history` ✓ (2026-06-04)** — functional RO freeze (the chosen depth; the mmap-relocation RO *segments* remain a pure load-perf 12.5 item, not a capability gap). `FactStore.read_only` + `freeze()`; `assert`/`retract` reject `error.ReadOnly` once frozen. `image.loadFrozen` (comptime-frozen `loadImpl`) replays through a lean `frozenInsert` (tx=1, no history churn / implicit-retract / mutate hooks) instead of `assert` — safe over a current-values-only image. `aot_main` freezes the store **last** (after FFI resolve, which writes during load). Proven: static+history and malleable+history load frozen and run entry → 42; unit tests cover frozen build + write-rejection + `loadFrozen` round-trip.

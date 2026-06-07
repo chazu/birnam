@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(shell);
 
     // -- Phase 14 M1: AOT static executable (baked image + modules) ----------
-    // `zig build aot` produces a standalone binary embedding src/aot_embed.brnimg
+    // `zig build aot` produces a standalone binary embedding src/aot_embed.bim
     // with peg + lang statically linked (no dylibs). Slice: --aot=static,
     // no strip.
     //
@@ -60,7 +60,7 @@ pub fn build(b: *std.Build) void {
     const dylib_init_opts = b.addOptions();
     dylib_init_opts.addOption(bool, "export_init", true);
 
-    const aot_step = b.step("aot", "Build the static AOT executables (embed src/aot_embed.brnimg)");
+    const aot_step = b.step("aot", "Build the static AOT executables (embed src/aot_embed.bim)");
 
     // No-strip artifact: full tower, REPL over baked state.
     const full_opts = b.addOptions();
@@ -72,7 +72,7 @@ pub fn build(b: *std.Build) void {
     full_opts.addOption(bool, "strip_ast", false);
     full_opts.addOption(bool, "dynamic", false);
     full_opts.addOption(bool, "strip_history", false);
-    full_opts.addOption([]const u8, "embed_path", "aot_embed.brnimg");
+    full_opts.addOption([]const u8, "embed_path", "aot_embed.bim");
     const aot_full_mod = b.createModule(.{
         .root_source_file = b.path("src/aot_main.zig"),
         .target = target,
@@ -95,7 +95,7 @@ pub fn build(b: *std.Build) void {
     mall_opts.addOption([]const u8, "entry_recv_name", "");
     mall_opts.addOption(bool, "dynamic", false);
     mall_opts.addOption(bool, "strip_history", false);
-    mall_opts.addOption([]const u8, "embed_path", "aot_embed.brnimg");
+    mall_opts.addOption([]const u8, "embed_path", "aot_embed.bim");
     const aot_mall_mod = b.createModule(.{
         .root_source_file = b.path("src/aot_main.zig"),
         .target = target,
@@ -118,7 +118,7 @@ pub fn build(b: *std.Build) void {
         opts.addOption([]const u8, "entry_selector", b.option([]const u8, "aot-entry-selector", "AOT: entry selector") orelse "");
         opts.addOption(i64, "entry_recv", b.option(i64, "aot-entry-recv", "AOT: entry SmallInt receiver") orelse 0);
         opts.addOption([]const u8, "entry_recv_name", b.option([]const u8, "aot-entry-recv-name", "AOT: entry receiver = top-level binding name") orelse "");
-        opts.addOption([]const u8, "embed_path", b.option([]const u8, "aot-embed", "AOT: image to embed (relative to src/)") orelse "aot_embed.brnimg");
+        opts.addOption([]const u8, "embed_path", b.option([]const u8, "aot-embed", "AOT: image to embed (relative to src/)") orelse "aot_embed.bim");
         opts.addOption(bool, "dynamic", b.option(bool, "aot-dynamic", "AOT: dynamic mode (dlopen modules at startup)") orelse false);
         opts.addOption(bool, "strip_history", b.option(bool, "aot-strip-history", "AOT: freeze store read-only (no tx-writer/history)") orelse false);
         const name = b.option([]const u8, "aot-name", "AOT: output executable name") orelse "birnam-aot-app";
