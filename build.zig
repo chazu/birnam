@@ -699,4 +699,22 @@ pub fn build(b: *std.Build) void {
     kbench_exe.linkLibC();
     const kbench_build_step = b.step("kernel-bench", "Build kernel_bench exe (run manually under timeout)");
     kbench_build_step.dependOn(&b.addInstallArtifact(kbench_exe, .{}).step);
+
+    // Fact-WRITE bench (the memory-growing class). CappedAllocator (real free +
+    // hard 512 MiB ceiling) fences it. NOT auto-run. Run under timeout with a
+    // small count first, watch peak, scale carefully:
+    //   timeout 30 ./zig-out/bin/kernel_write_bench distinct 10000
+    const wbench_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/kernel_write_bench.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    const wbench_exe = b.addExecutable(.{
+        .name = "kernel_write_bench",
+        .root_module = wbench_mod,
+    });
+    wbench_exe.linkLibrary(dyncall_rf);
+    wbench_exe.linkLibC();
+    const wbench_build_step = b.step("write-bench", "Build kernel_write_bench exe (run manually under timeout)");
+    wbench_build_step.dependOn(&b.addInstallArtifact(wbench_exe, .{}).step);
 }
