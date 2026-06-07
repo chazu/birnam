@@ -653,4 +653,50 @@ pub fn build(b: *std.Build) void {
     });
     const run_rrb_bench = b.addRunArtifact(rrb_bench_exe);
     bench_step.dependOn(&run_rrb_bench.step);
+
+    // Kernel-primitive bench (dispatch + field read). Lives in src/kernel/ so it
+    // imports kernel siblings by relative path (like the *_test.zig files).
+    // Self-capped allocator (FixedBufferAllocator) — safe by construction. NOT
+    // auto-run by `zig build bench`; build with `zig build kernel-bench` then run
+    // explicitly under `timeout`, e.g.:
+    //   timeout 30 ./zig-out/bin/kernel_bench 1000000
+    const kbench_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/kernel_bench.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    // ReleaseFast dyncall for the (ReleaseFast) bench — matching optimize modes
+    // avoids a ubsan-runtime link mismatch against the default-optimize lib.
+    const dyncall_rf = b.addLibrary(.{
+        .name = "dyncall_rf",
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = .ReleaseFast,
+            .link_libc = true,
+        }),
+    });
+    dyncall_rf.addCSourceFiles(.{
+        .root = b.path("vendor/dyncall-1.4/dyncall"),
+        .files = &.{
+            "dyncall_api.c",
+            "dyncall_callf.c",
+            "dyncall_callvm.c",
+            "dyncall_callvm_base.c",
+            "dyncall_vector.c",
+            "dyncall_aggregate.c",
+            "dyncall_call.S",
+        },
+        .flags = &.{"-std=c99"},
+    });
+    dyncall_rf.addIncludePath(b.path("vendor/dyncall-1.4/dyncall"));
+
+    const kbench_exe = b.addExecutable(.{
+        .name = "kernel_bench",
+        .root_module = kbench_mod,
+    });
+    kbench_exe.linkLibrary(dyncall_rf);
+    kbench_exe.linkLibC();
+    const kbench_build_step = b.step("kernel-bench", "Build kernel_bench exe (run manually under timeout)");
+    kbench_build_step.dependOn(&b.addInstallArtifact(kbench_exe, .{}).step);
 }
