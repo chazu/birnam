@@ -2172,18 +2172,30 @@ d6f65b8):
 
 | Op | What it does | Native baseline | **Measured** | Ratio |
 |---|---|---|---|---|
-| Field read | `currentValue(e,a)` = nested-HAMT gets | hashmap get ~2 ns | **~18 ns/op** | **~9.6×** |
-| Send (warm) | `vtableEidOf` (object-table HAMT get!) + mcache hit + indirect call | indirect call ~1.3 ns | **~30 ns/op** | **~22.6×** |
+| Warm dispatch | `bind` = vtableEidOf (object-table HAMT get) + mcache hit + indirect call | indirect call ~1.3 ns | **~8 ns/op** | **~6.4×** |
+| Field read | `currentValue(e,a)` = nested-HAMT gets | hashmap get ~2 ns | **~20 ns/op** | **~10.3×** |
 | Field write (add) | `assert` = path-copy 5 indexes + history + hooks + mcache flush | store ~5–20 ns | **~1.8 µs/op** | **~100–360×** |
 | Field write (`:=`) | retract + assert (lang's mutateBinding) | — | **~3.0 µs/op** | — |
 
-A write costs **~100× a read** (~1800 ns vs ~18 ns). Warm dispatch came in
-**worse than the original 2–5× estimate (~22×)** because eid-receiver dispatch
-does an object-table HAMT lookup *per send*, not a slot load — exactly what
-perf-1.6 (inline caches / pointer-tagged shape) removes. **Sustained mutation is
-bounded only with prune-in-loop + the index epoch arena** (churn+prune holds
-~114 MiB at both 100k and 500k iters); raw mutation grows without bound (finding
-#1 — what crashed the machine in the first, un-fenced benchmarking attempt).
+**Course correction from measurement (don't repeat the wrong conclusion):**
+Dispatch was first estimated at 2–5× and then mis-measured at ~22× — the latter
+was an ARTIFACT of benching `SEL_VTABLE`, whose body re-resolves the vtable via
+`currentValue`. Benching a trivial method (`SEL_INIT`, `return self`) shows true
+warm dispatch is **~8 ns / 6.4× — NOT a bottleneck** (Smalltalk-ballpark). Of
+that 8 ns, ~4.6 ns is the object-table HAMT lookup and mcache is ~free. **So
+dispatch inline caches (the original perf-1.6) target a non-problem.**
+
+The real lever is the **field read**: `currentValue` ~20 ns / 10.3×, paid by
+*every method that touches entity state* (it's what inflated the SEL_VTABLE
+number). Cutting it needs slot access at a fixed offset against a known shape —
+which requires the receiver to be a materialized struct with a stable layout,
+i.e. it couples to the **tier-2 representation (perf-1.4)**, not to a standalone
+dispatch cache. A write costs **~100× a read** (~1800 ns vs ~20 ns).
+
+**Sustained mutation is bounded only with prune-in-loop + the index epoch arena**
+(churn+prune holds ~114 MiB at both 100k and 500k iters); raw mutation grows
+without bound (finding #1 — what crashed the machine in the first, un-fenced
+benchmarking attempt).
 
 ### The foundational tension
 The fact store is **both** the durable/queryable/time-traveled projection **and**
@@ -2239,8 +2251,21 @@ and is rejected.
   Per-assignment DB cost → per-commit DB cost.
 - **perf-1.5 (OPEN): escape analysis / transients.** Locals and non-escaping
   objects never become facts (Clojure transients / V8 stack objects).
-- **perf-1.6 (OPEN): call-site inline caches + shape/hidden-class** for field
-  offsets, ahead of / alongside Phase-18 JIT.
+- **perf-1.6 (REVISED by measurement 2026-06-07):** dispatch inline caches were
+  the original plan — **dropped.** Measurement shows warm dispatch is ~8 ns /
+  6.4×, not a bottleneck; mcache already makes the method probe free. What
+  remains worth doing is **shape/hidden-class slot access for the field READ**
+  (the ~20 ns `currentValue`): when the receiver is a materialized struct of
+  known layout, a `self attr` read becomes a slot load at a fixed offset (~1–2
+  ns) instead of a nested-HAMT walk. This is a READ optimization, and it only
+  pays off once the receiver is reliably a struct pointer with a stable shape —
+  i.e. it rides on the **tier-2 representation (perf-1.4)**, not on a standalone
+  cache. Net: fold perf-1.6 into 1.4 (shape) + Phase-18 (JIT slot inlining); no
+  separate dispatch-IC work item.
+- **micro-win available now (optional, ~4.6 ns):** an eid→vt direct-mapped cache
+  (mirroring mcache) to skip the object-table HAMT lookup in `vtableEidOf`.
+  Low-risk, but small (8 ns → ~4 ns dispatch) and dispatch isn't the bottleneck,
+  so deprioritized.
 
 ### perf-1.3 deliverable — tier model + opt-in API (RESOLVED 2026-06-07)
 
