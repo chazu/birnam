@@ -2158,6 +2158,89 @@ the marshaling primitives are stable.
 
 ---
 
+## ADR-perf-1 — Performance model & the projection boundary (2026-06-07)
+
+**Status:** accepted (analysis); B + A shipped; the boundary decision (items 3–5)
+is the open architectural work this ADR exists to flag.
+
+### Context
+A perf review of the dispatch/state path (triggered by the FFI instance-vt
+churn). Cost model read from the code:
+
+| Op | Now | Native/Smalltalk | Ratio |
+|---|---|---|---|
+| Send (warm) | `vtableEidOf` + global direct-mapped mcache probe + indirect call | call-site inline cache | ~2–5× |
+| Field read | `currentValue(e,a)` = 2 nested-HAMT gets (log-depth pointer chase, cache-hostile) | 1 load at fixed offset | ~10–50× |
+| Field write | `assert` = path-copy **5** persistent indexes (eavt/aevt/avet/vaet/meat) + history append + demote hook + mcache flush | 1 store | **~100–1000×** |
+
+### The foundational tension
+The fact store is **both** the durable/queryable/time-traveled projection **and**
+the runtime object representation (source of truth; promotion is a read-through
+cache; writes are write-through). Consequences:
+
+- **Compute / immutable-data** (arithmetic, functional transforms over HAMT/RRB):
+  ceiling ≈ good Smalltalk / slow-JIT. Fine — this is Clojure's proven profile.
+- **Mutation-heavy base-level OO** (objects updating fields in loops): every
+  assignment is a 5-index persistent transaction. **No amount of JIT/IC removes
+  "every write updates five indexes + history."** This is the real, absolute,
+  unacceptable ceiling for write-heavy code.
+
+The meta-level (method tables, AST, bytecode) is write-once-read-many → promotion
+warms up → amortized; the cost lands on base-level *mutable* state.
+
+Datomic analogy (already our north star) actually warns against the conflation:
+Datomic is a **database, not a runtime** — apps hold working values in memory and
+transact deltas at boundaries; they don't run hot loops through the indexes.
+
+### Decision
+Adopt the contract: **fact store = projection of durable / queryable / shared /
+time-traveled state. Transient and working state lives off-store.** The fact-store
+write cost moves to the *persistence/query boundary* instead of every assignment;
+the runtime ceiling rises to Smalltalk/JIT range. The alternative ("all state is
+always a write-through fact") permanently caps mutable workloads at DB-write speed
+and is rejected.
+
+### Inherent vs fixable
+- Dispatch (2–5×) — fixable: call-site inline caches + Phase-18 JIT. Not a ceiling.
+- Field read (10–50×) — fixable **iff materialization sticks**: shape/hidden-class
+  + inline slot caches (the V8 "objects-are-dicts → hidden classes" move).
+- Field write (100–1000×) — **only** fixable by not making write-through mandatory
+  (transients / escape analysis / write-back). This is the load-bearing item.
+
+### Work items
+- **perf-1.B (SHIPPED 2026-06-07):** `demote` no longer resets hotness — a
+  shape-changed hot entity re-promotes on the next dispatch instead of re-earning
+  the whole threshold (~`threshold` slow cold dispatches saved per shape change).
+- **perf-1.A (SHIPPED 2026-06-07):** the materialized struct is now a *mutable*
+  read cache — `onEntityMutate` patches the slot in place for a same-shape value
+  write (attr already in the layout) and only demotes on a true shape change
+  (attr added / retracted-to-absent / vtable / whole-entity). Stops hot+mutable
+  entities (cells, counters) from being evicted on every assignment, which made
+  promotion a net loss for them. FFI-pin-guarded; binary-searches the sorted
+  layout for the slot index. Down payment on write-back (A makes the struct
+  writable; write-back adds dirty-tracking + deferred reconcile).
+- **perf-1.3 (OPEN, highest leverage, design-not-code):** draw the projection vs
+  representation boundary — audit what *must* be a fact (durable/queryable/
+  time-traveled) vs what is incidentally one today (every local, temp,
+  intermediate, non-escaping object). Do this *before* more of the language
+  assumes write-through.
+- **perf-1.4 (OPEN): write-back tier.** Hot mutable slots live in the struct;
+  writes patch + mark dirty; facts reconciled lazily at tx/query/save boundaries.
+  Per-assignment DB cost → per-commit DB cost.
+- **perf-1.5 (OPEN): escape analysis / transients.** Locals and non-escaping
+  objects never become facts (Clojure transients / V8 stack objects).
+- **perf-1.6 (OPEN): call-site inline caches + shape/hidden-class** for field
+  offsets, ahead of / alongside Phase-18 JIT.
+
+### Consequences
+Promotion's current sweet spot is immutable-after-setup entities (vtables,
+classes) — explicitly the design target; B/A widen it to stable-shape mutable
+entities. The deeper ceiling is not lifted until the projection boundary (3) and
+write-back (4)/transients (5) exist. This ADR exists so that boundary is decided
+deliberately rather than accreted.
+
+---
+
 ## Dependency graph
 
 ```

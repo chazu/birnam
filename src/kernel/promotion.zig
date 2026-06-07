@@ -199,7 +199,13 @@ pub fn demote(eid: u64) void {
     _ = layouts.remove(eid);
 
     table.clear(eid) catch {};
-    table.resetHotness(eid);
+    // Phase 19 (perf ADR-perf-1, fix B): do NOT reset hotness here. Demote now
+    // fires almost only on a shape change (fix A patches same-shape value writes
+    // in place), and a shape-changed entity that was hot is still hot — keeping
+    // the counter lets the very next dispatch re-promote with the new shape
+    // instead of re-earning the whole threshold (the old reset cost ~`threshold`
+    // slow cold dispatches after every shape change). Explicit cold-eviction
+    // callers that want the counter cleared use `table.resetHotness` directly.
 }
 
 pub fn isMaterialized(eid: u64) bool {
@@ -221,9 +227,17 @@ pub fn maybeAutoPromote(eid: u64) void {
 
 // -- Fact-store mutation hook ----------------------------------------------
 
-/// Fired from fact_store.assert / retract with the (e, a) that mutated.
-/// Demote if `e` is currently materialized, since any fact change may
-/// invalidate the cached struct layout.
+/// Fired from fact_store.assert / retract with the (e, a) that mutated, AFTER
+/// the index update (so `currentValue(e,a)` is fresh here).
+///
+/// Phase 19 perf (ADR-perf-1, fix A): the materialized struct is now a *mutable*
+/// read cache, not a frozen snapshot. A write that only changes the VALUE of an
+/// attribute already in the layout (same shape) is patched into the struct slot
+/// in place — the entity stays materialized. Only a SHAPE change (attr added,
+/// attr retracted to absence, vtable change, or whole-entity `a == 0`) falls
+/// back to demote+re-promote. This stops hot+mutable entities (cells, counters)
+/// from being evicted on every assignment, which previously made promotion a
+/// net loss for them (see ADR-perf-1 / ROADMAP §Performance model).
 fn onEntityMutate(e: u64, a: u64) callconv(.c) void {
     if (g_in_hook) return;
     g_in_hook = true;
@@ -235,5 +249,50 @@ fn onEntityMutate(e: u64, a: u64) callconv(.c) void {
         return;
     }
 
-    if (isMaterialized(e)) demote(e);
+    if (!isMaterialized(e)) return;
+
+    // Don't touch a struct an in-flight FFI call may hold a raw pointer into
+    // (mirrors demote's ffi_pause guard). The struct goes stale until the call
+    // unwinds, same as before this change.
+    if (vm_mod.current().ffi_pause > 0) return;
+
+    // Shape-stable value write → patch the slot in place; else demote.
+    if (tryPatchSlot(e, a)) return;
+    demote(e);
+}
+
+/// Attempt an in-place slot update for a same-shape value write. Returns false
+/// (caller demotes) on any shape change or if the patch can't be proven safe:
+///   - `a == 0` (whole-entity change) or `a == :vtable` (slot -1 / dispatch)
+///   - `a` not already in the layout (a new attribute grows the struct)
+///   - `currentValue(e,a)` now absent (a retract shrank the struct)
+fn tryPatchSlot(e: u64, a: u64) bool {
+    if (a == 0 or a == kernel_eids.ATTR_VTABLE) return false;
+    const store = g_store orelse return false;
+    const table = g_table orelse return false;
+    const layouts = g_layouts orelse return false;
+
+    const layout = layouts.get(e) orelse return false;
+    const idx = slotIndexOf(layout.attrs, a) orelse return false; // new attr → shape grew
+    const new_v = store.currentValue(e, a) orelse return false; // retract → shape shrank
+
+    const ptr_ref = table.get(e) orelse return false;
+    if (!ref_mod.isPointer(ptr_ref)) return false;
+    const obj: object.ObjPtr = @ptrCast(@alignCast(ref_mod.untagPointer(ptr_ref)));
+    object.setSlot(obj, idx, new_v);
+    return true;
+}
+
+/// Binary-search `a` in the sorted (ascending) layout attr slice. The slot
+/// index equals the attr's position — `promote` sorts pairs by attr-EID and
+/// fills slots in that order.
+fn slotIndexOf(attrs: []const u64, a: u64) ?usize {
+    var lo: usize = 0;
+    var hi: usize = attrs.len;
+    while (lo < hi) {
+        const mid = lo + (hi - lo) / 2;
+        if (attrs[mid] == a) return mid;
+        if (attrs[mid] < a) lo = mid + 1 else hi = mid;
+    }
+    return null;
 }

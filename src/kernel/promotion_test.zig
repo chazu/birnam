@@ -129,9 +129,72 @@ test "shape change: asserting a new attribute auto-demotes" {
     try promotion.promote(E);
     try testing.expect(promotion.isMaterialized(E));
 
-    // Phase 8 spike: any mutation demotes.
+    // A new attribute changes the struct shape → demote (fix A only patches
+    // value writes to attrs already in the layout).
     _ = try store.assert(E, A_Y, ref_mod.mkSmallInt(2).?, kernel_eids.M_BOOTSTRAP);
     try testing.expect(!promotion.isMaterialized(E));
+}
+
+// -- Same-shape value write: patch in place, stay materialized (fix A) -------
+
+test "value write same shape: stays materialized, slot patched in place" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var store: fact_store.FactStore = undefined;
+    var table: object_table.ObjectTable = undefined;
+    var interner: interner_mod.Interner = undefined;
+    try boot(a, &store, &table, &interner);
+
+    const E: u64 = 5004;
+    _ = try store.assert(E, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP);
+    _ = try store.assert(E, A_X, ref_mod.mkSmallInt(1).?, kernel_eids.M_BOOTSTRAP); // slot 0 (A_X < A_Y)
+    _ = try store.assert(E, A_Y, ref_mod.mkSmallInt(2).?, kernel_eids.M_BOOTSTRAP); // slot 1
+
+    try promotion.promote(E);
+    try testing.expect(promotion.isMaterialized(E));
+
+    // Value-replace of an in-layout attr → NO demote, slot updated in place.
+    _ = try store.assert(E, A_X, ref_mod.mkSmallInt(99).?, kernel_eids.M_BOOTSTRAP);
+    try testing.expect(promotion.isMaterialized(E));
+
+    const obj = object.fromRef(table.get(E).?);
+    try testing.expectEqual(@as(i64, 99), ref_mod.untagSmallInt(object.slotAt(obj, 0))); // A_X patched
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(object.slotAt(obj, 1))); // A_Y intact
+
+    // A retract shrinks the shape → demote (can't patch to absent).
+    _ = try store.retract(E, A_Y, ref_mod.mkSmallInt(2).?, kernel_eids.M_BOOTSTRAP);
+    try testing.expect(!promotion.isMaterialized(E));
+}
+
+// -- Shape-change demote preserves hotness (fix B) --------------------------
+
+test "demote via shape change preserves hotness for immediate re-promote" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var store: fact_store.FactStore = undefined;
+    var table: object_table.ObjectTable = undefined;
+    var interner: interner_mod.Interner = undefined;
+    try boot(a, &store, &table, &interner);
+
+    const E: u64 = 5005;
+    _ = try store.assert(E, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP);
+    _ = try store.assert(E, A_X, ref_mod.mkSmallInt(1).?, kernel_eids.M_BOOTSTRAP);
+
+    var i: u32 = 0;
+    while (i < 7) : (i += 1) table.bumpHotness(E);
+    try promotion.promote(E);
+    try testing.expect(promotion.isMaterialized(E));
+
+    // Shape change → demote. Fix B: hotness is NOT reset, so the entity is
+    // still hot and re-promotes on the next dispatch instead of re-earning the
+    // whole threshold.
+    _ = try store.assert(E, A_Y, ref_mod.mkSmallInt(2).?, kernel_eids.M_BOOTSTRAP);
+    try testing.expect(!promotion.isMaterialized(E));
+    try testing.expectEqual(@as(u32, 7), table.hotnessOf(E));
 }
 
 // -- FFI pin ----------------------------------------------------------------
