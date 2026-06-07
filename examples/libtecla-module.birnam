@@ -1,0 +1,24 @@
+// birnam module wrapping libtecla — DEFINITION ONLY.
+//
+// File-in is atomic: every form evaluates first, then the unit COMMITS and the
+// FFI wraps are resolved (dlopen + dlsym + method install). So a wrapped
+// selector cannot be CALLED in the same unit that declares it — the method is
+// not installed until commit. Keep `load:` + `wrap:` here; do the calls at the
+// REPL (or in a second file) after this one is filed in.
+//
+//   birnam> :in examples/libtecla-module.birnam
+//   birnam> let gl   := [tecla newGetLine: 1024 hist: 2048]
+//   birnam> let line := [tecla getLine: gl prompt: "say> " start: nil pos: 0]
+//   birnam> line
+//   birnam> [tecla delGetLine: gl]
+
+// Homebrew's libtecla links only libSystem yet calls terminfo's
+// setupterm/tputs/tparm via flat namespace — load ncurses FIRST so those
+// symbols are in the global pool (Module load: now uses RTLD_GLOBAL). Without
+// this, calling new_GetLine aborts with dyld "missing symbol called".
+let nc := [Module load: "/usr/lib/libncurses.dylib"];
+
+let tecla := [Module load: "/opt/homebrew/lib/libtecla.dylib"];
+[tecla wrap: #newGetLine:hist:          as: "new_GetLine" signature: "ll)p"];
+[tecla wrap: #getLine:prompt:start:pos: as: "gl_get_line" signature: "pZZi)Z"];
+[tecla wrap: #delGetLine:               as: "del_GetLine" signature: "p)p"]

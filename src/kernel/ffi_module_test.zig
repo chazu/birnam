@@ -441,6 +441,37 @@ test "FFI_PTR alloc/poke/peek/address/isNull/free round-trip via send" {
     _ = send_mod.send0(cell, kernel_eids.SEL_FFI_FREE);
 }
 
+test "resolve re-installs onto a re-minted instance vt (self-healing)" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = try ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM);
+    const mod_eid = ref_mod.untagEid(mod);
+    const sqrt_sel = try fix.interner.intern(fix.store, fix.table, "sqrt:");
+
+    _ = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, ref_mod.mkEid(sqrt_sel), try strings.mkString(a, "sqrt"), try strings.mkString(a, "d)d"));
+    resolve(fix, mod, a);
+    try testing.expectEqual(@as(f64, 4.0), boxed.untagFloat(send_mod.send1(mod, sqrt_sel, try boxed.mkFloat(a, 16.0))));
+
+    // Simulate the instance vt being lost between REPL lines (GC reclaiming the
+    // vt object → ensureInstanceVt re-mints a fresh one): retract the :vtable
+    // fact so the next resolve mints a new, empty vt. With the old skip-on-
+    // :ffi-addr logic the wrap would be skipped and sqrt: would vanish; the
+    // self-healing install must re-bind it on the new vt.
+    const vt_ref = fix.store.currentValue(mod_eid, kernel_eids.ATTR_VTABLE).?;
+    _ = try fix.store.retract(mod_eid, kernel_eids.ATTR_VTABLE, vt_ref, kernel_eids.M_BOOTSTRAP);
+
+    resolve(fix, mod, a);
+    const new_vt = fix.store.currentValue(mod_eid, kernel_eids.ATTR_VTABLE).?;
+    try testing.expect(vt_ref != new_vt); // genuinely re-minted
+    try testing.expectEqual(@as(f64, 9.0), boxed.untagFloat(send_mod.send1(mod, sqrt_sel, try boxed.mkFloat(a, 81.0))));
+
+    ffi.shutdown();
+}
+
 test "out-param: strcpy into alloc'd buffer; peekString reads it back" {
     if (!is_darwin) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);

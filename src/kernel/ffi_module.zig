@@ -115,36 +115,61 @@ pub fn resolveModule(
     const instance_vt = try ensureInstanceVt(allocator, store, table, mod_eid);
 
     // dlopen once per process. Handle is transient (M_BOOTSTRAP, never saved).
+    // RTLD_GLOBAL (not std.DynLib's default RTLD_LOCAL): a wrapped library's
+    // symbols join the global flat-namespace pool, so a dependency loaded first
+    // satisfies a later library's undefined refs. E.g. libtecla links only
+    // libSystem yet calls terminfo's setupterm/tputs via flat namespace; loading
+    // `/usr/lib/libncurses.dylib` as a Module first now provides them. The raw
+    // dlopen handle (a void*) is stored directly as the FfiPtr — no DynLib
+    // wrapper. LAZY matches the prior behavior.
     if (store.currentValue(mod_eid, kernel_eids.ATTR_FFI_HANDLE) == null) {
         const path_ref = store.currentValue(mod_eid, kernel_eids.ATTR_FFI_PATH) orelse return;
         if (!strings.isString(path_ref)) return;
-        const lib = std.DynLib.open(strings.bytes(path_ref)) catch return;
-        const copy = try allocator.create(std.DynLib);
-        copy.* = lib;
+        const path_z = allocator.dupeZ(u8, strings.bytes(path_ref)) catch return;
+        defer allocator.free(path_z);
+        const handle = std.c.dlopen(path_z, .{ .LAZY = true, .GLOBAL = true }) orelse return;
         _ = try store.assert(
             mod_eid,
             kernel_eids.ATTR_FFI_HANDLE,
-            try boxed.mkFfiPtr(allocator, @intFromPtr(copy)),
+            try boxed.mkFfiPtr(allocator, @intFromPtr(handle)),
             kernel_eids.M_BOOTSTRAP,
         );
     }
 
-    // Install each unresolved wrap. Wraps are entities tagged
+    // Install each wrap onto the current instance vt. Wraps are entities tagged
     // [wrap :ffi-owner mod] carrying :ffi-wrap-symbol / :ffi-sig-str /
-    // :wrap-selector. A wrap already carrying :ffi-addr is resolved — skip.
-    var it = store.entitiesMatching(kernel_eids.ATTR_FFI_OWNER, ref_mod.mkEid(mod_eid));
-    while (it.next()) |wrap_eid| {
-        if (store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_ADDR) != null) continue;
+    // :wrap-selector.
+    //
+    // Snapshot the wrap eids BEFORE installing: buildWrapClosure + the vt-method
+    // assert below mutate the store, which invalidates a live `entitiesMatching`
+    // iterator (HAMT path-copy) — iterating-while-asserting would install only
+    // the first wrap and silently skip the rest.
+    var wrap_eids = std.ArrayList(u64){};
+    defer wrap_eids.deinit(allocator);
+    {
+        var it = store.entitiesMatching(kernel_eids.ATTR_FFI_OWNER, ref_mod.mkEid(mod_eid));
+        while (it.next()) |wrap_eid| try wrap_eids.append(allocator, wrap_eid);
+    }
+    for (wrap_eids.items) |wrap_eid| {
         const sym_ref = store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_WRAP_SYMBOL) orelse continue;
         const sig_ref = store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_SIG_STR) orelse continue;
         const sel_ref = store.currentValue(wrap_eid, kernel_eids.ATTR_WRAP_SELECTOR) orelse continue;
         if (!strings.isString(sym_ref) or !strings.isString(sig_ref) or !ref_mod.isEid(sel_ref)) continue;
+        const sel_eid = ref_mod.untagEid(sel_ref);
+
+        // Self-healing: skip only if THIS instance vt already carries the
+        // selector. Keying the skip on the wrap's `:ffi-addr` (resolved-once)
+        // would not re-install after the instance vt is re-minted — e.g. GC
+        // reclaiming the old vt object between REPL lines — silently dropping
+        // every selector after the first. Re-resolving a wrap is cheap and
+        // buildWrapClosure already supersedes its prior `:ffi-sig`.
+        if (store.currentValue(instance_vt, sel_eid) != null) continue;
 
         const name_z = allocator.dupeZ(u8, strings.bytes(sym_ref)) catch continue;
         defer allocator.free(name_z);
         const addr = moduleSymbolAddr(store, mod_eid, name_z) orelse continue;
         const closure_eid = ffi.buildWrapClosure(allocator, store, table, wrap_eid, addr, strings.bytes(sig_ref)) catch continue;
-        _ = store.assert(instance_vt, ref_mod.untagEid(sel_ref), ref_mod.mkEid(closure_eid), kernel_eids.M_BOOTSTRAP) catch continue;
+        _ = store.assert(instance_vt, sel_eid, ref_mod.mkEid(closure_eid), kernel_eids.M_BOOTSTRAP) catch continue;
     }
 }
 
@@ -159,8 +184,8 @@ pub fn resolveAllPending(
     while (it.next()) |e| try resolveModule(allocator, store, table, e.e);
 }
 
-/// Look up a symbol via the DynLib stored on the Module. Returns null
-/// if the symbol isn't found.
+/// Look up a symbol via the raw dlopen handle stored on the Module. Returns
+/// null if the symbol isn't found.
 pub fn moduleSymbolAddr(
     store: *const fact_store_mod.FactStore,
     mod_eid: u64,
@@ -168,9 +193,8 @@ pub fn moduleSymbolAddr(
 ) ?usize {
     const handle_ref = store.currentValue(mod_eid, kernel_eids.ATTR_FFI_HANDLE) orelse return null;
     if (!boxed.isFfiPtr(handle_ref)) return null;
-    const lib_ptr_addr = boxed.untagFfiPtr(handle_ref);
-    const lib: *std.DynLib = @ptrFromInt(lib_ptr_addr);
-    const sym = lib.lookup(*anyopaque, name) orelse return null;
+    const handle: *anyopaque = @ptrFromInt(boxed.untagFfiPtr(handle_ref));
+    const sym = std.c.dlsym(handle, name.ptr) orelse return null;
     return @intFromPtr(sym);
 }
 
@@ -456,12 +480,11 @@ fn methodUnload(s: *send_mod.Send, args: [*]const Ref, n_args: usize) callconv(.
         _ = store.assert(owned_eid, kernel_eids.ATTR_FFI_STALE, stale_true, kernel_eids.M_BOOTSTRAP) catch {};
     }
 
-    // dlclose the handle. std.DynLib copy was heap-allocated in moduleLoad.
+    // dlclose the raw handle (the FfiPtr IS the dlopen handle now).
     if (store.currentValue(mod_eid, kernel_eids.ATTR_FFI_HANDLE)) |handle_ref| {
         if (boxed.isFfiPtr(handle_ref)) {
-            const lib_ptr_addr = boxed.untagFfiPtr(handle_ref);
-            const lib: *std.DynLib = @ptrFromInt(lib_ptr_addr);
-            lib.close();
+            const handle: *anyopaque = @ptrFromInt(boxed.untagFfiPtr(handle_ref));
+            _ = std.c.dlclose(handle);
         }
     }
 

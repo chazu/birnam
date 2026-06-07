@@ -513,7 +513,7 @@ pub const TOP_SCOPE_EID: u64 = 185;
 ///   [wrap :ffi-sig-str "p)p"]             dyncall sig string → re-parseable
 ///   [wrap :wrap-selector #open:]          where to install on the module vt
 /// The transient resolved facts ([wrap :ffi-addr <ptr>], [wrap :ffi-sig <Sig*>],
-/// [module :ffi-handle <DynLib*>]) are M_BOOTSTRAP and rebuilt every process by
+/// [module :ffi-handle <dlopen-handle>]) are M_BOOTSTRAP and rebuilt every process by
 /// `resolveModule` — so persistence/freeze relinks by NAME, never by address.
 pub const ATTR_FFI_WRAP_SYMBOL: u64 = 187;
 pub const ATTR_FFI_SIG_STR: u64 = 188;
