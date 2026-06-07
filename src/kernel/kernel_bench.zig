@@ -121,13 +121,17 @@ pub fn main() !void {
     // (immediate). Exercises vtableEidOf + mcache hit + objectVtableImpl.
     // Zero-alloc after the first auto-promote of E (one struct, then stable).
     // ====================================================================
+    // SEL_INIT → objectInitImpl is trivial (`return s.receiver`), so this
+    // isolates dispatch overhead from method-body work. (SEL_VTABLE's body
+    // re-resolves the vt via currentValue — double-pays, bad bench target.)
     {
+        const re = ref_mod.mkEid(E);
         var sink: u64 = 0;
         var w: u64 = 0;
-        while (w < 10_000) : (w += 1) sink +%= send_mod.send0(ref_mod.mkEid(E), kernel_eids.SEL_VTABLE);
+        while (w < 10_000) : (w += 1) sink +%= send_mod.send0(re, kernel_eids.SEL_INIT);
         const t0 = nowNs();
         var i: u64 = 0;
-        while (i < iters) : (i += 1) sink +%= send_mod.send0(ref_mod.mkEid(E), kernel_eids.SEL_VTABLE);
+        while (i < iters) : (i += 1) sink +%= send_mod.send0(re, kernel_eids.SEL_INIT);
         const t1 = nowNs();
         std.mem.doNotOptimizeAway(&sink);
 
@@ -148,7 +152,64 @@ pub fn main() !void {
         while (i < iters) : (i += 1) nsink +%= fp(E);
         const b1 = nowNs();
         std.mem.doNotOptimizeAway(&nsink);
-        report("warm dispatch (send0 vtable)", iters, t1 - t0, b1 - b0);
+        report("warm dispatch (send0 init)", iters, t1 - t0, b1 - b0);
+    }
+
+    // ====================================================================
+    // Dispatch breakdown — isolate where warm-dispatch time goes, so the IC
+    // (perf-1.6) targets the real hotspot rather than a guess.
+    // ====================================================================
+    {
+        const send = @import("send.zig");
+        const mcache = @import("mcache.zig");
+        const re = ref_mod.mkEid(E);
+
+        // (a) object-table get(eid) — the HAMT lookup vtableEidOf does per send.
+        {
+            var sink: u64 = 0;
+            const t0 = nowNs();
+            var i: u64 = 0;
+            while (i < iters) : (i += 1) sink +%= (if (table.get(E)) |r| r else 0);
+            const t1 = nowNs();
+            std.mem.doNotOptimizeAway(&sink);
+            report("  (a) table.get(eid) HAMT", iters, t1 - t0, null);
+        }
+        // (b) vtableEidOf(eid) — full receiver→vt resolution.
+        {
+            var sink: u64 = 0;
+            const t0 = nowNs();
+            var i: u64 = 0;
+            while (i < iters) : (i += 1) sink +%= (send.vtableEidOf(re) orelse 0);
+            const t1 = nowNs();
+            std.mem.doNotOptimizeAway(&sink);
+            report("  (b) vtableEidOf(eid)", iters, t1 - t0, null);
+        }
+        // (c) mcache.lookup(vt,sel) — the method-cache probe.
+        {
+            const vt = send.vtableEidOf(re).?;
+            var sink: u64 = 0;
+            const t0 = nowNs();
+            var i: u64 = 0;
+            while (i < iters) : (i += 1) sink +%= (if (mcache.lookup(vt, kernel_eids.SEL_VTABLE)) |c| @intFromPtr(c) else 0);
+            const t1 = nowNs();
+            std.mem.doNotOptimizeAway(&sink);
+            report("  (c) mcache.lookup", iters, t1 - t0, null);
+        }
+        // (d) bind() — full method resolution (vtableEidOf + mcache hit + Send
+        // setup), WITHOUT the indirect call + method body. send0 - bind ≈ the
+        // call + body + sendN packing overhead.
+        {
+            var sink: u64 = 0;
+            const t0 = nowNs();
+            var i: u64 = 0;
+            while (i < iters) : (i += 1) {
+                var s = send.Send{ .selector = kernel_eids.SEL_INIT, .receiver = re, .n_args = 0, .state = re, .closure = null };
+                sink +%= (if (send.bind(&s)) |c| @intFromPtr(c) else 0);
+            }
+            const t1 = nowNs();
+            std.mem.doNotOptimizeAway(&sink);
+            report("  (d) bind() full", iters, t1 - t0, null);
+        }
     }
 
     var tail: [96]u8 = undefined;
