@@ -592,4 +592,24 @@ pub const ATTR_META: u64 = 204;
 pub const XF_VT: u64 = 205;
 pub const XF_PROTO: u64 = 206;
 
-// 207..255 reserved for future kernel selectors / attributes
+/// Phase 18 prelude — FFI memory primitives. `alloc:` lives on MODULE_PROTO_VT
+/// (`Module alloc: n` → FfiPtr to `n` zeroed libc bytes). The rest are methods
+/// on FFI_PTR_VT: scalar/pointer/cstring peek+poke through a raw address (byte
+/// offsets), plus `free`/`address`/`isNull`. These make out-params (alloc a
+/// cell, pass its FfiPtr, peek it back) and opaque-pointer deref possible from
+/// the REPL with no shim.
+pub const SEL_FFI_ALLOC: u64 = 207; // "alloc:"        on MODULE_PROTO_VT
+pub const SEL_FFI_FREE: u64 = 208; // "free"
+pub const SEL_FFI_ADDRESS: u64 = 209; // "address"
+pub const SEL_FFI_IS_NULL: u64 = 210; // "isNull"
+pub const SEL_FFI_PEEK_INT: u64 = 211; // "peekInt:"     (offset) -> i64 (8 bytes)
+pub const SEL_FFI_PEEK_BYTE: u64 = 212; // "peekByte:"    (offset) -> i64 (0..255)
+pub const SEL_FFI_PEEK_DOUBLE: u64 = 213; // "peekDouble:" (offset) -> Float
+pub const SEL_FFI_PEEK_PTR: u64 = 214; // "peekPtr:"     (offset) -> FfiPtr
+pub const SEL_FFI_PEEK_STRING: u64 = 215; // "peekString:" (offset) -> string
+pub const SEL_FFI_POKE_INT: u64 = 216; // "pokeInt:at:"   (value, offset) -> self
+pub const SEL_FFI_POKE_BYTE: u64 = 217; // "pokeByte:at:"  (value, offset) -> self
+pub const SEL_FFI_POKE_DOUBLE: u64 = 218; // "pokeDouble:at:" (value, offset) -> self
+pub const SEL_FFI_POKE_PTR: u64 = 219; // "pokePtr:at:"   (ptr, offset) -> self
+
+// 220..255 reserved for future kernel selectors / attributes

@@ -5,6 +5,7 @@ const builtin = @import("builtin");
 const ref_mod = @import("ref.zig");
 const boxed = @import("boxed.zig");
 const ffi = @import("ffi.zig");
+const strings = @import("strings.zig");
 
 const Ref = ref_mod.Ref;
 
@@ -210,7 +211,7 @@ test "wrap + send: strlen via send1 dispatch" {
     ffi.shutdown();
 }
 
-test "wrap: arity > 3 rejected" {
+test "wrap: arity 4 now accepted (old 0..3 cap removed)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -220,7 +221,27 @@ test "wrap: arity > 3 rejected" {
     var interner = interner_mod.Interner.init(a);
     _ = try bootstrap.boot(a, &store, &table, &interner);
 
-    const r = ffi.registerWrap(a, &store, &table, 0x1000, "iiii)i");
+    // 4 args: rejected pre-change, now resolves to a dispatch closure.
+    const closure_eid = try ffi.registerWrap(a, &store, &table, 0x1000, "iiii)i");
+    try testing.expect(closure_eid != 0);
+}
+
+test "wrap: arity > 255 still rejected (SEND_N u8 ceiling)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var store = fact_store.FactStore.init(a);
+    var table = object_table.ObjectTable.init(a);
+    var interner = interner_mod.Interner.init(a);
+    _ = try bootstrap.boot(a, &store, &table, &interner);
+
+    // 256 'i' args + ")i". Exceeds SEND_N's u8 arg-count operand.
+    var buf: [259]u8 = undefined;
+    @memset(buf[0..256], 'i');
+    buf[256] = ')';
+    buf[257] = 'i';
+    const r = ffi.registerWrap(a, &store, &table, 0x1000, buf[0..258]);
     try testing.expectError(error.ArityTooHigh, r);
 }
 
@@ -273,4 +294,184 @@ test "freeSig: frees the heap Sig holder and retracts :ffi-sig" {
     try testing.expect(store.currentValue(wrap_eid, kernel_eids.ATTR_FFI_SIG) == null);
     // freeSig on a wrap with no :ffi-sig is a no-op.
     ffi.freeSig(&store, testing.allocator, 9999);
+}
+
+// -- Phase 18 prelude: cstring marshaling (changes 2/3/4) -------------------
+
+test "invoke: Z string arg + Z cstring return (getenv PATH)" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var lib = dlopenSelf() orelse return error.SkipZigTest;
+    defer lib.close();
+    const addr: usize = @intFromPtr(lib.lookup(*anyopaque, "getenv") orelse return error.SkipZigTest);
+
+    var sig = try ffi.parseSig(a, "Z)Z");
+    defer sig.deinit(a);
+
+    // Change 2: pass a birnam string for the `Z` arg (auto NUL-terminated copy).
+    // Change 4: the `char*` return comes back as a birnam string.
+    const name = try strings.mkString(a, "PATH");
+    const r = ffi.invoke(a, addr, sig, &[_]Ref{name});
+    try testing.expect(strings.isString(r));
+    try testing.expect(strings.bytes(r).len > 0);
+
+    ffi.shutdown();
+}
+
+test "invoke: Z cstring return NULL becomes nil (getenv missing)" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var lib = dlopenSelf() orelse return error.SkipZigTest;
+    defer lib.close();
+    const addr: usize = @intFromPtr(lib.lookup(*anyopaque, "getenv") orelse return error.SkipZigTest);
+
+    var sig = try ffi.parseSig(a, "Z)Z");
+    defer sig.deinit(a);
+
+    const name = try strings.mkString(a, "BIRNAM_NONEXISTENT_VAR_ZZZ_42");
+    const r = ffi.invoke(a, addr, sig, &[_]Ref{name});
+    try testing.expectEqual(ref_mod.NIL, r);
+
+    ffi.shutdown();
+}
+
+test "invoke: nil marshals to NULL pointer arg (free NULL)" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var lib = dlopenSelf() orelse return error.SkipZigTest;
+    defer lib.close();
+    const addr: usize = @intFromPtr(lib.lookup(*anyopaque, "free") orelse return error.SkipZigTest);
+
+    var sig = try ffi.parseSig(a, "p)v");
+    defer sig.deinit(a);
+
+    // Change 3: nil → NULL. free(NULL) is a well-defined no-op; void return → nil.
+    const r = ffi.invoke(a, addr, sig, &[_]Ref{ref_mod.NIL});
+    try testing.expectEqual(ref_mod.NIL, r);
+
+    ffi.shutdown();
+}
+
+// -- Phase 18 prelude: struct-by-value --------------------------------------
+
+const Point = extern struct { x: c_longlong, y: c_longlong };
+export fn birnam_test_sumPoint(p: Point) callconv(.c) c_longlong {
+    return p.x + p.y;
+}
+export fn birnam_test_makePoint(a: c_longlong, b: c_longlong) callconv(.c) Point {
+    return .{ .x = a, .y = b };
+}
+
+const DivT = extern struct { quot: c_int, rem: c_int };
+
+test "parseSig: aggregate arg + scalar ret, natural-alignment layout" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var sig = try ffi.parseSig(a, "{id})i");
+    defer sig.deinit(a);
+
+    try testing.expectEqual(@as(usize, 1), sig.args.len);
+    try testing.expectEqual(ffi.Kind.aggregate, sig.args[0]);
+    try testing.expectEqual(ffi.Kind.int, sig.ret);
+    const ag = sig.arg_aggrs[0].?;
+    try testing.expectEqual(@as(usize, 2), ag.fields.len);
+    try testing.expectEqual(ffi.Kind.int, ag.fields[0]);
+    try testing.expectEqual(ffi.Kind.double, ag.fields[1]);
+    // int@0, double padded to 8 → @8, total size 16.
+    try testing.expectEqual(@as(u32, 0), ag.offsets[0]);
+    try testing.expectEqual(@as(u32, 8), ag.offsets[1]);
+    try testing.expectEqual(@as(usize, 16), ag.size);
+}
+
+test "invoke: aggregate refused (returns nil) where dyncall lacks it (arm64)" {
+    if (ffi.aggregates_supported) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Struct arg.
+    var sig_arg = try ffi.parseSig(a, "{ll})L");
+    defer sig_arg.deinit(a);
+    var p = Point{ .x = 1, .y = 2 };
+    const p_ptr = try boxed.mkFfiPtr(a, @intFromPtr(&p));
+    try testing.expectEqual(ref_mod.NIL, ffi.invoke(a, @intFromPtr(&birnam_test_sumPoint), sig_arg, &[_]Ref{p_ptr}));
+
+    // Struct return.
+    var sig_ret = try ffi.parseSig(a, "LL){ll}");
+    defer sig_ret.deinit(a);
+    try testing.expectEqual(ref_mod.NIL, ffi.invoke(a, @intFromPtr(&birnam_test_makePoint), sig_ret, &[_]Ref{ ref_mod.mkSmallInt(1).?, ref_mod.mkSmallInt(2).? }));
+
+    ffi.shutdown();
+}
+
+test "invoke: struct passed by value (sumPoint)" {
+    if (!ffi.aggregates_supported) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var sig = try ffi.parseSig(a, "{ll})L");
+    defer sig.deinit(a);
+
+    var p = Point{ .x = 30, .y = 12 };
+    const p_ptr = try boxed.mkFfiPtr(a, @intFromPtr(&p));
+    const r = ffi.invoke(a, @intFromPtr(&birnam_test_sumPoint), sig, &[_]Ref{p_ptr});
+    try testing.expect(ref_mod.isSmallInt(r));
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(r));
+
+    ffi.shutdown();
+}
+
+test "invoke: struct returned by value (makePoint)" {
+    if (!ffi.aggregates_supported) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var sig = try ffi.parseSig(a, "LL){ll}");
+    defer sig.deinit(a);
+
+    const r = ffi.invoke(a, @intFromPtr(&birnam_test_makePoint), sig, &[_]Ref{ ref_mod.mkSmallInt(7).?, ref_mod.mkSmallInt(35).? });
+    try testing.expect(boxed.isFfiPtr(r));
+    const got: *const Point = @ptrFromInt(boxed.untagFfiPtr(r));
+    try testing.expectEqual(@as(c_longlong, 7), got.x);
+    try testing.expectEqual(@as(c_longlong, 35), got.y);
+    std.c.free(@ptrFromInt(boxed.untagFfiPtr(r)));
+
+    ffi.shutdown();
+}
+
+test "invoke: libc div returns div_t struct by value" {
+    if (!is_darwin or !ffi.aggregates_supported) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var lib = dlopenSelf() orelse return error.SkipZigTest;
+    defer lib.close();
+    const addr: usize = @intFromPtr(lib.lookup(*anyopaque, "div") orelse return error.SkipZigTest);
+
+    // div_t div(int numer, int denom) → {int quot; int rem;}
+    var sig = try ffi.parseSig(a, "ii){ii}");
+    defer sig.deinit(a);
+
+    const r = ffi.invoke(a, addr, sig, &[_]Ref{ ref_mod.mkSmallInt(17).?, ref_mod.mkSmallInt(5).? });
+    try testing.expect(boxed.isFfiPtr(r));
+    const got: *const DivT = @ptrFromInt(boxed.untagFfiPtr(r));
+    try testing.expectEqual(@as(c_int, 3), got.quot);
+    try testing.expectEqual(@as(c_int, 2), got.rem);
+    std.c.free(@ptrFromInt(boxed.untagFfiPtr(r)));
+
+    ffi.shutdown();
 }

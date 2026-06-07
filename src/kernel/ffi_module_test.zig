@@ -397,13 +397,75 @@ test "[mod wrap:] with arity-too-high sig — resolve rejects it, wrap unbound" 
     const sel = try fix.interner.intern(fix.store, fix.table, "manyArg:");
 
     const name_ref = try strings.mkString(a, "printf");
-    // 4 args = ArityTooHigh. Declarative wrap still records (returns self);
-    // the arity limit is enforced at resolve (buildWrapClosure), which skips
-    // the install — the selector stays unbound.
-    const sig_ref = try strings.mkString(a, "iiii)i");
+    // >255 args = ArityTooHigh (the 0..3 cap is gone; the surviving ceiling is
+    // SEND_N's u8 arg-count). Declarative wrap still records (returns self);
+    // the limit is enforced at resolve (buildWrapClosure), which skips the
+    // install — the selector stays unbound.
+    var sig_buf: [259]u8 = undefined;
+    @memset(sig_buf[0..256], 'i');
+    sig_buf[256] = ')';
+    sig_buf[257] = 'i';
+    const sig_ref = try strings.mkString(a, sig_buf[0..258]);
     const result = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, ref_mod.mkEid(sel), name_ref, sig_ref);
     try testing.expectEqual(mod, result);
 
     resolve(fix, mod, a);
     try testing.expectEqual(ref_mod.NIL, send_mod.send1(mod, sel, ref_mod.mkSmallInt(0).?));
+}
+
+// -- Phase 18 prelude: FFI memory primitives --------------------------------
+
+test "FFI_PTR alloc/poke/peek/address/isNull/free round-trip via send" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    _ = try setup(&arena);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+    const cell = send_mod.send1(proto, kernel_eids.SEL_FFI_ALLOC, ref_mod.mkSmallInt(16).?);
+    try testing.expect(boxed.isFfiPtr(cell));
+
+    // alloc zeroes the buffer.
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send1(cell, kernel_eids.SEL_FFI_PEEK_INT, ref_mod.mkSmallInt(0).?)));
+    // not null.
+    try testing.expectEqual(ref_mod.mkEid(kernel_eids.FALSE_EID), send_mod.send0(cell, kernel_eids.SEL_FFI_IS_NULL));
+
+    // pokeInt:at: returns self (chainable).
+    const back = send_mod.send2(cell, kernel_eids.SEL_FFI_POKE_INT, ref_mod.mkSmallInt(123456789).?, ref_mod.mkSmallInt(0).?);
+    try testing.expectEqual(cell, back);
+    try testing.expectEqual(@as(i64, 123456789), ref_mod.untagSmallInt(send_mod.send1(cell, kernel_eids.SEL_FFI_PEEK_INT, ref_mod.mkSmallInt(0).?)));
+    // low byte of 123456789 = 21.
+    try testing.expectEqual(@as(i64, 21), ref_mod.untagSmallInt(send_mod.send1(cell, kernel_eids.SEL_FFI_PEEK_BYTE, ref_mod.mkSmallInt(0).?)));
+    // address is the boxed raw addr.
+    try testing.expect(ref_mod.untagSmallInt(send_mod.send0(cell, kernel_eids.SEL_FFI_ADDRESS)) > 0);
+
+    _ = send_mod.send0(cell, kernel_eids.SEL_FFI_FREE);
+}
+
+test "out-param: strcpy into alloc'd buffer; peekString reads it back" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = try ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM);
+    const sel = try fix.interner.intern(fix.store, fix.table, "copyTo:from:");
+
+    // char *strcpy(char *dst, const char *src) — dst is an FfiPtr (p), src a
+    // birnam string (Z, auto-marshaled), returns dst (p).
+    _ = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, ref_mod.mkEid(sel), try strings.mkString(a, "strcpy"), try strings.mkString(a, "pZ)p"));
+    resolve(fix, mod, a);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+    const dst = send_mod.send1(proto, kernel_eids.SEL_FFI_ALLOC, ref_mod.mkSmallInt(8).?);
+    try testing.expect(boxed.isFfiPtr(dst));
+
+    _ = send_mod.send2(mod, sel, dst, try strings.mkString(a, "hi"));
+
+    const got = send_mod.send1(dst, kernel_eids.SEL_FFI_PEEK_STRING, ref_mod.mkSmallInt(0).?);
+    try testing.expect(strings.isString(got));
+    try testing.expect(std.mem.eql(u8, strings.bytes(got), "hi"));
+
+    _ = send_mod.send0(dst, kernel_eids.SEL_FFI_FREE);
+    ffi.shutdown();
 }

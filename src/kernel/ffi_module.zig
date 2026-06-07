@@ -487,6 +487,149 @@ fn allocClosure(allocator: std.mem.Allocator, method_fn: *const anyopaque) !*Clo
     return c;
 }
 
+// -- Phase 18 prelude: FFI memory primitives --------------------------------
+//
+// `alloc:` on MODULE_PROTO_VT; peek/poke/free/address/isNull on FFI_PTR_VT.
+// All addressing is a base (the receiver FfiPtr) + a byte offset arg. Reads
+// and writes use align(1) pointers so unaligned struct fields are safe.
+
+fn ffiBase(s: *Send) ?usize {
+    if (!boxed.isFfiPtr(s.receiver)) return null;
+    return boxed.untagFfiPtr(s.receiver);
+}
+
+fn argOffset(args: [*]const Ref, idx: usize) ?usize {
+    const v = args[idx];
+    if (!ref_mod.isSmallInt(v)) return null;
+    const n = ref_mod.untagSmallInt(v);
+    if (n < 0) return null;
+    return @intCast(n);
+}
+
+/// `Module alloc: n` — libc-malloc `n` zeroed bytes; return a boxed FfiPtr.
+/// Raw (not arena/GC) so the address is stable for C and freed via `[p free]`.
+fn methodAlloc(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    if (n_args < 1 or !ref_mod.isSmallInt(args[0])) return ref_mod.NIL;
+    const n = ref_mod.untagSmallInt(args[0]);
+    if (n <= 0) return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const raw = std.c.malloc(@intCast(n)) orelse return ref_mod.NIL;
+    @memset(@as([*]u8, @ptrCast(raw))[0..@intCast(n)], 0);
+    return boxed.mkFfiPtr(alloc, @intFromPtr(raw)) catch ref_mod.NIL;
+}
+
+/// `[p free]` — libc-free the address. Only valid for `alloc:`-minted pointers.
+fn methodFfiFree(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    if (base != 0) std.c.free(@ptrFromInt(base));
+    return ref_mod.NIL;
+}
+
+/// `[p address]` — raw address as a SmallInt (debugging / arithmetic).
+fn methodFfiAddress(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    return ref_mod.mkSmallInt(@intCast(base)) orelse ref_mod.NIL;
+}
+
+/// `[p isNull]` — true iff the address is 0.
+fn methodFfiIsNull(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    return ref_mod.mkEid(if (base == 0) kernel_eids.TRUE_EID else kernel_eids.FALSE_EID);
+}
+
+fn methodPeekInt(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 0) orelse return ref_mod.NIL;
+    const p: *align(1) const i64 = @ptrFromInt(base + off);
+    return ref_mod.mkSmallInt(p.*) orelse ref_mod.NIL;
+}
+
+fn methodPeekByte(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 0) orelse return ref_mod.NIL;
+    const p: *const u8 = @ptrFromInt(base + off);
+    return ref_mod.mkSmallInt(p.*) orelse ref_mod.NIL;
+}
+
+fn methodPeekDouble(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 0) orelse return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const p: *align(1) const f64 = @ptrFromInt(base + off);
+    return boxed.mkFloat(alloc, p.*) catch ref_mod.NIL;
+}
+
+fn methodPeekPtr(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 0) orelse return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const p: *align(1) const usize = @ptrFromInt(base + off);
+    return boxed.mkFfiPtr(alloc, p.*) catch ref_mod.NIL;
+}
+
+fn methodPeekString(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 0) orelse return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const cptr: [*:0]const u8 = @ptrFromInt(base + off);
+    return strings.mkString(alloc, std.mem.span(cptr)) catch ref_mod.NIL;
+}
+
+fn methodPokeInt(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 2 or !ref_mod.isSmallInt(args[0])) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 1) orelse return ref_mod.NIL;
+    const p: *align(1) i64 = @ptrFromInt(base + off);
+    p.* = ref_mod.untagSmallInt(args[0]);
+    return s.receiver;
+}
+
+fn methodPokeByte(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 2 or !ref_mod.isSmallInt(args[0])) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 1) orelse return ref_mod.NIL;
+    const p: *u8 = @ptrFromInt(base + off);
+    p.* = @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(args[0]))));
+    return s.receiver;
+}
+
+fn methodPokeDouble(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 2 or !boxed.isFloat(args[0])) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 1) orelse return ref_mod.NIL;
+    const p: *align(1) f64 = @ptrFromInt(base + off);
+    p.* = boxed.untagFloat(args[0]);
+    return s.receiver;
+}
+
+fn methodPokePtr(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 2) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 1) orelse return ref_mod.NIL;
+    // The value may be an FfiPtr or nil (→ NULL).
+    const val: usize = if (ref_mod.isNil(args[0]))
+        0
+    else if (boxed.isFfiPtr(args[0]))
+        boxed.untagFfiPtr(args[0])
+    else
+        return ref_mod.NIL;
+    const p: *align(1) usize = @ptrFromInt(base + off);
+    p.* = val;
+    return s.receiver;
+}
+
 fn installMethod(
     allocator: std.mem.Allocator,
     store: *fact_store_mod.FactStore,
@@ -526,6 +669,21 @@ pub fn installMethods(
     _ = try store.assert(kernel_eids.MODULE_PROTO_VT, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP);
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_LOAD, @ptrCast(&methodLoad));
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_RESOLVE, @ptrCast(&methodResolve));
+    try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_ALLOC, @ptrCast(&methodAlloc));
+
+    // -- Phase 18 prelude: FFI memory primitives on FFI_PTR_VT --------------
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_FREE, @ptrCast(&methodFfiFree));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_ADDRESS, @ptrCast(&methodFfiAddress));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_IS_NULL, @ptrCast(&methodFfiIsNull));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_INT, @ptrCast(&methodPeekInt));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_BYTE, @ptrCast(&methodPeekByte));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_DOUBLE, @ptrCast(&methodPeekDouble));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_PTR, @ptrCast(&methodPeekPtr));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_STRING, @ptrCast(&methodPeekString));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_INT, @ptrCast(&methodPokeInt));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_BYTE, @ptrCast(&methodPokeByte));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_DOUBLE, @ptrCast(&methodPokeDouble));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_PTR, @ptrCast(&methodPokePtr));
 
     // The prototype object — only needs a :vtable fact (dispatch reads it).
     _ = try store.assert(kernel_eids.MODULE_PROTO, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.MODULE_PROTO_VT), kernel_eids.M_BOOTSTRAP);

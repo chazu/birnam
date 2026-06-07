@@ -14,8 +14,19 @@
 //! (structs by value) deferred to 9.5+.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const ref_mod = @import("ref.zig");
 const boxed = @import("boxed.zig");
+const strings = @import("strings.zig");
+
+/// Phase 18 prelude: struct-by-value relies on dyncall's aggregate vtable
+/// (`dcArgAggr` / `dcBeginCallAggr` / `dcCallAggr`). Vendored dyncall 1.4
+/// implements those for x86_64 but leaves them NULL on arm64-Apple (see
+/// `dyncall_callvm_arm64_apple.c`). Calling through a NULL vtable slot segfaults,
+/// so on arm64 we refuse aggregate calls (return NIL) until dyncall is upgraded
+/// (≥1.5) or AAPCS aggregate classification is hand-rolled — Phase 19 backlog.
+/// The sig parser still understands `{...}` everywhere; only marshaling is gated.
+pub const aggregates_supported = builtin.cpu.arch != .aarch64;
 
 pub const Ref = ref_mod.Ref;
 
@@ -53,6 +64,22 @@ pub extern "c" fn dcCallFloat(vm: *DCCallVM, fnp: *const anyopaque) f32;
 pub extern "c" fn dcCallDouble(vm: *DCCallVM, fnp: *const anyopaque) f64;
 pub extern "c" fn dcCallPointer(vm: *DCCallVM, fnp: *const anyopaque) ?*anyopaque;
 
+// -- dyncall aggregate (struct-by-value) C API -----------------------------
+// Phase 18 prelude. `dcAggrField` is variadic in C (the `...` carries a
+// nested DCaggr* only when type == 'A'); we never pass nested aggregates, so
+// declaring it with its named args is ABI-correct on the platforms dyncall
+// supports (named args use the normal register convention regardless).
+
+pub const DCaggr = opaque {};
+
+pub extern "c" fn dcNewAggr(max_field_count: usize, size: usize) ?*DCaggr;
+pub extern "c" fn dcFreeAggr(ag: *DCaggr) void;
+pub extern "c" fn dcAggrField(ag: *DCaggr, type_: c_char, offset: c_int, array_len: usize) void;
+pub extern "c" fn dcCloseAggr(ag: *DCaggr) void;
+pub extern "c" fn dcBeginCallAggr(vm: *DCCallVM, ag: *const DCaggr) void;
+pub extern "c" fn dcArgAggr(vm: *DCCallVM, ag: *const DCaggr, value: *const anyopaque) void;
+pub extern "c" fn dcCallAggr(vm: *DCCallVM, fnp: *const anyopaque, ag: *const DCaggr, ret: *anyopaque) ?*anyopaque;
+
 // -- Sig-string parser ------------------------------------------------------
 
 pub const Kind = enum {
@@ -67,6 +94,67 @@ pub const Kind = enum {
     double,
     pointer,
     cstring,
+    /// Phase 18: a by-value struct. Layout carried out-of-band in `Sig`'s
+    /// `arg_aggrs[i]` / `ret_aggr`. Source syntax: `{...}` of scalar sigchars.
+    aggregate,
+};
+
+/// Scalar field size/alignment (LP64; matches natural C struct layout, which
+/// is also what dyncall assumes). Aggregate/void are not valid struct fields.
+fn kindSize(k: Kind) usize {
+    return switch (k) {
+        .bool_, .char => 1,
+        .short => 2,
+        .int, .float => 4,
+        .long, .long_long, .double, .pointer, .cstring => 8,
+        .void_, .aggregate => 0,
+    };
+}
+
+/// dyncall field sigchar for a scalar Kind (note: our `.long` is C `long` →
+/// dyncall 'j'; `.long_long` → 'l'; this differs from our top-level sig chars
+/// 'l'/'L', which are our own convention).
+fn dcFieldChar(k: Kind) u8 {
+    return switch (k) {
+        .bool_ => 'B',
+        .char => 'c',
+        .short => 's',
+        .int => 'i',
+        .long => 'j',
+        .long_long => 'l',
+        .float => 'f',
+        .double => 'd',
+        .pointer, .cstring => 'p',
+        .void_, .aggregate => 'i', // unreachable for valid scalar fields
+    };
+}
+
+/// A parsed by-value aggregate layout. `offsets[i]` is field `i`'s byte offset;
+/// `size` is the total (tail-padded to struct alignment). `dc` is the dyncall
+/// descriptor, built lazily on first use and freed in `deinit`.
+pub const Aggr = struct {
+    fields: []Kind,
+    offsets: []u32,
+    size: usize,
+    dc: ?*DCaggr = null,
+
+    pub fn deinit(self: *Aggr, allocator: std.mem.Allocator) void {
+        if (self.dc) |d| dcFreeAggr(d);
+        allocator.free(self.fields);
+        allocator.free(self.offsets);
+    }
+
+    /// Build (and cache) the dyncall descriptor. Returns null on OOM.
+    pub fn ensureDc(self: *Aggr) ?*DCaggr {
+        if (self.dc) |d| return d;
+        const d = dcNewAggr(self.fields.len, self.size) orelse return null;
+        for (self.fields, self.offsets) |fk, off| {
+            dcAggrField(d, @intCast(dcFieldChar(fk)), @intCast(off), 1);
+        }
+        dcCloseAggr(d);
+        self.dc = d;
+        return d;
+    }
 };
 
 pub const Sig = struct {
@@ -75,8 +163,24 @@ pub const Sig = struct {
     /// Position in `args` (0-indexed) where variadic varargs begin. null
     /// means the signature is not variadic. Marker char in source: `e`.
     variadic_at: ?usize = null,
+    /// Phase 18: parallel to `args` — non-null exactly where `args[i] ==
+    /// .aggregate`. Empty (`&.{}`) for sigs with no struct args.
+    arg_aggrs: []?*Aggr = &.{},
+    /// Phase 18: non-null iff `ret == .aggregate`.
+    ret_aggr: ?*Aggr = null,
 
     pub fn deinit(self: *Sig, allocator: std.mem.Allocator) void {
+        for (self.arg_aggrs) |maybe| {
+            if (maybe) |ag| {
+                ag.deinit(allocator);
+                allocator.destroy(ag);
+            }
+        }
+        if (self.arg_aggrs.len != 0) allocator.free(self.arg_aggrs);
+        if (self.ret_aggr) |ag| {
+            ag.deinit(allocator);
+            allocator.destroy(ag);
+        }
         allocator.free(self.args);
     }
 };
@@ -105,26 +209,98 @@ fn kindOf(c: u8) ?Kind {
     };
 }
 
+fn alignUp(n: usize, a: usize) usize {
+    return (n + a - 1) & ~(a - 1);
+}
+
+/// Parse a `{...}` aggregate beginning at `s[start] == '{'`. Returns the heap
+/// `Aggr` (with natural-alignment offsets computed) and the index of the
+/// closing `}`. Scalar fields only in v1 — nested aggregates/arrays rejected.
+fn parseAggr(allocator: std.mem.Allocator, s: []const u8, start: usize) SigParseError!struct { aggr: *Aggr, close: usize } {
+    var fields = std.ArrayList(Kind){};
+    defer fields.deinit(allocator);
+    var offsets = std.ArrayList(u32){};
+    defer offsets.deinit(allocator);
+
+    var cursor: usize = 0;
+    var max_align: usize = 1;
+    var j = start + 1;
+    while (j < s.len and s[j] != '}') : (j += 1) {
+        const fk = kindOf(s[j]) orelse return error.UnknownSigchar;
+        if (fk == .void_) return error.UnknownSigchar; // no void fields
+        const sz = kindSize(fk);
+        const al = sz; // scalar align == size
+        const off = alignUp(cursor, al);
+        try offsets.append(allocator, @intCast(off));
+        try fields.append(allocator, fk);
+        cursor = off + sz;
+        if (al > max_align) max_align = al;
+    }
+    if (j >= s.len) return error.MissingReturnSeparator; // unterminated '{'
+    if (fields.items.len == 0) return error.EmptySig; // empty struct
+
+    const aggr = try allocator.create(Aggr);
+    aggr.* = .{
+        .fields = try fields.toOwnedSlice(allocator),
+        .offsets = try offsets.toOwnedSlice(allocator),
+        .size = alignUp(cursor, max_align),
+    };
+    return .{ .aggr = aggr, .close = j };
+}
+
 pub fn parseSig(allocator: std.mem.Allocator, s: []const u8) SigParseError!Sig {
     if (s.len == 0) return error.EmptySig;
     var args = std.ArrayList(Kind){};
     defer args.deinit(allocator);
+    var arg_aggrs = std.ArrayList(?*Aggr){};
+    defer arg_aggrs.deinit(allocator);
+    // On any error after aggregates have been created, free them.
+    errdefer for (arg_aggrs.items) |maybe| {
+        if (maybe) |ag| {
+            ag.deinit(allocator);
+            allocator.destroy(ag);
+        }
+    };
+
     var variadic_at: ?usize = null;
     var i: usize = 0;
     while (i < s.len) : (i += 1) {
         const c = s[i];
         if (c == ')') {
             if (i + 1 >= s.len) return error.MissingReturnSeparator;
-            const ret_kind = kindOf(s[i + 1]) orelse return error.UnknownSigchar;
-            const owned = try args.toOwnedSlice(allocator);
-            return .{ .args = owned, .ret = ret_kind, .variadic_at = variadic_at };
+            var ret_kind: Kind = undefined;
+            var ret_aggr: ?*Aggr = null;
+            if (s[i + 1] == '{') {
+                const parsed = try parseAggr(allocator, s, i + 1);
+                ret_kind = .aggregate;
+                ret_aggr = parsed.aggr;
+            } else {
+                ret_kind = kindOf(s[i + 1]) orelse return error.UnknownSigchar;
+            }
+            const owned_args = try args.toOwnedSlice(allocator);
+            const owned_aggrs = try arg_aggrs.toOwnedSlice(allocator);
+            return .{
+                .args = owned_args,
+                .ret = ret_kind,
+                .variadic_at = variadic_at,
+                .arg_aggrs = owned_aggrs,
+                .ret_aggr = ret_aggr,
+            };
         }
         if (c == 'e') {
             variadic_at = args.items.len;
             continue;
         }
+        if (c == '{') {
+            const parsed = try parseAggr(allocator, s, i);
+            try args.append(allocator, .aggregate);
+            try arg_aggrs.append(allocator, parsed.aggr);
+            i = parsed.close; // loop's `+= 1` steps past the '}'
+            continue;
+        }
         const k = kindOf(c) orelse return error.UnknownSigchar;
         try args.append(allocator, k);
+        try arg_aggrs.append(allocator, null);
     }
     return error.MissingReturnSeparator;
 }
@@ -218,10 +394,22 @@ fn pushArg(vm: *DCCallVM, kind: Kind, value: Ref) bool {
             dcArgDouble(vm, boxed.untagFloat(value));
         },
         .pointer, .cstring => {
+            // Change 3: nil marshals to a NULL pointer (nil-is-value). Gives
+            // callers `start: nil` for optional `char*` / `void*` args.
+            if (ref_mod.isNil(value)) {
+                dcArgPointer(vm, null);
+                return true;
+            }
+            // Birnam strings for `.cstring` are handled in the invoke loop
+            // (they need a scratch NUL-terminated copy whose lifetime spans
+            // the call). By the time we reach here, a `.cstring` value is
+            // expected to be an FfiPtr (raw `char*`); `.pointer` always is.
             if (!boxed.isFfiPtr(value)) return false;
             const addr = boxed.untagFfiPtr(value);
             dcArgPointer(vm, @ptrFromInt(addr));
         },
+        // Handled in the invoke loop (needs the per-arg Aggr), never here.
+        .aggregate => return false,
     }
     return true;
 }
@@ -239,6 +427,7 @@ fn callAndWrap(
     table: ?*object_table_mod.ObjectTable,
     vm: *DCCallVM,
     ret: Kind,
+    ret_aggr: ?*Aggr,
     addr: usize,
     owner_mod_eid: u64,
 ) Ref {
@@ -280,13 +469,36 @@ fn callAndWrap(
             const r = dcCallDouble(vm, fnp);
             return boxed.mkFloat(allocator, r) catch ref_mod.NIL;
         },
-        .pointer, .cstring => {
+        .pointer => {
             const r = dcCallPointer(vm, fnp);
             const addr_ret: usize = @intFromPtr(r);
             if (owner_mod_eid != 0 and store != null and table != null) {
                 return boxed.mkFfiPtrOwned(allocator, store.?, table.?, addr_ret, owner_mod_eid) catch ref_mod.NIL;
             }
             return boxed.mkFfiPtr(allocator, addr_ret) catch ref_mod.NIL;
+        },
+        .cstring => {
+            // Change 4: a `Z` return is a C `char*`; copy it into a birnam
+            // string. NULL return → nil (EOF / absence). The C buffer is the
+            // callee's (e.g. libtecla's internal line buffer); we only read it,
+            // so there is nothing to free here.
+            const r = dcCallPointer(vm, fnp);
+            if (r == null) return ref_mod.NIL;
+            const cptr: [*:0]const u8 = @ptrCast(r);
+            return strings.mkString(allocator, std.mem.span(cptr)) catch ref_mod.NIL;
+        },
+        .aggregate => {
+            // Phase 18: a by-value struct return. `dcBeginCallAggr` was already
+            // issued in invokeWithOwner (it must precede arg pushing). Allocate
+            // a libc buffer of the struct's size, let dyncall write into it, and
+            // hand back an FfiPtr — the caller reads fields via peek and frees
+            // via `[p free]`.
+            const aggr = ret_aggr orelse return ref_mod.NIL;
+            const dc = aggr.ensureDc() orelse return ref_mod.NIL;
+            const buf = std.c.malloc(aggr.size) orelse return ref_mod.NIL;
+            @memset(@as([*]u8, @ptrCast(buf))[0..aggr.size], 0);
+            _ = dcCallAggr(vm, fnp, dc, buf);
+            return boxed.mkFfiPtr(allocator, @intFromPtr(buf)) catch ref_mod.NIL;
         },
     }
 }
@@ -317,13 +529,69 @@ pub fn invokeWithOwner(
     owner_mod_eid: u64,
 ) Ref {
     if (args.len != sig.args.len) return ref_mod.NIL;
+
+    // Phase 18: refuse aggregate calls where dyncall can't marshal them (see
+    // `aggregates_supported`). Bail BEFORE touching the VM so no NULL vtable
+    // slot is ever dereferenced.
+    if (!aggregates_supported) {
+        if (sig.ret == .aggregate) return ref_mod.NIL;
+        for (sig.args) |k| {
+            if (k == .aggregate) return ref_mod.NIL;
+        }
+    }
+
     const vm = ensureVm() orelse return ref_mod.NIL;
     dcReset(vm);
     const is_variadic = sig.variadic_at != null;
     if (is_variadic) dcMode(vm, DC_CALL_C_ELLIPSIS);
+
+    // Phase 18: a by-value struct return requires `dcBeginCallAggr` BEFORE any
+    // args are pushed (dyncall protocol). Build the descriptor here so the
+    // callAndWrap aggregate branch can reuse the cached `dc`.
+    if (sig.ret == .aggregate) {
+        const aggr = sig.ret_aggr orelse return ref_mod.NIL;
+        const dc = aggr.ensureDc() orelse return ref_mod.NIL;
+        dcBeginCallAggr(vm, dc);
+    }
+
+    // Change 2: birnam strings passed for a `.cstring` (`Z`) arg are marshaled
+    // to NUL-terminated C buffers here. Each buffer must outlive the call (C
+    // reads through the pointer during dcCall), so we hold them until after
+    // callAndWrap, then free. dyncall only stores the pointer value, never the
+    // bytes — safe because the call is synchronous. (A C function that stashes
+    // the pointer past return would dangle; that is `.pointer` territory, where
+    // the caller owns the buffer explicitly.)
+    var scratch: std.ArrayList([]u8) = .{};
+    defer {
+        for (scratch.items) |buf| allocator.free(buf);
+        scratch.deinit(allocator);
+    }
+
     for (sig.args, args, 0..) |kind, value, i| {
         if (is_variadic and i == sig.variadic_at.?) {
             dcMode(vm, DC_CALL_C_ELLIPSIS_VARARGS);
+        }
+        if (kind == .aggregate) {
+            // Phase 18: a by-value struct arg is passed as an FfiPtr to its
+            // bytes (built via `Module alloc:` + `poke…:at:`). dyncall reads
+            // `aggr.size` bytes through the pointer during the call.
+            const aggr = sig.arg_aggrs[i] orelse return ref_mod.NIL;
+            const dc = aggr.ensureDc() orelse return ref_mod.NIL;
+            if (!boxed.isFfiPtr(value)) return ref_mod.NIL;
+            dcArgAggr(vm, dc, @ptrFromInt(boxed.untagFfiPtr(value)));
+            continue;
+        }
+        if (kind == .cstring and strings.isString(value)) {
+            const s = strings.bytes(value);
+            const buf = allocator.alloc(u8, s.len + 1) catch return ref_mod.NIL;
+            @memcpy(buf[0..s.len], s);
+            buf[s.len] = 0;
+            scratch.append(allocator, buf) catch {
+                allocator.free(buf);
+                return ref_mod.NIL;
+            };
+            dcArgPointer(vm, buf.ptr);
+            continue;
         }
         if (store) |s| {
             var stale_box: u64 = 0;
@@ -332,7 +600,7 @@ pub fn invokeWithOwner(
             if (!pushArg(vm, kind, value)) return ref_mod.NIL;
         }
     }
-    return callAndWrap(allocator, store, table, vm, sig.ret, addr, owner_mod_eid);
+    return callAndWrap(allocator, store, table, vm, sig.ret, sig.ret_aggr, addr, owner_mod_eid);
 }
 
 // -- Wrap registry + per-arity dispatch shims -------------------------------
@@ -420,8 +688,10 @@ pub const RegisterError = error{
 /// process-local resolution. Returns the closure EID for the caller to install
 /// via `[vt sel mkEid(closure_eid)]`.
 ///
-/// Phase 9 arity limit: 0..3 (matches send0..send3). Higher arity needs
-/// either send-N expansion (future) or arg-vector dispatch.
+/// Change 1: the old 0..3 arity cap is gone — `shimAny` is variadic and the
+/// whole send path (`SEND_N` → `sendN`) carries arbitrary arity. The only
+/// remaining ceiling is `SEND_N`'s u8 arg-count operand (`dispatch.zig`), so a
+/// sig with >255 args genuinely cannot be dispatched and is still rejected.
 pub fn buildWrapClosure(
     allocator: std.mem.Allocator,
     store: *fact_store_mod.FactStore,
@@ -431,7 +701,7 @@ pub fn buildWrapClosure(
     sig_str: []const u8,
 ) anyerror!u64 {
     var sig = parseSig(allocator, sig_str) catch return error.SigParseFailure;
-    if (sig.args.len > 3) {
+    if (sig.args.len > 255) {
         sig.deinit(allocator);
         return error.ArityTooHigh;
     }

@@ -2073,6 +2073,91 @@ language + library are stable.
 
 ---
 
+## Phase 19 — FFI Absorption Layer (shimless library wrapping)
+
+**Goal:** Wrap a real C library (libtecla was the forcing test) directly from the
+REPL — no hand-written shim dylib. Promote FFI from "scalar toy" to "can absorb a
+flat C API," then toward the relational endgame where a C struct *is* an entity.
+
+Numbered 19 because Phase 18 (native codegen) is the deliberate capstone; this is
+a parallel track extending the Phase 9 / 9.5 FFI lineage, not a successor to it.
+
+### §Status — batch 1 SHIPPED 2026-06-06 (441/444, 3 arm64-aggregate skips)
+
+The "promote FFI to flat-C-capable" batch landed. All in `ffi.zig` +
+`ffi_module.zig` + `kernel_eids.zig` (eids 207–219) + `bootstrap.zig`:
+
+- **Arity cap removed.** The old 0..3 limit was a lone vestigial guard;
+  `shimAny` is variadic and `SEND_N`→`sendN` already carry arbitrary arity. Only
+  ceiling now is `SEND_N`'s u8 arg-count (>255 still rejected). 4+ arg C
+  functions (`gl_get_line`) now wrap.
+- **`Z` string arg.** Birnam strings marshal to NUL-terminated C `char*` via
+  scratch buffers freed after the (synchronous) call.
+- **`nil` → NULL** for `.pointer`/`.cstring` args (`start: nil`).
+- **`Z` cstring return → birnam string** (NULL → nil).
+- **Deref / peek-poke** on `FFI_PTR_VT`: `peekInt:`/`peekByte:`/`peekDouble:`/
+  `peekPtr:`/`peekString:` (byte offsets), `pokeInt:at:`/`pokeByte:at:`/
+  `pokeDouble:at:`/`pokePtr:at:`, plus `address`/`isNull`.
+- **`Module alloc:` / `[p free]`** — libc-backed raw cells (stable address).
+  Out-params fall out: alloc a cell, pass its FfiPtr as a `p` arg, `peek…` it
+  back (verified end-to-end against `strcpy`).
+- **Struct-by-value: parser + x86_64 marshaling.** Sig syntax `{...}` of scalar
+  sigchars; natural-alignment layout; dyncall `DCaggr` arg (`dcArgAggr`) +
+  return (`dcBeginCallAggr`/`dcCallAggr`, result as a libc FfiPtr). **arm64-Apple
+  gated OFF** — vendored dyncall 1.4 leaves `argAggr`/`callAggr`/`beginAggr` NULL
+  in its arm64-apple vtable; calling through them segfaults, so on aarch64 an
+  aggregate call returns nil (see `ffi.aggregates_supported`). See 19.1.
+
+shimless libtecla now works on arm64 *except* anything needing struct-by-value
+(libtecla's line-editing core is pointer/cstring/int — fully covered).
+
+### Work items (backlog)
+
+19.1 **Struct-by-value on arm64.** Either vendor dyncall ≥1.5 (has arm64-apple
+     aggregate support) or hand-roll AAPCS aggregate classification: ≤16-byte
+     integer composites → consecutive GP regs (decompose to i64 chunks); HFA/HVA
+     (≤4 homogeneous float/double) → V regs; >16 bytes → stack copy; capture
+     ≤16-byte struct *returns* from x0:x1 / v0–v3 (the hard part — scalar call
+     paths only expose x0). Don't ship half-correct ABI; wrong classification =
+     silent corruption.
+
+19.2 **Callbacks.** Birnam closure → C function pointer via dyncallback
+     trampolines. Unlocks `qsort` comparators, event loops, libtecla's own
+     completion/word callbacks. Hardest item; needs a closure→thunk registry +
+     lifetime story.
+
+19.3 **`char**` / string arrays** — argv-style in (build from a birnam vector of
+     strings) and out (NULL-terminated `char**` → birnam vector).
+
+19.4 **Byte-buffer ergonomics** — bulk `peekBytes:len:` / `pokeBytes:at:` between
+     an FfiPtr and a birnam string/byte-vector (memcpy), so crypto/image/net
+     buffers don't need per-byte poke loops.
+
+19.5 **Struct-as-entity (the birnam-flavored absorb).** Describe a C struct's
+     layout once; mint an entity whose attrs mirror the fields, backed by an
+     FfiPtr. Field access becomes ordinary message sends (`[pt x]` / `[pt x: 3]`)
+     that lower to typed peek/poke at the field offset. This is the idst-style
+     move — a struct stops being an opaque byte blob and joins the fact store —
+     and is the real reason FFI lives next to a relational substrate. Depends on
+     19.1 for by-value cases; pointer-to-struct works on 19's shipped deref today.
+
+19.6 **Remaining scalar types** — unsigned variants (`uint`/`ulong`/`uchar`),
+     explicit-width ints, wide chars. Mostly sig-parser + marshal additions.
+
+19.7 **Out-param sugar** — a one-call helper (`[m call:… outPtr:]` or a `Cell`
+     object) that allocs + passes + peeks + frees, so the common
+     `open(path, &handle)` shape isn't four manual steps.
+
+### Reasoning
+The shipped batch is "table stakes" — arity, strings-in/out, NULL, deref,
+out-params cover the majority of flat C libraries. 19.1–19.4 cover the long tail
+of *calling* C; 19.5 is the part that's actually about birnam — folding foreign
+data into the entity/fact model rather than leaving it as opaque pointers. Build
+calling-completeness first (it's verifiable against real libs), then 19.5 once
+the marshaling primitives are stable.
+
+---
+
 ## Dependency graph
 
 ```

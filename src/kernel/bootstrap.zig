@@ -216,6 +216,21 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_PATH, "path");
     try interner.seed(store, kernel_eids.SEL_HANDLE, "handle");
 
+    // Phase 18 prelude: FFI memory primitives.
+    try interner.seed(store, kernel_eids.SEL_FFI_ALLOC, "alloc:");
+    try interner.seed(store, kernel_eids.SEL_FFI_FREE, "free");
+    try interner.seed(store, kernel_eids.SEL_FFI_ADDRESS, "address");
+    try interner.seed(store, kernel_eids.SEL_FFI_IS_NULL, "isNull");
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_INT, "peekInt:");
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_BYTE, "peekByte:");
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_DOUBLE, "peekDouble:");
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_PTR, "peekPtr:");
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_STRING, "peekString:");
+    try interner.seed(store, kernel_eids.SEL_FFI_POKE_INT, "pokeInt:at:");
+    try interner.seed(store, kernel_eids.SEL_FFI_POKE_BYTE, "pokeByte:at:");
+    try interner.seed(store, kernel_eids.SEL_FFI_POKE_DOUBLE, "pokeDouble:at:");
+    try interner.seed(store, kernel_eids.SEL_FFI_POKE_PTR, "pokePtr:at:");
+
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);
 
