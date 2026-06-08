@@ -65,7 +65,7 @@ These are the load-bearing commitments. The full list lives in `VISION.md`.
 Birnam draws one hard line, in the same spirit as Piumarta's C boundary — just
 drawn higher up the stack.
 
-- **Frozen layer (Zig, ~3200 LOC at Phase 14):** HAMT, RRB, the fact store, the
+- **Frozen layer (a few thousand LOC of Zig):** HAMT, RRB, the fact store, the
   indexes, the object table, the tx engine, tagging, allocation, the
   materialized-struct arena, dispatch mechanics, mcache, and the bytecode
   walker. Changing any of these means rebuilding the kernel.

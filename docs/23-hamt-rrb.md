@@ -37,8 +37,9 @@ const KV = struct { key: K, value: V, hash: u64 };
   *or* a child pointer, never both. `data_map` and `node_map` are disjoint.
 - **Popcount compression** — the array index for a slot is
   `popcount(bitmap & (slot_bit - 1))`, so only present entries occupy space.
-- **`MAX_DEPTH = 13`** levels (13 × 5 bits + a collision level exhausts a 64-bit
-  hash); collision buckets handle full-hash collisions with a linear scan.
+- **`MAX_DEPTH = 13`** levels of 5-bit branching (the last level consuming the
+  partial bits of a 64-bit hash); once the hash is exhausted, collision buckets
+  handle full-hash collisions with a linear scan.
 
 ### Public API
 

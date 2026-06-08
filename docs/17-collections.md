@@ -12,17 +12,19 @@ early-out, and transducers — the user-facing layer built on the
 
 ## The bracket-literal family
 
-Four literal forms, distinguished by bracket and prefix:
+The bracket family, distinguished by bracket and prefix. Two general-purpose
+value literals are shipped (`#[ ]` and `{ }`); the other two forms are reserved:
 
-| Form | Kind | Example |
-|---|---|---|
-| `#( … )` | literal array (quoted elements) | `#(1 2 3)` |
-| `#[ … ]` | vector (RRB-backed sequence) | `#[a b c]` |
-| `{ … }` | map / association | `{k: v, j: w}` |
-| `#{ … }` | set | `#{1 2 3}` |
+| Form | Kind | Status | Example |
+|---|---|---|---|
+| `#[ … ]` | vector (RRB-backed sequence) | shipped | `#[a b c]` |
+| `{ … }` | map / association | shipped | `{k: v j: w}` |
+| `#( … )` | quoted clause-list (used inside `where: #(…)`), not a general array | shipped, query-only | `where: #( [?e :name ?n] )` |
+| `#{ … }` | set | grammar reserved; proto not yet implemented | `#{1 2 3}` |
 
-Vectors are RRB-Trees; maps and sets are HAMTs. All are persistent — "modifying"
-one returns a new collection sharing structure with the original.
+Map entries are space-separated, not comma-separated. Vectors are RRB-Trees; maps
+are HAMTs. Both are persistent — "modifying" one returns a new collection sharing
+structure with the original.
 
 ## One sequence protocol over everything
 

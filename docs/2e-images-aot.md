@@ -13,7 +13,7 @@ standalone executable.
 ## The `.bim` image — `image.zig`
 
 An image is the serialized store plus enough metadata to reconstruct identity.
-`MAGIC = "BRNIM\x00\x01"`, `FORMAT_VERSION = 5`. The file holds, in order:
+`MAGIC = "BRNIMG\x00\x01"` (8 bytes), `FORMAT_VERSION = 5`. The file holds, in order:
 
 - **Manifest** — `bytecode_format_version`, `thread_mode` (`single`/`datomic`),
   and the module dependency set (`{name, abi_hash}` each). Embedded in the file

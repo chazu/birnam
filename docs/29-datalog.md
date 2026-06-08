@@ -62,10 +62,11 @@ Rules are stored as fact-entities (`:rule-name`, `:rule-params`, `:rule-max-var`
 `:rule-body`) in a `Registry`; `define`/`lookup` go through facts.
 `renameClauses` offsets variable indices for per-invocation freshness.
 `checkStratified` builds the rule-dependency graph and rejects negative cycles
-(no unstratified negation). Recursive rules are evaluated **semi-naively**: a
-fixpoint loop materializes derived tuples into a content-hash `DerivedSet`,
-iterating until no new tuples appear, bounded by `max_iter` (100) and `max_tuples`
-(1M) safety caps.
+(no unstratified negation). `rule.zig` itself holds only `Rule`, `Registry`,
+`renameClauses`, and `checkStratified` — the *evaluator* lives in `query.zig`:
+recursive rules are evaluated **semi-naively** there, with a fixpoint loop that
+materializes derived tuples into a content-hash `DerivedSet`, iterating until no
+new tuples appear, bounded by `max_iter` (100) and `max_tuples` (1M) safety caps.
 
 ## Pull — `pull.zig`
 
@@ -90,7 +91,7 @@ mod`, SmallInt) and `min2`/`max2`, registered at bootstrap. A predicate returns
 const AggregateKind = enum { count, sum, min, max, avg, collect };
 ```
 
-`compute(kind, values)` runs over already-deduplicated values (distinct by
+`compute(allocator, kind, values)` runs over already-deduplicated values (distinct by
 default, per Date). `sum`/`min`/`max`/`avg` require SmallInts (else
 `NonNumericInAggregate`); `collect` builds an RRB wrapped in an `RRB_VT` object.
 Group-by partitions bindings by the non-aggregate `find` positions; if every

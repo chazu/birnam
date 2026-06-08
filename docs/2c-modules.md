@@ -89,15 +89,19 @@ shifts every later offset and silently breaks already-built modules (and images
 that name module deps). This is the same append-only discipline that governs the
 [kernel eid block](11-fact-model.md), and it was learned the hard way — a
 mid-struct insert in an early phase corrupted dispatch. New capability ⇒ append.
-The Phase 16 temporal functions and the Phase 17 string batch both sit at the
-struct's end for exactly this reason.
+The Phase 16 temporal functions and the Phase 17 string batch were each appended
+after the then-current tail for exactly this reason (the temporal triple first,
+then the string batch after it, which is now the true end of the struct).
 
 ## The standard modules
 
 - `libbirnam_peg` — the PEG engine façade.
-- `libbirnam_lang` — the grammar, desugar, compiler, evaluator, REPL handler, and
-  the `Module`/`db`/`language` prototypes. See [The PEG Parser and lang frontend](28-peg.md).
+- `libbirnam_lang` — the grammar, desugar, compiler, evaluator, and the
+  `Module`/`db`/`language` prototypes. See [The PEG Parser and lang frontend](28-peg.md).
 - `libbirnam_query` — the Datalog surface. See [Datalog](29-datalog.md).
+- `libbirnam_repl` — the REPL line handler (`src/modules/repl/`): one instance
+  per dylib load, current target stored as a fact, parses + dispatches each shell
+  input line.
 - `libbirnam_hello` — a smoke-test module.
 
 ## Where to go next

@@ -98,8 +98,12 @@ This is a deliberate soundness choice, not an oversight:
   empty result — never a NULL marker.
 - **`nil` the entity** (well-known eid `0`) is a real, dispatchable object — the
   singleton "nothing object." `[nil isNil] → true`. It is *not* absence.
-- **`nil` as a stored value** — `[e :a nil]` — stores the eid-0 ref, which is a
-  legitimate 2-valued object. Allowed.
+- **`nil` as a stored value** — `[e :a nil]` — is **forbidden**. `assert`
+  panics on a NIL value in Debug builds (`FactStore.assert: NIL value
+  forbidden`); release builds skip the check, but asserting nil is still a
+  discipline violation. The distinguishable thing is the nil *entity* as a real
+  object you can hold and dispatch on — not nil as a stored `v` standing in for
+  absence.
 - **What is forbidden** is letting one token mean both "the nothing object" and
   "no value known." That conflation is the 3-valued-logic trap. So absence
   always rides a *separate channel*: an empty result, an `ifAbsent:` block, or a

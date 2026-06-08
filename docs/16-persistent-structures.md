@@ -41,9 +41,12 @@ the object table.
 
 - **32-way branching.** Each node holds up to 32 children, indexed by 5 bits of
   the key's hash at that depth.
-- **Popcount-bitmap-compressed nodes.** A node stores a 32-bit bitmap of which
-  slots are occupied plus a dense array of only the present children — no wasted
-  space for empty slots. The child index is `popcount(bitmap & (slot_bit - 1))`.
+- **Popcount-bitmap-compressed nodes (CHAMP).** A node stores *two* 32-bit
+  bitmaps — `data_map` (slots holding inline key/value entries) and `node_map`
+  (slots holding child subnodes) — plus dense arrays of only the present entries
+  and children, so there is no wasted space for empty slots. The dense index is
+  `popcount(bitmap & (slot_bit - 1))`. Separating data from nodes is what makes
+  CHAMP's iteration and equality faster than a single-bitmap HAMT.
 - **O(log₃₂ n)** lookup/insert/delete — effectively constant for any realistic
   size (depth ≤ ~7 for billions of keys).
 - **Path copying on insert.** Only the nodes from root to the touched leaf are
@@ -55,13 +58,18 @@ underlying storage compacts and relocates.
 
 ## RRB-Tree — the sequence workhorse
 
-**Relaxed Radix Balanced Tree** (Bagwell & Rompf 2011) — the structure behind
-Clojure's, Scala's, and Immer's persistent vectors. Used for *all*
-sequence-shaped values: vectors, ropes, buffers, source text, and the
-random-access history log inside each fact cell.
+**Radix Balanced persistent vector** (Bagwell & Rompf 2011) — the structure
+family behind Clojure's, Scala's, and Immer's persistent vectors. Today's
+implementation (`rrb.zig`) is the **strict** radix variant (Phase 1 spike): no
+tail optimization, and relaxed-node balancing is deferred. It backs vectors and
+the random-access history log inside each fact cell. (Ropes, buffers, and
+source-text are intended future users, not shipped.)
 
-- **O(log₃₂)** lookup, update, concat, and split — the "relaxed" radix balancing
-  is what makes concat/split cheap, which a plain radix vector cannot do.
+- **O(log₃₂)** lookup, update, and push/pop — effectively constant for any
+  realistic size.
+- **`concat` and `splitAt` are O(N) today** — correct-but-naive (repeated push).
+  The relaxed-radix balancing that would make them O(log₃₂) is a documented
+  future optimization, not yet implemented.
 - Same structural-sharing property: updating index `i` copies one root-to-leaf
   path and shares the rest.
 

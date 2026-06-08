@@ -62,8 +62,8 @@ or null for "method not found." It is guarded by `vm.recursion_guard`.
    null when the chain reaches NIL.
 
 If `bind` returns null and the selector wasn't already `doesNotUnderstand:`,
-`sendN` rebinds `SEL_DNU` and invokes it with the missing selector as a symbol
-arg — the [DNU](13-object-model.md) reflective hook. If DNU itself isn't bound, it
+`sendN` rebinds `SEL_DNU` and invokes it with the missing selector as an eid
+`Ref` arg (`mkEid(sel)`) — the [DNU](13-object-model.md) reflective hook. If DNU itself isn't bound, it
 returns NIL.
 
 ## The method cache — `mcache.zig`

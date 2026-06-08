@@ -82,31 +82,42 @@ only when no retained snapshot still references it.
 
 ## Time-travel is opt-in (ADR-perf-1)
 
-The most important decision: **history is opt-in per object, not mandatory for
-all state.**
+> **Status:** the per-object tier model below is the *decided* design
+> (ADR-perf-1, perf-1.3 design-resolved). It is **not yet implemented** —
+> perf-1.4 (the write-back tier) is OPEN. Today every base-level user-object
+> mutation is still a write-through historied `assert`; there is no `:temporal?`
+> bit or `beTemporal` in the code. What *is* shipped and opt-in right now is the
+> **retention horizon** (default collapses to "now"; you opt into deeper history
+> via the retention policy) and **reference cells** (the T3 instance below).
+> The rest of this section describes intent.
+
+The most important decision: **history will be opt-in per object, not mandatory
+for all state.**
 
 The reason is cost. Writing a fact through five indexes plus history is roughly
 100–1000× the cost of a native field write (measured ~1.8 µs/op). If *every*
 object mutation were a write-through historied fact, mutation-heavy code would be
-permanently capped at database-write speed. So the representation is tiered (full
-detail in [The Performance Model](18-performance-model.md)):
+permanently capped at database-write speed. So the planned representation is
+tiered (full detail in [The Performance Model](18-performance-model.md)):
 
 - **T1 — transient/heap:** no eid, no facts (collections, scalars, locals,
   non-escaping objects). No history.
-- **T2 — materialized write-back (default for escaped user objects):** the struct
-  is the runtime truth; facts are a projection reconciled at query/commit/save.
-  `asOf:`/`history` are empty/error here.
+- **T2 — materialized write-back (planned default for escaped user objects):**
+  the struct is the runtime truth; facts are a projection reconciled at
+  query/commit/save. `asOf:`/`history` are empty/error here. *Not yet
+  implemented — perf-1.4.*
 - **T3 — temporal write-through (opt-in):** historied; gets `asOf:`/`history`.
   Reference cells are the shipped instance of this tier.
 
-You opt in with a single `:temporal?` bit at three granularities:
+The planned opt-in is a single `:temporal?` bit at three granularities:
 `[obj beTemporal]` (one instance), `[Account beTemporal]` (a prototype, stamped
-at `new`), or `db cell:` (per-field — a cell is temporal by default). History
-*begins* at opt-in; the cost stays local to the entities that asked for it.
+at `new`), or `db cell:` (per-field — a cell is temporal by default; **this one
+is shipped**). History *begins* at opt-in; the cost stays local to the entities
+that asked for it.
 
 **Meta-level facts (vtables, AST, bytecode, methods) stay write-through** — they
 are written once and dispatch reads them, so they can't be naïvely write-back.
-"Default T2" applies to *base-level user objects only*.
+"Default T2" will apply to *base-level user objects only*.
 
 ## AOT prune: the most aggressive horizon
 

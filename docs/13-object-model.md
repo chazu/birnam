@@ -80,7 +80,8 @@ measurement story behind it.
 
 When dispatch finds no method for a selector anywhere in the delegate chain, the
 receiver is sent `doesNotUnderstand:` (`SEL_DNU`, eid 198) with the missing
-selector as a symbol. This is the standard Smalltalk reflective hook — it is what
+selector as an eid `Ref` (`mkEid(sel)` — the interned selector entity). This is
+the standard Smalltalk reflective hook — it is what
 lets proxies, forwarders, and dynamic responders be written in Birnam rather than
 the kernel. It is seeded at boot so `send.zig` can reference it without interning.
 
@@ -90,8 +91,10 @@ A few protocols are defined by the kernel/stdlib so the basic types behave
 uniformly:
 
 - **Number protocol.** SmallInts and boxed floats share arithmetic/comparison
-  selectors (`+ - * / // = < > <= >=`) with mixed-type coercion
-  (`[3.14 + 2.0]`, `[3.14 asInt]`).
+  selectors (`+ - * / = < >`) with mixed-type coercion (`[3.14 + 2.0]`,
+  `[3.14 asInt]`). SmallInt additionally has `<= >=` (and `mod:`, `min:`, `max:`,
+  `between:and:`, …); floats currently expose only `< >` for ordering plus
+  `sqrt`/`floor`/`ceil`/`round`. There is no `//` selector.
 - **Boolean protocol.** `True`/`False` singletons answer
   `ifTrue:ifFalse:`/`ifTrue:`/`ifFalse:`/`not`/`and:`/`or:`/`whileTrue:`.
 - **nil protocol.** `nil` is the eid-0 singleton object — dispatchable
