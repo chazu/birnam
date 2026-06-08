@@ -1,16 +1,48 @@
 # Birnam
 
-> “If you will permit a small philosophical digression ... Only things exist, and their relations.
+> If you will permit a small philosophical digression ... Only things exist, and their relations.
 >
 > The first thing a society did upon entering an era of technological acceleration was to disturb the living environment...This did not have to mean stagnation: the environment was an obedient guardian, and to the extent that it was able, it could change itself according to wishes or demands. Could it change so that “progress” would take place? We had no answer for that...Could one call [progress] a situation in which intellectual, creative, cognitive, and constructional activities were so specialized that in each profession one dug deeper in an ever-narrower plot of ground? If machines counted faster and better than a living being, why should the living being count?...Such an artificial environment would be no one, like a meadow, forest, or steppe—with the difference that it would grow and blossom not on its own, not for itself, but for someone. For beings. Would they become stupid from this, turning into dull-witted gluttons that whiled away their hours with toys provided by the planetary guardian? Not necessarily. It depended on the point of view.
 >
 > Stanislaw Lem, _Fiasco_
 
+A weird, late-bound, dynamic language intended to be completely malleable, in the style of Ian Piumarta's `idst`. Probably does not fulfill this or any other goal.
+
+## Why
+
+I've wanted to craft a personal computing environment like the one described in Piumarta's COLA/ALBERT papers for a long time. I thought `idst` was brilliant, and thought in particular that the ability to absorb C-ABI compliant dynamic libraries, wrap them in a lightweight dispatching shell and use their full power was a cool idea.
+Claude showed up. I took a few stabs at realizing the idea, and spent a lot of time playing with idst. I also wrote two smalltalks. I played with cuelang, implemented datalog poorly twice, played with tuplespaces and "wrote" agentic workflow systems using combinations of the aforementioned technologies.
+Then this guy incepted me with the meme of `extensional object identity` and I ended up reading The Third Manifesto.
+I asked Claude about ents - still haven't found a reason to really grok those, might this do? Claude said no dawg u just need hash-mapped array tries and relaxed radix balanced trees and you can do all kinds of cool shit.
+I said "Can i still do the idst thing? vtable at -1?"
+Claude said "yeah dude sure I don't care do whatever you want"...No actually it probably said "THATS A BRILLIANT IDEA" or some shit.
+Then I said something like "LFG"
+Then I had this thing, which Claude says is:
+
+```
 A tiny Smalltalk-ish language running on a **relational fact-store substrate**, implemented in Zig.
 
 Everything above the kernel is fact-shaped: grammar rules, AST nodes, method tables, bytecode, dispatch state, even error diagnostics live as facts in a HAMT/RRB-backed store. There are no bespoke data structures above the substrate — the language is built out of the same relational primitives it exposes. The result is a live, malleable image (define methods, mutate state, `:save` it, reload it, ship it as a standalone binary) in the Smalltalk tradition, but with a Datomic-style fact store underneath.
 
 > Heritage: tagged pointers + the vtable-at-offset-`-1` trick from Ian Piumarta's [idst](https://www.piumarta.com/software/cola/); persistent collections (HAMT + RRB) à la Clojure; a fact store + time/history à la Datomic.
+```
+
+## What
+
+Its all clanker-made right now. Only as of the writing of this commit am I attempting to use it - thats not true, I used it before we built the `lang` module from the repl, but since then I've been [balling the jack](https://en.wikipedia.org/wiki/Ballin%27_the_Jack) to get it done-except-AOT-compilation before I really mess with it.
+
+So a lot of shit isn't done:
+
+* Any documentation
+* Really any standard library - there's strings, and combinators and some other stuff but we still need:
+  - http
+  - files outside the kernel
+  - i/o streams
+  - external process management
+  - literally everything else
+* emacs mode
+* lsp (what the fuck does this even look like? i have no idea)
+
 
 ## Build
 
@@ -49,6 +81,73 @@ zig build test
 ```
 
 379 tests across the kernel and modules.
+
+## Benchmarks
+
+Two microbenchmark harnesses measure the kernel's hot paths — dispatch, field
+reads, and fact writes — so the performance model is grounded in numbers rather
+than guesses. They are **safe by construction**: an earlier ad-hoc attempt to
+benchmark by running million-iteration mutation loops in the live REPL exhausted
+memory and crashed the machine (every `assert`/`retract` path-copies five HAMT
+indexes and appends never-freed history, so unbounded mutation grows memory
+without bound). The harnesses cap themselves so that can't happen again.
+
+Both build to `zig-out/bin/` and are **not** auto-run by `zig build bench` (which
+only runs the data-structure microbenchmarks). Run them explicitly, always under
+`timeout`, starting with a small iteration count and watching the printed peak
+before scaling up.
+
+### `kernel_bench` — reads + dispatch (non-growing)
+
+```
+zig build kernel-bench
+timeout 30 ./zig-out/bin/kernel_bench 1000000      # argv[1] = iterations
+```
+
+Boots the kernel and times warm dispatch and field reads against native
+baselines. Its hot loops allocate nothing (results are immediates / already
+stored Refs), so memory stays flat at any iteration count. Safety: all
+allocation goes through a `FixedBufferAllocator` over a single 256 MiB slice —
+physically bounded, so a runaway hits `OutOfMemory` and exits clean. (macOS
+ignores `ulimit -v`, so the cap must live in-process.) It also prints a
+breakdown (`table.get`, `vtableEidOf`, `mcache.lookup`, `bind`) to attribute
+dispatch cost.
+
+### `kernel_write_bench` — fact writes (the memory-growing class)
+
+```
+zig build write-bench
+timeout 30 ./zig-out/bin/kernel_write_bench distinct 10000   # argv[1]=mode argv[2]=count
+```
+
+Modes: `distinct` (assert fresh facts — adding data), `churn` (re-assert one
+slot — history grows), `assign` (retract+assert, the `:=` pattern),
+`churn-pruned` (churn with periodic `compact` to prove mutation stays bounded).
+
+Because writes grow memory, this harness uses a **capped allocator** — a real
+allocator (forwards `free`, so `compact` reclamation works) wrapping a
+`GeneralPurposeAllocator` (matching the shell/aot binaries) with a hard 512 MiB
+outstanding-bytes ceiling. Past the ceiling, allocation fails and the bench
+aborts cleanly with `[HIT CAP]` instead of taking the machine down. Each run
+prints peak bytes; run one mode per process on a fresh boot.
+
+### Measured (ReleaseFast, arm64; see ADR-perf-1 in `ROADMAP.md`)
+
+| Operation | Cost | vs native |
+|---|---|---|
+| warm dispatch (`send0`) | ~8 ns/op | ~6.4× |
+| field read (`currentValue`) | ~20 ns/op | ~10.3× |
+| field write (`assert`) | ~1.8 µs/op | ~100–360× |
+
+A write costs roughly 100× a read. Dispatch is not a bottleneck; the levers are
+the field read and the write path. The full analysis, including the
+projection-vs-representation decision it drives, is **ADR-perf-1** in
+`ROADMAP.md`.
+
+> Benchmarking discipline: always run under `timeout`, start small and watch the
+> printed peak, run one bench per process, and never run an un-pruned mutation
+> loop. Isolate the primitive from method-body work — benchmarking a method
+> whose body itself reads state once produced a dispatch number ~4× too high.
 
 ## Language tour
 
@@ -140,19 +239,19 @@ Also: integers, floats (with mixed-type coercion via `asFloat`/`asInt`), strings
 
 ## Saving and loading the image
 
-REPL state — your bindings and installed methods — persists to a single self-describing `.brnimg` file and survives a process restart:
+REPL state — your bindings and installed methods — persists to a single self-describing `.bim` file and survives a process restart:
 
 ```
 birnam> let answer := 42
 birnam> [[3 vtable] method: #double do: [| [self + self]]]
-birnam> :save app.brnimg
-[birnam] saved app.brnimg (… facts, 2 modules)
+birnam> :save app.bim
+[birnam] saved app.bim (… facts, 2 modules)
 ```
 
 ```
 # fresh process
-birnam> :load app.brnimg
-[birnam] loaded app.brnimg (… facts, … methods rebuilt)
+birnam> :load app.bim
+[birnam] loaded app.bim (… facts, … methods rebuilt)
 birnam> answer
 => 42
 birnam> [5 double]
@@ -229,12 +328,12 @@ Compile any image into a standalone executable (kernel + modules + data linked i
 
 ```
 # save an image, then freeze it into a binary
-birnam … :save app.brnimg
-birnam --aot=static  app.brnimg -o myapp                 # full tower: REPL over baked state
-birnam --aot=static  --strip=malleable app.brnimg --entry=double:5 -o myapp
+birnam … :save app.bim
+birnam --aot=static  app.bim -o myapp                 # full tower: REPL over baked state
+birnam --aot=static  --strip=malleable app.bim --entry=double:5 -o myapp
                                                          # pure-VM one-shot: parser/compiler/AST stripped
-birnam --aot=static  --strip=history  app.brnimg -o myapp   # read-only frozen store (no tx-writer)
-birnam --aot=dynamic app.brnimg -o dist/myapp            # portable bundle: dlopen modules at startup
+birnam --aot=static  --strip=history  app.bim -o myapp   # read-only frozen store (no tx-writer)
+birnam --aot=dynamic app.bim -o dist/myapp            # portable bundle: dlopen modules at startup
 ```
 
 The driver copies the image to a per-app embed path, runs the parameterized `zig build aot-build` (so it needs the repo + `zig` on PATH), and writes the binary to `-o`.
@@ -247,7 +346,7 @@ The driver copies the image to a per-app embed path, runs the parameterized `zig
 | `--strip=history` | freeze the fact store read-only (no tx-writer / history); the app reads its baked facts and never mutates them |
 | `--entry=<sel>[:<recv>]` | send `<sel>` to `<recv>` and exit with the result. `<recv>` is a SmallInt (`double:5`) or a **top-level binding name** (`run:app` → send `#run` to whatever `app` is bound to) |
 
-The only deferred slice is the mmap-relocation RO-*segment* optimization (load-time perf, Phase 12.5) — not an AOT capability. The fixed demo artifacts (`zig build aot` → `birnam-aot` / `birnam-aot-malleable`, embedding `src/aot_embed.brnimg`) still exist for the test fixtures.
+The only deferred slice is the mmap-relocation RO-*segment* optimization (load-time perf, Phase 12.5) — not an AOT capability. The fixed demo artifacts (`zig build aot` → `birnam-aot` / `birnam-aot-malleable`, embedding `src/aot_embed.bim`) still exist for the test fixtures.
 
 ## Architecture
 
