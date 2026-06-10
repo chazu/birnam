@@ -32,6 +32,31 @@ pub fn build(b: *std.Build) void {
     dyncall_lib.addIncludePath(b.path("vendor/dyncall-1.4/dyncall"));
     b.installArtifact(dyncall_lib);
 
+    // -- Build-time kernel-EID mirror (single source of truth) ---------------
+    // `src/kernel/kernel_eids.zig` is the ONE place well-known EIDs are defined.
+    // A small host-side generator reflects over it and emits a dependency-free
+    // `kernel_eids.zig` that dylib modules import as `@import("kernel_eids")` —
+    // replacing the hand-copied `const NAME: u64 = N;` blocks that rot silently
+    // when the kernel renumbers an EID. A kernel rename now fails the module
+    // build (fail-loud) instead of baking a wrong number into a dylib.
+    const kernel_eids_src = b.createModule(.{
+        .root_source_file = b.path("src/kernel/kernel_eids.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const gen_eids_mod = b.createModule(.{
+        .root_source_file = b.path("tools/gen_eid_mirror.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    gen_eids_mod.addImport("kernel_eids", kernel_eids_src);
+    const gen_eids_exe = b.addExecutable(.{ .name = "gen_eid_mirror", .root_module = gen_eids_mod });
+    const run_gen_eids = b.addRunArtifact(gen_eids_exe);
+    const eid_mirror_path = run_gen_eids.addOutputFileArg("kernel_eids.zig");
+    // Consumed via `mod.addImport("kernel_eids", eid_mirror_mod)` by every
+    // module graph that compiles a mirror-using source (lang dylib + AOT variants).
+    const eid_mirror_mod = b.createModule(.{ .root_source_file = eid_mirror_path });
+
     // -- Shell executable ----------------------------------------------------
 
     const shell_mod = b.createModule(.{
@@ -79,6 +104,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     aot_full_mod.addOptions("build_opts", full_opts); // peg/lang @import resolve here
+    aot_full_mod.addImport("kernel_eids", eid_mirror_mod); // lang.zig mirror
     const aot_full = b.addExecutable(.{ .name = "birnam-aot", .root_module = aot_full_mod });
     aot_full.linkLibrary(dyncall_lib);
     aot_full.linkLibC();
@@ -102,6 +128,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     aot_mall_mod.addOptions("build_opts", mall_opts);
+    aot_mall_mod.addImport("kernel_eids", eid_mirror_mod); // lang.zig mirror
     const aot_mall = b.addExecutable(.{ .name = "birnam-aot-malleable", .root_module = aot_mall_mod });
     aot_mall.linkLibrary(dyncall_lib);
     aot_mall.linkLibC();
@@ -124,6 +151,7 @@ pub fn build(b: *std.Build) void {
         const name = b.option([]const u8, "aot-name", "AOT: output executable name") orelse "birnam-aot-app";
         const mod = b.createModule(.{ .root_source_file = b.path("src/aot_main.zig"), .target = target, .optimize = optimize });
         mod.addOptions("build_opts", opts);
+        mod.addImport("kernel_eids", eid_mirror_mod); // lang.zig mirror
         const exe = b.addExecutable(.{ .name = name, .root_module = mod });
         exe.linkLibrary(dyncall_lib);
         exe.linkLibC();
@@ -196,6 +224,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     lang_mod.addOptions("build_opts", dylib_init_opts);
+    lang_mod.addImport("kernel_eids", eid_mirror_mod); // single-source-of-truth EID mirror
     const lang_lib = b.addLibrary(.{
         .name = "birnam_lang",
         .root_module = lang_mod,

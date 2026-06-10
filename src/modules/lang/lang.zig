@@ -26,6 +26,13 @@
 
 const std = @import("std");
 
+/// Well-known kernel EIDs, derived from the single source of truth
+/// (src/kernel/kernel_eids.zig) via the build-time mirror generator
+/// (tools/gen_eid_mirror.zig). The `const NAME = ke.NAME;` aliases below keep
+/// every use-site spelling unchanged while making the *values* track the kernel
+/// automatically — a renumber propagates on rebuild; a rename fails the build.
+const ke = @import("kernel_eids");
+
 const Ref = u64;
 const NIL: Ref = 0b010;
 
@@ -34,63 +41,63 @@ fn mkEid(eid: u64) Ref {
 }
 
 // Kernel-fixed EIDs (mirror src/kernel/kernel_eids.zig).
-const PEG_EID: u64 = 99;
+const PEG_EID = ke.PEG_EID;
 
 // AST kind vts + binding/scope vts + singletons.
-const AST_LITERAL_VT: u64 = 105;
-const AST_VAR_REF_VT: u64 = 106;
-const AST_SELF_VT: u64 = 107;
-const AST_KEYWORD_SEND_VT: u64 = 108;
-const AST_UNARY_SEND_VT: u64 = 109;
-const AST_BINARY_SEND_VT: u64 = 110;
-const AST_BLOCK_VT: u64 = 112;
-const AST_LET_VT: u64 = 113;
-const AST_ASSIGN_VT: u64 = 114;
-const AST_STMT_SEQ_VT: u64 = 117;
-const ATTR_AST_STMT_FIRST: u64 = 134;
-const AST_RETURN_VT: u64 = 115;
-const ATTR_AST_RETURN_VALUE: u64 = 128;
-const ATTR_AST_BLOCK_BODY: u64 = 124;
-const ATTR_AST_LET_INIT: u64 = 125;
-const ATTR_AST_ASSIGN_VALUE: u64 = 127;
-const CLOSURE_VT: u64 = 4;
-const VTABLE_VT: u64 = 1;
-const OBJECT_VT: u64 = 2;
-const SMALLINT_VT: u64 = 68;
-const TRUE_EID: u64 = 72;
-const FALSE_EID: u64 = 73;
+const AST_LITERAL_VT = ke.AST_LITERAL_VT;
+const AST_VAR_REF_VT = ke.AST_VAR_REF_VT;
+const AST_SELF_VT = ke.AST_SELF_VT;
+const AST_KEYWORD_SEND_VT = ke.AST_KEYWORD_SEND_VT;
+const AST_UNARY_SEND_VT = ke.AST_UNARY_SEND_VT;
+const AST_BINARY_SEND_VT = ke.AST_BINARY_SEND_VT;
+const AST_BLOCK_VT = ke.AST_BLOCK_VT;
+const AST_LET_VT = ke.AST_LET_VT;
+const AST_ASSIGN_VT = ke.AST_ASSIGN_VT;
+const AST_STMT_SEQ_VT = ke.AST_STMT_SEQ_VT;
+const ATTR_AST_STMT_FIRST = ke.ATTR_AST_STMT_FIRST;
+const AST_RETURN_VT = ke.AST_RETURN_VT;
+const ATTR_AST_RETURN_VALUE = ke.ATTR_AST_RETURN_VALUE;
+const ATTR_AST_BLOCK_BODY = ke.ATTR_AST_BLOCK_BODY;
+const ATTR_AST_LET_INIT = ke.ATTR_AST_LET_INIT;
+const ATTR_AST_ASSIGN_VALUE = ke.ATTR_AST_ASSIGN_VALUE;
+const CLOSURE_VT = ke.CLOSURE_VT;
+const VTABLE_VT = ke.VTABLE_VT;
+const OBJECT_VT = ke.OBJECT_VT;
+const SMALLINT_VT = ke.SMALLINT_VT;
+const TRUE_EID = ke.TRUE_EID;
+const FALSE_EID = ke.FALSE_EID;
 // Phase 15.R R1d — mirrors of kernel_eids.
-const SNAPSHOT_VT: u64 = 195;
-const DB_PROTO_VT: u64 = 196;
-const DB_PROTO: u64 = 197;
+const SNAPSHOT_VT = ke.SNAPSHOT_VT;
+const DB_PROTO_VT = ke.DB_PROTO_VT;
+const DB_PROTO = ke.DB_PROTO;
 // Phase 16 — RRB-backed vector vtable (mirror of kernel_eids.RRB_VT).
-const RRB_VT: u64 = 9;
-const ASSOC_VT: u64 = 6; // Phase 16 Tier C — map vtable (mirror)
-const SEL_DNU: u64 = 198; // Phase 16 Tier D — doesNotUnderstand: (mirror)
-const RANGE_VT: u64 = 200; // Phase 16 deferred — integer range vtable (mirror)
-const STRING_VT: u64 = 201; // Phase 16 deferred — string vtable (mirror)
-const CELL_VT: u64 = 202; // Phase 16 Tier E — reference cell vtable (mirror)
-const ATTR_CELL_VALUE: u64 = 203; // Phase 16 Tier E — cell value attr (mirror)
-const ATTR_META: u64 = 204; // Phase 16 Tier E — metadata attr (mirror)
-const XF_VT: u64 = 205; // Phase 16 Tier E — transducer factory vtable (mirror)
-const XF_PROTO: u64 = 206; // Phase 16 Tier E — `Xf` singleton (mirror)
-const ATTR_ERROR_MESSAGE: u64 = 44; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
+const RRB_VT = ke.RRB_VT;
+const ASSOC_VT = ke.ASSOC_VT; // Phase 16 Tier C — map vtable (mirror)
+const SEL_DNU = ke.SEL_DNU; // Phase 16 Tier D — doesNotUnderstand: (mirror)
+const RANGE_VT = ke.RANGE_VT; // Phase 16 deferred — integer range vtable (mirror)
+const STRING_VT = ke.STRING_VT; // Phase 16 deferred — string vtable (mirror)
+const CELL_VT = ke.CELL_VT; // Phase 16 Tier E — reference cell vtable (mirror)
+const ATTR_CELL_VALUE = ke.ATTR_CELL_VALUE; // Phase 16 Tier E — cell value attr (mirror)
+const ATTR_META = ke.ATTR_META; // Phase 16 Tier E — metadata attr (mirror)
+const XF_VT = ke.XF_VT; // Phase 16 Tier E — transducer factory vtable (mirror)
+const XF_PROTO = ke.XF_PROTO; // Phase 16 Tier E — `Xf` singleton (mirror)
+const ATTR_ERROR_MESSAGE = ke.ATTR_ERROR_MESSAGE; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
 
-const ATTR_AST_VALUE: u64 = 118;
-const ATTR_AST_NAME: u64 = 119;
-const ATTR_AST_RECEIVER: u64 = 120;
-const ATTR_AST_SELECTOR: u64 = 121;
-const ATTR_AST_FIRST_ARG: u64 = 122;
-const ATTR_AST_NEXT_SIBLING: u64 = 93;
-const ATTR_AST_FIRST_CHILD: u64 = 92;
-const ATTR_AST_RULE_NAME: u64 = 91;
-const ATTR_AST_BYTE_START: u64 = 94;
-const ATTR_AST_BYTE_END: u64 = 95;
-const ATTR_VTABLE: u64 = 19;
-const ATTR_DELEGATE: u64 = 22;
+const ATTR_AST_VALUE = ke.ATTR_AST_VALUE;
+const ATTR_AST_NAME = ke.ATTR_AST_NAME;
+const ATTR_AST_RECEIVER = ke.ATTR_AST_RECEIVER;
+const ATTR_AST_SELECTOR = ke.ATTR_AST_SELECTOR;
+const ATTR_AST_FIRST_ARG = ke.ATTR_AST_FIRST_ARG;
+const ATTR_AST_NEXT_SIBLING = ke.ATTR_AST_NEXT_SIBLING;
+const ATTR_AST_FIRST_CHILD = ke.ATTR_AST_FIRST_CHILD;
+const ATTR_AST_RULE_NAME = ke.ATTR_AST_RULE_NAME;
+const ATTR_AST_BYTE_START = ke.ATTR_AST_BYTE_START;
+const ATTR_AST_BYTE_END = ke.ATTR_AST_BYTE_END;
+const ATTR_VTABLE = ke.ATTR_VTABLE;
+const ATTR_DELEGATE = ke.ATTR_DELEGATE;
 /// Mirror of kernel_eids.M_USER (184) — provenance tag for runtime DATA
 /// facts. Phase 12.0 provenance split.
-const M_USER: u64 = 184;
+const M_USER = ke.M_USER;
 
 const ShellContext = extern struct {
     log: *const fn ([*:0]const u8) callconv(.c) void,
@@ -1652,8 +1659,8 @@ const Send = extern struct {
 var sel_eval: u64 = 0;
 var sel_parse_expr_g: u64 = 0;
 var sel_value_g: u64 = 0;
-const TRUE_VT: u64 = 70;
-const FALSE_VT: u64 = 71;
+const TRUE_VT = ke.TRUE_VT;
+const FALSE_VT = ke.FALSE_VT;
 
 // ADR-10-E2 scope chain — Phase 10.4.5 S1.
 //
@@ -1675,36 +1682,36 @@ const FALSE_VT: u64 = 71;
 // AST_VAR_REF_VT eval walks the scope chain. AST_SELF_VT eval queries
 // :scope-self on the current scope.
 
-const SCOPE_VT: u64 = 101;
-const BINDING_VT: u64 = 100;
-const ATTR_SCOPE_PARENT: u64 = 138;
-const ATTR_SCOPE_SELF: u64 = 162;
-const ATTR_SCOPE_FIRST_BINDING: u64 = 163;
-const ATTR_SCOPE_TOP_LEVEL: u64 = 139;
-const ATTR_BIND_NAME: u64 = 136;
-const ATTR_BIND_VALUE: u64 = 137;
-const ATTR_BIND_NEXT: u64 = 164;
+const SCOPE_VT = ke.SCOPE_VT;
+const BINDING_VT = ke.BINDING_VT;
+const ATTR_SCOPE_PARENT = ke.ATTR_SCOPE_PARENT;
+const ATTR_SCOPE_SELF = ke.ATTR_SCOPE_SELF;
+const ATTR_SCOPE_FIRST_BINDING = ke.ATTR_SCOPE_FIRST_BINDING;
+const ATTR_SCOPE_TOP_LEVEL = ke.ATTR_SCOPE_TOP_LEVEL;
+const ATTR_BIND_NAME = ke.ATTR_BIND_NAME;
+const ATTR_BIND_VALUE = ke.ATTR_BIND_VALUE;
+const ATTR_BIND_NEXT = ke.ATTR_BIND_NEXT;
 
 /// Mirror of kernel_eids.TOP_SCOPE_EID (185) — stable well-known eid for the
 /// top-level REPL scope so persisted bindings survive save/load.
-const TOP_SCOPE_EID: u64 = 185;
+const TOP_SCOPE_EID = ke.TOP_SCOPE_EID;
 
 /// Mirror of kernel_eids.GLOBALS_SCOPE_EID (186) — parent of TOP_SCOPE; holds
 /// built-in global bindings (e.g. `Module`). Kept out of the top scope so
 /// `:reset` and image `:load` (which touch only TOP_SCOPE's binding chain)
 /// don't disturb globals.
-const GLOBALS_SCOPE_EID: u64 = 186;
+const GLOBALS_SCOPE_EID = ke.GLOBALS_SCOPE_EID;
 
 /// Mirror of kernel_eids.MODULE_PROTO (15) — the `Module` prototype object the
 /// FFI surface installs `load:` on. Bound to the global name `Module`.
-const MODULE_PROTO_EID: u64 = 15;
+const MODULE_PROTO_EID = ke.MODULE_PROTO;
 
 /// Mirrors of kernel_eids — the `language` prototype (file-in) + filed-in-unit
 /// attributes. lang owns the `fileIn:` methods; the kernel just reserves eids.
-const LANGUAGE_PROTO_VT: u64 = 191;
-const LANGUAGE_PROTO_EID: u64 = 192;
-const ATTR_FILED_IN_PATH: u64 = 193;
-const ATTR_FILED_IN_SOURCE: u64 = 194;
+const LANGUAGE_PROTO_VT = ke.LANGUAGE_PROTO_VT;
+const LANGUAGE_PROTO_EID = ke.LANGUAGE_PROTO;
+const ATTR_FILED_IN_PATH = ke.ATTR_FILED_IN_PATH;
+const ATTR_FILED_IN_SOURCE = ke.ATTR_FILED_IN_SOURCE;
 
 // Singleton top-level scope EID — set to TOP_SCOPE_EID at lang-dylib init.
 var g_top_scope_eid: u64 = 0;
@@ -3738,13 +3745,13 @@ fn installMethods() void {
     installParseSurface();
 }
 
-const LANG_VT: u64 = 103;
+const LANG_VT = ke.LANG_VT;
 
 // -- Phase 10.5 REPL handler -----------------------------------------------
 
-const ERROR_VT: u64 = 13;
-const NIL_VT_EID: u64 = 7;
-const FLOAT_VT: u64 = 10;
+const ERROR_VT = ke.ERROR_VT;
+const NIL_VT_EID = ke.NIL_VT;
+const FLOAT_VT = ke.FLOAT_VT;
 
 fn isFloatRef(r: Ref) bool {
     if ((r & 0b111) != 0) return false;
