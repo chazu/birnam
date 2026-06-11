@@ -10,12 +10,11 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 
-const Ref = u64;
-const NIL: Ref = 0b010;
+const abi = @import("../../kernel/module_abi.zig");
+const Ref = abi.Ref;
+const NIL = abi.NIL;
 
-fn mkEid(eid: u64) Ref {
-    return (eid << 3) | 0b010;
-}
+const mkEid = abi.mkEid;
 
 fn mkSmallInt(n: i64) Ref {
     const shifted = @as(u64, @bitCast(n << 3));
@@ -55,53 +54,11 @@ fn stringBytes(r: Ref) []const u8 {
     return base[@sizeOf(StringHeader) .. @sizeOf(StringHeader) + h.len];
 }
 
-const ShellContext = extern struct {
-    log: *const fn ([*:0]const u8) callconv(.c) void,
-    set_repl_handler: *const fn (?*const fn ([*:0]const u8) callconv(.c) void) callconv(.c) void,
-};
+const ShellContext = abi.ShellContext;
 
-const FactCallback = fn (e: u64, a: u64, v: Ref, ctx: ?*anyopaque) callconv(.c) void;
+const FactCallback = abi.FactCallback;
 
-const IdApi = extern struct {
-    nil_eid: u64,
-    vtable_vt_eid: u64,
-    object_vt_eid: u64,
-    selector_vt_eid: u64,
-    closure_vt_eid: u64,
-    nil_vt_eid: u64,
-
-    sel_lookup: u64,
-    sel_methodAtPutWith: u64,
-    sel_delegated: u64,
-    sel_init: u64,
-    sel_allocate: u64,
-    sel_vtable: u64,
-
-    attr_vtable: u64,
-    attr_delegate: u64,
-    attr_name: u64,
-    attr_module: u64,
-
-    alloc_eid: *const fn () callconv(.c) u64,
-    promote: *const fn (u64, Ref) callconv(.c) void,
-    demote: *const fn (u64) callconv(.c) void,
-    alloc_object: *const fn (Ref, usize) callconv(.c) ?*anyopaque,
-    object_to_ref: *const fn (?*anyopaque) callconv(.c) Ref,
-    make_closure: *const fn (?*const anyopaque, Ref) callconv(.c) u64,
-
-    intern: *const fn ([*]const u8, usize) callconv(.c) u64,
-    make_string: *const fn ([*]const u8, usize) callconv(.c) Ref,
-
-    assert_fact: *const fn (u64, u64, Ref, u64) callconv(.c) u64,
-    retract_fact: *const fn (u64, u64, Ref, u64) callconv(.c) u64,
-    query_eavt: *const fn (u64, u64) callconv(.c) Ref,
-    facts_of_module: *const fn (u64, *const FactCallback, ?*anyopaque) callconv(.c) usize,
-
-    send0: *const fn (Ref, u64) callconv(.c) Ref,
-    send1: *const fn (Ref, u64, Ref) callconv(.c) Ref,
-    send2: *const fn (Ref, u64, Ref, Ref) callconv(.c) Ref,
-    send3: *const fn (Ref, u64, Ref, Ref, Ref) callconv(.c) Ref,
-};
+const IdApi = abi.IdApi;
 
 // -- Module-static state ----------------------------------------------------
 
