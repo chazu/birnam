@@ -12,7 +12,7 @@
 
 const std = @import("std");
 
-const abi = @import("../../kernel/module_abi.zig");
+const abi = @import("module_abi");
 const Ref = abi.Ref;
 const NIL = abi.NIL;
 

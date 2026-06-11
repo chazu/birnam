@@ -24,41 +24,47 @@
 const std = @import("std");
 const kernel_eids = @import("kernel_eids");
 
-/// Emitted at comptime by reflecting over every `pub const : u64` in the kernel.
-const mirror_source = blk: {
-    var out: []const u8 =
-        \\//! GENERATED FILE — DO NOT EDIT.
-        \\//!
-        \\//! Mirror of src/kernel/kernel_eids.zig, regenerated on every build by
-        \\//! tools/gen_eid_mirror.zig. Change the kernel source, never this file.
-        \\
-        \\
-    ;
-    for (std.meta.declarations(kernel_eids)) |decl| {
-        const value = @field(kernel_eids, decl.name);
-        // The kernel file is all `pub const : u64`; guard anyway so a future
-        // non-EID helper decl can't break generation.
-        if (@TypeOf(value) == u64) {
-            out = out ++ std.fmt.comptimePrint(
-                "pub const {s}: u64 = {d};\n",
-                .{ decl.name, value },
-            );
-        }
-    }
-    break :blk out;
-};
+const header =
+    \\//! GENERATED FILE — DO NOT EDIT.
+    \\//!
+    \\//! Mirror of src/kernel/kernel_eids.zig, regenerated on every build by
+    \\//! tools/gen_eid_mirror.zig. Change the kernel source, never this file.
+    \\
+    \\
+;
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
+    const a = arena.allocator();
 
-    const args = try std.process.argsAlloc(arena.allocator());
+    const args = try std.process.argsAlloc(a);
     if (args.len < 2) {
         std.debug.print("usage: gen_eid_mirror <output-path.zig>\n", .{});
         return error.MissingOutputPath;
     }
 
+    // Reflect over the kernel EID declarations and format each at RUNTIME.
+    // (Formatting at comptime via comptimePrint blows the eval-branch quota
+    // for ~200 constants — and runtime is simpler anyway: the generator only
+    // exists to run on the build host.)
+    var parts = std.ArrayList([]const u8){};
+    try parts.append(a, header);
+    inline for (comptime std.meta.declarations(kernel_eids)) |decl| {
+        const value = @field(kernel_eids, decl.name);
+        // The kernel file is all `pub const : u64`; guard anyway so a future
+        // non-EID helper decl can't break generation.
+        if (@TypeOf(value) == u64) {
+            try parts.append(a, try std.fmt.allocPrint(
+                a,
+                "pub const {s}: u64 = {d};\n",
+                .{ decl.name, value },
+            ));
+        }
+    }
+    const content = try std.mem.concat(a, u8, parts.items);
+
     var file = try std.fs.cwd().createFile(args[1], .{});
     defer file.close();
-    try file.writeAll(mirror_source);
+    try file.writeAll(content);
 }

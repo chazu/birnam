@@ -57,6 +57,14 @@ pub fn build(b: *std.Build) void {
     // module graph that compiles a mirror-using source (lang dylib + AOT variants).
     const eid_mirror_mod = b.createModule(.{ .root_source_file = eid_mirror_path });
 
+    // -- Shared module-side ABI (single source of truth) ---------------------
+    // The C-ABI IdApi/ShellContext/FactCallback struct definitions live in one
+    // file (src/kernel/module_abi.zig); the kernel re-exports them and every
+    // dylib module imports it as `@import("module_abi")` instead of hand-copying
+    // the struct. Wired as a named module because Zig forbids a dylib from
+    // `@import`-ing a file outside its own module root.
+    const module_abi_mod = b.createModule(.{ .root_source_file = b.path("src/kernel/module_abi.zig") });
+
     // -- Shell executable ----------------------------------------------------
 
     const shell_mod = b.createModule(.{
@@ -105,6 +113,7 @@ pub fn build(b: *std.Build) void {
     });
     aot_full_mod.addOptions("build_opts", full_opts); // peg/lang @import resolve here
     aot_full_mod.addImport("kernel_eids", eid_mirror_mod); // lang.zig mirror
+    aot_full_mod.addImport("module_abi", module_abi_mod);
     const aot_full = b.addExecutable(.{ .name = "birnam-aot", .root_module = aot_full_mod });
     aot_full.linkLibrary(dyncall_lib);
     aot_full.linkLibC();
@@ -129,6 +138,7 @@ pub fn build(b: *std.Build) void {
     });
     aot_mall_mod.addOptions("build_opts", mall_opts);
     aot_mall_mod.addImport("kernel_eids", eid_mirror_mod); // lang.zig mirror
+    aot_mall_mod.addImport("module_abi", module_abi_mod);
     const aot_mall = b.addExecutable(.{ .name = "birnam-aot-malleable", .root_module = aot_mall_mod });
     aot_mall.linkLibrary(dyncall_lib);
     aot_mall.linkLibC();
@@ -152,6 +162,7 @@ pub fn build(b: *std.Build) void {
         const mod = b.createModule(.{ .root_source_file = b.path("src/aot_main.zig"), .target = target, .optimize = optimize });
         mod.addOptions("build_opts", opts);
         mod.addImport("kernel_eids", eid_mirror_mod); // lang.zig mirror
+        mod.addImport("module_abi", module_abi_mod);
         const exe = b.addExecutable(.{ .name = name, .root_module = mod });
         exe.linkLibrary(dyncall_lib);
         exe.linkLibC();
@@ -166,6 +177,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    hello_mod.addImport("module_abi", module_abi_mod);
     const hello_lib = b.addLibrary(.{
         .name = "birnam_hello",
         .root_module = hello_mod,
@@ -180,6 +192,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    repl_mod.addImport("module_abi", module_abi_mod);
     const repl_lib = b.addLibrary(.{
         .name = "birnam_repl",
         .root_module = repl_mod,
@@ -194,6 +207,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    query_mod.addImport("module_abi", module_abi_mod);
     const query_lib = b.addLibrary(.{
         .name = "birnam_query",
         .root_module = query_mod,
@@ -209,6 +223,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     peg_mod.addOptions("build_opts", dylib_init_opts);
+    peg_mod.addImport("module_abi", module_abi_mod);
     const peg_lib = b.addLibrary(.{
         .name = "birnam_peg",
         .root_module = peg_mod,
@@ -225,6 +240,7 @@ pub fn build(b: *std.Build) void {
     });
     lang_mod.addOptions("build_opts", dylib_init_opts);
     lang_mod.addImport("kernel_eids", eid_mirror_mod); // single-source-of-truth EID mirror
+    lang_mod.addImport("module_abi", module_abi_mod);
     const lang_lib = b.addLibrary(.{
         .name = "birnam_lang",
         .root_module = lang_mod,

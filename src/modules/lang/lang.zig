@@ -33,7 +33,7 @@ const std = @import("std");
 /// automatically — a renumber propagates on rebuild; a rename fails the build.
 const ke = @import("kernel_eids");
 
-const abi = @import("../../kernel/module_abi.zig");
+const abi = @import("module_abi");
 const Ref = abi.Ref;
 const NIL = abi.NIL;
 
