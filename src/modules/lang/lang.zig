@@ -33,12 +33,11 @@ const std = @import("std");
 /// automatically — a renumber propagates on rebuild; a rename fails the build.
 const ke = @import("kernel_eids");
 
-const Ref = u64;
-const NIL: Ref = 0b010;
+const abi = @import("module_abi");
+const Ref = abi.Ref;
+const NIL = abi.NIL;
 
-fn mkEid(eid: u64) Ref {
-    return (eid << 3) | 0b010;
-}
+const mkEid = abi.mkEid;
 
 // Kernel-fixed EIDs (mirror src/kernel/kernel_eids.zig).
 const PEG_EID = ke.PEG_EID;
@@ -99,172 +98,11 @@ const ATTR_DELEGATE = ke.ATTR_DELEGATE;
 /// facts. Phase 12.0 provenance split.
 const M_USER = ke.M_USER;
 
-const ShellContext = extern struct {
-    log: *const fn ([*:0]const u8) callconv(.c) void,
-    set_repl_handler: *const fn (?*const fn ([*:0]const u8) callconv(.c) void) callconv(.c) void,
-};
+const ShellContext = abi.ShellContext;
 
-const FactCallback = fn (e: u64, a: u64, v: Ref, ctx: ?*anyopaque) callconv(.c) void;
+const FactCallback = abi.FactCallback;
 
-const IdApi = extern struct {
-    nil_eid: u64,
-    vtable_vt_eid: u64,
-    object_vt_eid: u64,
-    selector_vt_eid: u64,
-    closure_vt_eid: u64,
-    nil_vt_eid: u64,
-
-    sel_lookup: u64,
-    sel_methodAtPutWith: u64,
-    sel_delegated: u64,
-    sel_init: u64,
-    sel_allocate: u64,
-    sel_vtable: u64,
-
-    attr_vtable: u64,
-    attr_delegate: u64,
-    attr_name: u64,
-    attr_module: u64,
-
-    alloc_eid: *const fn () callconv(.c) u64,
-    promote: *const fn (u64, Ref) callconv(.c) void,
-    demote: *const fn (u64) callconv(.c) void,
-    alloc_object: *const fn (Ref, usize) callconv(.c) ?*anyopaque,
-    object_to_ref: *const fn (?*anyopaque) callconv(.c) Ref,
-    make_closure: *const fn (?*const anyopaque, Ref) callconv(.c) u64,
-
-    intern: *const fn ([*]const u8, usize) callconv(.c) u64,
-    make_string: *const fn ([*]const u8, usize) callconv(.c) Ref,
-
-    assert_fact: *const fn (u64, u64, Ref, u64) callconv(.c) u64,
-    retract_fact: *const fn (u64, u64, Ref, u64) callconv(.c) u64,
-    query_eavt: *const fn (u64, u64) callconv(.c) Ref,
-    facts_of_module: *const fn (u64, *const FactCallback, ?*anyopaque) callconv(.c) usize,
-
-    send0: *const fn (Ref, u64) callconv(.c) Ref,
-    send1: *const fn (Ref, u64, Ref) callconv(.c) Ref,
-    send2: *const fn (Ref, u64, Ref, Ref) callconv(.c) Ref,
-    send3: *const fn (Ref, u64, Ref, Ref, Ref) callconv(.c) Ref,
-
-    slot_at: *const fn (?*anyopaque, usize) callconv(.c) Ref,
-    set_slot: *const fn (?*anyopaque, usize, Ref) callconv(.c) void,
-
-    make_query: *const fn () callconv(.c) ?*anyopaque,
-    free_query: *const fn (?*anyopaque) callconv(.c) void,
-    query_variable: *const fn (?*anyopaque, [*]const u8, usize) callconv(.c) u32,
-    query_add_triple: *const fn (?*anyopaque, u32, u64, u32, u64, u32, u64) callconv(.c) void,
-    query_add_predicate: *const fn (?*anyopaque, u32, u32, u64, u32, u64) callconv(.c) void,
-    query_add_find: *const fn (?*anyopaque, u32) callconv(.c) void,
-    query_set_asof: *const fn (?*anyopaque, u64) callconv(.c) void,
-    query_set_in_module: *const fn (?*anyopaque, u64) callconv(.c) void,
-
-    query_execute: *const fn (?*anyopaque) callconv(.c) ?*anyopaque,
-    result_count: *const fn (?*anyopaque) callconv(.c) u64,
-    result_arity: *const fn (?*anyopaque) callconv(.c) u32,
-    result_at: *const fn (?*anyopaque, u64, u32) callconv(.c) Ref,
-    free_result: *const fn (?*anyopaque) callconv(.c) void,
-
-    query_set_since: *const fn (?*anyopaque, u64) callconv(.c) void,
-    query_set_between: *const fn (?*anyopaque, u64, u64) callconv(.c) void,
-    query_set_max_iter: *const fn (?*anyopaque, u32) callconv(.c) void,
-    query_set_max_tuples: *const fn (?*anyopaque, u64) callconv(.c) void,
-    query_begin_negation: *const fn (?*anyopaque) callconv(.c) void,
-    query_end_negation: *const fn (?*anyopaque) callconv(.c) void,
-    query_begin_disjunction: *const fn (?*anyopaque) callconv(.c) void,
-    query_begin_branch: *const fn (?*anyopaque) callconv(.c) void,
-    query_end_branch: *const fn (?*anyopaque) callconv(.c) void,
-    query_end_disjunction: *const fn (?*anyopaque) callconv(.c) void,
-    query_add_rule_invocation: *const fn (?*anyopaque, u64, usize, [*]const u32, [*]const u64) callconv(.c) void,
-    define_rule: *const fn (?*anyopaque, u64, u32, u32) callconv(.c) bool,
-    query_use_global_rules: *const fn (?*anyopaque) callconv(.c) void,
-    query_add_find_aggregate: *const fn (?*anyopaque, u32, u32) callconv(.c) void,
-    rrb_count: *const fn (?*anyopaque) callconv(.c) u64,
-    rrb_at: *const fn (?*anyopaque, u64) callconv(.c) Ref,
-
-    save_query: *const fn ([*]const u8, usize, ?*anyopaque) callconv(.c) u64,
-    run_query: *const fn ([*]const u8, usize) callconv(.c) ?*anyopaque,
-
-    query_add_pred_call: *const fn (?*anyopaque, u64, usize, [*]const u32, [*]const u64) callconv(.c) void,
-    query_add_fn_call: *const fn (?*anyopaque, u64, usize, [*]const u32, [*]const u64, u32) callconv(.c) void,
-    register_pred: *const fn (u64, ?*const anyopaque) callconv(.c) u64,
-    register_fn: *const fn (u64, ?*const anyopaque) callconv(.c) u64,
-
-    promote_eid: *const fn (u64) callconv(.c) bool,
-    demote_eid: *const fn (u64) callconv(.c) void,
-    hotness_of: *const fn (u64) callconv(.c) u32,
-    is_materialized: *const fn (u64) callconv(.c) bool,
-    ffi_enter: *const fn () callconv(.c) void,
-    ffi_exit: *const fn () callconv(.c) void,
-
-    peg_install_send_api: *const fn (u64) callconv(.c) void,
-
-    // Phase 10.1.b procedural escape hatch — bootstrap-only, see
-    // ADR-10-Send-Arity in ROADMAP. User-facing seq/choice/charset land
-    // via the send-dispatched surface once Phase 10.2.5 (sendN) ships.
-    peg_mk_seq: *const fn ([*]const u64, usize) callconv(.c) u64,
-    peg_mk_choice: *const fn ([*]const u64, usize) callconv(.c) u64,
-    peg_mk_charset: *const fn ([*]const u8, usize) callconv(.c) u64,
-
-    sendN: *const fn (Ref, u64, [*]const Ref, usize) callconv(.c) Ref,
-    object_at_eid: *const fn (u64) callconv(.c) Ref,
-    make_float: *const fn (f64) callconv(.c) Ref,
-
-    /// Phase 11.2 — compile a block AST as a bytecode method. Returns
-    /// method-EID for installation via [vt sel mkEid(method_eid)].
-    /// Append-only ABI discipline (Phase 9.5.5).
-    compile_block_as_method: *const fn (block_ast_eid: u64) callconv(.c) u64,
-
-    // -- Phase 15.R R1d: db-value surface (append-only) --------------------
-    snapshot_now: *const fn () callconv(.c) Ref,
-    snapshot_as_of: *const fn (u64) callconv(.c) Ref,
-    snapshot_get: *const fn (Ref, u64, u64) callconv(.c) Ref,
-    snapshot_basis: *const fn (Ref) callconv(.c) Ref,
-    snapshot_release: *const fn (Ref) callconv(.c) void,
-    set_retention: *const fn (u32, u64) callconv(.c) void,
-    excise_entity: *const fn (u64) callconv(.c) bool,
-
-    // -- Phase 16 Tier A: vectors (append-only) ----------------------------
-    make_rrb: *const fn ([*]const Ref, usize) callconv(.c) Ref,
-    rrb_with: *const fn (Ref, Ref) callconv(.c) Ref,
-    rrb_len: *const fn (Ref) callconv(.c) u64,
-    rrb_nth: *const fn (Ref, u64) callconv(.c) Ref,
-
-    // -- Phase 16 Tier C: maps (append-only) -------------------------------
-    make_map: *const fn () callconv(.c) Ref,
-    map_put: *const fn (Ref, Ref, Ref) callconv(.c) Ref,
-    map_get: *const fn (Ref, Ref) callconv(.c) Ref,
-    map_has: *const fn (Ref, Ref) callconv(.c) bool,
-    map_len: *const fn (Ref) callconv(.c) u64,
-    map_keys: *const fn (Ref) callconv(.c) Ref,
-    map_values: *const fn (Ref) callconv(.c) Ref,
-    map_merge: *const fn (Ref, Ref) callconv(.c) Ref,
-    symbol_name: *const fn (u64) callconv(.c) Ref,
-    make_reduced: *const fn (Ref) callconv(.c) Ref,
-    is_reduced: *const fn (Ref) callconv(.c) bool,
-    reduced_value: *const fn (Ref) callconv(.c) Ref,
-    make_range: *const fn (i64, i64, i64) callconv(.c) Ref,
-    range_len: *const fn (Ref) callconv(.c) u64,
-    range_nth: *const fn (Ref, u64) callconv(.c) Ref,
-    string_len: *const fn (Ref) callconv(.c) u64,
-    string_byte_at: *const fn (Ref, u64) callconv(.c) Ref,
-    string_concat: *const fn (Ref, Ref) callconv(.c) Ref,
-    string_eq: *const fn (Ref, Ref) callconv(.c) bool,
-    string_as_symbol: *const fn (Ref) callconv(.c) Ref,
-
-    // -- Phase 16 Tier E: reference cells (append-only) --------------------
-    current_value_as_of: *const fn (u64, u64, u64) callconv(.c) Ref,
-    cell_history: *const fn (u64, u64) callconv(.c) Ref,
-    basis_now: *const fn () callconv(.c) u64,
-
-    // -- Phase 17 string batch (append-only) -------------------------------
-    string_index_of: *const fn (Ref, Ref) callconv(.c) i64,
-    string_to_int: *const fn (Ref) callconv(.c) Ref,
-    string_case: *const fn (Ref, u32) callconv(.c) Ref,
-    string_trim: *const fn (Ref, u32) callconv(.c) Ref,
-    string_split: *const fn (Ref, Ref) callconv(.c) Ref,
-    string_join: *const fn (Ref, Ref) callconv(.c) Ref,
-    string_reverse: *const fn (Ref) callconv(.c) Ref,
-};
+const IdApi = abi.IdApi;
 
 // -- Module-static state -----------------------------------------------------
 

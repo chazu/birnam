@@ -14,12 +14,11 @@
 
 const std = @import("std");
 
-const Ref = u64;
-const NIL: Ref = 0b010;
+const abi = @import("module_abi");
+const Ref = abi.Ref;
+const NIL = abi.NIL;
 
-fn mkEid(eid: u64) Ref {
-    return (eid << 3) | 0b010;
-}
+const mkEid = abi.mkEid;
 fn mkPointer(p: ?*anyopaque) Ref {
     return @intFromPtr(p);
 }
@@ -39,89 +38,11 @@ fn isSmallInt(r: Ref) bool {
     return (r & 0b111) == 0b001;
 }
 
-const ShellContext = extern struct {
-    log: *const fn ([*:0]const u8) callconv(.c) void,
-    set_repl_handler: *const fn (?*const fn ([*:0]const u8) callconv(.c) void) callconv(.c) void,
-};
+const ShellContext = abi.ShellContext;
 
-const FactCallback = fn (e: u64, a: u64, v: Ref, ctx: ?*anyopaque) callconv(.c) void;
+const FactCallback = abi.FactCallback;
 
-const IdApi = extern struct {
-    nil_eid: u64,
-    vtable_vt_eid: u64,
-    object_vt_eid: u64,
-    selector_vt_eid: u64,
-    closure_vt_eid: u64,
-    nil_vt_eid: u64,
-
-    sel_lookup: u64,
-    sel_methodAtPutWith: u64,
-    sel_delegated: u64,
-    sel_init: u64,
-    sel_allocate: u64,
-    sel_vtable: u64,
-
-    attr_vtable: u64,
-    attr_delegate: u64,
-    attr_name: u64,
-    attr_module: u64,
-
-    alloc_eid: *const fn () callconv(.c) u64,
-    promote: *const fn (u64, Ref) callconv(.c) void,
-    demote: *const fn (u64) callconv(.c) void,
-    alloc_object: *const fn (Ref, usize) callconv(.c) ?*anyopaque,
-    object_to_ref: *const fn (?*anyopaque) callconv(.c) Ref,
-    make_closure: *const fn (?*const anyopaque, Ref) callconv(.c) u64,
-
-    intern: *const fn ([*]const u8, usize) callconv(.c) u64,
-    make_string: *const fn ([*]const u8, usize) callconv(.c) Ref,
-
-    assert_fact: *const fn (u64, u64, Ref, u64) callconv(.c) u64,
-    retract_fact: *const fn (u64, u64, Ref, u64) callconv(.c) u64,
-    query_eavt: *const fn (u64, u64) callconv(.c) Ref,
-    facts_of_module: *const fn (u64, *const FactCallback, ?*anyopaque) callconv(.c) usize,
-
-    send0: *const fn (Ref, u64) callconv(.c) Ref,
-    send1: *const fn (Ref, u64, Ref) callconv(.c) Ref,
-    send2: *const fn (Ref, u64, Ref, Ref) callconv(.c) Ref,
-    send3: *const fn (Ref, u64, Ref, Ref, Ref) callconv(.c) Ref,
-
-    slot_at: *const fn (?*anyopaque, usize) callconv(.c) Ref,
-    set_slot: *const fn (?*anyopaque, usize, Ref) callconv(.c) void,
-
-    make_query: *const fn () callconv(.c) ?*anyopaque,
-    free_query: *const fn (?*anyopaque) callconv(.c) void,
-    query_variable: *const fn (?*anyopaque, [*]const u8, usize) callconv(.c) u32,
-    query_add_triple: *const fn (?*anyopaque, u32, u64, u32, u64, u32, u64) callconv(.c) void,
-    query_add_predicate: *const fn (?*anyopaque, u32, u32, u64, u32, u64) callconv(.c) void,
-    query_add_find: *const fn (?*anyopaque, u32) callconv(.c) void,
-    query_set_asof: *const fn (?*anyopaque, u64) callconv(.c) void,
-    query_set_in_module: *const fn (?*anyopaque, u64) callconv(.c) void,
-
-    query_execute: *const fn (?*anyopaque) callconv(.c) ?*anyopaque,
-    result_count: *const fn (?*anyopaque) callconv(.c) u64,
-    result_arity: *const fn (?*anyopaque) callconv(.c) u32,
-    result_at: *const fn (?*anyopaque, u64, u32) callconv(.c) Ref,
-    free_result: *const fn (?*anyopaque) callconv(.c) void,
-
-    // Phase 7.1 polish + 7.2 extensions appended at end.
-    query_set_since: *const fn (?*anyopaque, u64) callconv(.c) void,
-    query_set_between: *const fn (?*anyopaque, u64, u64) callconv(.c) void,
-    query_set_max_iter: *const fn (?*anyopaque, u32) callconv(.c) void,
-    query_set_max_tuples: *const fn (?*anyopaque, u64) callconv(.c) void,
-    query_begin_negation: *const fn (?*anyopaque) callconv(.c) void,
-    query_end_negation: *const fn (?*anyopaque) callconv(.c) void,
-    query_begin_disjunction: *const fn (?*anyopaque) callconv(.c) void,
-    query_begin_branch: *const fn (?*anyopaque) callconv(.c) void,
-    query_end_branch: *const fn (?*anyopaque) callconv(.c) void,
-    query_end_disjunction: *const fn (?*anyopaque) callconv(.c) void,
-    query_add_rule_invocation: *const fn (?*anyopaque, u64, usize, [*]const u32, [*]const u64) callconv(.c) void,
-    define_rule: *const fn (?*anyopaque, u64, u32, u32) callconv(.c) bool,
-    query_use_global_rules: *const fn (?*anyopaque) callconv(.c) void,
-    query_add_find_aggregate: *const fn (?*anyopaque, u32, u32) callconv(.c) void,
-    rrb_count: *const fn (?*anyopaque) callconv(.c) u64,
-    rrb_at: *const fn (?*anyopaque, u64) callconv(.c) Ref,
-};
+const IdApi = abi.IdApi;
 
 const RRB_VT_EID: u64 = 9;
 

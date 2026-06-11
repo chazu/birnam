@@ -277,7 +277,9 @@ fn sighupHandler(_: c_int) callconv(.c) void {
 fn installSignalHandler() void {
     const act = posix.Sigaction{
         .handler = .{ .handler = sighupHandler },
-        .mask = 0,
+        // Portable empty signal mask: `sa_mask` is an integer on macOS/BSD but
+        // a struct (`[N]c_ulong`) on Linux, so a bare `0` won't compile there.
+        .mask = std.mem.zeroes(posix.sigset_t),
         .flags = 0,
     };
     posix.sigaction(posix.SIG.HUP, &act, null);
