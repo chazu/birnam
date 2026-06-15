@@ -2041,6 +2041,26 @@ order ≠ roadmap order). Item-by-item:
   integer overflow panics in safe builds; convert these to `ERROR_VT`. (c)
   arg-position error propagation (receiver-position covered; args explicit). (d)
   resume/retry (Result can't — accepted). (e) source location in errors.
+- **17.8 I/O surface — SHIPPED 2026-06-14** (branch `errors-result-model`): the
+  second usability batch. Two global prototype singletons (like `Module`/`db`),
+  installed lang-side in the always-kept tier (`installIoSurface`):
+  - **`File`** (data read/write, direct `std.fs` from the lang dylib — no ABI
+    change): `read:` (→ string or kinded ERROR_VT), `write:to:`, `append:to:`,
+    `exists:` (→ bool), `delete:`. Failures return `ERROR_VT` kinded
+    `#fileNotFound`/`#accessDenied`/`#ioError` — propagate + catch with `on:do:`,
+    clean up with `ensure:`.
+  - **`System`** (process I/O): `print:`/`println:` (clean **stdout**, vs `print`
+    which goes to the prefixed REPL log on stderr), `error:` (stderr), `readLine`
+    (next stdin line or nil at EOF — reads fd 0 directly), `arguments` (→ vector
+    of the tokens after `--` on the command line).
+  - **argv** is the one piece needing the ABI + shell: `IdApi` gained
+    `arg_count`/`arg_at` (appended per ABI discipline), `id_api.setArgs` stores
+    them, and `shell.zig` captures everything after `--` as program args
+    (`birnam peg.dylib lang.dylib -- a b` → `[System arguments]` = `#["a" "b"]`).
+    EIDs `FILE_PROTO_VT=220`/`FILE_PROTO=221`/`SYSTEM_PROTO_VT=222`/`SYSTEM_PROTO=223`.
+  **Deferred:** AOT binaries don't capture argv yet (`System arguments` is empty
+  under AOT — only the shell wires `setArgs`); stream objects / buffered I/O;
+  directory ops; `withFile:do:` bracket sugar over `ensure:`.
 
 **Remaining:** `&`/`|` (grammar collision); a general `compare:`/`<=>` three-way
 + sorted-collection type (sort over `<` covers the common case today); string

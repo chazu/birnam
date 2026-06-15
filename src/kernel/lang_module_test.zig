@@ -1186,6 +1186,50 @@ test "errors: ensure: runs cleanup, [msg error] raises + catches" {
         evalLine(s, lang, "[[| [\"nope\" error: #myKind]] on: #myKind do: [:e | 8]]", a)));
 }
 
+fn refIsTrue(v: Ref) bool {
+    return ref_mod.isEid(v) and (v >> 3) == kernel_eids.TRUE_EID;
+}
+
+// Phase 17.8 I/O — File read/write/append/exists/delete round-trip.
+test "io: File read/write/append/exists/delete" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const path = "test_io_tmp.txt";
+    defer std.fs.cwd().deleteFile(path) catch {};
+
+    // write → success (nil), read back → exact contents.
+    try testing.expect(ref_mod.NIL == evalLine(s, lang, "[File write: \"hello\" to: \"test_io_tmp.txt\"]", a));
+    try testing.expect(refIsTrue(evalLine(s, lang, "[[File read: \"test_io_tmp.txt\"] = \"hello\"]", a)));
+    try testing.expect(refIsTrue(evalLine(s, lang, "[File exists: \"test_io_tmp.txt\"]", a)));
+
+    // append → contents grow.
+    try testing.expect(ref_mod.NIL == evalLine(s, lang, "[File append: \" world\" to: \"test_io_tmp.txt\"]", a));
+    try testing.expect(refIsTrue(evalLine(s, lang, "[[File read: \"test_io_tmp.txt\"] = \"hello world\"]", a)));
+
+    // delete → gone.
+    try testing.expect(ref_mod.NIL == evalLine(s, lang, "[File delete: \"test_io_tmp.txt\"]", a));
+    try testing.expect(!refIsTrue(evalLine(s, lang, "[File exists: \"test_io_tmp.txt\"]", a)));
+
+    // read of a missing file → kinded error (fileNotFound), catchable.
+    try testing.expect(evalIsError(s, lang, "[File read: \"does_not_exist_xyz.txt\"]", a));
+    try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[| [File read: \"does_not_exist_xyz.txt\"]] on: #fileNotFound do: [:e | 7]]", a)));
+
+    // System print:/println:/error: are clean fd writes; just confirm they run
+    // and return nil (stdout capture isn't available in-process here).
+    try testing.expect(ref_mod.NIL == evalLine(s, lang, "[System print: \"\"]", a));
+    try testing.expect(ref_mod.NIL == evalLine(s, lang, "[System println: \"io-smoke\"]", a));
+
+    // System arguments → a vector. In this harness no args are registered, so
+    // it's empty; real argv passing (`birnam … -- a b`) is shell-smoke tested.
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(evalLine(s, lang, "[[System arguments] size]", a)));
+}
+
 // Phase 12 — automated regression for the REPL-binding round-trip that the
 // shell `:save`/`:load` smoke proved manually. Two independent boots (fresh
 // store/table/interner each) with peg+lang loaded; a binding defined in the

@@ -69,6 +69,10 @@ const FALSE_EID = ke.FALSE_EID;
 const SNAPSHOT_VT = ke.SNAPSHOT_VT;
 const DB_PROTO_VT = ke.DB_PROTO_VT;
 const DB_PROTO = ke.DB_PROTO;
+const FILE_PROTO_VT = ke.FILE_PROTO_VT; // Phase 17.8 I/O — File singleton vtable
+const FILE_PROTO = ke.FILE_PROTO;
+const SYSTEM_PROTO_VT = ke.SYSTEM_PROTO_VT; // Phase 17.8 I/O — System singleton vtable
+const SYSTEM_PROTO = ke.SYSTEM_PROTO;
 // Phase 16 — RRB-backed vector vtable (mirror of kernel_eids.RRB_VT).
 const RRB_VT = ke.RRB_VT;
 const ASSOC_VT = ke.ASSOC_VT; // Phase 16 Tier C — map vtable (mirror)
@@ -2595,6 +2599,183 @@ fn installDbSurface() void {
     pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("db".ptr, 2), mkEid(DB_PROTO));
 }
 
+// -- Phase 17.8: I/O surface (File + System) ------------------------------
+//
+// File does data read/write directly via std.fs from the lang dylib (no new
+// ABI field — same as fileIn:). Failures return ERROR_VT (kinded) so they
+// propagate + are catchable with on:do:; pair with `ensure:` for cleanup.
+// System does stdout/stderr (direct fd write), stdin readLine, and arguments
+// (argv, captured by the shell and exposed via the appended IdApi ABI).
+
+/// Map a Zig file-system error to a birnam error kind symbol.
+fn ioErrorKind(e: anyerror) []const u8 {
+    return switch (e) {
+        error.FileNotFound => "fileNotFound",
+        error.AccessDenied => "accessDenied",
+        else => "ioError",
+    };
+}
+
+/// `[File read: path]` → file contents as a string, or a kinded ERROR_VT.
+fn fileReadImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(args[0])) return mkRuntimeErrorKind(api.intern("ioError".ptr, 7), "File read: path must be a string");
+    const path = stringBytes(args[0]);
+    const bytes = std.fs.cwd().readFileAlloc(std.heap.page_allocator, path, 64 << 20) catch |e|
+        return mkRuntimeErrorFmt(api.intern(ioErrorKind(e).ptr, ioErrorKind(e).len), "File read: {s}: {s}", .{ path, @errorName(e) });
+    defer std.heap.page_allocator.free(bytes);
+    return api.make_string(bytes.ptr, bytes.len);
+}
+
+/// `[File write: contents to: path]` → nil on success, or a kinded ERROR_VT.
+/// Creates or truncates `path`.
+fn fileWriteImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(args[0]) or !isString(args[1])) return mkRuntimeErrorKind(api.intern("ioError".ptr, 7), "File write:to: expects (string, string)");
+    const data = stringBytes(args[0]);
+    const path = stringBytes(args[1]);
+    std.fs.cwd().writeFile(.{ .sub_path = path, .data = data }) catch |e|
+        return mkRuntimeErrorFmt(api.intern(ioErrorKind(e).ptr, ioErrorKind(e).len), "File write: {s}: {s}", .{ path, @errorName(e) });
+    return NIL;
+}
+
+/// `[File append: contents to: path]` → nil on success, or a kinded ERROR_VT.
+/// Creates `path` if absent; appends otherwise.
+fn fileAppendImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(args[0]) or !isString(args[1])) return mkRuntimeErrorKind(api.intern("ioError".ptr, 7), "File append:to: expects (string, string)");
+    const data = stringBytes(args[0]);
+    const path = stringBytes(args[1]);
+    const f = std.fs.cwd().createFile(path, .{ .truncate = false }) catch |e|
+        return mkRuntimeErrorFmt(api.intern(ioErrorKind(e).ptr, ioErrorKind(e).len), "File append: {s}: {s}", .{ path, @errorName(e) });
+    defer f.close();
+    f.seekFromEnd(0) catch |e| return mkRuntimeErrorFmt(api.intern("ioError".ptr, 7), "File append: {s}: {s}", .{ path, @errorName(e) });
+    f.writeAll(data) catch |e| return mkRuntimeErrorFmt(api.intern("ioError".ptr, 7), "File append: {s}: {s}", .{ path, @errorName(e) });
+    return NIL;
+}
+
+/// `[File exists: path]` → true / false (never errors).
+fn fileExistsImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    if (!isString(args[0])) return mkEid(FALSE_EID);
+    std.fs.cwd().access(stringBytes(args[0]), .{}) catch return mkEid(FALSE_EID);
+    return mkEid(TRUE_EID);
+}
+
+/// `[File delete: path]` → nil on success, or a kinded ERROR_VT.
+fn fileDeleteImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(args[0])) return mkRuntimeErrorKind(api.intern("ioError".ptr, 7), "File delete: path must be a string");
+    const path = stringBytes(args[0]);
+    std.fs.cwd().deleteFile(path) catch |e|
+        return mkRuntimeErrorFmt(api.intern(ioErrorKind(e).ptr, ioErrorKind(e).len), "File delete: {s}: {s}", .{ path, @errorName(e) });
+    return NIL;
+}
+
+/// `[System print: x]` → write x's displayString to stdout (no newline);
+/// returns nil. Unlike `print` (which goes to the prefixed REPL log = stderr),
+/// this is clean stdout for program output.
+fn systemPrintImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    systemWrite(std.fs.File.stdout(), args[0], false);
+    return NIL;
+}
+/// `[System println: x]` → like print: plus a trailing newline.
+fn systemPrintlnImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    systemWrite(std.fs.File.stdout(), args[0], true);
+    return NIL;
+}
+/// `[System error: x]` → write x's displayString + newline to stderr.
+fn systemErrorImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    systemWrite(std.fs.File.stderr(), args[0], true);
+    return NIL;
+}
+
+/// Render `v` to its displayString and write the bytes to `file` (optionally
+/// with a trailing newline). Strings write their raw bytes; other values use
+/// the canonical formatter.
+fn systemWrite(file: std.fs.File, v: Ref, newline: bool) void {
+    const w = file.deprecatedWriter();
+    if (isString(v)) {
+        w.writeAll(stringBytes(v)) catch {};
+    } else {
+        var buf: [4096]u8 = undefined;
+        const len = appendRef(&buf, 0, v);
+        w.writeAll(buf[0..len]) catch {};
+    }
+    if (newline) w.writeAll("\n") catch {};
+}
+
+/// `[System readLine]` → next line from stdin (newline stripped) as a string,
+/// or nil at EOF. Reads fd 0 directly; in the interactive REPL this consumes
+/// the next input line.
+fn systemReadLineImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, args, n };
+    const api = g_api.?;
+    var buf: [4096]u8 = undefined;
+    const r = std.fs.File.stdin().deprecatedReader();
+    const line = r.readUntilDelimiterOrEof(&buf, '\n') catch return NIL;
+    if (line) |bytes| return api.make_string(bytes.ptr, bytes.len);
+    return NIL; // EOF
+}
+
+/// `[System arguments]` → a vector of the program's command-line arguments (the
+/// tokens after `--` on the birnam command line), as strings.
+fn systemArgumentsImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, args, n };
+    const api = g_api.?;
+    const count = api.arg_count();
+    var items: [256]Ref = undefined;
+    var i: usize = 0;
+    while (i < count and i < items.len) : (i += 1) {
+        var len: usize = 0;
+        const p = api.arg_at(i, &len);
+        items[i] = api.make_string(p, len);
+    }
+    return api.make_rrb(&items, i);
+}
+
+/// Install the `File` and `System` global prototypes (CODE provenance — rebuilt
+/// each boot, never persisted).
+fn installIoSurface() void {
+    const api = g_api.?;
+    const Pair = struct { name: []const u8, impl: *const anyopaque };
+
+    _ = api.assert_fact(FILE_PROTO, ATTR_VTABLE, mkEid(FILE_PROTO_VT), g_module_eid);
+    _ = api.assert_fact(FILE_PROTO_VT, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    const file_methods = [_]Pair{
+        .{ .name = "read:", .impl = @ptrCast(&fileReadImpl) },
+        .{ .name = "write:to:", .impl = @ptrCast(&fileWriteImpl) },
+        .{ .name = "append:to:", .impl = @ptrCast(&fileAppendImpl) },
+        .{ .name = "exists:", .impl = @ptrCast(&fileExistsImpl) },
+        .{ .name = "delete:", .impl = @ptrCast(&fileDeleteImpl) },
+    };
+    for (file_methods) |m| {
+        _ = api.assert_fact(FILE_PROTO_VT, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("File".ptr, 4), mkEid(FILE_PROTO));
+
+    _ = api.assert_fact(SYSTEM_PROTO, ATTR_VTABLE, mkEid(SYSTEM_PROTO_VT), g_module_eid);
+    _ = api.assert_fact(SYSTEM_PROTO_VT, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    const system_methods = [_]Pair{
+        .{ .name = "print:", .impl = @ptrCast(&systemPrintImpl) },
+        .{ .name = "println:", .impl = @ptrCast(&systemPrintlnImpl) },
+        .{ .name = "error:", .impl = @ptrCast(&systemErrorImpl) },
+        .{ .name = "readLine", .impl = @ptrCast(&systemReadLineImpl) },
+        .{ .name = "arguments", .impl = @ptrCast(&systemArgumentsImpl) },
+    };
+    for (system_methods) |m| {
+        _ = api.assert_fact(SYSTEM_PROTO_VT, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("System".ptr, 6), mkEid(SYSTEM_PROTO));
+}
+
 // -- Phase 16 Tier E: reference cells, metadata, applicative --------------
 
 /// `db cell: v` / `ref: v` / `atom: v` — mint a reference cell. A cell IS an
@@ -3973,6 +4154,7 @@ pub fn langPrimitivesTier() void {
     // touch only TOP_SCOPE's binding chain) don't disturb them. CODE facts.
     installGlobals();
     installDbSurface(); // Phase 15.R R1d — `db` prototype + snapshot methods
+    installIoSurface(); // Phase 17.8 — File + System I/O
     installCellSurface(); // Phase 16 Tier E — cells/metadata/applicative/Xf
     installStdlib(); // Phase 17 — printing, equality/comparison, sort
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_PARENT, mkEid(GLOBALS_SCOPE_EID), g_module_eid);

@@ -340,6 +340,12 @@ pub const IdApi = extern struct {
     string_join: *const fn (Ref, Ref) callconv(.c) Ref,
     /// Byte-reversed copy. Backs `reverse`.
     string_reverse: *const fn (Ref) callconv(.c) Ref,
+    /// Phase 17.8 I/O — command-line arguments (the tokens after `--` on the
+    /// birnam command line), captured by the shell. Backs `System arguments`.
+    /// `arg_count` = number of args; `arg_at(i, &len)` = pointer+length of arg i.
+    /// (Appended at END per the append-only ABI discipline.)
+    arg_count: *const fn () callconv(.c) usize,
+    arg_at: *const fn (usize, *usize) callconv(.c) [*]const u8,
 };
 
 comptime {

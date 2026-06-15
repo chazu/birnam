@@ -261,6 +261,24 @@ birnam> ["disk full" error: #io]                            // raise your own
 
 > ⚠️ **Eager send vs. block.** A bracketed `[recv msg]` is a **message send and runs immediately** — `[10 / 0]` evaluates *now* and yields the divide-by-zero error. A **block** is `[| … ]` (no params) or `[:x | … ]` (params): the leading `|` makes it a *deferred* value. So anything that should run *under* a handler — `on:do:`, `ensure:`, `ifTrue:`, `whileTrue:` — must be a block: write `[[| [10 / 0]] on: #zeroDivide do: …]`, **not** `[[10 / 0] on: …]` (the latter sends `on:` to the already-computed error). Every send needs brackets; `10 / 0` on its own is a parse error.
 
+**I/O.** `File` does data read/write (returns an error value on failure — catch it or let it propagate); `System` does clean stdout/stderr, stdin, and command-line arguments:
+
+```
+birnam> [File write: "hi\n" to: "out.txt"]
+birnam> [File read: "out.txt"]
+=> "hi\n"
+birnam> [File exists: "out.txt"]
+=> true
+birnam> [[| [File read: "missing"]] on: #fileNotFound do: [:e | "default"]]
+=> "default"
+birnam> [System println: "clean stdout, no prefix"]      // also print: (no newline), error: (stderr)
+birnam> [System readLine]                                 // next line from stdin, or nil at EOF
+birnam> [System arguments]                                // tokens after `--` on the command line
+=> #[]
+```
+
+`print` (any value) goes to the prefixed REPL log on **stderr**; `System print:`/`println:` are **clean stdout** for program output. Pass program arguments after `--`: `birnam peg.dylib lang.dylib -- alpha beta` makes `[System arguments]` yield `#["alpha" "beta"]`.
+
 ## Saving and loading the image
 
 REPL state — your bindings and installed methods — persists to a single self-describing `.bim` file and survives a process restart:
