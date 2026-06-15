@@ -634,4 +634,14 @@ pub const SEL_FFI_PEEK_STRING_ARRAY: u64 = 225; // "peekStringArray:" on FFI_PTR
 pub const SEL_FFI_PEEK_BYTES: u64 = 226; // "peekBytes:len:" (offset, len) -> string
 pub const SEL_FFI_POKE_BYTES: u64 = 227; // "pokeBytes:at:"  (bytes, offset) -> self
 
-// 228..255 reserved for future kernel selectors / attributes
+/// Phase 19.7 — out-param "cell" constructors on MODULE_PROTO_VT. Each mints an
+/// FfiPtr to a fresh scratch buffer carrying a width tag (boxed slot 2); after a
+/// C call writes through it, `[cell value]` (reuses SEL_VALUE) peeks the right
+/// width and `[cell free]` releases it. Collapses the alloc/pass/peek/free
+/// out-param dance (e.g. `open(path, &fd)`) into one minted value.
+pub const SEL_FFI_OUT_INT: u64 = 228; // "outInt"    -> cell over a C int (4 bytes)
+pub const SEL_FFI_OUT_LONG: u64 = 229; // "outLong"  -> cell over a C long (8 bytes)
+pub const SEL_FFI_OUT_PTR: u64 = 230; // "outPtr"    -> cell over a pointer (8 bytes)
+pub const SEL_FFI_OUT_DOUBLE: u64 = 231; // "outDouble" -> cell over a double (8 bytes)
+
+// 232..255 reserved for future kernel selectors / attributes

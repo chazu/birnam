@@ -60,20 +60,42 @@ pub fn untagFloat(r: Ref) f64 {
 
 // -- FFI pointer ------------------------------------------------------------
 
-/// FFI pointer layout (post-Phase 9.5.5):
+/// FFI pointer layout (post-Phase 9.5.5; slot 2 added in Phase 19.7):
 ///   slot -1 : vt_ref = mkEid(FFI_PTR_VT)
 ///   slot  0 : raw C address (u64)
 ///   slot  1 : owning box-EID (u64), or 0 if not associated with a
 ///             Module — unowned pointers can never be staled.
+///   slot  2 : out-param width tag (u64), or 0 if this is not an out-param
+///             "cell" (Phase 19.7). Non-zero only for `[Module outInt]` &c.;
+///             tells `[cell value]` which width to peek. Inert otherwise.
 ///
-/// 2-slot layout costs 8 extra bytes per box vs the 1-slot Phase 9 shape;
-/// in exchange `pushArg`'s stale check is a constant-time slot read plus
-/// a single fact-store lookup.
+/// All three slots are raw u64 (addr / eid / tag), never Refs, so the GC mark
+/// walk does not scan them. `pushArg`'s stale check is a constant-time slot-1
+/// read plus a single fact-store lookup.
 pub fn mkFfiPtr(allocator: std.mem.Allocator, addr: usize) !Ref {
-    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.FFI_PTR_VT), 2);
+    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.FFI_PTR_VT), 3);
     object.setSlot(obj_ptr, 0, @as(u64, @intCast(addr)));
     object.setSlot(obj_ptr, 1, 0); // unowned
+    object.setSlot(obj_ptr, 2, 0); // not an out-param cell
     return object.toRef(obj_ptr);
+}
+
+/// Phase 19.7 — mint an out-param "cell": an FfiPtr that remembers a width tag
+/// in slot 2 so `[cell value]` peeks the right C width without the caller
+/// re-stating it. Always unowned (slot 1 = 0); freed via `[cell free]`.
+pub fn mkFfiPtrCell(allocator: std.mem.Allocator, addr: usize, width_tag: u64) !Ref {
+    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.FFI_PTR_VT), 3);
+    object.setSlot(obj_ptr, 0, @as(u64, @intCast(addr)));
+    object.setSlot(obj_ptr, 1, 0);
+    object.setSlot(obj_ptr, 2, width_tag);
+    return object.toRef(obj_ptr);
+}
+
+/// Read the Phase 19.7 out-param width tag (slot 2). 0 = not a cell.
+pub fn ffiPtrWidth(r: Ref) u64 {
+    std.debug.assert(isFfiPtr(r));
+    const obj = object.fromRef(r);
+    return object.slotAt(obj, 2);
 }
 
 /// Phase 9.5.5 variant — allocate the boxed pointer AND assert a
@@ -88,10 +110,11 @@ pub fn mkFfiPtrOwned(
     addr: usize,
     owner_mod_eid: u64,
 ) !Ref {
-    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.FFI_PTR_VT), 2);
+    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.FFI_PTR_VT), 3);
     object.setSlot(obj_ptr, 0, @as(u64, @intCast(addr)));
     const box_eid = table.alloc();
     object.setSlot(obj_ptr, 1, box_eid);
+    object.setSlot(obj_ptr, 2, 0); // not an out-param cell
     _ = try store.assert(box_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.FFI_PTR_VT), kernel_eids.M_BOOTSTRAP);
     _ = try store.assert(box_eid, kernel_eids.ATTR_FFI_OWNER, ref_mod.mkEid(owner_mod_eid), kernel_eids.M_BOOTSTRAP);
     try table.put(box_eid, object.toRef(obj_ptr));

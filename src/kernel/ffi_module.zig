@@ -599,6 +599,78 @@ fn methodArgv(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     return boxed.mkFfiPtr(alloc, base) catch ref_mod.NIL;
 }
 
+// Phase 19.7 — out-param cell width tags (boxed FfiPtr slot 2). The tag encodes
+// both the scratch size and how `[cell value]` reinterprets the bytes.
+const CELL_W_INT: u64 = 1; // C int    — 4 bytes, read i32 (sign-extended) -> SmallInt
+const CELL_W_LONG: u64 = 2; // C long   — 8 bytes, read i64               -> SmallInt
+const CELL_W_PTR: u64 = 3; // pointer   — 8 bytes, read usize             -> FfiPtr
+const CELL_W_DOUBLE: u64 = 4; // double  — 8 bytes, read f64               -> Float
+
+fn cellWidthSize(tag: u64) usize {
+    return switch (tag) {
+        CELL_W_INT => 4,
+        else => 8, // long / ptr / double
+    };
+}
+
+/// Mint a zeroed scratch buffer of the tag's width and box it as an out-param
+/// cell. Shared by the four `out*` constructors.
+fn makeCell(tag: u64) Ref {
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const sz = cellWidthSize(tag);
+    const raw = std.c.malloc(sz) orelse return ref_mod.NIL;
+    @memset(@as([*]u8, @ptrCast(raw))[0..sz], 0);
+    return boxed.mkFfiPtrCell(alloc, @intFromPtr(raw), tag) catch ref_mod.NIL;
+}
+
+/// `[Module outInt]` / `outLong` / `outPtr` / `outDouble` (Phase 19.7) — mint an
+/// out-param cell over a fresh, zeroed scratch buffer. Pass it where C expects
+/// `T*`, then `[cell value]` reads the written value and `[cell free]` releases it.
+fn methodOutInt(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ s, args, n_args };
+    return makeCell(CELL_W_INT);
+}
+fn methodOutLong(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ s, args, n_args };
+    return makeCell(CELL_W_LONG);
+}
+fn methodOutPtr(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ s, args, n_args };
+    return makeCell(CELL_W_PTR);
+}
+fn methodOutDouble(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ s, args, n_args };
+    return makeCell(CELL_W_DOUBLE);
+}
+
+/// `[cell value]` (Phase 19.7, reuses SEL_VALUE) — peek the cell's buffer at the
+/// width its tag remembers. Returns nil if the receiver is a plain FfiPtr (tag 0,
+/// not a cell), so a bare pointer doesn't silently deref as a random width.
+fn methodCellValue(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ args, n_args };
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    switch (boxed.ffiPtrWidth(s.receiver)) {
+        CELL_W_INT => {
+            const p: *align(1) const i32 = @ptrFromInt(base);
+            return ref_mod.mkSmallInt(@intCast(p.*)) orelse ref_mod.NIL;
+        },
+        CELL_W_LONG => {
+            const p: *align(1) const i64 = @ptrFromInt(base);
+            return ref_mod.mkSmallInt(p.*) orelse ref_mod.NIL;
+        },
+        CELL_W_PTR => {
+            const p: *align(1) const usize = @ptrFromInt(base);
+            return boxed.mkFfiPtr(alloc, p.*) catch ref_mod.NIL;
+        },
+        CELL_W_DOUBLE => {
+            const p: *align(1) const f64 = @ptrFromInt(base);
+            return boxed.mkFloat(alloc, p.*) catch ref_mod.NIL;
+        },
+        else => return ref_mod.NIL, // not an out-param cell
+    }
+}
+
 /// `[p free]` — libc-free the address. Only valid for `alloc:`-minted pointers.
 fn methodFfiFree(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = args;
@@ -838,6 +910,10 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_RESOLVE, @ptrCast(&methodResolve));
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_ALLOC, @ptrCast(&methodAlloc));
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_ARGV, @ptrCast(&methodArgv));
+    try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_OUT_INT, @ptrCast(&methodOutInt));
+    try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_OUT_LONG, @ptrCast(&methodOutLong));
+    try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_OUT_PTR, @ptrCast(&methodOutPtr));
+    try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_OUT_DOUBLE, @ptrCast(&methodOutDouble));
 
     // -- Phase 18 prelude: FFI memory primitives on FFI_PTR_VT --------------
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_FREE, @ptrCast(&methodFfiFree));
@@ -851,6 +927,7 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_STRING_ARRAY, @ptrCast(&methodPeekStringArray));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_BYTES, @ptrCast(&methodPeekBytes));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_BYTES, @ptrCast(&methodPokeBytes));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_VALUE, @ptrCast(&methodCellValue));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_INT, @ptrCast(&methodPokeInt));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_BYTE, @ptrCast(&methodPokeByte));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_DOUBLE, @ptrCast(&methodPokeDouble));

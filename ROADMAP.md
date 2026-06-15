@@ -2249,11 +2249,20 @@ All current scalar `Kind`s are signed; no unsigned/width variants.
      byte-vector poke + raw read-back (`expectEqualSlices`), len-0 empty string,
      bad-source-type / negative-len → nil. 22/22 ffi_module tests. Risk: low.
 
-19.7 **[commit A4] Out-param sugar (Cell).** `[Module outInt]`/`outLong`/`outPtr`/
-     `outDouble` mint a width-tagged FfiPtr (**eids 227+**); `[h value]` peeks the
-     remembered width; free manual or `ensure:`. Add inert `out_width` to FfiPtr
-     (no new VT). Files: `ffi_module.zig` + `kernel_eids.zig` (+ the FfiPtr struct).
-     Test: `open(path, &handle)`-shape end-to-end. Risk: low.
+19.7 **[commit A4] Out-param sugar (Cell) — SHIPPED 2026-06-15** (branch
+     `phase-19-ffi`). `[Module outInt]`/`outLong`/`outPtr`/`outDouble` (**eids
+     228-231**) mint a width-tagged FfiPtr over a fresh zeroed scratch buffer;
+     `[cell value]` (**reuses SEL_VALUE=140**, polymorphic with closure `value`)
+     peeks the remembered width — `outInt`→4-byte i32 (sign-extended), `outLong`→
+     i64, `outPtr`→FfiPtr, `outDouble`→Float. Free via `[cell free]` (or `ensure:`).
+     The width rides as an **inert 3rd slot on the FfiPtr box** (slot 2, `boxed.zig`
+     bumped 2→3 slots; all slots raw u64, not Refs, so GC/image are unaffected —
+     `mkFfiPtrCell`/`ffiPtrWidth` added); a plain (tag-0) pointer returns `nil`
+     from `value`, never a stray deref. No new VT. Files: `boxed.zig` +
+     `ffi_module.zig` + `bootstrap.zig` + `kernel_eids.zig`. Tested: per-width
+     mechanism incl. i32 sign-extend, non-cell→nil, **and a real C out-param**
+     (`strtol`'s `char** endptr`, input passed as a stable `p` buffer because a
+     `Z` scratch would dangle — a documented FFI gotcha). 24/24 ffi_module tests.
 
 **Track A exit:** flat C calling is complete on both arches.
 
@@ -2292,8 +2301,8 @@ All current scalar `Kind`s are signed; no unsigned/width variants.
 A1  19.6 scalars (u-prefix)   ffi.zig                        (no eid)        ✓ SHIPPED 730d533
 A2  19.3 char**               ffi_module +bootstrap +eids    (eids 224-225)  ✓ SHIPPED
 A3  19.4 byte buffers         ffi_module +bootstrap +eids    (eids 226-227)  ✓ SHIPPED
-A4  19.7 out-param Cell       ffi_module +eids +FfiPtr       (eids 228+)
-── Track A done: flat C complete, both arches ──
+A4  19.7 out-param Cell       boxed +ffi_module +eids        (eids 228-231)  ✓ SHIPPED
+── Track A DONE: flat C complete, both arches ──
 B1  19.2 callbacks            vendor dyncallback + new VT     (next eid)  ⚠ hardest
 B2  19.5 struct-as-entity     layout registry + struct VT     (eids +)    ★ headline
 ── deferred ──
