@@ -32,6 +32,43 @@ pub fn build(b: *std.Build) void {
     dyncall_lib.addIncludePath(b.path("vendor/dyncall-1.4/dyncall"));
     b.installArtifact(dyncall_lib);
 
+    // -- libffi static lib (Phase 19 Track B — dyncall successor) ------------
+    // Vendored from libffi v3.4.6 with the arm64-apple-darwin generated headers
+    // (fficonfig.h / include/ffi.h / include/ffitarget.h produced by configure).
+    // Replaces dyncall+dyncallback: full C-ABI calls incl. arm64 struct-by-value
+    // + closures. B0a: builds as an artifact alongside dyncall; ffi.zig still
+    // uses dyncall until the B0b marshaling rewrite. NOTE: aarch64-only headers
+    // for now — x86_64 needs its own generated set (regen configure on that host).
+    const libffi_lib = b.addLibrary(.{
+        .name = "ffi",
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
+    libffi_lib.addCSourceFiles(.{
+        .root = b.path("vendor/libffi"),
+        .files = &.{
+            "src/prep_cif.c",
+            "src/types.c",
+            "src/raw_api.c",
+            "src/java_raw_api.c",
+            "src/closures.c",
+            "src/tramp.c",
+            "src/aarch64/ffi.c",
+            "src/aarch64/sysv.S",
+        },
+        // dlmalloc.c is #included by closures.c when needed, not compiled alone.
+        // gnu11 (not c11): libffi uses the GNU `asm` keyword + extensions.
+        .flags = &.{ "-std=gnu11", "-DHAVE_CONFIG_H" },
+    });
+    libffi_lib.addIncludePath(b.path("vendor/libffi")); // fficonfig.h
+    libffi_lib.addIncludePath(b.path("vendor/libffi/include")); // ffi.h, ffitarget.h, ffi_common.h
+    libffi_lib.addIncludePath(b.path("vendor/libffi/src/aarch64")); // internal.h
+    b.installArtifact(libffi_lib);
+
     // -- Build-time kernel-EID mirror (single source of truth) ---------------
     // `src/kernel/kernel_eids.zig` is the ONE place well-known EIDs are defined.
     // A small host-side generator reflects over it and emits a dependency-free
