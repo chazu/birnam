@@ -2167,9 +2167,10 @@ store, table, VT, SEL, &fn)`). Selectors are eids **207–219**; File/System too
 **220–223**; new FFI selectors **append at 224+** (append-only ABI discipline).
 All current scalar `Kind`s are signed; no unsigned/width variants.
 
-**Two tracks. Track A (no ABI risk — verifiable against real libs, ship first):
-19.6 → 19.3 → 19.4 → 19.7. Track B (hard ABI): 19.2 → 19.5.** 19.1 is **deferred**
-(see below — the vendor path it assumed does not exist).
+**Two tracks. Track A (no ABI risk — verifiable against real libs): 19.6 → 19.3 →
+19.4 → 19.7 — ✓ ALL SHIPPED.** Track B (hard ABI) begins with an **engine swap to
+libffi** (B0a/B0b) that replaces dyncall+dyncallback, then: 19.1 (un-deferred) →
+19.2 callbacks → 19.5 struct-as-entity. See "Track B engine decision" below.
 
 #### Decisions locked (2026-06-15)
 - **19.6 sigchar scheme = `u`-prefix multi-char** (`uc us ui ul uL`). Rejected:
@@ -2189,8 +2190,11 @@ All current scalar `Kind`s are signed; no unsigned/width variants.
   rides the normal send path, pairs with the 17.7 error model for guaranteed free.
   Storage = **one inert `out_width` field on FfiPtr** (no new VT). Optional
   `withOut…:` bracket combinator (auto-free via `ensure:`) is a later nicety.
-- **19.1 DEFERRED — vendor-bump path verified non-existent (2026-06-15).** The
-  earlier plan ("vendor dyncall ≥1.5 with arm64-apple aggregate support") is
+- **19.1 DEFERRED then UN-DEFERRED via the libffi migration (2026-06-15).**
+  Superseded by the "Track B engine decision" below: libffi marshals arm64-apple
+  aggregates, so 19.1 becomes "flip `aggregates_supported` on + add tests" once the
+  engine swap (B0a/B0b) lands. The original deferral analysis (kept for the record):
+  the earlier plan ("vendor dyncall ≥1.5 with arm64-apple aggregate support") is
   impossible: dyncall's latest release is **1.4 (2022-12-06)** — the version
   already vendored — and its changelog states aggregate-by-value is **x64-only**
   ("aggregate-by-value (struct, union) support for x64 (win and sysv)"); NO arm64/
@@ -2266,20 +2270,67 @@ All current scalar `Kind`s are signed; no unsigned/width variants.
 
 **Track A exit:** flat C calling is complete on both arches.
 
-#### Track B — the hard ABI work (each its own design+commit session)
+#### Track B engine decision — migrate dyncall → libffi (2026-06-15)
 
-19.2 **[commit B1 — hardest] Callbacks (closure → C fn-ptr).** **Vendor
-     `dyncallback`** first — it is NOT currently vendored (only `vendor/dyncall-1.4/
-     dyncall/` is built in `build.zig:19-32`); add its `*.c`/`*.S` as a second
-     static-lib block. Then: birnam `CLOSURE_VT` → C function pointer via
-     dyncallback trampoline. Needs (a) a closure→thunk **registry** (handle table
-     mapping the C-side callback back to the closure + `Send` machinery to invoke
-     it), (b) a **lifetime story** (callback outlives the registering call —
-     explicit `[cb release]` or GC root; do NOT auto-free), (c) a `CALLBACK_VT`
-     (**eid 228**) + `Module callback:sig:` constructor. Test: `qsort` with a
-     birnam comparator (canonical proof) + a libtecla completion callback. Risk:
-     **high** — re-entrancy (C calls back into the evaluator mid-FFI-call),
-     lifetime, registry. Single most complex item in the phase.
+**Supersedes the "vendor `dyncallback`" framing for 19.2 + un-defers 19.1.**
+dyncall 1.4 has no arm64-apple aggregate support (→ 19.1 deferred) and needs a
+separate `dyncallback` for closures (→ 19.2). **libffi** does both in one mature,
+ubiquitous dep: full C-ABI calls incl. **arm64-apple struct-by-value** (= 19.1),
+**closures** (`ffi_prep_closure_loc` = 19.2 callbacks), unsigned types, varargs
+(`ffi_prep_cif_var`). Its `ffi_type{ elements[] }` struct model maps onto birnam's
+`Aggr` and onto 19.5. (min-dl / dlmopen were considered and rejected — both are
+*load*-layer, ELF/Linux-only; birnam already owns loading via `loader`/`macho`.)
+
+**Blast radius is contained:** `ffi.zig` is the SOLE code consumer of dyncall
+(`ffi_module.zig` calls `ffi.invoke`/`boxed`, never the engine). `invoke()` /
+`invokeWithOwner()` keep their Ref-in→Ref-out signatures, and `parseSig` + the sig
+grammar (incl. 19.6 `u`-prefix) are unchanged — only the `Kind`→engine mapping
+swaps. So `ffi_module.zig` + ALL of Track A are untouched, and the existing
+`ffi_test` (22/3skip) + `ffi_module_test` (24/24) are the **regression oracle**.
+
+B0a **[commit] Vendor libffi + build.zig.** Pre-generated `ffi.h`/`fficonfig.h`/
+     `ffitarget.h` per platform (checked in, standard Zig-vendoring) + sources
+     `src/{prep_cif,types,raw_api,closures}.c` + per-arch `aarch64/{ffi.c,sysv.S}`,
+     `x86/{ffi64.c,unix64.S}`. Swap the ~50 `linkLibrary(dyncall_lib)` →
+     `libffi_lib`. **dyncall stays linked**; build green on both arches BEFORE any
+     `ffi.zig` change. Risk: medium (autotools-generated headers — one-time fiddle).
+
+B0b **[commit] Rewrite `ffi.zig` marshaling onto `ffi_cif`/`ffi_call`.** Model
+     flips push-imperative→gather-then-call: `Kind`(+unsigned)→`ffi_type*`
+     (replaces `dcFieldChar`; real unsigned types retire the bit-narrow hack);
+     `Sig` carries a prepped `ffi_cif` (cached per wrap, `ffi_prep_cif{,_var}`);
+     `pushArg`/`callAndWrap` → a marshal/unmarshal pair (write each Ref to a value
+     buffer, collect arg-pointer array, `ffi_call`, read `rvalue` back) carrying
+     the nil→NULL / cstring-scratch / stale-check / unsigned / return-wrap logic;
+     VM lifecycle (`g_vm`/`ensureVm`/`dcReset`/`dcMode`) DELETED (libffi is
+     stateless), `shutdown()` → no-op (keep symbol so tests don't move); aggregate
+     layout delegated to `ffi_type{ elements[] }` (`parseAggr`'s offsets stay for
+     peek/poke + 19.5). Keep `invoke()` API fixed. **When `ffi_test` +
+     `ffi_module_test` green → delete `vendor/dyncall-1.4` + its build block** (sole
+     consumer is `ffi.zig`, retires clean). Risk: high (rewrites the proven Phase 9
+     core) — mitigated by the fixed API + existing tests as oracle; branch + keep
+     dyncall until libffi is green.
+
+#### Track B — the FFI capability items (on the libffi engine)
+
+19.1 **[commit, UN-DEFERRED by libffi] arm64 struct-by-value.** Once B0b lands,
+     flip `aggregates_supported` on (libffi marshals arm64-apple aggregates) and
+     add tests: ≤16B int struct arg+ret, HFA (struct of floats), >16B stack/sret.
+     No hand-rolled AAPCS classifier needed. Risk: low (libffi owns the ABI).
+
+19.2 **[commit — hardest] Callbacks (closure → C fn-ptr) via `ffi_closure`.**
+     birnam `CLOSURE_VT` → C function pointer via `ffi_prep_closure_loc` (no
+     separate dep — libffi includes closures). Needs (a) a closure→handler
+     **registry** (the C-side trampoline's user-data points back to the birnam
+     closure + `Send` machinery), (b) a **lifetime story** (callback outlives the
+     registering call — explicit `[cb release]` or GC root; do NOT auto-free),
+     (c) a `CALLBACK_VT` (**next eid**) + `Module callback:sig:` constructor,
+     (d) **Apple-Silicon exec memory**: closures need a writable+executable
+     trampoline → `MAP_JIT` + `pthread_jit_write_protect_np` toggling (libffi
+     handles this internally on recent versions; verify). Test: `qsort` with a
+     birnam comparator (canonical) + a libtecla completion callback. Risk: **high**
+     — re-entrancy (C calls back into the evaluator mid-FFI-call), lifetime, JIT
+     memory. Single most complex item in the phase.
 
 19.5 **[commit B2 — headline] Struct-as-entity (the birnam-flavored absorb).**
      `[Module struct: #Point fields: {x: #i  y: #i}]` registers a layout (reuse the
@@ -2303,11 +2354,12 @@ A2  19.3 char**               ffi_module +bootstrap +eids    (eids 224-225)  ✓
 A3  19.4 byte buffers         ffi_module +bootstrap +eids    (eids 226-227)  ✓ SHIPPED
 A4  19.7 out-param Cell       boxed +ffi_module +eids        (eids 228-231)  ✓ SHIPPED
 ── Track A DONE: flat C complete, both arches ──
-B1  19.2 callbacks            vendor dyncallback + new VT     (next eid)  ⚠ hardest
-B2  19.5 struct-as-entity     layout registry + struct VT     (eids +)    ★ headline
-── deferred ──
-    19.1 arm64 struct-by-value  blocked-on-upstream; hand-roll only when a
-                                real lib forces it (that lib = test oracle)
+B0a libffi vendor + build      vendor/libffi + build.zig      (no eid)   dyncall still linked
+B0b ffi.zig → ffi_cif/ffi_call ffi.zig (invoke() API fixed)   (no eid)   then DELETE dyncall
+── engine swapped: arm64 aggregates + closures now available ──
+19.1 arm64 struct-by-value     flip aggregates_supported + tests  (no eid)   UN-DEFERRED by libffi
+B1  19.2 callbacks            ffi_closure + CALLBACK_VT       (eid 232)  ⚠ hardest (re-entrancy, MAP_JIT)
+B2  19.5 struct-as-entity     layout registry + struct VT     (eids 233+) ★ headline
 ```
 
 ### Reasoning
