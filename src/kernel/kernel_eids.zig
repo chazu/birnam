@@ -627,4 +627,11 @@ pub const SYSTEM_PROTO: u64 = 223;
 pub const SEL_FFI_ARGV: u64 = 224; // "argv:"            on MODULE_PROTO_VT
 pub const SEL_FFI_PEEK_STRING_ARRAY: u64 = 225; // "peekStringArray:" on FFI_PTR_VT
 
-// 226..255 reserved for future kernel selectors / attributes
+/// Phase 19.4 — bulk byte-buffer copy between an FfiPtr and a birnam string.
+/// `peekBytes:len:` copies `len` bytes at `base + offset` into a new string;
+/// `pokeBytes:at:` memcpys a string's (or byte-vector's) bytes to `base +
+/// offset`. Length/offset are caller-trusted (a raw FfiPtr carries no bounds).
+pub const SEL_FFI_PEEK_BYTES: u64 = 226; // "peekBytes:len:" (offset, len) -> string
+pub const SEL_FFI_POKE_BYTES: u64 = 227; // "pokeBytes:at:"  (bytes, offset) -> self
+
+// 228..255 reserved for future kernel selectors / attributes

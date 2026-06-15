@@ -592,3 +592,42 @@ test "argv: rejects a non-vector / non-string element (19.3)" {
     });
     try testing.expectEqual(ref_mod.NIL, send_mod.send1(proto, kernel_eids.SEL_FFI_ARGV, bad));
 }
+
+test "pokeBytes:at: + peekBytes:len: bulk copy round-trip (19.4)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    _ = try setup(&arena);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+    const buf = send_mod.send1(proto, kernel_eids.SEL_FFI_ALLOC, ref_mod.mkSmallInt(16).?);
+    try testing.expect(boxed.isFfiPtr(buf));
+
+    // poke a string's bytes at offset 0; pokeBytes returns self (chainable).
+    const back = send_mod.send2(buf, kernel_eids.SEL_FFI_POKE_BYTES, try strings.mkString(a, "hello"), ref_mod.mkSmallInt(0).?);
+    try testing.expectEqual(buf, back);
+
+    const got = send_mod.send2(buf, kernel_eids.SEL_FFI_PEEK_BYTES, ref_mod.mkSmallInt(0).?, ref_mod.mkSmallInt(5).?);
+    try testing.expect(strings.isString(got));
+    try testing.expect(std.mem.eql(u8, strings.bytes(got), "hello"));
+
+    // poke a byte-vector #[1 2 254] at offset 8; read it back as raw bytes.
+    const bytes_vec = try boxed.mkRrb(a, &.{
+        ref_mod.mkSmallInt(1).?, ref_mod.mkSmallInt(2).?, ref_mod.mkSmallInt(254).?,
+    });
+    _ = send_mod.send2(buf, kernel_eids.SEL_FFI_POKE_BYTES, bytes_vec, ref_mod.mkSmallInt(8).?);
+    const got2 = send_mod.send2(buf, kernel_eids.SEL_FFI_PEEK_BYTES, ref_mod.mkSmallInt(8).?, ref_mod.mkSmallInt(3).?);
+    try testing.expect(strings.isString(got2));
+    try testing.expectEqualSlices(u8, &.{ 1, 2, 254 }, strings.bytes(got2));
+
+    // peek of len 0 is the empty string.
+    const empty = send_mod.send2(buf, kernel_eids.SEL_FFI_PEEK_BYTES, ref_mod.mkSmallInt(0).?, ref_mod.mkSmallInt(0).?);
+    try testing.expect(strings.isString(empty));
+    try testing.expectEqual(@as(usize, 0), strings.bytes(empty).len);
+
+    // bad source type → nil; negative len → nil.
+    try testing.expectEqual(ref_mod.NIL, send_mod.send2(buf, kernel_eids.SEL_FFI_POKE_BYTES, ref_mod.mkSmallInt(9).?, ref_mod.mkSmallInt(0).?));
+    try testing.expectEqual(ref_mod.NIL, send_mod.send2(buf, kernel_eids.SEL_FFI_PEEK_BYTES, ref_mod.mkSmallInt(0).?, ref_mod.mkSmallInt(-1).?));
+
+    _ = send_mod.send0(buf, kernel_eids.SEL_FFI_FREE);
+}

@@ -2238,11 +2238,16 @@ All current scalar `Kind`s are signed; no unsigned/width variants.
      `peekString:` + NULL-terminated read + non-vector/non-string rejection.
      21/21 ffi_module tests. Risk: low.
 
-19.4 **[commit A3] Byte-buffer ergonomics.** `[p peekBytes:len:] → string`
-     (**eid 225**), `[p pokeBytes:at:] ← string/byte-vector` (**eid 226**), straight
-     `@memcpy`. Mirrors existing `methodPeekX`/`methodPokeX`. Files: `ffi_module.zig`
-     + `kernel_eids.zig`. Note: raw FfiPtr has no bounds — `len` is caller-trusted
-     (same contract as existing peek offsets). Risk: low.
+19.4 **[commit A3] Byte-buffer ergonomics — SHIPPED 2026-06-15** (branch
+     `phase-19-ffi`). `[p peekBytes: offset len: n] → string` (**eid 226
+     `SEL_FFI_PEEK_BYTES`**) copies `n` bytes into a fresh string (strings are
+     byte sequences); `[p pokeBytes: bytes at: offset] → self` (**eid 227
+     `SEL_FFI_POKE_BYTES`**) memcpys a birnam **string** or a **byte-vector**
+     (vector of 0..255 SmallInts) to the buffer. Files: `ffi_module.zig` +
+     `bootstrap.zig` + `kernel_eids.zig`. Raw FfiPtr has no bounds — `offset`/`len`
+     caller-trusted (same contract as existing peeks). Tested: string round-trip,
+     byte-vector poke + raw read-back (`expectEqualSlices`), len-0 empty string,
+     bad-source-type / negative-len → nil. 22/22 ffi_module tests. Risk: low.
 
 19.7 **[commit A4] Out-param sugar (Cell).** `[Module outInt]`/`outLong`/`outPtr`/
      `outDouble` mint a width-tagged FfiPtr (**eids 227+**); `[h value]` peeks the
@@ -2286,7 +2291,7 @@ All current scalar `Kind`s are signed; no unsigned/width variants.
 ```
 A1  19.6 scalars (u-prefix)   ffi.zig                        (no eid)        ✓ SHIPPED 730d533
 A2  19.3 char**               ffi_module +bootstrap +eids    (eids 224-225)  ✓ SHIPPED
-A3  19.4 byte buffers         ffi_module +eids               (eids 226-227)
+A3  19.4 byte buffers         ffi_module +bootstrap +eids    (eids 226-227)  ✓ SHIPPED
 A4  19.7 out-param Cell       ffi_module +eids +FfiPtr       (eids 228+)
 ── Track A done: flat C complete, both arches ──
 B1  19.2 callbacks            vendor dyncallback + new VT     (next eid)  ⚠ hardest

@@ -711,6 +711,49 @@ fn methodPeekStringArray(s: *Send, args: [*]const Ref, n_args: usize) callconv(.
     return boxed.mkRrb(alloc, list.items) catch ref_mod.NIL;
 }
 
+/// `[p peekBytes: offset len: n]` (Phase 19.4) — copy `n` bytes at `base +
+/// offset` into a fresh birnam string (strings are byte sequences). `offset`/`n`
+/// are caller-trusted (a raw FfiPtr carries no bounds). Returns nil on a bad
+/// receiver / non-SmallInt / negative len.
+fn methodPeekBytes(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 2) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 0) orelse return ref_mod.NIL;
+    if (!ref_mod.isSmallInt(args[1])) return ref_mod.NIL;
+    const len_i = ref_mod.untagSmallInt(args[1]);
+    if (len_i < 0) return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const src: [*]const u8 = @ptrFromInt(base + off);
+    return strings.mkString(alloc, src[0..@intCast(len_i)]) catch ref_mod.NIL;
+}
+
+/// `[p pokeBytes: bytes at: offset]` (Phase 19.4) — memcpy the bytes of a birnam
+/// string (or a vector of 0..255 SmallInts) to `base + offset`. Returns self
+/// (chainable), nil on a bad receiver / source type / non-SmallInt element.
+fn methodPokeBytes(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 2) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 1) orelse return ref_mod.NIL;
+    const dst: [*]u8 = @ptrFromInt(base + off);
+    const src = args[0];
+    if (strings.isString(src)) {
+        const sb = strings.bytes(src);
+        @memcpy(dst[0..sb.len], sb);
+        return s.receiver;
+    }
+    if (boxed.isRrbRef(src)) {
+        const n = boxed.rrbLen(src);
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            const e = boxed.rrbNth(src, i);
+            if (!ref_mod.isSmallInt(e)) return ref_mod.NIL;
+            dst[i] = @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(e))));
+        }
+        return s.receiver;
+    }
+    return ref_mod.NIL;
+}
+
 fn methodPokeInt(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     if (n_args < 2 or !ref_mod.isSmallInt(args[0])) return ref_mod.NIL;
     const base = ffiBase(s) orelse return ref_mod.NIL;
@@ -806,6 +849,8 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_PTR, @ptrCast(&methodPeekPtr));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_STRING, @ptrCast(&methodPeekString));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_STRING_ARRAY, @ptrCast(&methodPeekStringArray));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_BYTES, @ptrCast(&methodPeekBytes));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_BYTES, @ptrCast(&methodPokeBytes));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_INT, @ptrCast(&methodPokeInt));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_BYTE, @ptrCast(&methodPokeByte));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_DOUBLE, @ptrCast(&methodPokeDouble));
