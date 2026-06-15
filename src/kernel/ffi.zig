@@ -168,6 +168,16 @@ pub const Sig = struct {
     arg_aggrs: []?*Aggr = &.{},
     /// Phase 18: non-null iff `ret == .aggregate`.
     ret_aggr: ?*Aggr = null,
+    /// Phase 19.6: parallel to `args` — true where the arg is an *unsigned*
+    /// integer (`u`-prefixed sigchar: `uc us ui ul uL`). Sign is carried beside
+    /// the width `Kind` rather than as new `Kind` variants, so `kindSize`/
+    /// `dcFieldChar` (layout-only) stay untouched; sign matters only when
+    /// marshaling a value wider than the signed range (bit-preserving narrow)
+    /// and when zero- vs sign-extending a return. Parallel to `args` (always
+    /// `args.len` long, like `arg_aggrs`); `&.{}` only on the default literal.
+    arg_unsigned: []bool = &.{},
+    /// Phase 19.6: true iff the return type is an unsigned integer.
+    ret_unsigned: bool = false,
 
     pub fn deinit(self: *Sig, allocator: std.mem.Allocator) void {
         for (self.arg_aggrs) |maybe| {
@@ -177,6 +187,7 @@ pub const Sig = struct {
             }
         }
         if (self.arg_aggrs.len != 0) allocator.free(self.arg_aggrs);
+        if (self.arg_unsigned.len != 0) allocator.free(self.arg_unsigned);
         if (self.ret_aggr) |ag| {
             ag.deinit(allocator);
             allocator.destroy(ag);
@@ -207,6 +218,31 @@ fn kindOf(c: u8) ?Kind {
         'Z' => .cstring,
         else => null,
     };
+}
+
+/// Phase 19.6: only integer widths may carry an unsigned `u` prefix. bool/
+/// float/double/pointer/cstring/void/aggregate reject it (a `uf`/`up` sig is a
+/// parse error, not a silently-ignored prefix).
+fn isIntKind(k: Kind) bool {
+    return switch (k) {
+        .char, .short, .int, .long, .long_long => true,
+        else => false,
+    };
+}
+
+/// Phase 19.6: parse one scalar sigchar at `s[i]`, honoring an optional `u`
+/// unsigned prefix (`uc us ui ul uL`). `next` is the index of the LAST char
+/// consumed (so a caller's `i = next` + loop `+= 1` lands past it). Returns null
+/// on an unknown char or a `u` prefix on a non-integer type.
+fn scalarAt(s: []const u8, i: usize) ?struct { kind: Kind, unsigned: bool, next: usize } {
+    if (s[i] == 'u') {
+        if (i + 1 >= s.len) return null; // dangling 'u'
+        const k = kindOf(s[i + 1]) orelse return null;
+        if (!isIntKind(k)) return null;
+        return .{ .kind = k, .unsigned = true, .next = i + 1 };
+    }
+    const k = kindOf(s[i]) orelse return null;
+    return .{ .kind = k, .unsigned = false, .next = i };
 }
 
 fn alignUp(n: usize, a: usize) usize {
@@ -254,6 +290,9 @@ pub fn parseSig(allocator: std.mem.Allocator, s: []const u8) SigParseError!Sig {
     defer args.deinit(allocator);
     var arg_aggrs = std.ArrayList(?*Aggr){};
     defer arg_aggrs.deinit(allocator);
+    // Phase 19.6: parallel to `args` (always args.len long, like `arg_aggrs`).
+    var arg_unsigned = std.ArrayList(bool){};
+    defer arg_unsigned.deinit(allocator);
     // On any error after aggregates have been created, free them.
     errdefer for (arg_aggrs.items) |maybe| {
         if (maybe) |ag| {
@@ -270,21 +309,27 @@ pub fn parseSig(allocator: std.mem.Allocator, s: []const u8) SigParseError!Sig {
             if (i + 1 >= s.len) return error.MissingReturnSeparator;
             var ret_kind: Kind = undefined;
             var ret_aggr: ?*Aggr = null;
+            var ret_unsigned = false;
             if (s[i + 1] == '{') {
                 const parsed = try parseAggr(allocator, s, i + 1);
                 ret_kind = .aggregate;
                 ret_aggr = parsed.aggr;
             } else {
-                ret_kind = kindOf(s[i + 1]) orelse return error.UnknownSigchar;
+                const sc = scalarAt(s, i + 1) orelse return error.UnknownSigchar;
+                ret_kind = sc.kind;
+                ret_unsigned = sc.unsigned;
             }
             const owned_args = try args.toOwnedSlice(allocator);
             const owned_aggrs = try arg_aggrs.toOwnedSlice(allocator);
+            const owned_unsigned = try arg_unsigned.toOwnedSlice(allocator);
             return .{
                 .args = owned_args,
                 .ret = ret_kind,
                 .variadic_at = variadic_at,
                 .arg_aggrs = owned_aggrs,
                 .ret_aggr = ret_aggr,
+                .arg_unsigned = owned_unsigned,
+                .ret_unsigned = ret_unsigned,
             };
         }
         if (c == 'e') {
@@ -295,12 +340,15 @@ pub fn parseSig(allocator: std.mem.Allocator, s: []const u8) SigParseError!Sig {
             const parsed = try parseAggr(allocator, s, i);
             try args.append(allocator, .aggregate);
             try arg_aggrs.append(allocator, parsed.aggr);
+            try arg_unsigned.append(allocator, false);
             i = parsed.close; // loop's `+= 1` steps past the '}'
             continue;
         }
-        const k = kindOf(c) orelse return error.UnknownSigchar;
-        try args.append(allocator, k);
+        const sc = scalarAt(s, i) orelse return error.UnknownSigchar;
+        try args.append(allocator, sc.kind);
         try arg_aggrs.append(allocator, null);
+        try arg_unsigned.append(allocator, sc.unsigned);
+        i = sc.next; // loop's `+= 1` steps past the width char (handles `u` prefix)
     }
     return error.MissingReturnSeparator;
 }
@@ -338,6 +386,7 @@ fn pushArgChecked(
     store: *fact_store_mod.FactStore,
     vm: *DCCallVM,
     kind: Kind,
+    unsigned: bool,
     value: Ref,
     out_stale_box_eid: *u64,
 ) bool {
@@ -353,12 +402,20 @@ fn pushArgChecked(
             }
         }
     }
-    return pushArg(vm, kind, value);
+    return pushArg(vm, kind, unsigned, value);
 }
 
 /// Push `value` into the VM as `kind`. Returns false on type mismatch so the
 /// caller can abort + return NIL.
-fn pushArg(vm: *DCCallVM, kind: Kind, value: Ref) bool {
+///
+/// Phase 19.6: `unsigned` only affects the `short`/`int` arms — widths where a
+/// positive birnam smallint can exceed the *signed* max (a range-checked
+/// `@intCast` would panic). There we bit-preserve: truncate to the unsigned
+/// width, then `@bitCast` to the signed width dyncall's arg fn expects (the
+/// callee reads the same bytes back as unsigned). `char` already truncates;
+/// `long`/`long_long` are i64-wide, so any representable smallint fits without
+/// special handling.
+fn pushArg(vm: *DCCallVM, kind: Kind, unsigned: bool, value: Ref) bool {
     switch (kind) {
         .void_ => return false,
         .bool_ => {
@@ -371,11 +428,21 @@ fn pushArg(vm: *DCCallVM, kind: Kind, value: Ref) bool {
         },
         .short => {
             if (!ref_mod.isSmallInt(value)) return false;
-            dcArgShort(vm, @intCast(ref_mod.untagSmallInt(value)));
+            const v = ref_mod.untagSmallInt(value);
+            if (unsigned) {
+                dcArgShort(vm, @bitCast(@as(u16, @truncate(@as(u64, @bitCast(v))))));
+            } else {
+                dcArgShort(vm, @intCast(v));
+            }
         },
         .int => {
             if (!ref_mod.isSmallInt(value)) return false;
-            dcArgInt(vm, @intCast(ref_mod.untagSmallInt(value)));
+            const v = ref_mod.untagSmallInt(value);
+            if (unsigned) {
+                dcArgInt(vm, @bitCast(@as(u32, @truncate(@as(u64, @bitCast(v))))));
+            } else {
+                dcArgInt(vm, @intCast(v));
+            }
         },
         .long => {
             if (!ref_mod.isSmallInt(value)) return false;
@@ -428,6 +495,7 @@ fn callAndWrap(
     vm: *DCCallVM,
     ret: Kind,
     ret_aggr: ?*Aggr,
+    ret_unsigned: bool,
     addr: usize,
     owner_mod_eid: u64,
 ) Ref {
@@ -442,16 +510,20 @@ fn callAndWrap(
             return ref_mod.mkSmallInt(@intCast(r)) orelse ref_mod.NIL;
         },
         .char => {
+            // Phase 19.6: `uc` zero-extends (0..255); signed `c` sign-extends.
             const r = dcCallChar(vm, fnp);
-            return ref_mod.mkSmallInt(@intCast(r)) orelse ref_mod.NIL;
+            const v: i64 = if (ret_unsigned) @as(u8, @bitCast(r)) else @intCast(r);
+            return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
         },
         .short => {
             const r = dcCallShort(vm, fnp);
-            return ref_mod.mkSmallInt(@intCast(r)) orelse ref_mod.NIL;
+            const v: i64 = if (ret_unsigned) @as(u16, @bitCast(r)) else @intCast(r);
+            return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
         },
         .int => {
             const r = dcCallInt(vm, fnp);
-            return ref_mod.mkSmallInt(@intCast(r)) orelse ref_mod.NIL;
+            const v: i64 = if (ret_unsigned) @as(u32, @bitCast(r)) else @intCast(r);
+            return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
         },
         .long => {
             const r = dcCallLong(vm, fnp);
@@ -593,14 +665,15 @@ pub fn invokeWithOwner(
             dcArgPointer(vm, buf.ptr);
             continue;
         }
+        const uns = sig.arg_unsigned.len != 0 and sig.arg_unsigned[i];
         if (store) |s| {
             var stale_box: u64 = 0;
-            if (!pushArgChecked(s, vm, kind, value, &stale_box)) return ref_mod.NIL;
+            if (!pushArgChecked(s, vm, kind, uns, value, &stale_box)) return ref_mod.NIL;
         } else {
-            if (!pushArg(vm, kind, value)) return ref_mod.NIL;
+            if (!pushArg(vm, kind, uns, value)) return ref_mod.NIL;
         }
     }
-    return callAndWrap(allocator, store, table, vm, sig.ret, sig.ret_aggr, addr, owner_mod_eid);
+    return callAndWrap(allocator, store, table, vm, sig.ret, sig.ret_aggr, sig.ret_unsigned, addr, owner_mod_eid);
 }
 
 // -- Wrap registry + per-arity dispatch shims -------------------------------

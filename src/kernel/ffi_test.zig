@@ -69,6 +69,42 @@ test "parseSig: unknown sigchar" {
     try testing.expectError(error.UnknownSigchar, r);
 }
 
+test "parseSig: unsigned u-prefix on arg + ret (19.6)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // mix: signed int, then unsigned int; unsigned int return.
+    var sig = try ffi.parseSig(a, "iui)ui");
+    defer sig.deinit(a);
+    try testing.expectEqual(@as(usize, 2), sig.args.len);
+    try testing.expectEqual(ffi.Kind.int, sig.args[0]);
+    try testing.expectEqual(ffi.Kind.int, sig.args[1]);
+    try testing.expectEqual(@as(usize, 2), sig.arg_unsigned.len);
+    try testing.expect(!sig.arg_unsigned[0]);
+    try testing.expect(sig.arg_unsigned[1]);
+    try testing.expectEqual(ffi.Kind.int, sig.ret);
+    try testing.expect(sig.ret_unsigned);
+}
+
+test "parseSig: u on a non-integer type is rejected (19.6)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    try testing.expectError(error.UnknownSigchar, ffi.parseSig(a, "uf)i")); // unsigned float
+    try testing.expectError(error.UnknownSigchar, ffi.parseSig(a, "uZ)i")); // unsigned cstring
+}
+
+test "parseSig: dangling u is rejected (19.6)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    try testing.expectError(error.UnknownSigchar, ffi.parseSig(a, "u)i")); // arg: u then ')'
+    try testing.expectError(error.UnknownSigchar, ffi.parseSig(a, "i)u")); // ret: trailing u
+}
+
 // -- dyncall integration ----------------------------------------------------
 
 const is_darwin = builtin.os.tag == .macos;
@@ -120,6 +156,46 @@ test "invoke: libSystem strlen via dyncall" {
     const r = ffi.invoke(a, addr, sig, &args);
     try testing.expect(ref_mod.isSmallInt(r));
     try testing.expectEqual(@as(i64, @intCast(cstr.len)), ref_mod.untagSmallInt(r));
+
+    ffi.shutdown();
+}
+
+test "invoke: unsigned arg + return via htonl (19.6)" {
+    // htonl(uint32) -> uint32 is a pure byte-swap — a deterministic oracle for
+    // the unsigned marshal path on a little-endian host. `ui)ui` exercises BOTH
+    // directions of the high bit:
+    //   - return zero-extend: htonl(0x00000080) = 0x80000000 (2147483648).
+    //     A signed `i` return would sign-extend that to -2147483648.
+    //   - arg accepts > i32 max without a range-checked @intCast panic:
+    //     htonl(0x80000000) = 0x00000080 (128).
+    if (!is_darwin) return error.SkipZigTest;
+    if (builtin.cpu.arch.endian() != .little) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var lib = dlopenSelf() orelse return error.SkipZigTest;
+    defer lib.close();
+    const sym_ptr = lib.lookup(*anyopaque, "htonl") orelse return error.SkipZigTest;
+    const addr: usize = @intFromPtr(sym_ptr);
+
+    var sig = try ffi.parseSig(a, "ui)ui");
+    defer sig.deinit(a);
+
+    // return zero-extend (high bit set)
+    {
+        const args = [_]Ref{ref_mod.mkSmallInt(0x80).?};
+        const r = ffi.invoke(a, addr, sig, &args);
+        try testing.expect(ref_mod.isSmallInt(r));
+        try testing.expectEqual(@as(i64, 0x80000000), ref_mod.untagSmallInt(r));
+    }
+    // arg above i32 max marshals without panic
+    {
+        const args = [_]Ref{ref_mod.mkSmallInt(0x80000000).?};
+        const r = ffi.invoke(a, addr, sig, &args);
+        try testing.expect(ref_mod.isSmallInt(r));
+        try testing.expectEqual(@as(i64, 0x80), ref_mod.untagSmallInt(r));
+    }
 
     ffi.shutdown();
 }

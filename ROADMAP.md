@@ -2205,11 +2205,21 @@ All current scalar `Kind`s are signed; no unsigned/width variants.
 
 #### Track A — calling-completeness (ship first, both arches, no ABI risk)
 
-19.6 **[commit A1] Remaining scalar types.** Add unsigned via the locked
-     `u`-prefix scheme. Touch: `kindOf` (lookahead on `u`), the `(Kind, unsigned)`
-     pair plumbed through `parseSig`/marshal, return-wrap signedness branch in
-     `callAndWrap`. Files: `ffi.zig` only. **No new eids.** Test: round-trip a
-     `uint`-returning fn near 2³¹ (proves no sign flip). Risk: low.
+19.6 **[commit A1] Remaining scalar types — SHIPPED 2026-06-15** (branch
+     `phase-19-ffi`). Unsigned ints via the locked `u`-prefix scheme (`uc us ui
+     ul uL`). All in `ffi.zig`: `scalarAt` helper (1-char `u` lookahead, rejects
+     `u` on non-int + dangling `u`), `Sig.arg_unsigned: []bool` + `ret_unsigned`
+     (parallel to `args`, like `arg_aggrs` — `kindSize`/`dcFieldChar` untouched).
+     Sign branches only where a signed `@intCast` would misbehave: `pushArg`
+     `short`/`int` arms bit-preserve-narrow a value above the signed max (`char`
+     already truncates; `long`/`long_long` are i64-wide so any smallint fits);
+     `callAndWrap` `char`/`short`/`int` arms zero- vs sign-extend the return.
+     End-to-end through the existing `wrap:as:sig:` (routes via `parseSig`) — **no
+     new eids, no `ffi_module.zig` change.** Tested: parser (mix/reject-non-int/
+     dangling-u) + `htonl` round-trip (unsigned arg >i32max no panic; unsigned
+     return zero-extends a high bit). 22 passed / 3 arm64-aggregate skips.
+     Deferred from scope: unsigned struct *fields* in `{...}` (layout is
+     sign-agnostic; field sign is a peek-side concern); wide chars.
 
 19.3 **[commit A2] `char**` / string arrays.** In: build NULL-terminated `char**`
      from a birnam vector (scratch bufs freed post-call) — extend the marshal
