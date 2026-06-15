@@ -2313,10 +2313,12 @@ B0b **[commit] Rewrite `ffi.zig` marshaling onto `ffi_cif`/`ffi_call`.** Model
 
 #### Track B — the FFI capability items (on the libffi engine)
 
-19.1 **[commit, UN-DEFERRED by libffi] arm64 struct-by-value.** Once B0b lands,
-     flip `aggregates_supported` on (libffi marshals arm64-apple aggregates) and
-     add tests: ≤16B int struct arg+ret, HFA (struct of floats), >16B stack/sret.
-     No hand-rolled AAPCS classifier needed. Risk: low (libffi owns the ABI).
+19.1 **arm64 struct-by-value — SHIPPED 2026-06-15** (folded into B0b + a test
+     commit). `aggregates_supported` is now a const `true`; libffi marshals
+     arm64-apple aggregates. The int-struct tests (sumPoint/makePoint/div_t) that
+     SKIPPED under dyncall now run, plus a dedicated **HFA** test (`{dd}` struct of
+     doubles arg+return, exercising V-register classification — the case dyncall
+     1.4 could not do). No hand-rolled AAPCS classifier needed. 25/25 ffi_test.
 
 19.2 **[commit — hardest] Callbacks (closure → C fn-ptr) via `ffi_closure`.**
      birnam `CLOSURE_VT` → C function pointer via `ffi_prep_closure_loc` (no
@@ -2354,10 +2356,10 @@ A2  19.3 char**               ffi_module +bootstrap +eids    (eids 224-225)  ✓
 A3  19.4 byte buffers         ffi_module +bootstrap +eids    (eids 226-227)  ✓ SHIPPED
 A4  19.7 out-param Cell       boxed +ffi_module +eids        (eids 228-231)  ✓ SHIPPED
 ── Track A DONE: flat C complete, both arches ──
-B0a libffi vendor + build      vendor/libffi + build.zig      (no eid)   dyncall still linked
-B0b ffi.zig → ffi_cif/ffi_call ffi.zig (invoke() API fixed)   (no eid)   then DELETE dyncall
+B0a libffi vendor + build      vendor/libffi + build.zig      (no eid)   ✓ SHIPPED 2d6f85a
+B0b ffi.zig → ffi_cif/ffi_call ffi.zig + delete dyncall       (no eid)   ✓ SHIPPED e742fed
 ── engine swapped: arm64 aggregates + closures now available ──
-19.1 arm64 struct-by-value     flip aggregates_supported + tests  (no eid)   UN-DEFERRED by libffi
+19.1 arm64 struct-by-value     aggregates_supported=true + HFA test  (no eid)   ✓ SHIPPED (via libffi)
 B1  19.2 callbacks            ffi_closure + CALLBACK_VT       (eid 232)  ⚠ hardest (re-entrancy, MAP_JIT)
 B2  19.5 struct-as-entity     layout registry + struct VT     (eids 233+) ★ headline
 ```
