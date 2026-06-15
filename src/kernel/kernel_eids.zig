@@ -612,4 +612,12 @@ pub const SEL_FFI_POKE_BYTE: u64 = 217; // "pokeByte:at:"  (value, offset) -> se
 pub const SEL_FFI_POKE_DOUBLE: u64 = 218; // "pokeDouble:at:" (value, offset) -> self
 pub const SEL_FFI_POKE_PTR: u64 = 219; // "pokePtr:at:"   (ptr, offset) -> self
 
-// 220..255 reserved for future kernel selectors / attributes
+/// Phase 17.8 — I/O surface. `File` and `System` prototype singletons (like
+/// `Module`/`db`), installed lang-side. File does data read/write (returns
+/// ERROR_VT on failure); System does stdout/stderr/stdin/argv.
+pub const FILE_PROTO_VT: u64 = 220;
+pub const FILE_PROTO: u64 = 221;
+pub const SYSTEM_PROTO_VT: u64 = 222;
+pub const SYSTEM_PROTO: u64 = 223;
+
+// 224..255 reserved for future kernel selectors / attributes

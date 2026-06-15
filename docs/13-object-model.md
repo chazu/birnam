@@ -118,6 +118,53 @@ A block is sent `value` / `value:` / … to invoke it. Non-local return is `^`.
 Blocks are entities with `BLOCK_VT`/`CLOSURE_VT` vtables and compiled bytecode
 bodies — reified like everything else.
 
+> **Eager send vs. deferred block.** A bracketed `[recv msg]` is a *message
+> send that runs immediately*. A *block* is `[| … ]` / `[:x | … ]` — the
+> leading `|` makes it a deferred value. Anything that should run *under* a
+> control construct (`ifTrue:`, `whileTrue:`, `on:do:`, `ensure:`) must
+> therefore be a block, not a bare send.
+
+## Errors are values (the Result model)
+
+Birnam has no exceptions. A failed operation returns a first-class **error
+value** (an entity with `ERROR_VT`) rather than crashing the process or
+silently returning `nil`. This keeps errors *data* — inspectable, storable,
+queryable — consistent with the fact-store identity, and it works uniformly
+across both evaluators (tree-walker and bytecode VM) without stack-unwinding
+machinery.
+
+- **Propagation rides message dispatch.** `ERROR_VT`'s `doesNotUnderstand:`
+  returns the error itself, so sending an error *any* unhandled message yields
+  the error. A chain like `[[x foo] bar]` short-circuits to the first error —
+  no special case in the send loop, just the object model doing its job.
+- **Halt + report.** A statement sequence stops at the first error (later
+  statements don't run), and an uncaught error surfaces at the REPL / file-in
+  as a distinct `! error: <message>` line rather than an ordinary `=> value`.
+- **Kinded.** Errors carry a `kind` symbol (`#zeroDivide`,
+  `#undefinedVariable`, `#undefinedAssignment`, …) plus a `message`. Read them
+  with `[e kind]` / `[e message]`; test any value with `[x isError]`.
+
+Surface:
+
+```
+[#[1 2 3] at: 99]                              " => error: vector index out of bounds "
+[[| [10 / 0]] on: #zeroDivide do: [:e | 0]]    " catch by kind        => 0 "
+[[| risky] on: #Error do: [:e | [e message]]]  " #Error = catch any "
+[[| body] ensure: [| [stream close]]]          " cleanup runs on value OR error "
+["disk full" error: #io]                        " raise your own (catchable) "
+```
+
+`on:do:` and `ensure:` are blocks-as-handlers on `CLOSURE_VT`; an unmatched
+`on:do:` lets the error keep propagating. Because the protected computation is
+a block, remember the eager-vs-block rule above: `[[| [10 / 0]] on: …]`, not
+`[[10 / 0] on: …]`.
+
+**What this trades away** (vs. Smalltalk exceptions, accepted deliberately): no
+resume/retry, and cleanup across arbitrary frames must use bracket combinators
+(`ensure:`, `withFile:`) rather than dynamic-extent handlers. See ROADMAP
+Phase 17.7 for the full decision and the deferred items (VM mid-sequence halt;
+type-mismatch hardening).
+
 ## Where to go next
 
 - The Ref encoding behind identity and the -1 trick: [Refs](14-refs.md).

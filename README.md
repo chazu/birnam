@@ -237,6 +237,48 @@ birnam> [3 /* block comment */ + 4]
 
 Also: integers, floats (with mixed-type coercion via `asFloat`/`asInt`), strings, symbols (`#foo`, `#kw1:kw2:`), `true`/`false`/`nil`, iteration (`timesRepeat:`, `to:do:`, `whileTrue:`/`whileFalse:`).
 
+**Errors are values (Result model).** A failed operation returns a first-class error value instead of crashing or silently yielding `nil`. An error **propagates**: sending it any message returns the error, so a chain short-circuits. Unhandled errors surface as a `! error:` line:
+
+```
+birnam> [#[1 2 3] at: 99]
+=> error: vector index out of bounds
+birnam> nonesuch
+[lang] ! error: undefined variable: nonesuch
+birnam> [10 / 0]
+[lang] ! error: divide by zero
+```
+
+Catch with `on:do:`, run cleanup with `ensure:`, raise with `error`/`error:`. Inspect with `message`/`kind`/`isError`:
+
+```
+birnam> [[| [10 / 0]] on: #zeroDivide do: [:e | 0]]
+=> 0
+birnam> [[| [10 / 0]] on: #Error do: [:e | [e message]]]    // #Error = catch any
+=> "divide by zero"
+birnam> [[| risky] ensure: [| [stream close]]]              // cleanup runs either way
+birnam> ["disk full" error: #io]                            // raise your own
+```
+
+> ⚠️ **Eager send vs. block.** A bracketed `[recv msg]` is a **message send and runs immediately** — `[10 / 0]` evaluates *now* and yields the divide-by-zero error. A **block** is `[| … ]` (no params) or `[:x | … ]` (params): the leading `|` makes it a *deferred* value. So anything that should run *under* a handler — `on:do:`, `ensure:`, `ifTrue:`, `whileTrue:` — must be a block: write `[[| [10 / 0]] on: #zeroDivide do: …]`, **not** `[[10 / 0] on: …]` (the latter sends `on:` to the already-computed error). Every send needs brackets; `10 / 0` on its own is a parse error.
+
+**I/O.** `File` does data read/write (returns an error value on failure — catch it or let it propagate); `System` does clean stdout/stderr, stdin, and command-line arguments:
+
+```
+birnam> [File write: "hi\n" to: "out.txt"]
+birnam> [File read: "out.txt"]
+=> "hi\n"
+birnam> [File exists: "out.txt"]
+=> true
+birnam> [[| [File read: "missing"]] on: #fileNotFound do: [:e | "default"]]
+=> "default"
+birnam> [System println: "clean stdout, no prefix"]      // also print: (no newline), error: (stderr)
+birnam> [System readLine]                                 // next line from stdin, or nil at EOF
+birnam> [System arguments]                                // tokens after `--` on the command line
+=> #[]
+```
+
+`print` (any value) goes to the prefixed REPL log on **stderr**; `System print:`/`println:` are **clean stdout** for program output. Pass program arguments after `--`: `birnam peg.dylib lang.dylib -- alpha beta` makes `[System arguments]` yield `#["alpha" "beta"]`.
+
 ## Saving and loading the image
 
 REPL state — your bindings and installed methods — persists to a single self-describing `.bim` file and survives a process restart:

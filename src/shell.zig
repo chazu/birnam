@@ -477,10 +477,22 @@ pub fn main() !void {
     defer manager.deinit();
 
     // -- Load modules from argv ----------------------------------------------
+    // Args before `--` are .dylib paths to load; everything after `--` is the
+    // program's argument list, exposed to birnam as `System arguments`.
     var args = std.process.args();
     _ = args.next(); // skip argv[0]
     var any_module = false;
+    var prog_args = std.ArrayList([]const u8){};
+    var seen_dashdash = false;
     while (args.next()) |path_slice| {
+        if (seen_dashdash) {
+            try prog_args.append(allocator, try allocator.dupe(u8, path_slice));
+            continue;
+        }
+        if (std.mem.eql(u8, path_slice, "--")) {
+            seen_dashdash = true;
+            continue;
+        }
         const path_z = try allocator.dupeZ(u8, path_slice);
         defer allocator.free(path_z);
         if (try manager.load(path_z)) |mod_eid| {
@@ -490,6 +502,8 @@ pub fn main() !void {
             stderrPrint("[birnam] could not load {s}\n", .{path_z});
         }
     }
+    // Register program args (slice outlives the process). Backs `System arguments`.
+    id_api_mod.setArgs(try prog_args.toOwnedSlice(allocator));
     if (!any_module) {
         stderrPrint("[birnam] no modules loaded — pass one or more .dylib paths\n", .{});
     }

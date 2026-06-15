@@ -1042,6 +1042,194 @@ fn evalLine(s: anytype, lang_eid: u64, src: []const u8, a: std.mem.Allocator) Re
     return send_mod.send1(ast_ref, sel_eval, ref_mod.mkEid(kernel_eids.TOP_SCOPE_EID));
 }
 
+// Result error model — Stage 1: ERROR_VT propagation + inspectors.
+fn isErrTrue(v: Ref) bool {
+    return ref_mod.isEid(v) and (v >> 3) == kernel_eids.TRUE_EID;
+}
+test "errors: propagation through sends + inspectors" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // A primitive failure produces an ERROR_VT value.
+    const err = evalLine(s, lang, "[#[1 2 3] at: 99]", a);
+    try testing.expect(ref_mod.isEid(err));
+    try testing.expectEqual(@as(u64, kernel_eids.ERROR_VT), s.store.currentValue(err >> 3, kernel_eids.ATTR_VTABLE).? >> 3);
+
+    // isError discriminates errors from ordinary values.
+    try testing.expect(isErrTrue(evalLine(s, lang, "[[#[1 2 3] at: 99] isError]", a)));
+    try testing.expect(!isErrTrue(evalLine(s, lang, "[5 isError]", a)));
+    try testing.expect(!isErrTrue(evalLine(s, lang, "[#[1 2 3] isError]", a)));
+
+    // [err message] returns a (non-nil) string.
+    const msg = evalLine(s, lang, "[[#[1 2 3] at: 99] message]", a);
+    try testing.expect(msg != ref_mod.NIL);
+
+    // Propagation: sending ANY unhandled message to an error returns the error
+    // itself (still isError), not a new does-not-understand error.
+    try testing.expect(isErrTrue(evalLine(s, lang, "[[[#[1 2 3] at: 99] frobnicate] isError]", a)));
+    // Chained sends propagate the original error.
+    try testing.expect(isErrTrue(evalLine(s, lang, "[[[[#[1 2 3] at: 99] foo] bar] isError]", a)));
+}
+
+// Result error model — Stage 2: statement sequences halt on error.
+test "errors: statement sequence halts on error" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // A multi-statement block whose first statement errors yields the error,
+    // not the value of the later statement (the later statement never runs).
+    const r = evalLine(s, lang, "[[| [#[1 2 3] at: 99]; 42] value]", a);
+    try testing.expect(isErrTrue(evalLine(s, lang, "[[[| [#[1 2 3] at: 99]; 42] value] isError]", a)));
+    try testing.expect(ref_mod.isEid(r));
+    // Sanity: a non-erroring sequence still returns its last value.
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalLine(s, lang, "[[| 1; 42] value]", a)));
+}
+
+// True if evaluating `src` yields an ERROR_VT value (checks the vtable directly,
+// so it works for bare statements like `x := 5` that can't be wrapped in `[]`).
+fn evalIsError(s: anytype, lang: u64, src: []const u8, a: std.mem.Allocator) bool {
+    const v = evalLine(s, lang, src, a);
+    if (!ref_mod.isEid(v)) return false;
+    const vt = s.store.currentValue(v >> 3, kernel_eids.ATTR_VTABLE) orelse return false;
+    return vt == ref_mod.mkEid(kernel_eids.ERROR_VT);
+}
+
+// Result error model — Stage 3: silent-nil failure sites now report errors.
+test "errors: undefined var / undefined assign / divide by zero report" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Undefined variable read → error (not silent nil).
+    try testing.expect(evalIsError(s, lang, "nonesuch", a));
+    // A bound var still resolves.
+    _ = evalLine(s, lang, "let defined := 7", a);
+    try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(evalLine(s, lang, "defined", a)));
+
+    // Assignment to an undeclared variable → error.
+    try testing.expect(evalIsError(s, lang, "neverDeclared := 5", a));
+    // Assignment to a declared variable works.
+    try testing.expectEqual(@as(i64, 9), ref_mod.untagSmallInt(evalLine(s, lang, "defined := 9", a)));
+
+    // Divide by zero → error (SmallInt and Float).
+    try testing.expect(evalIsError(s, lang, "[10 / 0]", a));
+    try testing.expect(evalIsError(s, lang, "[10.0 / 0.0]", a));
+    // Normal division still works.
+    try testing.expectEqual(@as(i64, 5), ref_mod.untagSmallInt(evalLine(s, lang, "[10 / 2]", a)));
+}
+
+// Result error model — Stage 5: on:do: catch combinator.
+test "errors: on:do: catches by kind, wildcard, passes through" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // The protected computation is a zero-arg block `[| ... ]` (deferred), not
+    // an eager `[10 / 0]` send.
+    // Catch by exact kind → handler result.
+    try testing.expectEqual(@as(i64, 99), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[| [10 / 0]] on: #zeroDivide do: [:e | 99]]", a)));
+    // Catch by #Error wildcard.
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[| [10 / 0]] on: #Error do: [:e | 42]]", a)));
+    // No error → block result passes through, handler not run.
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[| [10 / 5]] on: #zeroDivide do: [:e | 99]]", a)));
+    // Unmatched kind → error propagates (not caught).
+    try testing.expect(evalIsError(s, lang, "[[| [10 / 0]] on: #someOtherKind do: [:e | 99]]", a));
+    // Handler receives the error: read its message back (non-nil string).
+    try testing.expect(ref_mod.NIL != evalLine(s, lang, "[[| [10 / 0]] on: #zeroDivide do: [:e | [e message]]]", a));
+}
+
+// Result error model — ensure: cleanup + user-raised errors.
+test "errors: ensure: runs cleanup, [msg error] raises + catches" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // ensure: runs the cleanup block (side effect on a top-level var) and returns
+    // the protected block's value.
+    _ = evalLine(s, lang, "let cleaned := 0", a);
+    try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[| 7] ensure: [| cleaned := 1]]", a)));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "cleaned", a)));
+
+    // ensure: cleanup runs even when the protected block errors; the error
+    // still propagates out.
+    _ = evalLine(s, lang, "let c2 := 0", a);
+    try testing.expect(evalIsError(s, lang, "[[| [10 / 0]] ensure: [| c2 := 1]]", a));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "c2", a)));
+
+    // User-raised error: [msg error] is an error value, catchable by #Error.
+    try testing.expect(evalIsError(s, lang, "[\"boom\" error]", a));
+    try testing.expectEqual(@as(i64, 5), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[| [\"boom\" error]] on: #Error do: [:e | 5]]", a)));
+    // Raised with an explicit kind, caught by that kind.
+    try testing.expectEqual(@as(i64, 8), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[| [\"nope\" error: #myKind]] on: #myKind do: [:e | 8]]", a)));
+}
+
+fn refIsTrue(v: Ref) bool {
+    return ref_mod.isEid(v) and (v >> 3) == kernel_eids.TRUE_EID;
+}
+
+// Phase 17.8 I/O — File read/write/append/exists/delete round-trip.
+test "io: File read/write/append/exists/delete" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const path = "test_io_tmp.txt";
+    defer std.fs.cwd().deleteFile(path) catch {};
+
+    // write → success (nil), read back → exact contents.
+    try testing.expect(ref_mod.NIL == evalLine(s, lang, "[File write: \"hello\" to: \"test_io_tmp.txt\"]", a));
+    try testing.expect(refIsTrue(evalLine(s, lang, "[[File read: \"test_io_tmp.txt\"] = \"hello\"]", a)));
+    try testing.expect(refIsTrue(evalLine(s, lang, "[File exists: \"test_io_tmp.txt\"]", a)));
+
+    // append → contents grow.
+    try testing.expect(ref_mod.NIL == evalLine(s, lang, "[File append: \" world\" to: \"test_io_tmp.txt\"]", a));
+    try testing.expect(refIsTrue(evalLine(s, lang, "[[File read: \"test_io_tmp.txt\"] = \"hello world\"]", a)));
+
+    // delete → gone.
+    try testing.expect(ref_mod.NIL == evalLine(s, lang, "[File delete: \"test_io_tmp.txt\"]", a));
+    try testing.expect(!refIsTrue(evalLine(s, lang, "[File exists: \"test_io_tmp.txt\"]", a)));
+
+    // read of a missing file → kinded error (fileNotFound), catchable.
+    try testing.expect(evalIsError(s, lang, "[File read: \"does_not_exist_xyz.txt\"]", a));
+    try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[| [File read: \"does_not_exist_xyz.txt\"]] on: #fileNotFound do: [:e | 7]]", a)));
+
+    // System print:/println:/error: are clean fd writes; just confirm they run
+    // and return nil (stdout capture isn't available in-process here).
+    try testing.expect(ref_mod.NIL == evalLine(s, lang, "[System print: \"\"]", a));
+    try testing.expect(ref_mod.NIL == evalLine(s, lang, "[System println: \"io-smoke\"]", a));
+
+    // System arguments → a vector. In this harness no args are registered, so
+    // it's empty; real argv passing (`birnam … -- a b`) is shell-smoke tested.
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(evalLine(s, lang, "[[System arguments] size]", a)));
+}
+
 // Phase 12 — automated regression for the REPL-binding round-trip that the
 // shell `:save`/`:load` smoke proved manually. Two independent boots (fresh
 // store/table/interner each) with peg+lang loaded; a binding defined in the
@@ -1178,7 +1366,9 @@ test "fileIn: language proto evaluates ;-separated forms (atomic + continue)" {
     const atomic_res = evalLine(s, lang, "[language fileIn: \"test_filein_bad.birnam\"]", a);
     try testing.expectEqual(ref_mod.NIL, atomic_res); // aborted
     try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "g", a))); // form 1 ran
-    try testing.expectEqual(ref_mod.NIL, evalLine(s, lang, "c", a)); // form 3 skipped → unbound
+    // form 3 skipped → c unbound. Result model: reading an unbound name now
+    // yields an undefined-variable error (was a silent nil before Stage 3).
+    try testing.expect(isErrTrue(evalLine(s, lang, "[c isError]", a)));
 
     // -- continue mode: form 3 applies despite the form-2 error. --
     _ = evalLine(s, lang, "[language fileIn: \"test_filein_bad.birnam\" onError: #continue]", a);

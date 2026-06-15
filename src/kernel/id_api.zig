@@ -182,7 +182,33 @@ pub fn populate() IdApi {
         .string_split = &cStringSplit,
         .string_join = &cStringJoin,
         .string_reverse = &cStringReverse,
+        .arg_count = &cArgCount,
+        .arg_at = &cArgAt,
     };
+}
+
+// -- Phase 17.8 I/O — command-line arguments ------------------------------
+// The shell captures the program args (tokens after `--`) and registers them
+// via setArgs; the lang module reads them back through the ABI for
+// `System arguments`. Storage outlives the process (set once at startup).
+var g_args: []const []const u8 = &.{};
+
+/// Register the program's command-line arguments. Called once by the shell.
+pub fn setArgs(args: []const []const u8) void {
+    g_args = args;
+}
+
+fn cArgCount() callconv(.c) usize {
+    return g_args.len;
+}
+
+fn cArgAt(i: usize, out_len: *usize) callconv(.c) [*]const u8 {
+    if (i >= g_args.len) {
+        out_len.* = 0;
+        return "";
+    }
+    out_len.* = g_args[i].len;
+    return g_args[i].ptr;
 }
 
 fn cStringIndexOf(hay: Ref, needle: Ref) callconv(.c) i64 {
