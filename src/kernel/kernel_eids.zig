@@ -620,4 +620,28 @@ pub const FILE_PROTO: u64 = 221;
 pub const SYSTEM_PROTO_VT: u64 = 222;
 pub const SYSTEM_PROTO: u64 = 223;
 
-// 224..255 reserved for future kernel selectors / attributes
+/// Phase 19.3 — `char**` string arrays. `argv:` builds a single-block,
+/// NULL-terminated `char**` from a birnam vector of strings (freed via one
+/// `[p free]`); `peekStringArray:` reads a `char**` back into a vector (a
+/// SmallInt count reads exactly N entries, `nil` reads until the NULL terminator).
+pub const SEL_FFI_ARGV: u64 = 224; // "argv:"            on MODULE_PROTO_VT
+pub const SEL_FFI_PEEK_STRING_ARRAY: u64 = 225; // "peekStringArray:" on FFI_PTR_VT
+
+/// Phase 19.4 — bulk byte-buffer copy between an FfiPtr and a birnam string.
+/// `peekBytes:len:` copies `len` bytes at `base + offset` into a new string;
+/// `pokeBytes:at:` memcpys a string's (or byte-vector's) bytes to `base +
+/// offset`. Length/offset are caller-trusted (a raw FfiPtr carries no bounds).
+pub const SEL_FFI_PEEK_BYTES: u64 = 226; // "peekBytes:len:" (offset, len) -> string
+pub const SEL_FFI_POKE_BYTES: u64 = 227; // "pokeBytes:at:"  (bytes, offset) -> self
+
+/// Phase 19.7 — out-param "cell" constructors on MODULE_PROTO_VT. Each mints an
+/// FfiPtr to a fresh scratch buffer carrying a width tag (boxed slot 2); after a
+/// C call writes through it, `[cell value]` (reuses SEL_VALUE) peeks the right
+/// width and `[cell free]` releases it. Collapses the alloc/pass/peek/free
+/// out-param dance (e.g. `open(path, &fd)`) into one minted value.
+pub const SEL_FFI_OUT_INT: u64 = 228; // "outInt"    -> cell over a C int (4 bytes)
+pub const SEL_FFI_OUT_LONG: u64 = 229; // "outLong"  -> cell over a C long (8 bytes)
+pub const SEL_FFI_OUT_PTR: u64 = 230; // "outPtr"    -> cell over a pointer (8 bytes)
+pub const SEL_FFI_OUT_DOUBLE: u64 = 231; // "outDouble" -> cell over a double (8 bytes)
+
+// 232..255 reserved for future kernel selectors / attributes

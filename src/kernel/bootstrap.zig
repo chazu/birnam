@@ -230,6 +230,17 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_FFI_POKE_BYTE, "pokeByte:at:");
     try interner.seed(store, kernel_eids.SEL_FFI_POKE_DOUBLE, "pokeDouble:at:");
     try interner.seed(store, kernel_eids.SEL_FFI_POKE_PTR, "pokePtr:at:");
+    // Phase 19.3 — char** string arrays.
+    try interner.seed(store, kernel_eids.SEL_FFI_ARGV, "argv:");
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_STRING_ARRAY, "peekStringArray:");
+    // Phase 19.4 — bulk byte buffers.
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_BYTES, "peekBytes:len:");
+    try interner.seed(store, kernel_eids.SEL_FFI_POKE_BYTES, "pokeBytes:at:");
+    // Phase 19.7 — out-param cells. `value` reuses SEL_VALUE (seeded below).
+    try interner.seed(store, kernel_eids.SEL_FFI_OUT_INT, "outInt");
+    try interner.seed(store, kernel_eids.SEL_FFI_OUT_LONG, "outLong");
+    try interner.seed(store, kernel_eids.SEL_FFI_OUT_PTR, "outPtr");
+    try interner.seed(store, kernel_eids.SEL_FFI_OUT_DOUBLE, "outDouble");
 
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);

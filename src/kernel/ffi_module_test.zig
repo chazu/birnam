@@ -531,3 +531,187 @@ test "out-param: strcpy into alloc'd buffer; peekString reads it back" {
     _ = send_mod.send0(dst, kernel_eids.SEL_FFI_FREE);
     ffi.shutdown();
 }
+
+test "argv: + peekStringArray: char** round-trip (19.3)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    _ = try setup(&arena);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+
+    // birnam vector #["alpha" "beta" "gamma"] -> single-block char**.
+    const vec = try boxed.mkRrb(a, &.{
+        try strings.mkString(a, "alpha"),
+        try strings.mkString(a, "beta"),
+        try strings.mkString(a, "gamma"),
+    });
+    const argv = send_mod.send1(proto, kernel_eids.SEL_FFI_ARGV, vec);
+    try testing.expect(boxed.isFfiPtr(argv));
+
+    // Cross-check the raw C layout independently of peekStringArray: slot 0 is a
+    // pointer; the cstring it points at is "alpha".
+    const slot0 = send_mod.send1(argv, kernel_eids.SEL_FFI_PEEK_PTR, ref_mod.mkSmallInt(0).?);
+    try testing.expect(boxed.isFfiPtr(slot0));
+    const s0 = send_mod.send1(slot0, kernel_eids.SEL_FFI_PEEK_STRING, ref_mod.mkSmallInt(0).?);
+    try testing.expect(std.mem.eql(u8, strings.bytes(s0), "alpha"));
+
+    // count-bounded read back.
+    const got = send_mod.send1(argv, kernel_eids.SEL_FFI_PEEK_STRING_ARRAY, ref_mod.mkSmallInt(3).?);
+    try testing.expect(boxed.isRrbRef(got));
+    try testing.expectEqual(@as(usize, 3), boxed.rrbLen(got));
+    try testing.expect(std.mem.eql(u8, strings.bytes(boxed.rrbNth(got, 0)), "alpha"));
+    try testing.expect(std.mem.eql(u8, strings.bytes(boxed.rrbNth(got, 1)), "beta"));
+    try testing.expect(std.mem.eql(u8, strings.bytes(boxed.rrbNth(got, 2)), "gamma"));
+
+    // NULL-terminated read (nil count) stops at the terminator slot → 3 elems.
+    const got_nt = send_mod.send1(argv, kernel_eids.SEL_FFI_PEEK_STRING_ARRAY, ref_mod.NIL);
+    try testing.expect(boxed.isRrbRef(got_nt));
+    try testing.expectEqual(@as(usize, 3), boxed.rrbLen(got_nt));
+    try testing.expect(std.mem.eql(u8, strings.bytes(boxed.rrbNth(got_nt, 2)), "gamma"));
+
+    // one free reclaims the whole block (pointer array + all strings).
+    _ = send_mod.send0(argv, kernel_eids.SEL_FFI_FREE);
+}
+
+test "argv: rejects a non-vector / non-string element (19.3)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    _ = try setup(&arena);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+
+    // not a vector → nil.
+    try testing.expectEqual(ref_mod.NIL, send_mod.send1(proto, kernel_eids.SEL_FFI_ARGV, ref_mod.mkSmallInt(5).?));
+
+    // vector with a non-string element → nil (no partial alloc handed back).
+    const bad = try boxed.mkRrb(a, &.{
+        try strings.mkString(a, "ok"),
+        ref_mod.mkSmallInt(7).?,
+    });
+    try testing.expectEqual(ref_mod.NIL, send_mod.send1(proto, kernel_eids.SEL_FFI_ARGV, bad));
+}
+
+test "pokeBytes:at: + peekBytes:len: bulk copy round-trip (19.4)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    _ = try setup(&arena);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+    const buf = send_mod.send1(proto, kernel_eids.SEL_FFI_ALLOC, ref_mod.mkSmallInt(16).?);
+    try testing.expect(boxed.isFfiPtr(buf));
+
+    // poke a string's bytes at offset 0; pokeBytes returns self (chainable).
+    const back = send_mod.send2(buf, kernel_eids.SEL_FFI_POKE_BYTES, try strings.mkString(a, "hello"), ref_mod.mkSmallInt(0).?);
+    try testing.expectEqual(buf, back);
+
+    const got = send_mod.send2(buf, kernel_eids.SEL_FFI_PEEK_BYTES, ref_mod.mkSmallInt(0).?, ref_mod.mkSmallInt(5).?);
+    try testing.expect(strings.isString(got));
+    try testing.expect(std.mem.eql(u8, strings.bytes(got), "hello"));
+
+    // poke a byte-vector #[1 2 254] at offset 8; read it back as raw bytes.
+    const bytes_vec = try boxed.mkRrb(a, &.{
+        ref_mod.mkSmallInt(1).?, ref_mod.mkSmallInt(2).?, ref_mod.mkSmallInt(254).?,
+    });
+    _ = send_mod.send2(buf, kernel_eids.SEL_FFI_POKE_BYTES, bytes_vec, ref_mod.mkSmallInt(8).?);
+    const got2 = send_mod.send2(buf, kernel_eids.SEL_FFI_PEEK_BYTES, ref_mod.mkSmallInt(8).?, ref_mod.mkSmallInt(3).?);
+    try testing.expect(strings.isString(got2));
+    try testing.expectEqualSlices(u8, &.{ 1, 2, 254 }, strings.bytes(got2));
+
+    // peek of len 0 is the empty string.
+    const empty = send_mod.send2(buf, kernel_eids.SEL_FFI_PEEK_BYTES, ref_mod.mkSmallInt(0).?, ref_mod.mkSmallInt(0).?);
+    try testing.expect(strings.isString(empty));
+    try testing.expectEqual(@as(usize, 0), strings.bytes(empty).len);
+
+    // bad source type → nil; negative len → nil.
+    try testing.expectEqual(ref_mod.NIL, send_mod.send2(buf, kernel_eids.SEL_FFI_POKE_BYTES, ref_mod.mkSmallInt(9).?, ref_mod.mkSmallInt(0).?));
+    try testing.expectEqual(ref_mod.NIL, send_mod.send2(buf, kernel_eids.SEL_FFI_PEEK_BYTES, ref_mod.mkSmallInt(0).?, ref_mod.mkSmallInt(-1).?));
+
+    _ = send_mod.send0(buf, kernel_eids.SEL_FFI_FREE);
+}
+
+test "out-param cells: outInt/outLong/outPtr/outDouble value (19.7)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    _ = try setup(&arena);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+
+    // outLong: an 8-byte cell; pokeInt writes an i64 that value reads back.
+    const cl = send_mod.send0(proto, kernel_eids.SEL_FFI_OUT_LONG);
+    try testing.expect(boxed.isFfiPtr(cl));
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(cl, kernel_eids.SEL_VALUE))); // zeroed
+    _ = send_mod.send2(cl, kernel_eids.SEL_FFI_POKE_INT, ref_mod.mkSmallInt(123456).?, ref_mod.mkSmallInt(0).?);
+    try testing.expectEqual(@as(i64, 123456), ref_mod.untagSmallInt(send_mod.send0(cl, kernel_eids.SEL_VALUE)));
+    _ = send_mod.send0(cl, kernel_eids.SEL_FFI_FREE);
+
+    // outInt: a 4-byte cell, read as i32. Write little-endian bytes via pokeBytes
+    // (pokeInt would overflow the 4-byte buffer). 0x80000000 must sign-extend.
+    const ci = send_mod.send0(proto, kernel_eids.SEL_FFI_OUT_INT);
+    const le = try boxed.mkRrb(a, &.{
+        ref_mod.mkSmallInt(0).?, ref_mod.mkSmallInt(0).?, ref_mod.mkSmallInt(0).?, ref_mod.mkSmallInt(0x80).?,
+    });
+    _ = send_mod.send2(ci, kernel_eids.SEL_FFI_POKE_BYTES, le, ref_mod.mkSmallInt(0).?);
+    try testing.expectEqual(@as(i64, -2147483648), ref_mod.untagSmallInt(send_mod.send0(ci, kernel_eids.SEL_VALUE)));
+    _ = send_mod.send0(ci, kernel_eids.SEL_FFI_FREE);
+
+    // outDouble.
+    const cd = send_mod.send0(proto, kernel_eids.SEL_FFI_OUT_DOUBLE);
+    _ = send_mod.send2(cd, kernel_eids.SEL_FFI_POKE_DOUBLE, try boxed.mkFloat(a, 3.5), ref_mod.mkSmallInt(0).?);
+    try testing.expectEqual(@as(f64, 3.5), boxed.untagFloat(send_mod.send0(cd, kernel_eids.SEL_VALUE)));
+    _ = send_mod.send0(cd, kernel_eids.SEL_FFI_FREE);
+
+    // outPtr: pokePtr a known address; value reads it back as an FfiPtr.
+    const cp = send_mod.send0(proto, kernel_eids.SEL_FFI_OUT_PTR);
+    const some = send_mod.send1(proto, kernel_eids.SEL_FFI_ALLOC, ref_mod.mkSmallInt(8).?);
+    _ = send_mod.send2(cp, kernel_eids.SEL_FFI_POKE_PTR, some, ref_mod.mkSmallInt(0).?);
+    const got_ptr = send_mod.send0(cp, kernel_eids.SEL_VALUE);
+    try testing.expect(boxed.isFfiPtr(got_ptr));
+    try testing.expectEqual(boxed.untagFfiPtr(some), boxed.untagFfiPtr(got_ptr));
+    _ = send_mod.send0(some, kernel_eids.SEL_FFI_FREE);
+    _ = send_mod.send0(cp, kernel_eids.SEL_FFI_FREE);
+
+    // a plain (non-cell) alloc'd pointer has width tag 0 -> value is nil.
+    const plain = send_mod.send1(proto, kernel_eids.SEL_FFI_ALLOC, ref_mod.mkSmallInt(8).?);
+    try testing.expectEqual(ref_mod.NIL, send_mod.send0(plain, kernel_eids.SEL_VALUE));
+    _ = send_mod.send0(plain, kernel_eids.SEL_FFI_FREE);
+}
+
+test "out-param cell: real C out-param via strtol endptr (19.7)" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = try ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM);
+    const sel = try fix.interner.intern(fix.store, fix.table, "parse:end:base:");
+
+    // long strtol(const char *nptr, char **endptr, int base). nptr is passed as a
+    // STABLE alloc'd buffer (`p`), NOT a `Z` string: strtol writes into *endptr a
+    // pointer INTO nptr, and a `Z` arg's scratch buffer is freed after the call —
+    // endptr would dangle. So poke the input into an alloc'd cell and pass `p`.
+    _ = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, ref_mod.mkEid(sel), try strings.mkString(a, "strtol"), try strings.mkString(a, "ppi)l"));
+    resolve(fix, mod, a);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+    const input = send_mod.send1(proto, kernel_eids.SEL_FFI_ALLOC, ref_mod.mkSmallInt(6).?); // "42abc" + NUL (alloc zeroes)
+    _ = send_mod.send2(input, kernel_eids.SEL_FFI_POKE_BYTES, try strings.mkString(a, "42abc"), ref_mod.mkSmallInt(0).?);
+    const endptr = send_mod.send0(proto, kernel_eids.SEL_FFI_OUT_PTR);
+
+    // "42abc" base 10 -> 42, and endptr left pointing at "abc".
+    const n = send_mod.send3(mod, sel, input, endptr, ref_mod.mkSmallInt(10).?);
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(n));
+
+    const rest = send_mod.send0(endptr, kernel_eids.SEL_VALUE); // FfiPtr to where parsing stopped
+    try testing.expect(boxed.isFfiPtr(rest));
+    const rest_str = send_mod.send1(rest, kernel_eids.SEL_FFI_PEEK_STRING, ref_mod.mkSmallInt(0).?);
+    try testing.expect(std.mem.eql(u8, strings.bytes(rest_str), "abc"));
+
+    _ = send_mod.send0(input, kernel_eids.SEL_FFI_FREE);
+    _ = send_mod.send0(endptr, kernel_eids.SEL_FFI_FREE);
+    ffi.shutdown();
+}
