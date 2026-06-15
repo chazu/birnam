@@ -81,6 +81,7 @@ const ATTR_META = ke.ATTR_META; // Phase 16 Tier E — metadata attr (mirror)
 const XF_VT = ke.XF_VT; // Phase 16 Tier E — transducer factory vtable (mirror)
 const XF_PROTO = ke.XF_PROTO; // Phase 16 Tier E — `Xf` singleton (mirror)
 const ATTR_ERROR_MESSAGE = ke.ATTR_ERROR_MESSAGE; // mirror of kernel_eids.ATTR_ERROR_MESSAGE
+const ATTR_ERROR_KIND = ke.ATTR_ERROR_KIND; // mirror — error taxonomy symbol (Result model)
 
 const ATTR_AST_VALUE = ke.ATTR_AST_VALUE;
 const ATTR_AST_NAME = ke.ATTR_AST_NAME;
@@ -1666,7 +1667,14 @@ fn evalVarRefImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     const name_eid = name_ref >> 3;
     const scope_ref = currentScope(args, n_args);
     if (!isEid(scope_ref)) return NIL;
-    return lookupInScope(scope_ref >> 3, name_eid) orelse NIL;
+    // lookupInScope returns the bound value (possibly nil) or null when the
+    // name is genuinely unbound. Result model: unbound → reported error, not a
+    // silent nil indistinguishable from a nil-valued binding.
+    if (lookupInScope(scope_ref >> 3, name_eid)) |v| return v;
+    const nm = api.symbol_name(name_eid);
+    const kind = api.intern("undefinedVariable".ptr, 17);
+    if (nm != NIL and isString(nm)) return mkRuntimeErrorFmt(kind, "undefined variable: {s}", .{stringBytes(nm)});
+    return mkRuntimeErrorKind(kind, "undefined variable");
 }
 
 fn evalUnarySendImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
@@ -1757,7 +1765,7 @@ fn smallintMinusImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) R
 fn smallintDivImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
     const b_ = untagSmallInt(args[0]);
-    if (b_ == 0) return NIL;
+    if (b_ == 0) return mkRuntimeErrorKind(g_api.?.intern("zeroDivide".ptr, 10), "divide by zero");
     return mkSmallInt(@divTrunc(untagSmallInt(s.receiver), b_));
 }
 fn smallintEqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
@@ -1804,7 +1812,7 @@ fn floatTimesImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
 fn floatDivImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
     const b_ = argAsF64(args[0]);
-    if (b_ == 0.0) return NIL;
+    if (b_ == 0.0) return mkRuntimeErrorKind(g_api.?.intern("zeroDivide".ptr, 10), "divide by zero");
     return g_api.?.make_float(floatRefValue(s.receiver) / b_);
 }
 fn floatEqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
@@ -1968,10 +1976,15 @@ fn evalAssignImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     const value_ref = api.query_eavt(ast_eid, ATTR_AST_ASSIGN_VALUE);
     if (!isEid(name_ref) or !isEid(value_ref)) return NIL;
     const new_val = api.send1(value_ref, sel_eval, scope_ref);
+    // If the rhs errored, propagate it rather than binding the error.
+    if (isErrorValue(new_val)) return new_val;
     if (mutateBinding(scope_ref >> 3, name_ref >> 3, new_val)) {
         return new_val;
     }
-    return NIL;
+    const nm = api.symbol_name(name_ref >> 3);
+    const kind = api.intern("undefinedAssignment".ptr, 19);
+    if (nm != NIL and isString(nm)) return mkRuntimeErrorFmt(kind, "assignment to undefined variable: {s} (declare with `let` first)", .{stringBytes(nm)});
+    return mkRuntimeErrorKind(kind, "assignment to undefined variable");
 }
 
 /// Multi-statement sequence — walk linked list, eval each, return last value.
@@ -1991,6 +2004,9 @@ fn evalStmtSeqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
     while (isEid(cur_ref) and (cur_ref >> 3) != 0) {
         last_val = api.send1(cur_ref, sel_eval, scope_ref);
         if (g_unwinding) return last_val;
+        // Result model: an error halts the sequence (later statements don't run)
+        // and propagates out as the sequence's value.
+        if (isErrorValue(last_val)) return last_val;
         const cur_eid = cur_ref >> 3;
         cur_ref = api.query_eavt(cur_eid, ATTR_AST_NEXT_SIBLING);
     }
@@ -3002,13 +3018,35 @@ fn installStdlib() void {
 // -- Phase 16 Tier A: persistent vector (RRB_VT) methods ------------------
 
 /// Build a runtime ERROR_VT diagnostic carrying `msg`. The no-NULL "raise"
-/// surface until a proper exception mechanism lands (Tier D).
+/// surface of the Result error model: errors are first-class values that
+/// propagate through sends (ERROR_VT's `doesNotUnderstand:` returns self) and
+/// halt statement sequences, until caught by `on:do:` or reported at the top.
 fn mkRuntimeError(msg: []const u8) Ref {
+    return mkRuntimeErrorKind(0, msg);
+}
+
+/// Like `mkRuntimeError` but tags the error with a `kind` symbol eid (0 = no
+/// kind). The kind drives `on:do:` matching and shows in reports.
+fn mkRuntimeErrorKind(kind_sel: u64, msg: []const u8) Ref {
     const api = g_api.?;
     const e = api.alloc_eid();
     _ = api.assert_fact(e, ATTR_VTABLE, mkEid(ERROR_VT), M_USER);
     _ = api.assert_fact(e, ATTR_ERROR_MESSAGE, api.make_string(msg.ptr, msg.len), M_USER);
+    if (kind_sel != 0) _ = api.assert_fact(e, ATTR_ERROR_KIND, mkEid(kind_sel), M_USER);
     return mkEid(e);
+}
+
+/// `mkRuntimeError` with a `std.fmt`-formatted message (truncated to 192 bytes).
+fn mkRuntimeErrorFmt(kind_sel: u64, comptime fmt: []const u8, fmt_args: anytype) Ref {
+    var buf: [192]u8 = undefined;
+    const msg = std.fmt.bufPrint(&buf, fmt, fmt_args) catch "error (message too long)";
+    return mkRuntimeErrorKind(kind_sel, msg);
+}
+
+/// True if `r` is an ERROR_VT value (the Result error sentinel).
+fn isErrorValue(r: Ref) bool {
+    if (!isEid(r)) return false;
+    return g_api.?.query_eavt(r >> 3, ATTR_VTABLE) == mkEid(ERROR_VT);
 }
 
 fn vecWithImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
@@ -3318,6 +3356,128 @@ fn dnuImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     return mkRuntimeError(msg);
 }
 
+// -- Result error model: ERROR_VT propagation + inspectors -----------------
+
+/// ERROR_VT's `doesNotUnderstand:` — return the error itself (the receiver) for
+/// any unhandled selector, so an error propagates through a message chain
+/// (`[[x foo] bar]` yields the original error) instead of becoming a new
+/// "does not understand" error. This is receiver-side Result propagation done
+/// purely through message dispatch — no send-loop special case.
+fn errorDnuImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return s.receiver;
+}
+
+/// `[err message]` → the error's message string (or nil).
+fn errorMessageImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    if (!isEid(s.receiver)) return NIL;
+    return g_api.?.query_eavt(s.receiver >> 3, ATTR_ERROR_MESSAGE);
+}
+
+/// `[err kind]` → the error's kind symbol (or nil).
+fn errorKindImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    if (!isEid(s.receiver)) return NIL;
+    return g_api.?.query_eavt(s.receiver >> 3, ATTR_ERROR_KIND);
+}
+
+/// `[x isError]` → true on ERROR_VT, false everywhere else.
+fn isErrorTrueImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(TRUE_EID);
+}
+fn isErrorFalseImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(FALSE_EID);
+}
+
+/// Install the Result error surface. Always-kept tier (works in pure-VM AOT):
+/// errors are produced by kernel primitives, so propagation must survive
+/// --strip=malleable.
+fn installErrors() void {
+    const api = g_api.?;
+    // Propagation: any unhandled message to an error returns the error.
+    _ = api.assert_fact(ERROR_VT, SEL_DNU, mkEid(api.make_closure(@ptrCast(&errorDnuImpl), NIL)), g_module_eid);
+    // Inspectors on ERROR_VT.
+    const sel_message = api.intern("message".ptr, 7);
+    const sel_kind = api.intern("kind".ptr, 4);
+    const sel_is_error = api.intern("isError".ptr, 7);
+    _ = api.assert_fact(ERROR_VT, sel_message, mkEid(api.make_closure(@ptrCast(&errorMessageImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(ERROR_VT, sel_kind, mkEid(api.make_closure(@ptrCast(&errorKindImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(ERROR_VT, sel_is_error, mkEid(api.make_closure(@ptrCast(&isErrorTrueImpl), NIL)), g_module_eid);
+    // isError = false for everything else (delegating types via OBJECT_VT +
+    // non-delegating immediates).
+    for ([_]u64{ OBJECT_VT, SMALLINT_VT, TRUE_VT, FALSE_VT }) |vt| {
+        _ = api.assert_fact(vt, sel_is_error, mkEid(api.make_closure(@ptrCast(&isErrorFalseImpl), NIL)), g_module_eid);
+    }
+    // Catch surface: `on:do:` + `ensure:` on blocks (CLOSURE_VT). `#Error` wildcard.
+    g_sel_error_any = api.intern("Error".ptr, 5);
+    const sel_on_do = api.intern("on:do:".ptr, 6);
+    _ = api.assert_fact(CLOSURE_VT, sel_on_do, mkEid(api.make_closure(@ptrCast(&closureOnDoImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(CLOSURE_VT, api.intern("ensure:".ptr, 7), mkEid(api.make_closure(@ptrCast(&closureEnsureImpl), NIL)), g_module_eid);
+    // Raise surface: `[msg error]` / `[msg error: #kind]` on strings.
+    _ = api.assert_fact(STRING_VT, api.intern("error".ptr, 5), mkEid(api.make_closure(@ptrCast(&stringErrorImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(STRING_VT, api.intern("error:".ptr, 6), mkEid(api.make_closure(@ptrCast(&stringErrorKindImpl), NIL)), g_module_eid);
+}
+
+/// `#Error` (or `#any`) catch-all kind for `on:do:`. Cached at install.
+var g_sel_error_any: u64 = 0;
+
+/// True if a handler watching `want` (a kind symbol Ref) should catch an error
+/// whose kind is `got` (a kind symbol Ref, possibly NIL for unkinded errors).
+/// `#Error`/`#any` is the wildcard that catches every error.
+fn errorKindMatches(want: Ref, got: Ref) bool {
+    if (isEid(want) and ((want >> 3) == g_sel_error_any)) return true;
+    if (got == NIL) return false; // unkinded error: only the wildcard catches it
+    return want == got;
+}
+
+/// `[protectedBlock ensure: cleanupBlock]` — run the protected block, then ALWAYS
+/// run the cleanup block (whether the protected block yielded a value or an
+/// error), and return the protected block's result. The Result-model answer to
+/// resource safety; pairs with `withFile:`/`withAlloc:` brackets.
+fn closureEnsureImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const result = api.send0(s.receiver, sel_value_g);
+    _ = api.send0(args[0], sel_value_g); // cleanup runs regardless; its value is discarded
+    return result;
+}
+
+/// `[msg error]` — raise: build an ERROR_VT carrying the receiver string. The
+/// user-facing companion to primitive-raised errors; propagates + is catchable.
+fn stringErrorImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    if (!isString(s.receiver)) return mkRuntimeError("error");
+    return mkRuntimeError(stringBytes(s.receiver));
+}
+
+/// `[msg error: #kind]` — raise with an explicit kind symbol (for `on:do:`).
+fn stringErrorKindImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const msg = if (isString(s.receiver)) stringBytes(s.receiver) else "error";
+    const kind: u64 = if (isEid(a[0])) a[0] >> 3 else 0;
+    return mkRuntimeErrorKind(kind, msg);
+}
+
+/// `[protectedBlock on: #kind do: handlerBlock]` — run the protected block; if
+/// it yields an error matching `#kind` (or `#Error` wildcard), invoke the
+/// handler with the error (`handler value: error`) and return its result. A
+/// non-error result, or an error of a different kind, passes through unchanged
+/// (an unmatched error keeps propagating — Result model).
+fn closureOnDoImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    const result = api.send0(s.receiver, sel_value_g);
+    if (!isErrorValue(result)) return result;
+    const got = api.query_eavt(result >> 3, ATTR_ERROR_KIND);
+    if (errorKindMatches(args[0], got)) {
+        return api.send1(args[1], sel_value_of_g, result);
+    }
+    return result;
+}
+
 fn installBoolNil() void {
     const api = g_api.?;
     // Tier D — default doesNotUnderstand: on OBJECT_VT (delegating types) + the
@@ -3571,6 +3731,7 @@ fn installPrimitives() void {
     _ = api.assert_fact(FALSE_VT, if_true_if_false_sel, mkEid(api.make_closure(@ptrCast(&falseIfTrueIfFalseImpl), NIL)), g_module_eid);
 
     installCollections(); // Phase 16 Tier A/C — vector + map methods
+    installErrors(); // Result error model — ERROR_VT propagation + inspectors
     installBoolNil(); // Phase 16 Tier D — bool/nil ergonomics
     installNumberProtocol(); // Phase 16 Tier D — mod: + Float sqrt/floor/ceil/round
 }
@@ -3641,21 +3802,40 @@ fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
         return;
     }
     const ast_eid = ast_ref >> 3;
-    // Check for ERROR_VT.
+    // Parse error → ERROR_VT diagnostic; report its message.
     const vt = api.query_eavt(ast_eid, ATTR_VTABLE);
     if (vt == mkEid(ERROR_VT)) {
-        if (g_log) |log| log("[lang] => error");
+        reportError(ast_ref, "parse error");
         return;
     }
     const val = api.send1(ast_ref, sel_eval, mkEid(g_top_scope_eid));
     // Line-commit: bind any FFI modules/wraps declared on this line (deferred
     // dlopen → resolve here for interactive eager feel). No-op without FFI.
     resolvePendingModules();
+    // Result model: an uncaught error surfaces as a distinct error line, not as
+    // an ordinary `=> value`.
+    if (isErrorValue(val)) {
+        reportError(val, "error");
+        return;
+    }
     if (g_log) |log| {
         var buf: [256]u8 = undefined;
         const m = formatValue(&buf, val) catch return;
         log(m);
     }
+}
+
+/// Emit an uncaught error to the REPL/file-in log as `! <label>: <message>`.
+fn reportError(err_ref: Ref, label: []const u8) void {
+    const log = g_log orelse return;
+    const api = g_api.?;
+    var buf: [256]u8 = undefined;
+    const msg_ref = if (isEid(err_ref)) api.query_eavt(err_ref >> 3, ATTR_ERROR_MESSAGE) else NIL;
+    const line = if (msg_ref != NIL and isString(msg_ref))
+        (std.fmt.bufPrintZ(&buf, "[lang] ! {s}: {s}", .{ label, stringBytes(msg_ref) }) catch return)
+    else
+        (std.fmt.bufPrintZ(&buf, "[lang] ! {s}", .{label}) catch return);
+    log(line);
 }
 
 /// Send `[Module resolve]` — opens + binds any pending FFI modules. Invoked at

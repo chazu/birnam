@@ -2015,6 +2015,32 @@ order ≠ roadmap order). Item-by-item:
   and:/or: cover the need.
 - **17.6 applicative patterns — SHIPPED** (Tier E): validate: (accumulate),
   zip:/whenAll:.
+- **17.7 error model (Result-style) — SHIPPED 2026-06-14** (branch
+  `errors-result-model`): the usability fix for silent-nil failures. Decided
+  **errors-as-propagating-values** over Smalltalk exceptions (fits the two-eval-path
+  reality — no VM unwind changes — and the fact-store identity: errors are entities,
+  storable/queryable; `doesNotUnderstand:` already returned, not raised). Shipped:
+  - **Propagation:** `ERROR_VT.doesNotUnderstand:` returns self, so any unhandled
+    message to an error yields the error (`[[x foo] bar]` → original error) — pure
+    message-dispatch, no send-loop special case. Inspectors `message`/`kind`/`isError`.
+  - **Halt + report:** tree-walker statement sequences halt on an error value;
+    REPL/file-in surface uncaught errors as a distinct `! error: <msg>` line
+    (`reportError`).
+  - **Silent-nil sites fixed → kinded `ERROR_VT`:** undefined variable
+    (`undefinedVariable`), assignment-to-undeclared (`undefinedAssignment`),
+    divide-by-zero SmallInt+Float (`zeroDivide`).
+  - **Catch + cleanup + raise:** `[block on: #kind do: [:e | …]]` (kind match or
+    `#Error` wildcard; unmatched propagates), `[block ensure: cleanup]` (cleanup
+    runs on value OR error), `[msg error]` / `[msg error: #kind]` user raise.
+  All in the always-kept primitives tier (works under `--strip=malleable`).
+  **Deferred (non-blocking):** (a) **VM-compiled statement sequences don't halt
+  mid-sequence on error** (only the tree-walker does) — a compiled method's
+  `a. b.` runs `b` even if `a` errored; needs a bytecode CHECK/propagate after
+  non-final statements. (b) **Type-mismatch hardening** — arithmetic on a
+  non-number still reinterprets bits silently (`untagSmallInt` on a non-int) and
+  integer overflow panics in safe builds; convert these to `ERROR_VT`. (c)
+  arg-position error propagation (receiver-position covered; args explicit). (d)
+  resume/retry (Result can't — accepted). (e) source location in errors.
 
 **Remaining:** `&`/`|` (grammar collision); a general `compare:`/`<=>` three-way
 + sorted-collection type (sort over `<` covers the common case today); string
@@ -2161,7 +2187,18 @@ the marshaling primitives are stable.
 ## ADR-perf-1 — Performance model & the projection boundary (2026-06-07)
 
 **Status:** accepted (analysis); B + A shipped; the boundary decision (items 3–5)
-is the open architectural work this ADR exists to flag.
+is the open architectural work this ADR exists to flag. **Update 2026-06-14 — this
+ADR's perf-1.3/1.4/1.5 framing predates the Phase 11.12 bytecode switchover and is
+substantially stale:** (1) perf-1.4 write-back is blocked on missing prerequisites
+(no eligible write target; read fast-path net-negative through the generic API) —
+reordered into/after Phase 18. (2) **perf-1.5 is largely already achieved** — the
+bytecode VM holds locals in frame slots, so compiled hot loops create ~0
+store-mutations/iter (measured 0.035 vs the tree-walker's 8.10); the per-iter fact
+tax survives only in the tree-walker (REPL/script top-level). (3) Net: for
+*compiled* code the remaining headroom is dispatch ICs / field-read slot caches /
+native codegen = **Phase 18**, plus an optional contained win (compile top-level
+statements to bytecode). See perf-1.4 / perf-1.5 / perf-1.6 work items for findings
+and measurements.
 
 ### Context
 A perf review of the dispatch/state path (triggered by the FFI instance-vt
@@ -2246,11 +2283,70 @@ and is rejected.
 - **perf-1.3 (DESIGN RESOLVED 2026-06-07; implementation gated on 1.4):** the
   projection-vs-representation boundary. Decided: **time-travel is opt-in.** Full
   tier model + opt-in API in the subsection below. This unblocks 1.4/1.5.
-- **perf-1.4 (OPEN): write-back tier.** Hot mutable slots live in the struct;
-  writes patch + mark dirty; facts reconciled lazily at tx/query/save boundaries.
-  Per-assignment DB cost → per-commit DB cost.
-- **perf-1.5 (OPEN): escape analysis / transients.** Locals and non-escaping
-  objects never become facts (Clojure transients / V8 stack objects).
+- **perf-1.4 (BLOCKED — prerequisites missing; investigated 2026-06-14): write-back
+  tier.** Hot mutable slots live in the struct; writes patch + mark dirty; facts
+  reconciled lazily at tx/query/save boundaries. Per-assignment DB cost → per-commit
+  DB cost. **Scoping investigation found write-back has no entity to act on in the
+  current language, and the paired read win is net-negative through the generic API.
+  Do not build until the prerequisites below land.**
+
+  *Finding A — no eligible write target.* Write-back's precondition is a
+  `materialized ∧ ¬temporal ∧ mutable` entity written in a loop. Birnam has none:
+  the only mutable-state idioms are **cells** (tier-3, write-through by design) and
+  **`:=` locals** (scope bindings). Hotness bumps on exactly one site —
+  `send.zig` dispatch *receiver* cold path. Variable reads are `query_eavt` fact
+  lookups (`lang.zig` `lookupInScope`), not dispatches, so **binding entities never
+  promote**. No general `[obj field: v]` setter exists (`at:put:` returns a new
+  persistent map, not a fact write). The write router would always fall through to
+  write-through → dead code.
+
+  *Finding B — read fast-path is net-negative through `currentValue`.* Prototyped a
+  slot-first read hook (promotion installs it; `currentValue` consults it before
+  EAVT) and measured (ReleaseFast, 2M iters): promoted slot-read **14.8 ns** vs
+  promoted HAMT **19.6 ns** (−25%), BUT cold (unpromoted) read **21 → 25.4 ns**
+  (+21%, the now-always-attempted hook misses for the cold majority). Most entities
+  are cold (threshold = 100), so overall read throughput regresses. The ADR's 10×
+  (→~2 ns) is unreachable here — 14.8 ns still pays `table.get` HAMT + `layouts.get`
+  + bsearch + indirect call. The real 10× needs an **inline slot cache at the
+  dispatch/VM read site** (caller already holds the struct pointer), which is
+  **Phase 18**, not the generic `currentValue` API. Experiment reverted.
+
+  *Prerequisites before perf-1.4 is worth doing:*
+  1. **A materialized, mutable, non-temporal entity to optimize** — either a tier-2
+     mutable-object construct (`[obj field: v]` setters on promoted instances; these
+     get hot via dispatch naturally) OR rely on perf-1.5 for the locals case (see
+     below). **Promote-on-write was considered and rejected**: bumping hotness on
+     write targets to promote loop-counter bindings gets nothing on its own (a
+     write-heavy/non-read entity gains no dispatch benefit, and perf-1.A then adds a
+     slot patch on top of every full 5-index assert — net negative), and its only
+     value is enabling write-back for `:=` locals — which are tier-1 transients that
+     perf-1.5 should keep out of the fact store entirely. It optimizes the wrong
+     layer.
+  2. **Inline slot cache (Phase 18)** for the read win — not the generic read API.
+
+  *Reordering:* perf-1.4 is more entangled with Phase 18 (read inline-caching) and
+  with a missing tier-2 object construct than the original "before Phase 18" framing
+  implied. Treat it as post/into-Phase-18, gated on a tier-2 construct, with the
+  hot-locals case routed to perf-1.5 instead.
+- **perf-1.5 (LARGELY ALREADY ACHIEVED for compiled code — measured 2026-06-14):
+  escape analysis / transients.** Goal: locals and non-escaping objects never
+  become facts (Clojure transients / V8 stack objects). **The Phase 11.12 bytecode
+  switchover already did this for compiled code:** the VM (`dispatch.zig`) holds
+  locals in **frame slots** (`LOAD_LOCAL`/`STORE_LOCAL`) with zero scope/binding
+  facts, and `vtMethodDoImpl` compiles method bodies to bytecode by default
+  (tree-walker only as a compile-failure fallback). Measured (Debug, N=5000 loop):
+  **compiled method = 0.035 store-mutations/iter (≈O(1) one-time setup) vs
+  tree-walker = 8.10 mutations/iter** (scope + binding asserts + `:=` retract/assert
+  per iteration). So hot loops *inside methods* already pay no per-iteration fact
+  cost. **The per-iteration fact tax remains ONLY in the tree-walker** — REPL
+  top-level lines, script top-level statements, and uncompiled blocks (all go
+  through `send sel_eval` over the AST with `newScopeEntity`/`pushScopeBinding`).
+  Residual work, if it proves to matter: (a) **compile top-level/REPL/script
+  statements to bytecode** (reuses the existing VM frame-locals; eliminates the
+  tree-walker tax for scripts with hot top-level loops — contained, no new escape
+  analysis); (b) general escape analysis for the few remaining heap allocations.
+  The originally-imagined "scopes as fact entities → move off-store" rewrite is
+  **not needed** — the VM already bypasses scope facts for compiled code.
 - **perf-1.6 (REVISED by measurement 2026-06-07):** dispatch inline caches were
   the original plan — **dropped.** Measurement shows warm dispatch is ~8 ns /
   6.4×, not a bottleneck; mcache already makes the method probe free. What
@@ -2261,7 +2357,11 @@ and is rejected.
   pays off once the receiver is reliably a struct pointer with a stable shape —
   i.e. it rides on the **tier-2 representation (perf-1.4)**, not on a standalone
   cache. Net: fold perf-1.6 into 1.4 (shape) + Phase-18 (JIT slot inlining); no
-  separate dispatch-IC work item.
+  separate dispatch-IC work item. **Refined by measurement 2026-06-14:** doing the
+  slot read inside the generic `currentValue` API is net-negative (see perf-1.4
+  Finding B — saves 25% on promoted reads, costs 21% on the cold majority). The win
+  *requires* the read site to already hold the struct pointer + slot index (Phase-18
+  inline cache), so this is squarely Phase-18 work, not a fact-store-API change.
 - **micro-win available now (optional, ~4.6 ns):** an eid→vt direct-mapped cache
   (mirroring mcache) to skip the object-table HAMT lookup in `vtableEidOf`.
   Low-risk, but small (8 ns → ~4 ns dispatch) and dispatch isn't the bottleneck,
