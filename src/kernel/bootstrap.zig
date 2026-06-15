@@ -230,6 +230,9 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_FFI_POKE_BYTE, "pokeByte:at:");
     try interner.seed(store, kernel_eids.SEL_FFI_POKE_DOUBLE, "pokeDouble:at:");
     try interner.seed(store, kernel_eids.SEL_FFI_POKE_PTR, "pokePtr:at:");
+    // Phase 19.3 — char** string arrays.
+    try interner.seed(store, kernel_eids.SEL_FFI_ARGV, "argv:");
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_STRING_ARRAY, "peekStringArray:");
 
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);

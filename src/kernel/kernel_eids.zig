@@ -620,4 +620,11 @@ pub const FILE_PROTO: u64 = 221;
 pub const SYSTEM_PROTO_VT: u64 = 222;
 pub const SYSTEM_PROTO: u64 = 223;
 
-// 224..255 reserved for future kernel selectors / attributes
+/// Phase 19.3 — `char**` string arrays. `argv:` builds a single-block,
+/// NULL-terminated `char**` from a birnam vector of strings (freed via one
+/// `[p free]`); `peekStringArray:` reads a `char**` back into a vector (a
+/// SmallInt count reads exactly N entries, `nil` reads until the NULL terminator).
+pub const SEL_FFI_ARGV: u64 = 224; // "argv:"            on MODULE_PROTO_VT
+pub const SEL_FFI_PEEK_STRING_ARRAY: u64 = 225; // "peekStringArray:" on FFI_PTR_VT
+
+// 226..255 reserved for future kernel selectors / attributes

@@ -2221,12 +2221,22 @@ All current scalar `Kind`s are signed; no unsigned/width variants.
      Deferred from scope: unsigned struct *fields* in `{...}` (layout is
      sign-agnostic; field sign is a peek-side concern); wide chars.
 
-19.3 **[commit A2] `char**` / string arrays.** In: build NULL-terminated `char**`
-     from a birnam vector (scratch bufs freed post-call) — extend the marshal
-     loop's `.cstring` path with an array variant (new sigchar e.g. `A`, or a
-     `Module argv:` constructor). Out: `[p peekStringArray: count] → vector`
-     (**eid 224**, on `FFI_PTR_VT`). Files: `ffi.zig` + `ffi_module.zig` +
-     `kernel_eids.zig`. Lifetime = synchronous-call-scoped (same as `Z`). Risk: low.
+19.3 **[commit A2] `char**` / string arrays — SHIPPED 2026-06-15** (branch
+     `phase-19-ffi`). Chose the **constructor** form over a new marshal sigchar
+     (reuses the existing `p` arg path; explicit, freeable lifetime — the
+     `.pointer` "caller owns the buffer" model). In: `[Module argv: aVector] →
+     FfiPtr` (**eid 224 `SEL_FFI_ARGV`**, `methodArgv` on MODULE_PROTO_VT) builds
+     a **single-block** NULL-terminated `char**` — one `malloc` holds the pointer
+     array (n+1 slots, last = NULL) followed by the NUL-terminated string bytes,
+     each slot pointing into the bytes region, so **one `[p free]` reclaims
+     everything** (no per-string leak). Out: `[p peekStringArray: count] → vector`
+     (**eid 225 `SEL_FFI_PEEK_STRING_ARRAY`**, on FFI_PTR_VT) — a SmallInt count
+     reads exactly N slots (NULL slot → `nil`); `nil` reads until the NULL
+     terminator (argv/environ style). Files: `ffi_module.zig` + `bootstrap.zig`
+     (seed names) + `kernel_eids.zig`. **No `ffi.zig` change** (constructor, not a
+     marshal path). Tested: round-trip + raw-layout cross-check via `peekPtr:`/
+     `peekString:` + NULL-terminated read + non-vector/non-string rejection.
+     21/21 ffi_module tests. Risk: low.
 
 19.4 **[commit A3] Byte-buffer ergonomics.** `[p peekBytes:len:] → string`
      (**eid 225**), `[p pokeBytes:at:] ← string/byte-vector` (**eid 226**), straight
@@ -2274,13 +2284,13 @@ All current scalar `Kind`s are signed; no unsigned/width variants.
 
 #### Sequence + eid map
 ```
-A1  19.6 scalars (u-prefix)   ffi.zig                        (no eid)
-A2  19.3 char**               ffi.zig +ffi_module +eids      (eid 224)
-A3  19.4 byte buffers         ffi_module +eids               (eids 225-226)
-A4  19.7 out-param Cell       ffi_module +eids +FfiPtr       (eids 227+)
+A1  19.6 scalars (u-prefix)   ffi.zig                        (no eid)        ✓ SHIPPED 730d533
+A2  19.3 char**               ffi_module +bootstrap +eids    (eids 224-225)  ✓ SHIPPED
+A3  19.4 byte buffers         ffi_module +eids               (eids 226-227)
+A4  19.7 out-param Cell       ffi_module +eids +FfiPtr       (eids 228+)
 ── Track A done: flat C complete, both arches ──
-B1  19.2 callbacks            vendor dyncallback + new VT     (eid 228)  ⚠ hardest
-B2  19.5 struct-as-entity     layout registry + struct VT     (eids 229+) ★ headline
+B1  19.2 callbacks            vendor dyncallback + new VT     (next eid)  ⚠ hardest
+B2  19.5 struct-as-entity     layout registry + struct VT     (eids +)    ★ headline
 ── deferred ──
     19.1 arm64 struct-by-value  blocked-on-upstream; hand-roll only when a
                                 real lib forces it (that lib = test oracle)

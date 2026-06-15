@@ -531,3 +531,64 @@ test "out-param: strcpy into alloc'd buffer; peekString reads it back" {
     _ = send_mod.send0(dst, kernel_eids.SEL_FFI_FREE);
     ffi.shutdown();
 }
+
+test "argv: + peekStringArray: char** round-trip (19.3)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    _ = try setup(&arena);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+
+    // birnam vector #["alpha" "beta" "gamma"] -> single-block char**.
+    const vec = try boxed.mkRrb(a, &.{
+        try strings.mkString(a, "alpha"),
+        try strings.mkString(a, "beta"),
+        try strings.mkString(a, "gamma"),
+    });
+    const argv = send_mod.send1(proto, kernel_eids.SEL_FFI_ARGV, vec);
+    try testing.expect(boxed.isFfiPtr(argv));
+
+    // Cross-check the raw C layout independently of peekStringArray: slot 0 is a
+    // pointer; the cstring it points at is "alpha".
+    const slot0 = send_mod.send1(argv, kernel_eids.SEL_FFI_PEEK_PTR, ref_mod.mkSmallInt(0).?);
+    try testing.expect(boxed.isFfiPtr(slot0));
+    const s0 = send_mod.send1(slot0, kernel_eids.SEL_FFI_PEEK_STRING, ref_mod.mkSmallInt(0).?);
+    try testing.expect(std.mem.eql(u8, strings.bytes(s0), "alpha"));
+
+    // count-bounded read back.
+    const got = send_mod.send1(argv, kernel_eids.SEL_FFI_PEEK_STRING_ARRAY, ref_mod.mkSmallInt(3).?);
+    try testing.expect(boxed.isRrbRef(got));
+    try testing.expectEqual(@as(usize, 3), boxed.rrbLen(got));
+    try testing.expect(std.mem.eql(u8, strings.bytes(boxed.rrbNth(got, 0)), "alpha"));
+    try testing.expect(std.mem.eql(u8, strings.bytes(boxed.rrbNth(got, 1)), "beta"));
+    try testing.expect(std.mem.eql(u8, strings.bytes(boxed.rrbNth(got, 2)), "gamma"));
+
+    // NULL-terminated read (nil count) stops at the terminator slot → 3 elems.
+    const got_nt = send_mod.send1(argv, kernel_eids.SEL_FFI_PEEK_STRING_ARRAY, ref_mod.NIL);
+    try testing.expect(boxed.isRrbRef(got_nt));
+    try testing.expectEqual(@as(usize, 3), boxed.rrbLen(got_nt));
+    try testing.expect(std.mem.eql(u8, strings.bytes(boxed.rrbNth(got_nt, 2)), "gamma"));
+
+    // one free reclaims the whole block (pointer array + all strings).
+    _ = send_mod.send0(argv, kernel_eids.SEL_FFI_FREE);
+}
+
+test "argv: rejects a non-vector / non-string element (19.3)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    _ = try setup(&arena);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+
+    // not a vector → nil.
+    try testing.expectEqual(ref_mod.NIL, send_mod.send1(proto, kernel_eids.SEL_FFI_ARGV, ref_mod.mkSmallInt(5).?));
+
+    // vector with a non-string element → nil (no partial alloc handed back).
+    const bad = try boxed.mkRrb(a, &.{
+        try strings.mkString(a, "ok"),
+        ref_mod.mkSmallInt(7).?,
+    });
+    try testing.expectEqual(ref_mod.NIL, send_mod.send1(proto, kernel_eids.SEL_FFI_ARGV, bad));
+}

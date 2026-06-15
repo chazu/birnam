@@ -554,6 +554,51 @@ fn methodAlloc(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     return boxed.mkFfiPtr(alloc, @intFromPtr(raw)) catch ref_mod.NIL;
 }
 
+/// `Module argv: aVector` (Phase 19.3) — build a NULL-terminated C `char**`
+/// from a birnam vector of strings, returned as a boxed FfiPtr (e.g. for an
+/// `execv`/`getopt`-style `char* argv[]` arg). One `std.c.malloc` holds the
+/// whole thing: the pointer array (n + 1 slots, last = NULL) followed by the
+/// NUL-terminated string bytes, each slot pointing into the bytes region. So a
+/// single `[p free]` reclaims everything — no per-string leak. Returns nil if
+/// the arg isn't a vector of strings.
+fn methodArgv(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    if (n_args < 1 or !boxed.isRrbRef(args[0])) return ref_mod.NIL;
+    const vec = args[0];
+    const n = boxed.rrbLen(vec);
+    const ptr_sz = @sizeOf(usize);
+
+    // First pass: validate every element is a string + sum the byte region.
+    var bytes_total: usize = 0;
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        const e = boxed.rrbNth(vec, i);
+        if (!strings.isString(e)) return ref_mod.NIL;
+        bytes_total += strings.bytes(e).len + 1; // + NUL
+    }
+
+    const ptr_region = (n + 1) * ptr_sz; // + 1 for the NULL terminator slot
+    const total = ptr_region + bytes_total;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const raw = std.c.malloc(total) orelse return ref_mod.NIL;
+    const base: usize = @intFromPtr(raw);
+    const slots: [*]usize = @ptrCast(@alignCast(raw));
+
+    var cursor = ptr_region;
+    i = 0;
+    while (i < n) : (i += 1) {
+        const sb = strings.bytes(boxed.rrbNth(vec, i));
+        const dst: [*]u8 = @ptrFromInt(base + cursor);
+        @memcpy(dst[0..sb.len], sb);
+        dst[sb.len] = 0;
+        slots[i] = base + cursor;
+        cursor += sb.len + 1;
+    }
+    slots[n] = 0; // NULL terminator
+
+    return boxed.mkFfiPtr(alloc, base) catch ref_mod.NIL;
+}
+
 /// `[p free]` — libc-free the address. Only valid for `alloc:`-minted pointers.
 fn methodFfiFree(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = args;
@@ -620,6 +665,50 @@ fn methodPeekString(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Re
     const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
     const cptr: [*:0]const u8 = @ptrFromInt(base + off);
     return strings.mkString(alloc, std.mem.span(cptr)) catch ref_mod.NIL;
+}
+
+/// `[p peekStringArray: count]` (Phase 19.3) — read a C `char**` at the receiver
+/// into a birnam vector of strings. A SmallInt `count` reads exactly N slots (a
+/// NULL slot becomes `nil`); `nil` reads until the NULL terminator (argv/environ
+/// style). Slots are read with align(1) since the array may be unaligned. The
+/// receiver is unchanged; the strings are copied, so the C buffer can be freed
+/// after. Returns nil on a bad receiver/arg.
+fn methodPeekStringArray(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const slots: [*]align(1) const usize = @ptrFromInt(base);
+
+    var list = std.ArrayList(Ref){};
+    defer list.deinit(alloc);
+
+    const cnt_ref = args[0];
+    if (ref_mod.isNil(cnt_ref)) {
+        var i: usize = 0;
+        while (true) : (i += 1) {
+            const p = slots[i];
+            if (p == 0) break;
+            const cptr: [*:0]const u8 = @ptrFromInt(p);
+            const str = strings.mkString(alloc, std.mem.span(cptr)) catch return ref_mod.NIL;
+            list.append(alloc, str) catch return ref_mod.NIL;
+        }
+    } else {
+        if (!ref_mod.isSmallInt(cnt_ref)) return ref_mod.NIL;
+        const cnt = ref_mod.untagSmallInt(cnt_ref);
+        if (cnt < 0) return ref_mod.NIL;
+        var i: usize = 0;
+        while (i < @as(usize, @intCast(cnt))) : (i += 1) {
+            const p = slots[i];
+            if (p == 0) {
+                list.append(alloc, ref_mod.NIL) catch return ref_mod.NIL;
+                continue;
+            }
+            const cptr: [*:0]const u8 = @ptrFromInt(p);
+            const str = strings.mkString(alloc, std.mem.span(cptr)) catch return ref_mod.NIL;
+            list.append(alloc, str) catch return ref_mod.NIL;
+        }
+    }
+    return boxed.mkRrb(alloc, list.items) catch ref_mod.NIL;
 }
 
 fn methodPokeInt(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
@@ -705,6 +794,7 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_LOAD, @ptrCast(&methodLoad));
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_RESOLVE, @ptrCast(&methodResolve));
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_ALLOC, @ptrCast(&methodAlloc));
+    try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_ARGV, @ptrCast(&methodArgv));
 
     // -- Phase 18 prelude: FFI memory primitives on FFI_PTR_VT --------------
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_FREE, @ptrCast(&methodFfiFree));
@@ -715,6 +805,7 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_DOUBLE, @ptrCast(&methodPeekDouble));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_PTR, @ptrCast(&methodPeekPtr));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_STRING, @ptrCast(&methodPeekString));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_STRING_ARRAY, @ptrCast(&methodPeekStringArray));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_INT, @ptrCast(&methodPokeInt));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_BYTE, @ptrCast(&methodPokeByte));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_DOUBLE, @ptrCast(&methodPokeDouble));
