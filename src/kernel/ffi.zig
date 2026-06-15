@@ -1,17 +1,18 @@
-//! Phase 9: dyncall-backed foreign function dispatch.
+//! Foreign function dispatch (Phase 9; Phase 19 Track B: libffi-backed).
 //!
 //! Two layers:
-//!   1. Thin Zig extern decls for the dyncall C API.
+//!   1. Thin Zig extern decls for the libffi C API (ffi_prep_cif / ffi_call).
 //!   2. Sig-string parser + invoke(addr, sig, args) Ref marshaler.
 //!
-//! Sig strings follow dyncall convention (DCsigchar):
+//! Sig strings (a birnam convention, originally dyncall's DCsigchar):
 //!   B = bool, c = char, s = short, i = int, l = long, L = long long,
 //!   f = float, d = double, p = pointer, Z = c-string (alias of p),
-//!   v = void. `)` separates args from return type. `e` at the call site
-//!   marks the start of variadic args.
+//!   v = void, `u`-prefix = unsigned (uc us ui ul uL), `{...}` = struct by
+//!   value. `)` separates args from return type. `e` marks the start of
+//!   variadic args.
 //!
-//! Phase 9 scope: pass-by-value scalars + pointer + c-string. Aggregates
-//! (structs by value) deferred to 9.5+.
+//! libffi marshals every C-ABI shape including struct-by-value on arm64-apple
+//! (which dyncall 1.4 could not), and will back closures for Phase 19.2.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -19,66 +20,58 @@ const ref_mod = @import("ref.zig");
 const boxed = @import("boxed.zig");
 const strings = @import("strings.zig");
 
-/// Phase 18 prelude: struct-by-value relies on dyncall's aggregate vtable
-/// (`dcArgAggr` / `dcBeginCallAggr` / `dcCallAggr`). Vendored dyncall 1.4
-/// implements those for x86_64 but leaves them NULL on arm64-Apple (see
-/// `dyncall_callvm_arm64_apple.c`). Calling through a NULL vtable slot segfaults,
-/// so on arm64 we refuse aggregate calls (return NIL) until dyncall is upgraded
-/// (≥1.5) or AAPCS aggregate classification is hand-rolled — Phase 19 backlog.
-/// The sig parser still understands `{...}` everywhere; only marshaling is gated.
-pub const aggregates_supported = builtin.cpu.arch != .aarch64;
+/// Phase 19 Track B: libffi marshals aggregates (struct-by-value) on every
+/// platform it supports, INCLUDING arm64-apple — so the dyncall-era arm64 gate
+/// is gone. The sig parser understands `{...}` everywhere; the call path builds
+/// an `ffi_type` of FFI_TYPE_STRUCT and libffi handles ABI placement.
+pub const aggregates_supported = true;
 
 pub const Ref = ref_mod.Ref;
 
-// -- dyncall C API extern decls --------------------------------------------
+// -- libffi C API extern decls ---------------------------------------------
+//
+// libffi describes a call with an `ffi_type` per arg/return + a prepped
+// `ffi_cif` (call interface); `ffi_call` then marshals from an array of
+// pointers-to-values into registers/stack per the ABI. Replaces dyncall's
+// push-imperative VM. `ffi_cif` carries platform-specific extra fields, so we
+// treat it as an opaque byte buffer (`CifStorage`) sized generously.
 
-pub const DCCallVM = opaque {};
+pub const FFI_TYPE_STRUCT: c_ushort = 13; // from ffitarget.h / ffi.h
 
-pub const DC_CALL_C_DEFAULT: c_int = 0;
-pub const DC_CALL_C_ELLIPSIS: c_int = 100;
-pub const DC_CALL_C_ELLIPSIS_VARARGS: c_int = 101;
+/// ffi_abi — aarch64: FFI_FIRST_ABI=0, FFI_SYSV=1, FFI_DEFAULT_ABI=FFI_SYSV.
+pub const FFI_DEFAULT_ABI: c_uint = 1;
 
-pub extern "c" fn dcNewCallVM(size: usize) ?*DCCallVM;
-pub extern "c" fn dcFree(vm: *DCCallVM) void;
-pub extern "c" fn dcReset(vm: *DCCallVM) void;
-pub extern "c" fn dcMode(vm: *DCCallVM, mode: c_int) void;
+/// ffi_status.
+pub const FFI_OK: c_int = 0;
 
-pub extern "c" fn dcArgBool(vm: *DCCallVM, v: c_int) void;
-pub extern "c" fn dcArgChar(vm: *DCCallVM, v: u8) void;
-pub extern "c" fn dcArgShort(vm: *DCCallVM, v: c_short) void;
-pub extern "c" fn dcArgInt(vm: *DCCallVM, v: c_int) void;
-pub extern "c" fn dcArgLong(vm: *DCCallVM, v: c_long) void;
-pub extern "c" fn dcArgLongLong(vm: *DCCallVM, v: c_longlong) void;
-pub extern "c" fn dcArgFloat(vm: *DCCallVM, v: f32) void;
-pub extern "c" fn dcArgDouble(vm: *DCCallVM, v: f64) void;
-pub extern "c" fn dcArgPointer(vm: *DCCallVM, v: ?*const anyopaque) void;
+pub const ffi_type = extern struct {
+    size: usize,
+    alignment: c_ushort,
+    type: c_ushort,
+    elements: ?[*]?*ffi_type,
+};
 
-pub extern "c" fn dcCallVoid(vm: *DCCallVM, fnp: *const anyopaque) void;
-pub extern "c" fn dcCallBool(vm: *DCCallVM, fnp: *const anyopaque) c_int;
-pub extern "c" fn dcCallChar(vm: *DCCallVM, fnp: *const anyopaque) u8;
-pub extern "c" fn dcCallShort(vm: *DCCallVM, fnp: *const anyopaque) c_short;
-pub extern "c" fn dcCallInt(vm: *DCCallVM, fnp: *const anyopaque) c_int;
-pub extern "c" fn dcCallLong(vm: *DCCallVM, fnp: *const anyopaque) c_long;
-pub extern "c" fn dcCallLongLong(vm: *DCCallVM, fnp: *const anyopaque) c_longlong;
-pub extern "c" fn dcCallFloat(vm: *DCCallVM, fnp: *const anyopaque) f32;
-pub extern "c" fn dcCallDouble(vm: *DCCallVM, fnp: *const anyopaque) f64;
-pub extern "c" fn dcCallPointer(vm: *DCCallVM, fnp: *const anyopaque) ?*anyopaque;
+// Opaque storage for an ffi_cif. Real struct (aarch64) is ~40 bytes incl.
+// FFI_EXTRA_CIF_FIELDS; 128 aligned(16) is safe headroom across platforms.
+pub const CifStorage = [128]u8;
 
-// -- dyncall aggregate (struct-by-value) C API -----------------------------
-// Phase 18 prelude. `dcAggrField` is variadic in C (the `...` carries a
-// nested DCaggr* only when type == 'A'); we never pass nested aggregates, so
-// declaring it with its named args is ABI-correct on the platforms dyncall
-// supports (named args use the normal register convention regardless).
+// libffi's built-in scalar type descriptors (globals defined in types.c).
+pub extern "c" var ffi_type_void: ffi_type;
+pub extern "c" var ffi_type_uint8: ffi_type;
+pub extern "c" var ffi_type_sint8: ffi_type;
+pub extern "c" var ffi_type_uint16: ffi_type;
+pub extern "c" var ffi_type_sint16: ffi_type;
+pub extern "c" var ffi_type_uint32: ffi_type;
+pub extern "c" var ffi_type_sint32: ffi_type;
+pub extern "c" var ffi_type_uint64: ffi_type;
+pub extern "c" var ffi_type_sint64: ffi_type;
+pub extern "c" var ffi_type_float: ffi_type;
+pub extern "c" var ffi_type_double: ffi_type;
+pub extern "c" var ffi_type_pointer: ffi_type;
 
-pub const DCaggr = opaque {};
-
-pub extern "c" fn dcNewAggr(max_field_count: usize, size: usize) ?*DCaggr;
-pub extern "c" fn dcFreeAggr(ag: *DCaggr) void;
-pub extern "c" fn dcAggrField(ag: *DCaggr, type_: c_char, offset: c_int, array_len: usize) void;
-pub extern "c" fn dcCloseAggr(ag: *DCaggr) void;
-pub extern "c" fn dcBeginCallAggr(vm: *DCCallVM, ag: *const DCaggr) void;
-pub extern "c" fn dcArgAggr(vm: *DCCallVM, ag: *const DCaggr, value: *const anyopaque) void;
-pub extern "c" fn dcCallAggr(vm: *DCCallVM, fnp: *const anyopaque, ag: *const DCaggr, ret: *anyopaque) ?*anyopaque;
+pub extern "c" fn ffi_prep_cif(cif: *anyopaque, abi: c_uint, nargs: c_uint, rtype: *ffi_type, atypes: [*]?*ffi_type) c_int;
+pub extern "c" fn ffi_prep_cif_var(cif: *anyopaque, abi: c_uint, nfixedargs: c_uint, ntotalargs: c_uint, rtype: *ffi_type, atypes: [*]?*ffi_type) c_int;
+pub extern "c" fn ffi_call(cif: *anyopaque, fnp: *const anyopaque, rvalue: ?*anyopaque, avalue: [*]?*anyopaque) void;
 
 // -- Sig-string parser ------------------------------------------------------
 
@@ -99,8 +92,9 @@ pub const Kind = enum {
     aggregate,
 };
 
-/// Scalar field size/alignment (LP64; matches natural C struct layout, which
-/// is also what dyncall assumes). Aggregate/void are not valid struct fields.
+/// Scalar field size/alignment (LP64; matches natural C struct layout). Used by
+/// `parseAggr` to compute field offsets for peek/poke + Phase 19.5. Aggregate/
+/// void are not valid struct fields.
 fn kindSize(k: Kind) usize {
     return switch (k) {
         .bool_, .char => 1,
@@ -111,49 +105,52 @@ fn kindSize(k: Kind) usize {
     };
 }
 
-/// dyncall field sigchar for a scalar Kind (note: our `.long` is C `long` →
-/// dyncall 'j'; `.long_long` → 'l'; this differs from our top-level sig chars
-/// 'l'/'L', which are our own convention).
-fn dcFieldChar(k: Kind) u8 {
+/// Map a scalar `Kind` (+ unsigned flag) to libffi's built-in type descriptor.
+/// libffi's typed descriptors encode signedness directly, so the dyncall-era
+/// bit-preserving-narrow + sign/zero-extend hacks are gone — the right ffi_type
+/// makes libffi extend correctly on its own. C `long` is 8 bytes (LP64).
+fn ffiTypeForKind(k: Kind, unsigned: bool) *ffi_type {
     return switch (k) {
-        .bool_ => 'B',
-        .char => 'c',
-        .short => 's',
-        .int => 'i',
-        .long => 'j',
-        .long_long => 'l',
-        .float => 'f',
-        .double => 'd',
-        .pointer, .cstring => 'p',
-        .void_, .aggregate => 'i', // unreachable for valid scalar fields
+        .void_ => &ffi_type_void,
+        .bool_ => &ffi_type_uint8, // C _Bool is 1 byte
+        .char => if (unsigned) &ffi_type_uint8 else &ffi_type_sint8,
+        .short => if (unsigned) &ffi_type_uint16 else &ffi_type_sint16,
+        .int => if (unsigned) &ffi_type_uint32 else &ffi_type_sint32,
+        .long, .long_long => if (unsigned) &ffi_type_uint64 else &ffi_type_sint64,
+        .float => &ffi_type_float,
+        .double => &ffi_type_double,
+        .pointer, .cstring => &ffi_type_pointer,
+        .aggregate => &ffi_type_void, // unreachable — aggregates use Aggr.ensureFfiType
     };
 }
 
-/// A parsed by-value aggregate layout. `offsets[i]` is field `i`'s byte offset;
-/// `size` is the total (tail-padded to struct alignment). `dc` is the dyncall
-/// descriptor, built lazily on first use and freed in `deinit`.
+/// A parsed by-value aggregate layout. `offsets[i]` is field `i`'s byte offset
+/// (for peek/poke + Phase 19.5); `size` is the total. The libffi struct
+/// descriptor (`ty` + its NULL-terminated `elements`) is built lazily; libffi
+/// fills `ty.size`/`ty.alignment` during `ffi_prep_cif`.
 pub const Aggr = struct {
     fields: []Kind,
     offsets: []u32,
     size: usize,
-    dc: ?*DCaggr = null,
+    elements: ?[]?*ffi_type = null, // owned; len = fields.len + 1 (NULL-terminated)
+    ty: ffi_type = .{ .size = 0, .alignment = 0, .type = FFI_TYPE_STRUCT, .elements = null },
 
     pub fn deinit(self: *Aggr, allocator: std.mem.Allocator) void {
-        if (self.dc) |d| dcFreeAggr(d);
+        if (self.elements) |e| allocator.free(e);
         allocator.free(self.fields);
         allocator.free(self.offsets);
     }
 
-    /// Build (and cache) the dyncall descriptor. Returns null on OOM.
-    pub fn ensureDc(self: *Aggr) ?*DCaggr {
-        if (self.dc) |d| return d;
-        const d = dcNewAggr(self.fields.len, self.size) orelse return null;
-        for (self.fields, self.offsets) |fk, off| {
-            dcAggrField(d, @intCast(dcFieldChar(fk)), @intCast(off), 1);
-        }
-        dcCloseAggr(d);
-        self.dc = d;
-        return d;
+    /// Build (and cache) the libffi struct `ffi_type`. Returns null on OOM.
+    /// Field signedness is irrelevant to layout, so the signed variant is used.
+    pub fn ensureFfiType(self: *Aggr, allocator: std.mem.Allocator) ?*ffi_type {
+        if (self.elements != null) return &self.ty;
+        const elems = allocator.alloc(?*ffi_type, self.fields.len + 1) catch return null;
+        for (self.fields, 0..) |fk, i| elems[i] = ffiTypeForKind(fk, false);
+        elems[self.fields.len] = null; // libffi requires a NULL terminator
+        self.elements = elems;
+        self.ty = .{ .size = 0, .alignment = 0, .type = FFI_TYPE_STRUCT, .elements = elems.ptr };
+        return &self.ty;
     }
 };
 
@@ -170,10 +167,9 @@ pub const Sig = struct {
     ret_aggr: ?*Aggr = null,
     /// Phase 19.6: parallel to `args` — true where the arg is an *unsigned*
     /// integer (`u`-prefixed sigchar: `uc us ui ul uL`). Sign is carried beside
-    /// the width `Kind` rather than as new `Kind` variants, so `kindSize`/
-    /// `dcFieldChar` (layout-only) stay untouched; sign matters only when
-    /// marshaling a value wider than the signed range (bit-preserving narrow)
-    /// and when zero- vs sign-extending a return. Parallel to `args` (always
+    /// the width `Kind` rather than as new `Kind` variants; under libffi it just
+    /// selects the unsigned `ffi_type` (`ffiTypeForKind`), which handles arg
+    /// width + return extension on its own. Parallel to `args` (always
     /// `args.len` long, like `arg_aggrs`); `&.{}` only on the default literal.
     arg_unsigned: []bool = &.{},
     /// Phase 19.6: true iff the return type is an unsigned integer.
@@ -353,230 +349,128 @@ pub fn parseSig(allocator: std.mem.Allocator, s: []const u8) SigParseError!Sig {
     return error.MissingReturnSeparator;
 }
 
-// -- VM lifecycle ----------------------------------------------------------
+// -- lifecycle --------------------------------------------------------------
 
-/// Default VM stack size — generous enough for the Phase 9 test plan.
-pub const DEFAULT_VM_SIZE: usize = 4096;
+/// libffi is stateless (no persistent VM), so there is nothing to tear down.
+/// Kept as a no-op so existing call sites / tests don't have to change.
+pub fn shutdown() void {}
 
-/// Single kernel-global VM pointer. dyncall is single-threaded; single VM
-/// is enough until concurrency lands.
-var g_vm: ?*DCCallVM = null;
+// -- libffi arg marshaling --------------------------------------------------
 
-pub fn ensureVm() ?*DCCallVM {
-    if (g_vm) |v| return v;
-    g_vm = dcNewCallVM(DEFAULT_VM_SIZE);
-    return g_vm;
-}
-
-pub fn shutdown() void {
-    if (g_vm) |v| {
-        dcFree(v);
-        g_vm = null;
-    }
-}
-
-// -- Ref → dyncall arg marshaling -----------------------------------------
-
-/// Push `value` into the VM as `kind`. Returns false on type mismatch OR
-/// on a stale FFI pointer (Phase 9.5.5: pointer Refs whose owning Module
-/// has been unloaded carry `[box_eid :ffi-stale? ?]` facts). Caller
-/// distinguishes the two via `out_stale_box_eid` (0 = type mismatch,
-/// non-zero = stale box).
-fn pushArgChecked(
-    store: *fact_store_mod.FactStore,
-    vm: *DCCallVM,
-    kind: Kind,
-    unsigned: bool,
-    value: Ref,
-    out_stale_box_eid: *u64,
-) bool {
-    out_stale_box_eid.* = 0;
-    if (kind == .pointer or kind == .cstring) {
-        if (boxed.isFfiPtr(value)) {
-            const box_eid = boxed.ffiPtrBoxEid(value);
-            if (box_eid != 0) {
-                if (store.currentValue(box_eid, kernel_eids.ATTR_FFI_STALE)) |_| {
-                    out_stale_box_eid.* = box_eid;
-                    return false;
-                }
-            }
-        }
-    }
-    return pushArg(vm, kind, unsigned, value);
-}
-
-/// Push `value` into the VM as `kind`. Returns false on type mismatch so the
-/// caller can abort + return NIL.
-///
-/// Phase 19.6: `unsigned` only affects the `short`/`int` arms — widths where a
-/// positive birnam smallint can exceed the *signed* max (a range-checked
-/// `@intCast` would panic). There we bit-preserve: truncate to the unsigned
-/// width, then `@bitCast` to the signed width dyncall's arg fn expects (the
-/// callee reads the same bytes back as unsigned). `char` already truncates;
-/// `long`/`long_long` are i64-wide, so any representable smallint fits without
-/// special handling.
-fn pushArg(vm: *DCCallVM, kind: Kind, unsigned: bool, value: Ref) bool {
+/// Write `value` into an 8-byte arg holder per `kind`, type-punned. libffi
+/// reads `sizeof(ffi_type)` bytes from `&holder`, and the chosen `ffi_type`
+/// (via `ffiTypeForKind`) handles sub-word sign/zero extension into registers
+/// — so we just deposit the value at the right width (low bytes on LE). Returns
+/// false on a type mismatch. nil → NULL pointer. `.aggregate`/cstring-string
+/// are handled in the invoke loop (they don't use a scalar holder).
+fn marshalScalar(kind: Kind, value: Ref, holder: *u64) bool {
     switch (kind) {
         .void_ => return false,
         .bool_ => {
             if (!ref_mod.isSmallInt(value)) return false;
-            dcArgBool(vm, @intCast(@as(c_int, @intCast(ref_mod.untagSmallInt(value)))));
+            @as(*u8, @ptrCast(holder)).* = if (ref_mod.untagSmallInt(value) != 0) 1 else 0;
         },
         .char => {
             if (!ref_mod.isSmallInt(value)) return false;
-            dcArgChar(vm, @intCast(@as(u8, @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(value)))))));
+            @as(*u8, @ptrCast(holder)).* = @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(value))));
         },
         .short => {
             if (!ref_mod.isSmallInt(value)) return false;
-            const v = ref_mod.untagSmallInt(value);
-            if (unsigned) {
-                dcArgShort(vm, @bitCast(@as(u16, @truncate(@as(u64, @bitCast(v))))));
-            } else {
-                dcArgShort(vm, @intCast(v));
-            }
+            @as(*u16, @ptrCast(holder)).* = @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(value))));
         },
         .int => {
             if (!ref_mod.isSmallInt(value)) return false;
-            const v = ref_mod.untagSmallInt(value);
-            if (unsigned) {
-                dcArgInt(vm, @bitCast(@as(u32, @truncate(@as(u64, @bitCast(v))))));
-            } else {
-                dcArgInt(vm, @intCast(v));
-            }
+            @as(*u32, @ptrCast(holder)).* = @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(value))));
         },
-        .long => {
+        .long, .long_long => {
             if (!ref_mod.isSmallInt(value)) return false;
-            dcArgLong(vm, @intCast(ref_mod.untagSmallInt(value)));
-        },
-        .long_long => {
-            if (!ref_mod.isSmallInt(value)) return false;
-            dcArgLongLong(vm, @intCast(ref_mod.untagSmallInt(value)));
+            @as(*u64, @ptrCast(holder)).* = @bitCast(ref_mod.untagSmallInt(value));
         },
         .float => {
             if (!boxed.isFloat(value)) return false;
-            dcArgFloat(vm, @floatCast(boxed.untagFloat(value)));
+            @as(*f32, @ptrCast(holder)).* = @floatCast(boxed.untagFloat(value));
         },
         .double => {
             if (!boxed.isFloat(value)) return false;
-            dcArgDouble(vm, boxed.untagFloat(value));
+            @as(*f64, @ptrCast(holder)).* = boxed.untagFloat(value);
         },
         .pointer, .cstring => {
-            // Change 3: nil marshals to a NULL pointer (nil-is-value). Gives
-            // callers `start: nil` for optional `char*` / `void*` args.
+            // nil → NULL pointer (nil-is-value); else an FfiPtr (raw addr).
             if (ref_mod.isNil(value)) {
-                dcArgPointer(vm, null);
+                @as(*?*const anyopaque, @ptrCast(holder)).* = null;
                 return true;
             }
-            // Birnam strings for `.cstring` are handled in the invoke loop
-            // (they need a scratch NUL-terminated copy whose lifetime spans
-            // the call). By the time we reach here, a `.cstring` value is
-            // expected to be an FfiPtr (raw `char*`); `.pointer` always is.
             if (!boxed.isFfiPtr(value)) return false;
-            const addr = boxed.untagFfiPtr(value);
-            dcArgPointer(vm, @ptrFromInt(addr));
+            @as(*usize, @ptrCast(holder)).* = boxed.untagFfiPtr(value);
         },
-        // Handled in the invoke loop (needs the per-arg Aggr), never here.
         .aggregate => return false,
     }
     return true;
 }
 
-/// Dispatch the appropriate dcCallX based on return kind. Returns the raw
-/// C-side value boxed/tagged into a birnam Ref.
+// -- libffi return unwrapping -----------------------------------------------
+
+/// Phase 9.5.5 stale check: a pointer Ref whose owning Module was unloaded
+/// carries a `[box_eid :ffi-stale? ?]` fact. Refuse to marshal it (the C side
+/// would dereference freed memory). Only meaningful for pointer/cstring args.
+fn isStalePtr(store: *fact_store_mod.FactStore, kind: Kind, value: Ref) bool {
+    if (kind != .pointer and kind != .cstring) return false;
+    if (!boxed.isFfiPtr(value)) return false;
+    const box_eid = boxed.ffiPtrBoxEid(value);
+    if (box_eid == 0) return false;
+    return store.currentValue(box_eid, kernel_eids.ATTR_FFI_STALE) != null;
+}
+
+/// Turn libffi's return buffer (`rbuf`, an 8-byte `ffi_arg`-or-float slot) into
+/// a birnam Ref for the scalar/pointer/cstring return kinds. void + aggregate
+/// returns are handled in `invokeWithOwner` (they need a special rvalue). For
+/// integer returns libffi already sign/zero-extended into the full `ffi_arg`
+/// per the return `ffi_type`, so a single `@bitCast` to i64 is correct for both
+/// signed and unsigned widths — the old per-width extend hacks are gone.
 ///
-/// `owner_mod_eid` (Phase 9.5.5): when non-zero, returned pointer values
-/// (`.pointer` / `.cstring`) are boxed via `mkFfiPtrOwned`, asserting
-/// `[box :ffi-owner mod]` so Module unload can find + stale them. When
-/// zero, fall back to unowned `mkFfiPtr` (Phase 9 behavior).
-fn callAndWrap(
+/// `owner_mod_eid` (Phase 9.5.5): when non-zero, a returned `.pointer` is boxed
+/// via `mkFfiPtrOwned` so Module unload can find + stale it; else unowned.
+fn unwrapReturn(
     allocator: std.mem.Allocator,
     store: ?*fact_store_mod.FactStore,
     table: ?*object_table_mod.ObjectTable,
-    vm: *DCCallVM,
     ret: Kind,
-    ret_aggr: ?*Aggr,
-    ret_unsigned: bool,
-    addr: usize,
+    rbuf: u64,
     owner_mod_eid: u64,
 ) Ref {
-    const fnp: *const anyopaque = @ptrFromInt(addr);
     switch (ret) {
-        .void_ => {
-            dcCallVoid(vm, fnp);
-            return ref_mod.NIL;
-        },
-        .bool_ => {
-            const r = dcCallBool(vm, fnp);
-            return ref_mod.mkSmallInt(@intCast(r)) orelse ref_mod.NIL;
-        },
-        .char => {
-            // Phase 19.6: `uc` zero-extends (0..255); signed `c` sign-extends.
-            const r = dcCallChar(vm, fnp);
-            const v: i64 = if (ret_unsigned) @as(u8, @bitCast(r)) else @intCast(r);
-            return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
-        },
-        .short => {
-            const r = dcCallShort(vm, fnp);
-            const v: i64 = if (ret_unsigned) @as(u16, @bitCast(r)) else @intCast(r);
-            return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
-        },
-        .int => {
-            const r = dcCallInt(vm, fnp);
-            const v: i64 = if (ret_unsigned) @as(u32, @bitCast(r)) else @intCast(r);
-            return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
-        },
-        .long => {
-            const r = dcCallLong(vm, fnp);
-            return ref_mod.mkSmallInt(@intCast(r)) orelse ref_mod.NIL;
-        },
-        .long_long => {
-            const r = dcCallLongLong(vm, fnp);
-            return ref_mod.mkSmallInt(@intCast(r)) orelse ref_mod.NIL;
+        .bool_, .char, .short, .int, .long, .long_long => {
+            return ref_mod.mkSmallInt(@bitCast(rbuf)) orelse ref_mod.NIL;
         },
         .float => {
-            const r = dcCallFloat(vm, fnp);
+            const r: f32 = @bitCast(@as(u32, @truncate(rbuf)));
             return boxed.mkFloat(allocator, @floatCast(r)) catch ref_mod.NIL;
         },
         .double => {
-            const r = dcCallDouble(vm, fnp);
+            const r: f64 = @bitCast(rbuf);
             return boxed.mkFloat(allocator, r) catch ref_mod.NIL;
         },
         .pointer => {
-            const r = dcCallPointer(vm, fnp);
-            const addr_ret: usize = @intFromPtr(r);
+            const addr_ret: usize = @intCast(rbuf);
             if (owner_mod_eid != 0 and store != null and table != null) {
                 return boxed.mkFfiPtrOwned(allocator, store.?, table.?, addr_ret, owner_mod_eid) catch ref_mod.NIL;
             }
             return boxed.mkFfiPtr(allocator, addr_ret) catch ref_mod.NIL;
         },
         .cstring => {
-            // Change 4: a `Z` return is a C `char*`; copy it into a birnam
-            // string. NULL return → nil (EOF / absence). The C buffer is the
-            // callee's (e.g. libtecla's internal line buffer); we only read it,
-            // so there is nothing to free here.
-            const r = dcCallPointer(vm, fnp);
-            if (r == null) return ref_mod.NIL;
-            const cptr: [*:0]const u8 = @ptrCast(r);
+            // A `Z` return is a C `char*`; copy it into a birnam string. NULL →
+            // nil (EOF / absence). The buffer is the callee's; we only read it.
+            if (rbuf == 0) return ref_mod.NIL;
+            const cptr: [*:0]const u8 = @ptrFromInt(@as(usize, @intCast(rbuf)));
             return strings.mkString(allocator, std.mem.span(cptr)) catch ref_mod.NIL;
         },
-        .aggregate => {
-            // Phase 18: a by-value struct return. `dcBeginCallAggr` was already
-            // issued in invokeWithOwner (it must precede arg pushing). Allocate
-            // a libc buffer of the struct's size, let dyncall write into it, and
-            // hand back an FfiPtr — the caller reads fields via peek and frees
-            // via `[p free]`.
-            const aggr = ret_aggr orelse return ref_mod.NIL;
-            const dc = aggr.ensureDc() orelse return ref_mod.NIL;
-            const buf = std.c.malloc(aggr.size) orelse return ref_mod.NIL;
-            @memset(@as([*]u8, @ptrCast(buf))[0..aggr.size], 0);
-            _ = dcCallAggr(vm, fnp, dc, buf);
-            return boxed.mkFfiPtr(allocator, @intFromPtr(buf)) catch ref_mod.NIL;
-        },
+        .void_, .aggregate => return ref_mod.NIL, // handled by the caller
     }
 }
 
-/// Top-level invocation. Resolves the kernel-global VM, configures variadic
-/// mode if the sig is variadic, marshals args, calls, wraps return.
+/// Top-level invocation: build the arg `ffi_type`s + value holders, prep the
+/// `ffi_cif`, `ffi_call`, unwrap the return. Per-call (no persistent VM); the
+/// cif lives on the stack since libffi is stateless.
 ///
 /// Phase 9.5.5: `store`/`owner_mod_eid` are threaded through so per-arg
 /// stale-pointer checks (`:ffi-stale?`) and per-return owned-pointer
@@ -601,38 +495,18 @@ pub fn invokeWithOwner(
     owner_mod_eid: u64,
 ) Ref {
     if (args.len != sig.args.len) return ref_mod.NIL;
+    const n = sig.args.len;
 
-    // Phase 18: refuse aggregate calls where dyncall can't marshal them (see
-    // `aggregates_supported`). Bail BEFORE touching the VM so no NULL vtable
-    // slot is ever dereferenced.
-    if (!aggregates_supported) {
-        if (sig.ret == .aggregate) return ref_mod.NIL;
-        for (sig.args) |k| {
-            if (k == .aggregate) return ref_mod.NIL;
-        }
-    }
-
-    const vm = ensureVm() orelse return ref_mod.NIL;
-    dcReset(vm);
-    const is_variadic = sig.variadic_at != null;
-    if (is_variadic) dcMode(vm, DC_CALL_C_ELLIPSIS);
-
-    // Phase 18: a by-value struct return requires `dcBeginCallAggr` BEFORE any
-    // args are pushed (dyncall protocol). Build the descriptor here so the
-    // callAndWrap aggregate branch can reuse the cached `dc`.
-    if (sig.ret == .aggregate) {
-        const aggr = sig.ret_aggr orelse return ref_mod.NIL;
-        const dc = aggr.ensureDc() orelse return ref_mod.NIL;
-        dcBeginCallAggr(vm, dc);
-    }
-
-    // Change 2: birnam strings passed for a `.cstring` (`Z`) arg are marshaled
-    // to NUL-terminated C buffers here. Each buffer must outlive the call (C
-    // reads through the pointer during dcCall), so we hold them until after
-    // callAndWrap, then free. dyncall only stores the pointer value, never the
-    // bytes — safe because the call is synchronous. (A C function that stashes
-    // the pointer past return would dangle; that is `.pointer` territory, where
-    // the caller owns the buffer explicitly.)
+    // Per-call scratch: one `ffi_type*` and one 8-byte type-punned value holder
+    // per arg, plus the `avalue` pointer array libffi reads. `.cstring` string
+    // args get a NUL-terminated copy whose lifetime must span the (synchronous)
+    // call. All freed on return via the defers.
+    const atypes = allocator.alloc(?*ffi_type, n) catch return ref_mod.NIL;
+    defer allocator.free(atypes);
+    const holders = allocator.alloc(u64, n) catch return ref_mod.NIL;
+    defer allocator.free(holders);
+    const avalues = allocator.alloc(?*anyopaque, n) catch return ref_mod.NIL;
+    defer allocator.free(avalues);
     var scratch: std.ArrayList([]u8) = .{};
     defer {
         for (scratch.items) |buf| allocator.free(buf);
@@ -640,19 +514,17 @@ pub fn invokeWithOwner(
     }
 
     for (sig.args, args, 0..) |kind, value, i| {
-        if (is_variadic and i == sig.variadic_at.?) {
-            dcMode(vm, DC_CALL_C_ELLIPSIS_VARARGS);
-        }
         if (kind == .aggregate) {
-            // Phase 18: a by-value struct arg is passed as an FfiPtr to its
-            // bytes (built via `Module alloc:` + `poke…:at:`). dyncall reads
-            // `aggr.size` bytes through the pointer during the call.
+            // By-value struct arg: an FfiPtr to its bytes; libffi reads the
+            // struct directly through this pointer per the struct `ffi_type`.
             const aggr = sig.arg_aggrs[i] orelse return ref_mod.NIL;
-            const dc = aggr.ensureDc() orelse return ref_mod.NIL;
+            atypes[i] = aggr.ensureFfiType(allocator) orelse return ref_mod.NIL;
             if (!boxed.isFfiPtr(value)) return ref_mod.NIL;
-            dcArgAggr(vm, dc, @ptrFromInt(boxed.untagFfiPtr(value)));
+            avalues[i] = @ptrFromInt(boxed.untagFfiPtr(value));
             continue;
         }
+        const uns = sig.arg_unsigned.len != 0 and sig.arg_unsigned[i];
+        atypes[i] = ffiTypeForKind(kind, uns);
         if (kind == .cstring and strings.isString(value)) {
             const s = strings.bytes(value);
             const buf = allocator.alloc(u8, s.len + 1) catch return ref_mod.NIL;
@@ -662,18 +534,51 @@ pub fn invokeWithOwner(
                 allocator.free(buf);
                 return ref_mod.NIL;
             };
-            dcArgPointer(vm, buf.ptr);
+            @as(*?*const anyopaque, @ptrCast(&holders[i])).* = buf.ptr;
+            avalues[i] = &holders[i];
             continue;
         }
-        const uns = sig.arg_unsigned.len != 0 and sig.arg_unsigned[i];
-        if (store) |s| {
-            var stale_box: u64 = 0;
-            if (!pushArgChecked(s, vm, kind, uns, value, &stale_box)) return ref_mod.NIL;
-        } else {
-            if (!pushArg(vm, kind, uns, value)) return ref_mod.NIL;
+        if (store) |st| {
+            if (isStalePtr(st, kind, value)) return ref_mod.NIL;
         }
+        if (!marshalScalar(kind, value, &holders[i])) return ref_mod.NIL;
+        avalues[i] = &holders[i];
     }
-    return callAndWrap(allocator, store, table, vm, sig.ret, sig.ret_aggr, sig.ret_unsigned, addr, owner_mod_eid);
+
+    const rtype = if (sig.ret == .aggregate)
+        ((sig.ret_aggr orelse return ref_mod.NIL).ensureFfiType(allocator) orelse return ref_mod.NIL)
+    else
+        ffiTypeForKind(sig.ret, sig.ret_unsigned);
+
+    var cif: CifStorage align(16) = undefined;
+    const status = if (sig.variadic_at) |nfixed|
+        ffi_prep_cif_var(&cif, FFI_DEFAULT_ABI, @intCast(nfixed), @intCast(n), rtype, atypes.ptr)
+    else
+        ffi_prep_cif(&cif, FFI_DEFAULT_ABI, @intCast(n), rtype, atypes.ptr);
+    if (status != FFI_OK) return ref_mod.NIL;
+
+    const fnp: *const anyopaque = @ptrFromInt(addr);
+
+    if (sig.ret == .void_) {
+        ffi_call(&cif, fnp, null, avalues.ptr);
+        return ref_mod.NIL;
+    }
+    if (sig.ret == .aggregate) {
+        // By-value struct return: libffi writes into a libc buffer we hand back
+        // as an FfiPtr (caller peeks fields + frees via `[p free]`). `ffi_prep_cif`
+        // filled `ty.size`; fall back to the parser's size if 0.
+        const aggr = sig.ret_aggr.?;
+        const sz = if (aggr.ty.size != 0) aggr.ty.size else aggr.size;
+        const buf = std.c.malloc(sz) orelse return ref_mod.NIL;
+        @memset(@as([*]u8, @ptrCast(buf))[0..sz], 0);
+        ffi_call(&cif, fnp, buf, avalues.ptr);
+        return boxed.mkFfiPtr(allocator, @intFromPtr(buf)) catch ref_mod.NIL;
+    }
+
+    // Scalar/pointer return: libffi widens into an 8-byte `ffi_arg` slot.
+    var rbuf: u64 align(16) = 0;
+    ffi_call(&cif, fnp, &rbuf, avalues.ptr);
+    return unwrapReturn(allocator, store, table, sig.ret, rbuf, owner_mod_eid);
 }
 
 // -- Wrap registry + per-arity dispatch shims -------------------------------

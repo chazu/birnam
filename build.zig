@@ -4,41 +4,12 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // -- dyncall static lib (Phase 9 vendored FFI engine) --------------------
-    // Macro-driven preprocessor selects the right arch source per platform.
-    // arm64 darwin and x86_64 darwin/linux carried; other archs trimmed.
-    const dyncall_lib = b.addLibrary(.{
-        .name = "dyncall",
-        .linkage = .static,
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-        }),
-    });
-    dyncall_lib.addCSourceFiles(.{
-        .root = b.path("vendor/dyncall-1.4/dyncall"),
-        .files = &.{
-            "dyncall_api.c",
-            "dyncall_callf.c",
-            "dyncall_callvm.c",
-            "dyncall_callvm_base.c",
-            "dyncall_vector.c",
-            "dyncall_aggregate.c",
-            "dyncall_call.S",
-        },
-        .flags = &.{"-std=c99"},
-    });
-    dyncall_lib.addIncludePath(b.path("vendor/dyncall-1.4/dyncall"));
-    b.installArtifact(dyncall_lib);
-
-    // -- libffi static lib (Phase 19 Track B — dyncall successor) ------------
+    // -- libffi static lib (Phase 19 Track B — sole FFI engine) --------------
     // Vendored from libffi v3.4.6 with the arm64-apple-darwin generated headers
     // (fficonfig.h / include/ffi.h / include/ffitarget.h produced by configure).
-    // Replaces dyncall+dyncallback: full C-ABI calls incl. arm64 struct-by-value
-    // + closures. B0a: builds as an artifact alongside dyncall; ffi.zig still
-    // uses dyncall until the B0b marshaling rewrite. NOTE: aarch64-only headers
-    // for now — x86_64 needs its own generated set (regen configure on that host).
+    // The sole FFI engine since Phase 19 B0b retired dyncall — full C-ABI calls
+    // incl. arm64 struct-by-value (+ closures for 19.2). NOTE: aarch64-only
+    // headers for now — x86_64 needs its own generated set (regen on that host).
     const libffi_lib = b.addLibrary(.{
         .name = "ffi",
         .linkage = .static,
@@ -114,7 +85,7 @@ pub fn build(b: *std.Build) void {
         .name = "birnam",
         .root_module = shell_mod,
     });
-    shell.linkLibrary(dyncall_lib);
+    shell.linkLibrary(libffi_lib);
     shell.linkLibC();
     b.installArtifact(shell);
 
@@ -152,7 +123,7 @@ pub fn build(b: *std.Build) void {
     aot_full_mod.addImport("kernel_eids", eid_mirror_mod); // lang.zig mirror
     aot_full_mod.addImport("module_abi", module_abi_mod);
     const aot_full = b.addExecutable(.{ .name = "birnam-aot", .root_module = aot_full_mod });
-    aot_full.linkLibrary(dyncall_lib);
+    aot_full.linkLibrary(libffi_lib);
     aot_full.linkLibC();
     aot_step.dependOn(&b.addInstallArtifact(aot_full, .{}).step);
 
@@ -177,7 +148,7 @@ pub fn build(b: *std.Build) void {
     aot_mall_mod.addImport("kernel_eids", eid_mirror_mod); // lang.zig mirror
     aot_mall_mod.addImport("module_abi", module_abi_mod);
     const aot_mall = b.addExecutable(.{ .name = "birnam-aot-malleable", .root_module = aot_mall_mod });
-    aot_mall.linkLibrary(dyncall_lib);
+    aot_mall.linkLibrary(libffi_lib);
     aot_mall.linkLibC();
     aot_step.dependOn(&b.addInstallArtifact(aot_mall, .{}).step);
 
@@ -201,7 +172,7 @@ pub fn build(b: *std.Build) void {
         mod.addImport("kernel_eids", eid_mirror_mod); // lang.zig mirror
         mod.addImport("module_abi", module_abi_mod);
         const exe = b.addExecutable(.{ .name = name, .root_module = mod });
-        exe.linkLibrary(dyncall_lib);
+        exe.linkLibrary(libffi_lib);
         exe.linkLibC();
         const build_step = b.step("aot-build", "Parameterized AOT build (driven by `birnam --aot`)");
         build_step.dependOn(&b.addInstallArtifact(exe, .{}).step);
@@ -340,7 +311,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const image_tests = b.addTest(.{ .root_module = image_test_mod });
-    image_tests.linkLibrary(dyncall_lib); // bootstrap → ffi → dyncall
+    image_tests.linkLibrary(libffi_lib); // bootstrap → ffi → dyncall
     image_tests.linkLibC();
     const run_image_tests = b.addRunArtifact(image_tests);
     test_step.dependOn(&run_image_tests.step);
@@ -427,7 +398,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const ot_tests = b.addTest(.{ .root_module = ot_test_mod });
-    ot_tests.linkLibrary(dyncall_lib);
+    ot_tests.linkLibrary(libffi_lib);
     ot_tests.linkLibC();
     const run_ot_tests = b.addRunArtifact(ot_tests);
     test_step.dependOn(&run_ot_tests.step);
@@ -447,7 +418,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const boot_tests = b.addTest(.{ .root_module = boot_test_mod });
-    boot_tests.linkLibrary(dyncall_lib);
+    boot_tests.linkLibrary(libffi_lib);
     boot_tests.linkLibC();
     const run_boot_tests = b.addRunArtifact(boot_tests);
     test_step.dependOn(&run_boot_tests.step);
@@ -458,7 +429,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const str_tests = b.addTest(.{ .root_module = str_test_mod });
-    str_tests.linkLibrary(dyncall_lib);
+    str_tests.linkLibrary(libffi_lib);
     str_tests.linkLibC();
     const run_str_tests = b.addRunArtifact(str_tests);
     test_step.dependOn(&run_str_tests.step);
@@ -470,7 +441,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const mod_tests = b.addTest(.{ .root_module = mod_test_mod });
-    mod_tests.linkLibrary(dyncall_lib);
+    mod_tests.linkLibrary(libffi_lib);
     mod_tests.linkLibC();
     const run_mod_tests = b.addRunArtifact(mod_tests);
     run_mod_tests.step.dependOn(b.getInstallStep());
@@ -482,7 +453,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const repl_tests = b.addTest(.{ .root_module = repl_test_mod });
-    repl_tests.linkLibrary(dyncall_lib);
+    repl_tests.linkLibrary(libffi_lib);
     repl_tests.linkLibC();
     const run_repl_tests = b.addRunArtifact(repl_tests);
     run_repl_tests.step.dependOn(b.getInstallStep());
@@ -503,7 +474,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const peg_tests = b.addTest(.{ .root_module = peg_test_mod });
-    peg_tests.linkLibrary(dyncall_lib);
+    peg_tests.linkLibrary(libffi_lib);
     peg_tests.linkLibC();
     const run_peg_tests = b.addRunArtifact(peg_tests);
     test_step.dependOn(&run_peg_tests.step);
@@ -514,7 +485,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const qmod_tests = b.addTest(.{ .root_module = qmod_test_mod });
-    qmod_tests.linkLibrary(dyncall_lib);
+    qmod_tests.linkLibrary(libffi_lib);
     qmod_tests.linkLibC();
     const run_qmod_tests = b.addRunArtifact(qmod_tests);
     run_qmod_tests.step.dependOn(b.getInstallStep());
@@ -526,7 +497,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const pmod_tests = b.addTest(.{ .root_module = pmod_test_mod });
-    pmod_tests.linkLibrary(dyncall_lib);
+    pmod_tests.linkLibrary(libffi_lib);
     pmod_tests.linkLibC();
     const run_pmod_tests = b.addRunArtifact(pmod_tests);
     run_pmod_tests.step.dependOn(b.getInstallStep());
@@ -538,7 +509,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const lmod_tests = b.addTest(.{ .root_module = lmod_test_mod });
-    lmod_tests.linkLibrary(dyncall_lib);
+    lmod_tests.linkLibrary(libffi_lib);
     lmod_tests.linkLibC();
     const run_lmod_tests = b.addRunArtifact(lmod_tests);
     run_lmod_tests.step.dependOn(b.getInstallStep());
@@ -568,7 +539,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const sq_tests = b.addTest(.{ .root_module = sq_test_mod });
-    sq_tests.linkLibrary(dyncall_lib);
+    sq_tests.linkLibrary(libffi_lib);
     sq_tests.linkLibC();
     const run_sq_tests = b.addRunArtifact(sq_tests);
     test_step.dependOn(&run_sq_tests.step);
@@ -588,7 +559,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const reify_tests = b.addTest(.{ .root_module = reify_test_mod });
-    reify_tests.linkLibrary(dyncall_lib);
+    reify_tests.linkLibrary(libffi_lib);
     reify_tests.linkLibC();
     const run_reify_tests = b.addRunArtifact(reify_tests);
     test_step.dependOn(&run_reify_tests.step);
@@ -599,7 +570,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const pred_tests = b.addTest(.{ .root_module = pred_test_mod });
-    pred_tests.linkLibrary(dyncall_lib);
+    pred_tests.linkLibrary(libffi_lib);
     pred_tests.linkLibC();
     const run_pred_tests = b.addRunArtifact(pred_tests);
     test_step.dependOn(&run_pred_tests.step);
@@ -610,7 +581,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const promo_tests = b.addTest(.{ .root_module = promo_test_mod });
-    promo_tests.linkLibrary(dyncall_lib);
+    promo_tests.linkLibrary(libffi_lib);
     promo_tests.linkLibC();
     const run_promo_tests = b.addRunArtifact(promo_tests);
     test_step.dependOn(&run_promo_tests.step);
@@ -621,7 +592,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const mbind_tests = b.addTest(.{ .root_module = mbind_test_mod });
-    mbind_tests.linkLibrary(dyncall_lib);
+    mbind_tests.linkLibrary(libffi_lib);
     mbind_tests.linkLibC();
     const run_mbind_tests = b.addRunArtifact(mbind_tests);
     test_step.dependOn(&run_mbind_tests.step);
@@ -632,7 +603,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const boxed_tests = b.addTest(.{ .root_module = boxed_test_mod });
-    boxed_tests.linkLibrary(dyncall_lib);
+    boxed_tests.linkLibrary(libffi_lib);
     boxed_tests.linkLibC();
     const run_boxed_tests = b.addRunArtifact(boxed_tests);
     test_step.dependOn(&run_boxed_tests.step);
@@ -643,7 +614,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const ffi_tests = b.addTest(.{ .root_module = ffi_test_mod });
-    ffi_tests.linkLibrary(dyncall_lib);
+    ffi_tests.linkLibrary(libffi_lib);
     ffi_tests.linkLibC();
     const run_ffi_tests = b.addRunArtifact(ffi_tests);
     test_step.dependOn(&run_ffi_tests.step);
@@ -666,7 +637,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const ffi_mod_tests = b.addTest(.{ .root_module = ffi_mod_test_mod });
-    ffi_mod_tests.linkLibrary(dyncall_lib);
+    ffi_mod_tests.linkLibrary(libffi_lib);
     ffi_mod_tests.linkLibC();
     const run_ffi_mod_tests = b.addRunArtifact(ffi_mod_tests);
     // Symbols-enumeration tests read libbirnam_hello.dylib from zig-out/lib.
@@ -679,7 +650,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const card_tests = b.addTest(.{ .root_module = card_test_mod });
-    card_tests.linkLibrary(dyncall_lib);
+    card_tests.linkLibrary(libffi_lib);
     card_tests.linkLibC();
     const run_card_tests = b.addRunArtifact(card_tests);
     test_step.dependOn(&run_card_tests.step);
@@ -690,7 +661,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const loader_tests = b.addTest(.{ .root_module = loader_test_mod });
-    loader_tests.linkLibrary(dyncall_lib);
+    loader_tests.linkLibrary(libffi_lib);
     loader_tests.linkLibC();
     const run_loader_tests = b.addRunArtifact(loader_tests);
     run_loader_tests.step.dependOn(b.getInstallStep());
@@ -747,10 +718,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = .ReleaseFast,
     });
-    // ReleaseFast dyncall for the (ReleaseFast) bench — matching optimize modes
+    // ReleaseFast libffi for the (ReleaseFast) bench — matching optimize modes
     // avoids a ubsan-runtime link mismatch against the default-optimize lib.
-    const dyncall_rf = b.addLibrary(.{
-        .name = "dyncall_rf",
+    const libffi_rf = b.addLibrary(.{
+        .name = "ffi_rf",
         .linkage = .static,
         .root_module = b.createModule(.{
             .target = target,
@@ -758,26 +729,29 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
         }),
     });
-    dyncall_rf.addCSourceFiles(.{
-        .root = b.path("vendor/dyncall-1.4/dyncall"),
+    libffi_rf.addCSourceFiles(.{
+        .root = b.path("vendor/libffi"),
         .files = &.{
-            "dyncall_api.c",
-            "dyncall_callf.c",
-            "dyncall_callvm.c",
-            "dyncall_callvm_base.c",
-            "dyncall_vector.c",
-            "dyncall_aggregate.c",
-            "dyncall_call.S",
+            "src/prep_cif.c",
+            "src/types.c",
+            "src/raw_api.c",
+            "src/java_raw_api.c",
+            "src/closures.c",
+            "src/tramp.c",
+            "src/aarch64/ffi.c",
+            "src/aarch64/sysv.S",
         },
-        .flags = &.{"-std=c99"},
+        .flags = &.{ "-std=gnu11", "-DHAVE_CONFIG_H" },
     });
-    dyncall_rf.addIncludePath(b.path("vendor/dyncall-1.4/dyncall"));
+    libffi_rf.addIncludePath(b.path("vendor/libffi"));
+    libffi_rf.addIncludePath(b.path("vendor/libffi/include"));
+    libffi_rf.addIncludePath(b.path("vendor/libffi/src/aarch64"));
 
     const kbench_exe = b.addExecutable(.{
         .name = "kernel_bench",
         .root_module = kbench_mod,
     });
-    kbench_exe.linkLibrary(dyncall_rf);
+    kbench_exe.linkLibrary(libffi_rf);
     kbench_exe.linkLibC();
     const kbench_build_step = b.step("kernel-bench", "Build kernel_bench exe (run manually under timeout)");
     kbench_build_step.dependOn(&b.addInstallArtifact(kbench_exe, .{}).step);
@@ -795,7 +769,7 @@ pub fn build(b: *std.Build) void {
         .name = "kernel_write_bench",
         .root_module = wbench_mod,
     });
-    wbench_exe.linkLibrary(dyncall_rf);
+    wbench_exe.linkLibrary(libffi_rf);
     wbench_exe.linkLibC();
     const wbench_build_step = b.step("write-bench", "Build kernel_write_bench exe (run manually under timeout)");
     wbench_build_step.dependOn(&b.addInstallArtifact(wbench_exe, .{}).step);
