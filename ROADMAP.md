@@ -2157,50 +2157,135 @@ The "promote FFI to flat-C-capable" batch landed. All in `ffi.zig` +
 shimless libtecla now works on arm64 *except* anything needing struct-by-value
 (libtecla's line-editing core is pointer/cstring/int — fully covered).
 
-### Work items (backlog)
+### Work items (backlog) — fleshed + sequenced 2026-06-15
 
-19.1 **Struct-by-value on arm64.** Either vendor dyncall ≥1.5 (has arm64-apple
-     aggregate support) or hand-roll AAPCS aggregate classification: ≤16-byte
-     integer composites → consecutive GP regs (decompose to i64 chunks); HFA/HVA
-     (≤4 homogeneous float/double) → V regs; >16 bytes → stack copy; capture
-     ≤16-byte struct *returns* from x0:x1 / v0–v3 (the hard part — scalar call
-     paths only expose x0). Don't ship half-correct ABI; wrong classification =
-     silent corruption.
+Ground truth (audited 2026-06-15): FFI lives in `ffi.zig` (750L: `Kind` enum,
+`kindOf`/`kindSize`/`dcFieldChar` switches, `parseSig`/`parseAggr`, marshal loop,
+`callAndWrap`/`invoke`, `Aggr`/`Sig`, dyncall externs) + `ffi_module.zig` (725L:
+peek/poke + alloc/free dispatch via `installFfiMethods` → `installMethod(alloc,
+store, table, VT, SEL, &fn)`). Selectors are eids **207–219**; File/System took
+**220–223**; new FFI selectors **append at 224+** (append-only ABI discipline).
+All current scalar `Kind`s are signed; no unsigned/width variants.
 
-19.2 **Callbacks.** Birnam closure → C function pointer via dyncallback
-     trampolines. Unlocks `qsort` comparators, event loops, libtecla's own
-     completion/word callbacks. Hardest item; needs a closure→thunk registry +
-     lifetime story.
+**Two tracks. Track A (no ABI risk — verifiable against real libs, ship first):
+19.6 → 19.3 → 19.4 → 19.7. Track B (hard ABI): 19.2 → 19.5.** 19.1 is **deferred**
+(see below — the vendor path it assumed does not exist).
 
-19.3 **`char**` / string arrays** — argv-style in (build from a birnam vector of
-     strings) and out (NULL-terminated `char**` → birnam vector).
+#### Decisions locked (2026-06-15)
+- **19.6 sigchar scheme = `u`-prefix multi-char** (`uc us ui ul uL`). Rejected:
+  explicit-width (`u32`) = over-engineered, wrong model for *calling C* (C sigs
+  are named in C-type terms, not bit-widths) + two-vocabularies bloat; arbitrary
+  single-char unsigned set = weak mnemonics, burns scarce namespace. Internally
+  **NOT** 5 new `Kind` variants — add `unsigned: bool` alongside the existing
+  width `Kind`. `kindSize`/`dcFieldChar` switches stay unchanged (width identical;
+  dyncall has no separate unsigned *arg* chars); sign branches ONLY at return-wrap
+  in `callAndWrap` (zero- vs sign-extend). Parser gains a 1-char lookahead on `u`.
+- **19.7 out-param sugar = Cell object, NOT one-shot selector.** A `Cell` is a
+  width-tagged FfiPtr (`[Module outInt]`/`outLong`/`outPtr`/`outDouble` mint it;
+  `[h value]` peeks at the remembered width; free manual or via `ensure:`).
+  Rejected the `[m call:… outAt:width:]` one-shot: it's a SECOND C-calling
+  convention parallel to `wrap:`→send (divergence), and breaks the moment a fn has
+  >1 out-param or mixes out+in pointers. Cell composes (N out-params = N cells),
+  rides the normal send path, pairs with the 17.7 error model for guaranteed free.
+  Storage = **one inert `out_width` field on FfiPtr** (no new VT). Optional
+  `withOut…:` bracket combinator (auto-free via `ensure:`) is a later nicety.
+- **19.1 DEFERRED — vendor-bump path verified non-existent (2026-06-15).** The
+  earlier plan ("vendor dyncall ≥1.5 with arm64-apple aggregate support") is
+  impossible: dyncall's latest release is **1.4 (2022-12-06)** — the version
+  already vendored — and its changelog states aggregate-by-value is **x64-only**
+  ("aggregate-by-value (struct, union) support for x64 (win and sysv)"); NO arm64/
+  aarch64/Apple aggregate support exists in any release. So the only way to *do*
+  19.1 is the high-risk hand-roll (below), and nothing downstream is blocked on it:
+  x86_64 by-value already works, pointer-to-struct works on arm64 today (shipped
+  deref), and **19.5's headline use case — minting an entity from a `struct*` a C
+  fn returns — needs only deref, not by-value.** 19.1 stays gated (`aggregates_
+  supported`, `ffi.zig:29`, returns nil on aarch64). Promote to hand-roll ONLY
+  when a concrete target library forces arm64 by-value — that library is then the
+  test oracle (far safer than a speculative ABI classifier built blind).
 
-19.4 **Byte-buffer ergonomics** — bulk `peekBytes:len:` / `pokeBytes:at:` between
-     an FfiPtr and a birnam string/byte-vector (memcpy), so crypto/image/net
-     buffers don't need per-byte poke loops.
+#### Track A — calling-completeness (ship first, both arches, no ABI risk)
 
-19.5 **Struct-as-entity (the birnam-flavored absorb).** Describe a C struct's
-     layout once; mint an entity whose attrs mirror the fields, backed by an
-     FfiPtr. Field access becomes ordinary message sends (`[pt x]` / `[pt x: 3]`)
-     that lower to typed peek/poke at the field offset. This is the idst-style
-     move — a struct stops being an opaque byte blob and joins the fact store —
-     and is the real reason FFI lives next to a relational substrate. Depends on
-     19.1 for by-value cases; pointer-to-struct works on 19's shipped deref today.
+19.6 **[commit A1] Remaining scalar types.** Add unsigned via the locked
+     `u`-prefix scheme. Touch: `kindOf` (lookahead on `u`), the `(Kind, unsigned)`
+     pair plumbed through `parseSig`/marshal, return-wrap signedness branch in
+     `callAndWrap`. Files: `ffi.zig` only. **No new eids.** Test: round-trip a
+     `uint`-returning fn near 2³¹ (proves no sign flip). Risk: low.
 
-19.6 **Remaining scalar types** — unsigned variants (`uint`/`ulong`/`uchar`),
-     explicit-width ints, wide chars. Mostly sig-parser + marshal additions.
+19.3 **[commit A2] `char**` / string arrays.** In: build NULL-terminated `char**`
+     from a birnam vector (scratch bufs freed post-call) — extend the marshal
+     loop's `.cstring` path with an array variant (new sigchar e.g. `A`, or a
+     `Module argv:` constructor). Out: `[p peekStringArray: count] → vector`
+     (**eid 224**, on `FFI_PTR_VT`). Files: `ffi.zig` + `ffi_module.zig` +
+     `kernel_eids.zig`. Lifetime = synchronous-call-scoped (same as `Z`). Risk: low.
 
-19.7 **Out-param sugar** — a one-call helper (`[m call:… outPtr:]` or a `Cell`
-     object) that allocs + passes + peeks + frees, so the common
-     `open(path, &handle)` shape isn't four manual steps.
+19.4 **[commit A3] Byte-buffer ergonomics.** `[p peekBytes:len:] → string`
+     (**eid 225**), `[p pokeBytes:at:] ← string/byte-vector` (**eid 226**), straight
+     `@memcpy`. Mirrors existing `methodPeekX`/`methodPokeX`. Files: `ffi_module.zig`
+     + `kernel_eids.zig`. Note: raw FfiPtr has no bounds — `len` is caller-trusted
+     (same contract as existing peek offsets). Risk: low.
+
+19.7 **[commit A4] Out-param sugar (Cell).** `[Module outInt]`/`outLong`/`outPtr`/
+     `outDouble` mint a width-tagged FfiPtr (**eids 227+**); `[h value]` peeks the
+     remembered width; free manual or `ensure:`. Add inert `out_width` to FfiPtr
+     (no new VT). Files: `ffi_module.zig` + `kernel_eids.zig` (+ the FfiPtr struct).
+     Test: `open(path, &handle)`-shape end-to-end. Risk: low.
+
+**Track A exit:** flat C calling is complete on both arches.
+
+#### Track B — the hard ABI work (each its own design+commit session)
+
+19.2 **[commit B1 — hardest] Callbacks (closure → C fn-ptr).** **Vendor
+     `dyncallback`** first — it is NOT currently vendored (only `vendor/dyncall-1.4/
+     dyncall/` is built in `build.zig:19-32`); add its `*.c`/`*.S` as a second
+     static-lib block. Then: birnam `CLOSURE_VT` → C function pointer via
+     dyncallback trampoline. Needs (a) a closure→thunk **registry** (handle table
+     mapping the C-side callback back to the closure + `Send` machinery to invoke
+     it), (b) a **lifetime story** (callback outlives the registering call —
+     explicit `[cb release]` or GC root; do NOT auto-free), (c) a `CALLBACK_VT`
+     (**eid 228**) + `Module callback:sig:` constructor. Test: `qsort` with a
+     birnam comparator (canonical proof) + a libtecla completion callback. Risk:
+     **high** — re-entrancy (C calls back into the evaluator mid-FFI-call),
+     lifetime, registry. Single most complex item in the phase.
+
+19.5 **[commit B2 — headline] Struct-as-entity (the birnam-flavored absorb).**
+     `[Module struct: #Point fields: {x: #i  y: #i}]` registers a layout (reuse the
+     `Aggr` parser — `parseAggr` already computes field offsets); mints an entity
+     whose attrs mirror the fields, backed by an FfiPtr. `[pt x]` / `[pt x: 3]`
+     lower to typed peek/poke at the field offset (built on Track A's peek/poke +
+     19.6 width handling). The idst move — a struct stops being an opaque byte blob
+     and joins the fact store (field reads = queryable message sends). New: layout
+     registry selectors + a struct-instance-flavored VT (**eids 229+**). Pointer-
+     to-struct (the common case: C returns a `struct*`) works on shipped deref
+     **today, on arm64** — does NOT depend on 19.1. By-value struct cases on arm64
+     remain gated behind deferred-19.1. Test: define `struct Point{int x,y}`, mint
+     from an FfiPtr a C call returns, read/write fields via sends, assert vs raw
+     peek. Risk: medium-high — this is birnam *design* (how a struct-type entity
+     relates to the fact store / dispatch), not just marshaling.
+
+#### Sequence + eid map
+```
+A1  19.6 scalars (u-prefix)   ffi.zig                        (no eid)
+A2  19.3 char**               ffi.zig +ffi_module +eids      (eid 224)
+A3  19.4 byte buffers         ffi_module +eids               (eids 225-226)
+A4  19.7 out-param Cell       ffi_module +eids +FfiPtr       (eids 227+)
+── Track A done: flat C complete, both arches ──
+B1  19.2 callbacks            vendor dyncallback + new VT     (eid 228)  ⚠ hardest
+B2  19.5 struct-as-entity     layout registry + struct VT     (eids 229+) ★ headline
+── deferred ──
+    19.1 arm64 struct-by-value  blocked-on-upstream; hand-roll only when a
+                                real lib forces it (that lib = test oracle)
+```
 
 ### Reasoning
 The shipped batch is "table stakes" — arity, strings-in/out, NULL, deref,
-out-params cover the majority of flat C libraries. 19.1–19.4 cover the long tail
-of *calling* C; 19.5 is the part that's actually about birnam — folding foreign
-data into the entity/fact model rather than leaving it as opaque pointers. Build
-calling-completeness first (it's verifiable against real libs), then 19.5 once
-the marshaling primitives are stable.
+out-params cover the majority of flat C libraries. Track A finishes the long tail
+of *calling* C (verifiable against real libs, zero ABI-correctness risk); Track B
+is the part that's actually about birnam — folding foreign data into the entity/
+fact model rather than leaving it as opaque pointers. Build calling-completeness
+first, then callbacks (re-entrancy infra), then struct-as-entity once the
+marshaling + peek/poke primitives are stable. 19.1 (arm64 by-value) is the one
+genuinely-blocked item and the one nothing else needs — deferred rather than
+rushed, since a wrong ABI classifier corrupts silently.
 
 ---
 
