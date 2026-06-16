@@ -128,6 +128,7 @@ pub fn boot(
     _ = try store.assert(kernel_eids.FLOAT_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
     _ = try store.assert(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
     _ = try store.assert(kernel_eids.CALLBACK_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
+    _ = try store.assert(kernel_eids.STRUCT_TYPE_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
     _ = try store.assert(kernel_eids.MODULE_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
     _ = try store.assert(kernel_eids.ERROR_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
 
@@ -145,6 +146,7 @@ pub fn boot(
     _ = try store.assert(kernel_eids.FLOAT_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.CALLBACK_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    _ = try store.assert(kernel_eids.STRUCT_TYPE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.MODULE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.ERROR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     _ = try store.assert(kernel_eids.RANGE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot); // Phase 16: seq protocol
@@ -245,6 +247,11 @@ pub fn boot(
     try interner.seed(store, kernel_eids.SEL_FFI_OUT_DOUBLE, "outDouble");
     // Phase 19.2 — callbacks. `[cb free]` reuses SEL_FFI_FREE.
     try interner.seed(store, kernel_eids.SEL_FFI_CALLBACK, "callback:sig:");
+    // Phase 19.5 — struct-as-entity.
+    try interner.seed(store, kernel_eids.SEL_FFI_STRUCT, "struct:fields:");
+    try interner.seed(store, kernel_eids.SEL_FFI_STRUCT_FROM, "from:");
+    try interner.seed(store, kernel_eids.SEL_FFI_STRUCT_NEW, "new");
+    try interner.seed(store, kernel_eids.SEL_FFI_STRUCT_PTR, "ptr");
 
     // -- Stage 9: enable dispatch ----------------------------------------
     send_mod.initDispatch(store, table, allocator);

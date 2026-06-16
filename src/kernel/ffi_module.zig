@@ -690,6 +690,158 @@ fn methodCallbackFree(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) 
     return ref_mod.NIL;
 }
 
+// -- Phase 19.5: struct-as-entity -------------------------------------------
+
+fn alignUpU(n: usize, a: usize) usize {
+    return (n + a - 1) & ~(a - 1);
+}
+
+// Field accessor descriptor packed into the accessor closure's `data` SmallInt:
+//   bit 0      : unsigned flag
+//   bits 1..7  : Kind enum value
+//   bits 8..   : byte offset within the struct
+fn packField(offset: usize, kind: ffi.Kind, unsigned: bool) i64 {
+    const v: usize = (offset << 8) | (@as(usize, @intFromEnum(kind)) << 1) | @intFromBool(unsigned);
+    return @intCast(v);
+}
+fn unpackField(data: Ref) struct { offset: usize, kind: ffi.Kind, unsigned: bool } {
+    const v: usize = @intCast(ref_mod.untagSmallInt(data));
+    return .{ .offset = v >> 8, .kind = @enumFromInt((v >> 1) & 0x7F), .unsigned = (v & 1) != 0 };
+}
+
+/// Like `allocClosure` but carries `data` (the packed field descriptor).
+fn allocClosureData(allocator: std.mem.Allocator, method_fn: *const anyopaque, data: Ref) !*closure_mod.Closure {
+    const c = try allocClosure(allocator, method_fn);
+    c.data = data;
+    return c;
+}
+
+fn installMethodWithData(
+    allocator: std.mem.Allocator,
+    store: *fact_store_mod.FactStore,
+    table: *object_table_mod.ObjectTable,
+    vt: u64,
+    sel: u64,
+    method_fn: *const anyopaque,
+    data: Ref,
+) !void {
+    const c = try allocClosureData(allocator, method_fn, data);
+    const closure_eid = table.alloc();
+    try table.put(closure_eid, ref_mod.mkPointer(@ptrCast(c)));
+    _ = try store.assert(vt, sel, ref_mod.mkEid(closure_eid), kernel_eids.M_BOOTSTRAP);
+}
+
+/// `[pt fieldName]` — peek the field at its offset+type. The packed descriptor
+/// is in the accessor closure's `data`; the backing C address is instance slot 0.
+fn structFieldGet(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ args, n_args };
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const c = s.closure orelse return ref_mod.NIL;
+    const f = unpackField(c.data);
+    const base = boxed.structInstanceAddr(s.receiver);
+    return ffi.peekKind(alloc, base + f.offset, f.kind, f.unsigned);
+}
+
+/// `[pt fieldName: v]` — poke the field; returns self (chainable).
+fn structFieldSet(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const c = s.closure orelse return ref_mod.NIL;
+    const f = unpackField(c.data);
+    const base = boxed.structInstanceAddr(s.receiver);
+    if (!ffi.pokeKind(base + f.offset, f.kind, args[0])) return ref_mod.NIL;
+    return s.receiver;
+}
+
+/// `[T from: anFfiPtr]` — wrap existing struct bytes as an instance (e.g. a
+/// `struct*` a C function returned). The caller owns the original memory.
+fn methodStructFrom(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1 or !boxed.isFfiPtr(args[0])) return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const ivt = boxed.structTypeInstanceVt(s.receiver);
+    return boxed.mkStructInstance(alloc, ivt, boxed.untagFfiPtr(args[0])) catch ref_mod.NIL;
+}
+
+/// `[T new]` — malloc a zeroed instance (freed via `[pt free]`).
+fn methodStructNew(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ args, n_args };
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const sz = boxed.structTypeSize(s.receiver);
+    const raw = std.c.malloc(if (sz == 0) 1 else sz) orelse return ref_mod.NIL;
+    @memset(@as([*]u8, @ptrCast(raw))[0..sz], 0);
+    const ivt = boxed.structTypeInstanceVt(s.receiver);
+    return boxed.mkStructInstance(alloc, ivt, @intFromPtr(raw)) catch ref_mod.NIL;
+}
+
+/// `[pt ptr]` — the backing FfiPtr (pass the struct* to a C function).
+fn methodStructPtr(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ args, n_args };
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    return boxed.mkFfiPtr(alloc, boxed.structInstanceAddr(s.receiver)) catch ref_mod.NIL;
+}
+
+/// `[pt free]` — free a `new`-minted backing buffer. (Harmless double-free guard
+/// is the caller's responsibility, as with `[p free]`.)
+fn methodStructFree(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ args, n_args };
+    const base = boxed.structInstanceAddr(s.receiver);
+    if (base != 0) std.c.free(@ptrFromInt(base));
+    return ref_mod.NIL;
+}
+
+/// `[Module struct: #Name fields: #(#x #i #y #i)]` — register a struct type.
+/// `fields` is an ORDERED vector alternating field-name symbol + type-name
+/// symbol (C field order matters; maps don't preserve it). Mints a per-type
+/// instance vtable, installs a getter (field name) + setter (`name:`) per field
+/// at its natural-aligned offset, and returns a STRUCT_TYPE_VT object.
+fn methodStruct(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    if (n_args < 2 or !boxed.isRrbRef(args[1])) return ref_mod.NIL;
+    const fields = args[1];
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    const table = send_mod.tablePtr() orelse return ref_mod.NIL;
+    const interner = id_api_mod.internerPtr() orelse return ref_mod.NIL;
+
+    const total = boxed.rrbLen(fields);
+    if (total == 0 or total % 2 != 0) return ref_mod.NIL;
+    const nfields = total / 2;
+
+    const instance_vt = table.alloc();
+    _ = store.assert(instance_vt, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.VTABLE_VT), kernel_eids.M_BOOTSTRAP) catch return ref_mod.NIL;
+    _ = store.assert(instance_vt, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP) catch return ref_mod.NIL;
+
+    var cursor: usize = 0;
+    var max_align: usize = 1;
+    var i: usize = 0;
+    while (i < nfields) : (i += 1) {
+        const name_ref = boxed.rrbNth(fields, i * 2);
+        const type_ref = boxed.rrbNth(fields, i * 2 + 1);
+        if (!ref_mod.isEid(name_ref) or !ref_mod.isEid(type_ref)) return ref_mod.NIL;
+        const tname = interner.nameOf(ref_mod.untagEid(type_ref)) orelse return ref_mod.NIL;
+        const kr = ffi.kindFromName(tname) orelse return ref_mod.NIL;
+        const sz = ffi.scalarSize(kr.kind);
+        const off = alignUpU(cursor, sz);
+        cursor = off + sz;
+        if (sz > max_align) max_align = sz;
+
+        const data = ref_mod.mkSmallInt(packField(off, kr.kind, kr.unsigned)) orelse return ref_mod.NIL;
+        const getter_sel = ref_mod.untagEid(name_ref);
+        installMethodWithData(alloc, store, table, instance_vt, getter_sel, @ptrCast(&structFieldGet), data) catch return ref_mod.NIL;
+
+        const fname = interner.nameOf(getter_sel) orelse return ref_mod.NIL;
+        const setter_name = std.fmt.allocPrint(alloc, "{s}:", .{fname}) catch return ref_mod.NIL;
+        defer alloc.free(setter_name);
+        const setter_sel = interner.intern(store, table, setter_name) catch return ref_mod.NIL;
+        installMethodWithData(alloc, store, table, instance_vt, setter_sel, @ptrCast(&structFieldSet), data) catch return ref_mod.NIL;
+    }
+    const size = alignUpU(cursor, max_align);
+
+    installMethod(alloc, store, table, instance_vt, kernel_eids.SEL_FFI_STRUCT_PTR, @ptrCast(&methodStructPtr)) catch return ref_mod.NIL;
+    installMethod(alloc, store, table, instance_vt, kernel_eids.SEL_FFI_FREE, @ptrCast(&methodStructFree)) catch return ref_mod.NIL;
+
+    return boxed.mkStructType(alloc, instance_vt, size) catch ref_mod.NIL;
+}
+
 /// `[p free]` — libc-free the address. Only valid for `alloc:`-minted pointers.
 fn methodFfiFree(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = args;
@@ -936,6 +1088,10 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_CALLBACK, @ptrCast(&methodCallback));
     // Phase 19.2 — CALLBACK_VT: free the libffi closure via the shared `free`.
     try installMethod(allocator, store, table, kernel_eids.CALLBACK_VT, kernel_eids.SEL_FFI_FREE, @ptrCast(&methodCallbackFree));
+    // Phase 19.5 — struct-as-entity: define on Module; from:/new on the type VT.
+    try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_STRUCT, @ptrCast(&methodStruct));
+    try installMethod(allocator, store, table, kernel_eids.STRUCT_TYPE_VT, kernel_eids.SEL_FFI_STRUCT_FROM, @ptrCast(&methodStructFrom));
+    try installMethod(allocator, store, table, kernel_eids.STRUCT_TYPE_VT, kernel_eids.SEL_FFI_STRUCT_NEW, @ptrCast(&methodStructNew));
 
     // -- Phase 18 prelude: FFI memory primitives on FFI_PTR_VT --------------
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_FREE, @ptrCast(&methodFfiFree));

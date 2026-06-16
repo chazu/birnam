@@ -1694,3 +1694,22 @@ test "FFI callback: birnam comparator sorts an array via libc qsort (19.2)" {
     _ = evalLine(s, lang, "[cb free]", a);
     _ = evalLine(s, lang, "[buf free]", a);
 }
+
+// Phase 19.5 — struct-as-entity, the user surface: define a struct from birnam
+// source, then read/write fields as ordinary message sends.
+test "FFI struct-as-entity: [Module struct:fields:] + field sends (19.5)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    _ = evalLine(s, lang, "let Point := [Module struct: #Point fields: #[#x #i  #y #i]]", a);
+    _ = evalLine(s, lang, "let p := [Point new]", a);
+    _ = evalLine(s, lang, "[p x: 30]", a);
+    _ = evalLine(s, lang, "[p y: 12]", a);
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalLine(s, lang, "[[p x] + [p y]]", a)));
+    try testing.expectEqual(@as(i64, 30), ref_mod.untagSmallInt(evalLine(s, lang, "[p x]", a)));
+    _ = evalLine(s, lang, "[p free]", a);
+}

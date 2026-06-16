@@ -2339,20 +2339,27 @@ B0b **[commit] Rewrite `ffi.zig` marshaling onto `ffi_cif`/`ffi_call`.** Model
      event-loop callbacks); arity >2; struct/HFA callback args. The libffi engine
      choice retired the original JIT + separate-dep risk.
 
-19.5 **[commit B2 — headline] Struct-as-entity (the birnam-flavored absorb).**
-     `[Module struct: #Point fields: {x: #i  y: #i}]` registers a layout (reuse the
-     `Aggr` parser — `parseAggr` already computes field offsets); mints an entity
-     whose attrs mirror the fields, backed by an FfiPtr. `[pt x]` / `[pt x: 3]`
-     lower to typed peek/poke at the field offset (built on Track A's peek/poke +
-     19.6 width handling). The idst move — a struct stops being an opaque byte blob
-     and joins the fact store (field reads = queryable message sends). New: layout
-     registry selectors + a struct-instance-flavored VT (**eids 229+**). Pointer-
-     to-struct (the common case: C returns a `struct*`) works on shipped deref
-     **today, on arm64** — does NOT depend on 19.1. By-value struct cases on arm64
-     remain gated behind deferred-19.1. Test: define `struct Point{int x,y}`, mint
-     from an FfiPtr a C call returns, read/write fields via sends, assert vs raw
-     peek. Risk: medium-high — this is birnam *design* (how a struct-type entity
-     relates to the fact store / dispatch), not just marshaling.
+19.5 **Struct-as-entity (the birnam-flavored absorb) — SHIPPED 2026-06-15**
+     (branch `phase-19-struct-entity`). `[Module struct: #Point fields: #[#x #i
+     #y #i]]` (an ORDERED `#[ ]` vector of name/type symbol pairs — C field order
+     matters, maps don't preserve it) mints a **STRUCT_TYPE_VT** object (**eid
+     234**; SEL_FFI_STRUCT=**235**) with a freshly-allocated per-type instance
+     vtable: a getter (the field-name selector) + setter (`name:`) per field,
+     each a closure whose `data` packs `(offset<<8 | kind<<1 | unsigned)`, lowering
+     to `ffi.peekKind`/`pokeKind` at the natural-aligned offset. `[T from:
+     anFfiPtr]` (236) wraps a C `struct*`; `[T new]` (237) mallocs a zeroed
+     instance; `[pt ptr]` (238) hands back the backing FfiPtr (pass the struct* to
+     C); `[pt free]` (SEL_FFI_FREE) frees a `new` backing. Instances are box-arena
+     objects (slot 0 = backing C addr, raw — GC-safe like FfiPtr). **The idst
+     move:** a C struct stops being an opaque blob and answers field-name message
+     sends. Tested: kernel (define/new/get/set/ptr + raw-layout cross-check) +
+     **end-to-end** (libc `div` returns `div_t` by value → `[T from: result]` →
+     `[dv quot]`/`[dv rem]`) + lang surface (`[p x: 30]`/`[p x]` from birnam
+     source). **DEFERRED:** nested-struct + array fields (scalars/pointers only);
+     auto-marshal an instance as a by-value struct arg (use `[pt ptr]` for
+     `struct*`); `[T size]`; fact-store materialization of fields (peek/poke-backed
+     live memory today, not asserted facts). Risk was medium-high (birnam design) —
+     resolved as per-type-VT method dispatch, no fact-store coupling needed for v1.
 
 #### Sequence + eid map
 ```
@@ -2366,7 +2373,8 @@ B0b ffi.zig → ffi_cif/ffi_call ffi.zig + delete dyncall       (no eid)   ✓ S
 ── engine swapped: arm64 aggregates + closures now available ──
 19.1 arm64 struct-by-value     aggregates_supported=true + HFA test  (no eid)   ✓ SHIPPED (via libffi)
 19.2 callbacks                 ffi_closure + CALLBACK_VT       (eids 232-233)  ✓ SHIPPED (qsort re-entrant)
-B2  19.5 struct-as-entity     layout registry + struct VT     (eids 234+) ★ headline — last item
+19.5 struct-as-entity          STRUCT_TYPE_VT + per-type VTs   (eids 234-238)  ✓ SHIPPED (div_t entity)
+── PHASE 19 COMPLETE (19.1/19.2/19.3/19.4/19.5/19.6/19.7 all shipped on libffi) ──
 ```
 
 ### Reasoning

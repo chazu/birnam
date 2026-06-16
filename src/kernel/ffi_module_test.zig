@@ -715,3 +715,81 @@ test "out-param cell: real C out-param via strtol endptr (19.7)" {
     _ = send_mod.send0(endptr, kernel_eids.SEL_FFI_FREE);
     ffi.shutdown();
 }
+
+test "struct-as-entity: define, new, field get/set, ptr layout (19.5)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const fix = try setup(&arena);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+
+    // [Module struct: #Point fields: #(#x #l  #y #l)]  -- two C longs.
+    const x_sel = try fix.interner.intern(fix.store, fix.table, "x");
+    const y_sel = try fix.interner.intern(fix.store, fix.table, "y");
+    const l_sym = try fix.interner.intern(fix.store, fix.table, "l");
+    const name = ref_mod.mkEid(try fix.interner.intern(fix.store, fix.table, "Point"));
+    const fields = try boxed.mkRrb(a, &.{
+        ref_mod.mkEid(x_sel), ref_mod.mkEid(l_sym),
+        ref_mod.mkEid(y_sel), ref_mod.mkEid(l_sym),
+    });
+    const PointT = send_mod.send2(proto, kernel_eids.SEL_FFI_STRUCT, name, fields);
+    try testing.expect(ref_mod.isPointer(PointT));
+
+    // [Point new] -> instance; fields zeroed.
+    const pt = send_mod.send0(PointT, kernel_eids.SEL_FFI_STRUCT_NEW);
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(pt, x_sel)));
+
+    // [pt x: 30] / [pt y: 12]  (setters return self).
+    const x_set = try fix.interner.intern(fix.store, fix.table, "x:");
+    const y_set = try fix.interner.intern(fix.store, fix.table, "y:");
+    try testing.expectEqual(pt, send_mod.send1(pt, x_set, ref_mod.mkSmallInt(30).?));
+    _ = send_mod.send1(pt, y_set, ref_mod.mkSmallInt(12).?);
+
+    // [pt x] / [pt y] read them back.
+    try testing.expectEqual(@as(i64, 30), ref_mod.untagSmallInt(send_mod.send0(pt, x_sel)));
+    try testing.expectEqual(@as(i64, 12), ref_mod.untagSmallInt(send_mod.send0(pt, y_sel)));
+
+    // [pt ptr] is the backing struct*; cross-check field offsets via raw peek
+    // (x at 0, y at 8 — independent of the accessor path).
+    const raw = send_mod.send0(pt, kernel_eids.SEL_FFI_STRUCT_PTR);
+    try testing.expect(boxed.isFfiPtr(raw));
+    try testing.expectEqual(@as(i64, 30), ref_mod.untagSmallInt(send_mod.send1(raw, kernel_eids.SEL_FFI_PEEK_INT, ref_mod.mkSmallInt(0).?)));
+    try testing.expectEqual(@as(i64, 12), ref_mod.untagSmallInt(send_mod.send1(raw, kernel_eids.SEL_FFI_PEEK_INT, ref_mod.mkSmallInt(8).?)));
+
+    _ = send_mod.send0(pt, kernel_eids.SEL_FFI_FREE);
+}
+
+test "struct-as-entity: wrap a C struct return (libc div -> div_t) (19.5)" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const fix = try setup(&arena);
+
+    const mod = try ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM);
+    const sel = try fix.interner.intern(fix.store, fix.table, "div:by:");
+    // div_t div(int, int) -> {int quot; int rem;}, returned as an FfiPtr.
+    _ = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, ref_mod.mkEid(sel), try strings.mkString(a, "div"), try strings.mkString(a, "ii){ii}"));
+    resolve(fix, mod, a);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+    const quot_sel = try fix.interner.intern(fix.store, fix.table, "quot");
+    const rem_sel = try fix.interner.intern(fix.store, fix.table, "rem");
+    const i_sym = try fix.interner.intern(fix.store, fix.table, "i");
+    const fields = try boxed.mkRrb(a, &.{
+        ref_mod.mkEid(quot_sel), ref_mod.mkEid(i_sym),
+        ref_mod.mkEid(rem_sel), ref_mod.mkEid(i_sym),
+    });
+    const DivT = send_mod.send2(proto, kernel_eids.SEL_FFI_STRUCT, ref_mod.mkEid(try fix.interner.intern(fix.store, fix.table, "DivT")), fields);
+
+    // div(17, 5) -> {quot:3, rem:2}. Wrap the returned struct* as an entity.
+    const result = send_mod.send2(mod, sel, ref_mod.mkSmallInt(17).?, ref_mod.mkSmallInt(5).?);
+    try testing.expect(boxed.isFfiPtr(result));
+    const dv = send_mod.send1(DivT, kernel_eids.SEL_FFI_STRUCT_FROM, result);
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(send_mod.send0(dv, quot_sel)));
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send0(dv, rem_sel)));
+
+    std.c.free(@ptrFromInt(boxed.untagFfiPtr(result)));
+    ffi.shutdown();
+}

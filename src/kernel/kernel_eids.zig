@@ -653,4 +653,19 @@ pub const SEL_FFI_OUT_DOUBLE: u64 = 231; // "outDouble" -> cell over a double (8
 pub const CALLBACK_VT: u64 = 232;
 pub const SEL_FFI_CALLBACK: u64 = 233; // "callback:sig:" on MODULE_PROTO_VT
 
-// 234..255 reserved for future kernel selectors / attributes
+/// Phase 19.5 — struct-as-entity. `[Module struct: #Point fields: #(#x #i #y #i)]`
+/// (an ORDERED vector of name/type symbol pairs — C field order matters, maps
+/// don't preserve it) registers a struct TYPE (STRUCT_TYPE_VT object; slot 0 =
+/// the minted per-type instance vtable, slot 1 = byte size). `[T from: anFfiPtr]`
+/// wraps existing bytes, `[T new]` mallocs a zeroed instance, `[T size]` → bytes.
+/// An instance carries its backing C address in slot 0 and answers each field
+/// name as a getter (`[pt x]`) / `name:` as a setter (`[pt x: 3]`) that lower to
+/// typed peek/poke at the field offset; `[pt ptr]` → the backing FfiPtr (pass
+/// the struct* to C), `[pt free]` (SEL_FFI_FREE) frees a `new`-minted backing.
+pub const STRUCT_TYPE_VT: u64 = 234;
+pub const SEL_FFI_STRUCT: u64 = 235; // "struct:fields:" on MODULE_PROTO_VT
+pub const SEL_FFI_STRUCT_FROM: u64 = 236; // "from:"  on STRUCT_TYPE_VT
+pub const SEL_FFI_STRUCT_NEW: u64 = 237; // "new"    on STRUCT_TYPE_VT
+pub const SEL_FFI_STRUCT_PTR: u64 = 238; // "ptr"    on a struct instance
+
+// 239..255 reserved for future kernel selectors / attributes

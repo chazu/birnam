@@ -251,6 +251,73 @@ fn scalarAt(s: []const u8, i: usize) ?struct { kind: Kind, unsigned: bool, next:
     return .{ .kind = k, .unsigned = false, .next = i };
 }
 
+/// Phase 19.5: decode a whole scalar type NAME (a struct-field type symbol like
+/// `i` / `ui` / `d` / `p`) into a Kind + unsigned flag. Returns null unless the
+/// name is exactly one scalar token (no trailing chars, no aggregate/void).
+pub fn kindFromName(name: []const u8) ?struct { kind: Kind, unsigned: bool } {
+    if (name.len == 0) return null;
+    const sc = scalarAt(name, 0) orelse return null;
+    if (sc.next != name.len - 1) return null; // must consume the whole name
+    if (sc.kind == .void_) return null;
+    return .{ .kind = sc.kind, .unsigned = sc.unsigned };
+}
+
+/// Phase 19.5: byte size of a scalar field type (for struct layout).
+pub fn scalarSize(k: Kind) usize {
+    return kindSize(k);
+}
+
+/// Phase 19.5: read a scalar of `kind` at raw address `addr` into a Ref —
+/// powers struct-field getters (`[pt x]`). Reuses the callback unmarshal path.
+pub fn peekKind(allocator: std.mem.Allocator, addr: usize, kind: Kind, unsigned: bool) Ref {
+    return cArgToRef(allocator, kind, unsigned, @ptrFromInt(addr));
+}
+
+/// Phase 19.5: write `value` as a scalar of `kind` to raw address `addr` —
+/// powers struct-field setters (`[pt x: 3]`). Returns false on a type mismatch.
+/// Width only; signedness doesn't affect the stored bytes.
+pub fn pokeKind(addr: usize, kind: Kind, value: Ref) bool {
+    switch (kind) {
+        .bool_ => {
+            if (!ref_mod.isSmallInt(value)) return false;
+            @as(*u8, @ptrFromInt(addr)).* = if (ref_mod.untagSmallInt(value) != 0) 1 else 0;
+        },
+        .char => {
+            if (!ref_mod.isSmallInt(value)) return false;
+            @as(*u8, @ptrFromInt(addr)).* = @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(value))));
+        },
+        .short => {
+            if (!ref_mod.isSmallInt(value)) return false;
+            @as(*align(1) u16, @ptrFromInt(addr)).* = @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(value))));
+        },
+        .int => {
+            if (!ref_mod.isSmallInt(value)) return false;
+            @as(*align(1) u32, @ptrFromInt(addr)).* = @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(value))));
+        },
+        .long, .long_long => {
+            if (!ref_mod.isSmallInt(value)) return false;
+            @as(*align(1) u64, @ptrFromInt(addr)).* = @bitCast(ref_mod.untagSmallInt(value));
+        },
+        .float => {
+            if (!boxed.isFloat(value)) return false;
+            @as(*align(1) f32, @ptrFromInt(addr)).* = @floatCast(boxed.untagFloat(value));
+        },
+        .double => {
+            if (!boxed.isFloat(value)) return false;
+            @as(*align(1) f64, @ptrFromInt(addr)).* = boxed.untagFloat(value);
+        },
+        .pointer, .cstring => {
+            if (ref_mod.isNil(value)) {
+                @as(*align(1) usize, @ptrFromInt(addr)).* = 0;
+            } else if (boxed.isFfiPtr(value)) {
+                @as(*align(1) usize, @ptrFromInt(addr)).* = boxed.untagFfiPtr(value);
+            } else return false;
+        },
+        .void_, .aggregate => return false,
+    }
+    return true;
+}
+
 fn alignUp(n: usize, a: usize) usize {
     return (n + a - 1) & ~(a - 1);
 }
