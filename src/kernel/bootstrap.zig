@@ -275,7 +275,7 @@ pub fn boot(
     try promotion_mod.init(allocator, store, table);
 
     // -- Stage 12: install Phase 9.5 Module methods on MODULE_VT ---------
-    try ffi_module_mod.installMethods(allocator, store, table);
+    try ffi_module_mod.installMethods(allocator, store, table, interner);
 
     // -- Stage 13: Phase 9.5.2 cardinality schema injection --------------
     // Intern "many" so its EID is stable, then hand the fact store the

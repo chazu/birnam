@@ -772,6 +772,13 @@ fn methodStructNew(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
     return boxed.mkStructInstance(alloc, ivt, @intFromPtr(raw)) catch ref_mod.NIL;
 }
 
+/// `[T size]` (Phase 19.5) — the struct type's total byte size (natural-aligned,
+/// the same value `new` mallocs). Shares the `size` selector with vectors/strings.
+fn methodStructSize(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ args, n_args };
+    return ref_mod.mkSmallInt(@intCast(boxed.structTypeSize(s.receiver))) orelse ref_mod.NIL;
+}
+
 /// `[pt ptr]` — the backing FfiPtr (pass the struct* to a C function).
 fn methodStructPtr(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = .{ args, n_args };
@@ -1060,6 +1067,7 @@ pub fn installMethods(
     allocator: std.mem.Allocator,
     store: *fact_store_mod.FactStore,
     table: *object_table_mod.ObjectTable,
+    interner: *interner_mod.Interner,
 ) !void {
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_PATH, @ptrCast(&methodPath));
     try installMethod(allocator, store, table, kernel_eids.MODULE_VT, kernel_eids.SEL_HANDLE, @ptrCast(&methodHandle));
@@ -1092,6 +1100,11 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_STRUCT, @ptrCast(&methodStruct));
     try installMethod(allocator, store, table, kernel_eids.STRUCT_TYPE_VT, kernel_eids.SEL_FFI_STRUCT_FROM, @ptrCast(&methodStructFrom));
     try installMethod(allocator, store, table, kernel_eids.STRUCT_TYPE_VT, kernel_eids.SEL_FFI_STRUCT_NEW, @ptrCast(&methodStructNew));
+    // `[T size]` — reuse the interned `size` selector (vectors/strings share it;
+    // intern() dedups by name). Installed at bootstrap, before id_api's global
+    // internerPtr is set, so the interner is threaded in directly.
+    const sel_size = try interner.intern(store, table, "size");
+    try installMethod(allocator, store, table, kernel_eids.STRUCT_TYPE_VT, sel_size, @ptrCast(&methodStructSize));
 
     // -- Phase 18 prelude: FFI memory primitives on FFI_PTR_VT --------------
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_FREE, @ptrCast(&methodFfiFree));

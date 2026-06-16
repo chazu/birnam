@@ -44,7 +44,7 @@ The per-phase **§Status** blocks (Phases 12/13/14) are the authoritative curren
 - 11.1 ✓ — opcode set (16 ops, ADR-11 addendum locked), annotation EIDs (kernel_eids 165..182), bytecode encoder/decoder API.
 - 11.2 ✓ — AST → bytecode compiler. Coverage: literals (smallint inline + pool), stmt-seq, return-expr, self, sends (0/1/N with site_idx), blocks (separate bytecode-method entities, `:block-parent-method`), let / var-ref / assign with compile-time scope map, block params as locals[0..n]. Deferred: AST_SUPER_SEND_VT, **closure scope capture** (see below).
 - 11.3 ✓ — VM dispatch (while+switch loop; all 16 opcodes; tail-call refactor deferred — probe already validates lowering). `bytecodeDispatcherImpl` makes compiled methods first-class via SEND through existing send.bind + mcache.
-- 11.4 ✓ — per-method MethodMCache structure (16B-aligned MCEntry, 16B atomic store writer, 3-load re-check-vt reader, walk-invalidate). In-band wiring at SEND_* deferred (today routes through send.sendN's global mcache); structure ready when bench warrants.
+- 11.4 ✓ — per-method MethodMCache structure (16B-aligned MCEntry, 16B atomic store writer, 3-load re-check-vt reader, walk-invalidate). **In-band SEND_* wiring CLOSED 2026-06-16 — subsumed by 18.3, NOT done in the interpreter (measured zero gain).** kernel_bench breakdown of an 8.49 ns warm send: `table.get(eid) HAMT` 4.56 ns + vt-extract = `vtableEidOf` 5.85 ns (the real, unavoidable cost = receiver→vt), Send setup ≈ `bind` 7.51 ns, and **`mcache.lookup` (the global hash a per-site IC would replace) = 0.00 ns**. A per-site IC's key IS the receiver vt, so it still pays `vtableEidOf` and only replaces an already-free hash → ~0 ns interpreter win. The IC pays off only at **18.3** codegen, where a call site inlines a cheap vt-guard (receiver `-1` slot / promoted-shape check) + direct call, eliminating the HAMT `vtableEidOf` + bind + indirect call. The MethodMCache struct stands ready (unit-tested in vm_test) as scaffolding for that. Post-12.8 it would also need a redesign (cache the forked `*Closure`, not `vt→Imp`) + gen-counter invalidation — all of which belongs with the codegen site, not the bytecode loop.
 - 11.5 partial — `RETURN_FROM_METHOD` opcode + `Vm.unwind_value` / `unwind_target_remaining` shipped. Tree-walker `g_unwinding` global stays alive until lang module switches over to bytecode dispatch.
 - 11.6 ✓ — reify-stack API + real `Vm.frames` tracking. `runMethod` push/pop, pc write-through, frees on drain. `reifyStack(...) → []u64` asserts `:frame-pc` / `:frame-method` / `:frame-self` / `:frame-parent`.
 - 11.7.i ✓ — `Vm` struct (frames + pc + bytecode + current_self + unwinding + recursion_guard + ffi_pause + bump_arena_slot). `g_recursion` migrated from send.zig; `g_ffi_depth` from promotion.zig.
@@ -2741,9 +2741,10 @@ the VM with tree-walk fallback; `:eval-mode` toggle retains the tree-walker.
 Details + what's NOT included below. Independent of Phase 18; shrinks 18's
 surface to one codegen path.
 
-**② Dispatch representation** — **12.8 BYTECODE_METHOD_VT SHIPPED 2026-06-16**
-(see Phase 12 §12.8). Remaining half: 11.4 in-band mcache wiring at SEND_*.
-Prereq for 18.
+**② Dispatch representation — CLOSED 2026-06-16.** 12.8 BYTECODE_METHOD_VT
+SHIPPED (the load-bearing half; see Phase 12 §12.8). 11.4 in-band mcache wiring
+closed unbuilt — measured zero interpreter gain (the global hash it replaces is
+0.00 ns; the IC pays off only at 18.3 codegen sites; see §11.4). ② done.
 
 **③ Phase 18 native codegen** — capstone. Swallows perf-1.3/1.4/1.6 + the
 field-read slot cache. Nothing perf-related happens before this.

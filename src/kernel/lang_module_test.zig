@@ -1924,5 +1924,7 @@ test "FFI struct-as-entity: [Module struct:fields:] + field sends (19.5)" {
     _ = evalLine(s, lang, "[p y: 12]", a);
     try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalLine(s, lang, "[[p x] + [p y]]", a)));
     try testing.expectEqual(@as(i64, 30), ref_mod.untagSmallInt(evalLine(s, lang, "[p x]", a)));
+    // `[T size]` — two i32 fields, natural-aligned → 8 bytes.
+    try testing.expectEqual(@as(i64, 8), ref_mod.untagSmallInt(evalLine(s, lang, "[Point size]", a)));
     _ = evalLine(s, lang, "[p free]", a);
 }
