@@ -2629,6 +2629,16 @@ just *how you set the bit*.
 carries `:temporal?` by default; `beTemporal` is the general form. Want a few
 audited fields → cells; a whole object/kind → `beTemporal`; speed → do nothing.
 
+**Two-axis note (2026-06-15).** `:temporal?` bundles two orthogonal axes:
+**(H) history** (keep value history vs current-only) and **(S) storage**
+(write-through vs write-back). For *data* objects the bundle is intended
+(temporal = historied + write-through; non-temporal = current-only +
+write-back), and **perf-1.4 is the (S) work**. But **meta/code entities are
+pinned to write-through on (S)** (bind reads them) — so for code only (H) is
+free. That is exactly what **15.A-AST** sets (code = non-temporal on H →
+superseded definitions collapse + prune-collect), and it ships **independent of
+perf-1.4**. See the "15.A-AST spec" in the Deferred-Items Backlog.
+
 #### Implementation notes
 
 - **Bit placement:** stamp `:temporal?` on the materialized-struct header (a
@@ -2713,8 +2723,10 @@ field-read slot cache. Nothing perf-related happens before this.
 - *FFI*: 19.2 callback GC-rooting (needs a box→Ref GC-mark bridge) + arity>2;
   19.5 nested/array fields, by-value struct ARG auto-marshal, `[T size]` (trivial),
   field fact-materialization (deep idst, own arc); x86_64 libffi headers (non-arm CI).
-- *GC tail*: 15.A-AST (product call) → then 15.P + 15.R snapshot-auto-release
-  together (both = a type-aware sweep finalizer for non-Ref-reachable allocs).
+- *GC tail*: **15.A-AST now SPECCED + unblocked** (code entities non-temporal on
+  the history axis → superseded defs collectible; no perf-1.4 dep — see "15.A-AST
+  spec" below). 15.P (const-pool RRB finalizer) + 15.R snapshot-auto-release ride
+  on it (both = a type-aware sweep finalizer for non-Ref-reachable allocs).
 - *15.R lang sliver*: `[snap find:where:]` datalog-over-snapshot wiring (kernel
   done; lang wiring only). Small, independent.
 - *12.5 mmap RO segments*: pure load-perf; unlocks 15.R R4 mmap fault-in. Defer hard.
@@ -2797,6 +2809,69 @@ blockEvalShim:1921) stays alive for the fallback.
   (not imaged).
 - **Doc:** record the toggle + when to reach for it (debug a suspected miscompile;
   compare tree-walk vs VM result) in README REPL-commands section when ① ships.
+
+---
+
+### 15.A-AST spec — code-history collectibility via the temporal model (2026-06-15)
+
+**Problem (empirically confirmed 2026-06-15).** Redefine churn is not reclaimed.
+A probe redefining `#neg` 3× with `:prune` between swept only **1 entity** and
+total facts *grew* (21397→22924). Every method define/redefine leaves its old
+compiled-method entity + `:bytecode-stream` + constant-pool RRB + parsed AST tree
+in the store, unreclaimable. A long edit-heavy session accumulates without bound.
+(Verified separately: `:prune` does NOT break a live bytecode method — `#foo`→42
+survives prune — so this is pure missing reclamation, not a correctness bug.)
+
+**Framing — the temporal model already answers the policy question.** The
+perf-1.3 `:temporal?` bit conflates **two orthogonal axes**: (H) *history* —
+keep value history (`asOf:`/`history`) vs current-only; and (S) *storage* —
+write-through (facts canonical) vs write-back (struct canonical, reconcile at
+boundaries). perf-1.3 *bundles* them for data objects (temporal = write-through +
+historied; non-temporal = write-back + current-only), and **perf-1.4 is the
+storage-axis (S) work**. But **meta/code entities (vtables, methods, AST,
+bytecode, grammar) are pinned to write-through on (S)** — `bind` dispatches by
+reading them, so they can never be write-back. So for code only the **history
+axis (H) is free**, and 15.A-AST lives entirely on (H):
+
+> **Code/meta entities are non-temporal on the history axis by default.** A
+> redefine (`[VT #sel newM]`) collapses the superseded `[VT #sel oldM]` value on
+> compact (current-only), orphaning `oldM` + its AST/bytecode/pool, which
+> reachability-prune then reclaims.
+
+**This is DECOUPLED from perf-1.4** (which is the storage axis / write-back for
+*data* objects, gated on Phase 18). 15.A-AST ships without it.
+
+**User knob = the perf-1.3 API, applied to code.** `[SomeProto beTemporal]` flips
+(H) ON for that vt → keeps its method-definition history (a rare opt-in: a
+definition audit log / "undo to previous definition"). Default off = churn is
+collectible. Same one-bit/three-granularity mechanism; no new surface.
+
+**Malleability carve-out.** Non-temporal ≠ no source. The *current* definition's
+AST stays rooted (by the live install) → browse / edit / re-derive intact. Only
+*definition history* is dropped. Matches the `--strip=malleable` instinct (ship
+without AST; keep it live only while current).
+
+**Mechanical work to close (the actual code, all in/around `prune.zig`):**
+1. **Orphan-collection gap.** Superseded defs aren't swept today even under
+   current-only retention — find why (is `oldM` still reachable from a root? is
+   method-table value-history being retained past compact?) and make compact +
+   prune drop them. This is the core of 15.A-AST.
+2. **Root 2 under-roots tree-walker methods.** `markReachable` Root 2 seeds only
+   method values carrying `:bytecode-stream`; a tree-walker-installed method
+   (compile-fallback, or any install under `:eval-mode treewalk`) has none → it
+   would be wrongly swept. Fix Root 2 to seed *any* installed method value
+   (`[vt sel <closure/method>]` M_USER fact), bytecode or not.
+3. **15.P rides on this.** Once superseded methods actually sweep, their
+   constant-pool RRBs need the type-aware sweep finalizer (15.P) to be reclaimed
+   — so 15.P stops being "0 yield" and pairs naturally here.
+4. **`run-without-materialize` (Cluster ① churn)** is the same garbage class
+   (evaluated-line throwaway methods) — a current-only/non-temporal default for
+   these + orphan-collection subsumes it.
+
+**Status: SPEC, unblocked** (no perf-1.4 dependency). Product lean =
+**non-temporal code by default** (transient-REPL; bounds memory to the working
+set, not edit history). `:save`/`:load` + the fact store's own time-travel cover
+durable history; per-vt `beTemporal` covers the rare definition-audit case.
 
 ---
 
