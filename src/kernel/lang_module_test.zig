@@ -1928,3 +1928,25 @@ test "FFI struct-as-entity: [Module struct:fields:] + field sends (19.5)" {
     try testing.expectEqual(@as(i64, 8), ref_mod.untagSmallInt(evalLine(s, lang, "[Point size]", a)));
     _ = evalLine(s, lang, "[p free]", a);
 }
+
+test "17.3 three-way compare: <=> + compare: on SmallInt + String" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // SmallInt — both the `<=>` infix (3-char binary-op) and `compare:` keyword.
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(evalLine(s, lang, "[3 <=> 5]", a)));
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(evalLine(s, lang, "[5 <=> 5]", a)));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "[9 <=> 2]", a)));
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(evalLine(s, lang, "[3 compare: 5]", a)));
+    // String — lexicographic.
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(evalLine(s, lang, "[\"abc\" <=> \"abd\"]", a)));
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(evalLine(s, lang, "[\"abc\" compare: \"abc\"]", a)));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "[\"b\" <=> \"a\"]", a)));
+    // 3-char bump must not regress the 2-char `<=` / `>=` ops.
+    try testing.expectEqual(kernel_eids.TRUE_EID, ref_mod.untagEid(evalLine(s, lang, "[5 <= 5]", a)));
+    try testing.expectEqual(kernel_eids.FALSE_EID, ref_mod.untagEid(evalLine(s, lang, "[9 <= 2]", a)));
+}

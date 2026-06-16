@@ -576,15 +576,16 @@ fn buildGrammar() void {
         defineRule(grammar, "block-with-params", peg_seq(&parts));
     }
 
-    // binary-op = op-char op-char?   — one or two operator chars, so 2-char
-    // operators like `<=` / `>=` tokenize as one selector (Phase 17). The
-    // optional second char only matches another op-char, so `[a + b]` (space
-    // after `+`) still reads a single `+`. The CST byte-span IS the selector.
+    // binary-op = op-char op-char? op-char?   — one to three operator chars, so
+    // 2-char ops (`<=`/`>=`) and the 3-char `<=>` spaceship (Phase 17.3) tokenize
+    // as one selector. The optional chars only match another op-char, so `[a + b]`
+    // (space after `+`) still reads a single `+`. The CST byte-span IS the selector.
     {
         const op_ranges = [_]u8{ '+', '+', '-', '-', '*', '*', '/', '/', '<', '<', '>', '>', '=', '=', ',', ',' };
         const op_one = peg_charset(&op_ranges);
         const op_two = peg_charset(&op_ranges);
-        const op_parts = [_]u64{ untagEid(op_one), untagEid(peg_opt(op_two)) };
+        const op_three = peg_charset(&op_ranges);
+        const op_parts = [_]u64{ untagEid(op_one), untagEid(peg_opt(op_two)), untagEid(peg_opt(op_three)) };
         defineRule(grammar, "binary-op", peg_seq(&op_parts));
     }
 
@@ -1796,6 +1797,15 @@ fn smallintLtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
 fn smallintGtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
     return if (untagSmallInt(s.receiver) > untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+/// Three-way compare (Phase 17.3) — `[a <=> b]` / `[a compare: b]` → -1/0/1.
+/// nil for a non-integer argument (incomparable).
+fn smallintCompareImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    if (!isSmallInt(args[0])) return NIL;
+    const a = untagSmallInt(s.receiver);
+    const b = untagSmallInt(args[0]);
+    return mkSmallInt(if (a < b) -1 else if (a > b) 1 else 0);
 }
 
 fn smallintAsFloatImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
@@ -3104,6 +3114,18 @@ fn strLtImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     const order = std.mem.order(u8, stringBytes(s.receiver), stringBytes(args[0]));
     return if (order == .lt) mkEid(TRUE_EID) else mkEid(FALSE_EID);
 }
+/// Three-way lexicographic compare (Phase 17.3) — `[a <=> b]` / `[a compare: b]`
+/// → -1/0/1. nil for a non-string argument.
+fn strCompareImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isString(args[0])) return NIL;
+    const order = std.mem.order(u8, stringBytes(s.receiver), stringBytes(args[0]));
+    return mkSmallInt(switch (order) {
+        .lt => -1,
+        .eq => 0,
+        .gt => 1,
+    });
+}
 
 /// `[s copyFrom: lo to: hi]` — substring `[lo, hi)` (byte indices, clamped).
 fn strCopyFromToImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
@@ -3263,6 +3285,15 @@ fn installStdlib() void {
     // SmallInt `<=` / `>=` (completeness — had only `<`/`>`/`=`).
     _ = api.assert_fact(SMALLINT_VT, api.intern("<=".ptr, 2), mkEid(api.make_closure(@ptrCast(&smallintLeImpl), NIL)), g_module_eid);
     _ = api.assert_fact(SMALLINT_VT, api.intern(">=".ptr, 2), mkEid(api.make_closure(@ptrCast(&smallintGeImpl), NIL)), g_module_eid);
+
+    // Three-way compare (Phase 17.3) — both the `<=>` infix (3-char binary-op)
+    // and the `compare:` keyword surface map to one impl, on SmallInt + String.
+    const cmp_spaceship = api.intern("<=>".ptr, 3);
+    const cmp_keyword = api.intern("compare:".ptr, 8);
+    _ = api.assert_fact(SMALLINT_VT, cmp_spaceship, mkEid(api.make_closure(@ptrCast(&smallintCompareImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, cmp_keyword, mkEid(api.make_closure(@ptrCast(&smallintCompareImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(STRING_VT, cmp_spaceship, mkEid(api.make_closure(@ptrCast(&strCompareImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(STRING_VT, cmp_keyword, mkEid(api.make_closure(@ptrCast(&strCompareImpl), NIL)), g_module_eid);
 
     // Phase 17 string batch — native (byte-level). Birnam-composed string
     // methods (startsWith:/endsWith:/includes:/replace:with:/lines/words/<=,>,>=)
