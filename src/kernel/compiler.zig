@@ -40,6 +40,29 @@ pub const CompileError = error{
     OutOfMemory,
 };
 
+/// Top-level compilation environment (Cluster ①, 2026-06-15). When set,
+/// a free variable (no frame slot / capture) and an outermost-level
+/// `let`/`:=` lower to message sends against a persistent scope entity
+/// instead of failing with `VarNotInScope` — so REPL/script top-level
+/// statements compile to bytecode while keeping cross-line binding
+/// visibility and global access. The scope semantics live in the lang
+/// module's SCOPE_VT methods; the compiler only emits the sends, using
+/// the selector eids the lang module supplies here.
+pub const TopLevelEnv = struct {
+    /// `mkEid(top_scope_eid)` — receiver of the scope sends.
+    scope_const: Ref,
+    /// `lookup:` selector eid (1 arg: name symbol) → bound value or
+    /// an undefined-variable error value.
+    lookup_sel: u32,
+    /// `bind:value:` selector eid (2 args: name, value) → installs a
+    /// fresh binding in the scope, returns the value. (`let`)
+    bind_sel: u32,
+    /// `set:value:` selector eid (2 args: name, value) → mutates the
+    /// nearest existing binding, returns the value (or an error value
+    /// if unbound). (`:=`)
+    set_sel: u32,
+};
+
 /// Output of a single-method compile. Caller owns the byte slice +
 /// constant pool storage and is responsible for materializing them as
 /// fact-store-attached Refs before discarding the struct.
@@ -110,6 +133,10 @@ const State = struct {
     /// Capture specs for this method (parent-slot → my-local-slot).
     /// Ordered: spec index = position in the runtime captures array.
     captures: std.ArrayList(CaptureSpec),
+    /// Cluster ① — set (and threaded into child block states) when this
+    /// is a top-level statement compile. Null for ordinary method/block
+    /// compiles (a free var then stays `VarNotInScope`).
+    top_level: ?*const TopLevelEnv = null,
 
     fn deinit(self: *State) void {
         self.encoder.deinit(self.allocator);
@@ -159,7 +186,19 @@ pub fn compileMethod(
     store: *const FactStore,
     ast_root_eid: u64,
 ) CompileError!CompiledMethod {
-    return compileMethodInner(allocator, store, ast_root_eid, null, null);
+    return compileMethodInner(allocator, store, ast_root_eid, null, null, null);
+}
+
+/// Compile an arbitrary statement AST as a top-level method body in
+/// "top-level mode" (Cluster ①). Free variables and outermost `let`/`:=`
+/// lower to scope sends per `env`. Run the result with receiver = nil.
+pub fn compileTopLevel(
+    allocator: std.mem.Allocator,
+    store: *const FactStore,
+    stmt_ast_eid: u64,
+    env: *const TopLevelEnv,
+) CompileError!CompiledMethod {
+    return compileMethodInner(allocator, store, stmt_ast_eid, null, null, env);
 }
 
 /// Compile an AST_BLOCK_VT entity as a top-level method: block params
@@ -181,7 +220,7 @@ pub fn compileBlockAsMethod(
         if (ref_mod.isEid(p_ref)) first_param = ref_mod.untagEid(p_ref);
     }
 
-    return compileMethodInner(allocator, store, body_eid, first_param, null);
+    return compileMethodInner(allocator, store, body_eid, first_param, null, null);
 }
 
 /// Internal variant — supports a pre-populated parameter list for
@@ -194,6 +233,7 @@ fn compileMethodInner(
     ast_root_eid: u64,
     first_param_eid: ?u64,
     parent_state: ?*State,
+    top_level: ?*const TopLevelEnv,
 ) CompileError!CompiledMethod {
     var state = State{
         .allocator = allocator,
@@ -204,6 +244,7 @@ fn compileMethodInner(
         .scope = std.AutoHashMap(u64, u8).init(allocator),
         .parent_state = parent_state,
         .captures = std.ArrayList(CaptureSpec){},
+        .top_level = top_level,
     };
     // defer (not errdefer) so the scope map is always freed; the
     // owned lists are emptied by toOwnedSlice and become no-op cleanups.
@@ -347,6 +388,16 @@ fn compileLet(state: *State, ast_eid: u64) CompileError!void {
         return error.AstMissingValue;
     if (!ref_mod.isEid(init_ref)) return error.UnknownAstKind;
 
+    // Outermost-level `let` in top-level mode persists to the scope so
+    // the binding is visible to later REPL lines / script forms. A `let`
+    // inside a top-level block (parent_state != null) stays frame-local.
+    if (state.parent_state == null) {
+        if (state.top_level) |env| {
+            try emitScopeStore(state, env.scope_const, env.bind_sel, name_eid, ref_mod.untagEid(init_ref));
+            return;
+        }
+    }
+
     try compileExpr(state, ref_mod.untagEid(init_ref));
 
     // Allocate slot AFTER compiling init — the init expression cannot
@@ -365,24 +416,59 @@ fn compileLet(state: *State, ast_eid: u64) CompileError!void {
 /// flat — each block frame only ever reads from its immediate parent.
 fn compileVarRef(state: *State, ast_eid: u64) CompileError!void {
     const name_eid = try readNameEid(state, ast_eid);
-    const slot = try resolveVarSlot(state, name_eid);
-    state.encoder.pushLocal(state.allocator, slot) catch return error.OutOfMemory;
+    if (try resolveVarSlot(state, name_eid)) |slot| {
+        state.encoder.pushLocal(state.allocator, slot) catch return error.OutOfMemory;
+        return;
+    }
+    // Free variable: in top-level mode, resolve against the persistent
+    // scope at runtime (`[scope lookup: #name]`); otherwise it's an error.
+    const env = state.top_level orelse return error.VarNotInScope;
+    try emitScopeSend1(state, env.scope_const, env.lookup_sel, name_eid);
 }
 
 /// Find or capture-emit a slot for `name_eid`. Returns the slot index
-/// in `state`'s frame. Recurses up the parent chain; each level
-/// records a CaptureSpec mapping parent's slot to its own.
-fn resolveVarSlot(state: *State, name_eid: u64) CompileError!u8 {
+/// in `state`'s frame, or null if the name is not a local/param/capture
+/// anywhere up the enclosing-method chain (a free/global variable).
+/// Recurses up the parent chain; each level records a CaptureSpec
+/// mapping parent's slot to its own. On a total miss no capture slots
+/// are allocated (the parent recursion returns null before any append).
+fn resolveVarSlot(state: *State, name_eid: u64) CompileError!?u8 {
     if (state.scope.get(name_eid)) |slot| return slot;
 
-    const parent = state.parent_state orelse return error.VarNotInScope;
-    const parent_slot = try resolveVarSlot(parent, name_eid);
+    const parent = state.parent_state orelse return null;
+    const parent_slot = (try resolveVarSlot(parent, name_eid)) orelse return null;
 
     // Allocate a local slot in our frame to hold the captured value.
     const local_slot = state.allocSlot() catch return error.TooManyLocals;
     state.scope.put(name_eid, local_slot) catch return error.OutOfMemory;
     state.captures.append(state.allocator, .{ .parent_slot = parent_slot, .local_slot = local_slot }) catch return error.OutOfMemory;
     return local_slot;
+}
+
+/// Emit `[scope <sel> #name]` — push scope const, push the name as a
+/// symbol const, SEND_1. Used for top-level `lookup:`.
+fn emitScopeSend1(state: *State, scope_const: Ref, sel: u32, name_eid: u64) CompileError!void {
+    const scope_idx = try state.poolIndexFor(scope_const);
+    state.encoder.pushConst(state.allocator, scope_idx) catch return error.OutOfMemory;
+    const name_idx = try state.poolIndexFor(ref_mod.mkEid(name_eid));
+    state.encoder.pushConst(state.allocator, name_idx) catch return error.OutOfMemory;
+    const site = try bumpSendSite(state);
+    state.encoder.send1(state.allocator, sel, site) catch return error.OutOfMemory;
+}
+
+/// Emit `[scope <sel> #name value]` where `value` is produced by
+/// compiling `value_ast_eid` — push scope const, push name symbol const,
+/// compile the value expression, SEND_N(2). Used for top-level
+/// `bind:value:` (`let`) and `set:value:` (`:=`). The send's return is
+/// the bound value, matching the frame-local let/assign result.
+fn emitScopeStore(state: *State, scope_const: Ref, sel: u32, name_eid: u64, value_ast_eid: u64) CompileError!void {
+    const scope_idx = try state.poolIndexFor(scope_const);
+    state.encoder.pushConst(state.allocator, scope_idx) catch return error.OutOfMemory;
+    const name_idx = try state.poolIndexFor(ref_mod.mkEid(name_eid));
+    state.encoder.pushConst(state.allocator, name_idx) catch return error.OutOfMemory;
+    try compileExpr(state, value_ast_eid);
+    const site = try bumpSendSite(state);
+    state.encoder.sendN(state.allocator, sel, 2, site) catch return error.OutOfMemory;
 }
 
 /// Compile `name := expr`. Value of the assign expression is the
@@ -396,11 +482,16 @@ fn compileAssign(state: *State, ast_eid: u64) CompileError!void {
         return error.AstMissingValue;
     if (!ref_mod.isEid(value_ref)) return error.UnknownAstKind;
 
-    try compileExpr(state, ref_mod.untagEid(value_ref));
-
-    const slot = try resolveVarSlot(state, name_eid);
-    state.encoder.storeLocal(state.allocator, slot) catch return error.OutOfMemory;
-    state.encoder.pushLocal(state.allocator, slot) catch return error.OutOfMemory;
+    if (try resolveVarSlot(state, name_eid)) |slot| {
+        try compileExpr(state, ref_mod.untagEid(value_ref));
+        state.encoder.storeLocal(state.allocator, slot) catch return error.OutOfMemory;
+        state.encoder.pushLocal(state.allocator, slot) catch return error.OutOfMemory;
+        return;
+    }
+    // Free variable assignment: in top-level mode, mutate the nearest
+    // existing scope binding at runtime (`[scope set: #name value]`).
+    const env = state.top_level orelse return error.VarNotInScope;
+    try emitScopeStore(state, env.scope_const, env.set_sel, name_eid, ref_mod.untagEid(value_ref));
 }
 
 fn readNameEid(state: *State, ast_eid: u64) CompileError!u64 {
@@ -430,7 +521,9 @@ fn compileBlock(state: *State, ast_eid: u64) CompileError!void {
     // Recursively compile the block body as its own method, threading
     // current state as parent so VAR_REF in the body can resolve outer
     // locals via the capture chain.
-    var child = try compileMethodInner(state.allocator, state.store, body_eid, first_param, state);
+    // Thread top_level into the child so a free var / `:=` inside a
+    // top-level block still resolves to the persistent scope.
+    var child = try compileMethodInner(state.allocator, state.store, body_eid, first_param, state, state.top_level);
     errdefer child.deinit(state.allocator);
 
     // Reserve pool slot + record child for materialize-time patching.
