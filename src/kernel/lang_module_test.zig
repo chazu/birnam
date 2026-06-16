@@ -1384,6 +1384,29 @@ test "errors: arithmetic type-mismatch + integer overflow are kinded errors (17.
     try testing.expectEqual(@as(i64, -7), ref_mod.untagSmallInt(evalLine(s, lang, "[0 - 7]", a)));
 }
 
+// Phase 16 deferred nicety — block-param destructuring `[:#[a b]| …]`.
+test "block-param destructuring binds vector elements" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Single destructured param: elements bind to a, b.
+    try testing.expectEqual(@as(i64, 30), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[:#[a b]| [a + b]] value: #[10 20]]", a)));
+    // Three-element pattern.
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[:#[x y z]| [[x + y] + z]] value: #[1 2 3]]", a)));
+    // Destructured param + a normal param mixed (arity 2 via value:value:).
+    try testing.expectEqual(@as(i64, 35), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[:#[a b] :c | [[a + b] + c]] value: #[10 20] value: 5]", a)));
+    // A normal single-param block is unaffected (regression guard).
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[:n| [n * 2]] value: 21]", a)));
+}
+
 // Result error model — Stage 5: on:do: catch combinator.
 test "errors: on:do: catches by kind, wildcard, passes through" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);

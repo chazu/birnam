@@ -1897,7 +1897,8 @@ select:/count/detect:/asVector moved to OBJECT_VT over `inject:into:`, so
 vectors/ranges/maps/strings all answer one protocol (each provides inject:into:).
 (3) strings dispatch (STRING_VT) — size/at:/`,`/`=`/asSymbol/do:/inject:into:
 (byte seq). (4) `let #[a b] := seq` destructuring (desugar → temp + indexed
-lets). Remaining nicety: block-param destructuring (param-position pattern).
+lets). Block-param destructuring (param-position pattern) SHIPPED 2026-06-16 —
+reuses the same `buildDestructureLets` desugar (see Language niceties below).
 
 ### Tiers A+B+C+D SHIPPED 2026-06-06 (A-D merged)
 
@@ -1909,7 +1910,8 @@ asserted a NIL value. D2 `detect:` (self-hosted via isNil) + `min:`/`max:`/
 `ceil`/`round` (Zig prims) + `abs`/`even`/`odd` (self-hosted). D4
 `doesNotUnderstand:` — sendN routes a dispatch miss to SEL_DNU (kernel eid 198)
 if a handler exists (else NIL); default ERROR_VT diagnostic rendered by message.
-**Deferred:** destructuring `[:a :b|]` (syntax-heavy), seq-unification for
+**Deferred:** block-param destructuring `[:#[a b]| …]` (SHIPPED 2026-06-16 — see
+Language niceties), seq-unification for
 strings/ranges (needs those types), `reduced` early-out, `&`/`|` (`|` collides
 with the block-param bar).
 
@@ -2802,8 +2804,14 @@ field-read slot cache. Nothing perf-related happens before this.
 - *Language niceties*: **`<=>`/`compare:` SHIPPED 2026-06-16** (17.3 — SmallInt/String,
   3-char binary-op bump). **`&`/`|` eager boolean SHIPPED 2026-06-16** (17.5 — `|`
   collision resolved by PEG choice order: block forms + `|>` pipe matched before
-  bracket-binary). **`[T size]` SHIPPED 2026-06-16** (19.5). Remaining: block-param
-  destructuring `[:#[a b]|]` (syntax-heavy, low value).
+  bracket-binary). **`[T size]` SHIPPED 2026-06-16** (19.5). **block-param
+  destructuring `[:#[a b]| …]` SHIPPED 2026-06-16** — `block-param` grammar now
+  accepts a `destructure-pattern`; a destructured param desugars to a fresh temp
+  param + leading `let a := [tmp at: k]` bindings reusing the shared
+  `buildDestructureLets` helper (also now backs `let #[a b] := expr`), so the
+  compiler/evaluator need no param-pattern awareness. Tests: lang_module_test
+  71/71 (single/multi/mixed-arity + normal-param regression). No language niceties
+  remaining from this list.
 
 ### Cluster ① — top-level eval → bytecode (spec + OPEN FORK)
 

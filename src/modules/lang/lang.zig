@@ -566,11 +566,20 @@ fn buildGrammar() void {
         defineRule(grammar, "block-bare", peg_seq(&parts));
     }
 
-    // block-param = ":" identifier
+    // block-param = ":" (destructure-pattern | identifier)
+    // A destructure-pattern param `:#[a b]` binds the elements of a vector arg —
+    // desugared to a fresh temp param + leading `let`s in the body (Phase 16
+    // deferred nicety). `destructure-pattern` is defined later in the same
+    // grammar build; rule-refs resolve by interned name at parse time, so the
+    // forward reference is fine.
     {
+        const alt = [_]u64{
+            untagEid(peg_rule_ref("destructure-pattern")),
+            untagEid(peg_rule_ref("identifier")),
+        };
         const parts = [_]u64{
             untagEid(peg_literal(":")),
-            untagEid(peg_rule_ref("identifier")),
+            untagEid(peg_choice(&alt)),
         };
         defineRule(grammar, "block-param", peg_seq(&parts));
     }
@@ -1048,6 +1057,44 @@ fn quoteKeywordClause(kw_cst: u64) Ref {
     return api.make_rrb(&parts, 3);
 }
 
+/// Build the `let <id_k> := [tmp at: k]` chain for a `destructure-pattern` CST
+/// node, binding each pattern identifier to the k-th element of `tmp_eid`.
+/// Returns the chain head/tail (linked via `:next-sibling`), or {0,0} if empty.
+/// Shared by `let #[a b] := expr` and block-param destructuring `[:#[a b]| …]`.
+fn buildDestructureLets(pattern_cst: u64, tmp_eid: u64, start: usize, end: usize) struct { first: u64, last: u64 } {
+    const api = g_api.?;
+    const at_sel = api.intern("at:".ptr, 3);
+    var first: u64 = 0;
+    var last: u64 = 0;
+    var k: i64 = 0;
+    var pc = cstFirstChild(pattern_cst);
+    while (pc != 0) : (pc = cstNextSibling(pc)) {
+        if (cstRuleName(pc) != rn_identifier) continue;
+        const id_span = cstByteRange(pc);
+        const nb = g_source[id_span.start..id_span.end];
+        const name_eid = api.intern(nb.ptr, nb.len);
+        const tmp_ref = newAstNode(AST_VAR_REF_VT, start, end);
+        _ = api.assert_fact(tmp_ref, ATTR_AST_NAME, mkEid(tmp_eid), M_USER);
+        const idx_lit = newAstNode(AST_LITERAL_VT, start, end);
+        _ = api.assert_fact(idx_lit, ATTR_AST_VALUE, mkSmallInt(k), M_USER);
+        const send = newAstNode(AST_KEYWORD_SEND_VT, start, end);
+        _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(tmp_ref), M_USER);
+        _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(at_sel), M_USER);
+        _ = api.assert_fact(send, ATTR_AST_FIRST_ARG, mkEid(idx_lit), M_USER);
+        const binding = newAstNode(AST_LET_VT, start, end);
+        _ = api.assert_fact(binding, ATTR_AST_NAME, mkEid(name_eid), M_USER);
+        _ = api.assert_fact(binding, ATTR_AST_LET_INIT, mkEid(send), M_USER);
+        if (first == 0) {
+            first = binding;
+        } else {
+            _ = api.assert_fact(last, ATTR_AST_NEXT_SIBLING, mkEid(binding), M_USER);
+        }
+        last = binding;
+        k += 1;
+    }
+    return .{ .first = first, .last = last };
+}
+
 fn desugar(cst_eid: u64) u64 {
     const api = g_api.?;
     const rn = cstRuleName(cst_eid);
@@ -1159,43 +1206,77 @@ fn desugar(cst_eid: u64) u64 {
         return ast;
     }
     if (rn == rn_block_with_params) {
-        // Children: ws + block-params + ws + expression. Find block-params
-        // entry (list of block-param children, each carrying an identifier),
-        // then expression as the body.
+        // Children: ws + block-params + ws + stmt-list. Each block-param is
+        // either `:name` (identifier) or `:#[a b]` (destructure-pattern). A
+        // destructured param becomes a fresh temp param + `let a := [tmp at: 0]`
+        // bindings prepended to the body — reusing the let-destructure machinery,
+        // so the compiler/evaluator need no param-pattern awareness.
         var c = cstFirstChild(cst_eid);
         var first_param_eid: u64 = 0;
         var last_param_eid: u64 = 0;
         var body_ast: u64 = 0;
+        var dt_first: u64 = 0; // head of the prepended destructure-`let` chain
+        var dt_last: u64 = 0;
         while (c != 0) : (c = cstNextSibling(c)) {
             const crn = cstRuleName(c);
             if (crn == rn_block_params) {
-                // Walk block-params children — each block-param has an
-                // identifier child whose name we intern.
                 var p = cstFirstChild(c);
                 while (p != 0) : (p = cstNextSibling(p)) {
                     if (cstRuleName(p) != rn_block_param) continue;
+                    // The param's payload is a destructure-pattern OR an identifier.
+                    var param_name_eid: u64 = 0;
                     var ic = cstFirstChild(p);
                     while (ic != 0) : (ic = cstNextSibling(ic)) {
-                        if (cstRuleName(ic) == rn_identifier) {
+                        const icrn = cstRuleName(ic);
+                        if (icrn == rn_destructure_pattern) {
+                            // Fresh temp param name; bind its elements in the body.
+                            var nbuf: [24]u8 = undefined;
+                            const tn = std.fmt.bufPrint(&nbuf, "__bp{d}", .{g_destructure_counter}) catch "__bp";
+                            g_destructure_counter += 1;
+                            param_name_eid = api.intern(tn.ptr, tn.len);
+                            const lets = buildDestructureLets(ic, param_name_eid, span.start, span.end);
+                            if (lets.first != 0) {
+                                if (dt_first == 0) {
+                                    dt_first = lets.first;
+                                } else {
+                                    _ = api.assert_fact(dt_last, ATTR_AST_NEXT_SIBLING, mkEid(lets.first), M_USER);
+                                }
+                                dt_last = lets.last;
+                            }
+                            break;
+                        } else if (icrn == rn_identifier) {
                             const id_span = cstByteRange(ic);
                             const bytes = g_source[id_span.start..id_span.end];
-                            const name_eid = api.intern(bytes.ptr, bytes.len);
-                            // Allocate a param-entry entity carrying the name.
-                            const pe = api.alloc_eid();
-                            _ = api.assert_fact(pe, ATTR_AST_NAME, mkEid(name_eid), M_USER);
-                            if (first_param_eid == 0) {
-                                first_param_eid = pe;
-                            } else {
-                                _ = api.assert_fact(last_param_eid, ATTR_AST_NEXT_SIBLING, mkEid(pe), M_USER);
-                            }
-                            last_param_eid = pe;
+                            param_name_eid = api.intern(bytes.ptr, bytes.len);
                             break;
                         }
                     }
+                    if (param_name_eid == 0) continue;
+                    const pe = api.alloc_eid();
+                    _ = api.assert_fact(pe, ATTR_AST_NAME, mkEid(param_name_eid), M_USER);
+                    if (first_param_eid == 0) {
+                        first_param_eid = pe;
+                    } else {
+                        _ = api.assert_fact(last_param_eid, ATTR_AST_NEXT_SIBLING, mkEid(pe), M_USER);
+                    }
+                    last_param_eid = pe;
                 }
             } else if (crn == rn_stmt_list) {
                 body_ast = desugar(c);
             }
+        }
+        // Splice the destructure `let`s ahead of the body's statements. If the
+        // body is itself a STMT_SEQ, flatten its statement chain after the lets;
+        // otherwise treat the single body expr as the trailing statement.
+        if (dt_first != 0) {
+            var body_first = body_ast;
+            if (body_ast != 0 and api.query_eavt(body_ast, ATTR_VTABLE) == mkEid(AST_STMT_SEQ_VT)) {
+                body_first = api.query_eavt(body_ast, ATTR_AST_STMT_FIRST) >> 3; // eid payload
+            }
+            if (body_first != 0) _ = api.assert_fact(dt_last, ATTR_AST_NEXT_SIBLING, mkEid(body_first), M_USER);
+            const seq = newAstNode(AST_STMT_SEQ_VT, span.start, span.end);
+            _ = api.assert_fact(seq, ATTR_AST_STMT_FIRST, mkEid(dt_first), M_USER);
+            body_ast = seq;
         }
         const ast = newAstNode(AST_BLOCK_VT, span.start, span.end);
         if (body_ast != 0) {
@@ -1265,36 +1346,14 @@ fn desugar(cst_eid: u64) u64 {
         const tmp_name = std.fmt.bufPrint(&nbuf, "__dt{d}", .{g_destructure_counter}) catch "__dt";
         g_destructure_counter += 1;
         const tmp_eid = api.intern(tmp_name.ptr, tmp_name.len);
-        const at_sel = api.intern("at:".ptr, 3);
 
         const tmp_let = newAstNode(AST_LET_VT, span.start, span.end);
         _ = api.assert_fact(tmp_let, ATTR_AST_NAME, mkEid(tmp_eid), M_USER);
         if (init_ast != 0) _ = api.assert_fact(tmp_let, ATTR_AST_LET_INIT, mkEid(init_ast), M_USER);
 
-        var last = tmp_let;
-        var k: i64 = 0;
         if (pattern_eid != 0) {
-            var pc = cstFirstChild(pattern_eid);
-            while (pc != 0) : (pc = cstNextSibling(pc)) {
-                if (cstRuleName(pc) != rn_identifier) continue;
-                const id_span = cstByteRange(pc);
-                const nb = g_source[id_span.start..id_span.end];
-                const name_eid = api.intern(nb.ptr, nb.len);
-                const tmp_ref = newAstNode(AST_VAR_REF_VT, span.start, span.end);
-                _ = api.assert_fact(tmp_ref, ATTR_AST_NAME, mkEid(tmp_eid), M_USER);
-                const idx_lit = newAstNode(AST_LITERAL_VT, span.start, span.end);
-                _ = api.assert_fact(idx_lit, ATTR_AST_VALUE, mkSmallInt(k), M_USER);
-                const send = newAstNode(AST_KEYWORD_SEND_VT, span.start, span.end);
-                _ = api.assert_fact(send, ATTR_AST_RECEIVER, mkEid(tmp_ref), M_USER);
-                _ = api.assert_fact(send, ATTR_AST_SELECTOR, mkEid(at_sel), M_USER);
-                _ = api.assert_fact(send, ATTR_AST_FIRST_ARG, mkEid(idx_lit), M_USER);
-                const binding = newAstNode(AST_LET_VT, span.start, span.end);
-                _ = api.assert_fact(binding, ATTR_AST_NAME, mkEid(name_eid), M_USER);
-                _ = api.assert_fact(binding, ATTR_AST_LET_INIT, mkEid(send), M_USER);
-                _ = api.assert_fact(last, ATTR_AST_NEXT_SIBLING, mkEid(binding), M_USER);
-                last = binding;
-                k += 1;
-            }
+            const lets = buildDestructureLets(pattern_eid, tmp_eid, span.start, span.end);
+            if (lets.first != 0) _ = api.assert_fact(tmp_let, ATTR_AST_NEXT_SIBLING, mkEid(lets.first), M_USER);
         }
         const seq = newAstNode(AST_STMT_SEQ_VT, span.start, span.end);
         _ = api.assert_fact(seq, ATTR_AST_STMT_FIRST, mkEid(tmp_let), M_USER);
