@@ -1950,3 +1950,24 @@ test "17.3 three-way compare: <=> + compare: on SmallInt + String" {
     try testing.expectEqual(kernel_eids.TRUE_EID, ref_mod.untagEid(evalLine(s, lang, "[5 <= 5]", a)));
     try testing.expectEqual(kernel_eids.FALSE_EID, ref_mod.untagEid(evalLine(s, lang, "[9 <= 2]", a)));
 }
+
+test "17.5 eager & / | and the | block-bar disambiguation" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Eager boolean and/or.
+    try testing.expectEqual(kernel_eids.FALSE_EID, ref_mod.untagEid(evalLine(s, lang, "[true & false]", a)));
+    try testing.expectEqual(kernel_eids.TRUE_EID, ref_mod.untagEid(evalLine(s, lang, "[true & true]", a)));
+    try testing.expectEqual(kernel_eids.TRUE_EID, ref_mod.untagEid(evalLine(s, lang, "[false | true]", a)));
+    try testing.expectEqual(kernel_eids.FALSE_EID, ref_mod.untagEid(evalLine(s, lang, "[false | false]", a)));
+    try testing.expectEqual(kernel_eids.TRUE_EID, ref_mod.untagEid(evalLine(s, lang, "[[3 < 5] & [2 < 9]]", a)));
+    // `|` inside a block body must still mean eager-or, and the block-param bar
+    // / no-param bar must still parse (choice order: block forms before binary).
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(evalLine(s, lang, "[[:x | [x + 1]] value: 5]", a)));
+    const filtered = evalLine(s, lang, "[#[1 2 3 4] select: [:n | [[n > 1] & [n < 4]]]]", a);
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send1(filtered, s.interner.str_to_eid.get("at:").?, ref_mod.mkSmallInt(0).?)));
+}

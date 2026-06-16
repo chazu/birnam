@@ -581,7 +581,7 @@ fn buildGrammar() void {
     // as one selector. The optional chars only match another op-char, so `[a + b]`
     // (space after `+`) still reads a single `+`. The CST byte-span IS the selector.
     {
-        const op_ranges = [_]u8{ '+', '+', '-', '-', '*', '*', '/', '/', '<', '<', '>', '>', '=', '=', ',', ',' };
+        const op_ranges = [_]u8{ '+', '+', '-', '-', '*', '*', '/', '/', '<', '<', '>', '>', '=', '=', ',', ',', '&', '&', '|', '|' };
         const op_one = peg_charset(&op_ranges);
         const op_two = peg_charset(&op_ranges);
         const op_three = peg_charset(&op_ranges);
@@ -3609,6 +3609,25 @@ fn falseOrImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = .{ s, n };
     return g_api.?.send0(a[0], sel_value_g);
 }
+// Eager `&` / `|` (Phase 17.5) — the argument is an already-evaluated value, not
+// a block (that's the difference from short-circuit `and:`/`or:`). Smalltalk
+// semantics: `true & x` = x, `false & x` = false, `true | x` = true, `false | x` = x.
+fn trueAmpImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    return a[0];
+}
+fn falseAmpImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(FALSE_EID);
+}
+fn truePipeImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkEid(TRUE_EID);
+}
+fn falsePipeImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    return a[0];
+}
 
 // -- Phase 16 Tier D: number protocol -------------------------------------
 
@@ -3815,6 +3834,15 @@ fn installBoolNil() void {
     _ = api.assert_fact(FALSE_VT, and_sel, mkEid(api.make_closure(@ptrCast(&falseAndImpl), NIL)), g_module_eid);
     _ = api.assert_fact(TRUE_VT, or_sel, mkEid(api.make_closure(@ptrCast(&trueOrImpl), NIL)), g_module_eid);
     _ = api.assert_fact(FALSE_VT, or_sel, mkEid(api.make_closure(@ptrCast(&falseOrImpl), NIL)), g_module_eid);
+    // Eager `&` / `|` (Phase 17.5). `|` now tokenizes as a binary-op char; the
+    // block-param bar (`[:x | …]` / `[| …]`) and `|>` pipe are matched by their
+    // own rules ahead of bracket-binary, so `[a | b]` only means eager-or.
+    const amp_sel = api.intern("&".ptr, 1);
+    const pipe_sel = api.intern("|".ptr, 1);
+    _ = api.assert_fact(TRUE_VT, amp_sel, mkEid(api.make_closure(@ptrCast(&trueAmpImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, amp_sel, mkEid(api.make_closure(@ptrCast(&falseAmpImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(TRUE_VT, pipe_sel, mkEid(api.make_closure(@ptrCast(&truePipeImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FALSE_VT, pipe_sel, mkEid(api.make_closure(@ptrCast(&falsePipeImpl), NIL)), g_module_eid);
 }
 
 fn installCollections() void {
