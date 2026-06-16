@@ -2914,12 +2914,30 @@ was two pre-existing bugs, both now fixed:
    live methods + nested-block methods + closures-bound-to-vars survive `:prune`.
    Regression test in lang_module_test. Suite 39 files / 64 lang green.
 
-**Still open (smaller, separate):** **15.P** const-pool RRB finalizer (now pairs
-naturally — superseded methods' pools become reclaimable on sweep);
-**`run-without-materialize`** (an optional optimization to avoid creating the
-throwaway top-level method entities in the first place — pure perf, not
-correctness, now that prune collects them); parsed-AST churn for non-defining
-lines (collected by prune already via the same dead-tree sweep).
+**SUSTAINABILITY — CLOSED 2026-06-16** (commits 84..CST→M_USER, ..auto-prune).
+Measuring a long churn session exposed the *dominant* leak was NOT method churn
+(M_USER working set was flat at ~616) but the **PEG parser's CST nodes**: every
+parsed line asserted its CST tree under the grammar's MODULE eid (CODE), and
+prune never touches CODE → ~114 CODE facts/line leaked forever (facts-kept grew
+77k→134k→191k…). Fixes:
+1. **CST → M_USER** (peg.zig matchRule/parse): parse-result CST is per-parse
+   runtime data (consumed by desugar→AST, then dead), so prune now collects it.
+   3000-line churn now plateaus at 2853 facts kept (was unbounded).
+2. **Auto-prune** (prune.maybePrune, wired in shell at the line boundary):
+   growth-triggered (30k-entity high-water), gated to current-only retention +
+   no live snapshots, runs before auto-gc. A no-manual-`:prune` session now stays
+   bounded hands-free; live vars/methods survive the auto-prunes. Mirrors the
+   existing auto-`:gc`.
+Net: REPL/script memory is now **predictable + sustainable without manual
+intervention** — auto-prune (facts) + auto-gc (heap), both growth-gated at the
+quiescent line boundary.
+
+**Still open (genuinely minor):** **15.P** const-pool RRB *heap-byte* finalizer —
+prune now drops a swept method's `:constant-pool` FACT, but the RRB's kernel-
+allocated tree bytes aren't freed (not in a swept arena). Only methods-with-pools
+(nested blocks / non-inline literals), small per method. Low yield; defer until a
+measured heap-growth problem points at it. **`run-without-materialize`** — pure
+perf now (prune collects the entities); optional.
 
 **Status: SPEC, unblocked** (no perf-1.4 dependency). **Product policy LOCKED
 2026-06-15: non-temporal code by default** (transient-REPL; bounds memory to the
