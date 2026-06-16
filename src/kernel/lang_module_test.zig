@@ -23,6 +23,14 @@ const boxed = @import("boxed.zig");
 const freeze = @import("freeze.zig");
 const ffi_module = @import("ffi_module.zig");
 const prune = @import("prune.zig");
+const mcache = @import("mcache.zig");
+
+/// Assert a Ref is exactly SmallInt(want). Checks the tag first so a regression
+/// that drops/garbles the value fails cleanly instead of panicking in untagSmallInt.
+fn expectInt(want: i64, r: Ref) !void {
+    try testing.expect(ref_mod.isSmallInt(r));
+    try testing.expectEqual(want, ref_mod.untagSmallInt(r));
+}
 
 const Ref = ref_mod.Ref;
 
@@ -349,14 +357,22 @@ test "15.A-AST: top-level method def + closure-in-var survive :prune; churn swee
     _ = evalTopLevel(s.api, s.interner, lang, "[[3 vtable] method: #pfoo do: [| 42]]", a, &ok);
     try testing.expect(ok);
     ok = false;
-    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalTopLevel(s.api, s.interner, lang, "[3 pfoo]", a, &ok)));
+    try expectInt(42, evalTopLevel(s.api, s.interner, lang, "[3 pfoo]", a, &ok));
+
+    // A method with NESTED blocks (its block children live in its constant pool;
+    // prune must mark them forward via pool-descent, not the removed over-seed).
+    ok = false;
+    _ = evalTopLevel(s.api, s.interner, lang, "[[3 vtable] method: #pbig do: [| [[self < 10] ifTrue: [| 100] ifFalse: [| 200]]]]", a, &ok);
+    try testing.expect(ok);
+    ok = false;
+    try expectInt(100, evalTopLevel(s.api, s.interner, lang, "[3 pbig]", a, &ok));
 
     // A closure BOUND to a top-level var references its block method via an
     // in-memory pointer — prune must keep it alive (closure-aware marking).
     ok = false;
     _ = evalTopLevel(s.api, s.interner, lang, "let pf := [:x | [x + 1]]", a, &ok);
     ok = false;
-    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(evalTopLevel(s.api, s.interner, lang, "[pf value: 5]", a, &ok)));
+    try expectInt(6, evalTopLevel(s.api, s.interner, lang, "[pf value: 5]", a, &ok));
 
     // Generate throwaway top-level churn, then prune.
     var i: usize = 0;
@@ -367,25 +383,66 @@ test "15.A-AST: top-level method def + closure-in-var survive :prune; churn swee
     const stats = try prune.pruneReachable(s.store, s.table, a);
     try testing.expect(stats.swept_entities > 0); // dead top-level/throwaway trees collected
 
-    // ROBUST (cache-independent): the install FACT survived prune AND is a proper
-    // :bytecode-stream method — not a raw closure (the Cluster ① regression) and
-    // not dropped (the Root-2 / closure-aware bug). Reading facts directly cannot
-    // be fooled by a stale dispatch cache, which is what masked the original bug.
-    const pfoo_sel = s.interner.str_to_eid.get("pfoo").?;
-    const install = s.store.currentValue(kernel_eids.SMALLINT_VT, pfoo_sel) orelse
-        return error.MethodInstallDroppedByPrune;
-    try testing.expect(ref_mod.isEid(install));
-    try testing.expect(s.store.currentValue(ref_mod.untagEid(install), kernel_eids.ATTR_BYTECODE_STREAM) != null);
+    // ROBUST (cache-independent): each method's install FACT survived prune AND is
+    // a proper :bytecode-stream method — not a raw closure (the Cluster ①
+    // regression) and not dropped (the Root-2 / closure-aware bug). Reading facts
+    // directly cannot be fooled by a stale dispatch cache (what masked the bug).
+    for ([_][]const u8{ "pfoo", "pbig" }) |name| {
+        const sel = s.interner.str_to_eid.get(name).?;
+        const install = s.store.currentValue(kernel_eids.SMALLINT_VT, sel) orelse
+            return error.MethodInstallDroppedByPrune;
+        try testing.expect(ref_mod.isEid(install));
+        try testing.expect(s.store.currentValue(ref_mod.untagEid(install), kernel_eids.ATTR_BYTECODE_STREAM) != null);
+    }
 
     // Force a COLD rebind (drop any stale cache) so the re-dispatch below reflects
-    // the real post-prune store, not a cache hit. Both live things still work.
-    @import("mcache.zig").clearAll();
+    // the real post-prune store, not a cache hit. All three live things still work.
+    mcache.clearAll();
     ok = false;
-    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalTopLevel(s.api, s.interner, lang, "[3 pfoo]", a, &ok)));
+    try expectInt(42, evalTopLevel(s.api, s.interner, lang, "[3 pfoo]", a, &ok));
     try testing.expect(ok);
     ok = false;
-    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(evalTopLevel(s.api, s.interner, lang, "[pf value: 5]", a, &ok)));
+    try expectInt(100, evalTopLevel(s.api, s.interner, lang, "[3 pbig]", a, &ok));
     try testing.expect(ok);
+    ok = false;
+    try expectInt(6, evalTopLevel(s.api, s.interner, lang, "[pf value: 5]", a, &ok));
+    try testing.expect(ok);
+}
+
+// NOTE on the prune mcache flush: it is NOT independently unit-tested here on
+// purpose. `compact` re-asserts every kept fact, which fires the per-attribute
+// mcache flush hook — so a *kept* install's cache entry is invalidated whether or
+// not prune calls `mcache.clearAll()`. The explicit `clearAll()` in prune only
+// matters for a *dropped* install whose attr has no surviving fact (a stale entry
+// → freed Closure → use-after-free); the regression-causing case (a method install
+// being dropped at all) is what the cache-independent fact assertions in the test
+// above actually guard. A test of the dropped-install path would have to sweep a
+// live-cached method, which the install-rooting fix now prevents for real methods.
+
+test "15.A-AST: prelude methods are CODE-provenance (not M_USER)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // `min:` is installed by the prelude (installSourceMethod). Its method ENTITY
+    // must be materialized under the module eid (CODE) — reconstructed each boot,
+    // not imaged, never swept as user data — NOT M_USER. (If this regresses to
+    // M_USER, prune can't root it by its install and images bloat with it.)
+    const min_sel = s.interner.str_to_eid.get("min:").?;
+    const m_ref = s.store.currentValue(kernel_eids.SMALLINT_VT, min_sel) orelse return error.NoMinMethod;
+    try testing.expect(ref_mod.isEid(m_ref));
+    const m_eid = ref_mod.untagEid(m_ref);
+
+    var it = s.store.meatIter();
+    var saw: bool = false;
+    while (it.next()) |f| {
+        if (f.e != m_eid) continue;
+        saw = true;
+        try testing.expect(f.m != kernel_eids.M_USER); // CODE provenance, not user data
+    }
+    try testing.expect(saw); // the method entity has facts (and they're all CODE)
 }
 
 test "DEMO 16 deferred: strings — size/at:/,/=/asSymbol + seq protocol" {
