@@ -2703,6 +2703,26 @@ fn queryVarName(ref: Ref) ?[]const u8 {
     return b[1..];
 }
 
+/// If `ref` is a comparison-operator symbol (the middle term of a predicate
+/// clause), return its query op code (0=eq,1=ne,2=lt,3=le,4=gt,5=ge); else null
+/// (the clause is a triple). Named ops — `#<` won't parse (`<` is not an
+/// identifier char), so predicates read `#[?a #lt ?b]`.
+fn predicateOp(ref: Ref) ?u32 {
+    if (!isEid(ref)) return null;
+    const nm = g_api.?.symbol_name(ref >> 3);
+    if (!isString(nm)) return null;
+    const b = stringBytes(nm);
+    const ops = [_]struct { n: []const u8, op: u32 }{
+        .{ .n = "eq", .op = 0 }, .{ .n = "ne", .op = 1 },
+        .{ .n = "lt", .op = 2 }, .{ .n = "le", .op = 3 },
+        .{ .n = "gt", .op = 4 }, .{ .n = "ge", .op = 5 },
+    };
+    for (ops) |o| {
+        if (std.mem.eql(u8, b, o.n)) return o.op;
+    }
+    return null;
+}
+
 /// Encode one clause term for the query builder: a `?var` → (kind=1, var idx);
 /// any other value → (kind=0, the constant Ref).
 fn encodeTerm(q: ?*anyopaque, ref: Ref, kind: *u32, val: *u64) void {
@@ -2715,12 +2735,16 @@ fn encodeTerm(q: ?*anyopaque, ref: Ref, kind: *u32, val: *u64) void {
     }
 }
 
-/// Core of `findAll:where:[asOf:]`. `find_ref` is either a single `?var` (result
-/// = a flat vector of its bindings) or a `#[?a ?b …]` vector of `?var`s (result =
-/// a vector of tuple-vectors, one column per find var, in order). `where` is a
-/// vector of 3-element `#[e a v]` clause-vectors. `asof` (when non-null) pins the
-/// query to the view as of that tx. Set semantics.
-fn runDatalogQuery(find_ref: Ref, where: Ref, asof: ?u64) Ref {
+/// History window for a query: none, or pinned via `asOf:`/`since:`/`between:and:`.
+const TimeMod = union(enum) { none, asof: u64, since: u64, between: [2]u64 };
+
+/// Core of `findAll:where:[asOf:/since:/between:and:]` (+ `[snap find:where:]`).
+/// `find_ref` is either a single `?var` (result = a flat vector of its bindings)
+/// or a `#[?a ?b …]` vector of `?var`s (result = a vector of tuple-vectors, one
+/// column per find var, in order). `where` is a vector of clause-vectors — a
+/// triple `#[e a v]`, or a predicate `#[lhs #lt rhs]` (named op symbol in the
+/// middle). `tmod` pins the history window. Set semantics.
+fn runDatalogQuery(find_ref: Ref, where: Ref, tmod: TimeMod) Ref {
     const api = g_api.?;
     const q = api.make_query() orelse return mkRuntimeError("findAll: out of memory");
     defer api.free_query(q);
@@ -2747,20 +2771,34 @@ fn runDatalogQuery(find_ref: Ref, where: Ref, asof: ?u64) Ref {
     var ci: u64 = 0;
     while (ci < nclauses) : (ci += 1) {
         const clause = api.rrb_nth(where, ci);
-        if (api.rrb_len(clause) != 3) return mkRuntimeError("findAll: each clause must be #[e a v]");
-        var ek: u32 = 0;
-        var ev: u64 = 0;
-        var ak: u32 = 0;
-        var av: u64 = 0;
-        var vk: u32 = 0;
-        var vv: u64 = 0;
-        encodeTerm(q, api.rrb_nth(clause, 0), &ek, &ev);
-        encodeTerm(q, api.rrb_nth(clause, 1), &ak, &av);
-        encodeTerm(q, api.rrb_nth(clause, 2), &vk, &vv);
-        api.query_add_triple(q, ek, ev, ak, av, vk, vv);
+        if (api.rrb_len(clause) != 3) return mkRuntimeError("findAll: each clause must be #[e a v] or #[lhs op rhs]");
+        var lk: u32 = 0;
+        var lv: u64 = 0;
+        var mk: u32 = 0;
+        var mv: u64 = 0;
+        var rk: u32 = 0;
+        var rv: u64 = 0;
+        const mid = api.rrb_nth(clause, 1);
+        if (predicateOp(mid)) |op| {
+            // Predicate clause — `#[lhs #lt rhs]`.
+            encodeTerm(q, api.rrb_nth(clause, 0), &lk, &lv);
+            encodeTerm(q, api.rrb_nth(clause, 2), &rk, &rv);
+            api.query_add_predicate(q, op, lk, lv, rk, rv);
+        } else {
+            // Triple clause — `#[e a v]`.
+            encodeTerm(q, api.rrb_nth(clause, 0), &lk, &lv);
+            encodeTerm(q, mid, &mk, &mv);
+            encodeTerm(q, api.rrb_nth(clause, 2), &rk, &rv);
+            api.query_add_triple(q, lk, lv, mk, mv, rk, rv);
+        }
     }
 
-    if (asof) |t| api.query_set_asof(q, t);
+    switch (tmod) {
+        .none => {},
+        .asof => |t| api.query_set_asof(q, t),
+        .since => |t| api.query_set_since(q, t),
+        .between => |b| api.query_set_between(q, b[0], b[1]),
+    }
 
     const res = api.query_execute(q) orelse return mkRuntimeError("findAll: execute failed");
     defer api.free_result(res);
@@ -2788,15 +2826,40 @@ fn runDatalogQuery(find_ref: Ref, where: Ref, asof: ?u64) Ref {
 fn dbFindAllWhereImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = s;
     if (n < 2) return mkRuntimeError("findAll:where: expects a find spec and a clause vector");
-    return runDatalogQuery(args[0], args[1], null);
+    return runDatalogQuery(args[0], args[1], .none);
 }
 
-/// `[db findAll: ?v where: #[…] asOf: tx]` — same, pinned to the view as of `tx`
+/// `[db findAll: ?v where: #[…] asOf: tx]` — pinned to the view as of `tx`
 /// (a SmallInt basis, e.g. `[[db now] basisT]`).
 fn dbFindAllWhereAsOfImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = s;
     if (n < 3) return mkRuntimeError("findAll:where:asOf: expects find, clauses, tx");
-    return runDatalogQuery(args[0], args[1], @intCast(untagSmallInt(args[2])));
+    return runDatalogQuery(args[0], args[1], .{ .asof = @intCast(untagSmallInt(args[2])) });
+}
+
+/// `[db findAll: ?v where: #[…] since: tx]` — only facts changed AFTER `tx`.
+fn dbFindAllWhereSinceImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    if (n < 3) return mkRuntimeError("findAll:where:since: expects find, clauses, tx");
+    return runDatalogQuery(args[0], args[1], .{ .since = @intCast(untagSmallInt(args[2])) });
+}
+
+/// `[db findAll: ?v where: #[…] between: from and: to]` — facts in the tx range.
+fn dbFindAllWhereBetweenAndImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    if (n < 4) return mkRuntimeError("findAll:where:between:and: expects find, clauses, from, to");
+    const from: u64 = @intCast(untagSmallInt(args[2]));
+    const to: u64 = @intCast(untagSmallInt(args[3]));
+    return runDatalogQuery(args[0], args[1], .{ .between = .{ from, to } });
+}
+
+/// `[aSnapshot find: ?v where: #[…]]` — the same conjunctive query pinned to the
+/// snapshot's basis (datalog-over-snapshot via the time axis; 15.R).
+fn snapFindWhereImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    if (n < 2) return mkRuntimeError("find:where: expects a find spec and a clause vector");
+    const basis = g_api.?.snapshot_basis(s.receiver);
+    if (!isSmallInt(basis)) return mkRuntimeError("find:where: receiver is not a snapshot");
+    return runDatalogQuery(args[0], args[1], .{ .asof = @intCast(untagSmallInt(basis)) });
 }
 
 /// Install the `db` prototype + its methods + SNAPSHOT_VT methods, and bind the
@@ -2817,6 +2880,8 @@ fn installDbSurface() void {
         .{ .name = "excise:", .impl = @ptrCast(&dbExciseImpl) },
         .{ .name = "findAll:where:", .impl = @ptrCast(&dbFindAllWhereImpl) },
         .{ .name = "findAll:where:asOf:", .impl = @ptrCast(&dbFindAllWhereAsOfImpl) },
+        .{ .name = "findAll:where:since:", .impl = @ptrCast(&dbFindAllWhereSinceImpl) },
+        .{ .name = "findAll:where:between:and:", .impl = @ptrCast(&dbFindAllWhereBetweenAndImpl) },
     };
     for (db_methods) |m| {
         const sel = api.intern(m.name.ptr, m.name.len);
@@ -2826,6 +2891,7 @@ fn installDbSurface() void {
         .{ .name = "basisT", .impl = @ptrCast(&snapBasisImpl) },
         .{ .name = "get:attr:", .impl = @ptrCast(&snapGetAttrImpl) },
         .{ .name = "release", .impl = @ptrCast(&snapReleaseImpl) },
+        .{ .name = "find:where:", .impl = @ptrCast(&snapFindWhereImpl) },
     };
     for (snap_methods) |m| {
         const sel = api.intern(m.name.ptr, m.name.len);

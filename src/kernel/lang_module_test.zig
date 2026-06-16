@@ -1998,6 +1998,26 @@ test "Phase 7 datalog: [db findAll:where:] — vars, join, set results" {
     try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(cur, sz)));
     const past = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qlate ?z] ] asOf: bb]", a);
     try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(past, sz)));
+
+    // since: — qlate was asserted AFTER bb; qfoo before. (between:and: same path.)
+    const since_new = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qlate ?z] ] since: bb]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(since_new, sz)));
+    const since_old = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qfoo ?z] ] since: bb]", a);
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(since_old, sz)));
+
+    // Predicate clause `#[lhs op rhs]` — eq/ne on the two distinct method eids.
+    const ne = evalLine(s, lang, "[db findAll: #[?a ?b] where: #[ #[?vt #qfoo ?a] #[?vt #qbar ?b] #[?a #ne ?b] ]]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(ne, sz)));
+    const eq = evalLine(s, lang, "[db findAll: #[?a ?b] where: #[ #[?vt #qfoo ?a] #[?vt #qbar ?b] #[?a #eq ?b] ]]", a);
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(eq, sz)));
+
+    // [snap find:where:] — a snapshot pins the query to its basis (time-travel).
+    _ = evalLine(s, lang, "let snap := [db now]", a);
+    _ = evalLine(s, lang, "[[3 vtable] method: #qpost do: [| 7]]", a);
+    const snap_blind = evalLine(s, lang, "[snap find: ?vt where: #[ #[?vt #qpost ?z] ]]", a);
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(snap_blind, sz)));
+    const live_sees = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qpost ?z] ]]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(live_sees, sz)));
 }
 
 test "17.5 eager & / | and the | block-bar disambiguation" {
