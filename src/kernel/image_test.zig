@@ -274,12 +274,13 @@ test "loader: bytecode-method closure rebuilds from facts (Approach B)" {
     try testing.expectEqual(@as(usize, 1), n);
 
     // Closure now live with the correct libid-object shape: vt at -1 ==
-    // CLOSURE_VT, data == mkEid(method_eid).
+    // BYTECODE_METHOD_VT (Phase 12.8 — a method is its own entity kind, not a
+    // closure), data == mkEid(method_eid).
     const ptr_ref = tbl_b.get(method_eid).?;
     try testing.expect(ref.isPointer(ptr_ref));
     // Closure { method, data }: slot 0 = fn ptr, slot 1 = data.
     const obj = object.fromRef(ptr_ref);
-    try testing.expectEqual(ref.mkEid(kernel_eids.CLOSURE_VT), object.vtableOf(obj));
+    try testing.expectEqual(ref.mkEid(kernel_eids.BYTECODE_METHOD_VT), object.vtableOf(obj));
     try testing.expect(object.slotAt(obj, 0) != 0); // method fn ptr present
     try testing.expectEqual(ref.mkEid(method_eid), object.slotAt(obj, 1)); // data
 

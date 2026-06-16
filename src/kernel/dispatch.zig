@@ -370,7 +370,11 @@ pub fn bytecodeDispatcherImpl(
 
     if (ref_mod.isEid(closure.data)) {
         // Direct method invocation (closure installed by compiler.materialize).
-        // `self` = caller-supplied receiver.
+        // `self` = caller-supplied receiver. Phase 12.8: primary method dispatch
+        // no longer reaches here — `send.sendN` enters `runMethod` directly at the
+        // bind boundary. This branch now serves only `value`-on-a-method-eid
+        // (closureValueImpl calls `.method` through the buffer) + any defensive
+        // fn-ptr call site.
         method_eid = ref_mod.untagEid(closure.data);
     } else if (ref_mod.isPointer(closure.data)) {
         // Block closure (allocated at MAKE_BLOCK). `self` comes from the

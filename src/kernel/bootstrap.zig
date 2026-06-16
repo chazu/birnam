@@ -153,6 +153,10 @@ pub fn boot(
     _ = try store.assert(kernel_eids.STRING_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot); // Phase 16: strings
     _ = try store.assert(kernel_eids.CELL_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot); // Phase 16 Tier E: cells
     _ = try store.assert(kernel_eids.XF_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot); // Phase 16 Tier E: transducer factory
+    // Phase 12.8 — a bytecode-method entity delegates to CLOSURE_VT (NOT ovt) so
+    // `value`/`whileTrue:`/`on:do:` still resolve when a method-eid is sent like
+    // a block; primary method dispatch never touches this vt.
+    _ = try store.assert(kernel_eids.BYTECODE_METHOD_VT, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.CLOSURE_VT), m_boot);
 
     // -- Stage 6: NIL's :vtable ------------------------------------------
     _ = try store.assert(kernel_eids.NIL, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.NIL_VT), m_boot);

@@ -262,7 +262,13 @@ fn isRrb(r: Ref) bool {
 
 fn isClosureVt(r: Ref) bool {
     const vt = object.vtableOf(object.fromRef(r));
-    return ref_mod.isEid(vt) and ref_mod.untagEid(vt) == kernel_eids.CLOSURE_VT;
+    if (!ref_mod.isEid(vt)) return false;
+    const vt_eid = ref_mod.untagEid(vt);
+    // Phase 12.8 — a materialized bytecode method is BYTECODE_METHOD_VT but lives
+    // in the same closures_vt arena with the same `[vt][method][data]` layout, so
+    // it marks + follows `data` identically (its data is an eid → consider no-ops,
+    // but the wrapper itself must be marked live or it is wrongly swept).
+    return vt_eid == kernel_eids.CLOSURE_VT or vt_eid == kernel_eids.BYTECODE_METHOD_VT;
 }
 
 /// Conservatively scan a live closure's allocation words. Each word that looks

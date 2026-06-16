@@ -23,6 +23,7 @@ const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const promotion = @import("promotion.zig");
 const strings_mod = @import("strings.zig");
+const dispatch_mod = @import("dispatch.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const Closure = closure_mod.Closure;
@@ -251,6 +252,19 @@ pub fn sendN(receiver: Ref, sel: Selector, args: [*]const Ref, n_args: usize) Re
         var dargs: [1]Ref = .{ref_mod.mkEid(sel)};
         return dm(&dnu, &dargs, 1);
     };
+    // Phase 12.8 — bytecode-method fast path. A compiled method resolves to a
+    // BYTECODE_METHOD_VT closure `{&bytecodeDispatcherImpl, mkEid(method_eid)}`.
+    // Recognize it at the bind boundary and enter `runMethod` DIRECTLY, lifting
+    // the isEid branch out of `bytecodeDispatcherImpl` — no fn-ptr shim call, no
+    // re-dispatch. Block closures (data = pointer, not eid) and native
+    // primitives (`.method` ≠ dispatcher) keep the honest fn-ptr call below.
+    if (c.method == @as(*const anyopaque, @ptrCast(&dispatch_mod.bytecodeDispatcherImpl)) and
+        ref_mod.isEid(c.data))
+    {
+        const store = g_store orelse return ref_mod.NIL;
+        const allocator = g_allocator orelse return ref_mod.NIL;
+        return dispatch_mod.runMethod(allocator, store, receiver, ref_mod.untagEid(c.data), args[0..n_args], &.{}) catch ref_mod.NIL;
+    }
     const m: Imp = @ptrCast(@alignCast(c.method));
     return m(&s, args, n_args);
 }

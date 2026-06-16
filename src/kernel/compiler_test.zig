@@ -307,9 +307,10 @@ test "materialize: persists method entity with bytecode + annotations" {
     const method_eid = try compiler.materialize(arena.allocator(), &store, &table, &m, MODULE_EID);
     try testing.expect(method_eid >= kernel_eids.USER_EID_START);
 
-    // :vtable CLOSURE_VT
+    // :vtable BYTECODE_METHOD_VT (Phase 12.8 — a method is its own entity kind,
+    // not a closure; the fact must agree with the materialized buffer's -1 slot).
     const vt = store.currentValue(method_eid, kernel_eids.ATTR_VTABLE).?;
-    try testing.expectEqual(ref_mod.mkEid(kernel_eids.CLOSURE_VT), vt);
+    try testing.expectEqual(ref_mod.mkEid(kernel_eids.BYTECODE_METHOD_VT), vt);
 
     // :bytecode-stream — string Ref carrying the emitted bytes
     const bc_ref = store.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM).?;

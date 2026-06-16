@@ -668,4 +668,18 @@ pub const SEL_FFI_STRUCT_FROM: u64 = 236; // "from:"  on STRUCT_TYPE_VT
 pub const SEL_FFI_STRUCT_NEW: u64 = 237; // "new"    on STRUCT_TYPE_VT
 pub const SEL_FFI_STRUCT_PTR: u64 = 238; // "ptr"    on a struct instance
 
-// 239..255 reserved for future kernel selectors / attributes
+/// `BYTECODE_METHOD_VT` — vtable of a materialized bytecode METHOD entity
+/// (Phase 12.8 / Approach A). A compiled method is no longer dressed as a
+/// `CLOSURE_VT` closure: its object-table slot is `[BYTECODE_METHOD_VT]
+/// [method=&bytecodeDispatcherImpl][data=mkEid(method_eid)]`. The `.method`
+/// fn-ptr is retained ONLY as a stable discriminant + fallback (gc/prune/
+/// id_api key on it, and `value`-on-a-method-eid routes through it); the hot
+/// dispatch path (`send.sendN`) recognizes a bytecode method at the bind
+/// boundary and enters `runMethod` DIRECTLY — no fn-ptr shim, no re-dispatch.
+/// This splits the native-primitive / bytecode-method conflation at the
+/// representation layer (methods emit as DATA) ahead of Phase 18 codegen.
+/// Delegates to `CLOSURE_VT` so `value`/`whileTrue:`/`on:do:` still resolve
+/// when a method-eid is sent like a block.
+pub const BYTECODE_METHOD_VT: u64 = 239;
+
+// 240..255 reserved for future kernel selectors / attributes

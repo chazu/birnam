@@ -1343,7 +1343,35 @@ Implementation deferred — needs real workload to pick defaults. Policy lives a
 
 12.7 Tests: save → kill → load → run → identical behavior; strings segment mmap-able; bytecode segment mmap-able; manifest ABI hash mismatch rejected at load; thread-mode tag round-trips. **Closure round-trip: install user method → save → kill → load → send → identical result (fn-ptr Closure rebuilt from facts, not from saved bytes).**
 
-12.8 **(Deferred — Approach A cleanup, own commit) Bytecode methods as `BYTECODE_METHOD_VT`.** Not required for image round-trip (12.3 Approach B handles that). Lift isEid/isPointer branch out of `bytecodeDispatcherImpl` to the `bind`/`sendN` boundary; enter VM directly for compiled methods; retire the fn-ptr indirection for the method case. Removes native/data conflation; simplifies Phase 14 AOT codegen. Earns its own design pass (hot dispatch + mcache rep + `value`/`whileTrue:`-on-`CLOSURE_VT`). Revisit before/with Phase 14.
+12.8 **Bytecode methods as `BYTECODE_METHOD_VT` — SHIPPED 2026-06-16** (branch
+`phase-12-8-bytecode-method-vt`). Option 2 (full new entity kind) per the
+Deferred-Items Backlog. **What landed:**
+- New `BYTECODE_METHOD_VT = 239` (kernel_eids). A materialized method's
+  object-table buffer is tagged with it (was CLOSURE_VT) AND its `:vtable` fact
+  agrees (compiler.materializeInner + image.rematerializeClosures both updated —
+  fast-path -1 slot and cold-path fact must not disagree, else `vtableEidOf`
+  resolves a method-eid differently by materialization state).
+- **Dispatch fork (the core):** `send.sendN`, after `bind`, recognizes a bytecode
+  method (`c.method == &bytecodeDispatcherImpl and isEid(c.data)`) and enters
+  `runMethod` DIRECTLY — lifts the isEid branch out of `bytecodeDispatcherImpl`,
+  no fn-ptr shim call + no re-dispatch. Native primitives keep the honest fn-ptr
+  call; block closures (data = pointer) keep going through the dispatcher.
+- `.method` keeps `&bytecodeDispatcherImpl` as a **stable discriminant + fallback**
+  (gc/prune/id_api key on it; `value`-on-a-method-eid still routes through it via
+  BYTECODE_METHOD_VT→CLOSURE_VT delegation, asserted in bootstrap). So
+  id_api/prune need ZERO change.
+- `gc.isClosureVt` now also accepts BYTECODE_METHOD_VT (method buffers live in the
+  same closures_vt arena — miss it → live methods swept = corruption).
+- The `bytecodeDispatcherImpl` isEid branch is now reached only via
+  `value`-on-a-method-eid + defensive call sites, not primary dispatch.
+- **Verified:** all 39 kernel suites green (lang_module 66/66, dispatch 18,
+  compiler 21, gc 7, prune 7, image 16 incl. round-trip vt assertion). Live shell:
+  method dispatch, redefine (mcache invalidate → new method_eid through the direct
+  path), prune-survival, non-local-return-from-block, block `value` all correct.
+- **Why:** removes the native/data conflation at the representation layer (methods
+  emit as DATA, no fn-ptr reversal) ahead of Phase 18 codegen. Subsumption rule #2.
+- **Still open in ② (dispatch rep):** 11.4 in-band mcache wiring at `SEND_*` (the
+  other half — methods still route through send.sendN's global mcache).
 
 ### Reasoning
 `.bim` makes birnam a real Smalltalk-style environment vs. a script that rebuilds state every run. **D3 hybrid** unifies live save and AOT input — same bytes underneath. **Pure data write** (no `cc`) makes save cheap, no toolchain pin. **Arena split** sets up Phase 14 RO segments. **Incremental save policy noted but not specced** — needs perf data first.
@@ -2713,8 +2741,9 @@ the VM with tree-walk fallback; `:eval-mode` toggle retains the tree-walker.
 Details + what's NOT included below. Independent of Phase 18; shrinks 18's
 surface to one codegen path.
 
-**② Dispatch representation** (12.8 BYTECODE_METHOD_VT + 11.4 in-band mcache
-wiring at SEND_*). Same hot-dispatch + mcache surface — one pass. Prereq for 18.
+**② Dispatch representation** — **12.8 BYTECODE_METHOD_VT SHIPPED 2026-06-16**
+(see Phase 12 §12.8). Remaining half: 11.4 in-band mcache wiring at SEND_*.
+Prereq for 18.
 
 **③ Phase 18 native codegen** — capstone. Swallows perf-1.3/1.4/1.6 + the
 field-read slot cache. Nothing perf-related happens before this.

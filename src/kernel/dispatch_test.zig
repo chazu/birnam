@@ -497,7 +497,7 @@ fn installBytecodeMethod(
 ) !u64 {
     const eid = table.alloc();
     const bc_ref = try strings.mkString(allocator, bytes);
-    _ = try store.assert(eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.CLOSURE_VT), MODULE_EID);
+    _ = try store.assert(eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.BYTECODE_METHOD_VT), MODULE_EID);
     _ = try store.assert(eid, kernel_eids.ATTR_BYTECODE_STREAM, bc_ref, MODULE_EID);
     if (pool.len > 0) {
         const pool_ref = try boxed.mkRrb(allocator, pool);

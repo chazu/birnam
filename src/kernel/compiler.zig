@@ -551,7 +551,7 @@ pub const MaterializeError = error{
 /// Returns the minted method EID.
 ///
 /// Asserted facts (all under `module_eid` for provenance):
-///   [m :vtable CLOSURE_VT]
+///   [m :vtable BYTECODE_METHOD_VT]                (Phase 12.8 — own entity kind)
 ///   [m :bytecode-stream <string-Ref>]
 ///   [m :constant-pool <rrb-Ref>]                  (only if pool non-empty)
 ///   [m :method-body-ast <ast-eid-Ref>]
@@ -611,7 +611,11 @@ fn materializeInner(
         boxed.mkRrb(allocator, patched_pool) catch return error.OutOfMemory;
     if (patched_pool.len > 0) allocator.free(patched_pool);
 
-    storeAssert(store, method_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.CLOSURE_VT), module_eid) catch return error.StoreError;
+    // Phase 12.8 — the `:vtable` fact must agree with the materialized buffer's
+    // -1 slot (BYTECODE_METHOD_VT), else `vtableEidOf` resolves a method-eid
+    // differently depending on whether it is currently materialized (fast path
+    // reads the -1 slot; cold path reads this fact). Both must say the same vt.
+    storeAssert(store, method_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.BYTECODE_METHOD_VT), module_eid) catch return error.StoreError;
     storeAssert(store, method_eid, kernel_eids.ATTR_BYTECODE_STREAM, bytes_ref, module_eid) catch return error.StoreError;
     if (pool_ref) |p| {
         storeAssert(store, method_eid, kernel_eids.ATTR_CONSTANT_POOL, p, module_eid) catch return error.StoreError;
@@ -640,10 +644,13 @@ fn materializeInner(
     // not yet in the table during the asserts.
     //
     // Layout matches the kernel's libid-object convention: `[vt_ref]
-    // [method][data]` with `vt_ref` at offset -1 so `vtableEidOf` finds
-    // CLOSURE_VT for any send to a method-eid Ref (the value/value:/
-    // whileTrue: methods on CLOSURE_VT work as if the bytecode method
-    // were a block closure).
+    // [method][data]` with `vt_ref` at offset -1. Phase 12.8: the vt is
+    // BYTECODE_METHOD_VT (not CLOSURE_VT) — a method is no longer dressed
+    // as a closure. `.method` keeps `&bytecodeDispatcherImpl` purely as a
+    // stable discriminant + fallback: `send.sendN` enters `runMethod`
+    // directly for this entity kind, but `value`-on-a-method-eid (routed
+    // via BYTECODE_METHOD_VT→CLOSURE_VT delegation) and gc/prune/id_api
+    // still read `.method` to recognize a bytecode method.
     const total = 3 * @sizeOf(Ref);
     // Route the method-closure wrapper to the swept closures_vt arena (Phase
     // 15.5): when a method is redefined and the superseded entity is later
@@ -654,7 +661,7 @@ fn materializeInner(
     const buf = ca.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
     @memset(buf, 0);
     const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
-    vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
+    vt_slot.* = ref_mod.mkEid(kernel_eids.BYTECODE_METHOD_VT);
     const c_ptr: *closure_mod.Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
     c_ptr.* = .{ .method = @ptrCast(&dispatch.bytecodeDispatcherImpl), .data = ref_mod.mkEid(method_eid) };
     table.put(method_eid, ref_mod.mkPointer(@ptrCast(c_ptr))) catch return error.StoreError;

@@ -473,9 +473,12 @@ pub const RematError = error{ OutOfMemory, StoreError };
 /// the freshly-loaded kernel, with `data = mkEid(method_eid)`.
 ///
 /// Layout mirrors compiler.materialize's install tail:
-///   [vt_ref = CLOSURE_VT][method = &bytecodeDispatcherImpl][data]
-/// with `vt_ref` at offset -1 so `vtableEidOf(mkEid(method_eid))` resolves
-/// CLOSURE_VT and `[method value]` / send.bind dispatch uniformly.
+///   [vt_ref = BYTECODE_METHOD_VT][method = &bytecodeDispatcherImpl][data]
+/// with `vt_ref` at offset -1 (Phase 12.8). `vtableEidOf(mkEid(method_eid))`
+/// resolves BYTECODE_METHOD_VT; primary dispatch enters the VM directly via
+/// `send.sendN`, and `[method value]` resolves through the vt's delegation to
+/// CLOSURE_VT. `.method` is kept as the discriminant the gc/prune/dispatch
+/// paths key on.
 ///
 /// Idempotent: entities already materialized (e.g. by a prior init) are
 /// left untouched. Returns the count rebuilt.
@@ -500,7 +503,7 @@ pub fn rematerializeClosures(
         const buf = allocator.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
         @memset(buf, 0);
         const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
-        vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
+        vt_slot.* = ref_mod.mkEid(kernel_eids.BYTECODE_METHOD_VT);
         const c_ptr: *closure_mod.Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
         c_ptr.* = .{
             .method = @ptrCast(&dispatch.bytecodeDispatcherImpl),
