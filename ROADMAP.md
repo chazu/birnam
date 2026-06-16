@@ -2757,13 +2757,17 @@ field-read slot cache. Nothing perf-related happens before this.
   closure-aware prune mark-walk; redefine/throwaway churn now collected, live
   methods + closures-in-vars survive `:prune`). 15.P (const-pool RRB finalizer) +
   15.R snapshot-auto-release still ride on the same sweep-finalizer mechanism.
-- *15.R lang sliver*: `[snap find:where:]` datalog-over-snapshot. **RECALIBRATED
-  2026-06-16 — NOT "small lang wiring."** The query ENGINE (query.zig) is built +
-  tested, and DATALOG.md specs `[db findAll: ?m where: #(...)]` (+ asOf:/since:/
-  between:), but the birnam-facing datalog surface is ENTIRELY ABSENT from lang.zig
-  (no findAll:/where: install). Real work = clause-`#(...)`-vector parsing →
-  Query clauses, find-element parsing, result materialization, THEN the snapshot
-  target variant. Own focused arc, not a tail cleanup.
+- *Datalog birnam surface*: **MVP SHIPPED 2026-06-16** — `[db findAll: ?v where:
+  #[ #[e a v] … ]]` (commit on branch phase-12-8-bytecode-method-vt). New
+  `query-var = "?" ident` grammar atom; `where:` is an ordinary evaluated vector
+  of 3-elem clause-vectors (no quote machinery); terms = `?var` (deduped→join) |
+  constant (attr `#foo` matches by interned eid). Wires the existing query.zig
+  engine + IdApi builder → execute → result vector (set semantics). Single find
+  var + conjunctive triples. Regression test (lang_module 69). **REMAINING surface
+  (engine already supports all of it — lang wiring only):** locked `#( [?e attr:
+  ?v] )` quote sugar; multi-var find (tuples); predicates `[(< ?a ?b)]`;
+  negation/disjunction; `asOf:`/`since:`/`between:` modifiers (→ the 15.R
+  `[snap find:where:]` variant); aggregation; rules; pull.
 - *12.5 mmap RO segments*: pure load-perf; unlocks 15.R R4 mmap fault-in. Defer hard.
 - *Language niceties*: **`<=>`/`compare:` SHIPPED 2026-06-16** (17.3 — SmallInt/String,
   3-char binary-op bump). **`&`/`|` eager boolean SHIPPED 2026-06-16** (17.5 — `|`
