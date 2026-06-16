@@ -250,6 +250,19 @@ fn mkSmallInt(n: i64) Ref {
     return @as(u64, @bitCast(n << 3)) | 0b001;
 }
 
+// SmallInt payload is 61-bit signed (3 tag bits). Values outside this range
+// can't be represented and `mkSmallInt` would silently drop high bits, so
+// arithmetic range-checks with `mkSmallIntChecked` (Phase 17.7 type-mismatch
+// hardening).
+const SMALLINT_MIN: i64 = -(@as(i64, 1) << 60);
+const SMALLINT_MAX: i64 = (@as(i64, 1) << 60) - 1;
+
+/// Tag `n` as a SmallInt, or null if it overflows the 61-bit payload range.
+fn mkSmallIntChecked(n: i64) ?Ref {
+    if (n < SMALLINT_MIN or n > SMALLINT_MAX) return null;
+    return mkSmallInt(n);
+}
+
 fn peg_seq(children: []const u64) Ref {
     const api = g_api.?;
     // Convert child EIDs to EID-tagged Refs in a stack buffer.
@@ -1878,72 +1891,130 @@ fn isEid(r: Ref) bool {
 }
 
 // -- SmallInt primitives installed by lang dylib --------------------------
+//
+// Phase 17.7 type-mismatch hardening: a SmallInt op never `untagSmallInt`s a
+// non-int argument (that reinterprets the tagged bits as a garbage integer).
+// Integer args take the integer path (overflow → `#overflow` ERROR_VT, not a
+// safe-build panic / silent high-bit drop); Float args promote to f64 (so mixed
+// `1 + 2.5` works); anything else → `#typeMismatch` ERROR_VT (or `false` for
+// `=`, `nil` for `<=>` — those are "incomparable", not errors).
+
+fn typeMismatchError() Ref {
+    return mkRuntimeErrorKind(g_api.?.intern("typeMismatch".ptr, 12), "arithmetic on a non-number");
+}
+fn overflowError() Ref {
+    return mkRuntimeErrorKind(g_api.?.intern("overflow".ptr, 8), "integer overflow");
+}
+fn isNumberRef(r: Ref) bool {
+    return isSmallInt(r) or isFloatRef(r);
+}
+fn boolRef(b: bool) Ref {
+    return if (b) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
 
 fn smallintNegateImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = args;
     _ = n_args;
-    const n = untagSmallInt(s.receiver);
-    return mkSmallInt(-n);
+    return mkSmallIntChecked(-untagSmallInt(s.receiver)) orelse overflowError();
 }
 
 fn smallintSquaredImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = args;
     _ = n_args;
     const n = untagSmallInt(s.receiver);
-    return mkSmallInt(n * n);
+    const r = @mulWithOverflow(n, n);
+    if (r[1] != 0) return overflowError();
+    return mkSmallIntChecked(r[0]) orelse overflowError();
 }
 
 fn smallintSuccImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = args;
     _ = n_args;
-    const n = untagSmallInt(s.receiver);
-    return mkSmallInt(n + 1);
+    return mkSmallIntChecked(untagSmallInt(s.receiver) + 1) orelse overflowError();
 }
 
 fn smallintPlusImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
     const a_ = untagSmallInt(s.receiver);
-    const b_ = untagSmallInt(args[0]);
-    return mkSmallInt(a_ + b_);
+    if (isSmallInt(args[0])) {
+        // Both operands are 61-bit, so the i64 sum can't overflow — only the
+        // SmallInt range can.
+        return mkSmallIntChecked(a_ + untagSmallInt(args[0])) orelse overflowError();
+    }
+    if (isFloatRef(args[0])) return g_api.?.make_float(@as(f64, @floatFromInt(a_)) + floatRefValue(args[0]));
+    return typeMismatchError();
 }
 
 fn smallintTimesImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
     const a_ = untagSmallInt(s.receiver);
-    const b_ = untagSmallInt(args[0]);
-    return mkSmallInt(a_ * b_);
+    if (isSmallInt(args[0])) {
+        const r = @mulWithOverflow(a_, untagSmallInt(args[0]));
+        if (r[1] != 0) return overflowError();
+        return mkSmallIntChecked(r[0]) orelse overflowError();
+    }
+    if (isFloatRef(args[0])) return g_api.?.make_float(@as(f64, @floatFromInt(a_)) * floatRefValue(args[0]));
+    return typeMismatchError();
 }
 
 fn smallintMinusImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
-    return mkSmallInt(untagSmallInt(s.receiver) - untagSmallInt(args[0]));
+    const a_ = untagSmallInt(s.receiver);
+    if (isSmallInt(args[0])) return mkSmallIntChecked(a_ - untagSmallInt(args[0])) orelse overflowError();
+    if (isFloatRef(args[0])) return g_api.?.make_float(@as(f64, @floatFromInt(a_)) - floatRefValue(args[0]));
+    return typeMismatchError();
 }
 fn smallintDivImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
-    const b_ = untagSmallInt(args[0]);
-    if (b_ == 0) return mkRuntimeErrorKind(g_api.?.intern("zeroDivide".ptr, 10), "divide by zero");
-    return mkSmallInt(@divTrunc(untagSmallInt(s.receiver), b_));
+    const a_ = untagSmallInt(s.receiver);
+    if (isSmallInt(args[0])) {
+        const b_ = untagSmallInt(args[0]);
+        if (b_ == 0) return mkRuntimeErrorKind(g_api.?.intern("zeroDivide".ptr, 10), "divide by zero");
+        return mkSmallIntChecked(@divTrunc(a_, b_)) orelse overflowError();
+    }
+    if (isFloatRef(args[0])) {
+        const b = floatRefValue(args[0]);
+        if (b == 0.0) return mkRuntimeErrorKind(g_api.?.intern("zeroDivide".ptr, 10), "divide by zero");
+        return g_api.?.make_float(@as(f64, @floatFromInt(a_)) / b);
+    }
+    return typeMismatchError();
 }
 fn smallintEqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
-    return if (untagSmallInt(s.receiver) == untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+    const a_ = untagSmallInt(s.receiver);
+    if (isSmallInt(args[0])) return boolRef(a_ == untagSmallInt(args[0]));
+    if (isFloatRef(args[0])) return boolRef(@as(f64, @floatFromInt(a_)) == floatRefValue(args[0]));
+    return mkEid(FALSE_EID); // `1 = #foo` is false, not an error
 }
 fn smallintLtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
-    return if (untagSmallInt(s.receiver) < untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+    const a_ = untagSmallInt(s.receiver);
+    if (isSmallInt(args[0])) return boolRef(a_ < untagSmallInt(args[0]));
+    if (isFloatRef(args[0])) return boolRef(@as(f64, @floatFromInt(a_)) < floatRefValue(args[0]));
+    return typeMismatchError();
 }
 fn smallintGtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
-    return if (untagSmallInt(s.receiver) > untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+    const a_ = untagSmallInt(s.receiver);
+    if (isSmallInt(args[0])) return boolRef(a_ > untagSmallInt(args[0]));
+    if (isFloatRef(args[0])) return boolRef(@as(f64, @floatFromInt(a_)) > floatRefValue(args[0]));
+    return typeMismatchError();
 }
 /// Three-way compare (Phase 17.3) — `[a <=> b]` / `[a compare: b]` → -1/0/1.
-/// nil for a non-integer argument (incomparable).
+/// nil for a non-number argument (incomparable). Float args compare numerically.
 fn smallintCompareImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
-    if (!isSmallInt(args[0])) return NIL;
     const a = untagSmallInt(s.receiver);
-    const b = untagSmallInt(args[0]);
-    return mkSmallInt(if (a < b) -1 else if (a > b) 1 else 0);
+    if (isSmallInt(args[0])) {
+        const b = untagSmallInt(args[0]);
+        return mkSmallInt(if (a < b) -1 else if (a > b) 1 else 0);
+    }
+    if (isFloatRef(args[0])) {
+        const af: f64 = @floatFromInt(a);
+        const b = floatRefValue(args[0]);
+        return mkSmallInt(if (af < b) -1 else if (af > b) 1 else 0);
+    }
+    return NIL;
 }
 
 fn smallintAsFloatImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
@@ -1964,32 +2035,39 @@ fn argAsF64(r: Ref) f64 {
 
 fn floatPlusImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
+    if (!isNumberRef(args[0])) return typeMismatchError();
     return g_api.?.make_float(floatRefValue(s.receiver) + argAsF64(args[0]));
 }
 fn floatMinusImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
+    if (!isNumberRef(args[0])) return typeMismatchError();
     return g_api.?.make_float(floatRefValue(s.receiver) - argAsF64(args[0]));
 }
 fn floatTimesImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
+    if (!isNumberRef(args[0])) return typeMismatchError();
     return g_api.?.make_float(floatRefValue(s.receiver) * argAsF64(args[0]));
 }
 fn floatDivImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
+    if (!isNumberRef(args[0])) return typeMismatchError();
     const b_ = argAsF64(args[0]);
     if (b_ == 0.0) return mkRuntimeErrorKind(g_api.?.intern("zeroDivide".ptr, 10), "divide by zero");
     return g_api.?.make_float(floatRefValue(s.receiver) / b_);
 }
 fn floatEqImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
+    if (!isNumberRef(args[0])) return mkEid(FALSE_EID); // `2.5 = #foo` is false
     return if (floatRefValue(s.receiver) == argAsF64(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
 }
 fn floatLtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
+    if (!isNumberRef(args[0])) return typeMismatchError();
     return if (floatRefValue(s.receiver) < argAsF64(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
 }
 fn floatGtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = n_args;
+    if (!isNumberRef(args[0])) return typeMismatchError();
     return if (floatRefValue(s.receiver) > argAsF64(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
 }
 
@@ -3589,11 +3667,17 @@ fn vecSortByImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
 
 fn smallintLeImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = n;
-    return if (untagSmallInt(s.receiver) <= untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+    const a_ = untagSmallInt(s.receiver);
+    if (isSmallInt(args[0])) return boolRef(a_ <= untagSmallInt(args[0]));
+    if (isFloatRef(args[0])) return boolRef(@as(f64, @floatFromInt(a_)) <= floatRefValue(args[0]));
+    return typeMismatchError();
 }
 fn smallintGeImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = n;
-    return if (untagSmallInt(s.receiver) >= untagSmallInt(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+    const a_ = untagSmallInt(s.receiver);
+    if (isSmallInt(args[0])) return boolRef(a_ >= untagSmallInt(args[0]));
+    if (isFloatRef(args[0])) return boolRef(@as(f64, @floatFromInt(a_)) >= floatRefValue(args[0]));
+    return typeMismatchError();
 }
 
 /// `[s indexOf: sub ifAbsent: blk]` — byte index, or the block's value (no-NULL).
@@ -4038,9 +4122,19 @@ fn falsePipeImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
 
 fn smallintModImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = n;
-    const d = untagSmallInt(a[0]);
-    if (d == 0) return NIL;
-    return mkSmallInt(@mod(untagSmallInt(s.receiver), d));
+    const a_ = untagSmallInt(s.receiver);
+    if (isSmallInt(a[0])) {
+        const d = untagSmallInt(a[0]);
+        if (d == 0) return mkRuntimeErrorKind(g_api.?.intern("zeroDivide".ptr, 10), "divide by zero");
+        // `@mod` result has magnitude < |d| ≤ SMALLINT_MAX, so it always fits.
+        return mkSmallInt(@mod(a_, d));
+    }
+    if (isFloatRef(a[0])) {
+        const d = floatRefValue(a[0]);
+        if (d == 0.0) return mkRuntimeErrorKind(g_api.?.intern("zeroDivide".ptr, 10), "divide by zero");
+        return g_api.?.make_float(@mod(@as(f64, @floatFromInt(a_)), d));
+    }
+    return typeMismatchError();
 }
 fn floatSqrtImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = .{ a, n };

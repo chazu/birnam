@@ -2064,9 +2064,17 @@ order ≠ roadmap order). Item-by-item:
   **Deferred (non-blocking):** (a) **VM-compiled statement sequences don't halt
   mid-sequence on error** (only the tree-walker does) — a compiled method's
   `a. b.` runs `b` even if `a` errored; needs a bytecode CHECK/propagate after
-  non-final statements. (b) **Type-mismatch hardening** — arithmetic on a
-  non-number still reinterprets bits silently (`untagSmallInt` on a non-int) and
-  integer overflow panics in safe builds; convert these to `ERROR_VT`. (c)
+  non-final statements. (b) **Type-mismatch hardening — SHIPPED 2026-06-16.**
+  SmallInt/Float arithmetic no longer reinterprets a non-number arg's bits: an
+  integer arg takes the checked-integer path (`@mulWithOverflow` + 61-bit
+  `mkSmallIntChecked` → `#overflow` ERROR_VT instead of a safe-build panic /
+  silent high-bit drop), a Float arg promotes to f64 (so `1 + 2.5` = 3.5), and a
+  non-number → `#typeMismatch` ERROR_VT (`=` returns false, `<=>` nil — those are
+  "incomparable", not errors). Covers `+ - * / mod: negate squared succ` and
+  `= < > <= >= <=>` on both SMALLINT_VT and FLOAT_VT (the float side's silent
+  `argAsF64`→0.0 default is gone); `mod: 0` is now `#zeroDivide` (was nil). Tests:
+  lang_module_test 70/70 (new 17.7 case asserts kinds via `on:do:`); full kernel
+  sweep 39 files green. (c)
   arg-position error propagation (receiver-position covered; args explicit). (d)
   resume/retry (Result can't — accepted). (e) source location in errors.
 - **17.8 I/O surface — SHIPPED 2026-06-14** (branch `errors-result-model`): the

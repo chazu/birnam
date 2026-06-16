@@ -1342,6 +1342,48 @@ test "errors: undefined var / undefined assign / divide by zero report" {
     try testing.expectEqual(@as(i64, 5), ref_mod.untagSmallInt(evalLine(s, lang, "[10 / 2]", a)));
 }
 
+// Result error model — Phase 17.7 type-mismatch + overflow hardening.
+test "errors: arithmetic type-mismatch + integer overflow are kinded errors (17.7)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const TRUE = ref_mod.mkEid(kernel_eids.TRUE_EID);
+    const FALSE = ref_mod.mkEid(kernel_eids.FALSE_EID);
+
+    // Arithmetic on a non-number → #typeMismatch (was: silent bit-reinterpret).
+    try testing.expect(evalIsError(s, lang, "[1 + #foo]", a));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[| [1 + #foo]] on: #typeMismatch do: [:e | 1]]", a)));
+    try testing.expect(evalIsError(s, lang, "[2.5 * nil]", a)); // float side too
+    try testing.expect(evalIsError(s, lang, "[1 - \"x\"]", a));
+
+    // Integer overflow → #overflow (was: safe-build panic / silent high-bit drop).
+    try testing.expect(evalIsError(s, lang, "[2000000000 * 2000000000]", a));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(
+        evalLine(s, lang, "[[| [2000000000 * 2000000000]] on: #overflow do: [:e | 1]]", a)));
+
+    // Mixed int/float arithmetic promotes (no garble): 1 + 2.5 = 3.5.
+    try testing.expectEqual(TRUE, evalLine(s, lang, "[[1 + 2.5] = 3.5]", a));
+    try testing.expectEqual(TRUE, evalLine(s, lang, "[1 < 2.5]", a));
+
+    // `=` with a non-number is false (incomparable), NOT an error; ordering errors.
+    try testing.expectEqual(FALSE, evalLine(s, lang, "[1 = #foo]", a));
+    try testing.expect(evalIsError(s, lang, "[1 < #foo]", a));
+
+    // mod by zero is now a kinded error (was: silent nil); normal mod still works.
+    try testing.expect(evalIsError(s, lang, "[7 mod: 0]", a));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "[7 mod: 3]", a)));
+
+    // Plain arithmetic in range is unaffected.
+    try testing.expectEqual(@as(i64, 5), ref_mod.untagSmallInt(evalLine(s, lang, "[2 + 3]", a)));
+    try testing.expectEqual(@as(i64, 12), ref_mod.untagSmallInt(evalLine(s, lang, "[3 * 4]", a)));
+    try testing.expectEqual(@as(i64, -7), ref_mod.untagSmallInt(evalLine(s, lang, "[0 - 7]", a)));
+}
+
 // Result error model — Stage 5: on:do: catch combinator.
 test "errors: on:do: catches by kind, wildcard, passes through" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
