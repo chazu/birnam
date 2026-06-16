@@ -2757,11 +2757,19 @@ field-read slot cache. Nothing perf-related happens before this.
   closure-aware prune mark-walk; redefine/throwaway churn now collected, live
   methods + closures-in-vars survive `:prune`). 15.P (const-pool RRB finalizer) +
   15.R snapshot-auto-release still ride on the same sweep-finalizer mechanism.
-- *15.R lang sliver*: `[snap find:where:]` datalog-over-snapshot wiring (kernel
-  done; lang wiring only). Small, independent.
+- *15.R lang sliver*: `[snap find:where:]` datalog-over-snapshot. **RECALIBRATED
+  2026-06-16 — NOT "small lang wiring."** The query ENGINE (query.zig) is built +
+  tested, and DATALOG.md specs `[db findAll: ?m where: #(...)]` (+ asOf:/since:/
+  between:), but the birnam-facing datalog surface is ENTIRELY ABSENT from lang.zig
+  (no findAll:/where: install). Real work = clause-`#(...)`-vector parsing →
+  Query clauses, find-element parsing, result materialization, THEN the snapshot
+  target variant. Own focused arc, not a tail cleanup.
 - *12.5 mmap RO segments*: pure load-perf; unlocks 15.R R4 mmap fault-in. Defer hard.
-- *Language niceties*: `<=>` three-way compare, block-param destructuring (cheap);
-  `&`/`|` (grammar collision vs the block-param bar — needs parser disambiguation).
+- *Language niceties*: **`<=>`/`compare:` SHIPPED 2026-06-16** (17.3 — SmallInt/String,
+  3-char binary-op bump). **`&`/`|` eager boolean SHIPPED 2026-06-16** (17.5 — `|`
+  collision resolved by PEG choice order: block forms + `|>` pipe matched before
+  bracket-binary). **`[T size]` SHIPPED 2026-06-16** (19.5). Remaining: block-param
+  destructuring `[:#[a b]|]` (syntax-heavy, low value).
 
 ### Cluster ① — top-level eval → bytecode (spec + OPEN FORK)
 
