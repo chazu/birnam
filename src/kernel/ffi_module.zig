@@ -671,6 +671,25 @@ fn methodCellValue(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
     }
 }
 
+/// `[Module callback: aBlock sig: "pp)i"]` (Phase 19.2) — mint a C function
+/// pointer (a CALLBACK_VT box) that calls back into `aBlock` on each invocation.
+/// Pass it to a wrapped C function as a `p`/pointer arg; free with `[cb free]`.
+/// Returns nil if the sig isn't a string (closure validity is checked lazily by
+/// the trampoline's send). Arity > 2 is rejected (block-value protocol limit).
+fn methodCallback(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    if (n_args < 2 or !strings.isString(args[1])) return ref_mod.NIL;
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    return ffi.makeCallback(alloc, args[0], strings.bytes(args[1]));
+}
+
+/// `[cb free]` on a CALLBACK_VT — free its libffi closure + heap ctx. Idempotent.
+fn methodCallbackFree(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ args, n_args };
+    ffi.freeCallback(s.receiver);
+    return ref_mod.NIL;
+}
+
 /// `[p free]` — libc-free the address. Only valid for `alloc:`-minted pointers.
 fn methodFfiFree(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = args;
@@ -914,6 +933,9 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_OUT_LONG, @ptrCast(&methodOutLong));
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_OUT_PTR, @ptrCast(&methodOutPtr));
     try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_OUT_DOUBLE, @ptrCast(&methodOutDouble));
+    try installMethod(allocator, store, table, kernel_eids.MODULE_PROTO_VT, kernel_eids.SEL_FFI_CALLBACK, @ptrCast(&methodCallback));
+    // Phase 19.2 — CALLBACK_VT: free the libffi closure via the shared `free`.
+    try installMethod(allocator, store, table, kernel_eids.CALLBACK_VT, kernel_eids.SEL_FFI_FREE, @ptrCast(&methodCallbackFree));
 
     // -- Phase 18 prelude: FFI memory primitives on FFI_PTR_VT --------------
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_FREE, @ptrCast(&methodFfiFree));
