@@ -1951,6 +1951,38 @@ test "17.3 three-way compare: <=> + compare: on SmallInt + String" {
     try testing.expectEqual(kernel_eids.FALSE_EID, ref_mod.untagEid(evalLine(s, lang, "[9 <= 2]", a)));
 }
 
+test "Phase 7 datalog: [db findAll:where:] — vars, join, set results" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Facts: install user methods → [SMALLINT_VT #qfoo m1], [SMALLINT_VT #qbar m2].
+    _ = evalLine(s, lang, "[[3 vtable] method: #qfoo do: [| 1]]", a);
+    _ = evalLine(s, lang, "[[3 vtable] method: #qbar do: [| 2]]", a);
+    const sz = s.interner.str_to_eid.get("size").?;
+
+    // Single clause: which entity has a #qfoo method? → exactly the SmallInt vt.
+    const r1 = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qfoo ?m] ]]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(r1, sz)));
+    const svt = evalLine(s, lang, "[3 vtable]", a);
+    try testing.expectEqual(svt, send_mod.send1(r1, s.interner.str_to_eid.get("at:").?, ref_mod.mkSmallInt(0).?));
+
+    // Conjunction / join on a shared ?vt — needs BOTH #qfoo and #qbar.
+    const r2 = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qfoo ?a] #[?vt #qbar ?b] ]]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(r2, sz)));
+
+    // A clause whose attr is absent → empty result.
+    const r3 = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qnope ?m] ]]", a);
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(r3, sz)));
+
+    // Projecting the value var ?m binds the installed method (non-empty).
+    const r4 = evalLine(s, lang, "[db findAll: ?m where: #[ #[?vt #qfoo ?m] ]]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(r4, sz)));
+}
+
 test "17.5 eager & / | and the | block-bar disambiguation" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

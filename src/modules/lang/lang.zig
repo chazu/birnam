@@ -137,6 +137,7 @@ var rn_kw_suffix: u64 = 0;
 var rn_start: u64 = 0;
 var rn_ws: u64 = 0;
 var rn_symbol_literal: u64 = 0;
+var rn_query_var: u64 = 0;
 var rn_block_bare: u64 = 0;
 var rn_block_param: u64 = 0;
 var rn_block_params: u64 = 0;
@@ -416,6 +417,7 @@ fn buildGrammar() void {
             untagEid(peg_rule_ref("integer")),
             untagEid(peg_rule_ref("string")),
             untagEid(peg_rule_ref("symbol-literal")),
+            untagEid(peg_rule_ref("query-var")),
             untagEid(peg_rule_ref("kw-nil")),
             untagEid(peg_rule_ref("kw-true")),
             untagEid(peg_rule_ref("kw-false")),
@@ -505,6 +507,18 @@ fn buildGrammar() void {
             untagEid(peg_choice(&inner_alts)),
         };
         defineRule(grammar, "symbol-literal", peg_seq(&parts));
+    }
+
+    // query-var = "?" identifier  (Phase 7 datalog surface). Evaluates to a
+    // symbol whose name carries the leading "?" — `findAll:where:` reads that
+    // prefix to classify a clause term as a query variable. The CST span IS the
+    // "?name" text.
+    {
+        const parts = [_]u64{
+            untagEid(peg_literal("?")),
+            untagEid(peg_rule_ref("identifier")),
+        };
+        defineRule(grammar, "query-var", peg_seq(&parts));
     }
 
     // stmt-list = top-form (ws ";" ws top-form)*
@@ -992,6 +1006,15 @@ fn desugar(cst_eid: u64) u64 {
         // value is forbidden by Date discipline — asserting it panics in debug).
         return ast;
     }
+    if (rn == rn_query_var) {
+        // Span = "?name". Intern the WHOLE span (keeping the "?") so the symbol's
+        // name carries the prefix; `findAll:where:` classifies it as a variable.
+        const bytes = g_source[span.start..span.end];
+        const name_eid = api.intern(bytes.ptr, bytes.len);
+        const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(name_eid), M_USER);
+        return ast;
+    }
     if (rn == rn_block_bare) {
         // Body is now stmt-list (was: single expression). Find stmt-list
         // child and use its desugared AST as the body.
@@ -1468,6 +1491,7 @@ fn cacheRuleNames() void {
     rn_start = api.intern("start".ptr, 5);
     rn_ws = api.intern("ws".ptr, 2);
     rn_symbol_literal = api.intern("symbol-literal".ptr, 14);
+    rn_query_var = api.intern("query-var".ptr, 9);
     rn_block_bare = api.intern("block-bare".ptr, 10);
     rn_block_param = api.intern("block-param".ptr, 11);
     rn_block_params = api.intern("block-params".ptr, 12);
@@ -2666,6 +2690,76 @@ fn snapReleaseImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return NIL;
 }
 
+// -- Phase 7 datalog surface: [db findAll:where:] -------------------------
+
+/// If `ref` is a `?`-prefixed symbol (a query variable), return its name WITHOUT
+/// the leading `?`; else null (it is a constant term).
+fn queryVarName(ref: Ref) ?[]const u8 {
+    if (!isEid(ref)) return null;
+    const nm = g_api.?.symbol_name(ref >> 3);
+    if (!isString(nm)) return null;
+    const b = stringBytes(nm);
+    if (b.len < 2 or b[0] != '?') return null;
+    return b[1..];
+}
+
+/// Encode one clause term for the query builder: a `?var` → (kind=1, var idx);
+/// any other value → (kind=0, the constant Ref).
+fn encodeTerm(q: ?*anyopaque, ref: Ref, kind: *u32, val: *u64) void {
+    if (queryVarName(ref)) |nm| {
+        kind.* = 1;
+        val.* = g_api.?.query_variable(q, nm.ptr, nm.len);
+    } else {
+        kind.* = 0;
+        val.* = ref;
+    }
+}
+
+/// `[db findAll: ?v where: #[ #[e a v] ... ]]` — run a conjunctive datalog query.
+/// `where:` is a vector of 3-element `#[e a v]` clause-vectors; a term is a
+/// `?var` (query variable) or any constant value (an attr symbol resolves via
+/// its eid). Returns a vector of the find variable's bindings (set semantics).
+fn dbFindAllWhereImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    if (n < 2) return mkRuntimeError("findAll:where: expects a ?var and a clause vector");
+    const api = g_api.?;
+    const fv = queryVarName(args[0]) orelse return mkRuntimeError("findAll: argument must be a ?variable");
+    const where = args[1];
+
+    const q = api.make_query() orelse return mkRuntimeError("findAll: out of memory");
+    defer api.free_query(q);
+    const find_idx = api.query_variable(q, fv.ptr, fv.len);
+
+    const nclauses = api.rrb_len(where);
+    var ci: u64 = 0;
+    while (ci < nclauses) : (ci += 1) {
+        const clause = api.rrb_nth(where, ci);
+        if (api.rrb_len(clause) != 3) return mkRuntimeError("findAll: each clause must be #[e a v]");
+        var ek: u32 = 0;
+        var ev: u64 = 0;
+        var ak: u32 = 0;
+        var av: u64 = 0;
+        var vk: u32 = 0;
+        var vv: u64 = 0;
+        encodeTerm(q, api.rrb_nth(clause, 0), &ek, &ev);
+        encodeTerm(q, api.rrb_nth(clause, 1), &ak, &av);
+        encodeTerm(q, api.rrb_nth(clause, 2), &vk, &vv);
+        api.query_add_triple(q, ek, ev, ak, av, vk, vv);
+    }
+    api.query_add_find(q, find_idx);
+
+    const res = api.query_execute(q) orelse return mkRuntimeError("findAll: execute failed");
+    defer api.free_result(res);
+
+    var out = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+    const rows = api.result_count(res);
+    var ri: u64 = 0;
+    while (ri < rows) : (ri += 1) {
+        out = api.rrb_with(out, api.result_at(res, ri, 0));
+    }
+    return out;
+}
+
 /// Install the `db` prototype + its methods + SNAPSHOT_VT methods, and bind the
 /// global `db`. Phase 15.R R1d.
 fn installDbSurface() void {
@@ -2682,6 +2776,7 @@ fn installDbSurface() void {
         .{ .name = "keepLast:", .impl = @ptrCast(&dbKeepLastImpl) },
         .{ .name = "keepSince:", .impl = @ptrCast(&dbKeepSinceImpl) },
         .{ .name = "excise:", .impl = @ptrCast(&dbExciseImpl) },
+        .{ .name = "findAll:where:", .impl = @ptrCast(&dbFindAllWhereImpl) },
     };
     for (db_methods) |m| {
         const sel = api.intern(m.name.ptr, m.name.len);
