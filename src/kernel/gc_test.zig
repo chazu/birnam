@@ -10,6 +10,7 @@ const fs = @import("fact_store.zig");
 const ot = @import("object_table.zig");
 const ke = @import("kernel_eids.zig");
 const ref = @import("ref.zig");
+const ffi = @import("ffi.zig");
 
 const FAIL = testing.failing_allocator; // boxes/closures route to arenas; param unused
 const REF_SZ = @sizeOf(ref.Ref);
@@ -183,6 +184,61 @@ test "gc: maybeCollect stays null below the growth threshold" {
     var i: usize = 0;
     while (i < 8) : (i += 1) _ = try boxed.mkFloat(FAIL, @floatFromInt(i));
     try testing.expect(gc.maybeCollect(&store, &table, a) == null);
+}
+
+test "gc: live callback box roots its inner closure (Phase 19.2 follow-up)" {
+    try freshArenas();
+    defer arenas.deinit();
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store = fs.FactStore.init(a);
+    var table = ot.ObjectTable.init(a);
+
+    // Inner closure: reachable ONLY through the callback's CallbackCtx, a raw
+    // heap pointer the GC cannot see without the callback-marking branch.
+    const inner = try vm.allocBytecodeBlock(FAIL, 700, ref.NIL, 0, 0);
+    // A truly-orphan closure proves the sweep still runs.
+    _ = try vm.allocBytecodeBlock(FAIL, 701, ref.NIL, 0, 0);
+
+    // Minimal CallbackCtx — the GC only reads `.closure`; other fields are inert.
+    var cbctx: ffi.CallbackCtx = undefined;
+    cbctx.closure = inner.ref;
+    const cb = try boxed.mkCallback(FAIL, 0xc0de, @intFromPtr(&cbctx));
+    const cb_eid = table.alloc();
+    try table.put(cb_eid, cb);
+
+    try testing.expectEqual(@as(usize, 1), arenas.arena(.boxes).?.liveCount());
+    try testing.expectEqual(@as(usize, 2), arenas.arena(.captures).?.liveCount());
+
+    const st = gc.collectBoxes(&store, &table, a);
+    try testing.expectEqual(@as(usize, 0), st.boxes_freed); // callback box kept
+    try testing.expectEqual(@as(usize, 1), st.boxes_kept);
+    try testing.expectEqual(@as(usize, 1), st.closures_freed); // orphan
+    try testing.expectEqual(@as(usize, 1), st.closures_kept); // inner via callback
+}
+
+test "gc: a freed callback roots nothing (ctx cleared)" {
+    try freshArenas();
+    defer arenas.deinit();
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var store = fs.FactStore.init(a);
+    var table = ot.ObjectTable.init(a);
+
+    const inner = try vm.allocBytecodeBlock(FAIL, 800, ref.NIL, 0, 0);
+    var cbctx: ffi.CallbackCtx = undefined;
+    cbctx.closure = inner.ref;
+    const cb = try boxed.mkCallback(FAIL, 0xc0de, @intFromPtr(&cbctx));
+    boxed.clearCallbackCtx(cb); // simulate `[cb free]` — slot 1 → 0
+    const cb_eid = table.alloc();
+    try table.put(cb_eid, cb);
+
+    const st = gc.collectBoxes(&store, &table, a);
+    try testing.expectEqual(@as(usize, 1), st.boxes_kept); // box still slot-held
+    try testing.expectEqual(@as(usize, 1), st.closures_freed); // inner no longer rooted
+    try testing.expectEqual(@as(usize, 0), st.closures_kept);
 }
 
 test "gc: no-op when boxes arena registry is absent" {

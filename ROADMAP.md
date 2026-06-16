@@ -2195,10 +2195,15 @@ store, table, VT, SEL, &fn)`). Selectors are eids **207–219**; File/System too
 **220–223**; new FFI selectors **append at 224+** (append-only ABI discipline).
 All current scalar `Kind`s are signed; no unsigned/width variants.
 
-**Two tracks. Track A (no ABI risk — verifiable against real libs): 19.6 → 19.3 →
-19.4 → 19.7 — ✓ ALL SHIPPED.** Track B (hard ABI) begins with an **engine swap to
-libffi** (B0a/B0b) that replaces dyncall+dyncallback, then: 19.1 (un-deferred) →
-19.2 callbacks → 19.5 struct-as-entity. See "Track B engine decision" below.
+**Two tracks — BOTH SHIPPED; PHASE 19 COMPLETE (verified 2026-06-16).** Track A
+(no ABI risk — verifiable against real libs): 19.6 → 19.3 → 19.4 → 19.7 — ✓ ALL
+SHIPPED. Track B (hard ABI) did an **engine swap to libffi** (B0a/B0b) that
+RETIRED dyncall+dyncallback (libffi is now the sole FFI engine), then shipped:
+19.1 (arm64 struct-by-value, via `aggregates_supported = true`) → 19.2 callbacks
+(ffi_closure) → 19.5 struct-as-entity. Tests green: ffi_test 25/25, ffi_module_test
+26/26. Callback closures are now GC-rooted through their box (SHIPPED 2026-06-16,
+gc_test 9/9). Only follow-up left (small, not an arc): nested/array struct fields
+(scalars only today). See "Track B engine decision" below.
 
 #### Decisions locked (2026-06-15)
 - **19.6 sigchar scheme = `u`-prefix multi-char** (`uc us ui ul uL`). Rejected:
@@ -2361,11 +2366,14 @@ B0b **[commit] Rewrite `ffi.zig` marshaling onto `ffi_cif`/`ffi_call`.** Model
      internally** (trampoline table) — verified by smoke + the real test. Tested
      end-to-end: a birnam comparator sorts a 4-long array via libc `qsort`
      (re-entrant — the evaluator runs mid-C-call). 61/61 lang_module_test.
-     **DEFERRED:** GC-rooting the closure through the callback box (ctx holds the
-     Ref but the GC doesn't trace it — caller must keep the closure alive; fine
-     for synchronous use like `qsort`, needs a rooting pass for persistent/
-     event-loop callbacks); arity >2; struct/HFA callback args. The libffi engine
-     choice retired the original JIT + separate-dep risk.
+     **GC-rooting the closure through the callback box — SHIPPED 2026-06-16.**
+     `gc.consider` now marks a live `CALLBACK_VT` box and follows slot 1
+     (`*CallbackCtx`) to mark `ctx.closure`, so a persistent/event-loop callback
+     keeps its closure alive without the caller holding a separate ref; a freed
+     callback (slot 1 = 0) roots nothing. Tests: gc_test 9/9 (live-callback-roots
+     + freed-callback-roots-nothing). **STILL DEFERRED:** arity >2; struct/HFA
+     callback args. The libffi engine choice retired the original JIT + separate-dep
+     risk.
 
 19.5 **Struct-as-entity (the birnam-flavored absorb) — SHIPPED 2026-06-15**
      (branch `phase-19-struct-entity`). `[Module struct: #Point fields: #[#x #i
@@ -2750,7 +2758,8 @@ closed unbuilt — measured zero interpreter gain (the global hash it replaces i
 field-read slot cache. Nothing perf-related happens before this.
 
 **④+ Off critical path (demand-driven, any order):**
-- *FFI*: 19.2 callback GC-rooting (needs a box→Ref GC-mark bridge) + arity>2;
+- *FFI*: 19.2 callback GC-rooting ✓ SHIPPED 2026-06-16 (box→Ref GC-mark bridge in
+  gc.consider); remaining 19.2 = arity>2;
   19.5 nested/array fields, by-value struct ARG auto-marshal, `[T size]` (trivial),
   field fact-materialization (deep idst, own arc); x86_64 libffi headers (non-arm CI).
 - *GC tail*: **15.A-AST SHIPPED 2026-06-16** (provenance + ① regression/mcache +

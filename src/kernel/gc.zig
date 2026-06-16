@@ -47,6 +47,7 @@ const kernel_eids = @import("kernel_eids.zig");
 const arenas = @import("arenas.zig");
 const arena_mod = @import("arena.zig");
 const vm_mod = @import("vm.zig");
+const ffi = @import("ffi.zig");
 
 const Ref = ref_mod.Ref;
 const Arena = arena_mod.Arena;
@@ -241,6 +242,21 @@ fn consider(ctx: *Ctx, r: Ref) void {
 
     if (boxed.isFloat(r) or boxed.isFfiPtr(r)) {
         _ = ctx.boxes.mark(p - REF_SZ);
+        return;
+    }
+    // Phase 19.2 follow-up — GC-root a callback through its box. The box itself
+    // is a boxes-arena object (mark it so it survives), and its heap `CallbackCtx`
+    // holds the birnam closure invoked by the trampoline — follow it so the
+    // closure isn't swept out from under a still-live callback (the trampoline
+    // would otherwise dispatch a dead closure). `callbackCtx` is 0 once `[cb free]`
+    // has run, so a freed callback roots nothing.
+    if (boxed.isCallback(r)) {
+        _ = ctx.boxes.mark(p - REF_SZ);
+        const ctx_addr = boxed.callbackCtx(r);
+        if (ctx_addr != 0) {
+            const cb_ctx: *const ffi.CallbackCtx = @ptrFromInt(ctx_addr);
+            consider(ctx, cb_ctx.closure);
+        }
         return;
     }
     if (isRrb(r)) {

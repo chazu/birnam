@@ -791,11 +791,10 @@ fn valueSelectorForArity(n: usize) ?u64 {
 /// Mint a callback: parse `sig_str`, build the cif, alloc + prep a libffi
 /// closure bound to `closure_ref`, return a CALLBACK_VT box (slot 0 = code loc,
 /// slot 1 = the heap ctx). Returns NIL on parse error, arity > 2, or any libffi
-/// failure (with all partial allocations cleaned up). NOTE (lifetime): the ctx
-/// holds `closure_ref` but the GC does not yet root it through the callback box
-/// — the caller must keep the closure alive for the callback's lifetime
-/// (sufficient for synchronous use like `qsort`; persistent callbacks need a
-/// GC-rooting pass — Phase 19.2 follow-up).
+/// failure (with all partial allocations cleaned up). Lifetime: the GC roots the
+/// birnam closure through the callback box — when the box is live, `gc.consider`
+/// follows slot 1 (`*CallbackCtx`) and marks `ctx.closure`, so a persistent
+/// callback keeps its closure alive without the caller holding a separate ref.
 pub fn makeCallback(allocator: std.mem.Allocator, closure_ref: Ref, sig_str: []const u8) Ref {
     var sig = parseSig(allocator, sig_str) catch return ref_mod.NIL;
     const n = sig.args.len;
