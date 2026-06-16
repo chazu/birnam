@@ -2200,19 +2200,27 @@ fn vtMethodDoImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     const vt_eid = s.receiver >> 3;
     const sel_eid = args[0] >> 3;
 
-    // Phase 11.12 — bytecode switchover. If the closure wraps an
-    // AST_BLOCK_VT entity, compile to bytecode and install the
-    // bytecode method. closureValueImpl + bytecodeDispatcherImpl
-    // handle the value/value: path uniformly.
-    // Cluster ① — `:eval-mode treewalk` forces the tree-walker install path
-    // (skip the bytecode compile) for debugging.
-    if (g_eval_mode == .bytecode) {
-        if (extractBlockAstEidForCompile(args[1])) |block_ast_eid| {
-            const method_eid = api.compile_block_as_method(block_ast_eid);
-            if (method_eid != 0) {
-                _ = api.assert_fact(vt_eid, sel_eid, mkEid(method_eid), M_USER);
-                return s.receiver;
-            }
+    // Install a proper `:bytecode-stream` method (NOT the raw closure value) so
+    // prune's Root 2 can root it. Two shapes of block arg:
+    //  1. Compiled top-level (Cluster ①): the block arrives as a *bytecode*
+    //     closure (MAKE_BLOCK). `method_eid_of_bytecode_closure` extracts its
+    //     already-compiled method eid → install that directly.
+    //  2. Tree-walker closure (uncompiled block): `extractBlockAstEidForCompile`
+    //     reads its wrapped AST_BLOCK_VT → `compile_block_as_method`.
+    // (Installing the raw closure — the old fallback when neither applied — made
+    // an un-rootable method that prune dropped, masked by a stale dispatch
+    // cache; see ROADMAP "15.A-AST". The eval-mode toggle no longer gates this:
+    // methods always compile so they stay prune-rootable.)
+    const direct = api.method_eid_of_bytecode_closure(args[1] >> 3);
+    if (direct != 0) {
+        _ = api.assert_fact(vt_eid, sel_eid, mkEid(direct), M_USER);
+        return s.receiver;
+    }
+    if (extractBlockAstEidForCompile(args[1])) |block_ast_eid| {
+        const method_eid = api.compile_block_as_method(block_ast_eid);
+        if (method_eid != 0) {
+            _ = api.assert_fact(vt_eid, sel_eid, mkEid(method_eid), M_USER);
+            return s.receiver;
         }
     }
 

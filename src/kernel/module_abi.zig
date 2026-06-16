@@ -368,6 +368,13 @@ pub const IdApi = extern struct {
     /// `compile_block_as_method` remains and defaults to M_USER.
     /// (Appended at END per the append-only ABI discipline.)
     compile_block_as_method_in: *const fn (block_ast_eid: u64, module_eid: u64) callconv(.c) u64,
+
+    /// 15.A-AST (2026-06-16) — if `closure_eid` is a bytecode closure (direct
+    /// compiled method or a MAKE_BLOCK block closure), return its underlying
+    /// `:bytecode-stream` method eid; else 0. Lets `method:do:` install a proper
+    /// rootable method from a compiled top-level block arg (Cluster ①) instead
+    /// of a raw, prune-invisible closure. (Appended at END per ABI discipline.)
+    method_eid_of_bytecode_closure: *const fn (closure_eid: u64) callconv(.c) u64,
 };
 
 comptime {

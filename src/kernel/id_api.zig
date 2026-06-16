@@ -142,6 +142,7 @@ pub fn populate() IdApi {
         .make_float = &cMakeFloat,
         .compile_block_as_method = &cCompileBlockAsMethod,
         .compile_block_as_method_in = &cCompileBlockAsMethodIn,
+        .method_eid_of_bytecode_closure = &cMethodEidOfBytecodeClosure,
         .eval_top_level = &cEvalTopLevel,
         .snapshot_now = &cSnapshotNow,
         .snapshot_as_of = &cSnapshotAsOf,
@@ -526,6 +527,7 @@ fn cExciseEntity(eid: u64) callconv(.c) bool {
 const boxed = @import("boxed.zig");
 const compiler_mod = @import("compiler.zig");
 const dispatch_mod = @import("dispatch.zig");
+const vm_mod = @import("vm.zig");
 const kernel_eids_mod = @import("kernel_eids.zig");
 
 fn cMakeFloat(value: f64) callconv(.c) Ref {
@@ -613,6 +615,29 @@ fn cEvalTopLevel(
         return ref_mod.NIL;
     ok_out.* = true;
     return result;
+}
+
+/// 15.A-AST — given a closure entity, if it is a *bytecode* closure (a direct
+/// compiled method, OR a MAKE_BLOCK block closure produced by running compiled
+/// code), return its underlying `:bytecode-stream` method eid; else 0.
+///
+/// Used by `method:do:` (`vtMethodDoImpl`): when a top-level statement is
+/// compiled (Cluster ①), the block arg arrives as a bytecode block closure, not
+/// the tree-walker closure the old AST-extract path expects. Installing the raw
+/// closure produced an un-rootable method (no `:bytecode-stream` fact → prune's
+/// Root 2 drops it, masked only by a stale dispatch cache). Installing the
+/// extracted method eid instead yields a proper, prune-rootable method.
+fn cMethodEidOfBytecodeClosure(closure_eid: u64) callconv(.c) u64 {
+    const table = send_mod.tablePtr() orelse return 0;
+    const ptr_ref = table.get(closure_eid) orelse return 0;
+    if (!ref_mod.isPointer(ptr_ref)) return 0;
+    const c: *const Closure = @ptrCast(@alignCast(ref_mod.untagPointer(ptr_ref)));
+    // Only bytecode closures (dispatched by the VM); a tree-walker closure uses
+    // a different `.method` and is handled by the AST-extract path in lang.
+    if (c.method != @as(*const anyopaque, @ptrCast(&dispatch_mod.bytecodeDispatcherImpl))) return 0;
+    if (ref_mod.isEid(c.data)) return ref_mod.untagEid(c.data); // direct compiled method
+    if (ref_mod.isPointer(c.data)) return vm_mod.blockMethodEidFromRef(c.data); // MAKE_BLOCK block
+    return 0;
 }
 
 /// Storage for the interner so the C wrappers can find it. Shell calls this

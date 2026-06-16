@@ -29,6 +29,7 @@ const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const promotion = @import("promotion.zig");
+const mcache = @import("mcache.zig");
 
 const Ref = ref_mod.Ref;
 const FactStore = fact_store.FactStore;
@@ -170,6 +171,12 @@ pub fn pruneReachable(
         promotion.demote(e);
         table.clear(e) catch {};
     }
+    // compact rebuilt the indexes at a fresh tx and dropped swept facts; the
+    // dispatch cache may now hold stale (vt, sel) → *Closure entries pointing at
+    // demoted/cleared entities. Invalidate it so the next send rebinds from the
+    // rebuilt store. (Without this, a prune that drops a method install still
+    // "works" via a stale cache hit — masking dispatch-reachability bugs.)
+    mcache.clearAll();
 
     return .{ .kept = cs.kept, .dropped_facts = cs.dropped, .swept_entities = swept.items.len };
 }
