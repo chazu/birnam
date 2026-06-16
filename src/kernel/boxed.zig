@@ -231,8 +231,9 @@ pub const RrbRef = rrb.Rrb(Ref);
 /// Build an RRB from a slice of Refs, wrap in a libid object with vt =
 /// RRB_VT, return a pointer-tagged Ref. Insertion order = slice order.
 pub fn mkRrb(allocator: std.mem.Allocator, values: []const Ref) !Ref {
-    var r = RrbRef.empty(allocator);
-    for (values) |v| r = try r.push(v);
+    // Bulk build (O(N) allocs, no path-copy garbage) so the result is fully
+    // reclaimable by `freeRrb` — see rrb.fromSlice / Phase 15.P.
+    const r = try RrbRef.fromSlice(allocator, values);
     return wrapRrb(allocator, r);
 }
 
@@ -405,4 +406,17 @@ pub fn untagRrbRef(r: Ref) *const RrbRef {
     const inner_ref = object.slotAt(obj, 0);
     std.debug.assert(ref_mod.isPointer(inner_ref));
     return @ptrCast(@alignCast(ref_mod.untagPointer(inner_ref)));
+}
+
+/// Phase 15.P — fully reclaim an RRB allocated by `mkRrb`/`wrapRrb` on
+/// `allocator`: the tree spine (`RrbRef.deinitTree`), the `RrbRef` struct, and
+/// the libid object. SAFE ONLY for an unshared RRB (see `rrb.deinitTree`) — a
+/// compiler constant pool qualifies. `r` must not be used afterward.
+pub fn freeRrb(allocator: std.mem.Allocator, r: Ref) void {
+    std.debug.assert(isRrbRef(r));
+    const obj = object.fromRef(r);
+    const rrb_ptr: *RrbRef = @constCast(untagRrbRef(r));
+    rrb_ptr.deinitTree();
+    allocator.destroy(rrb_ptr);
+    object.freeObject(allocator, obj, 1); // RRB libid object has 1 slot
 }

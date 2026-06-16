@@ -53,6 +53,59 @@ pub fn Rrb(comptime V: type) type {
             return self.count_;
         }
 
+        // -- bulk build -----------------------------------------------------
+        //
+        // Build a tree directly from a slice, bottom-up, allocating each node
+        // exactly once. Unlike repeated `push` (which path-copies and leaks
+        // O(N·log N) superseded intermediates), this is O(N) allocations with
+        // zero garbage — so a `fromSlice`-built tree is fully reclaimed by
+        // `deinitTree`. Produces the same strict-radix shape `push` would
+        // (leaves chunked by BRANCH, all at one depth, non-rightmost full), so
+        // `nth`/`set`/`push`/`pop` behave identically. (Phase 15.P.)
+        pub fn fromSlice(allocator: std.mem.Allocator, values: []const V) !Self {
+            if (values.len == 0) return empty(allocator);
+
+            // Leaf level: chunk the values into leaves of up to BRANCH.
+            var level = std.ArrayList(*const Node){};
+            defer level.deinit(allocator);
+            var i: usize = 0;
+            while (i < values.len) {
+                const end = @min(i + BRANCH, values.len);
+                const vals = try allocator.alloc(V, end - i);
+                @memcpy(vals, values[i..end]);
+                const node = try allocator.create(Node);
+                node.* = .{ .is_leaf = true, .values = vals, .children = &.{} };
+                try level.append(allocator, node);
+                i = end;
+            }
+
+            // Inner levels: chunk child nodes by BRANCH until a single root.
+            var shift: u6 = 0;
+            while (level.items.len > 1) {
+                var parents = std.ArrayList(*const Node){};
+                var j: usize = 0;
+                while (j < level.items.len) {
+                    const end = @min(j + BRANCH, level.items.len);
+                    const kids = try allocator.alloc(*const Node, end - j);
+                    @memcpy(kids, level.items[j..end]);
+                    const node = try allocator.create(Node);
+                    node.* = .{ .is_leaf = false, .values = &.{}, .children = kids };
+                    try parents.append(allocator, node);
+                    j = end;
+                }
+                level.deinit(allocator);
+                level = parents;
+                shift += LOG_BRANCH;
+            }
+
+            return .{
+                .allocator = allocator,
+                .root = level.items[0],
+                .shift = shift,
+                .count_ = values.len,
+            };
+        }
+
         // -- nth ------------------------------------------------------------
 
         pub fn nth(self: Self, idx: usize) V {
@@ -247,6 +300,32 @@ pub fn Rrb(comptime V: type) type {
                 .children = &.{},
             };
             return node;
+        }
+
+        // -- deep free ------------------------------------------------------
+        //
+        // Frees every node reachable from the root plus the per-node `values` /
+        // `children` slices. DANGER: this is a *deep* free with no refcounting.
+        // It is safe ONLY when this tree shares no nodes with any other live
+        // RRB — i.e. a freshly built vector that was never handed to `set` /
+        // `push` / `rrbWith` to produce a still-live structurally-shared
+        // sibling. A compiler constant pool qualifies (built once via `mkRrb`,
+        // referenced only by its `:constant-pool` fact, never shared). Leaves
+        // the handle empty so a second call is a no-op. (Phase 15.P.)
+        pub fn deinitTree(self: *Self) void {
+            if (self.root) |r| freeNode(self.allocator, r);
+            self.root = null;
+            self.count_ = 0;
+        }
+
+        fn freeNode(allocator: std.mem.Allocator, node: *const Node) void {
+            if (node.is_leaf) {
+                allocator.free(node.values);
+            } else {
+                for (node.children) |c| freeNode(allocator, c);
+                allocator.free(node.children);
+            }
+            allocator.destroy(node);
         }
 
         // -- pop ------------------------------------------------------------

@@ -34,6 +34,7 @@ const boxed = @import("boxed.zig");
 const closure_mod = @import("closure.zig");
 const dispatch = @import("dispatch.zig");
 const vm = @import("vm.zig");
+const send_mod = @import("send.zig");
 
 const Ref = ref_mod.Ref;
 const FactStore = fact_store.FactStore;
@@ -211,6 +212,21 @@ pub fn pruneReachable(
         if (f.m != kernel_eids.M_USER or marked.contains(f.e)) continue;
         const g = try seen.getOrPut(f.e);
         if (!g.found_existing) try swept.append(scratch, f.e);
+    }
+
+    // Phase 15.P — free a swept method's `:constant-pool` RRB tree. The pool is
+    // a multi-allocation (libid box + RrbRef struct + tree nodes) materialized on
+    // the kernel allocator, NOT in a swept arena, so neither compact (facts) nor
+    // :gc (arena bytes) reclaims it — without this its heap leaks on every method
+    // redefine/throwaway. Read the fact BEFORE compact drops it. Each pool is
+    // freshly built per materialize and never structurally shared (no `rrbWith`),
+    // so a deep free is safe. Skipped when the kernel allocator is unset (tests
+    // that prune fake facts) — the only allocator that materialized real pools.
+    if (send_mod.kernelAllocator()) |ka| {
+        for (swept.items) |e| {
+            const pool_ref = store.currentValue(e, kernel_eids.ATTR_CONSTANT_POOL) orelse continue;
+            if (boxed.isRrbRef(pool_ref)) boxed.freeRrb(ka, pool_ref);
+        }
     }
 
     const cs = store.compact(scratch, &marked, keep) catch return error.OutOfMemory;

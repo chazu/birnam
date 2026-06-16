@@ -130,3 +130,20 @@ test "bootstrap allocates FLOAT_VT and FFI_PTR_VT with proper delegation" {
     try testing.expectEqual(vtv, store.currentValue(kernel_eids.FLOAT_VT, kernel_eids.ATTR_VTABLE).?);
     try testing.expectEqual(vtv, store.currentValue(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_VTABLE).?);
 }
+
+// -- Phase 15.P: const-pool RRB finalizer ------------------------------------
+
+test "freeRrb fully reclaims a multi-level RRB (Phase 15.P)" {
+    // testing.allocator leak-checks at teardown: this passes iff freeRrb frees
+    // the libid box + RrbRef struct + every tree node, and mkRrb (via fromSlice)
+    // leaks no construction garbage. 40 > BRANCH(32) forces a 2-level tree.
+    if (arenas.ready()) arenas.deinit(); // mkRrb uses the passed allocator regardless
+    var elems: [40]ref_mod.Ref = undefined;
+    for (&elems, 0..) |*e, i| e.* = ref_mod.mkEid(@intCast(i + 1));
+    const v = try boxed.mkRrb(testing.allocator, &elems);
+    try testing.expect(boxed.isRrbRef(v));
+    try testing.expectEqual(@as(usize, 40), boxed.rrbLen(v));
+    try testing.expectEqual(ref_mod.mkEid(1), boxed.rrbNth(v, 0));
+    try testing.expectEqual(ref_mod.mkEid(40), boxed.rrbNth(v, 39));
+    boxed.freeRrb(testing.allocator, v); // v invalid after this
+}

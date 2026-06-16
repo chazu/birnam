@@ -39,6 +39,17 @@ pub fn allocObject(allocator: std.mem.Allocator, vt_ref: Ref, n_slots: usize) !O
     return obj_ptr;
 }
 
+/// Free a libid object allocated by `allocObject` (base = `obj` - 1 word, size =
+/// `1 + n_slots` words, alignment = Ref). Caller must pass the same `n_slots`
+/// used at alloc. For non-arena objects whose lifetime is managed explicitly
+/// (e.g. a swept method's constant-pool RRB box — Phase 15.P).
+pub fn freeObject(allocator: std.mem.Allocator, obj: ObjPtr, n_slots: usize) void {
+    const base_addr = @intFromPtr(obj) - @sizeOf(Ref);
+    const total_bytes = @sizeOf(Ref) * (1 + n_slots);
+    const buf: []align(@alignOf(Ref)) u8 = @as([*]align(@alignOf(Ref)) u8, @ptrFromInt(base_addr))[0..total_bytes];
+    allocator.free(buf);
+}
+
 /// Read the vtable Ref stored one word before `obj`.
 pub fn vtableOf(obj: ObjPtr) Ref {
     const obj_addr: usize = @intFromPtr(obj);

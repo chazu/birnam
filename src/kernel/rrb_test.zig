@@ -283,3 +283,57 @@ test "100k push + lookup sanity" {
     try testing.expectEqual(@as(u64, 50_000 ^ 0xABCDEF12), v.nth(50_000));
     try testing.expectEqual(@as(u64, (N - 1) ^ 0xABCDEF12), v.nth(N - 1));
 }
+
+// -- Phase 15.P: leak-free bulk build + deep free ------------------------------
+
+test "fromSlice: nth round-trip + same radix shape as push, deinitTree leak-clean" {
+    // fromSlice-built trees live on the leak-checked testing allocator and are
+    // freed via deinitTree — so this test fails if deinitTree misses a node or
+    // fromSlice leaks. push-built reference lives on an arena (leaks tolerated).
+    const sizes = [_]usize{ 0, 1, 31, 32, 33, 64, 1000 };
+    for (sizes) |n| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+        var pv = U64Vec.empty(arena.allocator());
+        var i: u64 = 0;
+        while (i < n) : (i += 1) pv = try pv.push(i);
+
+        const vals = try testing.allocator.alloc(u64, n);
+        defer testing.allocator.free(vals);
+        for (vals, 0..) |*v, k| v.* = @intCast(k);
+        var fv = try U64Vec.fromSlice(testing.allocator, vals);
+        defer fv.deinitTree();
+
+        try testing.expectEqual(n, fv.count());
+        try testing.expectEqual(pv.shift, fv.shift); // identical radix shape
+        var j: usize = 0;
+        while (j < n) : (j += 1) {
+            try testing.expectEqual(@as(u64, @intCast(j)), fv.nth(j));
+            try testing.expectEqual(pv.nth(j), fv.nth(j));
+        }
+    }
+}
+
+test "fromSlice: set/push/pop interoperate" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var vals: [40]u64 = undefined;
+    for (&vals, 0..) |*v, k| v.* = @intCast(k);
+    var v = try U64Vec.fromSlice(a, &vals);
+    try testing.expectEqual(@as(usize, 40), v.count());
+    v = try v.set(10, 999);
+    try testing.expectEqual(@as(u64, 999), v.nth(10));
+    v = try v.push(40);
+    try testing.expectEqual(@as(usize, 41), v.count());
+    try testing.expectEqual(@as(u64, 40), v.nth(40));
+    v = try v.pop();
+    try testing.expectEqual(@as(usize, 40), v.count());
+    try testing.expectEqual(@as(u64, 999), v.nth(10));
+}
+
+test "deinitTree on an empty vector is a no-op" {
+    var v = U64Vec.empty(testing.allocator);
+    v.deinitTree(); // must not crash / double-free
+    try testing.expectEqual(@as(usize, 0), v.count());
+}

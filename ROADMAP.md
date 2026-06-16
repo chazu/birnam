@@ -6,7 +6,7 @@ This roadmap follows VISION.md. Open questions in VISION.md must be resolved bef
 
 ## Status (as of 2026-06-03)
 
-**Headline — Phases 0–14 complete; Phase 15 (heap GC) SHIPPED + merged: four-arena value-heap mark-sweep (:gc + auto-trigger, FFI Sig free) + index epoch arena (15.I, compact frees the old HAMT tree wholesale, future-proofed for retained snapshots). Remaining: const-pool RRB finalizer + AST-drop policy (gated on 15.R retention). New arc Phase 15.R = retention/snapshots/excision/cold-history. 400/400 tests, 0 leaked.**
+**Headline — Phases 0–14 complete; Phase 15 (heap GC) SHIPPED + merged: four-arena value-heap mark-sweep (:gc + auto-trigger, FFI Sig free) + index epoch arena (15.I, compact frees the old HAMT tree wholesale, future-proofed for retained snapshots). const-pool RRB finalizer (15.P) + AST-drop policy (15.A-AST) SHIPPED 2026-06-16. New arc Phase 15.R = retention/snapshots/excision/cold-history. 400/400 tests, 0 leaked.**
 - **9.5.6** ✓ — FFI surface reachable from the language + file-in. `Module` prototype bound globally (`Module load:`/`resolve`), `language` prototype with `fileIn:`/`fileIn:onError:`, shell `:in`/`:in!`. FFI wraps refactored to **declarative facts** (`:ffi-wrap-symbol`/`:ffi-sig-str`/`:wrap-selector`, M_USER) with **deferred `dlopen`**: a single `resolveModule` does the open+`dlsym`+install at commit (REPL line / file-in / image load). Wraps now **relink by symbol name** across processes (fixes stale-`:ffi-addr` persistence; foundation for freezing a wrapper into a module dylib). Also fixed a latent keyword-send arg-arity overrun (stale `mkEid(0)` `:next-sibling` on recycled eids). No "class" concept — prototypes only. See the Phase 9.5.6 §Status block.
 - **0–11** ✓ — substrate, datalog, FFI, modules, language, bytecode VM. Phase 11.12 shipped the lang switchover: user methods dispatch through the bytecode VM (not the tree-walker). Loose ends (in-band mcache wiring, full `g_unwinding` retirement, tail-call refactor) deferred, non-blocking.
 - **12** ✓ — image snapshot (`.bim`, single self-describing file: facts + embedded manifest + interner). Provenance split (`M_USER`), Approach-B closure rebuild, shell `:save`/`:load`. A REPL session survives process restart (proven). See the Phase 12 §Status block.
@@ -108,7 +108,7 @@ Non-local return propagation through SEND: `handleSendUnwind` helper runs after 
 2. Phase 12 ✓ — image snapshot + load (`.bim`; pure-data save, no `cc` required)
 3. Phase 13 ✓ — **logical prune** (fact-level reachability mark-sweep: AST/scope, history excise; AOT prune mode reuses). *Note: drops facts + clears object-table slots; does NOT free backing heap — that is Phase 15.*
 4. Phase 14 ✓ — AOT (`birnam --aot=<static|dynamic> [--strip=malleable] [--strip=history]`; all six matrix cells driver-built; only the 12.5 mmap-relocation perf path deferred)
-5. Phase 15 — **heap GC** — core SHIPPED + merged. Four-arena non-moving mark-sweep (boxes/captures/closures_vt/strings), `:gc` + growth-gated auto-trigger, FFI Sig free. Remaining standalone items: `index` epoch arena, const-pool RRB finalizer, AST-drop policy (see §shipped-vs-remaining). Distinct from Phase 13: 13 reclaims *facts*, 15 reclaims *bytes*.
+5. Phase 15 — **heap GC** — core SHIPPED + merged. Four-arena non-moving mark-sweep (boxes/captures/closures_vt/strings), `:gc` + growth-gated auto-trigger, FFI Sig free. const-pool RRB finalizer (15.P) + AST-drop policy (15.A-AST) SHIPPED 2026-06-16. Remaining: `index` epoch arena (see §shipped-vs-remaining). Distinct from Phase 13: 13 reclaims *facts*, 15 reclaims *bytes*.
 5b. Phase 15.R — **Retention / Snapshots / Excision** (the temporal-database layer the persistent substrate was built for; depends on 15.I epoch arena). db-values as first-class pinning snapshots, retention horizon policy, explicit excision, on-disk cold-history tier. See Phase 15.R §spec. Distinct from Phase 13/15: 13 = which facts, 15 = which bytes, **15.R = which history, for how long, and where it lives**.
 6. Phase 16 — Collections (language-level: list/vector proto + literal + `do:`/`collect:`/`inject:`/`size`; spec TBD)
 7. Phase 17 — Standard Library (strings, printing/`displayString`, comparison, `doesNotUnderstand:`, core protocols; spec TBD)
@@ -1700,7 +1700,7 @@ The arena registry is single-threaded today but aligns with the locked Datomic t
 
   **Reclaims BOTH index leak kinds at once:** (1) per-mutation spine garbage (every `assert`/`retract` path-copies, abandoning the old spine — accumulates in the live epoch) and (2) compact wholesale (the whole old current tree). Both die when the epoch is freed. Between compacts the index still grows (same as today), but now it all dumps at the next compact → reclaim cadence = prune cadence (frequent prune ≈ continuous; rare prune = grow-then-dump). Continuous per-node reclaim is rejected: it needs refcounting/marking, and HAMT nodes carry no Ref tag so the value-heap collector can't reach them — epoch-at-compact is the 80/20.
 
-- **15.P — constant-pool RRB finalizer.** `compiler.materialize`'s `boxed.mkRrb` is multi-alloc (libid object + `RrbRef` struct + internal tree nodes, none individually Ref-reachable), so it can't be naive-swept like a box. Reclaim needs a **type-aware sweep finalizer**: when an unmarked RRB libid object is swept, also free its `RrbRef` tree (`RrbRef.deinit`). Low yield — constant-pool RRBs only churn on method redefine, which **doesn't orphan at the REPL** (AST rooting, see 15.5), so this is gated behind 15.A-AST below. Group with 15.I (both are persistent-structure node reclamation).
+- **15.P — constant-pool RRB finalizer — SHIPPED 2026-06-16.** `compiler.materialize`'s `boxed.mkRrb` is multi-alloc (libid object + `RrbRef` struct + internal tree nodes, none individually Ref-reachable) on the kernel allocator (NOT a swept arena), so neither `compact` (facts) nor `:gc` (arena bytes) reclaimed it. **Realized at the prune boundary, not the arena sweep:** `prune.pruneReachable` now frees each swept method's `:constant-pool` tree (read the fact before `compact` drops it) via `boxed.freeRrb` → `rrb.deinitTree` (deep free; safe because a pool is freshly built + never structurally shared) + `object.freeObject`. Two supporting fixes: (1) `rrb.fromSlice` — leak-free O(N) bulk build that `mkRrb` now uses instead of repeated `push` (which leaked O(N·log N) path-copy intermediates that `deinitTree` could never reach); (2) `object.freeObject`. Tests: rrb_test 24/24 (fromSlice == push shape, deinitTree leak-clean), boxed_test 8/8 (freeRrb leak-clean), full kernel sweep 39 files green. Guarded on `kernelAllocator() != null` so test prunes over fake facts no-op. (15.I HAMT index nodes remain a separate persistent-structure reclamation item.)
 
 - **15.A-AST — AST-drop / REPL-history policy (unblocks redefine-churn reclaim).** Redefining a method at the REPL does NOT orphan the old method: its source AST stays rooted in `TOP_SCOPE` (PR4 Risk #2 session creep), so `:prune` reports 0 swept and none of the routed method allocations (wrapper/bytecode/pool) ever become reclaimable. Reclaiming redefine churn requires a policy for dropping superseded top-level AST / REPL history — a **product decision** (when is REPL input history collectible? per-line? on `:prune`? keep-last-N?), not a mechanical fix. Once it ships, the existing sweep reclaims the churn with no collector changes.
 
@@ -2734,10 +2734,11 @@ item that gates it (rework). Roadmap-number order is NOT the build order.
    (`g_unwinding` retirement), and (partly) the error-model VM-stmt-halt gap all
    exist because top-level statements still tree-walk. See **Cluster ①** below —
    but note the open design fork discovered 2026-06-15.
-4. **`15.P` (const-pool RRB finalizer) is pointless before `15.A-AST`.** Redefine
-   churn never orphans the old method (AST stays rooted in TOP_SCOPE) → nothing
-   to finalize. `15.A-AST` is a *product decision* (when is REPL input history
-   collectible?), not engineering.
+4. **`15.P` (const-pool RRB finalizer) — SHIPPED 2026-06-16, after `15.A-AST`.**
+   Was gated on it: redefine churn only orphans the old method once 15.A-AST lets
+   superseded AST drop. Now that 15.A-AST shipped, prune sweeps dead methods and
+   15.P frees their const-pool trees (`boxed.freeRrb` at the prune boundary +
+   leak-free `rrb.fromSlice`/`deinitTree`).
 
 ### Build order
 
@@ -2764,8 +2765,10 @@ field-read slot cache. Nothing perf-related happens before this.
   field fact-materialization (deep idst, own arc); x86_64 libffi headers (non-arm CI).
 - *GC tail*: **15.A-AST SHIPPED 2026-06-16** (provenance + ① regression/mcache +
   closure-aware prune mark-walk; redefine/throwaway churn now collected, live
-  methods + closures-in-vars survive `:prune`). 15.P (const-pool RRB finalizer) +
-  15.R snapshot-auto-release still ride on the same sweep-finalizer mechanism.
+  methods + closures-in-vars survive `:prune`). **15.P (const-pool RRB finalizer)
+  ✓ SHIPPED 2026-06-16** (prune-boundary `boxed.freeRrb` + leak-free
+  `rrb.fromSlice`/`deinitTree`). 15.R snapshot-auto-release still rides the
+  sweep-finalizer mechanism.
 - *Datalog birnam surface*: **MVP SHIPPED 2026-06-16** — `[db findAll: ?v where:
   #[ #[e a v] … ]]` (commit on branch phase-12-8-bytecode-method-vt). New
   `query-var = "?" ident` grammar atom; `where:` is an ordinary evaluated vector
@@ -2993,12 +2996,12 @@ Net: REPL/script memory is now **predictable + sustainable without manual
 intervention** — auto-prune (facts) + auto-gc (heap), both growth-gated at the
 quiescent line boundary.
 
-**Still open (genuinely minor):** **15.P** const-pool RRB *heap-byte* finalizer —
-prune now drops a swept method's `:constant-pool` FACT, but the RRB's kernel-
-allocated tree bytes aren't freed (not in a swept arena). Only methods-with-pools
-(nested blocks / non-inline literals), small per method. Low yield; defer until a
-measured heap-growth problem points at it. **`run-without-materialize`** — pure
-perf now (prune collects the entities); optional.
+**15.P const-pool RRB heap-byte finalizer — SHIPPED 2026-06-16.** prune now frees
+a swept method's `:constant-pool` tree bytes (`boxed.freeRrb` at the prune
+boundary, before `compact`), and `mkRrb` builds via leak-free `rrb.fromSlice` so
+no construction garbage is left for `deinitTree` to miss. **Still open (genuinely
+minor):** **`run-without-materialize`** — pure perf now (prune collects the
+entities); optional.
 
 **Status: SPEC, unblocked** (no perf-1.4 dependency). **Product policy LOCKED
 2026-06-15: non-temporal code by default** (transient-REPL; bounds memory to the
