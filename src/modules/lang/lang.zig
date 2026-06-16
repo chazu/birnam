@@ -3854,7 +3854,12 @@ fn installSourceMethod(vt: u64, sel_name: []const u8, src: []const u8) void {
         if (g_log) |log| log("[lang] prelude parse failed");
         return;
     }
-    const method_eid = api.compile_block_as_method(ast >> 3);
+    // 15.A-AST: prelude methods are CODE (reconstructed each boot, like the
+    // install fact below) — compile the method ENTITY under the module eid so
+    // its provenance matches its install. Otherwise the method is M_USER while
+    // its install is CODE: imaged-but-reconstructed (bloat) and unrootable by
+    // prune via its install.
+    const method_eid = api.compile_block_as_method_in(ast >> 3, g_module_eid);
     if (method_eid == 0) {
         if (g_log) |log| log("[lang] prelude compile failed");
         return;

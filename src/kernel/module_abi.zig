@@ -359,6 +359,15 @@ pub const IdApi = extern struct {
     /// before a compile failure, so fallback is clean.
     /// (Appended at END per the append-only ABI discipline.)
     eval_top_level: *const fn (stmt_ast_eid: u64, scope_eid: u64, lookup_sel: u64, bind_sel: u64, set_sel: u64, ok_out: *bool) callconv(.c) Ref,
+
+    /// 15.A-AST (2026-06-15) — like `compile_block_as_method`, but the caller
+    /// chooses the provenance the method ENTITY (and its block children) are
+    /// materialized under. Pass the caller's module eid for CODE methods
+    /// (reconstructed each boot, not imaged, never swept — e.g. the stdlib
+    /// prelude); pass M_USER for durable user definitions. The plain
+    /// `compile_block_as_method` remains and defaults to M_USER.
+    /// (Appended at END per the append-only ABI discipline.)
+    compile_block_as_method_in: *const fn (block_ast_eid: u64, module_eid: u64) callconv(.c) u64,
 };
 
 comptime {

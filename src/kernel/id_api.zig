@@ -141,6 +141,7 @@ pub fn populate() IdApi {
         .object_at_eid = &cObjectAtEid,
         .make_float = &cMakeFloat,
         .compile_block_as_method = &cCompileBlockAsMethod,
+        .compile_block_as_method_in = &cCompileBlockAsMethodIn,
         .eval_top_level = &cEvalTopLevel,
         .snapshot_now = &cSnapshotNow,
         .snapshot_as_of = &cSnapshotAsOf,
@@ -541,7 +542,7 @@ fn cObjectAtEid(eid: u64) callconv(.c) Ref {
     return t.get(eid) orelse ref_mod.NIL;
 }
 
-fn cCompileBlockAsMethod(block_ast_eid: u64) callconv(.c) u64 {
+fn compileBlockAsMethodImpl(block_ast_eid: u64, module_eid: u64) u64 {
     const allocator = send_mod.kernelAllocator() orelse return 0;
     const store = send_mod.storePtr() orelse return 0;
     const table = send_mod.tablePtr() orelse return 0;
@@ -552,10 +553,26 @@ fn cCompileBlockAsMethod(block_ast_eid: u64) callconv(.c) u64 {
 
     var m = compiler_mod.compileBlockAsMethod(allocator, store, block_ast_eid) catch return 0;
     defer m.deinit(allocator);
-    // Phase 12.0 provenance split: user-compiled methods are runtime DATA
-    // (persisted by the image), not module code. Tag under M_USER so the
-    // snapshot captures them and module unload can't retract them.
-    return compiler_mod.materialize(allocator, store, table, &m, kernel_eids_mod.M_USER) catch 0;
+    // The method ENTITY's provenance must match its install context (15.A-AST):
+    //  - user REPL/`method:do:` defs → M_USER (durable runtime DATA, imaged,
+    //    swept by prune when superseded, not retracted on module unload);
+    //  - prelude/stdlib methods (installSourceMethod) → the lang module eid
+    //    (CODE: reconstructed each boot, NOT imaged, never swept, retracted with
+    //    the module). `materialize` threads this to all block children too, so a
+    //    method tree is single-provenance. The earlier blanket-M_USER tag made
+    //    prelude methods M_USER while their install fact was CODE, which (a) bloated
+    //    images with reconstructed-anyway methods and (b) left prune unable to root
+    //    them by their install — see ROADMAP "15.A-AST".
+    return compiler_mod.materialize(allocator, store, table, &m, module_eid) catch 0;
+}
+
+fn cCompileBlockAsMethod(block_ast_eid: u64) callconv(.c) u64 {
+    // Back-compat entry: defaults to M_USER (user-def provenance).
+    return compileBlockAsMethodImpl(block_ast_eid, kernel_eids_mod.M_USER);
+}
+
+fn cCompileBlockAsMethodIn(block_ast_eid: u64, module_eid: u64) callconv(.c) u64 {
+    return compileBlockAsMethodImpl(block_ast_eid, module_eid);
 }
 
 /// Cluster ① — compile a top-level statement AST in top-level mode, materialize
