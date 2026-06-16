@@ -346,6 +346,19 @@ pub const IdApi = extern struct {
     /// (Appended at END per the append-only ABI discipline.)
     arg_count: *const fn () callconv(.c) usize,
     arg_at: *const fn (usize, *usize) callconv(.c) [*]const u8,
+
+    /// Cluster ① (2026-06-15) — compile + run a top-level statement AST in
+    /// "top-level mode" and return its result. Free variables and outermost
+    /// `let`/`:=` lower to scope sends (`[scope <lookup_sel> #name]` etc.)
+    /// against `scope_eid`, so REPL/script top-level lines run on the bytecode
+    /// VM while keeping cross-line binding visibility. `ok_out` is set true on
+    /// a successful compile+run (return value is the result, which MAY itself
+    /// be an error value from the error model) and false if the statement
+    /// could not be compiled (unsupported AST kind, too many locals, OOM) —
+    /// the caller then falls back to the tree-walker. No side effects occur
+    /// before a compile failure, so fallback is clean.
+    /// (Appended at END per the append-only ABI discipline.)
+    eval_top_level: *const fn (stmt_ast_eid: u64, scope_eid: u64, lookup_sel: u64, bind_sel: u64, set_sel: u64, ok_out: *bool) callconv(.c) Ref,
 };
 
 comptime {

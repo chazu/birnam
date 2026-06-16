@@ -141,6 +141,7 @@ pub fn populate() IdApi {
         .object_at_eid = &cObjectAtEid,
         .make_float = &cMakeFloat,
         .compile_block_as_method = &cCompileBlockAsMethod,
+        .eval_top_level = &cEvalTopLevel,
         .snapshot_now = &cSnapshotNow,
         .snapshot_as_of = &cSnapshotAsOf,
         .snapshot_get = &cSnapshotGet,
@@ -523,6 +524,7 @@ fn cExciseEntity(eid: u64) callconv(.c) bool {
 
 const boxed = @import("boxed.zig");
 const compiler_mod = @import("compiler.zig");
+const dispatch_mod = @import("dispatch.zig");
 const kernel_eids_mod = @import("kernel_eids.zig");
 
 fn cMakeFloat(value: f64) callconv(.c) Ref {
@@ -554,6 +556,46 @@ fn cCompileBlockAsMethod(block_ast_eid: u64) callconv(.c) u64 {
     // (persisted by the image), not module code. Tag under M_USER so the
     // snapshot captures them and module unload can't retract them.
     return compiler_mod.materialize(allocator, store, table, &m, kernel_eids_mod.M_USER) catch 0;
+}
+
+/// Cluster ① — compile a top-level statement AST in top-level mode, materialize
+/// it (M_USER, like a user method), and run it with receiver = nil. Sets
+/// `ok_out` false (→ caller falls back to the tree-walker) when the statement
+/// can't be compiled; true with the result otherwise. A compile failure occurs
+/// before any execution, so the fallback re-run is side-effect-clean.
+fn cEvalTopLevel(
+    stmt_ast_eid: u64,
+    scope_eid: u64,
+    lookup_sel: u64,
+    bind_sel: u64,
+    set_sel: u64,
+    ok_out: *bool,
+) callconv(.c) Ref {
+    ok_out.* = false;
+    const allocator = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    const table = send_mod.tablePtr() orelse return ref_mod.NIL;
+
+    if (lookup_sel > std.math.maxInt(u32) or bind_sel > std.math.maxInt(u32) or set_sel > std.math.maxInt(u32))
+        return ref_mod.NIL;
+
+    const env = compiler_mod.TopLevelEnv{
+        .scope_const = ref_mod.mkEid(scope_eid),
+        .lookup_sel = @intCast(lookup_sel),
+        .bind_sel = @intCast(bind_sel),
+        .set_sel = @intCast(set_sel),
+    };
+
+    var m = compiler_mod.compileTopLevel(allocator, store, stmt_ast_eid, &env) catch return ref_mod.NIL;
+    defer m.deinit(allocator);
+
+    const method_eid = compiler_mod.materialize(allocator, store, table, &m, kernel_eids_mod.M_USER) catch
+        return ref_mod.NIL;
+
+    const result = dispatch_mod.runMethod(allocator, store, ref_mod.NIL, method_eid, &[_]Ref{}, &[_]Ref{}) catch
+        return ref_mod.NIL;
+    ok_out.* = true;
+    return result;
 }
 
 /// Storage for the interner so the C wrappers can find it. Shell calls this
