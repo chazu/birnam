@@ -422,15 +422,21 @@ fn matchPattern(rs: *RunState, grammar_eid: u64, pat_eid: u64, pos: usize) anyer
 
         if (try matchPattern(rs, grammar_eid, rule_pat, pos)) |inner| {
             // Build CST node for this rule with collected children.
+            // Parse-result CST nodes are per-parse runtime DATA (consumed by the
+            // caller's CST→AST desugar, then dead), so they are tagged M_USER —
+            // NOT the grammar's module eid. Grammar PATTERN nodes (the mk* builders
+            // above) stay module-provenance (CODE). Without this, every parsed line
+            // leaks its CST forever, since prune never touches CODE facts. (15.A-AST.)
             const ast_eid = e.table.alloc();
-            _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_RULE_NAME, ref_mod.mkEid(name_eid), e.module_eid);
-            _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_START, ref_mod.mkSmallInt(@intCast(pos)).?, e.module_eid);
-            _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_END, ref_mod.mkSmallInt(@intCast(inner.end_pos)).?, e.module_eid);
+            const cst_prov = kernel_eids.M_USER;
+            _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_RULE_NAME, ref_mod.mkEid(name_eid), cst_prov);
+            _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_START, ref_mod.mkSmallInt(@intCast(pos)).?, cst_prov);
+            _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_END, ref_mod.mkSmallInt(@intCast(inner.end_pos)).?, cst_prov);
             if (inner.children.len > 0) {
-                _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_FIRST_CHILD, ref_mod.mkEid(inner.children[0]), e.module_eid);
+                _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_FIRST_CHILD, ref_mod.mkEid(inner.children[0]), cst_prov);
                 var i: usize = 0;
                 while (i + 1 < inner.children.len) : (i += 1) {
-                    _ = try e.store.assert(inner.children[i], kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(inner.children[i + 1]), e.module_eid);
+                    _ = try e.store.assert(inner.children[i], kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(inner.children[i + 1]), cst_prov);
                 }
             }
             const wrapped = try rs.scratch.allocator().alloc(u64, 1);
@@ -472,15 +478,18 @@ pub fn parse(e: *Engine, grammar_eid: u64, source: []const u8, rule_name: []cons
 
     if (try matchPattern(&rs, grammar_eid, rule_pat, 0)) |m| {
         // Wrap top-level result in a rule CST node (matches rule-ref behavior).
+        // M_USER provenance — per-parse runtime data, prune-collectible (see the
+        // matchRule note above). Grammar nodes stay CODE.
         const ast_eid = e.table.alloc();
-        _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_RULE_NAME, ref_mod.mkEid(name_eid), e.module_eid);
-        _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_START, ref_mod.mkSmallInt(0).?, e.module_eid);
-        _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_END, ref_mod.mkSmallInt(@intCast(m.end_pos)).?, e.module_eid);
+        const cst_prov = kernel_eids.M_USER;
+        _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_RULE_NAME, ref_mod.mkEid(name_eid), cst_prov);
+        _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_START, ref_mod.mkSmallInt(0).?, cst_prov);
+        _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_END, ref_mod.mkSmallInt(@intCast(m.end_pos)).?, cst_prov);
         if (m.children.len > 0) {
-            _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_FIRST_CHILD, ref_mod.mkEid(m.children[0]), e.module_eid);
+            _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_FIRST_CHILD, ref_mod.mkEid(m.children[0]), cst_prov);
             var i: usize = 0;
             while (i + 1 < m.children.len) : (i += 1) {
-                _ = try e.store.assert(m.children[i], kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(m.children[i + 1]), e.module_eid);
+                _ = try e.store.assert(m.children[i], kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(m.children[i + 1]), cst_prov);
             }
         }
         return ParseOutcome{ .success = ast_eid };
