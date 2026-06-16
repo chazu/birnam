@@ -2770,12 +2770,14 @@ field-read slot cache. Nothing perf-related happens before this.
   `asOf:`/`since:`/`between:and:` + `[snap find:where:]`; predicates `#[?a #lt
   ?b]` (named ops — `#<` won't parse; lt/le/gt/ge SmallInt-only per Phase-7
   engine limit, eq/ne any Ref); negation `#[#not …]`; disjunction `#[#or
-  <branch> …]`. Regression suite lang_module 69. **REMAINING (own focused arcs,
-  NOT thin wiring):** rules+recursion (needs a rule-DEFINITION surface +
-  storage — query_add_rule_invocation exists but no way to define rules from
-  birnam); pull (hierarchical result spec); the locked `#( [?e attr: ?v] )` quote
-  sugar (grammar + clause-AST lowering — the quoting the MVP deliberately
-  sidestepped).
+  <branch> …]`. **Locked `#( [?e attr: ?v] )` quote sugar SHIPPED 2026-06-16** —
+  `clause-quote` grammar atom; lowers each keyword clause to a constant
+  clause-vector at lower time (quoteTermValue drills to the leaf term;
+  quoteKeywordClause builds `#[?e #attr ?v]`), feeds findAll:where: identically
+  to the explicit vector form. Keyword triples only; predicates/#not/#or stay in
+  the vector form. Regression suite lang_module 69. **REMAINING (own focused arcs,
+  NOT thin wiring):** rules+recursion (engine has it + query_add_rule_invocation,
+  but NO birnam surface to DEFINE/store a rule); pull (hierarchical result spec).
 - *12.5 mmap RO segments*: pure load-perf; unlocks 15.R R4 mmap fault-in. Defer hard.
 - *Language niceties*: **`<=>`/`compare:` SHIPPED 2026-06-16** (17.3 — SmallInt/String,
   3-char binary-op bump). **`&`/`|` eager boolean SHIPPED 2026-06-16** (17.5 — `|`
