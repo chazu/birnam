@@ -2877,23 +2877,40 @@ empirically (instrumented `prune.zig`):
   M_USER filter (mark methods installed by ANY-provenance fact). Pool-descent
   fires (verified) and churn drops to ~24 swept, but a live `[| 42]` method still
   returns `nil` after prune — a THIRD, undiagnosed live-drop remains. Reverted.
-- **Design decision needed (the halt):** resolve the method-entity↔install-fact
-  provenance mismatch. Options: (a) compiled-method entity provenance MATCHES its
-  install (give `compile_block_as_method` a provenance arg; CODE prelude methods
-  become CODE entities → never swept, no M_USER churn from them); (b) keep
-  methods M_USER + make Root 2 provenance-agnostic AND complete the forward mark
-  walk (pool-descent) AND find the residual live-drop. (a) looks cleaner (it also
-  stops stdlib methods counting as user churn) but touches the 12.0 provenance
-  split (image persistence + module unload) — verify against those.
+- **Design decision RESOLVED + SHIPPED 2026-06-15 (commit 8ba582d) — option (a),
+  provenance-match.** The actual bug was `cCompileBlockAsMethod` hardcoding
+  M_USER. A compiled method ENTITY now carries the provenance of its install
+  context: appended IdApi `compile_block_as_method_in(block_ast_eid, module_eid)`
+  (`materialize` already threads provenance to block children); `installSourceMethod`
+  compiles the prelude under the lang module eid → prelude method trees are CODE
+  (reconstructed each boot, NOT imaged, never swept, retracted with the module);
+  user defs stay M_USER. Fixes Bug B + a latent image-bloat bug (prelude methods
+  were imaged then re-created on load). Verified: prelude works, a live user
+  method survives `:prune`, suite 39/39. (Option (b) — keep M_USER + provenance-
+  agnostic Root 2 — rejected: empirically insufficient and leaves the smell +
+  bloat.)
 
-**Remaining mechanical items (after the design decision):**
-1. Complete + verify the mark walk (Bug A fix + forward pool-descent) with a
-   teeth-test: a live nested-block method survives prune; an orphan tree sweeps.
+**Remaining — the churn COLLECTION itself (still OPEN, now on the solid
+provenance foundation):**
+1. **Mark-walk change has a residual correctness puzzle — NOT shipped.** Removing
+   the Bug-A over-seed (Root 2 skipping `:block-parent-method`) + adding forward
+   `:constant-pool` RRB descent *does* collect the churn (redefine ×3 → ~25 swept
+   vs 1), but it breaks a LIVE user method after prune (`#foo`→nil). Bisected:
+   the **block-parent-method skip alone** causes it (not pool-descent), AND it is
+   **NOT a fact-store reachability fault** — instrumentation shows no
+   genuinely-installed method swept and NO marked→swept dangling edge. So the
+   over-seed currently props up something live via a **non-reachability
+   mechanism** (suspect: mcache / `compact` re-assert interaction, or
+   promotion/object-table state) that must be understood before the over-seed can
+   be removed. Crown-jewel — do not rush. Teeth-test target: live nested-block
+   method survives prune; orphan tree sweeps; mcache coherent post-prune.
 2. **Root 2 also under-roots tree-walker methods** (compile-fallback /
    `:eval-mode treewalk` installs have no `:bytecode-stream`) — fold into the
-   same Root-2 rework (seed any installed method value).
+   same Root-2 rework.
 3. **15.P** const-pool RRB finalizer rides on it (superseded methods' pools).
-4. **`run-without-materialize`** (Cluster ① churn) — same garbage class.
+4. **`run-without-materialize`** (Cluster ① churn) — same garbage class; may be
+   the lower-risk path to the ① portion of the churn (avoids the prune mark-walk
+   entirely by never materializing throwaway top-level methods).
 
 **Status: SPEC, unblocked** (no perf-1.4 dependency). **Product policy LOCKED
 2026-06-15: non-temporal code by default** (transient-REPL; bounds memory to the
