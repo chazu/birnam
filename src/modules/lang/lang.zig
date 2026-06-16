@@ -138,6 +138,7 @@ var rn_start: u64 = 0;
 var rn_ws: u64 = 0;
 var rn_symbol_literal: u64 = 0;
 var rn_query_var: u64 = 0;
+var rn_clause_quote: u64 = 0;
 var rn_block_bare: u64 = 0;
 var rn_block_param: u64 = 0;
 var rn_block_params: u64 = 0;
@@ -417,6 +418,7 @@ fn buildGrammar() void {
             untagEid(peg_rule_ref("integer")),
             untagEid(peg_rule_ref("string")),
             untagEid(peg_rule_ref("symbol-literal")),
+            untagEid(peg_rule_ref("clause-quote")),
             untagEid(peg_rule_ref("query-var")),
             untagEid(peg_rule_ref("kw-nil")),
             untagEid(peg_rule_ref("kw-true")),
@@ -649,6 +651,27 @@ fn buildGrammar() void {
             untagEid(peg_literal("]")),
         };
         defineRule(grammar, "vector-literal", peg_seq(&parts));
+    }
+
+    // -- Phase 7 datalog quote sugar: clause-list -------------------------
+    // clause-quote = "#(" ws (bracket-keyword ws)* ")"
+    // Each `[?e attr: ?v]` clause is QUOTED — lowered to a constant clause-vector
+    // `#[?e #attr ?v]` (terms as values, NOT evaluated as a send), so the whole
+    // `#(…)` is the clause-list value `[db findAll:where:]` consumes. Predicates /
+    // #not / #or stay in the explicit `#[ … ]` vector form.
+    {
+        const elem_parts = [_]u64{
+            untagEid(peg_rule_ref("bracket-keyword")),
+            untagEid(peg_rule_ref("ws")),
+        };
+        const elem = peg_seq(&elem_parts);
+        const parts = [_]u64{
+            untagEid(peg_literal("#(")),
+            untagEid(peg_rule_ref("ws")),
+            untagEid(peg_star(elem)),
+            untagEid(peg_literal(")")),
+        };
+        defineRule(grammar, "clause-quote", peg_seq(&parts));
     }
 
     // -- Phase 16 Tier C: map literal -------------------------------------
@@ -937,6 +960,81 @@ fn desugarPipeTail(recv_ast: u64, tail_eid: u64) u64 {
     return recv_ast;
 }
 
+/// Evaluate a quote-term CST to its CONSTANT Ref (datalog clause sugar). Drills
+/// through wrapper rules (expression→atom→…) to the leaf term: `?var`/`#sym`/bare
+/// identifier → a symbol; string/integer/float → that literal value.
+fn quoteTermValue(cst_eid: u64) Ref {
+    const api = g_api.?;
+    var c = cst_eid;
+    var guard: u32 = 0;
+    while (c != 0 and guard < 32) : (guard += 1) {
+        const rn = cstRuleName(c);
+        const span = cstByteRange(c);
+        if (rn == rn_query_var or rn == rn_identifier) {
+            const b = g_source[span.start..span.end]; // ?name or bare name → symbol
+            return mkEid(api.intern(b.ptr, b.len));
+        }
+        if (rn == rn_symbol_literal) {
+            const b = g_source[span.start + 1 .. span.end]; // strip leading '#'
+            return mkEid(api.intern(b.ptr, b.len));
+        }
+        if (rn == rn_string) {
+            return decodeStringLiteral(g_source[span.start + 1 .. span.end - 1]);
+        }
+        if (rn == rn_integer) {
+            var n: i64 = 0;
+            for (g_source[span.start..span.end]) |ch| n = n * 10 + (ch - '0');
+            return mkSmallInt(n);
+        }
+        if (rn == rn_float_literal) {
+            return api.make_float(std.fmt.parseFloat(f64, g_source[span.start..span.end]) catch 0.0);
+        }
+        // Wrapper rule — descend to the first non-ws child.
+        var child = cstFirstChild(c);
+        while (child != 0 and cstRuleName(child) == rn_ws) child = cstNextSibling(child);
+        c = child;
+    }
+    return NIL;
+}
+
+/// Lower a quoted single-keyword clause `[?e attr: ?v]` to a constant clause
+/// vector `#[ ?e-value  #attr  ?v-value ]`. The attribute is the selector name
+/// without its trailing colon, as a symbol.
+fn quoteKeywordClause(kw_cst: u64) Ref {
+    const api = g_api.?;
+    var recv: Ref = NIL;
+    var attr: Ref = NIL;
+    var arg: Ref = NIL;
+    var c = cstFirstChild(kw_cst);
+    while (c != 0) : (c = cstNextSibling(c)) {
+        const crn = cstRuleName(c);
+        if (crn == rn_expression and recv == NIL) {
+            recv = quoteTermValue(c); // receiver = the entity term
+        } else if (crn == rn_kw_arg) {
+            // kw-arg children: ws, kw-suffix (the attr name + ':'), ws, expression.
+            var ac = cstFirstChild(c);
+            while (ac != 0) : (ac = cstNextSibling(ac)) {
+                const acrn = cstRuleName(ac);
+                if (acrn == rn_kw_suffix) {
+                    var sc = cstFirstChild(ac);
+                    while (sc != 0) : (sc = cstNextSibling(sc)) {
+                        if (cstRuleName(sc) == rn_identifier) {
+                            const sp = cstByteRange(sc);
+                            const b = g_source[sp.start..sp.end];
+                            attr = mkEid(api.intern(b.ptr, b.len));
+                            break;
+                        }
+                    }
+                } else if (acrn == rn_expression) {
+                    arg = quoteTermValue(ac);
+                }
+            }
+        }
+    }
+    var parts = [3]Ref{ recv, attr, arg };
+    return api.make_rrb(&parts, 3);
+}
+
 fn desugar(cst_eid: u64) u64 {
     const api = g_api.?;
     const rn = cstRuleName(cst_eid);
@@ -1013,6 +1111,21 @@ fn desugar(cst_eid: u64) u64 {
         const name_eid = api.intern(bytes.ptr, bytes.len);
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
         _ = api.assert_fact(ast, ATTR_AST_VALUE, mkEid(name_eid), M_USER);
+        return ast;
+    }
+    if (rn == rn_clause_quote) {
+        // Quoted clause-list. Each `[?e attr: ?v]` keyword clause → a constant
+        // clause-vector `#[?e #attr ?v]`; the whole `#(…)` is a literal vector of
+        // them (terms are all constants/`?vars`, so it builds at lower time —
+        // same pattern as a string literal storing its decoded Ref in :ast-value).
+        var outer = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+        var c = cstFirstChild(cst_eid);
+        while (c != 0) : (c = cstNextSibling(c)) {
+            if (cstRuleName(c) != rn_bracket_keyword) continue;
+            outer = api.rrb_with(outer, quoteKeywordClause(c));
+        }
+        const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, outer, M_USER);
         return ast;
     }
     if (rn == rn_block_bare) {
@@ -1492,6 +1605,7 @@ fn cacheRuleNames() void {
     rn_ws = api.intern("ws".ptr, 2);
     rn_symbol_literal = api.intern("symbol-literal".ptr, 14);
     rn_query_var = api.intern("query-var".ptr, 9);
+    rn_clause_quote = api.intern("clause-quote".ptr, 12);
     rn_block_bare = api.intern("block-bare".ptr, 10);
     rn_block_param = api.intern("block-param".ptr, 11);
     rn_block_params = api.intern("block-params".ptr, 12);

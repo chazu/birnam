@@ -2038,6 +2038,14 @@ test "Phase 7 datalog: [db findAll:where:] — vars, join, set results" {
     // Neither branch attr exists → empty.
     const dis_miss = evalLine(s, lang, "[db findAll: ?vt where: #[ #[#or #[?vt #qx ?m] #[?vt #qy ?m]] ]]", a);
     try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(dis_miss, sz)));
+
+    // Quote sugar `#( [?e attr: ?v] )` lowers to the clause-vector form — same result.
+    const qs = evalLine(s, lang, "[db findAll: ?vt where: #( [?vt qfoo: ?m] )]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(qs, sz)));
+    try testing.expectEqual(svt, send_mod.send1(qs, at_sel, ref_mod.mkSmallInt(0).?));
+    // Multi-clause quote join + multi-var find.
+    const qj = evalLine(s, lang, "[db findAll: #[?vt ?m] where: #( [?vt qfoo: ?m] [?vt qbar: ?n] )]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(qj, sz)));
 }
 
 test "17.5 eager & / | and the | block-bar disambiguation" {
