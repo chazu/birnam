@@ -139,6 +139,42 @@ pub fn clearCallbackCtx(r: Ref) void {
     object.setSlot(object.fromRef(r), 1, 0);
 }
 
+// -- FFI struct instance (Phase 19.5) ---------------------------------------
+//
+// A struct instance is a box-arena object whose vtable is the per-type instance
+// vtable (minted by `Module struct:fields:`) and whose slot 0 is the backing C
+// address. Field getters/setters installed on that vtable peek/poke at field
+// offsets through this address. slot 0 is a raw usize (not a Ref), so the GC
+// mark walk doesn't scan it — same discipline as FfiPtr.
+
+pub fn mkStructInstance(allocator: std.mem.Allocator, instance_vt: u64, backing_addr: usize) !Ref {
+    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(instance_vt), 1);
+    object.setSlot(obj_ptr, 0, @as(u64, @intCast(backing_addr)));
+    return object.toRef(obj_ptr);
+}
+
+/// The backing C address (slot 0) of a struct instance.
+pub fn structInstanceAddr(r: Ref) usize {
+    return @as(usize, @intCast(object.slotAt(object.fromRef(r), 0)));
+}
+
+/// A struct TYPE object (STRUCT_TYPE_VT): slot 0 = the minted per-type instance
+/// vtable eid, slot 1 = the struct's byte size. Both raw u64.
+pub fn mkStructType(allocator: std.mem.Allocator, instance_vt: u64, size: usize) !Ref {
+    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.STRUCT_TYPE_VT), 2);
+    object.setSlot(obj_ptr, 0, instance_vt);
+    object.setSlot(obj_ptr, 1, @as(u64, @intCast(size)));
+    return object.toRef(obj_ptr);
+}
+
+pub fn structTypeInstanceVt(r: Ref) u64 {
+    return @as(u64, @intCast(object.slotAt(object.fromRef(r), 0)));
+}
+
+pub fn structTypeSize(r: Ref) usize {
+    return @as(usize, @intCast(object.slotAt(object.fromRef(r), 1)));
+}
+
 /// Phase 9.5.5 variant — allocate the boxed pointer AND assert a
 /// `[box_eid :ffi-owner <mod_eid>]` fact tying it to its owning Module.
 /// The box-EID is stashed in slot 1 so `pushArg`'s stale check can hop
