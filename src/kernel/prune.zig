@@ -30,6 +30,10 @@ const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const promotion = @import("promotion.zig");
 const mcache = @import("mcache.zig");
+const boxed = @import("boxed.zig");
+const closure_mod = @import("closure.zig");
+const dispatch = @import("dispatch.zig");
+const vm = @import("vm.zig");
 
 const Ref = ref_mod.Ref;
 const FactStore = fact_store.FactStore;
@@ -44,8 +48,23 @@ fn seed(marked: *MarkSet, work: *std.ArrayList(u64), a: std.mem.Allocator, eid: 
     if (!g.found_existing) try work.append(a, eid);
 }
 
+/// If `eid`'s object-table entry is a bytecode closure (a block VALUE bound to a
+/// variable / stored in a cell / captured, or an installed method), return its
+/// underlying `:bytecode-stream` method eid. A closure references its method via
+/// an IN-MEMORY pointer, not a fact, so the fact-only mark walk cannot reach it;
+/// this is how a live closure keeps its code from being swept. (15.A-AST.)
+fn closureMethodEid(table: *ObjectTable, eid: u64) ?u64 {
+    const ptr_ref = table.get(eid) orelse return null;
+    if (!ref_mod.isPointer(ptr_ref)) return null;
+    const c: *const closure_mod.Closure = @ptrCast(@alignCast(ref_mod.untagPointer(ptr_ref)));
+    if (c.method != @as(*const anyopaque, @ptrCast(&dispatch.bytecodeDispatcherImpl))) return null;
+    if (ref_mod.isEid(c.data)) return ref_mod.untagEid(c.data);
+    if (ref_mod.isPointer(c.data)) return vm.blockMethodEidFromRef(c.data);
+    return null;
+}
+
 /// Mark every entity reachable from the live roots.
-fn markReachable(store: *const FactStore, scratch: std.mem.Allocator) PruneError!MarkSet {
+fn markReachable(store: *const FactStore, table: *ObjectTable, scratch: std.mem.Allocator) PruneError!MarkSet {
     var marked = MarkSet.init(scratch);
     var work = std.ArrayList(u64){};
     defer work.deinit(scratch);
@@ -61,6 +80,14 @@ fn markReachable(store: *const FactStore, scratch: std.mem.Allocator) PruneError
     var it = store.meatIter();
     while (it.next()) |f| {
         if (f.m != kernel_eids.M_USER) continue;
+        // `:block-parent-method` is a child→parent *structural back-ref*, not an
+        // install. Its value IS a bytecode method (the parent), so this rule
+        // would seed both the dead child and dead parent — pinning a whole dead
+        // block-method tree (a run-and-discard top-level statement method, or a
+        // superseded redefinition). Live block children are reached instead
+        // *forward* from their live parent via the constant-pool descent below.
+        // (15.A-AST.)
+        if (f.a == kernel_eids.ATTR_BLOCK_PARENT_METHOD) continue;
         if (ref_mod.isEid(f.v)) {
             const t = ref_mod.untagEid(f.v);
             if (store.currentValue(t, kernel_eids.ATTR_BYTECODE_STREAM) != null) {
@@ -76,12 +103,38 @@ fn markReachable(store: *const FactStore, scratch: std.mem.Allocator) PruneError
     var ff = store.entitiesWith(kernel_eids.ATTR_FFI_SIG);
     while (ff.next()) |e| try seed(&marked, &work, scratch, e.e);
 
-    // BFS: follow every eid-valued fact forward.
+    // BFS: follow every eid-valued fact forward, AND descend each entity's
+    // `:constant-pool` RRB. A method links its block children only through the
+    // pool (an RRB Ref, not an eid-valued fact), so the loop above can't reach
+    // them — descending the pool from a *live* parent is what marks live block
+    // children now that Root 2 no longer over-seeds via `:block-parent-method`.
+    // A dead parent is never marked → its pool is never descended → its subtree
+    // sweeps. (15.A-AST.)
     while (work.pop()) |eid| {
         var ai = store.attributesOf(eid);
         while (ai.next()) |av| {
             if (ref_mod.isEid(av.v)) try seed(&marked, &work, scratch, ref_mod.untagEid(av.v));
         }
+        if (store.currentValue(eid, kernel_eids.ATTR_CONSTANT_POOL)) |pool_ref| {
+            if (boxed.isRrbRef(pool_ref)) {
+                const pool = boxed.untagRrbRef(pool_ref);
+                const n = pool.count();
+                // Pool entries are literal Refs or eids (block-child methods,
+                // symbols, true/false/nil). Seed the eid ones; non-eid literals
+                // are ignored, symbol/CODE eids over-mark harmlessly.
+                var i: usize = 0;
+                while (i < n) : (i += 1) {
+                    const el = pool.nth(i);
+                    if (ref_mod.isEid(el)) try seed(&marked, &work, scratch, ref_mod.untagEid(el));
+                }
+            }
+        }
+        // Closure-aware: if this entity is a closure object (a block value bound
+        // to a live var, a cell's content, an installed method, …), mark the
+        // bytecode method it references — that link is an in-memory pointer, not
+        // a fact, so the walk above can't see it. Marking the method then
+        // descends its pool (above) for nested blocks.
+        if (closureMethodEid(table, eid)) |bm| try seed(&marked, &work, scratch, bm);
     }
     return marked;
 }
@@ -144,7 +197,7 @@ pub fn pruneReachable(
     table: *ObjectTable,
     scratch: std.mem.Allocator,
 ) PruneError!PruneStats {
-    var marked = try markReachable(store, scratch);
+    var marked = try markReachable(store, table, scratch);
     defer marked.deinit();
 
     // Collect M_USER entities that will be swept (current facts whose entity

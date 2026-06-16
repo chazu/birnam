@@ -22,6 +22,7 @@ const image = @import("image.zig");
 const boxed = @import("boxed.zig");
 const freeze = @import("freeze.zig");
 const ffi_module = @import("ffi_module.zig");
+const prune = @import("prune.zig");
 
 const Ref = ref_mod.Ref;
 
@@ -332,6 +333,47 @@ test "Cluster ①: compiled top-level — cross-line let / global / := / undefin
     try testing.expect(ok);
     try testing.expect(ref_mod.isEid(r5));
     try testing.expectEqual(ref_mod.mkEid(kernel_eids.ERROR_VT), s.store.currentValue(r5 >> 3, kernel_eids.ATTR_VTABLE).?);
+}
+
+test "15.A-AST: top-level method def + closure-in-var survive :prune; churn sweeps" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    var ok: bool = false;
+    // A method DEFINED at the top level (compiled path → the block arrives as a
+    // bytecode closure; must install a prune-rootable :bytecode-stream method).
+    _ = evalTopLevel(s.api, s.interner, lang, "[[3 vtable] method: #pfoo do: [| 42]]", a, &ok);
+    try testing.expect(ok);
+    ok = false;
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalTopLevel(s.api, s.interner, lang, "[3 pfoo]", a, &ok)));
+
+    // A closure BOUND to a top-level var references its block method via an
+    // in-memory pointer — prune must keep it alive (closure-aware marking).
+    ok = false;
+    _ = evalTopLevel(s.api, s.interner, lang, "let pf := [:x | [x + 1]]", a, &ok);
+    ok = false;
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(evalTopLevel(s.api, s.interner, lang, "[pf value: 5]", a, &ok)));
+
+    // Generate throwaway top-level churn, then prune.
+    var i: usize = 0;
+    while (i < 5) : (i += 1) {
+        ok = false;
+        _ = evalTopLevel(s.api, s.interner, lang, "[1 + 1]", a, &ok);
+    }
+    const stats = try prune.pruneReachable(s.store, s.table, a);
+    try testing.expect(stats.swept_entities > 0); // dead top-level/throwaway trees collected
+
+    // Both live things STILL work after prune (not dropped, not stale-cached).
+    ok = false;
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalTopLevel(s.api, s.interner, lang, "[3 pfoo]", a, &ok)));
+    try testing.expect(ok);
+    ok = false;
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(evalTopLevel(s.api, s.interner, lang, "[pf value: 5]", a, &ok)));
+    try testing.expect(ok);
 }
 
 test "DEMO 16 deferred: strings — size/at:/,/=/asSymbol + seq protocol" {
