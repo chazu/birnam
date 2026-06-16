@@ -2320,19 +2320,24 @@ B0b **[commit] Rewrite `ffi.zig` marshaling onto `ffi_cif`/`ffi_call`.** Model
      doubles arg+return, exercising V-register classification — the case dyncall
      1.4 could not do). No hand-rolled AAPCS classifier needed. 25/25 ffi_test.
 
-19.2 **[commit — hardest] Callbacks (closure → C fn-ptr) via `ffi_closure`.**
-     birnam `CLOSURE_VT` → C function pointer via `ffi_prep_closure_loc` (no
-     separate dep — libffi includes closures). Needs (a) a closure→handler
-     **registry** (the C-side trampoline's user-data points back to the birnam
-     closure + `Send` machinery), (b) a **lifetime story** (callback outlives the
-     registering call — explicit `[cb release]` or GC root; do NOT auto-free),
-     (c) a `CALLBACK_VT` (**next eid**) + `Module callback:sig:` constructor,
-     (d) **Apple-Silicon exec memory**: closures need a writable+executable
-     trampoline → `MAP_JIT` + `pthread_jit_write_protect_np` toggling (libffi
-     handles this internally on recent versions; verify). Test: `qsort` with a
-     birnam comparator (canonical) + a libtecla completion callback. Risk: **high**
-     — re-entrancy (C calls back into the evaluator mid-FFI-call), lifetime, JIT
-     memory. Single most complex item in the phase.
+19.2 **Callbacks (closure → C fn-ptr) via `ffi_closure` — SHIPPED 2026-06-15**
+     (branch `phase-19-callbacks`). `[Module callback: aBlock sig: "pp)i"]` mints
+     a **CALLBACK_VT** box (**eid 232**; SEL_FFI_CALLBACK=**233**) — slot 0 = the
+     C-callable code location (so it marshals as a `p` arg; `marshalScalar` now
+     accepts callbacks), slot 1 = a heap `CallbackCtx` (closure Ref + parsed sig +
+     cif + `ffi_closure` handle). `[cb free]` (reuses SEL_FFI_FREE) tears it down
+     (idempotent). The trampoline (`callbackTrampoline`) unmarshals each C arg →
+     Ref (`cArgToRef`), sends `value`/`value:`/`value:value:` to the closure
+     (arity ≤2 = block-value protocol limit), marshals the result back
+     (`refToCRet`). **Apple-Silicon exec memory: libffi handles `MAP_JIT`
+     internally** (trampoline table) — verified by smoke + the real test. Tested
+     end-to-end: a birnam comparator sorts a 4-long array via libc `qsort`
+     (re-entrant — the evaluator runs mid-C-call). 61/61 lang_module_test.
+     **DEFERRED:** GC-rooting the closure through the callback box (ctx holds the
+     Ref but the GC doesn't trace it — caller must keep the closure alive; fine
+     for synchronous use like `qsort`, needs a rooting pass for persistent/
+     event-loop callbacks); arity >2; struct/HFA callback args. The libffi engine
+     choice retired the original JIT + separate-dep risk.
 
 19.5 **[commit B2 — headline] Struct-as-entity (the birnam-flavored absorb).**
      `[Module struct: #Point fields: {x: #i  y: #i}]` registers a layout (reuse the
@@ -2360,8 +2365,8 @@ B0a libffi vendor + build      vendor/libffi + build.zig      (no eid)   ✓ SHI
 B0b ffi.zig → ffi_cif/ffi_call ffi.zig + delete dyncall       (no eid)   ✓ SHIPPED e742fed
 ── engine swapped: arm64 aggregates + closures now available ──
 19.1 arm64 struct-by-value     aggregates_supported=true + HFA test  (no eid)   ✓ SHIPPED (via libffi)
-B1  19.2 callbacks            ffi_closure + CALLBACK_VT       (eid 232)  ⚠ hardest (re-entrancy, MAP_JIT)
-B2  19.5 struct-as-entity     layout registry + struct VT     (eids 233+) ★ headline
+19.2 callbacks                 ffi_closure + CALLBACK_VT       (eids 232-233)  ✓ SHIPPED (qsort re-entrant)
+B2  19.5 struct-as-entity     layout registry + struct VT     (eids 234+) ★ headline — last item
 ```
 
 ### Reasoning

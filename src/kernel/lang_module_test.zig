@@ -1652,3 +1652,45 @@ test "DEMO 17 strings: escapes + split/join/indexOf/trim/case/predicates" {
     try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"a\\nb\\nc\" lines] size]", a)));
     try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"  a  b \" words] size]", a)));
 }
+
+// Phase 19.2 — callbacks. A birnam block becomes a C function pointer (libffi
+// closure) that libc `qsort` calls back on every comparison. Exercises the full
+// trampoline both ways (unmarshal the two element pointers → Refs, marshal the
+// closure's int result back) AND re-entrancy: the birnam evaluator runs mid-C
+// call. The sort array is 4 longs (8 bytes each, matching pokeInt/peekInt).
+test "FFI callback: birnam comparator sorts an array via libc qsort (19.2)" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    _ = evalLine(s, lang, "let m := [Module load: \"/usr/lib/libSystem.B.dylib\"]", a);
+    // void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void*, const void*))
+    _ = evalLine(s, lang, "[m wrap: #sort:n:sz:cmp: as: \"qsort\" signature: \"pllp)v\"]", a);
+    _ = evalLine(s, lang, "[Module resolve]", a);
+
+    // 4 longs, unsorted: 30 10 20 5.
+    _ = evalLine(s, lang, "let buf := [Module alloc: 32]", a);
+    _ = evalLine(s, lang, "[buf pokeInt: 30 at: 0]", a);
+    _ = evalLine(s, lang, "[buf pokeInt: 10 at: 8]", a);
+    _ = evalLine(s, lang, "[buf pokeInt: 20 at: 16]", a);
+    _ = evalLine(s, lang, "[buf pokeInt: 5 at: 24]", a);
+
+    // Comparator: ascending by the long each pointer addresses.
+    _ = evalLine(s, lang, "let cmp := [:x :y | [[x peekInt: 0] - [y peekInt: 0]]]", a);
+    _ = evalLine(s, lang, "let cb := [Module callback: cmp sig: \"pp)i\"]", a);
+    _ = evalLine(s, lang, "[m sort: buf n: 4 sz: 8 cmp: cb]", a);
+
+    // Sorted ascending: 5 10 20 30.
+    try testing.expectEqual(@as(i64, 5), ref_mod.untagSmallInt(evalLine(s, lang, "[buf peekInt: 0]", a)));
+    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(evalLine(s, lang, "[buf peekInt: 8]", a)));
+    try testing.expectEqual(@as(i64, 20), ref_mod.untagSmallInt(evalLine(s, lang, "[buf peekInt: 16]", a)));
+    try testing.expectEqual(@as(i64, 30), ref_mod.untagSmallInt(evalLine(s, lang, "[buf peekInt: 24]", a)));
+
+    _ = evalLine(s, lang, "[cb free]", a);
+    _ = evalLine(s, lang, "[buf free]", a);
+}

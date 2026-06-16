@@ -98,6 +98,47 @@ pub fn ffiPtrWidth(r: Ref) u64 {
     return object.slotAt(obj, 2);
 }
 
+// -- FFI callback (Phase 19.2) ----------------------------------------------
+//
+// A callback box wraps a libffi closure: slot 0 is the C-callable code location
+// (the function pointer C will call), slot 1 is a usize pointer to the heap
+// `CallbackCtx` (the birnam closure + parsed sig + ffi_closure handle). Both
+// raw u64, not Refs — so, like FfiPtr, the GC mark walk doesn't scan them.
+
+pub fn mkCallback(allocator: std.mem.Allocator, code_addr: usize, ctx_ptr: usize) !Ref {
+    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.CALLBACK_VT), 2);
+    object.setSlot(obj_ptr, 0, @as(u64, @intCast(code_addr)));
+    object.setSlot(obj_ptr, 1, @as(u64, @intCast(ctx_ptr)));
+    return object.toRef(obj_ptr);
+}
+
+pub fn isCallback(r: Ref) bool {
+    if (!ref_mod.isPointer(r)) return false;
+    const obj = object.fromRef(r);
+    const vt = object.vtableOf(obj);
+    if (!ref_mod.isEid(vt)) return false;
+    return ref_mod.untagEid(vt) == kernel_eids.CALLBACK_VT;
+}
+
+/// The C-callable code location (slot 0) — what gets passed to a C function as a
+/// function-pointer arg.
+pub fn callbackCode(r: Ref) usize {
+    std.debug.assert(isCallback(r));
+    return @as(usize, @intCast(object.slotAt(object.fromRef(r), 0)));
+}
+
+/// Pointer to the heap `CallbackCtx` (slot 1), 0 if already freed.
+pub fn callbackCtx(r: Ref) usize {
+    std.debug.assert(isCallback(r));
+    return @as(usize, @intCast(object.slotAt(object.fromRef(r), 1)));
+}
+
+/// Clear the ctx pointer after `[cb free]` so a double free is a no-op.
+pub fn clearCallbackCtx(r: Ref) void {
+    std.debug.assert(isCallback(r));
+    object.setSlot(object.fromRef(r), 1, 0);
+}
+
 /// Phase 9.5.5 variant — allocate the boxed pointer AND assert a
 /// `[box_eid :ffi-owner <mod_eid>]` fact tying it to its owning Module.
 /// The box-EID is stashed in slot 1 so `pushArg`'s stale check can hop

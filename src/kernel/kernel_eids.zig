@@ -644,4 +644,13 @@ pub const SEL_FFI_OUT_LONG: u64 = 229; // "outLong"  -> cell over a C long (8 by
 pub const SEL_FFI_OUT_PTR: u64 = 230; // "outPtr"    -> cell over a pointer (8 bytes)
 pub const SEL_FFI_OUT_DOUBLE: u64 = 231; // "outDouble" -> cell over a double (8 bytes)
 
-// 232..255 reserved for future kernel selectors / attributes
+/// Phase 19.2 — callbacks (birnam closure → C function pointer via libffi
+/// `ffi_closure`). `CALLBACK_VT` is the vtable for callback objects: slot 0 = the
+/// C-callable code location (so it marshals as a `p`/pointer FFI arg), slot 1 = a
+/// pointer to the heap `CallbackCtx` (closure Ref + parsed sig + ffi_closure
+/// handle) for invocation + teardown. `[Module callback: aBlock sig: "pp)i"]`
+/// mints one; `[cb free]` (reuses SEL_FFI_FREE) releases the trampoline.
+pub const CALLBACK_VT: u64 = 232;
+pub const SEL_FFI_CALLBACK: u64 = 233; // "callback:sig:" on MODULE_PROTO_VT
+
+// 234..255 reserved for future kernel selectors / attributes

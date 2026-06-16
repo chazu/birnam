@@ -73,6 +73,16 @@ pub extern "c" fn ffi_prep_cif(cif: *anyopaque, abi: c_uint, nargs: c_uint, rtyp
 pub extern "c" fn ffi_prep_cif_var(cif: *anyopaque, abi: c_uint, nfixedargs: c_uint, ntotalargs: c_uint, rtype: *ffi_type, atypes: [*]?*ffi_type) c_int;
 pub extern "c" fn ffi_call(cif: *anyopaque, fnp: *const anyopaque, rvalue: ?*anyopaque, avalue: [*]?*anyopaque) void;
 
+// Phase 19.2 — closures (birnam callbacks). `ffi_closure_alloc` returns BOTH the
+// closure object and a separate executable `code` location (W^X split); C calls
+// through `code`. The handler `fun` runs on every C call with pointers to the
+// args + return slot. libffi handles the Apple-Silicon JIT memory (MAP_JIT)
+// internally via its trampoline table.
+pub const ClosureFn = *const fn (cif: *anyopaque, ret: *anyopaque, args: [*]?*anyopaque, user_data: ?*anyopaque) callconv(.c) void;
+pub extern "c" fn ffi_closure_alloc(size: usize, code: *?*anyopaque) ?*anyopaque;
+pub extern "c" fn ffi_closure_free(closure: *anyopaque) void;
+pub extern "c" fn ffi_prep_closure_loc(closure: *anyopaque, cif: *anyopaque, fun: ClosureFn, user_data: ?*anyopaque, codeloc: *anyopaque) c_int;
+
 // -- Sig-string parser ------------------------------------------------------
 
 pub const Kind = enum {
@@ -395,13 +405,17 @@ fn marshalScalar(kind: Kind, value: Ref, holder: *u64) bool {
             @as(*f64, @ptrCast(holder)).* = boxed.untagFloat(value);
         },
         .pointer, .cstring => {
-            // nil → NULL pointer (nil-is-value); else an FfiPtr (raw addr).
+            // nil → NULL pointer (nil-is-value); else an FfiPtr (raw addr) or a
+            // Phase 19.2 callback (its C-callable code location).
             if (ref_mod.isNil(value)) {
                 @as(*?*const anyopaque, @ptrCast(holder)).* = null;
                 return true;
             }
-            if (!boxed.isFfiPtr(value)) return false;
-            @as(*usize, @ptrCast(holder)).* = boxed.untagFfiPtr(value);
+            if (boxed.isFfiPtr(value)) {
+                @as(*usize, @ptrCast(holder)).* = boxed.untagFfiPtr(value);
+            } else if (boxed.isCallback(value)) {
+                @as(*usize, @ptrCast(holder)).* = boxed.callbackCode(value);
+            } else return false;
         },
         .aggregate => return false,
     }
@@ -588,6 +602,223 @@ const fact_store_mod = @import("fact_store.zig");
 const object_table_mod = @import("object_table.zig");
 const closure_mod = @import("closure.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const id_api = @import("id_api.zig");
+
+// -- Phase 19.2: callbacks (birnam closure → C function pointer) -------------
+
+/// Heap context behind a callback box (slot 1). Holds everything the trampoline
+/// needs on each C-side call + everything teardown frees. The `cif` lives here
+/// (not on a stack) because the live `ffi_closure` references it for the
+/// callback's whole lifetime; `atypes` likewise outlives the cif.
+pub const CallbackCtx = struct {
+    closure: Ref, // the birnam closure invoked on each call
+    sig: Sig, // parsed C signature (args drive unmarshal, ret drives marshal)
+    atypes: []?*ffi_type,
+    cif: CifStorage align(16),
+    closure_handle: *anyopaque, // ffi_closure, freed via ffi_closure_free
+    value_sel: u64, // value / value: / value:value: by arity
+    n_args: usize,
+    allocator: std.mem.Allocator,
+};
+
+/// Read one C arg (libffi hands `p` = a pointer to the arg's value) into a Ref,
+/// per `kind`. Inverse of `marshalScalar`. Integer widths sign/zero-extend to
+/// i64 per `unsigned`; an aggregate arg's `p` already points at the struct bytes.
+fn cArgToRef(allocator: std.mem.Allocator, kind: Kind, unsigned: bool, p_opt: ?*anyopaque) Ref {
+    const p = p_opt orelse return ref_mod.NIL;
+    switch (kind) {
+        .void_ => return ref_mod.NIL,
+        .bool_ => return ref_mod.mkSmallInt(@as(*const u8, @ptrCast(p)).*) orelse ref_mod.NIL,
+        .char => {
+            const v: i64 = if (unsigned) @as(*const u8, @ptrCast(p)).* else @as(*const i8, @ptrCast(p)).*;
+            return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
+        },
+        .short => {
+            const v: i64 = if (unsigned) @as(*align(1) const u16, @ptrCast(p)).* else @as(*align(1) const i16, @ptrCast(p)).*;
+            return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
+        },
+        .int => {
+            const v: i64 = if (unsigned) @as(*align(1) const u32, @ptrCast(p)).* else @as(*align(1) const i32, @ptrCast(p)).*;
+            return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
+        },
+        .long, .long_long => {
+            const v: i64 = @bitCast(@as(*align(1) const u64, @ptrCast(p)).*);
+            return ref_mod.mkSmallInt(v) orelse ref_mod.NIL;
+        },
+        .float => return boxed.mkFloat(allocator, @floatCast(@as(*align(1) const f32, @ptrCast(p)).*)) catch ref_mod.NIL,
+        .double => return boxed.mkFloat(allocator, @as(*align(1) const f64, @ptrCast(p)).*) catch ref_mod.NIL,
+        .pointer => {
+            const addr = @as(*align(1) const usize, @ptrCast(p)).*;
+            if (addr == 0) return ref_mod.NIL;
+            return boxed.mkFfiPtr(allocator, addr) catch ref_mod.NIL;
+        },
+        .cstring => {
+            const addr = @as(*align(1) const usize, @ptrCast(p)).*;
+            if (addr == 0) return ref_mod.NIL;
+            const cptr: [*:0]const u8 = @ptrFromInt(addr);
+            return strings.mkString(allocator, std.mem.span(cptr)) catch ref_mod.NIL;
+        },
+        .aggregate => return boxed.mkFfiPtr(allocator, @intFromPtr(p)) catch ref_mod.NIL,
+    }
+}
+
+/// Write the closure's result Ref into libffi's return slot per `kind`. Integer
+/// returns occupy a full `ffi_arg` (8 bytes). A non-conforming result (wrong
+/// type) writes a zero/NULL rather than corrupting the C caller.
+fn refToCRet(kind: Kind, ret: *anyopaque, ref: Ref) void {
+    switch (kind) {
+        .void_, .aggregate => {},
+        .bool_, .char, .short, .int, .long, .long_long => {
+            const v: i64 = if (ref_mod.isSmallInt(ref)) ref_mod.untagSmallInt(ref) else 0;
+            @as(*i64, @ptrCast(@alignCast(ret))).* = v;
+        },
+        .float => {
+            const v: f32 = if (boxed.isFloat(ref)) @floatCast(boxed.untagFloat(ref)) else 0;
+            @as(*f32, @ptrCast(@alignCast(ret))).* = v;
+        },
+        .double => {
+            const v: f64 = if (boxed.isFloat(ref)) boxed.untagFloat(ref) else 0;
+            @as(*f64, @ptrCast(@alignCast(ret))).* = v;
+        },
+        .pointer, .cstring => {
+            const addr: usize = if (boxed.isFfiPtr(ref)) boxed.untagFfiPtr(ref) else if (boxed.isCallback(ref)) boxed.callbackCode(ref) else 0;
+            @as(*usize, @ptrCast(@alignCast(ret))).* = addr;
+        },
+    }
+}
+
+/// libffi calls this on every C-side invocation of the callback's code pointer.
+/// Unmarshal the C args → Refs, send the birnam closure (`value`/`value:`/
+/// `value:value:`), marshal the result back. Re-entrant: the evaluator runs here
+/// mid-C-call (e.g. inside `qsort`). user_data = the `*CallbackCtx`.
+fn callbackTrampoline(cif_unused: *anyopaque, ret: *anyopaque, args: [*]?*anyopaque, user_data: ?*anyopaque) callconv(.c) void {
+    _ = cif_unused;
+    const ctx: *CallbackCtx = @ptrCast(@alignCast(user_data orelse return));
+    const alloc = send_mod.kernelAllocator() orelse return;
+    var argbuf: [2]Ref = .{ ref_mod.NIL, ref_mod.NIL }; // block protocol caps arity at 2
+    var i: usize = 0;
+    while (i < ctx.n_args and i < 2) : (i += 1) {
+        const uns = ctx.sig.arg_unsigned.len != 0 and ctx.sig.arg_unsigned[i];
+        argbuf[i] = cArgToRef(alloc, ctx.sig.args[i], uns, args[i]);
+    }
+    const result = send_mod.sendN(ctx.closure, ctx.value_sel, &argbuf, ctx.n_args);
+    refToCRet(ctx.sig.ret, ret, result);
+}
+
+/// Resolve the block-value selector for `n` args: `value` (0), `value:` (1),
+/// `value:value:` (2). Birnam blocks support ≤2 params, so callbacks do too.
+fn valueSelectorForArity(n: usize) ?u64 {
+    return switch (n) {
+        0 => kernel_eids.SEL_VALUE,
+        1 => kernel_eids.SEL_VALUE_OF,
+        2 => blk: {
+            const store = send_mod.storePtr() orelse break :blk null;
+            const table = send_mod.tablePtr() orelse break :blk null;
+            const interner = id_api.internerPtr() orelse break :blk null;
+            break :blk interner.intern(store, table, "value:value:") catch null;
+        },
+        else => null,
+    };
+}
+
+/// Mint a callback: parse `sig_str`, build the cif, alloc + prep a libffi
+/// closure bound to `closure_ref`, return a CALLBACK_VT box (slot 0 = code loc,
+/// slot 1 = the heap ctx). Returns NIL on parse error, arity > 2, or any libffi
+/// failure (with all partial allocations cleaned up). NOTE (lifetime): the ctx
+/// holds `closure_ref` but the GC does not yet root it through the callback box
+/// — the caller must keep the closure alive for the callback's lifetime
+/// (sufficient for synchronous use like `qsort`; persistent callbacks need a
+/// GC-rooting pass — Phase 19.2 follow-up).
+pub fn makeCallback(allocator: std.mem.Allocator, closure_ref: Ref, sig_str: []const u8) Ref {
+    var sig = parseSig(allocator, sig_str) catch return ref_mod.NIL;
+    const n = sig.args.len;
+    if (n > 2) {
+        sig.deinit(allocator);
+        return ref_mod.NIL; // block-value protocol caps arity at 2
+    }
+    const value_sel = valueSelectorForArity(n) orelse {
+        sig.deinit(allocator);
+        return ref_mod.NIL;
+    };
+
+    const ctx = allocator.create(CallbackCtx) catch {
+        sig.deinit(allocator);
+        return ref_mod.NIL;
+    };
+    const atypes = allocator.alloc(?*ffi_type, if (n == 0) 1 else n) catch {
+        sig.deinit(allocator);
+        allocator.destroy(ctx);
+        return ref_mod.NIL;
+    };
+    var ok = false;
+    defer if (!ok) {
+        sig.deinit(allocator);
+        allocator.free(atypes);
+        allocator.destroy(ctx);
+    };
+
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        if (sig.args[i] == .aggregate) {
+            const aggr = sig.arg_aggrs[i] orelse return ref_mod.NIL;
+            atypes[i] = aggr.ensureFfiType(allocator) orelse return ref_mod.NIL;
+        } else {
+            const uns = sig.arg_unsigned.len != 0 and sig.arg_unsigned[i];
+            atypes[i] = ffiTypeForKind(sig.args[i], uns);
+        }
+    }
+    const rtype = if (sig.ret == .aggregate)
+        ((sig.ret_aggr orelse return ref_mod.NIL).ensureFfiType(allocator) orelse return ref_mod.NIL)
+    else
+        ffiTypeForKind(sig.ret, sig.ret_unsigned);
+
+    // ctx owns sig/atypes from here; populate then prep cif into ctx.cif.
+    ctx.* = .{
+        .closure = closure_ref,
+        .sig = sig,
+        .atypes = atypes,
+        .cif = undefined,
+        .closure_handle = undefined,
+        .value_sel = value_sel,
+        .n_args = n,
+        .allocator = allocator,
+    };
+    if (ffi_prep_cif(&ctx.cif, FFI_DEFAULT_ABI, @intCast(n), rtype, atypes.ptr) != FFI_OK) return ref_mod.NIL;
+
+    var code: ?*anyopaque = null;
+    const handle = ffi_closure_alloc(256, &code) orelse return ref_mod.NIL;
+    const codeloc = code orelse {
+        ffi_closure_free(handle);
+        return ref_mod.NIL;
+    };
+    if (ffi_prep_closure_loc(handle, &ctx.cif, &callbackTrampoline, ctx, codeloc) != FFI_OK) {
+        ffi_closure_free(handle);
+        return ref_mod.NIL;
+    }
+    ctx.closure_handle = handle;
+
+    const box = boxed.mkCallback(allocator, @intFromPtr(codeloc), @intFromPtr(ctx)) catch {
+        ffi_closure_free(handle);
+        return ref_mod.NIL;
+    };
+    ok = true; // ctx now owned by the box; defer-cleanup disarmed
+    return box;
+}
+
+/// Free a callback's libffi closure + heap ctx. Idempotent (clears slot 1, so a
+/// second `[cb free]` is a no-op). Does NOT free the birnam closure (the GC owns
+/// that).
+pub fn freeCallback(callback_ref: Ref) void {
+    const ctx_addr = boxed.callbackCtx(callback_ref);
+    if (ctx_addr == 0) return;
+    const ctx: *CallbackCtx = @ptrFromInt(ctx_addr);
+    ffi_closure_free(ctx.closure_handle);
+    const alloc = ctx.allocator;
+    ctx.sig.deinit(alloc);
+    alloc.free(ctx.atypes);
+    alloc.destroy(ctx);
+    boxed.clearCallbackCtx(callback_ref);
+}
 
 /// Resolve a wrap_eid (carried in `s.closure.data`) back to its addr +
 /// parsed Sig. Returns null on any fact-store lookup miss.
