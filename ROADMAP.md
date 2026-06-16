@@ -2763,13 +2763,19 @@ field-read slot cache. Nothing perf-related happens before this.
   of 3-elem clause-vectors (no quote machinery); terms = `?var` (deduped→join) |
   constant (attr `#foo` matches by interned eid). Wires the existing query.zig
   engine + IdApi builder → execute → result vector (set semantics). Single find
-  var + conjunctive triples. **Multi-var find (`#[?a ?b]` → tuple rows) +
-  `asOf: tx` SHIPPED 2026-06-16** (one `runDatalogQuery` core + thin
-  `findAll:where:`/`findAll:where:asOf:` wrappers; regression test lang_module 69).
-  **REMAINING surface (engine already supports all of it — lang wiring only):**
-  locked `#( [?e attr: ?v] )` quote sugar; predicates `[(< ?a ?b)]`;
-  negation/disjunction; `since:`/`between:` modifiers; `[snap find:where:]` over a
-  snapshot value; aggregation; rules; pull.
+  var + conjunctive triples. **SURFACE LARGELY COMPLETE 2026-06-16** — one
+  `runDatalogQuery(find, where, TimeMod)` core + recursive `addWhereElement`/
+  `addBranch`/`addClause`. SHIPPED: multi-var find (`#[?a ?b]`→tuple rows);
+  aggregates (`#[#count ?m]`/sum/min/max/avg/collect, group-by); time
+  `asOf:`/`since:`/`between:and:` + `[snap find:where:]`; predicates `#[?a #lt
+  ?b]` (named ops — `#<` won't parse; lt/le/gt/ge SmallInt-only per Phase-7
+  engine limit, eq/ne any Ref); negation `#[#not …]`; disjunction `#[#or
+  <branch> …]`. Regression suite lang_module 69. **REMAINING (own focused arcs,
+  NOT thin wiring):** rules+recursion (needs a rule-DEFINITION surface +
+  storage — query_add_rule_invocation exists but no way to define rules from
+  birnam); pull (hierarchical result spec); the locked `#( [?e attr: ?v] )` quote
+  sugar (grammar + clause-AST lowering — the quoting the MVP deliberately
+  sidestepped).
 - *12.5 mmap RO segments*: pure load-perf; unlocks 15.R R4 mmap fault-in. Defer hard.
 - *Language niceties*: **`<=>`/`compare:` SHIPPED 2026-06-16** (17.3 — SmallInt/String,
   3-char binary-op bump). **`&`/`|` eager boolean SHIPPED 2026-06-16** (17.5 — `|`
