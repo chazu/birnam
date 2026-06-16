@@ -1981,6 +1981,23 @@ test "Phase 7 datalog: [db findAll:where:] — vars, join, set results" {
     // Projecting the value var ?m binds the installed method (non-empty).
     const r4 = evalLine(s, lang, "[db findAll: ?m where: #[ #[?vt #qfoo ?m] ]]", a);
     try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(r4, sz)));
+
+    const at_sel = s.interner.str_to_eid.get("at:").?;
+
+    // Multi-var find → vector of tuple-vectors (one column per find var, in order).
+    const rm = evalLine(s, lang, "[db findAll: #[?vt ?m] where: #[ #[?vt #qfoo ?m] ]]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(rm, sz)));
+    const row0 = send_mod.send1(rm, at_sel, ref_mod.mkSmallInt(0).?);
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send0(row0, sz)));
+    try testing.expectEqual(svt, send_mod.send1(row0, at_sel, ref_mod.mkSmallInt(0).?));
+
+    // asOf: — capture a basis BEFORE a later fact, query as of it → not visible.
+    _ = evalLine(s, lang, "let bb := [[db now] basisT]", a);
+    _ = evalLine(s, lang, "[[3 vtable] method: #qlate do: [| 9]]", a);
+    const cur = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qlate ?z] ]]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(cur, sz)));
+    const past = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qlate ?z] ] asOf: bb]", a);
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(past, sz)));
 }
 
 test "17.5 eager & / | and the | block-bar disambiguation" {

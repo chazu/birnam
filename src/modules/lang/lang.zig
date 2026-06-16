@@ -2715,20 +2715,33 @@ fn encodeTerm(q: ?*anyopaque, ref: Ref, kind: *u32, val: *u64) void {
     }
 }
 
-/// `[db findAll: ?v where: #[ #[e a v] ... ]]` — run a conjunctive datalog query.
-/// `where:` is a vector of 3-element `#[e a v]` clause-vectors; a term is a
-/// `?var` (query variable) or any constant value (an attr symbol resolves via
-/// its eid). Returns a vector of the find variable's bindings (set semantics).
-fn dbFindAllWhereImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
-    _ = s;
-    if (n < 2) return mkRuntimeError("findAll:where: expects a ?var and a clause vector");
+/// Core of `findAll:where:[asOf:]`. `find_ref` is either a single `?var` (result
+/// = a flat vector of its bindings) or a `#[?a ?b …]` vector of `?var`s (result =
+/// a vector of tuple-vectors, one column per find var, in order). `where` is a
+/// vector of 3-element `#[e a v]` clause-vectors. `asof` (when non-null) pins the
+/// query to the view as of that tx. Set semantics.
+fn runDatalogQuery(find_ref: Ref, where: Ref, asof: ?u64) Ref {
     const api = g_api.?;
-    const fv = queryVarName(args[0]) orelse return mkRuntimeError("findAll: argument must be a ?variable");
-    const where = args[1];
-
     const q = api.make_query() orelse return mkRuntimeError("findAll: out of memory");
     defer api.free_query(q);
-    const find_idx = api.query_variable(q, fv.ptr, fv.len);
+
+    // Find spec — a vector of vars (multi, tuple rows) or a single var (flat).
+    const multi = isVectorRef(find_ref);
+    var nfind: u64 = 1;
+    if (multi) {
+        nfind = api.rrb_len(find_ref);
+        if (nfind == 0) return mkRuntimeError("findAll: empty find vector");
+        var fi: u64 = 0;
+        while (fi < nfind) : (fi += 1) {
+            const nm = queryVarName(api.rrb_nth(find_ref, fi)) orelse
+                return mkRuntimeError("findAll: find vector must contain only ?variables");
+            api.query_add_find(q, api.query_variable(q, nm.ptr, nm.len));
+        }
+    } else {
+        const nm = queryVarName(find_ref) orelse
+            return mkRuntimeError("findAll: argument must be a ?variable or a vector of ?variables");
+        api.query_add_find(q, api.query_variable(q, nm.ptr, nm.len));
+    }
 
     const nclauses = api.rrb_len(where);
     var ci: u64 = 0;
@@ -2746,7 +2759,8 @@ fn dbFindAllWhereImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
         encodeTerm(q, api.rrb_nth(clause, 2), &vk, &vv);
         api.query_add_triple(q, ek, ev, ak, av, vk, vv);
     }
-    api.query_add_find(q, find_idx);
+
+    if (asof) |t| api.query_set_asof(q, t);
 
     const res = api.query_execute(q) orelse return mkRuntimeError("findAll: execute failed");
     defer api.free_result(res);
@@ -2755,9 +2769,34 @@ fn dbFindAllWhereImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     const rows = api.result_count(res);
     var ri: u64 = 0;
     while (ri < rows) : (ri += 1) {
-        out = api.rrb_with(out, api.result_at(res, ri, 0));
+        if (multi) {
+            var tuple = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+            var col: u64 = 0;
+            while (col < nfind) : (col += 1) {
+                tuple = api.rrb_with(tuple, api.result_at(res, ri, @intCast(col)));
+            }
+            out = api.rrb_with(out, tuple);
+        } else {
+            out = api.rrb_with(out, api.result_at(res, ri, 0));
+        }
     }
     return out;
+}
+
+/// `[db findAll: ?v where: #[ #[e a v] … ]]` — conjunctive datalog query. `?v` is
+/// a single `?var` or a `#[?a ?b …]` vector (→ tuple rows).
+fn dbFindAllWhereImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    if (n < 2) return mkRuntimeError("findAll:where: expects a find spec and a clause vector");
+    return runDatalogQuery(args[0], args[1], null);
+}
+
+/// `[db findAll: ?v where: #[…] asOf: tx]` — same, pinned to the view as of `tx`
+/// (a SmallInt basis, e.g. `[[db now] basisT]`).
+fn dbFindAllWhereAsOfImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    if (n < 3) return mkRuntimeError("findAll:where:asOf: expects find, clauses, tx");
+    return runDatalogQuery(args[0], args[1], @intCast(untagSmallInt(args[2])));
 }
 
 /// Install the `db` prototype + its methods + SNAPSHOT_VT methods, and bind the
@@ -2777,6 +2816,7 @@ fn installDbSurface() void {
         .{ .name = "keepSince:", .impl = @ptrCast(&dbKeepSinceImpl) },
         .{ .name = "excise:", .impl = @ptrCast(&dbExciseImpl) },
         .{ .name = "findAll:where:", .impl = @ptrCast(&dbFindAllWhereImpl) },
+        .{ .name = "findAll:where:asOf:", .impl = @ptrCast(&dbFindAllWhereAsOfImpl) },
     };
     for (db_methods) |m| {
         const sel = api.intern(m.name.ptr, m.name.len);
