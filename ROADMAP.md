@@ -2763,11 +2763,13 @@ field-read slot cache. Nothing perf-related happens before this.
   of 3-elem clause-vectors (no quote machinery); terms = `?var` (deduped→join) |
   constant (attr `#foo` matches by interned eid). Wires the existing query.zig
   engine + IdApi builder → execute → result vector (set semantics). Single find
-  var + conjunctive triples. Regression test (lang_module 69). **REMAINING surface
-  (engine already supports all of it — lang wiring only):** locked `#( [?e attr:
-  ?v] )` quote sugar; multi-var find (tuples); predicates `[(< ?a ?b)]`;
-  negation/disjunction; `asOf:`/`since:`/`between:` modifiers (→ the 15.R
-  `[snap find:where:]` variant); aggregation; rules; pull.
+  var + conjunctive triples. **Multi-var find (`#[?a ?b]` → tuple rows) +
+  `asOf: tx` SHIPPED 2026-06-16** (one `runDatalogQuery` core + thin
+  `findAll:where:`/`findAll:where:asOf:` wrappers; regression test lang_module 69).
+  **REMAINING surface (engine already supports all of it — lang wiring only):**
+  locked `#( [?e attr: ?v] )` quote sugar; predicates `[(< ?a ?b)]`;
+  negation/disjunction; `since:`/`between:` modifiers; `[snap find:where:]` over a
+  snapshot value; aggregation; rules; pull.
 - *12.5 mmap RO segments*: pure load-perf; unlocks 15.R R4 mmap fault-in. Defer hard.
 - *Language niceties*: **`<=>`/`compare:` SHIPPED 2026-06-16** (17.3 — SmallInt/String,
   3-char binary-op bump). **`&`/`|` eager boolean SHIPPED 2026-06-16** (17.5 — `|`
