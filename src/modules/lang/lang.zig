@@ -1502,6 +1502,19 @@ const Send = extern struct {
 var sel_eval: u64 = 0;
 var sel_parse_expr_g: u64 = 0;
 var sel_value_g: u64 = 0;
+// Cluster ① — selectors the top-level-mode compiler lowers free vars /
+// outer `let`/`:=` to, dispatched against SCOPE_VT entities.
+var sel_scope_lookup: u64 = 0;
+var sel_scope_bind: u64 = 0;
+var sel_scope_set: u64 = 0;
+
+const EvalMode = enum { bytecode, treewalk };
+/// Cluster ① — top-level eval strategy. `.bytecode` (default) compiles
+/// top-level/REPL/script statements AND user methods to bytecode; `.treewalk`
+/// forces the AST tree-walker for both — an inspectable fallback for debugging
+/// a suspected miscompile or comparing the two paths. Session-only (not imaged);
+/// toggled by the REPL `:eval-mode` command.
+var g_eval_mode: EvalMode = .bytecode;
 const TRUE_VT = ke.TRUE_VT;
 const FALSE_VT = ke.FALSE_VT;
 
@@ -2110,6 +2123,63 @@ fn evalLetImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     return init_val;
 }
 
+// -- Cluster ① — SCOPE_VT methods backing top-level compiled var access -----
+// The top-level-mode compiler lowers a free variable / outermost `let`/`:=`
+// into sends against the scope entity: `[scope lookup: #name]`,
+// `[scope bind: #name value: v]`, `[scope set: #name value: v]`. These mirror
+// the tree-walker's evalVarRef / evalLet / evalAssign exactly (same scope
+// walk, same error values) so a compiled top-level line behaves identically
+// to a tree-walked one. Receiver = the scope entity (mkEid); args are the
+// name symbol (and value).
+
+fn scopeLookupImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    const api = g_api.?;
+    if (n_args < 1 or !isEid(s.receiver) or !isEid(args[0])) return NIL;
+    const name_eid = args[0] >> 3;
+    if (lookupInScope(s.receiver >> 3, name_eid)) |v| return v;
+    const nm = api.symbol_name(name_eid);
+    const kind = api.intern("undefinedVariable".ptr, 17);
+    if (nm != NIL and isString(nm)) return mkRuntimeErrorFmt(kind, "undefined variable: {s}", .{stringBytes(nm)});
+    return mkRuntimeErrorKind(kind, "undefined variable");
+}
+
+fn scopeBindValueImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 2 or !isEid(s.receiver) or !isEid(args[0])) return NIL;
+    // Matches evalLet: bind whatever the init produced (an error value
+    // included) and return it.
+    pushScopeBinding(s.receiver >> 3, args[0] >> 3, args[1]);
+    return args[1];
+}
+
+fn scopeSetValueImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    const api = g_api.?;
+    if (n_args < 2 or !isEid(s.receiver) or !isEid(args[0])) return NIL;
+    const value = args[1];
+    // Matches evalAssign: propagate an error rhs rather than storing it.
+    if (isErrorValue(value)) return value;
+    if (mutateBinding(s.receiver >> 3, args[0] >> 3, value)) return value;
+    const nm = api.symbol_name(args[0] >> 3);
+    const kind = api.intern("undefinedAssignment".ptr, 19);
+    if (nm != NIL and isString(nm)) return mkRuntimeErrorFmt(kind, "assignment to undefined variable: {s} (declare with `let` first)", .{stringBytes(nm)});
+    return mkRuntimeErrorKind(kind, "assignment to undefined variable");
+}
+
+/// Cluster ① — evaluate a parsed top-level statement. In `.bytecode` mode,
+/// compile + run it on the VM (the kernel lowers free vars / outer `let`/`:=`
+/// to the SCOPE_VT sends above); fall back to the tree-walker when the
+/// statement can't be compiled (unsupported AST kind, etc.) or eval-mode is
+/// `.treewalk`. A compile failure happens before any execution, so the
+/// fallback re-run is side-effect-clean.
+fn evalTopLevelStmt(ast_ref: Ref) Ref {
+    const api = g_api.?;
+    if (g_eval_mode == .bytecode and isEid(ast_ref)) {
+        var ok: bool = false;
+        const result = api.eval_top_level(ast_ref >> 3, g_top_scope_eid, sel_scope_lookup, sel_scope_bind, sel_scope_set, &ok);
+        if (ok) return result;
+    }
+    return api.send1(ast_ref, sel_eval, mkEid(g_top_scope_eid));
+}
+
 // -- Method install ---------------------------------------------------------
 
 /// `[vt method: #sel do: blockClosureRef]` — installs the block as a method
@@ -2134,11 +2204,15 @@ fn vtMethodDoImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     // AST_BLOCK_VT entity, compile to bytecode and install the
     // bytecode method. closureValueImpl + bytecodeDispatcherImpl
     // handle the value/value: path uniformly.
-    if (extractBlockAstEidForCompile(args[1])) |block_ast_eid| {
-        const method_eid = api.compile_block_as_method(block_ast_eid);
-        if (method_eid != 0) {
-            _ = api.assert_fact(vt_eid, sel_eid, mkEid(method_eid), M_USER);
-            return s.receiver;
+    // Cluster ① — `:eval-mode treewalk` forces the tree-walker install path
+    // (skip the bytecode compile) for debugging.
+    if (g_eval_mode == .bytecode) {
+        if (extractBlockAstEidForCompile(args[1])) |block_ast_eid| {
+            const method_eid = api.compile_block_as_method(block_ast_eid);
+            if (method_eid != 0) {
+                _ = api.assert_fact(vt_eid, sel_eid, mkEid(method_eid), M_USER);
+                return s.receiver;
+            }
         }
     }
 
@@ -2322,6 +2396,15 @@ fn installEvalMethods() void {
     _ = api.assert_fact(AST_ASSIGN_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalAssignImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_STMT_SEQ_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalStmtSeqImpl), NIL)), g_module_eid);
     _ = api.assert_fact(AST_RETURN_VT, sel_eval_eid, mkEid(api.make_closure(@ptrCast(&evalReturnImpl), NIL)), g_module_eid);
+
+    // Cluster ① — SCOPE_VT methods the top-level-mode compiler targets for
+    // free-var reads (`lookup:`) and outer `let`/`:=` (`bind:value:`/`set:value:`).
+    sel_scope_lookup = api.intern("lookup:".ptr, 7);
+    sel_scope_bind = api.intern("bind:value:".ptr, 11);
+    sel_scope_set = api.intern("set:value:".ptr, 10);
+    _ = api.assert_fact(SCOPE_VT, sel_scope_lookup, mkEid(api.make_closure(@ptrCast(&scopeLookupImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SCOPE_VT, sel_scope_bind, mkEid(api.make_closure(@ptrCast(&scopeBindValueImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SCOPE_VT, sel_scope_set, mkEid(api.make_closure(@ptrCast(&scopeSetValueImpl), NIL)), g_module_eid);
 }
 
 /// VTABLE_VT method:do: — user method install. Kept under --aot=dynamic
@@ -2429,7 +2512,7 @@ fn doFileInSource(src: []const u8, continue_on_error: bool) Ref {
         const ast = api.send1(mkEid(g_module_eid), sel_parse_expr_g, api.make_string(form.ptr, form.len));
         var failed = isParseError(ast);
         if (!failed) {
-            const val = api.send1(ast, sel_eval, mkEid(g_top_scope_eid));
+            const val = evalTopLevelStmt(ast);
             failed = isEvalError(val);
         }
         if (failed) {
@@ -3964,6 +4047,23 @@ fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
             if (g_log) |log| log("[lang] scope reset");
             return;
         }
+        // Cluster ① — `:eval-mode [bytecode|treewalk]` toggles the top-level /
+        // method eval strategy for this session. Bare `:eval-mode` prints it.
+        if (std.mem.startsWith(u8, line, ":eval-mode")) {
+            const arg = std.mem.trim(u8, line[":eval-mode".len..], " \t");
+            if (arg.len == 0) {
+                if (g_log) |log| log(if (g_eval_mode == .bytecode) "[lang] eval-mode: bytecode" else "[lang] eval-mode: treewalk");
+            } else if (std.mem.eql(u8, arg, "bytecode")) {
+                g_eval_mode = .bytecode;
+                if (g_log) |log| log("[lang] eval-mode → bytecode");
+            } else if (std.mem.eql(u8, arg, "treewalk")) {
+                g_eval_mode = .treewalk;
+                if (g_log) |log| log("[lang] eval-mode → treewalk");
+            } else {
+                if (g_log) |log| log("[lang] usage: :eval-mode [bytecode|treewalk]");
+            }
+            return;
+        }
         if (g_log) |log| {
             var buf: [128]u8 = undefined;
             const m = std.fmt.bufPrintZ(&buf, "[lang] unknown debug command: {s}", .{line}) catch return;
@@ -3989,7 +4089,7 @@ fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
         reportError(ast_ref, "parse error");
         return;
     }
-    const val = api.send1(ast_ref, sel_eval, mkEid(g_top_scope_eid));
+    const val = evalTopLevelStmt(ast_ref);
     // Line-commit: bind any FFI modules/wraps declared on this line (deferred
     // dlopen → resolve here for interactive eager feel). No-op without FFI.
     resolvePendingModules();

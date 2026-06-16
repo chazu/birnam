@@ -4,6 +4,7 @@ const std = @import("std");
 const testing = std.testing;
 const compiler = @import("compiler.zig");
 const bytecode = @import("bytecode.zig");
+const vm = @import("vm.zig");
 const fact_store_mod = @import("fact_store.zig");
 const object_table_mod = @import("object_table.zig");
 const ref_mod = @import("ref.zig");
@@ -471,6 +472,56 @@ test "compile var-ref out of scope → VarNotInScope" {
 
     const r = compiler.compileMethod(testing.allocator, &store, 41000);
     try testing.expectError(error.VarNotInScope, r);
+}
+
+test "top-level mode: free var + let lower to scope sends, no frame locals" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var store = fact_store_mod.FactStore.init(arena.allocator());
+
+    const name_eid: u64 = 850;
+    // stmt-seq: `let x := 7 ; x`  (top-level)
+    try mkLiteralAst(&store, 50001, ref_mod.mkSmallInt(7).?);
+    _ = try store.assert(50002, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_LET_VT), MODULE_EID);
+    _ = try store.assert(50002, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+    _ = try store.assert(50002, kernel_eids.ATTR_AST_LET_INIT, ref_mod.mkEid(50001), MODULE_EID);
+
+    _ = try store.assert(50003, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_VAR_REF_VT), MODULE_EID);
+    _ = try store.assert(50003, kernel_eids.ATTR_AST_NAME, ref_mod.mkEid(name_eid), MODULE_EID);
+
+    _ = try store.assert(50002, kernel_eids.ATTR_AST_NEXT_SIBLING, ref_mod.mkEid(50003), MODULE_EID);
+    _ = try store.assert(50000, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.AST_STMT_SEQ_VT), MODULE_EID);
+    _ = try store.assert(50000, kernel_eids.ATTR_AST_STMT_FIRST, ref_mod.mkEid(50002), MODULE_EID);
+
+    const env = compiler.TopLevelEnv{
+        .scope_const = ref_mod.mkEid(500),
+        .lookup_sel = 601,
+        .bind_sel = 602,
+        .set_sel = 603,
+    };
+    var m = try compiler.compileTopLevel(testing.allocator, &store, 50000, &env);
+    defer m.deinit(testing.allocator);
+
+    // Nothing is a frame local — let persisted to scope, ref read from scope.
+    try testing.expectEqual(@as(u8, 0), m.local_count);
+
+    // The `let` lowered to `[scope bind: #x value: 7]` → SEND_N(bind_sel, 2).
+    // The trailing `x` lowered to `[scope lookup: #x]` → SEND_1(lookup_sel),
+    // then RETURN. SEND_1 = opcode + u32 sel + u16 site = 7 bytes; RETURN = 1.
+    const n = m.bytecode.len;
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, n - 1));
+    try testing.expectEqual(bytecode.Opcode.SEND_1, bytecode.readOpcode(m.bytecode, n - 8));
+    try testing.expectEqual(@as(u32, 601), bytecode.readU32(m.bytecode, n - 7));
+
+    // Confirm a SEND_N with bind_sel appears (the let store).
+    var saw_bind = false;
+    var pc: usize = 0;
+    while (pc < n) {
+        const op = bytecode.readOpcode(m.bytecode, pc);
+        if (op == .SEND_N and bytecode.readU32(m.bytecode, pc + 1) == 602) saw_bind = true;
+        pc += 1 + vm.operandSize(op);
+    }
+    try testing.expect(saw_bind);
 }
 
 test "compile assign: stores + reloads bound slot" {

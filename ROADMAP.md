@@ -2553,6 +2553,12 @@ and is rejected.
   analysis); (b) general escape analysis for the few remaining heap allocations.
   The originally-imagined "scopes as fact entities → move off-store" rewrite is
   **not needed** — the VM already bypasses scope facts for compiled code.
+  **Residual (a) is now specced as Cluster ① (see "Deferred-Items Backlog"
+  below) and carries an OPEN FORK (2026-06-15): the VM has no global/scope-lookup
+  opcode and compiled `let` writes frame-locals, so "compile top-level" needs
+  either new `LOAD_GLOBAL`/`STORE_GLOBAL` opcodes (option B) or stays a
+  near-useless fallback (option A); may be deferred (option C) until a workload
+  shows top-level loops hurt.**
 - **perf-1.6 (REVISED by measurement 2026-06-07):** dispatch inline caches were
   the original plan — **dropped.** Measurement shows warm dispatch is ~8 ns /
   6.4×, not a bottleneck; mcache already makes the method probe free. What
@@ -2657,6 +2663,140 @@ classes) — explicitly the design target; B/A widen it to stable-shape mutable
 entities. The deeper ceiling is not lifted until the projection boundary (3) and
 write-back (4)/transients (5) exist. This ADR exists so that boundary is decided
 deliberately rather than accreted.
+
+---
+
+## Deferred-Items Backlog — dependency-ordered sequencing (2026-06-15)
+
+A sweep of every deferred item across Phases 11–19 + ADR-perf-1, ordered so that
+no item is done before the larger item that subsumes it (waste) or before the
+item that gates it (rework). Roadmap-number order is NOT the build order.
+
+### Subsumption rules (the waste-traps)
+
+1. **All perf micro-items fold into Phase 18. Do NOT build standalone.**
+   `perf-1.3` (opt-in temporal impl), `perf-1.4` (write-back), `perf-1.6`
+   (inline caches + shape) are *measured* unreachable outside native codegen:
+   the 1.4 write-back prototype regressed cold reads through generic
+   `currentValue` (−25% hot / +21% cold = net loss); the real 10× needs the read
+   site to hold the struct ptr+slot = Phase 18. These are Phase-18 sub-tasks.
+2. **`12.8` (BYTECODE_METHOD_VT / Approach A) precedes Phase 18.** It removes the
+   native/data conflation in dispatch so methods emit as *data*; Phase 18 codegen
+   builds on that. Reverse order = rework the codegen.
+3. **Three "deferred" items are ONE surface — the top-level eval path.**
+   `perf-1.5-residual` (compile top-level/REPL/script stmts), `11.5`
+   (`g_unwinding` retirement), and (partly) the error-model VM-stmt-halt gap all
+   exist because top-level statements still tree-walk. See **Cluster ①** below —
+   but note the open design fork discovered 2026-06-15.
+4. **`15.P` (const-pool RRB finalizer) is pointless before `15.A-AST`.** Redefine
+   churn never orphans the old method (AST stays rooted in TOP_SCOPE) → nothing
+   to finalize. `15.A-AST` is a *product decision* (when is REPL input history
+   collectible?), not engineering.
+
+### Build order
+
+**① Top-level eval → bytecode — SHIPPED 2026-06-15** (branch
+`cluster-1-toplevel-bytecode`). Option B chosen, realized *without* new opcodes:
+free vars / outer `let`/`:=` lower to `[scope lookup:/bind:value:/set:value:]`
+sends (existing PUSH_CONST + SEND). REPL lines + file-in forms compile + run on
+the VM with tree-walk fallback; `:eval-mode` toggle retains the tree-walker.
+Details + what's NOT included below. Independent of Phase 18; shrinks 18's
+surface to one codegen path.
+
+**② Dispatch representation** (12.8 BYTECODE_METHOD_VT + 11.4 in-band mcache
+wiring at SEND_*). Same hot-dispatch + mcache surface — one pass. Prereq for 18.
+
+**③ Phase 18 native codegen** — capstone. Swallows perf-1.3/1.4/1.6 + the
+field-read slot cache. Nothing perf-related happens before this.
+
+**④+ Off critical path (demand-driven, any order):**
+- *FFI*: 19.2 callback GC-rooting (needs a box→Ref GC-mark bridge) + arity>2;
+  19.5 nested/array fields, by-value struct ARG auto-marshal, `[T size]` (trivial),
+  field fact-materialization (deep idst, own arc); x86_64 libffi headers (non-arm CI).
+- *GC tail*: 15.A-AST (product call) → then 15.P + 15.R snapshot-auto-release
+  together (both = a type-aware sweep finalizer for non-Ref-reachable allocs).
+- *15.R lang sliver*: `[snap find:where:]` datalog-over-snapshot wiring (kernel
+  done; lang wiring only). Small, independent.
+- *12.5 mmap RO segments*: pure load-perf; unlocks 15.R R4 mmap fault-in. Defer hard.
+- *Language niceties*: `<=>` three-way compare, block-param destructuring (cheap);
+  `&`/`|` (grammar collision vs the block-param bar — needs parser disambiguation).
+
+### Cluster ① — top-level eval → bytecode (spec + OPEN FORK)
+
+**Today:** REPL lines and file-in forms both run `send1(ast, sel_eval, TOP_SCOPE)`
+— the tree-walker (`replHandler` lang.zig:~3992; `doFileInSource` lang.zig:~2432).
+Each `let`/`:=`/var-ref hits `newScopeEntity`/`pushScopeBinding`/`mutateBinding`
+(lang.zig:1562/1576/1945) = the per-statement *fact tax*. Installed *methods*
+already compile to bytecode (Phase 11.12, `vtMethodDoImpl` lang.zig:~2137); only
+top-level + uncompiled blocks still tree-walk.
+
+**Hard constraint discovered 2026-06-15 (compiler.zig:378, vm.zig opcode enum):**
+the bytecode VM has **no global/scope-lookup opcode** and compiled `let`/`:=`
+write **frame-local slots** (compiler.zig:357/402), not TOP_SCOPE facts. So a
+naive "compile each top-level statement as a method" breaks two REPL semantics:
+(1) references to globals (`Module`, `db`) or a prior line's binding →
+`error.VarNotInScope`; (2) `let x := 41` would not persist to the next line.
+A compile-fail→tree-walk fallback alone helps almost nothing — nearly every
+useful top-level loop references something external, so it always falls back.
+
+**RESOLVED → option B, SHIPPED 2026-06-15.** Built via send-lowering (no new
+opcodes, no FORMAT_VERSION bump): the compiler's `TopLevelEnv` lowers a free var
+to `[scope lookup: #name]`, an outer `let` to `[scope bind: #name value: v]`, and
+an outer `:=` to `[scope set: #name value: v]`; lang installs those three methods
+on `SCOPE_VT` (mirroring evalVarRef/evalLet/evalAssign — same scope walk, same
+error values). New IdApi `eval_top_level` compiles+materializes+runs a statement,
+signalling compile failure so replHandler/file-in fall back to the tree-walker.
+`:eval-mode [bytecode|treewalk]` (lang `g_eval_mode`) toggles the strategy for
+both top-level statements and user-method installs; default `bytecode`. The
+tree-walker is RETAINED as the `treewalk` fallback (so 11.5 = retire `g_unwinding`'s
+hot use, not the path). Validated: cross-line `let`, globals (`Module`), `:=`,
+undefined-var error parity; lang_module_test 63/63; full sweep 39/39 files.
+**NOT included (still deferred, by design):** error-model **VM-stmt-halt** — a
+compiled statement-sequence does not halt mid-sequence on an error value (matches
+compiled-method bodies; file-in still halts at form granularity). And a
+**run-without-materialize** fast path — each top-level form currently materializes
+a throwaway method entity (bytecode-stream + pool + facts), bounded per line and
+GC/prune-reclaimable; removing that churn is a follow-up. The original fork
+options are kept below for the record.
+
+**Original fork (for the record):**
+- **A — Minimal / fallback-only.** Try `compileBlockAsMethod` on each top-level
+  statement; on `VarNotInScope`/any CompileError, fall back to the tree-walker.
+  No new opcodes, no ABI bump. Wins only on fully self-contained top-level
+  expressions (no free globals, no persistent `let`). Coverage: small.
+- **B — Principled / scope opcodes.** Add `LOAD_GLOBAL`/`STORE_GLOBAL` (resolve a
+  name against TOP_SCOPE at runtime via the existing scope-fact path) + a
+  compiler "top-level mode" that lowers outermost `let`/`:=`/free-var to those
+  ops while loop-internal locals/blocks stay frame-slots. The hot loop *body*
+  runs compiled (frame-locals); only the few outer top-level names pay a fact
+  lookup. This is the actual perf-1.5 win. Cost: 2 new opcodes, VM support,
+  bytecode FORMAT_VERSION bump, compiler top-level-mode path, tests.
+- **C — Defer ① entirely.** perf-1.5 is flagged "if it proves to matter" and no
+  benchmark yet shows top-level loops are a real pain. Ship only the decoupled,
+  cheap parts now (the tree-walk toggle infra below + the error-model VM-stmt-halt,
+  which is a *compiled-method* concern independent of top-level), and leave the
+  perf transform until a workload demands it.
+
+**Tree-walker stays — as an opt-in debug fallback, not deleted.** Whatever the
+fork, the tree-walker is retained as a simpler, AST-step-inspectable eval path.
+"Retire `g_unwinding` (11.5)" therefore means *retire its hot use*, not delete the
+path — `g_unwinding` (lang.zig:167, set evalReturnImpl:2034, caught
+blockEvalShim:1921) stays alive for the fallback.
+
+**REPL toggle (`:eval-mode`) — required, documented here:**
+- Global `var g_eval_mode: enum { bytecode, treewalk } = .bytecode` in lang.zig.
+- Checked at the top-level compile site (new) and at `vtMethodDoImpl` (lang.zig:2137)
+  — `.treewalk` skips the `compile_block_as_method` attempt and installs/uses the
+  tree-walker closure directly.
+- Command in `replHandler`'s `:`-branch (lang.zig:~3956, beside `:reset`):
+  `:eval-mode bytecode|treewalk` sets it; bare `:eval-mode` prints current.
+  (Shell-level `:` commands live in `handleImageCommand` shell.zig:45; this is a
+  REPL-level/lang command, so it goes in `replHandler` like `:reset`.)
+- Default `bytecode`; `:eval-mode treewalk` forces the inspectable path for
+  debugging a miscompile or stepping AST eval. Persists for the session only
+  (not imaged).
+- **Doc:** record the toggle + when to reach for it (debug a suspected miscompile;
+  compare tree-walk vs VM result) in README REPL-commands section when ① ships.
 
 ---
 

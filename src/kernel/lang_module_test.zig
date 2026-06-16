@@ -269,6 +269,71 @@ test "DEMO 16 deferred: let destructuring — #[a b] := seq" {
     }
 }
 
+/// Cluster ① — parse `src` and run it through the COMPILED top-level path
+/// (api.eval_top_level), exactly as replHandler/file-in do in `.bytecode`
+/// mode. `ok` is set false when the statement couldn't be compiled.
+fn evalTopLevel(
+    api: *const id_api_mod.IdApi,
+    interner: *interner_mod.Interner,
+    mod: u64,
+    src: []const u8,
+    a: std.mem.Allocator,
+    ok: *bool,
+) Ref {
+    const sel_parse = interner.str_to_eid.get("parseExpr:").?;
+    const sel_lookup = interner.str_to_eid.get("lookup:").?;
+    const sel_bind = interner.str_to_eid.get("bind:value:").?;
+    const sel_set = interner.str_to_eid.get("set:value:").?;
+    const src_ref = strings.mkString(a, src) catch return ref_mod.NIL;
+    const ast = send_mod.send1(ref_mod.mkEid(mod), sel_parse, src_ref);
+    return api.eval_top_level(ast >> 3, kernel_eids.TOP_SCOPE_EID, sel_lookup, sel_bind, sel_set, ok);
+}
+
+test "Cluster ①: compiled top-level — cross-line let / global / := / undefined" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // `let n := 41` compiles (outer let lowers to bind:value:) + persists.
+    var ok: bool = false;
+    const r1 = evalTopLevel(s.api, s.interner, lang, "let n := 41", a, &ok);
+    try testing.expect(ok);
+    try testing.expectEqual(@as(i64, 41), ref_mod.untagSmallInt(r1));
+
+    // A LATER line sees it: free var `n` lowers to lookup: → 41 + 1 = 42.
+    ok = false;
+    const r2 = evalTopLevel(s.api, s.interner, lang, "[n + 1]", a, &ok);
+    try testing.expect(ok);
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(r2));
+
+    // `n := 100` lowers to set: → mutates the existing binding; later read sees it.
+    ok = false;
+    _ = evalTopLevel(s.api, s.interner, lang, "n := 100", a, &ok);
+    try testing.expect(ok);
+    ok = false;
+    const r3 = evalTopLevel(s.api, s.interner, lang, "n", a, &ok);
+    try testing.expect(ok);
+    try testing.expectEqual(@as(i64, 100), ref_mod.untagSmallInt(r3));
+
+    // Global binding `Module` resolves through the scope chain (not an error).
+    ok = false;
+    const r4 = evalTopLevel(s.api, s.interner, lang, "Module", a, &ok);
+    try testing.expect(ok);
+    try testing.expect(ref_mod.isEid(r4));
+    try testing.expect(s.store.currentValue(r4 >> 3, kernel_eids.ATTR_VTABLE) != ref_mod.mkEid(kernel_eids.ERROR_VT));
+
+    // An undefined free var compiles + runs (ok) but yields an error VALUE,
+    // identical to the tree-walker's undefined-variable result.
+    ok = false;
+    const r5 = evalTopLevel(s.api, s.interner, lang, "nope", a, &ok);
+    try testing.expect(ok);
+    try testing.expect(ref_mod.isEid(r5));
+    try testing.expectEqual(ref_mod.mkEid(kernel_eids.ERROR_VT), s.store.currentValue(r5 >> 3, kernel_eids.ATTR_VTABLE).?);
+}
+
 test "DEMO 16 deferred: strings — size/at:/,/=/asSymbol + seq protocol" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
