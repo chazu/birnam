@@ -2759,6 +2759,52 @@ fn encodeTerm(q: ?*anyopaque, ref: Ref, kind: *u32, val: *u64) void {
     }
 }
 
+/// Add one `where` element to `q`: a triple/predicate clause, a negation
+/// `#[#not …]`, or a disjunction `#[#or <branch> …]` (each branch a single clause
+/// or a `#[ #[c1] #[c2] ]` clause-list). Recursive — branches may nest not/or.
+/// Returns an error Ref on malformed input, else null.
+fn addWhereElement(q: ?*anyopaque, elem: Ref) ?Ref {
+    const api = g_api.?;
+    if (isVectorRef(elem) and api.rrb_len(elem) >= 2 and symbolIs(api.rrb_nth(elem, 0), "not")) {
+        api.query_begin_negation(q);
+        var k: u64 = 1;
+        while (k < api.rrb_len(elem)) : (k += 1) {
+            if (addWhereElement(q, api.rrb_nth(elem, k))) |err| return err;
+        }
+        api.query_end_negation(q);
+        return null;
+    }
+    if (isVectorRef(elem) and api.rrb_len(elem) >= 2 and symbolIs(api.rrb_nth(elem, 0), "or")) {
+        api.query_begin_disjunction(q);
+        var k: u64 = 1;
+        while (k < api.rrb_len(elem)) : (k += 1) {
+            if (addBranch(q, api.rrb_nth(elem, k))) |err| return err;
+        }
+        api.query_end_disjunction(q);
+        return null;
+    }
+    return addClause(q, elem);
+}
+
+/// One disjunction branch: a single clause `#[e a v]`, or a clause-list
+/// `#[ #[c1] #[c2] ]` (detected by the first sub-element being a vector).
+fn addBranch(q: ?*anyopaque, branch: Ref) ?Ref {
+    const api = g_api.?;
+    if (!isVectorRef(branch) or api.rrb_len(branch) == 0)
+        return mkRuntimeError("findAll: #or branch must be a clause or clause-list");
+    api.query_begin_branch(q);
+    if (isVectorRef(api.rrb_nth(branch, 0))) {
+        var k: u64 = 0;
+        while (k < api.rrb_len(branch)) : (k += 1) {
+            if (addWhereElement(q, api.rrb_nth(branch, k))) |err| return err;
+        }
+    } else {
+        if (addWhereElement(q, branch)) |err| return err;
+    }
+    api.query_end_branch(q);
+    return null;
+}
+
 /// Add one `#[e a v]` triple or `#[lhs op rhs]` predicate clause to `q`. Returns
 /// an error Ref on a malformed clause, else null.
 fn addClause(q: ?*anyopaque, clause: Ref) ?Ref {
@@ -2829,22 +2875,12 @@ fn runDatalogQuery(find_ref: Ref, where: Ref, tmod: TimeMod) Ref {
         api.query_add_find(q, api.query_variable(q, nm.ptr, nm.len));
     }
 
-    // Clauses — a triple `#[e a v]`, a predicate `#[lhs #lt rhs]`, or a negation
-    // `#[#not <clause> …]` (the bracketed clauses must NOT match).
+    // Clauses — each a triple `#[e a v]`, a predicate `#[lhs #lt rhs]`, a negation
+    // `#[#not …]`, or a disjunction `#[#or <branch> …]`.
     const nclauses = api.rrb_len(where);
     var ci: u64 = 0;
     while (ci < nclauses) : (ci += 1) {
-        const elem = api.rrb_nth(where, ci);
-        if (isVectorRef(elem) and api.rrb_len(elem) >= 2 and symbolIs(api.rrb_nth(elem, 0), "not")) {
-            api.query_begin_negation(q);
-            var k: u64 = 1;
-            while (k < api.rrb_len(elem)) : (k += 1) {
-                if (addClause(q, api.rrb_nth(elem, k))) |err| return err;
-            }
-            api.query_end_negation(q);
-        } else {
-            if (addClause(q, elem)) |err| return err;
-        }
+        if (addWhereElement(q, api.rrb_nth(where, ci))) |err| return err;
     }
 
     switch (tmod) {

@@ -2031,6 +2031,13 @@ test "Phase 7 datalog: [db findAll:where:] — vars, join, set results" {
     try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(agg, sz)));
     const agg_row = send_mod.send1(agg, at_sel, ref_mod.mkSmallInt(0).?);
     try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send1(agg_row, at_sel, ref_mod.mkSmallInt(0).?)));
+
+    // Disjunction `#[#or <branch> …]` — has #qfoo (1st branch) even though #qgone absent.
+    const dis_hit = evalLine(s, lang, "[db findAll: ?vt where: #[ #[#or #[?vt #qfoo ?m] #[?vt #qgone ?m]] ]]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(dis_hit, sz)));
+    // Neither branch attr exists → empty.
+    const dis_miss = evalLine(s, lang, "[db findAll: ?vt where: #[ #[#or #[?vt #qx ?m] #[?vt #qy ?m]] ]]", a);
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(dis_miss, sz)));
 }
 
 test "17.5 eager & / | and the | block-bar disambiguation" {
