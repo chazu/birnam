@@ -2851,22 +2851,49 @@ AST stays rooted (by the live install) → browse / edit / re-derive intact. Onl
 *definition history* is dropped. Matches the `--strip=malleable` instinct (ship
 without AST; keep it live only while current).
 
-**Mechanical work to close (the actual code, all in/around `prune.zig`):**
-1. **Orphan-collection gap.** Superseded defs aren't swept today even under
-   current-only retention — find why (is `oldM` still reachable from a root? is
-   method-table value-history being retained past compact?) and make compact +
-   prune drop them. This is the core of 15.A-AST.
-2. **Root 2 under-roots tree-walker methods.** `markReachable` Root 2 seeds only
-   method values carrying `:bytecode-stream`; a tree-walker-installed method
-   (compile-fallback, or any install under `:eval-mode treewalk`) has none → it
-   would be wrongly swept. Fix Root 2 to seed *any* installed method value
-   (`[vt sel <closure/method>]` M_USER fact), bytecode or not.
-3. **15.P rides on this.** Once superseded methods actually sweep, their
-   constant-pool RRBs need the type-aware sweep finalizer (15.P) to be reclaimed
-   — so 15.P stops being "0 yield" and pairs naturally here.
-4. **`run-without-materialize` (Cluster ① churn)** is the same garbage class
-   (evaluated-line throwaway methods) — a current-only/non-temporal default for
-   these + orphan-collection subsumes it.
+**Investigation 2026-06-15 — the orphan-collection gap is a crown-jewel
+prune-reachability bug + a provenance inconsistency. HALTED for design (do NOT
+rush — a wrong mark cut drops live code = image corruption).** Root cause, traced
+empirically (instrumented `prune.zig`):
+- **Bug A — over-marking pins dead block-method trees.** `markReachable` Root 2
+  seeds BOTH ends of any current M_USER fact whose value is a `:bytecode-stream`
+  method. `[child :block-parent-method parent]` IS such a fact (the parent is a
+  method), so Root 2 seeds the dead child + dead parent. Every run-and-discard
+  top-level statement method (Cluster ①) and every superseded redefinition has
+  block children → its whole tree is pinned. (Probe: redefine `#foo` ×3 → only 1
+  entity swept; facts grow.) The BFS also can't currently reach a *live* method's
+  children forward: `:constant-pool` is an RRB Ref (not `isEid`), so the
+  block-parent-method back-ref seeding is the ONLY thing marking block children.
+- **Bug B — provenance inconsistency makes the over-marking LOAD-BEARING.** A
+  compiled method ENTITY is always **M_USER** (`cCompileBlockAsMethod` →
+  `materialize(M_USER)`), but the stdlib prelude's INSTALL fact is **CODE** —
+  `installSourceMethod` asserts `[vt sel method]` under `g_module_eid`
+  (lang.zig:~3849). Root 2's `f.m == M_USER` filter therefore MISSES those
+  installs, so CODE-installed M_USER stdlib methods (`abs`, `printString`, …) are
+  kept ONLY via the Bug-A block-parent-method seeding. Naively removing Bug A
+  sweeps live stdlib methods' children → corruption.
+- **Attempted fix fell short.** Tried: BFS descends `:constant-pool` RRB (mark
+  live children forward) + Root 2 skips `:block-parent-method` + Root 2 drops the
+  M_USER filter (mark methods installed by ANY-provenance fact). Pool-descent
+  fires (verified) and churn drops to ~24 swept, but a live `[| 42]` method still
+  returns `nil` after prune — a THIRD, undiagnosed live-drop remains. Reverted.
+- **Design decision needed (the halt):** resolve the method-entity↔install-fact
+  provenance mismatch. Options: (a) compiled-method entity provenance MATCHES its
+  install (give `compile_block_as_method` a provenance arg; CODE prelude methods
+  become CODE entities → never swept, no M_USER churn from them); (b) keep
+  methods M_USER + make Root 2 provenance-agnostic AND complete the forward mark
+  walk (pool-descent) AND find the residual live-drop. (a) looks cleaner (it also
+  stops stdlib methods counting as user churn) but touches the 12.0 provenance
+  split (image persistence + module unload) — verify against those.
+
+**Remaining mechanical items (after the design decision):**
+1. Complete + verify the mark walk (Bug A fix + forward pool-descent) with a
+   teeth-test: a live nested-block method survives prune; an orphan tree sweeps.
+2. **Root 2 also under-roots tree-walker methods** (compile-fallback /
+   `:eval-mode treewalk` installs have no `:bytecode-stream`) — fold into the
+   same Root-2 rework (seed any installed method value).
+3. **15.P** const-pool RRB finalizer rides on it (superseded methods' pools).
+4. **`run-without-materialize`** (Cluster ① churn) — same garbage class.
 
 **Status: SPEC, unblocked** (no perf-1.4 dependency). **Product policy LOCKED
 2026-06-15: non-temporal code by default** (transient-REPL; bounds memory to the
