@@ -2723,10 +2723,10 @@ field-read slot cache. Nothing perf-related happens before this.
 - *FFI*: 19.2 callback GC-rooting (needs a box→Ref GC-mark bridge) + arity>2;
   19.5 nested/array fields, by-value struct ARG auto-marshal, `[T size]` (trivial),
   field fact-materialization (deep idst, own arc); x86_64 libffi headers (non-arm CI).
-- *GC tail*: **15.A-AST now SPECCED + unblocked** (code entities non-temporal on
-  the history axis → superseded defs collectible; no perf-1.4 dep — see "15.A-AST
-  spec" below). 15.P (const-pool RRB finalizer) + 15.R snapshot-auto-release ride
-  on it (both = a type-aware sweep finalizer for non-Ref-reachable allocs).
+- *GC tail*: **15.A-AST SHIPPED 2026-06-16** (provenance + ① regression/mcache +
+  closure-aware prune mark-walk; redefine/throwaway churn now collected, live
+  methods + closures-in-vars survive `:prune`). 15.P (const-pool RRB finalizer) +
+  15.R snapshot-auto-release still ride on the same sweep-finalizer mechanism.
 - *15.R lang sliver*: `[snap find:where:]` datalog-over-snapshot wiring (kernel
   done; lang wiring only). Small, independent.
 - *12.5 mmap RO segments*: pure load-perf; unlocks 15.R R4 mmap fault-in. Defer hard.
@@ -2890,27 +2890,36 @@ empirically (instrumented `prune.zig`):
   agnostic Root 2 — rejected: empirically insufficient and leaves the smell +
   bloat.)
 
-**Remaining — the churn COLLECTION itself (still OPEN, now on the solid
-provenance foundation):**
-1. **Mark-walk change has a residual correctness puzzle — NOT shipped.** Removing
-   the Bug-A over-seed (Root 2 skipping `:block-parent-method`) + adding forward
-   `:constant-pool` RRB descent *does* collect the churn (redefine ×3 → ~25 swept
-   vs 1), but it breaks a LIVE user method after prune (`#foo`→nil). Bisected:
-   the **block-parent-method skip alone** causes it (not pool-descent), AND it is
-   **NOT a fact-store reachability fault** — instrumentation shows no
-   genuinely-installed method swept and NO marked→swept dangling edge. So the
-   over-seed currently props up something live via a **non-reachability
-   mechanism** (suspect: mcache / `compact` re-assert interaction, or
-   promotion/object-table state) that must be understood before the over-seed can
-   be removed. Crown-jewel — do not rush. Teeth-test target: live nested-block
-   method survives prune; orphan tree sweeps; mcache coherent post-prune.
-2. **Root 2 also under-roots tree-walker methods** (compile-fallback /
-   `:eval-mode treewalk` installs have no `:bytecode-stream`) — fold into the
-   same Root-2 rework.
-3. **15.P** const-pool RRB finalizer rides on it (superseded methods' pools).
-4. **`run-without-materialize`** (Cluster ① churn) — same garbage class; may be
-   the lower-risk path to the ① portion of the churn (avoids the prune mark-walk
-   entirely by never materializing throwaway top-level methods).
+**Churn COLLECTION — SHIPPED 2026-06-16** (commits 8ba582d provenance, b5084e4
+regression+mcache, 328cde0 mark-walk). The residual "non-reachability" puzzle
+was two pre-existing bugs, both now fixed:
+1. **Cluster ① regression (b5084e4).** A compiled top-level `[VT method:#foo
+   do:[blk]]` evaluates `[blk]` to a *bytecode block closure*; `vtMethodDoImpl`'s
+   AST-extract path only handled tree-walker closures → it installed the raw
+   closure = a method with NO `:bytecode-stream` → Root 2 didn't root it → prune
+   dropped it. Masked by a stale dispatch cache (so it *looked* fine). Fix:
+   IdApi `method_eid_of_bytecode_closure` extracts the already-compiled method
+   eid; install that proper rootable method. Plus **`:prune` now flushes the
+   mcache** (it never did — a dropped install still "worked" via stale cache,
+   masking dispatch-reachability bugs). This subsumes the old "Root 2 under-roots
+   tree-walker methods" item.
+2. **Mark-walk + closure-aware marking (328cde0).** Root 2 stops over-seeding via
+   `:block-parent-method`; BFS descends `:constant-pool` RRBs to mark live block
+   children forward; and **`closureMethodEid` follows a marked closure's
+   in-memory method pointer** — a block value bound to a var / in a cell points
+   at its bytecode method through memory, not a fact, so the over-seed had been a
+   crude proxy keeping ALL block methods alive. Now precise: dead trees sweep,
+   live closures-in-vars keep their code.
+   Result: redefine ×4 → 24 swept (was 1); throwaway top-level lines collected;
+   live methods + nested-block methods + closures-bound-to-vars survive `:prune`.
+   Regression test in lang_module_test. Suite 39 files / 64 lang green.
+
+**Still open (smaller, separate):** **15.P** const-pool RRB finalizer (now pairs
+naturally — superseded methods' pools become reclaimable on sweep);
+**`run-without-materialize`** (an optional optimization to avoid creating the
+throwaway top-level method entities in the first place — pure perf, not
+correctness, now that prune collects them); parsed-AST churn for non-defining
+lines (collected by prune already via the same dead-tree sweep).
 
 **Status: SPEC, unblocked** (no perf-1.4 dependency). **Product policy LOCKED
 2026-06-15: non-temporal code by default** (transient-REPL; bounds memory to the
