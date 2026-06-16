@@ -141,11 +141,26 @@ fn ffiTypeForKind(k: Kind, unsigned: bool) *ffi_type {
 pub const Aggr = struct {
     fields: []Kind,
     offsets: []u32,
+    /// Phase 19.5 nested fields: parallel to `fields` — non-null exactly where
+    /// `fields[i] == .aggregate` (a nested `{...}` struct field). `&.{}` for a
+    /// flat struct. Scalar arrays (`3i`) are inline-flattened into repeated
+    /// scalar fields, so they need no entry here.
+    field_aggrs: []?*Aggr = &.{},
     size: usize,
+    /// Natural alignment (max field alignment), computed at parse time so an
+    /// enclosing struct can align a nested field correctly.
+    alignment: usize = 1,
     elements: ?[]?*ffi_type = null, // owned; len = fields.len + 1 (NULL-terminated)
     ty: ffi_type = .{ .size = 0, .alignment = 0, .type = FFI_TYPE_STRUCT, .elements = null },
 
     pub fn deinit(self: *Aggr, allocator: std.mem.Allocator) void {
+        for (self.field_aggrs) |maybe| {
+            if (maybe) |sub| {
+                sub.deinit(allocator);
+                allocator.destroy(sub);
+            }
+        }
+        if (self.field_aggrs.len != 0) allocator.free(self.field_aggrs);
         if (self.elements) |e| allocator.free(e);
         allocator.free(self.fields);
         allocator.free(self.offsets);
@@ -153,10 +168,20 @@ pub const Aggr = struct {
 
     /// Build (and cache) the libffi struct `ffi_type`. Returns null on OOM.
     /// Field signedness is irrelevant to layout, so the signed variant is used.
+    /// A nested-struct field recurses into its own `ensureFfiType` (libffi reads
+    /// the nested FFI_TYPE_STRUCT element, preserving aggregate ABI classification
+    /// that a flattened layout would lose).
     pub fn ensureFfiType(self: *Aggr, allocator: std.mem.Allocator) ?*ffi_type {
         if (self.elements != null) return &self.ty;
         const elems = allocator.alloc(?*ffi_type, self.fields.len + 1) catch return null;
-        for (self.fields, 0..) |fk, i| elems[i] = ffiTypeForKind(fk, false);
+        for (self.fields, 0..) |fk, i| {
+            if (fk == .aggregate) {
+                const sub = self.field_aggrs[i] orelse return null;
+                elems[i] = sub.ensureFfiType(allocator) orelse return null;
+            } else {
+                elems[i] = ffiTypeForKind(fk, false);
+            }
+        }
         elems[self.fields.len] = null; // libffi requires a NULL terminator
         self.elements = elems;
         self.ty = .{ .size = 0, .alignment = 0, .type = FFI_TYPE_STRUCT, .elements = elems.ptr };
@@ -324,26 +349,64 @@ fn alignUp(n: usize, a: usize) usize {
 
 /// Parse a `{...}` aggregate beginning at `s[start] == '{'`. Returns the heap
 /// `Aggr` (with natural-alignment offsets computed) and the index of the
-/// closing `}`. Scalar fields only in v1 — nested aggregates/arrays rejected.
+/// closing `}`. Fields: scalar sigchars, nested `{...}` structs (Phase 19.5 —
+/// recursed so libffi preserves nested-aggregate ABI classification), and scalar
+/// arrays via a decimal count prefix (`3i` = three ints, inline-flattened since a
+/// scalar array is ABI-identical to its repeated elements). Struct arrays
+/// (a count before `{`) are rejected — deferred.
 fn parseAggr(allocator: std.mem.Allocator, s: []const u8, start: usize) SigParseError!struct { aggr: *Aggr, close: usize } {
     var fields = std.ArrayList(Kind){};
     defer fields.deinit(allocator);
     var offsets = std.ArrayList(u32){};
     defer offsets.deinit(allocator);
+    var field_aggrs = std.ArrayList(?*Aggr){};
+    defer field_aggrs.deinit(allocator);
+    // Free nested aggrs already parsed if we bail out partway.
+    errdefer for (field_aggrs.items) |maybe| {
+        if (maybe) |sub| {
+            sub.deinit(allocator);
+            allocator.destroy(sub);
+        }
+    };
 
     var cursor: usize = 0;
     var max_align: usize = 1;
     var j = start + 1;
-    while (j < s.len and s[j] != '}') : (j += 1) {
-        const fk = kindOf(s[j]) orelse return error.UnknownSigchar;
-        if (fk == .void_) return error.UnknownSigchar; // no void fields
-        const sz = kindSize(fk);
-        const al = sz; // scalar align == size
-        const off = alignUp(cursor, al);
-        try offsets.append(allocator, @intCast(off));
-        try fields.append(allocator, fk);
-        cursor = off + sz;
-        if (al > max_align) max_align = al;
+    while (j < s.len and s[j] != '}') {
+        // Optional decimal array-count prefix (scalar arrays only).
+        var count: usize = 1;
+        if (s[j] >= '0' and s[j] <= '9') {
+            count = 0;
+            while (j < s.len and s[j] >= '0' and s[j] <= '9') : (j += 1) count = count * 10 + (s[j] - '0');
+            if (count == 0 or j >= s.len) return error.UnknownSigchar;
+            if (s[j] == '{') return error.UnknownSigchar; // struct arrays deferred
+        }
+        if (s[j] == '{') {
+            const parsed = try parseAggr(allocator, s, j); // nested struct
+            const al = parsed.aggr.alignment;
+            const off = alignUp(cursor, al);
+            try offsets.append(allocator, @intCast(off));
+            try fields.append(allocator, .aggregate);
+            try field_aggrs.append(allocator, parsed.aggr);
+            cursor = off + parsed.aggr.size;
+            if (al > max_align) max_align = al;
+            j = parsed.close + 1; // step past the nested '}'
+        } else {
+            const fk = kindOf(s[j]) orelse return error.UnknownSigchar;
+            if (fk == .void_) return error.UnknownSigchar; // no void fields
+            const sz = kindSize(fk);
+            const al = sz; // scalar align == size
+            var rep: usize = 0;
+            while (rep < count) : (rep += 1) {
+                const off = alignUp(cursor, al);
+                try offsets.append(allocator, @intCast(off));
+                try fields.append(allocator, fk);
+                try field_aggrs.append(allocator, null);
+                cursor = off + sz;
+            }
+            if (al > max_align) max_align = al;
+            j += 1;
+        }
     }
     if (j >= s.len) return error.MissingReturnSeparator; // unterminated '{'
     if (fields.items.len == 0) return error.EmptySig; // empty struct
@@ -352,7 +415,9 @@ fn parseAggr(allocator: std.mem.Allocator, s: []const u8, start: usize) SigParse
     aggr.* = .{
         .fields = try fields.toOwnedSlice(allocator),
         .offsets = try offsets.toOwnedSlice(allocator),
+        .field_aggrs = try field_aggrs.toOwnedSlice(allocator),
         .size = alignUp(cursor, max_align),
+        .alignment = max_align,
     };
     return .{ .aggr = aggr, .close = j };
 }

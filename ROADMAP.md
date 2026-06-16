@@ -2212,8 +2212,10 @@ RETIRED dyncall+dyncallback (libffi is now the sole FFI engine), then shipped:
 19.1 (arm64 struct-by-value, via `aggregates_supported = true`) → 19.2 callbacks
 (ffi_closure) → 19.5 struct-as-entity. Tests green: ffi_test 25/25, ffi_module_test
 26/26. Callback closures are now GC-rooted through their box (SHIPPED 2026-06-16,
-gc_test 9/9). Only follow-up left (small, not an arc): nested/array struct fields
-(scalars only today). See "Track B engine decision" below.
+gc_test 9/9). Nested + array struct fields in Sig `{...}` aggregates SHIPPED
+2026-06-16 (by-value FFI calls). **PHASE 19 FULLY COMPLETE** — only the
+struct-as-entity surface's nested-field *accessors* remain (a separate, larger
+surface; see 19.5). See "Track B engine decision" below.
 
 #### Decisions locked (2026-06-15)
 - **19.6 sigchar scheme = `u`-prefix multi-char** (`uc us ui ul uL`). Rejected:
@@ -2401,7 +2403,15 @@ B0b **[commit] Rewrite `ffi.zig` marshaling onto `ffi_cif`/`ffi_call`.** Model
      sends. Tested: kernel (define/new/get/set/ptr + raw-layout cross-check) +
      **end-to-end** (libc `div` returns `div_t` by value → `[T from: result]` →
      `[dv quot]`/`[dv rem]`) + lang surface (`[p x: 30]`/`[p x]` from birnam
-     source). **DEFERRED:** nested-struct + array fields (scalars/pointers only);
+     source). **Nested + array fields in Sig `{...}` aggregates SHIPPED
+     2026-06-16** (the FFI-call path): `parseAggr` recurses `{...}` into nested
+     `Aggr`s (libffi gets a nested FFI_TYPE_STRUCT element, preserving aggregate
+     ABI classification) and inline-flattens scalar arrays (`3i` = three ints,
+     ABI-identical); `Aggr` gained `field_aggrs` + `alignment`; ffi_test 30/30
+     (nested + array by-value arg & return: sumLine/makeLine/sumArr3). **STILL
+     DEFERRED:** struct arrays in `{...}` (count before `{`, rejected); the
+     struct-as-entity surface's nested-field *accessors* (its `#[#x #i …]` parser
+     is separate — a nested field would need to return a sub-struct entity);
      auto-marshal an instance as a by-value struct arg (use `[pt ptr]` for
      `struct*`); `[T size]`; fact-store materialization of fields (peek/poke-backed
      live memory today, not asserted facts). Risk was medium-high (birnam design) —
@@ -2770,9 +2780,11 @@ field-read slot cache. Nothing perf-related happens before this.
 
 **④+ Off critical path (demand-driven, any order):**
 - *FFI*: 19.2 callback GC-rooting ✓ SHIPPED 2026-06-16 (box→Ref GC-mark bridge in
-  gc.consider); remaining 19.2 = arity>2;
-  19.5 nested/array fields, by-value struct ARG auto-marshal, `[T size]` (trivial),
-  field fact-materialization (deep idst, own arc); x86_64 libffi headers (non-arm CI).
+  gc.consider); remaining 19.2 = arity>2.
+  19.5 nested/array fields in Sig `{...}` ✓ SHIPPED 2026-06-16 (recursive Aggr +
+  scalar-array flatten); remaining 19.5 = struct-as-entity nested-field accessors,
+  by-value struct ARG auto-marshal, field fact-materialization (deep idst, own
+  arc), struct arrays in `{...}`; x86_64 libffi headers (non-arm CI).
 - *GC tail*: **15.A-AST SHIPPED 2026-06-16** (provenance + ① regression/mcache +
   closure-aware prune mark-walk; redefine/throwaway churn now collected, live
   methods + closures-in-vars survive `:prune`). **15.P (const-pool RRB finalizer)

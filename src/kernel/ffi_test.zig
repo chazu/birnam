@@ -461,6 +461,19 @@ export fn birnam_test_makeVec2(a: f64, b: f64) callconv(.c) Vec2 {
     return .{ .x = a, .y = b };
 }
 
+// Phase 19.5 nested/array struct fields.
+const Line = extern struct { a: Point, b: Point }; // struct-of-structs
+export fn birnam_test_sumLine(l: Line) callconv(.c) c_longlong {
+    return l.a.x + l.a.y + l.b.x + l.b.y;
+}
+export fn birnam_test_makeLine(ax: c_longlong, ay: c_longlong, bx: c_longlong, by: c_longlong) callconv(.c) Line {
+    return .{ .a = .{ .x = ax, .y = ay }, .b = .{ .x = bx, .y = by } };
+}
+const Arr3 = extern struct { v: [3]c_int }; // fixed array field
+export fn birnam_test_sumArr3(arr: Arr3) callconv(.c) c_int {
+    return arr.v[0] + arr.v[1] + arr.v[2];
+}
+
 test "parseSig: aggregate arg + scalar ret, natural-alignment layout" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -569,5 +582,92 @@ test "invoke: libc div returns div_t struct by value" {
     try testing.expectEqual(@as(c_int, 2), got.rem);
     std.c.free(@ptrFromInt(boxed.untagFfiPtr(r)));
 
+    ffi.shutdown();
+}
+
+// -- Phase 19.5: nested + array struct fields -------------------------------
+
+test "parseSig: nested struct field layout + ffi_type recursion" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // {{LL}{LL}} — two nested {long,long} structs.
+    var sig = try ffi.parseSig(a, "{{LL}{LL}})L");
+    defer sig.deinit(a);
+    const ag = sig.arg_aggrs[0].?;
+    try testing.expectEqual(@as(usize, 2), ag.fields.len);
+    try testing.expectEqual(ffi.Kind.aggregate, ag.fields[0]);
+    try testing.expectEqual(ffi.Kind.aggregate, ag.fields[1]);
+    try testing.expectEqual(@as(usize, 32), ag.size); // 2 × {8,8}
+    try testing.expectEqual(@as(u32, 0), ag.offsets[0]);
+    try testing.expectEqual(@as(u32, 16), ag.offsets[1]);
+    // The nested aggrs are recorded and recurse into their own ffi_type.
+    try testing.expect(ag.field_aggrs[0] != null);
+    try testing.expectEqual(@as(usize, 16), ag.field_aggrs[0].?.size);
+    try testing.expect(ag.ensureFfiType(a) != null);
+}
+
+test "parseSig: scalar array field flattens (3i == iii)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var sig = try ffi.parseSig(a, "{3i})i");
+    defer sig.deinit(a);
+    const ag = sig.arg_aggrs[0].?;
+    try testing.expectEqual(@as(usize, 3), ag.fields.len); // flattened to 3 ints
+    try testing.expectEqual(@as(u32, 0), ag.offsets[0]);
+    try testing.expectEqual(@as(u32, 4), ag.offsets[1]);
+    try testing.expectEqual(@as(u32, 8), ag.offsets[2]);
+    try testing.expectEqual(@as(usize, 12), ag.size);
+}
+
+test "parseSig: struct array (count before brace) is rejected" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try testing.expectError(error.UnknownSigchar, ffi.parseSig(arena.allocator(), "{2{ii}})i"));
+}
+
+test "invoke: nested struct by value (sumLine), arg + return" {
+    if (!ffi.aggregates_supported) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Arg: sumLine({{1,2},{3,4}}) = 10.
+    var sig = try ffi.parseSig(a, "{{LL}{LL}})L");
+    defer sig.deinit(a);
+    var l = Line{ .a = .{ .x = 1, .y = 2 }, .b = .{ .x = 3, .y = 4 } };
+    const l_ptr = try boxed.mkFfiPtr(a, @intFromPtr(&l));
+    const r = ffi.invoke(a, @intFromPtr(&birnam_test_sumLine), sig, &[_]Ref{l_ptr});
+    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(r));
+
+    // Return: makeLine(5,6,7,8) → {{5,6},{7,8}}.
+    var sig2 = try ffi.parseSig(a, "LLLL){{LL}{LL}}");
+    defer sig2.deinit(a);
+    const r2 = ffi.invoke(a, @intFromPtr(&birnam_test_makeLine), sig2, &[_]Ref{
+        ref_mod.mkSmallInt(5).?, ref_mod.mkSmallInt(6).?, ref_mod.mkSmallInt(7).?, ref_mod.mkSmallInt(8).?,
+    });
+    try testing.expect(boxed.isFfiPtr(r2));
+    const got: *const Line = @ptrFromInt(boxed.untagFfiPtr(r2));
+    try testing.expectEqual(@as(c_longlong, 5), got.a.x);
+    try testing.expectEqual(@as(c_longlong, 8), got.b.y);
+    std.c.free(@ptrFromInt(boxed.untagFfiPtr(r2)));
+    ffi.shutdown();
+}
+
+test "invoke: array-field struct by value (sumArr3)" {
+    if (!ffi.aggregates_supported) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var sig = try ffi.parseSig(a, "{3i})i");
+    defer sig.deinit(a);
+    var arr = Arr3{ .v = .{ 10, 20, 30 } };
+    const arr_ptr = try boxed.mkFfiPtr(a, @intFromPtr(&arr));
+    const r = ffi.invoke(a, @intFromPtr(&birnam_test_sumArr3), sig, &[_]Ref{arr_ptr});
+    try testing.expectEqual(@as(i64, 60), ref_mod.untagSmallInt(r));
     ffi.shutdown();
 }
