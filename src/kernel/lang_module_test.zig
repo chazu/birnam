@@ -2018,6 +2018,19 @@ test "Phase 7 datalog: [db findAll:where:] — vars, join, set results" {
     try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(snap_blind, sz)));
     const live_sees = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qpost ?z] ]]", a);
     try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(live_sees, sz)));
+
+    // Negation `#[#not <clause>]` — has #qfoo but NOT a (nonexistent) #qgone → kept.
+    const neg_keep = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qfoo ?m] #[#not #[?vt #qgone ?x]] ]]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(neg_keep, sz)));
+    // …but it DOES have #qbar, so negating that excludes it.
+    const neg_drop = evalLine(s, lang, "[db findAll: ?vt where: #[ #[?vt #qfoo ?m] #[#not #[?vt #qbar ?x]] ]]", a);
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(neg_drop, sz)));
+
+    // Aggregation `#[#count ?m]` — exactly one #qfoo binding. Result = #[ #[1] ].
+    const agg = evalLine(s, lang, "[db findAll: #[ #[#count ?m] ] where: #[ #[?vt #qfoo ?m] ]]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(agg, sz)));
+    const agg_row = send_mod.send1(agg, at_sel, ref_mod.mkSmallInt(0).?);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send1(agg_row, at_sel, ref_mod.mkSmallInt(0).?)));
 }
 
 test "17.5 eager & / | and the | block-bar disambiguation" {

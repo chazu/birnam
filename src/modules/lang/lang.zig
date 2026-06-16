@@ -2723,6 +2723,30 @@ fn predicateOp(ref: Ref) ?u32 {
     return null;
 }
 
+/// True iff `ref` is a symbol with exactly name `name` (a reserved control word).
+fn symbolIs(ref: Ref, name: []const u8) bool {
+    if (!isEid(ref)) return false;
+    const nm = g_api.?.symbol_name(ref >> 3);
+    if (!isString(nm)) return false;
+    return std.mem.eql(u8, stringBytes(nm), name);
+}
+
+/// If `ref` is an aggregate-op symbol (`#count`/`#sum`/`#min`/`#max`/`#avg`/
+/// `#collect`), return its kind code (count=0,sum=1,min=2,max=3,avg=4,collect=5).
+fn aggOp(ref: Ref) ?u32 {
+    if (!isEid(ref)) return null;
+    const nm = g_api.?.symbol_name(ref >> 3);
+    if (!isString(nm)) return null;
+    const b = stringBytes(nm);
+    const ks = [_]struct { n: []const u8, k: u32 }{
+        .{ .n = "count", .k = 0 }, .{ .n = "sum", .k = 1 },
+        .{ .n = "min", .k = 2 },   .{ .n = "max", .k = 3 },
+        .{ .n = "avg", .k = 4 },   .{ .n = "collect", .k = 5 },
+    };
+    for (ks) |o| if (std.mem.eql(u8, b, o.n)) return o.k;
+    return null;
+}
+
 /// Encode one clause term for the query builder: a `?var` → (kind=1, var idx);
 /// any other value → (kind=0, the constant Ref).
 fn encodeTerm(q: ?*anyopaque, ref: Ref, kind: *u32, val: *u64) void {
@@ -2733,6 +2757,32 @@ fn encodeTerm(q: ?*anyopaque, ref: Ref, kind: *u32, val: *u64) void {
         kind.* = 0;
         val.* = ref;
     }
+}
+
+/// Add one `#[e a v]` triple or `#[lhs op rhs]` predicate clause to `q`. Returns
+/// an error Ref on a malformed clause, else null.
+fn addClause(q: ?*anyopaque, clause: Ref) ?Ref {
+    const api = g_api.?;
+    if (!isVectorRef(clause) or api.rrb_len(clause) != 3)
+        return mkRuntimeError("findAll: each clause must be #[e a v] or #[lhs op rhs]");
+    var lk: u32 = 0;
+    var lv: u64 = 0;
+    var mk: u32 = 0;
+    var mv: u64 = 0;
+    var rk: u32 = 0;
+    var rv: u64 = 0;
+    const mid = api.rrb_nth(clause, 1);
+    if (predicateOp(mid)) |op| {
+        encodeTerm(q, api.rrb_nth(clause, 0), &lk, &lv);
+        encodeTerm(q, api.rrb_nth(clause, 2), &rk, &rv);
+        api.query_add_predicate(q, op, lk, lv, rk, rv);
+    } else {
+        encodeTerm(q, api.rrb_nth(clause, 0), &lk, &lv);
+        encodeTerm(q, mid, &mk, &mv);
+        encodeTerm(q, api.rrb_nth(clause, 2), &rk, &rv);
+        api.query_add_triple(q, lk, lv, mk, mv, rk, rv);
+    }
+    return null;
 }
 
 /// History window for a query: none, or pinned via `asOf:`/`since:`/`between:and:`.
@@ -2749,7 +2799,8 @@ fn runDatalogQuery(find_ref: Ref, where: Ref, tmod: TimeMod) Ref {
     const q = api.make_query() orelse return mkRuntimeError("findAll: out of memory");
     defer api.free_query(q);
 
-    // Find spec — a vector of vars (multi, tuple rows) or a single var (flat).
+    // Find spec — a single `?var` (flat result), or a vector whose elements are
+    // each a `?var` or an aggregate `#[#count ?v]` (tuple/group-by rows).
     const multi = isVectorRef(find_ref);
     var nfind: u64 = 1;
     if (multi) {
@@ -2757,39 +2808,42 @@ fn runDatalogQuery(find_ref: Ref, where: Ref, tmod: TimeMod) Ref {
         if (nfind == 0) return mkRuntimeError("findAll: empty find vector");
         var fi: u64 = 0;
         while (fi < nfind) : (fi += 1) {
-            const nm = queryVarName(api.rrb_nth(find_ref, fi)) orelse
-                return mkRuntimeError("findAll: find vector must contain only ?variables");
-            api.query_add_find(q, api.query_variable(q, nm.ptr, nm.len));
+            const elem = api.rrb_nth(find_ref, fi);
+            if (isVectorRef(elem)) {
+                // Aggregate find element: `#[#count ?v]`.
+                if (api.rrb_len(elem) != 2) return mkRuntimeError("findAll: aggregate must be #[#op ?var]");
+                const op = aggOp(api.rrb_nth(elem, 0)) orelse
+                    return mkRuntimeError("findAll: unknown aggregate op (use #count/#sum/#min/#max/#avg/#collect)");
+                const nm = queryVarName(api.rrb_nth(elem, 1)) orelse
+                    return mkRuntimeError("findAll: aggregate argument must be a ?variable");
+                api.query_add_find_aggregate(q, op, api.query_variable(q, nm.ptr, nm.len));
+            } else {
+                const nm = queryVarName(elem) orelse
+                    return mkRuntimeError("findAll: find vector elements must be ?variables or #[#op ?var]");
+                api.query_add_find(q, api.query_variable(q, nm.ptr, nm.len));
+            }
         }
     } else {
         const nm = queryVarName(find_ref) orelse
-            return mkRuntimeError("findAll: argument must be a ?variable or a vector of ?variables");
+            return mkRuntimeError("findAll: argument must be a ?variable or a vector");
         api.query_add_find(q, api.query_variable(q, nm.ptr, nm.len));
     }
 
+    // Clauses — a triple `#[e a v]`, a predicate `#[lhs #lt rhs]`, or a negation
+    // `#[#not <clause> …]` (the bracketed clauses must NOT match).
     const nclauses = api.rrb_len(where);
     var ci: u64 = 0;
     while (ci < nclauses) : (ci += 1) {
-        const clause = api.rrb_nth(where, ci);
-        if (api.rrb_len(clause) != 3) return mkRuntimeError("findAll: each clause must be #[e a v] or #[lhs op rhs]");
-        var lk: u32 = 0;
-        var lv: u64 = 0;
-        var mk: u32 = 0;
-        var mv: u64 = 0;
-        var rk: u32 = 0;
-        var rv: u64 = 0;
-        const mid = api.rrb_nth(clause, 1);
-        if (predicateOp(mid)) |op| {
-            // Predicate clause — `#[lhs #lt rhs]`.
-            encodeTerm(q, api.rrb_nth(clause, 0), &lk, &lv);
-            encodeTerm(q, api.rrb_nth(clause, 2), &rk, &rv);
-            api.query_add_predicate(q, op, lk, lv, rk, rv);
+        const elem = api.rrb_nth(where, ci);
+        if (isVectorRef(elem) and api.rrb_len(elem) >= 2 and symbolIs(api.rrb_nth(elem, 0), "not")) {
+            api.query_begin_negation(q);
+            var k: u64 = 1;
+            while (k < api.rrb_len(elem)) : (k += 1) {
+                if (addClause(q, api.rrb_nth(elem, k))) |err| return err;
+            }
+            api.query_end_negation(q);
         } else {
-            // Triple clause — `#[e a v]`.
-            encodeTerm(q, api.rrb_nth(clause, 0), &lk, &lv);
-            encodeTerm(q, mid, &mk, &mv);
-            encodeTerm(q, api.rrb_nth(clause, 2), &rk, &rv);
-            api.query_add_triple(q, lk, lv, mk, mv, rk, rv);
+            if (addClause(q, elem)) |err| return err;
         }
     }
 
