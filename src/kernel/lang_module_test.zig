@@ -367,7 +367,19 @@ test "15.A-AST: top-level method def + closure-in-var survive :prune; churn swee
     const stats = try prune.pruneReachable(s.store, s.table, a);
     try testing.expect(stats.swept_entities > 0); // dead top-level/throwaway trees collected
 
-    // Both live things STILL work after prune (not dropped, not stale-cached).
+    // ROBUST (cache-independent): the install FACT survived prune AND is a proper
+    // :bytecode-stream method — not a raw closure (the Cluster ① regression) and
+    // not dropped (the Root-2 / closure-aware bug). Reading facts directly cannot
+    // be fooled by a stale dispatch cache, which is what masked the original bug.
+    const pfoo_sel = s.interner.str_to_eid.get("pfoo").?;
+    const install = s.store.currentValue(kernel_eids.SMALLINT_VT, pfoo_sel) orelse
+        return error.MethodInstallDroppedByPrune;
+    try testing.expect(ref_mod.isEid(install));
+    try testing.expect(s.store.currentValue(ref_mod.untagEid(install), kernel_eids.ATTR_BYTECODE_STREAM) != null);
+
+    // Force a COLD rebind (drop any stale cache) so the re-dispatch below reflects
+    // the real post-prune store, not a cache hit. Both live things still work.
+    @import("mcache.zig").clearAll();
     ok = false;
     try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalTopLevel(s.api, s.interner, lang, "[3 pfoo]", a, &ok)));
     try testing.expect(ok);
