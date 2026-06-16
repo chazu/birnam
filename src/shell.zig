@@ -508,6 +508,10 @@ pub fn main() !void {
         stderrPrint("[birnam] no modules loaded — pass one or more .dylib paths\n", .{});
     }
 
+    // Baseline the auto-prune growth counter AFTER boot + module loads, so it
+    // triggers on user/session churn, not the fixed kernel+grammar+prelude init.
+    prune.resetAutoPrune(table);
+
     stderrPrint("[birnam] entering main loop (^D to quit)\n", .{});
 
     // -- REPL loop -----------------------------------------------------------
@@ -528,6 +532,14 @@ pub fn main() !void {
                 if (l.len < buf.len) {
                     buf[l.len] = 0;
                     handler(@ptrCast(buf[0 .. l.len + 1].ptr));
+                }
+                // Auto-prune (sustainability): drop per-line garbage (dead CST/
+                // AST/throwaway method trees) once entity growth crosses the
+                // threshold, so a long session stays bounded without manual
+                // `:prune`. Gated to current-only retention + no live snapshots.
+                // Runs BEFORE auto-gc so the gc reclaims the just-pruned heap.
+                if (prune.maybePrune(store, table, allocator) catch null) |pst| {
+                    stderrPrint("[birnam] auto-pruned ({d} facts dropped, {d} entities swept)\n", .{ pst.dropped_facts, pst.swept_entities });
                 }
                 // 15.6 auto-trigger: the line boundary is quiescent (empty value
                 // stack), the one safe point to sweep. Growth-gated; silent

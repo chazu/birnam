@@ -233,3 +233,36 @@ pub fn pruneReachable(
 
     return .{ .kept = cs.kept, .dropped_facts = cs.dropped, .swept_entities = swept.items.len };
 }
+
+// -- Auto-prune (sustainability) -------------------------------------------
+//
+// REPL/script evaluation leaves per-line garbage (the line's CST, AST, and its
+// run-and-discard top-level method tree). prune collects it, but only when run.
+// To keep a long session's memory bounded WITHOUT the user manually typing
+// `:prune`, auto-prune fires at the quiescent line boundary once entity growth
+// crosses a threshold — mirroring the auto-`:gc` trigger. Prune drops the dead
+// facts; the auto-`:gc` that runs right after reclaims their heap.
+
+/// Entities created since the last prune that arm an auto-prune.
+pub const PRUNE_GROWTH_THRESHOLD: u64 = 30_000;
+
+var last_prune_hw: u64 = 0;
+
+/// Reset the growth baseline (call after boot, before the REPL loop).
+pub fn resetAutoPrune(table: *const ObjectTable) void {
+    last_prune_hw = table.highWaterEid();
+}
+
+/// Prune iff entity growth since the last prune crossed the threshold AND it is
+/// safe: only under current-only retention with no live snapshots — prune
+/// collapses history, so doing it while the user is retaining/time-travelling
+/// would silently discard wanted history. Returns null when skipped.
+pub fn maybePrune(store: *FactStore, table: *ObjectTable, scratch: std.mem.Allocator) PruneError!?PruneStats {
+    if (std.meta.activeTag(store.retention_policy) != .current_only) return null;
+    if (store.retained_epochs.items.len > 0) return null;
+    const hw = table.highWaterEid();
+    if (hw < last_prune_hw + PRUNE_GROWTH_THRESHOLD) return null;
+    const stats = try pruneReachable(store, table, scratch);
+    last_prune_hw = table.highWaterEid();
+    return stats;
+}

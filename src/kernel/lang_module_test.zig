@@ -445,6 +445,43 @@ test "15.A-AST: prelude methods are CODE-provenance (not M_USER)" {
     try testing.expect(saw); // the method entity has facts (and they're all CODE)
 }
 
+test "15.A-AST: auto-prune fires on churn, preserves live state, gated on retention" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    var ok: bool = false;
+    _ = evalTopLevel(s.api, s.interner, lang, "let keep := 99", a, &ok);
+    _ = evalTopLevel(s.api, s.interner, lang, "[[3 vtable] method: #amk do: [| 7]]", a, &ok);
+
+    // Generate enough throwaway churn to cross the auto-prune growth threshold.
+    prune.resetAutoPrune(s.table);
+    const base = s.table.highWaterEid();
+    while (s.table.highWaterEid() < base + prune.PRUNE_GROWTH_THRESHOLD + 1000) {
+        ok = false;
+        _ = evalTopLevel(s.api, s.interner, lang, "[1 + 1]", a, &ok);
+    }
+
+    // GATED: under a history-retaining policy, auto-prune must NOT fire (it would
+    // discard wanted history).
+    s.store.retention_policy = .keep_all;
+    try testing.expect((try prune.maybePrune(s.store, s.table, a)) == null);
+
+    // Under current-only retention, it fires and reclaims the accumulated churn.
+    s.store.retention_policy = .current_only;
+    const pst = (try prune.maybePrune(s.store, s.table, a)) orelse return error.AutoPruneDidNotFire;
+    try testing.expect(pst.swept_entities > 0);
+
+    // Live state survived the auto-prune.
+    ok = false;
+    try expectInt(99, evalTopLevel(s.api, s.interner, lang, "keep", a, &ok));
+    ok = false;
+    try expectInt(7, evalTopLevel(s.api, s.interner, lang, "[3 amk]", a, &ok));
+}
+
 test "DEMO 16 deferred: strings — size/at:/,/=/asSymbol + seq protocol" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

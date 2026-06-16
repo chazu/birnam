@@ -106,4 +106,10 @@ pub const ObjectTable = struct {
     pub fn materializedCount(self: *const ObjectTable) usize {
         return self.map.count();
     }
+
+    /// Monotonic high-water mark of allocated eids (entities ever created).
+    /// Cheap growth signal for the auto-prune trigger.
+    pub fn highWaterEid(self: *const ObjectTable) u64 {
+        return self.next_eid.load(.monotonic);
+    }
 };
