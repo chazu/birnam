@@ -313,6 +313,9 @@ Pure data write — no compiler/toolchain needed to save. On load, the fact stor
 | `:in <path>` | file in a birnam source unit (atomic: aborts on first error, applies nothing) |
 | `:in! <path>` | file in best-effort (evaluate every good form, report errors) |
 | `:freeze <base>` | freeze the image's FFI wraps into a standalone wrapper module dylib |
+| `:eval-mode [bytecode\|treewalk]` | switch how top-level statements + method installs evaluate (default `bytecode`); bare `:eval-mode` prints the current mode |
+
+By default the REPL compiles each top-level line (and filed-in form) to bytecode and runs it on the VM, so hot top-level loops don't pay the per-statement scope-fact cost; cross-line `let` bindings and globals still resolve normally. `:eval-mode treewalk` forces the simpler AST tree-walker for both top-level statements and user-method installs — an inspectable fallback when debugging a suspected miscompile or comparing the two evaluators. The setting lasts for the session only (it is not saved into images).
 
 ## Calling C libraries (FFI)
 
