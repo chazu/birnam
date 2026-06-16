@@ -2868,10 +2868,10 @@ without AST; keep it live only while current).
    (evaluated-line throwaway methods) — a current-only/non-temporal default for
    these + orphan-collection subsumes it.
 
-**Status: SPEC, unblocked** (no perf-1.4 dependency). Product lean =
-**non-temporal code by default** (transient-REPL; bounds memory to the working
-set, not edit history). `:save`/`:load` + the fact store's own time-travel cover
-durable history; per-vt `beTemporal` covers the rare definition-audit case.
+**Status: SPEC, unblocked** (no perf-1.4 dependency). **Product policy LOCKED
+2026-06-15: non-temporal code by default** (transient-REPL; bounds memory to the
+working set, not edit history). `:save`/`:load` + the fact store's own time-travel
+cover durable history; per-vt `beTemporal` covers the rare definition-audit case.
 
 ---
 
