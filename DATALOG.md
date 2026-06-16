@@ -6,6 +6,49 @@ Phasing exists for implementability; the surface and semantics described here ar
 
 ---
 
+## Implemented birnam surface (status — 2026-06-16)
+
+The Zig query **engine** (`query.zig`) has been built + tested since Phase 7; the **birnam-facing surface** was wired in 2026-06-16. What you can run today from the REPL:
+
+```
+" find — single var (flat vector) or a tuple of vars "
+[db findAll: ?vt where: #( [?vt lookup: ?m] )]
+[db findAll: #[?vt ?m] where: #( [?vt lookup: ?m] )]        " → vector of #[vt m] tuples "
+
+" the where: clause-list has two equivalent forms "
+#( [?vt lookup: ?m] [?vt name: ?n] )                       " quote sugar (locked syntax) "
+#[ #[?vt #lookup ?m] #[?vt #name ?n] ]                     " explicit clause-vectors "
+
+" aggregates — group-by is implicit when plain vars + aggregates mix "
+[db findAll: #[ #[#count ?m] ] where: …]                   " → #[ #[count] ] "
+[db findAll: #[?vt #[#count ?m]] where: …]                 " per-vt counts "
+"   ops: #count #sum #min #max #avg #collect "
+
+" predicates (explicit form only) — named ops, since #< doesn't parse "
+#[?a #lt ?b]   " #eq #ne #lt #le #gt #ge ; lt/le/gt/ge are SmallInt-only "
+
+" negation + disjunction (explicit form; branches may nest) "
+#[#not #[?vt #foo ?m]]
+#[#or  #[?vt #a ?m]  #[?vt #b ?m]]
+
+" time travel "
+[db findAll: ?v where: … asOf: tx]      " tx from [[db now] basisT] "
+[db findAll: ?v where: … since: tx]
+[db findAll: ?v where: … between: from and: to]
+[aSnapshot find: ?v where: …]           " query pinned to the snapshot's basis "
+```
+
+Terms: a `?name` query variable (deduped by name → shared vars join), or a constant — an attribute symbol `#foo` matches a fact's attr by interned eid; strings/integers/floats are literal values.
+
+**Not yet wired (engine supports them; need a birnam surface):**
+- **Rules + recursion** — there is no way to *define/store* a rule from birnam yet (engine + `query_add_rule_invocation` exist).
+- **Pull** — hierarchical result projection.
+- Quote sugar covers keyword-triple clauses only; predicates / `#not` / `#or` use the explicit `#[ … ]` form.
+
+Implementation: one `runDatalogQuery(find, where, TimeMod)` core in `src/modules/lang/lang.zig` + recursive `addWhereElement`/`addBranch`/`addClause`, over the existing query IdApi builder. Regression suite: `lang_module_test.zig` "Phase 7 datalog".
+
+---
+
 ## 0. Premises
 
 ### 0.1 Why Datalog
