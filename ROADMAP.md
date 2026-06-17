@@ -2169,6 +2169,79 @@ Performance polish, not correctness. Bytecode + inline caching gets us to
 Smalltalk-VM ballpark, enough for self-hosting. Final phase — optimize once the
 language + library are stable.
 
+### ADR-18 — codegen backend (DRAFT, decision OPEN)
+
+**Status:** draft / not locked. Captures the 18.1 backend tradeoff so the choice
+is made deliberately, not by default. Supersedes the one-line "hand-rolled, QBE
+fallback" note above once locked.
+
+**The fork that drives everything: JIT or not.** ADR-11 put JIT "out of scope
+(VM + AOT only)." That choice was made before 18.3 ("replace the bytecode VM with
+native code for hot methods") was costed. 18.3 as literally written *is* JIT —
+runtime native compilation + hot-swap. So 18.1 must first re-decide: does Phase
+18 stay AOT-only (compile a whole image to native ahead of time), or reopen JIT
+(compile hot methods at runtime)? The backend shortlist splits cleanly on this
+axis, so decide the axis first.
+
+**Two secondary axes Birnam weights more than a typical VM:**
+- **Fact-store purity.** Bytecode is fact-shaped + queryable (annotations as
+  entities). A backend whose IR is opaque external *text* breaks that tenet at
+  the codegen layer. A backend whose IR is built *programmatically via API* can
+  be mirrored into facts — closer to the grain.
+- **Platform + license.** Primary box is arm64-darwin (Mach-O). Vendoring follows
+  the libffi precedent (permissive, in-tree). LGPL is a real distribution
+  constraint, not a blocker.
+
+#### Candidates (the three live ones)
+
+| | **MIR** | **QBE** | **transpile→C + `zig cc`** |
+|---|---|---|---|
+| Model | **JIT** (also AOT) | AOT, text SSA IL | AOT |
+| IR you emit | MIR IL via **C API** (programmatic) | QBE IL **text** | **C source** text |
+| Perf | > TCC, < LLVM (few× of `gcc -O2`) | ~70% LLVM | **highest** (full clang -O2) |
+| Compile speed | fast (lazy/JIT) | fast | slow |
+| arm64-darwin | real | good | good (already used) |
+| License | MIT | MIT | — (toolchain only) |
+| New build dep | vendor MIR (~C, small) | vendor QBE (~C, small) | **none** (already shell `zig cc`) |
+| Fact-store fit | **best** (API-built IR → mirrorable to entities) | external text | external text (C, large surface) |
+| Reopens JIT? | **yes** (its main draw) | no | no |
+
+**Rejected up front:**
+- **libtcc** — LGPL + weak/flaky arm64-Mach-O backend (its worst platform is our
+  primary one) + C-as-IR (largest opaque surface). If JIT is wanted, MIR beats it
+  on every axis Birnam weights.
+- **LLVM** — max perf, max integration weight + slow compile; overkill for
+  "enough for self-hosting."
+- **Cranelift** — good backend but Rust; C-ABI-from-Zig friction + a heavy
+  foreign-ecosystem dep.
+- **Hand-rolled / DynASM** — max control + max effort; the ADR's standing default,
+  kept as the fallback if no library fits. Only real edge is total control of the
+  `-1` vtable-slot / tagged-pointer fast paths and custom VM calling conventions.
+
+#### Lean (to be confirmed)
+- **If Phase 18 stays AOT-only (keep ADR-11 as written): transpile→C + `zig cc`.**
+  Cheapest path by far — zero new vendored backend (the FFI freeze path already
+  shells `zig build-lib`/`zig cc`), best perf of any option. Cost: C is an opaque
+  external IR (fact-store-purity hit) and AOT-only (no runtime specialization).
+  **QBE** is the alternative here if a self-contained programmatic backend without
+  dragging a full C compiler is preferred over raw perf.
+- **If Phase 18 reopens JIT (true 18.3): MIR.** Permissive, real arm64, and the
+  only shortlisted backend whose IR is API-built rather than text — so it can be
+  mirrored into the fact store, the closest fit to Birnam's grain. Cost: reverses
+  the ADR-11 no-JIT decision (needs an explicit amendment) and adds a vendored
+  backend.
+
+#### Open questions before locking
+1. Re-ratify or amend ADR-11's "JIT out of scope" — this gates the whole choice.
+2. Whether 18.3's "hot methods" means *runtime* hot-swap (JIT) or *AOT* profile-
+   guided specialization baked at image-compile time (works with QBE/transpile).
+3. Dispatch: compiled call sites need a vt-guard + direct call replacing the HAMT
+   `vtableEidOf` + bind (see §11.4). AOT backends → static monomorphic/polymorphic
+   guards from static or profile info; only a JIT backend gives adaptive ICs.
+4. Whether the codegen IR is mirrored into facts (only cheap with MIR's API IR) or
+   accepted as an external artifact (QBE/C text) — i.e. how far the "everything is
+   a fact" tenet extends into the codegen layer.
+
 ---
 
 ## Phase 19 — FFI Absorption Layer (shimless library wrapping)
