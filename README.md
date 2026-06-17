@@ -82,11 +82,15 @@ You get a `birnam>` prompt. Each line is parsed by the PEG engine, desugared to 
 
 A module name is resolved to a dylib by searching, in order:
 
-1. directories in `$BIRNAM_DYLIB_PATH` (`:`-separated), then any `dylib_paths` from `birnam.toml`
-2. the current directory and everything beneath it (recursive)
-3. the directory holding the `birnam` binary (so a staged `binary + dylibs` bundle is portable)
+1. any `dylib_paths` from `birnam.toml` (relative to the config file)
+2. directories in `$BIRNAM_DYLIB_PATH` (`:`-separated) — dirs that *directly* hold dylibs
+3. install roots in `$BIRNAM_PATH` (`:`-separated, Go-style) — each probed at `<root>/lib` then `<root>`
+4. the current directory and everything beneath it (recursive)
+5. the directory holding the `birnam` binary (so a staged `binary + dylibs` bundle is portable)
 
 For each directory the name is tried as-is, then decorated: `lang` → `liblang.dylib` → `libbirnam_lang.dylib` (the convention the bundled modules follow). A name that already points at a file is used verbatim, so explicit paths keep working.
+
+`$BIRNAM_DYLIB_PATH` lists exact dylib directories; `$BIRNAM_PATH` lists install *roots* and expects the dylibs under `<root>/lib` — point it at an install prefix (or a `zig-out`) and modules resolve without naming the `lib/` dir.
 
 ### Project config — `birnam.toml`
 

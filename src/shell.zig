@@ -543,7 +543,7 @@ pub fn main() !void {
     var any_module = false;
     for (module_names) |name| {
         const resolved = dylib_search.resolveWith(allocator, name, extra_dirs) orelse {
-            stderrPrint("[birnam] module '{s}' not found (set BIRNAM_DYLIB_PATH, dylib_paths, or stage it nearby)\n", .{name});
+            stderrPrint("[birnam] module '{s}' not found (set BIRNAM_PATH/BIRNAM_DYLIB_PATH, dylib_paths, or stage it nearby)\n", .{name});
             continue;
         };
         defer allocator.free(resolved);

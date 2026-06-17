@@ -15,10 +15,13 @@
 //!
 //!   1. `extra_dirs` passed by the caller (e.g. `dylib_paths` from birnam.toml,
 //!      resolved relative to the config file)
-//!   2. each ':'-separated entry of `$BIRNAM_DYLIB_PATH`, in order
-//!   3. the current working directory
-//!   4. directories beneath the cwd (recursive; skips dotted dirs)
-//!   5. the executable's own directory — so a staged `binary + dylibs` bundle
+//!   2. each ':'-separated entry of `$BIRNAM_DYLIB_PATH`, in order (dirs that
+//!      directly hold dylibs)
+//!   3. each ':'-separated *install root* of `$BIRNAM_PATH` (Go-style), probed
+//!      at `<root>/lib` then `<root>`
+//!   4. the current working directory
+//!   5. directories beneath the cwd (recursive; skips dotted dirs)
+//!   6. the executable's own directory — so a staged `binary + dylibs` bundle
 //!      is portable regardless of where it's run from
 
 const std = @import("std");
@@ -85,6 +88,21 @@ fn searchDirs(allocator: std.mem.Allocator, name: []const u8, extra_dirs: []cons
         var it = std.mem.tokenizeScalar(u8, env, ':');
         while (it.next()) |dir| {
             if (joinFirst(allocator, dir, cands)) |p| return p;
+        }
+    } else |_| {}
+
+    // `$BIRNAM_PATH` — Go-style ':'-separated list of *install roots*. Each
+    // root is probed at `<root>/lib` (the conventional layout, e.g. an install
+    // prefix or a `zig-out`) then at `<root>` itself.
+    if (std.process.getEnvVarOwned(allocator, "BIRNAM_PATH")) |env| {
+        defer allocator.free(env);
+        var it = std.mem.tokenizeScalar(u8, env, ':');
+        while (it.next()) |root| {
+            if (std.fs.path.join(allocator, &.{ root, "lib" })) |lib_dir| {
+                defer allocator.free(lib_dir);
+                if (joinFirst(allocator, lib_dir, cands)) |p| return p;
+            } else |_| {}
+            if (joinFirst(allocator, root, cands)) |p| return p;
         }
     } else |_| {}
 
