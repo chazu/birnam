@@ -1,0 +1,25 @@
+# mise (https://mise.jdx.dev) — pins the toolchain and exposes common tasks.
+#   mise install            # fetch the pinned Zig
+#   mise run build          # zig build (Debug)
+#   mise run install        # install to a prefix
+#   mise run dist           # build a release tarball for this platform
+#   mise run release minor  # bump version, tag, build, publish a GitHub release
+
+[tools]
+zig = "0.15.1"
+
+[tasks.build]
+description = "Build everything (Debug)"
+run = "zig build"
+
+[tasks.install]
+description = "Install bin/birnam + module dylibs to a prefix (default ~/.local)"
+run = "zig build install --prefix ${BIRNAM_PREFIX:-$HOME/.local}"
+
+[tasks.dist]
+description = "Build a portable release tarball for the current platform"
+run = "./scripts/dist.sh"
+
+[tasks.release]
+description = "Bump version, build, tag, and publish a GitHub release (patch|minor|major)"
+run = "./scripts/release.sh {{arg(name='level')}}"

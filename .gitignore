@@ -6,3 +6,7 @@ chat.md
 !vendor/
 !vendor/**
 .aot_app.bim
+
+# mise.toml is the project's pinned toolchain + task runner — track it despite
+# the global ignore (mise is usually a personal/local convention).
+!mise.toml
