@@ -629,4 +629,12 @@ pub fn main() !void {
     }
 
     stderrPrint("[birnam] goodbye\n", .{});
+
+    // Exit without running the `defer gpa.deinit()` leak check. The shell has
+    // no teardown path for its kernel / interner / module state — that state is
+    // process-lifetime by design, so the GeneralPurposeAllocator would report
+    // thousands of "leaks" on every exit (pure noise, especially for an
+    // installed binary). The OS reclaims everything; skipping the check also
+    // avoids walking the whole allocation set on the way out.
+    std.process.exit(0);
 }
