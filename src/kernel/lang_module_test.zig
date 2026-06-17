@@ -1931,6 +1931,44 @@ test "DEMO 17 strings: escapes + split/join/indexOf/trim/case/predicates" {
     try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"  a  b \" words] size]", a)));
 }
 
+// Cluster-1 slivers (Phase 17 finish): Float three-way compare, string format:,
+// File directory ops (makeDir:/isDir:/list:/removeDir:).
+test "17 cluster-1: Float <=> / compare: + string format: + File dir ops" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Float three-way compare — both `<=>` infix and `compare:`; SmallInt arg promotes.
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(evalLine(s, lang, "[1.5 <=> 2.5]", a)));
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(evalLine(s, lang, "[2.5 <=> 2.5]", a)));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "[9.0 compare: 2]", a)));
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(evalLine(s, lang, "[2.0 <=> 3]", a))); // float vs int
+
+    // string format: — positional {} substitution (strings unquoted), {{ }} escapes.
+    try expectTrue(s, lang, "[[\"{} + {} = {}\" format: #[2 3 5]] = \"2 + 3 = 5\"]", a);
+    try expectTrue(s, lang, "[[\"hi {}\" format: #[\"bob\"]] = \"hi bob\"]", a); // string arg, no quotes
+    try expectTrue(s, lang, "[[\"{{literal}}\" format: #[]] = \"{literal}\"]", a); // brace escapes
+    // too few args → an error value (isError true).
+    try expectTrue(s, lang, "[[\"{} {}\" format: #[1]] isError]", a);
+
+    // File directory ops over a unique temp dir.
+    const dir = "/tmp/birnam_cluster1_test";
+    std.fs.cwd().deleteTree(dir) catch {}; // clean slate
+    try expectTrue(s, lang, "[[File makeDir: \"/tmp/birnam_cluster1_test/sub\"] isNil]", a); // nil on success
+    try expectTrue(s, lang, "[File isDir: \"/tmp/birnam_cluster1_test\"]", a);
+    try expectFalse(s, lang, "[File isDir: \"/tmp/birnam_cluster1_test/nope\"]", a);
+    _ = evalLine(s, lang, "[File write: \"hi\" to: \"/tmp/birnam_cluster1_test/f.txt\"]", a);
+    // list: → a vector containing both "sub" and "f.txt" (order unspecified) → size 2.
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang, "[[File list: \"/tmp/birnam_cluster1_test\"] size]", a)));
+    // removeDir: on a non-empty dir errors; on an empty one succeeds (nil).
+    try expectTrue(s, lang, "[[File removeDir: \"/tmp/birnam_cluster1_test\"] isError]", a);
+    try expectTrue(s, lang, "[[File removeDir: \"/tmp/birnam_cluster1_test/sub\"] isNil]", a);
+    std.fs.cwd().deleteTree(dir) catch {};
+}
+
 // Phase 19.2 — callbacks. A birnam block becomes a C function pointer (libffi
 // closure) that libc `qsort` calls back on every comparison. Exercises the full
 // trampoline both ways (unmarshal the two element pointers → Refs, marshal the

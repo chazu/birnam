@@ -2130,6 +2130,16 @@ fn floatGtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     return if (floatRefValue(s.receiver) > argAsF64(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
 }
 
+/// `[2.5 <=> x]` / `[2.5 compare: x]` — three-way compare → -1 / 0 / 1 SmallInt
+/// (nil if the arg is not a number). SmallInt args promote to f64 (Phase 17.3).
+fn floatCompareImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    if (!isNumberRef(args[0])) return NIL;
+    const a = floatRefValue(s.receiver);
+    const b = argAsF64(args[0]);
+    return mkSmallInt(if (a < b) -1 else if (a > b) 1 else 0);
+}
+
 fn floatAsIntImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = args;
     _ = n_args;
@@ -3444,6 +3454,58 @@ fn fileDeleteImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return NIL;
 }
 
+/// `[File makeDir: path]` → nil on success, or a kinded ERROR_VT. Creates any
+/// missing intermediate directories (mkdir -p). No-op if it already exists.
+fn fileMakeDirImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(args[0])) return mkRuntimeErrorKind(api.intern("ioError".ptr, 7), "File makeDir: path must be a string");
+    const path = stringBytes(args[0]);
+    std.fs.cwd().makePath(path) catch |e|
+        return mkRuntimeErrorFmt(api.intern(ioErrorKind(e).ptr, ioErrorKind(e).len), "File makeDir: {s}: {s}", .{ path, @errorName(e) });
+    return NIL;
+}
+
+/// `[File removeDir: path]` → nil on success, or a kinded ERROR_VT. Removes an
+/// EMPTY directory (errors if non-empty — deliberately not recursive).
+fn fileRemoveDirImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(args[0])) return mkRuntimeErrorKind(api.intern("ioError".ptr, 7), "File removeDir: path must be a string");
+    const path = stringBytes(args[0]);
+    std.fs.cwd().deleteDir(path) catch |e|
+        return mkRuntimeErrorFmt(api.intern(ioErrorKind(e).ptr, ioErrorKind(e).len), "File removeDir: {s}: {s}", .{ path, @errorName(e) });
+    return NIL;
+}
+
+/// `[File isDir: path]` → true / false (never errors; false if absent or a file).
+fn fileIsDirImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    if (!isString(args[0])) return mkEid(FALSE_EID);
+    const st = std.fs.cwd().statFile(stringBytes(args[0])) catch return mkEid(FALSE_EID);
+    return if (st.kind == .directory) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+
+/// `[File list: path]` → a vector of entry-name strings (one level, unsorted), or
+/// a kinded ERROR_VT. `.` / `..` are excluded by the iterator.
+fn fileListImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(args[0])) return mkRuntimeErrorKind(api.intern("ioError".ptr, 7), "File list: path must be a string");
+    const path = stringBytes(args[0]);
+    var dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch |e|
+        return mkRuntimeErrorFmt(api.intern(ioErrorKind(e).ptr, ioErrorKind(e).len), "File list: {s}: {s}", .{ path, @errorName(e) });
+    defer dir.close();
+    const alloc = std.heap.page_allocator;
+    var items = std.ArrayList(Ref){};
+    defer items.deinit(alloc);
+    var it = dir.iterate();
+    while (it.next() catch null) |entry| {
+        items.append(alloc, api.make_string(entry.name.ptr, entry.name.len)) catch break;
+    }
+    return api.make_rrb(items.items.ptr, items.items.len);
+}
+
 /// `[System print: x]` → write x's displayString to stdout (no newline);
 /// returns nil. Unlike `print` (which goes to the prefixed REPL log = stderr),
 /// this is clean stdout for program output.
@@ -3523,6 +3585,10 @@ fn installIoSurface() void {
         .{ .name = "append:to:", .impl = @ptrCast(&fileAppendImpl) },
         .{ .name = "exists:", .impl = @ptrCast(&fileExistsImpl) },
         .{ .name = "delete:", .impl = @ptrCast(&fileDeleteImpl) },
+        .{ .name = "makeDir:", .impl = @ptrCast(&fileMakeDirImpl) },
+        .{ .name = "removeDir:", .impl = @ptrCast(&fileRemoveDirImpl) },
+        .{ .name = "isDir:", .impl = @ptrCast(&fileIsDirImpl) },
+        .{ .name = "list:", .impl = @ptrCast(&fileListImpl) },
     };
     for (file_methods) |m| {
         _ = api.assert_fact(FILE_PROTO_VT, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
@@ -3729,6 +3795,53 @@ fn displayStringImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     var buf: [4096]u8 = undefined;
     const len = appendRef(&buf, 0, s.receiver);
     return g_api.?.make_string(buf[0..len].ptr, len);
+}
+
+/// Append `val`'s display form (strings unquoted) to `list`.
+fn appendDisplay(list: *std.ArrayList(u8), alloc: std.mem.Allocator, val: Ref) void {
+    if (isString(val)) {
+        list.appendSlice(alloc, stringBytes(val)) catch {};
+        return;
+    }
+    var buf: [4096]u8 = undefined;
+    const len = appendRef(&buf, 0, val);
+    list.appendSlice(alloc, buf[0..len]) catch {};
+}
+
+/// `["{} + {} = {}" format: #[2 3 5]]` → `"2 + 3 = 5"`. Each `{}` placeholder is
+/// replaced positionally by the next vector element's displayString (strings
+/// unquoted). `{{` / `}}` escape literal braces. Too few args → an `#argError`
+/// ERROR_VT; extra args are ignored. Phase 17 string format.
+fn strFormatImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    if (!isVectorRef(args[0])) return mkRuntimeErrorKind(api.intern("typeMismatch".ptr, 12), "format: argument must be a vector");
+    const tmpl = stringBytes(s.receiver);
+    const nargs = api.rrb_len(args[0]);
+    const alloc = std.heap.page_allocator;
+    var out = std.ArrayList(u8){};
+    defer out.deinit(alloc);
+    var arg_i: u64 = 0;
+    var i: usize = 0;
+    while (i < tmpl.len) {
+        const c = tmpl[i];
+        if (c == '{' and i + 1 < tmpl.len and tmpl[i + 1] == '{') {
+            out.append(alloc, '{') catch {};
+            i += 2;
+        } else if (c == '}' and i + 1 < tmpl.len and tmpl[i + 1] == '}') {
+            out.append(alloc, '}') catch {};
+            i += 2;
+        } else if (c == '{' and i + 1 < tmpl.len and tmpl[i + 1] == '}') {
+            if (arg_i >= nargs) return mkRuntimeErrorFmt(api.intern("argError".ptr, 8), "format: not enough arguments for placeholder {d}", .{arg_i + 1});
+            appendDisplay(&out, alloc, api.rrb_nth(args[0], arg_i));
+            arg_i += 1;
+            i += 2;
+        } else {
+            out.append(alloc, c) catch {};
+            i += 1;
+        }
+    }
+    return api.make_string(out.items.ptr, out.items.len);
 }
 
 /// `[x print]` — write displayString + newline to output; return self
@@ -3954,6 +4067,7 @@ fn installStdlib() void {
     // String comparison + substring.
     _ = api.assert_fact(STRING_VT, sel_lt_g, mkEid(api.make_closure(@ptrCast(&strLtImpl), NIL)), g_module_eid);
     _ = api.assert_fact(STRING_VT, api.intern("copyFrom:to:".ptr, 12), mkEid(api.make_closure(@ptrCast(&strCopyFromToImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(STRING_VT, api.intern("format:".ptr, 7), mkEid(api.make_closure(@ptrCast(&strFormatImpl), NIL)), g_module_eid);
 
     // SmallInt `<=` / `>=` (completeness — had only `<`/`>`/`=`).
     _ = api.assert_fact(SMALLINT_VT, api.intern("<=".ptr, 2), mkEid(api.make_closure(@ptrCast(&smallintLeImpl), NIL)), g_module_eid);
@@ -3967,6 +4081,8 @@ fn installStdlib() void {
     _ = api.assert_fact(SMALLINT_VT, cmp_keyword, mkEid(api.make_closure(@ptrCast(&smallintCompareImpl), NIL)), g_module_eid);
     _ = api.assert_fact(STRING_VT, cmp_spaceship, mkEid(api.make_closure(@ptrCast(&strCompareImpl), NIL)), g_module_eid);
     _ = api.assert_fact(STRING_VT, cmp_keyword, mkEid(api.make_closure(@ptrCast(&strCompareImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, cmp_spaceship, mkEid(api.make_closure(@ptrCast(&floatCompareImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, cmp_keyword, mkEid(api.make_closure(@ptrCast(&floatCompareImpl), NIL)), g_module_eid);
 
     // Phase 17 string batch — native (byte-level). Birnam-composed string
     // methods (startsWith:/endsWith:/includes:/replace:with:/lines/words/<=,>,>=)
