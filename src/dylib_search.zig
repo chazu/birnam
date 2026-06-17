@@ -21,8 +21,10 @@
 //!      at `<root>/lib` then `<root>`
 //!   4. the current working directory
 //!   5. directories beneath the cwd (recursive; skips dotted dirs)
-//!   6. the executable's own directory — so a staged `binary + dylibs` bundle
-//!      is portable regardless of where it's run from
+//!   6. the executable's own directory, then its sibling `../lib` — i.e. the
+//!      standard install layout `<prefix>/bin/birnam` + `<prefix>/lib/`, so a
+//!      packaged install is zero-config and a flat `binary + dylibs` bundle is
+//!      portable regardless of where it's run from
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -109,9 +111,18 @@ fn searchDirs(allocator: std.mem.Allocator, name: []const u8, extra_dirs: []cons
     if (joinFirst(allocator, ".", cands)) |p| return p;
     if (searchTree(allocator, ".", cands)) |p| return p;
 
+    // The binary's own dir, then its sibling `lib/` — i.e. the standard install
+    // layout `<prefix>/bin/birnam` + `<prefix>/lib/`. This makes a packaged
+    // install zero-config: a `birnam` in `<prefix>/bin` finds its modules in
+    // `<prefix>/lib` with no `$BIRNAM_PATH` set. (The first form also covers a
+    // flat `binary + dylibs` staging bundle.)
     if (std.fs.selfExeDirPathAlloc(allocator)) |exe_dir| {
         defer allocator.free(exe_dir);
         if (joinFirst(allocator, exe_dir, cands)) |p| return p;
+        if (std.fs.path.join(allocator, &.{ exe_dir, "..", "lib" })) |sib| {
+            defer allocator.free(sib);
+            if (joinFirst(allocator, sib, cands)) |p| return p;
+        } else |_| {}
     } else |_| {}
 
     return null;
