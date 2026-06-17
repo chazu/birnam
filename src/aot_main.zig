@@ -255,6 +255,25 @@ fn runDynamic(allocator: std.mem.Allocator, store: *fact_store.FactStore, table:
     replLoop();
 }
 
+/// Register the AOT binary's program args for `[System arguments]`. Everything
+/// after a `--` separator if one is present (shell-compatible), else everything
+/// after argv[0]. The owned slice is never freed (process-lifetime).
+fn captureArgs(allocator: std.mem.Allocator) !void {
+    var args = std.process.args();
+    _ = args.next(); // skip argv[0]
+    var prog_args = std.ArrayList([]const u8){};
+    var seen_dashdash = false;
+    while (args.next()) |arg| {
+        if (!seen_dashdash and std.mem.eql(u8, arg, "--")) {
+            seen_dashdash = true;
+            prog_args.clearRetainingCapacity(); // `--` resets: only post-`--` args count
+            continue;
+        }
+        try prog_args.append(allocator, try allocator.dupe(u8, arg));
+    }
+    id_api_mod.setArgs(try prog_args.toOwnedSlice(allocator));
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -273,6 +292,11 @@ pub fn main() !void {
     _ = try bootstrap.boot(allocator, store, table, interner);
     id_api_mod.setInterner(interner);
     const api = id_api_mod.populate();
+
+    // Capture command-line args so `[System arguments]` works under AOT (matches
+    // the shell). An AOT binary has no dylib-path args, so: everything after `--`
+    // if present, else everything after argv[0]. The slice outlives the process.
+    captureArgs(allocator) catch {};
 
     // Comptime branch: under --aot=dynamic the static-tower helpers (which
     // reference peg/lang) are never analyzed, so those modules are not linked.

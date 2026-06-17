@@ -105,8 +105,11 @@ test "compile stmt-seq: pops intermediate values, leaves last" {
     defer arena.deinit();
     var store = fact_store_mod.FactStore.init(arena.allocator());
 
-    // Three literal stmts: 1; 2; 3 — bytes should be:
-    //   PUSH_SMALLINT_I32 1, POP, PUSH_SMALLINT_I32 2, POP, PUSH_SMALLINT_I32 3, RETURN
+    // Three literal stmts: 1; 2; 3 — bytes should be (Phase 17.7: BRANCH_IF_ERROR
+    // replaces the inter-statement POP — drops the value on the non-error path,
+    // jumps to the end keeping the error otherwise):
+    //   PUSH_SMALLINT_I32 1, BRANCH_IF_ERROR, PUSH_SMALLINT_I32 2,
+    //   BRANCH_IF_ERROR, PUSH_SMALLINT_I32 3, RETURN
     try mkLiteralAst(&store, 6001, ref_mod.mkSmallInt(1).?);
     try mkLiteralAst(&store, 6002, ref_mod.mkSmallInt(2).?);
     try mkLiteralAst(&store, 6003, ref_mod.mkSmallInt(3).?);
@@ -120,17 +123,21 @@ test "compile stmt-seq: pops intermediate values, leaves last" {
     var m = try compiler.compileMethod(testing.allocator, &store, seq);
     defer m.deinit(testing.allocator);
 
-    // 5 + 1 + 5 + 1 + 5 + 1 = 18 bytes
-    try testing.expectEqual(@as(usize, 18), m.bytecode.len);
+    // 5 + 3 + 5 + 3 + 5 + 1 = 22 bytes
+    try testing.expectEqual(@as(usize, 22), m.bytecode.len);
     try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 0));
     try testing.expectEqual(@as(i32, 1), bytecode.readI32(m.bytecode, 1));
-    try testing.expectEqual(bytecode.Opcode.POP, bytecode.readOpcode(m.bytecode, 5));
-    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 6));
-    try testing.expectEqual(@as(i32, 2), bytecode.readI32(m.bytecode, 7));
-    try testing.expectEqual(bytecode.Opcode.POP, bytecode.readOpcode(m.bytecode, 11));
-    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 12));
-    try testing.expectEqual(@as(i32, 3), bytecode.readI32(m.bytecode, 13));
-    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 17));
+    try testing.expectEqual(bytecode.Opcode.BRANCH_IF_ERROR, bytecode.readOpcode(m.bytecode, 5));
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 8));
+    try testing.expectEqual(@as(i32, 2), bytecode.readI32(m.bytecode, 9));
+    try testing.expectEqual(bytecode.Opcode.BRANCH_IF_ERROR, bytecode.readOpcode(m.bytecode, 13));
+    try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 16));
+    try testing.expectEqual(@as(i32, 3), bytecode.readI32(m.bytecode, 17));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 21));
+    // Both BRANCH_IF_ERROR targets resolve to the RETURN at pc 21 (end of seq):
+    // offset is pc-relative from the byte after the operand.
+    try testing.expectEqual(@as(i16, 21 - 8), bytecode.readI16(m.bytecode, 6));
+    try testing.expectEqual(@as(i16, 21 - 16), bytecode.readI16(m.bytecode, 14));
 }
 
 test "compile empty stmt-seq → LOAD_CONST_NIL + RETURN" {
@@ -450,17 +457,18 @@ test "compile let + var-ref: stores then reloads from slot 0" {
     defer m.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u8, 1), m.local_count); // one local
-    // Bytecode: PUSH 5 (5), STORE_LOCAL 0 (2), PUSH_LOCAL 0 (2),
-    //           POP (1), PUSH_LOCAL 0 (2), RETURN (1) = 13.
-    try testing.expectEqual(@as(usize, 13), m.bytecode.len);
+    // Bytecode (Phase 17.7: BRANCH_IF_ERROR replaces the inter-statement POP):
+    //   PUSH 5 (5), STORE_LOCAL 0 (2), PUSH_LOCAL 0 (2),
+    //   BRANCH_IF_ERROR (3), PUSH_LOCAL 0 (2), RETURN (1) = 15.
+    try testing.expectEqual(@as(usize, 15), m.bytecode.len);
     try testing.expectEqual(bytecode.Opcode.PUSH_SMALLINT_I32, bytecode.readOpcode(m.bytecode, 0));
     try testing.expectEqual(bytecode.Opcode.STORE_LOCAL, bytecode.readOpcode(m.bytecode, 5));
     try testing.expectEqual(@as(u8, 0), bytecode.readU8(m.bytecode, 6));
     try testing.expectEqual(bytecode.Opcode.PUSH_LOCAL, bytecode.readOpcode(m.bytecode, 7));
-    try testing.expectEqual(bytecode.Opcode.POP, bytecode.readOpcode(m.bytecode, 9));
-    try testing.expectEqual(bytecode.Opcode.PUSH_LOCAL, bytecode.readOpcode(m.bytecode, 10));
-    try testing.expectEqual(@as(u8, 0), bytecode.readU8(m.bytecode, 11));
-    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 12));
+    try testing.expectEqual(bytecode.Opcode.BRANCH_IF_ERROR, bytecode.readOpcode(m.bytecode, 9));
+    try testing.expectEqual(bytecode.Opcode.PUSH_LOCAL, bytecode.readOpcode(m.bytecode, 12));
+    try testing.expectEqual(@as(u8, 0), bytecode.readU8(m.bytecode, 13));
+    try testing.expectEqual(bytecode.Opcode.RETURN, bytecode.readOpcode(m.bytecode, 14));
 }
 
 test "compile var-ref out of scope → VarNotInScope" {

@@ -175,6 +175,22 @@ pub fn runMethod(
                 const after = pc + 3;
                 pc = if (isFalsey(v)) applyJump(after, off) else after;
             },
+            .BRANCH_IF_ERROR => {
+                // Peek TOS: if it's an error value, leave it on the stack and
+                // jump (the statement sequence's result IS the error — halt);
+                // otherwise discard the non-final statement's value and fall
+                // through. Phase 17.7 finish — VM stmt-seq mid-halt on error.
+                if (value_stack.items.len == 0) return error.StackUnderflow;
+                const v = value_stack.items[value_stack.items.len - 1];
+                const off = bytecode.readI16(code, pc + 1);
+                const after = pc + 3;
+                if (isErrorValue(v)) {
+                    pc = applyJump(after, off);
+                } else {
+                    _ = value_stack.pop();
+                    pc = after;
+                }
+            },
             .SEND_0 => {
                 const sel_eid: u64 = bytecode.readU32(code, pc + 1);
                 _ = bytecode.readU16(code, pc + 5);
@@ -462,4 +478,13 @@ inline fn isFalsey(v: Ref) bool {
     if (ref_mod.isNil(v)) return true;
     if (ref_mod.isEid(v) and ref_mod.untagEid(v) == kernel_eids.FALSE_EID) return true;
     return false;
+}
+
+/// True iff `v` is an ERROR_VT entity (a propagating Result error). Backs
+/// BRANCH_IF_ERROR so a compiled statement sequence halts mid-sequence on an
+/// error, matching the tree-walker (Phase 17.7 finish).
+inline fn isErrorValue(v: Ref) bool {
+    if (!ref_mod.isEid(v)) return false;
+    const vt = send_mod.vtableEidOf(v) orelse return false;
+    return vt == kernel_eids.ERROR_VT;
 }

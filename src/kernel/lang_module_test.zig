@@ -1306,6 +1306,32 @@ test "errors: statement sequence halts on error" {
     try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalLine(s, lang, "[[| 1; 42] value]", a)));
 }
 
+// Phase 17.7 finish — a VM-COMPILED method body (installed via method:do:, run
+// through the bytecode VM per 11.12) now halts mid-sequence on an error, matching
+// the tree-walker. Before BRANCH_IF_ERROR the method ran the second statement and
+// returned 42.
+test "errors: VM-compiled method body halts mid-sequence on error" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // [3 halts] body: `let z := [10 / 0]; 42` — stmt 1 is a zeroDivide error.
+    _ = evalLine(s, lang, "[[3 vtable] method: #halts do: [| let z := [10 / 0]; 42]]", a);
+    const r = evalLine(s, lang, "[3 halts]", a);
+    try testing.expect(evalIsError(s, lang, "[3 halts]", a)); // halted → error, not 42
+    try testing.expect(ref_mod.isEid(r));
+    // The propagated error is the zeroDivide (read the kind fact directly).
+    const kind = s.store.currentValue(r >> 3, kernel_eids.ATTR_ERROR_KIND);
+    try testing.expectEqual(ref_mod.mkEid(s.interner.str_to_eid.get("zeroDivide").?), kind.?);
+
+    // A non-erroring compiled method body still returns its last statement.
+    _ = evalLine(s, lang, "[[3 vtable] method: #fine do: [| let z := 1; 42]]", a);
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalLine(s, lang, "[3 fine]", a)));
+}
+
 // True if evaluating `src` yields an ERROR_VT value (checks the vtable directly,
 // so it works for bare statements like `x := 5` that can't be wrapped in `[]`).
 fn evalIsError(s: anytype, lang: u64, src: []const u8, a: std.mem.Allocator) bool {

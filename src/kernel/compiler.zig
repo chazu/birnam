@@ -700,6 +700,13 @@ fn compileStmtSeq(state: *State, ast_eid: u64) CompileError!void {
         return;
     }
 
+    // Phase 17.7 finish — each non-final statement is followed by a
+    // BRANCH_IF_ERROR to the end of the sequence: if the statement produced an
+    // ERROR_VT value, halt (the error becomes the sequence result, matching the
+    // tree-walker); otherwise drop the value and run the next statement.
+    var patches = std.ArrayList(usize){};
+    defer patches.deinit(state.allocator);
+
     var cur = first.?;
     while (true) {
         if (!ref_mod.isEid(cur)) return error.UnknownAstKind;
@@ -709,11 +716,19 @@ fn compileStmtSeq(state: *State, ast_eid: u64) CompileError!void {
         try compileExpr(state, cur_eid);
 
         if (next_ref) |nx| {
-            // Not the last stmt — drop value before next iter.
-            state.encoder.pop(state.allocator) catch return error.OutOfMemory;
+            // BRANCH_IF_ERROR subsumes the inter-statement POP: on the non-error
+            // path it drops the value and falls through; on error it keeps the
+            // error and jumps to the end. (No separate POP — that double-pops.)
+            const p = state.encoder.branchIfError_forward(state.allocator) catch return error.OutOfMemory;
+            patches.append(state.allocator, p) catch return error.OutOfMemory;
             cur = nx;
         } else break;
     }
+
+    // Patch every BRANCH_IF_ERROR to here (after the last statement). On the
+    // normal path TOS = the last statement's value; on a halt TOS = the error.
+    const end_pc = state.encoder.buf.items.len;
+    for (patches.items) |p| state.encoder.patchJump(p, end_pc) catch return error.OutOfMemory;
 }
 
 /// Compile `^expr`. Phase A2 lowers to plain RETURN inside a method
