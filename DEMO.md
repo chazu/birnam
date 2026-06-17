@@ -46,9 +46,9 @@ Produces `zig-out/bin/birnam` (the shell) and module dylibs in `zig-out/lib/`:
 ## Run the demo
 
 Modules are named by **bare name** — `lang` resolves to `libbirnam_lang.dylib`
-along the dylib search path (`$BIRNAM_DYLIB_PATH`, then the cwd and below, then
-the binary's own dir). With no module args, `birnam` loads the default set
-(`peg lang`):
+along the dylib search path (`$BIRNAM_DYLIB_PATH` exact dirs, `$BIRNAM_PATH`
+install roots at `<root>/lib`, then the cwd and below, then the binary's own
+dir). With no module args, `birnam` loads the default set (`peg lang`):
 
 ```
 ./zig-out/bin/birnam                 # default: peg + lang, found under cwd
