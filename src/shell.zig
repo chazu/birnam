@@ -36,6 +36,7 @@ const strings = @import("kernel/strings.zig");
 const ref_mod = @import("kernel/ref.zig");
 const dylib_search = @import("dylib_search.zig");
 const config_mod = @import("config.zig");
+const bopts = @import("build_opts");
 
 /// Default module set when neither argv nor birnam.toml names any (and
 /// `--bare` was not given). peg before lang — order matters.
@@ -56,6 +57,10 @@ fn handleImageCommand(
     interner: *interner_mod.Interner,
     manager: *const module.Manager,
 ) bool {
+    if (std.mem.eql(u8, line, ":help") or std.mem.eql(u8, line, ":h") or std.mem.eql(u8, line, "?")) {
+        printHelp();
+        return true;
+    }
     if (std.mem.startsWith(u8, line, ":save ")) {
         const path = std.mem.trim(u8, line[6..], " ");
         // Manifest = the currently-loaded module set (abi_hash placeholder
@@ -272,6 +277,48 @@ var shell_context = id_api_mod.ShellContext{
     .set_repl_handler = &shellSetReplHandler,
 };
 
+/// One-line startup banner: version + the two things a newcomer needs.
+fn printBanner() void {
+    stdoutPrint("birnam {s} — type :help for commands. Evaluate with brackets: [3 + 4]\n", .{bopts.version});
+}
+
+/// REPL command reference (`:help`). Covers both the shell-handled commands
+/// (image / file-in / heap) and the lang-handled ones.
+fn printHelp() void {
+    stdoutPrint(
+        \\birnam commands:
+        \\  :help, :h, ?         show this
+        \\  :in  <file>          evaluate a .birnam file (atomic)
+        \\  :in! <file>          evaluate a file, continue past errors
+        \\  :save <file.bim>     snapshot the whole image to disk
+        \\  :load <file.bim>     restore an image
+        \\  :prune               drop unreachable facts (logical reclaim)
+        \\  :gc                  reclaim heap (run after :prune)
+        \\  :retention <policy>  current | all | since <t> | last <n>
+        \\  :reset               clear the top-level scope bindings
+        \\  :eval-mode [m]       bytecode | treewalk (bare: show current)
+        \\  :freeze <out>        emit a wrapper dylib re-establishing FFI wraps
+        \\  ^D                   quit
+        \\
+        \\Evaluate expressions with brackets: [3 + 4], [x squared], let x := 10.
+        \\Shell flags: birnam [modules…] [file.birnam] [-e EXPR] [-i] [--bare]
+        \\
+    , .{});
+}
+
+/// Feed one line of source to the lang REPL handler (used by `-e EXPR`). The
+/// handler wants a null-terminated string; the result prints via the lang log.
+fn evalReplLine(allocator: std.mem.Allocator, line: []const u8) void {
+    const h = repl_handler orelse {
+        stderrPrint("[birnam] -e: no repl handler (is lang loaded?)\n", .{});
+        return;
+    };
+    const z = allocator.allocSentinel(u8, line.len, 0) catch return;
+    defer allocator.free(z);
+    @memcpy(z, line);
+    h(@ptrCast(z.ptr));
+}
+
 // -- Signal handling (kept from Phase 0) ------------------------------------
 
 var reload_requested: bool = false;
@@ -435,6 +482,52 @@ fn stageDylibs(allocator: std.mem.Allocator, staged_img: []const u8, out_path: [
     }
 }
 
+// -- `birnam init` -----------------------------------------------------------
+
+const init_birnam_toml =
+    \\# birnam project config — discovered by walking cwd upward.
+    \\modules = ["peg", "lang"]
+    \\# dylib_paths = ["zig-out/lib"]   # extra dirs to find module dylibs
+    \\# image = "session.bim"           # snapshot auto-loaded on a bare `birnam`
+    \\
+;
+
+const init_playground =
+    \\// playground.birnam — run: birnam playground.birnam   (or :in from the REPL)
+    \\// statements are separated by ';' when filed in.
+    \\[3 + 4];
+    \\let greeting := "hello, birnam";
+    \\let x := 10;
+    \\[x squared];
+    \\
+;
+
+/// `birnam init` — scaffold a project in the cwd. Writes `birnam.toml` and a
+/// starter `playground.birnam`, skipping any that already exist (never
+/// clobbers). Pure file I/O — no kernel boot.
+fn runInit() void {
+    writeIfAbsent("birnam.toml", init_birnam_toml);
+    writeIfAbsent("playground.birnam", init_playground);
+    stdoutPrint("Next: `birnam` (resumes this project) or `birnam playground.birnam`.\n", .{});
+}
+
+fn writeIfAbsent(path: []const u8, contents: []const u8) void {
+    if (std.fs.cwd().access(path, .{})) {
+        stdoutPrint("  exists, skipped: {s}\n", .{path});
+        return;
+    } else |_| {}
+    const f = std.fs.cwd().createFile(path, .{}) catch {
+        stderrPrint("[birnam] init: could not write {s}\n", .{path});
+        return;
+    };
+    defer f.close();
+    f.writeAll(contents) catch {
+        stderrPrint("[birnam] init: write failed for {s}\n", .{path});
+        return;
+    };
+    stdoutPrint("  created: {s}\n", .{path});
+}
+
 // -- Main --------------------------------------------------------------------
 
 pub fn main() !void {
@@ -450,6 +543,7 @@ pub fn main() !void {
         for (argv[1..]) |arg| {
             if (std.mem.startsWith(u8, arg, "--aot")) return runAotDriver(allocator, argv[1..]);
         }
+        if (argv.len > 1 and std.mem.eql(u8, argv[1], "init")) return runInit();
     }
 
     stderrPrint("[birnam] shell starting\n", .{});
@@ -499,12 +593,18 @@ pub fn main() !void {
     var setup_arena = std.heap.ArenaAllocator.init(allocator);
     const sa = setup_arena.allocator();
 
+    // Args ending in `.birnam` are scripts to run (file-in then exit, unless
+    // `-i`); `-e/--eval EXPR` evaluates one expression then exits; everything
+    // else before `--` is a module name.
     var args = std.process.args();
     _ = args.next(); // skip argv[0]
     var argv_modules = std.ArrayList([]const u8){};
+    var scripts = std.ArrayList([]const u8){};
     var prog_args = std.ArrayList([]const u8){};
     var seen_dashdash = false;
     var bare = false;
+    var interactive = false;
+    var eval_expr: ?[]const u8 = null;
     while (args.next()) |arg| {
         if (seen_dashdash) {
             try prog_args.append(allocator, try allocator.dupe(u8, arg));
@@ -516,6 +616,18 @@ pub fn main() !void {
         }
         if (std.mem.eql(u8, arg, "--bare")) {
             bare = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "-i") or std.mem.eql(u8, arg, "--interactive")) {
+            interactive = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "-e") or std.mem.eql(u8, arg, "--eval")) {
+            if (args.next()) |e| eval_expr = try sa.dupe(u8, e);
+            continue;
+        }
+        if (std.mem.endsWith(u8, arg, ".birnam")) {
+            try scripts.append(sa, try sa.dupe(u8, arg));
             continue;
         }
         try argv_modules.append(sa, try sa.dupe(u8, arg));
@@ -573,13 +685,28 @@ pub fn main() !void {
             }
         }
     }
+    // -- Script / eval bridge ------------------------------------------------
+    // `birnam foo.birnam` file-ins each script; `-e EXPR` evaluates one
+    // expression. Both run after modules load and then exit (run-and-exit),
+    // unless `-i` was given (then fall through into the REPL — load defs, then
+    // explore them live).
+    const run_and_exit = (scripts.items.len > 0 or eval_expr != null) and !interactive;
+    if (scripts.items.len > 0 or eval_expr != null) {
+        for (scripts.items) |path| {
+            var buf: [4096]u8 = undefined;
+            const cmd = std.fmt.bufPrint(&buf, ":in {s}", .{path}) catch continue;
+            _ = handleImageCommand(cmd, allocator, store, table, interner, &manager);
+        }
+        if (eval_expr) |expr| evalReplLine(allocator, expr);
+    }
     setup_arena.deinit(); // argv/config strings done — release before the REPL
+    if (run_and_exit) std.process.exit(0);
 
     // Baseline the auto-prune growth counter AFTER boot + module loads, so it
     // triggers on user/session churn, not the fixed kernel+grammar+prelude init.
     prune.resetAutoPrune(table);
 
-    stderrPrint("[birnam] entering main loop (^D to quit)\n", .{});
+    printBanner();
 
     // -- REPL loop -----------------------------------------------------------
     const reader = std.fs.File.stdin().deprecatedReader();

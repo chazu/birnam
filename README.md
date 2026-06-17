@@ -137,12 +137,18 @@ along the dylib search path. With no arguments, `birnam` loads the default set
 (`peg lang`):
 
 ```
-./zig-out/bin/birnam                 # default: peg + lang
-./zig-out/bin/birnam peg lang query  # explicit set (full dylib paths still work)
-./zig-out/bin/birnam --bare          # load nothing (bare kernel)
+birnam                       # default: peg + lang, then the REPL
+birnam peg lang query        # explicit module set (full dylib paths still work)
+birnam --bare                # load nothing (bare kernel)
+birnam init                  # scaffold birnam.toml + playground.birnam here
+birnam playground.birnam     # run a script (file-in, then exit)
+birnam -i playground.birnam  # run a script, then drop into the REPL
+birnam -e '[3 + 4]'          # evaluate one expression, then exit
 ```
 
-You get a `birnam>` prompt. Each line is parsed by the PEG engine, desugared to a typed AST, compiled to bytecode, and run on the VM. Results print as `=> value`. Ctrl-D exits.
+You get a `birnam>` prompt. Each line is parsed by the PEG engine, desugared to a typed AST, compiled to bytecode, and run on the VM. Results print as `=> value`. Type `:help` for the command list. Ctrl-D exits.
+
+Any argument ending in `.birnam` is a script (filed in, statements separated by `;`); `-e EXPR` evaluates one expression. Both run after the modules load and then exit, unless `-i` keeps the session open afterward. `birnam init` writes a starter `birnam.toml` + `playground.birnam` (never clobbering existing files).
 
 ### Resolving modules
 
