@@ -511,6 +511,76 @@ fn runInit() void {
     stdoutPrint("Next: `birnam` (resumes this project) or `birnam playground.birnam`.\n", .{});
 }
 
+/// `birnam wrap [name]` — build the `[[wrapped]]` C libraries from the
+/// discovered `birnam.toml` into dylibs via the system `cc` (NOT zig: authoring
+/// a wrapped library never requires a zig toolchain). With no arg, builds every
+/// declared lib; with a name, just that one. Each `.dylib` is then loadable from
+/// a birnam wrapper via `Module load:` + the FFI `wrap:` surface.
+fn runWrap(allocator: std.mem.Allocator, only: ?[]const u8) void {
+    const cfg = config_mod.discover(allocator) orelse {
+        stderrPrint("[birnam] wrap: no birnam.toml found (walk cwd upward). Declare a [[wrapped]] entry.\n", .{});
+        return;
+    };
+    if (cfg.wrapped.len == 0) {
+        stderrPrint("[birnam] wrap: birnam.toml has no [[wrapped]] entries.\n", .{});
+        return;
+    }
+    var built: usize = 0;
+    var matched: usize = 0;
+    for (cfg.wrapped) |lib| {
+        if (only) |n| if (!std.mem.eql(u8, n, lib.name)) continue;
+        matched += 1;
+        if (buildWrapped(allocator, lib)) built += 1;
+    }
+    if (only != null and matched == 0) {
+        stderrPrint("[birnam] wrap: no [[wrapped]] entry named '{s}'.\n", .{only.?});
+        return;
+    }
+    stdoutPrint("[birnam] wrap: built {d}/{d} librar{s}.\n", .{ built, matched, if (matched == 1) "y" else "ies" });
+}
+
+/// Compile one `[[wrapped]]` entry: `cc <cflags> <-dynamiclib|-shared> -fPIC
+/// <sources…> -o <output>`. Returns true on a clean (exit 0) build.
+fn buildWrapped(allocator: std.mem.Allocator, lib: config_mod.WrappedLib) bool {
+    if (lib.sources.len == 0) {
+        stderrPrint("[birnam] wrap: '{s}' has no sources.\n", .{lib.name});
+        return false;
+    }
+    const output = lib.output orelse {
+        stderrPrint("[birnam] wrap: '{s}' has no resolvable output path.\n", .{lib.name});
+        return false;
+    };
+    // Ensure the output directory exists.
+    if (std.fs.path.dirname(output)) |d| std.fs.cwd().makePath(d) catch {};
+
+    var args = std.ArrayList([]const u8){};
+    defer args.deinit(allocator);
+    args.append(allocator, "cc") catch return false;
+    // Platform shared-lib flag: macOS wants -dynamiclib, ELF wants -shared.
+    args.append(allocator, if (@import("builtin").target.os.tag == .macos) "-dynamiclib" else "-shared") catch return false;
+    args.append(allocator, "-fPIC") catch return false;
+    for (lib.cflags) |f| args.append(allocator, f) catch return false;
+    for (lib.sources) |s| args.append(allocator, s) catch return false;
+    args.append(allocator, "-o") catch return false;
+    args.append(allocator, output) catch return false;
+
+    stdoutPrint("[birnam] wrap: building {s} -> {s}\n", .{ lib.name, output });
+    var child = std.process.Child.init(args.items, allocator);
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+    child.spawn() catch |e| {
+        stderrPrint("[birnam] wrap: cannot run cc ({s}). Is a C compiler installed?\n", .{@errorName(e)});
+        return false;
+    };
+    const term = child.wait() catch return false;
+    if (term == .Exited and term.Exited == 0) {
+        if (lib.wrapper) |w| stdoutPrint("[birnam] wrap: ok — file in the wrapper with `:in {s}`\n", .{w});
+        return true;
+    }
+    stderrPrint("[birnam] wrap: '{s}' build failed.\n", .{lib.name});
+    return false;
+}
+
 fn writeIfAbsent(path: []const u8, contents: []const u8) void {
     if (std.fs.cwd().access(path, .{})) {
         stdoutPrint("  exists, skipped: {s}\n", .{path});
@@ -544,6 +614,13 @@ pub fn main() !void {
             if (std.mem.startsWith(u8, arg, "--aot")) return runAotDriver(allocator, argv[1..]);
         }
         if (argv.len > 1 and std.mem.eql(u8, argv[1], "init")) return runInit();
+        if (argv.len > 1 and std.mem.eql(u8, argv[1], "wrap")) {
+            runWrap(allocator, if (argv.len > 2) argv[2] else null);
+            // Skip the deferred GPA leak check: `discover` allocates the config
+            // strings for the process lifetime (never freed by design, like the
+            // REPL path). The OS reclaims on exit.
+            std.process.exit(0);
+        }
     }
 
     stderrPrint("[birnam] shell starting\n", .{});

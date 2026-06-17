@@ -28,6 +28,27 @@ pub const Config = struct {
     dylib_paths: []const []const u8 = &.{},
     /// `image` snapshot path, joined against `dir` when relative.
     image: ?[]const u8 = null,
+    /// `[[wrapped]]` entries — first-party C libraries the `birnam wrap`
+    /// subcommand builds into dylibs (via `cc`, never zig) for FFI wrapping.
+    wrapped: []const WrappedLib = &.{},
+};
+
+/// One `[[wrapped]]` array-of-tables entry. Paths are joined against the config
+/// dir when relative, so a wrapped lib is location-independent.
+pub const WrappedLib = struct {
+    /// `name` — derives the default output dylib (`lib<name>.<ext>`) and selects
+    /// a single lib on `birnam wrap <name>`.
+    name: []const u8,
+    /// `sources` — C source files compiled together into the dylib (joined).
+    sources: []const []const u8 = &.{},
+    /// `wrapper` — the `.birnam` file holding the `Module load:`/`wrap:` decls
+    /// (joined). Informational; the shell reports it after a successful build.
+    wrapper: ?[]const u8 = null,
+    /// `output` — dylib path to emit (joined). Default when absent:
+    /// `lib<name>.<dylibext>` in the wrapper's dir, else the config dir.
+    output: ?[]const u8 = null,
+    /// `cflags` — extra flags passed to `cc` verbatim (not joined).
+    cflags: []const []const u8 = &.{},
 };
 
 /// Walk cwd upward for `birnam.toml`. Returns the parsed config, or null if
@@ -50,14 +71,53 @@ fn parseFile(allocator: std.mem.Allocator, dir: []const u8, path: []const u8) !C
     const src = try std.fs.cwd().readFileAlloc(allocator, path, 1 << 20);
     var cfg = Config{ .dir = dir };
 
+    // `[[wrapped]]` is an array-of-tables: each header opens a new entry that
+    // subsequent key=val lines fill until the next header / EOF. A `pending`
+    // raw entry is finalized (paths joined, defaults derived) into `wrapped`.
+    var wrapped = std.ArrayList(WrappedLib){};
+    var pending: ?WrappedRaw = null;
+    // section state: are we inside a `[[wrapped]]` block (vs top-level)?
+    var in_wrapped = false;
+
     var lines = std.mem.splitScalar(u8, src, '\n');
     while (lines.next()) |raw| {
         const line = std.mem.trim(u8, raw, " \t\r");
-        if (line.len == 0 or line[0] == '#' or line[0] == '[') continue;
+        if (line.len == 0 or line[0] == '#') continue;
+
+        if (line[0] == '[') {
+            // Section header. `[[wrapped]]` starts a new array entry; any other
+            // `[section]` resets to top-level (its keys are ignored).
+            if (std.mem.startsWith(u8, line, "[[wrapped]]")) {
+                if (pending) |*p| try wrapped.append(allocator, try finalizeWrapped(allocator, dir, p));
+                pending = WrappedRaw{};
+                in_wrapped = true;
+            } else {
+                if (pending) |*p| try wrapped.append(allocator, try finalizeWrapped(allocator, dir, p));
+                pending = null;
+                in_wrapped = false;
+            }
+            continue;
+        }
 
         const eq = std.mem.indexOfScalar(u8, line, '=') orelse continue;
         const key = std.mem.trim(u8, line[0..eq], " \t");
         const val = std.mem.trim(u8, line[eq + 1 ..], " \t");
+
+        if (in_wrapped) {
+            const p = &pending.?;
+            if (std.mem.eql(u8, key, "name")) {
+                if (parseString(val)) |s| p.name = try allocator.dupe(u8, s);
+            } else if (std.mem.eql(u8, key, "sources")) {
+                p.sources = try parseArray(allocator, val);
+            } else if (std.mem.eql(u8, key, "wrapper")) {
+                if (parseString(val)) |s| p.wrapper = try allocator.dupe(u8, s);
+            } else if (std.mem.eql(u8, key, "output")) {
+                if (parseString(val)) |s| p.output = try allocator.dupe(u8, s);
+            } else if (std.mem.eql(u8, key, "cflags")) {
+                p.cflags = try parseArray(allocator, val);
+            }
+            continue;
+        }
 
         if (std.mem.eql(u8, key, "modules")) {
             cfg.modules = try parseArray(allocator, val);
@@ -68,7 +128,48 @@ fn parseFile(allocator: std.mem.Allocator, dir: []const u8, path: []const u8) !C
             if (parseString(val)) |s| cfg.image = try joinRel(allocator, dir, s);
         }
     }
+    if (pending) |*p| try wrapped.append(allocator, try finalizeWrapped(allocator, dir, p));
+    cfg.wrapped = try wrapped.toOwnedSlice(allocator);
     return cfg;
+}
+
+/// Un-joined accumulator for a `[[wrapped]]` entry while parsing.
+const WrappedRaw = struct {
+    name: ?[]const u8 = null,
+    sources: []const []const u8 = &.{},
+    wrapper: ?[]const u8 = null,
+    output: ?[]const u8 = null,
+    cflags: []const []const u8 = &.{},
+};
+
+/// Join paths against `dir` and derive a default output dylib path.
+fn finalizeWrapped(allocator: std.mem.Allocator, dir: []const u8, p: *const WrappedRaw) !WrappedLib {
+    const name = p.name orelse "unnamed";
+    const wrapper = if (p.wrapper) |w| try joinRel(allocator, dir, w) else null;
+    const output = if (p.output) |o|
+        try joinRel(allocator, dir, o)
+    else blk: {
+        // Default: lib<name>.<ext> beside the wrapper (else in the config dir).
+        const base = if (wrapper) |w| std.fs.path.dirname(w) orelse dir else dir;
+        const file = try std.fmt.allocPrint(allocator, "lib{s}{s}", .{ name, dylibExt() });
+        break :blk try std.fs.path.join(allocator, &.{ base, file });
+    };
+    return .{
+        .name = try allocator.dupe(u8, name),
+        .sources = try joinAll(allocator, dir, p.sources),
+        .wrapper = wrapper,
+        .output = output,
+        .cflags = p.cflags,
+    };
+}
+
+/// Platform dynamic-library extension (with the leading dot).
+pub fn dylibExt() []const u8 {
+    return switch (@import("builtin").target.os.tag) {
+        .macos => ".dylib",
+        .windows => ".dll",
+        else => ".so",
+    };
 }
 
 /// Extract a bare `"quoted string"` value (sans surrounding quotes). Returns

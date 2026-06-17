@@ -1,0 +1,47 @@
+// linenoise — line editing for birnam (history, arrow keys, emacs bindings).
+//
+// First-party wrapped C library. Build the dylib first (uses cc, not zig):
+//
+//   birnam wrap linenoise        # -> wrapped/linenoise/liblinenoise.dylib
+//
+// then file this wrapper in (run from the repo root, where the relative dylib
+// path resolves):
+//
+//   birnam> :in wrapped/linenoise/linenoise.birnam
+//
+// File-in is atomic: the wraps below are declared here and RESOLVED at commit,
+// so call them in a LATER input (the REPL line after, or a second file) — not
+// inside this unit.
+//
+// Usage after filing in:
+//
+//   birnam> [linenoise historyMaxLen: 1000]
+//   birnam> let line := [linenoise prompt: "say> "]    // reads one edited line
+//   birnam> [linenoise historyAdd: line]
+//
+// `prompt:` returns the line as a managed birnam string. NOTE: the underlying
+// C buffer is malloc'd by linenoise and not freed on this path (one small leak
+// per call — negligible for a REPL). The leak-free idiom uses the raw pointer:
+//
+//   birnam> let p := [linenoise promptPtr: "say> "]
+//   birnam> let line := [p peekString: 0]
+//   birnam> [linenoise free: p]
+
+let linenoise := [Module load: "wrapped/linenoise/liblinenoise.dylib"];
+
+// char *linenoise(const char *prompt)  — edited line (NULL on EOF/^C -> nil).
+[linenoise wrap: #prompt:    as: "linenoise" signature: "Z)Z"];
+// Same call returning the raw char* for the explicit peek+free idiom.
+[linenoise wrap: #promptPtr: as: "linenoise" signature: "Z)p"];
+// void linenoiseFree(void *ptr)
+[linenoise wrap: #free:      as: "linenoiseFree" signature: "p)v"];
+
+// History.
+[linenoise wrap: #historyAdd:    as: "linenoiseHistoryAdd"       signature: "Z)i"];
+[linenoise wrap: #historyLoad:   as: "linenoiseHistoryLoad"      signature: "Z)i"];
+[linenoise wrap: #historySave:   as: "linenoiseHistorySave"      signature: "Z)i"];
+[linenoise wrap: #historyMaxLen: as: "linenoiseHistorySetMaxLen" signature: "i)i"];
+
+// Modes.
+[linenoise wrap: #multiLine:  as: "linenoiseSetMultiLine" signature: "i)v"];
+[linenoise wrap: #clearScreen as: "linenoiseClearScreen"  signature: ")v"]
