@@ -1,0 +1,42 @@
+// Word frequency counter.
+//
+// Counts how often each word appears in a body of text and prints the words
+// from most to least frequent. Run it as a script:
+//
+//   birnam examples/word-frequency.birnam
+//
+// or file it into a REPL session:
+//
+//   birnam> :in examples/word-frequency.birnam
+//
+// Forms in a filed-in unit are separated by `;`.
+
+// The text to analyse. `asLowercase` normalises case so "The" and "the" count
+// as one; the `replace:with:` chain strips the punctuation that would otherwise
+// stick to words (`words` splits on whitespace only, so "ran," would be its own
+// word). The cleaned string is split into a word vector by `words`.
+let raw := "The cat sat on the mat. The cat then ran, and the dog sat too.";
+let text := [[[raw asLowercase] replace: "." with: ""] replace: "," with: ""];
+
+// Build the frequency table by folding the word vector into a map.
+//
+// Maps key by *identity*, and two equal string literals are distinct objects —
+// so a raw string key would never match on the second occurrence. Interning
+// each word with `asSymbol` gives a stable identity key that deduplicates.
+//
+// The stored *value* is a `#[word count]` pair: we keep the original word
+// string for display (a symbol does not render back to a clean string), and
+// bump the count. `at:ifAbsent:` takes a zero-argument block (`[| … ]`) that
+// supplies the seed `#[word 0]` the first time a word is seen.
+let freq := [[text words] inject: {} into: [:m :w |
+  [m at: [w asSymbol] put: #[ w [1 + [[m at: [w asSymbol] ifAbsent: [| #[ w 0 ]]] at: 1]] ]]]];
+
+// `values` is the vector of `#[word count]` pairs. `sortBy:` takes a 1-arg key
+// block and sorts ascending by that key — negating the count gives descending
+// (most frequent first).
+let ranked := [[freq values] sortBy: [:pair | [0 - [pair at: 1]]]];
+
+// Print one "word: count" line per entry. `,` concatenates strings;
+// `printString` turns the integer count into a string.
+[ranked do: [:pair |
+  [System println: [[[pair at: 0] , ": "] , [[pair at: 1] printString]]]]]
