@@ -44,6 +44,60 @@ So a lot of shit isn't done:
 * lsp (what the fuck does this even look like? i have no idea)
 
 
+## Get started in 60 seconds
+
+**Option A — download a release** (arm64 macOS only, for now):
+
+```sh
+# grab the latest tarball from https://github.com/chazu/birnam/releases
+curl -L <tarball-url> | tar xz
+xattr -dr com.apple.quarantine birnam-*-aarch64-macos   # clear Gatekeeper
+birnam-*-aarch64-macos/bin/birnam                        # zero-config REPL
+```
+
+The bundle is self-contained: `bin/birnam` finds its modules in the sibling
+`lib/`, so it runs from wherever you unpack it — no install step, no env var.
+
+**Option B — build from source** (any platform with **Zig 0.15.1**):
+
+```sh
+zig build install --prefix ~/.local      # or: mise run install
+export PATH="$HOME/.local/bin:$PATH"
+birnam                                     # zero-config REPL
+```
+
+Either way you land at a `birnam>` prompt with `peg` + `lang` loaded. Poke at it:
+
+```
+birnam> [3 + 4]
+=> 7
+birnam> [6 squared]
+=> 36
+birnam> let x := 10
+=> 10
+birnam> [x + 5]
+=> 15
+```
+
+(Top-level message sends are bracketed — `[3 + 4]`, not `3 + 4`.) Then grow and
+keep a world:
+
+```
+birnam> :in playground.birnam    # evaluate a file (multi-line, atomic)
+birnam> :save mywork.bim         # snapshot the whole image
+birnam> :load mywork.bim         # ...and restore it later
+```
+
+Drop a `birnam.toml` beside your work to pin the module set and auto-resume an
+image (see [Project config](#project-config--birnamtoml) below), and a bare
+`birnam` in that directory starts up right where you left off. The full
+language tour lives in [`DEMO.md`](DEMO.md).
+
+> Heads up: only arm64 macOS has a prebuilt binary today. On Linux / Intel
+> macs, build from source (Option B) — the cross-platform port is tracked
+> separately.
+
+
 ## Build
 
 Requires **Zig 0.15.1**.
