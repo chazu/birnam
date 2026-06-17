@@ -45,16 +45,37 @@ Produces `zig-out/bin/birnam` (the shell) and module dylibs in `zig-out/lib/`:
 
 ## Run the demo
 
+Modules are named by **bare name** — `lang` resolves to `libbirnam_lang.dylib`
+along the dylib search path (`$BIRNAM_DYLIB_PATH`, then the cwd and below, then
+the binary's own dir). With no module args, `birnam` loads the default set
+(`peg lang`):
+
 ```
-./zig-out/bin/birnam \
-    ./zig-out/lib/libbirnam_peg.dylib \
-    ./zig-out/lib/libbirnam_lang.dylib
+./zig-out/bin/birnam                 # default: peg + lang, found under cwd
+./zig-out/bin/birnam peg lang query  # explicit set (full paths still work too)
+./zig-out/bin/birnam --bare          # load nothing (bare kernel)
 ```
 
 A `birnam>` prompt. Each line is parsed by the PEG engine, desugared to a typed
 AST, and evaluated; results print as `=> value`. Lines starting with `:` are
-commands (see below). Ctrl-D exits. (Load `libbirnam_query.dylib` too for
-collection accessors like `count`/`at:`.)
+commands (see below). Ctrl-D exits. (Load `query` too for collection accessors
+like `count`/`at:`.)
+
+### Project config — `birnam.toml`
+
+A `birnam.toml` discovered by walking from the cwd upward (git-style) pins a
+project's module set, extra search dirs, and a snapshot to auto-load, so a bare
+`birnam` in the tree Just Works:
+
+```toml
+modules     = ["peg", "lang", "query"]   # ordered load list (bare names)
+dylib_paths = ["zig-out/lib"]            # extra search dirs (rel. to this file)
+image       = "session.bim"              # snapshot :load'd after modules
+```
+
+Precedence for the module set: explicit argv > `birnam.toml` > default
+(`peg lang`). `--bare` overrides all and loads nothing. The config `image`
+auto-loads only on a bare (non-argv) invocation.
 
 ### 1. The language
 

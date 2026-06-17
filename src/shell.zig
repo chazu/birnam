@@ -34,6 +34,12 @@ const kernel_eids = @import("kernel/kernel_eids.zig");
 const send_mod = @import("kernel/send.zig");
 const strings = @import("kernel/strings.zig");
 const ref_mod = @import("kernel/ref.zig");
+const dylib_search = @import("dylib_search.zig");
+const config_mod = @import("config.zig");
+
+/// Default module set when neither argv nor birnam.toml names any (and
+/// `--bare` was not given). peg before lang — order matters.
+const default_modules = [_][]const u8{ "peg", "lang" };
 
 // -- Image save/load commands ------------------------------------------------
 
@@ -476,37 +482,98 @@ pub fn main() !void {
     var manager = module.Manager.init(allocator, &shell_context, api);
     defer manager.deinit();
 
-    // -- Load modules from argv ----------------------------------------------
-    // Args before `--` are .dylib paths to load; everything after `--` is the
-    // program's argument list, exposed to birnam as `System arguments`.
+    // -- Resolve the module set ----------------------------------------------
+    // Args before `--` are module names (bare like `lang`, or full dylib
+    // paths); everything after `--` is the program's argument list, exposed to
+    // birnam as `System arguments`. `--bare` suppresses the default set.
+    //
+    // Precedence for which modules to load:
+    //   1. modules named on argv (explicit override)
+    //   2. `modules` from a discovered birnam.toml
+    //   3. the default set (peg + lang), unless `--bare`
+    // Module names + config strings are needed only through module loading and
+    // the snapshot auto-load — never during the REPL. Allocate them in a
+    // short-lived arena freed before the loop, so they don't show as leaks at
+    // exit. (Program args are separate — they back `System arguments` and must
+    // live for the process, so they stay on the main allocator.)
+    var setup_arena = std.heap.ArenaAllocator.init(allocator);
+    const sa = setup_arena.allocator();
+
     var args = std.process.args();
     _ = args.next(); // skip argv[0]
-    var any_module = false;
+    var argv_modules = std.ArrayList([]const u8){};
     var prog_args = std.ArrayList([]const u8){};
     var seen_dashdash = false;
-    while (args.next()) |path_slice| {
+    var bare = false;
+    while (args.next()) |arg| {
         if (seen_dashdash) {
-            try prog_args.append(allocator, try allocator.dupe(u8, path_slice));
+            try prog_args.append(allocator, try allocator.dupe(u8, arg));
             continue;
         }
-        if (std.mem.eql(u8, path_slice, "--")) {
+        if (std.mem.eql(u8, arg, "--")) {
             seen_dashdash = true;
             continue;
         }
-        const path_z = try allocator.dupeZ(u8, path_slice);
-        defer allocator.free(path_z);
-        if (try manager.load(path_z)) |mod_eid| {
-            stderrPrint("[birnam] loaded {s} (eid {d})\n", .{ path_z, mod_eid });
-            any_module = true;
-        } else {
-            stderrPrint("[birnam] could not load {s}\n", .{path_z});
+        if (std.mem.eql(u8, arg, "--bare")) {
+            bare = true;
+            continue;
         }
+        try argv_modules.append(sa, try sa.dupe(u8, arg));
     }
     // Register program args (slice outlives the process). Backs `System arguments`.
     id_api_mod.setArgs(try prog_args.toOwnedSlice(allocator));
-    if (!any_module) {
-        stderrPrint("[birnam] no modules loaded — pass one or more .dylib paths\n", .{});
+
+    // Discover birnam.toml (cwd upward). Best-effort; null when none found.
+    const cfg = config_mod.discover(sa);
+    if (cfg) |c| stderrPrint("[birnam] config: {s}/birnam.toml\n", .{c.dir});
+    const extra_dirs: []const []const u8 = if (cfg) |c| c.dylib_paths else &.{};
+
+    // Pick the source of module names per the precedence above.
+    const from_argv = argv_modules.items.len > 0;
+    const module_names: []const []const u8 = if (from_argv)
+        argv_modules.items
+    else if (bare)
+        &.{}
+    else if (cfg != null and cfg.?.modules != null)
+        cfg.?.modules.?
+    else
+        &default_modules;
+
+    // -- Load modules (each name resolved through the dylib search path) ------
+    var any_module = false;
+    for (module_names) |name| {
+        const resolved = dylib_search.resolveWith(allocator, name, extra_dirs) orelse {
+            stderrPrint("[birnam] module '{s}' not found (set BIRNAM_DYLIB_PATH, dylib_paths, or stage it nearby)\n", .{name});
+            continue;
+        };
+        defer allocator.free(resolved);
+        const path_z = try allocator.dupeZ(u8, resolved);
+        defer allocator.free(path_z);
+        if (try manager.load(path_z)) |mod_eid| {
+            stderrPrint("[birnam] loaded {s} (eid {d})\n", .{ name, mod_eid });
+            any_module = true;
+        } else {
+            stderrPrint("[birnam] could not load {s}\n", .{resolved});
+        }
     }
+    if (!any_module) {
+        stderrPrint("[birnam] no modules loaded — pass one or more module names, or add a birnam.toml\n", .{});
+    }
+
+    // Auto-load a project snapshot named by birnam.toml — but only when the
+    // module set came from config/default (an explicit argv invocation is a
+    // custom session and shouldn't drag the project image in). `--bare` opts
+    // out entirely.
+    if (!from_argv and !bare) {
+        if (cfg) |c| {
+            if (c.image) |img| {
+                var buf: [4096]u8 = undefined;
+                const cmd = std.fmt.bufPrint(&buf, ":load {s}", .{img}) catch "";
+                if (cmd.len > 0) _ = handleImageCommand(cmd, allocator, store, table, interner, &manager);
+            }
+        }
+    }
+    setup_arena.deinit(); // argv/config strings done — release before the REPL
 
     // Baseline the auto-prune growth counter AFTER boot + module loads, so it
     // triggers on user/session churn, not the fixed kernel+grammar+prelude init.
