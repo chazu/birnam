@@ -64,6 +64,18 @@ Produces `zig-out/bin/birnam` (the shell) and the module dylibs in `zig-out/lib/
 
 The shell `dlopen`s modules from argv; each exports `birnam_module_init` and talks to the kernel through a C-ABI `IdApi` table. Order matters — load `peg` before `lang`.
 
+### Install
+
+```
+zig build install --prefix ~/.local
+```
+
+Installs exactly `bin/birnam` (the shell) and `lib/libbirnam_*.dylib` (the
+modules) under the prefix — nothing else. Because the shell probes its own
+`../lib`, a prefix install is **zero-config**: `~/.local/bin/birnam` finds its
+modules in `~/.local/lib` with no environment variable set. (`$BIRNAM_PATH`
+remains useful to point at an install prefix elsewhere.)
+
 ## Run the REPL
 
 Modules are named by **bare name** — `lang` resolves to `libbirnam_lang.dylib`
@@ -86,7 +98,7 @@ A module name is resolved to a dylib by searching, in order:
 2. directories in `$BIRNAM_DYLIB_PATH` (`:`-separated) — dirs that *directly* hold dylibs
 3. install roots in `$BIRNAM_PATH` (`:`-separated, Go-style) — each probed at `<root>/lib` then `<root>`
 4. the current directory and everything beneath it (recursive)
-5. the directory holding the `birnam` binary (so a staged `binary + dylibs` bundle is portable)
+5. the directory holding the `birnam` binary, then its sibling `../lib` — the standard `<prefix>/bin/birnam` + `<prefix>/lib/` install layout, so a packaged install resolves modules with **no env var set**
 
 For each directory the name is tried as-is, then decorated: `lang` → `liblang.dylib` → `libbirnam_lang.dylib` (the convention the bundled modules follow). A name that already points at a file is used verbatim, so explicit paths keep working.
 

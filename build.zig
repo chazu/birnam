@@ -38,7 +38,10 @@ pub fn build(b: *std.Build) void {
     libffi_lib.addIncludePath(b.path("vendor/libffi")); // fficonfig.h
     libffi_lib.addIncludePath(b.path("vendor/libffi/include")); // ffi.h, ffitarget.h, ffi_common.h
     libffi_lib.addIncludePath(b.path("vendor/libffi/src/aarch64")); // internal.h
-    b.installArtifact(libffi_lib);
+    // NOT installed: libffi is a build-time static archive linked into the
+    // shell / modules (see `linkLibrary(libffi_lib)` below). The installed
+    // tree needs only `bin/birnam` + the module dylibs — shipping `lib/libffi.a`
+    // would be dead weight.
 
     // -- Build-time kernel-EID mirror (single source of truth) ---------------
     // `src/kernel/kernel_eids.zig` is the ONE place well-known EIDs are defined.
