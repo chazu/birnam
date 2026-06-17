@@ -2156,6 +2156,21 @@ Phase 16 §Stdlib design DNA block.
 **Goal:** Lower IR facts to machine code. The capstone optimization phase — after
 semantics, collections, and stdlib are settled.
 
+> **What's new here vs Phase 14.** Today's `--aot` does NOT compile user code to
+> machine code. A Phase-14 AOT binary = native machine code of the *Zig* kernel +
+> bytecode VM + modules, plus an embedded `.bim` image whose birnam methods are
+> *bytecode*; at runtime the VM interprets that bytecode. Phase 18 is the first
+> time *user code* (birnam methods) becomes machine code — whether linked into
+> the binary at build time (AOT) or generated at runtime (JIT) is the ADR-18
+> question below.
+
+**Status (2026-06-17): ON HOLD — deferred by direction.** True native codegen is
+parked. Near-term focus is making the system we already have correct, complete,
+and documented (stdlib/datalog/FFI/cells fleshed out; the deferred slivers; docs
+the `docs/*.md` set + examples). The bytecode VM is fast enough for that work.
+Native compilation returns once the language + library are stable — which is also
+when ADR-18 should be locked. Keep ADR-18 (DRAFT) as the parked decision scaffold.
+
 ### Work items
 
 18.1 Choose lowering target: hand-rolled emitter, QBE, or LLVM. Default: hand-rolled for x86_64 + arm64. Fall back to QBE if time-constrained.
@@ -2863,7 +2878,9 @@ closed unbuilt — measured zero interpreter gain (the global hash it replaces i
 0.00 ns; the IC pays off only at 18.3 codegen sites; see §11.4). ② done.
 
 **③ Phase 18 native codegen** — capstone. Swallows perf-1.3/1.4/1.6 + the
-field-read slot cache. Nothing perf-related happens before this.
+field-read slot cache. Nothing perf-related happens before this. **ON HOLD as of
+2026-06-17** (see Phase 18 §Status) — so the remaining perf items are parked too;
+the bytecode VM is fast enough while the focus is correctness + docs.
 
 **④+ Off critical path (demand-driven, any order):**
 - *FFI*: 19.2 callback GC-rooting ✓ SHIPPED 2026-06-16 (box→Ref GC-mark bridge in
