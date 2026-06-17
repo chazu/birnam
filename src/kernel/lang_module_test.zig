@@ -1306,6 +1306,32 @@ test "errors: statement sequence halts on error" {
     try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalLine(s, lang, "[[| 1; 42] value]", a)));
 }
 
+// Phase 17.7 finish — a VM-COMPILED method body (installed via method:do:, run
+// through the bytecode VM per 11.12) now halts mid-sequence on an error, matching
+// the tree-walker. Before BRANCH_IF_ERROR the method ran the second statement and
+// returned 42.
+test "errors: VM-compiled method body halts mid-sequence on error" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // [3 halts] body: `let z := [10 / 0]; 42` — stmt 1 is a zeroDivide error.
+    _ = evalLine(s, lang, "[[3 vtable] method: #halts do: [| let z := [10 / 0]; 42]]", a);
+    const r = evalLine(s, lang, "[3 halts]", a);
+    try testing.expect(evalIsError(s, lang, "[3 halts]", a)); // halted → error, not 42
+    try testing.expect(ref_mod.isEid(r));
+    // The propagated error is the zeroDivide (read the kind fact directly).
+    const kind = s.store.currentValue(r >> 3, kernel_eids.ATTR_ERROR_KIND);
+    try testing.expectEqual(ref_mod.mkEid(s.interner.str_to_eid.get("zeroDivide").?), kind.?);
+
+    // A non-erroring compiled method body still returns its last statement.
+    _ = evalLine(s, lang, "[[3 vtable] method: #fine do: [| let z := 1; 42]]", a);
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(evalLine(s, lang, "[3 fine]", a)));
+}
+
 // True if evaluating `src` yields an ERROR_VT value (checks the vtable directly,
 // so it works for bare statements like `x := 5` that can't be wrapped in `[]`).
 fn evalIsError(s: anytype, lang: u64, src: []const u8, a: std.mem.Allocator) bool {
@@ -1931,6 +1957,44 @@ test "DEMO 17 strings: escapes + split/join/indexOf/trim/case/predicates" {
     try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang, "[[\"  a  b \" words] size]", a)));
 }
 
+// Cluster-1 slivers (Phase 17 finish): Float three-way compare, string format:,
+// File directory ops (makeDir:/isDir:/list:/removeDir:).
+test "17 cluster-1: Float <=> / compare: + string format: + File dir ops" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Float three-way compare — both `<=>` infix and `compare:`; SmallInt arg promotes.
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(evalLine(s, lang, "[1.5 <=> 2.5]", a)));
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(evalLine(s, lang, "[2.5 <=> 2.5]", a)));
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(evalLine(s, lang, "[9.0 compare: 2]", a)));
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(evalLine(s, lang, "[2.0 <=> 3]", a))); // float vs int
+
+    // string format: — positional {} substitution (strings unquoted), {{ }} escapes.
+    try expectTrue(s, lang, "[[\"{} + {} = {}\" format: #[2 3 5]] = \"2 + 3 = 5\"]", a);
+    try expectTrue(s, lang, "[[\"hi {}\" format: #[\"bob\"]] = \"hi bob\"]", a); // string arg, no quotes
+    try expectTrue(s, lang, "[[\"{{literal}}\" format: #[]] = \"{literal}\"]", a); // brace escapes
+    // too few args → an error value (isError true).
+    try expectTrue(s, lang, "[[\"{} {}\" format: #[1]] isError]", a);
+
+    // File directory ops over a unique temp dir.
+    const dir = "/tmp/birnam_cluster1_test";
+    std.fs.cwd().deleteTree(dir) catch {}; // clean slate
+    try expectTrue(s, lang, "[[File makeDir: \"/tmp/birnam_cluster1_test/sub\"] isNil]", a); // nil on success
+    try expectTrue(s, lang, "[File isDir: \"/tmp/birnam_cluster1_test\"]", a);
+    try expectFalse(s, lang, "[File isDir: \"/tmp/birnam_cluster1_test/nope\"]", a);
+    _ = evalLine(s, lang, "[File write: \"hi\" to: \"/tmp/birnam_cluster1_test/f.txt\"]", a);
+    // list: → a vector containing both "sub" and "f.txt" (order unspecified) → size 2.
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang, "[[File list: \"/tmp/birnam_cluster1_test\"] size]", a)));
+    // removeDir: on a non-empty dir errors; on an empty one succeeds (nil).
+    try expectTrue(s, lang, "[[File removeDir: \"/tmp/birnam_cluster1_test\"] isError]", a);
+    try expectTrue(s, lang, "[[File removeDir: \"/tmp/birnam_cluster1_test/sub\"] isNil]", a);
+    std.fs.cwd().deleteTree(dir) catch {};
+}
+
 // Phase 19.2 — callbacks. A birnam block becomes a C function pointer (libffi
 // closure) that libc `qsort` calls back on every comparison. Exercises the full
 // trampoline both ways (unmarshal the two element pointers → Refs, marshal the
@@ -1971,6 +2035,37 @@ test "FFI callback: birnam comparator sorts an array via libc qsort (19.2)" {
 
     _ = evalLine(s, lang, "[cb free]", a);
     _ = evalLine(s, lang, "[buf free]", a);
+}
+
+// Phase 19.2 finish — callback arity > 2. A 3-param birnam block becomes a C
+// function pointer with three int args; call the code location directly (a real
+// C-ABI 3-arg call) and confirm the trampoline marshals all three + dispatches
+// `value:value:value:`.
+test "FFI callback arity 3: birnam 3-param block called as a C function (19.2)" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // cb(x,y,z) = x + (y * z).
+    _ = evalLine(s, lang, "let f := [:x :y :z | [x + [y * z]]]", a);
+    const cb = evalLine(s, lang, "let cb := [Module callback: f sig: \"iii)i\"]", a);
+    try testing.expect(boxed.isCallback(cb));
+
+    const code = boxed.callbackCode(cb);
+    try testing.expect(code != 0);
+    const Fn = *const fn (c_int, c_int, c_int) callconv(.c) c_int;
+    const fp: Fn = @ptrFromInt(code);
+    try testing.expectEqual(@as(c_int, 2 + 3 * 4), fp(2, 3, 4));
+    try testing.expectEqual(@as(c_int, 10 + 5 * 5), fp(10, 5, 5));
+
+    // Arity 5 is rejected → nil (cap is 4).
+    try testing.expect(ref_mod.isNil(evalLine(s, lang, "[Module callback: f sig: \"iiiii)i\"]", a)));
+
+    _ = evalLine(s, lang, "[cb free]", a);
 }
 
 // Phase 19.5 — struct-as-entity, the user surface: define a struct from birnam
@@ -2207,6 +2302,62 @@ test "Phase 7.3 datalog pull: flat + nested-ref entity materialization" {
 
     // Malformed nested spec → error.
     try testing.expect(evalIsError(s, lang, "[db pull: #point spec: #[ #[#delegate] ]]", a));
+}
+
+test "Phase 7.3 pull finish: reverse refs + :many ref nesting + saved queries" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const TRUE = ref_mod.mkEid(kernel_eids.TRUE_EID);
+    const sz = s.interner.str_to_eid.get("size").?;
+    const at_sel = s.interner.str_to_eid.get("at:").?;
+
+    // Declare `:friend` as a `:many` attribute.
+    const many_eid = s.interner.str_to_eid.get("many").?;
+    const name_attr = s.api.intern("name".ptr, 4);
+    const friend = s.api.intern("friend".ptr, 6);
+    _ = try s.store.assert(friend, kernel_eids.ATTR_CARDINALITY, ref_mod.mkEid(many_eid), kernel_eids.M_USER);
+
+    const alice = s.api.intern("alice".ptr, 5);
+    const bob = s.api.intern("bob".ptr, 3);
+    const carol = s.api.intern("carol".ptr, 5);
+    _ = try s.store.assert(alice, name_attr, s.api.make_string("Alice".ptr, 5), kernel_eids.M_USER);
+    _ = try s.store.assert(bob, name_attr, s.api.make_string("Bob".ptr, 3), kernel_eids.M_USER);
+    _ = try s.store.assert(carol, name_attr, s.api.make_string("Carol".ptr, 5), kernel_eids.M_USER);
+    // alice -> {bob, carol} via the :many friend attr.
+    _ = try s.store.assert(alice, friend, ref_mod.mkEid(bob), kernel_eids.M_USER);
+    _ = try s.store.assert(alice, friend, ref_mod.mkEid(carol), kernel_eids.M_USER);
+
+    // Flat :many pull → at: #friend is a 2-element vector.
+    const flat = evalLine(s, lang, "[[db pull: #alice spec: #[ #friend ]] at: #friend]", a);
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send0(flat, sz)));
+
+    // Nested :many ref pull → vector of 2 child maps, each with a #name.
+    const nested = evalLine(s, lang, "[[db pull: #alice spec: #[ #[#friend #[ #name ]] ]] at: #friend]", a);
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send0(nested, sz)));
+    const first_child = send_mod.send1(nested, at_sel, ref_mod.mkSmallInt(0).?);
+    try testing.expect(!ref_mod.isNil(send_mod.send1(first_child, at_sel, ref_mod.mkEid(s.api.intern("name".ptr, 4)))));
+
+    // Reverse ref pull → who points AT bob via friend? Just alice. Bare `#_friend`.
+    const rev = evalLine(s, lang, "[[db pull: #bob spec: #[ #_friend ]] at: #_friend]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(rev, sz)));
+
+    // Reverse ref pull WITH sub-spec → vector of referrer maps; alice's name.
+    const rev_sub = evalLine(s, lang, "[[db pull: #bob spec: #[ #[#_friend #[ #name ]] ]] at: #_friend]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(rev_sub, sz)));
+    try testing.expectEqual(TRUE, evalLine(s, lang,
+        "[[[[[db pull: #bob spec: #[ #[#_friend #[ #name ]] ]] at: #_friend] at: 0] at: #name] = \"Alice\"]", a));
+
+    // Saved query: define by name, run by name → same as the inline findAll.
+    _ = evalLine(s, lang, "[db defineQuery: #namedThings find: ?n where: #[ #[?e #name ?n] ]]", a);
+    const ran = evalLine(s, lang, "[db run: #namedThings]", a);
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(send_mod.send0(ran, sz))); // alice/bob/carol
+    // Unknown saved query → an error value.
+    try testing.expect(evalIsError(s, lang, "[db run: #nopeNope]", a));
 }
 
 test "17.5 eager & / | and the | block-bar disambiguation" {

@@ -2130,6 +2130,16 @@ fn floatGtImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     return if (floatRefValue(s.receiver) > argAsF64(args[0])) mkEid(TRUE_EID) else mkEid(FALSE_EID);
 }
 
+/// `[2.5 <=> x]` / `[2.5 compare: x]` — three-way compare → -1 / 0 / 1 SmallInt
+/// (nil if the arg is not a number). SmallInt args promote to f64 (Phase 17.3).
+fn floatCompareImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    if (!isNumberRef(args[0])) return NIL;
+    const a = floatRefValue(s.receiver);
+    const b = argAsF64(args[0]);
+    return mkSmallInt(if (a < b) -1 else if (a > b) 1 else 0);
+}
+
 fn floatAsIntImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = args;
     _ = n_args;
@@ -3276,17 +3286,95 @@ fn dbDefineRuleImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return name_sym;
 }
 
+/// `[db defineQuery: #name find: ?v where: #[ <clauses> ]]` — store a complete
+/// query (its find spec + where clauses, both plain Refs since `?vars` are just
+/// symbols) under `#name`, runnable later by `[db run: #name]`. Re-defining a
+/// name overwrites (`:one` cardinality). Returns the name. (Phase 7.3 saved
+/// queries — name resolution from the surface.)
+fn dbDefineQueryImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    const api = g_api.?;
+    if (n < 3) return mkRuntimeError("defineQuery:find:where: expects a name, a find spec, and a clause vector");
+    const name_sym = args[0];
+    if (!isEid(name_sym)) return mkRuntimeError("defineQuery: query name must be a #symbol");
+    if (!isVectorRef(args[2])) return mkRuntimeError("defineQuery: where clauses must be a vector");
+    const find_attr = api.intern("saved-query-find".ptr, 16);
+    const where_attr = api.intern("saved-query-where".ptr, 17);
+    _ = api.assert_fact(name_sym >> 3, find_attr, args[1], g_module_eid);
+    _ = api.assert_fact(name_sym >> 3, where_attr, args[2], g_module_eid);
+    return name_sym;
+}
+
+/// `[db run: #name]` — execute the saved query stored under `#name`. An undefined
+/// name → an `#undefinedQuery` ERROR_VT. (Phase 7.3 saved queries.)
+fn dbRunImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    const name_sym = args[0];
+    if (!isEid(name_sym)) return mkRuntimeError("run: query name must be a #symbol");
+    const find_attr = api.intern("saved-query-find".ptr, 16);
+    const where_attr = api.intern("saved-query-where".ptr, 17);
+    const find_ref = api.query_eavt(name_sym >> 3, find_attr);
+    const where_ref = api.query_eavt(name_sym >> 3, where_attr);
+    if (find_ref == NIL or where_ref == NIL)
+        return mkRuntimeErrorKind(api.intern("undefinedQuery".ptr, 14), "run: no saved query under that name");
+    return runDatalogQuery(find_ref, where_ref, .none);
+}
+
 /// True iff `r` is an ERROR_VT entity (a propagating error value).
 fn isErrorRef(r: Ref) bool {
     if (!isEid(r)) return false;
     return g_api.?.query_eavt(r >> 3, ATTR_VTABLE) == mkEid(ERROR_VT);
 }
 
+/// Is `attr_sym` (a #symbol Ref) a REVERSE attribute — name starts with `_`
+/// (Datomic `:_attr` convention)? If so, returns the forward attribute's eid via
+/// `out_fwd`; else returns false. `#_likes` over entity E finds the entities that
+/// assert `likes == E`.
+fn reverseAttrFwd(attr_sym: Ref, out_fwd: *u64) bool {
+    const api = g_api.?;
+    if (!isEid(attr_sym)) return false;
+    const name_ref = api.symbol_name(attr_sym >> 3);
+    if (!isString(name_ref)) return false;
+    const name = stringBytes(name_ref);
+    if (name.len < 2 or name[0] != '_') return false;
+    out_fwd.* = api.intern(name[1..].ptr, name[1..].len);
+    return true;
+}
+
+/// Pull the eid-valued ref `v` through `sub` — one entity, or (for a `:many` ref
+/// whose `currentValue` is a vector) a vector of child maps. Non-entity → nil.
+fn pullRefValue(v: Ref, sub: Ref) Ref {
+    const api = g_api.?;
+    if (isVectorRef(v)) {
+        const n = api.rrb_len(v);
+        var empty: [0]Ref = .{};
+        var items: Ref = api.make_rrb(&empty, 0);
+        var k: u64 = 0;
+        while (k < n) : (k += 1) {
+            const el = api.rrb_nth(v, k);
+            if (!isEid(el) or el == NIL) continue;
+            const child = pullEntity(el >> 3, sub);
+            if (isErrorRef(child)) return child;
+            items = api.rrb_with(items, child);
+        }
+        return items;
+    }
+    if (isEid(v) and v != NIL) return pullEntity(v >> 3, sub);
+    return NIL;
+}
+
 /// Recursively materialize an entity per a pull spec into an ASSOC_VT map.
-/// Spec elements: `#attr` → `map[#attr] = currentValue(entity, attr)` (nil if
-/// absent); `#[#refattr <sub-spec>]` → follow the eid-valued `refattr` and pull
-/// `<sub-spec>` from it (nil if the value is absent or not an entity). (Phase 7.3
-/// pull — flat + nested ref specs; reverse/many attrs deferred.)
+/// Spec elements:
+///   `#attr`              → `map[#attr] = currentValue(entity, attr)` (a vector
+///                          for a `:many` attr; nil if absent).
+///   `#_attr`             → reverse ref: `map[#_attr] = vector of the entity eids
+///                          that assert `attr == entity`.
+///   `#[#refattr <spec>]` → follow the forward ref(s) and pull `<spec>` from each
+///                          (a `:many` ref yields a vector of child maps).
+///   `#[#_attr <spec>]`   → follow reverse refs, pull `<spec>` from each referrer
+///                          (always a vector).
+/// (Phase 7.3 pull — flat + nested ref + reverse + `:many` ref nesting.)
 fn pullEntity(entity_eid: u64, spec: Ref) Ref {
     const api = g_api.?;
     if (!isVectorRef(spec)) return mkRuntimeError("pull: spec must be a vector of #attr / #[#attr <spec>]");
@@ -3299,15 +3387,25 @@ fn pullEntity(entity_eid: u64, spec: Ref) Ref {
             if (api.rrb_len(elem) != 2) return mkRuntimeError("pull: a nested spec must be #[#attr <spec>]");
             const attr_sym = api.rrb_nth(elem, 0);
             if (!isEid(attr_sym)) return mkRuntimeError("pull: attribute must be a #symbol");
-            const v = api.query_eavt(entity_eid, attr_sym >> 3);
+            const sub = api.rrb_nth(elem, 1);
+            var fwd: u64 = 0;
             var child: Ref = NIL;
-            if (isEid(v) and v != NIL) {
-                child = pullEntity(v >> 3, api.rrb_nth(elem, 1));
-                if (isErrorRef(child)) return child;
+            if (reverseAttrFwd(attr_sym, &fwd)) {
+                // Reverse ref → pull each referrer; result is always a vector.
+                const refs = api.reverse_refs(fwd, entity_eid);
+                child = pullRefValue(refs, sub);
+            } else {
+                child = pullRefValue(api.query_eavt(entity_eid, attr_sym >> 3), sub);
             }
+            if (isErrorRef(child)) return child;
             map = api.map_put(map, attr_sym, child);
         } else if (isEid(elem)) {
-            map = api.map_put(map, elem, api.query_eavt(entity_eid, elem >> 3));
+            var fwd: u64 = 0;
+            if (reverseAttrFwd(elem, &fwd)) {
+                map = api.map_put(map, elem, api.reverse_refs(fwd, entity_eid));
+            } else {
+                map = api.map_put(map, elem, api.query_eavt(entity_eid, elem >> 3));
+            }
         } else {
             return mkRuntimeError("pull: spec elements must be #attr or #[#attr <spec>]");
         }
@@ -3347,6 +3445,8 @@ fn installDbSurface() void {
         .{ .name = "findAll:where:since:", .impl = @ptrCast(&dbFindAllWhereSinceImpl) },
         .{ .name = "findAll:where:between:and:", .impl = @ptrCast(&dbFindAllWhereBetweenAndImpl) },
         .{ .name = "defineRule:params:body:", .impl = @ptrCast(&dbDefineRuleImpl) },
+        .{ .name = "defineQuery:find:where:", .impl = @ptrCast(&dbDefineQueryImpl) },
+        .{ .name = "run:", .impl = @ptrCast(&dbRunImpl) },
         .{ .name = "pull:spec:", .impl = @ptrCast(&dbPullSpecImpl) },
     };
     for (db_methods) |m| {
@@ -3444,6 +3544,58 @@ fn fileDeleteImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return NIL;
 }
 
+/// `[File makeDir: path]` → nil on success, or a kinded ERROR_VT. Creates any
+/// missing intermediate directories (mkdir -p). No-op if it already exists.
+fn fileMakeDirImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(args[0])) return mkRuntimeErrorKind(api.intern("ioError".ptr, 7), "File makeDir: path must be a string");
+    const path = stringBytes(args[0]);
+    std.fs.cwd().makePath(path) catch |e|
+        return mkRuntimeErrorFmt(api.intern(ioErrorKind(e).ptr, ioErrorKind(e).len), "File makeDir: {s}: {s}", .{ path, @errorName(e) });
+    return NIL;
+}
+
+/// `[File removeDir: path]` → nil on success, or a kinded ERROR_VT. Removes an
+/// EMPTY directory (errors if non-empty — deliberately not recursive).
+fn fileRemoveDirImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(args[0])) return mkRuntimeErrorKind(api.intern("ioError".ptr, 7), "File removeDir: path must be a string");
+    const path = stringBytes(args[0]);
+    std.fs.cwd().deleteDir(path) catch |e|
+        return mkRuntimeErrorFmt(api.intern(ioErrorKind(e).ptr, ioErrorKind(e).len), "File removeDir: {s}: {s}", .{ path, @errorName(e) });
+    return NIL;
+}
+
+/// `[File isDir: path]` → true / false (never errors; false if absent or a file).
+fn fileIsDirImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    if (!isString(args[0])) return mkEid(FALSE_EID);
+    const st = std.fs.cwd().statFile(stringBytes(args[0])) catch return mkEid(FALSE_EID);
+    return if (st.kind == .directory) mkEid(TRUE_EID) else mkEid(FALSE_EID);
+}
+
+/// `[File list: path]` → a vector of entry-name strings (one level, unsorted), or
+/// a kinded ERROR_VT. `.` / `..` are excluded by the iterator.
+fn fileListImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(args[0])) return mkRuntimeErrorKind(api.intern("ioError".ptr, 7), "File list: path must be a string");
+    const path = stringBytes(args[0]);
+    var dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch |e|
+        return mkRuntimeErrorFmt(api.intern(ioErrorKind(e).ptr, ioErrorKind(e).len), "File list: {s}: {s}", .{ path, @errorName(e) });
+    defer dir.close();
+    const alloc = std.heap.page_allocator;
+    var items = std.ArrayList(Ref){};
+    defer items.deinit(alloc);
+    var it = dir.iterate();
+    while (it.next() catch null) |entry| {
+        items.append(alloc, api.make_string(entry.name.ptr, entry.name.len)) catch break;
+    }
+    return api.make_rrb(items.items.ptr, items.items.len);
+}
+
 /// `[System print: x]` → write x's displayString to stdout (no newline);
 /// returns nil. Unlike `print` (which goes to the prefixed REPL log = stderr),
 /// this is clean stdout for program output.
@@ -3523,6 +3675,10 @@ fn installIoSurface() void {
         .{ .name = "append:to:", .impl = @ptrCast(&fileAppendImpl) },
         .{ .name = "exists:", .impl = @ptrCast(&fileExistsImpl) },
         .{ .name = "delete:", .impl = @ptrCast(&fileDeleteImpl) },
+        .{ .name = "makeDir:", .impl = @ptrCast(&fileMakeDirImpl) },
+        .{ .name = "removeDir:", .impl = @ptrCast(&fileRemoveDirImpl) },
+        .{ .name = "isDir:", .impl = @ptrCast(&fileIsDirImpl) },
+        .{ .name = "list:", .impl = @ptrCast(&fileListImpl) },
     };
     for (file_methods) |m| {
         _ = api.assert_fact(FILE_PROTO_VT, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
@@ -3729,6 +3885,53 @@ fn displayStringImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     var buf: [4096]u8 = undefined;
     const len = appendRef(&buf, 0, s.receiver);
     return g_api.?.make_string(buf[0..len].ptr, len);
+}
+
+/// Append `val`'s display form (strings unquoted) to `list`.
+fn appendDisplay(list: *std.ArrayList(u8), alloc: std.mem.Allocator, val: Ref) void {
+    if (isString(val)) {
+        list.appendSlice(alloc, stringBytes(val)) catch {};
+        return;
+    }
+    var buf: [4096]u8 = undefined;
+    const len = appendRef(&buf, 0, val);
+    list.appendSlice(alloc, buf[0..len]) catch {};
+}
+
+/// `["{} + {} = {}" format: #[2 3 5]]` → `"2 + 3 = 5"`. Each `{}` placeholder is
+/// replaced positionally by the next vector element's displayString (strings
+/// unquoted). `{{` / `}}` escape literal braces. Too few args → an `#argError`
+/// ERROR_VT; extra args are ignored. Phase 17 string format.
+fn strFormatImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    const api = g_api.?;
+    if (!isVectorRef(args[0])) return mkRuntimeErrorKind(api.intern("typeMismatch".ptr, 12), "format: argument must be a vector");
+    const tmpl = stringBytes(s.receiver);
+    const nargs = api.rrb_len(args[0]);
+    const alloc = std.heap.page_allocator;
+    var out = std.ArrayList(u8){};
+    defer out.deinit(alloc);
+    var arg_i: u64 = 0;
+    var i: usize = 0;
+    while (i < tmpl.len) {
+        const c = tmpl[i];
+        if (c == '{' and i + 1 < tmpl.len and tmpl[i + 1] == '{') {
+            out.append(alloc, '{') catch {};
+            i += 2;
+        } else if (c == '}' and i + 1 < tmpl.len and tmpl[i + 1] == '}') {
+            out.append(alloc, '}') catch {};
+            i += 2;
+        } else if (c == '{' and i + 1 < tmpl.len and tmpl[i + 1] == '}') {
+            if (arg_i >= nargs) return mkRuntimeErrorFmt(api.intern("argError".ptr, 8), "format: not enough arguments for placeholder {d}", .{arg_i + 1});
+            appendDisplay(&out, alloc, api.rrb_nth(args[0], arg_i));
+            arg_i += 1;
+            i += 2;
+        } else {
+            out.append(alloc, c) catch {};
+            i += 1;
+        }
+    }
+    return api.make_string(out.items.ptr, out.items.len);
 }
 
 /// `[x print]` — write displayString + newline to output; return self
@@ -3954,6 +4157,7 @@ fn installStdlib() void {
     // String comparison + substring.
     _ = api.assert_fact(STRING_VT, sel_lt_g, mkEid(api.make_closure(@ptrCast(&strLtImpl), NIL)), g_module_eid);
     _ = api.assert_fact(STRING_VT, api.intern("copyFrom:to:".ptr, 12), mkEid(api.make_closure(@ptrCast(&strCopyFromToImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(STRING_VT, api.intern("format:".ptr, 7), mkEid(api.make_closure(@ptrCast(&strFormatImpl), NIL)), g_module_eid);
 
     // SmallInt `<=` / `>=` (completeness — had only `<`/`>`/`=`).
     _ = api.assert_fact(SMALLINT_VT, api.intern("<=".ptr, 2), mkEid(api.make_closure(@ptrCast(&smallintLeImpl), NIL)), g_module_eid);
@@ -3967,6 +4171,8 @@ fn installStdlib() void {
     _ = api.assert_fact(SMALLINT_VT, cmp_keyword, mkEid(api.make_closure(@ptrCast(&smallintCompareImpl), NIL)), g_module_eid);
     _ = api.assert_fact(STRING_VT, cmp_spaceship, mkEid(api.make_closure(@ptrCast(&strCompareImpl), NIL)), g_module_eid);
     _ = api.assert_fact(STRING_VT, cmp_keyword, mkEid(api.make_closure(@ptrCast(&strCompareImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, cmp_spaceship, mkEid(api.make_closure(@ptrCast(&floatCompareImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(FLOAT_VT, cmp_keyword, mkEid(api.make_closure(@ptrCast(&floatCompareImpl), NIL)), g_module_eid);
 
     // Phase 17 string batch — native (byte-level). Birnam-composed string
     // methods (startsWith:/endsWith:/includes:/replace:with:/lines/words/<=,>,>=)
@@ -4725,6 +4931,11 @@ fn installPrimitives() void {
     _ = api.assert_fact(CLOSURE_VT, sel_value_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
     _ = api.assert_fact(CLOSURE_VT, sel_value_of_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
     _ = api.assert_fact(CLOSURE_VT, sel_value_value_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
+    // 3-/4-arg block invocation — closureValueImpl is arity-agnostic. Lets FFI
+    // callbacks with 3 or 4 C parameters dispatch a birnam block (Phase 19.2
+    // arity>2 finish); also usable directly as `[blk value: a value: b value: c]`.
+    _ = api.assert_fact(CLOSURE_VT, api.intern("value:value:value:".ptr, 18), mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(CLOSURE_VT, api.intern("value:value:value:value:".ptr, 24), mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
 
     const while_true_sel = api.intern("whileTrue:".ptr, 10);
     const while_false_sel = api.intern("whileFalse:".ptr, 11);

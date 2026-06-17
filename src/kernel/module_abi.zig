@@ -375,6 +375,13 @@ pub const IdApi = extern struct {
     /// rootable method from a compiled top-level block arg (Cluster ①) instead
     /// of a raw, prune-invisible closure. (Appended at END per ABI discipline.)
     method_eid_of_bytecode_closure: *const fn (closure_eid: u64) callconv(.c) u64,
+
+    /// Phase 7.3 pull finish (2026-06-16) — reverse-ref walk. Returns an RRB
+    /// vector of the entity eids (each `mkEid`-tagged) that currently assert
+    /// `attr == mkEid(value_eid)` — i.e. the entities pointing AT `value_eid`
+    /// through `attr` (AVET-backed). Empty vector if none. Backs reverse pull
+    /// (`#[#_attr <spec>]`). (Appended at END per the append-only ABI discipline.)
+    reverse_refs: *const fn (attr_eid: u64, value_eid: u64) callconv(.c) Ref,
 };
 
 comptime {

@@ -391,6 +391,11 @@ pub const Opcode = enum(u8) {
     MAKE_BLOCK = 16,
     /// `[op u8:arg-count u16:site-idx]` — invoke top-of-stack Block obj.
     INVOKE_BLOCK = 17,
+    /// `[op i16:offset]` — peek TOS; if it is an ERROR_VT value, jump (leaving
+    /// the error on the stack), else pop and fall through. Emitted between the
+    /// statements of a sequence so a compiled `a. b.` halts on `a`'s error
+    /// instead of running `b` (Phase 17.7 finish).
+    BRANCH_IF_ERROR = 18,
 };
 
 /// Decoded operand size per opcode (bytes following the opcode byte).
@@ -400,7 +405,7 @@ pub fn operandSize(op: Opcode) usize {
     return switch (op) {
         .POP, .LOAD_SELF, .LOAD_CONST_TRUE, .LOAD_CONST_FALSE, .LOAD_CONST_NIL, .RETURN => 0,
         .PUSH_LOCAL, .STORE_LOCAL, .RETURN_FROM_METHOD => 1,
-        .PUSH_CONST, .MAKE_BLOCK, .JUMP, .BRANCH_IF_FALSE => 2,
+        .PUSH_CONST, .MAKE_BLOCK, .JUMP, .BRANCH_IF_FALSE, .BRANCH_IF_ERROR => 2,
         .INVOKE_BLOCK => 3,
         .PUSH_SMALLINT_I32 => 4,
         .SEND_0, .SEND_1 => 6,

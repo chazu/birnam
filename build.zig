@@ -67,11 +67,21 @@ pub fn build(b: *std.Build) void {
 
     // -- Shared module-side ABI (single source of truth) ---------------------
     // The C-ABI IdApi/ShellContext/FactCallback struct definitions live in one
-    // file (src/kernel/module_abi.zig); the kernel re-exports them and every
+    // file (src/kernel/module_abi.zig); the kernel imports it relatively and every
     // dylib module imports it as `@import("module_abi")` instead of hand-copying
     // the struct. Wired as a named module because Zig forbids a dylib from
     // `@import`-ing a file outside its own module root.
-    const module_abi_mod = b.createModule(.{ .root_source_file = b.path("src/kernel/module_abi.zig") });
+    //
+    // The named module roots at a build-time COPY of the file (not the original),
+    // mirroring the kernel_eids mirror pattern. Under static AOT the kernel
+    // (id_api.zig, relative import) and the statically-linked dylib sources
+    // (peg/lang, named import) share ONE module graph; if both pointed at the same
+    // physical file, Zig would reject it as "file in two modules". The copy is a
+    // distinct path so the two never collide, byte-identical (re-copied each
+    // build → no drift), and structurally identical so the `@ptrCast` across the
+    // ABI boundary works exactly as it already does across the dylib boundary.
+    const module_abi_copy = b.addWriteFiles().addCopyFile(b.path("src/kernel/module_abi.zig"), "module_abi.zig");
+    const module_abi_mod = b.createModule(.{ .root_source_file = module_abi_copy });
 
     // -- Shell executable ----------------------------------------------------
 

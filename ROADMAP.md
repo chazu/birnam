@@ -2063,10 +2063,14 @@ order ≠ roadmap order). Item-by-item:
     `#Error` wildcard; unmatched propagates), `[block ensure: cleanup]` (cleanup
     runs on value OR error), `[msg error]` / `[msg error: #kind]` user raise.
   All in the always-kept primitives tier (works under `--strip=malleable`).
-  **Deferred (non-blocking):** (a) **VM-compiled statement sequences don't halt
-  mid-sequence on error** (only the tree-walker does) — a compiled method's
-  `a. b.` runs `b` even if `a` errored; needs a bytecode CHECK/propagate after
-  non-final statements. (b) **Type-mismatch hardening — SHIPPED 2026-06-16.**
+  **Deferred (non-blocking):** (a) **VM-compiled statement-sequence mid-halt —
+  SHIPPED 2026-06-16** (branch `slivers-cleanup`). New opcode `BRANCH_IF_ERROR`
+  (18) emitted between the statements of a compiled sequence: peek TOS; if it is
+  an ERROR_VT value, leave it and jump to the end of the sequence (the error
+  becomes the result — matches the tree-walker); else drop the value and fall
+  through (it subsumes the old inter-statement POP). Bytecode FORMAT_VERSION
+  1→2. A compiled method `a. b.` now halts on `a`'s error instead of running
+  `b`. (b) **Type-mismatch hardening — SHIPPED 2026-06-16.**
   SmallInt/Float arithmetic no longer reinterprets a non-number arg's bits: an
   integer arg takes the checked-integer path (`@mulWithOverflow` + 61-bit
   `mkSmallIntChecked` → `#overflow` ERROR_VT instead of a safe-build panic /
@@ -2078,7 +2082,9 @@ order ≠ roadmap order). Item-by-item:
   lang_module_test 70/70 (new 17.7 case asserts kinds via `on:do:`); full kernel
   sweep 39 files green. (c)
   arg-position error propagation (receiver-position covered; args explicit). (d)
-  resume/retry (Result can't — accepted). (e) source location in errors.
+  resume/retry (Result can't — accepted). (e) source location in errors — still
+  deferred (needs a "current source span" threaded through both eval paths +
+  most native error sites have no AST context; its own design pass).
 - **17.8 I/O surface — SHIPPED 2026-06-14** (branch `errors-result-model`): the
   second usability batch. Two global prototype singletons (like `Module`/`db`),
   installed lang-side in the always-kept tier (`installIoSurface`):
@@ -2096,14 +2102,22 @@ order ≠ roadmap order). Item-by-item:
     them, and `shell.zig` captures everything after `--` as program args
     (`birnam peg.dylib lang.dylib -- a b` → `[System arguments]` = `#["a" "b"]`).
     EIDs `FILE_PROTO_VT=220`/`FILE_PROTO=221`/`SYSTEM_PROTO_VT=222`/`SYSTEM_PROTO=223`.
-  **Deferred:** AOT binaries don't capture argv yet (`System arguments` is empty
-  under AOT — only the shell wires `setArgs`); stream objects / buffered I/O;
-  directory ops; `withFile:do:` bracket sugar over `ensure:`.
+  - **Directory ops — SHIPPED 2026-06-16** (branch `slivers-cleanup`): `File`
+    `makeDir:` (mkdir -p), `removeDir:` (empty-only), `isDir:`, `list:` (→ vector
+    of entry-name strings).
+  - **AOT argv — SHIPPED 2026-06-16:** `aot_main.captureArgs` mirrors the shell's
+    post-`--` collection so `[System arguments]` works under AOT. (Caveat:
+    end-to-end AOT verification blocked by a separate pre-existing `zig build aot`
+    module-graph error — peg.zig dual-module membership — not this change.)
+  **Deferred:** stream objects / buffered I/O; `withFile:do:` bracket sugar over
+  `ensure:` (coupled — no file-handle object yet).
 
-**Remaining:** `&`/`|` (grammar collision); a general `compare:`/`<=>` three-way
-+ sorted-collection type (sort over `<` covers the common case today); string
-`format:`/interpolation if needed (split/join/trim/case/search/escapes all done).
-None blocking.
+**Remaining:** all SHIPPED 2026-06-16 (branch `slivers-cleanup`) — `&`/`|`
+(already shipped earlier; grammar collision was already resolved); general
+`<=>`/`compare:` now also on FLOAT_VT (was SmallInt+String); string `format:`
+(positional `{}` over a vector, `{{`/`}}` escapes, too-few-args → `#argError`).
+A distinct sorted-collection type stays unbuilt — `sort`/`sortBy:` over `<`
+cover the case. None blocking.
 
 **Goal:** The minimal surface that makes the language pleasant to explore and
 self-document. Largely buildable IN birnam once collections land; some primitives
@@ -2780,11 +2794,17 @@ field-read slot cache. Nothing perf-related happens before this.
 
 **④+ Off critical path (demand-driven, any order):**
 - *FFI*: 19.2 callback GC-rooting ✓ SHIPPED 2026-06-16 (box→Ref GC-mark bridge in
-  gc.consider); remaining 19.2 = arity>2.
+  gc.consider); **19.2 arity>2 ✓ SHIPPED 2026-06-16** (branch `slivers-cleanup`):
+  `value:value:value:`/`value:value:value:value:` on CLOSURE_VT (closureValueImpl
+  is arity-agnostic) + trampoline marshals up to 4 args + makeCallback cap 4.
   19.5 nested/array fields in Sig `{...}` ✓ SHIPPED 2026-06-16 (recursive Aggr +
-  scalar-array flatten); remaining 19.5 = struct-as-entity nested-field accessors,
-  by-value struct ARG auto-marshal, field fact-materialization (deep idst, own
-  arc), struct arrays in `{...}`; x86_64 libffi headers (non-arm CI).
+  scalar-array flatten); **19.5 struct-as-entity nested-field accessors ✓ SHIPPED
+  2026-06-16** (a `struct:fields:` field whose type entry is itself a struct-TYPE
+  object → nested field placed at the inner type's natural alignment; getter
+  returns a struct-instance VIEW over the parent's memory; STRUCT_TYPE object
+  gained an alignment slot). Remaining 19.5 = by-value struct ARG auto-marshal,
+  field fact-materialization (deep idst, own arc), struct ARRAYS in `{...}`;
+  x86_64 libffi headers (non-arm CI).
 - *GC tail*: **15.A-AST SHIPPED 2026-06-16** (provenance + ① regression/mcache +
   closure-aware prune mark-walk; redefine/throwaway churn now collected, live
   methods + closures-in-vars survive `:prune`). **15.P (const-pool RRB finalizer)

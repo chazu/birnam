@@ -14,8 +14,9 @@ pub const Opcode = vm.Opcode;
 /// Bytecode wire-format version. Bump on any opcode-set or operand-encoding
 /// change. Recorded in the image manifest (Phase 12) so a loaded image is
 /// rejected if its bytecode predates an incompatible VM change. v1 = the
-/// 16-opcode set frozen in ADR-11 addendum.
-pub const FORMAT_VERSION: u32 = 1;
+/// 16-opcode set frozen in ADR-11 addendum. v2 = adds BRANCH_IF_ERROR (opcode
+/// 18) for compiled statement-sequence error halting (Phase 17.7 finish).
+pub const FORMAT_VERSION: u32 = 2;
 
 // -- Encoder -----------------------------------------------------------------
 
@@ -141,6 +142,13 @@ pub const Encoder = struct {
     }
     pub fn branchIfFalse_forward(self: *Encoder, allocator: std.mem.Allocator) !usize {
         try self.buf.append(allocator, @intFromEnum(Opcode.BRANCH_IF_FALSE));
+        const patch_pos = self.buf.items.len;
+        try appendI16(&self.buf, allocator, 0);
+        return patch_pos;
+    }
+    /// Emit a BRANCH_IF_ERROR with placeholder offset (patched via `patchJump`).
+    pub fn branchIfError_forward(self: *Encoder, allocator: std.mem.Allocator) !usize {
+        try self.buf.append(allocator, @intFromEnum(Opcode.BRANCH_IF_ERROR));
         const patch_pos = self.buf.items.len;
         try appendI16(&self.buf, allocator, 0);
         return patch_pos;

@@ -187,6 +187,7 @@ pub fn populate() IdApi {
         .string_reverse = &cStringReverse,
         .arg_count = &cArgCount,
         .arg_at = &cArgAt,
+        .reverse_refs = &cReverseRefs,
     };
 }
 
@@ -729,6 +730,23 @@ fn cRetractFact(e: u64, a: u64, v: Ref, m: u64) callconv(.c) u64 {
 fn cQueryEavt(e: u64, a: u64) callconv(.c) Ref {
     const s = send_mod.storePtr() orelse return ref_mod.NIL;
     return s.currentValue(e, a) orelse ref_mod.NIL;
+}
+
+/// Reverse-ref walk (Phase 7.3 pull finish). Entities `e` where the current
+/// value of `(e, attr)` is `mkEid(value_eid)` — i.e. those pointing AT
+/// `value_eid` through `attr`. Returns an RRB vector of `mkEid`-tagged entity
+/// eids (empty if none). AVET-backed equality lookup; covers `:one` and `:many`
+/// (a `:many` referrer is matched once for the value).
+fn cReverseRefs(attr_eid: u64, value_eid: u64) callconv(.c) Ref {
+    const s = send_mod.storePtr() orelse return ref_mod.NIL;
+    const a = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    var out = std.ArrayList(Ref){};
+    defer out.deinit(a);
+    var it = s.entitiesMatching(attr_eid, ref_mod.mkEid(value_eid));
+    while (it.next()) |e| {
+        out.append(a, ref_mod.mkEid(e)) catch return ref_mod.NIL;
+    }
+    return boxed.mkRrb(a, out.items) catch ref_mod.NIL;
 }
 
 fn cSend0(receiver: Ref, sel: u64) callconv(.c) Ref {

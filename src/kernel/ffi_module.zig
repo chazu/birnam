@@ -675,7 +675,7 @@ fn methodCellValue(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
 /// pointer (a CALLBACK_VT box) that calls back into `aBlock` on each invocation.
 /// Pass it to a wrapped C function as a `p`/pointer arg; free with `[cb free]`.
 /// Returns nil if the sig isn't a string (closure validity is checked lazily by
-/// the trampoline's send). Arity > 2 is rejected (block-value protocol limit).
+/// the trampoline's send). Arity > 4 is rejected (block-value protocol limit).
 fn methodCallback(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     _ = s;
     if (n_args < 2 or !strings.isString(args[1])) return ref_mod.NIL;
@@ -740,6 +740,21 @@ fn structFieldGet(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref 
     const f = unpackField(c.data);
     const base = boxed.structInstanceAddr(s.receiver);
     return ffi.peekKind(alloc, base + f.offset, f.kind, f.unsigned);
+}
+
+/// `[pt nestedField]` — return a struct-instance VIEW of a nested struct field
+/// (Phase 19.5 nested accessors). The view shares the parent's backing memory at
+/// `base + offset`, so reads see live bytes and `[[pt inner] x: 9]` writes them.
+/// `data` = `#[ offset, nestedTypeObject ]`.
+fn structFieldGetNested(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = .{ args, n_args };
+    const alloc = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const c = s.closure orelse return ref_mod.NIL;
+    const off: usize = @intCast(ref_mod.untagSmallInt(boxed.rrbNth(c.data, 0)));
+    const type_obj = boxed.rrbNth(c.data, 1);
+    const ivt = boxed.structTypeInstanceVt(type_obj);
+    const base = boxed.structInstanceAddr(s.receiver);
+    return boxed.mkStructInstance(alloc, ivt, base + off) catch ref_mod.NIL;
 }
 
 /// `[pt fieldName: v]` — poke the field; returns self (chainable).
@@ -823,7 +838,27 @@ fn methodStruct(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     while (i < nfields) : (i += 1) {
         const name_ref = boxed.rrbNth(fields, i * 2);
         const type_ref = boxed.rrbNth(fields, i * 2 + 1);
-        if (!ref_mod.isEid(name_ref) or !ref_mod.isEid(type_ref)) return ref_mod.NIL;
+        if (!ref_mod.isEid(name_ref)) return ref_mod.NIL;
+        const getter_sel = ref_mod.untagEid(name_ref);
+
+        if (boxed.isStructType(type_ref)) {
+            // Nested struct field — place at the nested type's natural alignment;
+            // getter returns a struct-instance view at base+offset (shared memory,
+            // so `[[pt inner] x: 9]` mutates the parent's bytes). No scalar setter
+            // (assign through the nested instance's own field setters).
+            const nalign = boxed.structTypeAlign(type_ref);
+            const nsize = boxed.structTypeSize(type_ref);
+            const off = alignUpU(cursor, nalign);
+            cursor = off + nsize;
+            if (nalign > max_align) max_align = nalign;
+            // data = #[ offset, nestedTypeObject ] (offset > 61 bits never happens).
+            var dparts = [_]Ref{ ref_mod.mkSmallInt(@intCast(off)) orelse return ref_mod.NIL, type_ref };
+            const data = boxed.mkRrb(alloc, &dparts) catch return ref_mod.NIL;
+            installMethodWithData(alloc, store, table, instance_vt, getter_sel, @ptrCast(&structFieldGetNested), data) catch return ref_mod.NIL;
+            continue;
+        }
+
+        if (!ref_mod.isEid(type_ref)) return ref_mod.NIL;
         const tname = interner.nameOf(ref_mod.untagEid(type_ref)) orelse return ref_mod.NIL;
         const kr = ffi.kindFromName(tname) orelse return ref_mod.NIL;
         const sz = ffi.scalarSize(kr.kind);
@@ -832,7 +867,6 @@ fn methodStruct(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
         if (sz > max_align) max_align = sz;
 
         const data = ref_mod.mkSmallInt(packField(off, kr.kind, kr.unsigned)) orelse return ref_mod.NIL;
-        const getter_sel = ref_mod.untagEid(name_ref);
         installMethodWithData(alloc, store, table, instance_vt, getter_sel, @ptrCast(&structFieldGet), data) catch return ref_mod.NIL;
 
         const fname = interner.nameOf(getter_sel) orelse return ref_mod.NIL;
@@ -846,7 +880,7 @@ fn methodStruct(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     installMethod(alloc, store, table, instance_vt, kernel_eids.SEL_FFI_STRUCT_PTR, @ptrCast(&methodStructPtr)) catch return ref_mod.NIL;
     installMethod(alloc, store, table, instance_vt, kernel_eids.SEL_FFI_FREE, @ptrCast(&methodStructFree)) catch return ref_mod.NIL;
 
-    return boxed.mkStructType(alloc, instance_vt, size) catch ref_mod.NIL;
+    return boxed.mkStructType(alloc, instance_vt, size, max_align) catch ref_mod.NIL;
 }
 
 /// `[p free]` — libc-free the address. Only valid for `alloc:`-minted pointers.
