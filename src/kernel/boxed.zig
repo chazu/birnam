@@ -159,11 +159,14 @@ pub fn structInstanceAddr(r: Ref) usize {
 }
 
 /// A struct TYPE object (STRUCT_TYPE_VT): slot 0 = the minted per-type instance
-/// vtable eid, slot 1 = the struct's byte size. Both raw u64.
-pub fn mkStructType(allocator: std.mem.Allocator, instance_vt: u64, size: usize) !Ref {
-    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.STRUCT_TYPE_VT), 2);
+/// vtable eid, slot 1 = the struct's byte size, slot 2 = natural alignment (max
+/// field alignment). All raw u64. Alignment lets an enclosing struct place a
+/// nested-struct field at its correct C offset (Phase 19.5 nested accessors).
+pub fn mkStructType(allocator: std.mem.Allocator, instance_vt: u64, size: usize, alignment: usize) !Ref {
+    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.STRUCT_TYPE_VT), 3);
     object.setSlot(obj_ptr, 0, instance_vt);
     object.setSlot(obj_ptr, 1, @as(u64, @intCast(size)));
+    object.setSlot(obj_ptr, 2, @as(u64, @intCast(alignment)));
     return object.toRef(obj_ptr);
 }
 
@@ -173,6 +176,18 @@ pub fn structTypeInstanceVt(r: Ref) u64 {
 
 pub fn structTypeSize(r: Ref) usize {
     return @as(usize, @intCast(object.slotAt(object.fromRef(r), 1)));
+}
+
+pub fn structTypeAlign(r: Ref) usize {
+    return @as(usize, @intCast(object.slotAt(object.fromRef(r), 2)));
+}
+
+/// True iff `r` is a struct TYPE object (its vtable is STRUCT_TYPE_VT). Used by
+/// `struct:fields:` to tell a nested-struct field type from a scalar symbol.
+pub fn isStructType(r: Ref) bool {
+    if ((r & 0b111) != 0 or r == 0) return false;
+    const vt_ptr: *const Ref = @ptrFromInt(r - @sizeOf(Ref));
+    return vt_ptr.* == ref_mod.mkEid(kernel_eids.STRUCT_TYPE_VT);
 }
 
 /// Phase 9.5.5 variant — allocate the boxed pointer AND assert a

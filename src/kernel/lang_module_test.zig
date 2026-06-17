@@ -2011,6 +2011,37 @@ test "FFI callback: birnam comparator sorts an array via libc qsort (19.2)" {
     _ = evalLine(s, lang, "[buf free]", a);
 }
 
+// Phase 19.2 finish — callback arity > 2. A 3-param birnam block becomes a C
+// function pointer with three int args; call the code location directly (a real
+// C-ABI 3-arg call) and confirm the trampoline marshals all three + dispatches
+// `value:value:value:`.
+test "FFI callback arity 3: birnam 3-param block called as a C function (19.2)" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // cb(x,y,z) = x + (y * z).
+    _ = evalLine(s, lang, "let f := [:x :y :z | [x + [y * z]]]", a);
+    const cb = evalLine(s, lang, "let cb := [Module callback: f sig: \"iii)i\"]", a);
+    try testing.expect(boxed.isCallback(cb));
+
+    const code = boxed.callbackCode(cb);
+    try testing.expect(code != 0);
+    const Fn = *const fn (c_int, c_int, c_int) callconv(.c) c_int;
+    const fp: Fn = @ptrFromInt(code);
+    try testing.expectEqual(@as(c_int, 2 + 3 * 4), fp(2, 3, 4));
+    try testing.expectEqual(@as(c_int, 10 + 5 * 5), fp(10, 5, 5));
+
+    // Arity 5 is rejected → nil (cap is 4).
+    try testing.expect(ref_mod.isNil(evalLine(s, lang, "[Module callback: f sig: \"iiiii)i\"]", a)));
+
+    _ = evalLine(s, lang, "[cb free]", a);
+}
+
 // Phase 19.5 — struct-as-entity, the user surface: define a struct from birnam
 // source, then read/write fields as ordinary message sends.
 test "FFI struct-as-entity: [Module struct:fields:] + field sends (19.5)" {

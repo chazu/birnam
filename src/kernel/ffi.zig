@@ -827,9 +827,9 @@ fn callbackTrampoline(cif_unused: *anyopaque, ret: *anyopaque, args: [*]?*anyopa
     _ = cif_unused;
     const ctx: *CallbackCtx = @ptrCast(@alignCast(user_data orelse return));
     const alloc = send_mod.kernelAllocator() orelse return;
-    var argbuf: [2]Ref = .{ ref_mod.NIL, ref_mod.NIL }; // block protocol caps arity at 2
+    var argbuf: [4]Ref = .{ ref_mod.NIL, ref_mod.NIL, ref_mod.NIL, ref_mod.NIL }; // block protocol caps arity at 4
     var i: usize = 0;
-    while (i < ctx.n_args and i < 2) : (i += 1) {
+    while (i < ctx.n_args and i < 4) : (i += 1) {
         const uns = ctx.sig.arg_unsigned.len != 0 and ctx.sig.arg_unsigned[i];
         argbuf[i] = cArgToRef(alloc, ctx.sig.args[i], uns, args[i]);
     }
@@ -838,24 +838,28 @@ fn callbackTrampoline(cif_unused: *anyopaque, ret: *anyopaque, args: [*]?*anyopa
 }
 
 /// Resolve the block-value selector for `n` args: `value` (0), `value:` (1),
-/// `value:value:` (2). Birnam blocks support ≤2 params, so callbacks do too.
+/// `value:value:` (2), `value:value:value:` (3), `value:value:value:value:` (4).
+/// Birnam blocks support up to 4 params here (lang installs all five selectors
+/// on CLOSURE_VT), so callbacks do too.
 fn valueSelectorForArity(n: usize) ?u64 {
-    return switch (n) {
-        0 => kernel_eids.SEL_VALUE,
-        1 => kernel_eids.SEL_VALUE_OF,
-        2 => blk: {
-            const store = send_mod.storePtr() orelse break :blk null;
-            const table = send_mod.tablePtr() orelse break :blk null;
-            const interner = id_api.internerPtr() orelse break :blk null;
-            break :blk interner.intern(store, table, "value:value:") catch null;
-        },
+    const named: ?[]const u8 = switch (n) {
+        0 => return kernel_eids.SEL_VALUE,
+        1 => return kernel_eids.SEL_VALUE_OF,
+        2 => "value:value:",
+        3 => "value:value:value:",
+        4 => "value:value:value:value:",
         else => null,
     };
+    const name = named orelse return null;
+    const store = send_mod.storePtr() orelse return null;
+    const table = send_mod.tablePtr() orelse return null;
+    const interner = id_api.internerPtr() orelse return null;
+    return interner.intern(store, table, name) catch null;
 }
 
 /// Mint a callback: parse `sig_str`, build the cif, alloc + prep a libffi
 /// closure bound to `closure_ref`, return a CALLBACK_VT box (slot 0 = code loc,
-/// slot 1 = the heap ctx). Returns NIL on parse error, arity > 2, or any libffi
+/// slot 1 = the heap ctx). Returns NIL on parse error, arity > 4, or any libffi
 /// failure (with all partial allocations cleaned up). Lifetime: the GC roots the
 /// birnam closure through the callback box — when the box is live, `gc.consider`
 /// follows slot 1 (`*CallbackCtx`) and marks `ctx.closure`, so a persistent
@@ -863,9 +867,9 @@ fn valueSelectorForArity(n: usize) ?u64 {
 pub fn makeCallback(allocator: std.mem.Allocator, closure_ref: Ref, sig_str: []const u8) Ref {
     var sig = parseSig(allocator, sig_str) catch return ref_mod.NIL;
     const n = sig.args.len;
-    if (n > 2) {
+    if (n > 4) {
         sig.deinit(allocator);
-        return ref_mod.NIL; // block-value protocol caps arity at 2
+        return ref_mod.NIL; // block-value protocol caps arity at 4
     }
     const value_sel = valueSelectorForArity(n) orelse {
         sig.deinit(allocator);

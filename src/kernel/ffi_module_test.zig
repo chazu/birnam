@@ -760,6 +760,55 @@ test "struct-as-entity: define, new, field get/set, ptr layout (19.5)" {
     _ = send_mod.send0(pt, kernel_eids.SEL_FFI_FREE);
 }
 
+test "struct-as-entity: nested struct field accessor view (19.5 finish)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const fix = try setup(&arena);
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+
+    const x_sel = try fix.interner.intern(fix.store, fix.table, "x");
+    const y_sel = try fix.interner.intern(fix.store, fix.table, "y");
+    const x_set = try fix.interner.intern(fix.store, fix.table, "x:");
+    const i_sym = try fix.interner.intern(fix.store, fix.table, "i");
+
+    // Inner: Point {int x; int y;}  -> size 8, align 4.
+    const pfields = try boxed.mkRrb(a, &.{
+        ref_mod.mkEid(x_sel), ref_mod.mkEid(i_sym),
+        ref_mod.mkEid(y_sel), ref_mod.mkEid(i_sym),
+    });
+    const PointT = send_mod.send2(proto, kernel_eids.SEL_FFI_STRUCT, ref_mod.mkEid(try fix.interner.intern(fix.store, fix.table, "Pt2")), pfields);
+    try testing.expectEqual(@as(i64, 8), ref_mod.untagSmallInt(send_mod.send0(PointT, try fix.interner.intern(fix.store, fix.table, "size"))));
+
+    // Outer: Line {Point start; int len;}  -> start at 0 (8 bytes), len at 8.
+    const start_sel = try fix.interner.intern(fix.store, fix.table, "start");
+    const len_sel = try fix.interner.intern(fix.store, fix.table, "len");
+    const len_set = try fix.interner.intern(fix.store, fix.table, "len:");
+    const lfields = try boxed.mkRrb(a, &.{
+        ref_mod.mkEid(start_sel), PointT, // nested struct field — type entry is the struct-TYPE object
+        ref_mod.mkEid(len_sel), ref_mod.mkEid(i_sym),
+    });
+    const LineT = send_mod.send2(proto, kernel_eids.SEL_FFI_STRUCT, ref_mod.mkEid(try fix.interner.intern(fix.store, fix.table, "Line")), lfields);
+    try testing.expectEqual(@as(i64, 12), ref_mod.untagSmallInt(send_mod.send0(LineT, try fix.interner.intern(fix.store, fix.table, "size"))));
+
+    const ln = send_mod.send0(LineT, kernel_eids.SEL_FFI_STRUCT_NEW);
+    // [ln start] is a struct-instance VIEW sharing memory; write through it.
+    const view = send_mod.send0(ln, start_sel);
+    try testing.expect(ref_mod.isPointer(view));
+    _ = send_mod.send1(view, x_set, ref_mod.mkSmallInt(7).?);
+    _ = send_mod.send1(ln, len_set, ref_mod.mkSmallInt(99).?);
+
+    // Re-fetch the view; the write is visible (shared backing memory).
+    try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(send_mod.send0(send_mod.send0(ln, start_sel), x_sel)));
+    try testing.expectEqual(@as(i64, 99), ref_mod.untagSmallInt(send_mod.send0(ln, len_sel)));
+
+    // Cross-check raw layout: x of start at byte 0, len at byte 8.
+    const raw = send_mod.send0(ln, kernel_eids.SEL_FFI_STRUCT_PTR);
+    try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(send_mod.send1(raw, kernel_eids.SEL_FFI_PEEK_INT, ref_mod.mkSmallInt(0).?)));
+
+    _ = send_mod.send0(ln, kernel_eids.SEL_FFI_FREE);
+}
+
 test "struct-as-entity: wrap a C struct return (libc div -> div_t) (19.5)" {
     if (!is_darwin) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);

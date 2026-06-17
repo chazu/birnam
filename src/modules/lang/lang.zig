@@ -4931,6 +4931,11 @@ fn installPrimitives() void {
     _ = api.assert_fact(CLOSURE_VT, sel_value_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
     _ = api.assert_fact(CLOSURE_VT, sel_value_of_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
     _ = api.assert_fact(CLOSURE_VT, sel_value_value_g, mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
+    // 3-/4-arg block invocation — closureValueImpl is arity-agnostic. Lets FFI
+    // callbacks with 3 or 4 C parameters dispatch a birnam block (Phase 19.2
+    // arity>2 finish); also usable directly as `[blk value: a value: b value: c]`.
+    _ = api.assert_fact(CLOSURE_VT, api.intern("value:value:value:".ptr, 18), mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(CLOSURE_VT, api.intern("value:value:value:value:".ptr, 24), mkEid(api.make_closure(@ptrCast(&closureValueImpl), NIL)), g_module_eid);
 
     const while_true_sel = api.intern("whileTrue:".ptr, 10);
     const while_false_sel = api.intern("whileFalse:".ptr, 11);
