@@ -3286,17 +3286,95 @@ fn dbDefineRuleImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return name_sym;
 }
 
+/// `[db defineQuery: #name find: ?v where: #[ <clauses> ]]` — store a complete
+/// query (its find spec + where clauses, both plain Refs since `?vars` are just
+/// symbols) under `#name`, runnable later by `[db run: #name]`. Re-defining a
+/// name overwrites (`:one` cardinality). Returns the name. (Phase 7.3 saved
+/// queries — name resolution from the surface.)
+fn dbDefineQueryImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    const api = g_api.?;
+    if (n < 3) return mkRuntimeError("defineQuery:find:where: expects a name, a find spec, and a clause vector");
+    const name_sym = args[0];
+    if (!isEid(name_sym)) return mkRuntimeError("defineQuery: query name must be a #symbol");
+    if (!isVectorRef(args[2])) return mkRuntimeError("defineQuery: where clauses must be a vector");
+    const find_attr = api.intern("saved-query-find".ptr, 16);
+    const where_attr = api.intern("saved-query-where".ptr, 17);
+    _ = api.assert_fact(name_sym >> 3, find_attr, args[1], g_module_eid);
+    _ = api.assert_fact(name_sym >> 3, where_attr, args[2], g_module_eid);
+    return name_sym;
+}
+
+/// `[db run: #name]` — execute the saved query stored under `#name`. An undefined
+/// name → an `#undefinedQuery` ERROR_VT. (Phase 7.3 saved queries.)
+fn dbRunImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    const name_sym = args[0];
+    if (!isEid(name_sym)) return mkRuntimeError("run: query name must be a #symbol");
+    const find_attr = api.intern("saved-query-find".ptr, 16);
+    const where_attr = api.intern("saved-query-where".ptr, 17);
+    const find_ref = api.query_eavt(name_sym >> 3, find_attr);
+    const where_ref = api.query_eavt(name_sym >> 3, where_attr);
+    if (find_ref == NIL or where_ref == NIL)
+        return mkRuntimeErrorKind(api.intern("undefinedQuery".ptr, 14), "run: no saved query under that name");
+    return runDatalogQuery(find_ref, where_ref, .none);
+}
+
 /// True iff `r` is an ERROR_VT entity (a propagating error value).
 fn isErrorRef(r: Ref) bool {
     if (!isEid(r)) return false;
     return g_api.?.query_eavt(r >> 3, ATTR_VTABLE) == mkEid(ERROR_VT);
 }
 
+/// Is `attr_sym` (a #symbol Ref) a REVERSE attribute — name starts with `_`
+/// (Datomic `:_attr` convention)? If so, returns the forward attribute's eid via
+/// `out_fwd`; else returns false. `#_likes` over entity E finds the entities that
+/// assert `likes == E`.
+fn reverseAttrFwd(attr_sym: Ref, out_fwd: *u64) bool {
+    const api = g_api.?;
+    if (!isEid(attr_sym)) return false;
+    const name_ref = api.symbol_name(attr_sym >> 3);
+    if (!isString(name_ref)) return false;
+    const name = stringBytes(name_ref);
+    if (name.len < 2 or name[0] != '_') return false;
+    out_fwd.* = api.intern(name[1..].ptr, name[1..].len);
+    return true;
+}
+
+/// Pull the eid-valued ref `v` through `sub` — one entity, or (for a `:many` ref
+/// whose `currentValue` is a vector) a vector of child maps. Non-entity → nil.
+fn pullRefValue(v: Ref, sub: Ref) Ref {
+    const api = g_api.?;
+    if (isVectorRef(v)) {
+        const n = api.rrb_len(v);
+        var empty: [0]Ref = .{};
+        var items: Ref = api.make_rrb(&empty, 0);
+        var k: u64 = 0;
+        while (k < n) : (k += 1) {
+            const el = api.rrb_nth(v, k);
+            if (!isEid(el) or el == NIL) continue;
+            const child = pullEntity(el >> 3, sub);
+            if (isErrorRef(child)) return child;
+            items = api.rrb_with(items, child);
+        }
+        return items;
+    }
+    if (isEid(v) and v != NIL) return pullEntity(v >> 3, sub);
+    return NIL;
+}
+
 /// Recursively materialize an entity per a pull spec into an ASSOC_VT map.
-/// Spec elements: `#attr` → `map[#attr] = currentValue(entity, attr)` (nil if
-/// absent); `#[#refattr <sub-spec>]` → follow the eid-valued `refattr` and pull
-/// `<sub-spec>` from it (nil if the value is absent or not an entity). (Phase 7.3
-/// pull — flat + nested ref specs; reverse/many attrs deferred.)
+/// Spec elements:
+///   `#attr`              → `map[#attr] = currentValue(entity, attr)` (a vector
+///                          for a `:many` attr; nil if absent).
+///   `#_attr`             → reverse ref: `map[#_attr] = vector of the entity eids
+///                          that assert `attr == entity`.
+///   `#[#refattr <spec>]` → follow the forward ref(s) and pull `<spec>` from each
+///                          (a `:many` ref yields a vector of child maps).
+///   `#[#_attr <spec>]`   → follow reverse refs, pull `<spec>` from each referrer
+///                          (always a vector).
+/// (Phase 7.3 pull — flat + nested ref + reverse + `:many` ref nesting.)
 fn pullEntity(entity_eid: u64, spec: Ref) Ref {
     const api = g_api.?;
     if (!isVectorRef(spec)) return mkRuntimeError("pull: spec must be a vector of #attr / #[#attr <spec>]");
@@ -3309,15 +3387,25 @@ fn pullEntity(entity_eid: u64, spec: Ref) Ref {
             if (api.rrb_len(elem) != 2) return mkRuntimeError("pull: a nested spec must be #[#attr <spec>]");
             const attr_sym = api.rrb_nth(elem, 0);
             if (!isEid(attr_sym)) return mkRuntimeError("pull: attribute must be a #symbol");
-            const v = api.query_eavt(entity_eid, attr_sym >> 3);
+            const sub = api.rrb_nth(elem, 1);
+            var fwd: u64 = 0;
             var child: Ref = NIL;
-            if (isEid(v) and v != NIL) {
-                child = pullEntity(v >> 3, api.rrb_nth(elem, 1));
-                if (isErrorRef(child)) return child;
+            if (reverseAttrFwd(attr_sym, &fwd)) {
+                // Reverse ref → pull each referrer; result is always a vector.
+                const refs = api.reverse_refs(fwd, entity_eid);
+                child = pullRefValue(refs, sub);
+            } else {
+                child = pullRefValue(api.query_eavt(entity_eid, attr_sym >> 3), sub);
             }
+            if (isErrorRef(child)) return child;
             map = api.map_put(map, attr_sym, child);
         } else if (isEid(elem)) {
-            map = api.map_put(map, elem, api.query_eavt(entity_eid, elem >> 3));
+            var fwd: u64 = 0;
+            if (reverseAttrFwd(elem, &fwd)) {
+                map = api.map_put(map, elem, api.reverse_refs(fwd, entity_eid));
+            } else {
+                map = api.map_put(map, elem, api.query_eavt(entity_eid, elem >> 3));
+            }
         } else {
             return mkRuntimeError("pull: spec elements must be #attr or #[#attr <spec>]");
         }
@@ -3357,6 +3445,8 @@ fn installDbSurface() void {
         .{ .name = "findAll:where:since:", .impl = @ptrCast(&dbFindAllWhereSinceImpl) },
         .{ .name = "findAll:where:between:and:", .impl = @ptrCast(&dbFindAllWhereBetweenAndImpl) },
         .{ .name = "defineRule:params:body:", .impl = @ptrCast(&dbDefineRuleImpl) },
+        .{ .name = "defineQuery:find:where:", .impl = @ptrCast(&dbDefineQueryImpl) },
+        .{ .name = "run:", .impl = @ptrCast(&dbRunImpl) },
         .{ .name = "pull:spec:", .impl = @ptrCast(&dbPullSpecImpl) },
     };
     for (db_methods) |m| {

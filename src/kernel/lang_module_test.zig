@@ -2247,6 +2247,62 @@ test "Phase 7.3 datalog pull: flat + nested-ref entity materialization" {
     try testing.expect(evalIsError(s, lang, "[db pull: #point spec: #[ #[#delegate] ]]", a));
 }
 
+test "Phase 7.3 pull finish: reverse refs + :many ref nesting + saved queries" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const TRUE = ref_mod.mkEid(kernel_eids.TRUE_EID);
+    const sz = s.interner.str_to_eid.get("size").?;
+    const at_sel = s.interner.str_to_eid.get("at:").?;
+
+    // Declare `:friend` as a `:many` attribute.
+    const many_eid = s.interner.str_to_eid.get("many").?;
+    const name_attr = s.api.intern("name".ptr, 4);
+    const friend = s.api.intern("friend".ptr, 6);
+    _ = try s.store.assert(friend, kernel_eids.ATTR_CARDINALITY, ref_mod.mkEid(many_eid), kernel_eids.M_USER);
+
+    const alice = s.api.intern("alice".ptr, 5);
+    const bob = s.api.intern("bob".ptr, 3);
+    const carol = s.api.intern("carol".ptr, 5);
+    _ = try s.store.assert(alice, name_attr, s.api.make_string("Alice".ptr, 5), kernel_eids.M_USER);
+    _ = try s.store.assert(bob, name_attr, s.api.make_string("Bob".ptr, 3), kernel_eids.M_USER);
+    _ = try s.store.assert(carol, name_attr, s.api.make_string("Carol".ptr, 5), kernel_eids.M_USER);
+    // alice -> {bob, carol} via the :many friend attr.
+    _ = try s.store.assert(alice, friend, ref_mod.mkEid(bob), kernel_eids.M_USER);
+    _ = try s.store.assert(alice, friend, ref_mod.mkEid(carol), kernel_eids.M_USER);
+
+    // Flat :many pull → at: #friend is a 2-element vector.
+    const flat = evalLine(s, lang, "[[db pull: #alice spec: #[ #friend ]] at: #friend]", a);
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send0(flat, sz)));
+
+    // Nested :many ref pull → vector of 2 child maps, each with a #name.
+    const nested = evalLine(s, lang, "[[db pull: #alice spec: #[ #[#friend #[ #name ]] ]] at: #friend]", a);
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send0(nested, sz)));
+    const first_child = send_mod.send1(nested, at_sel, ref_mod.mkSmallInt(0).?);
+    try testing.expect(!ref_mod.isNil(send_mod.send1(first_child, at_sel, ref_mod.mkEid(s.api.intern("name".ptr, 4)))));
+
+    // Reverse ref pull → who points AT bob via friend? Just alice. Bare `#_friend`.
+    const rev = evalLine(s, lang, "[[db pull: #bob spec: #[ #_friend ]] at: #_friend]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(rev, sz)));
+
+    // Reverse ref pull WITH sub-spec → vector of referrer maps; alice's name.
+    const rev_sub = evalLine(s, lang, "[[db pull: #bob spec: #[ #[#_friend #[ #name ]] ]] at: #_friend]", a);
+    try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(rev_sub, sz)));
+    try testing.expectEqual(TRUE, evalLine(s, lang,
+        "[[[[[db pull: #bob spec: #[ #[#_friend #[ #name ]] ]] at: #_friend] at: 0] at: #name] = \"Alice\"]", a));
+
+    // Saved query: define by name, run by name → same as the inline findAll.
+    _ = evalLine(s, lang, "[db defineQuery: #namedThings find: ?n where: #[ #[?e #name ?n] ]]", a);
+    const ran = evalLine(s, lang, "[db run: #namedThings]", a);
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(send_mod.send0(ran, sz))); // alice/bob/carol
+    // Unknown saved query → an error value.
+    try testing.expect(evalIsError(s, lang, "[db run: #nopeNope]", a));
+}
+
 test "17.5 eager & / | and the | block-bar disambiguation" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
