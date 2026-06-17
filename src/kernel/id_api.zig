@@ -907,16 +907,22 @@ fn cQueryAddRuleInvocation(
 }
 
 fn cDefineRule(p: ?*anyopaque, name_eid: u64, n_params: u32, max_var: u32) callconv(.c) bool {
+    _ = max_var; // computed from the built query below (var_count - 1)
     const reg = g_registry orelse return false;
     const q: *query.Query = @ptrCast(@alignCast(p orelse return false));
     // Snapshot the where: clauses as the rule body. Caller still owns the
     // Query; freeing the Query later will only release its non-where state
     // because we transfer ownership of the clauses slice here.
     const body_slice = q.where.toOwnedSlice(q.allocator) catch return false;
+    // `max_var` = the highest variable index used in the body. The query
+    // assigned indices densely as each distinct `?var` was first seen (params
+    // first, then body locals), so it is `var_count - 1`. Computing it here
+    // spares the caller from tracking indices through the recursive builder.
+    const mv: u32 = if (q.var_count == 0) 0 else q.var_count - 1;
     reg.define(name_eid, .{
         .n_params = n_params,
         .body = body_slice,
-        .max_var = max_var,
+        .max_var = mv,
     }) catch return false;
     return true;
 }

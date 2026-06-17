@@ -2113,6 +2113,59 @@ test "Phase 7 datalog: [db findAll:where:] — vars, join, set results" {
     try testing.expectEqual(@as(i64, 1), ref_mod.untagSmallInt(send_mod.send0(qj, sz)));
 }
 
+test "Phase 7.1 datalog rules: defineRule + recursive ancestor (transitive closure)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const sz = s.interner.str_to_eid.get("size").?;
+    const at_sel = s.interner.str_to_eid.get("at:").?;
+
+    // Parent edges asserted kernel-side: alice→bob→carol→dave. The attr eid is
+    // intern("parent") so birnam's `#parent` resolves to the same eid; entities
+    // are interned symbols so `#alice` etc. match too.
+    const parent = s.api.intern("parent".ptr, 6);
+    const alice = s.api.intern("alice".ptr, 5);
+    const bob = s.api.intern("bob".ptr, 3);
+    const carol = s.api.intern("carol".ptr, 5);
+    const dave = s.api.intern("dave".ptr, 4);
+    _ = try s.store.assert(alice, parent, ref_mod.mkEid(bob), kernel_eids.M_USER);
+    _ = try s.store.assert(bob, parent, ref_mod.mkEid(carol), kernel_eids.M_USER);
+    _ = try s.store.assert(carol, parent, ref_mod.mkEid(dave), kernel_eids.M_USER);
+
+    // Define `ancestor` as two definitional-disjunction rules: base (a parent of
+    // b) + recursive (a parent of x, x ancestor of b).
+    _ = evalLine(s, lang, "[db defineRule: #ancestor params: #[?a ?b] body: #[ #[?a #parent ?b] ]]", a);
+    _ = evalLine(s, lang, "[db defineRule: #ancestor params: #[?a ?b] body: #[ #[?a #parent ?x] #[#rule #ancestor ?x ?b] ]]", a);
+
+    // Ancestors of alice → {bob, carol, dave} = 3.
+    const anc = evalLine(s, lang, "[db findAll: ?x where: #[ #[#rule #ancestor #alice ?x] ]]", a);
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(send_mod.send0(anc, sz)));
+
+    // Full transitive closure (all ?a,?b pairs): 3 direct + 3 transitive = 6.
+    const pairs = evalLine(s, lang, "[db findAll: #[?a ?b] where: #[ #[#rule #ancestor ?a ?b] ]]", a);
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(send_mod.send0(pairs, sz)));
+
+    // A constant-constant invocation acts as a membership check: dave is an
+    // ancestor-descendant of alice (non-empty), but dave has no ancestors.
+    const reachable = evalLine(s, lang, "[db findAll: ?b where: #[ #[#rule #ancestor #alice ?b] #[?b #parent ?c] ]]", a);
+    // alice's ancestors that themselves have a parent: bob (→carol), carol (→dave) = 2.
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send0(reachable, sz)));
+    const dave_anc = evalLine(s, lang, "[db findAll: ?x where: #[ #[#rule #ancestor #dave ?x] ]]", a);
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send0(dave_anc, sz)));
+
+    // The recursive query returns real eids (alice's first ancestor is bob).
+    const anc_eids = evalLine(s, lang, "[db findAll: ?x where: #[ #[#rule #ancestor #bob ?x] ]]", a);
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send0(anc_eids, sz))); // carol, dave
+    _ = at_sel;
+
+    // Malformed: #rule with no args is an error.
+    try testing.expect(evalIsError(s, lang, "[db findAll: ?x where: #[ #[#rule #ancestor] ]]", a));
+}
+
 test "17.5 eager & / | and the | block-bar disambiguation" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

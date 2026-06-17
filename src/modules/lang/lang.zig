@@ -3034,7 +3034,32 @@ fn addWhereElement(q: ?*anyopaque, elem: Ref) ?Ref {
         api.query_end_disjunction(q);
         return null;
     }
+    if (isVectorRef(elem) and api.rrb_len(elem) >= 2 and symbolIs(api.rrb_nth(elem, 0), "rule")) {
+        return addRuleInvocation(q, elem);
+    }
     return addClause(q, elem);
+}
+
+/// Add a rule-invocation clause `#[#rule #name ?a ?b …]` to `q`: marker `#rule`,
+/// the rule-name `#symbol`, then positional argument terms (`?var`s or
+/// constants, bound to the rule's params by position). Returns an error Ref on
+/// malformed input, else null. (Phase 7.1 rule surface.)
+fn addRuleInvocation(q: ?*anyopaque, elem: Ref) ?Ref {
+    const api = g_api.?;
+    const len = api.rrb_len(elem);
+    const name_sym = api.rrb_nth(elem, 1);
+    if (!isEid(name_sym)) return mkRuntimeError("findAll: #rule name must be a #symbol");
+    const nargs = len - 2;
+    if (nargs == 0) return mkRuntimeError("findAll: #rule invocation needs at least one argument");
+    if (nargs > 16) return mkRuntimeError("findAll: #rule invocation arg limit is 16");
+    var kinds: [16]u32 = undefined;
+    var vals: [16]u64 = undefined;
+    var k: u64 = 0;
+    while (k < nargs) : (k += 1) {
+        encodeTerm(q, api.rrb_nth(elem, k + 2), &kinds[k], &vals[k]);
+    }
+    api.query_add_rule_invocation(q, name_sym >> 3, @intCast(nargs), &kinds, &vals);
+    return null;
 }
 
 /// One disjunction branch: a single clause `#[e a v]`, or a clause-list
@@ -3095,6 +3120,9 @@ fn runDatalogQuery(find_ref: Ref, where: Ref, tmod: TimeMod) Ref {
     const api = g_api.?;
     const q = api.make_query() orelse return mkRuntimeError("findAll: out of memory");
     defer api.free_query(q);
+    // Resolve any `#[#rule …]` invocations in the where clauses against the
+    // global rule registry (harmless when no rules are used).
+    api.query_use_global_rules(q);
 
     // Find spec — a single `?var` (flat result), or a vector whose elements are
     // each a `?var` or an aggregate `#[#count ?v]` (tuple/group-by rows).
@@ -3203,6 +3231,51 @@ fn snapFindWhereImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return runDatalogQuery(args[0], args[1], .{ .asof = @intCast(untagSmallInt(basis)) });
 }
 
+/// `[db defineRule: #name params: #[?a ?b] body: #[ <clauses> ]]` — define (or
+/// add a definitional-disjunction alternative for) a datalog rule. The body is a
+/// where-clause vector: triples, predicates, `#not`/`#or`, and recursive
+/// `#[#rule #name …]` invocations. Params claim variable indices 0..n-1 so a
+/// caller's invocation args bind to them by position. Returns the rule name.
+/// (Phase 7.1 rule surface.)
+fn dbDefineRuleImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    const api = g_api.?;
+    if (n < 3) return mkRuntimeError("defineRule:params:body: expects a name, a params vector, and a body vector");
+    const name_sym = args[0];
+    if (!isEid(name_sym)) return mkRuntimeError("defineRule: rule name must be a #symbol");
+    const params = args[1];
+    if (!isVectorRef(params)) return mkRuntimeError("defineRule: params must be a #[?a …] vector");
+    const body = args[2];
+    if (!isVectorRef(body)) return mkRuntimeError("defineRule: body must be a clause vector");
+
+    const q = api.make_query() orelse return mkRuntimeError("defineRule: out of memory");
+    defer api.free_query(q);
+    // A rule body may invoke other rules (incl. itself) — resolve via registry.
+    api.query_use_global_rules(q);
+
+    // Register params first so they take variable indices 0..n_params-1.
+    const nparams = api.rrb_len(params);
+    if (nparams == 0) return mkRuntimeError("defineRule: at least one parameter is required");
+    var pi: u64 = 0;
+    while (pi < nparams) : (pi += 1) {
+        const nm = queryVarName(api.rrb_nth(params, pi)) orelse
+            return mkRuntimeError("defineRule: params must all be ?variables");
+        _ = api.query_variable(q, nm.ptr, nm.len);
+    }
+
+    // Body clauses become the rule body (snapshotted by define_rule).
+    const nclauses = api.rrb_len(body);
+    var ci: u64 = 0;
+    while (ci < nclauses) : (ci += 1) {
+        if (addWhereElement(q, api.rrb_nth(body, ci))) |err| return err;
+    }
+
+    // max_var is computed kernel-side from the built query (var_count - 1).
+    if (!api.define_rule(q, name_sym >> 3, @intCast(nparams), 0))
+        return mkRuntimeError("defineRule: rule registry unavailable");
+    return name_sym;
+}
+
 /// Install the `db` prototype + its methods + SNAPSHOT_VT methods, and bind the
 /// global `db`. Phase 15.R R1d.
 fn installDbSurface() void {
@@ -3223,6 +3296,7 @@ fn installDbSurface() void {
         .{ .name = "findAll:where:asOf:", .impl = @ptrCast(&dbFindAllWhereAsOfImpl) },
         .{ .name = "findAll:where:since:", .impl = @ptrCast(&dbFindAllWhereSinceImpl) },
         .{ .name = "findAll:where:between:and:", .impl = @ptrCast(&dbFindAllWhereBetweenAndImpl) },
+        .{ .name = "defineRule:params:body:", .impl = @ptrCast(&dbDefineRuleImpl) },
     };
     for (db_methods) |m| {
         const sel = api.intern(m.name.ptr, m.name.len);
