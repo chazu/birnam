@@ -94,6 +94,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Version string for the shell banner — read from ./VERSION at build time
+    // (the single source of truth the release script bumps).
+    const shell_opts = b.addOptions();
+    const version_raw = @embedFile("VERSION");
+    shell_opts.addOption([]const u8, "version", std.mem.trim(u8, version_raw, " \t\r\n"));
+    shell_mod.addOptions("build_opts", shell_opts);
+
     const shell = b.addExecutable(.{
         .name = "birnam",
         .root_module = shell_mod,
