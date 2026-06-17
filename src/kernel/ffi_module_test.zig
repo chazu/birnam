@@ -441,6 +441,51 @@ test "FFI_PTR alloc/poke/peek/address/isNull/free round-trip via send" {
     _ = send_mod.send0(cell, kernel_eids.SEL_FFI_FREE);
 }
 
+test "width-complete peek/poke: int32/uint32/short/ushort round-trip + sign" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    _ = try setup(&arena);
+
+    const proto = ref_mod.mkEid(kernel_eids.MODULE_PROTO);
+    const cell = send_mod.send1(proto, kernel_eids.SEL_FFI_ALLOC, ref_mod.mkSmallInt(16).?);
+    try testing.expect(boxed.isFfiPtr(cell));
+
+    // 4-byte int: 70000 (> u16 max → proves a 4-byte, not 2-byte, write).
+    _ = send_mod.send2(cell, kernel_eids.SEL_FFI_POKE_INT32, ref_mod.mkSmallInt(70000).?, ref_mod.mkSmallInt(0).?);
+    try testing.expectEqual(@as(i64, 70000), ref_mod.untagSmallInt(send_mod.send1(cell, kernel_eids.SEL_FFI_PEEK_INT32, ref_mod.mkSmallInt(0).?)));
+    try testing.expectEqual(@as(i64, 70000), ref_mod.untagSmallInt(send_mod.send1(cell, kernel_eids.SEL_FFI_PEEK_UINT32, ref_mod.mkSmallInt(0).?)));
+
+    // 4-byte int, negative: signed peek sign-extends, unsigned zero-extends.
+    _ = send_mod.send2(cell, kernel_eids.SEL_FFI_POKE_INT32, ref_mod.mkSmallInt(-1).?, ref_mod.mkSmallInt(0).?);
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(send_mod.send1(cell, kernel_eids.SEL_FFI_PEEK_INT32, ref_mod.mkSmallInt(0).?)));
+    try testing.expectEqual(@as(i64, 0xFFFFFFFF), ref_mod.untagSmallInt(send_mod.send1(cell, kernel_eids.SEL_FFI_PEEK_UINT32, ref_mod.mkSmallInt(0).?)));
+
+    // 2-byte short: 0xFFFF → unsigned 65535, signed -1.
+    _ = send_mod.send2(cell, kernel_eids.SEL_FFI_POKE_SHORT, ref_mod.mkSmallInt(0xFFFF).?, ref_mod.mkSmallInt(8).?);
+    try testing.expectEqual(@as(i64, 65535), ref_mod.untagSmallInt(send_mod.send1(cell, kernel_eids.SEL_FFI_PEEK_USHORT, ref_mod.mkSmallInt(8).?)));
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(send_mod.send1(cell, kernel_eids.SEL_FFI_PEEK_SHORT, ref_mod.mkSmallInt(8).?)));
+    // poke truncates to the low 2 bytes (offset 10 stays clear).
+    try testing.expectEqual(@as(i64, 0), ref_mod.untagSmallInt(send_mod.send1(cell, kernel_eids.SEL_FFI_PEEK_BYTE, ref_mod.mkSmallInt(10).?)));
+
+    _ = send_mod.send0(cell, kernel_eids.SEL_FFI_FREE);
+}
+
+test "wrap: with a non-selector first arg returns an ffi-wrap-bad-selector error" {
+    if (!is_darwin) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const fix = try setup(&arena);
+    const mod = try ffi_module.moduleLoad(a, fix.store, fix.table, fix.interner, LIBSYSTEM);
+    // Swapped args: a C-name string in the `wrap:` (selector) slot. Used to
+    // early-return a bare nil (wrap silently undeclared). Now a diagnostic.
+    const result = send_mod.send3(mod, kernel_eids.SEL_WRAP_AS_SIG, try strings.mkString(a, "close"), ref_mod.mkEid(try fix.interner.intern(fix.store, fix.table, "close:")), try strings.mkString(a, "i)i"));
+    try testing.expect(ffi_module.isErrorEntity(fix.store, result));
+    const kind_ref = fix.store.currentValue(ref_mod.untagEid(result), kernel_eids.ATTR_ERROR_KIND).?;
+    try testing.expect(std.mem.eql(u8, fix.interner.nameOf(ref_mod.untagEid(kind_ref)).?, "ffi-wrap-bad-selector"));
+}
+
 test "resolve reuses the instance vt across passes (no churn; cold-but-valid)" {
     if (!is_darwin) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);

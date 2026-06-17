@@ -727,6 +727,15 @@ pub fn main() !void {
                     buf[l.len] = 0;
                     handler(@ptrCast(buf[0 .. l.len + 1].ptr));
                 }
+                // Bind any FFI wraps this line declared (2026-06-17). `Module
+                // wrap:as:signature:` only ASSERTS declarative facts; the
+                // dlopen+dlsym+install was previously deferred to `:in`/`:load`/
+                // AOT only, so an interactive `wrap:` then call in the same
+                // session hit a DNU. Resolving at each line boundary closes that:
+                // `resolveModule` skips already-bound wraps (keyed on :ffi-addr)
+                // and already-open libs (keyed on :ffi-handle), so a line that
+                // declared nothing new is a cheap entities-with-:ffi-path scan.
+                ffi_module.resolveAllPending(allocator, store, table) catch {};
                 // Auto-prune (sustainability): drop per-line garbage (dead CST/
                 // AST/throwaway method trees) once entity growth crosses the
                 // threshold, so a long session stays bounded without manual

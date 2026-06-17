@@ -120,6 +120,8 @@ var g_source: []const u8 = "";
 
 // Cached rule-name EIDs (interned at module init).
 var rn_integer: u64 = 0;
+var rn_neg_integer: u64 = 0;
+var rn_neg_float: u64 = 0;
 var rn_string: u64 = 0;
 var rn_kw_nil: u64 = 0;
 var rn_kw_true: u64 = 0;
@@ -375,6 +377,22 @@ fn buildGrammar() void {
         defineRule(grammar, "float-literal", peg_seq(&parts));
     }
 
+    // Negative numeric literals (2026-06-17). `-` immediately followed by a
+    // numeric literal, recognized ONLY at atom (primary) position — so binary
+    // minus is unaffected: in `[a - b]` the `-` is consumed by `bracket-binary`'s
+    // explicit `binary-op` between two expressions, never by `atom` (which is
+    // only tried at an operand's start). This makes `[foo: -1]` / `#[1 -2 3]`
+    // parse as a literal instead of a parse error. neg-float must precede
+    // neg-integer in `atom` so `-1.5` matches the float, not `-1` then `.5`.
+    {
+        const parts = [_]u64{ untagEid(peg_literal("-")), untagEid(peg_rule_ref("integer")) };
+        defineRule(grammar, "neg-integer", peg_seq(&parts));
+    }
+    {
+        const parts = [_]u64{ untagEid(peg_literal("-")), untagEid(peg_rule_ref("float-literal")) };
+        defineRule(grammar, "neg-float", peg_seq(&parts));
+    }
+
     // -- String literal: "..." with backslash escapes (Phase 17) ----------
     // string = '"' ( ('\' any) / (!'"' !'\' any) )* '"'
     // The escape alternative consumes `\` + any byte so `\"` / `\\` don't
@@ -427,6 +445,8 @@ fn buildGrammar() void {
     // error. let-statement is at top-form level.
     {
         const atom_alts = [_]u64{
+            untagEid(peg_rule_ref("neg-float")),
+            untagEid(peg_rule_ref("neg-integer")),
             untagEid(peg_rule_ref("float-literal")),
             untagEid(peg_rule_ref("integer")),
             untagEid(peg_rule_ref("string")),
@@ -1008,7 +1028,11 @@ fn quoteTermValue(cst_eid: u64) Ref {
             for (g_source[span.start..span.end]) |ch| n = n * 10 + (ch - '0');
             return mkSmallInt(n);
         }
-        if (rn == rn_float_literal) {
+        if (rn == rn_neg_integer) {
+            // span includes the leading '-'; parseInt handles the sign.
+            return mkSmallInt(std.fmt.parseInt(i64, g_source[span.start..span.end], 10) catch 0);
+        }
+        if (rn == rn_float_literal or rn == rn_neg_float) {
             return api.make_float(std.fmt.parseFloat(f64, g_source[span.start..span.end]) catch 0.0);
         }
         // Wrapper rule — descend to the first non-ws child.
@@ -1109,7 +1133,14 @@ fn desugar(cst_eid: u64) u64 {
         _ = api.assert_fact(ast, ATTR_AST_VALUE, mkSmallInt(n), M_USER);
         return ast;
     }
-    if (rn == rn_float_literal) {
+    if (rn == rn_neg_integer) {
+        // span includes the leading '-'; parseInt reads the sign.
+        const n = std.fmt.parseInt(i64, g_source[span.start..span.end], 10) catch 0;
+        const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
+        _ = api.assert_fact(ast, ATTR_AST_VALUE, mkSmallInt(n), M_USER);
+        return ast;
+    }
+    if (rn == rn_float_literal or rn == rn_neg_float) {
         const bytes = g_source[span.start..span.end];
         const f = std.fmt.parseFloat(f64, bytes) catch 0.0;
         const ast = newAstNode(AST_LITERAL_VT, span.start, span.end);
@@ -1659,6 +1690,8 @@ fn desugar(cst_eid: u64) u64 {
 fn cacheRuleNames() void {
     const api = g_api.?;
     rn_integer = api.intern("integer".ptr, 7);
+    rn_neg_integer = api.intern("neg-integer".ptr, 11);
+    rn_neg_float = api.intern("neg-float".ptr, 9);
     rn_string = api.intern("string".ptr, 6);
     rn_kw_nil = api.intern("kw-nil".ptr, 6);
     rn_kw_true = api.intern("kw-true".ptr, 7);
@@ -2081,6 +2114,59 @@ fn smallintAsFloatImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c)
     _ = n_args;
     const api = g_api.?;
     return api.make_float(@floatFromInt(untagSmallInt(s.receiver)));
+}
+
+// -- SmallInt bitwise + shift (2026-06-17) --------------------------------
+// Integer-only: a Float / non-number argument is a `#typeMismatch` (bit ops on
+// a non-integer are meaningless — unlike `+`, there is no Float promotion).
+// Results are range-checked with `mkSmallIntChecked` like arithmetic, so a
+// bit-set that escapes the 61-bit payload is a `#overflow`, never a silent
+// high-bit drop. NOTE: `&`/`|` stay boolean-only (TRUE_VT/FALSE_VT); bitwise
+// gets distinct names so the int-vs-bool meaning is never ambiguous. These are
+// the substrate for FFI flag sets (`O_NONBLOCK bitOr: O_CLOEXEC`), `htons`/
+// `htonl` byteswap, and unpacking struct bit-fields after a width peek.
+
+fn shiftAmountError() Ref {
+    return mkRuntimeErrorKind(g_api.?.intern("shiftAmount".ptr, 11), "shift count out of range 0..60");
+}
+
+fn smallintBitAndImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    if (!isSmallInt(args[0])) return typeMismatchError();
+    return mkSmallIntChecked(untagSmallInt(s.receiver) & untagSmallInt(args[0])) orelse overflowError();
+}
+fn smallintBitOrImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    if (!isSmallInt(args[0])) return typeMismatchError();
+    return mkSmallIntChecked(untagSmallInt(s.receiver) | untagSmallInt(args[0])) orelse overflowError();
+}
+fn smallintBitXorImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    if (!isSmallInt(args[0])) return typeMismatchError();
+    return mkSmallIntChecked(untagSmallInt(s.receiver) ^ untagSmallInt(args[0])) orelse overflowError();
+}
+fn smallintBitNotImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = args;
+    _ = n_args;
+    // ~x = -x-1, always within the 61-bit range when x is.
+    return mkSmallIntChecked(~untagSmallInt(s.receiver)) orelse overflowError();
+}
+fn smallintShlImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    if (!isSmallInt(args[0])) return typeMismatchError();
+    const b = untagSmallInt(args[0]);
+    if (b < 0 or b > 60) return shiftAmountError();
+    const r = std.math.shl(i64, untagSmallInt(s.receiver), @as(u6, @intCast(b)));
+    // shl can push bits past the 61-bit payload → caught as overflow.
+    return mkSmallIntChecked(r) orelse overflowError();
+}
+fn smallintShrImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = n_args;
+    if (!isSmallInt(args[0])) return typeMismatchError();
+    const b = untagSmallInt(args[0]);
+    if (b < 0 or b > 60) return shiftAmountError();
+    // Arithmetic shift (signed) — result magnitude only shrinks, always fits.
+    return mkSmallInt(std.math.shr(i64, untagSmallInt(s.receiver), @as(u6, @intCast(b))));
 }
 
 // -- FLOAT_VT primitives --------------------------------------------------
@@ -4162,6 +4248,20 @@ fn installStdlib() void {
     // SmallInt `<=` / `>=` (completeness — had only `<`/`>`/`=`).
     _ = api.assert_fact(SMALLINT_VT, api.intern("<=".ptr, 2), mkEid(api.make_closure(@ptrCast(&smallintLeImpl), NIL)), g_module_eid);
     _ = api.assert_fact(SMALLINT_VT, api.intern(">=".ptr, 2), mkEid(api.make_closure(@ptrCast(&smallintGeImpl), NIL)), g_module_eid);
+
+    // SmallInt bitwise + shift (2026-06-17). Named keyword selectors keep the
+    // int-vs-bool meaning unambiguous (`&`/`|` remain boolean on TRUE/FALSE_VT);
+    // `<<`/`>>` infix are added as idiomatic shift sugar (they tokenize as
+    // 2-char binary-ops and collide with nothing). Substrate for FFI flag sets,
+    // byteswap, and bit-field unpacking.
+    _ = api.assert_fact(SMALLINT_VT, api.intern("bitAnd:".ptr, 7), mkEid(api.make_closure(@ptrCast(&smallintBitAndImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, api.intern("bitOr:".ptr, 6), mkEid(api.make_closure(@ptrCast(&smallintBitOrImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, api.intern("bitXor:".ptr, 7), mkEid(api.make_closure(@ptrCast(&smallintBitXorImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, api.intern("bitNot".ptr, 6), mkEid(api.make_closure(@ptrCast(&smallintBitNotImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, api.intern("shiftLeft:".ptr, 10), mkEid(api.make_closure(@ptrCast(&smallintShlImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, api.intern("shiftRight:".ptr, 11), mkEid(api.make_closure(@ptrCast(&smallintShrImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, api.intern("<<".ptr, 2), mkEid(api.make_closure(@ptrCast(&smallintShlImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SMALLINT_VT, api.intern(">>".ptr, 2), mkEid(api.make_closure(@ptrCast(&smallintShrImpl), NIL)), g_module_eid);
 
     // Three-way compare (Phase 17.3) — both the `<=>` infix (3-char binary-op)
     // and the `compare:` keyword surface map to one impl, on SmallInt + String.

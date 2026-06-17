@@ -2111,6 +2111,58 @@ test "17.3 three-way compare: <=> + compare: on SmallInt + String" {
     try testing.expectEqual(kernel_eids.FALSE_EID, ref_mod.untagEid(evalLine(s, lang, "[9 <= 2]", a)));
 }
 
+test "SmallInt bitwise + shift (2026-06-17)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    try testing.expectEqual(@as(i64, 8), ref_mod.untagSmallInt(evalLine(s, lang, "[12 bitAnd: 10]", a)));
+    try testing.expectEqual(@as(i64, 15), ref_mod.untagSmallInt(evalLine(s, lang, "[12 bitOr: 3]", a)));
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(evalLine(s, lang, "[12 bitXor: 10]", a)));
+    try testing.expectEqual(@as(i64, -6), ref_mod.untagSmallInt(evalLine(s, lang, "[5 bitNot]", a)));
+    try testing.expectEqual(@as(i64, 16), ref_mod.untagSmallInt(evalLine(s, lang, "[1 shiftLeft: 4]", a)));
+    try testing.expectEqual(@as(i64, 64), ref_mod.untagSmallInt(evalLine(s, lang, "[256 shiftRight: 2]", a)));
+    // `<<` / `>>` infix sugar.
+    try testing.expectEqual(@as(i64, 256), ref_mod.untagSmallInt(evalLine(s, lang, "[1 << 8]", a)));
+    try testing.expectEqual(@as(i64, 256), ref_mod.untagSmallInt(evalLine(s, lang, "[1024 >> 2]", a)));
+    // htons(8080) = byteswap → 0x901F = 36895.
+    try testing.expectEqual(@as(i64, 36895), ref_mod.untagSmallInt(evalLine(s, lang, "[[[8080 bitAnd: 255] shiftLeft: 8] bitOr: [8080 shiftRight: 8]]", a)));
+    // Integer-only: a Float arg is a typeMismatch error (not a number coercion).
+    const ferr = evalLine(s, lang, "[12 bitAnd: 2.5]", a);
+    try testing.expectEqual(kernel_eids.ERROR_VT, ref_mod.untagEid(s.store.currentValue(ref_mod.untagEid(ferr), kernel_eids.ATTR_VTABLE).?));
+    // Shift amount out of range.
+    const serr = evalLine(s, lang, "[1 shiftLeft: 99]", a);
+    try testing.expectEqual(kernel_eids.ERROR_VT, ref_mod.untagEid(s.store.currentValue(ref_mod.untagEid(serr), kernel_eids.ATTR_VTABLE).?));
+    // `&` / `|` stay boolean — bitwise did not shadow them on bools.
+    try testing.expectEqual(kernel_eids.TRUE_EID, ref_mod.untagEid(evalLine(s, lang, "[true & true]", a)));
+    try testing.expectEqual(kernel_eids.FALSE_EID, ref_mod.untagEid(evalLine(s, lang, "[true & false]", a)));
+}
+
+test "negative numeric literals at primary position (2026-06-17)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Negative literal as a unary receiver / binary operand.
+    try testing.expectEqual(@as(i64, 25), ref_mod.untagSmallInt(evalLine(s, lang, "[-5 squared]", a)));
+    try testing.expectEqual(@as(i64, 8), ref_mod.untagSmallInt(evalLine(s, lang, "[-2 + 10]", a)));
+    // Binary minus must NOT regress: `[3 - 1]` is still subtraction, not `3 (-1)`.
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(evalLine(s, lang, "[3 - 1]", a)));
+    // Binary minus AND a negative literal operand together: 10 - (-5) = 15.
+    try testing.expectEqual(@as(i64, 15), ref_mod.untagSmallInt(evalLine(s, lang, "[10 - -5]", a)));
+    // Negative float literal evaluates to a Float.
+    try testing.expect(boxed.isFloat(evalLine(s, lang, "[-2.5 + 1.0]", a)));
+    // Negative literal as a keyword argument (the original parse-error case):
+    // `max:` returns the larger, so -7 max: -1 = -1.
+    try testing.expectEqual(@as(i64, -1), ref_mod.untagSmallInt(evalLine(s, lang, "[-7 max: -1]", a)));
+}
+
 test "Phase 7 datalog: [db findAll:where:] — vars, join, set results" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

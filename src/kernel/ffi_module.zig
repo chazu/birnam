@@ -412,7 +412,14 @@ fn methodWrapAsSig(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref
     const interner = id_api_mod.internerPtr() orelse return ref_mod.NIL;
 
     if (!ref_mod.isEid(s.receiver)) return ref_mod.NIL;
-    if (!ref_mod.isEid(sel_ref)) return ref_mod.NIL;
+    // Arg order is `wrap: #selector as: "cname" signature: "sig"`. The most
+    // common authoring mistake is swapping the first two — passing the C-name
+    // string into the `wrap:` slot. That used to early-return a bare `nil`,
+    // leaving the wrap silently undeclared (never resolved → DNU at call time).
+    // Surface it as a diagnostic ERROR_VT instead so the mistake is visible.
+    if (!ref_mod.isEid(sel_ref)) {
+        return errorEntity(alloc, store, table, interner, "ffi-wrap-bad-selector", "wrap: first arg must be a #selector symbol (order is `wrap: #sel as: \"cname\" signature: \"sig\"`)", &.{}) catch ref_mod.NIL;
+    }
     const mod_eid = ref_mod.untagEid(s.receiver);
 
     if (!strings.isString(name_ref)) {
@@ -1081,6 +1088,64 @@ fn methodPokePtr(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     return s.receiver;
 }
 
+// -- Width-complete peek/poke (2026-06-17) --------------------------------
+// `peekInt:`/`pokeInt:at:` cover the 8-byte (C `long`) width. These add the
+// 4-byte (`int`) and 2-byte (`short`) widths so a C `int` out-param (errno) or
+// `in_port_t`/`sa_family_t` field reads back cleanly. Signed peeks sign-extend
+// to i64; `U` peeks zero-extend (always within the 61-bit SmallInt range).
+// Pokes read the SmallInt and write only the low N bytes (signedness is moot on
+// write), matching the `pokeByte:`/`pokeInt:at:` truncation convention.
+
+fn methodPeekInt32(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 0) orelse return ref_mod.NIL;
+    const p: *align(1) const i32 = @ptrFromInt(base + off);
+    return ref_mod.mkSmallInt(p.*) orelse ref_mod.NIL;
+}
+
+fn methodPeekUInt32(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 0) orelse return ref_mod.NIL;
+    const p: *align(1) const u32 = @ptrFromInt(base + off);
+    return ref_mod.mkSmallInt(@intCast(p.*)) orelse ref_mod.NIL;
+}
+
+fn methodPeekShort(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 0) orelse return ref_mod.NIL;
+    const p: *align(1) const i16 = @ptrFromInt(base + off);
+    return ref_mod.mkSmallInt(p.*) orelse ref_mod.NIL;
+}
+
+fn methodPeekUShort(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 1) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 0) orelse return ref_mod.NIL;
+    const p: *align(1) const u16 = @ptrFromInt(base + off);
+    return ref_mod.mkSmallInt(@intCast(p.*)) orelse ref_mod.NIL;
+}
+
+fn methodPokeInt32(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 2 or !ref_mod.isSmallInt(args[0])) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 1) orelse return ref_mod.NIL;
+    const p: *align(1) u32 = @ptrFromInt(base + off);
+    p.* = @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(args[0]))));
+    return s.receiver;
+}
+
+fn methodPokeShort(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (n_args < 2 or !ref_mod.isSmallInt(args[0])) return ref_mod.NIL;
+    const base = ffiBase(s) orelse return ref_mod.NIL;
+    const off = argOffset(args, 1) orelse return ref_mod.NIL;
+    const p: *align(1) u16 = @ptrFromInt(base + off);
+    p.* = @truncate(@as(u64, @bitCast(ref_mod.untagSmallInt(args[0]))));
+    return s.receiver;
+}
+
 fn installMethod(
     allocator: std.mem.Allocator,
     store: *fact_store_mod.FactStore,
@@ -1157,6 +1222,12 @@ pub fn installMethods(
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_BYTE, @ptrCast(&methodPokeByte));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_DOUBLE, @ptrCast(&methodPokeDouble));
     try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_PTR, @ptrCast(&methodPokePtr));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_INT32, @ptrCast(&methodPeekInt32));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_UINT32, @ptrCast(&methodPeekUInt32));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_SHORT, @ptrCast(&methodPeekShort));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_PEEK_USHORT, @ptrCast(&methodPeekUShort));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_INT32, @ptrCast(&methodPokeInt32));
+    try installMethod(allocator, store, table, kernel_eids.FFI_PTR_VT, kernel_eids.SEL_FFI_POKE_SHORT, @ptrCast(&methodPokeShort));
 
     // The prototype object — only needs a :vtable fact (dispatch reads it).
     _ = try store.assert(kernel_eids.MODULE_PROTO, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.MODULE_PROTO_VT), kernel_eids.M_BOOTSTRAP);

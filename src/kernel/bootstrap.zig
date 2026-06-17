@@ -244,6 +244,14 @@ pub fn boot(
     // Phase 19.4 — bulk byte buffers.
     try interner.seed(store, kernel_eids.SEL_FFI_PEEK_BYTES, "peekBytes:len:");
     try interner.seed(store, kernel_eids.SEL_FFI_POKE_BYTES, "pokeBytes:at:");
+    // Width-complete peek/poke (2026-06-17) — narrow C scalar widths so a 4-byte
+    // `int` (errno) / 2-byte `short` (in_port_t) read back without overrun.
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_INT32, "peekInt32:");
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_UINT32, "peekUInt32:");
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_SHORT, "peekShort:");
+    try interner.seed(store, kernel_eids.SEL_FFI_PEEK_USHORT, "peekUShort:");
+    try interner.seed(store, kernel_eids.SEL_FFI_POKE_INT32, "pokeInt32:at:");
+    try interner.seed(store, kernel_eids.SEL_FFI_POKE_SHORT, "pokeShort:at:");
     // Phase 19.7 — out-param cells. `value` reuses SEL_VALUE (seeded below).
     try interner.seed(store, kernel_eids.SEL_FFI_OUT_INT, "outInt");
     try interner.seed(store, kernel_eids.SEL_FFI_OUT_LONG, "outLong");

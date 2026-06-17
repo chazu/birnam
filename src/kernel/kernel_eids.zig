@@ -634,6 +634,21 @@ pub const SEL_FFI_PEEK_STRING_ARRAY: u64 = 225; // "peekStringArray:" on FFI_PTR
 pub const SEL_FFI_PEEK_BYTES: u64 = 226; // "peekBytes:len:" (offset, len) -> string
 pub const SEL_FFI_POKE_BYTES: u64 = 227; // "pokeBytes:at:"  (bytes, offset) -> self
 
+// Width-complete peek/poke family (2026-06-17). `peekInt:`/`pokeInt:at:` are
+// 8-byte (C `long`/`int64`); these add narrower C scalar widths so a 4-byte C
+// `int` (e.g. errno) or 2-byte `short` (e.g. `in_port_t`) reads back as a
+// SmallInt without the 8-byte read overrunning adjacent bytes (which then
+// overflowed the 61-bit SmallInt → `nil`). Signed variants sign-extend; `U`
+// variants zero-extend (always fit 61-bit). Poke truncates the low bytes, so
+// signedness is irrelevant on write (one selector per width). EIDs 240-245 sit
+// below USER_EID_START (256); 246-255 remain free.
+pub const SEL_FFI_PEEK_INT32: u64 = 240; // "peekInt32:"  (offset) -> i32 sign-extended
+pub const SEL_FFI_PEEK_UINT32: u64 = 241; // "peekUInt32:" (offset) -> u32 zero-extended
+pub const SEL_FFI_PEEK_SHORT: u64 = 242; // "peekShort:"  (offset) -> i16 sign-extended
+pub const SEL_FFI_PEEK_USHORT: u64 = 243; // "peekUShort:" (offset) -> u16 zero-extended
+pub const SEL_FFI_POKE_INT32: u64 = 244; // "pokeInt32:at:" (value, offset) -> self (low 4 bytes)
+pub const SEL_FFI_POKE_SHORT: u64 = 245; // "pokeShort:at:" (value, offset) -> self (low 2 bytes)
+
 /// Phase 19.7 — out-param "cell" constructors on MODULE_PROTO_VT. Each mints an
 /// FfiPtr to a fresh scratch buffer carrying a width tag (boxed slot 2); after a
 /// C call writes through it, `[cell value]` (reuses SEL_VALUE) peeks the right
