@@ -66,13 +66,51 @@ The shell `dlopen`s modules from argv; each exports `birnam_module_init` and tal
 
 ## Run the REPL
 
+Modules are named by **bare name** — `lang` resolves to `libbirnam_lang.dylib`
+along the dylib search path. With no arguments, `birnam` loads the default set
+(`peg lang`):
+
 ```
-./zig-out/bin/birnam \
-    ./zig-out/lib/libbirnam_peg.dylib \
-    ./zig-out/lib/libbirnam_lang.dylib
+./zig-out/bin/birnam                 # default: peg + lang
+./zig-out/bin/birnam peg lang query  # explicit set (full dylib paths still work)
+./zig-out/bin/birnam --bare          # load nothing (bare kernel)
 ```
 
 You get a `birnam>` prompt. Each line is parsed by the PEG engine, desugared to a typed AST, compiled to bytecode, and run on the VM. Results print as `=> value`. Ctrl-D exits.
+
+### Resolving modules
+
+A module name is resolved to a dylib by searching, in order:
+
+1. directories in `$BIRNAM_DYLIB_PATH` (`:`-separated), then any `dylib_paths` from `birnam.toml`
+2. the current directory and everything beneath it (recursive)
+3. the directory holding the `birnam` binary (so a staged `binary + dylibs` bundle is portable)
+
+For each directory the name is tried as-is, then decorated: `lang` → `liblang.dylib` → `libbirnam_lang.dylib` (the convention the bundled modules follow). A name that already points at a file is used verbatim, so explicit paths keep working.
+
+### Project config — `birnam.toml`
+
+A `birnam.toml` found by walking from the current directory up to the
+filesystem root (git-style; first match wins) pins a project's module set,
+extra search directories, and a snapshot to auto-load — so a bare `birnam`
+inside the project tree starts up ready to go:
+
+```toml
+modules     = ["peg", "lang", "query"]   # ordered load list (bare names or paths)
+dylib_paths = ["zig-out/lib"]            # extra search dirs, relative to this file
+image       = "session.bim"              # snapshot :load'd after the modules
+```
+
+It's a deliberately small TOML subset: string and string-array values, `#`
+comments, `[section]` headers ignored. Relative `dylib_paths` and `image` are
+resolved against the config file's own directory, so a project is
+location-independent.
+
+Precedence for the module set: **explicit arguments > `birnam.toml` > the
+default (`peg lang`)**. `--bare` overrides everything and loads nothing. The
+config `image` is auto-loaded only on a bare (no-module-argument) invocation —
+passing modules on the command line is treated as a custom session and won't
+drag the project snapshot in.
 
 ## Tests
 
