@@ -3276,6 +3276,56 @@ fn dbDefineRuleImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return name_sym;
 }
 
+/// True iff `r` is an ERROR_VT entity (a propagating error value).
+fn isErrorRef(r: Ref) bool {
+    if (!isEid(r)) return false;
+    return g_api.?.query_eavt(r >> 3, ATTR_VTABLE) == mkEid(ERROR_VT);
+}
+
+/// Recursively materialize an entity per a pull spec into an ASSOC_VT map.
+/// Spec elements: `#attr` → `map[#attr] = currentValue(entity, attr)` (nil if
+/// absent); `#[#refattr <sub-spec>]` → follow the eid-valued `refattr` and pull
+/// `<sub-spec>` from it (nil if the value is absent or not an entity). (Phase 7.3
+/// pull — flat + nested ref specs; reverse/many attrs deferred.)
+fn pullEntity(entity_eid: u64, spec: Ref) Ref {
+    const api = g_api.?;
+    if (!isVectorRef(spec)) return mkRuntimeError("pull: spec must be a vector of #attr / #[#attr <spec>]");
+    var map = api.make_map();
+    const nspec = api.rrb_len(spec);
+    var i: u64 = 0;
+    while (i < nspec) : (i += 1) {
+        const elem = api.rrb_nth(spec, i);
+        if (isVectorRef(elem)) {
+            if (api.rrb_len(elem) != 2) return mkRuntimeError("pull: a nested spec must be #[#attr <spec>]");
+            const attr_sym = api.rrb_nth(elem, 0);
+            if (!isEid(attr_sym)) return mkRuntimeError("pull: attribute must be a #symbol");
+            const v = api.query_eavt(entity_eid, attr_sym >> 3);
+            var child: Ref = NIL;
+            if (isEid(v) and v != NIL) {
+                child = pullEntity(v >> 3, api.rrb_nth(elem, 1));
+                if (isErrorRef(child)) return child;
+            }
+            map = api.map_put(map, attr_sym, child);
+        } else if (isEid(elem)) {
+            map = api.map_put(map, elem, api.query_eavt(entity_eid, elem >> 3));
+        } else {
+            return mkRuntimeError("pull: spec elements must be #attr or #[#attr <spec>]");
+        }
+    }
+    return map;
+}
+
+/// `[db pull: anEntity spec: #[ #name #[#delegate #[#name]] … ]]` — materialize an
+/// entity (e.g. a `findAll` result eid or a `#symbol`) into a nested map. Compose
+/// with `collect:` over a query result to pull every match. (Phase 7.3.)
+fn dbPullSpecImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    if (n < 2) return mkRuntimeError("pull:spec: expects an entity and a spec vector");
+    const entity = args[0];
+    if (!isEid(entity)) return mkRuntimeError("pull: entity must be an eid (a query result or #symbol)");
+    return pullEntity(entity >> 3, args[1]);
+}
+
 /// Install the `db` prototype + its methods + SNAPSHOT_VT methods, and bind the
 /// global `db`. Phase 15.R R1d.
 fn installDbSurface() void {
@@ -3297,6 +3347,7 @@ fn installDbSurface() void {
         .{ .name = "findAll:where:since:", .impl = @ptrCast(&dbFindAllWhereSinceImpl) },
         .{ .name = "findAll:where:between:and:", .impl = @ptrCast(&dbFindAllWhereBetweenAndImpl) },
         .{ .name = "defineRule:params:body:", .impl = @ptrCast(&dbDefineRuleImpl) },
+        .{ .name = "pull:spec:", .impl = @ptrCast(&dbPullSpecImpl) },
     };
     for (db_methods) |m| {
         const sel = api.intern(m.name.ptr, m.name.len);

@@ -40,12 +40,30 @@ The Zig query **engine** (`query.zig`) has been built + tested since Phase 7; th
 
 Terms: a `?name` query variable (deduped by name → shared vars join), or a constant — an attribute symbol `#foo` matches a fact's attr by interned eid; strings/integers/floats are literal values.
 
-**Not yet wired (engine supports them; need a birnam surface):**
-- **Rules + recursion** — there is no way to *define/store* a rule from birnam yet (engine + `query_add_rule_invocation` exist).
-- **Pull** — hierarchical result projection.
-- Quote sugar covers keyword-triple clauses only; predicates / `#not` / `#or` use the explicit `#[ … ]` form.
+**Rules + recursion (Phase 7.1 — SHIPPED):**
+```
+[db defineRule: #ancestor params: #[?a ?b] body: #[ #[?a #parent ?b] ]]
+[db defineRule: #ancestor params: #[?a ?b] body: #[ #[?a #parent ?x] #[#rule #ancestor ?x ?b] ]]
+[db findAll: #[?a ?b] where: #[ #[#rule #ancestor ?a ?b] ]]   " transitive closure "
+```
+Multiple `defineRule:` calls under one name = definitional disjunction. A
+`#[#rule #name ?a …]` clause invokes a rule (valid anywhere, incl. rule bodies →
+recursion); args bind to params by position. Stratification/termination guards
+are the engine's.
 
-Implementation: one `runDatalogQuery(find, where, TimeMod)` core in `src/modules/lang/lang.zig` + recursive `addWhereElement`/`addBranch`/`addClause`, over the existing query IdApi builder. Regression suite: `lang_module_test.zig` "Phase 7 datalog".
+**Pull (Phase 7.3 — SHIPPED):**
+```
+[db pull: #point spec: #[ #name #[#delegate #[ #name ]] ]]   " → nested map "
+[[db findAll: ?e where: …] collect: [:e | [db pull: e spec: #[ #name ]]]]
+```
+`#attr` → `map[#attr]` = current value (nil if absent); `#[#refattr <sub-spec>]`
+→ follow the eid-valued attr and pull recursively. Returns an ASSOC_VT map.
+
+**Not yet wired (engine supports them; need a birnam surface):**
+- Quote sugar covers keyword-triple clauses only; predicates / `#not` / `#or` / `#rule` use the explicit `#[ … ]` form.
+- Pull over reverse / `:many`-cardinality attributes (RRB-of-submaps).
+
+Implementation: one `runDatalogQuery(find, where, TimeMod)` core in `src/modules/lang/lang.zig` + recursive `addWhereElement`/`addBranch`/`addClause`/`addRuleInvocation` over the query IdApi builder; `dbDefineRuleImpl` registers rules; `pullEntity` materializes maps. Regression: `lang_module_test.zig` "Phase 7 datalog" / "Phase 7.1 datalog rules" / "Phase 7.3 datalog pull".
 
 ---
 

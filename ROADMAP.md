@@ -2809,9 +2809,17 @@ field-read slot cache. Nothing perf-related happens before this.
   clause-vector at lower time (quoteTermValue drills to the leaf term;
   quoteKeywordClause builds `#[?e #attr ?v]`), feeds findAll:where: identically
   to the explicit vector form. Keyword triples only; predicates/#not/#or stay in
-  the vector form. Regression suite lang_module 69. **REMAINING (own focused arcs,
-  NOT thin wiring):** rules+recursion (engine has it + query_add_rule_invocation,
-  but NO birnam surface to DEFINE/store a rule); pull (hierarchical result spec).
+  the vector form. Regression suite lang_module 69. **Rules+recursion SHIPPED
+  2026-06-16** — `[db defineRule: #name params: #[?a ?b] body: #[ … ]]` registers
+  a rule (definitional disjunction); `#[#rule #name ?a …]` is an invocation clause
+  (marker convention like #not/#or), recursive in rule bodies; `runDatalogQuery` +
+  bodies call `query_use_global_rules`; `cDefineRule` computes max_var from the
+  built query (no ABI change). **Pull SHIPPED 2026-06-16** — `[db pull: e spec:
+  #[ #attr #[#refattr <sub-spec>] ]]` → nested ASSOC_VT map (`pullEntity`),
+  composes with `collect:` over query results. Tests: lang_module 73 (Phase 7.1
+  rules = recursive ancestor closure; Phase 7.3 pull = flat + nested-ref).
+  **REMAINING:** pull over reverse/`:many` attrs (RRB-of-submaps); subqueries +
+  saved-query name resolution from the surface (engine has save_query/run_query).
 - *12.5 mmap RO segments*: pure load-perf; unlocks 15.R R4 mmap fault-in. Defer hard.
 - *Language niceties*: **`<=>`/`compare:` SHIPPED 2026-06-16** (17.3 — SmallInt/String,
   3-char binary-op bump). **`&`/`|` eager boolean SHIPPED 2026-06-16** (17.5 — `|`

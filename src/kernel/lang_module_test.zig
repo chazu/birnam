@@ -2166,6 +2166,49 @@ test "Phase 7.1 datalog rules: defineRule + recursive ancestor (transitive closu
     try testing.expect(evalIsError(s, lang, "[db findAll: ?x where: #[ #[#rule #ancestor] ]]", a));
 }
 
+test "Phase 7.3 datalog pull: flat + nested-ref entity materialization" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const TRUE = ref_mod.mkEid(kernel_eids.TRUE_EID);
+    const sz = s.interner.str_to_eid.get("size").?;
+
+    // point :name "Point" :delegate object ; object :name "Object".
+    const name_attr = s.api.intern("name".ptr, 4);
+    const deleg = s.api.intern("delegate".ptr, 8);
+    const point = s.api.intern("point".ptr, 5);
+    const object = s.api.intern("object".ptr, 6);
+    _ = try s.store.assert(point, name_attr, s.api.make_string("Point".ptr, 5), kernel_eids.M_USER);
+    _ = try s.store.assert(point, deleg, ref_mod.mkEid(object), kernel_eids.M_USER);
+    _ = try s.store.assert(object, name_attr, s.api.make_string("Object".ptr, 6), kernel_eids.M_USER);
+
+    // Flat scalar pull → map with the attr value.
+    try testing.expectEqual(TRUE, evalLine(s, lang, "[[[db pull: #point spec: #[ #name ]] at: #name] = \"Point\"]", a));
+
+    // Nested-ref pull → follow #delegate, pull #name from it.
+    try testing.expectEqual(TRUE, evalLine(s, lang,
+        "[[[[db pull: #point spec: #[ #[#delegate #[ #name ]] ]] at: #delegate] at: #name] = \"Object\"]", a));
+
+    // Scalars + nested ref together in one spec.
+    try testing.expectEqual(TRUE, evalLine(s, lang,
+        "[[[db pull: #point spec: #[ #name #[#delegate #[ #name ]] ]] at: #name] = \"Point\"]", a));
+
+    // A missing attribute → nil in the map.
+    try testing.expect(ref_mod.isNil(evalLine(s, lang, "[[db pull: #point spec: #[ #nope ]] at: #nope]", a)));
+
+    // Composes with a query: pull every entity that has a #name (point + object).
+    const pulled = evalLine(s, lang,
+        "[[db findAll: ?e where: #[ #[?e #name ?n] ]] collect: [:e | [db pull: e spec: #[ #name ]]]]", a);
+    try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send0(pulled, sz)));
+
+    // Malformed nested spec → error.
+    try testing.expect(evalIsError(s, lang, "[db pull: #point spec: #[ #[#delegate] ]]", a));
+}
+
 test "17.5 eager & / | and the | block-bar disambiguation" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
