@@ -1,0 +1,26 @@
+// Bank ledger — reference cells + time-travel.
+//
+// A balance lives in a `db cell:`. Each transaction is a `set:` to a new value;
+// birnam keeps every prior value, so the cell is its own statement. Run it:
+//
+//   birnam examples/bank-ledger.birnam
+//
+// `deposit`/`withdraw` are named blocks taking the amount as a parameter —
+// applied transactions, not buried expressions. `asOf:` rewinds the balance to
+// an earlier basis (here `t0`, captured before any transaction), and `history`
+// replays every value the cell has held. Time-travel for free: the ledger is
+// just the cell's past.
+
+let acct := [db cell: 0];
+let t0 := [[db now] basisT];
+
+let deposit  := [:amt | [acct set: [[acct value] + amt]]];
+let withdraw := [:amt | [acct set: [[acct value] - amt]]];
+
+[deposit  value: 100];
+[deposit  value: 50];
+[withdraw value: 30];
+
+[System println: ["balance now: " , [[acct value] printString]]];
+[System println: ["at start:    " , [[acct asOf: t0] printString]]];
+[System println: ["statement:   " , [[acct history] printString]]]

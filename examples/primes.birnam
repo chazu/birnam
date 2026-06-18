@@ -1,0 +1,23 @@
+// Prime sieve (trial division).
+//
+// Print the primes up to N. Run as a script:
+//
+//   birnam examples/primes.birnam
+//
+// `hasDivisor` searches 2..k-1 for a factor: `detect:` answers the first
+// element satisfying its block, or `nil` when none do — so "no divisor found"
+// is just `isNil`. `isPrime` reads as the definition (greater than 1, and no
+// divisor). `select:` then keeps the primes out of the range. Naming the two
+// predicate blocks keeps the pipeline at the bottom a single readable line.
+
+let n := 30;
+
+let hasDivisor := [:k |
+  [[2 to: [k - 1]] detect: [:d | [[k mod: d] = 0]]]];
+
+let isPrime := [:k |
+  [[k > 1] & [[hasDivisor value: k] isNil]]];
+
+let primes := [[2 to: n] select: [:k | [isPrime value: k]]];
+
+[System println: [[["primes up to " , [n printString]] , ": "] , [primes printString]]]
