@@ -1,0 +1,36 @@
+// A CSV-row parser authored entirely in birnam over the PEG engine.
+//
+//   birnam examples/peg-csv.birnam
+//
+// birnam can build grammars and walk parse trees without dropping to zig:
+//   `peg` is the combinator singleton — `newGrammar`, `literal:`, `ruleRef:`,
+//   `anyByte`, `star:`/`plus:`/`opt:`, `not:`/`and:`, `seqOf:`/`choiceOf:`
+//   (vector forms), `anyOf:`/`range:to:` (charsets). `[g defineRule: n as: p]`
+//   adds a rule; `[g parse: src from: rule]` returns a CST.
+//
+// CST nodes answer `ruleName` (a string), `children` (a vector), and `start`/
+// `end` (byte offsets) — slice the source with `copyFrom:to:` to read text.
+
+let g := [peg newGrammar];
+
+// field = (!"," any)+   — one or more bytes that aren't a comma.
+[g defineRule: "field" as:
+  [peg plus: [peg seqOf: #[ [peg not: [peg literal: ","]] [peg anyByte] ]]]];
+
+// row = field ("," field)*
+[g defineRule: "row" as:
+  [peg seqOf: #[
+    [peg ruleRef: "field"]
+    [peg star: [peg seqOf: #[ [peg literal: ","] [peg ruleRef: "field"] ]]]
+  ]]];
+
+let src := "alpha,beta,gamma";
+let cst := [g parse: src from: "row"];
+
+// Lower the CST: collect the text of every `field` node into a vector.
+let fields := [[[cst children]
+  select: [:c | [[c ruleName] = "field"]]]
+  collect: [:c | [src copyFrom: [c start] to: [c end]]]];
+
+[System println: ["parsed " , [[[fields size] printString] , " fields:"]]];
+[fields do: [:f | [System println: ["  " , f]]]]

@@ -41,6 +41,7 @@ const mkEid = abi.mkEid;
 
 // Kernel-fixed EIDs (mirror src/kernel/kernel_eids.zig).
 const PEG_EID = ke.PEG_EID;
+const PEG_VT = ke.PEG_VT;
 
 // AST kind vts + binding/scope vts + singletons.
 const AST_LITERAL_VT = ke.AST_LITERAL_VT;
@@ -73,6 +74,7 @@ const FILE_PROTO_VT = ke.FILE_PROTO_VT; // Phase 17.8 I/O — File singleton vta
 const FILE_PROTO = ke.FILE_PROTO;
 const SYSTEM_PROTO_VT = ke.SYSTEM_PROTO_VT; // Phase 17.8 I/O — System singleton vtable
 const SYSTEM_PROTO = ke.SYSTEM_PROTO;
+const CST_NODE_VT = ke.CST_NODE_VT; // Phase 17.11 — parse-tree node navigation
 const TIME_PROTO_VT = ke.TIME_PROTO_VT; // Phase 17.9 — Time wall clock
 const TIME_PROTO = ke.TIME_PROTO;
 const RANDOM_PROTO_VT = ke.RANDOM_PROTO_VT; // Phase 17.9 — Random PRNG
@@ -2713,9 +2715,11 @@ fn parseExprImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     const cst_result = api.send2(mkEid(g_grammar_eid), internSel("parse:from:"), src_dup, rule);
     if (!isEid(cst_result)) return NIL;
     const cst_eid = cst_result >> 3;
-    // Check it's not an ERROR.
+    // Pass an ERROR_VT diagnostic through unchanged; otherwise desugar the CST.
+    // (CST nodes now carry CST_NODE_VT, so the check must be ERROR_VT-specific,
+    // not "has any vtable".)
     const vt = api.query_eavt(cst_eid, ATTR_VTABLE);
-    if (vt != NIL) return cst_result; // pass-through ERROR_VT
+    if (isEid(vt) and untagEid(vt) == ERROR_VT) return cst_result;
     return mkEid(desugar(cst_eid));
 }
 
@@ -5546,6 +5550,129 @@ fn yamlPairValueOfItem(item: u64) Ref {
     return if (v != 0) yamlLowerValue(v) else NIL;
 }
 
+// -- Phase 17.11: CST navigation — author parsers in birnam over PEG --------
+//
+// `[grammar parse:from:]` returns a CST whose nodes are tagged CST_NODE_VT.
+// These accessors let a birnam program walk that tree and lower it: combine
+// `ruleName` (a symbol) to dispatch, `children` to recurse, and `start`/`end`
+// (byte offsets) with the source's `copyFrom:to:` to read a node's text.
+
+/// `[node ruleName]` — the matched rule's name as a STRING (so it compares
+/// with `=`; bare symbols lack a value protocol). NIL for an unnamed node.
+fn cstRuleNameImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    const rn = g_api.?.query_eavt(untagEid(s.receiver), ATTR_AST_RULE_NAME);
+    if (!isEid(rn)) return NIL;
+    return g_api.?.symbol_name(untagEid(rn));
+}
+fn cstStartImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.query_eavt(untagEid(s.receiver), ATTR_AST_BYTE_START);
+}
+fn cstEndImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.query_eavt(untagEid(s.receiver), ATTR_AST_BYTE_END);
+}
+fn cstFirstChildImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.query_eavt(untagEid(s.receiver), ATTR_AST_FIRST_CHILD);
+}
+fn cstNextSiblingImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.query_eavt(untagEid(s.receiver), ATTR_AST_NEXT_SIBLING);
+}
+/// `[node children]` — vector of child nodes (left to right).
+fn cstChildrenImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    const api = g_api.?;
+    var vec = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+    var c = cstFirstChild(untagEid(s.receiver));
+    while (c != 0) : (c = cstNextSibling(c)) {
+        vec = api.rrb_with(vec, mkEid(c));
+    }
+    return vec;
+}
+
+/// `[peg seqOf: aVector]` — sequence pattern from a vector of sub-patterns.
+/// Birnam-friendly counterpart to the variadic `seq:` (keyword sends are
+/// fixed-arity, so a single vector arg is how birnam passes a list).
+fn pegSeqOfImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isVectorRef(a[0])) return mkRuntimeError("peg seqOf: expects a vector");
+    const len = api.rrb_len(a[0]);
+    var buf: [256]u64 = undefined;
+    if (len > buf.len) return mkRuntimeError("peg seqOf: too many sub-patterns");
+    var i: u64 = 0;
+    while (i < len) : (i += 1) buf[@intCast(i)] = untagEid(api.rrb_nth(a[0], i));
+    return mkEid(api.peg_mk_seq(&buf, @intCast(len)));
+}
+/// `[peg choiceOf: aVector]` — ordered-choice pattern from a vector.
+fn pegChoiceOfImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isVectorRef(a[0])) return mkRuntimeError("peg choiceOf: expects a vector");
+    const len = api.rrb_len(a[0]);
+    var buf: [256]u64 = undefined;
+    if (len > buf.len) return mkRuntimeError("peg choiceOf: too many alternatives");
+    var i: u64 = 0;
+    while (i < len) : (i += 1) buf[@intCast(i)] = untagEid(api.rrb_nth(a[0], i));
+    return mkEid(api.peg_mk_choice(&buf, @intCast(len)));
+}
+/// `[peg anyOf: aString]` — charset matching any single byte in the string.
+fn pegAnyOfImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(a[0])) return mkRuntimeError("peg anyOf: expects a string");
+    const b = stringBytes(a[0]);
+    var buf: [512]u8 = undefined;
+    if (b.len * 2 > buf.len) return mkRuntimeError("peg anyOf: too many chars");
+    for (b, 0..) |c, i| {
+        buf[2 * i] = c;
+        buf[2 * i + 1] = c;
+    }
+    return mkEid(api.peg_mk_charset(&buf, b.len * 2));
+}
+/// `[peg range: loString to: hiString]` — charset for the inclusive byte range
+/// of the first bytes of `lo`/`hi` (e.g. `[peg range: "0" to: "9"]`).
+fn pegRangeToImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(a[0]) or !isString(a[1])) return mkRuntimeError("peg range:to: expects strings");
+    const lo = stringBytes(a[0]);
+    const hi = stringBytes(a[1]);
+    if (lo.len == 0 or hi.len == 0) return mkRuntimeError("peg range:to: empty bound");
+    const buf = [_]u8{ lo[0], hi[0] };
+    return mkEid(api.peg_mk_charset(&buf, 2));
+}
+
+fn installCstSurface() void {
+    const api = g_api.?;
+    // Expose the PEG combinator singleton so birnam can build grammars:
+    // `[peg newGrammar]`, `[peg literal: "x"]`, `[peg seqOf: #[…]]`, etc., then
+    // `[g defineRule: name as: pat]` and `[g parse: src from: rule]`.
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("peg".ptr, 3), mkEid(PEG_EID));
+    // Birnam-friendly (vector/string) combinators alongside the variadic ones.
+    _ = api.assert_fact(PEG_EID, ATTR_VTABLE, mkEid(PEG_VT), g_module_eid);
+    _ = api.assert_fact(PEG_VT, api.intern("seqOf:".ptr, 6), mkEid(api.make_closure(@ptrCast(&pegSeqOfImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(PEG_VT, api.intern("choiceOf:".ptr, 9), mkEid(api.make_closure(@ptrCast(&pegChoiceOfImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(PEG_VT, api.intern("anyOf:".ptr, 6), mkEid(api.make_closure(@ptrCast(&pegAnyOfImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(PEG_VT, api.intern("range:to:".ptr, 9), mkEid(api.make_closure(@ptrCast(&pegRangeToImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(CST_NODE_VT, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    const Pair = struct { name: []const u8, impl: *const anyopaque };
+    const methods = [_]Pair{
+        .{ .name = "ruleName", .impl = @ptrCast(&cstRuleNameImpl) },
+        .{ .name = "start", .impl = @ptrCast(&cstStartImpl) },
+        .{ .name = "end", .impl = @ptrCast(&cstEndImpl) },
+        .{ .name = "firstChild", .impl = @ptrCast(&cstFirstChildImpl) },
+        .{ .name = "nextSibling", .impl = @ptrCast(&cstNextSiblingImpl) },
+        .{ .name = "children", .impl = @ptrCast(&cstChildrenImpl) },
+    };
+    for (methods) |m| {
+        _ = api.assert_fact(CST_NODE_VT, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+}
+
 fn installNumberProtocol() void {
     const api = g_api.?;
     _ = api.assert_fact(SMALLINT_VT, api.intern("mod:".ptr, 4), mkEid(api.make_closure(@ptrCast(&smallintModImpl), NIL)), g_module_eid);
@@ -6244,6 +6371,7 @@ pub fn langPrimitivesTier() void {
     installCellSurface(); // Phase 16 Tier E — cells/metadata/applicative/Xf
     installStdlib(); // Phase 17 — printing, equality/comparison, sort
     installStdlibExtras(); // Phase 17.9 — Math/Random/Time/OS/String-utils
+    installCstSurface(); // Phase 17.11 — birnam-navigable parse trees
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_PARENT, mkEid(GLOBALS_SCOPE_EID), g_module_eid);
 }
 

@@ -711,4 +711,9 @@ pub const JSON_PROTO: u64 = 251;
 pub const YAML_PROTO_VT: u64 = 252;
 pub const YAML_PROTO: u64 = 253;
 
-// 254..255 reserved for future kernel selectors / attributes
+// CST node vtable (Phase 17.11) — parse trees from `[grammar parse:from:]` are
+// tagged with this so birnam can navigate them (ruleName/children/start/end)
+// and author parsers over the PEG engine.
+pub const CST_NODE_VT: u64 = 254;
+
+// 255 reserved for future kernel selectors / attributes

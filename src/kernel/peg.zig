@@ -429,6 +429,7 @@ fn matchPattern(rs: *RunState, grammar_eid: u64, pat_eid: u64, pos: usize) anyer
             // leaks its CST forever, since prune never touches CODE facts. (15.A-AST.)
             const ast_eid = e.table.alloc();
             const cst_prov = kernel_eids.M_USER;
+            _ = try e.store.assert(ast_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.CST_NODE_VT), cst_prov);
             _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_RULE_NAME, ref_mod.mkEid(name_eid), cst_prov);
             _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_START, ref_mod.mkSmallInt(@intCast(pos)).?, cst_prov);
             _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_END, ref_mod.mkSmallInt(@intCast(inner.end_pos)).?, cst_prov);
@@ -482,6 +483,7 @@ pub fn parse(e: *Engine, grammar_eid: u64, source: []const u8, rule_name: []cons
         // matchRule note above). Grammar nodes stay CODE.
         const ast_eid = e.table.alloc();
         const cst_prov = kernel_eids.M_USER;
+        _ = try e.store.assert(ast_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.CST_NODE_VT), cst_prov);
         _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_RULE_NAME, ref_mod.mkEid(name_eid), cst_prov);
         _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_START, ref_mod.mkSmallInt(0).?, cst_prov);
         _ = try e.store.assert(ast_eid, kernel_eids.ATTR_AST_BYTE_END, ref_mod.mkSmallInt(@intCast(m.end_pos)).?, cst_prov);

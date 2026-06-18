@@ -19,6 +19,11 @@ Convention: `[ ]` open, `[~]` in progress, `[x]` done (with commit/date). Severi
   - **P3** `definition`/`references` — within-doc trivial (AST `let`→span); cross-unit needs source-location provenance facts on install — defer, ties to 15.A-AST.
   - Editor wiring: `(add-to-list 'eglot-server-programs '(birnam-mode "birnam" "--lsp"))`.
 
+## Language surface
+
+- [x] **Birnam-authored parsers over PEG** (2026-06-18) — `peg` singleton bound as a global with birnam-friendly combinators: `newGrammar`, `literal:`/`ruleRef:`/`anyByte`/`eof`, `star:`/`plus:`/`opt:`/`not:`/`and:`, and `seqOf:`/`choiceOf:` (vector forms — keyword sends are fixed-arity, so the variadic `seq:`/`choice:` aren't birnam-callable) + `anyOf:` (charset from a string) / `range:to:`. Parse trees are tagged `CST_NODE_VT` (eid 254) and answer `ruleName` (string), `children` (vector), `firstChild`/`nextSibling`, `start`/`end` (byte offsets → slice source with `copyFrom:to:`). Example: `examples/peg-csv.birnam`. **GOTCHA fixed:** `parseExprImpl` treated "CST has any vtable" as an error — now `== ERROR_VT` (CST nodes carry a vtable). **Follow-up:** port the zig `Json`/`Yaml` to birnam units now that this exists.
+- [ ] **Symbol value protocol** — bare symbols (`#foo`) lack `=` and `printString` (they're identity tokens with no value vtable): `[#a = #a]` → nil, `[#a printString]` → nil. Works as map keys / datalog constants (identity), but not in value comparisons. Give the symbol vtable `=` (identity), `printString`/`asString` (the name), `asSymbol`/`asString` round-trip. (Workaround used by CST `ruleName`: return a string, not a symbol.)
+
 ## Stdlib modules
 
 - [x] **OS / Process** (2026-06-18) — `System getEnv:` (→ string|nil), `setEnv:to:`, `exit:` (status code), `run:` (shell via libc `system()` → exit code). Zig methods on `SYSTEM_PROTO_VT`; libc `setenv`/`system` declared extern (absent from zig 0.15 `std.c`). Verified. **Open:** `spawn:args:` + stdout capture (use `std.process.Child`).
