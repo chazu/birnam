@@ -110,6 +110,24 @@ pub const Interner = struct {
         return self.str_to_eid.count();
     }
 
+    /// (eid, name) pair yielded by `NameIter`.
+    pub const NameEntry = struct { eid: u64, name: []const u8 };
+
+    /// Iterator over every interned (eid, name) pair, in HAMT order. Used by
+    /// out-of-tree consumers (e.g. the LSP server) that need to enumerate all
+    /// known names — selectors, identifiers, attributes — for completion.
+    pub const NameIter = struct {
+        inner: Eid2Str.Iterator,
+        pub fn next(self: *NameIter) ?NameEntry {
+            if (self.inner.next()) |kv| return .{ .eid = kv.key, .name = kv.value };
+            return null;
+        }
+    };
+
+    pub fn names(self: *const Interner) NameIter {
+        return .{ .inner = self.eid_to_str.iter() };
+    }
+
     /// Restore a name↔EID entry directly into the maps without asserting a
     /// `:name` fact. Phase 12 image load uses this to rebuild the interner
     /// from a serialized snapshot so user-interned names keep their original
