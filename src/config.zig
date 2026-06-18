@@ -11,6 +11,11 @@
 //!     modules     = ["peg", "lang"]   # ordered module load list (bare names ok)
 //!     dylib_paths = ["build", "/opt/birnam/lib"]   # extra search dirs
 //!     image       = "session.bim"     # snapshot to :load after modules
+//!     repl        = "linenoise"       # alt REPL front end (= [module_overrides] repl)
+//!
+//!     [module_overrides]              # per-slot impl choices (e.g. repl, json)
+//!     repl = "linenoise"
+//!     json = "jsmn"
 //!
 //! Relative `dylib_paths` / `image` are resolved against the config file's own
 //! directory, so a project is location-independent. All returned strings are
@@ -31,11 +36,50 @@ pub const Config = struct {
     /// `repl` key — names an alternate REPL front end (e.g. "linenoise"). When
     /// set, a bare interactive `birnam` hands the read-eval-print loop to the
     /// matching birnam-authored REPL instead of the built-in stdin loop.
+    /// Back-compat sugar: also mirrored into `overrides` under slot "repl".
     repl: ?[]const u8 = null,
+    /// `[module_overrides]` entries — per-slot implementation choices. A module
+    /// declares an override slot (e.g. "repl"); the user names the impl to load
+    /// in its place. Resolve with `overrideFor`. The shell merges these (lowest
+    /// precedence) with the `BIRNAM_MODULE_OVERRIDES` env var and `--overrides`
+    /// flag (highest).
+    overrides: []const Override = &.{},
     /// `[[wrapped]]` entries — first-party C libraries the `birnam wrap`
     /// subcommand builds into dylibs (via `cc`, never zig) for FFI wrapping.
     wrapped: []const WrappedLib = &.{},
 };
+
+/// One module-override: which slot, and the implementation to use for it.
+pub const Override = struct { slot: []const u8, impl: []const u8 };
+
+/// Resolve a slot to its implementation, last-wins (so a higher-precedence
+/// source appended later overrides an earlier one). Null if the slot is unset.
+pub fn overrideFor(overrides: []const Override, slot: []const u8) ?[]const u8 {
+    var i = overrides.len;
+    while (i > 0) {
+        i -= 1;
+        if (std.mem.eql(u8, overrides[i].slot, slot)) return overrides[i].impl;
+    }
+    return null;
+}
+
+/// Parse a comma-separated `slot=impl` list (the env-var / `--overrides` flag
+/// format, e.g. `repl=linenoise,json=jsmn`). Tolerant: trims whitespace, skips
+/// empty/malformed entries. Owned slice of owned strings.
+pub fn parseOverrideList(allocator: std.mem.Allocator, str: []const u8) ![]const Override {
+    var out = std.ArrayList(Override){};
+    var it = std.mem.splitScalar(u8, str, ',');
+    while (it.next()) |tok| {
+        const t = std.mem.trim(u8, tok, " \t");
+        if (t.len == 0) continue;
+        const eq = std.mem.indexOfScalar(u8, t, '=') orelse continue;
+        const slot = std.mem.trim(u8, t[0..eq], " \t");
+        const impl = std.mem.trim(u8, t[eq + 1 ..], " \t");
+        if (slot.len == 0 or impl.len == 0) continue;
+        try out.append(allocator, .{ .slot = try allocator.dupe(u8, slot), .impl = try allocator.dupe(u8, impl) });
+    }
+    return out.toOwnedSlice(allocator);
+}
 
 /// One `[[wrapped]]` array-of-tables entry. Paths are joined against the config
 /// dir when relative, so a wrapped lib is location-independent.
@@ -80,8 +124,10 @@ fn parseFile(allocator: std.mem.Allocator, dir: []const u8, path: []const u8) !C
     // raw entry is finalized (paths joined, defaults derived) into `wrapped`.
     var wrapped = std.ArrayList(WrappedLib){};
     var pending: ?WrappedRaw = null;
-    // section state: are we inside a `[[wrapped]]` block (vs top-level)?
+    var overrides = std.ArrayList(Override){};
+    // section state: which block are we in (else top-level)?
     var in_wrapped = false;
+    var in_overrides = false;
 
     var lines = std.mem.splitScalar(u8, src, '\n');
     while (lines.next()) |raw| {
@@ -89,16 +135,19 @@ fn parseFile(allocator: std.mem.Allocator, dir: []const u8, path: []const u8) !C
         if (line.len == 0 or line[0] == '#') continue;
 
         if (line[0] == '[') {
-            // Section header. `[[wrapped]]` starts a new array entry; any other
-            // `[section]` resets to top-level (its keys are ignored).
+            // Section header. Finalize any pending `[[wrapped]]` entry, reset
+            // section state, then enter the matching block. `[[wrapped]]` opens
+            // a new array entry; `[module_overrides]` a key=val table; any other
+            // `[section]` is top-level-ish (keys ignored).
+            if (pending) |*p| try wrapped.append(allocator, try finalizeWrapped(allocator, dir, p));
+            pending = null;
+            in_wrapped = false;
+            in_overrides = false;
             if (std.mem.startsWith(u8, line, "[[wrapped]]")) {
-                if (pending) |*p| try wrapped.append(allocator, try finalizeWrapped(allocator, dir, p));
                 pending = WrappedRaw{};
                 in_wrapped = true;
-            } else {
-                if (pending) |*p| try wrapped.append(allocator, try finalizeWrapped(allocator, dir, p));
-                pending = null;
-                in_wrapped = false;
+            } else if (std.mem.startsWith(u8, line, "[module_overrides]")) {
+                in_overrides = true;
             }
             continue;
         }
@@ -106,6 +155,13 @@ fn parseFile(allocator: std.mem.Allocator, dir: []const u8, path: []const u8) !C
         const eq = std.mem.indexOfScalar(u8, line, '=') orelse continue;
         const key = std.mem.trim(u8, line[0..eq], " \t");
         const val = std.mem.trim(u8, line[eq + 1 ..], " \t");
+
+        if (in_overrides) {
+            if (parseString(val)) |s| {
+                try overrides.append(allocator, .{ .slot = try allocator.dupe(u8, key), .impl = try allocator.dupe(u8, s) });
+            }
+            continue;
+        }
 
         if (in_wrapped) {
             const p = &pending.?;
@@ -131,11 +187,17 @@ fn parseFile(allocator: std.mem.Allocator, dir: []const u8, path: []const u8) !C
         } else if (std.mem.eql(u8, key, "image")) {
             if (parseString(val)) |s| cfg.image = try joinRel(allocator, dir, s);
         } else if (std.mem.eql(u8, key, "repl")) {
-            if (parseString(val)) |s| cfg.repl = try allocator.dupe(u8, s);
+            // Top-level `repl = "…"` is back-compat sugar for the "repl" slot.
+            if (parseString(val)) |s| {
+                const impl = try allocator.dupe(u8, s);
+                cfg.repl = impl;
+                try overrides.append(allocator, .{ .slot = "repl", .impl = impl });
+            }
         }
     }
     if (pending) |*p| try wrapped.append(allocator, try finalizeWrapped(allocator, dir, p));
     cfg.wrapped = try wrapped.toOwnedSlice(allocator);
+    cfg.overrides = try overrides.toOwnedSlice(allocator);
     return cfg;
 }
 

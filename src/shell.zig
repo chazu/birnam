@@ -780,6 +780,7 @@ pub fn main() !void {
     var bare = false;
     var interactive = false;
     var lsp_mode = false;
+    var overrides_flag: ?[]const u8 = null;
     var eval_expr: ?[]const u8 = null;
     while (args.next()) |arg| {
         if (seen_dashdash) {
@@ -796,6 +797,10 @@ pub fn main() !void {
         }
         if (std.mem.eql(u8, arg, "--lsp")) {
             lsp_mode = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--overrides")) {
+            if (args.next()) |v| overrides_flag = try sa.dupe(u8, v);
             continue;
         }
         if (std.mem.eql(u8, arg, "-i") or std.mem.eql(u8, arg, "--interactive")) {
@@ -819,6 +824,20 @@ pub fn main() !void {
     const cfg = config_mod.discover(sa);
     if (cfg) |c| stderrPrint("[birnam] config: {s}/birnam.toml\n", .{c.dir});
     const extra_dirs: []const []const u8 = if (cfg) |c| c.dylib_paths else &.{};
+
+    // Merge module overrides from all three sources, lowest precedence first so
+    // `overrideFor` (last-wins) yields: argv > env > toml > default. The "repl"
+    // slot is consumed below; other slots are available for modules that
+    // declare an override point.
+    var overrides_list = std.ArrayList(config_mod.Override){};
+    if (cfg) |c| overrides_list.appendSlice(sa, c.overrides) catch {};
+    if (std.process.getEnvVarOwned(sa, "BIRNAM_MODULE_OVERRIDES")) |env_str| {
+        if (config_mod.parseOverrideList(sa, env_str) catch null) |evs| overrides_list.appendSlice(sa, evs) catch {};
+    } else |_| {}
+    if (overrides_flag) |s| {
+        if (config_mod.parseOverrideList(sa, s) catch null) |avs| overrides_list.appendSlice(sa, avs) catch {};
+    }
+    const overrides = overrides_list.items;
 
     // Pick the source of module names per the precedence above.
     const from_argv = argv_modules.items.len > 0;
@@ -905,11 +924,12 @@ pub fn main() !void {
     // built-in loop. So `repl = "linenoise"` enhances interactive use without
     // changing non-interactive behaviour.
     if (!run_and_exit and !bare and std.posix.isatty(std.posix.STDIN_FILENO)) {
-        if (cfg) |c| {
-            if (c.repl) |repl_name| {
-                if (runBirnamRepl(repl_name, c.dir, allocator, store, table, interner, &manager)) {
-                    std.process.exit(0);
-                }
+        if (config_mod.overrideFor(overrides, "repl")) |repl_name| {
+            // The birnam REPL's assets are resolved relative to the config dir;
+            // fall back to cwd when the override came from env/flag with no toml.
+            const base_dir = if (cfg) |c| c.dir else ".";
+            if (runBirnamRepl(repl_name, base_dir, allocator, store, table, interner, &manager)) {
+                std.process.exit(0);
             }
         }
     }
