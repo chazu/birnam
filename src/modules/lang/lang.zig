@@ -75,6 +75,7 @@ const FILE_PROTO = ke.FILE_PROTO;
 const SYSTEM_PROTO_VT = ke.SYSTEM_PROTO_VT; // Phase 17.8 I/O — System singleton vtable
 const SYSTEM_PROTO = ke.SYSTEM_PROTO;
 const CST_NODE_VT = ke.CST_NODE_VT; // Phase 17.11 — parse-tree node navigation
+const SYMBOL_VT = ke.SYMBOL_VT; // Phase 17.12 — symbol value protocol
 const TIME_PROTO_VT = ke.TIME_PROTO_VT; // Phase 17.9 — Time wall clock
 const TIME_PROTO = ke.TIME_PROTO;
 const RANDOM_PROTO_VT = ke.RANDOM_PROTO_VT; // Phase 17.9 — Random PRNG
@@ -5646,6 +5647,48 @@ fn pegRangeToImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     return mkEid(api.peg_mk_charset(&buf, 2));
 }
 
+// -- Phase 17.12: symbol value protocol -------------------------------------
+
+/// `[#a = #b]` — identity (interned symbols share identity).
+fn symbolEqImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return mkEid(if (s.receiver == a[0]) TRUE_EID else FALSE_EID);
+}
+/// `[#foo printString]` — the symbol with a leading `#` (e.g. "#foo").
+fn symbolPrintStringImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    const api = g_api.?;
+    const nm = api.symbol_name(untagEid(s.receiver));
+    if (!isString(nm)) return api.make_string("#".ptr, 1);
+    const b = stringBytes(nm);
+    var buf: [1024]u8 = undefined;
+    if (b.len + 1 > buf.len) return nm;
+    buf[0] = '#';
+    @memcpy(buf[1 .. 1 + b.len], b);
+    return api.make_string(buf[0 .. 1 + b.len].ptr, 1 + b.len);
+}
+/// `[#foo asString]` — the bare name ("foo"), no `#`.
+fn symbolAsStringImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    const nm = g_api.?.symbol_name(untagEid(s.receiver));
+    return if (isString(nm)) nm else g_api.?.make_string("".ptr, 0);
+}
+/// `[#foo asSymbol]` — itself.
+fn symbolAsSymbolImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return s.receiver;
+}
+
+fn installSymbolSurface() void {
+    const api = g_api.?;
+    _ = api.assert_fact(SYMBOL_VT, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    _ = api.assert_fact(SYMBOL_VT, api.intern("=".ptr, 1), mkEid(api.make_closure(@ptrCast(&symbolEqImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SYMBOL_VT, api.intern("printString".ptr, 11), mkEid(api.make_closure(@ptrCast(&symbolPrintStringImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SYMBOL_VT, api.intern("displayString".ptr, 13), mkEid(api.make_closure(@ptrCast(&symbolAsStringImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SYMBOL_VT, api.intern("asString".ptr, 8), mkEid(api.make_closure(@ptrCast(&symbolAsStringImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(SYMBOL_VT, api.intern("asSymbol".ptr, 8), mkEid(api.make_closure(@ptrCast(&symbolAsSymbolImpl), NIL)), g_module_eid);
+}
+
 fn installCstSurface() void {
     const api = g_api.?;
     // Expose the PEG combinator singleton so birnam can build grammars:
@@ -6372,6 +6415,7 @@ pub fn langPrimitivesTier() void {
     installStdlib(); // Phase 17 — printing, equality/comparison, sort
     installStdlibExtras(); // Phase 17.9 — Math/Random/Time/OS/String-utils
     installCstSurface(); // Phase 17.11 — birnam-navigable parse trees
+    installSymbolSurface(); // Phase 17.12 — symbol =/printString/asString
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_PARENT, mkEid(GLOBALS_SCOPE_EID), g_module_eid);
 }
 

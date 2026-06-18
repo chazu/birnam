@@ -212,7 +212,12 @@ pub fn vtableEidOf(r: Ref) ?u64 {
             promotion.maybeAutoPromote(receiver_eid);
         }
         const store = g_store.?;
-        const vt_ref = store.currentValue(receiver_eid, kernel_eids.ATTR_VTABLE) orelse return null;
+        const vt_ref = store.currentValue(receiver_eid, kernel_eids.ATTR_VTABLE) orelse {
+            // No explicit vtable: an interned NAMED entity (a symbol — `#foo`,
+            // a selector) dispatches on SYMBOL_VT so it answers =/printString.
+            if (store.currentValue(receiver_eid, kernel_eids.ATTR_NAME) != null) return kernel_eids.SYMBOL_VT;
+            return null;
+        };
         if (!ref_mod.isEid(vt_ref)) return null;
         return ref_mod.untagEid(vt_ref);
     }

@@ -716,4 +716,6 @@ pub const YAML_PROTO: u64 = 253;
 // and author parsers over the PEG engine.
 pub const CST_NODE_VT: u64 = 254;
 
-// 255 reserved for future kernel selectors / attributes
+// Symbol vtable (Phase 17.12) — interned named entities (`#foo`, selectors)
+// with no explicit `:vtable` dispatch here, giving symbols `=`/`printString`.
+pub const SYMBOL_VT: u64 = 255;
