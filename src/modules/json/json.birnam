@@ -1,0 +1,111 @@
+// JSON — authored entirely in birnam over the PEG engine.
+//
+// Filed in by the `json` dylib module at load. Defines a `Json` prototype with
+// `parse:` (JSON text → birnam maps/vectors/strings/numbers/bool/nil). Object
+// keys become symbols. Demonstrates that birnam can build grammars and lower
+// parse trees without dropping to zig — see examples/peg-csv.birnam.
+//
+// Limit: string bodies are taken verbatim (escapes like \n are not decoded).
+
+let Json := [Object new];
+
+// --- Grammar (built once) --------------------------------------------------
+let jg := [peg newGrammar];
+[jg defineRule: "ws" as: [peg star: [peg anyOf: " \t\n\r"]]];
+[jg defineRule: "string" as: [peg seqOf: #[
+  [peg literal: "\""]
+  [peg star: [peg choiceOf: #[
+    [peg seqOf: #[ [peg literal: "\\"] [peg anyByte] ]]
+    [peg seqOf: #[ [peg not: [peg literal: "\""]] [peg anyByte] ]]
+  ]]]
+  [peg literal: "\""]
+]]];
+[jg defineRule: "number" as: [peg seqOf: #[
+  [peg opt: [peg literal: "-"]]
+  [peg plus: [peg range: "0" to: "9"]]
+  [peg opt: [peg seqOf: #[ [peg literal: "."] [peg plus: [peg range: "0" to: "9"]] ]]]
+  [peg opt: [peg seqOf: #[ [peg anyOf: "eE"] [peg opt: [peg anyOf: "+-"]] [peg plus: [peg range: "0" to: "9"]] ]]]
+]]];
+[jg defineRule: "true" as: [peg literal: "true"]];
+[jg defineRule: "false" as: [peg literal: "false"]];
+[jg defineRule: "null" as: [peg literal: "null"]];
+[jg defineRule: "value" as: [peg choiceOf: #[
+  [peg ruleRef: "object"] [peg ruleRef: "array"] [peg ruleRef: "string"]
+  [peg ruleRef: "number"] [peg ruleRef: "true"] [peg ruleRef: "false"] [peg ruleRef: "null"]
+]]];
+[jg defineRule: "pair" as: [peg seqOf: #[
+  [peg ruleRef: "string"] [peg ruleRef: "ws"] [peg literal: ":"] [peg ruleRef: "ws"] [peg ruleRef: "value"]
+]]];
+[jg defineRule: "members" as: [peg seqOf: #[
+  [peg ruleRef: "pair"]
+  [peg star: [peg seqOf: #[ [peg ruleRef: "ws"] [peg literal: ","] [peg ruleRef: "ws"] [peg ruleRef: "pair"] ]]]
+]]];
+[jg defineRule: "object" as: [peg seqOf: #[
+  [peg literal: "{"] [peg ruleRef: "ws"] [peg opt: [peg ruleRef: "members"]] [peg ruleRef: "ws"] [peg literal: "}"]
+]]];
+[jg defineRule: "elements" as: [peg seqOf: #[
+  [peg ruleRef: "value"]
+  [peg star: [peg seqOf: #[ [peg ruleRef: "ws"] [peg literal: ","] [peg ruleRef: "ws"] [peg ruleRef: "value"] ]]]
+]]];
+[jg defineRule: "array" as: [peg seqOf: #[
+  [peg literal: "["] [peg ruleRef: "ws"] [peg opt: [peg ruleRef: "elements"]] [peg ruleRef: "ws"] [peg literal: "]"]
+]]];
+[jg defineRule: "doc" as: [peg seqOf: #[ [peg ruleRef: "ws"] [peg ruleRef: "value"] [peg ruleRef: "ws"] ]]];
+
+// --- Lowering --------------------------------------------------------------
+// First child of `node` whose rule is `name` (nil if none).
+let jChild := [:node :name | [[node children] detect: [:c | [[c ruleName] = name]]]];
+
+// One handler block per rule. `jLower` (below) dispatches to these through a
+// table, so each stays small and self-contained. All take (node, src).
+let hValue := [:node :src | [jLower value: [[node children] detect: [:c | [[[c ruleName] isNil] not]]] value: src]];
+let hString := [:node :src | [src copyFrom: [[node start] + 1] to: [[node end] - 1]]];
+let hNumber := [:node :src |
+  let t := [src copyFrom: [node start] to: [node end]];
+  [[t includes: "."] ifTrue: [| [t asFloat]] ifFalse: [| [t asNumber]]]];
+let hTrue := [:node :src | true];
+let hFalse := [:node :src | false];
+let hNull := [:node :src | nil];
+let hObject := [:node :src |
+  let members := [jChild value: node value: "members"];
+  [[members isNil]
+    ifTrue: [| {} ]
+    ifFalse: [| [[[members children] select: [:p | [[p ruleName] = "pair"]]] inject: {} into: [:m :p |
+      let ks := [jChild value: p value: "string"];
+      [m at: [[src copyFrom: [[ks start] + 1] to: [[ks end] - 1]] asSymbol] put: [jLower value: [jChild value: p value: "value"] value: src]]]]]]];
+let hArray := [:node :src |
+  let elems := [jChild value: node value: "elements"];
+  [[elems isNil]
+    ifTrue: [| #[] ]
+    ifFalse: [| [[[elems children] select: [:c | [[c ruleName] = "value"]]] collect: [:c | [jLower value: c value: src]]]]]];
+
+// Rule-name (symbol) → handler.
+let jHandlers := { value: hValue object: hObject array: hArray string: hString number: hNumber true: hTrue false: hFalse null: hNull };
+
+// Lower any CST node by dispatching on its rule name.
+let jLower := [:node :src |
+  let h := [jHandlers at: [[node ruleName] asSymbol] ifAbsent: [| nil ]];
+  [[h isNil] ifTrue: [| nil ] ifFalse: [| [h value: node value: src]]]];
+
+// `[Json parse: aString]` → birnam value, or nil on a parse failure.
+[[Json vtable] method: #parse: do: [:src |
+  let cst := [jg parse: src from: "doc"];
+  let v := [jChild value: cst value: "value"];
+  [[v isNil] ifTrue: [| nil ] ifFalse: [| [jLower value: v value: src]]]]];
+
+// --- Serialize -------------------------------------------------------------
+// Compact JSON text. Strings are wrapped in quotes WITHOUT escaping internal
+// quotes/newlines (an MVP limit). Map keys (symbols/strings) render as strings.
+let jsArray := [:v | ["[" , [[[v collect: [:e | [jStr value: e]]] join: ","] , "]"]]];
+let jsObj := [:v |
+  ["{" , [[[[v keys] collect: [:k | [["\"" , [[k asString] , "\":"]] , [jStr value: [v at: k]]]]] join: ","] , "}"]]];
+let jStr := [:v |
+  [[v isNil] ifTrue: [| "null" ] ifFalse: [|
+  [[v isString] ifTrue: [| ["\"" , [v , "\""]] ] ifFalse: [|
+  [[v isNumber] ifTrue: [| [v printString] ] ifFalse: [|
+  [[v isVector] ifTrue: [| [jsArray value: v] ] ifFalse: [|
+  [[v isMap] ifTrue: [| [jsObj value: v] ] ifFalse: [|
+  [[v = true] ifTrue: [| "true" ] ifFalse: [| "false" ]]]]]]]]]]]]];
+
+// `[Json stringify: value]` → compact JSON text.
+[[Json vtable] method: #stringify: do: [:v | [jStr value: v]]]

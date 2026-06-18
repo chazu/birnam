@@ -4245,6 +4245,14 @@ fn strReverseImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = .{ args, n };
     return g_api.?.string_reverse(s.receiver);
 }
+/// `[aString asFloat]` — parse a decimal float; nil if not a number.
+fn strAsFloatImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ args, n };
+    if (!isString(s.receiver)) return NIL;
+    const b = stringBytes(s.receiver);
+    const f = std.fmt.parseFloat(f64, b) catch return NIL;
+    return g_api.?.make_float(f);
+}
 /// `[aVectorOfStrings join: sep]` — concatenate with `sep` between elements.
 fn vecJoinImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = n;
@@ -4328,6 +4336,7 @@ fn installStdlib() void {
         .{ .name = "indexOf:", .impl = @ptrCast(&strIndexOfImpl) },
         .{ .name = "asInteger", .impl = @ptrCast(&strAsIntegerImpl) },
         .{ .name = "asNumber", .impl = @ptrCast(&strAsIntegerImpl) },
+        .{ .name = "asFloat", .impl = @ptrCast(&strAsFloatImpl) },
         .{ .name = "asUppercase", .impl = @ptrCast(&strUpperImpl) },
         .{ .name = "asLowercase", .impl = @ptrCast(&strLowerImpl) },
         .{ .name = "trim", .impl = @ptrCast(&strTrimImpl) },
@@ -5312,6 +5321,7 @@ var yrn_bareword: u64 = 0;
 
 fn buildYamlGrammar() void {
     const api = g_api.?;
+    sel_at_put_g = api.intern("at:put:".ptr, 7); // shared lowering selector (was set by buildJsonGrammar)
     const grammar = api.send0(mkEid(PEG_EID), sel_new_grammar);
     g_yaml_grammar = untagEid(grammar);
 
@@ -5677,6 +5687,82 @@ fn symbolAsStringImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
 fn symbolAsSymbolImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = .{ a, n };
     return s.receiver;
+}
+
+// -- Phase 17.12: prototype creation from birnam ----------------------------
+
+/// `[obj vtable]` — the receiver's vtable (so birnam can install methods on it).
+fn objVtableImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return g_api.?.query_eavt(untagEid(s.receiver), ATTR_VTABLE);
+}
+/// `[Object new]` — a fresh prototype: an entity with its OWN vtable (delegating
+/// OBJECT_VT). Install methods via `[[it vtable] method: #sel do: block]`. This
+/// is how birnam authors a prototype (e.g. a parser's `Json`/`Yaml`).
+fn objectNewImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    const api = g_api.?;
+    const vt = api.alloc_eid();
+    _ = api.assert_fact(vt, ATTR_VTABLE, mkEid(VTABLE_VT), g_module_eid);
+    _ = api.assert_fact(vt, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    const obj = api.alloc_eid();
+    _ = api.assert_fact(obj, ATTR_VTABLE, mkEid(vt), g_module_eid);
+    return mkEid(obj);
+}
+
+// -- Phase 17.12: type predicates -------------------------------------------
+// One impl per predicate, checking the receiver's actual tag/vtable, installed
+// on every value vtable so any value answers (e.g. `[3 isString]` → false).
+
+fn tpBool(b: bool) Ref {
+    return mkEid(if (b) TRUE_EID else FALSE_EID);
+}
+fn isStringQImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return tpBool(isString(s.receiver));
+}
+fn isNumberQImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return tpBool(isSmallInt(s.receiver) or isFloatRef(s.receiver));
+}
+fn isVectorQImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return tpBool(isVectorRef(s.receiver));
+}
+fn isMapQImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    return tpBool(isMapRef(s.receiver));
+}
+
+fn installTypePredicates() void {
+    const api = g_api.?;
+    const Pair = struct { name: []const u8, impl: *const anyopaque };
+    const preds = [_]Pair{
+        .{ .name = "isString", .impl = @ptrCast(&isStringQImpl) },
+        .{ .name = "isNumber", .impl = @ptrCast(&isNumberQImpl) },
+        .{ .name = "isVector", .impl = @ptrCast(&isVectorQImpl) },
+        .{ .name = "isMap", .impl = @ptrCast(&isMapQImpl) },
+    };
+    const vts = [_]u64{ OBJECT_VT, SMALLINT_VT, FLOAT_VT, STRING_VT, RRB_VT, ASSOC_VT, NIL_VT_EID, TRUE_VT, FALSE_VT, SYMBOL_VT };
+    for (vts) |vt| {
+        for (preds) |p| {
+            _ = api.assert_fact(vt, api.intern(p.name.ptr, p.name.len), mkEid(api.make_closure(p.impl, NIL)), g_module_eid);
+        }
+    }
+}
+
+fn installObjectSurface() void {
+    const api = g_api.?;
+    // A general `vtable` accessor on every object.
+    _ = api.assert_fact(OBJECT_VT, api.intern("vtable".ptr, 6), mkEid(api.make_closure(@ptrCast(&objVtableImpl), NIL)), g_module_eid);
+    // `Object` global with `new` — birnam-level prototype creation.
+    const obj_vt = api.alloc_eid();
+    _ = api.assert_fact(obj_vt, ATTR_VTABLE, mkEid(VTABLE_VT), g_module_eid);
+    _ = api.assert_fact(obj_vt, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    _ = api.assert_fact(obj_vt, api.intern("new".ptr, 3), mkEid(api.make_closure(@ptrCast(&objectNewImpl), NIL)), g_module_eid);
+    const obj_proto = api.alloc_eid();
+    _ = api.assert_fact(obj_proto, ATTR_VTABLE, mkEid(obj_vt), g_module_eid);
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("Object".ptr, 6), mkEid(obj_proto));
 }
 
 fn installSymbolSurface() void {
@@ -6416,6 +6502,8 @@ pub fn langPrimitivesTier() void {
     installStdlibExtras(); // Phase 17.9 — Math/Random/Time/OS/String-utils
     installCstSurface(); // Phase 17.11 — birnam-navigable parse trees
     installSymbolSurface(); // Phase 17.12 — symbol =/printString/asString
+    installObjectSurface(); // Phase 17.12 — Object new + vtable accessor
+    installTypePredicates(); // Phase 17.12 — isString/isNumber/isVector/isMap
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_PARENT, mkEid(GLOBALS_SCOPE_EID), g_module_eid);
 }
 
@@ -6445,7 +6533,8 @@ pub fn langFrontendTier() void {
     sel_define_rule_as = internSel("defineRule:as:");
 
     buildGrammar();
-    buildJsonGrammar(); // Phase 17.10 — JSON parser (separate grammar object)
+    // JSON is now birnam-authored (the `json` dylib files in json.birnam); the
+    // zig buildJsonGrammar is retained but no longer wired. YAML stays zig.
     buildYamlGrammar(); // Phase 17.10 — YAML flat-subset parser
     cacheRuleNames();
     installEvalMethods();

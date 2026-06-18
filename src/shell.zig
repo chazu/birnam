@@ -41,7 +41,7 @@ const bopts = @import("build_opts");
 
 /// Default module set when neither argv nor birnam.toml names any (and
 /// `--bare` was not given). peg before lang — order matters.
-const default_modules = [_][]const u8{ "peg", "lang" };
+const default_modules = [_][]const u8{ "peg", "lang", "json" };
 
 // -- Image save/load commands ------------------------------------------------
 

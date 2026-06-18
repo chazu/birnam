@@ -243,6 +243,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(query_lib);
 
+    // -- JSON dylib (Phase 17.10 — birnam-authored, files in json.birnam) -----
+    const json_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/json/json.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    json_mod.addImport("module_abi", module_abi_mod);
+    const json_lib = b.addLibrary(.{
+        .name = "birnam_json",
+        .root_module = json_mod,
+        .linkage = .dynamic,
+    });
+    b.installArtifact(json_lib);
+
     // -- PEG dylib (Phase 10.0) ----------------------------------------------
 
     const peg_mod = b.createModule(.{
