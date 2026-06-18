@@ -380,6 +380,49 @@ fn printBanner() void {
     stdoutPrint("birnam {s} — type :help for commands. Evaluate with brackets: [3 + 4]\n", .{bopts.version});
 }
 
+/// `birnam --help` — CLI usage. The shell-internal command reference is `:help`
+/// once the REPL is up; this covers invocation (flags, subcommands, env).
+fn printUsage() void {
+    stdoutPrint(
+        \\birnam {s} — relational fact-store language + shell
+        \\
+        \\Usage:
+        \\  birnam [modules…] [file.birnam …] [flags]   start the REPL / run scripts
+        \\  birnam <subcommand> […]
+        \\
+        \\With no module given, loads the default set (peg lang) or whatever a
+        \\discovered birnam.toml names. Modules are bare names (lang) or dylib paths.
+        \\
+        \\Flags:
+        \\  -e, --eval EXPR        evaluate one expression, then exit
+        \\  -i, --interactive      after scripts/-e, stay in the REPL
+        \\      --bare             load no modules (suppress defaults + config)
+        \\      --lsp              run as a Language Server over stdio (JSON-RPC)
+        \\      --overrides LIST   module overrides, comma-separated slot=impl
+        \\                         (e.g. repl=linenoise,json=jsmn)
+        \\  -h, --help             show this help
+        \\  -V, --version          print the version
+        \\      --                 end flags; remaining args are the program's argv
+        \\
+        \\Subcommands:
+        \\  init                   scaffold birnam.toml + playground.birnam here
+        \\  wrap [name]            build first-party wrapped C libs (birnam.toml [[wrapped]])
+        \\  --aot=<static|dynamic> ahead-of-time compile an image (see --aot usage)
+        \\
+        \\Environment:
+        \\  BIRNAM_DYLIB_PATH        exact module dirs (':'-separated)
+        \\  BIRNAM_PATH              install roots; modules sought under <root>/lib
+        \\  BIRNAM_MODULE_OVERRIDES  same format as --overrides
+        \\
+        \\Files:
+        \\  birnam.toml            project config (modules, dylib_paths, image,
+        \\                         [module_overrides], [[wrapped]]); cwd-upward.
+        \\
+        \\In the REPL, `:help` lists the interactive commands.
+        \\
+    , .{bopts.version});
+}
+
 /// REPL command reference (`:help`). Covers both the shell-handled commands
 /// (image / file-in / heap) and the lang-handled ones.
 fn printHelp() void {
@@ -708,6 +751,16 @@ pub fn main() !void {
     {
         const argv = try std.process.argsAlloc(allocator);
         defer std.process.argsFree(allocator, argv);
+        for (argv[1..]) |arg| {
+            if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
+                printUsage();
+                return;
+            }
+            if (std.mem.eql(u8, arg, "--version") or std.mem.eql(u8, arg, "-V")) {
+                stdoutPrint("birnam {s}\n", .{bopts.version});
+                return;
+            }
+        }
         for (argv[1..]) |arg| {
             if (std.mem.startsWith(u8, arg, "--aot")) return runAotDriver(allocator, argv[1..]);
         }
