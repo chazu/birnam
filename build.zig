@@ -271,6 +271,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(stdlib_lib);
 
+    // -- Net dylib (Phase 17.13 — TCP over std.net) --------------------------
+    const net_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/net/net.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    net_mod.addImport("module_abi", module_abi_mod);
+    const net_lib = b.addLibrary(.{
+        .name = "birnam_net",
+        .root_module = net_mod,
+        .linkage = .dynamic,
+    });
+    b.installArtifact(net_lib);
+
     // -- PEG dylib (Phase 10.0) ----------------------------------------------
 
     const peg_mod = b.createModule(.{

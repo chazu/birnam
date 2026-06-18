@@ -382,6 +382,9 @@ pub const IdApi = extern struct {
     /// through `attr` (AVET-backed). Empty vector if none. Backs reverse pull
     /// (`#[#_attr <spec>]`). (Appended at END per the append-only ABI discipline.)
     reverse_refs: *const fn (attr_eid: u64, value_eid: u64) callconv(.c) Ref,
+
+    // -- Phase 17.13: bind a global from a module (append-only) --------------
+    bind_global: *const fn (name_eid: u64, value: Ref) callconv(.c) void,
 };
 
 comptime {

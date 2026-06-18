@@ -188,6 +188,7 @@ pub fn populate() IdApi {
         .arg_count = &cArgCount,
         .arg_at = &cArgAt,
         .reverse_refs = &cReverseRefs,
+        .bind_global = &cBindGlobal,
     };
 }
 
@@ -725,6 +726,25 @@ fn cAssertFact(e: u64, a: u64, v: Ref, m: u64) callconv(.c) u64 {
 fn cRetractFact(e: u64, a: u64, v: Ref, m: u64) callconv(.c) u64 {
     const s = send_mod.storePtr() orelse return 0;
     return s.retract(e, a, v, m) catch 0;
+}
+
+/// Bind a global the lang frontend can resolve: prepend a BINDING_VT entity to
+/// GLOBALS_SCOPE_EID's binding list. Lets a zig module expose a prototype as a
+/// bare name (e.g. `Net`) without filing in birnam source. Mirrors lang's
+/// `pushGlobalBinding`; provenance M_USER.
+fn cBindGlobal(name_eid: u64, value: Ref) callconv(.c) void {
+    const s = send_mod.storePtr() orelse return;
+    const t = send_mod.tablePtr() orelse return;
+    const m = kernel_eids.M_USER;
+    const bind_eid = t.alloc();
+    _ = s.assert(bind_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.BINDING_VT), m) catch return;
+    _ = s.assert(bind_eid, kernel_eids.ATTR_BIND_NAME, ref_mod.mkEid(name_eid), m) catch return;
+    _ = s.assert(bind_eid, kernel_eids.ATTR_BIND_VALUE, value, m) catch return;
+    const cur_head = s.currentValue(kernel_eids.GLOBALS_SCOPE_EID, kernel_eids.ATTR_SCOPE_FIRST_BINDING) orelse ref_mod.NIL;
+    if (cur_head != ref_mod.NIL) {
+        _ = s.assert(bind_eid, kernel_eids.ATTR_BIND_NEXT, cur_head, m) catch return;
+    }
+    _ = s.assert(kernel_eids.GLOBALS_SCOPE_EID, kernel_eids.ATTR_SCOPE_FIRST_BINDING, ref_mod.mkEid(bind_eid), m) catch return;
 }
 
 fn cQueryEavt(e: u64, a: u64) callconv(.c) Ref {
