@@ -705,4 +705,10 @@ pub const TIME_PROTO: u64 = 247;
 pub const RANDOM_PROTO_VT: u64 = 248;
 pub const RANDOM_PROTO: u64 = 249;
 
-// 250..255 reserved for future kernel selectors / attributes
+// Stdlib `Json` / `Yaml` parser prototypes (Phase 17.10 — PEG-backed).
+pub const JSON_PROTO_VT: u64 = 250;
+pub const JSON_PROTO: u64 = 251;
+pub const YAML_PROTO_VT: u64 = 252;
+pub const YAML_PROTO: u64 = 253;
+
+// 254..255 reserved for future kernel selectors / attributes

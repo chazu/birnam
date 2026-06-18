@@ -4993,6 +4993,294 @@ fn installStdlibExtras() void {
     pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("Random".ptr, 6), mkEid(RANDOM_PROTO));
 }
 
+// -- Phase 17.10: JSON parser via PEG ---------------------------------------
+
+const JSON_PROTO_VT = ke.JSON_PROTO_VT;
+const JSON_PROTO = ke.JSON_PROTO;
+
+var g_json_grammar: u64 = 0;
+var sel_at_put_g: u64 = 0;
+// Cached JSON rule-name eids for CST dispatch.
+var jrn_value: u64 = 0;
+var jrn_object: u64 = 0;
+var jrn_array: u64 = 0;
+var jrn_string: u64 = 0;
+var jrn_number: u64 = 0;
+var jrn_true: u64 = 0;
+var jrn_false: u64 = 0;
+var jrn_null: u64 = 0;
+var jrn_pair: u64 = 0;
+var jrn_members: u64 = 0;
+var jrn_elements: u64 = 0;
+
+fn isEidRef(r: Ref) bool {
+    return (r & 0b111) == 0b010;
+}
+
+/// Build the JSON grammar (a separate grammar object; rule-refs are the only
+/// patterns that create CST nodes, so lowering dispatches on rule name).
+fn buildJsonGrammar() void {
+    const api = g_api.?;
+    const grammar = api.send0(mkEid(PEG_EID), sel_new_grammar);
+    g_json_grammar = untagEid(grammar);
+
+    const ws = [_]u8{ ' ', ' ', '\t', '\t', '\n', '\n', '\r', '\r' };
+    defineRule(grammar, "ws", peg_star(peg_charset(&ws)));
+
+    const digit = [_]u8{ '0', '9' };
+    {
+        const dq = [_]u8{ '"', '"' };
+        const bs = [_]u8{ '\\', '\\' };
+        const esc_parts = [_]u64{ untagEid(peg_charset(&bs)), untagEid(peg_any()) };
+        const esc = peg_seq(&esc_parts);
+        const norm_parts = [_]u64{ untagEid(peg_not(peg_charset(&dq))), untagEid(peg_any()) };
+        const norm = peg_seq(&norm_parts);
+        const ch_alts = [_]u64{ untagEid(esc), untagEid(norm) };
+        const ch = peg_choice(&ch_alts);
+        const parts = [_]u64{ untagEid(peg_literal("\"")), untagEid(peg_star(ch)), untagEid(peg_literal("\"")) };
+        defineRule(grammar, "string", peg_seq(&parts));
+    }
+    {
+        const neg = peg_opt(peg_literal("-"));
+        const int = peg_plus(peg_charset(&digit));
+        const frac_parts = [_]u64{ untagEid(peg_literal(".")), untagEid(peg_plus(peg_charset(&digit))) };
+        const frac = peg_opt(peg_seq(&frac_parts));
+        const e_ch = [_]u8{ 'e', 'e', 'E', 'E' };
+        const sign = [_]u8{ '+', '+', '-', '-' };
+        const exp_parts = [_]u64{ untagEid(peg_charset(&e_ch)), untagEid(peg_opt(peg_charset(&sign))), untagEid(peg_plus(peg_charset(&digit))) };
+        const exp = peg_opt(peg_seq(&exp_parts));
+        const parts = [_]u64{ untagEid(neg), untagEid(int), untagEid(frac), untagEid(exp) };
+        defineRule(grammar, "number", peg_seq(&parts));
+    }
+    defineRule(grammar, "true", peg_literal("true"));
+    defineRule(grammar, "false", peg_literal("false"));
+    defineRule(grammar, "null", peg_literal("null"));
+    {
+        const alts = [_]u64{ untagEid(peg_rule_ref("object")), untagEid(peg_rule_ref("array")), untagEid(peg_rule_ref("string")), untagEid(peg_rule_ref("number")), untagEid(peg_rule_ref("true")), untagEid(peg_rule_ref("false")), untagEid(peg_rule_ref("null")) };
+        defineRule(grammar, "value", peg_choice(&alts));
+    }
+    {
+        const parts = [_]u64{ untagEid(peg_rule_ref("string")), untagEid(peg_rule_ref("ws")), untagEid(peg_literal(":")), untagEid(peg_rule_ref("ws")), untagEid(peg_rule_ref("value")) };
+        defineRule(grammar, "pair", peg_seq(&parts));
+    }
+    {
+        const rep_parts = [_]u64{ untagEid(peg_rule_ref("ws")), untagEid(peg_literal(",")), untagEid(peg_rule_ref("ws")), untagEid(peg_rule_ref("pair")) };
+        const rep = peg_star(peg_seq(&rep_parts));
+        const parts = [_]u64{ untagEid(peg_rule_ref("pair")), untagEid(rep) };
+        defineRule(grammar, "members", peg_seq(&parts));
+    }
+    {
+        const parts = [_]u64{ untagEid(peg_literal("{")), untagEid(peg_rule_ref("ws")), untagEid(peg_opt(peg_rule_ref("members"))), untagEid(peg_rule_ref("ws")), untagEid(peg_literal("}")) };
+        defineRule(grammar, "object", peg_seq(&parts));
+    }
+    {
+        const rep_parts = [_]u64{ untagEid(peg_rule_ref("ws")), untagEid(peg_literal(",")), untagEid(peg_rule_ref("ws")), untagEid(peg_rule_ref("value")) };
+        const rep = peg_star(peg_seq(&rep_parts));
+        const parts = [_]u64{ untagEid(peg_rule_ref("value")), untagEid(rep) };
+        defineRule(grammar, "elements", peg_seq(&parts));
+    }
+    {
+        const parts = [_]u64{ untagEid(peg_literal("[")), untagEid(peg_rule_ref("ws")), untagEid(peg_opt(peg_rule_ref("elements"))), untagEid(peg_rule_ref("ws")), untagEid(peg_literal("]")) };
+        defineRule(grammar, "array", peg_seq(&parts));
+    }
+    {
+        const parts = [_]u64{ untagEid(peg_rule_ref("ws")), untagEid(peg_rule_ref("value")), untagEid(peg_rule_ref("ws")) };
+        defineRule(grammar, "doc", peg_seq(&parts));
+    }
+
+    jrn_value = api.intern("value".ptr, 5);
+    jrn_object = api.intern("object".ptr, 6);
+    jrn_array = api.intern("array".ptr, 5);
+    jrn_string = api.intern("string".ptr, 6);
+    jrn_number = api.intern("number".ptr, 6);
+    jrn_true = api.intern("true".ptr, 4);
+    jrn_false = api.intern("false".ptr, 5);
+    jrn_null = api.intern("null".ptr, 4);
+    jrn_pair = api.intern("pair".ptr, 4);
+    jrn_members = api.intern("members".ptr, 7);
+    jrn_elements = api.intern("elements".ptr, 8);
+    sel_at_put_g = api.intern("at:put:".ptr, 7);
+
+    // Install the `Json` global prototype.
+    _ = api.assert_fact(JSON_PROTO, ATTR_VTABLE, mkEid(JSON_PROTO_VT), g_module_eid);
+    _ = api.assert_fact(JSON_PROTO_VT, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    _ = api.assert_fact(JSON_PROTO_VT, api.intern("parse:".ptr, 6), mkEid(api.make_closure(@ptrCast(&jsonParseImpl), NIL)), g_module_eid);
+    _ = api.assert_fact(JSON_PROTO_VT, api.intern("stringify:".ptr, 10), mkEid(api.make_closure(@ptrCast(&jsonStringifyImpl), NIL)), g_module_eid);
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("Json".ptr, 4), mkEid(JSON_PROTO));
+}
+
+/// First child of `node` whose rule name is `rule`, or 0.
+fn cstChildByRule(node: u64, rule: u64) u64 {
+    var c = cstFirstChild(node);
+    while (c != 0) : (c = cstNextSibling(c)) {
+        if (cstRuleName(c) == rule) return c;
+    }
+    return 0;
+}
+
+/// Lower a JSON CST node (a named rule node) to a birnam value.
+fn jsonLower(node: u64) Ref {
+    const api = g_api.?;
+    const rn = cstRuleName(node);
+    if (rn == jrn_value) {
+        var c = cstFirstChild(node);
+        while (c != 0) : (c = cstNextSibling(c)) {
+            if (cstRuleName(c) != 0) return jsonLower(c);
+        }
+        return NIL;
+    } else if (rn == jrn_object) {
+        var map = api.make_map();
+        const members = cstChildByRule(node, jrn_members);
+        if (members != 0) {
+            var p = cstFirstChild(members);
+            while (p != 0) : (p = cstNextSibling(p)) {
+                if (cstRuleName(p) != jrn_pair) continue;
+                const ks = cstChildByRule(p, jrn_string);
+                const vv = cstChildByRule(p, jrn_value);
+                if (ks == 0 or vv == 0) continue;
+                const sp = cstByteRange(ks);
+                const key = if (sp.end > sp.start + 1)
+                    mkEid(api.intern(g_source[sp.start + 1 .. sp.end - 1].ptr, sp.end - sp.start - 2))
+                else
+                    mkEid(api.intern("".ptr, 0));
+                map = api.send2(map, sel_at_put_g, key, jsonLower(vv));
+            }
+        }
+        return map;
+    } else if (rn == jrn_array) {
+        var vec = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+        const elems = cstChildByRule(node, jrn_elements);
+        if (elems != 0) {
+            var v = cstFirstChild(elems);
+            while (v != 0) : (v = cstNextSibling(v)) {
+                if (cstRuleName(v) != jrn_value) continue;
+                vec = api.rrb_with(vec, jsonLower(v));
+            }
+        }
+        return vec;
+    } else if (rn == jrn_string) {
+        const sp = cstByteRange(node);
+        if (sp.end <= sp.start + 1) return api.make_string("".ptr, 0);
+        return decodeStringLiteral(g_source[sp.start + 1 .. sp.end - 1]);
+    } else if (rn == jrn_number) {
+        const sp = cstByteRange(node);
+        const bytes = g_source[sp.start..sp.end];
+        if (std.mem.indexOfAny(u8, bytes, ".eE") != null) {
+            return api.make_float(std.fmt.parseFloat(f64, bytes) catch 0.0);
+        }
+        return mkSmallInt(std.fmt.parseInt(i64, bytes, 10) catch 0);
+    } else if (rn == jrn_true) {
+        return mkEid(TRUE_EID);
+    } else if (rn == jrn_false) {
+        return mkEid(FALSE_EID);
+    } else if (rn == jrn_null) {
+        return NIL;
+    }
+    return NIL;
+}
+
+/// `[Json parse: aString]` — parse JSON text into birnam maps/vectors/strings/
+/// numbers/bool/nil. Returns an ERROR_VT on a syntax error.
+fn jsonParseImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(a[0])) return mkRuntimeError("Json parse: expects a string");
+    const src = stringBytes(a[0]);
+    g_source = src;
+    const src_dup = api.make_string(src.ptr, src.len);
+    const rule = api.make_string("doc".ptr, 3);
+    const cst = api.send2(mkEid(g_json_grammar), internSel("parse:from:"), src_dup, rule);
+    if (!isEidRef(cst)) return mkRuntimeError("Json parse: failed");
+    const cst_eid = untagEid(cst);
+    const vt = api.query_eavt(cst_eid, ATTR_VTABLE);
+    if (isEidRef(vt) and untagEid(vt) == ERROR_VT) return cst;
+    const val = cstChildByRule(cst_eid, jrn_value);
+    if (val == 0) return NIL;
+    return jsonLower(val);
+}
+
+// JSON stringify — recursive serializer into the shared g_strbuf.
+fn jsonAppend(pos: *usize, bytes: []const u8) bool {
+    if (pos.* + bytes.len > g_strbuf.len) return false;
+    @memcpy(g_strbuf[pos.* .. pos.* + bytes.len], bytes);
+    pos.* += bytes.len;
+    return true;
+}
+fn jsonWriteStr(pos: *usize, str: []const u8) bool {
+    if (!jsonAppend(pos, "\"")) return false;
+    for (str) |c| {
+        const esc: ?[]const u8 = switch (c) {
+            '"' => "\\\"",
+            '\\' => "\\\\",
+            '\n' => "\\n",
+            '\r' => "\\r",
+            '\t' => "\\t",
+            else => null,
+        };
+        if (esc) |e| {
+            if (!jsonAppend(pos, e)) return false;
+        } else {
+            if (pos.* >= g_strbuf.len) return false;
+            g_strbuf[pos.*] = c;
+            pos.* += 1;
+        }
+    }
+    return jsonAppend(pos, "\"");
+}
+fn jsonWriteVal(pos: *usize, v: Ref) bool {
+    const api = g_api.?;
+    if (isNil(v)) return jsonAppend(pos, "null");
+    if (v == mkEid(TRUE_EID)) return jsonAppend(pos, "true");
+    if (v == mkEid(FALSE_EID)) return jsonAppend(pos, "false");
+    if (isSmallInt(v)) {
+        var b: [24]u8 = undefined;
+        return jsonAppend(pos, std.fmt.bufPrint(&b, "{d}", .{untagSmallInt(v)}) catch return false);
+    }
+    if (isFloatRef(v)) {
+        var b: [32]u8 = undefined;
+        return jsonAppend(pos, std.fmt.bufPrint(&b, "{d}", .{floatRefValue(v)}) catch return false);
+    }
+    if (isString(v)) return jsonWriteStr(pos, stringBytes(v));
+    if (isVectorRef(v)) {
+        if (!jsonAppend(pos, "[")) return false;
+        const len = api.rrb_len(v);
+        var i: u64 = 0;
+        while (i < len) : (i += 1) {
+            if (i > 0 and !jsonAppend(pos, ",")) return false;
+            if (!jsonWriteVal(pos, api.rrb_nth(v, i))) return false;
+        }
+        return jsonAppend(pos, "]");
+    }
+    if (isMapRef(v)) {
+        if (!jsonAppend(pos, "{")) return false;
+        const keys = api.map_keys(v);
+        const len = api.rrb_len(keys);
+        var i: u64 = 0;
+        while (i < len) : (i += 1) {
+            if (i > 0 and !jsonAppend(pos, ",")) return false;
+            const k = api.rrb_nth(keys, i);
+            if (isString(k)) {
+                if (!jsonWriteStr(pos, stringBytes(k))) return false;
+            } else if (isEidRef(k)) {
+                const nm = api.symbol_name(untagEid(k));
+                if (!jsonWriteStr(pos, if (isString(nm)) stringBytes(nm) else "?")) return false;
+            } else if (!jsonWriteStr(pos, "?")) return false;
+            if (!jsonAppend(pos, ":")) return false;
+            if (!jsonWriteVal(pos, api.map_get(v, k))) return false;
+        }
+        return jsonAppend(pos, "}");
+    }
+    return jsonAppend(pos, "null");
+}
+/// `[Json stringify: value]` — birnam value → compact JSON text. Map keys are
+/// symbols or strings; other value types serialize structurally.
+fn jsonStringifyImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    var pos: usize = 0;
+    if (!jsonWriteVal(&pos, a[0])) return mkRuntimeError("Json stringify: result too large");
+    return g_api.?.make_string(g_strbuf[0..pos].ptr, pos);
+}
+
 fn installNumberProtocol() void {
     const api = g_api.?;
     _ = api.assert_fact(SMALLINT_VT, api.intern("mod:".ptr, 4), mkEid(api.make_closure(@ptrCast(&smallintModImpl), NIL)), g_module_eid);
@@ -5720,6 +6008,7 @@ pub fn langFrontendTier() void {
     sel_define_rule_as = internSel("defineRule:as:");
 
     buildGrammar();
+    buildJsonGrammar(); // Phase 17.10 — JSON parser (separate grammar object)
     cacheRuleNames();
     installEvalMethods();
     installParseSurface();
