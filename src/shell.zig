@@ -36,6 +36,7 @@ const strings = @import("kernel/strings.zig");
 const ref_mod = @import("kernel/ref.zig");
 const dylib_search = @import("dylib_search.zig");
 const config_mod = @import("config.zig");
+const lsp = @import("lsp.zig");
 const bopts = @import("build_opts");
 
 /// Default module set when neither argv nor birnam.toml names any (and
@@ -778,6 +779,7 @@ pub fn main() !void {
     var seen_dashdash = false;
     var bare = false;
     var interactive = false;
+    var lsp_mode = false;
     var eval_expr: ?[]const u8 = null;
     while (args.next()) |arg| {
         if (seen_dashdash) {
@@ -790,6 +792,10 @@ pub fn main() !void {
         }
         if (std.mem.eql(u8, arg, "--bare")) {
             bare = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--lsp")) {
+            lsp_mode = true;
             continue;
         }
         if (std.mem.eql(u8, arg, "-i") or std.mem.eql(u8, arg, "--interactive")) {
@@ -827,6 +833,7 @@ pub fn main() !void {
 
     // -- Load modules (each name resolved through the dylib search path) ------
     var any_module = false;
+    var lang_eid: u64 = 0; // captured for `--lsp` — the LANG_VT entity that answers parseExpr:
     for (module_names) |name| {
         const resolved = dylib_search.resolveWith(allocator, name, extra_dirs) orelse {
             stderrPrint("[birnam] module '{s}' not found (set BIRNAM_PATH/BIRNAM_DYLIB_PATH, dylib_paths, or stage it nearby)\n", .{name});
@@ -837,6 +844,7 @@ pub fn main() !void {
         defer allocator.free(path_z);
         if (try manager.load(path_z)) |mod_eid| {
             stderrPrint("[birnam] loaded {s} (eid {d})\n", .{ name, mod_eid });
+            if (std.mem.eql(u8, name, "lang")) lang_eid = mod_eid;
             any_module = true;
         } else {
             stderrPrint("[birnam] could not load {s}\n", .{resolved});
@@ -859,6 +867,18 @@ pub fn main() !void {
             }
         }
     }
+    // -- LSP server mode -----------------------------------------------------
+    // `birnam --lsp` becomes a Language Server over stdio instead of a REPL.
+    // stdout is reserved for the JSON-RPC protocol (all shell chatter is on
+    // stderr), so the loop must take over before the banner/prompt path.
+    if (lsp_mode) {
+        setup_arena.deinit();
+        lsp.serve(allocator, api, lang_eid) catch |e| {
+            stderrPrint("[birnam] --lsp: {s}\n", .{@errorName(e)});
+        };
+        std.process.exit(0);
+    }
+
     // -- Script / eval bridge ------------------------------------------------
     // `birnam foo.birnam` file-ins each script; `-e EXPR` evaluates one
     // expression. Both run after modules load and then exit (run-and-exit),
