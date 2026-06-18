@@ -112,6 +112,10 @@ const Server = struct {
             try self.documentSymbol(id, obj.get("params"));
         } else if (std.mem.eql(u8, method, "textDocument/completion")) {
             try self.completion(id, obj.get("params"));
+        } else if (std.mem.eql(u8, method, "textDocument/hover")) {
+            try self.hover(id, obj.get("params"));
+        } else if (std.mem.eql(u8, method, "textDocument/signatureHelp")) {
+            try self.signatureHelp(id, obj.get("params"));
         } else if (std.mem.eql(u8, method, "textDocument/didOpen")) {
             try self.didOpen(obj.get("params") orelse return);
         } else if (std.mem.eql(u8, method, "textDocument/didChange")) {
@@ -131,7 +135,7 @@ const Server = struct {
         const w = buf.writer(self.allocator);
         try w.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
         try writeId(w, id);
-        try w.writeAll(",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"documentSymbolProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\":\"]}},\"serverInfo\":{\"name\":\"birnam-lsp\",\"version\":\"0.1.0\"}}}");
+        try w.writeAll(",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"documentSymbolProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\":\"]},\"hoverProvider\":true,\"signatureHelpProvider\":{\"triggerCharacters\":[\":\",\" \"]}},\"serverInfo\":{\"name\":\"birnam-lsp\",\"version\":\"0.1.0\"}}}");
         try self.send(buf.items);
     }
 
@@ -407,6 +411,145 @@ const Server = struct {
         try w.print("\",\"kind\":{d}}}", .{kind});
     }
 
+    // -- hover ---------------------------------------------------------------
+
+    /// Lexical hover: classify the token under the cursor. A keyword-selector
+    /// part resolves to the full selector of its enclosing send (arity = colon
+    /// count); other tokens are classified by shape (symbol / query var /
+    /// number / keyword / local binding / identifier). No parse, no store
+    /// mutation.
+    fn hover(self: *Server, id: ?std.json.Value, params: ?std.json.Value) !void {
+        const dp = resolveDocPos(self, params);
+        const text = dp.text;
+        const offset = dp.offset;
+
+        var msgbuf = std.ArrayList(u8){};
+        defer msgbuf.deinit(self.allocator);
+        const mw = msgbuf.writer(self.allocator);
+        var range: ?[2]usize = null;
+
+        if (tokenAt(text, offset)) |tok| {
+            const bytes = text[tok.start..tok.end];
+            range = .{ tok.start, tok.end };
+            if (tok.has_colon) {
+                // A keyword-message part → describe the whole selector.
+                if (enclosingKeywordSend(text, offset)) |kw| {
+                    try mw.writeAll("**selector** `");
+                    try writeSelector(mw, kw, text);
+                    try mw.print("` — keyword message, {d} argument{s}", .{ kw.count, if (kw.count == 1) "" else "s" });
+                } else {
+                    try mw.writeAll("**selector** `");
+                    try writeJsonString(mw, bytes);
+                    try mw.writeAll("`");
+                }
+            } else if (bytes.len > 0 and bytes[0] == '#') {
+                try mw.writeAll("**symbol** `");
+                try writeJsonString(mw, bytes);
+                try mw.writeAll("`");
+            } else if (bytes.len > 0 and bytes[0] == '?') {
+                try mw.writeAll("**query variable** `");
+                try writeJsonString(mw, bytes);
+                try mw.writeAll("`");
+            } else if (bytes.len > 0 and bytes[0] >= '0' and bytes[0] <= '9') {
+                const kind = if (std.mem.indexOfScalar(u8, bytes, '.') != null) "float" else "integer";
+                try mw.print("**{s} literal** `", .{kind});
+                try writeJsonString(mw, bytes);
+                try mw.writeAll("`");
+            } else if (isKeywordFloor(bytes)) {
+                try mw.writeAll("**keyword** `");
+                try writeJsonString(mw, bytes);
+                try mw.writeAll("`");
+            } else if (docDefinesLet(text, bytes)) {
+                try mw.writeAll("**local binding** `");
+                try writeJsonString(mw, bytes);
+                try mw.writeAll("`");
+            } else {
+                try mw.writeAll("**identifier** `");
+                try writeJsonString(mw, bytes);
+                try mw.writeAll("`");
+            }
+        }
+
+        var buf = std.ArrayList(u8){};
+        defer buf.deinit(self.allocator);
+        const w = buf.writer(self.allocator);
+        try w.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
+        try writeId(w, id);
+        if (msgbuf.items.len == 0) {
+            try w.writeAll(",\"result\":null}");
+        } else {
+            try w.writeAll(",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"");
+            try writeJsonString(w, msgbuf.items);
+            try w.writeAll("\"}");
+            if (range) |r| {
+                const sp = byteToPosition(text, r[0]);
+                const ep = byteToPosition(text, r[1]);
+                try w.print(",\"range\":{{\"start\":{{\"line\":{d},\"character\":{d}}},\"end\":{{\"line\":{d},\"character\":{d}}}}}", .{ sp.line, sp.character, ep.line, ep.character });
+            }
+            try w.writeAll("}}");
+        }
+        try self.send(buf.items);
+    }
+
+    // -- signatureHelp -------------------------------------------------------
+
+    /// Signature of the keyword send enclosing the cursor: the selector as the
+    /// label, one parameter per `part:`, with `activeParameter` tracking which
+    /// argument the cursor sits in.
+    fn signatureHelp(self: *Server, id: ?std.json.Value, params: ?std.json.Value) !void {
+        const dp = resolveDocPos(self, params);
+        const text = dp.text;
+
+        var buf = std.ArrayList(u8){};
+        defer buf.deinit(self.allocator);
+        const w = buf.writer(self.allocator);
+        try w.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
+        try writeId(w, id);
+
+        if (enclosingKeywordSend(text, dp.offset)) |kw| {
+            if (kw.count > 0) {
+                try w.writeAll(",\"result\":{\"signatures\":[{\"label\":\"");
+                try writeSelector(w, kw, text);
+                try w.writeAll("\",\"parameters\":[");
+                var k: usize = 0;
+                while (k < kw.count) : (k += 1) {
+                    if (k > 0) try w.writeByte(',');
+                    try w.writeAll("{\"label\":\"");
+                    try writeJsonString(w, text[kw.parts[k].start..kw.parts[k].end]);
+                    try w.writeAll("\"}");
+                }
+                try w.print("]}}],\"activeSignature\":0,\"activeParameter\":{d}}}", .{kw.active});
+                try w.writeAll("}");
+                try self.send(buf.items);
+                return;
+            }
+        }
+        try w.writeAll(",\"result\":null}");
+        try self.send(buf.items);
+    }
+
+    const DocPos = struct { text: []const u8, offset: usize };
+
+    /// Resolve `params.textDocument.uri` + `params.position` to the stored doc
+    /// text and a byte offset.
+    fn resolveDocPos(self: *Server, params: ?std.json.Value) DocPos {
+        var text: []const u8 = "";
+        var offset: usize = 0;
+        if (params) |p| if (p == .object) {
+            if (p.object.get("textDocument")) |td| if (td == .object) {
+                if (td.object.get("uri")) |u| if (u == .string) {
+                    text = self.docs.get(u.string) orelse "";
+                };
+            };
+            if (p.object.get("position")) |pos| if (pos == .object) {
+                const line: usize = if (pos.object.get("line")) |l| (if (l == .integer) @intCast(@max(0, l.integer)) else 0) else 0;
+                const char: usize = if (pos.object.get("character")) |c| (if (c == .integer) @intCast(@max(0, c.integer)) else 0) else 0;
+                offset = positionToByte(text, line, char);
+            };
+        };
+        return .{ .text = text, .offset = offset };
+    }
+
     // -- Transport -----------------------------------------------------------
 
     fn send(self: *Server, json: []const u8) !void {
@@ -533,6 +676,215 @@ fn identPrefix(text: []const u8, offset: usize) []const u8 {
 /// Case-sensitive prefix match. Empty prefix matches everything.
 fn matches(prefix: []const u8, candidate: []const u8) bool {
     return std.mem.startsWith(u8, candidate, prefix);
+}
+
+// -- Lexical analysis for hover / signatureHelp -------------------------------
+
+const Tok = struct { start: usize, end: usize, has_colon: bool = false };
+
+fn isIdentChar(c: u8) bool {
+    return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_';
+}
+fn isIdentStart(c: u8) bool {
+    return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_';
+}
+
+fn isKeywordFloor(s: []const u8) bool {
+    for (KEYWORD_FLOOR) |kw| if (std.mem.eql(u8, kw, s)) return true;
+    return false;
+}
+
+/// The token under the cursor: an identifier run, optionally prefixed by `#`
+/// (symbol) or `?` (query var). `has_colon` is set when the run is immediately
+/// followed by a `:` that is not the `:=` of an assignment — i.e. a keyword
+/// selector part. Returns null when the cursor is not on a token.
+fn tokenAt(text: []const u8, offset: usize) ?Tok {
+    const len = text.len;
+    var start = @min(offset, len);
+    var end = start;
+    while (end < len and isIdentChar(text[end])) end += 1;
+    while (start > 0 and isIdentChar(text[start - 1])) start -= 1;
+    if (start == end) return null;
+    if (start > 0 and (text[start - 1] == '#' or text[start - 1] == '?')) start -= 1;
+    const has_colon = end < len and text[end] == ':' and !(end + 1 < len and text[end + 1] == '=');
+    return .{ .start = start, .end = end, .has_colon = has_colon };
+}
+
+/// True if the document binds `name` with a top-level-ish `let name ...`.
+/// A coarse lexical scan (no scope analysis) — enough to label a hovered
+/// identifier as a local binding.
+fn docDefinesLet(text: []const u8, name: []const u8) bool {
+    if (name.len == 0) return false;
+    var i: usize = 0;
+    while (i + 3 <= text.len) : (i += 1) {
+        if (!std.mem.startsWith(u8, text[i..], "let")) continue;
+        if (i > 0 and isIdentChar(text[i - 1])) continue; // not a word boundary
+        var j = i + 3;
+        if (j >= text.len or !(text[j] == ' ' or text[j] == '\t')) continue;
+        while (j < text.len and (text[j] == ' ' or text[j] == '\t')) j += 1;
+        if (!std.mem.startsWith(u8, text[j..], name)) continue;
+        const k = j + name.len;
+        if (k >= text.len or !isIdentChar(text[k])) return true;
+    }
+    return false;
+}
+
+const MAX_PARTS = 32;
+
+/// A keyword send recovered lexically from the bracket enclosing the cursor:
+/// its `part:` tokens, plus which argument the cursor sits in.
+const KwSend = struct {
+    parts: [MAX_PARTS]Tok,
+    count: usize,
+    active: usize,
+};
+
+/// The innermost `[...]` bracket containing `offset` (open, close). An
+/// unterminated bracket (cursor mid-typing) reports close = text.len. Skips
+/// strings and comments. Null if the cursor is not inside any bracket.
+fn findEnclosingBracket(text: []const u8, offset: usize) ?[2]usize {
+    var stack: [256]usize = undefined;
+    var sp: usize = 0;
+    var best_open: ?usize = null;
+    var best_close: usize = 0;
+    var i: usize = 0;
+    while (i < text.len) {
+        const c = text[i];
+        if (c == '"') {
+            i += 1;
+            while (i < text.len and text[i] != '"') {
+                if (text[i] == '\\' and i + 1 < text.len) i += 2 else i += 1;
+            }
+            i += 1;
+            continue;
+        }
+        if (c == '/' and i + 1 < text.len and text[i + 1] == '/') {
+            i += 2;
+            while (i < text.len and text[i] != '\n') : (i += 1) {}
+            continue;
+        }
+        if (c == '/' and i + 1 < text.len and text[i + 1] == '*') {
+            i += 2;
+            while (i + 1 < text.len and !(text[i] == '*' and text[i + 1] == '/')) : (i += 1) {}
+            i += 2;
+            continue;
+        }
+        if (c == '[') {
+            if (sp < stack.len) {
+                stack[sp] = i;
+                sp += 1;
+            }
+            i += 1;
+            continue;
+        }
+        if (c == ']') {
+            if (sp > 0) {
+                sp -= 1;
+                const o = stack[sp];
+                if (o < offset and offset <= i) {
+                    if (best_open == null or o > best_open.?) {
+                        best_open = o;
+                        best_close = i;
+                    }
+                }
+            }
+            i += 1;
+            continue;
+        }
+        i += 1;
+    }
+    // Unterminated brackets still on the stack: the innermost open before the
+    // cursor encloses it, with the close defaulting to end-of-text.
+    var k = sp;
+    while (k > 0) {
+        k -= 1;
+        const o = stack[k];
+        if (o < offset) {
+            if (best_open == null or o > best_open.?) {
+                best_open = o;
+                best_close = text.len;
+            }
+            break;
+        }
+    }
+    if (best_open) |o| return .{ o, best_close };
+    return null;
+}
+
+/// Recover the keyword send enclosing `offset`: collect the depth-0 `part:`
+/// tokens inside the enclosing bracket and compute the active parameter.
+fn enclosingKeywordSend(text: []const u8, offset: usize) ?KwSend {
+    const br = findEnclosingBracket(text, offset) orelse return null;
+    const close = br[1];
+    var send = KwSend{ .parts = undefined, .count = 0, .active = 0 };
+    var depth: i32 = 0;
+    var i = br[0] + 1;
+    while (i < close) {
+        const c = text[i];
+        if (c == '"') {
+            i += 1;
+            while (i < close and text[i] != '"') {
+                if (text[i] == '\\' and i + 1 < close) i += 2 else i += 1;
+            }
+            i += 1;
+            continue;
+        }
+        if (c == '/' and i + 1 < close and text[i + 1] == '/') {
+            i += 2;
+            while (i < close and text[i] != '\n') : (i += 1) {}
+            continue;
+        }
+        if (c == '/' and i + 1 < close and text[i + 1] == '*') {
+            i += 2;
+            while (i + 1 < close and !(text[i] == '*' and text[i + 1] == '/')) : (i += 1) {}
+            i += 2;
+            continue;
+        }
+        if (c == '[') {
+            depth += 1;
+            i += 1;
+            continue;
+        }
+        if (c == ']') {
+            if (depth > 0) depth -= 1;
+            i += 1;
+            continue;
+        }
+        if (depth == 0 and isIdentStart(c)) {
+            var j = i;
+            while (j < close and isIdentChar(text[j])) j += 1;
+            if (j < close and text[j] == ':' and !(j + 1 < close and text[j + 1] == '=')) {
+                if (send.count < MAX_PARTS) {
+                    send.parts[send.count] = .{ .start = i, .end = j + 1 };
+                    send.count += 1;
+                }
+                i = j + 1;
+                continue;
+            }
+            i = j;
+            continue;
+        }
+        i += 1;
+    }
+    if (send.count == 0) return null;
+    // activeParameter = (# of part-colons at or before the cursor) - 1.
+    var cp: usize = 0;
+    var k: usize = 0;
+    while (k < send.count) : (k += 1) {
+        if (send.parts[k].end <= offset) cp += 1;
+    }
+    send.active = if (cp == 0) 0 else cp - 1;
+    if (send.active >= send.count) send.active = send.count - 1;
+    return send;
+}
+
+/// Write a keyword send's selector by concatenating its (non-contiguous in
+/// source) `part:` tokens — e.g. `at:` + `put:` → `at:put:`.
+fn writeSelector(w: anytype, send: KwSend, text: []const u8) !void {
+    var k: usize = 0;
+    while (k < send.count) : (k += 1) {
+        try writeJsonString(w, text[send.parts[k].start..send.parts[k].end]);
+    }
 }
 
 // -- JSON helpers -------------------------------------------------------------
