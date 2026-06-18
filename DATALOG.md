@@ -11,6 +11,12 @@ Phasing exists for implementability; the surface and semantics described here ar
 The Zig query **engine** (`query.zig`) has been built + tested since Phase 7; the **birnam-facing surface** was wired in 2026-06-16. What you can run today from the REPL:
 
 ```
+" writing facts (the program-level write path; 2026-06-18) "
+let p := [db entity]                                       " mint a blank entity "
+[db assert: p attr: #city value: #Boston]                  " assert [p city Boston]; returns p (chains) "
+"   values you query by should be symbols — clause constants match by identity, "
+"   and interned symbols share it; string literals are distinct objects. "
+
 " find — single var (flat vector) or a tuple of vars "
 [db findAll: ?vt where: #( [?vt lookup: ?m] )]
 [db findAll: #[?vt ?m] where: #( [?vt lookup: ?m] )]        " → vector of #[vt m] tuples "

@@ -3817,6 +3817,36 @@ fn dbTransactImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     return g_api.?.send0(args[0], sel_value_g);
 }
 
+/// `db entity` — mint a fresh entity (an OBJECT_VT-tagged eid) to hang facts on
+/// with `assert:attr:value:`. The general counterpart to `cell:` (which pins a
+/// single `:cell-value`): a plain entity any datalog clause can match.
+fn dbEntityImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, args, n };
+    const api = g_api.?;
+    const e = api.alloc_eid();
+    _ = api.assert_fact(e, ATTR_VTABLE, mkEid(OBJECT_VT), M_USER);
+    return mkEid(e);
+}
+
+/// `db assert: e attr: #a value: v` — assert one fact `[e a v]`. `e` is an
+/// entity (from `db entity`/`db cell:`), `a` a symbol naming the attribute, `v`
+/// any non-nil value (use symbols for values you intend to query by — string
+/// literals have distinct identities and won't match as clause constants).
+/// Returns `e` so assertions chain. The birnam-level write path the datalog
+/// query/rule/pull surface was missing.
+fn dbAssertImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    const e = args[0];
+    const a = args[1];
+    const v = args[2];
+    if (!isEid(e)) return mkRuntimeError("db assert:attr:value: — entity must be an entity");
+    if (!isEid(a)) return mkRuntimeError("db assert:attr:value: — attr must be a symbol");
+    if (isNil(v)) return mkRuntimeError("db assert:attr:value: — value cannot be nil (store forbids NIL)");
+    _ = api.assert_fact(untagEid(e), untagEid(a), v, M_USER);
+    return e;
+}
+
 /// `[cell value]` — current value (a cell always holds one — no-NULL).
 fn cellValueImpl(s: *Send, args: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = .{ args, n };
@@ -3923,6 +3953,8 @@ fn installCellSurface() void {
         .{ .name = "ref:", .impl = @ptrCast(&dbCellImpl) },
         .{ .name = "atom:", .impl = @ptrCast(&dbCellImpl) },
         .{ .name = "transact:", .impl = @ptrCast(&dbTransactImpl) },
+        .{ .name = "entity", .impl = @ptrCast(&dbEntityImpl) },
+        .{ .name = "assert:attr:value:", .impl = @ptrCast(&dbAssertImpl) },
     };
     for (db_methods) |m| {
         const sel = api.intern(m.name.ptr, m.name.len);
