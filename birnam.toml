@@ -3,6 +3,11 @@
 # `modules` / `dylib_paths` / `image` are omitted here so a bare `birnam` keeps
 # the default peg+lang module set.
 
+# Hand an interactive (TTY) session to the birnam-authored linenoise REPL —
+# line editing + history. Falls back to the built-in stdin loop for piped input
+# or when linenoise isn't built (`birnam wrap linenoise`).
+repl = "linenoise"
+
 # First-party wrapped C libraries.
 #
 # `birnam wrap [name]` compiles each entry's `sources` into `output` using the

@@ -28,6 +28,10 @@ pub const Config = struct {
     dylib_paths: []const []const u8 = &.{},
     /// `image` snapshot path, joined against `dir` when relative.
     image: ?[]const u8 = null,
+    /// `repl` key — names an alternate REPL front end (e.g. "linenoise"). When
+    /// set, a bare interactive `birnam` hands the read-eval-print loop to the
+    /// matching birnam-authored REPL instead of the built-in stdin loop.
+    repl: ?[]const u8 = null,
     /// `[[wrapped]]` entries — first-party C libraries the `birnam wrap`
     /// subcommand builds into dylibs (via `cc`, never zig) for FFI wrapping.
     wrapped: []const WrappedLib = &.{},
@@ -126,6 +130,8 @@ fn parseFile(allocator: std.mem.Allocator, dir: []const u8, path: []const u8) !C
             cfg.dylib_paths = try joinAll(allocator, dir, dirs);
         } else if (std.mem.eql(u8, key, "image")) {
             if (parseString(val)) |s| cfg.image = try joinRel(allocator, dir, s);
+        } else if (std.mem.eql(u8, key, "repl")) {
+            if (parseString(val)) |s| cfg.repl = try allocator.dupe(u8, s);
         }
     }
     if (pending) |*p| try wrapped.append(allocator, try finalizeWrapped(allocator, dir, p));

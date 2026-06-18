@@ -1,0 +1,36 @@
+// linenoise REPL driver — a birnam-authored read-eval-print loop.
+//
+// Filed in by `birnam` automatically when birnam.toml has `repl = "linenoise"`,
+// AFTER linenoise.birnam (so `linenoise` is bound and its wraps resolved). The
+// trailing loop reads + edits a line via linenoise, dispatches it, and repeats
+// until EOF (^D) — then control returns to the shell, which exits.
+//
+// Division of labour: this loop (birnam) owns input + line editing + history +
+// dispatch; the shell still owns the heavy `:` commands. `[language command:]`
+// routes a `:` line back through the shell's handleImageCommand (:in/:save/
+// :load/:gc/:prune/:freeze/:asof/:help …) and answers whether it was handled;
+// `[language evalLine:]` parses + evaluates + prints a normal line exactly as
+// the built-in loop would (and covers the lang `:` commands :reset/:eval-mode).
+
+[linenoise historyMaxLen: 1000];
+
+let replRunning := [db atom: true];
+
+[[| [replRunning value]] whileTrue: [|
+  let line := [linenoise prompt: "birnam> "] ;
+  [[line isNil]
+    ifTrue: [| [replRunning set: false]]
+    ifFalse: [|
+      [[line isEmpty]
+        ifTrue: [| nil]
+        ifFalse: [|
+          [linenoise historyAdd: line] ;
+          [[[line = ":quit"] | [line = ":exit"]]
+            ifTrue: [| [replRunning set: false]]
+            ifFalse: [|
+              [[line startsWith: ":"]
+                ifTrue: [|
+                  [[[language command: line] not]
+                    ifTrue: [| [language evalLine: line]]
+                    ifFalse: [| nil]]]
+                ifFalse: [| [language evalLine: line]]]]]]]]]]]

@@ -272,6 +272,103 @@ fn shellSetReplHandler(handler: ?*const fn ([*:0]const u8) callconv(.c) void) ca
     repl_handler = handler;
 }
 
+// Shell state exposed to a birnam-authored REPL via the `[language command:]`
+// primitive (installed at handoff). A birnam REPL loop owns input + eval, but
+// the `:` image/session commands (`:in`/`:save`/`:load`/`:gc`/`:prune`/`:freeze`/
+// `:asof`/`:help`) live in the shell's `handleImageCommand` — so we route them
+// back through it. These are set once, just before handing off, and live for
+// the process.
+var g_repl_alloc: ?std.mem.Allocator = null;
+var g_repl_store: ?*fact_store.FactStore = null;
+var g_repl_table: ?*object_table.ObjectTable = null;
+var g_repl_interner: ?*interner_mod.Interner = null;
+var g_repl_manager: ?*const module.Manager = null;
+
+/// `[language command: aString]` — run a shell `:` command through
+/// `handleImageCommand`; answers `true` if it was a recognised command,
+/// `false` otherwise (so the birnam REPL knows to fall through to `evalLine:`).
+fn shellCommandImpl(s: *send_mod.Send, args: [*]const ref_mod.Ref, n_args: usize) callconv(.c) ref_mod.Ref {
+    _ = s;
+    _ = n_args;
+    const arg = args[0];
+    if (!strings.isString(arg)) return ref_mod.mkEid(kernel_eids.FALSE_EID);
+    const handled = handleImageCommand(
+        strings.bytes(arg),
+        g_repl_alloc orelse return ref_mod.mkEid(kernel_eids.FALSE_EID),
+        g_repl_store.?,
+        g_repl_table.?,
+        g_repl_interner.?,
+        g_repl_manager.?,
+    );
+    return ref_mod.mkEid(if (handled) kernel_eids.TRUE_EID else kernel_eids.FALSE_EID);
+}
+
+/// Install `command:` on the `language` prototype + record the shell state it
+/// needs, then return — the caller drives the birnam REPL loop.
+fn installReplBridge(
+    api: id_api_mod.IdApi,
+    allocator: std.mem.Allocator,
+    store: *fact_store.FactStore,
+    table: *object_table.ObjectTable,
+    interner: *interner_mod.Interner,
+    manager: *const module.Manager,
+) void {
+    g_repl_alloc = allocator;
+    g_repl_store = store;
+    g_repl_table = table;
+    g_repl_interner = interner;
+    g_repl_manager = manager;
+    const sel = api.intern("command:", 8);
+    const clo = api.make_closure(@ptrCast(&shellCommandImpl), ref_mod.NIL);
+    _ = api.assert_fact(kernel_eids.LANGUAGE_PROTO_VT, sel, ref_mod.mkEid(clo), kernel_eids.M_USER);
+}
+
+/// Hand the REPL to a birnam-authored loop. Returns true once the birnam loop
+/// has run to EOF (caller exits); false if it couldn't hand off (unknown name,
+/// or the wrapped lib isn't built) so the caller falls back to the built-in
+/// loop. The driver's trailing loop blocks here until EOF.
+fn runBirnamRepl(
+    name: []const u8,
+    cfg_dir: []const u8,
+    allocator: std.mem.Allocator,
+    store: *fact_store.FactStore,
+    table: *object_table.ObjectTable,
+    interner: *interner_mod.Interner,
+    manager: *const module.Manager,
+) bool {
+    if (!std.mem.eql(u8, name, "linenoise")) {
+        stderrPrint("[birnam] repl: unknown repl '{s}' — using built-in loop\n", .{name});
+        return false;
+    }
+    const wrapper = std.fs.path.join(allocator, &.{ cfg_dir, "wrapped/linenoise/linenoise.birnam" }) catch return false;
+    const driver = std.fs.path.join(allocator, &.{ cfg_dir, "wrapped/linenoise/repl.birnam" }) catch return false;
+    const dylib_full = std.fmt.allocPrint(allocator, "{s}/wrapped/linenoise/liblinenoise{s}", .{ cfg_dir, config_mod.dylibExt() }) catch return false;
+    inline for (.{ wrapper, driver }) |p| {
+        std.fs.cwd().access(p, .{}) catch {
+            stderrPrint("[birnam] repl: missing {s} — using built-in loop\n", .{p});
+            return false;
+        };
+    }
+    std.fs.cwd().access(dylib_full, .{}) catch {
+        stderrPrint("[birnam] repl: linenoise not built (run `birnam wrap linenoise`) — using built-in loop\n", .{});
+        return false;
+    };
+
+    const api = id_api_mod.populate();
+    installReplBridge(api, allocator, store, table, interner, manager);
+
+    // 1) File in the wrapper: `Module load:` + `wrap:` decls; the commit
+    //    resolves the wraps (dlopen + dlsym), so the driver can call them.
+    var buf1: [4096]u8 = undefined;
+    const c1 = std.fmt.bufPrint(&buf1, ":in {s}", .{wrapper}) catch return false;
+    _ = handleImageCommand(c1, allocator, store, table, interner, manager);
+    // 2) File in the driver: its trailing loop runs until EOF, then returns.
+    var buf2: [4096]u8 = undefined;
+    const c2 = std.fmt.bufPrint(&buf2, ":in {s}", .{driver}) catch return false;
+    _ = handleImageCommand(c2, allocator, store, table, interner, manager);
+    return true;
+}
+
 var shell_context = id_api_mod.ShellContext{
     .log = &shellLog,
     .set_repl_handler = &shellSetReplHandler,
@@ -776,6 +873,27 @@ pub fn main() !void {
         }
         if (eval_expr) |expr| evalReplLine(allocator, expr);
     }
+
+    // Birnam-authored REPL handoff. A plain interactive session (no scripts,
+    // no -e, not --bare) with `repl = "<name>"` in birnam.toml hands the loop to
+    // that birnam REPL instead of the built-in stdin loop. Must run while `cfg`
+    // (on setup_arena) is still alive. On success the birnam loop runs until
+    // EOF, then we exit; if it can't hand off (unknown name / not built) we fall
+    // through to the built-in loop.
+    // Only hand off on an interactive terminal: line editing needs a TTY, and a
+    // piped/redirected stdin (scripts, tests, heredocs) stays on the predictable
+    // built-in loop. So `repl = "linenoise"` enhances interactive use without
+    // changing non-interactive behaviour.
+    if (!run_and_exit and !bare and std.posix.isatty(std.posix.STDIN_FILENO)) {
+        if (cfg) |c| {
+            if (c.repl) |repl_name| {
+                if (runBirnamRepl(repl_name, c.dir, allocator, store, table, interner, &manager)) {
+                    std.process.exit(0);
+                }
+            }
+        }
+    }
+
     setup_arena.deinit(); // argv/config strings done — release before the REPL
     if (run_and_exit) std.process.exit(0);
 

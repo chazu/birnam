@@ -2822,6 +2822,11 @@ fn installParseSurface() void {
     _ = api.assert_fact(LANGUAGE_PROTO_VT, api.intern("fileIn:".ptr, 7), mkEid(api.make_closure(@ptrCast(&fileInImpl), NIL)), g_module_eid);
     _ = api.assert_fact(LANGUAGE_PROTO_VT, api.intern("fileIn:onError:".ptr, 15), mkEid(api.make_closure(@ptrCast(&fileInOnErrorImpl), NIL)), g_module_eid);
     _ = api.assert_fact(LANGUAGE_PROTO_VT, api.intern("fileInSource:".ptr, 13), mkEid(api.make_closure(@ptrCast(&fileInSourceImpl), NIL)), g_module_eid);
+    // `[language evalLine: aString]` — evaluate one REPL line exactly as the
+    // shell's stdin loop does (parse top-form, eval, print `=> value` / error,
+    // and lang `:` commands like :eval-mode/:reset). Lets a birnam-authored REPL
+    // reuse the real eval+print instead of reinventing it. Returns nil.
+    _ = api.assert_fact(LANGUAGE_PROTO_VT, api.intern("evalLine:".ptr, 9), mkEid(api.make_closure(@ptrCast(&evalLineImpl), NIL)), g_module_eid);
     _ = api.assert_fact(LANGUAGE_PROTO_EID, ATTR_VTABLE, mkEid(LANGUAGE_PROTO_VT), g_module_eid);
     pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("language".ptr, 8), mkEid(LANGUAGE_PROTO_EID));
 }
@@ -5092,6 +5097,23 @@ fn isFloatRef(r: Ref) bool {
 fn floatRefValue(r: Ref) f64 {
     const bits_ptr: *const u64 = @ptrFromInt(r);
     return @bitCast(bits_ptr.*);
+}
+
+/// `[language evalLine: aString]` — NUL-terminate the line and run it through
+/// the same `replHandler` the shell drives, so a birnam-authored REPL gets
+/// identical parse/eval/print/error behaviour. Returns nil.
+fn evalLineImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    _ = s;
+    _ = n_args;
+    const arg = args[0];
+    if (!isString(arg)) return NIL;
+    const bytes = stringBytes(arg);
+    var buf: [4096]u8 = undefined;
+    if (bytes.len >= buf.len) return NIL; // over-long line: ignore (REPL safety)
+    @memcpy(buf[0..bytes.len], bytes);
+    buf[bytes.len] = 0;
+    replHandler(@ptrCast(&buf));
+    return NIL;
 }
 
 fn replHandler(line_z: [*:0]const u8) callconv(.c) void {
