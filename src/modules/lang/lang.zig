@@ -73,6 +73,10 @@ const FILE_PROTO_VT = ke.FILE_PROTO_VT; // Phase 17.8 I/O — File singleton vta
 const FILE_PROTO = ke.FILE_PROTO;
 const SYSTEM_PROTO_VT = ke.SYSTEM_PROTO_VT; // Phase 17.8 I/O — System singleton vtable
 const SYSTEM_PROTO = ke.SYSTEM_PROTO;
+const TIME_PROTO_VT = ke.TIME_PROTO_VT; // Phase 17.9 — Time wall clock
+const TIME_PROTO = ke.TIME_PROTO;
+const RANDOM_PROTO_VT = ke.RANDOM_PROTO_VT; // Phase 17.9 — Random PRNG
+const RANDOM_PROTO = ke.RANDOM_PROTO;
 // Phase 16 — RRB-backed vector vtable (mirror of kernel_eids.RRB_VT).
 const RRB_VT = ke.RRB_VT;
 const ASSOC_VT = ke.ASSOC_VT; // Phase 16 Tier C — map vtable (mirror)
@@ -4680,6 +4684,315 @@ fn floatRoundImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     return g_api.?.make_float(@round(floatRefValue(s.receiver)));
 }
 
+// -- Phase 17.9 stdlib extras: Math / Random / Time / OS / String-utils -----
+
+/// `[n abs]` — magnitude, preserving int-ness for SmallInt.
+fn absImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    if (isFloatRef(s.receiver)) return g_api.?.make_float(@abs(floatRefValue(s.receiver)));
+    const v = untagSmallInt(s.receiver);
+    return mkSmallInt(if (v < 0) -v else v);
+}
+/// Int-or-float ref → f64 (`floatRefValue` only handles boxed floats).
+fn numF(r: Ref) f64 {
+    return if (isFloatRef(r)) floatRefValue(r) else @floatFromInt(untagSmallInt(r));
+}
+/// `[a min: b]` / `[a max: b]` — the smaller/larger of two numbers, returning
+/// the original ref (so an int stays an int).
+fn minKwImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isNumberRef(a[0])) return typeMismatchError();
+    return if (numF(a[0]) < numF(s.receiver)) a[0] else s.receiver;
+}
+fn maxKwImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isNumberRef(a[0])) return typeMismatchError();
+    return if (numF(a[0]) > numF(s.receiver)) a[0] else s.receiver;
+}
+/// `[base pow: exp]` — `base ** exp` as a float.
+fn powKwImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isNumberRef(a[0])) return typeMismatchError();
+    return g_api.?.make_float(std.math.pow(f64, numF(s.receiver), numF(a[0])));
+}
+
+// -- Random (global Xoshiro PRNG) -------------------------------------------
+
+var g_prng: ?std.Random.DefaultPrng = null;
+fn prng() *std.Random.DefaultPrng {
+    if (g_prng == null) g_prng = std.Random.DefaultPrng.init(@bitCast(std.time.milliTimestamp()));
+    return &g_prng.?;
+}
+/// `[Random seed: n]` — reseed deterministically (reproducible runs).
+fn randSeedImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isSmallInt(a[0])) return typeMismatchError();
+    g_prng = std.Random.DefaultPrng.init(@bitCast(untagSmallInt(a[0])));
+    return s.receiver;
+}
+/// `[Random next]` — a float in [0, 1).
+fn randNextImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return g_api.?.make_float(prng().random().float(f64));
+}
+/// `[Random nextInt: n]` — an int in [0, n).
+fn randNextIntImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    if (!isSmallInt(a[0])) return typeMismatchError();
+    const hi = untagSmallInt(a[0]);
+    if (hi <= 0) return mkRuntimeError("Random nextInt: needs a positive bound");
+    return mkSmallInt(prng().random().intRangeLessThan(i64, 0, hi));
+}
+/// `[Random between: lo and: hi]` — an int in [lo, hi] (inclusive).
+fn randBetweenImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    if (!isSmallInt(a[0]) or !isSmallInt(a[1])) return typeMismatchError();
+    const lo = untagSmallInt(a[0]);
+    const hi = untagSmallInt(a[1]);
+    if (hi < lo) return mkRuntimeError("Random between:and: — hi < lo");
+    return mkSmallInt(prng().random().intRangeAtMost(i64, lo, hi));
+}
+
+// -- Time (wall clock) ------------------------------------------------------
+
+/// `[Time now]` — Unix time in whole seconds.
+fn timeNowImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkSmallInt(std.time.timestamp());
+}
+/// `[Time millis]` — Unix time in milliseconds.
+fn timeMillisImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, a, n };
+    return mkSmallInt(std.time.milliTimestamp());
+}
+/// `[Time sleep: ms]` — block the process for `ms` milliseconds.
+fn timeSleepImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isSmallInt(a[0])) return typeMismatchError();
+    const ms = untagSmallInt(a[0]);
+    if (ms > 0) std.Thread.sleep(@as(u64, @intCast(ms)) * std.time.ns_per_ms);
+    return s.receiver;
+}
+
+// -- OS / process (on System) -----------------------------------------------
+
+// libc bits not surfaced by zig 0.15's std.c.
+extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
+extern "c" fn system(command: [*:0]const u8) c_int;
+
+var g_cstr: [4096]u8 = undefined;
+/// Copy a birnam string into the shared NUL-terminated scratch buffer.
+fn cstr(r: Ref) ?[:0]const u8 {
+    if (!isString(r)) return null;
+    const b = stringBytes(r);
+    if (b.len >= g_cstr.len) return null;
+    @memcpy(g_cstr[0..b.len], b);
+    g_cstr[b.len] = 0;
+    return g_cstr[0..b.len :0];
+}
+/// `[System getEnv: name]` — environment value as a string, or nil if unset.
+fn sysGetEnvImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const name = cstr(a[0]) orelse return NIL;
+    const val = std.c.getenv(name.ptr) orelse return NIL;
+    const slice = std.mem.span(val);
+    return g_api.?.make_string(slice.ptr, slice.len);
+}
+/// `[System setEnv: name to: value]` — set an environment variable. Returns self.
+fn sysSetEnvImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isString(a[0]) or !isString(a[1])) return typeMismatchError();
+    // Two separate NUL-terminated copies (cstr shares one buffer).
+    var nbuf: [1024]u8 = undefined;
+    var vbuf: [4096]u8 = undefined;
+    const nm = stringBytes(a[0]);
+    const vl = stringBytes(a[1]);
+    if (nm.len >= nbuf.len or vl.len >= vbuf.len) return mkRuntimeError("System setEnv: name/value too long");
+    @memcpy(nbuf[0..nm.len], nm);
+    nbuf[nm.len] = 0;
+    @memcpy(vbuf[0..vl.len], vl);
+    vbuf[vl.len] = 0;
+    _ = setenv(nbuf[0..nm.len :0].ptr, vbuf[0..vl.len :0].ptr, 1);
+    return s.receiver;
+}
+/// `[System exit: code]` — terminate the process with `code`.
+fn sysExitImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const code: u8 = if (isSmallInt(a[0])) @truncate(@as(u64, @bitCast(untagSmallInt(a[0])))) else 0;
+    std.process.exit(code);
+}
+/// `[System run: cmd]` — run `cmd` via the system shell; answer its exit code.
+fn sysRunImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const cmd = cstr(a[0]) orelse return typeMismatchError();
+    const status = system(cmd.ptr);
+    // POSIX wait status → exit code (low 8 bits of status >> 8 on normal exit).
+    return mkSmallInt(@intCast(@divTrunc(status, 256) & 0xff));
+}
+
+// -- String-utils (on STRING_VT) --------------------------------------------
+
+var g_strbuf: [65536]u8 = undefined;
+/// `[s repeat: n]` — `s` concatenated `n` times.
+fn strRepeatImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isSmallInt(a[0])) return typeMismatchError();
+    const count = untagSmallInt(a[0]);
+    const b = stringBytes(s.receiver);
+    if (count <= 0) return g_api.?.make_string(b.ptr, 0);
+    const total = b.len * @as(usize, @intCast(count));
+    if (total > g_strbuf.len) return mkRuntimeError("repeat: result too large");
+    var o: usize = 0;
+    var i: i64 = 0;
+    while (i < count) : (i += 1) {
+        @memcpy(g_strbuf[o .. o + b.len], b);
+        o += b.len;
+    }
+    return g_api.?.make_string(g_strbuf[0..total].ptr, total);
+}
+/// Pad `s` to `width` with spaces; `left` = pad on the left (right-align).
+fn padTo(s_ref: Ref, width_ref: Ref, left: bool) Ref {
+    if (!isSmallInt(width_ref)) return typeMismatchError();
+    const b = stringBytes(s_ref);
+    const w: usize = blk: {
+        const wv = untagSmallInt(width_ref);
+        break :blk if (wv < 0) 0 else @intCast(wv);
+    };
+    if (b.len >= w or w > g_strbuf.len) return g_api.?.make_string(b.ptr, b.len);
+    const pad = w - b.len;
+    if (left) {
+        @memset(g_strbuf[0..pad], ' ');
+        @memcpy(g_strbuf[pad..w], b);
+    } else {
+        @memcpy(g_strbuf[0..b.len], b);
+        @memset(g_strbuf[b.len..w], ' ');
+    }
+    return g_api.?.make_string(g_strbuf[0..w].ptr, w);
+}
+fn strPadLeftImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return padTo(s.receiver, a[0], true);
+}
+fn strPadRightImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    return padTo(s.receiver, a[0], false);
+}
+/// `[s center: width]` — center `s` in `width` columns, space-padded.
+fn strCenterImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = n;
+    if (!isSmallInt(a[0])) return typeMismatchError();
+    const b = stringBytes(s.receiver);
+    const w: usize = blk: {
+        const wv = untagSmallInt(a[0]);
+        break :blk if (wv < 0) 0 else @intCast(wv);
+    };
+    if (b.len >= w or w > g_strbuf.len) return g_api.?.make_string(b.ptr, b.len);
+    const lead = (w - b.len) / 2;
+    @memset(g_strbuf[0..lead], ' ');
+    @memcpy(g_strbuf[lead .. lead + b.len], b);
+    @memset(g_strbuf[lead + b.len .. w], ' ');
+    return g_api.?.make_string(g_strbuf[0..w].ptr, w);
+}
+fn asciiUpper(c: u8) u8 {
+    return if (c >= 'a' and c <= 'z') c - 32 else c;
+}
+/// `[s capitalize]` — uppercase the first letter, rest unchanged.
+fn strCapitalizeImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    const b = stringBytes(s.receiver);
+    if (b.len == 0 or b.len > g_strbuf.len) return g_api.?.make_string(b.ptr, b.len);
+    @memcpy(g_strbuf[0..b.len], b);
+    g_strbuf[0] = asciiUpper(g_strbuf[0]);
+    return g_api.?.make_string(g_strbuf[0..b.len].ptr, b.len);
+}
+/// `[s titleCase]` — uppercase the first letter of every space-separated word.
+fn strTitleCaseImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ a, n };
+    const b = stringBytes(s.receiver);
+    if (b.len > g_strbuf.len) return g_api.?.make_string(b.ptr, b.len);
+    @memcpy(g_strbuf[0..b.len], b);
+    var at_word_start = true;
+    for (g_strbuf[0..b.len]) |*c| {
+        if (c.* == ' ' or c.* == '\t' or c.* == '\n') {
+            at_word_start = true;
+        } else {
+            if (at_word_start) c.* = asciiUpper(c.*);
+            at_word_start = false;
+        }
+    }
+    return g_api.?.make_string(g_strbuf[0..b.len].ptr, b.len);
+}
+
+/// Install the Math / Random / Time / OS / String-utils surface (Phase 17.9).
+fn installStdlibExtras() void {
+    const api = g_api.?;
+    const Pair = struct { name: []const u8, impl: *const anyopaque };
+
+    // Math on both numeric vts.
+    const math_methods = [_]Pair{
+        .{ .name = "abs", .impl = @ptrCast(&absImpl) },
+        .{ .name = "min:", .impl = @ptrCast(&minKwImpl) },
+        .{ .name = "max:", .impl = @ptrCast(&maxKwImpl) },
+        .{ .name = "pow:", .impl = @ptrCast(&powKwImpl) },
+    };
+    for ([_]u64{ SMALLINT_VT, FLOAT_VT }) |vt| {
+        for (math_methods) |m| {
+            _ = api.assert_fact(vt, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+        }
+    }
+
+    // String-utils on STRING_VT.
+    const str_methods = [_]Pair{
+        .{ .name = "repeat:", .impl = @ptrCast(&strRepeatImpl) },
+        .{ .name = "padLeft:", .impl = @ptrCast(&strPadLeftImpl) },
+        .{ .name = "padRight:", .impl = @ptrCast(&strPadRightImpl) },
+        .{ .name = "center:", .impl = @ptrCast(&strCenterImpl) },
+        .{ .name = "capitalize", .impl = @ptrCast(&strCapitalizeImpl) },
+        .{ .name = "titleCase", .impl = @ptrCast(&strTitleCaseImpl) },
+    };
+    for (str_methods) |m| {
+        _ = api.assert_fact(STRING_VT, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+
+    // OS / process methods on the existing System prototype.
+    const os_methods = [_]Pair{
+        .{ .name = "getEnv:", .impl = @ptrCast(&sysGetEnvImpl) },
+        .{ .name = "setEnv:to:", .impl = @ptrCast(&sysSetEnvImpl) },
+        .{ .name = "exit:", .impl = @ptrCast(&sysExitImpl) },
+        .{ .name = "run:", .impl = @ptrCast(&sysRunImpl) },
+    };
+    for (os_methods) |m| {
+        _ = api.assert_fact(SYSTEM_PROTO_VT, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+
+    // Time prototype.
+    _ = api.assert_fact(TIME_PROTO, ATTR_VTABLE, mkEid(TIME_PROTO_VT), g_module_eid);
+    _ = api.assert_fact(TIME_PROTO_VT, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    const time_methods = [_]Pair{
+        .{ .name = "now", .impl = @ptrCast(&timeNowImpl) },
+        .{ .name = "millis", .impl = @ptrCast(&timeMillisImpl) },
+        .{ .name = "sleep:", .impl = @ptrCast(&timeSleepImpl) },
+    };
+    for (time_methods) |m| {
+        _ = api.assert_fact(TIME_PROTO_VT, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("Time".ptr, 4), mkEid(TIME_PROTO));
+
+    // Random prototype.
+    _ = api.assert_fact(RANDOM_PROTO, ATTR_VTABLE, mkEid(RANDOM_PROTO_VT), g_module_eid);
+    _ = api.assert_fact(RANDOM_PROTO_VT, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    const rand_methods = [_]Pair{
+        .{ .name = "seed:", .impl = @ptrCast(&randSeedImpl) },
+        .{ .name = "next", .impl = @ptrCast(&randNextImpl) },
+        .{ .name = "nextInt:", .impl = @ptrCast(&randNextIntImpl) },
+        .{ .name = "between:and:", .impl = @ptrCast(&randBetweenImpl) },
+    };
+    for (rand_methods) |m| {
+        _ = api.assert_fact(RANDOM_PROTO_VT, api.intern(m.name.ptr, m.name.len), mkEid(api.make_closure(m.impl, NIL)), g_module_eid);
+    }
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("Random".ptr, 6), mkEid(RANDOM_PROTO));
+}
+
 fn installNumberProtocol() void {
     const api = g_api.?;
     _ = api.assert_fact(SMALLINT_VT, api.intern("mod:".ptr, 4), mkEid(api.make_closure(@ptrCast(&smallintModImpl), NIL)), g_module_eid);
@@ -5377,6 +5690,7 @@ pub fn langPrimitivesTier() void {
     installIoSurface(); // Phase 17.8 — File + System I/O
     installCellSurface(); // Phase 16 Tier E — cells/metadata/applicative/Xf
     installStdlib(); // Phase 17 — printing, equality/comparison, sort
+    installStdlibExtras(); // Phase 17.9 — Math/Random/Time/OS/String-utils
     _ = api.assert_fact(g_top_scope_eid, ATTR_SCOPE_PARENT, mkEid(GLOBALS_SCOPE_EID), g_module_eid);
 }
 

@@ -697,4 +697,12 @@ pub const SEL_FFI_STRUCT_PTR: u64 = 238; // "ptr"    on a struct instance
 /// when a method-eid is sent like a block.
 pub const BYTECODE_METHOD_VT: u64 = 239;
 
-// 240..255 reserved for future kernel selectors / attributes
+// Stdlib `Time` / `Random` global prototypes (Phase 17.9 — wall clock + PRNG).
+// CODE provenance, rebuilt each boot like File/System; reserved so an image
+// round-trip keeps their identity.
+pub const TIME_PROTO_VT: u64 = 246;
+pub const TIME_PROTO: u64 = 247;
+pub const RANDOM_PROTO_VT: u64 = 248;
+pub const RANDOM_PROTO: u64 = 249;
+
+// 250..255 reserved for future kernel selectors / attributes
