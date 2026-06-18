@@ -1,0 +1,37 @@
+// Stats — numeric summaries over a vector, authored in birnam.
+//
+//   [Stats mean: #[1 2 3 4]]   → 2.5
+//   [Stats median: #[3 1 2]]   → 2
+//   [Stats stddev: #[2 4 4 4 5 5 7 9]] → 2.0
+//
+// Operates on a non-empty vector of numbers (int or float). Mean/variance/
+// stddev answer floats; median answers a float for an even count.
+
+let Stats := [Object new];
+
+[[Stats vtable] method: #sum: do: [:v | [v inject: 0 into: [:a :x | [a + x]]]]];
+
+[[Stats vtable] method: #mean: do: [:v | [[[Stats sum: v] + 0.0] / [v size]]]];
+
+[[Stats vtable] method: #min: do: [:v | [v inject: [v at: 0] into: [:a :x | [a min: x]]]]];
+[[Stats vtable] method: #max: do: [:v | [v inject: [v at: 0] into: [:a :x | [a max: x]]]]];
+
+[[Stats vtable] method: #median: do: [:v |
+  let s := [v sort];
+  let n := [v size];
+  let mid := [n / 2];
+  [[[n mod: 2] = 0]
+    ifTrue: [| [[[[s at: [mid - 1]] + [s at: mid]] + 0.0] / 2]]
+    ifFalse: [| [s at: mid]]]]];
+
+// Population variance / standard deviation.
+[[Stats vtable] method: #variance: do: [:v |
+  let m := [Stats mean: v];
+  [[v inject: 0.0 into: [:a :x | [a + [[x - m] pow: 2]]]] / [v size]]]];
+[[Stats vtable] method: #stddev: do: [:v | [[Stats variance: v] sqrt]]];
+
+// Most frequent value (ties → the one seen first at max count).
+[[Stats vtable] method: #mode: do: [:v |
+  let counts := [v inject: {} into: [:m :x | [m at: x put: [[m at: x ifAbsent: [| 0]] + 1]]]];
+  [[counts keys] inject: [v at: 0] into: [:best :k |
+    [[[counts at: k] > [counts at: best]] ifTrue: [| k ] ifFalse: [| best ]]]]]]

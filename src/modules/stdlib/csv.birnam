@@ -1,0 +1,33 @@
+// CSV — read/write comma-separated data, authored in birnam.
+//
+//   [Csv parse: "a,b\n1,2"]   → #[ #["a" "b"] #["1" "2"] ]
+//   [Csv rows:  "a,b\n1,2"]   → #[ {a: "1" b: "2"} ]   (header → symbol keys)
+//   [Csv readFile: "data.csv"]
+//
+// Limits (MVP): splits on bare commas (no quoted fields with embedded commas),
+// and `write:to:` emits columns in map-key order, not original order.
+
+let Csv := [Object new];
+
+// → vector of rows, each a vector of field strings. Blank lines dropped.
+[[Csv vtable] method: #parse: do: [:text |
+  [[[text split: "\n"] select: [:line | [[line size] > 0]]] collect: [:line | [line split: ","]]]]];
+
+// → vector of maps, keyed by the (symbol) header names.
+[[Csv vtable] method: #rows: do: [:text |
+  let all := [Csv parse: text];
+  let header := [all at: 0];
+  let n := [all size];
+  [[1 to: [n - 1]] collect: [:i |
+    let row := [all at: i];
+    [[header zip: row] inject: {} into: [:m :pair |
+      [m at: [[pair at: 0] asSymbol] put: [pair at: 1]]]]]]]];
+
+[[Csv vtable] method: #readFile: do: [:path | [Csv rows: [File read: path]]]];
+
+// Vector-of-maps → CSV text. Columns = keys of the first row.
+[[Csv vtable] method: #write:to: do: [:rows :path |
+  let keys := [[rows at: 0] keys];
+  let header := [[keys collect: [:k | [k asString]]] join: ","];
+  let body := [rows collect: [:r | [[keys collect: [:k | [[r at: k] asString]]] join: ","]]];
+  [File write: [[header , "\n"] , [body join: "\n"]] to: path]]]

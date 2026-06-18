@@ -257,6 +257,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(json_lib);
 
+    // -- stdlib dylib (Phase 17.13 — birnam-authored Test/Stats/Csv/Log) ------
+    const stdlib_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/stdlib/stdlib.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    stdlib_mod.addImport("module_abi", module_abi_mod);
+    const stdlib_lib = b.addLibrary(.{
+        .name = "birnam_stdlib",
+        .root_module = stdlib_mod,
+        .linkage = .dynamic,
+    });
+    b.installArtifact(stdlib_lib);
+
     // -- PEG dylib (Phase 10.0) ----------------------------------------------
 
     const peg_mod = b.createModule(.{

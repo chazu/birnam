@@ -1,0 +1,49 @@
+// Test — a tiny xUnit-lite framework, authored in birnam.
+//
+// Filed in by the `stdlib` dylib. Lets birnam units carry their own tests:
+//
+//   [Test describe: "math" do: [|
+//     [Test it: "adds" do: [| [[2 + 2] = 4]]];
+//     [Test it: "negates" do: [| [[0 - 3] = [3 negate]]]]]];
+//   [Test summary]
+//
+// An `it:do:` block returns a bool: true → pass, false → fail. If the block
+// errors (errors are values here), it's caught via `isError` and counted a
+// failure with its message — no exception unwinds the run.
+
+let Test := [Object new];
+let tPass := [db atom: 0];
+let tFail := [db atom: 0];
+
+[[Test vtable] method: #reset do: [|
+  [tPass set: 0] ;
+  [tFail set: 0]]];
+
+[[Test vtable] method: #describe:do: do: [:name :block |
+  [System println: [name , ":"]] ;
+  [block value]]];
+
+// `on: #Error do:` catches any error (errors are values; a bare `let :=` of an
+// error would halt the statement, so the handler must answer a non-error). The
+// handler returns the error MESSAGE (a string); a clean run returns the block's
+// bool. So: string outcome → errored, true → pass, anything else → fail.
+[[Test vtable] method: #it:do: do: [:desc :block |
+  let outcome := [block on: #Error do: [:e | [e message]]];
+  [[outcome isString]
+    ifTrue: [|
+      [tFail set: [[tFail value] + 1]] ;
+      [System println: ["  FAIL " , [desc , [" (" , [outcome , ")"]]]]]]
+    ifFalse: [|
+      [[outcome = true]
+        ifTrue: [|
+          [tPass set: [[tPass value] + 1]] ;
+          [System println: ["  ok   " , desc]]]
+        ifFalse: [|
+          [tFail set: [[tFail value] + 1]] ;
+          [System println: ["  FAIL " , desc]]]]]]]];
+
+// `[Test summary]` — print totals; answer true iff any test failed (handy as
+// a process exit signal).
+[[Test vtable] method: #summary do: [|
+  [System println: [[[[tPass value] printString] , " passed, "] , [[[tFail value] printString] , " failed"]]] ;
+  [[tFail value] > 0]]]
