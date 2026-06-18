@@ -1,0 +1,38 @@
+// Address book as facts — datalog query + pull.
+//
+// Each person is an entity carrying `:name` and `:city` facts; the address book
+// is just the fact store. Run it:
+//
+//   birnam examples/address-book.birnam
+//
+// `[db entity]` mints a blank entity and `assert:attr:value:` hangs facts on it
+// (it returns the entity, so the asserts chain). `person` wraps that into one
+// readable block. Querying is `findAll:where:` with `#[e a v]` clauses, where a
+// leading `?` marks a logic variable: `#[?p #city #Boston]` binds `?p` to every
+// entity whose city is Boston. `pull:spec:` then materializes a matched entity
+// into a record map.
+//
+// Note the values: cities are *symbols* (`#Boston`) because clause constants
+// match by identity, and interned symbols share identity — two `"Boston"`
+// string literals would be distinct objects and never match. Names are plain
+// strings: we only display them, never query by them.
+
+// Add a person: mint the entity, assert its facts, hand the entity back.
+let person := [:name :city |
+  let p := [db entity];
+  [db assert: p attr: #name value: name];
+  [db assert: p attr: #city value: city];
+  p];
+
+[person value: "Alice" value: #Boston];
+[person value: "Bob"   value: #Boston];
+[person value: "Carol" value: #Denver];
+
+// Everyone in a given city, and a record for one matched entity.
+let inCity := [:city | [db findAll: ?p where: #[ #[?p #city city] ]]];
+let record := [:p | [db pull: p spec: #[ #name #city ]]];
+
+let bostonians := [inCity value: #Boston];
+
+[System println: [["in Boston: " , [[bostonians size] printString]] , " people"]];
+[bostonians do: [:p | [System println: [[record value: p] printString]]]]
