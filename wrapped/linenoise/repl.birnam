@@ -12,6 +12,8 @@
 // `[language evalLine:]` parses + evaluates + prints a normal line exactly as
 // the built-in loop would (and covers the lang `:` commands :reset/:eval-mode).
 
+[System println: "[birnam] linenoise REPL — line editing + history (up/down recalls, :quit to exit)"];
+
 [linenoise historyMaxLen: 1000];
 
 let replRunning := [db atom: true];
