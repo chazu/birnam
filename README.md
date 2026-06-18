@@ -178,7 +178,8 @@ image       = "session.bim"              # snapshot :load'd after the modules
 ```
 
 It's a deliberately small TOML subset: string and string-array values, `#`
-comments, `[section]` headers ignored. Relative `dylib_paths` and `image` are
+comments, and two recognized tables (`[module_overrides]` and `[[wrapped]]`);
+other `[section]` headers are ignored. Relative `dylib_paths` and `image` are
 resolved against the config file's own directory, so a project is
 location-independent.
 
@@ -187,6 +188,33 @@ default (`peg lang`)**. `--bare` overrides everything and loads nothing. The
 config `image` is auto-loaded only on a bare (no-module-argument) invocation —
 passing modules on the command line is treated as a custom session and won't
 drag the project snapshot in.
+
+### Module overrides
+
+Some modules expose an **override slot** — a named extension point where you
+can swap in a preferred implementation. The REPL front end is one: the slot
+`repl` defaults to the built-in stdin loop, and naming `linenoise` hands the
+loop to the line-editing REPL instead (history, arrow-key recall).
+
+Set overrides three ways, highest precedence first — **command flag > env var >
+`birnam.toml` > default**:
+
+```sh
+birnam --overrides repl=linenoise,json=jsmn      # comma-separated slot=impl list
+BIRNAM_MODULE_OVERRIDES=repl=linenoise birnam    # same format, via the environment
+```
+
+```toml
+repl = "linenoise"      # top-level sugar for the "repl" slot (still works)
+
+[module_overrides]
+repl = "linenoise"      # alt REPL front end
+json = "jsmn"           # a module's own override slot
+```
+
+A slot only takes effect if a loaded module declares it; unknown slots are
+accepted and ignored, so config stays forward-compatible as modules add
+extension points.
 
 ## Tests
 
