@@ -5281,6 +5281,271 @@ fn jsonStringifyImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     return g_api.?.make_string(g_strbuf[0..pos].ptr, pos);
 }
 
+// -- Phase 17.10: YAML (flat subset) via PEG --------------------------------
+//
+// Scope: ONE level of block structure (block mapping OR block sequence of
+// scalars/flow), plus inline flow `[a, b]` / `{k: v}`. Real YAML is
+// indentation-sensitive and not cleanly PEG-expressible; this covers the 80%
+// that configs use. Documented limit.
+
+const YAML_PROTO_VT = ke.YAML_PROTO_VT;
+const YAML_PROTO = ke.YAML_PROTO;
+
+var g_yaml_grammar: u64 = 0;
+var yrn_mapping: u64 = 0;
+var yrn_sequence: u64 = 0;
+var yrn_pair: u64 = 0;
+var yrn_item: u64 = 0;
+var yrn_value: u64 = 0;
+var yrn_flowseq: u64 = 0;
+var yrn_flowmap: u64 = 0;
+var yrn_fmpair: u64 = 0;
+var yrn_key: u64 = 0;
+var yrn_quoted: u64 = 0;
+var yrn_number: u64 = 0;
+var yrn_bareword: u64 = 0;
+
+fn buildYamlGrammar() void {
+    const api = g_api.?;
+    const grammar = api.send0(mkEid(PEG_EID), sel_new_grammar);
+    g_yaml_grammar = untagEid(grammar);
+
+    const hsp = [_]u8{ ' ', ' ', '\t', '\t' }; // horizontal space
+    const nlc = [_]u8{ '\n', '\n', '\r', '\r' };
+    const digit = [_]u8{ '0', '9' };
+    defineRule(grammar, "y-hsp", peg_star(peg_charset(&hsp)));
+    defineRule(grammar, "y-nl", peg_plus(peg_charset(&nlc))); // one or more line breaks
+
+    // y-quoted = '"' ( '\' any / !'"' any )* '"'
+    {
+        const dq = [_]u8{ '"', '"' };
+        const bs = [_]u8{ '\\', '\\' };
+        const esc_p = [_]u64{ untagEid(peg_charset(&bs)), untagEid(peg_any()) };
+        const norm_p = [_]u64{ untagEid(peg_not(peg_charset(&dq))), untagEid(peg_any()) };
+        const ch_alts = [_]u64{ untagEid(peg_seq(&esc_p)), untagEid(peg_seq(&norm_p)) };
+        const parts = [_]u64{ untagEid(peg_literal("\"")), untagEid(peg_star(peg_choice(&ch_alts))), untagEid(peg_literal("\"")) };
+        defineRule(grammar, "y-quoted", peg_seq(&parts));
+    }
+    // y-number = "-"? digit+ ("." digit+)?
+    {
+        const frac_p = [_]u64{ untagEid(peg_literal(".")), untagEid(peg_plus(peg_charset(&digit))) };
+        const parts = [_]u64{ untagEid(peg_opt(peg_literal("-"))), untagEid(peg_plus(peg_charset(&digit))), untagEid(peg_opt(peg_seq(&frac_p))) };
+        defineRule(grammar, "y-number", peg_seq(&parts));
+    }
+    // y-bareword = (! [stop] any)+   stop = nl , ] } (value context)
+    {
+        const stop = [_]u8{ '\n', '\n', '\r', '\r', ',', ',', ']', ']', '}', '}' };
+        const step = [_]u64{ untagEid(peg_not(peg_charset(&stop))), untagEid(peg_any()) };
+        defineRule(grammar, "y-bareword", peg_plus(peg_seq(&step)));
+    }
+    // y-key = y-quoted / (! [: nl , } ] any)+   (key context also stops at ':')
+    {
+        const kstop = [_]u8{ ':', ':', '\n', '\n', '\r', '\r', ',', ',', '}', '}' };
+        const step = [_]u64{ untagEid(peg_not(peg_charset(&kstop))), untagEid(peg_any()) };
+        const bare = peg_plus(peg_seq(&step));
+        const alts = [_]u64{ untagEid(peg_rule_ref("y-quoted")), untagEid(bare) };
+        defineRule(grammar, "y-key", peg_choice(&alts));
+    }
+    // y-value = y-flowseq / y-flowmap / y-quoted / y-number / y-bareword
+    {
+        const alts = [_]u64{ untagEid(peg_rule_ref("y-flowseq")), untagEid(peg_rule_ref("y-flowmap")), untagEid(peg_rule_ref("y-quoted")), untagEid(peg_rule_ref("y-number")), untagEid(peg_rule_ref("y-bareword")) };
+        defineRule(grammar, "y-value", peg_choice(&alts));
+    }
+    // y-flowseq = "[" hsp ( y-value (hsp "," hsp y-value)* )? hsp "]"
+    {
+        const rep = [_]u64{ untagEid(peg_rule_ref("y-hsp")), untagEid(peg_literal(",")), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_rule_ref("y-value")) };
+        const tail = peg_star(peg_seq(&rep));
+        const inner = [_]u64{ untagEid(peg_rule_ref("y-value")), untagEid(tail) };
+        const parts = [_]u64{ untagEid(peg_literal("[")), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_opt(peg_seq(&inner))), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_literal("]")) };
+        defineRule(grammar, "y-flowseq", peg_seq(&parts));
+    }
+    // y-fmpair = y-key hsp ":" hsp y-value
+    {
+        const parts = [_]u64{ untagEid(peg_rule_ref("y-key")), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_literal(":")), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_rule_ref("y-value")) };
+        defineRule(grammar, "y-fmpair", peg_seq(&parts));
+    }
+    // y-flowmap = "{" hsp ( y-fmpair (hsp "," hsp y-fmpair)* )? hsp "}"
+    {
+        const rep = [_]u64{ untagEid(peg_rule_ref("y-hsp")), untagEid(peg_literal(",")), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_rule_ref("y-fmpair")) };
+        const tail = peg_star(peg_seq(&rep));
+        const inner = [_]u64{ untagEid(peg_rule_ref("y-fmpair")), untagEid(tail) };
+        const parts = [_]u64{ untagEid(peg_literal("{")), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_opt(peg_seq(&inner))), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_literal("}")) };
+        defineRule(grammar, "y-flowmap", peg_seq(&parts));
+    }
+    // y-pair = hsp y-key hsp ":" hsp y-value
+    {
+        const parts = [_]u64{ untagEid(peg_rule_ref("y-hsp")), untagEid(peg_rule_ref("y-key")), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_literal(":")), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_rule_ref("y-value")) };
+        defineRule(grammar, "y-pair", peg_seq(&parts));
+    }
+    // y-mapping = y-pair (nl y-pair)*
+    {
+        const rep = [_]u64{ untagEid(peg_rule_ref("y-nl")), untagEid(peg_rule_ref("y-pair")) };
+        const parts = [_]u64{ untagEid(peg_rule_ref("y-pair")), untagEid(peg_star(peg_seq(&rep))) };
+        defineRule(grammar, "y-mapping", peg_seq(&parts));
+    }
+    // y-item = hsp "-" hsp y-value
+    {
+        const parts = [_]u64{ untagEid(peg_rule_ref("y-hsp")), untagEid(peg_literal("-")), untagEid(peg_rule_ref("y-hsp")), untagEid(peg_rule_ref("y-value")) };
+        defineRule(grammar, "y-item", peg_seq(&parts));
+    }
+    // y-sequence = y-item (nl y-item)*
+    {
+        const rep = [_]u64{ untagEid(peg_rule_ref("y-nl")), untagEid(peg_rule_ref("y-item")) };
+        const parts = [_]u64{ untagEid(peg_rule_ref("y-item")), untagEid(peg_star(peg_seq(&rep))) };
+        defineRule(grammar, "y-sequence", peg_seq(&parts));
+    }
+    // y-doc = nl? (y-sequence / y-mapping) nl?
+    {
+        const body = [_]u64{ untagEid(peg_rule_ref("y-sequence")), untagEid(peg_rule_ref("y-mapping")) };
+        const parts = [_]u64{ untagEid(peg_opt(peg_rule_ref("y-nl"))), untagEid(peg_choice(&body)), untagEid(peg_opt(peg_rule_ref("y-nl"))) };
+        defineRule(grammar, "y-doc", peg_seq(&parts));
+    }
+
+    yrn_mapping = api.intern("y-mapping".ptr, 9);
+    yrn_sequence = api.intern("y-sequence".ptr, 10);
+    yrn_pair = api.intern("y-pair".ptr, 6);
+    yrn_item = api.intern("y-item".ptr, 6);
+    yrn_value = api.intern("y-value".ptr, 7);
+    yrn_flowseq = api.intern("y-flowseq".ptr, 9);
+    yrn_flowmap = api.intern("y-flowmap".ptr, 9);
+    yrn_fmpair = api.intern("y-fmpair".ptr, 8);
+    yrn_key = api.intern("y-key".ptr, 5);
+    yrn_quoted = api.intern("y-quoted".ptr, 8);
+    yrn_number = api.intern("y-number".ptr, 8);
+    yrn_bareword = api.intern("y-bareword".ptr, 10);
+
+    _ = api.assert_fact(YAML_PROTO, ATTR_VTABLE, mkEid(YAML_PROTO_VT), g_module_eid);
+    _ = api.assert_fact(YAML_PROTO_VT, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    _ = api.assert_fact(YAML_PROTO_VT, api.intern("parse:".ptr, 6), mkEid(api.make_closure(@ptrCast(&yamlParseImpl), NIL)), g_module_eid);
+    pushGlobalBinding(GLOBALS_SCOPE_EID, api.intern("Yaml".ptr, 4), mkEid(YAML_PROTO));
+}
+
+/// Trim trailing horizontal space from a byte range.
+fn rtrimHsp(b: []const u8) []const u8 {
+    var end = b.len;
+    while (end > 0 and (b[end - 1] == ' ' or b[end - 1] == '\t')) end -= 1;
+    return b[0..end];
+}
+
+/// A scalar's birnam value: quoted→string, number→int/float, bareword→
+/// true/false→bool, null/~/empty→nil, else string.
+fn yamlScalar(node: u64) Ref {
+    const api = g_api.?;
+    const rn = cstRuleName(node);
+    const sp = cstByteRange(node);
+    if (rn == yrn_quoted) {
+        if (sp.end <= sp.start + 1) return api.make_string("".ptr, 0);
+        return decodeStringLiteral(g_source[sp.start + 1 .. sp.end - 1]);
+    }
+    if (rn == yrn_number) {
+        const bytes = g_source[sp.start..sp.end];
+        if (std.mem.indexOfScalar(u8, bytes, '.') != null) {
+            return api.make_float(std.fmt.parseFloat(f64, bytes) catch 0.0);
+        }
+        return mkSmallInt(std.fmt.parseInt(i64, bytes, 10) catch 0);
+    }
+    // bareword
+    const raw = rtrimHsp(g_source[sp.start..sp.end]);
+    if (std.mem.eql(u8, raw, "true")) return mkEid(TRUE_EID);
+    if (std.mem.eql(u8, raw, "false")) return mkEid(FALSE_EID);
+    if (raw.len == 0 or std.mem.eql(u8, raw, "null") or std.mem.eql(u8, raw, "~")) return NIL;
+    return api.make_string(raw.ptr, raw.len);
+}
+
+/// Lower a y-value node (its single matched child) to a birnam value.
+fn yamlLowerValue(vnode: u64) Ref {
+    const api = g_api.?;
+    var c = cstFirstChild(vnode);
+    while (c != 0) : (c = cstNextSibling(c)) {
+        const rn = cstRuleName(c);
+        if (rn == 0) continue;
+        if (rn == yrn_flowseq) {
+            var vec = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+            var e = cstFirstChild(c);
+            while (e != 0) : (e = cstNextSibling(e)) {
+                if (cstRuleName(e) == yrn_value) vec = api.rrb_with(vec, yamlLowerValue(e));
+            }
+            return vec;
+        }
+        if (rn == yrn_flowmap) {
+            var map = api.make_map();
+            var p = cstFirstChild(c);
+            while (p != 0) : (p = cstNextSibling(p)) {
+                if (cstRuleName(p) != yrn_fmpair) continue;
+                map = api.send2(map, sel_at_put_g, yamlKey(p), yamlPairValue(p));
+            }
+            return map;
+        }
+        // scalar (quoted / number / bareword)
+        return yamlScalar(c);
+    }
+    return NIL;
+}
+
+/// The key of a pair node → an interned symbol (quoted body or trimmed bareword).
+fn yamlKey(pair: u64) Ref {
+    const api = g_api.?;
+    const k = cstChildByRule(pair, yrn_key);
+    if (k == 0) return NIL;
+    // y-key is a choice: a y-quoted child node, or a bareword span on y-key itself.
+    const q = cstChildByRule(k, yrn_quoted);
+    if (q != 0) {
+        const sp = cstByteRange(q);
+        if (sp.end <= sp.start + 1) return mkEid(api.intern("".ptr, 0));
+        const inner = g_source[sp.start + 1 .. sp.end - 1];
+        return mkEid(api.intern(inner.ptr, inner.len));
+    }
+    const sp = cstByteRange(k);
+    const raw = rtrimHsp(g_source[sp.start..sp.end]);
+    return mkEid(api.intern(raw.ptr, raw.len));
+}
+fn yamlPairValue(pair: u64) Ref {
+    const v = cstChildByRule(pair, yrn_value);
+    return if (v != 0) yamlLowerValue(v) else NIL;
+}
+
+/// `[Yaml parse: aString]` — parse a flat-subset YAML document to birnam data.
+fn yamlParseImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = .{ s, n };
+    const api = g_api.?;
+    if (!isString(a[0])) return mkRuntimeError("Yaml parse: expects a string");
+    const src = stringBytes(a[0]);
+    g_source = src;
+    const src_dup = api.make_string(src.ptr, src.len);
+    const rule = api.make_string("y-doc".ptr, 5);
+    const cst = api.send2(mkEid(g_yaml_grammar), internSel("parse:from:"), src_dup, rule);
+    if (!isEidRef(cst)) return mkRuntimeError("Yaml parse: failed");
+    const cst_eid = untagEid(cst);
+    const vt = api.query_eavt(cst_eid, ATTR_VTABLE);
+    if (isEidRef(vt) and untagEid(vt) == ERROR_VT) return cst;
+    // doc child: a mapping or a sequence.
+    const m = cstChildByRule(cst_eid, yrn_mapping);
+    if (m != 0) {
+        var map = api.make_map();
+        var p = cstFirstChild(m);
+        while (p != 0) : (p = cstNextSibling(p)) {
+            if (cstRuleName(p) != yrn_pair) continue;
+            map = api.send2(map, sel_at_put_g, yamlKey(p), yamlPairValue(p));
+        }
+        return map;
+    }
+    const sq = cstChildByRule(cst_eid, yrn_sequence);
+    if (sq != 0) {
+        var vec = api.make_rrb(@ptrCast(&[_]Ref{}), 0);
+        var it = cstFirstChild(sq);
+        while (it != 0) : (it = cstNextSibling(it)) {
+            if (cstRuleName(it) != yrn_item) continue;
+            vec = api.rrb_with(vec, yamlPairValueOfItem(it));
+        }
+        return vec;
+    }
+    return NIL;
+}
+fn yamlPairValueOfItem(item: u64) Ref {
+    const v = cstChildByRule(item, yrn_value);
+    return if (v != 0) yamlLowerValue(v) else NIL;
+}
+
 fn installNumberProtocol() void {
     const api = g_api.?;
     _ = api.assert_fact(SMALLINT_VT, api.intern("mod:".ptr, 4), mkEid(api.make_closure(@ptrCast(&smallintModImpl), NIL)), g_module_eid);
@@ -6009,6 +6274,7 @@ pub fn langFrontendTier() void {
 
     buildGrammar();
     buildJsonGrammar(); // Phase 17.10 — JSON parser (separate grammar object)
+    buildYamlGrammar(); // Phase 17.10 — YAML flat-subset parser
     cacheRuleNames();
     installEvalMethods();
     installParseSurface();
