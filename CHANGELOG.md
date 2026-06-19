@@ -5,6 +5,108 @@ All notable changes to birnam are recorded here. Format follows
 [semver](https://semver.org/). Binaries are arm64 macOS only for now — other
 platforms build from source (`zig build install`, Zig 0.15.1).
 
+## [0.7.3] — 2026-06-19
+
+### Fixed
+- **`:prune`/`:gc` no longer kill the linenoise REPL.** The linenoise REPL was
+  birnam-owned (a `whileTrue` loop in `repl.birnam`), so its loop frame never
+  unwound — there was no quiescent point to sweep, and a `:prune` mid-loop
+  reclaimed the running loop's own blocks and hung the REPL.
+
+### Changed
+- **Shell owns the REPL loop; linenoise is just the line reader.** The shell
+  now drives the loop and calls `[linenoise prompt:]` for input. Both the
+  built-in and linenoise loops run one shared line-processor, so `:prune`/`:gc`
+  **and** auto-prune/auto-gc run at the quiescent boundary in the linenoise
+  REPL exactly as in the built-in one — and a long session stays memory-bounded.
+  The old `repl.birnam` driver is removed. (Belt-and-suspenders: `:prune`/`:gc`
+  invoked via `[language command:]` mid-loop refuse rather than crash.)
+
+## [0.7.2] — 2026-06-18
+
+### Changed
+- **`Module load:` resolves bare names through the module search path** — the
+  "known place" (`<exe>/../lib`, `$BIRNAM_DYLIB_PATH`, config `dylib_paths`, …),
+  like first-party modules. A path with `/` is still used verbatim. So wrapped
+  C libs load by bare name regardless of cwd; `install`/`dist` stage wrapped
+  dylibs into `lib/`. Supersedes the 0.7.1 chdir workaround.
+- Our own `birnam.toml` uses the `[module_overrides]` table for `repl`.
+
+## [0.7.1] — 2026-06-18
+
+### Fixed
+- linenoise REPL failed to start from a subdirectory (wrapper's relative dylib
+  path didn't resolve). (Superseded by 0.7.2's search-path resolution.)
+
+## [0.7.0] — 2026-06-18
+
+### Added
+- **Networking — `Net`** (TCP over zig's `std.net`/`std.posix`, no FFI):
+  `Net connect:port:`, `Net listen:`, socket `send:`/`recv:`/`close`, server
+  `accept`. Default-loaded.
+- **stdlib modules, birnam-authored** (default-loaded via one `stdlib` dylib):
+  **Test** (`describe:do:`/`it:do:`/`summary` — xUnit-lite), **Stats**
+  (`mean:`/`median:`/`stddev:`/…), **Csv** (`parse:`/`rows:`/`readFile:`/
+  `write:to:`), **Log** (`info:`/`warn:`/`error:`/`level:`). Each carries its
+  own Test-based tests (`stdlib-test.birnam`, 18/18).
+- `IdApi.bind_global` so a zig module can expose a global without filing in
+  birnam.
+
+## [0.6.0] — 2026-06-18
+
+### Added
+- **stdlib surface (native):** Math `abs`/`min:`/`max:`/`pow:`; a `Random`
+  prototype (`seed:`/`next`/`nextInt:`/`between:and:`); a `Time` prototype
+  (`now`/`millis`/`sleep:`); OS on `System` (`getEnv:`/`setEnv:to:`/`exit:`/
+  `run:`); String-utils (`repeat:`/`padLeft:`/`padRight:`/`center:`/
+  `capitalize`/`titleCase`); string `asFloat`.
+- **JSON + YAML parsers (PEG-backed).** `Json parse:`/`stringify:` and
+  `Yaml parse:` (flat subset). JSON is **authored in birnam** (`json.birnam`
+  embedded in a thin dylib) and default-loaded.
+- **Birnam-authored parsers over PEG:** `peg` bound as a global with
+  combinators (`seqOf:`/`choiceOf:`/`anyOf:`/`range:to:`/…); parse trees are
+  navigable from birnam (`ruleName`/`children`/`start`/`end`). Plus
+  `Object new` (prototype creation), a general `vtable` accessor, and type
+  predicates (`isString`/`isNumber`/`isVector`/`isMap`).
+- **Symbol value protocol** — symbols answer `=`/`printString`/`asString`/
+  `asSymbol`.
+- **Generalized module overrides** — `[module_overrides]` toml table +
+  `BIRNAM_MODULE_OVERRIDES` env + `--overrides` flag (precedence argv > env >
+  toml > default). `repl = "…"` is sugar for the `repl` slot.
+- `birnam --help` / `--version`.
+
+## [0.5.0] — 2026-06-18
+
+### Added
+- **Datalog write path:** `[db entity]` mints an entity; `[db assert: e attr:
+  #a value: v]` asserts a fact — the birnam-level writes the query/pull surface
+  was missing.
+- Examples: `address-book` (datalog facts/query/pull), `fizzbuzz`, `primes`,
+  `bank-ledger`.
+
+### Changed
+- linenoise REPL driver rewritten in a flat, named-block style.
+
+## [0.4.0] — 2026-06-18
+
+### Added
+- **LSP P2:** `hover` (token/selector/arity) + `signatureHelp` (keyword-send
+  parameters), lexical, no re-parse.
+
+## [0.3.0] — 2026-06-18
+
+### Added
+- **Emacs `birnam-mode`** (`tools/emacs/`): font-lock, indentation, comint
+  REPL, and lsp-mode + eglot client registration.
+- **`birnam --lsp`** — a Language Server over stdio. **P0:** parse diagnostics.
+  **P1:** `documentSymbol` (top-level `let`s) + prefix-filtered `completion`
+  (keyword floor + interned selectors).
+- **Wrapped first-party C libs** — `[[wrapped]]` in `birnam.toml` + `birnam
+  wrap` (builds via `cc`, no zig); linenoise wrapped. An opt-in
+  birnam-authored linenoise REPL (`repl = "linenoise"`).
+- Width-complete FFI peek/poke, integer bitwise/shift, negative literals.
+- Example: word-frequency counter.
+
 ## [0.2.0] — 2026-06-17
 
 Onboarding ergonomics: get from "I have the binary" to exploring without a
