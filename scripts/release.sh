@@ -7,6 +7,10 @@
 #
 # The version in ./VERSION is the last RELEASED version; this bumps to the
 # next one. So from a fresh 0.0.0, `release.sh minor` cuts v0.1.0.
+#
+# Requires a CHANGELOG.md entry for the new version: either write `## [x.y.z]`
+# yourself, or put notes under `## [Unreleased]` and this promotes+dates it.
+# The version's section becomes the GitHub release notes.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -34,8 +38,28 @@ tag="v${new}"
 
 echo "==> release: ${cur} -> ${new} (${tag})"
 
-# Commit the bump and tag it BEFORE building, so the tarball carries the new
-# version (dist.sh reads ./VERSION).
+# CHANGELOG gate: every release must be documented. Either the version section
+# already exists, or an `## [Unreleased]` section is promoted to it (dated).
+today="$(date +%F)"
+if grep -qE "^## \[${new}\]" CHANGELOG.md; then
+  : # entry already written
+elif grep -qE "^## \[Unreleased\]" CHANGELOG.md; then
+  echo "==> CHANGELOG: promoting [Unreleased] -> [${new}] — ${today}"
+  sed -i.bak -E "s/^## \[Unreleased\].*/## [${new}] — ${today}/" CHANGELOG.md
+  rm -f CHANGELOG.md.bak
+  git add CHANGELOG.md
+else
+  echo "error: CHANGELOG.md has no '## [${new}]' section and no '## [Unreleased]' to promote." >&2
+  echo "       Add release notes under '## [Unreleased]' (or '## [${new}]') first." >&2
+  exit 1
+fi
+
+# Release notes = this version's CHANGELOG section (fallback to a one-liner).
+notes_body="$(awk -v v="$new" '/^## \[/{ if (p) exit } $0 ~ "^## \\[" v "\\]"{ p=1; next } p' CHANGELOG.md)"
+[ -n "$notes_body" ] || notes_body="See CHANGELOG.md."
+
+# Commit the bump (+ promoted CHANGELOG) and tag it BEFORE building, so the
+# tarball carries the new version (dist.sh reads ./VERSION).
 echo "$new" > VERSION
 git add VERSION
 git commit -m "release ${tag}"
@@ -50,6 +74,9 @@ git push origin "$tag"
 gh release create "$tag" "$tarball" \
   --title "birnam ${tag}" \
   --notes "$(cat <<NOTES
+${notes_body}
+
+---
 Portable arm64 macOS build.
 
 \`\`\`

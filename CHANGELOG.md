@@ -5,6 +5,11 @@ All notable changes to birnam are recorded here. Format follows
 [semver](https://semver.org/). Binaries are arm64 macOS only for now — other
 platforms build from source (`zig build install`, Zig 0.15.1).
 
+## [Unreleased]
+
+_Notes for the next release land here; `scripts/release.sh` promotes this
+heading to the new version (dated) and uses the section as the release notes._
+
 ## [0.7.3] — 2026-06-19
 
 ### Fixed
