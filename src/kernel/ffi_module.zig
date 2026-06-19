@@ -33,6 +33,14 @@ const macho = @import("macho.zig");
 const loader = @import("loader.zig");
 const promotion_mod = @import("promotion.zig");
 
+/// Resolve a BARE dylib name (e.g. "liblinenoise.dylib") to an absolute path
+/// via birnam's dylib search. Set by the shell at boot; null leaves bare names
+/// to the OS loader. Returns a pointer valid until the next call (out_len set),
+/// or null if not found. Lets `Module load:` find wrapped libs in the known
+/// module dir regardless of cwd. (callconv(.c) so a separately-compiled shell
+/// fn pointer is ABI-compatible.)
+pub var dylib_resolver: ?*const fn (name: [*]const u8, name_len: usize, out_len: *usize) callconv(.c) ?[*]const u8 = null;
+
 const Ref = ref_mod.Ref;
 const Send = send_mod.Send;
 
@@ -137,7 +145,26 @@ pub fn resolveModule(
     if (store.currentValue(mod_eid, kernel_eids.ATTR_FFI_HANDLE) == null) {
         const path_ref = store.currentValue(mod_eid, kernel_eids.ATTR_FFI_PATH) orelse return;
         if (!strings.isString(path_ref)) return;
-        const path_z = allocator.dupeZ(u8, strings.bytes(path_ref)) catch return;
+        const raw = strings.bytes(path_ref);
+        // A BARE name (no '/') is resolved through birnam's dylib search path
+        // (the same "known place" first-party modules use), so wrapped libs
+        // load from <exe>/../lib / BIRNAM_DYLIB_PATH / config dylib_paths
+        // regardless of cwd. A path containing '/' is used verbatim.
+        var resolved_buf: ?[]u8 = null;
+        defer if (resolved_buf) |b| allocator.free(b);
+        const to_open: []const u8 = blk: {
+            if (std.mem.indexOfScalar(u8, raw, '/') == null) {
+                if (dylib_resolver) |res| {
+                    var rlen: usize = 0;
+                    if (res(raw.ptr, raw.len, &rlen)) |rp| {
+                        resolved_buf = allocator.dupe(u8, rp[0..rlen]) catch null;
+                        if (resolved_buf) |b| break :blk b;
+                    }
+                }
+            }
+            break :blk raw;
+        };
+        const path_z = allocator.dupeZ(u8, to_open) catch return;
         defer allocator.free(path_z);
         const handle = std.c.dlopen(path_z, .{ .LAZY = true, .GLOBAL = true }) orelse return;
         _ = try store.assert(

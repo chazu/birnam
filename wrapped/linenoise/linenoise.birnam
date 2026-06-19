@@ -27,7 +27,10 @@
 //   birnam> let line := [p peekString: 0]
 //   birnam> [linenoise free: p]
 
-let linenoise := [Module load: "wrapped/linenoise/liblinenoise.dylib"];
+// Loaded by BARE name — resolved through birnam's module search path (config
+// `dylib_paths`, `$BIRNAM_DYLIB_PATH`, `<exe>/../lib`, …), so it works from any
+// cwd and from an installed/distributed bundle (where it lives in `lib/`).
+let linenoise := [Module load: "liblinenoise.dylib"];
 
 // char *linenoise(const char *prompt)  — edited line (NULL on EOF/^C -> nil).
 [linenoise wrap: #prompt:    as: "linenoise" signature: "Z)Z"];

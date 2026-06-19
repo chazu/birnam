@@ -14,7 +14,12 @@ run = "zig build"
 
 [tasks.install]
 description = "Install bin/birnam + module dylibs to a prefix (default ~/.local)"
-run = "zig build install --prefix ${BIRNAM_PREFIX:-$HOME/.local}"
+run = """
+zig build install --prefix ${BIRNAM_PREFIX:-$HOME/.local}
+# Stage wrapped C libs (built via `birnam wrap`) into the same known module dir
+# so `Module load:` resolves them by bare name. Best-effort.
+cp wrapped/*/lib*.dylib "${BIRNAM_PREFIX:-$HOME/.local}/lib/" 2>/dev/null || true
+"""
 
 [tasks.dist]
 description = "Build a portable release tarball for the current platform"

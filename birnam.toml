@@ -1,7 +1,10 @@
 # Birnam project config (recognised subset documented in src/config.zig).
 #
-# `modules` / `dylib_paths` / `image` are omitted here so a bare `birnam` keeps
-# the default peg+lang module set.
+# `modules` / `image` are omitted here so a bare `birnam` keeps the default
+# module set (peg lang json stdlib net). `dylib_paths` adds the wrapped-lib dir
+# to the module search path so `Module load: "liblinenoise.dylib"` resolves by
+# bare name from any cwd (resolved relative to this file's dir).
+dylib_paths = ["wrapped/linenoise"]
 
 # Per-slot module overrides. `repl = "linenoise"` hands an interactive (TTY)
 # session to the birnam-authored linenoise REPL — line editing + history. Falls

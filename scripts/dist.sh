@@ -35,6 +35,12 @@ cp "$prefix/bin/birnam" "$stage/bin/"
 cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/" 2>/dev/null \
   || cp "$prefix"/lib/libbirnam_*.so "$stage/lib/"
 
+# Wrapped C libs (built via `birnam wrap`) into the same known module dir, so
+# `Module load:` resolves them by bare name in the bundle. Best-effort — they
+# may not be built.
+cp wrapped/*/lib*.dylib "$stage/lib/" 2>/dev/null || true
+cp wrapped/*/lib*.so "$stage/lib/" 2>/dev/null || true
+
 if [ "$os" = macos ]; then
   log "ad-hoc signing"
   codesign -s - --force "$stage"/lib/*.dylib "$stage/bin/birnam"

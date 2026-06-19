@@ -43,6 +43,24 @@ const bopts = @import("build_opts");
 /// `--bare` was not given). peg before lang — order matters.
 const default_modules = [_][]const u8{ "peg", "lang", "json", "stdlib", "net" };
 
+// Search dirs for the FFI `Module load:` bare-name resolver (process-lifetime).
+var g_resolver_dirs: []const []const u8 = &.{};
+var g_resolver_buf: ?[]const u8 = null;
+
+/// Resolve a bare dylib name through the module search path. Registered on
+/// `ffi_module.dylib_resolver` so `[Module load: "liblinenoise.dylib"]` finds
+/// the lib in the known module dir (cwd-independent). The result is held until
+/// the next call (the kernel copies it immediately).
+fn dylibResolverFn(name_ptr: [*]const u8, name_len: usize, out_len: *usize) callconv(.c) ?[*]const u8 {
+    const pa = std.heap.page_allocator;
+    const name = name_ptr[0..name_len];
+    const resolved = dylib_search.resolveWith(pa, name, g_resolver_dirs) orelse return null;
+    if (g_resolver_buf) |b| pa.free(b);
+    g_resolver_buf = resolved;
+    out_len.* = resolved.len;
+    return resolved.ptr;
+}
+
 // -- Image save/load commands ------------------------------------------------
 
 /// Intercept `:save <path>` / `:load <path>` REPL commands. Returns true if
@@ -358,13 +376,9 @@ fn runBirnamRepl(
     const api = id_api_mod.populate();
     installReplBridge(api, allocator, store, table, interner, manager);
 
-    // The wrapper's `Module load:` uses a path relative to the project (e.g.
-    // `wrapped/linenoise/liblinenoise.dylib`), which only `dlopen`s from the
-    // config dir. We discovered birnam.toml by walking cwd upward, so cwd may
-    // be a subdirectory — chdir to the config dir so the relative load resolves
-    // (and so the REPL's relative file paths are project-rooted, which is what
-    // a project REPL wants).
-    std.posix.chdir(cfg_dir) catch {};
+    // The wrapper loads its dylib by BARE name (`Module load: "liblinenoise.
+    // dylib"`), resolved via the module search path — so no cwd dependence and
+    // no chdir needed.
 
     // 1) File in the wrapper: `Module load:` + `wrap:` decls; the commit
     //    resolves the wraps (dlopen + dlsym), so the driver can call them.
@@ -885,6 +899,19 @@ pub fn main() !void {
     const cfg = config_mod.discover(sa);
     if (cfg) |c| stderrPrint("[birnam] config: {s}/birnam.toml\n", .{c.dir});
     const extra_dirs: []const []const u8 = if (cfg) |c| c.dylib_paths else &.{};
+
+    // Register the FFI bare-name dylib resolver (process-lifetime copy of the
+    // search dirs, since `extra_dirs` lives on the setup arena freed before the
+    // REPL). Lets `Module load:` of a bare name resolve through the module
+    // search path — the "known place" — regardless of cwd.
+    {
+        const pa = std.heap.page_allocator;
+        if (pa.alloc([]const u8, extra_dirs.len)) |dirs| {
+            for (extra_dirs, 0..) |d, i| dirs[i] = pa.dupe(u8, d) catch d;
+            g_resolver_dirs = dirs;
+        } else |_| {}
+        ffi_module.dylib_resolver = &dylibResolverFn;
+    }
 
     // Merge module overrides from all three sources, lowest precedence first so
     // `overrideFor` (last-wins) yields: argv > env > toml > default. The "repl"
