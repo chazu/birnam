@@ -3,9 +3,12 @@
 # `modules` / `dylib_paths` / `image` are omitted here so a bare `birnam` keeps
 # the default peg+lang module set.
 
-# Hand an interactive (TTY) session to the birnam-authored linenoise REPL —
-# line editing + history. Falls back to the built-in stdin loop for piped input
-# or when linenoise isn't built (`birnam wrap linenoise`).
+# Per-slot module overrides. `repl = "linenoise"` hands an interactive (TTY)
+# session to the birnam-authored linenoise REPL — line editing + history. Falls
+# back to the built-in stdin loop for piped input or when linenoise isn't built
+# (`birnam wrap linenoise`). Top-level `repl = "…"` still works as sugar; this
+# is the general form (any module can declare an override slot).
+[module_overrides]
 repl = "linenoise"
 
 # First-party wrapped C libraries.
