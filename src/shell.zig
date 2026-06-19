@@ -362,10 +362,67 @@ fn installReplBridge(
     _ = api.assert_fact(kernel_eids.LANGUAGE_PROTO_VT, sel, ref_mod.mkEid(clo), kernel_eids.M_USER);
 }
 
-/// Hand the REPL to a birnam-authored loop. Returns true once the birnam loop
-/// has run to EOF (caller exits); false if it couldn't hand off (unknown name,
-/// or the wrapped lib isn't built) so the caller falls back to the built-in
-/// loop. The driver's trailing loop blocks here until EOF.
+/// Resolve a global binding's value by name (walks the GLOBALS scope binding
+/// list). Used to reach `linenoise` after filing in its wrapper.
+fn resolveGlobal(api: id_api_mod.IdApi, name_eid: u64) ?ref_mod.Ref {
+    var head = api.query_eavt(kernel_eids.GLOBALS_SCOPE_EID, kernel_eids.ATTR_SCOPE_FIRST_BINDING);
+    while (ref_mod.isEid(head)) {
+        const b = ref_mod.untagEid(head);
+        const nm = api.query_eavt(b, kernel_eids.ATTR_BIND_NAME);
+        if (ref_mod.isEid(nm) and ref_mod.untagEid(nm) == name_eid) {
+            return api.query_eavt(b, kernel_eids.ATTR_BIND_VALUE);
+        }
+        head = api.query_eavt(b, kernel_eids.ATTR_BIND_NEXT);
+    }
+    return null;
+}
+
+/// Process one REPL input line: dispatch (shell `:` command, else evaluate via
+/// the lang handler) + the per-line maintenance the loop runs at its quiescent
+/// boundary (FFI resolve, auto-prune, auto-gc, epoch spill). Shared by the
+/// built-in stdin loop and the linenoise loop. Returns false to stop the loop.
+fn processReplLine(
+    l: []const u8,
+    allocator: std.mem.Allocator,
+    store: *fact_store.FactStore,
+    table: *object_table.ObjectTable,
+    interner: *interner_mod.Interner,
+    manager: *const module.Manager,
+) bool {
+    if (handleImageCommand(l, allocator, store, table, interner, manager)) return true;
+    if (repl_handler) |handler| {
+        var buf: [4096]u8 = undefined;
+        if (l.len < buf.len) {
+            @memcpy(buf[0..l.len], l);
+            buf[l.len] = 0;
+            handler(@ptrCast(buf[0 .. l.len + 1].ptr));
+        }
+        // Bind any FFI wraps this line declared (resolveModule is idempotent).
+        ffi_module.resolveAllPending(allocator, store, table) catch {};
+        // Quiescent line boundary — the safe point to sweep per-line garbage.
+        if (prune.maybePrune(store, table, allocator) catch null) |pst| {
+            stderrPrint("[birnam] auto-pruned ({d} facts dropped, {d} entities swept)\n", .{ pst.dropped_facts, pst.swept_entities });
+        }
+        if (gc.maybeCollect(store, table, allocator)) |st| {
+            if (!st.skipped and (st.boxes_freed + st.closures_freed + st.wrappers_freed + st.strings_freed > 0)) {
+                stderrPrint("[birnam] auto-gc ({d} boxes, {d} closures, {d} wrappers, {d} strings freed)\n", .{ st.boxes_freed, st.closures_freed, st.wrappers_freed, st.strings_freed });
+            }
+        }
+        const spilled = store.maybeSpillEpochs(".", 2, allocator) catch 0;
+        if (spilled > 0) stderrPrint("[birnam] cold-tier: spilled {d} epoch(s) to disk\n", .{spilled});
+    } else {
+        if (std.mem.eql(u8, l, "quit") or std.mem.eql(u8, l, "exit")) return false;
+        stderrPrint("[birnam] no repl handler registered\n", .{});
+    }
+    return true;
+}
+
+/// Hand the REPL to the linenoise line reader, but the SHELL owns the loop: it
+/// files in the linenoise wrapper, then reads each line via `[linenoise
+/// prompt:]` and runs the SAME `processReplLine` body as the built-in loop — so
+/// `:prune`/`:gc` and auto-maintenance run at the quiescent boundary (the line
+/// editing is the only thing delegated to birnam). Returns true once the loop
+/// ends (caller exits); false if it couldn't hand off (caller falls back).
 fn runBirnamRepl(
     name: []const u8,
     cfg_dir: []const u8,
@@ -380,35 +437,46 @@ fn runBirnamRepl(
         return false;
     }
     const wrapper = std.fs.path.join(allocator, &.{ cfg_dir, "wrapped/linenoise/linenoise.birnam" }) catch return false;
-    const driver = std.fs.path.join(allocator, &.{ cfg_dir, "wrapped/linenoise/repl.birnam" }) catch return false;
-    const dylib_full = std.fmt.allocPrint(allocator, "{s}/wrapped/linenoise/liblinenoise{s}", .{ cfg_dir, config_mod.dylibExt() }) catch return false;
-    inline for (.{ wrapper, driver }) |p| {
-        std.fs.cwd().access(p, .{}) catch {
-            stderrPrint("[birnam] repl: missing {s} — using built-in loop\n", .{p});
-            return false;
-        };
-    }
-    std.fs.cwd().access(dylib_full, .{}) catch {
-        stderrPrint("[birnam] repl: linenoise not built (run `birnam wrap linenoise`) — using built-in loop\n", .{});
+    std.fs.cwd().access(wrapper, .{}) catch {
+        stderrPrint("[birnam] repl: missing {s} — using built-in loop\n", .{wrapper});
         return false;
     };
 
     const api = id_api_mod.populate();
+    // Keep `[language command:]` available for birnam code (the shell-owned loop
+    // doesn't use it, but the guard makes nested :prune/:gc safe).
     installReplBridge(api, allocator, store, table, interner, manager);
 
-    // The wrapper loads its dylib by BARE name (`Module load: "liblinenoise.
-    // dylib"`), resolved via the module search path — so no cwd dependence and
-    // no chdir needed.
-
-    // 1) File in the wrapper: `Module load:` + `wrap:` decls; the commit
-    //    resolves the wraps (dlopen + dlsym), so the driver can call them.
+    // File in the wrapper: `Module load:` (bare name → module search path) +
+    // `wrap:` decls; the commit dlopens the lib + installs the FFI methods.
     var buf1: [4096]u8 = undefined;
     const c1 = std.fmt.bufPrint(&buf1, ":in {s}", .{wrapper}) catch return false;
     _ = handleImageCommand(c1, allocator, store, table, interner, manager);
-    // 2) File in the driver: its trailing loop runs until EOF, then returns.
-    var buf2: [4096]u8 = undefined;
-    const c2 = std.fmt.bufPrint(&buf2, ":in {s}", .{driver}) catch return false;
-    _ = handleImageCommand(c2, allocator, store, table, interner, manager);
+
+    // Resolve `linenoise` (bound by the wrapper). If the dylib didn't load, the
+    // wraps are unresolved — fall back to the built-in loop.
+    const ln = resolveGlobal(api, api.intern("linenoise", 9)) orelse {
+        stderrPrint("[birnam] repl: linenoise not available (run `birnam wrap linenoise`) — using built-in loop\n", .{});
+        return false;
+    };
+    const sel_prompt = api.intern("prompt:", 7);
+    const sel_hadd = api.intern("historyAdd:", 11);
+    if (ref_mod.mkSmallInt(1000)) |n| _ = api.send1(ln, api.intern("historyMaxLen:", 14), n);
+
+    stdoutPrint("[birnam] linenoise REPL — line editing + history (up/down recalls, :quit to exit)\n", .{});
+
+    while (true) {
+        const prompt_ref = api.make_string("birnam> ", 8);
+        const line_ref = api.send1(ln, sel_prompt, prompt_ref);
+        if (line_ref == ref_mod.NIL) break; // ^D / EOF
+        if (!strings.isString(line_ref)) continue;
+        const l = strings.bytes(line_ref);
+        if (l.len == 0) continue;
+        _ = api.send1(ln, sel_hadd, line_ref);
+        if (std.mem.eql(u8, l, ":quit") or std.mem.eql(u8, l, ":exit")) break;
+        if (!processReplLine(l, allocator, store, table, interner, manager)) break;
+    }
+    stderrPrint("[birnam] goodbye\n", .{});
     return true;
 }
 
@@ -1064,46 +1132,7 @@ pub fn main() !void {
         stdoutPrint("birnam> ", .{});
         const line = reader.readUntilDelimiterOrEof(&buf, '\n') catch continue;
         if (line) |l| {
-            if (handleImageCommand(l, allocator, store, table, interner, &manager)) continue;
-            if (repl_handler) |handler| {
-                if (l.len < buf.len) {
-                    buf[l.len] = 0;
-                    handler(@ptrCast(buf[0 .. l.len + 1].ptr));
-                }
-                // Bind any FFI wraps this line declared (2026-06-17). `Module
-                // wrap:as:signature:` only ASSERTS declarative facts; the
-                // dlopen+dlsym+install was previously deferred to `:in`/`:load`/
-                // AOT only, so an interactive `wrap:` then call in the same
-                // session hit a DNU. Resolving at each line boundary closes that:
-                // `resolveModule` skips already-bound wraps (keyed on :ffi-addr)
-                // and already-open libs (keyed on :ffi-handle), so a line that
-                // declared nothing new is a cheap entities-with-:ffi-path scan.
-                ffi_module.resolveAllPending(allocator, store, table) catch {};
-                // Auto-prune (sustainability): drop per-line garbage (dead CST/
-                // AST/throwaway method trees) once entity growth crosses the
-                // threshold, so a long session stays bounded without manual
-                // `:prune`. Gated to current-only retention + no live snapshots.
-                // Runs BEFORE auto-gc so the gc reclaims the just-pruned heap.
-                if (prune.maybePrune(store, table, allocator) catch null) |pst| {
-                    stderrPrint("[birnam] auto-pruned ({d} facts dropped, {d} entities swept)\n", .{ pst.dropped_facts, pst.swept_entities });
-                }
-                // 15.6 auto-trigger: the line boundary is quiescent (empty value
-                // stack), the one safe point to sweep. Growth-gated; silent
-                // unless it actually reclaims.
-                if (gc.maybeCollect(store, table, allocator)) |st| {
-                    if (!st.skipped and (st.boxes_freed + st.closures_freed + st.wrappers_freed + st.strings_freed > 0)) {
-                        stderrPrint("[birnam] auto-gc ({d} boxes, {d} closures, {d} wrappers, {d} strings freed)\n", .{ st.boxes_freed, st.closures_freed, st.wrappers_freed, st.strings_freed });
-                    }
-                }
-                // 15.R R4 auto-eviction: spill old retained history epochs to
-                // disk, keeping the 2 newest hot. No-op under current-only
-                // retention. Same quiescent line boundary.
-                const spilled = store.maybeSpillEpochs(".", 2, allocator) catch 0;
-                if (spilled > 0) stderrPrint("[birnam] cold-tier: spilled {d} epoch(s) to disk\n", .{spilled});
-            } else {
-                if (std.mem.eql(u8, l, "quit") or std.mem.eql(u8, l, "exit")) break;
-                stderrPrint("[birnam] no repl handler registered\n", .{});
-            }
+            if (!processReplLine(l, allocator, store, table, interner, &manager)) break;
         } else break; // EOF
     }
 
