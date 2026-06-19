@@ -101,6 +101,15 @@ fn handleImageCommand(
         return true;
     }
     if (std.mem.eql(u8, line, ":prune")) {
+        // Prune/GC sweep entities by reachability and do NOT scan the live VM
+        // value stack — only safe when control is back in the shell (empty
+        // stack). When invoked through the `[language command:]` bridge (e.g.
+        // the linenoise REPL routing a `:` line mid-loop), the running loop's
+        // frames/blocks are live; sweeping them hangs/crashes the REPL. Refuse.
+        if (g_repl_bridge_active) {
+            stderrPrint("[birnam] :prune skipped — only runs at the shell boundary, not inside a running REPL loop\n", .{});
+            return true;
+        }
         const stats = prune.pruneReachable(store, table, allocator) catch {
             stderrPrint("[birnam] :prune failed\n", .{});
             return true;
@@ -109,6 +118,10 @@ fn handleImageCommand(
         return true;
     }
     if (std.mem.eql(u8, line, ":gc")) {
+        if (g_repl_bridge_active) {
+            stderrPrint("[birnam] :gc skipped — only runs at the shell boundary, not inside a running REPL loop\n", .{});
+            return true;
+        }
         // Heap reclaim (distinct from :prune's logical reclaim). Sweeps the
         // boxes arena. Best run after :prune so dropped facts no longer pin
         // their boxes (Phase 15 §Q2 current-values gate).
@@ -302,6 +315,10 @@ var g_repl_store: ?*fact_store.FactStore = null;
 var g_repl_table: ?*object_table.ObjectTable = null;
 var g_repl_interner: ?*interner_mod.Interner = null;
 var g_repl_manager: ?*const module.Manager = null;
+/// True while a `:` command runs via the `[language command:]` bridge — i.e.
+/// nested inside a running birnam REPL loop (linenoise). Stack-sweeping
+/// commands (:prune/:gc) refuse in this state.
+var g_repl_bridge_active: bool = false;
 
 /// `[language command: aString]` — run a shell `:` command through
 /// `handleImageCommand`; answers `true` if it was a recognised command,
@@ -311,6 +328,9 @@ fn shellCommandImpl(s: *send_mod.Send, args: [*]const ref_mod.Ref, n_args: usize
     _ = n_args;
     const arg = args[0];
     if (!strings.isString(arg)) return ref_mod.mkEid(kernel_eids.FALSE_EID);
+    // Mark nested-in-REPL so stack-unsafe commands (:prune/:gc) refuse.
+    g_repl_bridge_active = true;
+    defer g_repl_bridge_active = false;
     const handled = handleImageCommand(
         strings.bytes(arg),
         g_repl_alloc orelse return ref_mod.mkEid(kernel_eids.FALSE_EID),
