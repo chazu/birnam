@@ -358,6 +358,14 @@ fn runBirnamRepl(
     const api = id_api_mod.populate();
     installReplBridge(api, allocator, store, table, interner, manager);
 
+    // The wrapper's `Module load:` uses a path relative to the project (e.g.
+    // `wrapped/linenoise/liblinenoise.dylib`), which only `dlopen`s from the
+    // config dir. We discovered birnam.toml by walking cwd upward, so cwd may
+    // be a subdirectory — chdir to the config dir so the relative load resolves
+    // (and so the REPL's relative file paths are project-rooted, which is what
+    // a project REPL wants).
+    std.posix.chdir(cfg_dir) catch {};
+
     // 1) File in the wrapper: `Module load:` + `wrap:` decls; the commit
     //    resolves the wraps (dlopen + dlsym), so the driver can call them.
     var buf1: [4096]u8 = undefined;
