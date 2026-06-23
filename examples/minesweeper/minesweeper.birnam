@@ -1,0 +1,296 @@
+// Minesweeper — terminal game in birnam.
+//
+//   birnam minesweeper.birnam
+//
+// Playable 9x9 / 10-mine game. Each turn the screen is cleared and the board
+// redrawn; you type a command and press enter:
+//
+//   r x y   reveal cell (x,y)        f x y   toggle a flag        q   quit
+//
+// Reveal a 0-count cell and the empty region floods open (with its numbered
+// border). Reveal a mine and you lose; clear every non-mine cell and you win.
+// Coordinates are 0-based; x is the column (top header), y is the row (left).
+//
+// Board model: a MAP keyed by flat index `i = y*w + x` (birnam vectors are
+// append-only RRB trees with no positional `at:put:`, but maps update by key
+// and stay persistent). Each cell is itself a small map:
+//
+//   { mine: <bool> count: <int> revealed: <bool> flagged: <bool> }
+//
+// Every "mutation" returns a NEW map; we thread boards through `inject:into:`
+// folds, or hold one in a `db cell:` during the placement loop.
+
+// ---- Config --------------------------------------------------------------
+
+let w := 9;
+let h := 9;
+let mineCount := 10;
+
+// Flat (x,y) -> index. `w` is captured by reference from the enclosing scope.
+let idx := [:x :y | [[y * w] + x]];
+
+// The 8 neighbour offsets, as (dx,dy) pairs. Iterating a flat vector keeps the
+// neighbour scan one level deep (vs. a nested dx/dy loop).
+let neighbors := #[ #[-1 -1] #[0 -1] #[1 -1] #[-1 0] #[1 0] #[-1 1] #[0 1] #[1 1] ];
+
+// A fresh, untouched cell. Maps are immutable, so one template is safe to share.
+let emptyCell := { mine: false count: 0 revealed: false flagged: false };
+
+// ---- M1: board generation ------------------------------------------------
+
+// Empty board: every index mapped to a pristine cell.
+let makeBoard := [|
+  [[0 to: [[w * h] - 1]] inject: {} into: [:b :i | [b at: i put: emptyCell]]]];
+
+// Scatter `mineCount` mines at random indices, rejecting duplicates and any
+// index in `forbidden` (a map used as a set — the cells kept mine-free so the
+// first reveal is always safe). The board lives in a cell while we loop so each
+// placement sees the previous one. (Assumes mineCount < free cells.)
+let placeMines := [:startBoard :forbidden |
+  let cur := [db cell: startBoard];
+  let placed := [db cell: 0];
+  [[| [[placed value] < mineCount]] whileTrue: [|
+    let ri := [Random nextInt: [w * h]];
+    let bad := [[forbidden at: ri ifAbsent: [| false]] | [[[cur value] at: ri] at: #mine]];
+    [bad
+      ifTrue:  [| nil]                                    // forbidden or taken — retry
+      ifFalse: [|
+        [cur set: [[cur value] at: ri put: [[[cur value] at: ri] at: #mine put: true]]];
+        [placed set: [[placed value] + 1]]]]]];
+  [cur value]];
+
+// The clicked cell plus its in-bounds neighbours, as a map-set of indices.
+// Keeping this whole 3x3 mine-free guarantees the first reveal opens a flood.
+let forbiddenAround := [:cx :cy |
+  let base := [{} at: [idx value: cx value: cy] put: true];
+  [neighbors inject: base into: [:fb :d |
+    let nx := [cx + [d at: 0]];
+    let ny := [cy + [d at: 1]];
+    let ok := [[[[nx >= 0] & [nx < w]] & [ny >= 0]] & [ny < h]];
+    [ok
+      ifTrue:  [| [fb at: [idx value: nx value: ny] put: true]]
+      ifFalse: [| fb]]]]];
+
+// Count mines in the cells around (x,y). `&` is EAGER (no short-circuit), so the
+// in-bounds test gates the board lookup with a nested `ifTrue:` rather than `&` —
+// otherwise an out-of-bounds index would hit the map and raise "key not found".
+let countMines := [:board :x :y |
+  [neighbors inject: 0 into: [:acc :d |
+    let nx := [x + [d at: 0]];
+    let ny := [y + [d at: 1]];
+    let ok := [[[[nx >= 0] & [nx < w]] & [ny >= 0]] & [ny < h]];
+    [ok
+      ifTrue: [| [[[board at: [idx value: nx value: ny]] at: #mine] ifTrue: [| [acc + 1]] ifFalse: [| acc]]]
+      ifFalse: [| acc]]]]];
+
+// Stamp each non-mine cell with its neighbour-mine count.
+let withCounts := [:board |
+  [[0 to: [h - 1]] inject: board into: [:bAcc :y |
+    [[0 to: [w - 1]] inject: bAcc into: [:b :x |
+      let i := [idx value: x value: y];
+      let c := [b at: i];
+      [[c at: #mine]
+        ifTrue:  [| b]
+        ifFalse: [| [b at: i put: [c at: #count put: [countMines value: b value: x value: y]]]]]]]]]];
+
+// ---- M2: rendering -------------------------------------------------------
+
+// TRUTH view: '*' mine, '.' for a 0, else the digit. Used to eyeball generation.
+let glyphTruth := [:cell |
+  [[cell at: #mine]
+    ifTrue:  [| "*"]
+    ifFalse: [|
+      let n := [cell at: #count];
+      [[n = 0] ifTrue: [| "."] ifFalse: [| [n printString]]]]]];
+
+// PLAYER view: '.' hidden, 'F' flagged, and once revealed: ' ' for a 0,
+// '*' for a mine (a loss), else the digit. The real game redraws this.
+let glyphPlay := [:cell |
+  [[cell at: #revealed]
+    ifTrue: [|
+      [[cell at: #mine]
+        ifTrue:  [| "*"]
+        ifFalse: [|
+          let n := [cell at: #count];
+          [[n = 0] ifTrue: [| " "] ifFalse: [| [n printString]]]]]]
+    ifFalse: [|
+      [[cell at: #flagged] ifTrue: [| "F"] ifFalse: [| "."]]]]];
+
+// Print a board with a given per-cell glyph block. Column header on top,
+// row index down the left.
+let renderWith := [:board :glyph |
+  let header := [[0 to: [w - 1]] inject: "   " into: [:acc :x | [[acc , [x printString]] , " "]]];
+  [System println: header];
+  [[0 to: [h - 1]] do: [:y |
+    let cells := [[0 to: [w - 1]] inject: "" into: [:acc :x |
+      [[acc , [glyph value: [board at: [idx value: x value: y]]]] , " "]]];
+    [System println: [[[y printString] , "  "] , cells]]]];
+  nil];
+
+// ---- Game state ----------------------------------------------------------
+
+[Random seed: [Time millis]];              // fresh board each run
+
+// All mutable game state lives in reference cells — `set:` keeps full history,
+// so undo-via-time-travel is available later for free. The board starts EMPTY
+// (no mines); mines are placed on the first reveal so it can never be a mine.
+let board   := [db cell: [makeBoard value]];
+let placed  := [db cell: false];
+let status  := [db cell: "Reveal: r x y   Flag: f x y   Quit: q"];
+let running := [db cell: true];
+
+// First reveal at (x,y): scatter mines avoiding the clicked 3x3, stamp counts.
+let ensurePlaced := [:x :y |
+  [[placed value]
+    ifTrue:  [| nil]
+    ifFalse: [|
+      let fb := [forbiddenAround value: x value: y];
+      [board set: [withCounts value: [placeMines value: [board value] value: fb]]];
+      [placed set: true]]]];
+
+// ---- M4: reveal + flood fill ---------------------------------------------
+
+// Return a new board with cell `i` marked revealed.
+let setRevealed := [:b :i | [b at: i put: [[b at: i] at: #revealed put: true]]];
+
+// Reveal every cell (used on a loss so the player sees the mines).
+let revealAll := [:b |
+  [[0 to: [[w * h] - 1]] inject: b into: [:acc :i | [setRevealed value: acc value: i]]]];
+
+// Reveal the unrevealed neighbours of a (already-revealed) 0-count cell.
+// A 0-count cell has no mine neighbours, so revealing them is always safe.
+// `changed` is a cell flag the flood loop watches for a fixpoint.
+let revealNeighbors := [:x :y :changed |
+  [neighbors do: [:d |
+    let nx := [x + [d at: 0]];
+    let ny := [y + [d at: 1]];
+    let ok := [[[[nx >= 0] & [nx < w]] & [ny >= 0]] & [ny < h]];
+    [ok
+      ifTrue: [|
+        let i := [idx value: nx value: ny];
+        [[[[board value] at: i] at: #revealed]
+          ifTrue: [| nil]
+          ifFalse: [|
+            [board set: [setRevealed value: [board value] value: i]];
+            [changed set: true]]]]
+      ifFalse: [| nil]]]]];
+
+// Flood from (sx,sy): reveal it, then keep passing over the board revealing the
+// neighbours of any revealed 0-cell until a whole pass changes nothing. Vectors
+// have no pop, so this fixpoint scan replaces an explicit worklist (board is
+// small — 81 cells — so the repeated passes are cheap).
+let floodFrom := [:sx :sy |
+  [board set: [setRevealed value: [board value] value: [idx value: sx value: sy]]];
+  let changed := [db cell: true];
+  [[| [changed value]] whileTrue: [|
+    [changed set: false];
+    [[0 to: [h - 1]] do: [:y |
+      [[0 to: [w - 1]] do: [:x |
+        let c := [[board value] at: [idx value: x value: y]];
+        [[[c at: #revealed] & [[c at: #count] = 0]]
+          ifTrue: [| [revealNeighbors value: x value: y value: changed]]
+          ifFalse: [| nil]]]]]]]];
+  nil];
+
+// Win when every non-mine cell is revealed.
+let checkWin := [|
+  let left := [[0 to: [[w * h] - 1]] inject: 0 into: [:acc :i |
+    let c := [[board value] at: i];
+    [[[[c at: #revealed] not] & [[c at: #mine] not]]
+      ifTrue: [| [acc + 1]] ifFalse: [| acc]]]];
+  [[left = 0]
+    ifTrue: [|
+      [status set: "CLEARED! You win. (q to quit)"];
+      [running set: false]]
+    ifFalse: [| nil]]];
+
+let loseGame := [|
+  [board set: [revealAll value: [board value]]];
+  [status set: "BOOM — you hit a mine. (q to quit)"];
+  [running set: false]];
+
+// Reveal the cell the player named, dispatching flagged / mine / flood cases.
+let reveal := [:x :y |
+  [ensurePlaced value: x value: y];
+  let c := [[board value] at: [idx value: x value: y]];
+  [[c at: #flagged]
+    ifTrue: [| [status set: "That cell is flagged — unflag (f) it first."]]
+    ifFalse: [|
+      [[c at: #revealed]
+        ifTrue: [| [status set: "Already revealed."]]
+        ifFalse: [|
+          [[c at: #mine]
+            ifTrue: [| [loseGame value]]
+            ifFalse: [|
+              [floodFrom value: x value: y];
+              [status set: "Revealed."];
+              [checkWin value]]]]]]]];
+
+// Toggle a flag (only on a hidden cell).
+let toggleFlag := [:x :y |
+  let i := [idx value: x value: y];
+  let c := [[board value] at: i];
+  [[c at: #revealed]
+    ifTrue: [| [status set: "Can't flag a revealed cell."]]
+    ifFalse: [|
+      [board set: [[board value] at: i put: [c at: #flagged put: [[c at: #flagged] not]]]];
+      [status set: "Flag toggled."]]]];
+
+// ---- M3: command parsing -------------------------------------------------
+
+// `cmd` is "r" or "f"; x,y already validated as in-bounds ints.
+let applyAt := [:cmd :x :y |
+  [[cmd = "f"]
+    ifTrue: [| [toggleFlag value: x value: y]]
+    ifFalse: [|
+      [[cmd = "r"]
+        ifTrue: [| [reveal value: x value: y]]
+        ifFalse: [| [status set: "Unknown command — use r, f, or q."]]]]]];
+
+// Parse and bounds-check the "<cmd> x y" form.
+let handleMove := [:toks |
+  [[[toks size] < 3]
+    ifTrue: [| [status set: "Need three tokens: e.g. r 3 4"]]
+    ifFalse: [|
+      let cmd := [toks at: 0];
+      let x := [[toks at: 1] asInteger];
+      let y := [[toks at: 2] asInteger];
+      [[[x isNil] | [y isNil]]
+        ifTrue: [| [status set: "Coordinates must be numbers."]]
+        ifFalse: [|
+          [[[[x >= 0] & [x < w]] & [[y >= 0] & [y < h]]]
+            ifTrue: [| [applyAt value: cmd value: x value: y]]
+            ifFalse: [| [status set: "Off the board."]]]]]]]];
+
+// Top-level dispatch: blank → ignore, q → quit, else a move.
+let handleLine := [:line |
+  let toks := [line words];
+  [[[toks size] = 0]
+    ifTrue: [| nil]
+    ifFalse: [|
+      [[[toks at: 0] = "q"]
+        ifTrue: [|
+          [status set: "Bye."];
+          [running set: false]]
+        ifFalse: [| [handleMove value: toks]]]]]];
+
+// ---- M5: main loop -------------------------------------------------------
+
+let draw := [|
+  [System run: "clear"];
+  [System println: "M I N E S W E E P E R"];
+  [System println: ""];
+  [renderWith value: [board value] value: glyphPlay];
+  [System println: ""];
+  [System println: [status value]]];
+
+[[| [running value]] whileTrue: [|
+  [draw value];
+  [System print: "> "];
+  let line := [System readLine];
+  [[line isNil]
+    ifTrue: [| [running set: false]]         // EOF — stop cleanly
+    ifFalse: [| [handleLine value: line]]]]];
+
+// Final frame so the player sees the end state (win, loss, or quit).
+[draw value]
