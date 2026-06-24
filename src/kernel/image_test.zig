@@ -479,6 +479,47 @@ test "image: :method-captures-ptr (CaptureSpecArray) round-trips" {
     try testing.expectEqual(@as(u8, 2), gtail[1].local_slot);
 }
 
+test "image: ASSOC_VT map value round-trips (immediate/string/float/rrb entries)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const E: u64 = 360;
+    const A: u64 = 95;
+
+    // { 10 -> "x", 20 -> 99.0, 30 -> #[1 2] } — exercises every value kind a
+    // map entry can hold, recursively.
+    var map = try boxed.mkMap(a);
+    map = try boxed.mapPut(a, map, vi(10), try strings.mkString(a, "x"));
+    map = try boxed.mapPut(a, map, vi(20), try boxed.mkFloat(a, 99.0));
+    map = try boxed.mapPut(a, map, vi(30), try boxed.mkRrb(a, &.{ vi(1), vi(2) }));
+
+    var src = fs.FactStore.init(a);
+    _ = try src.assert(E, A, map, M_USER);
+
+    const res = try image.write(a, &src, 256, .{}, null);
+    try testing.expectEqual(@as(u64, 1), res.facts_written);
+    try testing.expectEqual(@as(u64, 0), res.skipped_pointer_values); // map handled, not skipped
+
+    var dst = fs.FactStore.init(a);
+    _ = try image.load(&dst, res.bytes, null);
+
+    const got = dst.currentValue(E, A).?;
+    try testing.expect(boxed.isMapRef(got));
+    try testing.expectEqual(@as(usize, 3), boxed.mapLen(got));
+
+    const v10 = boxed.mapGet(got, vi(10)).?;
+    try testing.expect(strings.isString(v10));
+    try testing.expectEqualStrings("x", strings.bytes(v10));
+
+    const v20 = boxed.mapGet(got, vi(20)).?;
+    try testing.expect(boxed.isFloat(v20));
+    try testing.expectEqual(@as(f64, 99.0), boxed.untagFloat(v20));
+
+    const v30 = boxed.mapGet(got, vi(30)).?;
+    try testing.expect(boxed.isRrbRef(v30));
+    try testing.expectEqual(@as(usize, 2), boxed.untagRrbRef(v30).count());
+}
+
 test "image: rejects bad magic and version" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

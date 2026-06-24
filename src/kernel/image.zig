@@ -46,7 +46,16 @@ pub const Interner = interner_mod.Interner;
 ///     sidecar manifest.txt; refines ADR-11 #5's directory archive).
 /// v5: interner section (name↔eid bijection) so user names keep their eids
 ///     across reload — required for binding/method-name identity.
-pub const FORMAT_VERSION: u32 = 5;
+/// v6: VK_MAP — ASSOC_VT persistent maps serialize their entries (recursive),
+///     so map literals in constant pools / AST values round-trip instead of
+///     being skipped.
+pub const FORMAT_VERSION: u32 = 6;
+
+/// Oldest on-disk version this loader still accepts. v5 and v6 share every
+/// section layout — v6 only ADDS the VK_MAP value kind in the facts stream — so
+/// a v6 loader reads a v5 image verbatim (a v5 image just has no VK_MAP bytes).
+/// Keeps pre-v6 images (e.g. a baked `aot_embed.bim`) loadable.
+pub const MIN_LOAD_VERSION: u32 = 5;
 
 /// Single-writer transactor shape (ADR-11 #7). Recorded in the manifest so
 /// a load knows whether the image expects the Datomic multi-thread shape.
@@ -78,6 +87,7 @@ const VK_RRB: u8 = 3; // u32 count + `count` recursively-encoded values
 const VK_CAPTURES: u8 = 4; // CaptureSpecArray (u32 len + len*(u8 parent, u8 local))
 // emitted only for :method-captures-ptr facts (attribute-aware — the value
 // is a bare vt-less pointer that can't be discriminated by tag).
+const VK_MAP: u8 = 5; // ASSOC_VT persistent map: u32 count + count*(key value), recursive
 
 const MAGIC: [8]u8 = .{ 'B', 'R', 'N', 'I', 'M', 'G', 0, 1 };
 
@@ -123,6 +133,13 @@ fn valueSupported(v: Ref) bool {
         }
         return true;
     }
+    if (boxed.isMapRef(v)) {
+        var it = boxed.untagMapRef(v).iter();
+        while (it.next()) |kv| {
+            if (!valueSupported(kv.key) or !valueSupported(kv.value)) return false;
+        }
+        return true;
+    }
     return false;
 }
 
@@ -139,6 +156,15 @@ fn writeValue(allocator: std.mem.Allocator, buf: *std.ArrayList(u8), v: Ref) Wri
     } else if (boxed.isFloat(v)) {
         try buf.append(allocator, VK_FLOAT);
         try appendU64(allocator, buf, @bitCast(boxed.untagFloat(v)));
+    } else if (boxed.isMapRef(v)) {
+        const m = boxed.untagMapRef(v);
+        try buf.append(allocator, VK_MAP);
+        try appendU32(allocator, buf, @intCast(m.count()));
+        var it = m.iter();
+        while (it.next()) |kv| {
+            try writeValue(allocator, buf, kv.key); // key is a Ref (u64 bit pattern)
+            try writeValue(allocator, buf, kv.value);
+        }
     } else { // RRB (guaranteed by valueSupported)
         const r = boxed.untagRrbRef(v);
         try buf.append(allocator, VK_RRB);
@@ -203,6 +229,17 @@ fn readValue(store: *FactStore, cur: *Cursor) ReadError!Ref {
             var i: u32 = 0;
             while (i < n) : (i += 1) elems[i] = try readValue(store, cur);
             return boxed.mkRrb(store.allocator, elems) catch return error.OutOfMemory;
+        },
+        VK_MAP => {
+            const n = try cur.readU32();
+            var map = boxed.mkMap(store.allocator) catch return error.OutOfMemory;
+            var i: u32 = 0;
+            while (i < n) : (i += 1) {
+                const k = try readValue(store, cur);
+                const val = try readValue(store, cur);
+                map = boxed.mapPut(store.allocator, map, k, val) catch return error.OutOfMemory;
+            }
+            return map;
         },
         else => return error.BadValueKind,
     }
@@ -327,7 +364,7 @@ fn loadImpl(comptime frozen: bool, store: *FactStore, bytes: []const u8, interne
     const magic = try cur.take(8);
     if (!std.mem.eql(u8, magic, &MAGIC)) return error.BadMagic;
     const version = try cur.readU32();
-    if (version != FORMAT_VERSION) return error.BadVersion;
+    if (version < MIN_LOAD_VERSION or version > FORMAT_VERSION) return error.BadVersion;
 
     // Embedded manifest. Module names + the dep slice are allocated in the
     // store's allocator so they outlive `bytes`.
@@ -403,7 +440,7 @@ pub fn peekManifest(allocator: std.mem.Allocator, bytes: []const u8) ReadError!M
     const magic = try cur.take(8);
     if (!std.mem.eql(u8, magic, &MAGIC)) return error.BadMagic;
     const version = try cur.readU32();
-    if (version != FORMAT_VERSION) return error.BadVersion;
+    if (version < MIN_LOAD_VERSION or version > FORMAT_VERSION) return error.BadVersion;
     const bc_version = try cur.readU32();
     const thread_mode_raw = (try cur.take(1))[0];
     if (thread_mode_raw > @intFromEnum(ThreadMode.datomic)) return error.BadManifest;
