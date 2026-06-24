@@ -1,0 +1,3 @@
+# built by `birnam wrap` (compiled from termbox2.c)
+wrapped/termbox2/libtermbox2.dylib
+wrapped/termbox2/*.so

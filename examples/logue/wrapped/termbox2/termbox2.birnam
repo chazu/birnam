@@ -1,0 +1,40 @@
+// termbox2 — terminal cell grid + keyboard events for birnam.
+//
+// First-party wrapped C library. Build the dylib first (uses cc, not zig):
+//
+//   birnam wrap termbox2        # -> wrapped/termbox2/libtermbox2.dylib
+//
+// Then file this wrapper in BEFORE the program that uses it. File-in is atomic:
+// the wraps below are declared here and RESOLVED at commit, so they're only
+// callable in a LATER unit. The shipped invocation files in the wrapper and the
+// game as two separate scripts (= two commits):
+//
+//   birnam wrapped/termbox2/termbox2.birnam logue.birnam
+//
+// All calls go through a thin int-clean C adapter (`lg_*`, see termbox2.c), so
+// every signature here is int->int or (ints…, cstring)->int — no struct peeks,
+// no uint64 attr-width marshalling.
+
+// Loaded by BARE name — resolved via birnam.toml `dylib_paths = ["wrapped/termbox2"]`.
+let tb := [Module load: "libtermbox2.dylib"];
+
+// -- lifecycle / screen ---------------------------------------------------
+[tb wrap: #init       as: "lg_init"         signature: ")i"];   // 0 on success
+[tb wrap: #shutdown   as: "lg_shutdown"     signature: ")i"];
+[tb wrap: #width      as: "lg_width"        signature: ")i"];   // columns
+[tb wrap: #height     as: "lg_height"       signature: ")i"];   // rows
+[tb wrap: #clear      as: "lg_clear"        signature: ")i"];   // clear back buffer
+[tb wrap: #present    as: "lg_present"      signature: ")i"];   // flush to screen
+[tb wrap: #hideCursor as: "lg_hide_cursor"  signature: ")i"];
+
+// -- drawing --------------------------------------------------------------
+// [tb setX: c y: r ch: codepoint fg: fgColor bg: bgColor]
+[tb wrap: #setX:y:ch:fg:bg: as: "lg_set_cell" signature: "iiiii)i"];
+// [tb printX: c y: r fg: fgColor bg: bgColor str: "text"]
+[tb wrap: #printX:y:fg:bg:str: as: "lg_print" signature: "iiiiZ)i"];
+
+// -- input ----------------------------------------------------------------
+[tb wrap: #poll   as: "lg_poll"     signature: ")i"];   // BLOCKS; returns event type
+[tb wrap: #evType as: "lg_ev_type"  signature: ")i"];   // TB_EVENT_*
+[tb wrap: #evKey  as: "lg_ev_key"   signature: ")i"];   // TB_KEY_* (0 if a char)
+[tb wrap: #evCh   as: "lg_ev_ch"    signature: ")i"]    // codepoint (0 if special)

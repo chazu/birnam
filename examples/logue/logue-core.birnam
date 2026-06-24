@@ -1,0 +1,608 @@
+// logue-core — all game logic for the roguelike. NO termbox calls live here, so
+// this layer is exercised headlessly by logue-test.birnam (deterministic RNG +
+// scripted moves + assertions). The thin render/input layer is logue.birnam.
+//
+// State lives in reference cells (`db cell:`); maps/vectors are immutable, so a
+// "mutation" rebuilds a value and `set:`s it back. The whole world is a handful
+// of cells the renderer reads: player, depth, tiles, monsters, items, messages,
+// mode, turn.
+//
+// Grid: tiles is a MAP keyed by flat index y*MAP_W+x -> tile symbol; an absent
+// key reads as #wall. Monsters and items are VECTORS of maps (each carries its
+// own #x/#y), rebuilt with `select:`/`collect:` on change — birnam vectors have
+// no positional at:put:, but they iterate cleanly.
+
+// ===========================================================================
+// Config + tiny helpers
+// ===========================================================================
+
+let MAP_W := 60;
+let MAP_H := 18;
+let DEPTH_MAX := 5;
+let HUNGER_MAX := 1200;
+
+let idx := [:x :y | [[y * MAP_W] + x]];
+let inBounds := [:x :y | [[[x >= 0] & [x < MAP_W]] & [[y >= 0] & [y < MAP_H]]]];
+
+// sign of an integer: -1 / 0 / 1
+let sgn := [:n | [[n > 0] ifTrue: [| 1] ifFalse: [| [[n < 0] ifTrue: [| -1] ifFalse: [| 0]]]]];
+
+// Random in 0..n-1, and inclusive lo..hi.
+let rnd := [:n | [Random nextInt: n]];
+let rndRange := [:lo :hi | [lo + [Random nextInt: [[hi - lo] + 1]]]];
+
+// Build a 2-element vector from variables (#[a b] literals don't interpolate).
+let pair := [:a :b | [[#[] with: a] with: b]];
+
+// ===========================================================================
+// Glyph codepoints (renderer draws these as cells) + termbox colour codes
+// ===========================================================================
+
+let G_WALL     := 35;   // #
+let G_FLOOR    := 46;   // .
+let G_DOWN     := 62;   // >
+let G_UP       := 60;   // <
+let G_PLAYER   := 64;   // @
+let G_MAC      := 42;   // *   the Star of Birnam
+let G_GOLD     := 36;   // $
+let G_FOOD     := 37;   // %
+let G_POTION   := 33;   // !
+let G_WEAPON   := 41;   // )
+let G_ARMOR    := 91;   // [
+
+let C_DEFAULT := 0;
+let C_RED     := 2;
+let C_GREEN   := 3;
+let C_YELLOW  := 4;
+let C_BLUE    := 5;
+let C_MAGENTA := 6;
+let C_CYAN    := 7;
+let C_WHITE   := 8;
+
+// ===========================================================================
+// World state cells (read by the renderer)
+// ===========================================================================
+
+let player   := [db cell: {}];         // map of player stats/equipment (cells reject nil)
+let depth    := [db cell: 1];
+let levels   := [db cell: {}];          // map depth -> level map (tiles/up/down)
+let tiles    := [db cell: {}];          // current level tiles
+let monsters := [db cell: #[]];         // current level monsters (vector of maps)
+let items    := [db cell: #[]];         // current level items (vector of maps)
+let messages := [db cell: #[]];         // recent log lines (vector of strings)
+let mode     := [db cell: #title];      // #title #play #dead #won #quit
+let turn     := [db cell: 0];
+let midCtr   := [db cell: 0];           // monster id counter (unique across levels)
+
+// Push a log line, keeping the last 6.
+let msg := [:s |
+  let m := [[messages value] with: s];
+  let n := [m size];
+  [messages set: [[n > 6] ifTrue: [| [[m collect: [:x | x]] select: [:x | true]]] ifFalse: [| m]]]];
+
+// (the trim above keeps it a vector; drop the oldest when too long)
+let msgTrim := [|
+  let m := [messages value];
+  [[[m size] > 6]
+    ifTrue: [|
+      let keep := [[1 to: [[m size] - 1]] inject: #[] into: [:acc :i | [acc with: [m at: i]]]];
+      [messages set: keep]]
+    ifFalse: [| nil]]];
+
+// ===========================================================================
+// Tile queries
+// ===========================================================================
+
+let tileAt := [:x :y |
+  [[inBounds value: x value: y]
+    ifTrue:  [| [[tiles value] at: [idx value: x value: y] ifAbsent: [| #wall]]]
+    ifFalse: [| #wall]]];
+
+let walkableAt := [:x :y |
+  let t := [tileAt value: x value: y];
+  [[[t = #floor] | [t = #up]] | [t = #down]]];
+
+let isPlayerAt := [:x :y |
+  let p := [player value];
+  [[[p at: #x] = x] & [[p at: #y] = y]]];
+
+// ===========================================================================
+// Monster vector helpers (lookup / update / remove by #id)
+// ===========================================================================
+
+let monsterAt := [:x :y |
+  let hits := [[monsters value] select: [:m | [[[m at: #x] = x] & [[m at: #y] = y]]]];
+  [[[hits size] > 0] ifTrue: [| [hits at: 0]] ifFalse: [| nil]]];
+
+let occupied := [:x :y | [[[monsterAt value: x value: y] isNil] not]];
+
+let updateMonster := [:m |
+  [monsters set: [[monsters value] collect: [:x |
+    [[[x at: #id] = [m at: #id]] ifTrue: [| m] ifFalse: [| x]]]]]];
+
+let removeMonster := [:m |
+  [monsters set: [[monsters value] select: [:x | [[[x at: #id] = [m at: #id]] not]]]]];
+
+// ===========================================================================
+// Dungeon generation: rooms carved into floor, joined by L-corridors
+// ===========================================================================
+
+// Takes a room map {x y w h} — birnam blocks accept at most 4 value: args, so
+// 5+ params must be grouped into a map.
+let carveRoom := [:tmap :room |
+  let rx := [room at: #x];
+  let ry := [room at: #y];
+  let rw := [room at: #w];
+  let rh := [room at: #h];
+  [[ry to: [[ry + rh] - 1]] inject: tmap into: [:ta :yy |
+    [[rx to: [[rx + rw] - 1]] inject: ta into: [:tb :xx |
+      [[inBounds value: xx value: yy]
+        ifTrue:  [| [tb at: [idx value: xx value: yy] put: #floor]]
+        ifFalse: [| tb]]]]]]];
+
+let carveH := [:tmap :xa :xb :yy |
+  [[[xa min: xb] to: [xa max: xb]] inject: tmap into: [:ta :xx |
+    [ta at: [idx value: xx value: yy] put: #floor]]]];
+
+let carveV := [:tmap :ya :yb :xx |
+  [[[ya min: yb] to: [ya max: yb]] inject: tmap into: [:ta :yy |
+    [ta at: [idx value: xx value: yy] put: #floor]]]];
+
+// A monster appropriate for `d`, placed at (x,y), with a fresh unique id.
+let mkMonster := [:d :x :y |
+  [midCtr set: [[midCtr value] + 1]];
+  let id := [midCtr value];
+  // pick a template scaled by depth
+  let tmpl := [[d <= 1]
+    ifTrue:  [| { name: "rat"     glyph: 114 hp: 3  atk: 2 def: 0 xp: 2 }]
+    ifFalse: [| [[d = 2]
+      ifTrue:  [| { name: "goblin"  glyph: 103 hp: 6  atk: 3 def: 1 xp: 4 }]
+      ifFalse: [| [[d = 3]
+        ifTrue:  [| { name: "orc"     glyph: 111 hp: 11 atk: 5 def: 1 xp: 7 }]
+        ifFalse: [| [[d = 4]
+          ifTrue:  [| { name: "ogre"    glyph: 79  hp: 18 atk: 8 def: 2 xp: 12 }]
+          ifFalse: [| { name: "wraith"  glyph: 87  hp: 24 atk: 10 def: 3 xp: 18 }]]]]]]]];
+  [[[tmpl at: #id put: id] at: #x put: x] at: #y put: y]];
+
+// Scatter loot/monsters into a room (skips its centre, used for stairs/start).
+let stockRoom := [:d :room |
+  let rx := [room at: #x];
+  let ry := [room at: #y];
+  let rw := [room at: #w];
+  let rh := [room at: #h];
+  let cx := [rx + [rw / 2]];
+  let cy := [ry + [rh / 2]];
+  // 0..2 monsters
+  let nmon := [rndRange value: 0 value: 2];
+  [[1 to: nmon] do: [:k |
+    let mx := [rndRange value: rx value: [[rx + rw] - 1]];
+    let my := [rndRange value: ry value: [[ry + rh] - 1]];
+    [[[[walkableAt value: mx value: my] & [[occupied value: mx value: my] not]] & [[[mx = cx] & [my = cy]] not]]
+      ifTrue:  [| [monsters set: [[monsters value] with: [mkMonster value: d value: mx value: my]]]]
+      ifFalse: [| nil]]]];
+  // maybe one item
+  [[[rnd value: 2] = 0]
+    ifTrue: [|
+      let ix := [rndRange value: rx value: [[rx + rw] - 1]];
+      let iy := [rndRange value: ry value: [[ry + rh] - 1]];
+      [[[walkableAt value: ix value: iy] & [[[ix = cx] & [iy = cy]] not]]
+        ifTrue:  [| [items set: [[items value] with: [rollItem value: d value: ix value: iy]]]]
+        ifFalse: [| nil]]]
+    ifFalse: [| nil]]];
+
+// Random item for depth `d` at (x,y).
+let rollItem := [:d :x :y |
+  let r := [rnd value: 100];
+  let base := [[{} at: #x put: x] at: #y put: y];
+  [[r < 30]
+    ifTrue:  [| [[base at: #kind put: #gold] at: #amount put: [rndRange value: 5 value: [20 * d]]]]
+    ifFalse: [| [[r < 55]
+      ifTrue:  [| [base at: #kind put: #food]]
+      ifFalse: [| [[r < 72]
+        ifTrue:  [| [[base at: #kind put: #potion] at: #heal put: [rndRange value: 8 value: 16]]]
+        ifFalse: [| [[r < 87]
+          ifTrue:  [| [[[base at: #kind put: #weapon] at: #name put: [weaponName value: d]] at: #dmg put: [[2 + d] + [rnd value: 2]]]]
+          ifFalse: [| [[[base at: #kind put: #armor] at: #name put: [armorName value: d]] at: #def put: [d + [rnd value: 2]]]]]]]]]]]];
+
+let weaponName := [:d | [[d <= 2] ifTrue: [| "short sword"] ifFalse: [| [[d = 3] ifTrue: [| "war axe"] ifFalse: [| "great mace"]]]]];
+let armorName  := [:d | [[d <= 2] ifTrue: [| "ring mail"]   ifFalse: [| [[d = 3] ifTrue: [| "plate mail"] ifFalse: [| "dragon scale"]]]]];
+
+// #{} is an empty map; the literal { } above is also a map. Use {} for empties.
+// (alias to be safe)
+let emptyMap := {};
+
+// Generate one level. Returns a map; also leaves monsters/items in the cells
+// while generating, so we snapshot them into the level and reset for next.
+let genLevel := [:d |
+  [tiles set: {}];
+  [monsters set: #[]];
+  [items set: #[]];
+  // build rooms
+  let nroom := [rndRange value: 5 value: 7];
+  let rooms := [[1 to: nroom] inject: #[] into: [:acc :k |
+    let rw := [rndRange value: 5 value: 11];
+    let rh := [rndRange value: 3 value: 5];
+    let rx := [rndRange value: 1 value: [[MAP_W - rw] - 1]];
+    let ry := [rndRange value: 1 value: [[MAP_H - rh] - 1]];
+    [acc with: [[[[{} at: #x put: rx] at: #y put: ry] at: #w put: rw] at: #h put: rh]]]];
+  // carve rooms
+  [rooms do: [:r |
+    [tiles set: [carveRoom value: [tiles value] value: r]]]];
+  // connect consecutive room centres
+  let centre := [:r | [pair value: [[r at: #x] + [[r at: #w] / 2]] value: [[r at: #y] + [[r at: #h] / 2]]]];
+  [[1 to: [nroom - 1]] do: [:k |
+    let a := [centre value: [rooms at: [k - 1]]];
+    let b := [centre value: [rooms at: k]];
+    [tiles set: [carveH value: [tiles value] value: [a at: 0] value: [b at: 0] value: [a at: 1]]];
+    [tiles set: [carveV value: [tiles value] value: [a at: 1] value: [b at: 1] value: [b at: 0]]]]];
+  // stairs / macguffin
+  let first := [centre value: [rooms at: 0]];
+  let last  := [centre value: [rooms at: [nroom - 1]]];
+  [tiles set: [[tiles value] at: [idx value: [first at: 0] value: [first at: 1]] put: #up]];
+  let downPos := nil;
+  [[d < DEPTH_MAX]
+    ifTrue:  [| [tiles set: [[tiles value] at: [idx value: [last at: 0] value: [last at: 1]] put: #down]]]
+    ifFalse: [|
+      // deepest level: the Star of Birnam sits where the down-stairs would be
+      [items set: [[items value] with: [[[{} at: #x put: [last at: 0]] at: #y put: [last at: 1]] at: #kind put: #macguffin]]]]];
+  // stock every room except the first (player arrives there)
+  [[1 to: [nroom - 1]] do: [:k |
+    let r := [rooms at: k];
+    let c := [centre value: r];
+    [stockRoom value: d value: r]]];
+  // snapshot into a level map
+  [[[[[[{} at: #tiles put: [tiles value]]
+        at: #monsters put: [monsters value]]
+       at: #items put: [items value]]
+      at: #up put: first]
+     at: #down put: last]
+    at: #rooms put: rooms]];
+
+// ===========================================================================
+// Level load / save / change depth
+// ===========================================================================
+
+// Save the live (possibly mutated) monsters/items back into levels[depth].
+let saveCurrentLevel := [|
+  let d := [depth value];
+  let lv := [[levels value] at: d];
+  let lv2 := [[lv at: #monsters put: [monsters value]] at: #items put: [items value]];
+  [levels set: [[levels value] at: d put: lv2]]];
+
+// Make depth `d` current, dropping the player at `posKey` (#up or #down).
+let loadDepth := [:d :posKey |
+  let lv := [[levels value] at: d];
+  [depth set: d];
+  [tiles set: [lv at: #tiles]];
+  [monsters set: [lv at: #monsters]];
+  [items set: [lv at: #items]];
+  let pos := [lv at: posKey];
+  [player set: [[player value] at: #x put: [pos at: 0]] ]];
+  // (y set in a follow-up below so the expression stays shallow)
+
+// loadDepth only set x; finish placement here for clarity.
+let placeOn := [:posKey |
+  let lv := [[levels value] at: [depth value]];
+  let pos := [lv at: posKey];
+  [player set: [[[player value] at: #x put: [pos at: 0]] at: #y put: [pos at: 1]]]];
+
+let goDepth := [:d :posKey |
+  [saveCurrentLevel value];
+  [loadDepth value: d value: posKey];
+  [placeOn value: posKey]];
+
+// ===========================================================================
+// Equipment / inventory / consumables
+// ===========================================================================
+
+let totalDef := [| [[player value] at: #armorDef]];
+let weaponDmg := [| [[player value] at: #weaponDmg]];
+
+let equipWeapon := [:name :dmg |
+  [[dmg > [[player value] at: #weaponDmg]]
+    ifTrue:  [|
+      [player set: [[[player value] at: #weapon put: name] at: #weaponDmg put: dmg]];
+      [msg value: ["You wield the " , [name , "."]]]]
+    ifFalse: [| [msg value: ["You leave the " , [name , " (weaker)."]]]]]];
+
+let equipArmor := [:name :def |
+  [[def > [[player value] at: #armorDef]]
+    ifTrue:  [|
+      [player set: [[[player value] at: #armor put: name] at: #armorDef put: def]];
+      [msg value: ["You don the " , [name , "."]]]]
+    ifFalse: [| [msg value: ["You leave the " , [name , " (weaker)."]]]]]];
+
+// ===========================================================================
+// Pickup (auto, on stepping onto a tile)
+// ===========================================================================
+
+let itemAt := [:x :y |
+  let hits := [[items value] select: [:it | [[[it at: #x] = x] & [[it at: #y] = y]]]];
+  [[[hits size] > 0] ifTrue: [| [hits at: 0]] ifFalse: [| nil]]];
+
+let removeItemAt := [:x :y |
+  [items set: [[items value] select: [:it | [[[[it at: #x] = x] & [[it at: #y] = y]] not]]]]];
+
+let pickupAt := [:x :y |
+  let it := [itemAt value: x value: y];
+  [[it isNil]
+    ifTrue:  [| nil]
+    ifFalse: [|
+      let k := [it at: #kind];
+      [[k = #gold]
+        ifTrue:  [|
+          [player set: [[player value] at: #gold put: [[[player value] at: #gold] + [it at: #amount]]]];
+          [msg value: ["You pick up " , [[[it at: #amount] printString] , " gold."]]]]
+        ifFalse: [| [[k = #food]
+          ifTrue:  [|
+            [player set: [[player value] at: #rations put: [[[player value] at: #rations] + 1]]];
+            [msg value: "You find a food ration."]]
+          ifFalse: [| [[k = #potion]
+            ifTrue:  [|
+              [player set: [[player value] at: #potions put: [[[player value] at: #potions] + 1]]];
+              [msg value: "You pocket a healing potion."]]
+            ifFalse: [| [[k = #weapon]
+              ifTrue:  [| [equipWeapon value: [it at: #name] value: [it at: #dmg]]]
+              ifFalse: [| [[k = #armor]
+                ifTrue:  [| [equipArmor value: [it at: #name] value: [it at: #def]]]
+                ifFalse: [| [[k = #macguffin]
+                  ifTrue:  [|
+                    [player set: [[player value] at: #hasMac put: true]];
+                    [msg value: "*** You seize the STAR OF BIRNAM! Now escape! ***"]]
+                  ifFalse: [| nil]]]]]]]]]]]];
+      [removeItemAt value: x value: y]]]];
+
+let eat := [|
+  [[[[player value] at: #rations] > 0]
+    ifTrue:  [|
+      [player set: [[[player value] at: #rations put: [[[player value] at: #rations] - 1]]
+                     at: #hunger put: [[[[player value] at: #hunger] + 600] min: HUNGER_MAX]]];
+      [msg value: "You eat a ration. Much better."];
+      [endTurn value]]
+    ifFalse: [| [msg value: "You have no food."]]]];
+
+let quaff := [|
+  [[[[player value] at: #potions] > 0]
+    ifTrue:  [|
+      let heal := [rndRange value: 10 value: 18];
+      [player set: [[[player value] at: #potions put: [[[player value] at: #potions] - 1]]
+                     at: #hp put: [[[[player value] at: #hp] + heal] min: [[player value] at: #maxHp]]]];
+      [msg value: ["You quaff a potion (+" , [[heal printString] , " hp)."]]];
+      [endTurn value]]
+    ifFalse: [| [msg value: "You have no potions."]]]];
+
+// ===========================================================================
+// Combat
+// ===========================================================================
+
+let maybeLevelUp := [|
+  let p := [player value];
+  let need := [[p at: #plvl] * 20];
+  [[[p at: #xp] >= need]
+    ifTrue:  [|
+      [player set: [[[[p at: #plvl put: [[p at: #plvl] + 1]]
+                       at: #maxHp put: [[p at: #maxHp] + 6]]
+                      at: #hp put: [[p at: #hp] + 6]]
+                     at: #str put: [[p at: #str] + 1]]];
+      [msg value: ["You feel stronger! (level " , [[[[player value] at: #plvl] printString] , ")"]]]]
+    ifFalse: [| nil]]];
+
+let killMonster := [:m |
+  [removeMonster value: m];
+  [msg value: ["You slay the " , [[m at: #name] , "!"]]];
+  [player set: [[player value] at: #xp put: [[[player value] at: #xp] + [m at: #xp]]]];
+  [maybeLevelUp value]];
+
+let attackMonster := [:m |
+  let p := [player value];
+  let base := [[[p at: #str] + [p at: #weaponDmg]] + [rnd value: 3]];
+  // rogue perk: chance to crit
+  let crit := [[[p at: #class] = #rogue] & [[rnd value: 4] = 0]];
+  let raw := [crit ifTrue: [| [base * 2]] ifFalse: [| base]];
+  let dmg := [[raw - [m at: #def]] max: 1];
+  let nhp := [[m at: #hp] - dmg];
+  [crit ifTrue: [| [msg value: "Critical hit!"]] ifFalse: [| nil]];
+  [msg value: ["You hit the " , [[m at: #name] , [" (" , [[dmg printString] , ")."]]]]];
+  [[nhp <= 0]
+    ifTrue:  [| [killMonster value: m]]
+    ifFalse: [| [updateMonster value: [m at: #hp put: nhp]]]]];
+
+let zap := [|
+  let p := [player value];
+  [[[p at: #class] = #wizard]
+    ifTrue:  [|
+      [[[p at: #mana] >= 3]
+        ifTrue:  [|
+          // find an adjacent monster
+          let adj := [[monsters value] select: [:m |
+            [[[[[p at: #x] - [m at: #x]] abs] max: [[[p at: #y] - [m at: #y]] abs]] = 1]]];
+          [[[adj size] > 0]
+            ifTrue:  [|
+              let m := [adj at: 0];
+              let dmg := [rndRange value: 8 value: 14];
+              [player set: [p at: #mana put: [[p at: #mana] - 3]]];
+              [msg value: ["Zap! The " , [[m at: #name] , [" takes " , [[dmg printString] , "."]]]]];
+              let nhp := [[m at: #hp] - dmg];
+              [[nhp <= 0] ifTrue: [| [killMonster value: m]] ifFalse: [| [updateMonster value: [m at: #hp put: nhp]]]];
+              [endTurn value]]
+            ifFalse: [| [msg value: "No target in range."]]]]
+        ifFalse: [| [msg value: "Not enough mana."]]]]
+    ifFalse: [| [msg value: "You don't know any spells."]]]];
+
+let die := [:how |
+  [mode set: #dead];
+  [msg value: ["You die — " , [how , "."]]]];
+
+let monsterAttack := [:m |
+  let p := [player value];
+  let dmg := [[[[m at: #atk] + [rnd value: 2]] - [p at: #armorDef]] max: 1];
+  let nhp := [[p at: #hp] - dmg];
+  [player set: [p at: #hp put: nhp]];
+  [msg value: ["The " , [[m at: #name] , [" hits you (" , [[dmg printString] , ")."]]]]];
+  [[nhp <= 0] ifTrue: [| [die value: ["slain by a " , [m at: #name]]]] ifFalse: [| nil]]];
+
+let monsterChase := [:m |
+  let p := [player value];
+  let mx := [m at: #x];
+  let my := [m at: #y];
+  let dx := [sgn value: [[p at: #x] - mx]];
+  let dy := [sgn value: [[p at: #y] - my]];
+  let c1 := [pair value: dx value: dy];
+  let c2 := [pair value: dx value: 0];
+  let c3 := [pair value: 0 value: dy];
+  let cands := [[[#[] with: c1] with: c2] with: c3];
+  let chosen := [cands inject: nil into: [:acc :c |
+    [[acc isNil]
+      ifTrue:  [|
+        let tx := [mx + [c at: 0]];
+        let ty := [my + [c at: 1]];
+        let free := [[[walkableAt value: tx value: ty] & [[occupied value: tx value: ty] not]] & [[isPlayerAt value: tx value: ty] not]];
+        [free ifTrue: [| c] ifFalse: [| nil]]]
+      ifFalse: [| acc]]]];
+  [[chosen isNil]
+    ifTrue:  [| nil]
+    ifFalse: [| [updateMonster value: [[m at: #x put: [mx + [chosen at: 0]]] at: #y put: [my + [chosen at: 1]]]]]]];
+
+let monsterTurn := [|
+  [[monsters value] do: [:m |
+    [[[mode value] = #play]
+      ifTrue:  [|
+        let p := [player value];
+        let adj := [[[[[p at: #x] - [m at: #x]] abs] max: [[[p at: #y] - [m at: #y]] abs]] = 1];
+        [adj ifTrue: [| [monsterAttack value: m]] ifFalse: [| [monsterChase value: m]]]]
+      ifFalse: [| nil]]]]];
+
+// ===========================================================================
+// Hunger + turn end
+// ===========================================================================
+
+let hungerTick := [|
+  let p := [player value];
+  let h := [[p at: #hunger] - 1];
+  [player set: [p at: #hunger put: [h max: 0]]];
+  // mana regen for wizards
+  [[[[p at: #class] = #wizard] & [[[turn value] mod: 4] = 0]]
+    ifTrue:  [| [player set: [[player value] at: #mana put: [[[[player value] at: #mana] + 1] min: [[player value] at: #maxMana]]]]]
+    ifFalse: [| nil]];
+  // starvation
+  [[h <= 0]
+    ifTrue:  [|
+      let nhp := [[[player value] at: #hp] - 1];
+      [player set: [[player value] at: #hp put: nhp]];
+      [msg value: "You are starving!"];
+      [[nhp <= 0] ifTrue: [| [die value: "starvation"]] ifFalse: [| nil]]]
+    ifFalse: [| nil]]];
+
+let endTurn := [|
+  [monsterTurn value];
+  [turn set: [[turn value] + 1]];
+  [hungerTick value];
+  [msgTrim value]];
+
+// ===========================================================================
+// Player actions: move, stairs
+// ===========================================================================
+
+let onStairs := [|
+  let p := [player value];
+  [tileAt value: [p at: #x] value: [p at: #y]]];
+
+let descend := [|
+  [[[onStairs value] = #down]
+    ifTrue:  [|
+      let d := [[depth value] + 1];
+      [[[[levels value] at: d ifAbsent: [| nil]] isNil]
+        ifTrue:  [| nil]   // should be pre-generated
+        ifFalse: [| nil]];
+      [goDepth value: d value: #up];
+      [msg value: ["You descend to level " , [[d printString] , "."]]];
+      [endTurn value]]
+    ifFalse: [| [msg value: "No stairs down here."]]]];
+
+let ascend := [|
+  [[[onStairs value] = #up]
+    ifTrue:  [|
+      [[[depth value] = 1]
+        ifTrue:  [|
+          [[[player value] at: #hasMac]
+            ifTrue:  [| [mode set: #won]; [msg value: "You ascend into daylight, Star in hand. YOU WIN!"]]
+            ifFalse: [| [msg value: "The way out is here — but not without the Star (level 5)."]]]]
+        ifFalse: [|
+          let d := [[depth value] - 1];
+          [goDepth value: d value: #down];
+          [msg value: ["You climb to level " , [[d printString] , "."]]];
+          [endTurn value]]]]
+    ifFalse: [| [msg value: "No stairs up here."]]]];
+
+let playerStep := [:dx :dy |
+  [[[mode value] = #play]
+    ifTrue:  [|
+      let p := [player value];
+      let nx := [[p at: #x] + dx];
+      let ny := [[p at: #y] + dy];
+      let mon := [monsterAt value: nx value: ny];
+      [[mon isNil]
+        ifTrue:  [|
+          [[walkableAt value: nx value: ny]
+            ifTrue:  [|
+              [player set: [[[player value] at: #x put: nx] at: #y put: ny]];
+              [pickupAt value: nx value: ny];
+              [endTurn value]]
+            ifFalse: [| nil]]]
+        ifFalse: [| [attackMonster value: mon]; [endTurn value]]]]
+    ifFalse: [| nil]]];
+
+// ===========================================================================
+// New game / class setup
+// ===========================================================================
+
+let baseClass := [:cls |
+  [[cls = #fighter]
+    ifTrue:  [| { class: #fighter hp: 30 maxHp: 30 str: 5 weapon: "sword"  weaponDmg: 4 armor: "chainmail" armorDef: 3 gold: 10 rations: 2 potions: 1 mana: 0 maxMana: 0 }]
+    ifFalse: [| [[cls = #rogue]
+      ifTrue:  [| { class: #rogue   hp: 22 maxHp: 22 str: 4 weapon: "dagger" weaponDmg: 3 armor: "leather"   armorDef: 1 gold: 35 rations: 2 potions: 1 mana: 0 maxMana: 0 }]
+      ifFalse: [| { class: #wizard  hp: 18 maxHp: 18 str: 2 weapon: "staff"  weaponDmg: 2 armor: "robe"      armorDef: 0 gold: 15 rations: 2 potions: 2 mana: 9 maxMana: 9 }]]]]];
+
+// Build a full player map from a class, with shared fields.
+let mkPlayer := [:cls |
+  let b := [baseClass value: cls];
+  [[[[[[b at: #x put: 0] at: #y put: 0] at: #hunger put: 1000] at: #xp put: 0] at: #plvl put: 1] at: #hasMac put: false]];
+
+let newGame := [:cls |
+  [Random seed: [Time millis]];
+  [player set: [mkPlayer value: cls]];
+  [depth set: 1];
+  [levels set: {}];
+  [monsters set: #[]];
+  [items set: #[]];
+  [messages set: #[]];
+  [midCtr set: 0];
+  [turn set: 0];
+  // pre-generate all levels
+  [[1 to: DEPTH_MAX] do: [:d |
+    [levels set: [[levels value] at: d put: [genLevel value: d]]]]];
+  // enter level 1 on its up-stairs (the dungeon mouth)
+  [loadDepth value: 1 value: #up];
+  [placeOn value: #up];
+  [mode set: #play];
+  [msg value: "You enter the dungeon of Birnam. Find the Star on level 5."]];
+
+// Deterministic variant for tests: explicit seed, no Time.
+let newGameSeeded := [:cls :seed |
+  [Random seed: seed];
+  [player set: [mkPlayer value: cls]];
+  [depth set: 1];
+  [levels set: {}];
+  [monsters set: #[]];
+  [items set: #[]];
+  [messages set: #[]];
+  [midCtr set: 0];
+  [turn set: 0];
+  [[1 to: DEPTH_MAX] do: [:d |
+    [levels set: [[levels value] at: d put: [genLevel value: d]]]]];
+  [loadDepth value: 1 value: #up];
+  [placeOn value: #up];
+  [mode set: #play];
+  [msg value: "Test game started."]];
+
+[System println: "[logue-core] loaded"]

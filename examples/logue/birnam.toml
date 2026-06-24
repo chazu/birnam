@@ -1,0 +1,25 @@
+# logue — a roguelike in birnam, over a vendored termbox2.
+#
+# This is a self-contained birnam sub-project. Run it from this directory:
+#
+#   birnam wrap termbox2                         # build wrapped/termbox2/libtermbox2.dylib (cc, no zig)
+#   birnam wrapped/termbox2/termbox2.birnam logue.birnam
+#
+# The wrapper + game are two scripts = two commits, so the FFI wraps declared in
+# termbox2.birnam are resolved before logue.birnam calls them.
+
+# Modules the game needs: peg + lang core, plus stdlib (Random, Time, Stats,
+# string utilities). No json/net REPL modules — keep the load lean.
+modules = ["peg", "lang", "stdlib"]
+
+# Make `Module load: "libtermbox2.dylib"` resolve by bare name from this dir.
+dylib_paths = ["wrapped/termbox2"]
+
+# Vendored, wrapped C library: a single-header terminal UI (MIT). `birnam wrap`
+# compiles termbox2.c (which #defines TB_IMPL and exposes the lg_* adapter) into
+# libtermbox2.dylib via the system cc.
+[[wrapped]]
+name    = "termbox2"
+sources = ["wrapped/termbox2/termbox2.c"]
+wrapper = "wrapped/termbox2/termbox2.birnam"
+cflags  = ["-O2", "-std=c99"]

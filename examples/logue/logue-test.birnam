@@ -1,0 +1,96 @@
+// Headless test for logue-core — deterministic seed, scripted actions,
+// assertions on world state. No termbox; runnable anywhere:
+//
+//   birnam logue-core.birnam logue-test.birnam
+//
+// NOTE: blocks are invoked with value:/value:value:/... (max 4 args). `check`
+// takes 3 args so it is called [check value: L value: G value: W].
+
+let fails  := [db cell: 0];
+let checks := [db cell: 0];
+let check := [:label :got :want |
+  [checks set: [[checks value] + 1]];
+  [[got = want]
+    ifTrue:  [| [System println: ["  ok   " , label]]]
+    ifFalse: [|
+      [fails set: [[fails value] + 1]];
+      [System println: ["  FAIL " , [label , [" got=" , [[got printString] , [" want=" , [want printString]]]]]]]]]];
+
+[System println: "== logue-core headless tests =="];
+
+// ---- generation + initial state (Fighter) -------------------------------
+[newGameSeeded value: #fighter value: 12345];
+[check value: "mode is play"        value: [mode value]                value: #play];
+[check value: "starts at depth 1"   value: [depth value]               value: 1];
+[check value: "5 levels generated"  value: [[levels value] size]       value: 5];
+[check value: "player on up-stairs" value: [tileAt value: [[player value] at: #x] value: [[player value] at: #y]] value: #up];
+[check value: "fighter hp 30"       value: [[player value] at: #hp]    value: 30];
+[check value: "fighter weapon sword" value: [[player value] at: #weapon] value: "sword"];
+[check value: "starts full hunger"  value: [[player value] at: #hunger] value: 1000];
+[check value: "L1 has floor tiles"  value: [[[tiles value] size] > 50] value: true];
+
+// ---- hunger ticks each turn ---------------------------------------------
+let h0 := [[player value] at: #hunger];
+[endTurn value];
+[check value: "hunger drops by 1/turn" value: [[player value] at: #hunger] value: [h0 - 1]];
+
+// ---- eating restores hunger ---------------------------------------------
+[player set: [[player value] at: #hunger put: 100]];
+let rat0 := [[player value] at: #rations];
+[eat value];
+[check value: "eating consumes a ration" value: [[player value] at: #rations] value: [rat0 - 1]];
+[check value: "eating restores hunger"   value: [[[player value] at: #hunger] > 100] value: true];
+
+// ---- quaffing heals ------------------------------------------------------
+[player set: [[player value] at: #hp put: 5]];
+let pot0 := [[player value] at: #potions];
+[quaff value];
+[check value: "quaffing consumes a potion" value: [[player value] at: #potions] value: [pot0 - 1]];
+[check value: "quaffing heals"             value: [[[player value] at: #hp] > 5]     value: true];
+
+// ---- combat: spawn a monster adjacent and attack it ---------------------
+let px := [[player value] at: #x];
+let py := [[player value] at: #y];
+[monsters set: #[]];
+[monsters set: [[monsters value] with: [mkMonster value: 1 value: [px + 1] value: py]]];
+let m0 := [monsterAt value: [px + 1] value: py];
+[check value: "monster spawned adjacent" value: [m0 isNil] value: false];
+let hp0 := [m0 at: #hp];
+[playerStep value: 1 value: 0];     // steps INTO the monster -> attack, no move
+[check value: "attacking does not move player" value: [[player value] at: #x] value: px];
+// NB: a top-level `let m1 := <nil>` would PANIC (nil forbidden in scope facts),
+// and the fighter one-shots the 3-hp rat, so assert the kill directly (boolean).
+let killed := [[monsterAt value: [px + 1] value: py] isNil];
+[check value: "attack killed the rat" value: killed value: true];
+
+// ---- descend / ascend ----------------------------------------------------
+[newGameSeeded value: #fighter value: 777];
+let dpos := [[[levels value] at: 1] at: #down];
+[player set: [[[player value] at: #x put: [dpos at: 0]] at: #y put: [dpos at: 1]]];
+[check value: "standing on down-stairs" value: [onStairs value] value: #down];
+[descend value];
+[check value: "descended to level 2" value: [depth value] value: 2];
+[check value: "arrived on up-stairs"  value: [onStairs value] value: #up];
+
+// ---- character classes ---------------------------------------------------
+[newGameSeeded value: #wizard value: 42];
+[check value: "wizard low hp"       value: [[player value] at: #hp]      value: 18];
+[check value: "wizard has mana"     value: [[player value] at: #maxMana] value: 9];
+[newGameSeeded value: #rogue value: 42];
+[check value: "rogue more gold"     value: [[[player value] at: #gold] >= 30] value: true];
+
+// ---- macguffin + win condition ------------------------------------------
+[newGameSeeded value: #fighter value: 2024];
+[goDepth value: 5 value: #up];
+[check value: "deepest level is 5" value: [depth value] value: 5];
+let mac := [[items value] select: [:it | [[it at: #kind] = #macguffin]]];
+[check value: "Star of Birnam on L5" value: [[mac size] > 0] value: true];
+let mp := [mac at: 0];
+[player set: [[[player value] at: #x put: [mp at: #x]] at: #y put: [mp at: #y]]];
+[pickupAt value: [mp at: #x] value: [mp at: #y]];
+[check value: "picked up the Star" value: [[player value] at: #hasMac] value: true];
+[goDepth value: 1 value: #up];
+[ascend value];
+[check value: "escaping with the Star wins" value: [mode value] value: #won];
+
+[System println: ["RESULT: " , [[[checks value] printString] , [" checks, " , [[[fails value] printString] , " failures"]]]]]
