@@ -10,6 +10,23 @@ platforms build from source (`zig build install`, Zig 0.15.1).
 _Notes for the next release land here; `scripts/release.sh` promotes this
 heading to the new version (dated) and uses the section as the release notes._
 
+### Changed
+- **File-in now prunes, so loading a large program is memory-bounded.** Loading
+  + compiling a non-trivial program (the `logue` roguelike: ~4.4 GB) accumulated
+  every top-level form's run-and-discard CST/AST/bytecode tree to peak, because
+  `fileIn:` never pruned and a `birnam script.birnam` run exits before the REPL
+  loop's auto-prune is ever reached. Two levers, both reusing the trusted
+  `prune.pruneReachable`/`compact` path: (1) a threshold-gated `maybe_prune`
+  between top-level forms bounds **peak** during the load — in a faithful
+  reproduction, peak goes from growing linearly with program size (3.2 / 6.5 /
+  13.8 GB at 120k / 240k / 480k entities) to **flat ~800 MB**; (2) one forced
+  compaction at the load boundary (`prune_now`) sweeps the residual tail and
+  collapses the loaded program's per-fact history, dropping a worst-case
+  steady-state from ~715 MB to ~3 MB. Both run only under current-only retention
+  with no live snapshot, and keep all reachable state — only unreachable
+  `M_USER` garbage is swept. New doc: `docs/19-load-memory.md`. (Two append-only
+  `IdApi` hooks: `maybe_prune`, `prune_now`.)
+
 ## [0.7.3] — 2026-06-19
 
 ### Fixed

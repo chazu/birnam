@@ -125,6 +125,8 @@ see [Benchmarking](37-benchmarking.md).
 
 ## Where to go next
 
+- Why loading a large program is memory-heavy, and the two levers that bound it:
+  [Load-Time Memory](19-load-memory.md).
 - The opt-in temporal API this model justifies: [Time-Travel](15-time-travel.md).
 - The materialization machinery: [Promotion](25-promotion.md) (Part 2).
 - The safe harnesses behind every number here: [Benchmarking](37-benchmarking.md) (Part 3).

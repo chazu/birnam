@@ -282,3 +282,20 @@ pub fn maybePrune(store: *FactStore, table: *ObjectTable, scratch: std.mem.Alloc
     last_prune_hw = table.highWaterEid();
     return stats;
 }
+
+/// Force a prune NOW if it is safe (same retention/snapshot guard as
+/// `maybePrune`), ignoring the growth threshold. Used at the END of a file-in:
+/// the threshold-gated inter-form `maybePrune` bounds peak, but always leaves a
+/// sub-threshold tail of run-and-discard garbage and keeps every retained code
+/// fact's write-through history. One forced compact at the load boundary sweeps
+/// that tail AND collapses the surviving methods'/bytecode's per-fact history to
+/// a single basis (`compactInsert` writes no history) — minimizing the
+/// steady-state footprint the program then runs in. Returns null when unsafe
+/// (retention beyond current-only, or a live snapshot pins an epoch).
+pub fn pruneNowIfSafe(store: *FactStore, table: *ObjectTable, scratch: std.mem.Allocator) PruneError!?PruneStats {
+    if (std.meta.activeTag(store.retention_policy) != .current_only) return null;
+    if (store.retained_epochs.items.len > 0) return null;
+    const stats = try pruneReachable(store, table, scratch);
+    last_prune_hw = table.highWaterEid();
+    return stats;
+}

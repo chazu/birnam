@@ -64,6 +64,11 @@ order.
   time-traveled projection *and* the runtime object representation. The cost
   bands (read ~10×, write ~100–1000× native), the three-tier representation
   model, and what is inherent vs fixable. Summarizes ADR-perf-1.
+- **Load-time memory: scaling code-as-facts** — `19-load-memory.md`
+  Why loading a large program (the `logue` roguelike: ~4.4 GB) is expensive when
+  every AST node and bytecode method is a write-through fact, what is separable
+  from "everything is facts," and the two shipped levers (prune between file-in
+  forms; one forced compaction at the load boundary) plus the deferred ones.
 
 ## Part 2 — Implementation (file by file)
 

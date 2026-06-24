@@ -1081,6 +1081,12 @@ pub fn main() !void {
     // explore them live).
     const run_and_exit = (scripts.items.len > 0 or eval_expr != null) and !interactive;
     if (scripts.items.len > 0 or eval_expr != null) {
+        // Baseline the auto-prune growth counter against the post-boot,
+        // post-module-load high-water mark, so the inter-form prune that
+        // `fileIn:` triggers measures the SCRIPT's growth — not the fixed
+        // kernel+grammar+prelude+module init. (The REPL path baselines at
+        // line 1118; a run-and-exit script never reaches it.)
+        prune.resetAutoPrune(table);
         for (scripts.items) |path| {
             var buf: [4096]u8 = undefined;
             const cmd = std.fmt.bufPrint(&buf, ":in {s}", .{path}) catch continue;

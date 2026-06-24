@@ -2932,11 +2932,27 @@ fn doFileInSource(src: []const u8, continue_on_error: bool) Ref {
         } else {
             ok += 1;
         }
+
+        // Reclaim this form's run-and-discard garbage (its CST, AST, and the
+        // top-level wrapper method tree) before moving on. Threshold-gated, so
+        // it only actually compacts every ~30k new entities — bounding PEAK
+        // memory during a large file-in instead of carrying every form's dead
+        // tree to the end. The VM is quiescent here (the form fully evaluated),
+        // the same boundary the REPL prunes at. No-op under retention/snapshots.
+        api.maybe_prune();
     }
 
     // Commit: bind FFI modules declared by this unit. Atomic mode only reaches
     // here when errors == 0.
     resolvePendingModules();
+
+    // Load boundary: one forced compaction. The inter-form `maybe_prune` above
+    // bounded PEAK during the load; this collapses the surviving program's
+    // per-fact history to a single basis and sweeps the final sub-threshold
+    // tail of run-and-discard garbage, minimizing the STEADY-STATE footprint the
+    // loaded program then runs in. No-op under retention / live snapshots.
+    api.prune_now();
+
     if (g_log) |log| {
         var buf: [160]u8 = undefined;
         const m = std.fmt.bufPrintZ(&buf, "[lang] filed in {d} forms ({d} errors)", .{ ok, errors }) catch return mkSmallInt(ok);

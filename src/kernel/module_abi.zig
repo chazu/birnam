@@ -385,6 +385,25 @@ pub const IdApi = extern struct {
 
     // -- Phase 17.13: bind a global from a module (append-only) --------------
     bind_global: *const fn (name_eid: u64, value: Ref) callconv(.c) void,
+
+    /// Reclaim run-and-discard garbage if entity growth has crossed the
+    /// auto-prune threshold AND it is safe (current-only retention, no live
+    /// snapshots): a threshold-gated, quiescent-boundary reachability prune —
+    /// the same `maybePrune` the REPL runs at each line boundary. The lang
+    /// module calls this between top-level forms during `fileIn:`, so loading a
+    /// large source file no longer accumulates every form's discarded
+    /// CST/AST/bytecode tree all the way to peak. No-op when below threshold or
+    /// unsafe. (Appended at END per the append-only ABI discipline.)
+    maybe_prune: *const fn () callconv(.c) void,
+
+    /// Force a safe prune NOW, ignoring the growth threshold (no-op when unsafe:
+    /// retention beyond current-only, or a live snapshot). The lang module calls
+    /// this ONCE at the end of `fileIn:`, after the inter-form `maybe_prune`
+    /// passes: it sweeps the final sub-threshold tail of run-and-discard garbage
+    /// AND collapses the surviving program's per-fact history to a single basis,
+    /// minimizing the steady-state footprint the loaded program runs in.
+    /// (Appended at END per the append-only ABI discipline.)
+    prune_now: *const fn () callconv(.c) void,
 };
 
 comptime {

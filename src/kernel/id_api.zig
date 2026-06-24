@@ -189,6 +189,8 @@ pub fn populate() IdApi {
         .arg_at = &cArgAt,
         .reverse_refs = &cReverseRefs,
         .bind_global = &cBindGlobal,
+        .maybe_prune = &cMaybePrune,
+        .prune_now = &cPruneNow,
     };
 }
 
@@ -745,6 +747,33 @@ fn cBindGlobal(name_eid: u64, value: Ref) callconv(.c) void {
         _ = s.assert(bind_eid, kernel_eids.ATTR_BIND_NEXT, cur_head, m) catch return;
     }
     _ = s.assert(kernel_eids.GLOBALS_SCOPE_EID, kernel_eids.ATTR_SCOPE_FIRST_BINDING, ref_mod.mkEid(bind_eid), m) catch return;
+}
+
+const prune_mod = @import("prune.zig");
+
+/// ABI `maybe_prune` — threshold-gated, quiescent-boundary reachability prune.
+/// Wraps `prune.maybePrune`, which is a no-op unless entity growth since the
+/// last prune crossed the threshold AND retention is current-only with no live
+/// snapshots. Called by the lang module between top-level `fileIn:` forms so a
+/// large source load reclaims each form's run-and-discard CST/AST/bytecode tree
+/// instead of carrying all of them to peak. Errors (OOM during the rebuild) are
+/// swallowed: a failed reclaim must not abort the file-in.
+fn cMaybePrune() callconv(.c) void {
+    const allocator = send_mod.kernelAllocator() orelse return;
+    const store = send_mod.storePtr() orelse return;
+    const table = send_mod.tablePtr() orelse return;
+    _ = prune_mod.maybePrune(store, table, allocator) catch return;
+}
+
+/// ABI `prune_now` — forced safe prune, threshold ignored. Wraps
+/// `prune.pruneNowIfSafe`. Called once at the end of `fileIn:` to sweep the
+/// residual garbage and collapse the loaded program's history. Errors swallowed:
+/// a failed end-of-load reclaim must not fail the file-in itself.
+fn cPruneNow() callconv(.c) void {
+    const allocator = send_mod.kernelAllocator() orelse return;
+    const store = send_mod.storePtr() orelse return;
+    const table = send_mod.tablePtr() orelse return;
+    _ = prune_mod.pruneNowIfSafe(store, table, allocator) catch return;
 }
 
 fn cQueryEavt(e: u64, a: u64) callconv(.c) Ref {
