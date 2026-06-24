@@ -69,11 +69,17 @@ order.
   every AST node and bytecode method is a write-through fact, what is separable
   from "everything is facts," and the two shipped levers (prune between file-in
   forms; one forced compaction at the load boundary) plus the deferred ones.
-- **Implementing the deferred code-fact tiers** — `19a-code-fact-tiers-plan.md`
-  The build plan for the three source-level levers `19-load-memory.md` defers:
-  a per-attribute policy foundation (static code-attr set), the `:no-history`
-  tier, index selectivity (5→3 indexes for code), and bulk/transient load.
-  Sequencing, couplings, correctness obligations, and the ABI checklist.
+- **Code-fact tiers: no-history + index selectivity** — `19a-code-fact-tiers-plan.md`
+  The build plan for two source-level levers `19-load-memory.md` defers: a
+  per-attribute policy foundation (static code-attr set), the `:no-history`
+  tier, and index selectivity (skip the never-read VAET index for code attrs).
+  Sequencing, the deferred skip-AVET follow-up, correctness obligations, and the
+  trail of two adversarial-review corrections.
+- **RFC: transient load mode** — `19b-transient-load-rfc.md`
+  The third deferred lever, split out because it needs a new write *mode*, not a
+  passive guard: why deferred-publish batching fails (parse reads the store
+  mid-parse), the read-through transient-index design, its CHAMP-core
+  requirement, atomicity via copy-on-first-touch, and the safety gate.
 
 ## Part 2 — Implementation (file by file)
 
