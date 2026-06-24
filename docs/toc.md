@@ -37,6 +37,12 @@ order.
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).
   What an "entity id" (eid) is and the kernel-eid vs user-eid split.
+- **The six indexes** — `11a-the-six-indexes.md`
+  From first principles: why indexing means keeping one covering structure per
+  question shape, deriving the five fact indexes (EAVT/AEVT/AVET/VAET/MEAT) one
+  question at a time, and the sixth — the object table (eid → live object) that
+  completes the fact/object pairing. ValueCell vs PresenceCell, why all six are
+  HAMTs, and why no fact pays for an index it will never be asked.
 - **Everything is facts: reification** — `12-reification.md`
   Vtables, methods, AST nodes, and bytecode are all stored as facts. What it
   means for the language to be self-describing, and why dispatch reads facts.
