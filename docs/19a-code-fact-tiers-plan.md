@@ -148,8 +148,11 @@ leaf calls (and the mirror calls in `applyRetract`).
 
 ### 1.3 Semantics & blast radius
 
-- **`asOf:` / `history` on a no-history attr** → returns only the current value.
-  The intended loss.
+- **`asOf:` / `history` on a no-history attr** → unreachable by time-travel.
+  `currentValueAsOf` walks the history vec, which is now empty, so it returns
+  `null` at *every* basis (the current value stays readable via `currentValue`,
+  which reads `current_v` directly — `fact_store.zig:1125-1138`). The intended
+  loss: no history ⇒ no time-travel for these facts.
 - **`compact` / `prune` unaffected** — both walk *current values* (`compact` via
   `meatIter`, `fact_store.zig:1344`; `prune` via `currentValue`/`entitiesWith`,
   `prune.zig:94,102`), never history depth. Verified: nothing in the prune
@@ -163,8 +166,9 @@ leaf calls (and the mirror calls in `applyRetract`).
 `fact_store_test.zig`: (1) assert a no-history `:one` attr N times → `history.len
 == 0`, `currentValue == last`; (2) assert a no-history `:many` attr → all current
 values still returned via `currentValuesIter`; (3) a *data* attr still
-historizes (guards against over-broad tiering); (4) `asOf:` a no-history attr
-returns current.
+historizes (guards against over-broad tiering); (4) `currentValueAsOf` a
+no-history attr returns `null` (history is its only source), while `currentValue`
+still returns the latest.
 
 ---
 
