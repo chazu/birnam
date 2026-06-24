@@ -44,6 +44,31 @@ const AVETish = hamt.Hamt(u64, MidPresenceMap, hamt.U64Ctx);
 
 const MEATish = hamt.Hamt(u64, EAVTish, hamt.U64Ctx);
 
+// -- Epoch tightening --------------------------------------------------------
+// Deep-clone the live index roots into a fresh arena so a compaction's
+// path-copy garbage can be freed (see `tightenLiveEpoch`). Each layer clones
+// its values into the same destination arena: value/presence cells clone their
+// RRB history vector, and the nested index HAMTs recurse.
+
+fn cloneValueCell(a: std.mem.Allocator, c: ValueCell) anyerror!ValueCell {
+    return .{ .current_v = c.current_v, .history = try c.history.cloneInto(a) };
+}
+fn clonePresenceCell(a: std.mem.Allocator, c: PresenceCell) anyerror!PresenceCell {
+    return .{ .present = c.present, .history = try c.history.cloneInto(a) };
+}
+fn cloneInnerValueMap(a: std.mem.Allocator, m: InnerValueMap) anyerror!InnerValueMap {
+    return m.cloneInto(a, cloneValueCell);
+}
+fn cloneInnerPresenceMap(a: std.mem.Allocator, m: InnerPresenceMap) anyerror!InnerPresenceMap {
+    return m.cloneInto(a, clonePresenceCell);
+}
+fn cloneMidPresenceMap(a: std.mem.Allocator, m: MidPresenceMap) anyerror!MidPresenceMap {
+    return m.cloneInto(a, cloneInnerPresenceMap);
+}
+fn cloneEAVTish(a: std.mem.Allocator, m: EAVTish) anyerror!EAVTish {
+    return m.cloneInto(a, cloneInnerValueMap);
+}
+
 // -- Cardinality schema (Phase 9.5.2) ----------------------------------------
 
 pub const Cardinality = enum { one, many };
@@ -1456,6 +1481,19 @@ pub const FactStore = struct {
         }
         self.next_tx.store(tx, .monotonic);
 
+        // Tighten the freshly-rebuilt epoch. `compactInsert` path-copies all
+        // five HAMTs per fact, so this epoch is mostly abandoned spine garbage
+        // (measured ~90%); the abandoned nodes only release at the *next*
+        // compaction, which makes its own equal pile. Deep-clone the live roots
+        // into a fresh arena and free the garbagey one, collapsing the
+        // steady-state index footprint to live size. Safe here: the epoch was
+        // just built (refcount 0, no snapshot pins it). Best-effort — a failed
+        // tighten (OOM) leaves a valid, if larger, epoch, so it must not fail
+        // the compaction.
+        if (self.index_arena != null and !self.retain_history) {
+            self.tightenLiveEpoch() catch {};
+        }
+
         // Old epoch: free wholesale if nothing references it, else retain.
         // The new index is fully built and references only new-epoch nodes,
         // so the old epoch is internally dead — only an external pin (live
@@ -1471,6 +1509,40 @@ pub const FactStore = struct {
             }
         }
         return stats;
+    }
+
+    /// Collapse the live index epoch to its live structure by deep-cloning the
+    /// five roots into a fresh arena and freeing the current
+    /// (path-copy-garbagey) one. Only valid on the just-rebuilt live epoch —
+    /// refcount 0, no snapshot pins it — so the freed arena has no external
+    /// reader. The clone copies only nodes reachable from the live roots; the
+    /// abandoned spine garbage is unreachable and left behind in the freed
+    /// arena. The cloned roots carry the same epoch identity (gen / min_basis /
+    /// refcount are unchanged — same data, same basis range, just tighter), so
+    /// the epoch registry and any later snapshot stay correct. On clone failure
+    /// the store is left untouched (roots still point at the old arena) and the
+    /// partial fresh arena is dropped — the caller treats it as best-effort.
+    fn tightenLiveEpoch(self: *FactStore) !void {
+        const garbagey = self.index_arena orelse return;
+        const fresh = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(fresh);
+        fresh.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer fresh.deinit();
+        const fa = fresh.allocator();
+        const new_eavt = try self.eavt.cloneInto(fa, cloneInnerValueMap);
+        const new_aevt = try self.aevt.cloneInto(fa, cloneInnerValueMap);
+        const new_avet = try self.avet.cloneInto(fa, cloneMidPresenceMap);
+        const new_vaet = try self.vaet.cloneInto(fa, cloneMidPresenceMap);
+        const new_meat = try self.meat.cloneInto(fa, cloneEAVTish);
+        // All clones succeeded — publish the tight roots and free the garbage.
+        self.eavt = new_eavt;
+        self.aevt = new_aevt;
+        self.avet = new_avet;
+        self.vaet = new_vaet;
+        self.meat = new_meat;
+        self.index_arena = fresh;
+        garbagey.deinit();
+        self.allocator.destroy(garbagey);
     }
 };
 
