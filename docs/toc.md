@@ -69,6 +69,11 @@ order.
   every AST node and bytecode method is a write-through fact, what is separable
   from "everything is facts," and the two shipped levers (prune between file-in
   forms; one forced compaction at the load boundary) plus the deferred ones.
+- **Implementing the deferred code-fact tiers** — `19a-code-fact-tiers-plan.md`
+  The build plan for the three source-level levers `19-load-memory.md` defers:
+  a per-attribute policy foundation (static code-attr set), the `:no-history`
+  tier, index selectivity (5→3 indexes for code), and bulk/transient load.
+  Sequencing, couplings, correctness obligations, and the ABI checklist.
 
 ## Part 2 — Implementation (file by file)
 
