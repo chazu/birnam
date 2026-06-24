@@ -483,11 +483,16 @@ pub const RematError = error{ OutOfMemory, StoreError };
 /// Idempotent: entities already materialized (e.g. by a prior init) are
 /// left untouched. Returns the count rebuilt.
 ///
-/// NOTE: methods that capture (carry `:method-captures-ptr`) are not yet
-/// handled — that pointer fact is not serialized (slice deferred). Such a
-/// method is rebuilt as captureless here; full capture round-trip needs a
-/// fact-shaped capture-spec form. Captureless methods (the common case)
-/// round-trip fully.
+/// Captures: a method's `:method-captures-ptr` value (the CaptureSpecArray) IS
+/// serialized — `writeCaptures`/`readValue` encode it as `VK_CAPTURES`, so the
+/// spec fact reloads verbatim (see the round-trip test in `image_test.zig`,
+/// "`:method-captures-ptr` (CaptureSpecArray) round-trips"). The captures are
+/// applied at `runMethod` entry and at `MAKE_BLOCK` by reading that spec from
+/// the store (`dispatch.zig`), so the wrapper rebuilt here only needs
+/// `data = mkEid(method_eid)` — identical for capturing and captureless
+/// methods. The runtime captured *values* live in transient BytecodeClosures
+/// created at `MAKE_BLOCK` and are intentionally not persisted; they are
+/// recreated from the live parent frame on each block creation.
 pub fn rematerializeClosures(
     allocator: std.mem.Allocator,
     store: *const FactStore,
