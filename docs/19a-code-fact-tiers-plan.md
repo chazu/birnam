@@ -180,9 +180,12 @@ path-copy and retained memory.
 ### 2.1 Why skipping VAET removes nothing observable
 
 VAET is the reverse-ref index (`HAMT<v, HAMT<a, HAMT<e, PresenceCell>>>`). Its
-only reader in the entire codebase is `pointingAt` (`fact_store.zig:1229`, doing
-`roots.vaet.get(v)` at `:1463`) — and **`pointingAt` has zero callers outside
-tests.** Everything that *sounds* like it would use VAET does not:
+only semantic reader in the entire codebase is `pointingAt` (`fact_store.zig:1229`,
+doing `self.vaet.get(v)` at `:1231`) — and **`pointingAt` has zero callers outside
+tests, and is not exported in `module_abi.zig`, so no module can reach it.** (The
+only other `.vaet.get` site is `exciseEntityFromRoots` at `:1463`, which null-no-ops
+on a skip-VAET attr — see §2.3.) Everything that *sounds* like it would use VAET
+does not:
 
 - The reverse-ref ABI `cReverseRefs` (`id_api.zig:789`) — used by `pull`
   (`lang.zig:3511,3521`) — calls `entitiesMatching` (`id_api.zig:794`), which
@@ -263,6 +266,10 @@ shippable portion of Lever 2.
 5. Image round-trip: `freeze`/`loadFrozen` use MEAT/EAVT (`image.zig:269,375`),
    not VAET, so the round-trip must survive provided `frozenInsert` carries the
    guard.
+6. No regression of the existing VAET suite: the current `pointingAt` tests
+   (`fact_store_test.zig:174,609`) use non-code attrs (e.g. `A_PARENT=202`, well
+   outside the code bands), so they stay VAET-indexed and must keep passing — do
+   not "fix" them to expect empty.
 
 ---
 
