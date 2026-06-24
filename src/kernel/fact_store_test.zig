@@ -1,6 +1,7 @@
 const std = @import("std");
 const fs = @import("fact_store.zig");
 const ref = @import("ref.zig");
+const kernel_eids = @import("kernel_eids.zig");
 const testing = std.testing;
 
 // Convenience: build a value Ref from a small int.
@@ -811,4 +812,115 @@ test "index epoch arena: retain_history gate skips the free (no swap)" {
 
     try testing.expect(store.index_arena.? == epoch); // NOT swapped, old kept
     try testing.expectEqual(vi(3), store.currentValue(1, 2).?);
+}
+
+// -- Code-fact storage tiers (docs/19a-code-fact-tiers-plan.md) ---------------
+// A_CODE is a real code attribute (ATTR_BYTECODE_STREAM); A_NAME/A_AGE/A_PARENT
+// are data attrs (outside the code bands). Tests inject the real predicate.
+
+const A_CODE: u64 = kernel_eids.ATTR_BYTECODE_STREAM; // 165 — in the code band
+
+// Helper: history depth of (e,a) in EAVT (fields have no visibility in Zig).
+fn histLen(store: *const fs.FactStore, e: u64, a: u64) usize {
+    const inner = store.eavt.get(e) orelse return 0;
+    const cell = inner.get(a) orelse return 0;
+    return cell.history.count();
+}
+
+test "tier (Lever 1): code attr drops history; current value preserved; data attr historizes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var store = fs.FactStore.init(arena.allocator());
+    store.setCodeAttrPred(&kernel_eids.isCodeAttr);
+
+    _ = try store.assert(E1, A_CODE, vi(10), M_BOOT);
+    _ = try store.assert(E1, A_CODE, vi(20), M_BOOT); // rewrite — would normally grow history
+
+    // current_v preserved; history vec never grew.
+    try testing.expectEqual(vi(20), store.currentValue(E1, A_CODE).?);
+    try testing.expectEqual(@as(usize, 0), histLen(&store, E1, A_CODE));
+
+    // asOf walks history, so a no-history attr is unreachable by time-travel
+    // (current is still readable via currentValue). Documents the §1.3 nuance.
+    try testing.expectEqual(@as(?ref.Ref, null), store.currentValueAsOf(E1, A_CODE, 1));
+
+    // A data attr on the same entity still historizes normally.
+    _ = try store.assert(E1, A_NAME, vi(30), M_BOOT);
+    _ = try store.assert(E1, A_NAME, vi(40), M_BOOT);
+    try testing.expect(histLen(&store, E1, A_NAME) > 0);
+    try testing.expectEqual(vi(30), store.currentValueAsOf(E1, A_NAME, 3).?);
+}
+
+test "tier (Lever 2): code attr skips VAET; data attr keeps it; reverse-refs still work via AVET" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var store = fs.FactStore.init(arena.allocator());
+    store.setCodeAttrPred(&kernel_eids.isCodeAttr);
+
+    const target = ref.mkEid(E3); // an eid-valued ref, the kind that lands in VAET
+
+    // A code attr pointing at E3 — must NOT enter VAET.
+    _ = try store.assert(E1, A_CODE, target, M_BOOT);
+    try testing.expectEqual(@as(usize, 0), store.vaet.count());
+
+    // The same value via a data attr — DOES enter VAET.
+    _ = try store.assert(E2, A_PARENT, target, M_BOOT);
+    try testing.expectEqual(@as(usize, 1), store.vaet.count());
+
+    // pointingAt (the only VAET reader) sees only the data referrer, not the code one.
+    var it = try store.pointingAt(target, arena.allocator());
+    defer it.deinit();
+    var seen_data = false;
+    var seen_code = false;
+    while (it.next()) |ae| {
+        if (ae.a == A_PARENT and ae.e == E2) seen_data = true;
+        if (ae.a == A_CODE) seen_code = true;
+    }
+    try testing.expect(seen_data);
+    try testing.expect(!seen_code); // VAET-skipped
+
+    // Reverse-ref-by-value over the code attr STILL works — it runs on the
+    // retained AVET (this is what cReverseRefs/pull actually use), not VAET.
+    var em = store.entitiesMatching(A_CODE, target);
+    var found_e1 = false;
+    while (em.next()) |e| {
+        if (e == E1) found_e1 = true;
+    }
+    try testing.expect(found_e1);
+}
+
+test "tier (Lever 2): retract of a code fact still works (hasFact reads retained AVET)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var store = fs.FactStore.init(arena.allocator());
+    store.setCodeAttrPred(&kernel_eids.isCodeAttr);
+
+    _ = try store.assert(E1, A_CODE, vi(7), M_BOOT);
+    try testing.expect(store.hasFact(E1, A_CODE, vi(7)));
+    _ = try store.retract(E1, A_CODE, vi(7), M_BOOT);
+    try testing.expect(!store.hasFact(E1, A_CODE, vi(7)));
+    try testing.expectEqual(@as(?ref.Ref, null), store.currentValue(E1, A_CODE));
+}
+
+test "tier (Lever 2): VAET stays empty for code attrs across compact (the hot rebuild path)" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    store.setCodeAttrPred(&kernel_eids.isCodeAttr);
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    // Many code-attr facts (eid-valued, so they would populate VAET if indexed).
+    var i: u64 = 0;
+    while (i < 200) : (i += 1) {
+        _ = try store.assert(1000 + i, A_CODE, ref.mkEid(500 + i), M_BOOT);
+    }
+    try testing.expectEqual(@as(usize, 0), store.vaet.count());
+
+    // compactInsert must carry the same tier, or the rebuild re-materializes VAET.
+    _ = try store.compact(a, {}, KeepAll.keep);
+    try testing.expectEqual(@as(usize, 0), store.vaet.count()); // still empty post-compact
+    try testing.expectEqual(ref.mkEid(500), store.currentValue(1000, A_CODE).?); // values survive
+    try testing.expectEqual(@as(usize, 0), histLen(&store, 1000, A_CODE)); // and no history
 }
