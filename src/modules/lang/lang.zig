@@ -5718,11 +5718,16 @@ fn objVtableImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
 fn objectNewImpl(s: *Send, a: [*]const Ref, n: usize) callconv(.c) Ref {
     _ = .{ s, a, n };
     const api = g_api.?;
+    // The instance and its per-object vtable are runtime DATA, not lang-module
+    // CODE — tag their structural facts M_USER (like the method facts that
+    // `method:do:` installs) so they persist in an image. Under g_module_eid
+    // these rode the lang module's eid (CODE), so the image dropped them and an
+    // image-loaded object had no vtable/delegate chain → dispatch returned nil.
     const vt = api.alloc_eid();
-    _ = api.assert_fact(vt, ATTR_VTABLE, mkEid(VTABLE_VT), g_module_eid);
-    _ = api.assert_fact(vt, ATTR_DELEGATE, mkEid(OBJECT_VT), g_module_eid);
+    _ = api.assert_fact(vt, ATTR_VTABLE, mkEid(VTABLE_VT), M_USER);
+    _ = api.assert_fact(vt, ATTR_DELEGATE, mkEid(OBJECT_VT), M_USER);
     const obj = api.alloc_eid();
-    _ = api.assert_fact(obj, ATTR_VTABLE, mkEid(vt), g_module_eid);
+    _ = api.assert_fact(obj, ATTR_VTABLE, mkEid(vt), M_USER);
     return mkEid(obj);
 }
 
