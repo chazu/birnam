@@ -53,6 +53,28 @@ pub fn Rrb(comptime V: type) type {
             return self.count_;
         }
 
+        /// Deep-copy the tree into `allocator` (values memcpy'd — V is a plain
+        /// history record). Shares no node with `self`; lets a cell's history
+        /// vector move to a fresh arena when the old epoch is freed.
+        pub fn cloneInto(self: Self, allocator: std.mem.Allocator) anyerror!Self {
+            const new_root: ?*const Node = if (self.root) |r| try cloneNodeInto(allocator, r) else null;
+            return .{ .allocator = allocator, .root = new_root, .shift = self.shift, .count_ = self.count_ };
+        }
+
+        fn cloneNodeInto(allocator: std.mem.Allocator, node: *const Node) anyerror!*const Node {
+            const n = try allocator.create(Node);
+            if (node.is_leaf) {
+                const vals = try allocator.alloc(V, node.values.len);
+                @memcpy(vals, node.values);
+                n.* = .{ .is_leaf = true, .values = vals, .children = &.{} };
+            } else {
+                const kids = try allocator.alloc(*const Node, node.children.len);
+                for (node.children, 0..) |c, i| kids[i] = try cloneNodeInto(allocator, c);
+                n.* = .{ .is_leaf = false, .values = &.{}, .children = kids };
+            }
+            return n;
+        }
+
         // -- bulk build -----------------------------------------------------
         //
         // Build a tree directly from a slice, bottom-up, allocating each node

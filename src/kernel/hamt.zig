@@ -65,6 +65,35 @@ pub fn Hamt(comptime K: type, comptime V: type, comptime Ctx: type) type {
             return self.count_;
         }
 
+        /// Deep-copy the whole trie into `allocator`, cloning each value via
+        /// `cloneV`. The result shares NO node with `self` — used to compact a
+        /// path-copy-garbagey arena down to just the live structure (the
+        /// abandoned spine nodes are unreachable from the live roots, so this
+        /// never copies them). `cloneV` lets nested HAMTs / RRB-bearing cells
+        /// clone their own sub-structure into the same destination arena.
+        pub fn cloneInto(
+            self: Self,
+            allocator: std.mem.Allocator,
+            comptime cloneV: fn (std.mem.Allocator, V) anyerror!V,
+        ) anyerror!Self {
+            const new_root: ?*const Node = if (self.root) |r| try cloneNodeInto(allocator, r, cloneV) else null;
+            return .{ .allocator = allocator, .ctx = self.ctx, .root = new_root, .count_ = self.count_ };
+        }
+
+        fn cloneNodeInto(
+            allocator: std.mem.Allocator,
+            node: *const Node,
+            comptime cloneV: fn (std.mem.Allocator, V) anyerror!V,
+        ) anyerror!*const Node {
+            const new_kvs = try allocator.alloc(KV, node.kvs.len);
+            for (node.kvs, 0..) |kv, i| new_kvs[i] = .{ .key = kv.key, .value = try cloneV(allocator, kv.value), .hash = kv.hash };
+            const new_subs = try allocator.alloc(*const Node, node.subnodes.len);
+            for (node.subnodes, 0..) |sn, i| new_subs[i] = try cloneNodeInto(allocator, sn, cloneV);
+            const n = try allocator.create(Node);
+            n.* = .{ .data_map = node.data_map, .node_map = node.node_map, .kvs = new_kvs, .subnodes = new_subs, .collision = node.collision };
+            return n;
+        }
+
         pub fn get(self: Self, key: K) ?V {
             const root = self.root orelse return null;
             const h = self.ctx.hash(key);

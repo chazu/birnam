@@ -924,3 +924,39 @@ test "tier (Lever 2): VAET stays empty for code attrs across compact (the hot re
     try testing.expectEqual(ref.mkEid(500), store.currentValue(1000, A_CODE).?); // values survive
     try testing.expectEqual(@as(usize, 0), histLen(&store, 1000, A_CODE)); // and no history
 }
+
+test "compact tightens the epoch: arena shrinks to live size, all values survive" {
+    const a = testing.allocator;
+    var store = fs.FactStore.init(a);
+    defer store.fact_eids.deinit();
+    defer store.fact_modules.deinit();
+    try store.enableIndexArena();
+    defer store.deinitIndexArena();
+
+    // Build a non-trivial index: N distinct facts (per-assert path-copy fills
+    // the live arena with abandoned spine garbage) plus a rewrite so a cell
+    // carries history.
+    const N: u64 = 6000;
+    var i: u64 = 0;
+    while (i < N) : (i += 1) {
+        _ = try store.assert(1000 + i, 5, vi(@intCast(i)), M_BOOT);
+    }
+    _ = try store.assert(1000, 5, vi(424242), M_BOOT);
+
+    const cap_before = store.index_arena.?.queryCapacity();
+    const stats = try store.compact(a, {}, KeepAll.keep);
+    const cap_after = store.index_arena.?.queryCapacity();
+    try testing.expectEqual(@as(usize, N), stats.kept); // current-only collapse
+
+    // Tightening: the rebuilt epoch holds only live structure, not the
+    // per-fact path-copy garbage. Without it, the rebuild path-copies to a size
+    // comparable to cap_before; with it, cap_after is a small fraction.
+    try testing.expect(cap_after * 2 < cap_before);
+
+    // Every current value survived the deep clone (the rewrite kept its v2).
+    try testing.expectEqual(vi(424242), store.currentValue(1000, 5).?);
+    i = 1;
+    while (i < N) : (i += 1) {
+        try testing.expectEqual(vi(@intCast(i)), store.currentValue(1000 + i, 5).?);
+    }
+}
