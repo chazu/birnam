@@ -485,6 +485,28 @@ pub const ATTR_FRAME_PARENT: u64 = 182;
 /// Omitted (Date 1NF) when the method captures nothing.
 pub const ATTR_METHOD_CAPTURES_PTR: u64 = 183;
 
+/// True iff `a` is an *exclusively-code* attribute — AST-node payload or
+/// method/bytecode metadata, write-once and never reverse-ref-walked. The fact
+/// store consults this (injected via `setCodeAttrPred` — bootstrap Stage 13) to
+/// drop per-fact history and the VAET index for these facts. Pure function of
+/// the EID; the store's replay vehicle depends on that purity (see
+/// docs/19a-code-fact-tiers-plan.md §0.1).
+///
+/// Bands are contiguous and named so this can never drift from the constants:
+///   91..96   AST_RULE_NAME .. AST_PARSE (97/98 = PEG, excluded)
+///   118..134 AST_VALUE .. AST_STMT_FIRST (135.. = bind/scope DATA attrs)
+///   165..178 BYTECODE_STREAM .. RANGE_AST
+///   183      METHOD_CAPTURES_PTR
+/// Deliberately EXCLUDES ATTR_VTABLE(19): it is shared with every data entity.
+/// The 165..178 band holds three :many attrs (168/169/170) — safe to drop from
+/// VAET, but they must NEVER be dropped from AVET (their only read index).
+pub fn isCodeAttr(a: u64) bool {
+    return (a >= ATTR_AST_RULE_NAME and a <= ATTR_AST_PARSE) or
+        (a >= ATTR_AST_VALUE and a <= ATTR_AST_STMT_FIRST) or
+        (a >= ATTR_BYTECODE_STREAM and a <= ATTR_RANGE_AST) or
+        a == ATTR_METHOD_CAPTURES_PTR;
+}
+
 // -- Phase 12.0 — provenance split (184) -------------------------------------
 
 /// `M_USER` — module-provenance tag for runtime-created DATA facts (parsed

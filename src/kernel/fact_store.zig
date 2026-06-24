@@ -56,6 +56,17 @@ pub const CardinalitySchema = struct {
     many_value: Ref,
 };
 
+// -- Per-attribute storage tier (docs/19a-code-fact-tiers-plan.md) ------------
+
+/// How cheaply an attribute's facts are stored. Code attrs (AST/bytecode
+/// metadata) drop their per-fact history (Lever 1) and the never-read VAET
+/// reverse-ref index (Lever 2). A future `skip_avet` (§2.4) is deliberately
+/// omitted — it needs a `:many`/retract redesign, not just a flag.
+pub const AttrTier = struct {
+    no_history: bool = false,
+    skip_vaet: bool = false,
+};
+
 // -- Index epoch registry (Phase 15.R R1b) -----------------------------------
 
 /// The five index root pointers captured by value — a zero-copy snapshot of
@@ -238,6 +249,14 @@ pub const FactStore = struct {
     /// (ADR-9.5-D2). The schema is fact-shaped — bootstrap injects the
     /// well-known EIDs after interning so this module stays kernel-decoupled.
     cardinality_schema: ?CardinalitySchema = null,
+
+    /// Predicate marking an attribute as "code" (AST/bytecode metadata) for
+    /// the storage-tier optimization. Injected by bootstrap (Stage 13) from
+    /// `kernel_eids.isCodeAttr` so this module stays kernel-decoupled, exactly
+    /// like `cardinality_schema`. MUST be a pure function of the EID — the
+    /// replay vehicle (`replayEventsInto`) copies it and relies on that purity.
+    /// See docs/19a-code-fact-tiers-plan.md §0.
+    code_attr_pred: ?*const fn (u64) bool = null,
 
     /// Phase 7.3 reification: lazy fact-EID side index. Populated on first
     /// `:as` resolution. Key = hashTriple(e, a, v).
@@ -498,6 +517,7 @@ pub const FactStore = struct {
     fn replayEventsInto(self: *FactStore, events: []const EpochEvent, alloc: std.mem.Allocator) !IndexRoots {
         var tmp = FactStore.init(alloc);
         tmp.cardinality_schema = self.cardinality_schema; // faithful :many handling
+        tmp.code_attr_pred = self.code_attr_pred; // §0.1: same tier per fact on replay
         for (events) |ev| {
             switch (ev.op) {
                 .assert => try tmp.applyAssert(ev.e, ev.a, ev.v, ev.m, ev.tx, ev.basis),
@@ -893,11 +913,14 @@ pub const FactStore = struct {
     /// only caller; it never references `assert`, so the tx-writer path is
     /// skipped during a frozen load.
     pub fn frozenInsert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64) !void {
-        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = 1, .op = .assert });
-        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = 1, .op = .assert });
-        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = 1, .op = .assert });
-        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = 1, .op = .assert });
-        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = 1, .op = .assert });
+        const tier = self.attrTier(a); // carry the same tier as the live path (§2.3)
+        const nh = tier.no_history;
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = 1, .op = .assert }, nh);
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = 1, .op = .assert }, nh);
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = 1, .op = .assert }, nh);
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = 1, .op = .assert }, nh);
+        if (!tier.skip_vaet)
+            self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = 1, .op = .assert }, nh);
     }
 
     /// Phase 15.R — compact's collapse insert. Like `frozenInsert` but writes
@@ -910,11 +933,14 @@ pub const FactStore = struct {
     /// counters — `compact` manages those.
     fn compactInsert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64, tx: u64, basis: u64) !void {
         const ia = self.indexAlloc();
-        self.eavt = try updateValueLeaf(ia, self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis });
-        self.aevt = try updateValueLeaf(ia, self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis });
-        self.meat = try updateMeat(ia, self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis });
-        self.avet = try updatePresenceLeaf(ia, self.avet, a, v, e, true, .{ .tx = tx, .op = .assert, .basis = basis });
-        self.vaet = try updatePresenceLeaf(ia, self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert, .basis = basis });
+        const tier = self.attrTier(a); // rebuild must agree with the live path, else
+        const nh = tier.no_history; //    compact re-materializes the skipped VAET (§2.5 #4)
+        self.eavt = try updateValueLeaf(ia, self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis }, nh);
+        self.aevt = try updateValueLeaf(ia, self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis }, nh);
+        self.meat = try updateMeat(ia, self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = basis }, nh);
+        self.avet = try updatePresenceLeaf(ia, self.avet, a, v, e, true, .{ .tx = tx, .op = .assert, .basis = basis }, nh);
+        if (!tier.skip_vaet)
+            self.vaet = try updatePresenceLeaf(ia, self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert, .basis = basis }, nh);
         if (self.on_attr_mutate) |cb| cb(a);
     }
 
@@ -929,33 +955,40 @@ pub const FactStore = struct {
     /// and `replayEvent` (R4 fault-in) so a faulted-in epoch is rebuilt by the
     /// EXACT same algorithm that built it — faithful by construction.
     fn applyAssert(self: *FactStore, e: u64, a: u64, v: Ref, m: u64, tx: u64, bt: u64) !void {
+        const tier = self.attrTier(a); // Levers 1+2: per-attr no_history / skip_vaet
+        const nh = tier.no_history;
         const prev_v = self.rawCurrentValue(e, a);
         const is_many = self.cardinalityOfAttr(a) == .many;
-        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
-        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
-        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt });
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt }, nh);
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt }, nh);
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, v, .{ .v = v, .tx = tx, .op = .assert, .basis = bt }, nh);
         if (!is_many) {
             if (prev_v) |pv| {
                 if (pv != v) {
-                    self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, pv, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
-                    self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, pv, a, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
+                    self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, pv, e, false, .{ .tx = tx, .op = .retract, .basis = bt }, nh);
+                    if (!tier.skip_vaet)
+                        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, pv, a, e, false, .{ .tx = tx, .op = .retract, .basis = bt }, nh);
                 }
             }
         }
-        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = tx, .op = .assert, .basis = bt });
-        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert, .basis = bt });
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, true, .{ .tx = tx, .op = .assert, .basis = bt }, nh);
+        if (!tier.skip_vaet)
+            self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, true, .{ .tx = tx, .op = .assert, .basis = bt }, nh);
     }
 
     /// Core index maintenance for a retract at explicit (tx, basis). Returns
     /// whether it applied (false = no current (e,a,v) to retract). Shared by
     /// `retract` and `replayEvent`.
     fn applyRetract(self: *FactStore, e: u64, a: u64, v: Ref, m: u64, tx: u64, bt: u64) !bool {
-        if (!self.hasFact(e, a, v)) return false;
-        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
-        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
-        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt });
-        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
-        self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract, .basis = bt });
+        if (!self.hasFact(e, a, v)) return false; // AVET-gated — retained for code attrs
+        const tier = self.attrTier(a);
+        const nh = tier.no_history;
+        self.eavt = try updateValueLeaf(self.indexAlloc(), self.eavt, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt }, nh);
+        self.aevt = try updateValueLeaf(self.indexAlloc(), self.aevt, a, e, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt }, nh);
+        self.meat = try updateMeat(self.indexAlloc(), self.meat, m, e, a, null, .{ .v = v, .tx = tx, .op = .retract, .basis = bt }, nh);
+        self.avet = try updatePresenceLeaf(self.indexAlloc(), self.avet, a, v, e, false, .{ .tx = tx, .op = .retract, .basis = bt }, nh);
+        if (!tier.skip_vaet)
+            self.vaet = try updatePresenceLeaf(self.indexAlloc(), self.vaet, v, a, e, false, .{ .tx = tx, .op = .retract, .basis = bt }, nh);
         return true;
     }
 
@@ -986,6 +1019,21 @@ pub const FactStore = struct {
 
     pub fn setCardinalitySchema(self: *FactStore, schema: CardinalitySchema) void {
         self.cardinality_schema = schema;
+    }
+
+    /// Inject the "is this a code attribute?" predicate (bootstrap Stage 13).
+    pub fn setCodeAttrPred(self: *FactStore, pred: *const fn (u64) bool) void {
+        self.code_attr_pred = pred;
+    }
+
+    /// Storage tier for attribute `a`. Code attrs drop history (Lever 1) and the
+    /// VAET index (Lever 2). Pure function of the EID — never reads store state,
+    /// so the replay vehicle reproduces the same decision per fact (§0.1).
+    pub fn attrTier(self: *const FactStore, a: u64) AttrTier {
+        if (self.code_attr_pred) |pred| {
+            if (pred(a)) return .{ .no_history = true, .skip_vaet = true };
+        }
+        return .{};
     }
 
     /// Lookup raw EAVT current_v without consulting cardinality. Used by
@@ -1508,11 +1556,13 @@ fn updateValueLeaf(
     k_inner: u64,
     new_current: ?Ref,
     new_hist: ValueHist,
+    no_history: bool,
 ) !EAVTish {
     const inner = outer.get(k_outer) orelse InnerValueMap.empty(allocator, .{});
     const empty_cell = ValueCell{ .current_v = null, .history = ValueHistVec.empty(allocator) };
     const cell = inner.get(k_inner) orelse empty_cell;
-    const new_hist_vec = try cell.history.push(new_hist);
+    // Lever 1: a no-history attr keeps current_v but never grows its history vec.
+    const new_hist_vec = if (no_history) cell.history else try cell.history.push(new_hist);
     const new_cell = ValueCell{ .current_v = new_current, .history = new_hist_vec };
     const new_inner = try inner.assoc(k_inner, new_cell);
     return outer.assoc(k_outer, new_inner);
@@ -1526,9 +1576,10 @@ fn updateMeat(
     a: u64,
     new_current: ?Ref,
     new_hist: ValueHist,
+    no_history: bool,
 ) !MEATish {
     const e_map = meat.get(m) orelse EAVTish.empty(allocator, .{});
-    const new_e_map = try updateValueLeaf(allocator, e_map, e, a, new_current, new_hist);
+    const new_e_map = try updateValueLeaf(allocator, e_map, e, a, new_current, new_hist, no_history);
     return meat.assoc(m, new_e_map);
 }
 
@@ -1540,12 +1591,14 @@ fn updatePresenceLeaf(
     k_inner: u64,
     new_present: bool,
     new_hist: PresenceHist,
+    no_history: bool,
 ) !AVETish {
     const mid = outer.get(k_outer) orelse MidPresenceMap.empty(allocator, .{});
     const leaf = mid.get(k_mid) orelse InnerPresenceMap.empty(allocator, .{});
     const empty_cell = PresenceCell{ .present = false, .history = PresenceHistVec.empty(allocator) };
     const cell = leaf.get(k_inner) orelse empty_cell;
-    const new_hist_vec = try cell.history.push(new_hist);
+    // Lever 1: the `present` flag always updates; only the history vec is gated.
+    const new_hist_vec = if (no_history) cell.history else try cell.history.push(new_hist);
     const new_cell = PresenceCell{ .present = new_present, .history = new_hist_vec };
     const new_leaf = try leaf.assoc(k_inner, new_cell);
     const new_mid = try mid.assoc(k_mid, new_leaf);

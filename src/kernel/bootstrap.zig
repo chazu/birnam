@@ -294,6 +294,10 @@ pub fn boot(
         .attr_eid = kernel_eids.ATTR_CARDINALITY,
         .many_value = ref_mod.mkEid(many_eid),
     });
+    // Storage-tier policy: AST/bytecode code attrs drop history + the VAET index
+    // (docs/19a-code-fact-tiers-plan.md). Injected, like cardinality, so the
+    // store stays kernel-decoupled. Set before any code-attr facts are written.
+    store.setCodeAttrPred(&kernel_eids.isCodeAttr);
 
     // -- Stage 14: declare :many attrs (Phase 9.5.3+) --------------------
     // `:ffi-has-symbol` accumulates one fact per enumerated symbol per Module.
