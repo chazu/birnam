@@ -97,6 +97,30 @@ pub fn kernelAllocator() ?std.mem.Allocator {
 
 // -- bind ------------------------------------------------------------------
 
+/// The resolution interface (W6 cut #3, ROADMAP D5.2): the one cold-path
+/// operation dispatch performs is `get(entity, attribute)` over the fact store —
+/// **`bind` *is* `get`.** Cold-path resolution reads the store *only* through
+/// `resolve`, never `store.currentValue` directly, so the metacircular seam is a
+/// single, auditable surface (grep `resolve(`). `mcache` (hot method lookups)
+/// and the object table (materialized vtables, via `vtableEidOf`) are
+/// **memoizations** of these gets; the seam is metacircular *by design*, not a
+/// layering violation — D5.2 rejects re-architecting it behind a separate
+/// projection (anti-Piumarta).
+///
+/// The **closed set** of (attribute) questions dispatch asks to resolve a send:
+///   - `resolve(vt, selector)`          — method lookup `[vt sel ?method]`
+///   - `resolve(vt, ATTR_DELEGATE)`     — delegation / inheritance walk
+///   - `resolve(vt, ATTR_BIND)`         — custom `bind`-is-a-method override
+///   - `resolve(receiver, ATTR_VTABLE)` — vtable resolution
+///   - `resolve(receiver, ATTR_NAME)`   — symbol fallback (named ⇒ SYMBOL_VT)
+///
+/// Adding a new cold-path resolution read means it goes through here,
+/// deliberately. (Method-*body* reads — bytecode/const-pool/captures — are a
+/// separate concern, `dispatch.zig` cluster 2, memoized by the `Closure`.)
+inline fn resolve(entity: u64, attr: u64) ?Ref {
+    return g_store.?.currentValue(entity, attr);
+}
+
 /// Resolve the closure for `s.receiver` + `s.selector`. Returns null on
 /// "method not found." Populates `s.closure` and `s.state` on success.
 pub fn bind(s: *Send) ?*Closure {
@@ -127,8 +151,7 @@ pub fn bind(s: *Send) ?*Closure {
     // Cold path: walk vt + delegation chain.
     var cur_vt = vt_eid;
     while (cur_vt != kernel_eids.NIL) {
-        const store = g_store.?;
-        if (store.currentValue(cur_vt, s.selector)) |method_ref| {
+        if (resolve(cur_vt, s.selector)) |method_ref| {
             // method_ref is mkEid(closure_eid).
             if (!ref_mod.isEid(method_ref)) return null; // shouldn't happen
             const closure_eid = ref_mod.untagEid(method_ref);
@@ -140,7 +163,7 @@ pub fn bind(s: *Send) ?*Closure {
             return c;
         }
         // No method here; walk to delegate.
-        if (store.currentValue(cur_vt, kernel_eids.ATTR_DELEGATE)) |delegate_ref| {
+        if (resolve(cur_vt, kernel_eids.ATTR_DELEGATE)) |delegate_ref| {
             if (!ref_mod.isEid(delegate_ref)) return null;
             cur_vt = ref_mod.untagEid(delegate_ref);
         } else {
@@ -155,11 +178,10 @@ pub fn bind(s: *Send) ?*Closure {
 /// NIL → fallthrough (let primitive lookup handle it). Pointer/other →
 /// treat as NIL.
 fn tryBindOverride(s: *Send, vt_eid: u64) ?*Closure {
-    const store = g_store.?;
     const table = g_table.?;
     var cur_vt = vt_eid;
     while (cur_vt != kernel_eids.NIL) {
-        if (store.currentValue(cur_vt, kernel_eids.ATTR_BIND)) |method_ref| {
+        if (resolve(cur_vt, kernel_eids.ATTR_BIND)) |method_ref| {
             if (!ref_mod.isEid(method_ref)) return null;
             const override_eid = ref_mod.untagEid(method_ref);
             const override_ptr_ref = table.get(override_eid) orelse return null;
@@ -175,7 +197,7 @@ fn tryBindOverride(s: *Send, vt_eid: u64) ?*Closure {
             if (!ref_mod.isPointer(result_ptr_ref)) return null;
             return @ptrCast(@alignCast(ref_mod.untagPointer(result_ptr_ref)));
         }
-        if (store.currentValue(cur_vt, kernel_eids.ATTR_DELEGATE)) |d| {
+        if (resolve(cur_vt, kernel_eids.ATTR_DELEGATE)) |d| {
             if (!ref_mod.isEid(d)) return null;
             cur_vt = ref_mod.untagEid(d);
         } else return null;
@@ -211,11 +233,10 @@ pub fn vtableEidOf(r: Ref) ?u64 {
             table.bumpHotness(receiver_eid);
             promotion.maybeAutoPromote(receiver_eid);
         }
-        const store = g_store.?;
-        const vt_ref = store.currentValue(receiver_eid, kernel_eids.ATTR_VTABLE) orelse {
+        const vt_ref = resolve(receiver_eid, kernel_eids.ATTR_VTABLE) orelse {
             // No explicit vtable: an interned NAMED entity (a symbol — `#foo`,
             // a selector) dispatches on SYMBOL_VT so it answers =/printString.
-            if (store.currentValue(receiver_eid, kernel_eids.ATTR_NAME) != null) return kernel_eids.SYMBOL_VT;
+            if (resolve(receiver_eid, kernel_eids.ATTR_NAME) != null) return kernel_eids.SYMBOL_VT;
             return null;
         };
         if (!ref_mod.isEid(vt_ref)) return null;
