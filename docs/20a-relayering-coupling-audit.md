@@ -62,15 +62,22 @@ not incidental, by design.
 |---|---|---|
 | `send.zig:131` | `currentValue(vt, selector)` | method lookup `[vt sel ?method]` (mcache fronts it; cold path hits facts) |
 | `send.zig:215` | `currentValue(receiver, ATTR_VTABLE)` | vtable resolution (`vtableEidOf`) |
+| `send.zig:218` | `currentValue(receiver, ATTR_NAME)` | symbol fallback — no vtable but has a name ⇒ treat as `SYMBOL_VT` |
 | `send.zig:143`, `:178` | `currentValue(vt, ATTR_DELEGATE)` | delegation / inheritance walk |
 | `send.zig:162` | `currentValue(vt, ATTR_BIND)` | custom `bind`-is-a-method |
+
+Six `currentValue` reads in `send` (`131/143/162/178/215/218`).
 
 **`dispatch.zig` (L2 → L3) — method *body* reads + frame-reification writes:**
 
 | Site | Call | What it does |
 |---|---|---|
 | `dispatch.zig:50/56/74` | `currentValue(method, ATTR_BYTECODE_STREAM \| ATTR_CONSTANT_POOL \| ATTR_METHOD_CAPTURES_PTR)` | reads the method body to run it (materialized into a `Closure` after first read) |
+| `dispatch.zig:247` | `currentValue(block_method, ATTR_METHOD_CAPTURES_PTR)` | same body read for a *block* method (cold-only; closure after first read) |
 | `dispatch.zig:442–448` | `assert(frame, ATTR_FRAME_PC \| _METHOD \| _SELF \| _PARENT)` | **writes** the call stack / continuation as facts — **separable** (only on stack reification: non-local return / debug, not every call) |
+
+Four `currentValue` reads (`50/56/74/247`) + four frame-write `assert`s
+(`442/443/445/448`) in `dispatch`.
 
 **Q2 resolution space (planning decides, not pre-decided):**
 - **(a) projection-populated** — L2 dispatches over an L1/L2 representation
@@ -121,9 +128,15 @@ names-as-facts at L4. After this, all of L1 (`object_table` + `interner` +
 - **Q1 (bootstrap / frozen-vs-policy line)** → cut #5. Viable: the policy seam
   already exists (`AttrTier`); `fact_store`'s primitives have clean down-deps, so
   "primitives frozen, policy injectable" is a generalization, not new machinery.
-- **Q2 (dispatch cold-path)** → cuts #3 + #4, and the audit shows this is the
-  *only* hard part — 8 `currentValue`/`assert` sites across `send` + `dispatch`,
-  of which the frame writes are separable.
+- **Q2 (dispatch cold-path)** → cuts #3 + #4. **14 reach-up sites** across
+  `send` + `dispatch` (10 `currentValue` reads + 4 frame-write `assert`s), which
+  cluster into three kinds of decreasing difficulty: **(1) resolution reads**
+  (`send`'s 6 — which vtable / method / delegate / bind: the genuine hard core of
+  Q2); **(2) method-body reads** (`dispatch:50/56/74/247` — cold-only, already
+  materialized into a `Closure` after first read, so effectively half-projected
+  already); **(3) frame-reification writes** (`dispatch:442–448` — separable, fire
+  only on stack reification, cut #4). The only part that needs the (a)/(b) design
+  call is cluster (1); (2) and (3) are tractable regardless.
 - **Q3 (how far to policy-ize)** → cut #5 scope decision (minimum: inject
   index/history/tier policy; maximum: the whole 5-index arrangement above the
   frozen line).

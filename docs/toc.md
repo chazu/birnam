@@ -33,6 +33,11 @@ order.
   Why everything is a fact; the "fact store is the substrate, not a feature"
   thesis; the locked design vision and its constraints (HAMT + RRB only, the
   `-1` trick preserved at the materialization layer).
+- **North Star — the cell refounding** — `10a-north-star-cell-model.md`
+  The conceptual center the system is steered toward: object model and relational
+  model are one operation (`get`/`assert` over a named, historied cell store) read
+  two ways. Why the five layers are derived caches, not foundations; how
+  D5/D5.1/Q1/Q2/Q3 are facets of it; native code as a cache of bytecode-cells.
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).

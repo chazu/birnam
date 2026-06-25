@@ -2843,6 +2843,16 @@ deliberately-leaky instance of the right direction. Concrete implementation item
 framing ("persist only `M_USER`; CODE is reconstructed") is the thing being
 overturned, and the reframe is easy to lose.
 
+> **North-star adopted (2026-06-25):** D5, D5.1, Q1, Q2, and Q3 below are all
+> facets of one larger reframing — **the cell refounding** — accepted as the
+> project's conceptual direction. The object model and the relational model are
+> one operation (`get`/`assert` over a persistent, name-keyed, historied store of
+> cells) read two ways; the five layers are derived caches, not foundations; code
+> is cells and native machine code is a cache of bytecode-cells. Full framing:
+> **`docs/10a-north-star-cell-model.md`**. It does not change any decision below —
+> it names the destination they point at, and (per its Q2 section) argues for
+> resolving Q2 as option (a), the populate-from-center shape.
+
 ### Trigger
 A review of the recent image + `--boot-image` + code-fact-tier work surfaced a
 real doubt: *is the relational substrate even memory-viable?* ("A system that
