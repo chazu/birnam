@@ -103,7 +103,9 @@ test "lang grammar: identifier matches \"hello\"" {
 
     const ast_ref = parseVia(s, "hello", "identifier", lang_mod_eid, a);
     const ast = ref_mod.untagEid(ast_ref);
-    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    // A successful parse yields a CST node tagged CST_NODE_VT (since 1ab5d21);
+    // an error entity would be ERROR_VT. Asserting CST_NODE_VT confirms success.
+    try testing.expectEqual(kernel_eids.CST_NODE_VT, ref_mod.untagEid(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE).?));
     const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
     try testing.expectEqual(@as(i64, 5), ref_mod.untagSmallInt(end_ref));
 }
@@ -130,7 +132,9 @@ test "lang grammar: start matches \"  42  \" (whitespace-wrapped atom)" {
     const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
 
     const ast = ref_mod.untagEid(parseVia(s, "  42  ", "start", lang_mod_eid, a));
-    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    // A successful parse yields a CST node tagged CST_NODE_VT (since 1ab5d21);
+    // an error entity would be ERROR_VT. Asserting CST_NODE_VT confirms success.
+    try testing.expectEqual(kernel_eids.CST_NODE_VT, ref_mod.untagEid(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE).?));
     const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
     try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(end_ref));
 }
@@ -144,7 +148,9 @@ test "lang grammar: start matches \"true\" via atom choice" {
     const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
 
     const ast = ref_mod.untagEid(parseVia(s, "true", "start", lang_mod_eid, a));
-    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    // A successful parse yields a CST node tagged CST_NODE_VT (since 1ab5d21);
+    // an error entity would be ERROR_VT. Asserting CST_NODE_VT confirms success.
+    try testing.expectEqual(kernel_eids.CST_NODE_VT, ref_mod.untagEid(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE).?));
     const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
     try testing.expectEqual(@as(i64, 4), ref_mod.untagSmallInt(end_ref));
 }
@@ -158,7 +164,9 @@ test "lang grammar: string literal \"\\\"hello\\\"\"" {
     const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
 
     const ast = ref_mod.untagEid(parseVia(s, "\"hello\"", "string", lang_mod_eid, a));
-    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    // A successful parse yields a CST node tagged CST_NODE_VT (since 1ab5d21);
+    // an error entity would be ERROR_VT. Asserting CST_NODE_VT confirms success.
+    try testing.expectEqual(kernel_eids.CST_NODE_VT, ref_mod.untagEid(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE).?));
     const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
     try testing.expectEqual(@as(i64, 7), ref_mod.untagSmallInt(end_ref));
 }
@@ -191,7 +199,9 @@ test "lang grammar: bracket-unary \"[3 squared]\"" {
     const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
 
     const ast = ref_mod.untagEid(parseVia(s, "[3 squared]", "start", lang_mod_eid, a));
-    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    // A successful parse yields a CST node tagged CST_NODE_VT (since 1ab5d21);
+    // an error entity would be ERROR_VT. Asserting CST_NODE_VT confirms success.
+    try testing.expectEqual(kernel_eids.CST_NODE_VT, ref_mod.untagEid(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE).?));
     const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
     try testing.expectEqual(@as(i64, 11), ref_mod.untagSmallInt(end_ref));
 }
@@ -205,7 +215,9 @@ test "lang grammar: bracket-keyword \"[obj at: 0 put: nil]\" (compound keyword)"
     const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
 
     const ast = ref_mod.untagEid(parseVia(s, "[obj at: 0 put: nil]", "start", lang_mod_eid, a));
-    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    // A successful parse yields a CST node tagged CST_NODE_VT (since 1ab5d21);
+    // an error entity would be ERROR_VT. Asserting CST_NODE_VT confirms success.
+    try testing.expectEqual(kernel_eids.CST_NODE_VT, ref_mod.untagEid(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE).?));
     const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
     try testing.expectEqual(@as(i64, 20), ref_mod.untagSmallInt(end_ref));
 }
@@ -219,7 +231,9 @@ test "lang grammar: nested send \"[[1 succ] squared]\"" {
     const lang_mod_eid = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
 
     const ast = ref_mod.untagEid(parseVia(s, "[[1 succ] squared]", "start", lang_mod_eid, a));
-    try testing.expect(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE) == null);
+    // A successful parse yields a CST node tagged CST_NODE_VT (since 1ab5d21);
+    // an error entity would be ERROR_VT. Asserting CST_NODE_VT confirms success.
+    try testing.expectEqual(kernel_eids.CST_NODE_VT, ref_mod.untagEid(s.store.currentValue(ast, kernel_eids.ATTR_VTABLE).?));
     const end_ref = s.store.currentValue(ast, kernel_eids.ATTR_AST_BYTE_END).?;
     try testing.expectEqual(@as(i64, 18), ref_mod.untagSmallInt(end_ref));
 }
