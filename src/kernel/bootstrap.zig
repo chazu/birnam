@@ -32,6 +32,7 @@ const loader_mod = @import("loader.zig");
 const macho_mod = @import("macho.zig");
 const elf_mod = @import("elf.zig");
 const id_api_mod = @import("id_api.zig");
+const image_mod = @import("image.zig");
 
 const Ref = ref_mod.Ref;
 const Closure = closure_mod.Closure;
@@ -314,6 +315,12 @@ pub fn boot(
     // docs/10a), so the store stays kernel-decoupled. Set before any code-attr
     // facts are written.
     store.setTierPolicy(&codeTierPolicy);
+
+    // W1 Stage 2 (docs/19c): intern the closure-wrapper recipe attr so the full
+    // image writer/loader can persist + rebuild durable block-closure globals
+    // (e.g. `let jStr := [block]`). The kernel eid space (0..255) is full, so it
+    // is an interned (user-range) attr, resolved deterministically here at boot.
+    image_mod.setClosureBlockMethodAttr(try interner.intern(store, table, "closure-block-method"));
 
     // -- Stage 14: declare :many attrs (Phase 9.5.3+) --------------------
     // `:ffi-has-symbol` accumulates one fact per enumerated symbol per Module.

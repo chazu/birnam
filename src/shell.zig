@@ -1100,7 +1100,7 @@ pub fn main() !void {
         // Stage 1 end-to-end: write a full (v7) image of the live system and
         // report the writer counts (facts_written ≈ total − residue, skipped =
         // residue). Confirms the full writer on the real fact-set.
-        if (image.writeFull(allocator, store, table.next_eid.load(.monotonic), .{}, interner)) |res| {
+        if (image.writeFull(allocator, store, table.next_eid.load(.monotonic), .{}, interner, table)) |res| {
             defer allocator.free(res.bytes);
             stderrPrint("[W1 Stage 1] writeFull: {d} facts written, {d} skipped (residue), {d} bytes\n", .{ res.facts_written, res.skipped_pointer_values, res.bytes.len });
         } else |e| stderrPrint("[W1 Stage 1] writeFull failed: {any}\n", .{e});
@@ -1112,7 +1112,7 @@ pub fn main() !void {
     // load it via --boot-image). Off by default.
     if (std.process.getEnvVarOwned(sa, "BIRNAM_SAVE_FULL")) |path| {
         const mf = image.Manifest{};
-        if (image.writeFull(allocator, store, table.next_eid.load(.monotonic), mf, interner)) |res| {
+        if (image.writeFull(allocator, store, table.next_eid.load(.monotonic), mf, interner, table)) |res| {
             defer allocator.free(res.bytes);
             std.fs.cwd().writeFile(.{ .sub_path = path, .data = res.bytes }) catch |e| {
                 stderrPrint("[W1] save-full failed: {any}\n", .{e});

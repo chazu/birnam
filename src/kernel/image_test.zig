@@ -81,7 +81,7 @@ test "image (W1 Stage 1): writeFull persists all provenance; write stays M_USER-
     try testing.expect(dst6.currentValue(E_B, A_REF) == null); // CODE fact dropped
 
     // v7 full write: BOTH facts persist regardless of provenance, and round-trip.
-    const v7 = try image.writeFull(a, &src, 256, .{}, null);
+    const v7 = try image.writeFull(a, &src, 256, .{}, null, null);
     try testing.expectEqual(@as(u64, 2), v7.facts_written);
     try testing.expectEqual(@as(u32, image.FULL_FORMAT_VERSION), std.mem.readInt(u32, v7.bytes[8..][0..4], .little));
 

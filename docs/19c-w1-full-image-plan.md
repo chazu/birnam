@@ -231,10 +231,29 @@ global/method, surviving file-in), not transient activation blocks. Options:
 *Test for either:* `[jStr value: 5]` → `"5"` and `Json parse:`/`stringify:` work
 from a v7 image alone.
 
-**Status:** Stages 0–1 done; Stage 2 load-core proven (native/kernel/pure-birnam
-methods, grammars, plain entities, user data all round-trip); the one remaining
-blocker is durable closure-wrapper rematerialization, root-caused above. Tree
-clean/green (trace reverted; no speculative fix committed).
+**Status:** Stages 0–1 done; **Stage 2 captureless-wrapper fix SHIPPED
+2026-06-25.** `writeFull` now emits `[wrapper :closure-block-method bm]` recipe
+facts for captureless block-closure wrappers reachable from durable values, and
+`rematerializeClosures` rebuilds those wrappers (re-minting the CLOSURE_VT object
+at its original eid over a fresh captureless `BytecodeClosure`). The recipe attr
+is interned (`closure-block-method`, set at bootstrap) because the kernel eid
+space (0..255) is full. Result: **a v7 full image boots json end-to-end** —
+`Json parse:`/`stringify:` and nested objects all work from the image with json's
+dylib *not* reloaded (peg+lang only). The whole json block-global web (`jStr`,
+`jChild`, `jLower`, `hObject`, …) is captureless (cross-refs are scope-sends), so
+this single step fixes it. Regression test: `lang_module_test` "W1 Stage 2: json
+block globals survive full save -> load (no json reload)". Verified: image (18),
+lang (80), dispatch/metabind/fact_store/ffi green; examples green.
+
+**Deferred (Stage 2b):** (1) **capturing** durable closures — wrappers whose
+`BytecodeClosure` has ≥1 capture; they need their captured *values* serialized
+(reuse the GC reachability walk, recursing into captured refs). (2) **REPL-eval
+block globals** — `let x := [block]` typed at the REPL uses a different top-level
+representation than module file-in (its wrapper is not the MAKE_BLOCK CLOSURE_VT
+shape the recipe detects), so REPL-defined block globals don't yet round-trip;
+characterize that representation and extend `capturelessBlockMethod` (or the
+recipe) to cover it. Neither blocks module images (the W1 target); both are
+session-state niceties.
 
 **Status:** Stages 0–1 done; Stage 2 load-core proven; this closure-capture
 defect is the one remaining blocker and is scoped above. Tree is clean/green

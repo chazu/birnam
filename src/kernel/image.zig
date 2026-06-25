@@ -123,6 +123,33 @@ pub const LoadResult = struct {
     manifest: Manifest,
 };
 
+/// W1 Stage 2 (docs/19c): the interned attribute eid for
+/// `[wrapper :closure-block-method block_method_eid]` recipe facts. The kernel
+/// eid space (0..255) is full, so this is an *interned* attr (user-range);
+/// bootstrap sets it deterministically via `setClosureBlockMethodAttr`. 0 = not
+/// set (bare unit tests / v6 path) → the closure-wrapper logic is skipped.
+var g_closure_block_method_attr: u64 = 0;
+
+pub fn setClosureBlockMethodAttr(e: u64) void {
+    g_closure_block_method_attr = e;
+}
+
+/// If `eid` names a **captureless bytecode-block closure wrapper** in the object
+/// table (`[vt=CLOSURE_VT][method][data=BytecodeClosure]` with zero captures),
+/// return its block-method eid; else null. Used by the full-image writer to emit
+/// a reconstruction recipe for durable block globals (W1 Stage 2). Capturing
+/// wrappers and tree-walker closures (data = eid) return null — deferred.
+fn capturelessBlockMethod(table: *const object_table.ObjectTable, eid: u64) ?u64 {
+    const ref = table.get(eid) orelse return null;
+    if (!ref_mod.isPointer(ref)) return null;
+    const vt = object.vtableOf(object.fromRef(ref));
+    if (!ref_mod.isEid(vt) or ref_mod.untagEid(vt) != kernel_eids.CLOSURE_VT) return null;
+    const c: *const closure_mod.Closure = @ptrCast(@alignCast(ref_mod.untagPointer(ref)));
+    if (!ref_mod.isPointer(c.data)) return null; // tree-walker closure (data = eid) — not a bytecode block
+    if (vm_mod.blockCapturesFromRef(c.data).len != 0) return null; // has captures — deferred to Stage 2b
+    return vm_mod.blockMethodEidFromRef(c.data);
+}
+
 /// A value Ref is a self-describing immediate (eid / smallint / keyword /
 /// nil) — stored verbatim. Other supported classes (string, float, RRB)
 /// serialize their contents; see `valueSupported`.
@@ -345,7 +372,7 @@ pub fn write(
     manifest: Manifest,
     interner: ?*const Interner,
 ) WriteError!WriteResult {
-    return writeImpl(allocator, store, next_eid, manifest, interner, false);
+    return writeImpl(allocator, store, next_eid, manifest, interner, false, null);
 }
 
 /// Serialize the WHOLE fact-set (W1, docs/19c) — a self-contained v7 image.
@@ -358,8 +385,9 @@ pub fn writeFull(
     next_eid: u64,
     manifest: Manifest,
     interner: ?*const Interner,
+    table: ?*const object_table.ObjectTable,
 ) WriteError!WriteResult {
-    return writeImpl(allocator, store, next_eid, manifest, interner, true);
+    return writeImpl(allocator, store, next_eid, manifest, interner, true, table);
 }
 
 fn writeImpl(
@@ -369,6 +397,7 @@ fn writeImpl(
     manifest: Manifest,
     interner: ?*const Interner,
     full: bool,
+    table: ?*const object_table.ObjectTable,
 ) WriteError!WriteResult {
     var buf = std.ArrayList(u8){};
     errdefer buf.deinit(allocator);
@@ -411,6 +440,14 @@ fn writeImpl(
     var facts_written: u64 = 0;
     var skipped: u64 = 0;
 
+    // W1 Stage 2: collect eids referenced as durable fact VALUES, so after the
+    // loop we can emit closure-wrapper reconstruction recipes for the ones that
+    // are captureless block globals (e.g. `let jStr := [block]`). Only used in
+    // the full path with a table + the interned recipe attr available.
+    const want_closures = full and table != null and g_closure_block_method_attr != 0;
+    var referenced = std.AutoHashMap(u64, void).init(allocator);
+    defer referenced.deinit();
+
     // `meat` keys facts by module first, giving (m, e, a, v) directly.
     // v6 (hybrid): persist DATA facts only — CODE is reconstructed on load by
     // re-running module init. v7 (full, W1): persist EVERY fact regardless of
@@ -441,6 +478,29 @@ fn writeImpl(
         try appendU64(allocator, &buf, entry.a);
         try writeValue(allocator, &buf, entry.v);
         facts_written += 1;
+        if (want_closures and ref_mod.isEid(entry.v)) {
+            try referenced.put(ref_mod.untagEid(entry.v), {});
+        }
+    }
+
+    // W1 Stage 2: emit `[wrapper :closure-block-method bm]` recipe facts for
+    // captureless block-closure wrappers referenced by durable values, so
+    // `rematerializeClosures` can rebuild them on load. Skip any that already
+    // carry the recipe fact (a re-saved image — avoids duplicates / keeps the
+    // round-trip idempotent).
+    if (want_closures) {
+        const a_eid = g_closure_block_method_attr;
+        var it = referenced.keyIterator();
+        while (it.next()) |k| {
+            const wrapper_eid = k.*;
+            const bm = capturelessBlockMethod(table.?, wrapper_eid) orelse continue;
+            if (store.currentValue(wrapper_eid, a_eid) != null) continue; // already a fact
+            try appendU64(allocator, &buf, kernel_eids.M_USER);
+            try appendU64(allocator, &buf, wrapper_eid);
+            try appendU64(allocator, &buf, a_eid);
+            try writeValue(allocator, &buf, ref_mod.mkEid(bm));
+            facts_written += 1;
+        }
     }
 
     std.mem.writeInt(u64, buf.items[count_slot..][0..8], facts_written, .little);
@@ -666,6 +726,31 @@ pub fn rematerializeClosures(
         };
         table.put(method_eid, ref_mod.mkPointer(@ptrCast(c_ptr))) catch return error.StoreError;
         count += 1;
+    }
+
+    // W1 Stage 2: rebuild captureless block-closure WRAPPERS from their recipe
+    // facts (`[wrapper :closure-block-method bm]`). The block-method itself was
+    // rebuilt above; here we re-mint the CLOSURE_VT wrapper at its original eid
+    // (so a binding's `mkEid(wrapper)` resolves), wrapping a fresh, captureless
+    // BytecodeClosure for that method. Capturing wrappers are deferred (Stage 2b).
+    if (g_closure_block_method_attr != 0) {
+        var wit = store.entitiesWith(g_closure_block_method_attr);
+        while (wit.next()) |entry| {
+            const wrapper_eid = entry.e;
+            if (table.get(wrapper_eid) != null) continue; // already live
+            if (!ref_mod.isEid(entry.v)) continue;
+            const block_method_eid = ref_mod.untagEid(entry.v);
+            const blk = vm_mod.allocBytecodeBlock(allocator, block_method_eid, ref_mod.NIL, 0, 0) catch return error.OutOfMemory;
+            const total = 3 * @sizeOf(Ref);
+            const buf = allocator.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
+            @memset(buf, 0);
+            const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
+            vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
+            const c_ptr: *closure_mod.Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
+            c_ptr.* = .{ .method = @ptrCast(&dispatch.bytecodeDispatcherImpl), .data = blk.ref };
+            table.put(wrapper_eid, ref_mod.mkPointer(@ptrCast(c_ptr))) catch return error.StoreError;
+            count += 1;
+        }
     }
     return count;
 }

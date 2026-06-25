@@ -1581,6 +1581,47 @@ test "image: REPL binding survives save -> fresh boot -> load (lang-driven)" {
     try testing.expectEqual(@as(i64, 41), ref_mod.untagSmallInt(evalLine(sb, lang_b, "x", a)));
 }
 
+// W1 Stage 2 (docs/19c) — a module's captureless block-closure GLOBALS survive a
+// FULL (v7) image save → fresh boot → load WITHOUT reloading that module. json
+// defines `jStr`/`jChild`/`jLower`/… as top-level `let` blocks at file-in (via
+// MAKE_BLOCK → CLOSURE_VT wrapper); the wrapper's runtime object is not facts, so
+// pre-fix `Json parse:`/`stringify:` returned nil after load. `writeFull` emits a
+// `[wrapper :closure-block-method bm]` recipe and `rematerializeClosures` rebuilds
+// the captureless wrapper. Session B loads peg+lang only — json comes from the
+// image alone (the exact W1 boot-image scenario).
+test "image (W1 Stage 2): json block globals survive full save -> load (no json reload)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // ---- Session A: load json, sanity parse/stringify, FULL snapshot. ----
+    const sa = try fullSetup(&arena);
+    _ = (try sa.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_a = (try sa.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    _ = (try sa.manager.load("./zig-out/lib/libbirnam_json.dylib")) orelse return error.JsonLoadFailed;
+
+    // `Json stringify:` exercises the `jStr` block-closure global (no grammar).
+    const sa_str = evalLine(sa, lang_a, "[Json stringify: #[1 2 3]]", a);
+    try testing.expect(strings.isString(sa_str)); // sanity in session A
+
+    const res = try image.writeFull(a, sa.store, sa.table.next_eid.load(.monotonic), .{}, sa.interner, sa.table);
+
+    // ---- Session B: peg+lang ONLY (no json dylib), load image, rebuild. ----
+    const sb = try fullSetup(&arena);
+    _ = (try sb.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_b = (try sb.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const loaded = try image.load(sb.store, res.bytes, sb.interner);
+    if (loaded.next_eid > sb.table.next_eid.load(.monotonic)) sb.table.next_eid.store(loaded.next_eid, .monotonic);
+    _ = try image.rematerializeClosures(a, sb.store, sb.table);
+
+    // json comes entirely from the image; the rebuilt jStr wrapper must run.
+    // Pre-fix this returned nil (the wrapper had no object-table entry).
+    const sb_str = evalLine(sb, lang_b, "[Json stringify: #[1 2 3]]", a);
+    try testing.expect(strings.isString(sb_str));
+    try testing.expectEqualStrings("[1,2,3]", strings.bytes(sb_str));
+}
+
 // Phase 9.5.6 — the `Module load:` wire from REPL source. Proves the full
 // chain: the global `Module` resolves (a binding in the GLOBALS parent scope),
 // `load:` dispatches to ffi_module.moduleLoad, and a wrapped FFI fn is callable
