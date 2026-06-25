@@ -190,27 +190,14 @@ pub fn isStructType(r: Ref) bool {
     return vt_ptr.* == ref_mod.mkEid(kernel_eids.STRUCT_TYPE_VT);
 }
 
-/// Phase 9.5.5 variant — allocate the boxed pointer AND assert a
-/// `[box_eid :ffi-owner <mod_eid>]` fact tying it to its owning Module.
-/// The box-EID is stashed in slot 1 so `pushArg`'s stale check can hop
-/// directly from a pointer Ref to its fact-store entity without a
-/// reverse-lookup index.
-pub fn mkFfiPtrOwned(
-    allocator: std.mem.Allocator,
-    store: *@import("fact_store.zig").FactStore,
-    table: *@import("object_table.zig").ObjectTable,
-    addr: usize,
-    owner_mod_eid: u64,
-) !Ref {
-    const obj_ptr = try object.allocObject(boxAlloc(allocator), ref_mod.mkEid(kernel_eids.FFI_PTR_VT), 3);
-    object.setSlot(obj_ptr, 0, @as(u64, @intCast(addr)));
-    const box_eid = table.alloc();
-    object.setSlot(obj_ptr, 1, box_eid);
-    object.setSlot(obj_ptr, 2, 0); // not an out-param cell
-    _ = try store.assert(box_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.FFI_PTR_VT), kernel_eids.M_BOOTSTRAP);
-    _ = try store.assert(box_eid, kernel_eids.ATTR_FFI_OWNER, ref_mod.mkEid(owner_mod_eid), kernel_eids.M_BOOTSTRAP);
-    try table.put(box_eid, object.toRef(obj_ptr));
-    return object.toRef(obj_ptr);
+/// Set the owning box-EID (slot 1) of an FFI-ptr box. Fact-free: the matching
+/// `[box :vtable FFI_PTR_VT]` / `[box :ffi-owner mod]` registration lives at the
+/// FFI layer (`ffi.mkFfiPtrOwned`), so `boxed` (the identity layer) carries no
+/// dependency on the fact store. (W6 cut #1: this is what broke the old
+/// `boxed`↔`fact_store` import cycle — see `docs/20a`.)
+pub fn setFfiPtrBoxEid(r: Ref, box_eid: u64) void {
+    std.debug.assert(isFfiPtr(r));
+    object.setSlot(object.fromRef(r), 1, box_eid);
 }
 
 /// Read slot 1 of an FFI-ptr box. Returns 0 if the box is unowned.

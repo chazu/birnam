@@ -574,6 +574,29 @@ fn isStalePtr(store: *fact_store_mod.FactStore, kind: Kind, value: Ref) bool {
 /// per the return `ffi_type`, so a single `@bitCast` to i64 is correct for both
 /// signed and unsigned widths — the old per-width extend hacks are gone.
 ///
+/// Allocate an owned FFI-pointer box and register it as a fact-entity:
+/// `[box :vtable FFI_PTR_VT]` + `[box :ffi-owner <mod>]` so Module unload can
+/// find and stale it. The box-EID is stashed in slot 1 so `pushArg`'s stale
+/// check can hop from a pointer Ref straight to its entity without a reverse
+/// index. W6 cut #1: this fact-registration lives at the FFI layer (L4); `boxed`
+/// (L1) only allocates the fact-free box (`mkFfiPtr` + `setFfiPtrBoxEid`), which
+/// is what broke the old `boxed`↔`fact_store` cycle (see `docs/20a`).
+pub fn mkFfiPtrOwned(
+    allocator: std.mem.Allocator,
+    store: *fact_store_mod.FactStore,
+    table: *object_table_mod.ObjectTable,
+    addr: usize,
+    owner_mod_eid: u64,
+) !Ref {
+    const r = try boxed.mkFfiPtr(allocator, addr);
+    const box_eid = table.alloc();
+    boxed.setFfiPtrBoxEid(r, box_eid);
+    _ = try store.assert(box_eid, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.FFI_PTR_VT), kernel_eids.M_BOOTSTRAP);
+    _ = try store.assert(box_eid, kernel_eids.ATTR_FFI_OWNER, ref_mod.mkEid(owner_mod_eid), kernel_eids.M_BOOTSTRAP);
+    try table.put(box_eid, r);
+    return r;
+}
+
 /// `owner_mod_eid` (Phase 9.5.5): when non-zero, a returned `.pointer` is boxed
 /// via `mkFfiPtrOwned` so Module unload can find + stale it; else unowned.
 fn unwrapReturn(
@@ -599,7 +622,7 @@ fn unwrapReturn(
         .pointer => {
             const addr_ret: usize = @intCast(rbuf);
             if (owner_mod_eid != 0 and store != null and table != null) {
-                return boxed.mkFfiPtrOwned(allocator, store.?, table.?, addr_ret, owner_mod_eid) catch ref_mod.NIL;
+                return mkFfiPtrOwned(allocator, store.?, table.?, addr_ret, owner_mod_eid) catch ref_mod.NIL;
             }
             return boxed.mkFfiPtr(allocator, addr_ret) catch ref_mod.NIL;
         },

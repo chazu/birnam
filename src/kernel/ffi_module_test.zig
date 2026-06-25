@@ -369,7 +369,7 @@ test "pushArg refuses stale pointers — dispatch returns NIL" {
 
     // Mint an owned FFI pointer that lives long enough.
     const cstr = "birnam";
-    const owned_ptr = try boxed.mkFfiPtrOwned(a, fix.store, fix.table, @intFromPtr(cstr.ptr), mod_eid);
+    const owned_ptr = try ffi.mkFfiPtrOwned(a, fix.store, fix.table, @intFromPtr(cstr.ptr), mod_eid);
     const box_eid = boxed.ffiPtrBoxEid(owned_ptr);
 
     // Pre-stale: dispatch returns 6.
