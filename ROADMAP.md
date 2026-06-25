@@ -3110,9 +3110,12 @@ not reach into L3.
   **RESOLVED 2026-06-25 — see D5.2 below: dispatch *is* `get`; caches are
   transparent memoization; the separate-projection-as-layer reading is rejected as
   anti-Piumarta.**
-- **Q3 — how far to policy-ize.** Minimum: inject index/history/tier policy
-  (enables D4's fact-store-as-arrangement + live index-strategy swap). Maximum:
-  the whole 5-index arrangement lives above the frozen line. Pick the cut.
+- **Q3 — how far to policy-ize. RESOLVED 2026-06-25 — minimum cut taken.**
+  `fact_store.setTierPolicy(fn(u64) AttrTier)` makes the full per-attribute
+  storage tier an injected policy (bootstrap wires `codeTierPolicy`),
+  generalizing the old code/non-code bool predicate — "tier is swappable policy
+  over the one store." The **maximum** (the whole 5-index arrangement injectable)
+  stays deferred: speculative until a workload demands it. See `docs/20a` cut #5.
 
 **What D5 buys (and does not).** Buys: a genuinely minimal frozen floor; a
 *replaceable* fact layer (malleability ↑); a clean siphon bootstrap (identity

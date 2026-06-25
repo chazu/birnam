@@ -111,10 +111,11 @@ names-as-facts at L4. After this, all of L1 (`object_table` + `interner` +
 
 ## The W6 cut-list (ordered by difficulty — the plan spine)
 
-Status as of 2026-06-25: cuts #1–#4 **SHIPPED** (commits `979bef3`, `903c94c`,
-`e06b86a`, `c1e81d6`). All of L1 is now fact-free and dispatch (L2) is
-fact-write-free; the only remaining L2→L3 reads are dispatch's method-*body*
-gets (cluster 2), kept by design per D5.2 (memoized by the `Closure`).
+Status as of 2026-06-25: **all five cuts SHIPPED** (commits `979bef3`,
+`903c94c`, `e06b86a`, `c1e81d6`, + the cut-#5 tier-policy commit). All of L1 is
+fact-free and dispatch (L2) is fact-write-free; the only remaining L2→L3 reads
+are dispatch's method-*body* gets (cluster 2), kept by design per D5.2 (memoized
+by the `Closure`). **W6 is structurally complete.**
 
 1. **Break the `boxed`↔`fact_store` cycle** — **DONE** (`979bef3`). FFI-owner-box
    registration moved to `ffi.mkFfiPtrOwned` (L4); `boxed` keeps the fact-free
@@ -134,10 +135,12 @@ gets (cluster 2), kept by design per D5.2 (memoized by the `Closure`).
    `dispatch.zig` (L2) to a new `reify.zig` (L3+). `dispatch.zig` now writes zero
    facts. (Core dispatch was already write-free; this relocates the one on-demand
    writer to its correct layer.)
-5. **Generalize the policy injection (Q3)** — **OPEN.** Extend the `AttrTier` /
-   cardinality injected-predicate pattern so index-set / history / tier is
-   swappable (the Q1 "primitives frozen, policy injectable" line). The remaining
-   W6 work; parkable.
+5. **Generalize the policy injection (Q3)** — **DONE** (minimal increment).
+   `fact_store` gained `setTierPolicy(fn(u64) AttrTier)` — the full per-attribute
+   storage tier is now an injected policy (bootstrap wires `codeTierPolicy`),
+   generalizing the old code/non-code bool predicate. "Tier is swappable policy
+   over the one store" (`docs/10a`). The *maximum* form (the whole 5-index
+   arrangement injectable) stays deferred — speculative until a workload needs it.
 
 ## Mapping to the ADR's open questions
 
