@@ -4,6 +4,7 @@ const std = @import("std");
 const testing = std.testing;
 const compiler = @import("compiler.zig");
 const dispatch = @import("dispatch.zig");
+const reify = @import("reify.zig");
 const bytecode = @import("bytecode.zig");
 const fact_store_mod = @import("fact_store.zig");
 const object_table_mod = @import("object_table.zig");
@@ -121,7 +122,7 @@ var g_reify_table: ?*object_table_mod.ObjectTable = null;
 var g_reify_allocator: std.mem.Allocator = undefined;
 
 fn reifyAtCallImpl(_: *@import("send.zig").Send, _: [*]const ref_mod.Ref, _: usize) callconv(.c) ref_mod.Ref {
-    g_reified_eids = dispatch.reifyStack(g_reify_allocator, g_reify_store.?, g_reify_table.?, MODULE_EID) catch &[_]u64{};
+    g_reified_eids = reify.reifyStack(g_reify_allocator, g_reify_store.?, g_reify_table.?, MODULE_EID) catch &[_]u64{};
     return ref_mod.NIL;
 }
 
