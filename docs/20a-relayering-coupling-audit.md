@@ -111,17 +111,33 @@ names-as-facts at L4. After this, all of L1 (`object_table` + `interner` +
 
 ## The W6 cut-list (ordered by difficulty — the plan spine)
 
-1. **Break the `boxed`↔`fact_store` cycle** — move FFI-owner-box registration out
-   of `boxed` (L1) up to `ffi` (L4). Mechanical; removes a real circular dep.
-2. **Purify the interner** — bijection-only (L1); name-fact publication moves to
-   an injected hook / L4. L1 becomes fact-free.
-3. **Design the dispatch↔facts seam (Q2)** — projection-populated (a) vs.
-   logical-boundary (b). The only deep work; the other items are bookkeeping.
-4. **Separate frame reification** — move the `ATTR_FRAME_*` writes to an explicit
-   L3+ continuation-reification path, out of core dispatch.
-5. **Generalize the policy injection (Q3)** — extend the `AttrTier` / cardinality
-   injected-predicate pattern so index-set / history / tier is swappable (the Q1
-   "primitives frozen, policy injectable" line).
+Status as of 2026-06-25: cuts #1–#4 **SHIPPED** (commits `979bef3`, `903c94c`,
+`e06b86a`, `c1e81d6`). All of L1 is now fact-free and dispatch (L2) is
+fact-write-free; the only remaining L2→L3 reads are dispatch's method-*body*
+gets (cluster 2), kept by design per D5.2 (memoized by the `Closure`).
+
+1. **Break the `boxed`↔`fact_store` cycle** — **DONE** (`979bef3`). FFI-owner-box
+   registration moved to `ffi.mkFfiPtrOwned` (L4); `boxed` keeps the fact-free
+   box (`mkFfiPtr` + `setFfiPtrBoxEid`). The real circular dep is gone.
+2. **Purify the interner** — **DONE** (`903c94c`). Dependency inversion: `store:
+   anytype` + dropped the `fact_store` import. L1 is fact-free. The `:name` cell
+   publication stays (correct per D5.1 — the name authority making names
+   queryable, not a dependency of the bijection on facts). The full
+   injected-hook form was rejected: it rippled to ~280 call sites for no
+   additional benefit under the cell model.
+3. **~~Design~~ Formalize the dispatch↔facts seam (Q2)** — **DONE** (`e06b86a`),
+   **shrunk by D5.2**. Not (a)-vs-(b): dispatch *is* `get`. All cold-path
+   resolution reads in `send.zig` route through a single `resolve(entity, attr)`
+   seam (the closed question set); `mcache`/object-table are its memoizations.
+   No separate populated projection (rejected as anti-Piumarta).
+4. **Separate frame reification** — **DONE** (`c1e81d6`). `reifyStack` moved from
+   `dispatch.zig` (L2) to a new `reify.zig` (L3+). `dispatch.zig` now writes zero
+   facts. (Core dispatch was already write-free; this relocates the one on-demand
+   writer to its correct layer.)
+5. **Generalize the policy injection (Q3)** — **OPEN.** Extend the `AttrTier` /
+   cardinality injected-predicate pattern so index-set / history / tier is
+   swappable (the Q1 "primitives frozen, policy injectable" line). The remaining
+   W6 work; parkable.
 
 ## Mapping to the ADR's open questions
 
