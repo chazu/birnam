@@ -91,6 +91,11 @@ order.
   passive guard: why deferred-publish batching fails (parse reads the store
   mid-parse), the read-through transient-index design, its CHAMP-core
   requirement, atomicity via copy-on-first-touch, and the safety gate.
+- **W1: full-image save/load (scoping plan)** — `19c-w1-full-image-plan.md`
+  The plan for ADR-image-1 W1: why it's not "delete one line" (the native
+  fn-ptr residue), what `--boot-image` does today + its json/net gaps, the
+  full-fact-image + native-relink-by-name design, and the staged
+  (measure → write → relink → default → cleanup) implementation.
 
 ## Part 2 — Implementation (file by file)
 
