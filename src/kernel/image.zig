@@ -28,6 +28,7 @@ const strings = @import("strings.zig");
 const boxed = @import("boxed.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const object_table = @import("object_table.zig");
+const object = @import("object.zig");
 const closure_mod = @import("closure.zig");
 const dispatch = @import("dispatch.zig");
 const bytecode = @import("bytecode.zig");
@@ -141,6 +142,82 @@ fn valueSupported(v: Ref) bool {
         return true;
     }
     return false;
+}
+
+/// W1 Stage-0 diagnostic (docs/19c). Walks the whole fact-set and reports what a
+/// full-fact image would contain: by provenance and value-kind, separating the
+/// facts that already serialize from the irreducible residue (unsupported
+/// pointer values — native closures / FFI ptrs / struct types). No state change;
+/// gated by `BIRNAM_RESIDUE_DUMP` in the shell. Caller owns the returned report.
+pub fn characterizeResidue(
+    allocator: std.mem.Allocator,
+    store: *fact_store.FactStore,
+    interner: *const interner_mod.Interner,
+) ![]u8 {
+    var total: u64 = 0;
+    var m_user: u64 = 0;
+    var non_user: u64 = 0;
+    var non_user_ser: u64 = 0;
+    var residue: u64 = 0;
+
+    var by_attr = std.AutoHashMap(u64, u64).init(allocator);
+    defer by_attr.deinit();
+    var by_kind = std.AutoHashMap(u64, u64).init(allocator);
+    defer by_kind.deinit();
+
+    var it = store.meatIter();
+    while (it.next()) |entry| {
+        total += 1;
+        if (entry.m == kernel_eids.M_USER) {
+            m_user += 1;
+            continue;
+        }
+        non_user += 1;
+        // Captures are pointer-valued but the writer encodes them (VK_CAPTURES),
+        // so they are NOT residue.
+        const serializable = valueSupported(entry.v) or
+            (entry.a == kernel_eids.ATTR_METHOD_CAPTURES_PTR and ref_mod.isPointer(entry.v));
+        if (serializable) {
+            non_user_ser += 1;
+            continue;
+        }
+        residue += 1;
+        const ga = try by_attr.getOrPut(entry.a);
+        if (!ga.found_existing) ga.value_ptr.* = 0;
+        ga.value_ptr.* += 1;
+        var kind: u64 = 0; // 0 = non-pointer / unknown
+        if (ref_mod.isPointer(entry.v)) {
+            const vt = object.vtableOf(object.fromRef(entry.v));
+            if (ref_mod.isEid(vt)) kind = ref_mod.untagEid(vt);
+        }
+        const gk = try by_kind.getOrPut(kind);
+        if (!gk.found_existing) gk.value_ptr.* = 0;
+        gk.value_ptr.* += 1;
+    }
+
+    var buf = std.ArrayList(u8){};
+    errdefer buf.deinit(allocator);
+    const w = buf.writer(allocator);
+    try w.writeAll("\n=== W1 Stage-0 residue characterization (docs/19c) ===\n");
+    try w.print("total facts:                {d}\n", .{total});
+    try w.print("  M_USER (written today):   {d}\n", .{m_user});
+    try w.print("  non-M_USER (filtered):    {d}\n", .{non_user});
+    try w.print("    would serialize:        {d}\n", .{non_user_ser});
+    try w.print("    RESIDUE (native ptrs):  {d}\n", .{residue});
+    try w.writeAll("\nresidue by attribute:\n");
+    var ait = by_attr.iterator();
+    while (ait.next()) |kv| {
+        const name = interner.nameOf(kv.key_ptr.*) orelse "?";
+        try w.print("  {s} (eid {d}): {d}\n", .{ name, kv.key_ptr.*, kv.value_ptr.* });
+    }
+    try w.writeAll("\nresidue by value vtable (kind):\n");
+    var kit = by_kind.iterator();
+    while (kit.next()) |kv| {
+        const name = if (kv.key_ptr.* == 0) "<non-pointer or vtable-less native box>" else (interner.nameOf(kv.key_ptr.*) orelse "?");
+        try w.print("  vt {s} (eid {d}): {d}\n", .{ name, kv.key_ptr.*, kv.value_ptr.* });
+    }
+    try w.writeAll("=== end residue characterization ===\n\n");
+    return buf.toOwnedSlice(allocator);
 }
 
 /// Encode one value (assumes `valueSupported(v)`). Recursive for RRB.

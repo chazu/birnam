@@ -1090,6 +1090,16 @@ pub fn main() !void {
             }
         }
     }
+    // -- W1 Stage-0 diagnostic (docs/19c) ------------------------------------
+    // `BIRNAM_RESIDUE_DUMP=1` characterizes what a full-fact image would carry
+    // (what the M_USER write filter drops, and the irreducible native-ptr
+    // residue) against the real full-module boot, then exits. Off by default.
+    if (std.process.getEnvVarOwned(sa, "BIRNAM_RESIDUE_DUMP")) |_| {
+        const report = image.characterizeResidue(allocator, store, interner) catch "";
+        stderrPrint("{s}", .{report});
+        std.process.exit(0);
+    } else |_| {}
+
     // -- LSP server mode -----------------------------------------------------
     // `birnam --lsp` becomes a Language Server over stdio instead of a REPL.
     // stdout is reserved for the JSON-RPC protocol (all shell chatter is on

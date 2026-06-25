@@ -104,13 +104,37 @@ relink hook lands, then switch). This makes W1, W5, and D5.1 one mechanism.
 
 ## 4. Staged implementation (green checkpoint at each stage)
 
-**Stage 0 — characterize the residue (measurement, no behavior change).**
-Instrument the writer to count, *with the filter hypothetically off*, how many
-facts would write vs. be skipped as unsupported-pointer values, grouped by
-attribute. Output: the exact set of CODE facts whose values are bare pointers
-(the true native residue) vs. those that already serialize. Confirms the §1
-claim and sizes Stage 2. *Test:* a unit test asserting the residue set is
-exactly {native-method closures, FFI ptrs, struct types} — no surprises.
+**Stage 0 — characterize the residue (measurement, no behavior change). DONE
+2026-06-25.** Added `image.characterizeResidue` + a `BIRNAM_RESIDUE_DUMP`
+shell hook (env-gated, exits after dumping) that walks the full fact-set of a
+real default boot (peg+lang+json+net+stdlib). Result:
+
+```
+total facts:                8903
+  M_USER (written today):   5570
+  non-M_USER (filtered):    3333   <- what W1 newly writes
+    would serialize:        3324
+    RESIDUE (native ptrs):     9   <- the irreducible part
+residue by attribute:  function-impl (7), reader-impl (2)
+```
+
+**Findings — a clean go-signal for Model A:**
+- The residue is **9 facts**, far smaller than feared, and *not* what §1 first
+  guessed. Method bindings, bytecode, AST, vtables, **and json's `defineRule:`
+  grammar** are all among the **3324 that serialize cleanly** — so a full image
+  carries the grammars, closing the json gap by construction.
+- The 9 residue facts are exactly two native-impl attributes —
+  **`ATTR_FN_IMPL`** (datalog predicate native impls; `predicate.zig:115`
+  asserts `mkPointer(box)`) and **`ATTR_READER_IMPL`** (reader-macro native
+  impls) — bare boxes wrapping C function pointers. No surprise kinds.
+- Note: the *object-table* native-method closures (behind eid-valued
+  `[vt sel closure_eid]` bindings) are **not facts**, so they don't appear here;
+  their reconstruction is the other half of Stage 2 (relink, alongside
+  `rematerializeClosures` for bytecode), not a fact-serialization concern.
+
+**Consequence for the plan:** Stage 2's fact-value residue is tiny and uniform —
+9 native-impl pointers on 2 attributes, relinked by name exactly like FFI wraps.
+The diagnostic stays in-tree as a Stage-1+ verification tool.
 
 **Stage 1 — serialize the full fact-set (writer).** Replace the `M_USER` filter
 with a write of all facts (behind `FORMAT_VERSION` bump → v7; keep v5/v6 read
