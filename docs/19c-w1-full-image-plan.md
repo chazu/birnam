@@ -136,11 +136,17 @@ residue by attribute:  function-impl (7), reader-impl (2)
 9 native-impl pointers on 2 attributes, relinked by name exactly like FFI wraps.
 The diagnostic stays in-tree as a Stage-1+ verification tool.
 
-**Stage 1 — serialize the full fact-set (writer).** Replace the `M_USER` filter
-with a write of all facts (behind `FORMAT_VERSION` bump → v7; keep v5/v6 read
-compat). Bytecode/AST/vtable/grammar facts now persist. *Test:* save→load a
-state with pure-birnam methods + a defineRule: grammar; assert all CODE facts
-round-trip (count + spot-check), image size growth measured and logged.
+**Stage 1 — serialize the full fact-set (writer). DONE 2026-06-25.** Added
+`image.writeFull` (and shared `writeImpl(full)`); `write` stays M_USER-only so
+the default `:save`/boot path is **unchanged**. A full image stamps
+`FULL_FORMAT_VERSION = 7` (byte-identical layout to v6; the version is a
+load-time signal "self-contained, relink don't recompile" for Stage 3). Reader
+accepts v5..v7. *Tests:* unit round-trip — `write` drops a non-M_USER fact,
+`writeFull` round-trips it (eid value intact), versions stamped 6 vs 7
+(image_test 18/18). End-to-end on the real boot (`BIRNAM_RESIDUE_DUMP`):
+**8894 facts written, 9 skipped (residue), 314 KB** = exactly `8903 − 9` — the
+whole tower (code + data) in ~307 KB. v6 path + all examples unaffected (lang
+79/79).
 
 **Stage 2 — native relink on load (the core).** Generalize the relink pass:
 every native-method-bearing module records a relinkable descriptor (module name

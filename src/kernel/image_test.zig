@@ -61,6 +61,36 @@ test "image: immediate-valued facts round-trip with counters" {
     try testing.expectEqual(src.currentTx(), dst.currentTx());
 }
 
+test "image (W1 Stage 1): writeFull persists all provenance; write stays M_USER-only" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var src = fs.FactStore.init(a);
+    _ = try src.assert(E_A, A_NUM, vi(42), M_USER); // DATA
+    _ = try src.assert(E_B, A_REF, ref.mkEid(E_A), M_CODE); // CODE (non-M_USER)
+
+    // v6 hybrid write: only the M_USER fact persists; the CODE fact is gated out.
+    const v6 = try image.write(a, &src, 256, .{}, null);
+    try testing.expectEqual(@as(u64, 1), v6.facts_written);
+    try testing.expectEqual(@as(u32, image.FORMAT_VERSION), std.mem.readInt(u32, v6.bytes[8..][0..4], .little));
+
+    var dst6 = fs.FactStore.init(a);
+    _ = try image.load(&dst6, v6.bytes, null);
+    try testing.expectEqual(vi(42), dst6.currentValue(E_A, A_NUM).?);
+    try testing.expect(dst6.currentValue(E_B, A_REF) == null); // CODE fact dropped
+
+    // v7 full write: BOTH facts persist regardless of provenance, and round-trip.
+    const v7 = try image.writeFull(a, &src, 256, .{}, null);
+    try testing.expectEqual(@as(u64, 2), v7.facts_written);
+    try testing.expectEqual(@as(u32, image.FULL_FORMAT_VERSION), std.mem.readInt(u32, v7.bytes[8..][0..4], .little));
+
+    var dst7 = fs.FactStore.init(a);
+    _ = try image.load(&dst7, v7.bytes, null);
+    try testing.expectEqual(vi(42), dst7.currentValue(E_A, A_NUM).?);
+    try testing.expectEqual(ref.mkEid(E_A), dst7.currentValue(E_B, A_REF).?); // CODE fact round-trips
+}
+
 test "image (R1a): basis_t stays a monotonic floor >= next_tx after load" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

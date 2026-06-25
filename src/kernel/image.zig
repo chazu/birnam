@@ -52,10 +52,18 @@ pub const Interner = interner_mod.Interner;
 ///     being skipped.
 pub const FORMAT_VERSION: u32 = 6;
 
-/// Oldest on-disk version this loader still accepts. v5 and v6 share every
-/// section layout — v6 only ADDS the VK_MAP value kind in the facts stream — so
-/// a v6 loader reads a v5 image verbatim (a v5 image just has no VK_MAP bytes).
-/// Keeps pre-v6 images (e.g. a baked `aot_embed.bim`) loadable.
+/// v7: FULL image (W1, docs/19c) — carries the *whole* fact-set, not just
+/// `M_USER` data. Byte-identical section layout to v6 (same fact/value
+/// encoding); the version is purely a LOAD-time signal: v7 = "self-contained,
+/// do not re-init modules to reconstruct CODE — replay all facts + relink the
+/// native residue" (the Stage-2/3 loader branches on `version >= 7`). A v6
+/// (M_USER-only) image still loads via the hybrid path. Written by `writeFull`.
+pub const FULL_FORMAT_VERSION: u32 = 7;
+
+/// Oldest on-disk version this loader still accepts. v5..v7 share every section
+/// layout — later versions only ADD value kinds / more facts — so a newer loader
+/// reads an older image verbatim. Keeps pre-v6 images (e.g. a baked
+/// `aot_embed.bim`) loadable.
 pub const MIN_LOAD_VERSION: u32 = 5;
 
 /// Single-writer transactor shape (ADR-11 #7). Recorded in the manifest so
@@ -328,6 +336,8 @@ fn readValue(store: *FactStore, cur: *Cursor) ReadError!Ref {
 /// runtime counters. The caller supplies `next_eid` (read from its object
 /// table) so this module need not depend on the allocator, and `manifest`
 /// (module deps + versions). Returns owned bytes; caller frees.
+/// Serialize the M_USER fact-set (DATA only) — the hybrid v6 image. CODE is
+/// reconstructed on load by re-running module init.
 pub fn write(
     allocator: std.mem.Allocator,
     store: *const FactStore,
@@ -335,11 +345,36 @@ pub fn write(
     manifest: Manifest,
     interner: ?*const Interner,
 ) WriteError!WriteResult {
+    return writeImpl(allocator, store, next_eid, manifest, interner, false);
+}
+
+/// Serialize the WHOLE fact-set (W1, docs/19c) — a self-contained v7 image.
+/// Carries CODE (vtables, methods, bytecode, AST, grammars) so load needs no
+/// module recompile; only the tiny native-ptr residue (function-impl /
+/// reader-impl, ~9 facts) is skipped and relinked by name on load (Stage 2).
+pub fn writeFull(
+    allocator: std.mem.Allocator,
+    store: *const FactStore,
+    next_eid: u64,
+    manifest: Manifest,
+    interner: ?*const Interner,
+) WriteError!WriteResult {
+    return writeImpl(allocator, store, next_eid, manifest, interner, true);
+}
+
+fn writeImpl(
+    allocator: std.mem.Allocator,
+    store: *const FactStore,
+    next_eid: u64,
+    manifest: Manifest,
+    interner: ?*const Interner,
+    full: bool,
+) WriteError!WriteResult {
     var buf = std.ArrayList(u8){};
     errdefer buf.deinit(allocator);
 
     try buf.appendSlice(allocator, &MAGIC);
-    try appendU32(allocator, &buf, FORMAT_VERSION);
+    try appendU32(allocator, &buf, if (full) FULL_FORMAT_VERSION else FORMAT_VERSION);
 
     // Embedded manifest section (self-describing: no sidecar file).
     try appendU32(allocator, &buf, manifest.bytecode_format_version);
@@ -377,12 +412,13 @@ pub fn write(
     var skipped: u64 = 0;
 
     // `meat` keys facts by module first, giving (m, e, a, v) directly.
-    // Provenance split (Phase 12.0): persist DATA facts only. CODE facts
-    // (bootstrap + module-init installs) are reconstructed on load by
-    // re-running module init, so they are never serialized.
+    // v6 (hybrid): persist DATA facts only — CODE is reconstructed on load by
+    // re-running module init. v7 (full, W1): persist EVERY fact regardless of
+    // provenance; CODE round-trips, so load needs no recompile. `m` stays a
+    // provenance TAG either way — it is only a persistence GATE in the v6 path.
     var m_it = store.meatIter();
     while (m_it.next()) |entry| {
-        if (entry.m != kernel_eids.M_USER) continue;
+        if (!full and entry.m != kernel_eids.M_USER) continue;
 
         // Attribute-aware: a :method-captures-ptr value is a bare vt-less
         // heap pointer to a CaptureSpecArray — serialize its contents so
@@ -441,7 +477,7 @@ fn loadImpl(comptime frozen: bool, store: *FactStore, bytes: []const u8, interne
     const magic = try cur.take(8);
     if (!std.mem.eql(u8, magic, &MAGIC)) return error.BadMagic;
     const version = try cur.readU32();
-    if (version < MIN_LOAD_VERSION or version > FORMAT_VERSION) return error.BadVersion;
+    if (version < MIN_LOAD_VERSION or version > FULL_FORMAT_VERSION) return error.BadVersion;
 
     // Embedded manifest. Module names + the dep slice are allocated in the
     // store's allocator so they outlive `bytes`.
@@ -517,7 +553,7 @@ pub fn peekManifest(allocator: std.mem.Allocator, bytes: []const u8) ReadError!M
     const magic = try cur.take(8);
     if (!std.mem.eql(u8, magic, &MAGIC)) return error.BadMagic;
     const version = try cur.readU32();
-    if (version < MIN_LOAD_VERSION or version > FORMAT_VERSION) return error.BadVersion;
+    if (version < MIN_LOAD_VERSION or version > FULL_FORMAT_VERSION) return error.BadVersion;
     const bc_version = try cur.readU32();
     const thread_mode_raw = (try cur.take(1))[0];
     if (thread_mode_raw > @intFromEnum(ThreadMode.datomic)) return error.BadManifest;
