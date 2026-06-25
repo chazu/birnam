@@ -10,6 +10,22 @@ platforms build from source (`zig build install`, Zig 0.15.1).
 _Notes for the next release land here; `scripts/release.sh` promotes this
 heading to the new version (dated) and uses the section as the release notes._
 
+### Added
+- **`--boot-image <path>` (experimental): boot from a saved image instead of
+  recompiling the birnam modules from source.** Loads only the native prefix
+  (`peg`, `lang` — the parser/compiler) and replays the image, reusing the
+  proven `loadFromFile` + `rematerializeClosures` + `resolveAllPending` path;
+  produce the image with a normal boot + `:save`. Boot-only peak drops ~656 MB →
+  ~241 MB (2.7×), and pure-birnam modules round-trip from the image alone (e.g.
+  `Stats sum:`). Opt-in — normal boot is unaffected. Known gap: json's `parse:`
+  stays broken under `--boot-image` (json builds a stateful PEG grammar at its
+  dylib init, which boot-image skips and which does not yet round-trip); `net`
+  (a Zig FFI module) is also not re-inited yet.
+- New docs: **the six fact/object indexes from first principles**
+  (`docs/11a-the-six-indexes.md`), the **code-fact tiers** build plan
+  (`docs/19a-code-fact-tiers-plan.md`), and the **transient-load RFC**
+  (`docs/19b-transient-load-rfc.md`).
+
 ### Changed
 - **File-in now prunes, so loading a large program is memory-bounded.** Loading
   + compiling a non-trivial program (the `logue` roguelike: ~4.4 GB) accumulated
@@ -26,6 +42,44 @@ heading to the new version (dated) and uses the section as the release notes._
   with no live snapshot, and keep all reachable state — only unreachable
   `M_USER` garbage is swept. New doc: `docs/19-load-memory.md`. (Two append-only
   `IdApi` hooks: `maybe_prune`, `prune_now`.)
+- **Compaction tightens the index epoch (~12× smaller steady-state index).**
+  `compact` rebuilds the five indexes via per-fact `compactInsert`, which
+  path-copies all five HAMTs per fact; the abandoned spine nodes accumulate in
+  the fresh epoch and only release at the *next* compaction (which makes its own
+  equal pile), so the live epoch never shrinks below one rebuild's worth of
+  garbage (measured ~90%: `logue` held a 168 MB index epoch for ~14 MB of live
+  structure). `compact` now deep-clones the live roots into a fresh arena and
+  frees the garbagey one (`Hamt.cloneInto` / `Rrb.cloneInto` + `tightenLiveEpoch`)
+  — `logue`'s index epoch drops 168 MB → 14 MB (bare boot 74 → 6 MB). Best-effort:
+  a failed tighten leaves a valid larger epoch, never failing the compaction.
+- **Code-fact storage tiers — AST/bytecode facts are cheaper.** AST-node and
+  bytecode metadata are write-once and never reverse-ref-walked, so they now
+  drop their per-fact RRB history (a `:no-history` tier) and the never-read VAET
+  reverse-ref index — dropping code facts from five indexes to four and
+  collapsing their retained history. Reads are unchanged (reverse-refs run on the
+  retained AVET). A per-attribute policy (`kernel_eids.isCodeAttr`, injected like
+  the cardinality schema) drives it; deliberately excludes the shared
+  `:vtable`(19) attribute. Plan: `docs/19a-code-fact-tiers-plan.md`.
+
+### Fixed
+- **Image `:save`/`:load` of user-defined objects no longer breaks on a fresh
+  load.** `[Object new]` tagged the instance's and its per-object vtable's
+  structural facts (`:vtable`, `:delegate`) with the lang module's eid — CODE
+  provenance — but the image persists only `M_USER` (CODE is reconstructed by
+  module init). So a fresh process that loaded an image got the object's method
+  facts (which were already `M_USER`) but not its vtable/delegate chain, and
+  every send to it returned nil. The object is runtime data, so its structural
+  facts now ride `M_USER` and round-trip — verified by defining a user object,
+  saving, and calling it in a fresh `:load` process.
+- **Persistent maps now serialize into images (`VK_MAP`).** The image writer
+  skipped any fact whose value (or RRB element) was an `ASSOC_VT` map, so a map
+  literal embedded in a method's `:constant-pool` or an AST `:ast-value` was
+  silently dropped — breaking methods that used it on a fresh load. Map entries
+  now serialize recursively (key + value). On-disk format → v6, with v5 still
+  accepted (the layouts are identical apart from the added value kind).
+- **Doc: `rematerializeClosures` no longer claims captures aren't serialized.**
+  The note was stale — capturing methods' `:method-captures-ptr` specs already
+  round-trip via `VK_CAPTURES` (covered by an existing test).
 
 ## [0.7.3] — 2026-06-19
 
