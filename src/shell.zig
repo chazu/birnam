@@ -945,6 +945,7 @@ pub fn main() !void {
     var lsp_mode = false;
     var overrides_flag: ?[]const u8 = null;
     var eval_expr: ?[]const u8 = null;
+    var boot_image: ?[]const u8 = null;
     while (args.next()) |arg| {
         if (seen_dashdash) {
             try prog_args.append(allocator, try allocator.dupe(u8, arg));
@@ -972,6 +973,10 @@ pub fn main() !void {
         }
         if (std.mem.eql(u8, arg, "-e") or std.mem.eql(u8, arg, "--eval")) {
             if (args.next()) |e| eval_expr = try sa.dupe(u8, e);
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--boot-image")) {
+            if (args.next()) |p| boot_image = try sa.dupe(u8, p);
             continue;
         }
         if (std.mem.endsWith(u8, arg, ".birnam")) {
@@ -1016,8 +1021,18 @@ pub fn main() !void {
     const overrides = overrides_list.items;
 
     // Pick the source of module names per the precedence above.
+    // `--boot-image` overrides everything: load only the native (Zig) prefix
+    // — the parser/compiler — then replay the image, which carries the compiled
+    // pure-birnam modules (json/stdlib) as M_USER facts. This skips recompiling
+    // them from source every boot. The native prefix must init in the SAME
+    // order the image was saved with, so its CODE eids land below the image's
+    // M_USER eids (eid coordination). net is a Zig module and is NOT yet
+    // re-inited here (first cut — mirrors AOT-static; sockets unavailable).
+    const native_prefix = [_][]const u8{ "peg", "lang" };
     const from_argv = argv_modules.items.len > 0;
-    const module_names: []const []const u8 = if (from_argv)
+    const module_names: []const []const u8 = if (boot_image != null)
+        &native_prefix
+    else if (from_argv)
         argv_modules.items
     else if (bare)
         &.{}
@@ -1049,11 +1064,24 @@ pub fn main() !void {
         stderrPrint("[birnam] no modules loaded — pass one or more module names, or add a birnam.toml\n", .{});
     }
 
+    // Boot-image replay: after the native prefix is up, `:load` the image. It
+    // reuses the proven post-load path (loadFromFile + rematerializeClosures +
+    // resolveAllPending), so the compiled birnam modules come back as live
+    // bytecode methods with fresh in-process fn-ptr closures — no recompile.
+    if (boot_image) |bimg| {
+        var buf: [4096]u8 = undefined;
+        const cmd = std.fmt.bufPrint(&buf, ":load {s}", .{bimg}) catch "";
+        if (cmd.len > 0) {
+            stderrPrint("[birnam] boot-image: replaying {s}\n", .{bimg});
+            _ = handleImageCommand(cmd, allocator, store, table, interner, &manager);
+        }
+    }
+
     // Auto-load a project snapshot named by birnam.toml — but only when the
     // module set came from config/default (an explicit argv invocation is a
     // custom session and shouldn't drag the project image in). `--bare` opts
-    // out entirely.
-    if (!from_argv and !bare) {
+    // out entirely. Skipped under `--boot-image` (already replayed above).
+    if (!from_argv and !bare and boot_image == null) {
         if (cfg) |c| {
             if (c.image) |img| {
                 var buf: [4096]u8 = undefined;
