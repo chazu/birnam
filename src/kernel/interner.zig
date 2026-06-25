@@ -2,17 +2,25 @@
 //!
 //! `intern(str)` returns the same EID for byte-equal strings. New strings
 //! get a user-range EID minted from the object table, are recorded in
-//! both directions of the table, and get a `:name` fact asserted in the
-//! store.
+//! both directions of the table, and get a `:name` fact published as a cell
+//! (`[eid :name str]`).
 //!
 //! Kernel selectors (well-known EIDs in 0..63) are pre-seeded during
 //! bootstrap so `intern("lookup:")` returns `SEL_LOOKUP`.
+//!
+//! **Layering (W6 cut #2, D5.1 / `docs/10a`).** The bijection is the durable
+//! name authority and is self-contained — `nameOf`/`get`/`restoreEntry` never
+//! consult the fact store. The only fact-store touch is *publishing* the
+//! `:name` cell, and that goes through an `anytype` `store` (anything with
+//! `.assert`), so this module does **not** import `fact_store`: the identity
+//! layer (L1) depends on an interface, not the fact store (L3). Publishing the
+//! name as a cell is correct under the cell model — it is the authority making
+//! names queryable, not a dependency of the bijection on facts.
 
 const std = @import("std");
 const hamt = @import("hamt.zig");
 const ref_mod = @import("ref.zig");
 const strings = @import("strings.zig");
-const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
 
@@ -61,7 +69,7 @@ pub const Interner = struct {
     /// bootstrap for kernel selectors. Also asserts the `:name` fact.
     pub fn seed(
         self: *Interner,
-        store: *fact_store.FactStore,
+        store: anytype, // anything with `.assert` — see layering note above
         eid: u64,
         name: []const u8,
     ) !void {
@@ -78,7 +86,7 @@ pub const Interner = struct {
     /// records both directions, asserts the `:name` fact.
     pub fn intern(
         self: *Interner,
-        store: *fact_store.FactStore,
+        store: anytype, // anything with `.assert` — see layering note above
         table: *object_table.ObjectTable,
         name: []const u8,
     ) !u64 {
