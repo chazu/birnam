@@ -3107,6 +3107,9 @@ not reach into L3.
   **up** into L3. Decide: does the L1/L2 identity+dispatch layer resolve only over
   *materialized* objects (object-table-only, no fact fallback), with fact-backed
   cold dispatch promoted to an L3+ concern? Design this seam explicitly.
+  **RESOLVED 2026-06-25 — see D5.2 below: dispatch *is* `get`; caches are
+  transparent memoization; the separate-projection-as-layer reading is rejected as
+  anti-Piumarta.**
 - **Q3 — how far to policy-ize.** Minimum: inject index/history/tier policy
   (enables D4's fact-store-as-arrangement + live index-strategy swap). Maximum:
   the whole 5-index arrangement lives above the frozen line. Pick the cut.
@@ -3217,6 +3220,77 @@ eids verbatim so pools never need patching. The win is that the eid-bearing slot
 are a **bounded, enumerable patch list** (block refs via `reservePoolSlot`,
 selector/literal eids via `poolIndexFor`) — a targeted rewrite, not a heap-wide
 scan.
+
+##### D5.2 — Q2 resolved: dispatch *is* `get`; caches are transparent memoization (decision, 2026-06-25)
+
+Q2 asked how dispatch's cold path should get its answer: **(a) projection-populated**
+(dispatch reads a separate materialized representation the fact store fills on
+miss; the cold path becomes an explicit L3→populate-L2 flow) vs. **(b) logical
+boundary** (dispatch reads facts directly; the down-only rule is logical, not
+physical). The decision is **(b)'s semantics with (a)'s caching as pure
+memoization** — phrased positively below — and it follows from the cell north star
+(`docs/10a-north-star-cell-model.md`) and a Piumarta-purity argument.
+
+**The deciding lens — Piumarta purity.** Piumarta's model has one commitment:
+*one operation (message send / `bind`), metacircular — the lookup mechanism is
+itself reachable and overridable through that same operation, with no privileged
+machinery.* It is happily **circular** (`vtable.vtable == vtable`); clean
+down-only acyclic layering is **not** a Piumarta value. So the motivation behind
+pure-(a) — "make the layering physically down-only so the fact store is a
+wholesale-swappable layer" — is a software-engineering value roughly *orthogonal
+to, and in tension with, Piumarta purity*. The cell north star already rejects the
+layer-cake topology, so that motivation also loses most of its force here.
+
+Since **`send` *is* `get`** (an attribute is a selector; `[vt sel method]` is both
+a fact and a method-binding — the system's stated premise), the pure move is to let
+dispatch *be* that one operation, not to give dispatch a private path:
+
+- **(b) is `send == get` taken literally.** Dispatch *is* `get` over the one store;
+  the lookup mechanism is itself a cell — `[vt :bind method]`, already live at
+  `send.zig:162` — overridden by *asserting a new cell*, the same operation used for
+  everything else. That is Piumarta's overridable `bind`, expressed as "the bind
+  rule is just a cell." One operation, metacircular, no privileged machinery.
+- **Pure-(a) quietly denies `send == get`.** A separate, dispatch-only
+  representation distinct from the canonical store, with the store *populating* it,
+  splits the one operation into "dispatch reads X / store fills X" and gives a cache
+  independent architectural status. A step *away* from "one operation described in
+  itself."
+
+**The decision (positive form):**
+1. **Dispatch is *semantically* `get` over the canonical cells** (the (b) commitment).
+   Cold resolution reads the fact store; the metacircular seam is a **feature, not a
+   violation**. Override-by-assert (`[vt :bind …]`, redefining a method) is the
+   malleability hook and stays first-class.
+2. **All caches — `mcache`, the materialized vtable/object table — are *transparent
+   memoizations* of that `get`**, with **no independent semantic status**: droppable
+   without changing meaning, invalidated on redefinition exactly as `mcache` already
+   is. This captures (a)'s *speed* without (a)'s *layer*.
+3. **The "resolution interface" *is* `get`.** Dispatch depends on the one operation,
+   not on a fact-store implementation; whether a call is served from the store or a
+   memoizing cache is invisible and carries no architectural weight. The closed set
+   of cold-path questions the audit enumerated (`docs/20a`: selector→method,
+   receiver→vtable, →name fallback, →delegate, →bind) is just the shape of `get`
+   that dispatch uses.
+4. **Rejected:** pure-(a) — the separate projection elevated to a real layer with an
+   explicit L3→L2 populate flow — as anti-Piumarta (privileged dispatch-only
+   machinery, denies `send == get`).
+
+**What this costs / does not.** Costs: the fact store is **not** a
+wholesale-swappable layer *beneath* dispatch — but that was never a Piumarta value,
+and replaceability is recovered the cell way via **Q3 policy injection over the one
+store** (swap index/history/tier policy), not via a second representation. Does not
+cost: performance (the memoizing caches stay; hot dispatch still never touches
+facts) or engineering effort (it is *less* work than pure-(a) — no separate
+populate-the-projection layer to build; keep dispatch reading the store, fronted by
+the caches that already exist). The frame-reification **writes**
+(`dispatch.zig:442–448`, audit cut #4) are still separable and still move to an
+explicit continuation path — unaffected by this decision.
+
+**Consequence for W6.** Cut #3 ("design the dispatch↔facts seam") collapses to:
+*formalize that the cold-path read set is a closed instance of `get`, and that
+mcache/object-table are its memoizations* — a far smaller item than re-architecting
+to a populated projection. The deep design Q2 seemed to demand is dissolved by the
+north star, not solved by engineering.
 
 #### Q1 deep-dive — breaking the bootstrap of fact specification (2026-06-24)
 

@@ -140,24 +140,35 @@ arc with one destination.
 ## What this does to Q2
 
 In the layer-cake picture, Q2 is a dilemma: dispatch (L2) reading facts (L3) is a
-"violation," resolved either by **(a)** projection-population (caches filled from
-the store on miss) or **(b)** a logical boundary (license the read). In the cell
-picture, **Q2 is not a dilemma at all** — dispatch reading a cell *is the one
-operation*, and mcache + the object table are simply dispatch's satellites,
-populated on miss. So:
+"violation," resolved either by **(a)** projection-population (dispatch reads a
+separate materialized representation the store fills on miss) or **(b)** a logical
+boundary (license the read directly). In the cell picture, **Q2 is not a dilemma at
+all** — dispatch reading a cell *is the one operation*, and mcache + the object
+table are simply transparent memoizations of it.
 
-- **Option (a) is the cell-model-native answer** — caches are populate-on-miss
-  derivations of the center, which is *already* how mcache behaves. Choosing (a)
-  makes mcache, the object table, and the future fact-linker (W5) three instances
-  of one pattern.
-- **Option (b) is the layer-cake compromise** — correct only if we consciously
-  keep the layer-cake topology rather than the core-and-satellites one.
+**Resolved (ROADMAP.md D5.2, 2026-06-25) via Piumarta purity.** Piumarta's model is
+one operation, metacircular, no privileged machinery — and *happily circular*
+(`vtable.vtable == vtable`); clean down-only layering is not a Piumarta value. Since
+**`send` *is* `get`**, the pure move is to let dispatch *be* that one operation, not
+to give it a private path:
 
-The cell model is what reveals these are not arbitrary: they are a real fork
-between two *topologies*. Adopting this north star argues for **(a)**, realized
-behind a small closed **resolution interface** (the 5–6 questions dispatch asks,
-enumerated in [the coupling audit](20a-relayering-coupling-audit.md)) so the
-populate-from-center machinery can arrive incrementally without touching dispatch.
+- **Dispatch is *semantically* `get`** (the (b) commitment). Cold resolution reads
+  the store; the metacircular seam is a feature, not a violation. Lookup itself is a
+  reassignable cell — `[vt :bind method]` — Piumarta's overridable `bind`.
+- **mcache and the object table are *transparent memoizations* of that `get`** (the
+  (a) speed), with **no independent semantic status** — droppable, invalidated on
+  redefinition. This is (a)'s caching *mechanism* under (b)'s *semantics*.
+- **The "resolution interface" *is* `get`** — the closed cold-path question set
+  ([the coupling audit](20a-relayering-coupling-audit.md): selector→method,
+  receiver→vtable, →name, →delegate, →bind) is just the shape of `get` dispatch
+  uses.
+- **Rejected:** pure-(a) — the projection elevated to a real layer with an explicit
+  L3→L2 populate flow — as anti-Piumarta (privileged dispatch-only machinery that
+  denies `send == get`).
+
+Replaceability is recovered the cell way (Q3 policy injection over the *one* store),
+not via a second representation. This is *less* work than pure-(a), not more: keep
+dispatch reading the store, fronted by the caches that already exist.
 
 ## Code is cells, too — and "native code can't be data" is two things
 
