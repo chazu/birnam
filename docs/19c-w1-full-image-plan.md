@@ -172,12 +172,40 @@ yet their **captured-global linkage is not reconnected**, so those refs resolve
 to nil. The defect is in **closure-capture rematerialization across image load**,
 not provenance or the grammar.
 
-**Revised Stage-2 remaining work:** make `rematerializeClosures` (or the capture
-rebuild) reconnect a method's captured outer-scope bindings to the round-tripped
-`SCOPE_VT` entities — so a closure that captured `jg` finds the loaded `jg` again.
-This is the genuine core; it replaces the (unnecessary) native-relink-hook item.
-*Test:* `Json parse:`/`stringify:` and any module that defines methods closing
-over file-in globals work from a v7 image alone.
+**Root cause, pinned by black-box bisection (2026-06-25):** the defect is
+**rematerialized standalone block closures stored as global values**, not the
+grammar, not captures-into-vtable-methods, not provenance. Evidence under v7
+boot-image:
+- plain entity globals round-trip: `jg` → `<eid:26594>`, identical to normal;
+- the grammar works: `[jg parse: "[1,2,3]" from: "doc"]` → same CST eid as normal;
+- **freshly-compiled** blocks work: `[[:x | [x printString]] value: 5]` → `"5"`;
+- but the **rematerialized** block global fails: `[jStr value: 5]` → `nil`
+  (normal → `"5"`), even on the `v isNumber → [v printString]` path that touches
+  no other global. So the rebuilt closure does not *execute* correctly — the VM,
+  dispatch, and fresh-closure creation are all healthy.
+
+`jStr` etc. are top-level `let` blocks (`json.birnam:57–108`) created via
+`MAKE_BLOCK` at file-in, capturing their environment into a transient
+`BytecodeClosure`. `rematerializeClosures` rebuilds the wrapper
+(`data = mkEid(method_eid)`) but the **captured environment is neither persisted
+nor reconstructable** (no live parent frame exists at load). A block stored as a
+durable value (a global binding, or a `method:do:` body) therefore comes back
+inert.
+
+**Revised Stage-2 remaining work (the genuine core):** persisted block closures
+need their captured environment to survive load — either (a) serialize the
+captured values for blocks reachable as durable values, or (b) compile free-var
+references in blocks to **scope-sends** (persistent `SCOPE_VT` lookup) rather than
+frame-captures when the referent is a scope/global binding, so nothing needs
+persisting. (b) is the cell-faithful fix — globals resolve by name through the
+round-tripped scope — but it is a compiler change to variable resolution and
+must be done carefully (regression risk across all block compilation). Pin the
+exact failing opcode with VM instrumentation before choosing. *Test:*
+`[jStr value: 5]` → `"5"` and `Json parse:`/`stringify:` work from a v7 image.
+
+**Status:** Stages 0–1 done; Stage 2 load-core proven; this closure-capture
+defect is the one remaining blocker and is scoped above. Tree is clean/green
+(no speculative fix committed).
 
 **Stage 3 — make full-image boot first-class + default.** Promote the
 boot-image path: on startup, if a valid image (matching `abi_hash`) exists, load
