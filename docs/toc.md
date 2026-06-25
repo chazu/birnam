@@ -92,6 +92,9 @@ order.
 - **Kernel overview and boot** — `20-kernel-overview.md`
   The `src/kernel` layout, what `bootstrap.boot` wires up (fact store + object
   table + interner), and the kernel/module split.
+- **Re-layering coupling audit (W6 / ADR-image-1)** — `20a-relayering-coupling-audit.md`
+  The kernel import-graph audit for the identity/fact-store re-layering: the
+  reach-up surface (4 files), the ordered cut-list, and the Q1–Q3 mapping.
 - **Ref encoding internals** — `21-ref-impl.md`
   `ref.zig` — bit layout, `mkSmallInt` / `mkEid` / specials, decoding.
 - **The fact store** — `22-fact-store.md`

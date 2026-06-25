@@ -36,7 +36,8 @@ A fact is a six-column tuple:
 - **`op` — operation.** `assert` (1) or `retract` (2).
 - **`m` — module.** The eid of the module that asserted the fact. This makes
   module ownership a first-class property of *every* fact: unloading a module is
-  an AEVT query for `m = <module-eid>` followed by retraction of the results.
+  a MEAT walk for `m = <module-eid>` (the module-keyed index) followed by
+  retraction of the results.
 
 ### The reification gap (honest limitation)
 
@@ -50,8 +51,9 @@ per-fact metadata.
 ## The four (plus two) indexes
 
 Every fact is filed into multiple sorted indexes so that any access pattern is a
-direct walk rather than a scan. Edge bidirectionality is architectural, not
-optional.
+direct walk rather than a scan. Edge bidirectionality is architectural and on by
+default — though write-once code facts (AST/bytecode) opt out of the reverse
+index they are never walked through (see [The Six Indexes §7](11a-the-six-indexes.md)).
 
 | Index | Answers |
 |---|---|

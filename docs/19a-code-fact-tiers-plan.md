@@ -17,8 +17,8 @@ split into its own design: **[RFC: Transient Load Mode](19b-transient-load-rfc.m
 
 | # | Lever | Root-cause property it kills | Status |
 |---|---|---|---|
-| 1 | `:no-history` tier for code attrs | per-fact history (RRB append per assert) | sound, ship first |
-| 2 | Index selectivity — **skip VAET** for code attrs | the (never-read) reverse-ref triple-nested HAMT | safe; skip-AVET deferred |
+| 1 | `:no-history` tier for code attrs | per-fact history (RRB append per assert) | **SHIPPED** (`e2e27f1`) |
+| 2 | Index selectivity — **skip VAET** for code attrs | the (never-read) reverse-ref triple-nested HAMT | **SHIPPED** (`e2e27f1`); skip-AVET deferred |
 | 3 | Bulk / transient load | one-fact-at-a-time HAMT path-copy | → [separate RFC](19b-transient-load-rfc.md) |
 
 > Background: [The Fact Store](22-fact-store.md), [Reification](12-reification.md),

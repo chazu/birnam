@@ -29,7 +29,7 @@ A **system** is a binary that runs as an executable OR loads as a library, and w
   entity id (monotonic u64, decoupled from memory address)
 ```
 
-The `m` (module) column makes module ownership a first-class property of every fact. Unloading a module = AEVT query for `m = <module-eid>`, retract returned facts. Survives reload, cross-module overrides, and ownership transfers cleanly.
+The `m` (module) column makes module ownership a first-class property of every fact. Unloading a module = MEAT walk for `m = <module-eid>` (the module-keyed index), retract returned facts. Survives reload, cross-module overrides, and ownership transfers cleanly.
 
 ### Reification gap
 
@@ -45,14 +45,25 @@ This gap is acceptable because:
 
 ### Indexes
 
-Build all four. Edge bidirectionality is architectural, not optional.
+Build the covering set. Edge bidirectionality is architectural — on by default,
+not a per-query afterthought.
 
 - **EAVT** — entity walks (`what does this entity look like?`)
 - **AEVT** — schema walks (`all instances of attribute X`)
 - **AVET** — sort/uniqueness (`who has value V for attribute A?`)
 - **VAET** — reverse-ref walks (`who points at this entity?`)
+- **MEAT** — module-ownership walks (`every fact owned by module M`; the `m`
+  column made a first-class index)
 
 All indexes are persistent HAMTs. Structural sharing across tx → cheap snapshots.
+
+**Not every fact pays for every index.** AST-node and bytecode metadata are
+write-once and never reverse-ref-walked, so they are dropped from VAET and from
+per-fact history — the Datomic `:db/index false` / `:db/noHistory` shape, applied
+to code attributes. The bidirectional/full-history default holds for all *data*
+facts; *code* facts shed only the index and the history that nothing reads. (Five
+fact indexes, not four: MEAT joins the Datomic set. See the code-fact tiers in
+`docs/11a-the-six-indexes.md` §7 and `docs/19a-code-fact-tiers-plan.md`.)
 
 ### Schema
 

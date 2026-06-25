@@ -115,9 +115,13 @@ at `new`), or `db cell:` (per-field — a cell is temporal by default; **this on
 is shipped**). History *begins* at opt-in; the cost stays local to the entities
 that asked for it.
 
-**Meta-level facts (vtables, AST, bytecode, methods) stay write-through** — they
+**Meta-level facts (vtables, methods, AST, bytecode) stay write-through** — they
 are written once and dispatch reads them, so they can't be naïvely write-back.
-"Default T2" will apply to *base-level user objects only*.
+"Default T2" will apply to *base-level user objects only*. (Write-through does not
+imply *historied*: AST and bytecode facts are a shipped **no-history** code tier —
+`asOf:` over them returns null, since no one time-travels the compiler's
+intermediate states — whereas vtables and methods keep full history. See
+[Code-Fact Tiers](19a-code-fact-tiers-plan.md).)
 
 ## AOT prune: the most aggressive horizon
 

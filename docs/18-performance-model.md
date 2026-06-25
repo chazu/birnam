@@ -67,9 +67,12 @@ mandatory, and instead tier the representation:
   [Reference cells](2a-cells.md) are the shipped instance of this tier.
 
 Transitions: T1→T2 on escape; T2↔T3 by declaration. **Meta-level facts (vtables,
-AST, bytecode, methods) stay write-through** — they're written once and `bind`
+methods, AST, bytecode) stay write-through** — they're written once and `bind`
 dispatches by reading them, so they can't be naïvely write-back. "Default T2"
-means *base-level user objects only*. See
+means *base-level user objects only*. (Write-through ≠ historied: AST and bytecode
+are a shipped **no-history** code tier — `asOf:` over them returns null — while
+vtables and methods keep history. See [Code-Fact Tiers](19a-code-fact-tiers-plan.md).)
+See
 [Time-Travel](15-time-travel.md) for the opt-in API (`beTemporal`, prototype
 stamping, `db cell:`).
 

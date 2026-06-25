@@ -13,7 +13,9 @@ standalone executable.
 ## The `.bim` image — `image.zig`
 
 An image is the serialized store plus enough metadata to reconstruct identity.
-`MAGIC = "BRNIMG\x00\x01"` (8 bytes), `FORMAT_VERSION = 5`. The file holds, in order:
+`MAGIC = "BRNIMG\x00\x01"` (8 bytes), `FORMAT_VERSION = 6` (`MIN_LOAD_VERSION = 5`
+— v5 and v6 share every section layout, so a v6 loader reads a v5 image verbatim;
+v6 only adds the `VK_MAP` value kind). The file holds, in order:
 
 - **Manifest** — `bytecode_format_version`, `thread_mode` (`single`/`datomic`),
   and the module dependency set (`{name, abi_hash}` each). Embedded in the file
@@ -29,7 +31,10 @@ An image is the serialized store plus enough metadata to reconstruct identity.
 
 Values are tagged by kind: `VK_IMMEDIATE` (self-describing Ref verbatim),
 `VK_STRING` (len + bytes), `VK_FLOAT` (f64 bits, re-boxed), `VK_RRB` (count +
-recursive elements), `VK_CAPTURES` (a `:method-captures-ptr` array).
+recursive elements), `VK_CAPTURES` (a `:method-captures-ptr` array), and
+`VK_MAP` (v6 — an `ASSOC_VT` persistent map: entry count + each `(key, value)`
+pair, recursive, so a map literal embedded in a method's constant-pool or an
+`:ast-value` round-trips instead of being silently dropped).
 
 ### Save and load
 
@@ -46,6 +51,22 @@ recursive elements), `VK_CAPTURES` (a `:method-captures-ptr` array).
 
 Load is replay-based today; the mmap-segment fast path is a deferred Phase-12.5
 optimization the single-file layout already allows.
+
+### Booting from an image (experimental)
+
+`--boot-image <path>` skips recompiling the pure-birnam modules from source: the
+shell boots only the native prefix (`peg`, `lang` — the parser/compiler) and then
+**replays the image** instead of filing in the compiled modules, reusing the same
+`loadFromFile` + `rematerializeClosures` + `resolveAllPending` path as a normal
+`:load`. Produce the image with a normal boot followed by `:save`. Boot-only peak
+drops ~656 MB → ~241 MB (≈2.7×), and pure-birnam modules (e.g. `Stats sum:`)
+round-trip from the image alone — which is exactly what the `M_USER` object-fact
+tagging and `VK_MAP` map serialization make correct.
+
+Opt-in; normal boot is unaffected. Known gaps: `json`'s `parse:` stays broken
+because `json` builds a *stateful* PEG grammar (`peg newGrammar` / `defineRule:`)
+at its dylib init, which boot-image skips and which does not yet round-trip; `net`
+(a Zig FFI module) is not re-inited under boot-image yet.
 
 ## Freeze — `freeze.zig`
 

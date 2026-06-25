@@ -121,19 +121,32 @@ garbage is swept. Nothing about the fact model, reflection, or live mutation
 changes; you lose only `asOf:` over the *compilation's* intermediate states,
 which no one queries.
 
+## What shipped next — code-fact tiers at the source
+
+Levers 1–2 above reclaim the garbage *after the fact* at compaction boundaries.
+Two of the optimizations previously deferred here have since shipped, attacking
+the root-cause properties **at the source** so the waste is never written
+([Code-Fact Tiers](19a-code-fact-tiers-plan.md);
+[The Six Indexes §7](11a-the-six-indexes.md)):
+
+- **A `:no-history` tier for code attributes** (attacks property #1). AST-node and
+  bytecode attributes never allocate a history RRB entry; `asOf:` over them
+  returns null, which no one queries. The decision is a pure-EID predicate
+  (`kernel_eids.isCodeAttr`) so it stays static — the epoch-replay vehicle
+  reproduces the same tiering and stays index-consistent.
+- **Index selectivity — skip VAET for code attributes** (attacks property #3).
+  Code facts drop from **five indexes to four**: only the never-read VAET
+  reverse-ref index is skipped. **AVET is retained** — `:many` reads, `hasFact`,
+  retract, and reverse-ref queries (`entitiesMatching`/`cReverseRefs`) all run on
+  AVET, not VAET, so nothing observable is lost. (The earlier prediction here —
+  "drops to three, keeping EAVT/AEVT/MEAT" — was wrong: AVET cannot be skipped
+  without a separate design; that skip-AVET follow-up is not yet shipped.)
+
 ## What is deliberately deferred
 
 These were considered and left for when a workload demands them. They are
 additive and keep the facts as the source of truth:
 
-- **A `:no-history` tier for code attributes.** Avoid allocating the history RRB
-  for write-once meta-level facts *at the source*, rather than reclaiming it at a
-  compaction boundary. Already on the roadmap (deferred from Phase 11.x). This
-  attacks property #1 directly; levers 1–2 attack it after the fact.
-- **Index selectivity for code attributes.** A per-attribute "don't AVET/VAET
-  index this" policy (Datomic `:db/index false`) drops most code facts from five
-  indexes to three (keeping EAVT/AEVT/MEAT, so module-unload still works) —
-  roughly halving *retained* memory. Attacks property #3.
 - **Bulk/transient load.** Build the indexes once from the whole form batch (a
   transient HAMT builder frozen on publish — the shipped `frozenInsert` is the
   current-values-only shape of this) instead of path-copying five HAMTs per
