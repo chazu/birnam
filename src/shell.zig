@@ -1107,6 +1107,22 @@ pub fn main() !void {
         std.process.exit(0);
     } else |_| {}
 
+    // `BIRNAM_SAVE_FULL=<path>` writes a v7 full image of the live system and
+    // exits — for W1 Stage-2/3 testing (produce a self-contained image, then
+    // load it via --boot-image). Off by default.
+    if (std.process.getEnvVarOwned(sa, "BIRNAM_SAVE_FULL")) |path| {
+        const mf = image.Manifest{};
+        if (image.writeFull(allocator, store, table.next_eid.load(.monotonic), mf, interner)) |res| {
+            defer allocator.free(res.bytes);
+            std.fs.cwd().writeFile(.{ .sub_path = path, .data = res.bytes }) catch |e| {
+                stderrPrint("[W1] save-full failed: {any}\n", .{e});
+                std.process.exit(1);
+            };
+            stderrPrint("[W1] saved full image: {s} ({d} facts, {d} bytes)\n", .{ path, res.facts_written, res.bytes.len });
+        } else |e| stderrPrint("[W1] writeFull failed: {any}\n", .{e});
+        std.process.exit(0);
+    } else |_| {}
+
     // -- LSP server mode -----------------------------------------------------
     // `birnam --lsp` becomes a Language Server over stdio instead of a REPL.
     // stdout is reserved for the JSON-RPC protocol (all shell chatter is on

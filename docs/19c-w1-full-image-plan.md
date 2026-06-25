@@ -148,15 +148,36 @@ accepts v5..v7. *Tests:* unit round-trip — `write` drops a non-M_USER fact,
 whole tower (code + data) in ~307 KB. v6 path + all examples unaffected (lang
 79/79).
 
-**Stage 2 — native relink on load (the core).** Generalize the relink pass:
-every native-method-bearing module records a relinkable descriptor (module name
-+ export symbol per method eid), and a `relinkNativeMethods` pass (sibling to
-`resolveAllPending`) `dlopen`s each module and binds exports to the existing
-method eids **without re-asserting facts or minting eids**. Needs a module-ABI
-addition: a *relink-only* entry point distinct from full init. *Test:* load a
-full image into a fresh process with native dylibs present-but-not-full-inited;
-dispatch a native method (e.g. `+`, a peg combinator) and a bytecode method;
-both work.
+**Stage 2 — load a full image into a working system. PARTIAL 2026-06-25 — core
+works; one gap found + ADR diagnosis corrected.** Added `BIRNAM_SAVE_FULL=<path>`
+(writes a v7 image of the live system) and tested loading it via `--boot-image`.
+
+**What works (the core W1 thesis, demonstrated):** a v7 full image loads — 8894
+facts replay, 198 bytecode methods rematerialize — and yields a working system
+**equal to normal boot** for: native/kernel methods (`[3 + 4] => 7`), pure-birnam
+collection methods (`inject:into: => 10`), and user data. Crucially, the feared
+**native-relink ABI hook is NOT needed**: native fn-ptrs come from the kernel
+bootstrap (always runs) + the peg/lang dylibs (already loaded by `--boot-image`);
+the 9 residue facts (`function-impl`/`reader-impl`) are re-created by bootstrap.
+So Stage 2 needs *less* new machinery than the plan assumed.
+
+**The remaining gap (precisely isolated, and the ADR was wrong about it):**
+`Json parse:` returns `nil` under boot-image (both v6 and v7). The ADR blamed
+"the stateful PEG grammar." **It is not the grammar** — `Json stringify:` (which
+uses global `jStr`, *no grammar*) fails identically. Root cause: globals live on
+`SCOPE_VT` entities as M_USER facts on stable eids (`TOP_SCOPE_EID=185`) and *do*
+round-trip — but json's methods are defined at module file-in and **close over**
+module-level `let` globals (`jg`/`jStr`). After load the methods rematerialize
+yet their **captured-global linkage is not reconnected**, so those refs resolve
+to nil. The defect is in **closure-capture rematerialization across image load**,
+not provenance or the grammar.
+
+**Revised Stage-2 remaining work:** make `rematerializeClosures` (or the capture
+rebuild) reconnect a method's captured outer-scope bindings to the round-tripped
+`SCOPE_VT` entities — so a closure that captured `jg` finds the loaded `jg` again.
+This is the genuine core; it replaces the (unnecessary) native-relink-hook item.
+*Test:* `Json parse:`/`stringify:` and any module that defines methods closing
+over file-in globals work from a v7 image alone.
 
 **Stage 3 — make full-image boot first-class + default.** Promote the
 boot-image path: on startup, if a valid image (matching `abi_hash`) exists, load
