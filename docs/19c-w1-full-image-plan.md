@@ -192,16 +192,49 @@ nor reconstructable** (no live parent frame exists at load). A block stored as a
 durable value (a global binding, or a `method:do:` body) therefore comes back
 inert.
 
-**Revised Stage-2 remaining work (the genuine core):** persisted block closures
-need their captured environment to survive load — either (a) serialize the
-captured values for blocks reachable as durable values, or (b) compile free-var
-references in blocks to **scope-sends** (persistent `SCOPE_VT` lookup) rather than
-frame-captures when the referent is a scope/global binding, so nothing needs
-persisting. (b) is the cell-faithful fix — globals resolve by name through the
-round-tripped scope — but it is a compiler change to variable resolution and
-must be done carefully (regression risk across all block compilation). Pin the
-exact failing opcode with VM instrumentation before choosing. *Test:*
-`[jStr value: 5]` → `"5"` and `Json parse:`/`stringify:` work from a v7 image.
+**Root cause — DEFINITIVELY PINNED (VM trace, 2026-06-25).** `[jStr value: 5]`
+returns nil for *every* input (nil/5/"x"/true), including the first branch that
+needs no captures — so the body never runs. A gated trace in
+`bytecodeDispatcherImpl` **never fired** for the call: `value:` on jStr never
+reaches the closure dispatcher, yet returns nil cleanly (no doesNotUnderstand).
+
+The mechanism: a block `let jStr := [:v | …]` is **two entities** — a
+*block-method* entity (carries `:bytecode-stream`) and a *closure-wrapper* entity
+(`[vt=CLOSURE_VT][method=bytecodeDispatcherImpl][data=BytecodeClosure]`, holding
+the method link + captures + parent-self). `jStr`'s binding value is
+`mkEid(wrapper_eid)`. On save, the wrapper's binding round-trips and its
+`[wrapper :vtable CLOSURE_VT]` fact round-trips — **but the wrapper's runtime
+object lives only in the object table (a `BytecodeClosure` pointer), which is not
+facts and is never serialized.** `rematerializeClosures` only rebuilds entities
+that carry `:bytecode-stream` (the *block-method*, not the *wrapper*). So after
+load the wrapper has a `:vtable` fact but **no object-table entry** → `value:`
+finds no closure object to run → nil. (Plain entities like `jg` and vtable
+methods round-trip because they need no wrapper object; that is why they work.)
+
+**The fix (the genuine Stage-2 core):** `rematerializeClosures` must also rebuild
+**closure-wrapper** entities, which requires persisting per wrapper: its
+block-method eid, parent-self, and captures — none of which are facts today
+(they live in the `BytecodeClosure`). Design tension to resolve first: **which
+closures to persist.** Persisting *every* closure as facts is too costly — a
+block created in a hot loop would assert capture facts every iteration (write
+amplification). The right scope is **durable** closures only (bound to a
+global/method, surviving file-in), not transient activation blocks. Options:
+- **(a)** at save, walk the object table for `CLOSURE_VT` wrappers reachable from
+  durable bindings/methods; serialize `(block_method_eid, parent_self, captures)`
+  in a dedicated image section; rebuild in `rematerializeClosures`. Localizes the
+  cost to save/load; needs a reachability pass + format addition.
+- **(b)** mark a closure durable when it is stored into a scope binding / method
+  and assert its linkage as facts at that point (not at every `MAKE_BLOCK`); they
+  then round-trip and rematerialize like any entity. Cleaner steady-state, but
+  needs the durable/transient distinction in the binder.
+
+*Test for either:* `[jStr value: 5]` → `"5"` and `Json parse:`/`stringify:` work
+from a v7 image alone.
+
+**Status:** Stages 0–1 done; Stage 2 load-core proven (native/kernel/pure-birnam
+methods, grammars, plain entities, user data all round-trip); the one remaining
+blocker is durable closure-wrapper rematerialization, root-caused above. Tree
+clean/green (trace reverted; no speculative fix committed).
 
 **Status:** Stages 0–1 done; Stage 2 load-core proven; this closure-capture
 defect is the one remaining blocker and is scoped above. Tree is clean/green
