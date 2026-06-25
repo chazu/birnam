@@ -163,14 +163,32 @@ Three properties make it the sixth index rather than a cache bolted on the side:
 
 - **Sparse and read-through.** An eid is in the table only if it has been
   *materialized* (promoted because it got hot). Absence means "cold — go
-  reconstruct from the fact store." So the object table is a projection of the
-  facts, never an independent source of truth. Lose it and you lose nothing
+  reconstruct from the fact store." So the object **table** (the eid→ptr map) is a
+  projection, never an independent source of truth. Lose it and you lose nothing
   durable; rebuild it by re-materializing from EAVT.
 - **It mints identity.** `alloc` hands out the monotonic eids every fact then
   refers to. Identity is decoupled from memory address precisely so a fact can
   name an entity (`e`, and any `v` that is a ref) stably across relocation,
   compaction, snapshot, and AOT freeze — the object table is where that
-  indirection lives.
+  indirection lives. **But the eid is a *handle*, not the anchor — see the
+  amendment below.**
+
+> **Amendment (ADR-image-1 D5.1, 2026-06-25) — identity is relative; the
+> interned name is the durable anchor.** The "projection, rebuild from EAVT" claim
+> above is true for the **eid→ptr map** and for **anonymous entities** (runtime
+> objects with no name), but it is *not* the whole story for **named entities**.
+> The integer eid is an *arbitrary, relocatable encoding* — assigned by load
+> order, renumbered across an independent numbering — not meaning-bearing data.
+> What is durable is the **interned name** (`[eid :name "…"]` in the interner's
+> name↔eid bijection): identity is grounded **relationally**, not in the integer.
+> Three tiers: **directly-named** (selectors, attributes, vtables — anchored by
+> their own name); **relationally-named** (methods, constant pools, AST nodes —
+> anonymous eids reached by a *name-path*, e.g. a method *is* what you get
+> resolving selector S on vtable V, both named); **anonymous** (the eid simply
+> *is* the identity, replayed verbatim within an image, not cross-image-portable).
+> So promote the **name layer** (the interner) to the primary identity anchor; the
+> eid stays a fast per-numbering handle. Nothing becomes mutable; the object table
+> stays a projection. See ROADMAP.md ADR-image-1 §D5 / §D5.1.
 - **Same substrate.** It is a HAMT too (§5), so it snapshots and shares structure
   like the other five.
 
@@ -261,8 +279,10 @@ ones a given fact's questions justify.
 
 Five answer *what is true*; the sixth answers *what is running*. All six are
 HAMTs, so all six snapshot and share structure. Facts are the source of truth;
-the object table is a projection of them. And no fact pays for an index that
-answers a question it will never be asked.
+the object **table** (eid→ptr) is a projection of them. (Durable *identity*,
+though, is the interned **name**, not the eid — the eid is a relocatable handle;
+see §4's D5.1 amendment.) And no fact pays for an index that answers a question it
+will never be asked.
 
 > See also: [The Fact Store](22-fact-store.md) (the concrete API and write flow),
 > [Promotion/Demotion](25-promotion.md) (how the object table fills and drains),

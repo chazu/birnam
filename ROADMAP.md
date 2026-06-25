@@ -2834,6 +2834,441 @@ deliberately rather than accreted.
 
 ---
 
+## ADR-image-1 — The image IS the system; persistence is not a provenance boundary (2026-06-24)
+
+**Status:** accepted (analysis + reframe). Sets direction toward **Pole A** (load
+compiled facts; stop recompiling the world at boot). `--boot-image` is the first,
+deliberately-leaky instance of the right direction. Concrete implementation items
+(W1–W5) are open. This ADR exists because the existing `docs/2e-images-aot.md`
+framing ("persist only `M_USER`; CODE is reconstructed") is the thing being
+overturned, and the reframe is easy to lose.
+
+### Trigger
+A review of the recent image + `--boot-image` + code-fact-tier work surfaced a
+real doubt: *is the relational substrate even memory-viable?* ("A system that
+blows up to 4.4 GB to run a simple roguelike is not usable.") The doubt was
+correct to raise and **dissolved on measurement** — the 4.4 GB is not the system.
+
+### Measured (2026-06-24, `/usr/bin/time -l`, `zig-out/bin`, `BIRNAM_DYLIB_PATH=$PWD/zig-out/lib`)
+
+| Configuration | Peak RSS | What it is |
+|---|---:|---|
+| Bare boot (recompile stdlib from source every launch) | **683 MB** | dev mode 1, regenerating the world |
+| `--boot-image` (replay image, skip recompile) | **251 MB** | dev mode 1, no recompile |
+| `birnam-aot` (full AOT image baked) | 397 MB | full tower |
+| `birnam-aot-malleable` (AST stripped) | 161 MB | malleable, no source-compile |
+| **`birnam-aot-app` (stripped extraction = mode 3)** | **11 MB** | the shipped application |
+| Retained system facts on disk (`:save`) | **202 KB** (5570 `M_USER` facts) | the actual state |
+| Two clean-boot images (`/tmp/boot1.bim` vs `boot2.bim`) | **byte-identical** | eid assignment is deterministic |
+
+### Findings
+- **F1 — the memory scare was transient compiler garbage, not system state.**
+  Retained state is **202 KB**; the same logic AOT-extracted runs in **11 MB**.
+  "Everything is facts" is **not** the memory problem. The facts are a fifth of a
+  megabyte.
+- **F2 — the 683→251 gap (~430 MB) is recompiling embedded source at every boot.**
+  `src/modules/stdlib/stdlib.zig` and `json/json.zig` `@embedFile` their
+  `.birnam` source and call `fileInSource:` at `birnam_module_init` — i.e. they
+  re-run the compiler on every launch, generating AST/CST/spine churn (the
+  ADR-perf-1 finding #1 write-amplification, 5-index path-copy, applied to module
+  init). **Native modules (`peg`, `lang`) already load as precompiled shared
+  objects** — for them the "siphon" model is already what happens.
+- **F3 — memory scales with how much malleability you keep.** The strip levels
+  (= the three execution modes) are the dial. Mode 3 already ships at **11 MB**.
+  The malleability-vs-performance tension is resolved by the modes, which work
+  today; the image is the bridge between them.
+- **F4 — eids are deterministic** for fixed binary + module set + load order
+  (two clean boots → byte-identical images). So "store the whole fact-set and
+  reload it" is sound. eids renumber across a kernel rebuild or a changed module
+  set — correctly a version boundary the manifest's `abi_hash` already marks.
+
+### The reframe
+The image is not a serialization detail — **in all three execution modes it is
+the spine.** Mode 1 hot-reloads it, mode 2 runs on it, mode 3 is extracted from
+it. "What does the image contain" is "what is the system," asked three ways.
+
+There is **one artifact (a fact-set) and one dial (the strip levels = the three
+modes).** The `M_USER`/CODE **provenance filter at write time is a second,
+redundant classification** stapled on top of that clean one. It is the direct
+cause of:
+- the `--boot-image` json/net gaps (stateful module init that only lives in the
+  reconstruct path), and
+- the `eb8b73e` bug class ("this CODE fact was secretly per-object data — re-tag
+  it `M_USER`"). A boundary you must keep hand-patching is the boundary that is
+  wrong, not the patches.
+
+### Decisions
+- **D1 — Persistence is NOT a provenance boundary.** The image should serialize a
+  *fact-set*, full stop. `m` (module) stays a first-class provenance **tag**; it
+  stops being a **persistence gate**. "Regenerate the base from source instead of
+  storing it" becomes an explicit *option* (for small/portable images), not a
+  hardwired law of the writer.
+- **D2 — The three execution modes are the single strip dial** over that one
+  fact-set (full malleable → VM/frozen → stripped extraction). No second
+  persistence taxonomy.
+- **D3 — Direction is Pole A: load compiled facts, do not recompile.** The memory
+  data is decisive — reconstructing code from source is the ~430 MB / ~3 s tax.
+  `--boot-image` was the right instinct; make it **first-class and complete** and
+  the **default dev startup**, with source-regeneration demoted to the *fallback*
+  (no image / version mismatch / first run).
+- **D4 — Module-as-precompiled-facts is the target shape** (VISION tenet 3 made
+  literal: "a module is the set of facts with a given `m`"). A module's compiled
+  output is a fact-subset; shipping it precompiled = shipping those facts, not the
+  source. The SO-vs-image distinction dissolves — a precompiled module dylib
+  carrying its facts and a per-module `.bim` segment are the same content.
+
+### Two flavors of D4 (the fork inside the "siphon" idea)
+- **(i) One combined precompiled image** (= today's `--boot-image` / Pole A).
+  Shared eid space, deterministic, **no linker needed**, simple — but monolithic
+  (update anything → re-save the combined blob). The siphon loads kernel + replays
+  one image.
+- **(ii) Per-module precompiled artifacts** (the *literal* wafer-thin siphon).
+  Needs a **fact linker**: independently-compiled modules both grab user eids from
+  256+ and collide, so the loader must **relocate local eids** and **resolve
+  cross-module references by name**. The **interner** (the name↔eid section
+  already in the image format) is the hook. Buys independent load / version /
+  unload / hot-swap per module; costs genuinely new engineering. **Its win is
+  architectural, not a further memory cut** — the 251 MB floor is native
+  dylibs + libffi + arena baseline, not facts.
+
+### What does NOT change (invariants preserved)
+- **Malleability is preserved.** Loaded method-facts are still overridable facts;
+  you redefine live by asserting new facts. Malleability is lost *only* if you
+  also strip AST/source — which is mode 3's deliberate choice, not a consequence
+  of precompiling.
+- **"Everything is facts" is untouched.** This ADR is about *when* facts are
+  produced (load vs recompile) and *which* are persisted (all vs `M_USER`), not
+  about the fact model. No-NULL and fact-as-source-of-truth are unaffected.
+
+### Open work items
+- **W1 — full-image save/load.** Store all facts regardless of provenance;
+  loading a full image = a booted system, no recompile. Delete the `m == M_USER`
+  *write filter* (keep `m` as a tag). Deletes the json/net gaps and the `eb8b73e`
+  bug class.
+- **W2 — pin down the determinism caveat empirically. RESOLVED 2026-06-24.**
+  Measured by diffing `:save` images: (1) **clean kernel+module rebuild from
+  scratch, same source → byte-identical image** (eid layout is reproducible across
+  builds, not just runs — an image saved by build N loads consistently into a
+  same-source build N+1); (2) **changed module load order → ~38% of bytes differ**
+  (same facts, renumbered eids — e.g. swapping `json`/`stdlib` in the load list).
+  argv-in-default-order reproduces the no-argv default exactly. **Boundary:** eids
+  are deterministic for a *fixed module set in a fixed load order*, stable across
+  runs and rebuilds; they renumber on a changed load order (and, by inference, a
+  changed module set or a kernel-source edit that moves the eid-allocation path —
+  the `abi_hash` version cases). **Consequence:** Pole A's combined-image (flavor i)
+  is safe — order is fixed, so a stored image's eids match what the same build
+  reconstructs. Per-module precompiled artifacts (flavor ii) **do** need the fact
+  linker (W5): independently/reordered-compiled modules collide on user eids 256+.
+- **W3 — kill the compile-time write-amplification** (the ~430 MB churn):
+  transient-load RFC (`docs/19b`) + compact-during-boot. Orthogonal to the image
+  format; helps the fallback recompile path regardless.
+- **W4 — mmap-segment load** (Phase 12.5) — map the frozen index instead of
+  replaying facts one-by-one; drops the 251 MB replay floor.
+- **W5 (larger, optional) — the fact linker** over the interner, for per-module
+  precompiled artifacts (flavor ii / the true siphon).
+- **W6 — the identity/fact-store re-layering (D5, addendum).** Promote the
+  persistent object-identity layer above the fact store; make fact-store
+  index/history/tier *policy* injectable. Resolve open questions Q1–Q3 (addendum).
+  Independent of W1 (image format) but **enables** W5 (per-module artifacts /
+  fact linker). Pairs with perf-1.4 (a separate ADR-perf-1 track) for the
+  overhead story — W6 itself does not lower write cost. **Current-state coupling
+  audit (the refactor surface + ordered cut-list): `docs/20a-relayering-coupling-audit.md`**
+  — reach-up surface is exactly 4 files (`send`/`dispatch` deep = Q2;
+  `boxed`/`interner` shallow + an L1↔L3 cycle); ~80% mechanical, ~20% the Q2
+  dispatch seam.
+- **Doc consequence:** when W1 lands, `docs/2e-images-aot.md` (the M_USER/CODE
+  split) and `VISION.md` §Image must be rewritten; until then 2e still describes
+  the current — about-to-be-superseded — behavior.
+
+### Risks / honest caveats
+- A full image **binds to a kernel ABI** (eid layout). `abi_hash` already marks
+  it; "load into a newer kernel" is a migration — correct for a frozen-floor
+  kernel, but not free.
+- The combined image (i) is **monolithic** until per-module (ii) exists.
+- **Image size grows** (it carries the full tower) — mitigated by strip for
+  shipping (mode 3 = 11 MB). You keep the big image in dev; you ship the extraction.
+
+### Addendum — "should we invert: object system at the bottom, facts on top?" (2026-06-24)
+
+A natural follow-on question: make the siphon bring up a Piumarta-style **object
+system as the substrate**, and build the fact-based system *on top* of it — for
+more power / malleability / less overhead? **Answered: no — but the instinct
+points at two things already decided here and in ADR-perf-1.** Recorded because it
+is exactly the kind of foundational question that gets re-litigated.
+
+**Frame correction — facts vs. objects is not a stack; it's a duality.** Neither
+is the floor. The floor is the **persistent, identity-indexed substrate**
+(HAMT/RRB + the object table). The fact store is *that* substrate arranged as
+5 indexes + tx/history; the object system is *that same substrate* arranged as
+object-table + a materialized-struct projection. An object **is** its slot vector
+**is** the facts about that entity — the same information in two representations
+(`obj[-1]` vtable ≡ `[e :vtable vt]`). So "put objects under facts" or "facts
+under objects" is a category error: both are projections of one persistent core.
+
+**The correct part of the instinct (do this):** shrink the frozen kernel to the
+genuine persistent-identity core (HAMT, RRB, object table, tag/untag, `bind`
+mechanics) and make the fact-store *arrangement* — which indexes exist, the
+history shape, the tiers — a **replaceable policy layer**, not frozen. The
+injected-predicate pattern already exists (`AttrTier`, cardinality resolver are
+decoupled from the store); extend it so indexing/history strategy is swappable
+live. This is more Piumarta-faithful (the frozen floor shrinks toward its true
+minimum), more malleable (the fact layer becomes rewritable), and it fits D4 —
+the fact-store arrangement becomes one of the loadable, precompiled-facts modules
+the siphon brings up.
+
+**The trap (do NOT do this):** a frozen kernel of **mutable** slot-vector objects
+with pointer identity, fact store bolted on top. The Datomic bargain — free O(1)
+snapshots, cheap history, time-travel, image-is-a-database — **falls out of HAMT
+structural sharing.** Mutable objects don't structurally share, so that arrangement
+turns snapshots back into heap copies, history into a bolted-on journal, and the
+image back into a memory dump. Full inversion spends birnam's actual differentiator
+to recover plain idst — the thing the relational substrate was deliberately put
+*under* the object model to move past.
+
+**The overhead truth (aim the lever correctly):** the cost is not object-system-on-
+facts at runtime. Hot dispatch **already does not read facts** — it is an mcache
+hit (≈free) plus a ~4.6 ns object-table HAMT get; the EAVT query is cold-miss only.
+That 4.6 ns is the price of *relocatable identity* (eid→ptr → compaction / snapshot
+/ AOT-freeze), not a "facts" tax you can invert away without losing relocation. The
+**real** overhead is the write (~1.8 µs, 5-index write-through), and its fix is
+already chosen and is *itself a selective inversion*: **perf-1.4 tier-2 write-back**
+(materialized struct is the runtime truth; facts reconciled at a boundary) — applied
+exactly where it pays (hot mutable base-level data) and nowhere it hurts (code stays
+fact-canonical: query/history wanted, write-once so cost is moot).
+
+**Decision:** the canonical-vs-projection direction is **per-tier, not global**
+(already ADR-perf-1: code/cells fact-canonical write-through; user objects
+struct-canonical write-back; locals no-facts). So **do not invert the system.** Do
+(1) shrink the frozen floor + make indexing/history a policy layer (this ADR's D1/D4
+direction), and (2) finish perf-1.4 write-back. Together these capture ~all the
+upside of "inversion" — smaller frozen core, native-speed hot mutation, replaceable
+fact layer — with none of the downside, because the persistent substrate stays at
+the bottom, where it is load-bearing for *every* listed value including malleability
+(it is what makes history and reflection-as-query free).
+
+#### D5 — the blessed re-layering (object identity precedes the fact store), distinct from the trap
+
+"Make object identity *precede* the fact store" is a real, approved move — but it
+is **not** the inversion rejected above. Two different things share the word
+"invert":
+- **REJECTED** — make *mutable* objects the substrate (pointer identity, fact
+  store bolted on). Kills structural sharing. Still no.
+- **APPROVED (D5)** — promote the **persistent object-identity layer** (object
+  table + eid allocation, already a HAMT) to a *first-class layer the fact store
+  sits on*, rather than "a projection rebuildable from EAVT." **Identity stays
+  persistent; nothing becomes mutable; the Datomic bargain is untouched.**
+
+**Current-state coupling (grounded, code read 2026-06-24) — the work is smaller
+than it sounds, because the structure is already most of the way there:**
+- `src/kernel/object_table.zig` **does not import `fact_store`** (only `hamt` /
+  `ref` / `kernel_eids`). It already **owns eid allocation** — `next_eid`, an
+  atomic monotonic counter from `USER_EID_START` (`alloc()` = `fetchAdd`).
+- `fact_store` depends **down** on `object_table` (`eid_alloc_table`,
+  `setEidAllocTable`) — and *only* to mint eids. That is the single seam.
+- So **structurally, identity already precedes facts.** What is "inverted" today
+  is the **doctrine**: the six-indexes/VISION text calls the object table "a
+  projection of the facts, never an independent source of truth… rebuild by
+  re-materializing from EAVT." D5 promotes it from *projection* to *primary
+  layer*. The work is mostly (a) that conceptual reframing + (b) making
+  fact-store index/history/tier **policy injectable** — not a structural teardown.
+
+**Target layering (plan against this; arrows point DOWN only):**
+```
+L4  modules / language / image   everything fact-shaped on top
+L3  fact store as POLICY          which indexes, tx, history, tiers   (frozen primitives + injectable policy)
+L2  dispatch                      bind / mcache / -1 trick            (frozen mechanics; see Q2)
+L1  identity                      object table + eid alloc + tag/untag (frozen primitive; ALREADY independent)
+L0  persistent structures         HAMT, RRB                           (frozen primitive)
+```
+Rule: a lower layer must not reach up. L3 may use L1 (eid mint) and L0; L1 must
+not reach into L3.
+
+**Open questions the planning session MUST resolve (not pre-decided here):**
+- **Q1 — the bootstrap paradox.** "Fact store becomes a loadable module" is too
+  strong: modules load *by asserting facts*, so the fact store must exist before
+  any module. Resolution direction: fact-store **primitives stay frozen**; only
+  its **policy** (index set, history shape, tiers) is injectable/swappable
+  (generalize the existing `AttrTier` / cardinality injected-predicate pattern).
+  Lock the exact frozen-vs-policy line in planning. **The *mechanism* that draws
+  this line — breaking the bootstrap of fact specification — is the Q1 deep-dive
+  below.**
+- **Q2 — dispatch's cold-path fact dependency** (the one genuine entanglement).
+  `bind`'s cold path queries EAVT for `[vt sel ?method]`, so L2 currently reaches
+  **up** into L3. Decide: does the L1/L2 identity+dispatch layer resolve only over
+  *materialized* objects (object-table-only, no fact fallback), with fact-backed
+  cold dispatch promoted to an L3+ concern? Design this seam explicitly.
+- **Q3 — how far to policy-ize.** Minimum: inject index/history/tier policy
+  (enables D4's fact-store-as-arrangement + live index-strategy swap). Maximum:
+  the whole 5-index arrangement lives above the frozen line. Pick the cut.
+
+**What D5 buys (and does not).** Buys: a genuinely minimal frozen floor; a
+*replaceable* fact layer (malleability ↑); a clean siphon bootstrap (identity
+exists before any fact is asserted); the structural basis for D4-flavor-ii. Does
+**not** buy lower write overhead — that stays perf-1.4. The earlier
+"less-overhead" hope is answered by the overhead-truth paragraph above: hot
+dispatch already does not read facts.
+
+##### D5.1 — Identity is relative; interned names are the durable anchor (decision, 2026-06-25)
+
+D5 says "promote object identity to a primary layer." That phrasing hid an
+unresolved fork: **is the *integer eid* assigned to an entity meaning-bearing
+data, or is it arbitrary internal scaffolding?** The two existing production
+paths answered it differently and nobody had reconciled them:
+- **Recompile-from-source** (today's default): eids are *assigned fresh* in load
+  order — identity is *derived* (foo gets eid 257 because of where it fell in the
+  compile sequence). Eids are a contingent encoding.
+- **Load-image** (D3's intended default): eids are *replayed* from the stored
+  facts, and `next_eid` is restored verbatim (`image.zig:111/293/402`) — identity
+  is treated as *authoritative durable state*, today, quietly.
+
+Two ways to resolve it:
+- **ABSOLUTE identity** — integer 257 *is* foo, everywhere, forever; the eid↔
+  entity binding is itself durable world-state to be preserved. No linker needed
+  for cross-image references, but you can **never renumber**, every independent
+  allocator must coordinate to never collide (a global eid authority / partitioned
+  ranges), and **D4-flavor-ii dies** (independent module numberings can't exist).
+- **RELATIVE identity** — the integers are internal plumbing (like auto-increment
+  keys); what *means* something is the **relational structure**. Renumber every
+  eid consistently and you have a bit-identical system. Cross-numbering references
+  resolve **by name** and relocate the integers — i.e. the fact linker (W5).
+
+**Decision: identity is RELATIVE. The durable anchor is the interned name, not
+the eid.** Rationale: it is the only choice consistent with the rest of this ADR
+— **B *is* the flavor-(i)/(ii) fork surfaced as doctrine.** Flavor (i) (single
+combined image) works *because* it sidesteps the question: one allocator, one
+fixed load order, one numbering, so "absolute vs relative" never arises — the W2
+determinism result is a relative-but-deterministic mechanism, not evidence for
+absolute identity. Flavor (ii) (per-module artifacts) *requires* relative
+identity. Choosing absolute would forbid (ii) and contradict D4.
+
+**This dissolves the apparent contradiction in D5** (wanting "primary identity"
+*and* per-module artifacts): the layer D5 promotes to primary is **name↔entity,
+not eid↔entity.** The name is durable and authoritative; the eid is a fast,
+relocatable, per-numbering *handle* for it. "Primary" and "relative" stop
+fighting once you put them on different rungs.
+
+**Identity is therefore three-tier (grounded in code read 2026-06-25):**
+1. **Directly-named entities** — selectors, attributes, vtables, kind-symbols,
+   cardinality symbols (`one`/`many`), FFI names. Each has its own interned name
+   via `interner.intern`/`seed`. Anchored by direct name lookup.
+2. **Relationally-named entities** — methods, constant pools, AST nodes. These are
+   **anonymous** (`compiler.zig:584` mints a method eid via `table.alloc()` with
+   **no `ATTR_NAME`**); they are reached by a *name-path* — a method "is" what you
+   get by resolving selector S on vtable V, **both of which are named**. The
+   integer is pure scaffolding; identity here is the clearest case of relational.
+3. **Anonymous entities** — runtime user objects with neither a name nor a
+   canonical name-path. The eid simply *is* the identity, **replayed verbatim**
+   within an image (never re-derived — there is no name to re-derive from), and
+   **not cross-image-portable** (correctly: anonymous runtime data isn't shared
+   across module boundaries the way named code is). The persisted `next_eid`
+   counter is the seam that makes replay collision-safe.
+
+**The infrastructure is ~half-built — this is a promotion-in-place, not new
+machinery:**
+- The interner is **already** the bidirectional name↔eid bijection (two HAMTs,
+  lock-free reads — `interner.zig:33-34`).
+- `interner.restoreEntry` (`interner.zig:137`, called per-name from
+  `image.zig:398` on every load) **already relocates names→eids across save/load**
+  so user-interned names keep working, and **already contains a baby fact-linker**:
+  its kernel-selector collision guard (`interner.zig:148-150`, "never let a
+  restored entry shadow a kernel-seeded selector") is exactly the relocate-on-
+  collision logic W5 generalizes to all of L1.
+
+**Consequences for the plan:**
+- **D5's "primary identity layer" = the interner promoted to a first-class
+  name-authority** that exists before any fact (not a side-table that asserts
+  `:name` facts as it goes). The audit's **cut #2 ("purify the interner")** is
+  therefore load-bearing, not cosmetic: it makes the name layer the foundation.
+- **D5, W5 (fact linker), and Q1-move-#3 (symbolic eid resolution) are one
+  mechanism**, not three: *names are the durable identity; eids are local handles
+  relocated through the interner.* Resolve cold-path references by name (Q2's
+  seam), and the linker is the same lookup applied at module-load time.
+- **The `docs/11a` doctrine needs amendment, not reversal.** "The object table is
+  a projection… rebuild from EAVT" stays **true** for the eid→ptr map (piece 1)
+  and for anonymous entities (tier 3). It gets **amended** for named entities:
+  their identity is the *name* (durable), of which the eid is a relocatable
+  encoding. No wholesale doctrinal U-turn — a targeted edit.
+- **What stays untouched:** nothing becomes mutable; the Datomic bargain holds;
+  malleability holds (loaded method-facts are still overridable facts).
+
+**Follow-on, now confirmed (for Q2/W5 planning):** tier-2 relational entities
+relocate by *walking* resolved name-paths (relocate the vtable eid by name, the
+selector eid by name, then the method's local eid is a fresh allocation found
+relationally). The one place compiled code holds an eid *by raw integer* that
+must survive across numberings is the **bytecode constant pool**
+(`compiler.zig` `constant_pool: []Ref`; `PUSH_CONST u16` indexes it at
+`vm.zig:354`): a `Ref` slot can carry an eid, and `reservePoolSlot`
+(`compiler.zig:172`) explicitly stores a **block-method eid** ("filled once the
+child method's EID is known"); selector/literal eids enter via `poolIndexFor`.
+**Consequence for W5:** relocating a method = relocate its eid **and patch every
+eid-bearing slot in its constant pool** — not just remap names in the interner.
+This bites only under flavor-(ii) (independent numberings); flavor-(i) replays
+eids verbatim so pools never need patching. The win is that the eid-bearing slots
+are a **bounded, enumerable patch list** (block refs via `reservePoolSlot`,
+selector/literal eids via `poolIndexFor`) — a targeted rewrite, not a heap-wide
+scan.
+
+#### Q1 deep-dive — breaking the bootstrap of fact specification (2026-06-24)
+
+Q1's frozen-vs-policy line is really the old metacircular-bootstrap problem.
+Today the kernel **schema is specified imperatively in Zig**: `bootstrap.zig`
+Stages 4–8 are hundreds of hand-written `store.assert(...)` calls over hardcoded
+`kernel_eids.*` constants (vtables, delegation, NIL, kernel methods, selector
+names), and `cardinality_schema` / `AttrTier` are injected Zig predicates. The
+seed that defines *what a fact is* is **code, not facts** — the one
+non-metacircular spot in "everything is facts."
+
+**You cannot eliminate the ground (Münchhausen) — you minimize and relocate it,
+from imperative Zig to self-describing data.** The reframe that draws the Q1 line:
+**the only irreducible primitive is "assert a triple WITHOUT consulting any
+fact-specified policy" (a raw-append store) + one flip to policy-aware mode.**
+Principle: *assert the rules while the rule-engine is off, then turn it on.*
+
+**The fixpoint pivot (cardinality).** To assert `[e a v]` with `:one` semantics
+you must know `a`'s cardinality = the fact `[a :cardinality :one]` — so the
+cardinality of `:cardinality` regresses infinitely. Break it like `Class class`:
+in raw mode the store appends and consults nothing; bootstrap raw-asserts the
+whole schema as data — *including* `[:cardinality :cardinality :one]` — then flips
+to schema-aware, after which the store reads its own just-asserted schema. The
+single hardcoded exception is the **flip**, not the regress. (Birnam already
+half-has this seam: the schema/tier predicates are wired at a later bootstrap
+stage than the first seed asserts.)
+
+**Moves, ordered:**
+1. **Seed-as-data** (cheap; rides D3). Replace Stages 4–8's imperative asserts
+   with an embedded minimal `.bim` seed loaded via the existing `loadFromFile`
+   path. **Unification: the kernel seed becomes an embedded minimal image, so
+   "boot" = "load the seed image" = "load any image" — one mechanism. Breaking the
+   bootstrap and ADR-image-1 are the same direction pushed down to the floor.**
+2. **Self-describing schema = policy-as-data** (the prize; literally answers
+   Q1/Q3). Move cardinality/tier/index policy out of the injected Zig predicates
+   into raw-asserted schema facts consulted after the flip. "Injectable policy"
+   becomes "data in the seed"; the kernel schema is editable without rebuilding
+   Zig.
+3. **Symbolic eid resolution** (shrinks the residue; same machinery as W5). Kernel
+   code references attrs by interned name, not raw eid, leaving a tiny constant
+   anchor.
+
+**What irreducibly remains (and is fine):** a handful of eid constants (the
+self-referential anchor); **the native fn-ptr values for primitive methods** —
+hard-irreducible ("native code cannot be data", this ADR / `ROADMAP` perf note),
+so `[vt sel <fn-ptr>]` keeps its *structure* as seed data while the pointer values
+are plugged in by a native fixup pass at load — identical in shape to
+`rematerializeClosures` / `resolveAllPending`; and the raw-append primitive + the
+mode flip. A far smaller, data-shaped floor than 8 stages of imperative Zig.
+
+**Honest costs:** the flip ordering is subtle (invariant: *nothing consults policy
+until the schema fact-set is closed* — wrong order deadlocks or mis-stores); schema
+reads stay off the hot path via a materialized schema cache (schema is read at
+definition, not per-op); and you trade a compile-time-checked Zig schema for a
+runtime-asserted one — a deliberate safety tradeoff at the very floor.
+
+> Related: ADR-perf-1 (the write-amplification this rides on), ADR-11 (the
+> Datomic threading shape), `docs/2e-images-aot.md`, `docs/19-load-memory.md`,
+> `docs/19b-transient-load-rfc.md`, VISION.md §Execution Modes / §Image.
+
+---
+
 ## Deferred-Items Backlog — dependency-ordered sequencing (2026-06-15)
 
 A sweep of every deferred item across Phases 11–19 + ADR-perf-1, ordered so that
