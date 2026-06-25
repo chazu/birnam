@@ -275,12 +275,19 @@ pub const FactStore = struct {
     /// well-known EIDs after interning so this module stays kernel-decoupled.
     cardinality_schema: ?CardinalitySchema = null,
 
-    /// Predicate marking an attribute as "code" (AST/bytecode metadata) for
-    /// the storage-tier optimization. Injected by bootstrap (Stage 13) from
-    /// `kernel_eids.isCodeAttr` so this module stays kernel-decoupled, exactly
-    /// like `cardinality_schema`. MUST be a pure function of the EID — the
-    /// replay vehicle (`replayEventsInto`) copies it and relies on that purity.
-    /// See docs/19a-code-fact-tiers-plan.md §0.
+    /// Per-attribute storage-tier *policy* (W6 cut #5 / Q3): maps an attribute
+    /// EID to its full `AttrTier` (which indexes / history it gets). Injected by
+    /// bootstrap so this module stays kernel-decoupled, exactly like
+    /// `cardinality_schema`. This is the general form — "tier is swappable policy
+    /// over the one store" (`docs/10a` north star). MUST be a pure function of
+    /// the EID — the replay vehicle (`replayEventsInto`) copies it and relies on
+    /// that purity. When set, it supersedes `code_attr_pred`.
+    tier_policy: ?*const fn (u64) AttrTier = null,
+
+    /// Convenience predicate: "is this a code attribute?" → the fixed code tier
+    /// (`{no_history, skip_vaet}`, docs/19a). Subsumed by `tier_policy`; kept as
+    /// the common binary case (used by tests). A pure function of the EID, same
+    /// replay-purity contract as `tier_policy`.
     code_attr_pred: ?*const fn (u64) bool = null,
 
     /// Phase 7.3 reification: lazy fact-EID side index. Populated on first
@@ -542,7 +549,8 @@ pub const FactStore = struct {
     fn replayEventsInto(self: *FactStore, events: []const EpochEvent, alloc: std.mem.Allocator) !IndexRoots {
         var tmp = FactStore.init(alloc);
         tmp.cardinality_schema = self.cardinality_schema; // faithful :many handling
-        tmp.code_attr_pred = self.code_attr_pred; // §0.1: same tier per fact on replay
+        tmp.tier_policy = self.tier_policy; // §0.1: same tier per fact on replay
+        tmp.code_attr_pred = self.code_attr_pred; // (convenience fallback, idem)
         for (events) |ev| {
             switch (ev.op) {
                 .assert => try tmp.applyAssert(ev.e, ev.a, ev.v, ev.m, ev.tx, ev.basis),
@@ -1046,15 +1054,26 @@ pub const FactStore = struct {
         self.cardinality_schema = schema;
     }
 
-    /// Inject the "is this a code attribute?" predicate (bootstrap Stage 13).
+    /// Inject the full per-attribute storage-tier policy (W6 cut #5 / Q3). The
+    /// general form: any attribute → any `AttrTier`. Supersedes `code_attr_pred`.
+    pub fn setTierPolicy(self: *FactStore, policy: *const fn (u64) AttrTier) void {
+        self.tier_policy = policy;
+    }
+
+    /// Inject the "is this a code attribute?" predicate (the binary convenience
+    /// case). Subsumed by `setTierPolicy`; retained for callers/tests that only
+    /// need the fixed code tier.
     pub fn setCodeAttrPred(self: *FactStore, pred: *const fn (u64) bool) void {
         self.code_attr_pred = pred;
     }
 
-    /// Storage tier for attribute `a`. Code attrs drop history (Lever 1) and the
-    /// VAET index (Lever 2). Pure function of the EID — never reads store state,
-    /// so the replay vehicle reproduces the same decision per fact (§0.1).
+    /// Storage tier for attribute `a`. The injected `tier_policy` decides it
+    /// (defaulting, via the `code_attr_pred` convenience, to: code attrs drop
+    /// history (Lever 1) and the VAET index (Lever 2)). Pure function of the EID
+    /// — never reads store state, so the replay vehicle reproduces the same
+    /// decision per fact (§0.1).
     pub fn attrTier(self: *const FactStore, a: u64) AttrTier {
+        if (self.tier_policy) |policy| return policy(a);
         if (self.code_attr_pred) |pred| {
             if (pred(a)) return .{ .no_history = true, .skip_vaet = true };
         }

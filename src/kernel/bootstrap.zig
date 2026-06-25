@@ -37,6 +37,20 @@ const Ref = ref_mod.Ref;
 const Closure = closure_mod.Closure;
 const Send = send_mod.Send;
 
+/// The kernel's storage-tier policy (W6 cut #5 / Q3), injected via
+/// `store.setTierPolicy`. Generalizes the old code/non-code bool predicate:
+/// maps an attribute EID to its full `AttrTier`. Today AST/bytecode code attrs
+/// drop history + VAET (docs/19a); everything else gets the default tier. Pure
+/// function of the EID (replay-safe). Lives here, not in `fact_store`, because
+/// it bridges `kernel_eids` (L1) and `fact_store.AttrTier` (L3) — the store
+/// stays kernel-decoupled.
+fn codeTierPolicy(a: u64) fact_store.AttrTier {
+    return if (kernel_eids.isCodeAttr(a))
+        .{ .no_history = true, .skip_vaet = true }
+    else
+        .{};
+}
+
 /// Kernel handles, returned for caller convenience and testing.
 pub const Kernel = struct {
     vtable_vt_ref: Ref,
@@ -295,9 +309,11 @@ pub fn boot(
         .many_value = ref_mod.mkEid(many_eid),
     });
     // Storage-tier policy: AST/bytecode code attrs drop history + the VAET index
-    // (docs/19a-code-fact-tiers-plan.md). Injected, like cardinality, so the
-    // store stays kernel-decoupled. Set before any code-attr facts are written.
-    store.setCodeAttrPred(&kernel_eids.isCodeAttr);
+    // (docs/19a-code-fact-tiers-plan.md). Injected as a full per-attribute tier
+    // policy (W6 cut #5 / Q3 — "tier is swappable policy over the one store",
+    // docs/10a), so the store stays kernel-decoupled. Set before any code-attr
+    // facts are written.
+    store.setTierPolicy(&codeTierPolicy);
 
     // -- Stage 14: declare :many attrs (Phase 9.5.3+) --------------------
     // `:ffi-has-symbol` accumulates one fact per enumerated symbol per Module.
