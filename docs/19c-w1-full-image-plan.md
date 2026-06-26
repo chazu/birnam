@@ -308,14 +308,27 @@ in any order.
   them in ANY order. *Tested:* image-first replay → net binding dead → load net →
   relinks in place (eid stable), now live + dispatches (lang_module 83). net still
   works on a normal fresh boot.
-- **Stage 3b.2 — REMAINING (the sweep).** Convert the other native modules to the
-  same pattern (named VTs + `bind_native_method`): **lang (~154 make_closure
-  sites + 13 `alloc_eid` VTs — the bulk; touches the core language, do carefully
-  in sub-batches), query (6), repl (3); peg installs via `id_api.installSendApi`
-  (0 in-module).** Note: lang primitives bound on **kernel-eid** vtables
-  (SmallInt etc., fixed 0..255) keep stable eids by construction — they don't need
-  VT-naming, but they DO need `bind_native_method` so they relink onto the
-  image-restored (dead) bindings under image-first order.
+- **Stage 3b.2 — REMAINING (smaller than it first looks).** Key insight from the
+  net work: under **image-first** order, a native **method** binding *self-heals*
+  — re-`make_closure` + re-`assert` overwrites the image's dead binding with a
+  live one (cardinality `:one`), orphaning the dead closure eid (prunable). So the
+  154 `make_closure` method sites in lang do **not** all need conversion for
+  *correctness*; `bind_native_method` is an *optimization* there (avoids the
+  orphan). What genuinely MUST be name-anchored is each **module-minted vtable**
+  (the `alloc_eid` VTs: lang ~13, query/repl a few) — else the module mints a
+  *duplicate* VT and image-restored objects of that type dispatch to dead
+  closures. Convert those VTs to `intern("<mod>:<Name>")` (the net template).
+- **Stage 3b.2b — lang init must skip its birnam fileIn under image-first.** lang
+  files-in its prelude/stdlib/db/io/cell surfaces (bytecode methods) at init.
+  Under image-first the image already carries those; re-filing-in would duplicate
+  + waste the cache. Gate the fileIn/`installSourceMethod` tiers on "image
+  present" (the `langPrimitivesTier`/`langFrontendTier` split is the seam), so a
+  cache boot registers only the NATIVE primitives (relinked onto image VTs) and
+  takes the birnam from the image. **This — not the 154 method sites — is the real
+  work of 3b.2**, and it’s lang-specific + delicate. NB: today even `--boot-image`
+  recompiles peg+lang (they’re the fixed prefix); the cache only spares
+  json/stdlib. Moving lang OUT of the prefix (image-first) is what finally caches
+  lang itself.
 - **Stage 3b.3 — REMAINING (flip + engage).** Switch the boot order to
   **image-first** (replay, THEN load native modules which relink), retiring the
   fixed-order eid-coordination. Then a canonical-path auto compile-cache: present
