@@ -373,19 +373,6 @@ pub fn build(b: *std.Build) void {
     const run_hamt_tests = b.addRunArtifact(hamt_tests);
     test_step.dependOn(&run_hamt_tests.step);
 
-    // libtcc JIT wrapper (docs/10a) — built from the vendored TinyCC source.
-    const jit_test_mod = b.createModule(.{
-        .root_source_file = b.path("src/kernel/jit_test.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    jit_test_mod.addIncludePath(b.path("vendor/libtcc-src"));
-    const jit_tests = b.addTest(.{ .root_module = jit_test_mod });
-    jit_tests.linkLibrary(libtcc_lib);
-    const run_jit_tests = b.addRunArtifact(jit_tests);
-    test_step.dependOn(&run_jit_tests.step);
-
     const rrb_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/rrb_test.zig"),
         .target = target,
@@ -625,12 +612,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    // libtcc: the codegen+JIT tests (JIT'd method bodies performing real sends)
-    // live here, where the full boot harness + real dylibs exist. Source-built.
-    lmod_test_mod.addIncludePath(b.path("vendor/libtcc-src"));
     const lmod_tests = b.addTest(.{ .root_module = lmod_test_mod });
     lmod_tests.linkLibrary(libffi_lib);
-    lmod_tests.linkLibrary(libtcc_lib);
     lmod_tests.linkLibC();
     const run_lmod_tests = b.addRunArtifact(lmod_tests);
     run_lmod_tests.step.dependOn(b.getInstallStep());

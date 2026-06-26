@@ -132,9 +132,10 @@ const PRELUDE =
 
 const CodegenError = error{ Declined, Bad, OutOfMemory };
 
-/// Lower a method's bytecode to a C function `m(recv, args, n)`. Reads the method's
-/// :bytecode-stream / :constant-pool / capture specs through the IdApi.
-fn emitMethod(allocator: std.mem.Allocator, method_eid: u64) CodegenError![:0]u8 {
+/// Lower a method's bytecode to a C function `<fn_name>(recv, args, n)`, writing
+/// it (no prelude) to `w`. Reads :bytecode-stream / :constant-pool / capture specs
+/// through the IdApi. Shared by `emitMethodOwned` (live JIT) + `emitUnit` (mode-3).
+fn emitMethod(allocator: std.mem.Allocator, w: anytype, fn_name: []const u8, method_eid: u64) CodegenError!void {
     const api = g_api;
     const bc_ref = api.query_eavt(method_eid, ke.ATTR_BYTECODE_STREAM);
     if (!abi.isString(bc_ref)) return error.Bad;
@@ -185,16 +186,12 @@ fn emitMethod(allocator: std.mem.Allocator, method_eid: u64) CodegenError![:0]u8
         }
     }
 
-    var b = std.ArrayList(u8){};
-    errdefer b.deinit(allocator);
-    const w = b.writer(allocator);
-    try w.writeAll(PRELUDE);
     try w.print(
-        \\Ref m(Ref recv, Ref *args, unsigned long n_args) {{
+        \\Ref {s}(Ref recv, Ref *args, unsigned long n_args) {{
         \\  Ref S[{d}]; Ref L[{d}]; long sp = 0;
         \\  for (unsigned long i = 0; i < n_args; i++) L[i] = args[i];
         \\
-    , .{ code.len + 4, max_local + 16 });
+    , .{ fn_name, code.len + 4, max_local + 16 });
 
     var pc: usize = 0;
     while (pc < code.len) {
@@ -264,7 +261,41 @@ fn emitMethod(allocator: std.mem.Allocator, method_eid: u64) CodegenError![:0]u8
     }
     if (targets.contains(code.len)) try w.print("L{d}: ;\n", .{code.len});
     try w.print("  return {d}UL;\n}}\n", .{abi.NIL});
+}
+
+/// Live JIT: one method as a complete C translation unit (prelude + `m(...)`).
+fn emitMethodOwned(allocator: std.mem.Allocator, method_eid: u64) CodegenError![:0]u8 {
+    var b = std.ArrayList(u8){};
+    errdefer b.deinit(allocator);
+    const w = b.writer(allocator);
+    try w.writeAll(PRELUDE);
+    try emitMethod(allocator, w, "m", method_eid);
     return b.toOwnedSliceSentinel(allocator, 0);
+}
+
+/// Mode-3: many methods as ONE C unit (shared prelude + `bm_<eid>` each), declines
+/// skipped. Returns the C source + the eids that lowered. Caller frees both.
+const Unit = struct { c_src: [:0]u8, emitted: []u64 };
+fn emitUnit(allocator: std.mem.Allocator, eids: []const u64) CodegenError!Unit {
+    var b = std.ArrayList(u8){};
+    errdefer b.deinit(allocator);
+    var emitted = std.ArrayList(u64){};
+    errdefer emitted.deinit(allocator);
+    const w = b.writer(allocator);
+    try w.writeAll(PRELUDE);
+    for (eids) |eid| {
+        var tmp = std.ArrayList(u8){};
+        defer tmp.deinit(allocator);
+        var name_buf: [32]u8 = undefined;
+        const name = std.fmt.bufPrint(&name_buf, "bm_{d}", .{eid}) catch unreachable;
+        emitMethod(allocator, tmp.writer(allocator), name, eid) catch |e| switch (e) {
+            error.Declined, error.Bad => continue,
+            else => return e,
+        };
+        try b.appendSlice(allocator, tmp.items);
+        try emitted.append(allocator, eid);
+    }
+    return .{ .c_src = try b.toOwnedSliceSentinel(allocator, 0), .emitted = try emitted.toOwnedSlice(allocator) };
 }
 
 // -- Trampoline + registry (module-local; closure.data is a SmallInt index) ----
@@ -306,15 +337,30 @@ const SendView = extern struct {
 
 // -- Manager (owns Jits per method eid) --------------------------------------
 
-const Native = struct { jit: Jit, idx: u64 };
+// `jit` is null for a mode-3 FROZEN method (the dylib owns the code, not a libtcc
+// Jit); for a live JIT it's the owning Jit (deinit'd on demote/re-JIT).
+const Native = struct { jit: ?Jit, idx: u64 };
 var g_native: std.AutoHashMap(u64, Native) = undefined;
+
+/// Register `f` + install the trampoline at `eid` as native; record it (with its
+/// optional owning Jit). Shared by live promote + mode-3 loadFrozen.
+fn installNativeFn(eid: u64, f: MethodFn, jit: ?Jit) bool {
+    if (g_registry_len >= g_registry.len) return false;
+    const idx = g_registry_len;
+    g_registry[idx] = f;
+    g_registry_len += 1;
+    const data = abi.mkSmallInt(@intCast(idx)) orelse return false;
+    if (!g_api.jit_install_native(eid, @ptrCast(&trampoline), data)) return false;
+    g_native.put(eid, .{ .jit = jit, .idx = idx }) catch return false;
+    return true;
+}
 var g_declined: std.AutoHashMap(u64, void) = undefined;
 var g_alloc: std.mem.Allocator = undefined;
 
 fn promote(eid: u64) bool {
     if (g_declined.contains(eid)) return false;
     if (g_native.contains(eid)) return true;
-    const c_src = emitMethod(g_alloc, eid) catch |e| {
+    const c_src = emitMethodOwned(g_alloc, eid) catch |e| {
         if (e == error.Declined) g_declined.put(eid, {}) catch {};
         return false;
     };
@@ -329,33 +375,62 @@ fn promote(eid: u64) bool {
         return false;
     };
     const f: MethodFn = @ptrFromInt(@intFromPtr(sym));
-    if (g_registry_len >= g_registry.len) {
+    if (!installNativeFn(eid, f, j)) {
         j.deinit();
         return false;
     }
-    const idx = g_registry_len;
-    g_registry[idx] = f;
-    g_registry_len += 1;
-    if (!g_api.jit_install_native(eid, @ptrCast(&trampoline), abi.mkSmallInt(@intCast(idx)) orelse {
-        j.deinit();
-        return false;
-    })) {
-        j.deinit();
-        return false;
-    }
-    g_native.put(eid, .{ .jit = j, .idx = idx }) catch {
-        j.deinit();
-        return false;
-    };
     return true;
 }
 
 fn demote(eid: u64) void {
     if (g_native.fetchRemove(eid)) |kv| {
-        var nat = kv.value;
-        nat.jit.deinit();
+        if (kv.value.jit) |*j| @constCast(j).deinit(); // frozen methods have no Jit
         g_api.jit_revert_bytecode(eid);
     }
+}
+
+// -- Mode-3 ship: freeze native methods to an optimized dylib + load it back ---
+
+/// Emit a C unit for `eids`, write `<dir>/<base>.c`, and `zig cc -O2 -shared` it
+/// into `<dir>/lib<base>.dylib` (-undefined dynamic_lookup → the birnam_* runtime
+/// entries resolve at load against the host). Returns the eids that lowered.
+fn freeze(eids: []const u64, dir: []const u8, base: []const u8) ![]u64 {
+    const unit = try emitUnit(g_alloc, eids);
+    defer g_alloc.free(unit.c_src);
+    errdefer g_alloc.free(unit.emitted);
+    const c_rel = try std.fmt.allocPrint(g_alloc, "{s}.c", .{base});
+    defer g_alloc.free(c_rel);
+    const c_path = try std.fs.path.join(g_alloc, &.{ dir, c_rel });
+    defer g_alloc.free(c_path);
+    try std.fs.cwd().writeFile(.{ .sub_path = c_path, .data = unit.c_src });
+    const dylib_rel = try std.fmt.allocPrint(g_alloc, "lib{s}.dylib", .{base});
+    defer g_alloc.free(dylib_rel);
+    var child = std.process.Child.init(&.{
+        "zig", "cc", "-shared", "-O2", "-o", dylib_rel, c_rel, "-Wl,-undefined,dynamic_lookup",
+    }, g_alloc);
+    child.cwd = dir;
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Inherit;
+    try child.spawn();
+    const term = try child.wait();
+    if (term != .Exited or term.Exited != 0) return error.ZigCcFailed;
+    return unit.emitted;
+}
+
+/// dlopen a frozen dylib and install each `bm_<eid>` as a native method.
+fn loadFrozen(dylib_path: []const u8, eids: []const u64) usize {
+    const pz = g_alloc.dupeZ(u8, dylib_path) catch return 0;
+    defer g_alloc.free(pz);
+    const handle = std.c.dlopen(pz, .{ .LAZY = true, .GLOBAL = true }) orelse return 0;
+    var n: usize = 0;
+    for (eids) |eid| {
+        var nb: [40]u8 = undefined;
+        const sym = std.fmt.bufPrintZ(&nb, "bm_{d}", .{eid}) catch continue;
+        const addr = std.c.dlsym(handle, sym) orelse continue;
+        const f: MethodFn = @ptrFromInt(@intFromPtr(addr));
+        if (installNativeFn(eid, f, null)) n += 1;
+    }
+    return n;
 }
 
 // -- birnam-facing methods on the `Jit` proto --------------------------------
@@ -376,6 +451,58 @@ fn jitDemoteAll(s: *anyopaque, args: [*]const Ref, n: usize) callconv(.c) Ref {
     while (it.next()) |k| keys.append(g_alloc, k.*) catch {};
     for (keys.items) |eid| demote(eid);
     return abi.mkEid(ke.TRUE_EID);
+}
+
+fn argStr(args: [*]const Ref, n: usize, allocator: std.mem.Allocator) ?[]u8 {
+    if (n < 1 or !abi.isString(args[0])) return null;
+    const p = g_api.string_ptr(args[0]) orelse return null;
+    return allocator.dupe(u8, p[0..g_api.string_len(args[0])]) catch null;
+}
+
+/// `[Jit freezeTo: "<base>"]` — mode-3 ship: compile all currently-native methods
+/// into `lib<base>.dylib` (optimized, `zig cc -O2`) + write `<base>.manifest`
+/// (their eids). Returns the method count (SmallInt). The SAME codegen as the live
+/// JIT — there is only one.
+fn jitFreezeTo(s: *anyopaque, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    const base = argStr(args, n, g_alloc) orelse return abi.mkSmallInt(0).?;
+    defer g_alloc.free(base);
+    var eids = std.ArrayList(u64){};
+    defer eids.deinit(g_alloc);
+    var it = g_native.keyIterator();
+    while (it.next()) |k| eids.append(g_alloc, k.*) catch {};
+    const emitted = freeze(eids.items, ".", base) catch return abi.mkSmallInt(0).?;
+    defer g_alloc.free(emitted);
+    // manifest: one eid per line.
+    const man = std.fmt.allocPrint(g_alloc, "{s}.manifest", .{base}) catch return abi.mkSmallInt(0).?;
+    defer g_alloc.free(man);
+    var mb = std.ArrayList(u8){};
+    defer mb.deinit(g_alloc);
+    for (emitted) |e| mb.writer(g_alloc).print("{d}\n", .{e}) catch {};
+    std.fs.cwd().writeFile(.{ .sub_path = man, .data = mb.items }) catch {};
+    return abi.mkSmallInt(@intCast(emitted.len)) orelse abi.mkSmallInt(0).?;
+}
+
+/// `[Jit loadFrozen: "<base>"]` — load a frozen dylib (+ its manifest) and install
+/// each method native-from-dylib. Returns the count installed.
+fn jitLoadFrozen(s: *anyopaque, args: [*]const Ref, n: usize) callconv(.c) Ref {
+    _ = s;
+    const base = argStr(args, n, g_alloc) orelse return abi.mkSmallInt(0).?;
+    defer g_alloc.free(base);
+    const man = std.fmt.allocPrint(g_alloc, "{s}.manifest", .{base}) catch return abi.mkSmallInt(0).?;
+    defer g_alloc.free(man);
+    const text = std.fs.cwd().readFileAlloc(g_alloc, man, 1 << 20) catch return abi.mkSmallInt(0).?;
+    defer g_alloc.free(text);
+    var eids = std.ArrayList(u64){};
+    defer eids.deinit(g_alloc);
+    var lines = std.mem.tokenizeScalar(u8, text, '\n');
+    while (lines.next()) |ln| {
+        const e = std.fmt.parseInt(u64, std.mem.trim(u8, ln, " \r"), 10) catch continue;
+        eids.append(g_alloc, e) catch {};
+    }
+    const dylib = std.fmt.allocPrint(g_alloc, "lib{s}.dylib", .{base}) catch return abi.mkSmallInt(0).?;
+    defer g_alloc.free(dylib);
+    return abi.mkSmallInt(@intCast(loadFrozen(dylib, eids.items))) orelse abi.mkSmallInt(0).?;
 }
 
 // -- maintenance hook: drain hot methods + compile them ----------------------
@@ -404,6 +531,8 @@ pub fn moduleInitImpl(ctx: *abi.ShellContext, api: *const abi.IdApi, module_eid:
     _ = api.assert_fact(jit_vt, api.attr_delegate, abi.mkEid(api.object_vt_eid), module_eid);
     _ = api.bind_native_method(jit_vt, api.intern("compileAll", 10), @ptrCast(&jitCompileAll), abi.NIL, module_eid);
     _ = api.bind_native_method(jit_vt, api.intern("demoteAll", 9), @ptrCast(&jitDemoteAll), abi.NIL, module_eid);
+    _ = api.bind_native_method(jit_vt, api.intern("freezeTo:", 9), @ptrCast(&jitFreezeTo), abi.NIL, module_eid);
+    _ = api.bind_native_method(jit_vt, api.intern("loadFrozen:", 11), @ptrCast(&jitLoadFrozen), abi.NIL, module_eid);
     const jit_proto = api.intern("jit:JitProto", 12);
     _ = api.assert_fact(jit_proto, api.attr_vtable, abi.mkEid(jit_vt), module_eid);
     _ = api.assert_fact(module_eid, api.intern("Jit", 3), abi.mkEid(jit_proto), module_eid);

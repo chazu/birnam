@@ -37,9 +37,14 @@ const Ref = ref_mod.Ref;
 fn shellLog(_: [*:0]const u8) callconv(.c) void {}
 fn shellSetReplHandler(_: ?*const fn ([*:0]const u8) callconv(.c) void) callconv(.c) void {}
 
+var g_test_maint_hook: ?*const fn () callconv(.c) void = null;
+fn shellSetMaintHook(h: ?*const fn () callconv(.c) void) callconv(.c) void {
+    g_test_maint_hook = h;
+}
 var shell_ctx = id_api_mod.ShellContext{
     .log = &shellLog,
     .set_repl_handler = &shellSetReplHandler,
+    .set_maintenance_hook = &shellSetMaintHook,
 };
 
 fn fullSetup(arena: *std.heap.ArenaAllocator) !struct {
@@ -1589,50 +1594,13 @@ test "image: REPL binding survives save -> fresh boot -> load (lang-driven)" {
 // `[wrapper :closure-block-method bm]` recipe and `rematerializeClosures` rebuilds
 // the captureless wrapper. Session B loads peg+lang only — json comes from the
 // image alone (the exact W1 boot-image scenario).
-// libtcc codegen milestone (docs/10a) — a JIT'd C method body performs a REAL
-// birnam send against the live runtime. The birnam→C pass emits a C function
-// that calls the runtime's C-ABI send entry point (`birnam_send0`); libtcc JITs
-// it to a native fn-ptr; `addSymbol` binds the runtime call back to the host's
-// `send.birnamSend0`. Calling the JIT'd fn with `mkSmallInt(5)` dispatches
-// `[5 squared]` through the kernel and returns `mkSmallInt(25)` — proving the
-// codegen → JIT → native-calls-into-runtime loop end-to-end ("C using the birnam
-// runtime as a library", the mode-1 backend foundation).
-const jit_mod = @import("jit.zig");
-const codegen_mod = @import("codegen.zig");
-test "codegen+jit: a JIT'd C method body performs a real send ([5 squared] -> 25)" {
-    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const s = try fullSetup(&arena);
-    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
-    _ = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
-
-    // Sanity: `[5 squared]` works through the normal interpreter first.
-    const squared = s.interner.str_to_eid.get("squared").?;
-    try testing.expectEqual(@as(i64, 25), ref_mod.untagSmallInt(send_mod.send0(ref_mod.mkSmallInt(5).?, squared)));
-
-    // Lower `^ self squared` to C, JIT it, bind the runtime send entry point.
-    const c_src = try codegen_mod.emitUnarySend(a, "jit_squared", squared);
-    var j = try jit_mod.Jit.init("/usr/local/lib/tcc");
-    defer j.deinit();
-    try j.addSymbol("birnam_send0", @ptrCast(&send_mod.birnamSend0));
-    try j.compile(c_src);
-    try j.relocate();
-    const f = try j.getFn(*const fn (u64) callconv(.c) u64, "jit_squared");
-
-    // The JIT'd native code calls back into the kernel's dispatch and squares 5.
-    try testing.expectEqual(@as(i64, 25), ref_mod.untagSmallInt(f(ref_mod.mkSmallInt(5).?)));
-    try testing.expectEqual(@as(i64, 49), ref_mod.untagSmallInt(f(ref_mod.mkSmallInt(7).?)));
-}
-
-// libtcc codegen — lower a REAL compiled bytecode method body to C and JIT it.
-// `[:x | x + 1]` (filed in → bytecode: PUSH_LOCAL 0, PUSH_SMALLINT 1, SEND_1 +,
-// RETURN) is transpiled by `codegen.emitMethod` into a C stack machine that calls
-// `birnam_send1`; libtcc JITs it; calling the native fn with args=[5] returns 6 —
-// matching the interpreter. Proves bytecode → C → native against the live runtime.
-test "codegen+jit: a compiled bytecode method body lowers to C and matches the interpreter" {
+// The JIT is a loadable MODULE (src/modules/jit) — talks to the kernel only via
+// the IdApi. This drives it end-to-end: load it, turn auto-JIT on, run a method
+// hot, fire the maintenance hook (which the module registered) → the method
+// compiles to native and still answers correctly. Then mode-3: freeze the native
+// methods to an optimized dylib and load them back. (Replaces the removed in-kernel
+// codegen tests; the codegen now lives only in the module.)
+test "jit module: auto-JIT a hot method + mode-3 freeze/load roundtrip" {
     if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -1641,234 +1609,26 @@ test "codegen+jit: a compiled bytecode method body lowers to C and matches the i
     const s = try fullSetup(&arena);
     _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
     const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_jit.dylib")) orelse return error.JitLoadFailed;
+    try testing.expect(g_test_maint_hook != null); // the module registered it
 
-    // fileIn (bytecode path) a 1-param block; resolve it to its compiled method.
-    const path = "test_codegen_method.birnam";
-    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = "let blk := [:x | [x + 1]]\n" });
-    defer std.fs.cwd().deleteFile(path) catch {};
-    _ = evalLine(s, lang, "[language fileIn: \"test_codegen_method.birnam\"]", a);
+    // Turn auto-JIT on, run `min:` hot, fire the maintenance hook → it compiles.
+    _ = evalLine(s, lang, "[Jit compileAll]", a);
+    _ = evalLine(s, lang, "[[1 to: 100] do: [:i | [5 min: 3]]]", a);
+    g_test_maint_hook.?(); // drain hot methods + compile (the shell does this at the boundary)
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[5 min: 3]", a))); // native, correct
 
-    // Interpreter baseline.
-    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(evalLine(s, lang, "[blk value: 5]", a)));
-
-    const wrapper = ref_mod.untagEid(evalLine(s, lang, "blk", a));
-    const method_eid = s.api.method_eid_of_bytecode_closure(wrapper);
-    try testing.expect(method_eid != 0); // it IS a bytecode block
-
-    // Read the method's bytecode + constant pool (what dispatch.runMethod reads).
-    const bc_ref = s.store.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM).?;
-    const code = strings.bytes(bc_ref);
-    var pool = std.ArrayList(Ref){};
-    defer pool.deinit(a);
-    if (s.store.currentValue(method_eid, kernel_eids.ATTR_CONSTANT_POOL)) |pr| {
-        if (boxed.isRrbRef(pr)) {
-            const rrb = boxed.untagRrbRef(pr);
-            for (0..rrb.count()) |i| try pool.append(a, rrb.nth(i));
-        }
+    // Mode-3: freeze the native methods to a dylib + load them back.
+    defer {
+        std.fs.cwd().deleteFile("libtest_dedup.dylib") catch {};
+        std.fs.cwd().deleteFile("test_dedup.c") catch {};
+        std.fs.cwd().deleteFile("test_dedup.manifest") catch {};
     }
-
-    // Lower → C, JIT, bind the send entry points.
-    const c_src = try codegen_mod.emitMethod(a, "jit_blk", code, pool.items, s.store);
-    var j = try jit_mod.Jit.init("/usr/local/lib/tcc");
-    defer j.deinit();
-    try j.addSymbol("birnam_send0", @ptrCast(&send_mod.birnamSend0));
-    try j.addSymbol("birnam_send1", @ptrCast(&send_mod.birnamSend1));
-    try j.addSymbol("birnam_send2", @ptrCast(&send_mod.birnamSend2));
-    try j.addSymbol("birnam_sendN", @ptrCast(&send_mod.birnamSendN));
-    try j.compile(c_src);
-    try j.relocate();
-    const f = try j.getFn(*const fn (u64, [*]const u64, u64) callconv(.c) u64, "jit_blk");
-
-    // x = 5 → 6, x = 41 → 42. recv unused by this body.
-    var args1 = [_]u64{ref_mod.mkSmallInt(5).?};
-    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(f(ref_mod.NIL, &args1, 1)));
-    var args2 = [_]u64{ref_mod.mkSmallInt(41).?};
-    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(f(ref_mod.NIL, &args2, 1)));
-}
-
-// libtcc codegen — install JIT'd native code AS the method so ordinary `send`
-// dispatch hits it ("native is a cache of bytecode", docs/10a). The block
-// method's object-table closure is swapped to the JIT trampoline; a fresh
-// selector on SMALLINT_VT is bound to it; sending that selector runs the native
-// body. Closes the mode-1 loop: bytecode → C → JIT → installed → dispatched.
-const jitm_mod = @import("jit_method.zig");
-const closure_t = @import("closure.zig");
-test "codegen+jit: install JIT'd body as a method; normal dispatch runs native" {
-    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const s = try fullSetup(&arena);
-    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
-    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
-
-    const path = "test_codegen_install.birnam";
-    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = "let blk := [:x | [x + 1]]\n" });
-    defer std.fs.cwd().deleteFile(path) catch {};
-    _ = evalLine(s, lang, "[language fileIn: \"test_codegen_install.birnam\"]", a);
-    const method_eid = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "blk", a)));
-    try testing.expect(method_eid != 0);
-
-    // Lower + JIT the body (Jit kept alive for the whole test).
-    const bc_ref = s.store.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM).?;
-    var pool = std.ArrayList(Ref){};
-    defer pool.deinit(a);
-    if (s.store.currentValue(method_eid, kernel_eids.ATTR_CONSTANT_POOL)) |pr| {
-        if (boxed.isRrbRef(pr)) {
-            const rrb = boxed.untagRrbRef(pr);
-            for (0..rrb.count()) |i| try pool.append(a, rrb.nth(i));
-        }
-    }
-    const c_src = try codegen_mod.emitMethod(a, "jit_blk", strings.bytes(bc_ref), pool.items, s.store);
-    var j = try jit_mod.Jit.init("/usr/local/lib/tcc");
-    defer j.deinit();
-    inline for (.{ "birnam_send0", "birnam_send1", "birnam_send2", "birnam_sendN" }, .{
-        &send_mod.birnamSend0, &send_mod.birnamSend1, &send_mod.birnamSend2, &send_mod.birnamSendN,
-    }) |name, fp| try j.addSymbol(name, @ptrCast(fp));
-    try j.compile(c_src);
-    try j.relocate();
-    const jit_fn = try j.getFn(jitm_mod.MethodFn, "jit_blk");
-
-    // Install native code AS the method; bind a fresh selector on SMALLINT_VT.
-    const idx = jitm_mod.registerFn(jit_fn).?;
-    try jitm_mod.installTrampoline(a, s.table, method_eid, idx);
-    const sel = try s.interner.intern(s.store, s.table, "jitIncByOne:");
-    _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel, ref_mod.mkEid(method_eid), kernel_eids.M_USER);
-
-    // The method's object-table closure is now the JIT trampoline (native), not
-    // the bytecode dispatcher.
-    const live = s.table.get(method_eid).?;
-    const cl: *const closure_t.Closure = @ptrCast(@alignCast(ref_mod.untagPointer(live)));
-    try testing.expectEqual(@as(*const anyopaque, @ptrCast(&jitm_mod.trampoline)), cl.method);
-
-    // Ordinary dispatch reaches the native body: [0 jitIncByOne: 5] -> 6.
-    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(5).?)));
-    try testing.expectEqual(@as(i64, 100), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(99).?)));
-}
-
-// libtcc codegen — BLOCK lowering. A method whose body uses blocks JITs and
-// matches the interpreter: `cond` (`ifTrue:ifFalse:` → two captureless MAKE_BLOCKs
-// + a send) and `cap` (a CAPTURING block `[:y | x + y]` created + invoked via
-// `value:`). The JIT'd outer method creates/invokes blocks through
-// `birnam_make_block`/`birnam_invoke_block`; the block BODIES stay interpreted.
-test "codegen+jit: block lowering (ifTrue:ifFalse: + a capturing block) matches interpreter" {
-    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const s = try fullSetup(&arena);
-    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
-    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
-
-    try std.fs.cwd().writeFile(.{ .sub_path = "test_codegen_blocks.birnam", .data =
-        "let cond := [:x | [[x > 0] ifTrue: [| 10] ifFalse: [| 20]]];\n" ++
-        "let cap := [:x | [[:y | [x + y]] value: 100]]\n" });
-    defer std.fs.cwd().deleteFile("test_codegen_blocks.birnam") catch {};
-    _ = evalLine(s, lang, "[language fileIn: \"test_codegen_blocks.birnam\"]", a);
-
-    // `cond`: x>0 ? 10 : 20, bound on SMALLINT_VT, JIT-installed, dispatched.
-    const m_cond = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "cond", a)));
-    try testing.expect(m_cond != 0);
-    const sel_cond = try s.interner.intern(s.store, s.table, "jitCond:");
-    _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel_cond, ref_mod.mkEid(m_cond), kernel_eids.M_USER);
-    var jc = try jitm_mod.jitAndInstall(a, s.store, s.table, m_cond);
-    defer jc.deinit();
-    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel_cond, ref_mod.mkSmallInt(5).?)));
-    try testing.expectEqual(@as(i64, 20), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel_cond, ref_mod.mkSmallInt(-3).?)));
-
-    // `cap`: a capturing block (`x` captured) created + invoked → x + 100.
-    const m_cap = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "cap", a)));
-    try testing.expect(m_cap != 0);
-    const sel_cap = try s.interner.intern(s.store, s.table, "jitCap:");
-    _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel_cap, ref_mod.mkEid(m_cap), kernel_eids.M_USER);
-    var jp = try jitm_mod.jitAndInstall(a, s.store, s.table, m_cap);
-    defer jp.deinit();
-    try testing.expectEqual(@as(i64, 103), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel_cap, ref_mod.mkSmallInt(3).?)));
-    try testing.expectEqual(@as(i64, 141), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel_cap, ref_mod.mkSmallInt(41).?)));
-}
-
-// Mode-3 SHIP path (docs/10a) — the same birnam→C codegen, compiled by
-// `zig cc -O2` into a FROZEN dylib and loaded back. The method runs native from
-// an optimized, persisted dylib (not in-memory libtcc); the runtime entry points
-// resolve at load against the host's exported `birnam_*` symbols.
-const freeze_native = @import("freeze_native.zig");
-test "mode-3: birnam→C→zig cc→frozen dylib→load runs native ([:x|x+1] -> 6)" {
-    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const s = try fullSetup(&arena);
-    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
-    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
-
-    try std.fs.cwd().writeFile(.{ .sub_path = "test_mode3.birnam", .data = "let f := [:x | [x + 1]]\n" });
-    defer std.fs.cwd().deleteFile("test_mode3.birnam") catch {};
-    _ = evalLine(s, lang, "[language fileIn: \"test_mode3.birnam\"]", a);
-    const m = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "f", a)));
-    try testing.expect(m != 0);
-
-    // Freeze: emit C, compile to test_mode3/libm3.dylib via zig cc -O2.
-    std.fs.cwd().makeDir("test_mode3") catch {};
-    defer std.fs.cwd().deleteTree("test_mode3") catch {};
-    var eids = [_]u64{m};
-    const res = try freeze_native.freeze(a, s.store, &eids, "test_mode3", "m3");
-    try testing.expectEqual(@as(usize, 1), res.emitted.len);
-
-    // Bind a selector, load the frozen dylib, install the native method.
-    const sel = try s.interner.intern(s.store, s.table, "jitFrozen:");
-    _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel, ref_mod.mkEid(m), kernel_eids.M_USER);
-    const n = try freeze_native.load(a, s.table, "test_mode3/libm3.dylib", res.emitted);
-    try testing.expectEqual(@as(usize, 1), n);
-
-    // Dispatch hits the frozen, optimized native code.
-    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(5).?)));
-    try testing.expectEqual(@as(i64, 100), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(99).?)));
-}
-
-// libtcc codegen — "malleable AND native" (docs/10a). A method is JIT'd to
-// native, then REDEFINED (its :bytecode-stream/:constant-pool reassigned to a
-// different body), then RE-JIT'd; dispatch tracks the redefinition. Uses the
-// `jitAndInstall` pipeline (read facts → emit C → JIT → install). Drop the old
-// Jit on redefine = drop the stale native cache.
-test "codegen+jit: re-JIT on redefine — malleable and native" {
-    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const s = try fullSetup(&arena);
-    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
-    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
-
-    // Two bodies: blk1 = x + 1, blk2 = x + 1000.
-    const path = "test_rejit.birnam";
-    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = "let blk1 := [:x | [x + 1]];\nlet blk2 := [:x | [x + 1000]]\n" });
-    defer std.fs.cwd().deleteFile(path) catch {};
-    _ = evalLine(s, lang, "[language fileIn: \"test_rejit.birnam\"]", a);
-    const m1 = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "blk1", a)));
-    const m2 = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "blk2", a)));
-    try testing.expect(m1 != 0 and m2 != 0 and m1 != m2);
-
-    const sel = try s.interner.intern(s.store, s.table, "jitRedef:");
-    _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel, ref_mod.mkEid(m1), kernel_eids.M_USER);
-
-    // JIT m1 (x + 1); dispatch → 6.
-    var j1 = try jitm_mod.jitAndInstall(a, s.store, s.table, m1);
-    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(5).?)));
-
-    // Redefine m1's body to m2's (x + 1000) by reassigning its code facts.
-    j1.deinit(); // drop the stale native cache
-    _ = try s.store.assert(m1, kernel_eids.ATTR_BYTECODE_STREAM, s.store.currentValue(m2, kernel_eids.ATTR_BYTECODE_STREAM).?, kernel_eids.M_USER);
-    if (s.store.currentValue(m2, kernel_eids.ATTR_CONSTANT_POOL)) |p2|
-        _ = try s.store.assert(m1, kernel_eids.ATTR_CONSTANT_POOL, p2, kernel_eids.M_USER);
-
-    // Re-JIT m1; dispatch now runs the NEW native body → 1005.
-    var j2 = try jitm_mod.jitAndInstall(a, s.store, s.table, m1);
-    defer j2.deinit();
-    try testing.expectEqual(@as(i64, 1005), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(5).?)));
+    const froze = evalLine(s, lang, "[Jit freezeTo: \"test_dedup\"]", a);
+    try testing.expect(ref_mod.isSmallInt(froze) and ref_mod.untagSmallInt(froze) >= 1);
+    const loaded = evalLine(s, lang, "[Jit loadFrozen: \"test_dedup\"]", a);
+    try testing.expect(ref_mod.isSmallInt(loaded) and ref_mod.untagSmallInt(loaded) >= 1);
+    try testing.expectEqual(@as(i64, 3), ref_mod.untagSmallInt(evalLine(s, lang, "[5 min: 3]", a))); // from frozen dylib
 }
 
 // W1 Stage 3b (docs/19c) — relink-by-name. A native FFI module (net) booted in
