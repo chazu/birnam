@@ -230,43 +230,65 @@ someday-optimization (regenerate the native form instead of re-linking it), not 
 prerequisite. This mirrors exactly what D5/D5.1 did for identity: do not delete the
 fast thing — *demote it from primary to derived.*
 
-### The native-cache backend: compile-to-C/Zig (AOT) vs fast JIT (live) — 2026-06-25
+### The native-cache backend: native ALWAYS; the dial is codegen-residency — 2026-06-25
 
-"Native is a cache of a bytecode-cell" leaves one open choice: **which code
-generator produces the cache.** Two points in the space, dissolving the
-bytecode/native distinction differently:
+**The goal (locked direction):** make **mode 1 itself native** — fully malleable
+*and* native machine code, the way idst/COLA was. The bytecode/native split
+dissolves not by "interpret in mode 1, compile in mode 3" but by **native being
+the execution form in every mode**; what the strip-dial removes is the *ability to
+change the code*, not the native-ness.
 
-- **Fast JIT (Piumarta's COLA/idst path).** His *Virtual Processor* (`ccg`,
-  "fast architecture-neutral dynamic code generation") is a low-level IR JIT'd to
-  native in microseconds — no slow interpreted tier; the IR *is* the program, the
-  JIT *is* the executor. **Live, low-latency; cost = a hand-written code generator
-  per architecture.**
-- **Compile-to-C/Zig (AOT).** Emit C (or Zig) from a method's bytecode-cells,
-  compile with `zig cc` / `zig build-lib`, `dlopen`, relink by name. **Reuses a
-  mature optimizer (zero codegen to maintain), portable; cost = C-compiler latency
-  → AOT/freeze/ship, NOT a per-call JIT.**
+**The enabling insight:** "malleable AND native" requires only that the native
+form be **regenerated cheaply on every redefinition** (edit → re-codegen →
+native, fast enough not to stall the loop). That is exactly why Piumarta built the
+VPU — a *live* code generator, not a ship-time one. So the real axis is **codegen
+latency**, and it is what separates a mode-1 backend from a ship backend.
 
-**Direction (lean):** compile-to-C/Zig as the AOT native-materialization backend.
-It maps onto the existing strip-dial: **mode 1** runs bytecode-cells (live,
-malleable, no native); **mode 2/3** materializes them to a native dylib at
-freeze/ship. It *extends `freeze.zig`* — which already reconstructs a module and
-`zig build-lib`s it into a relink-on-load dylib; the change is to emit *compiled
-methods* instead of "embed source + re-`fileInSource:`". And a compiled method
-**relinks by name on load** — the *same* mechanism as W1 closure rematerialization,
-W5's fact linker, and D5.1 name-anchoring. Everything converges.
+**Backends, by codegen latency:**
+- **`libtcc` (TinyCC as a library) — the mode-1 JIT.** Compiles a C string to
+  *in-memory executable code in ~ms* and returns a function pointer
+  (`tcc_compile_string` → `tcc_relocate` → `tcc_get_symbol`) — **no dylib, no
+  dlopen.** Fast enough to re-JIT on every redefine → **malleable + native**, with
+  **C as the IR** (the stated direction). Native quality is unoptimized but *far*
+  above a bytecode interpreter. Tiny (~100 KB), built for exactly this.
+- **`clang` / `zig cc` (+ `zig build-lib`) — the mode-3 ship backend.** Slow
+  (100s ms) but fully optimized; emits a frozen dylib, relinked by name on load.
+  *Same `birnam → C` codegen pass*, different compiler.
+- **Piumarta VPU / template JIT — the no-C alternative.** Most idst-faithful, no C
+  dependency, tunable native quality; cost = a hand-written per-arch code
+  generator. The successor if libtcc's unoptimized output or C dependency ever
+  bites.
 
-Notes: **arocc not needed** — birnam→C/Zig is our own codegen pass (text gen
-calling back into the runtime); C/Zig→native is the `zig` toolchain already used
-by `freeze`. arocc would only matter to *embed* a C compiler in the runtime (drop
-the external toolchain) and its native backend is still maturing — defer. Zig's
-`-ofmt=c` is Zig→C (wrong direction). **birnam→Zig** is lower-friction than
-birnam→C (direct runtime-ABI access, same `build-lib` step); **birnam→C** is more
-portable/embeddable — the codegen pass is the same shape either way, so the target
-language is deferrable. The evaluator (VM loop, GC, HAMT) stays native by
-necessity (the irreducible residue below); generated code *calls into* it — it is
-"C/Zig using the birnam runtime as a library," not standalone. A fast JIT (the
-Piumarta path) is the optional successor *if* live native speed (mode-1 hot
-methods) is ever wanted.
+**Direction (locked): birnam → C, with `libtcc` for mode 1 (live) and
+`clang`/`zig cc` for mode 3 (ship).** One codegen pass, two compilers at the two
+ends of the speed/quality dial. **Integrate `libtcc` ASAP after the current
+ADR-image-1 / W1 refactor lands.**
+
+**The strip-dial, recast (more idst-faithful):** native is always the execution
+form; the dial controls whether the **codegen + AST/source are resident** (= can
+you still change the code):
+- **Mode 1** — native + `libtcc` + AST resident → redefine anything, re-JIT
+  instantly. *Malleable and native.*
+- **Mode 3** — native frozen by `clang`, codegen + AST stripped → fast, immutable.
+
+**Cell-model fit:** canonical code stays the **code-cell** (AST/bytecode — data,
+serializable, round-trips in the image); **C is a transient codegen target**;
+**native is the cache**; the JIT keeps that cache warm under editing. Bytecode, if
+kept, demotes to "the compact serialized form of a code-cell"; the *interpreter*
+can eventually retire in favor of always-JIT (true idst) or stay as a fallback.
+
+**Notes / residue.** A compiled method **relinks by name on load** — the *same*
+mechanism as W1 closure rematerialization, W5's fact linker, and D5.1
+name-anchoring; the ship path *extends `freeze.zig`* (which already reconstructs a
+module and `zig build-lib`s a relink-on-load dylib — swap "embed source +
+re-`fileInSource:`" for "emit compiled methods"). **arocc not needed** — birnam→C
+is our own codegen pass; C→native is `libtcc` (live) or `zig cc` (ship). Zig's
+`-ofmt=c` is Zig→C (wrong direction). **birnam→Zig** is lower-friction for the
+*ship* path (runtime-ABI access, same `build-lib`); **birnam→C** is required for
+the `libtcc` *live* path and is more portable — codegen is the same shape, so the
+ship target is deferrable. The evaluator (VM loop, GC, HAMT) stays native by
+necessity (residue below); generated code *calls into* it ("C using the birnam
+runtime as a library," not standalone).
 
 ## The irreducible residue (Münchhausen)
 
