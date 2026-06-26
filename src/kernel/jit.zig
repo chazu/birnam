@@ -61,6 +61,17 @@ pub const Jit = struct {
         if (c.tcc_compile_string(self.state, c_src) == -1) return Error.Compile;
     }
 
+    /// Register a host symbol (function or data pointer) so generated C can call
+    /// back into the **birnam runtime as a library** by name — the send entry
+    /// points, allocation, HAMT/RRB ops, GC roots, etc. The codegen emits
+    /// `extern` declarations for these and we satisfy them here; the JIT'd method
+    /// body is then just C that orchestrates runtime calls over `Ref`s. Must run
+    /// before `relocate`.
+    pub fn addSymbol(self: *Jit, name: [*:0]const u8, ptr: *const anyopaque) Error!void {
+        if (self.relocated) return Error.Compile;
+        if (c.tcc_add_symbol(self.state, name, ptr) < 0) return Error.Compile;
+    }
+
     /// Finalize: lay the compiled code out as executable memory. Must run once,
     /// after all `compile` calls and before any `getSymbol`.
     pub fn relocate(self: *Jit) Error!void {
