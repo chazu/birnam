@@ -18,6 +18,8 @@ const vm = @import("vm.zig");
 const ref_mod = @import("ref.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const fact_store = @import("fact_store.zig");
+const strings = @import("strings.zig");
+const boxed = @import("boxed.zig");
 
 const Ref = ref_mod.Ref;
 
@@ -97,6 +99,25 @@ pub fn emitMethod(
     pool: []const Ref,
     store: ?*const fact_store.FactStore,
 ) Error![:0]u8 {
+    var b = std.ArrayList(u8){};
+    errdefer b.deinit(allocator);
+    const w = b.writer(allocator);
+    try w.writeAll(RUNTIME_PRELUDE);
+    try emitBodyTo(allocator, w, fn_name, code, pool, store);
+    return b.toOwnedSliceSentinel(allocator, 0);
+}
+
+/// Emit just the C function (no prelude) for one method to `w`. Shared by
+/// `emitMethod` (one method + its own prelude) and `emitUnit` (many methods over
+/// a single shared prelude — the mode-3 ship path).
+fn emitBodyTo(
+    allocator: std.mem.Allocator,
+    w: anytype,
+    fn_name: []const u8,
+    code: []const u8,
+    pool: []const Ref,
+    store: ?*const fact_store.FactStore,
+) Error!void {
     // Pre-scan: max local slot (sizes L[]) + the set of jump-TARGET pcs (where C
     // labels must be emitted). A target = (pc + 3) + i16-offset, matching the VM's
     // `applyJump(pc + 3, off)` for JUMP / BRANCH_IF_FALSE / BRANCH_IF_ERROR.
@@ -131,11 +152,6 @@ pub fn emitMethod(
         }
     }
 
-    var b = std.ArrayList(u8){};
-    errdefer b.deinit(allocator);
-    const w = b.writer(allocator);
-
-    try w.writeAll(RUNTIME_PRELUDE);
     // Stack + locals sized generously; a body pushes ≤1 per opcode so code.len is
     // a safe stack ceiling, and locals = max referenced slot + a 16-arg headroom.
     try w.print(
@@ -233,8 +249,66 @@ pub fn emitMethod(
     // A body that falls off the end returns nil (the interpreter's implicit ^self
     // is handled by the compiler emitting a trailing RETURN; this is a safety net).
     try w.print("  return {d}UL;\n}}\n", .{ref_mod.NIL});
+}
 
-    return b.toOwnedSliceSentinel(allocator, 0);
+/// Mode-3 ship codegen: emit a single C translation unit (one shared prelude +
+/// one `Ref bm_<eid>(...)` per method) for the given method eids. Methods whose
+/// bytecode the codegen can't lower are skipped and reported in `skipped`. The
+/// unit is compiled by `zig cc -O2` into a frozen dylib (freeze_native.zig) and
+/// loaded back — the same codegen as the libtcc live path, a different compiler.
+pub const Unit = struct { c_src: [:0]u8, emitted: []u64, skipped: usize };
+
+pub fn emitUnit(
+    allocator: std.mem.Allocator,
+    store: *const fact_store.FactStore,
+    eids: []const u64,
+) Error!Unit {
+    var b = std.ArrayList(u8){};
+    errdefer b.deinit(allocator);
+    var emitted = std.ArrayList(u64){};
+    errdefer emitted.deinit(allocator);
+    const w = b.writer(allocator);
+    try w.writeAll(RUNTIME_PRELUDE);
+
+    var skipped: usize = 0;
+    for (eids) |eid| {
+        const bc = store.currentValue(eid, kernel_eids.ATTR_BYTECODE_STREAM) orelse {
+            skipped += 1;
+            continue;
+        };
+        if (!strings.isString(bc)) {
+            skipped += 1;
+            continue;
+        }
+        var pool = std.ArrayList(Ref){};
+        defer pool.deinit(allocator);
+        if (store.currentValue(eid, kernel_eids.ATTR_CONSTANT_POOL)) |pr| {
+            if (boxed.isRrbRef(pr)) {
+                const rrb = boxed.untagRrbRef(pr);
+                for (0..rrb.count()) |i| try pool.append(allocator, rrb.nth(i));
+            }
+        }
+        var name_buf: [32]u8 = undefined;
+        const name = std.fmt.bufPrint(&name_buf, "bm_{d}", .{eid}) catch unreachable;
+        // Emit to a temp first — a decline can leave a partial function, so only
+        // append a method to the unit once its whole body emitted cleanly.
+        var tmp = std.ArrayList(u8){};
+        defer tmp.deinit(allocator);
+        emitBodyTo(allocator, tmp.writer(allocator), name, strings.bytes(bc), pool.items, store) catch |e| switch (e) {
+            error.UnsupportedOpcode => {
+                skipped += 1;
+                continue;
+            },
+            else => return e,
+        };
+        try w.writeAll(tmp.items);
+        try emitted.append(allocator, eid);
+    }
+    return .{
+        .c_src = try b.toOwnedSliceSentinel(allocator, 0),
+        .emitted = try emitted.toOwnedSlice(allocator),
+        .skipped = skipped,
+    };
 }
 
 test "codegen: unary-send C contains the prelude, name, and selector" {

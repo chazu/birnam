@@ -335,3 +335,14 @@ pub fn birnamSend2(receiver: Ref, sel: Selector, a1: Ref, a2: Ref) callconv(.c) 
 pub fn birnamSendN(receiver: Ref, sel: Selector, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
     return sendN(receiver, sel, args, n_args);
 }
+
+// Export the send entry points from the host under their C names so a mode-3
+// FROZEN dylib (compiled by `zig cc -undefined dynamic_lookup`) resolves them at
+// load (the libtcc live path binds them via `addSymbol` instead). See
+// `freeze_native.zig`. The block-op / predicate entries are exported by dispatch.
+comptime {
+    @export(&birnamSend0, .{ .name = "birnam_send0" });
+    @export(&birnamSend1, .{ .name = "birnam_send1" });
+    @export(&birnamSend2, .{ .name = "birnam_send2" });
+    @export(&birnamSendN, .{ .name = "birnam_sendN" });
+}

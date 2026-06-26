@@ -1789,6 +1789,45 @@ test "codegen+jit: block lowering (ifTrue:ifFalse: + a capturing block) matches 
     try testing.expectEqual(@as(i64, 141), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel_cap, ref_mod.mkSmallInt(41).?)));
 }
 
+// Mode-3 SHIP path (docs/10a) — the same birnam→C codegen, compiled by
+// `zig cc -O2` into a FROZEN dylib and loaded back. The method runs native from
+// an optimized, persisted dylib (not in-memory libtcc); the runtime entry points
+// resolve at load against the host's exported `birnam_*` symbols.
+const freeze_native = @import("freeze_native.zig");
+test "mode-3: birnam→C→zig cc→frozen dylib→load runs native ([:x|x+1] -> 6)" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    try std.fs.cwd().writeFile(.{ .sub_path = "test_mode3.birnam", .data = "let f := [:x | [x + 1]]\n" });
+    defer std.fs.cwd().deleteFile("test_mode3.birnam") catch {};
+    _ = evalLine(s, lang, "[language fileIn: \"test_mode3.birnam\"]", a);
+    const m = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "f", a)));
+    try testing.expect(m != 0);
+
+    // Freeze: emit C, compile to test_mode3/libm3.dylib via zig cc -O2.
+    std.fs.cwd().makeDir("test_mode3") catch {};
+    defer std.fs.cwd().deleteTree("test_mode3") catch {};
+    var eids = [_]u64{m};
+    const res = try freeze_native.freeze(a, s.store, &eids, "test_mode3", "m3");
+    try testing.expectEqual(@as(usize, 1), res.emitted.len);
+
+    // Bind a selector, load the frozen dylib, install the native method.
+    const sel = try s.interner.intern(s.store, s.table, "jitFrozen:");
+    _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel, ref_mod.mkEid(m), kernel_eids.M_USER);
+    const n = try freeze_native.load(a, s.table, "test_mode3/libm3.dylib", res.emitted);
+    try testing.expectEqual(@as(usize, 1), n);
+
+    // Dispatch hits the frozen, optimized native code.
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(5).?)));
+    try testing.expectEqual(@as(i64, 100), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(99).?)));
+}
+
 // libtcc codegen — "malleable AND native" (docs/10a). A method is JIT'd to
 // native, then REDEFINED (its :bytecode-stream/:constant-pool reassigned to a
 // different body), then RE-JIT'd; dispatch tracks the redefinition. Uses the

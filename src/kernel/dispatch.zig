@@ -463,6 +463,15 @@ pub fn birnamIsError(v: Ref) callconv(.c) c_int {
     return if (isErrorValue(v)) 1 else 0;
 }
 
+// Export the predicate + block-op runtime entries under their C names so a mode-3
+// frozen dylib resolves them at load (see send.zig / freeze_native.zig).
+comptime {
+    @export(&birnamIsFalsey, .{ .name = "birnam_is_falsey" });
+    @export(&birnamIsError, .{ .name = "birnam_is_error" });
+    @export(&birnamMakeBlock, .{ .name = "birnam_make_block" });
+    @export(&birnamInvokeBlock, .{ .name = "birnam_invoke_block" });
+}
+
 // -- Hotness / auto-JIT (docs/10a — interpret cold, compile hot) ------------
 // A cheap call counter at `runMethod` entry. Once a bytecode method is called
 // HOT_THRESHOLD times it is queued; the shell drains the queue at the quiescent
