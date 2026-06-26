@@ -434,6 +434,8 @@ fn processReplLine(
                 stderrPrint("[birnam] auto-gc ({d} boxes, {d} closures, {d} wrappers, {d} strings freed)\n", .{ st.boxes_freed, st.closures_freed, st.wrappers_freed, st.strings_freed });
             }
         }
+        // A module-registered maintenance hook (the jit module's auto-JIT drain).
+        if (g_maintenance_hook) |h| h();
         // Auto-JIT: compile any methods that crossed the hotness threshold this
         // line (docs/10a — interpret cold, compile hot). The JIT runs here, at the
         // quiescent boundary, not inside dispatch.
@@ -521,7 +523,15 @@ fn runBirnamRepl(
 var shell_context = id_api_mod.ShellContext{
     .log = &shellLog,
     .set_repl_handler = &shellSetReplHandler,
+    .set_maintenance_hook = &shellSetMaintenanceHook,
 };
+
+/// A module-registered hook the REPL loop calls at each quiescent line boundary
+/// (the jit module uses it to drain hot methods + auto-compile them).
+var g_maintenance_hook: ?*const fn () callconv(.c) void = null;
+fn shellSetMaintenanceHook(h: ?*const fn () callconv(.c) void) callconv(.c) void {
+    g_maintenance_hook = h;
+}
 
 /// One-line startup banner: version + the two things a newcomer needs.
 fn printBanner() void {

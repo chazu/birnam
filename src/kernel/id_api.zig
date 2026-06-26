@@ -193,6 +193,13 @@ pub fn populate() IdApi {
         .prune_now = &cPruneNow,
         .register_treewalk_block_shim = &cRegisterTreewalkBlockShim,
         .bind_native_method = &cBindNativeMethod,
+        .string_ptr = &cStringPtr,
+        .method_capture_specs = &cMethodCaptureSpecs,
+        .jit_install_native = &cJitInstallNative,
+        .jit_revert_bytecode = &cJitRevertBytecode,
+        .jit_drain_hot = &cJitDrainHot,
+        .jit_set_auto = &cJitSetAuto,
+        .jit_auto_enabled = &cJitAutoEnabled,
     };
 }
 
@@ -688,6 +695,67 @@ fn cObjectToRef(p: ?*anyopaque) callconv(.c) Ref {
 }
 
 const Closure = @import("closure.zig").Closure;
+const mcache = @import("mcache.zig");
+
+// -- JIT module support (docs/10a) — kernel hooks the loadable jit module reaches
+// through the IdApi (nothing below it). The compiler (libtcc, codegen, manager)
+// lives entirely in `src/modules/jit/`; these are the thin kernel-state touches.
+
+fn cStringPtr(r: Ref) callconv(.c) ?[*]const u8 {
+    if (!strings.isString(r)) return null;
+    return strings.bytes(r).ptr;
+}
+
+fn cMethodCaptureSpecs(method_eid: u64, out: [*]u8, cap: usize) callconv(.c) usize {
+    const s = send_mod.storePtr() orelse return 0;
+    const spec_ref = s.currentValue(method_eid, kernel_eids.ATTR_METHOD_CAPTURES_PTR) orelse return 0;
+    const specs = vm_mod.captureSpecsFromRef(spec_ref);
+    var n: usize = 0;
+    for (specs) |sp| {
+        if (n * 2 + 1 >= cap) break;
+        out[n * 2] = sp.parent_slot;
+        out[n * 2 + 1] = sp.local_slot;
+        n += 1;
+    }
+    return n;
+}
+
+/// Build a `[BYTECODE_METHOD_VT][method][data]` closure at `method_eid` + flush
+/// the method cache. Shared by install-native (module trampoline + idx) and
+/// revert (the bytecode interpreter closure).
+fn putMethodClosure(method_eid: u64, method: *const anyopaque, data: Ref) bool {
+    const a = if (arenas.ready()) arenas.closuresVt() else (send_mod.kernelAllocator() orelse return false);
+    const t = send_mod.tablePtr() orelse return false;
+    const buf = a.alignedAlloc(u8, .of(Ref), 3 * @sizeOf(Ref)) catch return false;
+    @memset(buf, 0);
+    const vt: *Ref = @ptrCast(@alignCast(buf.ptr));
+    vt.* = ref_mod.mkEid(kernel_eids.BYTECODE_METHOD_VT);
+    const c: *Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
+    c.method = method;
+    c.data = data;
+    t.put(method_eid, ref_mod.mkPointer(@ptrCast(c))) catch return false;
+    mcache.clearAll();
+    return true;
+}
+
+fn cJitInstallNative(method_eid: u64, fn_ptr: ?*const anyopaque, data: Ref) callconv(.c) bool {
+    const fp = fn_ptr orelse return false;
+    return putMethodClosure(method_eid, fp, data);
+}
+
+fn cJitRevertBytecode(method_eid: u64) callconv(.c) void {
+    _ = putMethodClosure(method_eid, @ptrCast(&dispatch_mod.bytecodeDispatcherImpl), ref_mod.mkEid(method_eid));
+}
+
+fn cJitDrainHot(out: [*]u64, cap: usize) callconv(.c) usize {
+    return dispatch_mod.drainHotMethods(out[0..cap]);
+}
+fn cJitSetAuto(on: bool) callconv(.c) void {
+    dispatch_mod.setAutoJit(on);
+}
+fn cJitAutoEnabled() callconv(.c) bool {
+    return dispatch_mod.autoJitEnabled();
+}
 
 /// Allocate a `[vt=CLOSURE_VT][method][data]` libid-closure buffer and install
 /// it at object-table `eid`. Shared by `cMakeClosure` (fresh eid) and

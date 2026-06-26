@@ -25,6 +25,30 @@ pub inline fn mkEid(e: u64) Ref {
     return (e << 3) | 0b010;
 }
 
+// Ref tag helpers (mirror of ref.zig — tags: pointer 000, smallint 001, eid 010,
+// string 100). A module manipulating Refs (e.g. the jit module embedding literals
+// in generated C) uses these instead of importing the kernel's ref.zig.
+pub inline fn isEid(r: Ref) bool {
+    return (r & 0b111) == 0b010;
+}
+pub inline fn untagEid(r: Ref) u64 {
+    return r >> 3;
+}
+pub inline fn isSmallInt(r: Ref) bool {
+    return (r & 0b111) == 0b001;
+}
+pub inline fn untagSmallInt(r: Ref) i64 {
+    return @as(i64, @bitCast(r)) >> 3;
+}
+pub inline fn mkSmallInt(n: i64) ?Ref {
+    const shifted = @shlWithOverflow(n, 3);
+    if (shifted[1] != 0) return null;
+    return @as(Ref, @bitCast(shifted[0])) | 0b001;
+}
+pub inline fn isString(r: Ref) bool {
+    return (r & 0b111) == 0b100;
+}
+
 // -- Well-known kernel eids a wrapper may need (mirror of kernel_eids) --------
 pub const MODULE_PROTO: u64 = 15;
 pub const LANGUAGE_PROTO: u64 = 192;
@@ -38,6 +62,11 @@ pub const ShellContext = extern struct {
     /// supplies those facts/bindings afterward; only native primitives (which
     /// relink) need installing. Appended at END per the append-only ABI discipline.
     boot_from_image: bool = false,
+    /// Register a hook the shell calls at every quiescent REPL line boundary
+    /// (alongside prune/gc). The jit module registers one to drain hot methods +
+    /// auto-compile them — the auto-JIT runs here, outside dispatch. null clears.
+    /// (Appended at END per the append-only ABI discipline.)
+    set_maintenance_hook: *const fn (?*const fn () callconv(.c) void) callconv(.c) void = undefined,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.
@@ -434,6 +463,31 @@ pub const IdApi = extern struct {
     /// init so the module loads correctly in either order. (Appended at END per
     /// the append-only ABI discipline.)
     bind_native_method: *const fn (vt_eid: u64, sel_eid: u64, fn_ptr: ?*const anyopaque, data: Ref, module_eid: u64) callconv(.c) u64,
+
+    // -- JIT module support (docs/10a) — the libtcc backend is a loadable module
+    // (`src/modules/jit/`); these are the kernel hooks it reaches THROUGH the
+    // IdApi (nothing below it). Appended at END per the append-only discipline.
+
+    /// Raw bytes of a string Ref (length from `string_len`). The jit module reads
+    /// a method's `:bytecode-stream` this way for its codegen.
+    string_ptr: *const fn (Ref) callconv(.c) ?[*]const u8,
+    /// Write a method's capture spec as `count` (parent_slot, local_slot) byte
+    /// pairs into `out` (≤ `cap/2` pairs); returns the pair count. Backs the jit
+    /// module's MAKE_BLOCK lowering.
+    method_capture_specs: *const fn (method_eid: u64, out: [*]u8, cap: usize) callconv(.c) usize,
+    /// Install `{fn_ptr, data}` as `method_eid`'s object-table closure (the native
+    /// trampoline + its registry index) and flush the method cache — the
+    /// bytecode→native swap, done kernel-side so the module never writes the table.
+    jit_install_native: *const fn (method_eid: u64, fn_ptr: ?*const anyopaque, data: Ref) callconv(.c) bool,
+    /// Revert `method_eid` to the bytecode interpreter closure (the native→bytecode
+    /// demote).
+    jit_revert_bytecode: *const fn (method_eid: u64) callconv(.c) void,
+    /// Drain up to `cap` hot method eids (methods that crossed the auto-JIT
+    /// threshold in `runMethod`) into `out`, clearing the queue; returns the count.
+    jit_drain_hot: *const fn (out: [*]u64, cap: usize) callconv(.c) usize,
+    /// Enable/disable + query the kernel's hotness counting (auto-JIT trigger).
+    jit_set_auto: *const fn (on: bool) callconv(.c) void,
+    jit_auto_enabled: *const fn () callconv(.c) bool,
 };
 
 comptime {
