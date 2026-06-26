@@ -261,8 +261,19 @@ latency**, and it is what separates a mode-1 backend from a ship backend.
 
 **Direction (locked): birnam → C, with `libtcc` for mode 1 (live) and
 `clang`/`zig cc` for mode 3 (ship).** One codegen pass, two compilers at the two
-ends of the speed/quality dial. **Integrate `libtcc` ASAP after the current
-ADR-image-1 / W1 refactor lands.**
+ends of the speed/quality dial.
+
+**Mode-1 loop PROVEN end-to-end (2026-06-25/26).** The full chain runs and is
+stress-stable: `bytecode → C (codegen.zig) → native (libtcc, jit.zig) → installed
+as the method (jit_method.zig) → ordinary send dispatches native`, and **re-JIT
+on redefine** demonstrates malleable-AND-native. The generated C uses the runtime
+"as a library" via C-ABI entry points (`birnam_send0/1/2/N`, `birnam_is_falsey/
+_error`). Native is a cache: closure.data parks a SmallInt index (GC-safe) into a
+JIT'd-body registry; `:bytecode-stream` stays canonical. See
+[[project_birnam_libtcc]]. **Remaining:** BLOCK lowering (MAKE_BLOCK/INVOKE_BLOCK
+— blocks capture the enclosing C-frame's locals, so this breaks the clean
+C-calls-runtime model and is the real next codegen piece); a live auto-JIT policy;
+the mode-3 ship path (`zig cc`, extends `freeze.zig`); vendoring libtcc.
 
 **The strip-dial, recast (more idst-faithful):** native is always the execution
 form; the dial controls whether the **codegen + AST/source are resident** (= can
