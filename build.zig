@@ -331,6 +331,21 @@ pub fn build(b: *std.Build) void {
     const run_hamt_tests = b.addRunArtifact(hamt_tests);
     test_step.dependOn(&run_hamt_tests.step);
 
+    // libtcc JIT wrapper (W1 → libtcc, docs/10a). Links the system libtcc; the
+    // dev install lives under /usr/local (vendoring like libffi is a later step).
+    const jit_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel/jit_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    jit_test_mod.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
+    jit_test_mod.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+    jit_test_mod.linkSystemLibrary("tcc", .{});
+    const jit_tests = b.addTest(.{ .root_module = jit_test_mod });
+    const run_jit_tests = b.addRunArtifact(jit_tests);
+    test_step.dependOn(&run_jit_tests.step);
+
     const rrb_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/rrb_test.zig"),
         .target = target,
