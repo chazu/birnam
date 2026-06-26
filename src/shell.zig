@@ -703,6 +703,26 @@ fn runAotDriver(gpa: std.mem.Allocator, args: [][:0]u8) !void {
     if (is_dynamic) stageDylibs(allocator, "src/" ++ embed_rel, out_path);
 }
 
+/// W1 Stage 3a — compute a full image's **boot-cache validity hash**: the kernel
+/// eid-layout signature folded, in order, with the content of each named
+/// module's dylib. A kernel rebuild that renumbers eids OR any rebuilt/edited
+/// module dylib changes the hash, so the saved image is trusted as a boot cache
+/// only while it still matches. `names` is the module set (the manifest's module
+/// list at save; the same list, re-resolved, at boot). A name that fails to
+/// resolve folds nothing — a removed module changes the set ⇒ the hash differs,
+/// which is the correct (invalidate) outcome.
+fn bootValidity(allocator: std.mem.Allocator, names: []const []const u8, extra_dirs: []const []const u8) u64 {
+    var acc: u64 = image.KERNEL_ABI_SIGNATURE;
+    for (names) |name| {
+        const resolved = dylib_search.resolveWith(allocator, name, extra_dirs) orelse continue;
+        defer allocator.free(resolved);
+        const bytes = std.fs.cwd().readFileAlloc(allocator, resolved, 256 << 20) catch continue;
+        defer allocator.free(bytes);
+        acc = image.mixBootValidity(acc, bytes);
+    }
+    return acc;
+}
+
 /// Copy each module dylib named in the staged image's manifest next to
 /// `out_path`. Source is the saved path if it still exists, else
 /// `zig-out/lib/<basename>`, else `<basename>` in cwd. Best-effort: a missing
@@ -1020,6 +1040,29 @@ pub fn main() !void {
     }
     const overrides = overrides_list.items;
 
+    // W1 Stage 3a — validate a `--boot-image` before trusting it as a boot
+    // cache: peek its manifest, recompute the boot-validity hash over the SAME
+    // module set (the kernel eid-layout signature + each named dylib's content),
+    // and compare. On mismatch (kernel rebuilt / a module dylib changed / pre-v8
+    // image with no hash) drop the image and fall through to a normal
+    // recompile-from-source boot — never replay facts into a divergent kernel.
+    if (boot_image) |bimg| {
+        const valid = blk: {
+            const f = std.fs.cwd().openFile(bimg, .{}) catch break :blk false;
+            defer f.close();
+            const bytes = f.readToEndAlloc(sa, std.math.maxInt(usize)) catch break :blk false;
+            const mf = image.peekManifest(sa, bytes) catch break :blk false;
+            if (mf.boot_validity == 0) break :blk false; // pre-v8 / unstamped
+            const names = sa.alloc([]const u8, mf.modules.len) catch break :blk false;
+            for (mf.modules, 0..) |dep, i| names[i] = dep.name;
+            break :blk bootValidity(sa, names, extra_dirs) == mf.boot_validity;
+        };
+        if (!valid) {
+            stderrPrint("[birnam] boot-image {s} is stale (kernel/module ABI or source changed) — recompiling from source\n", .{bimg});
+            boot_image = null;
+        }
+    }
+
     // Pick the source of module names per the precedence above.
     // `--boot-image` overrides everything: load only the native (Zig) prefix
     // — the parser/compiler — then replay the image, which carries the compiled
@@ -1107,11 +1150,29 @@ pub fn main() !void {
         std.process.exit(0);
     } else |_| {}
 
-    // `BIRNAM_SAVE_FULL=<path>` writes a v7 full image of the live system and
-    // exits — for W1 Stage-2/3 testing (produce a self-contained image, then
-    // load it via --boot-image). Off by default.
+    // `BIRNAM_SAVE_FULL=<path>` writes a v8 full image of the live system
+    // (stamped with the boot-validity hash over the loaded module set) and exits
+    // — for W1 Stage-2/3 testing (produce a self-contained image, then load it
+    // via --boot-image, which validates the stamp). Off by default.
     if (std.process.getEnvVarOwned(sa, "BIRNAM_SAVE_FULL")) |path| {
-        const mf = image.Manifest{};
+        // Record the module set + its boot-validity hash so a later boot can
+        // decide load-vs-recompile. modules = the full loaded set (names).
+        const save_deps = sa.alloc(image.ModuleDep, manager.modules.items.len) catch {
+            stderrPrint("[W1] save-full: out of memory\n", .{});
+            std.process.exit(1);
+        };
+        const save_names = sa.alloc([]const u8, manager.modules.items.len) catch {
+            stderrPrint("[W1] save-full: out of memory\n", .{});
+            std.process.exit(1);
+        };
+        for (manager.modules.items, 0..) |m, i| {
+            save_deps[i] = .{ .name = m.name, .abi_hash = 0 };
+            save_names[i] = m.name;
+        }
+        const mf = image.Manifest{
+            .modules = save_deps,
+            .boot_validity = bootValidity(sa, save_names, extra_dirs),
+        };
         if (image.writeFull(allocator, store, table.next_eid.load(.monotonic), mf, interner, table)) |res| {
             defer allocator.free(res.bytes);
             std.fs.cwd().writeFile(.{ .sub_path = path, .data = res.bytes }) catch |e| {

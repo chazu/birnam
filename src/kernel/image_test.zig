@@ -404,6 +404,34 @@ test "image: embedded manifest round-trips (modules, versions, thread mode)" {
     try testing.expectEqual(vi(1), dst.currentValue(E_A, A_NUM).?);
 }
 
+// W1 Stage 3a — a full (v8) image carries the boot-cache validity hash; an
+// M_USER (v6) image does not (it is an overlay, never a boot cache). The hash
+// round-trips through both `peekManifest` and a full replay.
+test "image: boot_validity round-trips in v8 full images only" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var src = fs.FactStore.init(a);
+    _ = try src.assert(E_A, A_NUM, vi(7), M_USER);
+
+    // Full (v8) image: boot_validity is written + read back.
+    const full = try image.writeFull(a, &src, 256, .{ .boot_validity = 0xCAFE_F00D_1234 }, null, null);
+    const pf = try image.peekManifest(a, full.bytes);
+    try testing.expectEqual(@as(u64, 0xCAFE_F00D_1234), pf.boot_validity);
+    var dst = fs.FactStore.init(a);
+    const lf = try image.load(&dst, full.bytes, null);
+    try testing.expectEqual(@as(u64, 0xCAFE_F00D_1234), lf.manifest.boot_validity);
+
+    // M_USER (v6) image: no boot_validity slot — reads back as 0 regardless.
+    const overlay = try image.write(a, &src, 256, .{ .boot_validity = 0xCAFE_F00D_1234 }, null);
+    const po = try image.peekManifest(a, overlay.bytes);
+    try testing.expectEqual(@as(u64, 0), po.boot_validity);
+
+    // The kernel ABI signature is a stable, non-zero comptime constant.
+    try testing.expect(image.KERNEL_ABI_SIGNATURE != 0);
+}
+
 test "image: loadFrozen replays facts without the tx-writer (Phase 14 --strip=history)" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

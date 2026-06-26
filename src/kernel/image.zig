@@ -58,7 +58,7 @@ pub const FORMAT_VERSION: u32 = 6;
 /// do not re-init modules to reconstruct CODE — replay all facts + relink the
 /// native residue" (the Stage-2/3 loader branches on `version >= 7`). A v6
 /// (M_USER-only) image still loads via the hybrid path. Written by `writeFull`.
-pub const FULL_FORMAT_VERSION: u32 = 7;
+pub const FULL_FORMAT_VERSION: u32 = 8;
 
 /// Oldest on-disk version this loader still accepts. v5..v7 share every section
 /// layout — later versions only ADD value kinds / more facts — so a newer loader
@@ -85,7 +85,43 @@ pub const Manifest = struct {
     bytecode_format_version: u32 = bytecode.FORMAT_VERSION,
     thread_mode: ThreadMode = .single,
     modules: []const ModuleDep = &.{},
+    /// W1 Stage 3a — a single hash gating "can this full image be trusted as a
+    /// boot cache, or must we recompile from source?" Combines the kernel
+    /// eid-layout signature (`KERNEL_ABI_SIGNATURE`) with the content of the
+    /// module dylibs that produced it (so a kernel rebuild that renumbers eids
+    /// OR an edited/rebuilt module dylib both invalidate the cache). Computed
+    /// shell-side (it owns dylib paths); 0 for v<8 images and M_USER `:save`
+    /// images (which are overlays, never boot caches).
+    boot_validity: u64 = 0,
 };
+
+/// W1 Stage 3a — comptime signature of the kernel eid layout. Adding or
+/// renumbering any `kernel_eids` constant changes it, so a full image saved
+/// under one eid layout is refused by a differently-laid-out kernel (→ fall back
+/// to recompile, never replay facts into the wrong eid space). Folded into a
+/// `Manifest.boot_validity` together with the module dylib hashes.
+pub const KERNEL_ABI_SIGNATURE: u64 = blk: {
+    @setEvalBranchQuota(20000);
+    var h = std.hash.Wyhash.init(0xB12A_5160_AB10_0001);
+    for (@typeInfo(kernel_eids).@"struct".decls) |d| {
+        const v = @field(kernel_eids, d.name);
+        if (@TypeOf(v) == u64) {
+            h.update(d.name);
+            const vv: u64 = v;
+            h.update(std.mem.asBytes(&vv));
+        }
+    }
+    break :blk h.final();
+};
+
+/// Fold one more chunk of bytes into a running `boot_validity` accumulator
+/// (seed it with `KERNEL_ABI_SIGNATURE`). The shell calls this per module dylib
+/// at save and at boot; equal inputs in equal order ⇒ equal hash ⇒ cache valid.
+pub fn mixBootValidity(acc: u64, bytes: []const u8) u64 {
+    var h = std.hash.Wyhash.init(acc);
+    h.update(bytes);
+    return h.final();
+}
 
 /// Value encoding discriminant. Recursive: an RRB element is itself one
 /// of these kinds.
@@ -470,6 +506,10 @@ fn writeImpl(
     // Embedded manifest section (self-describing: no sidecar file).
     try appendU32(allocator, &buf, manifest.bytecode_format_version);
     try buf.append(allocator, @intFromEnum(manifest.thread_mode));
+    // v8+ (full images only): the boot-cache validity hash, right after
+    // thread_mode so a peek reads it before the module list. M_USER images stay
+    // v6 and omit it.
+    if (full) try appendU64(allocator, &buf, manifest.boot_validity);
     try appendU32(allocator, &buf, @intCast(manifest.modules.len));
     for (manifest.modules) |dep| {
         try appendU32(allocator, &buf, @intCast(dep.name.len));
@@ -668,6 +708,7 @@ fn loadImpl(comptime frozen: bool, store: *FactStore, bytes: []const u8, interne
     const bc_version = try cur.readU32();
     const thread_mode_raw = (try cur.take(1))[0];
     if (thread_mode_raw > @intFromEnum(ThreadMode.datomic)) return error.BadManifest;
+    const boot_validity: u64 = if (version >= 8) try cur.readU64() else 0;
     const module_count = try cur.readU32();
     const deps = store.allocator.alloc(ModuleDep, module_count) catch return error.OutOfMemory;
     var d: u32 = 0;
@@ -681,6 +722,7 @@ fn loadImpl(comptime frozen: bool, store: *FactStore, bytes: []const u8, interne
         .bytecode_format_version = bc_version,
         .thread_mode = @enumFromInt(thread_mode_raw),
         .modules = deps,
+        .boot_validity = boot_validity,
     };
 
     // Interner section: restore the name↔eid bijection so user names keep
@@ -741,6 +783,7 @@ pub fn peekManifest(allocator: std.mem.Allocator, bytes: []const u8) ReadError!M
     const bc_version = try cur.readU32();
     const thread_mode_raw = (try cur.take(1))[0];
     if (thread_mode_raw > @intFromEnum(ThreadMode.datomic)) return error.BadManifest;
+    const boot_validity: u64 = if (version >= 8) try cur.readU64() else 0;
     const module_count = try cur.readU32();
     const deps = allocator.alloc(ModuleDep, module_count) catch return error.OutOfMemory;
     var d: u32 = 0;
@@ -754,6 +797,7 @@ pub fn peekManifest(allocator: std.mem.Allocator, bytes: []const u8) ReadError!M
         .bytecode_format_version = bc_version,
         .thread_mode = @enumFromInt(thread_mode_raw),
         .modules = deps,
+        .boot_validity = boot_validity,
     };
 }
 
