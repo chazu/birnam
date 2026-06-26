@@ -269,13 +269,22 @@ as the method (jit_method.zig) → ordinary send dispatches native`, and **re-JI
 on redefine** demonstrates malleable-AND-native. The generated C uses the runtime
 "as a library" via C-ABI entry points (`birnam_send0/1/2/N`, `birnam_is_falsey/
 _error`). Native is a cache: closure.data parks a SmallInt index (GC-safe) into a
-JIT'd-body registry; `:bytecode-stream` stays canonical. **Block lowering done**
-(MAKE_BLOCK/INVOKE_BLOCK → `birnam_make_block`/`birnam_invoke_block`; block bodies
-stay interpreted) so conditionals/loops/higher-order blocks JIT — only a block's
-`^` non-local return into the frameless JIT'd method is unsupported. See
-[[project_birnam_libtcc]]. **Remaining:** a live auto-JIT policy (when to JIT a hot
-method); the mode-3 ship path (`zig cc`, extends `freeze.zig`); vendoring libtcc;
-`^`-into-JIT'd-method non-local return.
+JIT'd-body registry; `:bytecode-stream` stays canonical. Block lowering done
+(MAKE_BLOCK/INVOKE_BLOCK; block bodies stay interpreted) so conditionals/loops/
+higher-order blocks JIT.
+
+**✅ FULLY INTEGRATED (2026-06-26).** libtcc is now a first-class, self-contained,
+live native backend — the Piumarta-VPU "bytecode OR native, interchangeably"
+property realized. The interchange is a closure swap at the method eid (uniform
+dispatch). A shell-owned `JitManager` drives `promote`/`demote` both ways
+(`:jit`/`:demote`), a hotness counter at `runMethod` entry auto-compiles hot
+methods at the quiescent line boundary (`:autojit` — interpret cold, compile hot),
+and libtcc is vendored + statically linked (no external dep; generated C needs no
+libtcc1 runtime). Proven: the whole stdlib JITs (195 methods, 0 declined), `sort`
+runs native, both directions robust. See [[project_birnam_libtcc]]. **Remaining is
+completeness only:** `^` non-local return into a JIT'd method (the one declining
+opcode — graceful fallback to bytecode); the mode-3 ship path (`zig cc` →frozen
+dylib, extends `freeze.zig`); source-vendoring tcc for cross-compile.
 
 **The strip-dial, recast (more idst-faithful):** native is always the execution
 form; the dial controls whether the **codegen + AST/source are resident** (= can
