@@ -586,6 +586,9 @@ fn printHelp() void {
         \\  :retention <policy>  current | all | since <t> | last <n>
         \\  :reset               clear the top-level scope bindings
         \\  :eval-mode [m]       bytecode | treewalk (bare: show current)
+        \\  :jit                 compile every method to native (libtcc)
+        \\  :demote              revert all native methods to bytecode
+        \\  :autojit             toggle auto-compile of hot methods
         \\  :freeze <out>        emit a wrapper dylib re-establishing FFI wraps
         \\  ^D                   quit
         \\

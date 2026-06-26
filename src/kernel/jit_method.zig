@@ -21,9 +21,11 @@ const mcache = @import("mcache.zig");
 
 const Ref = ref_mod.Ref;
 
-/// Where libtcc's runtime archive lives on the dev install (`tcc_add_library_path`).
-/// A shipped birnam bundles it and overrides this. TODO: make configurable.
-pub const RUNTIME_LIB_DIR: [*:0]const u8 = "/usr/local/lib/tcc";
+/// libtcc's runtime archive dir (`tcc_add_library_path`). null: our generated C
+/// only does integer ops + calls the runtime by symbol, so it needs NO libtcc1
+/// helpers — verified — which is why birnam can statically link the vendored
+/// `libtcc.a` with no runtime files at all (self-contained).
+pub const RUNTIME_LIB_DIR: ?[*:0]const u8 = null;
 
 /// Bind every runtime entry point a generated body may reference to its host
 /// fn-ptr, so the JIT'd C resolves. One place; codegen's `RUNTIME_PRELUDE` and

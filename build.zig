@@ -102,10 +102,13 @@ pub fn build(b: *std.Build) void {
     shell_mod.addOptions("build_opts", shell_opts);
 
     // libtcc — the mode-1 JIT backend (docs/10a). The shell imports `jit_method`
-    // to compile methods to native code at runtime. System install under
-    // /usr/local for now (vendoring like libffi is a follow-up).
-    shell_mod.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
-    shell_mod.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+    // to compile methods to native code at runtime. Vendored as a prebuilt static
+    // archive (`vendor/libtcc/libtcc.a` + `libtcc.h`) and linked statically, so
+    // the binary is self-contained — no /usr/local dependency, no runtime files
+    // (our generated C needs no libtcc1 helpers). Source-vendoring for
+    // cross-compile is a further step.
+    shell_mod.addIncludePath(.{ .cwd_relative = "vendor/libtcc" });
+    shell_mod.addLibraryPath(.{ .cwd_relative = "vendor/libtcc" });
     shell_mod.linkSystemLibrary("tcc", .{});
 
     const shell = b.addExecutable(.{
@@ -346,8 +349,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    jit_test_mod.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
-    jit_test_mod.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+    jit_test_mod.addIncludePath(.{ .cwd_relative = "vendor/libtcc" });
+    jit_test_mod.addLibraryPath(.{ .cwd_relative = "vendor/libtcc" });
     jit_test_mod.linkSystemLibrary("tcc", .{});
     const jit_tests = b.addTest(.{ .root_module = jit_test_mod });
     const run_jit_tests = b.addRunArtifact(jit_tests);
@@ -594,8 +597,8 @@ pub fn build(b: *std.Build) void {
     });
     // libtcc: the codegen+JIT milestone test (a JIT'd C method body performing a
     // real send) lives here, where the full boot harness + real dylibs exist.
-    lmod_test_mod.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
-    lmod_test_mod.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+    lmod_test_mod.addIncludePath(.{ .cwd_relative = "vendor/libtcc" });
+    lmod_test_mod.addLibraryPath(.{ .cwd_relative = "vendor/libtcc" });
     lmod_test_mod.linkSystemLibrary("tcc", .{});
     const lmod_tests = b.addTest(.{ .root_module = lmod_test_mod });
     lmod_tests.linkLibrary(libffi_lib);

@@ -7,7 +7,7 @@ const jit = @import("jit.zig");
 
 // The dev install keeps libtcc's runtime archive here. A shipped birnam bundles
 // it; tests run against the system install.
-const RUNTIME_LIB_DIR: [*:0]const u8 = "/usr/local/lib/tcc";
+const RUNTIME_LIB_DIR: ?[*:0]const u8 = null;
 
 test "jit: compile + call a simple C function" {
     var j = try jit.Jit.init(RUNTIME_LIB_DIR);
