@@ -314,3 +314,21 @@ pub fn send3(receiver: Ref, sel: Selector, a1: Ref, a2: Ref, a3: Ref) Ref {
     var args: [3]Ref = .{ a1, a2, a3 };
     return sendN(receiver, sel, &args, 3);
 }
+
+// -- C-ABI send entry points (codegen target — docs/10a / libtcc) -----------
+//
+// The birnam→C codegen emits method bodies that `extern`-declare and call these.
+// A JIT (libtcc) or ship compiler (`zig cc`) satisfies the names against these
+// host fn-ptrs (`Jit.addSymbol` / dynamic linking) — "C using the birnam runtime
+// as a library". `Ref`/`Selector` are both `u64`, so the C signatures are plain
+// `unsigned long`. Thin `callconv(.c)` shims over the Zig `sendN` family.
+
+pub fn birnamSend0(receiver: Ref, sel: Selector) callconv(.c) Ref {
+    return send0(receiver, sel);
+}
+pub fn birnamSend1(receiver: Ref, sel: Selector, a1: Ref) callconv(.c) Ref {
+    return send1(receiver, sel, a1);
+}
+pub fn birnamSend2(receiver: Ref, sel: Selector, a1: Ref, a2: Ref) callconv(.c) Ref {
+    return send2(receiver, sel, a1, a2);
+}

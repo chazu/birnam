@@ -1589,6 +1589,44 @@ test "image: REPL binding survives save -> fresh boot -> load (lang-driven)" {
 // `[wrapper :closure-block-method bm]` recipe and `rematerializeClosures` rebuilds
 // the captureless wrapper. Session B loads peg+lang only — json comes from the
 // image alone (the exact W1 boot-image scenario).
+// libtcc codegen milestone (docs/10a) — a JIT'd C method body performs a REAL
+// birnam send against the live runtime. The birnam→C pass emits a C function
+// that calls the runtime's C-ABI send entry point (`birnam_send0`); libtcc JITs
+// it to a native fn-ptr; `addSymbol` binds the runtime call back to the host's
+// `send.birnamSend0`. Calling the JIT'd fn with `mkSmallInt(5)` dispatches
+// `[5 squared]` through the kernel and returns `mkSmallInt(25)` — proving the
+// codegen → JIT → native-calls-into-runtime loop end-to-end ("C using the birnam
+// runtime as a library", the mode-1 backend foundation).
+const jit_mod = @import("jit.zig");
+const codegen_mod = @import("codegen.zig");
+test "codegen+jit: a JIT'd C method body performs a real send ([5 squared] -> 25)" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Sanity: `[5 squared]` works through the normal interpreter first.
+    const squared = s.interner.str_to_eid.get("squared").?;
+    try testing.expectEqual(@as(i64, 25), ref_mod.untagSmallInt(send_mod.send0(ref_mod.mkSmallInt(5).?, squared)));
+
+    // Lower `^ self squared` to C, JIT it, bind the runtime send entry point.
+    const c_src = try codegen_mod.emitUnarySend(a, "jit_squared", squared);
+    var j = try jit_mod.Jit.init("/usr/local/lib/tcc");
+    defer j.deinit();
+    try j.addSymbol("birnam_send0", @ptrCast(&send_mod.birnamSend0));
+    try j.compile(c_src);
+    try j.relocate();
+    const f = try j.getFn(*const fn (u64) callconv(.c) u64, "jit_squared");
+
+    // The JIT'd native code calls back into the kernel's dispatch and squares 5.
+    try testing.expectEqual(@as(i64, 25), ref_mod.untagSmallInt(f(ref_mod.mkSmallInt(5).?)));
+    try testing.expectEqual(@as(i64, 49), ref_mod.untagSmallInt(f(ref_mod.mkSmallInt(7).?)));
+}
+
 // W1 Stage 3b (docs/19c) — relink-by-name. A native FFI module (net) booted in
 // IMAGE-FIRST order (replay the image, THEN load the dylib) rebinds its native
 // methods onto the image-restored eids instead of minting fresh ones. net now

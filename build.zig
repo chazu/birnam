@@ -585,6 +585,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    // libtcc: the codegen+JIT milestone test (a JIT'd C method body performing a
+    // real send) lives here, where the full boot harness + real dylibs exist.
+    lmod_test_mod.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
+    lmod_test_mod.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+    lmod_test_mod.linkSystemLibrary("tcc", .{});
     const lmod_tests = b.addTest(.{ .root_module = lmod_test_mod });
     lmod_tests.linkLibrary(libffi_lib);
     lmod_tests.linkLibC();
