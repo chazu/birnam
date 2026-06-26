@@ -308,16 +308,20 @@ in any order.
   them in ANY order. *Tested:* image-first replay → net binding dead → load net →
   relinks in place (eid stable), now live + dispatches (lang_module 83). net still
   works on a normal fresh boot.
-- **Stage 3b.2 — REMAINING (smaller than it first looks).** Key insight from the
-  net work: under **image-first** order, a native **method** binding *self-heals*
-  — re-`make_closure` + re-`assert` overwrites the image's dead binding with a
-  live one (cardinality `:one`), orphaning the dead closure eid (prunable). So the
-  154 `make_closure` method sites in lang do **not** all need conversion for
-  *correctness*; `bind_native_method` is an *optimization* there (avoids the
-  orphan). What genuinely MUST be name-anchored is each **module-minted vtable**
-  (the `alloc_eid` VTs: lang ~13, query/repl a few) — else the module mints a
-  *duplicate* VT and image-restored objects of that type dispatch to dead
-  closures. Convert those VTs to `intern("<mod>:<Name>")` (the net template).
+- **Stage 3b.2 — DONE for the native modules (net `769c091`, query+repl
+  `ca2cc00`).** Key insight: under **image-first** order a native **method**
+  binding *self-heals* — re-`make_closure` + re-`assert` overwrites the image's
+  dead binding (cardinality `:one`), orphaning the dead closure eid (prunable). So
+  the 154 `make_closure` sites in lang need no conversion for correctness;
+  `bind_native_method` is an *optimization* (avoids the orphan). A module-minted
+  **vtable** must be name-anchored (else a duplicate VT is minted and
+  image-restored instances dispatch to dead closures) — done for net
+  (`net:Socket/Server/Net`), query (`query:Result/Db/db`), repl
+  (`repl:Repl/repl`). **lang needs NO VT naming:** its `Object` proto VT
+  self-heals (the `Object` global is rebound to a fresh proto each boot) and its
+  per-object `new` vtables are anonymous M_USER data replayed verbatim; all its
+  other methods bind to *kernel* vtables (fixed eids 0..255) and self-heal by
+  overwrite. lang's only image-first issue is **perf** (it recompiles) → 3b.2b.
 - **Stage 3b.2b — lang init must skip its birnam fileIn under image-first.** lang
   files-in its prelude/stdlib/db/io/cell surfaces (bytecode methods) at init.
   Under image-first the image already carries those; re-filing-in would duplicate
