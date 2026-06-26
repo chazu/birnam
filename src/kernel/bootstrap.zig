@@ -321,6 +321,18 @@ pub fn boot(
     // (e.g. `let jStr := [block]`). The kernel eid space (0..255) is full, so it
     // is an interned (user-range) attr, resolved deterministically here at boot.
     image_mod.setClosureBlockMethodAttr(try interner.intern(store, table, "closure-block-method"));
+    // W1 Stage 2b: the companion recipe attr carrying a *capturing* block
+    // closure's serialized capture values (an RRB vector), so the writer can
+    // round-trip durable globals whose block captured an enclosing-method local
+    // (e.g. `let add5 := [makeAdder value: 5]`). Captureless wrappers omit it.
+    image_mod.setClosureBlockCapturesAttr(try interner.intern(store, table, "closure-block-captures"));
+    // W1 Stage 2b part 2: recipe attrs for durable *tree-walker* block globals
+    // (`let f := [block]` at the REPL). The block's AST node eid + captured-scope
+    // eid; the loader rebuilds the runtime wrapper via the lang shim.
+    image_mod.setTreewalkBlockAttrs(
+        try interner.intern(store, table, "treewalk-block-ast"),
+        try interner.intern(store, table, "treewalk-block-scope"),
+    );
 
     // -- Stage 14: declare :many attrs (Phase 9.5.3+) --------------------
     // `:ffi-has-symbol` accumulates one fact per enumerated symbol per Module.

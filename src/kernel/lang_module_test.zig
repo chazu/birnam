@@ -2487,3 +2487,81 @@ test "17.5 eager & / | and the | block-bar disambiguation" {
     const filtered = evalLine(s, lang, "[#[1 2 3 4] select: [:n | [[n > 1] & [n < 4]]]]", a);
     try testing.expectEqual(@as(i64, 2), ref_mod.untagSmallInt(send_mod.send1(filtered, s.interner.str_to_eid.get("at:").?, ref_mod.mkSmallInt(0).?)));
 }
+
+// W1 Stage 2b part 2 (docs/19c): a durable REPL block global — `let f := [block]`
+// typed at the top level — survives a FULL (v7) image save → fresh boot → load.
+// A REPL block is a *tree-walker* closure (`CLOSURE_VT { method = blockEvalShim,
+// data = OBJECT_VT{ast, scope} }`), a different shape from a file-in bytecode
+// block. lang registers `blockEvalShim` with the kernel; the writer emits the
+// (AST, scope) recipe; `rematerializeClosures` rebuilds the wrapper at its eid.
+// Both capturing-via-scope (`base`) and a no-free-var block are exercised.
+test "image (W1 Stage 2b): REPL tree-walker block globals round-trip" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // ---- Session A: define REPL block globals, sanity, FULL snapshot. ----
+    const sa = try fullSetup(&arena);
+    _ = (try sa.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_a = (try sa.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    _ = evalLine(sa, lang_a, "let f := [:x | [x + 1]]", a);
+    _ = evalLine(sa, lang_a, "let base := 100", a);
+    _ = evalLine(sa, lang_a, "let g := [:x | [x + base]]", a); // resolves `base` via the captured scope
+    try testing.expectEqual(@as(i64, 11), ref_mod.untagSmallInt(evalLine(sa, lang_a, "[f value: 10]", a)));
+    try testing.expectEqual(@as(i64, 105), ref_mod.untagSmallInt(evalLine(sa, lang_a, "[g value: 5]", a)));
+
+    const res = try image.writeFull(a, sa.store, sa.table.next_eid.load(.monotonic), .{}, sa.interner, sa.table);
+
+    // ---- Session B: fresh boot + peg/lang, load image, rebuild, re-invoke. ----
+    const sb = try fullSetup(&arena);
+    _ = (try sb.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_b = (try sb.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const loaded = try image.load(sb.store, res.bytes, sb.interner);
+    if (loaded.next_eid > sb.table.next_eid.load(.monotonic)) sb.table.next_eid.store(loaded.next_eid, .monotonic);
+    _ = try image.rematerializeClosures(a, sb.store, sb.table);
+
+    // Pre-fix both returned nil (the wrapper had no object-table entry).
+    try testing.expectEqual(@as(i64, 11), ref_mod.untagSmallInt(evalLine(sb, lang_b, "[f value: 10]", a)));
+    // `g` resolving 105 proves the captured scope (and its `base` binding) rebound.
+    try testing.expectEqual(@as(i64, 105), ref_mod.untagSmallInt(evalLine(sb, lang_b, "[g value: 5]", a)));
+}
+
+// W1 Stage 2b part 1 (docs/19c): a durable block global whose block CAPTURED an
+// enclosing-method local survives a FULL (v7) image save → fresh boot → load,
+// reconstructing its inline captures. `add5 := [makeAdder value: 5]` closes over
+// the outer block's param `n = 5` (a true BytecodeClosure inline capture, unlike
+// module/REPL free vars which resolve through persistent scope facts). The writer
+// emits `[wrapper :closure-block-method bm]` + `[wrapper :closure-block-captures
+// #[5]]`; `rematerializeClosures` rebuilds the wrapper with n=5 re-installed.
+test "image (W1 Stage 2b): capturing block global round-trips its inline captures" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // ---- Session A: define add5 (captures n=5), sanity, FULL snapshot. ----
+    const sa = try fullSetup(&arena);
+    _ = (try sa.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_a = (try sa.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const path = "test_stage2b_cap.birnam";
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = "let add5 := [[:n | [:x | [x + n]]] value: 5]\n" });
+    defer std.fs.cwd().deleteFile(path) catch {};
+    _ = evalLine(sa, lang_a, "[language fileIn: \"test_stage2b_cap.birnam\"]", a);
+    try testing.expectEqual(@as(i64, 105), ref_mod.untagSmallInt(evalLine(sa, lang_a, "[add5 value: 100]", a))); // sanity
+
+    const res = try image.writeFull(a, sa.store, sa.table.next_eid.load(.monotonic), .{}, sa.interner, sa.table);
+
+    // ---- Session B: fresh boot + peg/lang, load image, rebuild, re-invoke. ----
+    const sb = try fullSetup(&arena);
+    _ = (try sb.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_b = (try sb.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const loaded = try image.load(sb.store, res.bytes, sb.interner);
+    if (loaded.next_eid > sb.table.next_eid.load(.monotonic)) sb.table.next_eid.store(loaded.next_eid, .monotonic);
+    _ = try image.rematerializeClosures(a, sb.store, sb.table);
+
+    // The captured n=5 must survive: a captureless rebuild would yield x+0 = 100.
+    try testing.expectEqual(@as(i64, 105), ref_mod.untagSmallInt(evalLine(sb, lang_b, "[add5 value: 100]", a)));
+}

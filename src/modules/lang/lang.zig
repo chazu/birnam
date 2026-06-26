@@ -6502,6 +6502,11 @@ pub fn langSetup(ctx: *ShellContext, api: *const IdApi, module_eid: u64) void {
     g_log = ctx.log;
     g_ctx = ctx;
     g_module_eid = module_eid;
+    // W1 Stage 2b part 2 (docs/19c): hand the kernel this process's tree-walker
+    // block shim so the full-image loader can rebuild durable `let f := [block]`
+    // REPL globals (CLOSURE_VT { method = blockEvalShim, data = OBJECT_VT{ast,
+    // scope} }) at their original eid from their persisted (ast, scope) facts.
+    api.register_treewalk_block_shim(@ptrCast(&blockEvalShim));
 }
 
 /// Always-kept tier: runtime value methods + the stable top-level scope.

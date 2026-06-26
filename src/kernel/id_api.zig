@@ -191,6 +191,7 @@ pub fn populate() IdApi {
         .bind_global = &cBindGlobal,
         .maybe_prune = &cMaybePrune,
         .prune_now = &cPruneNow,
+        .register_treewalk_block_shim = &cRegisterTreewalkBlockShim,
     };
 }
 
@@ -774,6 +775,16 @@ fn cPruneNow() callconv(.c) void {
     const store = send_mod.storePtr() orelse return;
     const table = send_mod.tablePtr() orelse return;
     _ = prune_mod.pruneNowIfSafe(store, table, allocator) catch return;
+}
+
+const image_mod = @import("image.zig");
+
+/// ABI `register_treewalk_block_shim` — record a module's tree-walker block
+/// `Closure.method` so `image.rematerializeClosures` can rebuild durable
+/// tree-walker block globals on full-image load (W1 Stage 2b). Lang calls this
+/// once at init with `&blockEvalShim`.
+fn cRegisterTreewalkBlockShim(shim: ?*const anyopaque) callconv(.c) void {
+    image_mod.setTreewalkBlockShim(shim);
 }
 
 fn cQueryEavt(e: u64, a: u64) callconv(.c) Ref {

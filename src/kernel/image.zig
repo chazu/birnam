@@ -129,25 +129,87 @@ pub const LoadResult = struct {
 /// bootstrap sets it deterministically via `setClosureBlockMethodAttr`. 0 = not
 /// set (bare unit tests / v6 path) → the closure-wrapper logic is skipped.
 var g_closure_block_method_attr: u64 = 0;
+/// W1 Stage 2b: attr for a capturing block wrapper's serialized captures (RRB).
+var g_closure_block_captures_attr: u64 = 0;
 
 pub fn setClosureBlockMethodAttr(e: u64) void {
     g_closure_block_method_attr = e;
 }
 
-/// If `eid` names a **captureless bytecode-block closure wrapper** in the object
-/// table (`[vt=CLOSURE_VT][method][data=BytecodeClosure]` with zero captures),
-/// return its block-method eid; else null. Used by the full-image writer to emit
-/// a reconstruction recipe for durable block globals (W1 Stage 2). Capturing
-/// wrappers and tree-walker closures (data = eid) return null — deferred.
-fn capturelessBlockMethod(table: *const object_table.ObjectTable, eid: u64) ?u64 {
+pub fn setClosureBlockCapturesAttr(e: u64) void {
+    g_closure_block_captures_attr = e;
+}
+
+/// W1 Stage 2b part 2: the lang module's tree-walker block `Closure.method`
+/// (registered via the ABI at init) + the interned recipe attrs carrying a
+/// durable tree-walker block global's (AST, captured-scope) eids. All 0/null
+/// until lang loads → tree-walker rebuild is simply skipped (bare kernel tests).
+var g_treewalk_shim: ?*const anyopaque = null;
+var g_treewalk_block_ast_attr: u64 = 0;
+var g_treewalk_block_scope_attr: u64 = 0;
+
+pub fn setTreewalkBlockShim(p: ?*const anyopaque) void {
+    g_treewalk_shim = p;
+}
+
+pub fn setTreewalkBlockAttrs(ast_attr: u64, scope_attr: u64) void {
+    g_treewalk_block_ast_attr = ast_attr;
+    g_treewalk_block_scope_attr = scope_attr;
+}
+
+/// A lang **tree-walker block closure** decoded for serialization: the block's
+/// AST node eid + its captured-scope eid. Both are already facts in the store
+/// (the AST is fact-shaped; the scope is a SCOPE_VT entity with binding facts),
+/// so the recipe persists them by reference and the loader rebuilds the runtime
+/// wrapper. Returned by `treewalkBlockClosure`.
+const TreewalkBlockInfo = struct { ast: Ref, scope: Ref };
+
+/// If `eid` names a lang tree-walker block-closure wrapper — `CLOSURE_VT` whose
+/// `method` is the registered tree-walker shim and whose `data` points at a
+/// 2-slot `OBJECT_VT { ast, scope }` (the `allocBlockClosure` shape) — decode it;
+/// else null. The shim-pointer identity is the precise discriminator (only the
+/// closures lang minted via that shim match), so this never misfires on bytecode
+/// blocks or primitive-method closures. Null when lang is not loaded.
+fn treewalkBlockClosure(table: *const object_table.ObjectTable, eid: u64) ?TreewalkBlockInfo {
+    const shim = g_treewalk_shim orelse return null;
     const ref = table.get(eid) orelse return null;
     if (!ref_mod.isPointer(ref)) return null;
     const vt = object.vtableOf(object.fromRef(ref));
     if (!ref_mod.isEid(vt) or ref_mod.untagEid(vt) != kernel_eids.CLOSURE_VT) return null;
     const c: *const closure_mod.Closure = @ptrCast(@alignCast(ref_mod.untagPointer(ref)));
-    if (!ref_mod.isPointer(c.data)) return null; // tree-walker closure (data = eid) — not a bytecode block
-    if (vm_mod.blockCapturesFromRef(c.data).len != 0) return null; // has captures — deferred to Stage 2b
-    return vm_mod.blockMethodEidFromRef(c.data);
+    if (c.method != shim) return null;
+    if (!ref_mod.isPointer(c.data)) return null;
+    const data_obj = object.fromRef(c.data);
+    const data_vt = object.vtableOf(data_obj);
+    if (!ref_mod.isEid(data_vt) or ref_mod.untagEid(data_vt) != kernel_eids.OBJECT_VT) return null;
+    const ast = object.slotAt(data_obj, 0);
+    const scope = object.slotAt(data_obj, 1);
+    if (!ref_mod.isEid(ast) or !ref_mod.isEid(scope)) return null;
+    return .{ .ast = ast, .scope = scope };
+}
+
+/// A **kernel bytecode-block closure wrapper** decoded from the object table:
+/// its block-method eid and its inline captured values (empty for captureless
+/// blocks). Returned by `bytecodeBlockClosure`.
+const BlockClosureInfo = struct { method_eid: u64, captures: []const Ref };
+
+/// If `eid` names a kernel **bytecode-block closure wrapper** in the object
+/// table (`[vt=CLOSURE_VT][method=&bytecodeDispatcherImpl][data=BytecodeClosure]`),
+/// decode its method eid + captures; else null. The `method` pointer is the
+/// robust discriminator: it distinguishes a kernel bytecode block from a
+/// lang-module *tree-walker* block (whose `method` is `blockEvalShim` and whose
+/// `data` is an OBJECT_VT wrapper — handled out-of-kernel, Stage 2b part 2) and
+/// from a method-eid closure (`data` = eid, not a block). Used by the full-image
+/// writer to emit a reconstruction recipe for durable block globals (W1 Stage 2).
+fn bytecodeBlockClosure(table: *const object_table.ObjectTable, eid: u64) ?BlockClosureInfo {
+    const ref = table.get(eid) orelse return null;
+    if (!ref_mod.isPointer(ref)) return null;
+    const vt = object.vtableOf(object.fromRef(ref));
+    if (!ref_mod.isEid(vt) or ref_mod.untagEid(vt) != kernel_eids.CLOSURE_VT) return null;
+    const c: *const closure_mod.Closure = @ptrCast(@alignCast(ref_mod.untagPointer(ref)));
+    if (c.method != @as(*const anyopaque, @ptrCast(&dispatch.bytecodeDispatcherImpl))) return null;
+    if (!ref_mod.isPointer(c.data)) return null; // method-eid closure (data = eid) — not a block
+    return .{ .method_eid = vm_mod.blockMethodEidFromRef(c.data), .captures = vm_mod.blockCapturesFromRef(c.data) };
 }
 
 /// A value Ref is a self-describing immediate (eid / smallint / keyword /
@@ -483,22 +545,84 @@ fn writeImpl(
         }
     }
 
-    // W1 Stage 2: emit `[wrapper :closure-block-method bm]` recipe facts for
-    // captureless block-closure wrappers referenced by durable values, so
-    // `rematerializeClosures` can rebuild them on load. Skip any that already
-    // carry the recipe fact (a re-saved image — avoids duplicates / keeps the
-    // round-trip idempotent).
+    // W1 Stage 2/2b: emit `[wrapper :closure-block-method bm]` recipe facts for
+    // bytecode block-closure wrappers referenced by durable values, so
+    // `rematerializeClosures` can rebuild them on load. A *capturing* wrapper
+    // (Stage 2b — its block captured an enclosing-method local) additionally
+    // gets `[wrapper :closure-block-captures <rrb>]` carrying the serialized
+    // capture values. A capture may itself be a block wrapper (`mkEid`), so we
+    // process a worklist: discovering a captured wrapper enqueues it for its own
+    // recipe. Skip any that already carry the recipe fact (a re-saved image —
+    // idempotent) or whose captures are not serializable (left to recompile).
     if (want_closures) {
-        const a_eid = g_closure_block_method_attr;
-        var it = referenced.keyIterator();
-        while (it.next()) |k| {
-            const wrapper_eid = k.*;
-            const bm = capturelessBlockMethod(table.?, wrapper_eid) orelse continue;
-            if (store.currentValue(wrapper_eid, a_eid) != null) continue; // already a fact
+        const m_eid = g_closure_block_method_attr;
+        const cap_eid = g_closure_block_captures_attr;
+        var work = std.ArrayList(u64){};
+        defer work.deinit(allocator);
+        var visited = std.AutoHashMap(u64, void).init(allocator);
+        defer visited.deinit();
+        var seed = referenced.keyIterator();
+        while (seed.next()) |k| try work.append(allocator, k.*);
+
+        while (work.pop()) |wrapper_eid| {
+            if (visited.contains(wrapper_eid)) continue;
+            try visited.put(wrapper_eid, {});
+
+            // Tree-walker block global (Stage 2b part 2) — emit its (AST, scope)
+            // recipe; both are already facts, so the loader rebuilds the wrapper
+            // via the registered shim. Checked before the bytecode case: a
+            // tree-walker closure is never a bytecode block (distinct shim).
+            if (treewalkBlockClosure(table.?, wrapper_eid)) |tw| {
+                if (store.currentValue(wrapper_eid, g_treewalk_block_ast_attr) != null) continue;
+                try appendU64(allocator, &buf, kernel_eids.M_USER);
+                try appendU64(allocator, &buf, wrapper_eid);
+                try appendU64(allocator, &buf, g_treewalk_block_ast_attr);
+                try writeValue(allocator, &buf, tw.ast);
+                try appendU64(allocator, &buf, kernel_eids.M_USER);
+                try appendU64(allocator, &buf, wrapper_eid);
+                try appendU64(allocator, &buf, g_treewalk_block_scope_attr);
+                try writeValue(allocator, &buf, tw.scope);
+                facts_written += 2;
+                continue;
+            }
+
+            const info = bytecodeBlockClosure(table.?, wrapper_eid) orelse continue;
+            if (store.currentValue(wrapper_eid, m_eid) != null) continue; // already a fact
+
+            // Capturing: bail out wholesale if any capture can't round-trip —
+            // emitting the method recipe without its captures would silently
+            // produce a wrong (captureless) block on load.
+            if (info.captures.len != 0) {
+                for (info.captures) |cv| {
+                    if (!valueSupported(cv)) {
+                        skipped += 1;
+                        break;
+                    }
+                } else {
+                    try appendU64(allocator, &buf, kernel_eids.M_USER);
+                    try appendU64(allocator, &buf, wrapper_eid);
+                    try appendU64(allocator, &buf, m_eid);
+                    try writeValue(allocator, &buf, ref_mod.mkEid(info.method_eid));
+                    facts_written += 1;
+                    const rrb = boxed.mkRrb(allocator, info.captures) catch return error.OutOfMemory;
+                    try appendU64(allocator, &buf, kernel_eids.M_USER);
+                    try appendU64(allocator, &buf, wrapper_eid);
+                    try appendU64(allocator, &buf, cap_eid);
+                    try writeValue(allocator, &buf, rrb);
+                    facts_written += 1;
+                    // A captured value that is itself a block wrapper needs its
+                    // own recipe — enqueue.
+                    for (info.captures) |cv| {
+                        if (ref_mod.isEid(cv)) try work.append(allocator, ref_mod.untagEid(cv));
+                    }
+                }
+                continue;
+            }
+
             try appendU64(allocator, &buf, kernel_eids.M_USER);
             try appendU64(allocator, &buf, wrapper_eid);
-            try appendU64(allocator, &buf, a_eid);
-            try writeValue(allocator, &buf, ref_mod.mkEid(bm));
+            try appendU64(allocator, &buf, m_eid);
+            try writeValue(allocator, &buf, ref_mod.mkEid(info.method_eid));
             facts_written += 1;
         }
     }
@@ -728,11 +852,15 @@ pub fn rematerializeClosures(
         count += 1;
     }
 
-    // W1 Stage 2: rebuild captureless block-closure WRAPPERS from their recipe
-    // facts (`[wrapper :closure-block-method bm]`). The block-method itself was
-    // rebuilt above; here we re-mint the CLOSURE_VT wrapper at its original eid
-    // (so a binding's `mkEid(wrapper)` resolves), wrapping a fresh, captureless
-    // BytecodeClosure for that method. Capturing wrappers are deferred (Stage 2b).
+    // W1 Stage 2/2b: rebuild block-closure WRAPPERS from their recipe facts
+    // (`[wrapper :closure-block-method bm]`). The block-method itself was rebuilt
+    // above; here we re-mint the CLOSURE_VT wrapper at its original eid (so a
+    // binding's `mkEid(wrapper)` resolves), wrapping a fresh BytecodeClosure for
+    // that method. A capturing wrapper (Stage 2b) carries a companion
+    // `[wrapper :closure-block-captures <rrb>]` fact whose elements we copy into
+    // the closure's inline capture tail (the RRB box was already reconstructed
+    // during fact replay). parent_self / parent_frame_id are NIL/0: a durable
+    // global block has no live enclosing frame and references no meaningful self.
     if (g_closure_block_method_attr != 0) {
         var wit = store.entitiesWith(g_closure_block_method_attr);
         while (wit.next()) |entry| {
@@ -740,7 +868,24 @@ pub fn rematerializeClosures(
             if (table.get(wrapper_eid) != null) continue; // already live
             if (!ref_mod.isEid(entry.v)) continue;
             const block_method_eid = ref_mod.untagEid(entry.v);
-            const blk = vm_mod.allocBytecodeBlock(allocator, block_method_eid, ref_mod.NIL, 0, 0) catch return error.OutOfMemory;
+
+            var n_captures: u32 = 0;
+            const captures_vec: ?Ref = if (g_closure_block_captures_attr != 0)
+                store.currentValue(wrapper_eid, g_closure_block_captures_attr)
+            else
+                null;
+            if (captures_vec) |cv| {
+                if (boxed.isRrbRef(cv)) n_captures = @intCast(boxed.rrbLen(cv));
+            }
+
+            const blk = vm_mod.allocBytecodeBlock(allocator, block_method_eid, ref_mod.NIL, 0, n_captures) catch return error.OutOfMemory;
+            if (captures_vec) |cv| {
+                if (boxed.isRrbRef(cv)) {
+                    var i: usize = 0;
+                    while (i < n_captures) : (i += 1) blk.captures_tail[i] = boxed.rrbNth(cv, i);
+                }
+            }
+
             const total = 3 * @sizeOf(Ref);
             const buf = allocator.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
             @memset(buf, 0);
@@ -748,6 +893,40 @@ pub fn rematerializeClosures(
             vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
             const c_ptr: *closure_mod.Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
             c_ptr.* = .{ .method = @ptrCast(&dispatch.bytecodeDispatcherImpl), .data = blk.ref };
+            table.put(wrapper_eid, ref_mod.mkPointer(@ptrCast(c_ptr))) catch return error.StoreError;
+            count += 1;
+        }
+    }
+
+    // W1 Stage 2b part 2: rebuild lang TREE-WALKER block-closure wrappers from
+    // their `[wrapper :treewalk-block-ast ast][wrapper :treewalk-block-scope
+    // scope]` recipe facts. The closure's behavior lives in the module's
+    // `blockEvalShim` (registered via the ABI), reapplied here. We re-mint, at
+    // the original wrapper eid, the `allocBlockClosure` shape: a 2-slot
+    // `OBJECT_VT { ast, scope }` data object wrapped by `Closure { shim, &data }`.
+    // The AST + scope entities were replayed as ordinary facts; this only rebuilds
+    // the runtime wrapper that points at them. Skipped when lang is not loaded.
+    if (g_treewalk_shim != null and g_treewalk_block_ast_attr != 0) {
+        const shim = g_treewalk_shim.?;
+        var tit = store.entitiesWith(g_treewalk_block_ast_attr);
+        while (tit.next()) |entry| {
+            const wrapper_eid = entry.e;
+            if (table.get(wrapper_eid) != null) continue; // already live
+            if (!ref_mod.isEid(entry.v)) continue;
+            const ast_ref = entry.v;
+            const scope_ref = store.currentValue(wrapper_eid, g_treewalk_block_scope_attr) orelse continue;
+
+            const data_obj = object.allocObject(allocator, ref_mod.mkEid(kernel_eids.OBJECT_VT), 2) catch return error.OutOfMemory;
+            object.setSlot(data_obj, 0, ast_ref);
+            object.setSlot(data_obj, 1, scope_ref);
+
+            const total = 3 * @sizeOf(Ref);
+            const buf = allocator.alignedAlloc(u8, .of(Ref), total) catch return error.OutOfMemory;
+            @memset(buf, 0);
+            const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
+            vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
+            const c_ptr: *closure_mod.Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
+            c_ptr.* = .{ .method = shim, .data = object.toRef(data_obj) };
             table.put(wrapper_eid, ref_mod.mkPointer(@ptrCast(c_ptr))) catch return error.StoreError;
             count += 1;
         }

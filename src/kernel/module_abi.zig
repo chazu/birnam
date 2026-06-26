@@ -404,6 +404,16 @@ pub const IdApi = extern struct {
     /// minimizing the steady-state footprint the loaded program runs in.
     /// (Appended at END per the append-only ABI discipline.)
     prune_now: *const fn () callconv(.c) void,
+
+    /// W1 Stage 2b (docs/19c) — register this module's *tree-walker block shim*
+    /// (the `Closure.method` of REPL/tree-walker block closures it mints). The
+    /// kernel records it so the full-image loader's `rematerializeClosures` can
+    /// rebuild durable tree-walker block globals (`let f := [block]` at the REPL)
+    /// at their original eid — the shim pointer is THIS process's, valid for the
+    /// loading session. Without it the kernel can't reconstruct a closure whose
+    /// behavior lives in a module's native code. (Appended at END per ABI
+    /// discipline.)
+    register_treewalk_block_shim: *const fn (shim: ?*const anyopaque) callconv(.c) void,
 };
 
 comptime {

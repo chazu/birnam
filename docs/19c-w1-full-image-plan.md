@@ -245,19 +245,40 @@ this single step fixes it. Regression test: `lang_module_test` "W1 Stage 2: json
 block globals survive full save -> load (no json reload)". Verified: image (18),
 lang (80), dispatch/metabind/fact_store/ffi green; examples green.
 
-**Deferred (Stage 2b):** (1) **capturing** durable closures — wrappers whose
-`BytecodeClosure` has ≥1 capture; they need their captured *values* serialized
-(reuse the GC reachability walk, recursing into captured refs). (2) **REPL-eval
-block globals** — `let x := [block]` typed at the REPL uses a different top-level
-representation than module file-in (its wrapper is not the MAKE_BLOCK CLOSURE_VT
-shape the recipe detects), so REPL-defined block globals don't yet round-trip;
-characterize that representation and extend `capturelessBlockMethod` (or the
-recipe) to cover it. Neither blocks module images (the W1 target); both are
-session-state niceties.
+**Stage 2b — DONE (2026-06-25).** Both session-state cases now round-trip; a
+discriminator emerged from the probe: a closure's **`Closure.method` pointer**
+cleanly classifies it.
 
-**Status:** Stages 0–1 done; Stage 2 load-core proven; this closure-capture
-defect is the one remaining blocker and is scoped above. Tree is clean/green
-(no speculative fix committed).
+1. **Capturing durable bytecode closures.** Only blocks that captured an
+   *enclosing-method local* carry inline captures (`captures_len > 0`, e.g.
+   `let add5 := [[:n | [:x | [x + n]]] value: 5]`) — module/REPL top-level free
+   vars like `base` resolve through the persisted scope chain, not inline
+   captures, so they already worked. `capturelessBlockMethod` generalized to
+   `bytecodeBlockClosure` (gated on `method == &bytecodeDispatcherImpl`); the
+   writer serializes captures into a companion `[wrapper :closure-block-captures
+   #[…]]` RRB fact (worklist enqueues capture eids that are themselves wrappers,
+   bails wholesale if any capture is unserializable); `rematerializeClosures`
+   copies them back into the inline tail. parent_self/frame = NIL/0 (a durable
+   global has no live enclosing frame).
+2. **REPL tree-walker block globals.** `let f := [block]` at the REPL is a
+   *tree-walker* closure: `CLOSURE_VT { method = blockEvalShim, data =
+   OBJECT_VT{ast, scope} }` — a different shape whose behavior lives in lang's
+   native `blockEvalShim`. lang registers that shim pointer with the kernel via a
+   new append-only ABI call (`register_treewalk_block_shim`); the writer detects
+   the shape (shim-pointer identity = precise discriminator) and emits
+   `[wrapper :treewalk-block-ast ast]` + `[wrapper :treewalk-block-scope scope]`
+   (both already facts — AST is fact-shaped, scope is a SCOPE_VT entity);
+   `rematerializeClosures` rebuilds the wrapper at its eid using the registered
+   shim. No shell wiring needed — it rides the `rematerializeClosures` call
+   already in every load path.
+
+Tests: `lang_module_test` "REPL tree-walker block globals round-trip" + "capturing
+block global round-trips its inline captures" (82/82). End-to-end: a v7 image
+boots json from the image alone unchanged (ABI append didn't disturb it).
+
+**Status:** Stages 0–2 + 2b done; the full-image load core is proven for module
+*and* REPL session state. Next: Stage 3 (make full-image boot first-class +
+default). Tree clean/green.
 
 **Stage 3 — make full-image boot first-class + default.** Promote the
 boot-image path: on startup, if a valid image (matching `abi_hash`) exists, load
