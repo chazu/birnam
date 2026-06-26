@@ -17,6 +17,7 @@ const bytecode = @import("bytecode.zig");
 const vm = @import("vm.zig");
 const ref_mod = @import("ref.zig");
 const kernel_eids = @import("kernel_eids.zig");
+const fact_store = @import("fact_store.zig");
 
 const Ref = ref_mod.Ref;
 
@@ -31,6 +32,8 @@ pub const RUNTIME_PRELUDE =
     \\extern Ref birnam_sendN(Ref recv, Ref sel, Ref *args, unsigned long n);
     \\extern int birnam_is_falsey(Ref v);
     \\extern int birnam_is_error(Ref v);
+    \\extern Ref birnam_make_block(Ref method_eid, Ref self, Ref *caps, unsigned long n);
+    \\extern Ref birnam_invoke_block(Ref block, Ref *args, unsigned long n);
     \\
 ;
 
@@ -57,6 +60,16 @@ pub fn emitKeywordSend1(
     return std.fmt.allocPrintSentinel(allocator, "{s}Ref {s}(Ref recv, Ref a1) {{ return birnam_send1(recv, {d}, a1); }}\n", .{ RUNTIME_PRELUDE, fn_name, sel_eid }, 0);
 }
 
+/// The capture spec of the block method at `pool[idx]` (which parent locals it
+/// captures, in order). Empty when there is no store, the pool entry is not an
+/// eid, or the method has no `:method-captures-ptr` fact (captureless block).
+fn blockSpecs(store: ?*const fact_store.FactStore, pool: []const Ref, idx: usize) []const vm.CaptureSpec {
+    const s = store orelse return &.{};
+    if (idx >= pool.len or !ref_mod.isEid(pool[idx])) return &.{};
+    const spec_ref = s.currentValue(ref_mod.untagEid(pool[idx]), kernel_eids.ATTR_METHOD_CAPTURES_PTR) orelse return &.{};
+    return vm.captureSpecsFromRef(spec_ref);
+}
+
 /// Lower a compiled **bytecode method body** to a C function. Emits a stack
 /// machine: `Ref S[]` operand stack + `Ref L[]` locals (args copied in), one
 /// translated statement per opcode. The generated body calls the runtime send
@@ -67,16 +80,22 @@ pub fn emitKeywordSend1(
 /// Signature of the emitted function: `Ref <fn_name>(Ref recv, Ref *args,
 /// unsigned long n_args)` — matching how a method closure is invoked.
 ///
-/// **Subset (this cut):** straight-line bodies — pushes, locals, pop, self,
-/// true/false/nil, and SEND_0/1/N + RETURN. Control flow (JUMP/BRANCH), blocks
-/// (MAKE_BLOCK/INVOKE_BLOCK), and non-local return return `Error.UnsupportedOpcode`
-/// so the caller cleanly declines methods the codegen can't yet handle (and falls
-/// back to the interpreter) — incremental rollout, never miscompiles.
+/// **Supported:** pushes, locals, pop, self, true/false/nil, SEND_0/1/N, RETURN,
+/// control flow (JUMP/BRANCH → goto/labels), and **blocks** (MAKE_BLOCK creates a
+/// block closure capturing the named parent locals; INVOKE_BLOCK calls one) — the
+/// block BODY stays interpreted, only its creation/invocation is lowered. Only
+/// `RETURN_FROM_METHOD` (a block's `^` non-local return) returns
+/// `Error.UnsupportedOpcode`, so the caller declines + keeps the interpreter for
+/// methods using it — incremental rollout, never miscompiles.
+/// `store` (optional) lets MAKE_BLOCK read a block method's `:method-captures-ptr`
+/// spec to know which parent locals to capture; pass the live store for the JIT
+/// path. With a null store, a MAKE_BLOCK is lowered as captureless.
 pub fn emitMethod(
     allocator: std.mem.Allocator,
     fn_name: []const u8,
     code: []const u8,
     pool: []const Ref,
+    store: ?*const fact_store.FactStore,
 ) Error![:0]u8 {
     // Pre-scan: max local slot (sizes L[]) + the set of jump-TARGET pcs (where C
     // labels must be emitted). A target = (pc + 3) + i16-offset, matching the VM's
@@ -97,6 +116,14 @@ pub fn emitMethod(
                     const off = bytecode.readI16(code, pc + 1);
                     const target: usize = @intCast(@as(i64, @intCast(pc + 3)) + off);
                     targets.put(target, {}) catch return Error.OutOfMemory;
+                },
+                .MAKE_BLOCK => {
+                    // A captured parent_slot may exceed the slots reached by
+                    // PUSH/STORE_LOCAL (e.g. a param only captured, never used);
+                    // grow L[] to cover it.
+                    for (blockSpecs(store, pool, bytecode.readU16(code, pc + 1))) |sp| {
+                        if (sp.parent_slot > max_local) max_local = sp.parent_slot;
+                    }
                 },
                 else => {},
             }
@@ -172,9 +199,31 @@ pub fn emitMethod(
                 try w.print("  {{ Ref _r = birnam_sendN(S[sp-{d}], {d}UL, &S[sp-{d}], {d}UL); sp -= {d}; S[sp++] = _r; }}\n", .{ n + 1, sel, n, n, n + 1 });
             },
             .RETURN => try w.writeAll("  return S[sp-1];\n"),
-            // Blocks + non-local return not yet lowered — decline so the caller
-            // keeps the interpreter (incremental rollout, never miscompiles).
-            .MAKE_BLOCK, .INVOKE_BLOCK, .RETURN_FROM_METHOD => return Error.UnsupportedOpcode,
+            .MAKE_BLOCK => {
+                const idx = bytecode.readU16(code, pc + 1);
+                if (idx >= pool.len or !ref_mod.isEid(pool[idx])) return Error.BadBytecode;
+                const bm = ref_mod.untagEid(pool[idx]);
+                const specs = blockSpecs(store, pool, idx);
+                if (specs.len == 0) {
+                    try w.print("  S[sp++] = birnam_make_block({d}UL, recv, 0, 0);\n", .{bm});
+                } else {
+                    // Capture the named parent locals (in spec order) into a temp.
+                    try w.writeAll("  { Ref _c[] = {");
+                    for (specs, 0..) |sp, i| {
+                        if (i != 0) try w.writeAll(",");
+                        try w.print(" L[{d}]", .{sp.parent_slot});
+                    }
+                    try w.print(" }}; S[sp++] = birnam_make_block({d}UL, recv, _c, {d}); }}\n", .{ bm, specs.len });
+                }
+            },
+            .INVOKE_BLOCK => {
+                const n = bytecode.readU8(code, pc + 1);
+                // block at S[sp-n-1]; args at S[sp-n .. sp].
+                try w.print("  {{ Ref _r = birnam_invoke_block(S[sp-{d}], &S[sp-{d}], {d}UL); sp -= {d}; S[sp++] = _r; }}\n", .{ n + 1, n, n, n + 1 });
+            },
+            // A block's `^` non-local return into a JIT'd (frameless) method is
+            // not lowered — decline so the caller keeps the interpreter.
+            .RETURN_FROM_METHOD => return Error.UnsupportedOpcode,
         }
         pc += vm.instructionSize(op);
     }
@@ -216,7 +265,7 @@ test "codegen: control-flow opcodes lower to labels + goto + predicate calls" {
         @intFromEnum(vm.Opcode.BRANCH_IF_ERROR), 0, 0,
         @intFromEnum(vm.Opcode.RETURN),
     };
-    const src = try emitMethod(a, "cf", &code, &.{});
+    const src = try emitMethod(a, "cf", &code, &.{}, null);
     defer a.free(src);
     try std.testing.expect(std.mem.indexOf(u8, src, "L7:") != null); // branch-if-false target
     try std.testing.expect(std.mem.indexOf(u8, src, "goto L11;") != null); // jump-to-end
@@ -225,8 +274,17 @@ test "codegen: control-flow opcodes lower to labels + goto + predicate calls" {
     try std.testing.expect(std.mem.indexOf(u8, src, "L11:") != null); // jump-to-end label
 }
 
-test "codegen: declines blocks (MAKE_BLOCK) so the caller keeps the interpreter" {
+test "codegen: a captureless MAKE_BLOCK lowers to birnam_make_block" {
     const a = std.testing.allocator;
+    // pool[0] = mkEid(7) (the block method); null store → captureless.
     const code = [_]u8{ @intFromEnum(vm.Opcode.MAKE_BLOCK), 0, 0, @intFromEnum(vm.Opcode.RETURN) };
-    try std.testing.expectError(Error.UnsupportedOpcode, emitMethod(a, "b", &code, &.{0}));
+    const src = try emitMethod(a, "b", &code, &.{ref_mod.mkEid(7)}, null);
+    defer a.free(src);
+    try std.testing.expect(std.mem.indexOf(u8, src, "birnam_make_block(7UL, recv, 0, 0)") != null);
+}
+
+test "codegen: declines a block's non-local return (RETURN_FROM_METHOD)" {
+    const a = std.testing.allocator;
+    const code = [_]u8{ @intFromEnum(vm.Opcode.RETURN_FROM_METHOD), 0 };
+    try std.testing.expectError(Error.UnsupportedOpcode, emitMethod(a, "r", &code, &.{}, null));
 }

@@ -461,3 +461,60 @@ pub fn birnamIsFalsey(v: Ref) callconv(.c) c_int {
 pub fn birnamIsError(v: Ref) callconv(.c) c_int {
     return if (isErrorValue(v)) 1 else 0;
 }
+
+// -- C-ABI block ops for the codegen (MAKE_BLOCK / INVOKE_BLOCK) -------------
+// A JIT'd method that contains blocks emits these. The block BODY is a separate
+// method (interpreted via runMethod), so only block creation + invocation cross
+// into the JIT'd C; the body runs unchanged. `parent_frame_id = 0`: a JIT'd
+// method has no VM frame, so a block that does a non-local return (`^`) back into
+// it is unsupported (returns its value locally) — value-returning blocks (the
+// common case: ifTrue:/collect:/whileTrue: arms) work fully.
+
+/// Mirror of MAKE_BLOCK: allocate a `BytecodeClosure { method, self, frame=0,
+/// caps }` (caps already resolved by the caller from its locals, in spec order)
+/// and wrap it in a closure entity. Returns `mkEid(closure)`.
+pub fn birnamMakeBlock(method_eid: u64, parent_self: Ref, caps: [*]const Ref, n_caps: usize) callconv(.c) Ref {
+    const allocator = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const blk = vm_mod.allocBytecodeBlock(allocator, method_eid, parent_self, 0, @intCast(n_caps)) catch return ref_mod.NIL;
+    var i: usize = 0;
+    while (i < n_caps) : (i += 1) blk.captures_tail[i] = caps[i];
+    const closure_eid = allocClosureEntity(allocator, blk.ref) catch return ref_mod.NIL;
+    return ref_mod.mkEid(closure_eid);
+}
+
+/// Mirror of INVOKE_BLOCK: invoke the block closure `block_ref` with `args`,
+/// returning its result. Replicates the interpreter's non-local-return bookkeeping
+/// (decrement `unwind_target_remaining`, catch at 0) so `^` propagation matches
+/// for the cases it can reach.
+pub fn birnamInvokeBlock(block_ref: Ref, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    if (!ref_mod.isEid(block_ref)) return ref_mod.NIL;
+    const allocator = send_mod.kernelAllocator() orelse return ref_mod.NIL;
+    const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    const tbl = send_mod.tablePtr() orelse return ref_mod.NIL;
+    const closure_ptr_ref = tbl.get(ref_mod.untagEid(block_ref)) orelse return ref_mod.NIL;
+    if (!ref_mod.isPointer(closure_ptr_ref)) return ref_mod.NIL;
+    const closure_base: [*]const Ref = @ptrCast(@alignCast(ref_mod.untagPointer(closure_ptr_ref)));
+    const data = closure_base[1];
+
+    var block_eid: u64 = 0;
+    var captures: []const Ref = &[_]Ref{};
+    var block_self: Ref = ref_mod.NIL;
+    if (ref_mod.isEid(data)) {
+        block_eid = ref_mod.untagEid(data);
+    } else if (ref_mod.isPointer(data)) {
+        block_eid = vm_mod.blockMethodEidFromRef(data);
+        captures = vm_mod.blockCapturesFromRef(data);
+        block_self = vm_mod.blockParentSelfFromRef(data);
+    } else return ref_mod.NIL;
+
+    const vm = vm_mod.current();
+    const result = runMethod(allocator, store, block_self, block_eid, args[0..n_args], captures) catch return ref_mod.NIL;
+    if (vm.unwinding) {
+        if (vm.unwind_target_remaining == 0) {
+            vm.unwinding = false;
+            return vm.unwind_value;
+        }
+        vm.unwind_target_remaining -= 1;
+    }
+    return result;
+}

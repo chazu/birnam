@@ -35,6 +35,8 @@ fn bindRuntime(j: *jit.Jit) jit.Error!void {
     try j.addSymbol("birnam_sendN", @ptrCast(&send_mod.birnamSendN));
     try j.addSymbol("birnam_is_falsey", @ptrCast(&dispatch.birnamIsFalsey));
     try j.addSymbol("birnam_is_error", @ptrCast(&dispatch.birnamIsError));
+    try j.addSymbol("birnam_make_block", @ptrCast(&dispatch.birnamMakeBlock));
+    try j.addSymbol("birnam_invoke_block", @ptrCast(&dispatch.birnamInvokeBlock));
 }
 
 /// The whole mode-1 pipeline for one method: read its `:bytecode-stream` +
@@ -62,7 +64,7 @@ pub fn jitAndInstall(
         }
     }
 
-    const c_src = codegen.emitMethod(allocator, "m", strings.bytes(bc_ref), pool.items) catch |e| switch (e) {
+    const c_src = codegen.emitMethod(allocator, "m", strings.bytes(bc_ref), pool.items, store) catch |e| switch (e) {
         error.UnsupportedOpcode => return error.Declined,
         else => return e,
     };

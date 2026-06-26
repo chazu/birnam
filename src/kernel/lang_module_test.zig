@@ -1668,7 +1668,7 @@ test "codegen+jit: a compiled bytecode method body lowers to C and matches the i
     }
 
     // Lower → C, JIT, bind the send entry points.
-    const c_src = try codegen_mod.emitMethod(a, "jit_blk", code, pool.items);
+    const c_src = try codegen_mod.emitMethod(a, "jit_blk", code, pool.items, s.store);
     var j = try jit_mod.Jit.init("/usr/local/lib/tcc");
     defer j.deinit();
     try j.addSymbol("birnam_send0", @ptrCast(&send_mod.birnamSend0));
@@ -1720,7 +1720,7 @@ test "codegen+jit: install JIT'd body as a method; normal dispatch runs native" 
             for (0..rrb.count()) |i| try pool.append(a, rrb.nth(i));
         }
     }
-    const c_src = try codegen_mod.emitMethod(a, "jit_blk", strings.bytes(bc_ref), pool.items);
+    const c_src = try codegen_mod.emitMethod(a, "jit_blk", strings.bytes(bc_ref), pool.items, s.store);
     var j = try jit_mod.Jit.init("/usr/local/lib/tcc");
     defer j.deinit();
     inline for (.{ "birnam_send0", "birnam_send1", "birnam_send2", "birnam_sendN" }, .{
@@ -1744,6 +1744,48 @@ test "codegen+jit: install JIT'd body as a method; normal dispatch runs native" 
     // Ordinary dispatch reaches the native body: [0 jitIncByOne: 5] -> 6.
     try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(5).?)));
     try testing.expectEqual(@as(i64, 100), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(99).?)));
+}
+
+// libtcc codegen — BLOCK lowering. A method whose body uses blocks JITs and
+// matches the interpreter: `cond` (`ifTrue:ifFalse:` → two captureless MAKE_BLOCKs
+// + a send) and `cap` (a CAPTURING block `[:y | x + y]` created + invoked via
+// `value:`). The JIT'd outer method creates/invokes blocks through
+// `birnam_make_block`/`birnam_invoke_block`; the block BODIES stay interpreted.
+test "codegen+jit: block lowering (ifTrue:ifFalse: + a capturing block) matches interpreter" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    try std.fs.cwd().writeFile(.{ .sub_path = "test_codegen_blocks.birnam", .data =
+        "let cond := [:x | [[x > 0] ifTrue: [| 10] ifFalse: [| 20]]];\n" ++
+        "let cap := [:x | [[:y | [x + y]] value: 100]]\n" });
+    defer std.fs.cwd().deleteFile("test_codegen_blocks.birnam") catch {};
+    _ = evalLine(s, lang, "[language fileIn: \"test_codegen_blocks.birnam\"]", a);
+
+    // `cond`: x>0 ? 10 : 20, bound on SMALLINT_VT, JIT-installed, dispatched.
+    const m_cond = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "cond", a)));
+    try testing.expect(m_cond != 0);
+    const sel_cond = try s.interner.intern(s.store, s.table, "jitCond:");
+    _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel_cond, ref_mod.mkEid(m_cond), kernel_eids.M_USER);
+    var jc = try jitm_mod.jitAndInstall(a, s.store, s.table, m_cond);
+    defer jc.deinit();
+    try testing.expectEqual(@as(i64, 10), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel_cond, ref_mod.mkSmallInt(5).?)));
+    try testing.expectEqual(@as(i64, 20), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel_cond, ref_mod.mkSmallInt(-3).?)));
+
+    // `cap`: a capturing block (`x` captured) created + invoked → x + 100.
+    const m_cap = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "cap", a)));
+    try testing.expect(m_cap != 0);
+    const sel_cap = try s.interner.intern(s.store, s.table, "jitCap:");
+    _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel_cap, ref_mod.mkEid(m_cap), kernel_eids.M_USER);
+    var jp = try jitm_mod.jitAndInstall(a, s.store, s.table, m_cap);
+    defer jp.deinit();
+    try testing.expectEqual(@as(i64, 103), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel_cap, ref_mod.mkSmallInt(3).?)));
+    try testing.expectEqual(@as(i64, 141), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel_cap, ref_mod.mkSmallInt(41).?)));
 }
 
 // libtcc codegen — "malleable AND native" (docs/10a). A method is JIT'd to
