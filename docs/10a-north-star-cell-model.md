@@ -269,11 +269,13 @@ as the method (jit_method.zig) → ordinary send dispatches native`, and **re-JI
 on redefine** demonstrates malleable-AND-native. The generated C uses the runtime
 "as a library" via C-ABI entry points (`birnam_send0/1/2/N`, `birnam_is_falsey/
 _error`). Native is a cache: closure.data parks a SmallInt index (GC-safe) into a
-JIT'd-body registry; `:bytecode-stream` stays canonical. See
-[[project_birnam_libtcc]]. **Remaining:** BLOCK lowering (MAKE_BLOCK/INVOKE_BLOCK
-— blocks capture the enclosing C-frame's locals, so this breaks the clean
-C-calls-runtime model and is the real next codegen piece); a live auto-JIT policy;
-the mode-3 ship path (`zig cc`, extends `freeze.zig`); vendoring libtcc.
+JIT'd-body registry; `:bytecode-stream` stays canonical. **Block lowering done**
+(MAKE_BLOCK/INVOKE_BLOCK → `birnam_make_block`/`birnam_invoke_block`; block bodies
+stay interpreted) so conditionals/loops/higher-order blocks JIT — only a block's
+`^` non-local return into the frameless JIT'd method is unsupported. See
+[[project_birnam_libtcc]]. **Remaining:** a live auto-JIT policy (when to JIT a hot
+method); the mode-3 ship path (`zig cc`, extends `freeze.zig`); vendoring libtcc;
+`^`-into-JIT'd-method non-local return.
 
 **The strip-dial, recast (more idst-faithful):** native is always the execution
 form; the dial controls whether the **codegen + AST/source are resident** (= can
