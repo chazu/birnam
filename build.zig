@@ -101,6 +101,13 @@ pub fn build(b: *std.Build) void {
     shell_opts.addOption([]const u8, "version", std.mem.trim(u8, version_raw, " \t\r\n"));
     shell_mod.addOptions("build_opts", shell_opts);
 
+    // libtcc — the mode-1 JIT backend (docs/10a). The shell imports `jit_method`
+    // to compile methods to native code at runtime. System install under
+    // /usr/local for now (vendoring like libffi is a follow-up).
+    shell_mod.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
+    shell_mod.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+    shell_mod.linkSystemLibrary("tcc", .{});
+
     const shell = b.addExecutable(.{
         .name = "birnam",
         .root_module = shell_mod,

@@ -25,6 +25,7 @@ const arenas = @import("kernel/arenas.zig");
 const bootstrap = @import("kernel/bootstrap.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
+const jit_manager = @import("kernel/jit_manager.zig");
 const image = @import("kernel/image.zig");
 const prune = @import("kernel/prune.zig");
 const gc = @import("kernel/gc.zig");
@@ -46,6 +47,9 @@ const default_modules = [_][]const u8{ "peg", "lang", "json", "stdlib", "net" };
 // Search dirs for the FFI `Module load:` bare-name resolver (process-lifetime).
 var g_resolver_dirs: []const []const u8 = &.{};
 var g_resolver_buf: ?[]const u8 = null;
+/// The session's JIT manager (libtcc mode-1 dial). Instantiated at boot; backs
+/// the `:jit`/`:demote` commands and (later) hotness-triggered auto-JIT.
+var g_jit_manager: ?*jit_manager.JitManager = null;
 
 /// Resolve a bare dylib name through the module search path. Registered on
 /// `ffi_module.dylib_resolver` so `[Module load: "liblinenoise.dylib"]` finds
@@ -131,6 +135,21 @@ fn handleImageCommand(
         } else {
             stdoutPrint("[birnam] gc ({d} boxes freed/{d} kept, {d} closures freed/{d} kept, {d} wrappers freed/{d} kept, {d} strings freed/{d} kept)\n", .{ st.boxes_freed, st.boxes_kept, st.closures_freed, st.closures_kept, st.wrappers_freed, st.wrappers_kept, st.strings_freed, st.strings_kept });
         }
+        return true;
+    }
+    // `:jit` — compile every eligible bytecode method to native (libtcc, docs/10a);
+    // `:demote` — revert all to bytecode. The whole-image bytecode⇄native dial.
+    if (std.mem.eql(u8, line, ":jit") or std.mem.startsWith(u8, line, ":jit ")) {
+        if (g_jit_manager) |m| {
+            const s = m.promoteAll(store, table);
+            stdoutPrint("[birnam] :jit — {d} methods native, {d} declined (^/unsupported), {d} already\n", .{ s.compiled, s.declined, s.already });
+        } else stderrPrint("[birnam] :jit unavailable (no JIT manager)\n", .{});
+        return true;
+    }
+    if (std.mem.eql(u8, line, ":demote")) {
+        if (g_jit_manager) |m| {
+            stdoutPrint("[birnam] :demote — {d} methods reverted to bytecode\n", .{m.demoteAll(table)});
+        } else stderrPrint("[birnam] :demote unavailable\n", .{});
         return true;
     }
     if (std.mem.startsWith(u8, line, ":load ")) {
@@ -978,6 +997,12 @@ pub fn main() !void {
 
     var manager = module.Manager.init(allocator, &shell_context, api);
     defer manager.deinit();
+
+    // The session's libtcc JIT manager (mode-1 dial). Backs `:jit`/`:demote`.
+    var the_jit_manager = jit_manager.JitManager.init(allocator);
+    defer the_jit_manager.deinit();
+    g_jit_manager = &the_jit_manager;
+    jit_manager.g_manager = &the_jit_manager;
 
     // -- Resolve the module set ----------------------------------------------
     // Args before `--` are module names (bare like `lang`, or full dylib

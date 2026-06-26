@@ -1731,7 +1731,8 @@ test "codegen+jit: install JIT'd body as a method; normal dispatch runs native" 
     const jit_fn = try j.getFn(jitm_mod.MethodFn, "jit_blk");
 
     // Install native code AS the method; bind a fresh selector on SMALLINT_VT.
-    try jitm_mod.install(a, s.table, method_eid, jit_fn);
+    const idx = jitm_mod.registerFn(jit_fn).?;
+    try jitm_mod.installTrampoline(a, s.table, method_eid, idx);
     const sel = try s.interner.intern(s.store, s.table, "jitIncByOne:");
     _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel, ref_mod.mkEid(method_eid), kernel_eids.M_USER);
 

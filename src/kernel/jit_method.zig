@@ -39,19 +39,21 @@ fn bindRuntime(j: *jit.Jit) jit.Error!void {
     try j.addSymbol("birnam_invoke_block", @ptrCast(&dispatch.birnamInvokeBlock));
 }
 
-/// The whole mode-1 pipeline for one method: read its `:bytecode-stream` +
-/// `:constant-pool`, lower to C (`codegen.emitMethod`), JIT (libtcc), and install
-/// the native body AS the method (`install`). Returns the owning `Jit` — the
-/// caller keeps it alive (its memory backs the code) and `deinit`s it to drop the
-/// native cache (reverting to the interpreter on next `rematerializeClosures` /
-/// re-install). Returns `error.Declined` if the body uses an opcode the codegen
-/// doesn't lower yet (e.g. blocks) — caller keeps the interpreter.
-pub fn jitAndInstall(
+/// A method's bytecode lowered + JIT'd, but NOT yet installed: the owning `Jit`
+/// (its memory backs `fn_ptr`) and the native body. The caller installs it
+/// (`installTrampoline`) and keeps the `Jit` alive; `deinit` drops the native code.
+pub const Compiled = struct { jit: jit.Jit, fn_ptr: MethodFn };
+
+/// Read a method's `:bytecode-stream` + `:constant-pool`, lower to C
+/// (`codegen.emitMethod`), and JIT it (libtcc) — without installing. Returns
+/// `error.Declined` if the body uses an opcode the codegen doesn't lower yet
+/// (a block's `^`), so the caller keeps the interpreter. The lifetime split
+/// (compile here, install separately) lets `JitManager` own + re-JIT + drop Jits.
+pub fn compileMethod(
     allocator: std.mem.Allocator,
     store: *const fact_store.FactStore,
-    table: *object_table.ObjectTable,
     method_eid: u64,
-) !jit.Jit {
+) !Compiled {
     const bc_ref = store.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM) orelse return error.NoBytecode;
     if (!strings.isString(bc_ref)) return error.NoBytecode;
 
@@ -75,9 +77,22 @@ pub fn jitAndInstall(
     try bindRuntime(&j);
     try j.compile(c_src);
     try j.relocate();
-    const f = try j.getFn(MethodFn, "m");
-    try install(allocator, table, method_eid, f);
-    return j;
+    return .{ .jit = j, .fn_ptr = try j.getFn(MethodFn, "m") };
+}
+
+/// Convenience (used by tests): compile + register + install in one call, return
+/// the owning `Jit`. `JitManager` uses the finer-grained pieces instead.
+pub fn jitAndInstall(
+    allocator: std.mem.Allocator,
+    store: *const fact_store.FactStore,
+    table: *object_table.ObjectTable,
+    method_eid: u64,
+) !jit.Jit {
+    var c = try compileMethod(allocator, store, method_eid);
+    errdefer c.jit.deinit();
+    const idx = registerFn(c.fn_ptr) orelse return error.JitRegistryFull;
+    try installTrampoline(allocator, table, method_eid, idx);
+    return c.jit;
 }
 
 /// Signature of a JIT'd method body (the output of `codegen.emitMethod`):
@@ -93,12 +108,19 @@ pub const MethodFn = *const fn (recv: Ref, args: [*]const Ref, n_args: usize) ca
 var g_registry: [4096]MethodFn = undefined;
 var g_registry_len: usize = 0;
 
-fn registerFn(f: MethodFn) ?u64 {
+/// Append a JIT'd body, returning its index (the SmallInt parked in closure.data).
+pub fn registerFn(f: MethodFn) ?u64 {
     if (g_registry_len >= g_registry.len) return null;
     const idx = g_registry_len;
     g_registry[idx] = f;
     g_registry_len += 1;
     return idx;
+}
+
+/// Overwrite an existing slot — a re-JIT reuses its method's index, so the
+/// closure.data SmallInt stays valid and no slot leaks.
+pub fn registrySet(idx: u64, f: MethodFn) void {
+    if (idx < g_registry_len) g_registry[idx] = f;
 }
 
 /// Dispatch trampoline. `send.sendN` calls this directly (its `.method` is not
@@ -113,30 +135,48 @@ pub fn trampoline(s: *send_mod.Send, args: [*]const Ref, n_args: usize) callconv
     return g_registry[idx](s.receiver, args, n_args);
 }
 
-/// Swap `method_eid`'s object-table closure to `{trampoline, <jit_fn addr>}` so
-/// dispatch to it runs `jit_fn` (native) instead of the bytecode interpreter. The
-/// caller owns + keeps alive the `Jit` whose memory backs `jit_fn`. Reverting to
-/// the interpreter is just re-installing the bytecode closure (or dropping this
-/// slot and letting `rematerializeClosures` rebuild it from the persisted facts).
-pub fn install(
+/// Build a `[vt][method][data]` closure buffer and put it at `method_eid`, then
+/// flush the mcache. The mcache keys (vt, sel) → a *closure pointer*; swapping the
+/// closure at `method_eid` would otherwise leave cached entries pointing at the
+/// OLD closure (a redefine/demote could dispatch freed JIT code). A mode swap is
+/// infrequent, so clearing all is fine.
+fn putClosure(
     allocator: std.mem.Allocator,
     table: *object_table.ObjectTable,
     method_eid: u64,
-    jit_fn: MethodFn,
+    method: *const anyopaque,
+    data: Ref,
 ) !void {
-    const total = 3 * @sizeOf(Ref);
-    const buf = try allocator.alignedAlloc(u8, .of(Ref), total);
+    const buf = try allocator.alignedAlloc(u8, .of(Ref), 3 * @sizeOf(Ref));
     @memset(buf, 0);
     const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
     vt_slot.* = ref_mod.mkEid(kernel_eids.BYTECODE_METHOD_VT);
     const c: *closure_mod.Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
-    c.method = @ptrCast(&trampoline);
-    const idx = registerFn(jit_fn) orelse return error.JitRegistryFull;
-    c.data = ref_mod.mkSmallInt(@intCast(idx)) orelse return error.JitRegistryFull;
+    c.method = method;
+    c.data = data;
     try table.put(method_eid, ref_mod.mkPointer(@ptrCast(c)));
-    // The method cache keys (vt, sel) → a *closure pointer*; we just swapped the
-    // closure at `method_eid`, so any cached entry now points at the OLD closure
-    // (a redefine would dispatch freed JIT code). Flush — caches repopulate on the
-    // next send. A JIT install is infrequent, so clearing all is fine.
     mcache.clearAll();
+}
+
+/// NATIVE: swap `method_eid`'s closure to `{trampoline, SmallInt(idx)}` so
+/// dispatch runs the JIT'd body at registry `idx`.
+pub fn installTrampoline(
+    allocator: std.mem.Allocator,
+    table: *object_table.ObjectTable,
+    method_eid: u64,
+    idx: u64,
+) !void {
+    const data = ref_mod.mkSmallInt(@intCast(idx)) orelse return error.JitRegistryFull;
+    try putClosure(allocator, table, method_eid, @ptrCast(&trampoline), data);
+}
+
+/// BYTECODE (demote): swap `method_eid`'s closure back to the interpreter
+/// `{bytecodeDispatcherImpl, mkEid(method_eid)}` — the shape `rematerializeClosures`
+/// builds. Dispatch reverts to `runMethod` over the (canonical) `:bytecode-stream`.
+pub fn installBytecode(
+    allocator: std.mem.Allocator,
+    table: *object_table.ObjectTable,
+    method_eid: u64,
+) !void {
+    try putClosure(allocator, table, method_eid, @ptrCast(&dispatch.bytecodeDispatcherImpl), ref_mod.mkEid(method_eid));
 }
