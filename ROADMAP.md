@@ -3295,6 +3295,31 @@ mcache/object-table are its memoizations* — a far smaller item than re-archite
 to a populated projection. The deep design Q2 seemed to demand is dissolved by the
 north star, not solved by engineering.
 
+##### D5.3 — OPEN: address assertions by `(e,a,tx)`; retire synthetic fact-eids (2026-06-25)
+
+The cell refounding dissolves one mechanism it inherits: **reification**. The term
+does two jobs in birnam:
+- **"code is reified as facts"** (`docs/12`) — the *thesis*, strengthened by the
+  cell model (code is cells). The only thing artificial here is the *word*: code
+  is never "reified into" anything, it is cells; the facts→runnable-closure step
+  is *caching* (a projection like the object table), not reification — and W1
+  already deleted the boot-time *reconstruct-code-from-source* flavor.
+- **"reify a fact into an entity"** (`fact_store.zig:293`, the lazy `fact_eids`
+  side-index / `ensureFactEid`) — minting a *synthetic eid* for an `(e,a,v)` triple
+  so meta-statements can be made about that assertion (Datomic facts-about-facts).
+
+**The open decision (successor to D5.1):** under the cell model a cell already has
+first-class identity — `(entity, attribute)` + a timeline — so a specific
+assertion is addressable as **`(e, a, tx)`** directly. Minting a synthetic
+fact-eid is then a workaround for not treating the cell as the primary addressable
+unit. Decide to **address assertions by `(e,a,tx)` and retire `fact_eids` /
+`ensureFactEid`.** This closes VISION's admitted "reification gap" *and* deletes a
+mechanism in one move. Wrinkle to resolve first: metadata sometimes targets the
+*cell* (`(e,a)` — "this attribute is sensitive") and sometimes the *assertion*
+(`(e,a,tx)` — "entered by Alice"); both are addressable without a synthetic eid
+once "the cell at tx" is a first-class handle. Parallels D5.1 (entity identity)
+applied to assertions. Parkable; not touched by W1.
+
 #### Q1 deep-dive — breaking the bootstrap of fact specification (2026-06-24)
 
 Q1's frozen-vs-policy line is really the old metacircular-bootstrap problem.

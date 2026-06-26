@@ -230,6 +230,44 @@ someday-optimization (regenerate the native form instead of re-linking it), not 
 prerequisite. This mirrors exactly what D5/D5.1 did for identity: do not delete the
 fast thing — *demote it from primary to derived.*
 
+### The native-cache backend: compile-to-C/Zig (AOT) vs fast JIT (live) — 2026-06-25
+
+"Native is a cache of a bytecode-cell" leaves one open choice: **which code
+generator produces the cache.** Two points in the space, dissolving the
+bytecode/native distinction differently:
+
+- **Fast JIT (Piumarta's COLA/idst path).** His *Virtual Processor* (`ccg`,
+  "fast architecture-neutral dynamic code generation") is a low-level IR JIT'd to
+  native in microseconds — no slow interpreted tier; the IR *is* the program, the
+  JIT *is* the executor. **Live, low-latency; cost = a hand-written code generator
+  per architecture.**
+- **Compile-to-C/Zig (AOT).** Emit C (or Zig) from a method's bytecode-cells,
+  compile with `zig cc` / `zig build-lib`, `dlopen`, relink by name. **Reuses a
+  mature optimizer (zero codegen to maintain), portable; cost = C-compiler latency
+  → AOT/freeze/ship, NOT a per-call JIT.**
+
+**Direction (lean):** compile-to-C/Zig as the AOT native-materialization backend.
+It maps onto the existing strip-dial: **mode 1** runs bytecode-cells (live,
+malleable, no native); **mode 2/3** materializes them to a native dylib at
+freeze/ship. It *extends `freeze.zig`* — which already reconstructs a module and
+`zig build-lib`s it into a relink-on-load dylib; the change is to emit *compiled
+methods* instead of "embed source + re-`fileInSource:`". And a compiled method
+**relinks by name on load** — the *same* mechanism as W1 closure rematerialization,
+W5's fact linker, and D5.1 name-anchoring. Everything converges.
+
+Notes: **arocc not needed** — birnam→C/Zig is our own codegen pass (text gen
+calling back into the runtime); C/Zig→native is the `zig` toolchain already used
+by `freeze`. arocc would only matter to *embed* a C compiler in the runtime (drop
+the external toolchain) and its native backend is still maturing — defer. Zig's
+`-ofmt=c` is Zig→C (wrong direction). **birnam→Zig** is lower-friction than
+birnam→C (direct runtime-ABI access, same `build-lib` step); **birnam→C** is more
+portable/embeddable — the codegen pass is the same shape either way, so the target
+language is deferrable. The evaluator (VM loop, GC, HAMT) stays native by
+necessity (the irreducible residue below); generated code *calls into* it — it is
+"C/Zig using the birnam runtime as a library," not standalone. A fast JIT (the
+Piumarta path) is the optional successor *if* live native speed (mode-1 hot
+methods) is ever wanted.
+
 ## The irreducible residue (Münchhausen)
 
 You cannot reach zero non-cell ground; you can only minimize and relocate it. What
