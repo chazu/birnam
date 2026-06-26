@@ -281,10 +281,14 @@ dispatch). A shell-owned `JitManager` drives `promote`/`demote` both ways
 methods at the quiescent line boundary (`:autojit` — interpret cold, compile hot),
 and libtcc is vendored + statically linked (no external dep; generated C needs no
 libtcc1 runtime). Proven: the whole stdlib JITs (195 methods, 0 declined), `sort`
-runs native, both directions robust. See [[project_birnam_libtcc]]. **Remaining is
-completeness only:** `^` non-local return into a JIT'd method (the one declining
-opcode — graceful fallback to bytecode); the mode-3 ship path (`zig cc` →frozen
-dylib, extends `freeze.zig`); source-vendoring tcc for cross-compile.
+runs native, both directions robust. See [[project_birnam_libtcc]]. The three completeness items are **also done:**
+(1) `^` — the compiler lowers `^` to local RETURN, so no `RETURN_FROM_METHOD`
+bytecode exists; `^` JITs correctly and true non-local return is a compiler Phase-A6
+matter, not a JIT gap. (2) **Mode-3 ship** — `freeze_native.zig`: same birnam→C,
+`zig cc -O2` → frozen optimized dylib, dlopen + install (runtime entries `@export`ed
+from the host). (3) **Source-vendored tcc** — `vendor/libtcc-src/` built from source,
+self-contained + the cross-compile basis. So both the live JIT and the AOT/ship
+native paths exist, and the toolchain is vendored from source.
 
 **The strip-dial, recast (more idst-faithful):** native is always the execution
 form; the dial controls whether the **codegen + AST/source are resident** (= can
