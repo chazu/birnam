@@ -1627,6 +1627,65 @@ test "codegen+jit: a JIT'd C method body performs a real send ([5 squared] -> 25
     try testing.expectEqual(@as(i64, 49), ref_mod.untagSmallInt(f(ref_mod.mkSmallInt(7).?)));
 }
 
+// libtcc codegen — lower a REAL compiled bytecode method body to C and JIT it.
+// `[:x | x + 1]` (filed in → bytecode: PUSH_LOCAL 0, PUSH_SMALLINT 1, SEND_1 +,
+// RETURN) is transpiled by `codegen.emitMethod` into a C stack machine that calls
+// `birnam_send1`; libtcc JITs it; calling the native fn with args=[5] returns 6 —
+// matching the interpreter. Proves bytecode → C → native against the live runtime.
+test "codegen+jit: a compiled bytecode method body lowers to C and matches the interpreter" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // fileIn (bytecode path) a 1-param block; resolve it to its compiled method.
+    const path = "test_codegen_method.birnam";
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = "let blk := [:x | [x + 1]]\n" });
+    defer std.fs.cwd().deleteFile(path) catch {};
+    _ = evalLine(s, lang, "[language fileIn: \"test_codegen_method.birnam\"]", a);
+
+    // Interpreter baseline.
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(evalLine(s, lang, "[blk value: 5]", a)));
+
+    const wrapper = ref_mod.untagEid(evalLine(s, lang, "blk", a));
+    const method_eid = s.api.method_eid_of_bytecode_closure(wrapper);
+    try testing.expect(method_eid != 0); // it IS a bytecode block
+
+    // Read the method's bytecode + constant pool (what dispatch.runMethod reads).
+    const bc_ref = s.store.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM).?;
+    const code = strings.bytes(bc_ref);
+    var pool = std.ArrayList(Ref){};
+    defer pool.deinit(a);
+    if (s.store.currentValue(method_eid, kernel_eids.ATTR_CONSTANT_POOL)) |pr| {
+        if (boxed.isRrbRef(pr)) {
+            const rrb = boxed.untagRrbRef(pr);
+            for (0..rrb.count()) |i| try pool.append(a, rrb.nth(i));
+        }
+    }
+
+    // Lower → C, JIT, bind the send entry points.
+    const c_src = try codegen_mod.emitMethod(a, "jit_blk", code, pool.items);
+    var j = try jit_mod.Jit.init("/usr/local/lib/tcc");
+    defer j.deinit();
+    try j.addSymbol("birnam_send0", @ptrCast(&send_mod.birnamSend0));
+    try j.addSymbol("birnam_send1", @ptrCast(&send_mod.birnamSend1));
+    try j.addSymbol("birnam_send2", @ptrCast(&send_mod.birnamSend2));
+    try j.addSymbol("birnam_sendN", @ptrCast(&send_mod.birnamSendN));
+    try j.compile(c_src);
+    try j.relocate();
+    const f = try j.getFn(*const fn (u64, [*]const u64, u64) callconv(.c) u64, "jit_blk");
+
+    // x = 5 → 6, x = 41 → 42. recv unused by this body.
+    var args1 = [_]u64{ref_mod.mkSmallInt(5).?};
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(f(ref_mod.NIL, &args1, 1)));
+    var args2 = [_]u64{ref_mod.mkSmallInt(41).?};
+    try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(f(ref_mod.NIL, &args2, 1)));
+}
+
 // W1 Stage 3b (docs/19c) — relink-by-name. A native FFI module (net) booted in
 // IMAGE-FIRST order (replay the image, THEN load the dylib) rebinds its native
 // methods onto the image-restored eids instead of minting fresh ones. net now

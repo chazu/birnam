@@ -332,3 +332,6 @@ pub fn birnamSend1(receiver: Ref, sel: Selector, a1: Ref) callconv(.c) Ref {
 pub fn birnamSend2(receiver: Ref, sel: Selector, a1: Ref, a2: Ref) callconv(.c) Ref {
     return send2(receiver, sel, a1, a2);
 }
+pub fn birnamSendN(receiver: Ref, sel: Selector, args: [*]const Ref, n_args: usize) callconv(.c) Ref {
+    return sendN(receiver, sel, args, n_args);
+}
