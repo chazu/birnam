@@ -281,12 +281,48 @@ boots json from the image alone unchanged (ABI append didn't disturb it).
 default). Tree clean/green.
 
 **Stage 3 — make full-image boot first-class + default.** Promote the
-boot-image path: on startup, if a valid image (matching `abi_hash`) exists, load
-it (Stage 1+2 path) and **skip module recompile**; else fall back to
-recompile-from-source (no image / version mismatch / first run). Fold
-`--boot-image` into this. *Test:* `json parse:` and `net` work from the image
-alone (the §2 gaps closed); a deliberately-stale `abi_hash` falls back to
-recompile cleanly.
+boot-image path: on startup, if a valid image exists, load it (Stage 1+2 path)
+and **skip module recompile**; else fall back to recompile-from-source. Decided
+with the user (2026-06-25): an **auto compile-cache** at a canonical path,
+invalidated by **kernel ABI + source hash**; and **relink-by-name** (not
+deterministic eid-coordination) so native modules — incl. `net` — join the boot
+in any order.
+
+- **Stage 3a — DONE (2026-06-25).** Manifest **v8** carries `boot_validity`: the
+  comptime kernel eid-layout signature (`image.KERNEL_ABI_SIGNATURE`, Wyhash over
+  `kernel_eids`) folded with each named module dylib's content
+  (`mixBootValidity`). The shell computes it over the loaded module set at
+  `BIRNAM_SAVE_FULL`; `--boot-image` peeks the manifest, recomputes the hash over
+  the SAME set, and on mismatch (kernel rebuilt / dylib edited / pre-v8) logs +
+  drops the image, falling through to a clean recompile. *Tested:* unit v8
+  round-trip (image_test 19); e2e valid-loads + stale-byte-appended-dylib →
+  recompiles (`"[1,2,3]"` both ways).
+- **Stage 3b.1 — DONE (2026-06-25).** The relink-by-name spine. IdApi
+  `bind_native_method(vt, sel, fn_ptr, data, m)`: under image-first boot a binding
+  `[vt sel]` is restored with a *dead* closure eid (native fn-ptrs aren't
+  serialized) — install this process's fn-ptr at THAT eid; else mint + assert
+  (fresh boot). The native-method analogue of `rematerializeClosures` / FFI
+  `resolveAllPending`. **net converted as the template**: every entity anchored to
+  an interned name (`net:Socket`/`net:Server`/`net:Net`/`net:NetProto`) instead of
+  `alloc_eid`, so a full image restores the SAME eids and net's init resolves onto
+  them in ANY order. *Tested:* image-first replay → net binding dead → load net →
+  relinks in place (eid stable), now live + dispatches (lang_module 83). net still
+  works on a normal fresh boot.
+- **Stage 3b.2 — REMAINING (the sweep).** Convert the other native modules to the
+  same pattern (named VTs + `bind_native_method`): **lang (~154 make_closure
+  sites + 13 `alloc_eid` VTs — the bulk; touches the core language, do carefully
+  in sub-batches), query (6), repl (3); peg installs via `id_api.installSendApi`
+  (0 in-module).** Note: lang primitives bound on **kernel-eid** vtables
+  (SmallInt etc., fixed 0..255) keep stable eids by construction — they don't need
+  VT-naming, but they DO need `bind_native_method` so they relink onto the
+  image-restored (dead) bindings under image-first order.
+- **Stage 3b.3 — REMAINING (flip + engage).** Switch the boot order to
+  **image-first** (replay, THEN load native modules which relink), retiring the
+  fixed-order eid-coordination. Then a canonical-path auto compile-cache: present
+  + `boot_validity`-valid → load + skip recompile; absent/invalid → recompile AND
+  write the cache. Fold `--boot-image` into this unified path. *Test:* default
+  boot uses the cache; `json parse:` and `net` work from it; an edited dylib /
+  rebuilt kernel recompiles + refreshes the cache.
 
 **Stage 4 — delete the dead boundary + docs.** Remove the `M_USER` write-filter
 special-casing and the `eb8b73e`-style re-tag hacks (now unnecessary — `m` stays
