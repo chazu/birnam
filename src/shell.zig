@@ -1063,6 +1063,11 @@ pub fn main() !void {
         }
     }
 
+    // W1 Stage 3b.2b — tell modules a full image will be replayed, so they skip
+    // re-deriving CODE the image carries (lang skips its birnam `installSourceMethod`
+    // compiles; the replay supplies them). Set before any module loads.
+    shell_context.boot_from_image = (boot_image != null);
+
     // Pick the source of module names per the precedence above.
     // `--boot-image` overrides everything: load only the native (Zig) prefix
     // — the parser/compiler — then replay the image, which carries the compiled

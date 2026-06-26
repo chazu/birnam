@@ -32,6 +32,12 @@ pub const LANGUAGE_PROTO: u64 = 192;
 pub const ShellContext = extern struct {
     log: *const fn ([*:0]const u8) callconv(.c) void,
     set_repl_handler: *const fn (?*const fn ([*:0]const u8) callconv(.c) void) callconv(.c) void,
+    /// W1 Stage 3b.2b (docs/19c) — true when a full image will be replayed after
+    /// modules load. A module uses it to SKIP re-deriving CODE the image already
+    /// carries (e.g. lang's `installSourceMethod` birnam compiles) — the replay
+    /// supplies those facts/bindings afterward; only native primitives (which
+    /// relink) need installing. Appended at END per the append-only ABI discipline.
+    boot_from_image: bool = false,
 };
 
 /// Callback invoked per (e, a, v) triple by facts_of_module.

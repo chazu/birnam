@@ -6083,6 +6083,13 @@ fn installCollections() void {
 /// a block literal `[:params | body]` (or `[| body]` for unary). Best-effort:
 /// a parse/compile failure logs and skips (the prelude is vetted source).
 fn installSourceMethod(vt: u64, sel_name: []const u8, src: []const u8) void {
+    // W1 Stage 3b.2b — booting from a full image: the prelude/stdlib bytecode +
+    // bindings are in the image (replayed after this module loads), so skip the
+    // (expensive) parse+compile. Native primitives still install above; only the
+    // birnam-source methods are deferred to the replay.
+    if (g_ctx) |ctx| {
+        if (ctx.boot_from_image) return;
+    }
     const api = g_api.?;
     const src_ref = api.make_string(src.ptr, src.len);
     const ast = api.send1(mkEid(g_module_eid), sel_parse_expr_g, src_ref);
