@@ -13,21 +13,31 @@ standalone executable.
 ## The `.bim` image — `image.zig`
 
 An image is the serialized store plus enough metadata to reconstruct identity.
-`MAGIC = "BRNIMG\x00\x01"` (8 bytes), `FORMAT_VERSION = 6` (`MIN_LOAD_VERSION = 5`
-— v5 and v6 share every section layout, so a v6 loader reads a v5 image verbatim;
-v6 only adds the `VK_MAP` value kind). The file holds, in order:
+`MAGIC = "BRNIMG\x00\x01"` (8 bytes). Two writers share one format:
+`write` stamps `FORMAT_VERSION = 6` (an **M_USER overlay** — user data only), and
+`writeFull` stamps `FULL_FORMAT_VERSION = 8` (a **full image** — every fact, the
+whole tower). `MIN_LOAD_VERSION = 5`; v5–v8 share every section layout (later
+versions only ADD value kinds / the v8 `boot_validity` field), so a newer loader
+reads an older image verbatim. The file holds, in order:
 
 - **Manifest** — `bytecode_format_version`, `thread_mode` (`single`/`datomic`),
-  and the module dependency set (`{name, abi_hash}` each). Embedded in the file
-  (no sidecar) since v4.
+  the module dependency set (`{name, abi_hash}` each), and (v8) `boot_validity` —
+  a hash of the kernel eid-layout signature folded with each module dylib's
+  content, gating whether a full image can be trusted as a boot cache (W1 Stage
+  3a). Embedded in the file (no sidecar) since v4.
 - **Interner section** (v5) — the eid↔name bijection, so binding and method-name
-  identity survive reload (the [interner](24-interner.md) rationale).
+  identity survive reload (the [interner](24-interner.md) rationale). **This is
+  the durable anchor:** under W1, native modules relink their methods onto
+  image-restored eids *by interned name* (D5.1), so they load in any order.
 - **Counters** — `next_tx`, `next_eid`.
-- **Facts** — iterated via `meatIter`, but **only `m == M_USER` facts are
-  written.** CODE facts (bootstrap, module init) are *reconstructed* every boot by
-  re-running boot + module init, so they ride unstable runtime module eids and
-  must not be persisted; DATA facts ride the stable `M_USER` eid. See
-  `kernel_eids.zig` `M_USER`.
+- **Facts** — iterated via `meatIter`. **`writeFull` persists ALL facts**
+  (bootstrap, module init, user data) — the W1 model: a full image IS the booted
+  system, loaded not recompiled. `write` keeps the legacy **M_USER-only** filter
+  for lightweight overlay saves (`m` is then a persistence selector); but `m` is
+  fundamentally a *provenance tag*, not a gate — full images carry every `m`. The
+  irreducible residue `writeFull` skips is ~9 native fn-ptr facts (`function-impl`
+  / `reader-impl`), relinked by name on load like FFI wraps. See `kernel_eids.zig`
+  `M_USER`.
 
 Values are tagged by kind: `VK_IMMEDIATE` (self-describing Ref verbatim),
 `VK_STRING` (len + bytes), `VK_FLOAT` (f64 bits, re-boxed), `VK_RRB` (count +
@@ -43,30 +53,42 @@ pair, recursive, so a map literal embedded in a method's constant-pool or an
   and the counters are restored to their monotonic floor.
 - `loadFrozen` uses the lean `frozenInsert` path (no tx churn / history) for the
   Phase-14 `--strip=history` mode.
-- `rematerializeClosures` rebuilds a fn-ptr `Closure` for each `:bytecode-stream`
-  entity after load (layout `[CLOSURE_VT][bytecodeDispatcherImpl][mkEid(method)]`),
-  so stored methods are callable again.
+- `rematerializeClosures` rebuilds the runtime closures the image can't serialize:
+  a fn-ptr `Closure` for each `:bytecode-stream` method, plus **durable block
+  globals** — captureless and capturing block-closure wrappers (W1 Stage 2/2b, via
+  `:closure-block-method` / `:closure-block-captures` recipe facts) and lang's
+  REPL **tree-walker** block globals (via `:treewalk-block-ast`/`-scope` + a
+  module-registered shim). So `let f := [block]` survives save → load.
 - `peekManifest` parses just the manifest (no facts), which the dynamic-AOT loader
   uses to learn module deps before dlopen.
 
 Load is replay-based today; the mmap-segment fast path is a deferred Phase-12.5
 optimization the single-file layout already allows.
 
-### Booting from an image (experimental)
+### Booting from an image — the auto compile-cache (W1)
 
-`--boot-image <path>` skips recompiling the pure-birnam modules from source: the
-shell boots only the native prefix (`peg`, `lang` — the parser/compiler) and then
-**replays the image** instead of filing in the compiled modules, reusing the same
-`loadFromFile` + `rematerializeClosures` + `resolveAllPending` path as a normal
-`:load`. Produce the image with a normal boot followed by `:save`. Boot-only peak
-drops ~656 MB → ~241 MB (≈2.7×), and pure-birnam modules (e.g. `Stats sum:`)
-round-trip from the image alone — which is exactly what the `M_USER` object-fact
-tagging and `VK_MAP` map serialization make correct.
+A full image **is** the booted system: load it instead of recompiling the tower.
+The default `birnam` boot is an automatic compile-cache (W1 Stage 3b.3):
 
-Opt-in; normal boot is unaffected. Known gaps: `json`'s `parse:` stays broken
-because `json` builds a *stateful* PEG grammar (`peg newGrammar` / `defineRule:`)
-at its dylib init, which boot-image skips and which does not yet round-trip; `net`
-(a Zig FFI module) is not re-inited under boot-image yet.
+1. Look for the canonical cache — `$BIRNAM_BOOT_CACHE`, else
+   `<exe-dir>/../lib/birnam-boot.bim`.
+2. If present and its v8 `boot_validity` matches (kernel eid-layout signature +
+   the current module dylibs' content — Stage 3a), **replay it** and skip
+   recompiling: load only the native prefix (`peg`, `lang`), replay the full
+   image, `rematerializeClosures` + `resolveAllPending`. lang **skips its
+   `installSourceMethod` birnam compiles** (the `boot_from_image` ShellContext
+   flag — Stage 3b.2b); the prelude/stdlib bytecode comes from the image. Native
+   modules not in the prefix (`net`) load *after* the replay and **relink by name**
+   (`bind_native_method` + interned VTs — Stage 3b.1) onto the image-restored eids.
+3. If the cache is absent or stale, recompile from source as before **and write a
+   fresh cache** for next time. Editing/rebuilding any module dylib or the kernel
+   flips `boot_validity` → the next boot recompiles + refreshes.
+
+`--boot-image <path>` is the same machinery with an explicit path (and the same
+validation/fallback). The earlier gaps are **closed**: a full image carries the
+whole tower, so `json`'s `parse:` grammar (built at `json` init) round-trips by
+construction, and `net`'s FFI relinks post-replay. The legacy M_USER `:save`
+remains for lightweight user-data overlays on top of a booted system.
 
 ## Freeze — `freeze.zig`
 

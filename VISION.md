@@ -277,6 +277,7 @@ Designed in detail when Phase 7 starts; the surface syntax is locked.
 - **Snapshot** is cheap: persistent structures share with prior snapshots; only new segments written.
 - **A snapshot is a first-class value, and holding it pins its storage.** Capturing `as-of tx` / `db now` yields an immutable db-value = the index roots at that tx. While held, its index epoch(s) are reachable, so the epoch-arena free (§Memory) skips them and the cold-history tier keeps (or faults in) their segments. Dropping the last reference to a snapshot makes its now-unreferenced epochs collectible at the next compact. This is the reachability question for the fact layer — over retained *roots*, not over nodes — and it is what makes the index-structure reclaim safe in the presence of time-travel.
 - **Load** = restore roots, re-establish mcache (empty, lazy fill). *(Today replay-based — facts re-asserted into fresh indexes on load. The mmap-segment fast path is a Phase 12.5 perf optimization gated on data, not yet built; the single-file page-aligned layout already supports it later.)*
+- **A full image IS the booted system (W1).** The default boot is an automatic **compile-cache**: a valid full image (every fact, gated by a kernel-ABI-+-source `boot_validity` hash) is loaded instead of recompiling the tower; a miss recompiles and writes a fresh cache. `m` is a *provenance tag*, not a persistence gate — full images carry every `m`; the legacy M_USER-only save remains for lightweight user-data overlays. Native modules relink their fn-ptrs onto image-restored eids **by interned name** (the durable anchor). See [docs/2e](docs/2e-images-aot.md).
 - **Module unit** is the `m` column on every fact (see §Fact). A module is the set of facts with a given `m` EID. No separate per-image module-bookkeeping required.
 
 ## Compilation Path
@@ -285,7 +286,7 @@ Source → PEG parse → AST facts → desugar (asserts more facts) → IR facts
 
 - VM consumes bytecode facts directly.
 - AOT = bytecode VM + frozen image, packaged as standalone binary.
-- Native lowering = later layer over IR facts. Candidates: hand-rolled emitter, QBE, LLVM (last resort). No tinycc — wrong layer.
+- Native lowering = **birnam → C → `libtcc`** for live mode 1 (re-JIT on redefine = malleable AND native), `zig cc`/`clang` for the mode-3 ship — one codegen pass, two compilers (decision locked in [docs/10a](docs/10a-north-star-cell-model.md); supersedes the earlier "no tinycc" stance). Native code is a *cache of bytecode*: the `:bytecode-stream` fact stays canonical, native is regenerated on load/redefine.
 - Compiler is a birnam module. Self-hosts when PEG grammar for birnam parses itself.
 
 ## Alien Code Absorption
