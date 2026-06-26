@@ -723,6 +723,51 @@ fn bootValidity(allocator: std.mem.Allocator, names: []const []const u8, extra_d
     return acc;
 }
 
+/// W1 Stage 3b.3 — the canonical auto compile-cache path: `$BIRNAM_BOOT_CACHE`,
+/// else `<exe-dir>/../lib/birnam-boot.bim` (beside the module dylibs). A default
+/// boot loads it when fresh (skipping recompile) and writes it after a recompile.
+fn bootCachePath(allocator: std.mem.Allocator) ?[]const u8 {
+    if (std.process.getEnvVarOwned(allocator, "BIRNAM_BOOT_CACHE")) |p| return p else |_| {}
+    const exe = std.fs.selfExePathAlloc(allocator) catch return null;
+    const dir = std.fs.path.dirname(exe) orelse return null;
+    return std.fs.path.join(allocator, &.{ dir, "..", "lib", "birnam-boot.bim" }) catch null;
+}
+
+fn fileExists(path: []const u8) bool {
+    std.fs.cwd().access(path, .{}) catch return false;
+    return true;
+}
+
+/// Write a v8 full image of the live system to `path` as the boot cache, stamped
+/// with the loaded module set + its boot-validity hash (so the next boot can
+/// validate it). Best-effort: a failure just means the next boot recompiles.
+fn writeBootCache(
+    allocator: std.mem.Allocator,
+    scratch: std.mem.Allocator,
+    path: []const u8,
+    store: *fact_store.FactStore,
+    table: *object_table.ObjectTable,
+    interner: *interner_mod.Interner,
+    manager: *module.Manager,
+    extra_dirs: []const []const u8,
+) void {
+    const deps = scratch.alloc(image.ModuleDep, manager.modules.items.len) catch return;
+    const names = scratch.alloc([]const u8, manager.modules.items.len) catch return;
+    for (manager.modules.items, 0..) |m, i| {
+        deps[i] = .{ .name = m.name, .abi_hash = 0 };
+        names[i] = m.name;
+    }
+    const mf = image.Manifest{ .modules = deps, .boot_validity = bootValidity(scratch, names, extra_dirs) };
+    if (image.writeFull(allocator, store, table.next_eid.load(.monotonic), mf, interner, table)) |res| {
+        defer allocator.free(res.bytes);
+        std.fs.cwd().writeFile(.{ .sub_path = path, .data = res.bytes }) catch {
+            stderrPrint("[birnam] could not write boot cache {s}\n", .{path});
+            return;
+        };
+        stderrPrint("[birnam] wrote boot cache {s} ({d} facts)\n", .{ path, res.facts_written });
+    } else |_| {}
+}
+
 /// Copy each module dylib named in the staged image's manifest next to
 /// `out_path`. Source is the saved path if it still exists, else
 /// `zig-out/lib/<basename>`, else `<basename>` in cwd. Best-effort: a missing
@@ -1040,6 +1085,22 @@ pub fn main() !void {
     }
     const overrides = overrides_list.items;
 
+    // W1 Stage 3b.3 — default-boot auto compile-cache. On a plain `birnam`
+    // invocation (no argv modules / --bare / --boot-image / configured module set
+    // or image), look for the canonical cache. If present, route it through the
+    // boot-image path (validated below); if absent or later found stale, we
+    // recompile from source and WRITE the cache afterward for next time.
+    const from_argv_early = argv_modules.items.len > 0;
+    const default_eligible = !from_argv_early and !bare and boot_image == null and
+        !(cfg != null and cfg.?.modules != null) and !(cfg != null and cfg.?.image != null);
+    var cache_target: ?[]const u8 = null;
+    if (default_eligible) {
+        cache_target = bootCachePath(sa);
+        if (cache_target) |cp| {
+            if (fileExists(cp)) boot_image = cp; // validated below; stale → recompile
+        }
+    }
+
     // W1 Stage 3a — validate a `--boot-image` before trusting it as a boot
     // cache: peek its manifest, recompute the boot-validity hash over the SAME
     // module set (the kernel eid-layout signature + each named dylib's content),
@@ -1123,6 +1184,19 @@ pub fn main() !void {
             stderrPrint("[birnam] boot-image: replaying {s}\n", .{bimg});
             _ = handleImageCommand(cmd, allocator, store, table, interner, &manager);
         }
+        // W1 Stage 3b.3 — native-FFI modules can't come from the image alone
+        // (their fn-ptrs aren't serialized). Load them AFTER the replay so
+        // relink-by-name (bind_native_method + interned VTs) rebinds their native
+        // methods onto the image-restored eids. `net` is the one in the default
+        // set; pure-birnam modules (json/stdlib) come from the image.
+        const post_replay = [_][]const u8{"net"};
+        for (post_replay) |name| {
+            const resolved = dylib_search.resolveWith(allocator, name, extra_dirs) orelse continue;
+            defer allocator.free(resolved);
+            const pz = allocator.dupeZ(u8, resolved) catch continue;
+            defer allocator.free(pz);
+            _ = manager.load(pz) catch null;
+        }
     }
 
     // Auto-load a project snapshot named by birnam.toml — but only when the
@@ -1136,6 +1210,16 @@ pub fn main() !void {
                 const cmd = std.fmt.bufPrint(&buf, ":load {s}", .{img}) catch "";
                 if (cmd.len > 0) _ = handleImageCommand(cmd, allocator, store, table, interner, &manager);
             }
+        }
+    }
+
+    // W1 Stage 3b.3 — populate/refresh the auto compile-cache. We get here with
+    // `boot_image == null` only when the default boot recompiled from source
+    // (no cache, or a stale one the validation dropped); write a fresh cache of
+    // the now-booted system so the NEXT default boot loads it and skips recompile.
+    if (cache_target) |cp| {
+        if (boot_image == null and any_module) {
+            writeBootCache(allocator, sa, cp, store, table, interner, &manager, extra_dirs);
         }
     }
     // -- W1 Stage-0 diagnostic (docs/19c) ------------------------------------
