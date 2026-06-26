@@ -26,6 +26,7 @@ const bootstrap = @import("kernel/bootstrap.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
 const jit_manager = @import("kernel/jit_manager.zig");
+const dispatch_mod = @import("kernel/dispatch.zig");
 const image = @import("kernel/image.zig");
 const prune = @import("kernel/prune.zig");
 const gc = @import("kernel/gc.zig");
@@ -150,6 +151,12 @@ fn handleImageCommand(
         if (g_jit_manager) |m| {
             stdoutPrint("[birnam] :demote — {d} methods reverted to bytecode\n", .{m.demoteAll(table)});
         } else stderrPrint("[birnam] :demote unavailable\n", .{});
+        return true;
+    }
+    // `:autojit` — toggle hotness-triggered auto-JIT (interpret cold, compile hot).
+    if (std.mem.eql(u8, line, ":autojit")) {
+        dispatch_mod.setAutoJit(!dispatch_mod.autoJitEnabled());
+        stdoutPrint("[birnam] auto-jit {s}\n", .{if (dispatch_mod.autoJitEnabled()) "ON (hot methods compile to native)" else "OFF"});
         return true;
     }
     if (std.mem.startsWith(u8, line, ":load ")) {
@@ -426,6 +433,18 @@ fn processReplLine(
             if (!st.skipped and (st.boxes_freed + st.closures_freed + st.wrappers_freed + st.strings_freed > 0)) {
                 stderrPrint("[birnam] auto-gc ({d} boxes, {d} closures, {d} wrappers, {d} strings freed)\n", .{ st.boxes_freed, st.closures_freed, st.wrappers_freed, st.strings_freed });
             }
+        }
+        // Auto-JIT: compile any methods that crossed the hotness threshold this
+        // line (docs/10a — interpret cold, compile hot). The JIT runs here, at the
+        // quiescent boundary, not inside dispatch.
+        if (g_jit_manager) |jm| {
+            var hot: [512]u64 = undefined;
+            const n = dispatch_mod.drainHotMethods(&hot);
+            var compiled: usize = 0;
+            for (hot[0..n]) |eid| {
+                if (jm.promote(store, table, eid)) compiled += 1;
+            }
+            if (compiled > 0) stderrPrint("[birnam] auto-jit ({d} hot method(s) → native)\n", .{compiled});
         }
         const spilled = store.maybeSpillEpochs(".", 2, allocator) catch 0;
         if (spilled > 0) stderrPrint("[birnam] cold-tier: spilled {d} epoch(s) to disk\n", .{spilled});

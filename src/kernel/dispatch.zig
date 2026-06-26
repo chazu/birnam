@@ -47,6 +47,7 @@ pub fn runMethod(
     args: []const Ref,
     captures: []const Ref,
 ) RunError!Ref {
+    noteCall(method_eid); // hotness — auto-JIT trigger (no-op unless enabled)
     const bc_ref = store.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM) orelse
         return error.MissingBytecode;
     if (!strings.isString(bc_ref)) return error.MissingBytecode;
@@ -460,6 +461,50 @@ pub fn birnamIsFalsey(v: Ref) callconv(.c) c_int {
 }
 pub fn birnamIsError(v: Ref) callconv(.c) c_int {
     return if (isErrorValue(v)) 1 else 0;
+}
+
+// -- Hotness / auto-JIT (docs/10a — interpret cold, compile hot) ------------
+// A cheap call counter at `runMethod` entry. Once a bytecode method is called
+// HOT_THRESHOLD times it is queued; the shell drains the queue at the quiescent
+// REPL boundary and promotes each to native (so the JIT runs OUTSIDE dispatch,
+// and the kernel never statically depends on libtcc). Direct-mapped counters
+// (eid % SLOTS) — collisions only perturb the heuristic, never correctness; a
+// method that goes native stops calling `runMethod`, so its count freezes.
+const HOT_THRESHOLD: u32 = 64;
+const HOT_SLOTS: usize = 8192;
+var g_hot_enabled: bool = false;
+var g_hot_counters = [_]u32{0} ** HOT_SLOTS;
+var g_hot_pending: [512]u64 = undefined;
+var g_hot_pending_len: usize = 0;
+
+inline fn noteCall(method_eid: u64) void {
+    if (!g_hot_enabled) return;
+    const slot = method_eid % HOT_SLOTS;
+    g_hot_counters[slot] +%= 1;
+    if (g_hot_counters[slot] >= HOT_THRESHOLD) {
+        g_hot_counters[slot] = 0;
+        if (g_hot_pending_len < g_hot_pending.len) {
+            g_hot_pending[g_hot_pending_len] = method_eid;
+            g_hot_pending_len += 1;
+        }
+    }
+}
+
+/// Enable/disable hotness-triggered auto-JIT (the shell wires this to `:autojit`).
+pub fn setAutoJit(on: bool) void {
+    g_hot_enabled = on;
+}
+pub fn autoJitEnabled() bool {
+    return g_hot_enabled;
+}
+
+/// Move the queued hot method eids into `buf`, clearing the queue. The shell
+/// calls this at the line boundary and promotes each via the JIT manager.
+pub fn drainHotMethods(buf: []u64) usize {
+    const n = @min(buf.len, g_hot_pending_len);
+    @memcpy(buf[0..n], g_hot_pending[0..n]);
+    g_hot_pending_len = 0;
+    return n;
 }
 
 // -- C-ABI block ops for the codegen (MAKE_BLOCK / INVOKE_BLOCK) -------------
