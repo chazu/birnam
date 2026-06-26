@@ -120,18 +120,14 @@ pub fn build(b: *std.Build) void {
     shell_opts.addOption([]const u8, "version", std.mem.trim(u8, version_raw, " \t\r\n"));
     shell_mod.addOptions("build_opts", shell_opts);
 
-    // libtcc — the mode-1 JIT backend (docs/10a). The shell imports `jit_method`
-    // to compile methods to native at runtime. Built from the vendored TinyCC
-    // source + statically linked → self-contained (no /usr/local, no runtime
-    // files: our generated C needs no libtcc1 helpers).
-    shell_mod.addIncludePath(b.path("vendor/libtcc-src")); // libtcc.h for @cImport
-
+    // NOTE: the shell does NOT link libtcc — the JIT is a loadable module
+    // (libbirnam_jit.dylib) that links it. The shell only @exports the `birnam_*`
+    // runtime entry points the jit module's generated C resolves at load.
     const shell = b.addExecutable(.{
         .name = "birnam",
         .root_module = shell_mod,
     });
     shell.linkLibrary(libffi_lib);
-    shell.linkLibrary(libtcc_lib);
     shell.linkLibC();
     b.installArtifact(shell);
 

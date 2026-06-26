@@ -25,7 +25,6 @@ const arenas = @import("kernel/arenas.zig");
 const bootstrap = @import("kernel/bootstrap.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
-const jit_manager = @import("kernel/jit_manager.zig");
 const dispatch_mod = @import("kernel/dispatch.zig");
 const image = @import("kernel/image.zig");
 const prune = @import("kernel/prune.zig");
@@ -43,14 +42,12 @@ const bopts = @import("build_opts");
 
 /// Default module set when neither argv nor birnam.toml names any (and
 /// `--bare` was not given). peg before lang — order matters.
-const default_modules = [_][]const u8{ "peg", "lang", "json", "stdlib", "net" };
+const default_modules = [_][]const u8{ "peg", "lang", "json", "stdlib", "net", "jit" };
 
 // Search dirs for the FFI `Module load:` bare-name resolver (process-lifetime).
 var g_resolver_dirs: []const []const u8 = &.{};
 var g_resolver_buf: ?[]const u8 = null;
 /// The session's JIT manager (libtcc mode-1 dial). Instantiated at boot; backs
-/// the `:jit`/`:demote` commands and (later) hotness-triggered auto-JIT.
-var g_jit_manager: ?*jit_manager.JitManager = null;
 
 /// Resolve a bare dylib name through the module search path. Registered on
 /// `ffi_module.dylib_resolver` so `[Module load: "liblinenoise.dylib"]` finds
@@ -138,25 +135,23 @@ fn handleImageCommand(
         }
         return true;
     }
-    // `:jit` — compile every eligible bytecode method to native (libtcc, docs/10a);
-    // `:demote` — revert all to bytecode. The whole-image bytecode⇄native dial.
-    if (std.mem.eql(u8, line, ":jit") or std.mem.startsWith(u8, line, ":jit ")) {
-        if (g_jit_manager) |m| {
-            const s = m.promoteAll(store, table);
-            stdoutPrint("[birnam] :jit — {d} methods native, {d} declined (^/unsupported), {d} already\n", .{ s.compiled, s.declined, s.already });
-        } else stderrPrint("[birnam] :jit unavailable (no JIT manager)\n", .{});
+    // The JIT is a loadable module (`jit`); these are conveniences over it.
+    // `:jit` / `:autojit` toggle the kernel hotness flag (the jit module's
+    // maintenance hook compiles hot methods); `:demote` sends `[Jit demoteAll]`.
+    if (std.mem.eql(u8, line, ":jit") or std.mem.eql(u8, line, ":autojit")) {
+        const on = if (std.mem.eql(u8, line, ":jit")) true else !dispatch_mod.autoJitEnabled();
+        dispatch_mod.setAutoJit(on);
+        stdoutPrint("[birnam] auto-jit {s}\n", .{if (on) "ON (hot methods compile to native — jit module)" else "OFF"});
         return true;
     }
     if (std.mem.eql(u8, line, ":demote")) {
-        if (g_jit_manager) |m| {
-            stdoutPrint("[birnam] :demote — {d} methods reverted to bytecode\n", .{m.demoteAll(table)});
-        } else stderrPrint("[birnam] :demote unavailable\n", .{});
-        return true;
-    }
-    // `:autojit` — toggle hotness-triggered auto-JIT (interpret cold, compile hot).
-    if (std.mem.eql(u8, line, ":autojit")) {
-        dispatch_mod.setAutoJit(!dispatch_mod.autoJitEnabled());
-        stdoutPrint("[birnam] auto-jit {s}\n", .{if (dispatch_mod.autoJitEnabled()) "ON (hot methods compile to native)" else "OFF"});
+        dispatch_mod.setAutoJit(false);
+        if (interner.str_to_eid.get("jit:JitProto")) |proto| {
+            if (interner.str_to_eid.get("demoteAll")) |sel| {
+                _ = send_mod.send0(ref_mod.mkEid(proto), sel);
+                stdoutPrint("[birnam] :demote — reverted native methods to bytecode (jit module)\n", .{});
+            } else stderrPrint("[birnam] :demote unavailable (jit module not loaded)\n", .{});
+        } else stderrPrint("[birnam] :demote unavailable (jit module not loaded)\n", .{});
         return true;
     }
     if (std.mem.startsWith(u8, line, ":load ")) {
@@ -434,20 +429,9 @@ fn processReplLine(
                 stderrPrint("[birnam] auto-gc ({d} boxes, {d} closures, {d} wrappers, {d} strings freed)\n", .{ st.boxes_freed, st.closures_freed, st.wrappers_freed, st.strings_freed });
             }
         }
-        // A module-registered maintenance hook (the jit module's auto-JIT drain).
+        // The jit module's maintenance hook: drains the kernel hotness queue and
+        // compiles hot methods to native (the auto-JIT runs here, not in dispatch).
         if (g_maintenance_hook) |h| h();
-        // Auto-JIT: compile any methods that crossed the hotness threshold this
-        // line (docs/10a — interpret cold, compile hot). The JIT runs here, at the
-        // quiescent boundary, not inside dispatch.
-        if (g_jit_manager) |jm| {
-            var hot: [512]u64 = undefined;
-            const n = dispatch_mod.drainHotMethods(&hot);
-            var compiled: usize = 0;
-            for (hot[0..n]) |eid| {
-                if (jm.promote(store, table, eid)) compiled += 1;
-            }
-            if (compiled > 0) stderrPrint("[birnam] auto-jit ({d} hot method(s) → native)\n", .{compiled});
-        }
         const spilled = store.maybeSpillEpochs(".", 2, allocator) catch 0;
         if (spilled > 0) stderrPrint("[birnam] cold-tier: spilled {d} epoch(s) to disk\n", .{spilled});
     } else {
@@ -1030,12 +1014,6 @@ pub fn main() !void {
     var manager = module.Manager.init(allocator, &shell_context, api);
     defer manager.deinit();
 
-    // The session's libtcc JIT manager (mode-1 dial). Backs `:jit`/`:demote`.
-    var the_jit_manager = jit_manager.JitManager.init(allocator);
-    defer the_jit_manager.deinit();
-    g_jit_manager = &the_jit_manager;
-    jit_manager.g_manager = &the_jit_manager;
-
     // -- Resolve the module set ----------------------------------------------
     // Args before `--` are module names (bare like `lang`, or full dylib
     // paths); everything after `--` is the program's argument list, exposed to
@@ -1246,7 +1224,7 @@ pub fn main() !void {
         // relink-by-name (bind_native_method + interned VTs) rebinds their native
         // methods onto the image-restored eids. `net` is the one in the default
         // set; pure-birnam modules (json/stdlib) come from the image.
-        const post_replay = [_][]const u8{"net"};
+        const post_replay = [_][]const u8{ "net", "jit" };
         for (post_replay) |name| {
             const resolved = dylib_search.resolveWith(allocator, name, extra_dirs) orelse continue;
             defer allocator.free(resolved);
