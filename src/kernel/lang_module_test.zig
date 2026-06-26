@@ -1686,6 +1686,66 @@ test "codegen+jit: a compiled bytecode method body lowers to C and matches the i
     try testing.expectEqual(@as(i64, 42), ref_mod.untagSmallInt(f(ref_mod.NIL, &args2, 1)));
 }
 
+// libtcc codegen — install JIT'd native code AS the method so ordinary `send`
+// dispatch hits it ("native is a cache of bytecode", docs/10a). The block
+// method's object-table closure is swapped to the JIT trampoline; a fresh
+// selector on SMALLINT_VT is bound to it; sending that selector runs the native
+// body. Closes the mode-1 loop: bytecode → C → JIT → installed → dispatched.
+const jitm_mod = @import("jit_method.zig");
+const closure_t = @import("closure.zig");
+test "codegen+jit: install JIT'd body as a method; normal dispatch runs native" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const path = "test_codegen_install.birnam";
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = "let blk := [:x | [x + 1]]\n" });
+    defer std.fs.cwd().deleteFile(path) catch {};
+    _ = evalLine(s, lang, "[language fileIn: \"test_codegen_install.birnam\"]", a);
+    const method_eid = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "blk", a)));
+    try testing.expect(method_eid != 0);
+
+    // Lower + JIT the body (Jit kept alive for the whole test).
+    const bc_ref = s.store.currentValue(method_eid, kernel_eids.ATTR_BYTECODE_STREAM).?;
+    var pool = std.ArrayList(Ref){};
+    defer pool.deinit(a);
+    if (s.store.currentValue(method_eid, kernel_eids.ATTR_CONSTANT_POOL)) |pr| {
+        if (boxed.isRrbRef(pr)) {
+            const rrb = boxed.untagRrbRef(pr);
+            for (0..rrb.count()) |i| try pool.append(a, rrb.nth(i));
+        }
+    }
+    const c_src = try codegen_mod.emitMethod(a, "jit_blk", strings.bytes(bc_ref), pool.items);
+    var j = try jit_mod.Jit.init("/usr/local/lib/tcc");
+    defer j.deinit();
+    inline for (.{ "birnam_send0", "birnam_send1", "birnam_send2", "birnam_sendN" }, .{
+        &send_mod.birnamSend0, &send_mod.birnamSend1, &send_mod.birnamSend2, &send_mod.birnamSendN,
+    }) |name, fp| try j.addSymbol(name, @ptrCast(fp));
+    try j.compile(c_src);
+    try j.relocate();
+    const jit_fn = try j.getFn(jitm_mod.MethodFn, "jit_blk");
+
+    // Install native code AS the method; bind a fresh selector on SMALLINT_VT.
+    try jitm_mod.install(a, s.table, method_eid, jit_fn);
+    const sel = try s.interner.intern(s.store, s.table, "jitIncByOne:");
+    _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel, ref_mod.mkEid(method_eid), kernel_eids.M_USER);
+
+    // The method's object-table closure is now the JIT trampoline (native), not
+    // the bytecode dispatcher.
+    const live = s.table.get(method_eid).?;
+    const cl: *const closure_t.Closure = @ptrCast(@alignCast(ref_mod.untagPointer(live)));
+    try testing.expectEqual(@as(*const anyopaque, @ptrCast(&jitm_mod.trampoline)), cl.method);
+
+    // Ordinary dispatch reaches the native body: [0 jitIncByOne: 5] -> 6.
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(5).?)));
+    try testing.expectEqual(@as(i64, 100), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(99).?)));
+}
+
 // W1 Stage 3b (docs/19c) — relink-by-name. A native FFI module (net) booted in
 // IMAGE-FIRST order (replay the image, THEN load the dylib) rebinds its native
 // methods onto the image-restored eids instead of minting fresh ones. net now
