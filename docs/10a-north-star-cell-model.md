@@ -290,6 +290,17 @@ from the host). (3) **Source-vendored tcc** — `vendor/libtcc-src/` built from 
 self-contained + the cross-compile basis. So both the live JIT and the AOT/ship
 native paths exist, and the toolchain is vendored from source.
 
+**The live JIT is a LOADABLE MODULE (2026-06-26).** `src/modules/jit/` →
+`libbirnam_jit.dylib`, loaded like any module — the compiler (libtcc + codegen +
+manager + trampoline) lives entirely in the dylib and reaches the kernel **only
+through the IdApi** (nothing below it): new ABI hooks for reading a method's
+bytecode/pool/captures, installing/reverting the native closure, and draining the
+hotness queue. The shell no longer links libtcc; it only `@export`s the `birnam_*`
+runtime entries the module's generated C resolves at load. This is the most
+Piumarta-faithful shape — the compiler is just another swappable module over the
+one cell store. (The host-side mode-3 ship tool + the codegen unit tests still use
+an in-kernel copy of the codegen; folding mode-3 into the module would dedup it.)
+
 **The strip-dial, recast (more idst-faithful):** native is always the execution
 form; the dial controls whether the **codegen + AST/source are resident** (= can
 you still change the code):
