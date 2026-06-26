@@ -322,30 +322,40 @@ in any order.
   per-object `new` vtables are anonymous M_USER data replayed verbatim; all its
   other methods bind to *kernel* vtables (fixed eids 0..255) and self-heal by
   overwrite. lang's only image-first issue is **perf** (it recompiles) → 3b.2b.
-- **Stage 3b.2b — lang init must skip its birnam fileIn under image-first.** lang
-  files-in its prelude/stdlib/db/io/cell surfaces (bytecode methods) at init.
-  Under image-first the image already carries those; re-filing-in would duplicate
-  + waste the cache. Gate the fileIn/`installSourceMethod` tiers on "image
-  present" (the `langPrimitivesTier`/`langFrontendTier` split is the seam), so a
-  cache boot registers only the NATIVE primitives (relinked onto image VTs) and
-  takes the birnam from the image. **This — not the 154 method sites — is the real
-  work of 3b.2**, and it’s lang-specific + delicate. NB: today even `--boot-image`
-  recompiles peg+lang (they’re the fixed prefix); the cache only spares
-  json/stdlib. Moving lang OUT of the prefix (image-first) is what finally caches
-  lang itself.
-- **Stage 3b.3 — REMAINING (flip + engage).** Switch the boot order to
-  **image-first** (replay, THEN load native modules which relink), retiring the
-  fixed-order eid-coordination. Then a canonical-path auto compile-cache: present
-  + `boot_validity`-valid → load + skip recompile; absent/invalid → recompile AND
-  write the cache. Fold `--boot-image` into this unified path. *Test:* default
-  boot uses the cache; `json parse:` and `net` work from it; an edited dylib /
-  rebuilt kernel recompiles + refreshes the cache.
+- **Stage 3b.2b — DONE (`906e441`).** lang skips its `installSourceMethod` birnam
+  compiles when booting from an image. A new `ShellContext.boot_from_image` flag
+  (set by the shell before modules load when a valid image is present) makes
+  `installSourceMethod` early-return — the 29 prelude/stdlib/surface methods come
+  from the replay instead of recompiling. Only native primitives install (they
+  self-heal/relink). Solved WITHOUT a full boot-order flip: under the existing
+  modules-then-replay order, lang loads (skipping birnam) then the replay supplies
+  the method facts. *Verified:* `--boot-image` → `collect:`/`min:`/json work with
+  no "filed in"; normal boot unaffected.
+- **Stage 3b.3 — DONE (`35f5a49`).** The default `birnam` boot is an auto
+  compile-cache: a valid `boot_validity` cache at `<exe>/../lib/birnam-boot.bim`
+  (or `$BIRNAM_BOOT_CACHE`) is replayed (skip recompile); a miss/stale recompiles
+  AND writes a fresh cache. **net works from the cache** — loaded *after* the
+  replay so relink-by-name rebinds it (no full boot-order flip needed: peg+lang
+  stay the eid-coordinated prefix; net relinks post-replay). *Verified e2e:* boot
+  1 recompiles + caches (8916 facts); boot 2 replays, no "filed in", `collect:` /
+  json / `min:` / `[Net listen: 0]` all work; a byte appended to a dylib trips the
+  stale path → recompile.
 
-**Stage 4 — delete the dead boundary + docs.** Remove the `M_USER` write-filter
-special-casing and the `eb8b73e`-style re-tag hacks (now unnecessary — `m` stays
-a provenance *tag*, not a persistence gate). Rewrite `docs/2e-images-aot.md` and
-`VISION.md §Image`. *Test:* full suite green; examples (incl. logue/minesweeper)
-run from a saved image.
+**Stage 4 — DONE (docs `5a0d515`).** Rewrote `docs/2e-images-aot.md` + `VISION.md
+§Image`/§Compilation for the landed reality (auto compile-cache, two writers,
+relink-by-name, libtcc native lowering). The code-deletion (drop the M_USER
+write-filter + revert the `eb8b73e` re-tags) is **reconsidered as unnecessary**:
+M_USER-write is a useful lightweight overlay-save, and the re-tags are benign
+(those facts persist in full images regardless). `m` stopped being a persistence
+GATE the moment full-image boot became the default — which it now is.
+
+## ✅ W1 COMPLETE (2026-06-26)
+
+All stages landed: 0–2 (full-image save/load core), 2b (durable closures), 3a
+(boot_validity gate), 3b.1 (relink-by-name spine + net), 3b.2 (VT-naming sweep),
+3b.2b (lang skip), 3b.3 (default auto compile-cache), 4 (docs). The default boot
+loads a full image instead of recompiling the tower; json + net work from it; the
+ADR-image-1 core goal is met.
 
 ## 5. Risks & mitigations
 
