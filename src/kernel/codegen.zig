@@ -29,6 +29,8 @@ pub const RUNTIME_PRELUDE =
     \\extern Ref birnam_send1(Ref recv, Ref sel, Ref a1);
     \\extern Ref birnam_send2(Ref recv, Ref sel, Ref a1, Ref a2);
     \\extern Ref birnam_sendN(Ref recv, Ref sel, Ref *args, unsigned long n);
+    \\extern int birnam_is_falsey(Ref v);
+    \\extern int birnam_is_error(Ref v);
     \\
 ;
 
@@ -76,10 +78,12 @@ pub fn emitMethod(
     code: []const u8,
     pool: []const Ref,
 ) Error![:0]u8 {
-    // Pre-scan: max local slot referenced (sizes the L[] array). Args also live
-    // in locals, so the array must hold at least n_args — handled at call time by
-    // a generous floor.
+    // Pre-scan: max local slot (sizes L[]) + the set of jump-TARGET pcs (where C
+    // labels must be emitted). A target = (pc + 3) + i16-offset, matching the VM's
+    // `applyJump(pc + 3, off)` for JUMP / BRANCH_IF_FALSE / BRANCH_IF_ERROR.
     var max_local: usize = 0;
+    var targets = std.AutoHashMap(usize, void).init(allocator);
+    defer targets.deinit();
     {
         var pc: usize = 0;
         while (pc < code.len) {
@@ -88,6 +92,11 @@ pub fn emitMethod(
                 .PUSH_LOCAL, .STORE_LOCAL => {
                     const slot = bytecode.readU8(code, pc + 1);
                     if (slot > max_local) max_local = slot;
+                },
+                .JUMP, .BRANCH_IF_FALSE, .BRANCH_IF_ERROR => {
+                    const off = bytecode.readI16(code, pc + 1);
+                    const target: usize = @intCast(@as(i64, @intCast(pc + 3)) + off);
+                    targets.put(target, {}) catch return Error.OutOfMemory;
                 },
                 else => {},
             }
@@ -111,8 +120,26 @@ pub fn emitMethod(
 
     var pc: usize = 0;
     while (pc < code.len) {
+        // Emit a label for any instruction that is a jump target.
+        if (targets.contains(pc)) try w.print("L{d}: ;\n", .{pc});
         const op = std.meta.intToEnum(vm.Opcode, code[pc]) catch return Error.BadBytecode;
         switch (op) {
+            .JUMP => {
+                const off = bytecode.readI16(code, pc + 1);
+                const t: usize = @intCast(@as(i64, @intCast(pc + 3)) + off);
+                try w.print("  goto L{d};\n", .{t});
+            },
+            .BRANCH_IF_FALSE => {
+                const off = bytecode.readI16(code, pc + 1);
+                const t: usize = @intCast(@as(i64, @intCast(pc + 3)) + off);
+                try w.print("  {{ Ref _v = S[--sp]; if (birnam_is_falsey(_v)) goto L{d}; }}\n", .{t});
+            },
+            .BRANCH_IF_ERROR => {
+                const off = bytecode.readI16(code, pc + 1);
+                const t: usize = @intCast(@as(i64, @intCast(pc + 3)) + off);
+                // Peek TOS: error → leave it + jump; else pop and fall through.
+                try w.print("  if (birnam_is_error(S[sp-1])) goto L{d}; else sp--;\n", .{t});
+            },
             .PUSH_CONST => {
                 const idx = bytecode.readU16(code, pc + 1);
                 if (idx >= pool.len) return Error.BadBytecode;
@@ -145,12 +172,15 @@ pub fn emitMethod(
                 try w.print("  {{ Ref _r = birnam_sendN(S[sp-{d}], {d}UL, &S[sp-{d}], {d}UL); sp -= {d}; S[sp++] = _r; }}\n", .{ n + 1, sel, n, n, n + 1 });
             },
             .RETURN => try w.writeAll("  return S[sp-1];\n"),
-            // Not yet lowered — decline so the caller keeps the interpreter.
-            .JUMP, .BRANCH_IF_FALSE, .BRANCH_IF_ERROR, .MAKE_BLOCK, .INVOKE_BLOCK, .RETURN_FROM_METHOD => return Error.UnsupportedOpcode,
+            // Blocks + non-local return not yet lowered — decline so the caller
+            // keeps the interpreter (incremental rollout, never miscompiles).
+            .MAKE_BLOCK, .INVOKE_BLOCK, .RETURN_FROM_METHOD => return Error.UnsupportedOpcode,
         }
         pc += vm.instructionSize(op);
     }
 
+    // A branch can target one-past-the-end (jump-to-end); land it here.
+    if (targets.contains(code.len)) try w.print("L{d}: ;\n", .{code.len});
     // A body that falls off the end returns nil (the interpreter's implicit ^self
     // is handled by the compiler emitting a trailing RETURN; this is a safety net).
     try w.print("  return {d}UL;\n}}\n", .{ref_mod.NIL});
@@ -165,4 +195,38 @@ test "codegen: unary-send C contains the prelude, name, and selector" {
     try std.testing.expect(std.mem.indexOf(u8, src, "birnam_send0") != null);
     try std.testing.expect(std.mem.indexOf(u8, src, "Ref m_squared(Ref recv)") != null);
     try std.testing.expect(std.mem.indexOf(u8, src, "12345") != null);
+}
+
+test "codegen: control-flow opcodes lower to labels + goto + predicate calls" {
+    const a = std.testing.allocator;
+    // Hand-built body exercising every branch op (the compiler currently emits
+    // BRANCH_IF_ERROR; JUMP/BRANCH_IF_FALSE are lowered for completeness).
+    // Targets land on instruction boundaries (= where labels are emitted):
+    //   0: LOAD_SELF                 (1)
+    //   1: BRANCH_IF_FALSE +3        (3) after=4 -> target 7
+    //   4: JUMP +4                   (3) after=7 -> target 11 (end)
+    //   7: LOAD_CONST_NIL            (1)
+    //   8: BRANCH_IF_ERROR +0        (3) after=11 -> target 11 (end)
+    //  11: RETURN                    (1)
+    const code = [_]u8{
+        @intFromEnum(vm.Opcode.LOAD_SELF),
+        @intFromEnum(vm.Opcode.BRANCH_IF_FALSE), 3, 0,
+        @intFromEnum(vm.Opcode.JUMP),            4, 0,
+        @intFromEnum(vm.Opcode.LOAD_CONST_NIL),
+        @intFromEnum(vm.Opcode.BRANCH_IF_ERROR), 0, 0,
+        @intFromEnum(vm.Opcode.RETURN),
+    };
+    const src = try emitMethod(a, "cf", &code, &.{});
+    defer a.free(src);
+    try std.testing.expect(std.mem.indexOf(u8, src, "L7:") != null); // branch-if-false target
+    try std.testing.expect(std.mem.indexOf(u8, src, "goto L11;") != null); // jump-to-end
+    try std.testing.expect(std.mem.indexOf(u8, src, "birnam_is_falsey") != null);
+    try std.testing.expect(std.mem.indexOf(u8, src, "birnam_is_error") != null);
+    try std.testing.expect(std.mem.indexOf(u8, src, "L11:") != null); // jump-to-end label
+}
+
+test "codegen: declines blocks (MAKE_BLOCK) so the caller keeps the interpreter" {
+    const a = std.testing.allocator;
+    const code = [_]u8{ @intFromEnum(vm.Opcode.MAKE_BLOCK), 0, 0, @intFromEnum(vm.Opcode.RETURN) };
+    try std.testing.expectError(Error.UnsupportedOpcode, emitMethod(a, "b", &code, &.{0}));
 }

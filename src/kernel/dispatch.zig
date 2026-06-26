@@ -450,3 +450,14 @@ inline fn isErrorValue(v: Ref) bool {
     const vt = send_mod.vtableEidOf(v) orelse return false;
     return vt == kernel_eids.ERROR_VT;
 }
+
+// -- C-ABI predicates for the codegen (docs/10a / libtcc) -------------------
+// Generated method bodies lowering BRANCH_IF_FALSE / BRANCH_IF_ERROR call these
+// so the falsey/error semantics stay defined in one place (here), not duplicated
+// in emitted C. Registered via `Jit.addSymbol`.
+pub fn birnamIsFalsey(v: Ref) callconv(.c) c_int {
+    return if (isFalsey(v)) 1 else 0;
+}
+pub fn birnamIsError(v: Ref) callconv(.c) c_int {
+    return if (isErrorValue(v)) 1 else 0;
+}
