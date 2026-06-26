@@ -1746,6 +1746,49 @@ test "codegen+jit: install JIT'd body as a method; normal dispatch runs native" 
     try testing.expectEqual(@as(i64, 100), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(99).?)));
 }
 
+// libtcc codegen — "malleable AND native" (docs/10a). A method is JIT'd to
+// native, then REDEFINED (its :bytecode-stream/:constant-pool reassigned to a
+// different body), then RE-JIT'd; dispatch tracks the redefinition. Uses the
+// `jitAndInstall` pipeline (read facts → emit C → JIT → install). Drop the old
+// Jit on redefine = drop the stale native cache.
+test "codegen+jit: re-JIT on redefine — malleable and native" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try fullSetup(&arena);
+    _ = (try s.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang = (try s.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    // Two bodies: blk1 = x + 1, blk2 = x + 1000.
+    const path = "test_rejit.birnam";
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = "let blk1 := [:x | [x + 1]];\nlet blk2 := [:x | [x + 1000]]\n" });
+    defer std.fs.cwd().deleteFile(path) catch {};
+    _ = evalLine(s, lang, "[language fileIn: \"test_rejit.birnam\"]", a);
+    const m1 = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "blk1", a)));
+    const m2 = s.api.method_eid_of_bytecode_closure(ref_mod.untagEid(evalLine(s, lang, "blk2", a)));
+    try testing.expect(m1 != 0 and m2 != 0 and m1 != m2);
+
+    const sel = try s.interner.intern(s.store, s.table, "jitRedef:");
+    _ = try s.store.assert(kernel_eids.SMALLINT_VT, sel, ref_mod.mkEid(m1), kernel_eids.M_USER);
+
+    // JIT m1 (x + 1); dispatch → 6.
+    var j1 = try jitm_mod.jitAndInstall(a, s.store, s.table, m1);
+    try testing.expectEqual(@as(i64, 6), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(5).?)));
+
+    // Redefine m1's body to m2's (x + 1000) by reassigning its code facts.
+    j1.deinit(); // drop the stale native cache
+    _ = try s.store.assert(m1, kernel_eids.ATTR_BYTECODE_STREAM, s.store.currentValue(m2, kernel_eids.ATTR_BYTECODE_STREAM).?, kernel_eids.M_USER);
+    if (s.store.currentValue(m2, kernel_eids.ATTR_CONSTANT_POOL)) |p2|
+        _ = try s.store.assert(m1, kernel_eids.ATTR_CONSTANT_POOL, p2, kernel_eids.M_USER);
+
+    // Re-JIT m1; dispatch now runs the NEW native body → 1005.
+    var j2 = try jitm_mod.jitAndInstall(a, s.store, s.table, m1);
+    defer j2.deinit();
+    try testing.expectEqual(@as(i64, 1005), ref_mod.untagSmallInt(send_mod.send1(ref_mod.mkSmallInt(0).?, sel, ref_mod.mkSmallInt(5).?)));
+}
+
 // W1 Stage 3b (docs/19c) — relink-by-name. A native FFI module (net) booted in
 // IMAGE-FIRST order (replay the image, THEN load the dylib) rebinds its native
 // methods onto the image-restored eids instead of minting fresh ones. net now
