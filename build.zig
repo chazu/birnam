@@ -311,6 +311,26 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(net_lib);
 
+    // -- JIT dylib (docs/10a) — the libtcc mode-1 backend as a LOADABLE MODULE.
+    // Talks to the kernel only through the IdApi; links the vendored libtcc.
+    const jit_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/jit/jit.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    jit_mod.addOptions("build_opts", dylib_init_opts);
+    jit_mod.addImport("kernel_eids", eid_mirror_mod);
+    jit_mod.addImport("module_abi", module_abi_mod);
+    jit_mod.addIncludePath(b.path("vendor/libtcc-src"));
+    const jit_lib = b.addLibrary(.{
+        .name = "birnam_jit",
+        .root_module = jit_mod,
+        .linkage = .dynamic,
+    });
+    jit_lib.linkLibrary(libtcc_lib);
+    jit_lib.linkLibC();
+    b.installArtifact(jit_lib);
+
     // -- PEG dylib (Phase 10.0) ----------------------------------------------
 
     const peg_mod = b.createModule(.{
