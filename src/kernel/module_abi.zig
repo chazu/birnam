@@ -414,6 +414,20 @@ pub const IdApi = extern struct {
     /// behavior lives in a module's native code. (Appended at END per ABI
     /// discipline.)
     register_treewalk_block_shim: *const fn (shim: ?*const anyopaque) callconv(.c) void,
+
+    /// W1 Stage 3b (docs/19c) — install a native method, **relinking by name**
+    /// when booting from a full image. If `[vt_eid sel_eid]` is already bound
+    /// (the image restored the fact) but its closure eid has no live object-table
+    /// slot (native fn-ptrs aren't serialized), install `fn_ptr` at THAT existing
+    /// closure eid — so the image's binding comes alive with this process's code,
+    /// no new eid minted, no fact rewritten. Otherwise (fresh boot: no binding)
+    /// mint a closure + assert the fact as usual. Returns the closure eid. This
+    /// is the native-method analogue of `rematerializeClosures` (bytecode) and
+    /// `resolveAllPending` (FFI). Replaces the
+    /// `assert_fact(vt, sel, mkEid(make_closure(impl, data)), m)` idiom in module
+    /// init so the module loads correctly in either order. (Appended at END per
+    /// the append-only ABI discipline.)
+    bind_native_method: *const fn (vt_eid: u64, sel_eid: u64, fn_ptr: ?*const anyopaque, data: Ref, module_eid: u64) callconv(.c) u64,
 };
 
 comptime {

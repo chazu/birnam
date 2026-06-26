@@ -192,6 +192,7 @@ pub fn populate() IdApi {
         .maybe_prune = &cMaybePrune,
         .prune_now = &cPruneNow,
         .register_treewalk_block_shim = &cRegisterTreewalkBlockShim,
+        .bind_native_method = &cBindNativeMethod,
     };
 }
 
@@ -688,24 +689,54 @@ fn cObjectToRef(p: ?*anyopaque) callconv(.c) Ref {
 
 const Closure = @import("closure.zig").Closure;
 
-fn cMakeClosure(method_fn: ?*const anyopaque, data: Ref) callconv(.c) u64 {
+/// Allocate a `[vt=CLOSURE_VT][method][data]` libid-closure buffer and install
+/// it at object-table `eid`. Shared by `cMakeClosure` (fresh eid) and
+/// `cBindNativeMethod` (relink onto an image-restored eid). Returns false on OOM.
+fn installClosureAt(eid: u64, fn_ptr: *const anyopaque, data: Ref) bool {
     // Tree-walker block closures are the redefine/block churn leak: route them
     // to the swept `closures_vt` arena when the registry is live (Phase 15.A).
-    const a = if (arenas.ready()) arenas.closuresVt() else (send_mod.kernelAllocator() orelse return 0);
-    const t = send_mod.tablePtr() orelse return 0;
-    const fn_ptr = method_fn orelse return 0;
-    // Closure has the libid-object layout: [vt_ref][method][data].
+    const a = if (arenas.ready()) arenas.closuresVt() else (send_mod.kernelAllocator() orelse return false);
+    const t = send_mod.tablePtr() orelse return false;
     const total = 3 * @sizeOf(Ref);
-    const buf = a.alignedAlloc(u8, .of(Ref), total) catch return 0;
+    const buf = a.alignedAlloc(u8, .of(Ref), total) catch return false;
     @memset(buf, 0);
     const vt_slot: *Ref = @ptrCast(@alignCast(buf.ptr));
     vt_slot.* = ref_mod.mkEid(kernel_eids.CLOSURE_VT);
     const c: *Closure = @ptrCast(@alignCast(buf.ptr + @sizeOf(Ref)));
     c.method = fn_ptr;
     c.data = data;
+    t.put(eid, ref_mod.mkPointer(@ptrCast(c))) catch return false;
+    return true;
+}
+
+fn cMakeClosure(method_fn: ?*const anyopaque, data: Ref) callconv(.c) u64 {
+    const t = send_mod.tablePtr() orelse return 0;
+    const fn_ptr = method_fn orelse return 0;
     const eid = t.alloc();
-    t.put(eid, ref_mod.mkPointer(@ptrCast(c))) catch return 0;
-    return eid;
+    return if (installClosureAt(eid, fn_ptr, data)) eid else 0;
+}
+
+/// ABI `bind_native_method` — install a native method, relinking by name onto
+/// an image-restored binding when one exists (W1 Stage 3b). See module_abi.zig.
+fn cBindNativeMethod(vt_eid: u64, sel_eid: u64, fn_ptr: ?*const anyopaque, data: Ref, module_eid: u64) callconv(.c) u64 {
+    const s = send_mod.storePtr() orelse return 0;
+    const t = send_mod.tablePtr() orelse return 0;
+    const fp = fn_ptr orelse return 0;
+    if (s.currentValue(vt_eid, sel_eid)) |existing| {
+        if (ref_mod.isEid(existing)) {
+            const ce = ref_mod.untagEid(existing);
+            // Image-restored binding with no live closure → relink in place.
+            if (t.get(ce) == null) {
+                return if (installClosureAt(ce, fp, data)) ce else 0;
+            }
+            return ce; // already live (re-run / already relinked) — leave as is
+        }
+    }
+    // Fresh boot: mint + assert.
+    const ce = cMakeClosure(fp, data);
+    if (ce == 0) return 0;
+    _ = s.assert(vt_eid, sel_eid, ref_mod.mkEid(ce), module_eid) catch return 0;
+    return ce;
 }
 
 fn cIntern(name: [*]const u8, len: usize) callconv(.c) u64 {

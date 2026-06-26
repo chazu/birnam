@@ -1589,6 +1589,57 @@ test "image: REPL binding survives save -> fresh boot -> load (lang-driven)" {
 // `[wrapper :closure-block-method bm]` recipe and `rematerializeClosures` rebuilds
 // the captureless wrapper. Session B loads peg+lang only — json comes from the
 // image alone (the exact W1 boot-image scenario).
+// W1 Stage 3b (docs/19c) — relink-by-name. A native FFI module (net) booted in
+// IMAGE-FIRST order (replay the image, THEN load the dylib) rebinds its native
+// methods onto the image-restored eids instead of minting fresh ones. net now
+// anchors every entity to an interned name and installs methods via
+// `bind_native_method`, so: (1) its vtable eid is identical across sessions, and
+// (2) after relink the method binding points at a LIVE closure (this process's
+// fn-ptr). Proves a Zig FFI module joins a full-image boot in any order.
+test "image (W1 Stage 3b): net relinks native methods by name (image-first boot)" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // ---- Session A: load peg+lang+net, sanity, FULL snapshot. ----
+    const sa = try fullSetup(&arena);
+    _ = (try sa.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_a = (try sa.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+    _ = (try sa.manager.load("./zig-out/lib/libbirnam_net.dylib")) orelse return error.NetLoadFailed;
+
+    const net_vt_a = sa.interner.str_to_eid.get("net:Net").?;
+    const listen_sel = sa.interner.str_to_eid.get("listen:").?;
+    const a_srv = evalLine(sa, lang_a, "[Net listen: 0]", a); // ephemeral local bind
+    try testing.expect(ref_mod.isEid(a_srv)); // sanity: net works in session A
+
+    const res = try image.writeFull(a, sa.store, sa.table.next_eid.load(.monotonic), .{}, sa.interner, sa.table);
+
+    // ---- Session B: peg+lang, replay image FIRST, THEN load net (relink). ----
+    const sb = try fullSetup(&arena);
+    _ = (try sb.manager.load("./zig-out/lib/libbirnam_peg.dylib")) orelse return error.PegLoadFailed;
+    const lang_b = (try sb.manager.load("./zig-out/lib/libbirnam_lang.dylib")) orelse return error.LangLoadFailed;
+
+    const loaded = try image.load(sb.store, res.bytes, sb.interner);
+    if (loaded.next_eid > sb.table.next_eid.load(.monotonic)) sb.table.next_eid.store(loaded.next_eid, .monotonic);
+    _ = try image.rematerializeClosures(a, sb.store, sb.table);
+
+    // The image restored net's facts at their saved eids; the net dylib is NOT
+    // loaded yet, so its method closures have no live object-table slot.
+    const net_vt_b = sb.interner.str_to_eid.get("net:Net").?;
+    try testing.expectEqual(net_vt_a, net_vt_b); // eid stable via interned name
+    const pre = sb.store.currentValue(net_vt_b, listen_sel).?;
+    try testing.expect(sb.table.get(ref_mod.untagEid(pre)) == null); // closure dead pre-relink
+
+    // Load net AFTER replay — its init resolves intern("net:Net") to the image
+    // eid and relinks `listen:` onto the existing binding's closure eid.
+    _ = (try sb.manager.load("./zig-out/lib/libbirnam_net.dylib")) orelse return error.NetLoadFailed;
+    const post = sb.store.currentValue(net_vt_b, listen_sel).?;
+    try testing.expectEqual(pre, post); // SAME binding eid — relinked in place, not re-minted
+    try testing.expect(sb.table.get(ref_mod.untagEid(post)) != null); // now LIVE
+    try testing.expect(ref_mod.isEid(evalLine(sb, lang_b, "[Net listen: 0]", a))); // and dispatches
+}
+
 test "image (W1 Stage 2): json block globals survive full save -> load (no json reload)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

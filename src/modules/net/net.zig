@@ -150,28 +150,35 @@ export fn birnam_module_init(ctx: *ShellContext, api: *const IdApi, module_eid: 
     ctx.log("[net] initializing");
     g_attr_fd = api.intern("net-fd", 6);
 
+    // W1 Stage 3b — relink-by-name. Every entity net mints is anchored to a
+    // durable interned name (not `alloc_eid`), so a full-image boot restores the
+    // SAME eids and net's init resolves onto them in ANY load order; methods go
+    // through `bind_native_method`, which installs this process's fn-ptr onto the
+    // image-restored binding instead of minting a fresh one. `:vtable`/`:delegate`
+    // facts are re-asserted unconditionally (cardinality `:one` ⇒ idempotent).
+
     // Socket vtable: send:/recv:/close (+ accept lives on the server vt).
-    g_socket_vt = api.alloc_eid();
+    g_socket_vt = api.intern("net:Socket", 10);
     _ = api.assert_fact(g_socket_vt, api.attr_vtable, mkEid(api.vtable_vt_eid), module_eid);
     _ = api.assert_fact(g_socket_vt, api.attr_delegate, mkEid(api.object_vt_eid), module_eid);
-    _ = api.assert_fact(g_socket_vt, api.intern("send:", 5), mkEid(api.make_closure(@ptrCast(&sendImpl), NIL)), module_eid);
-    _ = api.assert_fact(g_socket_vt, api.intern("recv:", 5), mkEid(api.make_closure(@ptrCast(&recvImpl), NIL)), module_eid);
-    _ = api.assert_fact(g_socket_vt, api.intern("close", 5), mkEid(api.make_closure(@ptrCast(&closeImpl), NIL)), module_eid);
+    _ = api.bind_native_method(g_socket_vt, api.intern("send:", 5), @ptrCast(&sendImpl), NIL, module_eid);
+    _ = api.bind_native_method(g_socket_vt, api.intern("recv:", 5), @ptrCast(&recvImpl), NIL, module_eid);
+    _ = api.bind_native_method(g_socket_vt, api.intern("close", 5), @ptrCast(&closeImpl), NIL, module_eid);
 
     // Server vtable: accept + close.
-    g_server_vt = api.alloc_eid();
+    g_server_vt = api.intern("net:Server", 10);
     _ = api.assert_fact(g_server_vt, api.attr_vtable, mkEid(api.vtable_vt_eid), module_eid);
     _ = api.assert_fact(g_server_vt, api.attr_delegate, mkEid(api.object_vt_eid), module_eid);
-    _ = api.assert_fact(g_server_vt, api.intern("accept", 6), mkEid(api.make_closure(@ptrCast(&acceptImpl), NIL)), module_eid);
-    _ = api.assert_fact(g_server_vt, api.intern("close", 5), mkEid(api.make_closure(@ptrCast(&closeImpl), NIL)), module_eid);
+    _ = api.bind_native_method(g_server_vt, api.intern("accept", 6), @ptrCast(&acceptImpl), NIL, module_eid);
+    _ = api.bind_native_method(g_server_vt, api.intern("close", 5), @ptrCast(&closeImpl), NIL, module_eid);
 
     // Net prototype (class-side connect:/listen:).
-    const net_vt = api.alloc_eid();
+    const net_vt = api.intern("net:Net", 7);
     _ = api.assert_fact(net_vt, api.attr_vtable, mkEid(api.vtable_vt_eid), module_eid);
     _ = api.assert_fact(net_vt, api.attr_delegate, mkEid(api.object_vt_eid), module_eid);
-    _ = api.assert_fact(net_vt, api.intern("connect:port:", 13), mkEid(api.make_closure(@ptrCast(&connectImpl), NIL)), module_eid);
-    _ = api.assert_fact(net_vt, api.intern("listen:", 7), mkEid(api.make_closure(@ptrCast(&listenImpl), NIL)), module_eid);
-    const net_proto = api.alloc_eid();
+    _ = api.bind_native_method(net_vt, api.intern("connect:port:", 13), @ptrCast(&connectImpl), NIL, module_eid);
+    _ = api.bind_native_method(net_vt, api.intern("listen:", 7), @ptrCast(&listenImpl), NIL, module_eid);
+    const net_proto = api.intern("net:NetProto", 12);
     _ = api.assert_fact(net_proto, api.attr_vtable, mkEid(net_vt), module_eid);
 
     // Bind `Net` as a global. The lang frontend binds globals as facts on the
