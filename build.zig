@@ -43,6 +43,25 @@ pub fn build(b: *std.Build) void {
     // tree needs only `bin/birnam` + the module dylibs — shipping `lib/libffi.a`
     // would be dead weight.
 
+    // -- libtcc static lib (mode-1 JIT backend, docs/10a) --------------------
+    // Vendored from the TinyCC source (vendor/libtcc-src/, LGPL — see COPYING),
+    // built from source so the JIT is self-contained AND the basis for cross-
+    // compile. `config.h` defaults to arm64 + Mach-O when no TCC_TARGET is set;
+    // adding x86_64/linux is incremental (their gen/link .c + a target define).
+    const libtcc_lib = b.addLibrary(.{
+        .name = "tcc",
+        .linkage = .static,
+        .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true }),
+    });
+    // `libtcc.c` defaults `ONE_SOURCE=1` and #includes the rest (tccpp/tccgen/…
+    // + arm64-gen/link/asm + tccmacho), so it is the single translation unit.
+    libtcc_lib.addCSourceFiles(.{
+        .root = b.path("vendor/libtcc-src"),
+        .files = &.{"libtcc.c"},
+        .flags = &.{ "-std=gnu11", "-w" }, // -w: silence tcc's own (benign) warnings
+    });
+    libtcc_lib.addIncludePath(b.path("vendor/libtcc-src")); // config.h, tcc.h, …
+
     // -- Build-time kernel-EID mirror (single source of truth) ---------------
     // `src/kernel/kernel_eids.zig` is the ONE place well-known EIDs are defined.
     // A small host-side generator reflects over it and emits a dependency-free
@@ -102,20 +121,17 @@ pub fn build(b: *std.Build) void {
     shell_mod.addOptions("build_opts", shell_opts);
 
     // libtcc — the mode-1 JIT backend (docs/10a). The shell imports `jit_method`
-    // to compile methods to native code at runtime. Vendored as a prebuilt static
-    // archive (`vendor/libtcc/libtcc.a` + `libtcc.h`) and linked statically, so
-    // the binary is self-contained — no /usr/local dependency, no runtime files
-    // (our generated C needs no libtcc1 helpers). Source-vendoring for
-    // cross-compile is a further step.
-    shell_mod.addIncludePath(.{ .cwd_relative = "vendor/libtcc" });
-    shell_mod.addLibraryPath(.{ .cwd_relative = "vendor/libtcc" });
-    shell_mod.linkSystemLibrary("tcc", .{});
+    // to compile methods to native at runtime. Built from the vendored TinyCC
+    // source + statically linked → self-contained (no /usr/local, no runtime
+    // files: our generated C needs no libtcc1 helpers).
+    shell_mod.addIncludePath(b.path("vendor/libtcc-src")); // libtcc.h for @cImport
 
     const shell = b.addExecutable(.{
         .name = "birnam",
         .root_module = shell_mod,
     });
     shell.linkLibrary(libffi_lib);
+    shell.linkLibrary(libtcc_lib);
     shell.linkLibC();
     b.installArtifact(shell);
 
@@ -341,18 +357,16 @@ pub fn build(b: *std.Build) void {
     const run_hamt_tests = b.addRunArtifact(hamt_tests);
     test_step.dependOn(&run_hamt_tests.step);
 
-    // libtcc JIT wrapper (W1 → libtcc, docs/10a). Links the system libtcc; the
-    // dev install lives under /usr/local (vendoring like libffi is a later step).
+    // libtcc JIT wrapper (docs/10a) — built from the vendored TinyCC source.
     const jit_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/jit_test.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
-    jit_test_mod.addIncludePath(.{ .cwd_relative = "vendor/libtcc" });
-    jit_test_mod.addLibraryPath(.{ .cwd_relative = "vendor/libtcc" });
-    jit_test_mod.linkSystemLibrary("tcc", .{});
+    jit_test_mod.addIncludePath(b.path("vendor/libtcc-src"));
     const jit_tests = b.addTest(.{ .root_module = jit_test_mod });
+    jit_tests.linkLibrary(libtcc_lib);
     const run_jit_tests = b.addRunArtifact(jit_tests);
     test_step.dependOn(&run_jit_tests.step);
 
@@ -595,13 +609,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    // libtcc: the codegen+JIT milestone test (a JIT'd C method body performing a
-    // real send) lives here, where the full boot harness + real dylibs exist.
-    lmod_test_mod.addIncludePath(.{ .cwd_relative = "vendor/libtcc" });
-    lmod_test_mod.addLibraryPath(.{ .cwd_relative = "vendor/libtcc" });
-    lmod_test_mod.linkSystemLibrary("tcc", .{});
+    // libtcc: the codegen+JIT tests (JIT'd method bodies performing real sends)
+    // live here, where the full boot harness + real dylibs exist. Source-built.
+    lmod_test_mod.addIncludePath(b.path("vendor/libtcc-src"));
     const lmod_tests = b.addTest(.{ .root_module = lmod_test_mod });
     lmod_tests.linkLibrary(libffi_lib);
+    lmod_tests.linkLibrary(libtcc_lib);
     lmod_tests.linkLibC();
     const run_lmod_tests = b.addRunArtifact(lmod_tests);
     run_lmod_tests.step.dependOn(b.getInstallStep());

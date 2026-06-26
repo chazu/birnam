@@ -5,8 +5,8 @@ const std = @import("std");
 const testing = std.testing;
 const jit = @import("jit.zig");
 
-// The dev install keeps libtcc's runtime archive here. A shipped birnam bundles
-// it; tests run against the system install.
+// null: libtcc is built from vendored source and statically linked; our generated
+// C needs no libtcc1 runtime archive, so no `tcc_add_library_path` is required.
 const RUNTIME_LIB_DIR: ?[*:0]const u8 = null;
 
 test "jit: compile + call a simple C function" {
