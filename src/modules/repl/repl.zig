@@ -207,8 +207,11 @@ export fn birnam_module_init(
     g_attr_target = api.intern("target", 6);
     g_attr_prompt = api.intern("prompt", 6);
 
-    // Build the REPL_VT and install methods.
-    const repl_vt = api.alloc_eid();
+    // Build the REPL_VT and install methods. W1 Stage 3b (docs/19c) —
+    // relink-by-name: anchor the VT + singleton to interned names and install
+    // methods via bind_native_method so a full-image boot restores the same eids
+    // and relinks in any order (see net for the template).
+    const repl_vt = api.intern("repl:Repl", 9);
     _ = api.assert_fact(repl_vt, api.attr_vtable, mkEid(api.vtable_vt_eid), module_eid);
     _ = api.assert_fact(repl_vt, api.attr_delegate, mkEid(api.object_vt_eid), module_eid);
 
@@ -216,16 +219,12 @@ export fn birnam_module_init(
     const sel_set_target = api.intern("setTarget:", 10);
     const sel_stop = api.intern("stop", 4);
 
-    const c_run = api.make_closure(@ptrCast(&replRunImpl), NIL);
-    const c_set_target = api.make_closure(@ptrCast(&replSetTargetImpl), NIL);
-    const c_stop = api.make_closure(@ptrCast(&replStopImpl), NIL);
-
-    _ = api.assert_fact(repl_vt, sel_run, mkEid(c_run), module_eid);
-    _ = api.assert_fact(repl_vt, sel_set_target, mkEid(c_set_target), module_eid);
-    _ = api.assert_fact(repl_vt, sel_stop, mkEid(c_stop), module_eid);
+    _ = api.bind_native_method(repl_vt, sel_run, @ptrCast(&replRunImpl), NIL, module_eid);
+    _ = api.bind_native_method(repl_vt, sel_set_target, @ptrCast(&replSetTargetImpl), NIL, module_eid);
+    _ = api.bind_native_method(repl_vt, sel_stop, @ptrCast(&replStopImpl), NIL, module_eid);
 
     // Allocate the singleton REPL instance.
-    g_repl_eid = api.alloc_eid();
+    g_repl_eid = api.intern("repl:repl", 9);
     _ = api.assert_fact(g_repl_eid, api.attr_vtable, mkEid(repl_vt), module_eid);
 
     // Default prompt.

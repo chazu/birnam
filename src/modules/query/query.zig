@@ -166,8 +166,13 @@ export fn birnam_module_init(
     g_module_eid = module_eid;
     ctx.log("[query] initializing");
 
+    // W1 Stage 3b (docs/19c) — relink-by-name: anchor every module-minted entity
+    // to a durable interned name (not alloc_eid) and install methods via
+    // bind_native_method, so a full-image boot restores the SAME eids and this
+    // module's init relinks onto them in any order (see net for the template).
+
     // Result vtable + methods.
-    g_result_vt = api.alloc_eid();
+    g_result_vt = api.intern("query:Result", 12);
     _ = api.assert_fact(g_result_vt, api.attr_vtable, mkEid(api.vtable_vt_eid), module_eid);
     _ = api.assert_fact(g_result_vt, api.attr_delegate, mkEid(api.object_vt_eid), module_eid);
 
@@ -175,25 +180,25 @@ export fn birnam_module_init(
     const sel_arity = api.intern("arity", 5);
     const sel_at = api.intern("at:", 3);
 
-    _ = api.assert_fact(g_result_vt, sel_count, mkEid(api.make_closure(@ptrCast(&resultCountImpl), NIL)), module_eid);
-    _ = api.assert_fact(g_result_vt, sel_arity, mkEid(api.make_closure(@ptrCast(&resultArityImpl), NIL)), module_eid);
-    _ = api.assert_fact(g_result_vt, sel_at, mkEid(api.make_closure(@ptrCast(&resultAtImpl), NIL)), module_eid);
+    _ = api.bind_native_method(g_result_vt, sel_count, @ptrCast(&resultCountImpl), NIL, module_eid);
+    _ = api.bind_native_method(g_result_vt, sel_arity, @ptrCast(&resultArityImpl), NIL, module_eid);
+    _ = api.bind_native_method(g_result_vt, sel_at, @ptrCast(&resultAtImpl), NIL, module_eid);
 
     // db vtable + methods.
-    g_db_vt = api.alloc_eid();
+    g_db_vt = api.intern("query:Db", 8);
     _ = api.assert_fact(g_db_vt, api.attr_vtable, mkEid(api.vtable_vt_eid), module_eid);
     _ = api.assert_fact(g_db_vt, api.attr_delegate, mkEid(api.object_vt_eid), module_eid);
 
     const sel_execute = api.intern("execute:", 8);
-    _ = api.assert_fact(g_db_vt, sel_execute, mkEid(api.make_closure(@ptrCast(&dbExecuteImpl), NIL)), module_eid);
+    _ = api.bind_native_method(g_db_vt, sel_execute, @ptrCast(&dbExecuteImpl), NIL, module_eid);
 
     // Install count + at: methods on the kernel-reserved RRB_VT so collect
     // aggregate results behave as sendable objects.
-    _ = api.assert_fact(RRB_VT_EID, sel_count, mkEid(api.make_closure(@ptrCast(&rrbCountImpl), NIL)), module_eid);
-    _ = api.assert_fact(RRB_VT_EID, sel_at, mkEid(api.make_closure(@ptrCast(&rrbAtImpl), NIL)), module_eid);
+    _ = api.bind_native_method(RRB_VT_EID, sel_count, @ptrCast(&rrbCountImpl), NIL, module_eid);
+    _ = api.bind_native_method(RRB_VT_EID, sel_at, @ptrCast(&rrbAtImpl), NIL, module_eid);
 
     // db singleton instance.
-    g_db_eid = api.alloc_eid();
+    g_db_eid = api.intern("query:db", 8);
     _ = api.assert_fact(g_db_eid, api.attr_vtable, mkEid(g_db_vt), module_eid);
 
     // Export.
