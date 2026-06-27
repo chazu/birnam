@@ -13,9 +13,12 @@
 //! install the rest. `bind` bottoms out when binding `lookup` on the metavtable.
 
 const std = @import("std");
-const state_mod = @import("state.zig");
+const idapi = @import("idapi.zig");
 
 const ca = std.heap.c_allocator;
+
+extern fn dlopen(path: [*:0]const u8, mode: c_int) ?*anyopaque;
+extern fn dlsym(handle: ?*anyopaque, name: [*:0]const u8) ?*anyopaque;
 
 /// Every object is referenced by an opaque pointer; its vtable pointer sits one
 /// word *before* it (`object[-1]`). `Oop` = "ordinary object pointer".
@@ -49,6 +52,7 @@ pub var vtable_vt: *Vtable = undefined; // the vtable of vtables (self-describin
 pub var object_vt: *Vtable = undefined; // top of the delegation chain
 pub var symbol_vt: *Vtable = undefined;
 var symbol_list: *Vtable = undefined; // the intern table (keys = symbols)
+var env: *Vtable = undefined; // the export environment (keys = symbols, values = objects)
 
 pub var s_lookup: *Symbol = undefined;
 pub var s_addMethod: *Symbol = undefined;
@@ -220,7 +224,10 @@ inline fn asSymbol(o: Oop) *Symbol {
 // -- Bootstrap --------------------------------------------------------------
 
 /// Bring up the object system. After this, `send` is fully operational.
+/// Idempotent: a second call (e.g. the id dylib re-loaded through the id api)
+/// returns the same live system rather than re-bootstrapping fresh objects.
 pub fn boot() void {
+    if (booted) return;
     // vtable_vt: the metavtable, self-describing (its own vtable is itself).
     vtable_vt = newVtable(null);
     setVtable(oop(vtable_vt), vtable_vt);
@@ -235,6 +242,8 @@ pub fn boot() void {
 
     symbol_list = newVtable(null);
     setVtable(oop(symbol_list), vtable_vt);
+    env = newVtable(null);
+    setVtable(oop(env), vtable_vt);
     booted = true;
 
     s_lookup = intern("lookup");
@@ -255,25 +264,88 @@ pub fn symbol(string: [:0]const u8) *Symbol {
     return intern(string);
 }
 
-// -- Module entry (the siphon loads libid through this) ---------------------
+// -- The export environment (name -> object) — the re-import namespace -------
 
-fn sendC(rcv: Oop, sel: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
-    return send(rcv, @ptrCast(@alignCast(sel)), args[0..n]);
+/// `export key -> value`: bind a name to an object so others can `import` it.
+fn exportObj(key: [:0]const u8, value: Oop) Oop {
+    const sym = intern(key);
+    _ = vtableAddMethod(oop(env), &[_]Oop{ oop(sym), value }, 2);
+    return value;
+}
+/// `import key`: the object previously exported under `key`, or null.
+fn importObj(key: [:0]const u8) Oop {
+    const sym = intern(key);
+    if (env.keys) |keys| {
+        var i: usize = 0;
+        while (i < env.tally) : (i += 1) {
+            if (keys[i] == oop(sym)) return env.values.?[i];
+        }
+    }
+    return null;
+}
+
+// -- The IdApi table (callconv(.c) wrappers over the system) ----------------
+
+fn dlopenC(path: [*:0]const u8, mode: c_int) callconv(.c) ?*anyopaque {
+    return dlopen(path, mode);
+}
+fn dlsymC(handle: ?*anyopaque, name: [*:0]const u8) callconv(.c) ?*anyopaque {
+    return dlsym(handle, name);
 }
 fn internC(string: [*:0]const u8) callconv(.c) Oop {
     return oop(intern(std.mem.span(string)));
 }
+fn protoC(base: Oop) callconv(.c) Oop {
+    return oop(newVtable(asVtable(base)));
+}
+fn methodC(vt: Oop, sel: Oop, m: idapi.Method) callconv(.c) void {
+    _ = vtableAddMethod(vt, &[_]Oop{ sel, @constCast(@ptrCast(m)) }, 2);
+}
+fn allocC(vt: Oop, size: usize) callconv(.c) Oop {
+    const obj = allocRaw(size);
+    setVtable(obj, asVtable(vt));
+    return obj;
+}
+fn importC(key: [*:0]const u8) callconv(.c) Oop {
+    return importObj(std.mem.span(key));
+}
+fn exportC(key: [*:0]const u8, value: Oop) callconv(.c) Oop {
+    return exportObj(std.mem.span(key), value);
+}
+fn isExportedC(key: [*:0]const u8) callconv(.c) c_int {
+    return if (importObj(std.mem.span(key)) != null) 1 else 0;
+}
+fn sendC(rcv: Oop, sel: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    return send(rcv, @ptrCast(@alignCast(sel)), args[0..n]);
+}
 
-/// `entrypoint(state)` — boot the object system and publish its primitives into
-/// the shared state. Matches the C module ABI: the siphon dlopens this dylib,
-/// finds `entrypoint`, and calls it.
-pub export fn entrypoint(st: *state_mod.State) callconv(.c) void {
+var g_api: idapi.IdApi = undefined;
+
+/// `id_init()` — boot the object system, build the IdApi table, and EXPORT the
+/// id layer's own objects so the siphon (or any module) can re-import them.
+/// Matches the C `_libid_init`: the siphon dlsyms + calls this to get the API.
+pub export fn id_init() callconv(.c) *idapi.IdApi {
     boot();
-    st.send = &sendC;
-    st.intern = &internC;
-    st.vtable_vt = oop(vtable_vt);
-    st.object_vt = oop(object_vt);
-    st.symbol_vt = oop(symbol_vt);
+    g_api = .{
+        .dlopen = &dlopenC,
+        .dlsym = &dlsymC,
+        .object_vt = oop(object_vt),
+        .vtable_vt = oop(vtable_vt),
+        .symbol_vt = oop(symbol_vt),
+        .intern = &internC,
+        .proto = &protoC,
+        .method = &methodC,
+        .alloc = &allocC,
+        .import = &importC,
+        .exportObj = &exportC,
+        .isExported = &isExportedC,
+        .send = &sendC,
+    };
+    // Publish the id layer into its own environment — so it is re-importable.
+    _ = exportObj("Object", oop(object_vt));
+    _ = exportObj("Vtable", oop(vtable_vt));
+    _ = exportObj("Symbol", oop(symbol_vt));
+    return &g_api;
 }
 
 // -- Proof: the object system stands on its own -----------------------------
