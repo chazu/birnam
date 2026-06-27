@@ -87,10 +87,39 @@ The in-place inversion produced the **design** the refounding now builds to:
 - **`docs/31` §W7 remaining items are retired** as in-place tasks (they become
   "build it right on libid" instead). The factless-floor proof stands.
 
+## Layering: relational is the FIRST superimposition, not a high module
+
+A correction to an earlier draft of this ADR, which mistakenly put the fact store
+*after* peg/compiler. The relational/cell layer is **rung 2** — the first thing
+mounted over libid, below everything else — per `docs/30` §9
+(`id → fact store → gc → peg → compiler`). Relational semantics are woven in **low**.
+
+This is per-layer primacy (`docs/30` §6), not a demotion:
+
+- **Rung 1 — libid (pure pointer).** Pre-relational *by necessity*: to dispatch you
+  need the object model, so the object model's own floor cannot itself depend on the
+  relational store (the circular dependency W7 resolved). The floor is the irreducible
+  self-sufficient kernel — vtable pointers at `-1`, no cells.
+- **Rung 2 — the cell / relational layer.** The first superimposition. It is the
+  substrate for *everything above*: an object's **state** (slots/attributes) is
+  **cells** (get/assert) — historied, queryable, time-travelable. Method **dispatch**
+  stays libid-pointer (fast), but is **projected** into the cell store so it too is
+  queryable/reflectable. "Send *is* get" holds as a *reading*; the hot path stays
+  pointer-fast. So the whole *usable* system is relational from rung 2 up — only the
+  bootstrap kernel (rung 1) is not.
+
+**Open (decide before building rung 2):** how far the projection goes — state-as-cells
+is clear; whether dispatch is merely *projected* into the store (read-only reflection)
+or also *resolvable* through it (the full "dispatch is get") is the W7 §6 primacy call,
+to be made when rung 2 is designed.
+
 ## Next on the libid floor
 
-Build the tower upward: **peg** (the next module — grammar objects via `api.export`),
-then the syntax + compiler, then the **fact store as a module** that superimposes
-eid/EAVT over libid (the inversion's destination, reached by construction). Each
-rung is a module the siphon loads; state persists across reloads; the floor stays
-reflective.
+1. **Rung 2 — the cell/relational layer** as a module over libid (object state as
+   cells; the get/assert/query/history substrate). This is the inversion's
+   destination, reached by construction — relational woven in *low*.
+2. **peg** over the relational layer (grammars as cells/objects).
+3. syntax + compiler (methods as cells), then up.
+
+Each rung is a module the siphon loads; state persists across reloads; the floor
+stays reflective.
