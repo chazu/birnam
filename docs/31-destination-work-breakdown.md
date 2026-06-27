@@ -57,6 +57,31 @@ existence**; then `mountIdentityLayer` projects the struct graph into EAVT/AVET
 and reflection/query see the same graph as facts. `kernel-bench` shows no
 dispatch regression. All suites green.
 
+**Status (2026-06-26) — struct-primary floor SHIPPED; the claim is PROVEN.**
+Commits W7.0 `6a10c03` · A1/C1 (checkpoint 1) · B repr+proof `f41c193` · B4 methods
+(this checkpoint). Done:
+- **A1 ✅** defer `:name` to the mount seam. **C1 ✅** `mount.mountIdentityLayer`.
+- **B1 ✅** `floor.zig` — vtable structs carry parent + kernel-method dict (B0
+  layout). **B2 ✅** `send.resolve` = fact-first, floor-struct fallback.
+- **B4 (methods) ✅** the 5 kernel methods are struct-resident — **no facts**;
+  reflective `lookup:` routes through the seam. **B4 (delegation)** dual-written
+  (struct + fact); facts not yet dropped.
+- **Proof ✅** `bootstrap_test` "floor dispatches with … facts retracted" — the id
+  closure dispatches on structs alone. Green on cold + warm boot + lang_module 84.
+
+Remaining (the production *fact-drop* inversion — its own careful pass):
+- **B4 (delegation drop)** — drop the ~34 `:delegate` facts. Needs per-vtable
+  handling of *non-materialized* kernel vtables (RANGE_VT/CALLBACK_VT/… carry
+  `:delegate` facts but have no struct) + moving the parent-set from the mount
+  sync to the assert sites.
+- **B3 (query projection)** — project the struct graph into EAVT/AVET for
+  relational reflection over the floor (dispatch already needs no projection).
+- **A2 (`:vtable` drop)** — `vtableEidOf` already reads the −1 slot first
+  (projection exists); dropping the facts needs the same query-projection.
+- **C2 (eid retrofit)** — N/A in the current shape (floor objects keep their
+  kernel eids); revisit only for a genuinely pointer-identity-first boot.
+- **`kernel-bench` gate** — hot path (mcache) is untouched; run to confirm.
+
 ### W7.0 — Instrument the boot path — ✅ DONE (2026-06-26)
 
 `boot_probe.zig` (throwaway) + two nullable `FactStore.debug_on_write/_on_read`
