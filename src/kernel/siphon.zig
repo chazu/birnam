@@ -147,27 +147,27 @@ pub fn boot(
     // Top of chain (object_vt) has NO :delegate fact — Date: absence = no parent.
     // Everyone else delegates to object_vt.
     const ovt = ref_mod.mkEid(kernel_eids.OBJECT_VT);
-    _ = try store.assert(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.SELECTOR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.CLOSURE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.VECTOR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.ASSOC_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.NIL_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.RRB_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.FLOAT_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.CALLBACK_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.STRUCT_TYPE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.MODULE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.ERROR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.RANGE_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot); // Phase 16: seq protocol
-    _ = try store.assert(kernel_eids.STRING_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot); // Phase 16: strings
-    _ = try store.assert(kernel_eids.CELL_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot); // Phase 16 Tier E: cells
-    _ = try store.assert(kernel_eids.XF_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot); // Phase 16 Tier E: transducer factory
+    try delegate(store, kernel_eids.VTABLE_VT, ovt);
+    try delegate(store, kernel_eids.SELECTOR_VT, ovt);
+    try delegate(store, kernel_eids.CLOSURE_VT, ovt);
+    try delegate(store, kernel_eids.VECTOR_VT, ovt);
+    try delegate(store, kernel_eids.ASSOC_VT, ovt);
+    try delegate(store, kernel_eids.NIL_VT, ovt);
+    try delegate(store, kernel_eids.RRB_VT, ovt);
+    try delegate(store, kernel_eids.FLOAT_VT, ovt);
+    try delegate(store, kernel_eids.FFI_PTR_VT, ovt);
+    try delegate(store, kernel_eids.CALLBACK_VT, ovt);
+    try delegate(store, kernel_eids.STRUCT_TYPE_VT, ovt);
+    try delegate(store, kernel_eids.MODULE_VT, ovt);
+    try delegate(store, kernel_eids.ERROR_VT, ovt);
+    try delegate(store, kernel_eids.RANGE_VT, ovt); // Phase 16: seq protocol
+    try delegate(store, kernel_eids.STRING_VT, ovt); // Phase 16: strings
+    try delegate(store, kernel_eids.CELL_VT, ovt); // Phase 16 Tier E: cells
+    try delegate(store, kernel_eids.XF_VT, ovt); // Phase 16 Tier E: transducer factory
     // Phase 12.8 — a bytecode-method entity delegates to CLOSURE_VT (NOT ovt) so
     // `value`/`whileTrue:`/`on:do:` still resolve when a method-eid is sent like
     // a block; primary method dispatch never touches this vt.
-    _ = try store.assert(kernel_eids.BYTECODE_METHOD_VT, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.CLOSURE_VT), m_boot);
+    try delegate(store, kernel_eids.BYTECODE_METHOD_VT, ref_mod.mkEid(kernel_eids.CLOSURE_VT));
 
     // -- Stage 6: NIL's :vtable ------------------------------------------
     _ = try store.assert(kernel_eids.NIL, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.NIL_VT), m_boot);
@@ -373,13 +373,13 @@ pub fn boot(
     // all delegate directly to OBJECT_VT. TRUE_VT and FALSE_VT delegate to
     // BOOLEAN_VT (common-delegate pattern from Phase 10 decision MD4 area).
     const boolean_vt_ref = ref_mod.mkEid(kernel_eids.BOOLEAN_VT);
-    _ = try store.assert(kernel_eids.BLOCK_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.SMALLINT_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.BOOLEAN_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.TRUE_VT, kernel_eids.ATTR_DELEGATE, boolean_vt_ref, m_boot);
-    _ = try store.assert(kernel_eids.FALSE_VT, kernel_eids.ATTR_DELEGATE, boolean_vt_ref, m_boot);
-    _ = try store.assert(kernel_eids.GRAMMAR_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
-    _ = try store.assert(kernel_eids.PEG_VT, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+    try delegate(store, kernel_eids.BLOCK_VT, ovt);
+    try delegate(store, kernel_eids.SMALLINT_VT, ovt);
+    try delegate(store, kernel_eids.BOOLEAN_VT, ovt);
+    try delegate(store, kernel_eids.TRUE_VT, boolean_vt_ref);
+    try delegate(store, kernel_eids.FALSE_VT, boolean_vt_ref);
+    try delegate(store, kernel_eids.GRAMMAR_VT, ovt);
+    try delegate(store, kernel_eids.PEG_VT, ovt);
 
     // TRUE_EID and FALSE_EID singletons: distinct EIDs from their vts
     // (matches NIL / NIL_VT precedent). Asserted with :vtable so EID-tag
@@ -416,7 +416,7 @@ pub fn boot(
     for (phase_10_1_vts) |vt_eid| {
         _ = try mkFloorVt(allocator, table, vt_eid);
         _ = try store.assert(vt_eid, kernel_eids.ATTR_VTABLE, vtv, m_boot);
-        _ = try store.assert(vt_eid, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
+        try delegate(store, vt_eid, ovt);
     }
 
     // LANG_EID singleton — language-module factory receiver. Methods on
@@ -545,6 +545,16 @@ fn allocVtStruct(allocator: std.mem.Allocator) !object.ObjPtr {
     // USER vtables (runtime `delegated`) stay fact-based: a 0-slot struct, not
     // registered as a floor vtable. -1 = mkEid(VTABLE_VT) (shared metavtable).
     return object.allocObject(allocator, ref_mod.mkEid(kernel_eids.VTABLE_VT), 0);
+}
+
+/// Set up `eid`'s delegation (W7 B inversion). A materialized FLOOR vtable holds
+/// its parent in a struct slot — NO `:delegate` fact. A non-materialized kernel
+/// vtable (no struct, e.g. STRING_VT / RANGE_VT / BYTECODE_METHOD_VT) keeps the
+/// fact. `send.resolve` reads the store first then the floor struct, so either
+/// resolves identically; the floor's delegation now survives with no facts.
+fn delegate(store: *fact_store.FactStore, eid: u64, parent_ref: Ref) !void {
+    if (floor.setParentIfFloor(eid, parent_ref)) return;
+    _ = try store.assert(eid, kernel_eids.ATTR_DELEGATE, parent_ref, kernel_eids.M_BOOTSTRAP);
 }
 
 /// W7 B: allocate a FLOOR vtable — `floor.N_SLOTS` (parent + kernel-method dict),

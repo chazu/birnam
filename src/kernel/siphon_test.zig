@@ -68,27 +68,27 @@ test "W7.0 probe: boot write-buckets + read-before-mount set" {
         .{ boot_probe.rbmCount(kernel_eids.ATTR_NAME), boot_probe.rbmCount(kernel_eids.ATTR_VTABLE), boot_probe.rbmCount(kernel_eids.ATTR_DELEGATE), boot_probe.totalRbm(), boot_probe.distinctRbmAttrs() },
     );
 
-    // Measured 2026-06-26 (324 writes): reflection 215 (66%) = :name 171 +
-    // :vtable 44; :delegate 42; config 2. These guard the bucket shape.
+    // Reflection shadow still dominates (:name + :vtable). After the W7 B
+    // inversion, floor delegation is struct-resident, so only the ~7
+    // NON-materialized kernel vtables (STRING/RANGE/CELL/XF/CALLBACK/STRUCT_TYPE/
+    // BYTECODE_METHOD) still write a `:delegate` fact.
     try testing.expect(name >= 150); // :name reflection shadow dominates
     try testing.expect(vtable >= 30); // :vtable reflection
-    try testing.expect(delegate >= 30); // :delegate metaobject graph
+    try testing.expect(delegate >= 3 and delegate <= 15); // only non-materialized vtables
     try testing.expect(name + vtable > boot_probe.totalWrites() / 2); // reflection > half
 
     // THE load-bearing finding: boot PROPER is write-only. The reflection shadow
     // (A1/A2: :name + :vtable) is read ZERO times before mount, so deferring it
-    // carries no boot-ordering risk — guarded strictly. The reads that DO occur
-    // before the boundary are mount-step work, not boot-proper reads:
-    //   - :promote-threshold ×1  — Stage 11 (promotion.init reads its own seed)
-    //   - :delegate         ×N   — the W7 B mount-time parent sync
-    //     (`floor.syncParentsFromStore`) mirrors each floor vtable's :delegate
-    //     fact into its struct parent slot. Expected; it IS the projection step.
+    // carries no boot-ordering risk — guarded strictly. With the W7 B inversion
+    // complete (floor delegation set struct-resident at the assert sites, no mount
+    // sync), boot PROPER is write-only again: exactly ONE read-before-mount, the
+    // config seed :promote-threshold (Stage 11, promotion.init reads its own seed).
+    // :name / :vtable / :delegate are all read-before-mount = 0.
     try testing.expectEqual(@as(u32, 0), boot_probe.rbmCount(kernel_eids.ATTR_NAME));
     try testing.expectEqual(@as(u32, 0), boot_probe.rbmCount(kernel_eids.ATTR_VTABLE));
+    try testing.expectEqual(@as(u32, 0), boot_probe.rbmCount(kernel_eids.ATTR_DELEGATE));
     try testing.expectEqual(@as(u32, 1), boot_probe.rbmCount(kernel_eids.ATTR_PROMOTE_THRESHOLD));
-    const delegate_sync = boot_probe.rbmCount(kernel_eids.ATTR_DELEGATE);
-    try testing.expect(delegate_sync >= 30); // ~34 floor vtables carry a :delegate
-    try testing.expectEqual(delegate_sync + 1, @as(u32, @intCast(boot_probe.totalRbm())));
+    try testing.expectEqual(@as(u64, 1), boot_probe.totalRbm());
 }
 
 // -- W7 B: the floor dispatches without its facts (struct-primary) -----------
@@ -99,20 +99,15 @@ test "W7 B: floor dispatches with delegation + method facts retracted" {
     const s = try setup(&arena);
     const store = s.store;
 
-    // Kernel methods are struct-resident in production — OBJECT_VT's `init`
-    // carries NO fact (it lives only in the floor struct dict).
+    // W7 B is fully inverted: the floor's kernel methods AND delegation are
+    // struct-resident with NO facts. Confirm BOTH facts are absent at boot —
+    // OBJECT_VT's `init` binding and VTABLE_VT's delegate edge.
     try testing.expect(store.currentValue(kernel_eids.OBJECT_VT, kernel_eids.SEL_INIT) == null);
-
-    // Delegation is still dual-written; retract VTABLE_VT's delegate edge to force
-    // the struct-parent path. After this, BOTH the method and the delegation step
-    // for `[OBJECT_VT init]` have no fact — the floor struct is the only source.
-    _ = try store.retract(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP);
-    mcache.clearAll();
     try testing.expect(store.currentValue(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE) == null);
 
-    // `[OBJECT_VT init]` still resolves: dispatch on VTABLE_VT → (struct parent)
-    // OBJECT_VT → (struct dict) objectInitImpl, which returns the receiver. The
-    // fact store contributes nothing — the id closure dispatches on structs alone.
+    // `[OBJECT_VT init]` resolves on structs alone: dispatch on VTABLE_VT →
+    // (struct parent) OBJECT_VT → (struct dict) objectInitImpl, returning the
+    // receiver. The fact store contributes nothing.
     const result = send_mod.send0(ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.SEL_INIT);
     try testing.expectEqual(ref_mod.mkEid(kernel_eids.OBJECT_VT), result);
 }
@@ -166,11 +161,13 @@ test ":vtable facts let cold-path bind dispatch on EID receivers" {
 test "vtable_vt delegates to object_vt; object_vt has no delegate (Date: absence)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const s = try setup(&arena);
+    _ = try setup(&arena); // boot to populate the floor registry + dispatch globals
 
+    // W7 B: floor delegation is struct-resident (no `:delegate` fact); resolve
+    // through the cold-path seam. VTABLE_VT → OBJECT_VT; OBJECT_VT is top of chain.
     const ovt = ref_mod.mkEid(kernel_eids.OBJECT_VT);
-    try testing.expectEqual(ovt, s.store.currentValue(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE).?);
-    try testing.expectEqual(@as(?Ref, null), s.store.currentValue(kernel_eids.OBJECT_VT, kernel_eids.ATTR_DELEGATE));
+    try testing.expectEqual(ovt, send_mod.resolveColdPath(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE).?);
+    try testing.expectEqual(@as(?Ref, null), send_mod.resolveColdPath(kernel_eids.OBJECT_VT, kernel_eids.ATTR_DELEGATE));
 }
 
 // -- send / bind: real dispatch ---------------------------------------------

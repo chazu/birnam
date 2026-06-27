@@ -18,7 +18,6 @@ const std = @import("std");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
-const floor = @import("floor.zig");
 
 pub fn mountIdentityLayer(
     store: *fact_store.FactStore,
@@ -31,8 +30,6 @@ pub fn mountIdentityLayer(
     // of the boot, proven read-before-mount = 0 by the W7.0 probe).
     try interner.publishNames(store);
 
-    // B (dual-write) — mirror the floor vtables' `:delegate` facts into their
-    // struct parent slots, so the floor's delegation chain survives fact
-    // retraction (kernel methods are mirrored at install time). docs/30 §6.
-    floor.syncParentsFromStore(store);
+    // (The floor's delegation is now set struct-resident at the delegation sites
+    // in `siphon.boot` — no mount-time `:delegate` sync needed. W7 B inversion.)
 }

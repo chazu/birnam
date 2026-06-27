@@ -781,6 +781,7 @@ pub fn build(b: *std.Build) void {
     w7_step.dependOn(&b.addRunArtifact(dispatch_tests).step);
     w7_step.dependOn(&b.addRunArtifact(image_tests).step);
     w7_step.dependOn(&b.addRunArtifact(fs_tests).step);
+    w7_step.dependOn(&b.addRunArtifact(boxed_tests).step);
     // lang-module loads dylibs and deadlocks under the build runner; run separately.
     const w7_lmod_step = b.step("test-w7-lmod", "W7 gate: lang-module integration (dylibs)");
     w7_lmod_step.dependOn(&b.addRunArtifact(lmod_tests).step);

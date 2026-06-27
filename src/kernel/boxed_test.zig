@@ -9,6 +9,7 @@ const object_table = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const arenas = @import("arenas.zig");
+const send_mod = @import("send.zig");
 
 // -- Phase 15.1b: boxes arena routing ----------------------------------------
 
@@ -122,9 +123,11 @@ test "bootstrap allocates FLOAT_VT and FFI_PTR_VT with proper delegation" {
     try testing.expect(ref_mod.isPointer(k.float_vt_ref));
     try testing.expect(ref_mod.isPointer(k.ffi_ptr_vt_ref));
 
+    // W7 B: FLOAT_VT / FFI_PTR_VT are floor vtables — delegation is struct-resident
+    // (no `:delegate` fact); resolve through the cold-path seam.
     const ovt = ref_mod.mkEid(kernel_eids.OBJECT_VT);
-    try testing.expectEqual(ovt, store.currentValue(kernel_eids.FLOAT_VT, kernel_eids.ATTR_DELEGATE).?);
-    try testing.expectEqual(ovt, store.currentValue(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_DELEGATE).?);
+    try testing.expectEqual(ovt, send_mod.resolveColdPath(kernel_eids.FLOAT_VT, kernel_eids.ATTR_DELEGATE).?);
+    try testing.expectEqual(ovt, send_mod.resolveColdPath(kernel_eids.FFI_PTR_VT, kernel_eids.ATTR_DELEGATE).?);
 
     const vtv = ref_mod.mkEid(kernel_eids.VTABLE_VT);
     try testing.expectEqual(vtv, store.currentValue(kernel_eids.FLOAT_VT, kernel_eids.ATTR_VTABLE).?);

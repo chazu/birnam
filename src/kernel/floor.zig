@@ -67,16 +67,17 @@ fn setParent(obj: ObjPtr, parent: Ref) void {
     object.setSlot(obj, SLOT_PARENT, parent);
 }
 
-/// Mirror each floor vtable's `:delegate` fact into its struct parent slot.
-/// Called at the identity-layer mount, after all delegation facts are asserted
-/// (dual-write: the struct becomes the fallback for the fact). Absence of a
-/// `:delegate` fact leaves the parent NIL — top of the chain (Date discipline).
-pub fn syncParentsFromStore(store: anytype) void {
-    var eid: u64 = 0;
-    while (eid < kernel_eids.USER_EID_START) : (eid += 1) {
-        const obj = g_floor[eid] orelse continue;
-        if (store.currentValue(eid, kernel_eids.ATTR_DELEGATE)) |p| setParent(obj, p);
+/// Set `eid`'s struct parent IF it is a materialized floor vtable; returns
+/// whether it was. The siphon calls this at each delegation site: a floor vtable
+/// holds its parent in a struct slot with NO `:delegate` fact (W7 B inversion);
+/// a non-materialized kernel vtable (no struct — e.g. STRING_VT/RANGE_VT) returns
+/// false, and the caller keeps the fact. Absence of any parent = top of chain.
+pub fn setParentIfFloor(eid: u64, parent: Ref) bool {
+    if (objFor(eid)) |obj| {
+        setParent(obj, parent);
+        return true;
     }
+    return false;
 }
 
 fn putMethod(obj: ObjPtr, sel_eid: u64, method: Ref) void {
