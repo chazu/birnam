@@ -1,4 +1,14 @@
-//! Kernel bootstrap: brings up the id object model atop the fact store.
+//! The siphon: birnam's boot orchestrator — `boot()` brings the kernel up.
+//!
+//! The destination (docs/30 §9) is for this to be the *bare* loader: a siphon
+//! that mounts an ordered tower (id → fact store → gc → peg → compiler), with the
+//! id layer loaded as the first module rather than wired inline. Today `boot()`
+//! still brings the kernel up monolithically (the stages below) — the rename from
+//! `bootstrap.zig` is step 1 of that decomposition. W7 has already begun it: the
+//! floor is struct-primary (`floor.zig`) and the fact layer mounts at an explicit
+//! seam (`mount.mountIdentityLayer`, called at the tail of `boot`). Remaining
+//! decomposition: extract the id-layer bring-up into a loadable module so the
+//! siphon shrinks to the loader it is meant to be.
 //!
 //! Stages (VISION.md §Bootstrap, Phase 4 design):
 //!   1. Allocate kernel vtable structs (zero user slots each).

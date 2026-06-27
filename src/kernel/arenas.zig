@@ -6,7 +6,7 @@
 //!
 //! **Lifecycle boundary (deliberate):** the registry is initialized by the
 //! *live* entry points (`shell.main` / the AOT driver), NOT by
-//! `bootstrap.boot`. Many unit tests call `boot` with `std.testing.allocator`
+//! `siphon.boot`. Many unit tests call `boot` with `std.testing.allocator`
 //! and share one process; if `boot` populated a global arena, each test's
 //! allocations would entangle the next test's leak check. Box constructors
 //! therefore keep their `allocator` parameter (tests pass `testing.allocator`

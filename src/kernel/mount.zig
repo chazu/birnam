@@ -7,7 +7,7 @@
 //! dispatch. W7.0 measured the boot is write-only (one read-before-mount), so the
 //! work here is publication, not ordering-sensitive wiring.
 //!
-//! Today it is called at the tail of `bootstrap.boot`, so external behaviour is
+//! Today it is called at the tail of `siphon.boot`, so external behaviour is
 //! unchanged — the win is that it is now a *named boundary* the tower can move
 //! later. Steps land here incrementally:
 //!   - A1 (done): flush the deferred `:name` reflection cells.

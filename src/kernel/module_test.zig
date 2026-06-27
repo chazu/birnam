@@ -8,7 +8,7 @@ const interner_mod = @import("interner.zig");
 const id_api_mod = @import("id_api.zig");
 const module = @import("module.zig");
 const kernel_eids = @import("kernel_eids.zig");
-const bootstrap = @import("bootstrap.zig");
+const siphon = @import("siphon.zig");
 const send_mod = @import("send.zig");
 const strings = @import("strings.zig");
 
@@ -36,7 +36,7 @@ fn fullSetup(arena: *std.heap.ArenaAllocator) !struct {
     table.* = object_table.ObjectTable.init(allocator);
     const interner = try allocator.create(interner_mod.Interner);
     interner.* = interner_mod.Interner.init(allocator);
-    _ = try bootstrap.boot(allocator, store, table, interner);
+    _ = try siphon.boot(allocator, store, table, interner);
     id_api_mod.setInterner(interner);
 
     const api = id_api_mod.populate();

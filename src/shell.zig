@@ -3,7 +3,7 @@
 //! Boots the kernel, builds the IdApi, manages loaded modules via the
 //! Phase 5 module system. Each `birnam` invocation:
 //!   1. Allocates FactStore + ObjectTable + Interner.
-//!   2. Runs bootstrap.boot to wire kernel vtables, selectors, mcache,
+//!   2. Runs siphon.boot to wire kernel vtables, selectors, mcache,
 //!      send/bind, and the rule registry.
 //!   3. Populates IdApi from the kernel side.
 //!   4. Loads each module path passed on the command line, in order, via
@@ -22,7 +22,7 @@ const fact_store = @import("kernel/fact_store.zig");
 const object_table = @import("kernel/object_table.zig");
 const interner_mod = @import("kernel/interner.zig");
 const arenas = @import("kernel/arenas.zig");
-const bootstrap = @import("kernel/bootstrap.zig");
+const siphon = @import("kernel/siphon.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const module = @import("kernel/module.zig");
 const dispatch_mod = @import("kernel/dispatch.zig");
@@ -1006,7 +1006,7 @@ pub fn main() !void {
     interner.* = interner_mod.Interner.init(allocator);
     interner.setStringAllocator(arenas.strings());
 
-    _ = try bootstrap.boot(allocator, store, table, interner);
+    _ = try siphon.boot(allocator, store, table, interner);
     id_api_mod.setInterner(interner);
 
     const api = id_api_mod.populate();

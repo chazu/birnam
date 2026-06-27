@@ -8,7 +8,7 @@ const send_mod = @import("send.zig");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
-const bootstrap = @import("bootstrap.zig");
+const siphon = @import("siphon.zig");
 const kernel_eids = @import("kernel_eids.zig");
 
 const Ref = ref_mod.Ref;
@@ -31,7 +31,7 @@ fn setup(arena: *std.heap.ArenaAllocator) !Fix {
     table.* = object_table.ObjectTable.init(a);
     const interner = try a.create(interner_mod.Interner);
     interner.* = interner_mod.Interner.init(a);
-    _ = try bootstrap.boot(a, store, table, interner);
+    _ = try siphon.boot(a, store, table, interner);
     return .{ .store = store, .table = table, .interner = interner, .allocator = a };
 }
 

@@ -415,7 +415,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const image_tests = b.addTest(.{ .root_module = image_test_mod });
-    image_tests.linkLibrary(libffi_lib); // bootstrap → ffi → dyncall
+    image_tests.linkLibrary(libffi_lib); // siphon → ffi → dyncall
     image_tests.linkLibC();
     const run_image_tests = b.addRunArtifact(image_tests);
     test_step.dependOn(&run_image_tests.step);
@@ -517,7 +517,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_fs_tests.step);
 
     const boot_test_mod = b.createModule(.{
-        .root_source_file = b.path("src/kernel/bootstrap_test.zig"),
+        .root_source_file = b.path("src/kernel/siphon_test.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -526,8 +526,8 @@ pub fn build(b: *std.Build) void {
     boot_tests.linkLibC();
     const run_boot_tests = b.addRunArtifact(boot_tests);
     test_step.dependOn(&run_boot_tests.step);
-    // W7.0: run the bootstrap suite (incl. the boot-path probe) in isolation.
-    const boot_probe_step = b.step("test-bootprobe", "W7.0: bootstrap tests incl. boot-path probe");
+    // W7.0: run the siphon suite (incl. the boot-path probe) in isolation.
+    const boot_probe_step = b.step("test-bootprobe", "W7.0: siphon tests incl. boot-path probe");
     boot_probe_step.dependOn(&b.addRunArtifact(boot_tests).step);
 
     const str_test_mod = b.createModule(.{

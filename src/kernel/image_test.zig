@@ -11,7 +11,7 @@ const kernel_eids = @import("kernel_eids.zig");
 const compiler = @import("compiler.zig");
 const object_table = @import("object_table.zig");
 const object = @import("object.zig");
-const bootstrap = @import("bootstrap.zig");
+const siphon = @import("siphon.zig");
 const interner_mod = @import("interner.zig");
 const send_mod = @import("send.zig");
 const vm = @import("vm.zig");
@@ -336,7 +336,7 @@ test "end-to-end: user method survives save -> reboot -> load -> dispatch" {
     table_a.* = object_table.ObjectTable.init(al);
     const intern_a = try al.create(interner_mod.Interner);
     intern_a.* = interner_mod.Interner.init(al);
-    _ = try bootstrap.boot(al, store_a, table_a, intern_a);
+    _ = try siphon.boot(al, store_a, table_a, intern_a);
 
     // Method body AST = literal 42 (compiles to PUSH 42; RETURN).
     _ = try store_a.assert(AST, kernel_eids.ATTR_VTABLE, ref.mkEid(kernel_eids.AST_LITERAL_VT), M_USER);
@@ -360,7 +360,7 @@ test "end-to-end: user method survives save -> reboot -> load -> dispatch" {
     table_b.* = object_table.ObjectTable.init(al);
     const intern_b = try al.create(interner_mod.Interner);
     intern_b.* = interner_mod.Interner.init(al);
-    _ = try bootstrap.boot(al, store_b, table_b, intern_b); // initDispatch: globals->B, mcache cleared, Vm reset
+    _ = try siphon.boot(al, store_b, table_b, intern_b); // initDispatch: globals->B, mcache cleared, Vm reset
 
     const loaded = try image.load(store_b, res.bytes, intern_b);
     table_b.next_eid.store(loaded.next_eid, .monotonic); // restore eid allocator

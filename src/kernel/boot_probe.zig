@@ -4,7 +4,7 @@
 //! *written then read back before module load* — the only ordering-sensitive
 //! writes, i.e. docs/30 §8 bucket 2 (the metaobject graph). Everything else is
 //! deferrable. Wire via `FactStore.debug_on_write` / `debug_on_read`; call
-//! `markMount()` the instant `bootstrap.boot` returns (that is the module-load
+//! `markMount()` the instant `siphon.boot` returns (that is the module-load
 //! boundary). Self-contained (page_allocator, std-only) so it couples nothing —
 //! `fact_store.zig` only gains two nullable fn-ptr fields, no import of this.
 //!
@@ -27,7 +27,7 @@ var write_counts: std.AutoHashMap(u64, u32) = undefined;
 var written: std.AutoHashMap(EA, void) = undefined;
 var rbm_counts: std.AutoHashMap(u64, u32) = undefined;
 
-/// Arm the probe and clear prior state. Call before `bootstrap.boot`.
+/// Arm the probe and clear prior state. Call before `siphon.boot`.
 pub fn reset() void {
     if (inited) {
         write_counts.deinit();

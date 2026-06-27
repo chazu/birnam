@@ -8,7 +8,7 @@ const mcache = @import("mcache.zig");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
-const bootstrap = @import("bootstrap.zig");
+const siphon = @import("siphon.zig");
 const interner_mod = @import("interner.zig");
 const boot_probe = @import("boot_probe.zig");
 
@@ -18,7 +18,7 @@ fn setup(arena: *std.heap.ArenaAllocator) !struct {
     store: *fact_store.FactStore,
     table: *object_table.ObjectTable,
     interner: *interner_mod.Interner,
-    kernel: bootstrap.Kernel,
+    kernel: siphon.Kernel,
 } {
     const allocator = arena.allocator();
     const store = try allocator.create(fact_store.FactStore);
@@ -27,7 +27,7 @@ fn setup(arena: *std.heap.ArenaAllocator) !struct {
     table.* = object_table.ObjectTable.init(allocator);
     const interner = try allocator.create(interner_mod.Interner);
     interner.* = interner_mod.Interner.init(allocator);
-    const k = try bootstrap.boot(allocator, store, table, interner);
+    const k = try siphon.boot(allocator, store, table, interner);
     return .{ .store = store, .table = table, .interner = interner, .kernel = k };
 }
 
@@ -49,7 +49,7 @@ test "W7.0 probe: boot write-buckets + read-before-mount set" {
     store.debug_on_write = &boot_probe.onWrite;
     store.debug_on_read = &boot_probe.onRead;
 
-    _ = try bootstrap.boot(allocator, store, table, interner);
+    _ = try siphon.boot(allocator, store, table, interner);
     boot_probe.markMount(); // boot returned == module-load boundary
     boot_probe.stop();
 

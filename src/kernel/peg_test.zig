@@ -11,7 +11,7 @@ const ref_mod = @import("ref.zig");
 const fact_store_mod = @import("fact_store.zig");
 const object_table_mod = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
-const bootstrap = @import("bootstrap.zig");
+const siphon = @import("siphon.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const peg = @import("peg.zig");
 
@@ -26,7 +26,7 @@ fn bootAndEngine(
     store.* = fact_store_mod.FactStore.init(a);
     table.* = object_table_mod.ObjectTable.init(a);
     interner.* = interner_mod.Interner.init(a);
-    _ = try bootstrap.boot(a, store, table, interner);
+    _ = try siphon.boot(a, store, table, interner);
     return try peg.Engine.init(a, store, table, interner, M_TEST);
 }
 

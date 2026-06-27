@@ -38,7 +38,7 @@ const ref_mod = @import("ref.zig");
 const fact_store_mod = @import("fact_store.zig");
 const object_table_mod = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
-const bootstrap = @import("bootstrap.zig");
+const siphon = @import("siphon.zig");
 const kernel_eids = @import("kernel_eids.zig");
 
 const Ref = ref_mod.Ref;
@@ -147,7 +147,7 @@ pub fn main() !void {
     try store.enableIndexArena();
     var table = object_table_mod.ObjectTable.init(a);
     var interner = interner_mod.Interner.init(a);
-    _ = try bootstrap.boot(a, &store, &table, &interner);
+    _ = try siphon.boot(a, &store, &table, &interner);
 
     out("write_bench mode={s} count={d} ceiling={d} MiB\n", .{ mode, count, CEILING / (1024 * 1024) });
 

@@ -6,7 +6,7 @@ const ref_mod = @import("ref.zig");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
-const bootstrap = @import("bootstrap.zig");
+const siphon = @import("siphon.zig");
 const loader = @import("loader.zig");
 const macho_mod = @import("macho.zig");
 const elf_mod = @import("elf.zig");
@@ -24,7 +24,7 @@ test "bootstrap registers both Mach-O and ELF readers as facts" {
     var store = fact_store.FactStore.init(a);
     var table = object_table.ObjectTable.init(a);
     var interner = interner_mod.Interner.init(a);
-    _ = try bootstrap.boot(a, &store, &table, &interner);
+    _ = try siphon.boot(a, &store, &table, &interner);
 
     var macho_it = store.entitiesMatching(
         kernel_eids.ATTR_READER_MAGIC,
@@ -47,7 +47,7 @@ test "loader.openSymbols dispatches to Mach-O reader by magic" {
     var store = fact_store.FactStore.init(a);
     var table = object_table.ObjectTable.init(a);
     var interner = interner_mod.Interner.init(a);
-    _ = try bootstrap.boot(a, &store, &table, &interner);
+    _ = try siphon.boot(a, &store, &table, &interner);
 
     const bytes = macho_mod.readFile(a, HELLO_DYLIB) catch return error.SkipZigTest;
     var it = try loader.openSymbols(a, &store, bytes);
@@ -74,7 +74,7 @@ test "loader.openSymbols rejects bytes with unknown magic" {
     var store = fact_store.FactStore.init(a);
     var table = object_table.ObjectTable.init(a);
     var interner = interner_mod.Interner.init(a);
-    _ = try bootstrap.boot(a, &store, &table, &interner);
+    _ = try siphon.boot(a, &store, &table, &interner);
 
     const garbage = [_]u8{ 0xDE, 0xAD, 0xBE, 0xEF, 0, 0, 0, 0 };
     const r = loader.openSymbols(a, &store, &garbage);

@@ -3,7 +3,7 @@ const testing = std.testing;
 
 const ref_mod = @import("ref.zig");
 const boxed = @import("boxed.zig");
-const bootstrap = @import("bootstrap.zig");
+const siphon = @import("siphon.zig");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
@@ -117,7 +117,7 @@ test "bootstrap allocates FLOAT_VT and FFI_PTR_VT with proper delegation" {
     var store = fact_store.FactStore.init(a);
     var table = object_table.ObjectTable.init(a);
     var interner = interner_mod.Interner.init(a);
-    const k = try bootstrap.boot(a, &store, &table, &interner);
+    const k = try siphon.boot(a, &store, &table, &interner);
 
     try testing.expect(ref_mod.isPointer(k.float_vt_ref));
     try testing.expect(ref_mod.isPointer(k.ffi_ptr_vt_ref));

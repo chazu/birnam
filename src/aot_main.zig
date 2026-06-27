@@ -17,7 +17,7 @@ const fact_store = @import("kernel/fact_store.zig");
 const object_table = @import("kernel/object_table.zig");
 const interner_mod = @import("kernel/interner.zig");
 const arenas = @import("kernel/arenas.zig");
-const bootstrap = @import("kernel/bootstrap.zig");
+const siphon = @import("kernel/siphon.zig");
 const id_api_mod = @import("kernel/id_api.zig");
 const image = @import("kernel/image.zig");
 const prune = @import("kernel/prune.zig");
@@ -289,7 +289,7 @@ pub fn main() !void {
     interner.* = interner_mod.Interner.init(allocator);
     interner.setStringAllocator(arenas.strings());
 
-    _ = try bootstrap.boot(allocator, store, table, interner);
+    _ = try siphon.boot(allocator, store, table, interner);
     id_api_mod.setInterner(interner);
     const api = id_api_mod.populate();
 

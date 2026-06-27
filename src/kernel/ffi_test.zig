@@ -207,7 +207,7 @@ const object = @import("object.zig");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
-const bootstrap = @import("bootstrap.zig");
+const siphon = @import("siphon.zig");
 const kernel_eids = @import("kernel_eids.zig");
 
 fn makeUserVtAndReceiver(
@@ -235,7 +235,7 @@ test "wrap + send: sqrt(16) via send1 dispatch" {
     var store = fact_store.FactStore.init(a);
     var table = object_table.ObjectTable.init(a);
     var interner = interner_mod.Interner.init(a);
-    _ = try bootstrap.boot(a, &store, &table, &interner);
+    _ = try siphon.boot(a, &store, &table, &interner);
 
     var lib = dlopenSelf() orelse return error.SkipZigTest;
     defer lib.close();
@@ -265,7 +265,7 @@ test "wrap + send: strlen via send1 dispatch" {
     var store = fact_store.FactStore.init(a);
     var table = object_table.ObjectTable.init(a);
     var interner = interner_mod.Interner.init(a);
-    _ = try bootstrap.boot(a, &store, &table, &interner);
+    _ = try siphon.boot(a, &store, &table, &interner);
 
     var lib = dlopenSelf() orelse return error.SkipZigTest;
     defer lib.close();
@@ -295,7 +295,7 @@ test "wrap: arity 4 now accepted (old 0..3 cap removed)" {
     var store = fact_store.FactStore.init(a);
     var table = object_table.ObjectTable.init(a);
     var interner = interner_mod.Interner.init(a);
-    _ = try bootstrap.boot(a, &store, &table, &interner);
+    _ = try siphon.boot(a, &store, &table, &interner);
 
     // 4 args: rejected pre-change, now resolves to a dispatch closure.
     const closure_eid = try ffi.registerWrap(a, &store, &table, 0x1000, "iiii)i");
@@ -310,7 +310,7 @@ test "wrap: arity > 255 still rejected (SEND_N u8 ceiling)" {
     var store = fact_store.FactStore.init(a);
     var table = object_table.ObjectTable.init(a);
     var interner = interner_mod.Interner.init(a);
-    _ = try bootstrap.boot(a, &store, &table, &interner);
+    _ = try siphon.boot(a, &store, &table, &interner);
 
     // 256 'i' args + ")i". Exceeds SEND_N's u8 arg-count operand.
     var buf: [259]u8 = undefined;
