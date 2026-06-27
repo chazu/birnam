@@ -38,6 +38,12 @@ order.
   model are one operation (`get`/`assert` over a named, historied cell store) read
   two ways. Why the five layers are derived caches, not foundations; how
   D5/D5.1/Q1/Q2/Q3 are facets of it; native code as a cache of bytecode-cells.
+- **The destination — extensional identity over an intensional floor** — `30-the-destination.md`
+  The long-horizon target for the bottom layers. The eid is a *superimposition*,
+  not the floor (the Piumarta id closure is); identity becomes overridable policy
+  (`identityOf:` — candidate-key first, content-addressed later); per-layer
+  primacy (struct-primary floor, fact-primary above) refines `10a` D5.2; the
+  pointer-identity-first bootstrap audit (~80% mechanical, ~20% the dispatch seam).
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).

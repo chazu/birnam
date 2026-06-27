@@ -3381,6 +3381,43 @@ runtime-asserted one — a deliberate safety tradeoff at the very floor.
 
 ---
 
+## W7 — The Superimposed Floor · W8 — Identity as Policy (2026-06-26)
+
+The destination for birnam's bottom layers: `docs/30-the-destination.md` (vision)
++ `docs/31-destination-work-breakdown.md` (ordered work). Sits downstream of W6
+(`docs/20a`) — W7's Track B *is* the Q2 dispatch-seam resolution, now with the
+primacy call made.
+
+**Thesis (refines `docs/10a` D5.2 — primacy is per-LAYER):** the frozen floor is
+the Piumarta id closure (object/vtable + pointer identity + send/bind, with
+delegation + method-dict in **struct slots**), self-sufficient to dispatch with
+no facts in existence. The eid + EAVT are a **superimposition** that mounts over
+the floor and **projects** its struct graph. Above the floor, everything is
+fact-primary (Date). The eid is a *value-handle* (legal as a relvar name, illegal
+as a navigational pointer); identity becomes overridable policy.
+
+**Decisions:** **W7 leads** (foundation first). **B0 LOCKED** — floor metaobject
+graph is dumb+fast (`parent: Ref` + inline open-addressed `sel→method` array, no
+HAMT at L0). **D0 DEFERRED** (the `identityOf:` protocol surface) — gates W8 D2+,
+not W7.
+
+- **W7 — pointer-identity-first bootstrap.** Audit (`docs/30` §8): ~250 boot
+  fact-writes = ~200 reflection shadow (deferrable, mechanical) + ~46 metaobject
+  graph (the cut) + ~4 fact-layer config (moves with the layer). Tracks:
+  **A** defer the reflection shadow (`:name`/`:vtable` → lazy/projected);
+  **C** the explicit `mountIdentityLayer` seam; **B** struct-primary floor (the
+  hot-path cut — `kernel-bench` gated). Acceptance: dispatch works on structs
+  with the store unmounted, then mount projects the graph; suites green, no perf
+  regression.
+- **W8 — `identityOf:` as policy.** **D1** unfreeze identity (counter default,
+  rides with W7); **D2/D3** candidate-key identity over AVET (eid = immutable
+  worldline; key = public identity + uniqueness constraint; lean immutable-keys-
+  first) — blocked on D0; **D4** *(research)* object-table slot as cache-of-
+  resolution. Content-addressed identity is a later policy, never foundational
+  (no De Bruijn in the floor).
+
+---
+
 ## Deferred-Items Backlog — dependency-ordered sequencing (2026-06-15)
 
 A sweep of every deferred item across Phases 11–19 + ADR-perf-1, ordered so that
