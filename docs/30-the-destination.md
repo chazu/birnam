@@ -264,28 +264,30 @@ source before the fact layer exists.
 
 ## 9. The siphon and the layer-order
 
-The **siphon** is birnam's loader — the shell, named for what it does: it siphons
-layers into a running image. Operationally it is the small in-binary Zig core that
-everything else mounts onto:
+The **siphon** is birnam's bare entry point — the loader, and *only* the loader.
+It is the smallest possible in-binary Zig core:
 
+- `main()`,
 - the **module loader** (dlopen for binary modules; source-load once the compiler
   is up),
-- the **IdApi** C-ABI + the `kernel_eids` mirror (how modules reach the kernel),
-- and the hand-coded **id floor** itself.
+- the **IdApi** struct + `kernel_eids` mirror it hands each module — initially a
+  near-empty skeleton that each layer fills in its own slice of as it mounts.
 
-Everything above the id floor — the fact store, gc, peg, the compiler — is a
-**layer-module the siphon loads in order through one uniform interface**
-(register-objects-via-sends, §7). This is the operational form of §3/§6: it
-decomposes today's monolithic `bootstrap.zig` (`→ siphon.zig`) into an ordered
-sequence of mounts. The W7.0 measurement (§8) is what licenses the decomposition:
-the boot is write-only with a single read-before-mount, so the layers carry almost
-no cross-ordering entanglement.
+Crucially, the siphon **contains none of the layers** — not id, not the store, not
+the structures. **id is the *first module it loads*, not part of it.** Everything
+in the tower below — id, fact store, gc, peg, compiler — is a layer the siphon
+mounts in order through one uniform interface (register-objects-via-sends, §7).
+This is the operational form of §3/§6: it decomposes today's monolithic
+`bootstrap.zig` (`→ siphon.zig`) into an ordered sequence of mounts. The W7.0
+measurement (§8) is what licenses the decomposition: the boot is write-only with a
+single read-before-mount, so the layers carry almost no cross-ordering
+entanglement.
 
 ### The order (and why each edge holds)
 
 ```
-siphon core (in-binary Zig): module loader + IdApi + kernel_eids + dlopen
-   │   mounts, in order:
+siphon (bare entry point): main + module loader + IdApi skeleton + kernel_eids
+   │   loads, in order (it contains none of these):
    ▼
 1. id          object/vtable/send/bind — struct-primary floor (§6)         deps: allocator only
 2. fact store  eid alloc + interner/strings + EAVT/AVET; projects the      deps: id, HAMT/RRB
@@ -310,13 +312,46 @@ The decisive edges:
 - **peg's engine is store-free, but birnam stores grammars as facts**, so full peg
   needs the store; only its *first* grammar is hand-coded structs.
 
+### Two kinds of "layer": frozen primitives vs loadable modules
+
+The tower has two distinct kinds of rung, and conflating them is a category error
+(it is why "split HAMT/RRB into a module" sounds plausible but mostly isn't a
+thing):
+
+| | **Frozen primitives** | **Loadable layer-modules** |
+|---|---|---|
+| examples | HAMT, RRB, the id closure, raw-assert | fact-store policy, gc, peg, compiler, user modules |
+| nature | compile-time generic code / hand-coded Zig | registered via sends; swappable |
+| role | the floor — never runtime-pluggable | the superstructure the siphon mounts |
+| travel | linked into whoever uses them | loaded as Zig / dylib / source |
+
+**HAMT/RRB are frozen primitives, and this is correct.** They are already split as
+*source* — pure, generic, stateless container libraries at L0 with clean downward
+deps (the W6 audit confirms `fact_store` imports them and they import nothing up).
+But they are **compile-time generic types** the fact store *monomorphizes and
+inlines* (`Hamt(u64, Leaf)`), not an interface it calls. Making them a
+runtime-loadable/swappable module would replace that with function-pointer dispatch
+on **the hottest inner loop in the system** — every fact read/write walks a HAMT —
+to buy something nobody does (hot-swapping a HAMT implementation). So they travel
+*compiled-in* with the fact-store module (their main user) and are reachable by
+other modules at runtime through the IdApi (`rrb_len`/`rrb_nth` already are). The
+"loadable" face of persistent structures already exists, one level up: `RRB_VT`
+vectors, `ASSOC_VT` maps, and the Phase 16/17 collections layer — birnam objects
+built *over* the frozen primitive. Frozen primitive below, object layer above; only
+"runtime-pluggable structural floor" is the thing that is neither possible nor
+wanted.
+
+The siphon loads the *second* kind and **contains neither** — it is thinner than
+even the frozen primitives, which are linked into the modules that use them.
+
 ### The capability bootstrap
 
 The siphon's own power grows with the tower. Until peg + compiler are mounted it
 can load only **hand-coded / binary** modules (id, store, gc, peg, compiler as Zig
 or dylibs registering via the IdApi). *After* the compiler mounts, it can load
-**birnam-source** modules. The irreducible siphon — loader + IdApi + id floor — is
-the one thing that is never itself loaded.
+**birnam-source** modules. The siphon — `main` + loader + IdApi skeleton — is the
+one thing that is never itself loaded; everything else, id included, is a module it
+brings in.
 
 ### The seed: `seed.birnam` is canonical
 
