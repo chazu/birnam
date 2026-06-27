@@ -24,6 +24,7 @@ const kernel_eids = @import("kernel_eids.zig");
 const promotion = @import("promotion.zig");
 const strings_mod = @import("strings.zig");
 const dispatch_mod = @import("dispatch.zig");
+const floor = @import("floor.zig");
 
 pub const Ref = ref_mod.Ref;
 pub const Closure = closure_mod.Closure;
@@ -118,7 +119,12 @@ pub fn kernelAllocator() ?std.mem.Allocator {
 /// deliberately. (Method-*body* reads — bytecode/const-pool/captures — are a
 /// separate concern, `dispatch.zig` cluster 2, memoized by the `Closure`.)
 inline fn resolve(entity: u64, attr: u64) ?Ref {
-    return g_store.?.currentValue(entity, attr);
+    // Fact layer FIRST — a fact is an override/addition over the frozen floor.
+    if (g_store.?.currentValue(entity, attr)) |v| return v;
+    // Floor fallback (W7 B, docs/30 §6) — the struct-resident metaobject graph:
+    // the floor's kernel delegation + methods survive their facts being
+    // retracted, so the id closure dispatches without the fact store mounted.
+    return floor.resolve(entity, attr);
 }
 
 /// Resolve the closure for `s.receiver` + `s.selector`. Returns null on

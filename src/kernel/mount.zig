@@ -18,15 +18,21 @@ const std = @import("std");
 const fact_store = @import("fact_store.zig");
 const object_table = @import("object_table.zig");
 const interner_mod = @import("interner.zig");
+const floor = @import("floor.zig");
 
 pub fn mountIdentityLayer(
     store: *fact_store.FactStore,
     table: *object_table.ObjectTable,
     interner: *interner_mod.Interner,
 ) !void {
-    _ = table; // C2 (retrofit) / B3 (struct-graph projection) attach here later.
+    _ = table; // C2 (eid retrofit) attaches here later.
 
     // A1 — publish the deferred `:name` reflection shadow (the 171-write majority
     // of the boot, proven read-before-mount = 0 by the W7.0 probe).
     try interner.publishNames(store);
+
+    // B (dual-write) — mirror the floor vtables' `:delegate` facts into their
+    // struct parent slots, so the floor's delegation chain survives fact
+    // retraction (kernel methods are mirrored at install time). docs/30 §6.
+    floor.syncParentsFromStore(store);
 }

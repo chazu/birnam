@@ -34,6 +34,7 @@ const elf_mod = @import("elf.zig");
 const id_api_mod = @import("id_api.zig");
 const image_mod = @import("image.zig");
 const mount_mod = @import("mount.zig");
+const floor = @import("floor.zig");
 
 const Ref = ref_mod.Ref;
 const Closure = closure_mod.Closure;
@@ -96,42 +97,21 @@ pub fn boot(
     // Wire fact-store EID allocator for lazy reification (Phase 7.3).
     store.setEidAllocTable(table);
 
-    // -- Stage 1+2+3: allocate kernel vtables, set -1, register ---------
-    const vt_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.VTABLE_VT, object.toRef(vt_vt_ptr));
-
-    const obj_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.OBJECT_VT, object.toRef(obj_vt_ptr));
-
-    const sel_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.SELECTOR_VT, object.toRef(sel_vt_ptr));
-
-    const clo_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.CLOSURE_VT, object.toRef(clo_vt_ptr));
-
-    const vec_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.VECTOR_VT, object.toRef(vec_vt_ptr));
-
-    const ass_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.ASSOC_VT, object.toRef(ass_vt_ptr));
-
-    const nil_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.NIL_VT, object.toRef(nil_vt_ptr));
-
-    const rrb_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.RRB_VT, object.toRef(rrb_vt_ptr));
-
-    const float_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.FLOAT_VT, object.toRef(float_vt_ptr));
-
-    const ffi_ptr_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.FFI_PTR_VT, object.toRef(ffi_ptr_vt_ptr));
-
-    const module_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.MODULE_VT, object.toRef(module_vt_ptr));
-
-    const error_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.ERROR_VT, object.toRef(error_vt_ptr));
+    // -- Stage 1+2+3: allocate kernel (FLOOR) vtables, set -1, register ----
+    // W7 B: each is a floor vtable (parent + kernel-method dict in struct slots).
+    floor.resetRegistry();
+    const vt_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.VTABLE_VT);
+    const obj_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.OBJECT_VT);
+    const sel_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.SELECTOR_VT);
+    const clo_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.CLOSURE_VT);
+    const vec_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.VECTOR_VT);
+    const ass_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.ASSOC_VT);
+    const nil_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.NIL_VT);
+    _ = try mkFloorVt(allocator, table, kernel_eids.RRB_VT); // RRB_VT not in Kernel handles
+    const float_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.FLOAT_VT);
+    const ffi_ptr_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.FFI_PTR_VT);
+    const module_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.MODULE_VT);
+    const error_vt_ptr = try mkFloorVt(allocator, table, kernel_eids.ERROR_VT);
 
     // -- Stage 4: assert :vtable facts for every entity bind may dispatch on
     // Each kernel vtable's :vtable is VTABLE_VT (so sending a message to
@@ -361,20 +341,14 @@ pub fn boot(
     // their EIDs are usable by lang dylib / PEG dylib at load time. No
     // methods installed yet — those live in their respective dylibs (lang
     // for booleans/blocks/smallint arithmetic, PEG for grammar dispatch).
-    const block_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.BLOCK_VT, object.toRef(block_vt_ptr));
-    const smallint_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.SMALLINT_VT, object.toRef(smallint_vt_ptr));
-    const boolean_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.BOOLEAN_VT, object.toRef(boolean_vt_ptr));
-    const true_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.TRUE_VT, object.toRef(true_vt_ptr));
-    const false_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.FALSE_VT, object.toRef(false_vt_ptr));
-    const grammar_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.GRAMMAR_VT, object.toRef(grammar_vt_ptr));
-    const peg_vt_ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-    try table.put(kernel_eids.PEG_VT, object.toRef(peg_vt_ptr));
+    // Phase 10 floor vtables (handles not needed — methods install in dylibs).
+    _ = try mkFloorVt(allocator, table, kernel_eids.BLOCK_VT);
+    _ = try mkFloorVt(allocator, table, kernel_eids.SMALLINT_VT);
+    _ = try mkFloorVt(allocator, table, kernel_eids.BOOLEAN_VT);
+    _ = try mkFloorVt(allocator, table, kernel_eids.TRUE_VT);
+    _ = try mkFloorVt(allocator, table, kernel_eids.FALSE_VT);
+    _ = try mkFloorVt(allocator, table, kernel_eids.GRAMMAR_VT);
+    _ = try mkFloorVt(allocator, table, kernel_eids.PEG_VT);
 
     // :vtable facts for each new vt (so [SMALLINT_VT vtable] etc dispatch correctly)
     _ = try store.assert(kernel_eids.BLOCK_VT, kernel_eids.ATTR_VTABLE, vtv, m_boot);
@@ -430,8 +404,7 @@ pub fn boot(
         kernel_eids.AST_STMT_SEQ_VT,
     };
     for (phase_10_1_vts) |vt_eid| {
-        const ptr = try allocVtStruct(allocator, kernel_eids.VTABLE_VT);
-        try table.put(vt_eid, object.toRef(ptr));
+        _ = try mkFloorVt(allocator, table, vt_eid);
         _ = try store.assert(vt_eid, kernel_eids.ATTR_VTABLE, vtv, m_boot);
         _ = try store.assert(vt_eid, kernel_eids.ATTR_DELEGATE, ovt, m_boot);
     }
@@ -560,9 +533,21 @@ pub fn boot(
 
 fn allocVtStruct(allocator: std.mem.Allocator, vt_eid: u64) !object.ObjPtr {
     _ = vt_eid;
-    // Every kernel vtable has 0 user slots — its content is fact-shaped.
-    // -1 slot is set to mkEid(VTABLE_VT): all kernel vtables share the metavtable.
+    // USER vtables (runtime `delegated`) stay fact-based: a 0-slot struct, not
+    // registered as a floor vtable. -1 = mkEid(VTABLE_VT) (shared metavtable).
     return object.allocObject(allocator, ref_mod.mkEid(kernel_eids.VTABLE_VT), 0);
+}
+
+/// W7 B: allocate a FLOOR vtable — `floor.N_SLOTS` (parent + kernel-method dict),
+/// register it in the object table at `eid`, and in the floor registry. The
+/// metaobject graph (delegation + kernel methods) is mirrored into these slots so
+/// the floor dispatches with its facts retracted (docs/30 §6).
+fn mkFloorVt(allocator: std.mem.Allocator, table: *object_table.ObjectTable, eid: u64) !object.ObjPtr {
+    const obj = try object.allocObject(allocator, ref_mod.mkEid(kernel_eids.VTABLE_VT), floor.N_SLOTS);
+    floor.initSlots(obj);
+    try table.put(eid, object.toRef(obj));
+    floor.register(eid, obj);
+    return obj;
 }
 
 /// Allocate a Closure as a libid-style object: layout `[vt_ref][method][data]`,
@@ -591,6 +576,10 @@ fn installMethod(
     const closure_eid = table.alloc();
     try table.put(closure_eid, ref_mod.mkPointer(@ptrCast(c)));
     _ = try store.assert(vt_eid, sel_eid, ref_mod.mkEid(closure_eid), kernel_eids.M_BOOTSTRAP);
+    // W7 B: mirror the kernel method into the floor vtable's struct dict so the
+    // floor dispatches it with this fact retracted (dual-write; struct is the
+    // fallback under `send.resolve`).
+    floor.putMethodByEid(vt_eid, sel_eid, ref_mod.mkEid(closure_eid));
 }
 
 // -- Kernel method implementations -------------------------------------------

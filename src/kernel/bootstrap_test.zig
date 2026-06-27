@@ -75,17 +75,49 @@ test "W7.0 probe: boot write-buckets + read-before-mount set" {
     try testing.expect(delegate >= 30); // :delegate metaobject graph
     try testing.expect(name + vtable > boot_probe.totalWrites() / 2); // reflection > half
 
-    // THE load-bearing finding: boot is essentially write-only. Exactly ONE
-    // fact is read back before the module-load boundary, and it is config
-    // (promote-threshold), not metaobject structure. The reflection shadow
-    // (A1/A2) and the graph (Track B) are read ZERO times before mount — so
-    // deferring/relocating them carries no boot-ordering risk. If a future
-    // change adds a read-before-mount, this fails loudly (by design).
+    // THE load-bearing finding: boot PROPER is write-only. The reflection shadow
+    // (A1/A2: :name + :vtable) is read ZERO times before mount, so deferring it
+    // carries no boot-ordering risk — guarded strictly. The reads that DO occur
+    // before the boundary are mount-step work, not boot-proper reads:
+    //   - :promote-threshold ×1  — Stage 11 (promotion.init reads its own seed)
+    //   - :delegate         ×N   — the W7 B mount-time parent sync
+    //     (`floor.syncParentsFromStore`) mirrors each floor vtable's :delegate
+    //     fact into its struct parent slot. Expected; it IS the projection step.
     try testing.expectEqual(@as(u32, 0), boot_probe.rbmCount(kernel_eids.ATTR_NAME));
     try testing.expectEqual(@as(u32, 0), boot_probe.rbmCount(kernel_eids.ATTR_VTABLE));
-    try testing.expectEqual(@as(u32, 0), boot_probe.rbmCount(kernel_eids.ATTR_DELEGATE));
     try testing.expectEqual(@as(u32, 1), boot_probe.rbmCount(kernel_eids.ATTR_PROMOTE_THRESHOLD));
-    try testing.expectEqual(@as(u64, 1), boot_probe.totalRbm()); // the whole boot's ordering-sensitive set
+    const delegate_sync = boot_probe.rbmCount(kernel_eids.ATTR_DELEGATE);
+    try testing.expect(delegate_sync >= 30); // ~34 floor vtables carry a :delegate
+    try testing.expectEqual(delegate_sync + 1, @as(u32, @intCast(boot_probe.totalRbm())));
+}
+
+// -- W7 B: the floor dispatches without its facts (struct-primary) -----------
+
+test "W7 B: floor dispatches with delegation + method facts retracted" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const s = try setup(&arena);
+    const store = s.store;
+
+    // Capture OBJECT_VT's `init` binding, then retract the two facts the cold
+    // path would normally use to dispatch `[OBJECT_VT init]`: VTABLE_VT's
+    // delegate edge and OBJECT_VT's `init` method. After this the ONLY source
+    // for either is the floor's struct-resident metaobject graph.
+    const init_method = store.currentValue(kernel_eids.OBJECT_VT, kernel_eids.SEL_INIT) orelse
+        return error.TestUnexpectedResult;
+    _ = try store.retract(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP);
+    _ = try store.retract(kernel_eids.OBJECT_VT, kernel_eids.SEL_INIT, init_method, kernel_eids.M_BOOTSTRAP);
+    mcache.clearAll();
+
+    // The facts are genuinely gone.
+    try testing.expect(store.currentValue(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE) == null);
+    try testing.expect(store.currentValue(kernel_eids.OBJECT_VT, kernel_eids.SEL_INIT) == null);
+
+    // `[OBJECT_VT init]` still resolves: dispatch on VTABLE_VT → (struct parent)
+    // OBJECT_VT → (struct dict) objectInitImpl, which returns the receiver. The
+    // fact store contributes nothing — the id closure dispatches on structs alone.
+    const result = send_mod.send0(ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.SEL_INIT);
+    try testing.expectEqual(ref_mod.mkEid(kernel_eids.OBJECT_VT), result);
 }
 
 // -- Bootstrap returns valid kernel handles ----------------------------------
