@@ -572,13 +572,13 @@ fn installMethod(
     sel_eid: u64,
     method_fn: *const anyopaque,
 ) !void {
+    _ = store; // W7 B: kernel methods are struct-resident — no fact written.
     const c = try allocClosure(allocator, method_fn, ref_mod.NIL);
     const closure_eid = table.alloc();
     try table.put(closure_eid, ref_mod.mkPointer(@ptrCast(c)));
-    _ = try store.assert(vt_eid, sel_eid, ref_mod.mkEid(closure_eid), kernel_eids.M_BOOTSTRAP);
-    // W7 B: mirror the kernel method into the floor vtable's struct dict so the
-    // floor dispatches it with this fact retracted (dual-write; struct is the
-    // fallback under `send.resolve`).
+    // W7 B: the floor vtable's struct dict is the sole home of a kernel method
+    // (docs/30 §6). `send.resolve` reads the store first (overrides win) then this
+    // dict, so the floor dispatches its methods with no facts in existence.
     floor.putMethodByEid(vt_eid, sel_eid, ref_mod.mkEid(closure_eid));
 }
 
@@ -617,10 +617,12 @@ fn vtableLookupImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c) Re
     if (!ref_mod.isEid(s.receiver) or !ref_mod.isEid(sel_ref)) return ref_mod.NIL;
     const sel_eid = ref_mod.untagEid(sel_ref);
     var cur_vt = ref_mod.untagEid(s.receiver);
-    const store = send_mod.storePtr() orelse return ref_mod.NIL;
+    // W7 B: resolve through the cold-path seam (fact store + floor struct), so
+    // the floor's struct-resident kernel methods (no facts in production) and
+    // overrides both show up here exactly as in `bind`.
     while (cur_vt != kernel_eids.NIL) {
-        if (store.currentValue(cur_vt, sel_eid)) |m| return m;
-        if (store.currentValue(cur_vt, kernel_eids.ATTR_DELEGATE)) |d| {
+        if (send_mod.resolveColdPath(cur_vt, sel_eid)) |m| return m;
+        if (send_mod.resolveColdPath(cur_vt, kernel_eids.ATTR_DELEGATE)) |d| {
             if (!ref_mod.isEid(d)) return ref_mod.NIL;
             cur_vt = ref_mod.untagEid(d);
         } else return ref_mod.NIL;

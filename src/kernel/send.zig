@@ -127,6 +127,14 @@ inline fn resolve(entity: u64, attr: u64) ?Ref {
     return floor.resolve(entity, attr);
 }
 
+/// Public cold-path resolve (W7 B): fact store first, floor struct fallback.
+/// Reflective kernel methods (`[vt lookup: sel]`) use this so they see the
+/// floor's struct-resident kernel methods — which carry no facts in production.
+pub fn resolveColdPath(entity: u64, attr: u64) ?Ref {
+    if (g_store == null) return null;
+    return resolve(entity, attr);
+}
+
 /// Resolve the closure for `s.receiver` + `s.selector`. Returns null on
 /// "method not found." Populates `s.closure` and `s.state` on success.
 pub fn bind(s: *Send) ?*Closure {

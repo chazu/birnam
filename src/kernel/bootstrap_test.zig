@@ -99,19 +99,16 @@ test "W7 B: floor dispatches with delegation + method facts retracted" {
     const s = try setup(&arena);
     const store = s.store;
 
-    // Capture OBJECT_VT's `init` binding, then retract the two facts the cold
-    // path would normally use to dispatch `[OBJECT_VT init]`: VTABLE_VT's
-    // delegate edge and OBJECT_VT's `init` method. After this the ONLY source
-    // for either is the floor's struct-resident metaobject graph.
-    const init_method = store.currentValue(kernel_eids.OBJECT_VT, kernel_eids.SEL_INIT) orelse
-        return error.TestUnexpectedResult;
-    _ = try store.retract(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP);
-    _ = try store.retract(kernel_eids.OBJECT_VT, kernel_eids.SEL_INIT, init_method, kernel_eids.M_BOOTSTRAP);
-    mcache.clearAll();
-
-    // The facts are genuinely gone.
-    try testing.expect(store.currentValue(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE) == null);
+    // Kernel methods are struct-resident in production — OBJECT_VT's `init`
+    // carries NO fact (it lives only in the floor struct dict).
     try testing.expect(store.currentValue(kernel_eids.OBJECT_VT, kernel_eids.SEL_INIT) == null);
+
+    // Delegation is still dual-written; retract VTABLE_VT's delegate edge to force
+    // the struct-parent path. After this, BOTH the method and the delegation step
+    // for `[OBJECT_VT init]` have no fact — the floor struct is the only source.
+    _ = try store.retract(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE, ref_mod.mkEid(kernel_eids.OBJECT_VT), kernel_eids.M_BOOTSTRAP);
+    mcache.clearAll();
+    try testing.expect(store.currentValue(kernel_eids.VTABLE_VT, kernel_eids.ATTR_DELEGATE) == null);
 
     // `[OBJECT_VT init]` still resolves: dispatch on VTABLE_VT → (struct parent)
     // OBJECT_VT → (struct dict) objectInitImpl, which returns the receiver. The
