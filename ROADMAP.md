@@ -3383,6 +3383,15 @@ runtime-asserted one — a deliberate safety tradeoff at the very floor.
 
 ## W7 — The Superimposed Floor · W8 — Identity as Policy (2026-06-26)
 
+> **⮕ PIVOT (2026-06-27, ADR `docs/32`):** W7 shipped and PROVED a floor
+> dispatches with **zero facts** (methods + delegation struct-resident;
+> `siphon_test`). The *in-place* inversion is now **frozen there as a proof** — the
+> remaining cuts are retired in place. We reach the destination by **building UP
+> from the clean libid floor** (`src/id/`: Piumarta object system, vtable
+> *pointers* at `-1`, no eids/facts by construction) rather than excavating the
+> fact-store kernel. The fact store becomes a *module* loaded on libid. The
+> destination (`docs/30`) is unchanged; only the route changes.
+
 The destination for birnam's bottom layers: `docs/30-the-destination.md` (vision)
 + `docs/31-destination-work-breakdown.md` (ordered work). Sits downstream of W6
 (`docs/20a`) — W7's Track B *is* the Q2 dispatch-seam resolution, now with the

@@ -77,17 +77,25 @@ B4 delegation `a9293bb`. Done:
 its delegation + methods on structs alone; the fact store is a genuine
 superimposition over it.
 
-Remaining (smaller, optional):
-- **Materialize the 7 non-materialized kernel vtables** (give them floor structs)
-  to drop their `:delegate` facts too — `BYTECODE_METHOD_VT` needs care (it's on
-  the method-dispatch fast path).
-- **B3 (query projection)** — project the struct graph into EAVT/AVET for
-  relational reflection over the floor (dispatch already needs no projection).
-- **A2 (`:vtable` drop)** — `vtableEidOf` already reads the −1 slot first
-  (projection exists); dropping the facts needs the same query-projection.
-- **C2 (eid retrofit)** — N/A in the current shape (floor objects keep their
-  kernel eids); revisit only for a genuinely pointer-identity-first boot.
-- **`kernel-bench` gate** — hot path (mcache) is untouched; run to confirm.
+> **⮕ PIVOT (2026-06-27) — the in-place inversion is FROZEN here as a proof.**
+> The remaining cuts below are **retired as in-place tasks**: per
+> [ADR — Refound on libid](32-refound-on-libid.md) we reach the inversion's
+> destination by **building UP from the clean libid floor** (`src/id/`, where the
+> `-1` slot is a vtable *pointer* and there are no eids by construction), not by
+> finishing the excavation of the fact-store kernel. W7 stays as the validation
+> that a floor dispatches without facts; that proof transfers to the refounding.
+
+Remaining (RETIRED in place — see ADR `docs/32`; these become "build it right on
+libid" instead of "cut it out of the old kernel"):
+- ~~Materialize the 7 non-materialized kernel vtables~~ → libid vtables are
+  uniform from the start (no materialized/non-materialized split).
+- ~~B3 (query projection)~~ → a fact-store *module* projects libid's struct graph
+  when it mounts.
+- ~~A2 (`:vtable` drop)~~ → no `:vtable` fact exists on the libid floor.
+- ~~C2 (eid retrofit)~~ / ~~eid→pointer at `-1`~~ → libid's `-1` is already a
+  pointer; the eid is minted by the (later) fact-store module.
+- `kernel-bench` gate — moot for the old kernel; perf is measured on libid as the
+  tower grows.
 
 ### W7.0 — Instrument the boot path — ✅ DONE (2026-06-26)
 

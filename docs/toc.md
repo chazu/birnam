@@ -44,6 +44,10 @@ order.
   (`identityOf:` — candidate-key first, content-addressed later); per-layer
   primacy (struct-primary floor, fact-primary above) refines `10a` D5.2; the
   pointer-identity-first bootstrap audit (~80% mechanical, ~20% the dispatch seam).
+- **ADR — Refound on libid (build up, don't invert in place)** — `32-refound-on-libid.md`
+  The route change (2026-06-27): W7 proved a floor dispatches with zero facts, so
+  the in-place inversion is frozen as a proof; we reach the destination by building
+  UP from the clean libid floor (`src/id/`), with the fact store as a later module.
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).
