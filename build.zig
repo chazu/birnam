@@ -234,6 +234,16 @@ pub fn build(b: *std.Build) void {
     libid.linkLibC();
     b.installArtifact(libid);
 
+    // A reloadable demo module — proves opaque state survives a hot reload.
+    const counter_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/counter.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const counter_lib = b.addLibrary(.{ .name = "birnam_counter", .root_module = counter_mod, .linkage = .dynamic });
+    counter_lib.linkLibC();
+    b.installArtifact(counter_lib);
+
     const siphon_mod = b.createModule(.{
         .root_source_file = b.path("src/id/main.zig"),
         .target = target,

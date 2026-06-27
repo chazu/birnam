@@ -46,3 +46,12 @@ pub const IdApi = extern struct {
 
 /// libid's module entrypoint: `id_init()` returns the API table (cf. `_libid_init`).
 pub const IdInitFn = *const fn () callconv(.c) *IdApi;
+
+/// A *reloadable* module's entrypoint. The siphon threads an opaque per-module
+/// `state` pointer: `null` on first load, the SAME pointer on every reload, so a
+/// module's private (non-id) state survives a hot code reload. The module returns
+/// the (possibly newly-allocated) state for the siphon to hold and pass back.
+/// id-shaped state can instead ride `api.import`/`api.export`; this is the escape
+/// hatch for arbitrary state. libid itself is the floor (loaded once via
+/// `id_init`), so this leaves its reflectivity untouched.
+pub const ModuleInitFn = *const fn (*IdApi, ?*anyopaque) callconv(.c) ?*anyopaque;

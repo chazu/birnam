@@ -69,7 +69,27 @@ pub fn main() !void {
     std.debug.print("[siphon] re-loaded id THROUGH the id api: object_vt={*}\n", .{api2.object_vt});
     if (api2.object_vt != object_vt) return error.ReloadMismatch;
 
-    std.debug.print("[siphon] ok — the siphon loads, drives, and re-imports the id layer entirely through the id api\n", .{});
+    // 5. Hot-reload state persistence. Load a reloadable module THROUGH the id
+    //    api, then reload it twice — the siphon threads its opaque state, so the
+    //    module's private data survives the reloads (count 1 -> 2 -> 3).
+    const counter_path = try a.dupeZ(u8, "zig-out/lib/libbirnam_counter.dylib");
+    defer a.free(counter_path);
+    var mstate: ?*anyopaque = null;
+    mstate = try loadModule(api, counter_path, mstate); // fresh   -> 1
+    mstate = try loadModule(api, counter_path, mstate); // reload  -> 2
+    mstate = try loadModule(api, counter_path, mstate); // reload  -> 3
+    std.debug.print("[siphon] hot-reload: module state persisted across 3 loads\n", .{});
+
+    std.debug.print("[siphon] ok — siphon loads + drives + re-imports id, and persists module state across reloads, all through the id api\n", .{});
+}
+
+/// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading
+/// the opaque per-module `state` so arbitrary state survives a hot reload.
+fn loadModule(api: *IdApi, path: [*:0]const u8, state: ?*anyopaque) !?*anyopaque {
+    const h = api.dlopen(path, RTLD_LAZY) orelse return error.LoadFailed;
+    const raw = api.dlsym(h, "module_init") orelse return error.NoModuleInit;
+    const init: idapi.ModuleInitFn = @ptrCast(@alignCast(raw));
+    return init(api, state);
 }
 
 fn pingImpl(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
