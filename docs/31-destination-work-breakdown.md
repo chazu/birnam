@@ -42,6 +42,14 @@ W8 (parallel, secondary):
 
 ## W7 — The Superimposed Floor
 
+**Framing (siphon, `docs/30` §9):** W7 is the first step of decomposing the
+monolithic `bootstrap.zig` (`→ siphon.zig`) into an ordered tower the **siphon**
+mounts: id → fact store → gc → peg → compiler. Track B is what makes "id is the
+first module" literally true; Track C's `mountIdentityLayer` is the store mount.
+The destination form of the boot seed is **`seed.birnam`** (human-authored
+fact-assertions parsed by peg's first hand-coded grammar), replacing the imperative
+Stages 4–17 — a later step on the same line, once peg is mounted.
+
 **Goal / acceptance for the whole arc:** boot the id closure with the fact store
 *unmounted*; prove a real dispatch (`[SMALLINT_VT lookup: #+]` and an actual
 method send) works on **pointer identity + struct slots alone, no facts in

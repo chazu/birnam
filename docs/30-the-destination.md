@@ -262,7 +262,86 @@ ordering (it is about dispatch's steady-state primacy, not boot timing). Once
 made, build-time = run-time becomes real, because the floor rebuilds itself from
 source before the fact layer exists.
 
-## 9. The destination, in one paragraph
+## 9. The siphon and the layer-order
+
+The **siphon** is birnam's loader — the shell, named for what it does: it siphons
+layers into a running image. Operationally it is the small in-binary Zig core that
+everything else mounts onto:
+
+- the **module loader** (dlopen for binary modules; source-load once the compiler
+  is up),
+- the **IdApi** C-ABI + the `kernel_eids` mirror (how modules reach the kernel),
+- and the hand-coded **id floor** itself.
+
+Everything above the id floor — the fact store, gc, peg, the compiler — is a
+**layer-module the siphon loads in order through one uniform interface**
+(register-objects-via-sends, §7). This is the operational form of §3/§6: it
+decomposes today's monolithic `bootstrap.zig` (`→ siphon.zig`) into an ordered
+sequence of mounts. The W7.0 measurement (§8) is what licenses the decomposition:
+the boot is write-only with a single read-before-mount, so the layers carry almost
+no cross-ordering entanglement.
+
+### The order (and why each edge holds)
+
+```
+siphon core (in-binary Zig): module loader + IdApi + kernel_eids + dlopen
+   │   mounts, in order:
+   ▼
+1. id          object/vtable/send/bind — struct-primary floor (§6)         deps: allocator only
+2. fact store  eid alloc + interner/strings + EAVT/AVET; projects the      deps: id, HAMT/RRB
+               id struct graph; function-call assert/query (NO parser)
+3. gc          tracing over object structs + object table + fact VALUES     deps: id, fact store
+               (a closure is reachable through a fact value); lazy-mountable
+4. peg         parser engine; minimal fact-assert grammar first            deps: id, fact store
+               (hand-coded Zig-struct), then grammars-as-facts
+5. compiler    birnam source → AST → bytecode cells → C → native (tcc)     deps: peg, fact store
+```
+
+The decisive edges:
+
+- **id needs nothing below it** — struct-primary (§6) means its vtables carry
+  parent + method-dict in slots, so it dispatches with no facts, no HAMT. This is
+  why id is hand-coded Zig and mounts *first*.
+- **fact store does not need peg** — it is a function-call API (`assert(e,a,v,m)`),
+  not a parser. So the store mounts at step 2, long before any grammar.
+- **gc mounts above the store** — a method's closure is kept alive through a *fact
+  value*, so the tracer must scan the value column; gc therefore needs the store.
+  It is lazy-mountable (run on arena until allocation pressure matters).
+- **peg's engine is store-free, but birnam stores grammars as facts**, so full peg
+  needs the store; only its *first* grammar is hand-coded structs.
+
+### The capability bootstrap
+
+The siphon's own power grows with the tower. Until peg + compiler are mounted it
+can load only **hand-coded / binary** modules (id, store, gc, peg, compiler as Zig
+or dylibs registering via the IdApi). *After* the compiler mounts, it can load
+**birnam-source** modules. The irreducible siphon — loader + IdApi + id floor — is
+the one thing that is never itself loaded.
+
+### The seed: `seed.birnam` is canonical
+
+The schema + vtable graph + names that `bootstrap.zig` stages 4–17 assert today
+(the 324 writes of §8) become a **`seed.birnam`** — *human-authored birnam source*,
+a file of fact-assertions — parsed by **peg's first grammar**: a minimal,
+hand-coded Zig-struct grammar of ~5–10 rules (literals + one assert form). This is
+the self-hosting prize (principle 5): the system's own foundation, editable in its
+own language rather than imperative Zig or opaque binary.
+
+> **Decisions (2026-06-26):** (1) peg's first grammar is **hand-coded Zig-struct**,
+> so peg needs nothing from the store to parse the seed; full grammars become facts
+> once the store holds the seed. (2) **`seed.birnam` is the canonical authoring
+> form.** It may be *compiled to* a binary `.bim` seed for fast cold boot
+> (ADR-image-1's "boot = load the seed image"), but the text is the source of
+> truth, not the binary.
+
+Why this lands *after* the store, never before it: you cannot assert into a store
+that is not yet mounted, and the store needs no parser to be populated (§ "fact
+store does not need peg"). A fact-assertion grammar is meaningless before step 2.
+So the minimal grammar is the *earliest meaningful* grammar — step 4's first act —
+not a step-0 prerequisite. The interim until `seed.birnam` exists is the current
+Zig-asserted stages (form (a)); the destination is the text seed (form (c)).
+
+## 10. The destination, in one paragraph
 
 The frozen floor is the Piumarta id closure over HAMT/RRB: pointer identity,
 struct-resident vtables with struct-resident delegation and method dictionaries,
@@ -277,17 +356,22 @@ key promoted to public identity + uniqueness constraint), content-addressing
 available later as pure policy. Everything above the identity layer — schema,
 code, the PEG/compiler tower, user modules — is fact-primary, loaded uniformly
 whether delivered as source or as a binary, each a set of facts tagged by module.
-That is birnam: an intensional floor thin enough to bootstrap itself, carrying an
-extensional system rich enough to be the database, the image, and the language at
-once.
+The **siphon** mounts these as an ordered tower — id → fact store → gc → peg →
+compiler — and the foundation itself (schema + vtable graph + names) is authored as
+**`seed.birnam`**, parsed by peg's first hand-coded grammar. That is birnam: an
+intensional floor thin enough to bootstrap itself, carrying an extensional system
+rich enough to be the database, the image, and the language at once.
 
-## 10. Deliberately deferred / open
+## 11. Deliberately deferred / open
 
 - **Content-addressed identity** — wanted, but a later `identityOf:` policy;
   no De Bruijn / hashing in the foundation (§5.2).
 - **The maximum policy form** — making the *whole* 5-index arrangement injectable
   above the frozen line (`docs/20a` Q3 max); speculative until a workload needs it.
-- **Floor method-dict representation** — inline array vs small HAMT in the vtable
-  struct (§6 bucket 2 implementation choice); decide when cutting bucket 2.
+- **Floor method-dict representation** — **LOCKED (B0, 2026-06-26):** `parent: Ref`
+  + inline open-addressed `(sel→method)` array, no HAMT at L0 (dumb + fast; §6).
 - **Retrofit timing** — eager (assign every floor object an eid at mount) vs lazy
   (on first relational reference); §3.
+- **Layer-mount granularity** — whether gc/peg/compiler ship first as decomposed
+  Zig layer-modules (siphon-loaded) or stay in-binary until a later pass; §9. The
+  id/store split (W7) is the load-bearing one; the rest can follow.

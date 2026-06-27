@@ -3396,10 +3396,21 @@ the floor and **projects** its struct graph. Above the floor, everything is
 fact-primary (Date). The eid is a *value-handle* (legal as a relvar name, illegal
 as a navigational pointer); identity becomes overridable policy.
 
+**Siphon framing (`docs/30` §9):** the shell = the **siphon** (the loader). W7
+decomposes the monolithic `bootstrap.zig` (`→ siphon.zig`) into an ordered tower
+the siphon mounts: **id → fact store → gc → peg → compiler**. Edges: id needs only
+an allocator (struct-primary floor); the fact store is a function-call API and
+needs NO parser (so store-before-peg); gc traces fact values (store-after); peg's
+first grammar is hand-coded Zig-struct. The boot seed's destination form is
+**`seed.birnam`** — human-authored fact-assertions parsed by peg's first grammar,
+replacing imperative Stages 4–17 (the self-hosting prize), compilable to a binary
+`.bim` for fast cold boot.
+
 **Decisions:** **W7 leads** (foundation first). **B0 LOCKED** — floor metaobject
 graph is dumb+fast (`parent: Ref` + inline open-addressed `sel→method` array, no
 HAMT at L0). **D0 DEFERRED** (the `identityOf:` protocol surface) — gates W8 D2+,
-not W7.
+not W7. **Siphon grammar/seed (2026-06-26):** peg's first grammar = hand-coded
+Zig-struct; `seed.birnam` = canonical boot authoring form.
 
 - **W7 — pointer-identity-first bootstrap.** Audit (`docs/30` §8): ~250 boot
   fact-writes = ~200 reflection shadow (deferrable, mechanical) + ~46 metaobject
