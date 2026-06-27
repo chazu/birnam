@@ -57,23 +57,30 @@ existence**; then `mountIdentityLayer` projects the struct graph into EAVT/AVET
 and reflection/query see the same graph as facts. `kernel-bench` shows no
 dispatch regression. All suites green.
 
-**Status (2026-06-26) — struct-primary floor SHIPPED; the claim is PROVEN.**
-Commits W7.0 `6a10c03` · A1/C1 (checkpoint 1) · B repr+proof `f41c193` · B4 methods
-(this checkpoint). Done:
+**Status (2026-06-27) — struct-primary floor SHIPPED + INVERTED; the floor is
+factless.** Commits W7.0 `6a10c03` · A1/C1 · B repr+proof `f41c193` · B4 methods ·
+B4 delegation `a9293bb`. Done:
 - **A1 ✅** defer `:name` to the mount seam. **C1 ✅** `mount.mountIdentityLayer`.
 - **B1 ✅** `floor.zig` — vtable structs carry parent + kernel-method dict (B0
   layout). **B2 ✅** `send.resolve` = fact-first, floor-struct fallback.
-- **B4 (methods) ✅** the 5 kernel methods are struct-resident — **no facts**;
-  reflective `lookup:` routes through the seam. **B4 (delegation)** dual-written
-  (struct + fact); facts not yet dropped.
-- **Proof ✅** `bootstrap_test` "floor dispatches with … facts retracted" — the id
-  closure dispatches on structs alone. Green on cold + warm boot + lang_module 84.
+- **B4 (methods) ✅** the 5 kernel methods are struct-resident — **no facts**.
+- **B4 (delegation) ✅** the floor's `:delegate` is struct-resident — **no facts**.
+  `siphon.delegate` sets the struct parent at the assert site for materialized
+  floor vtables (~34 facts dropped); the ~7 *non-materialized* kernel vtables
+  (STRING/RANGE/CELL/XF/CALLBACK/STRUCT_TYPE/BYTECODE_METHOD — no struct) keep
+  their facts. The mount-time sync is gone.
+- **Proof ✅** `siphon_test`: OBJECT_VT.init AND VTABLE_VT.delegate are factless at
+  boot, yet `[OBJECT_VT init]` dispatches. W7.0 probe back to write-only (1
+  read-before-mount). Green cold + warm + lang_module 84.
 
-Remaining (the production *fact-drop* inversion — its own careful pass):
-- **B4 (delegation drop)** — drop the ~34 `:delegate` facts. Needs per-vtable
-  handling of *non-materialized* kernel vtables (RANGE_VT/CALLBACK_VT/… carry
-  `:delegate` facts but have no struct) + moving the parent-set from the mount
-  sync to the assert sites.
+**The floor metaobject graph now carries ZERO facts.** The id closure dispatches
+its delegation + methods on structs alone; the fact store is a genuine
+superimposition over it.
+
+Remaining (smaller, optional):
+- **Materialize the 7 non-materialized kernel vtables** (give them floor structs)
+  to drop their `:delegate` facts too — `BYTECODE_METHOD_VT` needs care (it's on
+  the method-dispatch fast path).
 - **B3 (query projection)** — project the struct graph into EAVT/AVET for
   relational reflection over the floor (dispatch already needs no projection).
 - **A2 (`:vtable` drop)** — `vtableEidOf` already reads the −1 slot first
