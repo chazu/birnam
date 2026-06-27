@@ -29,6 +29,9 @@ pub const Ref = ref_mod.Ref;
 const Str2Eid = hamt.Hamt([]const u8, u64, hamt.StrCtx);
 const Eid2Str = hamt.Hamt(u64, []const u8, hamt.U64Ctx);
 
+/// A `:name` publication deferred until the identity/fact layer mounts (W7 A1).
+const PendingName = struct { eid: u64, name: []const u8 };
+
 pub const Interner = struct {
     /// Backs the index maps (`str_to_eid` / `eid_to_str`) and the interned
     /// key `dup`s. These are referenced by the persistent HAMTs and must never
@@ -49,6 +52,15 @@ pub const Interner = struct {
     /// single application thread acquires uncontended.
     writer_lock: std.Thread.Mutex = .{},
 
+    /// W7 A1 — defer `:name` publication. While true, `seed`/`intern` build the
+    /// bijection (the durable authority) but *queue* the `[eid :name str]` cell
+    /// instead of asserting it; `publishNames` (called at the identity-layer
+    /// mount, `mount.mountIdentityLayer`) flushes the queue and flips back to
+    /// immediate. W7.0 proved `:name` is read-before-mount zero times, so this is
+    /// safe. Default false → bare unit tests are unchanged.
+    defer_names: bool = false,
+    pending_names: std.ArrayList(PendingName) = .{},
+
     pub fn init(allocator: std.mem.Allocator) Interner {
         return .{
             .allocator = allocator,
@@ -65,6 +77,34 @@ pub const Interner = struct {
         self.string_allocator = a;
     }
 
+    /// W7 A1 — enter deferred-name mode. Bootstrap calls this before its first
+    /// `seed`/`intern`; the queued cells are flushed by `publishNames` at mount.
+    pub fn deferNamePublication(self: *Interner) void {
+        self.defer_names = true;
+    }
+
+    /// W7 A1 — flush the deferred `:name` cells and return to immediate mode.
+    /// Idempotent; safe to call with nothing queued.
+    pub fn publishNames(self: *Interner, store: anytype) !void {
+        self.defer_names = false;
+        for (self.pending_names.items) |pn| {
+            const str_ref = try strings.mkString(self.string_allocator, pn.name);
+            _ = try store.assert(pn.eid, kernel_eids.ATTR_NAME, str_ref, kernel_eids.M_BOOTSTRAP);
+        }
+        self.pending_names.clearAndFree(self.allocator);
+    }
+
+    /// Publish (or queue, if deferring) the `[eid :name str]` cell. Bijection
+    /// maps are written by the caller; this only handles the fact face.
+    fn publishOrDefer(self: *Interner, store: anytype, eid: u64, dup: []const u8) !void {
+        if (self.defer_names) {
+            try self.pending_names.append(self.allocator, .{ .eid = eid, .name = dup });
+        } else {
+            const str_ref = try strings.mkString(self.string_allocator, dup);
+            _ = try store.assert(eid, kernel_eids.ATTR_NAME, str_ref, kernel_eids.M_BOOTSTRAP);
+        }
+    }
+
     /// Pre-seed: register an existing well-known EID with a name. Used by
     /// bootstrap for kernel selectors. Also asserts the `:name` fact.
     pub fn seed(
@@ -78,8 +118,7 @@ pub const Interner = struct {
         const dup = try self.allocator.dupe(u8, name);
         self.str_to_eid = try self.str_to_eid.assoc(dup, eid);
         self.eid_to_str = try self.eid_to_str.assoc(eid, dup);
-        const str_ref = try strings.mkString(self.string_allocator, dup);
-        _ = try store.assert(eid, kernel_eids.ATTR_NAME, str_ref, kernel_eids.M_BOOTSTRAP);
+        try self.publishOrDefer(store, eid, dup);
     }
 
     /// Look up an EID for a string. Mints a new user-range EID if absent,
@@ -104,8 +143,7 @@ pub const Interner = struct {
         const eid = table.alloc();
         self.str_to_eid = try self.str_to_eid.assoc(dup, eid);
         self.eid_to_str = try self.eid_to_str.assoc(eid, dup);
-        const str_ref = try strings.mkString(self.string_allocator, dup);
-        _ = try store.assert(eid, kernel_eids.ATTR_NAME, str_ref, kernel_eids.M_BOOTSTRAP);
+        try self.publishOrDefer(store, eid, dup);
         return eid;
     }
 

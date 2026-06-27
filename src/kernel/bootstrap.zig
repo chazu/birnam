@@ -33,6 +33,7 @@ const macho_mod = @import("macho.zig");
 const elf_mod = @import("elf.zig");
 const id_api_mod = @import("id_api.zig");
 const image_mod = @import("image.zig");
+const mount_mod = @import("mount.zig");
 
 const Ref = ref_mod.Ref;
 const Closure = closure_mod.Closure;
@@ -80,6 +81,11 @@ pub fn boot(
     table: *object_table.ObjectTable,
     interner: *interner_mod.Interner,
 ) !Kernel {
+    // W7 A1: defer `:name` publication until the identity-layer mount at the tail
+    // of boot. The bijection (the durable name authority) is still built eagerly;
+    // only the reflective `[eid :name str]` cells are batched to the mount seam.
+    interner.deferNamePublication();
+
     // Phase 7.1: provision a kernel-side rule registry for IdApi.
     const registry = try allocator.create(rule_mod.Registry);
     registry.* = rule_mod.Registry.init(allocator, store, table);
@@ -528,6 +534,12 @@ pub fn boot(
     // literal-nodes can resolve to the singleton EIDs at parse time.
     try interner.seed(store, kernel_eids.TRUE_EID, "true");
     try interner.seed(store, kernel_eids.FALSE_EID, "false");
+
+    // -- Mount the identity/fact layer over the id floor (W7 Track C) ----------
+    // The named seam where deferred reflection (A1: `:name`) is published. Today
+    // it runs at the tail of boot, so behaviour is unchanged; later steps (eid
+    // retrofit, struct-graph projection) attach here as the tower decomposes.
+    try mount_mod.mountIdentityLayer(store, table, interner);
 
     return .{
         .vtable_vt_ref = object.toRef(vt_vt_ptr),
