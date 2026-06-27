@@ -261,6 +261,12 @@ pub const FactStore = struct {
     /// coherent. Decoupled (FactStore doesn't import the kernel).
     on_attr_mutate: ?*const fn (a: u64) void = null,
 
+    /// W7.0 boot-path probe hooks (THROWAWAY — docs/31 §W7.0 / `boot_probe.zig`).
+    /// Null in all normal operation (one branch on the write/read paths). Wired
+    /// only by the bootstrap probe to tally writes + detect read-before-mount.
+    debug_on_write: ?*const fn (e: u64, a: u64) void = null,
+    debug_on_read: ?*const fn (e: u64, a: u64) void = null,
+
     /// Phase 8: optional entity-level hook fired alongside `on_attr_mutate`
     /// with both `(e, a)`. Promotion module installs this to demote any
     /// materialized entity whose facts change.
@@ -1033,6 +1039,7 @@ pub const FactStore = struct {
         const tx = self.next_tx.fetchAdd(1, .monotonic);
         const bt = self.basis_t.fetchAdd(1, .monotonic); // 15.R: never resets on compact
         try self.applyAssert(e, a, v, m, tx, bt);
+        if (self.debug_on_write) |cb| cb(e, a); // W7.0 probe (throwaway)
         if (self.on_attr_mutate) |cb| cb(a);
         if (self.on_entity_mutate) |cb| cb(e, a);
         return tx;
@@ -1107,6 +1114,7 @@ pub const FactStore = struct {
     ///     empty RRB-Ref when all values have been retracted; null only
     ///     when the attribute has never been touched on `e`.
     pub fn currentValue(self: *const FactStore, e: u64, a: u64) ?Ref {
+        if (self.debug_on_read) |cb| cb(e, a); // W7.0 probe (throwaway)
         if (self.cardinalityOfAttr(a) == .many) {
             return self.materializeManyCurrent(e, a) catch null;
         }

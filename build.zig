@@ -526,6 +526,9 @@ pub fn build(b: *std.Build) void {
     boot_tests.linkLibC();
     const run_boot_tests = b.addRunArtifact(boot_tests);
     test_step.dependOn(&run_boot_tests.step);
+    // W7.0: run the bootstrap suite (incl. the boot-path probe) in isolation.
+    const boot_probe_step = b.step("test-bootprobe", "W7.0: bootstrap tests incl. boot-path probe");
+    boot_probe_step.dependOn(&b.addRunArtifact(boot_tests).step);
 
     const str_test_mod = b.createModule(.{
         .root_source_file = b.path("src/kernel/strings_test.zig"),

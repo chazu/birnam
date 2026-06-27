@@ -10,6 +10,7 @@ const object_table = @import("object_table.zig");
 const kernel_eids = @import("kernel_eids.zig");
 const bootstrap = @import("bootstrap.zig");
 const interner_mod = @import("interner.zig");
+const boot_probe = @import("boot_probe.zig");
 
 const Ref = ref_mod.Ref;
 
@@ -28,6 +29,63 @@ fn setup(arena: *std.heap.ArenaAllocator) !struct {
     interner.* = interner_mod.Interner.init(allocator);
     const k = try bootstrap.boot(allocator, store, table, interner);
     return .{ .store = store, .table = table, .interner = interner, .kernel = k };
+}
+
+// -- W7.0 boot-path probe (docs/31 §W7.0; THROWAWAY) -------------------------
+
+test "W7.0 probe: boot write-buckets + read-before-mount set" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const store = try allocator.create(fact_store.FactStore);
+    store.* = fact_store.FactStore.init(allocator);
+    const table = try allocator.create(object_table.ObjectTable);
+    table.* = object_table.ObjectTable.init(allocator);
+    const interner = try allocator.create(interner_mod.Interner);
+    interner.* = interner_mod.Interner.init(allocator);
+
+    // Arm the probe BEFORE boot; the boundary is the moment boot returns.
+    boot_probe.reset();
+    store.debug_on_write = &boot_probe.onWrite;
+    store.debug_on_read = &boot_probe.onRead;
+
+    _ = try bootstrap.boot(allocator, store, table, interner);
+    boot_probe.markMount(); // boot returned == module-load boundary
+    boot_probe.stop();
+
+    boot_probe.dump();
+
+    const name = boot_probe.writeCount(kernel_eids.ATTR_NAME); // 23 — reflection
+    const vtable = boot_probe.writeCount(kernel_eids.ATTR_VTABLE); // 19 — reflection
+    const delegate = boot_probe.writeCount(kernel_eids.ATTR_DELEGATE); // 22 — graph
+    const card = boot_probe.writeCount(kernel_eids.ATTR_CARDINALITY); // 53 — config
+    std.debug.print(
+        "classified: reflection(:name {d} + :vtable {d} = {d}) | graph(:delegate {d}) | config(:cardinality {d}) | total {d}\n",
+        .{ name, vtable, name + vtable, delegate, card, boot_probe.totalWrites() },
+    );
+    std.debug.print(
+        "read-before-mount: :name={d} :vtable={d} :delegate={d} (total {d} over {d} attrs)\n",
+        .{ boot_probe.rbmCount(kernel_eids.ATTR_NAME), boot_probe.rbmCount(kernel_eids.ATTR_VTABLE), boot_probe.rbmCount(kernel_eids.ATTR_DELEGATE), boot_probe.totalRbm(), boot_probe.distinctRbmAttrs() },
+    );
+
+    // Measured 2026-06-26 (324 writes): reflection 215 (66%) = :name 171 +
+    // :vtable 44; :delegate 42; config 2. These guard the bucket shape.
+    try testing.expect(name >= 150); // :name reflection shadow dominates
+    try testing.expect(vtable >= 30); // :vtable reflection
+    try testing.expect(delegate >= 30); // :delegate metaobject graph
+    try testing.expect(name + vtable > boot_probe.totalWrites() / 2); // reflection > half
+
+    // THE load-bearing finding: boot is essentially write-only. Exactly ONE
+    // fact is read back before the module-load boundary, and it is config
+    // (promote-threshold), not metaobject structure. The reflection shadow
+    // (A1/A2) and the graph (Track B) are read ZERO times before mount — so
+    // deferring/relocating them carries no boot-ordering risk. If a future
+    // change adds a read-before-mount, this fails loudly (by design).
+    try testing.expectEqual(@as(u32, 0), boot_probe.rbmCount(kernel_eids.ATTR_NAME));
+    try testing.expectEqual(@as(u32, 0), boot_probe.rbmCount(kernel_eids.ATTR_VTABLE));
+    try testing.expectEqual(@as(u32, 0), boot_probe.rbmCount(kernel_eids.ATTR_DELEGATE));
+    try testing.expectEqual(@as(u32, 1), boot_probe.rbmCount(kernel_eids.ATTR_PROMOTE_THRESHOLD));
+    try testing.expectEqual(@as(u64, 1), boot_probe.totalRbm()); // the whole boot's ordering-sensitive set
 }
 
 // -- Bootstrap returns valid kernel handles ----------------------------------
