@@ -113,11 +113,70 @@ is clear; whether dispatch is merely *projected* into the store (read-only refle
 or also *resolvable* through it (the full "dispatch is get") is the W7 §6 primacy call,
 to be made when rung 2 is designed.
 
+## Bootstrapping rung 2: the relational model models itself
+
+Rung 2 has its own Münchhausen problem, and it bottoms out the *same way libid
+does* — this is the **raw-append → seed → flip** pattern from `ROADMAP.md`
+§ADR-image-1 Q1 (the "cardinality fixpoint").
+
+**The regress.** To `assert [e a v]` with `:one` semantics the store must know the
+cardinality of `a` — which is itself the fact `[a :cardinality :one]` — so the
+cardinality *of `:cardinality`* regresses forever.
+
+**The break.** Bottom it out with one hardcoded step, exactly like `Class class`:
+
+1. **Raw mode.** The store has one irreducible primitive: `rawAssert(e, a, v)` —
+   append a triple, **consult nothing** (no schema, no cardinality, no policy).
+2. **Seed the schema as data**, while the rule-engine is off — raw-assert the whole
+   schema as ordinary facts, *including the self-referential knot*:
+   ```
+   [cardinality  cardinality  one]      ← the fixpoint that unties itself
+   [cardinality  name         "cardinality"]
+   …attributes, tiers, index policy, all as facts…
+   ```
+3. **Flip the switch** → schema-aware.
+4. From here every `assert` consults `currentValue(a, cardinality)` — a fact the
+   store already holds. **The relational model now models itself.**
+
+The slogan: *assert the rules while the rule-engine is off, then turn it on.* You
+**cannot eliminate the ground** (Münchhausen) — you minimize and relocate it from
+imperative Zig into self-describing data. The only hardcoded pieces are **(a) the
+raw-append primitive** and **(b) the single flip** — not a tower of
+schema-about-schema.
+
+### It is libid's trick, one layer up
+
+This is structurally identical to libid's own bootstrap — and now that *cells are
+libid objects*, it is literally the same move at two rungs:
+
+| | libid (rung 1) | relational store (rung 2) |
+|---|---|---|
+| metacircular op | `bind` resolves a method via `send(vt, lookup, …)` | `assert` consults cardinality via `currentValue(a, …)` |
+| the regress | binding `lookup` needs `lookup`… | cardinality-of-`cardinality`… |
+| the one hardcoded bottom | `vt == vtable_vt && msg == lookup` ⇒ call `vtable_lookup` **directly** | **raw mode**: append without consulting ⇒ seed schema ⇒ **flip** |
+| after the bottom | the object model models itself | the relational model models itself |
+
+So rung 2's bootstrap is not a new kind of thing — it is the rung-1 fixpoint again,
+expressed in rung-1 objects: the `Store`, the schema cells, and `flip` are all libid
+objects and sends. Concretely:
+
+1. the cell module mints a `Store` (a libid object) in **raw** mode;
+2. `[store rawAssert: …]` the schema cells (incl. `[cardinality cardinality one]`);
+3. `[store flip]` ⇒ schema-aware;
+4. `[store assert: e attr: a value: v]` now reads its own schema cells to place the
+   value — self-describing, queryable, historied; every fact a libid object.
+
+Only `rawAssert` and `flip` are Zig-hardcoded; the schema is data. (`seed.birnam`
+is a *separate, later* concern — authoring the higher initial fact-set as birnam
+source once peg is up. The fixpoint here is the store bootstrapping its *own*
+self-description first, by hand, the way libid hand-boots.)
+
 ## Next on the libid floor
 
 1. **Rung 2 — the cell/relational layer** as a module over libid (object state as
-   cells; the get/assert/query/history substrate). This is the inversion's
-   destination, reached by construction — relational woven in *low*.
+   cells; the get/assert/query/history substrate; bootstrapped by raw-append →
+   seed → flip above). This is the inversion's destination, reached by
+   construction — relational woven in *low*.
 2. **peg** over the relational layer (grammars as cells/objects).
 3. syntax + compiler (methods as cells), then up.
 
