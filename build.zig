@@ -222,6 +222,37 @@ pub fn build(b: *std.Build) void {
 
     // -- Hello dylib (Phase 5 smoke-test module) -----------------------------
 
+    // -- The id foundation: libid + the bare siphon (docs/30 §9) -------------
+    // A clean Piumarta object system (vtable pointers at [-1], no eids/facts),
+    // loaded as a module by a minimal siphon — the floor the rest builds on.
+    const libid_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/id.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const libid = b.addLibrary(.{ .name = "birnam_id", .root_module = libid_mod, .linkage = .dynamic });
+    libid.linkLibC();
+    b.installArtifact(libid);
+
+    const siphon_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const siphon_exe = b.addExecutable(.{ .name = "birnam-id", .root_module = siphon_mod });
+    siphon_exe.linkLibC();
+    b.installArtifact(siphon_exe);
+
+    const id_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/id.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_tests = b.addTest(.{ .root_module = id_test_mod });
+    id_tests.linkLibC();
+    const test_id_step = b.step("test-id", "libid: the Piumarta object-system bootstrap proof");
+    test_id_step.dependOn(&b.addRunArtifact(id_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,
