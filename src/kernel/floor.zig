@@ -52,7 +52,7 @@ pub fn register(eid: u64, obj: ObjPtr) void {
     if (eid < kernel_eids.USER_EID_START) g_floor[eid] = obj;
 }
 
-pub fn objFor(eid: u64) ?ObjPtr {
+fn objFor(eid: u64) ?ObjPtr {
     if (eid >= kernel_eids.USER_EID_START) return null;
     return g_floor[eid];
 }
@@ -63,7 +63,7 @@ pub fn initSlots(obj: ObjPtr) void {
     object.setSlot(obj, SLOT_COUNT, ref_mod.mkSmallInt(0).?);
 }
 
-pub fn setParent(obj: ObjPtr, parent: Ref) void {
+fn setParent(obj: ObjPtr, parent: Ref) void {
     object.setSlot(obj, SLOT_PARENT, parent);
 }
 
@@ -79,7 +79,7 @@ pub fn syncParentsFromStore(store: anytype) void {
     }
 }
 
-pub fn putMethod(obj: ObjPtr, sel_eid: u64, method: Ref) void {
+fn putMethod(obj: ObjPtr, sel_eid: u64, method: Ref) void {
     const n: usize = @intCast(ref_mod.untagSmallInt(object.slotAt(obj, SLOT_COUNT)));
     var i: usize = 0;
     while (i < n) : (i += 1) {
