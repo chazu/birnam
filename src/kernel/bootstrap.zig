@@ -163,11 +163,11 @@ pub fn boot(
     _ = try store.assert(kernel_eids.NIL, kernel_eids.ATTR_VTABLE, ref_mod.mkEid(kernel_eids.NIL_VT), m_boot);
 
     // -- Stage 7: install kernel methods ---------------------------------
-    try installMethod(allocator, store, table, kernel_eids.OBJECT_VT, kernel_eids.SEL_VTABLE, @ptrCast(&objectVtableImpl));
-    try installMethod(allocator, store, table, kernel_eids.OBJECT_VT, kernel_eids.SEL_INIT, @ptrCast(&objectInitImpl));
-    try installMethod(allocator, store, table, kernel_eids.VTABLE_VT, kernel_eids.SEL_LOOKUP, @ptrCast(&vtableLookupImpl));
-    try installMethod(allocator, store, table, kernel_eids.VTABLE_VT, kernel_eids.SEL_DELEGATED, @ptrCast(&vtableDelegatedImpl));
-    try installMethod(allocator, store, table, kernel_eids.VTABLE_VT, kernel_eids.SEL_METHOD_AT_PUT_WITH, @ptrCast(&vtableMethodAtPutWithImpl));
+    try installMethod(allocator, table, kernel_eids.OBJECT_VT, kernel_eids.SEL_VTABLE, @ptrCast(&objectVtableImpl));
+    try installMethod(allocator, table, kernel_eids.OBJECT_VT, kernel_eids.SEL_INIT, @ptrCast(&objectInitImpl));
+    try installMethod(allocator, table, kernel_eids.VTABLE_VT, kernel_eids.SEL_LOOKUP, @ptrCast(&vtableLookupImpl));
+    try installMethod(allocator, table, kernel_eids.VTABLE_VT, kernel_eids.SEL_DELEGATED, @ptrCast(&vtableDelegatedImpl));
+    try installMethod(allocator, table, kernel_eids.VTABLE_VT, kernel_eids.SEL_METHOD_AT_PUT_WITH, @ptrCast(&vtableMethodAtPutWithImpl));
 
     // -- Stage 8: seed selector names ------------------------------------
     try interner.seed(store, kernel_eids.SEL_LOOKUP, "lookup:");
@@ -531,8 +531,7 @@ pub fn boot(
 
 // -- Allocation helpers -------------------------------------------------------
 
-fn allocVtStruct(allocator: std.mem.Allocator, vt_eid: u64) !object.ObjPtr {
-    _ = vt_eid;
+fn allocVtStruct(allocator: std.mem.Allocator) !object.ObjPtr {
     // USER vtables (runtime `delegated`) stay fact-based: a 0-slot struct, not
     // registered as a floor vtable. -1 = mkEid(VTABLE_VT) (shared metavtable).
     return object.allocObject(allocator, ref_mod.mkEid(kernel_eids.VTABLE_VT), 0);
@@ -566,13 +565,12 @@ fn allocClosure(allocator: std.mem.Allocator, method_fn: *const anyopaque, data_
 
 fn installMethod(
     allocator: std.mem.Allocator,
-    store: *fact_store.FactStore,
     table: *object_table.ObjectTable,
     vt_eid: u64,
     sel_eid: u64,
     method_fn: *const anyopaque,
 ) !void {
-    _ = store; // W7 B: kernel methods are struct-resident — no fact written.
+    // W7 B: kernel methods are struct-resident — no fact written, no store needed.
     const c = try allocClosure(allocator, method_fn, ref_mod.NIL);
     const closure_eid = table.alloc();
     try table.put(closure_eid, ref_mod.mkPointer(@ptrCast(c)));
@@ -641,7 +639,7 @@ fn vtableDelegatedImpl(s: *Send, args: [*]const Ref, n_args: usize) callconv(.c)
     const store = send_mod.storePtr() orelse return ref_mod.NIL;
     const table = send_mod.tablePtr() orelse return ref_mod.NIL;
 
-    const new_struct = allocVtStruct(allocator, 0) catch return ref_mod.NIL;
+    const new_struct = allocVtStruct(allocator) catch return ref_mod.NIL;
     const new_eid = table.alloc();
     table.put(new_eid, object.toRef(new_struct)) catch return ref_mod.NIL;
 

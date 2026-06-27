@@ -67,10 +67,6 @@ pub fn setParent(obj: ObjPtr, parent: Ref) void {
     object.setSlot(obj, SLOT_PARENT, parent);
 }
 
-pub fn setParentByEid(eid: u64, parent: Ref) void {
-    if (objFor(eid)) |obj| setParent(obj, parent);
-}
-
 /// Mirror each floor vtable's `:delegate` fact into its struct parent slot.
 /// Called at the identity-layer mount, after all delegation facts are asserted
 /// (dual-write: the struct becomes the fallback for the fact). Absence of a
