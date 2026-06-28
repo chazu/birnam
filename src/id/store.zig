@@ -280,7 +280,7 @@ fn mCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
         (if (currentValueRaw(st, e, a) == null) @as(usize, 0) else 1)
     else
         valueCount(st, e, a);
-    return @ptrFromInt(c);
+    return g_api.mkSmallInt(@intCast(c));
 }
 
 /// `[store history: e attr: a]` — the timeline length for (e, a), pointer-
@@ -289,7 +289,7 @@ fn mCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// proof that history is opt-in (D6).
 fn mHistory(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    return @ptrFromInt(historyLen(stateOf(self), args[0], args[1]));
+    return g_api.mkSmallInt(@intCast(historyLen(stateOf(self), args[0], args[1])));
 }
 
 // -- Query surface: entity introspection (docs/33 §2b, open item) ------------
@@ -331,14 +331,14 @@ fn mAttrCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     var out: std.ArrayList(Oop) = .{};
     defer out.deinit(ca);
     collectAttrs(stateOf(self), args[0], &out);
-    return @ptrFromInt(out.items.len);
+    return g_api.mkSmallInt(@intCast(out.items.len));
 }
 
-/// `[store attrAt: e index: i]` — the i-th attribute of `e` (pointer-encoded
-/// index), or nil if out of range. Pair with `attrCount:` to iterate.
+/// `[store attrAt: e index: i]` — the i-th attribute of `e` (`i` a SmallInt), or
+/// nil if out of range. Pair with `attrCount:` to iterate.
 fn mAttrAt(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    const idx: usize = @intFromPtr(args[1]);
+    const idx: usize = @intCast(g_api.smallIntValue(args[1]));
     var out: std.ArrayList(Oop) = .{};
     defer out.deinit(ca);
     collectAttrs(stateOf(self), args[0], &out);

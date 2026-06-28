@@ -42,6 +42,20 @@ pub const IdApi = extern struct {
 
     // -- messaging -----------------------------------------------------------
     send: *const fn (Oop, Oop, [*]const Oop, usize) callconv(.c) Oop,
+
+    // -- immediates + canonical singletons (F1; appended — ABI stays stable) -
+    /// The fixnum vtable, and the boot-time singletons nil / true / false. The
+    /// singletons are heap objects compared by pointer (only SmallInt is an
+    /// immediate); each is distinct from the Zig `null` Oop (internal absence).
+    smallint_vt: Oop,
+    nilObj: Oop,
+    trueObj: Oop,
+    falseObj: Oop,
+    /// mkSmallInt(v) -> a tagged 63-bit fixnum; smallIntValue decodes it;
+    /// isSmallInt tests the tag. Pointer-encoded ints are gone above the floor.
+    mkSmallInt: *const fn (i64) callconv(.c) Oop,
+    smallIntValue: *const fn (Oop) callconv(.c) i64,
+    isSmallInt: *const fn (Oop) callconv(.c) c_int,
 };
 
 /// libid's module entrypoint: `id_init()` returns the API table (cf. `_libid_init`).

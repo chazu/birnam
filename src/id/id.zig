@@ -51,6 +51,16 @@ pub const Symbol = extern struct {
 pub var vtable_vt: *Vtable = undefined; // the vtable of vtables (self-describing)
 pub var object_vt: *Vtable = undefined; // top of the delegation chain
 pub var symbol_vt: *Vtable = undefined;
+pub var smallint_vt: *Vtable = undefined; // the vtable of tagged fixnums (F1)
+pub var nil_vt: *Vtable = undefined;
+pub var bool_vt: *Vtable = undefined; // shared by true_obj + false_obj
+
+// The canonical singleton objects (boot-allocated, compared by pointer). These
+// are NOT immediates — only SmallInt is (maru-style). They are distinct from the
+// Zig `null` Oop, which stays *internal absence* (no-NULL rule, F1 / docs/34).
+pub var nil_obj: Oop = undefined;
+pub var true_obj: Oop = undefined;
+pub var false_obj: Oop = undefined;
 var symbol_list: *Vtable = undefined; // the intern table (keys = symbols)
 var env: *Vtable = undefined; // the export environment (keys = symbols, values = objects)
 
@@ -75,7 +85,25 @@ fn vtSlot(obj: Oop) *?*Vtable {
     return @ptrFromInt(@intFromPtr(obj.?) - VT);
 }
 pub fn vtableOf(obj: Oop) ?*Vtable {
+    if (obj == null) return null; // internal absence has no vtable
+    if ((@intFromPtr(obj.?) & 1) != 0) return smallint_vt; // tagged fixnum (F1)
     return vtSlot(obj).*;
+}
+
+// -- SmallInt: the one immediate (maru-style low-bit tag, F1) ----------------
+// bit0 = 1 ⇒ a 63-bit signed fixnum (value in the high bits); bit0 = 0 ⇒ a heap
+// pointer (16-byte alignment guarantees the low bit is free). A fixnum is never
+// dereferenced — `vtableOf` maps it to `smallint_vt`.
+
+pub fn isSmallInt(o: Oop) bool {
+    return o != null and (@intFromPtr(o.?) & 1) != 0;
+}
+pub fn mkSmallInt(v: i64) Oop {
+    const u: usize = @bitCast(v);
+    return @ptrFromInt((u << 1) | 1);
+}
+pub fn smallIntValue(o: Oop) i64 {
+    return @as(i64, @bitCast(@intFromPtr(o.?))) >> 1; // arithmetic shift restores sign
 }
 fn setVtable(obj: Oop, vt: ?*Vtable) void {
     vtSlot(obj).* = vt;
@@ -274,6 +302,18 @@ pub fn boot() void {
     setVtable(oop(env), vtable_vt);
     booted = true;
 
+    // The fixnum vtable + the canonical singletons (F1). newVtable now auto-sets
+    // their meta to vtable_vt (booted); each delegates to object_vt.
+    smallint_vt = newVtable(object_vt);
+    nil_vt = newVtable(object_vt);
+    bool_vt = newVtable(object_vt);
+    nil_obj = allocRaw(0);
+    setVtable(nil_obj, nil_vt);
+    true_obj = allocRaw(0);
+    setVtable(true_obj, bool_vt);
+    false_obj = allocRaw(0);
+    setVtable(false_obj, bool_vt);
+
     s_lookup = intern("lookup");
     s_addMethod = intern("addMethod");
     s_allocate = intern("allocate");
@@ -351,6 +391,15 @@ fn isExportedC(key: [*:0]const u8) callconv(.c) c_int {
 fn sendC(rcv: Oop, sel: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return send(rcv, @ptrCast(@alignCast(sel)), args[0..n]);
 }
+fn mkSmallIntC(v: i64) callconv(.c) Oop {
+    return mkSmallInt(v);
+}
+fn smallIntValueC(o: Oop) callconv(.c) i64 {
+    return smallIntValue(o);
+}
+fn isSmallIntC(o: Oop) callconv(.c) c_int {
+    return if (isSmallInt(o)) 1 else 0;
+}
 
 var g_api: idapi.IdApi = undefined;
 
@@ -373,6 +422,13 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .exportObj = &exportC,
         .isExported = &isExportedC,
         .send = &sendC,
+        .smallint_vt = oop(smallint_vt),
+        .nilObj = nil_obj,
+        .trueObj = true_obj,
+        .falseObj = false_obj,
+        .mkSmallInt = &mkSmallIntC,
+        .smallIntValue = &smallIntValueC,
+        .isSmallInt = &isSmallIntC,
     };
     // Publish the id layer into its own environment — so it is re-importable.
     _ = exportObj("Object", oop(object_vt));
@@ -437,6 +493,27 @@ test "libid: doesNotUnderstand: is an overridable message (F2)" {
     _ = send1(proxy, unknown, @ptrFromInt(7));
     try std.testing.expect(last_dnu_sel == oop(unknown));
     try std.testing.expectEqual(@as(usize, 7), last_dnu_arg);
+}
+
+test "libid: SmallInt is the one immediate (F1)" {
+    boot();
+
+    const a = mkSmallInt(42);
+    try std.testing.expect(isSmallInt(a));
+    try std.testing.expectEqual(@as(i64, 42), smallIntValue(a));
+    try std.testing.expectEqual(@as(i64, -7), smallIntValue(mkSmallInt(-7))); // sign round-trips
+    try std.testing.expectEqual(@as(i64, 0), smallIntValue(mkSmallInt(0)));
+
+    // A fixnum's vtable is smallint_vt — found by tag, no `[-1]` deref.
+    try std.testing.expect(vtableOf(a) == smallint_vt);
+
+    // Heap objects (incl. the singletons) are NOT smallints; nil is a real
+    // object distinct from the Zig null Oop (internal absence).
+    try std.testing.expect(!isSmallInt(oop(object_vt)));
+    try std.testing.expect(!isSmallInt(nil_obj));
+    try std.testing.expect(vtableOf(nil_obj) == nil_vt);
+    try std.testing.expect(nil_obj != null);
+    try std.testing.expect(true_obj != false_obj and vtableOf(true_obj) == bool_vt);
 }
 
 var last_dnu_sel: Oop = null;

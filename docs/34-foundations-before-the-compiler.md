@@ -60,7 +60,10 @@ word. Rung 2's `count`/`attrAt` become the first real SmallInt consumers,
 deleting the `@ptrFromInt` hack. Specials can be promoted to immediates later if
 profiling demands; not now.
 
-**Status:** DECIDED — implement after F2.
+**Status:** DECIDED + **SHIPPED** — `smallint_vt` + `nil`/`true`/`false`
+singletons + `mkSmallInt`/`smallIntValue`/`isSmallInt` in `id.zig`, exposed on
+the `IdApi` (appended); `vtableOf` tag-branches; rung-2 `count`/`history`/
+`attrCount`/`attrAt` now return real SmallInts. `test-id` 3/3, `test-store` 11/11.
 
 ## F2 — `doesNotUnderstand:` as a message
 

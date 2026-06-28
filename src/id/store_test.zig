@@ -21,10 +21,10 @@ fn assert3(api: *idapi.IdApi, e: Oop, a: Oop, v: Oop) void {
     _ = api.send(store.store_instance, store.s_assert, &[_]Oop{ e, a, v }, 3);
 }
 fn count(api: *idapi.IdApi, e: Oop, a: Oop) usize {
-    return @intFromPtr(api.send(store.store_instance, store.s_count, &[_]Oop{ e, a }, 2));
+    return @intCast(api.smallIntValue(api.send(store.store_instance, store.s_count, &[_]Oop{ e, a }, 2)));
 }
 fn histLen(api: *idapi.IdApi, e: Oop, a: Oop) usize {
-    return @intFromPtr(api.send(store.store_instance, store.s_history_read, &[_]Oop{ e, a }, 2));
+    return @intCast(api.smallIntValue(api.send(store.store_instance, store.s_history_read, &[_]Oop{ e, a }, 2)));
 }
 
 test "rung 2a.1: raw-append → seed → flip; the relational model models itself" {
@@ -123,7 +123,7 @@ test "rung 2a.3: a Cell is a handle onto (e,a) — value/set:/history, off base 
     try std.testing.expect(api.send(cell2, store.s_value, &[_]Oop{}, 0) == no);
 
     // History off by default → timeline length 1 despite two sets.
-    try std.testing.expectEqual(@as(usize, 1), @intFromPtr(api.send(cell, store.s_history, &[_]Oop{}, 0)));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(cell, store.s_history, &[_]Oop{}, 0)));
 
     // The stratification guarantee: `door` itself does not understand `value`
     // (the reflective/stateful protocol is on the cell mirror, not the entity).
@@ -144,7 +144,7 @@ fn cardMany(api: *idapi.IdApi, a: Oop) void {
     _ = api.send(store.store_instance, store.s_assert, &[_]Oop{ a, store.s_cardinality, store.s_many }, 3);
 }
 fn attrCount(api: *idapi.IdApi, e: Oop) usize {
-    return @intFromPtr(api.send(store.store_instance, store.s_attrCount, &[_]Oop{e}, 1));
+    return @intCast(api.smallIntValue(api.send(store.store_instance, store.s_attrCount, &[_]Oop{e}, 1)));
 }
 
 test "rung 2 polish: Store new mints independent, seeded stores" {
@@ -217,9 +217,9 @@ test "rung 2 polish: query surface — enumerate an entity's attrs / a type's se
     try std.testing.expectEqual(@as(usize, 2), attrCount(api, e));
 
     // Indexed access, first-appearance order; out-of-range is nil.
-    try std.testing.expect(api.send(store.store_instance, store.s_attrAt, &[_]Oop{ e, @ptrFromInt(0) }, 2) == a);
-    try std.testing.expect(api.send(store.store_instance, store.s_attrAt, &[_]Oop{ e, @ptrFromInt(1) }, 2) == b);
-    try std.testing.expect(api.send(store.store_instance, store.s_attrAt, &[_]Oop{ e, @ptrFromInt(2) }, 2) == null);
+    try std.testing.expect(api.send(store.store_instance, store.s_attrAt, &[_]Oop{ e, api.mkSmallInt(0) }, 2) == a);
+    try std.testing.expect(api.send(store.store_instance, store.s_attrAt, &[_]Oop{ e, api.mkSmallInt(1) }, 2) == b);
+    try std.testing.expect(api.send(store.store_instance, store.s_attrAt, &[_]Oop{ e, api.mkSmallInt(2) }, 2) == null);
 
     // Same mechanism over a tracked vtable: attrCount == # mirrored selectors.
     const vt = api.proto(api.object_vt);
