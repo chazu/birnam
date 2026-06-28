@@ -130,6 +130,40 @@ test "rung 2a.3: a Cell is a handle onto (e,a) — value/set:/history, off base 
     try std.testing.expect(id.bind(door, @ptrCast(@alignCast(store.s_value.?))) == null);
 }
 
+fn answer42(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = args;
+    _ = n;
+    return @ptrFromInt(42);
+}
+
+test "rung 2b.1: tracked dispatch mirror — one write, two representations; escape hatch" {
+    const api = id.id_init();
+    store.bringUp(api);
+
+    const widget_vt = api.proto(api.object_vt);
+    const s_answer = api.intern("answer");
+    const m: Oop = @constCast(@ptrCast(&answer42));
+
+    // Tracked install THROUGH the mirror.
+    _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ s_answer, widget_vt, m }, 3);
+
+    // 1. Authoritative fast path works: an instance dispatches the method.
+    const w = api.alloc(widget_vt, 0);
+    try std.testing.expectEqual(@as(usize, 42), @intFromPtr(api.send(w, s_answer, &[_]Oop{}, 0)));
+
+    // 2. The mirror recorded it as a fact: currentValue(widget_vt, answer) == m.
+    try std.testing.expect(cv(api, widget_vt, s_answer) == m);
+    try std.testing.expectEqual(@as(usize, 1), count(api, widget_vt, s_answer));
+
+    // 3. Escape hatch: a DIRECT (untracked) install dispatches but is invisible
+    //    to the store — the root metavtable is never patched.
+    const s_other = api.intern("other");
+    api.method(widget_vt, s_other, &answer42);
+    try std.testing.expect(api.send(w, s_other, &[_]Oop{}, 0) != null); // dispatch works
+    try std.testing.expect(cv(api, widget_vt, s_other) == null); // not mirrored
+}
+
 test "rung 2a.1: currentValue of an absent (e,a) is nil" {
     // Tests share one process: id_init + bringUp are both idempotent (bringUp
     // takes its reload path and re-imports the live store), so this just rides

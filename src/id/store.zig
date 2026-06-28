@@ -53,6 +53,7 @@ pub var s_history_read: Oop = null; // the `history:attr:` read selector
 pub var s_cellFor: Oop = null; // `[store cellFor: e attr: a]`
 pub var s_value: Oop = null; // `[cell value]`
 pub var s_set: Oop = null; // `[cell set: v]`
+pub var s_addMethodOn: Oop = null; // `[store addMethod: sel on: vt with: m]`
 
 /// The api table, stashed so methods (which receive only self+args) can drive
 /// the store via real dispatch. Set by `bringUp`.
@@ -275,6 +276,29 @@ fn mCellHistory(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.send(c.store, s_history_read, &[_]Oop{ c.e, c.a }, 2);
 }
 
+// -- The dispatch mirror (docs/33 §2b.1, D3/D4) ------------------------------
+//
+// `[store addMethod: sel on: vt with: m]` is the OPT-IN tracked install: it
+// writes the vtable dict (the authoritative, fast path) AND projects the fact
+// `[vt sel m]` — one write, two representations (the JIT shape: the fact is a
+// projection of the dict, not a second authority). So a method install becomes
+// queryable/historied: `currentValue(vt, sel)` is the bound method;
+// `[sel :history true]` makes method changes a timeline (hot-reload visibility).
+//
+// Untracked types install via plain `[vt addMethod: sel with: m]` (libid, D4) —
+// invisible to the store, the default escape hatch. The root metavtable is
+// NEVER patched; methods stay bare fn pointers (no per-method objects, D3).
+
+fn mTrackedAddMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const sel = args[0];
+    const vt = args[1];
+    const m = args[2];
+    g_api.method(vt, sel, @ptrCast(@alignCast(m.?))); // 1. authoritative dict
+    _ = g_api.send(self, s_assert, &[_]Oop{ vt, sel, m }, 3); // 2. derived fact
+    return self;
+}
+
 // -- Bringup + the schema seed ----------------------------------------------
 
 /// Wire the store onto libid through the id API: intern the vocabulary, build
@@ -304,6 +328,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_cellFor = api.intern("cellFor:attr:");
     s_value = api.intern("value");
     s_set = api.intern("set:");
+    s_addMethodOn = api.intern("addMethod:on:with:");
 
     const reloading = api.isExported("Store") != 0;
     if (reloading) {
@@ -322,6 +347,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_count, &mCount);
     api.method(store_vt, s_history_read, &mHistory);
     api.method(store_vt, s_cellFor, &mCellFor);
+    api.method(store_vt, s_addMethodOn, &mTrackedAddMethod);
 
     // Cell protocol (the `history` selector reuses the "history" symbol — one
     // identity, two roles: a cell message here, a schema attribute key above).
