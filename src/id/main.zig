@@ -102,7 +102,31 @@ pub fn main() !void {
     if (back != s_many) return error.RungTwoMismatch;
     std.debug.print("[siphon] rung 2: [tags cardinality] read back as :many — the store models its own schema\n", .{});
 
-    std.debug.print("[siphon] ok — siphon loads + drives + re-imports id, persists module state across reloads, and mounts the rung-2 cell store, all through the id api\n", .{});
+    // 7. RUNG 3 — load the peg module THROUGH the id api and drive it ENTIRELY
+    //    through messages: build a tiny grammar, parse, walk the CST. lang will
+    //    use this same message api to construct birnam's grammar + parser.
+    const peg_path = try a.dupeZ(u8, "zig-out/lib/libbirnam_id_peg.dylib");
+    defer a.free(peg_path);
+    _ = try loadModule(api, peg_path, null);
+    const peg = api.import("Peg") orelse return error.NoPeg;
+    const empty = &[_]Oop{};
+
+    const g = api.send(peg, api.intern("grammar"), empty, 0);
+    const digit = api.intern("digit");
+    const number = api.intern("number");
+    const cs = api.send(peg, api.intern("charset"), empty, 0);
+    _ = api.send(cs, api.intern("from:to:"), &[_]Oop{ api.mkSmallInt('0'), api.mkSmallInt('9') }, 2);
+    _ = api.send(g, api.intern("rule:is:"), &[_]Oop{ digit, cs }, 2);
+    const dref = api.send(peg, api.intern("ruleRef:"), &[_]Oop{digit}, 1);
+    _ = api.send(g, api.intern("rule:is:"), &[_]Oop{ number, api.send(dref, api.intern("plus"), empty, 0) }, 2);
+    const sample = "12345";
+    const root = api.send(g, api.intern("parse:from:"), &[_]Oop{ api.mkString(sample, sample.len), number }, 2);
+    if (root == api.nilObj) return error.PegParseFailed;
+    const cc = api.smallIntValue(api.send(root, api.intern("childCount"), empty, 0));
+    if (cc != 5) return error.PegWrongCount;
+    std.debug.print("[siphon] rung 3: peg parsed \"12345\" => {d} digit nodes, built + walked entirely through the id api\n", .{cc});
+
+    std.debug.print("[siphon] ok — siphon loads + drives + re-imports id, persists state across reloads, mounts the rung-2 cell store, and the rung-3 peg engine, all through the id api\n", .{});
 }
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading

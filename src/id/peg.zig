@@ -146,6 +146,28 @@ fn ruleNamed(g: Oop, name: Oop) ?Oop {
     return null;
 }
 
+/// Append a child to a seq/choice pattern (the builder; grammar construction is
+/// one-time, so reallocating per add is fine). The empty default slice (`&.{}`)
+/// is comptime, so only previously-grown heap slices are freed.
+fn addChild(pat: Oop, child: Oop) void {
+    const p = patOf(pat);
+    const old = p.children;
+    const new = ca.alloc(Oop, old.len + 1) catch @panic("peg: oom");
+    @memcpy(new[0..old.len], old);
+    new[old.len] = child;
+    if (old.len > 0) ca.free(@constCast(old));
+    p.children = new;
+}
+fn addRange(pat: Oop, lo: u8, hi: u8) void {
+    const p = patOf(pat);
+    const old = p.ranges;
+    const new = ca.alloc(Range, old.len + 1) catch @panic("peg: oom");
+    @memcpy(new[0..old.len], old);
+    new[old.len] = .{ .lo = lo, .hi = hi };
+    if (old.len > 0) ca.free(@constCast(old));
+    p.ranges = new;
+}
+
 // -- The transient CST (caller-owned arena; NOT facts) -----------------------
 
 pub const Node = struct {
@@ -287,23 +309,227 @@ pub fn parse(api: *idapi.IdApi, na: std.mem.Allocator, g: Oop, source: []const u
     return null;
 }
 
+// -- The message (id) api: peg through the object model ----------------------
+//
+// peg is driven through `api.send`, so `lang` (a sibling module) builds the
+// birnam grammar + parser by messaging these objects — no Zig linkage between
+// modules. The `Peg` facade mints patterns; patterns answer the combinators;
+// the `Grammar` defines rules and parses; the parse result is a tree of `CstNode`
+// objects (message-accessible, still transient — not facts).
+
+pub var peg_vt: Oop = null; // the Peg facade's vtable
+pub var peg_obj: Oop = null; // the Peg facade singleton (exported "Peg")
+pub var cstnode_vt: Oop = null;
+
+/// A message-accessible CST node — the libid wrapper over a transient parse
+/// `Node`. Heap libid objects (leak until gc, like everything); the Zig `Node`
+/// arena is freed right after conversion.
+const Cst = struct { rule: Oop, start: usize, end: usize, children: []Oop };
+fn cstOf(o: Oop) *Cst {
+    return @ptrCast(@alignCast(o.?));
+}
+
+fn strBytes(o: Oop) []const u8 {
+    var len: usize = 0;
+    const p = g_api.stringBytes(o, &len);
+    return p[0..len];
+}
+
+fn toCst(node: *Node) Oop {
+    const o = g_api.alloc(cstnode_vt, @sizeOf(Cst));
+    const kids = ca.alloc(Oop, node.children.len) catch @panic("peg: oom");
+    for (node.children, 0..) |ch, i| kids[i] = toCst(ch);
+    cstOf(o).* = .{ .rule = node.rule, .start = node.start, .end = node.end, .children = kids };
+    return o;
+}
+
+// Peg facade: `[Peg literal: aString]`, `[Peg seq]`, `[Peg ruleRef: #sym]`, …
+fn mLiteral(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return mkLiteral(g_api, strBytes(a[0]));
+}
+fn mAnyMsg(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return mkAny(g_api);
+}
+fn mEofMsg(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return mkEof(g_api);
+}
+fn mCharset(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return newPattern(.{ .kind = .charset });
+}
+fn mRuleRefMsg(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return mkRuleRef(g_api, a[0]);
+}
+fn mSeq(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return newPattern(.{ .kind = .seq });
+}
+fn mChoice(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return newPattern(.{ .kind = .choice });
+}
+fn mGrammarMsg(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return mkGrammar(g_api);
+}
+
+// Pattern combinators (on pattern_vt): `[pat star]`, `[seq add: child]`, …
+fn mStar(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mkUnary(.star, self);
+}
+fn mPlus(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mkUnary(.plus, self);
+}
+fn mOpt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mkUnary(.opt, self);
+}
+fn mNegate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mkUnary(.p_not, self);
+}
+fn mLookahead(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mkUnary(.p_and, self);
+}
+fn mAdd(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    addChild(self, a[0]);
+    return self;
+}
+fn mFromTo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    addRange(self, @intCast(g_api.smallIntValue(a[0])), @intCast(g_api.smallIntValue(a[1])));
+    return self;
+}
+
+// Grammar (on grammar_vt): `[g rule: #name is: pat]`, `[g parse: src from: #root]`.
+fn mRuleIs(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    defineRule(self, a[0], a[1]);
+    return self;
+}
+fn mParseFrom(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var arena = std.heap.ArenaAllocator.init(ca);
+    defer arena.deinit();
+    const root = parse(g_api, arena.allocator(), self, strBytes(a[0]), a[1]) orelse return g_api.nilObj;
+    return toCst(root);
+}
+
+// CstNode accessors (on cstnode_vt).
+fn mCstRule(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return cstOf(self).rule;
+}
+fn mCstStart(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(@intCast(cstOf(self).start));
+}
+fn mCstEnd(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(@intCast(cstOf(self).end));
+}
+fn mCstChildCount(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(@intCast(cstOf(self).children.len));
+}
+fn mCstChildAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const i = g_api.smallIntValue(a[0]);
+    const c = cstOf(self);
+    if (i < 0 or @as(usize, @intCast(i)) >= c.children.len) return g_api.nilObj;
+    return c.children[@intCast(i)];
+}
+
 // -- Bringup / module entrypoint --------------------------------------------
 
-/// Wire peg onto libid: build (or re-import) the Pattern + Grammar vtables.
-/// Patterns/grammars are data objects (read by pointer in the hot match loop);
-/// no methods are installed on them yet — a message facade for building grammars
-/// from birnam source arrives with collection literals.
+/// Wire peg onto libid as a message-driven module: build (or re-import) the
+/// Pattern / Grammar / Peg-facade / CstNode vtables, install their methods, and
+/// export the `Peg` facade so siblings (`lang`) can `api.import("Peg")` and drive
+/// peg entirely through `api.send`.
 pub fn bringUp(api: *idapi.IdApi) void {
     g_api = api;
-    const reloading = api.isExported("PegPatternVt") != 0;
+    const reloading = api.isExported("Peg") != 0;
     if (reloading) {
         pattern_vt = api.import("PegPatternVt");
         grammar_vt = api.import("PegGrammarVt");
+        peg_vt = api.import("PegFacadeVt");
+        peg_obj = api.import("Peg");
+        cstnode_vt = api.import("PegCstVt");
     } else {
         pattern_vt = api.proto(api.object_vt);
         grammar_vt = api.proto(api.object_vt);
+        peg_vt = api.proto(api.object_vt);
+        cstnode_vt = api.proto(api.object_vt);
+        peg_obj = api.alloc(peg_vt, 0);
+    }
+
+    // Peg facade constructors.
+    api.method(peg_vt, api.intern("literal:"), &mLiteral);
+    api.method(peg_vt, api.intern("any"), &mAnyMsg);
+    api.method(peg_vt, api.intern("eof"), &mEofMsg);
+    api.method(peg_vt, api.intern("charset"), &mCharset);
+    api.method(peg_vt, api.intern("ruleRef:"), &mRuleRefMsg);
+    api.method(peg_vt, api.intern("seq"), &mSeq);
+    api.method(peg_vt, api.intern("choice"), &mChoice);
+    api.method(peg_vt, api.intern("grammar"), &mGrammarMsg);
+
+    // Pattern combinators.
+    api.method(pattern_vt, api.intern("star"), &mStar);
+    api.method(pattern_vt, api.intern("plus"), &mPlus);
+    api.method(pattern_vt, api.intern("opt"), &mOpt);
+    api.method(pattern_vt, api.intern("negate"), &mNegate);
+    api.method(pattern_vt, api.intern("lookahead"), &mLookahead);
+    api.method(pattern_vt, api.intern("add:"), &mAdd);
+    api.method(pattern_vt, api.intern("from:to:"), &mFromTo);
+
+    // Grammar.
+    api.method(grammar_vt, api.intern("rule:is:"), &mRuleIs);
+    api.method(grammar_vt, api.intern("parse:from:"), &mParseFrom);
+
+    // CstNode accessors.
+    api.method(cstnode_vt, api.intern("rule"), &mCstRule);
+    api.method(cstnode_vt, api.intern("start"), &mCstStart);
+    api.method(cstnode_vt, api.intern("end"), &mCstEnd);
+    api.method(cstnode_vt, api.intern("childCount"), &mCstChildCount);
+    api.method(cstnode_vt, api.intern("childAt:"), &mCstChildAt);
+
+    if (!reloading) {
         _ = api.exportObj("PegPatternVt", pattern_vt);
         _ = api.exportObj("PegGrammarVt", grammar_vt);
+        _ = api.exportObj("PegFacadeVt", peg_vt);
+        _ = api.exportObj("PegCstVt", cstnode_vt);
+        _ = api.exportObj("Peg", peg_obj);
     }
 }
 

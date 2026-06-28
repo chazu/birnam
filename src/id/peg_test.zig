@@ -12,6 +12,10 @@ const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
 
+fn str(api: *idapi.IdApi, bytes: []const u8) Oop {
+    return api.mkString(bytes.ptr, bytes.len);
+}
+
 test "peg 3a: number grammar — charset + plus + rule-ref build a nested CST" {
     const api = id.id_init();
     peg.bringUp(api);
@@ -68,6 +72,40 @@ test "peg 3a: choice of literals + eof + ordered-choice failure" {
     const r = peg.parse(api, na, g, "let", kw) orelse return error.ParseFailed;
     try std.testing.expectEqual(@as(usize, 0), r.children.len);
     try std.testing.expectEqual(@as(usize, 3), r.end);
+}
+
+test "peg 3a: the message (id) api — build + parse + walk CST through api.send" {
+    const api = id.id_init();
+    peg.bringUp(api);
+    const Peg = api.import("Peg") orelse return error.NoPeg;
+    const empty = &[_]Oop{};
+
+    // digit = [0-9] ; number = digit+ — built entirely through messages.
+    const g = api.send(Peg, api.intern("grammar"), empty, 0);
+    const digit = api.intern("digit");
+    const number = api.intern("number");
+
+    const cs = api.send(Peg, api.intern("charset"), empty, 0);
+    _ = api.send(cs, api.intern("from:to:"), &[_]Oop{ api.mkSmallInt('0'), api.mkSmallInt('9') }, 2);
+    _ = api.send(g, api.intern("rule:is:"), &[_]Oop{ digit, cs }, 2);
+
+    const dref = api.send(Peg, api.intern("ruleRef:"), &[_]Oop{digit}, 1);
+    const plus = api.send(dref, api.intern("plus"), empty, 0);
+    _ = api.send(g, api.intern("rule:is:"), &[_]Oop{ number, plus }, 2);
+
+    const root = api.send(g, api.intern("parse:from:"), &[_]Oop{ str(api, "123"), number }, 2);
+    try std.testing.expect(root != api.nilObj);
+    try std.testing.expect(api.send(root, api.intern("rule"), empty, 0) == number);
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(api.send(root, api.intern("end"), empty, 0)));
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(api.send(root, api.intern("childCount"), empty, 0)));
+
+    const c0 = api.send(root, api.intern("childAt:"), &[_]Oop{api.mkSmallInt(0)}, 1);
+    try std.testing.expect(api.send(c0, api.intern("rule"), empty, 0) == digit);
+    try std.testing.expect(api.send(root, api.intern("childAt:"), &[_]Oop{api.mkSmallInt(9)}, 1) == api.nilObj);
+
+    // Failure returns the canonical nil singleton (not Zig null).
+    const bad = api.send(g, api.intern("parse:from:"), &[_]Oop{ str(api, "abc"), number }, 2);
+    try std.testing.expect(bad == api.nilObj);
 }
 
 test "peg 3a: opt + star + not, and left-recursion-free repetition" {
