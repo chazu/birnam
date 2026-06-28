@@ -46,11 +46,22 @@ pub const Symbol = extern struct {
     string: [*:0]u8,
 };
 
+/// An uninterned byte string — the floor's value type for source text and
+/// literal bytes (distinct from `Symbol`, which is interned for selector
+/// identity). Many modules need it (peg literals + source, lang, io), so it
+/// lives in the floor alongside `Symbol`/`SmallInt`. The payload of a String
+/// libid object; the bytes are c_allocator-owned.
+pub const String = extern struct {
+    ptr: [*]const u8,
+    len: usize,
+};
+
 // -- The well-known objects (set by `boot`) ---------------------------------
 
 pub var vtable_vt: *Vtable = undefined; // the vtable of vtables (self-describing)
 pub var object_vt: *Vtable = undefined; // top of the delegation chain
 pub var symbol_vt: *Vtable = undefined;
+pub var string_vt: *Vtable = undefined; // the vtable of (uninterned) byte strings
 pub var smallint_vt: *Vtable = undefined; // the vtable of tagged fixnums (F1)
 pub var nil_vt: *Vtable = undefined;
 pub var bool_vt: *Vtable = undefined; // shared by true_obj + false_obj
@@ -104,6 +115,23 @@ pub fn mkSmallInt(v: i64) Oop {
 }
 pub fn smallIntValue(o: Oop) i64 {
     return @as(i64, @bitCast(@intFromPtr(o.?))) >> 1; // arithmetic shift restores sign
+}
+
+// -- String: an uninterned byte-string value (floor type) --------------------
+
+inline fn asString(o: Oop) *String {
+    return @ptrCast(@alignCast(o.?));
+}
+pub fn mkString(bytes: []const u8) Oop {
+    const obj = allocRaw(@sizeOf(String));
+    setVtable(obj, string_vt);
+    const dup = ca.dupe(u8, bytes) catch @panic("libid: oom");
+    asString(obj).* = .{ .ptr = dup.ptr, .len = dup.len };
+    return obj;
+}
+pub fn stringBytes(o: Oop) []const u8 {
+    const s = asString(o);
+    return s.ptr[0..s.len];
 }
 fn setVtable(obj: Oop, vt: ?*Vtable) void {
     vtSlot(obj).* = vt;
@@ -305,6 +333,7 @@ pub fn boot() void {
     // The fixnum vtable + the canonical singletons (F1). newVtable now auto-sets
     // their meta to vtable_vt (booted); each delegates to object_vt.
     smallint_vt = newVtable(object_vt);
+    string_vt = newVtable(object_vt);
     nil_vt = newVtable(object_vt);
     bool_vt = newVtable(object_vt);
     nil_obj = allocRaw(0);
@@ -400,6 +429,14 @@ fn smallIntValueC(o: Oop) callconv(.c) i64 {
 fn isSmallIntC(o: Oop) callconv(.c) c_int {
     return if (isSmallInt(o)) 1 else 0;
 }
+fn mkStringC(ptr: [*]const u8, len: usize) callconv(.c) Oop {
+    return mkString(ptr[0..len]);
+}
+fn stringBytesC(o: Oop, out_len: *usize) callconv(.c) [*]const u8 {
+    const s = asString(o);
+    out_len.* = s.len;
+    return s.ptr;
+}
 
 var g_api: idapi.IdApi = undefined;
 
@@ -429,6 +466,9 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .mkSmallInt = &mkSmallIntC,
         .smallIntValue = &smallIntValueC,
         .isSmallInt = &isSmallIntC,
+        .string_vt = oop(string_vt),
+        .mkString = &mkStringC,
+        .stringBytes = &stringBytesC,
     };
     // Publish the id layer into its own environment — so it is re-importable.
     _ = exportObj("Object", oop(object_vt));
@@ -514,6 +554,19 @@ test "libid: SmallInt is the one immediate (F1)" {
     try std.testing.expect(vtableOf(nil_obj) == nil_vt);
     try std.testing.expect(nil_obj != null);
     try std.testing.expect(true_obj != false_obj and vtableOf(true_obj) == bool_vt);
+}
+
+test "libid: String is an uninterned byte-string floor value" {
+    boot();
+    const s = mkString("hello world");
+    try std.testing.expect(vtableOf(s) == string_vt);
+    try std.testing.expectEqualStrings("hello world", stringBytes(s));
+    // Distinct objects for equal bytes (uninterned), unlike symbols.
+    const s2 = mkString("hello world");
+    try std.testing.expect(s != s2);
+    try std.testing.expectEqualStrings(stringBytes(s), stringBytes(s2));
+    // Not a smallint; a real heap object.
+    try std.testing.expect(!isSmallInt(s));
 }
 
 var last_dnu_sel: Oop = null;

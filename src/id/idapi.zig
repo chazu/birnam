@@ -56,6 +56,14 @@ pub const IdApi = extern struct {
     mkSmallInt: *const fn (i64) callconv(.c) Oop,
     smallIntValue: *const fn (Oop) callconv(.c) i64,
     isSmallInt: *const fn (Oop) callconv(.c) c_int,
+
+    // -- String: the uninterned byte-string value type (appended) ------------
+    /// mkString(ptr, len) -> a String object owning a copy of the bytes;
+    /// stringBytes(obj, &len) -> the byte pointer (len written out). For source
+    /// text + literal bytes — distinct from interned symbols.
+    string_vt: Oop,
+    mkString: *const fn ([*]const u8, usize) callconv(.c) Oop,
+    stringBytes: *const fn (Oop, *usize) callconv(.c) [*]const u8,
 };
 
 /// libid's module entrypoint: `id_init()` returns the API table (cf. `_libid_init`).
