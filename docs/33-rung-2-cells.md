@@ -1,10 +1,12 @@
 # Rung 2 — the cell / relational layer (design)
 
-> **Status:** Design accepted (2026-06-27). Builds directly on
+> **Status:** Design accepted + **SHIPPED** (2026-06-27). Builds directly on
 > [ADR — Refound on libid](32-refound-on-libid.md) and
 > [The Destination](30-the-destination.md). Implements `docs/32` §"Next on the
-> libid floor" item 1: the first superimposition over libid. No code yet — this
-> is the agreed shape before writing it.
+> libid floor" item 1: the first superimposition over libid. Code lives in
+> `src/id/store.zig` (+ `store_test.zig`); `zig build test-store` is green and
+> the siphon (`src/id/main.zig`) mounts the store. The work breakdown below is
+> all done — see the trailing notes per item.
 
 ## What rung 2 is
 
@@ -195,23 +197,31 @@ the seeded store survives a module code reload.
   history, etc. (the reflective payoff: "what does this understand?", "when did
   this method change?").
 
-## Work breakdown
+## Work breakdown — all shipped (2026-06-27)
 
-1. **2a.1** — Store object + `StoreState`; `rawAssert`; `flip`; the schema seed
-   (with the cardinality knot); module + siphon wiring (mint + seed the
-   well-known store); state persists across reload. Test: the fixpoint —
-   asserting a normal fact post-flip consults `currentValue(a, cardinality)`,
-   which resolves through the store's own seeded schema.
-2. **2a.2** — `assert` / `currentValue` / `history` with **opt-in history**
-   (default off); `:one` vs `:many` read semantics. Test: a `:many` attr
-   accumulates; a `:one` attr supersedes; a no-history attr keeps one value.
-3. **2a.3** — `Cell` handle (`cellFor:` → `value` / `set:` / `history`); object
-   state as cells end-to-end. Mirror discipline (D5) enforced: no reflective
-   method lands on base objects.
-4. **2b.1** — `addMethod:on:with:` tracked-install (mirror via the store);
-   dispatch-fact projection; a reflective query over it. Test: a tracked type's
-   methods are queryable + historied; an untracked type is invisible to the
-   store (escape hatch).
+1. **2a.1** ✅ (`210d745`) — Store object + `StoreState`; `rawAssert`; `flip`;
+   the schema seed (with the cardinality knot); module + siphon wiring (mint +
+   seed the well-known store). Test: the fixpoint — asserting a normal fact
+   post-flip consults `currentValue(a, cardinality)`, resolving through the
+   store's own seeded schema. *(The `:one`/`:many` read semantics nominally in
+   2a.2 landed here, since they make the consult observable.)*
+2. **2a.2** ✅ (`84c02f5`) — **opt-in history** per attribute, default OFF (D6):
+   a `:one` attr with history off replaces in place (one slot, no growth);
+   opted-in via `[a :history true]`, the timeline is retained. `history:attr:`
+   read proves it (a default attr stays at 1 across updates; an opted-in one
+   grows). `:many` stays set-semantics (its history diverges only with retract).
+3. **2a.3** ✅ (`9e22754`) — `Cell` handle (`cellFor:attr:` → `value` / `set:` /
+   `history`); object state as cells end-to-end. Mirror discipline (D5) proven
+   directly: the entity does not understand `value` — the stateful protocol is
+   on the cell, not the base object.
+4. **2b.1** ✅ (`86ee20f`) — `addMethod:on:with:` tracked-install: writes the
+   vtable dict **and** projects `[vt sel m]` (one write, two representations).
+   Test: the fast path dispatches; the store mirrors it; an untracked direct
+   install dispatches but is invisible (escape hatch). Methods stay fn pointers;
+   the root metavtable is never patched.
+
+All green: `zig build test-store` (6 tests, MaxRSS ~1M — no balloon), plus
+`test-id` and the `birnam-id` siphon.
 
 ## Open / deferred
 
