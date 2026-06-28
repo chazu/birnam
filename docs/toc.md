@@ -55,7 +55,13 @@ order.
   methods-as-objects; tracking is opt-in/default-out (root metavtable never
   patched); mirror discipline (Bracha–Ungar stratification); history opt-in,
   default off (the 4 GB lesson); the `rawAssert → seed → flip` self-modeling
-  bootstrap.
+  bootstrap. Shipped + polished (`src/id/store.zig`).
+- **Foundations before the compiler (rung-3 prep)** — `34-foundations-before-the-compiler.md`
+  The cross-cutting, representation-level decisions to settle at the rung-2→rung-3
+  seam, before peg/compiler bake them in: F1 tagged immediates / SmallInt, F2
+  `doesNotUnderstand:` as a message, F3 object header / trace / gc root protocol,
+  F4 concurrency invariants, F5 AST-as-cells (peg's output), F6 `identityOf:`
+  seam, F7 error model. A working agenda — each item open, resolved one by one.
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).
