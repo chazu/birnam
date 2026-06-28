@@ -48,6 +48,14 @@ order.
   The route change (2026-06-27): W7 proved a floor dispatches with zero facts, so
   the in-place inversion is frozen as a proof; we reach the destination by building
   UP from the clean libid floor (`src/id/`), with the fact store as a later module.
+- **Rung 2 — the cell / relational layer (design)** — `33-rung-2-cells.md`
+  The agreed shape (2026-06-27) of the first superimposition over libid: Option B
+  (state-as-cells + a read-only dispatch mirror), sequenced 2a→2b. State has one
+  source (libid has no slots); the mirror is one-write-two-representations, not
+  methods-as-objects; tracking is opt-in/default-out (root metavtable never
+  patched); mirror discipline (Bracha–Ungar stratification); history opt-in,
+  default off (the 4 GB lesson); the `rawAssert → seed → flip` self-modeling
+  bootstrap.
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).
