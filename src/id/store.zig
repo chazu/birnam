@@ -84,6 +84,15 @@ fn stateOf(self: Oop) *StoreState {
     return @ptrCast(@alignCast(self.?));
 }
 
+/// The store's identity chokepoint (F6 / docs/34): "are these the same id/value?"
+/// Pointer identity today — and the single seam where an `identityOf:` /
+/// candidate-key policy will later slot in. ALL entity/attr/value matching routes
+/// through here, so the policy lands in one place, not a scatter of inline `==`.
+/// (Absence checks — `x == null` — stay literal: absence is not a value, F1.)
+inline fn eq(a: Oop, b: Oop) bool {
+    return a == b;
+}
+
 fn appendOp(st: *StoreState, e: Oop, a: Oop, v: Oop, op: Op) void {
     st.facts.append(ca, .{ .e = e, .a = a, .v = v, .tx = st.tx, .op = op }) catch @panic("store: oom");
     st.tx += 1;
@@ -98,7 +107,7 @@ fn removeLive(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
     var i: usize = 0;
     while (i < st.facts.items.len) {
         const f = st.facts.items[i];
-        if (f.e == e and f.a == a and f.v == v and f.op == .assert) {
+        if (eq(f.e, e) and eq(f.a, a) and eq(f.v, v) and f.op == .assert) {
             _ = st.facts.orderedRemove(i);
         } else i += 1;
     }
@@ -111,7 +120,7 @@ fn isMember(st: *StoreState, e: Oop, a: Oop, v: Oop) bool {
     while (i > 0) {
         i -= 1;
         const f = st.facts.items[i];
-        if (f.e == e and f.a == a and f.v == v) return f.op == .assert;
+        if (eq(f.e, e) and eq(f.a, a) and eq(f.v, v)) return f.op == .assert;
     }
     return false;
 }
@@ -123,7 +132,7 @@ fn currentValueRaw(st: *StoreState, e: Oop, a: Oop) Oop {
     while (i > 0) {
         i -= 1;
         const f = st.facts.items[i];
-        if (f.e == e and f.a == a) return if (f.op == .retract) null else f.v;
+        if (eq(f.e, e) and eq(f.a, a)) return if (f.op == .retract) null else f.v;
     }
     return null;
 }
@@ -181,10 +190,10 @@ fn valueCount(st: *StoreState, e: Oop, a: Oop) usize {
     while (i > 0) {
         i -= 1;
         const f = st.facts.items[i];
-        if (f.e != e or f.a != a) continue;
+        if (!eq(f.e, e) or !eq(f.a, a)) continue;
         var dup = false;
         for (seen.items) |s| {
-            if (s == f.v) {
+            if (eq(s, f.v)) {
                 dup = true;
                 break;
             }
@@ -230,9 +239,9 @@ fn mAssert(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
         return self;
     }
     const card = cardinalityOf(st, a); // the self-consultation
-    if (card == s_one) {
-        if (currentValueRaw(st, e, a) == v) return self; // idempotent: no value change
-        if (historyOf(st, a) == s_true)
+    if (eq(card, s_one)) {
+        if (eq(currentValueRaw(st, e, a), v)) return self; // idempotent: no value change
+        if (eq(historyOf(st, a), s_true))
             appendFact(st, e, a, v) // opt-in: keep the timeline
         else
             replaceInPlace(st, e, a, v); // default: one slot, no growth (D6)
@@ -256,7 +265,7 @@ fn mRetract(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const a = args[1];
     const v = args[2];
     if (!isMember(st, e, a, v)) return self; // retracting an absent value is a no-op
-    if (!st.raw and historyOf(st, a) == s_true)
+    if (!st.raw and eq(historyOf(st, a), s_true))
         appendOp(st, e, a, v, .retract) // keep the timeline
     else
         removeLive(st, e, a, v); // default: drop the live fact, no growth
@@ -276,7 +285,7 @@ fn mCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const st = stateOf(self);
     const e = args[0];
     const a = args[1];
-    const c: usize = if (cardinalityOf(st, a) == s_one)
+    const c: usize = if (eq(cardinalityOf(st, a), s_one))
         (if (currentValueRaw(st, e, a) == null) @as(usize, 0) else 1)
     else
         valueCount(st, e, a);
@@ -303,10 +312,10 @@ fn mHistory(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 
 fn collectAttrs(st: *StoreState, e: Oop, out: *std.ArrayList(Oop)) void {
     for (st.facts.items) |f| {
-        if (f.e != e) continue;
+        if (!eq(f.e, e)) continue;
         var dup = false;
         for (out.items) |s| {
-            if (s == f.a) {
+            if (eq(s, f.a)) {
                 dup = true;
                 break;
             }
@@ -317,7 +326,7 @@ fn collectAttrs(st: *StoreState, e: Oop, out: *std.ArrayList(Oop)) void {
     var i: usize = 0;
     while (i < out.items.len) {
         const a = out.items[i];
-        const present = if (cardinalityOf(st, a) == s_one)
+        const present = if (eq(cardinalityOf(st, a), s_one))
             currentValueRaw(st, e, a) != null
         else
             valueCount(st, e, a) > 0;

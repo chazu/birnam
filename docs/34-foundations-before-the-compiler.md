@@ -238,7 +238,9 @@ slot in — at key-match and at entity minting ("the customer with email X"
 resolving to an existing entity). We do not decide the policy; we guarantee it a
 seam. Connects to F4 (content-addressed identity ⇒ distribution).
 
-**Status:** DECIDED (seam) — policy deferred.
+**Status:** DECIDED + seam **SHIPPED** — `store.zig` routes all entity/attr/value
+matching through `eq(a, b)` (pointer identity today; absence checks stay literal).
+Policy deferred. `test-store` 11/11.
 
 ## F7 — Error model — **decide with the VM, not before**
 
