@@ -286,6 +286,26 @@ pub fn build(b: *std.Build) void {
     const test_store_step = b.step("test-store", "rung 2: the cell/relational store bootstrap fixpoint");
     test_store_step.dependOn(&b.addRunArtifact(store_tests).step);
 
+    // Rung 3a: the PEG engine as a module over libid.
+    const id_peg_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/peg.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_peg_lib = b.addLibrary(.{ .name = "birnam_id_peg", .root_module = id_peg_mod, .linkage = .dynamic });
+    id_peg_lib.linkLibC();
+    b.installArtifact(id_peg_lib);
+
+    const id_peg_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/peg_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_peg_tests = b.addTest(.{ .root_module = id_peg_test_mod });
+    id_peg_tests.linkLibC();
+    const test_peg_step = b.step("test-peg", "rung 3a: the PEG engine on the libid floor");
+    test_peg_step.dependOn(&b.addRunArtifact(id_peg_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,
