@@ -47,10 +47,20 @@ hot-path change to `bind`/`vtableOf`. The `-1` trick survives for heap objects;
 immediates simply have no `[-1]`. Rung 2's `count`/`attrAt` become the first real
 SmallInt consumers (validating the scheme, removing the pointer-encoding hack).
 
-**Leaning.** Do it now, before the compiler — at least SmallInt + the
-nil/true/false specials. Pick the exact bit layout here.
+**Leaning.** Do it now, before the compiler.
 
-**Status:** OPEN.
+**DECIDED (2026-06-27).** Follow Piumarta/maru exactly: **SmallInt is the only
+immediate** — bit0 = 1 ⇒ a 63-bit signed fixnum; pointers have bit0 = 0 (our
+16-byte alignment guarantees it). `nil` / `true` / `false` are **boot-time
+canonical singleton objects** (heap, compared by pointer), *not* immediates, and
+kept distinct from Zig `null`, which stays *internal absence* (no-NULL rule:
+"no current value" ≠ the value `nil`). `vtableOf` gains one branch
+(`word & 1 → smallint_vt`, else read `[-1]`); `allocate` never yields a tagged
+word. Rung 2's `count`/`attrAt` become the first real SmallInt consumers,
+deleting the `@ptrFromInt` hack. Specials can be promoted to immediates later if
+profiling demands; not now.
+
+**Status:** DECIDED — implement after F2.
 
 ## F2 — `doesNotUnderstand:` as a message
 
@@ -69,7 +79,18 @@ raises the error (per F7); subclasses/prototypes can override.
 
 **Leaning.** Do it now, before peg.
 
-**Status:** OPEN.
+**DECIDED (2026-06-27).** The **light** form: on a failed `bind`, `send`
+re-dispatches a `doesNotUnderstand:` selector to the receiver, passing the
+original selector followed by the original args (a small stack buffer, no
+`Message` object yet — that waits for F1/F5 to make object plumbing cheap). A
+default `doesNotUnderstand:` is installed on `object_vt` at boot (so every object
+inherits an overridable handler); a prototype can override it to intercept
+(proxies, futures, relational dispatch). Bottom-out: if `doesNotUnderstand:`
+*itself* is unbound, panic (a genuine bug) — mirroring how `bind` bottoms out
+`lookup`. The default handler traps for now and is **swappable** so F7 can make
+it raise an error value / signal a condition.
+
+**Status:** DECIDED — implement first.
 
 ## F3 — Object header / trace discipline / root protocol (the gc gate)
 
@@ -96,7 +117,23 @@ kinds exist is a sweep through all of them.
 **Leaning.** Reserve the header + trace flag + root hook now; implement the
 collector when memory bites (before heavy compiler use).
 
-**Status:** OPEN.
+**DECIDED (2026-06-27).** Clarification: `Store`/`Cell` *are* full id objects —
+the concern is only that their **payloads are opaque** (a Zig struct + an
+`ArrayList` of Oop-bearing facts in `c_allocator` memory). The destination
+dissolves this: the backing becomes **id-native HAMT/RRB reached through the id
+api**, making the facts ordinary traceable id objects. Piumarta used **Boehm
+conservative GC** — which is *why* his model needs no headers/trace maps
+(conservative scanning finds roots) — at the cost of false retention and weak
+support for moving/compacting collection (which the malleability + distributed
+ambitions eventually want). **Build no collector now** (we leak, as today). Lock
+only one cheap, retrofit-expensive thing: a **per-vtable instance-layout
+descriptor** — "payload is K Oop-slots" (precise trace) vs "opaque — call my
+`roots`" (Store/Cell). That single field keeps **both** conservative and
+precise/moving GC open and composes with F1 (a fixnum is never a pointer).
+Implementation of the descriptor itself is deferred until just before the
+collector; recorded here as the locked shape.
+
+**Status:** DECIDED (shape) — collector deferred.
 
 ## F4 — Concurrency stance
 
@@ -114,7 +151,26 @@ synchronized." Enforcement deferred; the rules guide everything above.
 
 **Leaning.** Write the invariants now; implement to them lazily.
 
-**Status:** OPEN.
+**DECIDED (2026-06-27).** Adopt the Clojure/Datomic invariants the substrate is
+already shaped for — no new threads or STM yet, but everything above is written
+to respect them:
+1. **Values are immutable; an identity changes by appending a new value at a new
+   tx.** (The fact log already does this — the keystone for lock-free reads.)
+2. **A snapshot is an immutable basis (a tx); reads run against a snapshot and
+   never block.** (Free once the backing is HAMT/RRB.)
+3. **Dispatch is lock-free** — a method change *publishes* a new binding (and a
+   new mirror fact), never mutates in place.
+4. **One writer per store** (a transactor, Datomic-style) or CAS on the
+   current-basis pointer; many stores run concurrently. The old kernel's
+   single-transactor `transact:` is the seed.
+5. **Interning is synchronized** (the one shared mutable map).
+
+**STM** (coordinated multi-identity transactions, Clojure refs) is a later
+feature on top of 1+2+4 — not built now, but kept open. Bonus: immutable values
++ (future) content-addressed identity (F6) is also what **distribution** needs —
+so F4, F6, and the distributed door are the same door.
+
+**Status:** DECIDED (invariants) — threads/STM deferred.
 
 ## F5 — AST / code representation (peg's output) — **due before peg**
 
@@ -133,10 +189,26 @@ everything-as-historied-facts — so code cells must default to **no history**,
 exactly as rung 2 already supports). A Zig tree is faster to stand up but is a
 throwaway we'd later replace.
 
-**Leaning.** Emit AST as objects (cells), history off — but confirm the
-representation against F1/F3 before building peg.
+**Leaning.** ~~Emit AST as objects (cells)~~ — revised below.
 
-**Status:** OPEN.
+**DECIDED (2026-06-27).** Don't turn ephemeral pipeline scaffolding into facts
+(D6 generalized):
+- **Grammars** — id objects/cells (long-lived, queryable, extensible).
+- **CST/AST and every lowering pass** — **transient, NOT facts**: plain Zig
+  values (or throwaway id objects never asserted). Built and discarded per
+  compile; the store never sees them.
+- **The durable unit is the *method*** — the installed binding is what lands in
+  the object model, and via 2b's mirror is *optionally* projected as `[vt sel m]`
+  (history off). "Code as cells" = the *binding* is reflectable, not every node.
+  The body (bytecode/native) is a cache held in the method.
+- The "IR on a VM" idea is the compiler/VM rung; bytecode lives in the method
+  object. Whether bytecode itself is cells = the methods-as-objects question,
+  deferred (rung 3, opt-in, bounded).
+
+So peg emits a transient AST; the compiler lowers to bytecode in a method object;
+nothing per-node is a fact.
+
+**Status:** DECIDED.
 
 ## F6 — Identity policy seam (`identityOf:`)
 
@@ -155,7 +227,15 @@ intercept, so the store's equality isn't assumed pointer-deep everywhere. A
 **Leaning.** Flag the seam now; keep pointer identity as the floor default;
 revisit when the relational engine grows.
 
-**Status:** OPEN.
+**DECIDED (2026-06-27).** Flagged, plus one cheap concrete: **route the store's
+entity/attr/value comparison through a single `eq(a, b)` chokepoint** (and
+eventually `keyOf(x)`) instead of the scattered inline `==`. Still just `a == b`
+for now, but `identityOf:` / candidate-key policy then has exactly one place to
+slot in — at key-match and at entity minting ("the customer with email X"
+resolving to an existing entity). We do not decide the policy; we guarantee it a
+seam. Connects to F4 (content-addressed identity ⇒ distribution).
+
+**Status:** DECIDED (seam) — policy deferred.
 
 ## F7 — Error model — **decide with the VM, not before**
 
@@ -169,7 +249,16 @@ and so F2's default DNU behaviour lines up with it.
 **Leaning.** Defer to the compiler/VM increment; align DNU (F2) with whatever
 error model is chosen there.
 
-**Status:** OPEN.
+**DECIDED (2026-06-27).** Deferred to the VM, with a direction noted: aim higher
+than try/catch or Go sentinels. **Common Lisp-style conditions & restarts** is
+the aspirational target — malleable (handlers high, restarts low, *resumable*
+without unwinding), in birnam's Lisp/Smalltalk lineage, composes with the live
+fix-and-resume image, and subsumes try/catch. **Errors-as-propagating-values**
+(the old kernel's `ERROR_VT`) is the pragmatic floor. Decide at the VM; until
+then F2's default DNU stays swappable so it can become "raise an error" / "signal
+a condition" without reworking the dispatch-failure path.
+
+**Status:** DECIDED (direction) — model chosen at the VM.
 
 ---
 

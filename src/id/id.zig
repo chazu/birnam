@@ -58,6 +58,7 @@ pub var s_lookup: *Symbol = undefined;
 pub var s_addMethod: *Symbol = undefined;
 pub var s_allocate: *Symbol = undefined;
 pub var s_delegated: *Symbol = undefined;
+pub var s_dnu: *Symbol = undefined; // doesNotUnderstand:
 
 var booted = false;
 
@@ -102,11 +103,38 @@ pub fn bind(rcv: Oop, sel: *Symbol) ?Method {
 }
 
 pub fn send(rcv: Oop, sel: *Symbol, args: []const Oop) Oop {
-    const m = bind(rcv, sel) orelse {
-        std.debug.print("libid: doesNotUnderstand: {s}\n", .{sel.string});
+    if (bind(rcv, sel)) |m| return m(rcv, args.ptr, args.len);
+
+    // doesNotUnderstand: — re-dispatch an OVERRIDABLE message rather than trap.
+    // The handler receives the original selector followed by the original args
+    // (a stack buffer — no reified Message object yet; F1/F5 make that cheap).
+    // Bottom-out: if doesNotUnderstand: itself is unbound, this is a genuine bug
+    // (mirrors how `bind` bottoms out `lookup`).
+    const handler = bind(rcv, s_dnu) orelse {
+        std.debug.print("libid: doesNotUnderstand: {s} (and no doesNotUnderstand: handler)\n", .{sel.string});
         @panic("libid: method not found");
     };
-    return m(rcv, args.ptr, args.len);
+    var buf: [1 + max_dnu_args]Oop = undefined;
+    buf[0] = oop(sel);
+    const k = @min(args.len, max_dnu_args);
+    if (k > 0) @memcpy(buf[1 .. 1 + k], args[0..k]);
+    return handler(rcv, &buf, 1 + k);
+}
+
+/// How many of the original args a failed send forwards to `doesNotUnderstand:`
+/// (beyond the leading selector). Enough for real keyword sends; a reified
+/// Message object lifts the cap later.
+const max_dnu_args: usize = 16;
+
+/// The default `doesNotUnderstand:` installed on `object_vt` — overridable. For
+/// now it traps (as the old hard panic did) but as a *method*, so a prototype
+/// can intercept first. Swappable once F7 gives errors a value/condition form.
+fn objectDoesNotUnderstand(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const sel: *Symbol = @ptrCast(@alignCast(args[0]));
+    std.debug.print("libid: doesNotUnderstand: {s}\n", .{sel.string});
+    @panic("libid: doesNotUnderstand:");
 }
 
 // Thin arity helpers (no varargs packing — Zig slices do the job).
@@ -250,6 +278,7 @@ pub fn boot() void {
     s_addMethod = intern("addMethod");
     s_allocate = intern("allocate");
     s_delegated = intern("delegated");
+    s_dnu = intern("doesNotUnderstand:");
 
     // Install lookup + addMethod directly (send can't work without them), then
     // use addMethod *via send* (metacircular) for the rest.
@@ -257,6 +286,10 @@ pub fn boot() void {
     _ = vtableAddMethod(oop(vtable_vt), &[_]Oop{ oop(s_addMethod), @constCast(@ptrCast(&vtableAddMethod)) }, 2);
     _ = send2(oop(vtable_vt), s_addMethod, oop(s_allocate), @constCast(@ptrCast(&vtableAllocate)));
     _ = send2(oop(vtable_vt), s_addMethod, oop(s_delegated), @constCast(@ptrCast(&vtableDelegated)));
+
+    // The default doesNotUnderstand: lives on object_vt (top of every delegation
+    // chain), so every object inherits an overridable handler (F2 / docs/34).
+    _ = send2(oop(object_vt), s_addMethod, oop(s_dnu), @constCast(@ptrCast(&objectDoesNotUnderstand)));
 }
 
 /// Intern a symbol from outside (the siphon / later modules need this).
@@ -383,4 +416,35 @@ fn answerImpl(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = args;
     _ = n;
     return @ptrFromInt(42);
+}
+
+test "libid: doesNotUnderstand: is an overridable message (F2)" {
+    boot();
+
+    // A prototype whose doesNotUnderstand: returns a sentinel instead of trapping.
+    const proxy_vt = asVtable(send0(oop(object_vt), s_delegated));
+    _ = send2(oop(proxy_vt), s_addMethod, oop(s_dnu), @constCast(@ptrCast(&dnuTo99)));
+    const proxy = send1(oop(proxy_vt), s_allocate, @ptrFromInt(0));
+
+    // Sending an unknown selector is intercepted by the override (no panic),
+    // and the handler sees the original selector as its first argument.
+    const unknown = intern("totallyUnknownSelector");
+    const r = send0(proxy, unknown);
+    try std.testing.expectEqual(@as(usize, 99), @intFromPtr(r));
+
+    // The handler also received the forwarded argument (selector + args).
+    last_dnu_sel = null;
+    _ = send1(proxy, unknown, @ptrFromInt(7));
+    try std.testing.expect(last_dnu_sel == oop(unknown));
+    try std.testing.expectEqual(@as(usize, 7), last_dnu_arg);
+}
+
+var last_dnu_sel: Oop = null;
+var last_dnu_arg: usize = 0;
+
+fn dnuTo99(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    last_dnu_sel = args[0]; // the original selector
+    last_dnu_arg = if (n > 1) @intFromPtr(args[1]) else 0; // first forwarded arg
+    return @ptrFromInt(99);
 }
