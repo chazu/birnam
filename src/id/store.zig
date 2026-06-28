@@ -42,6 +42,7 @@ const StoreState = struct {
 
 pub var store_vt: Oop = null; // the Store vtable (a proto delegating to Object)
 pub var store_instance: Oop = null; // the one canonical seeded store
+pub var cell_vt: Oop = null; // the Cell vtable (a proto delegating to Object)
 
 pub var s_rawAssert: Oop = null;
 pub var s_flip: Oop = null;
@@ -49,6 +50,13 @@ pub var s_assert: Oop = null;
 pub var s_currentValue: Oop = null;
 pub var s_count: Oop = null;
 pub var s_history_read: Oop = null; // the `history:attr:` read selector
+pub var s_cellFor: Oop = null; // `[store cellFor: e attr: a]`
+pub var s_value: Oop = null; // `[cell value]`
+pub var s_set: Oop = null; // `[cell set: v]`
+
+/// The api table, stashed so methods (which receive only self+args) can drive
+/// the store via real dispatch. Set by `bringUp`.
+var g_api: *idapi.IdApi = undefined;
 
 // Schema symbols (the vocabulary the store describes itself with).
 pub var s_cardinality: Oop = null;
@@ -221,6 +229,52 @@ fn mHistory(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return @ptrFromInt(historyLen(stateOf(self), args[0], args[1]));
 }
 
+// -- Cells: object state as a handle (docs/33 §2a.3, D5 stratification) -------
+//
+// A Cell is a separate libid object addressing one (store, e, a). The stateful
+// protocol (value/set:/history) lives on the CELL — a mirror — never on the base
+// entity, so an entity's own message protocol stays clean (Bracha–Ungar
+// stratification). A cell drives the store through real dispatch (`g_api.send`),
+// so it composes with cardinality + opt-in history exactly like a direct assert.
+
+const CellState = struct { store: Oop, e: Oop, a: Oop };
+
+fn cellStateOf(self: Oop) *CellState {
+    return @ptrCast(@alignCast(self.?));
+}
+
+/// `[store cellFor: e attr: a]` — mint a cell handle onto (this store, e, a).
+fn mCellFor(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const cell = g_api.alloc(cell_vt, @sizeOf(CellState));
+    cellStateOf(cell).* = .{ .store = self, .e = args[0], .a = args[1] };
+    return cell;
+}
+
+/// `[cell value]` — the cell's current value (`currentValue(e, a)` on its store).
+fn mCellValue(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    const c = cellStateOf(self);
+    return g_api.send(c.store, s_currentValue, &[_]Oop{ c.e, c.a }, 2);
+}
+
+/// `[cell set: v]` — assert v at (e, a) (schema-aware: cardinality + history).
+fn mCellSet(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const c = cellStateOf(self);
+    _ = g_api.send(c.store, s_assert, &[_]Oop{ c.e, c.a, args[0] }, 3);
+    return self;
+}
+
+/// `[cell history]` — the cell's timeline length (pointer-encoded).
+fn mCellHistory(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    const c = cellStateOf(self);
+    return g_api.send(c.store, s_history_read, &[_]Oop{ c.e, c.a }, 2);
+}
+
 // -- Bringup + the schema seed ----------------------------------------------
 
 /// Wire the store onto libid through the id API: intern the vocabulary, build
@@ -232,6 +286,7 @@ fn mHistory(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// id environment (`import`/`export`) — the store IS a libid object, so the id
 /// namespace is its natural persistence, not the opaque module-state channel.
 pub fn bringUp(api: *idapi.IdApi) void {
+    g_api = api;
     s_cardinality = api.intern("cardinality");
     s_one = api.intern("one");
     s_many = api.intern("many");
@@ -246,13 +301,18 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_currentValue = api.intern("currentValue:attr:");
     s_count = api.intern("count:attr:");
     s_history_read = api.intern("history:attr:");
+    s_cellFor = api.intern("cellFor:attr:");
+    s_value = api.intern("value");
+    s_set = api.intern("set:");
 
     const reloading = api.isExported("Store") != 0;
     if (reloading) {
         store_vt = api.import("StoreVt");
         store_instance = api.import("Store");
+        cell_vt = api.import("CellVt");
     } else {
         store_vt = api.proto(api.object_vt);
+        cell_vt = api.proto(api.object_vt);
     }
 
     api.method(store_vt, s_rawAssert, &mRawAssert);
@@ -261,6 +321,13 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_currentValue, &mCurrentValue);
     api.method(store_vt, s_count, &mCount);
     api.method(store_vt, s_history_read, &mHistory);
+    api.method(store_vt, s_cellFor, &mCellFor);
+
+    // Cell protocol (the `history` selector reuses the "history" symbol — one
+    // identity, two roles: a cell message here, a schema attribute key above).
+    api.method(cell_vt, s_value, &mCellValue);
+    api.method(cell_vt, s_set, &mCellSet);
+    api.method(cell_vt, s_history, &mCellHistory);
 
     if (!reloading) {
         store_instance = api.alloc(store_vt, @sizeOf(StoreState));
@@ -268,6 +335,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
         seed();
         _ = api.exportObj("StoreVt", store_vt);
         _ = api.exportObj("Store", store_instance);
+        _ = api.exportObj("CellVt", cell_vt);
     }
 }
 

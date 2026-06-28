@@ -95,6 +95,41 @@ test "rung 2a.2: history is opt-in per attribute, default OFF (the 4 GB lesson)"
     try std.testing.expectEqual(@as(usize, 3), histLen(api, player, score));
 }
 
+test "rung 2a.3: a Cell is a handle onto (e,a) — value/set:/history, off base objects" {
+    const api = id.id_init();
+    store.bringUp(api);
+
+    const door = api.intern("door");
+    const openp = api.intern("open");
+    const yes = api.intern("yes");
+    const no = api.intern("no");
+
+    // Mint a cell handle. The stateful protocol lives on the CELL, not on `door`.
+    const cell = api.send(store.store_instance, store.s_cellFor, &[_]Oop{ door, openp }, 2);
+
+    // Initially nil.
+    try std.testing.expect(api.send(cell, store.s_value, &[_]Oop{}, 0) == null);
+
+    // [cell set: yes] then [cell value] == yes.
+    _ = api.send(cell, store.s_set, &[_]Oop{yes}, 1);
+    try std.testing.expect(api.send(cell, store.s_value, &[_]Oop{}, 0) == yes);
+
+    // Set goes through the schema-aware path: :one default supersedes.
+    _ = api.send(cell, store.s_set, &[_]Oop{no}, 1);
+    try std.testing.expect(api.send(cell, store.s_value, &[_]Oop{}, 0) == no);
+
+    // A second cell onto the SAME (e,a) sees the same value — cells are views.
+    const cell2 = api.send(store.store_instance, store.s_cellFor, &[_]Oop{ door, openp }, 2);
+    try std.testing.expect(api.send(cell2, store.s_value, &[_]Oop{}, 0) == no);
+
+    // History off by default → timeline length 1 despite two sets.
+    try std.testing.expectEqual(@as(usize, 1), @intFromPtr(api.send(cell, store.s_history, &[_]Oop{}, 0)));
+
+    // The stratification guarantee: `door` itself does not understand `value`
+    // (the reflective/stateful protocol is on the cell mirror, not the entity).
+    try std.testing.expect(id.bind(door, @ptrCast(@alignCast(store.s_value.?))) == null);
+}
+
 test "rung 2a.1: currentValue of an absent (e,a) is nil" {
     // Tests share one process: id_init + bringUp are both idempotent (bringUp
     // takes its reload path and re-imports the live store), so this just rides
