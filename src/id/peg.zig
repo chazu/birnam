@@ -533,8 +533,13 @@ pub fn bringUp(api: *idapi.IdApi) void {
     }
 }
 
-pub export fn module_init(api: *idapi.IdApi, state: ?*anyopaque) callconv(.c) ?*anyopaque {
+fn moduleInit(api: *idapi.IdApi, state: ?*anyopaque) callconv(.c) ?*anyopaque {
     _ = state;
     bringUp(api);
     return null;
+}
+// Export the dylib entrypoint only in non-test builds — a test that statically
+// links several modules would otherwise hit duplicate `module_init` symbols.
+comptime {
+    if (!@import("builtin").is_test) @export(&moduleInit, .{ .name = "module_init" });
 }

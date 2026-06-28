@@ -126,7 +126,19 @@ pub fn main() !void {
     if (cc != 5) return error.PegWrongCount;
     std.debug.print("[siphon] rung 3: peg parsed \"12345\" => {d} digit nodes, built + walked entirely through the id api\n", .{cc});
 
-    std.debug.print("[siphon] ok — siphon loads + drives + re-imports id, persists state across reloads, mounts the rung-2 cell store, and the rung-3 peg engine, all through the id api\n", .{});
+    // 8. RUNG 3b — load the lang module. It builds birnam's grammar through peg's
+    //    message api; we parse a real birnam line and confirm a `program` CST.
+    const lang_path = try a.dupeZ(u8, "zig-out/lib/libbirnam_id_lang.dylib");
+    defer a.free(lang_path);
+    _ = try loadModule(api, lang_path, null);
+    const lang = api.import("Lang") orelse return error.NoLang;
+    const prog = "let fizzy := [:n | [[n mod: 3] = 0]]";
+    const cst = api.send(lang, api.intern("parse:"), &[_]Oop{api.mkString(prog, prog.len)}, 1);
+    if (cst == api.nilObj) return error.BirnamParseFailed;
+    if (api.send(cst, api.intern("rule"), empty, 0) != api.intern("program")) return error.NotAProgram;
+    std.debug.print("[siphon] rung 3b: lang parsed a birnam let-binding => program CST, grammar built via the peg message api\n", .{});
+
+    std.debug.print("[siphon] ok — siphon loads + drives + re-imports id, persists state across reloads, mounts the rung-2 cell store, the rung-3 peg engine, and the birnam lang grammar, all through the id api\n", .{});
 }
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading

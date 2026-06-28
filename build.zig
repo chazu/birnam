@@ -306,6 +306,26 @@ pub fn build(b: *std.Build) void {
     const test_peg_step = b.step("test-peg", "rung 3a: the PEG engine on the libid floor");
     test_peg_step.dependOn(&b.addRunArtifact(id_peg_tests).step);
 
+    // Rung 3b: the birnam language module (grammar built via peg's message api).
+    const id_lang_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/lang.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_lang_lib = b.addLibrary(.{ .name = "birnam_id_lang", .root_module = id_lang_mod, .linkage = .dynamic });
+    id_lang_lib.linkLibC();
+    b.installArtifact(id_lang_lib);
+
+    const id_lang_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/lang_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_lang_tests = b.addTest(.{ .root_module = id_lang_test_mod });
+    id_lang_tests.linkLibC();
+    const test_lang_step = b.step("test-lang", "rung 3b: birnam's grammar + parser via the peg message api");
+    test_lang_step.dependOn(&b.addRunArtifact(id_lang_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,
