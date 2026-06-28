@@ -137,6 +137,102 @@ fn answer42(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return @ptrFromInt(42);
 }
 
+fn retract3(api: *idapi.IdApi, e: Oop, a: Oop, v: Oop) void {
+    _ = api.send(store.store_instance, store.s_retract, &[_]Oop{ e, a, v }, 3);
+}
+fn cardMany(api: *idapi.IdApi, a: Oop) void {
+    _ = api.send(store.store_instance, store.s_assert, &[_]Oop{ a, store.s_cardinality, store.s_many }, 3);
+}
+fn attrCount(api: *idapi.IdApi, e: Oop) usize {
+    return @intFromPtr(api.send(store.store_instance, store.s_attrCount, &[_]Oop{e}, 1));
+}
+
+test "rung 2 polish: Store new mints independent, seeded stores" {
+    const api = id.id_init();
+    store.bringUp(api);
+
+    const s2 = api.send(store.store_instance, store.s_new, &[_]Oop{}, 0);
+    try std.testing.expect(s2 != store.store_instance);
+
+    // s2 is seeded: the cardinality knot resolves through it too.
+    try std.testing.expect(api.send(s2, store.s_currentValue,
+        &[_]Oop{ store.s_cardinality, store.s_cardinality }, 2) == store.s_one);
+
+    // Independent: asserting into s2 does not touch the well-known store.
+    const e = api.intern("new_e");
+    const a = api.intern("new_a");
+    const v = api.intern("new_v");
+    _ = api.send(s2, store.s_assert, &[_]Oop{ e, a, v }, 3);
+    try std.testing.expect(api.send(s2, store.s_currentValue, &[_]Oop{ e, a }, 2) == v);
+    try std.testing.expect(cv(api, e, a) == null); // well-known store unaffected
+}
+
+test "rung 2 polish: retraction — :one removal, :many member removal, history timeline" {
+    const api = id.id_init();
+    store.bringUp(api);
+    const e = api.intern("rt_e");
+
+    // :one (default, history off) — retract removes the value entirely.
+    const one = api.intern("rt_one");
+    const x = api.intern("rt_x");
+    assert3(api, e, one, x);
+    try std.testing.expect(cv(api, e, one) == x);
+    retract3(api, e, one, x);
+    try std.testing.expect(cv(api, e, one) == null);
+    try std.testing.expectEqual(@as(usize, 0), count(api, e, one));
+
+    // :many (history off) — retract drops one member; re-adding works (op-aware).
+    const many = api.intern("rt_many");
+    cardMany(api, many);
+    const m1 = api.intern("rt_m1");
+    const m2 = api.intern("rt_m2");
+    assert3(api, e, many, m1);
+    assert3(api, e, many, m2);
+    try std.testing.expectEqual(@as(usize, 2), count(api, e, many));
+    retract3(api, e, many, m1);
+    try std.testing.expectEqual(@as(usize, 1), count(api, e, many));
+    assert3(api, e, many, m1); // re-add a retracted member
+    try std.testing.expectEqual(@as(usize, 2), count(api, e, many));
+
+    // :many + history on — the add/remove timeline is retained (unblocked by retract).
+    const hm = api.intern("rt_hist");
+    cardMany(api, hm);
+    _ = api.send(store.store_instance, store.s_assert, &[_]Oop{ hm, store.s_history, store.s_true }, 3);
+    const h1 = api.intern("rt_h1");
+    assert3(api, e, hm, h1); // assert event
+    retract3(api, e, hm, h1); // retract event
+    try std.testing.expectEqual(@as(usize, 0), count(api, e, hm)); // not present
+    try std.testing.expectEqual(@as(usize, 2), histLen(api, e, hm)); // both events kept
+}
+
+test "rung 2 polish: query surface — enumerate an entity's attrs / a type's selectors" {
+    const api = id.id_init();
+    store.bringUp(api);
+
+    const e = api.intern("q_e");
+    const a = api.intern("q_a");
+    const b = api.intern("q_b");
+    assert3(api, e, a, api.intern("q_va"));
+    assert3(api, e, b, api.intern("q_vb"));
+    try std.testing.expectEqual(@as(usize, 2), attrCount(api, e));
+
+    // Indexed access, first-appearance order; out-of-range is nil.
+    try std.testing.expect(api.send(store.store_instance, store.s_attrAt, &[_]Oop{ e, @ptrFromInt(0) }, 2) == a);
+    try std.testing.expect(api.send(store.store_instance, store.s_attrAt, &[_]Oop{ e, @ptrFromInt(1) }, 2) == b);
+    try std.testing.expect(api.send(store.store_instance, store.s_attrAt, &[_]Oop{ e, @ptrFromInt(2) }, 2) == null);
+
+    // Same mechanism over a tracked vtable: attrCount == # mirrored selectors.
+    const vt = api.proto(api.object_vt);
+    const m: Oop = @constCast(@ptrCast(&answer42));
+    _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ api.intern("q_m1"), vt, m }, 3);
+    _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ api.intern("q_m2"), vt, m }, 3);
+    try std.testing.expectEqual(@as(usize, 2), attrCount(api, vt));
+
+    // Retracting an attribute drops it from the enumeration.
+    retract3(api, e, a, api.intern("q_va"));
+    try std.testing.expectEqual(@as(usize, 1), attrCount(api, e));
+}
+
 test "rung 2b.1: tracked dispatch mirror — one write, two representations; escape hatch" {
     const api = id.id_init();
     store.bringUp(api);

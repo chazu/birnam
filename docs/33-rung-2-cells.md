@@ -223,6 +223,25 @@ the seeded store survives a module code reload.
 All green: `zig build test-store` (6 tests, MaxRSS ~1M — no balloon), plus
 `test-id` and the `birnam-id` siphon.
 
+## Polish (shipped after the work breakdown, 2026-06-27)
+
+Three follow-ups raised at the end of the breakdown, all done in `store.zig`:
+
+- **Retraction** — `[store retract: e attr: a value: v]`. Facts are now op-tagged
+  (`assert` / `retract`); reads fold op-aware (`currentValue` / `count` /
+  `valueCount` respect the newest matching op). History-on attrs append a retract
+  entry (the add/remove timeline is kept — this is what unblocks `:many` history);
+  history-off attrs physically drop the live fact (no growth, honoring D6). A
+  retracted `:many` member can be re-added.
+- **`[store new]`** — the store is first-class mintable (D8): a fresh,
+  independently-seeded sibling (same vtable). Prototype-style — an instance makes
+  more of its kind, no class. The siphon still mints the one well-known instance.
+- **Query surface** — `[store attrCount: e]` / `[store attrAt: e index: i]`
+  enumerate an entity's present attributes (first-appearance order). General: over
+  an app entity it lists attributes; over a tracked vtable it lists that type's
+  mirrored selectors. The count+indexed-accessor pair stands in for iteration
+  until blocks/collections arrive with peg.
+
 ## Open / deferred
 
 - **Stronger tracking (D4 variant 2)** — the delegated tracked metavtable that

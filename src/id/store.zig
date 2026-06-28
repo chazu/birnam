@@ -24,8 +24,14 @@ const idapi = @import("idapi.zig");
 const Oop = idapi.Oop;
 const ca = std.heap.c_allocator;
 
-/// A triple plus the transaction it was asserted in. Append-only.
-const Fact = struct { e: Oop, a: Oop, v: Oop, tx: u64 };
+/// Whether a fact asserts a value or retracts one (Datomic-style op-tagging).
+const Op = enum(u8) { assert, retract };
+
+/// A triple plus its op and the transaction it landed in. The log is append-only
+/// for history-on attributes (assert + retract entries fold on read); for
+/// history-off attributes the log holds only currently-live asserted facts (a
+/// retract physically removes, a `:one` re-assert replaces in place — no growth).
+const Fact = struct { e: Oop, a: Oop, v: Oop, tx: u64, op: Op = .assert };
 
 /// The store's private backing — held in the Store libid object's payload (the
 /// bytes at `object[-1]+0`, i.e. at the object pointer itself). Consistent with
@@ -54,6 +60,10 @@ pub var s_cellFor: Oop = null; // `[store cellFor: e attr: a]`
 pub var s_value: Oop = null; // `[cell value]`
 pub var s_set: Oop = null; // `[cell set: v]`
 pub var s_addMethodOn: Oop = null; // `[store addMethod: sel on: vt with: m]`
+pub var s_retract: Oop = null; // `[store retract: e attr: a value: v]`
+pub var s_new: Oop = null; // `[store new]`
+pub var s_attrCount: Oop = null; // `[store attrCount: e]`
+pub var s_attrAt: Oop = null; // `[store attrAt: e index: i]`
 
 /// The api table, stashed so methods (which receive only self+args) can drive
 /// the store via real dispatch. Set by `bringUp`.
@@ -74,18 +84,46 @@ fn stateOf(self: Oop) *StoreState {
     return @ptrCast(@alignCast(self.?));
 }
 
-fn appendFact(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
-    st.facts.append(ca, .{ .e = e, .a = a, .v = v, .tx = st.tx }) catch @panic("store: oom");
+fn appendOp(st: *StoreState, e: Oop, a: Oop, v: Oop, op: Op) void {
+    st.facts.append(ca, .{ .e = e, .a = a, .v = v, .tx = st.tx, .op = op }) catch @panic("store: oom");
     st.tx += 1;
 }
+fn appendFact(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
+    appendOp(st, e, a, v, .assert);
+}
 
-/// Newest-first scan for the latest value of (e, a); null if none.
+/// Physically drop currently-live asserted facts matching (e, a, v) — the
+/// history-off retention path (no retract entry lingers, no growth).
+fn removeLive(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
+    var i: usize = 0;
+    while (i < st.facts.items.len) {
+        const f = st.facts.items[i];
+        if (f.e == e and f.a == a and f.v == v and f.op == .assert) {
+            _ = st.facts.orderedRemove(i);
+        } else i += 1;
+    }
+}
+
+/// Is value `v` currently a live member of (e, a)? The newest matching (e,a,v)
+/// fact decides (assert → present, retract → absent). Op-aware.
+fn isMember(st: *StoreState, e: Oop, a: Oop, v: Oop) bool {
+    var i = st.facts.items.len;
+    while (i > 0) {
+        i -= 1;
+        const f = st.facts.items[i];
+        if (f.e == e and f.a == a and f.v == v) return f.op == .assert;
+    }
+    return false;
+}
+
+/// Newest-first scan for the current value of (e, a); null if none/retracted.
+/// The newest matching fact decides: a retract entry means the value is absent.
 fn currentValueRaw(st: *StoreState, e: Oop, a: Oop) Oop {
     var i = st.facts.items.len;
     while (i > 0) {
         i -= 1;
         const f = st.facts.items[i];
-        if (f.e == e and f.a == a) return f.v;
+        if (f.e == e and f.a == a) return if (f.op == .retract) null else f.v;
     }
     return null;
 }
@@ -132,11 +170,17 @@ fn replaceInPlace(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
     appendFact(st, e, a, v);
 }
 
-/// Distinct present values of (e, a) — the set, for `:many` counting.
+/// Distinct currently-present values of (e, a) — the set, for `:many` counting.
+/// Op-aware: a value counts iff its NEWEST (e,a,v) fact is an assert, so a
+/// retracted-then-not-reasserted member drops out of the set.
 fn valueCount(st: *StoreState, e: Oop, a: Oop) usize {
     var seen: std.ArrayList(Oop) = .{};
     defer seen.deinit(ca);
-    for (st.facts.items) |f| {
+    var present: usize = 0;
+    var i = st.facts.items.len;
+    while (i > 0) {
+        i -= 1;
+        const f = st.facts.items[i];
         if (f.e != e or f.a != a) continue;
         var dup = false;
         for (seen.items) |s| {
@@ -145,9 +189,11 @@ fn valueCount(st: *StoreState, e: Oop, a: Oop) usize {
                 break;
             }
         }
-        if (!dup) seen.append(ca, f.v) catch @panic("store: oom");
+        if (dup) continue; // an older entry for this value — newest already decided
+        seen.append(ca, f.v) catch @panic("store: oom");
+        if (f.op == .assert) present += 1;
     }
-    return seen.items.len;
+    return present;
 }
 
 // -- The methods (installed on store_vt via api.method) ----------------------
@@ -191,13 +237,29 @@ fn mAssert(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
         else
             replaceInPlace(st, e, a, v); // default: one slot, no growth (D6)
     } else {
-        // :many — set semantics; accumulate distinct members. (History of a
-        // :many attr only diverges once retraction exists; deferred until then.)
-        for (st.facts.items) |f| {
-            if (f.e == e and f.a == a and f.v == v) return self; // already in the set
-        }
+        // :many — set semantics; accumulate distinct members (op-aware: a
+        // previously-retracted value can be re-added).
+        if (isMember(st, e, a, v)) return self; // already in the set
         appendFact(st, e, a, v);
     }
+    return self;
+}
+
+/// `[store retract: e attr: a value: v]` — remove v from (e, a). History-on
+/// attributes append a retract entry (the add/remove timeline is kept); history-
+/// off attributes physically drop the live fact (no growth). Unblocks `:many`
+/// history and gives `:one` removal.
+fn mRetract(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const st = stateOf(self);
+    const e = args[0];
+    const a = args[1];
+    const v = args[2];
+    if (!isMember(st, e, a, v)) return self; // retracting an absent value is a no-op
+    if (!st.raw and historyOf(st, a) == s_true)
+        appendOp(st, e, a, v, .retract) // keep the timeline
+    else
+        removeLive(st, e, a, v); // default: drop the live fact, no growth
     return self;
 }
 
@@ -228,6 +290,59 @@ fn mCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 fn mHistory(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     return @ptrFromInt(historyLen(stateOf(self), args[0], args[1]));
+}
+
+// -- Query surface: entity introspection (docs/33 §2b, open item) ------------
+//
+// `attrCount:` / `attrAt:index:` enumerate the attributes an entity currently
+// holds (first-appearance order, present-filtered). With no collection type or
+// blocks yet (those arrive with peg/compiler), this count+indexed-accessor pair
+// is the poor-man's iteration. It is GENERAL: over an app entity it lists its
+// attributes; over a tracked vtable it lists that type's mirrored selectors —
+// one mechanism, both reflective questions.
+
+fn collectAttrs(st: *StoreState, e: Oop, out: *std.ArrayList(Oop)) void {
+    for (st.facts.items) |f| {
+        if (f.e != e) continue;
+        var dup = false;
+        for (out.items) |s| {
+            if (s == f.a) {
+                dup = true;
+                break;
+            }
+        }
+        if (!dup) out.append(ca, f.a) catch @panic("store: oom");
+    }
+    // Keep only attributes that currently hold a value (drop fully-retracted).
+    var i: usize = 0;
+    while (i < out.items.len) {
+        const a = out.items[i];
+        const present = if (cardinalityOf(st, a) == s_one)
+            currentValueRaw(st, e, a) != null
+        else
+            valueCount(st, e, a) > 0;
+        if (!present) _ = out.orderedRemove(i) else i += 1;
+    }
+}
+
+/// `[store attrCount: e]` — how many distinct attributes `e` currently holds.
+fn mAttrCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var out: std.ArrayList(Oop) = .{};
+    defer out.deinit(ca);
+    collectAttrs(stateOf(self), args[0], &out);
+    return @ptrFromInt(out.items.len);
+}
+
+/// `[store attrAt: e index: i]` — the i-th attribute of `e` (pointer-encoded
+/// index), or nil if out of range. Pair with `attrCount:` to iterate.
+fn mAttrAt(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const idx: usize = @intFromPtr(args[1]);
+    var out: std.ArrayList(Oop) = .{};
+    defer out.deinit(ca);
+    collectAttrs(stateOf(self), args[0], &out);
+    return if (idx >= out.items.len) null else out.items[idx];
 }
 
 // -- Cells: object state as a handle (docs/33 §2a.3, D5 stratification) -------
@@ -299,6 +414,17 @@ fn mTrackedAddMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
+/// `[store new]` — mint a fresh, independently-seeded store (a sibling, same
+/// vtable). The siphon mints one well-known instance; this makes the store
+/// first-class mintable (docs/33 D8). Prototype-style: an instance makes more of
+/// its own kind, no class involved.
+fn mNew(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = args;
+    _ = n;
+    return freshStore();
+}
+
 // -- Bringup + the schema seed ----------------------------------------------
 
 /// Wire the store onto libid through the id API: intern the vocabulary, build
@@ -329,6 +455,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_value = api.intern("value");
     s_set = api.intern("set:");
     s_addMethodOn = api.intern("addMethod:on:with:");
+    s_retract = api.intern("retract:attr:value:");
+    s_new = api.intern("new");
+    s_attrCount = api.intern("attrCount:");
+    s_attrAt = api.intern("attrAt:index:");
 
     const reloading = api.isExported("Store") != 0;
     if (reloading) {
@@ -348,6 +478,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_history_read, &mHistory);
     api.method(store_vt, s_cellFor, &mCellFor);
     api.method(store_vt, s_addMethodOn, &mTrackedAddMethod);
+    api.method(store_vt, s_retract, &mRetract);
+    api.method(store_vt, s_new, &mNew);
+    api.method(store_vt, s_attrCount, &mAttrCount);
+    api.method(store_vt, s_attrAt, &mAttrAt);
 
     // Cell protocol (the `history` selector reuses the "history" symbol — one
     // identity, two roles: a cell message here, a schema attribute key above).
@@ -356,21 +490,28 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(cell_vt, s_history, &mCellHistory);
 
     if (!reloading) {
-        store_instance = api.alloc(store_vt, @sizeOf(StoreState));
-        stateOf(store_instance).* = .{};
-        seed();
+        store_instance = freshStore();
         _ = api.exportObj("StoreVt", store_vt);
         _ = api.exportObj("Store", store_instance);
         _ = api.exportObj("CellVt", cell_vt);
     }
 }
 
+/// Allocate a fresh store instance, initialize its state, and seed it. Used both
+/// for the well-known instance (bringUp) and for `[store new]`.
+fn freshStore() Oop {
+    const s = g_api.alloc(store_vt, @sizeOf(StoreState));
+    stateOf(s).* = .{};
+    seedInto(s);
+    return s;
+}
+
 /// Raw-assert the schema as data (rule-engine off), then flip → schema-aware.
 /// The cardinality knot `[cardinality cardinality one]` unties the regress: it
 /// lets `cardinalityOf(:cardinality)` terminate on a held fact. Only `rawAssert`
 /// (here, `appendFact`) and the `flip` (here, `raw = false`) are hardcoded.
-fn seed() void {
-    const st = stateOf(store_instance);
+fn seedInto(s: Oop) void {
+    const st = stateOf(s);
     appendFact(st, s_cardinality, s_cardinality, s_one); // ← the knot
     appendFact(st, s_name, s_cardinality, s_one);
     appendFact(st, s_history, s_cardinality, s_one);
