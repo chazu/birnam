@@ -23,6 +23,9 @@ fn assert3(api: *idapi.IdApi, e: Oop, a: Oop, v: Oop) void {
 fn count(api: *idapi.IdApi, e: Oop, a: Oop) usize {
     return @intFromPtr(api.send(store.store_instance, store.s_count, &[_]Oop{ e, a }, 2));
 }
+fn histLen(api: *idapi.IdApi, e: Oop, a: Oop) usize {
+    return @intFromPtr(api.send(store.store_instance, store.s_history_read, &[_]Oop{ e, a }, 2));
+}
 
 test "rung 2a.1: raw-append → seed → flip; the relational model models itself" {
     const api = id.id_init();
@@ -58,6 +61,38 @@ test "rung 2a.1: raw-append → seed → flip; the relational model models itsel
     assert3(api, e, color, blue);
     try std.testing.expect(cv(api, e, color) == blue);
     try std.testing.expectEqual(@as(usize, 1), count(api, e, color));
+}
+
+test "rung 2a.2: history is opt-in per attribute, default OFF (the 4 GB lesson)" {
+    const api = id.id_init();
+    store.bringUp(api);
+
+    // A default `:one` attribute keeps ONE slot however many times it changes —
+    // the log does not grow with updates.
+    const player = api.intern("player");
+    const hp = api.intern("hp");
+    const v10 = api.intern("v10");
+    const v20 = api.intern("v20");
+    const v30 = api.intern("v30");
+    assert3(api, player, hp, v10);
+    assert3(api, player, hp, v20);
+    assert3(api, player, hp, v30);
+    try std.testing.expect(cv(api, player, hp) == v30); // latest wins
+    try std.testing.expectEqual(@as(usize, 1), histLen(api, player, hp)); // no growth
+
+    // Opt `score` into history (a schema cell), then the timeline IS retained.
+    const score = api.intern("score");
+    _ = api.send(store.store_instance, store.s_assert,
+        &[_]Oop{ score, store.s_history, store.s_true }, 3);
+    assert3(api, player, score, v10);
+    assert3(api, player, score, v20);
+    assert3(api, player, score, v30);
+    try std.testing.expect(cv(api, player, score) == v30); // still latest-wins
+    try std.testing.expectEqual(@as(usize, 3), histLen(api, player, score)); // retained
+
+    // Re-asserting the unchanged current value is a no-op (history doesn't grow).
+    assert3(api, player, score, v30);
+    try std.testing.expectEqual(@as(usize, 3), histLen(api, player, score));
 }
 
 test "rung 2a.1: currentValue of an absent (e,a) is nil" {

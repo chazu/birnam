@@ -48,13 +48,16 @@ pub var s_flip: Oop = null;
 pub var s_assert: Oop = null;
 pub var s_currentValue: Oop = null;
 pub var s_count: Oop = null;
+pub var s_history_read: Oop = null; // the `history:attr:` read selector
 
 // Schema symbols (the vocabulary the store describes itself with).
 pub var s_cardinality: Oop = null;
 pub var s_one: Oop = null;
 pub var s_many: Oop = null;
 pub var s_name: Oop = null;
-pub var s_history: Oop = null;
+pub var s_history: Oop = null; // the history-policy ATTRIBUTE
+pub var s_true: Oop = null;
+pub var s_false: Oop = null;
 
 // -- Payload access + the append-only log -----------------------------------
 
@@ -85,6 +88,39 @@ fn currentValueRaw(st: *StoreState, e: Oop, a: Oop) Oop {
 fn cardinalityOf(st: *StoreState, a: Oop) Oop {
     const c = currentValueRaw(st, a, s_cardinality);
     return if (c == null) s_one else c;
+}
+
+/// Whether attribute `a` retains a timeline — read from the store's own schema.
+/// **Default OFF** (`docs/33` D6, the 4 GB lesson): a no-history `:one` attr
+/// keeps exactly one slot, so a hot-updated value never balloons the log.
+fn historyOf(st: *StoreState, a: Oop) Oop {
+    const h = currentValueRaw(st, a, s_history);
+    return if (h == null) s_false else h;
+}
+
+/// Number of facts the log currently holds for (e, a) — the timeline length.
+fn historyLen(st: *StoreState, e: Oop, a: Oop) usize {
+    var c: usize = 0;
+    for (st.facts.items) |f| {
+        if (f.e == e and f.a == a) c += 1;
+    }
+    return c;
+}
+
+/// Overwrite the value of the newest (e, a) fact in place (no growth); append if
+/// none exists. The no-history retention path for `:one`.
+fn replaceInPlace(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
+    var i = st.facts.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (st.facts.items[i].e == e and st.facts.items[i].a == a) {
+            st.facts.items[i].v = v;
+            st.facts.items[i].tx = st.tx;
+            st.tx += 1;
+            return;
+        }
+    }
+    appendFact(st, e, a, v);
 }
 
 /// Distinct present values of (e, a) — the set, for `:many` counting.
@@ -140,13 +176,18 @@ fn mAssert(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     }
     const card = cardinalityOf(st, a); // the self-consultation
     if (card == s_one) {
-        if (currentValueRaw(st, e, a) == v) return self; // idempotent
-        appendFact(st, e, a, v); // supersede (latest wins on read)
+        if (currentValueRaw(st, e, a) == v) return self; // idempotent: no value change
+        if (historyOf(st, a) == s_true)
+            appendFact(st, e, a, v) // opt-in: keep the timeline
+        else
+            replaceInPlace(st, e, a, v); // default: one slot, no growth (D6)
     } else {
+        // :many — set semantics; accumulate distinct members. (History of a
+        // :many attr only diverges once retraction exists; deferred until then.)
         for (st.facts.items) |f| {
             if (f.e == e and f.a == a and f.v == v) return self; // already in the set
         }
-        appendFact(st, e, a, v); // accumulate
+        appendFact(st, e, a, v);
     }
     return self;
 }
@@ -171,6 +212,15 @@ fn mCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return @ptrFromInt(c);
 }
 
+/// `[store history: e attr: a]` — the timeline length for (e, a), pointer-
+/// encoded. With history off (default) a `:one` attr stays at 1 however many
+/// times it is asserted; opted in (`[a :history true]`) it grows. The observable
+/// proof that history is opt-in (D6).
+fn mHistory(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return @ptrFromInt(historyLen(stateOf(self), args[0], args[1]));
+}
+
 // -- Bringup + the schema seed ----------------------------------------------
 
 /// Wire the store onto libid through the id API: intern the vocabulary, build
@@ -187,12 +237,15 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_many = api.intern("many");
     s_name = api.intern("name");
     s_history = api.intern("history");
+    s_true = api.intern("true");
+    s_false = api.intern("false");
 
     s_rawAssert = api.intern("rawAssert:attr:value:");
     s_flip = api.intern("flip");
     s_assert = api.intern("assert:attr:value:");
     s_currentValue = api.intern("currentValue:attr:");
     s_count = api.intern("count:attr:");
+    s_history_read = api.intern("history:attr:");
 
     const reloading = api.isExported("Store") != 0;
     if (reloading) {
@@ -207,6 +260,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_assert, &mAssert);
     api.method(store_vt, s_currentValue, &mCurrentValue);
     api.method(store_vt, s_count, &mCount);
+    api.method(store_vt, s_history_read, &mHistory);
 
     if (!reloading) {
         store_instance = api.alloc(store_vt, @sizeOf(StoreState));
