@@ -263,6 +263,29 @@ pub fn build(b: *std.Build) void {
     const test_id_step = b.step("test-id", "libid: the Piumarta object-system bootstrap proof");
     test_id_step.dependOn(&b.addRunArtifact(id_tests).step);
 
+    // Rung 2: the cell/relational store as a reloadable module over libid.
+    const store_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/store.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const store_lib = b.addLibrary(.{ .name = "birnam_store", .root_module = store_mod, .linkage = .dynamic });
+    store_lib.linkLibC();
+    b.installArtifact(store_lib);
+
+    // The rung-2 proof: raw-append → seed → flip; the relational model models
+    // itself. store_test.zig pulls in id.zig + store.zig as siblings (relative
+    // imports) so the IdApi type unifies across the floor and the module.
+    const store_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/store_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const store_tests = b.addTest(.{ .root_module = store_test_mod });
+    store_tests.linkLibC();
+    const test_store_step = b.step("test-store", "rung 2: the cell/relational store bootstrap fixpoint");
+    test_store_step.dependOn(&b.addRunArtifact(store_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,

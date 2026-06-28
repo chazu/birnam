@@ -80,7 +80,29 @@ pub fn main() !void {
     mstate = try loadModule(api, counter_path, mstate); // reload  -> 3
     std.debug.print("[siphon] hot-reload: module state persisted across 3 loads\n", .{});
 
-    std.debug.print("[siphon] ok — siphon loads + drives + re-imports id, and persists module state across reloads, all through the id api\n", .{});
+    // 6. RUNG 2 — load the cell/relational store module THROUGH the id api. Its
+    //    module_init mints + seeds the ONE well-known store (raw-append → seed →
+    //    flip), then we drive it: a post-flip assert consults the store's own
+    //    seeded schema (the cardinality knot). The relational model models itself.
+    const store_path = try a.dupeZ(u8, "zig-out/lib/libbirnam_store.dylib");
+    defer a.free(store_path);
+    _ = try loadModule(api, store_path, null);
+    const store = api.import("Store") orelse return error.NoStore;
+
+    const s_assert = api.intern("assert:attr:value:");
+    const s_currentValue = api.intern("currentValue:attr:");
+    const s_cardinality = api.intern("cardinality");
+    const s_many = api.intern("many");
+    const s_tags = api.intern("tags");
+
+    // Register `tags` as :many — placing this fact consults cardinalityOf(
+    // :cardinality) == one (the seeded knot) — then read it back through dispatch.
+    _ = api.send(store, s_assert, &[_]Oop{ s_tags, s_cardinality, s_many }, 3);
+    const back = api.send(store, s_currentValue, &[_]Oop{ s_tags, s_cardinality }, 2);
+    if (back != s_many) return error.RungTwoMismatch;
+    std.debug.print("[siphon] rung 2: [tags cardinality] read back as :many — the store models its own schema\n", .{});
+
+    std.debug.print("[siphon] ok — siphon loads + drives + re-imports id, persists module state across reloads, and mounts the rung-2 cell store, all through the id api\n", .{});
 }
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading

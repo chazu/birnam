@@ -1,0 +1,239 @@
+//! src/id/store.zig — rung 2: the cell / relational store, a module over libid.
+//!
+//! See `docs/33-rung-2-cells.md`. This is the FIRST superimposition over the
+//! libid floor: object state becomes **cells** (get/assert over a historied
+//! triple store), and the store is itself a libid object the siphon loads
+//! through the id API (the `counter` module is the loading template).
+//!
+//! The bootstrap is the **raw-append → seed schema → flip** fixpoint — libid's
+//! own `bind` trick one rung up. The store has one irreducible primitive,
+//! `rawAssert` (append a triple, consult nothing); the schema is seeded *as
+//! data* while the rule-engine is off, **including the self-referential knot**
+//! `[cardinality cardinality one]`; then `flip` makes the store schema-aware.
+//! From there every `assert` consults `currentValue(a, :cardinality)` — a fact
+//! the store already holds. The relational model now models itself. Only
+//! `rawAssert` and `flip` are Zig-hardcoded; the schema is data.
+//!
+//! libid (rung 1) is UNTOUCHED by this module: `bind`/`send`/`allocate`/
+//! `lookup`/`addMethod` are not modified. Everything here is built through the
+//! `IdApi`.
+
+const std = @import("std");
+const idapi = @import("idapi.zig");
+
+const Oop = idapi.Oop;
+const ca = std.heap.c_allocator;
+
+/// A triple plus the transaction it was asserted in. Append-only.
+const Fact = struct { e: Oop, a: Oop, v: Oop, tx: u64 };
+
+/// The store's private backing — held in the Store libid object's payload (the
+/// bytes at `object[-1]+0`, i.e. at the object pointer itself). Consistent with
+/// libid keeping its method-dict backing in Zig arrays: reflectivity lives in
+/// the API (any fact, incl. schema, is queryable), not in making each triple a
+/// separately-dispatched object.
+const StoreState = struct {
+    facts: std.ArrayList(Fact) = .{},
+    raw: bool = true,
+    tx: u64 = 0,
+};
+
+// -- Well-known objects + selectors (set by `bringUp`) ----------------------
+
+pub var store_vt: Oop = null; // the Store vtable (a proto delegating to Object)
+pub var store_instance: Oop = null; // the one canonical seeded store
+
+pub var s_rawAssert: Oop = null;
+pub var s_flip: Oop = null;
+pub var s_assert: Oop = null;
+pub var s_currentValue: Oop = null;
+pub var s_count: Oop = null;
+
+// Schema symbols (the vocabulary the store describes itself with).
+pub var s_cardinality: Oop = null;
+pub var s_one: Oop = null;
+pub var s_many: Oop = null;
+pub var s_name: Oop = null;
+pub var s_history: Oop = null;
+
+// -- Payload access + the append-only log -----------------------------------
+
+fn stateOf(self: Oop) *StoreState {
+    return @ptrCast(@alignCast(self.?));
+}
+
+fn appendFact(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
+    st.facts.append(ca, .{ .e = e, .a = a, .v = v, .tx = st.tx }) catch @panic("store: oom");
+    st.tx += 1;
+}
+
+/// Newest-first scan for the latest value of (e, a); null if none.
+fn currentValueRaw(st: *StoreState, e: Oop, a: Oop) Oop {
+    var i = st.facts.items.len;
+    while (i > 0) {
+        i -= 1;
+        const f = st.facts.items[i];
+        if (f.e == e and f.a == a) return f.v;
+    }
+    return null;
+}
+
+/// The cardinality of attribute `a`, read from the store's OWN schema cells.
+/// Defaults to `:one` when unseeded. This is the self-consultation: reading the
+/// cardinality of `:cardinality` itself terminates on the seeded knot, not in a
+/// regress (`docs/33` §bootstrap).
+fn cardinalityOf(st: *StoreState, a: Oop) Oop {
+    const c = currentValueRaw(st, a, s_cardinality);
+    return if (c == null) s_one else c;
+}
+
+/// Distinct present values of (e, a) — the set, for `:many` counting.
+fn valueCount(st: *StoreState, e: Oop, a: Oop) usize {
+    var seen: std.ArrayList(Oop) = .{};
+    defer seen.deinit(ca);
+    for (st.facts.items) |f| {
+        if (f.e != e or f.a != a) continue;
+        var dup = false;
+        for (seen.items) |s| {
+            if (s == f.v) {
+                dup = true;
+                break;
+            }
+        }
+        if (!dup) seen.append(ca, f.v) catch @panic("store: oom");
+    }
+    return seen.items.len;
+}
+
+// -- The methods (installed on store_vt via api.method) ----------------------
+
+/// `[store rawAssert: e attr: a value: v]` — the one irreducible primitive:
+/// append a triple, consult nothing. The bootstrap floor.
+fn mRawAssert(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    appendFact(stateOf(self), args[0], args[1], args[2]);
+    return self;
+}
+
+/// `[store flip]` — leave raw mode; become schema-aware. The single switch.
+fn mFlip(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    stateOf(self).raw = false;
+    return self;
+}
+
+/// `[store assert: e attr: a value: v]` — schema-aware. Consults the store's own
+/// `currentValue(a, :cardinality)` to place the value: `:one` supersedes
+/// (idempotent if unchanged); `:many` accumulates as a set. In raw mode this is
+/// just an append (the bootstrap uses `rawAssert` directly, but assert stays
+/// safe pre-flip).
+fn mAssert(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const st = stateOf(self);
+    const e = args[0];
+    const a = args[1];
+    const v = args[2];
+    if (st.raw) {
+        appendFact(st, e, a, v);
+        return self;
+    }
+    const card = cardinalityOf(st, a); // the self-consultation
+    if (card == s_one) {
+        if (currentValueRaw(st, e, a) == v) return self; // idempotent
+        appendFact(st, e, a, v); // supersede (latest wins on read)
+    } else {
+        for (st.facts.items) |f| {
+            if (f.e == e and f.a == a and f.v == v) return self; // already in the set
+        }
+        appendFact(st, e, a, v); // accumulate
+    }
+    return self;
+}
+
+/// `[store currentValue: e attr: a]` — the latest value of (e, a), or nil.
+fn mCurrentValue(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return currentValueRaw(stateOf(self), args[0], args[1]);
+}
+
+/// `[store count: e attr: a]` — how many values (e, a) currently holds, pointer-
+/// encoded (libid is pre-SmallInt). `:one` → 0 or 1; `:many` → set size.
+fn mCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const st = stateOf(self);
+    const e = args[0];
+    const a = args[1];
+    const c: usize = if (cardinalityOf(st, a) == s_one)
+        (if (currentValueRaw(st, e, a) == null) @as(usize, 0) else 1)
+    else
+        valueCount(st, e, a);
+    return @ptrFromInt(c);
+}
+
+// -- Bringup + the schema seed ----------------------------------------------
+
+/// Wire the store onto libid through the id API: intern the vocabulary, build
+/// (or re-import) the Store vtable, (re)install its methods, and — on first
+/// load — mint the one canonical instance, seed the schema, and export both.
+///
+/// Hot-reload safe: methods are re-installed every load (fresh fn pointers for
+/// the freshly-loaded dylib), but the instance + its StoreState persist via the
+/// id environment (`import`/`export`) — the store IS a libid object, so the id
+/// namespace is its natural persistence, not the opaque module-state channel.
+pub fn bringUp(api: *idapi.IdApi) void {
+    s_cardinality = api.intern("cardinality");
+    s_one = api.intern("one");
+    s_many = api.intern("many");
+    s_name = api.intern("name");
+    s_history = api.intern("history");
+
+    s_rawAssert = api.intern("rawAssert:attr:value:");
+    s_flip = api.intern("flip");
+    s_assert = api.intern("assert:attr:value:");
+    s_currentValue = api.intern("currentValue:attr:");
+    s_count = api.intern("count:attr:");
+
+    const reloading = api.isExported("Store") != 0;
+    if (reloading) {
+        store_vt = api.import("StoreVt");
+        store_instance = api.import("Store");
+    } else {
+        store_vt = api.proto(api.object_vt);
+    }
+
+    api.method(store_vt, s_rawAssert, &mRawAssert);
+    api.method(store_vt, s_flip, &mFlip);
+    api.method(store_vt, s_assert, &mAssert);
+    api.method(store_vt, s_currentValue, &mCurrentValue);
+    api.method(store_vt, s_count, &mCount);
+
+    if (!reloading) {
+        store_instance = api.alloc(store_vt, @sizeOf(StoreState));
+        stateOf(store_instance).* = .{};
+        seed();
+        _ = api.exportObj("StoreVt", store_vt);
+        _ = api.exportObj("Store", store_instance);
+    }
+}
+
+/// Raw-assert the schema as data (rule-engine off), then flip → schema-aware.
+/// The cardinality knot `[cardinality cardinality one]` unties the regress: it
+/// lets `cardinalityOf(:cardinality)` terminate on a held fact. Only `rawAssert`
+/// (here, `appendFact`) and the `flip` (here, `raw = false`) are hardcoded.
+fn seed() void {
+    const st = stateOf(store_instance);
+    appendFact(st, s_cardinality, s_cardinality, s_one); // ← the knot
+    appendFact(st, s_name, s_cardinality, s_one);
+    appendFact(st, s_history, s_cardinality, s_one);
+    st.raw = false; // flip
+}
+
+/// The reloadable-module entrypoint (cf. `idapi.ModuleInitFn`). The opaque
+/// `state` channel is unused: the store persists as a libid object via the id
+/// environment, not as foreign state. Returns null (nothing to thread).
+pub export fn module_init(api: *idapi.IdApi, state: ?*anyopaque) callconv(.c) ?*anyopaque {
+    _ = state;
+    bringUp(api);
+    return null;
+}
