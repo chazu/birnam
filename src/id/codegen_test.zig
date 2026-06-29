@@ -46,6 +46,11 @@ fn mFromTo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     return gapi.mkSmallInt(gapi.smallIntValue(args[0]) * 100 + gapi.smallIntValue(args[1]));
 }
+// `[x with: aBlock]` invokes the block argument as `[aBlock value: x]`.
+fn mWith(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return gapi.send(args[0], gapi.intern("value:"), &[_]Oop{self}, 1);
+}
 
 fn eval(api: *idapi.IdApi, src: []const u8) Oop {
     const Codegen = api.import("Codegen").?;
@@ -158,4 +163,11 @@ test "codegen 3c.3: blocks compile to closures (params, capture, invoke)" {
     try std.testing.expectEqual(@as(i64, 84), try evalInt(api, "let x := 21; let f := [| [x double]]; let r := [f value]; [r double]"));
     // nested blocks: inner captures the outer param transitively
     try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let mk := [:a | [:b | [a plus: b]]]; let add20 := [mk value: 20]; [add20 value: 22]"));
+
+    // a block literal passed directly as a message argument (a statement-
+    // expression nested inside the call's compound-literal arg array)
+    api.method(api.smallint_vt, api.intern("with:"), &mWith);
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "[21 with: [:x | [x double]]]"));
+    // capturing block passed as an argument: [20 with: blk] → [[20+2] double] = 44
+    try std.testing.expectEqual(@as(i64, 44), try evalInt(api, "let k := 2; [20 with: [:x | [[x plus: k] double]]]"));
 }
