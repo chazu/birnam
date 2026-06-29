@@ -230,6 +230,7 @@ const script_modules = [_][]const u8{
     "libbirnam_id_codegen",
     "libbirnam_id_prelude",
     "libbirnam_id_collection",
+    "libbirnam_id_error",
 };
 
 /// Compile + run a birnam script file. Loads the full stack quietly, then

@@ -417,6 +417,26 @@ pub fn build(b: *std.Build) void {
     const test_collection_step = b.step("test-collection", "the id-native collection library: Vector trie + Range");
     test_collection_step.dependOn(&b.addRunArtifact(id_collection_tests).step);
 
+    // F7: the error model — Error values, propagation, the object_vt DNU swap.
+    const id_error_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/error.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_error_lib = b.addLibrary(.{ .name = "birnam_id_error", .root_module = id_error_mod, .linkage = .dynamic });
+    id_error_lib.linkLibC();
+    b.installArtifact(id_error_lib);
+
+    const id_error_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/error_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_error_tests = b.addTest(.{ .root_module = id_error_test_mod });
+    id_error_tests.linkLibC();
+    const test_error_step = b.step("test-error", "F7: the error model (propagating values + DNU swap)");
+    test_error_step.dependOn(&b.addRunArtifact(id_error_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,

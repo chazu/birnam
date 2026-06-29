@@ -57,11 +57,24 @@ fn iMul(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 }
 fn iDiv(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
+    if (iv(a[0]) == 0) return zeroDivide();
     return mki(@divTrunc(iv(self), iv(a[0])));
 }
 fn iMod(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
+    if (iv(a[0]) == 0) return zeroDivide();
     return mki(@mod(iv(self), iv(a[0])));
+}
+
+/// A `#zeroDivide` error if the error model (F7) is loaded, else nil. Imported
+/// LAZILY (at the failure, not at bringUp) so the prelude keeps no load-order
+/// dependency on the error module — arithmetic lives here, the error TYPE lives
+/// there, and they meet only when a division actually fails.
+fn zeroDivide() Oop {
+    const E = g_api.import("Error");
+    if (E == null) return g_api.nilObj;
+    const m = "division by zero";
+    return g_api.send(E, g_api.intern("kind:message:"), &[_]Oop{ g_api.intern("zeroDivide"), g_api.mkString(m.ptr, m.len) }, 2);
 }
 fn iEq(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
