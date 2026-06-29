@@ -229,6 +229,7 @@ const script_modules = [_][]const u8{
     "libbirnam_id_tcc",
     "libbirnam_id_codegen",
     "libbirnam_id_prelude",
+    "libbirnam_id_collection",
 };
 
 /// Compile + run a birnam script file. Loads the full stack quietly, then

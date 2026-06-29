@@ -395,6 +395,28 @@ pub fn build(b: *std.Build) void {
     const test_prelude_step = b.step("test-prelude", "the primitive stdlib: Integer/Boolean/System");
     test_prelude_step.dependOn(&b.addRunArtifact(id_prelude_tests).step);
 
+    // The id-native collection library: the persistent Vector trie + Range, with
+    // trie nodes that are themselves libid objects (the F3/F5 endgame). Depends
+    // only on the IdApi (sends element `printString` at runtime).
+    const id_collection_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/collection.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_collection_lib = b.addLibrary(.{ .name = "birnam_id_collection", .root_module = id_collection_mod, .linkage = .dynamic });
+    id_collection_lib.linkLibC();
+    b.installArtifact(id_collection_lib);
+
+    const id_collection_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/collection_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_collection_tests = b.addTest(.{ .root_module = id_collection_test_mod });
+    id_collection_tests.linkLibC();
+    const test_collection_step = b.step("test-collection", "the id-native collection library: Vector trie + Range");
+    test_collection_step.dependOn(&b.addRunArtifact(id_collection_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,
