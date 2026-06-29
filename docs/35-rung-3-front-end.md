@@ -168,24 +168,53 @@ lifetime spans the call; selectors are interned at runtime via `birnam_intern`
 keyword dispatch to methods installed on `smallint_vt`, nested + mixed); the
 siphon gains a 3c.3 line.
 
-**Next steps:**
-- **Variables + self/args.** `let x := …` bindings and identifier receivers/args
-  (currently `emit` returns false on `ident`) — needs a small per-method
-  environment (C locals) and the method's `self`/`args` exposed.
-- **Strings & blocks.** String literals via `birnam_mkString`; blocks as nested
-  Method-ABI functions (closures need captured-environment representation).
-- **CST shape** — the wrapper-rule nesting is tolerable via `skip()`; revisit a
-  desugar pass only if it gets unwieldy.
-- **Error model (F7)** — settle as eval/runtime semantics firm up.
+**Step 3 — variables, multi-statement programs, strings SHIPPED (`0596c8a`).**
+The emitter compiles a whole program body, not just one expression: `let x := e`
+→ a C local `void* b_x = <e>;` that later statements see; identifiers resolve to
+`b_<name>` (a `bound_names` lexical environment; unbound idents → out of subset);
+`a; b; c` emits each statement and returns the last one's value; string literals
+→ `birnam_mkString("…", len)` with a robust C-literal escaper (non-printables as
+3-digit octal). `test-codegen` 7 → 9.
+
+**Step 4 — blocks compile to native closures SHIPPED (`e2125d4`).** The last
+construct. A block `[:a :b | body]` compiles to a file-scope C function with the
+Method ABI: params bind to `args[i]`, captured free vars to slots in the block
+object's payload (read via `self`). The literal is a GNU statement-expression
+that lazily builds the block's vtable (installing the fn under the arity-matched
+`value`/`value:`/`value:value:`… selector via `birnam_proto`/`birnam_objectVt`/
+`birnam_method`) and allocates a capturing instance (`birnam_alloc`). **Invoking
+a block is just an ordinary `value…` send** — no special case. Free-variable
+analysis (`collectRefs`) walks value positions only (skips selectors), descends
+into nested blocks for transitive captures, and excludes a block's own params +
+top-level lets (shadowing). Block fns accumulate in `fn_defs` in post-order
+(inner first) so each is defined before referenced; final source = prelude +
+`fn_defs` + `__ev`. `test-codegen` 9 → 10 (params, capture, multi-arg, stored-
+then-invoked, nested closures with transitive capture, block-as-argument).
+
+**⭐ THE WHOLE BIRNAM GRAMMAR NOW COMPILES TO NATIVE.** Every production — literals,
+all send forms, arithmetic, variables, multi-statement programs, strings, and
+blocks/closures — emits valid C, is compiled by libtcc, and installs/runs in the
+live id system. The siphon proves it: `[[3+4]*2]`→14, `[[20 plus: 1] double]`→42
+(dispatch through libid), and `let x := 20; let add := [:y | [x plus: y]]; [add
+value: 22]`→42 (let + capture + closure).
+
+**Next (beyond the grammar):**
+- **A path to reference the running system.** The grammar has no global namespace
+  (idents only resolve to lets/params/captures) and no method-definition syntax.
+  To make compiled birnam a first-class way to *extend* the live system, add
+  global lookup (e.g. capitalised idents → `api.import`) and/or a define-method
+  surface. Language-design work, not just codegen.
+- **Error model (F7)** — wrong-arity block sends currently hit the panicking
+  default DNU; settle as eval/runtime semantics firm up.
 - **Output modes** — in-memory (done) vs emit to a `.dylib`/`.so` on disk
   (`tcc_output_file`) for the user's "compile to a shared object" need.
-
-Then, below/after: **gc** (the F3 per-vtable layout descriptor) and the richer
-**relational engine** (Date-Third-Manifesto power, store-side, option-independent).
+- **GC (F3)** — each eval leaks a TccState + throwaway vtables (leak-till-GC is
+  the documented stance); the per-vtable layout descriptor lands with the
+  collector. Then the richer **relational engine**.
 
 ## Test/run surface
 
 `zig build test-id` (4) · `test-store` (12) · `test-peg` (8) · `test-lang` (7) ·
-`test-tcc` (8) · `test-codegen` (7); `zig build install && ./zig-out/bin/birnam-id`
+`test-tcc` (8) · `test-codegen` (10); `zig build install && ./zig-out/bin/birnam-id`
 runs the siphon through the full stack (store, peg, lang, tcc, codegen) and
 compiles `[[3 + 4] * 2]` → native → 14.
