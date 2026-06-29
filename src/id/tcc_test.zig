@@ -51,3 +51,67 @@ test "tcc 3c: bad C returns nil; a missing symbol returns nil" {
     try std.testing.expect(unit != api.nilObj);
     try std.testing.expect(api.send(unit, api.intern("symbol:"), &[_]Oop{str(api, "absent")}, 1) == api.nilObj);
 }
+
+test "tcc 3c.3: staged compile opens a pre-relocate symbol window" {
+    const api = id.id_init();
+    tcc.bringUp(api);
+    const Tcc = api.import("Tcc").?;
+
+    // Emitted C that calls BACK INTO libid: it constructs its SmallInt result via
+    // the runtime shim rather than hand-tagging. `birnam_mkSmallInt` is an
+    // unresolved external until `bindRuntime` patches it before `relocate`.
+    const src =
+        \\extern void* birnam_mkSmallInt(long);
+        \\void* viaRuntime(void* self, void** args, long n) {
+        \\  (void)self; (void)args; (void)n;
+        \\  return birnam_mkSmallInt(123);
+        \\}
+    ;
+    const unit = api.send(Tcc, api.intern("new"), &[_]Oop{}, 0);
+    try std.testing.expect(unit != api.nilObj);
+    try std.testing.expect(api.send(unit, api.intern("compile:"), &[_]Oop{str(api, src)}, 1) == unit);
+    try std.testing.expect(api.send(unit, api.intern("bindRuntime"), &[_]Oop{}, 0) == unit);
+    try std.testing.expect(api.send(unit, api.intern("relocate"), &[_]Oop{}, 0) == unit);
+
+    const vt = api.proto(api.object_vt);
+    const sel = api.intern("viaRuntime");
+    const ok = api.send(unit, api.intern("install:as:on:"), &[_]Oop{ str(api, "viaRuntime"), sel, vt }, 3);
+    try std.testing.expect(ok == vt);
+
+    const inst = api.alloc(vt, 0);
+    const r = api.send(inst, sel, &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(i64, 123), api.smallIntValue(r));
+}
+
+test "tcc 3c.3: emitted C can send a message back through libid" {
+    const api = id.id_init();
+    tcc.bringUp(api);
+    const Tcc = api.import("Tcc").?;
+
+    // A method that re-dispatches #double to self via birnam_send — proving the
+    // full callback (intern a selector + send) survives the relocate window.
+    const src =
+        \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
+        \\extern void* birnam_intern(const char* name);
+        \\void* callDouble(void* self, void** args, long n) {
+        \\  (void)args; (void)n;
+        \\  return birnam_send(self, birnam_intern("double"), 0, 0);
+        \\}
+        \\void* doubleIt(void* self, void** args, long n) {
+        \\  (void)args; (void)n;
+        \\  long v = ((long)self) >> 1;       /* untag the SmallInt receiver */
+        \\  return (void*)(((v * 2) << 1) | 1L);
+        \\}
+    ;
+    const unit = api.send(Tcc, api.intern("new"), &[_]Oop{}, 0);
+    try std.testing.expect(api.send(unit, api.intern("compile:"), &[_]Oop{str(api, src)}, 1) == unit);
+    try std.testing.expect(api.send(unit, api.intern("bindRuntime"), &[_]Oop{}, 0) == unit);
+    try std.testing.expect(api.send(unit, api.intern("relocate"), &[_]Oop{}, 0) == unit);
+
+    // Install both on the SmallInt vtable, then send #callDouble to a fixnum.
+    _ = api.send(unit, api.intern("install:as:on:"), &[_]Oop{ str(api, "callDouble"), api.intern("callDouble"), api.smallint_vt }, 3);
+    _ = api.send(unit, api.intern("install:as:on:"), &[_]Oop{ str(api, "doubleIt"), api.intern("double"), api.smallint_vt }, 3);
+
+    const r = api.send(api.mkSmallInt(21), api.intern("callDouble"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r));
+}
