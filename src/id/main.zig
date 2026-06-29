@@ -138,7 +138,26 @@ pub fn main() !void {
     if (api.send(cst, api.intern("rule"), empty, 0) != api.intern("program")) return error.NotAProgram;
     std.debug.print("[siphon] rung 3b: lang parsed a birnam let-binding => program CST, grammar built via the peg message api\n", .{});
 
-    std.debug.print("[siphon] ok — siphon loads + drives + re-imports id, persists state across reloads, mounts the rung-2 cell store, the rung-3 peg engine, and the birnam lang grammar, all through the id api\n", .{});
+    // 9. RUNG 3c — load the libtcc compiler module: compile C to native, install
+    //    it as a method, and dispatch — the proximate goal's backend, end to end
+    //    through the id api.
+    const tcc_path = try a.dupeZ(u8, "zig-out/lib/libbirnam_id_tcc.dylib");
+    defer a.free(tcc_path);
+    _ = try loadModule(api, tcc_path, null);
+    const tcc = api.import("Tcc") orelse return error.NoTcc;
+    const csrc = "void* answer(void* self, void** args, long n){ (void)self;(void)args;(void)n; return (void*)((42L<<1)|1L); }";
+    const unit = api.send(tcc, api.intern("compile:"), &[_]Oop{api.mkString(csrc, csrc.len)}, 1);
+    if (unit == api.nilObj) return error.TccCompileFailed;
+    const avt = api.proto(object_vt);
+    const asel = api.intern("answer");
+    const fname = "answer";
+    _ = api.send(unit, api.intern("install:as:on:"), &[_]Oop{ api.mkString(fname, fname.len), asel, avt }, 3);
+    const inst = api.alloc(avt, 0);
+    const av = api.smallIntValue(api.send(inst, asel, empty, 0));
+    if (av != 42) return error.TccDispatchWrong;
+    std.debug.print("[siphon] rung 3c: libtcc compiled C → native, installed + dispatched => {d}, through the id api\n", .{av});
+
+    std.debug.print("[siphon] ok — siphon loads + drives + re-imports id, persists state across reloads, mounts the rung-2 cell store, the rung-3 peg engine + birnam grammar, and JITs C via libtcc, all through the id api\n", .{});
 }
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading

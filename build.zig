@@ -326,6 +326,31 @@ pub fn build(b: *std.Build) void {
     const test_lang_step = b.step("test-lang", "rung 3b: birnam's grammar + parser via the peg message api");
     test_lang_step.dependOn(&b.addRunArtifact(id_lang_tests).step);
 
+    // Rung 3c (part 1): the libtcc compiler as an id module (statically links the
+    // vendored libtcc; emitted C uses the Method ABI — no general FFI needed).
+    const id_tcc_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/tcc.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    id_tcc_mod.addIncludePath(b.path("vendor/libtcc-src"));
+    const id_tcc_lib = b.addLibrary(.{ .name = "birnam_id_tcc", .root_module = id_tcc_mod, .linkage = .dynamic });
+    id_tcc_lib.linkLibrary(libtcc_lib);
+    id_tcc_lib.linkLibC();
+    b.installArtifact(id_tcc_lib);
+
+    const id_tcc_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/tcc_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    id_tcc_test_mod.addIncludePath(b.path("vendor/libtcc-src"));
+    const id_tcc_tests = b.addTest(.{ .root_module = id_tcc_test_mod });
+    id_tcc_tests.linkLibrary(libtcc_lib);
+    id_tcc_tests.linkLibC();
+    const test_tcc_step = b.step("test-tcc", "rung 3c: libtcc as an id module — C to native");
+    test_tcc_step.dependOn(&b.addRunArtifact(id_tcc_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,
