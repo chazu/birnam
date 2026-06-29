@@ -50,6 +50,7 @@ var r_unaryMsg: Oop = null;
 var r_keywordMsg: Oop = null;
 var r_ident: Oop = null;
 var r_string: Oop = null;
+var r_symbol: Oop = null;
 var r_letBinding: Oop = null;
 var r_block: Oop = null;
 var r_statements: Oop = null;
@@ -214,6 +215,14 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
         var nb: [24]u8 = undefined;
         const ns = std.fmt.bufPrint(&nb, "{d}L)", .{inner.len}) catch return false;
         put(buf, ns);
+        return true;
+    }
+    if (r == r_symbol) {
+        const raw = text(node); // "#sel" — strip the leading '#'
+        const sel = if (raw.len >= 1) raw[1..] else raw;
+        put(buf, "birnam_intern(\"");
+        putCStr(buf, sel);
+        put(buf, "\")");
         return true;
     }
     if (r == r_send) {
@@ -560,6 +569,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     r_keywordMsg = api.intern("keywordMsg");
     r_ident = api.intern("ident");
     r_string = api.intern("string");
+    r_symbol = api.intern("symbol");
     r_letBinding = api.intern("letBinding");
     r_block = api.intern("block");
     r_statements = api.intern("statements");

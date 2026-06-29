@@ -146,6 +146,14 @@ test "codegen 3c.3: string literals construct String objects" {
     try std.testing.expectEqualStrings("hi", try evalStr(api, "let s := \"hi\"; s"));
 }
 
+test "codegen 3c.3: symbol literals intern to selectors" {
+    const api = setup();
+    try std.testing.expect(eval(api, "#double") == api.intern("double"));
+    try std.testing.expect(eval(api, "#plus:") == api.intern("plus:"));
+    try std.testing.expect(eval(api, "#fooWithBar:andBaz:andQuux:") == api.intern("fooWithBar:andBaz:andQuux:"));
+    try std.testing.expect(eval(api, "#+") == api.intern("+"));
+}
+
 test "codegen 3c.3: blocks compile to closures (params, capture, invoke)" {
     const api = setup();
     api.method(api.smallint_vt, api.intern("double"), &mDouble);

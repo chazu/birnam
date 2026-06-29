@@ -113,8 +113,20 @@ fn buildGrammar() void {
         .{ '*', '*' }, .{ '/', '/' }, .{ '~', '~' },
     }));
 
-    // primary = number / string / ident
-    defRule("primary", altN(&.{ rref("number"), rref("string"), rref("ident") }));
+    // symbol = '#' ( (ident ':')+ / ident / binop+ ) — names a selector:
+    // #double, #plus:, #fooWithBar:andBaz:andQuux:, #+. Codegen reads the span
+    // text (minus the '#') and interns it; the child nodes don't matter.
+    defRule("symbol", seqN(&.{
+        lit("#"),
+        altN(&.{
+            plus(seqN(&.{ rref("ident"), lit(":") })),
+            rref("ident"),
+            plus(rref("binop")),
+        }),
+    }));
+
+    // primary = number / string / symbol / ident
+    defRule("primary", altN(&.{ rref("number"), rref("string"), rref("symbol"), rref("ident") }));
 
     // keyword = ident ':'   (the ':' of ':=' only appears in letBinding, matched first)
     defRule("keyword", seqN(&.{ rref("ident"), lit(":") }));
