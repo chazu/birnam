@@ -157,7 +157,18 @@ pub fn main() !void {
     if (av != 42) return error.TccDispatchWrong;
     std.debug.print("[siphon] rung 3c: libtcc compiled C → native, installed + dispatched => {d}, through the id api\n", .{av});
 
-    std.debug.print("[siphon] ok — siphon loads + drives + re-imports id, persists state across reloads, mounts the rung-2 cell store, the rung-3 peg engine + birnam grammar, and JITs C via libtcc, all through the id api\n", .{});
+    // 10. RUNG 3c.2 — load the codegen module and run the full pipeline: birnam
+    //     source → CST → emitted C → libtcc → native → value, all through the api.
+    const codegen_path = try a.dupeZ(u8, "zig-out/lib/libbirnam_id_codegen.dylib");
+    defer a.free(codegen_path);
+    _ = try loadModule(api, codegen_path, null);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+    const expr = "[[3 + 4] * 2]";
+    const ev = api.smallIntValue(api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(expr, expr.len)}, 1));
+    if (ev != 14) return error.CodegenWrong;
+    std.debug.print("[siphon] rung 3c.2: codegen compiled birnam {s} → C → native => {d}, through the id api\n", .{ expr, ev });
+
+    std.debug.print("[siphon] ok — birnam source compiles to native through the full stack (libid → store → peg → lang → tcc → codegen), all through the id api\n", .{});
 }
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading

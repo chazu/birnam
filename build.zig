@@ -351,6 +351,29 @@ pub fn build(b: *std.Build) void {
     const test_tcc_step = b.step("test-tcc", "rung 3c: libtcc as an id module — C to native");
     test_tcc_step.dependOn(&b.addRunArtifact(id_tcc_tests).step);
 
+    // Rung 3c (part 2): the birnam → C emitter. The dylib needs no libtcc (it
+    // drives Tcc via messages); its test does (it links tcc.zig for bringUp).
+    const id_codegen_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/codegen.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_codegen_lib = b.addLibrary(.{ .name = "birnam_id_codegen", .root_module = id_codegen_mod, .linkage = .dynamic });
+    id_codegen_lib.linkLibC();
+    b.installArtifact(id_codegen_lib);
+
+    const id_codegen_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/codegen_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    id_codegen_test_mod.addIncludePath(b.path("vendor/libtcc-src"));
+    const id_codegen_tests = b.addTest(.{ .root_module = id_codegen_test_mod });
+    id_codegen_tests.linkLibrary(libtcc_lib);
+    id_codegen_tests.linkLibC();
+    const test_codegen_step = b.step("test-codegen", "rung 3c: the birnam → C emitter");
+    test_codegen_step.dependOn(&b.addRunArtifact(id_codegen_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,
