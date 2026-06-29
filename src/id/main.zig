@@ -30,8 +30,6 @@ fn mPlus(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 }
 
 pub fn main() !void {
-    std.debug.print("[siphon] birnam\n", .{});
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const a = gpa.allocator();
@@ -39,16 +37,23 @@ pub fn main() !void {
     var args = try std.process.argsWithAllocator(a);
     defer args.deinit();
     _ = args.next();
-    const id_path = args.next() orelse "zig-out/lib/libbirnam_id.dylib";
+    const script_path = args.next(); // optional: a .birnam file to compile + run
+    const id_path = std.posix.getenv("BIRNAM_ID_DYLIB") orelse "zig-out/lib/libbirnam_id.dylib";
     const id_path_z = try a.dupeZ(u8, id_path);
     defer a.free(id_path_z);
 
-    // 1. Bootstrap: the ONE irreducible raw load — open the id dylib, find
-    //    `id_init`, call it to get the id API table.
-    std.debug.print("[siphon] raw-loading id dylib: {s}\n", .{id_path});
+    // The ONE irreducible raw load — open the id dylib, find `id_init`, call it to
+    // get the id API table. Both the script runner and the demo build on this.
     var lib = try std.DynLib.open(id_path);
     const id_init = lib.lookup(idapi.IdInitFn, "id_init") orelse return error.NoIdInit;
     const api = id_init();
+    g_api = api;
+
+    // Script mode: `birnam-id path.birnam` compiles + runs the file, quietly.
+    if (script_path) |sp| return runScript(a, api, sp);
+
+    std.debug.print("[siphon] birnam\n", .{});
+    std.debug.print("[siphon] raw-loading id dylib: {s}\n", .{id_path});
     std.debug.print("[siphon] id api up: object_vt={*}\n", .{api.object_vt});
 
     // 2. RE-IMPORT THE ID LAYER through the id api itself. The siphon never
@@ -212,6 +217,36 @@ pub fn main() !void {
     std.debug.print("[siphon] docs/36: birnam defined a global + a method referencing it, dispatched => {d}\n", .{yv});
 
     std.debug.print("[siphon] ok — the whole birnam grammar compiles to native through the full stack (libid → store → peg → lang → tcc → codegen), all through the id api\n", .{});
+}
+
+/// The language stack a script needs, in dependency order. Loaded quietly
+/// through the id api; codegen resolves globals through the store, so the store
+/// comes first.
+const script_modules = [_][]const u8{
+    "libbirnam_store",
+    "libbirnam_id_peg",
+    "libbirnam_id_lang",
+    "libbirnam_id_tcc",
+    "libbirnam_id_codegen",
+    "libbirnam_id_prelude",
+};
+
+/// Compile + run a birnam script file. Loads the full stack quietly, then
+/// `[Codegen eval: source]`. The script does its own I/O via `System`.
+fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
+    const lib_dir = std.posix.getenv("BIRNAM_LIB_DIR") orelse "zig-out/lib";
+    for (script_modules) |m| {
+        const ps = try std.fmt.allocPrint(a, "{s}/{s}.dylib", .{ lib_dir, m });
+        defer a.free(ps);
+        const p = try a.dupeZ(u8, ps);
+        defer a.free(p);
+        _ = try loadModule(api, p.ptr, null);
+    }
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    const src = try std.fs.cwd().readFileAlloc(a, path, 16 << 20);
+    defer a.free(src);
+    _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
 }
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading

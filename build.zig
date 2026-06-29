@@ -374,6 +374,27 @@ pub fn build(b: *std.Build) void {
     const test_codegen_step = b.step("test-codegen", "rung 3c: the birnam → C emitter");
     test_codegen_step.dependOn(&b.addRunArtifact(id_codegen_tests).step);
 
+    // The primitive prelude: Integer/Boolean protocol + System I/O (the stdlib
+    // floor birnam programs assume). Depends only on the IdApi.
+    const id_prelude_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/prelude.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_prelude_lib = b.addLibrary(.{ .name = "birnam_id_prelude", .root_module = id_prelude_mod, .linkage = .dynamic });
+    id_prelude_lib.linkLibC();
+    b.installArtifact(id_prelude_lib);
+
+    const id_prelude_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/prelude_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_prelude_tests = b.addTest(.{ .root_module = id_prelude_test_mod });
+    id_prelude_tests.linkLibC();
+    const test_prelude_step = b.step("test-prelude", "the primitive stdlib: Integer/Boolean/System");
+    test_prelude_step.dependOn(&b.addRunArtifact(id_prelude_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,

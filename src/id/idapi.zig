@@ -70,6 +70,11 @@ pub const IdApi = extern struct {
     /// The reverse of `intern`; lets higher layers inspect selectors (e.g. count
     /// keyword parts for define-method).
     symbolName: *const fn (Oop) callconv(.c) [*:0]const u8,
+
+    /// vtableOf(obj) -> the object's vtable (tag-aware: SmallInt → smallint_vt).
+    /// Lets a library reach the type of a value to install protocol on it (e.g.
+    /// the shared bool vtable behind true/false).
+    vtableOf: *const fn (Oop) callconv(.c) Oop,
 };
 
 /// libid's module entrypoint: `id_init()` returns the API table (cf. `_libid_init`).
