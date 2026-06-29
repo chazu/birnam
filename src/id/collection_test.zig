@@ -70,6 +70,11 @@ fn block2(api: *idapi.IdApi, impl: idapi.Method) Oop {
     api.method(vt, api.intern("value:value:"), impl);
     return api.alloc(vt, 0);
 }
+fn block(api: *idapi.IdApi, sel: [*:0]const u8, impl: idapi.Method) Oop {
+    const vt = api.proto(api.object_vt);
+    api.method(vt, api.intern(sel), impl);
+    return api.alloc(vt, 0);
+}
 
 test "collection: Range size / includes: / asVector" {
     const api = setup();
@@ -165,4 +170,102 @@ test "collection: Vector , Vector concatenates" {
     const c = s1(a, ",", b);
     try std.testing.expectEqual(@as(i64, 5), ival(s0(c, "size")));
     try std.testing.expect(strEq(s0(c, "printString"), "#[1 2 3 4 5]"));
+}
+
+// -- the HAMT-backed Map -----------------------------------------------------
+
+fn mapNew(api: *idapi.IdApi) Oop {
+    return s0(api.import("Map"), "new");
+}
+// A 0-arg block whose value is a fixed SmallInt — the at:ifAbsent: default.
+fn seed42(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return gapi.mkSmallInt(42);
+}
+
+test "collection: Map at:put: / at: with SmallInt keys; at:put: is persistent" {
+    const api = setup();
+    const m0 = mapNew(api);
+    try std.testing.expectEqual(@as(i64, 0), ival(s0(m0, "size")));
+    const m1 = s2(m0, "at:put:", api.mkSmallInt(1), api.mkSmallInt(10));
+    const m2 = s2(m1, "at:put:", api.mkSmallInt(2), api.mkSmallInt(20));
+    // Originals are untouched (persistent).
+    try std.testing.expectEqual(@as(i64, 0), ival(s0(m0, "size")));
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(m1, "size")));
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(m2, "size")));
+    try std.testing.expectEqual(@as(i64, 10), ival(s1(m2, "at:", api.mkSmallInt(1))));
+    try std.testing.expectEqual(@as(i64, 20), ival(s1(m2, "at:", api.mkSmallInt(2))));
+    try std.testing.expect(s1(m2, "at:", api.mkSmallInt(9)) == api.nilObj); // absent → nil
+}
+
+test "collection: Map String keys compare by VALUE (equal literals dedupe)" {
+    const api = setup();
+    var m = mapNew(api);
+    m = s2(m, "at:put:", api.mkString("hi", 2), api.mkSmallInt(1));
+    // A DISTINCT String object with equal bytes updates the SAME entry.
+    m = s2(m, "at:put:", api.mkString("hi", 2), api.mkSmallInt(2));
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(m, "size")));
+    try std.testing.expectEqual(@as(i64, 2), ival(s1(m, "at:", api.mkString("hi", 2))));
+    try std.testing.expect(s1(m, "includesKey:", api.mkString("hi", 2)) == api.trueObj);
+    try std.testing.expect(s1(m, "includesKey:", api.mkString("bye", 3)) == api.falseObj);
+}
+
+test "collection: Map at:ifAbsent: runs the block only when absent" {
+    const api = setup();
+    var m = mapNew(api);
+    m = s2(m, "at:put:", api.mkSmallInt(1), api.mkSmallInt(10));
+    // present → the stored value, block ignored
+    try std.testing.expectEqual(@as(i64, 10), ival(s2(m, "at:ifAbsent:", api.mkSmallInt(1), block(api, "value", &seed42))));
+    // absent → the block's value
+    try std.testing.expectEqual(@as(i64, 42), ival(s2(m, "at:ifAbsent:", api.mkSmallInt(9), block(api, "value", &seed42))));
+}
+
+test "collection: Map keys / values; the HAMT survives many keys (subnodes/collisions)" {
+    const api = setup();
+    var m = mapNew(api);
+    // 200 entries forces the bitmap nodes to spill into subnodes at depth.
+    var i: i64 = 0;
+    while (i < 200) : (i += 1) m = s2(m, "at:put:", api.mkSmallInt(i), api.mkSmallInt(i * i));
+    try std.testing.expectEqual(@as(i64, 200), ival(s0(m, "size")));
+    i = 0;
+    while (i < 200) : (i += 1) {
+        try std.testing.expectEqual(i * i, ival(s1(m, "at:", api.mkSmallInt(i))));
+    }
+    // keys + values are vectors of the right length.
+    try std.testing.expectEqual(@as(i64, 200), ival(s0(s0(m, "keys"), "size")));
+    try std.testing.expectEqual(@as(i64, 200), ival(s0(s0(m, "values"), "size")));
+}
+
+var kv_key_sum: i64 = 0;
+var kv_val_sum: i64 = 0;
+fn kvAccum(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    kv_key_sum += gapi.smallIntValue(a[0]);
+    kv_val_sum += gapi.smallIntValue(a[1]);
+    return gapi.nilObj;
+}
+
+test "collection: Map keysAndValuesDo: visits every entry once" {
+    const api = setup();
+    var m = mapNew(api);
+    m = s2(m, "at:put:", api.mkSmallInt(1), api.mkSmallInt(100));
+    m = s2(m, "at:put:", api.mkSmallInt(2), api.mkSmallInt(200));
+    m = s2(m, "at:put:", api.mkSmallInt(3), api.mkSmallInt(300));
+    kv_key_sum = 0;
+    kv_val_sum = 0;
+    _ = s1(m, "keysAndValuesDo:", block2(api, &kvAccum));
+    try std.testing.expectEqual(@as(i64, 6), kv_key_sum); // 1+2+3
+    try std.testing.expectEqual(@as(i64, 600), kv_val_sum); // 100+200+300
+}
+
+test "collection: Map printString renders key: value pairs" {
+    const api = setup();
+    var m = mapNew(api);
+    m = s2(m, "at:put:", api.mkString("a", 1), api.mkSmallInt(1));
+    const s = s0(m, "printString");
+    // Single entry → deterministic.
+    try std.testing.expect(strEq(s, "{a: 1}"));
 }

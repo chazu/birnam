@@ -25,10 +25,21 @@
 //!   String  (string_vt)    ,    → byte concatenation
 //! Exports the `Vector` / `Range` / `VectorNode` vtables so birnam can name them.
 //!
-//! Maps/sets (the HAMT sibling of this RRB) arrive with map literals `{k:v}`;
-//! this module is structured so adding a `hamt.zig`-style node beside the vector
-//! node is the natural next step. Ordered sequences are what the examples
-//! (primes, word-frequency) need first, so the vector trie comes first.
+//! Also provides the HAMT sibling of the RRB:
+//!   Map (map_vt)        a persistent hash-array-mapped map over bitmap-indexed
+//!                         nodes that are themselves libid objects (same
+//!                         id-native discipline as the Vector trie):
+//!                         at:put: at: at:ifAbsent: includesKey: size isEmpty
+//!                         keys values do: keysAndValuesDo: printString
+//!   Map factory         `[Map new]` → an empty map (exported "Map")
+//! Keys compare by VALUE for the floor types — SmallInt by value, String by
+//! bytes, Symbol/other by identity — so equal string keys deduplicate (better
+//! than the old kernel's identity-only maps). `at:put:` is persistent (returns a
+//! new map sharing structure), so it folds with `inject:into:`.
+//!
+//! A `{k:v}` map literal + `#[…]` vector literal are a grammar/codegen concern
+//! (the lang front-end has no collection literals yet) — until then both
+//! collections are reachable from birnam by message: `[Map new]`, `[Vector …]`.
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
@@ -40,11 +51,16 @@ var g_api: *idapi.IdApi = undefined;
 
 // The vtables this module owns (created on first load, re-imported on reload so
 // instances minted by a previous load keep dispatching).
-pub var vnode_vt: Oop = null; // trie node: payload = [WIDTH]Oop
+pub var vnode_vt: Oop = null; // vector trie node: payload = [WIDTH]Oop
 pub var vector_vt: Oop = null; // persistent ordered vector
 pub var range_vt: Oop = null; // lazy integer range
+pub var hnode_vt: Oop = null; // HAMT node: payload = header + [2*k]Oop entry slots
+pub var map_vt: Oop = null; // persistent hash-array-mapped map
+pub var map_factory_vt: Oop = null;
+pub var map_factory_obj: Oop = null; // the "Map" factory ([Map new])
 
-// Cached selectors for invoking caller blocks (value: / value:value:).
+// Cached selectors for invoking caller blocks (value / value: / value:value:).
+var s_value: Oop = null;
 var s_value1: Oop = null;
 var s_value2: Oop = null;
 var s_printString: Oop = null;
@@ -392,6 +408,387 @@ fn rComma(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return vComma(rAsVector(self, undefined, 0), a, 1);
 }
 
+// -- the HAMT (hash array-mapped trie) ---------------------------------------
+// A bitmap-indexed persistent hash map, the unordered sibling of the vector
+// trie. A node is a libid object whose payload is a fixed header followed by a
+// compact `[2*k]Oop` array of slot pairs — `k` = popcount(bitmap) for a bitmap
+// node, or the entry count for a hash-collision node. Each slot pair is either
+// `(key, value)` or, when `key == null` (the Zig absence Oop, never a real key),
+// `(null, subnode)`. Path-copying on insert gives structural sharing (F4); the
+// Oop slots keep it traceable by the future GC's layout descriptor (F3).
+
+const HNODE_BITMAP: u32 = 0;
+const HNODE_COLLISION: u32 = 1;
+
+const HNode = extern struct {
+    tag: u32, // HNODE_BITMAP | HNODE_COLLISION
+    n: u32, // bitmap node: the 32-bit occupancy bitmap; collision node: entry count
+    hash: u32, // collision node: the shared full hash; bitmap node: 0
+    _pad: u32 = 0,
+};
+
+/// `g_added` is set by `assoc` when an insert grows the key set (vs replacing a
+/// value), so `at:put:` can keep an exact `count`. Single-writer (F4), so a
+/// module-global flag is sound — no box threaded through the recursion.
+var g_added: bool = false;
+
+fn hnode(o: Oop) *HNode {
+    return @ptrCast(@alignCast(o.?));
+}
+fn hslots(o: Oop) [*]Oop {
+    const base: [*]u8 = @ptrCast(o.?);
+    return @ptrCast(@alignCast(base + @sizeOf(HNode)));
+}
+fn hSlotCount(o: Oop) usize {
+    const h = hnode(o);
+    return if (h.tag == HNODE_BITMAP) 2 * @as(usize, @popCount(h.n)) else 2 * @as(usize, h.n);
+}
+fn newHNode(tag: u32, n: u32, hash: u32, nslots: usize) Oop {
+    const o = g_api.alloc(hnode_vt, @sizeOf(HNode) + nslots * @sizeOf(Oop)); // zeroed
+    hnode(o).* = .{ .tag = tag, .n = n, .hash = hash };
+    return o;
+}
+fn copyHNode(o: Oop) Oop {
+    const nslots = hSlotCount(o);
+    const total = @sizeOf(HNode) + nslots * @sizeOf(Oop);
+    const nn = g_api.alloc(hnode_vt, total);
+    const src: [*]const u8 = @ptrCast(o.?);
+    const dst: [*]u8 = @ptrCast(nn.?);
+    @memcpy(dst[0..total], src[0..total]);
+    return nn;
+}
+
+fn chunk(hash: u32, shift: usize) u5 {
+    return @intCast((hash >> @as(u5, @intCast(shift))) & MASK);
+}
+fn bitposOf(hash: u32, shift: usize) u32 {
+    return @as(u32, 1) << chunk(hash, shift);
+}
+fn sparseIndex(bitmap: u32, bit: u32) usize {
+    return @popCount(bitmap & (bit - 1));
+}
+
+// -- key hashing + equality (the F6 seam, for the floor's value types) -------
+
+fn mix(x: u64) u32 {
+    // A cheap finaliser (splitmix64-style) folded to 32 bits.
+    var z = x +% 0x9E3779B97F4A7C15;
+    z = (z ^ (z >> 30)) *% 0xBF58476D1CE4E5B9;
+    z = (z ^ (z >> 27)) *% 0x94D049BB133111EB;
+    return @truncate(z ^ (z >> 31));
+}
+fn keyHash(k: Oop) u32 {
+    if (g_api.isSmallInt(k) != 0) return mix(@bitCast(g_api.smallIntValue(k)));
+    if (g_api.vtableOf(k) == g_api.string_vt) {
+        var len: usize = 0;
+        const p = g_api.stringBytes(k, &len);
+        var h: u32 = 2166136261; // FNV-1a
+        for (p[0..len]) |b| {
+            h ^= b;
+            h *%= 16777619;
+        }
+        return h;
+    }
+    return mix(@intFromPtr(k.?)); // symbols (interned) + other objects: identity
+}
+fn keyEq(a: Oop, b: Oop) bool {
+    if (a == b) return true; // SmallInt immediates + interned symbols + identity
+    if (g_api.vtableOf(a) == g_api.string_vt and g_api.vtableOf(b) == g_api.string_vt) {
+        var la: usize = 0;
+        var lb: usize = 0;
+        const pa = g_api.stringBytes(a, &la);
+        const pb = g_api.stringBytes(b, &lb);
+        return std.mem.eql(u8, pa[0..la], pb[0..lb]);
+    }
+    return false;
+}
+
+// -- HAMT core (find / assoc), all path-copying ------------------------------
+
+/// The value bound to `key`, or Zig `null` for absent (distinct from a stored
+/// `nilObj` value). `node` may be null (an empty map).
+fn hFind(node: Oop, shift: usize, hash: u32, key: Oop) Oop {
+    if (node == null) return null;
+    const h = hnode(node);
+    const s = hslots(node);
+    if (h.tag == HNODE_BITMAP) {
+        const bit = bitposOf(hash, shift);
+        if (h.n & bit == 0) return null;
+        const idx = 2 * sparseIndex(h.n, bit);
+        const k = s[idx];
+        if (k == null) return hFind(s[idx + 1], shift + BITS, hash, key);
+        return if (keyEq(k, key)) s[idx + 1] else null;
+    }
+    // collision node
+    if (hash != h.hash) return null;
+    var i: usize = 0;
+    while (i < h.n) : (i += 1) {
+        if (keyEq(s[2 * i], key)) return s[2 * i + 1];
+    }
+    return null;
+}
+
+/// Build a node holding two distinct-keyed entries (their hashes differ, or they
+/// share a hash → a collision node). Terminates: distinct 32-bit hashes diverge
+/// within 7 chunks, so `shift` never exceeds 30 here.
+fn mergeTwo(shift: usize, k1: Oop, h1: u32, v1: Oop, k2: Oop, h2: u32, v2: Oop) Oop {
+    if (h1 == h2) {
+        const nn = newHNode(HNODE_COLLISION, 2, h1, 4);
+        const s = hslots(nn);
+        s[0] = k1;
+        s[1] = v1;
+        s[2] = k2;
+        s[3] = v2;
+        return nn;
+    }
+    const c1 = chunk(h1, shift);
+    const c2 = chunk(h2, shift);
+    if (c1 == c2) {
+        const sub = mergeTwo(shift + BITS, k1, h1, v1, k2, h2, v2);
+        const bit = @as(u32, 1) << c1;
+        const nn = newHNode(HNODE_BITMAP, bit, 0, 2);
+        const s = hslots(nn);
+        s[0] = null;
+        s[1] = sub;
+        return nn;
+    }
+    const nn = newHNode(HNODE_BITMAP, (@as(u32, 1) << c1) | (@as(u32, 1) << c2), 0, 4);
+    const s = hslots(nn);
+    // entries must be ordered by chunk so sparseIndex addresses them correctly.
+    if (c1 < c2) {
+        s[0] = k1;
+        s[1] = v1;
+        s[2] = k2;
+        s[3] = v2;
+    } else {
+        s[0] = k2;
+        s[1] = v2;
+        s[2] = k1;
+        s[3] = v1;
+    }
+    return nn;
+}
+
+/// Return a new node with `key`→`val` associated; sets `g_added` if the key was
+/// not already present. `node` may be null.
+fn hAssoc(node: Oop, shift: usize, hash: u32, key: Oop, val: Oop) Oop {
+    if (node == null) {
+        g_added = true;
+        const nn = newHNode(HNODE_BITMAP, bitposOf(hash, shift), 0, 2);
+        const s = hslots(nn);
+        s[0] = key;
+        s[1] = val;
+        return nn;
+    }
+    const h = hnode(node);
+    const s = hslots(node);
+    if (h.tag == HNODE_BITMAP) {
+        const bit = bitposOf(hash, shift);
+        const idx = 2 * sparseIndex(h.n, bit);
+        if (h.n & bit != 0) {
+            const k = s[idx];
+            if (k == null) { // descend into the subnode
+                const sub = s[idx + 1];
+                const nsub = hAssoc(sub, shift + BITS, hash, key, val);
+                if (nsub == sub) return node;
+                const nn = copyHNode(node);
+                hslots(nn)[idx + 1] = nsub;
+                return nn;
+            }
+            if (keyEq(k, key)) { // replace this key's value
+                if (s[idx + 1] == val) return node;
+                const nn = copyHNode(node);
+                hslots(nn)[idx + 1] = val;
+                return nn;
+            }
+            // two distinct keys in one slot → push both into a fresh subnode.
+            g_added = true;
+            const sub = mergeTwo(shift + BITS, k, keyHash(k), s[idx + 1], key, hash, val);
+            const nn = copyHNode(node);
+            hslots(nn)[idx] = null;
+            hslots(nn)[idx + 1] = sub;
+            return nn;
+        }
+        // empty slot: splice a new (key,val) pair in, keeping bitmap order.
+        g_added = true;
+        const cnt = @popCount(h.n);
+        const nn = newHNode(HNODE_BITMAP, h.n | bit, 0, 2 * (@as(usize, cnt) + 1));
+        const ns = hslots(nn);
+        var i: usize = 0;
+        while (i < idx) : (i += 1) ns[i] = s[i];
+        ns[idx] = key;
+        ns[idx + 1] = val;
+        i = idx;
+        while (i < 2 * cnt) : (i += 1) ns[i + 2] = s[i];
+        return nn;
+    }
+    // collision node
+    if (hash == h.hash) {
+        var i: usize = 0;
+        while (i < h.n) : (i += 1) {
+            if (keyEq(s[2 * i], key)) {
+                if (s[2 * i + 1] == val) return node;
+                const nn = copyHNode(node);
+                hslots(nn)[2 * i + 1] = val;
+                return nn;
+            }
+        }
+        g_added = true;
+        const nn = newHNode(HNODE_COLLISION, h.n + 1, hash, 2 * (@as(usize, h.n) + 1));
+        const ns = hslots(nn);
+        var j: usize = 0;
+        while (j < 2 * h.n) : (j += 1) ns[j] = s[j];
+        ns[2 * h.n] = key;
+        ns[2 * h.n + 1] = val;
+        return nn;
+    }
+    // different hash than the collision bucket: wrap it in a bitmap node, recurse.
+    const wrapper = newHNode(HNODE_BITMAP, bitposOf(h.hash, shift), 0, 2);
+    const ws = hslots(wrapper);
+    ws[0] = null;
+    ws[1] = node;
+    return hAssoc(wrapper, shift, hash, key, val);
+}
+
+/// Walk every entry, threading an accumulator. `want_keys`=true collects keys,
+/// otherwise values; both produce a Vector via the (persistent) vector cons.
+fn collectInto(node: Oop, acc: Oop, want_keys: bool) Oop {
+    if (node == null) return acc;
+    const s = hslots(node);
+    const ns = hSlotCount(node);
+    var out = acc;
+    var i: usize = 0;
+    while (i < ns) : (i += 2) {
+        if (s[i] == null) {
+            out = collectInto(s[i + 1], out, want_keys); // subnode
+        } else {
+            out = vecCons(out, if (want_keys) s[i] else s[i + 1]);
+        }
+    }
+    return out;
+}
+
+// -- Map object --------------------------------------------------------------
+
+const Map = extern struct {
+    root: Oop, // an HNode, or null when empty
+    count: usize,
+};
+
+fn mp(o: Oop) *Map {
+    return @ptrCast(@alignCast(o.?));
+}
+fn mkMap(root: Oop, count: usize) Oop {
+    const o = g_api.alloc(map_vt, @sizeOf(Map));
+    mp(o).* = .{ .root = root, .count = count };
+    return o;
+}
+
+fn mAtPut(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const m = mp(self);
+    g_added = false;
+    const nroot = hAssoc(m.root, 0, keyHash(a[0]), a[0], a[1]);
+    if (nroot == m.root) return self;
+    return mkMap(nroot, m.count + @intFromBool(g_added));
+}
+fn mAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const v = hFind(mp(self).root, 0, keyHash(a[0]), a[0]);
+    return v orelse g_api.nilObj;
+}
+fn mAtIfAbsent(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const v = hFind(mp(self).root, 0, keyHash(a[0]), a[0]);
+    return v orelse g_api.send(a[1], s_value, &[_]Oop{}, 0);
+}
+fn mIncludesKey(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return boolean(hFind(mp(self).root, 0, keyHash(a[0]), a[0]) != null);
+}
+fn mSize(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mki(@intCast(mp(self).count));
+}
+fn mIsEmpty(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return boolean(mp(self).count == 0);
+}
+fn mKeys(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return collectInto(mp(self).root, emptyVec(), true);
+}
+fn mValues(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return collectInto(mp(self).root, emptyVec(), false);
+}
+fn mDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return vDo(mValues(self, undefined, 0), a, 1); // iterate over values
+}
+fn mKeysAndValuesDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    kvDo(mp(self).root, a[0]);
+    return self;
+}
+fn kvDo(node: Oop, blk: Oop) void {
+    if (node == null) return;
+    const s = hslots(node);
+    const ns = hSlotCount(node);
+    var i: usize = 0;
+    while (i < ns) : (i += 2) {
+        if (s[i] == null) kvDo(s[i + 1], blk) else _ = call2(blk, s[i], s[i + 1]);
+    }
+}
+fn mPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    var buf: std.ArrayList(u8) = .{};
+    defer buf.deinit(ca);
+    buf.append(ca, '{') catch @panic("collection: oom");
+    g_print_buf = &buf;
+    g_print_first = true;
+    kvPrint(mp(self).root);
+    buf.append(ca, '}') catch @panic("collection: oom");
+    return g_api.mkString(buf.items.ptr, buf.items.len);
+}
+var g_print_buf: *std.ArrayList(u8) = undefined;
+var g_print_first: bool = true;
+fn kvPrint(node: Oop) void {
+    if (node == null) return;
+    const s = hslots(node);
+    const ns = hSlotCount(node);
+    var i: usize = 0;
+    while (i < ns) : (i += 2) {
+        if (s[i] == null) {
+            kvPrint(s[i + 1]);
+            continue;
+        }
+        if (!g_print_first) g_print_buf.appendSlice(ca, ", ") catch @panic("collection: oom");
+        g_print_first = false;
+        appendPrint(s[i]);
+        g_print_buf.appendSlice(ca, ": ") catch @panic("collection: oom");
+        appendPrint(s[i + 1]);
+    }
+}
+fn appendPrint(o: Oop) void {
+    const str = g_api.send(o, s_printString, &[_]Oop{}, 0);
+    var len: usize = 0;
+    const p = g_api.stringBytes(str, &len);
+    g_print_buf.appendSlice(ca, p[0..len]) catch @panic("collection: oom");
+}
+
+fn mapNew(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return mkMap(null, 0);
+}
+
 // -- extensions to existing floor types --------------------------------------
 
 /// `[start to: end]` → an inclusive Range value (lazy; `to:do:` stays in the
@@ -414,6 +811,15 @@ fn trueAns(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.trueObj;
 }
 
+/// `aString printString` → the string itself (so a String element renders in a
+/// Vector/Map without dispatching to the panicking default — the floor's String
+/// has no printString of its own).
+fn strPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return self;
+}
+
 /// `aString , bString` → a fresh String of the two byte runs concatenated.
 fn strComma(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
@@ -432,6 +838,7 @@ fn strComma(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 
 pub fn bringUp(api: *idapi.IdApi) void {
     g_api = api;
+    s_value = api.intern("value");
     s_value1 = api.intern("value:");
     s_value2 = api.intern("value:value:");
     s_printString = api.intern("printString");
@@ -442,10 +849,18 @@ pub fn bringUp(api: *idapi.IdApi) void {
         vnode_vt = api.import("VectorNode");
         vector_vt = api.import("Vector");
         range_vt = api.import("Range");
+        hnode_vt = api.import("MapNode");
+        map_vt = api.import("MapVt");
+        map_factory_vt = api.import("MapFactoryVt");
+        map_factory_obj = api.import("Map");
     } else {
         vnode_vt = api.proto(api.object_vt);
         vector_vt = api.proto(api.object_vt);
         range_vt = api.proto(api.object_vt);
+        hnode_vt = api.proto(api.object_vt);
+        map_vt = api.proto(api.object_vt);
+        map_factory_vt = api.proto(api.object_vt);
+        map_factory_obj = api.alloc(map_factory_vt, 0);
     }
 
     // Vector protocol.
@@ -474,6 +889,20 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(range_vt, api.intern("printString"), &rPrintString);
     api.method(range_vt, api.intern(","), &rComma);
 
+    // Map protocol (over the HAMT) + the `[Map new]` factory.
+    api.method(map_vt, api.intern("at:put:"), &mAtPut);
+    api.method(map_vt, api.intern("at:"), &mAt);
+    api.method(map_vt, api.intern("at:ifAbsent:"), &mAtIfAbsent);
+    api.method(map_vt, api.intern("includesKey:"), &mIncludesKey);
+    api.method(map_vt, api.intern("size"), &mSize);
+    api.method(map_vt, api.intern("isEmpty"), &mIsEmpty);
+    api.method(map_vt, api.intern("keys"), &mKeys);
+    api.method(map_vt, api.intern("values"), &mValues);
+    api.method(map_vt, api.intern("do:"), &mDo);
+    api.method(map_vt, api.intern("keysAndValuesDo:"), &mKeysAndValuesDo);
+    api.method(map_vt, api.intern("printString"), &mPrintString);
+    api.method(map_factory_vt, api.intern("new"), &mapNew);
+
     // Integer `to:` → Range.
     api.method(api.smallint_vt, api.intern("to:"), &iTo);
 
@@ -484,13 +913,18 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(nil_vt, api.intern("isNil"), &trueAns);
     api.method(nil_vt, api.intern("notNil"), &falseAns);
 
-    // String concatenation.
+    // String: concatenation + a self-returning printString (for Vector/Map print).
     api.method(api.string_vt, api.intern(","), &strComma);
+    api.method(api.string_vt, api.intern("printString"), &strPrintString);
 
     if (!reloading) {
         _ = api.exportObj("VectorNode", vnode_vt);
         _ = api.exportObj("Vector", vector_vt);
         _ = api.exportObj("Range", range_vt);
+        _ = api.exportObj("MapNode", hnode_vt);
+        _ = api.exportObj("Map", map_factory_obj); // `[Map new]`
+        _ = api.exportObj("MapVt", map_vt);
+        _ = api.exportObj("MapFactoryVt", map_factory_vt);
     }
 }
 
