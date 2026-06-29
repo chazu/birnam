@@ -1,9 +1,20 @@
 # docs/36 — the running system: namespacing, globals, and define-method
 
-Status: SPEC (agreed direction, 2026-06-29). Implements "referencing the running
+Status: **v1 IMPLEMENTED (2026-06-29).** Implements "referencing the running
 system" now that the whole birnam grammar compiles to native (docs/35 §3c.3).
 Builds on the id environment (`idapi.zig`), the rung-2 store (docs/33), and the
 codegen emitter (`src/id/codegen.zig`).
+
+**Shipped (v1):** symbol literals (`#sel`, multi-keyword); the `Globals` facade
+over a reserved `__globals__` store entity (zero new store core); lexical→global
+reference resolution via the `birnam_global` codegen shim (late-bound,
+relocatable, undeclared→nil); `[Reflect defineMethod: #sel on: T as: aBlock]`
+via a per-define Tcc trampoline installed through the store mirror (multi-keyword
+selectors included); `symbolName` appended to the IdApi; type-name seeds
+(`Integer`/`String`). `test-codegen` 10 → 13; the siphon defines a global + a
+method referencing it and dispatches it. **Deferred (v2) unchanged:** Binding
+value-slot + baked handles, scope chains, env↔store unification, relational
+engine. See §8 and §9.
 
 ## 0. The decisions (locked)
 
