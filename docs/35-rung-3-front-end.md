@@ -102,22 +102,40 @@ for wrapping arbitrary C libs from birnam is a separate later rung.)
   dispatch → 42; bad C → nil. The siphon JITs C → native → dispatch through the
   id api.
 
-### 3c.2 — the C emitter (next)
+### 3c.2 — the C emitter (MVP shipped, `f65ae54`)
 
-Walk the birnam CST → emit Method-ABI C source → feed to `[Tcc compile:]` →
-install. Open design choices to settle when starting:
+`src/id/codegen.zig` — `[Codegen eval: aString]` parses via `Lang`, walks the
+CST, recursively emits a Method-ABI C function, compiles it with `Tcc`, installs
++ dispatches, and returns the value. **The proximate goal works end to end:**
+birnam source → CST → emitted C → libtcc → native → value, all through the id api.
 
-- **CST shape.** The grammar currently makes `expr`/`primary`/`message` rules
-  too, so the CST is deeply nested. Either codegen directly off it (reading token
-  text via `source[start..end]` — `CstNode` carries `start`/`end`, and the source
-  is in hand), or desugar CST → a flatter AST first. Leaning: a small desugar
-  pass to a clean AST, then emit.
-- **What the emitted C targets.** A small birnam runtime in C (object reps +
-  `send`), versus emitting C that calls back into libid through the `IdApi`. The
-  old kernel's libtcc backend ([memory] `project_birnam_libtcc`) is the
-  libtcc-side reference (vendored static libtcc), but the **emitter is new**.
-- **Error model (F7).** Settle as eval/runtime semantics firm up — conditions/
-  restarts aspirational, propagating-values the pragmatic floor.
+- MVP subset: integer literals + binary arithmetic `[a op b]` (`+ - * /`),
+  recursive. Self-contained C — SmallInt tag/untag inlined as `GETV`/`MKV` macros,
+  so **no IdApi callback yet**. `skip()` descends the single-child wrapper rules
+  (`expr`/`primary`/`message`); node text via `source[start..end]` from the CST
+  spans (so the deeply-nested CST was handled in the emitter, no desugar pass —
+  for now).
+- `test-codegen` 6/6: `42`; `[3+4]=7`; `[[3+4]*2]=14`; `[100/4]=25`; `[-10+2]=-8`;
+  out-of-subset input → nil. The siphon runs the full stack.
+
+### 3c.3 — beyond arithmetic (next)
+
+Grow the emitter to real birnam: **sends to objects, variables (self/args/let),
+blocks, comparison + boolean ops, strings**. The pivot: emitted C must **call
+back into libid** (construct values, `send`, look up selectors) — so:
+
+- **Tcc needs a pre-relocate symbol hook.** `compile:` currently does
+  new+compile+relocate with no window to `tcc_add_symbol` the IdApi functions
+  before relocate. Add an `addSymbol:`/`bindRuntime` path (or a compile variant)
+  so the emitted C can resolve `send` / `mkSmallInt` / interned selectors / etc.
+- **What the emitted C targets** — likely emit C that holds the IdApi pointer and
+  calls `api->send(...)`, with interned selectors passed in or looked up. (A small
+  C runtime header for the GETV/MKV/send glue.)
+- **CST shape** — the wrapper-rule nesting is tolerable via `skip()`; revisit a
+  desugar pass only if it gets unwieldy.
+- **Error model (F7)** — settle as eval/runtime semantics firm up.
+- **Output modes** — in-memory (done) vs emit to a `.dylib`/`.so` on disk
+  (`tcc_output_file`) for the user's "compile to a shared object" need.
 
 Then, below/after: **gc** (the F3 per-vtable layout descriptor) and the richer
 **relational engine** (Date-Third-Manifesto power, store-side, option-independent).
@@ -125,5 +143,6 @@ Then, below/after: **gc** (the F3 per-vtable layout descriptor) and the richer
 ## Test/run surface
 
 `zig build test-id` (4) · `test-store` (11) · `test-peg` (8) · `test-lang` (7) ·
-`test-tcc` (6); `zig build install && ./zig-out/bin/birnam-id` runs the siphon
-through all rungs (store, peg, lang, and a libtcc JIT).
+`test-tcc` (6) · `test-codegen` (6); `zig build install && ./zig-out/bin/birnam-id`
+runs the siphon through the full stack (store, peg, lang, tcc, codegen) and
+compiles `[[3 + 4] * 2]` → native → 14.
