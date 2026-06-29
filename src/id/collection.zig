@@ -67,6 +67,7 @@ var s_value1: Oop = null;
 var s_value2: Oop = null;
 var s_printString: Oop = null;
 var s_asVector: Oop = null;
+var s_lt: Oop = null; // "<" — the sort comparator (sortBy:)
 
 // -- the radix trie (Clojure PersistentVector layout) ------------------------
 // BITS=5 ⇒ 32-way branching; SHIFT increases by BITS per level. A node's payload
@@ -283,6 +284,43 @@ fn vAsVector(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
     return self;
+}
+
+// Stable sort by a precomputed key per element. The comparator sends `<` between
+// keys, so any key type with a `<` protocol works (SmallInt via the prelude is
+// the common case); ties keep input order (insertion sort is stable).
+const SortCtx = struct { keys: []const Oop };
+fn keyLessThan(ctx: SortCtx, lhs: usize, rhs: usize) bool {
+    return isTrue(g_api.send(ctx.keys[lhs], s_lt, &[_]Oop{ctx.keys[rhs]}, 1));
+}
+
+/// `aVector sortBy: aBlock` → a new Vector of the elements ordered ascending by
+/// `[aBlock value: element]` (the sort key, computed once per element). Descending
+/// is the negated key. Original vector unchanged.
+fn vSortBy(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const v = vec(self);
+    const cnt = v.count;
+    if (cnt < 2) return self;
+
+    const elems = ca.alloc(Oop, cnt) catch @panic("collection: oom");
+    defer ca.free(elems);
+    const keys = ca.alloc(Oop, cnt) catch @panic("collection: oom");
+    defer ca.free(keys);
+    const idx = ca.alloc(usize, cnt) catch @panic("collection: oom");
+    defer ca.free(idx);
+    var i: usize = 0;
+    while (i < cnt) : (i += 1) {
+        elems[i] = vecAt(v, i);
+        keys[i] = call1(a[0], elems[i]);
+        idx[i] = i;
+    }
+
+    std.sort.insertion(usize, idx, SortCtx{ .keys = keys }, keyLessThan);
+
+    var out = emptyVec();
+    for (idx) |j| out = vecCons(out, elems[j]);
+    return out;
 }
 fn vPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
@@ -846,6 +884,73 @@ fn strComma(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkString(buf.ptr, buf.len);
 }
 
+fn strBytes(o: Oop) []const u8 {
+    var len: usize = 0;
+    const p = g_api.stringBytes(o, &len);
+    return p[0..len];
+}
+
+/// `aString asLowercase` → a fresh String with ASCII A–Z folded to lowercase.
+fn strAsLowercase(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const src = strBytes(self);
+    const buf = ca.alloc(u8, src.len) catch @panic("collection: oom");
+    defer ca.free(buf);
+    for (src, 0..) |ch, i| buf[i] = std.ascii.toLower(ch);
+    return g_api.mkString(buf.ptr, buf.len);
+}
+
+/// `aString replace: needle with: repl` → a fresh String with every non-
+/// overlapping occurrence of `needle` replaced by `repl`. An empty needle is a
+/// no-op (returns self) — there is nothing to find and it would never terminate.
+fn strReplaceWith(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const hay = strBytes(self);
+    const needle = strBytes(a[0]);
+    const repl = strBytes(a[1]);
+    if (needle.len == 0) return self;
+    var out: std.ArrayList(u8) = .{};
+    defer out.deinit(ca);
+    var i: usize = 0;
+    while (i < hay.len) {
+        if (i + needle.len <= hay.len and std.mem.eql(u8, hay[i .. i + needle.len], needle)) {
+            out.appendSlice(ca, repl) catch @panic("collection: oom");
+            i += needle.len;
+        } else {
+            out.append(ca, hay[i]) catch @panic("collection: oom");
+            i += 1;
+        }
+    }
+    return g_api.mkString(out.items.ptr, out.items.len);
+}
+
+/// `aString words` → a Vector of the whitespace-separated runs (empty runs
+/// dropped). Splits on ASCII whitespace only — punctuation stays attached, so
+/// callers strip it first (e.g. via `replace:with:`).
+fn strWords(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    var out = emptyVec();
+    var it = std.mem.tokenizeAny(u8, strBytes(self), " \t\r\n\x0b\x0c");
+    while (it.next()) |word| {
+        out = vecCons(out, g_api.mkString(word.ptr, word.len));
+    }
+    return out;
+}
+
+/// `aString asSymbol` → the interned symbol for these bytes (a stable identity,
+/// so equal strings yield the SAME symbol — usable as an identity map key).
+fn strAsSymbol(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const src = strBytes(self);
+    const buf = ca.allocSentinel(u8, src.len, 0) catch @panic("collection: oom");
+    defer ca.free(buf);
+    @memcpy(buf[0..src.len], src);
+    return g_api.intern(buf.ptr);
+}
+
 // -- bringup -----------------------------------------------------------------
 
 pub fn bringUp(api: *idapi.IdApi) void {
@@ -855,6 +960,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_value2 = api.intern("value:value:");
     s_printString = api.intern("printString");
     s_asVector = api.intern("asVector");
+    s_lt = api.intern("<");
 
     const reloading = api.isExported("Vector") != 0;
     if (reloading) {
@@ -892,6 +998,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(vector_vt, api.intern("asVector"), &vAsVector);
     api.method(vector_vt, api.intern("printString"), &vPrintString);
     api.method(vector_vt, api.intern(","), &vComma);
+    api.method(vector_vt, api.intern("sortBy:"), &vSortBy);
     api.method(vector_factory_vt, api.intern("new"), &vecNew);
 
     // Range protocol.
@@ -933,6 +1040,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     // String: concatenation + a self-returning printString (for Vector/Map print).
     api.method(api.string_vt, api.intern(","), &strComma);
     api.method(api.string_vt, api.intern("printString"), &strPrintString);
+    api.method(api.string_vt, api.intern("asLowercase"), &strAsLowercase);
+    api.method(api.string_vt, api.intern("replace:with:"), &strReplaceWith);
+    api.method(api.string_vt, api.intern("words"), &strWords);
+    api.method(api.string_vt, api.intern("asSymbol"), &strAsSymbol);
 
     if (!reloading) {
         _ = api.exportObj("VectorNode", vnode_vt);

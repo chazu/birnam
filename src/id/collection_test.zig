@@ -269,3 +269,74 @@ test "collection: Map printString renders key: value pairs" {
     // Single entry → deterministic.
     try std.testing.expect(strEq(s, "{a: 1}"));
 }
+
+// Sort-key blocks for sortBy: (Zig stand-ins): identity (ascending) and negate
+// (descending).
+fn identityBlk(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return a[0];
+}
+fn negateBlk(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return gapi.mkSmallInt(-gapi.smallIntValue(a[0]));
+}
+
+fn vecNew(api: *idapi.IdApi) Oop {
+    return s0(api.import("Vector"), "new");
+}
+
+test "collection: String asLowercase / replace:with: / words" {
+    const api = setup();
+
+    try std.testing.expect(strEq(s0(api.mkString("HeLLo", 5), "asLowercase"), "hello"));
+    // replace: strips both punctuation marks; chained like word-frequency does.
+    const cleaned = s2(api.mkString("a.b,c.", 6), "replace:with:", api.mkString(".", 1), api.mkString("", 0));
+    try std.testing.expect(strEq(cleaned, "ab,c"));
+    // empty needle is a no-op (no infinite loop).
+    try std.testing.expect(strEq(s2(api.mkString("xy", 2), "replace:with:", api.mkString("", 0), api.mkString("Z", 1)), "xy"));
+
+    // words splits on runs of whitespace, dropping empties.
+    const w = s0(api.mkString("  the  cat sat\n", 15), "words");
+    try std.testing.expectEqual(@as(i64, 3), ival(s0(w, "size")));
+    try std.testing.expect(strEq(s1(w, "at:", api.mkSmallInt(0)), "the"));
+    try std.testing.expect(strEq(s1(w, "at:", api.mkSmallInt(2)), "sat"));
+    try std.testing.expectEqual(@as(i64, 0), ival(s0(s0(api.mkString("   ", 3), "words"), "size")));
+}
+
+test "collection: String asSymbol interns (equal strings → identical symbol)" {
+    const api = setup();
+    const a = s0(api.mkString("apple", 5), "asSymbol");
+    const b = s0(api.mkString("apple", 5), "asSymbol");
+    const c = s0(api.mkString("banana", 6), "asSymbol");
+    try std.testing.expect(a == b); // interned: same identity
+    try std.testing.expect(a != c);
+    try std.testing.expect(a == api.intern("apple")); // same as direct intern
+    // a symbol key dedupes in the identity-keyed map across distinct string objs
+    var m = mapNew(api);
+    m = s2(m, "at:put:", a, api.mkSmallInt(1));
+    m = s2(m, "at:put:", b, api.mkSmallInt(9));
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(m, "size")));
+    try std.testing.expectEqual(@as(i64, 9), ival(s1(m, "at:", a)));
+}
+
+test "collection: Vector sortBy: orders by key (ascending and descending)" {
+    const api = setup();
+    var v = vecNew(api);
+    v = s1(v, "add:", api.mkSmallInt(3));
+    v = s1(v, "add:", api.mkSmallInt(1));
+    v = s1(v, "add:", api.mkSmallInt(2));
+
+    const asc = s1(v, "sortBy:", block1(api, &identityBlk));
+    try std.testing.expectEqual(@as(i64, 1), ival(s1(asc, "at:", api.mkSmallInt(0))));
+    try std.testing.expectEqual(@as(i64, 2), ival(s1(asc, "at:", api.mkSmallInt(1))));
+    try std.testing.expectEqual(@as(i64, 3), ival(s1(asc, "at:", api.mkSmallInt(2))));
+
+    const desc = s1(v, "sortBy:", block1(api, &negateBlk));
+    try std.testing.expectEqual(@as(i64, 3), ival(s1(desc, "at:", api.mkSmallInt(0))));
+    try std.testing.expectEqual(@as(i64, 1), ival(s1(desc, "at:", api.mkSmallInt(2))));
+
+    // original is unchanged (persistent).
+    try std.testing.expectEqual(@as(i64, 3), ival(s1(v, "at:", api.mkSmallInt(0))));
+}
