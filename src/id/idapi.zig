@@ -64,6 +64,12 @@ pub const IdApi = extern struct {
     string_vt: Oop,
     mkString: *const fn ([*]const u8, usize) callconv(.c) Oop,
     stringBytes: *const fn (Oop, *usize) callconv(.c) [*]const u8,
+
+    // -- reflection: a symbol's interned text (appended) ---------------------
+    /// symbolName(sym) -> the NUL-terminated string a symbol was interned from.
+    /// The reverse of `intern`; lets higher layers inspect selectors (e.g. count
+    /// keyword parts for define-method).
+    symbolName: *const fn (Oop) callconv(.c) [*:0]const u8,
 };
 
 /// libid's module entrypoint: `id_init()` returns the API table (cf. `_libid_init`).

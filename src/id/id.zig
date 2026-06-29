@@ -437,6 +437,9 @@ fn stringBytesC(o: Oop, out_len: *usize) callconv(.c) [*]const u8 {
     out_len.* = s.len;
     return s.ptr;
 }
+fn symbolNameC(o: Oop) callconv(.c) [*:0]const u8 {
+    return asSymbol(o).string;
+}
 
 var g_api: idapi.IdApi = undefined;
 
@@ -469,6 +472,7 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .string_vt = oop(string_vt),
         .mkString = &mkStringC,
         .stringBytes = &stringBytesC,
+        .symbolName = &symbolNameC,
     };
     // Publish the id layer into its own environment — so it is re-importable.
     _ = exportObj("Object", oop(object_vt));

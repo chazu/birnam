@@ -202,3 +202,29 @@ test "codegen 3c.3: blocks compile to closures (params, capture, invoke)" {
     // capturing block passed as an argument: [20 with: blk] → [[20+2] double] = 44
     try std.testing.expectEqual(@as(i64, 44), try evalInt(api, "let k := 2; [20 with: [:x | [[x plus: k] double]]]"));
 }
+
+test "codegen 3c.3: define-method installs a block as a native method on a type" {
+    const api = setup();
+
+    // unary method, body uses inline arithmetic (self + self)
+    _ = eval(api, "[Reflect defineMethod: #twice on: Integer as: [:self | [self + self]]]");
+    try std.testing.expectEqual(@as(i64, 10), try evalInt(api, "[5 twice]"));
+
+    // keyword method, two args → selector combine:and:
+    _ = eval(api, "[Reflect defineMethod: #combine:and: on: Integer as: [:self :a :b | [[a * b] + self]]]");
+    try std.testing.expectEqual(@as(i64, 26), try evalInt(api, "[2 combine: 3 and: 8]")); // 3*8+2
+
+    // the multi-keyword selector specifically requested
+    _ = eval(api, "[Reflect defineMethod: #fooWithBar:andBaz:andQuux: on: Integer as: [:self :bar :baz :quux | [[bar + baz] + quux]]]");
+    try std.testing.expectEqual(@as(i64, 15), try evalInt(api, "[0 fooWithBar: 4 andBaz: 5 andQuux: 6]")); // 4+5+6
+
+    // a defined method whose body references a global is late-bound to it
+    _ = eval(api, "[Globals at: #bump put: 100]");
+    _ = eval(api, "[Reflect defineMethod: #bumped on: Integer as: [:self | [self + bump]]]");
+    try std.testing.expectEqual(@as(i64, 105), try evalInt(api, "[5 bumped]"));
+    _ = eval(api, "[Globals at: #bump put: 0]");
+    try std.testing.expectEqual(@as(i64, 5), try evalInt(api, "[5 bumped]"));
+
+    // a defined method is a first-class dispatch: callable on any SmallInt, nests
+    try std.testing.expectEqual(@as(i64, 20), try evalInt(api, "[[5 twice] twice]"));
+}

@@ -39,9 +39,14 @@ var g_store: Oop = undefined; // the well-known store (for global resolution)
 var g_globals_entity: Oop = null; // the reserved entity globals hang off of
 var sel_currentValue: Oop = null;
 var sel_addSymbol: Oop = null;
+var sel_assert: Oop = null;
+var sel_addMethodOn: Oop = null;
+var method_blk_counter: usize = 0; // unique keys for stashed method blocks
 
 pub var codegen_vt: Oop = null;
 pub var codegen_obj: Oop = null;
+pub var reflect_vt: Oop = null;
+pub var reflect_obj: Oop = null; // the Reflect facade (exported "Reflect")
 
 // Cached rule-name symbols (CST node labels), set in bringUp.
 var r_expr: Oop = null;
@@ -161,6 +166,87 @@ fn addShim(unit: Oop, name: []const u8, fnptr: *const anyopaque) void {
     const name_str = g_api.mkString(name.ptr, name.len);
     const addr: i64 = @intCast(@intFromPtr(fnptr));
     _ = g_api.send(unit, sel_addSymbol, &[_]Oop{ name_str, g_api.mkSmallInt(addr) }, 2);
+}
+
+// -- define-method (docs/36 §7) ----------------------------------------------
+//
+// `[Reflect defineMethod: #sel on: aType as: aBlock]`. A block's `self` is the
+// block object (for captures), but a method's `self` is the receiver — so we
+// can't install a block's fn directly. We compile a tiny per-define trampoline
+// (via Tcc) that forwards [receiver, args…] to the block as a value-send. The
+// block is reached through a uniquely-named global (reuse, not a new mechanism),
+// and the method is installed through the store's dispatch mirror (queryable).
+
+/// The number of message arguments a selector takes: keyword → colon count;
+/// otherwise unary (alnum) → 0, binary (operator) → 1.
+fn selectorArity(sel: Oop) usize {
+    const name = g_api.symbolName(sel);
+    var colons: usize = 0;
+    var i: usize = 0;
+    while (name[i] != 0) : (i += 1) {
+        if (name[i] == ':') colons += 1;
+    }
+    if (colons > 0) return colons;
+    const c0 = name[0];
+    const is_letter = (c0 >= 'a' and c0 <= 'z') or (c0 >= 'A' and c0 <= 'Z') or c0 == '_';
+    return if (is_letter) 0 else 1;
+}
+
+/// Staged-compile a single C function and return its native address as an Oop
+/// (raw fn pointer), or nil. The TccState (holding the code) is intentionally
+/// kept alive by the installed method; no GC yet, so it simply persists.
+fn compileFn(c_src_bytes: []const u8, fn_name: []const u8) Oop {
+    const c_src = g_api.mkString(c_src_bytes.ptr, c_src_bytes.len);
+    const unit = s0(tcc, "new");
+    if (unit == g_api.nilObj) return g_api.nilObj;
+    if (s1(unit, "compile:", c_src) == g_api.nilObj) return g_api.nilObj;
+    _ = s0(unit, "bindRuntime");
+    addShim(unit, "birnam_global", @ptrCast(&rtGlobal));
+    if (s0(unit, "relocate") == g_api.nilObj) return g_api.nilObj;
+    const addr_si = s1(unit, "symbol:", g_api.mkString(fn_name.ptr, fn_name.len));
+    if (addr_si == g_api.nilObj) return g_api.nilObj;
+    const addr: usize = @intCast(g_api.smallIntValue(addr_si));
+    return @ptrFromInt(addr);
+}
+
+/// `[Reflect defineMethod: #sel on: aType as: aBlock]` — install aBlock as a
+/// method on aType under #sel. The block receives the receiver as its first
+/// parameter, then the message arguments.
+fn mDefineMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const sel = args[0];
+    const vt = args[1];
+    const blk = args[2];
+    const k = selectorArity(sel);
+
+    // Stash the block in a uniquely-named global the trampoline reads at dispatch.
+    const id = method_blk_counter;
+    method_blk_counter += 1;
+    var keybuf: [32]u8 = undefined;
+    const key = std.fmt.bufPrintZ(&keybuf, "__mblk_{d}", .{id}) catch return g_api.nilObj;
+    _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_globals_entity, g_api.intern(key.ptr), blk }, 3);
+
+    // The trampoline: forward [self, args…] to the block via value:…(k+1 parts).
+    var buf: std.ArrayList(u8) = .{};
+    defer buf.deinit(ca);
+    put(&buf,
+        \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
+        \\extern void* birnam_intern(const char* name);
+        \\extern void* birnam_global(const char* name);
+        \\
+    );
+    putFmt(&buf, "void* __tramp(void* self, void** args, long n){{ (void)n; void* a[{d}]; a[0]=self; long i; for(i=0;i<{d};i++) a[i+1]=args[i]; return birnam_send(birnam_global(\"{s}\"), birnam_intern(\"", .{ k + 1, k, key });
+    var vi: usize = 0;
+    while (vi < k + 1) : (vi += 1) put(&buf, "value:");
+    putFmt(&buf, "\"), a, {d}); }}", .{k + 1});
+
+    const tramp = compileFn(buf.items, "__tramp");
+    if (tramp == g_api.nilObj) return g_api.nilObj;
+
+    // Install through the store mirror (one write, two reps: vtable dict + fact).
+    _ = g_api.send(g_store, sel_addMethodOn, &[_]Oop{ sel, vt, tramp }, 3);
+    return vt;
 }
 
 fn isArith(op: []const u8) bool {
@@ -601,6 +687,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     g_globals_entity = api.intern("__globals__");
     sel_currentValue = api.intern("currentValue:attr:");
     sel_addSymbol = api.intern("addSymbol:value:");
+    sel_assert = api.intern("assert:attr:value:");
+    sel_addMethodOn = api.intern("addMethod:on:with:");
 
     r_expr = api.intern("expr");
     r_primary = api.intern("primary");
@@ -621,16 +709,28 @@ pub fn bringUp(api: *idapi.IdApi) void {
     if (reloading) {
         codegen_vt = api.import("CodegenVt");
         codegen_obj = api.import("Codegen");
+        reflect_vt = api.import("ReflectVt");
+        reflect_obj = api.import("Reflect");
     } else {
         codegen_vt = api.proto(api.object_vt);
         codegen_obj = api.alloc(codegen_vt, 0);
+        reflect_vt = api.proto(api.object_vt);
+        reflect_obj = api.alloc(reflect_vt, 0);
     }
 
     api.method(codegen_vt, api.intern("eval:"), &mEval);
+    api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
 
     if (!reloading) {
         _ = api.exportObj("CodegenVt", codegen_vt);
         _ = api.exportObj("Codegen", codegen_obj);
+        _ = api.exportObj("ReflectVt", reflect_vt);
+        _ = api.exportObj("Reflect", reflect_obj);
+        // Seed type-name globals so birnam can name dispatch targets. ("Object"
+        // is already exported by libid.) These resolve via birnam_global's env
+        // fallback.
+        _ = api.exportObj("Integer", api.smallint_vt);
+        _ = api.exportObj("String", api.string_vt);
     }
 }
 

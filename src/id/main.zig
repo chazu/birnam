@@ -200,6 +200,17 @@ pub fn main() !void {
     if (bv != 42) return error.CodegenBlockWrong;
     std.debug.print("[siphon] rung 3c.3: codegen compiled a birnam closure (let + capture + block) → native => {d}\n", .{bv});
 
+    // 13. docs/36 — the running system: define a global and a method that
+    //     references it, then dispatch the method. The method is compiled to
+    //     native and INSTALLED into the live id system; `base` is late-bound.
+    const sysExpr =
+        "[Globals at: #base put: 40]; " ++
+        "[Reflect defineMethod: #boosted on: Integer as: [:self | [self + base]]]; " ++
+        "[2 boosted]";
+    const yv = api.smallIntValue(api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(sysExpr, sysExpr.len)}, 1));
+    if (yv != 42) return error.CodegenSystemWrong;
+    std.debug.print("[siphon] docs/36: birnam defined a global + a method referencing it, dispatched => {d}\n", .{yv});
+
     std.debug.print("[siphon] ok — the whole birnam grammar compiles to native through the full stack (libid → store → peg → lang → tcc → codegen), all through the id api\n", .{});
 }
 
