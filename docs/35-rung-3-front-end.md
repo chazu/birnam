@@ -118,19 +118,40 @@ birnam source → CST → emitted C → libtcc → native → value, all through
 - `test-codegen` 6/6: `42`; `[3+4]=7`; `[[3+4]*2]=14`; `[100/4]=25`; `[-10+2]=-8`;
   out-of-subset input → nil. The siphon runs the full stack.
 
-### 3c.3 — beyond arithmetic (next)
+### 3c.3 — beyond arithmetic (in progress)
 
 Grow the emitter to real birnam: **sends to objects, variables (self/args/let),
 blocks, comparison + boolean ops, strings**. The pivot: emitted C must **call
-back into libid** (construct values, `send`, look up selectors) — so:
+back into libid** (construct values, `send`, look up selectors).
 
-- **Tcc needs a pre-relocate symbol hook.** `compile:` currently does
-  new+compile+relocate with no window to `tcc_add_symbol` the IdApi functions
-  before relocate. Add an `addSymbol:`/`bindRuntime` path (or a compile variant)
-  so the emitted C can resolve `send` / `mkSmallInt` / interned selectors / etc.
-- **What the emitted C targets** — likely emit C that holds the IdApi pointer and
-  calls `api->send(...)`, with interned selectors passed in or looked up. (A small
-  C runtime header for the GETV/MKV/send glue.)
+**Step 1 — the pre-relocate symbol window SHIPPED (`e8ebc93`).** `compile:` did
+new+compile+relocate in one shot, with no window to `tcc_add_symbol` the runtime
+entry points before `tcc_relocate` freezes the code. Added a STAGED path on `Tcc`
+that opens it (the all-in-one `compile:` is unchanged — arithmetic codegen +
+existing tests stay green):
+
+```
+[Tcc new]                          -> a fresh, uncompiled TccUnit
+[unit compile: cSource]            -> compile into it (repeatable); unit or nil
+[unit bindRuntime]                 -> register the standard libid runtime shims
+[unit addSymbol: cName value: ad]  -> patch an arbitrary name -> address (SmallInt)
+[unit relocate]                    -> finalise; unit or nil; then install:/symbol:
+```
+
+`bindRuntime` registers flat `birnam_*` C-ABI shims that forward to the live
+IdApi — `birnam_send` / `birnam_intern` / `birnam_mkSmallInt` /
+`birnam_smallIntValue` / `birnam_mkString` / `birnam_nil` / `birnam_true` /
+`birnam_false`. So **emitted C never spells out the (append-only, evolving) IdApi
+struct layout** — it just declares these stable externs and calls them. `Unit`
+gained a `relocated` flag guarding the one-way transition. `test-tcc` 6 → 8: the
+staged path constructs its result via `birnam_mkSmallInt`, and emitted C
+re-dispatches a message back through libid via `birnam_send`/`birnam_intern`.
+
+**Next steps:**
+- **Point the emitter at the runtime.** Codegen calls `[Tcc new]`/`compile:`/
+  `bindRuntime`/`relocate` instead of the all-in-one, and emits C that uses the
+  `birnam_*` shims (a small C prelude declaring the externs + GETV/MKV macros).
+  Then add sends (`birnam_send` + `birnam_intern`), variables, blocks, etc.
 - **CST shape** — the wrapper-rule nesting is tolerable via `skip()`; revisit a
   desugar pass only if it gets unwieldy.
 - **Error model (F7)** — settle as eval/runtime semantics firm up.
@@ -142,7 +163,7 @@ Then, below/after: **gc** (the F3 per-vtable layout descriptor) and the richer
 
 ## Test/run surface
 
-`zig build test-id` (4) · `test-store` (11) · `test-peg` (8) · `test-lang` (7) ·
-`test-tcc` (6) · `test-codegen` (6); `zig build install && ./zig-out/bin/birnam-id`
+`zig build test-id` (4) · `test-store` (12) · `test-peg` (8) · `test-lang` (7) ·
+`test-tcc` (8) · `test-codegen` (6); `zig build install && ./zig-out/bin/birnam-id`
 runs the siphon through the full stack (store, peg, lang, tcc, codegen) and
 compiles `[[3 + 4] * 2]` → native → 14.
