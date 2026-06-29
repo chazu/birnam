@@ -35,6 +35,10 @@ const ca = std.heap.c_allocator;
 var g_api: *idapi.IdApi = undefined;
 var lang: Oop = undefined;
 var tcc: Oop = undefined;
+var g_store: Oop = undefined; // the well-known store (for global resolution)
+var g_globals_entity: Oop = null; // the reserved entity globals hang off of
+var sel_currentValue: Oop = null;
+var sel_addSymbol: Oop = null;
 
 pub var codegen_vt: Oop = null;
 pub var codegen_obj: Oop = null;
@@ -133,6 +137,32 @@ fn putFmt(buf: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) void
     buf.appendSlice(ca, s) catch @panic("codegen: oom");
 }
 
+// -- the global namespace runtime (docs/36) ----------------------------------
+//
+// Store-coupled, so it lives HERE (codegen depends on the store) rather than in
+// tcc.zig (which stays store-free). Registered per-compile via the staged Tcc
+// `addSymbol:value:` window, alongside tcc's floor `bindRuntime`.
+
+/// `birnam_global("name")` — resolve a global reference through its binding:
+/// the Globals store (non-nil wins, late-bound), else a module facade / seeded
+/// type in the id env, else nil (undeclared / forward reference).
+fn rtGlobal(name: [*:0]const u8) callconv(.c) Oop {
+    const sym = g_api.intern(name);
+    // The store reports absence as Zig null (≠ the `nilObj` singleton); a present
+    // binding (even one bound to nil) is non-null and wins.
+    const cur = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globals_entity, sym }, 2);
+    if (cur != null) return cur;
+    if (g_api.isExported(name) != 0) return g_api.import(name);
+    return g_api.nilObj;
+}
+
+/// Register a codegen-owned shim into a unit's pre-relocate symbol window.
+fn addShim(unit: Oop, name: []const u8, fnptr: *const anyopaque) void {
+    const name_str = g_api.mkString(name.ptr, name.len);
+    const addr: i64 = @intCast(@intFromPtr(fnptr));
+    _ = g_api.send(unit, sel_addSymbol, &[_]Oop{ name_str, g_api.mkSmallInt(addr) }, 2);
+}
+
 fn isArith(op: []const u8) bool {
     return op.len == 1 and (op[0] == '+' or op[0] == '-' or op[0] == '*' or op[0] == '/');
 }
@@ -201,9 +231,16 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
     }
     if (r == r_ident) {
         const name = text(node);
-        if (!isBound(name)) return false; // unbound identifier — not yet (globals/self)
-        put(buf, "b_");
-        put(buf, name);
+        if (isBound(name)) {
+            put(buf, "b_");
+            put(buf, name);
+            return true;
+        }
+        // Unbound → a global reference, resolved at runtime through the binding
+        // (late-bound, relocatable; undeclared/forward refs read nil — docs/36).
+        put(buf, "birnam_global(\"");
+        putCStr(buf, name);
+        put(buf, "\")");
         return true;
     }
     if (r == r_string) {
@@ -528,6 +565,7 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         \\extern void* birnam_objectVt(void);
         \\extern void birnam_method(void* vt, void* sel, void* fn);
         \\extern void* birnam_alloc(void* vt, long nbytes);
+        \\extern void* birnam_global(const char* name);
         \\
     );
     put(&buf, fn_defs.items);
@@ -542,6 +580,7 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (unit == g_api.nilObj) return g_api.nilObj;
     if (s1(unit, "compile:", c_src) == g_api.nilObj) return g_api.nilObj;
     _ = s0(unit, "bindRuntime");
+    addShim(unit, "birnam_global", @ptrCast(&rtGlobal));
     if (s0(unit, "relocate") == g_api.nilObj) return g_api.nilObj;
 
     const vt = g_api.proto(g_api.object_vt);
@@ -558,6 +597,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     g_api = api;
     lang = api.import("Lang") orelse @panic("codegen: Lang not loaded");
     tcc = api.import("Tcc") orelse @panic("codegen: Tcc not loaded");
+    g_store = api.import("Store") orelse @panic("codegen: Store not loaded");
+    g_globals_entity = api.intern("__globals__");
+    sel_currentValue = api.intern("currentValue:attr:");
+    sel_addSymbol = api.intern("addSymbol:value:");
 
     r_expr = api.intern("expr");
     r_primary = api.intern("primary");

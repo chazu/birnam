@@ -50,6 +50,13 @@ pub var store_vt: Oop = null; // the Store vtable (a proto delegating to Object)
 pub var store_instance: Oop = null; // the one canonical seeded store
 pub var cell_vt: Oop = null; // the Cell vtable (a proto delegating to Object)
 
+// The Globals scope (docs/36): birnam's program namespace, a thin facade over
+// the well-known store instance keyed on one reserved entity. Cells for free:
+// globals get fact storage + opt-in history, queryable, with no new store core.
+pub var globals_vt: Oop = null;
+pub var globals_obj: Oop = null; // exported as "Globals"
+var g_globals_entity: Oop = null; // the reserved entity all globals hang off of
+
 pub var s_rawAssert: Oop = null;
 pub var s_flip: Oop = null;
 pub var s_assert: Oop = null;
@@ -423,6 +430,41 @@ fn mTrackedAddMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
+// -- The Globals scope (docs/36) --------------------------------------------
+//
+// A namespace is just an object you send lookup messages to. `Globals` forwards
+// to the well-known store on the reserved `g_globals_entity`, so a global binding
+// IS a cell: `at:put:` asserts, `at:` reads currentValue, both inheriting the
+// store's opt-in history + queryability. No new store core.
+
+/// `[Globals at: aSymbol]` — the current value bound to `aSymbol`, or nil.
+/// Normalises the store's internal absence (Zig null) to the nil singleton, so
+/// birnam code never sees a raw null.
+fn mGlobalsAt(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const cur = g_api.send(store_instance, s_currentValue, &[_]Oop{ g_globals_entity, args[0] }, 2);
+    return if (cur == null) g_api.nilObj else cur;
+}
+
+/// `[Globals at: aSymbol put: aValue]` — bind (assert) and return the value.
+fn mGlobalsAtPut(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    _ = g_api.send(store_instance, s_assert, &[_]Oop{ g_globals_entity, args[0], args[1] }, 3);
+    return args[1];
+}
+
+/// `[Globals includes: aSymbol]` — true if a non-nil binding exists. (v1 treats
+/// absent and explicitly-nil the same; a real Binding object distinguishes them
+/// in v2 — docs/36 §3.)
+fn mGlobalsIncludes(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const cur = g_api.send(store_instance, s_currentValue, &[_]Oop{ g_globals_entity, args[0] }, 2);
+    return if (cur != null) g_api.trueObj else g_api.falseObj;
+}
+
 /// `[store new]` — mint a fresh, independently-seeded store (a sibling, same
 /// vtable). The siphon mints one well-known instance; this makes the store
 /// first-class mintable (docs/33 D8). Prototype-style: an instance makes more of
@@ -469,14 +511,19 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_attrCount = api.intern("attrCount:");
     s_attrAt = api.intern("attrAt:index:");
 
+    g_globals_entity = api.intern("__globals__");
+
     const reloading = api.isExported("Store") != 0;
     if (reloading) {
         store_vt = api.import("StoreVt");
         store_instance = api.import("Store");
         cell_vt = api.import("CellVt");
+        globals_vt = api.import("GlobalsVt");
+        globals_obj = api.import("Globals");
     } else {
         store_vt = api.proto(api.object_vt);
         cell_vt = api.proto(api.object_vt);
+        globals_vt = api.proto(api.object_vt);
     }
 
     api.method(store_vt, s_rawAssert, &mRawAssert);
@@ -498,11 +545,18 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(cell_vt, s_set, &mCellSet);
     api.method(cell_vt, s_history, &mCellHistory);
 
+    api.method(globals_vt, api.intern("at:"), &mGlobalsAt);
+    api.method(globals_vt, api.intern("at:put:"), &mGlobalsAtPut);
+    api.method(globals_vt, api.intern("includes:"), &mGlobalsIncludes);
+
     if (!reloading) {
         store_instance = freshStore();
+        globals_obj = api.alloc(globals_vt, 0);
         _ = api.exportObj("StoreVt", store_vt);
         _ = api.exportObj("Store", store_instance);
         _ = api.exportObj("CellVt", cell_vt);
+        _ = api.exportObj("GlobalsVt", globals_vt);
+        _ = api.exportObj("Globals", globals_obj);
     }
 }
 

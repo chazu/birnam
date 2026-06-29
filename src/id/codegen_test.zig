@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const id = @import("id.zig");
+const store = @import("store.zig");
 const peg = @import("peg.zig");
 const lang = @import("lang.zig");
 const tcc = @import("tcc.zig");
@@ -19,6 +20,7 @@ var gapi: *idapi.IdApi = undefined;
 fn setup() *idapi.IdApi {
     const api = id.id_init();
     gapi = api;
+    store.bringUp(api); // codegen resolves globals through the store
     peg.bringUp(api);
     lang.bringUp(api);
     tcc.bringUp(api);
@@ -83,12 +85,12 @@ test "codegen 3c.2: birnam arithmetic → C → native → value" {
     try std.testing.expectEqual(@as(i64, 20), try evalInt(api, "[[2 * 3] + [7 * 2]]"));
 }
 
-test "codegen 3c.2: out-of-subset input returns nil (no crash)" {
+test "codegen: parse failure / empty / undeclared global all yield nil (no crash)" {
     const api = setup();
 
-    try std.testing.expect(eval(api, "hello") == api.nilObj); // bare ident
-    try std.testing.expect(eval(api, "[n printString]") == api.nilObj); // ident receiver
     try std.testing.expect(eval(api, "@#$") == api.nilObj); // parse failure
+    try std.testing.expect(eval(api, "") == api.nilObj); // empty program
+    try std.testing.expect(eval(api, "hello") == api.nilObj); // undeclared global → nil
 }
 
 test "codegen 3c.3: sends dispatch through libid (unary / binary / keyword)" {
@@ -129,8 +131,8 @@ test "codegen 3c.3: let-bindings, identifiers, and multi-statement programs" {
     // identifier as both receiver and argument
     try std.testing.expectEqual(@as(i64, 10), try evalInt(api, "let x := 5; [x plus: x]"));
 
-    // an unbound identifier is out of subset → nil (not a crash)
-    try std.testing.expect(eval(api, "[y double]") == api.nilObj);
+    // an undeclared identifier resolves to a nil global (forward/undeclared ref)
+    try std.testing.expect(eval(api, "y") == api.nilObj);
 }
 
 test "codegen 3c.3: string literals construct String objects" {
@@ -144,6 +146,27 @@ test "codegen 3c.3: string literals construct String objects" {
     try std.testing.expectEqualStrings("a\nb", try evalStr(api, "\"a\nb\""));
     // strings flow through let + are returned as the program value
     try std.testing.expectEqualStrings("hi", try evalStr(api, "let s := \"hi\"; s"));
+}
+
+test "codegen 3c.3: globals — define, reference from native, late binding" {
+    const api = setup();
+    api.method(api.smallint_vt, api.intern("double"), &mDouble);
+    api.method(api.smallint_vt, api.intern("plus:"), &mPlus);
+
+    // Define a global via the Globals facade (an ordinary send), then reference
+    // it as a bare identifier from compiled native code.
+    try std.testing.expectEqual(@as(i64, 21), try evalInt(api, "[Globals at: #x put: 21]"));
+    try std.testing.expectEqual(@as(i64, 21), try evalInt(api, "x"));
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "[x double]"));
+
+    // Late binding: one compiled block reads x through its binding on each call,
+    // so it sees a redefinition that happens between calls.
+    try std.testing.expectEqual(@as(i64, 3), try evalInt(api,
+        "let g := [| x]; [Globals at: #x put: 1]; let a := [g value]; [Globals at: #x put: 2]; let b := [g value]; [a plus: b]"));
+
+    // A global can hold a block; fetch and invoke it.
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api,
+        "[Globals at: #f put: [:n | [n double]]]; [[Globals at: #f] value: 21]"));
 }
 
 test "codegen 3c.3: symbol literals intern to selectors" {
