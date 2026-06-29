@@ -85,10 +85,27 @@ with comments, and rejects malformed input. The siphon loads
 collided, so the dylib entrypoint is exported only in non-test builds via
 `comptime if (!builtin.is_test) @export`.)
 
-## 3c — C codegen + libtcc (next)
+## 3c — C codegen + libtcc
 
-Walk the birnam CST → emit C source → libtcc compile → hot-load (in-process
-and/or dylib). Open design choices to settle when starting:
+### 3c.1 — libtcc as an id module (shipped, `233463b`)
+
+`src/id/tcc.zig` — the compiler backend, statically linking the vendored libtcc
+and exposing it through the object model. **No general FFI is needed**: compiled
+birnam uses birnam's own Method ABI, so a `tcc_get_symbol` result is cast to the
+known `Method` type and installed via `api.method`. (A general "alien"/FFI module
+for wrapping arbitrary C libs from birnam is a separate later rung.)
+
+- `[Tcc compile: cSource]` → a `TccUnit` (new + compile + relocate, output in
+  memory) or nil; `[unit install: cFnName as: #sel on: vt]` binds the named
+  Method-ABI function on `vt`; `[unit symbol: name]` → raw address as a SmallInt.
+- `test-tcc` 6/6: compile a Method-ABI C function returning SmallInt 42, install,
+  dispatch → 42; bad C → nil. The siphon JITs C → native → dispatch through the
+  id api.
+
+### 3c.2 — the C emitter (next)
+
+Walk the birnam CST → emit Method-ABI C source → feed to `[Tcc compile:]` →
+install. Open design choices to settle when starting:
 
 - **CST shape.** The grammar currently makes `expr`/`primary`/`message` rules
   too, so the CST is deeply nested. Either codegen directly off it (reading token
@@ -107,5 +124,6 @@ Then, below/after: **gc** (the F3 per-vtable layout descriptor) and the richer
 
 ## Test/run surface
 
-`zig build test-id` (4) · `test-store` (11) · `test-peg` (8) · `test-lang` (7);
-`zig build install && ./zig-out/bin/birnam-id` runs the siphon through all rungs.
+`zig build test-id` (4) · `test-store` (11) · `test-peg` (8) · `test-lang` (7) ·
+`test-tcc` (6); `zig build install && ./zig-out/bin/birnam-id` runs the siphon
+through all rungs (store, peg, lang, and a libtcc JIT).
