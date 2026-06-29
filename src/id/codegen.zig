@@ -4,22 +4,27 @@
 //! compiles it with `Tcc` and runs it. Everything through the object model: it
 //! `api.import("Lang")` + `api.import("Tcc")` and drives them via `api.send`.
 //!
-//! Scope so far:
-//!   - integer literals;
+//! Covers the whole birnam grammar:
+//!   - integer + string literals (`birnam_mkString`);
 //!   - binary ARITHMETIC sends `[a op b]` (op ∈ + - * /) — inlined as raw C math
 //!     via GETV/MKV (the floor's `smallint_vt` has no `+` method to dispatch to,
 //!     so this fast path is load-bearing, not merely an optimisation);
 //!   - every OTHER send — unary `[r sel]`, non-arithmetic binary `[r op a]`, and
 //!     keyword `[r k: a m: b]` — lowered to a real dispatch through libid via the
-//!     `birnam_send`/`birnam_intern` runtime shims (3c.3 step 1's symbol window).
-//! All recursive (a receiver or argument may itself be any of the above).
-//! Variables (self/args/let), blocks, and string/ident receivers come next.
+//!     `birnam_send`/`birnam_intern` runtime shims;
+//!   - variables: `let x := e` → a C local `b_x`; identifiers resolve to it;
+//!   - multi-statement programs (`a; b; c`) → the last statement's value;
+//!   - blocks `[:a :b | body]` → file-scope C functions with the Method ABI
+//!     (params in `args[]`, captured free vars in the instance payload); the
+//!     literal is a statement-expression that builds the block's vtable and
+//!     captures. Invoking a block is just an ordinary `value`/`value:`… send.
+//! All recursive: receivers, arguments, let RHSs, and block bodies nest freely.
 //!
 //! Uses the STAGED Tcc path so the runtime shims are bound before relocation:
 //! `[Tcc new]` → `[unit compile:]` → `[unit bindRuntime]` → `[unit relocate]`.
 //!
-//! Facade: `[Codegen eval: aString]` → the value of the program's first
-//! expression (a SmallInt), or nil if parsing/codegen fails.
+//! Facade: `[Codegen eval: aString]` → the value of the program (its last
+//! statement), or nil if parsing/codegen fails.
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
@@ -46,17 +51,32 @@ var r_keywordMsg: Oop = null;
 var r_ident: Oop = null;
 var r_string: Oop = null;
 var r_letBinding: Oop = null;
+var r_block: Oop = null;
+var r_statements: Oop = null;
 
 var src_bytes: []const u8 = &.{}; // the source for the current eval (for spans)
 
 // Lexical environment for the current eval: birnam variable names currently in
-// scope (from `let`). Each is emitted as a C local `b_<name>`. Slices point into
-// `src_bytes`, valid for the duration of an eval. Cleared at the start of each.
+// scope (from `let` / block params / block captures). Each is emitted as a C
+// local `b_<name>`. Slices point into `src_bytes`. Reset at the start of each
+// eval; saved/swapped when emitting a block body (its own scope).
 var bound_names: std.ArrayList([]const u8) = .{};
 
+// File-scope C function definitions for blocks, accumulated during emission and
+// emitted (in post-order: inner blocks first) before `__ev`. A monotonic counter
+// names each block's function. Both reset per eval.
+var fn_defs: std.ArrayList(u8) = .{};
+var blk_counter: usize = 0;
+
 fn isBound(name: []const u8) bool {
-    for (bound_names.items) |b| if (std.mem.eql(u8, b, name)) return true;
+    return listContains(bound_names.items, name);
+}
+fn listContains(items: []const []const u8, name: []const u8) bool {
+    for (items) |b| if (std.mem.eql(u8, b, name)) return true;
     return false;
+}
+fn setAdd(list: *std.ArrayList([]const u8), name: []const u8) void {
+    if (!listContains(list.items, name)) list.append(ca, name) catch @panic("codegen: oom");
 }
 
 // -- CST access (via the peg CstNode message api) ----------------------------
@@ -101,6 +121,14 @@ fn skip(node: Oop) Oop {
 // -- emission ----------------------------------------------------------------
 
 fn put(buf: *std.ArrayList(u8), s: []const u8) void {
+    buf.appendSlice(ca, s) catch @panic("codegen: oom");
+}
+
+/// `put` with formatting — formats straight into the buffer (no fixed-size
+/// scratch buffer to overflow).
+fn putFmt(buf: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) void {
+    const s = std.fmt.allocPrint(ca, fmt, args) catch @panic("codegen: oom");
+    defer ca.free(s);
     buf.appendSlice(ca, s) catch @panic("codegen: oom");
 }
 
@@ -232,7 +260,178 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
 
         return false;
     }
-    return false; // ident / string / block — not yet
+    if (r == r_block) {
+        return emitBlock(buf, node);
+    }
+    return false;
+}
+
+// -- blocks (closures) -------------------------------------------------------
+//
+// A block `[:a :b | body]` compiles to a file-scope C function with the Method
+// ABI; its params bind to args[i] and its captured free variables to slots in
+// the block object's payload (read via `self`). The block LITERAL evaluates to a
+// statement-expression that lazily builds the block's vtable (installing the fn
+// under the arity-matched value/value:/value:value: selector) and allocates an
+// instance holding the current values of the captured variables. Invoking a block
+// (`[blk value: x]`) is just an ordinary keyword send — no special handling.
+
+/// Collect identifiers referenced as VALUES (receivers / args / primaries) under
+/// `node`, skipping selector positions. Descends into nested blocks so a block's
+/// transitive free variables (needed by inner blocks) are surfaced too.
+fn collectRefs(node0: Oop, set: *std.ArrayList([]const u8)) void {
+    const node = skip(node0);
+    const r = ruleOf(node);
+    if (r == r_ident) {
+        setAdd(set, text(node));
+        return;
+    }
+    if (r == r_number or r == r_string) return;
+    if (r == r_send) {
+        collectRefs(child(node, 0), set); // receiver
+        const msg = skip(child(node, 1));
+        const mr = ruleOf(msg);
+        if (mr == r_binaryMsg) {
+            collectRefs(child(msg, 1), set); // arg only (op is not a ref)
+        } else if (mr == r_keywordMsg) {
+            const nc = nchild(msg);
+            var i: usize = 1;
+            while (i < nc) : (i += 2) collectRefs(child(msg, i), set); // args
+        } // unaryMsg: selector ident is not a ref
+        return;
+    }
+    if (r == r_block) {
+        var i: usize = 0;
+        const nc = nchild(node);
+        while (i < nc) : (i += 1) {
+            if (ruleOf(child(node, i)) == r_statements) collectRefsStmts(child(node, i), set);
+        }
+        return;
+    }
+}
+
+fn collectRefsStmts(statements: Oop, set: *std.ArrayList([]const u8)) void {
+    const ns = nchild(statements);
+    var i: usize = 0;
+    while (i < ns) : (i += 1) {
+        const stmt = child(statements, i);
+        if (nchild(stmt) < 1) continue;
+        const inner = child(stmt, 0);
+        if (ruleOf(inner) == r_letBinding) {
+            collectRefs(child(inner, 1), set); // RHS only (the let name is a binder)
+        } else {
+            collectRefs(inner, set);
+        }
+    }
+}
+
+/// True if `statements` has a top-level `let` binding `name` (which would shadow
+/// an enclosing variable of the same name, so it must not be captured).
+fn hasTopLevelLet(statements: Oop, name: []const u8) bool {
+    const ns = nchild(statements);
+    var i: usize = 0;
+    while (i < ns) : (i += 1) {
+        const stmt = child(statements, i);
+        if (nchild(stmt) < 1) continue;
+        const inner = child(stmt, 0);
+        if (ruleOf(inner) == r_letBinding and std.mem.eql(u8, text(child(inner, 0)), name)) return true;
+    }
+    return false;
+}
+
+/// Emit a block literal: append its function definition to `fn_defs` and emit a
+/// statement-expression (building vtable + capturing instance) into `buf`.
+fn emitBlock(buf: *std.ArrayList(u8), blockNode: Oop) bool {
+    const nc = nchild(blockNode);
+
+    // Classify children: leading idents are params; a `statements` child is the
+    // body (optional).
+    var params: std.ArrayList([]const u8) = .{};
+    defer params.deinit(ca);
+    var body: Oop = null;
+    {
+        var i: usize = 0;
+        while (i < nc) : (i += 1) {
+            const cnode = child(blockNode, i);
+            const cr = ruleOf(cnode);
+            if (cr == r_ident) {
+                params.append(ca, text(cnode)) catch @panic("codegen: oom");
+            } else if (cr == r_statements) {
+                body = cnode;
+            }
+        }
+    }
+
+    // Capture set: enclosing variables referenced in the body, minus this block's
+    // own params and top-level lets (which provide those names locally). Computed
+    // against the CURRENT (enclosing) lexical scope, in scope order for stable
+    // slot indices.
+    var refs: std.ArrayList([]const u8) = .{};
+    defer refs.deinit(ca);
+    if (body != null) collectRefsStmts(body, &refs);
+    var caps: std.ArrayList([]const u8) = .{};
+    defer caps.deinit(ca);
+    for (bound_names.items) |name| {
+        if (!listContains(refs.items, name)) continue;
+        if (listContains(params.items, name)) continue;
+        if (body != null and hasTopLevelLet(body, name)) continue;
+        caps.append(ca, name) catch @panic("codegen: oom");
+    }
+
+    const n = blk_counter;
+    blk_counter += 1;
+
+    // Emit the block's function body into a temp buffer; nested blocks append
+    // their defs to fn_defs DURING this, so they land before ours (post-order).
+    // The block body sees only params + captures (then its own lets), so swap the
+    // lexical scope.
+    const saved = ca.dupe([]const u8, bound_names.items) catch @panic("codegen: oom");
+    defer ca.free(saved);
+    bound_names.clearRetainingCapacity();
+    for (params.items) |p| bound_names.append(ca, p) catch @panic("codegen: oom");
+    for (caps.items) |cName| bound_names.append(ca, cName) catch @panic("codegen: oom");
+
+    var body_buf: std.ArrayList(u8) = .{};
+    defer body_buf.deinit(ca);
+    for (params.items, 0..) |p, i| {
+        putFmt(&body_buf, "void* b_{s} = args[{d}];\n", .{ p, i });
+    }
+    for (caps.items, 0..) |cName, i| {
+        putFmt(&body_buf, "void* b_{s} = ((void**)self)[{d}];\n", .{ cName, i });
+    }
+    const body_ok = if (body != null) emitBody(&body_buf, body) else blk: {
+        put(&body_buf, "return birnam_nil();\n");
+        break :blk true;
+    };
+
+    // Restore the enclosing scope regardless of outcome.
+    bound_names.clearRetainingCapacity();
+    bound_names.appendSlice(ca, saved) catch @panic("codegen: oom");
+    if (!body_ok) return false;
+
+    // Assemble the file-scope function definition and append it to fn_defs.
+    putFmt(&fn_defs, "void* __blk{d}(void* self, void** args, long n){{ (void)self;(void)args;(void)n;\n", .{n});
+    put(&fn_defs, body_buf.items);
+    put(&fn_defs, "}\n");
+
+    // The arity-matched value selector: "value", "value:", "value:value:", …
+    var sel: std.ArrayList(u8) = .{};
+    defer sel.deinit(ca);
+    if (params.items.len == 0) {
+        put(&sel, "value");
+    } else {
+        for (params.items) |_| put(&sel, "value:");
+    }
+
+    // Emit the creating statement-expression into the current function body.
+    putFmt(buf, "({{ static void* __vt{d} = 0; if(!__vt{d}){{ __vt{d} = birnam_proto(birnam_objectVt()); birnam_method(__vt{d}, birnam_intern(\"", .{ n, n, n, n });
+    putCStr(buf, sel.items);
+    putFmt(buf, "\"), (void*)&__blk{d}); }} void* __o{d} = birnam_alloc(__vt{d}, {d}*sizeof(void*));\n", .{ n, n, n, caps.items.len });
+    for (caps.items, 0..) |cName, i| {
+        putFmt(buf, "((void**)__o{d})[{d}] = b_{s};\n", .{ n, i, cName });
+    }
+    putFmt(buf, "__o{d}; }})", .{n});
+    return true;
 }
 
 /// Emit a `statements` node as the body of the enclosing C function: each `let`
@@ -295,6 +494,18 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (nchild(statements) < 1) return g_api.nilObj;
 
     bound_names.clearRetainingCapacity();
+    fn_defs.clearRetainingCapacity();
+    blk_counter = 0;
+
+    // The `__ev` function body is emitted first (which populates fn_defs with any
+    // block functions, in post-order); the final source is prelude + fn_defs +
+    // __ev so every block fn is defined before it's referenced.
+    var ev: std.ArrayList(u8) = .{};
+    defer ev.deinit(ca);
+    put(&ev, "void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\n");
+    if (!emitBody(&ev, statements)) return g_api.nilObj;
+    put(&ev, "}");
+
     var buf: std.ArrayList(u8) = .{};
     defer buf.deinit(ca);
     put(&buf,
@@ -303,11 +514,17 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
         \\extern void* birnam_intern(const char* name);
         \\extern void* birnam_mkString(const char* p, long n);
-        \\void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;
+        \\extern void* birnam_nil(void);
+        \\extern void* birnam_proto(void* parent);
+        \\extern void* birnam_objectVt(void);
+        \\extern void birnam_method(void* vt, void* sel, void* fn);
+        \\extern void* birnam_alloc(void* vt, long nbytes);
         \\
     );
-    if (!emitBody(&buf, statements)) return g_api.nilObj;
-    put(&buf, "}");
+    put(&buf, fn_defs.items);
+    put(&buf, ev.items);
+
+    if (std.posix.getenv("CODEGEN_DUMP") != null) std.debug.print("---emitted C---\n{s}\n---------------\n", .{buf.items});
 
     // Staged compile: bind the runtime shims into the symbol window between
     // compile and relocate, so the emitted `birnam_*` calls resolve.
@@ -344,6 +561,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     r_ident = api.intern("ident");
     r_string = api.intern("string");
     r_letBinding = api.intern("letBinding");
+    r_block = api.intern("block");
+    r_statements = api.intern("statements");
 
     const reloading = api.isExported("Codegen") != 0;
     if (reloading) {

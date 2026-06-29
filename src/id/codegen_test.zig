@@ -140,3 +140,22 @@ test "codegen 3c.3: string literals construct String objects" {
     // strings flow through let + are returned as the program value
     try std.testing.expectEqualStrings("hi", try evalStr(api, "let s := \"hi\"; s"));
 }
+
+test "codegen 3c.3: blocks compile to closures (params, capture, invoke)" {
+    const api = setup();
+    api.method(api.smallint_vt, api.intern("double"), &mDouble);
+    api.method(api.smallint_vt, api.intern("plus:"), &mPlus);
+
+    // one-param block, invoked with value:
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let f := [:n | [n double]]; [f value: 21]"));
+    // zero-param block capturing an enclosing variable, invoked with value
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let x := 21; let f := [| [x double]]; [f value]"));
+    // param + capture together
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let x := 10; let f := [:y | [x plus: y]]; [f value: 32]"));
+    // two params → selector value:value:
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let g := [:a :b | [a plus: b]]; [g value: 20 value: 22]"));
+    // a block is a value: stored, then invoked later via an identifier
+    try std.testing.expectEqual(@as(i64, 84), try evalInt(api, "let x := 21; let f := [| [x double]]; let r := [f value]; [r double]"));
+    // nested blocks: inner captures the outer param transitively
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let mk := [:a | [:b | [a plus: b]]]; let add20 := [mk value: 20]; [add20 value: 22]"));
+}

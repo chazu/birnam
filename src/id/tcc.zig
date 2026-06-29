@@ -130,6 +130,21 @@ fn rtFalse() callconv(.c) Oop {
     return g_api.falseObj;
 }
 
+// Object-model construction — for emitted closures: build a block's vtable
+// (proto + method install) and allocate a capturing instance.
+fn rtObjectVt() callconv(.c) Oop {
+    return g_api.object_vt;
+}
+fn rtProto(parent: Oop) callconv(.c) Oop {
+    return g_api.proto(parent);
+}
+fn rtMethod(vt: Oop, sel: Oop, fnptr: ?*anyopaque) callconv(.c) void {
+    g_api.method(vt, sel, @ptrCast(@alignCast(fnptr)));
+}
+fn rtAlloc(vt: Oop, nbytes: i64) callconv(.c) Oop {
+    return g_api.alloc(vt, @intCast(nbytes));
+}
+
 const RuntimeSym = struct { name: [*:0]const u8, addr: *const anyopaque };
 const runtime_syms = [_]RuntimeSym{
     .{ .name = "birnam_send", .addr = @ptrCast(&rtSend) },
@@ -140,6 +155,10 @@ const runtime_syms = [_]RuntimeSym{
     .{ .name = "birnam_nil", .addr = @ptrCast(&rtNil) },
     .{ .name = "birnam_true", .addr = @ptrCast(&rtTrue) },
     .{ .name = "birnam_false", .addr = @ptrCast(&rtFalse) },
+    .{ .name = "birnam_objectVt", .addr = @ptrCast(&rtObjectVt) },
+    .{ .name = "birnam_proto", .addr = @ptrCast(&rtProto) },
+    .{ .name = "birnam_method", .addr = @ptrCast(&rtMethod) },
+    .{ .name = "birnam_alloc", .addr = @ptrCast(&rtAlloc) },
 };
 
 // -- staged compile: open the pre-relocate symbol window ---------------------

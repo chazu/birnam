@@ -193,7 +193,14 @@ pub fn main() !void {
     if (sv != 42) return error.CodegenSendWrong;
     std.debug.print("[siphon] rung 3c.3: codegen compiled birnam {s} → C → native, dispatched through libid => {d}\n", .{ sendExpr, sv });
 
-    std.debug.print("[siphon] ok — birnam source compiles to native through the full stack (libid → store → peg → lang → tcc → codegen), all through the id api\n", .{});
+    // 12. RUNG 3c.3 — the whole grammar: variables, a closure that captures an
+    //     enclosing variable, compiled to native and invoked back through libid.
+    const blkExpr = "let x := 20; let add := [:y | [x plus: y]]; [add value: 22]";
+    const bv = api.smallIntValue(api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(blkExpr, blkExpr.len)}, 1));
+    if (bv != 42) return error.CodegenBlockWrong;
+    std.debug.print("[siphon] rung 3c.3: codegen compiled a birnam closure (let + capture + block) → native => {d}\n", .{bv});
+
+    std.debug.print("[siphon] ok — the whole birnam grammar compiles to native through the full stack (libid → store → peg → lang → tcc → codegen), all through the id api\n", .{});
 }
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading
