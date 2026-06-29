@@ -63,6 +63,9 @@ var r_symbol: Oop = null;
 var r_letBinding: Oop = null;
 var r_block: Oop = null;
 var r_statements: Oop = null;
+var r_vectorLit: Oop = null;
+var r_mapLit: Oop = null;
+var r_mapEntry: Oop = null;
 
 var src_bytes: []const u8 = &.{}; // the source for the current eval (for spans)
 
@@ -395,7 +398,50 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
     if (r == r_block) {
         return emitBlock(buf, node);
     }
+    if (r == r_vectorLit) {
+        return emitVectorLit(buf, node, nchild(node));
+    }
+    if (r == r_mapLit) {
+        return emitMapLit(buf, node, nchild(node));
+    }
     return false;
+}
+
+/// Emit a `#[e0 e1 …]` literal as a persistent-`add:` chain over a fresh empty
+/// vector: `[[[Vector new] add: e0] add: e1] …`. `upto` is the prefix length —
+/// recursion peels the last element so the receiver (all earlier adds) is emitted
+/// first. `add:` is persistent, so each link yields a new vector; the global
+/// `Vector` resolves to the collection factory.
+fn emitVectorLit(buf: *std.ArrayList(u8), node: Oop, upto: usize) bool {
+    if (upto == 0) {
+        put(buf, "birnam_send(birnam_global(\"Vector\"), birnam_intern(\"new\"), 0, 0L)");
+        return true;
+    }
+    put(buf, "birnam_send(");
+    if (!emitVectorLit(buf, node, upto - 1)) return false; // receiver: earlier adds
+    put(buf, ", birnam_intern(\"add:\"), (void*[]){");
+    if (!emit(buf, child(node, upto - 1))) return false; // the last element
+    put(buf, "}, 1L)");
+    return true;
+}
+
+/// Emit a `{k0: v0, k1: v1, …}` literal as a persistent-`at:put:` chain over a
+/// fresh empty map: `[[[Map new] at: k0 put: v0] at: k1 put: v1] …`. Mirrors
+/// `emitVectorLit`; each child is a `mapEntry` node (key child 0, value child 1).
+fn emitMapLit(buf: *std.ArrayList(u8), node: Oop, upto: usize) bool {
+    if (upto == 0) {
+        put(buf, "birnam_send(birnam_global(\"Map\"), birnam_intern(\"new\"), 0, 0L)");
+        return true;
+    }
+    put(buf, "birnam_send(");
+    if (!emitMapLit(buf, node, upto - 1)) return false; // receiver: earlier puts
+    put(buf, ", birnam_intern(\"at:put:\"), (void*[]){");
+    const entry = child(node, upto - 1);
+    if (!emit(buf, child(entry, 0))) return false; // key
+    put(buf, ", ");
+    if (!emit(buf, child(entry, 1))) return false; // value
+    put(buf, "}, 2L)");
+    return true;
 }
 
 // -- blocks (closures) -------------------------------------------------------
@@ -437,6 +483,22 @@ fn collectRefs(node0: Oop, set: *std.ArrayList([]const u8)) void {
         const nc = nchild(node);
         while (i < nc) : (i += 1) {
             if (ruleOf(child(node, i)) == r_statements) collectRefsStmts(child(node, i), set);
+        }
+        return;
+    }
+    if (r == r_vectorLit) {
+        const nc = nchild(node);
+        var i: usize = 0;
+        while (i < nc) : (i += 1) collectRefs(child(node, i), set); // element exprs
+        return;
+    }
+    if (r == r_mapLit) {
+        const nc = nchild(node);
+        var i: usize = 0;
+        while (i < nc) : (i += 1) {
+            const entry = child(node, i); // mapEntry: key + value exprs
+            collectRefs(child(entry, 0), set);
+            collectRefs(child(entry, 1), set);
         }
         return;
     }
@@ -704,6 +766,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
     r_letBinding = api.intern("letBinding");
     r_block = api.intern("block");
     r_statements = api.intern("statements");
+    r_vectorLit = api.intern("vectorLit");
+    r_mapLit = api.intern("mapLit");
+    r_mapEntry = api.intern("mapEntry");
 
     const reloading = api.isExported("Codegen") != 0;
     if (reloading) {

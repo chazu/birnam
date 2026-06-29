@@ -1,0 +1,28 @@
+// Collection literals: #[…] vectors and {…} maps.
+//
+// Both lower to persistent construction chains over the id-native collection
+// library — a vector literal is `[Vector new]` followed by `add:` per element,
+// a map literal is `[Map new]` followed by `at:put:` per entry. Run as a script:
+//
+//   birnam examples/collections.birnam
+
+// A vector literal whose elements are ordinary expressions.
+let nums := #[1 2 3 4 5];
+[System println: [nums printString]];
+[System println: [[nums size] printString]];
+
+// The full sequence protocol works over a literal: sum via inject:into:, and a
+// derived vector via collect: (which captures the enclosing `step`).
+let step := 10;
+let scaled := [nums collect: [:x | [x * step]]];
+[System println: [scaled printString]];
+[System println: [[nums inject: 0 into: [:acc :x | [acc + x]]] printString]];
+
+// A map literal with string keys; lookups via at: and at:ifAbsent:.
+let stock := {"apple": 3, "banana": 5, "cherry": 8};
+[System println: [stock printString]];
+[System println: ["banana in stock: " , [[stock at: "banana"] printString]]];
+[System println: ["durian in stock: " , [[stock at: "durian" ifAbsent: [| 0]] printString]]];
+
+// Literals nest freely.
+[System println: [#[#[1 2] #[3 4]] printString]]

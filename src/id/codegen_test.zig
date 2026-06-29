@@ -11,6 +11,8 @@ const peg = @import("peg.zig");
 const lang = @import("lang.zig");
 const tcc = @import("tcc.zig");
 const codegen = @import("codegen.zig");
+const prelude = @import("prelude.zig");
+const collection = @import("collection.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
@@ -25,6 +27,16 @@ fn setup() *idapi.IdApi {
     lang.bringUp(api);
     tcc.bringUp(api);
     codegen.bringUp(api);
+    return api;
+}
+
+/// The full stack the collection literals need: prelude (SmallInt protocol used
+/// by `printString`/`inject:into:`) + collection (the `Vector`/`Map` factories
+/// that `#[…]`/`{…}` literals lower onto).
+fn setupFull() *idapi.IdApi {
+    const api = setup();
+    prelude.bringUp(api);
+    collection.bringUp(api);
     return api;
 }
 
@@ -227,4 +239,44 @@ test "codegen 3c.3: define-method installs a block as a native method on a type"
 
     // a defined method is a first-class dispatch: callable on any SmallInt, nests
     try std.testing.expectEqual(@as(i64, 20), try evalInt(api, "[[5 twice] twice]"));
+}
+
+test "codegen 3c.4: vector literals lower to a persistent add: chain" {
+    const api = setupFull();
+
+    // empty + non-empty, via the collection protocol (size / at: / inject:into:).
+    try std.testing.expectEqual(@as(i64, 0), try evalInt(api, "[#[] size]"));
+    try std.testing.expectEqual(@as(i64, 3), try evalInt(api, "[#[10 20 30] size]"));
+    try std.testing.expectEqual(@as(i64, 20), try evalInt(api, "[#[10 20 30] at: 1]"));
+    try std.testing.expectEqual(@as(i64, 60), try evalInt(api, "[#[10 20 30] inject: 0 into: [:a :x | [a + x]]]"));
+
+    // elements are arbitrary exprs (sends, idents), evaluated in order.
+    try std.testing.expectEqual(@as(i64, 9), try evalInt(api, "let y := 4; [#[[1 + 1] y 3] inject: 0 into: [:a :x | [a + x]]]"));
+
+    // printString round-trips the literal syntax.
+    try std.testing.expectEqualStrings("#[10 20 30]", try evalStr(api, "[#[10 20 30] printString]"));
+    try std.testing.expectEqualStrings("#[]", try evalStr(api, "[#[] printString]"));
+
+    // nested vector literal.
+    try std.testing.expectEqualStrings("#[#[1 2] #[3 4]]", try evalStr(api, "[#[#[1 2] #[3 4]] printString]"));
+
+    // a literal whose elements capture an enclosing variable inside a block.
+    try std.testing.expectEqualStrings("#[101 102 103]", try evalStr(api, "let b := 100; [[#[1 2 3] collect: [:x | [x + b]]] printString]"));
+}
+
+test "codegen 3c.4: map literals lower to a persistent at:put: chain" {
+    const api = setupFull();
+
+    try std.testing.expectEqual(@as(i64, 0), try evalInt(api, "[{} size]"));
+    try std.testing.expectEqual(@as(i64, 2), try evalInt(api, "[{\"a\": 1, \"b\": 2} size]"));
+    try std.testing.expectEqual(@as(i64, 5), try evalInt(api, "[{\"apple\": 3, \"banana\": 5} at: \"banana\"]"));
+
+    // absent key runs the ifAbsent: block.
+    try std.testing.expectEqual(@as(i64, 0), try evalInt(api, "[{\"a\": 1} at: \"z\" ifAbsent: [| 0]]"));
+
+    // later duplicate key wins (persistent at:put: overwrite).
+    try std.testing.expectEqual(@as(i64, 9), try evalInt(api, "[{\"k\": 1, \"k\": 9} at: \"k\"]"));
+
+    // keys/values that are themselves exprs.
+    try std.testing.expectEqual(@as(i64, 30), try evalInt(api, "let n := 10; [{\"x\": [n + 20]} at: \"x\"]"));
 }

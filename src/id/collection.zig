@@ -58,6 +58,8 @@ pub var hnode_vt: Oop = null; // HAMT node: payload = header + [2*k]Oop entry sl
 pub var map_vt: Oop = null; // persistent hash-array-mapped map
 pub var map_factory_vt: Oop = null;
 pub var map_factory_obj: Oop = null; // the "Map" factory ([Map new])
+pub var vector_factory_vt: Oop = null;
+pub var vector_factory_obj: Oop = null; // the "Vector" factory ([Vector new])
 
 // Cached selectors for invoking caller blocks (value / value: / value:value:).
 var s_value: Oop = null;
@@ -789,6 +791,16 @@ fn mapNew(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return mkMap(null, 0);
 }
 
+/// `[Vector new]` → an empty persistent vector (the seed for `#[…]` literals and
+/// `add:` chains). The vector factory is the birnam-reachable constructor; the
+/// instance vtable is exported separately as "VectorVt" (an extension target).
+fn vecNew(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return emptyVec();
+}
+
 // -- extensions to existing floor types --------------------------------------
 
 /// `[start to: end]` → an inclusive Range value (lazy; `to:do:` stays in the
@@ -847,7 +859,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
     const reloading = api.isExported("Vector") != 0;
     if (reloading) {
         vnode_vt = api.import("VectorNode");
-        vector_vt = api.import("Vector");
+        vector_vt = api.import("VectorVt");
+        vector_factory_vt = api.import("VectorFactoryVt");
+        vector_factory_obj = api.import("Vector");
         range_vt = api.import("Range");
         hnode_vt = api.import("MapNode");
         map_vt = api.import("MapVt");
@@ -856,6 +870,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     } else {
         vnode_vt = api.proto(api.object_vt);
         vector_vt = api.proto(api.object_vt);
+        vector_factory_vt = api.proto(api.object_vt);
+        vector_factory_obj = api.alloc(vector_factory_vt, 0);
         range_vt = api.proto(api.object_vt);
         hnode_vt = api.proto(api.object_vt);
         map_vt = api.proto(api.object_vt);
@@ -876,6 +892,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(vector_vt, api.intern("asVector"), &vAsVector);
     api.method(vector_vt, api.intern("printString"), &vPrintString);
     api.method(vector_vt, api.intern(","), &vComma);
+    api.method(vector_factory_vt, api.intern("new"), &vecNew);
 
     // Range protocol.
     api.method(range_vt, api.intern("size"), &rSize);
@@ -919,7 +936,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
 
     if (!reloading) {
         _ = api.exportObj("VectorNode", vnode_vt);
-        _ = api.exportObj("Vector", vector_vt);
+        _ = api.exportObj("Vector", vector_factory_obj); // `[Vector new]`
+        _ = api.exportObj("VectorVt", vector_vt);
+        _ = api.exportObj("VectorFactoryVt", vector_factory_vt);
         _ = api.exportObj("Range", range_vt);
         _ = api.exportObj("MapNode", hnode_vt);
         _ = api.exportObj("Map", map_factory_obj); // `[Map new]`

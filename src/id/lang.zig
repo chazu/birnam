@@ -144,8 +144,32 @@ fn buildGrammar() void {
     const blockHeader = seqN(&.{ star(seqN(&.{ lit(":"), rref("ident"), ws })), lit("|") });
     defRule("block", seqN(&.{ lit("["), ws, blockHeader, ws, optp(rref("statements")), ws, lit("]") }));
 
-    // expr = block / send / primary   (block before send: both open with '[')
-    defRule("expr", altN(&.{ rref("block"), rref("send"), rref("primary") }));
+    // vectorLit = '#[' (expr ws)* ']'   — round-trips Vector printString (#[e e e]).
+    // Each child is an element expr; ws/brackets produce no CST nodes.
+    defRule("vectorLit", seqN(&.{
+        lit("#["), ws,
+        star(seqN(&.{ rref("expr"), ws })),
+        lit("]"),
+    }));
+
+    // mapLit = '{' (mapEntry ws ','? ws)* '}'   — round-trips Map printString
+    // ({k: v, …}). Entries are comma- or whitespace-separated; a trailing ',' is
+    // allowed. Each mapEntry is a rule with two children: the key and value exprs.
+    // NOTE: a symbol key written `#x:` is consumed by the `symbol` rule as a
+    // keyword-selector symbol (it must eat trailing ':' for #combine:and:), so it
+    // swallows the entry separator. Symbol keys in a literal need a space before
+    // the ':' (`#x : 1`); string/number keys have no such ambiguity.
+    defRule("mapEntry", seqN(&.{ rref("expr"), ws, lit(":"), ws, rref("expr") }));
+    defRule("mapLit", seqN(&.{
+        lit("{"), ws,
+        star(seqN(&.{ rref("mapEntry"), ws, optp(lit(",")), ws })),
+        lit("}"),
+    }));
+
+    // expr = block / send / vectorLit / mapLit / primary
+    // (block before send: both open '['; vectorLit opens '#[' so it must beat the
+    // symbol rule inside primary, which also opens '#'.)
+    defRule("expr", altN(&.{ rref("block"), rref("send"), rref("vectorLit"), rref("mapLit"), rref("primary") }));
 
     // letBinding = 'let' !alnum ident ':=' expr
     defRule("letBinding", seqN(&.{
