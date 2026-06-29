@@ -16,6 +16,19 @@ const Oop = idapi.Oop;
 
 const RTLD_LAZY: c_int = 1;
 
+// A primitive installed on SmallInt for the 3c.3 demo, so emitted birnam sends
+// have a real target to dispatch to. `g_api` lets it reach the id api.
+var g_api: *IdApi = undefined;
+fn mDouble(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    return g_api.mkSmallInt(g_api.smallIntValue(self) * 2);
+}
+fn mPlus(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return g_api.mkSmallInt(g_api.smallIntValue(self) + g_api.smallIntValue(args[0]));
+}
+
 pub fn main() !void {
     std.debug.print("[siphon] birnam\n", .{});
 
@@ -167,6 +180,18 @@ pub fn main() !void {
     const ev = api.smallIntValue(api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(expr, expr.len)}, 1));
     if (ev != 14) return error.CodegenWrong;
     std.debug.print("[siphon] rung 3c.2: codegen compiled birnam {s} → C → native => {d}, through the id api\n", .{ expr, ev });
+
+    // 11. RUNG 3c.3 — a real send: install #double on SmallInt, then compile
+    //     birnam that DISPATCHES it. The emitted native code calls back into
+    //     libid via the bound birnam_send / birnam_intern runtime shims.
+    g_api = api;
+    api.method(api.smallint_vt, api.intern("double"), &mDouble);
+    const sendExpr = "[[20 plus: 1] double]";
+    // (no `plus:` on SmallInt — use a keyword the demo installs too)
+    api.method(api.smallint_vt, api.intern("plus:"), &mPlus);
+    const sv = api.smallIntValue(api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(sendExpr, sendExpr.len)}, 1));
+    if (sv != 42) return error.CodegenSendWrong;
+    std.debug.print("[siphon] rung 3c.3: codegen compiled birnam {s} → C → native, dispatched through libid => {d}\n", .{ sendExpr, sv });
 
     std.debug.print("[siphon] ok — birnam source compiles to native through the full stack (libid → store → peg → lang → tcc → codegen), all through the id api\n", .{});
 }
