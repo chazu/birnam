@@ -43,8 +43,21 @@ var r_send: Oop = null;
 var r_binaryMsg: Oop = null;
 var r_unaryMsg: Oop = null;
 var r_keywordMsg: Oop = null;
+var r_ident: Oop = null;
+var r_string: Oop = null;
+var r_letBinding: Oop = null;
 
 var src_bytes: []const u8 = &.{}; // the source for the current eval (for spans)
+
+// Lexical environment for the current eval: birnam variable names currently in
+// scope (from `let`). Each is emitted as a C local `b_<name>`. Slices point into
+// `src_bytes`, valid for the duration of an eval. Cleared at the start of each.
+var bound_names: std.ArrayList([]const u8) = .{};
+
+fn isBound(name: []const u8) bool {
+    for (bound_names.items) |b| if (std.mem.eql(u8, b, name)) return true;
+    return false;
+}
 
 // -- CST access (via the peg CstNode message api) ----------------------------
 
@@ -95,13 +108,30 @@ fn isArith(op: []const u8) bool {
     return op.len == 1 and (op[0] == '+' or op[0] == '-' or op[0] == '*' or op[0] == '/');
 }
 
-/// Emit `sel` as the body of a C string literal, escaping the only two chars that
-/// could occur and matter (`"` and `\`). Selectors are otherwise idents, colons,
-/// and binop chars — all literal-safe.
-fn putCStr(buf: *std.ArrayList(u8), sel: []const u8) void {
-    for (sel) |ch| {
-        if (ch == '"' or ch == '\\') put(buf, "\\");
-        buf.append(ca, ch) catch @panic("codegen: oom");
+/// Emit `bytes` as the body of a C string literal (no surrounding quotes),
+/// escaping everything that could break the literal or be misread. Non-printable
+/// bytes become 3-digit octal (`\ooo`, unambiguous — unlike greedy `\x`). A C
+/// string literal's runtime byte count equals `bytes.len` (escapes are one byte
+/// each), so callers can pass `bytes.len` as the length unchanged.
+fn putCStr(buf: *std.ArrayList(u8), bytes: []const u8) void {
+    for (bytes) |ch| {
+        switch (ch) {
+            '"' => put(buf, "\\\""),
+            '\\' => put(buf, "\\\\"),
+            '\n' => put(buf, "\\n"),
+            '\r' => put(buf, "\\r"),
+            '\t' => put(buf, "\\t"),
+            else => {
+                if (ch >= 0x20 and ch < 0x7f) {
+                    buf.append(ca, ch) catch @panic("codegen: oom");
+                } else {
+                    buf.append(ca, '\\') catch @panic("codegen: oom");
+                    buf.append(ca, '0' + ((ch >> 6) & 7)) catch @panic("codegen: oom");
+                    buf.append(ca, '0' + ((ch >> 3) & 7)) catch @panic("codegen: oom");
+                    buf.append(ca, '0' + (ch & 7)) catch @panic("codegen: oom");
+                }
+            },
+        }
     }
 }
 
@@ -138,6 +168,24 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
         put(buf, "MKV(");
         put(buf, text(node)); // the integer literal text (incl. any leading '-')
         put(buf, "L)");
+        return true;
+    }
+    if (r == r_ident) {
+        const name = text(node);
+        if (!isBound(name)) return false; // unbound identifier — not yet (globals/self)
+        put(buf, "b_");
+        put(buf, name);
+        return true;
+    }
+    if (r == r_string) {
+        const raw = text(node); // includes the surrounding quotes
+        const inner = if (raw.len >= 2) raw[1 .. raw.len - 1] else raw;
+        put(buf, "birnam_mkString(\"");
+        putCStr(buf, inner);
+        put(buf, "\", ");
+        var nb: [24]u8 = undefined;
+        const ns = std.fmt.bufPrint(&nb, "{d}L)", .{inner.len}) catch return false;
+        put(buf, ns);
         return true;
     }
     if (r == r_send) {
@@ -187,6 +235,47 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
     return false; // ident / string / block — not yet
 }
 
+/// Emit a `statements` node as the body of the enclosing C function: each `let`
+/// becomes a C local `void* b_<name> = …;` (and binds the name for later
+/// statements), each bare expression is evaluated, and the LAST statement's value
+/// is `return`ed. A `let` as the final statement returns its bound value; an
+/// empty body returns nil. Returns false if any statement is out of subset.
+fn emitBody(buf: *std.ArrayList(u8), statements: Oop) bool {
+    const ns = nchild(statements);
+    var i: usize = 0;
+    while (i < ns) : (i += 1) {
+        const last = (i == ns - 1);
+        const stmt = child(statements, i);
+        if (nchild(stmt) < 1) return false;
+        const inner = child(stmt, 0); // letBinding | expr
+
+        if (ruleOf(inner) == r_letBinding) {
+            const name = text(child(inner, 0));
+            const rhs = child(inner, 1);
+            put(buf, "void* b_");
+            put(buf, name);
+            put(buf, " = ");
+            if (!emit(buf, rhs)) return false; // RHS sees only earlier bindings
+            put(buf, ";\n");
+            bound_names.append(ca, name) catch @panic("codegen: oom");
+            if (last) {
+                put(buf, "return b_");
+                put(buf, name);
+                put(buf, ";\n");
+            }
+        } else if (last) {
+            put(buf, "return ");
+            if (!emit(buf, inner)) return false;
+            put(buf, ";\n");
+        } else {
+            put(buf, "(void)(");
+            if (!emit(buf, inner)) return false;
+            put(buf, ");\n");
+        }
+    }
+    return true;
+}
+
 // -- [Codegen eval: src] -----------------------------------------------------
 
 fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -200,14 +289,12 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const cst = s1(lang, "parse:", src);
     if (cst == g_api.nilObj) return g_api.nilObj;
 
-    // program → statements → statement → (expr | letBinding); take the first.
+    // program → statements → statement+ ; an empty program has no value.
     if (nchild(cst) < 1) return g_api.nilObj;
     const statements = child(cst, 0);
     if (nchild(statements) < 1) return g_api.nilObj;
-    const statement = child(statements, 0);
-    if (nchild(statement) < 1) return g_api.nilObj;
-    const expr = child(statement, 0);
 
+    bound_names.clearRetainingCapacity();
     var buf: std.ArrayList(u8) = .{};
     defer buf.deinit(ca);
     put(&buf,
@@ -215,11 +302,12 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         \\#define MKV(x) ((void*)(((long)(x))<<1|1L))
         \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
         \\extern void* birnam_intern(const char* name);
-        \\void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n; return
+        \\extern void* birnam_mkString(const char* p, long n);
+        \\void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;
+        \\
     );
-    put(&buf, " ");
-    if (!emit(&buf, expr)) return g_api.nilObj;
-    put(&buf, "; }");
+    if (!emitBody(&buf, statements)) return g_api.nilObj;
+    put(&buf, "}");
 
     // Staged compile: bind the runtime shims into the symbol window between
     // compile and relocate, so the emitted `birnam_*` calls resolve.
@@ -253,6 +341,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
     r_binaryMsg = api.intern("binaryMsg");
     r_unaryMsg = api.intern("unaryMsg");
     r_keywordMsg = api.intern("keywordMsg");
+    r_ident = api.intern("ident");
+    r_string = api.intern("string");
+    r_letBinding = api.intern("letBinding");
 
     const reloading = api.isExported("Codegen") != 0;
     if (reloading) {

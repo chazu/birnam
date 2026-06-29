@@ -56,6 +56,13 @@ fn evalInt(api: *idapi.IdApi, src: []const u8) !i64 {
     if (r == api.nilObj) return error.EvalFailed;
     return api.smallIntValue(r);
 }
+fn evalStr(api: *idapi.IdApi, src: []const u8) ![]const u8 {
+    const r = eval(api, src);
+    if (r == api.nilObj) return error.EvalFailed;
+    var len: usize = 0;
+    const p = api.stringBytes(r, &len);
+    return p[0..len];
+}
 
 test "codegen 3c.2: birnam arithmetic → C → native → value" {
     const api = setup();
@@ -101,4 +108,35 @@ test "codegen 3c.3: sends dispatch through libid (unary / binary / keyword)" {
     try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "[[21 double] plus: 0]"));
     try std.testing.expectEqual(@as(i64, 22), try evalInt(api, "[20 plus: [1 + 1]]"));
     try std.testing.expectEqual(@as(i64, 84), try evalInt(api, "[[20 plus: 22] double]"));
+}
+
+test "codegen 3c.3: let-bindings, identifiers, and multi-statement programs" {
+    const api = setup();
+    api.method(api.smallint_vt, api.intern("double"), &mDouble);
+    api.method(api.smallint_vt, api.intern("plus:"), &mPlus);
+
+    // let introduces a variable; later statements see it; value = last statement.
+    try std.testing.expectEqual(@as(i64, 21), try evalInt(api, "let x := 21"));
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let x := 21; [x double]"));
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let x := 20; let y := 22; [x plus: y]"));
+    // a binding's RHS may reference earlier bindings
+    try std.testing.expectEqual(@as(i64, 84), try evalInt(api, "let x := 21; let y := [x double]; [y double]"));
+    // identifier as both receiver and argument
+    try std.testing.expectEqual(@as(i64, 10), try evalInt(api, "let x := 5; [x plus: x]"));
+
+    // an unbound identifier is out of subset → nil (not a crash)
+    try std.testing.expect(eval(api, "[y double]") == api.nilObj);
+}
+
+test "codegen 3c.3: string literals construct String objects" {
+    const api = setup();
+
+    try std.testing.expectEqualStrings("hello", try evalStr(api, "\"hello\""));
+    try std.testing.expectEqualStrings("", try evalStr(api, "\"\""));
+    // chars that must be escaped into the emitted C literal but ARE valid in a
+    // birnam string (the grammar allows any byte but `"`): backslash, newline.
+    try std.testing.expectEqualStrings("a\\c", try evalStr(api, "\"a\\c\""));
+    try std.testing.expectEqualStrings("a\nb", try evalStr(api, "\"a\nb\""));
+    // strings flow through let + are returned as the program value
+    try std.testing.expectEqualStrings("hi", try evalStr(api, "let s := \"hi\"; s"));
 }
