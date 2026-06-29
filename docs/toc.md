@@ -61,7 +61,12 @@ order.
   seam, before peg/compiler bake them in: F1 tagged immediates / SmallInt, F2
   `doesNotUnderstand:` as a message, F3 object header / trace / gc root protocol,
   F4 concurrency invariants, F5 AST-as-cells (peg's output), F6 `identityOf:`
-  seam, F7 error model. A working agenda — each item open, resolved one by one.
+  seam, F7 error model. All decided; F1/F2/F6-seam shipped.
+- **Rung 3 — the front end (peg + lang), and the road to libtcc** — `35-rung-3-front-end.md`
+  The proximate goal (birnam → C → libtcc → hot-load) and progress: 3a the PEG
+  engine on libid + its message api (`src/id/peg.zig`); the String floor value
+  type; 3b birnam's grammar built through peg messages (`src/id/lang.zig`,
+  `[Lang parse:]`). Shipped + green; 3c (C codegen + libtcc) is next.
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).
