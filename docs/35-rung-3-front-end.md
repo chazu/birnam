@@ -147,11 +147,33 @@ gained a `relocated` flag guarding the one-way transition. `test-tcc` 6 → 8: t
 staged path constructs its result via `birnam_mkSmallInt`, and emitted C
 re-dispatches a message back through libid via `birnam_send`/`birnam_intern`.
 
+**Step 2 — codegen emits real sends through libid SHIPPED (`df74cac`).** The
+emitter (`codegen.zig`) now switched off the all-in-one onto the staged path
+(`new`/`compile:`/`bindRuntime`/`relocate`); the prelude declares the
+`birnam_send`/`birnam_intern` externs alongside GETV/MKV. Every non-arithmetic
+send is lowered to a real dispatch:
+
+```
+unary   [r sel]        -> birnam_send(r, birnam_intern("sel"), 0, 0L)
+binary  [r op a]       -> birnam_send(r, birnam_intern("op"), (void*[]){a}, 1L)
+keyword [r k: a m: b]  -> birnam_send(r, birnam_intern("k:m:"), (void*[]){a,b}, 2L)
+```
+
+Binary ARITHMETIC (`+ - * /`) stays on the inline GETV/MKV fast path — the floor's
+`smallint_vt` has no arithmetic method to dispatch to, so it is load-bearing, not
+an optimisation. Receivers and args recurse through `emit`, so sends nest freely
+(`[[20 plus: 1] double]`). Args go into a C99 compound-literal `void*[]` whose
+lifetime spans the call; selectors are interned at runtime via `birnam_intern`
+(hoisting/caching is a later optimisation). `test-codegen` 6 → 7 (unary/binary/
+keyword dispatch to methods installed on `smallint_vt`, nested + mixed); the
+siphon gains a 3c.3 line.
+
 **Next steps:**
-- **Point the emitter at the runtime.** Codegen calls `[Tcc new]`/`compile:`/
-  `bindRuntime`/`relocate` instead of the all-in-one, and emits C that uses the
-  `birnam_*` shims (a small C prelude declaring the externs + GETV/MKV macros).
-  Then add sends (`birnam_send` + `birnam_intern`), variables, blocks, etc.
+- **Variables + self/args.** `let x := …` bindings and identifier receivers/args
+  (currently `emit` returns false on `ident`) — needs a small per-method
+  environment (C locals) and the method's `self`/`args` exposed.
+- **Strings & blocks.** String literals via `birnam_mkString`; blocks as nested
+  Method-ABI functions (closures need captured-environment representation).
 - **CST shape** — the wrapper-rule nesting is tolerable via `skip()`; revisit a
   desugar pass only if it gets unwieldy.
 - **Error model (F7)** — settle as eval/runtime semantics firm up.
@@ -164,6 +186,6 @@ Then, below/after: **gc** (the F3 per-vtable layout descriptor) and the richer
 ## Test/run surface
 
 `zig build test-id` (4) · `test-store` (12) · `test-peg` (8) · `test-lang` (7) ·
-`test-tcc` (8) · `test-codegen` (6); `zig build install && ./zig-out/bin/birnam-id`
+`test-tcc` (8) · `test-codegen` (7); `zig build install && ./zig-out/bin/birnam-id`
 runs the siphon through the full stack (store, peg, lang, tcc, codegen) and
 compiles `[[3 + 4] * 2]` → native → 14.
