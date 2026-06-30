@@ -9,8 +9,8 @@
 //! both `assert:attr:value:` and `findAll:where:`. That object is also exported as
 //! `db` — the name the example programs use.
 //!
-//! The core surface (the rest of the old kernel's datalog — predicates, negation,
-//! disjunction, asOf/since, aggregation, rules, nested-ref pull — grows on top):
+//! The surface (the full datalog reading — predicates, negation, disjunction,
+//! aggregation, recursive rules, asOf time travel, and nested/`:many` pull):
 //!
 //!   [db entity]                       → a fresh blank entity (a unique identity)
 //!   [db assert: e attr: a value: v]   → (inherited from the store)
