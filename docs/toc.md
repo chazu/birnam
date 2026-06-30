@@ -76,6 +76,13 @@ order.
   negation/disjunction/rule clauses, recursive rules via a set-at-a-time fixpoint,
   aggregates (count/sum/min/max/avg), time travel (`basis`/`asOf:`/`since:`/
   `between:and:`), and nested/`:many` `pull:`. The id-stack re-port of `29-datalog.md`.
+- **Toward MVP — interactive runtime, I/O, FFI, self-hosting** — `38-toward-mvp.md`
+  The work that makes the id-stack birnam usable: robust arithmetic (overflow/type/
+  zero-divide as catchable values), `System` file + stdin I/O, the `--repl`
+  interactive image (persistent bindings, multi-line, `:globals`), the FFI
+  (`Alien wrap:…` absorbs C libraries via libtcc-compiled shims, `src/id/alien.zig`),
+  and the self-hosted stdlib (`src/id/stdlib.birnam`, with the Zig floor preserved
+  via `BIRNAM_NO_STDLIB`). Plus the multi-char-operator grammar fix.
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).
