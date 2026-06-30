@@ -67,6 +67,7 @@ pub var object_vt: *Vtable = undefined; // top of the delegation chain
 pub var symbol_vt: *Vtable = undefined;
 pub var string_vt: *Vtable = undefined; // the vtable of (uninterned) byte strings
 pub var smallint_vt: *Vtable = undefined; // the vtable of tagged fixnums (F1)
+pub var float_vt: *Vtable = undefined; // the vtable of boxed f64s (the floor's only float)
 pub var nil_vt: *Vtable = undefined;
 pub var bool_vt: *Vtable = undefined; // shared by true_obj + false_obj
 
@@ -97,7 +98,12 @@ var booted = false;
 // are scanned as roots, not via tracing). See the GC section below + docs/34 §F3.
 
 const GcKind = enum(u8) { collectable, permanent };
-const Block = struct { total: usize, kind: GcKind, mark: bool = false };
+// An optional per-object finalizer (F3): run just before the block is reclaimed,
+// so an object that owns NON-id memory (a String's byte buffer, a TccUnit's native
+// code) can release it. Without this the collector frees only the libid wrapper
+// block and leaks whatever it pointed at. The finalizer receives the object and
+// must not allocate id objects (it runs mid-sweep).
+const Block = struct { total: usize, kind: GcKind, mark: bool = false, finalize: ?idapi.Finalizer = null };
 var g_blocks: std.AutoHashMapUnmanaged(usize, Block) = .{};
 
 // Auto-GC: once this many bytes have been allocated since the last collection, the
@@ -157,7 +163,16 @@ pub fn mkString(bytes: []const u8) Oop {
     setVtable(obj, string_vt);
     const dup = ca.dupe(u8, bytes) catch @panic("libid: oom");
     asString(obj).* = .{ .ptr = dup.ptr, .len = dup.len };
+    // The bytes are heap memory OUTSIDE the id block, uniquely owned by this
+    // String — register a finalizer so the collector frees them too (else every
+    // reclaimed String leaks its buffer).
+    setFinalizerC(obj, &stringFinalize);
     return obj;
+}
+/// Free a dying String's byte buffer (the `ca.dupe` from `mkString`).
+fn stringFinalize(o: Oop) callconv(.c) void {
+    const s = asString(o);
+    ca.free(@constCast(s.ptr)[0..s.len]);
 }
 pub fn stringBytes(o: Oop) []const u8 {
     const s = asString(o);
@@ -165,6 +180,30 @@ pub fn stringBytes(o: Oop) []const u8 {
 }
 fn setVtable(obj: Oop, vt: ?*Vtable) void {
     vtSlot(obj).* = vt;
+}
+
+// -- Float: the floor's only floating-point value (a boxed f64) --------------
+// SmallInt fills the immediate slot (maru-style low-bit tag), so a float can't be
+// an immediate too — it is a heap object whose payload is a single `f64`. Its
+// vtable pointer at `[-1]` is `float_vt`, found by the ordinary deref (no tag).
+// The conservative GC scans the payload as words; an f64 bit pattern that happens
+// to look like a live pointer only over-retains (never unsafe), like any value.
+
+pub const Float = extern struct { value: f64 };
+inline fn asFloat(o: Oop) *Float {
+    return @ptrCast(@alignCast(o.?));
+}
+pub fn mkFloat(v: f64) Oop {
+    const obj = allocRaw(@sizeOf(Float), .collectable);
+    setVtable(obj, float_vt);
+    asFloat(obj).* = .{ .value = v };
+    return obj;
+}
+pub fn isFloat(o: Oop) bool {
+    return o != null and !isSmallInt(o) and vtSlot(o).* == float_vt;
+}
+pub fn floatValue(o: Oop) f64 {
+    return asFloat(o).value;
 }
 
 inline fn oop(p: anytype) Oop {
@@ -365,6 +404,7 @@ pub fn boot() void {
     // their meta to vtable_vt (booted); each delegates to object_vt.
     smallint_vt = newVtable(object_vt);
     string_vt = newVtable(object_vt);
+    float_vt = newVtable(object_vt);
     nil_vt = newVtable(object_vt);
     bool_vt = newVtable(object_vt);
     nil_obj = allocRaw(0, .permanent);
@@ -471,6 +511,15 @@ fn stringBytesC(o: Oop, out_len: *usize) callconv(.c) [*]const u8 {
 fn symbolNameC(o: Oop) callconv(.c) [*:0]const u8 {
     return asSymbol(o).string;
 }
+fn mkFloatC(v: f64) callconv(.c) Oop {
+    return mkFloat(v);
+}
+fn floatValueC(o: Oop) callconv(.c) f64 {
+    return floatValue(o);
+}
+fn isFloatC(o: Oop) callconv(.c) c_int {
+    return if (isFloat(o)) 1 else 0;
+}
 fn vtableOfC(o: Oop) callconv(.c) Oop {
     return oop(vtableOf(o).?);
 }
@@ -575,9 +624,10 @@ fn gcCollect() usize {
             dead.append(ca, e.key_ptr.*) catch @panic("gc: oom");
     }
     for (dead.items) |k| {
-        const total = g_blocks.get(k).?.total;
+        const blk = g_blocks.get(k).?;
+        if (blk.finalize) |fin| fin(@ptrFromInt(k)); // release non-id memory first
         const base: [*]align(16) u8 = @ptrFromInt(k - VT);
-        ca.free(base[0..total]);
+        ca.free(base[0..blk.total]);
         _ = g_blocks.remove(k);
     }
     var it2 = g_blocks.iterator();
@@ -602,6 +652,9 @@ fn gcLiveCountC() callconv(.c) usize {
 }
 fn setTraceHookC(vt: Oop, hook: idapi.TraceHook) callconv(.c) void {
     asVtable(vt).trace_hook = hook;
+}
+fn setFinalizerC(obj: Oop, fin: idapi.Finalizer) callconv(.c) void {
+    if (g_blocks.getPtr(@intFromPtr(obj orelse return))) |b| b.finalize = fin;
 }
 fn gcSetAutoC(on: c_int) callconv(.c) void {
     g_auto_gc = (on != 0);
@@ -646,6 +699,11 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .gcLiveCount = &gcLiveCountC,
         .setTraceHook = &setTraceHookC,
         .gcSetAuto = &gcSetAutoC,
+        .setFinalizer = &setFinalizerC,
+        .float_vt = oop(float_vt),
+        .mkFloat = &mkFloatC,
+        .floatValue = &floatValueC,
+        .isFloat = &isFloatC,
     };
     // Publish the id layer into its own environment — so it is re-importable.
     _ = exportObj("Object", oop(object_vt));
@@ -746,6 +804,20 @@ test "libid: String is an uninterned byte-string floor value" {
     try std.testing.expect(!isSmallInt(s));
 }
 
+test "libid: Float is a boxed-f64 floor value" {
+    boot();
+    const f = mkFloat(3.5);
+    try std.testing.expect(isFloat(f));
+    try std.testing.expect(vtableOf(f) == float_vt);
+    try std.testing.expectEqual(@as(f64, 3.5), floatValue(f));
+    // Not a smallint, and a smallint is not a float (the tag wins).
+    try std.testing.expect(!isFloat(mkSmallInt(3)));
+    try std.testing.expect(!isSmallInt(f));
+    // nil / string are not floats.
+    try std.testing.expect(!isFloat(nil_obj));
+    try std.testing.expect(!isFloat(mkString("3.5")));
+}
+
 // -- GC tests (F3) -----------------------------------------------------------
 
 noinline fn makeGarbage(count: usize) void {
@@ -829,6 +901,64 @@ test "libid: auto-GC bounds the live set under churn (F3)" {
     // Auto-gc kept reclaiming as we went, so the live set stayed near `before`
     // rather than ballooning by 50000.
     try std.testing.expect(g_blocks.count() < before + 5000);
+}
+
+var g_finalized: usize = 0;
+fn countingFinalize(o: Oop) callconv(.c) void {
+    _ = o;
+    g_finalized += 1;
+}
+noinline fn makeFinalizableGarbage(count: usize) void {
+    var i: usize = 0;
+    var o: Oop = null;
+    while (i < count) : (i += 1) {
+        o = allocC(oop(object_vt), 0);
+        setFinalizerC(o, &countingFinalize);
+    }
+    std.mem.doNotOptimizeAway(&o);
+}
+
+test "libid: finalizers run when objects are reclaimed, exactly once (F3)" {
+    boot();
+    var anchor: usize = 0;
+    g_stack_bottom = @intFromPtr(&anchor);
+    _ = &anchor;
+    _ = gcCollect(); // settle
+
+    g_finalized = 0;
+    makeFinalizableGarbage(2000);
+    _ = gcCollect();
+    // Nearly all are reclaimed (conservative scan leaves a few stragglers), each
+    // running its finalizer once.
+    try std.testing.expect(g_finalized >= 1900);
+
+    // A second collection does NOT re-run any finalizer (the objects are gone).
+    const after = g_finalized;
+    _ = gcCollect();
+    try std.testing.expectEqual(after, g_finalized);
+}
+
+test "libid: a reclaimed String frees its bytes (no leak) (F3)" {
+    boot();
+    var anchor: usize = 0;
+    g_stack_bottom = @intFromPtr(&anchor);
+    _ = &anchor;
+    _ = gcCollect();
+
+    // Churn many transient strings; each owns a heap buffer. After GC their
+    // wrapper blocks AND buffers are gone — the live count returns near baseline.
+    const before = g_blocks.count();
+    var i: usize = 0;
+    var s: Oop = null;
+    while (i < 3000) : (i += 1) {
+        s = mkString("a transient string with some bytes to own");
+    }
+    std.mem.doNotOptimizeAway(&s);
+    try std.testing.expect(g_blocks.count() >= before + 2000);
+    _ = gcCollect();
+    // The buffers were freed via the finalizer (asan/leak checks would flag a
+    // leak otherwise); the tracked-block count drops back near baseline.
+    try std.testing.expect(g_blocks.count() <= before + 100);
 }
 
 test "libid: GC never sweeps permanents (vtables / symbols / singletons)" {

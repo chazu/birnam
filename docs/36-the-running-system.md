@@ -96,6 +96,19 @@ symbol (`tcc_add_symbol`, via the step-1 `addSymbol:value:` path — declare
 and emit a raw slot load. Faster, still late-bound, still relocatable through the
 linker. Deferred until profiling says globals are hot.
 
+> **SHIPPED — the safe layer of v2 (post-MVP, `docs/39` §3).** We bake the
+> immutable *selector*, not a value slot: codegen resolves a global's symbol ONCE
+> at compile time, declares `extern char __g<i>[];`, and emits
+> `birnam_global_b((void*)__g<i>)` — a store read keyed by the baked symbol, with
+> no runtime intern (kills the `O(symbols)` scan per reference). The store stays
+> the single source of truth for *values* (every writer funnels through `assert`),
+> so there is **zero desync risk** — only the immutable symbol is baked. `__g<i>`
+> is patched via the staged `addSymbol:value:` window; idents + `Vector`/`Map`/
+> `LogicVar` refs route through `bakeGlobal`/`putGlobalRef` (dedup by symbol
+> identity). The **value-slot O(1) read remains deferred**: to keep it airtight the
+> box must be *store-owned* (so the cross-module `[Globals at:put:]` writer stays
+> current through `assert`), touching the store's hot write path for a marginal win.
+
 The shims that touch the store (`birnam_global`, `birnam_setGlobal`) live in the
 **codegen** module (which already depends on the store), NOT in `tcc.zig` (which
 stays store-free). codegen registers them per-compile via the staged Tcc

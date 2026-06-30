@@ -163,6 +163,12 @@ fn rtMkSmallInt(v: i64) callconv(.c) Oop {
 fn rtSmallIntValue(o: Oop) callconv(.c) i64 {
     return g_api.smallIntValue(o);
 }
+fn rtMkFloat(v: f64) callconv(.c) Oop {
+    return g_api.mkFloat(v);
+}
+fn rtFloatValue(o: Oop) callconv(.c) f64 {
+    return g_api.floatValue(o);
+}
 fn rtMkString(p: [*]const u8, n: usize) callconv(.c) Oop {
     return g_api.mkString(p, n);
 }
@@ -211,6 +217,8 @@ const runtime_syms = [_]RuntimeSym{
     .{ .name = "birnam_intern", .addr = @ptrCast(&rtIntern) },
     .{ .name = "birnam_mkSmallInt", .addr = @ptrCast(&rtMkSmallInt) },
     .{ .name = "birnam_smallIntValue", .addr = @ptrCast(&rtSmallIntValue) },
+    .{ .name = "birnam_mkFloat", .addr = @ptrCast(&rtMkFloat) },
+    .{ .name = "birnam_floatValue", .addr = @ptrCast(&rtFloatValue) },
     .{ .name = "birnam_mkString", .addr = @ptrCast(&rtMkString) },
     .{ .name = "birnam_nil", .addr = @ptrCast(&rtNil) },
     .{ .name = "birnam_true", .addr = @ptrCast(&rtTrue) },
@@ -328,6 +336,25 @@ fn mInstall(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return a[2];
 }
 
+/// Reclaim a dying unit's native code. Attached as a GC finalizer only when a
+/// caller has marked the unit `disposable` (its code is provably dead) — the
+/// TCCState owns the executable pages, which `tcc_delete` releases.
+fn unitFinalize(o: Oop) callconv(.c) void {
+    c.tcc_delete(unitOf(o).state);
+}
+
+/// `[unit disposable]` — declare this unit's native code reclaimable: attach a
+/// finalizer so the collector frees the TCCState (and its executable memory) when
+/// the unit becomes unreachable. ONLY safe when nothing keeps a pointer into the
+/// code (no installed method, no live closure built from it) — e.g. a one-shot
+/// `eval:` whose program defined no blocks. Returns the unit.
+fn mDisposable(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    g_api.setFinalizer(self, &unitFinalize);
+    return self;
+}
+
 /// `[unit symbol: cName]` — the raw native address of a symbol, as a SmallInt
 /// (or nil). For codegen to grab function/data pointers it will marshal itself.
 fn mSymbol(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -363,6 +390,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(unit_vt, api.intern("bindRuntime"), &mBindRuntime);
     api.method(unit_vt, api.intern("addSymbol:value:"), &mAddSymbol);
     api.method(unit_vt, api.intern("relocate"), &mRelocate);
+    api.method(unit_vt, api.intern("disposable"), &mDisposable);
     api.method(unit_vt, api.intern("install:as:on:"), &mInstall);
     api.method(unit_vt, api.intern("symbol:"), &mSymbol);
 

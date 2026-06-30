@@ -40,6 +40,41 @@ test "tcc 3c: compile C → native → install as method → dispatch" {
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r));
 }
 
+test "tcc: a disposable unit is reclaimed by the collector (frees its code)" {
+    const api = id.id_init();
+    tcc.bringUp(api);
+    const Tcc = api.import("Tcc").?;
+
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    _ = &anchor;
+    _ = api.gcCollect(); // settle
+    const before = api.gcLiveCount();
+
+    // Compile + relocate many small units, marking each disposable and dropping
+    // it. Each holds a TCCState (executable pages); the disposable finalizer must
+    // let the collector reclaim both the unit object and (via tcc_delete) the code.
+    makeDisposableUnits(api, Tcc, 60);
+    _ = api.gcCollect();
+
+    // Nearly all reclaimed — the live set returns near baseline rather than
+    // growing by 60 (it would, if disposable units leaked their TccState forever).
+    try std.testing.expect(api.gcLiveCount() <= before + 20);
+}
+
+noinline fn makeDisposableUnits(api: *idapi.IdApi, Tcc: Oop, count: usize) void {
+    var i: usize = 0;
+    var u: Oop = null;
+    while (i < count) : (i += 1) {
+        const src = "void* f(void* self, void** a, long n){ (void)self;(void)a;(void)n; return (void*)((7L<<1)|1L); }";
+        u = api.send(Tcc, api.intern("new"), &[_]Oop{}, 0);
+        _ = api.send(u, api.intern("compile:"), &[_]Oop{str(api, src)}, 1);
+        _ = api.send(u, api.intern("relocate"), &[_]Oop{}, 0);
+        _ = api.send(u, api.intern("disposable"), &[_]Oop{}, 0);
+    }
+    std.mem.doNotOptimizeAway(&u);
+}
+
 test "tcc: compile C to a loadable .dylib on disk (AOT output)" {
     const api = id.id_init();
     tcc.bringUp(api);

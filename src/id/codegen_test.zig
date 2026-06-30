@@ -341,3 +341,34 @@ test "codegen 3c.4: map literals lower to a persistent at:put: chain" {
     // symbol keys including keyword-selector symbols (the reason for `->`).
     try std.testing.expectEqual(@as(i64, 7), try evalInt(api, "[{#at:put: -> 7} at: #at:put:]"));
 }
+
+test "codegen: float literals + the numeric tower (int↔float promotion)" {
+    const api = setupFull();
+
+    const evalFloat = struct {
+        fn f(a: *idapi.IdApi, src: []const u8) !f64 {
+            const r = eval(a, src);
+            if (a.isFloat(r) == 0) return error.NotAFloat;
+            return a.floatValue(r);
+        }
+    }.f;
+
+    // A bare float literal compiles to birnam_mkFloat and round-trips.
+    try std.testing.expectEqual(@as(f64, 3.5), try evalFloat(api, "3.5"));
+    try std.testing.expectEqual(@as(f64, -0.25), try evalFloat(api, "-0.25"));
+    // Float arithmetic, and Integer→Float promotion in BOTH directions.
+    try std.testing.expectEqual(@as(f64, 5.0), try evalFloat(api, "[2.5 + 2.5]"));
+    try std.testing.expectEqual(@as(f64, 3.5), try evalFloat(api, "[1 + 2.5]"));
+    try std.testing.expectEqual(@as(f64, 3.5), try evalFloat(api, "[2.5 + 1]"));
+    try std.testing.expectEqual(@as(f64, 2.5), try evalFloat(api, "[10.0 / 4]"));
+    // Integer / Integer stays exact (no accidental promotion).
+    try std.testing.expectEqual(@as(i64, 2), try evalInt(api, "[10 / 4]"));
+    // Cross-kind comparison + equality.
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[1.5 < 2] printString]"));
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[1 = 1.0] printString]"));
+    // printString forces a decimal point so a whole-valued float still reads float.
+    try std.testing.expectEqualStrings("4.0", try evalStr(api, "[4.0 printString]"));
+    // Conversions.
+    try std.testing.expectEqual(@as(i64, 7), try evalInt(api, "[7.5 asInteger]"));
+    try std.testing.expectEqual(@as(f64, 3.0), try evalFloat(api, "[3 asFloat]"));
+}

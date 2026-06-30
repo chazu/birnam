@@ -79,65 +79,112 @@ fn intResult(v: i128) Oop {
     return mki(@intCast(v));
 }
 
-/// Guard a binary-arithmetic argument: propagate an error operand, reject a
-/// non-Integer with `#typeMismatch`, else null (it is a usable Integer).
-fn argFault(o: Oop) ?Oop {
-    if (isErr(o)) return o;
-    if (!isInt(o)) return mkErr("typeMismatch", "Integer arithmetic needs an Integer");
-    return null;
+// -- numeric tower: Integer + Float, with int↔float promotion ----------------
+//
+// SmallInt and the boxed Float are the floor's two numbers. A binary numeric op
+// classifies its argument: an Error propagates, a non-number is a `#typeMismatch`,
+// two Integers stay exact (i128 then range-checked), and ANY Float operand
+// promotes the whole operation to f64 (`1 + 2.5` and `2.5 + 1` both → 3.5).
+
+const NumKind = enum { int, float, err, bad };
+fn numKind(o: Oop) NumKind {
+    if (isErr(o)) return .err;
+    if (isInt(o)) return .int;
+    if (g_api.isFloat(o) != 0) return .float;
+    return .bad;
+}
+fn isFloatO(o: Oop) bool {
+    return g_api.isFloat(o) != 0;
+}
+/// A number's f64 value (Integer widened, or the Float's payload).
+fn asF64(o: Oop) f64 {
+    return if (isInt(o)) @floatFromInt(iv(o)) else g_api.floatValue(o);
+}
+fn mkf(v: f64) Oop {
+    return g_api.mkFloat(v);
 }
 
 fn iAdd(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (argFault(a[0])) |f| return f;
-    return intResult(@as(i128, iv(self)) + @as(i128, iv(a[0])));
+    return switch (numKind(a[0])) {
+        .err => a[0],
+        .bad => mkErr("typeMismatch", "Integer arithmetic needs a number"),
+        .float => mkf(asF64(self) + g_api.floatValue(a[0])),
+        .int => intResult(@as(i128, iv(self)) + @as(i128, iv(a[0]))),
+    };
 }
 fn iSub(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (argFault(a[0])) |f| return f;
-    return intResult(@as(i128, iv(self)) - @as(i128, iv(a[0])));
+    return switch (numKind(a[0])) {
+        .err => a[0],
+        .bad => mkErr("typeMismatch", "Integer arithmetic needs a number"),
+        .float => mkf(asF64(self) - g_api.floatValue(a[0])),
+        .int => intResult(@as(i128, iv(self)) - @as(i128, iv(a[0]))),
+    };
 }
 fn iMul(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (argFault(a[0])) |f| return f;
-    return intResult(@as(i128, iv(self)) * @as(i128, iv(a[0])));
+    return switch (numKind(a[0])) {
+        .err => a[0],
+        .bad => mkErr("typeMismatch", "Integer arithmetic needs a number"),
+        .float => mkf(asF64(self) * g_api.floatValue(a[0])),
+        .int => intResult(@as(i128, iv(self)) * @as(i128, iv(a[0]))),
+    };
 }
 fn iDiv(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (argFault(a[0])) |f| return f;
-    if (iv(a[0]) == 0) return mkErr("zeroDivide", "division by zero");
-    return intResult(@divTrunc(@as(i128, iv(self)), @as(i128, iv(a[0]))));
+    return switch (numKind(a[0])) {
+        .err => a[0],
+        .bad => mkErr("typeMismatch", "Integer arithmetic needs a number"),
+        .float => if (g_api.floatValue(a[0]) == 0.0) mkErr("zeroDivide", "division by zero") else mkf(asF64(self) / g_api.floatValue(a[0])),
+        .int => if (iv(a[0]) == 0) mkErr("zeroDivide", "division by zero") else intResult(@divTrunc(@as(i128, iv(self)), @as(i128, iv(a[0])))),
+    };
 }
 fn iMod(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (argFault(a[0])) |f| return f;
+    // mod: is integer-only (no float remainder in the floor protocol).
+    switch (numKind(a[0])) {
+        .err => return a[0],
+        .int => {},
+        else => return mkErr("typeMismatch", "mod: needs an Integer"),
+    }
     if (iv(a[0]) == 0) return mkErr("zeroDivide", "division by zero");
     return intResult(@mod(@as(i128, iv(self)), @as(i128, iv(a[0]))));
 }
 fn iEq(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    // Equality is total: a non-Integer (or an error) is simply not equal.
-    return boolean(isInt(a[0]) and iv(self) == iv(a[0]));
+    // Numeric equality is total + cross-kind (`1 = 1.0`); a non-number is not equal.
+    return switch (numKind(a[0])) {
+        .int => boolean(iv(self) == iv(a[0])),
+        .float => boolean(asF64(self) == g_api.floatValue(a[0])),
+        else => g_api.falseObj,
+    };
+}
+/// Shared integer comparison: promote on a Float arg, else compare exactly; a
+/// non-number / error short-circuits. `op` picks the relation.
+fn iCmp(self: Oop, arg: Oop, comptime op: std.math.CompareOperator) Oop {
+    return switch (numKind(arg)) {
+        .err => arg,
+        .bad => mkErr("typeMismatch", "comparison needs a number"),
+        .float => boolean(std.math.compare(asF64(self), op, g_api.floatValue(arg))),
+        .int => boolean(std.math.compare(iv(self), op, iv(arg))),
+    };
 }
 fn iLt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (argFault(a[0])) |f| return f; // ordering across types is undefined
-    return boolean(iv(self) < iv(a[0]));
+    return iCmp(self, a[0], .lt);
 }
 fn iLe(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (argFault(a[0])) |f| return f;
-    return boolean(iv(self) <= iv(a[0]));
+    return iCmp(self, a[0], .lte);
 }
 fn iGt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (argFault(a[0])) |f| return f;
-    return boolean(iv(self) > iv(a[0]));
+    return iCmp(self, a[0], .gt);
 }
 fn iGe(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (argFault(a[0])) |f| return f;
-    return boolean(iv(self) >= iv(a[0]));
+    return iCmp(self, a[0], .gte);
 }
 fn iPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
@@ -145,6 +192,114 @@ fn iPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     var buf: [24]u8 = undefined;
     const s = std.fmt.bufPrint(&buf, "{d}", .{iv(self)}) catch return g_api.nilObj;
     return g_api.mkString(s.ptr, s.len);
+}
+/// `[anInteger asFloat]` → the Float with the same value.
+fn iAsFloat(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mkf(@floatFromInt(iv(self)));
+}
+
+// -- Float (float_vt) --------------------------------------------------------
+
+fn fAdd(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return switch (numKind(a[0])) {
+        .err => a[0],
+        .bad => mkErr("typeMismatch", "Float arithmetic needs a number"),
+        .int, .float => mkf(g_api.floatValue(self) + asF64(a[0])),
+    };
+}
+fn fSub(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return switch (numKind(a[0])) {
+        .err => a[0],
+        .bad => mkErr("typeMismatch", "Float arithmetic needs a number"),
+        .int, .float => mkf(g_api.floatValue(self) - asF64(a[0])),
+    };
+}
+fn fMul(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return switch (numKind(a[0])) {
+        .err => a[0],
+        .bad => mkErr("typeMismatch", "Float arithmetic needs a number"),
+        .int, .float => mkf(g_api.floatValue(self) * asF64(a[0])),
+    };
+}
+fn fDiv(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    switch (numKind(a[0])) {
+        .err => return a[0],
+        .bad => return mkErr("typeMismatch", "Float arithmetic needs a number"),
+        .int, .float => {},
+    }
+    const d = asF64(a[0]);
+    if (d == 0.0) return mkErr("zeroDivide", "division by zero");
+    return mkf(g_api.floatValue(self) / d);
+}
+fn fCmp(self: Oop, arg: Oop, comptime op: std.math.CompareOperator) Oop {
+    return switch (numKind(arg)) {
+        .err => arg,
+        .bad => mkErr("typeMismatch", "comparison needs a number"),
+        .int, .float => boolean(std.math.compare(g_api.floatValue(self), op, asF64(arg))),
+    };
+}
+fn fLt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return fCmp(self, a[0], .lt);
+}
+fn fLe(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return fCmp(self, a[0], .lte);
+}
+fn fGt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return fCmp(self, a[0], .gt);
+}
+fn fGe(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return fCmp(self, a[0], .gte);
+}
+fn fEq(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return switch (numKind(a[0])) {
+        .int, .float => boolean(g_api.floatValue(self) == asF64(a[0])),
+        else => g_api.falseObj,
+    };
+}
+fn fNegated(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mkf(-g_api.floatValue(self));
+}
+/// `[aFloat asInteger]` → the Integer formed by truncating toward zero (range-
+/// checked: an out-of-range or non-finite float is an `#overflow` error).
+fn fAsInteger(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const v = g_api.floatValue(self);
+    const fmin: f64 = @floatFromInt(SMALLINT_MIN);
+    const fmax: f64 = @floatFromInt(SMALLINT_MAX);
+    if (!std.math.isFinite(v) or v < fmin or v > fmax)
+        return mkErr("overflow", "float out of Integer range");
+    return mki(@intFromFloat(std.math.trunc(v)));
+}
+fn fPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    var buf: [32]u8 = undefined;
+    const s = std.fmt.bufPrint(&buf, "{d}", .{g_api.floatValue(self)}) catch return g_api.nilObj;
+    // Ensure a float reads as one: a bare integer-valued float (`4`) gets a `.0`
+    // so it round-trips to the `float` grammar rule (4.0), not the `number` rule.
+    var plain = true;
+    for (s) |ch| if (ch == '.' or ch == 'e' or ch == 'E' or ch == 'n' or ch == 'i') {
+        plain = false;
+        break;
+    };
+    if (!plain) return g_api.mkString(s.ptr, s.len);
+    var b2: [34]u8 = undefined;
+    const s2 = std.fmt.bufPrint(&b2, "{s}.0", .{s}) catch return g_api.mkString(s.ptr, s.len);
+    return g_api.mkString(s2.ptr, s2.len);
 }
 
 /// `[start to: end do: aBlock]` — invoke `[aBlock value: i]` for i in start..end
@@ -314,7 +469,23 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(int_vt, api.intern(">"), &iGt);
     api.method(int_vt, api.intern(">="), &iGe);
     api.method(int_vt, api.intern("printString"), &iPrintString);
+    api.method(int_vt, api.intern("asFloat"), &iAsFloat);
     api.method(int_vt, api.intern("to:do:"), &iToDo);
+
+    // Float (boxed f64): the same numeric protocol, promoting Integer args.
+    const flt_vt = api.float_vt;
+    api.method(flt_vt, api.intern("+"), &fAdd);
+    api.method(flt_vt, api.intern("-"), &fSub);
+    api.method(flt_vt, api.intern("*"), &fMul);
+    api.method(flt_vt, api.intern("/"), &fDiv);
+    api.method(flt_vt, api.intern("="), &fEq);
+    api.method(flt_vt, api.intern("<"), &fLt);
+    api.method(flt_vt, api.intern("<="), &fLe);
+    api.method(flt_vt, api.intern(">"), &fGt);
+    api.method(flt_vt, api.intern(">="), &fGe);
+    api.method(flt_vt, api.intern("negated"), &fNegated);
+    api.method(flt_vt, api.intern("asInteger"), &fAsInteger);
+    api.method(flt_vt, api.intern("printString"), &fPrintString);
 
     // A default printString on Object so any object can be displayed; specific
     // types override it. (Installed before the type-specific ones below.)

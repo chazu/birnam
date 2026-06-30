@@ -17,10 +17,12 @@
 //! ARGUMENT types, one per birnam argument:
 //!   i  int   (32-bit; a SmallInt)     s  const char* (a String; freed after call)
 //!   l  long  (64-bit; a SmallInt)     p  void* (a pointer, boxed in a SmallInt)
+//!   d  double (a Float)               f  float  (a Float; narrowed at the call)
 //!   v  void  (return only; → nil)
 //! e.g. "i i" = `int f(int)` (abs); "l s" = `long f(const char*)` (strlen, size_t);
-//! "s s" = `char* f(const char*)` (getenv). Doubles/structs are out of scope until
-//! a Float/struct type lands (a pointer covers opaque handles meanwhile).
+//! "s s" = `char* f(const char*)` (getenv); "d d" = `double f(double)` (sqrt, via
+//! libm — `[Alien addLibrary: "m"]` or a dlopen). Structs by value are still out of
+//! scope (a pointer covers opaque handles meanwhile).
 //!
 //! The RECEIVER is the FIRST C argument (the Smalltalk-natural idiom), so a
 //! K-argument function becomes a method of arity K-1: `["hi" clen]` calls
@@ -73,6 +75,8 @@ fn cType(sc: u8) ?[]const u8 {
     return switch (sc) {
         'i' => "int",
         'l' => "long",
+        'd' => "double",
+        'f' => "float",
         's' => "const char*",
         'p' => "void*",
         'v' => "void",
@@ -116,6 +120,8 @@ fn genShim(fn_name: []const u8, sig: []const u8) []u8 {
     w(&b,
         \\extern void* birnam_mkSmallInt(long);
         \\extern long birnam_smallIntValue(void*);
+        \\extern void* birnam_mkFloat(double);
+        \\extern double birnam_floatValue(void*);
         \\extern const char* birnam_cstr(void*);
         \\extern void birnam_free_cstr(const char*);
         \\extern void* birnam_mkString(const char*, long);
@@ -151,6 +157,8 @@ fn genShim(fn_name: []const u8, sig: []const u8) []u8 {
         const line = switch (sc) {
             'i' => std.fmt.bufPrint(&tmp, "int a{d} = (int)birnam_smallIntValue({s});\n", .{ i, src }),
             'l' => std.fmt.bufPrint(&tmp, "long a{d} = birnam_smallIntValue({s});\n", .{ i, src }),
+            'd' => std.fmt.bufPrint(&tmp, "double a{d} = birnam_floatValue({s});\n", .{ i, src }),
+            'f' => std.fmt.bufPrint(&tmp, "float a{d} = (float)birnam_floatValue({s});\n", .{ i, src }),
             's' => std.fmt.bufPrint(&tmp, "const char* a{d} = birnam_cstr({s});\n", .{ i, src }),
             'p' => std.fmt.bufPrint(&tmp, "void* a{d} = (void*)birnam_smallIntValue({s});\n", .{ i, src }),
             else => unreachable,
@@ -181,6 +189,7 @@ fn genShim(fn_name: []const u8, sig: []const u8) []u8 {
     // Marshal the result.
     switch (ret) {
         'i', 'l' => w(&b, "return birnam_mkSmallInt((long)__r);\n"),
+        'd', 'f' => w(&b, "return birnam_mkFloat((double)__r);\n"),
         'p' => w(&b, "return birnam_mkSmallInt((long)__r);\n"),
         's' => w(&b, "return __r ? birnam_mkString(__r, strlen(__r)) : birnam_nil();\n"),
         'v' => w(&b, "return birnam_nil();\n"),

@@ -109,6 +109,24 @@ pub const IdApi = extern struct {
     /// byte threshold since the last collection triggers one. Disable for
     /// deterministic manual-GC scenarios.
     gcSetAuto: *const fn (c_int) callconv(.c) void,
+
+    // -- Float: the boxed-f64 floor value type (appended) --------------------
+    /// The float vtable, and the boxed-f64 constructor / decoder / predicate.
+    /// SmallInt owns the immediate tag, so a Float is a heap object with a single
+    /// `f64` payload — the floor's only floating-point value. Higher layers add
+    /// the Float protocol (prelude) and int↔float promotion.
+    float_vt: Oop,
+    mkFloat: *const fn (f64) callconv(.c) Oop,
+    floatValue: *const fn (Oop) callconv(.c) f64,
+    isFloat: *const fn (Oop) callconv(.c) c_int,
+
+    // -- GC finalizers (F3; appended) ----------------------------------------
+    /// setFinalizer(obj, fin): attach a finalizer to a collectable object. When
+    /// the collector reclaims `obj` it calls `fin(obj)` first, so the object can
+    /// release memory it owns OUTSIDE the id heap (a String's bytes, a TccUnit's
+    /// native code). No-op on a permanent object or an untracked pointer. The
+    /// finalizer must not allocate id objects (it runs mid-sweep).
+    setFinalizer: *const fn (Oop, Finalizer) callconv(.c) void,
 };
 
 /// The mark function handed to a root provider / trace hook: call it per root Oop.
@@ -117,6 +135,9 @@ pub const MarkFn = *const fn (Oop) callconv(.c) void;
 pub const RootProvider = *const fn (MarkFn) callconv(.c) void;
 /// A per-vtable trace hook (F3): marks an instance's Oops held in non-id memory.
 pub const TraceHook = *const fn (Oop, MarkFn) callconv(.c) void;
+/// A per-object finalizer (F3): called once, just before the object is reclaimed,
+/// to release memory it owns outside the id heap. Receives the dying object.
+pub const Finalizer = *const fn (Oop) callconv(.c) void;
 
 /// libid's module entrypoint: `id_init()` returns the API table (cf. `_libid_init`).
 pub const IdInitFn = *const fn () callconv(.c) *IdApi;

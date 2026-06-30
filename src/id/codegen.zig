@@ -54,6 +54,7 @@ var r_expr: Oop = null;
 var r_primary: Oop = null;
 var r_message: Oop = null;
 var r_number: Oop = null;
+var r_float: Oop = null;
 var r_send: Oop = null;
 var r_binaryMsg: Oop = null;
 var r_unaryMsg: Oop = null;
@@ -70,6 +71,38 @@ var r_mapEntry: Oop = null;
 var r_logicVar: Oop = null;
 
 var src_bytes: []const u8 = &.{}; // the source for the current eval (for spans)
+
+// Baked global handles (docs/36 §3 v2, the safe layer). A global reference's
+// VALUE stays late-bound through the store (the single source of truth), but its
+// interned SELECTOR is immutable, so we resolve it ONCE at compile time and bake
+// its address as an extern symbol — turning each runtime read from an O(symbols)
+// intern scan into a constant the linker patches. `baked_globals` collects the
+// distinct symbols referenced in the current compile (their index is the `__g<i>`
+// suffix); `global_memo` dedups by symbol identity. Both reset per eval.
+var baked_globals: std.ArrayList(Oop) = .{};
+var global_memo: std.AutoHashMapUnmanaged(Oop, usize) = .{};
+
+/// Resolve `name` to its interned symbol (once), assign it a stable `__g<i>` slot,
+/// and return that index. Keyed by symbol identity, so the same global referenced
+/// many times bakes a single handle.
+fn bakeGlobal(name: []const u8) usize {
+    const z = ca.allocSentinel(u8, name.len, 0) catch @panic("codegen: oom");
+    defer ca.free(z);
+    @memcpy(z[0..name.len], name);
+    const sym = g_api.intern(z.ptr);
+    if (global_memo.get(sym)) |id| return id;
+    const id = baked_globals.items.len;
+    baked_globals.append(ca, sym) catch @panic("codegen: oom");
+    global_memo.put(ca, sym, id) catch @panic("codegen: oom");
+    return id;
+}
+
+/// Emit a reference to the global `name`: `birnam_global_b((void*)__g<i>)` — a
+/// store read keyed by the baked symbol (no runtime intern). Replaces the v1
+/// `birnam_global("name")` everywhere a global is read.
+fn putGlobalRef(buf: *std.ArrayList(u8), name: []const u8) void {
+    putFmt(buf, "birnam_global_b((void*)__g{d})", .{bakeGlobal(name)});
+}
 
 // Lexical environment for the current eval: birnam variable names currently in
 // scope (from `let` / block params / block captures). Each is emitted as a C
@@ -162,6 +195,18 @@ fn rtGlobal(name: [*:0]const u8) callconv(.c) Oop {
     // binding (even one bound to nil) is non-null and wins.
     const cur = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globals_entity, sym }, 2);
     if (cur != null) return cur;
+    if (g_api.isExported(name) != 0) return g_api.import(name);
+    return g_api.nilObj;
+}
+
+/// `birnam_global_b(sym)` — the baked-handle read: `sym` is an already-interned
+/// selector (resolved at compile time, address patched in by the linker), so this
+/// skips the runtime intern that `rtGlobal` does. Same late-bound resolution
+/// otherwise: the Globals store wins, else a module facade / seeded type, else nil.
+fn rtGlobalB(sym: Oop) callconv(.c) Oop {
+    const cur = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globals_entity, sym }, 2);
+    if (cur != null) return cur;
+    const name = g_api.symbolName(sym);
     if (g_api.isExported(name) != 0) return g_api.import(name);
     return g_api.nilObj;
 }
@@ -324,6 +369,14 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
         put(buf, "L)");
         return true;
     }
+    if (r == r_float) {
+        // A boxed f64: the span text (`3.14`, `-0.5`) is already a valid C double
+        // literal — hand it to the runtime constructor.
+        put(buf, "birnam_mkFloat(");
+        put(buf, text(node));
+        put(buf, ")");
+        return true;
+    }
     if (r == r_ident) {
         const name = text(node);
         if (isBound(name)) {
@@ -333,9 +386,8 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
         }
         // Unbound → a global reference, resolved at runtime through the binding
         // (late-bound, relocatable; undeclared/forward refs read nil — docs/36).
-        put(buf, "birnam_global(\"");
-        putCStr(buf, name);
-        put(buf, "\")");
+        // The selector is baked at compile time (no runtime intern).
+        putGlobalRef(buf, name);
         return true;
     }
     if (r == r_string) {
@@ -408,7 +460,9 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
     if (r == r_logicVar) {
         // `?p` → `[LogicVar named: #p]` — the canonical query variable for name p.
         const name = text(child(node, 0)); // the ident after '?'
-        put(buf, "birnam_send(birnam_global(\"LogicVar\"), birnam_intern(\"named:\"), (void*[]){birnam_intern(\"");
+        put(buf, "birnam_send(");
+        putGlobalRef(buf, "LogicVar");
+        put(buf, ", birnam_intern(\"named:\"), (void*[]){birnam_intern(\"");
         putCStr(buf, name);
         put(buf, "\")}, 1L)");
         return true;
@@ -423,7 +477,9 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
 /// `Vector` resolves to the collection factory.
 fn emitVectorLit(buf: *std.ArrayList(u8), node: Oop, upto: usize) bool {
     if (upto == 0) {
-        put(buf, "birnam_send(birnam_global(\"Vector\"), birnam_intern(\"new\"), 0, 0L)");
+        put(buf, "birnam_send(");
+        putGlobalRef(buf, "Vector");
+        put(buf, ", birnam_intern(\"new\"), 0, 0L)");
         return true;
     }
     put(buf, "birnam_send(");
@@ -439,7 +495,9 @@ fn emitVectorLit(buf: *std.ArrayList(u8), node: Oop, upto: usize) bool {
 /// `emitVectorLit`; each child is a `mapEntry` node (key child 0, value child 1).
 fn emitMapLit(buf: *std.ArrayList(u8), node: Oop, upto: usize) bool {
     if (upto == 0) {
-        put(buf, "birnam_send(birnam_global(\"Map\"), birnam_intern(\"new\"), 0, 0L)");
+        put(buf, "birnam_send(");
+        putGlobalRef(buf, "Map");
+        put(buf, ", birnam_intern(\"new\"), 0, 0L)");
         return true;
     }
     put(buf, "birnam_send(");
@@ -473,7 +531,7 @@ fn collectRefs(node0: Oop, set: *std.ArrayList([]const u8)) void {
         setAdd(set, text(node));
         return;
     }
-    if (r == r_number or r == r_string) return;
+    if (r == r_number or r == r_float or r == r_string) return;
     if (r == r_send) {
         collectRefs(child(node, 0), set); // receiver
         const msg = skip(child(node, 1));
@@ -721,6 +779,8 @@ fn runProgram(src: Oop, persist: bool) Oop {
     bound_names.clearRetainingCapacity();
     fn_defs.clearRetainingCapacity();
     blk_counter = 0;
+    baked_globals.clearRetainingCapacity();
+    global_memo.clearRetainingCapacity();
 
     // The `__ev` function body is emitted first (which populates fn_defs with any
     // block functions, in post-order); the final source is prelude + fn_defs +
@@ -738,15 +798,21 @@ fn runProgram(src: Oop, persist: bool) Oop {
         \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
         \\extern void* birnam_intern(const char* name);
         \\extern void* birnam_mkString(const char* p, long n);
+        \\extern void* birnam_mkFloat(double v);
         \\extern void* birnam_nil(void);
         \\extern void* birnam_proto(void* parent);
         \\extern void* birnam_objectVt(void);
         \\extern void birnam_method(void* vt, void* sel, void* fn);
         \\extern void* birnam_alloc(void* vt, long nbytes);
         \\extern void* birnam_global(const char* name);
+        \\extern void* birnam_global_b(void* sym);
         \\extern void birnam_global_set(const char* name, void* value);
         \\
     );
+    // Declare each baked global handle: `extern char __g<i>[];` — its ADDRESS (the
+    // array decays) is the interned symbol the linker patches in, so a read is
+    // `birnam_global_b((void*)__g<i>)` with no runtime intern.
+    for (0..baked_globals.items.len) |i| putFmt(&buf, "extern char __g{d}[];\n", .{i});
     put(&buf, fn_defs.items);
     put(&buf, ev.items);
 
@@ -760,7 +826,14 @@ fn runProgram(src: Oop, persist: bool) Oop {
     if (s1(unit, "compile:", c_src) == g_api.nilObj) return g_api.nilObj;
     _ = s0(unit, "bindRuntime");
     addShim(unit, "birnam_global", @ptrCast(&rtGlobal));
+    addShim(unit, "birnam_global_b", @ptrCast(&rtGlobalB));
     addShim(unit, "birnam_global_set", @ptrCast(&rtGlobalSet));
+    // Patch each baked handle `__g<i>` to its interned symbol's address.
+    for (baked_globals.items, 0..) |sym, i| {
+        var nb: [16]u8 = undefined;
+        const nm = std.fmt.bufPrint(&nb, "__g{d}", .{i}) catch return g_api.nilObj;
+        addShim(unit, nm, @ptrCast(sym.?));
+    }
     if (s0(unit, "relocate") == g_api.nilObj) return g_api.nilObj;
 
     const vt = g_api.proto(g_api.object_vt);
@@ -768,7 +841,17 @@ fn runProgram(src: Oop, persist: bool) Oop {
     const fname = "__ev";
     _ = g_api.send(unit, g_api.intern("install:as:on:"), &[_]Oop{ g_api.mkString(fname, fname.len), sel, vt }, 3);
     const inst = g_api.alloc(vt, 0);
-    return g_api.send(inst, sel, &[_]Oop{}, 0);
+    const result = g_api.send(inst, sel, &[_]Oop{}, 0);
+
+    // Reclaim this eval's native code if it can't be referenced after the call.
+    // A block literal installs a `value` method pointing into THIS unit's code
+    // (emitBlock → birnam_method), so a returned/stored closure would keep that
+    // pointer live — keep the unit then. With no blocks (blk_counter == 0) the
+    // result is pure data built through the runtime shims, so the code is dead:
+    // mark the unit disposable and let the collector `tcc_delete` it. Bounds the
+    // per-eval TccState leak for the common (no-closure) REPL line.
+    if (blk_counter == 0) _ = s0(unit, "disposable");
+    return result;
 }
 
 // -- bringup / module entrypoint --------------------------------------------
@@ -788,6 +871,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     r_primary = api.intern("primary");
     r_message = api.intern("message");
     r_number = api.intern("number");
+    r_float = api.intern("float");
     r_send = api.intern("send");
     r_binaryMsg = api.intern("binaryMsg");
     r_unaryMsg = api.intern("unaryMsg");

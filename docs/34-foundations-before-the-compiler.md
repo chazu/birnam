@@ -65,6 +65,14 @@ singletons + `mkSmallInt`/`smallIntValue`/`isSmallInt` in `id.zig`, exposed on
 the `IdApi` (appended); `vtableOf` tag-branches; rung-2 `count`/`history`/
 `attrCount`/`attrAt` now return real SmallInts. `test-id` 3/3, `test-store` 11/11.
 
+**Float (the second number, post-MVP — `docs/39`).** SmallInt owns the *only*
+immediate tag, so the floor's float is a **boxed `f64`**: a heap object whose
+`[-1]` vtable is `float_vt`, payload one `f64` (`mkFloat`/`floatValue`/`isFloat`,
+appended to the IdApi). The prelude adds its protocol with int↔float promotion
+(`1 + 2.5` → `3.5`); the grammar a `float` rule before `number`; the FFI `d`/`f`
+signature chars. The conservative GC scans the payload like any value (an `f64`
+bit pattern that looks like a pointer only over-retains — never unsafe).
+
 ## F2 — `doesNotUnderstand:` as a message
 
 **What.** Today `bind` returns null and `send` *panics* ("method not found").
@@ -168,6 +176,14 @@ conservatively, exactly as Piumarta did — but hand-written over our own heap:
   allocation point because every live object is reachable from the stack/roots
   there. Inactive until a stack bottom is set (off during module load); the script
   runner sets it. `[System autoGc: bool]` toggles; `[System liveObjects]` reports.
+- **Finalizers (post-MVP — `docs/39`).** A `.collectable` block may carry a
+  `finalize` hook (`Block.finalize`, set via `IdApi.setFinalizer`), run once just
+  before reclamation so an object can release memory it owns *outside* the id heap
+  (the hook must not allocate id objects — it runs mid-sweep). This closed a real
+  gap: the sweep freed only the wrapper block, leaking whatever it pointed at. Now
+  a reclaimed **String** frees its byte buffer, and a **TccUnit** marked
+  `disposable` (its native code provably dead — codegen does this for an eval that
+  installed no closures) is `tcc_delete`d. See `docs/39` §2.
 
 Proof: `examples/gc.birnam` (manual, churns 540k objects, all live data survives)
 and `examples/auto-gc.birnam` (2M allocations stay ~25k live / ~36 MB RSS). Tests

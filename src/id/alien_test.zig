@@ -56,6 +56,28 @@ test "alien: wrap libc getenv (string receiver → string return; nil when absen
     try std.testing.expect(miss == api.nilObj);
 }
 
+test "alien: wrap libc atof — string receiver → double return (a Float)" {
+    const api = setup();
+    const Alien = api.import("Alien").?;
+    // double atof(const char*): "d s" — the String receiver IS the C argument,
+    // the result comes back as a boxed Float.
+    _ = api.send(Alien, api.intern("wrap:signature:as:on:"), &[_]Oop{ str(api, "atof"), str(api, "d s"), api.intern("asCDouble"), api.string_vt }, 4);
+    const r = api.send(str(api, "3.25"), api.intern("asCDouble"), &[_]Oop{}, 0);
+    try std.testing.expect(api.isFloat(r) != 0);
+    try std.testing.expectEqual(@as(f64, 3.25), api.floatValue(r));
+}
+
+test "alien: wrap libc pow — double receiver + double arg + double return" {
+    const api = setup();
+    const Alien = api.import("Alien").?;
+    // double pow(double, double): "d d d" — receiver (a Float) is the base, the
+    // one message arg is the exponent; the result is a Float.
+    _ = api.send(Alien, api.intern("wrap:signature:as:on:"), &[_]Oop{ str(api, "pow"), str(api, "d d d"), api.intern("raisedTo:"), api.float_vt }, 4);
+    const r = api.send(api.mkFloat(2.0), api.intern("raisedTo:"), &[_]Oop{api.mkFloat(10.0)}, 1);
+    try std.testing.expect(api.isFloat(r) != 0);
+    try std.testing.expectEqual(@as(f64, 1024.0), api.floatValue(r));
+}
+
 test "alien: an invalid signature is rejected (nil, no crash)" {
     const api = setup();
     const Alien = api.import("Alien").?;

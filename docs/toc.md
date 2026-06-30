@@ -83,6 +83,13 @@ order.
   (`Alien wrap:…` absorbs C libraries via libtcc-compiled shims, `src/id/alien.zig`),
   and the self-hosted stdlib (`src/id/stdlib.birnam`, with the Zig floor preserved
   via `BIRNAM_NO_STDLIB`). Plus the multi-char-operator grammar fix.
+- **Post-MVP — numeric tower, GC finalizers, baked globals** — `39-post-mvp-float-gc-globals.md`
+  Three arcs after the MVP: the **Float** floor type (boxed `f64`, int↔float
+  promotion, FFI `d`/`f` doubles), **GC finalizers** (the collector can now run
+  cleanup — reclaimed Strings free their bytes, disposable TccUnits `tcc_delete`
+  their native code), and **baked global handles** (the safe symbol-baking layer of
+  the `docs/36` v2 optimization — no runtime intern, zero desync risk). Notes what
+  stays deferred (struct-by-value FFI, value-slot O(1) globals, scope chains).
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).

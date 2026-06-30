@@ -101,6 +101,9 @@ fn buildGrammar() void {
     // Leaf TOKENS as rules (labelled spans codegen can read text from).
     defRule("ident", seqN(&.{ alpha, star(alnum) }));
     defRule("number", seqN(&.{ optp(lit("-")), plus(digit) }));
+    // float = '-'? digit+ '.' digit+ — a boxed-f64 literal (3.14, -0.5). Tried
+    // BEFORE number in `primary` so `3.5` is one float, not `3` then a stray `.5`.
+    defRule("float", seqN(&.{ optp(lit("-")), plus(digit), lit("."), plus(digit) }));
     defRule("string", seqN(&.{
         lit("\""),
         star(seqN(&.{ notp(lit("\"")), anyc() })),
@@ -125,8 +128,8 @@ fn buildGrammar() void {
         }),
     }));
 
-    // primary = number / string / symbol / ident
-    defRule("primary", altN(&.{ rref("number"), rref("string"), rref("symbol"), rref("ident") }));
+    // primary = float / number / string / symbol / ident  (float before number)
+    defRule("primary", altN(&.{ rref("float"), rref("number"), rref("string"), rref("symbol"), rref("ident") }));
 
     // keyword = ident ':'   (the ':' of ':=' only appears in letBinding, matched first)
     defRule("keyword", seqN(&.{ rref("ident"), lit(":") }));
