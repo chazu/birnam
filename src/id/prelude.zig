@@ -192,6 +192,17 @@ fn bPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkString(s.ptr, s.len);
 }
 
+/// The DEFAULT `printString` (installed on `Object`), so every object is printable
+/// for display / `,` / the REPL. Specific types (Integer, String, Vector, …)
+/// override it; this is the fallback for the rest (blocks, plain instances).
+fn objPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    const s = "anObject";
+    return g_api.mkString(s.ptr, s.len);
+}
+
 // -- System (I/O) ------------------------------------------------------------
 
 fn writeString(s: Oop) void {
@@ -304,6 +315,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(int_vt, api.intern(">="), &iGe);
     api.method(int_vt, api.intern("printString"), &iPrintString);
     api.method(int_vt, api.intern("to:do:"), &iToDo);
+
+    // A default printString on Object so any object can be displayed; specific
+    // types override it. (Installed before the type-specific ones below.)
+    api.method(api.object_vt, api.intern("printString"), &objPrintString);
 
     const b_vt = api.vtableOf(api.trueObj);
     api.method(b_vt, api.intern("ifTrue:ifFalse:"), &bIfTrueIfFalse);

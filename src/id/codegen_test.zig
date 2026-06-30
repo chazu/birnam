@@ -120,6 +120,29 @@ test "codegen: arithmetic is dispatched — zeroDivide is a value and propagates
     try std.testing.expectEqual(@as(i64, 25), try evalInt(api, "[100 / 4]"));
 }
 
+test "codegen: evalPersisting: top-level lets survive across evaluations (REPL)" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    const evalP = struct {
+        fn e(a: *idapi.IdApi, cg: Oop, src: []const u8) Oop {
+            return a.send(cg, a.intern("evalPersisting:"), &[_]Oop{a.mkString(src.ptr, src.len)}, 1);
+        }
+    }.e;
+
+    // Bind in one evaluation, use in the next — the binding persists as a global.
+    _ = evalP(api, Codegen, "let x := 40");
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(evalP(api, Codegen, "[x + 2]")));
+    // Rebinding updates it; a later line sees the new value.
+    _ = evalP(api, Codegen, "let x := [x * 2]"); // x := 80
+    try std.testing.expectEqual(@as(i64, 80), api.smallIntValue(evalP(api, Codegen, "x")));
+
+    // Plain `eval:` does NOT persist (a block-local let stays local), so this name
+    // is undeclared → nil.
+    try std.testing.expect(eval(api, "y") == api.nilObj);
+    _ = eval(api, "let y := 5"); // eval: (non-persisting)
+    try std.testing.expect(eval(api, "y") == api.nilObj); // still undeclared next time
+}
+
 test "codegen: parse failure / empty / undeclared global all yield nil (no crash)" {
     const api = setup();
 

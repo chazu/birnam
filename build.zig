@@ -253,6 +253,17 @@ pub fn build(b: *std.Build) void {
     siphon_exe.linkLibC();
     b.installArtifact(siphon_exe);
 
+    // Unit tests for the siphon/REPL host (e.g. the REPL's bracket balancer).
+    const main_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const main_tests = b.addTest(.{ .root_module = main_test_mod });
+    main_tests.linkLibC();
+    const test_main_step = b.step("test-main", "siphon/REPL host unit tests");
+    test_main_step.dependOn(&b.addRunArtifact(main_tests).step);
+
     const id_test_mod = b.createModule(.{
         .root_source_file = b.path("src/id/id.zig"),
         .target = target,

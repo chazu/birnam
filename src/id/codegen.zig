@@ -166,6 +166,14 @@ fn rtGlobal(name: [*:0]const u8) callconv(.c) Oop {
     return g_api.nilObj;
 }
 
+/// `birnam_global_set("name", value)` — bind a global by asserting it onto the
+/// Globals entity (the same store cell `birnam_global` reads). The write side of
+/// the namespace, emitted for top-level `let`s in persisting (REPL) mode so a
+/// binding survives to the next evaluation.
+fn rtGlobalSet(name: [*:0]const u8, value: Oop) callconv(.c) void {
+    _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_globals_entity, g_api.intern(name), value }, 3);
+}
+
 /// Register a codegen-owned shim into a unit's pre-relocate symbol window.
 fn addShim(unit: Oop, name: []const u8, fnptr: *const anyopaque) void {
     const name_str = g_api.mkString(name.ptr, name.len);
@@ -594,7 +602,7 @@ fn emitBlock(buf: *std.ArrayList(u8), blockNode: Oop) bool {
     for (caps.items, 0..) |cName, i| {
         putFmt(&body_buf, "void* b_{s} = ((void**)self)[{d}];\n", .{ cName, i });
     }
-    const body_ok = if (body != null) emitBody(&body_buf, body) else blk: {
+    const body_ok = if (body != null) emitBody(&body_buf, body, false) else blk: {
         put(&body_buf, "return birnam_nil();\n");
         break :blk true;
     };
@@ -634,7 +642,11 @@ fn emitBlock(buf: *std.ArrayList(u8), blockNode: Oop) bool {
 /// statements), each bare expression is evaluated, and the LAST statement's value
 /// is `return`ed. A `let` as the final statement returns its bound value; an
 /// empty body returns nil. Returns false if any statement is out of subset.
-fn emitBody(buf: *std.ArrayList(u8), statements: Oop) bool {
+///
+/// With `persist` true (REPL mode — only ever the OUTERMOST statements, never a
+/// block body), each top-level `let` ALSO writes its value to the Globals namespace
+/// so it survives to the next evaluation; block-local lets stay local.
+fn emitBody(buf: *std.ArrayList(u8), statements: Oop, persist: bool) bool {
     const ns = nchild(statements);
     var i: usize = 0;
     while (i < ns) : (i += 1) {
@@ -652,6 +664,13 @@ fn emitBody(buf: *std.ArrayList(u8), statements: Oop) bool {
             if (!emit(buf, rhs)) return false; // RHS sees only earlier bindings
             put(buf, ";\n");
             bound_names.append(ca, name) catch @panic("codegen: oom");
+            if (persist) {
+                put(buf, "birnam_global_set(\"");
+                putCStr(buf, name);
+                put(buf, "\", b_");
+                put(buf, name);
+                put(buf, ");\n");
+            }
             if (last) {
                 put(buf, "return b_");
                 put(buf, name);
@@ -675,7 +694,18 @@ fn emitBody(buf: *std.ArrayList(u8), statements: Oop) bool {
 fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
-    const src = a[0];
+    return runProgram(a[0], false);
+}
+
+/// `[Codegen evalPersisting: src]` — like `eval:`, but top-level `let`s persist to
+/// the Globals namespace (so they survive to the next call). The REPL's evaluator.
+fn mEvalPersisting(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return runProgram(a[0], true);
+}
+
+fn runProgram(src: Oop, persist: bool) Oop {
     var len: usize = 0;
     const p = g_api.stringBytes(src, &len);
     src_bytes = p[0..len];
@@ -698,7 +728,7 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     var ev: std.ArrayList(u8) = .{};
     defer ev.deinit(ca);
     put(&ev, "void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\n");
-    if (!emitBody(&ev, statements)) return g_api.nilObj;
+    if (!emitBody(&ev, statements, persist)) return g_api.nilObj;
     put(&ev, "}");
 
     var buf: std.ArrayList(u8) = .{};
@@ -714,6 +744,7 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         \\extern void birnam_method(void* vt, void* sel, void* fn);
         \\extern void* birnam_alloc(void* vt, long nbytes);
         \\extern void* birnam_global(const char* name);
+        \\extern void birnam_global_set(const char* name, void* value);
         \\
     );
     put(&buf, fn_defs.items);
@@ -729,6 +760,7 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (s1(unit, "compile:", c_src) == g_api.nilObj) return g_api.nilObj;
     _ = s0(unit, "bindRuntime");
     addShim(unit, "birnam_global", @ptrCast(&rtGlobal));
+    addShim(unit, "birnam_global_set", @ptrCast(&rtGlobalSet));
     if (s0(unit, "relocate") == g_api.nilObj) return g_api.nilObj;
 
     const vt = g_api.proto(g_api.object_vt);
@@ -785,6 +817,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     }
 
     api.method(codegen_vt, api.intern("eval:"), &mEval);
+    api.method(codegen_vt, api.intern("evalPersisting:"), &mEvalPersisting);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
 
     if (!reloading) {
