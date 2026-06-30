@@ -6,12 +6,13 @@
 //!
 //! Covers the whole birnam grammar:
 //!   - integer + string literals (`birnam_mkString`);
-//!   - binary ARITHMETIC sends `[a op b]` (op ∈ + - * /) — inlined as raw C math
-//!     via GETV/MKV (the floor's `smallint_vt` has no `+` method to dispatch to,
-//!     so this fast path is load-bearing, not merely an optimisation);
-//!   - every OTHER send — unary `[r sel]`, non-arithmetic binary `[r op a]`, and
-//!     keyword `[r k: a m: b]` — lowered to a real dispatch through libid via the
-//!     `birnam_send`/`birnam_intern` runtime shims;
+//!   - EVERY send — unary `[r sel]`, binary `[r op a]` (including arithmetic
+//!     `+ - * /`), and keyword `[r k: a m: b]` — lowered to a real dispatch through
+//!     libid via the `birnam_send`/`birnam_intern` runtime shims. Arithmetic
+//!     therefore dispatches to the SmallInt protocol (the prelude) and honors its
+//!     error flow — `[10 / 0]` is a #zeroDivide value, an error receiver propagates
+//!     — rather than being inlined as raw C math that would untag past those (the
+//!     former F7 codegen gap, now closed);
 //!   - variables: `let x := e` → a C local `b_x`; identifiers resolve to it;
 //!   - multi-statement programs (`a; b; c`) → the last statement's value;
 //!   - blocks `[:a :b | body]` → file-scope C functions with the Method ABI
@@ -253,10 +254,6 @@ fn mDefineMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return vt;
 }
 
-fn isArith(op: []const u8) bool {
-    return op.len == 1 and (op[0] == '+' or op[0] == '-' or op[0] == '*' or op[0] == '/');
-}
-
 /// Emit `bytes` as the body of a C string literal (no surrounding quotes),
 /// escaping everything that could break the literal or be misread. Non-printable
 /// bytes become 3-digit octal (`\ooo`, unambiguous — unlike greedy `\x`). A C
@@ -360,17 +357,12 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
         if (mr == r_binaryMsg) {
             const op = text(child(msg, 0)); // the binop char(s)
             const arg = child(msg, 1);
-            if (isArith(op)) {
-                // Fast path: raw C arithmetic on the untagged values.
-                put(buf, "MKV( GETV(");
-                if (!emit(buf, recv)) return false;
-                put(buf, ") ");
-                put(buf, op);
-                put(buf, " GETV(");
-                if (!emit(buf, arg)) return false;
-                put(buf, ") )");
-                return true;
-            }
+            // EVERY binary op — including `+ - * /` — is a real send, so it
+            // dispatches to the SmallInt protocol (the prelude) and honors its
+            // error flow: `[10 / 0]` yields a #zeroDivide value, and an error
+            // receiver propagates (doesNotUnderstand: returns self) instead of
+            // being untagged into garbage. (Arithmetic was once inlined as raw C
+            // math, which bypassed both — that was the F7 codegen gap.)
             return emitGeneralSend(buf, recv, op, &[_]Oop{arg});
         }
 
@@ -712,7 +704,6 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     var buf: std.ArrayList(u8) = .{};
     defer buf.deinit(ca);
     put(&buf,
-        \\#define GETV(x) (((long)(x))>>1)
         \\#define MKV(x) ((void*)(((long)(x))<<1|1L))
         \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
         \\extern void* birnam_intern(const char* name);

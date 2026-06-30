@@ -1,0 +1,20 @@
+// Arithmetic errors as values.
+//
+//   birnam examples/errors.birnam
+//
+// Arithmetic compiles to a real send, so `[a / b]` dispatches to the SmallInt
+// protocol's guarded `/`. Dividing by zero yields a #zeroDivide error VALUE — not
+// a crash — which `on:do:` can catch and which propagates through any further
+// sends (an error doesNotUnderstand: anything, returning itself).
+
+// A safe divide that turns a division error into a fallback value.
+let safeDiv := [:a :b |
+  [[| [a / b]] on: #zeroDivide do: [:err | 0]]];
+
+[System println: ["10 / 2 = " , [[safeDiv value: 10 value: 2] printString]]]; // 5
+[System println: ["10 / 0 = " , [[safeDiv value: 10 value: 0] printString]]]; // caught → 0
+
+// The error flows through further arithmetic untouched: `[10 / 0]` is an error, and
+// `+ 1` sent to an error just returns the same error — so its kind survives.
+let chained := [[10 / 0] + 1];
+[System println: ["[10 / 0] + 1 → " , [[chained kind] printString]]] // #zeroDivide

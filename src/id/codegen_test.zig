@@ -13,6 +13,7 @@ const tcc = @import("tcc.zig");
 const codegen = @import("codegen.zig");
 const prelude = @import("prelude.zig");
 const collection = @import("collection.zig");
+const errmod = @import("error.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
@@ -27,16 +28,19 @@ fn setup() *idapi.IdApi {
     lang.bringUp(api);
     tcc.bringUp(api);
     codegen.bringUp(api);
+    // The prelude provides the SmallInt protocol. Arithmetic `[a + b]` compiles to
+    // a real send now (not inlined C math), so it dispatches here — without the
+    // prelude a compiled `+` would have no method to reach.
+    prelude.bringUp(api);
     return api;
 }
 
-/// The full stack the collection literals need: prelude (SmallInt protocol used
-/// by `printString`/`inject:into:`) + collection (the `Vector`/`Map` factories
-/// that `#[…]`/`{…}` literals lower onto).
+/// `setup` + the collection factories (`Vector`/`Map`) that `#[…]`/`{…}` literals
+/// lower onto, and the F7 error model (so `[10 / 0]` yields a #zeroDivide value).
 fn setupFull() *idapi.IdApi {
     const api = setup();
-    prelude.bringUp(api);
     collection.bringUp(api);
+    errmod.bringUp(api);
     return api;
 }
 
@@ -95,6 +99,25 @@ test "codegen 3c.2: birnam arithmetic → C → native → value" {
 
     // Deeper nesting recurses correctly.
     try std.testing.expectEqual(@as(i64, 20), try evalInt(api, "[[2 * 3] + [7 * 2]]"));
+}
+
+test "codegen: arithmetic is dispatched — zeroDivide is a value and propagates" {
+    const api = setupFull(); // prelude + collection + error model (F7)
+
+    // `[10 / 0]` reaches the prelude's guarded `/`, yielding a #zeroDivide error
+    // value — not undefined behavior from untagging-and-dividing in raw C.
+    const e = eval(api, "[10 / 0]");
+    try std.testing.expect(api.send(e, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(e, api.intern("kind"), &[_]Oop{}, 0) == api.intern("zeroDivide"));
+
+    // The error flows THROUGH further arithmetic (doesNotUnderstand: returns self),
+    // rather than being untagged into garbage as the old inline path would.
+    const e2 = eval(api, "[[10 / 0] + 1]");
+    try std.testing.expect(api.send(e2, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(e2, api.intern("kind"), &[_]Oop{}, 0) == api.intern("zeroDivide"));
+
+    // Ordinary arithmetic still works end to end through the same dispatch path.
+    try std.testing.expectEqual(@as(i64, 25), try evalInt(api, "[100 / 4]"));
 }
 
 test "codegen: parse failure / empty / undeclared global all yield nil (no crash)" {
