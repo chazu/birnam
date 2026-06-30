@@ -316,12 +316,17 @@ const DerivedSet = std.ArrayList([]Oop);
 var g_rules: std.AutoHashMapUnmanaged(Oop, RuleList) = .{};
 
 // Rules being materialized in the CURRENT query: name → its (possibly still
-// growing) head-tuple set. A recursive self-reference reads this partial set
-// instead of recursing — the semi-naive trick — so recursion terminates with NO
-// variable renaming: only head VALUES cross the rule boundary (into the set), never
-// variables. Cleared at each top-level `runQuery` entry; its sets live in that
-// query's arena.
+// growing) head-tuple set. A recursive reference reads this partial set instead of
+// recursing — the semi-naive trick — so recursion terminates with NO variable
+// renaming: only head VALUES cross the rule boundary (into the set), never
+// variables. Cleared at each top-level query entry; its sets live in the query's
+// arena.
 var g_active: std.AutoHashMapUnmanaged(Oop, *DerivedSet) = .{};
+// >0 while the global fixpoint loop is running (a nested rule reference then reads
+// the partial set rather than launching its own loop). `done` short-circuits later
+// rule references in the same query once the joint fixpoint has converged.
+var g_fixpoint_depth: usize = 0;
+var g_fixpoint_done: bool = false;
 
 /// `[db defineRule: #name params: #[?a …] body: #[ clause… ]]` — register one
 /// (possibly recursive) definition of a rule. `params` are the head variables;
@@ -345,42 +350,74 @@ fn tupleInSet(d: *const DerivedSet, t: []const Oop) bool {
     return false;
 }
 
-/// Materialize a rule's head-tuple relation to a fixpoint and return it (memoized
-/// in `g_active` for the rest of the query). Each definition's body is evaluated as
-/// a conjunction and its head projected; the union of new tuples grows the set
-/// until a pass adds nothing. A self-reference during evaluation reads the partial
-/// set (see `g_active`), turning recursion into iteration. `max_iter` is a safety
-/// net (a finite store reaches a fixpoint well before it).
-fn materialize(aa: std.mem.Allocator, name: Oop, triples: []const Triple) *DerivedSet {
-    if (g_active.get(name)) |d| return d; // already (being) built — memo / recursion
+fn ensureSet(aa: std.mem.Allocator, name: Oop) *DerivedSet {
+    if (g_active.get(name)) |d| return d;
     const d = aa.create(DerivedSet) catch @panic("relational: oom");
     d.* = .{};
     g_active.put(ca, name, d) catch @panic("relational: oom");
-    const rules = g_rules.getPtr(name) orelse return d; // unknown rule → empty
+    return d;
+}
 
+fn totalActiveTuples() usize {
+    var t: usize = 0;
+    var it = g_active.valueIterator();
+    while (it.next()) |dp| t += dp.*.items.len;
+    return t;
+}
+
+/// Evaluate every definition of one rule once, projecting each solution's head and
+/// adding any NEW tuples to the rule's set. A reference to another (or the same)
+/// rule in a body reads that rule's current partial set (see `materialize`), so one
+/// pass propagates one layer of derivation.
+fn evalRuleInto(aa: std.mem.Allocator, name: Oop, triples: []const Triple) void {
+    const rules = g_rules.getPtr(name) orelse return;
+    const d = g_active.get(name).?;
+    for (rules.items) |rule| {
+        const arity: usize = @intCast(g_api.smallIntValue(send0(rule.params, s_size)));
+        const sols = applyClauses(aa, rule.body, triples);
+        for (sols) |sol| {
+            const tuple = aa.alloc(Oop, arity) catch @panic("relational: oom");
+            var ok = true;
+            var i: usize = 0;
+            while (i < arity) : (i += 1) {
+                const pv = send1(rule.params, s_at, g_api.mkSmallInt(@intCast(i)));
+                tuple[i] = lookup(sol, pv) orelse {
+                    ok = false;
+                    break;
+                };
+            }
+            if (ok and !tupleInSet(d, tuple)) d.append(aa, tuple) catch @panic("relational: oom");
+        }
+    }
+}
+
+/// Return a rule's head-tuple relation, materialized to a fixpoint. The OUTERMOST
+/// reference in a query runs a single JOINT fixpoint over every rule reached
+/// (transitively): each pass evaluates all active rules once, and the set of active
+/// rules grows as bodies reference new ones, until no rule's relation grows and no
+/// new rule appears. Evaluating rules together (not one-then-freeze) is what makes
+/// MUTUAL recursion correct, not just self-recursion. A nested reference during the
+/// loop just reads the current partial set. `max_iter` is a safety net (a finite
+/// store reaches the fixpoint well before it).
+fn materialize(aa: std.mem.Allocator, name: Oop, triples: []const Triple) *DerivedSet {
+    const d = ensureSet(aa, name);
+    if (g_fixpoint_depth > 0 or g_fixpoint_done) return d; // mid-loop, or already converged
+
+    g_fixpoint_depth += 1;
     var iter: usize = 0;
     while (iter < 1000) : (iter += 1) {
-        const before = d.items.len;
-        for (rules.items) |rule| {
-            const arity: usize = @intCast(g_api.smallIntValue(send0(rule.params, s_size)));
-            const sols = applyClauses(aa, rule.body, triples);
-
-            for (sols) |sol| {
-                const tuple = aa.alloc(Oop, arity) catch @panic("relational: oom");
-                var ok = true;
-                var i: usize = 0;
-                while (i < arity) : (i += 1) {
-                    const pv = send1(rule.params, s_at, g_api.mkSmallInt(@intCast(i)));
-                    tuple[i] = lookup(sol, pv) orelse {
-                        ok = false;
-                        break;
-                    };
-                }
-                if (ok and !tupleInSet(d, tuple)) d.append(aa, tuple) catch @panic("relational: oom");
-            }
-        }
-        if (d.items.len == before) break; // fixpoint reached
+        const tuples_before = totalActiveTuples();
+        const rules_before = g_active.count();
+        // Snapshot the names: a body may add a newly-referenced rule to g_active.
+        var names: std.ArrayList(Oop) = .{};
+        defer names.deinit(ca);
+        var it = g_active.keyIterator();
+        while (it.next()) |kp| names.append(ca, kp.*) catch @panic("relational: oom");
+        for (names.items) |nm| evalRuleInto(aa, nm, triples);
+        if (totalActiveTuples() == tuples_before and g_active.count() == rules_before) break;
     }
+    g_fixpoint_depth -= 1;
+    g_fixpoint_done = true;
     return d;
 }
 
@@ -610,6 +647,7 @@ fn runQuery(self: Oop, result_var: Oop, clauses: Oop, lo: Oop, hi: Oop) Oop {
     // Each top-level query recomputes rule relations fresh against current facts;
     // the per-query memo/recursion sets live in this query's arena (below).
     g_active.clearRetainingCapacity();
+    g_fixpoint_done = false;
 
     var triples: Triples = .{};
     defer triples.deinit(ca);

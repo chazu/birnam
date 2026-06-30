@@ -539,6 +539,34 @@ test "relational: a recursive rule computes the transitive closure" {
     try std.testing.expectEqual(@as(i64, 3), ival(s2(db, "count:where:", lvar(api, "y"), q)));
 }
 
+test "relational: mutually-recursive rules converge (even/odd over a succ chain)" {
+    const api = setup();
+    const db = freshDb(api);
+    // n0 → n1 → n2 → n3 → n4 via #succ; n0 is the zero.
+    var ns: [5]Oop = undefined;
+    for (&ns) |*e| e.* = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", ns[0], api.intern("isZero"), api.intern("yes"));
+    var i: usize = 0;
+    while (i < 4) : (i += 1) _ = s3(db, "assert:attr:value:", ns[i], api.intern("succ"), ns[i + 1]);
+
+    // even(?x) :- x isZero;  even(?x) :- ?y succ ?x, odd(?y).
+    // odd(?x)  :- ?y succ ?x, even(?y).   (mutual recursion)
+    _ = s3(db, "defineRule:params:body:", api.intern("even"), vec(api, &.{lvar(api, "x")}), vec(api, &.{vec(api, &.{ lvar(api, "x"), api.intern("isZero"), api.intern("yes") })}));
+    _ = s3(db, "defineRule:params:body:", api.intern("even"), vec(api, &.{lvar(api, "x")}), vec(api, &.{
+        vec(api, &.{ lvar(api, "y"), api.intern("succ"), lvar(api, "x") }),
+        vec(api, &.{ api.intern("rule"), api.intern("odd"), lvar(api, "y") }),
+    }));
+    _ = s3(db, "defineRule:params:body:", api.intern("odd"), vec(api, &.{lvar(api, "x")}), vec(api, &.{
+        vec(api, &.{ lvar(api, "y"), api.intern("succ"), lvar(api, "x") }),
+        vec(api, &.{ api.intern("rule"), api.intern("even"), lvar(api, "y") }),
+    }));
+
+    const evens = s2(db, "findAll:where:", lvar(api, "x"), vec(api, &.{vec(api, &.{ api.intern("rule"), api.intern("even"), lvar(api, "x") })}));
+    const odds = s2(db, "findAll:where:", lvar(api, "x"), vec(api, &.{vec(api, &.{ api.intern("rule"), api.intern("odd"), lvar(api, "x") })}));
+    try std.testing.expectEqual(@as(i64, 3), ival(s0(evens, "size"))); // n0, n2, n4
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(odds, "size"))); // n1, n3
+}
+
 test "relational: a rule clause binds the reverse direction (constant 2nd arg)" {
     const api = setup();
     const db = freshDb(api);
