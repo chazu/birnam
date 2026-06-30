@@ -16,9 +16,9 @@ let person := [:age |
   [db assert: p attr: #age value: age];
   p];
 
-[person value: 18];
-[person value: 30];
-[person value: 40];
+let p1 := [person value: 18];
+let p2 := [person value: 30];
+let p3 := [person value: 40];
 
 // Everyone older than 18 — a named predicate op.
 let adults := [db findAll: ?p where: #[ #[?p #age ?a] #[?a #gt 18] ]];
@@ -51,4 +51,12 @@ let mean  := [db avg:   ?a where: #[ #[?p #age ?a] ]];
 [System println: ["people: " , [n printString]]];
 [System println: ["age sum: " , [total printString]]];
 [System println: ["oldest: " , [oldest printString]]];
-[System println: ["mean age: " , [mean printString]]]
+[System println: ["mean age: " , [mean printString]]];
+
+// GROUP-BY: bucket by a variable, aggregate within each group. Tag people with a
+// team, then count members per team → a Map {team -> count}.
+[db assert: p1 attr: #team value: #red];
+[db assert: p2 attr: #team value: #red];
+[db assert: p3 attr: #team value: #blue];
+let perTeam := [db groupBy: ?t aggregate: #count of: ?p where: #[ #[?p #team ?t] ]];
+[System println: ["per team: " , [perTeam printString]]]

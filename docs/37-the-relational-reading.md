@@ -39,6 +39,7 @@ logic-variable syntax (`?p`), and symbol literals (`#sym`) that already parse.
 [db min:  ?v where: clauses]             │ (set semantics, per the Date discipline)
 [db max:  ?v where: clauses]             │
 [db avg:  ?v where: clauses]             ┘ mean (integer division truncates)
+[db groupBy: ?g aggregate: #k of: ?v where: cl]   a Map {group -> aggregate}
 
 [db defineRule: #name params: #[?a …] body: #[ clause… ]]   define a (recursive) rule
 
@@ -91,8 +92,9 @@ non-comparable operand yields an error value (not `true`), so the row simply dro
 [db findAll: ?p where: #[ #[?p #age ?a] #[?a #gt 18] ]]   // adults
 ```
 
-Because a predicate only *filters*, it must come **after** the clauses that bind
-its variables (there is no clause-reorder planner yet).
+A predicate only *filters*, so it needs its variables bound — but it may be written
+**anywhere** in the `where:` list: a clause-reorder planner runs each clause when it
+is ready (a binder always; a filter once every variable it mentions is bound).
 
 ### Negation — `#[ #not innerClause… ]`
 
@@ -132,13 +134,15 @@ A rule name may have **several definitions**; the relation it denotes is their
 datalog reading). Invoke a rule from any `where:` list with `#[ #rule #name arg… ]`.
 
 Recursion is handled **set-at-a-time**, not by recursive descent: the engine
-materializes a rule's head-tuple relation to a fixpoint, and a self-reference
-during evaluation reads the *partial* set instead of recursing. Only head **values**
-cross the rule boundary (into the derived set), never variables — so the
-canonical-by-name logic variables never capture across recursion levels, and no
-variable renaming is needed. A `max_iter` bound is a safety net (a finite store
-reaches a fixpoint well before it). Self- and non-recursion are fully correct
-(ancestor / transitive closure); mutual recursion is best-effort (see Deferred).
+materializes a rule's head-tuple relation to a fixpoint, and a reference during
+evaluation reads the *partial* set instead of recursing. Only head **values** cross
+the rule boundary (into the derived set), never variables — so the canonical-by-name
+logic variables never capture across recursion levels, and no variable renaming is
+needed. The outermost rule reference in a query runs a single **joint fixpoint**
+over every rule reached (each pass evaluates all active rules, the active set grows
+as bodies reference new rules, until nothing grows) — so **mutual recursion**
+converges correctly, not just self-recursion. A `max_iter` bound is a safety net (a
+finite store reaches a fixpoint well before it).
 
 ## Time travel — `basis`, `asOf:`, `since:`, `between:and:`
 
@@ -176,9 +180,19 @@ visible regardless.
 **distinct** projected values — set semantics, per the Date discipline (equal
 values count once). `sum` folds `+` from 0; `min`/`max` send `<`/`>`; `avg` is
 `sum / count` (integer division truncates); `count` is just the size. An empty
-query gives `count`/`sum` 0 and `min`/`max`/`avg` nil. There is no group-by yet
-(one universal group). An aggregate over a historical snapshot is available
-compositionally — e.g. `[[db findAll: ?v where: cl asOf: t] size]`.
+query gives `count`/`sum` 0 and `min`/`max`/`avg` nil. An aggregate over a
+historical snapshot is available compositionally — e.g.
+`[[db findAll: ?v where: cl asOf: t] size]`.
+
+**Group-by** — `[db groupBy: ?g aggregate: #kind of: ?v where: clauses]` partitions
+the solutions by the value of `?g` and folds the distinct `?v` values within each
+group by `#kind` (`#count #sum #min #max #avg`). It returns a Map from each group
+value to its aggregate:
+
+```
+[db groupBy: ?team aggregate: #count of: ?p where: #[ #[?p #team ?team] ]]
+  => {#blue -> 1, #red -> 2}
+```
 
 ## Pull — `pull:spec:`
 
@@ -200,10 +214,12 @@ built on the join (each attribute's values come from `findAll: ?v where: #[ #[e 
 ```
 runQuery(self, ?v, clauses, lo, hi)
   ├─ gatherTriples(store, …, lo, hi)   → the live (or historical) triple set
-  ├─ for each clause: applyClause(…)   → #or → #not → #rule → predicate → triple
+  ├─ applyClauses(…)                   → planner orders, then per clause:
+  │                                       #or → #not → #rule → predicate → triple
   └─ project ?v, dedup                 → a Vector
 
 findAll/count/sum/min/max/avg          all wrap runQuery on the projection side
+groupBy:…                              applyClauses, then bucket + aggregate per group
 pull                                    recursive; gathers attribute values via runQuery
 ```
 
@@ -220,20 +236,12 @@ block, never touching the store's internal layout.
 - `examples/time-travel.birnam` — `basis` / `asOf:` / `since:`
 - `examples/pull.birnam` — nested-ref and `:many` pull
 
-## Deferred (with rationale)
+## Intentionally not separate (with rationale)
 
-- **Group-by** — aggregates currently use one universal group. Grouping needs a
-  find-spec surface (multiple find elements, partitioned by the non-aggregate
-  positions); that is a larger surface change than a nicety, so it is its own arc.
 - **`collect` aggregate** — redundant: `findAll:where:` already returns the Vector
   of distinct values.
 - **Dedicated as-of aggregates** — available compositionally over
   `findAll:where:asOf:` (e.g. fold its result), so no separate selectors.
-- **Rules as facts** — rules live in a module-side registry today. Storing them as
-  facts (queryable, reflective) is a reflectivity refinement, not core.
-- **Mutual recursion** — the per-rule fixpoint memo makes self- and non-recursion
-  exact and keeps mutual recursion terminating, but mutual recursion is not
-  guaranteed complete (it would want a stratified, whole-stratum fixpoint). The
-  motivating cases (ancestor / transitive closure) are self-recursive and exact.
-- **Clause-reorder planner** — predicates and negation must follow the clauses that
-  bind their variables; there is no automatic reordering yet.
+- **Rules as facts** — rules live in a module-side registry (GC-rooted) today.
+  Storing them as facts (queryable, reflective) is a reflectivity refinement, not a
+  query-surface gap; it is a separate direction rather than a missing feature.

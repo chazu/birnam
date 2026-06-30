@@ -20,6 +20,7 @@
 //!   [db basis]                        → the current tx counter (time-travel handle)
 //!   [db count: ?v where: clauses]     → how many distinct bindings of ?v
 //!   [db sum:/min:/max:/avg: ?v where:]→ fold over the distinct bindings of ?v
+//!   [db groupBy: ?g aggregate: #k of: ?v where: cl]  → a Map {group → aggregate}
 //!   [db pull: e spec: #[ #attr … ]]   → a record Map; #[#ref <subspec>] recurses,
 //!                                        :many attrs yield Vectors
 //!
@@ -778,6 +779,76 @@ fn mAvg(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return send1(acc, s_div, g_api.mkSmallInt(@intCast(sz)));
 }
 
+/// Fold a list of DISTINCT values per an aggregate kind symbol (`#count #sum #min
+/// #max #avg`). count → the size; the others nil on empty (a group is never empty).
+fn aggregateValues(kind: Oop, values: []const Oop) Oop {
+    const cnt = values.len;
+    if (isSym(kind, "count")) return g_api.mkSmallInt(@intCast(cnt));
+    if (cnt == 0) return g_api.nilObj;
+    if (isSym(kind, "sum") or isSym(kind, "avg")) {
+        var acc = g_api.mkSmallInt(0);
+        for (values) |x| acc = send1(acc, s_plus, x);
+        return if (isSym(kind, "avg")) send1(acc, s_div, g_api.mkSmallInt(@intCast(cnt))) else acc;
+    }
+    if (isSym(kind, "min") or isSym(kind, "max")) {
+        const sel = if (isSym(kind, "min")) s_lt else s_gt;
+        var best = values[0];
+        for (values[1..]) |x| if (send1(x, sel, best) == g_api.trueObj) {
+            best = x;
+        };
+        return best;
+    }
+    return g_api.nilObj; // unknown kind
+}
+
+const Group = struct { g: Oop, vals: std.ArrayList(Oop) };
+
+/// `[db groupBy: ?g aggregate: #kind of: ?v where: clauses]` — partition the
+/// solutions by the value of `?g` and, within each group, fold the DISTINCT values
+/// of `?v` by `#kind` (`#count #sum #min #max #avg`). Returns a Map from each group
+/// value to its aggregate.
+fn mGroupBy(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const gvar = args[0];
+    const kind = args[1];
+    const vvar = args[2];
+    const clauses = args[3];
+
+    g_active.clearRetainingCapacity();
+    g_fixpoint_done = false;
+    var triples: Triples = .{};
+    defer triples.deinit(ca);
+    gatherTriples(self, &triples, null, null);
+
+    var arena = std.heap.ArenaAllocator.init(ca);
+    defer arena.deinit();
+    const aa = arena.allocator();
+
+    const sols = applyClauses(aa, clauses, triples.items);
+
+    // Bucket distinct `?v` values under each distinct `?g` value (group order =
+    // first-appearance order).
+    var groups: std.ArrayList(Group) = .{};
+    for (sols) |sol| {
+        const g = lookup(sol, gvar) orelse continue;
+        const v = lookup(sol, vvar) orelse continue;
+        var grp: ?*Group = null;
+        for (groups.items) |*gp| if (gp.g == g) {
+            grp = gp;
+            break;
+        };
+        if (grp == null) {
+            groups.append(aa, .{ .g = g, .vals = .{} }) catch @panic("relational: oom");
+            grp = &groups.items[groups.items.len - 1];
+        }
+        if (!varContains(grp.?.vals.items, v)) grp.?.vals.append(aa, v) catch @panic("relational: oom");
+    }
+
+    var m = send0(mapFactory(), s_new);
+    for (groups.items) |grp| m = send2(m, s_atput, grp.g, aggregateValues(kind, grp.vals.items));
+    return m;
+}
+
 // The dedicated logic var pull uses to gather an attribute's values via the join.
 fn pullVar() Oop {
     return mNamed(logicvar_factory, &[_]Oop{g_api.intern("__pullv")}, 1);
@@ -904,6 +975,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, api.intern("min:where:"), &mMin);
     api.method(store_vt, api.intern("max:where:"), &mMax);
     api.method(store_vt, api.intern("avg:where:"), &mAvg);
+    api.method(store_vt, api.intern("groupBy:aggregate:of:where:"), &mGroupBy);
     api.method(store_vt, api.intern("defineRule:params:body:"), &mDefineRule);
     api.method(store_vt, api.intern("pull:spec:"), &mPull);
 

@@ -376,6 +376,43 @@ test "relational: aggregates compose with predicate filters" {
     try std.testing.expectEqual(@as(i64, 2), ival(s2(db, "count:where:", lvar(api, "p"), clauses)));
 }
 
+test "relational: groupBy partitions and aggregates per group" {
+    const api = setup();
+    const db = freshDb(api);
+    // Four people across two cities, with ages.
+    const mk = struct {
+        fn p(a: *idapi.IdApi, d: Oop, city: Oop, age: i64) void {
+            const e = s0(d, "entity");
+            _ = s3(d, "assert:attr:value:", e, a.intern("city"), city);
+            _ = s3(d, "assert:attr:value:", e, a.intern("age"), a.mkSmallInt(age));
+        }
+    }.p;
+    mk(api, db, api.intern("Boston"), 20);
+    mk(api, db, api.intern("Boston"), 40);
+    mk(api, db, api.intern("Denver"), 30);
+    mk(api, db, api.intern("Denver"), 30); // duplicate age 30 — distinct within group
+
+    const clauses = vec(api, &.{
+        vec(api, &.{ lvar(api, "p"), api.intern("city"), lvar(api, "c") }),
+        vec(api, &.{ lvar(api, "p"), api.intern("age"), lvar(api, "a") }),
+    });
+
+    // count of people per city (count is over distinct ?p, so 2 each).
+    const counts = api.send(db, api.intern("groupBy:aggregate:of:where:"), &[_]Oop{ lvar(api, "c"), api.intern("count"), lvar(api, "p"), clauses }, 4);
+    try std.testing.expectEqual(@as(i64, 2), ival(s1(counts, "at:", api.intern("Boston"))));
+    try std.testing.expectEqual(@as(i64, 2), ival(s1(counts, "at:", api.intern("Denver"))));
+
+    // sum of DISTINCT ages per city: Boston 20+40=60; Denver just 30 (deduped).
+    const sums = api.send(db, api.intern("groupBy:aggregate:of:where:"), &[_]Oop{ lvar(api, "c"), api.intern("sum"), lvar(api, "a"), clauses }, 4);
+    try std.testing.expectEqual(@as(i64, 60), ival(s1(sums, "at:", api.intern("Boston"))));
+    try std.testing.expectEqual(@as(i64, 30), ival(s1(sums, "at:", api.intern("Denver"))));
+
+    // max age per city.
+    const maxes = api.send(db, api.intern("groupBy:aggregate:of:where:"), &[_]Oop{ lvar(api, "c"), api.intern("max"), lvar(api, "a"), clauses }, 4);
+    try std.testing.expectEqual(@as(i64, 40), ival(s1(maxes, "at:", api.intern("Boston"))));
+    try std.testing.expectEqual(@as(i64, 30), ival(s1(maxes, "at:", api.intern("Denver"))));
+}
+
 test "relational: aggregates over no matches — count/sum 0, min/max nil" {
     const api = setup();
     const db = freshDb(api);
