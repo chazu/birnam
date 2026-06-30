@@ -43,57 +43,97 @@ fn send1(rcv: Oop, sel: [*:0]const u8, a: Oop) Oop {
 
 // -- Integer (smallint_vt) ---------------------------------------------------
 
+// SmallInt is a 63-bit signed fixnum (the floor's maru-style tag): a result must
+// land in [-2^62, 2^62-1] or it has overflowed.
+const SMALLINT_MAX: i128 = (1 << 62) - 1;
+const SMALLINT_MIN: i128 = -(1 << 62);
+
+fn isInt(o: Oop) bool {
+    return g_api.isSmallInt(o) != 0;
+}
+
+// The Error vtable, imported lazily (null if the F7 module isn't loaded), so
+// arithmetic can PROPAGATE an error operand rather than mask it as a type mismatch.
+var g_error_vt: Oop = null;
+fn isErr(o: Oop) bool {
+    if (g_error_vt == null) g_error_vt = g_api.import("ErrorVt");
+    return g_error_vt != null and o != null and g_api.vtableOf(o) == g_error_vt;
+}
+
+/// Mint an Error of `kind` (F7), or nil if the error model isn't loaded. Imported
+/// LAZILY at the fault so the prelude keeps no load-order dependency on the error
+/// module — arithmetic lives here, the error TYPE there, meeting only on a fault.
+fn mkErr(kind: [*:0]const u8, msg: []const u8) Oop {
+    const E = g_api.import("Error");
+    if (E == null) return g_api.nilObj;
+    return g_api.send(E, g_api.intern("kind:message:"), &[_]Oop{ g_api.intern(kind), g_api.mkString(msg.ptr, msg.len) }, 2);
+}
+
+/// Tag an arithmetic result, or a `#overflow` error if it left the SmallInt range.
+/// (The op is computed in i128 first, so it can never wrap silently.)
+fn intResult(v: i128) Oop {
+    if (v < SMALLINT_MIN or v > SMALLINT_MAX) return mkErr("overflow", "integer overflow");
+    return mki(@intCast(v));
+}
+
+/// Guard a binary-arithmetic argument: propagate an error operand, reject a
+/// non-Integer with `#typeMismatch`, else null (it is a usable Integer).
+fn argFault(o: Oop) ?Oop {
+    if (isErr(o)) return o;
+    if (!isInt(o)) return mkErr("typeMismatch", "Integer arithmetic needs an Integer");
+    return null;
+}
+
 fn iAdd(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    return mki(iv(self) + iv(a[0]));
+    if (argFault(a[0])) |f| return f;
+    return intResult(@as(i128, iv(self)) + @as(i128, iv(a[0])));
 }
 fn iSub(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    return mki(iv(self) - iv(a[0]));
+    if (argFault(a[0])) |f| return f;
+    return intResult(@as(i128, iv(self)) - @as(i128, iv(a[0])));
 }
 fn iMul(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    return mki(iv(self) * iv(a[0]));
+    if (argFault(a[0])) |f| return f;
+    return intResult(@as(i128, iv(self)) * @as(i128, iv(a[0])));
 }
 fn iDiv(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (iv(a[0]) == 0) return zeroDivide();
-    return mki(@divTrunc(iv(self), iv(a[0])));
+    if (argFault(a[0])) |f| return f;
+    if (iv(a[0]) == 0) return mkErr("zeroDivide", "division by zero");
+    return intResult(@divTrunc(@as(i128, iv(self)), @as(i128, iv(a[0]))));
 }
 fn iMod(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    if (iv(a[0]) == 0) return zeroDivide();
-    return mki(@mod(iv(self), iv(a[0])));
-}
-
-/// A `#zeroDivide` error if the error model (F7) is loaded, else nil. Imported
-/// LAZILY (at the failure, not at bringUp) so the prelude keeps no load-order
-/// dependency on the error module — arithmetic lives here, the error TYPE lives
-/// there, and they meet only when a division actually fails.
-fn zeroDivide() Oop {
-    const E = g_api.import("Error");
-    if (E == null) return g_api.nilObj;
-    const m = "division by zero";
-    return g_api.send(E, g_api.intern("kind:message:"), &[_]Oop{ g_api.intern("zeroDivide"), g_api.mkString(m.ptr, m.len) }, 2);
+    if (argFault(a[0])) |f| return f;
+    if (iv(a[0]) == 0) return mkErr("zeroDivide", "division by zero");
+    return intResult(@mod(@as(i128, iv(self)), @as(i128, iv(a[0]))));
 }
 fn iEq(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    return boolean(iv(self) == iv(a[0]));
+    // Equality is total: a non-Integer (or an error) is simply not equal.
+    return boolean(isInt(a[0]) and iv(self) == iv(a[0]));
 }
 fn iLt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
+    if (argFault(a[0])) |f| return f; // ordering across types is undefined
     return boolean(iv(self) < iv(a[0]));
 }
 fn iLe(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
+    if (argFault(a[0])) |f| return f;
     return boolean(iv(self) <= iv(a[0]));
 }
 fn iGt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
+    if (argFault(a[0])) |f| return f;
     return boolean(iv(self) > iv(a[0]));
 }
 fn iGe(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
+    if (argFault(a[0])) |f| return f;
     return boolean(iv(self) >= iv(a[0]));
 }
 fn iPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -196,6 +236,7 @@ fn sysAutoGc(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 
 pub fn bringUp(api: *idapi.IdApi) void {
     g_api = api;
+    g_error_vt = null; // re-resolve against THIS api (matters for fresh test inits)
     const int_vt = api.smallint_vt;
     api.method(int_vt, api.intern("+"), &iAdd);
     api.method(int_vt, api.intern("-"), &iSub);

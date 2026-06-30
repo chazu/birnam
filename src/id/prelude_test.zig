@@ -4,6 +4,7 @@
 const std = @import("std");
 const id = @import("id.zig");
 const prelude = @import("prelude.zig");
+const errmod = @import("error.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
@@ -60,6 +61,42 @@ test "prelude: Boolean ifTrue:ifFalse: / & / not — dispatch on identity" {
     try std.testing.expectEqualStrings("true", api.stringBytes(tp, &len)[0..len]);
     const fp = api.send(f, api.intern("printString"), &[_]Oop{}, 0);
     try std.testing.expectEqualStrings("false", api.stringBytes(fp, &len)[0..len]);
+}
+
+test "prelude: arithmetic faults are catchable errors, not panics" {
+    const api = id.id_init();
+    gapi = api;
+    prelude.bringUp(api);
+    errmod.bringUp(api); // F7 — faults now mint real Error values
+
+    const kindOf = struct {
+        fn k(a: *idapi.IdApi, e: Oop) []const u8 {
+            return std.mem.span(a.symbolName(a.send(e, a.intern("kind"), &[_]Oop{}, 0)));
+        }
+    }.k;
+
+    // Overflow: 2^61 * 2^61 leaves the 63-bit range.
+    const big = api.mkSmallInt(1 << 61);
+    const ov = api.send(big, api.intern("*"), &[_]Oop{big}, 1);
+    try std.testing.expect(api.send(ov, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expectEqualStrings("overflow", kindOf(api, ov));
+
+    // Type mismatch: an Integer op against a non-Integer (the System object).
+    const sys = api.import("System").?;
+    const tm = api.send(api.mkSmallInt(5), api.intern("+"), &[_]Oop{sys}, 1);
+    try std.testing.expectEqualStrings("typeMismatch", kindOf(api, tm));
+
+    // Division by zero.
+    const zd = api.send(api.mkSmallInt(10), api.intern("/"), &[_]Oop{api.mkSmallInt(0)}, 1);
+    try std.testing.expectEqualStrings("zeroDivide", kindOf(api, zd));
+
+    // An error OPERAND propagates (not masked as a type mismatch): 5 + (10/0).
+    const prop = api.send(api.mkSmallInt(5), api.intern("+"), &[_]Oop{zd}, 1);
+    try std.testing.expectEqualStrings("zeroDivide", kindOf(api, prop));
+
+    // Ordinary arithmetic and equality are unaffected.
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(api.send(api.mkSmallInt(3), api.intern("+"), &[_]Oop{api.mkSmallInt(4)}, 1)));
+    try std.testing.expect(api.send(api.mkSmallInt(5), api.intern("="), &[_]Oop{sys}, 1) == api.falseObj); // cross-type = is false
 }
 
 test "prelude: to:do: iterates inclusively" {
