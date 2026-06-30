@@ -198,23 +198,41 @@ live id system. The siphon proves it: `[[3+4]*2]`→14, `[[20 plus: 1] double]`�
 (dispatch through libid), and `let x := 20; let add := [:y | [x plus: y]]; [add
 value: 22]`→42 (let + capture + closure).
 
-**Next (beyond the grammar):**
-- **A path to reference the running system.** The grammar has no global namespace
-  (idents only resolve to lets/params/captures) and no method-definition syntax.
-  To make compiled birnam a first-class way to *extend* the live system, add
-  global lookup (e.g. capitalised idents → `api.import`) and/or a define-method
-  surface. Language-design work, not just codegen.
-- **Error model (F7)** — wrong-arity block sends currently hit the panicking
-  default DNU; settle as eval/runtime semantics firm up.
-- **Output modes** — in-memory (done) vs emit to a `.dylib`/`.so` on disk
-  (`tcc_output_file`) for the user's "compile to a shared object" need.
-- **GC (F3)** — each eval leaks a TccState + throwaway vtables (leak-till-GC is
-  the documented stance); the per-vtable layout descriptor lands with the
-  collector. Then the richer **relational engine**.
+## Post-grammar: the runtime grew up (SHIPPED 2026-06-29)
+
+Everything the original "Next" list named is now done, plus a stdlib and the
+relational reading:
+
+- **Referencing + extending the running system** (docs/36) — symbol literals,
+  a `Globals` scope, late-bound unbound idents, and `[Reflect defineMethod:#sel
+  on:T as:blk]`. **birnam scripts run from the CLI** (`birnam-id <file>`).
+- **Error model (F7)** — `src/id/error.zig`: errors as propagating values; the
+  `object_vt` DNU swap so a send to nil yields a catchable value, not a panic.
+- **A collection library** (`src/id/collection.zig`) — id-native persistent
+  Vector trie + Range + HAMT-backed Map; `select:/collect:/detect:/inject:into:/
+  sortBy:`; String ops (`asLowercase`/`replace:with:`/`words`/asSymbol`, `,`).
+- **Collection literals** — `#[…]` vectors and `{k -> v}` maps in the grammar +
+  codegen (lower to persistent `add:`/`at:put:` chains; `->` keeps symbol keys'
+  colons). Logic variables `?p` for queries.
+- **The relational reading** (`src/id/relational.zig`) — `db findAll:where:` (a
+  datalog join over the store's live triples, with logic vars), `pull:spec:`,
+  `entity`. The store answers both imperative and relational readings (D5.2).
+- **GC (F3)** — a self-contained conservative mark-sweep with a per-vtable trace
+  hook + auto-collection. See docs/34 §F3 (SHIPPED).
+
+Examples that run end to end: `fizzbuzz`, `primes`, `collections`,
+`word-frequency`, `address-book`, `gc`, `auto-gc`.
+
+**Next (the live arc): the FULL DATALOG SURFACE** on top of the core join —
+predicates/comparison, negation, disjunction, aggregation, rules, time
+(asOf/since/between), pull extensions (reverse/`:many`/nested). See
+`docs/29-datalog.md` for the target surface and the old kernel's reference impl.
 
 ## Test/run surface
 
-`zig build test-id` (4) · `test-store` (12) · `test-peg` (8) · `test-lang` (7) ·
-`test-tcc` (8) · `test-codegen` (10); `zig build install && ./zig-out/bin/birnam-id`
-runs the siphon through the full stack (store, peg, lang, tcc, codegen) and
-compiles `[[3 + 4] * 2]` → native → 14.
+`zig build test-id` (9) · `test-store` (8) · `test-peg` (4) · `test-lang` (5) ·
+`test-tcc` (4) · `test-codegen` (11) · `test-prelude` (3) · `test-collection` (18)
+· `test-error` (9) · `test-relational` (9). `zig build install &&
+BIRNAM_LIB_DIR=$PWD/zig-out/lib ./zig-out/bin/birnam-id <file.birnam>` runs a
+script through the full stack (store · peg · lang · tcc · codegen · prelude ·
+collection · error · relational).

@@ -136,7 +136,45 @@ precise/moving GC open and composes with F1 (a fixnum is never a pointer).
 Implementation of the descriptor itself is deferred until just before the
 collector; recorded here as the locked shape.
 
-**Status:** DECIDED (shape) — collector deferred.
+**Status:** **SHIPPED (2026-06-29)** — the collector now exists, in `src/id/id.zig`.
+
+A **self-contained conservative mark-sweep** (no Boehm dependency). Why
+conservative and not the precise descriptor first: birnam compiles methods to
+native code via libtcc that holds live Oops in C locals/registers with **no stack
+maps**, so a precise/moving collector cannot find those roots. We therefore scan
+conservatively, exactly as Piumarta did — but hand-written over our own heap:
+
+- **Tracking.** Every allocation is recorded in a side table (`g_blocks`) keyed by
+  object address, tagged `.collectable` (instances: `alloc`/`mkString`) or
+  `.permanent` (vtables, symbols, the nil/true/false singletons). Only
+  collectables are swept; permanents are never freed and never traced — their only
+  outgoing Oops live in the env/interner, scanned as roots.
+- **Roots.** The C stack + callee-saved registers (flushed via `_setjmp`, then the
+  whole stack from the collector frame to a recorded bottom is scanned) + the
+  export env + the interner + registered **root providers** (module Oops in non-id
+  memory). Any word equal to a live object's address is a root (false positives
+  only over-retain; SmallInts (bit0=1) are skipped; references always point at an
+  object's payload start, so an exact-address table lookup suffices — no
+  interior-pointer handling).
+- **The (b) layout/trace distinction became a per-vtable TRACE HOOK** (the locked
+  shape, realized): `Vtable.trace_hook` (set via `setTraceHook`). When the
+  collector traces a live instance, it calls the hook so opaque objects can mark
+  Oops the conservative payload scan can't see. The store installs one that marks
+  every fact's e/a/v — fires per reachable store instance, so both the singleton
+  and every `[Store new]` are covered. (The (c) root protocol = `RootProvider`,
+  used for genuinely global caches like the logic-var interner.)
+- **Triggering.** `[System gc]` (manual) and **automatic**: an allocation that
+  crosses a 16 MiB threshold since the last collection triggers one — safe at an
+  allocation point because every live object is reachable from the stack/roots
+  there. Inactive until a stack bottom is set (off during module load); the script
+  runner sets it. `[System autoGc: bool]` toggles; `[System liveObjects]` reports.
+
+Proof: `examples/gc.birnam` (manual, churns 540k objects, all live data survives)
+and `examples/auto-gc.birnam` (2M allocations stay ~25k live / ~36 MB RSS). Tests
+in `id.zig` (reclaim, no-op-until-anchored, root/trace-hook survival, permanents
+never swept, auto-gc bounds the live set) + `relational_test` (store + fresh-store
+facts survive). Still open (the precise/moving path): the K-Oop-slot precise
+descriptor + a compacting collector — kept open by the same per-vtable seam.
 
 ## F4 — Concurrency stance
 
