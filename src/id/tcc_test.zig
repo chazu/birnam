@@ -40,6 +40,34 @@ test "tcc 3c: compile C → native → install as method → dispatch" {
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r));
 }
 
+test "tcc: compile C to a loadable .dylib on disk (AOT output)" {
+    const api = id.id_init();
+    tcc.bringUp(api);
+    const Tcc = api.import("Tcc").?;
+
+    const path = "/tmp/birnam_tcc_answer.dylib";
+    std.fs.cwd().deleteFile(path) catch {}; // start clean
+    const src = "int answer(void){ return 42; }";
+    const r = api.send(Tcc, api.intern("compile:output:as:"), &[_]Oop{ str(api, src), str(api, path), api.intern("dll") }, 3);
+
+    if (r == api.nilObj) {
+        // The vendored TinyCC could not write a shared library on this platform —
+        // surface it loudly rather than silently passing.
+        std.debug.print("tcc compile:output:as: #dll returned nil (no dylib support on this target)\n", .{});
+        return error.DylibOutputUnsupported;
+    }
+
+    // It claims success — prove the artifact is a real, loadable, callable dylib.
+    var lib = try std.DynLib.open(path);
+    defer lib.close();
+    const answer = lib.lookup(*const fn () callconv(.c) c_int, "answer") orelse return error.SymbolMissing;
+    try std.testing.expectEqual(@as(c_int, 42), answer());
+
+    // An unknown output kind is rejected; a compile error yields nil.
+    try std.testing.expect(api.send(Tcc, api.intern("compile:output:as:"), &[_]Oop{ str(api, src), str(api, path), api.intern("widget") }, 3) == api.nilObj);
+    try std.testing.expect(api.send(Tcc, api.intern("compile:output:as:"), &[_]Oop{ str(api, "not c"), str(api, path), api.intern("dll") }, 3) == api.nilObj);
+}
+
 test "tcc 3c: bad C returns nil; a missing symbol returns nil" {
     const api = id.id_init();
     tcc.bringUp(api);

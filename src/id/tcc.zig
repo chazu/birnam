@@ -11,8 +11,18 @@
 //! Message api (driven through `api.send`, like every rung):
 //!   [Tcc compile: cSourceString]            -> a TccUnit (compiled+relocated) or nil
 //!                                              (the all-in-one; no runtime symbols)
+//!   [Tcc compile: src output: path as: #k]  -> AOT: write the compiled C to `path`
+//!                                              on disk as #dll/#obj/#exe; path or nil
 //!   [unit install: cFnName as: #sel on: vt] -> install the named C function
 //!                                              (Method ABI) as a method on vt
+//!
+//! `compile:` and the staged path JIT to memory (the live system runs the code).
+//! `compile:output:as:` instead writes a native artifact to disk — a shared library
+//! (`#dll`), object (`#obj`), or executable (`#exe`). Self-contained C yields a
+//! ready-to-load artifact (verified: a `.dylib` dlopen'd and called). Emitted
+//! codegen C references the `birnam_*` shims, which an AOT artifact leaves as
+//! undefined externals (resolved only by a host exporting them) — so the JIT path
+//! remains how compiled birnam runs today; AOT is for self-contained output.
 //!
 //! The all-in-one `compile:` is fine when the emitted C is self-contained (the
 //! 3c.2 arithmetic MVP). But real codegen (3c.3) emits C that calls **back into
@@ -95,6 +105,42 @@ fn mCompile(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const u = g_api.alloc(unit_vt, @sizeOf(Unit));
     unitOf(u).* = .{ .state = s, .relocated = true };
     return u;
+}
+
+/// Map a `#dll`/`#obj`/`#exe` symbol to a libtcc output type, or null if unknown.
+fn outputTypeFor(kind: Oop) ?c_int {
+    if (kind == null or g_api.vtableOf(kind) != g_api.symbol_vt) return null;
+    const name = std.mem.span(g_api.symbolName(kind));
+    if (std.mem.eql(u8, name, "dll")) return c.TCC_OUTPUT_DLL;
+    if (std.mem.eql(u8, name, "obj")) return c.TCC_OUTPUT_OBJ;
+    if (std.mem.eql(u8, name, "exe")) return c.TCC_OUTPUT_EXE;
+    return null;
+}
+
+/// `[Tcc compile: cSource output: pathString as: #kind]` — compile `cSource` and
+/// write it to `pathString` on disk as `#kind` (`#dll` a shared library, `#obj` an
+/// object file, `#exe` an executable) — Ahead-Of-Time output rather than the
+/// in-memory JIT. Returns the path on success, nil on failure. Self-contained C
+/// produces a fully usable artifact; C that references the `birnam_*` runtime shims
+/// leaves them as undefined externals, to be resolved by whatever later loads the
+/// artifact (so an in-process JIT is still the path for codegen output today).
+fn mCompileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const ot = outputTypeFor(a[2]) orelse return g_api.nilObj;
+    const s = c.tcc_new() orelse return g_api.nilObj;
+    defer c.tcc_delete(s);
+    c.tcc_set_error_func(s, null, &errSilent);
+    _ = c.tcc_set_output_type(s, ot);
+
+    const src = dupZ(a[0]);
+    defer ca.free(src);
+    if (c.tcc_compile_string(s, src.ptr) == -1) return g_api.nilObj;
+
+    const path = dupZ(a[1]);
+    defer ca.free(path);
+    if (c.tcc_output_file(s, path.ptr) < 0) return g_api.nilObj;
+    return a[1];
 }
 
 // -- the libid runtime, as flat C-ABI shims for emitted code -----------------
@@ -261,6 +307,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     }
 
     api.method(tcc_vt, api.intern("compile:"), &mCompile);
+    api.method(tcc_vt, api.intern("compile:output:as:"), &mCompileOutput);
     api.method(tcc_vt, api.intern("new"), &mNew);
     api.method(unit_vt, api.intern("compile:"), &mCompileInto);
     api.method(unit_vt, api.intern("bindRuntime"), &mBindRuntime);
