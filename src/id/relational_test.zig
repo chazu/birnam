@@ -374,6 +374,85 @@ test "relational: aggregates over no matches — count/sum 0, min/max nil" {
     try std.testing.expect(s2(db, "max:where:", lvar(api, "c"), clauses) == api.nilObj);
 }
 
+// A parent chain tom → bob → ann → kim (each `#parent` fact: parent then child).
+fn lineage(api: *idapi.IdApi, db: Oop) [4]Oop {
+    const tom = s0(db, "entity");
+    const bob = s0(db, "entity");
+    const ann = s0(db, "entity");
+    const kim = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", tom, api.intern("parent"), bob);
+    _ = s3(db, "assert:attr:value:", bob, api.intern("parent"), ann);
+    _ = s3(db, "assert:attr:value:", ann, api.intern("parent"), kim);
+    return .{ tom, bob, ann, kim };
+}
+
+// Define ancestor(?x,?y): base [?x #parent ?y]; recursive [?x #parent ?z] AND
+// [#rule #ancestor ?z ?y]. Two definitions whose union is the transitive closure.
+fn defineAncestor(api: *idapi.IdApi, db: Oop) void {
+    const base = vec(api, &.{vec(api, &.{ lvar(api, "x"), api.intern("parent"), lvar(api, "y") })});
+    _ = s3(db, "defineRule:params:body:", api.intern("ancestor"), vec(api, &.{ lvar(api, "x"), lvar(api, "y") }), base);
+    const rec = vec(api, &.{
+        vec(api, &.{ lvar(api, "x"), api.intern("parent"), lvar(api, "z") }),
+        vec(api, &.{ api.intern("rule"), api.intern("ancestor"), lvar(api, "z"), lvar(api, "y") }),
+    });
+    _ = s3(db, "defineRule:params:body:", api.intern("ancestor"), vec(api, &.{ lvar(api, "x"), lvar(api, "y") }), rec);
+}
+
+test "relational: a recursive rule computes the transitive closure" {
+    const api = setup();
+    const db = freshDb(api);
+    const p = lineage(api, db); // tom bob ann kim
+    defineAncestor(api, db);
+
+    // All of tom's ancestors-of (descendants): bob, ann, kim.
+    const q = vec(api, &.{vec(api, &.{ api.intern("rule"), api.intern("ancestor"), p[0], lvar(api, "y") })});
+    const r = s2(db, "findAll:where:", lvar(api, "y"), q);
+    try std.testing.expectEqual(@as(i64, 3), ival(s0(r, "size")));
+
+    // Count via the aggregate path, too.
+    try std.testing.expectEqual(@as(i64, 3), ival(s2(db, "count:where:", lvar(api, "y"), q)));
+}
+
+test "relational: a rule clause binds the reverse direction (constant 2nd arg)" {
+    const api = setup();
+    const db = freshDb(api);
+    const p = lineage(api, db); // tom bob ann kim
+    defineAncestor(api, db);
+
+    // Who are kim's ancestors? [#rule #ancestor ?x kim] → tom, bob, ann (set of 3).
+    const q = vec(api, &.{vec(api, &.{ api.intern("rule"), api.intern("ancestor"), lvar(api, "x"), p[3] })});
+    const r = s2(db, "findAll:where:", lvar(api, "x"), q);
+    try std.testing.expectEqual(@as(i64, 3), ival(s0(r, "size")));
+    // bob is NOT among them only if... actually bob IS (bob→ann→kim); tom/bob/ann all are.
+    // kim is not its own ancestor:
+    var sawKim = false;
+    var i: i64 = 0;
+    while (i < 3) : (i += 1) if (s1(r, "at:", api.mkSmallInt(i)) == p[3]) {
+        sawKim = true;
+    };
+    try std.testing.expect(!sawKim);
+}
+
+test "relational: a rule clause composes with a predicate and a plain triple" {
+    const api = setup();
+    const db = freshDb(api);
+    const p = lineage(api, db); // tom bob ann kim
+    defineAncestor(api, db);
+    // Tag two people with an :age so a predicate can filter rule results.
+    _ = s3(db, "assert:attr:value:", p[2], api.intern("age"), api.mkSmallInt(40)); // ann
+    _ = s3(db, "assert:attr:value:", p[3], api.intern("age"), api.mkSmallInt(10)); // kim
+
+    // tom's descendants who have an age over 18 → just ann (40).
+    const q = vec(api, &.{
+        vec(api, &.{ api.intern("rule"), api.intern("ancestor"), p[0], lvar(api, "y") }),
+        vec(api, &.{ lvar(api, "y"), api.intern("age"), lvar(api, "a") }),
+        vec(api, &.{ lvar(api, "a"), api.intern("gt"), api.mkSmallInt(18) }),
+    });
+    const r = s2(db, "findAll:where:", lvar(api, "y"), q);
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(r, "size")));
+    try std.testing.expect(s1(r, "at:", api.mkSmallInt(0)) == p[2]); // ann
+}
+
 // Assert three people into `db`, keeping NO reference after return — so the
 // entities live only inside the store's fact list (their GC survival depends on
 // the store's root provider, not on lingering stack slots).

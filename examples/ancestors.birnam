@@ -1,0 +1,36 @@
+// Recursive datalog rules — transitive closure over a parent chain.
+//
+//   birnam examples/ancestors.birnam
+//
+// `[db defineRule: #name params: #[?a …] body: #[ clause… ]]` registers a rule;
+// a name may have SEVERAL definitions and the relation it denotes is their union
+// — so a base case and a recursive case are two `defineRule:` calls. A rule is
+// invoked from a `where:` clause as `#[ #rule #name arg… ]`. Recursion terminates
+// by a semi-naive fixpoint (the rule's relation is materialized to a set), so no
+// special base-case ordering is needed.
+
+// A parent fact: parent then child. Build the chain tom → bob → ann → kim.
+let parent := [:p :c | [db assert: p attr: #parent value: c]];
+let tom := [db entity];
+let bob := [db entity];
+let ann := [db entity];
+let kim := [db entity];
+[parent value: tom value: bob];
+[parent value: bob value: ann];
+[parent value: ann value: kim];
+
+// ancestor(?x, ?y): the transitive closure of parent.
+//   base:      ?x is an ancestor of ?y if ?x is a parent of ?y.
+//   recursive: ?x is an ancestor of ?y if ?x is a parent of some ?z who is an
+//              ancestor of ?y.
+[db defineRule: #ancestor params: #[?x ?y] body: #[ #[?x #parent ?y] ]];
+[db defineRule: #ancestor params: #[?x ?y]
+   body: #[ #[?x #parent ?z] #[#rule #ancestor ?z ?y] ]];
+
+// Everyone descended from tom.
+let descendants := [db findAll: ?y where: #[ #[#rule #ancestor tom ?y] ]];
+[System println: ["tom's descendants: " , [[descendants size] printString]]];
+
+// How many ancestors does kim have?
+let kimAncestors := [db count: ?x where: #[ #[#rule #ancestor ?x kim] ]];
+[System println: ["kim's ancestors: " , [kimAncestors printString]]]

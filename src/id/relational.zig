@@ -29,8 +29,10 @@
 //! failure: keep a solution iff the inner conjunction (threaded from that
 //! solution's bindings) has no match; it too binds nothing, so the negated
 //! variables should already be bound. A clause led by `#or` — `#[ #or branch… ]` —
-//! is DISJUNCTION: the union of the solutions each branch produces. Logic
-//! variables are minted
+//! is DISJUNCTION: the union of the solutions each branch produces. A clause led by
+//! `#rule` — `#[ #rule #name arg… ]` — invokes a (possibly recursive) RULE defined
+//! by `[db defineRule: #name params: #[?a …] body: #[ clause… ]]`; a name may have
+//! several definitions and its relation is their union. Logic variables are minted
 //! by the grammar/codegen as `[LogicVar named: #p]` — canonical per name, so the
 //! `?p` in the result position and the `?p` inside a clause are the SAME object and
 //! join by identity. The engine scans the store's LIVE triples (via the
@@ -111,6 +113,12 @@ fn isLogicVar(o: Oop) bool {
 fn gcRoots(mark: idapi.MarkFn) callconv(.c) void {
     var it = g_logicvars.valueIterator();
     while (it.next()) |v| mark(v.*);
+    // Registered rules (their param + body Vectors) are held only here.
+    var rit = g_rules.valueIterator();
+    while (rit.next()) |list| for (list.items) |r| {
+        mark(r.params);
+        mark(r.body);
+    };
 }
 
 /// `[LogicVar named: #p]` — the canonical logic variable for symbol `#p` (interned
@@ -263,12 +271,139 @@ fn tryClause(aa: std.mem.Allocator, sol: []const Binding, pos: [3]Oop, tri: Trip
     return b.toOwnedSlice(aa) catch @panic("relational: oom");
 }
 
+// -- rules -------------------------------------------------------------------
+
+const Rule = struct { params: Oop, body: Oop };
+const RuleList = std.ArrayList(Rule);
+const DerivedSet = std.ArrayList([]Oop);
+
+// A rule NAME maps to several definitions; the relation it denotes is their UNION
+// (the datalog reading — base and recursive cases are separate `defineRule:`
+// calls). Persisted across queries (it is the schema).
+var g_rules: std.AutoHashMapUnmanaged(Oop, RuleList) = .{};
+
+// Rules being materialized in the CURRENT query: name → its (possibly still
+// growing) head-tuple set. A recursive self-reference reads this partial set
+// instead of recursing — the semi-naive trick — so recursion terminates with NO
+// variable renaming: only head VALUES cross the rule boundary (into the set), never
+// variables. Cleared at each top-level `runQuery` entry; its sets live in that
+// query's arena.
+var g_active: std.AutoHashMapUnmanaged(Oop, *DerivedSet) = .{};
+
+/// `[db defineRule: #name params: #[?a …] body: #[ clause… ]]` — register one
+/// (possibly recursive) definition of a rule. `params` are the head variables;
+/// `body` is a conjunction of clauses (the full vocabulary, including
+/// `#[#rule #name …]` for recursion). Definitions accumulate: a name's relation is
+/// the union of all its bodies.
+fn mDefineRule(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const gop = g_rules.getOrPut(ca, args[0]) catch @panic("relational: oom");
+    if (!gop.found_existing) gop.value_ptr.* = .{};
+    gop.value_ptr.append(ca, .{ .params = args[1], .body = args[2] }) catch @panic("relational: oom");
+    return self;
+}
+
+fn tupleInSet(d: *const DerivedSet, t: []const Oop) bool {
+    outer: for (d.items) |row| {
+        if (row.len != t.len) continue;
+        for (row, t) |a, b| if (a != b) continue :outer;
+        return true;
+    }
+    return false;
+}
+
+/// Materialize a rule's head-tuple relation to a fixpoint and return it (memoized
+/// in `g_active` for the rest of the query). Each definition's body is evaluated as
+/// a conjunction and its head projected; the union of new tuples grows the set
+/// until a pass adds nothing. A self-reference during evaluation reads the partial
+/// set (see `g_active`), turning recursion into iteration. `max_iter` is a safety
+/// net (a finite store reaches a fixpoint well before it).
+fn materialize(aa: std.mem.Allocator, name: Oop, triples: []const Triple) *DerivedSet {
+    if (g_active.get(name)) |d| return d; // already (being) built — memo / recursion
+    const d = aa.create(DerivedSet) catch @panic("relational: oom");
+    d.* = .{};
+    g_active.put(ca, name, d) catch @panic("relational: oom");
+    const rules = g_rules.getPtr(name) orelse return d; // unknown rule → empty
+
+    var iter: usize = 0;
+    while (iter < 1000) : (iter += 1) {
+        const before = d.items.len;
+        for (rules.items) |rule| {
+            const arity: usize = @intCast(g_api.smallIntValue(send0(rule.params, s_size)));
+            const nbody: usize = @intCast(g_api.smallIntValue(send0(rule.body, s_size)));
+
+            var seed: std.ArrayList([]Binding) = .{};
+            seed.append(aa, &[_]Binding{}) catch @panic("relational: oom");
+            var sols: []const []Binding = seed.items;
+            var c: usize = 0;
+            while (c < nbody) : (c += 1) {
+                const clause = send1(rule.body, s_at, g_api.mkSmallInt(@intCast(c)));
+                sols = applyClause(aa, sols, clause, triples);
+            }
+
+            for (sols) |sol| {
+                const tuple = aa.alloc(Oop, arity) catch @panic("relational: oom");
+                var ok = true;
+                var i: usize = 0;
+                while (i < arity) : (i += 1) {
+                    const pv = send1(rule.params, s_at, g_api.mkSmallInt(@intCast(i)));
+                    tuple[i] = lookup(sol, pv) orelse {
+                        ok = false;
+                        break;
+                    };
+                }
+                if (ok and !tupleInSet(d, tuple)) d.append(aa, tuple) catch @panic("relational: oom");
+            }
+        }
+        if (d.items.len == before) break; // fixpoint reached
+    }
+    return d;
+}
+
+/// Match a `#[ #rule #name arg… ]` clause: extend each solution by unifying the
+/// call args (positionally, like a triple) against every tuple of the rule's
+/// materialized relation. An arg may be a bound var (must agree), a free var
+/// (binds), or a constant (must equal by identity).
+fn matchRuleClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, csz: usize, triples: []const Triple) []const []Binding {
+    const name = send1(clause, s_at, g_api.mkSmallInt(1));
+    const arity = csz - 2;
+    const d = materialize(aa, name, triples);
+
+    var next: std.ArrayList([]Binding) = .{};
+    for (sols) |sol| {
+        for (d.items) |row| {
+            if (row.len != arity) continue;
+            var b: std.ArrayList(Binding) = .{};
+            b.appendSlice(aa, sol) catch @panic("relational: oom");
+            var ok = true;
+            var i: usize = 0;
+            while (i < arity) : (i += 1) {
+                const p = send1(clause, s_at, g_api.mkSmallInt(@intCast(2 + i)));
+                const val = row[i];
+                if (isLogicVar(p)) {
+                    if (lookup(b.items, p)) |ex| {
+                        if (ex != val) {
+                            ok = false;
+                            break;
+                        }
+                    } else b.append(aa, .{ .v = p, .val = val }) catch @panic("relational: oom");
+                } else if (p != val) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) next.append(aa, b.toOwnedSlice(aa) catch @panic("relational: oom")) catch @panic("relational: oom");
+        }
+    }
+    return next.toOwnedSlice(aa) catch @panic("relational: oom");
+}
+
 /// Apply one `where:` clause to the running solution set, returning the new set
-/// (allocated in `aa`). Dispatches on the clause's shape: a `#not`-led clause
-/// NEGATES (keep a solution iff its inner conjunction has no match); a clause whose
-/// middle is a comparison symbol FILTERS; otherwise it is a TRIPLE pattern that
-/// joins/extends. Negation runs its inner clauses back through this same function,
-/// so a negated conjunction may itself contain predicates or further negations.
+/// (allocated in `aa`). Dispatches on the clause's shape: `#or` UNIONs branches,
+/// `#not` NEGATES (keep a solution iff its inner conjunction has no match), `#rule`
+/// joins against a (possibly recursive) rule relation, a comparison-symbol middle
+/// FILTERS, otherwise it is a TRIPLE pattern that joins/extends. Compound clauses
+/// run their inner clauses back through this same function.
 fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, triples: []const Triple) []const []Binding {
     const csz: usize = @intCast(g_api.smallIntValue(send0(clause, s_size)));
     const pos0 = if (csz > 0) send1(clause, s_at, g_api.mkSmallInt(0)) else g_api.nilObj;
@@ -287,6 +422,12 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
             unioned.appendSlice(aa, br) catch @panic("relational: oom");
         }
         return unioned.toOwnedSlice(aa) catch @panic("relational: oom");
+    }
+
+    // Rule invocation: `#[ #rule #name arg… ]`. Join against the rule's
+    // materialized (possibly recursive) relation.
+    if (isSym(pos0, "rule") and csz >= 2) {
+        return matchRuleClause(aa, sols, clause, csz, triples);
     }
 
     // Negation as failure: `#[ #not innerClause… ]`. Keep a solution iff threading
@@ -340,6 +481,10 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
 /// shared core behind `findAll:where:` and the aggregates. Returns a Vector of the
 /// distinct bound values (empty if nothing matches).
 fn runQuery(self: Oop, result_var: Oop, clauses: Oop) Oop {
+    // Each top-level query recomputes rule relations fresh against current facts;
+    // the per-query memo/recursion sets live in this query's arena (below).
+    g_active.clearRetainingCapacity();
+
     var triples: Triples = .{};
     defer triples.deinit(ca);
     gatherTriples(self, &triples);
@@ -503,6 +648,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, api.intern("sum:where:"), &mSum);
     api.method(store_vt, api.intern("min:where:"), &mMin);
     api.method(store_vt, api.intern("max:where:"), &mMax);
+    api.method(store_vt, api.intern("defineRule:params:body:"), &mDefineRule);
     api.method(store_vt, api.intern("pull:spec:"), &mPull);
 
     api.method(logicvar_factory_vt, api.intern("named:"), &mNamed);
