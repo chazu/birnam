@@ -19,7 +19,8 @@
 //!   [db basis]                        → the current tx counter (time-travel handle)
 //!   [db count: ?v where: clauses]     → how many distinct bindings of ?v
 //!   [db sum:/min:/max: ?v where: …]   → fold over the distinct bindings of ?v
-//!   [db pull: e spec: #[ #attr … ]]   → a {attr: currentValue} record Map
+//!   [db pull: e spec: #[ #attr … ]]   → a record Map; #[#ref <subspec>] recurses,
+//!                                        :many attrs yield Vectors
 //!
 //! A clause is `#[ e a v ]` (a Vector); each position is either a CONSTANT (matched
 //! by identity) or a LOGIC VARIABLE (`?p` in source). A clause whose MIDDLE position
@@ -74,6 +75,19 @@ var s_gt: Oop = null;
 var s_ge: Oop = null;
 var s_eq: Oop = null;
 var s_plus: Oop = null; // `+`, for `sum:where:`
+var s_cardinality: Oop = null; // `cardinality:`, to render :many in pull
+var s_many: Oop = null; // the `#many` cardinality symbol
+
+// The Vector INSTANCE vtable, imported lazily — pull tells a nested ref spec
+// (a Vector `#[#refattr <subspec>]`) from a leaf attribute (a symbol).
+var g_vector_vt: Oop = null;
+fn vectorVt() Oop {
+    if (g_vector_vt == null) g_vector_vt = g_api.import("VectorVt");
+    return g_vector_vt;
+}
+fn isVector(o: Oop) bool {
+    return o != null and g_api.vtableOf(o) == vectorVt();
+}
 
 // Canonical logic vars, interned by their name symbol.
 var g_logicvars: std.AutoHashMapUnmanaged(Oop, Oop) = .{};
@@ -604,21 +618,75 @@ fn mMax(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return best;
 }
 
-/// `[db pull: e spec: #[ #attr … ]]` — materialize `e` into a record Map of each
-/// requested attribute to its current value (absent attributes are omitted).
-fn mPull(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = n;
-    const e = args[0];
-    const spec = args[1];
+// The dedicated logic var pull uses to gather an attribute's values via the join.
+fn pullVar() Oop {
+    return mNamed(logicvar_factory, &[_]Oop{g_api.intern("__pullv")}, 1);
+}
+
+// All CURRENT values of (e, a) as a Vector — `findAll: ?v where: #[ #[e a ?v] ]`,
+// reusing the join so a :many attribute yields every member.
+fn attrValues(self: Oop, e: Oop, a: Oop) Oop {
+    const vv = pullVar();
+    var clause = send0(vectorFactory(), s_new);
+    clause = send1(clause, s_add, e);
+    clause = send1(clause, s_add, a);
+    clause = send1(clause, s_add, vv);
+    const clauses = send1(send0(vectorFactory(), s_new), s_add, clause);
+    return runQuery(self, vv, clauses, null);
+}
+
+fn isMany(self: Oop, a: Oop) bool {
+    return send1(self, s_cardinality, a) == s_many;
+}
+
+/// Materialize `e` into a record Map per `spec`. Each spec element is either a leaf
+/// attribute symbol `#a` (→ its current value, or a Vector of members for a `:many`
+/// attribute) or a NESTED ref spec `#[ #refattr <subspec> ]` (→ pull the entity the
+/// attribute points at with `<subspec>`; a Vector of sub-records for a `:many` ref).
+/// Absent attributes are omitted (no NULL).
+fn pullEntity(self: Oop, e: Oop, spec: Oop) Oop {
     var m = send0(mapFactory(), s_new);
     const sz: usize = @intCast(g_api.smallIntValue(send0(spec, s_size)));
     var i: usize = 0;
     while (i < sz) : (i += 1) {
-        const a = send1(spec, s_at, g_api.mkSmallInt(@intCast(i)));
-        const v = send2(self, s_currentValue, e, a);
-        if (v != null) m = send2(m, s_atput, a, v);
+        const elem = send1(spec, s_at, g_api.mkSmallInt(@intCast(i)));
+        if (isVector(elem)) {
+            // Nested ref spec: #[ #refattr <subspec> ].
+            const refattr = send1(elem, s_at, g_api.mkSmallInt(0));
+            const subspec = send1(elem, s_at, g_api.mkSmallInt(1));
+            const refs = attrValues(self, e, refattr);
+            const rc: usize = @intCast(g_api.smallIntValue(send0(refs, s_size)));
+            if (rc == 0) continue;
+            if (isMany(self, refattr)) {
+                var subs = send0(vectorFactory(), s_new);
+                var j: usize = 0;
+                while (j < rc) : (j += 1) {
+                    const ref = send1(refs, s_at, g_api.mkSmallInt(@intCast(j)));
+                    subs = send1(subs, s_add, pullEntity(self, ref, subspec));
+                }
+                m = send2(m, s_atput, refattr, subs);
+            } else {
+                const ref = send1(refs, s_at, g_api.mkSmallInt(0));
+                m = send2(m, s_atput, refattr, pullEntity(self, ref, subspec));
+            }
+        } else {
+            // Leaf attribute symbol.
+            const vals = attrValues(self, e, elem);
+            const cnt: usize = @intCast(g_api.smallIntValue(send0(vals, s_size)));
+            if (cnt == 0) continue;
+            if (isMany(self, elem))
+                m = send2(m, s_atput, elem, vals) // a Vector of members
+            else
+                m = send2(m, s_atput, elem, send1(vals, s_at, g_api.mkSmallInt(0)));
+        }
     }
     return m;
+}
+
+/// `[db pull: e spec: #[ #attr | #[#refattr <subspec>] … ]]` — see `pullEntity`.
+fn mPull(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return pullEntity(self, args[0], args[1]);
 }
 
 // -- bringup -----------------------------------------------------------------
@@ -643,6 +711,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_ge = api.intern(">=");
     s_eq = api.intern("=");
     s_plus = api.intern("+");
+    s_cardinality = api.intern("cardinality:");
+    s_many = api.intern("many");
 
     const reloading = api.isExported("db") != 0;
     if (reloading) {

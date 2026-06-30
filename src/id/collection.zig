@@ -787,39 +787,39 @@ fn kvDo(node: Oop, blk: Oop) void {
 fn mPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
+    // Buffer + first-flag are LOCAL (threaded through), not module globals — a
+    // value that is itself a Map re-enters this function safely (nested records
+    // from pull); a shared global would dangle when the inner call frees it.
     var buf: std.ArrayList(u8) = .{};
     defer buf.deinit(ca);
+    var first = true;
     buf.append(ca, '{') catch @panic("collection: oom");
-    g_print_buf = &buf;
-    g_print_first = true;
-    kvPrint(mp(self).root);
+    kvPrint(&buf, &first, mp(self).root);
     buf.append(ca, '}') catch @panic("collection: oom");
     return g_api.mkString(buf.items.ptr, buf.items.len);
 }
-var g_print_buf: *std.ArrayList(u8) = undefined;
-var g_print_first: bool = true;
-fn kvPrint(node: Oop) void {
+fn kvPrint(buf: *std.ArrayList(u8), first: *bool, node: Oop) void {
     if (node == null) return;
     const s = hslots(node);
     const ns = hSlotCount(node);
     var i: usize = 0;
     while (i < ns) : (i += 2) {
         if (s[i] == null) {
-            kvPrint(s[i + 1]);
+            kvPrint(buf, first, s[i + 1]);
             continue;
         }
-        if (!g_print_first) g_print_buf.appendSlice(ca, ", ") catch @panic("collection: oom");
-        g_print_first = false;
-        appendPrint(s[i]);
-        g_print_buf.appendSlice(ca, " -> ") catch @panic("collection: oom");
-        appendPrint(s[i + 1]);
+        if (!first.*) buf.appendSlice(ca, ", ") catch @panic("collection: oom");
+        first.* = false;
+        appendPrint(buf, s[i]);
+        buf.appendSlice(ca, " -> ") catch @panic("collection: oom");
+        appendPrint(buf, s[i + 1]);
     }
 }
-fn appendPrint(o: Oop) void {
+fn appendPrint(buf: *std.ArrayList(u8), o: Oop) void {
     const str = g_api.send(o, s_printString, &[_]Oop{}, 0);
     var len: usize = 0;
     const p = g_api.stringBytes(str, &len);
-    g_print_buf.appendSlice(ca, p[0..len]) catch @panic("collection: oom");
+    buf.appendSlice(ca, p[0..len]) catch @panic("collection: oom");
 }
 
 fn mapNew(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {

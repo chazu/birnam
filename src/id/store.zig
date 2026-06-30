@@ -445,6 +445,14 @@ fn mLiveTriplesAsOfDo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop 
     return self;
 }
 
+/// `[store cardinality: a]` — the cardinality symbol (`#one` / `#many`) governing
+/// attribute `a`, read from the store's own schema. Lets the query side render a
+/// `:many` attribute as a collection in pull.
+fn mCardinality(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return cardinalityOf(stateOf(self), args[0]);
+}
+
 /// `[store basis]` — the current transaction counter (a SmallInt). Capture it,
 /// mutate the store, then query `asOf:` that basis to see the earlier snapshot.
 fn mBasis(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -655,6 +663,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, api.intern("liveTriplesDo:"), &mLiveTriplesDo);
     api.method(store_vt, api.intern("liveTriplesAsOf:do:"), &mLiveTriplesAsOfDo);
     api.method(store_vt, api.intern("basis"), &mBasis);
+    api.method(store_vt, api.intern("cardinality:"), &mCardinality);
     api.setTraceHook(store_vt, &gcTraceHook); // facts live in non-id memory (F3)
 
     // Cell protocol (the `history` selector reuses the "history" symbol — one

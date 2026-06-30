@@ -1,0 +1,30 @@
+// Pull — materialize an entity (and its relations) into a record.
+//
+//   birnam examples/pull.birnam
+//
+// `[db pull: e spec: aSpec]` turns an entity into a Map. A spec element is either
+// a leaf attribute `#attr` (→ its value; a Vector of members for a `:many` attr)
+// or a NESTED ref spec `#[ #refattr <subspec> ]` (→ pull the entity that attribute
+// points at). Declaring an attribute `:many` is itself just a fact:
+// `[db assert: #attr attr: #cardinality value: #many]`.
+
+// A pet is many-valued; an owner has a name, a city, and some pets.
+[db assert: #pet attr: #cardinality value: #many];
+
+let alice := [db entity];
+[db assert: alice attr: #name value: "Alice"];
+[db assert: alice attr: #city value: #Boston];
+[db assert: alice attr: #pet value: #Dog];
+[db assert: alice attr: #pet value: #Cat];
+
+// A flat pull: name (scalar) + pets (a Vector, since :pet is :many).
+let flat := [db pull: alice spec: #[ #name #pet ]];
+[System println: ["alice: " , [flat printString]]];
+
+// A nested pull: Bob, and his best friend Alice pulled one level deep.
+let bob := [db entity];
+[db assert: bob attr: #name value: "Bob"];
+[db assert: bob attr: #friend value: alice];
+
+let nested := [db pull: bob spec: #[ #name #[#friend #[ #name #city ]] ]];
+[System println: ["bob: " , [nested printString]]]

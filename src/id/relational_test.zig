@@ -418,6 +418,43 @@ test "relational: asOf: reflects a value CHANGE on a history-on :one attribute" 
     try std.testing.expectEqual(@as(i64, 0), ival(s0(s3(db, "findAll:where:asOf:", lvar(api, "x"), inDenver, basis), "size")));
 }
 
+test "relational: pull renders a :many attribute as a Vector of members" {
+    const api = setup();
+    const db = freshDb(api);
+    // Declare :pet as :many in this store's schema.
+    _ = s3(db, "assert:attr:value:", api.intern("pet"), api.intern("cardinality"), api.intern("many"));
+    const p = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", p, api.intern("name"), api.intern("Alice"));
+    _ = s3(db, "assert:attr:value:", p, api.intern("pet"), api.intern("Dog"));
+    _ = s3(db, "assert:attr:value:", p, api.intern("pet"), api.intern("Cat"));
+
+    const spec = vec(api, &.{ api.intern("name"), api.intern("pet") });
+    const rec = s2(db, "pull:spec:", p, spec);
+    // name is :one → scalar; pet is :many → a 2-member Vector.
+    try std.testing.expect(s1(rec, "at:", api.intern("name")) == api.intern("Alice"));
+    const pets = s1(rec, "at:", api.intern("pet"));
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(pets, "size")));
+}
+
+test "relational: pull recurses into a nested ref spec" {
+    const api = setup();
+    const db = freshDb(api);
+    const alice = s0(db, "entity");
+    const bob = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", alice, api.intern("name"), api.intern("Alice"));
+    _ = s3(db, "assert:attr:value:", bob, api.intern("name"), api.intern("Bob"));
+    _ = s3(db, "assert:attr:value:", alice, api.intern("friend"), bob); // alice → bob
+
+    // pull alice's name and her friend's name (the friend is itself pulled).
+    const sub = vec(api, &.{api.intern("name")});
+    const refSpec = vec(api, &.{ api.intern("friend"), sub });
+    const spec = vec(api, &.{ api.intern("name"), refSpec });
+    const rec = s2(db, "pull:spec:", alice, spec);
+    try std.testing.expect(s1(rec, "at:", api.intern("name")) == api.intern("Alice"));
+    const friend = s1(rec, "at:", api.intern("friend")); // a sub-record Map
+    try std.testing.expect(s1(friend, "at:", api.intern("name")) == api.intern("Bob"));
+}
+
 // A parent chain tom → bob → ann → kim (each `#parent` fact: parent then child).
 fn lineage(api: *idapi.IdApi, db: Oop) [4]Oop {
     const tom = s0(db, "entity");
