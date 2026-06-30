@@ -166,10 +166,14 @@ fn buildGrammar() void {
         lit("}"),
     }));
 
-    // expr = block / send / vectorLit / mapLit / primary
+    // logicVar = '?' ident   — a datalog query variable (#[?p …]); evaluates to a
+    // canonical LogicVar object (codegen lowers it to `[LogicVar named: #p]`).
+    defRule("logicVar", seqN(&.{ lit("?"), rref("ident") }));
+
+    // expr = block / send / vectorLit / mapLit / logicVar / primary
     // (block before send: both open '['; vectorLit opens '#[' so it must beat the
-    // symbol rule inside primary, which also opens '#'.)
-    defRule("expr", altN(&.{ rref("block"), rref("send"), rref("vectorLit"), rref("mapLit"), rref("primary") }));
+    // symbol rule inside primary, which also opens '#'. '?' is unambiguous.)
+    defRule("expr", altN(&.{ rref("block"), rref("send"), rref("vectorLit"), rref("mapLit"), rref("logicVar"), rref("primary") }));
 
     // letBinding = 'let' !alnum ident ':=' expr
     defRule("letBinding", seqN(&.{

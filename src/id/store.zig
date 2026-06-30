@@ -82,6 +82,7 @@ pub var s_one: Oop = null;
 pub var s_many: Oop = null;
 pub var s_name: Oop = null;
 pub var s_history: Oop = null; // the history-policy ATTRIBUTE
+var s_value3: Oop = null; // "value:value:value:" — the liveTriplesDo: block call
 pub var s_true: Oop = null;
 pub var s_false: Oop = null;
 
@@ -361,6 +362,68 @@ fn mAttrAt(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return if (idx >= out.items.len) null else out.items[idx];
 }
 
+// -- The relational seam: enumerate LIVE triples (docs/33; the query side) ----
+//
+// `[store liveTriplesDo: aBlock]` sends `value:value:value:` to `aBlock` once per
+// live (entity, attr, value) triple — the CURRENT state, post-retraction and
+// cardinality-resolved (one current value for :one attrs; each distinct live
+// member for :many). This is the single primitive the relational engine
+// (a sibling module) scans to run datalog joins: it owns the store's liveness
+// semantics here, so the engine stays representation-free. Schema facts are data
+// like any other, so they enumerate too (a query simply won't match them unless
+// it asks). Collection-free by design — the block does any accumulation.
+
+const EA = struct { e: Oop, a: Oop };
+
+fn pairSeen(pairs: []const EA, e: Oop, a: Oop) bool {
+    for (pairs) |p| if (eq(p.e, e) and eq(p.a, a)) return true;
+    return false;
+}
+
+fn mLiveTriplesDo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const st = stateOf(self);
+    const blk = args[0];
+
+    // Distinct (e,a) pairs in first-appearance order.
+    var pairs: std.ArrayList(EA) = .{};
+    defer pairs.deinit(ca);
+    for (st.facts.items) |f| {
+        if (!pairSeen(pairs.items, f.e, f.a))
+            pairs.append(ca, .{ .e = f.e, .a = f.a }) catch @panic("store: oom");
+    }
+
+    for (pairs.items) |p| {
+        if (eq(cardinalityOf(st, p.a), s_one)) {
+            const cv = currentValueRaw(st, p.e, p.a);
+            if (cv != null) emitTriple(blk, p.e, p.a, cv);
+        } else {
+            // :many — each distinct value whose newest op is .assert.
+            var seen: std.ArrayList(Oop) = .{};
+            defer seen.deinit(ca);
+            var i = st.facts.items.len;
+            while (i > 0) {
+                i -= 1;
+                const f = st.facts.items[i];
+                if (!eq(f.e, p.e) or !eq(f.a, p.a)) continue;
+                var dup = false;
+                for (seen.items) |s| if (eq(s, f.v)) {
+                    dup = true;
+                    break;
+                };
+                if (dup) continue; // newest entry for this value already decided
+                seen.append(ca, f.v) catch @panic("store: oom");
+                if (f.op == .assert) emitTriple(blk, p.e, p.a, f.v);
+            }
+        }
+    }
+    return self;
+}
+
+fn emitTriple(blk: Oop, e: Oop, a: Oop, v: Oop) void {
+    _ = g_api.send(blk, s_value3, &[_]Oop{ e, a, v }, 3);
+}
+
 // -- Cells: object state as a handle (docs/33 §2a.3, D5 stratification) -------
 //
 // A Cell is a separate libid object addressing one (store, e, a). The stateful
@@ -510,6 +573,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_new = api.intern("new");
     s_attrCount = api.intern("attrCount:");
     s_attrAt = api.intern("attrAt:index:");
+    s_value3 = api.intern("value:value:value:");
 
     g_globals_entity = api.intern("__globals__");
 
@@ -538,6 +602,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_new, &mNew);
     api.method(store_vt, s_attrCount, &mAttrCount);
     api.method(store_vt, s_attrAt, &mAttrAt);
+    api.method(store_vt, api.intern("liveTriplesDo:"), &mLiveTriplesDo);
 
     // Cell protocol (the `history` selector reuses the "history" symbol — one
     // identity, two roles: a cell message here, a schema attribute key above).

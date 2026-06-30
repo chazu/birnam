@@ -66,6 +66,7 @@ var r_statements: Oop = null;
 var r_vectorLit: Oop = null;
 var r_mapLit: Oop = null;
 var r_mapEntry: Oop = null;
+var r_logicVar: Oop = null;
 
 var src_bytes: []const u8 = &.{}; // the source for the current eval (for spans)
 
@@ -403,6 +404,14 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
     }
     if (r == r_mapLit) {
         return emitMapLit(buf, node, nchild(node));
+    }
+    if (r == r_logicVar) {
+        // `?p` → `[LogicVar named: #p]` — the canonical query variable for name p.
+        const name = text(child(node, 0)); // the ident after '?'
+        put(buf, "birnam_send(birnam_global(\"LogicVar\"), birnam_intern(\"named:\"), (void*[]){birnam_intern(\"");
+        putCStr(buf, name);
+        put(buf, "\")}, 1L)");
+        return true;
     }
     return false;
 }
@@ -769,6 +778,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     r_vectorLit = api.intern("vectorLit");
     r_mapLit = api.intern("mapLit");
     r_mapEntry = api.intern("mapEntry");
+    r_logicVar = api.intern("logicVar");
 
     const reloading = api.isExported("Codegen") != 0;
     if (reloading) {

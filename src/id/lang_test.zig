@@ -87,6 +87,17 @@ test "lang 3b: parses collection literals — #[…] vectors and {…} maps" {
     try std.testing.expect(parses(api, "#double")); // still a symbol, not a vector
 }
 
+test "lang 3b: parses ?logic variables in datalog query position" {
+    const api = setup();
+
+    try std.testing.expect(parses(api, "?p"));
+    try std.testing.expect(parses(api, "let v := ?city"));
+    // a query: result var + a where: clause vector of clause vectors
+    try std.testing.expect(parses(api, "[db findAll: ?p where: #[ #[?p #city #Boston] ]]"));
+    // a logic var sits beside symbols and bound idents inside a clause
+    try std.testing.expect(parses(api, "#[ #[?p #city city] #[?p #pet ?animal] ]"));
+}
+
 test "lang 3b: rejects malformed input (full-consume via eof)" {
     const api = setup();
 

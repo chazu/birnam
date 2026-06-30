@@ -437,6 +437,28 @@ pub fn build(b: *std.Build) void {
     const test_error_step = b.step("test-error", "F7: the error model (propagating values + DNU swap)");
     test_error_step.dependOn(&b.addRunArtifact(id_error_tests).step);
 
+    // The relational reading of the store: a datalog join (findAll:where: / pull:)
+    // installed onto the store's vtable + logic variables. Depends on the IdApi +
+    // Store; uses the collection factories lazily at query time.
+    const id_relational_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/relational.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_relational_lib = b.addLibrary(.{ .name = "birnam_id_relational", .root_module = id_relational_mod, .linkage = .dynamic });
+    id_relational_lib.linkLibC();
+    b.installArtifact(id_relational_lib);
+
+    const id_relational_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/relational_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_relational_tests = b.addTest(.{ .root_module = id_relational_test_mod });
+    id_relational_tests.linkLibC();
+    const test_relational_step = b.step("test-relational", "the relational reading: datalog join + pull");
+    test_relational_step.dependOn(&b.addRunArtifact(id_relational_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,
