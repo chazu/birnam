@@ -1,0 +1,28 @@
+// Time-travel queries — read the store as it was at an earlier transaction.
+//
+//   birnam examples/time-travel.birnam
+//
+// Every assertion advances the store's transaction counter. `[db basis]` captures
+// the current point in time; `findAll: ?v where: clauses asOf: basis` then runs
+// the query against the snapshot that was live BEFORE anything committed since.
+// (As-of sees prior VALUES of a `:one` attribute only if that attribute opted into
+// history; new entities/facts appearing over time are always visible to as-of.)
+
+let join := [:city |
+  let p := [db entity];
+  [db assert: p attr: #city value: city];
+  p];
+
+// Two people arrive in Boston.
+[join value: #Boston];
+[join value: #Boston];
+
+// Snapshot this moment, then a third person arrives.
+let earlier := [db basis];
+[join value: #Boston];
+
+let bostonNow := [db findAll: ?p where: #[ #[?p #city #Boston] ]];
+let bostonThen := [db findAll: ?p where: #[ #[?p #city #Boston] ] asOf: earlier];
+
+[System println: ["in Boston now:   " , [[bostonNow size] printString]]];
+[System println: ["in Boston then: " , [[bostonThen size] printString]]]

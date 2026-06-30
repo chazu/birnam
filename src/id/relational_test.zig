@@ -374,6 +374,50 @@ test "relational: aggregates over no matches — count/sum 0, min/max nil" {
     try std.testing.expect(s2(db, "max:where:", lvar(api, "c"), clauses) == api.nilObj);
 }
 
+test "relational: findAll asOf: a basis sees the earlier snapshot" {
+    const api = setup();
+    const db = freshDb(api);
+
+    // Two people in Boston, then capture the basis, then a third arrives.
+    const a = s0(db, "entity");
+    const b = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", a, api.intern("city"), api.intern("Boston"));
+    _ = s3(db, "assert:attr:value:", b, api.intern("city"), api.intern("Boston"));
+    const basis = s0(db, "basis"); // snapshot point: two Bostonians so far
+    const c = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", c, api.intern("city"), api.intern("Boston"));
+
+    const clauses = vec(api, &.{vec(api, &.{ lvar(api, "p"), api.intern("city"), api.intern("Boston") })});
+    // Current: three.
+    try std.testing.expectEqual(@as(i64, 3), ival(s0(s2(db, "findAll:where:", lvar(api, "p"), clauses), "size")));
+    // As of the basis: only the two that existed then.
+    const past = s3(db, "findAll:where:asOf:", lvar(api, "p"), clauses, basis);
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(past, "size")));
+}
+
+test "relational: asOf: reflects a value CHANGE on a history-on :one attribute" {
+    const api = setup();
+    const db = freshDb(api);
+
+    // Opt the city attribute into history (default-off would overwrite in place,
+    // discarding the past — D6); then a person in Boston moves to Denver.
+    _ = s3(db, "assert:attr:value:", api.intern("city"), api.intern("history"), api.intern("true"));
+    const p = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", p, api.intern("city"), api.intern("Boston"));
+    const basis = s0(db, "basis");
+    _ = s3(db, "assert:attr:value:", p, api.intern("city"), api.intern("Denver")); // :one supersedes
+
+    const inBoston = vec(api, &.{vec(api, &.{ lvar(api, "x"), api.intern("city"), api.intern("Boston") })});
+    const inDenver = vec(api, &.{vec(api, &.{ lvar(api, "x"), api.intern("city"), api.intern("Denver") })});
+
+    // Now: in Denver, not Boston.
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(s2(db, "findAll:where:", lvar(api, "x"), inDenver), "size")));
+    try std.testing.expectEqual(@as(i64, 0), ival(s0(s2(db, "findAll:where:", lvar(api, "x"), inBoston), "size")));
+    // As of the basis: in Boston, not yet Denver.
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(s3(db, "findAll:where:asOf:", lvar(api, "x"), inBoston, basis), "size")));
+    try std.testing.expectEqual(@as(i64, 0), ival(s0(s3(db, "findAll:where:asOf:", lvar(api, "x"), inDenver, basis), "size")));
+}
+
 // A parent chain tom → bob → ann → kim (each `#parent` fact: parent then child).
 fn lineage(api: *idapi.IdApi, db: Oop) [4]Oop {
     const tom = s0(db, "entity");

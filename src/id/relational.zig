@@ -15,6 +15,8 @@
 //!   [db entity]                       → a fresh blank entity (a unique identity)
 //!   [db assert: e attr: a value: v]   → (inherited from the store)
 //!   [db findAll: ?v where: clauses]   → a Vector of every binding of ?v
+//!   [db findAll: ?v where: cl asOf: t]→ the same, against the snapshot at basis t
+//!   [db basis]                        → the current tx counter (time-travel handle)
 //!   [db count: ?v where: clauses]     → how many distinct bindings of ?v
 //!   [db sum:/min:/max: ?v where: …]   → fold over the distinct bindings of ?v
 //!   [db pull: e spec: #[ #attr … ]]   → a {attr: currentValue} record Map
@@ -64,6 +66,7 @@ var s_new: Oop = null;
 var s_add: Oop = null;
 var s_currentValue: Oop = null;
 var s_liveTriplesDo: Oop = null;
+var s_liveTriplesAsOfDo: Oop = null;
 // Comparison selectors a predicate clause SENDS to its left operand.
 var s_lt: Oop = null;
 var s_le: Oop = null;
@@ -199,11 +202,18 @@ fn mCollect3(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.nilObj;
 }
 
-fn gatherTriples(store: Oop, out: *Triples) void {
+/// Gather the store's live triples into `out`. With `asof` non-null (a SmallInt
+/// basis), gather the snapshot live AS OF that transaction instead of the current
+/// state — the whole query then runs against that historical view.
+fn gatherTriples(store: Oop, out: *Triples, asof: Oop) void {
     const blk = g_api.alloc(collector_vt, @sizeOf(usize));
     const slot: *usize = @ptrCast(@alignCast(blk.?));
     slot.* = @intFromPtr(out);
-    _ = send1(store, s_liveTriplesDo, blk);
+    if (asof != null) {
+        _ = send2(store, s_liveTriplesAsOfDo, asof, blk);
+    } else {
+        _ = send1(store, s_liveTriplesDo, blk);
+    }
 }
 
 // -- the join ----------------------------------------------------------------
@@ -480,14 +490,14 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
 /// Run a `where:` query and project `result_var`, deduped (set semantics) — the
 /// shared core behind `findAll:where:` and the aggregates. Returns a Vector of the
 /// distinct bound values (empty if nothing matches).
-fn runQuery(self: Oop, result_var: Oop, clauses: Oop) Oop {
+fn runQuery(self: Oop, result_var: Oop, clauses: Oop, asof: Oop) Oop {
     // Each top-level query recomputes rule relations fresh against current facts;
     // the per-query memo/recursion sets live in this query's arena (below).
     g_active.clearRetainingCapacity();
 
     var triples: Triples = .{};
     defer triples.deinit(ca);
-    gatherTriples(self, &triples);
+    gatherTriples(self, &triples, asof);
 
     var arena = std.heap.ArenaAllocator.init(ca);
     defer arena.deinit();
@@ -529,7 +539,15 @@ fn runQuery(self: Oop, result_var: Oop, clauses: Oop) Oop {
 /// disjunction `#[#or …]`). Returns a Vector (empty if nothing matches).
 fn mFindAll(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    return runQuery(self, args[0], args[1]);
+    return runQuery(self, args[0], args[1], null);
+}
+
+/// `[db findAll: ?v where: clauses asOf: tx]` — the same query against the snapshot
+/// live as of transaction `tx` (a `[db basis]` value). Time travel: capture a
+/// basis, mutate, then read the earlier world.
+fn mFindAllAsOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return runQuery(self, args[0], args[1], args[2]);
 }
 
 // The aggregates run the same query, then fold over the DISTINCT projected values
@@ -540,13 +558,13 @@ fn mFindAll(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// `[db count: ?v where: clauses]` — how many distinct bindings of `?v`.
 fn mCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    return send0(runQuery(self, args[0], args[1]), s_size);
+    return send0(runQuery(self, args[0], args[1], null), s_size);
 }
 
 /// `[db sum: ?v where: clauses]` — the sum of the distinct bindings (0 if none).
 fn mSum(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    const r = runQuery(self, args[0], args[1]);
+    const r = runQuery(self, args[0], args[1], null);
     const sz: usize = @intCast(g_api.smallIntValue(send0(r, s_size)));
     var acc = g_api.mkSmallInt(0);
     var i: usize = 0;
@@ -559,7 +577,7 @@ fn mSum(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// `[db min: ?v where: clauses]` — the least distinct binding, or nil if none.
 fn mMin(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    const r = runQuery(self, args[0], args[1]);
+    const r = runQuery(self, args[0], args[1], null);
     const sz: usize = @intCast(g_api.smallIntValue(send0(r, s_size)));
     if (sz == 0) return g_api.nilObj;
     var best = send1(r, s_at, g_api.mkSmallInt(0));
@@ -574,7 +592,7 @@ fn mMin(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// `[db max: ?v where: clauses]` — the greatest distinct binding, or nil if none.
 fn mMax(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    const r = runQuery(self, args[0], args[1]);
+    const r = runQuery(self, args[0], args[1], null);
     const sz: usize = @intCast(g_api.smallIntValue(send0(r, s_size)));
     if (sz == 0) return g_api.nilObj;
     var best = send1(r, s_at, g_api.mkSmallInt(0));
@@ -618,6 +636,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_add = api.intern("add:");
     s_currentValue = api.intern("currentValue:attr:");
     s_liveTriplesDo = api.intern("liveTriplesDo:");
+    s_liveTriplesAsOfDo = api.intern("liveTriplesAsOf:do:");
     s_lt = api.intern("<");
     s_le = api.intern("<=");
     s_gt = api.intern(">");
@@ -644,6 +663,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     // object answers both the imperative and relational readings (D5.2).
     api.method(store_vt, api.intern("entity"), &mEntity);
     api.method(store_vt, api.intern("findAll:where:"), &mFindAll);
+    api.method(store_vt, api.intern("findAll:where:asOf:"), &mFindAllAsOf);
     api.method(store_vt, api.intern("count:where:"), &mCount);
     api.method(store_vt, api.intern("sum:where:"), &mSum);
     api.method(store_vt, api.intern("min:where:"), &mMin);

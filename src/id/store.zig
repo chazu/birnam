@@ -133,16 +133,25 @@ fn isMember(st: *StoreState, e: Oop, a: Oop, v: Oop) bool {
     return false;
 }
 
-/// Newest-first scan for the current value of (e, a); null if none/retracted.
-/// The newest matching fact decides: a retract entry means the value is absent.
-fn currentValueRaw(st: *StoreState, e: Oop, a: Oop) Oop {
+/// Newest-first scan for the value of (e, a) AS OF a basis watermark: only facts
+/// with `tx < asof` are visible (`asof == null` = all = the current value; `asof`
+/// is a `[store basis]` value = the next-tx watermark, so the snapshot excludes
+/// anything committed at/after it). The newest visible matching fact decides; a
+/// retract entry means the value is absent.
+fn currentValueRawAsOf(st: *StoreState, e: Oop, a: Oop, asof: ?u64) Oop {
     var i = st.facts.items.len;
     while (i > 0) {
         i -= 1;
         const f = st.facts.items[i];
+        if (asof) |t| if (f.tx >= t) continue; // asof is a watermark: visible iff tx < asof
         if (eq(f.e, e) and eq(f.a, a)) return if (f.op == .retract) null else f.v;
     }
     return null;
+}
+
+/// The current value of (e, a); null if none/retracted.
+fn currentValueRaw(st: *StoreState, e: Oop, a: Oop) Oop {
+    return currentValueRawAsOf(st, e, a, null);
 }
 
 /// The cardinality of attribute `a`, read from the store's OWN schema cells.
@@ -380,31 +389,32 @@ fn pairSeen(pairs: []const EA, e: Oop, a: Oop) bool {
     return false;
 }
 
-fn mLiveTriplesDo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = n;
-    const st = stateOf(self);
-    const blk = args[0];
-
-    // Distinct (e,a) pairs in first-appearance order.
+/// Enumerate the live triples AS OF a transaction (`asof == null` = current).
+/// Only facts with `tx <= asof` are visible. Cardinality is read CURRENT (schema is
+/// treated as stable; it does not time-travel), but values fold as-of.
+fn enumerateTriples(st: *StoreState, blk: Oop, asof: ?u64) void {
+    // Distinct (e,a) pairs in first-appearance order, among visible facts.
     var pairs: std.ArrayList(EA) = .{};
     defer pairs.deinit(ca);
     for (st.facts.items) |f| {
+        if (asof) |t| if (f.tx >= t) continue; // asof is a watermark: visible iff tx < asof
         if (!pairSeen(pairs.items, f.e, f.a))
             pairs.append(ca, .{ .e = f.e, .a = f.a }) catch @panic("store: oom");
     }
 
     for (pairs.items) |p| {
         if (eq(cardinalityOf(st, p.a), s_one)) {
-            const cv = currentValueRaw(st, p.e, p.a);
+            const cv = currentValueRawAsOf(st, p.e, p.a, asof);
             if (cv != null) emitTriple(blk, p.e, p.a, cv);
         } else {
-            // :many — each distinct value whose newest op is .assert.
+            // :many — each distinct value whose newest visible op is .assert.
             var seen: std.ArrayList(Oop) = .{};
             defer seen.deinit(ca);
             var i = st.facts.items.len;
             while (i > 0) {
                 i -= 1;
                 const f = st.facts.items[i];
+                if (asof) |t| if (f.tx >= t) continue; // asof is a watermark: visible iff tx < asof
                 if (!eq(f.e, p.e) or !eq(f.a, p.a)) continue;
                 var dup = false;
                 for (seen.items) |s| if (eq(s, f.v)) {
@@ -417,7 +427,30 @@ fn mLiveTriplesDo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
             }
         }
     }
+}
+
+fn mLiveTriplesDo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    enumerateTriples(stateOf(self), args[0], null);
     return self;
+}
+
+/// `[store liveTriplesAsOf: tx do: aBlock]` — the relational seam at a point in
+/// time: enumerate the triples that were live as of transaction `tx` (a SmallInt
+/// basis from `[store basis]`). The engine's time-travel queries scan this.
+fn mLiveTriplesAsOfDo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const asof: u64 = @intCast(g_api.smallIntValue(args[0]));
+    enumerateTriples(stateOf(self), args[1], asof);
+    return self;
+}
+
+/// `[store basis]` — the current transaction counter (a SmallInt). Capture it,
+/// mutate the store, then query `asOf:` that basis to see the earlier snapshot.
+fn mBasis(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    return g_api.mkSmallInt(@intCast(stateOf(self).tx));
 }
 
 fn emitTriple(blk: Oop, e: Oop, a: Oop, v: Oop) void {
@@ -620,6 +653,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_attrCount, &mAttrCount);
     api.method(store_vt, s_attrAt, &mAttrAt);
     api.method(store_vt, api.intern("liveTriplesDo:"), &mLiveTriplesDo);
+    api.method(store_vt, api.intern("liveTriplesAsOf:do:"), &mLiveTriplesAsOfDo);
+    api.method(store_vt, api.intern("basis"), &mBasis);
     api.setTraceHook(store_vt, &gcTraceHook); // facts live in non-id memory (F3)
 
     // Cell protocol (the `history` selector reuses the "history" symbol — one
