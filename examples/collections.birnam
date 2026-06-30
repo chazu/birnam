@@ -19,7 +19,8 @@ let scaled := [nums collect: [:x | [x * step]]];
 [System println: [[nums inject: 0 into: [:acc :x | [acc + x]]] printString]];
 
 // A map literal with string keys; lookups via at: and at:ifAbsent:.
-let stock := {"apple": 3, "banana": 5, "cherry": 8};
+// `->` separates key and value (so symbol keys keep their colons).
+let stock := {"apple" -> 3, "banana" -> 5, "cherry" -> 8};
 [System println: [stock printString]];
 [System println: ["banana in stock: " , [[stock at: "banana"] printString]]];
 [System println: ["durian in stock: " , [[stock at: "durian" ifAbsent: [| 0]] printString]]];

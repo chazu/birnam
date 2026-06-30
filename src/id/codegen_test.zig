@@ -268,15 +268,18 @@ test "codegen 3c.4: map literals lower to a persistent at:put: chain" {
     const api = setupFull();
 
     try std.testing.expectEqual(@as(i64, 0), try evalInt(api, "[{} size]"));
-    try std.testing.expectEqual(@as(i64, 2), try evalInt(api, "[{\"a\": 1, \"b\": 2} size]"));
-    try std.testing.expectEqual(@as(i64, 5), try evalInt(api, "[{\"apple\": 3, \"banana\": 5} at: \"banana\"]"));
+    try std.testing.expectEqual(@as(i64, 2), try evalInt(api, "[{\"a\" -> 1, \"b\" -> 2} size]"));
+    try std.testing.expectEqual(@as(i64, 5), try evalInt(api, "[{\"apple\" -> 3, \"banana\" -> 5} at: \"banana\"]"));
 
     // absent key runs the ifAbsent: block.
-    try std.testing.expectEqual(@as(i64, 0), try evalInt(api, "[{\"a\": 1} at: \"z\" ifAbsent: [| 0]]"));
+    try std.testing.expectEqual(@as(i64, 0), try evalInt(api, "[{\"a\" -> 1} at: \"z\" ifAbsent: [| 0]]"));
 
     // later duplicate key wins (persistent at:put: overwrite).
-    try std.testing.expectEqual(@as(i64, 9), try evalInt(api, "[{\"k\": 1, \"k\": 9} at: \"k\"]"));
+    try std.testing.expectEqual(@as(i64, 9), try evalInt(api, "[{\"k\" -> 1, \"k\" -> 9} at: \"k\"]"));
 
     // keys/values that are themselves exprs.
-    try std.testing.expectEqual(@as(i64, 30), try evalInt(api, "let n := 10; [{\"x\": [n + 20]} at: \"x\"]"));
+    try std.testing.expectEqual(@as(i64, 30), try evalInt(api, "let n := 10; [{\"x\" -> [n + 20]} at: \"x\"]"));
+
+    // symbol keys including keyword-selector symbols (the reason for `->`).
+    try std.testing.expectEqual(@as(i64, 7), try evalInt(api, "[{#at:put: -> 7} at: #at:put:]"));
 }

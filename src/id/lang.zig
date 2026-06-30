@@ -153,13 +153,12 @@ fn buildGrammar() void {
     }));
 
     // mapLit = '{' (mapEntry ws ','? ws)* '}'   — round-trips Map printString
-    // ({k: v, …}). Entries are comma- or whitespace-separated; a trailing ',' is
-    // allowed. Each mapEntry is a rule with two children: the key and value exprs.
-    // NOTE: a symbol key written `#x:` is consumed by the `symbol` rule as a
-    // keyword-selector symbol (it must eat trailing ':' for #combine:and:), so it
-    // swallows the entry separator. Symbol keys in a literal need a space before
-    // the ':' (`#x : 1`); string/number keys have no such ambiguity.
-    defRule("mapEntry", seqN(&.{ rref("expr"), ws, lit(":"), ws, rref("expr") }));
+    // ({k -> v, …}). Entries are comma- or whitespace-separated; a trailing ','
+    // is allowed. Each mapEntry is a rule with two children: the key and value
+    // exprs. The separator is `->` (not `:`) so a symbol key keeps its colons —
+    // `#x:` is a legitimate keyword-selector symbol, and `{#x: -> 1}` is
+    // unambiguous where `{#x: : 1}` would not be.
+    defRule("mapEntry", seqN(&.{ rref("expr"), ws, lit("->"), ws, rref("expr") }));
     defRule("mapLit", seqN(&.{
         lit("{"), ws,
         star(seqN(&.{ rref("mapEntry"), ws, optp(lit(",")), ws })),

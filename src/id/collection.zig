@@ -37,7 +37,7 @@
 //! than the old kernel's identity-only maps). `at:put:` is persistent (returns a
 //! new map sharing structure), so it folds with `inject:into:`.
 //!
-//! A `{k:v}` map literal + `#[…]` vector literal are a grammar/codegen concern
+//! A `{k -> v}` map literal + `#[…]` vector literal are a grammar/codegen concern
 //! (the lang front-end has no collection literals yet) — until then both
 //! collections are reachable from birnam by message: `[Map new]`, `[Vector …]`.
 
@@ -811,7 +811,7 @@ fn kvPrint(node: Oop) void {
         if (!g_print_first) g_print_buf.appendSlice(ca, ", ") catch @panic("collection: oom");
         g_print_first = false;
         appendPrint(s[i]);
-        g_print_buf.appendSlice(ca, ": ") catch @panic("collection: oom");
+        g_print_buf.appendSlice(ca, " -> ") catch @panic("collection: oom");
         appendPrint(s[i + 1]);
     }
 }

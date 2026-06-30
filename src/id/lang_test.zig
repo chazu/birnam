@@ -70,16 +70,17 @@ test "lang 3b: parses collection literals — #[…] vectors and {…} maps" {
     try std.testing.expect(parses(api, "#[[1 + 1] x \"s\"]"));
     try std.testing.expect(parses(api, "let v := #[10 20 30]"));
 
-    // Map literals: empty, comma-separated, whitespace-separated, trailing comma.
+    // Map literals: `->` separates key and value (so symbol keys keep their
+    // colons). Empty, comma-separated, whitespace-separated, trailing comma.
     try std.testing.expect(parses(api, "{}"));
-    try std.testing.expect(parses(api, "{\"a\": 1, \"b\": 2}"));
-    try std.testing.expect(parses(api, "{\"a\": 1 \"b\": 2}"));
-    try std.testing.expect(parses(api, "{\"a\": 1,}"));
-    try std.testing.expect(parses(api, "let m := {1: 10, 2: 20}")); // integer keys
-    // A symbol key ending in ':' (`#x:`) is read by the `symbol` rule as a
-    // keyword-selector symbol that swallows the map separator — so symbol keys in
-    // a literal need a space before the ':' (`#x : 1`); otherwise use [m at:put:].
-    try std.testing.expect(parses(api, "{#x : 1, #y : 2}"));
+    try std.testing.expect(parses(api, "{\"a\" -> 1, \"b\" -> 2}"));
+    try std.testing.expect(parses(api, "{\"a\" -> 1 \"b\" -> 2}"));
+    try std.testing.expect(parses(api, "{\"a\" -> 1,}"));
+    try std.testing.expect(parses(api, "let m := {1 -> 10, 2 -> 20}")); // integer keys
+    // Symbol keys — including keyword-selector symbols with colons — are now
+    // unambiguous, no whitespace tricks needed.
+    try std.testing.expect(parses(api, "{#x -> 1, #y -> 2}"));
+    try std.testing.expect(parses(api, "{#at:put: -> 1, #foo: -> 2}"));
 
     // Literals nest inside sends and don't disturb the symbol rule (#sel).
     try std.testing.expect(parses(api, "[#[1 2 3] inject: 0 into: [:a :x | [a + x]]]"));

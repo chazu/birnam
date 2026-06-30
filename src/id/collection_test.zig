@@ -261,13 +261,13 @@ test "collection: Map keysAndValuesDo: visits every entry once" {
     try std.testing.expectEqual(@as(i64, 600), kv_val_sum); // 100+200+300
 }
 
-test "collection: Map printString renders key: value pairs" {
+test "collection: Map printString renders key -> value pairs" {
     const api = setup();
     var m = mapNew(api);
     m = s2(m, "at:put:", api.mkString("a", 1), api.mkSmallInt(1));
     const s = s0(m, "printString");
     // Single entry → deterministic.
-    try std.testing.expect(strEq(s, "{a: 1}"));
+    try std.testing.expect(strEq(s, "{a -> 1}"));
 }
 
 // Sort-key blocks for sortBy: (Zig stand-ins): identity (ascending) and negate
