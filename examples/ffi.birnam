@@ -1,0 +1,26 @@
+// FFI — absorb C library functions into birnam.
+//
+//   birnam examples/ffi.birnam
+//
+// birnam's compiler is a C compiler (libtcc), so wrapping a C function means
+// generating a tiny shim that marshals arguments, calling it, and installing the
+// result as a method — no separate FFI engine. `[Alien wrap: name signature: sig
+// as: #sel on: T]` does that; the signature's first char is the return type, the
+// rest are arguments: i=int, l=long, s=cstring, p=pointer, v=void.
+//
+// Here we absorb three libc functions onto Integer/String so birnam can call them
+// directly. (For a library not already loaded, `[Alien dlopen: path]` loads it
+// first; libc is always present.)
+
+// long strlen(const char*)  → String length:  "the length"
+[Alien wrap: "strlen" signature: "l s" as: #clen on: String];
+[System println: ["strlen via C: " , [["the length" clen] printString]]];
+
+// int abs(int)  → Integer absVia
+[Alien wrap: "abs" signature: "i i" as: #absVia on: Integer];
+[System println: ["abs(-42) via C: " , [[-42 absVia] printString]]];
+
+// char* getenv(const char*)  → look up an environment variable (nil if unset)
+[Alien wrap: "getenv" signature: "s s" as: #getenv on: String];
+let path := ["PATH" getenv];
+[System println: ["PATH length (via C getenv + strlen): " , [[path clen] printString]]]

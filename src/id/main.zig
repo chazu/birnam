@@ -237,6 +237,7 @@ const script_modules = [_][]const u8{
     "libbirnam_id_collection",
     "libbirnam_id_error",
     "libbirnam_id_relational",
+    "libbirnam_id_alien",
 };
 
 /// Load the full language stack quietly through the id api (store first, since

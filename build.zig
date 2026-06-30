@@ -470,6 +470,30 @@ pub fn build(b: *std.Build) void {
     const test_relational_step = b.step("test-relational", "the relational reading: datalog join + pull");
     test_relational_step.dependOn(&b.addRunArtifact(id_relational_tests).step);
 
+    // The FFI: wrap + absorb C libraries by generating C shims and compiling them
+    // with Tcc. The dylib needs no libtcc (it drives Tcc via messages); its test
+    // does (it links tcc.zig for bringUp).
+    const id_alien_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/alien.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const id_alien_lib = b.addLibrary(.{ .name = "birnam_id_alien", .root_module = id_alien_mod, .linkage = .dynamic });
+    id_alien_lib.linkLibC();
+    b.installArtifact(id_alien_lib);
+
+    const id_alien_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/alien_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    id_alien_test_mod.addIncludePath(b.path("vendor/libtcc-src"));
+    const id_alien_tests = b.addTest(.{ .root_module = id_alien_test_mod });
+    id_alien_tests.linkLibrary(libtcc_lib);
+    id_alien_tests.linkLibC();
+    const test_alien_step = b.step("test-alien", "the FFI: wrap + absorb C libraries via Tcc");
+    test_alien_step.dependOn(&b.addRunArtifact(id_alien_tests).step);
+
     const hello_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/hello/hello.zig"),
         .target = target,

@@ -191,6 +191,20 @@ fn rtAlloc(vt: Oop, nbytes: i64) callconv(.c) Oop {
     return g_api.alloc(vt, @intCast(nbytes));
 }
 
+// String marshaling for the FFI: a NUL-terminated C copy of a birnam String (the
+// shim frees it after the call). malloc/free so no length bookkeeping is needed.
+fn rtCstr(o: Oop) callconv(.c) [*:0]const u8 {
+    var len: usize = 0;
+    const p = g_api.stringBytes(o, &len);
+    const buf: [*]u8 = @ptrCast(std.c.malloc(len + 1) orelse @panic("tcc: oom"));
+    @memcpy(buf[0..len], p[0..len]);
+    buf[len] = 0;
+    return @ptrCast(buf);
+}
+fn rtFreeCstr(p: [*:0]const u8) callconv(.c) void {
+    std.c.free(@constCast(@ptrCast(p)));
+}
+
 const RuntimeSym = struct { name: [*:0]const u8, addr: *const anyopaque };
 const runtime_syms = [_]RuntimeSym{
     .{ .name = "birnam_send", .addr = @ptrCast(&rtSend) },
@@ -205,6 +219,8 @@ const runtime_syms = [_]RuntimeSym{
     .{ .name = "birnam_proto", .addr = @ptrCast(&rtProto) },
     .{ .name = "birnam_method", .addr = @ptrCast(&rtMethod) },
     .{ .name = "birnam_alloc", .addr = @ptrCast(&rtAlloc) },
+    .{ .name = "birnam_cstr", .addr = @ptrCast(&rtCstr) },
+    .{ .name = "birnam_free_cstr", .addr = @ptrCast(&rtFreeCstr) },
 };
 
 // -- staged compile: open the pre-relocate symbol window ---------------------
@@ -230,6 +246,37 @@ fn mCompileInto(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const src = dupZ(a[0]);
     defer ca.free(src);
     if (c.tcc_compile_string(unitOf(self).state, src.ptr) == -1) return g_api.nilObj;
+    return self;
+}
+
+/// `[unit addLibrary: name]` — link library `name` (the `-lname` form, e.g. `m`
+/// for libm) so its symbols resolve at relocate. Must precede `relocate`. The FFI
+/// uses this to absorb a C library. Returns the unit (nil if the lib isn't found).
+fn mAddLibrary(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const name = dupZ(a[0]);
+    defer ca.free(name);
+    if (c.tcc_add_library(unitOf(self).state, name.ptr) < 0) return g_api.nilObj;
+    return self;
+}
+
+/// `[unit addLibraryPath: path]` — add a directory to the library search path
+/// (for `addLibrary:`). Must precede `relocate`. Returns the unit.
+fn mAddLibraryPath(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const path = dupZ(a[0]);
+    defer ca.free(path);
+    _ = c.tcc_add_library_path(unitOf(self).state, path.ptr);
+    return self;
+}
+
+/// `[unit addFile: path]` — add an object/library/source file (`.o`/`.a`/`.so`/
+/// `.dylib`/`.c`) to the link. Must precede `relocate`. Returns the unit, or nil.
+fn mAddFile(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const path = dupZ(a[0]);
+    defer ca.free(path);
+    if (c.tcc_add_file(unitOf(self).state, path.ptr) < 0) return g_api.nilObj;
     return self;
 }
 
@@ -310,6 +357,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(tcc_vt, api.intern("compile:output:as:"), &mCompileOutput);
     api.method(tcc_vt, api.intern("new"), &mNew);
     api.method(unit_vt, api.intern("compile:"), &mCompileInto);
+    api.method(unit_vt, api.intern("addLibrary:"), &mAddLibrary);
+    api.method(unit_vt, api.intern("addLibraryPath:"), &mAddLibraryPath);
+    api.method(unit_vt, api.intern("addFile:"), &mAddFile);
     api.method(unit_vt, api.intern("bindRuntime"), &mBindRuntime);
     api.method(unit_vt, api.intern("addSymbol:value:"), &mAddSymbol);
     api.method(unit_vt, api.intern("relocate"), &mRelocate);
