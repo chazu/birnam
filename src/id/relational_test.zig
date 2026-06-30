@@ -153,6 +153,78 @@ test "relational: pull builds a record map; absent attrs omitted" {
     try std.testing.expectEqual(@as(i64, 1), ival(s0(rec2, "size")));
 }
 
+// People with integer `:age` facts, returned so tests can identify matches.
+fn ageFixture(api: *idapi.IdApi, db: Oop) [3]Oop {
+    const young = s0(db, "entity"); // 18 — the boundary
+    const mid = s0(db, "entity"); // 30
+    const old = s0(db, "entity"); // 40
+    _ = s3(db, "assert:attr:value:", young, api.intern("age"), api.mkSmallInt(18));
+    _ = s3(db, "assert:attr:value:", mid, api.intern("age"), api.mkSmallInt(30));
+    _ = s3(db, "assert:attr:value:", old, api.intern("age"), api.mkSmallInt(40));
+    return .{ young, mid, old };
+}
+
+// `?p where [?p #age ?a] AND [?a <op> <rhs>]` → count of matching people.
+fn ageQuery(api: *idapi.IdApi, db: Oop, op: [*:0]const u8, rhs: Oop) i64 {
+    const clauses = vec(api, &.{
+        vec(api, &.{ lvar(api, "p"), api.intern("age"), lvar(api, "a") }),
+        vec(api, &.{ lvar(api, "a"), api.intern(op), rhs }),
+    });
+    return ival(s0(s2(db, "findAll:where:", lvar(api, "p"), clauses), "size"));
+}
+
+test "relational: predicate clauses filter by comparison (named + glyph ops)" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = ageFixture(api, db);
+    const age18 = api.mkSmallInt(18);
+
+    // Ordering ops, both spellings agree.
+    try std.testing.expectEqual(@as(i64, 2), ageQuery(api, db, "gt", age18)); // 30,40
+    try std.testing.expectEqual(@as(i64, 2), ageQuery(api, db, ">", age18));
+    try std.testing.expectEqual(@as(i64, 3), ageQuery(api, db, "ge", age18)); // 18,30,40
+    try std.testing.expectEqual(@as(i64, 3), ageQuery(api, db, ">=", age18));
+    try std.testing.expectEqual(@as(i64, 0), ageQuery(api, db, "lt", age18)); // none < 18
+    try std.testing.expectEqual(@as(i64, 1), ageQuery(api, db, "le", age18)); // just 18
+    try std.testing.expectEqual(@as(i64, 1), ageQuery(api, db, "<=", age18));
+
+    // Equality and its negation.
+    try std.testing.expectEqual(@as(i64, 1), ageQuery(api, db, "eq", api.mkSmallInt(30)));
+    try std.testing.expectEqual(@as(i64, 1), ageQuery(api, db, "=", api.mkSmallInt(30)));
+    try std.testing.expectEqual(@as(i64, 2), ageQuery(api, db, "ne", api.mkSmallInt(30))); // 18,40
+    try std.testing.expectEqual(@as(i64, 2), ageQuery(api, db, "~=", api.mkSmallInt(30)));
+}
+
+test "relational: predicate projects the filtered entity, not a comparison op" {
+    const api = setup();
+    const db = freshDb(api);
+    const people = ageFixture(api, db);
+
+    // ?p where [?p #age ?a] AND [?a #gt 25] → the two older people (mid, old).
+    const clauses = vec(api, &.{
+        vec(api, &.{ lvar(api, "p"), api.intern("age"), lvar(api, "a") }),
+        vec(api, &.{ lvar(api, "a"), api.intern("gt"), api.mkSmallInt(25) }),
+    });
+    const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size")));
+    try std.testing.expect(s1(r, "at:", api.mkSmallInt(0)) == people[1]); // mid (30)
+    try std.testing.expect(s1(r, "at:", api.mkSmallInt(1)) == people[2]); // old (40)
+}
+
+test "relational: a constant left operand in a predicate is honored" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = ageFixture(api, db);
+
+    // [18 #lt ?a] keeps rows where 18 < age → 30 and 40.
+    const clauses = vec(api, &.{
+        vec(api, &.{ lvar(api, "p"), api.intern("age"), lvar(api, "a") }),
+        vec(api, &.{ api.mkSmallInt(18), api.intern("lt"), lvar(api, "a") }),
+    });
+    const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size")));
+}
+
 // Assert three people into `db`, keeping NO reference after return — so the
 // entities live only inside the store's fact list (their GC survival depends on
 // the store's root provider, not on lingering stack slots).

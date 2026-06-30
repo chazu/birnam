@@ -18,7 +18,12 @@
 //!   [db pull: e spec: #[ #attr … ]]   → a {attr: currentValue} record Map
 //!
 //! A clause is `#[ e a v ]` (a Vector); each position is either a CONSTANT (matched
-//! by identity) or a LOGIC VARIABLE (`?p` in source). Logic variables are minted
+//! by identity) or a LOGIC VARIABLE (`?p` in source). A clause whose MIDDLE position
+//! is a comparison-op symbol (`#lt #le #gt #ge #eq #ne`, or the glyphs `#< #<= #>
+//! #>= #= #~=`) is instead a PREDICATE clause `#[ lhs op rhs ]` — it filters the
+//! current solutions (keep the row iff `lhs op rhs`) and binds nothing, so it must
+//! come AFTER the clauses that bind its variables (no clause-reorder planner yet).
+//! Logic variables are minted
 //! by the grammar/codegen as `[LogicVar named: #p]` — canonical per name, so the
 //! `?p` in the result position and the `?p` inside a clause are the SAME object and
 //! join by identity. The engine scans the store's LIVE triples (via the
@@ -50,6 +55,12 @@ var s_new: Oop = null;
 var s_add: Oop = null;
 var s_currentValue: Oop = null;
 var s_liveTriplesDo: Oop = null;
+// Comparison selectors a predicate clause SENDS to its left operand.
+var s_lt: Oop = null;
+var s_le: Oop = null;
+var s_gt: Oop = null;
+var s_ge: Oop = null;
+var s_eq: Oop = null;
 
 // Canonical logic vars, interned by their name symbol.
 var g_logicvars: std.AutoHashMapUnmanaged(Oop, Oop) = .{};
@@ -188,6 +199,36 @@ fn lookup(sol: []const Binding, v: Oop) ?Oop {
     return null;
 }
 
+/// Resolve a clause term against a solution: a logic var yields its binding (null
+/// if still unbound), a constant yields itself.
+fn resolveTerm(sol: []const Binding, term: Oop) ?Oop {
+    if (isLogicVar(term)) return lookup(sol, term);
+    return term;
+}
+
+const PredOp = struct { sel: Oop, negate: bool };
+
+/// If `o` is a symbol naming a comparison operator — named (`#lt #le #gt #ge #eq
+/// #ne`) or glyph (`#< #<= #> #>= #= #~=`) — return the prelude selector a
+/// predicate clause should SEND to its left operand, plus whether to negate the
+/// result. Otherwise null: the clause is an ordinary triple pattern, not a
+/// predicate. Ordering ops send `< <= > >=`; `ne` sends `=` and negates. Sending
+/// (rather than untagging SmallInts here) reuses the prelude and extends to any
+/// type that answers the comparison, while a non-comparable operand just yields a
+/// non-true result (F7 error) and drops the row instead of crashing.
+fn predicateOp(o: Oop) ?PredOp {
+    if (o == null or g_api.vtableOf(o) != g_api.symbol_vt) return null;
+    const nm = std.mem.span(g_api.symbolName(o));
+    const eq = std.mem.eql;
+    if (eq(u8, nm, "lt") or eq(u8, nm, "<")) return .{ .sel = s_lt, .negate = false };
+    if (eq(u8, nm, "le") or eq(u8, nm, "<=")) return .{ .sel = s_le, .negate = false };
+    if (eq(u8, nm, "gt") or eq(u8, nm, ">")) return .{ .sel = s_gt, .negate = false };
+    if (eq(u8, nm, "ge") or eq(u8, nm, ">=")) return .{ .sel = s_ge, .negate = false };
+    if (eq(u8, nm, "eq") or eq(u8, nm, "=")) return .{ .sel = s_eq, .negate = false };
+    if (eq(u8, nm, "ne") or eq(u8, nm, "~=") or eq(u8, nm, "!=")) return .{ .sel = s_eq, .negate = true };
+    return null;
+}
+
 /// Extend solution `sol` by matching clause positions `pos` against triple `tri`.
 /// A logic-var position binds (or must agree with an existing binding); a constant
 /// must equal (by identity). Returns the extended binding set, or null on mismatch.
@@ -235,10 +276,25 @@ fn mFindAll(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
         for (&pos, 0..) |*p, i| p.* = send1(clause, s_at, g_api.mkSmallInt(@intCast(i)));
 
         var next: std.ArrayList([]Binding) = .{};
-        for (solutions.items) |sol| {
-            for (triples.items) |tri| {
-                if (tryClause(aa, sol, pos, tri)) |ns|
-                    next.append(aa, ns) catch @panic("relational: oom");
+        if (predicateOp(pos[1])) |op| {
+            // A predicate clause FILTERS solutions and binds nothing. Both operands
+            // must already be bound (an unbound one drops the row — predicates
+            // belong after the clauses that bind their variables; no reorder
+            // planner yet). Keep the row iff `lhs op rhs` is definitively true.
+            for (solutions.items) |sol| {
+                const lhs = resolveTerm(sol, pos[0]) orelse continue;
+                const rhs = resolveTerm(sol, pos[2]) orelse continue;
+                const res = send1(lhs, op.sel, rhs);
+                const pass = if (op.negate) (res == g_api.falseObj) else (res == g_api.trueObj);
+                if (pass) next.append(aa, sol) catch @panic("relational: oom");
+            }
+        } else {
+            // A triple pattern EXTENDS solutions: join against every live triple.
+            for (solutions.items) |sol| {
+                for (triples.items) |tri| {
+                    if (tryClause(aa, sol, pos, tri)) |ns|
+                        next.append(aa, ns) catch @panic("relational: oom");
+                }
             }
         }
         solutions = next;
@@ -294,6 +350,11 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_add = api.intern("add:");
     s_currentValue = api.intern("currentValue:attr:");
     s_liveTriplesDo = api.intern("liveTriplesDo:");
+    s_lt = api.intern("<");
+    s_le = api.intern("<=");
+    s_gt = api.intern(">");
+    s_ge = api.intern(">=");
+    s_eq = api.intern("=");
 
     const reloading = api.isExported("db") != 0;
     if (reloading) {

@@ -1,0 +1,33 @@
+// Predicate clauses — datalog queries with inline comparison filters.
+//
+//   birnam examples/predicates.birnam
+//
+// A `where:` clause is normally a triple pattern `#[e a v]` that binds logic
+// variables (a leading `?`). A clause whose MIDDLE position is a comparison-op
+// symbol is instead a PREDICATE: it filters the rows bound so far and binds
+// nothing. Both spellings work — named (`#lt #le #gt #ge #eq #ne`) and the glyphs
+// (`#< #<= #> #>= #= #~=`). A predicate must come AFTER the clauses that bind its
+// variables (there is no clause-reorder planner yet), so `#[?a #gt 18]` reads the
+// `?a` bound by the preceding `#[?p #age ?a]`.
+
+// Each person is an entity carrying one `:age` fact.
+let person := [:age |
+  let p := [db entity];
+  [db assert: p attr: #age value: age];
+  p];
+
+[person value: 18];
+[person value: 30];
+[person value: 40];
+
+// Everyone older than 18 — a named predicate op.
+let adults := [db findAll: ?p where: #[ #[?p #age ?a] #[?a #gt 18] ]];
+[System println: ["adults (age > 18): " , [[adults size] printString]]];
+
+// The ages that are 30 or more — a glyph predicate op, projecting the value var.
+let grownAges := [db findAll: ?a where: #[ #[?p #age ?a] #[?a #>= 30] ]];
+[System println: ["ages >= 30: " , [grownAges printString]]];
+
+// Equality and its negation.
+let notThirty := [db findAll: ?a where: #[ #[?p #age ?a] #[?a #ne 30] ]];
+[System println: ["ages /= 30: " , [notThirty printString]]]
