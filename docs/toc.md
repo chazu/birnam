@@ -67,6 +67,15 @@ order.
   engine on libid + its message api (`src/id/peg.zig`); the String floor value
   type; 3b birnam's grammar built through peg messages (`src/id/lang.zig`,
   `[Lang parse:]`). Shipped + green; 3c (C codegen + libtcc) is next.
+- **The running system** — `36-the-running-system.md`
+  How compiled birnam references and *extends* the live system: symbol literals,
+  the `Globals` scope, late-bound references, and `[Reflect defineMethod:on:as:]`
+  via per-define libtcc trampolines mirrored into the store.
+- **The relational reading (datalog over the id stack)** — `37-the-relational-reading.md`
+  The full query surface on `db` (`src/id/relational.zig`): triple/predicate/
+  negation/disjunction/rule clauses, recursive rules via a set-at-a-time fixpoint,
+  aggregates (count/sum/min/max/avg), time travel (`basis`/`asOf:`/`since:`/
+  `between:and:`), and nested/`:many` `pull:`. The id-stack re-port of `29-datalog.md`.
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).
