@@ -15,6 +15,8 @@
 //!   [db entity]                       → a fresh blank entity (a unique identity)
 //!   [db assert: e attr: a value: v]   → (inherited from the store)
 //!   [db findAll: ?v where: clauses]   → a Vector of every binding of ?v
+//!   [db count: ?v where: clauses]     → how many distinct bindings of ?v
+//!   [db sum:/min:/max: ?v where: …]   → fold over the distinct bindings of ?v
 //!   [db pull: e spec: #[ #attr … ]]   → a {attr: currentValue} record Map
 //!
 //! A clause is `#[ e a v ]` (a Vector); each position is either a CONSTANT (matched
@@ -66,6 +68,7 @@ var s_le: Oop = null;
 var s_gt: Oop = null;
 var s_ge: Oop = null;
 var s_eq: Oop = null;
+var s_plus: Oop = null; // `+`, for `sum:where:`
 
 // Canonical logic vars, interned by their name symbol.
 var g_logicvars: std.AutoHashMapUnmanaged(Oop, Oop) = .{};
@@ -333,15 +336,10 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
     return next.toOwnedSlice(aa) catch @panic("relational: oom");
 }
 
-/// `[db findAll: ?v where: clauses]` — every distinct binding of `?v` across all
-/// joined solutions of the clause conjunction. `clauses` is a Vector of clause
-/// Vectors (triple `#[e a v]`, predicate `#[lhs op rhs]`, or negation
-/// `#[#not …]`). Returns a Vector (empty if nothing matches).
-fn mFindAll(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = n;
-    const result_var = args[0];
-    const clauses = args[1];
-
+/// Run a `where:` query and project `result_var`, deduped (set semantics) — the
+/// shared core behind `findAll:where:` and the aggregates. Returns a Vector of the
+/// distinct bound values (empty if nothing matches).
+fn runQuery(self: Oop, result_var: Oop, clauses: Oop) Oop {
     var triples: Triples = .{};
     defer triples.deinit(ca);
     gatherTriples(self, &triples);
@@ -378,6 +376,69 @@ fn mFindAll(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
         out = send1(out, s_add, val);
     }
     return out;
+}
+
+/// `[db findAll: ?v where: clauses]` — every distinct binding of `?v` across all
+/// joined solutions of the clause conjunction. `clauses` is a Vector of clause
+/// Vectors (triple `#[e a v]`, predicate `#[lhs op rhs]`, negation `#[#not …]`, or
+/// disjunction `#[#or …]`). Returns a Vector (empty if nothing matches).
+fn mFindAll(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return runQuery(self, args[0], args[1]);
+}
+
+// The aggregates run the same query, then fold over the DISTINCT projected values
+// (set semantics, per the Date discipline — equal values count once). `sum` folds
+// with `+` from 0; `min`/`max` send `<`/`>`; all reuse the prelude's arithmetic so
+// any numeric type works and `count` needs no numeric assumption at all.
+
+/// `[db count: ?v where: clauses]` — how many distinct bindings of `?v`.
+fn mCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return send0(runQuery(self, args[0], args[1]), s_size);
+}
+
+/// `[db sum: ?v where: clauses]` — the sum of the distinct bindings (0 if none).
+fn mSum(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const r = runQuery(self, args[0], args[1]);
+    const sz: usize = @intCast(g_api.smallIntValue(send0(r, s_size)));
+    var acc = g_api.mkSmallInt(0);
+    var i: usize = 0;
+    while (i < sz) : (i += 1) {
+        acc = send1(acc, s_plus, send1(r, s_at, g_api.mkSmallInt(@intCast(i))));
+    }
+    return acc;
+}
+
+/// `[db min: ?v where: clauses]` — the least distinct binding, or nil if none.
+fn mMin(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const r = runQuery(self, args[0], args[1]);
+    const sz: usize = @intCast(g_api.smallIntValue(send0(r, s_size)));
+    if (sz == 0) return g_api.nilObj;
+    var best = send1(r, s_at, g_api.mkSmallInt(0));
+    var i: usize = 1;
+    while (i < sz) : (i += 1) {
+        const x = send1(r, s_at, g_api.mkSmallInt(@intCast(i)));
+        if (send1(x, s_lt, best) == g_api.trueObj) best = x;
+    }
+    return best;
+}
+
+/// `[db max: ?v where: clauses]` — the greatest distinct binding, or nil if none.
+fn mMax(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const r = runQuery(self, args[0], args[1]);
+    const sz: usize = @intCast(g_api.smallIntValue(send0(r, s_size)));
+    if (sz == 0) return g_api.nilObj;
+    var best = send1(r, s_at, g_api.mkSmallInt(0));
+    var i: usize = 1;
+    while (i < sz) : (i += 1) {
+        const x = send1(r, s_at, g_api.mkSmallInt(@intCast(i)));
+        if (send1(x, s_gt, best) == g_api.trueObj) best = x;
+    }
+    return best;
 }
 
 /// `[db pull: e spec: #[ #attr … ]]` — materialize `e` into a record Map of each
@@ -417,6 +478,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_gt = api.intern(">");
     s_ge = api.intern(">=");
     s_eq = api.intern("=");
+    s_plus = api.intern("+");
 
     const reloading = api.isExported("db") != 0;
     if (reloading) {
@@ -437,6 +499,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     // object answers both the imperative and relational readings (D5.2).
     api.method(store_vt, api.intern("entity"), &mEntity);
     api.method(store_vt, api.intern("findAll:where:"), &mFindAll);
+    api.method(store_vt, api.intern("count:where:"), &mCount);
+    api.method(store_vt, api.intern("sum:where:"), &mSum);
+    api.method(store_vt, api.intern("min:where:"), &mMin);
+    api.method(store_vt, api.intern("max:where:"), &mMax);
     api.method(store_vt, api.intern("pull:spec:"), &mPull);
 
     api.method(logicvar_factory_vt, api.intern("named:"), &mNamed);

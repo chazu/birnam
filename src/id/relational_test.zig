@@ -321,6 +321,59 @@ test "relational: negation may contain a predicate (applyClause recurses)" {
     try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size"))); // the 18 and 40 year olds
 }
 
+test "relational: aggregates fold over distinct projected values" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = ageFixture(api, db); // ages 18, 30, 40
+
+    const ageVar = vec(api, &.{vec(api, &.{ lvar(api, "p"), api.intern("age"), lvar(api, "a") })});
+    try std.testing.expectEqual(@as(i64, 3), ival(s2(db, "count:where:", lvar(api, "p"), ageVar)));
+    try std.testing.expectEqual(@as(i64, 88), ival(s2(db, "sum:where:", lvar(api, "a"), ageVar))); // 18+30+40
+    try std.testing.expectEqual(@as(i64, 18), ival(s2(db, "min:where:", lvar(api, "a"), ageVar)));
+    try std.testing.expectEqual(@as(i64, 40), ival(s2(db, "max:where:", lvar(api, "a"), ageVar)));
+}
+
+test "relational: aggregates are distinct-by-default (set semantics)" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = ageFixture(api, db);
+    const dup = s0(db, "entity"); // a fourth person, age 30 — a duplicate value
+    _ = s3(db, "assert:attr:value:", dup, api.intern("age"), api.mkSmallInt(30));
+
+    const clauses = vec(api, &.{vec(api, &.{ lvar(api, "p"), api.intern("age"), lvar(api, "a") })});
+    // Four people, but only three DISTINCT ages.
+    try std.testing.expectEqual(@as(i64, 4), ival(s2(db, "count:where:", lvar(api, "p"), clauses)));
+    try std.testing.expectEqual(@as(i64, 3), ival(s2(db, "count:where:", lvar(api, "a"), clauses)));
+    try std.testing.expectEqual(@as(i64, 88), ival(s2(db, "sum:where:", lvar(api, "a"), clauses))); // 30 counted once
+}
+
+test "relational: aggregates compose with predicate filters" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = ageFixture(api, db);
+
+    // sum of ages over 18 → 30 + 40 = 70.
+    const clauses = vec(api, &.{
+        vec(api, &.{ lvar(api, "p"), api.intern("age"), lvar(api, "a") }),
+        vec(api, &.{ lvar(api, "a"), api.intern("gt"), api.mkSmallInt(18) }),
+    });
+    try std.testing.expectEqual(@as(i64, 70), ival(s2(db, "sum:where:", lvar(api, "a"), clauses)));
+    try std.testing.expectEqual(@as(i64, 2), ival(s2(db, "count:where:", lvar(api, "p"), clauses)));
+}
+
+test "relational: aggregates over no matches — count/sum 0, min/max nil" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = ageFixture(api, db);
+
+    // Nobody has city facts here, so the query is empty.
+    const clauses = vec(api, &.{vec(api, &.{ lvar(api, "p"), api.intern("city"), lvar(api, "c") })});
+    try std.testing.expectEqual(@as(i64, 0), ival(s2(db, "count:where:", lvar(api, "c"), clauses)));
+    try std.testing.expectEqual(@as(i64, 0), ival(s2(db, "sum:where:", lvar(api, "c"), clauses)));
+    try std.testing.expect(s2(db, "min:where:", lvar(api, "c"), clauses) == api.nilObj);
+    try std.testing.expect(s2(db, "max:where:", lvar(api, "c"), clauses) == api.nilObj);
+}
+
 // Assert three people into `db`, keeping NO reference after return — so the
 // entities live only inside the store's fact list (their GC survival depends on
 // the store's root provider, not on lingering stack slots).
