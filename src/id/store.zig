@@ -424,16 +424,16 @@ fn emitTriple(blk: Oop, e: Oop, a: Oop, v: Oop) void {
     _ = g_api.send(blk, s_value3, &[_]Oop{ e, a, v }, 3);
 }
 
-// -- GC roots (F3) -----------------------------------------------------------
+// -- GC trace hook (F3) ------------------------------------------------------
 //
-// The well-known store keeps its facts in a `c_allocator` ArrayList — Oop-bearing
-// memory the conservative collector cannot reach by tracing. Expose every live
-// fact's e/a/v as roots so entities/values held only by the store survive a
-// collection (the Globals namespace rides these facts too). NOTE: only the
-// singleton `store_instance` is covered; facts in a `[Store new]` instance are not
-// yet GC-rooted (needs the per-vtable trace hook deferred in docs/34 §F3).
-fn gcRoots(mark: idapi.MarkFn) callconv(.c) void {
-    const st = stateOf(store_instance);
+// A store keeps its facts in a `c_allocator` ArrayList — Oop-bearing memory the
+// conservative collector cannot reach by tracing the store's (opaque) payload. A
+// per-vtable trace hook (installed on `store_vt`) marks every live fact's e/a/v
+// when the collector traces a reachable store, so entities/values held only by
+// the store survive — for ANY store instance (the singleton `db`/`Globals` AND
+// every `[Store new]`), since the hook fires per traced instance.
+fn gcTraceHook(self: Oop, mark: idapi.MarkFn) callconv(.c) void {
+    const st = stateOf(self);
     for (st.facts.items) |f| {
         mark(f.e);
         mark(f.a);
@@ -620,6 +620,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_attrCount, &mAttrCount);
     api.method(store_vt, s_attrAt, &mAttrAt);
     api.method(store_vt, api.intern("liveTriplesDo:"), &mLiveTriplesDo);
+    api.setTraceHook(store_vt, &gcTraceHook); // facts live in non-id memory (F3)
 
     // Cell protocol (the `history` selector reuses the "history" symbol — one
     // identity, two roles: a cell message here, a schema attribute key above).
@@ -639,7 +640,6 @@ pub fn bringUp(api: *idapi.IdApi) void {
         _ = api.exportObj("CellVt", cell_vt);
         _ = api.exportObj("GlobalsVt", globals_vt);
         _ = api.exportObj("Globals", globals_obj);
-        api.gcRegisterRootProvider(&gcRoots); // facts hold Oops in non-id memory
     }
 }
 

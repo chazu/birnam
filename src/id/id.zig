@@ -39,6 +39,10 @@ pub const Vtable = extern struct {
     keys: ?[*]Oop,
     values: ?[*]Oop,
     parent: ?*Vtable,
+    /// Optional GC trace hook (F3): called on each live instance of this vtable so
+    /// it can mark Oops the conservative payload scan can't reach (held in non-id
+    /// memory). Null for ordinary types. Set via `setTraceHook`.
+    trace_hook: ?idapi.TraceHook,
 };
 
 /// An interned name. Selectors are `*Symbol`, compared by pointer identity.
@@ -298,6 +302,7 @@ fn newVtable(parent: ?*Vtable) *Vtable {
     vt.keys = null;
     vt.values = null;
     vt.parent = parent;
+    vt.trace_hook = null;
     return vt;
 }
 
@@ -501,10 +506,14 @@ fn gcScanRange(lo: usize, hi: usize) void {
     }
 }
 
-/// Trace a marked object: conservatively scan its payload for more live pointers.
+/// Trace a marked object: conservatively scan its payload for more live pointers,
+/// then run its vtable's trace hook (if any) to mark Oops the scan can't see —
+/// e.g. an opaque object holding facts in non-id `c_allocator` memory.
 fn gcTrace(w: usize) void {
     const blk = g_blocks.get(w) orelse return;
     gcScanRange(w, w + (blk.total - VT));
+    const obj: Oop = @ptrFromInt(w);
+    if (vtableOf(obj)) |vt| if (vt.trace_hook) |hook| hook(obj, &gcMarkOopC);
 }
 
 // The env + interner keep Oops in their `keys`/`values` arrays (c_allocator
@@ -574,6 +583,9 @@ fn gcCollectC() callconv(.c) usize {
 fn gcLiveCountC() callconv(.c) usize {
     return g_blocks.count();
 }
+fn setTraceHookC(vt: Oop, hook: idapi.TraceHook) callconv(.c) void {
+    asVtable(vt).trace_hook = hook;
+}
 
 var g_api: idapi.IdApi = undefined;
 
@@ -612,6 +624,7 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .gcRegisterRootProvider = &gcRegisterRootProviderC,
         .gcCollect = &gcCollectC,
         .gcLiveCount = &gcLiveCountC,
+        .setTraceHook = &setTraceHookC,
     };
     // Publish the id layer into its own environment — so it is re-importable.
     _ = exportObj("Object", oop(object_vt));

@@ -97,12 +97,21 @@ pub const IdApi = extern struct {
     /// gcLiveCount() -> the number of tracked (live) heap objects — for tests and
     /// introspection.
     gcLiveCount: *const fn () callconv(.c) usize,
+    /// setTraceHook(vt, hook): install a per-vtable trace hook. When the collector
+    /// traces a live INSTANCE of `vt`, it calls `hook(instance, mark)` so the
+    /// instance can mark Oops the conservative payload scan can't see — those held
+    /// in non-id memory (e.g. the store's fact ArrayList). Unlike a root provider
+    /// (a global root set), a trace hook fires PER reachable instance, so the
+    /// instance's external Oops survive iff the instance itself does.
+    setTraceHook: *const fn (Oop, TraceHook) callconv(.c) void,
 };
 
-/// The mark function handed to a root provider: call it on each root Oop.
+/// The mark function handed to a root provider / trace hook: call it per root Oop.
 pub const MarkFn = *const fn (Oop) callconv(.c) void;
 /// A module's root provider: marks every Oop it keeps reachable in non-id memory.
 pub const RootProvider = *const fn (MarkFn) callconv(.c) void;
+/// A per-vtable trace hook (F3): marks an instance's Oops held in non-id memory.
+pub const TraceHook = *const fn (Oop, MarkFn) callconv(.c) void;
 
 /// libid's module entrypoint: `id_init()` returns the API table (cf. `_libid_init`).
 pub const IdInitFn = *const fn () callconv(.c) *IdApi;

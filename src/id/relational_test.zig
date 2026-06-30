@@ -183,6 +183,24 @@ test "relational: GC keeps store-only entities alive (root provider, F3)" {
     try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size")));
 }
 
+test "relational: GC trace hook keeps a fresh [Store new] store's facts alive (F3)" {
+    const api = setup();
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    _ = &anchor;
+
+    // A fresh store, held only in this local (reachable via the stack scan). Its
+    // entities live solely in its fact list → they survive only via store_vt's
+    // per-instance trace hook, not via the singleton root.
+    const db = freshDb(api);
+    populate(api, db);
+    _ = api.gcCollect();
+
+    const clauses = vec(api, &.{vec(api, &.{ lvar(api, "p"), api.intern("city"), api.intern("Boston") })});
+    const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size")));
+}
+
 test "relational: Symbol printString renders with the # sigil" {
     const api = setup();
     try std.testing.expect(strEq(s0(api.intern("Boston"), "printString"), "#Boston"));
