@@ -1,25 +1,51 @@
-// Garbage collection: reclaim mid-execution, live objects survive.
+// Garbage collection: a manual smoke test across every object kind.
 //
 // birnam runs on a self-contained conservative mark-sweep collector (docs/34 F3).
-// `[System gc]` runs a collection and answers how many objects it reclaimed. It is
-// safe to call between/within evaluations: the collector scans the live C stack
-// (where compiled methods hold their values) plus the store's facts, so anything
-// still reachable is kept. Run it:
+// `[System gc]` runs a collection and answers how many objects it reclaimed;
+// `[System liveObjects]` reports the current live count. The collector scans the
+// live C stack (where compiled methods hold their values), the store's facts, and
+// the registered caches — so everything still reachable is kept and only true
+// garbage is freed. Run it:
 //
 //   birnam examples/gc.birnam
 
-// Live, let-bound objects — these must survive the collection.
-let keep := #[1 2 3 4 5];
-let raw := "The Cat Sat On The Mat";
+// --- Live, reachable data that MUST survive every collection. ----------------
+let keep := #[1 2 3 4 5];                       // a vector (trie nodes)
+let prices := {"apple" -> 3, "pear" -> 7};      // a map (HAMT nodes)
+let label := "The Quick Brown Fox";             // a string
 
-// Generate a lot of garbage: each iteration builds vectors that are immediately
-// thrown away (only `size` is taken). Nothing keeps them, so they become unreachable.
-[1 to: 50000 do: [:i | [#[i [i + 1] [i + 2]] size]]];
+// Some entities in the store; referenced only through the fact store.
+let mk := [:city | let e := [db entity]; [db assert: e attr: #city value: city]; e];
+[mk value: #Boston];
+[mk value: #Boston];
+[mk value: #Denver];
 
+[System println: ["live before churn: " , [[System liveObjects] printString]]];
+
+// --- Churn: generate a large amount of garbage of every kind. ----------------
+// Each iteration builds vectors, a map, and strings that are immediately dropped.
+[1 to: 40000 do: [:i |
+  [{"k" -> #[i [i + 1]]} size]]];
+[1 to: 20000 do: [:i |
+  [["x" , [i printString]] size]]];
+
+[System println: ["live after churn: " , [[System liveObjects] printString]]];
+
+// --- Collect. ----------------------------------------------------------------
 let freed := [System gc];
 [System println: ["reclaimed: " , [freed printString]]];
+[System println: ["live after gc: " , [[System liveObjects] printString]]];
 
-// The live objects are intact and still usable after the collection.
-[System println: [keep printString]];
-[System println: [raw asLowercase]];
-[System println: ["sum still works: " , [[keep inject: 0 into: [:a :x | [a + x]]] printString]]]
+// --- Prove every live thing survived and is still usable. --------------------
+[System println: ["keep: " , [keep printString]]];
+[System println: ["keep sum: " , [[keep inject: 0 into: [:a :x | [a + x]]] printString]]];
+[System println: ["prices: " , [prices printString]]];
+[System println: ["apple price: " , [[prices at: "apple"] printString]]];
+[System println: ["label: " , [label asLowercase]]];
+
+// The store entities survived: a query still finds the two Bostonians.
+let bostonians := [db findAll: ?p where: #[ #[?p #city #Boston] ]];
+[System println: ["Bostonians still queryable: " , [[bostonians size] printString]]];
+
+// A second collection is stable (nothing more to reclaim from the live set).
+[System println: ["second gc reclaims: " , [[System gc] printString]]]

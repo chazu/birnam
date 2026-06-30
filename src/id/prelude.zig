@@ -171,6 +171,14 @@ fn sysGc(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkSmallInt(@intCast(g_api.gcCollect()));
 }
 
+/// `[System liveObjects]` → the number of tracked (live) heap objects right now.
+fn sysLiveObjects(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(@intCast(g_api.gcLiveCount()));
+}
+
 // -- bringup -----------------------------------------------------------------
 
 pub fn bringUp(api: *idapi.IdApi) void {
@@ -208,6 +216,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(system_vt, api.intern("print:"), &sysPrint);
     api.method(system_vt, api.intern("println:"), &sysPrintln);
     api.method(system_vt, api.intern("gc"), &sysGc);
+    api.method(system_vt, api.intern("liveObjects"), &sysLiveObjects);
 
     if (!reloading) {
         _ = api.exportObj("SystemVt", system_vt);
