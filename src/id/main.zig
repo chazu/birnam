@@ -240,6 +240,17 @@ const script_modules = [_][]const u8{
     "libbirnam_id_alien",
 };
 
+// The self-hosted part of the standard library — birnam defining more of its own
+// library on top of the Zig primitives. Embedded so it is always available; loaded
+// by default, skipped with BIRNAM_NO_STDLIB=1 (the bare Zig floor as an option).
+const STDLIB_SRC = @embedFile("stdlib.birnam");
+
+/// Evaluate the self-hosted stdlib through codegen, unless opted out.
+fn loadStdlib(api: *IdApi, codegen: Oop) void {
+    if (std.posix.getenv("BIRNAM_NO_STDLIB") != null) return;
+    _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(STDLIB_SRC, STDLIB_SRC.len)}, 1);
+}
+
 /// Load the full language stack quietly through the id api (store first, since
 /// codegen resolves globals through it).
 fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
@@ -266,6 +277,8 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     var stack_anchor: usize = 0;
     api.gcSetStackBottom(@intFromPtr(&stack_anchor));
     _ = &stack_anchor;
+
+    loadStdlib(api, codegen);
 
     const src = try std.fs.cwd().readFileAlloc(a, path, 16 << 20);
     defer a.free(src);
@@ -430,6 +443,8 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi) !void {
     var stack_anchor: usize = 0;
     api.gcSetStackBottom(@intFromPtr(&stack_anchor));
     _ = &stack_anchor;
+
+    loadStdlib(api, codegen);
 
     out("birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\n");
     while (true) {

@@ -1,0 +1,19 @@
+// The self-hosted standard library.
+//
+//   birnam examples/stdlib.birnam
+//
+// These methods are not built into the Zig floor — they are defined in BIRNAM (in
+// src/id/stdlib.birnam, loaded by default) on top of the primitives, via
+// `[Reflect defineMethod: …]`. Run with BIRNAM_NO_STDLIB=1 to use the bare Zig
+// floor instead, and these sends become #doesNotUnderstand errors.
+
+[System println: ["max/min:    " , [[[3 max: 9] printString] , [" / " , [[3 min: 9] printString]]]]];
+[System println: ["abs:        " , [[-5 abs] printString]]];
+[System println: ["squared:    " , [[7 squared] printString]]];
+[System println: ["even/odd:   " , [[[8 even] printString] , [" / " , [[8 odd] printString]]]]];
+[System println: ["between:    " , [[5 between: 1 and: 10] printString]]];
+[System println: ["factorial:  " , [[6 factorial] printString]]];
+
+// printNl prints the receiver and answers it, so it chains.
+[System print: "printNl:    "];
+[[10 factorial] printNl]

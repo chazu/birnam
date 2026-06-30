@@ -101,6 +101,18 @@ test "codegen 3c.2: birnam arithmetic → C → native → value" {
     try std.testing.expectEqual(@as(i64, 20), try evalInt(api, "[[2 * 3] + [7 * 2]]"));
 }
 
+test "codegen: multi-char binary operators parse and dispatch (>=, <=)" {
+    const api = setupFull(); // prelude has >= <= on Integer, & on Boolean
+
+    try std.testing.expect(eval(api, "[5 >= 3]") == api.trueObj);
+    try std.testing.expect(eval(api, "[3 >= 5]") == api.falseObj);
+    try std.testing.expect(eval(api, "[5 <= 5]") == api.trueObj);
+    try std.testing.expect(eval(api, "[6 <= 5]") == api.falseObj);
+    // Combined with single-char ops and a boolean `&` (a between-style test).
+    try std.testing.expect(eval(api, "[[4 >= 1] & [4 <= 10]]") == api.trueObj);
+    try std.testing.expect(eval(api, "[[12 >= 1] & [12 <= 10]]") == api.falseObj);
+}
+
 test "codegen: arithmetic is dispatched — zeroDivide is a value and propagates" {
     const api = setupFull(); // prelude + collection + error model (F7)
 

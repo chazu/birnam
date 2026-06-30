@@ -133,7 +133,11 @@ fn buildGrammar() void {
 
     // message = keywordMsg / binaryMsg / unaryMsg
     defRule("keywordMsg", plus(seqN(&.{ rref("keyword"), ws, rref("expr"), ws })));
-    defRule("binaryMsg", seqN(&.{ rref("binop"), ws, rref("expr") }));
+    // binops = one-or-more operator chars as ONE node, so multi-char operators like
+    // `>=` `<=` `~=` `//`(no, that's a comment) parse as a single selector — not
+    // just single-char `+ - * / < > =`.
+    defRule("binops", plus(rref("binop")));
+    defRule("binaryMsg", seqN(&.{ rref("binops"), ws, rref("expr") }));
     defRule("unaryMsg", rref("ident"));
     defRule("message", altN(&.{ rref("keywordMsg"), rref("binaryMsg"), rref("unaryMsg") }));
 

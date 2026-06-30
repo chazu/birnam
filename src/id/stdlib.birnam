@@ -1,0 +1,36 @@
+// stdlib.birnam — the SELF-HOSTED part of the standard library.
+//
+// The floor (Integer/Boolean/String/System protocol, collections) is provided by
+// the Zig modules (prelude, collection) — those are the irreducible primitives.
+// THIS file is birnam defining MORE of its own library, on top of those
+// primitives, via `[Reflect defineMethod: #sel on: T as: aBlock]`. It is loaded by
+// default; `BIRNAM_NO_STDLIB=1` runs on the bare Zig floor instead.
+
+// -- Integer: derived arithmetic on top of the primitive + - * / mod: < <= = -----
+
+[Reflect defineMethod: #negated on: Integer as: [:self | [0 - self]]];
+[Reflect defineMethod: #squared on: Integer as: [:self | [self * self]]];
+[Reflect defineMethod: #abs on: Integer
+   as: [:self | [[self < 0] ifTrue: [| [0 - self]] ifFalse: [| self]]]];
+
+[Reflect defineMethod: #even on: Integer as: [:self | [[self mod: 2] = 0]]];
+[Reflect defineMethod: #odd  on: Integer as: [:self | [[self even] not]]];
+
+[Reflect defineMethod: #max: on: Integer
+   as: [:self :other | [[self > other] ifTrue: [| self] ifFalse: [| other]]]];
+[Reflect defineMethod: #min: on: Integer
+   as: [:self :other | [[self < other] ifTrue: [| self] ifFalse: [| other]]]];
+
+[Reflect defineMethod: #between:and: on: Integer
+   as: [:self :lo :hi | [[self >= lo] & [self <= hi]]]];
+
+// Recursive — the method dispatches to itself (late-bound through the send).
+[Reflect defineMethod: #factorial on: Integer
+   as: [:self | [[self <= 1] ifTrue: [| 1] ifFalse: [| [self * [[self - 1] factorial]]]]]];
+
+// -- Object: a display helper everything inherits -------------------------------
+
+// Print the receiver's printString followed by a newline, and answer the receiver
+// (so it chains). Handy in scripts and the REPL.
+[Reflect defineMethod: #printNl on: Object
+   as: [:self | [System println: [self printString]]; self]]
