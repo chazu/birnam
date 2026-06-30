@@ -100,12 +100,25 @@ const GcKind = enum(u8) { collectable, permanent };
 const Block = struct { total: usize, kind: GcKind, mark: bool = false };
 var g_blocks: std.AutoHashMapUnmanaged(usize, Block) = .{};
 
+// Auto-GC: once this many bytes have been allocated since the last collection, the
+// next allocation triggers one. Safe to collect at an allocation point — every
+// live object is, by definition, reachable from the stack/registers/roots there,
+// which is exactly what the conservative scan finds. Inactive until a stack bottom
+// is set (so it never fires during module load / in tests that don't opt in).
+var g_auto_gc: bool = true;
+var g_gc_running: bool = false; // re-entrancy guard
+var g_bytes_since_gc: usize = 0;
+var g_gc_threshold: usize = 16 << 20; // 16 MiB between auto-collections (tunable)
+
 fn allocRaw(payload: usize, kind: GcKind) Oop {
     const total = (VT + payload + 7) & ~@as(usize, 7);
+    if (g_auto_gc and !g_gc_running and g_stack_bottom != 0 and g_bytes_since_gc >= g_gc_threshold)
+        _ = gcCollect();
     const buf = ca.alignedAlloc(u8, .@"16", total) catch @panic("libid: oom");
     @memset(buf, 0);
     const obj_addr = @intFromPtr(buf.ptr) + VT;
     g_blocks.put(ca, obj_addr, .{ .total = total, .kind = kind }) catch @panic("libid: oom");
+    g_bytes_since_gc += total;
     return @ptrFromInt(obj_addr);
 }
 
@@ -532,6 +545,9 @@ fn gcMarkVtableDict(vt: *Vtable, comptime keys_too: bool) void {
 
 fn gcCollect() usize {
     if (g_stack_bottom == 0) return 0; // cannot find stack roots → refuse to sweep
+    if (g_gc_running) return 0; // never collect re-entrantly
+    g_gc_running = true;
+    defer g_gc_running = false;
 
     // Flush callee-saved registers to a stack buffer, then scan the whole stack
     // from here down to the recorded bottom (covers every caller frame's Oops).
@@ -566,6 +582,7 @@ fn gcCollect() usize {
     }
     var it2 = g_blocks.iterator();
     while (it2.next()) |e| e.value_ptr.mark = false;
+    g_bytes_since_gc = 0;
     return dead.items.len;
 }
 
@@ -585,6 +602,9 @@ fn gcLiveCountC() callconv(.c) usize {
 }
 fn setTraceHookC(vt: Oop, hook: idapi.TraceHook) callconv(.c) void {
     asVtable(vt).trace_hook = hook;
+}
+fn gcSetAutoC(on: c_int) callconv(.c) void {
+    g_auto_gc = (on != 0);
 }
 
 var g_api: idapi.IdApi = undefined;
@@ -625,6 +645,7 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .gcCollect = &gcCollectC,
         .gcLiveCount = &gcLiveCountC,
         .setTraceHook = &setTraceHookC,
+        .gcSetAuto = &gcSetAutoC,
     };
     // Publish the id layer into its own environment — so it is re-importable.
     _ = exportObj("Object", oop(object_vt));
@@ -788,6 +809,26 @@ test "libid: GC keeps root-provider objects and what they reach (F3)" {
     try std.testing.expectEqualStrings("kept", stringBytes(kept));
 
     g_test_roots = .{ null, null, null }; // don't leak roots into later tests
+}
+
+test "libid: auto-GC bounds the live set under churn (F3)" {
+    boot();
+    var anchor: usize = 0;
+    g_stack_bottom = @intFromPtr(&anchor);
+    _ = &anchor;
+
+    g_auto_gc = true;
+    const saved = g_gc_threshold;
+    g_gc_threshold = 64 * 1024; // fire often
+    defer g_gc_threshold = saved;
+
+    _ = gcCollect(); // settle
+    const before = g_blocks.count();
+    makeGarbage(50000); // ~400 KB of garbage, but nothing is retained
+
+    // Auto-gc kept reclaiming as we went, so the live set stayed near `before`
+    // rather than ballooning by 50000.
+    try std.testing.expect(g_blocks.count() < before + 5000);
 }
 
 test "libid: GC never sweeps permanents (vtables / symbols / singletons)" {

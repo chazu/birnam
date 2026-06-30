@@ -9,6 +9,11 @@
 //
 //   birnam examples/gc.birnam
 
+// Disable automatic collection so the manual numbers below are deterministic
+// (otherwise auto-gc would reclaim mid-churn). See examples/auto-gc.birnam for the
+// automatic collector left to its own devices.
+[System autoGc: false];
+
 // --- Live, reachable data that MUST survive every collection. ----------------
 let keep := #[1 2 3 4 5];                       // a vector (trie nodes)
 let prices := {"apple" -> 3, "pear" -> 7};      // a map (HAMT nodes)

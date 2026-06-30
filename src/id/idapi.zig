@@ -104,6 +104,11 @@ pub const IdApi = extern struct {
     /// (a global root set), a trace hook fires PER reachable instance, so the
     /// instance's external Oops survive iff the instance itself does.
     setTraceHook: *const fn (Oop, TraceHook) callconv(.c) void,
+    /// gcSetAuto(on): enable/disable automatic collection (on by default once a
+    /// stack bottom is set). When on, an allocation that crosses the internal
+    /// byte threshold since the last collection triggers one. Disable for
+    /// deterministic manual-GC scenarios.
+    gcSetAuto: *const fn (c_int) callconv(.c) void,
 };
 
 /// The mark function handed to a root provider / trace hook: call it per root Oop.

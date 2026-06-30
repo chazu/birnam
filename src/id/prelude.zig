@@ -179,6 +179,13 @@ fn sysLiveObjects(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkSmallInt(@intCast(g_api.gcLiveCount()));
 }
 
+/// `[System autoGc: aBoolean]` → enable/disable automatic collection.
+fn sysAutoGc(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    g_api.gcSetAuto(if (a[0] == g_api.trueObj) 1 else 0);
+    return self;
+}
+
 // -- bringup -----------------------------------------------------------------
 
 pub fn bringUp(api: *idapi.IdApi) void {
@@ -217,6 +224,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(system_vt, api.intern("println:"), &sysPrintln);
     api.method(system_vt, api.intern("gc"), &sysGc);
     api.method(system_vt, api.intern("liveObjects"), &sysLiveObjects);
+    api.method(system_vt, api.intern("autoGc:"), &sysAutoGc);
 
     if (!reloading) {
         _ = api.exportObj("SystemVt", system_vt);

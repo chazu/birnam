@@ -1,0 +1,20 @@
+// Automatic garbage collection: the collector left to its own devices.
+//
+// birnam collects automatically — once enough has been allocated since the last
+// collection, the next allocation triggers one (safe: at any allocation point all
+// live objects are reachable from the stack/roots, which is what the conservative
+// scan finds). Nothing here ever calls `[System gc]`. Run it:
+//
+//   birnam examples/auto-gc.birnam
+
+// Live data that must survive however many automatic collections happen.
+let keep := #[10 20 30];
+
+// Allocate FAR more than fits in memory if nothing were reclaimed: 2,000,000
+// throwaway vectors. The live-object count stays bounded because auto-gc keeps
+// reclaiming the garbage as we go.
+[1 to: 2000000 do: [:i | [#[i [i + 1] [i + 2]] size]]];
+
+[System println: ["live objects after 2M allocations: " , [[System liveObjects] printString]]];
+[System println: ["keep survived: " , [keep printString]]];
+[System println: ["keep sum: " , [[keep inject: 0 into: [:a :x | [a + x]]] printString]]]
