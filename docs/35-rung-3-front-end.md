@@ -1,9 +1,12 @@
 # Rung 3 — the front end (peg + lang), and the road to libtcc
 
-> **Status:** In progress (2026-06-27). 3a (peg engine) + 3b (birnam grammar)
-> **shipped**; 3c (C codegen + libtcc) is next. Builds on
+> **Status:** Shipped (last updated 2026-06-30). 3a (peg) + 3b (grammar) + 3c
+> (C codegen + libtcc) all **shipped**; the post-grammar runtime — stdlib, the full
+> datalog surface, GC, error model — and the final codegen/runtime gaps (arithmetic
+> dispatch, AOT native output) are **complete** (see the late sections). Builds on
 > [Refound on libid](32-refound-on-libid.md), [Rung 2 — cells](33-rung-2-cells.md),
-> and [Foundations before the compiler](34-foundations-before-the-compiler.md).
+> and [Foundations before the compiler](34-foundations-before-the-compiler.md). The
+> query surface has its own reference: [The relational reading](37-the-relational-reading.md).
 
 ## The proximate goal
 
@@ -223,16 +226,43 @@ relational reading:
 Examples that run end to end: `fizzbuzz`, `primes`, `collections`,
 `word-frequency`, `address-book`, `gc`, `auto-gc`.
 
-**Next (the live arc): the FULL DATALOG SURFACE** on top of the core join —
-predicates/comparison, negation, disjunction, aggregation, rules, time
-(asOf/since/between), pull extensions (reverse/`:many`/nested). See
-`docs/29-datalog.md` for the target surface and the old kernel's reference impl.
+## The full datalog surface (SHIPPED 2026-06-30)
+
+The relational reading grew to the complete datalog surface — predicates,
+negation, disjunction, aggregation (count/sum/min/max/avg, group-by), recursive
+rules (self + mutual), time travel (asOf/since/between), and nested/`:many` pull —
+plus a clause-reorder planner. It is documented in full in its own reference,
+[The relational reading](37-the-relational-reading.md); the old kernel's impl is
+[Datalog](29-datalog.md).
+
+## Codegen + runtime, completed (SHIPPED 2026-06-30)
+
+The last two codegen/runtime gaps the 3c notes flagged are closed:
+
+- **Arithmetic is dispatched, not inlined** (`57f2d57`). The 3c.2 MVP emitted
+  `+ - * /` as raw C math (`MKV(GETV(a) op GETV(b))`) — a fast path that was
+  load-bearing only because the floor's SmallInt then had no arithmetic methods.
+  Now that the prelude installs `+ - * /` on `smallint_vt`, every binary op
+  compiles to an ordinary `birnam_send`, so arithmetic dispatches to the SmallInt
+  protocol and honors its **error flow**: `[10 / 0]` is a `#zeroDivide` value (the
+  guarded prelude `/`), and an error receiver **propagates** (`doesNotUnderstand:`
+  returns self) through further arithmetic instead of being untagged into garbage.
+  This was the F7 codegen gap. (`GETV` is gone; `MKV` stays — number literals still
+  tag through it.) See `examples/errors.birnam`.
+- **Ahead-of-time native output** (`d1627b7`). `[Tcc compile: src output: path
+  as: #kind]` writes the compiled C to disk as a shared library (`#dll`), object
+  (`#obj`), or executable (`#exe`) via `tcc_output_file`, alongside the in-memory
+  JIT. Verified on macOS arm64: a `.dylib` is produced, `dlopen`'d, and called.
+  Self-contained C yields a ready-to-load artifact; codegen C that references the
+  `birnam_*` shims leaves them undefined in the artifact (resolved only by a host
+  that exports them), so the JIT remains how compiled birnam runs today.
 
 ## Test/run surface
 
 `zig build test-id` (9) · `test-store` (8) · `test-peg` (4) · `test-lang` (5) ·
-`test-tcc` (4) · `test-codegen` (11) · `test-prelude` (3) · `test-collection` (18)
-· `test-error` (9) · `test-relational` (9). `zig build install &&
+`test-tcc` (5) · `test-codegen` (12) · `test-prelude` (3) · `test-collection` (18)
+· `test-error` (9) · `test-relational` (24). `zig build install &&
 BIRNAM_LIB_DIR=$PWD/zig-out/lib ./zig-out/bin/birnam-id <file.birnam>` runs a
 script through the full stack (store · peg · lang · tcc · codegen · prelude ·
-collection · error · relational).
+collection · error · relational). Examples: the seven above plus `predicates`,
+`ancestors`, `time-travel`, `pull`, `errors`.
