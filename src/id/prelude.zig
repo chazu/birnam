@@ -9,14 +9,17 @@
 //!
 //! Installed (via the IdApi, like the floor — no store/mirror needed):
 //!   Integer (smallint_vt): mod: = < <= > >= + - * /  printString  to:do:
-//!   Boolean (bool_vt):     ifTrue:ifFalse: ifTrue: ifFalse: & | not
-//!   System (a singleton):  print:  println:
+//!     (arithmetic is fault-tolerant: overflow/type/zero-divide → catchable errors)
+//!   Boolean (bool_vt):     ifTrue:ifFalse: ifTrue: ifFalse: & | not  printString
+//!   System (a singleton):  print:  println:  readFile:  writeFile:contents:
+//!                          readLine  gc  liveObjects  autoGc:
 //! Exports `System` and `Boolean` into the id environment so birnam can name them.
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
+const ca = std.heap.c_allocator;
 
 var g_api: *idapi.IdApi = undefined;
 
@@ -208,6 +211,57 @@ fn sysPrintln(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
+fn pathOf(o: Oop) []const u8 {
+    var len: usize = 0;
+    const p = g_api.stringBytes(o, &len);
+    return p[0..len];
+}
+
+/// `[System readFile: pathString]` → the file's contents as a String, or an
+/// `#ioError` value if it cannot be read (no NULL / no panic).
+fn sysReadFile(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const data = std.fs.cwd().readFileAlloc(ca, pathOf(a[0]), 1 << 30) catch
+        return mkErr("ioError", "could not read file");
+    defer ca.free(data);
+    return g_api.mkString(data.ptr, data.len);
+}
+
+/// `[System writeFile: pathString contents: aString]` → write `aString` to `path`
+/// (creating/truncating); answers self, or an `#ioError` value on failure.
+fn sysWriteFile(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var len: usize = 0;
+    const p = g_api.stringBytes(a[1], &len);
+    std.fs.cwd().writeFile(.{ .sub_path = pathOf(a[0]), .data = p[0..len] }) catch
+        return mkErr("ioError", "could not write file");
+    return self;
+}
+
+/// `[System readLine]` → the next line from stdin as a String (newline stripped),
+/// or nil at end of input. Line-oriented (one byte at a time) so it composes with
+/// an interactive read loop.
+fn sysReadLine(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    const stdin = std.fs.File.stdin();
+    var buf: std.ArrayList(u8) = .{};
+    defer buf.deinit(ca);
+    while (true) {
+        var b: [1]u8 = undefined;
+        const nr = stdin.read(&b) catch return mkErr("ioError", "stdin read failed");
+        if (nr == 0) {
+            if (buf.items.len == 0) return g_api.nilObj; // EOF with nothing buffered
+            break;
+        }
+        if (b[0] == '\n') break;
+        buf.append(ca, b[0]) catch @panic("prelude: oom");
+    }
+    return g_api.mkString(buf.items.ptr, buf.items.len);
+}
+
 /// `[System gc]` → run a collection; answers the number of objects reclaimed (a
 /// no-op returning 0 until the runtime sets a stack bottom — see main.zig).
 fn sysGc(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -270,6 +324,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
     }
     api.method(system_vt, api.intern("print:"), &sysPrint);
     api.method(system_vt, api.intern("println:"), &sysPrintln);
+    api.method(system_vt, api.intern("readFile:"), &sysReadFile);
+    api.method(system_vt, api.intern("writeFile:contents:"), &sysWriteFile);
+    api.method(system_vt, api.intern("readLine"), &sysReadLine);
     api.method(system_vt, api.intern("gc"), &sysGc);
     api.method(system_vt, api.intern("liveObjects"), &sysLiveObjects);
     api.method(system_vt, api.intern("autoGc:"), &sysAutoGc);

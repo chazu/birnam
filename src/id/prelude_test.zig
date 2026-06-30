@@ -99,6 +99,30 @@ test "prelude: arithmetic faults are catchable errors, not panics" {
     try std.testing.expect(api.send(api.mkSmallInt(5), api.intern("="), &[_]Oop{sys}, 1) == api.falseObj); // cross-type = is false
 }
 
+test "prelude: System readFile:/writeFile:contents: round-trips through disk" {
+    const api = id.id_init();
+    gapi = api;
+    prelude.bringUp(api);
+    errmod.bringUp(api);
+    const sys = api.import("System").?;
+
+    const path = "/tmp/birnam_io_test.txt";
+    std.fs.cwd().deleteFile(path) catch {};
+    const body = "hello from birnam\nline two\n";
+
+    const w = api.send(sys, api.intern("writeFile:contents:"), &[_]Oop{ api.mkString(path.ptr, path.len), api.mkString(body.ptr, body.len) }, 2);
+    try std.testing.expect(w == sys); // success answers self
+
+    const r = api.send(sys, api.intern("readFile:"), &[_]Oop{api.mkString(path.ptr, path.len)}, 1);
+    var len: usize = 0;
+    try std.testing.expectEqualStrings(body, api.stringBytes(r, &len)[0..len]);
+
+    // Reading a missing file is a catchable #ioError, not a crash.
+    const e = api.send(sys, api.intern("readFile:"), &[_]Oop{api.mkString("/no/such/path.txt", 17)}, 1);
+    try std.testing.expect(api.send(e, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj);
+    std.fs.cwd().deleteFile(path) catch {};
+}
+
 test "prelude: to:do: iterates inclusively" {
     const api = setup();
     loop_sum = 0;
