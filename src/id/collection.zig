@@ -870,17 +870,24 @@ fn strPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
-/// `aString , bString` → a fresh String of the two byte runs concatenated.
+fn isString(o: Oop) bool {
+    return o != null and g_api.vtableOf(o) == g_api.string_vt;
+}
+
+/// `aString , x` → a fresh String concatenating the receiver with `x`. A non-String
+/// argument is first coerced via `printString` (so `"n=" , 5` → `"n=5"`), and if
+/// that still is not a String it contributes nothing — `,` never untags a
+/// non-string as bytes (which read a garbage ptr/len and crashed).
 fn strComma(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    var la: usize = 0;
-    var lb: usize = 0;
-    const pa = g_api.stringBytes(self, &la);
-    const pb = g_api.stringBytes(a[0], &lb);
-    const buf = ca.alloc(u8, la + lb) catch @panic("collection: oom");
+    var arg = a[0];
+    if (!isString(arg)) arg = g_api.send(arg, s_printString, &[_]Oop{}, 0);
+    const sa = strBytes(self); // the receiver is always a String (dispatched here)
+    const sb = if (isString(arg)) strBytes(arg) else "";
+    const buf = ca.alloc(u8, sa.len + sb.len) catch @panic("collection: oom");
     defer ca.free(buf);
-    @memcpy(buf[0..la], pa[0..la]);
-    @memcpy(buf[la .. la + lb], pb[0..lb]);
+    @memcpy(buf[0..sa.len], sa);
+    @memcpy(buf[sa.len..], sb);
     return g_api.mkString(buf.ptr, buf.len);
 }
 

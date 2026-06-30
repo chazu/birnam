@@ -142,6 +142,12 @@ fn bNot(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     return boolean(self != g_api.trueObj);
 }
+fn bPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const s: []const u8 = if (self == g_api.trueObj) "true" else "false";
+    return g_api.mkString(s.ptr, s.len);
+}
 
 // -- System (I/O) ------------------------------------------------------------
 
@@ -211,6 +217,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(b_vt, api.intern("&"), &bAnd);
     api.method(b_vt, api.intern("|"), &bOr);
     api.method(b_vt, api.intern("not"), &bNot);
+    api.method(b_vt, api.intern("printString"), &bPrintString);
 
     const reloading = api.isExported("System") != 0;
     if (reloading) {

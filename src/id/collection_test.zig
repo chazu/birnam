@@ -305,6 +305,18 @@ test "collection: String asLowercase / replace:with: / words" {
     try std.testing.expectEqual(@as(i64, 0), ival(s0(s0(api.mkString("   ", 3), "words"), "size")));
 }
 
+test "collection: String , coerces a non-String argument via printString" {
+    const api = setup();
+    // String , String — the plain concat.
+    try std.testing.expect(strEq(s1(api.mkString("ab", 2), ",", api.mkString("cd", 2)), "abcd"));
+    // String , SmallInt — coerced through printString instead of untagging as bytes
+    // (which previously read a garbage ptr/len and crashed).
+    try std.testing.expect(strEq(s1(api.mkString("n=", 2), ",", api.mkSmallInt(5)), "n=5"));
+    // String , Boolean — also coerced (Boolean now answers printString).
+    const t = api.send(api.mkSmallInt(1), api.intern("="), &[_]Oop{api.mkSmallInt(1)}, 1);
+    try std.testing.expect(strEq(s1(api.mkString("ok? ", 4), ",", t), "ok? true"));
+}
+
 test "collection: String asSymbol interns (equal strings → identical symbol)" {
     const api = setup();
     const a = s0(api.mkString("apple", 5), "asSymbol");

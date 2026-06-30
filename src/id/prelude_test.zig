@@ -53,6 +53,13 @@ test "prelude: Boolean ifTrue:ifFalse: / & / not — dispatch on identity" {
     try std.testing.expect(api.send(t, api.intern("&"), &[_]Oop{t}, 1) == api.trueObj);
     try std.testing.expect(api.send(f, api.intern("not"), &[_]Oop{}, 0) == api.trueObj);
     try std.testing.expect(api.send(t, api.intern("|"), &[_]Oop{f}, 1) == api.trueObj);
+
+    // printString renders the singletons (so booleans can be displayed / `,`-joined).
+    var len: usize = 0;
+    const tp = api.send(t, api.intern("printString"), &[_]Oop{}, 0);
+    try std.testing.expectEqualStrings("true", api.stringBytes(tp, &len)[0..len]);
+    const fp = api.send(f, api.intern("printString"), &[_]Oop{}, 0);
+    try std.testing.expectEqualStrings("false", api.stringBytes(fp, &len)[0..len]);
 }
 
 test "prelude: to:do: iterates inclusively" {
