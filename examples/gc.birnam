@@ -1,0 +1,25 @@
+// Garbage collection: reclaim mid-execution, live objects survive.
+//
+// birnam runs on a self-contained conservative mark-sweep collector (docs/34 F3).
+// `[System gc]` runs a collection and answers how many objects it reclaimed. It is
+// safe to call between/within evaluations: the collector scans the live C stack
+// (where compiled methods hold their values) plus the store's facts, so anything
+// still reachable is kept. Run it:
+//
+//   birnam examples/gc.birnam
+
+// Live, let-bound objects — these must survive the collection.
+let keep := #[1 2 3 4 5];
+let raw := "The Cat Sat On The Mat";
+
+// Generate a lot of garbage: each iteration builds vectors that are immediately
+// thrown away (only `size` is taken). Nothing keeps them, so they become unreachable.
+[1 to: 50000 do: [:i | [#[i [i + 1] [i + 2]] size]]];
+
+let freed := [System gc];
+[System println: ["reclaimed: " , [freed printString]]];
+
+// The live objects are intact and still usable after the collection.
+[System println: [keep printString]];
+[System println: [raw asLowercase]];
+[System println: ["sum still works: " , [[keep inject: 0 into: [:a :x | [a + x]]] printString]]]

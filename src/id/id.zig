@@ -84,12 +84,25 @@ pub var s_dnu: *Symbol = undefined; // doesNotUnderstand:
 var booted = false;
 
 // -- Raw allocation + the `-1` vtable-pointer trick -------------------------
+//
+// Every heap object is tracked in `g_blocks` (keyed by its object/payload
+// address) so the conservative collector can know each object's extent and
+// whether it may be reclaimed. `kind` records that: instances are `.collectable`
+// (alloc/mkString); vtables, symbols and singletons are `.permanent` (never
+// swept, never traced — their only outgoing Oops live in the env/interner, which
+// are scanned as roots, not via tracing). See the GC section below + docs/34 §F3.
 
-fn allocRaw(payload: usize) Oop {
+const GcKind = enum(u8) { collectable, permanent };
+const Block = struct { total: usize, kind: GcKind, mark: bool = false };
+var g_blocks: std.AutoHashMapUnmanaged(usize, Block) = .{};
+
+fn allocRaw(payload: usize, kind: GcKind) Oop {
     const total = (VT + payload + 7) & ~@as(usize, 7);
     const buf = ca.alignedAlloc(u8, .@"16", total) catch @panic("libid: oom");
     @memset(buf, 0);
-    return @ptrFromInt(@intFromPtr(buf.ptr) + VT);
+    const obj_addr = @intFromPtr(buf.ptr) + VT;
+    g_blocks.put(ca, obj_addr, .{ .total = total, .kind = kind }) catch @panic("libid: oom");
+    return @ptrFromInt(obj_addr);
 }
 
 fn vtSlot(obj: Oop) *?*Vtable {
@@ -123,7 +136,7 @@ inline fn asString(o: Oop) *String {
     return @ptrCast(@alignCast(o.?));
 }
 pub fn mkString(bytes: []const u8) Oop {
-    const obj = allocRaw(@sizeOf(String));
+    const obj = allocRaw(@sizeOf(String), .collectable);
     setVtable(obj, string_vt);
     const dup = ca.dupe(u8, bytes) catch @panic("libid: oom");
     asString(obj).* = .{ .ptr = dup.ptr, .len = dup.len };
@@ -247,7 +260,7 @@ fn vtableAllocate(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     const vt = asVtable(self);
     const size: usize = @intFromPtr(args[0]);
-    const obj = allocRaw(size);
+    const obj = allocRaw(size, .collectable);
     setVtable(obj, vt);
     return obj;
 }
@@ -276,7 +289,7 @@ fn growDict(vt: *Vtable) void {
 
 /// Allocate a bare vtable object (vtable pointer = vtable_vt) with `parent`.
 fn newVtable(parent: ?*Vtable) *Vtable {
-    const obj = allocRaw(@sizeOf(Vtable));
+    const obj = allocRaw(@sizeOf(Vtable), .permanent);
     // During boot, vtable_vt may not exist yet; `boot` patches the first ones.
     if (booted) setVtable(obj, vtable_vt);
     const vt = asVtable(obj);
@@ -294,7 +307,7 @@ fn intern(string: [:0]const u8) *Symbol {
         const sym: *Symbol = @ptrCast(@alignCast(symbol_list.keys.?[i]));
         if (std.mem.orderZ(u8, sym.string, string) == .eq) return sym;
     }
-    const obj = allocRaw(@sizeOf(Symbol));
+    const obj = allocRaw(@sizeOf(Symbol), .permanent);
     setVtable(obj, symbol_vt);
     const sym = asSymbol(obj);
     sym.string = (ca.dupeZ(u8, string) catch @panic("libid: oom")).ptr;
@@ -336,11 +349,11 @@ pub fn boot() void {
     string_vt = newVtable(object_vt);
     nil_vt = newVtable(object_vt);
     bool_vt = newVtable(object_vt);
-    nil_obj = allocRaw(0);
+    nil_obj = allocRaw(0, .permanent);
     setVtable(nil_obj, nil_vt);
-    true_obj = allocRaw(0);
+    true_obj = allocRaw(0, .permanent);
     setVtable(true_obj, bool_vt);
-    false_obj = allocRaw(0);
+    false_obj = allocRaw(0, .permanent);
     setVtable(false_obj, bool_vt);
 
     s_lookup = intern("lookup");
@@ -404,7 +417,7 @@ fn methodC(vt: Oop, sel: Oop, m: idapi.Method) callconv(.c) void {
     _ = vtableAddMethod(vt, &[_]Oop{ sel, @constCast(@ptrCast(m)) }, 2);
 }
 fn allocC(vt: Oop, size: usize) callconv(.c) Oop {
-    const obj = allocRaw(size);
+    const obj = allocRaw(size, .collectable);
     setVtable(obj, asVtable(vt));
     return obj;
 }
@@ -444,6 +457,124 @@ fn vtableOfC(o: Oop) callconv(.c) Oop {
     return oop(vtableOf(o).?);
 }
 
+// -- GC: a self-contained conservative mark-sweep (F3) -----------------------
+//
+// Why conservative: birnam compiles methods to native code (libtcc) that holds
+// live Oops in C locals/registers with no stack maps — a precise/moving collector
+// could not find those roots. So we follow Piumarta: scan the stack + saved
+// registers conservatively, treating any word that equals a live object's address
+// as a root (false positives only over-retain — never unsafe). SmallInts (bit0=1)
+// are skipped; references are always to an object's payload START (the Oop), so an
+// exact-address table lookup suffices (no interior pointers).
+//
+// Only `.collectable` objects are swept. `.permanent` ones (vtables, symbols,
+// singletons) are never freed and never traced: their only outgoing Oops live in
+// the env / interner / vtable dicts, which are reached as ROOTS (the env+interner
+// providers below), not by tracing. Modules holding Oops in non-id memory (the
+// store's fact list) register their own root providers.
+
+const MaxRootProviders = 32;
+var g_root_providers: [MaxRootProviders]idapi.RootProvider = undefined;
+var g_root_provider_count: usize = 0;
+var g_stack_bottom: usize = 0;
+var g_gc_worklist: std.ArrayListUnmanaged(usize) = .{};
+
+extern fn _setjmp(buf: [*]usize) c_int;
+
+fn gcMarkWord(w: usize) void {
+    if (w == 0 or (w & 1) != 0) return; // null / SmallInt immediate
+    const blk = g_blocks.getPtr(w) orelse return;
+    if (blk.kind == .permanent or blk.mark) return;
+    blk.mark = true;
+    g_gc_worklist.append(ca, w) catch @panic("gc: oom");
+}
+
+fn gcMarkOopC(o: Oop) callconv(.c) void {
+    gcMarkWord(@intFromPtr(o orelse return));
+}
+
+/// Conservatively scan an aligned [lo, hi) word range for roots.
+fn gcScanRange(lo: usize, hi: usize) void {
+    var a = (lo + 7) & ~@as(usize, 7);
+    while (a + @sizeOf(usize) <= hi) : (a += @sizeOf(usize)) {
+        gcMarkWord(@as(*const usize, @ptrFromInt(a)).*);
+    }
+}
+
+/// Trace a marked object: conservatively scan its payload for more live pointers.
+fn gcTrace(w: usize) void {
+    const blk = g_blocks.get(w) orelse return;
+    gcScanRange(w, w + (blk.total - VT));
+}
+
+// The env + interner keep Oops in their `keys`/`values` arrays (c_allocator
+// memory), so they are scanned as roots — this is what keeps every EXPORTED
+// object (factories, the store, facades) and every interned symbol alive.
+fn gcMarkVtableDict(vt: *Vtable, comptime keys_too: bool) void {
+    if (vt.values) |v| {
+        var i: usize = 0;
+        while (i < vt.tally) : (i += 1) gcMarkWord(@intFromPtr(v[i] orelse continue));
+    }
+    if (keys_too) if (vt.keys) |k| {
+        var i: usize = 0;
+        while (i < vt.tally) : (i += 1) gcMarkWord(@intFromPtr(k[i] orelse continue));
+    };
+}
+
+fn gcCollect() usize {
+    if (g_stack_bottom == 0) return 0; // cannot find stack roots → refuse to sweep
+
+    // Flush callee-saved registers to a stack buffer, then scan the whole stack
+    // from here down to the recorded bottom (covers every caller frame's Oops).
+    var jb: [256]usize align(16) = undefined;
+    _ = _setjmp(&jb);
+    const sp = @intFromPtr(&jb);
+    gcScanRange(sp, g_stack_bottom);
+
+    // Roots in non-id memory: the export env, the interner, and module providers.
+    gcMarkVtableDict(env, false); // export values (keys are symbols = permanent)
+    gcMarkVtableDict(symbol_list, true); // interned symbols
+    var pi: usize = 0;
+    while (pi < g_root_provider_count) : (pi += 1) g_root_providers[pi](&gcMarkOopC);
+
+    // Trace transitively.
+    while (g_gc_worklist.pop()) |w| gcTrace(w);
+
+    // Sweep unmarked collectables (collect dead keys first — can't mutate while
+    // iterating), then clear marks for next time.
+    var dead: std.ArrayListUnmanaged(usize) = .{};
+    defer dead.deinit(ca);
+    var it = g_blocks.iterator();
+    while (it.next()) |e| {
+        if (e.value_ptr.kind == .collectable and !e.value_ptr.mark)
+            dead.append(ca, e.key_ptr.*) catch @panic("gc: oom");
+    }
+    for (dead.items) |k| {
+        const total = g_blocks.get(k).?.total;
+        const base: [*]align(16) u8 = @ptrFromInt(k - VT);
+        ca.free(base[0..total]);
+        _ = g_blocks.remove(k);
+    }
+    var it2 = g_blocks.iterator();
+    while (it2.next()) |e| e.value_ptr.mark = false;
+    return dead.items.len;
+}
+
+fn gcSetStackBottomC(addr: usize) callconv(.c) void {
+    g_stack_bottom = addr;
+}
+fn gcRegisterRootProviderC(p: idapi.RootProvider) callconv(.c) void {
+    if (g_root_provider_count >= MaxRootProviders) @panic("gc: too many root providers");
+    g_root_providers[g_root_provider_count] = p;
+    g_root_provider_count += 1;
+}
+fn gcCollectC() callconv(.c) usize {
+    return gcCollect();
+}
+fn gcLiveCountC() callconv(.c) usize {
+    return g_blocks.count();
+}
+
 var g_api: idapi.IdApi = undefined;
 
 /// `id_init()` — boot the object system, build the IdApi table, and EXPORT the
@@ -477,6 +608,10 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .stringBytes = &stringBytesC,
         .symbolName = &symbolNameC,
         .vtableOf = &vtableOfC,
+        .gcSetStackBottom = &gcSetStackBottomC,
+        .gcRegisterRootProvider = &gcRegisterRootProviderC,
+        .gcCollect = &gcCollectC,
+        .gcLiveCount = &gcLiveCountC,
     };
     // Publish the id layer into its own environment — so it is re-importable.
     _ = exportObj("Object", oop(object_vt));
@@ -575,6 +710,87 @@ test "libid: String is an uninterned byte-string floor value" {
     try std.testing.expectEqualStrings(stringBytes(s), stringBytes(s2));
     // Not a smallint; a real heap object.
     try std.testing.expect(!isSmallInt(s));
+}
+
+// -- GC tests (F3) -----------------------------------------------------------
+
+noinline fn makeGarbage(count: usize) void {
+    var i: usize = 0;
+    var o: Oop = null;
+    while (i < count) : (i += 1) o = allocC(oop(object_vt), 0); // each overwrites the last
+    std.mem.doNotOptimizeAway(&o);
+}
+
+var g_test_roots: [3]Oop = .{ null, null, null };
+fn testRootProvider(mark: idapi.MarkFn) callconv(.c) void {
+    for (g_test_roots) |r| if (r != null) mark(r);
+}
+
+test "libid: GC reclaims unreachable instances (F3)" {
+    boot();
+    var anchor: usize = 0;
+    g_stack_bottom = @intFromPtr(&anchor);
+    _ = &anchor;
+
+    _ = gcCollect(); // settle
+    const before = g_blocks.count();
+    makeGarbage(2000);
+    try std.testing.expect(g_blocks.count() >= before + 2000);
+
+    const freed = gcCollect();
+    try std.testing.expect(freed >= 1900); // nearly all (a little stack residue is ok)
+    try std.testing.expect(g_blocks.count() <= before + 100);
+}
+
+test "libid: GC is a no-op until a stack bottom is set" {
+    boot();
+    g_stack_bottom = 0; // unset
+    makeGarbage(100);
+    const live = g_blocks.count();
+    try std.testing.expectEqual(@as(usize, 0), gcCollect()); // refuses to sweep
+    try std.testing.expectEqual(live, g_blocks.count());
+}
+
+test "libid: GC keeps root-provider objects and what they reach (F3)" {
+    boot();
+    var anchor: usize = 0;
+    g_stack_bottom = @intFromPtr(&anchor);
+    _ = &anchor;
+    gcRegisterRootProviderC(&testRootProvider);
+
+    // A container instance (one Oop slot) pointing at a child; only the container
+    // is rooted — the child must survive via tracing.
+    const child = allocC(oop(object_vt), 0);
+    const container = allocC(oop(object_vt), @sizeOf(Oop));
+    @as(*Oop, @ptrCast(@alignCast(container.?))).* = child;
+    const kept = mkString("kept");
+    g_test_roots = .{ container, kept, null };
+
+    makeGarbage(500);
+    _ = gcCollect();
+
+    try std.testing.expect(g_blocks.contains(@intFromPtr(container.?)));
+    try std.testing.expect(g_blocks.contains(@intFromPtr(child.?))); // reached via container
+    try std.testing.expect(g_blocks.contains(@intFromPtr(kept.?)));
+    try std.testing.expectEqualStrings("kept", stringBytes(kept));
+
+    g_test_roots = .{ null, null, null }; // don't leak roots into later tests
+}
+
+test "libid: GC never sweeps permanents (vtables / symbols / singletons)" {
+    boot();
+    var anchor: usize = 0;
+    g_stack_bottom = @intFromPtr(&anchor);
+    _ = &anchor;
+
+    const sym = oop(intern("a-kept-symbol"));
+    const vt = protoC(oop(object_vt)); // a fresh permanent vtable
+    makeGarbage(300);
+    _ = gcCollect();
+
+    try std.testing.expect(g_blocks.contains(@intFromPtr(sym.?)));
+    try std.testing.expect(g_blocks.contains(@intFromPtr(vt.?)));
+    try std.testing.expect(g_blocks.contains(@intFromPtr(nil_obj.?)));
 }
 
 var last_dnu_sel: Oop = null;

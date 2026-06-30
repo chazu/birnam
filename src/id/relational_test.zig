@@ -153,6 +153,36 @@ test "relational: pull builds a record map; absent attrs omitted" {
     try std.testing.expectEqual(@as(i64, 1), ival(s0(rec2, "size")));
 }
 
+// Assert three people into `db`, keeping NO reference after return — so the
+// entities live only inside the store's fact list (their GC survival depends on
+// the store's root provider, not on lingering stack slots).
+noinline fn populate(api: *idapi.IdApi, db: Oop) void {
+    var i: usize = 0;
+    while (i < 3) : (i += 1) {
+        const e = s0(db, "entity");
+        const city = if (i < 2) api.intern("Boston") else api.intern("Denver");
+        _ = s3(db, "assert:attr:value:", e, api.intern("city"), city);
+    }
+}
+
+test "relational: GC keeps store-only entities alive (root provider, F3)" {
+    const api = setup();
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    _ = &anchor;
+
+    const db = api.import("Store").?; // the singleton — covered by the store provider
+    populate(api, db);
+
+    // Collect: the entities are reachable only via the store's facts now.
+    _ = api.gcCollect();
+
+    // They survived and are still queryable (and their fact values intact).
+    const clauses = vec(api, &.{vec(api, &.{ lvar(api, "p"), api.intern("city"), api.intern("Boston") })});
+    const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size")));
+}
+
 test "relational: Symbol printString renders with the # sigil" {
     const api = setup();
     try std.testing.expect(strEq(s0(api.intern("Boston"), "printString"), "#Boston"));

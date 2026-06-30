@@ -86,6 +86,14 @@ fn isLogicVar(o: Oop) bool {
     return o != null and g_api.vtableOf(o) == logicvar_vt;
 }
 
+// GC root (F3): canonical logic vars are cached in a non-id hashmap, so a `?p`
+// minted once must survive collection (a later `[LogicVar named: #p]` returns the
+// same object). Mark them all as roots.
+fn gcRoots(mark: idapi.MarkFn) callconv(.c) void {
+    var it = g_logicvars.valueIterator();
+    while (it.next()) |v| mark(v.*);
+}
+
 /// `[LogicVar named: #p]` — the canonical logic variable for symbol `#p` (interned
 /// so equal names share identity, which is how the join matches them).
 fn mNamed(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -324,6 +332,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
         _ = api.exportObj("EntityVt", entity_vt);
         _ = api.exportObj("RelCollectorVt", collector_vt);
         _ = api.exportObj("db", store); // the store, under the name the examples use
+        api.gcRegisterRootProvider(&gcRoots); // the canonical logic-var cache
     }
 }
 

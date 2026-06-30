@@ -75,7 +75,34 @@ pub const IdApi = extern struct {
     /// Lets a library reach the type of a value to install protocol on it (e.g.
     /// the shared bool vtable behind true/false).
     vtableOf: *const fn (Oop) callconv(.c) Oop,
+
+    // -- GC: a self-contained conservative mark-sweep (F3; appended) ---------
+    // The collector reclaims INSTANCE objects (alloc/mkString); vtables, symbols
+    // and the singletons are permanent. Roots = the C stack + saved registers +
+    // registered root providers; tracing is conservative (every payload word that
+    // looks like a live-object pointer is followed). See `docs/34` §F3.
+    //
+    /// gcSetStackBottom(addr): record the outermost stack address to scan up to
+    /// (the address of a local near the program's entry). The collector scans
+    /// from its own frame to here; if unset (0) `gcCollect` is a no-op (it cannot
+    /// safely find stack roots). Pass `@intFromPtr(&local)`.
+    gcSetStackBottom: *const fn (usize) callconv(.c) void,
+    /// gcRegisterRootProvider(p): register a callback that, at collection time,
+    /// calls the passed mark function on each live Oop the module holds in non-id
+    /// (e.g. `c_allocator` ArrayList) memory — the store's facts especially.
+    gcRegisterRootProvider: *const fn (RootProvider) callconv(.c) void,
+    /// gcCollect() -> the number of instance objects reclaimed. No-op (0) until a
+    /// stack bottom is set. Safe to call between top-level evaluations.
+    gcCollect: *const fn () callconv(.c) usize,
+    /// gcLiveCount() -> the number of tracked (live) heap objects — for tests and
+    /// introspection.
+    gcLiveCount: *const fn () callconv(.c) usize,
 };
+
+/// The mark function handed to a root provider: call it on each root Oop.
+pub const MarkFn = *const fn (Oop) callconv(.c) void;
+/// A module's root provider: marks every Oop it keeps reachable in non-id memory.
+pub const RootProvider = *const fn (MarkFn) callconv(.c) void;
 
 /// libid's module entrypoint: `id_init()` returns the API table (cf. `_libid_init`).
 pub const IdInitFn = *const fn () callconv(.c) *IdApi;

@@ -247,6 +247,14 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     }
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
+    // Anchor the conservative GC's stack scan here: every frame the eval (and the
+    // native code it runs) pushes lives BELOW this local, so `[System gc]` from
+    // within the script can find all stack-held roots. Without this, gcCollect is
+    // a no-op (it refuses to sweep when it cannot find stack roots).
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+
     const src = try std.fs.cwd().readFileAlloc(a, path, 16 << 20);
     defer a.free(src);
     _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);

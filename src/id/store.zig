@@ -424,6 +424,23 @@ fn emitTriple(blk: Oop, e: Oop, a: Oop, v: Oop) void {
     _ = g_api.send(blk, s_value3, &[_]Oop{ e, a, v }, 3);
 }
 
+// -- GC roots (F3) -----------------------------------------------------------
+//
+// The well-known store keeps its facts in a `c_allocator` ArrayList — Oop-bearing
+// memory the conservative collector cannot reach by tracing. Expose every live
+// fact's e/a/v as roots so entities/values held only by the store survive a
+// collection (the Globals namespace rides these facts too). NOTE: only the
+// singleton `store_instance` is covered; facts in a `[Store new]` instance are not
+// yet GC-rooted (needs the per-vtable trace hook deferred in docs/34 §F3).
+fn gcRoots(mark: idapi.MarkFn) callconv(.c) void {
+    const st = stateOf(store_instance);
+    for (st.facts.items) |f| {
+        mark(f.e);
+        mark(f.a);
+        mark(f.v);
+    }
+}
+
 // -- Cells: object state as a handle (docs/33 §2a.3, D5 stratification) -------
 //
 // A Cell is a separate libid object addressing one (store, e, a). The stateful
@@ -622,6 +639,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
         _ = api.exportObj("CellVt", cell_vt);
         _ = api.exportObj("GlobalsVt", globals_vt);
         _ = api.exportObj("Globals", globals_obj);
+        api.gcRegisterRootProvider(&gcRoots); // facts hold Oops in non-id memory
     }
 }
 

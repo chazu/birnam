@@ -162,6 +162,15 @@ fn sysPrintln(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
+/// `[System gc]` → run a collection; answers the number of objects reclaimed (a
+/// no-op returning 0 until the runtime sets a stack bottom — see main.zig).
+fn sysGc(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(@intCast(g_api.gcCollect()));
+}
+
 // -- bringup -----------------------------------------------------------------
 
 pub fn bringUp(api: *idapi.IdApi) void {
@@ -198,6 +207,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     }
     api.method(system_vt, api.intern("print:"), &sysPrint);
     api.method(system_vt, api.intern("println:"), &sysPrintln);
+    api.method(system_vt, api.intern("gc"), &sysGc);
 
     if (!reloading) {
         _ = api.exportObj("SystemVt", system_vt);
