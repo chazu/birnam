@@ -182,6 +182,59 @@ test "relational: negation as failure — no inner match keeps every solution" {
     try std.testing.expectEqual(@as(i64, 3), ival(s0(r, "size")));
 }
 
+test "relational: disjunction unions the branches" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = fixture(api, db); // Alice(Boston,Dog) Bob(Boston,Cat) Carol(Denver,Dog)
+
+    // ?p where (city=Boston OR city=Denver) → everyone.
+    const clauses = vec(api, &.{
+        vec(api, &.{
+            api.intern("or"),
+            vec(api, &.{ lvar(api, "p"), api.intern("city"), api.intern("Boston") }),
+            vec(api, &.{ lvar(api, "p"), api.intern("city"), api.intern("Denver") }),
+        }),
+    });
+    const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
+    try std.testing.expectEqual(@as(i64, 3), ival(s0(r, "size")));
+}
+
+test "relational: disjunction across different attributes" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = fixture(api, db);
+
+    // ?p where (pet=Cat OR city=Denver) → Bob (cat) + Carol (Denver) = 2.
+    const clauses = vec(api, &.{
+        vec(api, &.{
+            api.intern("or"),
+            vec(api, &.{ lvar(api, "p"), api.intern("pet"), api.intern("Cat") }),
+            vec(api, &.{ lvar(api, "p"), api.intern("city"), api.intern("Denver") }),
+        }),
+    });
+    const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size")));
+}
+
+test "relational: disjunction composes with a conjunction; projection dedups" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = fixture(api, db);
+
+    // ?c where [?p #city ?c] AND (pet=Cat OR pet=Dog) → Boston (Alice/Bob) and
+    // Denver (Carol) all qualify; projecting the city dedups to {Boston, Denver}.
+    const clauses = vec(api, &.{
+        vec(api, &.{ lvar(api, "p"), api.intern("city"), lvar(api, "c") }),
+        vec(api, &.{
+            api.intern("or"),
+            vec(api, &.{ lvar(api, "p"), api.intern("pet"), api.intern("Cat") }),
+            vec(api, &.{ lvar(api, "p"), api.intern("pet"), api.intern("Dog") }),
+        }),
+    });
+    const r = s2(db, "findAll:where:", lvar(api, "c"), clauses);
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size"))); // Boston, Denver
+}
+
 // People with integer `:age` facts, returned so tests can identify matches.
 fn ageFixture(api: *idapi.IdApi, db: Oop) [3]Oop {
     const young = s0(db, "entity"); // 18 — the boundary

@@ -36,4 +36,9 @@ let notThirty := [db findAll: ?a where: #[ #[?p #age ?a] #[?a #ne 30] ]];
 // only when its inner pattern has NO match under the bound variables. Here:
 // everyone who does NOT have an age of exactly 40 — i.e. all but the eldest.
 let notForty := [db findAll: ?a where: #[ #[?p #age ?a] #[#not #[?a #eq 40]] ]];
-[System println: ["ages (not 40): " , [notForty printString]]]
+[System println: ["ages (not 40): " , [notForty printString]]];
+
+// Clause DISJUNCTION: a `#or`-led clause unions its branches. Here: ages that are
+// either below 20 or above 35 — the two extremes.
+let extremes := [db findAll: ?a where: #[ #[?p #age ?a] #[#or #[?a #lt 20] #[?a #gt 35]] ]];
+[System println: ["ages (<20 or >35): " , [extremes printString]]]

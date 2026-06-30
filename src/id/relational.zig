@@ -26,7 +26,9 @@
 //! A clause led by the symbol `#not` — `#[ #not innerClause… ]` — is NEGATION as
 //! failure: keep a solution iff the inner conjunction (threaded from that
 //! solution's bindings) has no match; it too binds nothing, so the negated
-//! variables should already be bound. Logic variables are minted
+//! variables should already be bound. A clause led by `#or` — `#[ #or branch… ]` —
+//! is DISJUNCTION: the union of the solutions each branch produces. Logic
+//! variables are minted
 //! by the grammar/codegen as `[LogicVar named: #p]` — canonical per name, so the
 //! `?p` in the result position and the `?p` inside a clause are the SAME object and
 //! join by identity. The engine scans the store's LIVE triples (via the
@@ -267,6 +269,22 @@ fn tryClause(aa: std.mem.Allocator, sol: []const Binding, pos: [3]Oop, tri: Trip
 fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, triples: []const Triple) []const []Binding {
     const csz: usize = @intCast(g_api.smallIntValue(send0(clause, s_size)));
     const pos0 = if (csz > 0) send1(clause, s_at, g_api.mkSmallInt(0)) else g_api.nilObj;
+
+    // Disjunction: `#[ #or branch… ]`. UNION the solution sets each branch
+    // produces from the same incoming solutions (each branch is itself a clause —
+    // triple, predicate, negation, or a nested `#or` — run back through this
+    // function). Duplicate solutions are harmless: the final projection dedups by
+    // value (set semantics).
+    if (isSym(pos0, "or")) {
+        var unioned: std.ArrayList([]Binding) = .{};
+        var i: usize = 1;
+        while (i < csz) : (i += 1) {
+            const branch = send1(clause, s_at, g_api.mkSmallInt(@intCast(i)));
+            const br = applyClause(aa, sols, branch, triples);
+            unioned.appendSlice(aa, br) catch @panic("relational: oom");
+        }
+        return unioned.toOwnedSlice(aa) catch @panic("relational: oom");
+    }
 
     // Negation as failure: `#[ #not innerClause… ]`. Keep a solution iff threading
     // it through the inner conjunction yields no extension. Binds nothing — the
