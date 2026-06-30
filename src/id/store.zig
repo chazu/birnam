@@ -389,32 +389,54 @@ fn pairSeen(pairs: []const EA, e: Oop, a: Oop) bool {
     return false;
 }
 
-/// Enumerate the live triples AS OF a transaction (`asof == null` = current).
-/// Only facts with `tx <= asof` are visible. Cardinality is read CURRENT (schema is
-/// treated as stable; it does not time-travel), but values fold as-of.
-fn enumerateTriples(st: *StoreState, blk: Oop, asof: ?u64) void {
-    // Distinct (e,a) pairs in first-appearance order, among visible facts.
+// A transaction WINDOW [lo, hi): `hi` is the snapshot watermark (deciding fact must
+// have tx < hi; null = current), `lo` is a lower bound for emission (the deciding
+// fact must have tx >= lo; null = 0). asOf = [null, hi); since = [lo, null);
+// between = [lo, hi). `visibleHi` gates which facts participate; `inLo` gates which
+// resulting triples are emitted (so since/between report only what CHANGED in the
+// window, while the value itself still folds over the whole prefix).
+fn visibleHi(tx: u64, hi: ?u64) bool {
+    return if (hi) |h| tx < h else true;
+}
+fn inLo(tx: u64, lo: ?u64) bool {
+    return if (lo) |l| tx >= l else true;
+}
+
+/// Enumerate the live triples over a transaction window (both bounds null =
+/// current). Cardinality is read CURRENT (schema is treated as stable; it does not
+/// time-travel); the deciding fact is the newest with `tx < hi`, and a triple is
+/// emitted only if that fact is an assert AND its `tx >= lo`.
+fn enumerateTriples(st: *StoreState, blk: Oop, lo: ?u64, hi: ?u64) void {
+    // Distinct (e,a) pairs in first-appearance order, among facts within `hi`.
     var pairs: std.ArrayList(EA) = .{};
     defer pairs.deinit(ca);
     for (st.facts.items) |f| {
-        if (asof) |t| if (f.tx >= t) continue; // asof is a watermark: visible iff tx < asof
+        if (!visibleHi(f.tx, hi)) continue;
         if (!pairSeen(pairs.items, f.e, f.a))
             pairs.append(ca, .{ .e = f.e, .a = f.a }) catch @panic("store: oom");
     }
 
     for (pairs.items) |p| {
         if (eq(cardinalityOf(st, p.a), s_one)) {
-            const cv = currentValueRawAsOf(st, p.e, p.a, asof);
-            if (cv != null) emitTriple(blk, p.e, p.a, cv);
+            // The deciding fact: newest matching with tx < hi.
+            var i = st.facts.items.len;
+            while (i > 0) {
+                i -= 1;
+                const f = st.facts.items[i];
+                if (!visibleHi(f.tx, hi)) continue;
+                if (!eq(f.e, p.e) or !eq(f.a, p.a)) continue;
+                if (f.op == .assert and inLo(f.tx, lo)) emitTriple(blk, p.e, p.a, f.v);
+                break; // newest matching fact decides
+            }
         } else {
-            // :many — each distinct value whose newest visible op is .assert.
+            // :many — each distinct value whose newest fact (within hi) is an assert.
             var seen: std.ArrayList(Oop) = .{};
             defer seen.deinit(ca);
             var i = st.facts.items.len;
             while (i > 0) {
                 i -= 1;
                 const f = st.facts.items[i];
-                if (asof) |t| if (f.tx >= t) continue; // asof is a watermark: visible iff tx < asof
+                if (!visibleHi(f.tx, hi)) continue;
                 if (!eq(f.e, p.e) or !eq(f.a, p.a)) continue;
                 var dup = false;
                 for (seen.items) |s| if (eq(s, f.v)) {
@@ -423,7 +445,7 @@ fn enumerateTriples(st: *StoreState, blk: Oop, asof: ?u64) void {
                 };
                 if (dup) continue; // newest entry for this value already decided
                 seen.append(ca, f.v) catch @panic("store: oom");
-                if (f.op == .assert) emitTriple(blk, p.e, p.a, f.v);
+                if (f.op == .assert and inLo(f.tx, lo)) emitTriple(blk, p.e, p.a, f.v);
             }
         }
     }
@@ -431,17 +453,36 @@ fn enumerateTriples(st: *StoreState, blk: Oop, asof: ?u64) void {
 
 fn mLiveTriplesDo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    enumerateTriples(stateOf(self), args[0], null);
+    enumerateTriples(stateOf(self), args[0], null, null);
     return self;
 }
 
-/// `[store liveTriplesAsOf: tx do: aBlock]` — the relational seam at a point in
-/// time: enumerate the triples that were live as of transaction `tx` (a SmallInt
-/// basis from `[store basis]`). The engine's time-travel queries scan this.
+/// `[store liveTriplesAsOf: tx do: aBlock]` — the snapshot live as of transaction
+/// `tx` (a `[store basis]` watermark): the world before anything committed at/after
+/// `tx`. Window [null, tx).
 fn mLiveTriplesAsOfDo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    const asof: u64 = @intCast(g_api.smallIntValue(args[0]));
-    enumerateTriples(stateOf(self), args[1], asof);
+    const hi: u64 = @intCast(g_api.smallIntValue(args[0]));
+    enumerateTriples(stateOf(self), args[1], null, hi);
+    return self;
+}
+
+/// `[store liveTriplesSince: tx do: aBlock]` — only triples whose CURRENT value was
+/// asserted at/after `tx`: what has changed since that basis. Window [tx, null).
+fn mLiveTriplesSinceDo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const lo: u64 = @intCast(g_api.smallIntValue(args[0]));
+    enumerateTriples(stateOf(self), args[1], lo, null);
+    return self;
+}
+
+/// `[store liveTriplesBetween: lo and: hi do: aBlock]` — the snapshot at `hi`
+/// restricted to triples whose deciding fact landed at/after `lo`. Window [lo, hi).
+fn mLiveTriplesBetweenAndDo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const lo: u64 = @intCast(g_api.smallIntValue(args[0]));
+    const hi: u64 = @intCast(g_api.smallIntValue(args[1]));
+    enumerateTriples(stateOf(self), args[2], lo, hi);
     return self;
 }
 
@@ -662,6 +703,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_attrAt, &mAttrAt);
     api.method(store_vt, api.intern("liveTriplesDo:"), &mLiveTriplesDo);
     api.method(store_vt, api.intern("liveTriplesAsOf:do:"), &mLiveTriplesAsOfDo);
+    api.method(store_vt, api.intern("liveTriplesSince:do:"), &mLiveTriplesSinceDo);
+    api.method(store_vt, api.intern("liveTriplesBetween:and:do:"), &mLiveTriplesBetweenAndDo);
     api.method(store_vt, api.intern("basis"), &mBasis);
     api.method(store_vt, api.intern("cardinality:"), &mCardinality);
     api.setTraceHook(store_vt, &gcTraceHook); // facts live in non-id memory (F3)

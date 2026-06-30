@@ -479,6 +479,36 @@ fn defineAncestor(api: *idapi.IdApi, db: Oop) void {
     _ = s3(db, "defineRule:params:body:", api.intern("ancestor"), vec(api, &.{ lvar(api, "x"), lvar(api, "y") }), rec);
 }
 
+test "relational: avg aggregates the mean of the distinct values" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = ageFixture(api, db); // 18, 30, 40
+    const clauses = vec(api, &.{vec(api, &.{ lvar(api, "p"), api.intern("age"), lvar(api, "a") })});
+    // (18 + 30 + 40) / 3 = 88 / 3 = 29 (integer division truncates).
+    try std.testing.expectEqual(@as(i64, 29), ival(s2(db, "avg:where:", lvar(api, "a"), clauses)));
+}
+
+test "relational: since: reports only triples that changed after a basis" {
+    const api = setup();
+    const db = freshDb(api);
+    const a = s0(db, "entity");
+    const b = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", a, api.intern("city"), api.intern("Boston"));
+    _ = s3(db, "assert:attr:value:", b, api.intern("city"), api.intern("Boston"));
+    const t1 = s0(db, "basis"); // two Bostonians committed so far
+    const c = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", c, api.intern("city"), api.intern("Boston"));
+    const t2 = s0(db, "basis");
+
+    const clauses = vec(api, &.{vec(api, &.{ lvar(api, "p"), api.intern("city"), api.intern("Boston") })});
+    // Current: three; changed since t1: just the third.
+    try std.testing.expectEqual(@as(i64, 3), ival(s0(s2(db, "findAll:where:", lvar(api, "p"), clauses), "size")));
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(s3(db, "findAll:where:since:", lvar(api, "p"), clauses, t1), "size")));
+    // Window [t1, t2): also just the third.
+    const win = api.send(db, api.intern("findAll:where:between:and:"), &[_]Oop{ lvar(api, "p"), clauses, t1, t2 }, 4);
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(win, "size")));
+}
+
 test "relational: a recursive rule computes the transitive closure" {
     const api = setup();
     const db = freshDb(api);

@@ -25,4 +25,8 @@ let bostonNow := [db findAll: ?p where: #[ #[?p #city #Boston] ]];
 let bostonThen := [db findAll: ?p where: #[ #[?p #city #Boston] ] asOf: earlier];
 
 [System println: ["in Boston now:   " , [[bostonNow size] printString]]];
-[System println: ["in Boston then: " , [[bostonThen size] printString]]]
+[System println: ["in Boston then: " , [[bostonThen size] printString]]];
+
+// `since:` reports only what CHANGED after a basis — here, who arrived since.
+let arrived := [db findAll: ?p where: #[ #[?p #city #Boston] ] since: earlier];
+[System println: ["arrived since:  " , [[arrived size] printString]]]

@@ -43,10 +43,12 @@ let notForty := [db findAll: ?a where: #[ #[?p #age ?a] #[#not #[?a #eq 40]] ]];
 let extremes := [db findAll: ?a where: #[ #[?p #age ?a] #[#or #[?a #lt 20] #[?a #gt 35]] ]];
 [System println: ["ages (<20 or >35): " , [extremes printString]]];
 
-// AGGREGATES fold the distinct bindings: count / sum / min / max.
+// AGGREGATES fold the distinct bindings: count / sum / min / max / avg.
 let n     := [db count: ?p where: #[ #[?p #age ?a] ]];
 let total := [db sum:   ?a where: #[ #[?p #age ?a] ]];
 let oldest := [db max:  ?a where: #[ #[?p #age ?a] ]];
+let mean  := [db avg:   ?a where: #[ #[?p #age ?a] ]];
 [System println: ["people: " , [n printString]]];
 [System println: ["age sum: " , [total printString]]];
-[System println: ["oldest: " , [oldest printString]]]
+[System println: ["oldest: " , [oldest printString]]];
+[System println: ["mean age: " , [mean printString]]]
