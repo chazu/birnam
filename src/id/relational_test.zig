@@ -277,6 +277,21 @@ test "relational: predicate clauses filter by comparison (named + glyph ops)" {
     try std.testing.expectEqual(@as(i64, 2), ageQuery(api, db, "~=", api.mkSmallInt(30)));
 }
 
+test "relational: the planner reorders a predicate written BEFORE its binder" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = ageFixture(api, db); // 18, 30, 40
+
+    // The predicate comes first, before ?a is bound — the planner defers it until
+    // the triple binds ?a, so this still yields the two people over 18.
+    const clauses = vec(api, &.{
+        vec(api, &.{ lvar(api, "a"), api.intern("gt"), api.mkSmallInt(18) }),
+        vec(api, &.{ lvar(api, "p"), api.intern("age"), lvar(api, "a") }),
+    });
+    const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size")));
+}
+
 test "relational: predicate projects the filtered entity, not a comparison op" {
     const api = setup();
     const db = freshDb(api);

@@ -363,16 +363,7 @@ fn materialize(aa: std.mem.Allocator, name: Oop, triples: []const Triple) *Deriv
         const before = d.items.len;
         for (rules.items) |rule| {
             const arity: usize = @intCast(g_api.smallIntValue(send0(rule.params, s_size)));
-            const nbody: usize = @intCast(g_api.smallIntValue(send0(rule.body, s_size)));
-
-            var seed: std.ArrayList([]Binding) = .{};
-            seed.append(aa, &[_]Binding{}) catch @panic("relational: oom");
-            var sols: []const []Binding = seed.items;
-            var c: usize = 0;
-            while (c < nbody) : (c += 1) {
-                const clause = send1(rule.body, s_at, g_api.mkSmallInt(@intCast(c)));
-                sols = applyClause(aa, sols, clause, triples);
-            }
+            const sols = applyClauses(aa, rule.body, triples);
 
             for (sols) |sol| {
                 const tuple = aa.alloc(Oop, arity) catch @panic("relational: oom");
@@ -487,10 +478,9 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
 
     var next: std.ArrayList([]Binding) = .{};
     if (predicateOp(pos[1])) |op| {
-        // A predicate clause FILTERS solutions and binds nothing. Both operands
-        // must already be bound (an unbound one drops the row — predicates belong
-        // after the clauses that bind their variables; no reorder planner yet).
-        // Keep the row iff `lhs op rhs` is definitively true.
+        // A predicate clause FILTERS solutions and binds nothing. The planner has
+        // already ordered it after the clauses that bind its operands; if one is
+        // still unbound (an unbindable var) the row drops. Keep iff `lhs op rhs`.
         for (sols) |sol| {
             const lhs = resolveTerm(sol, pos[0]) orelse continue;
             const rhs = resolveTerm(sol, pos[2]) orelse continue;
@@ -510,6 +500,109 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
     return next.toOwnedSlice(aa) catch @panic("relational: oom");
 }
 
+// -- the clause-reorder planner ----------------------------------------------
+//
+// Predicates and negation FILTER (they bind nothing); a triple/rule/disjunction
+// BINDS. A filter run before its variables are bound would wrongly drop every row,
+// so the planner sorts the clauses: it runs whichever clause is "ready" next — a
+// binder always, a filter only once every variable it mentions is bound. This lets
+// predicates and negation be written anywhere in the `where:` list.
+
+fn varContains(set: []const Oop, v: Oop) bool {
+    for (set) |x| if (x == v) return true;
+    return false;
+}
+
+/// Collect the logic variables a clause mentions (recursing into `#or`/`#not`,
+/// reading a `#rule`'s args, a predicate's operands, or a triple's positions).
+fn collectClauseVars(clause: Oop, set: *std.ArrayList(Oop), aa: std.mem.Allocator) void {
+    const csz: usize = @intCast(g_api.smallIntValue(send0(clause, s_size)));
+    const pos0 = if (csz > 0) send1(clause, s_at, g_api.mkSmallInt(0)) else g_api.nilObj;
+    const add = struct {
+        fn f(o: Oop, s: *std.ArrayList(Oop), a: std.mem.Allocator) void {
+            if (isLogicVar(o) and !varContains(s.items, o)) s.append(a, o) catch @panic("relational: oom");
+        }
+    }.f;
+    if (isSym(pos0, "or") or isSym(pos0, "not")) {
+        var i: usize = 1;
+        while (i < csz) : (i += 1) collectClauseVars(send1(clause, s_at, g_api.mkSmallInt(@intCast(i))), set, aa);
+        return;
+    }
+    if (isSym(pos0, "rule") and csz >= 2) {
+        var i: usize = 2;
+        while (i < csz) : (i += 1) add(send1(clause, s_at, g_api.mkSmallInt(@intCast(i))), set, aa);
+        return;
+    }
+    const pos1 = if (csz > 1) send1(clause, s_at, g_api.mkSmallInt(1)) else g_api.nilObj;
+    if (predicateOp(pos1) != null) {
+        add(pos0, set, aa);
+        if (csz > 2) add(send1(clause, s_at, g_api.mkSmallInt(2)), set, aa);
+        return;
+    }
+    var i: usize = 0;
+    while (i < csz and i < 3) : (i += 1) add(send1(clause, s_at, g_api.mkSmallInt(@intCast(i))), set, aa);
+}
+
+/// A binder (triple / rule / disjunction) extends solutions; a filter (predicate /
+/// negation) only constrains them.
+fn isBinderClause(clause: Oop) bool {
+    const csz: usize = @intCast(g_api.smallIntValue(send0(clause, s_size)));
+    const pos0 = if (csz > 0) send1(clause, s_at, g_api.mkSmallInt(0)) else g_api.nilObj;
+    if (isSym(pos0, "not")) return false;
+    if (isSym(pos0, "or")) return true;
+    if (isSym(pos0, "rule") and csz >= 2) return true;
+    const pos1 = if (csz > 1) send1(clause, s_at, g_api.mkSmallInt(1)) else g_api.nilObj;
+    return predicateOp(pos1) == null; // triple, unless it's a predicate
+}
+
+/// Seed one empty solution, then run the clauses of `clausesVec` in a binding-aware
+/// order (filters deferred until their variables are bound), threading solutions.
+fn applyClauses(aa: std.mem.Allocator, clausesVec: Oop, triples: []const Triple) []const []Binding {
+    const n: usize = @intCast(g_api.smallIntValue(send0(clausesVec, s_size)));
+    const clauseObjs = aa.alloc(Oop, n) catch @panic("relational: oom");
+    for (clauseObjs, 0..) |*co, i| co.* = send1(clausesVec, s_at, g_api.mkSmallInt(@intCast(i)));
+
+    // Plan: pick the next ready clause (a binder always; a filter once its vars are
+    // bound). Falls back to the first remaining clause if none is ready.
+    const order = aa.alloc(usize, n) catch @panic("relational: oom");
+    const used = aa.alloc(bool, n) catch @panic("relational: oom");
+    @memset(used, false);
+    var bound: std.ArrayList(Oop) = .{};
+    var vbuf: std.ArrayList(Oop) = .{};
+    var k: usize = 0;
+    while (k < n) : (k += 1) {
+        var chosen: usize = n;
+        for (clauseObjs, 0..) |cl, j| {
+            if (used[j]) continue;
+            const ready = isBinderClause(cl) or blk: {
+                vbuf.clearRetainingCapacity();
+                collectClauseVars(cl, &vbuf, aa);
+                for (vbuf.items) |v| if (!varContains(bound.items, v)) break :blk false;
+                break :blk true;
+            };
+            if (ready) {
+                chosen = j;
+                break;
+            }
+        }
+        if (chosen == n) {
+            for (used, 0..) |u, j| if (!u) {
+                chosen = j;
+                break;
+            };
+        }
+        used[chosen] = true;
+        order[k] = chosen;
+        if (isBinderClause(clauseObjs[chosen])) collectClauseVars(clauseObjs[chosen], &bound, aa);
+    }
+
+    var seed: std.ArrayList([]Binding) = .{};
+    seed.append(aa, &[_]Binding{}) catch @panic("relational: oom");
+    var sols: []const []Binding = seed.items;
+    for (order) |idx| sols = applyClause(aa, sols, clauseObjs[idx], triples);
+    return sols;
+}
+
 /// Run a `where:` query and project `result_var`, deduped (set semantics) — the
 /// shared core behind `findAll:where:` and the aggregates. Returns a Vector of the
 /// distinct bound values (empty if nothing matches).
@@ -526,17 +619,7 @@ fn runQuery(self: Oop, result_var: Oop, clauses: Oop, lo: Oop, hi: Oop) Oop {
     defer arena.deinit();
     const aa = arena.allocator();
 
-    // Begin with one empty solution; each clause filters/extends the set.
-    var seed: std.ArrayList([]Binding) = .{};
-    seed.append(aa, &[_]Binding{}) catch @panic("relational: oom");
-    var sols: []const []Binding = seed.items;
-
-    const nclauses: usize = @intCast(g_api.smallIntValue(send0(clauses, s_size)));
-    var c: usize = 0;
-    while (c < nclauses) : (c += 1) {
-        const clause = send1(clauses, s_at, g_api.mkSmallInt(@intCast(c)));
-        sols = applyClause(aa, sols, clause, triples.items);
-    }
+    const sols = applyClauses(aa, clauses, triples.items);
 
     // Project the result variable, dropping duplicates (set semantics).
     var out = send0(vectorFactory(), s_new);
