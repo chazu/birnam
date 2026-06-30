@@ -28,6 +28,12 @@ let adults := [db findAll: ?p where: #[ #[?p #age ?a] #[?a #gt 18] ]];
 let grownAges := [db findAll: ?a where: #[ #[?p #age ?a] #[?a #>= 30] ]];
 [System println: ["ages >= 30: " , [grownAges printString]]];
 
-// Equality and its negation.
+// Equality and its (predicate) negation.
 let notThirty := [db findAll: ?a where: #[ #[?p #age ?a] #[?a #ne 30] ]];
-[System println: ["ages /= 30: " , [notThirty printString]]]
+[System println: ["ages /= 30: " , [notThirty printString]]];
+
+// Clause NEGATION (negation as failure): a `#not`-led clause keeps a solution
+// only when its inner pattern has NO match under the bound variables. Here:
+// everyone who does NOT have an age of exactly 40 — i.e. all but the eldest.
+let notForty := [db findAll: ?a where: #[ #[?p #age ?a] #[#not #[?a #eq 40]] ]];
+[System println: ["ages (not 40): " , [notForty printString]]]

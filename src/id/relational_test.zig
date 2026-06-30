@@ -153,6 +153,35 @@ test "relational: pull builds a record map; absent attrs omitted" {
     try std.testing.expectEqual(@as(i64, 1), ival(s0(rec2, "size")));
 }
 
+test "relational: negation excludes solutions whose inner pattern matches" {
+    const api = setup();
+    const db = freshDb(api);
+    const people = fixture(api, db); // Alice(Boston,Dog) Bob(Boston,Cat) Carol(Denver,Dog)
+
+    // ?p in Boston AND not pet=Cat → Alice only (Bob is the Boston cat-owner).
+    const clauses = vec(api, &.{
+        vec(api, &.{ lvar(api, "p"), api.intern("city"), api.intern("Boston") }),
+        vec(api, &.{ api.intern("not"), vec(api, &.{ lvar(api, "p"), api.intern("pet"), api.intern("Cat") }) }),
+    });
+    const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(r, "size")));
+    try std.testing.expect(s1(r, "at:", api.mkSmallInt(0)) == people[0]); // Alice
+}
+
+test "relational: negation as failure — no inner match keeps every solution" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = fixture(api, db);
+
+    // ?p with any city AND not pet=Fish → all three (nobody owns a Fish).
+    const clauses = vec(api, &.{
+        vec(api, &.{ lvar(api, "p"), api.intern("city"), lvar(api, "c") }),
+        vec(api, &.{ api.intern("not"), vec(api, &.{ lvar(api, "p"), api.intern("pet"), api.intern("Fish") }) }),
+    });
+    const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
+    try std.testing.expectEqual(@as(i64, 3), ival(s0(r, "size")));
+}
+
 // People with integer `:age` facts, returned so tests can identify matches.
 fn ageFixture(api: *idapi.IdApi, db: Oop) [3]Oop {
     const young = s0(db, "entity"); // 18 — the boundary
@@ -223,6 +252,20 @@ test "relational: a constant left operand in a predicate is honored" {
     });
     const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
     try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size")));
+}
+
+test "relational: negation may contain a predicate (applyClause recurses)" {
+    const api = setup();
+    const db = freshDb(api);
+    _ = ageFixture(api, db); // ages 18, 30, 40
+
+    // ?p where [?p #age ?a] AND not [?a #eq 30] → everyone but the 30-year-old.
+    const clauses = vec(api, &.{
+        vec(api, &.{ lvar(api, "p"), api.intern("age"), lvar(api, "a") }),
+        vec(api, &.{ api.intern("not"), vec(api, &.{ lvar(api, "a"), api.intern("eq"), api.mkSmallInt(30) }) }),
+    });
+    const r = s2(db, "findAll:where:", lvar(api, "p"), clauses);
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size"))); // the 18 and 40 year olds
 }
 
 // Assert three people into `db`, keeping NO reference after return — so the

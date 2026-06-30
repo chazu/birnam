@@ -23,7 +23,10 @@
 //! #>= #= #~=`) is instead a PREDICATE clause `#[ lhs op rhs ]` — it filters the
 //! current solutions (keep the row iff `lhs op rhs`) and binds nothing, so it must
 //! come AFTER the clauses that bind its variables (no clause-reorder planner yet).
-//! Logic variables are minted
+//! A clause led by the symbol `#not` — `#[ #not innerClause… ]` — is NEGATION as
+//! failure: keep a solution iff the inner conjunction (threaded from that
+//! solution's bindings) has no match; it too binds nothing, so the negated
+//! variables should already be bound. Logic variables are minted
 //! by the grammar/codegen as `[LogicVar named: #p]` — canonical per name, so the
 //! `?p` in the result position and the `?p` inside a clause are the SAME object and
 //! join by identity. The engine scans the store's LIVE triples (via the
@@ -206,6 +209,13 @@ fn resolveTerm(sol: []const Binding, term: Oop) ?Oop {
     return term;
 }
 
+/// Is `o` the symbol named `name`? (Used to recognize clause-lead keywords like
+/// `#not`.)
+fn isSym(o: Oop, name: []const u8) bool {
+    if (o == null or g_api.vtableOf(o) != g_api.symbol_vt) return false;
+    return std.mem.eql(u8, std.mem.span(g_api.symbolName(o)), name);
+}
+
 const PredOp = struct { sel: Oop, negate: bool };
 
 /// If `o` is a symbol naming a comparison operator — named (`#lt #le #gt #ge #eq
@@ -248,9 +258,67 @@ fn tryClause(aa: std.mem.Allocator, sol: []const Binding, pos: [3]Oop, tri: Trip
     return b.toOwnedSlice(aa) catch @panic("relational: oom");
 }
 
+/// Apply one `where:` clause to the running solution set, returning the new set
+/// (allocated in `aa`). Dispatches on the clause's shape: a `#not`-led clause
+/// NEGATES (keep a solution iff its inner conjunction has no match); a clause whose
+/// middle is a comparison symbol FILTERS; otherwise it is a TRIPLE pattern that
+/// joins/extends. Negation runs its inner clauses back through this same function,
+/// so a negated conjunction may itself contain predicates or further negations.
+fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, triples: []const Triple) []const []Binding {
+    const csz: usize = @intCast(g_api.smallIntValue(send0(clause, s_size)));
+    const pos0 = if (csz > 0) send1(clause, s_at, g_api.mkSmallInt(0)) else g_api.nilObj;
+
+    // Negation as failure: `#[ #not innerClause… ]`. Keep a solution iff threading
+    // it through the inner conjunction yields no extension. Binds nothing — the
+    // negated variables should already be bound by earlier clauses.
+    if (isSym(pos0, "not")) {
+        var kept: std.ArrayList([]Binding) = .{};
+        for (sols) |sol| {
+            var inner: []const []Binding = &[_][]Binding{sol};
+            var i: usize = 1;
+            while (i < csz) : (i += 1) {
+                const ic = send1(clause, s_at, g_api.mkSmallInt(@intCast(i)));
+                inner = applyClause(aa, inner, ic, triples);
+            }
+            if (inner.len == 0) kept.append(aa, sol) catch @panic("relational: oom");
+        }
+        return kept.toOwnedSlice(aa) catch @panic("relational: oom");
+    }
+
+    var pos: [3]Oop = undefined;
+    pos[0] = pos0;
+    pos[1] = if (csz > 1) send1(clause, s_at, g_api.mkSmallInt(1)) else g_api.nilObj;
+    pos[2] = if (csz > 2) send1(clause, s_at, g_api.mkSmallInt(2)) else g_api.nilObj;
+
+    var next: std.ArrayList([]Binding) = .{};
+    if (predicateOp(pos[1])) |op| {
+        // A predicate clause FILTERS solutions and binds nothing. Both operands
+        // must already be bound (an unbound one drops the row — predicates belong
+        // after the clauses that bind their variables; no reorder planner yet).
+        // Keep the row iff `lhs op rhs` is definitively true.
+        for (sols) |sol| {
+            const lhs = resolveTerm(sol, pos[0]) orelse continue;
+            const rhs = resolveTerm(sol, pos[2]) orelse continue;
+            const res = send1(lhs, op.sel, rhs);
+            const pass = if (op.negate) (res == g_api.falseObj) else (res == g_api.trueObj);
+            if (pass) next.append(aa, sol) catch @panic("relational: oom");
+        }
+    } else {
+        // A triple pattern EXTENDS solutions: join against every live triple.
+        for (sols) |sol| {
+            for (triples) |tri| {
+                if (tryClause(aa, sol, pos, tri)) |ns|
+                    next.append(aa, ns) catch @panic("relational: oom");
+            }
+        }
+    }
+    return next.toOwnedSlice(aa) catch @panic("relational: oom");
+}
+
 /// `[db findAll: ?v where: clauses]` — every distinct binding of `?v` across all
-/// joined solutions of the clause conjunction. `clauses` is a Vector of `#[e a v]`
-/// clause Vectors. Returns a Vector (empty if nothing matches).
+/// joined solutions of the clause conjunction. `clauses` is a Vector of clause
+/// Vectors (triple `#[e a v]`, predicate `#[lhs op rhs]`, or negation
+/// `#[#not …]`). Returns a Vector (empty if nothing matches).
 fn mFindAll(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     const result_var = args[0];
@@ -265,46 +333,22 @@ fn mFindAll(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const aa = arena.allocator();
 
     // Begin with one empty solution; each clause filters/extends the set.
-    var solutions: std.ArrayList([]Binding) = .{};
-    solutions.append(aa, &[_]Binding{}) catch @panic("relational: oom");
+    var seed: std.ArrayList([]Binding) = .{};
+    seed.append(aa, &[_]Binding{}) catch @panic("relational: oom");
+    var sols: []const []Binding = seed.items;
 
     const nclauses: usize = @intCast(g_api.smallIntValue(send0(clauses, s_size)));
     var c: usize = 0;
     while (c < nclauses) : (c += 1) {
         const clause = send1(clauses, s_at, g_api.mkSmallInt(@intCast(c)));
-        var pos: [3]Oop = undefined;
-        for (&pos, 0..) |*p, i| p.* = send1(clause, s_at, g_api.mkSmallInt(@intCast(i)));
-
-        var next: std.ArrayList([]Binding) = .{};
-        if (predicateOp(pos[1])) |op| {
-            // A predicate clause FILTERS solutions and binds nothing. Both operands
-            // must already be bound (an unbound one drops the row — predicates
-            // belong after the clauses that bind their variables; no reorder
-            // planner yet). Keep the row iff `lhs op rhs` is definitively true.
-            for (solutions.items) |sol| {
-                const lhs = resolveTerm(sol, pos[0]) orelse continue;
-                const rhs = resolveTerm(sol, pos[2]) orelse continue;
-                const res = send1(lhs, op.sel, rhs);
-                const pass = if (op.negate) (res == g_api.falseObj) else (res == g_api.trueObj);
-                if (pass) next.append(aa, sol) catch @panic("relational: oom");
-            }
-        } else {
-            // A triple pattern EXTENDS solutions: join against every live triple.
-            for (solutions.items) |sol| {
-                for (triples.items) |tri| {
-                    if (tryClause(aa, sol, pos, tri)) |ns|
-                        next.append(aa, ns) catch @panic("relational: oom");
-                }
-            }
-        }
-        solutions = next;
+        sols = applyClause(aa, sols, clause, triples.items);
     }
 
     // Project the result variable, dropping duplicates (set semantics).
     var out = send0(vectorFactory(), s_new);
     var seen: std.ArrayList(Oop) = .{};
     defer seen.deinit(ca);
-    for (solutions.items) |sol| {
+    for (sols) |sol| {
         const val = lookup(sol, result_var) orelse continue;
         var dup = false;
         for (seen.items) |s| if (s == val) {
