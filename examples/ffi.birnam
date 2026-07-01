@@ -37,4 +37,17 @@ let path := ["PATH" getenv];
 // (0x0100007F, little-endian 127.0.0.1). Wrapped on VectorVt — the vtable whose
 // instances are the struct-shaped Vectors.
 [Alien wrap: "inet_ntoa" signature: "s {i}" as: #asDottedQuad on: VectorVt];
-[System println: ["inet_ntoa(#[16777343]) via C: " , [#[16777343] asDottedQuad]]]
+[System println: ["inet_ntoa(#[16777343]) via C: " , [#[16777343] asDottedQuad]]];
+
+// The OTHER direction — C calling back INTO birnam. `[Alien callback: blk
+// signature: sig]` compiles a C function that forwards its arguments to the
+// block (sig read from C's side: return first, then what C passes in) and
+// answers its address. To prove it end to end we compile our own C caller with
+// Tcc right here — birnam's compiler IS a C compiler, after all.
+let cb := [Alien callback: [:x | [x * 2]] signature: "l l"];
+let unit := [Tcc new];
+[unit compile: "extern long birnam_smallIntValue(void*); extern void* birnam_mkSmallInt(long); void* __call(void* self, void** args, long n) { long (*fp)(long) = (long(*)(long))birnam_smallIntValue(self); return birnam_mkSmallInt(fp(21)); }"];
+[unit bindRuntime];
+[unit relocate];
+[unit install: "__call" as: #callWith21 on: Integer];
+[System println: ["C calling a birnam block (21 doubled): " , [[cb callWith21] printString]]]

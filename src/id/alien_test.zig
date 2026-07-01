@@ -136,6 +136,92 @@ export fn birnam_t_sumBig(v: CBig) c_long {
     return v.a + v.b + v.c + v.d + v.e;
 }
 
+// -- callback harness: C functions that INVOKE a callback ------------------------
+
+export fn birnam_t_apply(f: *const fn (c_long) callconv(.c) c_long, x: c_long) c_long {
+    return f(x);
+}
+export fn birnam_t_apply2(f: *const fn (c_long, c_long) callconv(.c) c_long, x: c_long, y: c_long) c_long {
+    return f(x, y);
+}
+export fn birnam_t_applyD(f: *const fn (f64) callconv(.c) f64, x: f64) f64 {
+    return f(x);
+}
+export fn birnam_t_fire(f: *const fn () callconv(.c) void) c_long {
+    f();
+    return 1;
+}
+export fn birnam_t_applyS(f: *const fn ([*:0]const u8) callconv(.c) c_long, s: [*:0]const u8) c_long {
+    return f(s);
+}
+export fn birnam_t_applyPt(f: *const fn (CPoint) callconv(.c) c_long) c_long {
+    return f(.{ .x = 20, .y = 22 }); // struct INTO the callback, by value
+}
+export fn birnam_t_viaPtCb(f: *const fn (c_long) callconv(.c) CPoint, x: c_long) c_long {
+    const p = f(x); // struct RETURNED from the callback, by value
+    return p.x * 100 + p.y;
+}
+
+// -- callback responders ----------------------------------------------------------
+// A callback target is ANYTHING answering the arity-matched `value…` selector —
+// tests use hand-built responder objects (a compiled birnam block is exercised in
+// codegen_test's integration test and examples/ffi.birnam).
+
+var gapi: *idapi.IdApi = undefined;
+var g_fired: bool = false;
+
+fn responder(api: *idapi.IdApi, sel: [*:0]const u8, f: idapi.Method) Oop {
+    gapi = api;
+    const vt = api.proto(api.object_vt);
+    api.method(vt, api.intern(sel), f);
+    return api.alloc(vt, 0);
+}
+
+fn rDouble(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return gapi.mkSmallInt(gapi.smallIntValue(a[0]) * 2);
+}
+fn rSum(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return gapi.mkSmallInt(gapi.smallIntValue(a[0]) + gapi.smallIntValue(a[1]));
+}
+fn rHalf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return gapi.mkFloat(gapi.floatValue(a[0]) / 2.0);
+}
+fn rFire(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    g_fired = true;
+    return gapi.nilObj;
+}
+fn rStrLen(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var len: usize = 0;
+    _ = gapi.stringBytes(a[0], &len);
+    return gapi.mkSmallInt(@intCast(len));
+}
+fn rVecSum(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    // the arg is a struct-shaped Vector: sum its two fields
+    const x = gapi.smallIntValue(vAt(gapi, a[0], 0));
+    const y = gapi.smallIntValue(vAt(gapi, a[0], 1));
+    return gapi.mkSmallInt(x + y);
+}
+fn rMkPoint(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    // answer #[x+1 x+2] — comes back to C as CPoint{x+1, x+2}
+    const x = gapi.smallIntValue(a[0]);
+    return vec(gapi, &[_]Oop{ gapi.mkSmallInt(x + 1), gapi.mkSmallInt(x + 2) });
+}
+
 // -- tests ----------------------------------------------------------------------
 
 test "alien: a struct signature without the collection module is rejected (nil)" {
@@ -451,4 +537,104 @@ test "alien: signature whitespace is insignificant, even inside braces" {
     try expectVector(api, r);
     try std.testing.expectEqual(@as(i64, 11), intAt(api, r, 0));
     try std.testing.expectEqual(@as(i64, 22), intAt(api, r, 1));
+}
+
+// -- callbacks: C → birnam --------------------------------------------------------
+
+/// Make a callback for `resp` and wrap a `birnam_t_*` harness that invokes it.
+/// Answers the boxed callback fn-pointer (a SmallInt, receiver for the harness).
+fn callback(api: *idapi.IdApi, resp: Oop, sig: []const u8) Oop {
+    const Alien = api.import("Alien").?;
+    return api.send(Alien, api.intern("callback:signature:"), &[_]Oop{ resp, str(api, sig) }, 2);
+}
+
+test "alien: callback — C calls back into a value: responder (apply)" {
+    const api = setup();
+    const cb = callback(api, responder(api, "value:", &rDouble), "l l");
+    try std.testing.expect(cb != api.nilObj);
+
+    // long birnam_t_apply(fp, long): the boxed fn-pointer is the receiver.
+    _ = wrap(api, "birnam_t_apply", "l p l", "applyWith:", api.smallint_vt);
+    const r = api.send(cb, api.intern("applyWith:"), &[_]Oop{api.mkSmallInt(21)}, 1);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r));
+}
+
+test "alien: callback — two C args become value:value: (apply2)" {
+    const api = setup();
+    const cb = callback(api, responder(api, "value:value:", &rSum), "l l l");
+    _ = wrap(api, "birnam_t_apply2", "l p l l", "applyWith:and:", api.smallint_vt);
+    const r = api.send(cb, api.intern("applyWith:and:"), &[_]Oop{ api.mkSmallInt(40), api.mkSmallInt(2) }, 2);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r));
+}
+
+test "alien: callback — doubles cross both ways (applyD)" {
+    const api = setup();
+    const cb = callback(api, responder(api, "value:", &rHalf), "d d");
+    _ = wrap(api, "birnam_t_applyD", "d p d", "applyDWith:", api.smallint_vt);
+    const r = api.send(cb, api.intern("applyDWith:"), &[_]Oop{api.mkFloat(85.0)}, 1);
+    try std.testing.expect(api.isFloat(r) != 0);
+    try std.testing.expectEqual(@as(f64, 42.5), api.floatValue(r));
+}
+
+test "alien: callback — void return, zero args (fire)" {
+    const api = setup();
+    g_fired = false;
+    const cb = callback(api, responder(api, "value", &rFire), "v");
+    _ = wrap(api, "birnam_t_fire", "l p", "fireIt", api.smallint_vt);
+    const r = api.send(cb, api.intern("fireIt"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(r));
+    try std.testing.expect(g_fired);
+}
+
+test "alien: callback — a C string arg arrives as a String (applyS)" {
+    const api = setup();
+    const cb = callback(api, responder(api, "value:", &rStrLen), "l s");
+    _ = wrap(api, "birnam_t_applyS", "l p s", "applySOn:", api.smallint_vt);
+    const r = api.send(cb, api.intern("applySOn:"), &[_]Oop{str(api, "hello")}, 1);
+    try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(r));
+}
+
+test "alien: callback — a struct passed INTO the callback arrives as a Vector (applyPt)" {
+    const api = setup();
+    const cb = callback(api, responder(api, "value:", &rVecSum), "l {ll}");
+    _ = wrap(api, "birnam_t_applyPt", "l p", "applyPt", api.smallint_vt);
+    const r = api.send(cb, api.intern("applyPt"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r)); // 20 + 22
+}
+
+test "alien: callback — a Vector answered by the callback returns to C as a struct (viaPtCb)" {
+    const api = setup();
+    const cb = callback(api, responder(api, "value:", &rMkPoint), "{ll} l");
+    _ = wrap(api, "birnam_t_viaPtCb", "l p l", "viaPtWith:", api.smallint_vt);
+    // responder answers #[x+1 x+2]; harness computes p.x*100 + p.y.
+    const r = api.send(cb, api.intern("viaPtWith:"), &[_]Oop{api.mkSmallInt(7)}, 1);
+    try std.testing.expectEqual(@as(i64, 809), api.smallIntValue(r)); // 8*100 + 9
+}
+
+test "alien: callback — invalid signatures are rejected (nil)" {
+    const api = setup();
+    const resp = responder(api, "value:", &rDouble);
+    // 's' return: nobody could free the C string.
+    try std.testing.expect(callback(api, resp, "s l") == api.nilObj);
+    // Unknown char / empty / malformed struct.
+    try std.testing.expect(callback(api, resp, "q l") == api.nilObj);
+    try std.testing.expect(callback(api, resp, "") == api.nilObj);
+    try std.testing.expect(callback(api, resp, "l {ll") == api.nilObj);
+}
+
+test "alien: callback — survives GC churn (block + unit are rooted)" {
+    const api = setup();
+    const cb = callback(api, responder(api, "value:", &rDouble), "l l");
+    _ = wrap(api, "birnam_t_apply", "l p l", "applyWith2:", api.smallint_vt);
+
+    // Anchor the collector, churn allocations, and collect: the responder and the
+    // callback's code unit are reachable ONLY through alien's root registry.
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    var i: usize = 0;
+    while (i < 10_000) : (i += 1) _ = api.mkString("churn", 5);
+    _ = api.gcCollect();
+
+    const r = api.send(cb, api.intern("applyWith2:"), &[_]Oop{api.mkSmallInt(21)}, 1);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r));
 }

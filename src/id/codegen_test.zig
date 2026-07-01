@@ -372,3 +372,36 @@ test "codegen: float literals + the numeric tower (int↔float promotion)" {
     try std.testing.expectEqual(@as(i64, 7), try evalInt(api, "[7.5 asInteger]"));
     try std.testing.expectEqual(@as(f64, 3.0), try evalFloat(api, "[3 asFloat]"));
 }
+
+// -- integration: a compiled birnam block as a C callback (alien) ---------------
+
+const alien = @import("alien.zig");
+
+// A C harness the callback test drives: invoke the fn pointer with 20 and 22.
+export fn birnam_cg_apply2(f: *const fn (c_long, c_long) callconv(.c) c_long) c_long {
+    return f(20, 22);
+}
+
+test "integration: [Alien callback:] on a REAL compiled birnam block" {
+    const api = setupFull();
+    alien.bringUp(api);
+
+    // A capturing birnam block, compiled to native by codegen.
+    const blk = eval(api, "let base := 100; [:a :b | [[a + b] + base]]");
+    try std.testing.expect(blk != api.nilObj);
+
+    // Alien turns it into a C function pointer…
+    const Alien = api.import("Alien").?;
+    const sig = api.mkString("l l l", 5);
+    const cb = api.send(Alien, api.intern("callback:signature:"), &[_]Oop{ blk, sig }, 2);
+    try std.testing.expect(cb != api.nilObj);
+
+    // …which the C harness calls like any C function: 20 + 22 + 100.
+    const wrapOk = api.send(Alien, api.intern("wrap:signature:as:on:"), &[_]Oop{
+        api.mkString("birnam_cg_apply2", 16), api.mkString("l p", 3),
+        api.intern("cgApply"),                api.smallint_vt,
+    }, 4);
+    try std.testing.expect(wrapOk == api.smallint_vt);
+    const r = api.send(cb, api.intern("cgApply"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(i64, 142), api.smallIntValue(r));
+}

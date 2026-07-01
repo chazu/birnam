@@ -12,6 +12,9 @@
 //!                                                    symbols become resolvable
 //!   [Alien wrap: cFnName signature: sig as: #sel on: vt]
 //!                                                    wrap a C function as a method
+//!   [Alien callback: aBlock signature: sig]          the OTHER direction: a C
+//!                                                    function pointer that calls
+//!                                                    back into birnam
 //!
 //! A SIGNATURE is a string: the first type is the RETURN, the rest are the
 //! ARGUMENT types, one per birnam argument (whitespace ignored):
@@ -41,6 +44,19 @@
 //! K-argument function becomes a method of arity K-1: `["hi" clen]` calls
 //! `strlen("hi")` and `[-42 absVia]` calls `abs(-42)`. Wrap on the type whose
 //! instances are that first argument (String for strlen, Integer for abs).
+//!
+//! CALLBACKS (`[Alien callback: aBlock signature: sig]`) close the loop: the same
+//! signature grammar, read from C's side — the first type is what the C caller
+//! expects BACK, the rest are what it passes IN. Alien generates a real C function
+//! that marshals each C argument to an id value (structs → Vectors via the same
+//! `__mk` helpers), sends `value`/`value:`/… to the block, and untags the answer;
+//! it answers the function's address as a SmallInt (pass it wherever a `p` goes).
+//! `aBlock` is ANYTHING answering the arity-matched `value…` selector — a compiled
+//! birnam block or any object with the method. Because the callback's address is
+//! baked into generated code the GC cannot see, Alien roots every (block, unit)
+//! pair in a module registry: callbacks live for the process (v1 — no release).
+//! An `s` RETURN is rejected (who would free the C string?); a mis-shaped struct
+//! answer from the block comes back zeroed.
 //!
 //! The wrapped function's address is resolved by the process dynamic linker
 //! (`dlsym`) and patched into the unit before relocation — the same mechanism that
@@ -258,13 +274,12 @@ fn putScalarBox(b: *std.ArrayList(u8), c: u8, x: []const u8) void {
     }
 }
 
-/// Generate the Method-ABI C shim wrapping `fn_name` per the parsed signature.
-/// Caller owns the returned source.
-fn genShim(fn_name: []const u8, sig: Parsed) []u8 {
-    var b: std.ArrayList(u8) = .{};
-
-    // The runtime shims the marshaling needs, plus strlen for string returns.
-    put(&b,
+/// The `extern` preamble every generated unit needs: the `birnam_*` runtime shims
+/// (bound by `bindRuntime`), strlen for string returns, and — for struct sigs —
+/// the Vector factory, whose address is patched in via the pre-relocate
+/// `addSymbol:value:` window, the same way a wrapped fn's is.
+fn putPreamble(b: *std.ArrayList(u8), has_aggs: bool) void {
+    put(b,
         \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
         \\extern void* birnam_intern(const char* name);
         \\extern void* birnam_mkSmallInt(long);
@@ -278,73 +293,85 @@ fn genShim(fn_name: []const u8, sig: Parsed) []u8 {
         \\extern long strlen(const char*);
         \\
     );
-    // The Vector factory (struct sigs only) — its address is patched in via the
-    // pre-relocate `addSymbol:value:` window, the same way the wrapped fn is.
-    if (sig.aggs.len > 0) put(&b, "extern char __vecFactory[];\n");
+    if (has_aggs) put(b, "extern char __vecFactory[];\n");
+}
 
+/// Emit the struct support a signature needs: typedefs plus the per-agg
+/// `__unm<i>` (Vector→struct, shape-checked) and `__mk<i>` (struct→fresh Vector)
+/// helpers. Shared by wrap shims (unm args / mk return) and callbacks (the same
+/// helpers, used in the OPPOSITE directions).
+fn putAggSupport(b: *std.ArrayList(u8), sig: Parsed) void {
     // Struct typedefs, inner-first (aggs is post-order).
     for (sig.aggs, 0..) |agg, i| {
-        putFmt(&b, "typedef struct {{ ", .{});
+        putFmt(b, "typedef struct {{ ", .{});
         for (agg.fields, 0..) |f, k| {
             switch (f) {
-                .scalar => |c| putFmt(&b, "{s} f{d}; ", .{ cType(c).?, k }),
-                .array => |a| putFmt(&b, "{s} f{d}[{d}]; ", .{ cType(a.elem).?, k, a.count }),
-                .agg => |j| putFmt(&b, "__S{d} f{d}; ", .{ j, k }),
+                .scalar => |c| putFmt(b, "{s} f{d}; ", .{ cType(c).?, k }),
+                .array => |a| putFmt(b, "{s} f{d}[{d}]; ", .{ cType(a.elem).?, k, a.count }),
+                .agg => |j| putFmt(b, "__S{d} f{d}; ", .{ j, k }),
             }
         }
-        putFmt(&b, "}} __S{d};\n", .{i});
+        putFmt(b, "}} __S{d};\n", .{i});
     }
 
     // Per-agg unmarshal helpers: birnam Vector → C struct, shape-checked.
     // `__unm<i>` returns 0 on a shape mismatch. An inner agg's helper is defined
     // before any caller (post-order), so no forward declarations are needed.
     for (sig.aggs, 0..) |agg, i| {
-        putFmt(&b, "static int __unm{d}(void* v, __S{d}* out){{\n", .{ i, i });
-        putFmt(&b, "if (birnam_smallIntValue(birnam_send(v, birnam_intern(\"size\"), 0, 0L)) != {d}) return 0;\n", .{agg.fields.len});
-        put(&b, "void* e;\n");
+        putFmt(b, "static int __unm{d}(void* v, __S{d}* out){{\n", .{ i, i });
+        putFmt(b, "if (birnam_smallIntValue(birnam_send(v, birnam_intern(\"size\"), 0, 0L)) != {d}) return 0;\n", .{agg.fields.len});
+        put(b, "void* e;\n");
         var lhs: [48]u8 = undefined;
         for (agg.fields, 0..) |f, k| {
-            putFmt(&b, "e = birnam_send(v, birnam_intern(\"at:\"), (void*[]){{birnam_mkSmallInt({d})}}, 1L);\n", .{k});
+            putFmt(b, "e = birnam_send(v, birnam_intern(\"at:\"), (void*[]){{birnam_mkSmallInt({d})}}, 1L);\n", .{k});
             switch (f) {
-                .scalar => |c| putScalarUntag(&b, std.fmt.bufPrint(&lhs, "out->f{d}", .{k}) catch unreachable, c, "e"),
-                .agg => |j| putFmt(&b, "if (!__unm{d}(e, &out->f{d})) return 0;\n", .{ j, k }),
+                .scalar => |c| putScalarUntag(b, std.fmt.bufPrint(&lhs, "out->f{d}", .{k}) catch unreachable, c, "e"),
+                .agg => |j| putFmt(b, "if (!__unm{d}(e, &out->f{d})) return 0;\n", .{ j, k }),
                 .array => |a| {
-                    putFmt(&b, "if (birnam_smallIntValue(birnam_send(e, birnam_intern(\"size\"), 0, 0L)) != {d}) return 0;\n", .{a.count});
-                    putFmt(&b, "{{ long __k; for (__k = 0; __k < {d}; __k++) {{\n", .{a.count});
-                    put(&b, "void* __ae = birnam_send(e, birnam_intern(\"at:\"), (void*[]){birnam_mkSmallInt(__k)}, 1L);\n");
-                    putScalarUntag(&b, std.fmt.bufPrint(&lhs, "out->f{d}[__k]", .{k}) catch unreachable, a.elem, "__ae");
-                    put(&b, "} }\n");
+                    putFmt(b, "if (birnam_smallIntValue(birnam_send(e, birnam_intern(\"size\"), 0, 0L)) != {d}) return 0;\n", .{a.count});
+                    putFmt(b, "{{ long __k; for (__k = 0; __k < {d}; __k++) {{\n", .{a.count});
+                    put(b, "void* __ae = birnam_send(e, birnam_intern(\"at:\"), (void*[]){birnam_mkSmallInt(__k)}, 1L);\n");
+                    putScalarUntag(b, std.fmt.bufPrint(&lhs, "out->f{d}[__k]", .{k}) catch unreachable, a.elem, "__ae");
+                    put(b, "} }\n");
                 },
             }
         }
-        put(&b, "return 1;\n}\n");
+        put(b, "return 1;\n}\n");
     }
 
     // Per-agg marshal helpers: C struct → a fresh birnam Vector (nested aggs and
     // array fields become nested Vectors — the uniform aggregate⇄Vector rule).
     for (sig.aggs, 0..) |agg, i| {
-        putFmt(&b, "static void* __mk{d}(__S{d}* v){{\n", .{ i, i });
-        put(&b, "void* r = birnam_send((void*)__vecFactory, birnam_intern(\"new\"), 0, 0L);\nvoid* e;\n");
+        putFmt(b, "static void* __mk{d}(__S{d}* v){{\n", .{ i, i });
+        put(b, "void* r = birnam_send((void*)__vecFactory, birnam_intern(\"new\"), 0, 0L);\nvoid* e;\n");
         var x: [48]u8 = undefined;
         for (agg.fields, 0..) |f, k| {
             switch (f) {
                 .scalar => |c| {
-                    put(&b, "e = ");
-                    putScalarBox(&b, c, std.fmt.bufPrint(&x, "v->f{d}", .{k}) catch unreachable);
-                    put(&b, ";\n");
+                    put(b, "e = ");
+                    putScalarBox(b, c, std.fmt.bufPrint(&x, "v->f{d}", .{k}) catch unreachable);
+                    put(b, ";\n");
                 },
-                .agg => |j| putFmt(&b, "e = __mk{d}(&v->f{d});\n", .{ j, k }),
+                .agg => |j| putFmt(b, "e = __mk{d}(&v->f{d});\n", .{ j, k }),
                 .array => |a| {
-                    putFmt(&b, "{{ void* s = birnam_send((void*)__vecFactory, birnam_intern(\"new\"), 0, 0L); long __k;\nfor (__k = 0; __k < {d}; __k++) {{\n", .{a.count});
-                    put(&b, "void* __ae = ");
-                    putScalarBox(&b, a.elem, std.fmt.bufPrint(&x, "v->f{d}[__k]", .{k}) catch unreachable);
-                    put(&b, ";\ns = birnam_send(s, birnam_intern(\"add:\"), (void*[]){__ae}, 1L);\n} e = s; }\n");
+                    putFmt(b, "{{ void* s = birnam_send((void*)__vecFactory, birnam_intern(\"new\"), 0, 0L); long __k;\nfor (__k = 0; __k < {d}; __k++) {{\n", .{a.count});
+                    put(b, "void* __ae = ");
+                    putScalarBox(b, a.elem, std.fmt.bufPrint(&x, "v->f{d}[__k]", .{k}) catch unreachable);
+                    put(b, ";\ns = birnam_send(s, birnam_intern(\"add:\"), (void*[]){__ae}, 1L);\n} e = s; }\n");
                 },
             }
-            put(&b, "r = birnam_send(r, birnam_intern(\"add:\"), (void*[]){e}, 1L);\n");
+            put(b, "r = birnam_send(r, birnam_intern(\"add:\"), (void*[]){e}, 1L);\n");
         }
-        put(&b, "return r;\n}\n");
+        put(b, "return r;\n}\n");
     }
+}
+
+/// Generate the Method-ABI C shim wrapping `fn_name` per the parsed signature.
+/// Caller owns the returned source.
+fn genShim(fn_name: []const u8, sig: Parsed) []u8 {
+    var b: std.ArrayList(u8) = .{};
+    putPreamble(&b, sig.aggs.len > 0);
+    putAggSupport(&b, sig);
 
     // The wrapped function's prototype.
     putCTy(&b, sig.ret);
@@ -417,6 +444,143 @@ fn genShim(fn_name: []const u8, sig: Parsed) []u8 {
     }
     put(&b, "}\n");
     return b.toOwnedSlice(ca) catch @panic("alien: oom");
+}
+
+// -- callbacks: C → birnam ------------------------------------------------------
+
+/// Everything a live callback keeps alive: the block it forwards to and the Tcc
+/// unit holding its generated code. The GC cannot see either (the block's address
+/// is baked into compiled C), so `cbRoots` marks the registry at collection time.
+/// Callbacks live for the process (v1 — no release).
+const CbEntry = struct { blk: Oop, unit: Oop };
+var g_callbacks: std.ArrayList(CbEntry) = .{};
+
+fn cbRoots(mark: idapi.MarkFn) callconv(.c) void {
+    for (g_callbacks.items) |e| {
+        mark(e.blk);
+        mark(e.unit);
+    }
+}
+
+/// Generate the C callback function `__cb` for a signature READ FROM C'S SIDE:
+/// the return is what the C caller expects back, the args are what it passes in.
+/// The body boxes each C argument as an id value (structs → Vectors via `__mk`),
+/// sends the arity-matched `value…` to the block baked in as `__cbBlock`, and
+/// untags the answer (a struct answer via `__unm`; mis-shaped → zeroed).
+fn genCallback(sig: Parsed) []u8 {
+    var b: std.ArrayList(u8) = .{};
+    putPreamble(&b, sig.aggs.len > 0);
+    put(&b, "extern char __cbBlock[];\n");
+    putAggSupport(&b, sig);
+
+    putCTy(&b, sig.ret);
+    put(&b, " __cb(");
+    if (sig.args.len == 0) {
+        put(&b, "void");
+    } else {
+        for (sig.args, 0..) |t, i| {
+            if (i != 0) put(&b, ", ");
+            putCTy(&b, t);
+            putFmt(&b, " a{d}", .{i});
+        }
+    }
+    put(&b, "){\n");
+
+    // Box each C argument as an id value.
+    var x: [24]u8 = undefined;
+    for (sig.args, 0..) |t, i| {
+        putFmt(&b, "void* b{d} = ", .{i});
+        switch (t) {
+            .scalar => |c| switch (c) {
+                's' => putFmt(&b, "a{d} ? birnam_mkString(a{d}, strlen(a{d})) : birnam_nil()", .{ i, i, i }),
+                else => putScalarBox(&b, c, std.fmt.bufPrint(&x, "a{d}", .{i}) catch unreachable),
+            },
+            .agg => |j| putFmt(&b, "__mk{d}(&a{d})", .{ j, i }),
+            .array => unreachable,
+        }
+        put(&b, ";\n");
+    }
+
+    // The send: `value` / `value:` / `value:value:` / … per the C arity.
+    put(&b, "void* r = birnam_send((void*)__cbBlock, birnam_intern(\"");
+    if (sig.args.len == 0) {
+        put(&b, "value");
+    } else {
+        for (sig.args) |_| put(&b, "value:");
+    }
+    put(&b, "\"), ");
+    if (sig.args.len == 0) {
+        put(&b, "0, 0L);\n");
+    } else {
+        put(&b, "(void*[]){");
+        for (sig.args, 0..) |_, i| {
+            if (i != 0) put(&b, ", ");
+            putFmt(&b, "b{d}", .{i});
+        }
+        putFmt(&b, "}}, {d}L);\n", .{sig.args.len});
+    }
+
+    // Untag the answer for the C caller.
+    switch (sig.ret) {
+        .scalar => |c| switch (c) {
+            'v' => put(&b, "(void)r;\n"),
+            'i' => put(&b, "return (int)birnam_smallIntValue(r);\n"),
+            'l' => put(&b, "return birnam_smallIntValue(r);\n"),
+            'p' => put(&b, "return (void*)birnam_smallIntValue(r);\n"),
+            'd' => put(&b, "return birnam_floatValue(r);\n"),
+            'f' => put(&b, "return (float)birnam_floatValue(r);\n"),
+            else => unreachable, // 's' rejected in buildCallback
+        },
+        .agg => |j| putFmt(&b, "__S{d} __out = {{0}};\n__unm{d}(r, &__out);\nreturn __out;\n", .{ j, j }),
+        .array => unreachable,
+    }
+    put(&b, "}\n");
+    return b.toOwnedSlice(ca) catch @panic("alien: oom");
+}
+
+/// Compile a callback for `blk` per `sig_raw` and answer its C function address
+/// as a SmallInt (usable wherever a `p` argument goes), or nil if the signature
+/// is invalid, returns a string, needs structs without the collection module, or
+/// compilation fails. Roots (blk, unit) for the life of the process.
+fn buildCallback(blk: Oop, sig_raw: []const u8) Oop {
+    var arena_state = std.heap.ArenaAllocator.init(ca);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const sigz = despace(sig_raw);
+    defer ca.free(sigz);
+    if (sigz.len == 0) return g_api.nilObj;
+    const sig = parseSig(arena, sigz) orelse return g_api.nilObj;
+    if (sig.ret == .scalar and sig.ret.scalar == 's') return g_api.nilObj; // who would free it?
+
+    var vec_factory: Oop = null;
+    if (sig.aggs.len > 0) {
+        vec_factory = g_api.import("Vector") orelse return g_api.nilObj;
+    }
+
+    const src = genCallback(sig);
+    defer ca.free(src);
+    if (std.posix.getenv("ALIEN_DUMP") != null) std.debug.print("[alien] callback:\n{s}\n", .{src});
+
+    const unit = s0(tcc, "new");
+    if (unit == g_api.nilObj) return g_api.nilObj;
+    if (s1(unit, "compile:", g_api.mkString(src.ptr, src.len)) == g_api.nilObj) return g_api.nilObj;
+    _ = s0(unit, "bindRuntime");
+    addSym(unit, "__cbBlock", @intFromPtr(blk));
+    if (vec_factory != null) addSym(unit, "__vecFactory", @intFromPtr(vec_factory));
+    if (s0(unit, "relocate") == g_api.nilObj) return g_api.nilObj;
+
+    const addr = s1(unit, "symbol:", g_api.mkString("__cb", 4)); // already a SmallInt
+    if (addr == g_api.nilObj) return g_api.nilObj;
+    g_callbacks.append(ca, .{ .blk = blk, .unit = unit }) catch @panic("alien: oom");
+    return addr;
+}
+
+/// `[Alien callback: aBlock signature: sig]`
+fn mCallback(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return buildCallback(a[0], strBytes(a[1]));
 }
 
 // The process-wide symbol search handle (macOS/Linux RTLD_DEFAULT = -2): find a
@@ -503,9 +667,11 @@ pub fn bringUp(api: *idapi.IdApi) void {
     }
 
     api.method(alien_vt, api.intern("wrap:signature:as:on:"), &mWrap);
+    api.method(alien_vt, api.intern("callback:signature:"), &mCallback);
     api.method(alien_vt, api.intern("dlopen:"), &mDlopen);
 
     if (!reloading) {
+        api.gcRegisterRootProvider(&cbRoots); // callbacks pin their block + unit
         _ = api.exportObj("AlienVt", alien_vt);
         _ = api.exportObj("Alien", alien_obj);
     }
