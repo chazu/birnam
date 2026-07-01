@@ -44,6 +44,13 @@ var sel_assert: Oop = null;
 var sel_addMethodOn: Oop = null;
 var method_blk_counter: usize = 0; // unique keys for stashed method blocks
 
+// The `__ev` entry-point harness vtable. Minted once, reused every eval: each
+// eval reinstalls its fresh `__ev` method (install:as:on: REPLACES an existing
+// selector's impl — id.zig vtableAddMethod), so a single permanent vtable serves
+// all evals instead of leaking one per call. Its `__ev` slot always points at the
+// current eval's code by the time we send, and nothing invokes `__ev` between evals.
+var ev_harness_vt: Oop = null;
+
 pub var codegen_vt: Oop = null;
 pub var codegen_obj: Oop = null;
 pub var reflect_vt: Oop = null;
@@ -836,7 +843,8 @@ fn runProgram(src: Oop, persist: bool) Oop {
     }
     if (s0(unit, "relocate") == g_api.nilObj) return g_api.nilObj;
 
-    const vt = g_api.proto(g_api.object_vt);
+    if (ev_harness_vt == null) ev_harness_vt = g_api.proto(g_api.object_vt);
+    const vt = ev_harness_vt;
     const sel = g_api.intern("__ev");
     const fname = "__ev";
     _ = g_api.send(unit, g_api.intern("install:as:on:"), &[_]Oop{ g_api.mkString(fname, fname.len), sel, vt }, 3);
