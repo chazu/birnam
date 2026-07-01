@@ -5,12 +5,14 @@
 // birnam's compiler is a C compiler (libtcc), so wrapping a C function means
 // generating a tiny shim that marshals arguments, calling it, and installing the
 // result as a method — no separate FFI engine. `[Alien wrap: name signature: sig
-// as: #sel on: T]` does that; the signature's first char is the return type, the
-// rest are arguments: i=int, l=long, s=cstring, p=pointer, v=void.
+// as: #sel on: T]` does that; the signature's first type is the return, the rest
+// are arguments: i=int, l=long, d=double, f=float, s=cstring, p=pointer, v=void,
+// and {…} a struct BY VALUE whose fields map to a positional Vector — a struct
+// return arrives as `#[…]` and a struct argument is written as one.
 //
-// Here we absorb three libc functions onto Integer/String so birnam can call them
-// directly. (For a library not already loaded, `[Alien dlopen: path]` loads it
-// first; libc is always present.)
+// Here we absorb libc functions onto Integer/String/Vector so birnam can call
+// them directly. (For a library not already loaded, `[Alien dlopen: path]` loads
+// it first; libc is always present.)
 
 // long strlen(const char*)  → String length:  "the length"
 [Alien wrap: "strlen" signature: "l s" as: #clen on: String];
@@ -23,4 +25,16 @@
 // char* getenv(const char*)  → look up an environment variable (nil if unset)
 [Alien wrap: "getenv" signature: "s s" as: #getenv on: String];
 let path := ["PATH" getenv];
-[System println: ["PATH length (via C getenv + strlen): " , [[path clen] printString]]]
+[System println: ["PATH length (via C getenv + strlen): " , [[path clen] printString]]];
+
+// div_t div(int, int)  → a struct RETURNED BY VALUE: div_t { int quot; int rem; }
+// comes back as the Vector #[quot rem].
+[Alien wrap: "div" signature: "{ii} i i" as: #divBy: on: Integer];
+[System println: ["div(7, 2) via C: " , [[7 divBy: 2] printString]]];
+
+// char* inet_ntoa(struct in_addr)  → a struct PASSED BY VALUE: in_addr is one
+// 32-bit field, so the receiver is the 1-element Vector #[16777343]
+// (0x0100007F, little-endian 127.0.0.1). Wrapped on VectorVt — the vtable whose
+// instances are the struct-shaped Vectors.
+[Alien wrap: "inet_ntoa" signature: "s {i}" as: #asDottedQuad on: VectorVt];
+[System println: ["inet_ntoa(#[16777343]) via C: " , [#[16777343] asDottedQuad]]]

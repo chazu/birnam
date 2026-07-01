@@ -13,16 +13,29 @@
 //!   [Alien wrap: cFnName signature: sig as: #sel on: vt]
 //!                                                    wrap a C function as a method
 //!
-//! A SIGNATURE is a string: the first char is the RETURN type, the rest are the
-//! ARGUMENT types, one per birnam argument:
+//! A SIGNATURE is a string: the first type is the RETURN, the rest are the
+//! ARGUMENT types, one per birnam argument (whitespace ignored):
 //!   i  int   (32-bit; a SmallInt)     s  const char* (a String; freed after call)
 //!   l  long  (64-bit; a SmallInt)     p  void* (a pointer, boxed in a SmallInt)
 //!   d  double (a Float)               f  float  (a Float; narrowed at the call)
 //!   v  void  (return only; → nil)
-//! e.g. "i i" = `int f(int)` (abs); "l s" = `long f(const char*)` (strlen, size_t);
-//! "s s" = `char* f(const char*)` (getenv); "d d" = `double f(double)` (sqrt, via
-//! libm — `[Alien addLibrary: "m"]` or a dlopen). Structs by value are still out of
-//! scope (a pointer covers opaque handles meanwhile).
+//!   {…}  a struct BY VALUE — braces around its field types, e.g. "{ll}" =
+//!        struct { long; long; }. Fields may be scalars (i/l/d/f/p — not s),
+//!        nested structs ("{{ll}{ll}}"), or fixed SCALAR ARRAYS written
+//!        <count><char> ("{l 3i}" = struct { long; int[3]; }).
+//! e.g. "i i" = `int f(int)` (abs); "l s" = `long f(const char*)` (strlen);
+//! "{ii} i i" = `div_t div(int, int)`; "{dd} {dd} d" = Vec2 f(Vec2, double).
+//!
+//! STRUCTS map to positional Vectors (structs are positional in C too): a struct
+//! argument is a `#[…]` Vector with one element per FIELD, a struct return comes
+//! back as a fresh Vector. The rule is uniform and recursive — every aggregate
+//! (struct or array field) is ONE element holding its own Vector, so
+//! `struct { long; int[3]; }` ⇄ `#[7 #[1 2 3]]` and a nested struct is a nested
+//! Vector. The shim checks each Vector's `size` before untagging and answers nil
+//! on a shape mismatch (no crash). Struct signatures need the collection module
+//! loaded (the Vector factory is baked into the shim). Because the shim DECLARES
+//! the real struct type and lets tcc compile the call, the platform ABI (arm64
+//! HFA, sret, …) is entirely tcc's problem — no marshaling engine here.
 //!
 //! The RECEIVER is the FIRST C argument (the Smalltalk-natural idiom), so a
 //! K-argument function becomes a method of arity K-1: `["hi" clen]` calls
@@ -35,8 +48,9 @@
 //! library not yet in the process, `[Alien dlopen: path]` loads it first.
 //!
 //! Depends on the IdApi + Tcc. The shim calls the standard `birnam_*` runtime shims
-//! (mkSmallInt / smallIntValue / mkString / nil / cstr / free_cstr) that
-//! `bindRuntime` provides, so no struct layout is ever spelled out.
+//! (send / intern / mkSmallInt / smallIntValue / mkFloat / floatValue / mkString /
+//! nil / cstr / free_cstr) that `bindRuntime` provides, so no id struct layout is
+//! ever spelled out.
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
@@ -70,7 +84,29 @@ fn dupZ(o: Oop) [:0]u8 {
     return z;
 }
 
-/// The C type a signature char denotes.
+// -- the signature model ------------------------------------------------------
+//
+// A parsed signature is a small type TREE, not a flat char scan: a type is a
+// scalar, a struct (an "agg" of fields), or — inside a struct only — a fixed
+// scalar array. Aggs live in a side list in POST-ORDER (an inner struct is
+// registered before the struct containing it), so emitting typedefs/helpers in
+// list order defines every C name before its first use.
+
+const Ty = union(enum) {
+    scalar: u8, // i l d f s p (plus 'v', return position only)
+    array: struct { count: usize, elem: u8 },
+    agg: usize, // index into Parsed.aggs
+};
+
+const Agg = struct { fields: []Ty };
+
+const Parsed = struct {
+    ret: Ty,
+    args: []Ty,
+    aggs: []Agg,
+};
+
+/// The C type a scalar signature char denotes.
 fn cType(sc: u8) ?[]const u8 {
     return switch (sc) {
         'i' => "int",
@@ -84,8 +120,95 @@ fn cType(sc: u8) ?[]const u8 {
     };
 }
 
-/// A despaced copy of `sig` (signatures may be written with spaces for readability,
-/// e.g. "l s"). Caller owns it.
+/// Scalars legal as a struct FIELD or array element: no 's' (freeing char*
+/// temporaries inside aggregates is deferred) and no 'v'.
+fn fieldScalarOk(c: u8) bool {
+    return switch (c) {
+        'i', 'l', 'd', 'f', 'p' => true,
+        else => false,
+    };
+}
+
+const SigParser = struct {
+    s: []const u8,
+    i: usize = 0,
+    arena: std.mem.Allocator,
+    aggs: std.ArrayList(Agg) = .{},
+
+    fn peek(p: *SigParser) ?u8 {
+        return if (p.i < p.s.len) p.s[p.i] else null;
+    }
+
+    /// A struct field: nested struct, scalar array (`<count><char>`), or scalar.
+    fn parseField(p: *SigParser) ?Ty {
+        const c = p.peek() orelse return null;
+        if (c == '{') return p.parseAgg();
+        if (c >= '0' and c <= '9') {
+            var n: usize = 0;
+            while (p.peek()) |dgt| {
+                if (dgt < '0' or dgt > '9') break;
+                n = n * 10 + (dgt - '0');
+                p.i += 1;
+            }
+            const e = p.peek() orelse return null;
+            if (n == 0 or !fieldScalarOk(e)) return null; // 0-count, struct array, 's'/'v' array: rejected
+            p.i += 1;
+            return .{ .array = .{ .count = n, .elem = e } };
+        }
+        if (!fieldScalarOk(c)) return null;
+        p.i += 1;
+        return .{ .scalar = c };
+    }
+
+    /// `{field+}` — registered in `aggs` AFTER its fields (post-order).
+    fn parseAgg(p: *SigParser) ?Ty {
+        p.i += 1; // '{'
+        var fields: std.ArrayList(Ty) = .{};
+        while (true) {
+            const c = p.peek() orelse return null; // unclosed brace
+            if (c == '}') {
+                p.i += 1;
+                break;
+            }
+            const f = p.parseField() orelse return null;
+            fields.append(p.arena, f) catch @panic("alien: oom");
+        }
+        if (fields.items.len == 0) return null; // empty struct
+        const idx = p.aggs.items.len;
+        p.aggs.append(p.arena, .{ .fields = fields.toOwnedSlice(p.arena) catch @panic("alien: oom") }) catch @panic("alien: oom");
+        return .{ .agg = idx };
+    }
+
+    /// A top-level (return/argument) type: struct or scalar. Arrays cannot be
+    /// passed or returned by value in C, so they are struct-field-only.
+    fn parseTop(p: *SigParser, is_ret: bool) ?Ty {
+        const c = p.peek() orelse return null;
+        if (c == '{') return p.parseAgg();
+        if (cType(c) == null) return null;
+        if (c == 'v' and !is_ret) return null;
+        p.i += 1;
+        return .{ .scalar = c };
+    }
+};
+
+/// Parse a despaced signature into its type tree, or null if invalid.
+fn parseSig(arena: std.mem.Allocator, sig: []const u8) ?Parsed {
+    var p = SigParser{ .s = sig, .arena = arena };
+    const ret = p.parseTop(true) orelse return null;
+    var args: std.ArrayList(Ty) = .{};
+    while (p.i < p.s.len) {
+        const t = p.parseTop(false) orelse return null;
+        args.append(arena, t) catch @panic("alien: oom");
+    }
+    return .{
+        .ret = ret,
+        .args = args.toOwnedSlice(arena) catch @panic("alien: oom"),
+        .aggs = p.aggs.toOwnedSlice(arena) catch @panic("alien: oom"),
+    };
+}
+
+/// A despaced copy of `sig` (signatures may be written with spaces for
+/// readability, e.g. "l s" or "{dd} {dd} d"). Caller owns it.
 fn despace(sig: []const u8) []u8 {
     var b: std.ArrayList(u8) = .{};
     for (sig) |c| {
@@ -94,30 +217,56 @@ fn despace(sig: []const u8) []u8 {
     return b.toOwnedSlice(ca) catch @panic("alien: oom");
 }
 
-/// Validate a (despaced) signature: non-empty, every char a known type, and `v`
-/// only as the return (an argument can't be void).
-fn validSig(sig: []const u8) bool {
-    if (sig.len == 0) return false;
-    if (cType(sig[0]) == null) return false;
-    for (sig[1..]) |sc| {
-        if (cType(sc) == null or sc == 'v') return false;
-    }
-    return true;
+// -- the C emitter -------------------------------------------------------------
+
+fn put(b: *std.ArrayList(u8), s: []const u8) void {
+    b.appendSlice(ca, s) catch @panic("alien: oom");
+}
+fn putFmt(b: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) void {
+    const s = std.fmt.allocPrint(ca, fmt, args) catch @panic("alien: oom");
+    defer ca.free(s);
+    b.appendSlice(ca, s) catch @panic("alien: oom");
 }
 
-/// Generate the Method-ABI C shim wrapping `fn_name` per `sig`. Caller owns it.
-fn genShim(fn_name: []const u8, sig: []const u8) []u8 {
-    const ret = sig[0];
-    const args = sig[1..];
+/// The C spelling of a top-level type (scalar name or the `__S<n>` typedef).
+fn putCTy(b: *std.ArrayList(u8), t: Ty) void {
+    switch (t) {
+        .scalar => |c| put(b, cType(c).?),
+        .agg => |i| putFmt(b, "__S{d}", .{i}),
+        .array => unreachable, // struct-field-only; parser rejects elsewhere
+    }
+}
+
+/// Emit `<lhs> = <untag of e per scalar char>;`
+fn putScalarUntag(b: *std.ArrayList(u8), lhs: []const u8, c: u8, e: []const u8) void {
+    switch (c) {
+        'i' => putFmt(b, "{s} = (int)birnam_smallIntValue({s});\n", .{ lhs, e }),
+        'l' => putFmt(b, "{s} = birnam_smallIntValue({s});\n", .{ lhs, e }),
+        'd' => putFmt(b, "{s} = birnam_floatValue({s});\n", .{ lhs, e }),
+        'f' => putFmt(b, "{s} = (float)birnam_floatValue({s});\n", .{ lhs, e }),
+        'p' => putFmt(b, "{s} = (void*)birnam_smallIntValue({s});\n", .{ lhs, e }),
+        else => unreachable,
+    }
+}
+
+/// The C expression boxing scalar expression `x` (of scalar char `c`) as an Oop.
+fn putScalarBox(b: *std.ArrayList(u8), c: u8, x: []const u8) void {
+    switch (c) {
+        'i', 'l', 'p' => putFmt(b, "birnam_mkSmallInt((long)({s}))", .{x}),
+        'd', 'f' => putFmt(b, "birnam_mkFloat((double)({s}))", .{x}),
+        else => unreachable,
+    }
+}
+
+/// Generate the Method-ABI C shim wrapping `fn_name` per the parsed signature.
+/// Caller owns the returned source.
+fn genShim(fn_name: []const u8, sig: Parsed) []u8 {
     var b: std.ArrayList(u8) = .{};
-    const w = struct {
-        fn f(buf: *std.ArrayList(u8), s: []const u8) void {
-            buf.appendSlice(ca, s) catch @panic("alien: oom");
-        }
-    }.f;
 
     // The runtime shims the marshaling needs, plus strlen for string returns.
-    w(&b,
+    put(&b,
+        \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
+        \\extern void* birnam_intern(const char* name);
         \\extern void* birnam_mkSmallInt(long);
         \\extern long birnam_smallIntValue(void*);
         \\extern void* birnam_mkFloat(double);
@@ -129,73 +278,144 @@ fn genShim(fn_name: []const u8, sig: []const u8) []u8 {
         \\extern long strlen(const char*);
         \\
     );
+    // The Vector factory (struct sigs only) — its address is patched in via the
+    // pre-relocate `addSymbol:value:` window, the same way the wrapped fn is.
+    if (sig.aggs.len > 0) put(&b, "extern char __vecFactory[];\n");
+
+    // Struct typedefs, inner-first (aggs is post-order).
+    for (sig.aggs, 0..) |agg, i| {
+        putFmt(&b, "typedef struct {{ ", .{});
+        for (agg.fields, 0..) |f, k| {
+            switch (f) {
+                .scalar => |c| putFmt(&b, "{s} f{d}; ", .{ cType(c).?, k }),
+                .array => |a| putFmt(&b, "{s} f{d}[{d}]; ", .{ cType(a.elem).?, k, a.count }),
+                .agg => |j| putFmt(&b, "__S{d} f{d}; ", .{ j, k }),
+            }
+        }
+        putFmt(&b, "}} __S{d};\n", .{i});
+    }
+
+    // Per-agg unmarshal helpers: birnam Vector → C struct, shape-checked.
+    // `__unm<i>` returns 0 on a shape mismatch. An inner agg's helper is defined
+    // before any caller (post-order), so no forward declarations are needed.
+    for (sig.aggs, 0..) |agg, i| {
+        putFmt(&b, "static int __unm{d}(void* v, __S{d}* out){{\n", .{ i, i });
+        putFmt(&b, "if (birnam_smallIntValue(birnam_send(v, birnam_intern(\"size\"), 0, 0L)) != {d}) return 0;\n", .{agg.fields.len});
+        put(&b, "void* e;\n");
+        var lhs: [48]u8 = undefined;
+        for (agg.fields, 0..) |f, k| {
+            putFmt(&b, "e = birnam_send(v, birnam_intern(\"at:\"), (void*[]){{birnam_mkSmallInt({d})}}, 1L);\n", .{k});
+            switch (f) {
+                .scalar => |c| putScalarUntag(&b, std.fmt.bufPrint(&lhs, "out->f{d}", .{k}) catch unreachable, c, "e"),
+                .agg => |j| putFmt(&b, "if (!__unm{d}(e, &out->f{d})) return 0;\n", .{ j, k }),
+                .array => |a| {
+                    putFmt(&b, "if (birnam_smallIntValue(birnam_send(e, birnam_intern(\"size\"), 0, 0L)) != {d}) return 0;\n", .{a.count});
+                    putFmt(&b, "{{ long __k; for (__k = 0; __k < {d}; __k++) {{\n", .{a.count});
+                    put(&b, "void* __ae = birnam_send(e, birnam_intern(\"at:\"), (void*[]){birnam_mkSmallInt(__k)}, 1L);\n");
+                    putScalarUntag(&b, std.fmt.bufPrint(&lhs, "out->f{d}[__k]", .{k}) catch unreachable, a.elem, "__ae");
+                    put(&b, "} }\n");
+                },
+            }
+        }
+        put(&b, "return 1;\n}\n");
+    }
+
+    // Per-agg marshal helpers: C struct → a fresh birnam Vector (nested aggs and
+    // array fields become nested Vectors — the uniform aggregate⇄Vector rule).
+    for (sig.aggs, 0..) |agg, i| {
+        putFmt(&b, "static void* __mk{d}(__S{d}* v){{\n", .{ i, i });
+        put(&b, "void* r = birnam_send((void*)__vecFactory, birnam_intern(\"new\"), 0, 0L);\nvoid* e;\n");
+        var x: [48]u8 = undefined;
+        for (agg.fields, 0..) |f, k| {
+            switch (f) {
+                .scalar => |c| {
+                    put(&b, "e = ");
+                    putScalarBox(&b, c, std.fmt.bufPrint(&x, "v->f{d}", .{k}) catch unreachable);
+                    put(&b, ";\n");
+                },
+                .agg => |j| putFmt(&b, "e = __mk{d}(&v->f{d});\n", .{ j, k }),
+                .array => |a| {
+                    putFmt(&b, "{{ void* s = birnam_send((void*)__vecFactory, birnam_intern(\"new\"), 0, 0L); long __k;\nfor (__k = 0; __k < {d}; __k++) {{\n", .{a.count});
+                    put(&b, "void* __ae = ");
+                    putScalarBox(&b, a.elem, std.fmt.bufPrint(&x, "v->f{d}[__k]", .{k}) catch unreachable);
+                    put(&b, ";\ns = birnam_send(s, birnam_intern(\"add:\"), (void*[]){__ae}, 1L);\n} e = s; }\n");
+                },
+            }
+            put(&b, "r = birnam_send(r, birnam_intern(\"add:\"), (void*[]){e}, 1L);\n");
+        }
+        put(&b, "return r;\n}\n");
+    }
 
     // The wrapped function's prototype.
-    w(&b, cType(ret).?);
-    w(&b, " ");
-    w(&b, fn_name);
-    w(&b, "(");
-    if (args.len == 0) {
-        w(&b, "void");
+    putCTy(&b, sig.ret);
+    putFmt(&b, " {s}(", .{fn_name});
+    if (sig.args.len == 0) {
+        put(&b, "void");
     } else {
-        for (args, 0..) |sc, i| {
-            if (i != 0) w(&b, ", ");
-            w(&b, cType(sc).?);
+        for (sig.args, 0..) |t, i| {
+            if (i != 0) put(&b, ", ");
+            putCTy(&b, t);
         }
     }
-    w(&b, ");\n");
+    put(&b, ");\n");
 
     // The shim: unmarshal args, call, free temporaries, marshal the result.
     // The RECEIVER is the first C argument (the Smalltalk-natural idiom, e.g.
     // `["hi" clen]` = strlen("hi")); any further C args come from `args[]`. So a
     // K-argument C function is a method of arity K-1 (K=0 → unary, receiver unused).
-    w(&b, "void* __shim(void* self, void** args, long n){ (void)self; (void)args; (void)n;\n");
-    var tmp: [96]u8 = undefined;
+    put(&b, "void* __shim(void* self, void** args, long n){ (void)self; (void)args; (void)n;\n");
     var srcbuf: [24]u8 = undefined;
-    for (args, 0..) |sc, i| {
+    var lhsbuf: [24]u8 = undefined;
+    for (sig.args, 0..) |t, i| {
         const src = if (i == 0) "self" else (std.fmt.bufPrint(&srcbuf, "args[{d}]", .{i - 1}) catch unreachable);
-        const line = switch (sc) {
-            'i' => std.fmt.bufPrint(&tmp, "int a{d} = (int)birnam_smallIntValue({s});\n", .{ i, src }),
-            'l' => std.fmt.bufPrint(&tmp, "long a{d} = birnam_smallIntValue({s});\n", .{ i, src }),
-            'd' => std.fmt.bufPrint(&tmp, "double a{d} = birnam_floatValue({s});\n", .{ i, src }),
-            'f' => std.fmt.bufPrint(&tmp, "float a{d} = (float)birnam_floatValue({s});\n", .{ i, src }),
-            's' => std.fmt.bufPrint(&tmp, "const char* a{d} = birnam_cstr({s});\n", .{ i, src }),
-            'p' => std.fmt.bufPrint(&tmp, "void* a{d} = (void*)birnam_smallIntValue({s});\n", .{ i, src }),
-            else => unreachable,
-        } catch @panic("alien: oom");
-        w(&b, line);
+        switch (t) {
+            .scalar => |c| {
+                putFmt(&b, "{s} a{d};\n", .{ cType(c).?, i });
+                if (c == 's') {
+                    putFmt(&b, "a{d} = birnam_cstr({s});\n", .{ i, src });
+                } else {
+                    putScalarUntag(&b, std.fmt.bufPrint(&lhsbuf, "a{d}", .{i}) catch unreachable, c, src);
+                }
+            },
+            .agg => |j| putFmt(&b, "__S{d} a{d};\nif (!__unm{d}({s}, &a{d})) return birnam_nil();\n", .{ j, i, j, src, i }),
+            .array => unreachable,
+        }
     }
 
     // The call.
-    if (ret == 'v') {
-        w(&b, fn_name);
-    } else {
-        w(&b, cType(ret).?);
-        w(&b, " __r = ");
-        w(&b, fn_name);
+    switch (sig.ret) {
+        .scalar => |c| if (c == 'v') {
+            putFmt(&b, "{s}(", .{fn_name});
+        } else {
+            putFmt(&b, "{s} __r = {s}(", .{ cType(c).?, fn_name });
+        },
+        .agg => |j| putFmt(&b, "__S{d} __r = {s}(", .{ j, fn_name }),
+        .array => unreachable,
     }
-    w(&b, "(");
-    for (args, 0..) |_, i| {
-        if (i != 0) w(&b, ", ");
-        w(&b, (std.fmt.bufPrint(&tmp, "a{d}", .{i}) catch unreachable));
+    for (sig.args, 0..) |_, i| {
+        if (i != 0) put(&b, ", ");
+        putFmt(&b, "a{d}", .{i});
     }
-    w(&b, ");\n");
+    put(&b, ");\n");
 
     // Free any string temporaries (after the call has used them).
-    for (args, 0..) |sc, i| {
-        if (sc == 's') w(&b, std.fmt.bufPrint(&tmp, "birnam_free_cstr(a{d});\n", .{i}) catch unreachable);
+    for (sig.args, 0..) |t, i| {
+        if (t == .scalar and t.scalar == 's') putFmt(&b, "birnam_free_cstr(a{d});\n", .{i});
     }
 
     // Marshal the result.
-    switch (ret) {
-        'i', 'l' => w(&b, "return birnam_mkSmallInt((long)__r);\n"),
-        'd', 'f' => w(&b, "return birnam_mkFloat((double)__r);\n"),
-        'p' => w(&b, "return birnam_mkSmallInt((long)__r);\n"),
-        's' => w(&b, "return __r ? birnam_mkString(__r, strlen(__r)) : birnam_nil();\n"),
-        'v' => w(&b, "return birnam_nil();\n"),
-        else => unreachable,
+    switch (sig.ret) {
+        .scalar => |c| switch (c) {
+            'i', 'l', 'p' => put(&b, "return birnam_mkSmallInt((long)__r);\n"),
+            'd', 'f' => put(&b, "return birnam_mkFloat((double)__r);\n"),
+            's' => put(&b, "return __r ? birnam_mkString(__r, strlen(__r)) : birnam_nil();\n"),
+            'v' => put(&b, "return birnam_nil();\n"),
+            else => unreachable,
+        },
+        .agg => |j| putFmt(&b, "return __mk{d}(&__r);\n", .{j}),
+        .array => unreachable,
     }
-    w(&b, "}\n");
+    put(&b, "}\n");
     return b.toOwnedSlice(ca) catch @panic("alien: oom");
 }
 
@@ -211,11 +431,24 @@ fn addSym(unit: Oop, name: []const u8, addr: usize) void {
 /// Compile + install a wrapper for the C function `fn_name`. Resolves the function
 /// in the process (libc + anything dlopen'd) and patches its address into the unit,
 /// so the emitted `extern`/call binds to the real symbol. Returns vt, or nil if the
-/// signature is invalid, the symbol is not found, or compilation fails.
+/// signature is invalid, the symbol is not found, a struct signature is used
+/// without the collection module loaded, or compilation fails.
 fn buildWrapper(fn_name: []const u8, sig_raw: []const u8, sel: Oop, vt: Oop) Oop {
-    const sig = despace(sig_raw);
-    defer ca.free(sig);
-    if (!validSig(sig)) return g_api.nilObj;
+    var arena_state = std.heap.ArenaAllocator.init(ca);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const sigz = despace(sig_raw);
+    defer ca.free(sigz);
+    if (sigz.len == 0) return g_api.nilObj;
+    const sig = parseSig(arena, sigz) orelse return g_api.nilObj;
+
+    // Struct marshal shuttles values through positional Vectors: the shim needs
+    // the Vector factory's (stable, permanent) address baked in.
+    var vec_factory: Oop = null;
+    if (sig.aggs.len > 0) {
+        vec_factory = g_api.import("Vector") orelse return g_api.nilObj;
+    }
 
     const fz = ca.allocSentinel(u8, fn_name.len, 0) catch @panic("alien: oom");
     defer ca.free(fz);
@@ -229,8 +462,9 @@ fn buildWrapper(fn_name: []const u8, sig_raw: []const u8, sel: Oop, vt: Oop) Oop
     const unit = s0(tcc, "new");
     if (unit == g_api.nilObj) return g_api.nilObj;
     if (s1(unit, "compile:", g_api.mkString(shim.ptr, shim.len)) == g_api.nilObj) return g_api.nilObj;
-    _ = s0(unit, "bindRuntime"); // the marshaling shims (mkSmallInt / cstr / …)
+    _ = s0(unit, "bindRuntime"); // the marshaling shims (send / mkSmallInt / cstr / …)
     addSym(unit, fn_name, @intFromPtr(addr)); // the wrapped function itself
+    if (vec_factory != null) addSym(unit, "__vecFactory", @intFromPtr(vec_factory));
     if (s0(unit, "relocate") == g_api.nilObj) return g_api.nilObj;
 
     const fname = "__shim";
