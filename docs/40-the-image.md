@@ -15,7 +15,25 @@
 > frees raw-word-aliased garbage conservative retains (docs/34 §F3). The fix
 > sweep also rooted the grammar and gave peg's pattern/grammar/CST externals
 > trace hooks — `[System gc]` mid-REPL used to segfault the next parse.
-> Slices 3–4 per §7. Builds on the
+> **Slice 3 SHIPPED (2026-07-02):** the image itself. New `image` module + an
+> append-ready format (header — magic/format/arch/ABI-validity hash — then a
+> record stream read to EOF, heap before facts). `[System saveImage:]` /
+> `birnam-id foo.image` (entry convention: global `main` → `value`, else REPL).
+> Layering (approach A): the store yields/accepts facts RAW (`imageFactsInto:` /
+> imageLoadBegin+AddFact+LoadEnd); the floor gained 3 IdApi primitives
+> (`objectPayloadSize`, `exportedNameOf`, `slotKind`); image.zig owns the unified
+> codec (leaf/symbol/heap-ref), the reachability walk, and swizzle (pass-1 alloc
+> + relink-by-name, pass-2 patch — forward/cyclic refs OK). VERIFIED cross-
+> process: leaf globals, vector tries, nested vectors, and HAMTs all round-trip.
+> Fixed a latent bug it exposed — `keyHash` hashed symbols by ADDRESS (per-process),
+> so HAMT bitmaps didn't survive; symbols now hash by NAME (also makes map order
+> deterministic). Method SOURCE now lands in the store (codegen lowers
+> `defineMethod:on:as:` → `…:source:`, recorded on `#__methods__`) and survives an
+> image — the portable truth slice 4's replay needs. DEFERRED (counted, reported):
+> compiled code + block-valued globals (image-born vtables) — slice 4's job.
+> Commits `bb366ba`→`f850d49`.
+>
+> Slice 4 per §7. Builds on the
 > [running system](36-the-running-system.md) (globals are cells, method source
 > is mirrored into the store) and the codegen/Tcc stack
 > ([rung 3](35-rung-3-front-end.md)). Supersedes the old kernel's
