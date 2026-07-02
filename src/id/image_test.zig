@@ -11,7 +11,10 @@ test "abiHash is deterministic and non-trivial" {
     try std.testing.expect(image.abiHash() != 0);
 }
 
-test "save then load: an empty image is a valid image" {
+test "a header-only image is valid; load walks its empty record stream" {
+    // The format floor, exercised without a running system: writeHeaderOnly emits
+    // just the header, and load (finding no records) accepts it. The full
+    // store-integrated round-trip is the birnam-level test in S3.5.
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
@@ -19,7 +22,7 @@ test "save then load: an empty image is a valid image" {
     const file = try std.fs.path.join(std.testing.allocator, &.{ path, "empty.image" });
     defer std.testing.allocator.free(file);
 
-    try std.testing.expect(image.saveImage(file));
+    try std.testing.expect(image.writeHeaderOnly(file));
     try std.testing.expect(image.loadImage(file));
 }
 

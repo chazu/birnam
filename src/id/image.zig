@@ -143,17 +143,52 @@ fn endRecord(buf: *Buf, len_at: usize) void {
     std.mem.writeInt(u64, buf.items[len_at..][0..8], @intCast(payload_len), .little);
 }
 
-/// Serialize the store-reachable system to `path`. Step 1: header only (an empty
-/// but valid image); steps 2–4 append the interner/fact/heap/code records here.
+/// Write a header-only (empty but valid) image. The pure format floor, with no
+/// dependency on a running system — the format-level tests build images this way.
+pub fn writeHeaderOnly(path: []const u8) bool {
+    var buf: Buf = .{};
+    defer buf.deinit(ca);
+    writeHeader(&buf);
+    return writeFile(path, buf.items);
+}
+
+fn writeFile(path: []const u8, bytes: []const u8) bool {
+    const file = std.fs.cwd().createFile(path, .{}) catch return false;
+    defer file.close();
+    file.writeAll(bytes) catch return false;
+    return true;
+}
+
+/// Append the store's `.facts` record (docs/40 §3b, step 2): the fact stream +
+/// counters the store serializes for us. Compound-valued facts are deferred to
+/// the heap section (step 3); the store counts them and we report the count.
+fn appendFacts(buf: *Buf) void {
+    const store = g_api.import("Store") orelse return; // no store loaded → no facts
+    const bytes_str = g_api.send(store, g_api.intern("dumpImageSection"), &[_]Oop{}, 0);
+    if (bytes_str == null or bytes_str == g_api.nilObj) return;
+    var len: usize = 0;
+    const p = g_api.stringBytes(bytes_str, &len);
+    const at = beginRecord(buf, .facts);
+    putBytes(buf, p[0..len]);
+    endRecord(buf, at);
+
+    const skipped = g_api.send(store, g_api.intern("imageSkippedCount"), &[_]Oop{}, 0);
+    const sk = g_api.smallIntValue(skipped);
+    if (sk > 0) std.debug.print(
+        "[image] deferred {d} fact(s) with compound values to the heap section (step 3, not yet serialized)\n",
+        .{sk},
+    );
+}
+
+/// Serialize the store-reachable system to `path`: the header, then the record
+/// stream. Step 2 writes the `.facts` record; steps 3–4 add heap + code here.
 pub fn saveImage(path: []const u8) bool {
     var buf: Buf = .{};
     defer buf.deinit(ca);
     writeHeader(&buf);
-    // steps 2–3: appendInterner(&buf); appendFacts(&buf); appendHeap(&buf);
-    const file = std.fs.cwd().createFile(path, .{}) catch return false;
-    defer file.close();
-    file.writeAll(buf.items) catch return false;
-    return true;
+    appendFacts(&buf);
+    // step 3: appendInterner(&buf); appendHeap(&buf);
+    return writeFile(path, buf.items);
 }
 
 // -- Reader ------------------------------------------------------------------
@@ -209,13 +244,23 @@ pub fn loadImage(path: []const u8) bool {
         const kind = r.u32v() orelse return false;
         const len = r.u64v() orelse return false;
         const payload = r.take(@intCast(len)) orelse return false;
-        _ = payload; // steps 2–4 dispatch on the payload; step 1 skips every record
         switch (@as(RecordKind, @enumFromInt(kind))) {
-            // steps 2–3: .interner, .facts, .heap; slice 4: .code
+            .facts => if (!loadFacts(payload)) return false,
+            // step 3: .interner, .heap; slice 4: .code
             else => {}, // unknown/not-yet-handled record: skip by its framed length
         }
     }
     return true;
+}
+
+/// Hand a `.facts` record back to the store, which rebuilds its fact stream +
+/// counters from it (wholesale replacement, docs/40 §3b). False on a missing
+/// store or a section the store rejects as malformed.
+fn loadFacts(payload: []const u8) bool {
+    const store = g_api.import("Store") orelse return false;
+    const str = g_api.mkString(payload.ptr, payload.len);
+    const r = g_api.send(store, g_api.intern("loadImageSection:"), &[_]Oop{str}, 1);
+    return r != g_api.nilObj;
 }
 
 // -- birnam surface: [System saveImage:] / [System loadImage:] ---------------

@@ -638,6 +638,209 @@ fn mNew(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return freshStore();
 }
 
+// -- Image serialization (docs/40 slice 3, step 2) --------------------------
+//
+// The store owns its facts, so it owns their on-disk form: the `.facts` section
+// the `image` module frames into an image file. Step 2 serializes every fact
+// whose e/a/v are all SELF-DESCRIBING LEAF values — nil/true/false, smallint,
+// float, symbol, string — verbatim, the timeline included (per-fact tx + op,
+// plus the store's `tx` counter and `raw` flag). A fact with a COMPOUND heap
+// value (a vector, map, or user object) cannot be represented until the heap
+// section (step 3): it is SKIPPED and COUNTED, never silently corrupted
+// (docs/40 §6 — the attic rule, counted-never-dropped). Load REPLACES the
+// freshly-seeded fact list wholesale — the saved stream already carries the
+// deterministically-seeded schema, so there is no double-seed.
+
+const FieldTag = enum(u8) { nil = 0, true_ = 1, false_ = 2, int = 3, float = 4, symbol = 5, string = 6 };
+const Bytes = std.ArrayListUnmanaged(u8);
+
+var g_last_skipped: u32 = 0; // facts skipped by the most recent dump (compound values)
+
+fn wU32(b: *Bytes, v: u32) void {
+    var t: [4]u8 = undefined;
+    std.mem.writeInt(u32, &t, v, .little);
+    b.appendSlice(ca, &t) catch @panic("store: oom");
+}
+fn wU64(b: *Bytes, v: u64) void {
+    var t: [8]u8 = undefined;
+    std.mem.writeInt(u64, &t, v, .little);
+    b.appendSlice(ca, &t) catch @panic("store: oom");
+}
+fn wBytes(b: *Bytes, s: []const u8) void {
+    wU32(b, @intCast(s.len));
+    b.appendSlice(ca, s) catch @panic("store: oom");
+}
+
+/// Encode one leaf Oop field into `b`; returns false (having written a partial,
+/// to-be-discarded scratch) when the value is a compound heap object the step-2
+/// codec can't represent — the caller then skips the whole fact.
+fn encodeField(b: *Bytes, o: Oop) bool {
+    if (o == g_api.nilObj) {
+        b.append(ca, @intFromEnum(FieldTag.nil)) catch @panic("store: oom");
+        return true;
+    }
+    if (o == g_api.trueObj) {
+        b.append(ca, @intFromEnum(FieldTag.true_)) catch @panic("store: oom");
+        return true;
+    }
+    if (o == g_api.falseObj) {
+        b.append(ca, @intFromEnum(FieldTag.false_)) catch @panic("store: oom");
+        return true;
+    }
+    if (g_api.isSmallInt(o) != 0) {
+        b.append(ca, @intFromEnum(FieldTag.int)) catch @panic("store: oom");
+        wU64(b, @bitCast(g_api.smallIntValue(o)));
+        return true;
+    }
+    if (g_api.isFloat(o) != 0) {
+        b.append(ca, @intFromEnum(FieldTag.float)) catch @panic("store: oom");
+        wU64(b, @bitCast(g_api.floatValue(o)));
+        return true;
+    }
+    const vt = g_api.vtableOf(o);
+    if (vt == g_api.symbol_vt) {
+        b.append(ca, @intFromEnum(FieldTag.symbol)) catch @panic("store: oom");
+        wBytes(b, std.mem.span(g_api.symbolName(o)));
+        return true;
+    }
+    if (vt == g_api.string_vt) {
+        b.append(ca, @intFromEnum(FieldTag.string)) catch @panic("store: oom");
+        var len: usize = 0;
+        const p = g_api.stringBytes(o, &len);
+        wBytes(b, p[0..len]);
+        return true;
+    }
+    return false; // compound heap object → deferred to the heap section (step 3)
+}
+
+/// `[Store dumpImageSection]` — serialize this store's fact stream + counters to
+/// a String (the image's `.facts` section). Section layout:
+///   u64 tx · u8 raw · u32 kept · u32 skipped · kept×(u8 op · u64 tx · e · a · v)
+/// where each e/a/v is a tagged leaf field. `[Store imageSkippedCount]` reports
+/// how many facts the most recent dump deferred.
+fn mDumpImageSection(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    const st = stateOf(self);
+    var recs: Bytes = .{};
+    defer recs.deinit(ca);
+    var kept: u32 = 0;
+    var skipped: u32 = 0;
+    for (st.facts.items) |f| {
+        var scratch: Bytes = .{};
+        defer scratch.deinit(ca);
+        scratch.append(ca, @intFromEnum(f.op)) catch @panic("store: oom");
+        wU64(&scratch, f.tx);
+        // Commit only if ALL THREE fields are leaf-encodable (partial scratch is
+        // discarded otherwise — a fact is atomic).
+        if (encodeField(&scratch, f.e) and encodeField(&scratch, f.a) and encodeField(&scratch, f.v)) {
+            recs.appendSlice(ca, scratch.items) catch @panic("store: oom");
+            kept += 1;
+        } else skipped += 1;
+    }
+    var body: Bytes = .{};
+    defer body.deinit(ca);
+    wU64(&body, st.tx);
+    body.append(ca, if (st.raw) 1 else 0) catch @panic("store: oom");
+    wU32(&body, kept);
+    wU32(&body, skipped);
+    body.appendSlice(ca, recs.items) catch @panic("store: oom");
+    g_last_skipped = skipped;
+    return g_api.mkString(body.items.ptr, body.items.len);
+}
+
+/// `[Store imageSkippedCount]` — facts the most recent `dumpImageSection`
+/// deferred to the heap section (compound values). A SmallInt.
+fn mImageSkippedCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = args;
+    _ = n;
+    return g_api.mkSmallInt(@intCast(g_last_skipped));
+}
+
+const Rd = struct {
+    b: []const u8,
+    i: usize = 0,
+    fn byte(r: *Rd) ?u8 {
+        if (r.i + 1 > r.b.len) return null;
+        const v = r.b[r.i];
+        r.i += 1;
+        return v;
+    }
+    fn u32v(r: *Rd) ?u32 {
+        if (r.i + 4 > r.b.len) return null;
+        const v = std.mem.readInt(u32, r.b[r.i..][0..4], .little);
+        r.i += 4;
+        return v;
+    }
+    fn u64v(r: *Rd) ?u64 {
+        if (r.i + 8 > r.b.len) return null;
+        const v = std.mem.readInt(u64, r.b[r.i..][0..8], .little);
+        r.i += 8;
+        return v;
+    }
+    fn bytesv(r: *Rd) ?[]const u8 {
+        const len = r.u32v() orelse return null;
+        if (r.i + len > r.b.len) return null;
+        const s = r.b[r.i .. r.i + len];
+        r.i += len;
+        return s;
+    }
+};
+
+/// Decode one leaf field, re-interning symbols by name (idempotent → the same
+/// symbol identity this process already holds; the durable anchor). Null on a
+/// malformed field.
+fn decodeField(r: *Rd) ?Oop {
+    const tag = r.byte() orelse return null;
+    return switch (@as(FieldTag, @enumFromInt(tag))) {
+        .nil => g_api.nilObj,
+        .true_ => g_api.trueObj,
+        .false_ => g_api.falseObj,
+        .int => g_api.mkSmallInt(@bitCast(r.u64v() orelse return null)),
+        .float => g_api.mkFloat(@bitCast(r.u64v() orelse return null)),
+        .symbol => blk: {
+            const s = r.bytesv() orelse return null;
+            const z = ca.dupeZ(u8, s) catch @panic("store: oom");
+            defer ca.free(z);
+            break :blk g_api.intern(z.ptr);
+        },
+        .string => blk: {
+            const s = r.bytesv() orelse return null;
+            break :blk g_api.mkString(s.ptr, s.len);
+        },
+    };
+}
+
+/// `[Store loadImageSection: aString]` — replace this store's fact stream +
+/// counters from a `.facts` section. Wholesale replacement (docs/40 §2): the
+/// saved stream already carries the seeded schema. Answers the SmallInt count of
+/// facts restored, or nil on a malformed section.
+fn mLoadImageSection(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const st = stateOf(self);
+    var len: usize = 0;
+    const p = g_api.stringBytes(args[0], &len);
+    var r = Rd{ .b = p[0..len] };
+    const tx = r.u64v() orelse return g_api.nilObj;
+    const raw_b = r.byte() orelse return g_api.nilObj;
+    const kept = r.u32v() orelse return g_api.nilObj;
+    _ = r.u32v() orelse return g_api.nilObj; // skipped — informational, not replayed
+    st.facts.clearRetainingCapacity();
+    var i: u32 = 0;
+    while (i < kept) : (i += 1) {
+        const op = r.byte() orelse return g_api.nilObj;
+        const ftx = r.u64v() orelse return g_api.nilObj;
+        const e = decodeField(&r) orelse return g_api.nilObj;
+        const a = decodeField(&r) orelse return g_api.nilObj;
+        const v = decodeField(&r) orelse return g_api.nilObj;
+        st.facts.append(ca, .{ .e = e, .a = a, .v = v, .tx = ftx, .op = @enumFromInt(op) }) catch @panic("store: oom");
+    }
+    st.tx = tx;
+    st.raw = raw_b != 0;
+    return g_api.mkSmallInt(@intCast(kept));
+}
+
 // -- Bringup + the schema seed ----------------------------------------------
 
 /// Wire the store onto libid through the id API: intern the vocabulary, build
@@ -707,6 +910,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, api.intern("liveTriplesBetween:and:do:"), &mLiveTriplesBetweenAndDo);
     api.method(store_vt, api.intern("basis"), &mBasis);
     api.method(store_vt, api.intern("cardinality:"), &mCardinality);
+    api.method(store_vt, api.intern("dumpImageSection"), &mDumpImageSection);
+    api.method(store_vt, api.intern("imageSkippedCount"), &mImageSkippedCount);
+    api.method(store_vt, api.intern("loadImageSection:"), &mLoadImageSection);
     api.setTraceHook(store_vt, &gcTraceHook); // facts live in non-id memory (F3)
     // Exact payload layouts (F3): a store's payload is its Zig StoreState (list
     // pointers + counters — raw words; its Oops are the facts, reached by the
