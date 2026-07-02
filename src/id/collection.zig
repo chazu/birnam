@@ -517,19 +517,29 @@ fn mix(x: u64) u32 {
     z = (z ^ (z >> 27)) *% 0x94D049BB133111EB;
     return @truncate(z ^ (z >> 31));
 }
+fn fnv1a(bytes: []const u8) u32 {
+    var h: u32 = 2166136261;
+    for (bytes) |b| {
+        h ^= b;
+        h *%= 16777619;
+    }
+    return h;
+}
 fn keyHash(k: Oop) u32 {
     if (g_api.isSmallInt(k) != 0) return mix(@bitCast(g_api.smallIntValue(k)));
-    if (g_api.vtableOf(k) == g_api.string_vt) {
+    const vt = g_api.vtableOf(k);
+    if (vt == g_api.string_vt) {
         var len: usize = 0;
         const p = g_api.stringBytes(k, &len);
-        var h: u32 = 2166136261; // FNV-1a
-        for (p[0..len]) |b| {
-            h ^= b;
-            h *%= 16777619;
-        }
-        return h;
+        return fnv1a(p[0..len]);
     }
-    return mix(@intFromPtr(k.?)); // symbols (interned) + other objects: identity
+    // Symbols hash by NAME, not address: a symbol's identity IS its name, and only
+    // a content-stable hash survives an image save/load — addresses are per-process,
+    // so an address-keyed HAMT bitmap would encode positions the restored process
+    // can't reproduce (docs/40 §3c). This also makes map order deterministic across
+    // runs. Other objects still hash by identity (not image-stable — documented).
+    if (vt == g_api.symbol_vt) return fnv1a(std.mem.span(g_api.symbolName(k)));
+    return mix(@intFromPtr(k.?));
 }
 fn keyEq(a: Oop, b: Oop) bool {
     if (a == b) return true; // SmallInt immediates + interned symbols + identity

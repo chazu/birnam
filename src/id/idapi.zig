@@ -143,7 +143,33 @@ pub const IdApi = extern struct {
     /// layout stay conservative; stack/register roots stay conservative always —
     /// the Piumarta constraint is about C stacks, not heap payloads).
     gcSetPrecise: *const fn (c_int) callconv(.c) void,
+
+    // -- image: heap serialization primitives (docs/40 §3c; appended) --------
+    // The image save walks the store-reachable object graph and swizzles it; it
+    // needs, per object, its payload extent, its vtable's exported NAME (the
+    // relink-by-name anchor across a save/load), and each payload word's slot
+    // kind (raw vs Oop vs code). All three read state only the floor holds
+    // (`g_blocks`, the export env, the vtable layout descriptors).
+    //
+    /// objectPayloadSize(obj) -> the payload byte count of a tracked heap object
+    /// (block size minus the vtable word); 0 for immediates, singletons, and
+    /// anything untracked. Bounds the payload walk. Always a multiple of 8.
+    objectPayloadSize: *const fn (Oop) callconv(.c) usize,
+    /// exportedNameOf(obj) -> the NUL-terminated name `obj` was exported under in
+    /// the id environment, or null if unexported. Vtables (and well-known
+    /// singletons) relink by this name on load — the durable anchor (docs/40 §3c,
+    /// the D5.1 relink-by-name spine).
+    exportedNameOf: *const fn (Oop) callconv(.c) ?[*:0]const u8,
+    /// slotKind(vt, word) -> the payload slot kind (`slot_raw`/`slot_oop`/
+    /// `slot_code`) of `word` for instances of `vt`, per its layout descriptor;
+    /// 0xFF if `vt` carries no layout (the caller then defers that object — an
+    /// unknown layout can't be safely swizzled). Mirrors the tracer's per-word rule.
+    slotKind: *const fn (Oop, usize) callconv(.c) u8,
 };
+
+/// Returned by `slotKind` when a vtable has no layout descriptor: the object
+/// can't be swizzled and the image defers it (counted, never dropped).
+pub const slot_unknown: u8 = 0xFF;
 
 /// Slot kinds for `setLayout` payload descriptors: a raw (non-pointer) word, an
 /// Oop (traced + swizzled), or a native-code pointer into a compiled unit

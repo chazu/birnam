@@ -692,6 +692,37 @@ fn setFinalizerC(obj: Oop, fin: idapi.Finalizer) callconv(.c) void {
 fn gcSetAutoC(on: c_int) callconv(.c) void {
     g_auto_gc = (on != 0);
 }
+/// objectPayloadSize(obj) — the payload bytes of a tracked heap object (its
+/// block total minus the vtable word). 0 for immediates, singletons untracked in
+/// g_blocks, and anything not a live block. The image walk uses this as its
+/// per-object extent (docs/40 §3c). Always a multiple of 8 (allocRaw rounds up).
+fn objectPayloadSizeC(obj: Oop) callconv(.c) usize {
+    if (obj == null or (@intFromPtr(obj.?) & 1) != 0) return 0;
+    const blk = g_blocks.get(@intFromPtr(obj.?)) orelse return 0;
+    return blk.total - VT;
+}
+
+/// exportedNameOf(obj) — the name `obj` was exported under in the env, or null.
+/// A reverse scan of the env's value array; the key at the same index is the
+/// interned name symbol. Used to relink vtables/singletons by name (docs/40 §3c).
+fn exportedNameOfC(obj: Oop) callconv(.c) ?[*:0]const u8 {
+    if (obj == null) return null;
+    const vals = env.values orelse return null;
+    var i: usize = 0;
+    while (i < env.tally) : (i += 1) {
+        if (vals[i] == obj) return asSymbol(env.keys.?[i]).string;
+    }
+    return null;
+}
+
+/// slotKind(vt, word) — the layout slot kind of `word` for instances of `vt`, or
+/// `slot_unknown` (0xFF) if `vt` has no layout. Same per-word rule the tracer uses.
+fn slotKindC(vt: Oop, word: usize) callconv(.c) u8 {
+    const v = asVtable(vt);
+    if (v.layout_set == 0) return idapi.slot_unknown;
+    return if (word < v.layout_n) v.layout_kinds.?[word] else v.layout_rest;
+}
+
 fn setLayoutC(vt: Oop, kinds: ?[*]const u8, n: usize, rest: u8) callconv(.c) void {
     const v = asVtable(vt);
     v.layout_kinds = kinds;
@@ -749,6 +780,9 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .isFloat = &isFloatC,
         .setLayout = &setLayoutC,
         .gcSetPrecise = &gcSetPreciseC,
+        .objectPayloadSize = &objectPayloadSizeC,
+        .exportedNameOf = &exportedNameOfC,
+        .slotKind = &slotKindC,
     };
     // The floor's own layouts: no floor value type holds an Oop in its payload
     // (a String is {bytes-ptr, len}, a Float one f64, the singletons empty), so

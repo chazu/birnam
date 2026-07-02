@@ -23,7 +23,7 @@ test "a header-only image is valid; load walks its empty record stream" {
     defer std.testing.allocator.free(file);
 
     try std.testing.expect(image.writeHeaderOnly(file));
-    try std.testing.expect(image.loadImage(file));
+    try std.testing.expect(image.validate(file));
 }
 
 test "load rejects a missing file, garbage, and a bad magic" {
@@ -34,7 +34,7 @@ test "load rejects a missing file, garbage, and a bad magic" {
 
     const missing = try std.fs.path.join(std.testing.allocator, &.{ dir, "nope.image" });
     defer std.testing.allocator.free(missing);
-    try std.testing.expect(!image.loadImage(missing));
+    try std.testing.expect(!image.validate(missing));
 
     const garbage = try std.fs.path.join(std.testing.allocator, &.{ dir, "garbage.image" });
     defer std.testing.allocator.free(garbage);
@@ -43,7 +43,7 @@ test "load rejects a missing file, garbage, and a bad magic" {
         defer f.close();
         try f.writeAll("not an image at all");
     }
-    try std.testing.expect(!image.loadImage(garbage));
+    try std.testing.expect(!image.validate(garbage));
 
     // Right magic length, wrong bytes → rejected.
     const badmagic = try std.fs.path.join(std.testing.allocator, &.{ dir, "badmagic.image" });
@@ -53,7 +53,7 @@ test "load rejects a missing file, garbage, and a bad magic" {
         defer f.close();
         try f.writeAll("XXXXXXXX" ++ &[_]u8{0} ** 20);
     }
-    try std.testing.expect(!image.loadImage(badmagic));
+    try std.testing.expect(!image.validate(badmagic));
 }
 
 test "load rejects a truncated header" {
@@ -68,5 +68,5 @@ test "load rejects a truncated header" {
         defer f.close();
         try f.writeAll(image.MAGIC); // magic only — header incomplete
     }
-    try std.testing.expect(!image.loadImage(trunc));
+    try std.testing.expect(!image.validate(trunc));
 }
