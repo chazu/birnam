@@ -90,6 +90,14 @@ order.
   their native code), and **baked global handles** (the safe symbol-baking layer of
   the `docs/36` v2 optimization — no runtime intern, zero desync risk). Notes what
   stays deferred (struct-by-value FFI, value-slot O(1) globals, scope chains).
+- **The image — the system, made durable** — `40-the-image.md`
+  The persistence/images design (accepted 2026-07-01, unbuilt): an image is the
+  live system made durable — natively compiled code + store-reachable data,
+  append-only, booted by map-and-go, not replay. Why there is no changes file
+  (the store subsumes it: source-as-facts, tx history, journal = the same
+  format), the three survival problems (de-baked relocatable code, the mapped
+  fact segment, exact-layout heap swizzling), replay as the portability
+  fallback, merge-through-the-surface, and the four-slice build plan.
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).
