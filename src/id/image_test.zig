@@ -11,6 +11,10 @@ const id = @import("id.zig");
 const store = @import("store.zig");
 const collection = @import("collection.zig");
 const prelude = @import("prelude.zig");
+const peg = @import("peg.zig");
+const lang = @import("lang.zig");
+const tcc = @import("tcc.zig");
+const codegen = @import("codegen.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
@@ -156,4 +160,62 @@ test "round-trip: leaf + vector + map globals survive save/load" {
     // HAMT: the symbol key resolves after re-interning (the keyHash fix).
     const gm = gAt(globals, "gm");
     try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(send(gm, "at:", &.{api.intern("k")})));
+}
+
+// -- slice 4: the compiled .code section (map by default, replay on --rebuild) --
+
+/// The full front end (peg → lang → tcc → codegen) atop `setup`, so an image can
+/// carry a compiled `.code` section. This test file defines NO other methods, so
+/// `__methods__` holds exactly what this test defines — a clean code section.
+fn setupWithCodegen() *idapi.IdApi {
+    const api = id.id_init();
+    gapi = api;
+    store.bringUp(api);
+    peg.bringUp(api);
+    lang.bringUp(api);
+    tcc.bringUp(api);
+    codegen.bringUp(api);
+    prelude.bringUp(api);
+    collection.bringUp(api);
+    image.bringUp(api);
+    return api;
+}
+
+test "round-trip: a user method's compiled code is mapped (default), replayed (--rebuild)" {
+    const api = setupWithCodegen();
+    const Codegen = api.import("Codegen").?;
+
+    // Define a user method live (JIT records its source), and bind a datum.
+    const src = "[Reflect defineMethod: #quad on: Integer as: [:x | [[x + x] + [x + x]]]]";
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(src.ptr, src.len)}, 1);
+    const globals = api.import("Globals").?;
+    gPut(globals, "n", api.mkSmallInt(9));
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api.mkSmallInt(5), "quad", &.{})));
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const path = try std.fs.path.join(a, &.{ dir, "code.image" });
+    defer a.free(path);
+
+    try std.testing.expect(image.saveImage(path));
+
+    // Default load MAPS the compiled .code — the method comes back from mapped
+    // code (no recompile) and the datum survives.
+    try std.testing.expect(image.loadImage(path));
+    try std.testing.expect(image.mappedCode());
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api.mkSmallInt(5), "quad", &.{})));
+    try std.testing.expectEqual(@as(i64, 9), api.smallIntValue(gAt(globals, "n")));
+
+    // Forced rebuild takes the REPLAY path: the load maps NO code (answers false),
+    // and the boot orchestration (here, as in runImage) rebuilds the library by
+    // re-evaluating the image's own recorded source — after which the method works.
+    const sys = api.import("System").?;
+    const status = api.send(sys, api.intern("loadImage:rebuild:"), &.{ api.mkString(path.ptr, path.len), api.trueObj }, 2);
+    try std.testing.expect(status == api.falseObj);
+    try std.testing.expect(!image.mappedCode());
+    _ = api.send(Codegen, api.intern("replayMethods"), &.{}, 0); // what runImage does on the false branch
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api.mkSmallInt(5), "quad", &.{})));
 }

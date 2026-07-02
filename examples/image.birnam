@@ -8,15 +8,13 @@
 // their values — serialized so a fresh process maps it back and starts sending
 // messages. No recompilation, no fact-by-fact replay.
 //
-// Slice 3 carries DATA. Everything below round-trips into a fresh process:
-//   - leaf values (integers, strings, floats, symbols)
-//   - vector tries, including nested ones (a trie of tries)
-//   - HAMTs (maps), keyed by content-stable hashes
-//   - a user method's SOURCE (recorded as a store fact, queryable, durable)
-// What does NOT survive slice 3: compiled code — a user method's machine code
-// and any block-valued global (a closure). Those are image-born; the save
-// COUNTS and reports them (the "deferred N facts" line), and slice 4 recovers
-// them (mapped code sections + replay from the source facts saved here).
+// Everything below round-trips into a fresh process:
+//   - DATA: leaf values, vector tries (including nested), HAMTs (maps)
+//   - CODE: a user method's compiled machine code. Booting the image MAPS it —
+//     no recompile (the default). `birnam --rebuild foo.image` instead rebuilds
+//     the library from the method SOURCE the image also carries.
+// Still image-born, so still deferred (counted/reported at save): block-valued
+// GLOBALS — a closure bound directly to a name, like an auto-run `main` block.
 
 // A spread of values as globals — the durability line is what the store names.
 [Globals at: #answer put: 42];
@@ -25,8 +23,8 @@
 [Globals at: #nums put: #[ #[1 2 3] #[4 5 6] ]];
 [Globals at: #config put: {#host -> "localhost", #port -> 8080}];
 
-// A user method. Its SOURCE lands in the store (below) and survives the image,
-// even though its compiled code is deferred to slice 4.
+// A user method. Its compiled code is carried in the image's .code section and
+// MAPPED on boot (no recompile); its source is carried too, for `--rebuild`.
 [Reflect defineMethod: #double on: Integer as: [:x | [x + x]]];
 
 let path := [Globals at: #imagePath put: "/tmp/birnam-demo.image"];
@@ -34,6 +32,6 @@ let path := [Globals at: #imagePath put: "/tmp/birnam-demo.image"];
 [System println: ["saved image to " , path]];
 [System println: "boot it, then in the REPL try:"];
 [System println: "  [Globals at: #answer]         => 42"];
-[System println: "  [Globals at: #config]         => a restored HAMT"];
-[System println: "  [[Globals at: #nums] at: 1]   => #[4 5 6]"];
-[System println: "  [db findAll: ?s where: #[ #[#__methods__ ?k ?s] ]]   => the method sources"]
+[System println: "  [[Globals at: #nums] at: 1]   => #[4 5 6]  (restored vector)"];
+[System println: "  [21 double]                   => 42  (method from MAPPED code)"];
+[System println: "  ...and  birnam --rebuild this.image  rebuilds it from source"]
