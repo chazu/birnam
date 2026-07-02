@@ -558,6 +558,10 @@ fn isBalanced(s: []const u8) bool {
     while (i < s.len) : (i += 1) {
         const c = s[i];
         if (in_str) {
+            if (c == '\\') {
+                i += 1;
+                continue;
+            } // an escaped char (incl. `\"`) doesn't end the string
             if (c == '"') in_str = false;
             continue;
         }

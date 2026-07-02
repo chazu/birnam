@@ -635,11 +635,39 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
     if (r == r_string) {
         const raw = text(node); // includes the surrounding quotes
         const inner = if (raw.len >= 2) raw[1 .. raw.len - 1] else raw;
+        // Unescape the KNOWN birnam escapes into a temp buffer: `\"`→`"`, `\\`→`\`,
+        // `\n`/`\t`/`\r`/`\0` → the control byte. An UNKNOWN escape keeps its
+        // backslash verbatim (`\c` stays `\c`) — so no pre-existing string with a
+        // literal backslash changes meaning. putCStr then re-escapes the RESULT for
+        // the C literal; the length is the unescaped byte count.
+        var un: std.ArrayList(u8) = .{};
+        defer un.deinit(ca);
+        var i: usize = 0;
+        while (i < inner.len) : (i += 1) {
+            if (inner[i] == '\\' and i + 1 < inner.len) {
+                const decoded: ?u8 = switch (inner[i + 1]) {
+                    '"' => '"',
+                    '\\' => '\\',
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '0' => 0,
+                    else => null,
+                };
+                if (decoded) |d| {
+                    un.append(ca, d) catch @panic("codegen: oom");
+                    i += 1; // consume the escaped char too
+                    continue;
+                }
+                // Unknown escape: keep the backslash; the next char is emitted normally.
+            }
+            un.append(ca, inner[i]) catch @panic("codegen: oom");
+        }
         put(buf, "birnam_mkString(\"");
-        putCStr(buf, inner);
+        putCStr(buf, un.items);
         put(buf, "\", ");
         var nb: [24]u8 = undefined;
-        const ns = std.fmt.bufPrint(&nb, "{d}L)", .{inner.len}) catch return false;
+        const ns = std.fmt.bufPrint(&nb, "{d}L)", .{un.items.len}) catch return false;
         put(buf, ns);
         return true;
     }

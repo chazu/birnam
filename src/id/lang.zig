@@ -104,9 +104,16 @@ fn buildGrammar() void {
     // float = '-'? digit+ '.' digit+ — a boxed-f64 literal (3.14, -0.5). Tried
     // BEFORE number in `primary` so `3.5` is one float, not `3` then a stray `.5`.
     defRule("float", seqN(&.{ optp(lit("-")), plus(digit), lit("."), plus(digit) }));
+    // string = '"' ( '\' any / !'"' any )* '"' — a backslash escapes the next char
+    // (so `\"` is a literal quote, `\\` a backslash); codegen unescapes. The escape
+    // alt is tried first so `\"` is consumed as one unit and does not close the
+    // string.
     defRule("string", seqN(&.{
         lit("\""),
-        star(seqN(&.{ notp(lit("\"")), anyc() })),
+        star(altN(&.{
+            seqN(&.{ lit("\\"), anyc() }),
+            seqN(&.{ notp(lit("\"")), anyc() }),
+        })),
         lit("\""),
     }));
     // Single-char binary operators (multi-char come later).
