@@ -330,7 +330,14 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
         out("\n");
         return error.ImageLoadFailed;
     }
-    if (status == api.falseObj) loadStdlib(api, codegen); // data-only / mismatch → library from source
+    // Code not mapped (data-only image, arch/ABI mismatch, or --rebuild): rebuild
+    // the whole library by REPLAYING the image's own recorded method source
+    // (docs/40 §4). This subsumes the stdlib; if the image predates source capture
+    // and replays nothing, fall back to the embedded stdlib so the REPL is usable.
+    if (status == api.falseObj) {
+        const replayed = api.send(codegen, api.intern("replayMethods"), &[_]Oop{}, 0);
+        if (api.smallIntValue(replayed) == 0) loadStdlib(api, codegen);
+    }
 
     // Entry-point convention: `main` bound → run it; else drop into the REPL.
     if (api.import("Globals")) |globals| {
