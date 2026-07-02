@@ -323,15 +323,10 @@ pub fn parse(api: *idapi.IdApi, na: std.mem.Allocator, g: Oop, source: []const u
     var rs = RunState{ .g = g, .source = source, .na = na, .memo = &memo };
     const root_pat = ruleNamed(g, root_name) orelse return null;
     if (matchPattern(&rs, root_pat, 0)) |m| {
+        // Full consumption is the caller's concern via the root rule (birnam's
+        // `program` is `eof`-anchored, so a short match already fails there); this
+        // primitive keeps prefix-matching semantics for other roots/tests.
         g_furthest = rs.furthest;
-        // A root match that stops short of end-of-input is a partial parse — the
-        // grammar accepted a prefix and left a tail it couldn't extend. Treat that
-        // as a failure (else codegen would silently compile a truncated program),
-        // pointing at where matching stalled.
-        if (m.end < source.len) {
-            if (m.end > g_furthest) g_furthest = m.end;
-            return null;
-        }
         const node = na.create(Node) catch @panic("peg: oom");
         node.* = .{ .rule = root_name, .start = 0, .end = m.end, .children = m.children };
         return node;

@@ -676,7 +676,6 @@ fn replCommand(api: *IdApi, cmd: []const u8) bool {
 fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
     if (!booted) try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
-    const lang = api.import("Lang") orelse return error.NoLang;
 
     var stack_anchor: usize = 0;
     api.gcSetStackBottom(@intFromPtr(&stack_anchor));
