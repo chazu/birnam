@@ -54,6 +54,8 @@ pub fn main() !void {
     if (script_path) |sp| {
         if (std.mem.eql(u8, sp, "--repl") or std.mem.eql(u8, sp, "-i") or std.mem.eql(u8, sp, "repl"))
             return runRepl(a, api);
+        if (std.mem.endsWith(u8, sp, ".image"))
+            return runImage(a, api, sp);
         return runScript(a, api, sp);
     }
 
@@ -238,6 +240,7 @@ const script_modules = [_][]const u8{
     "libbirnam_id_error",
     "libbirnam_id_relational",
     "libbirnam_id_alien",
+    "libbirnam_id_image",
 };
 
 // The self-hosted part of the standard library — birnam defining more of its own
@@ -284,6 +287,42 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     const src = try std.fs.cwd().readFileAlloc(a, path, 16 << 20);
     defer a.free(src);
     _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
+}
+
+/// Boot an image: `birnam-id foo.image` (docs/40). Bring up the language stack
+/// (the native module vtables the image relinks against), map the image back in,
+/// then honor the entry-point convention — if the global `main` is bound, send it
+/// `value`; otherwise open the REPL with every restored binding live (docs/40 §1).
+fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+
+    loadStdlib(api, codegen);
+
+    // Map the image (validate header, rebuild store-reachable state).
+    const system = api.import("System") orelse return error.NoSystem;
+    const path_str = api.mkString(path.ptr, path.len);
+    if (api.send(system, api.intern("loadImage:"), &[_]Oop{path_str}, 1) == api.nilObj) {
+        out("[image] failed to load ");
+        out(path);
+        out("\n");
+        return error.ImageLoadFailed;
+    }
+
+    // Entry-point convention: `main` bound → run it; else drop into the REPL.
+    if (api.import("Globals")) |globals| {
+        const m = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("main")}, 1);
+        if (m != api.nilObj) {
+            _ = api.send(m, api.intern("value"), &[_]Oop{}, 0);
+            return;
+        }
+    }
+    return runRepl(a, api);
 }
 
 // -- the REPL: an interactive tool for exploring the running system ----------

@@ -66,6 +66,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "birnam_id_error", .src = "error.zig", .test_src = "error_test.zig", .step = "test-error", .desc = "F7: the error model (propagating values + DNU swap)" },
         .{ .name = "birnam_id_relational", .src = "relational.zig", .test_src = "relational_test.zig", .step = "test-relational", .desc = "the relational reading: datalog join + pull" },
         .{ .name = "birnam_id_alien", .src = "alien.zig", .test_src = "alien_test.zig", .step = "test-alien", .desc = "the FFI: wrap + absorb C libraries via Tcc", .test_links_tcc = true },
+        .{ .name = "birnam_id_image", .src = "image.zig", .test_src = "image_test.zig", .step = "test-image", .desc = "the image: store-reachable durability (docs/40, slice 3)" },
     };
 
     inline for (mods) |m| {
