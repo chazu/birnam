@@ -558,6 +558,48 @@ fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop) b
     return true;
 }
 
+/// Emit a left-folded chain of same-category messages: for receiver R and message
+/// nodes [m0 … m_{k-1}], `birnam_send(… birnam_send(R, m0) …, m_{k-1})`. `upto`
+/// peels from the right so the innermost (receiver) send is emitted first. Only
+/// binary or unary chains reach here (keyword parts fold inside one keywordMsg).
+fn emitSendChain(buf: *std.ArrayList(u8), recvNode: Oop, msgParent: Oop, upto: usize) bool {
+    if (upto == 0) return emit(buf, recvNode);
+    const msg = skip(child(msgParent, upto - 1));
+    const mr = ruleOf(msg);
+    put(buf, "birnam_send(");
+    if (!emitSendChain(buf, recvNode, msgParent, upto - 1)) return false; // the receiver
+    put(buf, ", birnam_intern(\"");
+    if (mr == r_binaryMsg) {
+        putCStr(buf, text(child(msg, 0)));
+        put(buf, "\"), (void*[]){");
+        if (!emit(buf, child(msg, 1))) return false;
+        put(buf, "}, 1L)");
+        return true;
+    }
+    if (mr == r_unaryMsg) {
+        putCStr(buf, text(msg));
+        put(buf, "\"), 0, 0L)");
+        return true;
+    }
+    if (mr == r_keywordMsg) {
+        const nc = nchild(msg);
+        var i: usize = 0;
+        while (i + 1 < nc) : (i += 2) putCStr(buf, text(child(msg, i)));
+        put(buf, "\"), (void*[]){");
+        i = 1;
+        var first = true;
+        while (i < nc) : (i += 2) {
+            if (!first) put(buf, ", ");
+            first = false;
+            if (!emit(buf, child(msg, i))) return false;
+        }
+        var nb: [24]u8 = undefined;
+        put(buf, std.fmt.bufPrint(&nb, "}}, {d}L)", .{nc / 2}) catch return false);
+        return true;
+    }
+    return false;
+}
+
 /// Emit a C expression of type `void*` (a tagged SmallInt / Oop) for `node0`.
 /// Returns false on anything not yet supported.
 fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
@@ -613,6 +655,10 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
         const recv = child(node, 0);
         const msg = skip(child(node, 1));
         const mr = ruleOf(msg);
+
+        // A chain of same-category messages (`message` kept >1 child): fold left,
+        // each message applied to the accumulated receiver (docs: chained sends).
+        if (mr == r_message) return emitSendChain(buf, recv, msg, nchild(msg));
 
         if (mr == r_binaryMsg) {
             const op = text(child(msg, 0)); // the binop char(s)

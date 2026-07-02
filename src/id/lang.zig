@@ -142,7 +142,17 @@ fn buildGrammar() void {
     defRule("binops", plus(rref("binop")));
     defRule("binaryMsg", seqN(&.{ rref("binops"), ws, rref("expr") }));
     defRule("unaryMsg", rref("ident"));
-    defRule("message", altN(&.{ rref("keywordMsg"), rref("binaryMsg"), rref("unaryMsg") }));
+    // A send may CHAIN same-category messages, folded left: `[a , b , c]` is
+    // `((a , b) , c)`, `[3 factorial printString]` is `((3 factorial) printString)`.
+    // Keyword parts already fold (keywordMsg is `plus`). Mixing categories in one
+    // `[…]` still needs brackets (their Smalltalk precedence isn't modeled here);
+    // a single message keeps the exact old CST shape, so existing parses are
+    // unchanged (the `message` node collapses to the lone message via `skip`).
+    defRule("message", altN(&.{
+        rref("keywordMsg"),
+        plus(seqN(&.{ rref("binaryMsg"), ws })),
+        plus(seqN(&.{ rref("unaryMsg"), ws })),
+    }));
 
     // send = '[' expr message ']'   (a bare '[var]' / '[lit]' has no message → not a send)
     defRule("send", seqN(&.{ lit("["), ws, rref("expr"), ws, rref("message"), ws, lit("]") }));
