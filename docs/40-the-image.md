@@ -33,7 +33,28 @@
 > compiled code + block-valued globals (image-born vtables) — slice 4's job.
 > Commits `bb366ba`→`f850d49`.
 >
-> Slice 4 per §7. Builds on the
+> **Slice 4 SHIPPED (2026-07-02):** mapped code. An image now carries the whole
+> compiled library and BOOTS WITHOUT RECOMPILING (the user's directive: load the
+> binary, replay only on request). At save, `[Codegen compileImageCode:]` gathers
+> every recorded method source (the `__methods__` facts) into one relocatable,
+> INSTALLABLE artifact — in artifact mode `defineMethod` lowers to a static
+> trampoline + a direct `birnam_method` install (not the compiling runtime send) —
+> and image.zig embeds it as the `.code` record. On boot loadImage writes it to a
+> temp `.dylib` and `[Codegen load:]`s it: dlopen + install, no recompile. The
+> header's arch tag + shim ABI-validity hash arbitrate: on a match the code is
+> MAPPED (default); on a mismatch — or `birnam --rebuild foo.image` /
+> `[System loadImage:rebuild:]` — it REPLAYS (`[Codegen replayMethods]` re-evals
+> the `__methods__` source, subsuming the stdlib). Since the stdlib is itself all
+> `defineMethod`, the `.code` section subsumes it — image boot no longer re-evals
+> the stdlib. `[System loadImage:]` answers 3-state (nil/true/false) so runImage
+> knows whether to fall back. VERIFIED cross-process + in a clean in-process test:
+> a user method's code survives an image and runs from mapped code (no recompile),
+> and rebuilds from source under `--rebuild`. Images grow to ~77KB (they carry the
+> compiled library). Commits `d20b12b`→`44cfe16`. REMAINING (follow-ups, not core):
+> block-valued globals (an auto-run `main` closure is still image-born/deferred);
+> the exe bake; incremental append + compact (§7.4).
+>
+> Builds on the
 > [running system](36-the-running-system.md) (globals are cells, method source
 > is mirrored into the store) and the codegen/Tcc stack
 > ([rung 3](35-rung-3-front-end.md)). Supersedes the old kernel's
