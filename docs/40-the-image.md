@@ -325,3 +325,203 @@ Each slice is independently valuable before the image itself lands:
 
 Slice 1 first: it is the smallest, it unblocks nothing-else-depends-on-me
 value immediately, and every later slice needs its de-baking anyway.
+
+## 8. Design note: the mmap fast-path for load (deferred)
+
+> **Status:** design SKETCH only (2026-07-02). Not built. An adversarial review
+> (same day, §8.9) found three load-bearing flaws in the specifics below — the
+> oop-word encoding (§8.2), the treatment of strings (§8.2/§8.4), and the
+> id-vs-offset addressing of facts (§8.3/§8.5). **Read §8.9 first.** The sketch's
+> *spirit* — a per-arch, droppable fast heap segment over portable truth,
+> mirroring the `.code` pattern — survives; the encoding and format details do
+> not, and are rewritten there. §3b anticipated the deferral: "the mmap fast path
+> can come after a first version that reads the segment eagerly."
+
+### 8.1 What load does today, and the target
+
+`loadImage` reads the *entire* file into a heap buffer, then walks the `.heap`
+record and **re-materializes** every object: pass 1 `alloc`s a fresh GC object
+per entry, pass 2 decodes each field (leaf inline, symbol re-interned by name,
+heap-ref resolved through the relocation table) into it. Boot cost = one full
+file read + one full graph rebuild, every word allocated and copied, paid up
+front before the first send.
+
+The fast path replaces *read-all → alloc-per-object → decode-tagged-stream*
+with *mmap → one swizzle pass*: objects live in the mapped pages and "load" is
+pointer fix-up. **The real win is eliminating per-object `alloc` and tagged-field
+decode — NOT lazy paging.** An earlier draft claimed "the OS demand-pages only
+what boot touches"; that is false for the relocating swizzle (§8.6), which writes
+every object's vtable slot and every oop word up front, faulting and COW-copying
+the whole segment before the first send. Lazy paging only materializes under a
+fixed-base map (no swizzle) or a read-barriered lazy swizzle — neither is v1.
+Facts are **not** unchanged either (§8.3/§8.9-#3). This paragraph is corrected
+from the original sketch per §8.9.
+
+### 8.2 A layout-faithful segment: a new `.mheap` record
+
+Today's `.heap` is a *tagged* stream (a type byte per field). The fast segment
+is instead **byte-for-byte the in-memory object image**, so a mapped page *is*
+the heap. The `-1` trick fixes the layout — an object is `[vtable ptr]` at
+`payload[-1]`, then payload words — so each object is stored:
+
+```
+   ... [ nwords ] [ vtable-index ] [ w0 ] [ w1 ] ... [ w_{n-1} ] ...
+                    ^payload[-1]     ^payload starts here
+   live object pointer  =  &vtable-index + WORD   (i.e. &w0)
+```
+
+- `payload[-1]` holds a **vtable-index** pre-swizzle, a live **vtable pointer**
+  post-swizzle — exactly where dispatch reads it. The segment carries the vtable
+  slot for free.
+- `payload[-2]` = `nwords`, used only to walk object→object; a "gap" the live
+  object never points at (invisible to a precise trace).
+- payload words are raw, in-memory width, `WORD`-aligned.
+
+**Oop-word encoding**, driven by `slotKind` (already available — no per-field
+tag bytes, unlike the tagged stream):
+
+| word (`slotKind`) | on disk | swizzle |
+|---|---|---|
+| `slot_raw` | verbatim | untouched |
+| `slot_code` | 0 | stays 0 (re-derived, as today) |
+| `slot_oop` = SmallInt | verbatim (low-bit tagged → position-independent) | untouched |
+| `slot_oop` = nil/true/false | reserved sentinel (0/1/2) | → live singleton |
+| `slot_oop` = symbol | `SYMTAG \| sym-table index` | → interned-by-name pointer |
+| `slot_oop` = heap ref | **byte offset** of target's payload in the segment | → `base + offset` |
+
+Two deduped side tables: a **symbol table** (names → interned once → index→ptr)
+and a **vtable table** (`exportedNameOf` names → `import`ed by name → index→ptr).
+Only native/exported vtables appear — the same rule `internObj` already enforces
+by deferring image-born (block) vtables. The `.mheap` payload is **page-aligned**
+in the file (pad the record header) so `mmap` maps it directly.
+
+> ⚠️ **Broken as written (§8.9-#1, #2, #6).** The tagless single-word encoding
+> above does not decode: sentinel `1` (`true`) equals the word `mkSmallInt(0)`,
+> and `0` is ambiguous across `nil` / null-slot / offset-0 — it needs a real tag
+> scheme. And **strings/floats are inline leaves today, not heap objects**
+> (`encodeField` intercepts them before `internObj`); forcing a String into a
+> layout-faithful heap object exposes its `slot_raw` `ptr` word as an *out-of-line*
+> `c_allocator` pointer whose bytes are never in the segment — `slot_raw` means
+> "don't trace," not "not a pointer." Both must be redesigned before an emitter
+> can be written. "Pad the record header" also breaks the self-delimiting framing
+> and page size is arch-dependent (16K/4K) — an extra gate dimension.
+
+### 8.3 Load: mmap + two-pass swizzle
+
+```
+1. mmap(.mheap range, MAP_PRIVATE | PROT_READ|PROT_WRITE) → base B
+2. intern the symbol table  → sym[]   (index → live symbol)
+3. import the vtable table  → vt[]    (index → live vtable; relink-by-name)
+4. pass A: for each object, payload[-1] = vt[ stored vtable-index ]
+5. pass B: for each object, walk payload by slotKind(vt, w); rewrite each oop
+        word (immediate | sentinel | SYMTAG idx | offset) to a live pointer in place
+6. register [B, B+len) as a GC arena: precise-traced (setLayout), PERMANENT
+        (image objects are not freed — like symbols)
+```
+
+Pass A precedes pass B because pass B needs each object's live vtable to read
+`slotKind`. The win: no per-object `alloc`, no tagged decode.
+
+> ⚠️ **Two problems here (§8.9-#3, #4).** (a) Facts and journaled deltas reference
+> heap objects by a **u32 id** into `g_load_reloc` (built in id order by the eager
+> loader), not by byte offset — so an offset-addressed `.mheap` that "drops ids for
+> offsets" (§8.4) leaves facts and delta→base refs unresolvable. The loader must
+> still reconstruct the id-ordered pointer array, which means `.mheap` cannot
+> actually discard the saver's id numbering. (b) Step 6's PERMANENT arena is both a
+> leak regression (today's objects are `.collectable`) and unsafe: the GC traces
+> via `g_blocks` and has no way to trace *into* a foreign mmap'd region, so storing
+> a fresh collectable Oop into a mutable mapped slot yields a dangling pointer on
+> the next collection. Honest arena tracing (walk by layout, treat as roots) is
+> required — more than "one hook."
+
+### 8.4 Save: a binary-packed `drainHeap`
+
+The same graph walk and `slotKind` logic as `drainHeapFrom`, but it assigns each
+object a **byte offset** (not an integer id) and packs
+`nwords · vtable-index · payload` with oop words rewritten to
+offsets/sentinels/symtags. A sibling emitter over the identical walk.
+
+### 8.5 Arbitration — the `.code` pattern, applied to the heap
+
+The mapped segment is **per-(arch, word-size, layout-ABI)**: add a `layoutHash()`
+gate beside `abiHash()`. On load, `.mheap` present *and* layout-compatible →
+mmap fast path; else fall back to the portable `.heap` (eager), or replay if
+absent. A saver emits `.mheap` for local/fast images and `.heap` for
+portable/archival ones (or both; compaction chooses) — the same "per-arch,
+droppable fast section over portable truth" duality the `.code` section
+established. No new conceptual machinery; map-vs-replay applied to the heap.
+
+### 8.6 The one real trade-off: relocate vs. fixed-base
+
+- **Relocating swizzle** (above): robust against ASLR, but writing every pointer
+  word dirties pages, so `MAP_PRIVATE` copy-on-write sharing breaks on touched
+  pages. Still wins on alloc/decode; loses cross-process page sharing.
+- **Fixed-base map** (classic Smalltalk): store real addresses relative to a
+  fixed load base, `mmap(MAP_FIXED)` there, so internal oop pointers need *no*
+  swizzle — only vtables/symbols get patched and unwritten pages stay shared.
+  But `MAP_FIXED` at a hardcoded base fights ASLR and can collide.
+
+v1 takes the relocating path; fixed-base is a later "many processes share one big
+image" optimization.
+
+### 8.7 Scope, risks, interactions
+
+- **GC arena** is the fiddly bit: the mapped region must be registered so tracing
+  follows into it and never frees it. Non-moving GC helps (addresses stay put);
+  precise mode already exists.
+- **Lazy swizzle** (swizzle-on-first-touch via a read barrier) is rejected — our
+  dispatch has no read barrier and the GC is conservative-by-default; too
+  invasive for the payoff.
+- **Journaling (§7.4) composes**: mmap the base generation's `.mheap`; appended
+  deltas stay eager `.heap` (small); compaction re-emits one fresh `.mheap`.
+- **Touch points**: `image.zig` (emitter + loader path + `layoutHash`), one
+  GC-arena registration hook in the floor, header/arbitration. Codegen, the
+  store, and boot orchestration are untouched.
+
+### 8.8 Cost / benefit
+
+Self-contained, concentrated in `image.zig` plus GC-arena tracing. The payoff is
+**~zero at today's sizes** (tens–hundreds of KB, where the `.code` dlopen
+dominates) and only shows with multi-MB persisted heaps — which is why it is
+parked as depth, not shipped. Given §8.9, do NOT prototype the emitter until the
+encoding, string, and addressing problems below are resolved on paper first.
+
+### 8.9 Open problems (adversarial review, 2026-07-02)
+
+A review against the actual floor (`id.zig`, `image.zig`) found the §8.1–§8.8
+sketch has load-bearing flaws, not just gaps. Gate items before any build:
+
+1. **Oop-word encoding is undecodable (blocker).** The four-way single-word scheme
+   (§8.2) has no room for its cases: `mkSmallInt(0)` is the word `1` = the `true`
+   sentinel; `0` is ambiguous across `nil` / null-slot / offset-0. SmallInt already
+   owns bit0 across 63 bits (`id.zig` `mkSmallInt`), and offsets are 8-aligned, so
+   a real tag scheme (or a per-slot side-encoding) is needed. The current tagged
+   codec keeps `nil` (tag 0) and null (tag 8) distinct (`image.zig` `Tag`) — mheap
+   must too.
+2. **Strings/floats are inline leaves, not heap objects (blocker).** `encodeField`
+   serializes String/Float/int/singleton inline and only routes *compounds* to
+   `internObj`. A String's `{ptr,len}` payload is `slot_raw`, and `ptr` is an
+   out-of-line `c_allocator` pointer — "layout-faithful, one word per slot" dangles
+   it and never stores the bytes. Needs an out-of-line-bytes section + rebasing, or
+   strings stay variable-width (abandoning the pure-mmap premise for them).
+3. **Facts/deltas are id-addressed, mheap is offset-addressed (blocker).** `.facts`
+   and journaled `.heap` deltas use u32 ids into `g_load_reloc`. `.mheap` must
+   preserve the id numbering (or migrate facts + deltas to offsets, a format
+   change). "Facts unchanged" (§8.1) and "offset→pointer map" (§8.3) contradict.
+4. **Permanent arena leaks + GC can't trace it (regression + UAF).** Today's loaded
+   objects are `.collectable`; a permanent mapped arena retains every loaded image
+   forever. And the collector is keyed on `g_blocks` with no range/arena tracing,
+   so a fresh collectable Oop stored into a mutable mapped slot is unreachable to
+   the marker → freed → dangling. Needs genuine arena tracing, not "one hook."
+5. **Lazy-paging was oversold.** The relocating swizzle faults + COW-copies every
+   page up front; the real win is alloc + decode elimination only (§8.1 corrected).
+6. **Framing + page size.** Page-aligning the payload breaks the self-delimiting
+   record framing unless a pad field is added and *both* loaders skip it; and page
+   size (16K Apple / 4K x86) is an unkeyed dimension in `layoutHash` (§8.5).
+7. **The `payload[-2]` nwords word** is a layout the floor doesn't model (one
+   pre-payload word, `VT`), and is only trace-safe in the non-default precise mode.
+
+**Net:** the *pattern* (droppable per-arch fast heap segment over portable truth,
+via `slotKind` / `exportedNameOf` / relink-by-name) is sound and those primitives
+work as claimed. The *encoding and format* in §8.2–§8.5 do not, and must be
+redesigned — resolve #1–#3 on paper before writing a line of emitter.
