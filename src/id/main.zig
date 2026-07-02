@@ -37,7 +37,16 @@ pub fn main() !void {
     var args = try std.process.argsWithAllocator(a);
     defer args.deinit();
     _ = args.next();
-    const script_path = args.next(); // optional: a .birnam file to compile + run
+    var script_path = args.next(); // optional: a .birnam file to compile + run
+    // `--rebuild foo.image` forces the replay path (rebuild code from the image's
+    // own source) instead of mapping the compiled `.code` section.
+    var rebuild = false;
+    if (script_path) |sp| {
+        if (std.mem.eql(u8, sp, "--rebuild")) {
+            rebuild = true;
+            script_path = args.next();
+        }
+    }
     const id_path = std.posix.getenv("BIRNAM_ID_DYLIB") orelse "zig-out/lib/libbirnam_id.dylib";
     const id_path_z = try a.dupeZ(u8, id_path);
     defer a.free(id_path_z);
@@ -55,7 +64,7 @@ pub fn main() !void {
         if (std.mem.eql(u8, sp, "--repl") or std.mem.eql(u8, sp, "-i") or std.mem.eql(u8, sp, "repl"))
             return runRepl(a, api);
         if (std.mem.endsWith(u8, sp, ".image"))
-            return runImage(a, api, sp);
+            return runImage(a, api, sp, rebuild);
         return runScript(a, api, sp);
     }
 
@@ -293,7 +302,13 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
 /// (the native module vtables the image relinks against), map the image back in,
 /// then honor the entry-point convention — if the global `main` is bound, send it
 /// `value`; otherwise open the REPL with every restored binding live (docs/40 §1).
-fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
+///
+/// By default the image's COMPILED code is MAPPED (its methods installed with no
+/// recompile). `[System loadImage:]` answers `true` when it did so; `false` for a
+/// data-only image or an arch/ABI mismatch (or `--rebuild`), where we fall back to
+/// re-evaluating the library from source (here: the stdlib; user-method replay is
+/// slice 4's next step).
+fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) !void {
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
@@ -302,17 +317,20 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     _ = &stack_anchor;
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
 
-    loadStdlib(api, codegen);
-
-    // Map the image (validate header, rebuild store-reachable state).
+    // Map the image. NOTE: stdlib is NOT loaded up front — a mapped `.code` section
+    // installs the whole library (stdlib + user) with no recompile, which is the
+    // point. We only re-eval the stdlib if the image had no mappable code.
     const system = api.import("System") orelse return error.NoSystem;
     const path_str = api.mkString(path.ptr, path.len);
-    if (api.send(system, api.intern("loadImage:"), &[_]Oop{path_str}, 1) == api.nilObj) {
+    const rebuild_arg: Oop = if (rebuild) api.trueObj else api.falseObj;
+    const status = api.send(system, api.intern("loadImage:rebuild:"), &[_]Oop{ path_str, rebuild_arg }, 2);
+    if (status == api.nilObj) {
         out("[image] failed to load ");
         out(path);
         out("\n");
         return error.ImageLoadFailed;
     }
+    if (status == api.falseObj) loadStdlib(api, codegen); // data-only / mismatch → library from source
 
     // Entry-point convention: `main` bound → run it; else drop into the REPL.
     if (api.import("Globals")) |globals| {

@@ -316,9 +316,33 @@ fn reportDeferred() void {
     );
 }
 
-/// Serialize the store-reachable system to `path`: header, then the heap record
-/// (if any objects were reached), then the facts record. Auto-GC is off for the
-/// span (a quiescent save); the walk never collects what it is serializing.
+/// A per-process temp path for the code section (pid-tagged so concurrent boots
+/// and dlopen's path cache don't collide). `suffix` distinguishes save vs load.
+fn codeTempPath(bufz: []u8, suffix: []const u8) [:0]const u8 {
+    return std.fmt.bufPrintZ(bufz, "/tmp/birnam-imgcode-{d}-{s}.dylib", .{ std.c.getpid(), suffix }) catch unreachable;
+}
+
+/// Append the `.code` record (docs/40 slice 4): every recorded method compiled to
+/// one relocatable, INSTALLABLE artifact — loading it installs the methods with
+/// no recompile. Codegen writes the artifact to a temp file; we read its bytes
+/// into the record. Absent when there are no methods.
+fn appendCode(buf: *Buf) void {
+    const codegen = g_api.import("Codegen") orelse return;
+    var pbuf: [128]u8 = undefined;
+    const tmp = codeTempPath(&pbuf, "save");
+    const r = g_api.send(codegen, g_api.intern("compileImageCode:"), &[_]Oop{g_api.mkString(tmp.ptr, tmp.len)}, 1);
+    if (r == null or r == g_api.nilObj) return;
+    const bytes = std.fs.cwd().readFileAlloc(ca, tmp, 1 << 30) catch return;
+    defer ca.free(bytes);
+    std.fs.cwd().deleteFile(tmp) catch {};
+    const at = beginRecord(buf, .code);
+    putBytes(buf, bytes);
+    endRecord(buf, at);
+}
+
+/// Serialize the store-reachable system to `path`: header, the heap record (if any
+/// objects were reached), the facts record, then the code record. Auto-GC is off
+/// for the span (a quiescent save); the walk never collects what it serializes.
 pub fn saveImage(path: []const u8) bool {
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
@@ -357,6 +381,7 @@ pub fn saveImage(path: []const u8) bool {
         putBytes(&buf, facts_recs.items);
         endRecord(&buf, at);
     }
+    appendCode(&buf); // 4. Compiled code — the whole library, mapped on load.
     reportDeferred();
     return writeFile(path, buf.items);
 }
@@ -411,6 +436,15 @@ var g_load_reloc: std.ArrayListUnmanaged(Oop) = .{};
 
 const ObjRec = struct { obj: Oop, vt: Oop, nwords: u32, off: usize };
 var g_load_objs: std.ArrayListUnmanaged(ObjRec) = .{};
+
+// Set by the most recent load: whether a `.code` section was MAPPED (methods
+// installed with no recompile). The header's arch + ABI-validity hash, captured
+// by readHeader, gate that — a mismatch (or --rebuild) leaves it false so the
+// caller falls back to replay/stdlib (docs/40 §4). Reset per load.
+var g_mapped_code: bool = false;
+var g_img_arch: u32 = 0;
+var g_img_abi: u64 = 0;
+var g_force_rebuild: bool = false; // set by [System loadImage:rebuild:] / --rebuild
 
 fn importName(name: []const u8) Oop {
     const z = ca.dupeZ(u8, name) catch @panic("image: oom");
@@ -532,15 +566,35 @@ fn loadFacts(payload: []const u8) bool {
     return true;
 }
 
+/// Map the `.code` section (docs/40 slice 4): write the embedded relocatable
+/// artifact to a temp file and `[Codegen load:]` it, which installs every method
+/// with NO recompile (the default boot). Skipped when the code can't be trusted
+/// (arch/ABI mismatch or --rebuild) — the caller then replays from source. Sets
+/// `g_mapped_code` on success. Returns false only on an actual load error.
+fn loadCode(payload: []const u8) bool {
+    if (!codeMappable()) return true; // not an error — leave it to replay/stdlib
+    const codegen = g_api.import("Codegen") orelse return false;
+    var pbuf: [128]u8 = undefined;
+    const tmp = codeTempPath(&pbuf, "load");
+    if (!writeFile(tmp, payload)) return false;
+    const r = g_api.send(codegen, g_api.intern("load:"), &[_]Oop{g_api.mkString(tmp.ptr, tmp.len)}, 1);
+    std.fs.cwd().deleteFile(tmp) catch {};
+    if (r == g_api.nilObj) return false;
+    g_mapped_code = true;
+    return true;
+}
+
 /// Map an image back into the running system: validate the header, then dispatch
 /// each record — heap precedes facts in the stream, so fact heap-refs resolve.
 /// Auto-GC is off across the load (freshly materialized objects aren't rooted
-/// until the store references them).
+/// until the store references them). `g_mapped_code` reports whether the compiled
+/// `.code` section was mapped (so the caller can skip stdlib / replay).
 pub fn loadImage(path: []const u8) bool {
     const bytes = std.fs.cwd().readFileAlloc(ca, path, 1 << 30) catch return false;
     defer ca.free(bytes);
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
+    g_mapped_code = false;
     var r = Reader{ .b = bytes };
     if (!readHeader(&r)) return false;
     while (r.i < r.b.len) {
@@ -550,10 +604,18 @@ pub fn loadImage(path: []const u8) bool {
         switch (@as(RecordKind, @enumFromInt(kind))) {
             .heap => if (!loadHeap(payload)) return false,
             .facts => if (!loadFacts(payload)) return false,
+            .code => if (!loadCode(payload)) return false,
             else => {}, // unknown/not-yet-handled record: skip by its framed length
         }
     }
     return true;
+}
+
+/// Whether the most recent `loadImage` mapped a compiled `.code` section (methods
+/// installed, no recompile). The boot path uses this to decide whether it must
+/// still provide the library another way (replay / stdlib re-eval).
+pub fn mappedCode() bool {
+    return g_mapped_code;
 }
 
 /// Validate an image's STRUCTURE — header + record framing — without mapping it
@@ -580,9 +642,16 @@ fn readHeader(r: *Reader) bool {
     if (!std.mem.eql(u8, magic, MAGIC)) return false;
     if ((r.u32v() orelse return false) != FORMAT_VERSION) return false;
     if ((r.u32v() orelse return false) != ENDIAN_TAG) return false;
-    _ = r.u32v() orelse return false; // arch — checked in slice 4
-    _ = r.u64v() orelse return false; // abi hash — checked in slice 4
+    g_img_arch = r.u32v() orelse return false; // arch tag (code sections are per-arch)
+    g_img_abi = r.u64v() orelse return false; // runtime-shim ABI validity hash
     return true;
+}
+
+/// True if the image's compiled `.code` section can be trusted on this runtime:
+/// same architecture and the same shim ABI (docs/40 §4). A mismatch — or an
+/// explicit rebuild request — forces the replay path instead.
+fn codeMappable() bool {
+    return !g_force_rebuild and g_img_arch == ARCH_TAG and g_img_abi == abiHash();
 }
 
 // -- birnam surface: [System saveImage:] / [System loadImage:] ---------------
@@ -601,13 +670,33 @@ fn sysSaveImage(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return if (saveImage(p[0..len])) self else g_api.nilObj;
 }
 
-/// `[System loadImage: path]` — map an image back in; self on success, nil on
-/// failure. `birnam-id foo.image` uses this on boot.
+/// `[System loadImage: path]` — map an image back in (mapping compiled code by
+/// default). Answers nil on failure, `true` if the compiled `.code` section was
+/// mapped (no recompile), `false` if it loaded but code was NOT mapped (a
+/// data-only image or an arch/ABI mismatch) — so the caller can supply the
+/// library another way (replay / stdlib). `birnam-id foo.image` uses this on boot.
 fn sysLoadImage(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
     _ = n;
+    g_force_rebuild = false;
     var len: usize = 0;
     const p = pathArg(a[0], &len) orelse return g_api.nilObj;
-    return if (loadImage(p[0..len])) self else g_api.nilObj;
+    if (!loadImage(p[0..len])) return g_api.nilObj;
+    return if (g_mapped_code) g_api.trueObj else g_api.falseObj;
+}
+
+/// `[System loadImage: path rebuild: aBoolean]` — like `loadImage:`, but when
+/// `aBoolean` is true FORCE the replay path (rebuild code from the image's own
+/// source) instead of mapping the compiled `.code`. Answers as `loadImage:`.
+fn sysLoadImageRebuild(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    g_force_rebuild = (a[1] == g_api.trueObj);
+    defer g_force_rebuild = false;
+    var len: usize = 0;
+    const p = pathArg(a[0], &len) orelse return g_api.nilObj;
+    if (!loadImage(p[0..len])) return g_api.nilObj;
+    return if (g_mapped_code) g_api.trueObj else g_api.falseObj;
 }
 
 // -- bringup -----------------------------------------------------------------
@@ -617,6 +706,7 @@ pub fn bringUp(api: *IdApi) void {
     const system_vt = api.import("SystemVt");
     api.method(system_vt, api.intern("saveImage:"), &sysSaveImage);
     api.method(system_vt, api.intern("loadImage:"), &sysLoadImage);
+    api.method(system_vt, api.intern("loadImage:rebuild:"), &sysLoadImageRebuild);
     // The fact collector: a proto (permanent → safe to hold module-globally) whose
     // one method the store drives during `imageFactsInto:`.
     g_collector_vt = api.proto(api.object_vt);

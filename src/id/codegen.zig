@@ -916,6 +916,37 @@ fn mCompileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.send(tcc, g_api.intern("compile:output:as:"), &[_]Oop{ c_src, a[1], g_api.intern("dll") }, 3);
 }
 
+/// `[Codegen compileImageCode: path]` — the image's `.code` section (docs/40
+/// slice 4). Gather EVERY recorded method source (the `__methods__` facts — the
+/// durable source of truth, reliable across image boots, not an in-memory list)
+/// into one program and compile it to a relocatable artifact at `path` in the
+/// INSTALLABLE form: loading it installs every method with no recompile. Returns
+/// the path, or nil if there are no methods or the compile fails.
+fn mCompileImageCode(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const nAttrs = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{g_methods_entity}, 1));
+    if (nAttrs <= 0) return g_api.nilObj;
+    var prog: std.ArrayList(u8) = .{};
+    defer prog.deinit(ca);
+    var i: i64 = 0;
+    while (i < nAttrs) : (i += 1) {
+        const attr = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ g_methods_entity, g_api.mkSmallInt(i) }, 2);
+        const src = g_api.send(g_store, g_api.intern("currentValue:attr:"), &[_]Oop{ g_methods_entity, attr }, 2);
+        if (src == g_api.nilObj) continue;
+        var len: usize = 0;
+        const p = g_api.stringBytes(src, &len);
+        prog.appendSlice(ca, p[0..len]) catch @panic("codegen: oom");
+        prog.appendSlice(ca, ";\n") catch @panic("codegen: oom");
+    }
+    if (prog.items.len == 0) return g_api.nilObj;
+    const progStr = g_api.mkString(prog.items.ptr, prog.items.len);
+    var buf = emitProgram(progStr, false, true) orelse return g_api.nilObj;
+    defer buf.deinit(ca);
+    const c_src = g_api.mkString(buf.items.ptr, buf.items.len);
+    return g_api.send(tcc, g_api.intern("compile:output:as:"), &[_]Oop{ c_src, a[0], g_api.intern("dll") }, 3);
+}
+
 const RTLD_LAZY: c_int = 1;
 
 /// `[Codegen load: path]` — load a compiled-birnam artifact: dlopen it (the
@@ -1116,6 +1147,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("eval:"), &mEval);
     api.method(codegen_vt, api.intern("evalPersisting:"), &mEvalPersisting);
     api.method(codegen_vt, api.intern("compile:output:"), &mCompileOutput);
+    api.method(codegen_vt, api.intern("compileImageCode:"), &mCompileImageCode);
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
     api.method(reflect_vt, api.intern("defineMethod:on:as:source:"), &mDefineMethodSourced);
