@@ -53,6 +53,7 @@ var sel_addMethodOn: Oop = null;
 var method_blk_counter: usize = 0; // unique keys for stashed method blocks
 var method_src_counter: usize = 0; // unique keys for recorded method sources
 var g_methods_entity: Oop = null; // the reserved entity method-source facts hang off of
+var artifact_method_counter: usize = 0; // per-emit ids for installable artifact methods
 
 // The `__ev` entry-point harness vtable. Minted once, reused every eval: each
 // eval reinstalls its fresh `__ev` method (install:as:on: REPLACES an existing
@@ -440,6 +441,48 @@ fn emitDefineMethodSourced(buf: *std.ArrayList(u8), recvNode: Oop, argNodes: []c
     return true;
 }
 
+/// The number of `:` in a selector string (its keyword arity; 0 for unary/binary).
+fn colonCount(sel: []const u8) usize {
+    var k: usize = 0;
+    for (sel) |ch| {
+        if (ch == ':') k += 1;
+    }
+    return k;
+}
+
+/// Artifact-mode `[Reflect defineMethod: #sel on: T as: blk]` (docs/40 slice 4):
+/// emit the method so that LOADING the artifact installs PRE-COMPILED code — no
+/// runtime compile. Mirrors `installMethod` (the JIT path) but statically: the
+/// block becomes an artifact function+instance stashed in a per-artifact global
+/// (`__amblk_N`), a forwarding trampoline (`__amtramp_N`) is emitted into
+/// `fn_defs`, and a statement-expression stashes the block then `birnam_method`-
+/// installs the trampoline pointer directly. The `__amblk`/`__amtramp` namespace
+/// is distinct from the live session's `__mblk` so a boot's stdlib re-eval can't
+/// collide. `sel`/`T` resolve relocatably (birnam_intern / birnam_global).
+fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop) bool {
+    const selRaw = text(argNodes[0]); // "#sel"
+    const sel = if (selRaw.len >= 1 and selRaw[0] == '#') selRaw[1..] else selRaw;
+    const k = colonCount(sel);
+    const n = artifact_method_counter;
+    artifact_method_counter += 1;
+
+    // The trampoline: forward [self, args…] to the stashed block via value:…(k+1).
+    putFmt(&fn_defs, "void* __amtramp{d}(void* self, void** args, long n){{ (void)n; void* a[{d}]; a[0]=self; long i; for(i=0;i<{d};i++) a[i+1]=args[i]; return birnam_send(birnam_global(\"__amblk{d}\"), birnam_intern(\"", .{ n, k + 1, k, n });
+    var vi: usize = 0;
+    while (vi < k + 1) : (vi += 1) put(&fn_defs, "value:");
+    putFmt(&fn_defs, "\"), a, {d}); }}\n", .{k + 1});
+
+    // The install site: stash the block, then install the trampoline on the type.
+    putFmt(buf, "({{ void* _vt = ", .{});
+    if (!emit(buf, argNodes[1])) return false; // the type expression (e.g. Integer)
+    putFmt(buf, "; birnam_global_set(\"__amblk{d}\", ", .{n});
+    if (!emit(buf, argNodes[2])) return false; // the block literal → instance
+    put(buf, "); birnam_method(_vt, birnam_intern(\"");
+    putCStr(buf, sel);
+    putFmt(buf, "\"), (void*)&__amtramp{d}); _vt; }})", .{n});
+    return true;
+}
+
 /// Emit a C expression of type `void*` (a tagged SmallInt / Oop) for `node0`.
 /// Returns false on anything not yet supported.
 fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
@@ -529,8 +572,14 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
             // threading the ORIGINAL source text so the method's portable source
             // lands in the store (docs/40 §4). `node` is the whole send — its span
             // is the re-evaluable definition.
-            if (std.mem.eql(u8, sel.items, "defineMethod:on:as:") and args.items.len == 3)
+            if (std.mem.eql(u8, sel.items, "defineMethod:on:as:") and args.items.len == 3) {
+                // Artifact mode (docs/40 slice 4): emit the method PRE-COMPILED —
+                // the trampoline as a static fn + a direct `birnam_method` install,
+                // so loading the artifact installs mapped code with no recompile.
+                // The JIT/source-recording path is used only for LIVE definition.
+                if (artifact_mode) return emitDefineMethodInstallable(buf, args.items);
                 return emitDefineMethodSourced(buf, recv, args.items, node);
+            }
             return emitGeneralSend(buf, recv, sel.items, args.items);
         }
 
@@ -916,6 +965,7 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
     bound_names.clearRetainingCapacity();
     fn_defs.clearRetainingCapacity();
     blk_counter = 0;
+    artifact_method_counter = 0;
     baked_globals.clearRetainingCapacity();
     global_memo.clearRetainingCapacity();
     artifact_mode = artifact;

@@ -481,3 +481,26 @@ test "slice-2: a compiled closure's heap capture survives precise collection" {
     const p = api.stringBytes(r, &len);
     try std.testing.expectEqualStrings("birnam rocks", p[0..len]);
 }
+
+// -- slice 4 of the images arc (docs/40 §7.4): mapped code — install PRE-COMPILED --
+
+test "slice-4: a defineMethod artifact installs a method with no recompile" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+
+    const path = "/tmp/birnam_codegen_defs.dylib";
+    std.fs.cwd().deleteFile(path) catch {};
+
+    // In ARTIFACT mode, defineMethod lowers to a static trampoline (__amtramp) +
+    // a direct birnam_method install — not the compiling runtime send. So loading
+    // the artifact installs MAPPED code: the trampoline pointer comes from the
+    // dlopen'd unit, and dispatch runs it with no recompile. (The live/JIT path
+    // still uses the source-recording send — that's slice 3's replay truth.)
+    const src = "[Reflect defineMethod: #triple on: Integer as: [:x | [x + [x + x]]]]; [7 triple]";
+    const psrc = api.mkString(src.ptr, src.len);
+    const ppath = api.mkString(path, path.len);
+    try std.testing.expect(api.send(Codegen, api.intern("compile:output:"), &[_]Oop{ psrc, ppath }, 2) != api.nilObj);
+
+    const r = api.send(Codegen, api.intern("load:"), &[_]Oop{ppath}, 1);
+    try std.testing.expectEqual(@as(i64, 21), api.smallIntValue(r)); // 7 * 3
+}
