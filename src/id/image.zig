@@ -699,6 +699,51 @@ fn sysLoadImageRebuild(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return if (g_mapped_code) g_api.trueObj else g_api.falseObj;
 }
 
+// -- exe bake: package the running system as a self-booting executable -------
+//
+// The standalone-exe bake (docs/40 §6): append the image to a copy of the running
+// `birnam-id` runtime, after a trailer the runtime notices on startup and boots.
+// This module owns only the packaging; the boot detection is in main.zig (which
+// MUST keep `bake_magic` in sync). Layout, appended after the runtime binary:
+//   [ image bytes ][ u64 img_len ][ 8-byte magic ]
+const bake_magic = "BIRNMEXE";
+
+/// `[System bakeExe: outPath]` — serialize the running system and append it to a
+/// copy of this executable, producing a self-booting app at `outPath` (running it
+/// boots the image and honors the `main`-entry convention; no `.image` file, no
+/// explicit `birnam-id` invocation). Answers self on success, nil on any failure.
+fn sysBakeExe(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var len: usize = 0;
+    const p = pathArg(a[0], &len) orelse return g_api.nilObj;
+    const out_path = ca.dupe(u8, p[0..len]) catch return g_api.nilObj;
+    defer ca.free(out_path);
+
+    // Save the current system to a per-process temp image, then read it back.
+    var pbuf: [64]u8 = undefined;
+    const tmp = std.fmt.bufPrintZ(&pbuf, "/tmp/birnam-bakeimg-{d}.image", .{std.c.getpid()}) catch return g_api.nilObj;
+    if (!saveImage(tmp)) return g_api.nilObj;
+    defer std.fs.cwd().deleteFile(tmp) catch {};
+    const img = std.fs.cwd().readFileAlloc(ca, tmp, 1 << 30) catch return g_api.nilObj;
+    defer ca.free(img);
+
+    // Copy the running exe, then append the image + trailer.
+    const self_path = std.fs.selfExePathAlloc(ca) catch return g_api.nilObj;
+    defer ca.free(self_path);
+    const self_bytes = std.fs.cwd().readFileAlloc(ca, self_path, 1 << 30) catch return g_api.nilObj;
+    defer ca.free(self_bytes);
+
+    const f = std.fs.cwd().createFile(out_path, .{ .mode = 0o755 }) catch return g_api.nilObj;
+    defer f.close();
+    f.writeAll(self_bytes) catch return g_api.nilObj;
+    f.writeAll(img) catch return g_api.nilObj;
+    var lb: [8]u8 = undefined;
+    std.mem.writeInt(u64, &lb, @intCast(img.len), .little);
+    f.writeAll(&lb) catch return g_api.nilObj;
+    f.writeAll(bake_magic) catch return g_api.nilObj;
+    return self;
+}
+
 // -- bringup -----------------------------------------------------------------
 
 pub fn bringUp(api: *IdApi) void {
@@ -707,6 +752,7 @@ pub fn bringUp(api: *IdApi) void {
     api.method(system_vt, api.intern("saveImage:"), &sysSaveImage);
     api.method(system_vt, api.intern("loadImage:"), &sysLoadImage);
     api.method(system_vt, api.intern("loadImage:rebuild:"), &sysLoadImageRebuild);
+    api.method(system_vt, api.intern("bakeExe:"), &sysBakeExe);
     // The fact collector: a proto (permanent → safe to hold module-globally) whose
     // one method the store drives during `imageFactsInto:`.
     g_collector_vt = api.proto(api.object_vt);

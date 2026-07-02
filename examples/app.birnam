@@ -4,6 +4,15 @@
 //   birnam /tmp/birnam-app.image      // BOOTS it — `main` auto-runs, no REPL
 //   birnam --rebuild /tmp/birnam-app.image   // same, via the source replay path
 //
+// Bake it into a self-booting executable — the image appended to a copy of the
+// runtime, run it directly (no `.image` arg, no `birnam` invocation):
+//
+//   birnam --bake /tmp/birnam-app.image ./myapp   // then:  ./myapp
+//
+// or, from inside a script, `[System bakeExe: "./myapp"]` bakes the running
+// system in one step. (A baked exe still finds the runtime dylibs next to it —
+// keep them in `<exe>/../lib` or set $BIRNAM_LIB_DIR.)
+//
 // The entry-point convention: if the global `main` is bound, booting the image
 // sends it `value` instead of opening the REPL. `main` is a BLOCK — a closure —
 // so its value can't be serialized directly. What makes it survive is that a

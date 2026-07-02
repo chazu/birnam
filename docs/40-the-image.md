@@ -67,8 +67,24 @@
 > to Globals, as in the REPL) — so `let main := [| … ]` in a script leaves `main` in
 > the store for `[System saveImage:]` and boots auto-run it. VERIFIED cross-process
 > (mapped + `--rebuild`) and in-process (image_test); `examples/app.birnam` is the
-> `main`-entry demo. REMAINING (follow-ups, not core): the exe bake; incremental
-> append + compact (§7.4).
+> `main`-entry demo.
+>
+> **Slice 4 follow-up — the exe bake SHIPPED (2026-07-02):** a "runnable app" is
+> a COPY of the birnam-id runtime with an image appended after a 16-byte trailer
+> (`[image][u64 len][magic "BIRNMEXE"]`). Trailing bytes are ignored by both the
+> Mach-O and ELF loaders, so the copy still executes as birnam-id; on startup it
+> reads its own file, notices the trailer, and boots the embedded image via the
+> ordinary boot path (mapped code, replay, global re-derivation, `main`-entry).
+> Two ways to bake: `birnam-id --bake <image> <out-exe>` (an existing image) or
+> `[System bakeExe: path]` (the running system, one step from a script).
+> `resolveLibDir` now finds the runtime dylibs exe-relative (`<exe>`, then
+> `<exe>/../lib`, then `$BIRNAM_LIB_DIR`, then `zig-out/lib`) and the raw id-dylib
+> load uses it too — so a baked exe placed beside its dylibs boots from any cwd
+> with no env. VERIFIED: `./myapp` from both bake paths, env-free from `/tmp`,
+> mapped + `--rebuild`; a plain birnam-id has no trailer and is unaffected. No
+> OS-level dual-format file (dyld/glibc fight it, §1) — "runnable" is this bake
+> step over the same content, as designed. REMAINING (follow-up, not core):
+> incremental append + compact (§7.4).
 >
 > Builds on the
 > [running system](36-the-running-system.md) (globals are cells, method source

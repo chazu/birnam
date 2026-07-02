@@ -29,6 +29,85 @@ fn mPlus(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkSmallInt(g_api.smallIntValue(self) + g_api.smallIntValue(args[0]));
 }
 
+// -- exe bake: a self-booting executable = this runtime + an appended image ---
+//
+// The standalone-exe bake (docs/40 §6): rather than an OS-level dual-format file
+// (given up — dyld/glibc fight it), a "runnable app" is a COPY of the birnam-id
+// runtime with an image appended after a trailer. Trailing bytes are ignored by
+// both the Mach-O and ELF loaders, so the copy still executes as birnam-id; on
+// startup it notices the trailer and boots the embedded image (auto-running
+// `main`). The image format and boot path are unchanged — this only packages.
+//
+//   file layout:  [ birnam-id binary ][ image bytes ][ u64 img_len ][ magic ]
+//
+// The magic MUST stay in sync with image.zig's `bake_magic` (its `bakeExe:`).
+const BAKE_MAGIC = "BIRNMEXE";
+const BAKE_TRAILER = 16; // u64 length + 8-byte magic
+
+/// Read this executable's own bytes (its path from `selfExePath`).
+fn selfExeBytes(a: std.mem.Allocator) ![]u8 {
+    const self_path = try std.fs.selfExePathAlloc(a);
+    defer a.free(self_path);
+    return std.fs.cwd().readFileAlloc(a, self_path, 1 << 30);
+}
+
+/// The image sub-slice a bake trailer points to inside `bytes` (a whole exe file),
+/// or null if there is no valid trailer — a plain birnam-id, or bytes too short /
+/// a bad length. Pure: no I/O, so it is unit-testable.
+fn bakeTrailerImage(bytes: []const u8) ?[]const u8 {
+    if (bytes.len < BAKE_TRAILER) return null;
+    if (!std.mem.eql(u8, bytes[bytes.len - 8 ..], BAKE_MAGIC)) return null;
+    const img_len = std.mem.readInt(u64, bytes[bytes.len - BAKE_TRAILER ..][0..8], .little);
+    if (img_len == 0 or img_len + BAKE_TRAILER > bytes.len) return null;
+    const start = bytes.len - BAKE_TRAILER - @as(usize, @intCast(img_len));
+    return bytes[start .. bytes.len - BAKE_TRAILER];
+}
+
+/// The embedded image appended to this exe (the bake trailer), or null for a plain
+/// birnam-id (no trailer). Caller frees the returned slice.
+fn embeddedImageBytes(a: std.mem.Allocator) !?[]u8 {
+    const bytes = try selfExeBytes(a);
+    defer a.free(bytes);
+    const img = bakeTrailerImage(bytes) orelse return null;
+    return try a.dupe(u8, img);
+}
+
+/// `birnam-id --bake <image> <out-exe>` — append an existing `.image` to a copy of
+/// this runtime, producing a self-booting executable. (The in-session form is
+/// `[System bakeExe: path]`, which bakes the running system directly.)
+fn bakeExeCli(a: std.mem.Allocator, image_path: []const u8, out_path: []const u8) !void {
+    const self_bytes = try selfExeBytes(a);
+    defer a.free(self_bytes);
+    const img_bytes = try std.fs.cwd().readFileAlloc(a, image_path, 1 << 30);
+    defer a.free(img_bytes);
+    const f = try std.fs.cwd().createFile(out_path, .{ .mode = 0o755 });
+    defer f.close();
+    try f.writeAll(self_bytes);
+    try f.writeAll(img_bytes);
+    var lb: [8]u8 = undefined;
+    std.mem.writeInt(u64, &lb, img_bytes.len, .little);
+    try f.writeAll(&lb);
+    try f.writeAll(BAKE_MAGIC);
+    out("[bake] wrote ");
+    out(out_path);
+    out("\n");
+}
+
+/// Boot an image carried as bytes (the exe-bake path): write it to a per-process
+/// temp `.image` and run it through the ordinary image boot (so mapped code,
+/// replay, global re-derivation, and the `main`-entry convention all apply).
+fn runImageBytes(a: std.mem.Allocator, api: *IdApi, bytes: []const u8, rebuild: bool) !void {
+    var pbuf: [64]u8 = undefined;
+    const tmp = try std.fmt.bufPrint(&pbuf, "/tmp/birnam-baked-{d}.image", .{std.c.getpid()});
+    {
+        const f = try std.fs.cwd().createFile(tmp, .{});
+        defer f.close();
+        try f.writeAll(bytes);
+    }
+    defer std.fs.cwd().deleteFile(tmp) catch {};
+    return runImage(a, api, tmp, rebuild);
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -47,9 +126,33 @@ pub fn main() !void {
             script_path = args.next();
         }
     }
-    const id_path = std.posix.getenv("BIRNAM_ID_DYLIB") orelse "zig-out/lib/libbirnam_id.dylib";
+    // The id dylib: an explicit `$BIRNAM_ID_DYLIB`, else libbirnam_id.dylib in the
+    // resolved lib dir (exe-relative, so a baked exe boots from any cwd).
+    const id_path = if (std.posix.getenv("BIRNAM_ID_DYLIB")) |d|
+        try a.dupe(u8, d)
+    else blk: {
+        const dir = try resolveLibDir(a);
+        defer a.free(dir);
+        break :blk try std.fs.path.join(a, &.{ dir, "libbirnam_id.dylib" });
+    };
+    defer a.free(id_path);
     const id_path_z = try a.dupeZ(u8, id_path);
     defer a.free(id_path_z);
+
+    // `--bake <image> <out-exe>` — tooling op, no runtime needed yet.
+    if (script_path) |sp| {
+        if (std.mem.eql(u8, sp, "--bake")) {
+            const img = args.next() orelse {
+                out("usage: birnam-id --bake <image> <out-exe>\n");
+                return error.BakeArgs;
+            };
+            const outp = args.next() orelse {
+                out("usage: birnam-id --bake <image> <out-exe>\n");
+                return error.BakeArgs;
+            };
+            return bakeExeCli(a, img, outp);
+        }
+    }
 
     // The ONE irreducible raw load — open the id dylib, find `id_init`, call it to
     // get the id API table. Both the script runner and the demo build on this.
@@ -57,6 +160,13 @@ pub fn main() !void {
     const id_init = lib.lookup(idapi.IdInitFn, "id_init") orelse return error.NoIdInit;
     const api = id_init();
     g_api = api;
+
+    // Baked exe: if this binary carries an appended image, boot it — this IS the
+    // app. A plain birnam-id has no trailer and falls through to normal handling.
+    if (try embeddedImageBytes(a)) |img| {
+        defer a.free(img);
+        return runImageBytes(a, api, img, rebuild);
+    }
 
     // Script mode: `birnam-id path.birnam` compiles + runs the file, quietly.
     // REPL mode: `birnam-id --repl` (or `-i` / `repl`) starts an interactive loop.
@@ -263,10 +373,34 @@ fn loadStdlib(api: *IdApi, codegen: Oop) void {
     _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(STDLIB_SRC, STDLIB_SRC.len)}, 1);
 }
 
+/// Resolve the directory holding the runtime module dylibs. Tries, in order:
+/// `$BIRNAM_LIB_DIR`, then next to this executable (`<exedir>` and `<exedir>/../lib`
+/// — so a baked exe placed beside its dylibs just works), then `zig-out/lib` (the
+/// dev tree). The first directory that actually holds `libbirnam_store.dylib` wins;
+/// falls back to `zig-out/lib`. Caller frees the returned slice.
+fn resolveLibDir(a: std.mem.Allocator) ![]u8 {
+    if (std.posix.getenv("BIRNAM_LIB_DIR")) |d| return a.dupe(u8, d);
+    const probe = "libbirnam_store.dylib";
+    if (std.fs.selfExeDirPathAlloc(a)) |exedir| {
+        defer a.free(exedir);
+        const parent_lib = try std.fs.path.join(a, &.{ exedir, "..", "lib" });
+        defer a.free(parent_lib);
+        for ([_][]const u8{ exedir, parent_lib }) |cand| {
+            const p = try std.fs.path.join(a, &.{ cand, probe });
+            defer a.free(p);
+            if (std.fs.cwd().access(p, .{})) |_| {
+                return a.dupe(u8, cand); // cand is exedir/parent_lib, both freed after we dupe
+            } else |_| {}
+        }
+    } else |_| {}
+    return a.dupe(u8, "zig-out/lib");
+}
+
 /// Load the full language stack quietly through the id api (store first, since
 /// codegen resolves globals through it).
 fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
-    const lib_dir = std.posix.getenv("BIRNAM_LIB_DIR") orelse "zig-out/lib";
+    const lib_dir = try resolveLibDir(a);
+    defer a.free(lib_dir);
     for (script_modules) |m| {
         const ps = try std.fmt.allocPrint(a, "{s}/{s}.dylib", .{ lib_dir, m });
         defer a.free(ps);
@@ -580,4 +714,33 @@ test "repl: isBalanced tracks brackets, ignoring strings and comments" {
     try expect(isBalanced("[1] // a ] comment ["));
     // Over-closed reads as done (the evaluator reports the real error).
     try expect(isBalanced("a]"));
+}
+
+test "bake: the exe trailer round-trips an image slice; plain bytes have none" {
+    const expect = std.testing.expect;
+    const a = std.testing.allocator;
+
+    // Assemble a synthetic baked exe: [runtime bytes][image][u64 len][magic].
+    const runtime = "MZ...a pretend runtime binary...";
+    const image = "BIRNAMIM\x01\x00\x00\x00...pretend image payload...";
+    var buf: std.ArrayList(u8) = .{};
+    defer buf.deinit(a);
+    try buf.appendSlice(a, runtime);
+    try buf.appendSlice(a, image);
+    var lb: [8]u8 = undefined;
+    std.mem.writeInt(u64, &lb, image.len, .little);
+    try buf.appendSlice(a, &lb);
+    try buf.appendSlice(a, BAKE_MAGIC);
+
+    // The trailer recovers exactly the image slice.
+    const got = bakeTrailerImage(buf.items) orelse return error.NoTrailer;
+    try std.testing.expectEqualStrings(image, got);
+
+    // A plain binary (no trailer), an empty file, and a corrupt length → null.
+    try expect(bakeTrailerImage(runtime) == null);
+    try expect(bakeTrailerImage("") == null);
+    var bad = try a.dupe(u8, buf.items);
+    defer a.free(bad);
+    std.mem.writeInt(u64, bad[bad.len - BAKE_TRAILER ..][0..8], 1 << 30, .little); // len past EOF
+    try expect(bakeTrailerImage(bad) == null);
 }
