@@ -51,6 +51,8 @@ var sel_addSymbol: Oop = null;
 var sel_assert: Oop = null;
 var sel_addMethodOn: Oop = null;
 var method_blk_counter: usize = 0; // unique keys for stashed method blocks
+var method_src_counter: usize = 0; // unique keys for recorded method sources
+var g_methods_entity: Oop = null; // the reserved entity method-source facts hang off of
 
 // The `__ev` entry-point harness vtable. Minted once, reused every eval: each
 // eval reinstalls its fresh `__ev` method (install:as:on: REPLACES an existing
@@ -312,9 +314,30 @@ fn compileFn(c_src_bytes: []const u8, fn_name: []const u8) Oop {
 fn mDefineMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
-    const sel = args[0];
-    const vt = args[1];
-    const blk = args[2];
+    return installMethod(args[0], args[1], args[2]);
+}
+
+/// `[Reflect defineMethod: #sel on: T as: blk source: srcString]` — the source-
+/// carrying form codegen lowers `defineMethod:on:as:` to. Records the definition's
+/// source as a store fact (the portable truth for image save/replay, docs/40 §4)
+/// keyed by a fresh `__msrc_N` on the reserved methods entity — a String leaf, so
+/// it survives an image directly — then installs the method exactly as the 3-arg
+/// form does.
+fn mDefineMethodSourced(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const id = method_src_counter;
+    method_src_counter += 1;
+    var keybuf: [40]u8 = undefined;
+    const key = std.fmt.bufPrintZ(&keybuf, "__msrc_{d}", .{id}) catch return g_api.nilObj;
+    _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_methods_entity, g_api.intern(key.ptr), args[3] }, 3);
+    return installMethod(args[0], args[1], args[2]);
+}
+
+/// Install `blk` as method `sel` on `vt`: stash the block in a uniquely-named
+/// global, compile a forwarding trampoline, and register it through the store's
+/// dispatch mirror. Shared by both `defineMethod:` forms.
+fn installMethod(sel: Oop, vt: Oop, blk: Oop) Oop {
     const k = selectorArity(sel);
 
     // Stash the block in a uniquely-named global the trampoline reads at dispatch.
@@ -394,6 +417,26 @@ fn emitGeneralSend(buf: *std.ArrayList(u8), recvNode: Oop, sel: []const u8, argN
     var nb: [24]u8 = undefined;
     const ns = std.fmt.bufPrint(&nb, "}}, {d}L)", .{argNodes.len}) catch return false;
     put(buf, ns);
+    return true;
+}
+
+/// Emit `[<recv> defineMethod: … on: … as: …]` as the 4-arg
+/// `defineMethod:on:as:source:` send, appending the definition's original source
+/// text (the whole send node's span) as a String 4th arg. The runtime records it
+/// as a store fact — the portable truth image save/replay is built on (docs/40 §4).
+fn emitDefineMethodSourced(buf: *std.ArrayList(u8), recvNode: Oop, argNodes: []const Oop, sendNode: Oop) bool {
+    put(buf, "birnam_send(");
+    if (!emit(buf, recvNode)) return false;
+    put(buf, ", birnam_intern(\"defineMethod:on:as:source:\"), (void*[]){");
+    for (argNodes) |an| {
+        if (!emit(buf, an)) return false;
+        put(buf, ", ");
+    }
+    put(buf, "birnam_mkString(\"");
+    const s = text(sendNode);
+    putCStr(buf, s);
+    var nb: [24]u8 = undefined;
+    put(buf, std.fmt.bufPrint(&nb, "\", {d}L)}}, 4L)", .{s.len}) catch return false);
     return true;
 }
 
@@ -482,6 +525,12 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
                 sel.appendSlice(ca, text(child(msg, i))) catch @panic("codegen: oom");
                 args.append(ca, child(msg, i + 1)) catch @panic("codegen: oom");
             }
+            // `defineMethod:on:as:` is lowered to the 4-arg `…:source:` form,
+            // threading the ORIGINAL source text so the method's portable source
+            // lands in the store (docs/40 §4). `node` is the whole send — its span
+            // is the re-evaluable definition.
+            if (std.mem.eql(u8, sel.items, "defineMethod:on:as:") and args.items.len == 3)
+                return emitDefineMethodSourced(buf, recv, args.items, node);
             return emitGeneralSend(buf, recv, sel.items, args.items);
         }
 
@@ -975,6 +1024,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     tcc = api.import("Tcc") orelse @panic("codegen: Tcc not loaded");
     g_store = api.import("Store") orelse @panic("codegen: Store not loaded");
     g_globals_entity = api.intern("__globals__");
+    g_methods_entity = api.intern("__methods__");
     sel_currentValue = api.intern("currentValue:attr:");
     sel_addSymbol = api.intern("addSymbol:value:");
     sel_assert = api.intern("assert:attr:value:");
@@ -1018,6 +1068,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("compile:output:"), &mCompileOutput);
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
+    api.method(reflect_vt, api.intern("defineMethod:on:as:source:"), &mDefineMethodSourced);
 
     if (!reloading) {
         _ = api.exportObj("CodegenVt", codegen_vt);
