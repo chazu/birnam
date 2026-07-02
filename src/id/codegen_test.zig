@@ -405,3 +405,44 @@ test "integration: [Alien callback:] on a REAL compiled birnam block" {
     const r = api.send(cb, api.intern("cgApply"), &[_]Oop{}, 0);
     try std.testing.expectEqual(@as(i64, 142), api.smallIntValue(r));
 }
+
+// -- slice 1 of the images arc (docs/40 §3a): relocatable artifacts -------------
+
+test "slice-1: compile birnam to a relocatable .dylib, load it, run it" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+
+    const path = "/tmp/birnam_codegen_artifact.dylib";
+    std.fs.cwd().deleteFile(path) catch {};
+
+    // Exercises every relocatable piece at once: baked global handles (`Vector`
+    // behind the #[…] literal and `Integer`'s protocol — re-derived by name in
+    // __birnam_unit_init), a capturing closure (a file-scope block fn inside the
+    // artifact), and dispatch through the undefined `birnam_*` externals the
+    // dynamic loader resolves against this process at dlopen.
+    const src =
+        "let base := 40; let add := [:y | [base + y]]; " ++
+        "let v := #[[add value: 1] [add value: 2]]; [[v size] + [add value: 0]]";
+    const psrc = api.mkString(src.ptr, src.len);
+    const ppath = api.mkString(path, path.len);
+    const out = api.send(Codegen, api.intern("compile:output:"), &[_]Oop{ psrc, ppath }, 2);
+    try std.testing.expect(out != api.nilObj);
+
+    // The artifact must be pure: no `__g` handle may remain an undefined dynamic
+    // import (nothing exports those — a baked JIT handle leaking into the artifact
+    // would poison dlopen), and __birnam_unit_init must be present.
+    const r = api.send(Codegen, api.intern("load:"), &[_]Oop{ppath}, 1);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r)); // 2 + 40
+}
+
+test "slice-1: artifact failures are nil — bad source, missing library" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+
+    const bad = api.mkString("let :=", 6);
+    const ppath = api.mkString("/tmp/birnam_codegen_never.dylib", 31);
+    try std.testing.expect(api.send(Codegen, api.intern("compile:output:"), &[_]Oop{ bad, ppath }, 2) == api.nilObj);
+
+    const absent = api.mkString("/tmp/birnam_codegen_absent.dylib", 32);
+    try std.testing.expect(api.send(Codegen, api.intern("load:"), &[_]Oop{absent}, 1) == api.nilObj);
+}

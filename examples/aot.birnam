@@ -1,0 +1,30 @@
+// AOT — compile birnam to a shared library, load it back, run it.
+//
+//   birnam examples/aot.birnam
+//
+// `[Codegen compile: src output: path]` writes a birnam program to disk as a
+// RELOCATABLE .dylib (slice 1 of the images arc, docs/40 §3a): the compiled
+// code carries no address from the compiling process. Its calls into the
+// runtime stay undefined `birnam_*` externals the dynamic loader resolves at
+// dlopen, and its global references are re-derived by name in a per-unit
+// `__birnam_unit_init` fix-up hook. So the artifact loads in a DIFFERENT
+// process just as well — compile here, `[Codegen load: path]` anywhere.
+//
+// The program below exercises the relocatable pieces: a closure (its code is a
+// function inside the artifact), globals (`Vector` behind the #[…] literal,
+// re-derived at load), and full message dispatch through the runtime.
+
+let src := "let base := 40; let add := [:y | [base + y]]; let v := #[[add value: 1] [add value: 2]]; [[v size] + [add value: 0]]";
+
+let path := [Codegen compile: src output: "/tmp/birnam_aot_example.dylib"];
+[System println: ["compiled to: " , path]];
+
+// Load the artifact back (dlopen → fix-up hook → run its entry) — in this
+// process here, but a fresh `birnam-id` run loads it identically.
+let answer := [Codegen load: path];
+[System println: ["loaded and ran: " , [answer printString]]];
+
+// A bad program compiles to nil, and a missing artifact loads to nil — both
+// are values, not crashes.
+[System println: ["bad source compiles to nil: " , [[[Codegen compile: "let :=" output: "/tmp/never.dylib"] isNil] printString]]];
+[System println: ["missing artifact loads to nil: " , [[[Codegen load: "/tmp/birnam_absent.dylib"] isNil] printString]]]

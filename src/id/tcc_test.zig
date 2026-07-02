@@ -103,6 +103,35 @@ test "tcc: compile C to a loadable .dylib on disk (AOT output)" {
     try std.testing.expect(api.send(Tcc, api.intern("compile:output:as:"), &[_]Oop{ str(api, "not c"), str(api, path), api.intern("dll") }, 3) == api.nilObj);
 }
 
+/// A host-process export standing in for the `birnam_*` runtime shims: the
+/// relocatable-artifact design (docs/40 §3a, slice 1) rests on an emitted dylib
+/// leaving `birnam_*` as undefined externals that the dynamic loader resolves
+/// against the running process at dlopen.
+export fn birnam_probe() callconv(.c) i64 {
+    return 4242;
+}
+
+test "tcc slice-1: a dylib's undefined external resolves against the host at dlopen" {
+    const api = id.id_init();
+    tcc.bringUp(api);
+    const Tcc = api.import("Tcc").?;
+
+    const path = "/tmp/birnam_tcc_undef.dylib";
+    std.fs.cwd().deleteFile(path) catch {};
+    // `birnam_probe` is UNDEFINED in the artifact — provided by this test binary.
+    const src =
+        \\extern long birnam_probe(void);
+        \\long call_probe(void){ return birnam_probe(); }
+    ;
+    const r = api.send(Tcc, api.intern("compile:output:as:"), &[_]Oop{ str(api, src), str(api, path), api.intern("dll") }, 3);
+    if (r == api.nilObj) return error.DylibOutputRefusedUndefinedExternal;
+
+    var lib = try std.DynLib.open(path);
+    defer lib.close();
+    const call_probe = lib.lookup(*const fn () callconv(.c) i64, "call_probe") orelse return error.SymbolMissing;
+    try std.testing.expectEqual(@as(i64, 4242), call_probe());
+}
+
 test "tcc 3c: bad C returns nil; a missing symbol returns nil" {
     const api = id.id_init();
     tcc.bringUp(api);

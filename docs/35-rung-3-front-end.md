@@ -253,9 +253,14 @@ The last two codegen/runtime gaps the 3c notes flagged are closed:
   as: #kind]` writes the compiled C to disk as a shared library (`#dll`), object
   (`#obj`), or executable (`#exe`) via `tcc_output_file`, alongside the in-memory
   JIT. Verified on macOS arm64: a `.dylib` is produced, `dlopen`'d, and called.
-  Self-contained C yields a ready-to-load artifact; codegen C that references the
-  `birnam_*` shims leaves them undefined in the artifact (resolved only by a host
-  that exports them), so the JIT remains how compiled birnam runs today.
+  ~~Codegen C that references the `birnam_*` shims leaves them undefined in the
+  artifact, so the JIT remains how compiled birnam runs today.~~ **CLOSED by
+  slice 1 of the images arc** ([docs/40](40-the-image.md) §3a): the runtime now
+  exports the shims as real dynamic symbols and codegen has an artifact emission
+  mode (`__birnam_unit_init` re-derives global handles by name at load), so
+  `[Codegen compile: src output: path]` writes a relocatable `.dylib` that
+  `[Codegen load: path]` runs in ANY birnam process — verified cross-process.
+  See `examples/aot.birnam`.
 
 ## Test/run surface
 

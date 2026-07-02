@@ -20,9 +20,10 @@
 //! `compile:output:as:` instead writes a native artifact to disk — a shared library
 //! (`#dll`), object (`#obj`), or executable (`#exe`). Self-contained C yields a
 //! ready-to-load artifact (verified: a `.dylib` dlopen'd and called). Emitted
-//! codegen C references the `birnam_*` shims, which an AOT artifact leaves as
-//! undefined externals (resolved only by a host exporting them) — so the JIT path
-//! remains how compiled birnam runs today; AOT is for self-contained output.
+//! codegen C references the `birnam_*` shims as undefined externals — and since
+//! this module exports those shims as REAL dynamic symbols (docs/40 §3a), the
+//! dynamic loader resolves them at dlopen: compiled birnam works as an on-disk
+//! artifact too (`[Codegen compile:output:]` / `[Codegen load:]`), not only JIT'd.
 //!
 //! The all-in-one `compile:` is fine when the emitted C is self-contained (the
 //! 3c.2 arithmetic MVP). But real codegen (3c.3) emits C that calls **back into
@@ -122,8 +123,8 @@ fn outputTypeFor(kind: Oop) ?c_int {
 /// object file, `#exe` an executable) — Ahead-Of-Time output rather than the
 /// in-memory JIT. Returns the path on success, nil on failure. Self-contained C
 /// produces a fully usable artifact; C that references the `birnam_*` runtime shims
-/// leaves them as undefined externals, to be resolved by whatever later loads the
-/// artifact (so an in-process JIT is still the path for codegen output today).
+/// leaves them as undefined externals, which the dynamic loader resolves against
+/// this module's exported shims when a birnam runtime dlopens the artifact.
 fn mCompileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
@@ -209,6 +210,31 @@ fn rtCstr(o: Oop) callconv(.c) [*:0]const u8 {
 }
 fn rtFreeCstr(p: [*:0]const u8) callconv(.c) void {
     std.c.free(@constCast(@ptrCast(p)));
+}
+
+// The shims are ALSO real dynamic symbols of the runtime (docs/40 §3a, slice 1):
+// an emitted artifact (a codegen `.dylib`) leaves `birnam_*` as undefined
+// externals, and the dynamic loader resolves them against these exports at
+// dlopen — no per-unit address patching, which is what makes emitted code
+// relocatable. The JIT path keeps patching the same addresses through
+// `bindRuntime`'s pre-relocate symbol window.
+comptime {
+    @export(&rtSend, .{ .name = "birnam_send" });
+    @export(&rtIntern, .{ .name = "birnam_intern" });
+    @export(&rtMkSmallInt, .{ .name = "birnam_mkSmallInt" });
+    @export(&rtSmallIntValue, .{ .name = "birnam_smallIntValue" });
+    @export(&rtMkFloat, .{ .name = "birnam_mkFloat" });
+    @export(&rtFloatValue, .{ .name = "birnam_floatValue" });
+    @export(&rtMkString, .{ .name = "birnam_mkString" });
+    @export(&rtNil, .{ .name = "birnam_nil" });
+    @export(&rtTrue, .{ .name = "birnam_true" });
+    @export(&rtFalse, .{ .name = "birnam_false" });
+    @export(&rtObjectVt, .{ .name = "birnam_objectVt" });
+    @export(&rtProto, .{ .name = "birnam_proto" });
+    @export(&rtMethod, .{ .name = "birnam_method" });
+    @export(&rtAlloc, .{ .name = "birnam_alloc" });
+    @export(&rtCstr, .{ .name = "birnam_cstr" });
+    @export(&rtFreeCstr, .{ .name = "birnam_free_cstr" });
 }
 
 const RuntimeSym = struct { name: [*:0]const u8, addr: *const anyopaque };

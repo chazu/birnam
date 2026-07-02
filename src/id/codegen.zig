@@ -26,6 +26,14 @@
 //!
 //! Facade: `[Codegen eval: aString]` → the value of the program (its last
 //! statement), or nil if parsing/codegen fails.
+//!
+//! Beyond the JIT, `[Codegen compile: src output: path]` writes a RELOCATABLE
+//! shared library (docs/40 §3a, slice 1 of the images arc): the `birnam_*` shims
+//! stay undefined externals resolved by the dynamic loader at dlopen (tcc.zig +
+//! this module export them as dynamic symbols), and the baked `__g<i>` global
+//! handles become static slots a per-unit `__birnam_unit_init` hook re-derives
+//! by name at load. `[Codegen load: path]` dlopens such an artifact, runs the
+//! hook, and evaluates its `__ev` entry.
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
@@ -89,6 +97,14 @@ var src_bytes: []const u8 = &.{}; // the source for the current eval (for spans)
 var baked_globals: std.ArrayList(Oop) = .{};
 var global_memo: std.AutoHashMapUnmanaged(Oop, usize) = .{};
 
+// Artifact (relocatable) emission mode — docs/40 §3a, slice 1. The JIT bakes a
+// `__g<i>` handle as an extern the symbol window patches to this process's
+// interned-symbol address; an artifact written to disk can't carry that, so in
+// artifact mode each `__g<i>` is instead a static slot the unit's
+// `__birnam_unit_init` hook fills by interning the NAME at load time. Set for
+// the duration of one `emitProgram(…, artifact=true)`.
+var artifact_mode: bool = false;
+
 /// Resolve `name` to its interned symbol (once), assign it a stable `__g<i>` slot,
 /// and return that index. Keyed by symbol identity, so the same global referenced
 /// many times bakes a single handle.
@@ -106,9 +122,15 @@ fn bakeGlobal(name: []const u8) usize {
 
 /// Emit a reference to the global `name`: `birnam_global_b((void*)__g<i>)` — a
 /// store read keyed by the baked symbol (no runtime intern). Replaces the v1
-/// `birnam_global("name")` everywhere a global is read.
+/// `birnam_global("name")` everywhere a global is read. In artifact mode the
+/// handle is a static slot (filled by `__birnam_unit_init`) rather than a
+/// linker-patched extern, so the read is `birnam_global_b(__g<i>)`.
 fn putGlobalRef(buf: *std.ArrayList(u8), name: []const u8) void {
-    putFmt(buf, "birnam_global_b((void*)__g{d})", .{bakeGlobal(name)});
+    if (artifact_mode) {
+        putFmt(buf, "birnam_global_b(__g{d})", .{bakeGlobal(name)});
+    } else {
+        putFmt(buf, "birnam_global_b((void*)__g{d})", .{bakeGlobal(name)});
+    }
 }
 
 // Lexical environment for the current eval: birnam variable names currently in
@@ -224,6 +246,16 @@ fn rtGlobalB(sym: Oop) callconv(.c) Oop {
 /// binding survives to the next evaluation.
 fn rtGlobalSet(name: [*:0]const u8, value: Oop) callconv(.c) void {
     _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_globals_entity, g_api.intern(name), value }, 3);
+}
+
+// Like tcc.zig's floor shims, the global-namespace shims are also real dynamic
+// symbols (docs/40 §3a, slice 1): an emitted artifact leaves them undefined and
+// the dynamic loader resolves them here at dlopen. The JIT path keeps patching
+// the same addresses through the pre-relocate symbol window (`addShim`).
+comptime {
+    @export(&rtGlobal, .{ .name = "birnam_global" });
+    @export(&rtGlobalB, .{ .name = "birnam_global_b" });
+    @export(&rtGlobalSet, .{ .name = "birnam_global_set" });
 }
 
 /// Register a codegen-owned shim into a unit's pre-relocate symbol window.
@@ -770,24 +802,75 @@ fn mEvalPersisting(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return runProgram(a[0], true);
 }
 
-fn runProgram(src: Oop, persist: bool) Oop {
+/// `[Codegen compile: src output: path]` — compile a birnam program to a shared
+/// library on disk (the relocatable artifact form, docs/40 §3a). The artifact
+/// leaves the `birnam_*` shims as undefined externals — the dynamic loader
+/// resolves them against the running process at dlopen (tcc.zig/codegen.zig
+/// export them as dynamic symbols) — and re-derives its global handles by name
+/// in `__birnam_unit_init`, so nothing in it depends on this process's
+/// addresses. Load with `[Codegen load: path]`. Returns the path, or nil.
+fn mCompileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var buf = emitProgram(a[0], false, true) orelse return g_api.nilObj;
+    defer buf.deinit(ca);
+    const c_src = g_api.mkString(buf.items.ptr, buf.items.len);
+    return g_api.send(tcc, g_api.intern("compile:output:as:"), &[_]Oop{ c_src, a[1], g_api.intern("dll") }, 3);
+}
+
+const RTLD_LAZY: c_int = 1;
+
+/// `[Codegen load: path]` — load a compiled-birnam artifact: dlopen it (the
+/// loader resolves its `birnam_*` externals against this process), run its
+/// `__birnam_unit_init` fix-up hook (re-derives the global handles here), then
+/// evaluate its `__ev` entry point. Returns the program's value, or nil if the
+/// library or either symbol is missing.
+fn mLoadUnit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var len: usize = 0;
+    const p = g_api.stringBytes(a[0], &len);
+    const path = ca.allocSentinel(u8, len, 0) catch @panic("codegen: oom");
+    defer ca.free(path);
+    @memcpy(path[0..len], p[0..len]);
+
+    const h = g_api.dlopen(path.ptr, RTLD_LAZY) orelse return g_api.nilObj;
+    const init_p = g_api.dlsym(h, "__birnam_unit_init") orelse return g_api.nilObj;
+    const init_fn: *const fn () callconv(.c) void = @ptrCast(@alignCast(init_p));
+    init_fn();
+    const ev_p = g_api.dlsym(h, "__ev") orelse return g_api.nilObj;
+    const ev_fn: idapi.Method = @ptrCast(@alignCast(ev_p));
+    return ev_fn(g_api.nilObj, &[_]Oop{}, 0);
+}
+
+/// Parse `src` and emit the complete C translation unit into a fresh buffer
+/// (caller deinits). With `artifact` true, emit the RELOCATABLE spelling
+/// (docs/40 §3a): the baked `__g<i>` linker handles become static slots that a
+/// per-unit `__birnam_unit_init` hook re-derives by interning their names at
+/// load time, so the output carries no address from this process and can be
+/// written to disk, dlopen'd elsewhere, and fixed up there. The JIT keeps the
+/// baked handles (`artifact` false) — nothing changes for a live session.
+/// Returns null on a parse or emit failure.
+fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
     var len: usize = 0;
     const p = g_api.stringBytes(src, &len);
     src_bytes = p[0..len];
 
     const cst = s1(lang, "parse:", src);
-    if (cst == g_api.nilObj) return g_api.nilObj;
+    if (cst == g_api.nilObj) return null;
 
     // program → statements → statement+ ; an empty program has no value.
-    if (nchild(cst) < 1) return g_api.nilObj;
+    if (nchild(cst) < 1) return null;
     const statements = child(cst, 0);
-    if (nchild(statements) < 1) return g_api.nilObj;
+    if (nchild(statements) < 1) return null;
 
     bound_names.clearRetainingCapacity();
     fn_defs.clearRetainingCapacity();
     blk_counter = 0;
     baked_globals.clearRetainingCapacity();
     global_memo.clearRetainingCapacity();
+    artifact_mode = artifact;
+    defer artifact_mode = false;
 
     // The `__ev` function body is emitted first (which populates fn_defs with any
     // block functions, in post-order); the final source is prelude + fn_defs +
@@ -795,11 +878,10 @@ fn runProgram(src: Oop, persist: bool) Oop {
     var ev: std.ArrayList(u8) = .{};
     defer ev.deinit(ca);
     put(&ev, "void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\n");
-    if (!emitBody(&ev, statements, persist)) return g_api.nilObj;
+    if (!emitBody(&ev, statements, persist)) return null;
     put(&ev, "}");
 
     var buf: std.ArrayList(u8) = .{};
-    defer buf.deinit(ca);
     put(&buf,
         \\#define MKV(x) ((void*)(((long)(x))<<1|1L))
         \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
@@ -816,14 +898,36 @@ fn runProgram(src: Oop, persist: bool) Oop {
         \\extern void birnam_global_set(const char* name, void* value);
         \\
     );
-    // Declare each baked global handle: `extern char __g<i>[];` — its ADDRESS (the
-    // array decays) is the interned symbol the linker patches in, so a read is
-    // `birnam_global_b((void*)__g<i>)` with no runtime intern.
-    for (0..baked_globals.items.len) |i| putFmt(&buf, "extern char __g{d}[];\n", .{i});
+    if (artifact) {
+        // Each baked handle is a static slot `__birnam_unit_init` fills at load.
+        for (0..baked_globals.items.len) |i| putFmt(&buf, "static void* __g{d};\n", .{i});
+    } else {
+        // Declare each baked global handle: `extern char __g<i>[];` — its ADDRESS
+        // (the array decays) is the interned symbol the linker patches in, so a
+        // read is `birnam_global_b((void*)__g<i>)` with no runtime intern.
+        for (0..baked_globals.items.len) |i| putFmt(&buf, "extern char __g{d}[];\n", .{i});
+    }
     put(&buf, fn_defs.items);
     put(&buf, ev.items);
+    if (artifact) {
+        // The load-time fix-up hook: re-derive every handle in the loading
+        // process. Emitted even when empty so a loader can call it uniformly.
+        put(&buf, "\nvoid __birnam_unit_init(void){\n");
+        for (baked_globals.items, 0..) |sym, i| {
+            putFmt(&buf, "  __g{d} = birnam_intern(\"", .{i});
+            putCStr(&buf, std.mem.span(g_api.symbolName(sym)));
+            put(&buf, "\");\n");
+        }
+        put(&buf, "}\n");
+    }
 
     if (std.posix.getenv("CODEGEN_DUMP") != null) std.debug.print("---emitted C---\n{s}\n---------------\n", .{buf.items});
+    return buf;
+}
+
+fn runProgram(src: Oop, persist: bool) Oop {
+    var buf = emitProgram(src, persist, false) orelse return g_api.nilObj;
+    defer buf.deinit(ca);
 
     // Staged compile: bind the runtime shims into the symbol window between
     // compile and relocate, so the emitted `birnam_*` calls resolve.
@@ -910,6 +1014,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
 
     api.method(codegen_vt, api.intern("eval:"), &mEval);
     api.method(codegen_vt, api.intern("evalPersisting:"), &mEvalPersisting);
+    api.method(codegen_vt, api.intern("compile:output:"), &mCompileOutput);
+    api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
 
     if (!reloading) {

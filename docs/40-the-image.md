@@ -1,7 +1,11 @@
 # The image — the system, made durable
 
-> **Status:** Design accepted (2026-07-01). Implementation not started; the
-> sequencing in §7 is the plan of record. Builds on the
+> **Status:** Design accepted (2026-07-01). **Slice 1 SHIPPED (2026-07-01):**
+> relocatable code — the `birnam_*` shims are dynamic symbols of the runtime,
+> codegen has an artifact emission mode whose `__birnam_unit_init` re-derives
+> baked global handles by name at load, and `[Codegen compile: src output:
+> path]` / `[Codegen load: path]` round-trip a birnam program through a
+> `.dylib` **across processes** (`examples/aot.birnam`). Slices 2–4 per §7. Builds on the
 > [running system](36-the-running-system.md) (globals are cells, method source
 > is mirrored into the store) and the codegen/Tcc stack
 > ([rung 3](35-rung-3-front-end.md)). Supersedes the old kernel's
