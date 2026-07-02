@@ -212,6 +212,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
         factory_obj = api.alloc(factory_vt, 0);
     }
 
+    // Exact payload layout (F3): an Err is {kind, message} — both Oops.
+    api.setLayout(error_vt, null, 0, idapi.slot_oop);
+
     // Error protocol — note its OWN doesNotUnderstand: (→ self) must shadow the
     // object_vt swap below, else propagating through an error would re-error.
     api.method(error_vt, api.intern("doesNotUnderstand:"), &errDnu);

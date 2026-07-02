@@ -189,8 +189,23 @@ Proof: `examples/gc.birnam` (manual, churns 540k objects, all live data survives
 and `examples/auto-gc.birnam` (2M allocations stay ~25k live / ~36 MB RSS). Tests
 in `id.zig` (reclaim, no-op-until-anchored, root/trace-hook survival, permanents
 never swept, auto-gc bounds the live set) + `relational_test` (store + fresh-store
-facts survive). Still open (the precise/moving path): the K-Oop-slot precise
-descriptor + a compacting collector — kept open by the same per-vtable seam.
+facts survive).
+
+**The precise descriptor — SHIPPED (2026-07-01, slice 2 of the images arc;
+[docs/40](40-the-image.md) §3c).** The locked per-vtable layout shape is now
+real: `setLayout(vt, kinds, n, rest)` declares which payload WORDS are Oops vs
+raw (a per-word kind prefix + a kind for the variable tail — covers fixed
+structs, all-Oop trie nodes/block captures, and header-then-slots HAMT nodes
+alike; the kinds live in `idapi` as `slot_raw`/`slot_oop`/`slot_code`). Every
+pointer-bearing type installed one (floor String/Float, Vector/nodes/Map/Range,
+Error, Cell, LogicVar, TccUnit; emitted block vtables declare their all-Oop
+captures via the `birnam_layoutAllOops` runtime shim). With `gcSetPrecise(1)`
+(`[System preciseGc: true]`, or `BIRNAM_GC_PRECISE=1`), tracing honors the
+layouts — a raw word aliasing a dead object's address no longer retains it
+(proven in `collection_test`) — while types without a layout, and the C
+stack/registers always (the tcc no-stack-maps constraint), stay conservative.
+Conservative remains the default; precision is what the image save (docs/40
+slice 3) swizzles through. Still open: a compacting/moving collector.
 
 ## F4 — Concurrency stance
 

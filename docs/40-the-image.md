@@ -5,7 +5,17 @@
 > codegen has an artifact emission mode whose `__birnam_unit_init` re-derives
 > baked global handles by name at load, and `[Codegen compile: src output:
 > path]` / `[Codegen load: path]` round-trip a birnam program through a
-> `.dylib` **across processes** (`examples/aot.birnam`). Slices 2–4 per §7. Builds on the
+> `.dylib` **across processes** (`examples/aot.birnam`).
+> **Slice 2 SHIPPED (2026-07-01):** exact heap — per-vtable layout descriptors
+> (`setLayout`: word-kind prefix + tail kind) on every pointer-bearing type,
+> block vtables included (the `birnam_layoutAllOops` shim in emitted code), and
+> a precise trace mode (`gcSetPrecise` / `[System preciseGc: true]` /
+> `BIRNAM_GC_PRECISE=1`) validated against the conservative collector: the
+> full test suite + every example runs precise, and precision demonstrably
+> frees raw-word-aliased garbage conservative retains (docs/34 §F3). The fix
+> sweep also rooted the grammar and gave peg's pattern/grammar/CST externals
+> trace hooks — `[System gc]` mid-REPL used to segfault the next parse.
+> Slices 3–4 per §7. Builds on the
 > [running system](36-the-running-system.md) (globals are cells, method source
 > is mirrored into the store) and the codegen/Tcc stack
 > ([rung 3](35-rung-3-front-end.md)). Supersedes the old kernel's

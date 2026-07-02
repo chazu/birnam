@@ -127,7 +127,31 @@ pub const IdApi = extern struct {
     /// native code). No-op on a permanent object or an untracked pointer. The
     /// finalizer must not allocate id objects (it runs mid-sweep).
     setFinalizer: *const fn (Oop, Finalizer) callconv(.c) void,
+
+    // -- Exact payload layouts (F3 completed; docs/40 §3c — appended) --------
+    /// setLayout(vt, kinds, n, rest): declare the exact payload layout of `vt`'s
+    /// instances — which WORDS are Oops and which are raw bytes. `kinds` is a
+    /// per-word array of slot kinds (`slot_raw`/`slot_oop`/`slot_code`) covering
+    /// the first `n` words; every word past the prefix has kind `rest` (the
+    /// variable-length tail: a trie node's slots, a block's captures). The kinds
+    /// array must outlive the vtable (point it at a module static). With a
+    /// layout set and precise mode on, the collector traces instances exactly;
+    /// a future image save swizzles through the same map.
+    setLayout: *const fn (Oop, ?[*]const u8, usize, u8) callconv(.c) void,
+    /// gcSetPrecise(on): trace layout-bearing vtables' instances by their
+    /// descriptors instead of the conservative payload scan (vtables without a
+    /// layout stay conservative; stack/register roots stay conservative always —
+    /// the Piumarta constraint is about C stacks, not heap payloads).
+    gcSetPrecise: *const fn (c_int) callconv(.c) void,
 };
+
+/// Slot kinds for `setLayout` payload descriptors: a raw (non-pointer) word, an
+/// Oop (traced + swizzled), or a native-code pointer into a compiled unit
+/// (ignored by the tracer — units are kept alive by their owning objects — but
+/// serialized as (unit, offset) by the image save; docs/40 §3c).
+pub const slot_raw: u8 = 0;
+pub const slot_oop: u8 = 1;
+pub const slot_code: u8 = 2;
 
 /// The mark function handed to a root provider / trace hook: call it per root Oop.
 pub const MarkFn = *const fn (Oop) callconv(.c) void;

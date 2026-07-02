@@ -352,3 +352,93 @@ test "collection: Vector sortBy: orders by key (ascending and descending)" {
     // original is unchanged (persistent).
     try std.testing.expectEqual(@as(i64, 3), ival(s1(v, "at:", api.mkSmallInt(0))));
 }
+
+// -- F3 exact layouts (docs/40 §3c): precise trace vs the conservative scan ----
+
+/// Allocate `count` throwaway objects and answer a Vector of Ranges whose raw
+/// i64 endpoints ALIAS their addresses. After this returns, the objects are
+/// garbage — but each address lives on inside a live Range's raw payload word,
+/// which is exactly the false positive conservative tracing cannot see past.
+noinline fn makeAliasedGarbage(api: *idapi.IdApi, count: usize) Oop {
+    var v = s0(api.import("Vector"), "new");
+    var i: usize = 0;
+    while (i < count) : (i += 1) {
+        const garbage = api.alloc(api.object_vt, 64);
+        const addr: i64 = @bitCast(@intFromPtr(garbage.?));
+        const rng = s1(api.mkSmallInt(addr), "to:", api.mkSmallInt(addr));
+        v = s1(v, "add:", rng);
+    }
+    return v;
+}
+
+/// Overwrite a stretch of stack so dead objects' addresses from an earlier
+/// frame stop being (conservative) stack roots.
+noinline fn launderStack() void {
+    var buf: [512]usize = undefined;
+    for (&buf, 0..) |*w, i| w.* = i;
+    std.mem.doNotOptimizeAway(&buf);
+}
+
+test "F3 layouts: precise trace frees garbage that a raw word aliases" {
+    const api = setup();
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    _ = &anchor;
+    defer api.gcSetPrecise(0);
+
+    const v = makeAliasedGarbage(api, 60);
+    launderStack();
+
+    // Conservative collection: the garbage objects stay retained — each address
+    // sits in a live Range's payload and the scan must assume it is an Oop.
+    _ = api.gcCollect();
+    const live_conservative = api.gcLiveCount();
+
+    // Precise: Range's layout declares both words raw, so the aliases stop
+    // rooting. The garbage (allocated nothing since) is reclaimed NOW — proof
+    // the conservative pass had been over-retaining it.
+    api.gcSetPrecise(1);
+    const reclaimed = api.gcCollect();
+    try std.testing.expect(reclaimed >= 40);
+    try std.testing.expectEqual(live_conservative - reclaimed, api.gcLiveCount());
+
+    // And precision freed only true garbage: the structure is fully intact.
+    try std.testing.expectEqual(@as(i64, 60), ival(s0(v, "size")));
+}
+
+noinline fn churn(api: *idapi.IdApi, count: usize) void {
+    var i: usize = 0;
+    var last: Oop = null;
+    while (i < count) : (i += 1) {
+        last = api.mkString("throwaway garbage string", 24);
+    }
+    std.mem.doNotOptimizeAway(&last);
+}
+
+test "F3 layouts: a mixed live structure survives precise collection under churn" {
+    const api = setup();
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    _ = &anchor;
+    defer api.gcSetPrecise(0);
+    api.gcSetPrecise(1);
+
+    // Vector of strings, a map keyed by symbol AND string, a range — every
+    // layout-bearing kind at once, reachable only through each other.
+    var v = s0(api.import("Vector"), "new");
+    v = s1(v, "add:", api.mkString("alpha", 5));
+    v = s1(v, "add:", api.mkString("beta", 4));
+    var m = s0(api.import("Map"), "new");
+    m = s2(m, "at:put:", api.intern("vec"), v);
+    m = s2(m, "at:put:", api.mkString("range", 5), s1(api.mkSmallInt(1), "to:", api.mkSmallInt(9)));
+
+    churn(api, 20_000);
+    _ = api.gcCollect();
+
+    const v2 = s1(m, "at:", api.intern("vec"));
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(v2, "size")));
+    try std.testing.expect(strEq(s1(v2, "at:", api.mkSmallInt(0)), "alpha"));
+    try std.testing.expect(strEq(s1(v2, "at:", api.mkSmallInt(1)), "beta"));
+    const r = s1(m, "at:", api.mkString("range", 5));
+    try std.testing.expectEqual(@as(i64, 9), ival(s0(r, "size")));
+}

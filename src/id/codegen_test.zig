@@ -446,3 +446,38 @@ test "slice-1: artifact failures are nil — bad source, missing library" {
     const absent = api.mkString("/tmp/birnam_codegen_absent.dylib", 32);
     try std.testing.expect(api.send(Codegen, api.intern("load:"), &[_]Oop{absent}, 1) == api.nilObj);
 }
+
+// -- slice 2 of the images arc (docs/40 §3c): exact layouts for block captures --
+
+noinline fn churnStrings(api: *idapi.IdApi, count: usize) void {
+    var i: usize = 0;
+    var last: Oop = null;
+    while (i < count) : (i += 1) {
+        last = api.mkString("throwaway garbage string", 24);
+    }
+    std.mem.doNotOptimizeAway(&last);
+}
+
+test "slice-2: a compiled closure's heap capture survives precise collection" {
+    const api = setupFull();
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    _ = &anchor;
+    defer api.gcSetPrecise(0);
+    api.gcSetPrecise(1);
+
+    // The capture is a HEAP object (a String) — if the emitted
+    // birnam_layoutAllOops on the block's vtable were missing or wrong, the
+    // precise trace would skip the capture slot and the churn+collect below
+    // would free the string out from under the closure.
+    const blk = eval(api, "let base := \"birnam\"; [:a | [base , a]]");
+    try std.testing.expect(blk != api.nilObj);
+
+    churnStrings(api, 20_000);
+    _ = api.gcCollect();
+
+    const r = api.send(blk, api.intern("value:"), &[_]Oop{api.mkString(" rocks", 6)}, 1);
+    var len: usize = 0;
+    const p = api.stringBytes(r, &len);
+    try std.testing.expectEqualStrings("birnam rocks", p[0..len]);
+}

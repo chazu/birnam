@@ -452,6 +452,15 @@ fn sysAutoGc(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
+/// `[System preciseGc: aBoolean]` → trace layout-bearing types' payloads exactly
+/// (docs/40 §3c) instead of conservatively; types without a layout descriptor
+/// stay conservative either way.
+fn sysPreciseGc(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    g_api.gcSetPrecise(if (a[0] == g_api.trueObj) 1 else 0);
+    return self;
+}
+
 // -- bringup -----------------------------------------------------------------
 
 pub fn bringUp(api: *idapi.IdApi) void {
@@ -516,6 +525,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(system_vt, api.intern("gc"), &sysGc);
     api.method(system_vt, api.intern("liveObjects"), &sysLiveObjects);
     api.method(system_vt, api.intern("autoGc:"), &sysAutoGc);
+    api.method(system_vt, api.intern("preciseGc:"), &sysPreciseGc);
 
     if (!reloading) {
         _ = api.exportObj("SystemVt", system_vt);

@@ -43,6 +43,17 @@ pub const Vtable = extern struct {
     /// it can mark Oops the conservative payload scan can't reach (held in non-id
     /// memory). Null for ordinary types. Set via `setTraceHook`.
     trace_hook: ?idapi.TraceHook,
+    /// Optional exact payload layout (F3 completed; docs/40 §3c): which payload
+    /// WORDS are Oops vs raw bytes. `layout_kinds` gives a per-word SlotKind for
+    /// the first `layout_n` words; every word past the prefix has kind
+    /// `layout_rest` (the variable-length tail: a trie node's slots, a block's
+    /// captures). `layout_set` gates it — a vtable without one is traced
+    /// conservatively. Set via `setLayout`; the kinds array must stay alive (a
+    /// static in the owning module).
+    layout_kinds: ?[*]const u8,
+    layout_n: usize,
+    layout_rest: u8,
+    layout_set: u8,
 };
 
 /// An interned name. Selectors are `*Symbol`, compared by pointer identity.
@@ -112,6 +123,7 @@ var g_blocks: std.AutoHashMapUnmanaged(usize, Block) = .{};
 // which is exactly what the conservative scan finds. Inactive until a stack bottom
 // is set (so it never fires during module load / in tests that don't opt in).
 var g_auto_gc: bool = true;
+var g_gc_precise: bool = false; // heap tracing honors layout descriptors when set
 var g_gc_running: bool = false; // re-entrancy guard
 var g_bytes_since_gc: usize = 0;
 var g_gc_threshold: usize = 16 << 20; // 16 MiB between auto-collections (tunable)
@@ -355,6 +367,10 @@ fn newVtable(parent: ?*Vtable) *Vtable {
     vt.values = null;
     vt.parent = parent;
     vt.trace_hook = null;
+    vt.layout_kinds = null;
+    vt.layout_n = 0;
+    vt.layout_rest = 0;
+    vt.layout_set = 0;
     return vt;
 }
 
@@ -568,14 +584,31 @@ fn gcScanRange(lo: usize, hi: usize) void {
     }
 }
 
-/// Trace a marked object: conservatively scan its payload for more live pointers,
-/// then run its vtable's trace hook (if any) to mark Oops the scan can't see —
-/// e.g. an opaque object holding facts in non-id `c_allocator` memory.
+/// Trace a marked object: scan its payload for more live pointers — EXACTLY
+/// when precise mode is on and its vtable carries a layout descriptor (only the
+/// words the layout declares Oops are followed; raw words can no longer retain
+/// a dead object whose address they happen to alias), conservatively otherwise
+/// — then run its vtable's trace hook (if any) to mark Oops the payload can't
+/// show (held in non-id memory). Stack/register scanning stays conservative
+/// regardless (tcc code has no stack maps — the Piumarta constraint); precision
+/// is a HEAP property, which is all a quiesced image save needs (docs/40 §3c).
 fn gcTrace(w: usize) void {
     const blk = g_blocks.get(w) orelse return;
-    gcScanRange(w, w + (blk.total - VT));
     const obj: Oop = @ptrFromInt(w);
-    if (vtableOf(obj)) |vt| if (vt.trace_hook) |hook| hook(obj, &gcMarkOopC);
+    const vt = vtableOf(obj);
+    if (g_gc_precise and vt != null and vt.?.layout_set != 0) {
+        const v = vt.?;
+        const words = (blk.total - VT) / @sizeOf(usize);
+        var i: usize = 0;
+        while (i < words) : (i += 1) {
+            const kind = if (i < v.layout_n) v.layout_kinds.?[i] else v.layout_rest;
+            if (kind == idapi.slot_oop)
+                gcMarkWord(@as(*const usize, @ptrFromInt(w + i * @sizeOf(usize))).*);
+        }
+    } else {
+        gcScanRange(w, w + (blk.total - VT));
+    }
+    if (vt) |v| if (v.trace_hook) |hook| hook(obj, &gcMarkOopC);
 }
 
 // The env + interner keep Oops in their `keys`/`values` arrays (c_allocator
@@ -659,6 +692,16 @@ fn setFinalizerC(obj: Oop, fin: idapi.Finalizer) callconv(.c) void {
 fn gcSetAutoC(on: c_int) callconv(.c) void {
     g_auto_gc = (on != 0);
 }
+fn setLayoutC(vt: Oop, kinds: ?[*]const u8, n: usize, rest: u8) callconv(.c) void {
+    const v = asVtable(vt);
+    v.layout_kinds = kinds;
+    v.layout_n = n;
+    v.layout_rest = rest;
+    v.layout_set = 1;
+}
+fn gcSetPreciseC(on: c_int) callconv(.c) void {
+    g_gc_precise = (on != 0);
+}
 
 var g_api: idapi.IdApi = undefined;
 
@@ -704,7 +747,16 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .mkFloat = &mkFloatC,
         .floatValue = &floatValueC,
         .isFloat = &isFloatC,
+        .setLayout = &setLayoutC,
+        .gcSetPrecise = &gcSetPreciseC,
     };
+    // The floor's own layouts: no floor value type holds an Oop in its payload
+    // (a String is {bytes-ptr, len}, a Float one f64, the singletons empty), so
+    // under precise mode none of their raw words can over-retain by aliasing.
+    setLayoutC(oop(string_vt), null, 0, idapi.slot_raw);
+    setLayoutC(oop(float_vt), null, 0, idapi.slot_raw);
+    setLayoutC(oop(nil_vt), null, 0, idapi.slot_raw);
+    setLayoutC(oop(bool_vt), null, 0, idapi.slot_raw);
     // Publish the id layer into its own environment — so it is re-importable.
     _ = exportObj("Object", oop(object_vt));
     _ = exportObj("Vtable", oop(vtable_vt));

@@ -70,6 +70,22 @@ fn gramOf(g: Oop) *Gram {
     return @ptrCast(@alignCast(g.?));
 }
 
+// GC trace hooks (F3): patterns hold their children, and grammars their rules,
+// in c_allocator memory the payload scan can't see — without these hooks a
+// collection sweeps the pattern graph out from under the (module-global,
+// unscanned) grammar reference and the next parse is a use-after-free.
+fn patTrace(p: Oop, mark: idapi.MarkFn) callconv(.c) void {
+    const pat = patOf(p);
+    for (pat.children) |ch| mark(ch);
+    if (pat.rule_name != null) mark(pat.rule_name);
+}
+fn gramTrace(g: Oop, mark: idapi.MarkFn) callconv(.c) void {
+    for (gramOf(g).rules.items) |r| {
+        mark(r.name);
+        mark(r.pat);
+    }
+}
+
 // -- Pattern constructors (Zig API; grammars are built programmatically) -----
 // Patterns are long-lived (the grammar), so their backing slices are duped into
 // the c_allocator. Each returned Oop is a real libid object (vtable = pattern_vt).
@@ -335,8 +351,35 @@ fn strBytes(o: Oop) []const u8 {
     return p[0..len];
 }
 
+// Mid-conversion protection (F3): a fresh Cst's children sit in a bare
+// c_allocator array until the node's payload is assigned, so a collection
+// firing during a later sibling's conversion would sweep the earlier ones (the
+// array is invisible to both the stack scan and the payload scan). Every node
+// the CURRENT conversion mints is held here — a registered GC root — until the
+// top-level conversion returns and the root node owns the tree through its
+// trace hook. Cleared by `mParseFrom` (parses don't nest).
+var g_cst_scratch: std.ArrayListUnmanaged(Oop) = .{};
+
+fn cstScratchRoots(mark: idapi.MarkFn) callconv(.c) void {
+    for (g_cst_scratch.items) |o| mark(o);
+}
+
+/// GC trace hook: a Cst's children are Oops in non-id memory.
+fn cstTrace(o: Oop, mark: idapi.MarkFn) callconv(.c) void {
+    for (cstOf(o).children) |ch| mark(ch);
+}
+
+/// GC finalizer: free the children array a dying Cst owns (it was an unbounded
+/// per-parse leak — the collector reclaimed the nodes but not their arrays).
+fn cstFinalize(o: Oop) callconv(.c) void {
+    const c = cstOf(o);
+    if (c.children.len > 0) ca.free(c.children);
+}
+
 fn toCst(node: *Node) Oop {
     const o = g_api.alloc(cstnode_vt, @sizeOf(Cst));
+    g_cst_scratch.append(ca, o) catch @panic("peg: oom");
+    g_api.setFinalizer(o, &cstFinalize);
     const kids = ca.alloc(Oop, node.children.len) catch @panic("peg: oom");
     for (node.children, 0..) |ch, i| kids[i] = toCst(ch);
     cstOf(o).* = .{ .rule = node.rule, .start = node.start, .end = node.end, .children = kids };
@@ -439,7 +482,10 @@ fn mParseFrom(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     var arena = std.heap.ArenaAllocator.init(ca);
     defer arena.deinit();
     const root = parse(g_api, arena.allocator(), self, strBytes(a[0]), a[1]) orelse return g_api.nilObj;
-    return toCst(root);
+    const cst = toCst(root);
+    // The root now owns the tree (via its trace hook); drop the scratch roots.
+    g_cst_scratch.clearRetainingCapacity();
+    return cst;
 }
 
 // CstNode accessors (on cstnode_vt).
@@ -493,6 +539,13 @@ pub fn bringUp(api: *idapi.IdApi) void {
         cstnode_vt = api.proto(api.object_vt);
         peg_obj = api.alloc(peg_vt, 0);
     }
+
+    // GC wiring (F3): patterns/grammars/CST nodes all hold Oops in non-id
+    // memory (trace hooks); a conversion in progress roots its nodes itself.
+    api.setTraceHook(pattern_vt, &patTrace);
+    api.setTraceHook(grammar_vt, &gramTrace);
+    api.setTraceHook(cstnode_vt, &cstTrace);
+    if (!reloading) api.gcRegisterRootProvider(&cstScratchRoots);
 
     // Peg facade constructors.
     api.method(peg_vt, api.intern("literal:"), &mLiteral);

@@ -963,6 +963,11 @@ pub fn bringUp(api: *idapi.IdApi) void {
         collector_vt = api.proto(api.object_vt);
     }
 
+    // Exact payload layouts (F3): a logic variable's payload is its name symbol
+    // (one Oop); a collector's is a raw pointer to the Zig triple list.
+    api.setLayout(logicvar_vt, null, 0, idapi.slot_oop);
+    api.setLayout(collector_vt, null, 0, idapi.slot_raw);
+
     // The query protocol is installed onto the STORE's own vtable — the same
     // object answers both the imperative and relational readings (D5.2).
     api.method(store_vt, api.intern("entity"), &mEntity);

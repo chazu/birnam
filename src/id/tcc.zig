@@ -197,6 +197,12 @@ fn rtMethod(vt: Oop, sel: Oop, fnptr: ?*anyopaque) callconv(.c) void {
 fn rtAlloc(vt: Oop, nbytes: i64) callconv(.c) Oop {
     return g_api.alloc(vt, @intCast(nbytes));
 }
+// Declare a vtable's instances all-Oop payloads (F3 exact layout). Emitted
+// block code builds its own vtables (birnam_proto) whose instances hold only
+// captured Oops, so codegen emits this right after installing the value method.
+fn rtLayoutAllOops(vt: Oop) callconv(.c) void {
+    g_api.setLayout(vt, null, 0, idapi.slot_oop);
+}
 
 // String marshaling for the FFI: a NUL-terminated C copy of a birnam String (the
 // shim frees it after the call). malloc/free so no length bookkeeping is needed.
@@ -235,6 +241,7 @@ comptime {
     @export(&rtAlloc, .{ .name = "birnam_alloc" });
     @export(&rtCstr, .{ .name = "birnam_cstr" });
     @export(&rtFreeCstr, .{ .name = "birnam_free_cstr" });
+    @export(&rtLayoutAllOops, .{ .name = "birnam_layoutAllOops" });
 }
 
 const RuntimeSym = struct { name: [*:0]const u8, addr: *const anyopaque };
@@ -255,6 +262,7 @@ const runtime_syms = [_]RuntimeSym{
     .{ .name = "birnam_alloc", .addr = @ptrCast(&rtAlloc) },
     .{ .name = "birnam_cstr", .addr = @ptrCast(&rtCstr) },
     .{ .name = "birnam_free_cstr", .addr = @ptrCast(&rtFreeCstr) },
+    .{ .name = "birnam_layoutAllOops", .addr = @ptrCast(&rtLayoutAllOops) },
 };
 
 // -- staged compile: open the pre-relocate symbol window ---------------------
@@ -405,6 +413,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
         unit_vt = api.proto(api.object_vt);
         tcc_obj = api.alloc(tcc_vt, 0);
     }
+
+    // Exact payload layout (F3): a Unit is {TCCState*, relocated} — raw words.
+    api.setLayout(unit_vt, null, 0, idapi.slot_raw);
 
     api.method(tcc_vt, api.intern("compile:"), &mCompile);
     api.method(tcc_vt, api.intern("compile:output:as:"), &mCompileOutput);

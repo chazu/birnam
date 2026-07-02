@@ -235,6 +235,12 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(lang_vt, api.intern("grammar"), &mGrammar);
 
     buildGrammar();
+    // Root the grammar (F3): a Zig module global is NOT a GC root, so without
+    // this export a collection would sweep the grammar object and the next
+    // parse would be a use-after-free (the env's values are scanned as roots;
+    // peg's trace hooks carry reachability on to the rules and patterns).
+    // Re-exported on every bringUp so a reload re-points it at the fresh build.
+    _ = api.exportObj("BirnamGrammar", grammar);
 
     if (!reloading) {
         _ = api.exportObj("LangVt", lang_vt);

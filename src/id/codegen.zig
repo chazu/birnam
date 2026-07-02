@@ -726,7 +726,7 @@ fn emitBlock(buf: *std.ArrayList(u8), blockNode: Oop) bool {
     // Emit the creating statement-expression into the current function body.
     putFmt(buf, "({{ static void* __vt{d} = 0; if(!__vt{d}){{ __vt{d} = birnam_proto(birnam_objectVt()); birnam_method(__vt{d}, birnam_intern(\"", .{ n, n, n, n });
     putCStr(buf, sel.items);
-    putFmt(buf, "\"), (void*)&__blk{d}); }} void* __o{d} = birnam_alloc(__vt{d}, {d}*sizeof(void*));\n", .{ n, n, n, caps.items.len });
+    putFmt(buf, "\"), (void*)&__blk{d}); birnam_layoutAllOops(__vt{d}); }} void* __o{d} = birnam_alloc(__vt{d}, {d}*sizeof(void*));\n", .{ n, n, n, n, caps.items.len });
     for (caps.items, 0..) |cName, i| {
         putFmt(buf, "((void**)__o{d})[{d}] = b_{s};\n", .{ n, i, cName });
     }
@@ -892,6 +892,7 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
         \\extern void* birnam_proto(void* parent);
         \\extern void* birnam_objectVt(void);
         \\extern void birnam_method(void* vt, void* sel, void* fn);
+        \\extern void birnam_layoutAllOops(void* vt);
         \\extern void* birnam_alloc(void* vt, long nbytes);
         \\extern void* birnam_global(const char* name);
         \\extern void* birnam_global_b(void* sym);

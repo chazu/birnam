@@ -277,6 +277,7 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     var stack_anchor: usize = 0;
     api.gcSetStackBottom(@intFromPtr(&stack_anchor));
     _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
 
     loadStdlib(api, codegen);
 
@@ -443,6 +444,7 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi) !void {
     var stack_anchor: usize = 0;
     api.gcSetStackBottom(@intFromPtr(&stack_anchor));
     _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
 
     loadStdlib(api, codegen);
 

@@ -960,6 +960,11 @@ fn strAsSymbol(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 
 // -- bringup -----------------------------------------------------------------
 
+// Word-kind maps for `setLayout` (must outlive the vtables — module statics).
+const vec_kinds = [_]u8{ idapi.slot_raw, idapi.slot_raw, idapi.slot_oop, idapi.slot_oop, idapi.slot_raw };
+const hnode_kinds = [_]u8{ idapi.slot_raw, idapi.slot_raw };
+const map_kinds = [_]u8{ idapi.slot_oop, idapi.slot_raw };
+
 pub fn bringUp(api: *idapi.IdApi) void {
     g_api = api;
     s_value = api.intern("value");
@@ -991,6 +996,17 @@ pub fn bringUp(api: *idapi.IdApi) void {
         map_factory_vt = api.proto(api.object_vt);
         map_factory_obj = api.alloc(map_factory_vt, 0);
     }
+
+    // Exact payload layouts (F3 completed; docs/40 §3c) — the word-kind maps the
+    // precise heap tracer (and the future image swizzler) read: a Vec is {count,
+    // shift, root, tail, tail_len}; a trie node is all Oop slots; an HNode is a
+    // 16-byte raw header then Oop slot pairs; a Range is two raw i64s; a Map is
+    // {root, count}.
+    api.setLayout(vnode_vt, null, 0, idapi.slot_oop);
+    api.setLayout(vector_vt, &vec_kinds, vec_kinds.len, idapi.slot_raw);
+    api.setLayout(hnode_vt, &hnode_kinds, hnode_kinds.len, idapi.slot_oop);
+    api.setLayout(range_vt, null, 0, idapi.slot_raw);
+    api.setLayout(map_vt, &map_kinds, map_kinds.len, idapi.slot_raw);
 
     // Vector protocol.
     api.method(vector_vt, api.intern("size"), &vSize);

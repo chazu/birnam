@@ -708,6 +708,11 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, api.intern("basis"), &mBasis);
     api.method(store_vt, api.intern("cardinality:"), &mCardinality);
     api.setTraceHook(store_vt, &gcTraceHook); // facts live in non-id memory (F3)
+    // Exact payload layouts (F3): a store's payload is its Zig StoreState (list
+    // pointers + counters — raw words; its Oops are the facts, reached by the
+    // trace hook above); a cell is {store, e, a} — all Oops.
+    api.setLayout(store_vt, null, 0, idapi.slot_raw);
+    api.setLayout(cell_vt, null, 0, idapi.slot_oop);
 
     // Cell protocol (the `history` selector reuses the "history" symbol — one
     // identity, two roles: a cell message here, a schema attribute key above).
