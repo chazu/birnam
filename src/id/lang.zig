@@ -216,6 +216,16 @@ fn mGrammar(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return grammar;
 }
 
+/// `[Lang furthestFail]` — the furthest source offset the most recent `parse:`
+/// reached before failing (for locating a syntax error). Only meaningful after a
+/// `parse:` that returned nil.
+fn mFurthestFail(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.send(grammar, g_api.intern("furthestFail"), &[_]Oop{}, 0);
+}
+
 // -- bringup / module entrypoint --------------------------------------------
 
 pub fn bringUp(api: *idapi.IdApi) void {
@@ -233,6 +243,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
 
     api.method(lang_vt, api.intern("parse:"), &mParse);
     api.method(lang_vt, api.intern("grammar"), &mGrammar);
+    api.method(lang_vt, api.intern("furthestFail"), &mFurthestFail);
 
     buildGrammar();
     // Root the grammar (F3): a Zig module global is NOT a GC root, so without

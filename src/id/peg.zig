@@ -311,6 +311,11 @@ fn matchPattern(rs: *RunState, pat: Oop, pos: usize) ?Match {
 /// Parse `source` against `g` starting at the rule `root_name`. Allocates the
 /// transient CST in `na` (a caller-owned arena, freed after codegen). Returns the
 /// root `*Node` on success, or null on failure (richer diagnostics come later).
+/// The furthest input position any pattern reached before failing, from the most
+/// recent `parse` — a good "syntax error is around here" pointer for diagnostics
+/// (the PEG standard heuristic). Only meaningful when that parse returned null.
+pub var g_furthest: usize = 0;
+
 pub fn parse(api: *idapi.IdApi, na: std.mem.Allocator, g: Oop, source: []const u8, root_name: Oop) ?*Node {
     _ = api;
     var memo = std.AutoHashMap(MemoKey, MemoEntry).init(ca);
@@ -318,10 +323,20 @@ pub fn parse(api: *idapi.IdApi, na: std.mem.Allocator, g: Oop, source: []const u
     var rs = RunState{ .g = g, .source = source, .na = na, .memo = &memo };
     const root_pat = ruleNamed(g, root_name) orelse return null;
     if (matchPattern(&rs, root_pat, 0)) |m| {
+        g_furthest = rs.furthest;
+        // A root match that stops short of end-of-input is a partial parse — the
+        // grammar accepted a prefix and left a tail it couldn't extend. Treat that
+        // as a failure (else codegen would silently compile a truncated program),
+        // pointing at where matching stalled.
+        if (m.end < source.len) {
+            if (m.end > g_furthest) g_furthest = m.end;
+            return null;
+        }
         const node = na.create(Node) catch @panic("peg: oom");
         node.* = .{ .rule = root_name, .start = 0, .end = m.end, .children = m.children };
         return node;
     }
+    g_furthest = rs.furthest;
     return null;
 }
 
@@ -488,6 +503,16 @@ fn mParseFrom(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return cst;
 }
 
+/// `[aGrammar furthestFail]` — the furthest source offset reached by the most
+/// recent `parse:from:` before failing (a "the syntax error is around here"
+/// pointer). Only meaningful right after a parse that returned nil.
+fn mFurthestFail(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(@intCast(g_furthest));
+}
+
 // CstNode accessors (on cstnode_vt).
 fn mCstRule(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
@@ -569,6 +594,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     // Grammar.
     api.method(grammar_vt, api.intern("rule:is:"), &mRuleIs);
     api.method(grammar_vt, api.intern("parse:from:"), &mParseFrom);
+    api.method(grammar_vt, api.intern("furthestFail"), &mFurthestFail);
 
     // CstNode accessors.
     api.method(cstnode_vt, api.intern("rule"), &mCstRule);

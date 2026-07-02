@@ -434,6 +434,25 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     const src = try std.fs.cwd().readFileAlloc(a, path, 16 << 20);
     defer a.free(src);
     _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
+
+    // Surface a compile failure instead of exiting quietly on a program that
+    // silently became nil (a syntax error or an out-of-subset construct).
+    const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
+    if (err != api.nilObj) {
+        out("birnam: compile error in ");
+        out(path);
+        out(":\n");
+        outErrorString(api, err);
+        std.process.exit(1);
+    }
+}
+
+/// Print a `[Codegen lastError]` String (a `line:col: message` block) to stderr.
+fn outErrorString(api: *IdApi, s: Oop) void {
+    var len: usize = 0;
+    const p = api.stringBytes(s, &len);
+    std.fs.File.stderr().writeAll(p[0..len]) catch {};
+    std.fs.File.stderr().writeAll("\n") catch {};
 }
 
 /// Boot an image: `birnam-id foo.image` (docs/40). Bring up the language stack
@@ -677,14 +696,11 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
             if (replCommand(api, src)) break;
             continue;
         }
-        // Parse first so a syntax error reports cleanly (rather than a bare nil).
-        const cst = api.send(lang, api.intern("parse:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
-        if (cst == api.nilObj) {
-            out("// syntax error\n");
-            continue;
-        }
         const result = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
-        printResult(api, result);
+        // A compile failure (syntax or out-of-subset) reports with location instead
+        // of a bare nil; otherwise print the value.
+        const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
+        if (err != api.nilObj) outErrorString(api, err) else printResult(api, result);
     }
     out("\n");
 }

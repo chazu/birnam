@@ -91,6 +91,68 @@ var r_logicVar: Oop = null;
 
 var src_bytes: []const u8 = &.{}; // the source for the current eval (for spans)
 
+// -- diagnostics -------------------------------------------------------------
+// A compile failure (bad syntax or an out-of-subset construct) otherwise makes a
+// whole program silently evaluate to nil, with no clue where. We capture the FIRST
+// failure per eval — its message and source offset — format it (line:col + the
+// offending line + a caret) at capture time (while `src_bytes` is still valid), and
+// surface it via `[Codegen lastError]` so the CLI/REPL can print it.
+var g_err_active: bool = false;
+var g_err_text: ?[]u8 = null; // owned, formatted; replaced each capture
+
+fn clearError() void {
+    g_err_active = false;
+}
+
+/// Record a compile failure at byte `off` in the current source. Keeps the FIRST
+/// (deepest/earliest) note per eval — inner emitters fail first, so that node is the
+/// most specific. Formats immediately: `line:col: <msg>` then the source line and a
+/// caret under `off`.
+fn noteError(msg: []const u8, off: usize) void {
+    if (g_err_active) return;
+    g_err_active = true;
+
+    // line:col (1-based) + the bounds of the offending line.
+    var line: usize = 1;
+    var line_start: usize = 0;
+    var i: usize = 0;
+    const clamped = if (off <= src_bytes.len) off else src_bytes.len;
+    while (i < clamped) : (i += 1) {
+        if (src_bytes[i] == '\n') {
+            line += 1;
+            line_start = i + 1;
+        }
+    }
+    const col = clamped - line_start + 1;
+    var line_end = line_start;
+    while (line_end < src_bytes.len and src_bytes[line_end] != '\n') line_end += 1;
+    const line_text = src_bytes[line_start..line_end];
+
+    var b: std.ArrayList(u8) = .{};
+    putFmt(&b, "{d}:{d}: {s}\n", .{ line, col, msg });
+    b.appendSlice(ca, line_text) catch @panic("codegen: oom");
+    b.append(ca, '\n') catch @panic("codegen: oom");
+    // Caret: a run of spaces to the column, then '^'. Tabs in the prefix stay tabs
+    // so the caret lines up under a tab-indented source line.
+    var c: usize = line_start;
+    while (c < clamped) : (c += 1) b.append(ca, if (src_bytes[c] == '\t') '\t' else ' ') catch @panic("codegen: oom");
+    b.append(ca, '^') catch @panic("codegen: oom");
+
+    if (g_err_text) |old| ca.free(old);
+    g_err_text = b.toOwnedSlice(ca) catch @panic("codegen: oom");
+}
+
+/// `[Codegen lastError]` — the formatted message from the last eval's compile
+/// failure, or nil if it compiled. Cleared at the start of every eval.
+fn mLastError(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    if (!g_err_active) return g_api.nilObj;
+    const t = g_err_text orelse return g_api.nilObj;
+    return g_api.mkString(t.ptr, t.len);
+}
+
 // Baked global handles (docs/36 §3 v2, the safe layer). A global reference's
 // VALUE stays late-bound through the store (the single source of truth), but its
 // interned SELECTOR is immutable, so we resolve it ONCE at compile time and bake
@@ -617,6 +679,7 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
         put(buf, "\")}, 1L)");
         return true;
     }
+    noteError("cannot compile this expression (not in the compilable subset)", spanStart(node));
     return false;
 }
 
@@ -1075,14 +1138,24 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
     var len: usize = 0;
     const p = g_api.stringBytes(src, &len);
     src_bytes = p[0..len];
+    clearError();
 
     const cst = s1(lang, "parse:", src);
-    if (cst == g_api.nilObj) return null;
+    if (cst == g_api.nilObj) {
+        // The parser tracks the furthest offset it reached — a good "the syntax
+        // error is around here" pointer.
+        const off: usize = @intCast(g_api.smallIntValue(s0(lang, "furthestFail")));
+        noteError("syntax error", off);
+        return null;
+    }
 
     // program → statements → statement+ ; an empty program has no value.
     if (nchild(cst) < 1) return null;
     const statements = child(cst, 0);
     if (nchild(statements) < 1) return null;
+
+    // From here a failure is an emit (out-of-subset) failure; the deepest emitter
+    // notes the precise node. A final fallback guarantees a message either way.
 
     bound_names.clearRetainingCapacity();
     fn_defs.clearRetainingCapacity();
@@ -1099,7 +1172,10 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
     var ev: std.ArrayList(u8) = .{};
     defer ev.deinit(ca);
     put(&ev, "void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\n");
-    if (!emitBody(&ev, statements, persist)) return null;
+    if (!emitBody(&ev, statements, persist)) {
+        noteError("cannot compile this program (not in the compilable subset)", spanStart(statements));
+        return null;
+    }
     put(&ev, "}");
 
     var buf: std.ArrayList(u8) = .{};
@@ -1157,7 +1233,13 @@ fn runProgram(src: Oop, persist: bool) Oop {
     const c_src = g_api.mkString(buf.items.ptr, buf.items.len);
     const unit = s0(tcc, "new");
     if (unit == g_api.nilObj) return g_api.nilObj;
-    if (s1(unit, "compile:", c_src) == g_api.nilObj) return g_api.nilObj;
+    if (s1(unit, "compile:", c_src) == g_api.nilObj) {
+        // The subset parsed and emitted but the generated C didn't compile — a
+        // codegen bug or an emit gap, not user syntax. Surface it rather than a
+        // silent nil (tcc already printed the C diagnostic to stderr).
+        noteError("internal error: generated code failed to compile (please report)", 0);
+        return g_api.nilObj;
+    }
     _ = s0(unit, "bindRuntime");
     addShim(unit, "birnam_global", @ptrCast(&rtGlobal));
     addShim(unit, "birnam_global_b", @ptrCast(&rtGlobalB));
@@ -1244,6 +1326,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("compileImageCode:"), &mCompileImageCode);
     api.method(codegen_vt, api.intern("replayMethods"), &mReplayMethods);
     api.method(codegen_vt, api.intern("deriveImageGlobals"), &mDeriveImageGlobals);
+    api.method(codegen_vt, api.intern("lastError"), &mLastError);
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
     api.method(reflect_vt, api.intern("defineMethod:on:as:source:"), &mDefineMethodSourced);

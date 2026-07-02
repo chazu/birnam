@@ -2,40 +2,20 @@
 
 > If you will permit a small philosophical digression ... Only things exist, and their relations.
 >
-> The first thing a society did upon entering an era of technological acceleration was to disturb the living environment...This did not have to mean stagnation: the environment was an obedient guardian, and to the extent that it was able, it could change itself according to wishes or demands. Could it change so that “progress” would take place? We had no answer for that...Could one call [progress] a situation in which intellectual, creative, cognitive, and constructional activities were so specialized that in each profession one dug deeper in an ever-narrower plot of ground? If machines counted faster and better than a living being, why should the living being count?...Such an artificial environment would be no one, like a meadow, forest, or steppe—with the difference that it would grow and blossom not on its own, not for itself, but for someone. For beings. Would they become stupid from this, turning into dull-witted gluttons that whiled away their hours with toys provided by the planetary guardian? Not necessarily. It depended on the point of view.
+> ...the environment was an obedient guardian...it could change itself according to wishes or demands. Could it change so that “progress” would take place? We had no answer for that...Could one call [progress] a situation in which intellectual, creative, cognitive, and constructional activities were so specialized that in each profession one dug deeper in an ever-narrower plot of ground? If machines counted faster and better than a living being, why should the living being count?...Such an artificial environment would be no one, like a meadow, forest, or steppe—with the difference that it would grow and blossom not on its own, not for itself, but for someone. For beings. Would they become stupid from this, turning into dull-witted gluttons that whiled away their hours with toys provided by the planetary guardian? Not necessarily. It depended on the point of view.
 >
 > Stanislaw Lem, _Fiasco_
 
 A weird, late-bound, dynamic language intended to be completely malleable, in the style of Ian Piumarta's `idst`. Probably does not fulfill this or any other goal.
 
-## Why
-
-I've wanted to craft a personal computing environment like the one described in Piumarta's COLA/ALBERT papers for a long time. I thought `idst` was brilliant, and thought in particular that the ability to absorb C-ABI compliant dynamic libraries, wrap them in a lightweight dispatching shell and use their full power was a cool idea.
-Claude showed up. I took a few stabs at realizing the idea, and spent a lot of time playing with idst. I also wrote two smalltalks. I played with cuelang, implemented datalog poorly twice, played with tuplespaces and "wrote" agentic workflow systems using combinations of the aforementioned technologies.
-Then this guy incepted me with the meme of `extensional object identity` and I ended up reading The Third Manifesto.
-I asked Claude about ents - still haven't found a reason to really grok those, might this do? Claude said no dawg u just need hash-mapped array tries and relaxed radix balanced trees and you can do all kinds of cool shit.
-I said "Can i still do the idst thing? vtable at -1?"
-Claude said "yeah dude sure I don't care do whatever you want"...No actually it probably said "THATS A BRILLIANT IDEA" or some shit.
-Then I said something like "LFG"
-Then I had this thing, which Claude says is:
-
-```
-A tiny Smalltalk-ish language running on a **relational fact-store substrate**, implemented in Zig.
-
-Everything above the kernel is fact-shaped: grammar rules, AST nodes, method tables, bytecode, dispatch state, even error diagnostics live as facts in a HAMT/RRB-backed store. There are no bespoke data structures above the substrate — the language is built out of the same relational primitives it exposes. The result is a live, malleable image (define methods, mutate state, `:save` it, reload it, ship it as a standalone binary) in the Smalltalk tradition, but with a Datomic-style fact store underneath.
-
-> Heritage: tagged pointers + the vtable-at-offset-`-1` trick from Ian Piumarta's [idst](https://www.piumarta.com/software/cola/); persistent collections (HAMT + RRB) à la Clojure; a fact store + time/history à la Datomic.
-```
-
 ## What
 
-Its all clanker-made right now. Only as of the writing of this commit am I attempting to use it - thats not true, I used it before we built the `lang` module from the repl, but since then I've been [balling the jack](https://en.wikipedia.org/wiki/Ballin%27_the_Jack) to get it done-except-AOT-compilation before I really mess with it.
+Piumarta's id object system in zig + relational fact store + libtcc + peg parser generator
 
 So a lot of shit isn't done:
 
 * Any documentation
 * Really any standard library - there's strings, and combinators and some other stuff but we still need:
-  - http
   - files outside the kernel
   - i/o streams
   - external process management
@@ -44,21 +24,9 @@ So a lot of shit isn't done:
 * lsp (what the fuck does this even look like? i have no idea)
 
 
-## Get started in 60 seconds
+##
 
-**Option A — download a release** (arm64 macOS only, for now):
-
-```sh
-# grab the latest tarball from https://github.com/chazu/birnam/releases
-curl -L <tarball-url> | tar xz
-xattr -dr com.apple.quarantine birnam-*-aarch64-macos   # clear Gatekeeper
-birnam-*-aarch64-macos/bin/birnam                        # zero-config REPL
-```
-
-The bundle is self-contained: `bin/birnam` finds its modules in the sibling
-`lib/`, so it runs from wherever you unpack it — no install step, no env var.
-
-**Option B — build from source** (any platform with **Zig 0.15.1**):
+**Build from source** (any platform with **Zig 0.15.1**):
 
 ```sh
 zig build install --prefix ~/.local      # or: mise run install
@@ -96,7 +64,6 @@ language tour lives in [`DEMO.md`](DEMO.md).
 > Heads up: only arm64 macOS has a prebuilt binary today. On Linux / Intel
 > macs, build from source (Option B) — the cross-platform port is tracked
 > separately.
-
 
 ## Build
 
