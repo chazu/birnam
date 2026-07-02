@@ -172,7 +172,7 @@ pub fn main() !void {
     // REPL mode: `birnam-id --repl` (or `-i` / `repl`) starts an interactive loop.
     if (script_path) |sp| {
         if (std.mem.eql(u8, sp, "--repl") or std.mem.eql(u8, sp, "-i") or std.mem.eql(u8, sp, "repl"))
-            return runRepl(a, api);
+            return runRepl(a, api, false);
         if (std.mem.endsWith(u8, sp, ".image"))
             return runImage(a, api, sp, rebuild);
         return runScript(a, api, sp);
@@ -483,6 +483,11 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
     // entry-point `main` closure lands through this path.
     _ = api.send(codegen, api.intern("deriveImageGlobals"), &[_]Oop{}, 0);
 
+    // Checkpoint the append baseline: boot reconstruction (mapped/replayed code,
+    // re-derived globals) re-asserts facts we must NOT re-journal — a later
+    // `appendImage:` should carry only changes made AFTER boot (docs/40 §7.4).
+    _ = api.send(system, api.intern("imageCheckpoint"), &[_]Oop{}, 0);
+
     // Entry-point convention: `main` bound → run it; else drop into the REPL.
     if (api.import("Globals")) |globals| {
         const m = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("main")}, 1);
@@ -491,7 +496,7 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
             return;
         }
     }
-    return runRepl(a, api);
+    return runRepl(a, api, true); // booted: stack + stdlib already up (mapped/replayed)
 }
 
 // -- the REPL: an interactive tool for exploring the running system ----------
@@ -644,8 +649,13 @@ fn replCommand(api: *IdApi, cmd: []const u8) bool {
 /// The interactive read-eval-print loop. Bindings persist via `evalPersisting:`;
 /// input is parsed first so syntax errors report cleanly; faults are catchable
 /// values, so the loop never dies on a bad line.
-fn runRepl(a: std.mem.Allocator, api: *IdApi) !void {
-    try loadStack(a, api);
+/// The interactive REPL. `booted` = entered from a mapped image (`runImage`), where
+/// the stack and stdlib are ALREADY up — re-loading them would re-JIT the whole
+/// library and pollute the store with fresh reconstruction facts (which a later
+/// `appendImage:` would then journal). A standalone `--repl` passes false to do the
+/// one-time init itself.
+fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
+    if (!booted) try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
     const lang = api.import("Lang") orelse return error.NoLang;
 
@@ -654,7 +664,7 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi) !void {
     _ = &stack_anchor;
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
 
-    loadStdlib(api, codegen);
+    if (!booted) loadStdlib(api, codegen);
 
     out("birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\n");
     while (true) {

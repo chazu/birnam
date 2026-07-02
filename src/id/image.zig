@@ -155,6 +155,16 @@ fn writeFile(path: []const u8, bytes: []const u8) bool {
     return true;
 }
 
+/// Append `bytes` to the end of an existing file (the journal write; docs/40 §7.4).
+/// The format is self-delimiting records read to EOF, so this needs no rewrite.
+fn appendToFile(path: []const u8, bytes: []const u8) bool {
+    const file = std.fs.cwd().openFile(path, .{ .mode = .write_only }) catch return false;
+    defer file.close();
+    file.seekFromEnd(0) catch return false;
+    file.writeAll(bytes) catch return false;
+    return true;
+}
+
 /// Write a header-only (empty but valid) image — the pure format floor, no
 /// running system needed (the format-level tests build images this way).
 pub fn writeHeaderOnly(path: []const u8) bool {
@@ -179,6 +189,19 @@ var g_deferred_facts: u32 = 0;
 var g_deferred_slots: u32 = 0;
 var g_collector_vt: Oop = null;
 
+// Journaling state (docs/40 §7.4: one format, two write modes). Survives ACROSS
+// saves within a process — so an `appendImage` continues the base's object→id
+// numbering (`g_reloc`/`g_objs` are NOT reset by an append), writing only the
+// delta. A full `saveImage` (the compactor) resets and becomes the new base; a
+// successful load also seeds these from the mapped image so a booted app can then
+// append. `-1` basis = no base established in this process yet.
+var g_saved_basis: i64 = -1; // basis tx captured at the last save/append/load
+var g_min_tx: i64 = 0; // collector filter: skip facts with tx < this (append = delta only)
+var g_delta_has_methods: bool = false; // a delta touched `__methods__` → warn (code needs compact/rebuild)
+var g_methods_entity: Oop = null; // interned `__methods__`, for that detection
+
+/// Reset the save worklist for a FULL save (a fresh base / compaction). An append
+/// deliberately does NOT call this — it reuses the base's numbering.
 fn resetSaveState() void {
     g_reloc.clearRetainingCapacity();
     g_objs.clearRetainingCapacity();
@@ -259,13 +282,16 @@ fn encodeField(buf: *Buf, o: Oop) bool {
 fn mCollect(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    const tx = g_api.smallIntValue(args[3]);
+    if (tx < g_min_tx) return g_api.nilObj; // already in the base image — not this delta
     var scratch: Buf = .{};
     defer scratch.deinit(ca);
     scratch.append(ca, @intCast(g_api.smallIntValue(args[4]))) catch @panic("image: oom"); // op
-    putU64(&scratch, @intCast(g_api.smallIntValue(args[3]))); // tx
+    putU64(&scratch, @intCast(tx)); // tx
     if (encodeField(&scratch, args[0]) and encodeField(&scratch, args[1]) and encodeField(&scratch, args[2])) {
         g_facts_buf.appendSlice(ca, scratch.items) catch @panic("image: oom");
         g_kept += 1;
+        if (args[0] == g_methods_entity) g_delta_has_methods = true;
     } else g_deferred_facts += 1;
     return g_api.nilObj;
 }
@@ -276,9 +302,19 @@ fn mCollect(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// grows). Code words are zero-width here (deferred to slice 4). The leading u32
 /// count is backpatched to the final total.
 fn drainHeap(buf: *Buf) void {
+    drainHeapFrom(buf, 0);
+}
+
+/// Drain worklist objects with id >= `start` into a `.heap` payload. A full save
+/// passes 0; an append passes the base's object count, so only objects NEW to the
+/// delta are written — objects already in the base keep their base ids and are
+/// referenced (not re-serialized). The walk still DISCOVERS nested objects (the
+/// worklist grows past its initial end), and those are new too, so they are
+/// included. The leading u32 is the count written by THIS record.
+fn drainHeapFrom(buf: *Buf, start: usize) void {
     const count_at = buf.items.len;
     putU32(buf, 0);
-    var i: usize = 0;
+    var i: usize = start;
     while (i < g_objs.items.len) : (i += 1) {
         const o = g_objs.items[i];
         const vt = g_api.vtableOf(o);
@@ -302,7 +338,7 @@ fn drainHeap(buf: *Buf) void {
             }
         }
     }
-    std.mem.writeInt(u32, buf.items[count_at..][0..4], @intCast(g_objs.items.len), .little);
+    std.mem.writeInt(u32, buf.items[count_at..][0..4], @intCast(g_objs.items.len - start), .little);
 }
 
 fn reportDeferred() void {
@@ -347,6 +383,8 @@ pub fn saveImage(path: []const u8) bool {
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
     resetSaveState();
+    g_min_tx = 0; // a full save carries EVERY fact (the compacted base)
+    g_delta_has_methods = false;
 
     var facts_recs: Buf = .{};
     defer facts_recs.deinit(ca);
@@ -383,7 +421,73 @@ pub fn saveImage(path: []const u8) bool {
     }
     appendCode(&buf); // 4. Compiled code — the whole library, mapped on load.
     reportDeferred();
-    return writeFile(path, buf.items);
+    if (!writeFile(path, buf.items)) return false;
+    // This save is now the base for any subsequent append (docs/40 §7.4): keep the
+    // object numbering and remember the basis so the next append writes only newer.
+    g_saved_basis = tx;
+    return true;
+}
+
+/// `[System appendImage: path]` — the journal write mode (docs/40 §7.4). Append to
+/// an EXISTING image only the state changed since the last save/append/load in this
+/// process: facts with `tx >= g_saved_basis`, plus a `.heap` record for objects
+/// newly reachable from them (base objects keep their ids and are referenced, not
+/// rewritten). The on-disk format is a record stream read to EOF, so appending is
+/// literally writing more records — no rewrite. Returns false if no base is known
+/// (call `saveImage:` first) or on an I/O error. Code is NOT re-emitted: a delta
+/// that (re)defines methods still needs a compacting `saveImage:` (or a `--rebuild`
+/// boot, which replays all source) for its code — reported when it happens.
+pub fn appendImage(path: []const u8) bool {
+    if (g_saved_basis < 0) return false; // no base established this process
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+    // Deliberately NOT resetSaveState — reuse the base's object→id numbering.
+    const base_obj_count = g_objs.items.len;
+    g_kept = 0;
+    g_deferred_facts = 0;
+    g_deferred_slots = 0;
+    g_delta_has_methods = false;
+    g_min_tx = g_saved_basis;
+
+    var facts_recs: Buf = .{};
+    defer facts_recs.deinit(ca);
+    var heap_buf: Buf = .{};
+    defer heap_buf.deinit(ca);
+
+    const store = g_api.import("Store");
+    var tx: i64 = g_saved_basis;
+    if (store) |st| {
+        tx = g_api.smallIntValue(g_api.send(st, g_api.intern("basis"), &[_]Oop{}, 0));
+        g_facts_buf = &facts_recs;
+        const collector = g_api.alloc(g_collector_vt, 0);
+        _ = g_api.send(st, g_api.intern("imageFactsInto:"), &[_]Oop{collector}, 1);
+    }
+    drainHeapFrom(&heap_buf, base_obj_count); // only objects new to this delta
+
+    // Assemble the delta records (heap before facts, same as a base generation).
+    var buf: Buf = .{};
+    defer buf.deinit(ca);
+    if (g_objs.items.len > base_obj_count) {
+        const at = beginRecord(&buf, .heap);
+        putBytes(&buf, heap_buf.items);
+        endRecord(&buf, at);
+    }
+    if (g_kept > 0) {
+        const at = beginRecord(&buf, .facts);
+        putU64(&buf, @bitCast(tx));
+        putU32(&buf, g_kept);
+        putBytes(&buf, facts_recs.items);
+        endRecord(&buf, at);
+    }
+    reportDeferred();
+    if (g_delta_has_methods) std.debug.print(
+        "[image] append: this delta (re)defines methods — their COMPILED code is not appended; " ++
+            "boot with --rebuild, or `saveImage:` to compact, to map them\n",
+        .{},
+    );
+    if (buf.items.len > 0 and !appendToFile(path, buf.items)) return false;
+    g_saved_basis = tx; // advance the watermark for the next append
+    return true;
 }
 
 // -- Byte reader -------------------------------------------------------------
@@ -499,7 +603,10 @@ fn decodeField(r: *Reader, out: *Oop) bool {
 /// pass 2 fills payloads — raw words copied, Oop words decoded, code words zeroed
 /// (slice 4) — resolving heap-refs against the now-complete table.
 fn loadHeap(payload: []const u8) bool {
-    g_load_reloc.clearRetainingCapacity();
+    // `g_load_reloc` is CUMULATIVE across `.heap` records in one load (ids are
+    // global — a later generation's objects reference earlier ones by their base
+    // id), so it is cleared once per load in `loadImage`, not here. `g_load_objs`
+    // is per-record scratch for pass 2, so it IS cleared each call.
     g_load_objs.clearRetainingCapacity();
     var r = Reader{ .b = payload };
     const n = r.u32v() orelse return false;
@@ -543,14 +650,22 @@ fn loadHeap(payload: []const u8) bool {
     return true;
 }
 
-/// Rebuild the store's fact stream from a `.facts` record, resolving heap-refs
-/// against the (already-loaded) heap. Wholesale replacement (docs/40 §3b).
-fn loadFacts(payload: []const u8) bool {
+/// Apply one `.facts` record to the store, resolving heap-refs against the (already
+/// loaded) heap. CUMULATIVE across records (docs/40 §7.4): the store is cleared
+/// once (on the first record, via `imageLoadBegin`), every record's facts are then
+/// appended, and the counters are restored once after the last record — so a base
+/// generation followed by appended deltas rebuilds the whole fact timeline. Tracks
+/// the highest basis seen in `max_basis`; sets `began` after the first clear.
+fn loadFacts(payload: []const u8, began: *bool, max_basis: *i64) bool {
     const store = g_api.import("Store") orelse return false;
     var r = Reader{ .b = payload };
-    const tx = r.u64v() orelse return false;
+    const tx: i64 = @intCast(r.u64v() orelse return false);
     const kept = r.u32v() orelse return false;
-    _ = g_api.send(store, g_api.intern("imageLoadBegin"), &[_]Oop{}, 0);
+    if (!began.*) {
+        _ = g_api.send(store, g_api.intern("imageLoadBegin"), &[_]Oop{}, 0);
+        began.* = true;
+    }
+    if (tx > max_basis.*) max_basis.* = tx;
     const s_add = g_api.intern("imageAddFact:attr:value:tx:op:");
     var i: u32 = 0;
     while (i < kept) : (i += 1) {
@@ -562,7 +677,6 @@ fn loadFacts(payload: []const u8) bool {
         if (!decodeField(&r, &e) or !decodeField(&r, &a) or !decodeField(&r, &v)) return false;
         _ = g_api.send(store, s_add, &[_]Oop{ e, a, v, g_api.mkSmallInt(@intCast(ftx)), g_api.mkSmallInt(op) }, 5);
     }
-    _ = g_api.send(store, g_api.intern("imageLoadEnd:raw:"), &[_]Oop{ g_api.mkSmallInt(@intCast(tx)), g_api.falseObj }, 2);
     return true;
 }
 
@@ -571,11 +685,18 @@ fn loadFacts(payload: []const u8) bool {
 /// with NO recompile (the default boot). Skipped when the code can't be trusted
 /// (arch/ABI mismatch or --rebuild) — the caller then replays from source. Sets
 /// `g_mapped_code` on success. Returns false only on an actual load error.
+var g_code_load_seq: u32 = 0; // distinguishes multiple `.code` records in one load
+
 fn loadCode(payload: []const u8) bool {
     if (!codeMappable()) return true; // not an error — leave it to replay/stdlib
     const codegen = g_api.import("Codegen") orelse return false;
+    // Per-record temp path: an image may carry more than one `.code` record (a base
+    // plus appended code); each dlopen+install composes, but they must not collide.
+    var sbuf: [16]u8 = undefined;
+    const suffix = std.fmt.bufPrint(&sbuf, "load{d}", .{g_code_load_seq}) catch return false;
+    g_code_load_seq += 1;
     var pbuf: [128]u8 = undefined;
-    const tmp = codeTempPath(&pbuf, "load");
+    const tmp = codeTempPath(&pbuf, suffix);
     if (!writeFile(tmp, payload)) return false;
     const r = g_api.send(codegen, g_api.intern("load:"), &[_]Oop{g_api.mkString(tmp.ptr, tmp.len)}, 1);
     std.fs.cwd().deleteFile(tmp) catch {};
@@ -595,6 +716,10 @@ pub fn loadImage(path: []const u8) bool {
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
     g_mapped_code = false;
+    g_code_load_seq = 0;
+    g_load_reloc.clearRetainingCapacity(); // ids are global across this load's records
+    var facts_began = false;
+    var max_basis: i64 = 0;
     var r = Reader{ .b = bytes };
     if (!readHeader(&r)) return false;
     while (r.i < r.b.len) {
@@ -603,12 +728,33 @@ pub fn loadImage(path: []const u8) bool {
         const payload = r.take(@intCast(len)) orelse return false;
         switch (@as(RecordKind, @enumFromInt(kind))) {
             .heap => if (!loadHeap(payload)) return false,
-            .facts => if (!loadFacts(payload)) return false,
+            .facts => if (!loadFacts(payload, &facts_began, &max_basis)) return false,
             .code => if (!loadCode(payload)) return false,
             else => {}, // unknown/not-yet-handled record: skip by its framed length
         }
     }
+    // Restore the store counters once, after every generation's facts are applied.
+    if (facts_began) {
+        const store = g_api.import("Store").?;
+        _ = g_api.send(store, g_api.intern("imageLoadEnd:raw:"), &[_]Oop{ g_api.mkSmallInt(max_basis), g_api.falseObj }, 2);
+    }
+    // Seed the SAVE-side journaling state from what we just mapped, so a booted app
+    // can `appendImage:` a delta afterward (docs/40 §7.4): the object→id inverse of
+    // the load table, the object worklist in id order, and the loaded basis.
+    seedSaveStateFromLoad(max_basis);
     return true;
+}
+
+/// After a load, mirror the load relocation table into the save worklist so the
+/// next `appendImage:` continues this image's object numbering.
+fn seedSaveStateFromLoad(basis: i64) void {
+    g_reloc.clearRetainingCapacity();
+    g_objs.clearRetainingCapacity();
+    for (g_load_reloc.items, 0..) |o, id| {
+        if (o) |p| g_reloc.put(ca, @intFromPtr(p), @intCast(id)) catch @panic("image: oom");
+        g_objs.append(ca, o) catch @panic("image: oom");
+    }
+    g_saved_basis = basis;
 }
 
 /// Whether the most recent `loadImage` mapped a compiled `.code` section (methods
@@ -668,6 +814,34 @@ fn sysSaveImage(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     var len: usize = 0;
     const p = pathArg(a[0], &len) orelse return g_api.nilObj;
     return if (saveImage(p[0..len])) self else g_api.nilObj;
+}
+
+/// `[System imageCheckpoint]` — mark the CURRENT store basis as the append baseline
+/// (docs/40 §7.4). The boot path calls this after reconstruction (mapped/replayed
+/// code + re-derived globals), so the facts that boot itself re-asserts — method
+/// installs, `__amblk`/`__mblk` closures, re-derived globals — are treated as part
+/// of restoring the saved state, not as a new delta. Without it, the first
+/// `appendImage:` after a boot would re-journal all of that reconstruction. Answers
+/// self.
+fn sysImageCheckpoint(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    if (g_api.import("Store")) |store| {
+        g_saved_basis = g_api.smallIntValue(g_api.send(store, g_api.intern("basis"), &[_]Oop{}, 0));
+    }
+    return self;
+}
+
+/// `[System appendImage: path]` — the journal write mode (docs/40 §7.4): append
+/// only the delta since the last save/append/load in this process to an EXISTING
+/// image, no rewrite. Answers self on success, nil on failure — including when no
+/// base is known yet (do a `saveImage:` first). A fresh boot of the resulting image
+/// applies base + every appended delta cumulatively.
+fn sysAppendImage(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var len: usize = 0;
+    const p = pathArg(a[0], &len) orelse return g_api.nilObj;
+    return if (appendImage(p[0..len])) self else g_api.nilObj;
 }
 
 /// `[System loadImage: path]` — map an image back in (mapping compiled code by
@@ -750,9 +924,12 @@ pub fn bringUp(api: *IdApi) void {
     g_api = api;
     const system_vt = api.import("SystemVt");
     api.method(system_vt, api.intern("saveImage:"), &sysSaveImage);
+    api.method(system_vt, api.intern("appendImage:"), &sysAppendImage);
+    api.method(system_vt, api.intern("imageCheckpoint"), &sysImageCheckpoint);
     api.method(system_vt, api.intern("loadImage:"), &sysLoadImage);
     api.method(system_vt, api.intern("loadImage:rebuild:"), &sysLoadImageRebuild);
     api.method(system_vt, api.intern("bakeExe:"), &sysBakeExe);
+    g_methods_entity = api.intern("__methods__"); // to flag method-defining appends
     // The fact collector: a proto (permanent → safe to hold module-globally) whose
     // one method the store drives during `imageFactsInto:`.
     g_collector_vt = api.proto(api.object_vt);

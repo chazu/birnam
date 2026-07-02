@@ -83,8 +83,30 @@
 > with no env. VERIFIED: `./myapp` from both bake paths, env-free from `/tmp`,
 > mapped + `--rebuild`; a plain birnam-id has no trailer and is unaffected. No
 > OS-level dual-format file (dyld/glibc fight it, §1) — "runnable" is this bake
-> step over the same content, as designed. REMAINING (follow-up, not core):
-> incremental append + compact (§7.4).
+> step over the same content, as designed.
+>
+> **Slice 4 follow-up — incremental append + compact SHIPPED (2026-07-02):** the
+> journal write mode (§7.4). The on-disk format was already a record stream read
+> to EOF, so `[System appendImage: path]` writes only the delta since the last
+> save/append/load — facts with `tx >= g_saved_basis` plus a `.heap` record for
+> objects newly reachable from them — to the END of an existing image, no rewrite.
+> Object ids continue the base's numbering (save state `g_reloc`/`g_objs` persists
+> across saves and is seeded from a load), so a delta fact referencing a BASE object
+> reuses its id (no duplication, identity kept). Load is now CUMULATIVE: the
+> relocation table accumulates across `.heap` records (global ids), facts apply
+> begin-once/add-all/end-once across `.facts` generations (newest tx wins), and
+> multiple `.code` records compose. A booted app can append too — the load seeds the
+> save state and `runImage` calls `[System imageCheckpoint]` after reconstruction so
+> boot-regenerated facts aren't re-journaled (this also stopped the booted REPL from
+> re-JITing the stdlib — it now skips the redundant re-init). `[System saveImage:]`
+> is the COMPACTOR (a fresh single-generation base). Code is NOT re-emitted by an
+> append: a delta that (re)defines methods is reported, and its code comes back via
+> a `--rebuild` boot (replays all source) or a compacting `saveImage:` — data
+> appends map cleanly by default. VERIFIED: base + N deltas + rebind restored
+> cumulatively cross-process (`examples/journal.birnam`), boot-then-append, heap
+> objects born in a delta, method-defining append → `--rebuild`/compact path,
+> in-process test. This closes the images arc's follow-ups; only depth (mmap fast
+> path, cross-image merge §5) remains, none load-bearing.
 >
 > Builds on the
 > [running system](36-the-running-system.md) (globals are cells, method source

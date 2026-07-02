@@ -162,6 +162,51 @@ test "round-trip: leaf + vector + map globals survive save/load" {
     try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(send(gm, "at:", &.{api.intern("k")})));
 }
 
+test "journal: appendImage writes deltas; load applies base + deltas cumulatively" {
+    const api = setup();
+    const globals = api.import("Globals").?;
+
+    const a = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const path = try tmpImagePath(a, &tmp);
+    defer a.free(path);
+
+    // Base: one leaf global. saveImage establishes the append baseline.
+    gPut(globals, "base_g", api.mkSmallInt(1));
+    try std.testing.expect(image.saveImage(path));
+
+    // Delta 1: a new leaf. Delta 2: a new vector (a heap object born in a delta —
+    // its `.heap` record's ids must continue the base's numbering). Each append
+    // writes only its own change, no rewrite.
+    gPut(globals, "d_i", api.mkSmallInt(2));
+    try std.testing.expect(image.appendImage(path));
+
+    const vfac = api.import("Vector").?;
+    var v = send(vfac, "new", &.{});
+    v = send(v, "add:", &.{api.mkSmallInt(7)});
+    v = send(v, "add:", &.{api.mkSmallInt(8)});
+    gPut(globals, "d_v", v);
+    // Also REBIND the base global in this delta — newest tx must win on load.
+    gPut(globals, "base_g", api.mkSmallInt(11));
+    try std.testing.expect(image.appendImage(path));
+
+    // Clobber live state, then load: the load must restore base + every delta.
+    gPut(globals, "base_g", api.mkSmallInt(999));
+    gPut(globals, "d_i", api.mkSmallInt(999));
+    try std.testing.expect(image.loadImage(path));
+
+    try std.testing.expectEqual(@as(i64, 11), api.smallIntValue(gAt(globals, "base_g"))); // rebind won
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(gAt(globals, "d_i")));
+    const dv = gAt(globals, "d_v");
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(send(dv, "size", &.{})));
+    try std.testing.expectEqual(@as(i64, 8), api.smallIntValue(send(dv, "at:", &.{api.mkSmallInt(1)})));
+
+    // The file is a base generation plus appended generations, not a rewrite: more
+    // than one `.facts` record survives structural validation.
+    try std.testing.expect(image.validate(path));
+}
+
 // -- slice 4: the compiled .code section (map by default, replay on --rebuild) --
 
 /// The full front end (peg → lang → tcc → codegen) atop `setup`, so an image can
