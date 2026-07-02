@@ -13,8 +13,10 @@
 //   - CODE: a user method's compiled machine code. Booting the image MAPS it —
 //     no recompile (the default). `birnam --rebuild foo.image` instead rebuilds
 //     the library from the method SOURCE the image also carries.
-// Still image-born, so still deferred (counted/reported at save): block-valued
-// GLOBALS — a closure bound directly to a name, like an auto-run `main` block.
+//   - BLOCK-VALUED GLOBALS: a closure bound to a name (like an auto-run `main`).
+//     Its value can't be serialized (an image-born vtable + code pointer), so the
+//     save defers it — but a top-level `let` records its SOURCE, and boot re-
+//     derives the closure from that. See examples/app.birnam for the `main` entry.
 
 // A spread of values as globals — the durability line is what the store names.
 [Globals at: #answer put: 42];

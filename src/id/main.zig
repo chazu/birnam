@@ -277,7 +277,11 @@ fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
 }
 
 /// Compile + run a birnam script file. Loads the full stack quietly, then
-/// `[Codegen eval: source]`. The script does its own I/O via `System`.
+/// `[Codegen evalPersisting: source]`. The script does its own I/O via `System`.
+/// Top-level `let`s PERSIST to the Globals store (as in the REPL) — so a script
+/// that binds `main` (or any global) leaves it in the store for `[System
+/// saveImage:]` to capture, and records its source for image re-derivation
+/// (docs/40 §1 entry-point convention, §6 source-backed block globals).
 fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
@@ -295,7 +299,7 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
 
     const src = try std.fs.cwd().readFileAlloc(a, path, 16 << 20);
     defer a.free(src);
-    _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
+    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
 }
 
 /// Boot an image: `birnam-id foo.image` (docs/40). Bring up the language stack
@@ -338,6 +342,12 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
         const replayed = api.send(codegen, api.intern("replayMethods"), &[_]Oop{}, 0);
         if (api.smallIntValue(replayed) == 0) loadStdlib(api, codegen);
     }
+
+    // Re-derive block-valued (and any deferred) globals from their recorded source
+    // (docs/40 §6): a closure can't be serialized, so its value fact was skipped at
+    // save; here we rebuild it from `__globalsrc__` over the now-resolved code. The
+    // entry-point `main` closure lands through this path.
+    _ = api.send(codegen, api.intern("deriveImageGlobals"), &[_]Oop{}, 0);
 
     // Entry-point convention: `main` bound → run it; else drop into the REPL.
     if (api.import("Globals")) |globals| {

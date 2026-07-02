@@ -50,9 +50,25 @@
 > knows whether to fall back. VERIFIED cross-process + in a clean in-process test:
 > a user method's code survives an image and runs from mapped code (no recompile),
 > and rebuilds from source under `--rebuild`. Images grow to ~77KB (they carry the
-> compiled library). Commits `d20b12b`→`44cfe16`. REMAINING (follow-ups, not core):
-> block-valued globals (an auto-run `main` closure is still image-born/deferred);
-> the exe bake; incremental append + compact (§7.4).
+> compiled library). Commits `d20b12b`→`44cfe16`.
+>
+> **Slice 4 follow-up — block-valued globals SHIPPED (2026-07-02):** the
+> entry-point `main` closure (and any block-valued global) now survives an image
+> (docs/40 §1/§6). A closure's VALUE still can't be serialized (image-born vtable +
+> code pointer), so its fact is deferred at save as before — but a top-level `let`
+> now also records the binding's SOURCE onto a reserved `__globalsrc__` entity
+> (a String leaf, via a new `birnam_record_global_src` shim emitted alongside
+> `birnam_global_set`). On boot, after code is resolved (mapped or replayed),
+> `[Codegen deriveImageGlobals]` re-evals `let <name> := <src>` for every recorded
+> global that came back UNBOUND (its value deferred) — leaf globals that mapped via
+> the fact stream stay bound and are skipped. The re-derived closure sees restored
+> captures (data loads before derivation). To make this reachable from a filed
+> script, `runScript` now evaluates with `evalPersisting:` (top-level `let`s persist
+> to Globals, as in the REPL) — so `let main := [| … ]` in a script leaves `main` in
+> the store for `[System saveImage:]` and boots auto-run it. VERIFIED cross-process
+> (mapped + `--rebuild`) and in-process (image_test); `examples/app.birnam` is the
+> `main`-entry demo. REMAINING (follow-ups, not core): the exe bake; incremental
+> append + compact (§7.4).
 >
 > Builds on the
 > [running system](36-the-running-system.md) (globals are cells, method source

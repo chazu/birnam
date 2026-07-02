@@ -219,3 +219,40 @@ test "round-trip: a user method's compiled code is mapped (default), replayed (-
     _ = api.send(Codegen, api.intern("replayMethods"), &.{}, 0); // what runImage does on the false branch
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api.mkSmallInt(5), "quad", &.{})));
 }
+
+test "round-trip: a block-valued global is re-derived from its recorded source" {
+    const api = setupWithCodegen();
+    const Codegen = api.import("Codegen").?;
+    const globals = api.import("Globals").?;
+
+    // A block bound to a name — a closure that captures a leaf global. Its VALUE
+    // can't be serialized (an image-born vtable + code pointer), so the save
+    // defers it; but `evalPersisting:` records the binding's SOURCE, from which
+    // the image re-derives the closure on load (docs/40 §6).
+    const src = "let base := 40; let addBase := [:x | [x + base]]";
+    _ = api.send(Codegen, api.intern("evalPersisting:"), &.{api.mkString(src.ptr, src.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(send(gAt(globals, "addBase"), "value:", &.{api.mkSmallInt(2)})));
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const path = try std.fs.path.join(a, &.{ dir, "blk.image" });
+    defer a.free(path);
+
+    try std.testing.expect(image.saveImage(path));
+    try std.testing.expect(image.loadImage(path)); // maps code + facts; block value deferred
+
+    // The leaf `base` mapped via the fact stream; the block `addBase` did NOT
+    // (its value fact was deferred), so it comes back unbound until re-derived.
+    try std.testing.expectEqual(@as(i64, 40), api.smallIntValue(gAt(globals, "base")));
+
+    // Re-derive block globals from source — what runImage does after code resolves.
+    // Answers the count re-derived: exactly `addBase` (the leaf `base` stays bound).
+    const n = api.send(Codegen, api.intern("deriveImageGlobals"), &.{}, 0);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(n));
+
+    // The re-derived closure works and still sees the restored capture.
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(send(gAt(globals, "addBase"), "value:", &.{api.mkSmallInt(2)})));
+}

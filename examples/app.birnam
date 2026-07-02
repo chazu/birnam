@@ -1,0 +1,33 @@
+// A packaged app — an image with a `main` entry point (docs/40 §1, slice 4).
+//
+//   birnam examples/app.birnam        // builds /tmp/birnam-app.image
+//   birnam /tmp/birnam-app.image      // BOOTS it — `main` auto-runs, no REPL
+//   birnam --rebuild /tmp/birnam-app.image   // same, via the source replay path
+//
+// The entry-point convention: if the global `main` is bound, booting the image
+// sends it `value` instead of opening the REPL. `main` is a BLOCK — a closure —
+// so its value can't be serialized directly. What makes it survive is that a
+// top-level `let` records the binding's SOURCE into the store; on boot, after
+// the compiled code is mapped (or replayed), the closure is re-derived from
+// that source. A block global that captures other globals works too: they are
+// restored (data) before `main` is re-derived, so the capture resolves.
+
+// State the app carries — restored as data on boot (the durability line is what
+// the store can name).
+let banner := "birnam app v1";
+let counters := #[ 1 2 3 ];
+
+// A user method — its compiled code is MAPPED on boot (no recompile).
+[Reflect defineMethod: #total on: Integer as: [:x | [x + x]]];
+
+// The entry point: a zero-arg block. `[| ... ]` is a block; it captures `banner`
+// and `counters` from the surrounding scope and sends through the mapped method.
+let main := [|
+  [System println: banner];
+  [System println: ["counters size: " , [[counters size] printString]]];
+  [System println: ["10 total: " , [[10 total] printString]]]
+];
+
+let path := [Globals at: #imagePath put: "/tmp/birnam-app.image"];
+[System saveImage: path];
+[System println: [["saved app image to " , path] , " — boot it to run main"]]

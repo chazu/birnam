@@ -53,6 +53,7 @@ var sel_addMethodOn: Oop = null;
 var method_blk_counter: usize = 0; // unique keys for stashed method blocks
 var method_src_counter: usize = 0; // unique keys for recorded method sources
 var g_methods_entity: Oop = null; // the reserved entity method-source facts hang off of
+var g_globalsrc_entity: Oop = null; // the reserved entity top-level global-source facts hang off of
 var artifact_method_counter: usize = 0; // per-emit ids for installable artifact methods
 
 // The `__ev` entry-point harness vtable. Minted once, reused every eval: each
@@ -251,6 +252,17 @@ fn rtGlobalSet(name: [*:0]const u8, value: Oop) callconv(.c) void {
     _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_globals_entity, g_api.intern(name), value }, 3);
 }
 
+/// `birnam_record_global_src("name", src, n)` — record the SOURCE of a top-level
+/// global `let` binding onto the reserved `__globalsrc__` entity, keyed by name (a
+/// String leaf, so it survives an image directly). This is the portable truth an
+/// image boot re-derives block-valued (and any un-serializable) globals from
+/// (docs/40 §4/§6: blocks-in-globals persist where their source is in the store).
+/// Emitted alongside `birnam_global_set` for every top-level `let` in persist mode.
+fn rtRecordGlobalSrc(name: [*:0]const u8, src: [*]const u8, n: c_long) callconv(.c) void {
+    const s = g_api.mkString(src, @intCast(n));
+    _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_globalsrc_entity, g_api.intern(name), s }, 3);
+}
+
 // Like tcc.zig's floor shims, the global-namespace shims are also real dynamic
 // symbols (docs/40 §3a, slice 1): an emitted artifact leaves them undefined and
 // the dynamic loader resolves them here at dlopen. The JIT path keeps patching
@@ -259,6 +271,7 @@ comptime {
     @export(&rtGlobal, .{ .name = "birnam_global" });
     @export(&rtGlobalB, .{ .name = "birnam_global_b" });
     @export(&rtGlobalSet, .{ .name = "birnam_global_set" });
+    @export(&rtRecordGlobalSrc, .{ .name = "birnam_record_global_src" });
 }
 
 /// Register a codegen-owned shim into a unit's pre-relocate symbol window.
@@ -865,6 +878,15 @@ fn emitBody(buf: *std.ArrayList(u8), statements: Oop, persist: bool) bool {
                 put(buf, "\", b_");
                 put(buf, name);
                 put(buf, ");\n");
+                // Record the binding's source too (docs/40 §6): an image re-derives
+                // a block-valued global from this when its value can't be serialized.
+                const rhs_src = text(rhs);
+                put(buf, "birnam_record_global_src(\"");
+                putCStr(buf, name);
+                put(buf, "\", \"");
+                putCStr(buf, rhs_src);
+                var nb: [24]u8 = undefined;
+                put(buf, std.fmt.bufPrint(&nb, "\", {d}L);\n", .{rhs_src.len}) catch return false);
             }
             if (last) {
                 put(buf, "return b_");
@@ -970,6 +992,52 @@ fn mReplayMethods(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkSmallInt(@intCast(srcs.items.len));
 }
 
+/// `[Codegen deriveImageGlobals]` — the image-load path for block-valued (and any
+/// deferred) globals (docs/40 §6). For every recorded top-level global source (the
+/// `__globalsrc__` facts): if the global is currently UNBOUND — its value fact was
+/// deferred at save because a closure can't be serialized — re-eval `let <name> :=
+/// <src>` to rebuild it in this process (a fresh closure over the now-mapped code).
+/// Leaf globals that mapped via the fact stream stay bound and are left untouched.
+/// Sources are gathered FIRST (re-eval re-records into `__globalsrc__`). Called by
+/// the boot path after code is resolved (mapped or replayed), so a re-derived block
+/// body can send freely. Answers the count re-derived.
+fn mDeriveImageGlobals(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const nAttrs = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{g_globalsrc_entity}, 1));
+    var names: std.ArrayList(Oop) = .{};
+    defer names.deinit(ca);
+    var srcs: std.ArrayList(Oop) = .{};
+    defer srcs.deinit(ca);
+    var i: i64 = 0;
+    while (i < nAttrs) : (i += 1) {
+        const attr = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ g_globalsrc_entity, g_api.mkSmallInt(i) }, 2);
+        const src = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globalsrc_entity, attr }, 2);
+        if (src == null or src == g_api.nilObj) continue;
+        names.append(ca, attr) catch @panic("codegen: oom");
+        srcs.append(ca, src) catch @panic("codegen: oom");
+    }
+    var count: i64 = 0;
+    for (names.items, srcs.items) |nameSym, src| {
+        // Already bound (a leaf global mapped via the fact stream)? Leave it — only
+        // the deferred (un-serializable, absent) globals need re-derivation.
+        const cur = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globals_entity, nameSym }, 2);
+        if (cur != null) continue;
+        var prog: std.ArrayList(u8) = .{};
+        defer prog.deinit(ca);
+        prog.appendSlice(ca, "let ") catch @panic("codegen: oom");
+        prog.appendSlice(ca, std.mem.span(g_api.symbolName(nameSym))) catch @panic("codegen: oom");
+        prog.appendSlice(ca, " := ") catch @panic("codegen: oom");
+        var slen: usize = 0;
+        const sp = g_api.stringBytes(src, &slen);
+        prog.appendSlice(ca, sp[0..slen]) catch @panic("codegen: oom");
+        const progStr = g_api.mkString(prog.items.ptr, prog.items.len);
+        _ = g_api.send(self, g_api.intern("evalPersisting:"), &[_]Oop{progStr}, 1);
+        count += 1;
+    }
+    return g_api.mkSmallInt(count);
+}
+
 const RTLD_LAZY: c_int = 1;
 
 /// `[Codegen load: path]` — load a compiled-birnam artifact: dlopen it (the
@@ -1050,6 +1118,7 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
         \\extern void* birnam_global(const char* name);
         \\extern void* birnam_global_b(void* sym);
         \\extern void birnam_global_set(const char* name, void* value);
+        \\extern void birnam_record_global_src(const char* name, const char* src, long n);
         \\
     );
     if (artifact) {
@@ -1093,6 +1162,7 @@ fn runProgram(src: Oop, persist: bool) Oop {
     addShim(unit, "birnam_global", @ptrCast(&rtGlobal));
     addShim(unit, "birnam_global_b", @ptrCast(&rtGlobalB));
     addShim(unit, "birnam_global_set", @ptrCast(&rtGlobalSet));
+    addShim(unit, "birnam_record_global_src", @ptrCast(&rtRecordGlobalSrc));
     // Patch each baked handle `__g<i>` to its interned symbol's address.
     for (baked_globals.items, 0..) |sym, i| {
         var nb: [16]u8 = undefined;
@@ -1129,6 +1199,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     g_store = api.import("Store") orelse @panic("codegen: Store not loaded");
     g_globals_entity = api.intern("__globals__");
     g_methods_entity = api.intern("__methods__");
+    g_globalsrc_entity = api.intern("__globalsrc__");
     sel_currentValue = api.intern("currentValue:attr:");
     sel_addSymbol = api.intern("addSymbol:value:");
     sel_assert = api.intern("assert:attr:value:");
@@ -1172,6 +1243,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("compile:output:"), &mCompileOutput);
     api.method(codegen_vt, api.intern("compileImageCode:"), &mCompileImageCode);
     api.method(codegen_vt, api.intern("replayMethods"), &mReplayMethods);
+    api.method(codegen_vt, api.intern("deriveImageGlobals"), &mDeriveImageGlobals);
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
     api.method(reflect_vt, api.intern("defineMethod:on:as:source:"), &mDefineMethodSourced);
