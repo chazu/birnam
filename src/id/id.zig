@@ -54,6 +54,13 @@ pub const Vtable = extern struct {
     layout_n: usize,
     layout_rest: u8,
     layout_set: u8,
+    /// Copy-on-write ownership (prototype protocol). A vtable created as ONE
+    /// object's private table (by `ensurePrivateVtable`, when a method is defined
+    /// on that object) records that object here; installing further methods on the
+    /// sole owner then patches in place. `new`/`clone` that share a vtable clear
+    /// this (it is no longer private), so the next method-define splits again.
+    /// Null for shared/type vtables (Integer, String, prototypes) — the default.
+    owner: Oop = null,
 };
 
 /// An interned name. Selectors are `*Symbol`, compared by pointer identity.
@@ -371,6 +378,7 @@ fn newVtable(parent: ?*Vtable) *Vtable {
     vt.layout_n = 0;
     vt.layout_rest = 0;
     vt.layout_set = 0;
+    vt.owner = null;
     return vt;
 }
 
@@ -494,6 +502,44 @@ fn allocC(vt: Oop, size: usize) callconv(.c) Oop {
     const obj = allocRaw(size, .collectable);
     setVtable(obj, asVtable(vt));
     return obj;
+}
+
+/// Prototype protocol: a fresh instance that SHARES `proto`'s vtable (no new
+/// vtable — that is the copy-on-write win: cloning is cheap and leaks nothing).
+/// `copy_payload` selects clone (copy `proto`'s payload) vs new (blank). Because
+/// the vtable is now shared by a second object, its `owner` is cleared, so a later
+/// `defineMethod` on either object splits a private vtable off (see below).
+fn newInstanceC(proto: Oop, copy_payload: c_int) callconv(.c) Oop {
+    if (proto == null or (@intFromPtr(proto.?) & 1) != 0) return proto; // immediates
+    // A vtable receiver (a type like `Object`) yields a bare instance OF that type;
+    // an object receiver (a prototype) yields an instance sharing ITS vtable and,
+    // for clone, the same-shaped payload.
+    const is_type = vtableOf(proto).? == vtable_vt;
+    const vt = if (is_type) asVtable(proto) else vtableOf(proto).?;
+    const size = if (is_type) 0 else objectPayloadSizeC(proto);
+    vt.owner = null; // now shared by another object → next define splits
+    const inst = allocRaw(size, .collectable);
+    setVtable(inst, vt);
+    if (copy_payload != 0 and size > 0) {
+        const src: [*]const u8 = @ptrCast(proto.?);
+        const dst: [*]u8 = @ptrCast(inst.?);
+        @memcpy(dst[0..size], src[0..size]);
+    }
+    return inst;
+}
+
+/// The vtable to install an object-targeted method on, copy-on-write: if `obj`
+/// already SOLELY owns its vtable, return it (patch in place); otherwise split a
+/// private vtable delegating to the current one, hand it to `obj`, and record the
+/// ownership. Keeps method-defines on a shared/type vtable from leaking across the
+/// objects that share it, while minting at most one vtable per specialised object.
+fn ensurePrivateVtableC(obj: Oop) callconv(.c) Oop {
+    const cur = vtableOf(obj).?;
+    if (cur.owner == obj) return oop(cur);
+    const priv = newVtable(cur);
+    priv.owner = obj;
+    setVtable(obj, priv);
+    return oop(priv);
 }
 fn importC(key: [*:0]const u8) callconv(.c) Oop {
     return importObj(std.mem.span(key));
@@ -783,6 +829,8 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .objectPayloadSize = &objectPayloadSizeC,
         .exportedNameOf = &exportedNameOfC,
         .slotKind = &slotKindC,
+        .newInstance = &newInstanceC,
+        .ensurePrivateVtable = &ensurePrivateVtableC,
     };
     // The floor's own layouts: no floor value type holds an Oop in its payload
     // (a String is {bytes-ptr, len}, a Float one f64, the singletons empty), so

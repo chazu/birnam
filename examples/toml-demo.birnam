@@ -3,7 +3,7 @@
 //   birnam examples/toml-demo.birnam        (run from the repo root)
 //
 // Demonstrates `[System load:]` pulling in a birnam-authored module
-// (examples/toml.birnam) and the `[aString parseToml]` it installs.
+// (examples/toml.birnam) and the `Toml` singleton it installs.
 
 [System load: "examples/toml.birnam"];
 
@@ -22,7 +22,7 @@ pool = { min = 1, max = 10 }
 host = \"replica.local\"
 ";
 
-let m := [config parseToml];
+let m := [Toml parse: config];
 
 [System println: ["name    = " , [m at: "name"]]];
 [System println: ["port    = " , [[m at: "port"] printString]]];

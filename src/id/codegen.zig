@@ -410,10 +410,21 @@ fn mDefineMethodSourced(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oo
     return installMethod(args[0], args[1], args[2]);
 }
 
-/// Install `blk` as method `sel` on `vt`: stash the block in a uniquely-named
-/// global, compile a forwarding trampoline, and register it through the store's
-/// dispatch mirror. Shared by both `defineMethod:` forms.
-fn installMethod(sel: Oop, vt: Oop, blk: Oop) Oop {
+/// The vtable an `on:` target names. A vtable IS a type — its own vtable is the
+/// root `vtable_vt` — so installing goes straight on it (extends the whole type,
+/// e.g. `on: Integer`). Anything else is an object (e.g. a `[Object clone]`
+/// singleton like `Toml`): `ensurePrivateVtable` splits it a copy-on-write private
+/// vtable so the method specialises just that object, never the type it shares.
+fn targetVtable(on: Oop) Oop {
+    return if (g_api.vtableOf(on) == g_api.vtable_vt) on else g_api.ensurePrivateVtable(on);
+}
+
+/// Install `blk` as method `sel` on `on` (a type or an object — see targetVtable):
+/// stash the block in a uniquely-named global, compile a forwarding trampoline,
+/// and register it through the store's dispatch mirror. Shared by both
+/// `defineMethod:` forms.
+fn installMethod(sel: Oop, on: Oop, blk: Oop) Oop {
+    const vt = targetVtable(on);
     const k = selectorArity(sel);
 
     // Stash the block in a uniquely-named global the trampoline reads at dispatch.

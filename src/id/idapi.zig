@@ -165,6 +165,16 @@ pub const IdApi = extern struct {
     /// 0xFF if `vt` carries no layout (the caller then defers that object — an
     /// unknown layout can't be safely swizzled). Mirrors the tracer's per-word rule.
     slotKind: *const fn (Oop, usize) callconv(.c) u8,
+    /// newInstance(proto, copy_payload) -> a fresh object SHARING proto's vtable
+    /// (copy-on-write: no new vtable). copy_payload!=0 copies proto's payload
+    /// (clone); 0 leaves it blank (new). Clears the shared vtable's `owner`.
+    /// The base-level prototype-creation primitive behind `[proto new]`/`clone`.
+    newInstance: *const fn (Oop, c_int) callconv(.c) Oop,
+    /// ensurePrivateVtable(obj) -> the vtable to install an object-specific method
+    /// on, splitting a private one (delegating to the current) unless `obj` already
+    /// solely owns its vtable. Lets a mirror define a method on a single object
+    /// (not its whole type) without leaking to others that share the vtable.
+    ensurePrivateVtable: *const fn (Oop) callconv(.c) Oop,
 };
 
 /// Returned by `slotKind` when a vtable has no layout descriptor: the object

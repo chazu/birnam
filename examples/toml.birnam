@@ -3,12 +3,14 @@
 // Load it into a running image, then parse:
 //
 //   [System load: "examples/toml.birnam"];
-//   let config := ["port = 8080\n[db]\nhost = \"localhost\"" parseToml];
+//   let config := [Toml parse: "port = 8080\n[db]\nhost = \"localhost\""];
 //   [config at: "port"]                      "=> 8080"
 //   [[config at: "db"] at: "host"]           "=> localhost"
 //
-// `[aString parseToml]` answers a Map (nested Maps for [tables], Vectors for
-// arrays), or an `#tomlParse` error if the text isn't valid TOML.
+// `[Toml parse: aString]` (or the underlying `[aString parseToml]`) answers a Map
+// (nested Maps for [tables], Vectors for arrays), or an `#tomlParse` error if the
+// text isn't valid TOML. `Toml` is a named singleton — a clone of Object bound in
+// Globals — so the module reads like it references a first-class parser.
 //
 // Supported (v1): comments, bare & basic-quoted keys, `[table]` and dotted
 // `[a.b.c]` headers, basic strings (with \n \t \r \" \\ escapes), integers
@@ -202,4 +204,12 @@
   let ok := [[cst notNil] & [[cst end] = [self size]]];
   [ok
     ifTrue: [| [[[cst children] inject: #[ [Map new] [Vector new] ] into: step] at: 0]]
-    ifFalse: [| ["not valid TOML" error: #tomlParse]]]]]
+    ifFalse: [| ["not valid TOML" error: #tomlParse]]]]];
+
+// -- the Toml namespace object -----------------------------------------------
+
+// A named singleton — a clone of Object, so `parse:` specialises only it — bound
+// in Globals so birnam code can name `Toml`. The public API forwards to the
+// String workhorse above.
+[Globals at: #Toml put: [Object clone]];
+[Reflect defineMethod: #parse: on: Toml as: [:self :src | [src parseToml]]]
