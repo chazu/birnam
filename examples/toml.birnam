@@ -1,0 +1,205 @@
+// toml.birnam — a TOML parser written entirely in birnam, over the PEG engine.
+//
+// Load it into a running image, then parse:
+//
+//   [System load: "examples/toml.birnam"];
+//   let config := ["port = 8080\n[db]\nhost = \"localhost\"" parseToml];
+//   [config at: "port"]                      "=> 8080"
+//   [[config at: "db"] at: "host"]           "=> localhost"
+//
+// `[aString parseToml]` answers a Map (nested Maps for [tables], Vectors for
+// arrays), or an `#tomlParse` error if the text isn't valid TOML.
+//
+// Supported (v1): comments, bare & basic-quoted keys, `[table]` and dotted
+// `[a.b.c]` headers, basic strings (with \n \t \r \" \\ escapes), integers
+// (sign + `_` separators), floats, booleans, arrays (nested, multi-line), and
+// inline tables. Deferred: dotted keys in key/vals, datetimes (kept as strings
+// if quoted), multi-line strings, arrays-of-tables.
+
+// -- the grammar: built once, cached in Globals ------------------------------
+// Helper patterns are block-local lets; only the rules referenced by `parse:`
+// (document/table/keyval/key and the typed value rules) produce CST nodes.
+
+[Globals at: #tomlGrammar put: [[|
+  let g := [Peg newGrammar];
+
+  // whitespace, newlines, comments — all inline (no CST nodes)
+  let sp        := [Peg anyOf: " \t"];
+  let wsp       := [Peg star: sp];
+  let nl        := [Peg seqOf: #[ [Peg opt: [Peg literal: "\r"]] [Peg literal: "\n"] ]];
+  let notNl     := [Peg seqOf: #[ [Peg not: nl] [Peg anyByte] ]];
+  let comment   := [Peg seqOf: #[ [Peg literal: "#"] [Peg star: notNl] ]];
+  let blankLine := [Peg seqOf: #[ wsp [Peg opt: comment] nl ]];
+  let skip      := [Peg star: blankLine];
+  let eol       := [Peg choiceOf: #[ nl [Peg eof] ]];
+
+  // character classes
+  let digit  := [Peg range: "0" to: "9"];
+  let digits := [Peg plus: digit];
+  let sign   := [Peg opt: [Peg anyOf: "+-"]];
+
+  // key spellings (inline — `key` is a leaf rule whose span we read)
+  let bareKey   := [Peg plus: [Peg choiceOf: #[
+    [Peg range: "A" to: "Z"] [Peg range: "a" to: "z"] digit [Peg anyOf: "_-"] ]]];
+  let quoteByte := [Peg seqOf: #[ [Peg not: [Peg literal: "\""]] [Peg not: nl] [Peg anyByte] ]];
+  let quotedKey := [Peg seqOf: #[ [Peg literal: "\""] [Peg star: quoteByte] [Peg literal: "\""] ]];
+
+  // string body: an escape (backslash + byte) or any non-quote/non-newline byte
+  let escape  := [Peg seqOf: #[ [Peg literal: "\\"] [Peg anyByte] ]];
+  let strChar := [Peg choiceOf: #[ escape quoteByte ]];
+
+  // a value is any of the typed value rules (inline choice, so the TYPED node
+  // becomes the keyval/array child directly — its ruleName drives lowering)
+  let value := [Peg choiceOf: #[
+    [Peg ruleRef: #string] [Peg ruleRef: #boolean]
+    [Peg ruleRef: #float]  [Peg ruleRef: #integer]
+    [Peg ruleRef: #array]  [Peg ruleRef: #inlineTable] ]];
+
+  // separator inside arrays: spaces, newlines, and whole comment lines
+  let arrsp := [Peg star: [Peg choiceOf: #[ sp nl [Peg seqOf: #[ comment nl ]] ]]];
+
+  // one document line: an entry (table header or key/val) + trailing comment
+  let entry := [Peg choiceOf: #[ [Peg ruleRef: #table] [Peg ruleRef: #keyval] ]];
+  let line  := [Peg seqOf: #[ wsp entry wsp [Peg opt: comment] eol ]];
+
+  // ---- rules (these make CST nodes) ----
+  [g rule: #document is: [Peg seqOf: #[ skip [Peg star: [Peg seqOf: #[ line skip ]]] ]]];
+
+  [g rule: #key is: [Peg choiceOf: #[ quotedKey bareKey ]]];
+
+  [g rule: #table is: [Peg seqOf: #[
+    [Peg literal: "["] wsp
+    [Peg ruleRef: #key]
+    [Peg star: [Peg seqOf: #[ wsp [Peg literal: "."] wsp [Peg ruleRef: #key] ]]]
+    wsp [Peg literal: "]"] ]]];
+
+  [g rule: #keyval is: [Peg seqOf: #[
+    [Peg ruleRef: #key] wsp [Peg literal: "="] wsp value ]]];
+
+  [g rule: #string is: [Peg seqOf: #[
+    [Peg literal: "\""] [Peg star: strChar] [Peg literal: "\""] ]]];
+
+  [g rule: #boolean is: [Peg choiceOf: #[ [Peg literal: "true"] [Peg literal: "false"] ]]];
+
+  // integer: [+-]? digit (digit | _)*
+  [g rule: #integer is: [Peg seqOf: #[
+    sign digit [Peg star: [Peg choiceOf: #[ digit [Peg literal: "_"] ]]] ]]];
+
+  // float: [+-]? digits ( .digits exp? | exp )  — must have a fraction or exponent
+  [g rule: #float is: [Peg seqOf: #[ sign digits
+    [Peg choiceOf: #[
+      [Peg seqOf: #[ [Peg literal: "."] digits [Peg opt: [Peg seqOf: #[ [Peg anyOf: "eE"] sign digits ]]] ]]
+      [Peg seqOf: #[ [Peg anyOf: "eE"] sign digits ]] ]] ]]];
+
+  // array: [ v (, v)* ,? ]  with whitespace/newlines allowed throughout
+  [g rule: #array is: [Peg seqOf: #[
+    [Peg literal: "["] arrsp
+    [Peg opt: [Peg seqOf: #[
+      value
+      [Peg star: [Peg seqOf: #[ arrsp [Peg literal: ","] arrsp value ]]]
+      arrsp [Peg opt: [Peg literal: ","]] ]]]
+    arrsp [Peg literal: "]"] ]]];
+
+  // inline table: { k = v (, k = v)* }
+  [g rule: #inlineTable is: [Peg seqOf: #[
+    [Peg literal: "{"] wsp
+    [Peg opt: [Peg seqOf: #[
+      [Peg ruleRef: #keyval]
+      [Peg star: [Peg seqOf: #[ wsp [Peg literal: ","] wsp [Peg ruleRef: #keyval] ]]] ]]]
+    wsp [Peg literal: "}"] ]]];
+
+  g] value]];
+
+// -- string escapes ----------------------------------------------------------
+
+// The unescaped meaning of the byte after a backslash (default: the byte itself,
+// covering \" \\ \/ and any other).
+[Reflect defineMethod: #tomlEscChar on: String as: [:self |
+  let a := [[self = "n"] ifTrue: [| "\n"] ifFalse: [| self]];
+  let b := [[self = "t"] ifTrue: [| "\t"] ifFalse: [| a]];
+  [[self = "r"] ifTrue: [| "\r"] ifFalse: [| b]]]];
+
+// Process backslash escapes in a string body (a fold that skips the byte
+// consumed by each escape).
+[Reflect defineMethod: #tomlUnescape on: String as: [:self |
+  let n := [self size];
+  let step := [:st :i |
+    let out := [st at: 0];
+    let wasEsc := [st at: 1];
+    let ch := [self at: i];
+    [[wasEsc = 1]
+      ifTrue: [| #[ out 0 ]]
+      ifFalse: [| [[ch = "\\"]
+        ifTrue: [| #[ [out , [[self at: [i + 1]] tomlEscChar]] 1 ]]
+        ifFalse: [| #[ [out , ch] 0 ]]]]]];
+  [[n = 0]
+    ifTrue: [| self]
+    ifFalse: [| [[[0 to: [n - 1]] inject: #[ "" 0 ] into: step] at: 0]]]]];
+
+// -- CST → birnam value lowering (on the parse-tree node vtable) --------------
+
+// The raw source text this node spans.
+[Reflect defineMethod: #tomlText: on: PegCstVt as: [:self :src |
+  [src copyFrom: [self start] to: [self end]]]];
+
+// A key node's name (a quoted key has its surrounding quotes stripped).
+[Reflect defineMethod: #tomlKey: on: PegCstVt as: [:self :src |
+  let t := [self tomlText: src];
+  [[t startsWith: "\""]
+    ifTrue: [| [t copyFrom: 1 to: [[t size] - 1]]]
+    ifFalse: [| t]]]];
+
+// Fold a table-ish node's keyval children into a Map.
+[Reflect defineMethod: #tomlKeyvalsInto: on: PegCstVt as: [:self :src |
+  let step := [:m :kv |
+    let k := [[[kv children] at: 0] tomlKey: src];
+    let v := [[[kv children] at: 1] tomlValue: src];
+    [m at: k put: v]];
+  [[self children] inject: [Map new] into: step]]];
+
+// A typed value node → the birnam value it denotes (recursive for arrays and
+// inline tables).
+[Reflect defineMethod: #tomlValue: on: PegCstVt as: [:self :src |
+  let r := [self ruleName];
+  let numText := [[self tomlText: src] replace: "_" with: ""];
+  let asStr := [| let raw := [self tomlText: src];
+                  [[raw copyFrom: 1 to: [[raw size] - 1]] tomlUnescape]];
+  let vInt := [[r = "integer"] ifTrue: [| [numText asInteger]] ifFalse: [| nil]];
+  let vFlt := [[r = "float"]   ifTrue: [| [numText asNumber]]  ifFalse: [| vInt]];
+  let vBoo := [[r = "boolean"] ifTrue: [| [[self tomlText: src] = "true"]] ifFalse: [| vFlt]];
+  let vStr := [[r = "string"]  ifTrue: asStr ifFalse: [| vBoo]];
+  let vArr := [[r = "array"]   ifTrue: [| [[self children] collect: [:c | [c tomlValue: src]]]] ifFalse: [| vStr]];
+  [[r = "inlineTable"] ifTrue: [| [self tomlKeyvalsInto: src]] ifFalse: [| vArr]]]];
+
+// -- persistent nested insert on Map -----------------------------------------
+
+// `[aMap atPath: #[ k1 k2 … ] put: v]` — a new Map with v set at the nested key
+// path, creating intermediate Maps as needed (all persistent).
+[Reflect defineMethod: #atPath:put: on: MapVt as: [:self :path :val |
+  let k := [path at: 0];
+  [[[path size] = 1]
+    ifTrue: [| [self at: k put: val]]
+    ifFalse: [|
+      let rest := [path copyFrom: 1 to: [path size]];
+      let sub  := [self at: k ifAbsent: [| [Map new]]];
+      [self at: k put: [sub atPath: rest put: val]]]]]];
+
+// -- the entry point ---------------------------------------------------------
+
+[Reflect defineMethod: #parseToml on: String as: [:self |
+  let g   := [Globals at: #tomlGrammar];
+  let cst := [g parse: self from: #document];
+  let src := self;
+  let step := [:acc :node |
+    let result := [acc at: 0];
+    let curPath := [acc at: 1];
+    [[[node ruleName] = "table"]
+      ifTrue: [| #[ result [[node children] collect: [:kn | [kn tomlKey: src]]] ]]
+      ifFalse: [|
+        let k := [[[node children] at: 0] tomlKey: src];
+        let v := [[[node children] at: 1] tomlValue: src];
+        #[ [result atPath: [curPath , #[ k ]] put: v] curPath ]]]];
+  let ok := [[cst notNil] & [[cst end] = [self size]]];
+  [ok
+    ifTrue: [| [[[cst children] inject: #[ [Map new] [Vector new] ] into: step] at: 0]]
+    ifFalse: [| ["not valid TOML" error: #tomlParse]]]]]

@@ -1,0 +1,36 @@
+// toml-demo.birnam — load the birnam TOML module and parse a config.
+//
+//   birnam examples/toml-demo.birnam        (run from the repo root)
+//
+// Demonstrates `[System load:]` pulling in a birnam-authored module
+// (examples/toml.birnam) and the `[aString parseToml]` it installs.
+
+[System load: "examples/toml.birnam"];
+
+let config := "# birnam service config
+name = \"birnam\"
+port = 8_080
+debug = true
+tags = [\"lang\", \"image\", \"native\"]
+
+[database]
+host = \"localhost\"
+port = 5432
+pool = { min = 1, max = 10 }
+
+[database.replica]
+host = \"replica.local\"
+";
+
+let m := [config parseToml];
+
+[System println: ["name    = " , [m at: "name"]]];
+[System println: ["port    = " , [[m at: "port"] printString]]];
+[System println: ["debug   = " , [[m at: "debug"] printString]]];
+[System println: ["tags    = " , [[m at: "tags"] printString]]];
+
+let db := [m at: "database"];
+[System println: ["database.host        = " , [db at: "host"]]];
+[System println: ["database.port        = " , [[db at: "port"] printString]]];
+[System println: ["database.pool.max    = " , [[[db at: "pool"] at: "max"] printString]]];
+[System println: ["database.replica.host = " , [[db at: "replica"] at: "host"]]]
