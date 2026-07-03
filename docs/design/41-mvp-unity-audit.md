@@ -125,30 +125,71 @@ it lands as one pass.
 
 ## B. Sequence-protocol non-uniformity — "one protocol" is really only complete on Vector
 
-- [ ] **B1 · HIGH · `collection.zig:1248`** — Map has no
-  `collect:`/`select:`/`detect:`/`inject:into:`/`asVector`. The machinery
-  (`kvDo`/`collectInto`) exists; `[aMap select:…]` is a DNU. `do:` silently
-  means "over values," dropping keys.
-- [ ] **B2 · HIGH · `collection.zig:1278`** — String has `do:` but none of the
-  higher-order ops, and no `asVector` — so there's no path to lift a string
-  into the vector protocol either.
-- [ ] **B3 · HIGH · `collection.zig` (Vector/Range/Map)** — value-type
-  collections don't override `=`. `#[1 2 3] = #[1 2 3]` is **false** (identity)
-  while `"abc" = "abc"` is true. `keyEq`/`keyHash` already give Map
-  value-equality internally; just not exposed as `=`.
-- [ ] **B4 · HIGH · `prelude.zig:563`** — Integer missing `abs`, `negated`,
-  `sqrt`, `floor`/`ceiling`/`rounded` (all on Float). `-5 abs` DNU while
-  `-5.0 abs` works. Also identity coercions missing (`anInt asInteger`,
-  `aFloat asFloat` both DNU), so generic `x asFloat` normalisation breaks on the
-  type that's already that kind.
-- [ ] **B5 · MED · `collection.zig:1236`** — Range is a half-indexable sequence:
-  has `collect:`/`select:` but no `at:`/`first`/`last`/`isEmpty`/`reversed`.
+**NEXT UP (discussion started 2026-07-03, decisions PENDING).** The findings below
+were re-verified against the RUNNING system (the original audit was file-scoped
+static analysis and got some of these wrong):
+
+Corrections from probing the live system:
+- **B4 is smaller than claimed:** `-5 abs` → 5 and `5 negated` → -5 **already
+  work** (`stdlib.birnam` derives them; the investigator only read `prelude.zig`).
+  Still real: `4 sqrt`, `floor`/`ceiling`/`rounded`, and identity coercions
+  (`anInt asInteger`) DNU on Integer.
+- **B3 is worse than claimed:** `#[1 2 3] = #[1 2 3]` **DNUs** (`=` isn't defined
+  on Vector/Map/Range at all) — not "returns false". But `keyEq`/store-`eq`/
+  relational-`valEq` now do value comparison internally (shipped in §A5), so the
+  logic exists to expose.
+- B1 (Map higher-order), B2 (String higher-order + `asVector`), B5 (Range
+  `at:`/`first`/`last`/`isEmpty`/`reversed`), B6 (`detect:ifNone:`), B7 (`nil
+  printString` → "anObject") all confirmed real.
+
+**The character of B (same as A — a uniformity choice, not gap-filling):**
+`collect:` works on Vector+Range, DNUs on Map+String, because the higher-order
+protocol is implemented PER-TYPE in Zig and only Vector/Range got the full set.
+Two approaches:
+- **(a) gap-fill per type in Zig** — fast, mechanical, but duplicative and leaves
+  the protocol non-uniform (the next collection type starts from zero).
+- **(b) unify over one primitive** — define `collect:`/`select:`/`detect:`/`count`/
+  `inject:into:`/`asVector` ONCE on a shared `Collection` layer (parent vtable the
+  four families delegate to), each type implementing only the primitive. This is
+  what the retired kernel did ("seq-unification over `inject:into:`", Phase-16),
+  matches the tenet, and the prototype refounding makes the shared-traits-via-
+  `vtable.parent` natural. **All four collections already implement `do:`**, so
+  building the generic protocol on `do:` gives every existing (and future) type the
+  full set for free, and lets us DELETE the per-type `collect:`/`select:` on
+  Vector/Range.
+
+**RECOMMENDED: (b).** Open decisions to settle before building (asked, not yet
+answered):
+1. Primitive = `do:` (universal today); derive `inject:into:` from it if birnam
+   blocks can carry a mutable accumulator across iterations (VERIFY — COW-vtable
+   block model), else keep `inject:into:` a small per-type native primitive.
+2. `collect:`/`select:` result type → **Vector by default** (kernel's choice),
+   type may override for same-type return. (DECISION NEEDED.)
+3. Shared layer = a new `collection_vt` inserted as parent of vector/map/string/
+   range families (reparent `string_vt` from `object_vt` at collection load), NOT
+   on `object_vt` (so integers/nil don't sprout `collect:`).
+4. Native Zig now (no bootstrap risk) vs birnam-authored `collection.birnam` over
+   `do:` (more in-spirit, exercises the language) — leaning native now.
+5. Fold in the mechanical bits: B3 `=` as element-wise structural equality reusing
+   the §A5 value logic — **does `1 = 1.0` hold? (DECISION NEEDED)**; B4 Integer
+   `sqrt`/`floor`/`ceiling`/`rounded`/`asInteger` + coercions; B6 `detect:ifNone:`;
+   B7 `nil printString`.
+
+- [ ] **B1 · HIGH** — Map has no `collect:`/`select:`/`detect:`/`inject:into:`/
+  `asVector` (DNU). `do:` iterates VALUES only (drops keys) — decide key/value/assoc.
+- [ ] **B2 · HIGH** — String has `do:` but no higher-order ops and no `asVector`
+  (no path to lift a string into the vector protocol).
+- [ ] **B3 · HIGH** — Vector/Map/Range have no `=` at all (DNU). Expose element-wise
+  structural `=` over the §A5 value-equality logic.
+- [ ] **B4 · MED** — Integer missing `sqrt`/`floor`/`ceiling`/`rounded` + identity
+  coercions (`anInt asInteger`). (`abs`/`negated` already work via stdlib.)
+- [ ] **B5 · MED · `collection.zig`** — Range half-indexable: has `collect:`/
+  `select:` but no `at:`/`first`/`last`/`isEmpty`/`reversed`.
 - [ ] **B6 · MED · `collection.zig:269`** — `detect:` returns silent `nil`, no
-  `detect:ifNone:`; violates "absence rides ifAbsent:" (can't tell "found nil"
-  from "found nothing").
-- [ ] **B7 · MED · `prelude.zig:408`** — nil doesn't override `printString`;
-  `[nil asString]` → `"anObject"`; a nil element in a printed collection renders
-  as `anObject`.
+  `detect:ifNone:` (can't tell "found nil" from "found nothing").
+- [ ] **B7 · MED · `prelude.zig`** — nil doesn't override `printString`;
+  `[nil printString]`/`[nil asString]` → `"anObject"`; a nil element in a printed
+  collection renders as `anObject`.
 
 ## C. Errors-as-values not realised in PEG and Alien (they predate the error model)
 
