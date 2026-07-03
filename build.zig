@@ -2,7 +2,7 @@ const std = @import("std");
 
 // birnam — the libid refounding (docs/30 §9).
 //
-// `birnam-id` is a minimal siphon (src/id/main.zig) that loads the system as a
+// `birnam` is a minimal siphon (src/id/main.zig) that loads the system as a
 // set of reloadable dylibs over a clean Piumarta object floor (libid: vtable
 // pointers at [-1], no eids/facts). Each rung is its own module + test suite:
 //
@@ -17,6 +17,12 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    // The release version, read from the repo's VERSION file at build time so the
+    // siphon's `--version` never drifts from what `scripts/release.sh` tags.
+    const version = std.mem.trim(u8, @embedFile("VERSION"), " \t\r\n");
+    const build_opts = b.addOptions();
+    build_opts.addOption([]const u8, "version", version);
 
     // -- libtcc static lib (the C → native backend) --------------------------
     // Vendored from the TinyCC source (vendor/libtcc-src/, LGPL — see COPYING),
@@ -97,16 +103,17 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run.step);
     }
 
-    // -- birnam-id: the siphon (default install) -----------------------------
+    // -- birnam: the siphon (default install) --------------------------------
     // A minimal host that imports only the IdApi (src/id/idapi.zig) and dlopens
-    // the rung dylibs at runtime ($BIRNAM_LIB_DIR / zig-out/lib). `birnam-id
+    // the rung dylibs at runtime ($BIRNAM_LIB_DIR / zig-out/lib). `birnam
     // <file.birnam>` runs a script; bare invocation drops into the REPL.
     const siphon_mod = b.createModule(.{
         .root_source_file = b.path("src/id/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    const siphon_exe = b.addExecutable(.{ .name = "birnam-id", .root_module = siphon_mod });
+    siphon_mod.addOptions("build_opts", build_opts);
+    const siphon_exe = b.addExecutable(.{ .name = "birnam", .root_module = siphon_mod });
     siphon_exe.linkLibC();
     b.installArtifact(siphon_exe);
 
@@ -116,6 +123,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    main_test_mod.addOptions("build_opts", build_opts);
     const main_tests = b.addTest(.{ .root_module = main_test_mod });
     main_tests.linkLibC();
     const run_main_tests = b.addRunArtifact(main_tests);

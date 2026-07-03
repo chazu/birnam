@@ -10,6 +10,34 @@
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
+const build_opts = @import("build_opts");
+
+const USAGE =
+    \\birnam — a Piumarta object system that compiles to native (docs/30).
+    \\
+    \\Usage:
+    \\  birnam                     Start the interactive REPL (the default).
+    \\  birnam <file.birnam>       Compile and run a script, then exit.
+    \\  birnam <file.image>        Boot a saved image (maps compiled code; runs
+    \\                             `main`, else drops into the REPL).
+    \\  birnam --repl              Start the REPL explicitly (aliases: -i, repl).
+    \\  birnam --demo              Run the verbose boot self-test (proves the
+    \\                             whole stack compiles to native through the id api).
+    \\  birnam --bake <img> <exe>  Bake an image into a standalone executable.
+    \\  birnam --rebuild <img>     Boot an image by replaying its source, not the
+    \\                             mapped `.code` section (recovery / rebuild).
+    \\  birnam --version           Print the version and exit.
+    \\  birnam --help              Print this help and exit (alias: -h).
+    \\
+    \\Environment:
+    \\  BIRNAM_LIB_DIR    Directory holding the module dylibs. Overrides the
+    \\                    default search (next to the exe, then ../lib, then
+    \\                    zig-out/lib).
+    \\  BIRNAM_ID_DYLIB   Path to the id-floor dylib (libbirnam_id.dylib).
+    \\  BIRNAM_NO_STDLIB  If set, skip the self-hosted stdlib (bare Zig floor).
+    \\  BIRNAM_GC_PRECISE If set, use the precise (layout-descriptor) GC.
+    \\
+;
 
 const IdApi = idapi.IdApi;
 const Oop = idapi.Oop;
@@ -32,13 +60,13 @@ fn mPlus(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 // -- exe bake: a self-booting executable = this runtime + an appended image ---
 //
 // The standalone-exe bake (docs/40 §6): rather than an OS-level dual-format file
-// (given up — dyld/glibc fight it), a "runnable app" is a COPY of the birnam-id
+// (given up — dyld/glibc fight it), a "runnable app" is a COPY of the birnam
 // runtime with an image appended after a trailer. Trailing bytes are ignored by
-// both the Mach-O and ELF loaders, so the copy still executes as birnam-id; on
+// both the Mach-O and ELF loaders, so the copy still executes as birnam; on
 // startup it notices the trailer and boots the embedded image (auto-running
 // `main`). The image format and boot path are unchanged — this only packages.
 //
-//   file layout:  [ birnam-id binary ][ image bytes ][ u64 img_len ][ magic ]
+//   file layout:  [ birnam binary ][ image bytes ][ u64 img_len ][ magic ]
 //
 // The magic MUST stay in sync with image.zig's `bake_magic` (its `bakeExe:`).
 const BAKE_MAGIC = "BIRNMEXE";
@@ -52,7 +80,7 @@ fn selfExeBytes(a: std.mem.Allocator) ![]u8 {
 }
 
 /// The image sub-slice a bake trailer points to inside `bytes` (a whole exe file),
-/// or null if there is no valid trailer — a plain birnam-id, or bytes too short /
+/// or null if there is no valid trailer — a plain birnam, or bytes too short /
 /// a bad length. Pure: no I/O, so it is unit-testable.
 fn bakeTrailerImage(bytes: []const u8) ?[]const u8 {
     if (bytes.len < BAKE_TRAILER) return null;
@@ -64,7 +92,7 @@ fn bakeTrailerImage(bytes: []const u8) ?[]const u8 {
 }
 
 /// The embedded image appended to this exe (the bake trailer), or null for a plain
-/// birnam-id (no trailer). Caller frees the returned slice.
+/// birnam (no trailer). Caller frees the returned slice.
 fn embeddedImageBytes(a: std.mem.Allocator) !?[]u8 {
     const bytes = try selfExeBytes(a);
     defer a.free(bytes);
@@ -72,7 +100,7 @@ fn embeddedImageBytes(a: std.mem.Allocator) !?[]u8 {
     return try a.dupe(u8, img);
 }
 
-/// `birnam-id --bake <image> <out-exe>` — append an existing `.image` to a copy of
+/// `birnam --bake <image> <out-exe>` — append an existing `.image` to a copy of
 /// this runtime, producing a self-booting executable. (The in-session form is
 /// `[System bakeExe: path]`, which bakes the running system directly.)
 fn bakeExeCli(a: std.mem.Allocator, image_path: []const u8, out_path: []const u8) !void {
@@ -117,6 +145,18 @@ pub fn main() !void {
     defer args.deinit();
     _ = args.next();
     var script_path = args.next(); // optional: a .birnam file to compile + run
+    // `--help` / `--version` are pure tooling ops — answer before touching any
+    // dylib, so they work from anywhere even without the modules installed.
+    if (script_path) |sp| {
+        if (std.mem.eql(u8, sp, "--help") or std.mem.eql(u8, sp, "-h")) {
+            out(USAGE);
+            return;
+        }
+        if (std.mem.eql(u8, sp, "--version") or std.mem.eql(u8, sp, "-V")) {
+            out("birnam " ++ build_opts.version ++ "\n");
+            return;
+        }
+    }
     // `--rebuild foo.image` forces the replay path (rebuild code from the image's
     // own source) instead of mapping the compiled `.code` section.
     var rebuild = false;
@@ -143,11 +183,11 @@ pub fn main() !void {
     if (script_path) |sp| {
         if (std.mem.eql(u8, sp, "--bake")) {
             const img = args.next() orelse {
-                out("usage: birnam-id --bake <image> <out-exe>\n");
+                out("usage: birnam --bake <image> <out-exe>\n");
                 return error.BakeArgs;
             };
             const outp = args.next() orelse {
-                out("usage: birnam-id --bake <image> <out-exe>\n");
+                out("usage: birnam --bake <image> <out-exe>\n");
                 return error.BakeArgs;
             };
             return bakeExeCli(a, img, outp);
@@ -162,22 +202,34 @@ pub fn main() !void {
     g_api = api;
 
     // Baked exe: if this binary carries an appended image, boot it — this IS the
-    // app. A plain birnam-id has no trailer and falls through to normal handling.
+    // app. A plain birnam has no trailer and falls through to normal handling.
     if (try embeddedImageBytes(a)) |img| {
         defer a.free(img);
         return runImageBytes(a, api, img, rebuild);
     }
 
-    // Script mode: `birnam-id path.birnam` compiles + runs the file, quietly.
-    // REPL mode: `birnam-id --repl` (or `-i` / `repl`) starts an interactive loop.
+    // Script mode: `birnam path.birnam` compiles + runs the file, quietly.
+    // REPL mode: `birnam --repl` (or `-i` / `repl`) starts an interactive loop.
+    // Self-test: `birnam --demo` runs the verbose boot proof (runDemo below).
     if (script_path) |sp| {
         if (std.mem.eql(u8, sp, "--repl") or std.mem.eql(u8, sp, "-i") or std.mem.eql(u8, sp, "repl"))
             return runRepl(a, api, false);
+        if (std.mem.eql(u8, sp, "--demo"))
+            return runDemo(a, api, id_path, id_path_z);
         if (std.mem.endsWith(u8, sp, ".image"))
             return runImage(a, api, sp, rebuild);
         return runScript(a, api, sp);
     }
 
+    // Bare invocation drops into the REPL — the documented default.
+    return runRepl(a, api, false);
+}
+
+/// The verbose boot self-test (`birnam --demo`): brings the whole stack up rung
+/// by rung THROUGH the id api and asserts each step, printing `[siphon]` progress.
+/// A development proof that libid → store → peg → lang → tcc → codegen all
+/// dispatch through one api — not the user-facing default.
+fn runDemo(a: std.mem.Allocator, api: *IdApi, id_path: []const u8, id_path_z: [:0]const u8) !void {
     std.debug.print("[siphon] birnam\n", .{});
     std.debug.print("[siphon] raw-loading id dylib: {s}\n", .{id_path});
     std.debug.print("[siphon] id api up: object_vt={*}\n", .{api.object_vt});
@@ -307,6 +359,14 @@ pub fn main() !void {
     defer a.free(codegen_path);
     _ = try loadModule(api, codegen_path, null);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    // The prelude installs Integer/Boolean/System protocol — including `+` as a
+    // real send on the SmallInt vtable. Step 13 dispatches `+` dynamically (on a
+    // late-bound global), so it must be a bound method, not just inline arith.
+    const prelude_path = try a.dupeZ(u8, "zig-out/lib/libbirnam_id_prelude.dylib");
+    defer a.free(prelude_path);
+    _ = try loadModule(api, prelude_path, null);
+
     const expr = "[[3 + 4] * 2]";
     const ev = api.smallIntValue(api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(expr, expr.len)}, 1));
     if (ev != 14) return error.CodegenWrong;
@@ -455,7 +515,7 @@ fn outErrorString(api: *IdApi, s: Oop) void {
     std.fs.File.stderr().writeAll("\n") catch {};
 }
 
-/// Boot an image: `birnam-id foo.image` (docs/40). Bring up the language stack
+/// Boot an image: `birnam foo.image` (docs/40). Bring up the language stack
 /// (the native module vtables the image relinks against), map the image back in,
 /// then honor the entry-point convention — if the global `main` is bound, send it
 /// `value`; otherwise open the REPL with every restored binding live (docs/40 §1).

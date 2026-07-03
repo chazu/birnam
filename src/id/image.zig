@@ -848,7 +848,7 @@ fn sysAppendImage(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 /// default). Answers nil on failure, `true` if the compiled `.code` section was
 /// mapped (no recompile), `false` if it loaded but code was NOT mapped (a
 /// data-only image or an arch/ABI mismatch) — so the caller can supply the
-/// library another way (replay / stdlib). `birnam-id foo.image` uses this on boot.
+/// library another way (replay / stdlib). `birnam foo.image` uses this on boot.
 fn sysLoadImage(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
@@ -876,7 +876,7 @@ fn sysLoadImageRebuild(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 // -- exe bake: package the running system as a self-booting executable -------
 //
 // The standalone-exe bake (docs/40 §6): append the image to a copy of the running
-// `birnam-id` runtime, after a trailer the runtime notices on startup and boots.
+// `birnam` runtime, after a trailer the runtime notices on startup and boots.
 // This module owns only the packaging; the boot detection is in main.zig (which
 // MUST keep `bake_magic` in sync). Layout, appended after the runtime binary:
 //   [ image bytes ][ u64 img_len ][ 8-byte magic ]
@@ -885,7 +885,7 @@ const bake_magic = "BIRNMEXE";
 /// `[System bakeExe: outPath]` — serialize the running system and append it to a
 /// copy of this executable, producing a self-booting app at `outPath` (running it
 /// boots the image and honors the `main`-entry convention; no `.image` file, no
-/// explicit `birnam-id` invocation). Answers self on success, nil on any failure.
+/// explicit `birnam` invocation). Answers self on success, nil on any failure.
 fn sysBakeExe(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     var len: usize = 0;

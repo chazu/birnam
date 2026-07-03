@@ -20,7 +20,7 @@ let path := [Codegen compile: src output: "/tmp/birnam_aot_example.dylib"];
 [System println: ["compiled to: " , path]];
 
 // Load the artifact back (dlopen → fix-up hook → run its entry) — in this
-// process here, but a fresh `birnam-id` run loads it identically.
+// process here, but a fresh `birnam` run loads it identically.
 let answer := [Codegen load: path];
 [System println: ["loaded and ran: " , [answer printString]]];
 

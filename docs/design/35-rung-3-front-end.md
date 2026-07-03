@@ -208,7 +208,7 @@ relational reading:
 
 - **Referencing + extending the running system** (docs/36) — symbol literals,
   a `Globals` scope, late-bound unbound idents, and `[Reflect defineMethod:#sel
-  on:T as:blk]`. **birnam scripts run from the CLI** (`birnam-id <file>`).
+  on:T as:blk]`. **birnam scripts run from the CLI** (`birnam <file>`).
 - **Error model (F7)** — `src/id/error.zig`: errors as propagating values; the
   `object_vt` DNU swap so a send to nil yields a catchable value, not a panic.
 - **A collection library** (`src/id/collection.zig`) — id-native persistent
@@ -267,7 +267,7 @@ The last two codegen/runtime gaps the 3c notes flagged are closed:
 `zig build test-id` (9) · `test-store` (8) · `test-peg` (4) · `test-lang` (5) ·
 `test-tcc` (5) · `test-codegen` (12) · `test-prelude` (3) · `test-collection` (18)
 · `test-error` (9) · `test-relational` (24). `zig build install &&
-BIRNAM_LIB_DIR=$PWD/zig-out/lib ./zig-out/bin/birnam-id <file.birnam>` runs a
+BIRNAM_LIB_DIR=$PWD/zig-out/lib ./zig-out/bin/birnam <file.birnam>` runs a
 script through the full stack (store · peg · lang · tcc · codegen · prelude ·
 collection · error · relational). Examples: the seven above plus `predicates`,
 `ancestors`, `time-travel`, `pull`, `errors`.

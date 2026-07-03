@@ -49,7 +49,7 @@ are catchable Error values — no NULL, no panic.
 
 ## 3. The REPL — an interactive image
 
-`birnam-id --repl` (or `-i`, or `repl`) starts a read-eval-print loop over the full
+`birnam --repl` (or `-i`, or `repl`) starts a read-eval-print loop over the full
 stack — the leap from running files to exploring the running system live:
 
 ```
@@ -144,6 +144,6 @@ generated native code.
 
 `zig build` then any of `test-id · test-store · test-peg · test-lang · test-tcc ·
 test-codegen · test-prelude · test-collection · test-error · test-relational ·
-test-alien · test-main`. `BIRNAM_LIB_DIR=$PWD/zig-out/lib ./zig-out/bin/birnam-id
-<file.birnam>` runs a script; `… birnam-id --repl` starts the REPL. Examples:
+test-alien · test-main`. `BIRNAM_LIB_DIR=$PWD/zig-out/lib ./zig-out/bin/birnam
+<file.birnam>` runs a script; `… birnam --repl` starts the REPL. Examples:
 `errors`, `ffi`, `stdlib`, plus the earlier set.

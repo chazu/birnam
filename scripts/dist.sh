@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Build a portable release tarball for the current platform.
 #
-# Stages the `birnam-id` siphon + its rung dylibs into a versioned directory,
+# Stages the `birnam` siphon + its rung dylibs into a versioned directory,
 # ad-hoc signs them on macOS (softens Gatekeeper for a downloaded binary), and
-# tars it. `birnam-id` resolves its dylibs through $BIRNAM_LIB_DIR /
+# tars it. `birnam` resolves its dylibs through $BIRNAM_LIB_DIR /
 # $BIRNAM_ID_DYLIB (no <exe>/../lib auto-probe), so the bundle ships a tiny
-# `bin/birnam-id` wrapper that points those at the bundle's own lib/ before
-# exec'ing the real binary (bin/birnam-id.bin). The bundle is portable: it runs
+# `bin/birnam` wrapper that points those at the bundle's own lib/ before
+# exec'ing the real binary (bin/birnam.bin). The bundle is portable: it runs
 # from wherever it's unpacked.
 #
 # Prints the tarball path on stdout (progress goes to stderr) so callers can
@@ -33,7 +33,7 @@ zig build install -Doptimize=ReleaseSafe --prefix "$prefix"
 log "staging"
 rm -rf "$stage"
 mkdir -p "$stage/bin" "$stage/lib"
-cp "$prefix/bin/birnam-id" "$stage/bin/birnam-id.bin"
+cp "$prefix/bin/birnam" "$stage/bin/birnam.bin"
 # rung dylibs on macOS, .so on Linux
 cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/" 2>/dev/null \
   || cp "$prefix"/lib/libbirnam_*.so "$stage/lib/"
@@ -45,18 +45,18 @@ cp wrapped/*/lib*.so "$stage/lib/" 2>/dev/null || true
 
 # Launcher: point the dylib search at the bundle's own lib/ (overridable), then
 # exec the real binary. Resolves its own directory so it works from anywhere.
-cat > "$stage/bin/birnam-id" <<'WRAP'
+cat > "$stage/bin/birnam" <<'WRAP'
 #!/usr/bin/env bash
 here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 export BIRNAM_LIB_DIR="${BIRNAM_LIB_DIR:-$here/../lib}"
 export BIRNAM_ID_DYLIB="${BIRNAM_ID_DYLIB:-$here/../lib/libbirnam_id.dylib}"
-exec "$here/birnam-id.bin" "$@"
+exec "$here/birnam.bin" "$@"
 WRAP
-chmod +x "$stage/bin/birnam-id"
+chmod +x "$stage/bin/birnam"
 
 if [ "$os" = macos ]; then
   log "ad-hoc signing"
-  codesign -s - --force "$stage"/lib/*.dylib "$stage/bin/birnam-id.bin"
+  codesign -s - --force "$stage"/lib/*.dylib "$stage/bin/birnam.bin"
 fi
 
 log "tarball"

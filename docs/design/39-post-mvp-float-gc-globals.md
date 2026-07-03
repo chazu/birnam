@@ -104,7 +104,7 @@ Same as `docs/38`. New tests: Float floor value + finalizer-runs-once +
 reclaimed-String-frees-bytes (`test-id`); disposable-unit-reclaimed (`test-tcc`);
 the float tower with promotion (`test-codegen`); double FFI `atof` / `pow`
 (`test-alien`). Run a float program: `BIRNAM_LIB_DIR=$PWD/zig-out/lib
-./zig-out/bin/birnam-id <file.birnam>`.
+./zig-out/bin/birnam <file.birnam>`.
 
 ## What remains (next session)
 

@@ -221,7 +221,7 @@ the seeded store survives a module code reload.
    the root metavtable is never patched.
 
 All green: `zig build test-store` (6 tests, MaxRSS ~1M — no balloon), plus
-`test-id` and the `birnam-id` siphon.
+`test-id` and the `birnam` siphon.
 
 ## Polish (shipped after the work breakdown, 2026-06-27)
 

@@ -18,7 +18,7 @@
 > **Slice 3 SHIPPED (2026-07-02):** the image itself. New `image` module + an
 > append-ready format (header — magic/format/arch/ABI-validity hash — then a
 > record stream read to EOF, heap before facts). `[System saveImage:]` /
-> `birnam-id foo.image` (entry convention: global `main` → `value`, else REPL).
+> `birnam foo.image` (entry convention: global `main` → `value`, else REPL).
 > Layering (approach A): the store yields/accepts facts RAW (`imageFactsInto:` /
 > imageLoadBegin+AddFact+LoadEnd); the floor gained 3 IdApi primitives
 > (`objectPayloadSize`, `exportedNameOf`, `slotKind`); image.zig owns the unified
@@ -70,18 +70,18 @@
 > `main`-entry demo.
 >
 > **Slice 4 follow-up — the exe bake SHIPPED (2026-07-02):** a "runnable app" is
-> a COPY of the birnam-id runtime with an image appended after a 16-byte trailer
+> a COPY of the birnam runtime with an image appended after a 16-byte trailer
 > (`[image][u64 len][magic "BIRNMEXE"]`). Trailing bytes are ignored by both the
-> Mach-O and ELF loaders, so the copy still executes as birnam-id; on startup it
+> Mach-O and ELF loaders, so the copy still executes as birnam; on startup it
 > reads its own file, notices the trailer, and boots the embedded image via the
 > ordinary boot path (mapped code, replay, global re-derivation, `main`-entry).
-> Two ways to bake: `birnam-id --bake <image> <out-exe>` (an existing image) or
+> Two ways to bake: `birnam --bake <image> <out-exe>` (an existing image) or
 > `[System bakeExe: path]` (the running system, one step from a script).
 > `resolveLibDir` now finds the runtime dylibs exe-relative (`<exe>`, then
 > `<exe>/../lib`, then `$BIRNAM_LIB_DIR`, then `zig-out/lib`) and the raw id-dylib
 > load uses it too — so a baked exe placed beside its dylibs boots from any cwd
 > with no env. VERIFIED: `./myapp` from both bake paths, env-free from `/tmp`,
-> mapped + `--rebuild`; a plain birnam-id has no trailer and is unaffected. No
+> mapped + `--rebuild`; a plain birnam has no trailer and is unaffected. No
 > OS-level dual-format file (dyld/glibc fight it, §1) — "runnable" is this bake
 > step over the same content, as designed.
 >
@@ -116,7 +116,7 @@
 > stack. Reference-only salvage from the old kernel lives in `src/attic/`
 > (`image.zig`, `freeze.zig`, `loader.zig`, `macho.zig`, `elf.zig`).
 
-Today every `birnam-id` run starts from nothing: REPL bindings, defined
+Today every `birnam` run starts from nothing: REPL bindings, defined
 methods, and store facts all die with the process. The image is the fix — and
 the design question was never *whether* to persist, but *what kind of thing*
 the persisted artifact is.
@@ -139,7 +139,7 @@ Three decisions bound the design (2026-07-01):
   simultaneously a dlopen-able library and an executable — fights the platform
   loaders (macOS dyld refuses to `dlopen` an `MH_EXECUTE`; glibc ≥ 2.30
   refuses PIE executables) and is given up. The image is one canonical
-  artifact; "runnable" is provided by the runtime (`birnam-id foo.image`), and
+  artifact; "runnable" is provided by the runtime (`birnam foo.image`), and
   a standalone executable is a *bake* step over the same content
   (`tcc_output_file`, already proven for AOT).
 - **Durability line = store-reachable.** What survives is what the system can
@@ -319,7 +319,7 @@ Each slice is independently valuable before the image itself lands:
 3. **The image** — append-only segment format (facts + interner + counters +
    heap section), save = serialize store-reachable graph via the descriptors,
    load = map + swizzle + relink vtables by name. **Ships:**
-   `[System saveImage: path]`, `birnam-id foo.image`, `main`-or-REPL entry.
+   `[System saveImage: path]`, `birnam foo.image`, `main`-or-REPL entry.
 4. **Unify + harden** — compiled units as image sections with the validity
    hash; replay fallback wired; incremental append + compact; the exe bake.
 
