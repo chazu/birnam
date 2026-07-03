@@ -8,11 +8,15 @@
 //! birnam on top of this via `Reflect defineMethod:…`.
 //!
 //! Installed (via the IdApi, like the floor — no store/mirror needed):
-//!   Integer (smallint_vt): mod: = < <= > >= + - * /  printString  to:do:
+//!   Integer (smallint_vt): mod: = < <= > >= + - * /  printString  asFloat  to:do:
 //!     (arithmetic is fault-tolerant: overflow/type/zero-divide → catchable errors)
+//!   Float   (flt_vt):      + - * / = < <= > >=  negated abs sqrt  asInteger
+//!                          floor ceiling rounded  printString
+//!   Object  (object_vt):   printString  asString (→ printString of any receiver)
 //!   Boolean (bool_vt):     ifTrue:ifFalse: ifTrue: ifFalse: & | not  printString
 //!   System (a singleton):  print:  println:  readFile:  writeFile:contents:
-//!                          readLine  gc  liveObjects  autoGc:
+//!                          load: (eval a .birnam source file) loadModule: (dlopen
+//!                          a module dylib) readLine  gc  liveObjects  autoGc:
 //! Exports `System` and `Boolean` into the id environment so birnam can name them.
 
 const std = @import("std");
@@ -284,6 +288,53 @@ fn fAsInteger(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         return mkErr("overflow", "float out of Integer range");
     return mki(@intFromFloat(std.math.trunc(v)));
 }
+
+// A Float rounded toward -inf / +inf / nearest, as an Integer (range-checked like
+// `asInteger`). `round` selects which; only the rounding op differs.
+fn floatToIntBy(self: Oop, comptime round: anytype) Oop {
+    const v = round(g_api.floatValue(self));
+    const fmin: f64 = @floatFromInt(SMALLINT_MIN);
+    const fmax: f64 = @floatFromInt(SMALLINT_MAX);
+    if (!std.math.isFinite(v) or v < fmin or v > fmax)
+        return mkErr("overflow", "float out of Integer range");
+    return mki(@intFromFloat(v));
+}
+fn fFloor(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return floatToIntBy(self, std.math.floor);
+}
+fn fCeiling(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return floatToIntBy(self, std.math.ceil);
+}
+fn fRounded(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return floatToIntBy(self, std.math.round);
+}
+fn fAbs(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mkf(@abs(g_api.floatValue(self)));
+}
+/// `[f sqrt]` — the square root, or a `#domain` error for a negative receiver.
+fn fSqrt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const v = g_api.floatValue(self);
+    if (v < 0) return mkErr("domain", "sqrt of a negative number");
+    return mkf(@sqrt(v));
+}
+
+/// `[anObject asString]` — the receiver's `printString` (a String), for any type.
+/// Delegates through a send so each type's own `printString` override is used.
+fn objAsString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return send0(self, "printString");
+}
 fn fPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
@@ -405,6 +456,44 @@ fn sysWriteFile(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
+const RTLD_LAZY: c_int = 1;
+
+/// `[System load: pathString]` — read a birnam SOURCE file and evaluate it in the
+/// running image (top-level `let`s persist to Globals, methods install), exactly
+/// as if the file's forms had been typed at the REPL. Answers the value of the
+/// last form; a `#ioError` if the file can't be read. This is how a birnam module
+/// (e.g. a PEG-based parser) is loaded from code — no siphon involvement.
+fn sysLoad(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const src = std.fs.cwd().readFileAlloc(ca, pathOf(a[0]), 1 << 30) catch
+        return mkErr("ioError", "could not read source file");
+    defer ca.free(src);
+    const codegen = g_api.import("Codegen");
+    if (codegen == null) return mkErr("noCodegen", "Codegen module is not loaded");
+    return g_api.send(codegen, g_api.intern("evalPersisting:"), &[_]Oop{g_api.mkString(src.ptr, src.len)}, 1);
+}
+
+/// `[System loadModule: pathString]` — dlopen a birnam MODULE dylib and run its
+/// `module_init` (installing whatever protocol/objects it exports), the same way
+/// the siphon loads a rung at boot. Answers self on success, else an error. For
+/// resolving raw C symbols (FFI), use `[Alien dlopen:]` instead — this is for
+/// dylibs that self-install through `module_init`.
+fn sysLoadModule(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const path = pathOf(a[0]);
+    const pathz = ca.allocSentinel(u8, path.len, 0) catch @panic("prelude: oom");
+    defer ca.free(pathz);
+    @memcpy(pathz[0..path.len], path);
+    const h = g_api.dlopen(pathz.ptr, RTLD_LAZY) orelse
+        return mkErr("ioError", "could not load module dylib");
+    const raw = g_api.dlsym(h, "module_init") orelse
+        return mkErr("notAModule", "dylib has no module_init");
+    const init: idapi.ModuleInitFn = @ptrCast(@alignCast(raw));
+    _ = init(g_api, null);
+    return self;
+}
+
 /// `[System readLine]` → the next line from stdin as a String (newline stripped),
 /// or nil at end of input. Line-oriented (one byte at a time) so it composes with
 /// an interactive read loop.
@@ -494,11 +583,17 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(flt_vt, api.intern(">="), &fGe);
     api.method(flt_vt, api.intern("negated"), &fNegated);
     api.method(flt_vt, api.intern("asInteger"), &fAsInteger);
+    api.method(flt_vt, api.intern("abs"), &fAbs);
+    api.method(flt_vt, api.intern("floor"), &fFloor);
+    api.method(flt_vt, api.intern("ceiling"), &fCeiling);
+    api.method(flt_vt, api.intern("rounded"), &fRounded);
+    api.method(flt_vt, api.intern("sqrt"), &fSqrt);
     api.method(flt_vt, api.intern("printString"), &fPrintString);
 
     // A default printString on Object so any object can be displayed; specific
     // types override it. (Installed before the type-specific ones below.)
     api.method(api.object_vt, api.intern("printString"), &objPrintString);
+    api.method(api.object_vt, api.intern("asString"), &objAsString);
 
     const b_vt = api.vtableOf(api.trueObj);
     api.method(b_vt, api.intern("ifTrue:ifFalse:"), &bIfTrueIfFalse);
@@ -521,6 +616,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(system_vt, api.intern("println:"), &sysPrintln);
     api.method(system_vt, api.intern("readFile:"), &sysReadFile);
     api.method(system_vt, api.intern("writeFile:contents:"), &sysWriteFile);
+    api.method(system_vt, api.intern("load:"), &sysLoad);
+    api.method(system_vt, api.intern("loadModule:"), &sysLoadModule);
     api.method(system_vt, api.intern("readLine"), &sysReadLine);
     api.method(system_vt, api.intern("gc"), &sysGc);
     api.method(system_vt, api.intern("liveObjects"), &sysLiveObjects);

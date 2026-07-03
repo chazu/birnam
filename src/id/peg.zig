@@ -19,6 +19,15 @@
 //! terminals just advance the position.
 //!
 //! Depends only on the `IdApi` (like `store.zig`); loaded by the siphon.
+//!
+//! From birnam, `Peg` is the facade. Primitive constructors: literal: any eof
+//! charset ruleRef: seq choice grammar; `[Peg seq]`/`[Peg choice]` grow via
+//! `add:`, `[Peg charset]` via `from:to:`. Ergonomic forms: newGrammar anyByte
+//! seqOf: choiceOf: star: plus: opt: not: and: anyOf: range:to:. A grammar
+//! answers `rule:is:` (rule names may be Symbols OR Strings — Strings are
+//! interned, so both name the same rule) and `parse:from:` → a CST root (nil on
+//! failure). CST nodes answer rule ruleName start end childCount childAt:
+//! children — walk them and slice the source with String `copyFrom:to:`.
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
@@ -361,6 +370,32 @@ fn strBytes(o: Oop) []const u8 {
     return p[0..len];
 }
 
+fn isStr(o: Oop) bool {
+    return o != null and g_api.vtableOf(o) == g_api.string_vt;
+}
+
+/// Coerce a rule-name argument to the interned symbol the engine matches by
+/// identity: a String is interned (so `"digit"` and `#digit` name the same rule),
+/// a Symbol passes through. Lets grammars use whichever reads better.
+fn asRuleSym(o: Oop) Oop {
+    if (!isStr(o)) return o;
+    const s = strBytes(o);
+    const z = ca.allocSentinel(u8, s.len, 0) catch @panic("peg: oom");
+    defer ca.free(z);
+    @memcpy(z[0..s.len], s);
+    return g_api.intern(z.ptr);
+}
+
+/// A single byte from a `range:to:`/`anyOf:` argument — a 1-char String's byte,
+/// or a SmallInt's low byte.
+fn byteArg(o: Oop) u8 {
+    if (isStr(o)) {
+        const s = strBytes(o);
+        return if (s.len > 0) s[0] else 0;
+    }
+    return @intCast(g_api.smallIntValue(o) & 0xff);
+}
+
 // Mid-conversion protection (F3): a fresh Cst's children sit in a bare
 // c_allocator array until the node's payload is assigned, so a collection
 // firing during a later sibling's conversion would sweep the earlier ones (the
@@ -423,7 +458,7 @@ fn mCharset(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 fn mRuleRefMsg(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
-    return mkRuleRef(g_api, a[0]);
+    return mkRuleRef(g_api, asRuleSym(a[0]));
 }
 fn mSeq(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
@@ -484,14 +519,14 @@ fn mFromTo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 // Grammar (on grammar_vt): `[g rule: #name is: pat]`, `[g parse: src from: #root]`.
 fn mRuleIs(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    defineRule(self, a[0], a[1]);
+    defineRule(self, asRuleSym(a[0]), a[1]);
     return self;
 }
 fn mParseFrom(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     var arena = std.heap.ArenaAllocator.init(ca);
     defer arena.deinit();
-    const root = parse(g_api, arena.allocator(), self, strBytes(a[0]), a[1]) orelse return g_api.nilObj;
+    const root = parse(g_api, arena.allocator(), self, strBytes(a[0]), asRuleSym(a[1])) orelse return g_api.nilObj;
     const cst = toCst(root);
     // The root now owns the tree (via its trace hook); drop the scratch roots.
     g_cst_scratch.clearRetainingCapacity();
@@ -513,6 +548,94 @@ fn mCstRule(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
     return cstOf(self).rule;
+}
+/// `[node ruleName]` — the matched rule's name as a String (the text form of the
+/// `rule` symbol), so it compares with String literals in a CST walk.
+fn mCstRuleName(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const name = std.mem.span(g_api.symbolName(cstOf(self).rule));
+    return g_api.mkString(name.ptr, name.len);
+}
+/// `[node children]` — a Vector of the child CST nodes (rule matches nested in
+/// this one), ready for `select:`/`collect:`.
+fn mCstChildren(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const kids = cstOf(self).children;
+    var vec = g_api.send(g_api.import("Vector"), g_api.intern("new"), &[_]Oop{}, 0);
+    const s_add = g_api.intern("add:");
+    for (kids) |k| vec = g_api.send(vec, s_add, &[_]Oop{k}, 1);
+    return vec;
+}
+
+// -- Peg facade: ergonomic constructors over the primitive combinators -------
+// The primitives (`seq`+`add:`, `charset`+`from:to:`) compose anything, but these
+// read far better in a grammar: vector forms for seq/choice, prefix wrappers for
+// star/plus/opt/not/and, and charsets from a string or a range.
+
+/// `[Peg seqOf: #[ p1 p2 … ]]` — a sequence of the patterns in the Vector.
+fn mSeqOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return newPattern(.{ .kind = .seq, .children = childrenFromVec(a[0]) });
+}
+/// `[Peg choiceOf: #[ p1 p2 … ]]` — an ordered choice among the Vector's patterns.
+fn mChoiceOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return newPattern(.{ .kind = .choice, .children = childrenFromVec(a[0]) });
+}
+/// Copy a birnam Vector of patterns into an owned `[]Oop` (via `size`/`at:`).
+fn childrenFromVec(v: Oop) []const Oop {
+    const count: usize = @intCast(g_api.smallIntValue(g_api.send(v, g_api.intern("size"), &[_]Oop{}, 0)));
+    const out = ca.alloc(Oop, count) catch @panic("peg: oom");
+    const s_at = g_api.intern("at:");
+    var i: usize = 0;
+    while (i < count) : (i += 1) out[i] = g_api.send(v, s_at, &[_]Oop{g_api.mkSmallInt(@intCast(i))}, 1);
+    return out;
+}
+fn mStarOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return mkUnary(.star, a[0]);
+}
+fn mPlusOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return mkUnary(.plus, a[0]);
+}
+fn mOptOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return mkUnary(.opt, a[0]);
+}
+fn mNotOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return mkUnary(.p_not, a[0]);
+}
+fn mAndOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return mkUnary(.p_and, a[0]);
+}
+/// `[Peg anyOf: "abc"]` — a charset matching any one of the bytes in the String.
+fn mAnyOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const cs = newPattern(.{ .kind = .charset });
+    for (strBytes(a[0])) |b| addRange(cs, b, b);
+    return cs;
+}
+/// `[Peg range: lo to: hi]` — a charset matching one byte in [lo, hi]. Bounds may
+/// be 1-char Strings (`"0"`/`"9"`) or SmallInt byte values.
+fn mRangeTo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const cs = newPattern(.{ .kind = .charset });
+    addRange(cs, byteArg(a[0]), byteArg(a[1]));
+    return cs;
 }
 fn mCstStart(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
@@ -576,6 +699,18 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(peg_vt, api.intern("seq"), &mSeq);
     api.method(peg_vt, api.intern("choice"), &mChoice);
     api.method(peg_vt, api.intern("grammar"), &mGrammarMsg);
+    // Ergonomic facade: vector/prefix forms + charset builders + aliases.
+    api.method(peg_vt, api.intern("newGrammar"), &mGrammarMsg);
+    api.method(peg_vt, api.intern("anyByte"), &mAnyMsg);
+    api.method(peg_vt, api.intern("seqOf:"), &mSeqOf);
+    api.method(peg_vt, api.intern("choiceOf:"), &mChoiceOf);
+    api.method(peg_vt, api.intern("star:"), &mStarOf);
+    api.method(peg_vt, api.intern("plus:"), &mPlusOf);
+    api.method(peg_vt, api.intern("opt:"), &mOptOf);
+    api.method(peg_vt, api.intern("not:"), &mNotOf);
+    api.method(peg_vt, api.intern("and:"), &mAndOf);
+    api.method(peg_vt, api.intern("anyOf:"), &mAnyOf);
+    api.method(peg_vt, api.intern("range:to:"), &mRangeTo);
 
     // Pattern combinators.
     api.method(pattern_vt, api.intern("star"), &mStar);
@@ -593,10 +728,12 @@ pub fn bringUp(api: *idapi.IdApi) void {
 
     // CstNode accessors.
     api.method(cstnode_vt, api.intern("rule"), &mCstRule);
+    api.method(cstnode_vt, api.intern("ruleName"), &mCstRuleName);
     api.method(cstnode_vt, api.intern("start"), &mCstStart);
     api.method(cstnode_vt, api.intern("end"), &mCstEnd);
     api.method(cstnode_vt, api.intern("childCount"), &mCstChildCount);
     api.method(cstnode_vt, api.intern("childAt:"), &mCstChildAt);
+    api.method(cstnode_vt, api.intern("children"), &mCstChildren);
 
     if (!reloading) {
         _ = api.exportObj("PegPatternVt", pattern_vt);

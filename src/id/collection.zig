@@ -14,15 +14,19 @@
 //!
 //! Provides:
 //!   Vector (vector_vt)  a persistent ordered vector over a 32-way radix trie:
-//!                         size at: add: do: select: collect: detect:
-//!                         inject:into: isEmpty asVector printString ,
+//!                         size at: at:ifAbsent: add: do: select: collect: detect:
+//!                         inject:into: isEmpty asVector printString , sortBy:
+//!                         first last includes: indexOf: copyFrom:to: reversed
 //!   Range  (range_vt)   a lazy inclusive integer range (start..end), value type:
 //!                         size do: select: collect: detect: inject:into:
 //!                         includes: asVector printString ,
 //!   Integer (smallint_vt)  to:  → a Range
 //!   Object  (object_vt)    isNil → false,  notNil → true
 //!   nil                    isNil → true,   notNil → false
-//!   String  (string_vt)    ,    → byte concatenation
+//!   String  (string_vt)    , = size isEmpty notEmpty at: byteAt: copyFrom:to:
+//!                          indexOf: includesSubstring: startsWith: endsWith:
+//!                          asLowercase asUppercase trimmed replace:with: words
+//!                          split: do: asSymbol asInteger asNumber printString
 //! Exports the `Vector` / `Range` / `VectorNode` vtables so birnam can name them.
 //!
 //! Also provides the HAMT sibling of the RRB:
@@ -334,6 +338,71 @@ fn vComma(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const ov = vec(other);
     var i: usize = 0;
     while (i < ov.count) : (i += 1) out = vecCons(out, vecAt(ov, i));
+    return out;
+}
+
+// -- Vector: the accessors/queries every program assumes ---------------------
+
+/// `[v first]` / `[v last]` — the end elements, or nil when empty.
+fn vFirst(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const v = vec(self);
+    return if (v.count == 0) g_api.nilObj else vecAt(v, 0);
+}
+fn vLast(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const v = vec(self);
+    return if (v.count == 0) g_api.nilObj else vecAt(v, v.count - 1);
+}
+/// `[v at: i ifAbsent: aBlock]` — the element, or the block's value when i is
+/// out of range.
+fn vAtIfAbsent(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const v = vec(self);
+    const i = iv(a[0]);
+    if (i < 0 or i >= v.count) return g_api.send(a[1], s_value, &[_]Oop{}, 0);
+    return vecAt(v, @intCast(i));
+}
+/// `[v includes: x]` — membership by value (floor types compare by value, per
+/// `keyEq`; other objects by identity).
+fn vIncludes(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const v = vec(self);
+    var i: usize = 0;
+    while (i < v.count) : (i += 1) if (keyEq(vecAt(v, i), a[0])) return g_api.trueObj;
+    return g_api.falseObj;
+}
+/// `[v indexOf: x]` — the 0-based index of the first element equal to x, or nil.
+fn vIndexOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const v = vec(self);
+    var i: usize = 0;
+    while (i < v.count) : (i += 1) if (keyEq(vecAt(v, i), a[0])) return mki(@intCast(i));
+    return g_api.nilObj;
+}
+/// `[v copyFrom: from to: to]` — the subvector for [from, to) (half-open,
+/// 0-based). nil if the range is invalid.
+fn vCopyFromTo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const v = vec(self);
+    const from = iv(a[0]);
+    const to = iv(a[1]);
+    if (from < 0 or to < from or to > v.count) return g_api.nilObj;
+    var out = emptyVec();
+    var i: usize = @intCast(from);
+    while (i < to) : (i += 1) out = vecCons(out, vecAt(v, i));
+    return out;
+}
+/// `[v reversed]` — a new Vector with the elements in reverse order.
+fn vReversed(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const v = vec(self);
+    var out = emptyVec();
+    var i: usize = v.count;
+    while (i > 0) : (i -= 1) out = vecCons(out, vecAt(v, i - 1));
     return out;
 }
 
@@ -968,6 +1037,142 @@ fn strAsSymbol(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.intern(buf.ptr);
 }
 
+// -- String: the basic protocol every program assumes ------------------------
+// Equality (by bytes), length, indexing, slicing, search, case, trimming,
+// splitting, iteration, and number parsing. Out-of-range indices answer nil
+// (the collection convention — see `vAt`); slices are half-open [from, to),
+// 0-based, to line up with PEG CST spans (`[node start]`/`[node end]`).
+
+/// `[a = b]` — byte equality for two Strings (false for a non-String arg).
+fn strEquals(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return boolean(keyEq(self, a[0]));
+}
+/// `[s size]` — the byte length.
+fn strSize(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mki(@intCast(strBytes(self).len));
+}
+fn strIsEmpty(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return boolean(strBytes(self).len == 0);
+}
+fn strNotEmpty(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return boolean(strBytes(self).len != 0);
+}
+/// `[s at: i]` — the 1-byte String at index i (0-based), or nil if out of range.
+fn strAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const s = strBytes(self);
+    const i = iv(a[0]);
+    if (i < 0 or i >= s.len) return g_api.nilObj;
+    return g_api.mkString(s.ptr + @as(usize, @intCast(i)), 1);
+}
+/// `[s byteAt: i]` — the raw byte value (Integer) at index i, or nil if out of range.
+fn strByteAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const s = strBytes(self);
+    const i = iv(a[0]);
+    if (i < 0 or i >= s.len) return g_api.nilObj;
+    return mki(s[@intCast(i)]);
+}
+/// `[s copyFrom: from to: to]` — the substring for bytes [from, to) (half-open,
+/// 0-based). nil if the range is invalid (from<0, to<from, or to>size).
+fn strCopyFromTo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const s = strBytes(self);
+    const from = iv(a[0]);
+    const to = iv(a[1]);
+    if (from < 0 or to < from or to > s.len) return g_api.nilObj;
+    return g_api.mkString(s.ptr + @as(usize, @intCast(from)), @intCast(to - from));
+}
+/// `[s indexOf: sub]` — the 0-based byte index of the first occurrence of the
+/// substring `sub`, or nil if not found (empty `sub` answers 0).
+fn strIndexOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    if (!isString(a[0])) return g_api.nilObj;
+    const s = strBytes(self);
+    const sub = strBytes(a[0]);
+    if (std.mem.indexOf(u8, s, sub)) |i| return mki(@intCast(i));
+    return g_api.nilObj;
+}
+fn strIncludesSubstring(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    if (!isString(a[0])) return g_api.falseObj;
+    return boolean(std.mem.indexOf(u8, strBytes(self), strBytes(a[0])) != null);
+}
+fn strStartsWith(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    if (!isString(a[0])) return g_api.falseObj;
+    return boolean(std.mem.startsWith(u8, strBytes(self), strBytes(a[0])));
+}
+fn strEndsWith(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    if (!isString(a[0])) return g_api.falseObj;
+    return boolean(std.mem.endsWith(u8, strBytes(self), strBytes(a[0])));
+}
+fn strAsUppercase(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const src = strBytes(self);
+    const buf = ca.alloc(u8, src.len) catch @panic("collection: oom");
+    defer ca.free(buf);
+    for (src, 0..) |ch, i| buf[i] = std.ascii.toUpper(ch);
+    return g_api.mkString(buf.ptr, buf.len);
+}
+/// `[s trimmed]` — a copy with leading/trailing ASCII whitespace removed.
+fn strTrimmed(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const t = std.mem.trim(u8, strBytes(self), " \t\r\n\x0b\x0c");
+    return g_api.mkString(t.ptr, t.len);
+}
+/// `[s split: sep]` — a Vector of the substrings between (non-overlapping)
+/// occurrences of the separator String. An empty separator answers `#[ s ]`.
+fn strSplit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var out = emptyVec();
+    const s = strBytes(self);
+    if (!isString(a[0]) or strBytes(a[0]).len == 0)
+        return vecCons(out, g_api.mkString(s.ptr, s.len));
+    var it = std.mem.splitSequence(u8, s, strBytes(a[0]));
+    while (it.next()) |part| out = vecCons(out, g_api.mkString(part.ptr, part.len));
+    return out;
+}
+/// `[s do: aBlock]` — evaluate the block with each 1-byte String; answers self.
+fn strDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const s = strBytes(self);
+    var i: usize = 0;
+    while (i < s.len) : (i += 1) _ = call1(a[0], g_api.mkString(s.ptr + i, 1));
+    return self;
+}
+/// `[s asInteger]` — the Integer named by an optional-sign decimal string, or
+/// nil if the whole (trimmed) string is not a valid integer.
+fn strAsInteger(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const t = std.mem.trim(u8, strBytes(self), " \t\r\n");
+    const v = std.fmt.parseInt(i64, t, 10) catch return g_api.nilObj;
+    return mki(v);
+}
+/// `[s asNumber]` — an Integer if the string is integral, else a Float; nil if
+/// it parses as neither. (A `.`, `e`, or `E` selects the Float reading.)
+fn strAsNumber(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const t = std.mem.trim(u8, strBytes(self), " \t\r\n");
+    if (std.mem.indexOfAny(u8, t, ".eE") == null) {
+        if (std.fmt.parseInt(i64, t, 10)) |v| return mki(v) else |_| {}
+    }
+    const f = std.fmt.parseFloat(f64, t) catch return g_api.nilObj;
+    return g_api.mkFloat(f);
+}
+
 // -- bringup -----------------------------------------------------------------
 
 // Word-kind maps for `setLayout` (must outlive the vtables — module statics).
@@ -1032,6 +1237,13 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(vector_vt, api.intern("printString"), &vPrintString);
     api.method(vector_vt, api.intern(","), &vComma);
     api.method(vector_vt, api.intern("sortBy:"), &vSortBy);
+    api.method(vector_vt, api.intern("first"), &vFirst);
+    api.method(vector_vt, api.intern("last"), &vLast);
+    api.method(vector_vt, api.intern("at:ifAbsent:"), &vAtIfAbsent);
+    api.method(vector_vt, api.intern("includes:"), &vIncludes);
+    api.method(vector_vt, api.intern("indexOf:"), &vIndexOf);
+    api.method(vector_vt, api.intern("copyFrom:to:"), &vCopyFromTo);
+    api.method(vector_vt, api.intern("reversed"), &vReversed);
     api.method(vector_factory_vt, api.intern("new"), &vecNew);
 
     // Range protocol.
@@ -1077,6 +1289,24 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(api.string_vt, api.intern("replace:with:"), &strReplaceWith);
     api.method(api.string_vt, api.intern("words"), &strWords);
     api.method(api.string_vt, api.intern("asSymbol"), &strAsSymbol);
+    // String: the basic protocol every program assumes.
+    api.method(api.string_vt, api.intern("="), &strEquals);
+    api.method(api.string_vt, api.intern("size"), &strSize);
+    api.method(api.string_vt, api.intern("isEmpty"), &strIsEmpty);
+    api.method(api.string_vt, api.intern("notEmpty"), &strNotEmpty);
+    api.method(api.string_vt, api.intern("at:"), &strAt);
+    api.method(api.string_vt, api.intern("byteAt:"), &strByteAt);
+    api.method(api.string_vt, api.intern("copyFrom:to:"), &strCopyFromTo);
+    api.method(api.string_vt, api.intern("indexOf:"), &strIndexOf);
+    api.method(api.string_vt, api.intern("includesSubstring:"), &strIncludesSubstring);
+    api.method(api.string_vt, api.intern("startsWith:"), &strStartsWith);
+    api.method(api.string_vt, api.intern("endsWith:"), &strEndsWith);
+    api.method(api.string_vt, api.intern("asUppercase"), &strAsUppercase);
+    api.method(api.string_vt, api.intern("trimmed"), &strTrimmed);
+    api.method(api.string_vt, api.intern("split:"), &strSplit);
+    api.method(api.string_vt, api.intern("do:"), &strDo);
+    api.method(api.string_vt, api.intern("asInteger"), &strAsInteger);
+    api.method(api.string_vt, api.intern("asNumber"), &strAsNumber);
 
     if (!reloading) {
         _ = api.exportObj("VectorNode", vnode_vt);
