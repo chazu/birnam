@@ -61,6 +61,10 @@ pub const Vtable = extern struct {
     /// this (it is no longer private), so the next method-define splits again.
     /// Null for shared/type vtables (Integer, String, prototypes) — the default.
     owner: Oop = null,
+    /// How this KIND births a valid instance for `[Type new]`/`clone` (see
+    /// `setConstructor`). Null → a bare 0-payload instance suffices (Object, the
+    /// value types); set for kinds whose blank layout isn't usable (Vector, Map).
+    ctor: ?idapi.CtorFn = null,
 };
 
 /// An interned name. Selectors are `*Symbol`, compared by pointer identity.
@@ -379,6 +383,7 @@ fn newVtable(parent: ?*Vtable) *Vtable {
     vt.layout_rest = 0;
     vt.layout_set = 0;
     vt.owner = null;
+    vt.ctor = null;
     return vt;
 }
 
@@ -454,6 +459,11 @@ pub fn boot() void {
     // The default doesNotUnderstand: lives on object_vt (top of every delegation
     // chain), so every object inherits an overridable handler (F2 / docs/34).
     _ = send2(oop(object_vt), s_addMethod, oop(s_dnu), @constCast(@ptrCast(&objectDoesNotUnderstand)));
+
+    // Base-level object creation, on object_vt so every object (and every kind, via
+    // its vtable) answers them regardless of which higher modules are loaded.
+    _ = send2(oop(object_vt), s_addMethod, oop(intern("new")), @constCast(@ptrCast(&objectNew)));
+    _ = send2(oop(object_vt), s_addMethod, oop(intern("clone")), @constCast(@ptrCast(&objectClone)));
 }
 
 /// Intern a symbol from outside (the siphon / later modules need this).
@@ -511,13 +521,20 @@ fn allocC(vt: Oop, size: usize) callconv(.c) Oop {
 /// `defineMethod` on either object splits a private vtable off (see below).
 fn newInstanceC(proto: Oop, copy_payload: c_int) callconv(.c) Oop {
     if (proto == null or (@intFromPtr(proto.?) & 1) != 0) return proto; // immediates
-    // A vtable receiver (a type like `Object`) yields a bare instance OF that type;
-    // an object receiver (a prototype) yields an instance sharing ITS vtable and,
-    // for clone, the same-shaped payload.
-    const is_type = vtableOf(proto).? == vtable_vt;
-    const vt = if (is_type) asVtable(proto) else vtableOf(proto).?;
-    const size = if (is_type) 0 else objectPayloadSizeC(proto);
+    // A vtable receiver is a KIND: `[Vector new]`. If it registered a constructor
+    // (its blank layout isn't a usable instance) birth one through it; otherwise a
+    // bare 0-payload instance of the kind. An object receiver is a PROTOTYPE: share
+    // its vtable and, for clone, its same-shaped payload.
+    if (vtableOf(proto).? == vtable_vt) {
+        const vt = asVtable(proto);
+        if (vt.ctor) |c| return c();
+        const inst = allocRaw(0, .collectable);
+        setVtable(inst, vt);
+        return inst;
+    }
+    const vt = vtableOf(proto).?;
     vt.owner = null; // now shared by another object → next define splits
+    const size = objectPayloadSizeC(proto);
     const inst = allocRaw(size, .collectable);
     setVtable(inst, vt);
     if (copy_payload != 0 and size > 0) {
@@ -526,6 +543,24 @@ fn newInstanceC(proto: Oop, copy_payload: c_int) callconv(.c) Oop {
         @memcpy(dst[0..size], src[0..size]);
     }
     return inst;
+}
+
+fn setConstructorC(vt: Oop, ctor: idapi.CtorFn) callconv(.c) void {
+    asVtable(vt).ctor = ctor;
+}
+
+// `[proto new]` / `[proto clone]` — base-level object creation, installed on
+// object_vt at boot so they are ALWAYS present (a prototype primitive, not
+// reflection, and not something a higher module must be loaded to provide).
+fn objectNew(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    return newInstanceC(self, 0);
+}
+fn objectClone(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    return newInstanceC(self, 1);
 }
 
 /// The vtable to install an object-targeted method on, copy-on-write: if `obj`
@@ -831,6 +866,7 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .slotKind = &slotKindC,
         .newInstance = &newInstanceC,
         .ensurePrivateVtable = &ensurePrivateVtableC,
+        .setConstructor = &setConstructorC,
     };
     // The floor's own layouts: no floor value type holds an Oop in its payload
     // (a String is {bytes-ptr, len}, a Float one f64, the singletons empty), so

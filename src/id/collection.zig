@@ -35,7 +35,11 @@
 //!                         id-native discipline as the Vector trie):
 //!                         at:put: at: at:ifAbsent: includesKey: size isEmpty
 //!                         keys values do: keysAndValuesDo: printString
-//!   Map factory         `[Map new]` → an empty map (exported "Map")
+//! `Map`/`Vector` are exported as their VTABLES (uniform with Integer/String/
+//! Object) — the same object is the `defineMethod` extension target AND the
+//! `[Map new]`/`[Vector new]` constructor (each registers a `setConstructor`, since
+//! a blank Vector's trie nodes wouldn't be initialised). `MapVt`/`VectorVt` remain
+//! as back-compat aliases.
 //! Keys compare by VALUE for the floor types — SmallInt by value, String by
 //! bytes, Symbol/other by identity — so equal string keys deduplicate (better
 //! than the old kernel's identity-only maps). `at:put:` is persistent (returns a
@@ -60,10 +64,6 @@ pub var vector_vt: Oop = null; // persistent ordered vector
 pub var range_vt: Oop = null; // lazy integer range
 pub var hnode_vt: Oop = null; // HAMT node: payload = header + [2*k]Oop entry slots
 pub var map_vt: Oop = null; // persistent hash-array-mapped map
-pub var map_factory_vt: Oop = null;
-pub var map_factory_obj: Oop = null; // the "Map" factory ([Map new])
-pub var vector_factory_vt: Oop = null;
-pub var vector_factory_obj: Oop = null; // the "Vector" factory ([Vector new])
 
 // Cached selectors for invoking caller blocks (value / value: / value:value:).
 var s_value: Oop = null;
@@ -901,20 +901,14 @@ fn appendPrint(buf: *std.ArrayList(u8), o: Oop) void {
     buf.appendSlice(ca, p[0..len]) catch @panic("collection: oom");
 }
 
-fn mapNew(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = self;
-    _ = a;
-    _ = n;
+// Constructors registered on the Map/Vector vtables (via `setConstructor`), so
+// `[Map new]`/`[Vector new]` — now sent to the vtable itself — birth a valid empty
+// collection. A blank Vector would have null trie nodes (unusable), which is
+// exactly why a kind carries a constructor.
+fn mapNew() callconv(.c) Oop {
     return mkMap(null, 0);
 }
-
-/// `[Vector new]` → an empty persistent vector (the seed for `#[…]` literals and
-/// `add:` chains). The vector factory is the birnam-reachable constructor; the
-/// instance vtable is exported separately as "VectorVt" (an extension target).
-fn vecNew(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = self;
-    _ = a;
-    _ = n;
+fn vecNew() callconv(.c) Oop {
     return emptyVec();
 }
 
@@ -1193,23 +1187,15 @@ pub fn bringUp(api: *idapi.IdApi) void {
     if (reloading) {
         vnode_vt = api.import("VectorNode");
         vector_vt = api.import("VectorVt");
-        vector_factory_vt = api.import("VectorFactoryVt");
-        vector_factory_obj = api.import("Vector");
         range_vt = api.import("Range");
         hnode_vt = api.import("MapNode");
         map_vt = api.import("MapVt");
-        map_factory_vt = api.import("MapFactoryVt");
-        map_factory_obj = api.import("Map");
     } else {
         vnode_vt = api.proto(api.object_vt);
         vector_vt = api.proto(api.object_vt);
-        vector_factory_vt = api.proto(api.object_vt);
-        vector_factory_obj = api.alloc(vector_factory_vt, 0);
         range_vt = api.proto(api.object_vt);
         hnode_vt = api.proto(api.object_vt);
         map_vt = api.proto(api.object_vt);
-        map_factory_vt = api.proto(api.object_vt);
-        map_factory_obj = api.alloc(map_factory_vt, 0);
     }
 
     // Exact payload layouts (F3 completed; docs/40 §3c) — the word-kind maps the
@@ -1244,7 +1230,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(vector_vt, api.intern("indexOf:"), &vIndexOf);
     api.method(vector_vt, api.intern("copyFrom:to:"), &vCopyFromTo);
     api.method(vector_vt, api.intern("reversed"), &vReversed);
-    api.method(vector_factory_vt, api.intern("new"), &vecNew);
+    api.setConstructor(vector_vt, &vecNew); // `[Vector new]` (re-set each load — fn ptr moves)
 
     // Range protocol.
     api.method(range_vt, api.intern("size"), &rSize);
@@ -1270,7 +1256,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(map_vt, api.intern("do:"), &mDo);
     api.method(map_vt, api.intern("keysAndValuesDo:"), &mKeysAndValuesDo);
     api.method(map_vt, api.intern("printString"), &mPrintString);
-    api.method(map_factory_vt, api.intern("new"), &mapNew);
+    api.setConstructor(map_vt, &mapNew); // `[Map new]`
 
     // Integer `to:` → Range.
     api.method(api.smallint_vt, api.intern("to:"), &iTo);
@@ -1310,14 +1296,15 @@ pub fn bringUp(api: *idapi.IdApi) void {
 
     if (!reloading) {
         _ = api.exportObj("VectorNode", vnode_vt);
-        _ = api.exportObj("Vector", vector_factory_obj); // `[Vector new]`
+        // The kind IS its vtable now (uniform with Integer/String/Object): `Vector`
+        // is the extension target for `defineMethod` AND the `[Vector new]` factory
+        // (via its constructor). `VectorVt` stays as a back-compat alias.
+        _ = api.exportObj("Vector", vector_vt);
         _ = api.exportObj("VectorVt", vector_vt);
-        _ = api.exportObj("VectorFactoryVt", vector_factory_vt);
         _ = api.exportObj("Range", range_vt);
         _ = api.exportObj("MapNode", hnode_vt);
-        _ = api.exportObj("Map", map_factory_obj); // `[Map new]`
+        _ = api.exportObj("Map", map_vt);
         _ = api.exportObj("MapVt", map_vt);
-        _ = api.exportObj("MapFactoryVt", map_factory_vt);
     }
 }
 

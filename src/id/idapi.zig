@@ -175,7 +175,18 @@ pub const IdApi = extern struct {
     /// solely owns its vtable. Lets a mirror define a method on a single object
     /// (not its whole type) without leaking to others that share the vtable.
     ensurePrivateVtable: *const fn (Oop) callconv(.c) Oop,
+    /// setConstructor(vt, fn) -> register how the KIND `vt` births a valid instance.
+    /// `[SomeType new]`/`clone` on a vtable calls its constructor if set (a type
+    /// whose blank layout isn't a usable instance — e.g. Vector needs empty trie
+    /// nodes — registers one); otherwise a bare 0-payload instance is made. Reset
+    /// on every load, since the fn pointer moves with the module. Not a class: the
+    /// kind is still just its vtable, it merely knows how to make one of itself.
+    setConstructor: *const fn (Oop, CtorFn) callconv(.c) void,
 };
+
+/// A kind's constructor: makes a fresh, valid instance of the vtable it's
+/// registered on (see `setConstructor`). Zero-arg — initialization is fixed.
+pub const CtorFn = *const fn () callconv(.c) Oop;
 
 /// Returned by `slotKind` when a vtable has no layout descriptor: the object
 /// can't be swizzled and the image defers it (counted, never dropped).

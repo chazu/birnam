@@ -13,10 +13,7 @@
 //!   Float   (flt_vt):      + - * / = < <= > >=  negated abs sqrt  asInteger
 //!                          floor ceiling rounded  printString
 //!   Object  (object_vt):   printString  asString (→ printString of any receiver)
-//!                          new (blank instance) / clone (payload copy) — both
-//!                          share the prototype's vtable (copy-on-write: a private
-//!                          vtable is split off only when a method is defined on
-//!                          the object, so cloning mints no vtable)
+//!                          (new/clone are floor protocol — installed in id.zig)
 //!   Boolean (bool_vt):     ifTrue:ifFalse: ifTrue: ifFalse: & | not  printString
 //!   System (a singleton):  print:  println:  readFile:  writeFile:contents:
 //!                          load: (eval a .birnam source file) loadModule: (dlopen
@@ -340,28 +337,8 @@ fn objAsString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return send0(self, "printString");
 }
 
-// Base-level object creation (prototype protocol, not reflection — a mirror
-// observes and intercedes; instantiation is base-level, so it lives on Object).
-
-/// `[proto new]` — a fresh, blank instance sharing the prototype's vtable (all
-/// instances of a prototype share one behaviour; a method later added to the
-/// prototype reaches them). Copy-on-write: no vtable is minted here — a private
-/// one is split off only if/when a method is defined on this specific object.
-fn objNew(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    return g_api.newInstance(self, 0);
-}
-
-/// `[proto clone]` — a copy of the prototype (shared vtable + shallow payload
-/// copy). Same COW rule as `new`: cloning mints no vtable, so transient clones
-/// leak nothing; defining a method on a clone later splits it a private vtable,
-/// specialising just it — that is how a fresh named object like `Toml` is made.
-fn objClone(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    return g_api.newInstance(self, 1);
-}
+// (Base-level object creation — `new`/`clone` — lives on object_vt in the floor
+// (id.zig), installed at boot so it is always present, not gated on this module.)
 fn fPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
@@ -621,8 +598,6 @@ pub fn bringUp(api: *idapi.IdApi) void {
     // types override it. (Installed before the type-specific ones below.)
     api.method(api.object_vt, api.intern("printString"), &objPrintString);
     api.method(api.object_vt, api.intern("asString"), &objAsString);
-    api.method(api.object_vt, api.intern("new"), &objNew);
-    api.method(api.object_vt, api.intern("clone"), &objClone);
 
     const b_vt = api.vtableOf(api.trueObj);
     api.method(b_vt, api.intern("ifTrue:ifFalse:"), &bIfTrueIfFalse);
