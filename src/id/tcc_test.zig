@@ -17,17 +17,22 @@ test "tcc 3c: compile C → native → install as method → dispatch" {
     tcc.bringUp(api);
     const Tcc = api.import("Tcc").?;
 
-    // A function with the birnam Method ABI returning the SmallInt 42 (tagged:
-    // (42<<1)|1). This is what codegen will emit (for now hand-tagged; later it
-    // calls back into the IdApi for value construction).
+    // A function with the birnam Method ABI returning the Integer 42. Integers are
+    // boxed now (no immediates), so the answer is built through the birnam_mkSmallInt
+    // runtime shim — which needs the STAGED compile path (new → compile → bindRuntime
+    // → relocate), since `compile:` alone relocates before a shim could be bound.
     const src =
+        \\extern void* birnam_mkSmallInt(long);
         \\void* answer(void* self, void** args, long n) {
         \\  (void)self; (void)args; (void)n;
-        \\  return (void*)((42L << 1) | 1L);
+        \\  return birnam_mkSmallInt(42L);
         \\}
     ;
-    const unit = api.send(Tcc, api.intern("compile:"), &[_]Oop{str(api, src)}, 1);
+    const unit = api.send(Tcc, api.intern("new"), &[_]Oop{}, 0);
     try std.testing.expect(unit != api.nilObj);
+    _ = api.send(unit, api.intern("compile:"), &[_]Oop{str(api, src)}, 1);
+    _ = api.send(unit, api.intern("bindRuntime"), &[_]Oop{}, 0);
+    try std.testing.expect(api.send(unit, api.intern("relocate"), &[_]Oop{}, 0) != api.nilObj);
 
     // Install `answer` as #answer on a fresh type, then dispatch to it.
     const vt = api.proto(api.object_vt);
@@ -66,7 +71,7 @@ noinline fn makeDisposableUnits(api: *idapi.IdApi, Tcc: Oop, count: usize) void 
     var i: usize = 0;
     var u: Oop = null;
     while (i < count) : (i += 1) {
-        const src = "void* f(void* self, void** a, long n){ (void)self;(void)a;(void)n; return (void*)((7L<<1)|1L); }";
+        const src = "void* f(void* self, void** a, long n){ (void)self;(void)a;(void)n; return (void*)0; }";
         u = api.send(Tcc, api.intern("new"), &[_]Oop{}, 0);
         _ = api.send(u, api.intern("compile:"), &[_]Oop{str(api, src)}, 1);
         _ = api.send(u, api.intern("relocate"), &[_]Oop{}, 0);
@@ -185,14 +190,15 @@ test "tcc 3c.3: emitted C can send a message back through libid" {
     const src =
         \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
         \\extern void* birnam_intern(const char* name);
+        \\extern long birnam_smallIntValue(void*);
+        \\extern void* birnam_mkSmallInt(long);
         \\void* callDouble(void* self, void** args, long n) {
         \\  (void)args; (void)n;
         \\  return birnam_send(self, birnam_intern("double"), 0, 0);
         \\}
         \\void* doubleIt(void* self, void** args, long n) {
         \\  (void)args; (void)n;
-        \\  long v = ((long)self) >> 1;       /* untag the SmallInt receiver */
-        \\  return (void*)(((v * 2) << 1) | 1L);
+        \\  return birnam_mkSmallInt(birnam_smallIntValue(self) * 2);  /* Integer is boxed now */
         \\}
     ;
     const unit = api.send(Tcc, api.intern("new"), &[_]Oop{}, 0);

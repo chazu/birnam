@@ -98,7 +98,21 @@ fn stateOf(self: Oop) *StoreState {
 /// through here, so the policy lands in one place, not a scatter of inline `==`.
 /// (Absence checks — `x == null` — stay literal: absence is not a value, F1.)
 inline fn eq(a: Oop, b: Oop) bool {
-    return a == b;
+    if (a == b) return true; // interned symbols, same object, same eid
+    if (a == null or b == null) return false; // one side is internal absence
+    // Integers are boxed (no immediates): equal-valued integers are DISTINCT
+    // objects, so an identity-only `eq` would see duplicate facts/values as
+    // distinct (breaking set semantics + aggregates). Match value types by value.
+    if (g_api.isSmallInt(a) != 0 and g_api.isSmallInt(b) != 0)
+        return g_api.smallIntValue(a) == g_api.smallIntValue(b);
+    if (g_api.vtableOf(a) == g_api.string_vt and g_api.vtableOf(b) == g_api.string_vt) {
+        var la: usize = 0;
+        var lb: usize = 0;
+        const pa = g_api.stringBytes(a, &la);
+        const pb = g_api.stringBytes(b, &lb);
+        return std.mem.eql(u8, pa[0..la], pb[0..lb]);
+    }
+    return false;
 }
 
 fn appendOp(st: *StoreState, e: Oop, a: Oop, v: Oop, op: Op) void {

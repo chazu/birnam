@@ -632,6 +632,8 @@ fn buildWrapper(fn_name: []const u8, sig_raw: []const u8, sel: Oop, vt: Oop) Oop
     if (s0(unit, "relocate") == g_api.nilObj) return g_api.nilObj;
 
     const fname = "__shim";
+    // `on:` names a prototype now (String/Integer = their prototypes) or a raw
+    // vtable (VectorVt); `install:as:on:` resolves either to its family.
     return g_api.send(unit, g_api.intern("install:as:on:"), &[_]Oop{ g_api.mkString(fname, fname.len), sel, vt }, 3);
 }
 

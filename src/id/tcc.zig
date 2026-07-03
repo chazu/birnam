@@ -191,6 +191,12 @@ fn rtObjectVt() callconv(.c) Oop {
 fn rtProto(parent: Oop) callconv(.c) Oop {
     return g_api.proto(parent);
 }
+// The vtable to install a method on for a `defineMethod on: <target>` in emitted
+// code: a well-known name is a prototype that owns its family, so this returns the
+// family (extends all); any other object gets a copy-on-write private vtable.
+fn rtEnsurePrivateVtable(obj: Oop) callconv(.c) Oop {
+    return g_api.ensurePrivateVtable(obj);
+}
 fn rtMethod(vt: Oop, sel: Oop, fnptr: ?*anyopaque) callconv(.c) void {
     g_api.method(vt, sel, @ptrCast(@alignCast(fnptr)));
 }
@@ -237,6 +243,7 @@ comptime {
     @export(&rtFalse, .{ .name = "birnam_false" });
     @export(&rtObjectVt, .{ .name = "birnam_objectVt" });
     @export(&rtProto, .{ .name = "birnam_proto" });
+    @export(&rtEnsurePrivateVtable, .{ .name = "birnam_ensurePrivateVtable" });
     @export(&rtMethod, .{ .name = "birnam_method" });
     @export(&rtAlloc, .{ .name = "birnam_alloc" });
     @export(&rtCstr, .{ .name = "birnam_cstr" });
@@ -258,6 +265,7 @@ const runtime_syms = [_]RuntimeSym{
     .{ .name = "birnam_false", .addr = @ptrCast(&rtFalse) },
     .{ .name = "birnam_objectVt", .addr = @ptrCast(&rtObjectVt) },
     .{ .name = "birnam_proto", .addr = @ptrCast(&rtProto) },
+    .{ .name = "birnam_ensurePrivateVtable", .addr = @ptrCast(&rtEnsurePrivateVtable) },
     .{ .name = "birnam_method", .addr = @ptrCast(&rtMethod) },
     .{ .name = "birnam_alloc", .addr = @ptrCast(&rtAlloc) },
     .{ .name = "birnam_cstr", .addr = @ptrCast(&rtCstr) },
@@ -366,8 +374,11 @@ fn mInstall(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     defer ca.free(name);
     const sym = c.tcc_get_symbol(unitOf(self).state, name.ptr) orelse return g_api.nilObj;
     const m: idapi.Method = @ptrCast(@alignCast(sym));
-    g_api.method(a[2], a[1], m); // method(vt, selector, impl)
-    return a[2];
+    // `on:` names a prototype now (Integer/String/…) or a raw vtable (VectorVt);
+    // ensurePrivateVtable resolves either to the family to install on (idempotent).
+    const target = g_api.ensurePrivateVtable(a[2]);
+    g_api.method(target, a[1], m); // method(vt, selector, impl)
+    return target;
 }
 
 /// Reclaim a dying unit's native code. Attached as a GC finalizer only when a

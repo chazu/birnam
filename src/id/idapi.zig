@@ -51,8 +51,11 @@ pub const IdApi = extern struct {
     nilObj: Oop,
     trueObj: Oop,
     falseObj: Oop,
-    /// mkSmallInt(v) -> a tagged 63-bit fixnum; smallIntValue decodes it;
-    /// isSmallInt tests the tag. Pointer-encoded ints are gone above the floor.
+    /// mkSmallInt(v) -> an Integer (a boxed i64 heap value); smallIntValue reads
+    /// it; isSmallInt tests for it. NAMES ARE HISTORICAL: immediates were removed
+    /// in the prototype refounding (docs/design/41 §A), so an Integer is now an
+    /// ordinary heap object like a Float — no tag. Kept named to avoid churning
+    /// ~180 call sites.
     mkSmallInt: *const fn (i64) callconv(.c) Oop,
     smallIntValue: *const fn (Oop) callconv(.c) i64,
     isSmallInt: *const fn (Oop) callconv(.c) c_int,
@@ -71,7 +74,8 @@ pub const IdApi = extern struct {
     /// keyword parts for define-method).
     symbolName: *const fn (Oop) callconv(.c) [*:0]const u8,
 
-    /// vtableOf(obj) -> the object's vtable (tag-aware: SmallInt → smallint_vt).
+    /// vtableOf(obj) -> the object's vtable (the `[-1]` header word; every object
+    /// has one now that immediates are gone — see docs/design/41 §A).
     /// Lets a library reach the type of a value to install protocol on it (e.g.
     /// the shared bool vtable behind true/false).
     vtableOf: *const fn (Oop) callconv(.c) Oop,
@@ -165,28 +169,19 @@ pub const IdApi = extern struct {
     /// 0xFF if `vt` carries no layout (the caller then defers that object — an
     /// unknown layout can't be safely swizzled). Mirrors the tracer's per-word rule.
     slotKind: *const fn (Oop, usize) callconv(.c) u8,
-    /// newInstance(proto, copy_payload) -> a fresh object SHARING proto's vtable
-    /// (copy-on-write: no new vtable). copy_payload!=0 copies proto's payload
-    /// (clone); 0 leaves it blank (new). Clears the shared vtable's `owner`.
-    /// The base-level prototype-creation primitive behind `[proto new]`/`clone`.
-    newInstance: *const fn (Oop, c_int) callconv(.c) Oop,
     /// ensurePrivateVtable(obj) -> the vtable to install an object-specific method
-    /// on, splitting a private one (delegating to the current) unless `obj` already
-    /// solely owns its vtable. Lets a mirror define a method on a single object
-    /// (not its whole type) without leaking to others that share the vtable.
+    /// on: `obj`'s own family if `obj` OWNS it (a well-known prototype owns its
+    /// family, so `defineMethod on: String` patches string_vt in place — extends
+    /// every string), else a freshly split private one delegating to the current
+    /// (extends only `obj`). The one target-selection primitive behind
+    /// `defineMethod` — no family/instance fork above it (docs/design/41 §A).
     ensurePrivateVtable: *const fn (Oop) callconv(.c) Oop,
-    /// setConstructor(vt, fn) -> register how the KIND `vt` births a valid instance.
-    /// `[SomeType new]`/`clone` on a vtable calls its constructor if set (a type
-    /// whose blank layout isn't a usable instance — e.g. Vector needs empty trie
-    /// nodes — registers one); otherwise a bare 0-payload instance is made. Reset
-    /// on every load, since the fn pointer moves with the module. Not a class: the
-    /// kind is still just its vtable, it merely knows how to make one of itself.
-    setConstructor: *const fn (Oop, CtorFn) callconv(.c) void,
+    /// setOwner(vt, proto) -> record `proto` as the prototype that owns family
+    /// `vt`, so `defineMethod on: proto` patches `vt` in place (extends all its
+    /// instances). Set once per well-known family at load; a well-known name is
+    /// exported bound to its `proto`, not to `vt`.
+    setOwner: *const fn (Oop, Oop) callconv(.c) void,
 };
-
-/// A kind's constructor: makes a fresh, valid instance of the vtable it's
-/// registered on (see `setConstructor`). Zero-arg — initialization is fixed.
-pub const CtorFn = *const fn () callconv(.c) Oop;
 
 /// Returned by `slotKind` when a vtable has no layout descriptor: the object
 /// can't be swizzled and the image defers it (counted, never dropped).

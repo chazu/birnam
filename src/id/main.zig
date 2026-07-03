@@ -235,8 +235,9 @@ fn runDemo(a: std.mem.Allocator, api: *IdApi, id_path: []const u8, id_path_z: [:
     std.debug.print("[siphon] id api up: object_vt={*}\n", .{api.object_vt});
 
     // 2. RE-IMPORT THE ID LAYER through the id api itself. The siphon never
-    //    touches libid internals again — it asks id for id.
-    const object_vt = api.import("Object");
+    //    touches libid internals again — it asks id for id. ("Object" now names the
+    //    object PROTOTYPE, so take the vtable from the api field for `proto` below.)
+    const object_vt = api.object_vt;
     const vtable_vt = api.import("Vtable");
     const symbol_vt = api.import("Symbol");
     std.debug.print("[siphon] re-imported the id layer: Object={*} Vtable={*} Symbol={*}\n", .{ object_vt, vtable_vt, symbol_vt });
@@ -341,9 +342,16 @@ fn runDemo(a: std.mem.Allocator, api: *IdApi, id_path: []const u8, id_path_z: [:
     defer a.free(tcc_path);
     _ = try loadModule(api, tcc_path, null);
     const tcc = api.import("Tcc") orelse return error.NoTcc;
-    const csrc = "void* answer(void* self, void** args, long n){ (void)self;(void)args;(void)n; return (void*)((42L<<1)|1L); }";
-    const unit = api.send(tcc, api.intern("compile:"), &[_]Oop{api.mkString(csrc, csrc.len)}, 1);
+    // Integers are boxed now (no immediates), so the answer is built through the
+    // `birnam_mkSmallInt` runtime shim — which means the staged compile path
+    // (new → compile → bindRuntime → relocate), since `compile:` alone relocates
+    // before any shim could be bound.
+    const csrc = "extern void* birnam_mkSmallInt(long); void* answer(void* self, void** args, long n){ (void)self;(void)args;(void)n; return birnam_mkSmallInt(42L); }";
+    const unit = api.send(tcc, api.intern("new"), empty, 0);
     if (unit == api.nilObj) return error.TccCompileFailed;
+    _ = api.send(unit, api.intern("compile:"), &[_]Oop{api.mkString(csrc, csrc.len)}, 1);
+    _ = api.send(unit, api.intern("bindRuntime"), empty, 0);
+    if (api.send(unit, api.intern("relocate"), empty, 0) == api.nilObj) return error.TccCompileFailed;
     const avt = api.proto(object_vt);
     const asel = api.intern("answer");
     const fname = "answer";

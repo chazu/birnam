@@ -54,17 +54,14 @@ pub const Vtable = extern struct {
     layout_n: usize,
     layout_rest: u8,
     layout_set: u8,
-    /// Copy-on-write ownership (prototype protocol). A vtable created as ONE
-    /// object's private table (by `ensurePrivateVtable`, when a method is defined
-    /// on that object) records that object here; installing further methods on the
-    /// sole owner then patches in place. `new`/`clone` that share a vtable clear
-    /// this (it is no longer private), so the next method-define splits again.
-    /// Null for shared/type vtables (Integer, String, prototypes) — the default.
+    /// The sole object for which `defineMethod` patches this vtable IN PLACE.
+    /// For a well-known family it is that family's PROTOTYPE (so `defineMethod on:
+    /// String` extends every string — the prototype owns `string_vt`); for a
+    /// private vtable split by `ensurePrivateVtable` it is the one specialised
+    /// object. `clone` shares a family without disturbing its owner, so the family
+    /// stays the extension point (docs/design/41 §A). Null until a prototype
+    /// claims it (`setOwner`) or a split records one.
     owner: Oop = null,
-    /// How this KIND births a valid instance for `[Type new]`/`clone` (see
-    /// `setConstructor`). Null → a bare 0-payload instance suffices (Object, the
-    /// value types); set for kinds whose blank layout isn't usable (Vector, Map).
-    ctor: ?idapi.CtorFn = null,
 };
 
 /// An interned name. Selectors are `*Symbol`, compared by pointer identity.
@@ -88,17 +85,25 @@ pub var vtable_vt: *Vtable = undefined; // the vtable of vtables (self-describin
 pub var object_vt: *Vtable = undefined; // top of the delegation chain
 pub var symbol_vt: *Vtable = undefined;
 pub var string_vt: *Vtable = undefined; // the vtable of (uninterned) byte strings
-pub var smallint_vt: *Vtable = undefined; // the vtable of tagged fixnums (F1)
+pub var smallint_vt: *Vtable = undefined; // the vtable of boxed Integers (name historical)
 pub var float_vt: *Vtable = undefined; // the vtable of boxed f64s (the floor's only float)
 pub var nil_vt: *Vtable = undefined;
 pub var bool_vt: *Vtable = undefined; // shared by true_obj + false_obj
 
-// The canonical singleton objects (boot-allocated, compared by pointer). These
-// are NOT immediates — only SmallInt is (maru-style). They are distinct from the
-// Zig `null` Oop, which stays *internal absence* (no-NULL rule, F1 / docs/34).
+// The canonical singleton objects (boot-allocated, compared by pointer). Distinct
+// from the Zig `null` Oop, which stays *internal absence* (no-NULL rule, docs/34).
 pub var nil_obj: Oop = undefined;
 pub var true_obj: Oop = undefined;
 pub var false_obj: Oop = undefined;
+
+// The canonical PROTOTYPES (docs/design/41 §A): a well-known name is bound to its
+// family's prototype instance, not to the family (vtable). Each owns its family so
+// `defineMethod on: <name>` extends all its instances. `[Name clone]`/`[Name new]`
+// copies the prototype.
+pub var object_proto: Oop = undefined; // a blank plain object
+pub var integer_proto: Oop = undefined; // a boxed 0
+pub var float_proto: Oop = undefined; // a boxed 0.0
+pub var string_proto: Oop = undefined; // the empty string
 var symbol_list: *Vtable = undefined; // the intern table (keys = symbols)
 var env: *Vtable = undefined; // the export environment (keys = symbols, values = objects)
 
@@ -156,24 +161,31 @@ fn vtSlot(obj: Oop) *?*Vtable {
 }
 pub fn vtableOf(obj: Oop) ?*Vtable {
     if (obj == null) return null; // internal absence has no vtable
-    if ((@intFromPtr(obj.?) & 1) != 0) return smallint_vt; // tagged fixnum (F1)
-    return vtSlot(obj).*;
+    return vtSlot(obj).*; // the [-1] header — every object has one (no immediates)
 }
 
-// -- SmallInt: the one immediate (maru-style low-bit tag, F1) ----------------
-// bit0 = 1 ⇒ a 63-bit signed fixnum (value in the high bits); bit0 = 0 ⇒ a heap
-// pointer (16-byte alignment guarantees the low bit is free). A fixnum is never
-// dereferenced — `vtableOf` maps it to `smallint_vt`.
+// -- Integer: a boxed i64 -----------------------------------------------------
+// The prototype refounding (docs/design/41 §A) removed immediates: an Integer is
+// now an ordinary heap object like Float, its vtable at `[-1]` is `smallint_vt`,
+// found by the plain deref — no low-bit tag anywhere. `mkSmallInt`/`smallIntValue`/
+// `isSmallInt`/`smallint_vt` keep their historical names to avoid churning ~180
+// call sites; think "Integer".
 
+pub const Integer = extern struct { value: i64 };
+inline fn asInteger(o: Oop) *Integer {
+    return @ptrCast(@alignCast(o.?));
+}
 pub fn isSmallInt(o: Oop) bool {
-    return o != null and (@intFromPtr(o.?) & 1) != 0;
+    return o != null and vtSlot(o).* == smallint_vt;
 }
 pub fn mkSmallInt(v: i64) Oop {
-    const u: usize = @bitCast(v);
-    return @ptrFromInt((u << 1) | 1);
+    const obj = allocRaw(@sizeOf(Integer), .collectable);
+    setVtable(obj, smallint_vt);
+    asInteger(obj).* = .{ .value = v };
+    return obj;
 }
 pub fn smallIntValue(o: Oop) i64 {
-    return @as(i64, @bitCast(@intFromPtr(o.?))) >> 1; // arithmetic shift restores sign
+    return asInteger(o).value;
 }
 
 // -- String: an uninterned byte-string value (floor type) --------------------
@@ -223,7 +235,7 @@ pub fn mkFloat(v: f64) Oop {
     return obj;
 }
 pub fn isFloat(o: Oop) bool {
-    return o != null and !isSmallInt(o) and vtSlot(o).* == float_vt;
+    return o != null and vtSlot(o).* == float_vt;
 }
 pub fn floatValue(o: Oop) f64 {
     return asFloat(o).value;
@@ -383,7 +395,6 @@ fn newVtable(parent: ?*Vtable) *Vtable {
     vt.layout_rest = 0;
     vt.layout_set = 0;
     vt.owner = null;
-    vt.ctor = null;
     return vt;
 }
 
@@ -460,10 +471,15 @@ pub fn boot() void {
     // chain), so every object inherits an overridable handler (F2 / docs/34).
     _ = send2(oop(object_vt), s_addMethod, oop(s_dnu), @constCast(@ptrCast(&objectDoesNotUnderstand)));
 
-    // Base-level object creation, on object_vt so every object (and every kind, via
-    // its vtable) answers them regardless of which higher modules are loaded.
-    _ = send2(oop(object_vt), s_addMethod, oop(intern("new")), @constCast(@ptrCast(&objectNew)));
+    // Base-level object creation, on object_vt so every object answers it. `clone`
+    // is THE verb (shallow-copy the receiver as itself); `new` is an alias (no
+    // distinct "instantiate" — docs/design/41 §A).
     _ = send2(oop(object_vt), s_addMethod, oop(intern("clone")), @constCast(@ptrCast(&objectClone)));
+    _ = send2(oop(object_vt), s_addMethod, oop(intern("new")), @constCast(@ptrCast(&objectClone)));
+    // String owns a byte buffer via a finalizer, so it must deep-copy on clone
+    // (a shallow copy would double-free). Override both verbs on string_vt.
+    _ = send2(oop(string_vt), s_addMethod, oop(intern("clone")), @constCast(@ptrCast(&stringClone)));
+    _ = send2(oop(string_vt), s_addMethod, oop(intern("new")), @constCast(@ptrCast(&stringClone)));
 }
 
 /// Intern a symbol from outside (the siphon / later modules need this).
@@ -514,53 +530,48 @@ fn allocC(vt: Oop, size: usize) callconv(.c) Oop {
     return obj;
 }
 
-/// Prototype protocol: a fresh instance that SHARES `proto`'s vtable (no new
-/// vtable — that is the copy-on-write win: cloning is cheap and leaks nothing).
-/// `copy_payload` selects clone (copy `proto`'s payload) vs new (blank). Because
-/// the vtable is now shared by a second object, its `owner` is cleared, so a later
-/// `defineMethod` on either object splits a private vtable off (see below).
-fn newInstanceC(proto: Oop, copy_payload: c_int) callconv(.c) Oop {
-    if (proto == null or (@intFromPtr(proto.?) & 1) != 0) return proto; // immediates
-    // A vtable receiver is a KIND: `[Vector new]`. If it registered a constructor
-    // (its blank layout isn't a usable instance) birth one through it; otherwise a
-    // bare 0-payload instance of the kind. An object receiver is a PROTOTYPE: share
-    // its vtable and, for clone, its same-shaped payload.
-    if (vtableOf(proto).? == vtable_vt) {
-        const vt = asVtable(proto);
-        if (vt.ctor) |c| return c();
-        const inst = allocRaw(0, .collectable);
-        setVtable(inst, vt);
-        return inst;
-    }
-    const vt = vtableOf(proto).?;
-    vt.owner = null; // now shared by another object → next define splits
-    const size = objectPayloadSizeC(proto);
+/// `clone` — THE creation verb (docs/design/41 §A): a shallow copy of the
+/// receiver AS ITSELF, a fresh object sharing the receiver's vtable (family) with
+/// a copy of its payload. `new` is an alias. There is no family/instance fork and
+/// no "instantiate the type" primitive: a well-known name (Vector, Integer, …) is
+/// bound to a canonical PROTOTYPE instance, so `[Vector clone]` copies the empty-
+/// vector prototype → a fresh empty vector, by the SAME rule as `[anyObject clone]`.
+/// The shared family's `owner` is untouched, so it stays the extension point for
+/// `defineMethod`. Resource-owning families (String) override `clone` to deep-copy.
+fn cloneC(self: Oop) Oop {
+    if (self == null) return self; // absence clones to absence
+    const vt = vtableOf(self).?;
+    const size = objectPayloadSizeC(self);
     const inst = allocRaw(size, .collectable);
     setVtable(inst, vt);
-    if (copy_payload != 0 and size > 0) {
-        const src: [*]const u8 = @ptrCast(proto.?);
+    if (size > 0) {
+        const src: [*]const u8 = @ptrCast(self.?);
         const dst: [*]u8 = @ptrCast(inst.?);
         @memcpy(dst[0..size], src[0..size]);
     }
     return inst;
 }
 
-fn setConstructorC(vt: Oop, ctor: idapi.CtorFn) callconv(.c) void {
-    asVtable(vt).ctor = ctor;
-}
-
-// `[proto new]` / `[proto clone]` — base-level object creation, installed on
-// object_vt at boot so they are ALWAYS present (a prototype primitive, not
-// reflection, and not something a higher module must be loaded to provide).
-fn objectNew(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = args;
-    _ = n;
-    return newInstanceC(self, 0);
-}
+// `[x clone]` / `[x new]` — base-level creation, installed on object_vt at boot so
+// every object answers them. `new` is aliased to `clone` (no distinct instantiate).
 fn objectClone(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = args;
     _ = n;
-    return newInstanceC(self, 1);
+    return cloneC(self);
+}
+
+// `[aString clone]` — String owns its byte buffer via a finalizer, so a shallow
+// copy would double-free. Deep-copy the bytes instead (mkString dupes + installs a
+// fresh finalizer). Installed as String's `clone`/`new` override at boot.
+fn stringClone(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    if (self == null) return self;
+    return mkString(stringBytes(self));
+}
+
+fn setOwnerC(vt: Oop, owner_obj: Oop) callconv(.c) void {
+    asVtable(vt).owner = owner_obj;
 }
 
 /// The vtable to install an object-targeted method on, copy-on-write: if `obj`
@@ -570,7 +581,11 @@ fn objectClone(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// objects that share it, while minting at most one vtable per specialised object.
 fn ensurePrivateVtableC(obj: Oop) callconv(.c) Oop {
     const cur = vtableOf(obj).?;
-    if (cur.owner == obj) return oop(cur);
+    // `obj` is itself a vtable (a family — its meta is vtable_vt): install directly
+    // on it (extends that type). Makes this total and IDEMPOTENT, so a caller may
+    // pass a prototype (Integer), a plain instance, OR a raw vtable (VectorVt).
+    if (cur == vtable_vt) return obj;
+    if (cur.owner == obj) return oop(cur); // obj is a family's prototype → patch in place
     const priv = newVtable(cur);
     priv.owner = obj;
     setVtable(obj, priv);
@@ -646,7 +661,7 @@ var g_gc_worklist: std.ArrayListUnmanaged(usize) = .{};
 extern fn _setjmp(buf: [*]usize) c_int;
 
 fn gcMarkWord(w: usize) void {
-    if (w == 0 or (w & 1) != 0) return; // null / SmallInt immediate
+    if (w == 0 or (w & 1) != 0) return; // null / not an aligned heap pointer
     const blk = g_blocks.getPtr(w) orelse return;
     if (blk.kind == .permanent or blk.mark) return;
     blk.mark = true;
@@ -864,19 +879,39 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .objectPayloadSize = &objectPayloadSizeC,
         .exportedNameOf = &exportedNameOfC,
         .slotKind = &slotKindC,
-        .newInstance = &newInstanceC,
         .ensurePrivateVtable = &ensurePrivateVtableC,
-        .setConstructor = &setConstructorC,
+        .setOwner = &setOwnerC,
     };
     // The floor's own layouts: no floor value type holds an Oop in its payload
-    // (a String is {bytes-ptr, len}, a Float one f64, the singletons empty), so
-    // under precise mode none of their raw words can over-retain by aliasing.
+    // (a String is {bytes-ptr, len}, an Integer/Float one i64/f64, the singletons
+    // empty), so under precise mode none of their raw words can over-retain.
     setLayoutC(oop(string_vt), null, 0, idapi.slot_raw);
+    setLayoutC(oop(smallint_vt), null, 0, idapi.slot_raw);
     setLayoutC(oop(float_vt), null, 0, idapi.slot_raw);
     setLayoutC(oop(nil_vt), null, 0, idapi.slot_raw);
     setLayoutC(oop(bool_vt), null, 0, idapi.slot_raw);
-    // Publish the id layer into its own environment — so it is re-importable.
-    _ = exportObj("Object", oop(object_vt));
+
+    // The canonical prototypes: a well-known name denotes its family's prototype
+    // INSTANCE, which OWNS the family so `defineMethod on: <name>` extends all its
+    // instances (docs/design/41 §A). Built here, after layouts, once per boot.
+    object_proto = allocRaw(0, .permanent);
+    setVtable(object_proto, object_vt);
+    integer_proto = mkSmallInt(0);
+    float_proto = mkFloat(0);
+    string_proto = mkString("");
+    object_vt.owner = object_proto;
+    smallint_vt.owner = integer_proto;
+    float_vt.owner = float_proto;
+    string_vt.owner = string_proto;
+    nil_vt.owner = nil_obj; // nil is its own prototype
+    bool_vt.owner = true_obj; // extend booleans via `Boolean` (bound to true)
+
+    // Publish the floor's names — bound to the PROTOTYPES, not the vtables.
+    _ = exportObj("Object", object_proto);
+    _ = exportObj("Integer", integer_proto);
+    _ = exportObj("Float", float_proto);
+    _ = exportObj("String", string_proto);
+    _ = exportObj("Boolean", true_obj);
     _ = exportObj("Vtable", oop(vtable_vt));
     _ = exportObj("Symbol", oop(symbol_vt));
     return &g_api;

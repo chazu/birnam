@@ -631,7 +631,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     if (!reloading) {
         _ = api.exportObj("SystemVt", system_vt);
         _ = api.exportObj("System", system_obj);
-        _ = api.exportObj("Boolean", b_vt);
+        // `Boolean` is exported by libid now (bound to `true`, which owns bool_vt so
+        // `defineMethod on: Boolean` extends both booleans — docs/design/41 §A).
     }
 }
 

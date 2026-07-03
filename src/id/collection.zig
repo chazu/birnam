@@ -611,7 +611,11 @@ fn keyHash(k: Oop) u32 {
     return mix(@intFromPtr(k.?));
 }
 fn keyEq(a: Oop, b: Oop) bool {
-    if (a == b) return true; // SmallInt immediates + interned symbols + identity
+    if (a == b) return true; // interned symbols + identity
+    // Integers are boxed now (no immediates), so a==b identity is not enough — two
+    // `mkSmallInt(1)`s are distinct objects. Compare by value (keyHash already does).
+    if (g_api.isSmallInt(a) != 0 and g_api.isSmallInt(b) != 0)
+        return g_api.smallIntValue(a) == g_api.smallIntValue(b);
     if (g_api.vtableOf(a) == g_api.string_vt and g_api.vtableOf(b) == g_api.string_vt) {
         var la: usize = 0;
         var lb: usize = 0;
@@ -1187,7 +1191,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     if (reloading) {
         vnode_vt = api.import("VectorNode");
         vector_vt = api.import("VectorVt");
-        range_vt = api.import("Range");
+        range_vt = api.import("RangeVt"); // "Range" is the prototype now, not the vtable
         hnode_vt = api.import("MapNode");
         map_vt = api.import("MapVt");
     } else {
@@ -1230,7 +1234,6 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(vector_vt, api.intern("indexOf:"), &vIndexOf);
     api.method(vector_vt, api.intern("copyFrom:to:"), &vCopyFromTo);
     api.method(vector_vt, api.intern("reversed"), &vReversed);
-    api.setConstructor(vector_vt, &vecNew); // `[Vector new]` (re-set each load — fn ptr moves)
 
     // Range protocol.
     api.method(range_vt, api.intern("size"), &rSize);
@@ -1256,7 +1259,6 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(map_vt, api.intern("do:"), &mDo);
     api.method(map_vt, api.intern("keysAndValuesDo:"), &mKeysAndValuesDo);
     api.method(map_vt, api.intern("printString"), &mPrintString);
-    api.setConstructor(map_vt, &mapNew); // `[Map new]`
 
     // Integer `to:` → Range.
     api.method(api.smallint_vt, api.intern("to:"), &iTo);
@@ -1295,16 +1297,27 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(api.string_vt, api.intern("asNumber"), &strAsNumber);
 
     if (!reloading) {
-        _ = api.exportObj("VectorNode", vnode_vt);
-        // The kind IS its vtable now (uniform with Integer/String/Object): `Vector`
-        // is the extension target for `defineMethod` AND the `[Vector new]` factory
-        // (via its constructor). `VectorVt` stays as a back-compat alias.
-        _ = api.exportObj("Vector", vector_vt);
+        // A well-known name is bound to its family's PROTOTYPE instance, which OWNS
+        // the family so `defineMethod on: Vector` extends every vector and
+        // `[Vector clone]`/`[Vector new]` copies the empty prototype (docs/design/41
+        // §A). The empty vector/map builders (`vecNew`/`mapNew`) mint the prototype
+        // once. `VectorVt`/`MapVt` keep exposing the raw vtable (back-compat).
+        const vec_proto = vecNew();
+        api.setOwner(vector_vt, vec_proto);
+        _ = api.exportObj("Vector", vec_proto);
         _ = api.exportObj("VectorVt", vector_vt);
-        _ = api.exportObj("Range", range_vt);
-        _ = api.exportObj("MapNode", hnode_vt);
-        _ = api.exportObj("Map", map_vt);
+        _ = api.exportObj("VectorNode", vnode_vt);
+
+        const map_proto = mapNew();
+        api.setOwner(map_vt, map_proto);
+        _ = api.exportObj("Map", map_proto);
         _ = api.exportObj("MapVt", map_vt);
+        _ = api.exportObj("MapNode", hnode_vt);
+
+        const range_proto = mkRange(0, 0);
+        api.setOwner(range_vt, range_proto);
+        _ = api.exportObj("Range", range_proto);
+        _ = api.exportObj("RangeVt", range_vt);
     }
 }
 

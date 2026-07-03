@@ -410,13 +410,14 @@ fn mDefineMethodSourced(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oo
     return installMethod(args[0], args[1], args[2]);
 }
 
-/// The vtable an `on:` target names. A vtable IS a type — its own vtable is the
-/// root `vtable_vt` — so installing goes straight on it (extends the whole type,
-/// e.g. `on: Integer`). Anything else is an object (e.g. a `[Object clone]`
-/// singleton like `Toml`): `ensurePrivateVtable` splits it a copy-on-write private
-/// vtable so the method specialises just that object, never the type it shares.
+/// The vtable an `on:` target names. Uniform, no family/instance fork
+/// (docs/design/41 §A): a well-known name (`Integer`, `String`, `Vector`) is a
+/// PROTOTYPE that owns its family, so `ensurePrivateVtable` returns that family
+/// and the method extends every instance; any other object gets a copy-on-write
+/// private vtable so the method specialises just it (e.g. a `[Object clone]`
+/// singleton like `Toml`).
 fn targetVtable(on: Oop) Oop {
-    return if (g_api.vtableOf(on) == g_api.vtable_vt) on else g_api.ensurePrivateVtable(on);
+    return g_api.ensurePrivateVtable(on);
 }
 
 /// Install `blk` as method `sel` on `on` (a type or an object — see targetVtable):
@@ -559,9 +560,11 @@ fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop) b
     putFmt(&fn_defs, "\"), a, {d}); }}\n", .{k + 1});
 
     // The install site: stash the block, then install the trampoline on the type.
-    putFmt(buf, "({{ void* _vt = ", .{});
+    // `on:` names a prototype now (e.g. Integer = the integer prototype), so resolve
+    // its owned family via ensurePrivateVtable — same as the JIT path's targetVtable.
+    putFmt(buf, "({{ void* _vt = birnam_ensurePrivateVtable(", .{});
     if (!emit(buf, argNodes[1])) return false; // the type expression (e.g. Integer)
-    putFmt(buf, "; birnam_global_set(\"__amblk{d}\", ", .{n});
+    putFmt(buf, "); birnam_global_set(\"__amblk{d}\", ", .{n});
     if (!emit(buf, argNodes[2])) return false; // the block literal → instance
     put(buf, "); birnam_method(_vt, birnam_intern(\"");
     putCStr(buf, sel);
@@ -1265,13 +1268,15 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
 
     var buf: std.ArrayList(u8) = .{};
     put(&buf,
-        \\#define MKV(x) ((void*)(((long)(x))<<1|1L))
+        \\extern void* birnam_mkSmallInt(long v);
+        \\#define MKV(x) (birnam_mkSmallInt((long)(x)))
         \\extern void* birnam_send(void* rcv, void* sel, void** args, long n);
         \\extern void* birnam_intern(const char* name);
         \\extern void* birnam_mkString(const char* p, long n);
         \\extern void* birnam_mkFloat(double v);
         \\extern void* birnam_nil(void);
         \\extern void* birnam_proto(void* parent);
+        \\extern void* birnam_ensurePrivateVtable(void* obj);
         \\extern void* birnam_objectVt(void);
         \\extern void birnam_method(void* vt, void* sel, void* fn);
         \\extern void birnam_layoutAllOops(void* vt);
@@ -1421,11 +1426,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
         _ = api.exportObj("Codegen", codegen_obj);
         _ = api.exportObj("ReflectVt", reflect_vt);
         _ = api.exportObj("Reflect", reflect_obj);
-        // Seed type-name globals so birnam can name dispatch targets. ("Object"
-        // is already exported by libid.) These resolve via birnam_global's env
-        // fallback.
-        _ = api.exportObj("Integer", api.smallint_vt);
-        _ = api.exportObj("String", api.string_vt);
+        // Object/Integer/String and the other floor names are exported by libid
+        // now, bound to their PROTOTYPES (docs/design/41 §A) — not re-exported here.
     }
 }
 

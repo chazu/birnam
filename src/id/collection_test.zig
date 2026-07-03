@@ -17,6 +17,12 @@ fn setup() *idapi.IdApi {
     gapi = api;
     prelude.bringUp(api);
     collection.bringUp(api);
+    // Reset the GC stack bottom each test: the GC-stress tests below set it to a
+    // local frame that goes stale once they return. Auto-GC is on by default, and
+    // (now that Integers are boxed) allocation pressure can trip it mid-test — with
+    // a stale bottom that would scan no roots and sweep live objects. 0 = "unset",
+    // so auto-GC stays inert until a test that wants it sets its own valid bottom.
+    api.gcSetStackBottom(0);
     return api;
 }
 

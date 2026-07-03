@@ -547,7 +547,7 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
 // predicates and negation be written anywhere in the `where:` list.
 
 fn varContains(set: []const Oop, v: Oop) bool {
-    for (set) |x| if (x == v) return true;
+    for (set) |x| if (valEq(x, v)) return true; // value-aware: boxed ints
     return false;
 }
 
@@ -641,6 +641,25 @@ fn applyClauses(aa: std.mem.Allocator, clausesVec: Oop, triples: []const Triple)
     return sols;
 }
 
+/// Value-equality for set-semantics dedup. Integers are boxed now (no immediates),
+/// so equal-valued bindings are distinct objects — identity `==` would count them
+/// as distinct. Match value types by value; everything else by identity (eids,
+/// interned symbols). Mirrors store.zig's `eq`.
+fn valEq(a: Oop, b: Oop) bool {
+    if (a == b) return true;
+    if (a == null or b == null) return false;
+    if (g_api.isSmallInt(a) != 0 and g_api.isSmallInt(b) != 0)
+        return g_api.smallIntValue(a) == g_api.smallIntValue(b);
+    if (g_api.vtableOf(a) == g_api.string_vt and g_api.vtableOf(b) == g_api.string_vt) {
+        var la: usize = 0;
+        var lb: usize = 0;
+        const pa = g_api.stringBytes(a, &la);
+        const pb = g_api.stringBytes(b, &lb);
+        return std.mem.eql(u8, pa[0..la], pb[0..lb]);
+    }
+    return false;
+}
+
 /// Run a `where:` query and project `result_var`, deduped (set semantics) — the
 /// shared core behind `findAll:where:` and the aggregates. Returns a Vector of the
 /// distinct bound values (empty if nothing matches).
@@ -667,7 +686,7 @@ fn runQuery(self: Oop, result_var: Oop, clauses: Oop, lo: Oop, hi: Oop) Oop {
     for (sols) |sol| {
         const val = lookup(sol, result_var) orelse continue;
         var dup = false;
-        for (seen.items) |s| if (s == val) {
+        for (seen.items) |s| if (valEq(s, val)) {
             dup = true;
             break;
         };
@@ -833,7 +852,7 @@ fn mGroupBy(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
         const g = lookup(sol, gvar) orelse continue;
         const v = lookup(sol, vvar) orelse continue;
         var grp: ?*Group = null;
-        for (groups.items) |*gp| if (gp.g == g) {
+        for (groups.items) |*gp| if (valEq(gp.g, g)) {
             grp = gp;
             break;
         };
