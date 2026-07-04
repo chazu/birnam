@@ -476,6 +476,9 @@ pub fn boot() void {
     // distinct "instantiate" — docs/design/41 §A).
     _ = send2(oop(object_vt), s_addMethod, oop(intern("clone")), @constCast(@ptrCast(&objectClone)));
     _ = send2(oop(object_vt), s_addMethod, oop(intern("new")), @constCast(@ptrCast(&objectClone)));
+
+    // `==` identity, on object_vt so every object inherits it (docs/design/41 §B3).
+    _ = send2(oop(object_vt), s_addMethod, oop(intern("==")), @constCast(@ptrCast(&objectIdentical)));
     // String owns a byte buffer via a finalizer, so it must deep-copy on clone
     // (a shallow copy would double-free). Override both verbs on string_vt.
     _ = send2(oop(string_vt), s_addMethod, oop(intern("clone")), @constCast(@ptrCast(&stringClone)));
@@ -578,6 +581,15 @@ fn setParentC(vt: Oop, parent_vt: Oop) callconv(.c) void {
     asVtable(vt).parent = asVtable(parent_vt);
 }
 
+// `[a == b]` — pointer identity, the irreducible equality every object inherits.
+// Value `=` (identity by default on Object; overridden per type) is built ON this
+// in stdlib.birnam (docs/design/41 §B3). Booleans/nil/symbols are singletons, so
+// their value equality IS identity and needs nothing more.
+fn objectIdentical(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return if (self == args[0]) true_obj else false_obj;
+}
+
 /// The vtable to install an object-targeted method on, copy-on-write: if `obj`
 /// already SOLELY owns its vtable, return it (patch in place); otherwise split a
 /// private vtable delegating to the current one, hand it to `obj`, and record the
@@ -637,7 +649,13 @@ fn isFloatC(o: Oop) callconv(.c) c_int {
     return if (isFloat(o)) 1 else 0;
 }
 fn vtableOfC(o: Oop) callconv(.c) Oop {
-    return oop(vtableOf(o).?);
+    // Total: a value with no vtable slot (e.g. a raw method trampoline that leaked
+    // into a store fact) answers null rather than trapping, so the value-equality
+    // helpers (`store.eq`, relational `valEq`, Map `keyEq`) that compare `vtableOf(x)
+    // == string_vt` see "not a string" instead of crashing. The raw `vtableOf`
+    // already returns optional; only this C shim used to force-unwrap.
+    const vt = vtableOf(o) orelse return null;
+    return oop(vt);
 }
 
 // -- GC: a self-contained conservative mark-sweep (F3) -----------------------

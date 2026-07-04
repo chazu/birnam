@@ -85,4 +85,51 @@
                     ifFalse: [| [[blk value: e] ifTrue: [| e] ifFalse: [| nil]]]]]]]];
 [Reflect defineMethod: #detect:ifNone: on: Collection
    as: [:self :blk :none | [[[self detect: blk] notNil]
-      ifTrue: [| [self detect: blk]] ifFalse: [| [none value]]]]]
+      ifTrue: [| [self detect: blk]] ifFalse: [| [none value]]]]];
+
+// -- Integer: rounding / coercion are identity on a whole number; sqrt via Float ---
+[Reflect defineMethod: #floor on: Integer as: [:self | self]];
+[Reflect defineMethod: #ceiling on: Integer as: [:self | self]];
+[Reflect defineMethod: #rounded on: Integer as: [:self | self]];
+[Reflect defineMethod: #truncated on: Integer as: [:self | self]];
+[Reflect defineMethod: #asInteger on: Integer as: [:self | self]];
+[Reflect defineMethod: #sqrt on: Integer as: [:self | [[self asFloat] sqrt]]];
+
+// -- Equality: identity by default; value/structural where it has meaning (§B3) ----
+//
+// `=` on Object is identity over the floor's `==`. Integer/Float/String override it
+// with value equality (native); Boolean/nil/Symbol are singletons, so identity IS
+// value equality — they need nothing more. Collections override via DOUBLE DISPATCH:
+// `a = b` asks `b` whether it is an equal collection of a's kind. The back-selectors
+// default to false on Object, so `#[1] = aMap` or `#[1] = 5` answers false with no
+// type tag and no special case in dispatch. Element comparison recurses through the
+// ordinary `=`, so nested and mixed-type collections just work.
+[Reflect defineMethod: #= on: Object as: [:self :other | [self == other]]];
+[Reflect defineMethod: #equalsVector: on: Object as: [:self :other | false]];
+[Reflect defineMethod: #equalsRange:  on: Object as: [:self :other | false]];
+[Reflect defineMethod: #equalsMap:    on: Object as: [:self :other | false]];
+
+// Element-wise compare for indexable sequences (both operands already same-kind).
+[Reflect defineMethod: #hasSameElementsAs: on: Collection
+   as: [:self :other | [[[self size] = [other size]]
+      ifTrue: [| [[0 to: [[self size] - 1]] allSatisfy: [:i | [[self at: i] = [other at: i]]]] ]
+      ifFalse: [| false ]]]];
+
+[Reflect defineMethod: #= on: Vector as: [:self :other | [other equalsVector: self]]];
+[Reflect defineMethod: #equalsVector: on: Vector
+   as: [:self :other | [self hasSameElementsAs: other]]];
+
+[Reflect defineMethod: #= on: Range as: [:self :other | [other equalsRange: self]]];
+[Reflect defineMethod: #equalsRange: on: Range
+   as: [:self :other | [self hasSameElementsAs: other]]];
+
+// Maps compare by key→value content, independent of internal HAMT layout: same size,
+// and every key of self present in other with an equal value (looked up, not walked).
+[Reflect defineMethod: #= on: Map as: [:self :other | [other equalsMap: self]]];
+[Reflect defineMethod: #equalsMap: on: Map
+   as: [:self :other | [[[self size] = [other size]]
+      ifTrue: [| [[self keys] allSatisfy: [:k |
+         [[other includesKey: k]
+            ifTrue:  [| [[self at: k] = [other at: k]] ]
+            ifFalse: [| false ]]]] ]
+      ifFalse: [| false ]]]]

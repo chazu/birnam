@@ -158,10 +158,13 @@ fn iMod(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 }
 fn iEq(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    // Numeric equality is total + cross-kind (`1 = 1.0`); a non-number is not equal.
+    // Equality is per-TYPE: an Integer equals only an Integer of the same value.
+    // `1 = 1.0` is FALSE — integer and real are different domains (docs/design/41 §B),
+    // which keeps `=`⟹`hash` trivial and the relational store's values typed. (Arith
+    // still coerces — `1 + 2.5` = 3.5; producing a value must widen, comparing need
+    // not.) Cross the boundary explicitly with `asFloat`. A non-number is not equal.
     return switch (numKind(a[0])) {
         .int => boolean(iv(self) == iv(a[0])),
-        .float => boolean(asF64(self) == g_api.floatValue(a[0])),
         else => g_api.falseObj,
     };
 }
@@ -267,8 +270,9 @@ fn fGe(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 }
 fn fEq(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
+    // Per-type, mirroring iEq: a Float equals only a Float (`1.0 = 1` is FALSE).
     return switch (numKind(a[0])) {
-        .int, .float => boolean(g_api.floatValue(self) == asF64(a[0])),
+        .float => boolean(g_api.floatValue(self) == g_api.floatValue(a[0])),
         else => g_api.falseObj,
     };
 }

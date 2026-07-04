@@ -123,7 +123,7 @@ it lands as one pass.
   resets the GC stack bottom per test (boxing's allocation pressure tripped auto-GC
   with a stale bottom); test C snippets that hand-tagged ints now use the shims.
 
-## B. Sequence-protocol non-uniformity — the higher-order protocol unified over `inject:into:` (✅ CORE SHIPPED, 2026-07-03)
+## B. Sequence-protocol non-uniformity — unified over `inject:into:`; equality + gaps closed (✅ SHIPPED, 2026-07-03)
 
 **Approach (b) shipped.** The higher-order protocol is now defined ONCE, in birnam,
 on a shared `Collection` layer that all four families delegate to. Each family
@@ -162,16 +162,29 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
   export + re-parenting), `stdlib.birnam` (the protocol), `codegen_test.zig` (a
   stdlib integration test), `collection_test.zig`.
 
-### Still open (mechanical, deferred — not blockers)
-- [ ] **B3 · HIGH** — Vector/Map/Range still have no `=` (DNU). Expose element-wise
-  structural `=` over the §A5 value logic + the new `Collection` iteration. (`1 = 1.0`
-  now settled = false, so element compare is unambiguous.)
-- [ ] **B4 · MED** — Integer missing `sqrt`/`floor`/`ceiling`/`rounded` + identity
-  coercion `anInt asInteger`. (`abs`/`negated` already work via stdlib.)
-- [ ] **B5 · MED** — Range half-indexable: no `at:`/`first`/`last`/`reversed`
-  (`isEmpty` now works via `Collection`).
-- [ ] **B7 · MED · `prelude.zig`** — nil doesn't override `printString`
-  (`[nil printString]` → `"anObject"`).
+### B3/B4/B5/B7 — SHIPPED 2026-07-03
+- [x] **B3 · HIGH — structural equality via double dispatch.** New floor primitive
+  `==` (pointer identity, on `object_vt`). `Object>>=` is identity over `==`, so
+  Boolean/nil/Symbol (singletons) get value equality for free; Integer/Float/String
+  keep their native value `=`. Collections override with **double dispatch**: `a = b`
+  → `b equalsVector:/equalsRange:/equalsMap: a`; the back-selectors default to `false`
+  on Object, so `#[1] = aMap` or `#[1] = 5` is false with no type tag and no dispatch
+  special case. Element comparison recurses through ordinary `=` (nested + mixed types
+  work); Maps compare by key→value content, layout-independent. Also **enforced the
+  `1 = 1.0` = false decision**: `iEq`/`fEq` are now per-type (were cross-kind) — arith
+  still coerces, equality does not. Folds in the B8 leftover: Booleans now answer `=`.
+  Files: `id.zig` (`==` + total `vtableOfC`), `prelude.zig` (`iEq`/`fEq`), `stdlib.birnam`.
+- [x] **B4 · MED** — Integer `floor`/`ceiling`/`rounded`/`truncated`/`asInteger`
+  (identity on a whole number) + `sqrt` (via `asFloat`), in `stdlib.birnam`.
+- [x] **B5 · MED** — Range `at:` (0-based, matching Vector) / `first` / `last` /
+  `reversed`, native in `collection.zig`.
+- [x] **B7 · MED** — nil overrides `printString` → `"nil"` (native, `collection.zig`).
+- Hardening surfaced en route: `vtableOfC` force-unwrapped the vtable slot and
+  **crashed** when `store.eq` compared a method-trampoline fact value (a leaked
+  non-object with no vtable slot). Made it total (null slot → null), so the
+  value-equality helpers see "not a string" instead of trapping. Latent — the extra
+  method facts from B3's defines tipped it over; it would eventually have bitten the
+  live system as methods accumulate.
 
 ### New bugs surfaced while doing B (out of scope, catalogued)
 - [x] **B8 · HIGH (memory-unsafe) — FIXED 2026-07-03.** Literal `true`/`false` were
@@ -184,8 +197,8 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
   be captured as a block free variable (fixed both the `emit` leaf AND `collectRefs`
   capture analysis; added the missing `birnam_true`/`birnam_false` externs to the C
   preamble — the omission truncated the returned pointer, hence the crash). Regression
-  test in `codegen_test.zig`. Note left open: Booleans still have no `=` method
-  (`[1<0] = false` DNUs) — a separate small gap, folds into B3.
+  test in `codegen_test.zig`. (The follow-on "Booleans have no `=`" gap was closed by
+  B3 — `Object>>=` gives the boolean singletons value equality.)
 - [ ] **B9 · LOW · `main.zig` runScript** — a script that deliberately compiles bad
   source (e.g. `examples/aot.birnam` probing `[Codegen compile: "let :="]` → nil)
   leaves a stale `[Codegen lastError]`; `runScript`'s post-eval error check then

@@ -364,6 +364,47 @@ test "codegen B8: literal true/false/nil are real singletons, not late-bound glo
     try std.testing.expectEqualStrings("false", try evalStr(api, "[[[:b | [b not]] value: true] printString]"));
 }
 
+test "codegen B3/B4/B5/B7: equality, integer math, range indexing, nil printString" {
+    const api = setupFull();
+    _ = eval(api, @embedFile("stdlib.birnam"));
+
+    // `==` is pointer identity: distinct boxed integers are NOT identical, but a
+    // literal singleton is identical to itself.
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[3 == 3] printString]"));
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[nil == nil] printString]"));
+
+    // B3: structural `=` via double dispatch — by kind, then element-wise; element
+    // comparison recurses through ordinary `=` (nested + mixed types work).
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[#[1 2 3] = #[1 2 3]] printString]"));
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[#[1 2 3] = #[1 2 4]] printString]"));
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[#[1 2] = #[1 2 3]] printString]"));
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[#[] = #[]] printString]"));
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[#[#[1] \"a\"] = #[#[1] \"a\"]] printString]"));
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[#[1 2 3] = 5] printString]")); // non-collection
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[#[1 2 3] = [1 to: 3]] printString]")); // cross-kind
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[[1 to: 3] = [1 to: 3]] printString]"));
+    // Maps: order-independent, compared by key→value content.
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[{#a -> 1, #b -> 2} = {#b -> 2, #a -> 1}] printString]"));
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[{#a -> 1} = {#a -> 2}] printString]"));
+    // Booleans/nil are singletons: value equality IS identity (inherited Object `=`).
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[true = true] printString]"));
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[true = false] printString]"));
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[nil = nil] printString]"));
+
+    // B4: integer rounding/coercion are identity on a whole number; sqrt via Float.
+    try std.testing.expectEqualStrings("3.0", try evalStr(api, "[[9 sqrt] printString]"));
+    try std.testing.expectEqualStrings("7", try evalStr(api, "[[7 floor] printString]"));
+    try std.testing.expectEqualStrings("7", try evalStr(api, "[[7 asInteger] printString]"));
+
+    // B5: range indexing (0-based) + first/last/reversed.
+    try std.testing.expectEqualStrings("2", try evalStr(api, "[[[2 to: 5] at: 0] printString]"));
+    try std.testing.expectEqualStrings("5", try evalStr(api, "[[[2 to: 5] last] printString]"));
+    try std.testing.expectEqualStrings("#[5 4 3 2]", try evalStr(api, "[[[2 to: 5] reversed] printString]"));
+
+    // B7: nil prints as "nil", not "anObject".
+    try std.testing.expectEqualStrings("nil", try evalStr(api, "[nil printString]"));
+}
+
 test "codegen 3c.4: map literals lower to a persistent at:put: chain" {
     const api = setupFull();
 
@@ -405,9 +446,12 @@ test "codegen: float literals + the numeric tower (int↔float promotion)" {
     try std.testing.expectEqual(@as(f64, 2.5), try evalFloat(api, "[10.0 / 4]"));
     // Integer / Integer stays exact (no accidental promotion).
     try std.testing.expectEqual(@as(i64, 2), try evalInt(api, "[10 / 4]"));
-    // Cross-kind comparison + equality.
+    // Cross-kind ORDERING coerces (producing/relating values widens)...
     try std.testing.expectEqualStrings("true", try evalStr(api, "[[1.5 < 2] printString]"));
-    try std.testing.expectEqualStrings("true", try evalStr(api, "[[1 = 1.0] printString]"));
+    // ...but cross-kind EQUALITY does NOT: integer and real are different domains, so
+    // `1 = 1.0` is FALSE (docs/design/41 §B). Cross explicitly with `asFloat`.
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[1 = 1.0] printString]"));
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[[1 asFloat] = 1.0] printString]"));
     // printString forces a decimal point so a whole-valued float still reads float.
     try std.testing.expectEqualStrings("4.0", try evalStr(api, "[4.0 printString]"));
     // Conversions.

@@ -455,6 +455,36 @@ fn rIncludes(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const x = iv(a[0]);
     return boolean(x >= r.start and x <= r.end);
 }
+// Range indexing (§B5) — 0-based like Vector; out of range answers nil.
+fn rAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const r = rng(self);
+    const i = iv(a[0]);
+    const v = r.start + i;
+    if (i < 0 or v > r.end) return g_api.nilObj;
+    return mki(v);
+}
+fn rFirst(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const r = rng(self);
+    return if (r.end < r.start) g_api.nilObj else mki(r.start);
+}
+fn rLast(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const r = rng(self);
+    return if (r.end < r.start) g_api.nilObj else mki(r.end);
+}
+fn rReversed(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const r = rng(self);
+    var out = emptyVec();
+    var i = r.end;
+    while (i >= r.start) : (i -= 1) out = vecCons(out, mki(i));
+    return out;
+}
 fn rDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     const r = rng(self);
@@ -945,6 +975,13 @@ fn trueAns(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     return g_api.trueObj;
 }
+// §B7: nil prints as "nil", not Object's default "anObject".
+fn nilPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkString("nil", 3);
+}
 
 /// `aString printString` → the string itself (so a String element renders in a
 /// Vector/Map without dispatching to the panicking default — the floor's String
@@ -1268,6 +1305,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     // select:/collect:/detect: → Collection (stdlib.birnam) over the fold below.
     api.method(range_vt, api.intern("inject:into:"), &rInject);
     api.method(range_vt, api.intern("asVector"), &rAsVector);
+    api.method(range_vt, api.intern("at:"), &rAt); // §B5
+    api.method(range_vt, api.intern("first"), &rFirst);
+    api.method(range_vt, api.intern("last"), &rLast);
+    api.method(range_vt, api.intern("reversed"), &rReversed);
     api.method(range_vt, api.intern("printString"), &rPrintString);
     api.method(range_vt, api.intern(","), &rComma);
 
@@ -1294,6 +1335,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     const nil_vt = api.vtableOf(api.nilObj);
     api.method(nil_vt, api.intern("isNil"), &trueAns);
     api.method(nil_vt, api.intern("notNil"), &falseAns);
+    api.method(nil_vt, api.intern("printString"), &nilPrintString); // §B7: "nil", not "anObject"
 
     // String: concatenation + a self-returning printString (for Vector/Map print).
     api.method(api.string_vt, api.intern(","), &strComma);
