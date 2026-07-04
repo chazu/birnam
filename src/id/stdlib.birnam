@@ -33,4 +33,56 @@
 // Print the receiver's printString followed by a newline, and answer the receiver
 // (so it chains). Handy in scripts and the REPL.
 [Reflect defineMethod: #printNl on: Object
-   as: [:self | [System println: [self printString]]; self]]
+   as: [:self | [System println: [self printString]]; self]];
+
+// -- Collection: the higher-order protocol, defined ONCE over inject:into: -------
+//
+// Vector, Range, Map and String all delegate to `Collection` and each provides
+// exactly one native fold primitive, `inject:into:` (birnam has no mutable locals,
+// so accumulation is functional — the fold threads the accumulator). Everything
+// below derives from that single primitive, so all four families answer the whole
+// protocol uniformly (docs/design/41 §B). `collect:`/`select:`/`asVector` build a
+// Vector — the universal sequence — regardless of the source's family.
+
+[Reflect defineMethod: #collect: on: Collection
+   as: [:self :blk | [self inject: #[] into: [:acc :e | [acc add: [blk value: e]]]]]];
+
+[Reflect defineMethod: #select: on: Collection
+   as: [:self :blk | [self inject: #[] into: [:acc :e |
+      [[blk value: e] ifTrue: [| [acc add: e]] ifFalse: [| acc]]]]]];
+
+[Reflect defineMethod: #reject: on: Collection
+   as: [:self :blk | [self inject: #[] into: [:acc :e |
+      [[blk value: e] ifTrue: [| acc] ifFalse: [| [acc add: e]]]]]]];
+
+[Reflect defineMethod: #asVector on: Collection
+   as: [:self | [self inject: #[] into: [:acc :e | [acc add: e]]]]];
+
+// count: aBlock — how many elements satisfy the predicate (cardinality is `size`).
+[Reflect defineMethod: #count: on: Collection
+   as: [:self :blk | [self inject: 0 into: [:acc :e |
+      [[blk value: e] ifTrue: [| [acc + 1]] ifFalse: [| acc]]]]]];
+
+// isEmpty over the fold — Range has no native isEmpty; this covers every family.
+[Reflect defineMethod: #isEmpty on: Collection as: [:self | [[self size] = 0]]];
+[Reflect defineMethod: #notEmpty on: Collection as: [:self | [[self isEmpty] not]]];
+
+// includes: / anySatisfy: / allSatisfy: — phrased over count: and size so they
+// never seed a fold with a boolean (avoids depending on literal true/false) and
+// stay correct even when an element is nil (unlike a detect:-based membership test).
+[Reflect defineMethod: #includes: on: Collection
+   as: [:self :x | [[self count: [:e | [e = x]]] > 0]]];
+[Reflect defineMethod: #anySatisfy: on: Collection
+   as: [:self :blk | [[self count: blk] > 0]]];
+[Reflect defineMethod: #allSatisfy: on: Collection
+   as: [:self :blk | [[self count: blk] = [self size]]]];
+
+// detect: — first matching element, or nil. detect:ifNone: evaluates a block when
+// none match (matches Smalltalk; nil elements that match read as "not found").
+[Reflect defineMethod: #detect: on: Collection
+   as: [:self :blk | [self inject: nil into: [:acc :e |
+      [[acc notNil] ifTrue: [| acc]
+                    ifFalse: [| [[blk value: e] ifTrue: [| e] ifFalse: [| nil]]]]]]]];
+[Reflect defineMethod: #detect:ifNone: on: Collection
+   as: [:self :blk :none | [[[self detect: blk] notNil]
+      ifTrue: [| [self detect: blk]] ifFalse: [| [none value]]]]]

@@ -102,24 +102,11 @@ test "collection: empty range is empty; start>end" {
     try std.testing.expect(s0(s0(r, "asVector"), "isEmpty") == api.trueObj);
 }
 
-test "collection: select: / collect: / detect: over a Range" {
-    const api = setup();
-    const r = s1(api.mkSmallInt(1), "to:", api.mkSmallInt(10));
-    const evens = s1(r, "select:", block1(api, &evenPred));
-    try std.testing.expectEqual(@as(i64, 5), ival(s0(evens, "size")));
-    try std.testing.expect(strEq(s0(evens, "printString"), "#[2 4 6 8 10]"));
-
-    const doubled = s1(r, "collect:", block1(api, &doubleBlk));
-    try std.testing.expectEqual(@as(i64, 20), ival(s1(doubled, "at:", api.mkSmallInt(9))));
-
-    // detect: answers the first match…
-    const firstEven = s1(r, "detect:", block1(api, &evenPred));
-    try std.testing.expectEqual(@as(i64, 2), ival(firstEven));
-    // …or nil when none — and nil knows it is nil.
-    const none = s1(r, "detect:", block1(api, &falseBlk));
-    try std.testing.expect(none == api.nilObj);
-    try std.testing.expect(s0(none, "isNil") == api.trueObj);
-}
+// select:/collect:/detect: moved off the native collection vtables onto the shared
+// `Collection` parent in stdlib.birnam, defined ONCE over the native fold primitive
+// `inject:into:` (docs/design/41 §B). The fold basis is tested below ("inject:into:
+// folds") and the unified higher-order protocol is integration-tested through the
+// full stdlib pipeline in codegen_test ("the Collection protocol unifies…").
 
 test "collection: isNil / notNil split between nil and everything else" {
     const api = setup();

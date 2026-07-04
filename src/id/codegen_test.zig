@@ -318,8 +318,33 @@ test "codegen 3c.4: vector literals lower to a persistent add: chain" {
     // nested vector literal.
     try std.testing.expectEqualStrings("#[#[1 2] #[3 4]]", try evalStr(api, "[#[#[1 2] #[3 4]] printString]"));
 
-    // a literal whose elements capture an enclosing variable inside a block.
-    try std.testing.expectEqualStrings("#[101 102 103]", try evalStr(api, "let b := 100; [[#[1 2 3] collect: [:x | [x + b]]] printString]"));
+    // a literal whose elements capture an enclosing variable inside a block. Uses
+    // the native fold primitive `inject:into:` + `add:` directly — the higher-order
+    // `collect:` now lives on Collection in stdlib.birnam (docs/design/41 §B), which
+    // this stdlib-less codegen harness does not load.
+    try std.testing.expectEqualStrings("#[101 102 103]", try evalStr(api, "let b := 100; [[#[1 2 3] inject: #[] into: [:a :x | [a add: [x + b]]]] printString]"));
+}
+
+test "codegen 3c.4: the Collection protocol unifies over inject:into: (stdlib)" {
+    const api = setupFull();
+    // Load the real self-hosted stdlib: it defines the whole higher-order protocol
+    // ONCE on the shared Collection parent over the single native fold `inject:into:`
+    // (docs/design/41 §B). Vector, Range, Map and String each provide only that
+    // primitive and inherit collect:/select:/detect:/count:/… through delegation.
+    _ = eval(api, @embedFile("stdlib.birnam"));
+
+    // collect: reaches all four families uniformly (Map folds over its values).
+    try std.testing.expectEqualStrings("#[1 4 9]", try evalStr(api, "[[#[1 2 3] collect: [:x | [x * x]]] printString]"));
+    try std.testing.expectEqualStrings("#[1 4 9]", try evalStr(api, "[[[1 to: 3] collect: [:x | [x * x]]] printString]"));
+    try std.testing.expectEqualStrings("#[60]", try evalStr(api, "[[{#a -> 6} collect: [:v | [v * 10]]] printString]"));
+    try std.testing.expectEqualStrings("#[a! b! c!]", try evalStr(api, "[[\"abc\" collect: [:c | [c , \"!\"]]] printString]"));
+
+    // The rest of the protocol on types that previously had NO higher-order methods.
+    try std.testing.expectEqualStrings("#[2 4]", try evalStr(api, "[[#[1 2 3 4] select: [:x | [x even]]] printString]"));
+    try std.testing.expectEqualStrings("2", try evalStr(api, "[[#[1 2 3 4] count: [:x | [x even]]] printString]"));
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[\"hello\" includes: \"e\"] printString]"));
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[[1 to: 5] anySatisfy: [:x | [x > 4]]] printString]"));
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[[1 to: 5] isEmpty] printString]"));
 }
 
 test "codegen 3c.4: map literals lower to a persistent at:put: chain" {

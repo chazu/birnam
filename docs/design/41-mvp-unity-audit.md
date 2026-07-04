@@ -123,73 +123,72 @@ it lands as one pass.
   resets the GC stack bottom per test (boxing's allocation pressure tripped auto-GC
   with a stale bottom); test C snippets that hand-tagged ints now use the shims.
 
-## B. Sequence-protocol non-uniformity — "one protocol" is really only complete on Vector
+## B. Sequence-protocol non-uniformity — the higher-order protocol unified over `inject:into:` (✅ CORE SHIPPED, 2026-07-03)
 
-**NEXT UP (discussion started 2026-07-03, decisions PENDING).** The findings below
-were re-verified against the RUNNING system (the original audit was file-scoped
-static analysis and got some of these wrong):
+**Approach (b) shipped.** The higher-order protocol is now defined ONCE, in birnam,
+on a shared `Collection` layer that all four families delegate to. Each family
+provides exactly one native fold primitive — `inject:into:` — and inherits
+`collect:`/`select:`/`reject:`/`detect:`/`detect:ifNone:`/`count:`/`includes:`/
+`asVector`/`isEmpty`/`notEmpty`/`anySatisfy:`/`allSatisfy:` through ordinary
+`vtable.parent` lookup. Adding a fifth collection type now costs one method
+(`inject:into:`), not a dozen.
 
-Corrections from probing the live system:
-- **B4 is smaller than claimed:** `-5 abs` → 5 and `5 negated` → -5 **already
-  work** (`stdlib.birnam` derives them; the investigator only read `prelude.zig`).
-  Still real: `4 sqrt`, `floor`/`ceiling`/`rounded`, and identity coercions
-  (`anInt asInteger`) DNU on Integer.
-- **B3 is worse than claimed:** `#[1 2 3] = #[1 2 3]` **DNUs** (`=` isn't defined
-  on Vector/Map/Range at all) — not "returns false". But `keyEq`/store-`eq`/
-  relational-`valEq` now do value comparison internally (shipped in §A5), so the
-  logic exists to expose.
-- B1 (Map higher-order), B2 (String higher-order + `asVector`), B5 (Range
-  `at:`/`first`/`last`/`isEmpty`/`reversed`), B6 (`detect:ifNone:`), B7 (`nil
-  printString` → "anObject") all confirmed real.
+### Decisions settled (and why)
+- **`1 = 1.0` is FALSE.** The cost of `true` is permanent: `=`⟹`hash` forces
+  cross-type `=` coupling and a coordinated hash (integral floats must hash equal to
+  their integer — a forever-maintained trap Smalltalk pays), AND it collapses
+  `[e age 1]` / `[e age 1.0]` into one fact. `false` falls out of our principles:
+  per-type `=`, per-type hash, the invariant trivially holds, and the relational
+  substrate gets typed domains (Date 1NF: integer and real are different domains).
+  Arithmetic still coerces (`1 + 2.5` = 3.5) — producing a value must pick a widening
+  result type; interrogating value identity need not. `1 asFloat = 1.0` is explicit.
+- **`collect:`/`select:`/`asVector` return a Vector** (the universal sequence),
+  whatever the source family. Map folds over its VALUES.
+- **birnam-authored, over `inject:into:`** (not `do:`): the language has **no mutable
+  locals** (`x := …` is a syntax error; only `let` binds), so accumulation must be
+  functional. `inject:into:` threads the accumulator; persistent `add:` builds the
+  result. `do:` stays a native convenience but the protocol does not depend on it.
 
-**The character of B (same as A — a uniformity choice, not gap-filling):**
-`collect:` works on Vector+Range, DNUs on Map+String, because the higher-order
-protocol is implemented PER-TYPE in Zig and only Vector/Range got the full set.
-Two approaches:
-- **(a) gap-fill per type in Zig** — fast, mechanical, but duplicative and leaves
-  the protocol non-uniform (the next collection type starts from zero).
-- **(b) unify over one primitive** — define `collect:`/`select:`/`detect:`/`count`/
-  `inject:into:`/`asVector` ONCE on a shared `Collection` layer (parent vtable the
-  four families delegate to), each type implementing only the primitive. This is
-  what the retired kernel did ("seq-unification over `inject:into:`", Phase-16),
-  matches the tenet, and the prototype refounding makes the shared-traits-via-
-  `vtable.parent` natural. **All four collections already implement `do:`**, so
-  building the generic protocol on `do:` gives every existing (and future) type the
-  full set for free, and lets us DELETE the per-type `collect:`/`select:` on
-  Vector/Range.
+### Shipped
+- [x] **B1 · HIGH** — Map answers the full higher-order protocol (folds over values).
+- [x] **B2 · HIGH** — String answers it too, incl. `asVector` (lifts chars into the
+  vector protocol).
+- [x] **B6 (part)** — `detect:ifNone:` added; `detect:` returns nil when none match.
+- [x] Uniformity cleanup — deleted the duplicated native `collect:`/`select:`/
+  `detect:` on Vector/Range; one definition on `Collection` now serves all four.
+- New floor primitive `IdApi.setParent(vt, parent)` (re-point a vtable's delegation)
+  so `collection_vt` can be slotted between the families and `object_vt`. Files:
+  `idapi.zig`, `id.zig`, `collection.zig` (native `mInject`/`strInject`, `Collection`
+  export + re-parenting), `stdlib.birnam` (the protocol), `codegen_test.zig` (a
+  stdlib integration test), `collection_test.zig`.
 
-**RECOMMENDED: (b).** Open decisions to settle before building (asked, not yet
-answered):
-1. Primitive = `do:` (universal today); derive `inject:into:` from it if birnam
-   blocks can carry a mutable accumulator across iterations (VERIFY — COW-vtable
-   block model), else keep `inject:into:` a small per-type native primitive.
-2. `collect:`/`select:` result type → **Vector by default** (kernel's choice),
-   type may override for same-type return. (DECISION NEEDED.)
-3. Shared layer = a new `collection_vt` inserted as parent of vector/map/string/
-   range families (reparent `string_vt` from `object_vt` at collection load), NOT
-   on `object_vt` (so integers/nil don't sprout `collect:`).
-4. Native Zig now (no bootstrap risk) vs birnam-authored `collection.birnam` over
-   `do:` (more in-spirit, exercises the language) — leaning native now.
-5. Fold in the mechanical bits: B3 `=` as element-wise structural equality reusing
-   the §A5 value logic — **does `1 = 1.0` hold? (DECISION NEEDED)**; B4 Integer
-   `sqrt`/`floor`/`ceiling`/`rounded`/`asInteger` + coercions; B6 `detect:ifNone:`;
-   B7 `nil printString`.
-
-- [ ] **B1 · HIGH** — Map has no `collect:`/`select:`/`detect:`/`inject:into:`/
-  `asVector` (DNU). `do:` iterates VALUES only (drops keys) — decide key/value/assoc.
-- [ ] **B2 · HIGH** — String has `do:` but no higher-order ops and no `asVector`
-  (no path to lift a string into the vector protocol).
-- [ ] **B3 · HIGH** — Vector/Map/Range have no `=` at all (DNU). Expose element-wise
-  structural `=` over the §A5 value-equality logic.
+### Still open (mechanical, deferred — not blockers)
+- [ ] **B3 · HIGH** — Vector/Map/Range still have no `=` (DNU). Expose element-wise
+  structural `=` over the §A5 value logic + the new `Collection` iteration. (`1 = 1.0`
+  now settled = false, so element compare is unambiguous.)
 - [ ] **B4 · MED** — Integer missing `sqrt`/`floor`/`ceiling`/`rounded` + identity
-  coercions (`anInt asInteger`). (`abs`/`negated` already work via stdlib.)
-- [ ] **B5 · MED · `collection.zig`** — Range half-indexable: has `collect:`/
-  `select:` but no `at:`/`first`/`last`/`isEmpty`/`reversed`.
-- [ ] **B6 · MED · `collection.zig:269`** — `detect:` returns silent `nil`, no
-  `detect:ifNone:` (can't tell "found nil" from "found nothing").
-- [ ] **B7 · MED · `prelude.zig`** — nil doesn't override `printString`;
-  `[nil printString]`/`[nil asString]` → `"anObject"`; a nil element in a printed
-  collection renders as `anObject`.
+  coercion `anInt asInteger`. (`abs`/`negated` already work via stdlib.)
+- [ ] **B5 · MED** — Range half-indexable: no `at:`/`first`/`last`/`reversed`
+  (`isEmpty` now works via `Collection`).
+- [ ] **B7 · MED · `prelude.zig`** — nil doesn't override `printString`
+  (`[nil printString]` → `"anObject"`).
+
+### New bugs surfaced while doing B (out of scope, catalogued)
+- [ ] **B8 · HIGH (memory-unsafe) · `id.zig` boot / codegen** — **literal `true`/
+  `false` are not real Booleans.** The floor exports `Boolean` (bound to `trueObj`)
+  but NOT the lowercase globals `true`/`false`, so a literal `true` resolves to an
+  unbound-global poison sentinel (`0xde7f…`): `true printString` → `"anObject"`,
+  `true & false` → DNU `&`, and **`true not` crashes** (jumps to the poison pointer).
+  Only comparison results (`1 < 0`) are proper Booleans. Fix is likely ~1 line
+  (export `true`/`false`/`nil` as globals like `Boolean`), but it's a floor concern,
+  not sequence-protocol — kept separate. (B's `includes:`/`any`/`allSatisfy:` are
+  phrased over `count:`/`size` precisely to avoid seeding a fold with a literal
+  boolean.)
+- [ ] **B9 · LOW · `main.zig` runScript** — a script that deliberately compiles bad
+  source (e.g. `examples/aot.birnam` probing `[Codegen compile: "let :="]` → nil)
+  leaves a stale `[Codegen lastError]`; `runScript`'s post-eval error check then
+  reports a false "compile error" and exits 1 even though the script ran correctly.
+  Clear `lastError` before the user eval, or scope the check to it.
 
 ## C. Errors-as-values not realised in PEG and Alien (they predate the error model)
 

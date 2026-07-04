@@ -574,6 +574,10 @@ fn setOwnerC(vt: Oop, owner_obj: Oop) callconv(.c) void {
     asVtable(vt).owner = owner_obj;
 }
 
+fn setParentC(vt: Oop, parent_vt: Oop) callconv(.c) void {
+    asVtable(vt).parent = asVtable(parent_vt);
+}
+
 /// The vtable to install an object-targeted method on, copy-on-write: if `obj`
 /// already SOLELY owns its vtable, return it (patch in place); otherwise split a
 /// private vtable delegating to the current one, hand it to `obj`, and record the
@@ -881,6 +885,7 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .slotKind = &slotKindC,
         .ensurePrivateVtable = &ensurePrivateVtableC,
         .setOwner = &setOwnerC,
+        .setParent = &setParentC,
     };
     // The floor's own layouts: no floor value type holds an Oop in its payload
     // (a String is {bytes-ptr, len}, an Integer/Float one i64/f64, the singletons

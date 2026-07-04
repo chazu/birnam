@@ -181,6 +181,12 @@ pub const IdApi = extern struct {
     /// instances). Set once per well-known family at load; a well-known name is
     /// exported bound to its `proto`, not to `vt`.
     setOwner: *const fn (Oop, Oop) callconv(.c) void,
+
+    /// setParent(vt, parent) -> re-point vtable `vt`'s delegation `parent`. Lets a
+    /// library slot a shared abstract layer (e.g. `Collection`) between a family
+    /// vtable and `object_vt` so a protocol authored once on the parent is found
+    /// by every child via the ordinary `lookup` walk. Idempotent.
+    setParent: *const fn (Oop, Oop) callconv(.c) void,
 };
 
 /// Returned by `slotKind` when a vtable has no layout descriptor: the object

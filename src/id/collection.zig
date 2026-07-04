@@ -64,6 +64,7 @@ pub var vector_vt: Oop = null; // persistent ordered vector
 pub var range_vt: Oop = null; // lazy integer range
 pub var hnode_vt: Oop = null; // HAMT node: payload = header + [2*k]Oop entry slots
 pub var map_vt: Oop = null; // persistent hash-array-mapped map
+pub var collection_vt: Oop = null; // shared abstract parent of vector/range/map/string
 
 // Cached selectors for invoking caller blocks (value / value: / value:value:).
 var s_value: Oop = null;
@@ -853,6 +854,13 @@ fn mDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     return vDo(mValues(self, undefined, 0), a, 1); // iterate over values
 }
+// The fold primitive over a map's values — the irreducible per-type accumulator
+// (birnam has no mutable locals, so the whole HOF protocol on `Collection` derives
+// from this). Mirrors `mDo`: fold what `do:` would iterate.
+fn mInject(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return vInject(mValues(self, undefined, 0), a, 2); // fold over values
+}
 fn mKeysAndValuesDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     kvDo(mp(self).root, a[0]);
@@ -1149,6 +1157,16 @@ fn strDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     while (i < s.len) : (i += 1) _ = call1(a[0], g_api.mkString(s.ptr + i, 1));
     return self;
 }
+/// `[s inject: acc into: aBlock]` — the fold primitive over a string's 1-byte
+/// characters, mirroring `strDo`. The `Collection` HOF protocol derives from it.
+fn strInject(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const s = strBytes(self);
+    var acc = a[0];
+    var i: usize = 0;
+    while (i < s.len) : (i += 1) acc = call2(a[1], acc, g_api.mkString(s.ptr + i, 1));
+    return acc;
+}
 /// `[s asInteger]` — the Integer named by an optional-sign decimal string, or
 /// nil if the whole (trimmed) string is not a valid integer.
 fn strAsInteger(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -1189,18 +1207,27 @@ pub fn bringUp(api: *idapi.IdApi) void {
 
     const reloading = api.isExported("Vector") != 0;
     if (reloading) {
+        collection_vt = api.import("CollectionVt");
         vnode_vt = api.import("VectorNode");
         vector_vt = api.import("VectorVt");
         range_vt = api.import("RangeVt"); // "Range" is the prototype now, not the vtable
         hnode_vt = api.import("MapNode");
         map_vt = api.import("MapVt");
     } else {
-        vnode_vt = api.proto(api.object_vt);
-        vector_vt = api.proto(api.object_vt);
-        range_vt = api.proto(api.object_vt);
+        // `Collection` is a shared abstract layer between the concrete families and
+        // `object_vt`: the higher-order protocol (collect:/select:/…) is authored
+        // ONCE on it in stdlib.birnam over the single native fold `inject:into:`, and
+        // every collection reaches it through ordinary delegation (docs/design/41 §B).
+        collection_vt = api.proto(api.object_vt);
+        vnode_vt = api.proto(api.object_vt); // trie nodes are NOT collections
+        vector_vt = api.proto(collection_vt);
+        range_vt = api.proto(collection_vt);
         hnode_vt = api.proto(api.object_vt);
-        map_vt = api.proto(api.object_vt);
+        map_vt = api.proto(collection_vt);
     }
+    // String is minted by the floor under `object_vt`; slot it under Collection too
+    // so `"abc" collect: […]` finds the shared protocol. Idempotent (safe on reload).
+    api.setParent(api.string_vt, collection_vt);
 
     // Exact payload layouts (F3 completed; docs/40 §3c) — the word-kind maps the
     // precise heap tracer (and the future image swizzler) read: a Vec is {count,
@@ -1219,9 +1246,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(vector_vt, api.intern("at:"), &vAt);
     api.method(vector_vt, api.intern("add:"), &vAdd);
     api.method(vector_vt, api.intern("do:"), &vDo);
-    api.method(vector_vt, api.intern("select:"), &vSelect);
-    api.method(vector_vt, api.intern("collect:"), &vCollect);
-    api.method(vector_vt, api.intern("detect:"), &vDetect);
+    // select:/collect:/detect: are now defined ONCE on Collection over inject:into:
+    // (stdlib.birnam). `inject:into:` is the irreducible native fold primitive.
     api.method(vector_vt, api.intern("inject:into:"), &vInject);
     api.method(vector_vt, api.intern("asVector"), &vAsVector);
     api.method(vector_vt, api.intern("printString"), &vPrintString);
@@ -1239,9 +1265,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(range_vt, api.intern("size"), &rSize);
     api.method(range_vt, api.intern("includes:"), &rIncludes);
     api.method(range_vt, api.intern("do:"), &rDo);
-    api.method(range_vt, api.intern("select:"), &rSelect);
-    api.method(range_vt, api.intern("collect:"), &rCollect);
-    api.method(range_vt, api.intern("detect:"), &rDetect);
+    // select:/collect:/detect: → Collection (stdlib.birnam) over the fold below.
     api.method(range_vt, api.intern("inject:into:"), &rInject);
     api.method(range_vt, api.intern("asVector"), &rAsVector);
     api.method(range_vt, api.intern("printString"), &rPrintString);
@@ -1257,6 +1281,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(map_vt, api.intern("keys"), &mKeys);
     api.method(map_vt, api.intern("values"), &mValues);
     api.method(map_vt, api.intern("do:"), &mDo);
+    api.method(map_vt, api.intern("inject:into:"), &mInject); // fold over values
     api.method(map_vt, api.intern("keysAndValuesDo:"), &mKeysAndValuesDo);
     api.method(map_vt, api.intern("printString"), &mPrintString);
 
@@ -1293,6 +1318,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(api.string_vt, api.intern("trimmed"), &strTrimmed);
     api.method(api.string_vt, api.intern("split:"), &strSplit);
     api.method(api.string_vt, api.intern("do:"), &strDo);
+    api.method(api.string_vt, api.intern("inject:into:"), &strInject); // fold over chars
     api.method(api.string_vt, api.intern("asInteger"), &strAsInteger);
     api.method(api.string_vt, api.intern("asNumber"), &strAsNumber);
 
@@ -1318,6 +1344,12 @@ pub fn bringUp(api: *idapi.IdApi) void {
         api.setOwner(range_vt, range_proto);
         _ = api.exportObj("Range", range_proto);
         _ = api.exportObj("RangeVt", range_vt);
+
+        // `Collection` is the abstract family handle: `defineMethod on: Collection`
+        // patches collection_vt in place (it's a raw vtable, so ensurePrivateVtable
+        // returns it as-is). There is no `[Collection new]` — it's never instantiated.
+        _ = api.exportObj("Collection", collection_vt);
+        _ = api.exportObj("CollectionVt", collection_vt);
     }
 }
 
