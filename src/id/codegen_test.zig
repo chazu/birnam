@@ -347,6 +347,23 @@ test "codegen 3c.4: the Collection protocol unifies over inject:into: (stdlib)" 
     try std.testing.expectEqualStrings("false", try evalStr(api, "[[[1 to: 5] isEmpty] printString]"));
 }
 
+test "codegen B8: literal true/false/nil are real singletons, not late-bound globals" {
+    const api = setupFull();
+    // A literal boolean must be the actual Boolean object (with the full protocol),
+    // not an unbound-global reference that reads nil. (docs/design/41 §B8.)
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[true printString]"));
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[false printString]"));
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[true not] printString]"));
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[true & false] printString]"));
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[true | false] printString]"));
+    try std.testing.expectEqualStrings("yes", try evalStr(api, "[true ifTrue: [| \"yes\"] ifFalse: [| \"no\"]]"));
+    // nil is still the nil singleton (isNil answers true).
+    try std.testing.expectEqualStrings("true", try evalStr(api, "[[nil isNil] printString]"));
+    // A literal boolean passed INTO a block is captured/forwarded, never treated as a
+    // free-variable global — the block's `not` sees a real Boolean.
+    try std.testing.expectEqualStrings("false", try evalStr(api, "[[[:b | [b not]] value: true] printString]"));
+}
+
 test "codegen 3c.4: map literals lower to a persistent at:put: chain" {
     const api = setupFull();
 

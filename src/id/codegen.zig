@@ -214,6 +214,17 @@ var blk_counter: usize = 0;
 fn isBound(name: []const u8) bool {
     return listContains(bound_names.items, name);
 }
+/// `nil`/`true`/`false` are LITERALS, not identifiers — they emit a runtime
+/// singleton (`birnam_nil/true/false()`), so they can't silently resolve to nil (an
+/// unbound global reads nil), be shadowed, or be captured as a block free variable.
+/// Returns the shim call for `name`, or null if `name` is an ordinary identifier.
+/// (docs/design/41 §B8 — the fix for literal true/false not being real Booleans.)
+fn literalSingleton(name: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, name, "nil")) return "birnam_nil()";
+    if (std.mem.eql(u8, name, "true")) return "birnam_true()";
+    if (std.mem.eql(u8, name, "false")) return "birnam_false()";
+    return null;
+}
 fn listContains(items: []const []const u8, name: []const u8) bool {
     for (items) |b| if (std.mem.eql(u8, b, name)) return true;
     return false;
@@ -635,6 +646,10 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
     }
     if (r == r_ident) {
         const name = text(node);
+        if (literalSingleton(name)) |shim| {
+            put(buf, shim);
+            return true;
+        }
         if (isBound(name)) {
             put(buf, "b_");
             put(buf, name);
@@ -829,7 +844,8 @@ fn collectRefs(node0: Oop, set: *std.ArrayList([]const u8)) void {
     const node = skip(node0);
     const r = ruleOf(node);
     if (r == r_ident) {
-        setAdd(set, text(node));
+        // nil/true/false are literals, not free variables — never capture them.
+        if (literalSingleton(text(node)) == null) setAdd(set, text(node));
         return;
     }
     if (r == r_number or r == r_float or r == r_string) return;
@@ -1275,6 +1291,8 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
         \\extern void* birnam_mkString(const char* p, long n);
         \\extern void* birnam_mkFloat(double v);
         \\extern void* birnam_nil(void);
+        \\extern void* birnam_true(void);
+        \\extern void* birnam_false(void);
         \\extern void* birnam_proto(void* parent);
         \\extern void* birnam_ensurePrivateVtable(void* obj);
         \\extern void* birnam_objectVt(void);

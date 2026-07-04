@@ -174,16 +174,18 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
   (`[nil printString]` → `"anObject"`).
 
 ### New bugs surfaced while doing B (out of scope, catalogued)
-- [ ] **B8 · HIGH (memory-unsafe) · `id.zig` boot / codegen** — **literal `true`/
-  `false` are not real Booleans.** The floor exports `Boolean` (bound to `trueObj`)
-  but NOT the lowercase globals `true`/`false`, so a literal `true` resolves to an
-  unbound-global poison sentinel (`0xde7f…`): `true printString` → `"anObject"`,
-  `true & false` → DNU `&`, and **`true not` crashes** (jumps to the poison pointer).
-  Only comparison results (`1 < 0`) are proper Booleans. Fix is likely ~1 line
-  (export `true`/`false`/`nil` as globals like `Boolean`), but it's a floor concern,
-  not sequence-protocol — kept separate. (B's `includes:`/`any`/`allSatisfy:` are
-  phrased over `count:`/`size` precisely to avoid seeding a fold with a literal
-  boolean.)
+- [x] **B8 · HIGH (memory-unsafe) — FIXED 2026-07-03.** Literal `true`/`false` were
+  not real Booleans: they were plain identifiers → unbound globals, and an unbound
+  global reads `nil` (`birnam_global` returns the nil singleton for anything not in
+  the Globals store), so `true`/`false` BOTH silently became `nil` — `true printString`
+  → `"anObject"`, `true & false` → DNU `&`, `true not` **crashed**. Fix (`codegen.zig`):
+  `nil`/`true`/`false` are now emitted as the runtime singletons `birnam_nil/true/
+  false()` — literals, not identifiers, so they can't resolve to nil, be shadowed, or
+  be captured as a block free variable (fixed both the `emit` leaf AND `collectRefs`
+  capture analysis; added the missing `birnam_true`/`birnam_false` externs to the C
+  preamble — the omission truncated the returned pointer, hence the crash). Regression
+  test in `codegen_test.zig`. Note left open: Booleans still have no `=` method
+  (`[1<0] = false` DNUs) — a separate small gap, folds into B3.
 - [ ] **B9 · LOW · `main.zig` runScript** — a script that deliberately compiles bad
   source (e.g. `examples/aot.birnam` probing `[Codegen compile: "let :="]` → nil)
   leaves a stale `[Codegen lastError]`; `runScript`'s post-eval error check then
