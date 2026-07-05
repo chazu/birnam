@@ -63,6 +63,8 @@ pub var collector_vt: Oop = null; // the liveTriplesDo: accumulator block
 // Cached selectors.
 var s_value3: Oop = null;
 var s_size: Oop = null;
+var s_assert: Oop = null; // the store's "assert:attr:value:" — rule facts (docs/42 §D2)
+var s_rule_name: Oop = null; // attribute tagging a definition-pair with its rule name
 var s_at: Oop = null;
 var s_atput: Oop = null;
 var s_new: Oop = null;
@@ -313,7 +315,10 @@ const DerivedSet = std.ArrayList([]Oop);
 
 // A rule NAME maps to several definitions; the relation it denotes is their UNION
 // (the datalog reading — base and recursive cases are separate `defineRule:`
-// calls). Persisted across queries (it is the schema).
+// calls). This is a REBUILT CACHE (docs/42 §D2): the canonical rule definitions
+// live in the store as `[pair __rule-name__ name]` facts (queryable, historied,
+// serialized). Write-through on `defineRule:` for query speed; rebuilt from the
+// facts when they change out from under it (image load) via `rebuildRules`.
 var g_rules: std.AutoHashMapUnmanaged(Oop, RuleList) = .{};
 
 // Rules being materialized in the CURRENT query: name → its (possibly still
@@ -336,9 +341,53 @@ var g_fixpoint_done: bool = false;
 /// the union of all its bodies.
 fn mDefineRule(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    const gop = g_rules.getOrPut(ca, args[0]) catch @panic("relational: oom");
+    const name = args[0];
+    const params = args[1];
+    const body = args[2];
+    appendRule(name, params, body); // write-through cache
+    // Canonical: a rule definition IS relational data (docs/42 §D2). Store the
+    // (params, body) pair as a fresh entity tagged with its rule name, so the
+    // definition becomes queryable, historied, and serialized into the image. Each
+    // `defineRule:` mints a DISTINCT pair, so a name's several definitions
+    // accumulate as distinct entities — no `:many` schema needed.
+    var pair = send0(vectorFactory(), s_new);
+    pair = send1(pair, s_add, params);
+    pair = send1(pair, s_add, body); // #[params body]
+    _ = g_api.send(self, s_assert, &[_]Oop{ pair, s_rule_name, name }, 3);
+    return self;
+}
+
+/// Append one (params, body) definition to the `g_rules` cache under `name`.
+fn appendRule(name: Oop, params: Oop, body: Oop) void {
+    const gop = g_rules.getOrPut(ca, name) catch @panic("relational: oom");
     if (!gop.found_existing) gop.value_ptr.* = .{};
-    gop.value_ptr.append(ca, .{ .params = args[1], .body = args[2] }) catch @panic("relational: oom");
+    gop.value_ptr.append(ca, .{ .params = params, .body = body }) catch @panic("relational: oom");
+}
+
+/// Rebuild the `g_rules` cache from the store's canonical rule facts — used when the
+/// facts change under the cache (an image load replaces the whole fact stream). Each
+/// `[pair __rule-name__ name]` fact reconstitutes one definition (params/body ride
+/// the pair). Idempotent.
+fn rebuildRulesFrom(store: Oop) void {
+    var it = g_rules.valueIterator();
+    while (it.next()) |list| list.deinit(ca);
+    g_rules.clearRetainingCapacity();
+    var triples: Triples = .{};
+    defer triples.deinit(ca);
+    gatherTriples(store, &triples, null, null);
+    for (triples.items) |t| {
+        if (t.a != s_rule_name) continue;
+        const pair = t.e; // #[params body]
+        appendRule(t.v, send1(pair, s_at, g_api.mkSmallInt(0)), send1(pair, s_at, g_api.mkSmallInt(1)));
+    }
+}
+
+/// `[db rebuildRules]` — rebuild the rule cache from the canonical rule facts. Sent
+/// after an image load (the fact stream was replaced wholesale).
+fn mRebuildRules(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    rebuildRulesFrom(self);
     return self;
 }
 
@@ -966,6 +1015,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_div = api.intern("/");
     s_cardinality = api.intern("cardinality:");
     s_many = api.intern("many");
+    s_assert = api.intern("assert:attr:value:");
+    s_rule_name = api.intern("__rule-name__");
 
     const reloading = api.isExported("db") != 0;
     if (reloading) {
@@ -1001,6 +1052,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, api.intern("avg:where:"), &mAvg);
     api.method(store_vt, api.intern("groupBy:aggregate:of:where:"), &mGroupBy);
     api.method(store_vt, api.intern("defineRule:params:body:"), &mDefineRule);
+    api.method(store_vt, api.intern("rebuildRules"), &mRebuildRules);
     api.method(store_vt, api.intern("pull:spec:"), &mPull);
 
     api.method(logicvar_factory_vt, api.intern("named:"), &mNamed);

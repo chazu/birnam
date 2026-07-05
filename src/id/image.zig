@@ -742,6 +742,11 @@ pub fn loadImage(path: []const u8) bool {
         // wholesale, so rebuild them now, or reflection over native protocol would be
         // lost by loading an image.
         _ = g_api.send(store, g_api.intern("backfillMirror"), &[_]Oop{}, 0);
+        // Datalog rules are canonical relational data (docs/42 §D2) and DID
+        // serialize; rebuild the relational engine's rule cache from the loaded
+        // facts (guarded: only if the relational module is loaded).
+        if (g_api.isExported("db") != 0)
+            _ = g_api.send(store, g_api.intern("rebuildRules"), &[_]Oop{}, 0);
     }
     // Seed the SAVE-side journaling state from what we just mapped, so a booted app
     // can `appendImage:` a delta afterward (docs/40 §7.4): the object→id inverse of

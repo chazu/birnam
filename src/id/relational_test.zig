@@ -576,6 +576,22 @@ test "relational: a recursive rule computes the transitive closure" {
     try std.testing.expectEqual(@as(i64, 3), ival(s2(db, "count:where:", lvar(api, "y"), q)));
 }
 
+test "relational: rules survive a cache rebuild from their canonical facts (docs/42 §D2)" {
+    const api = setup();
+    const db = freshDb(api);
+    const p = lineage(api, db);
+    defineAncestor(api, db);
+    const q = vec(api, &.{vec(api, &.{ api.intern("rule"), api.intern("ancestor"), p[0], lvar(api, "y") })});
+    try std.testing.expectEqual(@as(i64, 3), ival(s0(s2(db, "findAll:where:", lvar(api, "y"), q), "size")));
+
+    // [db rebuildRules] wipes the in-memory rule cache and repopulates it PURELY
+    // from the stored [pair __rule-name__ name] facts — exactly what happens after
+    // an image load replaces the fact stream. If the definitions weren't reified as
+    // durable data, the rule would vanish and the query would return nothing.
+    _ = s0(db, "rebuildRules");
+    try std.testing.expectEqual(@as(i64, 3), ival(s0(s2(db, "findAll:where:", lvar(api, "y"), q), "size")));
+}
+
 test "relational: mutually-recursive rules converge (even/odd over a succ chain)" {
     const api = setup();
     const db = freshDb(api);
