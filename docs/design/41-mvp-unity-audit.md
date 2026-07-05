@@ -6,6 +6,15 @@ special-cases that violate the system's intended conceptual unity. Catalogued
 by five parallel investigators, then consolidated. **No code changed** in
 producing this — it is a tracking list.
 
+> **SCOREBOARD (2026-07-05).** ✅ **DONE:** §A, §B (incl. B8/B9), §C1–C3, §D (D1–D4),
+> E1. §D's resolution **inverted the North Star** — object model canonical, relational
+> reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
+> (READ IT for current direction). All 13 suites + 24 examples green, unpushed. ⬜
+> **OPEN:** C4 (default DNU `@panic`), C5 (`ensure:` / multi-kind `on:do:` in
+> `error.zig`), E2 (receiver-blind `defineMethod:on:as:` intercept), E3 (eager `&`/`|`),
+> §F (FFI — **F2 is a real Linux `RTLD_DEFAULT=-2` bug**, F1/F3/F4), §G (10 marked-LOW
+> deferrals). Nothing is parked.
+
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
 analyser; `collect:` on Vector but not Map/String; `=` on scalars but not
