@@ -156,6 +156,15 @@ fn vtableSelectorAtC(vt: Oop, i: usize) callconv(.c) Oop {
     return v.keys.?[i];
 }
 
+/// vtableParent(vt) -> vt's delegation parent as an Oop, or null at the top of the
+/// chain. Lets a higher layer walk the type hierarchy — e.g. the mirror backfill
+/// tells a real type (reaches `object_vt`) from an internal dict (the intern table
+/// / export env, which delegate to nothing).
+fn vtableParentC(vt: Oop) callconv(.c) Oop {
+    const p = asVtable(vt).parent orelse return null;
+    return oop(p);
+}
+
 // -- Raw allocation + the `-1` vtable-pointer trick -------------------------
 //
 // Every heap object is tracked in `g_blocks` (keyed by its object/payload
@@ -955,6 +964,7 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .vtableCount = &vtableCountC,
         .vtableAt = &vtableAtC,
         .vtableSelectorAt = &vtableSelectorAtC,
+        .vtableParent = &vtableParentC,
     };
     // The floor's own layouts: no floor value type holds an Oop in its payload
     // (a String is {bytes-ptr, len}, an Integer/Float one i64/f64, the singletons

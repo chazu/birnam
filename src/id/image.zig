@@ -737,6 +737,11 @@ pub fn loadImage(path: []const u8) bool {
     if (facts_began) {
         const store = g_api.import("Store").?;
         _ = g_api.send(store, g_api.intern("imageLoadEnd:raw:"), &[_]Oop{ g_api.mkSmallInt(max_basis), g_api.falseObj }, 2);
+        // The MOP mirror's native #primitive markers are a rebuilt cache excluded
+        // from the saved stream (docs/42 §D1) — the load just replaced the fact list
+        // wholesale, so rebuild them now, or reflection over native protocol would be
+        // lost by loading an image.
+        _ = g_api.send(store, g_api.intern("backfillMirror"), &[_]Oop{}, 0);
     }
     // Seed the SAVE-side journaling state from what we just mapped, so a booted app
     // can `appendImage:` a delta afterward (docs/40 §7.4): the object→id inverse of

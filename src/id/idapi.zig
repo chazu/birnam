@@ -205,6 +205,9 @@ pub const IdApi = extern struct {
     /// symbol), or null past the end. Enumerates the vtable's own method dict (not
     /// the delegated chain) — behind mirror backfill and protocol reflection.
     vtableSelectorAt: *const fn (Oop, usize) callconv(.c) Oop,
+    /// vtableParent(vt) -> vt's delegation parent, or null at the top of the chain.
+    /// Walk it to tell a real type (reaches `object_vt`) from an internal dict.
+    vtableParent: *const fn (Oop) callconv(.c) Oop,
 };
 
 /// The method-overwrite hook (docs/42 §D1): `(vtable, selector)` of a binding about

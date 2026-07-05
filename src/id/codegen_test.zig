@@ -273,6 +273,28 @@ test "codegen 3c.3: blocks compile to closures (params, capture, invoke)" {
     try std.testing.expectEqual(@as(i64, 44), try evalInt(api, "let k := 2; [20 with: [:x | [[x plus: k] double]]]"));
 }
 
+test "docs/42 §D1: backfillMirror makes the MOP total over the native protocol" {
+    const api = setupFull();
+    store.backfillMirror(api);
+    const primitive = api.intern("primitive");
+    const string_vt = api.string_vt;
+
+    // A native type now reflects its protocol through the fact store: enumerate its
+    // selectors, and each native binding reads back as the GC-safe #primitive marker.
+    const nsel: usize = @intCast(api.smallIntValue(api.send(store.store_instance, store.s_attrCount, &[_]Oop{string_vt}, 1)));
+    try std.testing.expect(nsel > 0);
+    const sel0 = api.send(store.store_instance, store.s_attrAt, &[_]Oop{ string_vt, api.mkSmallInt(0) }, 2);
+    try std.testing.expect(api.send(store.store_instance, store.s_currentValue, &[_]Oop{ string_vt, sel0 }, 2) == primitive);
+
+    // Idempotent: a second backfill changes nothing (assert-if-absent).
+    store.backfillMirror(api);
+    const nsel2: usize = @intCast(api.smallIntValue(api.send(store.store_instance, store.s_attrCount, &[_]Oop{string_vt}, 1)));
+    try std.testing.expectEqual(nsel, nsel2);
+
+    // Internal dicts (the intern table / export env) are NOT types — they delegate
+    // to nothing — so their data keys never become mirror facts.
+}
+
 test "codegen E1: a captured var in a chained send is not dropped by capture analysis" {
     const api = setupFull();
 

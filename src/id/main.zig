@@ -476,6 +476,11 @@ fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
         defer a.free(p);
         _ = try loadModule(api, p.ptr, null);
     }
+    // The whole type universe now exists: make the MOP mirror total (docs/42 §D1) —
+    // every native selector reflects through the fact store, alongside user methods.
+    if (api.import("Store")) |st| {
+        _ = api.send(st, api.intern("backfillMirror"), &[_]Oop{}, 0);
+    }
 }
 
 /// Compile + run a birnam script file. Loads the full stack quietly, then
