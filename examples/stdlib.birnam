@@ -14,6 +14,11 @@
 [System println: ["between:    " , [[5 between: 1 and: 10] printString]]];
 [System println: ["factorial:  " , [[6 factorial] printString]]];
 
+// `and:`/`or:` take a block and short-circuit — the RHS `[10 / 0]` never runs, so
+// no #zeroDivide. (`&`/`|` stay eager, for when both sides are already booleans.)
+[System println: ["and: (sc):  " , [[false and: [| [[10 / 0] = 0]]] printString]]]; // false
+[System println: ["or:  (sc):  " , [[true  or:  [| [[10 / 0] = 0]]] printString]]]; // true
+
 // printNl prints the receiver and answers it, so it chains.
 [System print: "printNl:    "];
 [[10 factorial] printNl]

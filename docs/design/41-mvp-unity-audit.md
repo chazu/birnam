@@ -10,9 +10,9 @@ producing this — it is a tracking list.
 > §D (D1–D4), E1. §D's resolution **inverted the North Star** — object model canonical,
 > relational reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green, unpushed. ⬜
-> **OPEN:** E2 (receiver-blind `defineMethod:on:as:` intercept), E3 (eager `&`/`|`),
+> **OPEN:** E2 (receiver-blind `defineMethod:on:as:` intercept),
 > §F (FFI — **F2 is a real Linux `RTLD_DEFAULT=-2` bug**, F1/F3/F4), §G (10 marked-LOW
-> deferrals). Nothing is parked.
+> deferrals). Nothing is parked. (E3 short-circuit `and:`/`or:` DONE 2026-07-05.)
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -302,13 +302,18 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
   `defineMethod:on:as:` gets a 4th `source:` arg silently appended (or in
   artifact mode is compiled as a method install). Load-bearing for image/source
   recording, but this one selector is not a real overridable send.
-- [ ] **E3 · MED · `stdlib.birnam:25`** — `&`/`|` are eager, no short-circuit;
-  the documented `[10/0]`-is-eager seam at the boolean level. stdlib visibly only
-  uses `&` where both sides are pure comparisons.
+- [x] **E3 · MED — DONE 2026-07-05 (`prelude.zig`).** Added block-taking `and:`/`or:`
+  on the boolean vtable — they send `value` only on the deciding branch (mirroring
+  `ifTrue:`), so `[false and: [| [10/0]]]` never evaluates the divide. `&`/`|` stay
+  eager (the correct Smalltalk split — for already-evaluated booleans). This gives the
+  documented `[10/0]`-is-eager seam a short-circuit complement. Regression in
+  `prelude_test.zig` (a side-effect block proves the skipped branch isn't run);
+  demoed in `examples/stdlib.birnam`. (The audit's old "Clean" note wrongly listed
+  `and:` as an existing send — it did not exist; docs/13 §99 specified it.)
 
 **Clean (recorded so we don't re-check):** `+ - * /` and
-`ifTrue:ifFalse:`/`and:`/`whileTrue:` are **not** special-cased — real,
-overridable sends. No arity caps in codegen.
+`ifTrue:ifFalse:`/`whileTrue:` are **not** special-cased — real, overridable sends.
+No arity caps in codegen.
 
 ## F. FFI is a reduced re-implementation vs the documented (attic libffi) surface
 

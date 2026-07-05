@@ -14,7 +14,8 @@
 //!                          floor ceiling rounded  printString
 //!   Object  (object_vt):   printString  asString (→ printString of any receiver)
 //!                          (new/clone are floor protocol — installed in id.zig)
-//!   Boolean (bool_vt):     ifTrue:ifFalse: ifTrue: ifFalse: & | not  printString
+//!   Boolean (bool_vt):     ifTrue:ifFalse: ifTrue: ifFalse: & | and: or: not  printString
+//!                          (`&`/`|` eager; `and:`/`or:` take a block and short-circuit)
 //!   System (a singleton):  print:  println:  readFile:  writeFile:contents:
 //!                          load: (eval a .birnam source file) loadModule: (dlopen
 //!                          a module dylib) readLine  gc  liveObjects  autoGc:
@@ -394,6 +395,21 @@ fn bOr(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     return if (self == g_api.trueObj) g_api.trueObj else a[0];
 }
+/// Short-circuit AND: `[cond] and: [| body]` runs (and answers) the block ONLY when
+/// self is true, else answers false without touching it — the block-taking seam
+/// documented in docs/13, complementing the eager `&`. `[false] and: [| [10/0]]`
+/// never evaluates the divide. The argument must be a block (it is sent `value`,
+/// like `ifTrue:`); use `&` for an already-evaluated boolean.
+fn bAndBlock(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return if (self == g_api.trueObj) send0(a[0], "value") else g_api.falseObj;
+}
+/// Short-circuit OR: `[cond] or: [| body]` answers true without touching the block
+/// when self is already true, else runs and answers the block. Complements `|`.
+fn bOrBlock(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return if (self == g_api.trueObj) g_api.trueObj else send0(a[0], "value");
+}
 fn bNot(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
@@ -609,6 +625,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(b_vt, api.intern("ifFalse:"), &bIfFalse);
     api.method(b_vt, api.intern("&"), &bAnd);
     api.method(b_vt, api.intern("|"), &bOr);
+    api.method(b_vt, api.intern("and:"), &bAndBlock);
+    api.method(b_vt, api.intern("or:"), &bOrBlock);
     api.method(b_vt, api.intern("not"), &bNot);
     api.method(b_vt, api.intern("printString"), &bPrintString);
 

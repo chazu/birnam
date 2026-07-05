@@ -63,6 +63,51 @@ test "prelude: Boolean ifTrue:ifFalse: / & / not — dispatch on identity" {
     try std.testing.expectEqualStrings("false", api.stringBytes(fp, &len)[0..len]);
 }
 
+// A block whose `value` bumps sc_evals (so a test can prove short-circuit skipped it).
+var sc_evals: usize = 0;
+fn sideTrue(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    sc_evals += 1;
+    return gapi.trueObj;
+}
+fn sideFalse(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    sc_evals += 1;
+    return gapi.falseObj;
+}
+fn valBlock(api: *idapi.IdApi, impl: idapi.Method) Oop {
+    const vt = api.proto(api.object_vt);
+    api.method(vt, api.intern("value"), impl);
+    return api.alloc(vt, 0);
+}
+
+test "prelude: and:/or: short-circuit — the block runs only on the deciding branch (E3)" {
+    const api = setup();
+    const t = s1(api, api.mkSmallInt(3), "=", api.mkSmallInt(3)); // true
+    const f = s1(api, api.mkSmallInt(3), "=", api.mkSmallInt(9)); // false
+
+    // false and: [block] → false, block NOT evaluated.
+    sc_evals = 0;
+    try std.testing.expect(api.send(f, api.intern("and:"), &[_]Oop{valBlock(api, &sideTrue)}, 1) == api.falseObj);
+    try std.testing.expectEqual(@as(usize, 0), sc_evals);
+    // true and: [block] → the block's value; evaluated exactly once.
+    sc_evals = 0;
+    try std.testing.expect(api.send(t, api.intern("and:"), &[_]Oop{valBlock(api, &sideFalse)}, 1) == api.falseObj);
+    try std.testing.expectEqual(@as(usize, 1), sc_evals);
+    // true or: [block] → true, block NOT evaluated.
+    sc_evals = 0;
+    try std.testing.expect(api.send(t, api.intern("or:"), &[_]Oop{valBlock(api, &sideFalse)}, 1) == api.trueObj);
+    try std.testing.expectEqual(@as(usize, 0), sc_evals);
+    // false or: [block] → the block's value; evaluated exactly once.
+    sc_evals = 0;
+    try std.testing.expect(api.send(f, api.intern("or:"), &[_]Oop{valBlock(api, &sideTrue)}, 1) == api.trueObj);
+    try std.testing.expectEqual(@as(usize, 1), sc_evals);
+}
+
 test "prelude: arithmetic faults are catchable errors, not panics" {
     const api = id.id_init();
     gapi = api;
