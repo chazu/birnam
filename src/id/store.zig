@@ -178,7 +178,16 @@ fn currentValueRaw(st: *StoreState, e: Oop, a: Oop) Oop {
 /// cardinality of `:cardinality` itself terminates on the seeded knot, not in a
 /// regress (`docs/33` §bootstrap).
 fn cardinalityOf(st: *StoreState, a: Oop) Oop {
-    const c = currentValueRaw(st, a, s_cardinality);
+    return cardinalityOfAsOf(st, a, null);
+}
+
+/// The cardinality of `a` AS OF a basis watermark (docs/42 §D4): schema is data,
+/// so it time-travels like any other cell. An `asOf:` query must interpret an old
+/// snapshot with the schema *as it was then*, not today's — read the
+/// `:cardinality` fact under the same watermark. (Schema set once at seed, tx 0–2,
+/// so any realistic basis sees it; a later cardinality change is honoured per-basis.)
+fn cardinalityOfAsOf(st: *StoreState, a: Oop, asof: ?u64) Oop {
+    const c = currentValueRawAsOf(st, a, s_cardinality, asof);
     return if (c == null) s_one else c;
 }
 
@@ -314,6 +323,45 @@ fn mCurrentValue(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return currentValueRaw(stateOf(self), args[0], args[1]);
 }
 
+/// Does (e, a) have any fact at/after `basis`? (An in-place overwrite of a
+/// history-off `:one` fact bumps its tx to the write time, so a value that WAS held
+/// before `basis` can present as a single fact with `tx >= basis`.)
+fn hasFactAtOrAfter(st: *StoreState, e: Oop, a: Oop, basis: u64) bool {
+    for (st.facts.items) |f| if (f.tx >= basis and eq(f.e, e) and eq(f.a, a)) return true;
+    return false;
+}
+
+/// A `#historyNotRetained` error value (F7 error model, imported at call time), or
+/// nil if the error module isn't loaded — the honest signal that an `asOf:` read
+/// cannot be answered because the attribute keeps no timeline.
+fn historyNotRetainedError() Oop {
+    const ef = g_api.import("Error");
+    if (ef == null) return g_api.nilObj;
+    return g_api.send(ef, g_api.intern("kind:"), &[_]Oop{g_api.intern("historyNotRetained")}, 1);
+}
+
+/// `[store valueOf: e attr: a asOf: basis]` — the value of (e, a) AS OF a basis
+/// watermark, made HONEST for history-off attributes (docs/42 §D3). A history-off
+/// `:one` attribute keeps no timeline: an overwrite discards the old value and bumps
+/// the fact's tx, so a naive asOf read would report the attribute ABSENT at an
+/// earlier basis when it in fact held a (now-lost) value. So: return the value if it
+/// is reliably visible at `basis`; else, if history is off AND a later fact exists
+/// for (e, a) (the ambiguous, possibly-overwritten case), return a
+/// `#historyNotRetained` error rather than a silently-wrong nil; a genuine absence
+/// (no fact, or a history-on timeline that shows none) still reads nil.
+fn mValueOfAsOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const st = stateOf(self);
+    const e = args[0];
+    const a = args[1];
+    const basis: u64 = @intCast(g_api.smallIntValue(args[2]));
+    const v = currentValueRawAsOf(st, e, a, basis);
+    if (v != null) return v; // reliably visible at basis
+    if (eq(historyOf(st, a), s_false) and hasFactAtOrAfter(st, e, a, basis))
+        return historyNotRetainedError(); // can't be sure — honest, not silently nil
+    return g_api.nilObj; // genuinely absent
+}
+
 /// `[store count: e attr: a]` — how many values (e, a) currently holds, pointer-
 /// encoded (libid is pre-SmallInt). `:one` → 0 or 1; `:many` → set size.
 fn mCount(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -422,9 +470,10 @@ fn inLo(tx: u64, lo: ?u64) bool {
 }
 
 /// Enumerate the live triples over a transaction window (both bounds null =
-/// current). Cardinality is read CURRENT (schema is treated as stable; it does not
-/// time-travel); the deciding fact is the newest with `tx < hi`, and a triple is
-/// emitted only if that fact is an assert AND its `tx >= lo`.
+/// current). Cardinality is read AS OF `hi` (docs/42 §D4: schema is data and
+/// time-travels — an old snapshot is read with the schema as it was then); the
+/// deciding fact is the newest with `tx < hi`, and a triple is emitted only if that
+/// fact is an assert AND its `tx >= lo`.
 fn enumerateTriples(st: *StoreState, blk: Oop, lo: ?u64, hi: ?u64) void {
     // Distinct (e,a) pairs in first-appearance order, among facts within `hi`.
     var pairs: std.ArrayList(EA) = .{};
@@ -436,7 +485,7 @@ fn enumerateTriples(st: *StoreState, blk: Oop, lo: ?u64, hi: ?u64) void {
     }
 
     for (pairs.items) |p| {
-        if (eq(cardinalityOf(st, p.a), s_one)) {
+        if (eq(cardinalityOfAsOf(st, p.a, hi), s_one)) {
             // The deciding fact: newest matching with tx < hi.
             var i = st.facts.items.len;
             while (i > 0) {
@@ -846,6 +895,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_flip, &mFlip);
     api.method(store_vt, s_assert, &mAssert);
     api.method(store_vt, s_currentValue, &mCurrentValue);
+    api.method(store_vt, api.intern("valueOf:attr:asOf:"), &mValueOfAsOf);
     api.method(store_vt, s_count, &mCount);
     api.method(store_vt, s_history_read, &mHistory);
     api.method(store_vt, s_cellFor, &mCellFor);

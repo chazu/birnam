@@ -10,6 +10,7 @@
 const std = @import("std");
 const id = @import("id.zig");
 const store = @import("store.zig");
+const errmod = @import("error.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
@@ -293,6 +294,39 @@ test "rung 2b.1: the mirror can't desync — a raw overwrite retracts the stale 
     // 4. Re-tracking through the mirror restores a CURRENT fact (m2), not a stale one.
     _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ s_go, gadget_vt, m2 }, 3);
     try std.testing.expect(cv(api, gadget_vt, s_go) == m2);
+}
+
+test "rung 2d: history-off asOf is HONEST, not silently nil (docs/42 §D3)" {
+    const api = id.id_init();
+    store.bringUp(api);
+    errmod.bringUp(api); // so `valueOf:attr:asOf:` can yield a kinded error value
+
+    const db = store.store_instance;
+    const e = api.intern("widget");
+    const x = api.intern("colour"); // history-off :one by default
+    const valueOf = api.intern("valueOf:attr:asOf:");
+    const basisSel = api.intern("basis");
+
+    _ = api.send(db, store.s_assert, &[_]Oop{ e, x, api.intern("red") }, 3);
+    const b1 = api.send(db, basisSel, &[_]Oop{}, 0); // snapshot: colour == red
+
+    // 1. Reliable: the deciding fact predates the basis → the real value, red.
+    try std.testing.expect(api.send(db, valueOf, &[_]Oop{ e, x, b1 }, 3) == api.intern("red"));
+
+    // 2. Overwrite (history-off → the old value is discarded, the fact's tx bumps).
+    _ = api.send(db, store.s_assert, &[_]Oop{ e, x, api.intern("blue") }, 3);
+
+    // 3. asOf b1 can no longer be answered — but rather than a silently-WRONG nil
+    //    (implying colour was absent at b1, when it was red), it yields an honest
+    //    #historyNotRetained error value.
+    const r = api.send(db, valueOf, &[_]Oop{ e, x, b1 }, 3);
+    try std.testing.expect(r != api.nilObj);
+    try std.testing.expect(api.send(r, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(r, api.intern("kind"), &[_]Oop{}, 0) == api.intern("historyNotRetained"));
+
+    // 4. A genuinely absent (e,a) — no fact at all — still reads nil (honest absence).
+    const b2 = api.send(db, basisSel, &[_]Oop{}, 0);
+    try std.testing.expect(api.send(db, valueOf, &[_]Oop{ e, api.intern("ghost"), b2 }, 3) == api.nilObj);
 }
 
 test "rung 2a.1: currentValue of an absent (e,a) is nil" {
