@@ -199,7 +199,12 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
   preamble — the omission truncated the returned pointer, hence the crash). Regression
   test in `codegen_test.zig`. (The follow-on "Booleans have no `=`" gap was closed by
   B3 — `Object>>=` gives the boolean singletons value equality.)
-- [ ] **B9 · LOW · `main.zig` runScript** — a script that deliberately compiles bad
+- [x] **B9 · LOW — FIXED 2026-07-05 (`82ce2c0`).** A successful `runProgram` now
+  clears the compile-error flag at its end, so a program that internally probes a bad
+  `[Codegen compile: …]` no longer leaves a false `lastError` for the CLI's post-eval
+  check. aot.birnam exits 0 → all 24 examples green. (A failed top-level compile still
+  returns before the clear, note intact.) Original finding:
+- [ ] ~~**B9 · LOW · `main.zig` runScript**~~ — a script that deliberately compiles bad
   source (e.g. `examples/aot.birnam` probing `[Codegen compile: "let :="]` → nil)
   leaves a stale `[Codegen lastError]`; `runScript`'s post-eval error check then
   reports a false "compile error" and exits 1 even though the script ran correctly.
