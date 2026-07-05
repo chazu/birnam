@@ -1396,6 +1396,14 @@ fn runProgram(src: Oop, persist: bool) Oop {
     // mark the unit disposable and let the collector `tcc_delete` it. Bounds the
     // per-eval TccState leak for the common (no-closure) REPL line.
     if (blk_counter == 0) _ = s0(unit, "disposable");
+
+    // Reaching here means THIS top-level program compiled, relocated, and ran. The
+    // program may itself have called `[Codegen compile: …]` on bad source (e.g.
+    // aot.birnam probing error handling), which left the shared error flag set — but
+    // that is a nested compile the program handled, not a failure of this eval. Clear
+    // it so `[Codegen lastError]` reflects only the top-level outcome (audit §B9): a
+    // failed top-level compile returns nil BEFORE this point, with its note intact.
+    clearError();
     return result;
 }
 

@@ -273,6 +273,23 @@ test "codegen 3c.3: blocks compile to closures (params, capture, invoke)" {
     try std.testing.expectEqual(@as(i64, 44), try evalInt(api, "let k := 2; [20 with: [:x | [[x plus: k] double]]]"));
 }
 
+test "codegen §B9: lastError reflects only the top-level eval, cleared on success" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    const lastErr = api.intern("lastError");
+
+    // A failed top-level compile records an error.
+    _ = eval(api, "let :=");
+    try std.testing.expect(api.send(Codegen, lastErr, &[_]Oop{}, 0) != api.nilObj);
+
+    // A subsequent SUCCESSFUL eval clears it — so a program that internally probes
+    // a bad compile (aot.birnam) can't leave a false "compile error" for the CLI's
+    // post-eval check. (A failed top-level compile returns before the clear, so its
+    // note survives.)
+    try std.testing.expectEqual(@as(i64, 7), try evalInt(api, "[3 + 4]"));
+    try std.testing.expect(api.send(Codegen, lastErr, &[_]Oop{}, 0) == api.nilObj);
+}
+
 test "docs/42 §D1: backfillMirror makes the MOP total over the native protocol" {
     const api = setupFull();
     store.backfillMirror(api);
