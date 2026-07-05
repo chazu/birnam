@@ -228,29 +228,33 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
 
 ## D. Object/relational unity is aspirational, and two things can desync
 
-> **Plan settled 2026-07-05 → [42 — Object canonical; relational derived](42-object-canonical-relational-derived.md).**
+> **✅ ALL OF §D DONE 2026-07-05 → [42 — Object canonical; relational derived](42-object-canonical-relational-derived.md).**
 > The "unity / send == get" framing is **retired**: the object model is canonical and
-> the relational reading is a *derived* lens. D1's mirror is **kept and completed**
-> (the meta-object protocol, under a consistency law — mirror = dict, or absent, never
-> wrong), not removed. D2 reifies rules as durable relational data. D3/D4 stay
-> mechanical. See 42 for the full decision and mechanism. Items below are the
-> as-found findings.
+> the relational reading is a *derived* lens. D1's mirror is **kept and completed** (the
+> meta-object protocol, under a consistency law — mirror = dict, or absent, never wrong),
+> not removed. D2 reifies rules as durable relational data. D3/D4 done mechanically. See
+> 42 for the decision, and the per-item commits below.
 
-- [ ] **D1 · HIGH · `store.zig:585`** — the "dispatch mirror" is opt-in and
-  desyncable: only `addMethod:on:with:` writes the `[vt sel m]` fact; the entire
-  native stdlib/prelude (plain `api.method`) produces no fact. A later plain
-  install over a tracked `(vt,sel)` leaves the fact **stale** — `currentValue`
-  returns a method no longer bound.
-- [ ] **D2 · HIGH · `relational.zig:317`** — datalog rules live in a
-  process-global Zig map, not as facts: not queryable, not historied, and
-  `saveImage` doesn't serialise them, so every `defineRule:` vanishes on image
-  reload. Breaks "the image IS the system."
-- [ ] **D3 · MED · `store.zig:185`** — in-place slot patch makes `asOf:` silently
-  wrong: the history-off default advances the fact's `tx`, so
-  `[cell asOf: oldBasis]` *skips* the fact and reports the attribute **absent**
-  rather than its old value. Confidently wrong, no error.
-- [ ] **D4 · MED · `store.zig:405`** — schema doesn't time-travel: an `asOf:`
-  query reinterprets old facts with today's cardinality/history policy.
+- [x] **D1 · HIGH — DONE 2026-07-05 (`d8d162e` + `29e23fb`).** The dispatch mirror
+  is now the **MOP, completed under the consistency law** (mirror = live dict binding,
+  or absent, never a different stale value). A floor method-overwrite hook retracts a
+  now-stale object-valued fact before any rebind (retract→set ordering); `api.method`
+  stays the raw escape hatch. Backfill (`[Store backfillMirror]`, over a new floor
+  vtable registry + `vtableSelectorAt`/`vtableParent`) mirrors native selectors as
+  GC-safe `#primitive` markers → a TOTAL MOP, rebuilt on every boot AND image load
+  (markers excluded from save). See docs/42.
+- [x] **D2 · HIGH — DONE 2026-07-05 (`1da013e`).** Rules are canonical relational data:
+  `defineRule:` stores each definition as a `[pair __rule-name__ name]` fact (queryable,
+  historied, **serialized**); `g_rules` demotes to a rebuilt cache (`[db rebuildRules]`
+  on image load). Verified end-to-end: a save→load roundtrip preserves a recursive rule.
+- [x] **D3 · MED — DONE 2026-07-05 (`bcedd2a`).** Honest history-off `asOf`: new
+  `[store valueOf: e attr: a asOf: basis]` returns the value when reliably visible, else
+  a `#historyNotRetained` error (not a silently-wrong nil) for a history-off attribute
+  it can't answer; genuine absence still reads nil. (Datalog `asOf` keeps its best-effort
+  watermark semantics — no per-fact error channel in a triple stream.)
+- [x] **D4 · MED — DONE 2026-07-05 (`bcedd2a`).** Schema time-travels: `enumerateTriples`
+  reads cardinality AS OF the query watermark (`cardinalityOfAsOf`), so an old snapshot
+  is interpreted with the schema as it was then.
 
 ## E. Compiler features half-wired
 
@@ -329,9 +333,10 @@ overridable sends. No arity caps in codegen.
 
 The two that are *structural* (not just a missing method):
 
-- **A** — creation reintroduced a class/instance seam.
-- **D** — object dispatch and the relational store are still parallel
-  mechanisms, not one op (the North Star's "send == get" is aspirational).
+- **A** — creation reintroduced a class/instance seam. **(DONE.)**
+- **D** — object dispatch and the relational store. **(DONE — but the resolution
+  INVERTED the North Star: the object model is canonical and the relational reading is
+  a derived MOP mirror + data lens, not "send == get." See docs/42.)**
 
 Everything in **B**, **C.1–C.3**, **E**, **F** is the "sibling pass not
 updated" pattern and is mechanical to close once decided. **G** is honest,
