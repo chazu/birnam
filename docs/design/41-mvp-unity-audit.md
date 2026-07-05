@@ -11,9 +11,10 @@ producing this — it is a tracking list.
 > relational reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green, unpushed. ⬜
 > **OPEN:** §F **F1/F3/F4** (one FFI-surface arc needing a boxed 64-bit word/pointer
-> type — all latent on darwin; **F2 the real Linux bug is DONE**), §G (10 marked-LOW
-> deferrals). Nothing is parked. (**All of §E done** 2026-07-05: E1 chained-capture,
-> E2 receiver-gated intercept, E3 short-circuit `and:`/`or:`.)
+> type — all latent on darwin; **F2 the real Linux bug is DONE**) · §G **the harder
+> half** (G2/G3 image consistency, G4 left-recursion crash, G6 Binding, G8 layering,
+> G9 operator charset, G10 FFI leaks — each real design/feature work). **§G cheap end
+> swept 2026-07-05: G1/G5/G7 done.** Nothing is parked. (**All of §E done**: E1/E2/E3.)
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -350,8 +351,17 @@ No arity caps in codegen.
 
 ## G. Marked deferrals (LOW — honest, catalogued for completeness)
 
-- [ ] **G1 · `image.zig:217`** — block-valued facts dropped on save (comment says
-  "never dropped"; they are dropped from the persisted image, just reported).
+> **Cheap-end sweep DONE 2026-07-05 (`<this commit>`):** G7 (raw `==`→`eq()`), G5
+> (fixpoint non-convergence now reported, not silent), G1 (comment honesty). The rest
+> stand — G2/G3 (image consistency, latent), G4 (left-recursion crash), G6 (Binding
+> object), G8 (layering), G9 (operator charset — a small feature, not a cleanup),
+> G10 (FFI leaks) — each needs real design/feature work, not a one-liner.
+
+- [x] **G1 · MED — DONE 2026-07-05 (doc honesty, `image.zig`).** The "counted, never
+  dropped" claim overstated: deferral relies on slice-4 replay re-deriving the value
+  from recorded source — true for source-backed method/block globals, but a block-valued
+  fact with NO source backing is genuinely absent from the persisted image (reported by
+  `reportDeferred`, not silent). Comment corrected to say so; behaviour unchanged.
 - [ ] **G2 · `image.zig:440`** — method-redefining append warns instead of
   re-emitting code; image internally inconsistent until compacting save /
   `--rebuild`.
@@ -361,13 +371,18 @@ No arity caps in codegen.
 - [ ] **G4 · `peg.zig:225`** — left-recursive grammar recurses unboundedly to
   stack overflow (memo written after match returns, so it doesn't guard
   left recursion). Uncatchable crash, not a kinded error.
-- [ ] **G5 · `relational.zig:403`** — fixpoint iteration cap (`while iter < 1000`)
-  returns partial results silently on non-convergence.
+- [x] **G5 · DONE 2026-07-05 (`relational.zig`).** The fixpoint cap (`max_iter =
+  1000`) now tracks convergence and, if the cap is ever HIT, prints
+  `relational rule '<name>' did not reach a fixpoint … — result is partial` to stderr
+  instead of returning a truncated relation silently. (A finite store still converges
+  well before the cap; behaviour on convergence unchanged.)
 - [ ] **G6 · `store.zig:620`** — `Globals includes:` conflates absent and
   explicit-nil (v1, pending a real Binding object).
-- [ ] **G7 · `store.zig:175`** — `historyLen`/`replaceInPlace` compare with raw
-  `==` instead of the `eq()` identity chokepoint; the "single seam" claim is
-  already false (harmless today, will ignore any future identity policy).
+- [x] **G7 · DONE 2026-07-05 (`store.zig`).** `historyLen`/`replaceInPlace` now compare
+  (e, a) through the `eq()` identity chokepoint like every sibling, not raw `==`. `eq()`
+  fast-paths pointer identity, so no cost — and it fixes a latent boxing bug: a boxed
+  SmallInt entity fails raw `==` against an equal-valued box, which would have
+  double-counted its timeline / skipped in-place overwrite. The "single seam" holds again.
 - [ ] **G8 · `relational.zig:994`** — the relational module installs `printString`
   onto `symbol_vt` globally as a load side-effect (layering smell; all symbols
   render with `#` once datalog loads).

@@ -203,7 +203,7 @@ fn historyOf(st: *StoreState, a: Oop) Oop {
 fn historyLen(st: *StoreState, e: Oop, a: Oop) usize {
     var c: usize = 0;
     for (st.facts.items) |f| {
-        if (f.e == e and f.a == a) c += 1;
+        if (eq(f.e, e) and eq(f.a, a)) c += 1;
     }
     return c;
 }
@@ -214,7 +214,7 @@ fn replaceInPlace(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
     var i = st.facts.items.len;
     while (i > 0) {
         i -= 1;
-        if (st.facts.items[i].e == e and st.facts.items[i].a == a) {
+        if (eq(st.facts.items[i].e, e) and eq(st.facts.items[i].a, a)) {
             st.facts.items[i].v = v;
             st.facts.items[i].tx = st.tx;
             st.tx += 1;

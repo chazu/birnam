@@ -454,8 +454,10 @@ fn materialize(aa: std.mem.Allocator, name: Oop, triples: []const Triple) *Deriv
     if (g_fixpoint_depth > 0 or g_fixpoint_done) return d; // mid-loop, or already converged
 
     g_fixpoint_depth += 1;
+    const max_iter: usize = 1000;
     var iter: usize = 0;
-    while (iter < 1000) : (iter += 1) {
+    var converged = false;
+    while (iter < max_iter) : (iter += 1) {
         const tuples_before = totalActiveTuples();
         const rules_before = g_active.count();
         // Snapshot the names: a body may add a newly-referenced rule to g_active.
@@ -464,8 +466,18 @@ fn materialize(aa: std.mem.Allocator, name: Oop, triples: []const Triple) *Deriv
         var it = g_active.keyIterator();
         while (it.next()) |kp| names.append(ca, kp.*) catch @panic("relational: oom");
         for (names.items) |nm| evalRuleInto(aa, nm, triples);
-        if (totalActiveTuples() == tuples_before and g_active.count() == rules_before) break;
+        if (totalActiveTuples() == tuples_before and g_active.count() == rules_before) {
+            converged = true;
+            break;
+        }
     }
+    // The cap is a safety net a finite store reaches well before (comment above). If
+    // it is ever HIT, the returned relation is only a partial fixpoint — say so on
+    // stderr rather than handing back truncated results silently (audit §G5).
+    if (!converged) std.debug.print(
+        "birnam: relational rule '{s}' did not reach a fixpoint in {d} iterations — result is partial\n",
+        .{ std.mem.span(g_api.symbolName(name)), max_iter },
+    );
     g_fixpoint_depth -= 1;
     g_fixpoint_done = true;
     return d;

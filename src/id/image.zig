@@ -23,9 +23,13 @@
 //! A payload field is a tagged value: nil/true/false, int, float, symbol (by
 //! name — the durable anchor), string (bytes), heapref (a u32 relocation id), or
 //! a null Oop slot. Compound objects whose vtable is image-born (a block vtable)
-//! or carries no layout are DEFERRED — counted, never dropped (docs/40 §6); code
-//! pointers likewise defer to slice 4. Vtables relink BY NAME on load (the D5.1
-//! spine): a native module's freshly-loaded vtable re-adopts its image objects.
+//! or carries no layout are DEFERRED — omitted from THIS payload and counted, on the
+//! premise that slice-4 replay re-derives them from recorded source (docs/40 §6). That
+//! holds for source-backed method/block globals; a block-valued fact with NO source
+//! backing is not reconstructed, so for it "deferred" does mean dropped from the image
+//! (reported, not silent — see `reportDeferred`). Code pointers likewise defer to
+//! slice 4. Vtables relink BY NAME on load (the D5.1 spine): a native module's
+//! freshly-loaded vtable re-adopts its image objects.
 
 const std = @import("std");
 const builtin = @import("builtin");
