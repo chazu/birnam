@@ -17,4 +17,18 @@ let safeDiv := [:a :b |
 // The error flows through further arithmetic untouched: `[10 / 0]` is an error, and
 // `+ 1` sent to an error just returns the same error — so its kind survives.
 let chained := [[10 / 0] + 1];
-[System println: ["[10 / 0] + 1 → " , [[chained kind] printString]]] // #zeroDivide
+[System println: ["[10 / 0] + 1 → " , [[chained kind] printString]]]; // #zeroDivide
+
+// `on:do:` can catch a SET of kinds — pass a collection instead of one symbol.
+// A member match runs the handler; a miss lets the error keep propagating.
+let caught := [[| [nil frobnicate]] on: #[#zeroDivide #doesNotUnderstand] do: [:e | "handled"]];
+[System println: ["multi-kind catch → " , [caught printString]]]; // handled
+let missed := [[| [nil frobnicate]] on: #[#zeroDivide #overflow] do: [:e | "handled"]];
+[System println: ["multi-kind miss  → " , [[missed kind] printString]]]; // #doesNotUnderstand
+
+// `ensure:` runs its cleanup block whether the protected block yields a value OR
+// an error, then answers the protected result — unwind-protect, no stack needed.
+let clean := [[| [3 + 4]] ensure: [| [System println: "  (cleanup ran on success)"]]];
+[System println: ["ensure: value → " , [clean printString]]]; // 7
+let clean2 := [[| [nil frob]] ensure: [| [System println: "  (cleanup ran on error)"]]];
+[System println: ["ensure: error → " , [[clean2 kind] printString]]] // #doesNotUnderstand

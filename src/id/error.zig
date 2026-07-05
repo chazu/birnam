@@ -24,9 +24,12 @@
 //!                        kind; message; printString; ifError:; ifNotError:
 //!   Error factory      kind:message:  kind:  message:   (exported "Error")
 //!   Object (object_vt) isError → false; doesNotUnderstand: → a #doesNotUnderstand
-//!                        error (THE nil-send fix); on:do:; ifError:; ifNotError:
+//!                        error (THE nil-send fix); on:do:; ensure:; ifError:;
+//!                        ifNotError:
 //!   String (string_vt) error  → raise #error;  error: → raise a kinded error
-//! `on: #error do:` is the catch-all wildcard; `on: #kind do:` matches one kind.
+//! `on: #error do:` is the catch-all wildcard; `on: #kind do:` matches one kind;
+//! `on: #[#a #b] do:` (any collection answering `includes:`) matches a set of kinds.
+//! `[protected ensure: cleanup]` always runs cleanup, then answers protected's result.
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
@@ -43,6 +46,7 @@ pub var factory_obj: Oop = null;
 var s_value: Oop = null; // "value" — run a 0-arg protected block
 var s_value1: Oop = null; // "value:" — invoke a handler block
 var s_wild: Oop = null; // "error" — the on:do: catch-all kind
+var s_includes: Oop = null; // "includes:" — multi-kind on:do: membership
 
 /// An error's payload: a `kind` symbol (or nil) and a `message` string (or nil).
 const Err = extern struct {
@@ -157,18 +161,41 @@ fn objDnu(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     defer ca.free(msg);
     return mkError(g_api.intern("doesNotUnderstand"), g_api.mkString(msg.ptr, msg.len));
 }
-/// `[[protectedBlock] on: #kind do: handler]` — run the 0-arg block; if it yields
-/// an error of matching kind (or `#error`, the wildcard), run the handler with it;
-/// otherwise pass the value (or unmatched error) straight through.
+/// Does a caught error's kind `k` satisfy the `want` spec? Three cases, in order:
+/// the wildcard `#error` (catch anything); a single kind symbol (exact match); or
+/// a *collection* of kinds — anything that answers `includes:` — so `#[#a #b]`
+/// catches either. The collection case is pure dispatch (a doomed `includes:` to a
+/// non-collection just fails to match), so error.zig needn't know the collection
+/// module exists. A plain non-wildcard symbol short-circuits to exact match, so we
+/// never mint a junk DNU error sending `includes:` to a symbol on the common path.
+fn kindMatches(want: Oop, k: Oop) bool {
+    if (want == s_wild or want == k) return true;
+    if (g_api.vtableOf(want) == g_api.symbol_vt) return false;
+    return g_api.send(want, s_includes, &[_]Oop{k}, 1) == g_api.trueObj;
+}
+/// `[[protectedBlock] on: spec do: handler]` — run the 0-arg block; if it yields
+/// an error whose kind matches `spec` (a kind symbol, the `#error` wildcard, or a
+/// collection of kinds), run the handler with it; otherwise pass the value (or
+/// unmatched error) straight through.
 fn objOnDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     const want = a[0];
     const handler = a[1];
     const val = g_api.send(self, s_value, &[_]Oop{}, 0);
     if (!isErrorValue(val)) return val;
-    const k = err(val).kind;
-    if (want == s_wild or want == k) return g_api.send(handler, s_value1, &[_]Oop{val}, 1);
+    if (kindMatches(want, err(val).kind)) return g_api.send(handler, s_value1, &[_]Oop{val}, 1);
     return val; // unmatched — keep propagating
+}
+/// `[protectedBlock ensure: cleanupBlock]` — run the protected block, then ALWAYS
+/// run the cleanup block (for its side effects), and answer the protected result,
+/// whether a value or a propagating error. In the value model an error is just a
+/// value that flowed back — no stack unwound — so unwind-protect is exactly "run
+/// cleanup on the way out, keep the original answer". (No handler stack needed.)
+fn objEnsure(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const val = g_api.send(self, s_value, &[_]Oop{}, 0);
+    _ = g_api.send(a[0], s_value, &[_]Oop{}, 0); // cleanup — result discarded
+    return val;
 }
 /// On a non-error, `ifError:` is a no-op (answer self) and `ifNotError:` runs.
 fn objIfError(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -200,6 +227,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_value = api.intern("value");
     s_value1 = api.intern("value:");
     s_wild = api.intern("error");
+    s_includes = api.intern("includes:");
 
     const reloading = api.isExported("Error") != 0;
     if (reloading) {
@@ -233,6 +261,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(api.object_vt, api.intern("isError"), &objIsError);
     api.method(api.object_vt, api.intern("doesNotUnderstand:"), &objDnu);
     api.method(api.object_vt, api.intern("on:do:"), &objOnDo);
+    api.method(api.object_vt, api.intern("ensure:"), &objEnsure);
     api.method(api.object_vt, api.intern("ifError:"), &objIfError);
     api.method(api.object_vt, api.intern("ifNotError:"), &objIfNotError);
 

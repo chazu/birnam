@@ -148,3 +148,52 @@ test "F7: printString renders kind and message" {
     const e = api.send(api.nilObj, api.intern("frob"), &[_]Oop{}, 0);
     try std.testing.expect(strEq(s0(e, "printString"), "error(#doesNotUnderstand: does not understand #frob)"));
 }
+
+// -- C5: ensure: (unwind-protect) + multi-kind on:do: ------------------------
+
+const collection = @import("collection.zig");
+
+// Cleanup blocks bump this so a test can prove the cleanup ran (once, on the way
+// out) regardless of whether the protected block succeeded or errored.
+var cleanup_runs: usize = 0;
+fn bumpCleanup(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    cleanup_runs += 1;
+    return gapi.nilObj;
+}
+
+test "F7: ensure: always runs cleanup and answers the protected result (value + error)" {
+    const api = setup();
+    // Value case: cleanup runs, the block's value flows through.
+    cleanup_runs = 0;
+    const ok = s1(block(api, "value", &blkOk), "ensure:", block(api, "value", &bumpCleanup));
+    try std.testing.expectEqual(@as(i64, 99), api.smallIntValue(ok));
+    try std.testing.expectEqual(@as(usize, 1), cleanup_runs);
+    // Error case: cleanup still runs (once), and the ORIGINAL error propagates out.
+    cleanup_runs = 0;
+    const err_out = s1(block(api, "value", &blkNilSend), "ensure:", block(api, "value", &bumpCleanup));
+    try std.testing.expect(isErr(err_out));
+    try std.testing.expect(s0(err_out, "kind") == api.intern("doesNotUnderstand"));
+    try std.testing.expectEqual(@as(usize, 1), cleanup_runs);
+}
+
+test "F7: on:do: matches a collection of kinds (multi-kind catch)" {
+    const api = id.id_init();
+    gapi = api;
+    prelude.bringUp(api);
+    collection.bringUp(api); // Vector, so a kind-set answers includes:
+    errmod.bringUp(api);
+    // A Vector of kinds: #[ #someOtherKind #doesNotUnderstand ].
+    const empty = s0(s1(api.mkSmallInt(1), "to:", api.mkSmallInt(0)), "asVector");
+    const kinds = s1(s1(empty, "add:", api.intern("someOtherKind")), "add:", api.intern("doesNotUnderstand"));
+    // The block's #doesNotUnderstand error is in the set → handler runs.
+    const caught = s2(block(api, "value", &blkNilSend), "on:do:", kinds, block(api, "value:", &handler7));
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(caught));
+    // A set that does NOT contain the kind → the error keeps propagating.
+    const other = s1(s1(empty, "add:", api.intern("aa")), "add:", api.intern("bb"));
+    const uncaught = s2(block(api, "value", &blkNilSend), "on:do:", other, block(api, "value:", &handler7));
+    try std.testing.expect(isErr(uncaught));
+    try std.testing.expect(s0(uncaught, "kind") == api.intern("doesNotUnderstand"));
+}

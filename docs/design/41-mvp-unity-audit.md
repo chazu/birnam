@@ -6,12 +6,11 @@ special-cases that violate the system's intended conceptual unity. Catalogued
 by five parallel investigators, then consolidated. **No code changed** in
 producing this — it is a tracking list.
 
-> **SCOREBOARD (2026-07-05).** ✅ **DONE:** §A, §B (incl. B8/B9), §C1–C3, §D (D1–D4),
-> E1. §D's resolution **inverted the North Star** — object model canonical, relational
-> reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
+> **SCOREBOARD (2026-07-05).** ✅ **DONE:** §A, §B (incl. B8/B9), **§C (C1–C5, C4 stale)**,
+> §D (D1–D4), E1. §D's resolution **inverted the North Star** — object model canonical,
+> relational reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green, unpushed. ⬜
-> **OPEN:** C4 (default DNU `@panic`), C5 (`ensure:` / multi-kind `on:do:` in
-> `error.zig`), E2 (receiver-blind `defineMethod:on:as:` intercept), E3 (eager `&`/`|`),
+> **OPEN:** E2 (receiver-blind `defineMethod:on:as:` intercept), E3 (eager `&`/`|`),
 > §F (FFI — **F2 is a real Linux `RTLD_DEFAULT=-2` bug**, F1/F3/F4), §G (10 marked-LOW
 > deferrals). Nothing is parked.
 
@@ -221,10 +220,11 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
 
 ## C. Errors-as-values not realised in PEG and Alien (they predate the error model)
 
-> **C1–C3 DONE 2026-07-05** (`623aa10` alien, `9f47014` peg). PEG + Alien failures
-> now return kinded F7 error VALUES (imported at call time, nil fallback if the error
-> module isn't loaded), so failures are distinguishable and propagate. C4/C5 (about
-> `error.zig` itself, not PEG/Alien) remain open.
+> **ALL OF §C DONE 2026-07-05.** C1–C3 (`623aa10` alien, `9f47014` peg): PEG + Alien
+> failures now return kinded F7 error VALUES (imported at call time, nil fallback if
+> the error module isn't loaded), so failures are distinguishable and propagate. C4
+> was **stale** (the error module already swaps the DNU terminus — see below). C5 done:
+> `ensure:` + multi-kind `on:do:` in `error.zig`.
 
 - [x] **C1 · HIGH — DONE (`623aa10`).** FFI failures return kinded errors —
   `#badSignature` / `#moduleNotLoaded` / `#symbolNotFound` (carries the name) /
@@ -236,13 +236,22 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
 - [x] **C3 · MED — DONE (`9f47014`).** An undefined rule reference is recorded
   (`Gram.undefined_rule`) and surfaces as a distinct `#undefinedRule` error (carrying
   the name), no longer the same silent nil as a legitimate non-match.
-- [ ] **C4 · MED · `id.zig:262`** — default `doesNotUnderstand:` is a hard
-  `@panic`; the DNU machinery is a proper overridable message but the default
-  terminus crashes the process rather than yielding an error value. Marked
-  deferral ("swappable once F7 gives errors a value form").
-- [ ] **C5 · MED · `error.zig`** — `ensure:` absent (no unwind-protect) despite
-  being in the documented model; `on:do:` matches only a single kind or wildcard
-  (no multi-kind, no handler stack).
+- [x] **C4 · MED — STALE (resolved by design).** The finding read the floor
+  `@panic` as the DNU terminus, but the error module (`libbirnam_id_error`, always
+  in the boot stack) **already swaps** `object_vt`'s `doesNotUnderstand:` at load to
+  mint a `#doesNotUnderstand` error (`error.zig` `objDnu`). Verified end-to-end:
+  `[nil frobnicate]` in a running image yields `isError` → true, `kind` →
+  `#doesNotUnderstand` — not a crash. The remaining floor `@panic` is the deliberate
+  minimal fallback for the bare floor with no error module (docs/34 "left it
+  swappable"). No code change; the finding was written before the swap landed.
+- [x] **C5 · MED — DONE 2026-07-05 (`error.zig`).** `ensure:` added on `object_vt`
+  (`[protected ensure: cleanup]` runs cleanup on value OR error, answers the protected
+  result — unwind-protect with no handler stack, which the value model doesn't need).
+  `on:do:` now also matches a **set** of kinds: `on: #[#a #b] do:` catches either —
+  pure dispatch (`includes:` to the kind-spec), so error.zig needn't know the collection
+  module exists; a bare non-wildcard symbol short-circuits to exact match (no junk DNU).
+  Regression tests in `error_test.zig` (+ collection bring-up for the multi-kind one);
+  demoed end-to-end in `examples/errors.birnam`.
 
 ## D. Object/relational unity is aspirational, and two things can desync
 
