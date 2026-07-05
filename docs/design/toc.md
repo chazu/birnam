@@ -98,6 +98,15 @@ order.
   format), the three survival problems (de-baked relocatable code, the mapped
   fact segment, exact-layout heap swizzling), replay as the portability
   fallback, merge-through-the-surface, and the four-slice build plan.
+- **Object canonical; relational derived** — `42-object-canonical-relational-derived.md`
+  Direction decision (2026-07-05) that **supersedes 10a's primacy claim**: the live
+  object model is canonical; the relational reading is a *derived* lens ("code is a
+  cache of facts" retired). The `[vt sel m]` fact store becomes a live, can't-desync
+  **meta-object protocol** (the consistency law: mirror = dict, or absent, never
+  wrong; mirroring lives on the dispatched `addMethod` seam, `api.method` is the raw
+  escape hatch, seed backfilled at init) plus a first-class relational data store for
+  the Date experiment (datalog rules reified as durable data). Settles all of the
+  §D audit items in `41-mvp-unity-audit.md`.
 - **The fact model** — `11-fact-model.md`
   Entities, attributes, values, transactions (E/A/V/T). Datomic-style five
   indexes (eavt / aevt / avet / vaet / meat). Cardinality (`:one` / `:many`).

@@ -1,5 +1,15 @@
 # North Star — The Cell Refounding
 
+> **⚠️ SUPERSEDED (2026-07-05) by [42 — The Object Model is Canonical; the Relational
+> Reading is Derived](42-object-canonical-relational-derived.md).** The *primacy
+> claim* below — facts canonical, object model / dispatch / code as caches over the
+> cell store ("send == get"; "code is a cache of facts") — is **reversed**: the live
+> object model is canonical, and the relational reading (including the `[vt sel m]`
+> mirror) is a *derived* lens. The mirror **mechanism** described here survives with
+> reversed polarity (it is the meta-object protocol); the *foundation* argument does
+> not. Read 42 first; this doc is retained for its still-useful framing of the mirror,
+> the caches-as-satellites topology, and the irreducible residue.
+
 > **Status:** direction **accepted 2026-06-25**. This is the conceptual center the
 > system is being steered toward. It is **not a rewrite** and not the rejected
 > mutable-object inversion (ADR-image-1 addendum, "the trap"). It is realized

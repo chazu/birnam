@@ -228,6 +228,14 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
 
 ## D. Object/relational unity is aspirational, and two things can desync
 
+> **Plan settled 2026-07-05 → [42 — Object canonical; relational derived](42-object-canonical-relational-derived.md).**
+> The "unity / send == get" framing is **retired**: the object model is canonical and
+> the relational reading is a *derived* lens. D1's mirror is **kept and completed**
+> (the meta-object protocol, under a consistency law — mirror = dict, or absent, never
+> wrong), not removed. D2 reifies rules as durable relational data. D3/D4 stay
+> mechanical. See 42 for the full decision and mechanism. Items below are the
+> as-found findings.
+
 - [ ] **D1 · HIGH · `store.zig:585`** — the "dispatch mirror" is opt-in and
   desyncable: only `addMethod:on:with:` writes the `[vt sel m]` fact; the entire
   native stdlib/prelude (plain `api.method`) produces no fact. A later plain
