@@ -273,6 +273,28 @@ test "codegen 3c.3: blocks compile to closures (params, capture, invoke)" {
     try std.testing.expectEqual(@as(i64, 44), try evalInt(api, "let k := 2; [20 with: [:x | [[x plus: k] double]]]"));
 }
 
+test "codegen §E2: the defineMethod:on:as: intercept is gated on the Reflect receiver" {
+    const api = setupFull();
+    // A non-Reflect object gets its OWN 3-arg defineMethod:on:as:. Were the compiler
+    // still intercepting receiver-blind, `[fake defineMethod:…]` would be rewritten to
+    // the 4-arg `…:source:` form and dispatch to a selector `fake` lacks → a DNU error
+    // (an error value, whose smallIntValue is not 42), rather than running fake's method.
+    const prog =
+        \\let fake := [Object clone];
+        \\[Reflect defineMethod: #defineMethod:on:as: on: fake as: [:self :a :b :c | 42]];
+        \\[fake defineMethod: #x on: #y as: #z]
+    ;
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, prog));
+    // Control: the real `[Reflect defineMethod:…]` still installs (source-recorded) and
+    // the method runs — the receiver-gated intercept didn't break the Reflect path.
+    api.method(api.smallint_vt, api.intern("plus:"), &mPlus);
+    const prog2 =
+        \\[Reflect defineMethod: #triple on: Integer as: [:self | [[self plus: self] plus: self]]];
+        \\[14 triple]
+    ;
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, prog2));
+}
+
 test "codegen §B9: lastError reflects only the top-level eval, cleared on success" {
     const api = setupFull();
     const Codegen = api.import("Codegen").?;

@@ -519,6 +519,19 @@ fn emitGeneralSend(buf: *std.ArrayList(u8), recvNode: Oop, sel: []const u8, argN
     return true;
 }
 
+/// Is `recv` syntactically the `Reflect` global? The source-recording lowering of
+/// `defineMethod:on:as:` (below) is a Reflect-SPECIFIC compile-time transform — it
+/// records the definition's span and, in artifact mode, precompiles the install. It
+/// must key on the RECEIVER, not just the selector, so a user object that happens to
+/// define its own `defineMethod:on:as:` compiles as an ordinary overridable send
+/// (audit §E2 — the intercept was receiver-blind). Matches the literal
+/// `[Reflect defineMethod: …]` shape all real code uses; an aliased `Reflect` simply
+/// falls back to a plain 3-arg send (correct, just not source-recorded).
+fn isReflectRecv(recv: Oop) bool {
+    const nd = skip(recv);
+    return ruleOf(nd) == r_ident and std.mem.eql(u8, text(nd), "Reflect");
+}
+
 /// Emit `[<recv> defineMethod: … on: … as: …]` as the 4-arg
 /// `defineMethod:on:as:source:` send, appending the definition's original source
 /// text (the whole send node's span) as a String 4th arg. The runtime records it
@@ -750,7 +763,7 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
             // threading the ORIGINAL source text so the method's portable source
             // lands in the store (docs/40 §4). `node` is the whole send — its span
             // is the re-evaluable definition.
-            if (std.mem.eql(u8, sel.items, "defineMethod:on:as:") and args.items.len == 3) {
+            if (std.mem.eql(u8, sel.items, "defineMethod:on:as:") and args.items.len == 3 and isReflectRecv(recv)) {
                 // Artifact mode (docs/40 slice 4): emit the method PRE-COMPILED —
                 // the trampoline as a static fn + a direct `birnam_method` install,
                 // so loading the artifact installs mapped code with no recompile.

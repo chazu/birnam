@@ -10,9 +10,9 @@ producing this — it is a tracking list.
 > §D (D1–D4), E1. §D's resolution **inverted the North Star** — object model canonical,
 > relational reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green, unpushed. ⬜
-> **OPEN:** E2 (receiver-blind `defineMethod:on:as:` intercept),
-> §F (FFI — **F2 is a real Linux `RTLD_DEFAULT=-2` bug**, F1/F3/F4), §G (10 marked-LOW
-> deferrals). Nothing is parked. (E3 short-circuit `and:`/`or:` DONE 2026-07-05.)
+> **OPEN:** §F (FFI — **F2 is a real Linux `RTLD_DEFAULT=-2` bug**, F1/F3/F4), §G (10
+> marked-LOW deferrals). Nothing is parked. (**All of §E done** 2026-07-05: E1 chained-
+> capture, E2 receiver-gated intercept, E3 short-circuit `and:`/`or:`.)
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -297,11 +297,16 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
   are still subtracted downstream, so no false captures). Regression test in
   `codegen_test.zig` — verified to fail without the fix. (Was introduced by `3264027`,
   chained same-category messages: emitter updated, capture pass not.)
-- [ ] **E2 · MED · `codegen.zig:735`** — compiler intercepts the literal selector
-  `defineMethod:on:as:`, receiver-blind; a user object with its own
-  `defineMethod:on:as:` gets a 4th `source:` arg silently appended (or in
-  artifact mode is compiled as a method install). Load-bearing for image/source
-  recording, but this one selector is not a real overridable send.
+- [x] **E2 · MED — DONE 2026-07-05 (`codegen.zig`).** The `defineMethod:on:as:` →
+  `…:source:` lowering (and the artifact-mode install) is now **gated on the receiver
+  being the `Reflect` global** (`isReflectRecv`: `skip(recv)` is an `r_ident` named
+  `Reflect`). A user object with its own `defineMethod:on:as:` compiles as an ordinary
+  overridable 3-arg send again — no silent 4th `source:` arg, no method-install
+  hijack. All 52 real call sites use the literal `[Reflect defineMethod: …]` shape, so
+  the transform still fires everywhere it should (an aliased `Reflect` degrades to a
+  plain send — correct, just not source-recorded). Regression in `codegen_test.zig`
+  (a fake receiver with its own `defineMethod:on:as:` returns its own value; a Reflect
+  control still installs + runs).
 - [x] **E3 · MED — DONE 2026-07-05 (`prelude.zig`).** Added block-taking `and:`/`or:`
   on the boolean vtable — they send `value` only on the deciding branch (mirroring
   `ifTrue:`), so `[false and: [| [10/0]]]` never evaluates the divide. `&`/`|` stay
