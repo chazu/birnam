@@ -538,10 +538,22 @@ fn genCallback(sig: Parsed) []u8 {
     return b.toOwnedSlice(ca) catch @panic("alien: oom");
 }
 
-/// Compile a callback for `blk` per `sig_raw` and answer its C function address
-/// as a SmallInt (usable wherever a `p` argument goes), or nil if the signature
-/// is invalid, returns a string, needs structs without the collection module, or
-/// compilation fails. Roots (blk, unit) for the life of the process.
+/// A kinded FFI error value (F7 error model, imported at call time), or nil if the
+/// error module isn't loaded (docs/42 §C1). Every FFI failure used to collapse to an
+/// indistinguishable silent nil; now the reason rides a `#kind` + message, so a
+/// caller can tell "symbol not found" from "malformed signature" from "compile
+/// failed", and the error PROPAGATES (DNU → self) instead of untagging into garbage.
+fn alienError(comptime kind: [:0]const u8, message: []const u8) Oop {
+    const ef = g_api.import("Error") orelse return g_api.nilObj;
+    return g_api.send(ef, g_api.intern("kind:message:"), &[_]Oop{
+        g_api.intern(kind.ptr), g_api.mkString(message.ptr, message.len),
+    }, 2);
+}
+
+/// Compile a callback for `blk` per `sig_raw` and answer its C function address as a
+/// SmallInt (usable wherever a `p` argument goes), or a kinded error (§C1) if the
+/// signature is invalid, returns a string, needs structs without the collection
+/// module, or compilation fails. Roots (blk, unit) for the life of the process.
 fn buildCallback(blk: Oop, sig_raw: []const u8) Oop {
     var arena_state = std.heap.ArenaAllocator.init(ca);
     defer arena_state.deinit();
@@ -549,13 +561,15 @@ fn buildCallback(blk: Oop, sig_raw: []const u8) Oop {
 
     const sigz = despace(sig_raw);
     defer ca.free(sigz);
-    if (sigz.len == 0) return g_api.nilObj;
-    const sig = parseSig(arena, sigz) orelse return g_api.nilObj;
-    if (sig.ret == .scalar and sig.ret.scalar == 's') return g_api.nilObj; // who would free it?
+    if (sigz.len == 0) return alienError("badSignature", "empty signature");
+    const sig = parseSig(arena, sigz) orelse return alienError("badSignature", "malformed signature");
+    if (sig.ret == .scalar and sig.ret.scalar == 's')
+        return alienError("badSignature", "a callback cannot return a string (who would free it?)");
 
     var vec_factory: Oop = null;
     if (sig.aggs.len > 0) {
-        vec_factory = g_api.import("Vector") orelse return g_api.nilObj;
+        vec_factory = g_api.import("Vector") orelse
+            return alienError("moduleNotLoaded", "a struct signature needs the collection module");
     }
 
     const src = genCallback(sig);
@@ -563,15 +577,17 @@ fn buildCallback(blk: Oop, sig_raw: []const u8) Oop {
     if (std.posix.getenv("ALIEN_DUMP") != null) std.debug.print("[alien] callback:\n{s}\n", .{src});
 
     const unit = s0(tcc, "new");
-    if (unit == g_api.nilObj) return g_api.nilObj;
-    if (s1(unit, "compile:", g_api.mkString(src.ptr, src.len)) == g_api.nilObj) return g_api.nilObj;
+    if (unit == g_api.nilObj) return alienError("compileFailed", "could not create a compile unit");
+    if (s1(unit, "compile:", g_api.mkString(src.ptr, src.len)) == g_api.nilObj)
+        return alienError("compileFailed", "the generated callback C did not compile");
     _ = s0(unit, "bindRuntime");
     addSym(unit, "__cbBlock", @intFromPtr(blk));
     if (vec_factory != null) addSym(unit, "__vecFactory", @intFromPtr(vec_factory));
-    if (s0(unit, "relocate") == g_api.nilObj) return g_api.nilObj;
+    if (s0(unit, "relocate") == g_api.nilObj)
+        return alienError("relocateFailed", "could not relocate the callback");
 
     const addr = s1(unit, "symbol:", g_api.mkString("__cb", 4)); // already a SmallInt
-    if (addr == g_api.nilObj) return g_api.nilObj;
+    if (addr == g_api.nilObj) return alienError("symbolNotFound", "the callback entry symbol was not found");
     g_callbacks.append(ca, .{ .blk = blk, .unit = unit }) catch @panic("alien: oom");
     return addr;
 }
@@ -604,32 +620,39 @@ fn buildWrapper(fn_name: []const u8, sig_raw: []const u8, sel: Oop, vt: Oop) Oop
 
     const sigz = despace(sig_raw);
     defer ca.free(sigz);
-    if (sigz.len == 0) return g_api.nilObj;
-    const sig = parseSig(arena, sigz) orelse return g_api.nilObj;
+    if (sigz.len == 0) return alienError("badSignature", "empty signature");
+    const sig = parseSig(arena, sigz) orelse return alienError("badSignature", "malformed signature");
 
     // Struct marshal shuttles values through positional Vectors: the shim needs
     // the Vector factory's (stable, permanent) address baked in.
     var vec_factory: Oop = null;
     if (sig.aggs.len > 0) {
-        vec_factory = g_api.import("Vector") orelse return g_api.nilObj;
+        vec_factory = g_api.import("Vector") orelse
+            return alienError("moduleNotLoaded", "a struct signature needs the collection module");
     }
 
     const fz = ca.allocSentinel(u8, fn_name.len, 0) catch @panic("alien: oom");
     defer ca.free(fz);
     @memcpy(fz[0..fn_name.len], fn_name);
-    const addr = g_api.dlsym(RTLD_DEFAULT, fz.ptr) orelse return g_api.nilObj; // not found
+    const addr = g_api.dlsym(RTLD_DEFAULT, fz.ptr) orelse {
+        var mb: [256]u8 = undefined;
+        const msg = std.fmt.bufPrint(&mb, "symbol not found: {s}", .{fn_name}) catch "symbol not found";
+        return alienError("symbolNotFound", msg);
+    };
 
     const shim = genShim(fn_name, sig);
     defer ca.free(shim);
     if (std.posix.getenv("ALIEN_DUMP") != null) std.debug.print("[alien] shim for {s}:\n{s}\n", .{ fn_name, shim });
 
     const unit = s0(tcc, "new");
-    if (unit == g_api.nilObj) return g_api.nilObj;
-    if (s1(unit, "compile:", g_api.mkString(shim.ptr, shim.len)) == g_api.nilObj) return g_api.nilObj;
+    if (unit == g_api.nilObj) return alienError("compileFailed", "could not create a compile unit");
+    if (s1(unit, "compile:", g_api.mkString(shim.ptr, shim.len)) == g_api.nilObj)
+        return alienError("compileFailed", "the generated shim C did not compile");
     _ = s0(unit, "bindRuntime"); // the marshaling shims (send / mkSmallInt / cstr / …)
     addSym(unit, fn_name, @intFromPtr(addr)); // the wrapped function itself
     if (vec_factory != null) addSym(unit, "__vecFactory", @intFromPtr(vec_factory));
-    if (s0(unit, "relocate") == g_api.nilObj) return g_api.nilObj;
+    if (s0(unit, "relocate") == g_api.nilObj)
+        return alienError("relocateFailed", "could not relocate the shim");
 
     const fname = "__shim";
     // `on:` names a prototype now (String/Integer = their prototypes) or a raw

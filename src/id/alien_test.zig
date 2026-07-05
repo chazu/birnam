@@ -285,13 +285,33 @@ test "alien: wrap libc pow — double receiver + double arg + double return" {
     try std.testing.expectEqual(@as(f64, 1024.0), api.floatValue(r));
 }
 
-test "alien: an invalid signature is rejected (nil, no crash)" {
+fn isErr(api: *idapi.IdApi, o: Oop) bool {
+    return api.send(o, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj;
+}
+fn errKind(api: *idapi.IdApi, o: Oop) Oop {
+    return api.send(o, api.intern("kind"), &[_]Oop{}, 0);
+}
+
+test "alien: an invalid signature is rejected with a #badSignature error (§C1)" {
     const api = setup();
     const vt = api.proto(api.object_vt);
-    // 'q' is not a known type char.
-    try std.testing.expect(wrap(api, "strlen", "i q", "nope:", vt) == api.nilObj);
+    // 'q' is not a known type char → an honest kinded error, not a silent nil.
+    const r1 = wrap(api, "strlen", "i q", "nope:", vt);
+    try std.testing.expect(isErr(api, r1));
+    try std.testing.expect(errKind(api, r1) == api.intern("badSignature"));
     // An empty signature is rejected too.
-    try std.testing.expect(wrap(api, "strlen", "", "nope2:", vt) == api.nilObj);
+    try std.testing.expect(isErr(api, wrap(api, "strlen", "", "nope2:", vt)));
+}
+
+test "alien: FFI failures are DISTINGUISHABLE by kind (§C1)" {
+    const api = setup();
+    const vt = api.proto(api.object_vt);
+    // A missing symbol and a malformed signature no longer collapse to the same nil.
+    const missing = wrap(api, "no_such_c_function_xyzzy", "i s", "m:", vt);
+    try std.testing.expect(errKind(api, missing) == api.intern("symbolNotFound"));
+    const badsig = wrap(api, "strlen", "i zzz", "b:", vt);
+    try std.testing.expect(errKind(api, badsig) == api.intern("badSignature"));
+    try std.testing.expect(errKind(api, missing) != errKind(api, badsig));
 }
 
 // -- struct-by-value ------------------------------------------------------------
@@ -502,27 +522,27 @@ test "alien: a non-Vector where a struct is expected answers nil (error module a
     try std.testing.expect(r == api.nilObj);
 }
 
-test "alien: invalid struct signatures are rejected (nil, no crash)" {
+test "alien: invalid struct signatures are rejected with #badSignature errors (§C1)" {
     const api = setup();
     const vt = api.proto(api.object_vt);
     // Unclosed brace.
-    try std.testing.expect(wrap(api, "birnam_t_sumPoint", "l {ll", "bad1", vt) == api.nilObj);
+    try std.testing.expect(isErr(api, wrap(api, "birnam_t_sumPoint", "l {ll", "bad1", vt)));
     // Empty struct.
-    try std.testing.expect(wrap(api, "birnam_t_sumPoint", "l {}", "bad2", vt) == api.nilObj);
+    try std.testing.expect(isErr(api, wrap(api, "birnam_t_sumPoint", "l {}", "bad2", vt)));
     // 'v' is not a field type.
-    try std.testing.expect(wrap(api, "birnam_t_sumPoint", "l {iv}", "bad3", vt) == api.nilObj);
+    try std.testing.expect(isErr(api, wrap(api, "birnam_t_sumPoint", "l {iv}", "bad3", vt)));
     // 's' fields are not supported (v1: freeing char* temporaries in aggregates).
-    try std.testing.expect(wrap(api, "birnam_t_sumPoint", "l {is}", "bad4", vt) == api.nilObj);
+    try std.testing.expect(isErr(api, wrap(api, "birnam_t_sumPoint", "l {is}", "bad4", vt)));
     // Zero-count array.
-    try std.testing.expect(wrap(api, "birnam_t_sumArr", "l {l 0i}", "bad5", vt) == api.nilObj);
+    try std.testing.expect(isErr(api, wrap(api, "birnam_t_sumArr", "l {l 0i}", "bad5", vt)));
     // Arrays are struct-field-only (C cannot pass a bare array by value).
-    try std.testing.expect(wrap(api, "birnam_t_sumArr", "l 3i", "bad6", vt) == api.nilObj);
+    try std.testing.expect(isErr(api, wrap(api, "birnam_t_sumArr", "l 3i", "bad6", vt)));
     // Struct arrays (count before a brace) are rejected.
-    try std.testing.expect(wrap(api, "birnam_t_sumLine", "l {3{ll}}", "bad7", vt) == api.nilObj);
+    try std.testing.expect(isErr(api, wrap(api, "birnam_t_sumLine", "l {3{ll}}", "bad7", vt)));
     // A struct return can't be 'v'-flavored nonsense: stray chars after a valid sig.
-    try std.testing.expect(wrap(api, "birnam_t_sumPoint", "l {ll}}", "bad8", vt) == api.nilObj);
+    try std.testing.expect(isErr(api, wrap(api, "birnam_t_sumPoint", "l {ll}}", "bad8", vt)));
     // 'v' as an argument.
-    try std.testing.expect(wrap(api, "birnam_t_sumPoint", "l v", "bad9", vt) == api.nilObj);
+    try std.testing.expect(isErr(api, wrap(api, "birnam_t_sumPoint", "l v", "bad9", vt)));
 }
 
 test "alien: signature whitespace is insignificant, even inside braces" {
@@ -611,15 +631,15 @@ test "alien: callback — a Vector answered by the callback returns to C as a st
     try std.testing.expectEqual(@as(i64, 809), api.smallIntValue(r)); // 8*100 + 9
 }
 
-test "alien: callback — invalid signatures are rejected (nil)" {
+test "alien: callback — invalid signatures are rejected with kinded errors (§C1)" {
     const api = setup();
     const resp = responder(api, "value:", &rDouble);
     // 's' return: nobody could free the C string.
-    try std.testing.expect(callback(api, resp, "s l") == api.nilObj);
+    try std.testing.expect(isErr(api, callback(api, resp, "s l")));
     // Unknown char / empty / malformed struct.
-    try std.testing.expect(callback(api, resp, "q l") == api.nilObj);
-    try std.testing.expect(callback(api, resp, "") == api.nilObj);
-    try std.testing.expect(callback(api, resp, "l {ll") == api.nilObj);
+    try std.testing.expect(isErr(api, callback(api, resp, "q l")));
+    try std.testing.expect(isErr(api, callback(api, resp, "")));
+    try std.testing.expect(isErr(api, callback(api, resp, "l {ll")));
 }
 
 test "alien: callback — survives GC churn (block + unit are rooted)" {
