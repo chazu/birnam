@@ -64,7 +64,16 @@ const Pat = struct {
 
 /// A grammar — the payload of a `Grammar` libid object: a list of named rules.
 const Rule = struct { name: Oop, pat: Oop };
-const Gram = struct { rules: std.ArrayList(Rule) = .{} };
+// A grammar carries its OWN last-parse diagnostics (docs/42 §C2): the furthest
+// input offset reached, and — if the failure was a reference to a rule the grammar
+// doesn't define (§C3) — that rule's name. Per-instance, NOT a module global that
+// interleaved parses on other grammars would clobber. Rule names are permanent
+// (interned symbols), so `undefined_rule` needs no GC tracing.
+const Gram = struct {
+    rules: std.ArrayList(Rule) = .{},
+    furthest: usize = 0,
+    undefined_rule: Oop = null,
+};
 
 // -- Well-known objects (set by bringUp) ------------------------------------
 
@@ -214,6 +223,7 @@ const RunState = struct {
     na: std.mem.Allocator, // node arena (caller-owned; the transient CST lives here)
     memo: *std.AutoHashMap(MemoKey, MemoEntry),
     furthest: usize = 0, // furthest failure position (for diagnostics later)
+    undefined_rule: Oop = null, // a rule_ref to a rule the grammar doesn't define (§C3)
 
     fn note(rs: *RunState, pos: usize) void {
         if (pos > rs.furthest) rs.furthest = pos;
@@ -297,7 +307,13 @@ fn matchPattern(rs: *RunState, pat: Oop, pos: usize) ?Match {
             return Match{ .end = pos, .children = no_children };
         },
         .rule_ref => {
-            const rule_pat = ruleNamed(rs.g, p.rule_name) orelse return null;
+            // A reference to a rule the grammar doesn't define is a GRAMMAR bug (a
+            // typo), not a legitimate non-match — record the name so a failed parse
+            // can report it distinctly (§C3) instead of a silent "syntax error".
+            const rule_pat = ruleNamed(rs.g, p.rule_name) orelse {
+                rs.undefined_rule = p.rule_name;
+                return null;
+            };
             const key = MemoKey{ .pat = rule_pat, .pos = pos }; // packrat at the rule boundary
             if (rs.memo.get(key)) |entry| {
                 if (!entry.ok) return null;
@@ -320,27 +336,32 @@ fn matchPattern(rs: *RunState, pat: Oop, pos: usize) ?Match {
 /// Parse `source` against `g` starting at the rule `root_name`. Allocates the
 /// transient CST in `na` (a caller-owned arena, freed after codegen). Returns the
 /// root `*Node` on success, or null on failure (richer diagnostics come later).
-/// The furthest input position any pattern reached before failing, from the most
-/// recent `parse` — a good "syntax error is around here" pointer for diagnostics
-/// (the PEG standard heuristic). Only meaningful when that parse returned null.
-pub var g_furthest: usize = 0;
-
 pub fn parse(api: *idapi.IdApi, na: std.mem.Allocator, g: Oop, source: []const u8, root_name: Oop) ?*Node {
     _ = api;
     var memo = std.AutoHashMap(MemoKey, MemoEntry).init(ca);
     defer memo.deinit();
     var rs = RunState{ .g = g, .source = source, .na = na, .memo = &memo };
-    const root_pat = ruleNamed(g, root_name) orelse return null;
+    // Publish this parse's diagnostics onto the grammar instance (not a module
+    // global): the furthest offset reached, and any undefined-rule name (§C2/§C3).
+    const gd = gramOf(g);
+    gd.undefined_rule = null;
+    const root_pat = ruleNamed(g, root_name) orelse {
+        gd.undefined_rule = root_name; // the ROOT rule itself is undefined
+        gd.furthest = 0;
+        return null;
+    };
     if (matchPattern(&rs, root_pat, 0)) |m| {
         // Full consumption is the caller's concern via the root rule (birnam's
         // `program` is `eof`-anchored, so a short match already fails there); this
         // primitive keeps prefix-matching semantics for other roots/tests.
-        g_furthest = rs.furthest;
+        gd.furthest = rs.furthest;
+        gd.undefined_rule = null; // a masked undefined-ref in a tried branch isn't an error
         const node = na.create(Node) catch @panic("peg: oom");
         node.* = .{ .rule = root_name, .start = 0, .end = m.end, .children = m.children };
         return node;
     }
-    g_furthest = rs.furthest;
+    gd.furthest = rs.furthest;
+    gd.undefined_rule = rs.undefined_rule;
     return null;
 }
 
@@ -522,25 +543,59 @@ fn mRuleIs(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     defineRule(self, asRuleSym(a[0]), a[1]);
     return self;
 }
+/// A kinded parse error value (F7 model, imported at call time), or nil if the error
+/// module isn't loaded (docs/42 §C2/§C3) — so a parse failure carries WHY, and the
+/// diagnostic rides the returned value instead of a clobberable module global.
+fn pegError(comptime kind: [:0]const u8, message: []const u8) Oop {
+    const ef = g_api.import("Error") orelse return g_api.nilObj;
+    return g_api.send(ef, g_api.intern("kind:message:"), &[_]Oop{
+        g_api.intern(kind.ptr), g_api.mkString(message.ptr, message.len),
+    }, 2);
+}
+
 fn mParseFrom(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     var arena = std.heap.ArenaAllocator.init(ca);
     defer arena.deinit();
-    const root = parse(g_api, arena.allocator(), self, strBytes(a[0]), asRuleSym(a[1])) orelse return g_api.nilObj;
+    const src = strBytes(a[0]);
+    const root = parse(g_api, arena.allocator(), self, src, asRuleSym(a[1])) orelse {
+        const gd = gramOf(self);
+        // §C3: a reference to an undefined rule is a distinct, nameable failure — a
+        // typo, not a mere non-match that once silently produced the same nil.
+        if (gd.undefined_rule) |ur| {
+            var mb: [256]u8 = undefined;
+            const msg = std.fmt.bufPrint(&mb, "undefined rule: {s}", .{std.mem.span(g_api.symbolName(ur))}) catch "undefined rule";
+            return pegError("undefinedRule", msg);
+        }
+        // §C2: a plain syntax error, located at the furthest offset reached.
+        var line: usize = 1;
+        var col: usize = 1;
+        var i: usize = 0;
+        const off = @min(gd.furthest, src.len);
+        while (i < off) : (i += 1) {
+            if (src[i] == '\n') {
+                line += 1;
+                col = 1;
+            } else col += 1;
+        }
+        var mb: [128]u8 = undefined;
+        const msg = std.fmt.bufPrint(&mb, "syntax error at line {d}, col {d}", .{ line, col }) catch "syntax error";
+        return pegError("syntaxError", msg);
+    };
     const cst = toCst(root);
     // The root now owns the tree (via its trace hook); drop the scratch roots.
     g_cst_scratch.clearRetainingCapacity();
     return cst;
 }
 
-/// `[aGrammar furthestFail]` — the furthest source offset reached by the most
-/// recent `parse:from:` before failing (a "the syntax error is around here"
-/// pointer). Only meaningful right after a parse that returned nil.
+/// `[aGrammar furthestFail]` — the furthest source offset reached by the grammar's
+/// most recent `parse:from:` before failing (a "the syntax error is around here"
+/// pointer). Per-instance state now, not a module global. Only meaningful right
+/// after a parse that returned nil / an error.
 fn mFurthestFail(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = self;
     _ = a;
     _ = n;
-    return g_api.mkSmallInt(@intCast(g_furthest));
+    return g_api.mkSmallInt(@intCast(gramOf(self).furthest));
 }
 
 // CstNode accessors (on cstnode_vt).

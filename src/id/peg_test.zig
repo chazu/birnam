@@ -8,12 +8,45 @@
 const std = @import("std");
 const id = @import("id.zig");
 const peg = @import("peg.zig");
+const err_mod = @import("error.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
 
 fn str(api: *idapi.IdApi, bytes: []const u8) Oop {
     return api.mkString(bytes.ptr, bytes.len);
+}
+
+test "peg §C2/§C3: parse failures are kinded error values, distinguishable by kind" {
+    const api = id.id_init();
+    peg.bringUp(api);
+    err_mod.bringUp(api); // so parse:from: can yield kinded error values
+
+    const g = peg.mkGrammar(api);
+    const number = api.intern("number");
+    const digit = api.intern("digit");
+    // number = digit+  — but `digit` is (for now) never defined: a typo.
+    peg.defineRule(g, number, peg.mkPlus(api, peg.mkRuleRef(api, digit)));
+
+    const parseFrom = api.intern("parse:from:");
+    const isError = api.intern("isError");
+    const kind = api.intern("kind");
+
+    // §C3: a reference to the undefined `digit` is a distinct #undefinedRule error,
+    // not the same silent nil a legitimate non-match once produced.
+    const r1 = api.send(g, parseFrom, &[_]Oop{ str(api, "123"), number }, 2);
+    try std.testing.expect(api.send(r1, isError, &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(r1, kind, &[_]Oop{}, 0) == api.intern("undefinedRule"));
+
+    // Now define digit; a non-digit input is a plain #syntaxError (a DIFFERENT kind).
+    peg.defineRule(g, digit, peg.mkCharset(api, &.{.{ .lo = '0', .hi = '9' }}));
+    const r2 = api.send(g, parseFrom, &[_]Oop{ str(api, "abc"), number }, 2);
+    try std.testing.expect(api.send(r2, isError, &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(r2, kind, &[_]Oop{}, 0) == api.intern("syntaxError"));
+
+    // A successful parse still yields a CST, not an error.
+    const r3 = api.send(g, parseFrom, &[_]Oop{ str(api, "42"), number }, 2);
+    try std.testing.expect(api.send(r3, isError, &[_]Oop{}, 0) == api.falseObj);
 }
 
 test "peg 3a: number grammar — charset + plus + rule-ref build a nested CST" {
@@ -103,9 +136,10 @@ test "peg 3a: the message (id) api — build + parse + walk CST through api.send
     try std.testing.expect(api.send(c0, api.intern("rule"), empty, 0) == digit);
     try std.testing.expect(api.send(root, api.intern("childAt:"), &[_]Oop{api.mkSmallInt(9)}, 1) == api.nilObj);
 
-    // Failure returns the canonical nil singleton (not Zig null).
+    // Failure surfaces as a kinded error value when the error module is loaded
+    // (§C2), or the canonical nil singleton otherwise — either way, not a CST.
     const bad = api.send(g, api.intern("parse:from:"), &[_]Oop{ str(api, "abc"), number }, 2);
-    try std.testing.expect(bad == api.nilObj);
+    try std.testing.expect(bad == api.nilObj or api.send(bad, api.intern("isError"), empty, 0) == api.trueObj);
 }
 
 test "peg 3a: opt + star + not, and left-recursion-free repetition" {

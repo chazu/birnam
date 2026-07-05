@@ -1264,7 +1264,12 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
     clearError();
 
     const cst = s1(lang, "parse:", src);
-    if (cst == g_api.nilObj) {
+    // Parse failure now surfaces as a kinded error VALUE when the error module is
+    // loaded (docs/42 §C2/§C3), or nil when it isn't — detect both. (Guarded on the
+    // protocol existing so the `isError` send can't DNU-panic in an error-free boot.)
+    const parse_failed = cst == g_api.nilObj or
+        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &[_]Oop{}, 0) == g_api.trueObj);
+    if (parse_failed) {
         // The parser tracks the furthest offset it reached — a good "the syntax
         // error is around here" pointer.
         const off: usize = @intCast(g_api.smallIntValue(s0(lang, "furthestFail")));
