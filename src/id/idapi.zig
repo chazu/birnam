@@ -187,7 +187,30 @@ pub const IdApi = extern struct {
     /// vtable and `object_vt` so a protocol authored once on the parent is found
     /// by every child via the ordinary `lookup` walk. Idempotent.
     setParent: *const fn (Oop, Oop) callconv(.c) void,
+
+    // -- The MOP mirror seam (docs/design/42 §D1; appended) ------------------
+    /// setMethodOverwriteHook(h): register a hook called `h(vt, sel)` just before
+    /// an EXISTING (vt,sel) binding is rebound in a vtable dict. The store uses it
+    /// to keep its `[vt sel m]` mirror from going stale (the consistency law:
+    /// mirror = the live dict binding, or absent, never a different value). Pass
+    /// null to clear. The hook must be pure (no send/alloc) — it runs mid-install.
+    setMethodOverwriteHook: *const fn (?MethodOverwriteHook) callconv(.c) void,
+    /// vtableCount() -> the number of vtables created so far (the registry length).
+    /// vtableAt(i) enumerates them: together they walk the whole type universe, so
+    /// the store can backfill the seed's selectors into the mirror at init.
+    vtableCount: *const fn () callconv(.c) usize,
+    /// vtableAt(i) -> the i-th registered vtable, or null past the end.
+    vtableAt: *const fn (usize) callconv(.c) Oop,
+    /// vtableSelectorAt(vt, i) -> the i-th selector bound DIRECTLY on `vt` (a
+    /// symbol), or null past the end. Enumerates the vtable's own method dict (not
+    /// the delegated chain) — behind mirror backfill and protocol reflection.
+    vtableSelectorAt: *const fn (Oop, usize) callconv(.c) Oop,
 };
+
+/// The method-overwrite hook (docs/42 §D1): `(vtable, selector)` of a binding about
+/// to be rebound, so the store can retract a now-stale mirror fact before the dict
+/// flips. Pure — no send/alloc (it runs mid-install, possibly reentrantly).
+pub const MethodOverwriteHook = *const fn (Oop, Oop) callconv(.c) void;
 
 /// Returned by `slotKind` when a vtable has no layout descriptor: the object
 /// can't be swizzled and the image defers it (counted, never dropped).

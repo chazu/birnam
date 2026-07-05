@@ -115,6 +115,47 @@ pub var s_dnu: *Symbol = undefined; // doesNotUnderstand:
 
 var booted = false;
 
+// -- The vtable registry + the method-overwrite hook (docs/design/42 §D1) ----
+//
+// Every vtable created through `newVtable` is registered here so a higher layer
+// (the store's MOP mirror) can enumerate the whole type universe — e.g. to
+// backfill the seed's selectors into the mirror at init. Permanent, append-only.
+var g_vtables: std.ArrayListUnmanaged(*Vtable) = .{};
+
+/// A method-overwrite hook: called with `(vtable, selector)` just before an
+/// EXISTING binding is rebound in the dict, so the store can keep its `[vt sel m]`
+/// mirror from going stale (the consistency law: mirror = dict, or absent, never a
+/// different value — docs/42). Null until the store registers one; the boot seed
+/// and any pre-store install fire nothing. Must be pure (no send/alloc): it runs
+/// mid-install, possibly reentrantly under the store's own tracked-install path.
+pub const MethodOverwriteHook = *const fn (Oop, Oop) callconv(.c) void;
+var g_method_overwrite_hook: ?MethodOverwriteHook = null;
+
+fn setMethodOverwriteHookC(h: ?MethodOverwriteHook) callconv(.c) void {
+    g_method_overwrite_hook = h;
+}
+
+/// vtableCount() -> how many vtables have been created (registry length).
+fn vtableCountC() callconv(.c) usize {
+    return g_vtables.items.len;
+}
+
+/// vtableAt(i) -> the i-th registered vtable as an Oop, or null past the end.
+fn vtableAtC(i: usize) callconv(.c) Oop {
+    if (i >= g_vtables.items.len) return null;
+    return oop(g_vtables.items[i]);
+}
+
+/// vtableSelectorAt(vt, i) -> the i-th selector bound DIRECTLY on `vt` (a symbol),
+/// or null past the end. Enumerates the vtable's own method dictionary (not the
+/// inherited/delegated chain) — the floor primitive behind mirror backfill and
+/// reflection over a type's protocol.
+fn vtableSelectorAtC(vt: Oop, i: usize) callconv(.c) Oop {
+    const v = asVtable(vt);
+    if (i >= v.tally) return null;
+    return v.keys.?[i];
+}
+
 // -- Raw allocation + the `-1` vtable-pointer trick -------------------------
 //
 // Every heap object is tracked in `g_blocks` (keyed by its object/payload
@@ -334,6 +375,11 @@ fn vtableAddMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     var i: usize = 0;
     while (i < vt.tally) : (i += 1) {
         if (vt.keys.?[i] == key) {
+            // Rebinding an existing (vt,sel): the store's mirror fact for it (if
+            // any) is about to go stale — let the hook retract it BEFORE the dict
+            // flips, so no observer ever reads a mirror value the dict contradicts
+            // (docs/42 §D1, the consistency law; retract→set ordering).
+            if (g_method_overwrite_hook) |h| h(self, key);
             vt.values.?[i] = method;
             return method;
         }
@@ -395,6 +441,7 @@ fn newVtable(parent: ?*Vtable) *Vtable {
     vt.layout_rest = 0;
     vt.layout_set = 0;
     vt.owner = null;
+    g_vtables.append(ca, vt) catch @panic("libid: oom"); // registry (docs/42 §D1)
     return vt;
 }
 
@@ -904,6 +951,10 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .ensurePrivateVtable = &ensurePrivateVtableC,
         .setOwner = &setOwnerC,
         .setParent = &setParentC,
+        .setMethodOverwriteHook = &setMethodOverwriteHookC,
+        .vtableCount = &vtableCountC,
+        .vtableAt = &vtableAtC,
+        .vtableSelectorAt = &vtableSelectorAtC,
     };
     // The floor's own layouts: no floor value type holds an Oop in its payload
     // (a String is {bytes-ptr, len}, an Integer/Float one i64/f64, the singletons

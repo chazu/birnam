@@ -85,6 +85,11 @@ pub var s_history: Oop = null; // the history-policy ATTRIBUTE
 var s_value3: Oop = null; // "value:value:value:" — the liveTriplesDo: block call
 pub var s_true: Oop = null;
 pub var s_false: Oop = null;
+// The mirror value for a NATIVELY-bound selector (docs/42 §D1): a GC-safe,
+// eq-safe symbol marker, never a raw fn pointer. User methods mirror their real
+// object; native primitives mirror this. Lets reflection see "vt responds to sel"
+// (presence) without storing an un-traceable fn pointer as a fact value.
+var s_primitive: Oop = null;
 
 // -- Payload access + the append-only log -----------------------------------
 
@@ -601,9 +606,30 @@ fn mTrackedAddMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const sel = args[0];
     const vt = args[1];
     const m = args[2];
+    // `api.method` fires the overwrite hook first (retracting any prior mirror fact
+    // for (vt,sel)), THEN we assert the new one — the law-preserving retract→set→
+    // assert order, so the mirror is never a stale value, only ever current or absent.
     g_api.method(vt, sel, @ptrCast(@alignCast(m.?))); // 1. authoritative dict
     _ = g_api.send(self, s_assert, &[_]Oop{ vt, sel, m }, 3); // 2. derived fact
     return self;
+}
+
+/// The method-overwrite hook (docs/42 §D1, the consistency law). When any path
+/// rebinds an existing (vt,sel) in the dict, an OBJECT-valued mirror fact for it is
+/// now stale — retract it so `currentValue(vt,sel)` never returns a method no longer
+/// bound. A `#primitive` marker (a native binding re-installed natively, e.g. an
+/// idempotent re-bringUp) stays valid and is left. Pure: touches only the fact log
+/// (no send/alloc), safe to run mid-install and reentrantly under `mTrackedAddMethod`.
+fn mirrorOverwriteHook(vt: Oop, sel: Oop) callconv(.c) void {
+    if (store_instance == null) return;
+    const st = stateOf(store_instance);
+    const cur = currentValueRawAsOf(st, vt, sel, null);
+    if (cur == null) return; // not mirrored — absent stays absent (honest)
+    // Identity, NOT `eq`: a mirror value may be a raw native fn pointer (not an
+    // Oop), and `eq` would read a vtable off it. The marker is a unique interned
+    // symbol, so pointer identity is exactly right — and total.
+    if (cur == s_primitive) return; // native marker stays valid
+    removeLive(st, vt, sel, cur); // stale object binding → retract (→ absent)
 }
 
 // -- The Globals scope (docs/36) --------------------------------------------
@@ -748,6 +774,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_attrCount = api.intern("attrCount:");
     s_attrAt = api.intern("attrAt:index:");
     s_value3 = api.intern("value:value:value:");
+    s_primitive = api.intern("primitive");
 
     g_globals_entity = api.intern("__globals__");
 
@@ -813,6 +840,12 @@ pub fn bringUp(api: *idapi.IdApi) void {
         _ = api.exportObj("GlobalsVt", globals_vt);
         _ = api.exportObj("Globals", globals_obj);
     }
+
+    // Interweave the mirror with the object model (docs/42 §D1): from now on, any
+    // rebind of a mirrored (vt,sel) retracts the stale fact — the mirror can no
+    // longer hold a wrong value. Registered AFTER the store's own methods install
+    // (those ran hook-free above), and idempotent across a reload.
+    api.setMethodOverwriteHook(&mirrorOverwriteHook);
 }
 
 /// Allocate a fresh store instance, initialize its state, and seed it. Used both

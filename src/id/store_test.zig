@@ -137,6 +137,13 @@ fn answer42(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return @ptrFromInt(42);
 }
 
+fn answer7(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = args;
+    _ = n;
+    return @ptrFromInt(7);
+}
+
 fn retract3(api: *idapi.IdApi, e: Oop, a: Oop, v: Oop) void {
     _ = api.send(store.store_instance, store.s_retract, &[_]Oop{ e, a, v }, 3);
 }
@@ -258,6 +265,34 @@ test "rung 2b.1: tracked dispatch mirror — one write, two representations; esc
     api.method(widget_vt, s_other, &answer42);
     try std.testing.expect(api.send(w, s_other, &[_]Oop{}, 0) != null); // dispatch works
     try std.testing.expect(cv(api, widget_vt, s_other) == null); // not mirrored
+}
+
+test "rung 2b.1: the mirror can't desync — a raw overwrite retracts the stale fact (docs/42 §D1)" {
+    const api = id.id_init();
+    store.bringUp(api);
+
+    const gadget_vt = api.proto(api.object_vt);
+    const s_go = api.intern("go");
+    const m1: Oop = @constCast(@ptrCast(&answer42));
+    const m2: Oop = @constCast(@ptrCast(&answer7));
+
+    // 1. Tracked install through the mirror: fact records m1.
+    _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ s_go, gadget_vt, m1 }, 3);
+    try std.testing.expect(cv(api, gadget_vt, s_go) == m1);
+
+    // 2. A raw (escape-hatch) install REBINDS (gadget_vt, go) in the dict to m2.
+    //    Before the fix the mirror kept pointing at the dead m1 (the desync bug).
+    api.method(gadget_vt, s_go, &answer7);
+
+    // 3. The mirror is now ABSENT (honest), never the stale m1 (wrong). The dict is
+    //    authoritative — dispatch answers m2's 7.
+    try std.testing.expect(cv(api, gadget_vt, s_go) == null);
+    const g = api.alloc(gadget_vt, 0);
+    try std.testing.expectEqual(@as(usize, 7), @intFromPtr(api.send(g, s_go, &[_]Oop{}, 0)));
+
+    // 4. Re-tracking through the mirror restores a CURRENT fact (m2), not a stale one.
+    _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ s_go, gadget_vt, m2 }, 3);
+    try std.testing.expect(cv(api, gadget_vt, s_go) == m2);
 }
 
 test "rung 2a.1: currentValue of an absent (e,a) is nil" {
