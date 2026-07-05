@@ -837,6 +837,20 @@ fn emitMapLit(buf: *std.ArrayList(u8), node: Oop, upto: usize) bool {
 // instance holding the current values of the captured variables. Invoking a block
 // (`[blk value: x]`) is just an ordinary keyword send — no special handling.
 
+/// Collect the value-position refs of a single message node (binary/unary/keyword);
+/// selector positions are not refs. Shared by the single-send and chained-send
+/// (`r_message`) paths so capture analysis scans exactly what `emit` references.
+fn collectRefsMsg(msg: Oop, set: *std.ArrayList([]const u8)) void {
+    const mr = ruleOf(msg);
+    if (mr == r_binaryMsg) {
+        collectRefs(child(msg, 1), set); // arg only (op is not a ref)
+    } else if (mr == r_keywordMsg) {
+        const nc = nchild(msg);
+        var i: usize = 1;
+        while (i < nc) : (i += 2) collectRefs(child(msg, i), set); // args
+    } // unaryMsg: selector ident is not a ref
+}
+
 /// Collect identifiers referenced as VALUES (receivers / args / primaries) under
 /// `node`, skipping selector positions. Descends into nested blocks so a block's
 /// transitive free variables (needed by inner blocks) are surfaced too.
@@ -853,13 +867,18 @@ fn collectRefs(node0: Oop, set: *std.ArrayList([]const u8)) void {
         collectRefs(child(node, 0), set); // receiver
         const msg = skip(child(node, 1));
         const mr = ruleOf(msg);
-        if (mr == r_binaryMsg) {
-            collectRefs(child(msg, 1), set); // arg only (op is not a ref)
-        } else if (mr == r_keywordMsg) {
+        if (mr == r_message) {
+            // A chain of same-category messages (>1 child, `emitSendChain`): each
+            // child is a binary/unary/keyword message applied left-to-right. The
+            // single-message branch below sees only one message; without this the
+            // chain's args are never scanned and their free variables go
+            // uncaptured — the generated C then references an undeclared name.
             const nc = nchild(msg);
-            var i: usize = 1;
-            while (i < nc) : (i += 2) collectRefs(child(msg, i), set); // args
-        } // unaryMsg: selector ident is not a ref
+            var i: usize = 0;
+            while (i < nc) : (i += 1) collectRefsMsg(skip(child(msg, i)), set);
+        } else {
+            collectRefsMsg(msg, set);
+        }
         return;
     }
     if (r == r_block) {

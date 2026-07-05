@@ -246,15 +246,18 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
 
 ## E. Compiler features half-wired
 
-- [ ] **E1 · HIGH · `codegen.zig:833` — CONFIRMED correctness bug** — chained-send
-  capture. `emitSendChain` (line 700) handles a message chain (`r_message`, ≥2
-  children); `collectRefs` (line 835) only inspects `child(node,1)` as a single
-  `binaryMsg`/`keywordMsg`. For a chain of length ≥2, `skip` doesn't collapse
-  the `r_message` wrapper, so it matches neither branch and every argument in the
-  chain is skipped by capture analysis while the emitter still references it.
-  `[:x | [x + base + 1]]` fails to capture `base` → generated C won't compile →
-  internal error. Introduced by `3264027` (chained same-category messages) —
-  emitter updated, capture pass not.
+- [x] **E1 · HIGH · CONFIRMED — FIXED 2026-07-04.** Chained-send capture. `emit`
+  routes an `r_message` chain (≥2 messages) to `emitSendChain`, but `collectRefs`
+  only handled the single-message shapes (`binaryMsg`/`keywordMsg`) — when
+  `mr == r_message` it fell through and scanned NONE of the chain's args, so a free
+  variable in a chain arg position (`[:x | [x + base + 1]]` → `base`) went
+  uncaptured; the generated C then referenced an undeclared name → compile failure
+  (nil block). Fix (`codegen.zig`): factored the per-message value-position scan into
+  `collectRefsMsg` and applied it to every message in an `r_message` chain, mirroring
+  `emitSendChain`. Purely additive (scans more positions; params + shadowing `let`s
+  are still subtracted downstream, so no false captures). Regression test in
+  `codegen_test.zig` — verified to fail without the fix. (Was introduced by `3264027`,
+  chained same-category messages: emitter updated, capture pass not.)
 - [ ] **E2 · MED · `codegen.zig:735`** — compiler intercepts the literal selector
   `defineMethod:on:as:`, receiver-blind; a user object with its own
   `defineMethod:on:as:` gets a 4th `source:` arg silently appended (or in

@@ -273,6 +273,19 @@ test "codegen 3c.3: blocks compile to closures (params, capture, invoke)" {
     try std.testing.expectEqual(@as(i64, 44), try evalInt(api, "let k := 2; [20 with: [:x | [[x plus: k] double]]]"));
 }
 
+test "codegen E1: a captured var in a chained send is not dropped by capture analysis" {
+    const api = setupFull();
+
+    // `x + base + 1` is a same-category CHAIN — one r_message node with two
+    // binaryMsg children — which the emitter folds via emitSendChain. The capture
+    // pass used to inspect only the single-message shape, so a free variable in a
+    // chain's arg position (`base`) was never captured; the generated C then
+    // referenced an undeclared name and failed to compile (→ nil block). Regression.
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let base := 31; let f := [:x | [x + base + 1]]; [f value: 10]"));
+    // longer chain, capture is not the first arg either.
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let a := 10; let b := 20; let f := [:x | [x + a + b + 2]]; [f value: 10]"));
+}
+
 test "codegen 3c.3: define-method installs a block as a native method on a type" {
     const api = setup();
 
