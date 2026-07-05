@@ -351,7 +351,7 @@ No arity caps in codegen.
 
 ## G. Marked deferrals (LOW — honest, catalogued for completeness)
 
-> **Cheap-end sweep DONE 2026-07-05 (`<this commit>`):** G7 (raw `==`→`eq()`), G5
+> **Cheap-end sweep DONE 2026-07-05 (`48b110b`):** G7 (raw `==`→`eq()`), G5
 > (fixpoint non-convergence now reported, not silent), G1 (comment honesty). The rest
 > stand — G2/G3 (image consistency, latent), G4 (left-recursion crash), G6 (Binding
 > object), G8 (layering), G9 (operator charset — a small feature, not a cleanup),
