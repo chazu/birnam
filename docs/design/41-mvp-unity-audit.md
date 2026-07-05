@@ -212,17 +212,21 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
 
 ## C. Errors-as-values not realised in PEG and Alien (they predate the error model)
 
-- [ ] **C1 · HIGH · `alien.zig` (throughout)** — every FFI failure collapses to
-  silent `nil`: bad signature, symbol-not-found, compile failure, relocate
-  failure, indistinguishable. Docstrings enumerate the reasons; none surfaced as
-  kinded values.
-- [ ] **C2 · HIGH · `peg.zig:328`** — parse failure returns `nil`; the diagnostic
-  (furthest-fail offset) rides a mutable module global `g_furthest`, "only
-  meaningful right after a parse that returned nil." Two interleaved parses
-  clobber it.
-- [ ] **C3 · MED · `peg.zig:300`** — undefined rule reference indistinguishable
-  from a legitimate non-match (both `nil`); a typo'd rule name silently never
-  matches. (Root cause of the old triple-stale peg-csv bug.)
+> **C1–C3 DONE 2026-07-05** (`623aa10` alien, `9f47014` peg). PEG + Alien failures
+> now return kinded F7 error VALUES (imported at call time, nil fallback if the error
+> module isn't loaded), so failures are distinguishable and propagate. C4/C5 (about
+> `error.zig` itself, not PEG/Alien) remain open.
+
+- [x] **C1 · HIGH — DONE (`623aa10`).** FFI failures return kinded errors —
+  `#badSignature` / `#moduleNotLoaded` / `#symbolNotFound` (carries the name) /
+  `#compileFailed` / `#relocateFailed` — on `wrap:`/`callback:`, instead of an
+  indistinguishable silent nil. (The shim CALL-path nil-on-bad-shape is unchanged.)
+- [x] **C2 · HIGH — DONE (`9f47014`).** `g_furthest` module global RETIRED → moved to
+  per-grammar state (`Gram.furthest`); `[g parse:from:]` returns a `#syntaxError`
+  value (with line:col) carrying the diagnostic, so nothing rides a clobberable global.
+- [x] **C3 · MED — DONE (`9f47014`).** An undefined rule reference is recorded
+  (`Gram.undefined_rule`) and surfaces as a distinct `#undefinedRule` error (carrying
+  the name), no longer the same silent nil as a legitimate non-match.
 - [ ] **C4 · MED · `id.zig:262`** — default `doesNotUnderstand:` is a hard
   `@panic`; the DNU machinery is a proper overridable message but the default
   terminus crashes the process rather than yielding an error value. Marked
