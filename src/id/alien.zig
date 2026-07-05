@@ -599,9 +599,15 @@ fn mCallback(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return buildCallback(a[0], strBytes(a[1]));
 }
 
-// The process-wide symbol search handle (macOS/Linux RTLD_DEFAULT = -2): find a
-// symbol in the main program or any loaded library.
-const RTLD_DEFAULT: ?*anyopaque = @ptrFromInt(@as(usize, @bitCast(@as(isize, -2))));
+// The process-wide symbol search handle: find a symbol in the main program or any
+// loaded library. Its value is PLATFORM-SPECIFIC — the Darwin dyld ABI uses the
+// sentinel `(void*)-2`, while glibc/musl define `RTLD_DEFAULT` as `(void*)0` (NULL).
+// Getting this wrong makes every `wrap:` fail to resolve its symbol (audit §F2 —
+// the old unconditional `-2` returned #symbolNotFound for everything on Linux).
+const RTLD_DEFAULT: ?*anyopaque = switch (@import("builtin").os.tag) {
+    .macos, .ios, .tvos, .watchos, .visionos => @ptrFromInt(@as(usize, @bitCast(@as(isize, -2)))),
+    else => null, // glibc/musl: RTLD_DEFAULT == (void*)0
+};
 
 /// Patch a unit's external symbol `name` to a raw address before relocation.
 fn addSym(unit: Oop, name: []const u8, addr: usize) void {

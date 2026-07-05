@@ -10,9 +10,10 @@ producing this — it is a tracking list.
 > §D (D1–D4), E1. §D's resolution **inverted the North Star** — object model canonical,
 > relational reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green, unpushed. ⬜
-> **OPEN:** §F (FFI — **F2 is a real Linux `RTLD_DEFAULT=-2` bug**, F1/F3/F4), §G (10
-> marked-LOW deferrals). Nothing is parked. (**All of §E done** 2026-07-05: E1 chained-
-> capture, E2 receiver-gated intercept, E3 short-circuit `and:`/`or:`.)
+> **OPEN:** §F **F1/F3/F4** (one FFI-surface arc needing a boxed 64-bit word/pointer
+> type — all latent on darwin; **F2 the real Linux bug is DONE**), §G (10 marked-LOW
+> deferrals). Nothing is parked. (**All of §E done** 2026-07-05: E1 chained-capture,
+> E2 receiver-gated intercept, E3 short-circuit `and:`/`or:`.)
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -322,12 +323,24 @@ No arity caps in codegen.
 
 ## F. FFI is a reduced re-implementation vs the documented (attic libffi) surface
 
-- [ ] **F1 · HIGH (latent) · `alien.zig:259`** — 63-bit SmallInt box truncates C
+> **F2 DONE 2026-07-05** (the one clean, self-contained platform bug). **F1/F3/F4 are
+> one coherent FFI-surface arc** sharing a prerequisite: a **boxed 64-bit word/pointer
+> type**. F1 (box a full `long`/pointer without truncation) and F4 (pointer deref /
+> out-params) both need it — a valid pointer legitimately has high bits, so the SmallInt
+> box can't hold it and errors-on-overflow is wrong for `p`; F3 (unsigned) needs the same
+> box to carry a `uint64_t` with the top bit set. Best done together as a deliberate arc,
+> not piecemeal — and all latent on darwin (the dev platform), where the box truncation
+> only bites values ≥ 2⁶². Deferred for a focused FFI session.
+
+- [ ] **F1 · HIGH (latent) · `alien.zig:271,436`** — 63-bit SmallInt box truncates C
   `long`/pointers unchecked (same class as the known `peekInt` overflow); a
-  64-bit mask/handle loses its top bit, no `#overflow`.
-- [ ] **F2 · MED · `alien.zig:76`** — `RTLD_DEFAULT = -2` is macOS-only; glibc/musl
-  use `(void*)0`. Every `wrap:` would silently return nil on Linux. Real
-  platform bug (comment is factually wrong).
+  64-bit mask/handle loses its top bit, no `#overflow`. Needs a boxed word/pointer
+  type (shared with F4).
+- [x] **F2 · MED — DONE 2026-07-05 (`alien.zig`).** `RTLD_DEFAULT` is now
+  platform-conditional (`@import("builtin").os.tag`): the Darwin dyld sentinel
+  `(void*)-2` on Apple targets, `null` (== glibc/musl `(void*)0`) elsewhere. The old
+  unconditional `-2` made every `wrap:` return `#symbolNotFound` on Linux. Darwin path
+  unchanged — `test-alien` + `examples/ffi.birnam` (div/inet_ntoa/callback) still green.
 - [ ] **F3 · MED · `alien.zig` (grammar)** — no unsigned scalar types;
   `size_t`/`uint64_t` masquerade as signed, unmarshalled as signed → large
   values return negative.
