@@ -87,6 +87,7 @@ pub var symbol_vt: *Vtable = undefined;
 pub var string_vt: *Vtable = undefined; // the vtable of (uninterned) byte strings
 pub var smallint_vt: *Vtable = undefined; // the vtable of boxed Integers (name historical)
 pub var float_vt: *Vtable = undefined; // the vtable of boxed f64s (the floor's only float)
+pub var word_vt: *Vtable = undefined; // the vtable of boxed 64-bit machine words (FFI, §F)
 pub var nil_vt: *Vtable = undefined;
 pub var bool_vt: *Vtable = undefined; // shared by true_obj + false_obj
 
@@ -103,6 +104,7 @@ pub var false_obj: Oop = undefined;
 pub var object_proto: Oop = undefined; // a blank plain object
 pub var integer_proto: Oop = undefined; // a boxed 0
 pub var float_proto: Oop = undefined; // a boxed 0.0
+pub var word_proto: Oop = undefined; // a boxed 0-word (the Word prototype)
 pub var string_proto: Oop = undefined; // the empty string
 var symbol_list: *Vtable = undefined; // the intern table (keys = symbols)
 var env: *Vtable = undefined; // the export environment (keys = symbols, values = objects)
@@ -289,6 +291,32 @@ pub fn isFloat(o: Oop) bool {
 }
 pub fn floatValue(o: Oop) f64 {
     return asFloat(o).value;
+}
+
+// -- Word: an opaque 64-bit machine word (a boxed usize) ---------------------
+// SmallInt's low-bit tag caps it at 63 bits, so a full C `long` / `void*` /
+// `unsigned long` can't ride immediate — the FFI (§F) needs the full width. A
+// Word is a heap object whose payload is one raw 64-bit word; the reader decides
+// how to interpret the bits (signed long, pointer, unsigned). Its vtable at [-1]
+// is `word_vt`. Like Float, the payload is `slot_raw`: even a bit pattern that
+// looks like a live pointer is NOT traced/swizzled — a C pointer is not an Oop —
+// which only over-retains under conservative GC, never unsafe.
+
+pub const Word = extern struct { value: u64 };
+inline fn asWord(o: Oop) *Word {
+    return @ptrCast(@alignCast(o.?));
+}
+pub fn mkWord(v: u64) Oop {
+    const obj = allocRaw(@sizeOf(Word), .collectable);
+    setVtable(obj, word_vt);
+    asWord(obj).* = .{ .value = v };
+    return obj;
+}
+pub fn isWord(o: Oop) bool {
+    return o != null and vtSlot(o).* == word_vt;
+}
+pub fn wordValue(o: Oop) u64 {
+    return asWord(o).value;
 }
 
 inline fn oop(p: anytype) Oop {
@@ -501,6 +529,7 @@ pub fn boot() void {
     smallint_vt = newVtable(object_vt);
     string_vt = newVtable(object_vt);
     float_vt = newVtable(object_vt);
+    word_vt = newVtable(object_vt);
     nil_vt = newVtable(object_vt);
     bool_vt = newVtable(object_vt);
     nil_obj = allocRaw(0, .permanent);
@@ -703,6 +732,15 @@ fn floatValueC(o: Oop) callconv(.c) f64 {
 }
 fn isFloatC(o: Oop) callconv(.c) c_int {
     return if (isFloat(o)) 1 else 0;
+}
+fn mkWordC(v: u64) callconv(.c) Oop {
+    return mkWord(v);
+}
+fn wordValueC(o: Oop) callconv(.c) u64 {
+    return wordValue(o);
+}
+fn isWordC(o: Oop) callconv(.c) c_int {
+    return if (isWord(o)) 1 else 0;
 }
 fn vtableOfC(o: Oop) callconv(.c) Oop {
     // Total: a value with no vtable slot (e.g. a raw method trampoline that leaked
@@ -952,6 +990,10 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .mkFloat = &mkFloatC,
         .floatValue = &floatValueC,
         .isFloat = &isFloatC,
+        .mkWord = &mkWordC,
+        .wordValue = &wordValueC,
+        .isWord = &isWordC,
+        .word_vt = oop(word_vt),
         .setLayout = &setLayoutC,
         .gcSetPrecise = &gcSetPreciseC,
         .objectPayloadSize = &objectPayloadSizeC,
@@ -972,6 +1014,7 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
     setLayoutC(oop(string_vt), null, 0, idapi.slot_raw);
     setLayoutC(oop(smallint_vt), null, 0, idapi.slot_raw);
     setLayoutC(oop(float_vt), null, 0, idapi.slot_raw);
+    setLayoutC(oop(word_vt), null, 0, idapi.slot_raw);
     setLayoutC(oop(nil_vt), null, 0, idapi.slot_raw);
     setLayoutC(oop(bool_vt), null, 0, idapi.slot_raw);
 
@@ -982,10 +1025,12 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
     setVtable(object_proto, object_vt);
     integer_proto = mkSmallInt(0);
     float_proto = mkFloat(0);
+    word_proto = mkWord(0);
     string_proto = mkString("");
     object_vt.owner = object_proto;
     smallint_vt.owner = integer_proto;
     float_vt.owner = float_proto;
+    word_vt.owner = word_proto;
     string_vt.owner = string_proto;
     nil_vt.owner = nil_obj; // nil is its own prototype
     bool_vt.owner = true_obj; // extend booleans via `Boolean` (bound to true)
@@ -994,6 +1039,7 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
     _ = exportObj("Object", object_proto);
     _ = exportObj("Integer", integer_proto);
     _ = exportObj("Float", float_proto);
+    _ = exportObj("Word", word_proto);
     _ = exportObj("String", string_proto);
     _ = exportObj("Boolean", true_obj);
     _ = exportObj("Vtable", oop(vtable_vt));

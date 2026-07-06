@@ -178,3 +178,41 @@ test "prelude: to:do: iterates inclusively" {
     _ = api.send(api.mkSmallInt(1), api.intern("to:do:"), &[_]Oop{ api.mkSmallInt(5), blk }, 2);
     try std.testing.expectEqual(@as(i64, 15), loop_sum); // 1+2+3+4+5 inclusive
 }
+
+test "prelude: Word — full-width round-trip, value =, printString, asInteger, isNull" {
+    const api = setup();
+
+    // The whole point: a value with bit 63 set that SmallInt (63-bit) cannot hold.
+    const big: u64 = 0xDEAD_BEEF_CAFE_F00D;
+    const w = api.mkWord(big);
+    try std.testing.expect(api.isWord(w) != 0);
+    try std.testing.expectEqual(big, api.wordValue(w)); // no truncation
+
+    // printString renders hex, dispatched via send.
+    const ps = api.send(w, api.intern("printString"), &[_]Oop{}, 0);
+    var len: usize = 0;
+    try std.testing.expectEqualStrings("0xdeadbeefcafef00d", api.stringBytes(ps, &len)[0..len]);
+
+    // Equality is per-type, by VALUE: two distinct boxes with the same payload are
+    // equal; different payloads are not; a Word never equals a number.
+    const w2 = api.mkWord(big);
+    try std.testing.expect(w != w2); // distinct heap objects
+    try std.testing.expect(s1(api, w, "=", w2) == api.trueObj);
+    try std.testing.expect(s1(api, w, "=", api.mkWord(1)) == api.falseObj);
+    try std.testing.expect(s1(api, w, "=", api.mkSmallInt(0)) == api.falseObj);
+
+    // isNull tracks the zero word; asInteger extracts a small payload but refuses
+    // one that overflows Integer (which is exactly what Word exists to hold).
+    try std.testing.expect(api.send(api.mkWord(0), api.intern("isNull"), &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(w, api.intern("isNull"), &[_]Oop{}, 0) == api.falseObj);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(api.send(api.mkWord(42), api.intern("asInteger"), &[_]Oop{}, 0)));
+    try std.testing.expect(api.send(w, api.intern("asInteger"), &[_]Oop{}, 0) != api.nilObj); // an #overflow error value, not a crash
+
+    // The `Word` name is the family prototype: it owns word_vt, so it IS a Word and
+    // `clone` copies it (a fresh zero word).
+    const proto = api.import("Word");
+    try std.testing.expect(api.isWord(proto) != 0);
+    const cloned = api.send(proto, api.intern("clone"), &[_]Oop{}, 0);
+    try std.testing.expect(api.isWord(cloned) != 0);
+    try std.testing.expect(api.send(cloned, api.intern("isNull"), &[_]Oop{}, 0) == api.trueObj);
+}

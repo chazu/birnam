@@ -208,6 +208,16 @@ pub const IdApi = extern struct {
     /// vtableParent(vt) -> vt's delegation parent, or null at the top of the chain.
     /// Walk it to tell a real type (reaches `object_vt`) from an internal dict.
     vtableParent: *const fn (Oop) callconv(.c) Oop,
+    /// mkWord(v) -> a boxed 64-bit machine word (opaque; a full C `long`/`void*`/
+    /// unsigned that SmallInt's 63-bit tag can't hold without truncation, §F). The
+    /// reader interprets the raw bits (signed long, pointer, unsigned).
+    mkWord: *const fn (u64) callconv(.c) Oop,
+    /// wordValue(o) -> the raw 64-bit payload of a Word.
+    wordValue: *const fn (Oop) callconv(.c) u64,
+    /// isWord(o) -> 1 if `o` is a Word, else 0.
+    isWord: *const fn (Oop) callconv(.c) c_int,
+    /// The Word family's vtable (extend it via `Word` the prototype, §F).
+    word_vt: Oop,
 };
 
 /// The method-overwrite hook (docs/42 §D1): `(vtable, selector)` of a binding about

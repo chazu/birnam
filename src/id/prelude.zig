@@ -362,6 +362,39 @@ fn fPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkString(s2.ptr, s2.len);
 }
 
+// -- Word (word_vt): the opaque 64-bit FFI word ------------------------------
+// A Word is a raw machine word (a full C long / pointer / unsigned that overflows
+// SmallInt). It carries no arithmetic — it round-trips through the FFI and prints
+// as hex. Equality is per-type by VALUE (mirroring iEq/fEq): two Words are equal
+// iff their payloads match; a Word never equals a number of any other type.
+fn wPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    var buf: [24]u8 = undefined;
+    const s = std.fmt.bufPrint(&buf, "0x{x}", .{g_api.wordValue(self)}) catch return g_api.nilObj;
+    return g_api.mkString(s.ptr, s.len);
+}
+fn wEq(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    if (g_api.isWord(a[0]) == 0) return g_api.falseObj;
+    return boolean(g_api.wordValue(self) == g_api.wordValue(a[0]));
+}
+/// `[aWord asInteger]` — the payload as an Integer, if it fits SmallInt's range
+/// (a top-bit-set word is `#overflow`; that's what Word exists to hold losslessly).
+fn wAsInteger(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const v = g_api.wordValue(self);
+    if (v > @as(u64, @intCast(SMALLINT_MAX))) return mkErr("overflow", "word out of Integer range");
+    return mki(@intCast(v));
+}
+/// `[aWord isNull]` — true iff the payload is 0 (a null pointer / zero word).
+fn wIsNull(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return boolean(g_api.wordValue(self) == 0);
+}
+
 /// `[start to: end do: aBlock]` — invoke `[aBlock value: i]` for i in start..end
 /// (inclusive). Returns the receiver.
 fn iToDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -613,6 +646,13 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(flt_vt, api.intern("rounded"), &fRounded);
     api.method(flt_vt, api.intern("sqrt"), &fSqrt);
     api.method(flt_vt, api.intern("printString"), &fPrintString);
+
+    // Word (opaque 64-bit FFI word): no arithmetic, just identity/round-trip.
+    const wrd_vt = api.word_vt;
+    api.method(wrd_vt, api.intern("printString"), &wPrintString);
+    api.method(wrd_vt, api.intern("="), &wEq);
+    api.method(wrd_vt, api.intern("asInteger"), &wAsInteger);
+    api.method(wrd_vt, api.intern("isNull"), &wIsNull);
 
     // A default printString on Object so any object can be displayed; specific
     // types override it. (Installed before the type-specific ones below.)
