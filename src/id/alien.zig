@@ -19,7 +19,7 @@
 //! A SIGNATURE is a string: the first type is the RETURN, the rest are the
 //! ARGUMENT types, one per birnam argument (whitespace ignored):
 //!   i  int   (32-bit; a SmallInt)     s  const char* (a String; freed after call)
-//!   l  long  (64-bit; a SmallInt)     p  void* (a pointer, boxed in a SmallInt)
+//!   l  long  (63-bit; a SmallInt)     p  void* (an opaque full-width Word)
 //!   d  double (a Float)               f  float  (a Float; narrowed at the call)
 //!   v  void  (return only; → nil)
 //!   {…}  a struct BY VALUE — braces around its field types, e.g. "{ll}" =
@@ -260,7 +260,9 @@ fn putScalarUntag(b: *std.ArrayList(u8), lhs: []const u8, c: u8, e: []const u8) 
         'l' => putFmt(b, "{s} = birnam_smallIntValue({s});\n", .{ lhs, e }),
         'd' => putFmt(b, "{s} = birnam_floatValue({s});\n", .{ lhs, e }),
         'f' => putFmt(b, "{s} = (float)birnam_floatValue({s});\n", .{ lhs, e }),
-        'p' => putFmt(b, "{s} = (void*)birnam_smallIntValue({s});\n", .{ lhs, e }),
+        // A pointer is opaque and full-width: it rides a boxed Word, not a 63-bit
+        // SmallInt, so a high-bit address survives round-trip (§F F1/F4).
+        'p' => putFmt(b, "{s} = (void*)birnam_wordValue({s});\n", .{ lhs, e }),
         else => unreachable,
     }
 }
@@ -268,7 +270,8 @@ fn putScalarUntag(b: *std.ArrayList(u8), lhs: []const u8, c: u8, e: []const u8) 
 /// The C expression boxing scalar expression `x` (of scalar char `c`) as an Oop.
 fn putScalarBox(b: *std.ArrayList(u8), c: u8, x: []const u8) void {
     switch (c) {
-        'i', 'l', 'p' => putFmt(b, "birnam_mkSmallInt((long)({s}))", .{x}),
+        'i', 'l' => putFmt(b, "birnam_mkSmallInt((long)({s}))", .{x}),
+        'p' => putFmt(b, "birnam_mkWord((unsigned long)({s}))", .{x}),
         'd', 'f' => putFmt(b, "birnam_mkFloat((double)({s}))", .{x}),
         else => unreachable,
     }
@@ -286,6 +289,8 @@ fn putPreamble(b: *std.ArrayList(u8), has_aggs: bool) void {
         \\extern long birnam_smallIntValue(void*);
         \\extern void* birnam_mkFloat(double);
         \\extern double birnam_floatValue(void*);
+        \\extern void* birnam_mkWord(unsigned long);
+        \\extern unsigned long birnam_wordValue(void*);
         \\extern const char* birnam_cstr(void*);
         \\extern void birnam_free_cstr(const char*);
         \\extern void* birnam_mkString(const char*, long);
@@ -433,7 +438,8 @@ fn genShim(fn_name: []const u8, sig: Parsed) []u8 {
     // Marshal the result.
     switch (sig.ret) {
         .scalar => |c| switch (c) {
-            'i', 'l', 'p' => put(&b, "return birnam_mkSmallInt((long)__r);\n"),
+            'i', 'l' => put(&b, "return birnam_mkSmallInt((long)__r);\n"),
+            'p' => put(&b, "return birnam_mkWord((unsigned long)__r);\n"),
             'd', 'f' => put(&b, "return birnam_mkFloat((double)__r);\n"),
             's' => put(&b, "return __r ? birnam_mkString(__r, strlen(__r)) : birnam_nil();\n"),
             'v' => put(&b, "return birnam_nil();\n"),
@@ -526,7 +532,7 @@ fn genCallback(sig: Parsed) []u8 {
             'v' => put(&b, "(void)r;\n"),
             'i' => put(&b, "return (int)birnam_smallIntValue(r);\n"),
             'l' => put(&b, "return birnam_smallIntValue(r);\n"),
-            'p' => put(&b, "return (void*)birnam_smallIntValue(r);\n"),
+            'p' => put(&b, "return (void*)birnam_wordValue(r);\n"),
             'd' => put(&b, "return birnam_floatValue(r);\n"),
             'f' => put(&b, "return (float)birnam_floatValue(r);\n"),
             else => unreachable, // 's' rejected in buildCallback

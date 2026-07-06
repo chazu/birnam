@@ -91,6 +91,15 @@ export fn birnam_t_addPoints(a: CPoint, b: CPoint) CPoint {
     return .{ .x = a.x + b.x, .y = a.y + b.y };
 }
 
+// Pointer round-trip: a bit-63-set address that a 63-bit SmallInt cannot hold.
+// Never dereferenced — only its bits are checked, so a bogus value is safe.
+export fn birnam_t_highPtr() ?*anyopaque {
+    return @ptrFromInt(0xFFFF_0000_1234_5678);
+}
+export fn birnam_t_ptrIdentity(p: ?*anyopaque) ?*anyopaque {
+    return p;
+}
+
 const CVec2 = extern struct { x: f64, y: f64 }; // an HFA of doubles on arm64
 export fn birnam_t_dotVec2(a: CVec2, b: CVec2) f64 {
     return a.x * b.x + a.y * b.y;
@@ -657,4 +666,20 @@ test "alien: callback — survives GC churn (block + unit are rooted)" {
 
     const r = api.send(cb, api.intern("applyWith2:"), &[_]Oop{api.mkSmallInt(21)}, 1);
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r));
+}
+
+test "alien: a pointer return is a full-width Word, round-tripped through a p arg" {
+    const api = setup();
+    // `p` return (bit 63 set): must come back as a Word, NOT a truncated SmallInt.
+    _ = wrap(api, "birnam_t_highPtr", "p", "highPtr", api.word_vt);
+    const ptr = api.send(api.mkWord(0), api.intern("highPtr"), &[_]Oop{}, 0);
+    try std.testing.expect(api.isWord(ptr) != 0);
+    try std.testing.expectEqual(@as(u64, 0xFFFF_0000_1234_5678), api.wordValue(ptr));
+
+    // Round-trip: the Word receiver IS the `p` argument (receiver = first C arg),
+    // so identity returns the very same address, still full-width.
+    _ = wrap(api, "birnam_t_ptrIdentity", "p p", "idPtr", api.word_vt);
+    const back = api.send(ptr, api.intern("idPtr"), &[_]Oop{}, 0);
+    try std.testing.expect(api.isWord(back) != 0);
+    try std.testing.expectEqual(api.wordValue(ptr), api.wordValue(back));
 }

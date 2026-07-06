@@ -170,6 +170,12 @@ fn rtMkFloat(v: f64) callconv(.c) Oop {
 fn rtFloatValue(o: Oop) callconv(.c) f64 {
     return g_api.floatValue(o);
 }
+fn rtMkWord(v: u64) callconv(.c) Oop {
+    return g_api.mkWord(v);
+}
+fn rtWordValue(o: Oop) callconv(.c) u64 {
+    return g_api.wordValue(o);
+}
 fn rtMkString(p: [*]const u8, n: usize) callconv(.c) Oop {
     return g_api.mkString(p, n);
 }
@@ -237,6 +243,8 @@ comptime {
     @export(&rtSmallIntValue, .{ .name = "birnam_smallIntValue" });
     @export(&rtMkFloat, .{ .name = "birnam_mkFloat" });
     @export(&rtFloatValue, .{ .name = "birnam_floatValue" });
+    @export(&rtMkWord, .{ .name = "birnam_mkWord" });
+    @export(&rtWordValue, .{ .name = "birnam_wordValue" });
     @export(&rtMkString, .{ .name = "birnam_mkString" });
     @export(&rtNil, .{ .name = "birnam_nil" });
     @export(&rtTrue, .{ .name = "birnam_true" });
@@ -259,6 +267,8 @@ const runtime_syms = [_]RuntimeSym{
     .{ .name = "birnam_smallIntValue", .addr = @ptrCast(&rtSmallIntValue) },
     .{ .name = "birnam_mkFloat", .addr = @ptrCast(&rtMkFloat) },
     .{ .name = "birnam_floatValue", .addr = @ptrCast(&rtFloatValue) },
+    .{ .name = "birnam_mkWord", .addr = @ptrCast(&rtMkWord) },
+    .{ .name = "birnam_wordValue", .addr = @ptrCast(&rtWordValue) },
     .{ .name = "birnam_mkString", .addr = @ptrCast(&rtMkString) },
     .{ .name = "birnam_nil", .addr = @ptrCast(&rtNil) },
     .{ .name = "birnam_true", .addr = @ptrCast(&rtTrue) },
