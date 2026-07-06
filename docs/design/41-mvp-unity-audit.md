@@ -7,14 +7,16 @@ by five parallel investigators, then consolidated. **No code changed** in
 producing this — it is a tracking list.
 
 > **SCOREBOARD (2026-07-05).** ✅ **DONE:** §A, §B (incl. B8/B9), **§C (C1–C5, C4 stale)**,
-> §D (D1–D4), E1. §D's resolution **inverted the North Star** — object model canonical,
+> §D (D1–D4), **§E (E1/E2/E3)**, **§F F2 + the boxed `Word` type (`4c0da27`) + F1's pointer
+> half (`85e4a85`)**. §D's resolution **inverted the North Star** — object model canonical,
 > relational reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
-> (READ IT for current direction). All 13 suites + 24 examples green, unpushed. ⬜
-> **OPEN:** §F **F1/F3/F4** (one FFI-surface arc needing a boxed 64-bit word/pointer
-> type — all latent on darwin; **F2 the real Linux bug is DONE**) · §G **the harder
-> half** (G2/G3 image consistency, G4 left-recursion crash, G6 Binding, G8 layering,
+> (READ IT for current direction). All 13 suites + 24 examples green. ⬜
+> **OPEN:** §F **the large-int decision** (F1's *long* half + F3 unsigned — a wide number
+> wants arithmetic, which `Word` lacks: promote-to-Word-on-overflow vs. a numeric wide-int
+> type) + **F4** (peek/poke/alloc/free — foundation laid, hangs off `word_vt`) · §G **the
+> harder half** (G2/G3 image consistency, G4 left-recursion crash, G6 Binding, G8 layering,
 > G9 operator charset, G10 FFI leaks — each real design/feature work). **§G cheap end
-> swept 2026-07-05: G1/G5/G7 done.** Nothing is parked. (**All of §E done**: E1/E2/E3.)
+> swept 2026-07-05: G1/G5/G7 done.** Nothing is parked.
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -324,19 +326,24 @@ No arity caps in codegen.
 
 ## F. FFI is a reduced re-implementation vs the documented (attic libffi) surface
 
-> **F2 DONE 2026-07-05** (the one clean, self-contained platform bug). **F1/F3/F4 are
-> one coherent FFI-surface arc** sharing a prerequisite: a **boxed 64-bit word/pointer
-> type**. F1 (box a full `long`/pointer without truncation) and F4 (pointer deref /
-> out-params) both need it — a valid pointer legitimately has high bits, so the SmallInt
-> box can't hold it and errors-on-overflow is wrong for `p`; F3 (unsigned) needs the same
-> box to carry a `uint64_t` with the top bit set. Best done together as a deliberate arc,
-> not piecemeal — and all latent on darwin (the dev platform), where the box truncation
-> only bites values ≥ 2⁶². Deferred for a focused FFI session.
+> **F2 DONE 2026-07-05** (platform bug). **The boxed 64-bit `Word` prerequisite is now
+> BUILT (`4c0da27`)** — a first-class birnam type shaped like the boxed Float (its own
+> `word_vt`/prototype/`printString`/value-`=`/`asInteger`/`isNull`, dispatched via `send`),
+> the shared box the FFI-surface arc needs. **F1's POINTER half is DONE (`85e4a85`):** `p`
+> now marshals through `Word` at all four sites, so a full-width (bit-63-set) pointer
+> round-trips losslessly — verified by a `0xFFFF000012345678` round-trip test. **What's
+> left is the number-vs-word policy split:** `l` (long) deliberately stays a SmallInt
+> because it's used as a NUMBER (`ffi.birnam` does `x * 2` on a callback long, prints
+> `strlen` as decimal) and a `Word` carries no arithmetic — so F1's *long* half + F3
+> (unsigned) are the deferred **large-int** decision (promote-to-Word-on-overflow vs.
+> a numeric wide-int type). F4 (peek/poke/alloc/free) now has its foundation: the
+> protocol hangs off `word_vt`.
 
-- [ ] **F1 · HIGH (latent) · `alien.zig:271,436`** — 63-bit SmallInt box truncates C
-  `long`/pointers unchecked (same class as the known `peekInt` overflow); a
-  64-bit mask/handle loses its top bit, no `#overflow`. Needs a boxed word/pointer
-  type (shared with F4).
+- [~] **F1 · HIGH (latent) · `alien.zig`** — **POINTER half DONE (`85e4a85`):** `p`
+  boxes/unboxes through the full-width `Word`, no truncation, no bogus `#overflow`. The
+  **`long` half remains** (a `long` ≥ 2⁶² still truncates in its SmallInt box) — but the
+  fix is a policy call, not the missing box: a numeric wide value wants arithmetic, which
+  `Word` lacks. Folds into F3's large-int decision.
 - [x] **F2 · MED — DONE 2026-07-05 (`alien.zig`).** `RTLD_DEFAULT` is now
   platform-conditional (`@import("builtin").os.tag`): the Darwin dyld sentinel
   `(void*)-2` on Apple targets, `null` (== glibc/musl `(void*)0`) elsewhere. The old
@@ -344,10 +351,14 @@ No arity caps in codegen.
   unchanged — `test-alien` + `examples/ffi.birnam` (div/inet_ntoa/callback) still green.
 - [ ] **F3 · MED · `alien.zig` (grammar)** — no unsigned scalar types;
   `size_t`/`uint64_t` masquerade as signed, unmarshalled as signed → large
-  values return negative.
+  values return negative. **Now the anchor of the large-int decision:** a small
+  unsigned wants to be an Integer (arithmetic); a `uint64_t` with the top bit set
+  overflows SmallInt. Resolve alongside F1's long half — one policy for both.
 - [ ] **F4 · MED · `alien.zig`** — no `peek`/`poke`, `alloc:`/`free`, pointer
   deref, or Cell out-params. A C API that fills a caller buffer can't be wrapped
-  without writing C. Half of "wrap-a-C-lib without Zig."
+  without writing C. Half of "wrap-a-C-lib without Zig." **Foundation laid
+  (`4c0da27`/`85e4a85`):** pointers are now `Word`s, so peek/poke/alloc/free
+  install as `word_vt` protocol.
 
 ## G. Marked deferrals (LOW — honest, catalogued for completeness)
 
