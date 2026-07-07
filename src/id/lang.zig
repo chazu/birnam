@@ -116,11 +116,17 @@ fn buildGrammar() void {
         })),
         lit("\""),
     }));
-    // Single-char binary operators (multi-char come later).
+    // Binary-operator characters. Dispatch handles ANY interned selector, so this
+    // set is the ONLY thing that decides which punctuation can be a binary selector
+    // (§G9); `binops` below runs `plus` over it, so any RUN of these chars is one
+    // multi-char operator (`>=`, `~=`, `@%`). Excluded on purpose: `.` (float
+    // literal), `:` (keyword marker), `?` (datalog logicVar prefix) — each already
+    // owns its char elsewhere in the grammar.
     defRule("binop", cset(&.{
         .{ '=', '=' }, .{ '<', '<' }, .{ '>', '>' }, .{ '&', '&' },
         .{ '|', '|' }, .{ ',', ',' }, .{ '+', '+' }, .{ '-', '-' },
-        .{ '*', '*' }, .{ '/', '/' }, .{ '~', '~' },
+        .{ '*', '*' }, .{ '/', '/' }, .{ '~', '~' }, .{ '%', '%' },
+        .{ '@', '@' }, .{ '!', '!' }, .{ '^', '^' },
     }));
 
     // symbol = '#' ( (ident ':')+ / ident / binop+ ) — names a selector:

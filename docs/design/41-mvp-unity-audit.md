@@ -16,9 +16,9 @@ producing this — it is a tracking list.
 > full i64 since §A, `u` gives Integer-if-fits/else-`Word`, no bignum/no-arith-to-Word;
 > bignum deferred as a named feature). §G: G2/G3 (image consistency, latent),
 > G6 (Binding), G8 (layering),
-> G9 operator charset, G10 FFI leaks — each real design/feature work). **§G cheap end
+> G10 FFI leaks — each real design/feature work). **§G cheap end
 > swept 2026-07-05: G1/G5/G7 done; G4 (left-recursion crash → `#leftRecursion` error)
-> done 2026-07-07.** Nothing is parked.
+> + G9 (binary-op charset widened `% @ ! ^`) done 2026-07-07.** Nothing is parked.
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -376,9 +376,10 @@ No arity caps in codegen.
 
 > **Cheap-end sweep DONE 2026-07-05 (`48b110b`):** G7 (raw `==`→`eq()`), G5
 > (fixpoint non-convergence now reported, not silent), G1 (comment honesty). **G4
-> (left-recursion crash → `#leftRecursion` kinded error) done 2026-07-07.** The rest
+> (left-recursion crash → `#leftRecursion` kinded error) + G9 (binary-op charset
+> widened `% @ ! ^`) done 2026-07-07.** The rest
 > stand — G2/G3 (image consistency, latent), G6 (Binding
-> object), G8 (layering), G9 (operator charset — a small feature, not a cleanup),
+> object), G8 (layering),
 > G10 (FFI leaks) — each needs real design/feature work, not a one-liner.
 
 - [x] **G1 · MED — DONE 2026-07-05 (doc honesty, `image.zig`).** The "counted, never
@@ -414,9 +415,14 @@ No arity caps in codegen.
 - [ ] **G8 · `relational.zig:994`** — the relational module installs `printString`
   onto `symbol_vt` globally as a load side-effect (layering smell; all symbols
   render with `#` once datalog loads).
-- [ ] **G9 · `lang.zig:120`** — fixed binary-operator charset (`= < > & | , + - *
-  / ~`); operators outside the set (`%`, `@`, `!`) can't be binary selectors
-  though dispatch would handle any interned selector.
+- [x] **G9 · DONE 2026-07-07 (`lang.zig`).** Widened the `binop` charset with
+  `% @ ! ^` (excluded on purpose: `.` float, `:` keyword, `?` datalog logicVar —
+  each owns its char elsewhere). Since these chars previously just failed to parse,
+  adding them can only make new input parse — zero regression to existing programs.
+  `binops = plus(binop)` already made runs into one multi-char selector, and
+  dispatch already handled any interned selector, so this was purely the lexer gate.
+  Tests: parse-level (`lang_test.zig`, incl. a `?` NON-match guard) + end-to-end
+  dispatch of custom `#%`/`#@`/`#@%` methods (`codegen_test.zig`).
 - [ ] **G10 · `alien.zig`** — callbacks never released, `dlopen` handle leaked
   (v1, no-release); `@panic` on OOM throughout PEG/Alien/error.
 

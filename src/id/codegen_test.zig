@@ -113,6 +113,23 @@ test "codegen: multi-char binary operators parse and dispatch (>=, <=)" {
     try std.testing.expect(eval(api, "[[12 >= 1] & [12 <= 10]]") == api.falseObj);
 }
 
+test "codegen §G9: extended binary operators (% @ ^) dispatch as custom selectors" {
+    const api = setup();
+
+    // A user-defined binary method whose selector is one of the newly-admitted
+    // operator chars (% @ ! ^) dispatches like any other — the charset in lang.zig
+    // was the only gate; dispatch already handles any interned selector.
+    _ = eval(api, "[Reflect defineMethod: #% on: Integer as: [:x :y | [[x * y] + 1]]]");
+    try std.testing.expectEqual(@as(i64, 31), try evalInt(api, "[10 % 3]")); // 10*3+1
+
+    _ = eval(api, "[Reflect defineMethod: #@ on: Integer as: [:x :y | [x - y]]]");
+    try std.testing.expectEqual(@as(i64, 4), try evalInt(api, "[7 @ 3]"));
+
+    // A RUN of operator chars is one selector, distinct from its single-char pieces.
+    _ = eval(api, "[Reflect defineMethod: #@% on: Integer as: [:x :y | [x + y]]]");
+    try std.testing.expectEqual(@as(i64, 9), try evalInt(api, "[4 @% 5]"));
+}
+
 test "codegen: arithmetic is dispatched — zeroDivide is a value and propagates" {
     const api = setupFull(); // prelude + collection + error model (F7)
 

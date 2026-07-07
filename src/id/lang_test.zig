@@ -46,6 +46,27 @@ test "lang 3b: parses core birnam — let, blocks, sends, literals" {
     try std.testing.expect(parses(api, "[x ifTrue: [| \"yes\"] ifFalse: [| \"no\"]]"));
 }
 
+test "lang 3b §G9: extended binary-operator charset (% @ ! ^) parses as binary sends" {
+    const api = setup();
+
+    // Each newly-admitted operator char forms a binary selector (dispatch already
+    // handles any interned selector; the charset was the only gate).
+    try std.testing.expect(parses(api, "[10 % 3]"));
+    try std.testing.expect(parses(api, "[a @ b]"));
+    try std.testing.expect(parses(api, "[x ! y]"));
+    try std.testing.expect(parses(api, "[2 ^ 3]"));
+    // A run of operator chars is ONE multi-char selector, so mixing them is fine.
+    try std.testing.expect(parses(api, "[a @% b]"));
+    // …and they name selectors in symbol position too (#% #@ #! #^).
+    try std.testing.expect(parses(api, "[obj respondsTo: #%]"));
+    try std.testing.expect(parses(api, "[obj respondsTo: #@]"));
+
+    // The old set still parses (no regression), and `?` stays a logicVar prefix —
+    // NOT a binary operator — so it does not sneak into a binary send here.
+    try std.testing.expect(parses(api, "[1 + 2]"));
+    try std.testing.expect(!parses(api, "[a ? b]"));
+}
+
 test "lang 3b: multi-statement programs with ';' and comments" {
     const api = setup();
 
