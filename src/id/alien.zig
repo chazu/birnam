@@ -64,6 +64,13 @@
 //! binds the `birnam_*` shims — so resolution is reliable across platforms. For a
 //! library not yet in the process, `[Alien dlopen: path]` loads it first.
 //!
+//! RAW MEMORY (§F F4): a Word is a machine address, so it doubles as a C buffer.
+//! `[Alien alloc: n]` mints one over n zeroed bytes; `peek{Int,Byte,Ptr,Double,
+//! String}At:` and `poke{Int,Byte,Ptr,Double}:at:` read/write typed values at a
+//! byte offset; `[buf free]` reclaims it. This wraps a C function with a `T*`
+//! out-param — allocate a buffer, pass the Word as its `p` argument, peek the
+//! result — without writing any C.
+//!
 //! Depends on the IdApi + Tcc. The shim calls the standard `birnam_*` runtime shims
 //! (send / intern / mkSmallInt / smallIntValue / mkFloat / floatValue / mkString /
 //! nil / cstr / free_cstr) that `bindRuntime` provides, so no id struct layout is
@@ -702,6 +709,143 @@ fn mDlopen(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return if (h != null) g_api.trueObj else g_api.nilObj;
 }
 
+// -- F4: raw C-memory access through a Word (alloc/free + peek/poke) ------------
+//
+// A Word holds a machine address, so it doubles as a C buffer handle: `[Alien
+// alloc: n]` mints one over `n` zeroed libc-malloc'd bytes, `peek*At:`/`poke*:at:`
+// read and write typed values at a byte offset, and `[buf free]` reclaims it. This
+// is the other half of "wrap a C library without writing C": a function taking a
+// `T*` out-param is wrapped by allocating a buffer, passing the Word as its `p`
+// argument (§F F1 — a Word untags to `void*`), then peeking the result back.
+//
+// These are inherently unsafe raw-memory ops (like C): the guards catch a null
+// receiver (#nullPointer) and a non-Integer offset (#typeMismatch), NOT a wild
+// address. Buffers may sit at any offset, so every access is `align(1)`.
+
+/// Resolve `wordValue(receiver) + offset(arg)` to an absolute address. On success
+/// writes it to `out` and returns null; on a null base or non-Integer offset,
+/// returns the kinded error to propagate (§C1 — no silent nil/garbage deref).
+fn resolveAddr(self: Oop, off_arg: Oop, out: *u64) ?Oop {
+    const base = g_api.wordValue(self);
+    if (base == 0) return alienError("nullPointer", "cannot peek/poke through a null pointer");
+    if (g_api.isSmallInt(off_arg) == 0) return alienError("typeMismatch", "the offset must be an Integer");
+    out.* = base +% @as(u64, @bitCast(g_api.smallIntValue(off_arg)));
+    return null;
+}
+/// An address-valued argument: a Word (raw address) or an Integer (its bits).
+fn argAddr(o: Oop) ?u64 {
+    if (g_api.isWord(o) != 0) return g_api.wordValue(o);
+    if (g_api.isSmallInt(o) != 0) return @bitCast(g_api.smallIntValue(o));
+    return null;
+}
+
+/// `[Alien alloc: nBytes]` — `nBytes` zeroed libc-malloc'd bytes as a Word. Raw
+/// (not GC heap) so the address is stable for C; reclaim with `[theWord free]`.
+fn mAlloc(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    if (g_api.isSmallInt(a[0]) == 0) return alienError("typeMismatch", "alloc: needs an Integer byte count");
+    const nbytes = g_api.smallIntValue(a[0]);
+    if (nbytes <= 0) return alienError("badArgument", "alloc: needs a positive byte count");
+    const raw = std.c.malloc(@intCast(nbytes)) orelse return alienError("outOfMemory", "alloc: malloc failed");
+    @memset(@as([*]u8, @ptrCast(raw))[0..@intCast(nbytes)], 0);
+    return g_api.mkWord(@intFromPtr(raw));
+}
+/// `[aWord free]` — libc-free the address (a no-op on null). Answers nil.
+fn mFree(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const base = g_api.wordValue(self);
+    if (base != 0) std.c.free(@ptrFromInt(base));
+    return g_api.nilObj;
+}
+
+/// `[buf peekIntAt: off]` — the C `long` (i64) at `base+off`, as an Integer.
+fn mPeekIntAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var addr: u64 = undefined;
+    if (resolveAddr(self, a[0], &addr)) |e| return e;
+    const p: *align(1) const i64 = @ptrFromInt(addr);
+    return g_api.mkSmallInt(p.*);
+}
+/// `[buf peekByteAt: off]` — the unsigned byte at `base+off`, as an Integer (0..255).
+fn mPeekByteAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var addr: u64 = undefined;
+    if (resolveAddr(self, a[0], &addr)) |e| return e;
+    const p: *const u8 = @ptrFromInt(addr);
+    return g_api.mkSmallInt(@as(i64, p.*));
+}
+/// `[buf peekPtrAt: off]` — the C `void*` at `base+off`, as a Word (deref a `T**`).
+fn mPeekPtrAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var addr: u64 = undefined;
+    if (resolveAddr(self, a[0], &addr)) |e| return e;
+    const p: *align(1) const usize = @ptrFromInt(addr);
+    return g_api.mkWord(p.*);
+}
+/// `[buf peekDoubleAt: off]` — the C `double` at `base+off`, as a Float.
+fn mPeekDoubleAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var addr: u64 = undefined;
+    if (resolveAddr(self, a[0], &addr)) |e| return e;
+    const p: *align(1) const f64 = @ptrFromInt(addr);
+    return g_api.mkFloat(p.*);
+}
+/// `[buf peekStringAt: off]` — the NUL-terminated C string at `base+off`, COPIED
+/// into a fresh birnam String (so the C buffer may be freed after).
+fn mPeekStringAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var addr: u64 = undefined;
+    if (resolveAddr(self, a[0], &addr)) |e| return e;
+    const cptr: [*:0]const u8 = @ptrFromInt(addr);
+    const s = std.mem.span(cptr);
+    return g_api.mkString(s.ptr, s.len);
+}
+
+/// `[buf pokeInt: v at: off]` — write the Integer `v` as a C `long` at `base+off`.
+/// Answers the receiver, so pokes chain. (Poke value in a[0], offset in a[1].)
+fn mPokeIntAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var addr: u64 = undefined;
+    if (resolveAddr(self, a[1], &addr)) |e| return e;
+    if (g_api.isSmallInt(a[0]) == 0) return alienError("typeMismatch", "pokeInt: needs an Integer value");
+    const p: *align(1) i64 = @ptrFromInt(addr);
+    p.* = g_api.smallIntValue(a[0]);
+    return self;
+}
+/// `[buf pokeByte: v at: off]` — write the low byte of Integer `v` at `base+off`.
+fn mPokeByteAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var addr: u64 = undefined;
+    if (resolveAddr(self, a[1], &addr)) |e| return e;
+    if (g_api.isSmallInt(a[0]) == 0) return alienError("typeMismatch", "pokeByte: needs an Integer value");
+    const p: *u8 = @ptrFromInt(addr);
+    p.* = @truncate(@as(u64, @bitCast(g_api.smallIntValue(a[0]))));
+    return self;
+}
+/// `[buf pokePtr: w at: off]` — write the address `w` (a Word or Integer) as a C
+/// `void*` at `base+off`.
+fn mPokePtrAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var addr: u64 = undefined;
+    if (resolveAddr(self, a[1], &addr)) |e| return e;
+    const w = argAddr(a[0]) orelse return alienError("typeMismatch", "pokePtr: needs a Word or Integer address");
+    const p: *align(1) usize = @ptrFromInt(addr);
+    p.* = w;
+    return self;
+}
+/// `[buf pokeDouble: v at: off]` — write the Float `v` as a C `double` at `base+off`.
+fn mPokeDoubleAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var addr: u64 = undefined;
+    if (resolveAddr(self, a[1], &addr)) |e| return e;
+    if (g_api.isFloat(a[0]) == 0) return alienError("typeMismatch", "pokeDouble: needs a Float value");
+    const p: *align(1) f64 = @ptrFromInt(addr);
+    p.* = g_api.floatValue(a[0]);
+    return self;
+}
+
 pub fn bringUp(api: *idapi.IdApi) void {
     g_api = api;
     tcc = api.import("Tcc") orelse @panic("alien: Tcc not loaded");
@@ -718,6 +862,21 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(alien_vt, api.intern("wrap:signature:as:on:"), &mWrap);
     api.method(alien_vt, api.intern("callback:signature:"), &mCallback);
     api.method(alien_vt, api.intern("dlopen:"), &mDlopen);
+    api.method(alien_vt, api.intern("alloc:"), &mAlloc);
+
+    // F4: the raw C-memory protocol on Word (a pointer IS a Word since §F F1), so a
+    // buffer allocated here, a `p`-returned pointer, and a poked-in address all share it.
+    const wvt = api.word_vt;
+    api.method(wvt, api.intern("free"), &mFree);
+    api.method(wvt, api.intern("peekIntAt:"), &mPeekIntAt);
+    api.method(wvt, api.intern("peekByteAt:"), &mPeekByteAt);
+    api.method(wvt, api.intern("peekPtrAt:"), &mPeekPtrAt);
+    api.method(wvt, api.intern("peekDoubleAt:"), &mPeekDoubleAt);
+    api.method(wvt, api.intern("peekStringAt:"), &mPeekStringAt);
+    api.method(wvt, api.intern("pokeInt:at:"), &mPokeIntAt);
+    api.method(wvt, api.intern("pokeByte:at:"), &mPokeByteAt);
+    api.method(wvt, api.intern("pokePtr:at:"), &mPokePtrAt);
+    api.method(wvt, api.intern("pokeDouble:at:"), &mPokeDoubleAt);
 
     if (!reloading) {
         api.gcRegisterRootProvider(&cbRoots); // callbacks pin their block + unit

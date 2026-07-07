@@ -50,4 +50,15 @@ let unit := [Tcc new];
 [unit bindRuntime];
 [unit relocate];
 [unit install: "__call" as: #callWith21 on: Integer];
-[System println: ["C calling a birnam block (21 doubled): " , [[cb callWith21] printString]]]
+[System println: ["C calling a birnam block (21 doubled): " , [[cb callWith21] printString]]];
+
+// Out-params without writing C (§F F4): a Word is a machine address, so it
+// doubles as a C buffer. `[Alien alloc: n]` mints one over n zeroed bytes;
+// `poke…:at:` / `peek…At:` read and write typed values at a byte offset; `free`
+// reclaims it. modf(x, double* ipart) RETURNS the fraction and FILLS *ipart with
+// the integer part — a real out-param, wrapped by passing the buffer as its `p`.
+[Alien wrap: "modf" signature: "d d p" as: #fractionInto: on: Float];
+let ipart := [Alien alloc: 8];
+let frac := [3.75 fractionInto: ipart];
+[System println: ["modf(3.75): fraction=" , [frac printString] , ", integer part (peeked back)=" , [[ipart peekDoubleAt: 0] printString]]];
+[ipart free]

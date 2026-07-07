@@ -112,6 +112,24 @@ export fn birnam_t_uIdentity(x: c_ulong) c_ulong {
     return x;
 }
 
+// F4 out-params: C functions that FILL a caller buffer through a pointer — the
+// case that can't be wrapped without alloc + peek/poke. `divmod` writes two longs;
+// `fillGreeting` writes a C string; `sumBuf` reads back what birnam poked in.
+export fn birnam_t_divmod(a: c_long, b: c_long, q_out: *c_long, r_out: *c_long) void {
+    q_out.* = @divTrunc(a, b);
+    r_out.* = @rem(a, b);
+}
+export fn birnam_t_fillGreeting(buf: [*]u8) void {
+    const msg = "hi\x00";
+    @memcpy(buf[0..msg.len], msg);
+}
+export fn birnam_t_sumBuf(buf: [*]align(1) const c_long, count: c_long) c_long {
+    var total: c_long = 0;
+    var i: usize = 0;
+    while (i < @as(usize, @intCast(count))) : (i += 1) total += buf[i];
+    return total;
+}
+
 const CVec2 = extern struct { x: f64, y: f64 }; // an HFA of doubles on arm64
 export fn birnam_t_dotVec2(a: CVec2, b: CVec2) f64 {
     return a.x * b.x + a.y * b.y;
@@ -724,4 +742,105 @@ test "alien: an unsigned scalar is an Integer if it fits i64, else a Word (§F F
     const rWord = api.send(big, api.intern("uIdW"), &[_]Oop{}, 0);
     try std.testing.expect(api.isWord(rWord) != 0);
     try std.testing.expectEqual(@as(u64, 0x8000_0000_0000_0000), api.wordValue(rWord));
+}
+
+// -- F4: alloc/free + peek/poke -------------------------------------------------
+
+fn peek(api: *idapi.IdApi, w: Oop, sel: [*:0]const u8, off: i64) Oop {
+    return api.send(w, api.intern(sel), &[_]Oop{api.mkSmallInt(off)}, 1);
+}
+fn poke(api: *idapi.IdApi, w: Oop, sel: [*:0]const u8, v: Oop, off: i64) Oop {
+    return api.send(w, api.intern(sel), &[_]Oop{ v, api.mkSmallInt(off) }, 2);
+}
+
+test "alien: alloc/poke/peek round-trip typed values through raw memory (§F F4)" {
+    const api = setup();
+    const alien_obj = api.import("Alien").?;
+
+    // 32 zeroed bytes as a Word.
+    const buf = api.send(alien_obj, api.intern("alloc:"), &[_]Oop{api.mkSmallInt(32)}, 1);
+    try std.testing.expect(api.isWord(buf) != 0);
+    try std.testing.expect(api.wordValue(buf) != 0);
+    // Freshly zeroed: a long at offset 0 reads 0.
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(peek(api, buf, "peekIntAt:", 0)));
+
+    // Poke chains (each poke answers the receiver) and reads back per width.
+    _ = poke(api, buf, "pokeInt:at:", api.mkSmallInt(0x0102030405060708), 0);
+    _ = poke(api, buf, "pokeByte:at:", api.mkSmallInt(0xAB), 8);
+    _ = poke(api, buf, "pokeDouble:at:", api.mkFloat(2.5), 16);
+    try std.testing.expectEqual(@as(i64, 0x0102030405060708), api.smallIntValue(peek(api, buf, "peekIntAt:", 0)));
+    try std.testing.expectEqual(@as(i64, 0xAB), api.smallIntValue(peek(api, buf, "peekByteAt:", 8)));
+    try std.testing.expectEqual(@as(f64, 2.5), api.floatValue(peek(api, buf, "peekDoubleAt:", 16)));
+    // pokeByte writes only the low byte (offset 9 is still 0).
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(peek(api, buf, "peekByteAt:", 9)));
+
+    // A pointer poked/peeked round-trips full-width through peekPtrAt: → a Word.
+    _ = poke(api, buf, "pokePtr:at:", api.mkWord(0xFFFF_0000_1234_5678), 24);
+    const p = peek(api, buf, "peekPtrAt:", 24);
+    try std.testing.expect(api.isWord(p) != 0);
+    try std.testing.expectEqual(@as(u64, 0xFFFF_0000_1234_5678), api.wordValue(p));
+
+    _ = api.send(buf, api.intern("free"), &[_]Oop{}, 0);
+}
+
+test "alien: a C out-param is wrapped via alloc + pass-as-`p` + peek (divmod)" {
+    const api = setup();
+    const alien_obj = api.import("Alien").?;
+    // void divmod(long a, long b, long* q, long* r): the two out-params are `p`.
+    _ = wrap(api, "birnam_t_divmod", "v l l p p", "divmod:q:r:", api.smallint_vt);
+
+    const q = api.send(alien_obj, api.intern("alloc:"), &[_]Oop{api.mkSmallInt(8)}, 1);
+    const r = api.send(alien_obj, api.intern("alloc:"), &[_]Oop{api.mkSmallInt(8)}, 1);
+    // 17 divmod 5 → q=3, r=2. Receiver (17) is the first C arg.
+    _ = api.send(api.mkSmallInt(17), api.intern("divmod:q:r:"), &[_]Oop{ api.mkSmallInt(5), q, r }, 3);
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(peek(api, q, "peekIntAt:", 0)));
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(peek(api, r, "peekIntAt:", 0)));
+
+    _ = api.send(q, api.intern("free"), &[_]Oop{}, 0);
+    _ = api.send(r, api.intern("free"), &[_]Oop{}, 0);
+}
+
+test "alien: a C string filled into a buffer reads back via peekStringAt: (fillGreeting)" {
+    const api = setup();
+    const alien_obj = api.import("Alien").?;
+    _ = wrap(api, "birnam_t_fillGreeting", "v p", "fillInto", api.word_vt);
+
+    const buf = api.send(alien_obj, api.intern("alloc:"), &[_]Oop{api.mkSmallInt(16)}, 1);
+    _ = api.send(buf, api.intern("fillInto"), &[_]Oop{}, 0); // receiver = the `p` arg
+    const s = peek(api, buf, "peekStringAt:", 0);
+    try std.testing.expect(api.vtableOf(s) == api.string_vt);
+    var len: usize = 0;
+    const bytes = api.stringBytes(s, &len);
+    try std.testing.expectEqualStrings("hi", bytes[0..len]);
+
+    _ = api.send(buf, api.intern("free"), &[_]Oop{}, 0);
+}
+
+test "alien: peek/poke into a birnam-filled buffer round-trips to C (sumBuf)" {
+    const api = setup();
+    const alien_obj = api.import("Alien").?;
+    // long sumBuf(long* buf, long count): birnam pokes the array, C sums it.
+    _ = wrap(api, "birnam_t_sumBuf", "l p l", "sumCount:", api.word_vt);
+
+    const buf = api.send(alien_obj, api.intern("alloc:"), &[_]Oop{api.mkSmallInt(24)}, 1);
+    _ = poke(api, buf, "pokeInt:at:", api.mkSmallInt(100), 0);
+    _ = poke(api, buf, "pokeInt:at:", api.mkSmallInt(20), 8);
+    _ = poke(api, buf, "pokeInt:at:", api.mkSmallInt(3), 16);
+    const total = api.send(buf, api.intern("sumCount:"), &[_]Oop{api.mkSmallInt(3)}, 1);
+    try std.testing.expectEqual(@as(i64, 123), api.smallIntValue(total));
+
+    _ = api.send(buf, api.intern("free"), &[_]Oop{}, 0);
+}
+
+test "alien: peek/poke through a null pointer is a kinded #nullPointer error, not a crash (§F F4)" {
+    const api = setup();
+    const nullp = api.mkWord(0);
+    const e = peek(api, nullp, "peekIntAt:", 0);
+    try std.testing.expect(isErr(api, e));
+    try std.testing.expect(errKind(api, e) == api.intern("nullPointer"));
+    // A non-Integer offset is a #typeMismatch.
+    const buf = api.send(api.import("Alien").?, api.intern("alloc:"), &[_]Oop{api.mkSmallInt(8)}, 1);
+    const e2 = api.send(buf, api.intern("peekIntAt:"), &[_]Oop{api.mkFloat(1.0)}, 1);
+    try std.testing.expect(errKind(api, e2) == api.intern("typeMismatch"));
+    _ = api.send(buf, api.intern("free"), &[_]Oop{}, 0);
 }
