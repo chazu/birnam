@@ -441,31 +441,46 @@ const script_modules = [_][]const u8{
     "libbirnam_id_image",
 };
 
-// The self-hosted part of the standard library — birnam defining more of its own
-// library on top of the Zig primitives. Embedded so it is always available; loaded
-// by default, skipped with BIRNAM_NO_STDLIB=1 (the bare Zig floor as an option).
+// The self-hosted layer — birnam defining more of its own library on top of the
+// Zig primitives. Each source is embedded so it is ALWAYS available as the boot
+// floor; the precompiled dylib (stage-1 build) is preferred when present. Loaded
+// by default, skipped whole with BIRNAM_NO_STDLIB=1 (the bare Zig floor as an
+// option). `toml` follows `stdlib` — `Toml parse:` calls stdlib methods
+// (`collect:`/`asInteger`) at RUN time, so stdlib must be up before Toml is used.
 const STDLIB_SRC = @embedFile("stdlib.birnam");
+const TOML_SRC = @embedFile("toml.birnam");
 
-/// Bring up the self-hosted stdlib, unless opted out. PREFER the precompiled
-/// artifact (`libbirnam_stdlib.dylib`, the stage-1 build): `[Codegen load:]`
-/// installs its methods with no recompile. When that dylib is absent, stale, or
-/// ABI-mismatched, `load:` answers nil and we FALL BACK to evaluating the embedded
-/// source — source is the floor, the dylib is the optimization.
-fn loadStdlib(a: std.mem.Allocator, api: *IdApi, codegen: Oop) void {
-    if (std.posix.getenv("BIRNAM_NO_STDLIB") != null) return;
+/// Bring up one self-hosted module by `name`: PREFER the precompiled artifact
+/// (`libbirnam_<name>.dylib`) — `[Codegen load:]` installs its methods with no
+/// recompile — and FALL BACK to evaluating the embedded `src` when that dylib is
+/// absent, stale, or ABI-mismatched (`load:` answers nil). Source is the floor;
+/// the dylib is the optimization. (Stage 3's `Modules` manager will generalize
+/// this into a dependency-ordered load; for now it's a direct helper.)
+fn loadSelfHosted(a: std.mem.Allocator, api: *IdApi, codegen: Oop, name: []const u8, src: []const u8) void {
     if (resolveLibDir(a)) |dir| {
         defer a.free(dir);
-        if (std.fs.path.join(a, &.{ dir, "libbirnam_stdlib.dylib" })) |p| {
-            defer a.free(p);
-            // Only attempt the load if the file is actually there (a missing file
-            // is the common dev case; skip the dlopen-error noise).
-            if (std.fs.cwd().access(p, .{})) |_| {
-                const r = api.send(codegen, api.intern("load:"), &[_]Oop{api.mkString(p.ptr, p.len)}, 1);
-                if (r != api.nilObj) return; // installed from the precompiled dylib
+        const fname = std.fmt.allocPrint(a, "libbirnam_{s}.dylib", .{name}) catch null;
+        if (fname) |fn_| {
+            defer a.free(fn_);
+            if (std.fs.path.join(a, &.{ dir, fn_ })) |p| {
+                defer a.free(p);
+                // Only attempt the load if the file is actually there (a missing
+                // file is the common dev case; skip the dlopen-error noise).
+                if (std.fs.cwd().access(p, .{})) |_| {
+                    const r = api.send(codegen, api.intern("load:"), &[_]Oop{api.mkString(p.ptr, p.len)}, 1);
+                    if (r != api.nilObj) return; // installed from the precompiled dylib
+                } else |_| {}
             } else |_| {}
-        } else |_| {}
+        }
     } else |_| {}
-    _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(STDLIB_SRC, STDLIB_SRC.len)}, 1);
+    _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
+}
+
+/// Bring up the whole self-hosted layer (stdlib, then toml), unless opted out.
+fn loadStdlib(a: std.mem.Allocator, api: *IdApi, codegen: Oop) void {
+    if (std.posix.getenv("BIRNAM_NO_STDLIB") != null) return;
+    loadSelfHosted(a, api, codegen, "stdlib", STDLIB_SRC);
+    loadSelfHosted(a, api, codegen, "toml", TOML_SRC);
 }
 
 /// Resolve the directory holding the runtime module dylibs. Tries, in order:

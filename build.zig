@@ -124,14 +124,21 @@ pub fn build(b: *std.Build) void {
     // (installing methods with no recompile) and falls back to source if absent.
     // Kept opt-in: a plain `zig build` still works via the source fallback. Points
     // the binary at the just-installed lib dir so it finds the fresh kernel dylibs.
-    const stage1 = b.step("stage1", "AOT-compile birnam-source modules (stdlib) to installable dylibs");
-    const compile_stdlib = b.addRunArtifact(siphon_exe);
-    compile_stdlib.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
-    compile_stdlib.addArg("--compile-module");
-    compile_stdlib.addFileArg(b.path("src/id/stdlib.birnam"));
-    compile_stdlib.addArg(b.getInstallPath(.lib, "libbirnam_stdlib.dylib"));
-    compile_stdlib.step.dependOn(b.getInstallStep()); // exe + all kernel dylibs installed first
-    stage1.dependOn(&compile_stdlib.step);
+    const stage1 = b.step("stage1", "AOT-compile birnam-source modules (stdlib, toml) to installable dylibs");
+    // Each self-hosted module: `birnam --compile-module <src> <lib>/libbirnam_<name>.dylib`.
+    const self_hosted = [_]struct { src: []const u8, name: []const u8 }{
+        .{ .src = "src/id/stdlib.birnam", .name = "stdlib" },
+        .{ .src = "src/id/toml.birnam", .name = "toml" },
+    };
+    inline for (self_hosted) |m| {
+        const compile = b.addRunArtifact(siphon_exe);
+        compile.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
+        compile.addArg("--compile-module");
+        compile.addFileArg(b.path(m.src));
+        compile.addArg(b.getInstallPath(.lib, "libbirnam_" ++ m.name ++ ".dylib"));
+        compile.step.dependOn(b.getInstallStep()); // exe + all kernel dylibs installed first
+        stage1.dependOn(&compile.step);
+    }
 
     // The siphon/REPL host's own unit tests (e.g. the REPL bracket balancer).
     const main_test_mod = b.createModule(.{

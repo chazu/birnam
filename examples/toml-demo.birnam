@@ -1,11 +1,11 @@
-// toml-demo.birnam — load the birnam TOML module and parse a config.
+// toml-demo.birnam — parse a config with the built-in TOML parser.
 //
 //   birnam examples/toml-demo.birnam        (run from the repo root)
 //
-// Demonstrates `[System load:]` pulling in a birnam-authored module
-// (examples/toml.birnam) and the `Toml` singleton it installs.
-
-[System load: "examples/toml.birnam"];
+// `Toml` is a standard self-hosted module (src/id/toml.birnam), loaded at boot as
+// a compiled dylib — so it's available with no `[System load:]`. It's a PEG-based
+// TOML parser written entirely in birnam; `[Toml parse: aString]` answers a Map
+// (nested Maps for [tables], Vectors for arrays).
 
 let config := "# birnam service config
 name = \"birnam\"
