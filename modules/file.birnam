@@ -1,53 +1,131 @@
 // file.birnam — filesystem access for birnam, implemented IN birnam over libc.
 //
 // A birnam-native OS module, like time.birnam: the only irreducible capability is
-// "call a C function", which `Alien` already provides — no new Zig. Whole-file
-// read/write already exist as floor primitives (`System readFile:` /
-// `writeFile:contents:`), so `File` reuses those and adds the GAPS the floor
-// lacks — append, exists, delete — as thin libc calls.
+// "call a C function + read raw memory", which `Alien` already provides — no new
+// Zig. Whole-file read/write already exist as floor primitives (`System readFile:`
+// / `writeFile:contents:`), so `File` reuses those and adds everything else — the
+// gaps the floor lacks — as thin libc calls.
 //
 // Load it (from the repo root) with:
 //   [System load: "modules/file.birnam"]
-// then:
+//
+// Query / mutate paths:
 //   [File exists: "x.txt"]              "=> true / false"
-//   [File append: "log.txt" contents: "a line\n"]
-//   [File readText: "x.txt"]           "=> the whole file as a String"
+//   [File isDir: "some/dir"]           "=> true / false"
+//   [File size: "x.txt"]               "=> byte length (Integer), or nil"
+//   [File listDir: "some/dir"]         "=> #[names…] (no . or ..), or nil"
+//   [File makeDir: "some/dir"]         "=> true on success"
+//   [File removeDir: "some/dir"]       "=> true (must be empty)"
+//   [File rename: "a" to: "b"]         "=> true on success (move)"
 //   [File delete: "x.txt"]             "=> true on success"
+// Read / write contents:
+//   [File readText: "x.txt"]           "=> the whole file as a String"
+//   [File write: "x.txt" contents: s]  "=> overwrite"
+//   [File append: "log.txt" contents: s]  "=> append (creates if absent)"
+//
+// PLATFORM NOTE: doing the marshalling in birnam means this module encodes ABI
+// facts — the `struct dirent` d_name offset (21 on macOS), mkdir's mode, SEEK_END.
+// These are macOS/BSD values; a `platform` guard can adjust them later.
 
 // -- low-level libc wraps -----------------------------------------------------
 // Alien marshals the receiver as the first C argument, so each wrap lands on the
 // type whose instances are that first argument. `s` auto-marshals a birnam String
 // to a `const char*` (freed after the call), so writes need no manual buffer.
 //
-// FILE *fopen(const char *path, const char *mode)     — receiver = path
-[Alien wrap: "fopen"  signature: "p s s" as: #fopenMode: on: String];
-// int fputs(const char *s, FILE *stream)              — receiver = the string
-[Alien wrap: "fputs"  signature: "i s p" as: #fputsTo: on: String];
-// int fclose(FILE *stream)                            — receiver = the FILE* word
-[Alien wrap: "fclose" signature: "i p"   as: #fclose on: Word];
-// int access(const char *path, int mode)              — receiver = path
-[Alien wrap: "access" signature: "i s i" as: #accessMode: on: String];
-// int unlink(const char *path)                        — receiver = path
-[Alien wrap: "unlink" signature: "i s"   as: #unlinkFile on: String];
+// On String (path is the first argument):
+[Alien wrap: "fopen"   signature: "p s s" as: #fopenMode:  on: String];  // FILE* fopen(path, mode)
+[Alien wrap: "access"  signature: "i s i" as: #accessMode: on: String];  // int access(path, mode)
+[Alien wrap: "unlink"  signature: "i s"   as: #unlinkFile  on: String];  // int unlink(path)
+[Alien wrap: "rmdir"   signature: "i s"   as: #rmdirFile   on: String];  // int rmdir(path)
+[Alien wrap: "mkdir"   signature: "i s i" as: #mkdirMode:  on: String];  // int mkdir(path, mode)
+[Alien wrap: "rename"  signature: "i s s" as: #renameTo:   on: String];  // int rename(old, new)
+[Alien wrap: "opendir" signature: "p s"   as: #opendir     on: String];  // DIR* opendir(path)
+[Alien wrap: "fputs"   signature: "i s p" as: #fputsTo:    on: String];  // int fputs(s, stream)  (receiver = the string)
+//
+// On Word (a FILE* / DIR* / dirent* handle is the first argument):
+[Alien wrap: "fclose"   signature: "i p"     as: #fclose             on: Word];  // int fclose(FILE*)
+[Alien wrap: "fseek"    signature: "i p l i"  as: #fseekOffset:whence: on: Word]; // int fseek(FILE*, off, whence)
+[Alien wrap: "ftell"    signature: "l p"     as: #ftell              on: Word];  // long ftell(FILE*)
+[Alien wrap: "readdir"  signature: "p p"     as: #readdir            on: Word];  // dirent* readdir(DIR*)
+[Alien wrap: "closedir" signature: "i p"     as: #closedir           on: Word];  // int closedir(DIR*)
 
 // The module: a named singleton, the Config / Toml / Time shape.
 [Globals at: #File put: [Object clone]];
 
-// -- existence / deletion (the libc-backed gaps) ------------------------------
+// -- existence / kind ---------------------------------------------------------
 
 // True iff the path exists (access with F_OK = 0).
 [Reflect defineMethod: #exists: on: File as: [:self :path |
   [[path accessMode: 0] = 0]]];
 
-// Delete the file; answers true on success, false if it could not be removed.
+// True iff the path is a directory: opendir succeeds only on directories.
+[Reflect defineMethod: #isDir: on: File as: [:self :path |
+  let d := [path opendir];
+  [[d isNull]
+    ifTrue: [| false]
+    ifFalse: [| [d closedir]; true]]]];
+
+// Byte length of a file (Integer), or nil if it can't be opened. Seeks to the end
+// and reports the position — no `struct stat` needed.
+[Reflect defineMethod: #size: on: File as: [:self :path |
+  let fp := [path fopenMode: "r"];
+  [[fp isNull]
+    ifTrue: [| nil]
+    ifFalse: [|
+      [fp fseekOffset: 0 whence: 2];    // SEEK_END = 2
+      let n := [fp ftell];
+      [fp fclose];
+      n]]]];
+
+// -- directory listing --------------------------------------------------------
+
+// Recursive reader: accumulate remaining entry names from an open DIR* into `acc`,
+// skipping "." and "..". A method (not a block) so the self-send recurses cleanly;
+// depth = entry count, so very large directories could deepen the stack.
+[Reflect defineMethod: #entriesOf:into: on: File as: [:self :dir :acc |
+  let d := [dir readdir];
+  [[d isNull]
+    ifTrue: [| acc]
+    ifFalse: [|
+      let name := [d peekStringAt: 21];        // macOS struct dirent: d_name at offset 21
+      let skip := [[name = "."] | [name = ".."]];
+      let acc2 := [skip ifTrue: [| acc] ifFalse: [| [acc add: name]]];
+      [self entriesOf: dir into: acc2]]]]];
+
+// The directory's entries as a Vector of name Strings (excluding . and ..), or nil
+// if the path is not a readable directory.
+[Reflect defineMethod: #listDir: on: File as: [:self :path |
+  let dir := [path opendir];
+  [[dir isNull]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let names := [self entriesOf: dir into: #[]];
+      [dir closedir];
+      names]]]];
+
+// -- mutation -----------------------------------------------------------------
+
+// Make a directory (mode 0777, umask applies). Answers true on success.
+[Reflect defineMethod: #makeDir: on: File as: [:self :path |
+  [[path mkdirMode: 511] = 0]]];
+
+// Remove an empty directory. Answers true on success.
+[Reflect defineMethod: #removeDir: on: File as: [:self :path |
+  [[path rmdirFile] = 0]]];
+
+// Rename / move `from` to `to`. Answers true on success.
+[Reflect defineMethod: #rename:to: on: File as: [:self :from :to |
+  [[from renameTo: to] = 0]]];
+
+// Delete a file. Answers true on success.
 [Reflect defineMethod: #delete: on: File as: [:self :path |
   [[path unlinkFile] = 0]]];
 
-// -- append (creates the file if absent) — the floor has no append ------------
+// -- contents -----------------------------------------------------------------
 
-// Append `text` verbatim (no added newline) to `path`, creating it if needed.
-// Answers self on success, false if the file could not be opened. Opens+closes
-// per call — simple and flush-safe; a Log with an open handle can do better.
+// Append `text` verbatim (no added newline) to `path`, creating it if absent.
+// Answers self on success, false if the file could not be opened. Opens+closes per
+// call — simple and flush-safe; a Log with an open handle can do better.
 [Reflect defineMethod: #append:contents: on: File as: [:self :path :text |
   let fp := [path fopenMode: "a"];
   [[fp isNull]
@@ -57,10 +135,8 @@
       [fp fclose];
       self]]]];
 
-// -- whole-file read / write (thin aliases over the floor primitives) ---------
-
-// The whole file as a String, or a #ioError (delegates to the Zig floor, which is
-// binary-safe; the libc path above is text-oriented via fputs).
+// The whole file as a String, or a #ioError (delegates to the binary-safe Zig
+// floor; the libc path above is text-oriented via fputs).
 [Reflect defineMethod: #readText: on: File as: [:self :path |
   [System readFile: path]]];
 
