@@ -6,6 +6,10 @@
 // primitives, via `[Reflect defineMethod: #sel on: T as: aBlock]`. It is loaded by
 // default; `BIRNAM_NO_STDLIB=1` runs on the bare Zig floor instead.
 
+// This module's dependency declaration (stage 3): the self-hosted stdlib sits
+// directly on the Zig primitives, so it requires no other self-hosted module.
+[Module named: #stdlib requires: #[]];
+
 // -- Integer: derived arithmetic on top of the primitive + - * / mod: < <= = -----
 
 [Reflect defineMethod: #negated on: Integer as: [:self | [0 - self]]];

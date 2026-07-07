@@ -435,6 +435,7 @@ const script_modules = [_][]const u8{
     "libbirnam_id_codegen",
     "libbirnam_id_prelude",
     "libbirnam_id_collection",
+    "libbirnam_id_modules",
     "libbirnam_id_error",
     "libbirnam_id_relational",
     "libbirnam_id_alien",
@@ -522,6 +523,17 @@ fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
     // every native selector reflects through the fact store, alongside user methods.
     if (api.import("Store")) |st| {
         _ = api.send(st, api.intern("backfillMirror"), &[_]Oop{}, 0);
+    }
+    // Represent the kernel modules in the module graph (stage 3): registered, kind
+    // #kernel, no requires — the manager KNOWS they exist (so a self-hosted module
+    // may `requires:` one and `loadOrder:` treats it as a satisfied leaf) but does
+    // NOT load them; they are already up. Names mirror script_modules.
+    if (api.import("Module")) |mm| {
+        const kernel = [_][:0]const u8{
+            "store",      "peg",   "lang",       "tcc",   "codegen", "prelude",
+            "collection", "modules", "error", "relational", "alien",   "image",
+        };
+        for (kernel) |name| _ = api.send(mm, api.intern("kernel:"), &[_]Oop{api.intern(name.ptr)}, 1);
     }
 }
 

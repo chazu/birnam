@@ -69,6 +69,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "birnam_id_codegen", .src = "codegen.zig", .test_src = "codegen_test.zig", .step = "test-codegen", .desc = "rung 3c: the birnam → C emitter", .test_links_tcc = true },
         .{ .name = "birnam_id_prelude", .src = "prelude.zig", .test_src = "prelude_test.zig", .step = "test-prelude", .desc = "the primitive stdlib: Integer/Boolean/System" },
         .{ .name = "birnam_id_collection", .src = "collection.zig", .test_src = "collection_test.zig", .step = "test-collection", .desc = "the id-native collection library: Vector trie + Range" },
+        .{ .name = "birnam_id_modules", .src = "modules.zig", .test_src = "modules_test.zig", .step = "test-modules", .desc = "the module manager: store-native dependency graph + topo-sort" },
         .{ .name = "birnam_id_error", .src = "error.zig", .test_src = "error_test.zig", .step = "test-error", .desc = "F7: the error model (propagating values + DNU swap)" },
         .{ .name = "birnam_id_relational", .src = "relational.zig", .test_src = "relational_test.zig", .step = "test-relational", .desc = "the relational reading: datalog join + pull" },
         .{ .name = "birnam_id_alien", .src = "alien.zig", .test_src = "alien_test.zig", .step = "test-alien", .desc = "the FFI: wrap + absorb C libraries via Tcc", .test_links_tcc = true },

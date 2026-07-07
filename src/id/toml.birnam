@@ -18,6 +18,11 @@
 // inline tables. Deferred: dotted keys in key/vals, datetimes (kept as strings
 // if quoted), multi-line strings, arrays-of-tables.
 
+// This module's dependency declaration (stage 3): `parse:` and its helpers call
+// stdlib methods (`collect:`, `inject:into:`, `asInteger`, …) at run time, so Toml
+// requires the self-hosted stdlib.
+[Module named: #toml requires: #[#stdlib]];
+
 // -- the grammar: built once, cached in Globals ------------------------------
 // Helper patterns are block-local lets; only the rules referenced by `parse:`
 // (document/table/keyval/key and the typed value rules) produce CST nodes.
