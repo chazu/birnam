@@ -100,6 +100,18 @@ export fn birnam_t_ptrIdentity(p: ?*anyopaque) ?*anyopaque {
     return p;
 }
 
+// Unsigned 64-bit (`u` sigchar, §F F3): one value that fits signed i64 (→ Integer)
+// and one with the top bit set (→ Word). `uIdentity` round-trips a `u` argument.
+export fn birnam_t_uSmall() c_ulong {
+    return 4_000_000_000; // > i32, fits i64 — a first-class arithmetic Integer
+}
+export fn birnam_t_uBig() c_ulong {
+    return 0x8000_0000_0000_0000; // top bit set — beyond i64, rides a Word
+}
+export fn birnam_t_uIdentity(x: c_ulong) c_ulong {
+    return x;
+}
+
 const CVec2 = extern struct { x: f64, y: f64 }; // an HFA of doubles on arm64
 export fn birnam_t_dotVec2(a: CVec2, b: CVec2) f64 {
     return a.x * b.x + a.y * b.y;
@@ -682,4 +694,34 @@ test "alien: a pointer return is a full-width Word, round-tripped through a p ar
     const back = api.send(ptr, api.intern("idPtr"), &[_]Oop{}, 0);
     try std.testing.expect(api.isWord(back) != 0);
     try std.testing.expectEqual(api.wordValue(ptr), api.wordValue(back));
+}
+
+test "alien: an unsigned scalar is an Integer if it fits i64, else a Word (§F F3)" {
+    const api = setup();
+
+    // Fits signed i64 → a first-class arithmetic Integer (the common case).
+    _ = wrap(api, "birnam_t_uSmall", "u", "uSmall", api.word_vt);
+    const small = api.send(api.mkWord(0), api.intern("uSmall"), &[_]Oop{}, 0);
+    try std.testing.expect(api.isSmallInt(small) != 0); // a first-class Integer, not a Word
+    try std.testing.expectEqual(@as(i64, 4_000_000_000), api.smallIntValue(small));
+    // (that it's arithmetic-usable — no #overflow — is F1's prelude test; this stack
+    // has no prelude, so we assert only the marshalled representation here.)
+
+    // Top bit set (≥ 2^63) → a lossless Word (signed i64 can't hold it).
+    _ = wrap(api, "birnam_t_uBig", "u", "uBig", api.word_vt);
+    const big = api.send(api.mkWord(0), api.intern("uBig"), &[_]Oop{}, 0);
+    try std.testing.expect(api.isWord(big) != 0);
+    try std.testing.expectEqual(@as(u64, 0x8000_0000_0000_0000), api.wordValue(big));
+
+    // Round-trip through a `u` ARG reads either representation: an Integer receiver
+    // returns an Integer; a top-bit Word receiver returns the same Word.
+    _ = wrap(api, "birnam_t_uIdentity", "u u", "uId", api.smallint_vt);
+    const rInt = api.send(api.mkSmallInt(123456), api.intern("uId"), &[_]Oop{}, 0);
+    try std.testing.expect(api.isSmallInt(rInt) != 0);
+    try std.testing.expectEqual(@as(i64, 123456), api.smallIntValue(rInt));
+
+    _ = wrap(api, "birnam_t_uIdentity", "u u", "uIdW", api.word_vt);
+    const rWord = api.send(big, api.intern("uIdW"), &[_]Oop{}, 0);
+    try std.testing.expect(api.isWord(rWord) != 0);
+    try std.testing.expectEqual(@as(u64, 0x8000_0000_0000_0000), api.wordValue(rWord));
 }

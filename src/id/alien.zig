@@ -18,12 +18,13 @@
 //!
 //! A SIGNATURE is a string: the first type is the RETURN, the rest are the
 //! ARGUMENT types, one per birnam argument (whitespace ignored):
-//!   i  int   (32-bit; a SmallInt)     s  const char* (a String; freed after call)
-//!   l  long  (63-bit; a SmallInt)     p  void* (an opaque full-width Word)
+//!   i  int   (32-bit; an Integer)      s  const char* (a String; freed after call)
+//!   l  long  (64-bit; an Integer)      p  void* (an opaque full-width Word)
+//!   u  unsigned long (64-bit; an Integer if it fits i64, else a Word — §F F3)
 //!   d  double (a Float)               f  float  (a Float; narrowed at the call)
 //!   v  void  (return only; → nil)
 //!   {…}  a struct BY VALUE — braces around its field types, e.g. "{ll}" =
-//!        struct { long; long; }. Fields may be scalars (i/l/d/f/p — not s),
+//!        struct { long; long; }. Fields may be scalars (i/l/u/d/f/p — not s),
 //!        nested structs ("{{ll}{ll}}"), or fixed SCALAR ARRAYS written
 //!        <count><char> ("{l 3i}" = struct { long; int[3]; }).
 //! e.g. "i i" = `int f(int)` (abs); "l s" = `long f(const char*)` (strlen);
@@ -109,7 +110,7 @@ fn dupZ(o: Oop) [:0]u8 {
 // list order defines every C name before its first use.
 
 const Ty = union(enum) {
-    scalar: u8, // i l d f s p (plus 'v', return position only)
+    scalar: u8, // i l u d f s p (plus 'v', return position only)
     array: struct { count: usize, elem: u8 },
     agg: usize, // index into Parsed.aggs
 };
@@ -127,6 +128,7 @@ fn cType(sc: u8) ?[]const u8 {
     return switch (sc) {
         'i' => "int",
         'l' => "long",
+        'u' => "unsigned long", // §F F3 — an unsigned 64-bit scalar (size_t/uint64_t)
         'd' => "double",
         'f' => "float",
         's' => "const char*",
@@ -140,7 +142,7 @@ fn cType(sc: u8) ?[]const u8 {
 /// temporaries inside aggregates is deferred) and no 'v'.
 fn fieldScalarOk(c: u8) bool {
     return switch (c) {
-        'i', 'l', 'd', 'f', 'p' => true,
+        'i', 'l', 'u', 'd', 'f', 'p' => true,
         else => false,
     };
 }
@@ -258,6 +260,8 @@ fn putScalarUntag(b: *std.ArrayList(u8), lhs: []const u8, c: u8, e: []const u8) 
     switch (c) {
         'i' => putFmt(b, "{s} = (int)birnam_smallIntValue({s});\n", .{ lhs, e }),
         'l' => putFmt(b, "{s} = birnam_smallIntValue({s});\n", .{ lhs, e }),
+        // An unsigned reads its full 64 bits from either an Integer or a Word (§F F3).
+        'u' => putFmt(b, "{s} = birnam_uintValue({s});\n", .{ lhs, e }),
         'd' => putFmt(b, "{s} = birnam_floatValue({s});\n", .{ lhs, e }),
         'f' => putFmt(b, "{s} = (float)birnam_floatValue({s});\n", .{ lhs, e }),
         // A pointer is opaque and full-width: it rides a boxed Word, not a 63-bit
@@ -271,6 +275,10 @@ fn putScalarUntag(b: *std.ArrayList(u8), lhs: []const u8, c: u8, e: []const u8) 
 fn putScalarBox(b: *std.ArrayList(u8), c: u8, x: []const u8) void {
     switch (c) {
         'i', 'l' => putFmt(b, "birnam_mkSmallInt((long)({s}))", .{x}),
+        // §F F3 large-int policy: an unsigned that fits signed i64 becomes a
+        // first-class arithmetic Integer (the common case — every length/count/
+        // size_t); one with the top bit set (≥ 2^63) rides a lossless Word.
+        'u' => putFmt(b, "(((unsigned long)({s}) >> 63) ? birnam_mkWord((unsigned long)({s})) : birnam_mkSmallInt((long)({s})))", .{ x, x, x }),
         'p' => putFmt(b, "birnam_mkWord((unsigned long)({s}))", .{x}),
         'd', 'f' => putFmt(b, "birnam_mkFloat((double)({s}))", .{x}),
         else => unreachable,
@@ -291,6 +299,7 @@ fn putPreamble(b: *std.ArrayList(u8), has_aggs: bool) void {
         \\extern double birnam_floatValue(void*);
         \\extern void* birnam_mkWord(unsigned long);
         \\extern unsigned long birnam_wordValue(void*);
+        \\extern unsigned long birnam_uintValue(void*);
         \\extern const char* birnam_cstr(void*);
         \\extern void birnam_free_cstr(const char*);
         \\extern void* birnam_mkString(const char*, long);
@@ -435,15 +444,17 @@ fn genShim(fn_name: []const u8, sig: Parsed) []u8 {
         if (t == .scalar and t.scalar == 's') putFmt(&b, "birnam_free_cstr(a{d});\n", .{i});
     }
 
-    // Marshal the result.
+    // Marshal the result. Numeric/pointer scalars box via the shared emitter (so
+    // 'u' gets the F3 Integer-or-Word policy for free); 's'/'v' are special.
     switch (sig.ret) {
         .scalar => |c| switch (c) {
-            'i', 'l' => put(&b, "return birnam_mkSmallInt((long)__r);\n"),
-            'p' => put(&b, "return birnam_mkWord((unsigned long)__r);\n"),
-            'd', 'f' => put(&b, "return birnam_mkFloat((double)__r);\n"),
             's' => put(&b, "return __r ? birnam_mkString(__r, strlen(__r)) : birnam_nil();\n"),
             'v' => put(&b, "return birnam_nil();\n"),
-            else => unreachable,
+            else => {
+                put(&b, "return ");
+                putScalarBox(&b, c, "__r");
+                put(&b, ";\n");
+            },
         },
         .agg => |j| putFmt(&b, "return __mk{d}(&__r);\n", .{j}),
         .array => unreachable,
@@ -532,6 +543,7 @@ fn genCallback(sig: Parsed) []u8 {
             'v' => put(&b, "(void)r;\n"),
             'i' => put(&b, "return (int)birnam_smallIntValue(r);\n"),
             'l' => put(&b, "return birnam_smallIntValue(r);\n"),
+            'u' => put(&b, "return birnam_uintValue(r);\n"), // Integer or Word → u64 (§F F3)
             'p' => put(&b, "return (void*)birnam_wordValue(r);\n"),
             'd' => put(&b, "return birnam_floatValue(r);\n"),
             'f' => put(&b, "return (float)birnam_floatValue(r);\n"),

@@ -176,6 +176,13 @@ fn rtMkWord(v: u64) callconv(.c) Oop {
 fn rtWordValue(o: Oop) callconv(.c) u64 {
     return g_api.wordValue(o);
 }
+/// Read an unsigned 64-bit value from either representation the `u` FFI sigchar
+/// admits (§F F3): a Word carries a top-bit-set magnitude, an Integer carries one
+/// that fit i64. Both hold their payload at offset 0, so this is a value read, not
+/// a reinterpretation — a `u` arg boxed as either round-trips its bits.
+fn rtUintValue(o: Oop) callconv(.c) u64 {
+    return if (g_api.isWord(o) != 0) g_api.wordValue(o) else @bitCast(g_api.smallIntValue(o));
+}
 fn rtMkString(p: [*]const u8, n: usize) callconv(.c) Oop {
     return g_api.mkString(p, n);
 }
@@ -245,6 +252,7 @@ comptime {
     @export(&rtFloatValue, .{ .name = "birnam_floatValue" });
     @export(&rtMkWord, .{ .name = "birnam_mkWord" });
     @export(&rtWordValue, .{ .name = "birnam_wordValue" });
+    @export(&rtUintValue, .{ .name = "birnam_uintValue" });
     @export(&rtMkString, .{ .name = "birnam_mkString" });
     @export(&rtNil, .{ .name = "birnam_nil" });
     @export(&rtTrue, .{ .name = "birnam_true" });
@@ -269,6 +277,7 @@ const runtime_syms = [_]RuntimeSym{
     .{ .name = "birnam_floatValue", .addr = @ptrCast(&rtFloatValue) },
     .{ .name = "birnam_mkWord", .addr = @ptrCast(&rtMkWord) },
     .{ .name = "birnam_wordValue", .addr = @ptrCast(&rtWordValue) },
+    .{ .name = "birnam_uintValue", .addr = @ptrCast(&rtUintValue) },
     .{ .name = "birnam_mkString", .addr = @ptrCast(&rtMkString) },
     .{ .name = "birnam_nil", .addr = @ptrCast(&rtNil) },
     .{ .name = "birnam_true", .addr = @ptrCast(&rtTrue) },
