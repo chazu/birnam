@@ -1,18 +1,24 @@
-// Bank ledger — reference cells + time-travel.
-//
-// A balance lives in a `db cell:`. Each transaction is a `set:` to a new value;
-// birnam keeps every prior value, so the cell is its own statement. Run it:
+// Bank ledger — a balance cell with time-travel over the fact store.
 //
 //   birnam examples/bank-ledger.birnam
 //
+// The balance lives at (#account, #balance) in `db`. We opt that ATTRIBUTE into
+// history so every prior value is retained (the store default is history-off —
+// the 4 GB lesson), then a cell is just a handle onto that (entity, attribute).
+// `[db basis]` captures a point in time; `[db valueOf:attr:asOf:]` rewinds the
+// balance to it, and `[cell history]` reports how many values it has held.
+//
 // `deposit`/`withdraw` are named blocks taking the amount as a parameter —
-// applied transactions, not buried expressions. `asOf:` rewinds the balance to
-// an earlier basis (here `t0`, captured before any transaction), and `history`
-// replays every value the cell has held. Time-travel for free: the ledger is
-// just the cell's past.
+// applied transactions, not buried expressions. Time-travel for free: the
+// ledger is just the balance attribute's past.
 
-let acct := [db cell: 0];
-let t0 := [[db now] basisT];
+// Opt the balance attribute into history so its timeline is kept. (The history
+// policy is the symbol #true — a schema value in the store, not the boolean.)
+[db assert: #balance attr: #history value: #true];
+
+let acct := [db cellFor: #account attr: #balance];
+[acct set: 0];
+let t0 := [db basis];              // snapshot: the moment before any transaction
 
 let deposit  := [:amt | [acct set: [[acct value] + amt]]];
 let withdraw := [:amt | [acct set: [[acct value] - amt]]];
@@ -21,6 +27,6 @@ let withdraw := [:amt | [acct set: [[acct value] - amt]]];
 [deposit  value: 50];
 [withdraw value: 30];
 
-[System println: ["balance now: " , [[acct value] printString]]];
-[System println: ["at start:    " , [[acct asOf: t0] printString]]];
-[System println: ["statement:   " , [[acct history] printString]]]
+[System println: ["balance now:  " , [[acct value] printString]]];
+[System println: ["at start:     " , [[db valueOf: #account attr: #balance asOf: t0] printString]]];
+[System println: ["values held:  " , [[acct history] printString]]]
