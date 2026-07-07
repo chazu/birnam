@@ -478,12 +478,92 @@ fn loadSelfHosted(a: std.mem.Allocator, api: *IdApi, codegen: Oop, name: []const
     _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
 }
 
-/// Bring up the whole self-hosted layer (stdlib, then toml), unless opted out.
+const SelfHosted = struct { name: [:0]const u8, src: []const u8 };
+// The self-hosted layer as a SET — the LOAD ORDER is derived from each module's own
+// `requires` declaration (topo-sorted below), not this list's order. To add a
+// self-hosted module: embed its source, add a row here, and declare its `requires`
+// in its source; the sort places it correctly.
+const self_hosted_modules = [_]SelfHosted{
+    .{ .name = "stdlib", .src = STDLIB_SRC },
+    .{ .name = "toml", .src = TOML_SRC },
+    .{ .name = "config", .src = CONFIG_SRC },
+};
+
+/// Scan a self-hosted module's source for its `[Module … requires: #[ #a #b ]]`
+/// declaration and build a Vector of the dependency-name symbols. The declaration
+/// is the module's first statement (a fixed convention; `requires:` never appears
+/// before it in a comment), so this reads the requires WITHOUT loading the module —
+/// the pre-load knowledge a dependency-ordered boot needs. Absent/empty → an empty
+/// Vector (a leaf). The module's own runtime declaration re-asserts the same edges.
+fn scanRequires(api: *IdApi, src: []const u8) Oop {
+    const vector = api.import("Vector") orelse return api.nilObj;
+    var v = api.send(vector, api.intern("new"), &[_]Oop{}, 0);
+    const rk = std.mem.indexOf(u8, src, "requires:") orelse return v;
+    const br = std.mem.indexOfPos(u8, src, rk, "#[") orelse return v;
+    var i = br + 2;
+    while (i < src.len and src[i] != ']') {
+        if (src[i] == '#') {
+            const start = i + 1;
+            var j = start;
+            while (j < src.len and (std.ascii.isAlphanumeric(src[j]) or src[j] == '_')) j += 1;
+            if (j > start) {
+                var nbuf: [64]u8 = undefined;
+                const len = @min(j - start, nbuf.len - 1);
+                @memcpy(nbuf[0..len], src[start..][0..len]);
+                nbuf[len] = 0;
+                v = api.send(v, api.intern("add:"), &[_]Oop{api.intern(@ptrCast(&nbuf))}, 1);
+            }
+            i = j;
+        } else i += 1;
+    }
+    return v;
+}
+
+/// Install the self-hosted module named `nameSym` (from the embedded table), or do
+/// nothing if the name isn't self-hosted (a kernel dependency in the sort order —
+/// already loaded).
+fn installSelfHostedByName(a: std.mem.Allocator, api: *IdApi, codegen: Oop, nameSym: Oop) void {
+    const nm = std.mem.span(api.symbolName(nameSym));
+    for (self_hosted_modules) |sh| {
+        if (std.mem.eql(u8, nm, sh.name)) {
+            loadSelfHosted(a, api, codegen, sh.name, sh.src);
+            return;
+        }
+    }
+}
+
+/// Bring up the whole self-hosted layer, unless opted out. The load ORDER is a
+/// topological sort of the modules' `requires` graph (§stage-3): each source's
+/// requires is scanned + registered into the `Module` manager, then `[Module
+/// loadOrder:]` decides the sequence — so a module always loads after its deps,
+/// derived from the sources rather than hardcoded. Falls back to the declared table
+/// order if the manager is unavailable or reports a cycle.
 fn loadStdlib(a: std.mem.Allocator, api: *IdApi, codegen: Oop) void {
     if (std.posix.getenv("BIRNAM_NO_STDLIB") != null) return;
-    loadSelfHosted(a, api, codegen, "stdlib", STDLIB_SRC);
-    loadSelfHosted(a, api, codegen, "toml", TOML_SRC); // requires stdlib (at run time)
-    loadSelfHosted(a, api, codegen, "config", CONFIG_SRC); // requires toml
+    const mm = api.import("Module");
+    const vector = api.import("Vector");
+    if (mm != null and vector != null) {
+        const m = mm.?;
+        // Register each module's scanned requires, and collect the name set.
+        var names = api.send(vector.?, api.intern("new"), &[_]Oop{}, 0);
+        for (self_hosted_modules) |sh| {
+            _ = api.send(m, api.intern("named:requires:"), &[_]Oop{ api.intern(sh.name.ptr), scanRequires(api, sh.src) }, 2);
+            names = api.send(names, api.intern("add:"), &[_]Oop{api.intern(sh.name.ptr)}, 1);
+        }
+        const order = api.send(m, api.intern("loadOrder:"), &[_]Oop{names}, 1);
+        // loadOrder answers a Vector, or a #circularDependency error → fall back.
+        const is_error = api.isExported("Error") != 0 and
+            api.send(order, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj;
+        if (order != api.nilObj and !is_error) {
+            const n = api.smallIntValue(api.send(order, api.intern("size"), &[_]Oop{}, 0));
+            var k: i64 = 0;
+            while (k < n) : (k += 1)
+                installSelfHostedByName(a, api, codegen, api.send(order, api.intern("at:"), &[_]Oop{api.mkSmallInt(k)}, 1));
+            return;
+        }
+    }
+    // Fallback: the declared table order (also correct — it's dependency-ordered).
+    for (self_hosted_modules) |sh| loadSelfHosted(a, api, codegen, sh.name, sh.src);
 }
 
 /// Resolve the directory holding the runtime module dylibs. Tries, in order:
