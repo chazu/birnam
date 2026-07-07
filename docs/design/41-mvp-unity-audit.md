@@ -12,13 +12,13 @@ producing this — it is a tracking list.
 > `88b2a02`. §D's resolution **inverted the North Star** — object model canonical, relational
 > reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green. ⬜
-> **OPEN: only §G's harder half remains** (the large-int question is CLOSED — box has been
+> **OPEN: §G remainder** (the large-int question is CLOSED — box has been
 > full i64 since §A, `u` gives Integer-if-fits/else-`Word`, no bignum/no-arith-to-Word;
-> bignum deferred as a named feature). §G: G2/G3 (image consistency, latent),
+> bignum deferred as a named feature). §G: G2 (image method-redefine consistency),
 > G6 (Binding), G8 (layering),
 > G10 FFI leaks — each real design/feature work). **§G cheap end
-> swept 2026-07-05: G1/G5/G7 done; G4 (left-recursion crash → `#leftRecursion` error)
-> + G9 (binary-op charset widened `% @ ! ^`) done 2026-07-07.** Nothing is parked.
+> swept 2026-07-05: G1/G5/G7 done; G4 (left-recursion → `#leftRecursion`), G9
+> (binary-op charset `% @ ! ^`), G3 (image partial-layout guard) done 2026-07-07.** Nothing is parked.
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -377,8 +377,9 @@ No arity caps in codegen.
 > **Cheap-end sweep DONE 2026-07-05 (`48b110b`):** G7 (raw `==`→`eq()`), G5
 > (fixpoint non-convergence now reported, not silent), G1 (comment honesty). **G4
 > (left-recursion crash → `#leftRecursion` kinded error) + G9 (binary-op charset
-> widened `% @ ! ^`) done 2026-07-07.** The rest
-> stand — G2/G3 (image consistency, latent), G6 (Binding
+> widened `% @ ! ^`) + G3 (image partial-layout guard scans all slots) done
+> 2026-07-07.** The rest
+> stand — G2 (image method-redefine consistency), G6 (Binding
 > object), G8 (layering),
 > G10 (FFI leaks) — each needs real design/feature work, not a one-liner.
 
@@ -390,9 +391,16 @@ No arity caps in codegen.
 - [ ] **G2 · `image.zig:440`** — method-redefining append warns instead of
   re-emitting code; image internally inconsistent until compacting save /
   `--rebuild`.
-- [ ] **G3 · `image.zig:223`** — layout guard inspects only slot 0; a
-  partially-laid-out object can serialise a live Oop as a raw word → dangling
-  pointer on load. Latent (types call `setLayout` uniformly today).
+- [x] **G3 · DONE 2026-07-07 (`image.zig`).** `internObj`'s serialisability guard
+  now scans EVERY payload word for `slot_unknown` (was slot 0 only); an object with
+  any unknown slot is deferred whole (slice-4 replay), so a live Oop under an
+  undescribed slot is never dumped as a raw word → no dangling pointer on load. The
+  `drainHeapFrom` switch also stops conflating `slot_unknown` with `slot_raw`
+  (explicit `slot_raw => putU64`, `else => unreachable`), making the invariant
+  self-checking. Regression test in `image_test.zig` manufactures a partial layout
+  (slot 0 oop, slot 1 unknown holding a live String) and proves it round-trips as a
+  deferral; a negative run with the old guard hits the `unreachable`. Latent before
+  (all real types `setLayout` uniformly), now closed.
 - [x] **G4 · DONE 2026-07-07 (`peg.zig`).** The packrat memo now plants an
   `in_progress` marker at `(rule, pos)` BEFORE descending, so a left-recursive
   re-entry (direct or indirect) at the same position is caught instead of

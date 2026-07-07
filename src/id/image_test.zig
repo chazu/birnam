@@ -162,6 +162,46 @@ test "round-trip: leaf + vector + map globals survive save/load" {
     try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(send(gm, "at:", &.{api.intern("k")})));
 }
 
+test "§G3: an object with an unknown slot in a NON-zero position is deferred, not dumped raw" {
+    const api = setup();
+    const globals = api.import("Globals").?;
+
+    // Manufacture a pathological type: slot 0 has a KNOWN kind (oop) but slot 1 is
+    // `slot_unknown` — a partially-described layout no real type produces today, so
+    // this is the latent hole G3 names. The old guard inspected only slot 0, passed
+    // this object, and `drainHeapFrom` would then dump slot 1 (a live Oop) as a raw
+    // word → a dangling pointer on load. The tightened guard scans every slot and
+    // defers the whole object instead.
+    const vt = api.proto(api.object_vt);
+    _ = api.exportObj("BadLayout", vt); // exported → not deferred for the image-born reason
+    const kinds = [_]u8{ idapi.slot_oop, idapi.slot_unknown };
+    api.setLayout(vt, &kinds, 2, idapi.slot_raw);
+
+    const obj = api.alloc(vt, 2 * @sizeOf(usize));
+    const live = api.mkString("i-would-dangle", 14); // a real, rooted Oop in the unknown slot
+    const words: [*]usize = @ptrCast(@alignCast(obj.?));
+    words[0] = @intFromPtr(api.nilObj.?); // slot 0: a legit oop
+    words[1] = @intFromPtr(live.?); // slot 1: a live Oop under an UNKNOWN kind
+
+    gPut(globals, "gbad", obj); // reachable from a saved global
+    gPut(globals, "ggood", api.mkSmallInt(7)); // a normal sibling that MUST survive
+
+    const a = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const path = try tmpImagePath(a, &tmp);
+    defer a.free(path);
+
+    // Save must SUCCEED without hitting drainHeapFrom's `unreachable` (the guard
+    // deferred gbad before it reached the drain), and load must apply cleanly.
+    try std.testing.expect(image.saveImage(path));
+    try std.testing.expect(image.loadImage(path));
+
+    // The normal global round-trips; the pathological one was deferred → absent.
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(gAt(globals, "ggood")));
+    try std.testing.expect(gAt(globals, "gbad") == api.nilObj);
+}
+
 test "journal: appendImage writes deltas; load applies base + deltas cumulatively" {
     const api = setup();
     const globals = api.import("Globals").?;

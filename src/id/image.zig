@@ -223,8 +223,17 @@ fn internObj(o: Oop) ?u32 {
     const vt = g_api.vtableOf(o);
     if (vt == null) return null;
     if (g_api.exportedNameOf(vt) == null) return null; // image-born vtable → slice 4
-    const psize = g_api.objectPayloadSize(o);
-    if (psize > 0 and g_api.slotKind(vt, 0) == idapi.slot_unknown) return null; // no layout
+    // EVERY payload word must have a KNOWN layout kind (§G3). An unknown slot is
+    // dumped as a raw word by `drainHeapFrom`, and if it actually holds a live Oop
+    // that raw word is a dangling pointer on load. The old guard inspected only
+    // slot 0, so a partially-described layout (slot 0 known, a later slot unknown)
+    // slipped through — scan the whole payload and defer the object if ANY slot is
+    // unknown (slice-4 replay re-derives it).
+    const nwords = g_api.objectPayloadSize(o) / WORD;
+    var w: usize = 0;
+    while (w < nwords) : (w += 1) {
+        if (g_api.slotKind(vt, w) == idapi.slot_unknown) return null;
+    }
     const id: u32 = @intCast(g_objs.items.len);
     g_reloc.put(ca, @intFromPtr(o.?), id) catch @panic("image: oom");
     g_objs.append(ca, o) catch @panic("image: oom");
@@ -338,7 +347,10 @@ fn drainHeapFrom(buf: *Buf, start: usize) void {
                     }
                 },
                 idapi.slot_code => g_deferred_slots += 1, // zero-width; slice 4
-                else => putU64(buf, word.*), // slot_raw
+                idapi.slot_raw => putU64(buf, word.*),
+                // slot_unknown can't reach here: internObj (§G3) defers any object
+                // with an unknown slot whole, so a live Oop is never dumped raw.
+                else => unreachable,
             }
         }
     }
