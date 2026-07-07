@@ -201,7 +201,7 @@ var g_collector_vt: Oop = null;
 // append. `-1` basis = no base established in this process yet.
 var g_saved_basis: i64 = -1; // basis tx captured at the last save/append/load
 var g_min_tx: i64 = 0; // collector filter: skip facts with tx < this (append = delta only)
-var g_delta_has_methods: bool = false; // a delta touched `__methods__` → warn (code needs compact/rebuild)
+var g_delta_has_methods: bool = false; // a delta touched `__methods__` → re-emit a composing `.code` record (§G2)
 var g_methods_entity: Oop = null; // interned `__methods__`, for that detection
 
 /// Reset the save worklist for a FULL save (a fresh base / compaction). An append
@@ -450,9 +450,10 @@ pub fn saveImage(path: []const u8) bool {
 /// newly reachable from them (base objects keep their ids and are referenced, not
 /// rewritten). The on-disk format is a record stream read to EOF, so appending is
 /// literally writing more records — no rewrite. Returns false if no base is known
-/// (call `saveImage:` first) or on an I/O error. Code is NOT re-emitted: a delta
-/// that (re)defines methods still needs a compacting `saveImage:` (or a `--rebuild`
-/// boot, which replays all source) for its code — reported when it happens.
+/// (call `saveImage:` first) or on an I/O error. A delta that (re)defines methods
+/// re-emits a composing `.code` record (§G2) so the appended image is self-consistent
+/// — the appended install overrides the base's stale method on load, no `--rebuild`
+/// or compacting `saveImage:` required.
 pub fn appendImage(path: []const u8) bool {
     if (g_saved_basis < 0) return false; // no base established this process
     g_api.gcSetAuto(0);
@@ -496,11 +497,14 @@ pub fn appendImage(path: []const u8) bool {
         endRecord(&buf, at);
     }
     reportDeferred();
-    if (g_delta_has_methods) std.debug.print(
-        "[image] append: this delta (re)defines methods — their COMPILED code is not appended; " ++
-            "boot with --rebuild, or `saveImage:` to compact, to map them\n",
-        .{},
-    );
+    // §G2: a delta that (re)defines methods re-emits the compiled library as an
+    // additional `.code` record (compiled from the CURRENT source of every selector).
+    // On load, `.code` records COMPOSE (loadCode installs each in stream order) and a
+    // later install overrides an earlier one, so this appended code supersedes the
+    // base's now-stale method — the appended image is self-consistent with no
+    // `--rebuild`/compact needed. Only a method-touching delta pays this recompile; a
+    // data-only append writes no code at all.
+    if (g_delta_has_methods) appendCode(&buf);
     if (buf.items.len > 0 and !appendToFile(path, buf.items)) return false;
     g_saved_basis = tx; // advance the watermark for the next append
     return true;

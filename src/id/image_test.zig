@@ -341,3 +341,42 @@ test "round-trip: a block-valued global is re-derived from its recorded source" 
     // The re-derived closure works and still sees the restored capture.
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(send(gAt(globals, "addBase"), "value:", &.{api.mkSmallInt(2)})));
 }
+
+test "§G2: a method REDEFINED in an append re-emits code; the new definition wins on default load" {
+    const api = setupWithCodegen();
+    const Codegen = api.import("Codegen").?;
+
+    // Base: `bump` adds 1. saveImage establishes the append baseline AND writes a
+    // `.code` record compiled from this (V1) source.
+    const v1 = "[Reflect defineMethod: #bump on: Integer as: [:x | [x + 1]]]";
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(v1.ptr, v1.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 6), api.smallIntValue(send(api.mkSmallInt(5), "bump", &.{})));
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const path = try std.fs.path.join(a, &.{ dir, "redef.image" });
+    defer a.free(path);
+
+    try std.testing.expect(image.saveImage(path));
+
+    // Delta: REDEFINE `bump` to add 100. The append must re-emit a composing `.code`
+    // record (§G2) — not just the new `__methods__` fact — so the image is
+    // self-consistent without a --rebuild.
+    const v2 = "[Reflect defineMethod: #bump on: Integer as: [:x | [x + 100]]]";
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(v2.ptr, v2.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 105), api.smallIntValue(send(api.mkSmallInt(5), "bump", &.{})));
+    try std.testing.expect(image.appendImage(path));
+
+    // Default load MAPS code (no --rebuild): base V1 installs first, then the
+    // appended V2 install composes over it. The redefinition wins: 5 bump == 105.
+    try std.testing.expect(image.loadImage(path));
+    try std.testing.expect(image.mappedCode());
+    try std.testing.expectEqual(@as(i64, 105), api.smallIntValue(send(api.mkSmallInt(5), "bump", &.{})));
+
+    // Structurally: base + delta, and the delta carried its own `.code` record —
+    // more than one `.code` survives validation (a base plus appended code).
+    try std.testing.expect(image.validate(path));
+}

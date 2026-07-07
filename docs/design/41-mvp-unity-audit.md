@@ -12,15 +12,15 @@ producing this — it is a tracking list.
 > `88b2a02`. §D's resolution **inverted the North Star** — object model canonical, relational
 > reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green. ⬜
-> **OPEN: §G remainder — only G2 + G6 left** (the large-int question is CLOSED — box has
+> **OPEN: §G remainder — only G6 left** (the large-int question is CLOSED — box has
 > been full i64 since §A, `u` gives Integer-if-fits/else-`Word`, no bignum/no-arith-to-Word;
-> bignum deferred as a named feature). §G open: G2 (image method-redefine consistency),
-> G6 (Binding object). **§G cheap end
+> bignum deferred as a named feature). §G open: G6 (Binding object). **§G cheap end
 > swept 2026-07-05: G1/G5/G7 done; G4 (left-recursion → `#leftRecursion`), G9
 > (binary-op charset `% @ ! ^`), G3 (image partial-layout guard), G8 (Symbol `#`
 > printString moved prelude→ off global symbol_vt), G10 (FFI release paths:
-> `releaseCallback:`/`dlclose:`; OOM-`@panic` resolved-by-design like C4) done
-> 2026-07-07.** Nothing is parked.
+> `releaseCallback:`/`dlclose:`; OOM-`@panic` resolved-by-design like C4), G2 (image
+> method-redefine append re-emits a composing `.code` record → self-consistent, no
+> `--rebuild`) done 2026-07-07.** Nothing is parked.
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -382,18 +382,27 @@ No arity caps in codegen.
 > widened `% @ ! ^`) + G3 (image partial-layout guard scans all slots) + G8
 > (Symbol `#`-sigil `printString` moved to the prelude, off the global `symbol_vt`)
 > + G10 (FFI release paths `releaseCallback:`/`dlclose:`; OOM-`@panic` resolved-by-design)
-> done 2026-07-07.** Only two
-> stand — G2 (image method-redefine consistency), G6 (Binding
-> object) — each needs real design/feature work, not a one-liner.
+> + G2 (image method-redefine append re-emits a composing `.code` record → self-consistent)
+> done 2026-07-07.** Only ONE
+> stands — G6 (Binding object) — real design/feature work, not a one-liner.
 
 - [x] **G1 · MED — DONE 2026-07-05 (doc honesty, `image.zig`).** The "counted, never
   dropped" claim overstated: deferral relies on slice-4 replay re-deriving the value
   from recorded source — true for source-backed method/block globals, but a block-valued
   fact with NO source backing is genuinely absent from the persisted image (reported by
   `reportDeferred`, not silent). Comment corrected to say so; behaviour unchanged.
-- [ ] **G2 · `image.zig:440`** — method-redefining append warns instead of
-  re-emitting code; image internally inconsistent until compacting save /
-  `--rebuild`.
+- [x] **G2 · DONE 2026-07-07 (`image.zig`).** A method-redefining `appendImage`
+  used to write only the new `__methods__` fact and PRINT a warning that the compiled
+  code was stale until a `--rebuild`/compacting save — the on-disk image was
+  internally inconsistent (the fact said one thing, the code record another). Fixed by
+  RE-EMITTING: when a delta touches `__methods__` (`g_delta_has_methods`), `appendImage`
+  now appends a fresh composing `.code` record via `appendCode` — compiled from the
+  CURRENT source of every selector (last-write-wins). The `loadImage` path already
+  installs `.code` records in stream order, so the appended install (V2) composes OVER
+  the base's stale method (V1); the redefinition wins on a plain default load, no
+  `--rebuild` needed. Only a method-touching delta pays the recompile; a data-only
+  append still writes no code. Regression in `image_test.zig` (§G2): define `bump`
+  (+1), save, redefine (+100), append, default-load → `5 bump` == 105 with mapped code.
 - [x] **G3 · DONE 2026-07-07 (`image.zig`).** `internObj`'s serialisability guard
   now scans EVERY payload word for `slot_unknown` (was slot 0 only); an object with
   any unknown slot is deferred whole (slice-4 replay), so a live Oop under an
