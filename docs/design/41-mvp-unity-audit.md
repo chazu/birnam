@@ -7,16 +7,15 @@ by five parallel investigators, then consolidated. **No code changed** in
 producing this — it is a tracking list.
 
 > **SCOREBOARD (2026-07-06).** ✅ **DONE:** §A, §B (incl. B8/B9), **§C (C1–C5, C4 stale)**,
-> §D (D1–D4), **§E (E1/E2/E3)**, **§F F1 (pointer `85e4a85`, long `8cf5136`) + F2 + F3
-> (unsigned `u` sigchar `aba41fd`) + the boxed `Word` type (`4c0da27`)**. §D's resolution
-> **inverted the North Star** — object model canonical, relational reading derived — recorded
-> in **[docs/42](42-object-canonical-relational-derived.md)** (READ IT for current direction).
-> All 13 suites + 24 examples green. ⬜
-> **OPEN:** §F **F4 only** (peek/poke/alloc/free — foundation laid, hangs off `word_vt`).
-> The large-int question is CLOSED: box has been full i64 since §A (a fossil ±2^62 clamp,
-> now lifted), `u` gives Integer-if-fits/else-`Word`; **no bignum, no arithmetic-to-Word**
-> (bignum deferred as a named feature). · §G **the
-> harder half** (G2/G3 image consistency, G4 left-recursion crash, G6 Binding, G8 layering,
+> §D (D1–D4), **§E (E1/E2/E3)**, **§F FULLY CLOSED (F1–F4)** — pointer `85e4a85`, long
+> `8cf5136`, F2 `1f15245`, unsigned `u` `aba41fd`, boxed `Word` `4c0da27`, raw memory
+> `88b2a02`. §D's resolution **inverted the North Star** — object model canonical, relational
+> reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
+> (READ IT for current direction). All 13 suites + 24 examples green. ⬜
+> **OPEN: only §G's harder half remains** (the large-int question is CLOSED — box has been
+> full i64 since §A, `u` gives Integer-if-fits/else-`Word`, no bignum/no-arith-to-Word;
+> bignum deferred as a named feature). §G: G2/G3 (image consistency, latent), G4
+> (left-recursion crash), G6 (Binding), G8 (layering),
 > G9 operator charset, G10 FFI leaks — each real design/feature work). **§G cheap end
 > swept 2026-07-05: G1/G5/G7 done.** Nothing is parked.
 
@@ -328,7 +327,7 @@ No arity caps in codegen.
 
 ## F. FFI is a reduced re-implementation vs the documented (attic libffi) surface
 
-> **F1 + F2 + F3 DONE — only F4 remains in §F.** F2 = platform bug (`1f15245`). **F1 is now fully resolved.** POINTER
+> **✅ §F FULLY CLOSED (F1–F4 all done).** F2 = platform bug (`1f15245`). **F1 is now fully resolved.** POINTER
 > half (`85e4a85`): `p` marshals through the boxed `Word` at all four sites, full-width
 > round-trip. LONG half (`8cf5136`): the "truncation" premise was **stale** — an Integer has
 > been a heap box holding a full **i64** since the §A refounding removed immediates (no tag),
@@ -364,11 +363,13 @@ No arity caps in codegen.
   computable size_t (`n * 2`). (Pre-existing, unrelated: `putPreamble` hardcodes
   `extern long strlen`, so wrapping the literal `strlen` with a non-`long` return
   clashes — an artifact of that one name.)
-- [ ] **F4 · MED · `alien.zig`** — no `peek`/`poke`, `alloc:`/`free`, pointer
-  deref, or Cell out-params. A C API that fills a caller buffer can't be wrapped
-  without writing C. Half of "wrap-a-C-lib without Zig." **Foundation laid
-  (`4c0da27`/`85e4a85`):** pointers are now `Word`s, so peek/poke/alloc/free
-  install as `word_vt` protocol.
+- [x] **F4 · MED — DONE (`88b2a02`) · `alien.zig`.** Raw C-memory protocol on
+  `word_vt`: `[Alien alloc: n]`/`[buf free]`, `peek{Int,Byte,Ptr,Double,String}At:`,
+  `poke{Int,Byte,Ptr,Double}:at:`. A C `T*` out-param is wrapped by allocating a
+  buffer, passing the Word as its `p` arg, and peeking the result — no C written.
+  `peekPtrAt:` derefs `T**`; `peekStringAt:` copies a C string. Null base →
+  `#nullPointer`, non-Integer offset → `#typeMismatch` (kinded, §C1). Verified
+  end-to-end: `modf(3.75)` fills its `double*` ipart (examples/ffi.birnam).
 
 ## G. Marked deferrals (LOW — honest, catalogued for completeness)
 
