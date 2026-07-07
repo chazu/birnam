@@ -329,6 +329,49 @@ test "rung 2d: history-off asOf is HONEST, not silently nil (docs/42 §D3)" {
     try std.testing.expect(api.send(db, valueOf, &[_]Oop{ e, api.intern("ghost"), b2 }, 3) == api.nilObj);
 }
 
+// A 0-arg stand-in block: a plain object whose `value` returns a fixed sentinel,
+// so `at:ifAbsent:` has something to evaluate on the absent path.
+fn ifAbsent99(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return gG6api.mkSmallInt(99);
+}
+var gG6api: *idapi.IdApi = undefined;
+
+test "§G6: Globals tells 'absent' from 'bound to nil' — includes: honest, at:ifAbsent: distinguishes" {
+    const api = id.id_init();
+    store.bringUp(api);
+    gG6api = api;
+
+    const g = store.globals_obj;
+    const present = api.intern("g6_present");
+    const nilbound = api.intern("g6_nilbound");
+    const absent = api.intern("g6_absent"); // never bound
+
+    _ = api.send(g, api.intern("at:put:"), &[_]Oop{ present, api.mkSmallInt(7) }, 2);
+    _ = api.send(g, api.intern("at:put:"), &[_]Oop{ nilbound, api.nilObj }, 2); // an EXPLICIT nil binding
+
+    // includes: reads presence honestly — a global set to nil IS present; only a
+    // never-bound name is absent. (The store keeps internal absence distinct from
+    // the nil value, so this needs no Binding object.)
+    try std.testing.expect(api.send(g, api.intern("includes:"), &[_]Oop{present}, 1) == api.trueObj);
+    try std.testing.expect(api.send(g, api.intern("includes:"), &[_]Oop{nilbound}, 1) == api.trueObj);
+    try std.testing.expect(api.send(g, api.intern("includes:"), &[_]Oop{absent}, 1) == api.falseObj);
+
+    // at:ifAbsent: — the block runs ONLY on genuine absence; a bound nil returns nil.
+    const vt = api.proto(api.object_vt);
+    api.method(vt, api.intern("value"), &ifAbsent99);
+    const blk = api.alloc(vt, 0);
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(api.send(g, api.intern("at:ifAbsent:"), &[_]Oop{ present, blk }, 2)));
+    try std.testing.expect(api.send(g, api.intern("at:ifAbsent:"), &[_]Oop{ nilbound, blk }, 2) == api.nilObj); // bound nil: block NOT run
+    try std.testing.expectEqual(@as(i64, 99), api.smallIntValue(api.send(g, api.intern("at:ifAbsent:"), &[_]Oop{ absent, blk }, 2))); // absent: block runs
+
+    // at: alone CAN'T distinguish (both answer nil) — the reason at:ifAbsent: exists.
+    try std.testing.expect(api.send(g, api.intern("at:"), &[_]Oop{nilbound}, 1) == api.nilObj);
+    try std.testing.expect(api.send(g, api.intern("at:"), &[_]Oop{absent}, 1) == api.nilObj);
+}
+
 test "rung 2a.1: currentValue of an absent (e,a) is nil" {
     // Tests share one process: id_init + bringUp are both idempotent (bringUp
     // takes its reload path and re-imports the live store), so this just rides

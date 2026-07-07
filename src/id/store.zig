@@ -735,12 +735,30 @@ fn mirrorOverwriteHook(vt: Oop, sel: Oop) callconv(.c) void {
 
 /// `[Globals at: aSymbol]` — the current value bound to `aSymbol`, or nil.
 /// Normalises the store's internal absence (Zig null) to the nil singleton, so
-/// birnam code never sees a raw null.
+/// birnam code never sees a raw null. A single-value accessor CAN'T distinguish
+/// "absent" from "bound to nil" — both answer nil; use `at:ifAbsent:` (§G6, the
+/// no-NULL lock: absence rides `ifAbsent:`, nil is a value) when the difference
+/// matters.
 fn mGlobalsAt(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
     const cur = g_api.send(store_instance, s_currentValue, &[_]Oop{ g_globals_entity, args[0] }, 2);
     return if (cur == null) g_api.nilObj else cur;
+}
+
+/// `[Globals at: aSymbol ifAbsent: aBlock]` — the value bound to `aSymbol`,
+/// EVEN IF that value is nil; only when `aSymbol` has no binding at all is
+/// `aBlock` evaluated (`value`) for the answer. This is the one accessor that
+/// tells "unbound" from "bound to nil" apart — the store already keeps them
+/// distinct (internal absence is Zig null, a bound nil is the nil singleton), so
+/// no Binding object is needed; the distinction just needs an out-of-band channel,
+/// which the block is (§G6 / docs/36 §3, the no-NULL stdlib lock).
+fn mGlobalsAtIfAbsent(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const cur = g_api.send(store_instance, s_currentValue, &[_]Oop{ g_globals_entity, args[0] }, 2);
+    if (cur != null) return cur; // present — return the bound value (possibly nil)
+    return g_api.send(args[1], s_value, &[_]Oop{}, 0); // absent — evaluate the block
 }
 
 /// `[Globals at: aSymbol put: aValue]` — bind (assert) and return the value.
@@ -751,9 +769,10 @@ fn mGlobalsAtPut(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return args[1];
 }
 
-/// `[Globals includes: aSymbol]` — true if a non-nil binding exists. (v1 treats
-/// absent and explicitly-nil the same; a real Binding object distinguishes them
-/// in v2 — docs/36 §3.)
+/// `[Globals includes: aSymbol]` — true iff `aSymbol` has a binding, INCLUDING a
+/// binding to nil (§G6). The store keeps internal absence (Zig null) distinct from
+/// a bound nil (the nil singleton), so this reads presence honestly: `false` only
+/// when genuinely unbound, `true` for a global explicitly set to nil.
 fn mGlobalsIncludes(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
@@ -930,6 +949,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(cell_vt, s_history, &mCellHistory);
 
     api.method(globals_vt, api.intern("at:"), &mGlobalsAt);
+    api.method(globals_vt, api.intern("at:ifAbsent:"), &mGlobalsAtIfAbsent);
     api.method(globals_vt, api.intern("at:put:"), &mGlobalsAtPut);
     api.method(globals_vt, api.intern("includes:"), &mGlobalsIncludes);
 

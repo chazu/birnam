@@ -12,15 +12,17 @@ producing this — it is a tracking list.
 > `88b2a02`. §D's resolution **inverted the North Star** — object model canonical, relational
 > reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green. ⬜
-> **OPEN: §G remainder — only G6 left** (the large-int question is CLOSED — box has
-> been full i64 since §A, `u` gives Integer-if-fits/else-`Word`, no bignum/no-arith-to-Word;
-> bignum deferred as a named feature). §G open: G6 (Binding object). **§G cheap end
-> swept 2026-07-05: G1/G5/G7 done; G4 (left-recursion → `#leftRecursion`), G9
-> (binary-op charset `% @ ! ^`), G3 (image partial-layout guard), G8 (Symbol `#`
-> printString moved prelude→ off global symbol_vt), G10 (FFI release paths:
-> `releaseCallback:`/`dlclose:`; OOM-`@panic` resolved-by-design like C4), G2 (image
-> method-redefine append re-emits a composing `.code` record → self-consistent, no
-> `--rebuild`) done 2026-07-07.** Nothing is parked.
+> **✅ THE WHOLE MVP-UNITY AUDIT IS CLOSED (§A–§G all done, 2026-07-07).** The
+> large-int question is CLOSED — box has been full i64 since §A, `u` gives
+> Integer-if-fits/else-`Word`, no bignum/no-arith-to-Word; bignum deferred as a named
+> feature. **§G cheap end swept 2026-07-05: G1/G5/G7 done; then G4 (left-recursion →
+> `#leftRecursion`), G9 (binary-op charset `% @ ! ^`), G3 (image partial-layout guard),
+> G8 (Symbol `#` printString moved prelude→ off global symbol_vt), G10 (FFI release
+> paths: `releaseCallback:`/`dlclose:`; OOM-`@panic` resolved-by-design like C4), G2
+> (image method-redefine append re-emits a composing `.code` record → self-consistent,
+> no `--rebuild`), G6 (Globals `at:ifAbsent:` distinguishes absent from bound-nil —
+> the no-NULL lock, not a Binding object) done 2026-07-07.** Nothing is parked; nothing
+> open.
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -383,8 +385,8 @@ No arity caps in codegen.
 > (Symbol `#`-sigil `printString` moved to the prelude, off the global `symbol_vt`)
 > + G10 (FFI release paths `releaseCallback:`/`dlclose:`; OOM-`@panic` resolved-by-design)
 > + G2 (image method-redefine append re-emits a composing `.code` record → self-consistent)
-> done 2026-07-07.** Only ONE
-> stands — G6 (Binding object) — real design/feature work, not a one-liner.
+> + G6 (Globals `at:ifAbsent:` distinguishes absent from bound-nil — the no-NULL lock,
+> not a Binding object) done 2026-07-07.** **The audit is fully CLOSED — nothing stands.**
 
 - [x] **G1 · MED — DONE 2026-07-05 (doc honesty, `image.zig`).** The "counted, never
   dropped" claim overstated: deferral relies on slice-4 replay re-deriving the value
@@ -425,8 +427,19 @@ No arity caps in codegen.
   `relational rule '<name>' did not reach a fixpoint … — result is partial` to stderr
   instead of returning a truncated relation silently. (A finite store still converges
   well before the cap; behaviour on convergence unchanged.)
-- [ ] **G6 · `store.zig:620`** — `Globals includes:` conflates absent and
-  explicit-nil (v1, pending a real Binding object).
+- [x] **G6 · DONE 2026-07-07 (`store.zig`).** The premise ("nil doubles as absence,
+  needs a Binding object") was half-stale: the STORE already keeps internal absence
+  (Zig `null`) distinct from a bound nil (the nil singleton — `eq(null, nilObj)` is
+  false), so `includes:` was in fact already honest (`true` for a global set to nil,
+  `false` only when never bound; its "v1 conflates" comment was wrong and is
+  corrected). The only real conflation was `at:` — a single-value accessor MUST map
+  both absent and bound-nil to nil. Fixed the idiomatic way (the no-NULL stdlib lock:
+  absence rides `ifAbsent:`, nil is a value), NOT with a Binding object: added
+  **`[Globals at: aSymbol ifAbsent: aBlock]`** — returns the bound value even when it
+  IS nil, and evaluates `aBlock` (`value`) only on genuine absence. No storage-shape
+  change; the distinction just needed an out-of-band channel (the block). Regression
+  in `store_test.zig` (§G6): present/bound-nil/absent × includes:/at:ifAbsent:/at:;
+  verified end-to-end via CLI.
 - [x] **G7 · DONE 2026-07-05 (`store.zig`).** `historyLen`/`replaceInPlace` now compare
   (e, a) through the `eq()` identity chokepoint like every sibling, not raw `==`. `eq()`
   fast-paths pointer identity, so no cost — and it fixes a latent boxing bug: a boxed
