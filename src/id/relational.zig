@@ -177,18 +177,6 @@ fn mLvPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkString(buf.ptr, buf.len);
 }
 
-/// `#name` — a symbol renders with its `#` sigil (records show symbol keys/values).
-fn mSymPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    const nm = std.mem.span(g_api.symbolName(self));
-    const buf = ca.alloc(u8, nm.len + 1) catch @panic("relational: oom");
-    defer ca.free(buf);
-    buf[0] = '#';
-    @memcpy(buf[1..], nm);
-    return g_api.mkString(buf.ptr, buf.len);
-}
-
 // -- entities ----------------------------------------------------------------
 
 /// `[db entity]` — mint a fresh blank entity. Identity IS the entity (the floor's
@@ -1073,8 +1061,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(entity_vt, api.intern("printString"), &mEntityPrintString);
     api.method(collector_vt, s_value3, &mCollect3);
 
-    // Symbols render with their sigil (records print symbol keys/values).
-    api.method(api.symbol_vt, api.intern("printString"), &mSymPrintString);
+    // NB: the Symbol `#`-sigil `printString` lives in the PRELUDE (a core, type-correct
+    // override), NOT here — installing it as a load side effect made every symbol grow a
+    // `#` the moment datalog loaded, a layering leak (§G8).
 
     if (!reloading) {
         _ = api.exportObj("LogicVarVt", logicvar_vt);

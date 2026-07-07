@@ -469,6 +469,22 @@ fn objPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkString(s.ptr, s.len);
 }
 
+/// `#name` — a Symbol renders with its `#` sigil. This is core, type-correct
+/// behaviour (a Symbol IS the interned name), so it lives here in the prelude with
+/// the other per-type `printString` overrides — NOT installed as a side effect of
+/// loading the relational module (§G8: that made every symbol grow a `#` the moment
+/// datalog loaded, a layering leak).
+fn symPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const nm = std.mem.span(g_api.symbolName(self));
+    const buf = ca.alloc(u8, nm.len + 1) catch @panic("prelude: oom");
+    defer ca.free(buf);
+    buf[0] = '#';
+    @memcpy(buf[1..], nm);
+    return g_api.mkString(buf.ptr, buf.len);
+}
+
 // -- System (I/O) ------------------------------------------------------------
 
 fn isStr(o: Oop) bool {
@@ -680,6 +696,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
     // types override it. (Installed before the type-specific ones below.)
     api.method(api.object_vt, api.intern("printString"), &objPrintString);
     api.method(api.object_vt, api.intern("asString"), &objAsString);
+
+    // Symbols render with their `#` sigil (a core, type-correct override — §G8).
+    api.method(api.symbol_vt, api.intern("printString"), &symPrintString);
 
     const b_vt = api.vtableOf(api.trueObj);
     api.method(b_vt, api.intern("ifTrue:ifFalse:"), &bIfTrueIfFalse);

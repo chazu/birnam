@@ -14,11 +14,11 @@ producing this — it is a tracking list.
 > (READ IT for current direction). All 13 suites + 24 examples green. ⬜
 > **OPEN: §G remainder** (the large-int question is CLOSED — box has been
 > full i64 since §A, `u` gives Integer-if-fits/else-`Word`, no bignum/no-arith-to-Word;
-> bignum deferred as a named feature). §G: G2 (image method-redefine consistency),
-> G6 (Binding), G8 (layering),
-> G10 FFI leaks — each real design/feature work). **§G cheap end
+> bignum deferred as a named feature). §G open: G2 (image method-redefine consistency),
+> G6 (Binding), G10 FFI leaks — each real design/feature work. **§G cheap end
 > swept 2026-07-05: G1/G5/G7 done; G4 (left-recursion → `#leftRecursion`), G9
-> (binary-op charset `% @ ! ^`), G3 (image partial-layout guard) done 2026-07-07.** Nothing is parked.
+> (binary-op charset `% @ ! ^`), G3 (image partial-layout guard), G8 (Symbol `#`
+> printString moved prelude→ off global symbol_vt) done 2026-07-07.** Nothing is parked.
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -377,11 +377,11 @@ No arity caps in codegen.
 > **Cheap-end sweep DONE 2026-07-05 (`48b110b`):** G7 (raw `==`→`eq()`), G5
 > (fixpoint non-convergence now reported, not silent), G1 (comment honesty). **G4
 > (left-recursion crash → `#leftRecursion` kinded error) + G9 (binary-op charset
-> widened `% @ ! ^`) + G3 (image partial-layout guard scans all slots) done
-> 2026-07-07.** The rest
+> widened `% @ ! ^`) + G3 (image partial-layout guard scans all slots) + G8
+> (Symbol `#`-sigil `printString` moved to the prelude, off the global `symbol_vt`)
+> done 2026-07-07.** Only three
 > stand — G2 (image method-redefine consistency), G6 (Binding
-> object), G8 (layering),
-> G10 (FFI leaks) — each needs real design/feature work, not a one-liner.
+> object), G10 (FFI leaks) — each needs real design/feature work, not a one-liner.
 
 - [x] **G1 · MED — DONE 2026-07-05 (doc honesty, `image.zig`).** The "counted, never
   dropped" claim overstated: deferral relies on slice-4 replay re-deriving the value
@@ -420,9 +420,17 @@ No arity caps in codegen.
   fast-paths pointer identity, so no cost — and it fixes a latent boxing bug: a boxed
   SmallInt entity fails raw `==` against an equal-valued box, which would have
   double-counted its timeline / skipped in-place overwrite. The "single seam" holds again.
-- [ ] **G8 · `relational.zig:994`** — the relational module installs `printString`
-  onto `symbol_vt` globally as a load side-effect (layering smell; all symbols
-  render with `#` once datalog loads).
+- [x] **G8 · DONE 2026-07-07 (`prelude.zig` + `relational.zig`).** The relational
+  module used to install a `#`-sigil `printString` onto the global `symbol_vt` as a
+  load side-effect — so a Symbol printed `"anObject"` (object default) until datalog
+  loaded, then silently grew a `#` *everywhere*, a layering leak. The fix moves the
+  override to the prelude, alongside the other per-type `printString` installs
+  (Integer/Float/Word/Boolean/Object): `#name` is core, type-correct Symbol
+  behaviour, not a datalog concern. Loading relational no longer mutates a core
+  prototype. Regression: `prelude_test.zig` asserts `#foo printString` = `"#foo"`
+  from the prelude ALONE (no `relational.bringUp`) — the exact thing that used to
+  fail. Verified end-to-end: bare `#hello` prints from the CLI without datalog;
+  `ancestors`/`pull` examples still render records with `#`-keyed symbols.
 - [x] **G9 · DONE 2026-07-07 (`lang.zig`).** Widened the `binop` charset with
   `% @ ! ^` (excluded on purpose: `.` float, `:` keyword, `?` datalog logicVar —
   each owns its char elsewhere). Since these chars previously just failed to parse,

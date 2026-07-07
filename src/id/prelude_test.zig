@@ -43,6 +43,20 @@ test "prelude: Integer arithmetic / comparison / mod / printString" {
     try std.testing.expectEqualStrings("-42", p[0..len]);
 }
 
+test "prelude: a Symbol renders with its # sigil — owned here, not by the relational load (§G8)" {
+    const api = setup();
+    // The `#name` rendering is a core, type-correct Symbol override installed by the
+    // prelude itself. It USED to be installed as a side effect of loading the
+    // relational module onto the global symbol_vt — so a symbol printed "anObject"
+    // until datalog loaded, then silently grew a `#` everywhere. This proves the
+    // prelude alone (no relational.bringUp) already answers `#name`.
+    const str = api.send(api.intern("foo"), api.intern("printString"), &[_]Oop{}, 0);
+    try std.testing.expect(api.vtableOf(str) == api.string_vt);
+    var len: usize = 0;
+    const p = api.stringBytes(str, &len);
+    try std.testing.expectEqualStrings("#foo", p[0..len]);
+}
+
 test "prelude: print:/println: auto-stringify a non-String via printString (no blind cast)" {
     const api = setup();
 
