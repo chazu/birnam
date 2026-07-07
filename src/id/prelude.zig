@@ -471,7 +471,26 @@ fn objPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 
 // -- System (I/O) ------------------------------------------------------------
 
-fn writeString(s: Oop) void {
+fn isStr(o: Oop) bool {
+    return o != null and g_api.vtableOf(o) == g_api.string_vt;
+}
+
+/// The auto-stringify core of `print:` / `println:`: a String passes through;
+/// anything else is rendered via `printString` (like String `,` does), so a
+/// non-String argument is never blind-cast and walked as raw bytes — which read a
+/// bogus ptr/len out of the wrong struct shape and faulted (a non-String `42`
+/// spewed ~2GB then crashed). Every object answers `printString` (object_vt has a
+/// default), so this always resolves; the residual guard mirrors `,`'s
+/// belt-and-suspenders — if a `printString` override ever answers a non-String,
+/// yield the empty String rather than reinterpret-cast it. Pub so it's testable
+/// without touching stdout (the test runner owns stdout for IPC).
+pub fn printableString(o: Oop) Oop {
+    if (isStr(o)) return o;
+    const s = g_api.send(o, g_api.intern("printString"), &[_]Oop{}, 0);
+    return if (isStr(s)) s else g_api.mkString("", 0);
+}
+fn writeString(o: Oop) void {
+    const s = printableString(o);
     var len: usize = 0;
     const p = g_api.stringBytes(s, &len);
     std.fs.File.stdout().writeAll(p[0..len]) catch {};

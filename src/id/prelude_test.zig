@@ -43,6 +43,37 @@ test "prelude: Integer arithmetic / comparison / mod / printString" {
     try std.testing.expectEqualStrings("-42", p[0..len]);
 }
 
+test "prelude: print:/println: auto-stringify a non-String via printString (no blind cast)" {
+    const api = setup();
+
+    // `printableString` is the shared core of print:/println:. A non-String must be
+    // rendered via `printString`, NOT reinterpret-cast as a String struct (which
+    // read a bogus ptr/len from the wrong shape and faulted — a non-String `42`
+    // spewed ~2GB then crashed). Checked here without touching stdout.
+    const cases = .{
+        .{ api.mkSmallInt(42), "42" },
+        .{ api.mkSmallInt(-7), "-7" },
+        .{ api.trueObj, "true" },
+        // nil has no own printString at the prelude layer, so it renders via
+        // object_vt's default ("anObject"); the full stack installs a "nil"
+        // override. Either way it's a real String, which is what matters here.
+        .{ api.nilObj, "anObject" },
+        .{ api.mkString("hi", 2), "hi" }, // a String passes through unchanged
+    };
+    inline for (cases) |c| {
+        const s = prelude.printableString(c[0]);
+        // The result is always a real String (never the blind-cast original).
+        try std.testing.expect(api.vtableOf(s) == api.string_vt);
+        var len: usize = 0;
+        const p = api.stringBytes(s, &len);
+        try std.testing.expectEqualStrings(c[1], p[0..len]);
+    }
+
+    // A String argument is returned as the SAME object (pass-through, no realloc).
+    const str = api.mkString("verbatim", 8);
+    try std.testing.expect(prelude.printableString(str) == str);
+}
+
 test "prelude: Boolean ifTrue:ifFalse: / & / not — dispatch on identity" {
     const api = setup();
     // [3 = 3] → true → ifTrue:ifFalse: runs the first 0-arg block. We need a block
