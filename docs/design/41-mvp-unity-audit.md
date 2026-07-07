@@ -14,10 +14,11 @@ producing this — it is a tracking list.
 > (READ IT for current direction). All 13 suites + 24 examples green. ⬜
 > **OPEN: only §G's harder half remains** (the large-int question is CLOSED — box has been
 > full i64 since §A, `u` gives Integer-if-fits/else-`Word`, no bignum/no-arith-to-Word;
-> bignum deferred as a named feature). §G: G2/G3 (image consistency, latent), G4
-> (left-recursion crash), G6 (Binding), G8 (layering),
+> bignum deferred as a named feature). §G: G2/G3 (image consistency, latent),
+> G6 (Binding), G8 (layering),
 > G9 operator charset, G10 FFI leaks — each real design/feature work). **§G cheap end
-> swept 2026-07-05: G1/G5/G7 done.** Nothing is parked.
+> swept 2026-07-05: G1/G5/G7 done; G4 (left-recursion crash → `#leftRecursion` error)
+> done 2026-07-07.** Nothing is parked.
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -374,8 +375,9 @@ No arity caps in codegen.
 ## G. Marked deferrals (LOW — honest, catalogued for completeness)
 
 > **Cheap-end sweep DONE 2026-07-05 (`48b110b`):** G7 (raw `==`→`eq()`), G5
-> (fixpoint non-convergence now reported, not silent), G1 (comment honesty). The rest
-> stand — G2/G3 (image consistency, latent), G4 (left-recursion crash), G6 (Binding
+> (fixpoint non-convergence now reported, not silent), G1 (comment honesty). **G4
+> (left-recursion crash → `#leftRecursion` kinded error) done 2026-07-07.** The rest
+> stand — G2/G3 (image consistency, latent), G6 (Binding
 > object), G8 (layering), G9 (operator charset — a small feature, not a cleanup),
 > G10 (FFI leaks) — each needs real design/feature work, not a one-liner.
 
@@ -390,9 +392,13 @@ No arity caps in codegen.
 - [ ] **G3 · `image.zig:223`** — layout guard inspects only slot 0; a
   partially-laid-out object can serialise a live Oop as a raw word → dangling
   pointer on load. Latent (types call `setLayout` uniformly today).
-- [ ] **G4 · `peg.zig:225`** — left-recursive grammar recurses unboundedly to
-  stack overflow (memo written after match returns, so it doesn't guard
-  left recursion). Uncatchable crash, not a kinded error.
+- [x] **G4 · DONE 2026-07-07 (`peg.zig`).** The packrat memo now plants an
+  `in_progress` marker at `(rule, pos)` BEFORE descending, so a left-recursive
+  re-entry (direct or indirect) at the same position is caught instead of
+  recursing to a stack overflow. It surfaces as a distinct, nameable
+  `#leftRecursion` kinded error (`left-recursive rule: <name>`) — mirroring the
+  `#undefinedRule` path — rather than an uncatchable crash. Regression test in
+  `peg_test.zig` (§G4): `expr = expr '+' digit / digit`.
 - [x] **G5 · DONE 2026-07-05 (`relational.zig`).** The fixpoint cap (`max_iter =
   1000`) now tracks convergence and, if the cap is ever HIT, prints
   `relational rule '<name>' did not reach a fixpoint … — result is partial` to stderr

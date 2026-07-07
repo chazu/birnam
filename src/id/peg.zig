@@ -73,6 +73,7 @@ const Gram = struct {
     rules: std.ArrayList(Rule) = .{},
     furthest: usize = 0,
     undefined_rule: Oop = null,
+    left_recursive_rule: Oop = null, // §G4: a left-recursive rule reached last parse
 };
 
 // -- Well-known objects (set by bringUp) ------------------------------------
@@ -215,7 +216,11 @@ const no_children: []*Node = &[_]*Node{};
 
 const Match = struct { end: usize, children: []*Node };
 const MemoKey = struct { pat: Oop, pos: usize };
-const MemoEntry = struct { ok: bool, end: usize, children: []*Node };
+// `in_progress` marks a rule that is CURRENTLY being evaluated at this position:
+// planted before descending so a left-recursive re-entry at the same (rule, pos)
+// is caught (§G4) instead of recursing to a stack overflow. Overwritten by the
+// real ok/fail entry once the match returns.
+const MemoEntry = struct { ok: bool, end: usize, children: []*Node, in_progress: bool = false };
 
 const RunState = struct {
     g: Oop,
@@ -224,6 +229,7 @@ const RunState = struct {
     memo: *std.AutoHashMap(MemoKey, MemoEntry),
     furthest: usize = 0, // furthest failure position (for diagnostics later)
     undefined_rule: Oop = null, // a rule_ref to a rule the grammar doesn't define (§C3)
+    left_recursive_rule: Oop = null, // a rule that re-enters itself at the same pos (§G4)
 
     fn note(rs: *RunState, pos: usize) void {
         if (pos > rs.furthest) rs.furthest = pos;
@@ -316,9 +322,20 @@ fn matchPattern(rs: *RunState, pat: Oop, pos: usize) ?Match {
             };
             const key = MemoKey{ .pat = rule_pat, .pos = pos }; // packrat at the rule boundary
             if (rs.memo.get(key)) |entry| {
+                if (entry.in_progress) {
+                    // We re-entered this rule at the SAME position without consuming
+                    // input: left recursion (direct or indirect). That's a structural
+                    // grammar defect, never a legitimate non-match — flag it (§G4) and
+                    // fail this path so it becomes a kinded error, not a stack overflow.
+                    rs.left_recursive_rule = p.rule_name;
+                    return null;
+                }
                 if (!entry.ok) return null;
                 return Match{ .end = entry.end, .children = entry.children };
             }
+            // Plant the in-progress marker BEFORE descending so a left-recursive
+            // re-entry at this (rule, pos) is caught above rather than recursing.
+            rs.memo.put(key, .{ .ok = false, .end = pos, .children = no_children, .in_progress = true }) catch @panic("peg: oom");
             if (matchPattern(rs, rule_pat, pos)) |inner| {
                 const node = rs.na.create(Node) catch @panic("peg: oom");
                 node.* = .{ .rule = p.rule_name, .start = pos, .end = inner.end, .children = inner.children };
@@ -345,6 +362,7 @@ pub fn parse(api: *idapi.IdApi, na: std.mem.Allocator, g: Oop, source: []const u
     // global): the furthest offset reached, and any undefined-rule name (§C2/§C3).
     const gd = gramOf(g);
     gd.undefined_rule = null;
+    gd.left_recursive_rule = null;
     const root_pat = ruleNamed(g, root_name) orelse {
         gd.undefined_rule = root_name; // the ROOT rule itself is undefined
         gd.furthest = 0;
@@ -356,11 +374,13 @@ pub fn parse(api: *idapi.IdApi, na: std.mem.Allocator, g: Oop, source: []const u
         // primitive keeps prefix-matching semantics for other roots/tests.
         gd.furthest = rs.furthest;
         gd.undefined_rule = null; // a masked undefined-ref in a tried branch isn't an error
+        gd.left_recursive_rule = null; // ditto: LR hit in a backtracked branch that still parsed
         const node = na.create(Node) catch @panic("peg: oom");
         node.* = .{ .rule = root_name, .start = 0, .end = m.end, .children = m.children };
         return node;
     }
     gd.furthest = rs.furthest;
+    gd.left_recursive_rule = rs.left_recursive_rule;
     gd.undefined_rule = rs.undefined_rule;
     return null;
 }
@@ -566,6 +586,13 @@ fn mParseFrom(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
             var mb: [256]u8 = undefined;
             const msg = std.fmt.bufPrint(&mb, "undefined rule: {s}", .{std.mem.span(g_api.symbolName(ur))}) catch "undefined rule";
             return pegError("undefinedRule", msg);
+        }
+        // §G4: a left-recursive rule is a structural grammar defect (it would recurse
+        // to a stack overflow) — a distinct, nameable failure, not a mere non-match.
+        if (gd.left_recursive_rule) |lr| {
+            var mb: [256]u8 = undefined;
+            const msg = std.fmt.bufPrint(&mb, "left-recursive rule: {s}", .{std.mem.span(g_api.symbolName(lr))}) catch "left-recursive rule";
+            return pegError("leftRecursion", msg);
         }
         // §C2: a plain syntax error, located at the furthest offset reached.
         var line: usize = 1;

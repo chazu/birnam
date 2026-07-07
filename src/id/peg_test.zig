@@ -49,6 +49,36 @@ test "peg §C2/§C3: parse failures are kinded error values, distinguishable by 
     try std.testing.expect(api.send(r3, isError, &[_]Oop{}, 0) == api.falseObj);
 }
 
+test "peg §G4: a left-recursive rule is a kinded #leftRecursion error, not a stack overflow" {
+    const api = id.id_init();
+    peg.bringUp(api);
+    err_mod.bringUp(api);
+
+    const g = peg.mkGrammar(api);
+    const expr = api.intern("expr");
+    const digit = api.intern("digit");
+    peg.defineRule(g, digit, peg.mkCharset(api, &.{.{ .lo = '0', .hi = '9' }}));
+    // expr = expr '+' digit / digit  — direct left recursion: the first alternative
+    // re-enters `expr` at the same position. Before §G4 this recursed to a crash.
+    peg.defineRule(g, expr, peg.mkChoice(api, &.{
+        peg.mkSeq(api, &.{ peg.mkRuleRef(api, expr), peg.mkLiteral(api, "+"), peg.mkRuleRef(api, digit) }),
+        peg.mkRuleRef(api, digit),
+    }));
+
+    const parseFrom = api.intern("parse:from:");
+    const isError = api.intern("isError");
+    const kind = api.intern("kind");
+
+    // The degraded fallback would match just "1"; but the eof-anchored root below
+    // rejects the trailing "+2", so the parse fails carrying the §G4 diagnostic.
+    const program = api.intern("program");
+    peg.defineRule(g, program, peg.mkSeq(api, &.{ peg.mkRuleRef(api, expr), peg.mkEof(api) }));
+
+    const r = api.send(g, parseFrom, &[_]Oop{ str(api, "1+2"), program }, 2);
+    try std.testing.expect(api.send(r, isError, &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(r, kind, &[_]Oop{}, 0) == api.intern("leftRecursion"));
+}
+
 test "peg 3a: number grammar — charset + plus + rule-ref build a nested CST" {
     const api = id.id_init();
     peg.bringUp(api);
