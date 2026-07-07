@@ -1,0 +1,93 @@
+// log.birnam — leveled logging for birnam, pure birnam over Time + File.
+//
+// A birnam-native module built entirely on the other two OS modules — no FFI of
+// its own. A logger carries mutable state (its level threshold and sink), held in
+// store cells keyed on the logger itself ([db cellFor: self attr: …]), so many
+// independent named loggers coexist while sharing one Logger vtable.
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/log.birnam"]    (pulls in Time + File if absent)
+//
+//   [Log info: "started"]                  "=> 1783… INFO log: started"   (default logger)
+//   let l := [Log named: "net"]            "=> a logger tagged 'net'"
+//   [l level: #warn]                       "=> drop anything below warn"
+//   [l toFile: "net.log"]                  "=> send its lines to a file"
+//   [l warn: "slow response"]
+//
+// Levels, low to high: debug < info < warn < error. A logger emits a message only
+// if its level is >= the logger's threshold (default info).
+//
+// Timestamps are epoch milliseconds for now (human Y-M-D H:M:S wants localtime +
+// a struct tm — a later addition).
+
+// Dependencies: load the OS modules this one stands on, if not already present.
+[[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [System load: "modules/time.birnam"]]];
+[[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
+
+// The Logger prototype: methods defined once, per-instance state in cells.
+[Globals at: #Logger put: [Object clone]];
+
+// Level rank. `=` doesn't work on symbols, so compare by printString ("#warn").
+// Unknown names fall back to info.
+[Reflect defineMethod: #rankOf: on: Logger as: [:self :lvl |
+  let s := [lvl printString];
+  [[s = "#debug"] ifTrue: [| 0] ifFalse: [|
+  [[s = "#warn"]  ifTrue: [| 2] ifFalse: [|
+  [[s = "#error"] ifTrue: [| 3] ifFalse: [| 1]]]]]]]];
+
+// -- per-instance state (cells keyed on self) ---------------------------------
+[Reflect defineMethod: #name on: Logger as: [:self |
+  [[db cellFor: self attr: #name] value]]];
+[Reflect defineMethod: #thresholdRank on: Logger as: [:self |
+  [[db cellFor: self attr: #level] value]]];
+[Reflect defineMethod: #sinkPath on: Logger as: [:self |
+  [[db cellFor: self attr: #sink] value]]];
+
+// -- configuration (chainable — each answers self) ----------------------------
+
+// Set the minimum level that will be emitted (a symbol: #debug/#info/#warn/#error).
+[Reflect defineMethod: #level: on: Logger as: [:self :lvl |
+  [[db cellFor: self attr: #level] set: [self rankOf: lvl]]; self]];
+// Route this logger's output to a file (appended, one line per message).
+[Reflect defineMethod: #toFile: on: Logger as: [:self :path |
+  [[db cellFor: self attr: #sink] set: path]; self]];
+// Route this logger's output back to stdout (the default).
+[Reflect defineMethod: #toStdout on: Logger as: [:self |
+  [[db cellFor: self attr: #sink] set: nil]; self]];
+
+// A fresh logger tagged `nm`, defaulting to level info and the stdout sink.
+[Reflect defineMethod: #named: on: Logger as: [:self :nm |
+  let lg := [Logger clone];
+  [[db cellFor: lg attr: #name]  set: nm];
+  [[db cellFor: lg attr: #level] set: 1];
+  [[db cellFor: lg attr: #sink]  set: nil];
+  lg]];
+
+// -- emission -----------------------------------------------------------------
+
+// The heart: emit `msg` at `rank` (labelled `label`) if it meets the threshold.
+// Format: "<millis> <LABEL> <name>: <msg>". stdout via println:, else File append:.
+[Reflect defineMethod: #emitRank:label:message: on: Logger as: [:self :rank :label :msg |
+  [[rank >= [self thresholdRank]]
+    ifTrue: [|
+      let ts   := [[Time nowMillis] printString];
+      let line := [[[[[[ts , " "] , label] , " "] , [self name]] , ": "] , msg];
+      let sink := [self sinkPath];
+      [[sink isNil]
+        ifTrue:  [| [System println: line]]
+        ifFalse: [| [File append: sink contents: [line , "\n"]]]];
+      self]
+    ifFalse: [| self]]]];
+
+[Reflect defineMethod: #debug: on: Logger as: [:self :msg | [self emitRank: 0 label: "DEBUG" message: msg]]];
+[Reflect defineMethod: #info:  on: Logger as: [:self :msg | [self emitRank: 1 label: "INFO"  message: msg]]];
+[Reflect defineMethod: #warn:  on: Logger as: [:self :msg | [self emitRank: 2 label: "WARN"  message: msg]]];
+[Reflect defineMethod: #error: on: Logger as: [:self :msg | [self emitRank: 3 label: "ERROR" message: msg]]];
+
+// The default logger, `Log` — an ordinary Logger (name "log", info, stdout). Built
+// by hand rather than via `named:` so the module never calls its own methods at
+// load time. `[Log named: …]` makes more.
+[Globals at: #Log put: [Logger clone]];
+[[db cellFor: Log attr: #name]  set: "log"];
+[[db cellFor: Log attr: #level] set: 1];
+[[db cellFor: Log attr: #sink]  set: nil]
