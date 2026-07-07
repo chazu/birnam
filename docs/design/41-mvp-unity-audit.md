@@ -6,14 +6,15 @@ special-cases that violate the system's intended conceptual unity. Catalogued
 by five parallel investigators, then consolidated. **No code changed** in
 producing this — it is a tracking list.
 
-> **SCOREBOARD (2026-07-05).** ✅ **DONE:** §A, §B (incl. B8/B9), **§C (C1–C5, C4 stale)**,
-> §D (D1–D4), **§E (E1/E2/E3)**, **§F F2 + the boxed `Word` type (`4c0da27`) + F1's pointer
-> half (`85e4a85`)**. §D's resolution **inverted the North Star** — object model canonical,
-> relational reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
+> **SCOREBOARD (2026-07-06).** ✅ **DONE:** §A, §B (incl. B8/B9), **§C (C1–C5, C4 stale)**,
+> §D (D1–D4), **§E (E1/E2/E3)**, **§F F1 (DONE — pointer `85e4a85`, long `8cf5136`) + F2 +
+> the boxed `Word` type (`4c0da27`)**. §D's resolution **inverted the North Star** — object
+> model canonical, relational reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green. ⬜
-> **OPEN:** §F **the large-int decision** (F1's *long* half + F3 unsigned — a wide number
-> wants arithmetic, which `Word` lacks: promote-to-Word-on-overflow vs. a numeric wide-int
-> type) + **F4** (peek/poke/alloc/free — foundation laid, hangs off `word_vt`) · §G **the
+> **OPEN:** §F **F3** (unsigned sigchar — the resolved large-int *policy*: fits-i64 → Integer,
+> top-bit-set → `Word`; **no bignum, no arithmetic-to-Word** — the box has been full i64 since
+> §A, so `long` was never a box problem, only a fossil ±2^62 clamp, now lifted) + **F4**
+> (peek/poke/alloc/free — foundation laid, hangs off `word_vt`) · §G **the
 > harder half** (G2/G3 image consistency, G4 left-recursion crash, G6 Binding, G8 layering,
 > G9 operator charset, G10 FFI leaks — each real design/feature work). **§G cheap end
 > swept 2026-07-05: G1/G5/G7 done.** Nothing is parked.
@@ -326,24 +327,27 @@ No arity caps in codegen.
 
 ## F. FFI is a reduced re-implementation vs the documented (attic libffi) surface
 
-> **F2 DONE 2026-07-05** (platform bug). **The boxed 64-bit `Word` prerequisite is now
-> BUILT (`4c0da27`)** — a first-class birnam type shaped like the boxed Float (its own
-> `word_vt`/prototype/`printString`/value-`=`/`asInteger`/`isNull`, dispatched via `send`),
-> the shared box the FFI-surface arc needs. **F1's POINTER half is DONE (`85e4a85`):** `p`
-> now marshals through `Word` at all four sites, so a full-width (bit-63-set) pointer
-> round-trips losslessly — verified by a `0xFFFF000012345678` round-trip test. **What's
-> left is the number-vs-word policy split:** `l` (long) deliberately stays a SmallInt
-> because it's used as a NUMBER (`ffi.birnam` does `x * 2` on a callback long, prints
-> `strlen` as decimal) and a `Word` carries no arithmetic — so F1's *long* half + F3
-> (unsigned) are the deferred **large-int** decision (promote-to-Word-on-overflow vs.
-> a numeric wide-int type). F4 (peek/poke/alloc/free) now has its foundation: the
-> protocol hangs off `word_vt`.
+> **F1 + F2 DONE.** F2 = platform bug (`1f15245`). **F1 is now fully resolved.** POINTER
+> half (`85e4a85`): `p` marshals through the boxed `Word` at all four sites, full-width
+> round-trip. LONG half (`8cf5136`): the "truncation" premise was **stale** — an Integer has
+> been a heap box holding a full **i64** since the §A refounding removed immediates (no tag),
+> and the image already serializes it as a full u64. The only limit was a fossil ±2^62
+> *arithmetic* clamp; lifting it to the real i64 range makes every C `long` a first-class
+> arithmetic Integer. **The large-int "decision" was a false binary:** we did NOT
+> promote-arithmetic-to-Word (Word is opaque, poisons composition) and did NOT build a bignum
+> (a deferred *feature*, not an audit cleanup — see below). **Resolved policy:** the i64 box
+> IS the signed number; `Word` carries only the two non-signed-number FFI values — a pointer
+> (F4) and an unsigned ≥ 2^63 (F3). F4 (peek/poke/alloc/free) hangs off `word_vt`.
+>
+> **Deferred, named:** true `SmallInteger → LargeInteger` bignum promotion (the Smalltalk-
+> lineage "integers are mathematical" destination) — its own design (arbitrary precision,
+> normalization back to SmallInt to keep §B typed-`=`/hash/store-identity), a feature not a wart.
 
-- [~] **F1 · HIGH (latent) · `alien.zig`** — **POINTER half DONE (`85e4a85`):** `p`
-  boxes/unboxes through the full-width `Word`, no truncation, no bogus `#overflow`. The
-  **`long` half remains** (a `long` ≥ 2⁶² still truncates in its SmallInt box) — but the
-  fix is a policy call, not the missing box: a numeric wide value wants arithmetic, which
-  `Word` lacks. Folds into F3's large-int decision.
+- [x] **F1 · HIGH — DONE (`85e4a85` pointer + `8cf5136` long) · `alien.zig`/`prelude.zig`.**
+  `p` round-trips a full-width pointer through `Word`; `l` is a full-i64 arithmetic Integer
+  (the box was always i64 — the ±2^62 clamp was a maru-tag fossil, now lifted; `#overflow`
+  fires only at genuine i64 limits). No truncation, no bogus overflow. Corrected the stale
+  "63-bit tag / immediate" comments in id.zig + prelude.zig in the same pass.
 - [x] **F2 · MED — DONE 2026-07-05 (`alien.zig`).** `RTLD_DEFAULT` is now
   platform-conditional (`@import("builtin").os.tag`): the Darwin dyld sentinel
   `(void*)-2` on Apple targets, `null` (== glibc/musl `(void*)0`) elsewhere. The old
@@ -351,9 +355,11 @@ No arity caps in codegen.
   unchanged — `test-alien` + `examples/ffi.birnam` (div/inet_ntoa/callback) still green.
 - [ ] **F3 · MED · `alien.zig` (grammar)** — no unsigned scalar types;
   `size_t`/`uint64_t` masquerade as signed, unmarshalled as signed → large
-  values return negative. **Now the anchor of the large-int decision:** a small
-  unsigned wants to be an Integer (arithmetic); a `uint64_t` with the top bit set
-  overflows SmallInt. Resolve alongside F1's long half — one policy for both.
+  values return negative. **Policy resolved (with F1):** add a `u`-prefix sigchar
+  whose marshaller branches on the value — top bit clear (every real length/count/
+  `size_t`) → a full-arithmetic Integer; top bit set (≥ 2^63) → a lossless `Word`
+  (`asInteger` gives an honest `#overflow`). No new number type. This is the next
+  §F step to implement.
 - [ ] **F4 · MED · `alien.zig`** — no `peek`/`poke`, `alloc:`/`free`, pointer
   deref, or Cell out-params. A C API that fills a caller buffer can't be wrapped
   without writing C. Half of "wrap-a-C-lib without Zig." **Foundation laid
