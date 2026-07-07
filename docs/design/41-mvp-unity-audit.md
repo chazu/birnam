@@ -7,14 +7,15 @@ by five parallel investigators, then consolidated. **No code changed** in
 producing this — it is a tracking list.
 
 > **SCOREBOARD (2026-07-06).** ✅ **DONE:** §A, §B (incl. B8/B9), **§C (C1–C5, C4 stale)**,
-> §D (D1–D4), **§E (E1/E2/E3)**, **§F F1 (DONE — pointer `85e4a85`, long `8cf5136`) + F2 +
-> the boxed `Word` type (`4c0da27`)**. §D's resolution **inverted the North Star** — object
-> model canonical, relational reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
-> (READ IT for current direction). All 13 suites + 24 examples green. ⬜
-> **OPEN:** §F **F3** (unsigned sigchar — the resolved large-int *policy*: fits-i64 → Integer,
-> top-bit-set → `Word`; **no bignum, no arithmetic-to-Word** — the box has been full i64 since
-> §A, so `long` was never a box problem, only a fossil ±2^62 clamp, now lifted) + **F4**
-> (peek/poke/alloc/free — foundation laid, hangs off `word_vt`) · §G **the
+> §D (D1–D4), **§E (E1/E2/E3)**, **§F F1 (pointer `85e4a85`, long `8cf5136`) + F2 + F3
+> (unsigned `u` sigchar `aba41fd`) + the boxed `Word` type (`4c0da27`)**. §D's resolution
+> **inverted the North Star** — object model canonical, relational reading derived — recorded
+> in **[docs/42](42-object-canonical-relational-derived.md)** (READ IT for current direction).
+> All 13 suites + 24 examples green. ⬜
+> **OPEN:** §F **F4 only** (peek/poke/alloc/free — foundation laid, hangs off `word_vt`).
+> The large-int question is CLOSED: box has been full i64 since §A (a fossil ±2^62 clamp,
+> now lifted), `u` gives Integer-if-fits/else-`Word`; **no bignum, no arithmetic-to-Word**
+> (bignum deferred as a named feature). · §G **the
 > harder half** (G2/G3 image consistency, G4 left-recursion crash, G6 Binding, G8 layering,
 > G9 operator charset, G10 FFI leaks — each real design/feature work). **§G cheap end
 > swept 2026-07-05: G1/G5/G7 done.** Nothing is parked.
@@ -327,7 +328,7 @@ No arity caps in codegen.
 
 ## F. FFI is a reduced re-implementation vs the documented (attic libffi) surface
 
-> **F1 + F2 DONE.** F2 = platform bug (`1f15245`). **F1 is now fully resolved.** POINTER
+> **F1 + F2 + F3 DONE — only F4 remains in §F.** F2 = platform bug (`1f15245`). **F1 is now fully resolved.** POINTER
 > half (`85e4a85`): `p` marshals through the boxed `Word` at all four sites, full-width
 > round-trip. LONG half (`8cf5136`): the "truncation" premise was **stale** — an Integer has
 > been a heap box holding a full **i64** since the §A refounding removed immediates (no tag),
@@ -353,13 +354,16 @@ No arity caps in codegen.
   `(void*)-2` on Apple targets, `null` (== glibc/musl `(void*)0`) elsewhere. The old
   unconditional `-2` made every `wrap:` return `#symbolNotFound` on Linux. Darwin path
   unchanged — `test-alien` + `examples/ffi.birnam` (div/inet_ntoa/callback) still green.
-- [ ] **F3 · MED · `alien.zig` (grammar)** — no unsigned scalar types;
-  `size_t`/`uint64_t` masquerade as signed, unmarshalled as signed → large
-  values return negative. **Policy resolved (with F1):** add a `u`-prefix sigchar
-  whose marshaller branches on the value — top bit clear (every real length/count/
-  `size_t`) → a full-arithmetic Integer; top bit set (≥ 2^63) → a lossless `Word`
-  (`asInteger` gives an honest `#overflow`). No new number type. This is the next
-  §F step to implement.
+- [x] **F3 · MED — DONE (`aba41fd`) · `alien.zig`/`tcc.zig`.** New `u` scalar
+  sigchar for `size_t`/`uint64_t`. Policy at one emit site (`putScalarBox`): a
+  `>> 63` test → top bit clear (every real length/count) boxes a full-arithmetic
+  Integer, top bit set (≥ 2^63) a lossless `Word`. The reverse (a `u` arg / callback
+  return) reads either representation via the new `birnam_uintValue` shim. Works at
+  every site the other scalars do (arg/return/callback/struct-field/array). No new
+  number type, no bignum. Verified end-to-end: `strcspn` wrapped `u s s` returns a
+  computable size_t (`n * 2`). (Pre-existing, unrelated: `putPreamble` hardcodes
+  `extern long strlen`, so wrapping the literal `strlen` with a non-`long` return
+  clashes — an artifact of that one name.)
 - [ ] **F4 · MED · `alien.zig`** — no `peek`/`poke`, `alloc:`/`free`, pointer
   deref, or Cell out-params. A C API that fills a caller buffer can't be wrapped
   without writing C. Half of "wrap-a-C-lib without Zig." **Foundation laid
