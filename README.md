@@ -2,7 +2,7 @@
 
 > If you will permit a small philosophical digression ... Only things exist, and their relations.
 >
-> ...the environment was an obedient guardian...it could change itself according to wishes or demands. Could it change so that “progress” would take place? We had no answer for that...Could one call [progress] a situation in which intellectual, creative, cognitive, and constructional activities were so specialized that in each profession one dug deeper in an ever-narrower plot of ground? If machines counted faster and better than a living being, why should the living being count?...Such an artificial environment would be no one, like a meadow, forest, or steppe—with the difference that it would grow and blossom not on its own, not for itself, but for someone. For beings. Would they become stupid from this, turning into dull-witted gluttons that whiled away their hours with toys provided by the planetary guardian? Not necessarily. It depended on the point of view.
+> Such an artificial environment would be no one, like a meadow, forest, or steppe—with the difference that it would grow and blossom not on its own, not for itself, but for someone. For beings. Would they become stupid from this, turning into dull-witted gluttons that whiled away their hours with toys provided by the planetary guardian? Not necessarily. It depended on the point of view.
 >
 > Stanislaw Lem, _Fiasco_
 
