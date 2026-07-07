@@ -12,13 +12,15 @@ producing this — it is a tracking list.
 > `88b2a02`. §D's resolution **inverted the North Star** — object model canonical, relational
 > reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green. ⬜
-> **OPEN: §G remainder** (the large-int question is CLOSED — box has been
-> full i64 since §A, `u` gives Integer-if-fits/else-`Word`, no bignum/no-arith-to-Word;
+> **OPEN: §G remainder — only G2 + G6 left** (the large-int question is CLOSED — box has
+> been full i64 since §A, `u` gives Integer-if-fits/else-`Word`, no bignum/no-arith-to-Word;
 > bignum deferred as a named feature). §G open: G2 (image method-redefine consistency),
-> G6 (Binding), G10 FFI leaks — each real design/feature work. **§G cheap end
+> G6 (Binding object). **§G cheap end
 > swept 2026-07-05: G1/G5/G7 done; G4 (left-recursion → `#leftRecursion`), G9
 > (binary-op charset `% @ ! ^`), G3 (image partial-layout guard), G8 (Symbol `#`
-> printString moved prelude→ off global symbol_vt) done 2026-07-07.** Nothing is parked.
+> printString moved prelude→ off global symbol_vt), G10 (FFI release paths:
+> `releaseCallback:`/`dlclose:`; OOM-`@panic` resolved-by-design like C4) done
+> 2026-07-07.** Nothing is parked.
 
 **The recurring pattern:** a feature gets wired into one pass / type / path and
 its siblings don't get updated. Chains in the emitter but not the capture
@@ -379,9 +381,10 @@ No arity caps in codegen.
 > (left-recursion crash → `#leftRecursion` kinded error) + G9 (binary-op charset
 > widened `% @ ! ^`) + G3 (image partial-layout guard scans all slots) + G8
 > (Symbol `#`-sigil `printString` moved to the prelude, off the global `symbol_vt`)
-> done 2026-07-07.** Only three
+> + G10 (FFI release paths `releaseCallback:`/`dlclose:`; OOM-`@panic` resolved-by-design)
+> done 2026-07-07.** Only two
 > stand — G2 (image method-redefine consistency), G6 (Binding
-> object), G10 (FFI leaks) — each needs real design/feature work, not a one-liner.
+> object) — each needs real design/feature work, not a one-liner.
 
 - [x] **G1 · MED — DONE 2026-07-05 (doc honesty, `image.zig`).** The "counted, never
   dropped" claim overstated: deferral relies on slice-4 replay re-deriving the value
@@ -439,8 +442,29 @@ No arity caps in codegen.
   dispatch already handled any interned selector, so this was purely the lexer gate.
   Tests: parse-level (`lang_test.zig`, incl. a `?` NON-match guard) + end-to-end
   dispatch of custom `#%`/`#@`/`#@%` methods (`codegen_test.zig`).
-- [ ] **G10 · `alien.zig`** — callbacks never released, `dlopen` handle leaked
-  (v1, no-release); `@panic` on OOM throughout PEG/Alien/error.
+- [x] **G10 · DONE 2026-07-07 (`alien.zig`).** The two resource leaks now have opt-in
+  release paths, mirroring `[buf free]` for `alloc:`:
+  - **Callbacks** — `[Alien releaseCallback: addr]` drops the callback registered at
+    `addr` from `g_callbacks` (so `cbRoots` stops pinning its block → GC may reclaim it)
+    and marks its Tcc unit `disposable` (tcc.zig's existing GC-finalizer → `tcc_delete`
+    frees the executable pages once the unit is unreachable). `CbEntry` gained the `__cb`
+    address so the lookup is O(n) over the live set. Unsafe like `free` — the caller
+    asserts the C side will never call the pointer again (documented).
+  - **dlopen handles** — no longer silently dropped: `mDlopen` records `{path, handle}`
+    in `g_dls`; `[Alien dlclose: path]` closes one matching handle (refcount-safe: N opens
+    → N entries → N closes) and forgets it. Same free-like unsafety contract.
+  - Both answer a kinded error (`#notFound` / `#typeMismatch`) on a stale/bogus/wrong-type
+    argument — never a crash. Tests in `alien_test.zig`: release round-trip + double-release
+    + bogus/non-address guards; dlopen→dlclose round-trip (real `libSystem`/`libc`) +
+    close-miss error path. Verified end-to-end through the CLI (make/release/double-release,
+    open/close/double-close all correct).
+  - **On the `@panic` on OOM (PEG/Alien/error):** resolved by design, same call as **C4**.
+    These panics are on small, bounded allocations while *building generated C / parsing a
+    signature / minting an error*; on genuine allocator exhaustion there is no meaningful
+    recovery and no user-facing condition to report — abort is the honest floor. Threading
+    `error{OutOfMemory}` through every infallible-in-practice C-source builder would be a
+    large, risky change for a branch that never fires. Kept as the deliberate minimal
+    fallback (docs/34 "left it swappable"), consistent with the floor DNU `@panic`.
 
 ---
 

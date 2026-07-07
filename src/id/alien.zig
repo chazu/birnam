@@ -10,11 +10,13 @@
 //! Message api (driven through `api.send`):
 //!   [Alien dlopen: pathString]                       load a shared library so its
 //!                                                    symbols become resolvable
+//!   [Alien dlclose: pathString]                      release one such handle (§G10)
 //!   [Alien wrap: cFnName signature: sig as: #sel on: vt]
 //!                                                    wrap a C function as a method
 //!   [Alien callback: aBlock signature: sig]          the OTHER direction: a C
 //!                                                    function pointer that calls
 //!                                                    back into birnam
+//!   [Alien releaseCallback: addr]                    reclaim a callback (§G10)
 //!
 //! A SIGNATURE is a string: the first type is the RETURN, the rest are the
 //! ARGUMENT types, one per birnam argument (whitespace ignored):
@@ -55,7 +57,8 @@
 //! `aBlock` is ANYTHING answering the arity-matched `value…` selector — a compiled
 //! birnam block or any object with the method. Because the callback's address is
 //! baked into generated code the GC cannot see, Alien roots every (block, unit)
-//! pair in a module registry: callbacks live for the process (v1 — no release).
+//! pair in a module registry: a callback lives until the process exits OR the caller
+//! explicitly `[Alien releaseCallback: addr]`s it (§G10 — the opt-in release path).
 //! An `s` RETURN is rejected (who would free the C string?); a mis-shaped struct
 //! answer from the block comes back zeroed.
 //!
@@ -472,11 +475,12 @@ fn genShim(fn_name: []const u8, sig: Parsed) []u8 {
 
 // -- callbacks: C → birnam ------------------------------------------------------
 
-/// Everything a live callback keeps alive: the block it forwards to and the Tcc
-/// unit holding its generated code. The GC cannot see either (the block's address
-/// is baked into compiled C), so `cbRoots` marks the registry at collection time.
-/// Callbacks live for the process (v1 — no release).
-const CbEntry = struct { blk: Oop, unit: Oop };
+/// Everything a live callback keeps alive: the block it forwards to, the Tcc unit
+/// holding its generated code, and the `__cb` entry address (so `releaseCallback:`
+/// can find it). The GC cannot see the block/unit (the block's address is baked into
+/// compiled C), so `cbRoots` marks the registry at collection time. A callback lives
+/// until the process exits OR the caller explicitly `releaseCallback:`s it (§G10).
+const CbEntry = struct { blk: Oop, unit: Oop, addr: u64 };
 var g_callbacks: std.ArrayList(CbEntry) = .{};
 
 fn cbRoots(mark: idapi.MarkFn) callconv(.c) void {
@@ -613,8 +617,33 @@ fn buildCallback(blk: Oop, sig_raw: []const u8) Oop {
 
     const addr = s1(unit, "symbol:", g_api.mkString("__cb", 4)); // already a SmallInt
     if (addr == g_api.nilObj) return alienError("symbolNotFound", "the callback entry symbol was not found");
-    g_callbacks.append(ca, .{ .blk = blk, .unit = unit }) catch @panic("alien: oom");
+    g_callbacks.append(ca, .{ .blk = blk, .unit = unit, .addr = @bitCast(g_api.smallIntValue(addr)) }) catch @panic("alien: oom");
     return addr;
+}
+
+/// `[Alien releaseCallback: addr]` — the opt-in counterpart to `callback:signature:`,
+/// closing the "callbacks live forever" leak (§G10). Drops the callback registered at
+/// `addr` (a Word or Integer, as returned by `callback:signature:`): it leaves the
+/// live set — so `cbRoots` stops pinning its block and the GC may reclaim it — and its
+/// Tcc unit is marked `disposable`, so the collector `tcc_delete`s the generated code's
+/// executable pages once the unit becomes unreachable. Answers true, or a kinded error
+/// if nothing is registered there. UNSAFE like `[buf free]`: the caller ASSERTS the C
+/// side will never invoke this function pointer again — a later call through a released
+/// address is a use-after-free once its code has been reclaimed.
+fn mReleaseCallback(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const want = argAddr(a[0]) orelse
+        return alienError("typeMismatch", "releaseCallback: needs the callback address (a Word or Integer)");
+    var i: usize = 0;
+    while (i < g_callbacks.items.len) : (i += 1) {
+        if (g_callbacks.items[i].addr == want) {
+            const e = g_callbacks.swapRemove(i); // order in the registry is irrelevant
+            _ = s0(e.unit, "disposable"); // GC finalizer → tcc_delete when unreachable
+            return g_api.trueObj;
+        }
+    }
+    return alienError("notFound", "releaseCallback: no live callback at that address");
 }
 
 /// `[Alien callback: aBlock signature: sig]`
@@ -698,15 +727,49 @@ fn mWrap(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return buildWrapper(strBytes(a[0]), strBytes(a[1]), a[2], a[3]);
 }
 
+/// Every library `dlopen:`'d and not yet `dlclose:`'d, so the handle is TRACKED
+/// rather than silently dropped (§G10) — closeable, and inspectable in principle.
+/// `dlopen` refcounts, so N opens of a path make N entries needing N closes; the
+/// owned `path` bytes key the lookup. These are raw handles + bytes, not Oops, so no
+/// GC root provider is needed.
+const DlEntry = struct { path: []u8, handle: *anyopaque };
+var g_dls: std.ArrayList(DlEntry) = .{};
+
 /// `[Alien dlopen: path]` — load a shared library into the process so its symbols
-/// become resolvable by later `wrap:`. Answers true, or nil if it cannot load.
+/// become resolvable by later `wrap:`. Answers true, or nil if it cannot load. The
+/// handle is recorded (see `g_dls`) so `dlclose:` can release it — v1 no longer leaks
+/// it unconditionally (§G10).
 fn mDlopen(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
     const path = dupZ(a[0]);
     defer ca.free(path);
-    const h = g_api.dlopen(path.ptr, RTLD_LAZY);
-    return if (h != null) g_api.trueObj else g_api.nilObj;
+    const h = g_api.dlopen(path.ptr, RTLD_LAZY) orelse return g_api.nilObj;
+    const owned = ca.dupe(u8, path[0..path.len]) catch @panic("alien: oom");
+    g_dls.append(ca, .{ .path = owned, .handle = h }) catch @panic("alien: oom");
+    return g_api.trueObj;
+}
+
+/// `[Alien dlclose: path]` — release ONE handle opened by a matching `dlopen:` (the
+/// counterpart that closes the §G10 leak): balances one open's refcount and forgets
+/// the entry. Answers true, or a kinded error if no open library matches. UNSAFE like
+/// `[buf free]`: the caller asserts nothing still calls a symbol wrapped from this
+/// library — closing a library whose address was patched into a live wrapper unit
+/// leaves that wrapper dangling.
+fn mDlclose(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const want = strBytes(a[0]);
+    var i: usize = 0;
+    while (i < g_dls.items.len) : (i += 1) {
+        if (std.mem.eql(u8, g_dls.items[i].path, want)) {
+            const e = g_dls.swapRemove(i);
+            _ = std.c.dlclose(e.handle);
+            ca.free(e.path);
+            return g_api.trueObj;
+        }
+    }
+    return alienError("notFound", "dlclose: no open library at that path");
 }
 
 // -- F4: raw C-memory access through a Word (alloc/free + peek/poke) ------------
@@ -861,7 +924,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
 
     api.method(alien_vt, api.intern("wrap:signature:as:on:"), &mWrap);
     api.method(alien_vt, api.intern("callback:signature:"), &mCallback);
+    api.method(alien_vt, api.intern("releaseCallback:"), &mReleaseCallback);
     api.method(alien_vt, api.intern("dlopen:"), &mDlopen);
+    api.method(alien_vt, api.intern("dlclose:"), &mDlclose);
     api.method(alien_vt, api.intern("alloc:"), &mAlloc);
 
     // F4: the raw C-memory protocol on Word (a pointer IS a Word since §F F1), so a

@@ -698,6 +698,53 @@ test "alien: callback — survives GC churn (block + unit are rooted)" {
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r));
 }
 
+test "alien: releaseCallback: reclaims a callback and is safe on a stale/bogus address (§G10)" {
+    const api = setup();
+    const Alien = api.import("Alien").?;
+    const cb = callback(api, responder(api, "value:", &rDouble), "l l");
+    try std.testing.expect(cb != api.nilObj);
+
+    // It forwards to the responder BEFORE release.
+    _ = wrap(api, "birnam_t_apply", "l p l", "applyWith3:", api.smallint_vt);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(api.send(cb, api.intern("applyWith3:"), &[_]Oop{api.mkSmallInt(21)}, 1)));
+
+    // Release by its address → true; it leaves the live set (the block unpins, the
+    // unit is marked disposable). We do NOT call it again — that would be a UAF, which
+    // is exactly the contract the caller is asserting by releasing.
+    try std.testing.expect(api.send(Alien, api.intern("releaseCallback:"), &[_]Oop{cb}, 1) == api.trueObj);
+    // A second release of the same address → kinded #notFound, never a crash.
+    try std.testing.expect(isErr(api, api.send(Alien, api.intern("releaseCallback:"), &[_]Oop{cb}, 1)));
+    // A never-registered address → kinded error too (0 is no callback's entry point).
+    try std.testing.expect(isErr(api, api.send(Alien, api.intern("releaseCallback:"), &[_]Oop{api.mkSmallInt(0)}, 1)));
+    // A non-address argument → #typeMismatch, not a wild deref.
+    try std.testing.expect(isErr(api, api.send(Alien, api.intern("releaseCallback:"), &[_]Oop{str(api, "nope")}, 1)));
+}
+
+test "alien: dlopen tracks the handle so dlclose can release it (§G10)" {
+    const api = setup();
+    const Alien = api.import("Alien").?;
+
+    // dlclose with nothing matching → a kinded #notFound (portable, deterministic).
+    try std.testing.expect(isErr(api, api.send(Alien, api.intern("dlclose:"), &[_]Oop{str(api, "/no/such/lib.so")}, 1)));
+
+    // Best-effort real round-trip through the platform C library. If the environment
+    // can't resolve it, dlopen answers nil and we stop — the tracked/close bookkeeping
+    // is still exercised by the error path above. (No leak either way: on the happy
+    // path we balance the open with a close.)
+    const libname = switch (@import("builtin").os.tag) {
+        .macos, .ios, .tvos, .watchos, .visionos => "libSystem.B.dylib",
+        .linux => "libc.so.6",
+        else => "",
+    };
+    if (libname.len == 0) return;
+    if (api.send(Alien, api.intern("dlopen:"), &[_]Oop{str(api, libname)}, 1) != api.trueObj) return;
+
+    // The recorded handle is found and released.
+    try std.testing.expect(api.send(Alien, api.intern("dlclose:"), &[_]Oop{str(api, libname)}, 1) == api.trueObj);
+    // Closing again → #notFound: exactly one entry was tracked per open (refcount-safe).
+    try std.testing.expect(isErr(api, api.send(Alien, api.intern("dlclose:"), &[_]Oop{str(api, libname)}, 1)));
+}
+
 test "alien: a pointer return is a full-width Word, round-tripped through a p arg" {
     const api = setup();
     // `p` return (bit 63 set): must come back as a Word, NOT a truncated SmallInt.
