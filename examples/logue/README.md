@@ -56,20 +56,21 @@ assertions — no TTY required. `logue.birnam` is only the render/input skin.
 From this directory:
 
 ```sh
-birnam wrap termbox2          # compile wrapped/termbox2/libtermbox2.dylib via cc (no zig)
-birnam wrapped/termbox2/termbox2.birnam logue-core.birnam logue.birnam
+./play.sh          # runs the headless test suite (logue-test.birnam)
 ```
 
-…or just `./play.sh`.
+which files in `logue-core.birnam` (via `[System load: …]`) and runs 26
+assertions against the full game logic — no TTY required. This is the runnable,
+green path today.
 
-The three scripts are filed in as **three separate commits**, which matters: the
-FFI wraps declared in `termbox2.birnam` and the globals defined in
-`logue-core.birnam` only become callable in a *later* unit, so the wrapper and
-core must precede `logue.birnam` on the command line.
-
-> Needs a real terminal — termbox opens `/dev/tty`. Use a birnam built from this
-> repo (`zig build`), which has the stdlib modules (`Random`, `Time`, …) the game
-> relies on.
+> **The interactive renderer (`logue.birnam`) does not currently run.** It
+> depends on the wrapped-C-library / termbox2 FFI subsystem — the `birnam wrap`
+> command, `Module load:` of a raw `.dylib`, and the `wrap:as:signature:` facade
+> — which has since been retired from birnam. Raw-C FFI now goes through
+> `Alien dlopen:` + `wrap:signature:as:on:`. Once `termbox2.birnam` is
+> re-expressed over `Alien`, the renderer (whose game/loop/symbol idioms are
+> already up to date) should light up again. It also needs a real terminal
+> (termbox opens `/dev/tty`).
 
 ### A note on rendering speed
 

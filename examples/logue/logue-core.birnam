@@ -2,10 +2,10 @@
 // this layer is exercised headlessly by logue-test.birnam (deterministic RNG +
 // scripted moves + assertions). The thin render/input layer is logue.birnam.
 //
-// State lives in reference cells (`db cell:`); maps/vectors are immutable, so a
-// "mutation" rebuilds a value and `set:`s it back. The whole world is a handful
-// of cells the renderer reads: player, depth, tiles, monsters, items, messages,
-// mode, turn.
+// State lives in reference cells (`newCell`, a thin wrapper over the store's
+// `cellFor:attr:`); maps/vectors are immutable, so a "mutation" rebuilds a value
+// and `set:`s it back. The whole world is a handful of cells the renderer reads:
+// player, depth, tiles, monsters, items, messages, mode, turn.
 //
 // Grid: tiles is a MAP keyed by flat index y*MAP_W+x -> tile symbol; an absent
 // key reads as #wall. Monsters and items are VECTORS of maps (each carries its
@@ -27,12 +27,44 @@ let inBounds := [:x :y | [[[x >= 0] & [x < MAP_W]] & [[y >= 0] & [y < MAP_H]]]];
 // sign of an integer: -1 / 0 / 1
 let sgn := [:n | [[n > 0] ifTrue: [| 1] ifFalse: [| [[n < 0] ifTrue: [| -1] ifFalse: [| 0]]]]];
 
+// A fresh anonymous reference cell holding `v`. birnam has no `db cell:`
+// convenience; the store-native mint is `cellFor:attr:`, keyed on a unique
+// entity (`[db entity]`) so distinct cells never collide and `set:` keeps
+// full history.
+let newCell := [:v |
+  let c := [db cellFor: [db entity] attr: #value];
+  [c set: v];
+  c];
+
+// PRNG — birnam ships no Random or clock, so we roll a seedable 31-bit LCG
+// (the classic glibc constants) over a reference cell. Integers are full i64,
+// so `1103515245 * state` never overflows before the `mod: 2^31`. `rndSeed:`
+// makes generation reproducible (logue-test pins a seed).
+let rngState := [newCell value: 305419896];
+let rndSeed := [:s | [rngState set: [[s mod: 2147483647] + 1]]];
+let rngStep := [|
+  let s := [[[1103515245 * [rngState value]] + 12345] mod: 2147483648];
+  [rngState set: s];
+  s];
+
 // Random in 0..n-1, and inclusive lo..hi.
-let rnd := [:n | [Random nextInt: n]];
-let rndRange := [:lo :hi | [lo + [Random nextInt: [[hi - lo] + 1]]]];
+let rnd := [:n | [[rngStep value] mod: n]];
+let rndRange := [:lo :hi | [lo + [rnd value: [[hi - lo] + 1]]]];
 
 // Build a 2-element vector from variables (#[a b] literals don't interpolate).
-let pair := [:a :b | [[#[] with: a] with: b]];
+let pair := [:a :b | [[#[] add: a] add: b]];
+
+// Symbol/enum equality. birnam defines `=` on ints and strings but not on
+// symbols, so we compare their (stable, interned) print names — `#play` vs
+// `#play` round-trips through "#play". Used for tile kinds, modes, classes.
+let symEq := [:a :b | [[a printString] = [b printString]]];
+
+// `whileDo` — birnam has no built-in `whileTrue:`, so the loop is a self-
+// recursive block: run `body` while `cond` (a zero-arg block) answers true.
+let whileDo := [:cond :body |
+  [[cond value]
+    ifTrue:  [| [body value]; [whileDo value: cond value: body]]
+    ifFalse: [| nil]]];
 
 // ===========================================================================
 // Glyph codepoints (renderer draws these as cells) + termbox colour codes
@@ -63,20 +95,20 @@ let C_WHITE   := 8;
 // World state cells (read by the renderer)
 // ===========================================================================
 
-let player   := [db cell: {}];         // map of player stats/equipment (cells reject nil)
-let depth    := [db cell: 1];
-let levels   := [db cell: {}];          // map depth -> level map (tiles/up/down)
-let tiles    := [db cell: {}];          // current level tiles
-let monsters := [db cell: #[]];         // current level monsters (vector of maps)
-let items    := [db cell: #[]];         // current level items (vector of maps)
-let messages := [db cell: #[]];         // recent log lines (vector of strings)
-let mode     := [db cell: #title];      // #title #play #dead #won #quit
-let turn     := [db cell: 0];
-let midCtr   := [db cell: 0];           // monster id counter (unique across levels)
+let player   := [newCell value: {}];         // map of player stats/equipment (cells reject nil)
+let depth    := [newCell value: 1];
+let levels   := [newCell value: {}];          // map depth -> level map (tiles/up/down)
+let tiles    := [newCell value: {}];          // current level tiles
+let monsters := [newCell value: #[]];         // current level monsters (vector of maps)
+let items    := [newCell value: #[]];         // current level items (vector of maps)
+let messages := [newCell value: #[]];         // recent log lines (vector of strings)
+let mode     := [newCell value: #title];      // #title #play #dead #won #quit
+let turn     := [newCell value: 0];
+let midCtr   := [newCell value: 0];           // monster id counter (unique across levels)
 
 // Push a log line, keeping the last 6.
 let msg := [:s |
-  let m := [[messages value] with: s];
+  let m := [[messages value] add: s];
   let n := [m size];
   [messages set: [[n > 6] ifTrue: [| [[m collect: [:x | x]] select: [:x | true]]] ifFalse: [| m]]]];
 
@@ -85,7 +117,7 @@ let msgTrim := [|
   let m := [messages value];
   [[[m size] > 6]
     ifTrue: [|
-      let keep := [[1 to: [[m size] - 1]] inject: #[] into: [:acc :i | [acc with: [m at: i]]]];
+      let keep := [[1 to: [[m size] - 1]] inject: #[] into: [:acc :i | [acc add: [m at: i]]]];
       [messages set: keep]]
     ifFalse: [| nil]]];
 
@@ -100,7 +132,7 @@ let tileAt := [:x :y |
 
 let walkableAt := [:x :y |
   let t := [tileAt value: x value: y];
-  [[[t = #floor] | [t = #up]] | [t = #down]]];
+  [[[symEq value: t value: #floor] | [symEq value: t value: #up]] | [symEq value: t value: #down]]];
 
 let isPlayerAt := [:x :y |
   let p := [player value];
@@ -154,14 +186,14 @@ let mkMonster := [:d :x :y |
   let id := [midCtr value];
   // pick a template scaled by depth
   let tmpl := [[d <= 1]
-    ifTrue:  [| { name: "rat"     glyph: 114 hp: 3  atk: 2 def: 0 xp: 2 }]
+    ifTrue:  [| { #name -> "rat", #glyph -> 114, #hp -> 3, #atk -> 2, #def -> 0, #xp -> 2 }]
     ifFalse: [| [[d = 2]
-      ifTrue:  [| { name: "goblin"  glyph: 103 hp: 6  atk: 3 def: 1 xp: 4 }]
+      ifTrue:  [| { #name -> "goblin", #glyph -> 103, #hp -> 6, #atk -> 3, #def -> 1, #xp -> 4 }]
       ifFalse: [| [[d = 3]
-        ifTrue:  [| { name: "orc"     glyph: 111 hp: 11 atk: 5 def: 1 xp: 7 }]
+        ifTrue:  [| { #name -> "orc", #glyph -> 111, #hp -> 11, #atk -> 5, #def -> 1, #xp -> 7 }]
         ifFalse: [| [[d = 4]
-          ifTrue:  [| { name: "ogre"    glyph: 79  hp: 18 atk: 8 def: 2 xp: 12 }]
-          ifFalse: [| { name: "wraith"  glyph: 87  hp: 24 atk: 10 def: 3 xp: 18 }]]]]]]]];
+          ifTrue:  [| { #name -> "ogre", #glyph -> 79, #hp -> 18, #atk -> 8, #def -> 2, #xp -> 12 }]
+          ifFalse: [| { #name -> "wraith", #glyph -> 87, #hp -> 24, #atk -> 10, #def -> 3, #xp -> 18 }]]]]]]]];
   [[[tmpl at: #id put: id] at: #x put: x] at: #y put: y]];
 
 // Scatter loot/monsters into a room (skips its centre, used for stairs/start).
@@ -178,7 +210,7 @@ let stockRoom := [:d :room |
     let mx := [rndRange value: rx value: [[rx + rw] - 1]];
     let my := [rndRange value: ry value: [[ry + rh] - 1]];
     [[[[walkableAt value: mx value: my] & [[occupied value: mx value: my] not]] & [[[mx = cx] & [my = cy]] not]]
-      ifTrue:  [| [monsters set: [[monsters value] with: [mkMonster value: d value: mx value: my]]]]
+      ifTrue:  [| [monsters set: [[monsters value] add: [mkMonster value: d value: mx value: my]]]]
       ifFalse: [| nil]]]];
   // maybe one item
   [[[rnd value: 2] = 0]
@@ -186,7 +218,7 @@ let stockRoom := [:d :room |
       let ix := [rndRange value: rx value: [[rx + rw] - 1]];
       let iy := [rndRange value: ry value: [[ry + rh] - 1]];
       [[[walkableAt value: ix value: iy] & [[[ix = cx] & [iy = cy]] not]]
-        ifTrue:  [| [items set: [[items value] with: [rollItem value: d value: ix value: iy]]]]
+        ifTrue:  [| [items set: [[items value] add: [rollItem value: d value: ix value: iy]]]]
         ifFalse: [| nil]]]
     ifFalse: [| nil]]];
 
@@ -224,7 +256,7 @@ let genLevel := [:d |
     let rh := [rndRange value: 3 value: 5];
     let rx := [rndRange value: 1 value: [[MAP_W - rw] - 1]];
     let ry := [rndRange value: 1 value: [[MAP_H - rh] - 1]];
-    [acc with: [[[[{} at: #x put: rx] at: #y put: ry] at: #w put: rw] at: #h put: rh]]]];
+    [acc add: [[[[{} at: #x put: rx] at: #y put: ry] at: #w put: rw] at: #h put: rh]]]];
   // carve rooms
   [rooms do: [:r |
     [tiles set: [carveRoom value: [tiles value] value: r]]]];
@@ -244,7 +276,7 @@ let genLevel := [:d |
     ifTrue:  [| [tiles set: [[tiles value] at: [idx value: [last at: 0] value: [last at: 1]] put: #down]]]
     ifFalse: [|
       // deepest level: the Star of Birnam sits where the down-stairs would be
-      [items set: [[items value] with: [[[{} at: #x put: [last at: 0]] at: #y put: [last at: 1]] at: #kind put: #macguffin]]]]];
+      [items set: [[items value] add: [[[{} at: #x put: [last at: 0]] at: #y put: [last at: 1]] at: #kind put: #macguffin]]]]];
   // stock every room except the first (player arrives there)
   [[1 to: [nroom - 1]] do: [:k |
     let r := [rooms at: k];
@@ -329,23 +361,23 @@ let pickupAt := [:x :y |
     ifTrue:  [| nil]
     ifFalse: [|
       let k := [it at: #kind];
-      [[k = #gold]
+      [[symEq value: k value: #gold]
         ifTrue:  [|
           [player set: [[player value] at: #gold put: [[[player value] at: #gold] + [it at: #amount]]]];
           [msg value: ["You pick up " , [[[it at: #amount] printString] , " gold."]]]]
-        ifFalse: [| [[k = #food]
+        ifFalse: [| [[symEq value: k value: #food]
           ifTrue:  [|
             [player set: [[player value] at: #rations put: [[[player value] at: #rations] + 1]]];
             [msg value: "You find a food ration."]]
-          ifFalse: [| [[k = #potion]
+          ifFalse: [| [[symEq value: k value: #potion]
             ifTrue:  [|
               [player set: [[player value] at: #potions put: [[[player value] at: #potions] + 1]]];
               [msg value: "You pocket a healing potion."]]
-            ifFalse: [| [[k = #weapon]
+            ifFalse: [| [[symEq value: k value: #weapon]
               ifTrue:  [| [equipWeapon value: [it at: #name] value: [it at: #dmg]]]
-              ifFalse: [| [[k = #armor]
+              ifFalse: [| [[symEq value: k value: #armor]
                 ifTrue:  [| [equipArmor value: [it at: #name] value: [it at: #def]]]
-                ifFalse: [| [[k = #macguffin]
+                ifFalse: [| [[symEq value: k value: #macguffin]
                   ifTrue:  [|
                     [player set: [[player value] at: #hasMac put: true]];
                     [msg value: "*** You seize the STAR OF BIRNAM! Now escape! ***"]]
@@ -397,7 +429,7 @@ let attackMonster := [:m |
   let p := [player value];
   let base := [[[p at: #str] + [p at: #weaponDmg]] + [rnd value: 3]];
   // rogue perk: chance to crit
-  let crit := [[[p at: #class] = #rogue] & [[rnd value: 4] = 0]];
+  let crit := [[symEq value: [p at: #class] value: #rogue] & [[rnd value: 4] = 0]];
   let raw := [crit ifTrue: [| [base * 2]] ifFalse: [| base]];
   let dmg := [[raw - [m at: #def]] max: 1];
   let nhp := [[m at: #hp] - dmg];
@@ -409,7 +441,7 @@ let attackMonster := [:m |
 
 let zap := [|
   let p := [player value];
-  [[[p at: #class] = #wizard]
+  [[symEq value: [p at: #class] value: #wizard]
     ifTrue:  [|
       [[[p at: #mana] >= 3]
         ifTrue:  [|
@@ -450,7 +482,7 @@ let monsterChase := [:m |
   let c1 := [pair value: dx value: dy];
   let c2 := [pair value: dx value: 0];
   let c3 := [pair value: 0 value: dy];
-  let cands := [[[#[] with: c1] with: c2] with: c3];
+  let cands := [[[#[] add: c1] add: c2] add: c3];
   let chosen := [cands inject: nil into: [:acc :c |
     [[acc isNil]
       ifTrue:  [|
@@ -465,7 +497,7 @@ let monsterChase := [:m |
 
 let monsterTurn := [|
   [[monsters value] do: [:m |
-    [[[mode value] = #play]
+    [[symEq value: [mode value] value: #play]
       ifTrue:  [|
         let p := [player value];
         let adj := [[[[[p at: #x] - [m at: #x]] abs] max: [[[p at: #y] - [m at: #y]] abs]] = 1];
@@ -481,7 +513,7 @@ let hungerTick := [|
   let h := [[p at: #hunger] - 1];
   [player set: [p at: #hunger put: [h max: 0]]];
   // mana regen for wizards
-  [[[[p at: #class] = #wizard] & [[[turn value] mod: 4] = 0]]
+  [[[symEq value: [p at: #class] value: #wizard] & [[[turn value] mod: 4] = 0]]
     ifTrue:  [| [player set: [[player value] at: #mana put: [[[[player value] at: #mana] + 1] min: [[player value] at: #maxMana]]]]]
     ifFalse: [| nil]];
   // starvation
@@ -508,7 +540,7 @@ let onStairs := [|
   [tileAt value: [p at: #x] value: [p at: #y]]];
 
 let descend := [|
-  [[[onStairs value] = #down]
+  [[symEq value: [onStairs value] value: #down]
     ifTrue:  [|
       let d := [[depth value] + 1];
       [[[[levels value] at: d ifAbsent: [| nil]] isNil]
@@ -520,7 +552,7 @@ let descend := [|
     ifFalse: [| [msg value: "No stairs down here."]]]];
 
 let ascend := [|
-  [[[onStairs value] = #up]
+  [[symEq value: [onStairs value] value: #up]
     ifTrue:  [|
       [[[depth value] = 1]
         ifTrue:  [|
@@ -535,7 +567,7 @@ let ascend := [|
     ifFalse: [| [msg value: "No stairs up here."]]]];
 
 let playerStep := [:dx :dy |
-  [[[mode value] = #play]
+  [[symEq value: [mode value] value: #play]
     ifTrue:  [|
       let p := [player value];
       let nx := [[p at: #x] + dx];
@@ -557,11 +589,11 @@ let playerStep := [:dx :dy |
 // ===========================================================================
 
 let baseClass := [:cls |
-  [[cls = #fighter]
-    ifTrue:  [| { class: #fighter hp: 30 maxHp: 30 str: 5 weapon: "sword"  weaponDmg: 4 armor: "chainmail" armorDef: 3 gold: 10 rations: 2 potions: 1 mana: 0 maxMana: 0 }]
-    ifFalse: [| [[cls = #rogue]
-      ifTrue:  [| { class: #rogue   hp: 22 maxHp: 22 str: 4 weapon: "dagger" weaponDmg: 3 armor: "leather"   armorDef: 1 gold: 35 rations: 2 potions: 1 mana: 0 maxMana: 0 }]
-      ifFalse: [| { class: #wizard  hp: 18 maxHp: 18 str: 2 weapon: "staff"  weaponDmg: 2 armor: "robe"      armorDef: 0 gold: 15 rations: 2 potions: 2 mana: 9 maxMana: 9 }]]]]];
+  [[symEq value: cls value: #fighter]
+    ifTrue:  [| { #class -> #fighter, #hp -> 30, #maxHp -> 30, #str -> 5, #weapon -> "sword", #weaponDmg -> 4, #armor -> "chainmail", #armorDef -> 3, #gold -> 10, #rations -> 2, #potions -> 1, #mana -> 0, #maxMana -> 0 }]
+    ifFalse: [| [[symEq value: cls value: #rogue]
+      ifTrue:  [| { #class -> #rogue, #hp -> 22, #maxHp -> 22, #str -> 4, #weapon -> "dagger", #weaponDmg -> 3, #armor -> "leather", #armorDef -> 1, #gold -> 35, #rations -> 2, #potions -> 1, #mana -> 0, #maxMana -> 0 }]
+      ifFalse: [| { #class -> #wizard, #hp -> 18, #maxHp -> 18, #str -> 2, #weapon -> "staff", #weaponDmg -> 2, #armor -> "robe", #armorDef -> 0, #gold -> 15, #rations -> 2, #potions -> 2, #mana -> 9, #maxMana -> 9 }]]]]];
 
 // Build a full player map from a class, with shared fields.
 let mkPlayer := [:cls |
@@ -569,7 +601,9 @@ let mkPlayer := [:cls |
   [[[[[[b at: #x put: 0] at: #y put: 0] at: #hunger put: 1000] at: #xp put: 0] at: #plvl put: 1] at: #hasMac put: false]];
 
 let newGame := [:cls |
-  [Random seed: [Time millis]];
+  // No clock to seed from, so the dungeon is fixed per class. `newGameSeeded`
+  // takes an explicit seed for variety / reproducible tests.
+  [rndSeed value: 305419896];
   [player set: [mkPlayer value: cls]];
   [depth set: 1];
   [levels set: {}];
@@ -589,7 +623,7 @@ let newGame := [:cls |
 
 // Deterministic variant for tests: explicit seed, no Time.
 let newGameSeeded := [:cls :seed |
-  [Random seed: seed];
+  [rndSeed value: seed];
   [player set: [mkPlayer value: cls]];
   [depth set: 1];
   [levels set: {}];

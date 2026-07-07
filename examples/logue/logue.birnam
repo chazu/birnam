@@ -1,13 +1,21 @@
 // logue — the interactive render + input layer over termbox2. This is the ONLY
 // file that touches `tb`; all game logic lives in logue-core.birnam (and is
-// tested headlessly by logue-test.birnam). Run from this directory:
+// fully exercised headlessly by logue-test.birnam — that path IS runnable and
+// green today).
 //
-//   birnam wrap termbox2
-//   birnam wrapped/termbox2/termbox2.birnam logue-core.birnam logue.birnam
+// ⚠️ STATUS: this renderer does NOT run on the current birnam. It depends on the
+// wrapped-C-library subsystem (the `birnam wrap` CLI command, `Module load:` of
+// a raw `.dylib`, and the `wrap:as:signature:` FFI facade), which has since been
+// retired — raw-C FFI now goes through `Alien dlopen:` + `wrap:signature:as:on:`.
+// The game logic below (and its symbol/cell/loop idioms) is up to date, so once
+// termbox2.birnam is re-expressed over `Alien`, this file should light up again.
+// It also needs a real terminal (termbox opens /dev/tty).
 //
-// Three scripts = three commits, so the termbox wraps and the core globals are
-// all resolved before this loop calls them. Needs a real terminal (termbox
-// opens /dev/tty).
+// The dependencies would be pulled in with `[System load: …]` (the CLI runs a
+// single script; extra file args are ignored):
+//
+//   [System load: "wrapped/termbox2/termbox2.birnam"];   // once revived
+//   [System load: "logue-core.birnam"];
 
 // ---- key codes ----------------------------------------------------------
 let K_UP    := 65517;
@@ -20,8 +28,8 @@ let K_ESC   := 27;
 // The map is static between turns, so we draw it in full only on a level
 // change and per-turn repaint just the cells entities cover. A full per-frame
 // redraw of all 1080 cells costs ~1.3s at interpreter speed; this is ~40 calls.
-let lastDepth := [db cell: 0];     // != depth -> full map redraw
-let dirty     := [db cell: #[]];   // cells covered by entities last frame
+let lastDepth := [newCell value: 0];     // != depth -> full map redraw
+let dirty     := [newCell value: #[]];   // cells covered by entities last frame
 
 // ---- small draw helpers -------------------------------------------------
 let putStr  := [:x :y :fg :s | [tb printX: x y: y fg: fg bg: 0 str: s]];
@@ -29,28 +37,28 @@ let putCell := [:x :y :ch :fg | [tb setX: x y: y ch: ch fg: fg bg: 0]];
 
 // ---- glyph / colour tables ----------------------------------------------
 let tileGlyph := [:t |
-  [[t = #wall] ifTrue: [| 35] ifFalse: [|
-    [[t = #up] ifTrue: [| 60] ifFalse: [|
-      [[t = #down] ifTrue: [| 62] ifFalse: [| 46]]]]]]];
+  [[symEq value: t value: #wall] ifTrue: [| 35] ifFalse: [|
+    [[symEq value: t value: #up] ifTrue: [| 60] ifFalse: [|
+      [[symEq value: t value: #down] ifTrue: [| 62] ifFalse: [| 46]]]]]]];
 
 let tileColor := [:t |
-  [[[t = #up] | [t = #down]] ifTrue: [| C_CYAN] ifFalse: [|
-    [[t = #wall] ifTrue: [| C_BLUE] ifFalse: [| C_WHITE]]]]];
+  [[[symEq value: t value: #up] | [symEq value: t value: #down]] ifTrue: [| C_CYAN] ifFalse: [|
+    [[symEq value: t value: #wall] ifTrue: [| C_BLUE] ifFalse: [| C_WHITE]]]]];
 
 let itemGlyph := [:k |
-  [[k = #gold] ifTrue: [| 36] ifFalse: [|
-    [[k = #food] ifTrue: [| 37] ifFalse: [|
-      [[k = #potion] ifTrue: [| 33] ifFalse: [|
-        [[k = #weapon] ifTrue: [| 41] ifFalse: [|
-          [[k = #armor] ifTrue: [| 91] ifFalse: [| 42]]]]]]]]]]];
+  [[symEq value: k value: #gold] ifTrue: [| 36] ifFalse: [|
+    [[symEq value: k value: #food] ifTrue: [| 37] ifFalse: [|
+      [[symEq value: k value: #potion] ifTrue: [| 33] ifFalse: [|
+        [[symEq value: k value: #weapon] ifTrue: [| 41] ifFalse: [|
+          [[symEq value: k value: #armor] ifTrue: [| 91] ifFalse: [| 42]]]]]]]]]]];
 
 let itemColor := [:k |
-  [[k = #macguffin] ifTrue: [| C_MAGENTA] ifFalse: [|
-    [[k = #gold] ifTrue: [| C_YELLOW] ifFalse: [| C_GREEN]]]]];
+  [[symEq value: k value: #macguffin] ifTrue: [| C_MAGENTA] ifFalse: [|
+    [[symEq value: k value: #gold] ifTrue: [| C_YELLOW] ifFalse: [| C_GREEN]]]]];
 
 let classWord := [:c |
-  [[c = #fighter] ifTrue: [| "Fighter"] ifFalse: [|
-    [[c = #rogue] ifTrue: [| "Rogue"] ifFalse: [| "Wizard"]]]]];
+  [[symEq value: c value: #fighter] ifTrue: [| "Fighter"] ifFalse: [|
+    [[symEq value: c value: #rogue] ifTrue: [| "Rogue"] ifFalse: [| "Wizard"]]]]];
 
 let hungerWord := [:h |
   [[h > 600] ifTrue: [| "Sated"] ifFalse: [|
@@ -115,14 +123,14 @@ let restoreDirty := [|
 let drawEntities := [|
   let d1 := [[items value] inject: #[] into: [:acc :it |
     [putCell value: [it at: #x] value: [it at: #y] value: [itemGlyph value: [it at: #kind]] value: [itemColor value: [it at: #kind]]];
-    [acc with: [pair value: [it at: #x] value: [it at: #y]]]]];
+    [acc add: [pair value: [it at: #x] value: [it at: #y]]]]];
   let d2 := [[monsters value] inject: d1 into: [:acc :m |
     [putCell value: [m at: #x] value: [m at: #y] value: [m at: #glyph] value: C_RED];
-    [acc with: [pair value: [m at: #x] value: [m at: #y]]]]];
+    [acc add: [pair value: [m at: #x] value: [m at: #y]]]]];
   let px := [[player value] at: #x];
   let py := [[player value] at: #y];
   [putCell value: px value: py value: 64 value: C_YELLOW];
-  [dirty set: [d2 with: [pair value: px value: py]]]];
+  [dirty set: [d2 add: [pair value: px value: py]]]];
 
 let draw := [|
   [[[depth value] = [lastDepth value]]
@@ -170,9 +178,9 @@ let titleScreen := [|
 
 let endScreen := [|
   let m := [mode value];
-  let txt := [[m = #won]
+  let txt := [[symEq value: m value: #won]
     ifTrue:  [| "YOU ESCAPED WITH THE STAR OF BIRNAM. Victory!"]
-    ifFalse: [| [[m = #dead] ifTrue: [| "You have died in the dungeon."] ifFalse: [| "You abandon the dungeon."]]]];
+    ifFalse: [| [[symEq value: m value: #dead] ifTrue: [| "You have died in the dungeon."] ifFalse: [| "You abandon the dungeon."]]]];
   [putStr value: 0 value: [MAP_H + 7] value: C_MAGENTA value: txt];
   [putStr value: 0 value: [MAP_H + 8] value: C_WHITE value: "Press any key to leave."];
   [tb present]];
@@ -182,9 +190,9 @@ let endScreen := [|
 [tb hideCursor];
 
 // class select
-let chosen := [db cell: #none];
+let chosen := [newCell value: #none];
 [titleScreen value];
-[[| [[chosen value] = #none]] whileTrue: [|
+[whileDo value: [| [symEq value: [chosen value] value: #none]] value: [|
   [tb poll];
   let c := [tb evCh];
   let k := [tb evKey];
@@ -193,12 +201,12 @@ let chosen := [db cell: #none];
   [[c = 51] ifTrue: [| [chosen set: #wizard]]  ifFalse: [| nil]];
   [[k = K_ESC] ifTrue: [| [chosen set: #quit]] ifFalse: [| nil]]]];
 
-[[[chosen value] = #quit]
+[[symEq value: [chosen value] value: #quit]
   ifTrue:  [| [tb shutdown]]
   ifFalse: [|
     [newGame value: [chosen value]];
     // play loop
-    [[| [[mode value] = #play]] whileTrue: [|
+    [whileDo value: [| [symEq value: [mode value] value: #play]] value: [|
       [draw value];
       [tb poll];
       let ch := [tb evCh];

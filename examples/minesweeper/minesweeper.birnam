@@ -15,10 +15,10 @@
 // append-only RRB trees with no positional `at:put:`, but maps update by key
 // and stay persistent). Each cell is itself a small map:
 //
-//   { mine: <bool> count: <int> revealed: <bool> flagged: <bool> }
+//   { #mine -> <bool>, #count -> <int>, #revealed -> <bool>, #flagged -> <bool> }
 //
 // Every "mutation" returns a NEW map; we thread boards through `inject:into:`
-// folds, or hold one in a `db cell:` during the placement loop.
+// folds, or hold one in a `newCell` during the placement loop.
 
 // ---- Config --------------------------------------------------------------
 
@@ -34,7 +34,43 @@ let idx := [:x :y | [[y * w] + x]];
 let neighbors := #[ #[-1 -1] #[0 -1] #[1 -1] #[-1 0] #[1 0] #[-1 1] #[0 1] #[1 1] ];
 
 // A fresh, untouched cell. Maps are immutable, so one template is safe to share.
-let emptyCell := { mine: false count: 0 revealed: false flagged: false };
+let emptyCell := { #mine -> false, #count -> 0, #revealed -> false, #flagged -> false };
+
+// A fresh anonymous reference cell holding `v`. Each cell is a handle onto a
+// brand-new (entity, attr) pair in the store, so `set:` keeps full history and
+// distinct cells never collide. (`db cellFor:attr:` is the store-native mint;
+// `[db entity]` allocates a unique entity to hang it off of.)
+let newCell := [:v |
+  let c := [db cellFor: [db entity] attr: #value];
+  [c set: v];
+  c];
+
+// `whileDo` — birnam has no built-in `whileTrue:`, so we spell the loop as a
+// self-recursive block: run `body` while `cond` answers true. Both arguments
+// are zero-arg blocks (`[| … ]`). Depth stays small here (≤ board size), so
+// plain recursion is fine without tail-call elimination.
+let whileDo := [:cond :body |
+  [[cond value]
+    ifTrue:  [| [body value]; [whileDo value: cond value: body]]
+    ifFalse: [| nil]]];
+
+// ---- PRNG ----------------------------------------------------------------
+// birnam ships no Random or clock, so we roll a 31-bit LCG (the classic
+// glibc constants) over a reference cell. Integers are full i64, so the
+// `1103515245 * state` product never overflows before the `mod: 2^31`.
+// With no clock to seed from, entropy comes from YOU: `rngMix` folds every
+// command's numbers into the state, and mines are only laid on the first
+// reveal — so the layout depends on what you have typed. Same keystrokes,
+// same board (which also makes the game reproducible for testing).
+let rngState := [newCell value: 305419896];       // arbitrary non-zero start
+let rngStep := [|
+  let s := [[[1103515245 * [rngState value]] + 12345] mod: 2147483648];
+  [rngState set: s];
+  s];
+let rngMix := [:k |
+  [rngState set: [[[[rngState value] * 33] + k] mod: 2147483648]];
+  [rngStep value]];
+let rngInt := [:n | [[rngStep value] mod: n]];      // pseudo-random [0, n)
 
 // ---- M1: board generation ------------------------------------------------
 
@@ -47,10 +83,10 @@ let makeBoard := [|
 // first reveal is always safe). The board lives in a cell while we loop so each
 // placement sees the previous one. (Assumes mineCount < free cells.)
 let placeMines := [:startBoard :forbidden |
-  let cur := [db cell: startBoard];
-  let placed := [db cell: 0];
-  [[| [[placed value] < mineCount]] whileTrue: [|
-    let ri := [Random nextInt: [w * h]];
+  let cur := [newCell value: startBoard];
+  let placed := [newCell value: 0];
+  [whileDo value: [| [[placed value] < mineCount]] value: [|
+    let ri := [rngInt value: [w * h]];
     let bad := [[forbidden at: ri ifAbsent: [| false]] | [[[cur value] at: ri] at: #mine]];
     [bad
       ifTrue:  [| nil]                                    // forbidden or taken — retry
@@ -129,15 +165,13 @@ let renderWith := [:board :glyph |
 
 // ---- Game state ----------------------------------------------------------
 
-[Random seed: [Time millis]];              // fresh board each run
-
 // All mutable game state lives in reference cells — `set:` keeps full history,
 // so undo-via-time-travel is available later for free. The board starts EMPTY
 // (no mines); mines are placed on the first reveal so it can never be a mine.
-let board   := [db cell: [makeBoard value]];
-let placed  := [db cell: false];
-let status  := [db cell: "Reveal: r x y   Flag: f x y   Quit: q"];
-let running := [db cell: true];
+let board   := [newCell value: [makeBoard value]];
+let placed  := [newCell value: false];
+let status  := [newCell value: "Reveal: r x y   Flag: f x y   Quit: q"];
+let running := [newCell value: true];
 
 // First reveal at (x,y): scatter mines avoiding the clicked 3x3, stamp counts.
 let ensurePlaced := [:x :y |
@@ -181,8 +215,8 @@ let revealNeighbors := [:x :y :changed |
 // small — 81 cells — so the repeated passes are cheap).
 let floodFrom := [:sx :sy |
   [board set: [setRevealed value: [board value] value: [idx value: sx value: sy]]];
-  let changed := [db cell: true];
-  [[| [changed value]] whileTrue: [|
+  let changed := [newCell value: true];
+  [whileDo value: [| [changed value]] value: [|
     [changed set: false];
     [[0 to: [h - 1]] do: [:y |
       [[0 to: [w - 1]] do: [:x |
@@ -258,6 +292,7 @@ let handleMove := [:toks |
       [[[x isNil] | [y isNil]]
         ifTrue: [| [status set: "Coordinates must be numbers."]]
         ifFalse: [|
+          [rngMix value: [[x * 31] + y]];      // fold this move into the RNG
           [[[[x >= 0] & [x < w]] & [[y >= 0] & [y < h]]]
             ifTrue: [| [applyAt value: cmd value: x value: y]]
             ifFalse: [| [status set: "Off the board."]]]]]]]];
@@ -276,15 +311,19 @@ let handleLine := [:line |
 
 // ---- M5: main loop -------------------------------------------------------
 
+// birnam has no `System run:` / shell access and string literals can't carry an
+// ESC byte, so a real ANSI clear is out — we scroll the old frame off instead.
+let clearScreen := [| [[0 to: 24] do: [:i | [System println: ""]]]];
+
 let draw := [|
-  [System run: "clear"];
+  [clearScreen value];
   [System println: "M I N E S W E E P E R"];
   [System println: ""];
   [renderWith value: [board value] value: glyphPlay];
   [System println: ""];
   [System println: [status value]]];
 
-[[| [running value]] whileTrue: [|
+[whileDo value: [| [running value]] value: [|
   [draw value];
   [System print: "> "];
   let line := [System readLine];

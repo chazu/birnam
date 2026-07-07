@@ -1,16 +1,24 @@
 // Headless test for logue-core — deterministic seed, scripted actions,
-// assertions on world state. No termbox; runnable anywhere:
+// assertions on world state. No termbox; run it from THIS directory (the path
+// in `System load:` resolves against the cwd):
 //
-//   birnam logue-core.birnam logue-test.birnam
+//   cd examples/logue && birnam logue-test.birnam
 //
 // NOTE: blocks are invoked with value:/value:value:/... (max 4 args). `check`
 // takes 3 args so it is called [check value: L value: G value: W].
 
-let fails  := [db cell: 0];
-let checks := [db cell: 0];
+// birnam runs a single script file; a script pulls in its dependencies with
+// `[System load: …]`, which evaluates them into the shared global scope.
+[System load: "logue-core.birnam"];
+
+let fails  := [newCell value: 0];
+let checks := [newCell value: 0];
+// Compare by print name: birnam's `=` only covers ints/strings, so symbols and
+// booleans (which several checks assert on) go through `printString` — the same
+// trick `symEq` uses in the core.
 let check := [:label :got :want |
   [checks set: [[checks value] + 1]];
-  [[got = want]
+  [[[got printString] = [want printString]]
     ifTrue:  [| [System println: ["  ok   " , label]]]
     ifFalse: [|
       [fails set: [[fails value] + 1]];
@@ -52,7 +60,7 @@ let pot0 := [[player value] at: #potions];
 let px := [[player value] at: #x];
 let py := [[player value] at: #y];
 [monsters set: #[]];
-[monsters set: [[monsters value] with: [mkMonster value: 1 value: [px + 1] value: py]]];
+[monsters set: [[monsters value] add: [mkMonster value: 1 value: [px + 1] value: py]]];
 let m0 := [monsterAt value: [px + 1] value: py];
 [check value: "monster spawned adjacent" value: [m0 isNil] value: false];
 let hp0 := [m0 at: #hp];
@@ -83,7 +91,7 @@ let dpos := [[[levels value] at: 1] at: #down];
 [newGameSeeded value: #fighter value: 2024];
 [goDepth value: 5 value: #up];
 [check value: "deepest level is 5" value: [depth value] value: 5];
-let mac := [[items value] select: [:it | [[it at: #kind] = #macguffin]]];
+let mac := [[items value] select: [:it | [symEq value: [it at: #kind] value: #macguffin]]];
 [check value: "Star of Birnam on L5" value: [[mac size] > 0] value: true];
 let mp := [mac at: 0];
 [player set: [[[player value] at: #x put: [mp at: #x]] at: #y put: [mp at: #y]]];
