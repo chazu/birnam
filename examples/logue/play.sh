@@ -1,18 +1,17 @@
 #!/bin/sh
-# logue launcher.
+# logue launcher — the interactive roguelike.
 #
-# The interactive renderer (logue.birnam) is currently BLOCKED: it needs the
-# wrapped-C-library / termbox2 FFI subsystem, which has been retired from birnam
-# (see the status note atop logue.birnam). Until that is revived over `Alien`,
-# there is no playable terminal build.
+# Needs a REAL terminal: termbox2 opens /dev/tty, so this cannot run headless
+# (under a pipe / no controlling tty, tb_init fails and there is nothing to play).
+# The full game LOGIC is exercised headlessly by logue-test.birnam (no termbox):
 #
-# What DOES run today is the headless test suite, which exercises the full game
-# logic (generation, combat, hunger, stairs, the macguffin + win condition):
+#   birnam logue-test.birnam        # 26 assertions, green
 #
-#   ./play.sh            # runs logue-test.birnam
-#
-# Uses the birnam on PATH; from this repo, `zig build` puts one in zig-out/bin.
+# Uses the birnam on PATH; from this repo, `zig build` puts one in zig-out/bin
+# (run as  BIRNAM=../../zig-out/bin/birnam ./play.sh  from here).
 set -e
 cd "$(dirname "$0")"
 BIRNAM="${BIRNAM:-birnam}"
-exec "$BIRNAM" logue-test.birnam
+# Build the termbox2 dylib on first run (the wrapper dlopens it).
+[ -f wrapped/termbox2/libtermbox2.dylib ] || sh wrapped/termbox2/build.sh
+exec "$BIRNAM" logue.birnam

@@ -31,12 +31,19 @@ int lg_present(void)     { return tb_present(); }
 int lg_hide_cursor(void) { return tb_hide_cursor(); }
 
 /* --- drawing ------------------------------------------------------------ */
+/* These two take arguments, so under birnam's Alien FFI the method receiver is
+ * marshalled as the FIRST C argument. They are module-level calls (the receiver
+ * is the `tb` singleton, carrying no data), so the leading `self` is a dummy the
+ * wrapper passes and we ignore — it just shifts the real args into place. The
+ * no-argument entry points above need no such slot (their receiver is unused). */
 /* One glyph: ch is a Unicode codepoint, fg/bg are TB_* colour codes. */
-int lg_set_cell(int x, int y, int ch, int fg, int bg) {
+int lg_set_cell(void *self, int x, int y, int ch, int fg, int bg) {
+    (void)self;
     return tb_set_cell(x, y, (uint32_t)ch, (uintattr_t)fg, (uintattr_t)bg);
 }
 /* A whole NUL-terminated string in one call (termbox handles advancing x). */
-int lg_print(int x, int y, int fg, int bg, const char *s) {
+int lg_print(void *self, int x, int y, int fg, int bg, const char *s) {
+    (void)self;
     return tb_print(x, y, (uintattr_t)fg, (uintattr_t)bg, s);
 }
 

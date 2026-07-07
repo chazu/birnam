@@ -1,21 +1,17 @@
 // logue — the interactive render + input layer over termbox2. This is the ONLY
 // file that touches `tb`; all game logic lives in logue-core.birnam (and is
-// fully exercised headlessly by logue-test.birnam — that path IS runnable and
-// green today).
+// fully exercised headlessly by logue-test.birnam).
 //
-// ⚠️ STATUS: this renderer does NOT run on the current birnam. It depends on the
-// wrapped-C-library subsystem (the `birnam wrap` CLI command, `Module load:` of
-// a raw `.dylib`, and the `wrap:as:signature:` FFI facade), which has since been
-// retired — raw-C FFI now goes through `Alien dlopen:` + `wrap:signature:as:on:`.
-// The game logic below (and its symbol/cell/loop idioms) is up to date, so once
-// termbox2.birnam is re-expressed over `Alien`, this file should light up again.
-// It also needs a real terminal (termbox opens /dev/tty).
+// Run it from THIS directory, on a real terminal (termbox opens /dev/tty):
 //
-// The dependencies would be pulled in with `[System load: …]` (the CLI runs a
-// single script; extra file args are ignored):
+//   cd examples/logue && birnam logue.birnam        (or ./play.sh)
 //
-//   [System load: "wrapped/termbox2/termbox2.birnam"];   // once revived
-//   [System load: "logue-core.birnam"];
+// birnam runs a single script; a script pulls in its dependencies with
+// `[System load: …]`, evaluated into the shared global scope. Build the termbox2
+// dylib once first (wrapped/termbox2/build.sh); the wrapper dlopens it and binds
+// the `tb` module (a private singleton) over `Alien` — see termbox2.birnam.
+[System load: "wrapped/termbox2/termbox2.birnam"];
+[System load: "logue-core.birnam"];
 
 // ---- key codes ----------------------------------------------------------
 let K_UP    := 65517;

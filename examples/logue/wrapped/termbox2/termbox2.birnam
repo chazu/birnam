@@ -1,40 +1,54 @@
-// termbox2 — terminal cell grid + keyboard events for birnam.
+// termbox2 — terminal cell grid + keyboard events, wrapped for birnam via Alien.
 //
-// First-party wrapped C library. Build the dylib first (uses cc, not zig):
+// First-party wrapped C library. All calls go through a thin int-clean C adapter
+// (`lg_*`, see termbox2.c), so every signature here is int->int, (ints…)->int, or
+// (ints…, cstring)->int — no struct peeks, no uint64 attr-width marshalling.
 //
-//   birnam wrap termbox2        # -> wrapped/termbox2/libtermbox2.dylib
+// BUILD the dylib first (single-header lib; TB_IMPL is instantiated in termbox2.c):
 //
-// Then file this wrapper in BEFORE the program that uses it. File-in is atomic:
-// the wraps below are declared here and RESOLVED at commit, so they're only
-// callable in a LATER unit. The shipped invocation files in the wrapper and the
-// game as two separate scripts (= two commits):
+//   cd examples/logue/wrapped/termbox2 && ./build.sh   # -> libtermbox2.dylib
 //
-//   birnam wrapped/termbox2/termbox2.birnam logue.birnam
+// LOAD it before the renderer. logue.birnam pulls it in with `[System load: …]`
+// (run from examples/logue, so the relative dylib path below resolves):
 //
-// All calls go through a thin int-clean C adapter (`lg_*`, see termbox2.c), so
-// every signature here is int->int or (ints…, cstring)->int — no struct peeks,
-// no uint64 attr-width marshalling.
+//   [System load: "wrapped/termbox2/termbox2.birnam"];
+//
+// The wraps declared here resolve at commit, so `tb` is only callable in a LATER
+// unit — which is exactly how the renderer uses it (System load is one commit,
+// the renderer body another).
 
-// Loaded by BARE name — resolved via birnam.toml `dylib_paths = ["wrapped/termbox2"]`.
-let tb := [Module load: "libtermbox2.dylib"];
+// Make the library's symbols resolvable by `wrap:` below. Path is relative to the
+// cwd the renderer runs from (examples/logue).
+[Alien dlopen: "wrapped/termbox2/libtermbox2.dylib"];
+
+// The module: a private singleton to hang the wrapped methods on. `on: tb` gives
+// `tb` its own copy-on-write vtable, so these methods are private to it (they do
+// not leak onto Object). System load persists this top-level `let` into the
+// shared scope, so the renderer can send `tb` messages.
+let tb := [Object clone];
 
 // -- lifecycle / screen ---------------------------------------------------
-[tb wrap: #init       as: "lg_init"         signature: ")i"];   // 0 on success
-[tb wrap: #shutdown   as: "lg_shutdown"     signature: ")i"];
-[tb wrap: #width      as: "lg_width"        signature: ")i"];   // columns
-[tb wrap: #height     as: "lg_height"       signature: ")i"];   // rows
-[tb wrap: #clear      as: "lg_clear"        signature: ")i"];   // clear back buffer
-[tb wrap: #present    as: "lg_present"      signature: ")i"];   // flush to screen
-[tb wrap: #hideCursor as: "lg_hide_cursor"  signature: ")i"];
+// No C arguments, so the receiver is unused: signature is just the return type.
+[Alien wrap: "lg_init"        signature: "i" as: #init       on: tb];   // 0 on success
+[Alien wrap: "lg_shutdown"    signature: "i" as: #shutdown   on: tb];
+[Alien wrap: "lg_width"       signature: "i" as: #width      on: tb];   // columns
+[Alien wrap: "lg_height"      signature: "i" as: #height     on: tb];   // rows
+[Alien wrap: "lg_clear"       signature: "i" as: #clear      on: tb];   // clear back buffer
+[Alien wrap: "lg_present"     signature: "i" as: #present    on: tb];   // flush to screen
+[Alien wrap: "lg_hide_cursor" signature: "i" as: #hideCursor on: tb];
 
 // -- drawing --------------------------------------------------------------
+// These take arguments, so Alien marshals the receiver as the first C arg. The
+// adapter's leading `void* self` is a dummy that absorbs `tb`; the real values
+// follow (see the receiver-idiom note in termbox2.c). Hence the `p` after the
+// return type in each signature.
 // [tb setX: c y: r ch: codepoint fg: fgColor bg: bgColor]
-[tb wrap: #setX:y:ch:fg:bg: as: "lg_set_cell" signature: "iiiii)i"];
+[Alien wrap: "lg_set_cell" signature: "i p i i i i i" as: #setX:y:ch:fg:bg: on: tb];
 // [tb printX: c y: r fg: fgColor bg: bgColor str: "text"]
-[tb wrap: #printX:y:fg:bg:str: as: "lg_print" signature: "iiiiZ)i"];
+[Alien wrap: "lg_print"    signature: "i p i i i i s" as: #printX:y:fg:bg:str: on: tb];
 
 // -- input ----------------------------------------------------------------
-[tb wrap: #poll   as: "lg_poll"     signature: ")i"];   // BLOCKS; returns event type
-[tb wrap: #evType as: "lg_ev_type"  signature: ")i"];   // TB_EVENT_*
-[tb wrap: #evKey  as: "lg_ev_key"   signature: ")i"];   // TB_KEY_* (0 if a char)
-[tb wrap: #evCh   as: "lg_ev_ch"    signature: ")i"]    // codepoint (0 if special)
+[Alien wrap: "lg_poll"    signature: "i" as: #poll   on: tb];   // BLOCKS; returns event type
+[Alien wrap: "lg_ev_type" signature: "i" as: #evType on: tb];   // TB_EVENT_*
+[Alien wrap: "lg_ev_key"  signature: "i" as: #evKey  on: tb];   // TB_KEY_* (0 if a char)
+[Alien wrap: "lg_ev_ch"   signature: "i" as: #evCh   on: tb]    // codepoint (0 if special)

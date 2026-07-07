@@ -42,8 +42,9 @@ logue/
   wrapped/termbox2/
     termbox2.h                 vendored upstream single header (MIT)
     termbox2.c                 TB_IMPL + int-clean `lg_*` FFI adapter
-    termbox2.birnam            the wrapper: Module load: + wrap:as:signature:
-    libtermbox2.dylib          built by `birnam wrap` (git-ignored)
+    termbox2.birnam            the wrapper: Alien dlopen: + wrap:signature:as:on:
+    build.sh                   cc the adapter into libtermbox2.dylib
+    libtermbox2.dylib          built by build.sh (git-ignored)
 ```
 
 The split is deliberate: **`logue-core.birnam` contains no terminal code at all**,
@@ -53,24 +54,24 @@ assertions — no TTY required. `logue.birnam` is only the render/input skin.
 
 ## Build & play
 
-From this directory:
+From this directory, on a real terminal:
 
 ```sh
-./play.sh          # runs the headless test suite (logue-test.birnam)
+./play.sh          # builds libtermbox2.dylib if needed, then plays
 ```
 
-which files in `logue-core.birnam` (via `[System load: …]`) and runs 26
-assertions against the full game logic — no TTY required. This is the runnable,
-green path today.
+`play.sh` builds the termbox2 dylib on first run (`wrapped/termbox2/build.sh`)
+and launches `logue.birnam`, which files in the wrapper and `logue-core.birnam`
+via `[System load: …]`. From this repo without an installed birnam:
 
-> **The interactive renderer (`logue.birnam`) does not currently run.** It
-> depends on the wrapped-C-library / termbox2 FFI subsystem — the `birnam wrap`
-> command, `Module load:` of a raw `.dylib`, and the `wrap:as:signature:` facade
-> — which has since been retired from birnam. Raw-C FFI now goes through
-> `Alien dlopen:` + `wrap:signature:as:on:`. Once `termbox2.birnam` is
-> re-expressed over `Alien`, the renderer (whose game/loop/symbol idioms are
-> already up to date) should light up again. It also needs a real terminal
-> (termbox opens `/dev/tty`).
+```sh
+BIRNAM=../../zig-out/bin/birnam ./play.sh
+```
+
+> **A real terminal is required** — termbox2 opens `/dev/tty`, so the renderer
+> cannot run under a pipe or without a controlling tty (there, `tb_init` fails
+> and there is nothing to play). The full game *logic* has no such dependency:
+> `logue-test.birnam` exercises it headlessly (see below).
 
 ### A note on rendering speed
 
@@ -104,8 +105,8 @@ eating, quaffing, combat, descent, every class, and the macguffin/win path.
 
 termbox2 is a single-header library, so `wrapped/termbox2/termbox2.c` is a 2-line
 instantiation shim (`#define TB_IMPL` + `#include "termbox2.h"`) **plus** a thin
-int-clean adapter (`lg_*`). The adapter exists so birnam's `wrap:as:signature:`
-never has to deal with two awkward edges of the real API:
+int-clean adapter (`lg_*`). The adapter exists so birnam's `Alien` FFI
+(`wrap:signature:as:on:`) never has to deal with two awkward edges of the real API:
 
 - `tb_set_cell`/`tb_print` take `uintattr_t` colors which **default to 64-bit**
   (`TB_OPT_ATTR_W=64`) — a width a birnam `SmallInt` can't be marshalled to via
@@ -114,6 +115,15 @@ never has to deal with two awkward edges of the real API:
   fields at byte offsets from birnam, the adapter polls into a static struct and
   exposes scalar accessors (`lg_ev_type` / `lg_ev_key` / `lg_ev_ch`).
 
+There is a third, FFI-shaped detail: `Alien` marshals a method's **receiver as
+the first C argument**. The no-argument calls (`init`, `clear`, `poll`, …) don't
+care — their receiver is unused. But the two drawing calls take arguments, so
+`lg_set_cell`/`lg_print` carry a leading `void *self` the wrapper fills with the
+`tb` module object and the adapter ignores; it just shifts the real arguments
+into place (hence the `p` after the return type in those signatures).
+
 The result is that every wrapped call is `int -> int` or `(ints…, cstring) -> int`
-— see `termbox2.birnam`. This "thin C adapter over a single-header lib" is the
-clean pattern for wrapping header-only C from birnam without any zig.
+— see `termbox2.birnam`. `tb` itself is a private singleton (`[Object clone]` with
+its own copy-on-write vtable), so wrapping these methods `on: tb` keeps them off
+`Object`. This "thin C adapter over a single-header lib" is the clean pattern for
+wrapping header-only C from birnam without any zig.
