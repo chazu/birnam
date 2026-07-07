@@ -1,0 +1,5 @@
+// The project entry point named by birnam.toml `main`. Bare `birnam` in this
+// directory runs this before the REPL. It reads its own config back through the
+// `Config` singleton (which parses ./birnam.toml with the self-hosted Toml module).
+[System println: ["starting " , [[Config at: "name"] , [" v" , [Config at: "version"]]]]];
+[System println: "(edit birnam.toml to change name/version; run `birnam` here to see it)"]

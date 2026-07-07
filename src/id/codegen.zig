@@ -170,6 +170,13 @@ var global_memo: std.AutoHashMapUnmanaged(Oop, usize) = .{};
 // `__birnam_unit_init` hook fills by interning the NAME at load time. Set for
 // the duration of one `emitProgram(…, artifact=true)`.
 var artifact_mode: bool = false;
+// Per-unit salt for the artifact method-block GLOBAL keys (`__amblk`). Those keys
+// live in the process-wide `birnam_global` string namespace, so without a salt two
+// separately-compiled dylibs (stdlib, toml, config) would both write `__amblk0…`
+// and the later-loaded one would clobber the earlier's blocks — a method would then
+// fetch the wrong-arity block and DNU on `value:value:`. A hash of the unit's source
+// makes the keys unique per module (and stable across recompiles of the same source).
+var artifact_salt: u64 = 0;
 
 /// Resolve `name` to its interned symbol (once), assign it a stable `__g<i>` slot,
 /// and return that index. Keyed by symbol identity, so the same global referenced
@@ -578,7 +585,7 @@ fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop) b
     artifact_method_counter += 1;
 
     // The trampoline: forward [self, args…] to the stashed block via value:…(k+1).
-    putFmt(&fn_defs, "void* __amtramp{d}(void* self, void** args, long n){{ (void)n; void* a[{d}]; a[0]=self; long i; for(i=0;i<{d};i++) a[i+1]=args[i]; return birnam_send(birnam_global(\"__amblk{d}\"), birnam_intern(\"", .{ n, k + 1, k, n });
+    putFmt(&fn_defs, "void* __amtramp{d}(void* self, void** args, long n){{ (void)n; void* a[{d}]; a[0]=self; long i; for(i=0;i<{d};i++) a[i+1]=args[i]; return birnam_send(birnam_global(\"__amblk_{x}_{d}\"), birnam_intern(\"", .{ n, k + 1, k, artifact_salt, n });
     var vi: usize = 0;
     while (vi < k + 1) : (vi += 1) put(&fn_defs, "value:");
     putFmt(&fn_defs, "\"), a, {d}); }}\n", .{k + 1});
@@ -588,7 +595,7 @@ fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop) b
     // its owned family via ensurePrivateVtable — same as the JIT path's targetVtable.
     putFmt(buf, "({{ void* _vt = birnam_ensurePrivateVtable(", .{});
     if (!emit(buf, argNodes[1])) return false; // the type expression (e.g. Integer)
-    putFmt(buf, "); birnam_global_set(\"__amblk{d}\", ", .{n});
+    putFmt(buf, "); birnam_global_set(\"__amblk_{x}_{d}\", ", .{ artifact_salt, n });
     if (!emit(buf, argNodes[2])) return false; // the block literal → instance
     put(buf, "); birnam_method(_vt, birnam_intern(\"");
     putCStr(buf, sel);
@@ -1306,6 +1313,7 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
     global_memo.clearRetainingCapacity();
     artifact_mode = artifact;
     defer artifact_mode = false;
+    if (artifact) artifact_salt = std.hash.Wyhash.hash(0, src_bytes); // unique __amblk keys per unit
 
     // The `__ev` function body is emitted first (which populates fn_defs with any
     // block functions, in post-order); the final source is prelude + fn_defs +

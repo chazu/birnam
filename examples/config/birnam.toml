@@ -1,0 +1,7 @@
+# A birnam project config, parsed by the built-in Toml module.
+#
+#   cd examples/config && birnam        # runs `main`, then drops to the REPL
+
+name = "hello-birnam"
+version = "0.1.0"
+main = "app.birnam"

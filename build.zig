@@ -130,6 +130,7 @@ pub fn build(b: *std.Build) void {
     const self_hosted = [_]struct { src: []const u8, name: []const u8 }{
         .{ .src = "src/id/stdlib.birnam", .name = "stdlib" },
         .{ .src = "src/id/toml.birnam", .name = "toml" },
+        .{ .src = "src/id/config.birnam", .name = "config" },
     };
     inline for (self_hosted) |m| {
         const compile = b.addRunArtifact(siphon_exe);

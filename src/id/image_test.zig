@@ -305,6 +305,40 @@ test "round-trip: a user method's compiled code is mapped (default), replayed (-
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api.mkSmallInt(5), "quad", &.{})));
 }
 
+test "codegen: separately-compiled unit dylibs don't clobber each other's method blocks (salt)" {
+    const api = setupWithCodegen();
+    const Codegen = api.import("Codegen").?;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const pathA = try std.fs.path.join(a, &.{ dir, "unitA.dylib" });
+    defer a.free(pathA);
+    const pathB = try std.fs.path.join(a, &.{ dir, "unitB.dylib" });
+    defer a.free(pathB);
+
+    // Two DIFFERENT units, each defining a method whose body IS its own block. Each
+    // compile resets the artifact block counter, so both methods would key on
+    // `__amblk0` in the process-wide `birnam_global` namespace — the per-unit salt
+    // (a source hash) keeps them distinct, so loading B does not overwrite A's block.
+    const srcA = "[Reflect defineMethod: #saltA on: Integer as: [:x | [x + 1]]]";
+    const srcB = "[Reflect defineMethod: #saltB on: Integer as: [:x | [x + 100]]]";
+    const co = api.intern("compile:output:");
+    try std.testing.expect(api.send(Codegen, co, &.{ api.mkString(srcA.ptr, srcA.len), api.mkString(pathA.ptr, pathA.len) }, 2) != api.nilObj);
+    try std.testing.expect(api.send(Codegen, co, &.{ api.mkString(srcB.ptr, srcB.len), api.mkString(pathB.ptr, pathB.len) }, 2) != api.nilObj);
+
+    const ld = api.intern("load:");
+    try std.testing.expect(api.send(Codegen, ld, &.{api.mkString(pathA.ptr, pathA.len)}, 1) != api.nilObj);
+    try std.testing.expect(api.send(Codegen, ld, &.{api.mkString(pathB.ptr, pathB.len)}, 1) != api.nilObj);
+
+    // Without the salt, B (loaded last) would clobber A's `__amblk0`, so `saltA`
+    // would run B's block and answer 105. With it, each keeps its own.
+    try std.testing.expectEqual(@as(i64, 6), api.smallIntValue(send(api.mkSmallInt(5), "saltA", &.{})));
+    try std.testing.expectEqual(@as(i64, 105), api.smallIntValue(send(api.mkSmallInt(5), "saltB", &.{})));
+}
+
 test "round-trip: a block-valued global is re-derived from its recorded source" {
     const api = setupWithCodegen();
     const Codegen = api.import("Codegen").?;

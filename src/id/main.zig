@@ -450,6 +450,7 @@ const script_modules = [_][]const u8{
 // (`collect:`/`asInteger`) at RUN time, so stdlib must be up before Toml is used.
 const STDLIB_SRC = @embedFile("stdlib.birnam");
 const TOML_SRC = @embedFile("toml.birnam");
+const CONFIG_SRC = @embedFile("config.birnam");
 
 /// Bring up one self-hosted module by `name`: PREFER the precompiled artifact
 /// (`libbirnam_<name>.dylib`) — `[Codegen load:]` installs its methods with no
@@ -481,7 +482,8 @@ fn loadSelfHosted(a: std.mem.Allocator, api: *IdApi, codegen: Oop, name: []const
 fn loadStdlib(a: std.mem.Allocator, api: *IdApi, codegen: Oop) void {
     if (std.posix.getenv("BIRNAM_NO_STDLIB") != null) return;
     loadSelfHosted(a, api, codegen, "stdlib", STDLIB_SRC);
-    loadSelfHosted(a, api, codegen, "toml", TOML_SRC);
+    loadSelfHosted(a, api, codegen, "toml", TOML_SRC); // requires stdlib (at run time)
+    loadSelfHosted(a, api, codegen, "config", CONFIG_SRC); // requires toml
 }
 
 /// Resolve the directory holding the runtime module dylibs. Tries, in order:
@@ -843,6 +845,11 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
 
     if (!booted) loadStdlib(a, api, codegen);
 
+    // birnam.toml `main`: a project entry-point run before the prompt (bare/--repl
+    // only — a `birnam <file>` invocation names its own entry, so config main is
+    // ignored there). Config parses ./birnam.toml with the built-in Toml.
+    applyConfigMain(api);
+
     out("birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\n");
     while (true) {
         out("birnam> ");
@@ -861,6 +868,20 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
         if (err != api.nilObj) outErrorString(api, err) else printResult(api, result);
     }
     out("\n");
+}
+
+/// Apply the birnam.toml `main` key (stage 4): if `[Config main]` names a source
+/// file, run it via `[System load:]` as the project entry point before the REPL.
+/// A no-op when the config module, a birnam.toml, or the `main` key is absent —
+/// `[Config main]` answers nil in each case, so a project without config just works.
+fn applyConfigMain(api: *IdApi) void {
+    const globals = api.import("Globals") orelse return;
+    const config = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("Config")}, 1);
+    if (config == api.nilObj) return; // config module not loaded (e.g. BIRNAM_NO_STDLIB)
+    const mainv = api.send(config, api.intern("main"), &[_]Oop{}, 0);
+    if (mainv == api.nilObj) return; // no birnam.toml, or no `main` key
+    const system = api.import("System") orelse return;
+    _ = api.send(system, api.intern("load:"), &[_]Oop{mainv}, 1);
 }
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading
