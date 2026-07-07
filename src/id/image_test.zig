@@ -15,6 +15,7 @@ const peg = @import("peg.zig");
 const lang = @import("lang.zig");
 const tcc = @import("tcc.zig");
 const codegen = @import("codegen.zig");
+const modules = @import("modules.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
@@ -337,6 +338,47 @@ test "codegen: separately-compiled unit dylibs don't clobber each other's method
     // would run B's block and answer 105. With it, each keeps its own.
     try std.testing.expectEqual(@as(i64, 6), api.smallIntValue(send(api.mkSmallInt(5), "saltA", &.{})));
     try std.testing.expectEqual(@as(i64, 105), api.smallIntValue(send(api.mkSmallInt(5), "saltB", &.{})));
+}
+
+test "modules: [Module load:] loads a compiled unit dylib and its deps at runtime" {
+    const api = setupWithCodegen();
+    modules.bringUp(api);
+    const Codegen = api.import("Codegen").?;
+    const Module = api.import("Module").?;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    _ = api.send(Module, api.intern("libDir:"), &.{api.mkString(dir.ptr, dir.len)}, 1); // search tmp
+
+    // A dependency module + a dependent that uses its method. Compiled to
+    // libbirnam_<name>.dylib in tmp; each carries a `__birnam_module_meta` symbol.
+    const co = api.intern("compile:output:");
+    const depPath = try std.fs.path.join(a, &.{ dir, "libbirnam_tdep.dylib" });
+    defer a.free(depPath);
+    const modPath = try std.fs.path.join(a, &.{ dir, "libbirnam_tmod.dylib" });
+    defer a.free(modPath);
+    const depSrc = "[Module named: #tdep requires: #[]]; [Reflect defineMethod: #td on: Integer as: [:x | [x + 5]]]";
+    const modSrc = "[Module named: #tmod requires: #[#tdep]]; [Reflect defineMethod: #tm on: Integer as: [:x | [[x td] * 2]]]";
+    try std.testing.expect(api.send(Codegen, co, &.{ api.mkString(depSrc.ptr, depSrc.len), api.mkString(depPath.ptr, depPath.len) }, 2) != api.nilObj);
+    try std.testing.expect(api.send(Codegen, co, &.{ api.mkString(modSrc.ptr, modSrc.len), api.mkString(modPath.ptr, modPath.len) }, 2) != api.nilObj);
+
+    // Neither is loaded yet; loading tmod must pull in tdep first (from the meta
+    // symbol), so tmod's method — which calls tdep's `td` — works.
+    try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("tmod")}, 1) == api.falseObj);
+    try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("tdep")}, 1) == api.falseObj);
+    _ = api.send(Module, api.intern("load:"), &.{api.intern("tmod")}, 1);
+    try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("tmod")}, 1) == api.trueObj);
+    try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("tdep")}, 1) == api.trueObj); // dep auto-loaded
+    try std.testing.expectEqual(@as(i64, 16), api.smallIntValue(send(api.mkSmallInt(3), "tm", &.{}))); // (3+5)*2
+
+    // A missing module fails gracefully (no crash) and is NOT marked loaded. (The
+    // #loadFailed error KIND is verified end-to-end via the CLI, where the error
+    // module is up — setupWithCodegen omits it to keep failure paths nil-valued.)
+    _ = api.send(Module, api.intern("load:"), &.{api.intern("tnope")}, 1);
+    try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("tnope")}, 1) == api.falseObj);
 }
 
 test "round-trip: a block-valued global is re-derived from its recorded source" {

@@ -1140,8 +1140,45 @@ fn mCompileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     var buf = emitProgram(a[0], false, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);
-    const c_src = g_api.mkString(buf.items.ptr, buf.items.len);
+    // Embed a `__birnam_module_meta` symbol carrying this unit's DEPENDENCIES (scanned
+    // from its `[Module … requires: #[…]]` declaration). A runtime loader reads it via
+    // `dlsym` BEFORE running `__ev`, so it can load the dependencies first — the
+    // pre-install requires knowledge on-demand `[Module load:]` needs. Empty when the
+    // unit declares no requires (or isn't a module).
+    var out: std.ArrayList(u8) = .{};
+    defer out.deinit(ca);
+    var slen: usize = 0;
+    const sp = g_api.stringBytes(a[0], &slen);
+    out.appendSlice(ca, "const char __birnam_module_meta[] = \"") catch @panic("codegen: oom");
+    scanRequiresCsv(sp[0..slen], &out); // only [A-Za-z0-9_,] — no C-string escaping needed
+    out.appendSlice(ca, "\";\n") catch @panic("codegen: oom");
+    out.appendSlice(ca, buf.items) catch @panic("codegen: oom");
+    const c_src = g_api.mkString(out.items.ptr, out.items.len);
     return g_api.send(tcc, g_api.intern("compile:output:as:"), &[_]Oop{ c_src, a[1], g_api.intern("dll") }, 3);
+}
+
+/// Scan a module source for its `[Module … requires: #[ #a #b ]]` declaration and
+/// append the dependency names as a comma-separated list to `out` (empty if none).
+/// The declaration is the module's first statement (`requires:` never precedes it),
+/// so this reads the requires without parsing — mirrors main.zig's `scanRequires`.
+fn scanRequiresCsv(src: []const u8, out: *std.ArrayList(u8)) void {
+    const rk = std.mem.indexOf(u8, src, "requires:") orelse return;
+    const br = std.mem.indexOfPos(u8, src, rk, "#[") orelse return;
+    var i = br + 2;
+    var first = true;
+    while (i < src.len and src[i] != ']') {
+        if (src[i] == '#') {
+            const start = i + 1;
+            var j = start;
+            while (j < src.len and (std.ascii.isAlphanumeric(src[j]) or src[j] == '_')) j += 1;
+            if (j > start) {
+                if (!first) out.append(ca, ',') catch @panic("codegen: oom");
+                out.appendSlice(ca, src[start..j]) catch @panic("codegen: oom");
+                first = false;
+            }
+            i = j;
+        } else i += 1;
+    }
 }
 
 /// `[Codegen compileImageCode: path]` — the image's `.code` section (docs/40

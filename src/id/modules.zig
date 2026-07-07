@@ -16,6 +16,15 @@
 //! deps first; a dependency cycle answers a `#circularDependency` kinded error
 //! (mirroring the G4 left-recursion catch) rather than looping. The graph
 //! serializes into the image for free (it is ordinary store facts), like rules.
+//!
+//! `[Module load: #x]` loads a self-hosted module dylib AT RUNTIME, dependencies
+//! first: it resolves `<libDir>/libbirnam_x.dylib`, `dlopen`s it, reads its
+//! `__birnam_module_meta` symbol (the requires, emitted by the compiler) BEFORE
+//! running the install code, recursively loads each dependency, then runs the unit's
+//! `__birnam_unit_init` + `__ev` to install it. Idempotent (a `#loaded` fact) and
+//! cycle-guarded. This is the fundamental "load a module at runtime" capability;
+//! boot-time modules (kernel + the self-hosted layer) are marked `#loaded` so a
+//! later `load:` of one is a no-op.
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
@@ -35,8 +44,15 @@ var vector_factory: Oop = null; // `Vector`, imported lazily
 var s_requires: Oop = null; // `#requires` — a Vector of dependency-name symbols
 var s_kind: Oop = null; //     `#kind` — `#kernel` or `#selfHosted`
 var s_registered: Oop = null; // `#registered` — the boolean true once declared
+var s_loaded: Oop = null; //    `#loaded` — the boolean true once installed
 var s_kernel: Oop = null; //    the `#kernel` kind value
 var s_selfHosted: Oop = null; // the `#selfHosted` kind value
+
+// The directory holding module dylibs (`<libDir>/libbirnam_<name>.dylib`), set by
+// the host at bringUp; falls back to `$BIRNAM_LIB_DIR` then `zig-out/lib`.
+var g_libdir: [1024]u8 = undefined;
+var g_libdir_len: usize = 0;
+const RTLD_LAZY: c_int = 1;
 
 // Store + collection selectors we drive.
 var s_assert: Oop = null; //        `assert:attr:value:`
@@ -94,6 +110,7 @@ fn mKernel(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const name = args[0];
     assert3(name, s_registered, g_api.trueObj);
     assert3(name, s_kind, s_kernel);
+    assert3(name, s_loaded, g_api.trueObj); // a kernel module is already up
     return self;
 }
 
@@ -189,6 +206,109 @@ fn mLoadOrder(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return vec;
 }
 
+// -- runtime dylib loading ---------------------------------------------------
+
+/// `[Module libDir: aString]` — set the directory searched for module dylibs. The
+/// host sets this at boot (its resolved lib dir). Answers self.
+fn mLibDir(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var len: usize = 0;
+    const p = g_api.stringBytes(args[0], &len);
+    const cl = @min(len, g_libdir.len);
+    @memcpy(g_libdir[0..cl], p[0..cl]);
+    g_libdir_len = cl;
+    return self;
+}
+
+fn libDirSlice() []const u8 {
+    if (g_libdir_len > 0) return g_libdir[0..g_libdir_len];
+    if (std.posix.getenv("BIRNAM_LIB_DIR")) |d| return d;
+    return "zig-out/lib";
+}
+
+fn isLoadedName(name: Oop) bool {
+    return currentValue(name, s_loaded) == g_api.trueObj;
+}
+
+/// `[Module isLoaded: #x]` — true iff `x` has been installed (boot-time or on-demand).
+fn mIsLoaded(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return if (isLoadedName(args[0])) g_api.trueObj else g_api.falseObj;
+}
+
+/// `[Module markLoaded: #x]` — record that `x` is installed (the host calls this for
+/// the boot-time self-hosted layer; kernel modules are marked by `kernel:`). Answers
+/// self.
+fn mMarkLoaded(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    assert3(args[0], s_loaded, g_api.trueObj);
+    return self;
+}
+
+// In-progress set for the recursive load (cycle guard). Single-transactor, so a
+// process-global is safe.
+var g_loading: std.ArrayList(Oop) = .{};
+
+/// Recursively load module `name` and its dependencies; answers `module_obj` on
+/// success or a kinded error (`#loadFailed`/`#circularDependency`) on failure.
+fn loadName(name: Oop) Oop {
+    if (isLoadedName(name)) return module_obj; // idempotent — already installed
+    for (g_loading.items) |it| if (it == name) {
+        var mb: [128]u8 = undefined;
+        const msg = std.fmt.bufPrint(&mb, "circular dependency loading module: {s}", .{std.mem.span(g_api.symbolName(name))}) catch "circular dependency";
+        return modErr("circularDependency", msg);
+    };
+    const nm = std.mem.span(g_api.symbolName(name));
+    var pbuf: [1024]u8 = undefined;
+    const path = std.fmt.bufPrintZ(&pbuf, "{s}/libbirnam_{s}.dylib", .{ libDirSlice(), nm }) catch
+        return modErr("loadFailed", "module dylib path too long");
+    const h = g_api.dlopen(path.ptr, RTLD_LAZY) orelse {
+        var mb: [1152]u8 = undefined;
+        const msg = std.fmt.bufPrint(&mb, "could not open module dylib: {s}", .{path}) catch "could not open module dylib";
+        return modErr("loadFailed", msg);
+    };
+    g_loading.append(ca, name) catch @panic("modules: oom");
+    defer _ = g_loading.pop();
+
+    // Read the requires from `__birnam_module_meta` (a comma-separated dep list the
+    // compiler embedded) and load each BEFORE this unit's install code runs.
+    if (g_api.dlsym(h, "__birnam_module_meta")) |mp| {
+        const meta = std.mem.span(@as([*:0]const u8, @ptrCast(mp)));
+        var it = std.mem.splitScalar(u8, meta, ',');
+        while (it.next()) |dep| {
+            if (dep.len == 0) continue;
+            var db: [64]u8 = undefined;
+            const dl = @min(dep.len, db.len - 1);
+            @memcpy(db[0..dl], dep[0..dl]);
+            db[dl] = 0;
+            const r = loadName(g_api.intern(@ptrCast(&db)));
+            if (r != module_obj) return r; // propagate a dep's cycle/failure
+        }
+    }
+    // Install: run the unit's global-handle fixup, then its top-level (`__ev`), which
+    // installs the methods + binds any globals + re-asserts the requires declaration.
+    if (g_api.dlsym(h, "__birnam_unit_init")) |ip| {
+        const initFn: *const fn () callconv(.c) void = @ptrCast(@alignCast(ip));
+        initFn();
+    }
+    if (g_api.dlsym(h, "__ev")) |ep| {
+        const evFn: idapi.Method = @ptrCast(@alignCast(ep));
+        _ = evFn(g_api.nilObj, &[_]Oop{}, 0);
+    }
+    assert3(name, s_loaded, g_api.trueObj);
+    return module_obj;
+}
+
+/// `[Module load: #x]` — load module `x` and its transitive dependencies at runtime
+/// (deps first), installing each once. Answers self on success, or a kinded
+/// `#loadFailed`/`#circularDependency` error. A no-op if `x` is already loaded.
+fn mLoad(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return loadName(args[0]);
+}
+
 // -- bringup -----------------------------------------------------------------
 
 /// Wire `Module` onto libid: intern the vocabulary, (re)build the vtable, install
@@ -202,6 +322,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_requires = api.intern("requires");
     s_kind = api.intern("kind");
     s_registered = api.intern("registered");
+    s_loaded = api.intern("loaded");
     s_kernel = api.intern("kernel");
     s_selfHosted = api.intern("selfHosted");
 
@@ -226,6 +347,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(module_vt, api.intern("kindOf:"), &mKindOf);
     api.method(module_vt, api.intern("isRegistered:"), &mIsRegistered);
     api.method(module_vt, api.intern("loadOrder:"), &mLoadOrder);
+    api.method(module_vt, api.intern("libDir:"), &mLibDir);
+    api.method(module_vt, api.intern("load:"), &mLoad);
+    api.method(module_vt, api.intern("isLoaded:"), &mIsLoaded);
+    api.method(module_vt, api.intern("markLoaded:"), &mMarkLoaded);
 
     if (!reloading) {
         module_obj = api.alloc(module_vt, 0);

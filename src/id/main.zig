@@ -527,9 +527,17 @@ fn installSelfHostedByName(a: std.mem.Allocator, api: *IdApi, codegen: Oop, name
     for (self_hosted_modules) |sh| {
         if (std.mem.eql(u8, nm, sh.name)) {
             loadSelfHosted(a, api, codegen, sh.name, sh.src);
+            markLoaded(api, sh.name);
             return;
         }
     }
+}
+
+/// Record a boot-installed self-hosted module as `#loaded` in the Module graph, so a
+/// later `[Module load:]` of it (e.g. as another module's dependency) is a no-op.
+fn markLoaded(api: *IdApi, name: [:0]const u8) void {
+    if (api.import("Module")) |mm|
+        _ = api.send(mm, api.intern("markLoaded:"), &[_]Oop{api.intern(name.ptr)}, 1);
 }
 
 /// Bring up the whole self-hosted layer, unless opted out. The load ORDER is a
@@ -563,7 +571,10 @@ fn loadStdlib(a: std.mem.Allocator, api: *IdApi, codegen: Oop) void {
         }
     }
     // Fallback: the declared table order (also correct — it's dependency-ordered).
-    for (self_hosted_modules) |sh| loadSelfHosted(a, api, codegen, sh.name, sh.src);
+    for (self_hosted_modules) |sh| {
+        loadSelfHosted(a, api, codegen, sh.name, sh.src);
+        markLoaded(api, sh.name);
+    }
 }
 
 /// Resolve the directory holding the runtime module dylibs. Tries, in order:
@@ -616,6 +627,9 @@ fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
             "collection", "modules", "error", "relational", "alien",   "image",
         };
         for (kernel) |name| _ = api.send(mm, api.intern("kernel:"), &[_]Oop{api.intern(name.ptr)}, 1);
+        // Tell the manager where module dylibs live, so `[Module load: #x]` can
+        // resolve `<libDir>/libbirnam_x.dylib` at runtime.
+        _ = api.send(mm, api.intern("libDir:"), &[_]Oop{api.mkString(lib_dir.ptr, lib_dir.len)}, 1);
     }
 }
 
