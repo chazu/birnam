@@ -270,9 +270,9 @@ fn setVtable(obj: Oop, vt: ?*Vtable) void {
 }
 
 // -- Float: the floor's only floating-point value (a boxed f64) --------------
-// SmallInt fills the immediate slot (maru-style low-bit tag), so a float can't be
-// an immediate too — it is a heap object whose payload is a single `f64`. Its
-// vtable pointer at `[-1]` is `float_vt`, found by the ordinary deref (no tag).
+// Like every value since the refounding removed immediates, a Float is a heap
+// object whose payload is a single `f64`. Its vtable pointer at `[-1]` is
+// `float_vt`, found by the ordinary deref (no tag).
 // The conservative GC scans the payload as words; an f64 bit pattern that happens
 // to look like a live pointer only over-retains (never unsafe), like any value.
 
@@ -294,13 +294,14 @@ pub fn floatValue(o: Oop) f64 {
 }
 
 // -- Word: an opaque 64-bit machine word (a boxed usize) ---------------------
-// SmallInt's low-bit tag caps it at 63 bits, so a full C `long` / `void*` /
-// `unsigned long` can't ride immediate — the FFI (§F) needs the full width. A
-// Word is a heap object whose payload is one raw 64-bit word; the reader decides
-// how to interpret the bits (signed long, pointer, unsigned). Its vtable at [-1]
-// is `word_vt`. Like Float, the payload is `slot_raw`: even a bit pattern that
-// looks like a live pointer is NOT traced/swizzled — a C pointer is not an Oop —
-// which only over-retains under conservative GC, never unsafe.
+// An Integer already carries a full signed i64, so a C `long` is a number, not a
+// Word (§F F1). A Word exists for the two FFI values that ARE NOT signed numbers:
+// a `void*`/pointer (opaque, non-arithmetic) and an `unsigned long`/`size_t` whose
+// top bit is set (a magnitude beyond signed i64). A Word is a heap object whose
+// payload is one raw 64-bit word; the reader decides how to interpret the bits.
+// Its vtable at [-1] is `word_vt`. Like Float, the payload is `slot_raw`: even a
+// bit pattern that looks like a live pointer is NOT traced/swizzled — a C pointer
+// is not an Oop — which only over-retains under conservative GC, never unsafe.
 
 pub const Word = extern struct { value: u64 };
 inline fn asWord(o: Oop) *Word {
@@ -1105,7 +1106,7 @@ test "libid: doesNotUnderstand: is an overridable message (F2)" {
     try std.testing.expectEqual(@as(usize, 7), last_dnu_arg);
 }
 
-test "libid: SmallInt is the one immediate (F1)" {
+test "libid: Integer is a boxed full-width i64 (F1)" {
     boot();
 
     const a = mkSmallInt(42);
@@ -1113,8 +1114,11 @@ test "libid: SmallInt is the one immediate (F1)" {
     try std.testing.expectEqual(@as(i64, 42), smallIntValue(a));
     try std.testing.expectEqual(@as(i64, -7), smallIntValue(mkSmallInt(-7))); // sign round-trips
     try std.testing.expectEqual(@as(i64, 0), smallIntValue(mkSmallInt(0)));
+    // The box holds a full i64 — no 62-bit tag budget (immediates are gone).
+    try std.testing.expectEqual(std.math.maxInt(i64), smallIntValue(mkSmallInt(std.math.maxInt(i64))));
+    try std.testing.expectEqual(std.math.minInt(i64), smallIntValue(mkSmallInt(std.math.minInt(i64))));
 
-    // A fixnum's vtable is smallint_vt — found by tag, no `[-1]` deref.
+    // A fixnum's vtable is smallint_vt — found by the ordinary `[-1]` deref.
     try std.testing.expect(vtableOf(a) == smallint_vt);
 
     // Heap objects (incl. the singletons) are NOT smallints; nil is a real

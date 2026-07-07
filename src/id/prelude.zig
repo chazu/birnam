@@ -52,10 +52,13 @@ fn send1(rcv: Oop, sel: [*:0]const u8, a: Oop) Oop {
 
 // -- Integer (smallint_vt) ---------------------------------------------------
 
-// SmallInt is a 63-bit signed fixnum (the floor's maru-style tag): a result must
-// land in [-2^62, 2^62-1] or it has overflowed.
-const SMALLINT_MAX: i128 = (1 << 62) - 1;
-const SMALLINT_MIN: i128 = -(1 << 62);
+// An Integer is a heap box holding a full signed i64 (the prototype refounding
+// removed immediates — there is no tag, see id.zig). Its range is therefore the
+// whole i64: a result must land in [-2^63, 2^63-1] or it has genuinely overflowed
+// the machine word. (The old ±2^62 bound was a fossil of the maru-style tag, when
+// SmallInt was a 63-bit immediate; the box has carried a full i64 since §A.)
+const SMALLINT_MAX: i128 = (1 << 63) - 1;
+const SMALLINT_MIN: i128 = -(1 << 63);
 
 fn isInt(o: Oop) bool {
     return g_api.isSmallInt(o) != 0;
@@ -78,7 +81,7 @@ fn mkErr(kind: [*:0]const u8, msg: []const u8) Oop {
     return g_api.send(E, g_api.intern("kind:message:"), &[_]Oop{ g_api.intern(kind), g_api.mkString(msg.ptr, msg.len) }, 2);
 }
 
-/// Tag an arithmetic result, or a `#overflow` error if it left the SmallInt range.
+/// Box an arithmetic result, or a `#overflow` error if it left the i64 range.
 /// (The op is computed in i128 first, so it can never wrap silently.)
 fn intResult(v: i128) Oop {
     if (v < SMALLINT_MIN or v > SMALLINT_MAX) return mkErr("overflow", "integer overflow");
@@ -379,7 +382,7 @@ fn wEq(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (g_api.isWord(a[0]) == 0) return g_api.falseObj;
     return boolean(g_api.wordValue(self) == g_api.wordValue(a[0]));
 }
-/// `[aWord asInteger]` — the payload as an Integer, if it fits SmallInt's range
+/// `[aWord asInteger]` — the payload as an Integer, if it fits the signed i64 range
 /// (a top-bit-set word is `#overflow`; that's what Word exists to hold losslessly).
 fn wAsInteger(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;

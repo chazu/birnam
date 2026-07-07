@@ -120,11 +120,21 @@ test "prelude: arithmetic faults are catchable errors, not panics" {
         }
     }.k;
 
-    // Overflow: 2^61 * 2^61 leaves the 63-bit range.
+    // Overflow: 2^61 * 2^61 = 2^122 leaves the full i64 range.
     const big = api.mkSmallInt(1 << 61);
     const ov = api.send(big, api.intern("*"), &[_]Oop{big}, 1);
     try std.testing.expect(api.send(ov, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj);
     try std.testing.expectEqualStrings("overflow", kindOf(api, ov));
+
+    // ...but the range is the WHOLE i64, not the old ±2^62 tag budget (§F F1): a
+    // result in (2^62, 2^63) now computes instead of faulting. 2^62 + (2^62-1) =
+    // 2^63-1 = maxInt(i64) — the largest value the box holds, once impossible.
+    const sum = api.send(api.mkSmallInt(1 << 62), api.intern("+"), &[_]Oop{api.mkSmallInt((1 << 62) - 1)}, 1);
+    try std.testing.expect(api.send(sum, api.intern("isError"), &[_]Oop{}, 0) == api.falseObj);
+    try std.testing.expectEqual(std.math.maxInt(i64), api.smallIntValue(sum));
+    // maxInt(i64) + 1 is the first genuine overflow.
+    const edge = api.send(api.mkSmallInt(std.math.maxInt(i64)), api.intern("+"), &[_]Oop{api.mkSmallInt(1)}, 1);
+    try std.testing.expectEqualStrings("overflow", kindOf(api, edge));
 
     // Type mismatch: an Integer op against a non-Integer (the System object).
     const sys = api.import("System").?;
