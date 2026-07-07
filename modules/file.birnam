@@ -1,0 +1,69 @@
+// file.birnam — filesystem access for birnam, implemented IN birnam over libc.
+//
+// A birnam-native OS module, like time.birnam: the only irreducible capability is
+// "call a C function", which `Alien` already provides — no new Zig. Whole-file
+// read/write already exist as floor primitives (`System readFile:` /
+// `writeFile:contents:`), so `File` reuses those and adds the GAPS the floor
+// lacks — append, exists, delete — as thin libc calls.
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/file.birnam"]
+// then:
+//   [File exists: "x.txt"]              "=> true / false"
+//   [File append: "log.txt" contents: "a line\n"]
+//   [File readText: "x.txt"]           "=> the whole file as a String"
+//   [File delete: "x.txt"]             "=> true on success"
+
+// -- low-level libc wraps -----------------------------------------------------
+// Alien marshals the receiver as the first C argument, so each wrap lands on the
+// type whose instances are that first argument. `s` auto-marshals a birnam String
+// to a `const char*` (freed after the call), so writes need no manual buffer.
+//
+// FILE *fopen(const char *path, const char *mode)     — receiver = path
+[Alien wrap: "fopen"  signature: "p s s" as: #fopenMode: on: String];
+// int fputs(const char *s, FILE *stream)              — receiver = the string
+[Alien wrap: "fputs"  signature: "i s p" as: #fputsTo: on: String];
+// int fclose(FILE *stream)                            — receiver = the FILE* word
+[Alien wrap: "fclose" signature: "i p"   as: #fclose on: Word];
+// int access(const char *path, int mode)              — receiver = path
+[Alien wrap: "access" signature: "i s i" as: #accessMode: on: String];
+// int unlink(const char *path)                        — receiver = path
+[Alien wrap: "unlink" signature: "i s"   as: #unlinkFile on: String];
+
+// The module: a named singleton, the Config / Toml / Time shape.
+[Globals at: #File put: [Object clone]];
+
+// -- existence / deletion (the libc-backed gaps) ------------------------------
+
+// True iff the path exists (access with F_OK = 0).
+[Reflect defineMethod: #exists: on: File as: [:self :path |
+  [[path accessMode: 0] = 0]]];
+
+// Delete the file; answers true on success, false if it could not be removed.
+[Reflect defineMethod: #delete: on: File as: [:self :path |
+  [[path unlinkFile] = 0]]];
+
+// -- append (creates the file if absent) — the floor has no append ------------
+
+// Append `text` verbatim (no added newline) to `path`, creating it if needed.
+// Answers self on success, false if the file could not be opened. Opens+closes
+// per call — simple and flush-safe; a Log with an open handle can do better.
+[Reflect defineMethod: #append:contents: on: File as: [:self :path :text |
+  let fp := [path fopenMode: "a"];
+  [[fp isNull]
+    ifTrue: [| false]
+    ifFalse: [|
+      [text fputsTo: fp];
+      [fp fclose];
+      self]]]];
+
+// -- whole-file read / write (thin aliases over the floor primitives) ---------
+
+// The whole file as a String, or a #ioError (delegates to the Zig floor, which is
+// binary-safe; the libc path above is text-oriented via fputs).
+[Reflect defineMethod: #readText: on: File as: [:self :path |
+  [System readFile: path]]];
+
+// Overwrite the whole file with `text` (delegates to the Zig floor).
+[Reflect defineMethod: #write:contents: on: File as: [:self :path :text |
+  [System writeFile: path contents: text]]]

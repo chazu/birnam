@@ -1,0 +1,41 @@
+// time.birnam — wall-clock time for birnam, implemented IN birnam over libc.
+//
+// A birnam-native OS module. The only irreducible capability it needs is "call a
+// C function and read raw memory" — and `Alien` already provides both (FFI +
+// `alloc:`/`peek*At:`), so this module is pure birnam with NO new Zig. libc's
+// `gettimeofday` fills a `struct timeval` we allocate; we read the seconds and
+// microseconds back out and fold them into epoch milliseconds.
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/time.birnam"]
+// then:
+//   [Time nowMillis]     "=> epoch milliseconds, an Integer"
+//   [Time nowSeconds]    "=> epoch seconds"
+
+// int gettimeofday(struct timeval *tv, struct timezone *tz)
+//   struct timeval { long tv_sec; int tv_usec; }   // macOS: 8 + 4 bytes (16 w/ pad)
+// Alien marshals the method receiver as the FIRST C argument, so the receiver IS
+// the tv buffer (a Word from `Alien alloc:`) and `tz` is the one birnam argument.
+// Returns 0 on success. Wrapped on Word, so any raw buffer can fill itself.
+[Alien wrap: "gettimeofday" signature: "i p p" as: #fillTimeval: on: Word];
+
+// The module: a named singleton, the same shape as the self-hosted Config / Toml.
+[Globals at: #Time put: [Object clone]];
+
+// Epoch milliseconds as an Integer. birnam's Integer is a full i64, so this holds
+// dates well past the year 292-million before overflow. `alloc:` hands back zeroed
+// memory, and gettimeofday writes only tv_sec (offset 0) and the 4-byte tv_usec
+// (offset 8), leaving the padding zero — so `peekIntAt: 8` reads usec cleanly.
+[Reflect defineMethod: #nowMillis on: Time as: [:self |
+  let tv := [Alien alloc: 16];
+  let tz := [Alien alloc: 8];
+  [tv fillTimeval: tz];
+  let sec  := [tv peekIntAt: 0];
+  let usec := [tv peekIntAt: 8];
+  [tv free];
+  [tz free];
+  [[sec * 1000] + [usec / 1000]]]];
+
+// Epoch seconds (Integer).
+[Reflect defineMethod: #nowSeconds on: Time as: [:self |
+  [[self nowMillis] / 1000]]]
