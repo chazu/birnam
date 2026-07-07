@@ -117,6 +117,22 @@ pub fn build(b: *std.Build) void {
     siphon_exe.linkLibC();
     b.installArtifact(siphon_exe);
 
+    // -- stage 1: AOT-compile birnam-source modules to installable dylibs -------
+    // The default build ("stage 0") ships a binary that embeds the stdlib SOURCE
+    // and evals it at boot. `zig build stage1` then RUNS that binary to compile
+    // the source into `libbirnam_stdlib.dylib`, which a subsequent boot prefers
+    // (installing methods with no recompile) and falls back to source if absent.
+    // Kept opt-in: a plain `zig build` still works via the source fallback. Points
+    // the binary at the just-installed lib dir so it finds the fresh kernel dylibs.
+    const stage1 = b.step("stage1", "AOT-compile birnam-source modules (stdlib) to installable dylibs");
+    const compile_stdlib = b.addRunArtifact(siphon_exe);
+    compile_stdlib.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
+    compile_stdlib.addArg("--compile-module");
+    compile_stdlib.addFileArg(b.path("src/id/stdlib.birnam"));
+    compile_stdlib.addArg(b.getInstallPath(.lib, "libbirnam_stdlib.dylib"));
+    compile_stdlib.step.dependOn(b.getInstallStep()); // exe + all kernel dylibs installed first
+    stage1.dependOn(&compile_stdlib.step);
+
     // The siphon/REPL host's own unit tests (e.g. the REPL bracket balancer).
     const main_test_mod = b.createModule(.{
         .root_source_file = b.path("src/id/main.zig"),

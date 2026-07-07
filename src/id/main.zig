@@ -216,6 +216,17 @@ pub fn main() !void {
             return runRepl(a, api, false);
         if (std.mem.eql(u8, sp, "--demo"))
             return runDemo(a, api, id_path, id_path_z);
+        if (std.mem.eql(u8, sp, "--compile-module")) {
+            const msrc = args.next() orelse {
+                out("usage: birnam --compile-module <src.birnam> <out.dylib>\n");
+                return error.CompileModuleArgs;
+            };
+            const mout = args.next() orelse {
+                out("usage: birnam --compile-module <src.birnam> <out.dylib>\n");
+                return error.CompileModuleArgs;
+            };
+            return runCompileModule(a, api, msrc, mout);
+        }
         if (std.mem.endsWith(u8, sp, ".image"))
             return runImage(a, api, sp, rebuild);
         return runScript(a, api, sp);
@@ -435,9 +446,25 @@ const script_modules = [_][]const u8{
 // by default, skipped with BIRNAM_NO_STDLIB=1 (the bare Zig floor as an option).
 const STDLIB_SRC = @embedFile("stdlib.birnam");
 
-/// Evaluate the self-hosted stdlib through codegen, unless opted out.
-fn loadStdlib(api: *IdApi, codegen: Oop) void {
+/// Bring up the self-hosted stdlib, unless opted out. PREFER the precompiled
+/// artifact (`libbirnam_stdlib.dylib`, the stage-1 build): `[Codegen load:]`
+/// installs its methods with no recompile. When that dylib is absent, stale, or
+/// ABI-mismatched, `load:` answers nil and we FALL BACK to evaluating the embedded
+/// source — source is the floor, the dylib is the optimization.
+fn loadStdlib(a: std.mem.Allocator, api: *IdApi, codegen: Oop) void {
     if (std.posix.getenv("BIRNAM_NO_STDLIB") != null) return;
+    if (resolveLibDir(a)) |dir| {
+        defer a.free(dir);
+        if (std.fs.path.join(a, &.{ dir, "libbirnam_stdlib.dylib" })) |p| {
+            defer a.free(p);
+            // Only attempt the load if the file is actually there (a missing file
+            // is the common dev case; skip the dlopen-error noise).
+            if (std.fs.cwd().access(p, .{})) |_| {
+                const r = api.send(codegen, api.intern("load:"), &[_]Oop{api.mkString(p.ptr, p.len)}, 1);
+                if (r != api.nilObj) return; // installed from the precompiled dylib
+            } else |_| {}
+        } else |_| {}
+    } else |_| {}
     _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(STDLIB_SRC, STDLIB_SRC.len)}, 1);
 }
 
@@ -502,7 +529,7 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     _ = &stack_anchor;
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
 
-    loadStdlib(api, codegen);
+    loadStdlib(a, api, codegen);
 
     const src = try std.fs.cwd().readFileAlloc(a, path, 16 << 20);
     defer a.free(src);
@@ -526,6 +553,34 @@ fn outErrorString(api: *IdApi, s: Oop) void {
     const p = api.stringBytes(s, &len);
     std.fs.File.stderr().writeAll(p[0..len]) catch {};
     std.fs.File.stderr().writeAll("\n") catch {};
+}
+
+/// `birnam --compile-module <src.birnam> <out.dylib>` — AOT-compile a birnam-source
+/// module to an INSTALLABLE dylib (the stage-1 build path): loading it later with
+/// `[Codegen load:]` installs its methods with no recompile (artifact-mode
+/// `defineMethod` lowering). Brings up the language stack but NOT the stdlib —
+/// compiling `defineMethod` bodies needs only the front end (a body's sends are
+/// late-bound, so the target methods need not exist yet), which is exactly what
+/// lets the stdlib compile itself. Exits non-zero on a compile failure so the build
+/// step fails loudly instead of emitting a broken artifact.
+fn runCompileModule(a: std.mem.Allocator, api: *IdApi, src_path: []const u8, out_path: []const u8) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    const src = try std.fs.cwd().readFileAlloc(a, src_path, 16 << 20);
+    defer a.free(src);
+    const r = api.send(codegen, api.intern("compile:output:"), &[_]Oop{
+        api.mkString(src.ptr, src.len), api.mkString(out_path.ptr, out_path.len),
+    }, 2);
+    if (r == api.nilObj) {
+        out("birnam: could not compile module ");
+        out(src_path);
+        out(":\n");
+        const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
+        if (err != api.nilObj) outErrorString(api, err);
+        std.process.exit(1);
+    }
+    std.debug.print("[stage1] compiled {s} -> {s}\n", .{ src_path, out_path });
 }
 
 /// Boot an image: `birnam foo.image` (docs/40). Bring up the language stack
@@ -566,7 +621,7 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
     // and replays nothing, fall back to the embedded stdlib so the REPL is usable.
     if (status == api.falseObj) {
         const replayed = api.send(codegen, api.intern("replayMethods"), &[_]Oop{}, 0);
-        if (api.smallIntValue(replayed) == 0) loadStdlib(api, codegen);
+        if (api.smallIntValue(replayed) == 0) loadStdlib(a, api, codegen);
     }
 
     // Re-derive block-valued (and any deferred) globals from their recorded source
@@ -759,7 +814,7 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
     _ = &stack_anchor;
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
 
-    if (!booted) loadStdlib(api, codegen);
+    if (!booted) loadStdlib(a, api, codegen);
 
     out("birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\n");
     while (true) {
