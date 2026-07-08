@@ -1,0 +1,34 @@
+// doc-test.birnam — the test suite for modules/doc.birnam, live style.
+// Loading only registers the suite; run via modules/run-tests.birnam or:
+//   [Test runTestsForModule: #doc withRunner: ConsoleRunner]
+// Run from the repo root.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+[[Globals includes: #Doc]       ifTrue: [| nil] ifFalse: [| [System load: "modules/doc.birnam"]]];
+
+let s := [TestSuite named: "Doc" module: #doc];
+
+// Use a throwaway module symbol so the suite is self-contained and order-stable.
+[s test: "markdown renders summary + ordered method list" do: [:t |
+  [Doc module: #demoDoc is: "a demo module"];
+  [Doc for: #alpha in: #demoDoc says: "the first"];
+  [Doc for: #beta:  in: #demoDoc says: "the second"];
+  [t expect: [Doc markdownForModule: #demoDoc]
+     equals: "# demoDoc\n\na demo module\n\n- `alpha` — the first\n- `beta:` — the second\n"
+     describes: "markdownForModule:"]]];
+
+[s test: "html render composes the Html module and escapes text" do: [:t |
+  [Doc module: #demoH is: "needs <escaping>"];
+  [Doc for: #foo in: #demoH says: "a & b"];
+  [t expect: [Doc htmlForModule: #demoH]
+     equals: "<h1>demoH</h1><p>needs &lt;escaping&gt;</p><ul><li><code>foo</code> — a &amp; b</li></ul>"
+     describes: "htmlForModule:"]]];
+
+[s test: "a documented module shows up in the registry query" do: [:t |
+  [Doc module: #demoReg is: "registered"];
+  let names   := [[Doc modules] inject: "" into: [:acc :m | [acc , [m printString] , " "]]];
+  let without := [names replace: "#demoReg" with: ""];
+  [t assert: [[without size] < [names size]] describes: "#demoReg present in [Doc modules]"];
+  [t assert: [[[Doc methodsOf: #demoReg] size] = 0] describes: "methodsOf: empty when none registered"]]];
+
+s

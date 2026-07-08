@@ -15,6 +15,7 @@
 // -- register every suite (loading defines + registers, runs nothing) ---------
 [System load: "modules/html-test.birnam"];
 [System load: "modules/random-test.birnam"];
+[System load: "modules/doc-test.birnam"];
 
 // -- run them all through the console runner, then gate the exit code ----------
 [Test runAllSuitesWithRunner: ConsoleRunner];

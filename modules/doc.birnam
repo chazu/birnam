@@ -1,0 +1,95 @@
+// doc.birnam — docstrings + documentation generation for birnam, pure birnam.
+//
+// Documentation is DATA IN THE IMAGE, the same shape as the test system: register
+// a one-line summary per module and a docstring per selector; a module's
+// documented-ness is a fact (`mod isDocumented true`), so the system's own docs
+// are queryable, and the summary/method-list live in store cells beside it.
+// Rendering is a separate act: Markdown out of the box, or HTML by COMPOSING
+// modules/html.birnam (a module documenting modules, rendered by another module).
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/doc.birnam"]   (pulls in Html for the HTML renderer)
+//
+// REGISTER  (call module:is: ONCE per module, before its for:in:says: lines):
+//   [Doc module: #html is: "HTML generation — string combinators, no state."]
+//   [Doc for: #escape:   in: #html says: "Escape the five markup chars; & first."]
+//   [Doc for: #tag:body: in: #html says: "<name>inner</name>; inner is raw markup."]
+//
+// RENDER:
+//   [Doc markdownForModule: #html]   "=> a Markdown section (String)"
+//   [Doc htmlForModule: #html]       "=> an HTML fragment, built with Html"
+//   [Doc modules]                    "=> every documented module symbol (a query)"
+//   [Doc markdownAll]                "=> every module's Markdown, concatenated"
+//
+// GOTCHA that shaped this: an UNSET store cell's `value` is a raw sentinel that
+// answers neither isNil nor printString — so nothing here reads a cell before it
+// is written. module:is: seeds the summary and method-list cells; the other
+// methods assume the module was documented first (their stated precondition).
+
+[[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [System load: "modules/html.birnam"]]];
+
+[Globals at: #Doc put: [Object clone]];
+
+// -- registration -------------------------------------------------------------
+
+// A module's one-line summary. Marks the module documented (a fact, so the doc
+// set is queryable) and seeds its summary + ordered method-list cells. Call once,
+// first — calling it again resets the method list.
+[Reflect defineMethod: #module:is: on: Doc as: [:self :mod :summary |
+  [db assert: mod attr: #isDocumented value: #true];
+  [[db cellFor: mod attr: #docSummary] set: summary];
+  [[db cellFor: mod attr: #docMethods] set: #[]];
+  self]];
+
+// A docstring for one selector in a module (which must already be documented).
+// Appended to the module's ordered method-list as a small entry clone.
+[Reflect defineMethod: #for:in:says: on: Doc as: [:self :sel :mod :text |
+  let e := [Object clone];
+  [[db cellFor: e attr: #sel]  set: sel];
+  [[db cellFor: e attr: #text] set: text];
+  let cur := [[db cellFor: mod attr: #docMethods] value];
+  [[db cellFor: mod attr: #docMethods] set: [cur add: e]];
+  self]];
+
+// -- queries ------------------------------------------------------------------
+
+// Every documented module symbol.
+[Reflect defineMethod: #modules on: Doc as: [:self |
+  [db findAll: ?m where: #[ #[?m #isDocumented #true] ]]]];
+
+// A module's ordered method-doc entries (module must be documented).
+[Reflect defineMethod: #methodsOf: on: Doc as: [:self :mod |
+  [[db cellFor: mod attr: #docMethods] value]]];
+
+// A selector's clean display name: "#tag:body:" printString -> "tag:body:".
+[Reflect defineMethod: #nameOf: on: Doc as: [:self :sel |
+  [[sel printString] replace: "#" with: ""]]];
+
+// -- rendering: Markdown ------------------------------------------------------
+
+[Reflect defineMethod: #markdownForModule: on: Doc as: [:self :mod |
+  let name    := [self nameOf: mod];
+  let summary := [[db cellFor: mod attr: #docSummary] value];
+  let header  := ["# " , name , "\n\n" , summary , "\n\n"];
+  [[self methodsOf: mod] inject: header into: [:acc :e |
+    let sel := [self nameOf: [[db cellFor: e attr: #sel] value]];
+    let txt := [[db cellFor: e attr: #text] value];
+    [acc , "- `" , sel , "` — " , txt , "\n"]]]]];
+
+// Every documented module's Markdown, back to back (module order unspecified).
+[Reflect defineMethod: #markdownAll on: Doc as: [:self |
+  [[self modules] inject: "" into: [:acc :m | [acc , [self markdownForModule: m] , "\n"]]]]];
+
+// -- rendering: HTML (composes modules/html.birnam) ---------------------------
+
+[Reflect defineMethod: #htmlForModule: on: Doc as: [:self :mod |
+  let name    := [self nameOf: mod];
+  let summary := [[db cellFor: mod attr: #docSummary] value];
+  let items   := [[self methodsOf: mod] inject: "" into: [:acc :e |
+    let sel  := [self nameOf: [[db cellFor: e attr: #sel] value]];
+    let txt  := [[db cellFor: e attr: #text] value];
+    let code := [Html tag: "code" text: sel];
+    [acc , [Html tag: "li" body: [code , " — " , [Html escape: txt]]]]]];
+  [[Html tag: "h1" text: name]
+    , [Html tag: "p" text: summary]
+    , [Html tag: "ul" body: items]]]]
