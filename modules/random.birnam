@@ -1,0 +1,58 @@
+// random.birnam — pseudo-random numbers for birnam, over libc via Alien.
+//
+// A birnam-native module. Wraps libc's `random()` / `srandom()` — a decent,
+// SEEDABLE PRNG (better than rand()) — so sequences are reproducible when you pin
+// a seed, which is what deterministic tests want. No new Zig.
+//
+// The stream is process-global (one libc PRNG), so `seed:` affects all draws. On
+// load the module seeds itself from the clock, so an un-seeded program still
+// varies run to run; call `[Random seed: n]` to make it repeatable.
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/random.birnam"]   (pulls in Time for the auto-seed)
+//
+//   [Random seed: 42]                  "=> reproducible from here"
+//   [Random next]                      "=> a value in [0, 2^31-1]"
+//   [Random nextInt: 6]                "=> [0, 6)   (a d6 is [Random nextInt: 6] + 1)"
+//   [Random between: 1 and: 6]         "=> [1, 6] inclusive"
+//   [Random bool]                      "=> true / false"
+//   [Random pick: #[#rock #paper #scissors]]   "=> a random element"
+
+// Dependency: Time, for the load-time auto-seed.
+[[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [System load: "modules/time.birnam"]]];
+
+// The module singleton.
+[Globals at: #Random put: [Object clone]];
+
+// long random(void)             — no args, so the receiver is unused.
+[Alien wrap: "random"  signature: "l"   as: #rawRandom   on: Random];
+// void srandom(unsigned seed)   — receiver = the seed (an Integer, truncated to 32 bits).
+[Alien wrap: "srandom" signature: "v i" as: #srandomSeed on: Integer];
+
+// -- surface ------------------------------------------------------------------
+
+// Seed the (process-global) PRNG for a reproducible sequence. Chainable.
+[Reflect defineMethod: #seed: on: Random as: [:self :n | [n srandomSeed]; self]];
+
+// The next raw draw, in [0, 2^31-1].
+[Reflect defineMethod: #next on: Random as: [:self | [self rawRandom]]];
+
+// A value in [0, n). Uses `mod:`, so there is a slight modulo bias for very large
+// n — negligible for ordinary ranges (dice, indices, small buckets).
+[Reflect defineMethod: #nextInt: on: Random as: [:self :n | [[self next] mod: n]]];
+
+// A value in [lo, hi], inclusive.
+[Reflect defineMethod: #between:and: on: Random as: [:self :lo :hi |
+  [lo + [self nextInt: [[hi - lo] + 1]]]]];
+
+// A fair coin.
+[Reflect defineMethod: #bool on: Random as: [:self | [[self nextInt: 2] = 0]]];
+
+// A random element of a collection answering `size` + `at:` (0-based), e.g. a Vector.
+[Reflect defineMethod: #pick: on: Random as: [:self :coll |
+  [coll at: [self nextInt: [coll size]]]]];
+
+// Auto-seed from the clock so the default stream varies run to run. Calls the
+// wrapped srandom directly (not the `seed:` method) to avoid invoking a
+// same-unit-defined method at load time.
+[[Time nowMillis] srandomSeed]
