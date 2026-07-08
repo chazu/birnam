@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -12,18 +12,20 @@
 ;;
 ;; Birnam is a prototypal, Smalltalk-family language: there are no classes.
 ;; Behaviour lives on objects/prototypes, code is bracketed message sends
-;; (`[recv selector: arg]'), and the fact store backs identity.  The mode
-;; highlights:
+;; (`[recv selector: arg]'), and a historied fact store backs identity.  Every
+;; well-known name is a global binding on a prototype (`System', `Object',
+;; `Vector', `Reflect', …).  The mode highlights:
 ;;
 ;;   //  line comments
-;;   ".." string literals
+;;   ".." string literals (with `\\' escapes)
 ;;   bracket forms      [ ]  block / send,  [:x :y | ..]  block args,  [| ..]
-;;   literal collections  #[ ]  vector   #{ }  set   #( )   { }  map
+;;   literal collections  #[ e e e ]  vector,  { k -> v, .. }  map
 ;;   keyword selectors  at:put:  inject:into:
-;;   symbols            #foo  #at:put:
+;;   symbols            #foo  #at:put:  #+  (also operator symbols)
 ;;   query vars         ?name   (datalog surface)
-;;   reserved/literals  let  nil  true  false  self  super
-;;   assignment :=  pipe |>  statement separator ;
+;;   globals            System  Object  Vector  …  (Capitalized identifiers)
+;;   reserved/literals  let  nil  true  false  self
+;;   assignment :=  map arrow ->  pipe |>  statement separator ;
 ;;
 ;; Install:
 ;;   (add-to-list 'load-path "/path/to/birnam/tools/emacs")
@@ -51,27 +53,35 @@
   :type 'string
   :group 'birnam)
 
-(defcustom birnam-program-args nil
-  "Extra arguments passed to `birnam-program' when starting the REPL."
+(defcustom birnam-program-args '("--repl")
+  "Arguments passed to `birnam-program' when starting the REPL.
+Defaults to `--repl', which starts the interactive read-eval-print loop."
   :type '(repeat string)
   :group 'birnam)
 
 ;;;; Faces / font-lock ---------------------------------------------------
 
 (defconst birnam--keywords
-  '("let" "nil" "true" "false" "self" "super")
-  "Reserved words and built-in literals.")
+  '("let" "nil" "true" "false" "self")
+  "Reserved words and built-in literals.
+`let' opens a binding; `nil'/`true'/`false' are literals lowered by
+codegen; `self' is the bound method receiver.  There is no `super'.")
 
 (defconst birnam-font-lock-keywords
   (let ((kw (regexp-opt birnam--keywords 'symbols)))
     `(;; reserved words / literals
       (,kw . font-lock-keyword-face)
-      ;; assignment and pipe operators
-      ("\\(:=\\|=>\\||>\\)" . font-lock-builtin-face)
-      ;; symbols: #foo, #at:put:  (but NOT the literal openers #[ #{ #( )
-      ("#[A-Za-z_][A-Za-z0-9_]*\\(?::[A-Za-z0-9_]*\\)*" . font-lock-constant-face)
+      ;; operators: assignment `:=', map-entry arrow `->', thread pipe `|>'
+      ("\\(:=\\|->\\||>\\)" . font-lock-builtin-face)
+      ;; symbols: #foo, #at:put:, and operator symbols #+ #>= #,
+      ;; (the literal openers #[ #{ #( never reach here — they are not #ident).
+      ("#\\(?:[A-Za-z_][A-Za-z0-9_]*\\(?::[A-Za-z0-9_]*\\)*\\|[-=<>&|,+*/~%@!^]+\\)"
+       . font-lock-constant-face)
       ;; datalog query variables: ?name
       ("\\?[A-Za-z_][A-Za-z0-9_]*" . font-lock-variable-name-face)
+      ;; well-known globals / prototypes: any Capitalized identifier is a
+      ;; global binding on a prototype (System, Object, Vector, Reflect, …).
+      ("\\_<[A-Z][A-Za-z0-9_]*\\_>" . font-lock-type-face)
       ;; keyword selector parts: foo:  (identifier immediately followed by ':')
       ("\\_<[A-Za-z_][A-Za-z0-9_]*:" . font-lock-function-name-face)
       ;; block parameters / temporaries: :x  (leading colon)
@@ -89,8 +99,10 @@
     ;; operator and only `//' starts a comment.
     (modify-syntax-entry ?/ ". 12" st)
     (modify-syntax-entry ?\n ">" st)
-    ;; strings
+    ;; strings, with `\\' as the escape char (birnam's string rule treats a
+    ;; backslash as escaping the next byte, so `\\"' is a literal quote).
     (modify-syntax-entry ?\" "\"" st)
+    (modify-syntax-entry ?\\ "\\" st)
     ;; bracket pairs
     (modify-syntax-entry ?\[ "(]" st)
     (modify-syntax-entry ?\] ")[" st)
@@ -154,7 +166,12 @@ hand where a send wraps mid-expression."
 
 ;;;###autoload
 (defun run-birnam ()
-  "Run an inferior Birnam REPL in `birnam-repl-buffer-name'."
+  "Run an inferior Birnam REPL in `birnam-repl-buffer-name'.
+Starts `birnam-program' with `birnam-program-args' (`--repl' by
+default).  The REPL reads Birnam directly: an expression prints its
+value, `let x := …' binds a name that persists across lines, and
+multi-line forms continue until the brackets balance.  Commands are
+`:help', `:globals', and `:quit'."
   (interactive)
   (unless (comint-check-proc birnam-repl-buffer-name)
     (apply #'make-comint-in-buffer "birnam" birnam-repl-buffer-name
@@ -168,12 +185,14 @@ hand where a send wraps mid-expression."
   (birnam--repl-process))
 
 (defun birnam-eval-region (beg end)
-  "Send the region BEG..END to the Birnam REPL via a filed-in temp unit."
+  "Send the region BEG..END to the Birnam REPL.
+The REPL reads Birnam source directly and accumulates multi-line
+forms until the brackets balance, so the region is sent verbatim
+rather than filed in as a unit."
   (interactive "r")
   (let ((proc (birnam--ensure-repl))
-        (tmp (make-temp-file "birnam-eval-" nil ".birnam")))
-    (write-region beg end tmp)
-    (comint-send-string proc (format ":in %s\n" tmp))
+        (text (buffer-substring-no-properties beg end)))
+    (comint-send-string proc (concat (string-trim-right text) "\n"))
     (display-buffer birnam-repl-buffer-name)))
 
 (defun birnam-eval-buffer ()
@@ -218,31 +237,6 @@ hand where a send wraps mid-expression."
   (setq-local indent-line-function #'birnam-indent-line)
   (setq-local electric-indent-chars
               (append '(?\] ?} ?\)) electric-indent-chars)))
-
-;;;; LSP ------------------------------------------------------------------
-
-;; Both clients call `birnam --lsp' over stdio and honour `birnam-program' at
-;; connect time, giving live parse diagnostics (LSP P0).  Use whichever client
-;; you have; registrations are guarded so loading the other is harmless.
-
-;; lsp-mode: `M-x lsp' (or `lsp-deferred') in a Birnam buffer.  To start it
-;; automatically, add to your config:
-;;   (add-hook 'birnam-mode-hook #'lsp-deferred)
-(with-eval-after-load 'lsp-mode
-  (add-to-list 'lsp-language-id-configuration '(birnam-mode . "birnam"))
-  (lsp-register-client
-   (make-lsp-client
-    :new-connection (lsp-stdio-connection
-                     (lambda () (list birnam-program "--lsp")))
-    :activation-fn (lsp-activate-on "birnam")
-    :priority -1
-    :server-id 'birnam-lsp)))
-
-;; eglot: `M-x eglot' in a Birnam buffer.
-(with-eval-after-load 'eglot
-  (add-to-list 'eglot-server-programs
-               '(birnam-mode . (lambda (&optional _interactive)
-                                 (list birnam-program "--lsp")))))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.birnam\\'" . birnam-mode))

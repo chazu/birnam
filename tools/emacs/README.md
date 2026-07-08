@@ -17,17 +17,16 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
 ## Features
 
 - **Syntax highlighting** — `//` line comments (a lone `/` stays division),
-  `".."` strings, `let nil true false self super`, keyword selectors
-  (`at:put:`), symbols (`#foo`, `#at:put:`), datalog query vars (`?name`),
-  block params (`:x`), `:=` / `|>`, numbers.
+  `".."` strings (with `\` escapes), `let nil true false self`, keyword
+  selectors (`at:put:`), symbols (`#foo`, `#at:put:`, operator symbols like
+  `#+`), datalog query vars (`?name`), block params (`:x`), Capitalized
+  globals/prototypes (`System`, `Object`, …), `:=` / `->` / `|>`, numbers.
 - **Indentation** — by bracket nesting depth (`birnam-indent-offset`, default 2).
   Simple by design; adjust wrapped sends by hand.
-- **REPL** — `M-x run-birnam` starts an inferior shell via comint.
-- **LSP** — connects to `birnam --lsp` for live parse diagnostics (P0).
-  Registered for both **lsp-mode** and **eglot**; both honour `birnam-program`.
-  - lsp-mode: `M-x lsp` (or `lsp-deferred`). Auto-start:
-    `(add-hook 'birnam-mode-hook #'lsp-deferred)`
-  - eglot: `M-x eglot`.
+- **REPL** — `M-x run-birnam` starts `birnam --repl` in an inferior comint
+  buffer. The REPL reads Birnam directly: an expression prints its value,
+  `let x := …` binds a name that persists across lines, and multi-line forms
+  continue until the brackets balance. Commands: `:help`, `:globals`, `:quit`.
 
 ## Keys
 
@@ -38,5 +37,6 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
 | `C-c C-b` | `birnam-eval-buffer` |
 | `C-c C-l` | `birnam-eval-line`   |
 
-`eval-region`/`eval-buffer` file the text into the REPL as a temp unit
-(`:in /tmp/...`); `eval-line` sends the current line as one expression.
+`eval-region`/`eval-buffer` send the text to the REPL verbatim (the REPL
+accumulates multi-line forms until brackets balance); `eval-line` sends the
+current line as one expression.
