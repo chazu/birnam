@@ -21,8 +21,11 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
   selectors (`at:put:`), symbols (`#foo`, `#at:put:`, operator symbols like
   `#+`), datalog query vars (`?name`), block params (`:x`), Capitalized
   globals/prototypes (`System`, `Object`, …), `:=` / `->` / `|>`, numbers.
-- **Indentation** — by bracket nesting depth (`birnam-indent-offset`, default 2).
-  Simple by design; adjust wrapped sends by hand.
+- **Indentation** — by bracket nesting depth (`birnam-indent-offset`, default 2),
+  with Obj-C-style keyword alignment: a wrapped keyword message aligns each
+  continuation part's colon under the first keyword's colon on TAB (the first
+  keyword, or a part too long to fit, falls back to a one-step hang). Spaces
+  only, so the columns hold regardless of `tab-width`.
 - **REPL** — `M-x run-birnam` starts `birnam --repl` in an inferior comint
   buffer. The REPL reads Birnam directly: an expression prints its value,
   `let x := …` binds a name that persists across lines, and multi-line forms

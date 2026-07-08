@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.2.0
+;; Version: 0.3.0
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -129,27 +129,118 @@ codegen; `self' is the bound method receiver.  There is no `super'.")
 
 ;;;; Indentation ---------------------------------------------------------
 
+(defun birnam--code-end-of-line ()
+  "Position just past the last code character on the current line.
+Trailing whitespace and any `//' line comment are excluded; a
+whole-line comment reports its own beginning-of-line.  Point is left
+unchanged."
+  (save-excursion
+    (end-of-line)
+    (let ((ppss (syntax-ppss)))
+      (when (nth 4 ppss)                    ; inside a line comment
+        (goto-char (nth 8 ppss))))          ; back up to where it starts
+    (skip-chars-backward " \t")
+    (point)))
+
+(defun birnam--prev-code-line-ends-statement-p ()
+  "Non-nil if the nearest preceding code line ends a statement.
+A statement is terminated by `;'.  Blank lines and whole-line comments
+are skipped.  Returns non-nil when there is no preceding code line, so
+the first statement in a buffer sits at column 0.  Assumes point is at
+the current line's beginning."
+  (save-excursion
+    (catch 'done
+      (while (not (bobp))
+        (forward-line -1)
+        (let ((code-end (birnam--code-end-of-line)))
+          (when (> code-end (line-beginning-position))
+            (throw 'done (eq (char-before code-end) ?\;)))))
+      t)))
+
+(defun birnam--send-first-keyword-colon (open limit)
+  "Column of the colon of the FIRST keyword selector part sitting
+immediately inside the bracket opened at OPEN, considering only text
+before LIMIT.  Return nil when no keyword part occurs before LIMIT.
+The receiver, nested brackets, binary operators, and `:=' assignment
+targets are skipped, so the column returned is the Obj-C-style anchor
+that later keyword parts align their own colons under."
+  (save-excursion
+    (goto-char (1+ open))
+    (let (col)
+      (while (and (not col) (< (point) limit))
+        (skip-chars-forward " \t\r\n" limit)
+        (forward-comment (point-max))
+        (cond
+         ((>= (point) limit) (setq col 'none))
+         ;; `foo :=' assignment target — the colon belongs to `:=', not a selector
+         ((looking-at "[A-Za-z_][A-Za-z0-9_]*[ \t]*:=")
+          (goto-char (match-end 0)))
+         ;; `foo:' keyword selector part (colon not itself part of `:=')
+         ((looking-at "\\([A-Za-z_][A-Za-z0-9_]*\\):\\([^=]\\|$\\)")
+          (goto-char (match-end 1))            ; move onto the colon itself
+          (setq col (current-column)))
+         ;; opening bracket — skip the whole balanced form at once
+         ((looking-at "\\s(")
+          (condition-case nil (forward-sexp) (error (goto-char limit))))
+         ;; receiver / argument atom / operator — skip one form (or one char)
+         (t
+          (condition-case nil (forward-sexp) (error (forward-char 1))))))
+      (and (integerp col) col))))
+
+(defun birnam--calculate-indent ()
+  "Return the target indentation column for the current line, or nil.
+Nil means \"leave the line alone\" (it continues a multi-line string).
+
+The model is relative-to-the-enclosing-bracket, hanging style: a line
+is indented `birnam-indent-offset' past the line that OPENED the
+bracket it sits in — not by absolute nesting depth — so a send that
+wraps before opening a bracket no longer snaps back to column 0.  A
+line that begins by closing a bracket lines up with the line that
+opened it.  At the top level a line that continues an unterminated
+statement (the previous code line did not end in `;') is indented one
+step; a fresh statement sits at column 0.
+
+Keyword-message continuation is Obj-C style: when a line begins with a
+keyword selector part (`put:') and an EARLIER keyword part of the same
+send already exists, the line is indented so its colon aligns under the
+first keyword's colon.  The first keyword part itself (no earlier
+keyword) falls back to the one-step hang, as do lines whose alignment
+would run off the left margin.  Assumes point is anywhere on the line;
+it is moved to BOL."
+  (beginning-of-line)
+  (let* ((ppss (syntax-ppss))
+         (open (nth 1 ppss)))                 ; innermost containing bracket, or nil
+    (cond
+     ((nth 3 ppss) nil)                        ; inside a string literal
+     ((null open)                              ; top level
+      (if (birnam--prev-code-line-ends-statement-p) 0 birnam-indent-offset))
+     (t                                        ; inside a bracket
+      (let* ((starts-with-closer (looking-at "[ \t]*\\s)"))
+             (kw (and (not starts-with-closer)
+                      (looking-at "[ \t]*\\([A-Za-z_][A-Za-z0-9_]*\\):\\([^=]\\|$\\)")
+                      (match-string 1)))
+             (bol (line-beginning-position))
+             (hang (save-excursion
+                     (goto-char open)
+                     (+ (current-indentation) birnam-indent-offset))))
+        (cond
+         (starts-with-closer
+          (save-excursion (goto-char open) (current-indentation)))
+         (kw
+          (let ((anchor (birnam--send-first-keyword-colon open bol)))
+            (if (and anchor (>= (- anchor (length kw)) 0))
+                (- anchor (length kw))        ; align this colon under the first
+              hang)))                          ; first keyword, or would underflow
+         (t hang)))))))
+
 (defun birnam-indent-line ()
   "Indent the current line for `birnam-mode'.
-
-Indentation is driven by bracket nesting depth (`[' `{' `('): each
-open bracket adds `birnam-indent-offset' columns.  A line that begins
-by closing brackets is dedented to match the depth after those
-closers.  This is deliberately simple — re-indent (TAB) and adjust by
-hand where a send wraps mid-expression."
-  (let (indent)
-    (save-excursion
-      (beginning-of-line)
-      (let* ((ppss (syntax-ppss))
-             (depth (car ppss))
-             ;; in a string or comment? leave the line alone.
-             (in-str-or-cmt (or (nth 3 ppss) (nth 4 ppss))))
-        (unless in-str-or-cmt
-          ;; if the line opens with closing bracket(s), they belong to the
-          ;; enclosing (shallower) level.
-          (when (looking-at "[ \t]*\\s)")
-            (setq depth (max 0 (1- depth))))
-          (setq indent (* depth birnam-indent-offset)))))
+See `birnam--calculate-indent' for the model.  Re-indent (TAB) is
+idempotent.  A wrapped keyword message aligns Obj-C style on TAB — each
+continuation keyword's colon snaps under the first keyword's colon.
+That alignment is anchored to the receiver line's width, so renaming
+the receiver needs a re-TAB of the continuation lines to re-flow."
+  (let ((indent (save-excursion (birnam--calculate-indent))))
     (when indent
       (if (<= (current-column) (current-indentation))
           (indent-line-to indent)
@@ -234,6 +325,10 @@ rather than filed in as a unit."
   (setq-local comment-start "// ")
   (setq-local comment-start-skip "//+[ \t]*")
   (setq-local comment-end "")
+  ;; Indentation aligns keyword colons by column, so it must be spaces —
+  ;; a tab would only land on the anchor column when `tab-width' happened
+  ;; to match, breaking the alignment everywhere else.
+  (setq-local indent-tabs-mode nil)
   (setq-local indent-line-function #'birnam-indent-line)
   (setq-local electric-indent-chars
               (append '(?\] ?} ?\)) electric-indent-chars)))
