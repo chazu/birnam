@@ -1,0 +1,245 @@
+// lsp.birnam — a Language Server for birnam, over stdio, in pure birnam.
+//
+// Speaks LSP (JSON-RPC + `Content-Length` framing) on stdin/stdout, backed by the
+// pure-birnam Json module. v1 capability: DIAGNOSTICS — on didOpen/didChange it
+// compiles the document with `[Codegen compile:output:]` (compile-only: NO eval,
+// no side effects) and reports `[Codegen lastError]`'s line:col as an error
+// squiggle. Lifecycle (initialize/initialized/shutdown/exit) + didOpen/didChange/
+// didClose are handled; other requests answer method-not-found.
+//
+// DEPENDENCIES — load first (needs Json + the self-hosted stdlib):
+//   [System load: "modules/json.birnam"];
+//   [System load: "modules/lsp.birnam"];
+//   [Lsp serveStdio]                       "blocks, reading LSP messages from stdin"
+// Or just run examples/lsp-server.birnam. Point your editor's LSP client (e.g.
+// Emacs eglot) at that command, from the repo root. STDOUT carries only protocol
+// bytes; all logging goes to STDERR (`log:`).
+//
+// TRANSPORT is stdio (what editors default to). A socket transport / a server that
+// runs INSIDE a live image (answering from real runtime state) is a later layer;
+// the dispatch here is transport-agnostic (it only calls readMessage/sendMessage).
+
+[Globals at: #Lsp put: [Object clone]];
+
+// -- libc I/O (fd 0 = stdin, 1 = stdout, 2 = stderr) --------------------------
+// recv/send are socket-only; stdio is a pipe, so use raw read/write on the fd.
+// ssize_t read(int fd, void *buf, size_t count)      — receiver = fd
+[Alien wrap: "read"  signature: "l i p u" as: #readInto:count: on: Integer];
+// ssize_t write(int fd, const void *buf, size_t count) — receiver = fd; buf as `s`
+[Alien wrap: "write" signature: "l i s u" as: #writeStr:count: on: Integer];
+// void exit(int status)  — receiver = status
+[Alien wrap: "exit"  signature: "v i"     as: #cExit          on: Integer];
+
+// -- framed output ------------------------------------------------------------
+
+// Write the whole string to `fd`, looping over partial writes.
+[Reflect defineMethod: #writeAllTo:str: on: Lsp as: [:self :fd :s |
+  let n := [s size];
+  let r := [[n = 0]
+    ifTrue: [| 0]
+    ifFalse: [|
+      let k := [fd writeStr: s count: n];
+      [[k < n]
+        ifTrue:  [| [[k < 1] ifTrue: [| k] ifFalse: [| [self writeAllTo: fd str: [s copyFrom: k to: n]]]]]
+        ifFalse: [| k]]]];
+  r]];
+
+// Send one JSON-RPC message with its Content-Length header (to stdout).
+[Reflect defineMethod: #sendMessage: on: Lsp as: [:self :body |
+  let framed := [[["Content-Length: " , [[body size] printString]] , "\r\n\r\n"] , body];
+  [self writeAllTo: 1 str: framed];
+  self]];
+
+// Diagnostic/trace logging — STDERR only, so stdout stays pure protocol.
+[Reflect defineMethod: #log: on: Lsp as: [:self :msg |
+  [self writeAllTo: 2 str: [msg , "\n"]];
+  self]];
+
+// -- framed input -------------------------------------------------------------
+
+// Read the header block one byte at a time until "\r\n\r\n" (headers are tiny).
+// Returns what was read; a short read at EOF just returns the partial accumulator.
+[Reflect defineMethod: #readHeaderInto:acc: on: Lsp as: [:self :buf :acc |
+  let k := [0 readInto: buf count: 1];
+  let r := [[k < 1]
+    ifTrue: [| acc]
+    ifFalse: [|
+      [buf pokeByte: 0 at: 1];
+      let acc2 := [acc , [buf peekStringAt: 0]];
+      [[acc2 endsWith: "\r\n\r\n"]
+        ifTrue:  [| acc2]
+        ifFalse: [| [self readHeaderInto: buf acc: acc2]]]]];
+  r]];
+
+// Extract the Content-Length value (an Integer) from a header block.
+[Reflect defineMethod: #contentLengthOf: on: Lsp as: [:self :header |
+  let step := [:found :line |
+    [[line startsWith: "Content-Length:"]
+      ifTrue:  [| [[[line split: ":"] at: 1] trimmed]]
+      ifFalse: [| found]]];
+  let numStr := [[header split: "\r\n"] inject: "" into: step];
+  let r := [numStr asInteger];
+  r]];
+
+// Read exactly `n` body bytes, accumulating into a String across partial reads
+// (read into buf@0 each time, so no pointer arithmetic).
+[Reflect defineMethod: #drainN:buf:acc: on: Lsp as: [:self :n :buf :acc |
+  let r := [[n <= 0]
+    ifTrue: [| acc]
+    ifFalse: [|
+      let want := [[n < 65535] ifTrue: [| n] ifFalse: [| 65535]];
+      let k := [0 readInto: buf count: want];
+      [[k < 1]
+        ifTrue:  [| acc]
+        ifFalse: [|
+          [buf pokeByte: 0 at: k];
+          [self drainN: [n - k] buf: buf acc: [acc , [buf peekStringAt: 0]]]]]]];
+  r]];
+
+// Read one whole message; answer its JSON body String, or nil at EOF.
+[Reflect defineMethod: #readMessage on: Lsp as: [:self |
+  let hb := [Alien alloc: 2];
+  let header := [self readHeaderInto: hb acc: ""];
+  [hb free];
+  let r := [[header includesSubstring: "Content-Length:"]
+    ifTrue: [|
+      let n := [self contentLengthOf: header];
+      let buf := [Alien alloc: 65536];
+      let body := [self drainN: n buf: buf acc: ""];
+      [buf free];
+      body]
+    ifFalse: [| nil]];
+  r]];
+
+// -- diagnostics --------------------------------------------------------------
+
+// A #lastError object → one LSP Diagnostic (severity 1 = Error). The error's
+// "line:col: message" first line drives the range (LSP positions are 0-based).
+[Reflect defineMethod: #diagFromError: on: Lsp as: [:self :err |
+  let firstLine := [[[err printString] split: "\n"] first];
+  let parts := [firstLine split: ":"];
+  let hasLC := [[parts size] >= 2];
+  let line := [hasLC ifTrue: [| [[[parts at: 0] trimmed] asInteger]] ifFalse: [| 1]];
+  let col  := [hasLC ifTrue: [| [[[parts at: 1] trimmed] asInteger]] ifFalse: [| 1]];
+  let l0 := [[line < 1] ifTrue: [| 0] ifFalse: [| [line - 1]]];
+  let c0 := [[col  < 1] ifTrue: [| 0] ifFalse: [| [col  - 1]]];
+  let startP := [[[Map new] at: "line" put: l0] at: "character" put: c0];
+  let endP   := [[[Map new] at: "line" put: l0] at: "character" put: [c0 + 1]];
+  let range  := [[[Map new] at: "start" put: startP] at: "end" put: endP];
+  let diag := [[[[Map new] at: "range" put: range] at: "severity" put: 1] at: "message" put: firstLine];
+  diag]];
+
+// Compile `text` (compile-only, no eval) → a Vector of Diagnostics (empty if OK).
+[Reflect defineMethod: #compileDiagnostics: on: Lsp as: [:self :text |
+  let path := [Codegen compile: text output: "/tmp/birnam-lsp-check.dylib"];
+  let r := [[path isNil]
+    ifTrue:  [| #[ [self diagFromError: [Codegen lastError]] ]]
+    ifFalse: [| #[] ]];
+  r]];
+
+// Compile `text` and publish diagnostics for `uri`.
+[Reflect defineMethod: #diagnoseUri:text: on: Lsp as: [:self :uri :text |
+  let diags := [self compileDiagnostics: text];
+  let params := [[[Map new] at: "uri" put: uri] at: "diagnostics" put: diags];
+  [self sendNote: "textDocument/publishDiagnostics" params: params];
+  self]];
+
+// -- JSON-RPC response builders -----------------------------------------------
+
+[Reflect defineMethod: #respond:result: on: Lsp as: [:self :id :result |
+  let msg := [[[[Map new] at: "jsonrpc" put: "2.0"] at: "id" put: id] at: "result" put: result];
+  [self sendMessage: [Json stringify: msg]];
+  self]];
+
+[Reflect defineMethod: #respondError: on: Lsp as: [:self :id |
+  let e := [[[Map new] at: "code" put: -32601] at: "message" put: "method not found"];
+  let msg := [[[[Map new] at: "jsonrpc" put: "2.0"] at: "id" put: id] at: "error" put: e];
+  [self sendMessage: [Json stringify: msg]];
+  self]];
+
+[Reflect defineMethod: #sendNote:params: on: Lsp as: [:self :method :params |
+  let note := [[[[Map new] at: "jsonrpc" put: "2.0"] at: "method" put: method] at: "params" put: params];
+  [self sendMessage: [Json stringify: note]];
+  self]];
+
+// -- request/notification handlers --------------------------------------------
+
+[Reflect defineMethod: #onInitialize: on: Lsp as: [:self :id |
+  let caps := [[Map new] at: "textDocumentSync" put: 1];
+  let info := [[[Map new] at: "name" put: "birnam"] at: "version" put: "0.1"];
+  let result := [[[Map new] at: "capabilities" put: caps] at: "serverInfo" put: info];
+  [self respond: id result: result];
+  self]];
+
+[Reflect defineMethod: #onShutdown: on: Lsp as: [:self :id |
+  [self respond: id result: nil];
+  self]];
+
+[Reflect defineMethod: #onDidOpen: on: Lsp as: [:self :p |
+  let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
+  let uri := [td at: "uri" ifAbsent: [| ""]];
+  let text := [td at: "text" ifAbsent: [| ""]];
+  [self diagnoseUri: uri text: text];
+  self]];
+
+[Reflect defineMethod: #onDidChange: on: Lsp as: [:self :p |
+  let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
+  let uri := [td at: "uri" ifAbsent: [| ""]];
+  let changes := [p at: "contentChanges" ifAbsent: [| #[]]];
+  let text := [[changes isEmpty] ifTrue: [| ""] ifFalse: [| [[changes at: 0] at: "text" ifAbsent: [| ""]]]];
+  [self diagnoseUri: uri text: text];
+  self]];
+
+[Reflect defineMethod: #onDidClose: on: Lsp as: [:self :p |
+  let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
+  let uri := [td at: "uri" ifAbsent: [| ""]];
+  let params := [[[Map new] at: "uri" put: uri] at: "diagnostics" put: #[]];
+  [self sendNote: "textDocument/publishDiagnostics" params: params];
+  self]];
+
+// -- dispatch + loop ----------------------------------------------------------
+
+[Reflect defineMethod: #dispatch: on: Lsp as: [:self :msg |
+  let m  := [msg at: "method" ifAbsent: [| ""]];
+  let id := [msg at: "id" ifAbsent: [| nil]];
+  let p  := [msg at: "params" ifAbsent: [| [Map new]]];
+  let r := [[m = "initialize"]
+    ifTrue: [| [self onInitialize: id]]
+    ifFalse: [| [[m = "textDocument/didOpen"]
+      ifTrue: [| [self onDidOpen: p]]
+      ifFalse: [| [[m = "textDocument/didChange"]
+        ifTrue: [| [self onDidChange: p]]
+        ifFalse: [| [[m = "textDocument/didClose"]
+          ifTrue: [| [self onDidClose: p]]
+          ifFalse: [| [[m = "shutdown"]
+            ifTrue: [| [self onShutdown: id]]
+            ifFalse: [| [[m = "exit"]
+              ifTrue: [| [0 cExit]]
+              ifFalse: [| [[id notNil]
+                ifTrue: [| [self respondError: id]]
+                ifFalse: [| self]]]]]]]]]]]]]];
+  r]];
+
+// Parse a body and dispatch it; ignore malformed JSON.
+[Reflect defineMethod: #handle: on: Lsp as: [:self :body |
+  let msg := [Json parse: body];
+  let r := [[msg isError]
+    ifTrue:  [| self]
+    ifFalse: [| [self dispatch: msg]]];
+  r]];
+
+// Read + handle one message; terminate the process at EOF.
+[Reflect defineMethod: #step on: Lsp as: [:self |
+  let body := [self readMessage];
+  let r := [[body isNil]
+    ifTrue:  [| [0 cExit]]
+    ifFalse: [| [self handle: body]]];
+  r]];
+
+// The server loop. `to:do:` is a native (iterative) loop — no per-message stack
+// growth — and `step` blocks on read(), so this idles (no busy loop) until a
+// message arrives; `exit`/EOF terminate the process.
+[Reflect defineMethod: #serveStdio on: Lsp as: [:self |
+  let me := self;
+  [1 to: 1000000000 do: [:i | [me step]]];
+  self]]
