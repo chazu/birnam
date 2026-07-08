@@ -1,8 +1,8 @@
 # Rung 2 — the cell / relational layer (design)
 
 > **Status:** Design accepted + **SHIPPED** (2026-06-27). Builds directly on
-> [ADR — Refound on libid](32-refound-on-libid.md) and
-> [The Destination](30-the-destination.md). Implements `docs/32` §"Next on the
+> [ADR — Refound on libid](../../design/32-refound-on-libid.md) and
+> [The Destination](../../design/30-the-destination.md). Implements `docs/32` §"Next on the
 > libid floor" item 1: the first superimposition over libid. Code lives in
 > `src/id/store.zig` (+ `store_test.zig`); `zig build test-store` is green and
 > the siphon (`src/id/main.zig`) mounts the store. The work breakdown below is

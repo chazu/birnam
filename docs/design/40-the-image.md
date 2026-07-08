@@ -109,9 +109,9 @@
 > path, cross-image merge §5) remains, none load-bearing.
 >
 > Builds on the
-> [running system](36-the-running-system.md) (globals are cells, method source
+> [running system](../archive/work-breakdowns/36-the-running-system.md) (globals are cells, method source
 > is mirrored into the store) and the codegen/Tcc stack
-> ([rung 3](35-rung-3-front-end.md)). Supersedes the old kernel's
+> ([rung 3](../archive/work-breakdowns/35-rung-3-front-end.md)). Supersedes the old kernel's
 > `2e-images-aot.md` framing and closes out ADR-image-1's direction on the id
 > stack. Reference-only salvage from the old kernel lives in `src/attic/`
 > (`image.zig`, `freeze.zig`, `loader.zig`, `macho.zig`, `elf.zig`).

@@ -324,7 +324,7 @@ file, the same surface a user mutates at runtime. `parseExprImpl` runs
 parse → CST → `desugar` → typed AST; block bodies go through the compiler to
 bytecode. The `language` prototype hosts file-in (`fileIn:` / `fileInSource:`).
 
-### 5. The roadmap — `ROADMAP.md`
+### 5. The roadmap — `docs/archive/ROADMAP.md` (archived/historical)
 
 - ✓ Phases 0–9.5 — substrate, datalog, FFI, modules, schema
 - ✓ Phase 9.5.6 — FFI reachable from the language, file-in, declarative
@@ -362,7 +362,7 @@ bytecode. The `language` prototype hosts file-in (`fileIn:` / `fileInSource:`).
 
 ## Files to skim if you have 30 seconds
 
-- `VISION.md` — design rationale · `ROADMAP.md` — phases + ADRs
+- `VISION.md` — design rationale · `docs/archive/ROADMAP.md` — phases + ADRs (archived)
 - `src/kernel/peg.zig` — engine + send-dispatched constructors
 - `src/modules/lang/lang.zig` — grammar + desugar + eval + file-in, one file
 - `src/kernel/ffi_module.zig` + `freeze.zig` — the Module prototype + freeze

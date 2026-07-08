@@ -3,7 +3,7 @@
 > **Status:** Shipped (2026-06-30). The work that turns the id-stack birnam from a
 > batch compiler into a usable, non-crashing, interactive environment. Builds on the
 > [front end](35-rung-3-front-end.md), the [running system](36-the-running-system.md),
-> and the [relational reading](37-the-relational-reading.md).
+> and the [relational reading](../../design/37-the-relational-reading.md).
 
 The language already compiled the whole grammar to native, with a stdlib, a
 complete datalog surface, a GC, and an error model. What was missing for an MVP was

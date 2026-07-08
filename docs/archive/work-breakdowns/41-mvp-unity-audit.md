@@ -10,7 +10,7 @@ producing this — it is a tracking list.
 > §D (D1–D4), **§E (E1/E2/E3)**, **§F FULLY CLOSED (F1–F4)** — pointer `85e4a85`, long
 > `8cf5136`, F2 `1f15245`, unsigned `u` `aba41fd`, boxed `Word` `4c0da27`, raw memory
 > `88b2a02`. §D's resolution **inverted the North Star** — object model canonical, relational
-> reading derived — recorded in **[docs/42](42-object-canonical-relational-derived.md)**
+> reading derived — recorded in **[docs/42](../../design/42-object-canonical-relational-derived.md)**
 > (READ IT for current direction). All 13 suites + 24 examples green. ⬜
 > **✅ THE WHOLE MVP-UNITY AUDIT IS CLOSED (§A–§G all done, 2026-07-07).** The
 > large-int question is CLOSED — box has been full i64 since §A, `u` gives
@@ -265,7 +265,7 @@ provides exactly one native fold primitive — `inject:into:` — and inherits
 
 ## D. Object/relational unity is aspirational, and two things can desync
 
-> **✅ ALL OF §D DONE 2026-07-05 → [42 — Object canonical; relational derived](42-object-canonical-relational-derived.md).**
+> **✅ ALL OF §D DONE 2026-07-05 → [42 — Object canonical; relational derived](../../design/42-object-canonical-relational-derived.md).**
 > The "unity / send == get" framing is **retired**: the object model is canonical and
 > the relational reading is a *derived* lens. D1's mirror is **kept and completed** (the
 > meta-object protocol, under a consistency law — mirror = dict, or absent, never wrong),

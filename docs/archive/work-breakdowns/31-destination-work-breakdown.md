@@ -1,6 +1,6 @@
 # Work Breakdown — Reaching the Destination
 
-> The ordered work to reach [`docs/30` — The Destination](30-the-destination.md).
+> The ordered work to reach [`docs/30` — The Destination](../../design/30-the-destination.md).
 > Two arcs: **W7 (The Superimposed Floor)** hardens the bootstrap to
 > pointer-identity-first so the eid/fact layer becomes a true superimposition;
 > **W8 (Identity as Policy)** makes object identity an overridable policy.
@@ -79,7 +79,7 @@ superimposition over it.
 
 > **⮕ PIVOT (2026-06-27) — the in-place inversion is FROZEN here as a proof.**
 > The remaining cuts below are **retired as in-place tasks**: per
-> [ADR — Refound on libid](32-refound-on-libid.md) we reach the inversion's
+> [ADR — Refound on libid](../../design/32-refound-on-libid.md) we reach the inversion's
 > destination by **building UP from the clean libid floor** (`src/id/`, where the
 > `-1` slot is a vtable *pointer* and there are no eids by construction), not by
 > finishing the excavation of the fact-store kernel. W7 stays as the validation

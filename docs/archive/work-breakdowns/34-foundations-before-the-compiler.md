@@ -1,7 +1,7 @@
 # Foundations to settle before the compiler (rung-3 prep)
 
 > **Status:** Open — a working agenda (2026-06-27). Builds on
-> [The Destination](30-the-destination.md), [Refound on libid](32-refound-on-libid.md),
+> [The Destination](../../design/30-the-destination.md), [Refound on libid](../../design/32-refound-on-libid.md),
 > and [Rung 2 — cells](33-rung-2-cells.md). Rungs 1 (libid) and 2 (cell/relational
 > store) are shipped and green. This note collects the **cross-cutting,
 > representation-level decisions** that are cheap to make now and brutal to
@@ -192,7 +192,7 @@ never swept, auto-gc bounds the live set) + `relational_test` (store + fresh-sto
 facts survive).
 
 **The precise descriptor — SHIPPED (2026-07-01, slice 2 of the images arc;
-[docs/40](40-the-image.md) §3c).** The locked per-vtable layout shape is now
+[docs/40](../../design/40-the-image.md) §3c).** The locked per-vtable layout shape is now
 real: `setLayout(vt, kinds, n, rest)` declares which payload WORDS are Oops vs
 raw (a per-word kind prefix + a kind for the variable tail — covers fixed
 structs, all-Oop trie nodes/block captures, and header-then-slots HAMT nodes

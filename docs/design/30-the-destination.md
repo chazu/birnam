@@ -4,10 +4,17 @@
 > reach it can be described against something concrete. This document **refines**
 > the north star (`docs/10a`) on one load-bearing point — *primacy* — and absorbs
 > the eid-superimposition and module-equivalence corrections from the 2026-06-26
-> design conversation. Background: [Vision](10-vision.md),
-> [North-Star Cell Model](10a-north-star-cell-model.md),
-> [Object Model](13-object-model.md), [Dispatch](26-dispatch.md),
-> [Cells](2a-cells.md), [Re-Layering Audit](20a-relayering-coupling-audit.md).
+> design conversation. Background: [Vision](../archive/legacy-kernel/10-vision.md),
+> [North-Star Cell Model](../archive/legacy-kernel/10a-north-star-cell-model.md),
+> [Object Model](../archive/legacy-kernel/13-object-model.md), [Dispatch](../archive/legacy-kernel/26-dispatch.md),
+> [Cells](../archive/legacy-kernel/2a-cells.md), [Re-Layering Audit](../archive/legacy-kernel/20a-relayering-coupling-audit.md).
+
+> **Status (2026-07-08):** the *primacy* argument here (this doc's one refinement of
+> `docs/10a`) is itself now superseded by the object-canonical pivot — object model
+> canonical, relational reading derived. See
+> [42-object-canonical-relational-derived.md](42-object-canonical-relational-derived.md).
+> The five invariant goals and the extensional-identity thesis below still stand;
+> only the layer-primacy discussion is downstream of a decision 42 has since made.
 
 ## 0. What this document is
 

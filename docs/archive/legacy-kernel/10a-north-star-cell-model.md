@@ -1,7 +1,7 @@
 # North Star — The Cell Refounding
 
 > **⚠️ SUPERSEDED (2026-07-05) by [42 — The Object Model is Canonical; the Relational
-> Reading is Derived](42-object-canonical-relational-derived.md).** The *primacy
+> Reading is Derived](../../design/42-object-canonical-relational-derived.md).** The *primacy
 > claim* below — facts canonical, object model / dispatch / code as caches over the
 > cell store ("send == get"; "code is a cache of facts") — is **reversed**: the live
 > object model is canonical, and the relational reading (including the `[vt sel m]`

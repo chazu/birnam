@@ -1,13 +1,13 @@
 # 42 — The Object Model is Canonical; the Relational Reading is Derived
 
 > **Status:** decision **accepted 2026-07-05**. **Supersedes the primacy claim of
-> [10a — The Cell Refounding](10a-north-star-cell-model.md)** (and the "code is a
+> [10a — The Cell Refounding](../archive/legacy-kernel/10a-north-star-cell-model.md)** (and the "code is a
 > cache of facts" thesis it carries). It does **not** delete 10a's *mirror
 > mechanism* — it reverses its *polarity*. Settles all of audit §D
-> ([41 — MVP Unity Audit](41-mvp-unity-audit.md)).
+> ([41 — MVP Unity Audit](../archive/work-breakdowns/41-mvp-unity-audit.md)).
 >
-> Background: [13 — The Object Model](13-object-model.md),
-> [26 — Dispatch](26-dispatch.md), [37 — The Relational Reading](37-the-relational-reading.md),
+> Background: [13 — The Object Model](../archive/legacy-kernel/13-object-model.md),
+> [26 — Dispatch](../archive/legacy-kernel/26-dispatch.md), [37 — The Relational Reading](37-the-relational-reading.md),
 > [33 — Rung 2 / the store](33-*), [40 — The Image](40-the-image.md).
 
 ## The reversal

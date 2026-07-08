@@ -4,9 +4,9 @@
 > (C codegen + libtcc) all **shipped**; the post-grammar runtime — stdlib, the full
 > datalog surface, GC, error model — and the final codegen/runtime gaps (arithmetic
 > dispatch, AOT native output) are **complete** (see the late sections). Builds on
-> [Refound on libid](32-refound-on-libid.md), [Rung 2 — cells](33-rung-2-cells.md),
+> [Refound on libid](../../design/32-refound-on-libid.md), [Rung 2 — cells](33-rung-2-cells.md),
 > and [Foundations before the compiler](34-foundations-before-the-compiler.md). The
-> query surface has its own reference: [The relational reading](37-the-relational-reading.md).
+> query surface has its own reference: [The relational reading](../../design/37-the-relational-reading.md).
 
 ## The proximate goal
 
@@ -232,8 +232,8 @@ The relational reading grew to the complete datalog surface — predicates,
 negation, disjunction, aggregation (count/sum/min/max/avg, group-by), recursive
 rules (self + mutual), time travel (asOf/since/between), and nested/`:many` pull —
 plus a clause-reorder planner. It is documented in full in its own reference,
-[The relational reading](37-the-relational-reading.md); the old kernel's impl is
-[Datalog](29-datalog.md).
+[The relational reading](../../design/37-the-relational-reading.md); the old kernel's impl is
+[Datalog](../legacy-kernel/29-datalog.md).
 
 ## Codegen + runtime, completed (SHIPPED 2026-06-30)
 
@@ -255,7 +255,7 @@ The last two codegen/runtime gaps the 3c notes flagged are closed:
   JIT. Verified on macOS arm64: a `.dylib` is produced, `dlopen`'d, and called.
   ~~Codegen C that references the `birnam_*` shims leaves them undefined in the
   artifact, so the JIT remains how compiled birnam runs today.~~ **CLOSED by
-  slice 1 of the images arc** ([docs/40](40-the-image.md) §3a): the runtime now
+  slice 1 of the images arc** ([docs/40](../../design/40-the-image.md) §3a): the runtime now
   exports the shims as real dynamic symbols and codegen has an artifact emission
   mode (`__birnam_unit_init` re-derives global handles by name at load), so
   `[Codegen compile: src output: path]` writes a relocatable `.dylib` that

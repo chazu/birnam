@@ -68,7 +68,7 @@ A dependency graph *is* relational data, so `Module` forwards to the store like
   `#kernel`, `#loaded`) without loading it.
 - `[Module loadOrder: #[ … ]]` — the names + transitive deps, **topologically
   sorted** (DFS post-order, deps first). A cycle answers `#circularDependency`
-  (mirrors the [G4](41-mvp-unity-audit.md) left-recursion catch), never loops.
+  (mirrors the [G4](../archive/work-breakdowns/41-mvp-unity-audit.md) left-recursion catch), never loops.
 - `requiresOf:` / `kindOf:` / `isRegistered:` / `isLoaded:` round out the queries.
 
 ### Boot order is derived, not hardcoded

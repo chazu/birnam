@@ -2,10 +2,10 @@
 
 > **Status:** Shipped (2026-06-30). The full datalog surface on the libid refounding,
 > in `src/id/relational.zig` (a standard module) over the rung-2 store
-> ([Rung 2 — cells](33-rung-2-cells.md)). Realizes the North Star —
+> ([Rung 2 — cells](../archive/work-breakdowns/33-rung-2-cells.md)). Realizes the North Star —
 > [The Destination](30-the-destination.md) §D5.2 — "the object model and the
 > relational model are one store read two ways." The old fact-store kernel's
-> equivalent is [Datalog](29-datalog.md); this is the re-port onto the id stack,
+> equivalent is [Datalog](../archive/legacy-kernel/29-datalog.md); this is the re-port onto the id stack,
 > built send-by-send through the object model.
 
 ## What it is
@@ -168,7 +168,7 @@ let earlier := [db basis];
 [db findAll: ?p where: #[ #[?p #city #Boston] ] since: earlier]  // who arrived since
 ```
 
-A caveat from the store's design ([Rung 2 — cells](33-rung-2-cells.md) D6): a prior
+A caveat from the store's design ([Rung 2 — cells](../archive/work-breakdowns/33-rung-2-cells.md) D6): a prior
 **value** of a `:one` attribute is visible to `asOf:` only if that attribute opted
 into history (`[a :history true]`); the default-off path overwrites in place to
 avoid unbounded log growth. Entity and fact *additions* over time are always

@@ -2,6 +2,17 @@
 
 A **system** is a binary that runs as an executable OR loads as a library, and which exposes a complete, fully malleable computing environment in the COLA / idst / Piumarta tradition — built on a relational fact store so that history, reflection, queries, and snapshots collapse into one mechanism.
 
+> **⚠️ Status (2026-07-08): partially superseded on the *primacy* axis.** This is
+> still the richest statement of the design, but its ontology was **reversed** by
+> the object-canonical pivot. Tenet 0 below ("the image is a database … everything
+> else follows from this") and the Object Model section's "canonical form: fact-set
+> in the store" are no longer the ground truth: the **object environment is
+> canonical**, and the relational / fact-store reading is a *derived* mirror of it.
+> Read [`docs/design/42-object-canonical-relational-derived.md`](../design/42-object-canonical-relational-derived.md)
+> for the current direction. Treat the tenets below as the *mechanism* (still
+> accurate — the fact store, indexes, no-NULL discipline, execution modes all
+> hold) rather than the *ontology* (inverted).
+
 ## Core Tenets
 
 0. **The image is a database.** Code, data, history, modules, and schema all live as facts `[entity attribute value tx op]` in persistent (HAMT/RRB) indexes. Everything else in this document follows from this.
@@ -277,7 +288,7 @@ Designed in detail when Phase 7 starts; the surface syntax is locked.
 - **Snapshot** is cheap: persistent structures share with prior snapshots; only new segments written.
 - **A snapshot is a first-class value, and holding it pins its storage.** Capturing `as-of tx` / `db now` yields an immutable db-value = the index roots at that tx. While held, its index epoch(s) are reachable, so the epoch-arena free (§Memory) skips them and the cold-history tier keeps (or faults in) their segments. Dropping the last reference to a snapshot makes its now-unreferenced epochs collectible at the next compact. This is the reachability question for the fact layer — over retained *roots*, not over nodes — and it is what makes the index-structure reclaim safe in the presence of time-travel.
 - **Load** = restore roots, re-establish mcache (empty, lazy fill). *(Today replay-based — facts re-asserted into fresh indexes on load. The mmap-segment fast path is a Phase 12.5 perf optimization gated on data, not yet built; the single-file page-aligned layout already supports it later.)*
-- **A full image IS the booted system (W1).** The default boot is an automatic **compile-cache**: a valid full image (every fact, gated by a kernel-ABI-+-source `boot_validity` hash) is loaded instead of recompiling the tower; a miss recompiles and writes a fresh cache. `m` is a *provenance tag*, not a persistence gate — full images carry every `m`; the legacy M_USER-only save remains for lightweight user-data overlays. Native modules relink their fn-ptrs onto image-restored eids **by interned name** (the durable anchor). See [docs/2e](docs/2e-images-aot.md).
+- **A full image IS the booted system (W1).** The default boot is an automatic **compile-cache**: a valid full image (every fact, gated by a kernel-ABI-+-source `boot_validity` hash) is loaded instead of recompiling the tower; a miss recompiles and writes a fresh cache. `m` is a *provenance tag*, not a persistence gate — full images carry every `m`; the legacy M_USER-only save remains for lightweight user-data overlays. Native modules relink their fn-ptrs onto image-restored eids **by interned name** (the durable anchor). See [docs/2e](../archive/legacy-kernel/2e-images-aot.md).
 - **Module unit** is the `m` column on every fact (see §Fact). A module is the set of facts with a given `m` EID. No separate per-image module-bookkeeping required.
 
 ## Compilation Path
@@ -286,7 +297,7 @@ Source → PEG parse → AST facts → desugar (asserts more facts) → IR facts
 
 - VM consumes bytecode facts directly.
 - AOT = bytecode VM + frozen image, packaged as standalone binary.
-- Native lowering = **birnam → C → `libtcc`** for live mode 1 (re-JIT on redefine = malleable AND native), `zig cc`/`clang` for the mode-3 ship — one codegen pass, two compilers (decision locked in [docs/10a](docs/10a-north-star-cell-model.md); supersedes the earlier "no tinycc" stance). Native code is a *cache of bytecode*: the `:bytecode-stream` fact stays canonical, native is regenerated on load/redefine.
+- Native lowering = **birnam → C → `libtcc`** for live mode 1 (re-JIT on redefine = malleable AND native), `zig cc`/`clang` for the mode-3 ship — one codegen pass, two compilers (decision locked in [docs/10a](../archive/legacy-kernel/10a-north-star-cell-model.md); supersedes the earlier "no tinycc" stance). Native code is a *cache of bytecode*: the `:bytecode-stream` fact stays canonical, native is regenerated on load/redefine.
 - Compiler is a birnam module. Self-hosts when PEG grammar for birnam parses itself.
 
 ## Alien Code Absorption
@@ -346,4 +357,4 @@ The metacircular property holds: you can rewrite `bind` while the system runs. Y
 
 ## Roadmap
 
-See `ROADMAP.md` for the canonical phase-by-phase work sequence and reasoning. This document is the design; the roadmap is the implementation plan.
+See `docs/archive/ROADMAP.md` (archived — a historical phase ledger through Phase 15) for the phase-by-phase work sequence and reasoning. This document is the design; the roadmap was the original implementation plan.

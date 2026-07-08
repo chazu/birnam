@@ -59,7 +59,7 @@ birnam> :load mywork.bim         # ...and restore it later
 Drop a `birnam.toml` beside your work to pin the module set and auto-resume an
 image (see [Project config](#project-config--birnamtoml) below), and a bare
 `birnam` in that directory starts up right where you left off. The full
-language tour lives in [`DEMO.md`](DEMO.md).
+language tour lives in [`DEMO.md`](docs/misc/DEMO.md).
 
 > Heads up: only arm64 macOS has a prebuilt binary today. On Linux / Intel
 > macs, build from source (Option B) — the cross-platform port is tracked
@@ -240,7 +240,7 @@ outstanding-bytes ceiling. Past the ceiling, allocation fails and the bench
 aborts cleanly with `[HIT CAP]` instead of taking the machine down. Each run
 prints peak bytes; run one mode per process on a fresh boot.
 
-### Measured (ReleaseFast, arm64; see ADR-perf-1 in `ROADMAP.md`)
+### Measured (ReleaseFast, arm64; see ADR-perf-1 in `docs/archive/ROADMAP.md`)
 
 | Operation | Cost | vs native |
 |---|---|---|
@@ -251,7 +251,7 @@ prints peak bytes; run one mode per process on a fresh boot.
 A write costs roughly 100× a read. Dispatch is not a bottleneck; the levers are
 the field read and the write path. The full analysis, including the
 projection-vs-representation decision it drives, is **ADR-perf-1** in
-`ROADMAP.md`.
+`docs/archive/ROADMAP.md`.
 
 > Benchmarking discipline: always run under `timeout`, start small and watch the
 > printed peak, run one bench per process, and never run an un-pruned mutation
@@ -522,10 +522,10 @@ birnam (shell)              dlopen modules, drive stdin
 
 | Doc | Contents |
 |---|---|
-| `VISION.md` | the locked design vision (relational substrate, tenets) |
-| `ROADMAP.md` | phase-by-phase work plan + status (Phases 0–14 done; Phase 15 GC next) |
-| `DEMO.md` | end-to-end REPL walkthrough |
-| `DATALOG.md` | the Datalog query system |
+| `docs/misc/VISION.md` | the locked design vision (relational substrate, tenets) |
+| `docs/archive/ROADMAP.md` | archived phase ledger — historical (Phases 0–15); superseded by the libid refounding, module system, and object-canonical pivot |
+| `docs/misc/DEMO.md` | end-to-end REPL walkthrough |
+| `docs/misc/DATALOG.md` | the Datalog query system |
 
 ## References
 

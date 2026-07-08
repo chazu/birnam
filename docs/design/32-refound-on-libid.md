@@ -3,7 +3,7 @@
 > **Status:** Accepted (2026-06-27). Supersedes the *in-place* completion of the
 > W7 inversion (`docs/31` §W7). The destination is unchanged (`docs/30`); only the
 > route to it changes. Background: [The Destination](30-the-destination.md),
-> [Work Breakdown](31-destination-work-breakdown.md), [Re-Layering Audit](20a-relayering-coupling-audit.md),
+> [Work Breakdown](../archive/work-breakdowns/31-destination-work-breakdown.md), [Re-Layering Audit](../archive/legacy-kernel/20a-relayering-coupling-audit.md),
 > `~/dev/c/birnam` (the C reference @ `d35caee`).
 
 ## Context
