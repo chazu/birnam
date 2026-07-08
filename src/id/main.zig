@@ -26,6 +26,10 @@ const USAGE =
     \\                             If FILE is given it is run first, so the listener
     \\                             attaches to its state. Run from the repo root so
     \\                             modules/ is visible. Blocks; Ctrl-C to stop.
+    \\  birnam --lsp               Run the birnam language server on stdio (LSP).
+    \\                             Point lsp-mode / eglot at this. Resolves the
+    \\                             modules/ dir relative to the executable, so it
+    \\                             works launched from any project directory.
     \\  birnam --demo              Run the verbose boot self-test (proves the
     \\                             whole stack compiles to native through the id api).
     \\  birnam wrap <name>         Scaffold wrapped/<name>/<name>.birnam — a
@@ -328,6 +332,8 @@ pub fn main() !void {
             const file = args.next(); // optional: run this file first, then listen
             return runListen(a, api, port, file);
         }
+        if (std.mem.eql(u8, sp, "--lsp"))
+            return runLsp(a, api);
         if (std.mem.eql(u8, sp, "--demo"))
             return runDemo(a, api, id_path, id_path_z);
         if (std.mem.eql(u8, sp, "--compile-module")) {
@@ -829,6 +835,59 @@ fn runListen(a: std.mem.Allocator, api: *IdApi, port: [:0]const u8, file: ?[:0]c
     if (berr != api.nilObj) {
         out("birnam --listen: could not start the REPL server (run from the repo root so modules/ is visible):\n");
         outErrorString(api, berr);
+        std.process.exit(1);
+    }
+}
+
+/// Locate the source `modules/` directory independently of the current working
+/// directory, so `--lsp` (launched by an editor from an arbitrary project) still
+/// finds json.birnam/lsp.birnam. Probes `$BIRNAM_MODULES_DIR`, then candidates
+/// relative to the executable (dev layout: <repo>/zig-out/bin/birnam →
+/// <repo>/modules), then falls back to `./modules`.
+fn resolveModulesDir(a: std.mem.Allocator) ![]u8 {
+    if (std.posix.getenv("BIRNAM_MODULES_DIR")) |d| return a.dupe(u8, d);
+    const probe = "json.birnam";
+    if (std.fs.selfExeDirPathAlloc(a)) |exedir| {
+        defer a.free(exedir);
+        const c1 = try std.fs.path.join(a, &.{ exedir, "..", "..", "modules" });
+        defer a.free(c1);
+        const c2 = try std.fs.path.join(a, &.{ exedir, "..", "modules" });
+        defer a.free(c2);
+        const c3 = try std.fs.path.join(a, &.{ exedir, "modules" });
+        defer a.free(c3);
+        for ([_][]const u8{ c1, c2, c3 }) |cand| {
+            const p = try std.fs.path.join(a, &.{ cand, probe });
+            defer a.free(p);
+            if (std.fs.cwd().access(p, .{})) |_| return a.dupe(u8, cand) else |_| {}
+        }
+    } else |_| {}
+    return a.dupe(u8, "modules");
+}
+
+/// `birnam --lsp` — bring the image up and run the pure-birnam language server on
+/// stdio (LSP). Loads json + lsp from the exe-resolved modules dir and blocks in
+/// `[Lsp serveStdio]` (which owns stdin/stdout for the protocol and terminates the
+/// process on `exit`/EOF). Startup errors go to STDERR so stdout stays protocol-only.
+fn runLsp(a: std.mem.Allocator, api: *IdApi) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+
+    loadStdlib(a, api, codegen);
+
+    const mdir = try resolveModulesDir(a);
+    defer a.free(mdir);
+    const boot = try std.fmt.allocPrint(a, "[System load: \"{s}/json.birnam\"]; [System load: \"{s}/lsp.birnam\"]; [Lsp serveStdio]", .{ mdir, mdir });
+    defer a.free(boot);
+    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
+    // Only reached if loading json/lsp failed (serveStdio otherwise blocks until exit).
+    const berr = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
+    if (berr != api.nilObj) {
+        std.fs.File.stderr().writeAll("birnam --lsp: failed to load the language-server modules (set BIRNAM_MODULES_DIR to the birnam modules/ dir)\n") catch {};
         std.process.exit(1);
     }
 }
