@@ -1,0 +1,196 @@
+// socket.birnam — TCP sockets for birnam, implemented IN birnam over libc via Alien.
+//
+// The Layer-0 networking floor. Same principle as time/file/process: the only
+// irreducible capability is "call a C function and read/write raw memory," and
+// Alien already provides both (FFI + alloc:/peek*At:/poke*:at:) — so this is pure
+// birnam with NO new Zig. Everything above it (an HTTP server, an out-of-process
+// REPL) rides on this floor.
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/socket.birnam"]
+// then, the blocking one-connection-at-a-time server:
+//   [Socket serve: 8080 with: [:conn |
+//     let req := [conn recv];                      "the raw request bytes (a String)"
+//     [conn sendString: "HTTP/1.1 200 OK\r\n\r\nhi"]]]
+//
+// DESIGN NOTES (concurrency-readiness — see the session's networking plan):
+//  - The RAW libc wraps below are semantics-free and blocking-agnostic. The
+//    BLOCKING accept-loop (`serve:with:`) is a separate helper; a future single-
+//    threaded poll() reactor reuses the raw ops but not the loop. "Blocking" is
+//    never baked into the primitives.
+//  - `fcntl` is wrapped (and `SockConn setNonBlocking` exposed) but UNUSED by the
+//    blocking path — it is the switch the reactor will need.
+//  - Per-connection state (fd + recv buffer) lives on a `SockConn` object via
+//    cells, not in a shared module singleton, so N concurrent connections slot in
+//    without a rewrite.
+//  - SIGPIPE is ignored process-wide at load (see `ignoreSigpipe`): a write to a
+//    peer that hung up would otherwise kill the process — this bites even the
+//    blocking server, on the very first dropped connection.
+//
+// PLATFORM: constants below are macOS (arm64) values — the only tested target
+// today. Linux differs (SOL_SOCKET=1, SO_REUSEADDR=2, O_NONBLOCK=0x800, and the
+// sockaddr_in has no sin_len byte); those are the lines to touch for a Linux port.
+// TEXT ONLY: send marshals the String as a C string, so a body with an embedded
+// NUL byte would truncate — fine for HTTP text/markdown/source; binary bodies are
+// a later concern (send from a raw buffer instead).
+
+// -- raw libc wraps (the floor) -----------------------------------------------
+// Alien marshals the method receiver as the FIRST C argument. Sig chars:
+//   i=int  l=long/ssize_t  u=size_t  p=void*  s=const char*  v=void
+//
+// int socket(int domain, int type, int protocol)          — receiver = domain
+[Alien wrap: "socket"     signature: "i i i i"   as: #socketType:proto:        on: Integer];
+// int bind(int fd, const struct sockaddr *addr, socklen_t len)   — receiver = fd
+[Alien wrap: "bind"       signature: "i i p i"   as: #bindAddr:len:            on: Integer];
+// int listen(int fd, int backlog)                                — receiver = fd
+[Alien wrap: "listen"     signature: "i i i"     as: #listenBacklog:           on: Integer];
+// int accept(int fd, struct sockaddr *addr, socklen_t *len)      — receiver = fd
+[Alien wrap: "accept"     signature: "i i p p"   as: #acceptAddr:len:          on: Integer];
+// int connect(int fd, const struct sockaddr *addr, socklen_t len)— receiver = fd
+[Alien wrap: "connect"    signature: "i i p i"   as: #connectAddr:len:         on: Integer];
+// ssize_t recv(int fd, void *buf, size_t len, int flags)         — receiver = fd
+[Alien wrap: "recv"       signature: "l i p u i" as: #recvInto:len:flags:      on: Integer];
+// ssize_t send(int fd, const void *buf, size_t len, int flags)   — receiver = fd
+// buf marshals as `s` (String -> const char*); send reads `len` of those bytes.
+[Alien wrap: "send"       signature: "l i s u i" as: #sendStr:len:flags:       on: Integer];
+// int setsockopt(int fd, int level, int name, const void *val, socklen_t len)
+[Alien wrap: "setsockopt" signature: "i i i i p i" as: #setsockLevel:opt:val:len: on: Integer];
+// int fcntl(int fd, int cmd, int arg)   — reactor-only (non-blocking); unused here
+[Alien wrap: "fcntl"      signature: "i i i i"   as: #fcntlCmd:arg:            on: Integer];
+// int close(int fd)                                              — receiver = fd
+[Alien wrap: "close"      signature: "i i"       as: #closeFd                 on: Integer];
+// sighandler_t signal(int sig, sighandler_t handler)   — receiver = sig
+[Alien wrap: "signal"     signature: "p i p"     as: #signalHandler:          on: Integer];
+
+// -- the module singleton + constants -----------------------------------------
+
+[Globals at: #Socket put: [Object clone]];
+
+// macOS values (see PLATFORM note above).
+[Reflect defineMethod: #afInet      on: Socket as: [:self | 2]];
+[Reflect defineMethod: #sockStream  on: Socket as: [:self | 1]];
+[Reflect defineMethod: #solSocket   on: Socket as: [:self | 65535]];
+[Reflect defineMethod: #soReuseAddr on: Socket as: [:self | 4]];
+
+// Ignore SIGPIPE process-wide. SIG_IGN is (void*)1 — a Word can't be minted from a
+// bare Integer (`p` args untag through a Word), so build one: alloc 8 zeroed bytes,
+// write 1 as an int, read it back as a pointer.
+[Reflect defineMethod: #ignoreSigpipe on: Socket as: [:self |
+  let h := [Alien alloc: 8];
+  [h pokeInt: 1 at: 0];
+  [13 signalHandler: [h peekPtrAt: 0]];
+  [h free]]];
+
+// Build a 16-byte `struct sockaddr_in` for INADDR_ANY:port (macOS layout).
+// byte 0 = sin_len (16), byte 1 = sin_family (AF_INET=2), bytes 2..3 = port in
+// network (big-endian) order, bytes 4..7 = addr (0 = any), bytes 8..15 = zero.
+[Reflect defineMethod: #makeSockaddrPort: on: Socket as: [:self :port |
+  let sa := [Alien alloc: 16];
+  [sa pokeByte: 16 at: 0];
+  [sa pokeByte: [self afInet] at: 1];
+  [sa pokeByte: [port / 256] at: 2];
+  [sa pokeByte: [port mod: 256] at: 3];
+  sa]];
+
+// Create + bind + listen on `port`. Answers the listening fd, or a negative fd on
+// error (socket()/bind() failed — e.g. the port is already in use).
+[Reflect defineMethod: #listenOn: on: Socket as: [:self :port |
+  let fd := [[self afInet] socketType: [self sockStream] proto: 0];
+  [[fd < 0]
+    ifTrue:  [| fd]
+    ifFalse: [|
+      let one := [Alien alloc: 4];
+      [one pokeInt: 1 at: 0];
+      [fd setsockLevel: [self solSocket] opt: [self soReuseAddr] val: one len: 4];
+      [one free];
+      let sa := [self makeSockaddrPort: port];
+      let br := [fd bindAddr: sa len: 16];
+      [sa free];
+      [[br < 0]
+        ifTrue:  [| [fd closeFd]; br]
+        ifFalse: [| [fd listenBacklog: 16]; fd]]]]]];
+
+// Block until a client connects; answer the raw connection fd (negative on a
+// spurious error such as EINTR, which the caller skips).
+[Reflect defineMethod: #rawAccept: on: Socket as: [:self :serverFd |
+  let addr := [Alien alloc: 16];
+  let alen := [Alien alloc: 8];
+  [alen pokeInt: 16 at: 0];
+  let cfd := [serverFd acceptAddr: addr len: alen];
+  [addr free];
+  [alen free];
+  cfd]];
+
+// Wrap a connected fd in a SockConn, minting its per-connection recv buffer.
+[Reflect defineMethod: #wrapFd: on: Socket as: [:self :cfd |
+  let conn := [SockConn clone];
+  [[db cellFor: conn attr: #fd]  set: cfd];
+  [[db cellFor: conn attr: #buf] set: [Alien alloc: 65536]];
+  conn]];
+
+// -- Layer 1: the blocking accept loop ----------------------------------------
+// One connection at a time: accept, hand a live SockConn to `handler`, close, repeat.
+// `to:do:` is a native (iterative) loop, so this does not grow the stack per
+// connection; the billion-iteration bound is effectively unbounded and exits cleanly.
+[Reflect defineMethod: #serve:with: on: Socket as: [:self :port :handler |
+  let fd := [self listenOn: port];
+  [[fd < 0]
+    ifTrue:  [| fd]
+    ifFalse: [|
+      [1 to: 1000000000 do: [:i |
+        let cfd := [self rawAccept: fd];
+        [[cfd < 0]
+          ifTrue:  [| 0]
+          ifFalse: [|
+            let conn := [self wrapFd: cfd];
+            [handler value: conn];
+            [conn close]]]]];
+      [fd closeFd]]]]];
+
+// -- SockConn: one live connection --------------------------------------------
+
+[Globals at: #SockConn put: [Object clone]];
+
+[Reflect defineMethod: #fd     on: SockConn as: [:self | [[db cellFor: self attr: #fd] value]]];
+[Reflect defineMethod: #buffer on: SockConn as: [:self | [[db cellFor: self attr: #buf] value]]];
+
+// Read one chunk of up to 64 KB. Answers the bytes as a String ("" on EOF/error).
+// The bytes are NUL-terminated in the buffer before reading them back, so this is
+// text-safe (an embedded NUL would truncate — see the TEXT ONLY note).
+[Reflect defineMethod: #recv on: SockConn as: [:self |
+  let buf := [self buffer];
+  let n := [[self fd] recvInto: buf len: 65535 flags: 0];
+  [[n < 1]
+    ifTrue:  [| ""]
+    ifFalse: [|
+      [buf pokeByte: 0 at: n];
+      [buf peekStringAt: 0]]]]];
+
+// Send the whole String, looping over partial writes (recurses on the unsent tail).
+[Reflect defineMethod: #sendString: on: SockConn as: [:self :s |
+  let n := [s size];
+  [[n = 0]
+    ifTrue:  [| 0]
+    ifFalse: [|
+      let sent := [[self fd] sendStr: s len: n flags: 0];
+      [[sent < n]
+        ifTrue:  [|
+          [[sent < 1]
+            ifTrue:  [| sent]
+            ifFalse: [| [self sendString: [s copyFrom: sent to: n]]]]]
+        ifFalse: [| sent]]]]]];
+
+// Free the recv buffer (libc malloc, not GC'd) and close the fd.
+[Reflect defineMethod: #close on: SockConn as: [:self |
+  [[self buffer] free];
+  [[self fd] closeFd]]];
+
+// Reactor stub (Layer 3 will use this; the blocking path does not).
+// macOS: F_SETFL = 4, O_NONBLOCK = 4. A real reactor should F_GETFL first and OR
+// the bit in — bitwise-or isn't in the Integer surface yet, so this sets the flags
+// to exactly O_NONBLOCK.
+[Reflect defineMethod: #setNonBlocking on: SockConn as: [:self |
+  [[self fd] fcntlCmd: 4 arg: 4]]];
+
+// Arm the SIGPIPE guard as the last step of loading.
+[Socket ignoreSigpipe]

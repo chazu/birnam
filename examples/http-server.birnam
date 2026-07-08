@@ -1,0 +1,28 @@
+// A minimal HTTP server over the birnam-native Socket module.
+//
+// Demonstrates the Layer-0 networking floor (modules/socket.birnam): pure birnam
+// over libc via Alien, no new Zig. This is the blocking, one-connection-at-a-time
+// shape — enough to host a page; a poll() reactor (for many concurrent clients in
+// one image) is a later layer. Run it:
+//
+//   birnam examples/http-server.birnam
+//
+// then visit http://localhost:8080/ (Ctrl-C to stop). Every browser request is
+// answered with the same page; the request bytes are read and ignored.
+
+[System load: "modules/socket.birnam"];
+
+// Build a complete HTTP/1.1 response for a text/html body. `Connection: close`
+// tells the client we hang up after one response (matching the blocking loop),
+// and Content-Length lets it know when the body ends.
+[Reflect defineMethod: #httpPage: on: Socket as: [:self :body |
+  let head := [["HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " , [[body size] printString]] , "\r\nConnection: close\r\n\r\n"];
+  [head , body]]];
+
+let page := "<!doctype html><meta charset=utf-8><title>birnam</title><h1>Served by birnam</h1><p>This page came off a socket wrapped in pure birnam over libc.</p>";
+
+[System println: "birnam http server on http://localhost:8080/  (Ctrl-C to stop)"];
+
+[Socket serve: 8080 with: [:conn |
+  let req := [conn recv];
+  [conn sendString: [Socket httpPage: page]]]]
