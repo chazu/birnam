@@ -1,0 +1,82 @@
+// process.birnam — run external commands, capture output, over libc via Alien.
+//
+// A birnam-native OS module. Uses libc's stdio process pipes (`popen`/`fgets`/
+// `pclose`) for a capturing first cut: run a shell command, collect its stdout,
+// read its exit code. No new Zig. (A later, shell-free version can use
+// posix_spawn with a real argv array + pipes; that's the fiddly part.)
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/process.birnam"]
+//
+//   [Process output: "echo hi"]        "=> \"hi\\n\"          (stdout only)"
+//   [Process status: "false"]          "=> 1                 (exit code only)"
+//   let r := [Process run: "ls -la"]   "=> a result object:"
+//   [r stdout]                         "   the captured stdout (String)"
+//   [r exitCode]                       "   the exit code (Integer)"
+//   [r ok]                             "   true iff exitCode = 0"
+//
+// NOTES: the command runs via /bin/sh -c, so shell quoting applies; only stdout
+// is captured (append \"2>&1\" to fold in stderr). Output is read as text — an
+// embedded NUL byte would truncate a chunk. Draining recurses per ~4 KB chunk, so
+// enormous output could deepen the stack.
+
+// -- low-level libc wraps -----------------------------------------------------
+// FILE *popen(const char *command, const char *type)   — receiver = command
+[Alien wrap: "popen"  signature: "p s s"  as: #popenType:      on: String];
+// char *fgets(char *buf, int size, FILE *stream)        — receiver = buf; answers
+// buf, or NULL at EOF (checked with `isNull`); the bytes are read back with peek.
+[Alien wrap: "fgets"  signature: "p p i p" as: #fgetsSize:stream: on: Word];
+// int pclose(FILE *stream)  — receiver = the FILE* word; answers the wait status.
+[Alien wrap: "pclose" signature: "i p"    as: #pclose         on: Word];
+
+// The module + a result prototype (its fields live in cells keyed on self).
+[Globals at: #Process put: [Object clone]];
+[Globals at: #ProcResult put: [Object clone]];
+
+[Reflect defineMethod: #stdout on: ProcResult as: [:self |
+  [[db cellFor: self attr: #stdout] value]]];
+[Reflect defineMethod: #exitCode on: ProcResult as: [:self |
+  [[db cellFor: self attr: #exit] value]]];
+[Reflect defineMethod: #ok on: ProcResult as: [:self |
+  [[self exitCode] = 0]]];
+
+// -- draining stdout ----------------------------------------------------------
+
+// Read the rest of `fp` through the reusable buffer `buf`, accumulating onto `acc`.
+// A recursive method (self-sends late-bind); fgets answers NULL at EOF.
+[Reflect defineMethod: #drainFp:buf:into: on: Process as: [:self :fp :buf :acc |
+  let r := [buf fgetsSize: 4096 stream: fp];
+  [[r isNull]
+    ifTrue:  [| acc]
+    ifFalse: [| [self drainFp: fp buf: buf into: [acc , [buf peekStringAt: 0]]]]]]];
+
+// -- the public surface -------------------------------------------------------
+
+// Run `cmd` via the shell, capturing stdout. Always answers a ProcResult; a
+// command that could not even be started comes back with stdout "" and exitCode -1.
+[Reflect defineMethod: #run: on: Process as: [:self :cmd |
+  let r  := [ProcResult clone];
+  let fp := [cmd popenType: "r"];
+  [[fp isNull]
+    ifTrue: [|
+      [[db cellFor: r attr: #stdout] set: ""];
+      [[db cellFor: r attr: #exit]   set: -1];
+      r]
+    ifFalse: [|
+      let buf    := [Alien alloc: 4096];
+      let out    := [self drainFp: fp buf: buf into: ""];
+      [buf free];
+      // pclose answers the raw wait status; the exit code is bits 8..15.
+      let status := [fp pclose];
+      let code   := [[status / 256] mod: 256];
+      [[db cellFor: r attr: #stdout] set: out];
+      [[db cellFor: r attr: #exit]   set: code];
+      r]]]];
+
+// Convenience: just the captured stdout.
+[Reflect defineMethod: #output: on: Process as: [:self :cmd |
+  [[self run: cmd] stdout]]];
+
+// Convenience: just the exit code.
+[Reflect defineMethod: #status: on: Process as: [:self :cmd |
+  [[self run: cmd] exitCode]]]
