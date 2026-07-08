@@ -1,0 +1,23 @@
+// os.birnam — process-level OS bits for birnam, over libc via Alien.
+//
+// Same principle as time/file/process: the irreducible capability is "call a C
+// function," and Alien is that gateway — no new Zig. This one exposes the process
+// exit code, which a test runner (or any script) needs to signal pass/fail to a
+// shell or CI.
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/os.birnam"]
+//   [OS exit: 0]        "=> terminate the process with status 0"
+//   [1 exitProcess]     "=> the raw form: the Integer receiver IS the status"
+//
+// void exit(int status)  — never returns; runs stdio flush first, so any output
+// already printed is preserved. Alien marshals the method receiver as the FIRST C
+// argument, so wrapped as a no-arg method on Integer the receiver supplies the
+// status. Signature "v i" = void return, one int argument (that receiver slot).
+[Alien wrap: "exit" signature: "v i" as: #exitProcess on: Integer];
+
+[Globals at: #OS put: [Object clone]];
+
+// Terminate the process with `code` (an Integer, 0 = success).
+[Reflect defineMethod: #exit: on: OS as: [:self :code |
+  [code exitProcess]]]

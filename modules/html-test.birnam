@@ -1,0 +1,56 @@
+// html-test.birnam — the test suite for modules/html.birnam, in the live style.
+//
+// Loading this file only DEFINES and REGISTERS the suite (via TestSuite, which
+// registers itself with Test); it runs NOTHING. Execution is a separate act — see
+// modules/run-tests.birnam, or interactively:
+//   [System load: "modules/html-test.birnam"]
+//   [Test runTestsForModule: #html withRunner: ConsoleRunner]
+//
+// Run from the repo root (the System load: paths resolve against the cwd). The
+// guarded loads pull in the harness + the module under test only if absent, so
+// several *-test files can share one loaded copy.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+[[Globals includes: #Html]      ifTrue: [| nil] ifFalse: [| [System load: "modules/html.birnam"]]];
+
+let s := [TestSuite named: "Html" module: #html];
+
+[s test: "escape handles all five chars, & first" do: [:t |
+  [t expect: [Html escape: "a<b>&\"c"] equals: "a&lt;b&gt;&amp;&quot;c"
+     describes: "escape"]]];
+
+[s test: "tag:text: escapes content" do: [:t |
+  [t expect: [Html tag: "p" text: "hi <there>"] equals: "<p>hi &lt;there&gt;</p>"
+     describes: "tag:text:"]]];
+
+[s test: "tag:body: leaves markup raw" do: [:t |
+  [t expect: [Html tag: "div" body: "<b>x</b>"] equals: "<div><b>x</b></div>"
+     describes: "tag:body:"]]];
+
+[s test: "attr:value: escapes and leads with a space" do: [:t |
+  [t expect: [Html attr: "href" value: "a\"b"] equals: " href=\"a&quot;b\""
+     describes: "attr:value:"]]];
+
+[s test: "tag:attrs:body: composes" do: [:t |
+  [t expect: [Html tag: "a" attrs: [Html attr: "href" value: "/x"] body: "go"]
+     equals: "<a href=\"/x\">go</a>" describes: "tag:attrs:body:"]]];
+
+[s test: "void element" do: [:t |
+  [t assert: [[Html void: "br"] = "<br>"] describes: "void:"]]];
+
+[s test: "two attributes concatenate with correct spacing" do: [:t |
+  let two := [[Html attr: "id" value: "m"] , [Html attr: "class" value: "big"]];
+  [t expect: [Html tag: "span" attrs: two body: "y"]
+     equals: "<span id=\"m\" class=\"big\">y</span>" describes: "multi-attr"]]];
+
+[s test: "join: builds a list from a Vector" do: [:t |
+  let items := [[#[] add: [Html tag: "li" text: "one"]] add: [Html tag: "li" text: "two"]];
+  [t expect: [Html tag: "ul" body: [Html join: items]]
+     equals: "<ul><li>one</li><li>two</li></ul>" describes: "join:"]]];
+
+[s test: "page: wraps a full document" do: [:t |
+  [t expect: [Html page: "Hi" body: [Html tag: "h1" text: "Welcome"]]
+     equals: "<!DOCTYPE html><html><head><title>Hi</title></head><body><h1>Welcome</h1></body></html>"
+     describes: "page:"]]];
+
+s

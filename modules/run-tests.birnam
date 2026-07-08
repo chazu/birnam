@@ -1,0 +1,23 @@
+// run-tests.birnam — the test gate: load every *-test suite, run them all, and
+// EXIT with the process status the result implies (0 all-pass, 1 any-fail). That
+// exit code is what lets a shell or CI depend on the birnam-level suites.
+//
+//   ./zig-out/bin/birnam modules/run-tests.birnam   # from the repo root
+//   echo $?                                          # 0 green, 1 red
+//
+// Register-then-run: each loaded *-test file only defines + registers its suite
+// (via TestSuite, which registers itself with Test); nothing runs until the
+// explicit runAllSuitesWithRunner: below. Add a new module's tests by loading its
+// *-test file here.
+
+[System load: "modules/os.birnam"];
+
+// -- register every suite (loading defines + registers, runs nothing) ---------
+[System load: "modules/html-test.birnam"];
+[System load: "modules/random-test.birnam"];
+
+// -- run them all through the console runner, then gate the exit code ----------
+[Test runAllSuitesWithRunner: ConsoleRunner];
+[[ConsoleRunner allPassed]
+  ifTrue:  [| [OS exit: 0]]
+  ifFalse: [| [OS exit: 1]]]

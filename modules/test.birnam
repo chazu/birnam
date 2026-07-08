@@ -1,0 +1,188 @@
+// test.birnam — a live, Smalltalk-style test system for birnam, pure birnam.
+//
+// Tests are OBJECTS THAT LIVE IN THE IMAGE, not scripts you run and throw away.
+// A `TestSuite` holds its cases as DEFERRED blocks, so a suite can be run any
+// number of times — edit a method, re-run its suite, repeat, all in one image.
+// `Test` is the registry: every suite registers itself as facts in the store
+// (`suite isTestSuite true` / `suite testsModule <mod>`), so the set of tests is
+// queryable — by module, or in full — the same way any other data is. A `Runner`
+// is a separate, pluggable collaborator that decides how results are reported;
+// swap it without touching a single suite.
+//
+// Four objects:
+//   TestSuite     a named, module-tagged collection of deferred (name, block) cases
+//   Test          the registry + the run protocol (runSuite:/runTestsForModule:/…)
+//   TestContext   the `t` handed to each case block: assert:/deny:/expect:, which
+//                 forward the outcome to the runner (comparison lives here, once)
+//   ConsoleRunner the default runner: prints ok/FAIL lines and a total; pluggable
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/test.birnam"]
+//
+// DEFINE (registers; runs nothing):
+//   let s := [TestSuite named: "Html" module: #html];
+//   [s test: "escapes ampersand" do: [:t |
+//      [t expect: [Html escape: "a&b"] equals: "a&amp;b" describes: "& -> entity"]]];
+//   [s test: "void element" do: [:t | [t assert: [[Html void: "br"] = "<br>"] describes: "br"]]];
+//
+// RUN (reflective, re-runnable, pluggable runner):
+//   [Test runSuite: s withRunner: ConsoleRunner]
+//   [Test runTestsForModule: #html withRunner: ConsoleRunner]
+//   [Test runAllSuitesWithRunner: ConsoleRunner]      "=> returns the runner"
+//   [ConsoleRunner allPassed]                         "=> gate an exit code on this"
+//
+// Comparison is by printString (birnam `=` only spans ints/strings), so symbols
+// and booleans compare through their print names; `assert:` wants a real boolean.
+
+// ===========================================================================
+// TestContext — the `t` passed to each case block. Owns the comparison logic
+// (once), forwards each outcome to the current runner via passed:/failed:detail:.
+// ===========================================================================
+[Globals at: #TestContext put: [Object clone]];
+
+[Reflect defineMethod: #runner on: TestContext as: [:self |
+  [[db cellFor: self attr: #runner] value]]];
+
+// A fresh context bound to a runner.
+[Reflect defineMethod: #for: on: TestContext as: [:self :r |
+  let t := [TestContext clone];
+  [[db cellFor: t attr: #runner] set: r];
+  t]];
+
+// The funnel: report a pass or a failure (with detail) to the runner.
+[Reflect defineMethod: #note:label:detail: on: TestContext as: [:self :ok :label :detail |
+  [ok
+    ifTrue:  [| [[self runner] passed: label]]
+    ifFalse: [| [[self runner] failed: label detail: detail]]];
+  self]];
+
+// Pass when `cond` is the boolean true.
+[Reflect defineMethod: #assert:describes: on: TestContext as: [:self :cond :label |
+  [self note: [[cond printString] = "true"] label: label detail: "expected true"]]];
+
+// Pass when `cond` is the boolean false.
+[Reflect defineMethod: #deny:describes: on: TestContext as: [:self :cond :label |
+  [self note: [[cond printString] = "false"] label: label detail: "expected false"]]];
+
+// Pass when `got` and `want` print alike; failure detail carries both.
+[Reflect defineMethod: #expect:equals:describes: on: TestContext as: [:self :got :want :label |
+  let gs := [got printString];
+  let ws := [want printString];
+  [self note: [gs = ws] label: label detail: ["got=" , gs , " want=" , ws]]]];
+
+// ===========================================================================
+// ConsoleRunner — the default runner. Accumulates pass/fail totals and prints.
+// Any object answering reset / suiteStarted: / passed: / failed:detail: /
+// suiteFinished: / summary / allPassed can stand in its place.
+// ===========================================================================
+[Globals at: #ConsoleRunner put: [Object clone]];
+
+[Reflect defineMethod: #passedCount on: ConsoleRunner as: [:self |
+  [[db cellFor: self attr: #pass] value]]];
+[Reflect defineMethod: #failedCount on: ConsoleRunner as: [:self |
+  [[db cellFor: self attr: #fail] value]]];
+
+// Zero the cumulative totals. The run-all/run-module entry points call this;
+// runSuite:withRunner: does NOT, so several suites can accumulate into one runner.
+[Reflect defineMethod: #reset on: ConsoleRunner as: [:self |
+  [[db cellFor: self attr: #pass] set: 0];
+  [[db cellFor: self attr: #fail] set: 0];
+  self]];
+
+[Reflect defineMethod: #suiteStarted: on: ConsoleRunner as: [:self :nm |
+  [System println: ["== " , nm , " =="]];
+  self]];
+
+[Reflect defineMethod: #passed: on: ConsoleRunner as: [:self :label |
+  [[db cellFor: self attr: #pass] set: [[self passedCount] + 1]];
+  [System println: ["  ok   " , label]];
+  self]];
+
+[Reflect defineMethod: #failed:detail: on: ConsoleRunner as: [:self :label :detail |
+  [[db cellFor: self attr: #fail] set: [[self failedCount] + 1]];
+  [System println: ["  FAIL " , label , " (" , detail , ")"]];
+  self]];
+
+[Reflect defineMethod: #suiteFinished: on: ConsoleRunner as: [:self :nm | self]];
+
+[Reflect defineMethod: #summary on: ConsoleRunner as: [:self |
+  [System println:
+    ["TOTAL: " , [[self passedCount] printString] , " passed, "
+               , [[self failedCount] printString] , " failed"]];
+  self]];
+
+[Reflect defineMethod: #allPassed on: ConsoleRunner as: [:self |
+  [[self failedCount] = 0]]];
+
+// Initialise the default runner's totals so a bare runSuite:withRunner: (no
+// preceding reset) never reads a nil count.
+[[db cellFor: ConsoleRunner attr: #pass] set: 0];
+[[db cellFor: ConsoleRunner attr: #fail] set: 0];
+
+// ===========================================================================
+// TestSuite — a named, module-tagged bag of deferred cases. Registers itself
+// with Test (as store facts) the moment it is created.
+// ===========================================================================
+[Globals at: #TestSuite put: [Object clone]];
+
+[Reflect defineMethod: #name on: TestSuite as: [:self |
+  [[db cellFor: self attr: #name] value]]];
+[Reflect defineMethod: #cases on: TestSuite as: [:self |
+  [[db cellFor: self attr: #cases] value]]];
+
+// A fresh suite named `nm`, tagged with module symbol `mod`, no cases yet. It
+// registers itself as facts so `Test` can find it later.
+[Reflect defineMethod: #named:module: on: TestSuite as: [:self :nm :mod |
+  let s := [TestSuite clone];
+  [[db cellFor: s attr: #name]  set: nm];
+  [[db cellFor: s attr: #cases] set: #[]];
+  [db assert: s attr: #isTestSuite value: #true];
+  [db assert: s attr: #testsModule value: mod];
+  s]];
+
+// Add a deferred case: `nm` names it, `blk` is a 1-arg block [:t | …] run later
+// against a fresh TestContext. Answers self, so cases chain.
+[Reflect defineMethod: #test:do: on: TestSuite as: [:self :nm :blk |
+  let cse := [Object clone];
+  [[db cellFor: cse attr: #cname]  set: nm];
+  [[db cellFor: cse attr: #cblock] set: blk];
+  [[db cellFor: self attr: #cases] set: [[self cases] add: cse]];
+  self]];
+
+// ===========================================================================
+// Test — the registry and the run protocol.
+// ===========================================================================
+[Globals at: #Test put: [Object clone]];
+
+// Every registered suite.
+[Reflect defineMethod: #suites on: Test as: [:self |
+  [db findAll: ?s where: #[ #[?s #isTestSuite #true] ]]]];
+
+// The suites tagged with a given module symbol.
+[Reflect defineMethod: #suitesForModule: on: Test as: [:self :mod |
+  [db findAll: ?s where: #[ #[?s #testsModule mod] ]]]];
+
+// Run one suite against a runner: announce it, hand each case block a fresh
+// TestContext, then close it. Does not reset the runner (see reset).
+[Reflect defineMethod: #runSuite:withRunner: on: Test as: [:self :s :r |
+  [r suiteStarted: [s name]];
+  let t := [TestContext for: r];
+  [[s cases] do: [:cse |
+    [[[db cellFor: cse attr: #cblock] value] value: t]]];
+  [r suiteFinished: [s name]];
+  s]];
+
+// Run every registered suite through the runner (reset first, summarise after).
+// Answers the runner, so `[[Test runAllSuitesWithRunner: R] allPassed]` gates.
+[Reflect defineMethod: #runAllSuitesWithRunner: on: Test as: [:self :r |
+  [r reset];
+  [[self suites] do: [:s | [self runSuite: s withRunner: r]]];
+  [r summary];
+  r]];
+
+// Run only the suites tagged with `mod` (reset first, summarise after).
+[Reflect defineMethod: #runTestsForModule:withRunner: on: Test as: [:self :mod :r |
+  [r reset];
+  [[self suitesForModule: mod] do: [:s | [self runSuite: s withRunner: r]]];
+  [r summary];
+  r]]

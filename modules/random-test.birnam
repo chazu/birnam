@@ -1,0 +1,27 @@
+// random-test.birnam — the test suite for modules/random.birnam, live style.
+// Loading only registers the suite; run via modules/run-tests.birnam or:
+//   [Test runTestsForModule: #random withRunner: ConsoleRunner]
+// Run from the repo root.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+[[Globals includes: #Random]    ifTrue: [| nil] ifFalse: [| [System load: "modules/random.birnam"]]];
+
+let s := [TestSuite named: "Random" module: #random];
+
+[s test: "same seed -> same nextInt:" do: [:t |
+  [Random seed: 42];
+  let a := [Random nextInt: 1000];
+  [Random seed: 42];
+  let b := [Random nextInt: 1000];
+  [t expect: a equals: b describes: "reproducible"]]];
+
+[s test: "between:and: stays in range" do: [:t |
+  [Random seed: 7];
+  let r := [Random between: 10 and: 20];
+  [t assert: [[r >= 10] & [r <= 20]] describes: "in [10,20]"]]];
+
+[s test: "bool is a boolean" do: [:t |
+  let bs := [[Random bool] printString];
+  [t assert: [[bs = "true"] | [bs = "false"]] describes: "true/false"]]];
+
+s
