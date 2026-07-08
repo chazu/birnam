@@ -1,0 +1,168 @@
+// http.birnam — a small HTTP/1.1 server for birnam, in pure birnam. Layer 2a.
+//
+// Rides the networking floor (modules/socket.birnam) and the filesystem module
+// (modules/file.birnam): parse a request line, route a URL path to a file under a
+// document root, guess a content type, and write the response. No new Zig.
+//
+// DEPENDENCIES — load these first (Http does NOT auto-load them, to avoid nested
+// eval during its own load):
+//   [System load: "modules/socket.birnam"];
+//   [System load: "modules/file.birnam"];
+//   [System load: "modules/http.birnam"];
+//
+// Serve a directory of static files (blocking, one connection at a time):
+//   [Http serveDir: "docs" on: 8080]
+// or route requests yourself — the handler gets an HttpRequest and returns a
+// response String (build one with `status:reason:type:body:` / `ok:type:` / etc.):
+//   [Http serve: 8080 with: [:req |
+//     [[[req path] = "/ping"]
+//       ifTrue:  [| [Http ok: "pong" type: "text/plain"]]
+//       ifFalse: [| [Http notFound]]]]]
+//
+// TEXT ONLY: send marshals the body as a C string (see socket.birnam), so a file
+// with an embedded NUL byte (most binary formats) truncates. Fine for HTML / CSS /
+// JS / JSON / SVG / Markdown / plain text — which is what the docs are. Binary
+// bodies want a send-from-raw-buffer path, a later concern.
+//
+// AUTHORING: every multi-line method here ends with a bare `let`-bound variable
+// then `]]` — closing the `[:self …|` body block and the `[Reflect …]` call. Keeps
+// the closing-bracket count trivial (deep inline nesting is where it goes wrong).
+
+[Globals at: #Http put: [Object clone]];
+
+// -- the request --------------------------------------------------------------
+
+[Globals at: #HttpRequest put: [Object clone]];
+[Reflect defineMethod: #method on: HttpRequest as: [:self | [[db cellFor: self attr: #method] value]]];
+[Reflect defineMethod: #path   on: HttpRequest as: [:self | [[db cellFor: self attr: #path]   value]]];
+[Reflect defineMethod: #raw    on: HttpRequest as: [:self | [[db cellFor: self attr: #raw]    value]]];
+
+// Parse the request line ("GET /a/b?q=1 HTTP/1.1") into an HttpRequest. The query
+// string is stripped from the path; a malformed/empty request defaults to GET /.
+[Reflect defineMethod: #requestFrom: on: Http as: [:self :raw |
+  let req   := [HttpRequest clone];
+  let line  := [[raw split: "\r\n"] first];
+  let parts := [line split: " "];
+  let ok    := [[parts size] >= 2];
+  let m     := [ok ifTrue: [| [parts at: 0]] ifFalse: [| "GET"]];
+  let p     := [ok ifTrue: [| [parts at: 1]] ifFalse: [| "/"]];
+  let clean := [[p split: "?"] first];
+  [[db cellFor: req attr: #method] set: m];
+  [[db cellFor: req attr: #path]   set: clean];
+  [[db cellFor: req attr: #raw]    set: raw];
+  req]];
+
+// -- content types ------------------------------------------------------------
+
+// Maps key by identity, so the interned symbol from `asSymbol` matches these
+// interned literal keys.
+[Reflect defineMethod: #mimeTable on: Http as: [:self |
+  let t := { #html -> "text/html; charset=utf-8",
+             #htm  -> "text/html; charset=utf-8",
+             #css  -> "text/css; charset=utf-8",
+             #js   -> "application/javascript",
+             #json -> "application/json",
+             #svg  -> "image/svg+xml",
+             #txt  -> "text/plain; charset=utf-8",
+             #md   -> "text/plain; charset=utf-8" };
+  t]];
+
+[Reflect defineMethod: #extOf: on: Http as: [:self :path |
+  let e := [[[path split: "."] last] asLowercase];
+  e]];
+
+[Reflect defineMethod: #mimeFor: on: Http as: [:self :path |
+  let m := [[self mimeTable] at: [[self extOf: path] asSymbol] ifAbsent: [| "text/plain; charset=utf-8"]];
+  m]];
+
+// -- responses ----------------------------------------------------------------
+
+// Assemble a full HTTP/1.1 response. `Connection: close` matches the blocking loop
+// (one response per connection); Content-Length frames the body.
+[Reflect defineMethod: #status:reason:type:body: on: Http as: [:self :code :reason :mime :body |
+  let sl   := [[["HTTP/1.1 " , [code printString]] , " "] , reason];
+  let ct   := [["\r\nContent-Type: " , mime] , "\r\nContent-Length: "];
+  let hd   := [[ct , [[body size] printString]] , "\r\nConnection: close\r\n\r\n"];
+  let resp := [[sl , hd] , body];
+  resp]];
+
+[Reflect defineMethod: #ok:type: on: Http as: [:self :body :mime |
+  let r := [self status: 200 reason: "OK" type: mime body: body];
+  r]];
+
+[Reflect defineMethod: #notFound on: Http as: [:self |
+  let r := [self status: 404 reason: "Not Found" type: "text/html; charset=utf-8" body: "<h1>404 Not Found</h1>"];
+  r]];
+
+[Reflect defineMethod: #forbidden on: Http as: [:self |
+  let r := [self status: 403 reason: "Forbidden" type: "text/html; charset=utf-8" body: "<h1>403 Forbidden</h1>"];
+  r]];
+
+// -- static-file serving ------------------------------------------------------
+
+// The index file inside a directory path (with a single joining slash).
+[Reflect defineMethod: #indexUnder: on: Http as: [:self :dirpath |
+  let idx := [[dirpath endsWith: "/"] ifTrue: [| [dirpath , "index.html"]] ifFalse: [| [dirpath , "/index.html"]]];
+  idx]];
+
+// One <li> link for a directory listing.
+[Reflect defineMethod: #linkItem:base: on: Http as: [:self :nm :base |
+  let li := [[[[["<li><a href=\"" , base] , nm] , "\">"] , nm] , "</a></li>"];
+  li]];
+
+// A browsable HTML index of `fsdir`, linking each entry under `urlpath`.
+[Reflect defineMethod: #listing:url: on: Http as: [:self :fsdir :urlpath |
+  let me    := self;
+  let base  := [[urlpath endsWith: "/"] ifTrue: [| urlpath] ifFalse: [| [urlpath , "/"]]];
+  let names := [File listDir: fsdir];
+  let items := [names inject: "" into: [:acc :nm | [acc , [me linkItem: nm base: base]]]];
+  let top   := [["<!doctype html><meta charset=utf-8><title>Index of " , urlpath] , "</title><h1>Index of "];
+  let html  := [[top , urlpath] , [[" </h1><ul>" , items] , "</ul>"]];
+  let r     := [self ok: html type: "text/html; charset=utf-8"];
+  r]];
+
+// A directory: serve its index.html if present, else a generated listing.
+[Reflect defineMethod: #dirResponse:url: on: Http as: [:self :fsdir :urlpath |
+  let idx := [self indexUnder: fsdir];
+  let r   := [[File exists: idx]
+               ifTrue:  [| [self ok: [File readText: idx] type: "text/html; charset=utf-8"]]
+               ifFalse: [| [self listing: fsdir url: urlpath]]];
+  r]];
+
+// Map a URL path to a file under `docroot` and build the response. A path
+// containing ".." is refused (no traversal above the root).
+[Reflect defineMethod: #fileResponse:under: on: Http as: [:self :urlpath :docroot |
+  let me := self;
+  let r  := [[urlpath includesSubstring: ".."]
+              ifTrue:  [| [me forbidden]]
+              ifFalse: [| [me servePath: [docroot , urlpath] url: urlpath]]];
+  r]];
+
+// Given a filesystem path, serve a directory (index/listing), a file, or 404.
+[Reflect defineMethod: #servePath:url: on: Http as: [:self :fp :urlpath |
+  let me := self;
+  let r  := [[File isDir: fp]
+              ifTrue:  [| [me dirResponse: fp url: urlpath]]
+              ifFalse: [| [[File exists: fp]
+                            ifTrue:  [| [me ok: [File readText: fp] type: [me mimeFor: fp]]]
+                            ifFalse: [| [me notFound]]]]];
+  r]];
+
+// -- the servers --------------------------------------------------------------
+
+// Generic: hand each parsed HttpRequest to `handler`, which returns a response
+// String. Blocks (one connection at a time) on the Socket floor.
+[Reflect defineMethod: #serve:with: on: Http as: [:self :port :handler |
+  let me := self;
+  let r  := [Socket serve: port with: [:conn |
+              let raw  := [conn recv];
+              let req  := [me requestFrom: raw];
+              let resp := [handler value: req];
+              [conn sendString: resp]]];
+  r]];
+
+// Serve static files out of `docroot` (e.g. "docs") on `port`.
+[Reflect defineMethod: #serveDir:on: on: Http as: [:self :docroot :port |
+  let me := self;
+  let r  := [self serve: port with: [:req | [me fileResponse: [req path] under: docroot]]];
+  r]]

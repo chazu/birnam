@@ -1,0 +1,24 @@
+// Serve the birnam docs over HTTP, using the pure-birnam Http module (Layer 2a).
+//
+// Loads the networking floor (socket), the filesystem module (file), and the Http
+// server (http) — all pure birnam over Alien, no new Zig — then serves the `docs/`
+// tree as static files. Run from the repo root:
+//
+//   birnam examples/http-docs.birnam
+//
+// then open http://localhost:8080/  (Ctrl-C to stop). A directory with no
+// index.html renders a browsable listing; .md files are served as text/plain so
+// they display in the browser. A URL containing ".." is refused (403) — no
+// escaping the document root.
+//
+// This is the blocking, one-connection-at-a-time server. For public deployment,
+// front it with a reverse proxy (TLS, timeouts); a poll() reactor for many
+// concurrent clients in one image is a later layer.
+
+[System load: "modules/socket.birnam"];
+[System load: "modules/file.birnam"];
+[System load: "modules/http.birnam"];
+
+[System println: "birnam docs server on http://localhost:8080/  (Ctrl-C to stop)"];
+
+[Http serveDir: "docs" on: 8080]
