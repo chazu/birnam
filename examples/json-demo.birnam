@@ -1,0 +1,22 @@
+// JSON round-trip demo, using the pure-birnam Json module (Peg-based parse +
+// double-dispatch stringify). Run from the repo root:
+//
+//   birnam examples/json-demo.birnam
+
+[System load: "modules/json.birnam"];
+
+// Parse — objects become Maps (string keys), arrays become Vectors, with native
+// Integer / Float / true / false / nil leaves.
+let doc := [Json parse: "{\"name\": \"birnam\", \"port\": 8080, \"tags\": [\"lang\", \"repl\"], \"nested\": {\"ok\": true, \"n\": null}}"];
+
+[System println: ["name:        " , [doc at: "name"]]];
+[System println: ["port:        " , [[doc at: "port"] printString]]];
+[System println: ["first tag:   " , [[doc at: "tags"] at: 0]]];
+[System println: ["nested.ok:   " , [[[doc at: "nested"] at: "ok"] printString]]];
+
+// Stringify — each value renders itself via `asJson`; strings are escaped.
+[System println: ["restringified: " , [Json stringify: doc]]];
+
+// Build a value from scratch and serialize it (no parse involved).
+let reply := [[[Map new] at: "jsonrpc" put: "2.0"] at: "result" put: #[ 1 2 3 ]];
+[System println: ["built reply:   " , [Json stringify: reply]]]
