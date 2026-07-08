@@ -1,0 +1,75 @@
+// html.birnam — HTML generation for birnam, pure birnam.
+//
+// A string-combinator builder: every method answers a plain String, so markup is
+// composed by nesting sends and concatenating with `,`. No FFI, no state — it is
+// a bag of functions hung on an `Html` singleton.
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/html.birnam"]
+//
+//   [Html tag: "p" text: "hi <there>"]     "=> <p>hi &lt;there&gt;</p>"   (text escaped)
+//   [Html tag: "div" body: inner]          "=> <div>...inner markup...</div>" (body raw)
+//   [Html tag: "a" attrs: [Html attr: "href" value: url] body: "click"]
+//   [Html void: "br"]                      "=> <br>"
+//   [Html escape: userInput]               "=> & < > \" turned into entities"
+//   [Html page: "Title" body: markup]      "=> a full <!DOCTYPE html> document"
+//
+// The split that matters: `text:` ESCAPES its argument (it is data), while `body:`
+// does NOT (it is already-built child markup). Attribute VALUES are always escaped.
+// Build attribute lists by concatenating `attr:value:` results — each carries a
+// leading space, so `[a1 , a2]` spaces correctly.
+
+[Globals at: #Html put: [Object clone]];
+
+// -- escaping -----------------------------------------------------------------
+// Turn the five markup-significant characters into entities. `&` MUST go first,
+// or the ampersands introduced by the later rules would be double-escaped.
+[Reflect defineMethod: #escape: on: Html as: [:self :s |
+  let a := [s replace: "&" with: "&amp;"];
+  let b := [a replace: "<" with: "&lt;"];
+  let c := [b replace: ">" with: "&gt;"];
+  [c replace: "\"" with: "&quot;"]]];
+
+// A readable alias when you mean "this is text, escape it".
+[Reflect defineMethod: #text: on: Html as: [:self :s | [self escape: s]]];
+
+// -- elements -----------------------------------------------------------------
+
+// <name>inner</name>. `inner` is raw markup — the caller is responsible for
+// having escaped any text inside it (usually by building it from tag:text:).
+[Reflect defineMethod: #tag:body: on: Html as: [:self :name :inner |
+  ["<" , name , ">" , inner , "</" , name , ">"]]];
+
+// <name>escaped-text</name>. Use when the content is plain data.
+[Reflect defineMethod: #tag:text: on: Html as: [:self :name :t |
+  [self tag: name body: [self escape: t]]]];
+
+// <name attrs>inner</name>. `attrs` is a pre-built attribute string (concatenate
+// attr:value: results), `inner` is raw child markup.
+[Reflect defineMethod: #tag:attrs:body: on: Html as: [:self :name :attrs :inner |
+  ["<" , name , attrs , ">" , inner , "</" , name , ">"]]];
+
+// A void element with no closing tag: <br>, <img>, <input>, <hr>, <meta>.
+[Reflect defineMethod: #void: on: Html as: [:self :name |
+  ["<" , name , ">"]]];
+[Reflect defineMethod: #void:attrs: on: Html as: [:self :name :attrs |
+  ["<" , name , attrs , ">"]]];
+
+// -- attributes ---------------------------------------------------------------
+
+// One attribute:  ` name="escaped-value"`. The leading space lets attribute
+// strings be concatenated directly onto the tag name and onto each other.
+[Reflect defineMethod: #attr:value: on: Html as: [:self :k :v |
+  [" " , k , "=\"" , [self escape: v] , "\""]]];
+
+// -- helpers ------------------------------------------------------------------
+
+// Join a Vector of strings into one (handy for lists of built children).
+[Reflect defineMethod: #join: on: Html as: [:self :parts |
+  [parts inject: "" into: [:acc :x | [acc , x]]]]];
+
+// Wrap markup in a minimal HTML5 document with the given <title>.
+[Reflect defineMethod: #page:body: on: Html as: [:self :title :body |
+  let head := [self tag: "head" body: [self tag: "title" text: title]];
+  let bodyEl := [self tag: "body" body: body];
+  ["<!DOCTYPE html>" , [self tag: "html" body: [head , bodyEl]]]]]
