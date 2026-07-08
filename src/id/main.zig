@@ -21,6 +21,11 @@ const USAGE =
     \\  birnam <file.image>        Boot a saved image (maps compiled code; runs
     \\                             `main`, else drops into the REPL).
     \\  birnam --repl              Start the REPL explicitly (aliases: -i, repl).
+    \\  birnam --listen <port> [file]
+    \\                             Start a socket REPL on <port> (alias: --serve).
+    \\                             If FILE is given it is run first, so the listener
+    \\                             attaches to its state. Run from the repo root so
+    \\                             modules/ is visible. Blocks; Ctrl-C to stop.
     \\  birnam --demo              Run the verbose boot self-test (proves the
     \\                             whole stack compiles to native through the id api).
     \\  birnam wrap <name>         Scaffold wrapped/<name>/<name>.birnam — a
@@ -315,6 +320,14 @@ pub fn main() !void {
     if (script_path) |sp| {
         if (std.mem.eql(u8, sp, "--repl") or std.mem.eql(u8, sp, "-i") or std.mem.eql(u8, sp, "repl"))
             return runRepl(a, api, false);
+        if (std.mem.eql(u8, sp, "--listen") or std.mem.eql(u8, sp, "--serve")) {
+            const port = args.next() orelse {
+                out("usage: birnam --listen <port> [file.birnam]\n");
+                return error.ListenArgs;
+            };
+            const file = args.next(); // optional: run this file first, then listen
+            return runListen(a, api, port, file);
+        }
         if (std.mem.eql(u8, sp, "--demo"))
             return runDemo(a, api, id_path, id_path_z);
         if (std.mem.eql(u8, sp, "--compile-module")) {
@@ -767,6 +780,55 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
         out(path);
         out(":\n");
         outErrorString(api, err);
+        std.process.exit(1);
+    }
+}
+
+/// `birnam --listen <port> [file]` — bring the image up (optionally running FILE
+/// first so the listener attaches to its state), then start the pure-birnam socket
+/// REPL on PORT and serve. Blocks in the accept loop; Ctrl-C stops it. The REPL and
+/// networking live in birnam (modules/{socket,repl}.birnam, cwd-relative — run from
+/// the repo root); this only wires the launch, like `--repl`.
+fn runListen(a: std.mem.Allocator, api: *IdApi, port: [:0]const u8, file: ?[:0]const u8) !void {
+    // Validate the port up front — otherwise a non-numeric value would flow into
+    // the birnam source as an undefined name and hang instead of failing fast.
+    _ = std.fmt.parseInt(u16, port, 10) catch {
+        out("birnam --listen: port must be a number in 0..65535\n");
+        return error.ListenArgs;
+    };
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+
+    loadStdlib(a, api, codegen);
+
+    // Optionally run FILE first, so the listener sees whatever state it defines.
+    if (file) |f| {
+        const src = try std.fs.cwd().readFileAlloc(a, f, 16 << 20);
+        defer a.free(src);
+        _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
+        const ferr = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
+        if (ferr != api.nilObj) {
+            out("birnam: compile error in ");
+            out(f);
+            out(":\n");
+            outErrorString(api, ferr);
+            std.process.exit(1);
+        }
+    }
+
+    // Load the networking + REPL modules and start serving (blocks in accept()).
+    const boot = try std.fmt.allocPrint(a, "[System load: \"modules/socket.birnam\"]; [System load: \"modules/repl.birnam\"]; [Repl serveOn: {s}]", .{port});
+    defer a.free(boot);
+    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
+    const berr = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
+    if (berr != api.nilObj) {
+        out("birnam --listen: could not start the REPL server (run from the repo root so modules/ is visible):\n");
+        outErrorString(api, berr);
         std.process.exit(1);
     }
 }

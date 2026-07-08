@@ -1,0 +1,130 @@
+// repl.birnam — an out-of-process REPL over TCP, in pure birnam. Layer 2b.
+//
+// A running image opens a socket; a client (nc, or Emacs over a network comint)
+// connects and types birnam forms; the image evaluates each against its LIVE state
+// with `[Codegen evalPersisting:]` and writes the value back. Rides the networking
+// floor (socket.birnam). No new Zig — evaluation of received source is a capability
+// the image already has.
+//
+// DEPENDENCIES — load first (Repl does NOT auto-load, to keep loading simple):
+//   [System load: "modules/socket.birnam"];
+//   [System load: "modules/repl.birnam"];
+//   [Repl serveOn: 5555]
+// then, from another terminal:  nc localhost 5555
+//
+// Bindings PERSIST across forms (evalPersisting:), so `let x := 40` on one line and
+// `[x + 2]` on the next work — you are talking to the real image. Multi-line forms
+// accumulate until their brackets balance before evaluating. `:quit` disconnects.
+//
+// SCOPE (v1): one connection at a time (blocking, on the Socket floor); a long
+// single session recurses once per form (fine for interactive use, not for tens of
+// thousands of forms). The completeness scan is string-literal aware but does NOT
+// skip `//` comments, so a comment with unbalanced brackets can confuse it — rare
+// in a typed form. Both go away with the poll() reactor / a richer reader later.
+
+// -- bracket-balance scanner --------------------------------------------------
+// Tracks net bracket depth across a source string, skipping brackets inside string
+// literals (with `\` escapes). State lives in cells so `to:do:` can drive it
+// iteratively (no per-byte recursion). Byte codes: [ 91  ] 93  { 123  } 125
+// ( 40  ) 41  " 34  \ 92.
+
+[Globals at: #ReplScan put: [Object clone]];
+
+[Reflect defineMethod: #reset on: ReplScan as: [:self |
+  [[db cellFor: self attr: #depth] set: 0];
+  [[db cellFor: self attr: #inStr] set: false];
+  [[db cellFor: self attr: #esc]   set: false];
+  self]];
+
+[Reflect defineMethod: #depth on: ReplScan as: [:self | [[db cellFor: self attr: #depth] value]]];
+
+[Reflect defineMethod: #isOpen:  on: ReplScan as: [:self :b | let r := [[[b = 91] | [b = 123]] | [b = 40]]; r]];
+[Reflect defineMethod: #isClose: on: ReplScan as: [:self :b | let r := [[[b = 93] | [b = 125]] | [b = 41]]; r]];
+
+[Reflect defineMethod: #bump: on: ReplScan as: [:self :d |
+  let c := [db cellFor: self attr: #depth];
+  [c set: [[c value] + d]];
+  self]];
+
+// Inside a string literal: consume an escaped byte, arm on `\`, close on `"`.
+[Reflect defineMethod: #feedInStr: on: ReplScan as: [:self :b |
+  let esc := [[db cellFor: self attr: #esc] value];
+  let r := [esc
+    ifTrue:  [| [[db cellFor: self attr: #esc] set: false]]
+    ifFalse: [| [[b = 92]
+      ifTrue:  [| [[db cellFor: self attr: #esc] set: true]]
+      ifFalse: [| [[b = 34]
+        ifTrue:  [| [[db cellFor: self attr: #inStr] set: false]]
+        ifFalse: [| self]]]]]];
+  r]];
+
+// Outside a string: open on `"`, otherwise count brackets.
+[Reflect defineMethod: #feedNormal: on: ReplScan as: [:self :b |
+  let r := [[b = 34]
+    ifTrue:  [| [[db cellFor: self attr: #inStr] set: true]]
+    ifFalse: [| [[self isOpen: b]
+      ifTrue:  [| [self bump: 1]]
+      ifFalse: [| [[self isClose: b]
+        ifTrue:  [| [self bump: -1]]
+        ifFalse: [| self]]]]]];
+  r]];
+
+[Reflect defineMethod: #feed: on: ReplScan as: [:self :b |
+  let inStr := [[db cellFor: self attr: #inStr] value];
+  [inStr ifTrue: [| [self feedInStr: b]] ifFalse: [| [self feedNormal: b]]];
+  self]];
+
+// -- the REPL -----------------------------------------------------------------
+
+[Globals at: #Repl put: [Object clone]];
+
+// True once `src` holds at least one non-blank char AND its brackets balance.
+[Reflect defineMethod: #isComplete: on: Repl as: [:self :src |
+  let sc := [ReplScan clone];
+  [sc reset];
+  [0 to: [[src size] - 1] do: [:i | [sc feed: [src byteAt: i]]]];
+  let hasText := [[[src trimmed] size] > 0];
+  let done := [hasText & [[sc depth] <= 0]];
+  done]];
+
+// Evaluate one complete form against the live image and write the reply.
+[Reflect defineMethod: #replyTo:src: on: Repl as: [:self :conn :src |
+  let val := [Codegen evalPersisting: src];
+  let err := [Codegen lastError];
+  let msg := [[err notNil]
+    ifTrue:  [| [["!! " , [err printString]] , "\r\n"]]
+    ifFalse: [| [["=> " , [val printString]] , "\r\n"]]];
+  [conn sendString: msg];
+  self]];
+
+// Read/accumulate/evaluate loop for one connected client. Recurses per read;
+// ends when the client hangs up ("" from recv) or sends `:quit`.
+[Reflect defineMethod: #loop:buffer: on: Repl as: [:self :conn :buf |
+  let chunk := [conn recv];
+  let done := [[chunk isEmpty]
+    ifTrue:  [| true]
+    ifFalse: [|
+      let acc := [buf , chunk];
+      [[[acc trimmed] startsWith: ":quit"]
+        ifTrue:  [| true]
+        ifFalse: [|
+          [[self isComplete: acc]
+            ifTrue:  [|
+              [self replyTo: conn src: [acc trimmed]];
+              [conn sendString: "birnam> "];
+              [self loop: conn buffer: ""]]
+            ifFalse: [| [self loop: conn buffer: acc]]]]]]];
+  done]];
+
+// One client session: greet, then loop.
+[Reflect defineMethod: #session: on: Repl as: [:self :conn |
+  [conn sendString: "birnam socket REPL — type a form (multi-line ok), :quit to leave.\r\nbirnam> "];
+  [self loop: conn buffer: ""];
+  self]];
+
+// Listen on `port` and serve one client at a time. Blocks (Socket accept loop).
+[Reflect defineMethod: #serveOn: on: Repl as: [:self :port |
+  let me := self;
+  [System println: ["birnam socket REPL listening on :" , [port printString]]];
+  [Socket serve: port with: [:conn | [me session: conn]]];
+  self]]

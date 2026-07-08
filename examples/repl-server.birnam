@@ -1,0 +1,10 @@
+// An out-of-process REPL: open a TCP port and evaluate forms sent to it against
+// this live image. Pure birnam over the socket floor — no new Zig. Run:
+//
+//   birnam examples/repl-server.birnam
+//
+// then from another terminal:  nc localhost 5555
+// Type birnam forms; `let` bindings persist across lines; `:quit` disconnects.
+[System load: "modules/socket.birnam"];
+[System load: "modules/repl.birnam"];
+[Repl serveOn: 5555]
