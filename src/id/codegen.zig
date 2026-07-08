@@ -373,14 +373,25 @@ fn addShim(unit: Oop, name: []const u8, fnptr: *const anyopaque) void {
 /// The number of message arguments a selector takes: keyword → colon count;
 /// otherwise unary (alnum) → 0, binary (operator) → 1.
 fn selectorArity(sel: Oop) usize {
-    const name = g_api.symbolName(sel);
+    return selectorArityStr(std.mem.span(g_api.symbolName(sel)));
+}
+
+/// The argument arity of a selector spelled as bytes: one arg per `:` for a
+/// keyword selector, one for a binary-operator selector (leading non-letter),
+/// none for a unary selector (leading letter, no `:`). This is the method block's
+/// parameter count MINUS the receiver, so both method trampolines forward `self`
+/// plus these args to the block as `value:`×(arity+1). The Oop-based
+/// `selectorArity` and the AOT `emitDefineMethodInstallable` share this ONE rule —
+/// a binary op like `|>` or `=` has zero colons but still takes one argument, so a
+/// plain colon count (the old bug) dropped it and ran the block a param short.
+fn selectorArityStr(sel: []const u8) usize {
     var colons: usize = 0;
-    var i: usize = 0;
-    while (name[i] != 0) : (i += 1) {
-        if (name[i] == ':') colons += 1;
+    for (sel) |ch| {
+        if (ch == ':') colons += 1;
     }
     if (colons > 0) return colons;
-    const c0 = name[0];
+    if (sel.len == 0) return 0;
+    const c0 = sel[0];
     const is_letter = (c0 >= 'a' and c0 <= 'z') or (c0 >= 'A' and c0 <= 'Z') or c0 == '_';
     return if (is_letter) 0 else 1;
 }
@@ -559,15 +570,6 @@ fn emitDefineMethodSourced(buf: *std.ArrayList(u8), recvNode: Oop, argNodes: []c
     return true;
 }
 
-/// The number of `:` in a selector string (its keyword arity; 0 for unary/binary).
-fn colonCount(sel: []const u8) usize {
-    var k: usize = 0;
-    for (sel) |ch| {
-        if (ch == ':') k += 1;
-    }
-    return k;
-}
-
 /// Artifact-mode `[Reflect defineMethod: #sel on: T as: blk]` (docs/40 slice 4):
 /// emit the method so that LOADING the artifact installs PRE-COMPILED code — no
 /// runtime compile. Mirrors `installMethod` (the JIT path) but statically: the
@@ -580,7 +582,7 @@ fn colonCount(sel: []const u8) usize {
 fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop) bool {
     const selRaw = text(argNodes[0]); // "#sel"
     const sel = if (selRaw.len >= 1 and selRaw[0] == '#') selRaw[1..] else selRaw;
-    const k = colonCount(sel);
+    const k = selectorArityStr(sel);
     const n = artifact_method_counter;
     artifact_method_counter += 1;
 

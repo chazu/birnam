@@ -1,0 +1,36 @@
+// The pipeline operator |> — thread a value left-to-right through blocks.
+//
+// `[x |> aBlock]` is `[aBlock value: x]`: it feeds the left value in as the
+// block's argument. Binary sends fold left, so several pipes chain inside one
+// bracket and read top-to-bottom instead of inside-out. `|>` is defined on
+// Object in the stdlib, so ANY value pipes. Run as a script:
+//
+//   birnam examples/pipeline.birnam
+
+// A block is a first-class value; name a couple of small ones to pipe through.
+let double := [:x | [x * 2]];
+let inc    := [:x | [x + 1]];
+
+// One pipe: feed 5 into `double`.
+[System println: [[5 |> double] printString]];          // 10
+
+// Chained in a single bracket — ((5 |> double) |> inc) — folds left.
+[System println: [[5 |> double |> inc] printString]];   // 11
+
+// The block can be a literal, and can send any message to the value.
+[System println: [["hello, birnam" |> [:s | [s size]]] printString]];   // 13
+
+// The pipe shines on collections: read select -> collect -> inject downward,
+// not as a nest that grows to the left. Each stage names its own input.
+let nums := #[1 2 3 4 5 6 7 8 9 10];
+let sumOfDoubledEvens :=
+   [nums |> [:v | [v select: [:n | [n even]]]]
+         |> [:v | [v collect: double]]
+         |> [:v | [v inject: 0 into: [:acc :n | [acc + n]]]]];
+[System println: [sumOfDoubledEvens printString]];      // (2+4+6+8+10)*2 = 60
+
+// Without |>, the same computation nests inside-out (read it right-to-left):
+let same :=
+   [[[nums select: [:n | [n even]]] collect: double]
+      inject: 0 into: [:acc :n | [acc + n]]];
+[System println: [[sumOfDoubledEvens = same] printString]]   // true

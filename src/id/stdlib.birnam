@@ -136,4 +136,15 @@
          [[other includesKey: k]
             ifTrue:  [| [[self at: k] = [other at: k]] ]
             ifFalse: [| false ]]]] ]
-      ifFalse: [| false ]]]]
+      ifFalse: [| false ]]]];
+
+// -- Object: the pipeline operator |> — thread a value into a block --------------
+//
+// `[x |> aBlock]` is `[aBlock value: x]`: it threads the left value in as the
+// block's argument, so a nest of sends reads left-to-right instead of inside-out.
+// Binary sends fold left, so it chains in one bracket:
+// `[data |> parse |> validate |> render]` is `[render value: [validate value:
+// [parse value: data]]]`. Defined on Object so any value pipes; the block chooses
+// what to do with it (send, combine, guard), which recovers Smalltalk's
+// thread-as-receiver fluency over birnam's native blocks.
+[Reflect defineMethod: #|> on: Object as: [:self :block | [block value: self]]]
