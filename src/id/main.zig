@@ -849,6 +849,9 @@ fn runListen(a: std.mem.Allocator, api: *IdApi, port: [:0]const u8, file: ?[:0]c
     }
 }
 
+// libc setenv (we link libc) — set $BIRNAM_MODULES_DIR for child module loads.
+extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
+
 /// Locate the source `modules/` directory independently of the current working
 /// directory, so `--lsp` (launched by an editor from an arbitrary project) still
 /// finds json.birnam/lsp.birnam. Probes `$BIRNAM_MODULES_DIR`, then candidates
@@ -891,6 +894,9 @@ fn runLsp(a: std.mem.Allocator, api: *IdApi) !void {
 
     const mdir = try resolveModulesDir(a);
     defer a.free(mdir);
+    const mdirZ = try a.dupeZ(u8, mdir);
+    defer a.free(mdirZ);
+    _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
     const boot = try std.fmt.allocPrint(a, "[System load: \"{s}/json.birnam\"]; [System load: \"{s}/lsp.birnam\"]; [Lsp serveStdio]", .{ mdir, mdir });
     defer a.free(boot);
     _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
@@ -919,10 +925,17 @@ fn runDoc(a: std.mem.Allocator, api: *IdApi, mod: [:0]const u8, sel: ?[:0]const 
 
     const mdir = try resolveModulesDir(a);
     defer a.free(mdir);
+    // Export the resolved modules dir so a loaded module's relative dep-loads
+    // ("modules/x.birnam") resolve from this (possibly foreign) working directory.
+    const mdirZ = try a.dupeZ(u8, mdir);
+    defer a.free(mdirZ);
+    _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
+    // Resolve the module either as a birnam module (<mdir>/<mod>.birnam) or, failing
+    // that, as a Zig floor file (<mdir>/../src/id/<mod>.zig, doc-extracted by Zigdoc).
     const boot = if (sel) |s|
-        try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [System load: \"{s}/{s}.birnam\"]; [System print: [Doc cli: #{s} sel: \"{s}\"]]", .{ mdir, mdir, mod, mod, s })
+        try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [System load: \"{s}/zigdoc.birnam\"]; [Zigdoc ensure: #{s} birnam: \"{s}/{s}.birnam\" zig: \"{s}/../src/id/{s}.zig\"]; [System print: [Doc cli: #{s} sel: \"{s}\"]]", .{ mdir, mdir, mod, mdir, mod, mdir, mod, mod, s })
     else
-        try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [System load: \"{s}/{s}.birnam\"]; [System print: [Doc cli: #{s}]]", .{ mdir, mdir, mod, mod });
+        try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [System load: \"{s}/zigdoc.birnam\"]; [Zigdoc ensure: #{s} birnam: \"{s}/{s}.birnam\" zig: \"{s}/../src/id/{s}.zig\"]; [System print: [Doc cli: #{s}]]", .{ mdir, mdir, mod, mdir, mod, mdir, mod, mod });
     defer a.free(boot);
     _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
     const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
