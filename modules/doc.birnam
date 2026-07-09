@@ -99,6 +99,28 @@
         ifTrue:  [| [a2 add: e]]
         ifFalse: [| a2]]]]]]]];
 
+// Is `mod` a documented module? Compares by printed name (bare `=` on symbols
+// fails) and reads only the queryable modules list — never an unset cell.
+[Reflect defineMethod: #isDocumented: on: Doc as: [:self :mod |
+  let want := [mod printString];
+  [[self modules] inject: false into: [:found :m | [found | [[m printString] = want]]]]]];
+
+// `birnam doc <mod>` — the module's docs, or a friendly note if it has none.
+[Reflect defineMethod: #cli: on: Doc as: [:self :mod |
+  [[self isDocumented: mod]
+    ifTrue:  [| [self text: mod]]
+    ifFalse: [| [["no documentation for " , [self nameOf: mod]] , "\n"]]]]];
+
+// `birnam doc <mod> <sel>` — the docstring(s) for one selector name (a String).
+[Reflect defineMethod: #cli:sel: on: Doc as: [:self :mod :selName |
+  let hits := [self lookup: selName];
+  [[hits isEmpty]
+    ifTrue:  [| [["no documentation for " , selName] , "\n"]]
+    ifFalse: [| [hits inject: "" into: [:acc :e |
+      let s := [self nameOf: [[db cellFor: e attr: #sel] value]];
+      let t := [[db cellFor: e attr: #text] value];
+      [acc , [[s , "\n    "] , [t , "\n"]]]]]]]]];
+
 // -- rendering: plaintext (the REPL / `birnam doc` view) ----------------------
 
 // A module's docs as indented plain text — what `[Doc text: #random]` at the REPL

@@ -30,6 +30,8 @@ const USAGE =
     \\                             Point lsp-mode / eglot at this. Resolves the
     \\                             modules/ dir relative to the executable, so it
     \\                             works launched from any project directory.
+    \\  birnam doc <mod> [sel]     Print documentation for a module (like `go doc`):
+    \\                             its method docstrings, or one selector's doc.
     \\  birnam --demo              Run the verbose boot self-test (proves the
     \\                             whole stack compiles to native through the id api).
     \\  birnam wrap <name>         Scaffold wrapped/<name>/<name>.birnam — a
@@ -334,6 +336,14 @@ pub fn main() !void {
         }
         if (std.mem.eql(u8, sp, "--lsp"))
             return runLsp(a, api);
+        if (std.mem.eql(u8, sp, "doc")) {
+            const mod = args.next() orelse {
+                out("usage: birnam doc <module> [selector]\n");
+                return error.DocArgs;
+            };
+            const sel = args.next(); // optional: one selector within the module
+            return runDoc(a, api, mod, sel);
+        }
         if (std.mem.eql(u8, sp, "--demo"))
             return runDemo(a, api, id_path, id_path_z);
         if (std.mem.eql(u8, sp, "--compile-module")) {
@@ -888,6 +898,37 @@ fn runLsp(a: std.mem.Allocator, api: *IdApi) !void {
     const berr = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
     if (berr != api.nilObj) {
         std.fs.File.stderr().writeAll("birnam --lsp: failed to load the language-server modules (set BIRNAM_MODULES_DIR to the birnam modules/ dir)\n") catch {};
+        std.process.exit(1);
+    }
+}
+
+/// `birnam doc <module> [selector]` — the `go doc` analog. Loads Doc first (so its
+/// capture overrides the stdlib no-op baseline), then the named module (whose
+/// docstrings are now recorded as facts), then prints the module's docs — or one
+/// selector's — to stdout. modules/ is resolved relative to the executable.
+fn runDoc(a: std.mem.Allocator, api: *IdApi, mod: [:0]const u8, sel: ?[:0]const u8) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+
+    loadStdlib(a, api, codegen);
+
+    const mdir = try resolveModulesDir(a);
+    defer a.free(mdir);
+    const boot = if (sel) |s|
+        try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [System load: \"{s}/{s}.birnam\"]; [System print: [Doc cli: #{s} sel: \"{s}\"]]", .{ mdir, mdir, mod, mod, s })
+    else
+        try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [System load: \"{s}/{s}.birnam\"]; [System print: [Doc cli: #{s}]]", .{ mdir, mdir, mod, mod });
+    defer a.free(boot);
+    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
+    const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
+    if (err != api.nilObj) {
+        std.fs.File.stderr().writeAll("birnam doc: could not render docs (check the module name; run where modules/ is resolvable or set BIRNAM_MODULES_DIR)\n") catch {};
+        outErrorString(api, err);
         std.process.exit(1);
     }
 }
