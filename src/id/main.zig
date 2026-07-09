@@ -183,8 +183,10 @@ const SCAFFOLD_TMPL =
 /// is deliberately left open for now.
 fn runWrapScaffold(a: std.mem.Allocator, name: []const u8) !void {
     if (name.len == 0) {
+        // Bad argument is improper usage, not a crash — the message above is the
+        // help; exit cleanly so a `!void` return doesn't append `error: X` + a trace.
         out("birnam wrap: empty library name\n");
-        return error.WrapArgs;
+        return;
     }
     // Capitalized module name for the Globals singleton (Config/Toml convention).
     const cap = try a.dupe(u8, name);
@@ -266,7 +268,7 @@ pub fn main() !void {
         if (std.mem.eql(u8, sp, "wrap")) {
             const name = args.next() orelse {
                 out("usage: birnam wrap <name>   scaffold wrapped/<name>/<name>.birnam\n");
-                return error.WrapArgs;
+                return;
             };
             return runWrapScaffold(a, name);
         }
@@ -297,12 +299,14 @@ pub fn main() !void {
     if (script_path) |sp| {
         if (std.mem.eql(u8, sp, "--bake")) {
             const img = args.next() orelse {
+                // Missing operand: usage is a help display, not a crash — exit
+                // cleanly so a `!void` return doesn't print `error: X` + a trace.
                 out("usage: birnam --bake <image> <out-exe>\n");
-                return error.BakeArgs;
+                return;
             };
             const outp = args.next() orelse {
                 out("usage: birnam --bake <image> <out-exe>\n");
-                return error.BakeArgs;
+                return;
             };
             return bakeExeCli(a, img, outp);
         }
@@ -331,7 +335,7 @@ pub fn main() !void {
         if (std.mem.eql(u8, sp, "--listen") or std.mem.eql(u8, sp, "--serve")) {
             const port = args.next() orelse {
                 out("usage: birnam --listen <port> [file.birnam]\n");
-                return error.ListenArgs;
+                return;
             };
             const file = args.next(); // optional: run this file first, then listen
             return runListen(a, api, port, file);
@@ -340,8 +344,11 @@ pub fn main() !void {
             return runLsp(a, api);
         if (std.mem.eql(u8, sp, "doc")) {
             const mod = args.next() orelse {
+                // Missing operand: show usage and exit cleanly — this is a help
+                // display, not a crash, so don't propagate an error (a `!void`
+                // return would print `error: DocArgs` + a trace after the usage).
                 out("usage: birnam doc <module> [selector]\n");
-                return error.DocArgs;
+                return;
             };
             const sel = args.next(); // optional: one selector within the module
             return runDoc(a, api, mod, sel);
@@ -355,11 +362,11 @@ pub fn main() !void {
         if (std.mem.eql(u8, sp, "--compile-module")) {
             const msrc = args.next() orelse {
                 out("usage: birnam --compile-module <src.birnam> <out.dylib>\n");
-                return error.CompileModuleArgs;
+                return;
             };
             const mout = args.next() orelse {
                 out("usage: birnam --compile-module <src.birnam> <out.dylib>\n");
-                return error.CompileModuleArgs;
+                return;
             };
             return runCompileModule(a, api, msrc, mout);
         }
@@ -815,8 +822,10 @@ fn runListen(a: std.mem.Allocator, api: *IdApi, port: [:0]const u8, file: ?[:0]c
     // Validate the port up front — otherwise a non-numeric value would flow into
     // the birnam source as an undefined name and hang instead of failing fast.
     _ = std.fmt.parseInt(u16, port, 10) catch {
+        // Bad argument is improper usage, not a crash — the message above is the
+        // help; exit cleanly so a `!void` return doesn't append `error: X` + a trace.
         out("birnam --listen: port must be a number in 0..65535\n");
-        return error.ListenArgs;
+        return;
     };
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
