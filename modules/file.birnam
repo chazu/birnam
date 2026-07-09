@@ -51,22 +51,21 @@
 
 // The module: a named singleton, the Config / Toml / Time shape.
 [Globals at: #File put: [Object clone]];
+[Reflect docModule: #file is: "Filesystem access (paths, dirs, contents) over libc."];
 
 // -- existence / kind ---------------------------------------------------------
 
-// True iff the path exists (access with F_OK = 0).
 [Reflect defineMethod: #exists: on: File as: [:self :path |
-  [[path accessMode: 0] = 0]]];
+  [[path accessMode: 0] = 0]] doc:
+  "True iff `path` exists."];
 
-// True iff the path is a directory: opendir succeeds only on directories.
 [Reflect defineMethod: #isDir: on: File as: [:self :path |
   let d := [path opendir];
   [[d isNull]
     ifTrue: [| false]
-    ifFalse: [| [d closedir]; true]]]];
+    ifFalse: [| [d closedir]; true]]] doc:
+  "True iff `path` is a directory."];
 
-// Byte length of a file (Integer), or nil if it can't be opened. Seeks to the end
-// and reports the position — no `struct stat` needed.
 [Reflect defineMethod: #size: on: File as: [:self :path |
   let fp := [path fopenMode: "r"];
   [[fp isNull]
@@ -75,7 +74,8 @@
       [fp fseekOffset: 0 whence: 2];    // SEEK_END = 2
       let n := [fp ftell];
       [fp fclose];
-      n]]]];
+      n]]] doc:
+  "Byte length of the file at `path` (Integer), or nil if it can't be opened."];
 
 // -- directory listing --------------------------------------------------------
 
@@ -92,8 +92,6 @@
       let acc2 := [skip ifTrue: [| acc] ifFalse: [| [acc add: name]]];
       [self entriesOf: dir into: acc2]]]]];
 
-// The directory's entries as a Vector of name Strings (excluding . and ..), or nil
-// if the path is not a readable directory.
 [Reflect defineMethod: #listDir: on: File as: [:self :path |
   let dir := [path opendir];
   [[dir isNull]
@@ -101,31 +99,29 @@
     ifFalse: [|
       let names := [self entriesOf: dir into: #[]];
       [dir closedir];
-      names]]]];
+      names]]] doc:
+  "The directory's entry names as a Vector of Strings (excluding . and ..), or nil if `path` is not a readable directory."];
 
 // -- mutation -----------------------------------------------------------------
 
-// Make a directory (mode 0777, umask applies). Answers true on success.
 [Reflect defineMethod: #makeDir: on: File as: [:self :path |
-  [[path mkdirMode: 511] = 0]]];
+  [[path mkdirMode: 511] = 0]] doc:
+  "Create a directory at `path` (mode 0777, umask applies). True on success."];
 
-// Remove an empty directory. Answers true on success.
 [Reflect defineMethod: #removeDir: on: File as: [:self :path |
-  [[path rmdirFile] = 0]]];
+  [[path rmdirFile] = 0]] doc:
+  "Remove the empty directory at `path`. True on success."];
 
-// Rename / move `from` to `to`. Answers true on success.
 [Reflect defineMethod: #rename:to: on: File as: [:self :from :to |
-  [[from renameTo: to] = 0]]];
+  [[from renameTo: to] = 0]] doc:
+  "Rename / move `from` to `to`. True on success."];
 
-// Delete a file. Answers true on success.
 [Reflect defineMethod: #delete: on: File as: [:self :path |
-  [[path unlinkFile] = 0]]];
+  [[path unlinkFile] = 0]] doc:
+  "Delete the file at `path`. True on success."];
 
 // -- contents -----------------------------------------------------------------
 
-// Append `text` verbatim (no added newline) to `path`, creating it if absent.
-// Answers self on success, false if the file could not be opened. Opens+closes per
-// call — simple and flush-safe; a Log with an open handle can do better.
 [Reflect defineMethod: #append:contents: on: File as: [:self :path :text |
   let fp := [path fopenMode: "a"];
   [[fp isNull]
@@ -133,13 +129,13 @@
     ifFalse: [|
       [text fputsTo: fp];
       [fp fclose];
-      self]]]];
+      self]]] doc:
+  "Append `text` verbatim (no added newline) to `path`, creating it if absent. Answers self, or false if it could not be opened."];
 
-// The whole file as a String, or a #ioError (delegates to the binary-safe Zig
-// floor; the libc path above is text-oriented via fputs).
 [Reflect defineMethod: #readText: on: File as: [:self :path |
-  [System readFile: path]]];
+  [System readFile: path]] doc:
+  "The whole file at `path` as a String (binary-safe), or a #ioError."];
 
-// Overwrite the whole file with `text` (delegates to the Zig floor).
 [Reflect defineMethod: #write:contents: on: File as: [:self :path :text |
-  [System writeFile: path contents: text]]]
+  [System writeFile: path contents: text]] doc:
+  "Overwrite the whole file at `path` with `text`."]

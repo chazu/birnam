@@ -32,13 +32,17 @@
 // The module + a result prototype (its fields live in cells keyed on self).
 [Globals at: #Process put: [Object clone]];
 [Globals at: #ProcResult put: [Object clone]];
+[Reflect docModule: #process is: "Run shell commands, capture stdout + exit code, over libc popen."];
 
 [Reflect defineMethod: #stdout on: ProcResult as: [:self |
-  [[db cellFor: self attr: #stdout] value]]];
+  [[db cellFor: self attr: #stdout] value]] doc:
+  "The captured stdout of the command (a String)."];
 [Reflect defineMethod: #exitCode on: ProcResult as: [:self |
-  [[db cellFor: self attr: #exit] value]]];
+  [[db cellFor: self attr: #exit] value]] doc:
+  "The command's exit code (Integer; -1 if it could not be started)."];
 [Reflect defineMethod: #ok on: ProcResult as: [:self |
-  [[self exitCode] = 0]]];
+  [[self exitCode] = 0]] doc:
+  "True iff the command exited 0."];
 
 // -- draining stdout ----------------------------------------------------------
 
@@ -71,12 +75,13 @@
       let code   := [[status / 256] mod: 256];
       [[db cellFor: r attr: #stdout] set: out];
       [[db cellFor: r attr: #exit]   set: code];
-      r]]]];
+      r]]] doc:
+  "Run `cmd` via the shell, capturing stdout. Answers a ProcResult (stdout/exitCode/ok); a command that could not start comes back with stdout \"\" and exitCode -1."];
 
-// Convenience: just the captured stdout.
 [Reflect defineMethod: #output: on: Process as: [:self :cmd |
-  [[self run: cmd] stdout]]];
+  [[self run: cmd] stdout]] doc:
+  "Run `cmd` and answer just its captured stdout (a String)."];
 
-// Convenience: just the exit code.
 [Reflect defineMethod: #status: on: Process as: [:self :cmd |
-  [[self run: cmd] exitCode]]]
+  [[self run: cmd] exitCode]] doc:
+  "Run `cmd` and answer just its exit code (an Integer)."]
