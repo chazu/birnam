@@ -9,50 +9,47 @@
 // varies run to run; call `[Random seed: n]` to make it repeatable.
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/random.birnam"]   (pulls in Time for the auto-seed)
+//   [System load: "modules/random.birnam"]   (pulls in Time + Doc)
 //
-//   [Random seed: 42]                  "=> reproducible from here"
-//   [Random next]                      "=> a value in [0, 2^31-1]"
-//   [Random nextInt: 6]                "=> [0, 6)   (a d6 is [Random nextInt: 6] + 1)"
-//   [Random between: 1 and: 6]         "=> [1, 6] inclusive"
-//   [Random bool]                      "=> true / false"
-//   [Random pick: #[#rock #paper #scissors]]   "=> a random element"
+// This module is DOCUMENTED via the Doc system — each method carries its docstring
+// on the definition (`… as: block doc: "…"`), so `[Doc text: #random]` at the REPL,
+// `birnam doc random`, LSP hover, and the HTML reference all read from one source.
 
-// Dependency: Time, for the load-time auto-seed.
+// Dependencies: Time (load-time auto-seed) and Doc (docstrings-as-facts).
 [[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [System load: "modules/time.birnam"]]];
+[[Globals includes: #Doc]  ifTrue: [| nil] ifFalse: [| [System load: "modules/doc.birnam"]]];
 
-// The module singleton.
+// The module singleton + its one-line summary (also sets the current doc module).
 [Globals at: #Random put: [Object clone]];
+[Doc module: #random is: "Seedable pseudo-random numbers over libc random()/srandom()."];
 
 // long random(void)             — no args, so the receiver is unused.
 [Alien wrap: "random"  signature: "l"   as: #rawRandom   on: Random];
 // void srandom(unsigned seed)   — receiver = the seed (an Integer, truncated to 32 bits).
 [Alien wrap: "srandom" signature: "v i" as: #srandomSeed on: Integer];
 
-// -- surface ------------------------------------------------------------------
+// -- surface (documented) -----------------------------------------------------
 
-// Seed the (process-global) PRNG for a reproducible sequence. Chainable.
-[Reflect defineMethod: #seed: on: Random as: [:self :n | [n srandomSeed]; self]];
+[Reflect defineMethod: #seed: on: Random as: [:self :n | [n srandomSeed]; self] doc:
+  "Seed the process-global PRNG for a reproducible sequence. Chainable."];
 
-// The next raw draw, in [0, 2^31-1].
-[Reflect defineMethod: #next on: Random as: [:self | [self rawRandom]]];
+[Reflect defineMethod: #next on: Random as: [:self | [self rawRandom]] doc:
+  "The next raw draw, an Integer in [0, 2^31-1]."];
 
-// A value in [0, n). Uses `mod:`, so there is a slight modulo bias for very large
-// n — negligible for ordinary ranges (dice, indices, small buckets).
-[Reflect defineMethod: #nextInt: on: Random as: [:self :n | [[self next] mod: n]]];
+[Reflect defineMethod: #nextInt: on: Random as: [:self :n | [[self next] mod: n]] doc:
+  "A value in [0, n). Slight modulo bias for very large n — negligible for dice/indices."];
 
-// A value in [lo, hi], inclusive.
 [Reflect defineMethod: #between:and: on: Random as: [:self :lo :hi |
-  [lo + [self nextInt: [[hi - lo] + 1]]]]];
+  [lo + [self nextInt: [[hi - lo] + 1]]]] doc:
+  "A value in [lo, hi], inclusive."];
 
-// A fair coin.
-[Reflect defineMethod: #bool on: Random as: [:self | [[self nextInt: 2] = 0]]];
+[Reflect defineMethod: #bool on: Random as: [:self | [[self nextInt: 2] = 0]] doc:
+  "A fair coin — true or false."];
 
-// A random element of a collection answering `size` + `at:` (0-based), e.g. a Vector.
 [Reflect defineMethod: #pick: on: Random as: [:self :coll |
-  [coll at: [self nextInt: [coll size]]]]];
+  [coll at: [self nextInt: [coll size]]]] doc:
+  "A random element of a collection answering size + at: (0-based), e.g. a Vector."];
 
 // Auto-seed from the clock so the default stream varies run to run. Calls the
-// wrapped srandom directly (not the `seed:` method) to avoid invoking a
-// same-unit-defined method at load time.
+// wrapped srandom directly (not `seed:`) to avoid a same-unit method at load time.
 [[Time nowMillis] srandomSeed]

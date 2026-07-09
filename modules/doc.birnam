@@ -39,6 +39,23 @@
   [db assert: mod attr: #isDocumented value: #true];
   [[db cellFor: mod attr: #docSummary] set: summary];
   [[db cellFor: mod attr: #docMethods] set: #[]];
+  [[db cellFor: Doc attr: #currentModule] set: mod];
+  self]];
+
+// The documented way to define a method: install it (via the Reflect primitive)
+// AND record its docstring under the CURRENT module (the last `module:is:`), keyed
+// to the receiver prototype. One source of truth — the docstring rides the
+// definition, captured at load time, nothing to keep in sync. Requires a prior
+// `module:is:` (which sets the current module).
+[Reflect defineMethod: #defineMethod:on:as:doc: on: Reflect as: [:self :sel :proto :blk :doc |
+  [self defineMethod: sel on: proto as: blk];
+  let mod := [[db cellFor: Doc attr: #currentModule] value];
+  let e := [Object clone];
+  [[db cellFor: e attr: #sel]   set: sel];
+  [[db cellFor: e attr: #proto] set: proto];
+  [[db cellFor: e attr: #text]  set: doc];
+  let cur := [[db cellFor: mod attr: #docMethods] value];
+  [[db cellFor: mod attr: #docMethods] set: [cur add: e]];
   self]];
 
 // A docstring for one selector in a module (which must already be documented).
@@ -64,6 +81,29 @@
 // A selector's clean display name: "#tag:body:" printString -> "tag:body:".
 [Reflect defineMethod: #nameOf: on: Doc as: [:self :sel |
   [[sel printString] replace: "#" with: ""]]];
+
+// Every documented method entry whose selector prints as `name` (a String),
+// across all modules — the hover / `birnam doc <sel>` path (a selector may occur
+// in several modules). Symbols compare by printed name (bare `=` on symbols fails).
+[Reflect defineMethod: #lookup: on: Doc as: [:self :name |
+  [[self modules] inject: #[] into: [:acc :m |
+    [[self methodsOf: m] inject: acc into: [:a2 :e |
+      [[[self nameOf: [[db cellFor: e attr: #sel] value]] = name]
+        ifTrue:  [| [a2 add: e]]
+        ifFalse: [| a2]]]]]]]];
+
+// -- rendering: plaintext (the REPL / `birnam doc` view) ----------------------
+
+// A module's docs as indented plain text — what `[Doc text: #random]` at the REPL
+// (and the `birnam doc` CLI) prints.
+[Reflect defineMethod: #text: on: Doc as: [:self :mod |
+  let name    := [self nameOf: mod];
+  let summary := [[db cellFor: mod attr: #docSummary] value];
+  let header  := [[name , "\n"] , [summary , "\n\n"]];
+  [[self methodsOf: mod] inject: header into: [:acc :e |
+    let sel := [self nameOf: [[db cellFor: e attr: #sel] value]];
+    let txt := [[db cellFor: e attr: #text] value];
+    [acc , [["  " , sel] , [["\n      " , txt] , "\n"]]]]]]];
 
 // -- rendering: Markdown ------------------------------------------------------
 
