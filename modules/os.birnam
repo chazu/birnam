@@ -17,7 +17,8 @@
 [Alien wrap: "exit" signature: "v i" as: #exitProcess on: Integer];
 
 [Globals at: #OS put: [Object clone]];
+[Reflect docModule: #os is: "Process-level OS bits over libc (currently: exit)."];
 
-// Terminate the process with `code` (an Integer, 0 = success).
 [Reflect defineMethod: #exit: on: OS as: [:self :code |
-  [code exitProcess]]]
+  [code exitProcess]] doc:
+  "Terminate the process with `code` (an Integer, 0 = success). Never returns."]

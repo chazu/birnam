@@ -8,24 +8,17 @@
 //
 // Load it (from the repo root) with:
 //   [System load: "modules/time.birnam"]
-// then:
-//   [Time nowMillis]     "=> epoch milliseconds, an Integer"
-//   [Time nowSeconds]    "=> epoch seconds"
 
 // int gettimeofday(struct timeval *tv, struct timezone *tz)
 //   struct timeval { long tv_sec; int tv_usec; }   // macOS: 8 + 4 bytes (16 w/ pad)
 // Alien marshals the method receiver as the FIRST C argument, so the receiver IS
 // the tv buffer (a Word from `Alien alloc:`) and `tz` is the one birnam argument.
-// Returns 0 on success. Wrapped on Word, so any raw buffer can fill itself.
 [Alien wrap: "gettimeofday" signature: "i p p" as: #fillTimeval: on: Word];
 
 // The module: a named singleton, the same shape as the self-hosted Config / Toml.
 [Globals at: #Time put: [Object clone]];
+[Reflect docModule: #time is: "Wall-clock time over libc gettimeofday()."];
 
-// Epoch milliseconds as an Integer. birnam's Integer is a full i64, so this holds
-// dates well past the year 292-million before overflow. `alloc:` hands back zeroed
-// memory, and gettimeofday writes only tv_sec (offset 0) and the 4-byte tv_usec
-// (offset 8), leaving the padding zero — so `peekIntAt: 8` reads usec cleanly.
 [Reflect defineMethod: #nowMillis on: Time as: [:self |
   let tv := [Alien alloc: 16];
   let tz := [Alien alloc: 8];
@@ -34,8 +27,9 @@
   let usec := [tv peekIntAt: 8];
   [tv free];
   [tz free];
-  [[sec * 1000] + [usec / 1000]]]];
+  [[sec * 1000] + [usec / 1000]]] doc:
+  "Epoch milliseconds as an Integer (full i64 — no year-2038 wrap)."];
 
-// Epoch seconds (Integer).
 [Reflect defineMethod: #nowSeconds on: Time as: [:self |
-  [[self nowMillis] / 1000]]]
+  [[self nowMillis] / 1000]] doc:
+  "Epoch seconds as an Integer."]
