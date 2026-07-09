@@ -182,12 +182,19 @@
     ifTrue:  [| false]
     ifFalse: [| ok]]]];
 
+// Load every library module under `md` (so their `doc:` registrations fire).
+// Guard-loads File first (from `md`) since it drives the directory walk. Answers self.
+[Reflect defineMethod: #loadAllModules: on: Doc as: [:self :md |
+  [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: [md , "/file.birnam"]]]];
+  [[File listDir: md] do: [:nm |
+    [[self isLibModule: nm] ifTrue: [| [System load: [[md , "/"] , nm]]] ifFalse: [| nil]]]];
+  self]];
+
 // Build the full HTML reference to `out`: load every library module under `md`,
 // extract every Zig floor file under `zd`, then write `htmlIndex`. Answers `out`.
 [Reflect defineMethod: #buildSite:modules:zig: on: Doc as: [:self :out :md :zd |
   let me := self;
-  [[File listDir: md] do: [:nm |
-    [[self isLibModule: nm] ifTrue: [| [System load: [[md , "/"] , nm]]] ifFalse: [| nil]]]];
+  [self loadAllModules: md];
   [Zigdoc scanDir: zd];
   [File write: out contents: [me htmlIndex]];
   out]]

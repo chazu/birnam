@@ -903,7 +903,9 @@ fn runLsp(a: std.mem.Allocator, api: *IdApi) !void {
     const mdirZ = try a.dupeZ(u8, mdir);
     defer a.free(mdirZ);
     _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
-    const boot = try std.fmt.allocPrint(a, "[System load: \"{s}/json.birnam\"]; [System load: \"{s}/lsp.birnam\"]; [Lsp serveStdio]", .{ mdir, mdir });
+    // Load Doc + every library module (defines Lsp/Json and populates the doc facts
+    // that `textDocument/hover` looks up), then serve.
+    const boot = try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [Doc loadAllModules: \"{s}\"]; [Lsp serveStdio]", .{ mdir, mdir });
     defer a.free(boot);
     _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
     // Only reached if loading json/lsp failed (serveStdio otherwise blocks until exit).

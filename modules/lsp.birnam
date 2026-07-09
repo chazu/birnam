@@ -20,7 +20,8 @@
 // the dispatch here is transport-agnostic (it only calls readMessage/sendMessage).
 
 [Globals at: #Lsp put: [Object clone]];
-[Reflect docModule: #lsp is: "A stdio language server (LSP: framing + diagnostics), over Json."];
+[Reflect docModule: #lsp is: "A stdio language server (LSP: framing + diagnostics + hover), over Json."];
+[[db cellFor: Lsp attr: #docs] set: [Map new]];
 
 // -- libc I/O (fd 0 = stdin, 1 = stdout, 2 = stderr) --------------------------
 // recv/send are socket-only; stdio is a pipe, so use raw read/write on the fd.
@@ -166,7 +167,7 @@
 // -- request/notification handlers --------------------------------------------
 
 [Reflect defineMethod: #onInitialize: on: Lsp as: [:self :id |
-  let caps := [[Map new] at: "textDocumentSync" put: 1];
+  let caps := [[[Map new] at: "textDocumentSync" put: 1] at: "hoverProvider" put: true];
   let info := [[[Map new] at: "name" put: "birnam"] at: "version" put: "0.1"];
   let result := [[[Map new] at: "capabilities" put: caps] at: "serverInfo" put: info];
   [self respond: id result: result];
@@ -180,6 +181,7 @@
   let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
   let uri := [td at: "uri" ifAbsent: [| ""]];
   let text := [td at: "text" ifAbsent: [| ""]];
+  [self storeDoc: uri text: text];
   [self diagnoseUri: uri text: text];
   self]];
 
@@ -188,6 +190,7 @@
   let uri := [td at: "uri" ifAbsent: [| ""]];
   let changes := [p at: "contentChanges" ifAbsent: [| #[]]];
   let text := [[changes isEmpty] ifTrue: [| ""] ifFalse: [| [[changes at: 0] at: "text" ifAbsent: [| ""]]]];
+  [self storeDoc: uri text: text];
   [self diagnoseUri: uri text: text];
   self]];
 
@@ -198,6 +201,82 @@
   [self sendNote: "textDocument/publishDiagnostics" params: params];
   self]];
 
+// -- hover (docs from the Doc system) -----------------------------------------
+
+// Per-uri document text (a Map keyed by uri value), so hover can read the source.
+[Reflect defineMethod: #docsMap on: Lsp as: [:self | [[db cellFor: self attr: #docs] value]]];
+[Reflect defineMethod: #storeDoc:text: on: Lsp as: [:self :uri :text |
+  [[db cellFor: self attr: #docs] set: [[self docsMap] at: uri put: text]];
+  self]];
+
+// The 0-based line `n` of `text`.
+[Reflect defineMethod: #lineAt:in: on: Lsp as: [:self :n :text |
+  let lines := [text split: "\n"];
+  let r := [[n < [lines size]] ifTrue: [| [lines at: n]] ifFalse: [| ""]];
+  r]];
+
+// A byte that can appear in an identifier: A-Z a-z 0-9 _.
+[Reflect defineMethod: #isIdentByte: on: Lsp as: [:self :b |
+  let r := [[[[[b >= 65] & [b <= 90]] | [[b >= 97] & [b <= 122]]] | [[b >= 48] & [b <= 57]]] | [b = 95]];
+  r]];
+
+[Reflect defineMethod: #scanLeft:in: on: Lsp as: [:self :i :line |
+  let r := [[i <= 0]
+    ifTrue:  [| 0]
+    ifFalse: [| [[self isIdentByte: [line byteAt: [i - 1]]]
+      ifTrue:  [| [self scanLeft: [i - 1] in: line]]
+      ifFalse: [| i]]]];
+  r]];
+[Reflect defineMethod: #scanRight:in: on: Lsp as: [:self :i :line |
+  let r := [[i >= [line size]]
+    ifTrue:  [| i]
+    ifFalse: [| [[self isIdentByte: [line byteAt: i]]
+      ifTrue:  [| [self scanRight: [i + 1] in: line]]
+      ifFalse: [| i]]]];
+  r]];
+
+// The identifier token at 0-based column `col` in `line`; a keyword selector part
+// keeps its trailing ':' (byte 58). "" when the cursor isn't on an identifier.
+[Reflect defineMethod: #tokenAt:in: on: Lsp as: [:self :col :line |
+  let n := [line size];
+  let r := [[n = 0]
+    ifTrue:  [| ""]
+    ifFalse: [|
+      let c := [[col >= n] ifTrue: [| [n - 1]] ifFalse: [| col]];
+      [[self isIdentByte: [line byteAt: c]]
+        ifTrue:  [|
+          let s := [self scanLeft: c in: line];
+          let e := [self scanRight: c in: line];
+          let w := [line copyFrom: s to: e];
+          [[e < n]
+            ifTrue:  [| [[[line byteAt: e] = 58] ifTrue: [| [w , ":"]] ifFalse: [| w]]]
+            ifFalse: [| w]]]
+        ifFalse: [| ""]]]];
+  r]];
+
+// Build an LSP Hover result (markdown) from Doc entries for `tok`.
+[Reflect defineMethod: #hoverResult:token: on: Lsp as: [:self :hits :tok |
+  let body := [hits inject: [["**" , tok] , "**\n\n"] into: [:acc :e |
+    [acc , [[[db cellFor: e attr: #text] value] , "\n\n"]]]];
+  let contents := [[[Map new] at: "kind" put: "markdown"] at: "value" put: body];
+  let r := [[Map new] at: "contents" put: contents];
+  r]];
+
+// textDocument/hover: look up the token under the cursor in the Doc facts.
+[Reflect defineMethod: #onHover:id: on: Lsp as: [:self :p :id |
+  let td   := [p at: "textDocument" ifAbsent: [| [Map new]]];
+  let uri  := [td at: "uri" ifAbsent: [| ""]];
+  let pos  := [p at: "position" ifAbsent: [| [Map new]]];
+  let ln   := [pos at: "line" ifAbsent: [| 0]];
+  let ch   := [pos at: "character" ifAbsent: [| 0]];
+  let text := [[self docsMap] at: uri ifAbsent: [| ""]];
+  let tok  := [self tokenAt: ch in: [self lineAt: ln in: text]];
+  let hits := [[Globals includes: #Doc] ifTrue: [| [Doc lookup: tok]] ifFalse: [| #[]]];
+  [[hits isEmpty]
+    ifTrue:  [| [self respond: id result: nil]]
+    ifFalse: [| [self respond: id result: [self hoverResult: hits token: tok]]]];
+  self]];
+
 // -- dispatch + loop ----------------------------------------------------------
 
 [Reflect defineMethod: #dispatch: on: Lsp as: [:self :msg |
@@ -206,7 +285,9 @@
   let p  := [msg at: "params" ifAbsent: [| [Map new]]];
   let r := [[m = "initialize"]
     ifTrue: [| [self onInitialize: id]]
-    ifFalse: [| [[m = "textDocument/didOpen"]
+    ifFalse: [| [[m = "textDocument/hover"]
+      ifTrue: [| [self onHover: p id: id]]
+      ifFalse: [| [[m = "textDocument/didOpen"]
       ifTrue: [| [self onDidOpen: p]]
       ifFalse: [| [[m = "textDocument/didChange"]
         ifTrue: [| [self onDidChange: p]]
@@ -218,7 +299,7 @@
               ifTrue: [| [0 cExit]]
               ifFalse: [| [[id notNil]
                 ifTrue: [| [self respondError: id]]
-                ifFalse: [| self]]]]]]]]]]]]]];
+                ifFalse: [| self]]]]]]]]]]]]]]]];
   r]];
 
 // Parse a body and dispatch it; ignore malformed JSON.
