@@ -32,6 +32,8 @@ const USAGE =
     \\                             works launched from any project directory.
     \\  birnam doc <mod> [sel]     Print documentation for a module (like `go doc`):
     \\                             its method docstrings, or one selector's doc.
+    \\  birnam docgen [out.html]   Generate the full HTML doc reference (every birnam
+    \\                             module + every Zig floor file) to a file.
     \\  birnam --demo              Run the verbose boot self-test (proves the
     \\                             whole stack compiles to native through the id api).
     \\  birnam wrap <name>         Scaffold wrapped/<name>/<name>.birnam — a
@@ -343,6 +345,10 @@ pub fn main() !void {
             };
             const sel = args.next(); // optional: one selector within the module
             return runDoc(a, api, mod, sel);
+        }
+        if (std.mem.eql(u8, sp, "docgen")) {
+            const outp = args.next() orelse "birnam-docs.html";
+            return runDocgen(a, api, outp);
         }
         if (std.mem.eql(u8, sp, "--demo"))
             return runDemo(a, api, id_path, id_path_z);
@@ -944,6 +950,39 @@ fn runDoc(a: std.mem.Allocator, api: *IdApi, mod: [:0]const u8, sel: ?[:0]const 
         outErrorString(api, err);
         std.process.exit(1);
     }
+}
+
+/// `birnam docgen [out.html]` — build the full HTML documentation reference (every
+/// birnam library module + every Zig floor file, via Zigdoc) to a file.
+fn runDocgen(a: std.mem.Allocator, api: *IdApi, out_path: [:0]const u8) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+
+    loadStdlib(a, api, codegen);
+
+    const mdir = try resolveModulesDir(a);
+    defer a.free(mdir);
+    const mdirZ = try a.dupeZ(u8, mdir);
+    defer a.free(mdirZ);
+    _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
+
+    const boot = try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [System load: \"{s}/zigdoc.birnam\"]; [Doc buildSite: \"{s}\" modules: \"{s}\" zig: \"{s}/../src/id\"]", .{ mdir, mdir, out_path, mdir, mdir });
+    defer a.free(boot);
+    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
+    const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
+    if (err != api.nilObj) {
+        std.fs.File.stderr().writeAll("birnam docgen: failed to build the doc site\n") catch {};
+        outErrorString(api, err);
+        std.process.exit(1);
+    }
+    out("wrote ");
+    out(out_path);
+    out("\n");
 }
 
 /// Print a `[Codegen lastError]` String (a `line:col: message` block) to stderr.

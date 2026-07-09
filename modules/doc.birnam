@@ -161,4 +161,33 @@
     [acc , [Html tag: "li" body: [code , " — " , [Html escape: txt]]]]]];
   [[Html tag: "h1" text: name]
     , [Html tag: "p" text: summary]
-    , [Html tag: "ul" body: items]]]]
+    , [Html tag: "ul" body: items]]]];
+
+// One HTML page for EVERY documented module: a nav list + a section each.
+[Reflect defineMethod: #htmlIndex on: Doc as: [:self |
+  let me := self;
+  let nav := [[self modules] inject: "" into: [:acc :m |
+    let nm := [self nameOf: m];
+    [acc , [Html tag: "li" body: [Html tag: "a" attrs: [Html attr: "href" value: ["#" , nm]] body: nm]]]]];
+  let secs := [[self modules] inject: "" into: [:acc :m |
+    [acc , [Html tag: "section" attrs: [Html attr: "id" value: [self nameOf: m]] body: [me htmlForModule: m]]]]];
+  let body := [[Html tag: "nav" body: [Html tag: "ul" body: nav]] , secs];
+  [Html page: "birnam documentation" body: body]]];
+
+// True for a loadable LIBRARY module file (excludes tests, run-tests, and the doc
+// modules themselves — re-loading doc.birnam would wipe the Doc registry).
+[Reflect defineMethod: #isLibModule: on: Doc as: [:self :nm |
+  let ok := [[[nm endsWith: ".birnam"] & [[nm includesSubstring: "-test"] not]] & [[nm includesSubstring: "run-tests"] not]];
+  [[[nm = "doc.birnam"] | [nm = "zigdoc.birnam"]]
+    ifTrue:  [| false]
+    ifFalse: [| ok]]]];
+
+// Build the full HTML reference to `out`: load every library module under `md`,
+// extract every Zig floor file under `zd`, then write `htmlIndex`. Answers `out`.
+[Reflect defineMethod: #buildSite:modules:zig: on: Doc as: [:self :out :md :zd |
+  let me := self;
+  [[File listDir: md] do: [:nm |
+    [[self isLibModule: nm] ifTrue: [| [System load: [[md , "/"] , nm]]] ifFalse: [| nil]]]];
+  [Zigdoc scanDir: zd];
+  [File write: out contents: [me htmlIndex]];
+  out]]
