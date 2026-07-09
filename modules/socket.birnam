@@ -65,6 +65,7 @@
 // -- the module singleton + constants -----------------------------------------
 
 [Globals at: #Socket put: [Object clone]];
+[Reflect docModule: #socket is: "TCP sockets over libc via Alien (the Layer-0 networking floor)."];
 
 // macOS values (see PLATFORM note above).
 [Reflect defineMethod: #afInet      on: Socket as: [:self | 2]];
@@ -108,7 +109,8 @@
       [sa free];
       [[br < 0]
         ifTrue:  [| [fd closeFd]; br]
-        ifFalse: [| [fd listenBacklog: 16]; fd]]]]]];
+        ifFalse: [| [fd listenBacklog: 16]; fd]]]]] doc:
+  "Create + bind + listen on `port`; answers the listening fd, or a negative fd on error (e.g. the port is already in use)."];
 
 // Block until a client connects; answer the raw connection fd (negative on a
 // spurious error such as EINTR, which the caller skips).
@@ -145,7 +147,8 @@
             let conn := [self wrapFd: cfd];
             [handler value: conn];
             [conn close]]]]];
-      [fd closeFd]]]]];
+      [fd closeFd]]]] doc:
+  "Listen on `port`, then accept connections one at a time, handing each live SockConn to `handler` (a 1-arg block); blocks. Answers a negative fd if it could not listen."];
 
 // -- SockConn: one live connection --------------------------------------------
 
@@ -164,7 +167,8 @@
     ifTrue:  [| ""]
     ifFalse: [|
       [buf pokeByte: 0 at: n];
-      [buf peekStringAt: 0]]]]];
+      [buf peekStringAt: 0]]]] doc:
+  "Read up to 64 KB; answers the bytes as a String (\"\" on EOF/error). Text-safe (an embedded NUL truncates)."];
 
 // Send the whole String, looping over partial writes (recurses on the unsent tail).
 [Reflect defineMethod: #sendString: on: SockConn as: [:self :s |
@@ -178,19 +182,22 @@
           [[sent < 1]
             ifTrue:  [| sent]
             ifFalse: [| [self sendString: [s copyFrom: sent to: n]]]]]
-        ifFalse: [| sent]]]]]];
+        ifFalse: [| sent]]]]] doc:
+  "Send the whole String `s`, looping over any partial writes."];
 
 // Free the recv buffer (libc malloc, not GC'd) and close the fd.
 [Reflect defineMethod: #close on: SockConn as: [:self |
   [[self buffer] free];
-  [[self fd] closeFd]]];
+  [[self fd] closeFd]] doc:
+  "Free the recv buffer and close the connection's fd."];
 
 // Reactor stub (Layer 3 will use this; the blocking path does not).
 // macOS: F_SETFL = 4, O_NONBLOCK = 4. A real reactor should F_GETFL first and OR
 // the bit in — bitwise-or isn't in the Integer surface yet, so this sets the flags
 // to exactly O_NONBLOCK.
 [Reflect defineMethod: #setNonBlocking on: SockConn as: [:self |
-  [[self fd] fcntlCmd: 4 arg: 4]]];
+  [[self fd] fcntlCmd: 4 arg: 4]] doc:
+  "Set the connection fd non-blocking (reactor stub; the blocking path doesn't use it)."];
 
 // Arm the SIGPIPE guard as the last step of loading.
 [Socket ignoreSigpipe]

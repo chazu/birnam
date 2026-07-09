@@ -29,13 +29,17 @@
 // the closing-bracket count trivial (deep inline nesting is where it goes wrong).
 
 [Globals at: #Http put: [Object clone]];
+[Reflect docModule: #http is: "A static HTTP/1.1 server (routing, dir listings, mime), over Socket + File."];
 
 // -- the request --------------------------------------------------------------
 
 [Globals at: #HttpRequest put: [Object clone]];
-[Reflect defineMethod: #method on: HttpRequest as: [:self | [[db cellFor: self attr: #method] value]]];
-[Reflect defineMethod: #path   on: HttpRequest as: [:self | [[db cellFor: self attr: #path]   value]]];
-[Reflect defineMethod: #raw    on: HttpRequest as: [:self | [[db cellFor: self attr: #raw]    value]]];
+[Reflect defineMethod: #method on: HttpRequest as: [:self | [[db cellFor: self attr: #method] value]] doc:
+  "The request method (a String), e.g. \"GET\"."];
+[Reflect defineMethod: #path   on: HttpRequest as: [:self | [[db cellFor: self attr: #path]   value]] doc:
+  "The request path (a String), query string stripped."];
+[Reflect defineMethod: #raw    on: HttpRequest as: [:self | [[db cellFor: self attr: #raw]    value]] doc:
+  "The raw request bytes as received (a String)."];
 
 // Parse the request line ("GET /a/b?q=1 HTTP/1.1") into an HttpRequest. The query
 // string is stripped from the path; a malformed/empty request defaults to GET /.
@@ -84,19 +88,23 @@
   let ct   := [["\r\nContent-Type: " , mime] , "\r\nContent-Length: "];
   let hd   := [[ct , [[body size] printString]] , "\r\nConnection: close\r\n\r\n"];
   let resp := [[sl , hd] , body];
-  resp]];
+  resp] doc:
+  "Assemble a full HTTP/1.1 response: status `code`/`reason`, Content-Type `mime`, Content-Length, Connection: close, then `body`."];
 
 [Reflect defineMethod: #ok:type: on: Http as: [:self :body :mime |
   let r := [self status: 200 reason: "OK" type: mime body: body];
-  r]];
+  r] doc:
+  "A 200 OK response carrying `body` with content type `mime`."];
 
 [Reflect defineMethod: #notFound on: Http as: [:self |
   let r := [self status: 404 reason: "Not Found" type: "text/html; charset=utf-8" body: "<h1>404 Not Found</h1>"];
-  r]];
+  r] doc:
+  "A 404 Not Found response."];
 
 [Reflect defineMethod: #forbidden on: Http as: [:self |
   let r := [self status: 403 reason: "Forbidden" type: "text/html; charset=utf-8" body: "<h1>403 Forbidden</h1>"];
-  r]];
+  r] doc:
+  "A 403 Forbidden response (used for path traversal attempts)."];
 
 // -- static-file serving ------------------------------------------------------
 
@@ -159,10 +167,12 @@
               let req  := [me requestFrom: raw];
               let resp := [handler value: req];
               [conn sendString: resp]]];
-  r]];
+  r] doc:
+  "Serve on `port`, handing each parsed HttpRequest to `handler` (a 1-arg block) which returns a response String. Blocks, one connection at a time."];
 
 // Serve static files out of `docroot` (e.g. "docs") on `port`.
 [Reflect defineMethod: #serveDir:on: on: Http as: [:self :docroot :port |
   let me := self;
   let r  := [self serve: port with: [:req | [me fileResponse: [req path] under: docroot]]];
-  r]]
+  r] doc:
+  "Serve the static files under `docroot` (e.g. \"docs\") on `port`. Directory listings when no index.html; \"..\" refused."]
