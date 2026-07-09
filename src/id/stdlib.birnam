@@ -10,6 +10,18 @@
 // directly on the Zig primitives, so it requires no other self-hosted module.
 [Module named: #stdlib requires: #[]];
 
+// -- documentation hooks (baseline no-ops; Doc overrides them) ----------------
+// A method's docstring can ride its definition (`… as: block doc: "…"`) and a
+// module can declare a one-line summary (`[Reflect docModule: #x is: "…"]`) with
+// ZERO dependency on the Doc system: here both just install / do nothing. Loading
+// modules/doc.birnam OVERRIDES both on Reflect to capture the docstrings as
+// queryable facts — so docs materialize only when Doc is loaded before the modules,
+// and cost nothing otherwise.
+[Reflect defineMethod: #defineMethod:on:as:doc: on: Reflect as: [:self :sel :proto :blk :doc |
+  [self defineMethod: sel on: proto as: blk];
+  self]];
+[Reflect defineMethod: #docModule:is: on: Reflect as: [:self :mod :summary | self]];
+
 // -- Integer: derived arithmetic on top of the primitive + - * / mod: < <= = -----
 
 [Reflect defineMethod: #negated on: Integer as: [:self | [0 - self]]];

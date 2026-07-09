@@ -68,6 +68,13 @@
   [[db cellFor: mod attr: #docMethods] set: [cur add: e]];
   self]];
 
+// Override the stdlib no-op: a module's summary declaration now records it (and
+// sets the current module) — so a module writes `[Reflect docModule: #x is: "…"]`
+// with no direct dependency on Doc, and it only takes effect when Doc is loaded.
+[Reflect defineMethod: #docModule:is: on: Reflect as: [:self :mod :summary |
+  [Doc module: mod is: summary];
+  self]];
+
 // -- queries ------------------------------------------------------------------
 
 // Every documented module symbol.
