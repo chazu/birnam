@@ -105,21 +105,77 @@
   let want := [mod printString];
   [[self modules] inject: false into: [:found :m | [found | [[m printString] = want]]]]]];
 
-// `birnam doc <mod>` — the module's docs, or a friendly note if it has none.
+// -- source view: the facts the compiler records for every loaded module ---------
+//
+// Loading ANY module (from source OR a compiled dylib) records each method's source
+// on the `#__methods__` entity, and a dylib also records its whole text under
+// `#__modsrc__` keyed by module name (see codegen's `defineMethod:on:as:source:` /
+// `mCompileOutput`). These read those facts so docs can fall back to source when a
+// selector has no hand-written docstring — the source IS the documentation.
+
+// The selector token in a `[Reflect defineMethod: #sel on: T as: …]` source string:
+// the `#…` right after `defineMethod:`, up to the next space — a keyword selector
+// keeps its colons ("#tag:body:" -> "tag:body:"). "" if `src` isn't a definition.
+[Reflect defineMethod: #selectorInSource: on: Doc as: [:self :src |
+  let afterDM   := [[src split: "defineMethod:"] last];
+  let afterHash := [[afterDM split: "#"] last];
+  [[afterHash split: " "] first]]];
+
+// Every recorded method-source string, across all loaded modules.
+[Reflect defineMethod: #methodSources on: Doc as: [:self |
+  [db findAll: ?src where: #[ #[ #__methods__ ?attr ?src ] ]]]];
+
+// The recorded source(s) of every method whose selector prints as `name` (a String).
+[Reflect defineMethod: #sourcesForSelector: on: Doc as: [:self :name |
+  [[self methodSources] inject: #[] into: [:acc :src |
+    [[[self selectorInSource: src] = name]
+      ifTrue:  [| [acc add: src]]
+      ifFalse: [| acc]]]]]];
+
+// The whole-module source recorded for `mod` (a symbol) by a dylib load, or "".
+[Reflect defineMethod: #moduleSource: on: Doc as: [:self :mod |
+  let hits := [db findAll: ?src where: #[ #[ #__modsrc__ mod ?src ] ]];
+  [[hits isEmpty] ifTrue: [| ""] ifFalse: [| [hits first]]]]];
+
+// -- CLI ----------------------------------------------------------------------
+
+// `birnam doc <mod>` — the registered docs, else the recorded whole-module source
+// (a dylib load), else a friendly note.
 [Reflect defineMethod: #cli: on: Doc as: [:self :mod |
   [[self isDocumented: mod]
     ifTrue:  [| [self text: mod]]
-    ifFalse: [| [["no documentation for " , [self nameOf: mod]] , "\n"]]]]];
+    ifFalse: [|
+      let src := [self moduleSource: mod];
+      [[src isEmpty]
+        ifTrue:  [| [["no documentation for " , [self nameOf: mod]] , "\n"]]
+        ifFalse: [| [[[self nameOf: mod] , "\n\n"] , [src , "\n"]]]]]]]];
 
-// `birnam doc <mod> <sel>` — the docstring(s) for one selector name (a String).
+// `birnam doc <mod> <sel>` — the docstring(s) for one selector name (a String),
+// else the recorded source(s) of that selector, else a friendly note.
 [Reflect defineMethod: #cli:sel: on: Doc as: [:self :mod :selName |
   let hits := [self lookup: selName];
   [[hits isEmpty]
-    ifTrue:  [| [["no documentation for " , selName] , "\n"]]
+    ifTrue:  [|
+      let srcs := [self sourcesForSelector: selName];
+      [[srcs isEmpty]
+        ifTrue:  [| [["no documentation for " , selName] , "\n"]]
+        ifFalse: [| [srcs inject: "" into: [:acc :s | [acc , [s , "\n"]]]]]]]
     ifFalse: [| [hits inject: "" into: [:acc :e |
       let s := [self nameOf: [[db cellFor: e attr: #sel] value]];
       let t := [[db cellFor: e attr: #text] value];
       [acc , [[s , "\n    "] , [t , "\n"]]]]]]]]];
+
+// Markdown hover body for a selector NAME: registered docstrings if any, else the
+// recorded source in a code block, else "" (nothing to show). The single source of
+// hover truth — the LSP renders whatever this returns.
+[Reflect defineMethod: #hoverBodyFor: on: Doc as: [:self :name |
+  let hits := [self lookup: name];
+  [[hits isEmpty]
+    ifTrue:  [|
+      [[self sourcesForSelector: name] inject: "" into: [:acc :s |
+        [acc , [["```birnam\n" , s] , "\n```\n\n"]]]]]
+    ifFalse: [| [hits inject: "" into: [:acc :e |
+      [acc , [[[db cellFor: e attr: #text] value] , "\n\n"]]]]]]]];
 
 // -- rendering: plaintext (the REPL / `birnam doc` view) ----------------------
 

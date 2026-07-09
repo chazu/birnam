@@ -31,4 +31,35 @@ let s := [TestSuite named: "Doc" module: #doc];
   [t assert: [[without size] < [names size]] describes: "#demoReg present in [Doc modules]"];
   [t assert: [[[Doc methodsOf: #demoReg] size] = 0] describes: "methodsOf: empty when none registered"]]];
 
+[s test: "selectorInSource: reads the selector out of a definition span" do: [:t |
+  [t expect: [Doc selectorInSource: "[Reflect defineMethod: #tag:body: on: Html as: [x]]"]
+     equals: "tag:body:"
+     describes: "selectorInSource: keeps a keyword selector's colons"]]];
+
+// A bare `defineMethod:on:as:` records its source on `#__methods__`, so an
+// undocumented selector is still queryable — Doc falls back to that source.
+[s test: "source fallback surfaces an undocumented method's own source" do: [:t |
+  let demo := [Object clone];
+  [Reflect defineMethod: #zzDemoSrc on: demo as: [:self | 42]];
+  let srcs := [Doc sourcesForSelector: "zzDemoSrc"];
+  [t assert: [[srcs size] >= 1] describes: "sourcesForSelector: finds the recorded source"];
+  let body := [Doc hoverBodyFor: "zzDemoSrc"];
+  [t assert: [body includesSubstring: "zzDemoSrc"] describes: "hoverBodyFor: includes the source"];
+  [t assert: [body includesSubstring: "```birnam"] describes: "hoverBodyFor: fences source as birnam"]]];
+
+// A hand-written docstring wins over the source fallback.
+[s test: "hoverBodyFor: prefers a registered docstring over source" do: [:t |
+  [Doc module: #demoHov is: "hover demo"];
+  [Doc for: #zzHovSel in: #demoHov says: "the registered docstring"];
+  [t assert: [[Doc hoverBodyFor: "zzHovSel"] includesSubstring: "the registered docstring"]
+     describes: "docstring beats source"]]];
+
+// `[System load:]` records the whole file under `#__modsrc__` keyed by basename, so
+// moduleSource: works for a from-source load too (running this suite loaded #doc).
+[s test: "a from-source load records the whole-module source" do: [:t |
+  let src := [Doc moduleSource: #doc];
+  [t assert: [[src size] > 0] describes: "moduleSource: #doc is recorded"];
+  [t assert: [src includesSubstring: "defineMethod: #module:is:"]
+     describes: "it is the actual doc.birnam source"]]];
+
 s

@@ -178,6 +178,13 @@ var artifact_mode: bool = false;
 // makes the keys unique per module (and stable across recompiles of the same source).
 var artifact_salt: u64 = 0;
 
+// The module name for the current artifact compile, or null for a non-module
+// artifact (the image `.code` section). Set by `mCompileOutput` (the module-dylib
+// path) and read by `emitProgram` to self-record the whole-module source as a
+// `__modsrc__` fact at load. Points into the caller's out-path bytes, valid for the
+// synchronous emitProgram call; cleared right after.
+var g_module_name: ?[]const u8 = null;
+
 /// Resolve `name` to its interned symbol (once), assign it a stable `__g<i>` slot,
 /// and return that index. Keyed by symbol identity, so the same global referenced
 /// many times bakes a single handle.
@@ -579,7 +586,7 @@ fn emitDefineMethodSourced(buf: *std.ArrayList(u8), recvNode: Oop, argNodes: []c
 /// installs the trampoline pointer directly. The `__amblk`/`__amtramp` namespace
 /// is distinct from the live session's `__mblk` so a boot's stdlib re-eval can't
 /// collide. `sel`/`T` resolve relocatably (birnam_intern / birnam_global).
-fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop) bool {
+fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop, sendNode: Oop) bool {
     const selRaw = text(argNodes[0]); // "#sel"
     const sel = if (selRaw.len >= 1 and selRaw[0] == '#') selRaw[1..] else selRaw;
     const k = selectorArityStr(sel);
@@ -601,7 +608,20 @@ fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop) b
     if (!emit(buf, argNodes[2])) return false; // the block literal → instance
     put(buf, "); birnam_method(_vt, birnam_intern(\"");
     putCStr(buf, sel);
-    putFmt(buf, "\"), (void*)&__amtramp{d}); _vt; }})", .{n});
+    putFmt(buf, "\"), (void*)&__amtramp{d}); ", .{n});
+    // Record the definition's source as a `__methods__` fact — the same portable
+    // truth the JIT path records (mDefineMethodSourced), so a method installed from a
+    // compiled dylib is fact-level indistinguishable from a source-loaded one:
+    // queryable for docs/introspection, and carried by image save/replay. Keyed
+    // `__msrc_<salt>_<n>` — the per-unit salt + method index makes it collision-free
+    // across modules and against the JIT counter, and idempotent on reload (the cell
+    // just re-takes the same value).
+    put(buf, "birnam_send(birnam_global(\"Store\"), birnam_intern(\"assert:attr:value:\"), (void*[]){birnam_intern(\"__methods__\"), birnam_intern(\"");
+    putFmt(buf, "__msrc_{x}_{d}", .{ artifact_salt, n });
+    put(buf, "\"), birnam_mkString(\"");
+    const src = text(sendNode);
+    putCStr(buf, src);
+    putFmt(buf, "\", {d}L)}}, 3L); _vt; }})", .{src.len});
     return true;
 }
 
@@ -777,7 +797,7 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
                 // the trampoline as a static fn + a direct `birnam_method` install,
                 // so loading the artifact installs mapped code with no recompile.
                 // The JIT/source-recording path is used only for LIVE definition.
-                if (artifact_mode) return emitDefineMethodInstallable(buf, args.items);
+                if (artifact_mode) return emitDefineMethodInstallable(buf, args.items, node);
                 return emitDefineMethodSourced(buf, recv, args.items, node);
             }
             return emitGeneralSend(buf, recv, sel.items, args.items);
@@ -1130,6 +1150,22 @@ fn mEvalPersisting(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return runProgram(a[0], true);
 }
 
+/// The module name embedded in a dylib path: the basename with any directory, the
+/// `lib`/`libbirnam_` prefix, and the extension stripped — `…/libbirnam_socket.dylib`
+/// → `socket`. Mirrors the loader's `libbirnam_<name>.dylib` convention so the
+/// recorded `__modsrc__` key matches the symbol modules are loaded by.
+fn moduleNameFromPath(path: []const u8) []const u8 {
+    var base = path;
+    if (std.mem.lastIndexOfScalar(u8, base, '/')) |s| base = base[s + 1 ..];
+    if (std.mem.lastIndexOfScalar(u8, base, '.')) |d| base = base[0..d];
+    if (std.mem.startsWith(u8, base, "libbirnam_")) {
+        base = base["libbirnam_".len..];
+    } else if (std.mem.startsWith(u8, base, "lib")) {
+        base = base["lib".len..];
+    }
+    return base;
+}
+
 /// `[Codegen compile: src output: path]` — compile a birnam program to a shared
 /// library on disk (the relocatable artifact form, docs/40 §3a). The artifact
 /// leaves the `birnam_*` shims as undefined externals — the dynamic loader
@@ -1137,9 +1173,20 @@ fn mEvalPersisting(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 /// export them as dynamic symbols) — and re-derives its global handles by name
 /// in `__birnam_unit_init`, so nothing in it depends on this process's
 /// addresses. Load with `[Codegen load: path]`. Returns the path, or nil.
+///
+/// A compiled module also self-records its source at load — the whole-module text as
+/// a `__modsrc__` fact keyed by module name, and each method's text on `__methods__`
+/// (via `emitDefineMethodInstallable`) — so a compiled module is fact-level
+/// indistinguishable from a source load: queryable, and carried by image save/replay.
 fn mCompileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    // Name the module from its output path (`…/libbirnam_<name>.dylib`) so `emitProgram`
+    // can self-record the whole-module source under `#<name>`. Scoped to THIS compile.
+    var olen: usize = 0;
+    const op = g_api.stringBytes(a[1], &olen);
+    g_module_name = moduleNameFromPath(op[0..olen]);
+    defer g_module_name = null;
     var buf = emitProgram(a[0], false, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);
     // Embed a `__birnam_module_meta` symbol carrying this unit's DEPENDENCIES (scanned
@@ -1360,6 +1407,17 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
     var ev: std.ArrayList(u8) = .{};
     defer ev.deinit(ca);
     put(&ev, "void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\n");
+    // Module dylibs self-record their whole source as a `__modsrc__` fact keyed by
+    // module name (docs/40): loading a compiled module makes its source queryable in
+    // the store, the same as loading it from source. Only the module-compile path
+    // sets `g_module_name`; the image `.code` compile leaves it null and skips this.
+    if (artifact and g_module_name != null) {
+        put(&ev, "birnam_send(birnam_global(\"Store\"), birnam_intern(\"assert:attr:value:\"), (void*[]){birnam_intern(\"__modsrc__\"), birnam_intern(\"");
+        putCStr(&ev, g_module_name.?);
+        put(&ev, "\"), birnam_mkString(\"");
+        putCStr(&ev, src_bytes);
+        putFmt(&ev, "\", {d}L)}}, 3L);\n", .{src_bytes.len});
+    }
     if (!emitBody(&ev, statements, persist)) {
         noteError("cannot compile this program (not in the compilable subset)", spanStart(statements));
         return null;

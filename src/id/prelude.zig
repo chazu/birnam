@@ -579,7 +579,21 @@ fn sysLoad(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     defer ca.free(src);
     const codegen = g_api.import("Codegen");
     if (codegen == null) return mkErr("noCodegen", "Codegen module is not loaded");
-    return g_api.send(codegen, g_api.intern("evalPersisting:"), &[_]Oop{g_api.mkString(src.ptr, src.len)}, 1);
+    const src_oop = g_api.mkString(src.ptr, src.len);
+    // Record the whole-module source under `#__modsrc__`, keyed by the file's basename
+    // (sans `.birnam`). This mirrors the dylib path (`mCompileOutput` in codegen), so a
+    // from-source load is fact-level identical to a compiled one: `[Doc moduleSource:
+    // #x]` and `birnam doc <x>` surface the source whichever way the module was loaded.
+    if (g_api.import("Store")) |store| blk: {
+        var base = path;
+        if (std.mem.lastIndexOfScalar(u8, base, '/')) |s| base = base[s + 1 ..];
+        if (std.mem.lastIndexOfScalar(u8, base, '.')) |d| base = base[0..d];
+        if (base.len == 0 or base.len >= 256) break :blk;
+        var nb: [256]u8 = undefined;
+        const namez = std.fmt.bufPrintZ(&nb, "{s}", .{base}) catch break :blk;
+        _ = g_api.send(store, g_api.intern("assert:attr:value:"), &[_]Oop{ g_api.intern("__modsrc__"), g_api.intern(namez.ptr), src_oop }, 3);
+    }
+    return g_api.send(codegen, g_api.intern("evalPersisting:"), &[_]Oop{src_oop}, 1);
 }
 
 /// `[System loadModule: pathString]` — dlopen a birnam MODULE dylib and run its

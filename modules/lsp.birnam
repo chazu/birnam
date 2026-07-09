@@ -254,15 +254,15 @@
         ifFalse: [| ""]]]];
   r]];
 
-// Build an LSP Hover result (markdown) from Doc entries for `tok`.
-[Reflect defineMethod: #hoverResult:token: on: Lsp as: [:self :hits :tok |
-  let body := [hits inject: [["**" , tok] , "**\n\n"] into: [:acc :e |
-    [acc , [[[db cellFor: e attr: #text] value] , "\n\n"]]]];
-  let contents := [[[Map new] at: "kind" put: "markdown"] at: "value" put: body];
+// Build an LSP Hover result (markdown): a bold token header over a rendered body.
+[Reflect defineMethod: #hoverResult:token: on: Lsp as: [:self :body :tok |
+  let value := [[["**" , tok] , "**\n\n"] , body];
+  let contents := [[[Map new] at: "kind" put: "markdown"] at: "value" put: value];
   let r := [[Map new] at: "contents" put: contents];
   r]];
 
-// textDocument/hover: look up the token under the cursor in the Doc facts.
+// textDocument/hover: the Doc body for the token under the cursor — a hand-written
+// docstring, else the recorded method source, else nil (nothing to show, or no Doc).
 [Reflect defineMethod: #onHover:id: on: Lsp as: [:self :p :id |
   let td   := [p at: "textDocument" ifAbsent: [| [Map new]]];
   let uri  := [td at: "uri" ifAbsent: [| ""]];
@@ -271,10 +271,10 @@
   let ch   := [pos at: "character" ifAbsent: [| 0]];
   let text := [[self docsMap] at: uri ifAbsent: [| ""]];
   let tok  := [self tokenAt: ch in: [self lineAt: ln in: text]];
-  let hits := [[Globals includes: #Doc] ifTrue: [| [Doc lookup: tok]] ifFalse: [| #[]]];
-  [[hits isEmpty]
+  let body := [[Globals includes: #Doc] ifTrue: [| [Doc hoverBodyFor: tok]] ifFalse: [| ""]];
+  [[body isEmpty]
     ifTrue:  [| [self respond: id result: nil]]
-    ifFalse: [| [self respond: id result: [self hoverResult: hits token: tok]]]];
+    ifFalse: [| [self respond: id result: [self hoverResult: body token: tok]]]];
   self]];
 
 // -- dispatch + loop ----------------------------------------------------------
