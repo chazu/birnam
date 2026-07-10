@@ -428,6 +428,16 @@ fn mDefineMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     return installMethod(args[0], args[1], args[2]);
 }
+/// `[Reflect vtableOf: x]` — the mirror's structural read: surface the floor's
+/// `vtableOf` as a meta-capability (Bracha stratification — type identity is a
+/// question asked THROUGH the mirror, not a method on the base object). Type
+/// predicates (`isSymbol:`/`isString:`/…) are then pure birnam on `Reflect`,
+/// comparing `[Reflect vtableOf: x]` against an exemplar's vtable.
+fn mVtableOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return g_api.vtableOf(args[0]);
+}
 
 /// `[Reflect defineMethod: #sel on: T as: blk source: srcString]` — the source-
 /// carrying form codegen lowers `defineMethod:on:as:` to. Records the definition's
@@ -1588,6 +1598,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
     api.method(reflect_vt, api.intern("defineMethod:on:as:source:"), &mDefineMethodSourced);
+    api.method(reflect_vt, api.intern("vtableOf:"), &mVtableOf);
 
     if (!reloading) {
         _ = api.exportObj("CodegenVt", codegen_vt);

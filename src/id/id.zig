@@ -106,6 +106,7 @@ pub var integer_proto: Oop = undefined; // a boxed 0
 pub var float_proto: Oop = undefined; // a boxed 0.0
 pub var word_proto: Oop = undefined; // a boxed 0-word (the Word prototype)
 pub var string_proto: Oop = undefined; // the empty string
+pub var symbol_proto: Oop = undefined; // the canonical Symbol prototype (a symbol)
 var symbol_list: *Vtable = undefined; // the intern table (keys = symbols)
 var env: *Vtable = undefined; // the export environment (keys = symbols, values = objects)
 
@@ -1028,11 +1029,16 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
     float_proto = mkFloat(0);
     word_proto = mkWord(0);
     string_proto = mkString("");
+    // Symbol is a prototype object like every other kind (docs/design/41 §A) — an
+    // ordinary (interned) symbol whose vtable is symbol_vt — NOT the raw vtable.
+    // `SymbolVt` (below) exposes the vtable directly, mirroring `Vector`/`VectorVt`.
+    symbol_proto = oop(intern("Symbol"));
     object_vt.owner = object_proto;
     smallint_vt.owner = integer_proto;
     float_vt.owner = float_proto;
     word_vt.owner = word_proto;
     string_vt.owner = string_proto;
+    symbol_vt.owner = symbol_proto; // so `[Reflect defineMethod: … on: Symbol …]` patches symbol_vt in place
     nil_vt.owner = nil_obj; // nil is its own prototype
     bool_vt.owner = true_obj; // extend booleans via `Boolean` (bound to true)
 
@@ -1044,7 +1050,8 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
     _ = exportObj("String", string_proto);
     _ = exportObj("Boolean", true_obj);
     _ = exportObj("Vtable", oop(vtable_vt));
-    _ = exportObj("Symbol", oop(symbol_vt));
+    _ = exportObj("Symbol", symbol_proto); // the prototype (was oop(symbol_vt) — the wart)
+    _ = exportObj("SymbolVt", oop(symbol_vt)); // the vtable, parity with VectorVt/MapVt
     return &g_api;
 }
 

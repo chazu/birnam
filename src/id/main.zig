@@ -393,7 +393,7 @@ fn runDemo(a: std.mem.Allocator, api: *IdApi, id_path: []const u8, id_path_z: [:
     //    object PROTOTYPE, so take the vtable from the api field for `proto` below.)
     const object_vt = api.object_vt;
     const vtable_vt = api.import("Vtable");
-    const symbol_vt = api.import("Symbol");
+    const symbol_vt = api.import("SymbolVt"); // "Symbol" now names the PROTOTYPE (like "Object"); the vtable is SymbolVt
     std.debug.print("[siphon] re-imported the id layer: Object={*} Vtable={*} Symbol={*}\n", .{ object_vt, vtable_vt, symbol_vt });
     if (object_vt != api.object_vt or vtable_vt != api.vtable_vt or symbol_vt != api.symbol_vt) {
         return error.ReimportMismatch;

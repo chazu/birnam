@@ -159,4 +159,57 @@
 // [parse value: data]]]`. Defined on Object so any value pipes; the block chooses
 // what to do with it (send, combine, guard), which recovers Smalltalk's
 // thread-as-receiver fluency over birnam's native blocks.
-[Reflect defineMethod: #|> on: Object as: [:self :block | [block value: self]]]
+[Reflect defineMethod: #|> on: Object as: [:self :block | [block value: self]]];
+
+// ── error protocol (migrated from error.zig; docs/design/44a) ────────────────
+// The representation (native Err payload), the doesNotUnderstand: SWAP, and the
+// Error factory stay in the Zig core (error.zig) — they are floor. What lives here
+// is pure block orchestration over the core primitives [e isError]/[e kind]/
+// [e message] and the [Error …] factory. `ErrorVt` is the exported error-instance
+// vtable; `on: ErrorVt` installs on every error instance.
+
+// Type predicates live on the MIRROR (Reflect), not on base objects (Bracha
+// stratification — a type query is asked THROUGH the mirror, not answered by the
+// object itself). `[Reflect vtableOf: x]` is the one floor primitive; each
+// predicate compares an object's vtable to an EXEMPLAR's — so it is independent of
+// how a kind's prototype is exported (docs/design/44a).
+[Reflect defineMethod: #isSymbol: on: Reflect as: [:self :x | [[self vtableOf: x] == [self vtableOf: #s]]]];
+[Reflect defineMethod: #isString: on: Reflect as: [:self :x | [[self vtableOf: x] == [self vtableOf: ""]]]];
+
+// Does a caught error's kind satisfy an on:do: spec? the wildcard #error, an exact
+// kind symbol, or any collection of kinds. A single symbol short-circuits to false
+// (no match); only a non-symbol spec (a collection) is probed with `includes:`.
+[Reflect defineMethod: #kindMatches: on: ErrorVt as: [:self :want |
+   [[[want = #error] | [want = [self kind]]]
+      ifTrue:  [| true]
+      ifFalse: [| [[Reflect isSymbol: want] ifTrue:  [| false]
+                                            ifFalse: [| [want includes: [self kind]]]]]]]];
+
+// [[block] on: spec do: handler] — run the protected block; if it yields an error
+// whose kind matches spec, run the handler with it; else pass the value through.
+[Reflect defineMethod: #on:do: on: Object as: [:self :spec :handler |
+   let val := [self value];
+   [[val isError]
+      ifTrue:  [| [[val kindMatches: spec] ifTrue:  [| [handler value: val]]
+                                           ifFalse: [| val]]]
+      ifFalse: [| val]]]];
+
+// [protected ensure: cleanup] — always run cleanup, answer protected's result.
+[Reflect defineMethod: #ensure: on: Object as: [:self :cleanup |
+   let val := [self value]; [cleanup value]; val]];
+
+// ifError:/ifNotError: — dispatch on whether the receiver is an error.
+[Reflect defineMethod: #ifError:    on: Object  as: [:self :h | self]];
+[Reflect defineMethod: #ifNotError: on: Object  as: [:self :h | [h value: self]]];
+[Reflect defineMethod: #ifError:    on: ErrorVt as: [:self :h | [h value: self]]];
+[Reflect defineMethod: #ifNotError: on: ErrorVt as: [:self :h | self]];
+
+// printString — "error(#kind: message)"; kind is always a symbol, message may be nil.
+[Reflect defineMethod: #printString on: ErrorVt as: [:self |
+   let k := [[self kind] printString];
+   let m := [[[self message] isNil] ifTrue: [| ""] ifFalse: [| [": " , [self message]]]];
+   [[["error(" , k] , m] , ")"]]];
+
+// Raise from a message string: ["boom" error] → #error; ["boom" error: #kind].
+[Reflect defineMethod: #error  on: String as: [:self | [Error message: self]]];
+[Reflect defineMethod: #error: on: String as: [:self :kind | [Error kind: kind message: self]]]
