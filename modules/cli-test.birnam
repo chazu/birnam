@@ -10,6 +10,7 @@
 [[Globals includes: #Repl]   ifTrue: [| nil] ifFalse: [| [System load: "modules/repl.birnam"]]];
 [[Globals includes: #Lsp]    ifTrue: [| nil] ifFalse: [| [System load: "modules/json.birnam"]]];
 [[Globals includes: #Lsp]    ifTrue: [| nil] ifFalse: [| [System load: "modules/lsp.birnam"]]];
+[[Globals includes: #File]   ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
 
 let s := [TestSuite named: "Cli" module: #cli];
 
@@ -28,6 +29,23 @@ let s := [TestSuite named: "Cli" module: #cli];
 
 [s test: "runFile: answers 1 for an unreadable file" do: [:t |
   [t expect: [Cli runFile: "/nonexistent/nope.birnam"] equals: 1 describes: "missing file is a failure"]]];
+
+// initAt: on a scratch path — the fresh write, the template's self-description,
+// and the refuse-to-overwrite guard. (`run: #["init"]` writes ./birnam.toml, so
+// the dispatcher path is exercised against the repo root's existing config,
+// where refusing IS the correct answer.)
+[s test: "initAt: writes the starter birnam.toml once, then refuses to overwrite" do: [:t |
+  let p := "/tmp/birnam-cli-init-test.toml";
+  [File delete: p];
+  [t expect: [Cli initAt: p] equals: 0 describes: "fresh init succeeds"];
+  let text := [System readFile: p];
+  [t assert: [text includesSubstring: "main = "] describes: "template shows the main key"];
+  [t assert: [text includesSubstring: "[Config at: "] describes: "template documents the Config read surface"];
+  [t expect: [Cli initAt: p] equals: 1 describes: "an existing file is refused"];
+  [t expect: [File delete: p] equals: true describes: "scratch file cleanup"]]];
+
+[s test: "run:dir: routes init; a cwd with a birnam.toml is refused, not clobbered" do: [:t |
+  [t expect: [Cli run: #["init"] dir: "modules"] equals: 1 describes: "repo root already has birnam.toml"]]];
 
 // -- the library-use guarantee for the modules the subcommands drive -----------
 

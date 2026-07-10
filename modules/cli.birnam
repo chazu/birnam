@@ -1,4 +1,4 @@
-// cli.birnam — the birnam side of the birnam CLI: doc, docgen, --lsp, --listen.
+// cli.birnam — the birnam side of the birnam CLI: doc, docgen, init, --lsp, --listen.
 //
 // main.zig recognizes a subcommand token, boots the image, resolves the modules
 // directory (exported as $BIRNAM_MODULES_DIR), loads this file, and hands the
@@ -18,7 +18,7 @@
 // (so the --serve alias arrives as "--serve").
 
 [Globals at: #Cli put: [Object clone]];
-[Reflect docModule: #cli is: "The CLI subcommand dispatcher (doc/docgen/--lsp/--listen) — one more client of the module APIs."];
+[Reflect docModule: #cli is: "The CLI subcommand dispatcher (doc/docgen/init/--lsp/--listen) — one more client of the module APIs."];
 
 // -- small shared pieces -------------------------------------------------------
 
@@ -141,14 +141,45 @@
     ifTrue:  [| 0]
     ifFalse: [| [self fail: [[["birnam: compile error in " , path] , ":\n"] , e]]]]]];
 
+// -- init: `birnam init` ---------------------------------------------------------
+
+// The starter birnam.toml: the recognised keys, commented out, with the
+// [Config at:] read surface documented inline — a new project's config is
+// self-describing without opening src/id/config.birnam.
+[Reflect defineMethod: #initTemplate on: Cli as: [:self |
+"# birnam.toml — project configuration, read from the current directory.
+#
+# Every key here is also readable from code: [Config at: \"key\"] answers
+# the value, or nil when the file or key is absent — nothing is required,
+# and a project without a birnam.toml just works.
+
+# The project entry point. A bare `birnam` run in this directory evaluates
+# this file first, then drops into the REPL with its state live.
+# main = \"main.birnam\"
+"] doc:
+  "The birnam.toml contents `birnam init` writes — recognised keys commented out, usage documented inline."];
+
+// Refuse-to-overwrite is the whole safety story: an existing config (readable
+// at PATH) is never touched, so `init` is safe to run in any directory.
+[Reflect defineMethod: #initAt: on: Cli as: [:self :path |
+  [[[System readFile: path] isError]
+    ifTrue:  [|
+      let w := [System writeFile: path contents: [self initTemplate]];
+      [[w isError]
+        ifTrue:  [| [self fail: ["birnam init: could not write " , path]]]
+        ifFalse: [| [self say: ["wrote " , path]]]]]
+    ifFalse: [| [self fail: ["birnam init: " , [path , " already exists — not overwriting"]]]]]] doc:
+  "`birnam init` — write the starter birnam.toml to PATH unless one already exists. Answers the process status."];
+
 // -- the dispatcher --------------------------------------------------------------
 
 [Reflect defineMethod: #run:dir: on: Cli as: [:self :args :mdir |
   let cmd := [args at: 0 ifAbsent: [| ""]];
   [[cmd = "doc"] ifTrue: [| [self doc: args dir: mdir]] ifFalse: [|
     [[cmd = "docgen"] ifTrue: [| [self docgen: args dir: mdir]] ifFalse: [|
-      [[cmd = "--lsp"] ifTrue: [| [self lsp: args dir: mdir]] ifFalse: [|
-        [[[cmd = "--listen"] | [cmd = "--serve"]]
-          ifTrue:  [| [self listen: args dir: mdir]]
-          ifFalse: [| [self fail: ["birnam: unknown subcommand: " , cmd]]]]]]]]]]] doc:
+      [[cmd = "init"] ifTrue: [| [self initAt: "birnam.toml"]] ifFalse: [|
+        [[cmd = "--lsp"] ifTrue: [| [self lsp: args dir: mdir]] ifFalse: [|
+          [[[cmd = "--listen"] | [cmd = "--serve"]]
+            ifTrue:  [| [self listen: args dir: mdir]]
+            ifFalse: [| [self fail: ["birnam: unknown subcommand: " , cmd]]]]]]]]]]]]] doc:
   "Dispatch one CLI invocation: args = #[subcommand operand…] as typed, dir = the modules directory. Answers the process status (0 ok, 1 fail)."];

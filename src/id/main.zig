@@ -34,6 +34,9 @@ const USAGE =
     \\                             its method docstrings, or one selector's doc.
     \\  birnam docgen [out.html]   Generate the full HTML doc reference (every birnam
     \\                             module + every Zig floor file) to a file.
+    \\  birnam init                Write a starter birnam.toml (the recognised keys,
+    \\                             commented) into the current directory. Refuses to
+    \\                             overwrite an existing one.
     \\  birnam --demo              Run the verbose boot self-test (proves the
     \\                             whole stack compiles to native through the id api).
     \\  birnam wrap <name>         Scaffold wrapped/<name>/<name>.birnam — a
@@ -799,7 +802,7 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
 }
 
 // The subcommands whose handlers live in birnam (modules/cli.birnam).
-const cli_subcommands = [_][]const u8{ "--listen", "--serve", "--lsp", "doc", "docgen" };
+const cli_subcommands = [_][]const u8{ "--listen", "--serve", "--lsp", "doc", "docgen", "init" };
 
 /// A token `runCli` handles — a subcommand implemented in birnam. Recognized
 /// here, then handed over whole: `[Cli run: #["doc" "time"] dir: "<modules>"]`.

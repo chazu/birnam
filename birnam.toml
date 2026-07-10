@@ -1,28 +1,9 @@
-# Birnam project config (recognised subset documented in src/config.zig).
+# birnam.toml — project configuration, read from the current directory.
 #
-# `modules` / `image` are omitted here so a bare `birnam` keeps the default
-# module set (peg lang json stdlib net). `dylib_paths` adds the wrapped-lib dir
-# to the module search path so `Module load: "liblinenoise.dylib"` resolves by
-# bare name from any cwd (resolved relative to this file's dir).
-dylib_paths = ["wrapped/linenoise"]
+# Every key here is also readable from code: [Config at: "key"] answers
+# the value, or nil when the file or key is absent — nothing is required,
+# and a project without a birnam.toml just works.
 
-# Per-slot module overrides. `repl = "linenoise"` hands an interactive (TTY)
-# session to the birnam-authored linenoise REPL — line editing + history. Falls
-# back to the built-in stdin loop for piped input or when linenoise isn't built
-# (`birnam wrap linenoise`). Top-level `repl = "…"` still works as sugar; this
-# is the general form (any module can declare an override slot).
-[module_overrides]
-repl = "linenoise"
-
-# First-party wrapped C libraries.
-#
-# `birnam wrap [name]` compiles each entry's `sources` into `output` using the
-# system `cc` (never zig — authoring a wrapped library needs no zig toolchain).
-# The resulting dylib is loaded by its `wrapper` .birnam file via `Module load:`
-# + the FFI `wrap:as:signature:` surface. `output` defaults to
-# `lib<name>.<ext>` beside the wrapper.
-[[wrapped]]
-name    = "linenoise"
-sources = ["wrapped/linenoise/linenoise.c"]
-wrapper = "wrapped/linenoise/linenoise.birnam"
-cflags  = ["-O2"]
+# The project entry point. A bare `birnam` run in this directory evaluates
+# this file first, then drops into the REPL with its state live.
+# main = "main.birnam"
