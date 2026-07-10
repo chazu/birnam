@@ -201,6 +201,18 @@ fn rtFalse() callconv(.c) Oop {
 fn rtObjectVt() callconv(.c) Oop {
     return g_api.object_vt;
 }
+// The Block family vtable the prelude mints ("BlockVt"): every emitted block's
+// private vtable parents here, so family behaviour (whileTrue:/whileFalse:, user
+// extensions via `defineMethod on: Block`) reaches every block literal. Imported
+// lazily by name — the prelude runs long before any block compiles — and cached;
+// `bringUp` resets the cache so re-boots in one process (tests) never hold a
+// stale heap pointer. A bare floor without the prelude falls back to object_vt,
+// which is exactly the pre-Block parenting.
+var g_block_vt: Oop = null;
+fn rtBlockVt() callconv(.c) Oop {
+    if (g_block_vt == null) g_block_vt = g_api.import("BlockVt");
+    return if (g_block_vt != null) g_block_vt else g_api.object_vt;
+}
 fn rtProto(parent: Oop) callconv(.c) Oop {
     return g_api.proto(parent);
 }
@@ -258,6 +270,7 @@ comptime {
     @export(&rtTrue, .{ .name = "birnam_true" });
     @export(&rtFalse, .{ .name = "birnam_false" });
     @export(&rtObjectVt, .{ .name = "birnam_objectVt" });
+    @export(&rtBlockVt, .{ .name = "birnam_blockVt" });
     @export(&rtProto, .{ .name = "birnam_proto" });
     @export(&rtEnsurePrivateVtable, .{ .name = "birnam_ensurePrivateVtable" });
     @export(&rtMethod, .{ .name = "birnam_method" });
@@ -283,6 +296,7 @@ const runtime_syms = [_]RuntimeSym{
     .{ .name = "birnam_true", .addr = @ptrCast(&rtTrue) },
     .{ .name = "birnam_false", .addr = @ptrCast(&rtFalse) },
     .{ .name = "birnam_objectVt", .addr = @ptrCast(&rtObjectVt) },
+    .{ .name = "birnam_blockVt", .addr = @ptrCast(&rtBlockVt) },
     .{ .name = "birnam_proto", .addr = @ptrCast(&rtProto) },
     .{ .name = "birnam_ensurePrivateVtable", .addr = @ptrCast(&rtEnsurePrivateVtable) },
     .{ .name = "birnam_method", .addr = @ptrCast(&rtMethod) },
@@ -433,6 +447,7 @@ fn mSymbol(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 
 pub fn bringUp(api: *idapi.IdApi) void {
     g_api = api;
+    g_block_vt = null; // re-resolve against THIS boot's heap (see rtBlockVt)
     const reloading = api.isExported("Tcc") != 0;
     if (reloading) {
         tcc_vt = api.import("TccVt");

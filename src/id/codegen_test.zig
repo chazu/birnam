@@ -180,6 +180,85 @@ test "codegen: parse failure / empty / undeclared global all yield nil (no crash
     try std.testing.expect(eval(api, "hello") == api.nilObj); // undeclared global → nil
 }
 
+// Counter primitives for the whileTrue:/whileFalse: proofs: observable loop
+// state without the relational store (the grammar has no local re-assignment,
+// so a birnam-side loop must mutate SOMETHING these tests can read back).
+var g_loop_counter: i64 = 0;
+fn mCounterBump(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    g_loop_counter += 1;
+    return self;
+}
+// `[n counterBelow]` — true while the counter has not reached the receiver.
+fn mCounterBelow(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    return if (g_loop_counter < gapi.smallIntValue(self)) gapi.trueObj else gapi.falseObj;
+}
+// `[n counterReached]` — the whileFalse: mirror (false until the counter gets there).
+fn mCounterReached(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    return if (g_loop_counter >= gapi.smallIntValue(self)) gapi.trueObj else gapi.falseObj;
+}
+
+test "prelude whileTrue:: a native loop — flat stack across 100k iterations" {
+    const api = setupFull();
+    api.method(api.smallint_vt, api.intern("bumpCounter"), &mCounterBump);
+    api.method(api.smallint_vt, api.intern("counterBelow"), &mCounterBelow);
+    api.method(api.smallint_vt, api.intern("counterReached"), &mCounterReached);
+
+    // 100k iterations: far past any recursion depth the native stack survives,
+    // so completing at all proves the loop frame is flat. Answers nil.
+    g_loop_counter = 0;
+    const r = eval(api, "[[| [100000 counterBelow]] whileTrue: [| [0 bumpCounter]]]");
+    try std.testing.expect(r == api.nilObj);
+    try std.testing.expectEqual(@as(i64, 100_000), g_loop_counter);
+
+    // A condition that is false on arrival never runs the body.
+    g_loop_counter = 0;
+    _ = eval(api, "[[| [0 counterBelow]] whileTrue: [| [0 bumpCounter]]]");
+    try std.testing.expectEqual(@as(i64, 0), g_loop_counter);
+
+    // whileFalse: mirrors — loop until the condition turns true.
+    g_loop_counter = 0;
+    _ = eval(api, "[[| [5 counterReached]] whileFalse: [| [0 bumpCounter]]]");
+    try std.testing.expectEqual(@as(i64, 5), g_loop_counter);
+}
+
+test "prelude whileTrue:: error semantics — cond must be boolean, errors propagate" {
+    const api = setupFull();
+    api.method(api.smallint_vt, api.intern("counterBelow"), &mCounterBelow);
+
+    // A non-boolean condition answers a #mustBeBoolean error (not a silent exit,
+    // not a loop) — the same strictness a non-boolean gets from ifTrue: (DNU).
+    const e = eval(api, "[[| 42] whileTrue: [| 0]]");
+    try std.testing.expect(api.send(e, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(e, api.intern("kind"), &[_]Oop{}, 0) == api.intern("mustBeBoolean"));
+
+    // An error VALUE from the condition propagates as itself (Result-style).
+    const e2 = eval(api, "[[| [nil fooBar]] whileTrue: [| 0]]");
+    try std.testing.expect(api.send(e2, api.intern("kind"), &[_]Oop{}, 0) == api.intern("doesNotUnderstand"));
+
+    // A body that answers an error stops the loop and propagates it — the
+    // Result-style reading of Smalltalk's signal-aborts-the-loop. (Completing
+    // this eval at all also proves the error broke what is otherwise an
+    // infinite `[| true]` loop.)
+    g_loop_counter = 0;
+    const e3 = eval(api, "[[| [10 counterBelow]] whileTrue: [| [1 / 0]]]");
+    try std.testing.expect(api.send(e3, api.intern("kind"), &[_]Oop{}, 0) == api.intern("zeroDivide"));
+}
+
+test "prelude whileTrue:: an overridable send — defineMethod on: Block wins" {
+    const api = setupFull();
+
+    // The docs/41 lock: control flow is real sends, never codegen special forms.
+    // Overriding the family method changes what EVERY block's whileTrue: does.
+    _ = eval(api, "[Reflect defineMethod: #whileTrue: on: Block as: [:c :b | 99]]");
+    try std.testing.expectEqual(@as(i64, 99), try evalInt(api, "[[| true] whileTrue: [| 0]]"));
+}
+
 test "codegen 3c.3: sends dispatch through libid (unary / binary / keyword)" {
     const api = setup();
 

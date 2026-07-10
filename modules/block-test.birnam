@@ -1,0 +1,35 @@
+// block-test.birnam — the test suite for the Block family (src/id/prelude.zig):
+// whileTrue:/whileFalse:, birnam's native stack-flat iteration construct. The
+// 10k-iteration loop is the load-bearing case — a recursion-styled "loop" at
+// that depth overflows the native stack, so completing it at all proves the
+// loop frame is constant. Loop state rides store cells ([db cellFor:attr:]),
+// the mutable primitive — the grammar has no local re-assignment. Loading only
+// registers the suite; run via modules/run-tests.birnam.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+
+let s := [TestSuite named: "Block" module: #block];
+
+[s test: "whileTrue: drives a cell counter through 10k iterations, flat stack" do: [:t |
+  let obj := [Object clone];
+  let cell := [db cellFor: obj attr: #n];
+  [cell set: 0];
+  let r := [[| [[cell value] < 10000]] whileTrue: [| [cell set: [[cell value] + 1]]]];
+  [t expect: [cell value] equals: 10000 describes: "counted to 10000"];
+  [t expect: [r isNil] equals: true describes: "a completed loop answers nil"]]];
+
+[s test: "whileTrue: false-first never runs the body; whileFalse: mirrors" do: [:t |
+  let obj := [Object clone];
+  let cell := [db cellFor: obj attr: #n];
+  [cell set: 0];
+  [[| false] whileTrue: [| [cell set: 99]]];
+  [t expect: [cell value] equals: 0 describes: "false on arrival leaves the body unrun"];
+  [[| [[cell value] >= 5]] whileFalse: [| [cell set: [[cell value] + 1]]]];
+  [t expect: [cell value] equals: 5 describes: "whileFalse: loops until the condition turns true"]]];
+
+[s test: "loop error semantics: non-boolean condition, body errors propagate" do: [:t |
+  let e := [[| 42] whileTrue: [| 0]];
+  [t expect: [e isError] equals: true describes: "a non-boolean condition is an error, not a silent exit"];
+  [t expect: [[e kind] printString] equals: "#mustBeBoolean" describes: "kinded #mustBeBoolean"];
+  let e2 := [[| true] whileTrue: [| [10 / 0]]];
+  [t expect: [[e2 kind] printString] equals: "#zeroDivide" describes: "a body error stops the loop and propagates"]]];

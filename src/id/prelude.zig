@@ -32,6 +32,9 @@ var g_api: *idapi.IdApi = undefined;
 pub var system_vt: Oop = null;
 pub var system_obj: Oop = null;
 
+pub var block_vt: Oop = null;
+pub var block_proto: Oop = null;
+
 // -- helpers -----------------------------------------------------------------
 
 fn iv(o: Oop) i64 {
@@ -458,6 +461,53 @@ fn bPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkString(s.ptr, s.len);
 }
 
+// -- Block (block_vt) ---------------------------------------------------------
+//
+// Every codegen-emitted block vtable is a proto of `block_vt` (`birnam_blockVt`
+// in the emitted C), so behaviour installed here reaches every block literal.
+// The `Block` prototype OWNS the family (docs/design/41 §A): `[Reflect
+// defineMethod: #… on: Block]` extends all blocks — whileTrue:/whileFalse: are
+// real, overridable sends, not codegen special forms.
+
+/// The shared native loop behind `whileTrue:`/`whileFalse:`. It runs in ONE Zig
+/// `while` frame, so the native stack stays flat no matter how many iterations
+/// run — this is birnam's unbounded-iteration construct; a block-recursion
+/// "loop" grows the stack until it segfaults. Two sends per iteration (`value`
+/// to the condition, `value` to the body).
+///
+/// Semantics: the condition must answer exactly true or false — an error value
+/// it answers propagates (the loop answers it), anything else answers a
+/// #mustBeBoolean error. A BODY that answers an error also stops the loop and
+/// propagates it — the Result-style reading of Smalltalk's "a signal aborts
+/// the loop" (ordinary body values are discarded, statement-style). A loop
+/// whose condition runs out answers nil.
+fn whileLoop(cond: Oop, body: Oop, continue_on: Oop) Oop {
+    while (true) {
+        const c = send0(cond, "value");
+        if (isErr(c)) return c;
+        if (c != g_api.trueObj and c != g_api.falseObj)
+            return mkErr("mustBeBoolean", "while loop condition must answer true or false");
+        if (c != continue_on) return g_api.nilObj;
+        const r = send0(body, "value");
+        if (isErr(r)) return r;
+    }
+}
+
+/// `[[| cond] whileTrue: [| body]]` — evaluate the receiver block; while it
+/// answers true, evaluate the body block and repeat. Answers nil, or the first
+/// error the condition or body answers. Native and stack-flat (see whileLoop).
+fn blkWhileTrue(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return whileLoop(self, a[0], g_api.trueObj);
+}
+
+/// `[[| cond] whileFalse: [| body]]` — as `whileTrue:`, repeating while the
+/// condition answers false.
+fn blkWhileFalse(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return whileLoop(self, a[0], g_api.falseObj);
+}
+
 /// The DEFAULT `printString` (installed on `Object`), so every object is printable
 /// for display / `,` / the REPL. Specific types (Integer, String, Vector, …)
 /// override it; this is the fallback for the rest (blocks, plain instances).
@@ -737,6 +787,24 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(b_vt, api.intern("or:"), &bOrBlock);
     api.method(b_vt, api.intern("not"), &bNot);
     api.method(b_vt, api.intern("printString"), &bPrintString);
+
+    // Block: the family vtable every EMITTED block vtable parents to (codegen's
+    // `birnam_blockVt`), minted once per image and exported so a booted image
+    // re-imports it. Guarded on its OWN export (not `reloading`): an image saved
+    // before Block existed lacks the name, and falls through to minting here.
+    if (api.isExported("Block") != 0) {
+        block_vt = api.import("BlockVt");
+        block_proto = api.import("Block");
+    } else {
+        block_vt = api.proto(api.object_vt);
+        api.setLayout(block_vt, null, 0, idapi.slot_oop); // instances hold only captured Oops
+        block_proto = api.alloc(block_vt, 0);
+        api.setOwner(block_vt, block_proto);
+        _ = api.exportObj("Block", block_proto);
+        _ = api.exportObj("BlockVt", block_vt);
+    }
+    api.method(block_vt, api.intern("whileTrue:"), &blkWhileTrue);
+    api.method(block_vt, api.intern("whileFalse:"), &blkWhileFalse);
 
     const reloading = api.isExported("System") != 0;
     if (reloading) {
