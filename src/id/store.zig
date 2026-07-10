@@ -318,7 +318,49 @@ fn mRetract(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 }
 
 /// `[store currentValue: e attr: a]` — the latest value of (e, a), or nil.
+/// Normalises the store's internal absence (Zig null) to the nil singleton, so
+/// birnam code never sees a raw null — no object understands anything, so a send
+/// to it PANICKED the VM (`[db currentValue: #absent attr: #x]` was a crash). Like
+/// `[Globals at:]`, this single-value read can't tell "absent" from "bound to
+/// nil"; the distinction rides `currentValue:attr:ifAbsent:` / `hasValue:attr:`
+/// (§G6, the no-NULL lock: absence rides ifAbsent:, nil is a value).
 fn mCurrentValue(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const v = currentValueRaw(stateOf(self), args[0], args[1]);
+    return if (v == null) g_api.nilObj else v;
+}
+
+/// `[store currentValue: e attr: a ifAbsent: aBlock]` — the value of (e, a), EVEN
+/// IF that value is nil; only genuine absence (no fact / retracted) evaluates
+/// `aBlock` for the answer. The general-store counterpart of `[Globals
+/// at:ifAbsent:]` (§G6): the store keeps absence and bound-nil distinct, the
+/// block is the out-of-band channel that reads the difference.
+fn mCurrentValueIfAbsent(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const v = currentValueRaw(stateOf(self), args[0], args[1]);
+    if (v != null) return v; // present — the value (possibly nil)
+    return g_api.send(args[2], s_value, &[_]Oop{}, 0); // absent — the block decides
+}
+
+/// `[store hasValue: e attr: a]` — true iff (e, a) currently holds a value,
+/// INCLUDING a stored nil (§G6). The block-free presence test — `[Globals
+/// includes:]` generalised to any entity — for callers (birnam or Zig) that need
+/// the absent/bound-nil distinction without constructing a block.
+fn mHasValue(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    return if (currentValueRaw(stateOf(self), args[0], args[1]) == null) g_api.falseObj else g_api.trueObj;
+}
+
+/// `[store rawCurrentValue: e attr: a]` — the RAW tier (cf. `rawAssert:…`): the
+/// latest value of (e, a), or the store's internal absence — Zig null, NOT the
+/// nil singleton. For Zig callers in other dylibs (they can't reach
+/// `currentValueRaw` directly) on paths where absent-vs-bound-nil must ride ONE
+/// send: codegen's `birnam_global` resolution reads this per global reference (a
+/// bound nil must WIN over the exported env; a `hasValue:` pre-check would double
+/// a hot path). ⚠ Zig-facing: birnam code sending anything to the returned
+/// absence PANICS the VM — birnam reads ride `currentValue:attr:` (nil-normalised)
+/// / `currentValue:attr:ifAbsent:` / `hasValue:attr:` instead.
+fn mRawCurrentValue(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     return currentValueRaw(stateOf(self), args[0], args[1]);
 }
@@ -742,7 +784,10 @@ fn mirrorOverwriteHook(vt: Oop, sel: Oop) callconv(.c) void {
 fn mGlobalsAt(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
-    const cur = g_api.send(store_instance, s_currentValue, &[_]Oop{ g_globals_entity, args[0] }, 2);
+    // The raw in-file read: the `currentValue:attr:` SURFACE now normalises
+    // absence to nil itself, so the accessors that need the raw distinction
+    // read the state directly.
+    const cur = currentValueRaw(stateOf(store_instance), g_globals_entity, args[0]);
     return if (cur == null) g_api.nilObj else cur;
 }
 
@@ -756,7 +801,7 @@ fn mGlobalsAt(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 fn mGlobalsAtIfAbsent(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
-    const cur = g_api.send(store_instance, s_currentValue, &[_]Oop{ g_globals_entity, args[0] }, 2);
+    const cur = currentValueRaw(stateOf(store_instance), g_globals_entity, args[0]);
     if (cur != null) return cur; // present — return the bound value (possibly nil)
     return g_api.send(args[1], s_value, &[_]Oop{}, 0); // absent — evaluate the block
 }
@@ -776,7 +821,7 @@ fn mGlobalsAtPut(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 fn mGlobalsIncludes(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
-    const cur = g_api.send(store_instance, s_currentValue, &[_]Oop{ g_globals_entity, args[0] }, 2);
+    const cur = currentValueRaw(stateOf(store_instance), g_globals_entity, args[0]);
     return if (cur != null) g_api.trueObj else g_api.falseObj;
 }
 
@@ -914,6 +959,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_flip, &mFlip);
     api.method(store_vt, s_assert, &mAssert);
     api.method(store_vt, s_currentValue, &mCurrentValue);
+    api.method(store_vt, api.intern("currentValue:attr:ifAbsent:"), &mCurrentValueIfAbsent);
+    api.method(store_vt, api.intern("hasValue:attr:"), &mHasValue);
+    api.method(store_vt, api.intern("rawCurrentValue:attr:"), &mRawCurrentValue);
     api.method(store_vt, api.intern("valueOf:attr:asOf:"), &mValueOfAsOf);
     api.method(store_vt, s_count, &mCount);
     api.method(store_vt, s_history_read, &mHistory);

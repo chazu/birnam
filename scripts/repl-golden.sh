@@ -178,6 +178,20 @@ birnam> "
 check "image boot: a module singleton and its Alien wraps survive" "$expected" "$actual"
 rm -rf "$tdir"
 
+# ---- store surface: reading an ABSENT fact answers nil, never a VM panic -------
+# `[db currentValue: #absent attr: #x]` used to hand birnam the store's internal
+# Zig-null absence — the next send to it panicked the whole VM. The surface now
+# normalises to nil; the distinction rides hasValue:attr: / currentValue:attr:ifAbsent:
+# (§G6, the no-NULL lock). An unset cell's `value` rode the same null.
+actual=$(printf '[db currentValue: #absent attr: #x]\n[db hasValue: #absent attr: #x]\n[db currentValue: #absent attr: #x ifAbsent: [| #missing]]\n[[db cellFor: #fresh attr: #slot] value]\n:quit\n' | "$BIN" --repl 2>&1)
+expected="$BANNER
+birnam> nil
+birnam> false
+birnam> #missing
+birnam> nil
+birnam> "
+check "store surface: absent fact reads answer nil (no VM panic)" "$expected" "$actual"
+
 echo "----"
 echo "repl-golden: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

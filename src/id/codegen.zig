@@ -47,6 +47,7 @@ var tcc: Oop = undefined;
 var g_store: Oop = undefined; // the well-known store (for global resolution)
 var g_globals_entity: Oop = null; // the reserved entity globals hang off of
 var sel_currentValue: Oop = null;
+var sel_rawCurrentValue: Oop = null; // the raw tier: absence = Zig null (rtGlobal/rtGlobalB)
 var sel_addSymbol: Oop = null;
 var sel_assert: Oop = null;
 var sel_addMethodOn: Oop = null;
@@ -311,9 +312,12 @@ fn putFmt(buf: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) void
 /// type in the id env, else nil (undeclared / forward reference).
 fn rtGlobal(name: [*:0]const u8) callconv(.c) Oop {
     const sym = g_api.intern(name);
-    // The store reports absence as Zig null (≠ the `nilObj` singleton); a present
-    // binding (even one bound to nil) is non-null and wins.
-    const cur = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globals_entity, sym }, 2);
+    // The RAW read (`rawCurrentValue:attr:`): absence is Zig null (≠ the `nilObj`
+    // singleton), so a present binding — even one bound to nil — is non-null and
+    // wins over the exported env. The nil-normalised `currentValue:attr:` surface
+    // can't serve here (an unbound name would read as bound-to-nil and shadow
+    // every export), and a `hasValue:` pre-check would double this hot path.
+    const cur = g_api.send(g_store, sel_rawCurrentValue, &[_]Oop{ g_globals_entity, sym }, 2);
     if (cur != null) return cur;
     if (g_api.isExported(name) != 0) return g_api.import(name);
     return g_api.nilObj;
@@ -324,7 +328,7 @@ fn rtGlobal(name: [*:0]const u8) callconv(.c) Oop {
 /// skips the runtime intern that `rtGlobal` does. Same late-bound resolution
 /// otherwise: the Globals store wins, else a module facade / seeded type, else nil.
 fn rtGlobalB(sym: Oop) callconv(.c) Oop {
-    const cur = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globals_entity, sym }, 2);
+    const cur = g_api.send(g_store, sel_rawCurrentValue, &[_]Oop{ g_globals_entity, sym }, 2);
     if (cur != null) return cur;
     const name = g_api.symbolName(sym);
     if (g_api.isExported(name) != 0) return g_api.import(name);
@@ -1400,9 +1404,12 @@ fn mDeriveImageGlobals(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     var count: i64 = 0;
     for (names.items, srcs.items) |nameSym, src| {
         // Already bound (a leaf global mapped via the fact stream)? Leave it — only
-        // the deferred (un-serializable, absent) globals need re-derivation.
-        const cur = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globals_entity, nameSym }, 2);
-        if (cur != null) continue;
+        // the deferred (un-serializable, absent) globals need re-derivation. The
+        // presence test rides `hasValue:attr:`: `currentValue:attr:` normalises
+        // absence to nil at the surface (the no-NULL lock), so nil can't be read
+        // as "unbound" here — a global BOUND to nil must not be re-evaluated.
+        const bound = g_api.send(g_store, g_api.intern("hasValue:attr:"), &[_]Oop{ g_globals_entity, nameSym }, 2);
+        if (bound == g_api.trueObj) continue;
         var prog: std.ArrayList(u8) = .{};
         defer prog.deinit(ca);
         prog.appendSlice(ca, "let ") catch @panic("codegen: oom");
@@ -1629,6 +1636,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     g_methods_entity = api.intern("__methods__");
     g_globalsrc_entity = api.intern("__globalsrc__");
     sel_currentValue = api.intern("currentValue:attr:");
+    sel_rawCurrentValue = api.intern("rawCurrentValue:attr:");
     sel_addSymbol = api.intern("addSymbol:value:");
     sel_assert = api.intern("assert:attr:value:");
     sel_addMethodOn = api.intern("addMethod:on:with:");

@@ -15,8 +15,12 @@ const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
 
+/// The RAW read (absence = Zig null): these tests probe store INTERNALS —
+/// retraction leaves no value, a raw overwrite retracts the mirror fact — where
+/// the absent/bound-nil distinction is the point. The birnam-facing
+/// `currentValue:attr:` surface normalises absence to nil (locked below).
 fn cv(api: *idapi.IdApi, e: Oop, a: Oop) Oop {
-    return api.send(store.store_instance, store.s_currentValue, &[_]Oop{ e, a }, 2);
+    return api.send(store.store_instance, api.intern("rawCurrentValue:attr:"), &[_]Oop{ e, a }, 2);
 }
 fn assert3(api: *idapi.IdApi, e: Oop, a: Oop, v: Oop) void {
     _ = api.send(store.store_instance, store.s_assert, &[_]Oop{ e, a, v }, 3);
@@ -108,8 +112,9 @@ test "rung 2a.3: a Cell is a handle onto (e,a) — value/set:/history, off base 
     // Mint a cell handle. The stateful protocol lives on the CELL, not on `door`.
     const cell = api.send(store.store_instance, store.s_cellFor, &[_]Oop{ door, openp }, 2);
 
-    // Initially nil.
-    try std.testing.expect(api.send(cell, store.s_value, &[_]Oop{}, 0) == null);
+    // Initially nil — the SINGLETON, not raw absence: `[cell value]` is a
+    // birnam-facing surface, and a raw null receiver panics the VM.
+    try std.testing.expect(api.send(cell, store.s_value, &[_]Oop{}, 0) == api.nilObj);
 
     // [cell set: yes] then [cell value] == yes.
     _ = api.send(cell, store.s_set, &[_]Oop{yes}, 1);
@@ -381,5 +386,16 @@ test "rung 2a.1: currentValue of an absent (e,a) is nil" {
 
     const ghost = api.intern("ghost");
     const slot = api.intern("slot");
+    // The birnam-facing surface answers the nil SINGLETON (a raw null receiver
+    // panics the VM — `[db currentValue: #absent attr: #x]` was a crash); the raw
+    // tier keeps the internal absence for Zig callers; `hasValue:attr:` is the
+    // block-free presence read (§G6).
+    try std.testing.expect(api.send(store.store_instance, store.s_currentValue, &[_]Oop{ ghost, slot }, 2) == api.nilObj);
     try std.testing.expect(cv(api, ghost, slot) == null);
+    try std.testing.expect(api.send(store.store_instance, api.intern("hasValue:attr:"), &[_]Oop{ ghost, slot }, 2) == api.falseObj);
+    // …and a fact BOUND to nil reads as present: nil is a value (the no-NULL lock).
+    _ = api.send(store.store_instance, store.s_assert, &[_]Oop{ ghost, slot, api.nilObj }, 3);
+    try std.testing.expect(api.send(store.store_instance, store.s_currentValue, &[_]Oop{ ghost, slot }, 2) == api.nilObj);
+    try std.testing.expect(cv(api, ghost, slot) == api.nilObj);
+    try std.testing.expect(api.send(store.store_instance, api.intern("hasValue:attr:"), &[_]Oop{ ghost, slot }, 2) == api.trueObj);
 }

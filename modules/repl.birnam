@@ -89,9 +89,11 @@
 // write), and puts located compile errors on STDERR so stdout stays values-only.
 // Recurses once per form, like the socket session — fine for interactive use.
 
-// The libc stdio wraps. A method, not just top-level forms: a wrap's native
-// trampoline does NOT survive an image save/reload, so `console` re-runs this at
-// session start — a REPL entered from a mapped image re-wires itself.
+// The libc stdio wraps. A method, not just top-level forms: consoleInit runs it
+// at every session start because a FRESH `--repl` (and a REPL over an image saved
+// from a non-console run) has no stdio wraps yet. On an image saved from a console
+// session the wraps already replayed at boot (`__aliens__` facts → replayAliens),
+// and this re-run is an idempotent re-install whose records dedupe to nothing.
 [Reflect defineMethod: #wrapStdio on: Repl as: [:self |
   // FILE *fdopen(int fd, const char *mode)  — receiver = the fd (0 stdin, 2 stderr).
   [Alien wrap: "fdopen" signature: "p i s"   as: #fdopenMode:     on: Integer];
@@ -114,9 +116,10 @@
 // One raw line from stdin, INCLUDING its trailing newline (a partial last line —
 // EOF with no newline — comes back as-is). nil at EOF with nothing read.
 // NOTE (here and below): the console sticks to the NATIVE string floor (size /
-// byteAt: / trimmed / split:) — the stdlib.birnam surface lifts (startsWith: /
-// endsWith:) do not survive an image save/reload yet (docs/40 slice-4 replay),
-// and the REPL must come up on a booted image.
+// byteAt: / trimmed / split:). The original reason — stdlib surface lifts didn't
+// survive an image save/reload — is FIXED (doc'd-define recording + exportref +
+// module replay); the floor is kept deliberately: the console is boot-critical,
+// and the fewer layers it rides during bring-up, the less can strand it.
 [Reflect defineMethod: #readLineInto: on: Repl as: [:self :acc |
   let buf := [[db cellFor: self attr: #cbuf] value];
   let fp  := [[db cellFor: self attr: #cin] value];
