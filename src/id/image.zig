@@ -45,7 +45,7 @@ var g_api: *IdApi = undefined;
 // -- Header ------------------------------------------------------------------
 
 pub const MAGIC = "BIRNAMIM";
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2; // v2: the .exportref field tag (by-name refs to exported objects)
 const ENDIAN_TAG: u32 = 0x01020304;
 
 /// Architecture tag — code sections are per-arch (docs/40 §4); data is portable.
@@ -93,7 +93,14 @@ const RecordKind = enum(u32) {
 };
 
 /// A serialized value. `heapref` is a relocation id into the heap section;
-/// `nulloop` is a null payload slot (distinct from the `nil` singleton).
+/// `nulloop` is a null payload slot (distinct from the `nil` singleton);
+/// `exportref` is a by-name reference to an EXPORTED object (a prototype, a
+/// vtable like `StringVt`, a module facade) — the same relink-by-name spine
+/// vtables ride (docs/40 §3c). Serializing these by name instead of by copy
+/// keeps their identity: the loaded fact resolves to the LIVE native object,
+/// so `[[Reflect vtableOf: x] == StringExemplarVt]`-style comparisons hold
+/// across a save/boot, and a well-known object is never shadowed by a
+/// materialized copy of itself.
 const Tag = enum(u8) {
     nil = 0,
     true_ = 1,
@@ -104,6 +111,7 @@ const Tag = enum(u8) {
     string = 6,
     heapref = 7,
     nulloop = 8,
+    exportref = 9,
 };
 
 // -- Byte writer -------------------------------------------------------------
@@ -274,6 +282,14 @@ fn encodeField(buf: *Buf, o: Oop) bool {
     if (vt == g_api.symbol_vt) {
         putTag(buf, .symbol);
         putLenBytes(buf, std.mem.span(g_api.symbolName(o)));
+        return true;
+    }
+    // An exported object serializes BY NAME (identity over copy — see Tag). This
+    // must precede the string/compound paths: the String prototype is an exported
+    // string, and exported vtables/no-layout singletons would otherwise defer.
+    if (g_api.exportedNameOf(o)) |nm| {
+        putTag(buf, .exportref);
+        putLenBytes(buf, std.mem.span(nm));
         return true;
     }
     if (vt == g_api.string_vt) {
@@ -584,7 +600,7 @@ fn skipField(r: *Reader) bool {
         .nulloop, .nil, .true_, .false_ => true,
         .int, .float => r.skip(8),
         .heapref => r.skip(4),
-        .symbol, .string => (r.lenBytes() != null),
+        .symbol, .string, .exportref => (r.lenBytes() != null),
     };
 }
 
@@ -613,6 +629,15 @@ fn decodeField(r: *Reader, out: *Oop) bool {
             const id = r.u32v() orelse return false;
             if (id >= g_load_reloc.items.len) return false;
             out.* = g_load_reloc.items[id];
+        },
+        .exportref => {
+            // Resolve to the LIVE exported object of that name — same failure
+            // contract as an unknown vtable name in loadHeap: a runtime that no
+            // longer provides the export can't load the image.
+            const s = r.lenBytes() orelse return false;
+            const o = importName(s);
+            if (o == null) return false;
+            out.* = o;
         },
     }
     return true;

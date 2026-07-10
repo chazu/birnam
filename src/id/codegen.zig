@@ -448,12 +448,31 @@ fn mVtableOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 fn mDefineMethodSourced(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    recordMethodSrc(args[3]);
+    return installMethod(args[0], args[1], args[2]);
+}
+
+/// Assert `src` (a String) as a fresh `__msrc_N` fact on the reserved methods
+/// entity — the portable definition record image save/replay reads.
+fn recordMethodSrc(src: Oop) void {
     const id = method_src_counter;
     method_src_counter += 1;
     var keybuf: [40]u8 = undefined;
-    const key = std.fmt.bufPrintZ(&keybuf, "__msrc_{d}", .{id}) catch return g_api.nilObj;
-    _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_methods_entity, g_api.intern(key.ptr), args[3] }, 3);
-    return installMethod(args[0], args[1], args[2]);
+    const key = std.fmt.bufPrintZ(&keybuf, "__msrc_{d}", .{id}) catch return;
+    _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_methods_entity, g_api.intern(key.ptr), src }, 3);
+}
+
+/// `[Reflect defineMethod: #sel on: T as: blk doc: d source: srcString]` — the
+/// source-carrying form codegen lowers `defineMethod:on:as:doc:` to (the doc'd
+/// twin of mDefineMethodSourced). Records the definition's source — the recorded
+/// span INCLUDES the doc string, so image replay re-carries it — then re-sends the
+/// 4-arg `defineMethod:on:as:doc:` LATE-BOUND: modules/doc.birnam overrides that
+/// selector to capture docstrings when docgen re-loads modules, and the override
+/// must keep seeing every doc'd definition.
+fn mDefineMethodDocSourced(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    recordMethodSrc(args[4]);
+    return g_api.send(self, g_api.intern("defineMethod:on:as:doc:"), args, 4);
 }
 
 /// The vtable an `on:` target names. Uniform, no family/instance fork
@@ -567,14 +586,18 @@ fn isReflectRecv(recv: Oop) bool {
     return ruleOf(nd) == r_ident and std.mem.eql(u8, text(nd), "Reflect");
 }
 
-/// Emit `[<recv> defineMethod: … on: … as: …]` as the 4-arg
-/// `defineMethod:on:as:source:` send, appending the definition's original source
-/// text (the whole send node's span) as a String 4th arg. The runtime records it
-/// as a store fact — the portable truth image save/replay is built on (docs/40 §4).
+/// Emit `[<recv> defineMethod: … on: … as: …]` (3 args) or `[… defineMethod: …
+/// on: … as: … doc: …]` (4 args) as the corresponding `…source:` send, appending
+/// the definition's original source text (the whole send node's span) as a String
+/// last arg. The runtime records it as a store fact — the portable truth image
+/// save/replay is built on (docs/40 §4).
 fn emitDefineMethodSourced(buf: *std.ArrayList(u8), recvNode: Oop, argNodes: []const Oop, sendNode: Oop) bool {
     put(buf, "birnam_send(");
     if (!emit(buf, recvNode)) return false;
-    put(buf, ", birnam_intern(\"defineMethod:on:as:source:\"), (void*[]){");
+    put(buf, if (argNodes.len == 4)
+        ", birnam_intern(\"defineMethod:on:as:doc:source:\"), (void*[]){"
+    else
+        ", birnam_intern(\"defineMethod:on:as:source:\"), (void*[]){");
     for (argNodes) |an| {
         if (!emit(buf, an)) return false;
         put(buf, ", ");
@@ -583,7 +606,7 @@ fn emitDefineMethodSourced(buf: *std.ArrayList(u8), recvNode: Oop, argNodes: []c
     const s = text(sendNode);
     putCStr(buf, s);
     var nb: [24]u8 = undefined;
-    put(buf, std.fmt.bufPrint(&nb, "\", {d}L)}}, 4L)", .{s.len}) catch return false);
+    put(buf, std.fmt.bufPrint(&nb, "\", {d}L)}}, {d}L)", .{ s.len, argNodes.len + 1 }) catch return false);
     return true;
 }
 
@@ -798,16 +821,25 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
                 sel.appendSlice(ca, text(child(msg, i))) catch @panic("codegen: oom");
                 args.append(ca, child(msg, i + 1)) catch @panic("codegen: oom");
             }
-            // `defineMethod:on:as:` is lowered to the 4-arg `…:source:` form,
-            // threading the ORIGINAL source text so the method's portable source
-            // lands in the store (docs/40 §4). `node` is the whole send — its span
-            // is the re-evaluable definition.
-            if (std.mem.eql(u8, sel.items, "defineMethod:on:as:") and args.items.len == 3 and isReflectRecv(recv)) {
+            // `defineMethod:on:as:` — and its doc'd twin `defineMethod:on:as:doc:`
+            // — are lowered to the `…source:` forms, threading the ORIGINAL source
+            // text so the method's portable source lands in the store (docs/40 §4).
+            // `node` is the whole send — its span is the re-evaluable definition
+            // (for the doc'd form, the span carries the doc string with it). The
+            // doc'd form MUST be intercepted too: as a plain send it installs live
+            // but records nothing, so the method silently vanishes from image
+            // save/replay (the pre-slice-4 stdlib-string gap).
+            const dm3 = std.mem.eql(u8, sel.items, "defineMethod:on:as:") and args.items.len == 3;
+            const dm4 = std.mem.eql(u8, sel.items, "defineMethod:on:as:doc:") and args.items.len == 4;
+            if ((dm3 or dm4) and isReflectRecv(recv)) {
                 // Artifact mode (docs/40 slice 4): emit the method PRE-COMPILED —
                 // the trampoline as a static fn + a direct `birnam_method` install,
                 // so loading the artifact installs mapped code with no recompile.
+                // The doc string is not consumed at artifact-load time (the base
+                // `doc:` handler drops it; docgen harvests docs by re-loading
+                // modules from SOURCE), so the doc'd form installs identically.
                 // The JIT/source-recording path is used only for LIVE definition.
-                if (artifact_mode) return emitDefineMethodInstallable(buf, args.items, node);
+                if (artifact_mode) return emitDefineMethodInstallable(buf, args.items[0..3], node);
                 return emitDefineMethodSourced(buf, recv, args.items, node);
             }
             return emitGeneralSend(buf, recv, sel.items, args.items);
@@ -1598,6 +1630,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
     api.method(reflect_vt, api.intern("defineMethod:on:as:source:"), &mDefineMethodSourced);
+    api.method(reflect_vt, api.intern("defineMethod:on:as:doc:source:"), &mDefineMethodDocSourced);
     api.method(reflect_vt, api.intern("vtableOf:"), &mVtableOf);
 
     if (!reloading) {

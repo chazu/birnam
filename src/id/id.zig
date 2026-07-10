@@ -1052,6 +1052,14 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
     _ = exportObj("Vtable", oop(vtable_vt));
     _ = exportObj("Symbol", symbol_proto); // the prototype (was oop(symbol_vt) — the wart)
     _ = exportObj("SymbolVt", oop(symbol_vt)); // the vtable, parity with VectorVt/MapVt
+    // The remaining family vtables, same parity — every kind's vtable is nameable,
+    // so a fact holding one (e.g. the stdlib's memoized `StringExemplarVt`) rides
+    // the image's by-name exportref instead of being deferred (docs/40 §3c).
+    _ = exportObj("ObjectVt", oop(object_vt));
+    _ = exportObj("IntegerVt", oop(smallint_vt));
+    _ = exportObj("FloatVt", oop(float_vt));
+    _ = exportObj("WordVt", oop(word_vt));
+    _ = exportObj("StringVt", oop(string_vt));
     return &g_api;
 }
 

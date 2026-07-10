@@ -147,6 +147,19 @@ expected="$BANNER
 birnam> 42
 birnam> "
 check "image boot: REPL over a mapped image sees its bindings" "$expected" "$actual"
+
+# ---- booted-image stdlib: doc'd stdlib methods survive the save/boot round-trip.
+# startsWith:/endsWith:/words are defined with `defineMethod:…doc:` and their
+# guards compare against the memoized StringExemplarVt global (a vtable fact) —
+# this locks BOTH the doc'd-define source recording and the exportref fact codec.
+actual=$(printf '["hello" startsWith: "he"]\n["hello" endsWith: "lo"]\n["hello" startsWith: 42]\n["a b  c" words]\n:quit\n' | "$BIN" "$tdir/t.image" 2>&1)
+expected="$BANNER
+birnam> true
+birnam> true
+birnam> false
+birnam> #[a b c]
+birnam> "
+check "image boot: doc'd stdlib string protocol survives (incl. guards)" "$expected" "$actual"
 rm -rf "$tdir"
 
 echo "----"

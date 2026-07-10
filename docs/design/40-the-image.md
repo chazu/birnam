@@ -342,6 +342,9 @@ value immediately, and every later slice needs its de-baking anyway.
 `loadImage` reads the *entire* file into a heap buffer, then walks the `.heap`
 record and **re-materializes** every object: pass 1 `alloc`s a fresh GC object
 per entry, pass 2 decodes each field (leaf inline, symbol re-interned by name,
+export-ref resolved to the LIVE exported object of that name — format v2: a
+fact holding a prototype/vtable/facade keeps identity instead of deferring or
+materializing a shadow copy, the §3c relink spine applied to field values —
 heap-ref resolved through the relocation table) into it. Boot cost = one full
 file read + one full graph rebuild, every word allocated and copied, paid up
 front before the first send.
