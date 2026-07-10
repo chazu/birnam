@@ -18,15 +18,14 @@
 //
 // SCOPE (v1): one connection at a time (blocking, on the Socket floor); a long
 // single session recurses once per form (fine for interactive use, not for tens of
-// thousands of forms). The completeness scan is string-literal aware but does NOT
-// skip `//` comments, so a comment with unbalanced brackets can confuse it — rare
-// in a typed form. Both go away with the poll() reactor / a richer reader later.
+// thousands of forms). Both go away with the poll() reactor / a richer reader later.
 
 // -- bracket-balance scanner --------------------------------------------------
 // Tracks net bracket depth across a source string, skipping brackets inside string
-// literals (with `\` escapes). State lives in cells so `to:do:` can drive it
-// iteratively (no per-byte recursion). Byte codes: [ 91  ] 93  { 123  } 125
-// ( 40  ) 41  " 34  \ 92.
+// literals (with `\` escapes) and inside `//` line comments. Counts `[`/`{` only —
+// the same rules as the console reader always had, so both REPLs read forms
+// identically. State lives in cells so `to:do:` can drive it iteratively (no
+// per-byte recursion). Byte codes: [ 91  ] 93  { 123  } 125  " 34  / 47  \ 92  \n 10.
 
 [Globals at: #ReplScan put: [Object clone]];
 
@@ -34,12 +33,14 @@
   [[db cellFor: self attr: #depth] set: 0];
   [[db cellFor: self attr: #inStr] set: false];
   [[db cellFor: self attr: #esc]   set: false];
+  [[db cellFor: self attr: #cmt]   set: false];
+  [[db cellFor: self attr: #sl]    set: false];
   self]];
 
 [Reflect defineMethod: #depth on: ReplScan as: [:self | [[db cellFor: self attr: #depth] value]]];
 
-[Reflect defineMethod: #isOpen:  on: ReplScan as: [:self :b | let r := [[[b = 91] | [b = 123]] | [b = 40]]; r]];
-[Reflect defineMethod: #isClose: on: ReplScan as: [:self :b | let r := [[[b = 93] | [b = 125]] | [b = 41]]; r]];
+[Reflect defineMethod: #isOpen:  on: ReplScan as: [:self :b | let r := [[b = 91] | [b = 123]]; r]];
+[Reflect defineMethod: #isClose: on: ReplScan as: [:self :b | let r := [[b = 93] | [b = 125]]; r]];
 
 [Reflect defineMethod: #bump: on: ReplScan as: [:self :d |
   let c := [db cellFor: self attr: #depth];
@@ -58,20 +59,43 @@
         ifFalse: [| self]]]]]];
   r]];
 
-// Outside a string: open on `"`, otherwise count brackets.
+// Inside a `//` comment: everything is inert until the line ends.
+[Reflect defineMethod: #feedInCmt: on: ReplScan as: [:self :b |
+  let r := [[b = 10]
+    ifTrue:  [| [[db cellFor: self attr: #cmt] set: false]]
+    ifFalse: [| self]];
+  r]];
+
+// Outside a string: open a string on `"`, arm a comment on `/`, else count brackets.
 [Reflect defineMethod: #feedNormal: on: ReplScan as: [:self :b |
   let r := [[b = 34]
     ifTrue:  [| [[db cellFor: self attr: #inStr] set: true]]
-    ifFalse: [| [[self isOpen: b]
-      ifTrue:  [| [self bump: 1]]
-      ifFalse: [| [[self isClose: b]
-        ifTrue:  [| [self bump: -1]]
-        ifFalse: [| self]]]]]];
+    ifFalse: [| [[b = 47]
+      ifTrue:  [| [[db cellFor: self attr: #sl] set: true]]
+      ifFalse: [| [[self isOpen: b]
+        ifTrue:  [| [self bump: 1]]
+        ifFalse: [| [[self isClose: b]
+          ifTrue:  [| [self bump: -1]]
+          ifFalse: [| self]]]]]]]];
   r]];
 
+// Code position: a `/` armed by the PREVIOUS byte plus a `/` now opens a comment;
+// any other byte disarms and is scanned normally (`/` itself is never a bracket).
+[Reflect defineMethod: #feedCode: on: ReplScan as: [:self :b |
+  let sl := [[db cellFor: self attr: #sl] value];
+  [[db cellFor: self attr: #sl] set: false];
+  [[sl & [b = 47]]
+    ifTrue:  [| [[db cellFor: self attr: #cmt] set: true]]
+    ifFalse: [| [self feedNormal: b]]];
+  self]];
+
 [Reflect defineMethod: #feed: on: ReplScan as: [:self :b |
-  let inStr := [[db cellFor: self attr: #inStr] value];
-  [inStr ifTrue: [| [self feedInStr: b]] ifFalse: [| [self feedNormal: b]]];
+  let inCmt := [[db cellFor: self attr: #cmt] value];
+  [inCmt
+    ifTrue:  [| [self feedInCmt: b]]
+    ifFalse: [|
+      let inStr := [[db cellFor: self attr: #inStr] value];
+      [inStr ifTrue: [| [self feedInStr: b]] ifFalse: [| [self feedCode: b]]]]];
   self]];
 
 // -- the REPL -----------------------------------------------------------------

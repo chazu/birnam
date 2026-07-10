@@ -35,6 +35,19 @@ let s := [TestSuite named: "Cli" module: #cli];
   [t expect: [Repl isComplete: "[1 + 2]"]  equals: true  describes: "balanced form complete"];
   [t expect: [Repl isComplete: "[1 + [2"]  equals: false describes: "open form incomplete"]]];
 
+// The form reader's full rule set — the same scanner serves the console REPL, so
+// these mirror what the console goldens (scripts/repl-golden.sh) observe from
+// outside: strings and // comments hide brackets; over-closed reads as done.
+[s test: "isComplete: skips strings and // comments; over-closed is done" do: [:t |
+  [t expect: [Repl isComplete: "{\"a\" -> 1}"]  equals: true  describes: "braces balance"];
+  [t expect: [Repl isComplete: "{ #a -> [b"]    equals: false describes: "open brace + bracket"];
+  [t expect: [Repl isComplete: "[\"a ] b\"]"]   equals: true  describes: "bracket inside a string ignored"];
+  [t expect: [Repl isComplete: "[\"unterminated"] equals: false describes: "unterminated string holds the form open"];
+  [t expect: [Repl isComplete: "[1] // a ] comment ["] equals: true  describes: "brackets inside a // comment ignored"];
+  [t expect: [Repl isComplete: "[1 // open
+]"] equals: true describes: "a // comment ends at its newline"];
+  [t expect: [Repl isComplete: "a]"] equals: true describes: "over-closed evaluates (parser reports it)"]]];
+
 [s test: "Lsp is a library: header parse + compile diagnostics, no stdio involved" do: [:t |
   [t expect: [Lsp contentLengthOf: "Content-Length: 42\r\n"] equals: 42 describes: "contentLengthOf:"];
   [t expect: [[Lsp compileDiagnostics: "[1 + 2]"] size] equals: 0 describes: "clean source, no diagnostics"];
