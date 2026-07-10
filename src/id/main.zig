@@ -1007,160 +1007,20 @@ fn out(s: []const u8) void {
     std.fs.File.stdout().writeAll(s) catch {};
 }
 
-/// Read one raw line from stdin (newline stripped), or null at EOF. Byte-at-a-time
-/// so it needs no buffered-reader plumbing and never blocks past one line.
-fn readRawLine(a: std.mem.Allocator) !?[]u8 {
-    var b: std.ArrayList(u8) = .{};
-    errdefer b.deinit(a);
-    const stdin = std.fs.File.stdin();
-    var got = false;
-    while (true) {
-        var ch: [1]u8 = undefined;
-        const nr = stdin.read(&ch) catch return null;
-        if (nr == 0) {
-            if (!got) {
-                b.deinit(a);
-                return null;
-            }
-            break;
-        }
-        got = true;
-        if (ch[0] == '\n') break;
-        try b.append(a, ch[0]);
-    }
-    return try b.toOwnedSlice(a);
-}
-
-/// Bracket-balanced: are all `[`/`{` closed? Ignores brackets inside `"…"` strings
-/// and `//` line comments, so multi-line forms read correctly. Over-closed (< 0)
-/// counts as "done" — let the evaluator report the syntax error.
-fn isBalanced(s: []const u8) bool {
-    var depth: i32 = 0;
-    var in_str = false;
-    var i: usize = 0;
-    while (i < s.len) : (i += 1) {
-        const c = s[i];
-        if (in_str) {
-            if (c == '\\') {
-                i += 1;
-                continue;
-            } // an escaped char (incl. `\"`) doesn't end the string
-            if (c == '"') in_str = false;
-            continue;
-        }
-        if (c == '/' and i + 1 < s.len and s[i + 1] == '/') {
-            while (i < s.len and s[i] != '\n') i += 1;
-            continue;
-        }
-        switch (c) {
-            '"' => in_str = true,
-            '[', '{' => depth += 1,
-            ']', '}' => depth -= 1,
-            else => {},
-        }
-    }
-    return depth <= 0;
-}
-
-/// Accumulate input lines until the form is bracket-balanced (a continuation
-/// prompt is shown between them). Returns the joined source, or null at EOF.
-fn readForm(a: std.mem.Allocator) !?[]u8 {
-    var buf: std.ArrayList(u8) = .{};
-    errdefer buf.deinit(a);
-    while (true) {
-        const ln = (try readRawLine(a)) orelse {
-            if (buf.items.len == 0) {
-                buf.deinit(a);
-                return null;
-            }
-            break;
-        };
-        defer a.free(ln);
-        if (buf.items.len > 0) try buf.append(a, '\n');
-        try buf.appendSlice(a, ln);
-        if (isBalanced(buf.items)) break;
-        out("   ... ");
-    }
-    return try buf.toOwnedSlice(a);
-}
-
-/// Print an evaluation result: nil directly (it has no printString of its own),
-/// everything else via `printString` (errors render as `error(#kind: msg)`).
-fn printResult(api: *IdApi, r: Oop) void {
-    if (r == api.nilObj) {
-        out("nil\n");
-        return;
-    }
-    const ps = api.send(r, api.intern("printString"), &[_]Oop{}, 0);
-    if (ps != null and api.vtableOf(ps) == api.string_vt) {
-        var len: usize = 0;
-        const p = api.stringBytes(ps, &len);
-        out(p[0..len]);
-        out("\n");
-    } else {
-        out("(unprintable result)\n");
-    }
-}
-
-/// List the user-visible globals (the persisted bindings), skipping internal
-/// `__`-prefixed entries (block stashes, etc).
-fn listGlobals(api: *IdApi) void {
-    const store = api.import("Store") orelse return;
-    const ge = api.intern("__globals__");
-    const cnt: usize = @intCast(api.smallIntValue(api.send(store, api.intern("attrCount:"), &[_]Oop{ge}, 1)));
-    var shown: usize = 0;
-    var i: usize = 0;
-    while (i < cnt) : (i += 1) {
-        const attr = api.send(store, api.intern("attrAt:index:"), &[_]Oop{ ge, api.mkSmallInt(@intCast(i)) }, 2);
-        const name = std.mem.span(api.symbolName(attr));
-        if (name.len >= 2 and name[0] == '_' and name[1] == '_') continue; // internal
-        const val = api.send(store, api.intern("currentValue:attr:"), &[_]Oop{ ge, attr }, 2);
-        out("  ");
-        out(name);
-        out(" = ");
-        printResult(api, val orelse api.nilObj);
-        shown += 1;
-    }
-    if (shown == 0) out("  (no globals defined yet)\n");
-}
-
-fn replHelp() void {
-    out(
-        \\Commands:
-        \\  :help        this message
-        \\  :globals     list the bindings you've defined
-        \\  :quit        leave the REPL  (or Ctrl-D)
-        \\Everything else is birnam: an expression prints its value; `let x := …`
-        \\binds a name that persists across lines; `[Reflect defineMethod:…]` extends
-        \\the live system. Multi-line forms continue until the brackets balance.
-        \\
-    );
-}
-
-/// Handle a `:command`. Returns true to quit the REPL.
-fn replCommand(api: *IdApi, cmd: []const u8) bool {
-    if (std.mem.eql(u8, cmd, ":quit") or std.mem.eql(u8, cmd, ":q") or std.mem.eql(u8, cmd, ":exit")) return true;
-    if (std.mem.eql(u8, cmd, ":help") or std.mem.eql(u8, cmd, ":h")) {
-        replHelp();
-        return false;
-    }
-    if (std.mem.eql(u8, cmd, ":globals") or std.mem.eql(u8, cmd, ":g")) {
-        listGlobals(api);
-        return false;
-    }
-    out("unknown command (try :help)\n");
-    return false;
-}
-
-/// The interactive read-eval-print loop. Bindings persist via `evalPersisting:`;
-/// input is parsed first so syntax errors report cleanly; faults are catchable
-/// values, so the loop never dies on a bad line.
-/// The interactive REPL. `booted` = entered from a mapped image (`runImage`), where
-/// the stack and stdlib are ALREADY up — re-loading them would re-JIT the whole
-/// library and pollute the store with fresh reconstruction facts (which a later
-/// `appendImage:` would then journal). A standalone `--repl` passes false to do the
-/// one-time init itself.
+/// The console REPL lives in birnam — modules/repl.birnam owns the form reader,
+/// the `:commands`, config-main, and the eval/print loop (`[Repl console]`); only
+/// the boot + GC-anchored driver frame stays Zig, the same split as `runCli`.
+/// `booted` = entered from a mapped image (`runImage`), where the stack and stdlib
+/// are ALREADY up — re-loading them would re-JIT the whole library and pollute the
+/// store with fresh reconstruction facts (which a later `appendImage:` would then
+/// journal). A standalone `--repl` passes false to do the one-time init itself.
 fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
+    // repl.birnam rides the stdlib's string protocol, so no-stdlib mode has no
+    // interactive loop — `birnam <file>` remains for bare-floor debugging.
+    if (std.posix.getenv("BIRNAM_NO_STDLIB") != null) {
+        std.fs.File.stderr().writeAll("birnam: the REPL requires the stdlib (unset BIRNAM_NO_STDLIB)\n") catch {};
+        std.process.exit(1);
+    }
     if (!booted) try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
@@ -1171,43 +1031,40 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
 
     if (!booted) loadStdlib(a, api, codegen);
 
-    // birnam.toml `main`: a project entry-point run before the prompt (bare/--repl
-    // only — a `birnam <file>` invocation names its own entry, so config main is
-    // ignored there). Config parses ./birnam.toml with the built-in Toml.
-    applyConfigMain(api);
+    const globals = api.import("Globals") orelse return error.NoGlobals;
+    var repl = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("Repl")}, 1);
+    // Not already in the image: load the module (checked BEFORE the session so a
+    // load failure can't be confused with a user's stray in-session lastError).
+    if (repl == api.nilObj) {
+        const mdir = try resolveModulesDir(a);
+        defer a.free(mdir);
+        const mdirZ = try a.dupeZ(u8, mdir);
+        defer a.free(mdirZ);
+        _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
 
-    out("birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\n");
-    while (true) {
-        out("birnam> ");
-        const form = (try readForm(a)) orelse break; // EOF
-        defer a.free(form);
-        const src = std.mem.trim(u8, form, " \t\r\n");
-        if (src.len == 0) continue;
-        if (src[0] == ':') {
-            if (replCommand(api, src)) break;
-            continue;
+        var boot: std.ArrayList(u8) = .{};
+        defer boot.deinit(a);
+        try boot.appendSlice(a, "[System load: ");
+        const repl_path = try std.fmt.allocPrint(a, "{s}/repl.birnam", .{mdir});
+        defer a.free(repl_path);
+        try appendBirnamString(&boot, a, repl_path);
+        try boot.appendSlice(a, "]");
+        _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.items.ptr, boot.items.len)}, 1);
+
+        repl = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("Repl")}, 1);
+        if (repl == api.nilObj) {
+            std.fs.File.stderr().writeAll("birnam: could not load the REPL (modules/repl.birnam):\n") catch {};
+            const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
+            if (err != api.nilObj) outErrorString(api, err);
+            std.process.exit(1);
         }
-        const result = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
-        // A compile failure (syntax or out-of-subset) reports with location instead
-        // of a bare nil; otherwise print the value.
-        const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
-        if (err != api.nilObj) outErrorString(api, err) else printResult(api, result);
     }
-    out("\n");
-}
-
-/// Apply the birnam.toml `main` key (stage 4): if `[Config main]` names a source
-/// file, run it via `[System load:]` as the project entry point before the REPL.
-/// A no-op when the config module, a birnam.toml, or the `main` key is absent —
-/// `[Config main]` answers nil in each case, so a project without config just works.
-fn applyConfigMain(api: *IdApi) void {
-    const globals = api.import("Globals") orelse return;
-    const config = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("Config")}, 1);
-    if (config == api.nilObj) return; // config module not loaded (e.g. BIRNAM_NO_STDLIB)
-    const mainv = api.send(config, api.intern("main"), &[_]Oop{}, 0);
-    if (mainv == api.nilObj) return; // no birnam.toml, or no `main` key
-    const system = api.import("System") orelse return;
-    _ = api.send(system, api.intern("load:"), &[_]Oop{mainv}, 1);
+    // init / step* / done: the loop itself is this native frame — birnam methods
+    // recurse per send, so looping down there capped the session at C-stack depth.
+    _ = api.send(repl, api.intern("consoleInit"), &[_]Oop{}, 0);
+    const step = api.intern("consoleStep");
+    while (api.send(repl, step, &[_]Oop{}, 0) == api.trueObj) {}
+    _ = api.send(repl, api.intern("consoleDone"), &[_]Oop{}, 0);
 }
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading
@@ -1226,26 +1083,9 @@ fn pingImpl(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return @ptrFromInt(7);
 }
 
-test "repl: isBalanced tracks brackets, ignoring strings and comments" {
-    const expect = std.testing.expect;
-    // Balanced / complete forms.
-    try expect(isBalanced("[3 + 4]"));
-    try expect(isBalanced("42"));
-    try expect(isBalanced("#[1 2 3]"));
-    try expect(isBalanced("{\"a\" -> 1}"));
-    try expect(isBalanced("")); // nothing open
-    // Incomplete — needs a continuation line.
-    try expect(!isBalanced("let x := [#[1 2 3]"));
-    try expect(!isBalanced("[foo"));
-    try expect(!isBalanced("{ #a -> [b"));
-    // Brackets inside a string don't count.
-    try expect(isBalanced("[\"a ] b\"]"));
-    try expect(!isBalanced("[\"unterminated"));
-    // Brackets inside a // comment don't count.
-    try expect(isBalanced("[1] // a ] comment ["));
-    // Over-closed reads as done (the evaluator reports the real error).
-    try expect(isBalanced("a]"));
-}
+// The form reader (bracket balance incl. string/comment rules) lives in
+// modules/repl.birnam now; its vectors are locked in modules/cli-test.birnam and
+// the console transcripts in scripts/repl-golden.sh.
 
 test "bake: the exe trailer round-trips an image slice; plain bytes have none" {
     const expect = std.testing.expect;

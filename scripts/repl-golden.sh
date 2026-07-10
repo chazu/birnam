@@ -130,13 +130,14 @@ for inv in "" "-i" "repl"; do
 done
 
 # ---- BIRNAM_NO_STDLIB --repl -----------------------------------------------------
-# Baseline: the native REPL works without the stdlib (primitive sends only).
+# The console REPL lives in birnam (modules/repl.birnam) and rides the stdlib's
+# string protocol, so the no-stdlib escape hatch has no interactive loop —
+# `birnam <file>` remains for bare-floor debugging. (Changed when the REPL moved
+# to birnam; before that the native loop happened to work stdlib-free.)
 actual=$(printf '[3 + 4]\n:quit\n' | BIRNAM_NO_STDLIB=1 "$BIN" --repl 2>&1); st=$?
-expected="$BANNER
-birnam> 7
-birnam> "
-check "no-stdlib: --repl still evaluates primitive sends" "$expected" "$actual"
-check "no-stdlib: exit status 0" "0" "$st"
+expected='birnam: the REPL requires the stdlib (unset BIRNAM_NO_STDLIB)'
+check "no-stdlib: --repl reports the REPL unavailable" "$expected" "$actual"
+check "no-stdlib: exit status 1" "1" "$st"
 
 # ---- booted-image REPL: `birnam foo.image` drops into the REPL with bindings ---
 tdir=$(mktemp -d)

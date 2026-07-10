@@ -1,13 +1,16 @@
-// repl.birnam — an out-of-process REPL over TCP, in pure birnam. Layer 2b.
+// repl.birnam — birnam's REPLs (console + socket), in pure birnam. Layer 2b.
 //
-// A running image opens a socket; a client (nc, or Emacs over a network comint)
-// connects and types birnam forms; the image evaluates each against its LIVE state
-// with `[Codegen evalPersisting:]` and writes the value back. Rides the networking
-// floor (socket.birnam). No new Zig — evaluation of received source is a capability
-// the image already has.
+// TWO FRONT ENDS, ONE READER. The console (`consoleInit` / `consoleStep` /
+// `consoleDone`, looped by the binary's driver frame) is what `birnam`, `--repl`,
+// `-i`, and an image boot without `main` drop into — stdin over libc fgets via
+// Alien, values to stdout, located compile errors to stderr.
+// `[Repl serveOn: 5555]` is the same loop over TCP: a client (nc, or Emacs over a
+// network comint) types forms; the image evaluates each against its LIVE state
+// with `[Codegen evalPersisting:]` and writes the value back. No new Zig —
+// evaluation of received source is a capability the image already has.
 //
 // DEPENDENCIES — load first (Repl does NOT auto-load, to keep loading simple):
-//   [System load: "modules/socket.birnam"];
+//   [System load: "modules/socket.birnam"];   // for serveOn: only; console needs none
 //   [System load: "modules/repl.birnam"];
 //   [Repl serveOn: 5555]
 // then, from another terminal:  nc localhost 5555
@@ -20,95 +23,22 @@
 // single session recurses once per form (fine for interactive use, not for tens of
 // thousands of forms). Both go away with the poll() reactor / a richer reader later.
 
-// -- bracket-balance scanner --------------------------------------------------
-// Tracks net bracket depth across a source string, skipping brackets inside string
-// literals (with `\` escapes) and inside `//` line comments. Counts `[`/`{` only —
-// the same rules as the console reader always had, so both REPLs read forms
-// identically. State lives in cells so `to:do:` can drive it iteratively (no
-// per-byte recursion). Byte codes: [ 91  ] 93  { 123  } 125  " 34  / 47  \ 92  \n 10.
-
-[Globals at: #ReplScan put: [Object clone]];
-
-[Reflect defineMethod: #reset on: ReplScan as: [:self |
-  [[db cellFor: self attr: #depth] set: 0];
-  [[db cellFor: self attr: #inStr] set: false];
-  [[db cellFor: self attr: #esc]   set: false];
-  [[db cellFor: self attr: #cmt]   set: false];
-  [[db cellFor: self attr: #sl]    set: false];
-  self]];
-
-[Reflect defineMethod: #depth on: ReplScan as: [:self | [[db cellFor: self attr: #depth] value]]];
-
-[Reflect defineMethod: #isOpen:  on: ReplScan as: [:self :b | let r := [[b = 91] | [b = 123]]; r]];
-[Reflect defineMethod: #isClose: on: ReplScan as: [:self :b | let r := [[b = 93] | [b = 125]]; r]];
-
-[Reflect defineMethod: #bump: on: ReplScan as: [:self :d |
-  let c := [db cellFor: self attr: #depth];
-  [c set: [[c value] + d]];
-  self]];
-
-// Inside a string literal: consume an escaped byte, arm on `\`, close on `"`.
-[Reflect defineMethod: #feedInStr: on: ReplScan as: [:self :b |
-  let esc := [[db cellFor: self attr: #esc] value];
-  let r := [esc
-    ifTrue:  [| [[db cellFor: self attr: #esc] set: false]]
-    ifFalse: [| [[b = 92]
-      ifTrue:  [| [[db cellFor: self attr: #esc] set: true]]
-      ifFalse: [| [[b = 34]
-        ifTrue:  [| [[db cellFor: self attr: #inStr] set: false]]
-        ifFalse: [| self]]]]]];
-  r]];
-
-// Inside a `//` comment: everything is inert until the line ends.
-[Reflect defineMethod: #feedInCmt: on: ReplScan as: [:self :b |
-  let r := [[b = 10]
-    ifTrue:  [| [[db cellFor: self attr: #cmt] set: false]]
-    ifFalse: [| self]];
-  r]];
-
-// Outside a string: open a string on `"`, arm a comment on `/`, else count brackets.
-[Reflect defineMethod: #feedNormal: on: ReplScan as: [:self :b |
-  let r := [[b = 34]
-    ifTrue:  [| [[db cellFor: self attr: #inStr] set: true]]
-    ifFalse: [| [[b = 47]
-      ifTrue:  [| [[db cellFor: self attr: #sl] set: true]]
-      ifFalse: [| [[self isOpen: b]
-        ifTrue:  [| [self bump: 1]]
-        ifFalse: [| [[self isClose: b]
-          ifTrue:  [| [self bump: -1]]
-          ifFalse: [| self]]]]]]]];
-  r]];
-
-// Code position: a `/` armed by the PREVIOUS byte plus a `/` now opens a comment;
-// any other byte disarms and is scanned normally (`/` itself is never a bracket).
-[Reflect defineMethod: #feedCode: on: ReplScan as: [:self :b |
-  let sl := [[db cellFor: self attr: #sl] value];
-  [[db cellFor: self attr: #sl] set: false];
-  [[sl & [b = 47]]
-    ifTrue:  [| [[db cellFor: self attr: #cmt] set: true]]
-    ifFalse: [| [self feedNormal: b]]];
-  self]];
-
-[Reflect defineMethod: #feed: on: ReplScan as: [:self :b |
-  let inCmt := [[db cellFor: self attr: #cmt] value];
-  [inCmt
-    ifTrue:  [| [self feedInCmt: b]]
-    ifFalse: [|
-      let inStr := [[db cellFor: self attr: #inStr] value];
-      [inStr ifTrue: [| [self feedInStr: b]] ifFalse: [| [self feedCode: b]]]]];
-  self]];
-
 // -- the REPL -----------------------------------------------------------------
 
 [Globals at: #Repl put: [Object clone]];
 
+// Brackets balanced? Rides the native `bracketDepth` scanner (per-byte work is
+// perf-retained native, like split:/trimmed — docs/design/44 §7): net `[`/`{`
+// depth, ignoring brackets inside strings and // comments. `<= 0`: over-closed
+// reads as done — the parser reports the real error.
+[Reflect defineMethod: #isBalanced: on: Repl as: [:self :src |
+  let r := [[src bracketDepth] <= 0];
+  r]];
+
 // True once `src` holds at least one non-blank char AND its brackets balance.
 [Reflect defineMethod: #isComplete: on: Repl as: [:self :src |
-  let sc := [ReplScan clone];
-  [sc reset];
-  [0 to: [[src size] - 1] do: [:i | [sc feed: [src byteAt: i]]]];
   let hasText := [[[src trimmed] size] > 0];
-  let done := [hasText & [[sc depth] <= 0]];
+  let done := [hasText & [self isBalanced: src]];
   done]];
 
 // Evaluate one complete form against the live image and write the reply.
@@ -151,4 +81,179 @@
   let me := self;
   [System println: ["birnam socket REPL listening on :" , [port printString]]];
   [Socket serve: port with: [:conn | [me session: conn]]];
+  self]];
+
+// -- the console REPL ----------------------------------------------------------
+// The interactive loop the binary drops into. Reads stdin through libc fgets
+// (Alien), prints prompts + values on stdout (System print:, an unbuffered fd
+// write), and puts located compile errors on STDERR so stdout stays values-only.
+// Recurses once per form, like the socket session — fine for interactive use.
+
+// The libc stdio wraps. A method, not just top-level forms: a wrap's native
+// trampoline does NOT survive an image save/reload, so `console` re-runs this at
+// session start — a REPL entered from a mapped image re-wires itself.
+[Reflect defineMethod: #wrapStdio on: Repl as: [:self |
+  // FILE *fdopen(int fd, const char *mode)  — receiver = the fd (0 stdin, 2 stderr).
+  [Alien wrap: "fdopen" signature: "p i s"   as: #fdopenMode:     on: Integer];
+  // char *fgets(char *buf, int size, FILE *stream)  — receiver = buf; NULL at EOF.
+  [Alien wrap: "fgets"  signature: "p p i p" as: #fgetsSize:stream: on: Word];
+  // int fputs(const char *s, FILE *stream)  — receiver = the string.
+  [Alien wrap: "fputs"  signature: "i s p"   as: #fputsTo:        on: String];
+  // int fflush(FILE *stream)  — receiver = the FILE* word.
+  [Alien wrap: "fflush" signature: "i p"     as: #fflush          on: Word];
+  self]];
+
+// Write `s` to stderr, immediately (fputs is buffered; the flush keeps stderr
+// interleaved correctly with the unbuffered stdout prompts).
+[Reflect defineMethod: #conErr: on: Repl as: [:self :s |
+  let fe := [[db cellFor: self attr: #cerr] value];
+  [s fputsTo: fe];
+  [fe fflush];
+  self]];
+
+// One raw line from stdin, INCLUDING its trailing newline (a partial last line —
+// EOF with no newline — comes back as-is). nil at EOF with nothing read.
+// NOTE (here and below): the console sticks to the NATIVE string floor (size /
+// byteAt: / trimmed / split:) — the stdlib.birnam surface lifts (startsWith: /
+// endsWith:) do not survive an image save/reload yet (docs/40 slice-4 replay),
+// and the REPL must come up on a booted image.
+[Reflect defineMethod: #readLineInto: on: Repl as: [:self :acc |
+  let buf := [[db cellFor: self attr: #cbuf] value];
+  let fp  := [[db cellFor: self attr: #cin] value];
+  let r   := [buf fgetsSize: 4096 stream: fp];
+  [[r isNull]
+    ifTrue:  [| [[[acc size] = 0] ifTrue: [| nil] ifFalse: [| acc]]]
+    ifFalse: [|
+      let line := [acc , [buf peekStringAt: 0]];
+      [[[line byteAt: [[line size] - 1]] = 10]
+        ifTrue:  [| line]
+        ifFalse: [| [self readLineInto: line]]]]]]];
+
+// Accumulate lines (a continuation prompt between them) until brackets balance.
+// nil at EOF-with-nothing; EOF mid-form answers the partial form — the evaluator
+// reports the real error, exactly as a pasted-then-closed session would.
+[Reflect defineMethod: #readFormInto: on: Repl as: [:self :acc |
+  let ln := [self readLineInto: ""];
+  [[ln isNil]
+    ifTrue:  [| [[[acc size] = 0] ifTrue: [| nil] ifFalse: [| acc]]]
+    ifFalse: [|
+      let form := [acc , ln];
+      [[self isBalanced: form]
+        ifTrue:  [| form]
+        ifFalse: [|
+          [System print: "   ... "];
+          [self readFormInto: form]]]]]]];
+
+// A value for the human: nil directly (it has no printString of its own),
+// everything else via printString (errors render as `error(#kind: msg)`).
+[Reflect defineMethod: #resultString: on: Repl as: [:self :v |
+  let r := [[v isNil] ifTrue: [| "nil"] ifFalse: [| [v printString]]];
+  r]];
+
+// List the user-visible globals (the persisted bindings), skipping internal
+// `__`-prefixed entries (block stashes, etc). Symbols print as `#name`, so the
+// filter looks for `#__` and the display drops the sigil.
+[Reflect defineMethod: #printGlobals on: Repl as: [:self |
+  let n := [db attrCount: #__globals__];
+  let shown := [db cellFor: self attr: #gshown];
+  [shown set: 0];
+  [0 to: [n - 1] do: [:i |
+    let attr := [db attrAt: #__globals__ index: i];
+    let nm := [attr printString];
+    // internal = "#__…": byte 0 is the sigil, bytes 1-2 are underscores (95).
+    let internal := [[[nm size] > 2]
+      ifTrue:  [| [[[nm byteAt: 1] = 95] & [[nm byteAt: 2] = 95]]]
+      ifFalse: [| false]];
+    [internal
+      ifTrue:  [| self]
+      ifFalse: [|
+        [System print: ["  " , [[nm split: "#"] at: 1]]];
+        [System print: " = "];
+        [System println: [self resultString: [db currentValue: #__globals__ attr: attr]]];
+        [shown set: [[shown value] + 1]]]]]];
+  [[[shown value] = 0]
+    ifTrue:  [| [System println: "  (no globals defined yet)"]]
+    ifFalse: [| self]];
+  self]];
+
+[Reflect defineMethod: #printHelp on: Repl as: [:self |
+  [System println: "Commands:"];
+  [System println: "  :help        this message"];
+  [System println: "  :globals     list the bindings you've defined"];
+  [System println: "  :quit        leave the REPL  (or Ctrl-D)"];
+  [System println: "Everything else is birnam: an expression prints its value; `let x := …`"];
+  [System println: "binds a name that persists across lines; `[Reflect defineMethod:…]` extends"];
+  [System println: "the live system. Multi-line forms continue until the brackets balance."];
+  self]];
+
+// Handle a `:command` (exact match — `:quit extra` is unknown). True to quit.
+[Reflect defineMethod: #command: on: Repl as: [:self :cmd |
+  let quit := [[[cmd = ":quit"] | [cmd = ":q"]] | [cmd = ":exit"]];
+  let r := [quit
+    ifTrue:  [| true]
+    ifFalse: [|
+      [[[cmd = ":help"] | [cmd = ":h"]]
+        ifTrue:  [| [self printHelp]; false]
+        ifFalse: [|
+          [[[cmd = ":globals"] | [cmd = ":g"]]
+            ifTrue:  [| [self printGlobals]; false]
+            ifFalse: [| [System println: "unknown command (try :help)"]; false]]]]]];
+  r]];
+
+// Evaluate one form: a compile failure (syntax or out-of-subset) reports its
+// located block on stderr; otherwise the value prints. Faults are catchable
+// values, so the loop never dies on a bad line.
+[Reflect defineMethod: #evalConsole: on: Repl as: [:self :src |
+  let val := [Codegen evalPersisting: src];
+  let err := [Codegen lastError];
+  [[err notNil]
+    ifTrue:  [| [self conErr: [err , "\n"]]]
+    ifFalse: [| [System println: [self resultString: val]]]];
+  self]];
+
+// One prompt → read → dispatch step. Answers false when the session is over
+// (EOF, or a quit command); true to go again. The LOOP is the Zig driver frame
+// (`while consoleStep`) — recursing here instead segfaulted a long piped
+// session (~1700 lines) by exhausting the C stack.
+[Reflect defineMethod: #consoleStep on: Repl as: [:self |
+  [System print: "birnam> "];
+  let form := [self readFormInto: ""];
+  let r := [[form isNil]
+    ifTrue:  [| false]
+    ifFalse: [|
+      let src := [form trimmed];
+      [[[src size] = 0]
+        ifTrue:  [| true]
+        ifFalse: [|
+          [[[src byteAt: 0] = 58]
+            ifTrue:  [| [[self command: src] ifTrue: [| false] ifFalse: [| true]]]
+            ifFalse: [| [self evalConsole: src]; true]]]]]];
+  r]];
+
+// birnam.toml `main` (stage 4): if `[Config main]` names a source file, run it as
+// the project entry point before the prompt. A no-op when the config module, a
+// birnam.toml, or the `main` key is absent.
+[Reflect defineMethod: #applyConfigMain on: Repl as: [:self |
+  let config := [Globals at: #Config];
+  [[config notNil]
+    ifTrue:  [|
+      let m := [config main];
+      [[m notNil] ifTrue: [| [System load: m]] ifFalse: [| self]]]
+    ifFalse: [| self]];
+  self]];
+
+// Session bring-up: wire the stdio FILE*s, honor config main, greet. The driver
+// then loops `consoleStep` until it answers false, and closes with consoleDone.
+[Reflect defineMethod: #consoleInit on: Repl as: [:self |
+  [self wrapStdio];
+  [[db cellFor: self attr: #cin]  set: [0 fdopenMode: "r"]];
+  [[db cellFor: self attr: #cerr] set: [2 fdopenMode: "w"]];
+  [[db cellFor: self attr: #cbuf] set: [Alien alloc: 4096]];
+  [self applyConfigMain];
+  [System println: "birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave."];
+  self]];
+
+[Reflect defineMethod: #consoleDone on: Repl as: [:self |
+  [System println: ""];
+  [[[db cellFor: self attr: #cbuf] value] free];
   self]]

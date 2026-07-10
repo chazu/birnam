@@ -67,3 +67,18 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: ["hello" indexOf: "lo"] equals: 3 describes: "indexOf: substring"];
   [t expect: ["hello" indexOf: "z"]  equals: nil describes: "indexOf: miss is nil"];
   [t expect: ["hello" indexOf: ""]   equals: 0 describes: "empty needle answers 0"]]];
+
+// bracketDepth is the REPLs' form reader (modules/repl.birnam `isBalanced:`):
+// net [/{ nesting, blind to brackets inside strings and // comments.
+[s test: "native scanners: bracketDepth counts [/{ outside strings and comments" do: [:t |
+  [t expect: ["[3 + 4]" bracketDepth]   equals: 0 describes: "balanced form"];
+  [t expect: ["" bracketDepth]          equals: 0 describes: "empty is balanced"];
+  [t expect: ["let x := [#[1 2" bracketDepth] equals: 2 describes: "two open"];
+  [t expect: ["{ #a -> [b" bracketDepth] equals: 2 describes: "brace + bracket open"];
+  [t expect: ["[\"a ] b\"]" bracketDepth] equals: 0 describes: "bracket inside a string ignored"];
+  [t expect: ["[\"unterminated" bracketDepth] equals: 1 describes: "unterminated string holds it open"];
+  [t expect: ["[\"esc \\\" ] \"]" bracketDepth] equals: 0 describes: "escaped quote stays in-string"];
+  [t expect: ["[1] // a ] comment [" bracketDepth] equals: 0 describes: "brackets in a // comment ignored"];
+  [t expect: ["[1 // open
+]" bracketDepth] equals: 0 describes: "a // comment ends at its newline"];
+  [t expect: ["a]" bracketDepth] equals: -1 describes: "over-closed goes negative"]]];

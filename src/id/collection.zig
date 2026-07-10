@@ -1164,6 +1164,41 @@ fn strIndexOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (std.mem.indexOf(u8, s, sub)) |i| return mki(@intCast(i));
     return g_api.nilObj;
 }
+/// `[s bracketDepth]` — the net `[`/`{` nesting depth of birnam source, ignoring
+/// brackets inside `"…"` strings (with `\` escapes) and `//` line comments. The
+/// REPLs' form reader: a form is complete once the depth is <= 0 (over-closed
+/// reads as done — the parser reports the real error). Per-byte, so it stays
+/// native with the other scanners; the read LOOP lives in modules/repl.birnam.
+fn strBracketDepth(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const s = strBytes(self);
+    var depth: i64 = 0;
+    var in_str = false;
+    var i: usize = 0;
+    while (i < s.len) : (i += 1) {
+        const c = s[i];
+        if (in_str) {
+            if (c == '\\') {
+                i += 1;
+                continue;
+            } // an escaped char (incl. `\"`) doesn't end the string
+            if (c == '"') in_str = false;
+            continue;
+        }
+        if (c == '/' and i + 1 < s.len and s[i + 1] == '/') {
+            while (i < s.len and s[i] != '\n') i += 1;
+            continue;
+        }
+        switch (c) {
+            '"' => in_str = true,
+            '[', '{' => depth += 1,
+            ']', '}' => depth -= 1,
+            else => {},
+        }
+    }
+    return mki(depth);
+}
 /// `[s asInteger]` — the Integer named by an optional-sign decimal string, or
 /// nil if the whole (trimmed) string is not a valid integer.
 fn strAsInteger(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -1314,6 +1349,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(api.string_vt, api.intern("split:"), &strSplit);
     api.method(api.string_vt, api.intern("trimmed"), &strTrimmed);
     api.method(api.string_vt, api.intern("indexOf:"), &strIndexOf);
+    api.method(api.string_vt, api.intern("bracketDepth"), &strBracketDepth);
     api.method(api.string_vt, api.intern("asInteger"), &strAsInteger);
     api.method(api.string_vt, api.intern("asNumber"), &strAsNumber);
 
