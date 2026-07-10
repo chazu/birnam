@@ -27,6 +27,32 @@ let s := [TestSuite named: "Block" module: #block];
   [[| [[cell value] >= 5]] whileFalse: [| [cell set: [[cell value] + 1]]]];
   [t expect: [cell value] equals: 5 describes: "whileFalse: loops until the condition turns true"]]];
 
+[s test: "asCell sugar: loop state one send away, cells independent" do: [:t |
+  let n := [0 asCell];
+  [[| [[n value] < 1000]] whileTrue: [| [n inc]]];
+  [t expect: [n value] equals: 1000 describes: "asCell/inc count to 1000"];
+  [t expect: [n dec] equals: 999 describes: "dec answers the new value"];
+  let m := [5 asCell];
+  [n set: 1];
+  [t expect: [m value] equals: 5 describes: "cells are independent (fresh entity each)"]]];
+
+[s test: "timesRepeat: runs the body n times; <=0 no-op; errors propagate" do: [:t |
+  let n := [0 asCell];
+  let r := [7 timesRepeat: [| [n inc]]];
+  [t expect: [n value] equals: 7 describes: "seven repeats"];
+  [t expect: r equals: 7 describes: "answers the receiver"];
+  [0 timesRepeat: [| [n inc]]];
+  [-3 timesRepeat: [| [n inc]]];
+  [t expect: [n value] equals: 7 describes: "zero and negative counts are no-ops"];
+  [t expect: [[[3 timesRepeat: [| [10 / 0]]] kind] printString] equals: "#zeroDivide"
+     describes: "a body error stops the repeat and propagates"]]];
+
+[s test: "to:do: stops-and-propagates on a body error (the loop contract)" do: [:t |
+  let n := [0 asCell];
+  let e := [1 to: 5 do: [:i | [n inc]; [[i = 2] ifTrue: [| [10 / 0]] ifFalse: [| 0]]]];
+  [t expect: [[e kind] printString] equals: "#zeroDivide" describes: "propagates the body error"];
+  [t expect: [n value] equals: 2 describes: "stopped at the erroring iteration"]]];
+
 [s test: "loop error semantics: non-boolean condition, body errors propagate" do: [:t |
   let e := [[| 42] whileTrue: [| 0]];
   [t expect: [e isError] equals: true describes: "a non-boolean condition is an error, not a silent exit"];

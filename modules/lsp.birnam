@@ -320,9 +320,11 @@
 
 // The server loop. `to:do:` is a native (iterative) loop — no per-message stack
 // growth — and `step` blocks on read(), so this idles (no busy loop) until a
-// message arrives; `exit`/EOF terminate the process.
+// message arrives; `exit`/EOF terminate the process. `to:do:` stops-and-
+// propagates when the body answers an error, so a step's fault (one bad
+// message) is swallowed HERE, explicitly — it must not kill the server.
 [Reflect defineMethod: #serveStdio on: Lsp as: [:self |
   let me := self;
-  [1 to: 1000000000 do: [:i | [me step]]];
+  [1 to: 1000000000 do: [:i | [me step]; 0]];
   self] doc:
   "Run the LSP server loop on stdin/stdout: read framed messages, dispatch, reply. Blocks until exit/EOF."]

@@ -402,13 +402,20 @@ fn wIsNull(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 }
 
 /// `[start to: end do: aBlock]` — invoke `[aBlock value: i]` for i in start..end
-/// (inclusive). Returns the receiver.
+/// (inclusive). Returns the receiver. A body that answers an ERROR stops the
+/// loop and propagates it (the same Result-style contract as whileTrue: — a
+/// loop that silently discards kinded errors hides faults); ordinary body
+/// values are discarded. A caller that WANTS to soldier on catches in the body
+/// (see the lsp/socket server loops).
 fn iToDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     const end = iv(a[0]);
     const blk = a[1];
     var i = iv(self);
-    while (i <= end) : (i += 1) _ = send1(blk, "value:", mki(i));
+    while (i <= end) : (i += 1) {
+        const r = send1(blk, "value:", mki(i));
+        if (isErr(r)) return r;
+    }
     return self;
 }
 

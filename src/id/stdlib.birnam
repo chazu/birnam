@@ -117,6 +117,35 @@
 [Reflect defineMethod: #asInteger on: Integer as: [:self | self]];
 [Reflect defineMethod: #sqrt on: Integer as: [:self | [[self asFloat] sqrt]]];
 
+// -- Integer: timesRepeat:, in birnam over the native to:do: loop -----------------
+// Rides the prim to:do: frame, so the stack stays flat. to:do: stops-and-
+// propagates on a body error (the whileTrue: contract), so the error check here
+// is only to answer the RECEIVER on success (to:do: answers ITS receiver, 1).
+[Reflect defineMethod: #timesRepeat: on: Integer as: [:self :aBlock |
+  let r := [1 to: self do: [:i | [aBlock value]]];
+  [[r isError] ifTrue: [| r] ifFalse: [| self]]] doc:
+  "Run aBlock self times (a no-op when self <= 0). Answers self, or the first error the body answers."];
+
+// -- Cell: light mutable state — the store cell, one send away --------------------
+// The grammar has NO local re-assignment (`:=` binds only inside `let`) and the
+// collections are persistent, so mutable state lives in the historied fact store.
+// `[db cellFor: e attr: a]` is the primitive handle; `[v asCell]` (the asString /
+// asSymbol family) mints an independent one on a fresh anonymous entity, making
+// loop state one send:  let n := [0 asCell]; … [n inc] / [n set: …] / [n value].
+[Reflect defineMethod: #asCell on: Object as: [:self |
+  let c := [db cellFor: [Object clone] attr: #value];
+  [c set: self];
+  c] doc:
+  "A fresh, independent store cell holding self — [c value] reads, [c set: x] writes, [c history] remembers."];
+[Reflect defineMethod: #inc on: CellVt as: [:self |
+  [self set: [[self value] + 1]];
+  [self value]] doc:
+  "Bump a numeric cell by one; answers the new value."];
+[Reflect defineMethod: #dec on: CellVt as: [:self |
+  [self set: [[self value] - 1]];
+  [self value]] doc:
+  "Drop a numeric cell by one; answers the new value."];
+
 // -- Equality: identity by default; value/structural where it has meaning (§B3) ----
 //
 // `=` on Object is identity over the floor's `==`. Integer/Float/String override it

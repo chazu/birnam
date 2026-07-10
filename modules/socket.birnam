@@ -146,7 +146,10 @@
           ifFalse: [|
             let conn := [self wrapFd: cfd];
             [handler value: conn];
-            [conn close]]]]];
+            [conn close]]];
+        // to:do: stops-and-propagates on a body error; one connection's fault
+        // (handler or close) must not stop the accept loop — swallow it here.
+        0]];
       [fd closeFd]]]] doc:
   "Listen on `port`, then accept connections one at a time, handing each live SockConn to `handler` (a 1-arg block); blocks. Answers a negative fd if it could not listen."];
 
