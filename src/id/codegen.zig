@@ -1276,30 +1276,40 @@ fn scanRequiresCsv(src: []const u8, out: *std.ArrayList(u8)) void {
     }
 }
 
-/// `[Codegen compileImageCode: path]` — the image's `.code` section (docs/40
-/// slice 4). Gather EVERY recorded method source (the `__methods__` facts — the
-/// durable source of truth, reliable across image boots, not an in-memory list)
-/// into one program and compile it to a relocatable artifact at `path` in the
-/// INSTALLABLE form: loading it installs every method with no recompile. Returns
-/// the path, or nil if there are no methods or the compile fails.
-fn mCompileImageCode(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = self;
-    _ = n;
-    const nAttrs = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{g_methods_entity}, 1));
-    if (nAttrs <= 0) return g_api.nilObj;
-    var prog: std.ArrayList(u8) = .{};
-    defer prog.deinit(ca);
+/// Append current String sources from one reserved store entity to `prog`. Module
+/// sources must precede individual method sources: a module's top-level program
+/// establishes its named globals and runtime objects before its method installs.
+fn appendImageSources(prog: *std.ArrayList(u8), entity: Oop) bool {
+    const nAttrs = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{entity}, 1));
+    var found = false;
     var i: i64 = 0;
     while (i < nAttrs) : (i += 1) {
-        const attr = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ g_methods_entity, g_api.mkSmallInt(i) }, 2);
-        const src = g_api.send(g_store, g_api.intern("currentValue:attr:"), &[_]Oop{ g_methods_entity, attr }, 2);
-        if (src == g_api.nilObj) continue;
+        const attr = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ entity, g_api.mkSmallInt(i) }, 2);
+        const src = g_api.send(g_store, g_api.intern("currentValue:attr:"), &[_]Oop{ entity, attr }, 2);
+        if (src == null or src == g_api.nilObj or g_api.vtableOf(src) != g_api.string_vt) continue;
         var len: usize = 0;
         const p = g_api.stringBytes(src, &len);
         prog.appendSlice(ca, p[0..len]) catch @panic("codegen: oom");
         prog.appendSlice(ca, ";\n") catch @panic("codegen: oom");
+        found = true;
     }
-    if (prog.items.len == 0) return g_api.nilObj;
+    return found;
+}
+
+/// `[Codegen compileImageCode: path]` — the image's primary `.code` section.
+/// It compiles recorded module programs (`__modsrc__`) plus method definitions
+/// (`__methods__`) into one relocatable, installable artifact. Module programs
+/// are essential: their top-level initializers construct named live state such
+/// as parser grammars, which is not merely a reflection-store cache. Returns the
+/// path, or nil when there is no code source to capture or compilation fails.
+fn mCompileImageCode(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var prog: std.ArrayList(u8) = .{};
+    defer prog.deinit(ca);
+    const has_modules = appendImageSources(&prog, g_api.intern("__modsrc__"));
+    const has_methods = appendImageSources(&prog, g_methods_entity);
+    if (!has_modules and !has_methods) return g_api.nilObj;
     const progStr = g_api.mkString(prog.items.ptr, prog.items.len);
     var buf = emitProgram(progStr, false, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);
@@ -1307,24 +1317,25 @@ fn mCompileImageCode(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.send(tcc, g_api.intern("compile:output:as:"), &[_]Oop{ c_src, a[0], g_api.intern("dll") }, 3);
 }
 
-/// `[Codegen replayMethods]` — the image's REPLAY path (docs/40 §4): rebuild the
-/// whole library from source by re-evaluating every recorded method (the
-/// `__methods__` facts), recompiling as it goes. Used when the compiled `.code`
-/// section can't be trusted (arch/ABI mismatch) or the user asked to rebuild —
-/// and it subsumes the stdlib, since the stdlib is itself all defineMethod. All
-/// sources are gathered FIRST (re-eval re-records into `__methods__`, so we must
-/// not iterate it while mutating). Answers the count replayed.
+/// `[Codegen replayMethods]` — the image's explicit source-recovery path
+/// (docs/40 §4). Re-evaluate recorded module programs first, then every recorded
+/// method definition. Used when the compiled `.code` section cannot be mapped or
+/// the user requested `--rebuild`. Sources are gathered FIRST because evaluation
+/// reasserts the same facts. Answers the count replayed.
 fn mReplayMethods(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
-    const nAttrs = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{g_methods_entity}, 1));
     var srcs: std.ArrayList(Oop) = .{};
     defer srcs.deinit(ca);
-    var i: i64 = 0;
-    while (i < nAttrs) : (i += 1) {
-        const attr = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ g_methods_entity, g_api.mkSmallInt(i) }, 2);
-        const src = g_api.send(g_store, g_api.intern("currentValue:attr:"), &[_]Oop{ g_methods_entity, attr }, 2);
-        if (src != g_api.nilObj) srcs.append(ca, src) catch @panic("codegen: oom");
+    for ([_]Oop{ g_api.intern("__modsrc__"), g_methods_entity }) |entity| {
+        const nAttrs = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{entity}, 1));
+        var i: i64 = 0;
+        while (i < nAttrs) : (i += 1) {
+            const attr = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ entity, g_api.mkSmallInt(i) }, 2);
+            const src = g_api.send(g_store, g_api.intern("currentValue:attr:"), &[_]Oop{ entity, attr }, 2);
+            if (src != null and src != g_api.nilObj and g_api.vtableOf(src) == g_api.string_vt)
+                srcs.append(ca, src) catch @panic("codegen: oom");
+        }
     }
     for (srcs.items) |src| _ = g_api.send(self, g_api.intern("eval:"), &[_]Oop{src}, 1);
     return g_api.mkSmallInt(@intCast(srcs.items.len));

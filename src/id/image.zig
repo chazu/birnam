@@ -1,11 +1,11 @@
 //! The image — the running system made durable (docs/40).
 //!
-//! An image is NOT a log you replay: it is the live system's store-reachable
-//! state serialized so a fresh process can map it back and start sending
-//! messages (docs/40 §1). The durability line is the store boundary — the
-//! store's facts (globals are facts), and the heap graph transitively reachable
-//! from fact values. What the system cannot name is garbage by definition and
-//! does not survive.
+//! An image is a live native system made durable: its compiled units are mapped
+//! back as the primary executable layer, while durable store state and selected
+//! reflection facts restore the live system around them. Source remains attached
+//! for from-zero bootstrap and explicit recovery, never as the normal boot path.
+//! The store is a meta-level capability surface and durable-data substrate, not
+//! a second authority for compiled behavior.
 //!
 //! Layering (docs/40 §3): the STORE owns its facts and yields/accepts them raw
 //! (`imageFactsInto:` / `imageLoadBegin`+`imageAddFact:…`+`imageLoadEnd:raw:`);
@@ -20,16 +20,13 @@
 //! Record kinds this slice writes, HEAP BEFORE FACTS (facts reference heap ids):
 //!   .heap   u32 n · n×(name · u32 nwords · words)  — the object graph
 //!   .facts  u64 tx · u32 kept · kept×(u8 op · u64 tx · e · a · v)
+//!   .code   v3: u64 unit_hash · dylib bytes
 //! A payload field is a tagged value: nil/true/false, int, float, symbol (by
 //! name — the durable anchor), string (bytes), heapref (a u32 relocation id), or
-//! a null Oop slot. Compound objects whose vtable is image-born (a block vtable)
-//! or carries no layout are DEFERRED — omitted from THIS payload and counted, on the
-//! premise that slice-4 replay re-derives them from recorded source (docs/40 §6). That
-//! holds for source-backed method/block globals; a block-valued fact with NO source
-//! backing is not reconstructed, so for it "deferred" does mean dropped from the image
-//! (reported, not silent — see `reportDeferred`). Code pointers likewise defer to
-//! slice 4. Vtables relink BY NAME on load (the D5.1 spine): a native module's
-//! freshly-loaded vtable re-adopts its image objects.
+//! a null Oop slot. A durable fact that cannot encode MUST have a registered
+//! restoration story (mapped code or recorded global source) or the save rejects
+//! the image before publication. Vtables relink BY NAME on load (the D5.1 spine):
+//! a native module's freshly-loaded vtable re-adopts its image objects.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -45,7 +42,8 @@ var g_api: *IdApi = undefined;
 // -- Header ------------------------------------------------------------------
 
 pub const MAGIC = "BIRNAMIM";
-pub const FORMAT_VERSION: u32 = 2; // v2: the .exportref field tag (by-name refs to exported objects)
+pub const FORMAT_VERSION: u32 = 3; // v3: integrity-checked primary compiled-unit records
+const PREVIOUS_FORMAT_VERSION: u32 = 2; // v2 code payloads were raw dylib bytes
 const ENDIAN_TAG: u32 = 0x01020304;
 
 /// Architecture tag — code sections are per-arch (docs/40 §4); data is portable.
@@ -88,7 +86,7 @@ const RecordKind = enum(u32) {
     interner = 1, // reserved: an explicit interner section (compaction) — by-name inline suffices for now
     facts = 2, // the store's (e,a,v,tx,op) stream
     heap = 3, // the reachable object graph
-    code = 4, // compiled units (slice 4)
+    code = 4, // compiled units (primary executable layer)
     _,
 };
 
@@ -167,6 +165,24 @@ fn writeFile(path: []const u8, bytes: []const u8) bool {
     return true;
 }
 
+/// Publish a complete image in one rename. A rejected or failed save never
+/// truncates a previously valid image at `path`.
+fn writeFileAtomic(path: []const u8, bytes: []const u8) bool {
+    const tmp = std.fmt.allocPrint(ca, "{s}.tmp-{d}", .{ path, std.c.getpid() }) catch return false;
+    defer ca.free(tmp);
+    std.fs.cwd().deleteFile(tmp) catch {};
+    const file = std.fs.cwd().createFile(tmp, .{}) catch return false;
+    var keep = false;
+    defer {
+        file.close();
+        if (!keep) std.fs.cwd().deleteFile(tmp) catch {};
+    }
+    file.writeAll(bytes) catch return false;
+    std.fs.cwd().rename(tmp, path) catch return false;
+    keep = true;
+    return true;
+}
+
 /// Append `bytes` to the end of an existing file (the journal write; docs/40 §7.4).
 /// The format is self-delimiting records read to EOF, so this needs no rewrite.
 fn appendToFile(path: []const u8, bytes: []const u8) bool {
@@ -197,9 +213,47 @@ var g_reloc: std.AutoHashMapUnmanaged(usize, u32) = .{};
 var g_objs: std.ArrayListUnmanaged(Oop) = .{};
 var g_facts_buf: *Buf = undefined; // the collector appends per-fact records here
 var g_kept: u32 = 0;
-var g_deferred_facts: u32 = 0;
-var g_deferred_slots: u32 = 0;
+var g_recovered_facts: u32 = 0;
+var g_rejected_facts: u32 = 0;
+var g_recovered_slots: u32 = 0;
+var g_rejected_slots: u32 = 0;
+var g_recoveries_needing_code: u32 = 0;
+var g_slots_needing_code: u32 = 0;
+var g_code_captured: bool = false;
 var g_collector_vt: Oop = null;
+var g_globals_entity: Oop = null;
+var g_globalsrc_entity: Oop = null;
+var g_modsrc_entity: Oop = null;
+
+const ReportStatus = enum { never, saved, rejected, io_failed };
+const SaveReport = struct {
+    status: ReportStatus = .never,
+    saved_facts: u32 = 0,
+    recovered_facts: u32 = 0,
+    rejected_facts: u32 = 0,
+    recovered_slots: u32 = 0,
+    rejected_slots: u32 = 0,
+    code_units: u32 = 0,
+    detail: [256]u8 = undefined,
+    detail_len: usize = 0,
+};
+var g_save_report: SaveReport = .{};
+var g_report_vt: Oop = null;
+var g_report_obj: Oop = null;
+
+fn resetSaveReport() void {
+    g_save_report = .{};
+}
+
+fn setSaveReportDetail(comptime fmt: []const u8, args: anytype) void {
+    const msg = std.fmt.bufPrint(&g_save_report.detail, fmt, args) catch {
+        const fallback = "image save rejected";
+        @memcpy(g_save_report.detail[0..fallback.len], fallback);
+        g_save_report.detail_len = fallback.len;
+        return;
+    };
+    g_save_report.detail_len = msg.len;
+}
 
 // Journaling state (docs/40 §7.4: one format, two write modes). Survives ACROSS
 // saves within a process — so an `appendImage` continues the base's object→id
@@ -209,7 +263,7 @@ var g_collector_vt: Oop = null;
 // append. `-1` basis = no base established in this process yet.
 var g_saved_basis: i64 = -1; // basis tx captured at the last save/append/load
 var g_min_tx: i64 = 0; // collector filter: skip facts with tx < this (append = delta only)
-var g_delta_has_methods: bool = false; // a delta touched `__methods__` → re-emit a composing `.code` record (§G2)
+var g_delta_has_code_source: bool = false; // a delta touched `__methods__` or `__modsrc__` → re-emit a composing `.code` record
 var g_methods_entity: Oop = null; // interned `__methods__`, for that detection
 
 /// Reset the save worklist for a FULL save (a fresh base / compaction). An append
@@ -218,8 +272,122 @@ fn resetSaveState() void {
     g_reloc.clearRetainingCapacity();
     g_objs.clearRetainingCapacity();
     g_kept = 0;
-    g_deferred_facts = 0;
-    g_deferred_slots = 0;
+    g_recovered_facts = 0;
+    g_rejected_facts = 0;
+    g_recovered_slots = 0;
+    g_rejected_slots = 0;
+    g_recoveries_needing_code = 0;
+    g_slots_needing_code = 0;
+    g_code_captured = false;
+}
+
+const DeferredFactClass = enum { source, code, reject };
+
+fn isSymbol(o: Oop) bool {
+    return o != null and g_api.vtableOf(o) == g_api.symbol_vt;
+}
+
+fn isInternalGlobal(attr: Oop) bool {
+    if (!isSymbol(attr)) return false;
+    return std.mem.startsWith(u8, std.mem.span(g_api.symbolName(attr)), "__");
+}
+
+/// A top-level binding with recorded RHS source can be re-created after its
+/// compiled image units load. This is recovery for a closure value, not the
+/// normal representation of compiled methods.
+fn hasGlobalRecoverySource(attr: Oop) bool {
+    const store = g_api.import("Store") orelse return false;
+    return g_api.send(store, g_api.intern("hasValue:attr:"), &[_]Oop{ g_globalsrc_entity, attr }, 2) == g_api.trueObj;
+}
+
+/// A self-hosted module's top-level program may establish a named runtime object
+/// (for example, a PEG grammar). The image compiler includes every `__modsrc__`
+/// program in its primary unit, so this binding has a concrete compiled
+/// reconstruction path only when that source explicitly initializes the name.
+fn hasModuleGlobalRecoverySource(attr: Oop) bool {
+    if (!isSymbol(attr)) return false;
+    const store = g_api.import("Store") orelse return false;
+    const name = std.mem.span(g_api.symbolName(attr));
+    const marker = std.fmt.allocPrint(ca, "Globals at: #{s} put:", .{name}) catch return false;
+    defer ca.free(marker);
+    const count = g_api.smallIntValue(g_api.send(store, g_api.intern("attrCount:"), &[_]Oop{g_modsrc_entity}, 1));
+    var i: i64 = 0;
+    while (i < count) : (i += 1) {
+        const key = g_api.send(store, g_api.intern("attrAt:index:"), &[_]Oop{ g_modsrc_entity, g_api.mkSmallInt(i) }, 2);
+        const src = g_api.send(store, g_api.intern("currentValue:attr:"), &[_]Oop{ g_modsrc_entity, key }, 2);
+        if (src == null or src == g_api.nilObj or g_api.vtableOf(src) != g_api.string_vt) continue;
+        var len: usize = 0;
+        const p = g_api.stringBytes(src, &len);
+        if (std.mem.indexOf(u8, p[0..len], marker) != null) return true;
+    }
+    return false;
+}
+
+/// Method-mirror facts are a projection of live vtable bindings. The image's
+/// compiled unit re-installs that authoritative binding on boot, so this fact
+/// is reconstructable when a code unit is captured; it is never a second copy
+/// of executable behavior.
+fn isMethodMirrorFact(e: Oop, a: Oop) bool {
+    return e != null and a != null and g_api.vtableOf(e) == g_api.vtable_vt and isSymbol(a);
+}
+
+fn deferredFactClass(e: Oop, a: Oop) DeferredFactClass {
+    if (e == g_globals_entity) {
+        if (isInternalGlobal(a)) return .code; // __mblk / __amblk and other codegen-owned bindings
+        if (hasGlobalRecoverySource(a)) return .source;
+        if (hasModuleGlobalRecoverySource(a)) return .code;
+        return .reject;
+    }
+    if (isMethodMirrorFact(e, a)) return .code;
+    return .reject;
+}
+
+fn noteRejectedFact(e: Oop, a: Oop) void {
+    g_rejected_facts += 1;
+    if (g_save_report.detail_len != 0) return;
+    if (e == g_globals_entity and isSymbol(a)) {
+        setSaveReportDetail("unserializable durable global #{s}", .{std.mem.span(g_api.symbolName(a))});
+    } else {
+        setSaveReportDetail("unserializable durable store fact has no restoration recipe", .{});
+    }
+}
+
+fn noteDeferredFact(e: Oop, a: Oop) void {
+    switch (deferredFactClass(e, a)) {
+        .source => g_recovered_facts += 1,
+        .code => {
+            g_recovered_facts += 1;
+            g_recoveries_needing_code += 1;
+        },
+        .reject => noteRejectedFact(e, a),
+    }
+}
+
+fn rejectCodeRecoveries() void {
+    if (g_code_captured) return;
+    if (g_recoveries_needing_code > 0) {
+        g_recovered_facts -= g_recoveries_needing_code;
+        g_rejected_facts += g_recoveries_needing_code;
+    }
+    if (g_slots_needing_code > 0) {
+        g_recovered_slots -= g_slots_needing_code;
+        g_rejected_slots += g_slots_needing_code;
+    }
+    if (g_recoveries_needing_code == 0 and g_slots_needing_code == 0) return;
+    if (g_save_report.detail_len == 0)
+        setSaveReportDetail(
+            "{d} fact(s) and {d} heap slot(s) require a compiled image unit, but none was captured",
+            .{ g_recoveries_needing_code, g_slots_needing_code },
+        );
+}
+
+fn finishSaveReport(status: ReportStatus) void {
+    g_save_report.status = status;
+    g_save_report.saved_facts = g_kept;
+    g_save_report.recovered_facts = g_recovered_facts;
+    g_save_report.rejected_facts = g_rejected_facts;
+    g_save_report.recovered_slots = g_recovered_slots;
+    g_save_report.rejected_slots = g_rejected_slots;
 }
 
 /// The vtable to serialize `o` under, or null to defer it. Normally its own
@@ -327,7 +495,8 @@ fn encodeField(buf: *Buf, o: Oop) bool {
 
 /// `[collector e: e a: a v: v tx: t op: o]` — the store drives this per fact
 /// during `imageFactsInto:`. A fact commits only if ALL its fields encode (a
-/// fact is atomic); a deferred field skips the whole fact (counted).
+/// fact is atomic); otherwise its recovery contract is classified. A missing
+/// contract rejects the image rather than publishing a partial fact stream.
 fn mCollect(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
@@ -340,16 +509,16 @@ fn mCollect(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     if (encodeField(&scratch, args[0]) and encodeField(&scratch, args[1]) and encodeField(&scratch, args[2])) {
         g_facts_buf.appendSlice(ca, scratch.items) catch @panic("image: oom");
         g_kept += 1;
-        if (args[0] == g_methods_entity) g_delta_has_methods = true;
-    } else g_deferred_facts += 1;
+        if (args[0] == g_methods_entity or args[0] == g_modsrc_entity) g_delta_has_code_source = true;
+    } else noteDeferredFact(args[0], args[1]);
     return g_api.nilObj;
 }
 
 /// Drain the object worklist into the `.heap` payload: each object as its vtable
 /// NAME (to relink by), its word count, and its payload words — raw words copied
 /// verbatim, Oop words encoded (which discovers more objects → the worklist
-/// grows). Code words are zero-width here (deferred to slice 4). The leading u32
-/// count is backpatched to the final total.
+/// grows). Code words are zero-width here because primary compiled units restore
+/// them. The leading u32 count is backpatched to the final total.
 fn drainHeap(buf: *Buf) void {
     drainHeapFrom(buf, 0);
 }
@@ -379,10 +548,17 @@ fn drainHeapFrom(buf: *Buf, start: usize) void {
                     const slot: Oop = @ptrFromInt(word.*);
                     if (!encodeField(buf, slot)) {
                         putTag(buf, .nulloop);
-                        g_deferred_slots += 1;
+                        g_rejected_slots += 1;
+                        if (g_save_report.detail_len == 0)
+                            setSaveReportDetail("a durable heap object contains an unserializable nested value", .{});
                     }
                 },
-                idapi.slot_code => g_deferred_slots += 1, // zero-width; slice 4
+                // Code pointers are restored by the primary compiled units, not
+                // by swizzling a process-local address into the image heap.
+                idapi.slot_code => {
+                    g_recovered_slots += 1;
+                    g_slots_needing_code += 1;
+                },
                 idapi.slot_raw => putU64(buf, word.*),
                 // slot_unknown can't reach here: internObj (§G3) defers any object
                 // with an unknown slot whole, so a live Oop is never dumped raw.
@@ -393,50 +569,56 @@ fn drainHeapFrom(buf: *Buf, start: usize) void {
     std.mem.writeInt(u32, buf.items[count_at..][0..4], @intCast(g_objs.items.len - start), .little);
 }
 
-fn reportDeferred() void {
-    if (g_deferred_facts > 0) std.debug.print(
-        "[image] deferred {d} fact(s) with un-serializable values (image-born/no-layout; slice 4 replay)\n",
-        .{g_deferred_facts},
-    );
-    if (g_deferred_slots > 0) std.debug.print(
-        "[image] deferred {d} object slot(s) (image-born/code; slice 4)\n",
-        .{g_deferred_slots},
-    );
-}
-
 /// A per-process temp path for the code section (pid-tagged so concurrent boots
 /// and dlopen's path cache don't collide). `suffix` distinguishes save vs load.
 fn codeTempPath(bufz: []u8, suffix: []const u8) [:0]const u8 {
     return std.fmt.bufPrintZ(bufz, "/tmp/birnam-imgcode-{d}-{s}.dylib", .{ std.c.getpid(), suffix }) catch unreachable;
 }
 
-/// Append the `.code` record (docs/40 slice 4): every recorded method compiled to
-/// one relocatable, INSTALLABLE artifact — loading it installs the methods with
-/// no recompile. Codegen writes the artifact to a temp file; we read its bytes
-/// into the record. Absent when there are no methods.
-fn appendCode(buf: *Buf) void {
-    const codegen = g_api.import("Codegen") orelse return;
+const CodeCapture = enum { absent, captured, failed };
+
+/// Capture one primary compiled unit into a v3 `.code` record. The checksum is a
+/// unit manifest: before a loader writes the dylib to disk or dlopens it, it can
+/// prove that the executable bytes are the ones the image saved.
+fn captureCode(buf: *Buf) CodeCapture {
+    const codegen = g_api.import("Codegen") orelse return .absent;
     var pbuf: [128]u8 = undefined;
     const tmp = codeTempPath(&pbuf, "save");
     const r = g_api.send(codegen, g_api.intern("compileImageCode:"), &[_]Oop{g_api.mkString(tmp.ptr, tmp.len)}, 1);
-    if (r == null or r == g_api.nilObj) return;
-    const bytes = std.fs.cwd().readFileAlloc(ca, tmp, 1 << 30) catch return;
+    if (r == null or r == g_api.nilObj) return .absent;
+    defer std.fs.cwd().deleteFile(tmp) catch {};
+    const bytes = std.fs.cwd().readFileAlloc(ca, tmp, 1 << 30) catch return .failed;
     defer ca.free(bytes);
-    std.fs.cwd().deleteFile(tmp) catch {};
     const at = beginRecord(buf, .code);
+    putU64(buf, std.hash.Wyhash.hash(0, bytes));
     putBytes(buf, bytes);
     endRecord(buf, at);
+    return .captured;
 }
 
-/// Serialize the store-reachable system to `path`: header, the heap record (if any
-/// objects were reached), the facts record, then the code record. Auto-GC is off
-/// for the span (a quiescent save); the walk never collects what it serializes.
+/// Serialize the live system to `path`: first capture its primary compiled unit,
+/// then collect durable data and selected meta-state. The completed image is
+/// published with one rename only after every durable value has an encoding or a
+/// registered recovery path.
 pub fn saveImage(path: []const u8) bool {
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
     resetSaveState();
+    resetSaveReport();
     g_min_tx = 0; // a full save carries EVERY fact (the compacted base)
-    g_delta_has_methods = false;
+    g_delta_has_code_source = false;
+
+    // Capture code BEFORE classifying reconstructed facts: method mirrors and
+    // codegen-owned globals are admissible only when this unit exists.
+    var code_buf: Buf = .{};
+    defer code_buf.deinit(ca);
+    const code_capture = captureCode(&code_buf);
+    g_code_captured = code_capture == .captured;
+    if (g_code_captured) g_save_report.code_units = 1;
+    if (code_capture == .failed) {
+        g_rejected_facts += 1;
+        setSaveReportDetail("failed to capture the primary compiled image unit", .{});
+    }
 
     var facts_recs: Buf = .{};
     defer facts_recs.deinit(ca);
@@ -454,6 +636,17 @@ pub fn saveImage(path: []const u8) bool {
     }
     // 2. Heap — drain the worklist, discovering nested objects.
     drainHeap(&heap_buf);
+    rejectCodeRecoveries();
+
+    if (g_rejected_facts > 0 or g_rejected_slots > 0) {
+        finishSaveReport(.rejected);
+        // The existing append baseline may no longer describe the current heap
+        // after a rejected compaction attempt. Refuse later appendImage: calls
+        // until a complete save establishes a new base.
+        g_saved_basis = -1;
+        resetSaveState();
+        return false;
+    }
 
     // 3. Assemble the file: heap BEFORE facts (facts reference heap ids).
     var buf: Buf = .{};
@@ -471,12 +664,20 @@ pub fn saveImage(path: []const u8) bool {
         putBytes(&buf, facts_recs.items);
         endRecord(&buf, at);
     }
-    appendCode(&buf); // 4. Compiled code — the whole library, mapped on load.
-    reportDeferred();
-    if (!writeFile(path, buf.items)) return false;
+    // 4. Primary compiled unit — mapped on normal boot, never replayed here.
+    putBytes(&buf, code_buf.items);
+    if (!writeFileAtomic(path, buf.items)) {
+        if (g_save_report.detail_len == 0)
+            setSaveReportDetail("could not atomically publish image at {s}", .{path});
+        finishSaveReport(.io_failed);
+        g_saved_basis = -1;
+        resetSaveState();
+        return false;
+    }
     // This save is now the base for any subsequent append (docs/40 §7.4): keep the
     // object numbering and remember the basis so the next append writes only newer.
     g_saved_basis = tx;
+    finishSaveReport(.saved);
     return true;
 }
 
@@ -491,15 +692,26 @@ pub fn saveImage(path: []const u8) bool {
 /// — the appended install overrides the base's stale method on load, no `--rebuild`
 /// or compacting `saveImage:` required.
 pub fn appendImage(path: []const u8) bool {
-    if (g_saved_basis < 0) return false; // no base established this process
+    if (g_saved_basis < 0) {
+        resetSaveReport();
+        setSaveReportDetail("append requires a successful full save or image load first", .{});
+        finishSaveReport(.rejected);
+        return false;
+    }
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
     // Deliberately NOT resetSaveState — reuse the base's object→id numbering.
     const base_obj_count = g_objs.items.len;
     g_kept = 0;
-    g_deferred_facts = 0;
-    g_deferred_slots = 0;
-    g_delta_has_methods = false;
+    g_recovered_facts = 0;
+    g_rejected_facts = 0;
+    g_recovered_slots = 0;
+    g_rejected_slots = 0;
+    g_recoveries_needing_code = 0;
+    g_slots_needing_code = 0;
+    g_code_captured = false;
+    resetSaveReport();
+    g_delta_has_code_source = false;
     g_min_tx = g_saved_basis;
 
     var facts_recs: Buf = .{};
@@ -517,6 +729,26 @@ pub fn appendImage(path: []const u8) bool {
     }
     drainHeapFrom(&heap_buf, base_obj_count); // only objects new to this delta
 
+    // A delta that changes recorded method or module source gets a composing
+    // primary unit. Its mirror facts may rely on that unit, so capture it before
+    // validating recoverability.
+    var code_buf: Buf = .{};
+    defer code_buf.deinit(ca);
+    if (g_delta_has_code_source) {
+        const code_capture = captureCode(&code_buf);
+        g_code_captured = code_capture == .captured;
+        if (g_code_captured) g_save_report.code_units = 1 else if (code_capture == .failed) {
+            g_rejected_facts += 1;
+            setSaveReportDetail("failed to capture the primary compiled unit for an image delta", .{});
+        }
+    }
+    rejectCodeRecoveries();
+    if (g_rejected_facts > 0 or g_rejected_slots > 0) {
+        finishSaveReport(.rejected);
+        rollbackAppend(base_obj_count);
+        return false;
+    }
+
     // Assemble the delta records (heap before facts, same as a base generation).
     var buf: Buf = .{};
     defer buf.deinit(ca);
@@ -532,18 +764,26 @@ pub fn appendImage(path: []const u8) bool {
         putBytes(&buf, facts_recs.items);
         endRecord(&buf, at);
     }
-    reportDeferred();
-    // §G2: a delta that (re)defines methods re-emits the compiled library as an
-    // additional `.code` record (compiled from the CURRENT source of every selector).
-    // On load, `.code` records COMPOSE (loadCode installs each in stream order) and a
-    // later install overrides an earlier one, so this appended code supersedes the
-    // base's now-stale method — the appended image is self-consistent with no
-    // `--rebuild`/compact needed. Only a method-touching delta pays this recompile; a
-    // data-only append writes no code at all.
-    if (g_delta_has_methods) appendCode(&buf);
-    if (buf.items.len > 0 and !appendToFile(path, buf.items)) return false;
+    // A code-source-changing delta carries a composing primary unit. On load,
+    // units compose in stream order and the latest install wins.
+    putBytes(&buf, code_buf.items);
+    if (buf.items.len > 0 and !appendToFile(path, buf.items)) {
+        if (g_save_report.detail_len == 0)
+            setSaveReportDetail("could not append image delta at {s}", .{path});
+        finishSaveReport(.io_failed);
+        rollbackAppend(base_obj_count);
+        return false;
+    }
     g_saved_basis = tx; // advance the watermark for the next append
+    finishSaveReport(.saved);
     return true;
+}
+
+fn rollbackAppend(base_obj_count: usize) void {
+    while (g_objs.items.len > base_obj_count) {
+        const o = g_objs.pop().?;
+        if (o) |p| _ = g_reloc.remove(@intFromPtr(p));
+    }
 }
 
 // -- Byte reader -------------------------------------------------------------
@@ -602,6 +842,8 @@ var g_load_objs: std.ArrayListUnmanaged(ObjRec) = .{};
 // by readHeader, gate that — a mismatch (or --rebuild) leaves it false so the
 // caller falls back to replay/stdlib (docs/40 §4). Reset per load.
 var g_mapped_code: bool = false;
+var g_loaded_code_units: u32 = 0;
+var g_img_format: u32 = FORMAT_VERSION;
 var g_img_arch: u32 = 0;
 var g_img_abi: u64 = 0;
 var g_force_rebuild: bool = false; // set by [System loadImage:rebuild:] / --rebuild
@@ -754,6 +996,7 @@ var g_code_load_seq: u32 = 0; // distinguishes multiple `.code` records in one l
 
 fn loadCode(payload: []const u8) bool {
     if (!codeMappable()) return true; // not an error — leave it to replay/stdlib
+    const unit = codeUnitBytes(payload) orelse return false;
     const codegen = g_api.import("Codegen") orelse return false;
     // Per-record temp path: an image may carry more than one `.code` record (a base
     // plus appended code); each dlopen+install composes, but they must not collide.
@@ -762,12 +1005,24 @@ fn loadCode(payload: []const u8) bool {
     g_code_load_seq += 1;
     var pbuf: [128]u8 = undefined;
     const tmp = codeTempPath(&pbuf, suffix);
-    if (!writeFile(tmp, payload)) return false;
+    if (!writeFile(tmp, unit)) return false;
     const r = g_api.send(codegen, g_api.intern("load:"), &[_]Oop{g_api.mkString(tmp.ptr, tmp.len)}, 1);
     std.fs.cwd().deleteFile(tmp) catch {};
     if (r == g_api.nilObj) return false;
     g_mapped_code = true;
+    g_loaded_code_units += 1;
     return true;
+}
+
+/// v3 code records carry a hash before the dylib bytes. v2 images used raw
+/// dylib payloads, which remain readable for recovery and migration.
+fn codeUnitBytes(payload: []const u8) ?[]const u8 {
+    if (g_img_format == PREVIOUS_FORMAT_VERSION) return payload;
+    if (payload.len < 8) return null;
+    const want = std.mem.readInt(u64, payload[0..8], .little);
+    const unit = payload[8..];
+    if (std.hash.Wyhash.hash(0, unit) != want) return null;
+    return unit;
 }
 
 /// Map an image back into the running system: validate the header, then dispatch
@@ -781,11 +1036,18 @@ pub fn loadImage(path: []const u8) bool {
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
     g_mapped_code = false;
+    g_loaded_code_units = 0;
     g_code_load_seq = 0;
     g_load_reloc.clearRetainingCapacity(); // ids are global across this load's records
     var facts_began = false;
     var max_basis: i64 = 0;
     var r = Reader{ .b = bytes };
+    if (!readHeader(&r)) return false;
+    // Verify every record boundary and compiled-unit manifest before touching
+    // the store. A corrupt primary unit must not leave a partially restored live
+    // system behind merely because `.facts` appears earlier in the stream.
+    if (!validateRecords(&r)) return false;
+    r = .{ .b = bytes };
     if (!readHeader(&r)) return false;
     while (r.i < r.b.len) {
         const kind = r.u32v() orelse return false;
@@ -847,10 +1109,18 @@ pub fn validate(path: []const u8) bool {
     defer ca.free(bytes);
     var r = Reader{ .b = bytes };
     if (!readHeader(&r)) return false;
+    return validateRecords(&r);
+}
+
+/// Check every framed record and the integrity manifest of each compiled unit.
+/// Kept separate from `validate` so `loadImage` can run the same preflight before
+/// it mutates the store or materializes heap objects.
+fn validateRecords(r: *Reader) bool {
     while (r.i < r.b.len) {
-        _ = r.u32v() orelse return false; // kind
+        const kind = r.u32v() orelse return false;
         const len = r.u64v() orelse return false;
-        _ = r.take(@intCast(len)) orelse return false;
+        const payload = r.take(@intCast(len)) orelse return false;
+        if (@as(RecordKind, @enumFromInt(kind)) == .code and codeUnitBytes(payload) == null) return false;
     }
     return true;
 }
@@ -861,7 +1131,9 @@ pub fn validate(path: []const u8) bool {
 fn readHeader(r: *Reader) bool {
     const magic = r.take(MAGIC.len) orelse return false;
     if (!std.mem.eql(u8, magic, MAGIC)) return false;
-    if ((r.u32v() orelse return false) != FORMAT_VERSION) return false;
+    const version = r.u32v() orelse return false;
+    if (version != FORMAT_VERSION and version != PREVIOUS_FORMAT_VERSION) return false;
+    g_img_format = version;
     if ((r.u32v() orelse return false) != ENDIAN_TAG) return false;
     g_img_arch = r.u32v() orelse return false; // arch tag (code sections are per-arch)
     g_img_abi = r.u64v() orelse return false; // runtime-shim ABI validity hash
@@ -882,13 +1154,79 @@ fn pathArg(o: Oop, len: *usize) ?[*]const u8 {
     return g_api.stringBytes(o, len);
 }
 
-/// `[System saveImage: path]` — serialize the running system to `path`; self on
-/// success, nil on failure (bad path arg or write error).
+/// `[System saveImage: path]` — serialize the running native system to `path`.
+/// Answers self only after every durable value is encoded or has a registered
+/// recovery path; answers nil on rejection or I/O failure. Inspect the structured
+/// outcome through `[System imageSaveReport]`.
 fn sysSaveImage(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     var len: usize = 0;
     const p = pathArg(a[0], &len) orelse return g_api.nilObj;
     return if (saveImage(p[0..len])) self else g_api.nilObj;
+}
+
+fn mReportStatus(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.intern(switch (g_save_report.status) {
+        .never => "never",
+        .saved => "saved",
+        .rejected => "rejected",
+        .io_failed => "ioFailed",
+    });
+}
+fn mReportSavedFacts(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(g_save_report.saved_facts);
+}
+fn mReportRecoveredFacts(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(g_save_report.recovered_facts);
+}
+fn mReportRejectedFacts(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(g_save_report.rejected_facts);
+}
+fn mReportRecoveredSlots(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(g_save_report.recovered_slots);
+}
+fn mReportRejectedSlots(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(g_save_report.rejected_slots);
+}
+fn mReportCodeUnits(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkSmallInt(g_save_report.code_units);
+}
+fn mReportDetail(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_api.mkString(g_save_report.detail[0..g_save_report.detail_len].ptr, g_save_report.detail_len);
+}
+
+/// `[System imageSaveReport]` — the result of the latest save or append. Its
+/// selectors are `status`, `savedFacts`, `recoveredFacts`, `rejectedFacts`,
+/// `recoveredSlots`, `rejectedSlots`, `codeUnits`, and `detail`.
+fn sysImageSaveReport(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return g_report_obj;
 }
 
 /// `[System imageCheckpoint]` — mark the CURRENT store basis as the append baseline
@@ -999,12 +1337,33 @@ pub fn bringUp(api: *IdApi) void {
     g_api = api;
     const system_vt = api.import("SystemVt");
     api.method(system_vt, api.intern("saveImage:"), &sysSaveImage);
+    api.method(system_vt, api.intern("imageSaveReport"), &sysImageSaveReport);
     api.method(system_vt, api.intern("appendImage:"), &sysAppendImage);
     api.method(system_vt, api.intern("imageCheckpoint"), &sysImageCheckpoint);
     api.method(system_vt, api.intern("loadImage:"), &sysLoadImage);
     api.method(system_vt, api.intern("loadImage:rebuild:"), &sysLoadImageRebuild);
     api.method(system_vt, api.intern("bakeExe:"), &sysBakeExe);
     g_methods_entity = api.intern("__methods__"); // to flag method-defining appends
+    g_globals_entity = api.intern("__globals__");
+    g_globalsrc_entity = api.intern("__globalsrc__");
+    g_modsrc_entity = api.intern("__modsrc__");
+    if (api.isExported("ImageSaveReport") != 0) {
+        g_report_vt = api.import("ImageSaveReportVt");
+        g_report_obj = api.import("ImageSaveReport");
+    } else {
+        g_report_vt = api.proto(api.object_vt);
+        g_report_obj = api.alloc(g_report_vt, 0);
+        _ = api.exportObj("ImageSaveReportVt", g_report_vt);
+        _ = api.exportObj("ImageSaveReport", g_report_obj);
+    }
+    api.method(g_report_vt, api.intern("status"), &mReportStatus);
+    api.method(g_report_vt, api.intern("savedFacts"), &mReportSavedFacts);
+    api.method(g_report_vt, api.intern("recoveredFacts"), &mReportRecoveredFacts);
+    api.method(g_report_vt, api.intern("rejectedFacts"), &mReportRejectedFacts);
+    api.method(g_report_vt, api.intern("recoveredSlots"), &mReportRecoveredSlots);
+    api.method(g_report_vt, api.intern("rejectedSlots"), &mReportRejectedSlots);
+    api.method(g_report_vt, api.intern("codeUnits"), &mReportCodeUnits);
+    api.method(g_report_vt, api.intern("detail"), &mReportDetail);
     // The fact collector: a proto (permanent → safe to hold module-globally) whose
     // one method the store drives during `imageFactsInto:`.
     g_collector_vt = api.proto(api.object_vt);

@@ -9,12 +9,13 @@
 > [Object Model](../archive/legacy-kernel/13-object-model.md), [Dispatch](../archive/legacy-kernel/26-dispatch.md),
 > [Cells](../archive/legacy-kernel/2a-cells.md), [Re-Layering Audit](../archive/legacy-kernel/20a-relayering-coupling-audit.md).
 
-> **Status (2026-07-08):** the *primacy* argument here (this doc's one refinement of
-> `docs/10a`) is itself now superseded by the object-canonical pivot — object model
-> canonical, relational reading derived. See
-> [42-object-canonical-relational-derived.md](42-object-canonical-relational-derived.md).
-> The five invariant goals and the extensional-identity thesis below still stand;
-> only the layer-primacy discussion is downstream of a decision 42 has since made.
+> **Status (2026-07-10):** the *primacy* argument here is superseded by the
+> object-canonical and compiled-unit decisions: compatible native units are the
+> primary executable layer, while the relational store is a derived durable/meta
+> mirror. See [42 — Object Canonical](42-object-canonical-relational-derived.md)
+> and [45 — Compiled Units](45-compiled-units.md). The five invariant goals and
+> extensional-identity thesis still stand; the layer-primacy discussion below is
+> historical design context rather than the runtime authority contract.
 
 ## 0. What this document is
 

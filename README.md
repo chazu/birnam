@@ -1,534 +1,173 @@
 # Birnam
 
-> If you will permit a small philosophical digression ... Only things exist, and their relations.
->
-> Such an artificial environment would be no one, like a meadow, forest, or steppe—with the difference that it would grow and blossom not on its own, not for itself, but for someone. For beings. Would they become stupid from this, turning into dull-witted gluttons that whiled away their hours with toys provided by the planetary guardian? Not necessarily. It depended on the point of view.
->
-> Stanislaw Lem, _Fiasco_
+Birnam is a late-bound, message-oriented language system built on a Piumarta-style
+object floor. It combines a small reflective runtime, a relational store, PEG
+parsing, native compilation through libtcc, self-hosted library code, and durable
+images.
 
-A weird, late-bound, dynamic language intended to be completely malleable, in the style of Ian Piumarta's `idst`. Probably does not fulfill this or any other goal.
+It is an active pre-alpha system. The architecture and its bootstrap are the
+product; compatibility and language surface can still change.
 
-## What
+## Support
 
-Piumarta's id object system in zig + relational fact store + libtcc + peg parser generator
+Birnam currently supports **arm64 macOS** with **Zig 0.15.1**. This applies to
+development builds, installed binaries, and release bundles. Other targets fail
+early rather than producing an artifact that cannot link or boot.
 
-So a lot of shit isn't done:
+See [Platform support](docs/misc/PLATFORM-SUPPORT.md) for the porting boundary
+and acceptance criteria.
 
-* Any documentation
-* Really any standard library - there's strings, and combinators and some other stuff but we still need:
-  - files outside the kernel
-  - i/o streams
-  - external process management
-  - literally everything else
-* emacs mode
-* lsp (what the fuck does this even look like? i have no idea)
+## Install
 
-
-##
-
-**Build from source** (any platform with **Zig 0.15.1**):
+From a checkout:
 
 ```sh
-zig build install --prefix ~/.local      # or: mise run install
-export PATH="$HOME/.local/bin:$PATH"
-birnam                                     # zero-config REPL
-```
-
-Either way you land at a `birnam>` prompt with `peg` + `lang` loaded. Poke at it:
-
-```
-birnam> [3 + 4]
-=> 7
-birnam> [6 squared]
-=> 36
-birnam> let x := 10
-=> 10
-birnam> [x + 5]
-=> 15
-```
-
-(Top-level message sends are bracketed — `[3 + 4]`, not `3 + 4`.) Then grow and
-keep a world:
-
-```
-birnam> :in playground.birnam    # evaluate a file (multi-line, atomic)
-birnam> :save mywork.bim         # snapshot the whole image
-birnam> :load mywork.bim         # ...and restore it later
-```
-
-Drop a `birnam.toml` beside your work to pin the module set and auto-resume an
-image (see [Project config](#project-config--birnamtoml) below), and a bare
-`birnam` in that directory starts up right where you left off. The full
-language tour lives in [`DEMO.md`](docs/misc/DEMO.md).
-
-> Heads up: only arm64 macOS has a prebuilt binary today. On Linux / Intel
-> macs, build from source (Option B) — the cross-platform port is tracked
-> separately.
-
-## Build
-
-Requires **Zig 0.15.1**.
-
-```
-zig build
-```
-
-Produces `zig-out/bin/birnam` (the shell) and the module dylibs in `zig-out/lib/`:
-
-| dylib | role |
-|---|---|
-| `libbirnam_peg.dylib` | PEG parsing engine (fact-shaped patterns + packrat memo) |
-| `libbirnam_lang.dylib` | birnam grammar + desugar + bytecode compiler + eval + REPL |
-| `libbirnam_query.dylib` | Datalog query module |
-| `libbirnam_repl.dylib` | minimal REPL module (superseded by lang's REPL) |
-| `libbirnam_hello.dylib` | smoke-test module |
-
-The shell `dlopen`s modules from argv; each exports `birnam_module_init` and talks to the kernel through a C-ABI `IdApi` table. Order matters — load `peg` before `lang`.
-
-### Install
-
-```
 zig build install --prefix ~/.local
+export PATH="$HOME/.local/bin:$PATH"
+birnam
 ```
 
-Installs exactly `bin/birnam` (the shell) and `lib/libbirnam_*.dylib` (the
-modules) under the prefix — nothing else. Because the shell probes its own
-`../lib`, a prefix install is **zero-config**: `~/.local/bin/birnam` finds its
-modules in `~/.local/lib` with no environment variable set. (`$BIRNAM_PATH`
-remains useful to point at an install prefix elsewhere.)
+The installed executable finds its runtime dylibs in the sibling `lib/`
+directory. For development, `zig build` produces `zig-out/bin/birnam` and the
+runtime modules under `zig-out/lib/`.
 
-## Run the REPL
+[`mise`](https://mise.jdx.dev) is optional; [mise.toml](mise.toml) pins the same
+Zig version and exposes `mise run build`, `mise run verify`, and `mise run
+install`.
 
-Modules are named by **bare name** — `lang` resolves to `libbirnam_lang.dylib`
-along the dylib search path. With no arguments, `birnam` loads the default set
-(`peg lang`):
+## First Session
 
-```
-birnam                       # default: peg + lang, then the REPL
-birnam peg lang query        # explicit module set (full dylib paths still work)
-birnam --bare                # load nothing (bare kernel)
-birnam init                  # scaffold birnam.toml + playground.birnam here
-birnam playground.birnam     # run a script (file-in, then exit)
-birnam -i playground.birnam  # run a script, then drop into the REPL
-birnam -e '[3 + 4]'          # evaluate one expression, then exit
-```
+Run `birnam` with no arguments to enter the console REPL:
 
-You get a `birnam>` prompt. Each line is parsed by the PEG engine, desugared to a typed AST, compiled to bytecode, and run on the VM. Results print as `=> value`. Type `:help` for the command list. Ctrl-D exits.
-
-Any argument ending in `.birnam` is a script (filed in, statements separated by `;`); `-e EXPR` evaluates one expression. Both run after the modules load and then exit, unless `-i` keeps the session open afterward. `birnam init` writes a starter `birnam.toml` + `playground.birnam` (never clobbering existing files).
-
-### Resolving modules
-
-A module name is resolved to a dylib by searching, in order:
-
-1. any `dylib_paths` from `birnam.toml` (relative to the config file)
-2. directories in `$BIRNAM_DYLIB_PATH` (`:`-separated) — dirs that *directly* hold dylibs
-3. install roots in `$BIRNAM_PATH` (`:`-separated, Go-style) — each probed at `<root>/lib` then `<root>`
-4. the current directory and everything beneath it (recursive)
-5. the directory holding the `birnam` binary, then its sibling `../lib` — the standard `<prefix>/bin/birnam` + `<prefix>/lib/` install layout, so a packaged install resolves modules with **no env var set**
-
-For each directory the name is tried as-is, then decorated: `lang` → `liblang.dylib` → `libbirnam_lang.dylib` (the convention the bundled modules follow). A name that already points at a file is used verbatim, so explicit paths keep working.
-
-`$BIRNAM_DYLIB_PATH` lists exact dylib directories; `$BIRNAM_PATH` lists install *roots* and expects the dylibs under `<root>/lib` — point it at an install prefix (or a `zig-out`) and modules resolve without naming the `lib/` dir.
-
-### Project config — `birnam.toml`
-
-A `birnam.toml` found by walking from the current directory up to the
-filesystem root (git-style; first match wins) pins a project's module set,
-extra search directories, and a snapshot to auto-load — so a bare `birnam`
-inside the project tree starts up ready to go:
-
-```toml
-modules     = ["peg", "lang", "query"]   # ordered load list (bare names or paths)
-dylib_paths = ["zig-out/lib"]            # extra search dirs, relative to this file
-image       = "session.bim"              # snapshot :load'd after the modules
+```text
+birnam> [3 + 4]
+7
+birnam> let n := 41
+41
+birnam> [n + 1]
+42
 ```
 
-It's a deliberately small TOML subset: string and string-array values, `#`
-comments, and two recognized tables (`[module_overrides]` and `[[wrapped]]`);
-other `[section]` headers are ignored. Relative `dylib_paths` and `image` are
-resolved against the config file's own directory, so a project is
-location-independent.
+Top-level message sends use brackets. Bindings and method definitions persist
+for the life of the running image. The console commands are deliberately small:
+`:help`, `:globals`, and `:quit` (with `:h`, `:g`, and `:q` aliases).
 
-Precedence for the module set: **explicit arguments > `birnam.toml` > the
-default (`peg lang`)**. `--bare` overrides everything and loads nothing. The
-config `image` is auto-loaded only on a bare (no-module-argument) invocation —
-passing modules on the command line is treated as a custom session and won't
-drag the project snapshot in.
-
-### Module overrides
-
-Some modules expose an **override slot** — a named extension point where you
-can swap in a preferred implementation. The REPL front end is one: the slot
-`repl` defaults to the built-in stdin loop, and naming `linenoise` hands the
-loop to the line-editing REPL instead (history, arrow-key recall).
-
-Set overrides three ways, highest precedence first — **command flag > env var >
-`birnam.toml` > default**:
+Run a source file directly:
 
 ```sh
-birnam --overrides repl=linenoise,json=jsmn      # comma-separated slot=impl list
-BIRNAM_MODULE_OVERRIDES=repl=linenoise birnam    # same format, via the environment
+birnam examples/fizzbuzz.birnam
 ```
 
-```toml
-repl = "linenoise"      # top-level sugar for the "repl" slot (still works)
+`birnam --help` is the authoritative command reference. The primary entry
+points are:
 
-[module_overrides]
-repl = "linenoise"      # alt REPL front end
-json = "jsmn"           # a module's own override slot
+```text
+birnam <file.birnam>       Compile and run a script.
+birnam <file.image>        Boot a saved image.
+birnam --rebuild <image>   Boot an image by replaying source.
+birnam --bake <image> <executable>
+                             Bake an image into a self-booting executable.
+birnam --demo              Run the low-level bootstrap proof.
+birnam wrap <name>         Scaffold a C-library wrapper.
 ```
 
-A slot only takes effect if a loaded module declares it; unknown slots are
-accepted and ignored, so config stays forward-compatible as modules add
-extension points.
+## Images
 
-## Tests
+An image makes a live system durable. Its compiled dylib units are the primary
+executable layer; store facts and source are the reflective/meta-level surface
+and explicit recovery material. A normal boot maps compatible compiled code;
+`--rebuild` deliberately recovers from recorded source instead.
 
-```
-zig build test
-```
-
-379 tests across the kernel and modules.
-
-## Benchmarks
-
-Two microbenchmark harnesses measure the kernel's hot paths — dispatch, field
-reads, and fact writes — so the performance model is grounded in numbers rather
-than guesses. They are **safe by construction**: an earlier ad-hoc attempt to
-benchmark by running million-iteration mutation loops in the live REPL exhausted
-memory and crashed the machine (every `assert`/`retract` path-copies five HAMT
-indexes and appends never-freed history, so unbounded mutation grows memory
-without bound). The harnesses cap themselves so that can't happen again.
-
-Both build to `zig-out/bin/` and are **not** auto-run by `zig build bench` (which
-only runs the data-structure microbenchmarks). Run them explicitly, always under
-`timeout`, starting with a small iteration count and watching the printed peak
-before scaling up.
-
-### `kernel_bench` — reads + dispatch (non-growing)
-
-```
-zig build kernel-bench
-timeout 30 ./zig-out/bin/kernel_bench 1000000      # argv[1] = iterations
+```sh
+birnam examples/image.birnam
+birnam /tmp/birnam-demo.image
+birnam --rebuild /tmp/birnam-demo.image
 ```
 
-Boots the kernel and times warm dispatch and field reads against native
-baselines. Its hot loops allocate nothing (results are immediates / already
-stored Refs), so memory stays flat at any iteration count. Safety: all
-allocation goes through a `FixedBufferAllocator` over a single 256 MiB slice —
-physically bounded, so a runaway hits `OutOfMemory` and exits clean. (macOS
-ignores `ulimit -v`, so the cap must live in-process.) It also prints a
-breakdown (`table.get`, `vtableEidOf`, `mcache.lookup`, `bind`) to attribute
-dispatch cost.
+Inside birnam, save with `[System saveImage: path]`. A global `main` block makes
+an image an application entry point; [examples/app.birnam](examples/app.birnam)
+shows saving and baking one.
 
-### `kernel_write_bench` — fact writes (the memory-growing class)
+Persistence is intentionally not a claim that every process value can be
+serialized. Saving is atomic and rejects durable values without either a
+portable encoding or a registered recovery path; inspect
+`[System imageSaveReport]` after a rejected save. See
+[The Image](docs/design/40-the-image.md) for the exact durability contract and
+recovery paths.
 
-```
-zig build write-bench
-timeout 30 ./zig-out/bin/kernel_write_bench distinct 10000   # argv[1]=mode argv[2]=count
-```
+## Developer Tools
 
-Modes: `distinct` (assert fresh facts — adding data), `churn` (re-assert one
-slot — history grows), `assign` (retract+assert, the `:=` pattern),
-`churn-pruned` (churn with periodic `compact` to prove mutation stays bounded).
+The source-backed tools below currently require a checkout containing
+`modules/`; they are not yet staged by `zig build install` or release bundles.
 
-Because writes grow memory, this harness uses a **capped allocator** — a real
-allocator (forwards `free`, so `compact` reclamation works) wrapping a
-`GeneralPurposeAllocator` (matching the shell/aot binaries) with a hard 512 MiB
-outstanding-bytes ceiling. Past the ceiling, allocation fails and the bench
-aborts cleanly with `[HIT CAP]` instead of taking the machine down. Each run
-prints peak bytes; run one mode per process on a fresh boot.
-
-### Measured (ReleaseFast, arm64; see ADR-perf-1 in `docs/archive/ROADMAP.md`)
-
-| Operation | Cost | vs native |
-|---|---|---|
-| warm dispatch (`send0`) | ~8 ns/op | ~6.4× |
-| field read (`currentValue`) | ~20 ns/op | ~10.3× |
-| field write (`assert`) | ~1.8 µs/op | ~100–360× |
-
-A write costs roughly 100× a read. Dispatch is not a bottleneck; the levers are
-the field read and the write path. The full analysis, including the
-projection-vs-representation decision it drives, is **ADR-perf-1** in
-`docs/archive/ROADMAP.md`.
-
-> Benchmarking discipline: always run under `timeout`, start small and watch the
-> printed peak, run one bench per process, and never run an un-pruned mutation
-> loop. Isolate the primitive from method-body work — benchmarking a method
-> whose body itself reads state once produced a dispatch number ~4× too high.
-
-## Language tour
-
-Bare literals and identifiers evaluate directly; **message sends are wrapped in `[ ]`**.
-
-```
-birnam> 42
-=> 42
-birnam> "hello"
-=> "hello"
-birnam> 3.14
-=> 3.14
-birnam> [3 + 4]
-=> 7
-birnam> [3 squared]
-=> 9
-birnam> [[3 succ] squared]
-=> 16
+```sh
+./zig-out/bin/birnam doc time nowMillis
+./zig-out/bin/birnam docgen /tmp/birnam-docs.html
+./zig-out/bin/birnam --lsp
+./zig-out/bin/birnam --listen 5555 examples/fizzbuzz.birnam
 ```
 
-**Bindings** (`let`) and **assignment** (`:=`):
+- `doc` prints module or selector documentation.
+- `docgen` writes an HTML reference for birnam modules and Zig floor APIs.
+- `--lsp` serves the language server over stdio.
+- `--listen` starts a socket REPL, optionally after running a script.
 
-```
-birnam> let x := 42
-=> 42
-birnam> [x squared]
-=> 1764
-birnam> x := 99
-=> 99
-```
+`wrap` is a binary-only scaffolder and works from an installed executable:
 
-**Blocks** are closures — `[:a | …]` takes params, `[| …]` takes none. They close over their enclosing scope:
-
-```
-birnam> let makeAdder := [:a | [:b | [a + b]]]
-birnam> let add10 := [makeAdder value: 10]
-birnam> [add10 value: 5]
-=> 15
+```sh
+birnam wrap mylib
 ```
 
-**Control flow** is message-based:
+It creates an Alien-based C-library wrapper under `wrapped/`.
 
-```
-birnam> [[3 < 5] ifTrue: [| 999] ifFalse: [| 0]]
-=> 999
-birnam> let i := 0
-birnam> [[| [i < 5]] whileTrue: [| i := [i + 1]]]
-birnam> i
-=> 5
-birnam> let sum := 0
-birnam> [1 to: 10 do: [:i | sum := [sum + i]]]
-birnam> sum
-=> 55
+## Verification
+
+Run the complete gate before a release or cross-layer change:
+
+```sh
+zig build verify
 ```
 
-**Defining methods.** `[<recv> vtable]` returns a receiver's vtable; install a method on it with `method:do:`. The new method is live immediately for all values of that type:
-
-```
-birnam> [[3 vtable] method: #neg do: [| [self negate]]]
-birnam> [7 neg]
-=> -7
-birnam> [[3 vtable] method: #pick:or: do: [:a :b | b]]
-birnam> [99 pick: 10 or: 20]
-=> 20
-```
-
-**Non-local return** `^` returns from the enclosing method (not just the block); `;` separates statements:
-
-```
-birnam> [[3 vtable] method: #early do: [| ^99; 100]]
-birnam> [7 early]
-=> 99
-```
-
-**Floats, comparisons, comments:**
-
-```
-birnam> [3.14 + 2.0]
-=> 5.140000000000001
-birnam> [3.0 < 5.0]
-=> true
-birnam> 42 // line comment
-=> 42
-birnam> [3 /* block comment */ + 4]
-=> 7
-```
-
-Also: integers, floats (with mixed-type coercion via `asFloat`/`asInt`), strings, symbols (`#foo`, `#kw1:kw2:`), `true`/`false`/`nil`, iteration (`timesRepeat:`, `to:do:`, `whileTrue:`/`whileFalse:`).
-
-**Errors are values (Result model).** A failed operation returns a first-class error value instead of crashing or silently yielding `nil`. An error **propagates**: sending it any message returns the error, so a chain short-circuits. Unhandled errors surface as a `! error:` line:
-
-```
-birnam> [#[1 2 3] at: 99]
-=> error: vector index out of bounds
-birnam> nonesuch
-[lang] ! error: undefined variable: nonesuch
-birnam> [10 / 0]
-[lang] ! error: divide by zero
-```
-
-Catch with `on:do:`, run cleanup with `ensure:`, raise with `error`/`error:`. Inspect with `message`/`kind`/`isError`:
-
-```
-birnam> [[| [10 / 0]] on: #zeroDivide do: [:e | 0]]
-=> 0
-birnam> [[| [10 / 0]] on: #Error do: [:e | [e message]]]    // #Error = catch any
-=> "divide by zero"
-birnam> [[| risky] ensure: [| [stream close]]]              // cleanup runs either way
-birnam> ["disk full" error: #io]                            // raise your own
-```
-
-> ⚠️ **Eager send vs. block.** A bracketed `[recv msg]` is a **message send and runs immediately** — `[10 / 0]` evaluates *now* and yields the divide-by-zero error. A **block** is `[| … ]` (no params) or `[:x | … ]` (params): the leading `|` makes it a *deferred* value. So anything that should run *under* a handler — `on:do:`, `ensure:`, `ifTrue:`, `whileTrue:` — must be a block: write `[[| [10 / 0]] on: #zeroDivide do: …]`, **not** `[[10 / 0] on: …]` (the latter sends `on:` to the already-computed error). Every send needs brackets; `10 / 0` on its own is a parse error.
-
-**I/O.** `File` does data read/write (returns an error value on failure — catch it or let it propagate); `System` does clean stdout/stderr, stdin, and command-line arguments:
-
-```
-birnam> [File write: "hi\n" to: "out.txt"]
-birnam> [File read: "out.txt"]
-=> "hi\n"
-birnam> [File exists: "out.txt"]
-=> true
-birnam> [[| [File read: "missing"]] on: #fileNotFound do: [:e | "default"]]
-=> "default"
-birnam> [System println: "clean stdout, no prefix"]      // also print: (no newline), error: (stderr)
-birnam> [System readLine]                                 // next line from stdin, or nil at EOF
-birnam> [System arguments]                                // tokens after `--` on the command line
-=> #[]
-```
-
-`print` (any value) goes to the prefixed REPL log on **stderr**; `System print:`/`println:` are **clean stdout** for program output. Pass program arguments after `--`: `birnam peg.dylib lang.dylib -- alpha beta` makes `[System arguments]` yield `#["alpha" "beta"]`.
-
-## Saving and loading the image
-
-REPL state — your bindings and installed methods — persists to a single self-describing `.bim` file and survives a process restart:
-
-```
-birnam> let answer := 42
-birnam> [[3 vtable] method: #double do: [| [self + self]]]
-birnam> :save app.bim
-[birnam] saved app.bim (… facts, 2 modules)
-```
-
-```
-# fresh process
-birnam> :load app.bim
-[birnam] loaded app.bim (… facts, … methods rebuilt)
-birnam> answer
-=> 42
-birnam> [5 double]
-=> 10
-```
-
-Pure data write — no compiler/toolchain needed to save. On load, the fact store is rebuilt and method closures are re-linked against the running kernel.
-
-### Other REPL commands
-
-| Command | Effect |
-|---|---|
-| `:save <path>` | snapshot the image to `<path>` |
-| `:load <path>` | load an image into the running session |
-| `:prune` | reachability GC: drop unreachable entities + collapse history |
-| `:reset` | clear the top-level scope |
-| `:in <path>` | file in a birnam source unit (atomic: aborts on first error, applies nothing) |
-| `:in! <path>` | file in best-effort (evaluate every good form, report errors) |
-| `:freeze <base>` | freeze the image's FFI wraps into a standalone wrapper module dylib |
-| `:eval-mode [bytecode\|treewalk]` | switch how top-level statements + method installs evaluate (default `bytecode`); bare `:eval-mode` prints the current mode |
-
-By default the REPL compiles each top-level line (and filed-in form) to bytecode and runs it on the VM, so hot top-level loops don't pay the per-statement scope-fact cost; cross-line `let` bindings and globals still resolve normally. `:eval-mode treewalk` forces the simpler AST tree-walker for both top-level statements and user-method installs — an inspectable fallback when debugging a suspected miscompile or comparing the two evaluators. The setting lasts for the session only (it is not saved into images).
-
-## Calling C libraries (FFI)
-
-Wrap an existing shared object and call into it — interactively or from a filed-in unit. `Module` is a prototype; sending `load:` mints a module object; `wrap:as:signature:` declares a method bound to a C symbol (dyncall signature string, e.g. `"d)d"` = `double → double`):
-
-```
-birnam> let m := [Module load: "/usr/lib/libSystem.B.dylib"]
-birnam> [m wrap: #sqrt: as: "sqrt" signature: "d)d"]
-birnam> [m sqrt: 144.0]
-=> 12
-birnam> [m symbols]                 // enumerate the lib's symbol table (load query module)
-```
-
-A **wrapper unit** is just a source file of such sends; file it in to install the whole binding:
-
-```
-// libfoo.birnam
-let foo := [Module load: "libfoo.dylib"];
-[foo wrap: #open:  as: "foo_open"  signature: "p)p"];
-[foo wrap: #close: as: "foo_close" signature: "p)i"]
-```
-
-```
-birnam> :in libfoo.birnam
-[lang] filed in 3 forms (0 errors)
-```
-
-Wraps are **declarative facts** (symbol name + signature + selector), so they persist across `:save`/`:load` and **re-link by symbol name** on load — the `dlopen`/`dlsym` is deferred to a commit step, never a stale cached address.
-
-### Freezing a wrapper into a dylib
-
-`:freeze` turns the live wraps into a standalone **wrapper module dylib**:
-
-```
-birnam> let lib := [Module load: "/usr/lib/libSystem.B.dylib"]
-birnam> [lib wrap: #sqrt: as: "sqrt" signature: "d)d"]
-birnam> :freeze foo
-[birnam] froze 1 module(s), 1 wrap(s) -> foo.birnam + foo.zig
-[birnam] compiled libfoo.dylib
-```
-
-It emits `foo.birnam` (canonical, re-editable source), `foo.zig` (a module that embeds it), and `birnam_module_abi.zig`, then `zig build-lib`s `libfoo.dylib`. Load that dylib after `peg`/`lang` and its `birnam_module_init` re-files-in the wraps — `dlopen`ing the alien lib and binding the symbols:
-
-```
-./zig-out/bin/birnam …/libbirnam_peg.dylib …/libbirnam_lang.dylib ./libfoo.dylib
-birnam> [lib sqrt: 49.0]
-=> 7
-```
-
-No new kernel ABI — the frozen module just replays the same `load:`/`wrap:` sends. Because wraps relink by name, the frozen dylib is portable across processes.
-
-## Ahead-of-time compilation
-
-Compile any image into a standalone executable (kernel + modules + data linked in, no dylibs at runtime) with the `birnam --aot` driver:
-
-```
-# save an image, then freeze it into a binary
-birnam … :save app.bim
-birnam --aot=static  app.bim -o myapp                 # full tower: REPL over baked state
-birnam --aot=static  --strip=malleable app.bim --entry=double:5 -o myapp
-                                                         # pure-VM one-shot: parser/compiler/AST stripped
-birnam --aot=static  --strip=history  app.bim -o myapp   # read-only frozen store (no tx-writer)
-birnam --aot=dynamic app.bim -o dist/myapp            # portable bundle: dlopen modules at startup
-```
-
-The driver copies the image to a per-app embed path, runs the parameterized `zig build aot-build` (so it needs the repo + `zig` on PATH), and writes the binary to `-o`.
-
-| flag | effect |
-|---|---|
-| `--aot=static` | kernel + modules + data linked in; no dylibs at runtime |
-| `--aot=dynamic` | kernel + data linked in; modules `dlopen`'d at startup from the image manifest. The driver **stages the dylibs beside the binary** so the bundle is portable; the exe resolves them by basename via `$BIRNAM_DYLIB_PATH` (PATH-like; defaults to the cwd + below), then exe-relative |
-| `--strip=malleable` | drop the parser/AST/compiler — a frozen app that runs bytecode but can't compile new source |
-| `--strip=history` | freeze the fact store read-only (no tx-writer / history); the app reads its baked facts and never mutates them |
-| `--entry=<sel>[:<recv>]` | send `<sel>` to `<recv>` and exit with the result. `<recv>` is a SmallInt (`double:5`) or a **top-level binding name** (`run:app` → send `#run` to whatever `app` is bound to) |
-
-The only deferred slice is the mmap-relocation RO-*segment* optimization (load-time perf, Phase 12.5) — not an AOT capability. The fixed demo artifacts (`zig build aot` → `birnam-aot` / `birnam-aot-malleable`, embedding `src/aot_embed.bim`) still exist for the test fixtures.
+It runs the Zig unit/integration suites, rebuilds self-hosted artifacts with
+`stage1`, executes the birnam-level suites, and checks REPL transcripts. The
+narrower commands are `zig build test`, `zig build test-birnam`, and `zig build
+test-repl`. GitHub Actions runs `verify` on the supported arm64 macOS target.
 
 ## Architecture
 
+The runtime starts as a small Zig siphon that loads a set of reloadable dynamic
+libraries through a C ABI. The active rungs are:
+
+```text
+libid -> Store -> Peg -> Lang -> Tcc -> Codegen -> Prelude
+      -> Collection -> Modules -> Error -> Relational -> Alien -> Image
 ```
-birnam (shell)              dlopen modules, drive stdin
-  ├─ kernel (frozen Zig)    fact store (EAVT/AEVT/AVET/VAET + history),
-  │                         tagged-pointer Refs, object table, HAMT + RRB,
-  │                         interner, bytecode VM + dispatch, image, prune
-  ├─ libbirnam_peg          PEG engine
-  └─ libbirnam_lang         grammar → desugar → bytecode compiler → VM
-```
 
-- **Everything is a fact.** `[entity attribute value]` triples in a persistent, time-indexed store. The materialized object table (structs with vtable at offset `-1`) is a cache over the canonical facts.
-- **Tagged-pointer Refs** distinguish small integers, eids, keywords, pointers, and strings in a single 64-bit word.
-- **Bytecode VM.** User methods compile to bytecode (stored as facts) and run on a stack VM with an inline method cache; the language switched off the tree-walker to the VM in Phase 11.
-- **Module ABI is append-only.** Each module carries its own mirror of the C-ABI `IdApi` struct and talks to the kernel through function pointers (Zig has no cross-dylib type imports).
+`libid` provides the object model, allocation, dispatch, interning, and GC.
+Higher rungs add the relational substrate, parser, compiler, native-code
+backend, collections, FFI, and image format. The standard library and most
+application-facing modules are birnam source; Zig remains the permanent
+from-zero bootstrap compiler and performance floor.
 
-## Documentation
+## Repository Guide
 
-| Doc | Contents |
-|---|---|
-| `docs/misc/VISION.md` | the locked design vision (relational substrate, tenets) |
-| `docs/archive/ROADMAP.md` | archived phase ledger — historical (Phases 0–15); superseded by the libid refounding, module system, and object-canonical pivot |
-| `docs/misc/DEMO.md` | end-to-end REPL walkthrough |
-| `docs/misc/DATALOG.md` | the Datalog query system |
+- `src/id/` — Zig floor, compiler, image, FFI, and test suites.
+- `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration.
+- `modules/` — source-backed libraries, CLI, LSP, documentation, and tests.
+- `examples/` — runnable programs, including images and AOT artifacts.
+- `docs/design/` — current design decisions and implementation status.
+- `docs/archive/` — superseded kernel plans and historical material.
 
-## References
+## Design Notes
 
-- Ian Piumarta, [Open, Extensible Object Models](https://www.piumarta.com/software/cola/)
-- Rich Hickey, Clojure persistent data structures (HAMT) + Datomic (fact store, history)
-- Adele Goldberg, David Robson, *Smalltalk-80: The Language and its Implementation*
+- [The destination](docs/design/30-the-destination.md) defines the architectural
+  invariants and layering.
+- [The image](docs/design/40-the-image.md) defines persistence and mapped-code
+  behavior.
+- [Compiled units](docs/design/45-compiled-units.md) defines executable
+  authority, image integrity, recovery, and the next live-reload boundary.
+- [Modules and the self-hosted layer](docs/design/43-modules-and-config.md)
+  explains source, artifacts, and loading.
+- [Toward self-hosting](docs/design/44-toward-self-hosting.md) records the
+  migration boundary: retain the Zig bootstrap and move only appropriate
+  library surface into birnam.

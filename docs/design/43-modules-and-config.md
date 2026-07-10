@@ -110,6 +110,21 @@ self-hosted layer `#loaded`, so a later `load:` of `stdlib`/`toml`/`config` as s
 module's dependency is a no-op. v1 is **name-based**: user modules live in the lib
 dir (or a `BIRNAM_LIB_DIR` you control) as `libbirnam_<name>.dylib`.
 
+## Image composition
+
+An image captures compiled behavior as its primary executable layer. At save,
+`[Codegen compileImageCode:]` compiles both the recorded whole-module programs
+(`__modsrc__`) and individual method definitions (`__methods__`) into a
+relocatable image unit. This matters for module top-level initialization: a
+module-owned PEG grammar or named singleton may have no direct heap encoding,
+but its compiled module program recreates it on mapped boot.
+
+The source records remain in the store for reflection and explicit recovery.
+`--rebuild` replays module programs before individual method sources; normal
+compatible boot maps the image unit without recompiling. See
+[45 — Compiled Units](45-compiled-units.md) for the authority and integrity
+contract.
+
 ## `birnam.toml` — runtime configuration
 
 `Config` (`config.birnam`, `requires: #[#toml]`) reads `./birnam.toml` and exposes
@@ -136,7 +151,3 @@ just works.
 - **Path-based `[Module load: "/abs/path.dylib"]`** + a module **name** in
   `__birnam_module_meta`, so a dylib outside the lib dir is loadable and
   self-identifying (needed for `#loaded` tracking of path-loaded modules).
-- **Image ↔ dylib-stdlib interaction** — artifact installs use raw `birnam_method`
-  (not `defineMethod:on:as:source:`), so a dylib-loaded self-hosted module does not
-  populate `__methods__`; a `saveImage` from such a boot would omit it from the
-  image `.code`. Revisit when images + precompiled modules must compose.

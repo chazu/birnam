@@ -1,5 +1,14 @@
 # Birnam Language Design Goals
 
+## Current Invariants
+
+Birnam's current authority model is documented in
+[Compiled Units Are Primary](../design/45-compiled-units.md): compatible
+compiled dylibs are the primary executable layer of a live image; the fact
+store is a durable data and reflection/meta API; recorded source supports
+authoring, bootstrap, and explicit recovery. Any future work on persistence,
+reflection, modules, or live reload must preserve that ordering.
+
 ## Abstractly
 - To build a completely moldable programming environment, where everything is accessible to the programmer - like Piumarta's COLA
 - To build up semantics gradually, like iolang

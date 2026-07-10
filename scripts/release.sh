@@ -20,11 +20,14 @@ case "$level" in
   *) echo "usage: $(basename "$0") patch|minor|major" >&2; exit 2 ;;
 esac
 
-# Preflight: clean tree, on main, gh authed.
+# Preflight: clean tree, on main, gh authed, and fully verified.
 [ -z "$(git status --porcelain)" ] || { echo "error: working tree dirty — commit or stash first" >&2; exit 1; }
 branch="$(git rev-parse --abbrev-ref HEAD)"
 [ "$branch" = main ] || { echo "error: releases are cut from main (on '$branch')" >&2; exit 1; }
 gh auth status >/dev/null 2>&1 || { echo "error: gh not authenticated (run: gh auth login)" >&2; exit 1; }
+
+echo "==> verify"
+zig build verify
 
 cur="$(cat VERSION)"
 IFS=. read -r ma mi pa <<<"$cur"
@@ -85,7 +88,8 @@ xattr -dr com.apple.quarantine birnam-${new}-*   # clear Gatekeeper quarantine
 birnam-${new}-*/bin/birnam                        # zero-config REPL
 \`\`\`
 
-Other platforms: build from source — \`zig build install --prefix ~/.local\` (Zig 0.15.1).
+Other platforms are not supported yet. They require target-specific libtcc and
+shared-library-loader ports before source or release builds can work.
 NOTES
 )"
 

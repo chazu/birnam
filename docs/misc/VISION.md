@@ -2,16 +2,15 @@
 
 A **system** is a binary that runs as an executable OR loads as a library, and which exposes a complete, fully malleable computing environment in the COLA / idst / Piumarta tradition — built on a relational fact store so that history, reflection, queries, and snapshots collapse into one mechanism.
 
-> **⚠️ Status (2026-07-08): partially superseded on the *primacy* axis.** This is
-> still the richest statement of the design, but its ontology was **reversed** by
-> the object-canonical pivot. Tenet 0 below ("the image is a database … everything
-> else follows from this") and the Object Model section's "canonical form: fact-set
-> in the store" are no longer the ground truth: the **object environment is
-> canonical**, and the relational / fact-store reading is a *derived* mirror of it.
-> Read [`docs/design/42-object-canonical-relational-derived.md`](../design/42-object-canonical-relational-derived.md)
-> for the current direction. Treat the tenets below as the *mechanism* (still
-> accurate — the fact store, indexes, no-NULL discipline, execution modes all
-> hold) rather than the *ontology* (inverted).
+> **⚠️ Status (2026-07-10): historical on the *primacy* axis.** The current
+> authority order is: compatible **compiled units are primary executable
+> behavior**; the active object environment provides live dispatch and identity;
+> the relational store is a durable data and reflection/meta mirror; and source
+> serves authoring, bootstrap, and explicit recovery. Read
+> [42 — Object Canonical](../design/42-object-canonical-relational-derived.md)
+> and [45 — Compiled Units](../design/45-compiled-units.md) for the current
+> contract. Treat the tenets below as historical mechanisms and aspirations, not
+> as the authority model for the running system.
 
 ## Core Tenets
 

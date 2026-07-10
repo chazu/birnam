@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a portable release tarball for the current platform.
+# Build a portable arm64 macOS release tarball.
 #
 # Stages the `birnam` siphon + its rung dylibs into a versioned directory,
 # ad-hoc signs them on macOS (softens Gatekeeper for a downloaded binary), and
@@ -18,10 +18,16 @@ log() { echo "==> $*" >&2; }
 
 VERSION="$(cat VERSION)"
 
-# Detect the build target from the host, normalised to Zig-style names.
-arch="$(uname -m)"; case "$arch" in arm64|aarch64) arch=aarch64;; x86_64|amd64) arch=x86_64;; esac
-kernel="$(uname -s)"; case "$kernel" in Darwin) os=macos;; Linux) os=linux;; *) os="$kernel";; esac
-target="${arch}-${os}"
+# The build is intentionally fail-fast outside its one supported target. Keep
+# this check here too: a release script must never stage a partly-working bundle.
+host_arch="$(uname -m)"
+host_os="$(uname -s)"
+if [ "$host_os" != "Darwin" ] || { [ "$host_arch" != "arm64" ] && [ "$host_arch" != "aarch64" ]; }; then
+  echo "error: birnam releases currently require arm64 macOS; got ${host_arch}-${host_os}" >&2
+  echo "       Linux and Intel ports need target-specific libtcc and dylib-loader support." >&2
+  exit 1
+fi
+target="aarch64-macos"
 
 name="birnam-${VERSION}-${target}"
 prefix="zig-out/_dist-prefix"
@@ -34,14 +40,12 @@ log "staging"
 rm -rf "$stage"
 mkdir -p "$stage/bin" "$stage/lib"
 cp "$prefix/bin/birnam" "$stage/bin/birnam.bin"
-# rung dylibs on macOS, .so on Linux
-cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/" 2>/dev/null \
-  || cp "$prefix"/lib/libbirnam_*.so "$stage/lib/"
+# All supported artifacts are Mach-O dylibs.
+cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/"
 
 # Wrapped C libs (built via FFI absorption) into the same lib dir, so alien
 # resolves them by bare name in the bundle. Best-effort — they may not be built.
 cp wrapped/*/lib*.dylib "$stage/lib/" 2>/dev/null || true
-cp wrapped/*/lib*.so "$stage/lib/" 2>/dev/null || true
 
 # Launcher: point the dylib search at the bundle's own lib/ (overridable), then
 # exec the real binary. Resolves its own directory so it works from anywhere.
@@ -54,10 +58,8 @@ exec "$here/birnam.bin" "$@"
 WRAP
 chmod +x "$stage/bin/birnam"
 
-if [ "$os" = macos ]; then
-  log "ad-hoc signing"
-  codesign -s - --force "$stage"/lib/*.dylib "$stage/bin/birnam.bin"
-fi
+log "ad-hoc signing"
+codesign -s - --force "$stage"/lib/*.dylib "$stage/bin/birnam.bin"
 
 log "tarball"
 tar -C zig-out/dist -czf "zig-out/dist/${name}.tar.gz" "$name"

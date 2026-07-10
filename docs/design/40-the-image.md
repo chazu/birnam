@@ -29,8 +29,8 @@
 > so HAMT bitmaps didn't survive; symbols now hash by NAME (also makes map order
 > deterministic). Method SOURCE now lands in the store (codegen lowers
 > `defineMethod:on:as:` → `…:source:`, recorded on `#__methods__`) and survives an
-> image — the portable truth slice 4's replay needs. DEFERRED (counted, reported):
-> compiled code + block-valued globals (image-born vtables) — slice 4's job.
+> image as recovery material. The following slice made compiled code primary and
+> made unsupported durable values explicit save failures.
 > Commits `bb366ba`→`f850d49`.
 >
 > **Slice 4 SHIPPED (2026-07-02):** mapped code. An image now carries the whole
@@ -99,14 +99,28 @@
 > save state and `runImage` calls `[System imageCheckpoint]` after reconstruction so
 > boot-regenerated facts aren't re-journaled (this also stopped the booted REPL from
 > re-JITing the stdlib — it now skips the redundant re-init). `[System saveImage:]`
-> is the COMPACTOR (a fresh single-generation base). Code is NOT re-emitted by an
-> append: a delta that (re)defines methods is reported, and its code comes back via
-> a `--rebuild` boot (replays all source) or a compacting `saveImage:` — data
-> appends map cleanly by default. VERIFIED: base + N deltas + rebind restored
-> cumulatively cross-process (`examples/journal.birnam`), boot-then-append, heap
-> objects born in a delta, method-defining append → `--rebuild`/compact path,
-> in-process test. This closes the images arc's follow-ups; only depth (mmap fast
-> path, cross-image merge §5) remains, none load-bearing.
+> is the COMPACTOR (a fresh single-generation base). A delta that (re)defines
+> methods carries a composing `.code` unit, so its newest native definition wins
+> on normal mapped load; data-only deltas do not recompile. VERIFIED: base + N
+> deltas + rebind restored cumulatively cross-process (`examples/journal.birnam`),
+> boot-then-append, heap objects born in a delta, and method-defining append in
+> process. This closes the images arc's follow-ups; only depth (mmap fast path,
+> cross-image merge §5) remains, none load-bearing.
+>
+> **Compiled-unit authority and integrity (2026-07-10):** the `.code` dylibs are
+> the image's primary executable layer, not a cache over source or store facts.
+> Format v3 records a checksum with each unit and preflights every record before
+> a load mutates the live store; a corrupt unit rejects the entire load. A full
+> save captures code before classifying dependent meta-facts, then publishes the
+> completed image with one rename. It rejects any durable value without an
+> encoding or declared restoration path instead of silently dropping it. The
+> fact store remains a durable data and reflection API: method facts mirror the
+> compiled dispatch dictionary and are accepted only when the primary unit was
+> captured. `[System imageSaveReport]` exposes saved/recovered/rejected counts,
+> code-unit count, and a reason. v2 images remain readable; v3 is emitted for
+> new images. `--rebuild` and ABI/architecture fallback visibly enter source
+> recovery rather than pretending to be normal boot. The next live replacement
+> boundary is [45 — Compiled Units](45-compiled-units.md).
 >
 > Builds on the
 > [running system](../archive/work-breakdowns/36-the-running-system.md) (globals are cells, method source
@@ -142,12 +156,12 @@ Three decisions bound the design (2026-07-01):
   artifact; "runnable" is provided by the runtime (`birnam foo.image`), and
   a standalone executable is a *bake* step over the same content
   (`tcc_output_file`, already proven for AOT).
-- **Durability line = store-reachable.** What survives is what the system can
-  name: the store's facts, the globals cells, and everything transitively
-  reachable from their values (plus the vtables and compiled code those
-  objects need). Not the whole heap — anything unnamed is garbage by
-  definition, and the GC agrees. This forces the right discipline: persistent
-  state is state the store can see.
+- **Durability line = named live state.** The store reaches durable data and
+  exposes reflection, but it is not the authority for executable behavior:
+  compiled units own dispatch. Facts, globals, and their reachable values
+  survive only when they serialize directly or have a declared reconstruction
+  path through the compiled image or recorded source. Not the whole heap —
+  anything unnamed is garbage by definition, and the GC agrees.
 - **Entry point convention.** If the global `main` is bound, running the image
   sends it `value`; otherwise the image opens into the REPL with every binding
   live.
@@ -176,9 +190,10 @@ A second dissolution came for free with the refounding: the old kernel's
 M_USER agony ("which facts are user state vs reconstructed bootstrap?" —
 ADR-image-1's whole fight) no longer exists. Native modules (prelude,
 collection, error, relational, alien, …) install their methods at module load
-*by construction* and are not in the store. What the store contains is exactly
-the persistable delta: user facts, globals, method source. Serialize the whole
-store, no filter — the persistence boundary IS the store boundary.
+*by construction* and are not in the store. The store holds durable data plus
+the introspection mirror: user facts, globals, and method source. It travels
+with the image only as encoded data or declared recovery material; it does not
+supersede the compiled dispatch dictionary or silently authorize dropped state.
 
 ## 3. What must survive the trip
 
@@ -276,10 +291,10 @@ When it applies:
 - loading an image *into* another image (§5);
 - repair/migration tooling.
 
-Pole A vs Pole B stops being two designs: the compiled sections are the
-default, and their absence (stripped or invalidated) *is* the replay path.
-One format; the code sections are per-arch and droppable, the data + source
-sections are portable truth.
+Pole A vs Pole B stops being two designs: compiled sections are the default,
+and their absence (stripped or invalidated) *is* the replay path. One format:
+code is per-architecture primary behavior; data and source are portable
+durable/meta-level recovery material.
 
 ## 5. Load-as-library = merge through the surface
 
@@ -294,13 +309,12 @@ with history" is a future refinement with real design weight).
 ## 6. Explicitly out (v1)
 
 - **Blocks-in-globals that never came from source.** A hand-built closure
-  stored in a global whose code exists only as a JIT unit *with* baked
-  handles: v1 persists blocks only where their unit is relocatable or their
-  source is in the store. Documented, not silent — the save reports what it
-  skipped (the attic rule: counted, never dropped).
+  stored in a global whose code exists only as a JIT unit with baked handles
+  has no durable reconstruction story. Save rejects the image rather than
+  silently dropping the binding; source-backed globals remain recoverable.
 - **Alien callbacks / FFI state.** `g_callbacks` registry entries, dlopen'd
   library handles, and out-param cells re-establish on load by re-running
-  their defining code (source-backed) or are reported skipped.
+  their defining code (source-backed); otherwise save rejects the image.
 - **Cross-image history merge** (§5).
 - **The standalone-exe bake** — designed for (same content + `tcc_output_file`
   + embedded segment), built after map-and-go boot works.

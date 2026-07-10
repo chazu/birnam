@@ -2,8 +2,9 @@
 
 All notable changes to birnam are recorded here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions are
-[semver](https://semver.org/). Binaries are arm64 macOS only for now — other
-platforms build from source (`zig build install`, Zig 0.15.1).
+[semver](https://semver.org/). Birnam currently supports arm64 macOS only;
+other targets are rejected at build time until their libtcc and shared-library
+loader ports are complete.
 
 ## [0.7.4] — 2026-06-22
 
@@ -11,6 +12,18 @@ _Notes for the next release land here; `scripts/release.sh` promotes this
 heading to the new version (dated) and uses the section as the release notes._
 
 ### Added
+- **Compiled-unit-first image integrity:** image format v3 checksums every
+  embedded dylib and verifies all compiled units before load changes live
+  state. Full saves publish atomically, and unsupported durable values reject
+  the save with a structured `[System imageSaveReport]` rather than being
+  silently omitted.
+- **Explicit platform boundary:** arm64 macOS is the sole supported build and
+  release target. Unsupported targets now fail before compilation instead of
+  producing an incomplete or non-bootable artifact. See
+  `docs/misc/PLATFORM-SUPPORT.md` for the porting requirements.
+- **One verification gate:** `zig build verify` now runs the native test suite,
+  self-hosted stage-one rebuild, birnam-level suites, and REPL goldens; it is
+  enforced by GitHub Actions and before release tagging.
 - **`--boot-image <path>` (experimental): boot from a saved image instead of
   recompiling the birnam modules from source.** Loads only the native prefix
   (`peg`, `lang` — the parser/compiler) and replays the image, reusing the
@@ -27,6 +40,9 @@ heading to the new version (dated) and uses the section as the release notes._
   (`docs/19b-transient-load-rfc.md`).
 
 ### Changed
+- **README rewritten for the active system:** current installation, REPL,
+  script, image, tool, verification, and support guidance now replaces the
+  retired kernel and command documentation.
 - **File-in now prunes, so loading a large program is memory-bounded.** Loading
   + compiling a non-trivial program (the `logue` roguelike: ~4.4 GB) accumulated
   every top-level form's run-and-discard CST/AST/bytecode tree to peak, because

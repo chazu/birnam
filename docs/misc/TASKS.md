@@ -8,6 +8,23 @@ Convention: `[ ]` open, `[~]` in progress, `[x]` done (with commit/date). Severi
 
 ---
 
+## Current Architecture
+
+- [x] **Compiled-unit-first images** (2026-07-10) — image v3 treats embedded
+  dylibs as the primary executable layer, captures module programs plus method
+  definitions, verifies checksums before mutating live state, publishes full
+  saves atomically, and rejects unsupported durable values with
+  `[System imageSaveReport]`. See
+  [`docs/design/45-compiled-units.md`](../design/45-compiled-units.md).
+- [ ] **gap: first-class `CompiledUnit` lifecycle** — make a candidate native
+  unit visible to reflection with identity, generation, checksum, dependencies,
+  provided selectors/globals, and activation state. The first slice must stage
+  compile/load, atomically activate bindings, retain the prior generation for
+  rollback, and prove a failed candidate cannot alter live behavior or the next
+  mapped image boot.
+
+---
+
 ## Tooling
 
 - [x] **emacs mode** (2026-06-18) — `birnam-mode` in `tools/emacs/birnam-mode.el`: font-lock (keyword selectors, symbols `#x`, query vars `?x`, block args `:x`, `:=`/`|>`, `//` comments that don't swallow division, literals), bracket-depth indentation, comint REPL (`run-birnam`), eval-region/eval-buffer (file in a temp unit via `:in`) + eval-line. Byte-compiles clean; verified via the emacs MCP. Deeper `:`-command awareness in the REPL buffer still open.

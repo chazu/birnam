@@ -1,6 +1,7 @@
 # mise (https://mise.jdx.dev) — pins the toolchain and exposes common tasks.
 #   mise install            # fetch the pinned Zig
 #   mise run build          # zig build (Debug)
+#   mise run verify         # full native + self-hosted + REPL test gate
 #   mise run install        # install to a prefix
 #   mise run dist           # build a release tarball for this platform
 #   mise run release minor  # bump version, tag, build, publish a GitHub release
@@ -11,6 +12,10 @@ zig = "0.15.1"
 [tasks.build]
 description = "Build everything (Debug)"
 run = "zig build"
+
+[tasks.verify]
+description = "Run every native, self-hosted, and REPL verification gate"
+run = "zig build verify"
 
 [tasks.install]
 description = "Install bin/birnam + module dylibs to a prefix (default ~/.local)"

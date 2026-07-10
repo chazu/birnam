@@ -751,7 +751,7 @@ fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
     // NOT load them; they are already up. Names mirror script_modules.
     if (api.import("Module")) |mm| {
         const kernel = [_][:0]const u8{
-            "store",      "peg",   "lang",       "tcc",   "codegen", "prelude",
+            "store",      "peg",     "lang",  "tcc",        "codegen", "prelude",
             "collection", "modules", "error", "relational", "alien",   "image",
         };
         for (kernel) |name| _ = api.send(mm, api.intern("kernel:"), &[_]Oop{api.intern(name.ptr)}, 1);
@@ -970,11 +970,16 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
         out("\n");
         return error.ImageLoadFailed;
     }
-    // Code not mapped (data-only image, arch/ABI mismatch, or --rebuild): rebuild
-    // the whole library by REPLAYING the image's own recorded method source
-    // (docs/40 §4). This subsumes the stdlib; if the image predates source capture
-    // and replays nothing, fall back to the embedded stdlib so the REPL is usable.
+    // Code not mapped (data-only image, arch/ABI mismatch, or --rebuild): this is
+    // explicit source recovery, not the ordinary image path. Rebuild the whole
+    // library from the image's recorded module and method sources; if an older
+    // image replays nothing, fall back to the embedded stdlib so the REPL remains
+    // usable.
     if (status == api.falseObj) {
+        std.debug.print(
+            "[image] compiled units were not mapped ({s}); recovering from source\n",
+            .{if (rebuild) "requested rebuild" else "unavailable or incompatible"},
+        );
         const replayed = api.send(codegen, api.intern("replayMethods"), &[_]Oop{}, 0);
         if (api.smallIntValue(replayed) == 0) loadStdlib(a, api, codegen);
     }
@@ -986,10 +991,9 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
     // checkpoint, so replay's (deduped) asserts are never journaled.
     _ = api.send(codegen, api.intern("replayAliens"), &[_]Oop{}, 0);
 
-    // Re-derive block-valued (and any deferred) globals from their recorded source
-    // (docs/40 §6): a closure can't be serialized, so its value fact was skipped at
-    // save; here we rebuild it from `__globalsrc__` over the now-resolved code. The
-    // entry-point `main` closure lands through this path.
+    // Re-derive source-backed block globals that were intentionally not encoded as
+    // durable values (docs/40 §6). Their recorded source runs over the now-resolved
+    // compiled layer; the entry-point `main` closure lands through this path.
     _ = api.send(codegen, api.intern("deriveImageGlobals"), &[_]Oop{}, 0);
 
     // Checkpoint the append baseline: boot reconstruction (mapped/replayed code,

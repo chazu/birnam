@@ -18,6 +18,17 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // libtcc is presently vendored and configured for arm64 Mach-O, and the
+    // runtime resolves Mach-O dylibs by name. Reject other targets before Zig
+    // spends time compiling artifacts that cannot link or boot correctly.
+    if (target.result.cpu.arch != .aarch64 or target.result.os.tag != .macos) {
+        std.process.fatal(
+            "birnam currently supports only arm64 macOS; requested {s}-{s}. " ++
+                "A Linux or Intel port needs a target-specific libtcc build and runtime shared-library loading.",
+            .{ @tagName(target.result.cpu.arch), @tagName(target.result.os.tag) },
+        );
+    }
+
     // The release version, read from the repo's VERSION file at build time so the
     // siphon's `--version` never drifts from what `scripts/release.sh` tags.
     const version = std.mem.trim(u8, @embedFile("VERSION"), " \t\r\n");
@@ -44,6 +55,10 @@ pub fn build(b: *std.Build) void {
     libtcc_lib.addIncludePath(b.path("vendor/libtcc-src")); // config.h, tcc.h, …
 
     const test_step = b.step("test", "Run all id-system unit tests");
+    const verify_step = b.step(
+        "verify",
+        "Run the complete native, self-hosted, and REPL verification gate",
+    );
 
     // -- The id rungs: a dylib + its test suite, one row per module ----------
     // Every rung is a dynamic library the siphon dlopens at runtime, plus a test
@@ -141,6 +156,26 @@ pub fn build(b: *std.Build) void {
         compile.step.dependOn(b.getInstallStep()); // exe + all kernel dylibs installed first
         stage1.dependOn(&compile.step);
     }
+
+    // -- Self-hosted and console integration gates ---------------------------
+    // Keep these ordered after stage1: a stale compiled stdlib can mask source
+    // changes, while both suites must exercise the exact installed artifact a
+    // user receives. `test` remains independently runnable for fast Zig-only
+    // feedback; `verify` composes every gate below.
+    const birnam_tests = b.addSystemCommand(&.{
+        b.getInstallPath(.bin, "birnam"),
+        "modules/run-tests.birnam",
+    });
+    birnam_tests.step.dependOn(stage1);
+    b.step("test-birnam", "Run all self-hosted birnam test suites").dependOn(&birnam_tests.step);
+
+    const repl_goldens = b.addSystemCommand(&.{ "bash", "scripts/repl-golden.sh" });
+    repl_goldens.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    repl_goldens.step.dependOn(&birnam_tests.step);
+    b.step("test-repl", "Run console REPL end-to-end golden transcripts").dependOn(&repl_goldens.step);
+
+    verify_step.dependOn(test_step);
+    verify_step.dependOn(&repl_goldens.step);
 
     // The siphon/REPL host's own unit tests (e.g. the REPL bracket balancer).
     const main_test_mod = b.createModule(.{

@@ -117,6 +117,26 @@ fn tmpImagePath(a: std.mem.Allocator, tmp: *std.testing.TmpDir) ![]u8 {
     return std.fs.path.join(a, &.{ dir, "rt.image" });
 }
 
+fn corruptFirstCodeUnit(bytes: []u8) !void {
+    var i: usize = image.MAGIC.len + 4 + 4 + 4 + 8;
+    while (i < bytes.len) {
+        if (i + 12 > bytes.len) return error.TruncatedRecord;
+        const kind = std.mem.readInt(u32, bytes[i..][0..4], .little);
+        const len: usize = @intCast(std.mem.readInt(u64, bytes[i + 4 ..][0..8], .little));
+        const payload_start = i + 12;
+        if (payload_start + len > bytes.len) return error.TruncatedRecord;
+        if (kind == 4) {
+            if (len <= 8) return error.EmptyCodeUnit;
+            // v3 payloads are [u64 checksum][dylib bytes]. Preserve the record
+            // framing while changing a dylib byte, so only integrity catches it.
+            bytes[payload_start + 8] ^= 0x80;
+            return;
+        }
+        i = payload_start + len;
+    }
+    return error.NoCodeUnit;
+}
+
 test "round-trip: leaf + vector + map globals survive save/load" {
     const api = setup();
     const globals = api.import("Globals").?;
@@ -165,7 +185,7 @@ test "round-trip: leaf + vector + map globals survive save/load" {
     try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(send(gm, "at:", &.{api.intern("k")})));
 }
 
-test "§G3: an object with an unknown slot in a NON-zero position is deferred, not dumped raw" {
+test "§G3: an object with an unknown slot in a NON-zero position rejects the image" {
     const api = setup();
     const globals = api.import("Globals").?;
 
@@ -186,8 +206,7 @@ test "§G3: an object with an unknown slot in a NON-zero position is deferred, n
     words[0] = @intFromPtr(api.nilObj.?); // slot 0: a legit oop
     words[1] = @intFromPtr(live.?); // slot 1: a live Oop under an UNKNOWN kind
 
-    gPut(globals, "gbad", obj); // reachable from a saved global
-    gPut(globals, "ggood", api.mkSmallInt(7)); // a normal sibling that MUST survive
+    gPut(globals, "ggood", api.mkSmallInt(7));
 
     const a = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
@@ -195,14 +214,27 @@ test "§G3: an object with an unknown slot in a NON-zero position is deferred, n
     const path = try tmpImagePath(a, &tmp);
     defer a.free(path);
 
-    // Save must SUCCEED without hitting drainHeapFrom's `unreachable` (the guard
-    // deferred gbad before it reached the drain), and load must apply cleanly.
+    // Establish a known-good image, then try to replace it with unsupported state.
+    // A rejected save must preserve the old publication intact.
     try std.testing.expect(image.saveImage(path));
-    try std.testing.expect(image.loadImage(path));
+    const before = try std.fs.cwd().readFileAlloc(a, path, 1 << 30);
+    defer a.free(before);
 
-    // The normal global round-trips; the pathological one was deferred → absent.
-    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(gAt(globals, "ggood")));
-    try std.testing.expect(gAt(globals, "gbad") == api.nilObj);
+    gPut(globals, "gbad", obj); // reachable from a saved global
+    // Globals use the default no-history `:one` policy, so this physically
+    // removes the fixture from the shared process store after the assertion.
+    // The image tests deliberately reuse that well-known store across setups.
+    defer _ = send(api.import("Store").?, "retract:attr:value:", &.{ api.intern("__globals__"), api.intern("gbad"), obj });
+
+    // The full layout guard rejects this durable root rather than serializing a
+    // live pointer as a raw word or silently dropping state from the image.
+    try std.testing.expect(!image.saveImage(path));
+    const report = send(api.import("System").?, "imageSaveReport", &.{});
+    try std.testing.expect(send(report, "status", &.{}) == api.intern("rejected"));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(report, "rejectedFacts", &.{})));
+    const after = try std.fs.cwd().readFileAlloc(a, path, 1 << 30);
+    defer a.free(after);
+    try std.testing.expectEqualSlices(u8, before, after);
 }
 
 test "journal: appendImage writes deltas; load applies base + deltas cumulatively" {
@@ -306,6 +338,38 @@ test "round-trip: a user method's compiled code is mapped (default), replayed (-
     try std.testing.expect(!image.mappedCode());
     _ = api.send(Codegen, api.intern("replayMethods"), &.{}, 0); // what runImage does on the false branch
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api.mkSmallInt(5), "quad", &.{})));
+}
+
+test "compiled-unit integrity rejects corruption before restoring image data" {
+    const api = setupWithCodegen();
+    const Codegen = api.import("Codegen").?;
+    const globals = api.import("Globals").?;
+
+    const src = "[Reflect defineMethod: #integrityProbe on: Integer as: [:x | [x + 1]]]";
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(src.ptr, src.len)}, 1);
+    gPut(globals, "integrityDatum", api.mkSmallInt(7));
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const path = try std.fs.path.join(a, &.{ dir, "integrity.image" });
+    defer a.free(path);
+
+    try std.testing.expect(image.saveImage(path));
+    const bytes = try std.fs.cwd().readFileAlloc(a, path, 1 << 30);
+    defer a.free(bytes);
+    try corruptFirstCodeUnit(bytes);
+    const f = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer f.close();
+    try f.writeAll(bytes);
+
+    // A failed preflight leaves the pre-existing live store untouched.
+    gPut(globals, "integrityDatum", api.mkSmallInt(99));
+    try std.testing.expect(!image.validate(path));
+    try std.testing.expect(!image.loadImage(path));
+    try std.testing.expectEqual(@as(i64, 99), api.smallIntValue(gAt(globals, "integrityDatum")));
 }
 
 /// setupWithCodegen + error + Alien: the FFI stack, for wrap-replay round-trips.

@@ -1,0 +1,34 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: arm64 macOS verification
+    runs-on: macos-14
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Zig 0.15.1
+        shell: bash
+        env:
+          ZIG_ARCHIVE: zig-aarch64-macos-0.15.1.tar.xz
+          ZIG_SHA256: c4bd624d901c1268f2deb9d8eb2d86a2f8b97bafa3f118025344242da2c54d7b
+        run: |
+          set -euo pipefail
+          curl -fsSLO "https://ziglang.org/download/0.15.1/${ZIG_ARCHIVE}"
+          echo "${ZIG_SHA256}  ${ZIG_ARCHIVE}" | shasum -a 256 -c -
+          tar -xf "${ZIG_ARCHIVE}"
+          echo "${GITHUB_WORKSPACE}/zig-aarch64-macos-0.15.1" >> "$GITHUB_PATH"
+
+      - name: Verify
+        run: zig build verify
