@@ -233,12 +233,22 @@ them.
   loop on a low-stakes target. [44a](44a-pilot-error-birnam.md). (~110; also added the
   `Reflect vtableOf:` mirror + `isSymbol:`/`isString:`, and refounded `Symbol` as a
   proper prototype.)
-- **Phase 2 — a low-risk, non-boot-critical target** (pick one): more `stdlib` library
-  protocol (string/number/collection utilities, ~100–200), or the `main.zig`
-  subcommand collapse below. **NOT `modules.zig`** — it is boot-critical (§3
-  correction); defer it to a deliberate bootstrap-restructure step, not an early one.
-- **Phase 3 — `main.zig` subcommand collapse.** Route lsp/doc/docgen/listen to their
-  birnam modules; keep the driver frame + GC anchor. (~200)
+- **Phase 2 — a low-risk, non-boot-critical target** ✅ SHIPPED as the subcommand
+  collapse (the second option; it also completes Phase 3). The other candidate —
+  more `stdlib` library protocol (string/number/collection utilities, ~100–200) —
+  remains available, though its asLowercase/replace: half waits on Phase 5's
+  StringBuilder. **NOT `modules.zig`** — it is boot-critical (§3 correction);
+  defer it to a deliberate bootstrap-restructure step, not an early one.
+- **Phase 3 ✅ SHIPPED — `main.zig` subcommand collapse.** doc/docgen/--lsp/
+  --listen route through ONE generic driver (`runCli`: boot + GC anchor + argv
+  handover) to `modules/cli.birnam`, whose `[Cli run:dir:]` dispatches by driving
+  the modules' own public API (`[Doc cli:]`, `[Doc buildSite:modules:zig:]`,
+  `[Lsp serveStdio]`, `[Repl serveOn:]`) — the CLI is one more client of the
+  libraries, and every module stays fully usable from code without it
+  (locked in by cli-test.birnam's library-use tests). main.zig 1371→1276; the
+  four per-command Zig handlers (~200) became ~160 lines of birnam. Bonus:
+  `--listen` now resolves modules/ exe-relative, so it works from any cwd, and
+  argv reaches birnam through an escaper instead of raw interpolation.
 - **Phase 4 (perf-gated) — lift the `relational` surface**, keep the native join.
   Behind a benchmark. (~300–400)
 - **Phase 5 — the mutable-buffer utility** (`StringBuilder`) — a prerequisite for any

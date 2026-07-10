@@ -1,0 +1,41 @@
+// cli-test.birnam — the test suite for modules/cli.birnam, plus the guarantee
+// behind it: the modules the subcommands drive stay loadable from code with
+// their APIs usable OUTSIDE any CLI context — Cli is one more client of the
+// library APIs, never their owner. Loading only registers the suite; run via
+// modules/run-tests.birnam. Run from the repo root.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+[[Globals includes: #Cli]    ifTrue: [| nil] ifFalse: [| [System load: "modules/cli.birnam"]]];
+[[Globals includes: #Socket] ifTrue: [| nil] ifFalse: [| [System load: "modules/socket.birnam"]]];
+[[Globals includes: #Repl]   ifTrue: [| nil] ifFalse: [| [System load: "modules/repl.birnam"]]];
+[[Globals includes: #Lsp]    ifTrue: [| nil] ifFalse: [| [System load: "modules/json.birnam"]]];
+[[Globals includes: #Lsp]    ifTrue: [| nil] ifFalse: [| [System load: "modules/lsp.birnam"]]];
+
+let s := [TestSuite named: "Cli" module: #cli];
+
+[s test: "validPort: accepts in-range integers, rejects nil and out-of-range" do: [:t |
+  [t expect: [Cli validPort: 8080]  equals: true  describes: "8080 valid"];
+  [t expect: [Cli validPort: 0]     equals: true  describes: "0 valid"];
+  [t expect: [Cli validPort: 65535] equals: true  describes: "65535 valid"];
+  [t expect: [Cli validPort: 65536] equals: false describes: "65536 out of range"];
+  [t expect: [Cli validPort: ["abc" asInteger]] equals: false describes: "a non-number (asInteger → nil) invalid"]]];
+
+// run:dir: is callable like any other module API (its printed lines are the
+// CLI's user-facing output, so these pick the quiet-ish paths).
+[s test: "run:dir: answers 1 for an unknown subcommand, 0 for a usage display" do: [:t |
+  [t expect: [Cli run: #["frobnicate"] dir: "modules"] equals: 1 describes: "unknown subcommand fails"];
+  [t expect: [Cli run: #["doc"] dir: "modules"] equals: 0 describes: "usage display is help, not failure"]]];
+
+[s test: "runFile: answers 1 for an unreadable file" do: [:t |
+  [t expect: [Cli runFile: "/nonexistent/nope.birnam"] equals: 1 describes: "missing file is a failure"]]];
+
+// -- the library-use guarantee for the modules the subcommands drive -----------
+
+[s test: "Repl is a library: isComplete: balances brackets, no server involved" do: [:t |
+  [t expect: [Repl isComplete: "[1 + 2]"]  equals: true  describes: "balanced form complete"];
+  [t expect: [Repl isComplete: "[1 + [2"]  equals: false describes: "open form incomplete"]]];
+
+[s test: "Lsp is a library: header parse + compile diagnostics, no stdio involved" do: [:t |
+  [t expect: [Lsp contentLengthOf: "Content-Length: 42\r\n"] equals: 42 describes: "contentLengthOf:"];
+  [t expect: [[Lsp compileDiagnostics: "[1 + 2]"] size] equals: 0 describes: "clean source, no diagnostics"];
+  [t assert: [[[Lsp compileDiagnostics: "[1 + ]"] size] >= 1] describes: "a syntax error yields a diagnostic"]]];

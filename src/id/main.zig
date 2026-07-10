@@ -332,30 +332,15 @@ pub fn main() !void {
     if (script_path) |sp| {
         if (std.mem.eql(u8, sp, "--repl") or std.mem.eql(u8, sp, "-i") or std.mem.eql(u8, sp, "repl"))
             return runRepl(a, api, false);
-        if (std.mem.eql(u8, sp, "--listen") or std.mem.eql(u8, sp, "--serve")) {
-            const port = args.next() orelse {
-                out("usage: birnam --listen <port> [file.birnam]\n");
-                return;
-            };
-            const file = args.next(); // optional: run this file first, then listen
-            return runListen(a, api, port, file);
-        }
-        if (std.mem.eql(u8, sp, "--lsp"))
-            return runLsp(a, api);
-        if (std.mem.eql(u8, sp, "doc")) {
-            const mod = args.next() orelse {
-                // Missing operand: show usage and exit cleanly — this is a help
-                // display, not a crash, so don't propagate an error (a `!void`
-                // return would print `error: DocArgs` + a trace after the usage).
-                out("usage: birnam doc <module> [selector]\n");
-                return;
-            };
-            const sel = args.next(); // optional: one selector within the module
-            return runDoc(a, api, mod, sel);
-        }
-        if (std.mem.eql(u8, sp, "docgen")) {
-            const outp = args.next() orelse "birnam-docs.html";
-            return runDocgen(a, api, outp);
+        // The birnam-side subcommands (doc/docgen/--lsp/--listen): recognize the
+        // token, collect the rest of argv verbatim, and hand the whole invocation
+        // to `[Cli run:dir:]` (modules/cli.birnam) — usage checks included.
+        if (isCliSubcommand(sp)) {
+            var argv: std.ArrayList([]const u8) = .{};
+            defer argv.deinit(a);
+            try argv.append(a, sp);
+            while (args.next()) |x| try argv.append(a, x);
+            return runCli(a, api, argv.items);
         }
         if (std.mem.eql(u8, sp, "--demo"))
             return runDemo(a, api, id_path, id_path_z);
@@ -813,20 +798,37 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     }
 }
 
-/// `birnam --listen <port> [file]` — bring the image up (optionally running FILE
-/// first so the listener attaches to its state), then start the pure-birnam socket
-/// REPL on PORT and serve. Blocks in the accept loop; Ctrl-C stops it. The REPL and
-/// networking live in birnam (modules/{socket,repl}.birnam, cwd-relative — run from
-/// the repo root); this only wires the launch, like `--repl`.
-fn runListen(a: std.mem.Allocator, api: *IdApi, port: [:0]const u8, file: ?[:0]const u8) !void {
-    // Validate the port up front — otherwise a non-numeric value would flow into
-    // the birnam source as an undefined name and hang instead of failing fast.
-    _ = std.fmt.parseInt(u16, port, 10) catch {
-        // Bad argument is improper usage, not a crash — the message above is the
-        // help; exit cleanly so a `!void` return doesn't append `error: X` + a trace.
-        out("birnam --listen: port must be a number in 0..65535\n");
-        return;
-    };
+// The subcommands whose handlers live in birnam (modules/cli.birnam).
+const cli_subcommands = [_][]const u8{ "--listen", "--serve", "--lsp", "doc", "docgen" };
+
+/// A token `runCli` handles — a subcommand implemented in birnam. Recognized
+/// here, then handed over whole: `[Cli run: #["doc" "time"] dir: "<modules>"]`.
+/// Cli drives the same public module API any birnam program can call for itself —
+/// `[Doc cli:]`, `[Doc buildSite:modules:zig:]`, `[Lsp serveStdio]`,
+/// `[Repl serveOn:]` — so the CLI is one more client of the libraries, not their
+/// owner; only the boot + GC-anchored driver frame stays Zig.
+fn isCliSubcommand(tok: []const u8) bool {
+    for (cli_subcommands) |c| if (std.mem.eql(u8, tok, c)) return true;
+    return false;
+}
+
+/// Append S to BUF as a birnam string literal (`\` escapes `"` and `\`), so an
+/// arbitrary path or CLI argument survives the trip through boot source intact.
+fn appendBirnamString(buf: *std.ArrayList(u8), a: std.mem.Allocator, s: []const u8) !void {
+    try buf.append(a, '"');
+    for (s) |c| {
+        if (c == '"' or c == '\\') try buf.append(a, '\\');
+        try buf.append(a, c);
+    }
+    try buf.append(a, '"');
+}
+
+/// Run one birnam-side subcommand: boot the image, resolve modules/, load the
+/// dispatcher, and hand it argv. `[Cli run:dir:]` answers the process status —
+/// 0 is success (usage displays included), anything else exits 1. A leftover
+/// `[Codegen lastError]` (a module that failed to PARSE during dispatch) is
+/// reported on stderr, so `--lsp`'s stdout stays protocol-only.
+fn runCli(a: std.mem.Allocator, api: *IdApi, argv: []const []const u8) !void {
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
@@ -837,31 +839,39 @@ fn runListen(a: std.mem.Allocator, api: *IdApi, port: [:0]const u8, file: ?[:0]c
 
     loadStdlib(a, api, codegen);
 
-    // Optionally run FILE first, so the listener sees whatever state it defines.
-    if (file) |f| {
-        const src = try std.fs.cwd().readFileAlloc(a, f, 16 << 20);
-        defer a.free(src);
-        _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
-        const ferr = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
-        if (ferr != api.nilObj) {
-            out("birnam: compile error in ");
-            out(f);
-            out(":\n");
-            outErrorString(api, ferr);
-            std.process.exit(1);
-        }
-    }
+    const mdir = try resolveModulesDir(a);
+    defer a.free(mdir);
+    // Export the resolved modules dir so a loaded module's relative dep-loads
+    // ("modules/x.birnam") resolve from this (possibly foreign) working directory.
+    const mdirZ = try a.dupeZ(u8, mdir);
+    defer a.free(mdirZ);
+    _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
 
-    // Load the networking + REPL modules and start serving (blocks in accept()).
-    const boot = try std.fmt.allocPrint(a, "[System load: \"modules/socket.birnam\"]; [System load: \"modules/repl.birnam\"]; [Repl serveOn: {s}]", .{port});
-    defer a.free(boot);
-    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
-    const berr = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
-    if (berr != api.nilObj) {
-        out("birnam --listen: could not start the REPL server (run from the repo root so modules/ is visible):\n");
-        outErrorString(api, berr);
-        std.process.exit(1);
+    // One boot form: load the dispatcher, hand it argv + the modules dir.
+    var boot: std.ArrayList(u8) = .{};
+    defer boot.deinit(a);
+    const cli_path = try std.fmt.allocPrint(a, "{s}/cli.birnam", .{mdir});
+    defer a.free(cli_path);
+    try boot.appendSlice(a, "[System load: ");
+    try appendBirnamString(&boot, a, cli_path);
+    try boot.appendSlice(a, "]; [Cli run: #[");
+    for (argv) |arg| {
+        try appendBirnamString(&boot, a, arg);
+        try boot.append(a, ' ');
     }
+    try boot.appendSlice(a, "] dir: ");
+    try appendBirnamString(&boot, a, mdir);
+    try boot.appendSlice(a, "]");
+
+    const res = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.items.ptr, boot.items.len)}, 1);
+    const ok = api.send(res, api.intern("="), &[_]Oop{api.mkSmallInt(0)}, 1);
+    if (ok == api.trueObj) return;
+    const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
+    if (err != api.nilObj) {
+        std.fs.File.stderr().writeAll("birnam: subcommand failed:\n") catch {};
+        outErrorString(api, err);
+    }
+    std.process.exit(1);
 }
 
 // libc setenv (we link libc) — set $BIRNAM_MODULES_DIR for child module loads.
@@ -890,110 +900,6 @@ fn resolveModulesDir(a: std.mem.Allocator) ![]u8 {
         }
     } else |_| {}
     return a.dupe(u8, "modules");
-}
-
-/// `birnam --lsp` — bring the image up and run the pure-birnam language server on
-/// stdio (LSP). Loads json + lsp from the exe-resolved modules dir and blocks in
-/// `[Lsp serveStdio]` (which owns stdin/stdout for the protocol and terminates the
-/// process on `exit`/EOF). Startup errors go to STDERR so stdout stays protocol-only.
-fn runLsp(a: std.mem.Allocator, api: *IdApi) !void {
-    try loadStack(a, api);
-    const codegen = api.import("Codegen") orelse return error.NoCodegen;
-
-    var stack_anchor: usize = 0;
-    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
-    _ = &stack_anchor;
-    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
-
-    loadStdlib(a, api, codegen);
-
-    const mdir = try resolveModulesDir(a);
-    defer a.free(mdir);
-    const mdirZ = try a.dupeZ(u8, mdir);
-    defer a.free(mdirZ);
-    _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
-    // Load Doc + every library module (defines Lsp/Json and populates the doc facts
-    // that `textDocument/hover` looks up), then serve.
-    const boot = try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [Doc loadAllModules: \"{s}\"]; [Lsp serveStdio]", .{ mdir, mdir });
-    defer a.free(boot);
-    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
-    // Only reached if loading json/lsp failed (serveStdio otherwise blocks until exit).
-    const berr = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
-    if (berr != api.nilObj) {
-        std.fs.File.stderr().writeAll("birnam --lsp: failed to load the language-server modules (set BIRNAM_MODULES_DIR to the birnam modules/ dir)\n") catch {};
-        std.process.exit(1);
-    }
-}
-
-/// `birnam doc <module> [selector]` — the `go doc` analog. Loads Doc first (so its
-/// capture overrides the stdlib no-op baseline), then the named module (whose
-/// docstrings are now recorded as facts), then prints the module's docs — or one
-/// selector's — to stdout. modules/ is resolved relative to the executable.
-fn runDoc(a: std.mem.Allocator, api: *IdApi, mod: [:0]const u8, sel: ?[:0]const u8) !void {
-    try loadStack(a, api);
-    const codegen = api.import("Codegen") orelse return error.NoCodegen;
-
-    var stack_anchor: usize = 0;
-    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
-    _ = &stack_anchor;
-    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
-
-    loadStdlib(a, api, codegen);
-
-    const mdir = try resolveModulesDir(a);
-    defer a.free(mdir);
-    // Export the resolved modules dir so a loaded module's relative dep-loads
-    // ("modules/x.birnam") resolve from this (possibly foreign) working directory.
-    const mdirZ = try a.dupeZ(u8, mdir);
-    defer a.free(mdirZ);
-    _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
-    // Resolve the module either as a birnam module (<mdir>/<mod>.birnam) or, failing
-    // that, as a Zig floor file (<mdir>/../src/id/<mod>.zig, doc-extracted by Zigdoc).
-    const boot = if (sel) |s|
-        try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [System load: \"{s}/zigdoc.birnam\"]; [Zigdoc ensure: #{s} birnam: \"{s}/{s}.birnam\" zig: \"{s}/../src/id/{s}.zig\"]; [System print: [Doc cli: #{s} sel: \"{s}\"]]", .{ mdir, mdir, mod, mdir, mod, mdir, mod, mod, s })
-    else
-        try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [System load: \"{s}/zigdoc.birnam\"]; [Zigdoc ensure: #{s} birnam: \"{s}/{s}.birnam\" zig: \"{s}/../src/id/{s}.zig\"]; [System print: [Doc cli: #{s}]]", .{ mdir, mdir, mod, mdir, mod, mdir, mod, mod });
-    defer a.free(boot);
-    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
-    const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
-    if (err != api.nilObj) {
-        std.fs.File.stderr().writeAll("birnam doc: could not render docs (check the module name; run where modules/ is resolvable or set BIRNAM_MODULES_DIR)\n") catch {};
-        outErrorString(api, err);
-        std.process.exit(1);
-    }
-}
-
-/// `birnam docgen [out.html]` — build the full HTML documentation reference (every
-/// birnam library module + every Zig floor file, via Zigdoc) to a file.
-fn runDocgen(a: std.mem.Allocator, api: *IdApi, out_path: [:0]const u8) !void {
-    try loadStack(a, api);
-    const codegen = api.import("Codegen") orelse return error.NoCodegen;
-
-    var stack_anchor: usize = 0;
-    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
-    _ = &stack_anchor;
-    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
-
-    loadStdlib(a, api, codegen);
-
-    const mdir = try resolveModulesDir(a);
-    defer a.free(mdir);
-    const mdirZ = try a.dupeZ(u8, mdir);
-    defer a.free(mdirZ);
-    _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
-
-    const boot = try std.fmt.allocPrint(a, "[System load: \"{s}/doc.birnam\"]; [System load: \"{s}/zigdoc.birnam\"]; [Doc buildSite: \"{s}\" modules: \"{s}\" zig: \"{s}/../src/id\"]", .{ mdir, mdir, out_path, mdir, mdir });
-    defer a.free(boot);
-    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.ptr, boot.len)}, 1);
-    const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
-    if (err != api.nilObj) {
-        std.fs.File.stderr().writeAll("birnam docgen: failed to build the doc site\n") catch {};
-        outErrorString(api, err);
-        std.process.exit(1);
-    }
-    out("wrote ");
-    out(out_path);
-    out("\n");
 }
 
 /// Print a `[Codegen lastError]` String (a `line:col: message` block) to stderr.

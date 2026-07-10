@@ -1,0 +1,154 @@
+// cli.birnam — the birnam side of the birnam CLI: doc, docgen, --lsp, --listen.
+//
+// main.zig recognizes a subcommand token, boots the image, resolves the modules
+// directory (exported as $BIRNAM_MODULES_DIR), loads this file, and hands the
+// whole invocation over in ONE send:
+//
+//   [Cli run: #["doc" "time"] dir: "<modules-dir>"]
+//
+// Cli loads what the subcommand needs and drives the SAME public API any birnam
+// program can call for itself — [Doc cli:], [Doc buildSite:modules:zig:],
+// [Lsp serveStdio], [Repl serveOn:]. The CLI is one more CLIENT of the module
+// APIs, not their owner: nothing in doc/lsp/repl requires Cli, and loading any
+// of them from code gives the identical API the subcommands use.
+//
+// Contract with the Zig driver: `run:dir:` answers an integer process status —
+// 0 for success (usage displays included, matching the old Zig handlers), 1 for
+// failure; the driver exits with it. args[0] is the subcommand token as typed
+// (so the --serve alias arrives as "--serve").
+
+[Globals at: #Cli put: [Object clone]];
+[Reflect docModule: #cli is: "The CLI subcommand dispatcher (doc/docgen/--lsp/--listen) — one more client of the module APIs."];
+
+// -- small shared pieces -------------------------------------------------------
+
+// Print a line and answer a status: say = help/progress (0), fail = error (1).
+[Reflect defineMethod: #say: on: Cli as: [:self :msg |
+  [System println: msg];
+  0]];
+[Reflect defineMethod: #fail: on: Cli as: [:self :msg |
+  [System println: msg];
+  1]];
+
+// Load a module source once: skip when NAME is already bound (an earlier load),
+// else load PATH — the same guard idiom the modules use among themselves.
+[Reflect defineMethod: #ensure:loaded: on: Cli as: [:self :name :path |
+  [[Globals includes: name] ifTrue: [| nil] ifFalse: [| [System load: path]]]]];
+
+// The last compile's outcome as a process status. `status` reports the error;
+// `statusQuiet` only answers it (for --lsp, whose stdout is protocol-only).
+[Reflect defineMethod: #statusQuiet on: Cli as: [:self |
+  [[[Codegen lastError] isNil] ifTrue: [| 0] ifFalse: [| 1]]]];
+[Reflect defineMethod: #status on: Cli as: [:self |
+  let e := [Codegen lastError];
+  [[e isNil] ifTrue: [| 0] ifFalse: [| [self fail: ["birnam: " , e]]]]]];
+
+// -- doc: `birnam doc <module> [selector]` --------------------------------------
+
+[Reflect defineMethod: #doc:dir: on: Cli as: [:self :args :mdir |
+  [[[args size] < 2]
+    ifTrue:  [| [self say: "usage: birnam doc <module> [selector]"]]
+    ifFalse: [| [self docNamed: [args at: 1] sel: [args at: 2 ifAbsent: [| nil]] dir: mdir]]]] doc:
+  "`birnam doc <module> [selector]` — print a module's docs (or one selector's) via [Doc cli:]."];
+
+// Resolve the module either as a birnam module (<mdir>/<mod>.birnam) or, failing
+// that, as a Zig floor file (doc-extracted by Zigdoc), then print — exactly the
+// [Zigdoc ensure:birnam:zig:] + [Doc cli:] calls a program would make itself.
+[Reflect defineMethod: #docNamed:sel:dir: on: Cli as: [:self :mod :sel :mdir |
+  [self ensure: #Doc    loaded: [mdir , "/doc.birnam"]];
+  [self ensure: #Zigdoc loaded: [mdir , "/zigdoc.birnam"]];
+  [Zigdoc ensure: [mod asSymbol]
+          birnam: [[[mdir , "/"] , mod] , ".birnam"]
+          zig:    [[[mdir , "/../src/id/"] , mod] , ".zig"]];
+  [[sel isNil]
+    ifTrue:  [| [System print: [Doc cli: [mod asSymbol]]]]
+    ifFalse: [| [System print: [Doc cli: [mod asSymbol] sel: sel]]]];
+  [self status]]];
+
+// -- docgen: `birnam docgen [out.html]` -----------------------------------------
+
+[Reflect defineMethod: #docgen:dir: on: Cli as: [:self :args :mdir |
+  let outPath := [args at: 1 ifAbsent: [| "birnam-docs.html"]];
+  [self ensure: #Doc    loaded: [mdir , "/doc.birnam"]];
+  [self ensure: #Zigdoc loaded: [mdir , "/zigdoc.birnam"]];
+  [Doc buildSite: outPath modules: mdir zig: [mdir , "/../src/id"]];
+  [[[self status] = 0]
+    ifTrue:  [| [self say: ["wrote " , outPath]]]
+    ifFalse: [| 1]]] doc:
+  "`birnam docgen [out.html]` — build the full HTML doc reference via [Doc buildSite:modules:zig:]."];
+
+// -- lsp: `birnam --lsp` --------------------------------------------------------
+
+// Load Doc + every library module (populating the hover facts), then serve.
+// [Lsp serveStdio] owns stdin/stdout and exits the process on `exit`/EOF, so
+// reaching the status check at all means startup failed — stay QUIET on stdout
+// (it is protocol-only); the driver reports the failure on stderr.
+[Reflect defineMethod: #lsp:dir: on: Cli as: [:self :args :mdir |
+  [self ensure: #Doc loaded: [mdir , "/doc.birnam"]];
+  [Doc loadAllModules: mdir];
+  [Lsp serveStdio];
+  [self statusQuiet]] doc:
+  "`birnam --lsp` — run the language server on stdio via [Lsp serveStdio]."];
+
+// -- listen: `birnam --listen <port> [file]` ------------------------------------
+
+[Reflect defineMethod: #listen:dir: on: Cli as: [:self :args :mdir |
+  [[[args size] < 2]
+    ifTrue:  [| [self say: "usage: birnam --listen <port> [file.birnam]"]]
+    ifFalse: [| [self listenOn: [[args at: 1] asInteger]
+                       file: [args at: 2 ifAbsent: [| nil]]
+                       dir: mdir]]]] doc:
+  "`birnam --listen <port> [file]` — serve the socket REPL via [Repl serveOn:], optionally running FILE first."];
+
+// A usable TCP port: an Integer (asInteger answers nil for a non-number) in range.
+[Reflect defineMethod: #validPort: on: Cli as: [:self :port |
+  [[port isNil]
+    ifTrue:  [| false]
+    ifFalse: [| [[port >= 0] & [port <= 65535]]]]]];
+
+[Reflect defineMethod: #listenOn:file:dir: on: Cli as: [:self :port :file :mdir |
+  [[self validPort: port]
+    ifTrue:  [| [self listenGo: port file: file dir: mdir]]
+    ifFalse: [| [self say: "birnam --listen: port must be a number in 0..65535"]]]]];
+
+// Optionally run FILE against the fresh image first (the listener then attaches
+// to its state), then load the networking + REPL modules and block in accept().
+// Loads resolve through the modules dir, so --listen works from any cwd now.
+[Reflect defineMethod: #listenGo:file:dir: on: Cli as: [:self :port :file :mdir |
+  let fst := [[file isNil] ifTrue: [| 0] ifFalse: [| [self runFile: file]]];
+  [[fst = 0]
+    ifTrue:  [| [self serveRepl: port dir: mdir]]
+    ifFalse: [| 1]]]];
+
+[Reflect defineMethod: #serveRepl:dir: on: Cli as: [:self :port :mdir |
+  [self ensure: #Socket loaded: [mdir , "/socket.birnam"]];
+  [self ensure: #Repl   loaded: [mdir , "/repl.birnam"]];
+  [Repl serveOn: port];
+  [self status]]];
+
+// Evaluate a birnam source file against the live image, reporting a compile
+// error the way the script runner does (status 1; the driver exits with it).
+[Reflect defineMethod: #runFile: on: Cli as: [:self :path |
+  let src := [System readFile: path];
+  [[src isError]
+    ifTrue:  [| [self fail: ["birnam: could not read " , path]]]
+    ifFalse: [| [self evalSource: src from: path]]]]];
+
+[Reflect defineMethod: #evalSource:from: on: Cli as: [:self :src :path |
+  [Codegen evalPersisting: src];
+  let e := [Codegen lastError];
+  [[e isNil]
+    ifTrue:  [| 0]
+    ifFalse: [| [self fail: [[["birnam: compile error in " , path] , ":\n"] , e]]]]]];
+
+// -- the dispatcher --------------------------------------------------------------
+
+[Reflect defineMethod: #run:dir: on: Cli as: [:self :args :mdir |
+  let cmd := [args at: 0 ifAbsent: [| ""]];
+  [[cmd = "doc"] ifTrue: [| [self doc: args dir: mdir]] ifFalse: [|
+    [[cmd = "docgen"] ifTrue: [| [self docgen: args dir: mdir]] ifFalse: [|
+      [[cmd = "--lsp"] ifTrue: [| [self lsp: args dir: mdir]] ifFalse: [|
+        [[[cmd = "--listen"] | [cmd = "--serve"]]
+          ifTrue:  [| [self listen: args dir: mdir]]
+          ifFalse: [| [self fail: ["birnam: unknown subcommand: " , cmd]]]]]]]]]]] doc:
+  "Dispatch one CLI invocation: args = #[subcommand operand…] as typed, dir = the modules directory. Answers the process status (0 ok, 1 fail)."];
