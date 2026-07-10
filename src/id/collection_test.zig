@@ -99,7 +99,9 @@ test "collection: empty range is empty; start>end" {
     const api = setup();
     const r = s1(api.mkSmallInt(2), "to:", api.mkSmallInt(1));
     try std.testing.expectEqual(@as(i64, 0), ival(s0(r, "size")));
-    try std.testing.expect(s0(s0(r, "asVector"), "isEmpty") == api.trueObj);
+    // isEmpty itself lives in stdlib.birnam now (the tier-A surface lift, over
+    // size) — asserted through the full stack in stdlib-test.birnam.
+    try std.testing.expectEqual(@as(i64, 0), ival(s0(s0(r, "asVector"), "size")));
 }
 
 // select:/collect:/detect: moved off the native collection vtables onto the shared

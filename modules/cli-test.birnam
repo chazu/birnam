@@ -47,6 +47,30 @@ let s := [TestSuite named: "Cli" module: #cli];
 [s test: "run:dir: routes init; a cwd with a birnam.toml is refused, not clobbered" do: [:t |
   [t expect: [Cli run: #["init"] dir: "modules"] equals: 1 describes: "repo root already has birnam.toml"]]];
 
+// wrapLib:into:dir: — the scaffolder against a scratch base dir (never the
+// repo's real wrapped/ tree). Refusal is a benign no-op (status 0), matching
+// the old Zig scaffolder; the author's edited file is never clobbered.
+[s test: "wrap scaffolds <base>/<name>/<name>.birnam once, never clobbers" do: [:t |
+  let base := "/tmp/birnam-wrap-test";
+  let path := "/tmp/birnam-wrap-test/foo/foo.birnam";
+  [File delete: path];
+  [File removeDir: "/tmp/birnam-wrap-test/foo"];
+  [File removeDir: base];
+  [t expect: [Cli wrapLib: "foo" into: base dir: "modules"] equals: 0 describes: "fresh scaffold succeeds"];
+  let text := [System readFile: path];
+  [t assert: [text includesSubstring: "#Foo"] describes: "capitalized singleton bound"];
+  [t assert: [text includesSubstring: "libfoo.dylib"] describes: "dlopen line names the lib"];
+  [t expect: [text includesSubstring: "%N%"] equals: false describes: "no unsubstituted placeholders"];
+  [System writeFile: path contents: "EDITED"];
+  [t expect: [Cli wrapLib: "foo" into: base dir: "modules"] equals: 0 describes: "existing wrapper is a no-op, not a failure"];
+  [t expect: [System readFile: path] equals: "EDITED" describes: "the author's edits win"];
+  [File delete: path];
+  [File removeDir: "/tmp/birnam-wrap-test/foo"];
+  [File removeDir: base]]];
+
+[s test: "wrap usage: missing name is a usage display (0), not a crash" do: [:t |
+  [t expect: [Cli run: #["wrap"] dir: "modules"] equals: 0 describes: "no operand shows usage"]]];
+
 // -- the library-use guarantee for the modules the subcommands drive -----------
 
 [s test: "Repl is a library: isComplete: balances brackets, no server involved" do: [:t |

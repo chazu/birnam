@@ -85,9 +85,26 @@
    as: [:self :blk | [self inject: 0 into: [:acc :e |
       [[blk value: e] ifTrue: [| [acc + 1]] ifFalse: [| acc]]]]]];
 
-// isEmpty over the fold — Range has no native isEmpty; this covers every family.
+// isEmpty over size — no family keeps a native isEmpty; this covers them all
+// (Vector/Map had Zig ones until the tier-A surface lift; Range never did).
 [Reflect defineMethod: #isEmpty on: Collection as: [:self | [[self size] = 0]]];
 [Reflect defineMethod: #notEmpty on: Collection as: [:self | [[self isEmpty] not]]];
+
+// first / last / at:ifAbsent: over size + at: — pure surface (no per-element
+// loop), lifted from Zig (collection.zig's vFirst/vLast/vAtIfAbsent/rFirst/
+// rLast). Every indexable family gets them, String included; Map keeps its own
+// native at:ifAbsent: (key-based, not index-based — the map_vt method wins).
+[Reflect defineMethod: #first on: Collection as: [:self |
+   [[self isEmpty] ifTrue: [| nil] ifFalse: [| [self at: 0]]]] doc:
+   "The first element, or nil when empty."];
+[Reflect defineMethod: #last on: Collection as: [:self |
+   [[self isEmpty] ifTrue: [| nil] ifFalse: [| [self at: [[self size] - 1]]]]] doc:
+   "The last element, or nil when empty."];
+[Reflect defineMethod: #at:ifAbsent: on: Collection as: [:self :i :aBlock |
+   [[[i < 0] | [i >= [self size]]]
+      ifTrue:  [| [aBlock value]]
+      ifFalse: [| [self at: i]]]] doc:
+   "The element at 0-based index i, or the block's value when i is out of range."];
 
 // includes: / anySatisfy: / allSatisfy: — phrased over count: and size so they
 // never seed a fold with a boolean (avoids depending on literal true/false) and

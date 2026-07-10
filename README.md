@@ -67,7 +67,6 @@ birnam <file.image>        Boot a saved image.
 birnam --rebuild <image>   Boot an image by replaying source.
 birnam --bake <image> <executable>
                              Bake an image into a self-booting executable.
-birnam --demo              Run the low-level bootstrap proof.
 birnam wrap <name>         Scaffold a C-library wrapper.
 ```
 

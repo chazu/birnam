@@ -231,11 +231,6 @@ fn vSize(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     return mki(@intCast(vec(self).count));
 }
-fn vIsEmpty(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    return boolean(vec(self).count == 0);
-}
 fn vAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     const i = iv(a[0]);
@@ -349,28 +344,6 @@ fn vComma(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 
 // -- Vector: the accessors/queries every program assumes ---------------------
 
-/// `[v first]` / `[v last]` — the end elements, or nil when empty.
-fn vFirst(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    const v = vec(self);
-    return if (v.count == 0) g_api.nilObj else vecAt(v, 0);
-}
-fn vLast(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    const v = vec(self);
-    return if (v.count == 0) g_api.nilObj else vecAt(v, v.count - 1);
-}
-/// `[v at: i ifAbsent: aBlock]` — the element, or the block's value when i is
-/// out of range.
-fn vAtIfAbsent(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = n;
-    const v = vec(self);
-    const i = iv(a[0]);
-    if (i < 0 or i >= v.count) return g_api.send(a[1], s_value, &[_]Oop{}, 0);
-    return vecAt(v, @intCast(i));
-}
 /// `[v includes: x]` — membership by value (floor types compare by value, per
 /// `keyEq`; other objects by identity).
 fn vIncludes(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -468,18 +441,6 @@ fn rAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const v = r.start + i;
     if (i < 0 or v > r.end) return g_api.nilObj;
     return mki(v);
-}
-fn rFirst(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    const r = rng(self);
-    return if (r.end < r.start) g_api.nilObj else mki(r.start);
-}
-fn rLast(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    const r = rng(self);
-    return if (r.end < r.start) g_api.nilObj else mki(r.end);
 }
 fn rReversed(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
@@ -869,11 +830,6 @@ fn mSize(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
     return mki(@intCast(mp(self).count));
-}
-fn mIsEmpty(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    return boolean(mp(self).count == 0);
 }
 fn mKeys(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
@@ -1274,7 +1230,6 @@ pub fn bringUp(api: *idapi.IdApi) void {
 
     // Vector protocol.
     api.method(vector_vt, api.intern("size"), &vSize);
-    api.method(vector_vt, api.intern("isEmpty"), &vIsEmpty);
     api.method(vector_vt, api.intern("at:"), &vAt);
     api.method(vector_vt, api.intern("add:"), &vAdd);
     api.method(vector_vt, api.intern("do:"), &vDo);
@@ -1285,9 +1240,6 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(vector_vt, api.intern("printString"), &vPrintString);
     api.method(vector_vt, api.intern(","), &vComma);
     api.method(vector_vt, api.intern("sortBy:"), &vSortBy);
-    api.method(vector_vt, api.intern("first"), &vFirst);
-    api.method(vector_vt, api.intern("last"), &vLast);
-    api.method(vector_vt, api.intern("at:ifAbsent:"), &vAtIfAbsent);
     api.method(vector_vt, api.intern("includes:"), &vIncludes);
     api.method(vector_vt, api.intern("indexOf:"), &vIndexOf);
     api.method(vector_vt, api.intern("copyFrom:to:"), &vCopyFromTo);
@@ -1301,8 +1253,6 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(range_vt, api.intern("inject:into:"), &rInject);
     api.method(range_vt, api.intern("asVector"), &rAsVector);
     api.method(range_vt, api.intern("at:"), &rAt); // §B5
-    api.method(range_vt, api.intern("first"), &rFirst);
-    api.method(range_vt, api.intern("last"), &rLast);
     api.method(range_vt, api.intern("reversed"), &rReversed);
     api.method(range_vt, api.intern("printString"), &rPrintString);
     api.method(range_vt, api.intern(","), &rComma);
@@ -1313,7 +1263,6 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(map_vt, api.intern("at:ifAbsent:"), &mAtIfAbsent);
     api.method(map_vt, api.intern("includesKey:"), &mIncludesKey);
     api.method(map_vt, api.intern("size"), &mSize);
-    api.method(map_vt, api.intern("isEmpty"), &mIsEmpty);
     api.method(map_vt, api.intern("keys"), &mKeys);
     api.method(map_vt, api.intern("values"), &mValues);
     api.method(map_vt, api.intern("do:"), &mDo);

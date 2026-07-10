@@ -16,6 +16,18 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: ["" notEmpty]  equals: false describes: "empty notEmpty"];
   [t expect: ["x" notEmpty] equals: true  describes: "non-empty notEmpty"]]];
 
+[s test: "first / last / at:ifAbsent: ride Collection (the tier-A surface lift)" do: [:t |
+  [t expect: [#[7 8 9] first] equals: 7 describes: "vector first"];
+  [t expect: [#[7 8 9] last]  equals: 9 describes: "vector last"];
+  [t expect: [[#[] first] isNil] equals: true describes: "empty vector first is nil"];
+  [t expect: [#[7 8 9] at: 1 ifAbsent: [| 99]] equals: 8 describes: "in-range index answers the element"];
+  [t expect: [#[7 8 9] at: 3 ifAbsent: [| 99]] equals: 99 describes: "past-end runs the block"];
+  [t expect: [#[7 8 9] at: -1 ifAbsent: [| 99]] equals: 99 describes: "negative runs the block"];
+  [t expect: [[1 to: 4] first] equals: 1 describes: "range first"];
+  [t expect: [[1 to: 4] last]  equals: 4 describes: "range last"];
+  [t expect: ["abc" first] equals: "a" describes: "string first (new, via Collection)"];
+  [t expect: [{#a -> 1} at: #a ifAbsent: [| 9]] equals: 1 describes: "map keeps its key-based native at:ifAbsent:"]]];
+
 [s test: "startsWith: incl. empty prefix, too-long prefix, non-String" do: [:t |
   [t expect: ["hello" startsWith: "he"]     equals: true  describes: "plain prefix"];
   [t expect: ["hello" startsWith: "hello"]  equals: true  describes: "whole string"];
