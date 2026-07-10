@@ -5,6 +5,12 @@
 // THIS file is birnam defining MORE of its own library, on top of those
 // primitives, via `[Reflect defineMethod: #sel on: T as: aBlock]`. It is loaded by
 // default; `BIRNAM_NO_STDLIB=1` runs on the bare Zig floor instead.
+//
+// ⚠️ AFTER EDITING THIS FILE: `loadStdlib` PREFERS the compiled dylib
+// (zig-out/lib/libbirnam_stdlib.dylib) over this embedded source, so a stale dylib
+// will SILENTLY SHADOW your change (the runtime keeps running the OLD code and your
+// tests pass against it). Either `rm zig-out/lib/libbirnam_stdlib.dylib` to force the
+// source path, or `zig build stage1` to regenerate the dylib. (Same for toml/config.)
 
 // This module's dependency declaration (stage 3): the self-hosted stdlib sits
 // directly on the Zig primitives, so it requires no other self-hosted module.

@@ -47,6 +47,16 @@ loading installs with **no recompile**. No new codegen was needed for this.
   back to the embedded source** when the dylib is absent, stale, or ABI-mismatched.
   `BIRNAM_NO_STDLIB=1` skips the whole self-hosted layer (the bare Zig floor).
 
+> ⚠️ **Authoring gotcha.** Because `loadStdlib` prefers the dylib, **editing a
+> self-hosted source (`stdlib`/`toml`/`config`) has no effect until you refresh the
+> dylib** — a stale one silently shadows your change and the runtime keeps running the
+> old code (tests pass against it). After editing, either `rm
+> zig-out/lib/libbirnam_stdlib.dylib` (force the source path) or `zig build stage1`
+> (regenerate the dylib). A plain `zig build` re-embeds the source but does **not**
+> refresh or invalidate the dylib, so in practice the stale dylib wins until you `rm`
+> it or run `stage1` (observed 2026-07-09 — the fallback triggers on an *absent* or
+> *ABI-mismatched* dylib, not a merely out-of-date one).
+
 ### The `__amblk` salt
 
 Artifact-mode method blocks are stashed under `birnam_global("__amblk<N>")` — a
