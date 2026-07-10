@@ -280,7 +280,7 @@ fn vecNew(api: *idapi.IdApi) Oop {
     return s0(api.import("Vector"), "new");
 }
 
-test "collection: String asLowercase / replace:with: / words" {
+test "collection: String asLowercase / replace:with: (the byte-building floor)" {
     const api = setup();
 
     try std.testing.expect(strEq(s0(api.mkString("HeLLo", 5), "asLowercase"), "hello"));
@@ -289,13 +289,8 @@ test "collection: String asLowercase / replace:with: / words" {
     try std.testing.expect(strEq(cleaned, "ab,c"));
     // empty needle is a no-op (no infinite loop).
     try std.testing.expect(strEq(s2(api.mkString("xy", 2), "replace:with:", api.mkString("", 0), api.mkString("Z", 1)), "xy"));
-
-    // words splits on runs of whitespace, dropping empties.
-    const w = s0(api.mkString("  the  cat sat\n", 15), "words");
-    try std.testing.expectEqual(@as(i64, 3), ival(s0(w, "size")));
-    try std.testing.expect(strEq(s1(w, "at:", api.mkSmallInt(0)), "the"));
-    try std.testing.expect(strEq(s1(w, "at:", api.mkSmallInt(2)), "sat"));
-    try std.testing.expectEqual(@as(i64, 0), ival(s0(s0(api.mkString("   ", 3), "words"), "size")));
+    // words (and the rest of the derived string protocol) is self-hosted in
+    // stdlib.birnam — covered by modules/stdlib-test.birnam, not at this floor.
 }
 
 test "collection: String , coerces a non-String argument via printString" {

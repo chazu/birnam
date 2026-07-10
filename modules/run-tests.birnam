@@ -17,6 +17,7 @@
 [System load: "modules/random-test.birnam"];
 [System load: "modules/doc-test.birnam"];
 [System load: "modules/cli-test.birnam"];
+[System load: "modules/stdlib-test.birnam"];
 
 // -- run them all through the console runner, then gate the exit code ----------
 [Test runAllSuitesWithRunner: ConsoleRunner];

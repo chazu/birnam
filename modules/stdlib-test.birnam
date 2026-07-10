@@ -1,0 +1,69 @@
+// stdlib-test.birnam — the test suite for the SELF-HOSTED string protocol in
+// src/id/stdlib.birnam (docs/design/44 Phase 2): isEmpty/notEmpty (via
+// Collection), startsWith:/endsWith:, includesSubstring: (over the native
+// indexOf: scanner), words, and the derived do:/inject:into: fold. The edge
+// cases here are the byte-for-byte oracle the migration was verified against —
+// they pin the OLD native semantics (arg guards answer false/#[self], never
+// error). Loading only registers the suite; run via modules/run-tests.birnam.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+
+let s := [TestSuite named: "Stdlib" module: #stdlib];
+
+[s test: "isEmpty / notEmpty ride Collection" do: [:t |
+  [t expect: ["" isEmpty]   equals: true  describes: "empty isEmpty"];
+  [t expect: ["x" isEmpty]  equals: false describes: "non-empty isEmpty"];
+  [t expect: ["" notEmpty]  equals: false describes: "empty notEmpty"];
+  [t expect: ["x" notEmpty] equals: true  describes: "non-empty notEmpty"]]];
+
+[s test: "startsWith: incl. empty prefix, too-long prefix, non-String" do: [:t |
+  [t expect: ["hello" startsWith: "he"]     equals: true  describes: "plain prefix"];
+  [t expect: ["hello" startsWith: "hello"]  equals: true  describes: "whole string"];
+  [t expect: ["hello" startsWith: "hellox"] equals: false describes: "longer than receiver"];
+  [t expect: ["hello" startsWith: ""]       equals: true  describes: "empty prefix always true"];
+  [t expect: ["hello" startsWith: 42]       equals: false describes: "non-String answers false"];
+  [t expect: ["" startsWith: ""]            equals: true  describes: "empty on empty"]]];
+
+[s test: "endsWith: incl. empty suffix, too-long suffix, non-String" do: [:t |
+  [t expect: ["hello" endsWith: "lo"]     equals: true  describes: "plain suffix"];
+  [t expect: ["hello" endsWith: ""]       equals: true  describes: "empty suffix always true"];
+  [t expect: ["hello" endsWith: "xhello"] equals: false describes: "longer than receiver"];
+  [t expect: ["hello" endsWith: #sym]     equals: false describes: "non-String answers false"]]];
+
+[s test: "includesSubstring: over the native indexOf: scanner" do: [:t |
+  [t expect: ["hello" includesSubstring: "ell"] equals: true  describes: "inner hit"];
+  [t expect: ["hello" includesSubstring: "xyz"] equals: false describes: "miss"];
+  [t expect: ["hello" includesSubstring: ""]    equals: true  describes: "empty needle is everywhere"];
+  [t expect: ["hello" includesSubstring: nil]   equals: false describes: "non-String answers false"]]];
+
+[s test: "words drops empty runs, keeps punctuation attached" do: [:t |
+  [t expect: ["  the  cat sat\n" words] equals: #["the" "cat" "sat"] describes: "runs split, empties dropped"];
+  [t expect: [["   " words] size] equals: 0 describes: "all-whitespace has no words"];
+  [t expect: [["" words] size]    equals: 0 describes: "empty has no words"];
+  [t expect: ["one" words]        equals: #["one"] describes: "single unpadded word"]]];
+
+[s test: "string do: / inject:into: fold the 1-byte characters in order" do: [:t |
+  [t expect: ["xyz" inject: "" into: [:acc :c | [acc , c]]] equals: "xyz" describes: "inject rejoins in order"];
+  [t expect: ["hello" inject: 0 into: [:acc :c |
+      [[c = "l"] ifTrue: [| [acc + 1]] ifFalse: [| acc]]]] equals: 2 describes: "inject counts"];
+  [t expect: ["" inject: 99 into: [:acc :c | 0]] equals: 99 describes: "empty string answers the seed"];
+  [t expect: ["ab" do: [:c | nil]] equals: "ab" describes: "do: answers self"]]];
+
+// The Collection protocol arrives on String through the derived fold.
+[s test: "String answers the whole Collection protocol via the derived fold" do: [:t |
+  [t expect: ["abc" asVector] equals: #["a" "b" "c"] describes: "asVector"];
+  [t expect: ["abc" collect: [:c | [c , "!"]]] equals: #["a!" "b!" "c!"] describes: "collect:"];
+  [t expect: ["hello" count: [:c | [c = "l"]]] equals: 2 describes: "count:"];
+  [t expect: ["hello" detect: [:c | [c = "e"]]] equals: "e" describes: "detect:"]]];
+
+// The perf-retained native scanners keep their exact contract (they are the
+// floor under includesSubstring: and zigdoc's bulk sweeps).
+[s test: "native scanners: split: / trimmed / indexOf: contracts hold" do: [:t |
+  [t expect: ["a,,b" split: ","]  equals: #["a" "" "b"] describes: "split keeps empty parts"];
+  [t expect: [["" split: ","] size] equals: 1 describes: "split of empty is #[\"\"]"];
+  [t expect: ["abc" split: 42]    equals: #["abc"] describes: "non-String separator answers #[self]"];
+  [t expect: ["  hi  " trimmed]   equals: "hi" describes: "trimmed"];
+  [t expect: ["   " trimmed]      equals: "" describes: "all-whitespace trims to empty"];
+  [t expect: ["hello" indexOf: "lo"] equals: 3 describes: "indexOf: substring"];
+  [t expect: ["hello" indexOf: "z"]  equals: nil describes: "indexOf: miss is nil"];
+  [t expect: ["hello" indexOf: ""]   equals: 0 describes: "empty needle answers 0"]]];

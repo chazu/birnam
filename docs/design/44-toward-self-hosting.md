@@ -233,12 +233,21 @@ them.
   loop on a low-stakes target. [44a](44a-pilot-error-birnam.md). (~110; also added the
   `Reflect vtableOf:` mirror + `isSymbol:`/`isString:`, and refounded `Symbol` as a
   proper prototype.)
-- **Phase 2 — a low-risk, non-boot-critical target** ✅ SHIPPED as the subcommand
-  collapse (the second option; it also completes Phase 3). The other candidate —
-  more `stdlib` library protocol (string/number/collection utilities, ~100–200) —
-  remains available, though its asLowercase/replace: half waits on Phase 5's
-  StringBuilder. **NOT `modules.zig`** — it is boot-critical (§3 correction);
-  defer it to a deliberate bootstrap-restructure step, not an early one.
+- **Phase 2 — a low-risk, non-boot-critical target** ✅ SHIPPED, both halves.
+  First the subcommand collapse (also completing Phase 3), then the **string
+  library protocol → stdlib.birnam**: isEmpty/notEmpty (via Collection),
+  startsWith:/endsWith:, includesSubstring:, words, and the do:/inject:into:
+  fold (derived over Range's native fold + at:/byteAt:/copyFrom:to:), with the
+  old native arg-guard semantics pinned by modules/stdlib-test.birnam. Two
+  deliberate retentions discovered by MEASURING (a send costs ~1.5–2µs, so a
+  derived per-byte scan over bulk text is ~10× end-to-end — docgen went 4s→39s
+  in the naive all-birnam version): the per-byte SCANNERS split:/trimmed/
+  indexOf: stay native ("lift the surface, keep the native join", as with
+  relational), and asLowercase/asUppercase/replace:with: still wait on Phase 5's
+  StringBuilder. Result: docgen 4s→9.4s (accepted, batch-only), everything
+  interactive unchanged. **NOT `modules.zig`** — it is boot-critical (§3
+  correction); defer it to a deliberate bootstrap-restructure step, not an
+  early one.
 - **Phase 3 ✅ SHIPPED — `main.zig` subcommand collapse.** doc/docgen/--lsp/
   --listen route through ONE generic driver (`runCli`: boot + GC anchor + argv
   handover) to `modules/cli.birnam`, whose `[Cli run:dir:]` dispatches by driving

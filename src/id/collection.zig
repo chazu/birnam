@@ -23,10 +23,15 @@
 //!   Integer (smallint_vt)  to:  → a Range
 //!   Object  (object_vt)    isNil → false,  notNil → true
 //!   nil                    isNil → true,   notNil → false
-//!   String  (string_vt)    , = size isEmpty notEmpty at: byteAt: copyFrom:to:
-//!                          indexOf: includesSubstring: startsWith: endsWith:
-//!                          asLowercase asUppercase trimmed replace:with: words
-//!                          split: do: asSymbol asInteger asNumber printString
+//!   String  (string_vt)    , = size at: byteAt: copyFrom:to:
+//!                          asLowercase asUppercase replace:with:
+//!                          asSymbol asInteger asNumber printString
+//!                          (the byte FLOOR; the derived protocol — isEmpty
+//!                          notEmpty startsWith: endsWith: indexOf:
+//!                          includesSubstring: trimmed split: words do:
+//!                          inject:into: — is self-hosted in stdlib.birnam;
+//!                          asLowercase/asUppercase/replace:with: stay native
+//!                          only until the mutable StringBuilder exists)
 //! Exports the `Vector` / `Range` / `VectorNode` vtables so birnam can name them.
 //!
 //! Also provides the HAMT sibling of the RRB:
@@ -1057,17 +1062,6 @@ fn strReplaceWith(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 /// `aString words` → a Vector of the whitespace-separated runs (empty runs
 /// dropped). Splits on ASCII whitespace only — punctuation stays attached, so
 /// callers strip it first (e.g. via `replace:with:`).
-fn strWords(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    var out = emptyVec();
-    var it = std.mem.tokenizeAny(u8, strBytes(self), " \t\r\n\x0b\x0c");
-    while (it.next()) |word| {
-        out = vecCons(out, g_api.mkString(word.ptr, word.len));
-    }
-    return out;
-}
-
 /// `aString asSymbol` → the interned symbol for these bytes (a stable identity,
 /// so equal strings yield the SAME symbol — usable as an identity map key).
 fn strAsSymbol(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -1097,16 +1091,6 @@ fn strSize(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     return mki(@intCast(strBytes(self).len));
 }
-fn strIsEmpty(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    return boolean(strBytes(self).len == 0);
-}
-fn strNotEmpty(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    return boolean(strBytes(self).len != 0);
-}
 /// `[s at: i]` — the 1-byte String at index i (0-based), or nil if out of range.
 fn strAt(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
@@ -1133,31 +1117,6 @@ fn strCopyFromTo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (from < 0 or to < from or to > s.len) return g_api.nilObj;
     return g_api.mkString(s.ptr + @as(usize, @intCast(from)), @intCast(to - from));
 }
-/// `[s indexOf: sub]` — the 0-based byte index of the first occurrence of the
-/// substring `sub`, or nil if not found (empty `sub` answers 0).
-fn strIndexOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = n;
-    if (!isString(a[0])) return g_api.nilObj;
-    const s = strBytes(self);
-    const sub = strBytes(a[0]);
-    if (std.mem.indexOf(u8, s, sub)) |i| return mki(@intCast(i));
-    return g_api.nilObj;
-}
-fn strIncludesSubstring(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = n;
-    if (!isString(a[0])) return g_api.falseObj;
-    return boolean(std.mem.indexOf(u8, strBytes(self), strBytes(a[0])) != null);
-}
-fn strStartsWith(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = n;
-    if (!isString(a[0])) return g_api.falseObj;
-    return boolean(std.mem.startsWith(u8, strBytes(self), strBytes(a[0])));
-}
-fn strEndsWith(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = n;
-    if (!isString(a[0])) return g_api.falseObj;
-    return boolean(std.mem.endsWith(u8, strBytes(self), strBytes(a[0])));
-}
 fn strAsUppercase(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
@@ -1167,13 +1126,15 @@ fn strAsUppercase(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     for (src, 0..) |ch, i| buf[i] = std.ascii.toUpper(ch);
     return g_api.mkString(buf.ptr, buf.len);
 }
-/// `[s trimmed]` — a copy with leading/trailing ASCII whitespace removed.
-fn strTrimmed(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    const t = std.mem.trim(u8, strBytes(self), " \t\r\n\x0b\x0c");
-    return g_api.mkString(t.ptr, t.len);
-}
+// -- the PERF-RETAINED scanners (docs/design/44 §7 Phase 2) -------------------
+// The derived string PROTOCOL is self-hosted in stdlib.birnam, but the three
+// per-byte SCANNERS below stay native: a birnam send costs ~1.5-2µs (dispatch +
+// boxing), so any per-byte fold over bulk text is ~10× slower end-to-end, and
+// zigdoc sweeps whole Zig sources through split:/trimmed (and indexOf: backs
+// includesSubstring:) for `birnam doc`/`docgen`. Same "lift the surface, keep
+// the native join" pattern as the relational layer — revisit when the send/
+// boxing cost drops (measured: trimmed 330µs/line derived vs ~1µs native).
+
 /// `[s split: sep]` — a Vector of the substrings between (non-overlapping)
 /// occurrences of the separator String. An empty separator answers `#[ s ]`.
 fn strSplit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -1186,23 +1147,22 @@ fn strSplit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     while (it.next()) |part| out = vecCons(out, g_api.mkString(part.ptr, part.len));
     return out;
 }
-/// `[s do: aBlock]` — evaluate the block with each 1-byte String; answers self.
-fn strDo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+/// `[s trimmed]` — a copy with leading/trailing ASCII whitespace removed.
+fn strTrimmed(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
     _ = n;
-    const s = strBytes(self);
-    var i: usize = 0;
-    while (i < s.len) : (i += 1) _ = call1(a[0], g_api.mkString(s.ptr + i, 1));
-    return self;
+    const t = std.mem.trim(u8, strBytes(self), " \t\r\n\x0b\x0c");
+    return g_api.mkString(t.ptr, t.len);
 }
-/// `[s inject: acc into: aBlock]` — the fold primitive over a string's 1-byte
-/// characters, mirroring `strDo`. The `Collection` HOF protocol derives from it.
-fn strInject(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+/// `[s indexOf: sub]` — the 0-based byte index of the first occurrence of the
+/// substring `sub`, or nil if not found (empty `sub` answers 0).
+fn strIndexOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
+    if (!isString(a[0])) return g_api.nilObj;
     const s = strBytes(self);
-    var acc = a[0];
-    var i: usize = 0;
-    while (i < s.len) : (i += 1) acc = call2(a[1], acc, g_api.mkString(s.ptr + i, 1));
-    return acc;
+    const sub = strBytes(a[0]);
+    if (std.mem.indexOf(u8, s, sub)) |i| return mki(@intCast(i));
+    return g_api.nilObj;
 }
 /// `[s asInteger]` — the Integer named by an optional-sign decimal string, or
 /// nil if the whole (trimmed) string is not a valid integer.
@@ -1342,25 +1302,18 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(api.string_vt, api.intern("printString"), &strPrintString);
     api.method(api.string_vt, api.intern("asLowercase"), &strAsLowercase);
     api.method(api.string_vt, api.intern("replace:with:"), &strReplaceWith);
-    api.method(api.string_vt, api.intern("words"), &strWords);
     api.method(api.string_vt, api.intern("asSymbol"), &strAsSymbol);
     // String: the basic protocol every program assumes.
     api.method(api.string_vt, api.intern("="), &strEquals);
     api.method(api.string_vt, api.intern("size"), &strSize);
-    api.method(api.string_vt, api.intern("isEmpty"), &strIsEmpty);
-    api.method(api.string_vt, api.intern("notEmpty"), &strNotEmpty);
     api.method(api.string_vt, api.intern("at:"), &strAt);
     api.method(api.string_vt, api.intern("byteAt:"), &strByteAt);
     api.method(api.string_vt, api.intern("copyFrom:to:"), &strCopyFromTo);
-    api.method(api.string_vt, api.intern("indexOf:"), &strIndexOf);
-    api.method(api.string_vt, api.intern("includesSubstring:"), &strIncludesSubstring);
-    api.method(api.string_vt, api.intern("startsWith:"), &strStartsWith);
-    api.method(api.string_vt, api.intern("endsWith:"), &strEndsWith);
     api.method(api.string_vt, api.intern("asUppercase"), &strAsUppercase);
-    api.method(api.string_vt, api.intern("trimmed"), &strTrimmed);
+    // The perf-retained scanners (see the block comment above strSplit).
     api.method(api.string_vt, api.intern("split:"), &strSplit);
-    api.method(api.string_vt, api.intern("do:"), &strDo);
-    api.method(api.string_vt, api.intern("inject:into:"), &strInject); // fold over chars
+    api.method(api.string_vt, api.intern("trimmed"), &strTrimmed);
+    api.method(api.string_vt, api.intern("indexOf:"), &strIndexOf);
     api.method(api.string_vt, api.intern("asInteger"), &strAsInteger);
     api.method(api.string_vt, api.intern("asNumber"), &strAsNumber);
 

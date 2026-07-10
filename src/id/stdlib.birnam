@@ -179,8 +179,13 @@
 // object itself). `[Reflect vtableOf: x]` is the one floor primitive; each
 // predicate compares an object's vtable to an EXEMPLAR's — so it is independent of
 // how a kind's prototype is exported (docs/design/44a).
-[Reflect defineMethod: #isSymbol: on: Reflect as: [:self :x | [[self vtableOf: x] == [self vtableOf: #s]]]];
-[Reflect defineMethod: #isString: on: Reflect as: [:self :x | [[self vtableOf: x] == [self vtableOf: ""]]]];
+// The exemplar vtables are taken ONCE at load (still export-shape-independent —
+// derived from exemplar values, not from how a kind's prototype is exported);
+// re-deriving per query would allocate a fresh "" on every string-protocol guard.
+[Globals at: #SymbolExemplarVt put: [Reflect vtableOf: #s]];
+[Globals at: #StringExemplarVt put: [Reflect vtableOf: ""]];
+[Reflect defineMethod: #isSymbol: on: Reflect as: [:self :x | [[self vtableOf: x] == SymbolExemplarVt]]];
+[Reflect defineMethod: #isString: on: Reflect as: [:self :x | [[self vtableOf: x] == StringExemplarVt]]];
 
 // Does a caught error's kind satisfy an on:do: spec? the wildcard #error, an exact
 // kind symbol, or any collection of kinds. A single symbol short-circuits to false
@@ -218,4 +223,70 @@
 
 // Raise from a message string: ["boom" error] → #error; ["boom" error: #kind].
 [Reflect defineMethod: #error  on: String as: [:self | [Error message: self]]];
-[Reflect defineMethod: #error: on: String as: [:self :kind | [Error kind: kind message: self]]]
+[Reflect defineMethod: #error: on: String as: [:self :kind | [Error kind: kind message: self]]];
+
+// ── String: the derived protocol over the byte floor (docs/design/44 Phase 2) ──
+//
+// The String FLOOR is: size, at: (1-byte String), byteAt: (Integer), copyFrom:to:
+// (slice-or-nil), `,` (concat), `=`, printString, asSymbol, asInteger, asNumber —
+// plus two native families that are DELIBERATE retentions: asLowercase/
+// asUppercase/replace:with: (they BUILD byte content; wait on the Phase-5
+// StringBuilder) and the per-byte SCANNERS split:/trimmed/indexOf: (a send costs
+// ~1.5-2µs, so a derived scan over bulk text — zigdoc sweeping Zig sources for
+// doc/docgen — is ~10× slower; "lift the surface, keep the native join").
+// Everything else derives here. Iteration rides Range's native fold ([0 to: n]
+// inject:/do: — an empty range, start > stop, iterates zero times), so String's
+// whole Collection protocol (collect:/select:/detect:/…, and isEmpty/notEmpty
+// from Collection itself) follows. Arg guards mirror the old native semantics:
+// a non-String argument answers false (predicates) rather than erroring, via
+// the [Reflect isString:] mirror.
+
+// The fold primitive, derived: fold the 1-byte Strings through Range's fold.
+[Reflect defineMethod: #inject:into: on: String
+   as: [:self :acc :blk | [[0 to: [[self size] - 1]]
+      inject: acc into: [:a :i | [blk value: a value: [self at: i]]]]]];
+
+// do: — evaluate the block with each 1-byte String; answers self.
+[Reflect defineMethod: #do: on: String
+   as: [:self :blk |
+      [[0 to: [[self size] - 1]] do: [:i | [blk value: [self at: i]]]];
+      self]];
+
+[Reflect defineMethod: #startsWith: on: String as: [:self :prefix |
+   [[Reflect isString: prefix]
+      ifTrue:  [| [[self copyFrom: 0 to: [prefix size]] = prefix]]
+      ifFalse: [| false]]] doc:
+   "True iff the receiver begins with `prefix` (every string starts with the empty string; a non-String answers false)."];
+
+[Reflect defineMethod: #endsWith: on: String as: [:self :suffix |
+   [[Reflect isString: suffix]
+      ifTrue:  [| [[self copyFrom: [[self size] - [suffix size]] to: [self size]] = suffix]]
+      ifFalse: [| false]]] doc:
+   "True iff the receiver ends with `suffix` (a too-long slice is nil, which compares false; a non-String answers false)."];
+
+// includesSubstring: — the surface over the native indexOf: scanner; indexOf:'s
+// guards (non-String → nil, empty needle → 0) give exactly the right booleans.
+[Reflect defineMethod: #includesSubstring: on: String as: [:self :sub |
+   [[self indexOf: sub] notNil]] doc:
+   "True iff `sub` occurs in the receiver (empty `sub` is everywhere; a non-String answers false)."];
+
+// Internal: the six ASCII whitespace bytes (space \t \n \v \f \r), as trimmed/
+// words define them — matching the native set exactly.
+[Reflect defineMethod: #isWhitespaceByte: on: String as: [:self :b |
+   [[[b = 32] | [b = 9]] | [[[b = 10] | [b = 11]] | [[b = 12] | [b = 13]]]]]];
+
+// words — the whitespace-run tokenizer: thread #[parts runStart], runStart nil
+// while inside whitespace; empty runs never open, so they are dropped.
+[Reflect defineMethod: #words on: String as: [:self |
+   let res := [[0 to: [[self size] - 1]] inject: #[ #[] nil ] into: [:acc :i |
+      [[self isWhitespaceByte: [self byteAt: i]]
+         ifTrue:  [| [[[acc at: 1] isNil]
+                        ifTrue:  [| acc]
+                        ifFalse: [| #[ [[acc at: 0] add: [self copyFrom: [acc at: 1] to: i]] nil ]]]]
+         ifFalse: [| [[[acc at: 1] isNil]
+                        ifTrue:  [| #[ [acc at: 0] i ]]
+                        ifFalse: [| acc]]]]]];
+   [[[res at: 1] isNil]
+      ifTrue:  [| [res at: 0]]
+      ifFalse: [| [[res at: 0] add: [self copyFrom: [res at: 1] to: [self size]]]]]] doc:
+   "A Vector of the whitespace-separated runs (empty runs dropped; punctuation stays attached)."]
