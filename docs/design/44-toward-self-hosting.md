@@ -1,6 +1,9 @@
 # 44 — Toward Self-Hosting (shrink the Zig, keep the from-zero bootstrap)
 
-> **Status:** Analysis (2026-07-09, rev. 2 after adversarial review). A findings
+> **Status:** Analysis (2026-07-09, rev. 2 after adversarial review; rev. 3
+> 2026-07-10 records Phases 1–3 shipped, the measured ~1.5–2µs send constant
+> that now gates migration choices, and the console-REPL target discovered
+> during the subcommand collapse). A findings
 > document, not a plan of record. Builds on [43 — Modules & the Self-Hosted
 > Layer](43-modules-and-config.md) (the staging model this extends),
 > [42 — Object Canonical](42-object-canonical-relational-derived.md),
@@ -129,10 +132,11 @@ honest near-term figure is **~700–750 LOC**, plus a perf-gated relational slic
 | Target | Zig removable | Notes |
 |---|---:|---|
 | `error.zig` protocol → birnam | ~110 ✅ SHIPPED | The control-flow protocol (`on:do:`/`ensure:`/`ifError:`/`printString`/String raising) moved; the representation, the **DNU swap** (`objDnu`, installed on `object_vt`), and the factory stay in core. [44a](44a-pilot-error-birnam.md). Actual: `error.zig` 286→179. |
-| `main.zig` subcommand boot-strings | ~200 | Collapse `runLsp`/`runDoc`/`runDocgen`/`runListen` to "load the birnam module, pass argv." The single `evalPersisting:` line moves; the driver frame stays (2b). |
-| more `stdlib` library protocol | ~100–200 | String/number/collection utilities currently in Zig but **not boot-critical** — pure additive migration, same loop the error pilot proved. |
-| **Near-term total (clean, low-risk)** | **~400–500** | Invariant untouched, no duplication. |
-| `relational.zig` **surface** (Tier B) | ~300–400 | Perf-gated. Lift query planning/negation/aggregation wiring; **keep the native nested-loop join** (`relational.zig:383`) — part of the read-10–50× budget. Partial, behind a benchmark. |
+| `main.zig` subcommand boot-strings | ~200 ✅ SHIPPED | Collapsed `runLsp`/`runDoc`/`runDocgen`/`runListen` to one generic `runCli` → `modules/cli.birnam` ("load the dispatcher, pass argv"); the driver frame stays (2b). Actual: `main.zig` 1371→1276. |
+| more `stdlib` library protocol | ~100–200 ✅ SHIPPED (measured-partial) | The string protocol moved (isEmpty/notEmpty/startsWith:/endsWith:/includesSubstring:/words/do:/inject:into:); the per-byte **scanners** split:/trimmed/indexOf: are **perf-retained natives** (see §7 Phase 2 — a send measures ~1.5–2µs, so derived bulk scans are ~10×), and asLowercase/asUppercase/replace:with: wait on the Phase-5 StringBuilder. Actual: `collection.zig` 1405→1358. |
+| `main.zig` console REPL (rev. 3 addition) | ~190 | Discovered during the collapse: `readRawLine`/`isBalanced`/`readForm`/`printResult`/`listGlobals`/`replHelp`/`replCommand`/`runRepl` duplicate machinery `modules/repl.birnam` already has in birnam. Needs the `@embedFile` treatment (like stdlib/toml/config) so bare `birnam` stays zero-config, and the `:jit`/`:demote`/`:autojit`/`:globals` toggles ported as sends. |
+| **Near-term total (clean, low-risk)** | **~400–500** (≈252 shipped, ~190 REPL remaining) | Invariant untouched, no duplication. |
+| `relational.zig` **surface** (Tier B) | ~300–400 | Perf-gated. Lift query planning/negation/aggregation wiring; **keep the native nested-loop join** (`relational.zig:383`) — part of the read-10–50× budget. Partial, behind a benchmark. The measured send constant (§7 Phase 2) predicts per-ROW derived loops miss the gate the same way per-byte scans did — expect only the surface wiring to pass. |
 
 **`modules.zig` is NOT a clean near-term deletion (rev. 2 correction).** Rev. 1 called
 it "~330 clean deletion, highest-value." Reassessment (2026-07-09) shows it is
@@ -272,9 +276,12 @@ them.
   is **not** a ratio move.
 
 Projected source-tree end state before Phase 6: Zig **13,039 → ~11,900–12,000**
-(delete ~730 near-term + ~350 relational). Modest — because §1: the system is
-already self-hosted wherever it was cheap to be. The floor+driver+bootstrap-compiler
-(~11,100) is the durable core, and most of it is *supposed* to be Zig.
+(delete ~730 near-term + ~350 relational). **Actual after Phases 1–3
+(2026-07-10): 12,835** — on the projected trajectory with the console REPL
+(~190) still to go and the string scanners deliberately retained. Modest —
+because §1: the system is already self-hosted wherever it was cheap to be. The
+floor+driver+bootstrap-compiler (~11,100) is the durable core, and most of it
+is *supposed* to be Zig.
 
 ## 8. Risks & non-goals
 
