@@ -282,10 +282,12 @@ fn vecNew(api: *idapi.IdApi) Oop {
     return s0(api.import("Vector"), "new");
 }
 
-test "collection: String asLowercase / replace:with: (the byte-building floor)" {
+test "collection: String replace:with: (the hot native rewriter)" {
     const api = setup();
 
-    try std.testing.expect(strEq(s0(api.mkString("HeLLo", 5), "asLowercase"), "hello"));
+    // asLowercase/asUppercase are self-hosted over StringBuilder now (stdlib.birnam,
+    // pinned in modules/stdlib-test.birnam); replace:with: stays native — json/html
+    // escaping runs it on every LSP message and docgen string.
     // replace: strips both punctuation marks; chained like word-frequency does.
     const cleaned = s2(api.mkString("a.b,c.", 6), "replace:with:", api.mkString(".", 1), api.mkString("", 0));
     try std.testing.expect(strEq(cleaned, "ab,c"));

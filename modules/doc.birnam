@@ -184,50 +184,61 @@
 [Reflect defineMethod: #text: on: Doc as: [:self :mod |
   let name    := [self nameOf: mod];
   let summary := [[db cellFor: mod attr: #docSummary] value];
-  let header  := [[name , "\n"] , [summary , "\n\n"]];
-  [[self methodsOf: mod] inject: header into: [:acc :e |
+  let sb := [StringBuilder new];
+  [sb add: [[name , "\n"] , [summary , "\n\n"]]];
+  [[self methodsOf: mod] do: [:e |
     let sel := [self nameOf: [[db cellFor: e attr: #sel] value]];
     let txt := [[db cellFor: e attr: #text] value];
-    [acc , [["  " , sel] , [["\n      " , txt] , "\n"]]]]]]];
+    [sb add: [["  " , sel] , [["\n      " , txt] , "\n"]]]]];
+  [sb asString]]];
 
 // -- rendering: Markdown ------------------------------------------------------
 
 [Reflect defineMethod: #markdownForModule: on: Doc as: [:self :mod |
   let name    := [self nameOf: mod];
   let summary := [[db cellFor: mod attr: #docSummary] value];
-  let header  := ["# " , name , "\n\n" , summary , "\n\n"];
-  [[self methodsOf: mod] inject: header into: [:acc :e |
+  let sb := [StringBuilder new];
+  [sb add: ["# " , name , "\n\n" , summary , "\n\n"]];
+  [[self methodsOf: mod] do: [:e |
     let sel := [self nameOf: [[db cellFor: e attr: #sel] value]];
     let txt := [[db cellFor: e attr: #text] value];
-    [acc , "- `" , sel , "` — " , txt , "\n"]]]]];
+    [sb add: ["- `" , sel , "` — " , txt , "\n"]]]];
+  [sb asString]]];
 
 // Every documented module's Markdown, back to back (module order unspecified).
 [Reflect defineMethod: #markdownAll on: Doc as: [:self |
-  [[self modules] inject: "" into: [:acc :m | [acc , [self markdownForModule: m] , "\n"]]]]];
+  let sb := [StringBuilder new];
+  [[self modules] do: [:m | [[sb add: [self markdownForModule: m]] add: "\n"]]];
+  [sb asString]]];
 
 // -- rendering: HTML (composes modules/html.birnam) ---------------------------
 
 [Reflect defineMethod: #htmlForModule: on: Doc as: [:self :mod |
   let name    := [self nameOf: mod];
   let summary := [[db cellFor: mod attr: #docSummary] value];
-  let items   := [[self methodsOf: mod] inject: "" into: [:acc :e |
+  let items   := [StringBuilder new];
+  [[self methodsOf: mod] do: [:e |
     let sel  := [self nameOf: [[db cellFor: e attr: #sel] value]];
     let txt  := [[db cellFor: e attr: #text] value];
     let code := [Html tag: "code" text: sel];
-    [acc , [Html tag: "li" body: [code , " — " , [Html escape: txt]]]]]];
+    [items add: [Html tag: "li" body: [code , " — " , [Html escape: txt]]]]]];
   [[Html tag: "h1" text: name]
     , [Html tag: "p" text: summary]
-    , [Html tag: "ul" body: items]]]];
+    , [Html tag: "ul" body: [items asString]]]]];
 
 // One HTML page for EVERY documented module: a nav list + a section each.
+// (Accumulation rides StringBuilder — `secs` is the WHOLE page body, the single
+// biggest string docgen builds; the old inject `,` fold re-copied it per module.)
 [Reflect defineMethod: #htmlIndex on: Doc as: [:self |
   let me := self;
-  let nav := [[self modules] inject: "" into: [:acc :m |
+  let nav := [StringBuilder new];
+  [[self modules] do: [:m |
     let nm := [self nameOf: m];
-    [acc , [Html tag: "li" body: [Html tag: "a" attrs: [Html attr: "href" value: ["#" , nm]] body: nm]]]]];
-  let secs := [[self modules] inject: "" into: [:acc :m |
-    [acc , [Html tag: "section" attrs: [Html attr: "id" value: [self nameOf: m]] body: [me htmlForModule: m]]]]];
-  let body := [[Html tag: "nav" body: [Html tag: "ul" body: nav]] , secs];
+    [nav add: [Html tag: "li" body: [Html tag: "a" attrs: [Html attr: "href" value: ["#" , nm]] body: nm]]]]];
+  let secs := [StringBuilder new];
+  [[self modules] do: [:m |
+    [secs add: [Html tag: "section" attrs: [Html attr: "id" value: [self nameOf: m]] body: [me htmlForModule: m]]]]];
+  let body := [[Html tag: "nav" body: [Html tag: "ul" body: [nav asString]]] , [secs asString]];
   [Html page: "birnam documentation" body: body]]];
 
 // True for a loadable LIBRARY module file (excludes tests, run-tests, and the doc

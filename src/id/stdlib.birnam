@@ -163,6 +163,47 @@
   [self value]] doc:
   "Drop a numeric cell by one; answers the new value."];
 
+// -- StringBuilder sugar + the byte transforms it unlocks (docs/44 Phase 5) -------
+// The builder itself is native (collection.zig): add:/addByte: are bulk/byte
+// appends into a mutable buffer, asString materializes once. These are the
+// birnam conveniences over it, plus asUppercase/asLowercase lifted OUT of Zig —
+// cold-path byte transforms a to:do: + addByte: loop expresses fine. (The HOT
+// per-byte string work stays native: split:/trimmed/indexOf: — the scanners —
+// and replace:with:, which json/html escaping runs on every LSP message and
+// docgen string.)
+[Reflect defineMethod: #addLine: on: StringBuilderVt as: [:self :x |
+   [[self add: x] add: "
+"]] doc:
+   "Append x (printString-coerced like add:) then a newline; answers self."];
+[Reflect defineMethod: #addAll: on: StringBuilderVt as: [:self :coll |
+   [coll do: [:e | [self add: e]]];
+   self] doc:
+   "Append every element of coll in order; answers self."];
+[Reflect defineMethod: #isEmpty on: StringBuilderVt as: [:self | [[self size] = 0]]];
+
+// All elements appended into one String — the O(n) way to fold strings together
+// (an `inject:into:` fold over `,` copies O(n²) bytes; docgen measured it).
+[Reflect defineMethod: #joined on: Collection as: [:self |
+   let sb := [StringBuilder new];
+   [self do: [:e | [sb add: e]]];
+   [sb asString]] doc:
+   "One String of every element in order, printString-coercing non-Strings; O(n) via StringBuilder."];
+
+[Reflect defineMethod: #asUppercase on: String as: [:self |
+   let sb := [StringBuilder new];
+   [0 to: [[self size] - 1] do: [:i |
+      let b := [self byteAt: i];
+      [sb addByte: [[[b >= 97] & [b <= 122]] ifTrue: [| [b - 32]] ifFalse: [| b]]]]];
+   [sb asString]] doc:
+   "A fresh String with ASCII a-z folded to uppercase (other bytes untouched)."];
+[Reflect defineMethod: #asLowercase on: String as: [:self |
+   let sb := [StringBuilder new];
+   [0 to: [[self size] - 1] do: [:i |
+      let b := [self byteAt: i];
+      [sb addByte: [[[b >= 65] & [b <= 90]] ifTrue: [| [b + 32]] ifFalse: [| b]]]]];
+   [sb asString]] doc:
+   "A fresh String with ASCII A-Z folded to lowercase (other bytes untouched)."];
+
 // -- Equality: identity by default; value/structural where it has meaning (§B3) ----
 //
 // `=` on Object is identity over the floor's `==`. Integer/Float/String override it

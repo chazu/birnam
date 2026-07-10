@@ -70,6 +70,7 @@ pub var range_vt: Oop = null; // lazy integer range
 pub var hnode_vt: Oop = null; // HAMT node: payload = header + [2*k]Oop entry slots
 pub var map_vt: Oop = null; // persistent hash-array-mapped map
 pub var collection_vt: Oop = null; // shared abstract parent of vector/range/map/string
+pub var sb_vt: Oop = null; // StringBuilder: MUTABLE byte buffer (docs/44 Phase 5)
 
 // Cached selectors for invoking caller blocks (value / value: / value:value:).
 var s_value: Oop = null;
@@ -980,16 +981,99 @@ fn strBytes(o: Oop) []const u8 {
     return p[0..len];
 }
 
-/// `aString asLowercase` → a fresh String with ASCII A–Z folded to lowercase.
-fn strAsLowercase(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+// -- StringBuilder: the mutable byte buffer (docs/44 Phase 5) ------------------
+//
+// Strings are immutable/persistent, so building an n-byte string by repeated `,`
+// copies O(n²) bytes (docgen measured this the hard way). The builder is the
+// amortized-O(1) accumulator: `add:` appends a whole String's bytes in ONE send
+// (bulk memcpy — lift the surface, keep the native join), `addByte:` appends one
+// raw byte (the per-byte floor for birnam-authored transforms like asUppercase),
+// and `asString` materializes once. EPHEMERAL by design: the buffer is raw
+// malloc'd state reclaimed by a GC finalizer (like a Tcc unit) — a builder does
+// not survive an image save; build, materialize, drop.
+
+const SbState = extern struct { ptr: ?[*]u8, len: usize, cap: usize };
+
+fn sbOf(o: Oop) *SbState {
+    return @ptrCast(@alignCast(o));
+}
+
+fn sbFinalize(o: Oop) callconv(.c) void {
+    const s = sbOf(o);
+    if (s.ptr) |p| ca.free(p[0..s.cap]);
+}
+
+/// Grow the buffer (geometric) so `extra` more bytes fit.
+fn sbEnsure(s: *SbState, extra: usize) void {
+    const need = s.len + extra;
+    if (need <= s.cap) return;
+    var ncap: usize = if (s.cap == 0) 64 else s.cap;
+    while (ncap < need) ncap *= 2;
+    const nbuf = ca.alloc(u8, ncap) catch @panic("collection: oom");
+    if (s.ptr) |p| {
+        @memcpy(nbuf[0..s.len], p[0..s.len]);
+        ca.free(p[0..s.cap]);
+    }
+    s.ptr = nbuf.ptr;
+    s.cap = ncap;
+}
+
+/// `[StringBuilder new]` — a fresh, empty builder (each gets its own buffer;
+/// `clone` aliases, so the one-verb convention holds).
+fn sbNew(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
     _ = a;
     _ = n;
-    const src = strBytes(self);
-    const buf = ca.alloc(u8, src.len) catch @panic("collection: oom");
-    defer ca.free(buf);
-    for (src, 0..) |ch, i| buf[i] = std.ascii.toLower(ch);
-    return g_api.mkString(buf.ptr, buf.len);
+    const o = g_api.alloc(sb_vt, @sizeOf(SbState));
+    sbOf(o).* = .{ .ptr = null, .len = 0, .cap = 0 };
+    g_api.setFinalizer(o, &sbFinalize);
+    return o;
 }
+
+/// `[sb add: x]` — append x's bytes; a non-String is rendered via printString
+/// first (the `,` coercion rule, including its never-untag-garbage guard).
+/// Answers self, so appends chain: `[[[sb add: a] add: b] add: c]`.
+fn sbAdd(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    var arg = a[0];
+    if (!isString(arg)) arg = g_api.send(arg, s_printString, &[_]Oop{}, 0);
+    if (!isString(arg)) return self; // a non-String printString contributes nothing
+    const bytes = strBytes(arg);
+    const s = sbOf(self);
+    sbEnsure(s, bytes.len);
+    @memcpy(s.ptr.?[s.len..][0..bytes.len], bytes);
+    s.len += bytes.len;
+    return self;
+}
+
+/// `[sb addByte: i]` — append one raw byte (i mod 256). The per-byte floor that
+/// lets byte-transform methods (asUppercase/asLowercase) be authored in birnam.
+fn sbAddByte(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const s = sbOf(self);
+    sbEnsure(s, 1);
+    s.ptr.?[s.len] = @truncate(@as(u64, @bitCast(iv(a[0]))));
+    s.len += 1;
+    return self;
+}
+
+/// `[sb size]` — the byte count accumulated so far.
+fn sbSize(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    return mki(@intCast(sbOf(self).len));
+}
+
+/// `[sb asString]` — materialize the contents as an immutable String (one copy).
+/// The builder stays usable (and unchanged) afterwards.
+fn sbAsString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const s = sbOf(self);
+    if (s.ptr) |p| return g_api.mkString(p, s.len);
+    return g_api.mkString("", 0);
+}
+
 
 /// `aString replace: needle with: repl` → a fresh String with every non-
 /// overlapping occurrence of `needle` replaced by `repl`. An empty needle is a
@@ -1072,15 +1156,6 @@ fn strCopyFromTo(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const to = iv(a[1]);
     if (from < 0 or to < from or to > s.len) return g_api.nilObj;
     return g_api.mkString(s.ptr + @as(usize, @intCast(from)), @intCast(to - from));
-}
-fn strAsUppercase(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    const src = strBytes(self);
-    const buf = ca.alloc(u8, src.len) catch @panic("collection: oom");
-    defer ca.free(buf);
-    for (src, 0..) |ch, i| buf[i] = std.ascii.toUpper(ch);
-    return g_api.mkString(buf.ptr, buf.len);
 }
 // -- the PERF-RETAINED scanners (docs/design/44 §7 Phase 2) -------------------
 // The derived string PROTOCOL is self-hosted in stdlib.birnam, but the three
@@ -1202,6 +1277,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
         hnode_vt = api.import("MapNode");
         map_vt = api.import("MapVt");
     } else {
+        // (StringBuilder is guarded on its OWN export below — an image saved
+        // before it existed re-imports everything else here but mints it fresh.)
         // `Collection` is a shared abstract layer between the concrete families and
         // `object_vt`: the higher-order protocol (collect:/select:/…) is authored
         // ONCE on it in stdlib.birnam over the single native fold `inject:into:`, and
@@ -1284,7 +1361,6 @@ pub fn bringUp(api: *idapi.IdApi) void {
     // String: concatenation + a self-returning printString (for Vector/Map print).
     api.method(api.string_vt, api.intern(","), &strComma);
     api.method(api.string_vt, api.intern("printString"), &strPrintString);
-    api.method(api.string_vt, api.intern("asLowercase"), &strAsLowercase);
     api.method(api.string_vt, api.intern("replace:with:"), &strReplaceWith);
     api.method(api.string_vt, api.intern("asSymbol"), &strAsSymbol);
     // String: the basic protocol every program assumes.
@@ -1293,7 +1369,6 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(api.string_vt, api.intern("at:"), &strAt);
     api.method(api.string_vt, api.intern("byteAt:"), &strByteAt);
     api.method(api.string_vt, api.intern("copyFrom:to:"), &strCopyFromTo);
-    api.method(api.string_vt, api.intern("asUppercase"), &strAsUppercase);
     // The perf-retained scanners (see the block comment above strSplit).
     api.method(api.string_vt, api.intern("split:"), &strSplit);
     api.method(api.string_vt, api.intern("trimmed"), &strTrimmed);
@@ -1330,6 +1405,29 @@ pub fn bringUp(api: *idapi.IdApi) void {
         // returns it as-is). There is no `[Collection new]` — it's never instantiated.
         _ = api.exportObj("Collection", collection_vt);
         _ = api.exportObj("CollectionVt", collection_vt);
+    }
+
+    // StringBuilder — guarded on its own export (not `reloading`) so images saved
+    // before it existed still boot with a fresh family. NOT a Collection: it has
+    // no elements to fold over — it is a byte sink (`size` + the adds only).
+    if (api.isExported("StringBuilder") != 0) {
+        sb_vt = api.import("StringBuilderVt");
+    } else {
+        sb_vt = api.proto(api.object_vt);
+    }
+    api.setLayout(sb_vt, null, 0, idapi.slot_raw); // {ptr,len,cap} — raw words
+    api.method(sb_vt, api.intern("new"), &sbNew);
+    api.method(sb_vt, api.intern("clone"), &sbNew);
+    api.method(sb_vt, api.intern("add:"), &sbAdd);
+    api.method(sb_vt, api.intern("addByte:"), &sbAddByte);
+    api.method(sb_vt, api.intern("size"), &sbSize);
+    api.method(sb_vt, api.intern("asString"), &sbAsString);
+    api.method(sb_vt, api.intern("printString"), &sbAsString); // prints as its contents (so `,` coerces usefully)
+    if (api.isExported("StringBuilder") == 0) {
+        const sb_proto = sbNew(g_api.nilObj, undefined, 0);
+        api.setOwner(sb_vt, sb_proto);
+        _ = api.exportObj("StringBuilder", sb_proto);
+        _ = api.exportObj("StringBuilderVt", sb_vt);
     }
 }
 

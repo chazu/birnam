@@ -63,8 +63,8 @@
 // -- helpers ------------------------------------------------------------------
 
 [Reflect defineMethod: #join: on: Html as: [:self :parts |
-  [parts inject: "" into: [:acc :x | [acc , x]]]] doc:
-  "Join a Vector of strings into one (for lists of built children)."];
+  [parts joined]] doc:
+  "Join a Vector of strings into one (for lists of built children). O(n) via StringBuilder — the old inject `,` fold copied O(n²) bytes."];
 
 [Reflect defineMethod: #page:body: on: Html as: [:self :title :body |
   let head := [self tag: "head" body: [self tag: "title" text: title]];

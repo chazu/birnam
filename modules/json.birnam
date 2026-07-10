@@ -219,7 +219,10 @@
   r]];
 
 // Join already-rendered parts with commas (shared by array + object rendering).
+// StringBuilder-backed: an LSP response serializes per message, and the old
+// inject `,` fold copied O(n²) bytes over large arrays/objects.
 [Reflect defineMethod: #joinComma: on: Json as: [:self :parts |
-  let r := [parts inject: "" into: [:acc :p |
-    [[acc isEmpty] ifTrue: [| p] ifFalse: [| [[acc , ","] , p]]]]];
-  r]]
+  let sb := [StringBuilder new];
+  [parts do: [:p |
+    [[[sb size] = 0] ifTrue: [| [sb add: p]] ifFalse: [| [[sb add: ","] add: p]]]]];
+  [sb asString]]]

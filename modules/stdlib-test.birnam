@@ -28,6 +28,28 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: ["abc" first] equals: "a" describes: "string first (new, via Collection)"];
   [t expect: [{#a -> 1} at: #a ifAbsent: [| 9]] equals: 1 describes: "map keeps its key-based native at:ifAbsent:"]]];
 
+[s test: "StringBuilder: bulk add, coercion, addByte:, addLine:, addAll:, joined" do: [:t |
+  let sb := [StringBuilder new];
+  [[[sb add: "ab"] add: 42] addByte: 33];
+  [t expect: [sb asString] equals: "ab42!" describes: "add coerces via printString; addByte appends raw"];
+  [t expect: [sb size] equals: 5 describes: "size counts bytes"];
+  [t expect: [[StringBuilder new] asString] equals: "" describes: "empty builder is the empty string"];
+  [t expect: [[StringBuilder new] isEmpty] equals: true describes: "isEmpty rides size"];
+  [t expect: [#["a" "b" "c"] joined] equals: "abc" describes: "Collection joined is the O(n) fold"];
+  let lb := [StringBuilder new];
+  [lb addLine: "x"];
+  [t expect: [lb size] equals: 2 describes: "addLine: appends the newline"];
+  let s2 := [StringBuilder new];
+  [s2 addAll: #["x" 1 "y"]];
+  [t expect: [s2 asString] equals: "x1y" describes: "addAll: appends each element in order"]]];
+
+[s test: "asUppercase / asLowercase: birnam over the builder, old semantics pinned" do: [:t |
+  [t expect: ["HeLLo" asLowercase] equals: "hello" describes: "asLowercase folds A-Z"];
+  [t expect: ["HeLLo" asUppercase] equals: "HELLO" describes: "asUppercase folds a-z"];
+  [t expect: ["" asUppercase] equals: "" describes: "empty stays empty"];
+  [t expect: ["a1! Z" asUppercase] equals: "A1! Z" describes: "non-letters pass through"];
+  [t expect: ["a1! Z" asLowercase] equals: "a1! z" describes: "non-letters pass through (lower)"]]];
+
 [s test: "startsWith: incl. empty prefix, too-long prefix, non-String" do: [:t |
   [t expect: ["hello" startsWith: "he"]     equals: true  describes: "plain prefix"];
   [t expect: ["hello" startsWith: "hello"]  equals: true  describes: "whole string"];
