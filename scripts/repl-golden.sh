@@ -162,6 +162,22 @@ birnam> "
 check "image boot: doc'd stdlib string protocol survives (incl. guards)" "$expected" "$actual"
 rm -rf "$tdir"
 
+# ---- booted-image modules: a module singleton + its Alien wraps survive the boot.
+# Time is the canonical case: `[Globals at: #Time put: [Object clone]]` (a private
+# vtable — serialized under its exported parent, re-specialised by the replayed
+# installs) + a native gettimeofday trampoline (recorded as an `__aliens__` fact,
+# re-wrapped by replayAliens). This locks the whole chain: singleton survival →
+# installs land on it → wrap replay. Run from the repo root (module paths).
+tdir=$(mktemp -d)
+printf '[System load: "modules/time.birnam"]\n[System saveImage: "%s/mod.image"]\n:quit\n' "$tdir" | "$BIN" --repl >/dev/null 2>&1
+actual=$(printf '[Globals includes: #Time]\n[[Time nowMillis] > 1700000000000]\n:quit\n' | "$BIN" "$tdir/mod.image" 2>&1)
+expected="$BANNER
+birnam> true
+birnam> true
+birnam> "
+check "image boot: a module singleton and its Alien wraps survive" "$expected" "$actual"
+rm -rf "$tdir"
+
 echo "----"
 echo "repl-golden: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

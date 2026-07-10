@@ -16,6 +16,8 @@ const lang = @import("lang.zig");
 const tcc = @import("tcc.zig");
 const codegen = @import("codegen.zig");
 const modules = @import("modules.zig");
+const err_mod = @import("error.zig");
+const alien = @import("alien.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
@@ -304,6 +306,93 @@ test "round-trip: a user method's compiled code is mapped (default), replayed (-
     try std.testing.expect(!image.mappedCode());
     _ = api.send(Codegen, api.intern("replayMethods"), &.{}, 0); // what runImage does on the false branch
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api.mkSmallInt(5), "quad", &.{})));
+}
+
+/// setupWithCodegen + error + Alien: the FFI stack, for wrap-replay round-trips.
+fn setupWithAlien() *idapi.IdApi {
+    const api = setupWithCodegen();
+    err_mod.bringUp(api);
+    alien.bringUp(api);
+    return api;
+}
+
+test "round-trip: an Alien wrap is recorded (`__aliens__`), deduped, and replayed" {
+    const api = setupWithAlien();
+    const Codegen = api.import("Codegen").?;
+    const Store = api.import("Store").?;
+    const aliens = api.intern("__aliens__");
+    const attrCount = api.intern("attrCount:");
+
+    // A successful wrap records its send as replayable source (a native
+    // trampoline can't ride the image). Re-running the same wrap records
+    // NOTHING new (by-value dedupe); a wrap on an ANONYMOUS target — resolvable
+    // under no name at replay time — is installed but deliberately unrecorded.
+    const w = "[Alien wrap: \"strlen\" signature: \"l s\" as: #cStrlen on: String]";
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(w.ptr, w.len)}, 1);
+    const hello = api.mkString("hello", 5);
+    try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(send(hello, "cStrlen", &.{})));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(Store, attrCount, &.{aliens}, 1)));
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(w.ptr, w.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(Store, attrCount, &.{aliens}, 1)));
+    const anon = "[Alien wrap: \"strlen\" signature: \"l s\" as: #anonLen on: [Object clone]]";
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(anon.ptr, anon.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(Store, attrCount, &.{aliens}, 1)));
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const path = try std.fs.path.join(a, &.{ dir, "wrap.image" });
+    defer a.free(path);
+
+    try std.testing.expect(image.saveImage(path));
+    try std.testing.expect(image.loadImage(path));
+
+    // The record survived the round-trip; replay re-evaluates it cleanly (the
+    // boot path calls this after code resolution) and re-enters the recorder,
+    // whose dedupe keeps the journal quiet. The trampoline works after.
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(Store, attrCount, &.{aliens}, 1)));
+    const n = api.send(Codegen, api.intern("replayAliens"), &.{}, 0);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(n));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(Store, attrCount, &.{aliens}, 1)));
+    const world = api.mkString("worlds!", 7);
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(send(world, "cStrlen", &.{})));
+}
+
+test "round-trip: a module singleton (private vtable) survives; boot installs land on it" {
+    const api = setupWithCodegen();
+    const Codegen = api.import("Codegen").?;
+    const globals = api.import("Globals").?;
+
+    // A module-style singleton: a Globals-bound `[Object clone]`, specialised the
+    // moment a method lands on it (ensurePrivateVtable). Before the serial-vtable
+    // walk its value fact DEFERRED (unexported private vtable) — the binding
+    // vanished at boot and the mapped installs landed on nil. Now it serializes
+    // under the private vtable's exported parent (ObjectVt): the vtable itself is
+    // DERIVED state, re-minted by the replayed installs.
+    const s1 = "[Globals at: #Single put: [Object clone]]";
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(s1.ptr, s1.len)}, 1);
+    const s2 = "[Reflect defineMethod: #answer on: Single as: [:s | 42]]";
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(s2.ptr, s2.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(send(gAt(globals, "Single"), "answer", &.{})));
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const path = try std.fs.path.join(a, &.{ dir, "single.image" });
+    defer a.free(path);
+
+    try std.testing.expect(image.saveImage(path));
+    try std.testing.expect(image.loadImage(path));
+
+    // The binding survived, and the mapped `.code` install (which runs AFTER the
+    // fact stream) re-minted the restored object's private vtable and method.
+    const single = gAt(globals, "Single");
+    try std.testing.expect(single != api.nilObj);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(send(single, "answer", &.{})));
 }
 
 test "codegen: separately-compiled unit dylibs don't clobber each other's method blocks (salt)" {

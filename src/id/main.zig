@@ -979,6 +979,13 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
         if (api.smallIntValue(replayed) == 0) loadStdlib(a, api, codegen);
     }
 
+    // Re-install the Alien surface: native wrap trampolines and dlopen'd libraries
+    // can't ride the image, so each successful send was recorded as replayable
+    // source (`__aliens__` facts) and is re-evaluated here — after code resolution,
+    // so the `on:` targets (restored module singletons) are bound; before the
+    // checkpoint, so replay's (deduped) asserts are never journaled.
+    _ = api.send(codegen, api.intern("replayAliens"), &[_]Oop{}, 0);
+
     // Re-derive block-valued (and any deferred) globals from their recorded source
     // (docs/40 §6): a closure can't be serialized, so its value fact was skipped at
     // save; here we rebuild it from `__globalsrc__` over the now-resolved code. The

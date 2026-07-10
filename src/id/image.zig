@@ -222,15 +222,35 @@ fn resetSaveState() void {
     g_deferred_slots = 0;
 }
 
-/// Register a compound object for serialization, assigning it a relocation id
-/// (before walking its slots, so cycles terminate). Returns null — DEFERRING the
-/// object — when its vtable is image-born (unexported: a block vtable, slice 4's
-/// replay job) or carries no layout descriptor (can't be safely swizzled).
-fn internObj(o: Oop) ?u32 {
-    if (g_reloc.get(@intFromPtr(o.?))) |id| return id;
+/// The vtable to serialize `o` under, or null to defer it. Normally its own
+/// (exported) vtable. An object that OWNS a private vtable — a module singleton
+/// specialised by ensurePrivateVtable the moment a method landed on it — is the
+/// exception: that vtable is DERIVED state, re-minted at boot by the replayed
+/// method installs (`ensurePrivateVtable(birnam_global("X"))` in the mapped
+/// `.code`), so the object serializes under the private vtable's exported parent
+/// instead of deferring — and its Globals binding survives the image. One hop
+/// suffices: ensurePrivateVtable never stacks two private vtables on one owner.
+/// A vtable that is unexported and NOT owned by `o` (a block's; a clone sharing
+/// a singleton's family) has no rebuild story and still defers.
+fn serialVtable(o: Oop) ?Oop {
     const vt = g_api.vtableOf(o);
     if (vt == null) return null;
-    if (g_api.exportedNameOf(vt) == null) return null; // image-born vtable → slice 4
+    if (g_api.exportedNameOf(vt) != null) return vt;
+    if (g_api.vtableOwner(vt) == o) {
+        const p = g_api.vtableParent(vt);
+        if (p != null and g_api.exportedNameOf(p) != null) return p;
+    }
+    return null;
+}
+
+/// Register a compound object for serialization, assigning it a relocation id
+/// (before walking its slots, so cycles terminate). Returns null — DEFERRING the
+/// object — when it has no serializable vtable (image-born with no rebuild story:
+/// a block vtable, slice 4's replay job) or a slot lacks a layout descriptor
+/// (can't be safely swizzled).
+fn internObj(o: Oop) ?u32 {
+    if (g_reloc.get(@intFromPtr(o.?))) |id| return id;
+    const vt = serialVtable(o) orelse return null;
     // EVERY payload word must have a KNOWN layout kind (§G3). An unknown slot is
     // dumped as a raw word by `drainHeapFrom`, and if it actually holds a live Oop
     // that raw word is a dangling pointer on load. The old guard inspected only
@@ -346,7 +366,7 @@ fn drainHeapFrom(buf: *Buf, start: usize) void {
     var i: usize = start;
     while (i < g_objs.items.len) : (i += 1) {
         const o = g_objs.items[i];
-        const vt = g_api.vtableOf(o);
+        const vt = serialVtable(o).?; // interned ⇒ serializable (same walk as internObj)
         putLenBytes(buf, std.mem.span(g_api.exportedNameOf(vt).?));
         const nwords = g_api.objectPayloadSize(o) / WORD;
         putU32(buf, @intCast(nwords));

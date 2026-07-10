@@ -218,6 +218,12 @@ pub const IdApi = extern struct {
     isWord: *const fn (Oop) callconv(.c) c_int,
     /// The Word family's vtable (extend it via `Word` the prototype, §F).
     word_vt: Oop,
+    /// vtableOwner(vt) -> the object that OWNS `vt` as its private/family vtable
+    /// (set by ensurePrivateVtable / the prototype wiring), or null if unowned.
+    /// With vtableParent this lets the image tell a singleton's derived private
+    /// vtable (owner == the object; serialize under the parent, installs rebuild
+    /// it at boot) from an image-born vtable that must defer (a block's).
+    vtableOwner: *const fn (Oop) callconv(.c) Oop,
 };
 
 /// The method-overwrite hook (docs/42 §D1): `(vtable, selector)` of a binding about

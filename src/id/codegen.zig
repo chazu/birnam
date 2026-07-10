@@ -1326,6 +1326,52 @@ fn mReplayMethods(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkSmallInt(@intCast(srcs.items.len));
 }
 
+/// `[Codegen replayAliens]` — re-install the Alien surface at boot. A wrap's
+/// native trampoline and a dlopen'd library can't ride the image, so alien.zig
+/// records each successful `[Alien dlopen:]` / `[Alien wrap:…]` send as replayable
+/// source on `__aliens__` (the `__methods__` spine applied to FFI). Re-evaluated
+/// here in key order — every dlopen was recorded before the wraps needing it —
+/// after the code section is resolved, so the `on:` targets (exported prototypes
+/// and restored module singletons) are bound. Re-evaluation re-enters the alien
+/// recorder, whose by-value dedupe makes this a fact-level no-op. A failed replay
+/// (library gone, symbol missing) warns and continues — one dead wrap must not
+/// kill the boot. Answers the count replayed cleanly.
+fn mReplayAliens(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    const entity = g_api.intern("__aliens__");
+    const nAttrs = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{entity}, 1));
+    const Rec = struct { idx: i64, src: Oop };
+    var recs: std.ArrayList(Rec) = .{};
+    defer recs.deinit(ca);
+    var i: i64 = 0;
+    while (i < nAttrs) : (i += 1) {
+        const attr = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ entity, g_api.mkSmallInt(i) }, 2);
+        const src = g_api.send(g_store, sel_currentValue, &[_]Oop{ entity, attr }, 2);
+        if (src == null or src == g_api.nilObj) continue; // retracted (a dlclose'd library)
+        const nm = std.mem.span(g_api.symbolName(attr));
+        if (!std.mem.startsWith(u8, nm, "__alien_")) continue;
+        const idx = std.fmt.parseInt(i64, nm["__alien_".len..], 10) catch continue;
+        recs.append(ca, .{ .idx = idx, .src = src }) catch @panic("codegen: oom");
+    }
+    std.mem.sort(Rec, recs.items, {}, struct {
+        fn lt(_: void, x: Rec, y: Rec) bool {
+            return x.idx < y.idx;
+        }
+    }.lt);
+    const error_vt = g_api.import("ErrorVt");
+    var count: i64 = 0;
+    for (recs.items) |rec| {
+        const r = g_api.send(self, g_api.intern("eval:"), &[_]Oop{rec.src}, 1);
+        if (r == g_api.nilObj or (error_vt != null and g_api.vtableOf(r) == error_vt)) {
+            var len: usize = 0;
+            const p = g_api.stringBytes(rec.src, &len);
+            std.debug.print("[image] alien replay failed: {s}\n", .{p[0..len]});
+        } else count += 1;
+    }
+    return g_api.mkSmallInt(count);
+}
+
 /// `[Codegen deriveImageGlobals]` — the image-load path for block-valued (and any
 /// deferred) globals (docs/40 §6). For every recorded top-level global source (the
 /// `__globalsrc__` facts): if the global is currently UNBOUND — its value fact was
@@ -1625,6 +1671,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("compile:output:"), &mCompileOutput);
     api.method(codegen_vt, api.intern("compileImageCode:"), &mCompileImageCode);
     api.method(codegen_vt, api.intern("replayMethods"), &mReplayMethods);
+    api.method(codegen_vt, api.intern("replayAliens"), &mReplayAliens);
     api.method(codegen_vt, api.intern("deriveImageGlobals"), &mDeriveImageGlobals);
     api.method(codegen_vt, api.intern("lastError"), &mLastError);
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);

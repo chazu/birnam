@@ -720,11 +720,122 @@ fn buildWrapper(fn_name: []const u8, sig_raw: []const u8, sel: Oop, vt: Oop) Oop
     return g_api.send(unit, g_api.intern("install:as:on:"), &[_]Oop{ g_api.mkString(fname, fname.len), sel, vt }, 3);
 }
 
+// -- image replay records (docs/40) -------------------------------------------
+//
+// A wrap installs a NATIVE trampoline and a dlopen loads a library into THIS
+// process — neither can ride the image. So each successful `wrap:…`/`dlopen:`
+// send is recorded as replayable birnam source on the `__aliens__` entity (the
+// `__methods__` spine applied to the Alien surface), and `[Codegen replayAliens]`
+// re-evaluates them at boot, in assert order — every dlopen precedes the wraps
+// that need it. Recording at RUNTIME (not a codegen intercept) catches every call
+// path: module load, a method body (the REPL's wrapStdio), the console. Records
+// are deduped by value, so boot replay and re-run wrap sites don't churn the
+// journal, and keyed `__alien_<n>` with n past the max in use.
+
+/// The `__aliens__` entity and the store, or null when no store is loaded (the
+/// bare floor: wraps still work, they just aren't replayable).
+fn alienStore() ?struct { store: Oop, entity: Oop } {
+    const store = g_api.import("Store") orelse return null;
+    return .{ .store = store, .entity = g_api.intern("__aliens__") };
+}
+
+/// Find the `__aliens__` attr currently holding exactly `src`, or null.
+fn findAlienSrc(store: Oop, entity: Oop, src: []const u8) ?Oop {
+    const nAttrs = g_api.smallIntValue(g_api.send(store, g_api.intern("attrCount:"), &[_]Oop{entity}, 1));
+    var i: i64 = 0;
+    while (i < nAttrs) : (i += 1) {
+        const attr = g_api.send(store, g_api.intern("attrAt:index:"), &[_]Oop{ entity, g_api.mkSmallInt(i) }, 2);
+        const v = g_api.send(store, g_api.intern("currentValue:attr:"), &[_]Oop{ entity, attr }, 2);
+        if (v == null or v == g_api.nilObj) continue;
+        var len: usize = 0;
+        const p = g_api.stringBytes(v, &len);
+        if (std.mem.eql(u8, p[0..len], src)) return attr;
+    }
+    return null;
+}
+
+/// Record `src` as a new `__aliens__` fact unless an identical record is already
+/// current (idempotence: boot replay re-executes these very sends). The key index
+/// is one past the max in use — attrCount alone could collide with a live key
+/// after a `dlclose:` retraction freed a lower index.
+fn recordAlienSrc(src: []const u8) void {
+    const as = alienStore() orelse return;
+    if (findAlienSrc(as.store, as.entity, src) != null) return;
+    const nAttrs = g_api.smallIntValue(g_api.send(as.store, g_api.intern("attrCount:"), &[_]Oop{as.entity}, 1));
+    var next: i64 = 0;
+    var i: i64 = 0;
+    while (i < nAttrs) : (i += 1) {
+        const attr = g_api.send(as.store, g_api.intern("attrAt:index:"), &[_]Oop{ as.entity, g_api.mkSmallInt(i) }, 2);
+        const nm = std.mem.span(g_api.symbolName(attr));
+        if (std.mem.startsWith(u8, nm, "__alien_")) {
+            const idx = std.fmt.parseInt(i64, nm["__alien_".len..], 10) catch continue;
+            if (idx >= next) next = idx + 1;
+        }
+    }
+    var kb: [40]u8 = undefined;
+    const key = std.fmt.bufPrintZ(&kb, "__alien_{d}", .{next}) catch return;
+    _ = g_api.send(as.store, g_api.intern("assert:attr:value:"), &[_]Oop{ as.entity, g_api.intern(key.ptr), g_api.mkString(src.ptr, src.len) }, 3);
+}
+
+/// Retract the record holding exactly `src` (a dlclose balancing its dlopen).
+fn retractAlienSrc(src: []const u8) void {
+    const as = alienStore() orelse return;
+    const attr = findAlienSrc(as.store, as.entity, src) orelse return;
+    const v = g_api.send(as.store, g_api.intern("currentValue:attr:"), &[_]Oop{ as.entity, attr }, 2);
+    _ = g_api.send(as.store, g_api.intern("retract:attr:value:"), &[_]Oop{ as.entity, attr, v }, 3);
+}
+
+/// The replayable NAME `o` resolves to at eval time: its exported name, else the
+/// Globals binding holding it (a module singleton — its object survives the image
+/// under leg 1's serial-vtable walk, and the binding re-resolves at boot). Null →
+/// anonymous; a wrap on it cannot replay and is not recorded.
+fn globalNameOf(o: Oop) ?[]const u8 {
+    if (g_api.exportedNameOf(o)) |nm| return std.mem.span(nm);
+    const store = g_api.import("Store") orelse return null;
+    const globals = g_api.intern("__globals__");
+    const nAttrs = g_api.smallIntValue(g_api.send(store, g_api.intern("attrCount:"), &[_]Oop{globals}, 1));
+    var i: i64 = 0;
+    while (i < nAttrs) : (i += 1) {
+        const attr = g_api.send(store, g_api.intern("attrAt:index:"), &[_]Oop{ globals, g_api.mkSmallInt(i) }, 2);
+        const v = g_api.send(store, g_api.intern("currentValue:attr:"), &[_]Oop{ globals, attr }, 2);
+        if (v == o) return std.mem.span(g_api.symbolName(attr));
+    }
+    return null;
+}
+
+/// birnam string literals have no escapes: a value containing `"` can't be
+/// synthesized back into source, so such a record is skipped (never occurs for
+/// real C function names/signatures; a quoted path just won't replay).
+fn hasQuote(s: []const u8) bool {
+    return std.mem.indexOfScalar(u8, s, '"') != null;
+}
+
+/// Synthesize and record the replay source for a successful wrap.
+fn recordWrap(a: [*]const Oop) void {
+    const target = globalNameOf(a[3]) orelse return;
+    const fnb = strBytes(a[0]);
+    const sigb = strBytes(a[1]);
+    if (hasQuote(fnb) or hasQuote(sigb)) return;
+    var buf: std.ArrayList(u8) = .{};
+    defer buf.deinit(ca);
+    var w = buf.writer(ca);
+    w.print("[Alien wrap: \"{s}\" signature: \"{s}\" as: #{s} on: {s}]", .{ fnb, sigb, std.mem.span(g_api.symbolName(a[2])), target }) catch return;
+    recordAlienSrc(buf.items);
+}
+
+/// An Error-family object (alienError's kinded errors relink by `ErrorVt`).
+fn isErrorObj(o: Oop) bool {
+    const evt = g_api.import("ErrorVt") orelse return false;
+    return g_api.vtableOf(o) == evt;
+}
+
 /// `[Alien wrap: cFnName signature: sig as: #sel on: vt]`
 fn mWrap(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
-    return buildWrapper(strBytes(a[0]), strBytes(a[1]), a[2], a[3]);
+    const r = buildWrapper(strBytes(a[0]), strBytes(a[1]), a[2], a[3]);
+    if (r != g_api.nilObj and !isErrorObj(r)) recordWrap(a);
+    return r;
 }
 
 /// Every library `dlopen:`'d and not yet `dlclose:`'d, so the handle is TRACKED
@@ -747,7 +858,24 @@ fn mDlopen(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const h = g_api.dlopen(path.ptr, RTLD_LAZY) orelse return g_api.nilObj;
     const owned = ca.dupe(u8, path[0..path.len]) catch @panic("alien: oom");
     g_dls.append(ca, .{ .path = owned, .handle = h }) catch @panic("alien: oom");
+    recordDlopen(owned);
     return g_api.trueObj;
+}
+
+/// Synthesize the replay source for a dlopen — recorded AS GIVEN (a relative path
+/// replays only from the same cwd; visible and honest, per the module convention).
+fn dlopenSrc(buf: *std.ArrayList(u8), path: []const u8) ?[]const u8 {
+    if (hasQuote(path)) return null;
+    var w = buf.writer(ca);
+    w.print("[Alien dlopen: \"{s}\"]", .{path}) catch return null;
+    return buf.items;
+}
+
+fn recordDlopen(path: []const u8) void {
+    var buf: std.ArrayList(u8) = .{};
+    defer buf.deinit(ca);
+    const src = dlopenSrc(&buf, path) orelse return;
+    recordAlienSrc(src);
 }
 
 /// `[Alien dlclose: path]` — release ONE handle opened by a matching `dlopen:` (the
@@ -765,6 +893,17 @@ fn mDlclose(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         if (std.mem.eql(u8, g_dls.items[i].path, want)) {
             const e = g_dls.swapRemove(i);
             _ = std.c.dlclose(e.handle);
+            // Retract the replay record only when this was the LAST open of the
+            // path (dlopen refcounts; a boot needs the library open once).
+            var still_open = false;
+            for (g_dls.items) |d| {
+                if (std.mem.eql(u8, d.path, e.path)) still_open = true;
+            }
+            if (!still_open) {
+                var buf: std.ArrayList(u8) = .{};
+                defer buf.deinit(ca);
+                if (dlopenSrc(&buf, e.path)) |src| retractAlienSrc(src);
+            }
             ca.free(e.path);
             return g_api.trueObj;
         }

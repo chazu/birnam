@@ -168,6 +168,24 @@ fn vtableParentC(vt: Oop) callconv(.c) Oop {
     return oop(p);
 }
 
+/// vtableOwner(vt) -> the object that owns `vt` (its family's prototype, or the
+/// specialised object a private vtable was minted for by ensurePrivateVtable), or
+/// null if unowned. The image save uses `owner == obj` to recognise a singleton's
+/// DERIVED private vtable — safe to serialize the object under the vtable's parent,
+/// since boot's replayed installs re-mint the private vtable — as opposed to an
+/// image-born vtable with no rebuild story (a block's), which still defers.
+/// TOTAL: `vt` may be whatever an object's `[-1]` header held — a fact can carry a
+/// raw non-heap pointer (a method mirror's code address) whose "vtable" is garbage
+/// bits — so anything not a REGISTERED vtable answers null instead of being deref'd.
+fn vtableOwnerC(vt: Oop) callconv(.c) Oop {
+    if (vt == null or (@intFromPtr(vt.?) & 7) != 0) return null;
+    const v: *Vtable = @ptrCast(@alignCast(vt.?));
+    for (g_vtables.items) |reg| {
+        if (reg == v) return v.owner;
+    }
+    return null;
+}
+
 // -- Raw allocation + the `-1` vtable-pointer trick -------------------------
 //
 // Every heap object is tracked in `g_blocks` (keyed by its object/payload
@@ -1009,6 +1027,7 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .vtableAt = &vtableAtC,
         .vtableSelectorAt = &vtableSelectorAtC,
         .vtableParent = &vtableParentC,
+        .vtableOwner = &vtableOwnerC,
     };
     // The floor's own layouts: no floor value type holds an Oop in its payload
     // (a String is {bytes-ptr, len}, an Integer/Float one i64/f64, the singletons
