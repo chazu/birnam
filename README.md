@@ -6,7 +6,7 @@ parsing, native compilation through libtcc, self-hosted library code, and durabl
 images.
 
 It is an active pre-alpha system. The architecture and its bootstrap are the
-product; compatibility and language surface can still change.
+product; compatibility and language surface can and will still change.
 
 ## Support
 
