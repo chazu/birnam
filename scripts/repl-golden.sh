@@ -178,6 +178,34 @@ birnam> "
 check "image boot: a module singleton and its Alien wraps survive" "$expected" "$actual"
 rm -rf "$tdir"
 
+# ---- booted-image module MANAGER: the birnam Module + runtime loads survive ----
+# The manager is birnam now (src/id/modules.birnam, docs/44 Phase 5b), so this
+# locks the whole self-hosted-sequencer chain across an image boot: a module
+# loaded at RUNTIME before the save keeps its method (42) and its #loaded fact
+# (true); the manager itself replays as a self-hosted module (#selfHosted); and
+# a FRESH [Module load:] still works post-boot (102). libDir is deliberately
+# re-resolved each boot (a booted image loads from ITS tree, pre-checkpoint),
+# so the session re-points it at the scratch dir before the second load.
+# load:/libDir: answer the Module singleton — "anObject" under the default
+# printString, same as the retired native manager.
+tdir=$(mktemp -d)
+printf '[Module named: #ttg requires: #[]];\n[Reflect defineMethod: #ttgProbe on: Integer as: [:x | [x + 41]]]\n' > "$tdir/ttg.birnam"
+printf '[Module named: #tth requires: #[]];\n[Reflect defineMethod: #tthProbe on: Integer as: [:x | [x + 100]]]\n' > "$tdir/tth.birnam"
+"$BIN" --compile-module "$tdir/ttg.birnam" "$tdir/libbirnam_ttg.dylib" >/dev/null 2>&1
+"$BIN" --compile-module "$tdir/tth.birnam" "$tdir/libbirnam_tth.dylib" >/dev/null 2>&1
+printf '[Module libDir: "%s"]\n[Module load: #ttg]\n[System saveImage: "%s/t.image"]\n:quit\n' "$tdir" "$tdir" | "$BIN" --repl >/dev/null 2>&1
+actual=$(printf '[1 ttgProbe]\n[Module isLoaded: #ttg]\n[Module kindOf: #modules]\n[Module libDir: "%s"]\n[Module load: #tth]\n[2 tthProbe]\n:quit\n' "$tdir" | "$BIN" "$tdir/t.image" 2>&1)
+expected="$BANNER
+birnam> 42
+birnam> true
+birnam> #selfHosted
+birnam> anObject
+birnam> anObject
+birnam> 102
+birnam> "
+check "image boot: the birnam Module manager + a runtime-loaded module survive" "$expected" "$actual"
+rm -rf "$tdir"
+
 # ---- store surface: reading an ABSENT fact answers nil, never a VM panic -------
 # `[db currentValue: #absent attr: #x]` used to hand birnam the store's internal
 # Zig-null absence — the next send to it panicked the whole VM. The surface now
