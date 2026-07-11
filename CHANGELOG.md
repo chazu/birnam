@@ -6,96 +6,104 @@ All notable changes to birnam are recorded here. Format follows
 other targets are rejected at build time until their libtcc and shared-library
 loader ports are complete.
 
-## [0.7.4] — 2026-06-22
+## [0.8.0] — 2026-07-11
 
-_Notes for the next release land here; `scripts/release.sh` promotes this
-heading to the new version (dated) and uses the section as the release notes._
+The refounding. The legacy fact-store kernel is retired and birnam is rebuilt
+from a pure Piumarta object floor (`src/id/`) up: the whole grammar compiles
+to native code through the in-process TinyCC backend, the object model is
+prototype-based, the relational reading is a datalog engine over the store,
+and a growing share of the system — stdlib, config, CLI, REPL, module
+manager — is written in birnam itself. Effectively a new system; the notes
+below describe the new world rather than diff the old one.
 
 ### Added
-- **Compiled-unit-first image integrity:** image format v3 checksums every
-  embedded dylib and verifies all compiled units before load changes live
-  state. Full saves publish atomically, and unsupported durable values reject
-  the save with a structured `[System imageSaveReport]` rather than being
-  silently omitted.
+- **The id floor and the native pipeline.** siphon → libid → store → peg →
+  lang → tcc → codegen: every birnam form compiles to native code via the
+  vendored TinyCC; blocks compile to native closures. FFI runs both
+  directions — struct-by-value out, C-calls-birnam callbacks back in.
+- **Prototype object model.** Every well-known name is a prototype owning its
+  family vtable; creation is one verb `clone` (`new` aliases it) with
+  copy-on-write vtables; no immediates — Integer is a boxed full i64, joined
+  by Float and a raw 64-bit `Word` (with peek/poke/alloc/free for C memory).
+  Native `whileTrue:`/`whileFalse:` on a real Block family, short-circuit
+  `and:`/`or:`, structural equality across collections, `timesRepeat:`.
+- **Result-style errors.** Errors are kinded propagating values (`kind`,
+  `isError`, `message`) with `on:do:` (multi-kind) and `ensure:`; parse
+  failures, FFI failures, and grammar left recursion are kinded errors
+  instead of crashes or silent nil.
+- **Collections + literals.** HAMT-backed Map, persistent Vector, Range, and
+  String share one sequence protocol over a single native fold; `#[…]` vector
+  and `{…}` map literals; `StringBuilder`; the `|>` pipeline operator.
+- **The relational reading.** A datalog engine over the store:
+  `[db findAll: ?v where: …]` with multi-variable joins, predicate filters,
+  negation, disjunction, recursive rules (semi-naive, mutual recursion;
+  durable as relational data), aggregates + group-by, time travel (`asOf:`,
+  `since:`/`between:`), and pull. Writes: `[db entity]`,
+  `[db assert: e attr: #a value: v]`, retraction.
+- **Garbage collection.** A self-contained mark-sweep collector with
+  automatic threshold collection, per-vtable trace hooks, and an exact-heap
+  precise mode.
+- **Images.** Save and boot the live system: relocatable AOT compiled units,
+  full heap-graph serialization, incremental append + compact, and a
+  self-booting executable bake. Compiled-unit-first integrity (format v3):
+  every embedded dylib is checksummed and verified before load changes live
+  state; full saves publish atomically; unsupported durable values reject the
+  save with a structured `[System imageSaveReport]`. Doc'd stdlib methods,
+  module singletons, Alien-wrapped C libraries, and runtime-loaded modules
+  all survive save/boot.
+- **Module system.** birnam-source modules compile to installable dylibs
+  (`birnam --compile-module`, `zig build stage1`), with eval-from-source as
+  the permanent floor; the module manager is itself a birnam module —
+  dependencies are store facts, load order is a topological sort, cycles
+  answer `#circularDependency`. Runtime loading via `[Module load: #name]`
+  (deps first, idempotent). `birnam.toml` is parsed by the birnam-native
+  `Toml`; `birnam init` scaffolds a project.
+- **The self-hosted layer.** stdlib, toml, config, cli, and repl are birnam
+  modules: the string protocol, the error protocol, the CLI subcommands, the
+  console REPL session loop (`[Repl console]`), and the module manager are
+  birnam code. The Zig floor keeps the per-byte scanners — the measured send
+  cost (~1.5–2 µs) gates what migrates.
+- **Alien — C libraries without new Zig.** `[Alien dlopen:]` +
+  `[Alien wrap:signature:as:on:]` wrap any C library at runtime;
+  `birnam wrap <name>` scaffolds a wrapper module; termbox2 is wrapped (the
+  `logue` roguelike renders through it). Opt-in release paths for callbacks
+  and dlopen handles.
+- **OS + app modules, written in birnam over libc.** Time, File, Process,
+  Log, Random, Socket (TCP), Http (a static HTTP/1.1 server), Json, Html,
+  and Test (a live, Smalltalk-style test system).
+- **Docs + tooling.** Docstrings ride definitions (`defineMethod:…doc:`) and
+  land in the store; `birnam doc <module> [selector]` and `birnam docgen`
+  (HTML docs covering birnam modules and the Zig floor); an LSP written in
+  birnam (`birnam --lsp` — diagnostics, hover with docstrings); an
+  out-of-process socket REPL (`birnam --listen`); Emacs `birnam-mode`
+  refreshed for the current language.
+- **One verification gate:** `zig build verify` runs the native test suite,
+  the self-hosted stage-one rebuild, the birnam-level suites, and the REPL
+  goldens; it is enforced by GitHub Actions and before release tagging.
 - **Explicit platform boundary:** arm64 macOS is the sole supported build and
   release target. Unsupported targets now fail before compilation instead of
   producing an incomplete or non-bootable artifact. See
   `docs/misc/PLATFORM-SUPPORT.md` for the porting requirements.
-- **One verification gate:** `zig build verify` now runs the native test suite,
-  self-hosted stage-one rebuild, birnam-level suites, and REPL goldens; it is
-  enforced by GitHub Actions and before release tagging.
-- **`--boot-image <path>` (experimental): boot from a saved image instead of
-  recompiling the birnam modules from source.** Loads only the native prefix
-  (`peg`, `lang` — the parser/compiler) and replays the image, reusing the
-  proven `loadFromFile` + `rematerializeClosures` + `resolveAllPending` path;
-  produce the image with a normal boot + `:save`. Boot-only peak drops ~656 MB →
-  ~241 MB (2.7×), and pure-birnam modules round-trip from the image alone (e.g.
-  `Stats sum:`). Opt-in — normal boot is unaffected. Known gap: json's `parse:`
-  stays broken under `--boot-image` (json builds a stateful PEG grammar at its
-  dylib init, which boot-image skips and which does not yet round-trip); `net`
-  (a Zig FFI module) is also not re-inited yet.
-- New docs: **the six fact/object indexes from first principles**
-  (`docs/11a-the-six-indexes.md`), the **code-fact tiers** build plan
-  (`docs/19a-code-fact-tiers-plan.md`), and the **transient-load RFC**
-  (`docs/19b-transient-load-rfc.md`).
 
 ### Changed
 - **README rewritten for the active system:** current installation, REPL,
   script, image, tool, verification, and support guidance now replaces the
   retired kernel and command documentation.
-- **File-in now prunes, so loading a large program is memory-bounded.** Loading
-  + compiling a non-trivial program (the `logue` roguelike: ~4.4 GB) accumulated
-  every top-level form's run-and-discard CST/AST/bytecode tree to peak, because
-  `fileIn:` never pruned and a `birnam script.birnam` run exits before the REPL
-  loop's auto-prune is ever reached. Two levers, both reusing the trusted
-  `prune.pruneReachable`/`compact` path: (1) a threshold-gated `maybe_prune`
-  between top-level forms bounds **peak** during the load — in a faithful
-  reproduction, peak goes from growing linearly with program size (3.2 / 6.5 /
-  13.8 GB at 120k / 240k / 480k entities) to **flat ~800 MB**; (2) one forced
-  compaction at the load boundary (`prune_now`) sweeps the residual tail and
-  collapses the loaded program's per-fact history, dropping a worst-case
-  steady-state from ~715 MB to ~3 MB. Both run only under current-only retention
-  with no live snapshot, and keep all reachable state — only unreachable
-  `M_USER` garbage is swept. New doc: `docs/19-load-memory.md`. (Two append-only
-  `IdApi` hooks: `maybe_prune`, `prune_now`.)
-- **Compaction tightens the index epoch (~12× smaller steady-state index).**
-  `compact` rebuilds the five indexes via per-fact `compactInsert`, which
-  path-copies all five HAMTs per fact; the abandoned spine nodes accumulate in
-  the fresh epoch and only release at the *next* compaction (which makes its own
-  equal pile), so the live epoch never shrinks below one rebuild's worth of
-  garbage (measured ~90%: `logue` held a 168 MB index epoch for ~14 MB of live
-  structure). `compact` now deep-clones the live roots into a fresh arena and
-  frees the garbagey one (`Hamt.cloneInto` / `Rrb.cloneInto` + `tightenLiveEpoch`)
-  — `logue`'s index epoch drops 168 MB → 14 MB (bare boot 74 → 6 MB). Best-effort:
-  a failed tighten leaves a valid larger epoch, never failing the compaction.
-- **Code-fact storage tiers — AST/bytecode facts are cheaper.** AST-node and
-  bytecode metadata are write-once and never reverse-ref-walked, so they now
-  drop their per-fact RRB history (a `:no-history` tier) and the never-read VAET
-  reverse-ref index — dropping code facts from five indexes to four and
-  collapsing their retained history. Reads are unchanged (reverse-refs run on the
-  retained AVET). A per-attribute policy (`kernel_eids.isCodeAttr`, injected like
-  the cardinality schema) drives it; deliberately excludes the shared
-  `:vtable`(19) attribute. Plan: `docs/19a-code-fact-tiers-plan.md`.
 
-### Fixed
-- **Image `:save`/`:load` of user-defined objects no longer breaks on a fresh
-  load.** `[Object new]` tagged the instance's and its per-object vtable's
-  structural facts (`:vtable`, `:delegate`) with the lang module's eid — CODE
-  provenance — but the image persists only `M_USER` (CODE is reconstructed by
-  module init). So a fresh process that loaded an image got the object's method
-  facts (which were already `M_USER`) but not its vtable/delegate chain, and
-  every send to it returned nil. The object is runtime data, so its structural
-  facts now ride `M_USER` and round-trip — verified by defining a user object,
-  saving, and calling it in a fresh `:load` process.
-- **Persistent maps now serialize into images (`VK_MAP`).** The image writer
-  skipped any fact whose value (or RRB element) was an `ASSOC_VT` map, so a map
-  literal embedded in a method's `:constant-pool` or an AST `:ast-value` was
-  silently dropped — breaking methods that used it on a fresh load. Map entries
-  now serialize recursively (key + value). On-disk format → v6, with v5 still
-  accepted (the layouts are identical apart from the added value kind).
-- **Doc: `rematerializeClosures` no longer claims captures aren't serialized.**
-  The note was stale — capturing methods' `:method-captures-ptr` specs already
-  round-trip via `VK_CAPTURES` (covered by an existing test).
+### Removed
+- **The legacy fact-store kernel** (retired to `src/attic/`) and, with it, its
+  unreleased post-0.7.4 improvements (`--boot-image`, code-fact storage
+  tiers, file-in pruning) — the id system supersedes them.
+- The legacy configuration surface: the `$BIRNAM_PATH`/`$BIRNAM_DYLIB_PATH`
+  search tiers, `[[wrapped]]` cc-built wrappers, and `[module_overrides]`.
+  The live environment variables are `BIRNAM_LIB_DIR`, `BIRNAM_ID_DYLIB`,
+  `BIRNAM_NO_STDLIB`, and `BIRNAM_GC_PRECISE`.
+- The `--demo` flag.
+
+## [0.7.4] — 2026-06-22
+
+Release-process only: cutting a release now requires a CHANGELOG entry for
+the version, and that section becomes the GitHub release notes.
 
 ## [0.7.3] — 2026-06-19
 
