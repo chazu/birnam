@@ -116,3 +116,8 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: ["[1 // open
 ]" bracketDepth] equals: 0 describes: "a // comment ends at its newline"];
   [t expect: ["a]" bracketDepth] equals: -1 describes: "over-closed goes negative"]]];
+
+[s test: "Reflect nameOf: answers a symbol's bare name (the mirror's un-intern)" do: [:t |
+  [t expect: [Reflect nameOf: #stdlib] equals: "stdlib" describes: "bare name, no sigil"];
+  [t expect: [Reflect nameOf: #named:requires:] equals: "named:requires:" describes: "keyword selector keeps its colons"];
+  [t expect: [[Reflect nameOf: "str"] kind] equals: #notASymbol describes: "a non-symbol answers the kinded error"]]];

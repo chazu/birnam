@@ -443,6 +443,25 @@ fn mVtableOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.vtableOf(args[0]);
 }
 
+/// `[Reflect nameOf: #sym]` — a symbol's bare name as a String ("stdlib" for
+/// #stdlib, no sigil): the mirror's inverse of interning, so base code can build
+/// strings (dylib paths, display names) from a symbol without the printString-
+/// then-strip-"#" detour. A non-symbol answers a kinded #notASymbol error (or
+/// nil before the error module is up — the honest signal, never a wrong name).
+fn mNameOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    if (g_api.vtableOf(args[0]) != g_api.symbol_vt) {
+        const ef = g_api.import("Error") orelse return g_api.nilObj;
+        const msg = "nameOf: expects a symbol";
+        return g_api.send(ef, g_api.intern("kind:message:"), &[_]Oop{
+            g_api.intern("notASymbol"), g_api.mkString(msg.ptr, msg.len),
+        }, 2);
+    }
+    const nm = std.mem.span(g_api.symbolName(args[0]));
+    return g_api.mkString(nm.ptr, nm.len);
+}
+
 /// `[Reflect defineMethod: #sel on: T as: blk source: srcString]` — the source-
 /// carrying form codegen lowers `defineMethod:on:as:` to. Records the definition's
 /// source as a store fact (the portable truth for image save/replay, docs/40 §4)
@@ -1699,6 +1718,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(reflect_vt, api.intern("defineMethod:on:as:source:"), &mDefineMethodSourced);
     api.method(reflect_vt, api.intern("defineMethod:on:as:doc:source:"), &mDefineMethodDocSourced);
     api.method(reflect_vt, api.intern("vtableOf:"), &mVtableOf);
+    api.method(reflect_vt, api.intern("nameOf:"), &mNameOf);
 
     if (!reloading) {
         _ = api.exportObj("CodegenVt", codegen_vt);
