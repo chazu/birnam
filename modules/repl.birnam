@@ -1,7 +1,7 @@
 // repl.birnam — birnam's REPLs (console + socket), in pure birnam. Layer 2b.
 //
-// TWO FRONT ENDS, ONE READER. The console (`consoleInit` / `consoleStep` /
-// `consoleDone`, looped by the binary's driver frame) is what `birnam`, `--repl`,
+// TWO FRONT ENDS, ONE READER. The console (`[Repl console]` — bring-up, the
+// whileTrue: read-eval-print loop, teardown) is what `birnam`, `--repl`,
 // `-i`, and an image boot without `main` drop into — stdin over libc fgets via
 // Alien, values to stdout, located compile errors to stderr.
 // `[Repl serveOn: 5555]` is the same loop over TCP: a client (nc, or Emacs over a
@@ -215,9 +215,9 @@
   self]];
 
 // One prompt → read → dispatch step. Answers false when the session is over
-// (EOF, or a quit command); true to go again. The LOOP is the Zig driver frame
-// (`while consoleStep`) — recursing here instead segfaulted a long piped
-// session (~1700 lines) by exhausting the C stack.
+// (EOF, or a quit command); true to go again. The loop is `console`'s native
+// whileTrue: — recursing here instead segfaulted a long piped session
+// (~1700 lines) by exhausting the C stack.
 [Reflect defineMethod: #consoleStep on: Repl as: [:self |
   [System print: "birnam> "];
   let form := [self readFormInto: ""];
@@ -245,7 +245,7 @@
     ifFalse: [| self]];
   self]];
 
-// Session bring-up: wire the stdio FILE*s, honor config main, greet. The driver
+// Session bring-up: wire the stdio FILE*s, honor config main, greet. `console`
 // then loops `consoleStep` until it answers false, and closes with consoleDone.
 [Reflect defineMethod: #consoleInit on: Repl as: [:self |
   [self wrapStdio];
@@ -259,4 +259,17 @@
 [Reflect defineMethod: #consoleDone on: Repl as: [:self |
   [System println: ""];
   [[[db cellFor: self attr: #cbuf] value] free];
-  self]]
+  self]];
+
+// The whole session: bring-up, the read-eval-print loop, teardown. The loop is
+// a native whileTrue: (stack-flat), so it lives here and not in a Zig driver
+// frame; the binary just sends #console. consoleStep answers exactly true or
+// false, so a step that faults (answers an error) stops the loop and the error
+// becomes `r` — teardown still runs, and `console` answers the error for the
+// driver to report.
+[Reflect defineMethod: #console on: Repl as: [:self |
+  [self consoleInit];
+  let me := self;
+  let r := [[| [me consoleStep]] whileTrue: [| 0]];
+  [self consoleDone];
+  r]]

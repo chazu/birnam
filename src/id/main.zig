@@ -762,12 +762,15 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
             std.process.exit(1);
         }
     }
-    // init / step* / done: the loop itself is this native frame — birnam methods
-    // recurse per send, so looping down there capped the session at C-stack depth.
-    _ = api.send(repl, api.intern("consoleInit"), &[_]Oop{}, 0);
-    const step = api.intern("consoleStep");
-    while (api.send(repl, step, &[_]Oop{}, 0) == api.trueObj) {}
-    _ = api.send(repl, api.intern("consoleDone"), &[_]Oop{}, 0);
+    // The whole session — bring-up, the whileTrue: eval/print loop, teardown —
+    // is [Repl console]. A fault that stops the loop (or a stale image whose
+    // Repl predates #console) comes back as an error value; report it.
+    const r = api.send(repl, api.intern("console"), &[_]Oop{}, 0);
+    if (api.send(r, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj) {
+        std.fs.File.stderr().writeAll("birnam: the console session faulted:\n") catch {};
+        outErrorString(api, r);
+        std.process.exit(1);
+    }
 }
 
 const RTLD_LAZY: c_int = 1;
