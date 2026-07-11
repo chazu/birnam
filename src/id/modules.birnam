@@ -1,0 +1,184 @@
+// modules.birnam — the module manager, in pure birnam (docs/44 Phase 5b; the
+// self-hosted successor of the retired src/id/modules.zig). A dependency graph
+// IS relational data: `requires` edges live as facts on the well-known `db`
+// (entity = the module-name symbol itself), and the load order is a walk over
+// those facts. Two tiers of module:
+//   * KERNEL — the Zig primitive dylibs (store, peg, …). REPRESENTED here (so
+//     the graph is complete + queryable) via `[Module kernel: #name]`, but NOT
+//     loaded by this manager; they are already up by the time it runs.
+//   * SELF-HOSTED — birnam-source modules (stdlib, toml, … and this one). Each
+//     declares its own dependencies via `[Module named: #x requires: #[ … ]]`,
+//     which records the edges as it loads.
+//
+// BOOT POSITION (Phase 5b, "the first layer enables the others"): the driver
+// loads this module FIRST, hardcoded — before the scanned self-hosted set,
+// because `loadStdlib` uses `named:requires:`/`loadOrder:`/`markLoaded:` to
+// sequence that set, and every self-hosted source opens with `named:requires:`.
+// Consequences, both deliberate:
+//   * NATIVE FLOOR ONLY. No stdlib is up yet, so everything here rides native
+//     sends (cells via `[db cellFor:attr:]`, Vector add:/includes:/inject:into:,
+//     the split:/trimmed scanners, `[Reflect nameOf:]`) — the same discipline as
+//     the console REPL, and doubly so: this file IS the bring-up.
+//   * SELF-REGISTRATION AT THE END. The `named:requires:` declaration is the
+//     LAST statement here, not the first: the method must exist before it can
+//     run. Position is free for the runtime declaration — the first-statement
+//     convention exists only for the driver's `scanRequires` first-substring
+//     scan, and this file never enters that scanned set (it is loaded by name,
+//     first, and its body contains the literal selector "named:requires:" the
+//     scan would misread).
+//
+// `[Module loadOrder: #[ … ]]` — DFS post-order topo-sort, deps first; a cycle
+// answers a kinded `#circularDependency` error rather than looping.
+// `[Module load: #x]` — load a compiled module dylib AT RUNTIME, deps first:
+// resolve `<libDir>/libbirnam_x.dylib`, read its compiler-embedded
+// `__birnam_module_meta` deps ([Codegen moduleMetaOf:], no install), load each
+// dependency, then install via `[Codegen load:]`. Idempotent (a `#loaded`
+// fact) and cycle-guarded. The graph serializes into the image for free — it
+// is ordinary store facts.
+
+[Globals at: #Module put: [Object clone]];
+
+// -- declaration + query -------------------------------------------------------
+
+// A self-hosted module declaring its own dependencies. Records the edges +
+// marks it registered. Answers self.
+[Reflect defineMethod: #named:requires: on: Module as: [:self :name :reqs |
+  [db assert: name attr: #registered value: true];
+  [db assert: name attr: #kind value: #selfHosted];
+  [db assert: name attr: #requires value: reqs];
+  self]];
+
+// Represent a kernel (Zig primitive) module: registered, kind #kernel, already
+// up (loaded), no dependencies. This completes the graph; nothing is loaded.
+[Reflect defineMethod: #kernel: on: Module as: [:self :name |
+  [db assert: name attr: #registered value: true];
+  [db assert: name attr: #kind value: #kernel];
+  [db assert: name attr: #loaded value: true];
+  self]];
+
+// The declared dependency Vector; an unregistered (or kernel) module has no
+// #requires fact and is a leaf (empty Vector) — absence rides the nil read.
+[Reflect defineMethod: #requiresOf: on: Module as: [:self :name |
+  let r := [db currentValue: name attr: #requires];
+  [[r isNil] ifTrue: [| #[]] ifFalse: [| r]]]];
+
+// #kernel / #selfHosted, or nil if unregistered.
+[Reflect defineMethod: #kindOf: on: Module as: [:self :name |
+  [db currentValue: name attr: #kind]]];
+
+// Only `true` is ever asserted under these attrs, so non-nil reads as true.
+[Reflect defineMethod: #isRegistered: on: Module as: [:self :name |
+  let v := [db currentValue: name attr: #registered];
+  [[v isNil] ifTrue: [| false] ifFalse: [| v]]]];
+
+[Reflect defineMethod: #isLoaded: on: Module as: [:self :name |
+  let v := [db currentValue: name attr: #loaded];
+  [[v isNil] ifTrue: [| false] ifFalse: [| v]]]];
+
+// Record that a module is installed (the driver calls this for the boot-time
+// self-hosted layer; `kernel:` marks the kernel tier; `load:` marks its own).
+[Reflect defineMethod: #markLoaded: on: Module as: [:self :name |
+  [db assert: name attr: #loaded value: true];
+  self]];
+
+// -- topological load order -----------------------------------------------------
+
+// DFS post-order: finish every dependency of `name`, then append `name` to the
+// `ord` cell. `ord` doubles as the finished set (a node is appended exactly when
+// it finishes). `path` is the in-progress chain DOWN this recursion — a plain
+// persistent Vector, grown per call, so there is nothing to pop; re-meeting a
+// path member is a cycle. Answers nil, or the #circularDependency error.
+[Reflect defineMethod: #visit:order:path: on: Module as: [:self :name :ord :path |
+  [[[ord value] includes: name]
+    ifTrue:  [| nil]
+    ifFalse: [|
+      [[path includes: name]
+        ifTrue:  [| [Error kind: #circularDependency
+                       message: ["circular dependency at module: " , [Reflect nameOf: name]]]]
+        ifFalse: [|
+          let me := self;
+          let deeper := [path add: name];
+          let r := [[self requiresOf: name] inject: nil into: [:acc :dep |
+            [[acc isNil]
+              ifTrue:  [| [me visit: dep order: ord path: deeper]]
+              ifFalse: [| acc]]]];
+          [[r isNil]
+            ifTrue:  [| [ord set: [[ord value] add: name]]; nil]
+            ifFalse: [| r]]]]]]]];
+
+// The given names plus their transitive dependencies, sorted so every module's
+// deps precede it; a cycle answers #circularDependency (naming the offender).
+// Scratch rides a fixed cell on Module — single transactor, reset per call.
+[Reflect defineMethod: #loadOrder: on: Module as: [:self :names |
+  let ord := [db cellFor: self attr: #topoOrder];
+  [ord set: #[]];
+  let me := self;
+  let r := [names inject: nil into: [:acc :nm |
+    [[acc isNil]
+      ifTrue:  [| [me visit: nm order: ord path: #[]]]
+      ifFalse: [| acc]]]];
+  [[r isNil] ifTrue: [| [ord value]] ifFalse: [| r]]]];
+
+// -- runtime dylib loading -------------------------------------------------------
+
+// The directory searched for module dylibs; the driver sets it at every boot
+// (fresh-resolved, so an image moved between trees still loads from ITS tree).
+[Reflect defineMethod: #libDir: on: Module as: [:self :dir |
+  [[db cellFor: self attr: #libDir] set: dir];
+  self]];
+
+[Reflect defineMethod: #libDir on: Module as: [:self |
+  let d := [[db cellFor: self attr: #libDir] value];
+  [[d isNil] ifTrue: [| "zig-out/lib"] ifFalse: [| d]]]];
+
+[Reflect defineMethod: #dylibPathFor: on: Module as: [:self :name |
+  [[[[self libDir] , "/libbirnam_"] , [Reflect nameOf: name]] , ".dylib"]]];
+
+// The recursive load: `within` is the in-progress chain (cycle guard), the same
+// persistent-Vector idiom as visit:order:path:. Dependencies (from the
+// compiler-embedded meta, read WITHOUT installing) load before the unit's own
+// install code runs. Answers self, or a kinded #loadFailed/#circularDependency.
+[Reflect defineMethod: #load:within: on: Module as: [:self :name :path |
+  [[self isLoaded: name]
+    ifTrue:  [| self]
+    ifFalse: [|
+      [[path includes: name]
+        ifTrue:  [| [Error kind: #circularDependency
+                       message: ["circular dependency loading module: " , [Reflect nameOf: name]]]]
+        ifFalse: [|
+          let p := [self dylibPathFor: name];
+          let meta := [Codegen moduleMetaOf: p];
+          [[meta isNil]
+            ifTrue:  [| [Error kind: #loadFailed
+                           message: ["could not open module dylib: " , p]]]
+            ifFalse: [|
+              let me := self;
+              let deeper := [path add: name];
+              let r := [[meta split: ","] inject: nil into: [:acc :dep |
+                [[acc isNil]
+                  ifTrue:  [|
+                    let d := [dep trimmed];
+                    [[[d size] = 0]
+                      ifTrue:  [| nil]
+                      ifFalse: [|
+                        let lr := [me load: [d asSymbol] within: deeper];
+                        [[lr isError] ifTrue: [| lr] ifFalse: [| nil]]]]]
+                  ifFalse: [| acc]]]];
+              [[r isNil]
+                ifTrue:  [|
+                  let ir := [Codegen load: p];
+                  [[ir isNil]
+                    ifTrue:  [| [Error kind: #loadFailed
+                                   message: ["could not install module dylib: " , p]]]
+                    ifFalse: [| [self markLoaded: name]; self]]]
+                ifFalse: [| r]]]]]]]]]];
+
+// Load module `name` and its transitive dependencies at runtime, deps first,
+// each installed once. A no-op if already loaded.
+[Reflect defineMethod: #load: on: Module as: [:self :name |
+  [self load: name within: #[]]]];
+
+// -- self-registration (deliberately LAST — see the header) ----------------------
+
+[Module named: #modules requires: #[]];
+[Module markLoaded: #modules]

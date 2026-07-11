@@ -1480,6 +1480,26 @@ fn mLoadUnit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return ev_fn(g_api.nilObj, &[_]Oop{}, 0);
 }
 
+/// `[Codegen moduleMetaOf: path]` — read a compiled unit's `__birnam_module_meta`
+/// symbol (the comma-separated dependency names embedded at compile time) WITHOUT
+/// running its install code: the pre-install knowledge a dependency-first runtime
+/// load needs (modules.birnam's `load:`). dlopen is refcounted, so the later
+/// `load:` of the same path is cheap. Answers nil when the dylib can't be opened,
+/// "" when it carries no meta (no declared deps).
+fn mModuleMetaOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var len: usize = 0;
+    const p = g_api.stringBytes(a[0], &len);
+    const path = ca.allocSentinel(u8, len, 0) catch @panic("codegen: oom");
+    defer ca.free(path);
+    @memcpy(path[0..len], p[0..len]);
+    const h = g_api.dlopen(path.ptr, RTLD_LAZY) orelse return g_api.nilObj;
+    const mp = g_api.dlsym(h, "__birnam_module_meta") orelse return g_api.mkString("", 0);
+    const meta = std.mem.span(@as([*:0]const u8, @ptrCast(mp)));
+    return g_api.mkString(meta.ptr, meta.len);
+}
+
 /// Parse `src` and emit the complete C translation unit into a fresh buffer
 /// (caller deinits). With `artifact` true, emit the RELOCATABLE spelling
 /// (docs/40 §3a): the baked `__g<i>` linker handles become static slots that a
@@ -1714,6 +1734,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("deriveImageGlobals"), &mDeriveImageGlobals);
     api.method(codegen_vt, api.intern("lastError"), &mLastError);
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
+    api.method(codegen_vt, api.intern("moduleMetaOf:"), &mModuleMetaOf);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
     api.method(reflect_vt, api.intern("defineMethod:on:as:source:"), &mDefineMethodSourced);
     api.method(reflect_vt, api.intern("defineMethod:on:as:doc:source:"), &mDefineMethodDocSourced);

@@ -1,0 +1,52 @@
+// modules-test.birnam — the suite for the self-hosted module manager
+// (src/id/modules.birnam, docs/44 Phase 5b): the store-native dependency graph,
+// the topological loadOrder:, and the cycle error. Ported from the retired
+// src/id/modules_test.zig when the manager moved to birnam — these assertions
+// pin the OLD native semantics byte-for-byte. Test modules use tt-prefixed
+// names: the graph is store facts, and the suite process is one transactor.
+// Loading only registers the suite; run via modules/run-tests.birnam.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+
+let s := [TestSuite named: "Modules" module: #modules];
+
+[s test: "loadOrder: topologically sorts — every dependency precedes its dependent" do: [:t |
+  // a → {b, c}, b → {c}, c → {} . The only valid order is c, b, a.
+  [Module named: #tta requires: #[#ttb #ttc]];
+  [Module named: #ttb requires: #[#ttc]];
+  [Module named: #ttc requires: #[]];
+  let order := [Module loadOrder: #[#tta]];
+  [t expect: [order size] equals: 3 describes: "the root plus its transitive deps"];
+  [t expect: [order at: 0] equals: #ttc describes: "no deps → first"];
+  [t expect: [order at: 1] equals: #ttb describes: "needs c"];
+  [t expect: [order at: 2] equals: #tta describes: "needs b, c → last"];
+  // A shared dependency is emitted exactly once even when reached twice.
+  let seen := [order inject: 0 into: [:acc :nm |
+    [[nm = #ttc] ifTrue: [| [acc + 1]] ifFalse: [| acc]]]];
+  [t expect: seen equals: 1 describes: "shared dep emitted once"]]];
+
+[s test: "a dependency cycle answers #circularDependency, not an infinite loop" do: [:t |
+  [Module named: #ttx requires: #[#tty]];
+  [Module named: #tty requires: #[#ttx]];
+  let r := [Module loadOrder: #[#ttx]];
+  [t expect: [r isError] equals: true describes: "an error value, no loop"];
+  [t expect: [r kind] equals: #circularDependency describes: "the kinded cycle error"]]];
+
+[s test: "kernel modules are represented (registered, kind #kernel), not managed" do: [:t |
+  [t expect: [Module isRegistered: #store] equals: true describes: "boot registered the kernel set"];
+  [t expect: [Module kindOf: #store] equals: #kernel describes: "kind #kernel"];
+  [t expect: [Module isLoaded: #store] equals: true describes: "kernel modules are already up"];
+  [t expect: [Module isRegistered: #ttghost] equals: false describes: "an unregistered name"];
+  [t expect: [[Module requiresOf: #ttghost] size] equals: 0 describes: "unregistered = a leaf (empty requires)"];
+  // A self-hosted module that requires a kernel one sorts after it (kernel = leaf).
+  [Module named: #ttapp requires: #[#store]];
+  let order := [Module loadOrder: #[#ttapp]];
+  [t expect: [order size] equals: 2 describes: "app + its kernel dep"];
+  [t expect: [order at: 0] equals: #store describes: "the kernel dep is a satisfied leaf"];
+  [t expect: [order at: 1] equals: #ttapp describes: "the app after it"]]];
+
+[s test: "the manager itself is a self-hosted module (Phase 5b)" do: [:t |
+  [t expect: [Module isRegistered: #modules] equals: true describes: "self-registered at its own end"];
+  [t expect: [Module kindOf: #modules] equals: #selfHosted describes: "no longer a kernel dylib"];
+  [t expect: [Module isLoaded: #modules] equals: true describes: "self-marked loaded"];
+  [t expect: [Module kindOf: #stdlib] equals: #selfHosted describes: "stdlib registered by its own opening statement"]]];

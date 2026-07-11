@@ -22,12 +22,16 @@ language configures and extends itself in itself.
 ## Two senses of "module"
 
 - **Kernel modules** — the Zig primitive dylibs (`store`, `peg`, `lang`, `tcc`,
-  `codegen`, `prelude`, `collection`, `modules`, `error`, `relational`, `alien`,
+  `codegen`, `prelude`, `collection`, `error`, `relational`, `alien`,
   `image`). Hand-ordered in `script_modules` (`main.zig`), `dlopen`+`module_init`.
-  They *are* the language; nothing above bootstraps them.
-- **Self-hosted modules** — birnam source (`stdlib`, `toml`, `config`, and any user
-  module). Compiled to `libbirnam_<name>.dylib` and installed by loading, or eval'd
-  from source as the floor.
+  They *are* the language; nothing above bootstraps them. (`modules` left this
+  tier 2026-07-10 — the manager is birnam now, docs/44 Phase 5b.)
+- **Self-hosted modules** — birnam source (`modules`, `stdlib`, `toml`, `config`,
+  and any user module). Compiled to `libbirnam_<name>.dylib` and installed by
+  loading, or eval'd from source as the floor. `modules` (the manager itself) is
+  the special first one: loaded by name before the rest, since it implements the
+  sequencing the rest load through; it self-registers at its END (the method has
+  to exist before the declaration can run).
 
 ## Compile-to-dylib; source is the floor
 
@@ -42,7 +46,7 @@ loading installs with **no recompile**. No new codegen was needed for this.
   installed, which is what lets the stdlib compile itself).
 - `zig build stage1` is the **two-stage build**: stage 0 ships a binary that embeds
   each self-hosted source; stage 1 *runs that binary* to AOT-compile the sources into
-  `libbirnam_{stdlib,toml,config}.dylib`.
+  `libbirnam_{modules,stdlib,toml,config}.dylib`.
 - `loadStdlib` **prefers the dylib** (`[Codegen load:]`, no recompile) and **falls
   back to the embedded source** when the dylib is absent, stale, or ABI-mismatched.
   `BIRNAM_NO_STDLIB=1` skips the whole self-hosted layer (the bare Zig floor).

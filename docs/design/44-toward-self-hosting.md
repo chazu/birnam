@@ -138,20 +138,32 @@ honest near-term figure is **~700–750 LOC**, plus a perf-gated relational slic
 | **Near-term total (clean, low-risk)** | **~400–500 ✅ ALL SHIPPED** (≈448 net) | Invariant untouched, no duplication. |
 | `relational.zig` **surface** (Tier B) | ~300–400 | Perf-gated. Lift query planning/negation/aggregation wiring; **keep the native nested-loop join** (`relational.zig:383`) — part of the read-10–50× budget. Partial, behind a benchmark. The measured send constant (§7 Phase 2) predicts per-ROW derived loops miss the gate the same way per-byte scans did — expect only the surface wiring to pass. |
 
-**`modules.zig` is NOT a clean near-term deletion (rev. 2 correction).** Rev. 1 called
-it "~330 clean deletion, highest-value." Reassessment (2026-07-09) shows it is
-**boot-critical**: `main.zig`'s `loadStdlib` uses `[Module named:requires:]` /
-`[Module loadOrder:]` / `markLoaded:` to sequence the self-hosted layer *itself*,
-and `named:requires:` runs as the first statement of every self-hosted module's
-source — so those methods must exist *before* the self-hosted layer loads and cannot
-live *in* it (chicken-and-egg). The mechanics are birnam-ready (verified: symbols work
-as store entities and under `=`; only a bare-symbol-name accessor is missing, which
-belongs on the mirror as `[Reflect nameOf:]`), but migrating `modules.zig` is either a
-**bootstrap restructure** (compile `module.birnam` and load it *first* via a ~15-line
-hardcoded Zig stub — principled "first layer enables the others," but medium-risk: a
-load failure kills boot) or it stays. It is a good *later*, deliberate step — not an
-early low-risk win. The `dlopen`/`dlsym` loader (`loadName`) is genuine FFI floor
-either way and is shared between boot and runtime (no clean non-boot subset to peel).
+**`modules.zig` ✅ SHIPPED as Phase 5b (2026-07-10) — deleted whole (−373, plus its
+−94 Zig test).** Rev. 2 called it boot-critical-so-maybe-never; the resolution was
+the predicted **bootstrap restructure**, and it came out cleaner than the rev.-2
+sketch: `loadStdlib` loads `modules.birnam` FIRST, hardcoded, through the same
+`loadSelfHosted` dylib-else-embedded-source floor as the rest — so the from-zero
+guarantee is the *same one stdlib already has* (the Zig compiler evals the source; no
+prior birnam artifact needed), and `--compile-module` runs the bare floor (no
+self-hosted layer at all), so the system that builds the modules dylib never runs the
+artifact class it produces. The rev.-2 "loadName is genuine FFI floor with no clean
+non-boot subset" claim was WRONG on inspection: boot never used `loadName` (it uses
+`loadSelfHosted`/`[Codegen load:]`); the only genuinely-native missing piece was
+reading `__birnam_module_meta` without installing, now `[Codegen moduleMetaOf:]`
+(~20 lines in codegen.zig, beside `load:` which already owned the dlopen/`__ev`
+install). Everything else — declaration facts, the topo-sort, the deps-first
+runtime `load:` orchestration, `libDir` — is birnam (`src/id/modules.birnam`, 184
+lines, native floor only since it precedes stdlib). `[Reflect nameOf:]` landed as
+predicted. Self-registration sits at the module's END (the method must exist to
+run); the first-statement convention is load-bearing only for the driver's
+`scanRequires` first-substring scan, which this module never enters (loaded by
+name, first; its body contains the literal selector "named:requires:" the scan
+would misread). `Module` is now a Globals binding, not a C export; the driver
+re-sends `kernel:`/`libDir:` each boot (images included, pre-checkpoint) so a
+booted image loads dylibs from ITS tree. Trade-offs accepted: `BIRNAM_NO_STDLIB`
+now has no `[Module load:]` (the manager IS self-hosted — consistent with "skips
+the whole self-hosted layer"), and the stale-dylib authoring gotcha now covers
+`modules.birnam` too.
 
 Two corrections to rev. 1 folded in here:
 
@@ -266,10 +278,11 @@ them.
   Behind a benchmark. (~300–400)
 - **Phase 5 — the mutable-buffer utility** (`StringBuilder`) — a prerequisite for any
   birnam codegen, useful on its own.
-- **Phase 5b (deliberate, medium-risk) — `modules.birnam` via compile-first.** The
-  module manager as a compiled self-hosted module loaded before the rest of the
-  self-hosted layer by a ~15-line Zig stub; add `[Reflect nameOf:]` for path-building.
-  A principled "first layer enables the others" step once the pattern is de-risked.
+- **Phase 5b ✅ SHIPPED — `modules.birnam` via compile-first.** The module manager
+  as a self-hosted module loaded before the rest of the self-hosted layer, dylib
+  preferred / embedded source the floor; `[Reflect nameOf:]` added for
+  path-building, `[Codegen moduleMetaOf:]` the one new native. `modules.zig`
+  deleted whole. Details in the §3 entry above.
 - **Phase 6 (long-term, terminal) — `codegen.birnam`/`lang.birnam`** as an additive
   warm-path compiler; retain the Zig compiler; verify the ≥2-stage emitted-C
   fixpoint. Pursue only when self-hosting-the-compiler is worth its own weight — it

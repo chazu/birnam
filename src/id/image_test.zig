@@ -15,8 +15,12 @@ const peg = @import("peg.zig");
 const lang = @import("lang.zig");
 const tcc = @import("tcc.zig");
 const codegen = @import("codegen.zig");
-const modules = @import("modules.zig");
+// The module manager is birnam now (src/id/modules.birnam, docs/44 Phase 5b);
+// tests that need it eval this source on the bare floor — which is exactly the
+// driver's from-zero fallback path, so the test doubles as its proof.
+const MODULES_SRC = @embedFile("modules.birnam");
 const err_mod = @import("error.zig");
+const relational = @import("relational.zig");
 const alien = @import("alien.zig");
 const idapi = @import("idapi.zig");
 
@@ -495,9 +499,13 @@ test "codegen: separately-compiled unit dylibs don't clobber each other's method
 
 test "modules: [Module load:] loads a compiled unit dylib and its deps at runtime" {
     const api = setupWithCodegen();
-    modules.bringUp(api);
+    err_mod.bringUp(api); // modules.birnam answers kinded errors + sends isError
+    relational.bringUp(api); // …and rides the well-known `db` (exported here)
     const Codegen = api.import("Codegen").?;
-    const Module = api.import("Module").?;
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(MODULES_SRC.ptr, MODULES_SRC.len)}, 1);
+    const Globals = api.import("Globals").?;
+    const Module = api.send(Globals, api.intern("at:"), &.{api.intern("Module")}, 1);
+    try std.testing.expect(Module != api.nilObj); // the manager came up from source
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -527,10 +535,11 @@ test "modules: [Module load:] loads a compiled unit dylib and its deps at runtim
     try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("tdep")}, 1) == api.trueObj); // dep auto-loaded
     try std.testing.expectEqual(@as(i64, 16), api.smallIntValue(send(api.mkSmallInt(3), "tm", &.{}))); // (3+5)*2
 
-    // A missing module fails gracefully (no crash) and is NOT marked loaded. (The
-    // #loadFailed error KIND is verified end-to-end via the CLI, where the error
-    // module is up — setupWithCodegen omits it to keep failure paths nil-valued.)
-    _ = api.send(Module, api.intern("load:"), &.{api.intern("tnope")}, 1);
+    // A missing module fails gracefully: a kinded #loadFailed error (the error
+    // module is up in this test — modules.birnam requires it), NOT marked loaded.
+    const miss = api.send(Module, api.intern("load:"), &.{api.intern("tnope")}, 1);
+    try std.testing.expect(api.send(miss, api.intern("isError"), &.{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(miss, api.intern("kind"), &.{}, 0) == api.intern("loadFailed"));
     try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("tnope")}, 1) == api.falseObj);
 }
 

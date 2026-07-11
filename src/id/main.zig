@@ -255,7 +255,6 @@ const script_modules = [_][]const u8{
     "libbirnam_id_codegen",
     "libbirnam_id_prelude",
     "libbirnam_id_collection",
-    "libbirnam_id_modules",
     "libbirnam_id_error",
     "libbirnam_id_relational",
     "libbirnam_id_alien",
@@ -271,6 +270,9 @@ const script_modules = [_][]const u8{
 const STDLIB_SRC = @embedFile("stdlib.birnam");
 const TOML_SRC = @embedFile("toml.birnam");
 const CONFIG_SRC = @embedFile("config.birnam");
+// The module MANAGER itself (docs/44 Phase 5b) — self-hosted like the rest, but
+// loaded FIRST and by name (never through the scan/loadOrder flow it implements).
+const MODULES_SRC = @embedFile("modules.birnam");
 
 /// Bring up one self-hosted module by `name`: PREFER the precompiled artifact
 /// (`libbirnam_<name>.dylib`) — `[Codegen load:]` installs its methods with no
@@ -356,7 +358,7 @@ fn installSelfHostedByName(a: std.mem.Allocator, api: *IdApi, codegen: Oop, name
 /// Record a boot-installed self-hosted module as `#loaded` in the Module graph, so a
 /// later `[Module load:]` of it (e.g. as another module's dependency) is a no-op.
 fn markLoaded(api: *IdApi, name: [:0]const u8) void {
-    if (api.import("Module")) |mm|
+    if (birnamGlobal(api, "Module")) |mm|
         _ = api.send(mm, api.intern("markLoaded:"), &[_]Oop{api.intern(name.ptr)}, 1);
 }
 
@@ -368,7 +370,16 @@ fn markLoaded(api: *IdApi, name: [:0]const u8) void {
 /// order if the manager is unavailable or reports a cycle.
 fn loadStdlib(a: std.mem.Allocator, api: *IdApi, codegen: Oop) void {
     if (std.posix.getenv("BIRNAM_NO_STDLIB") != null) return;
-    const mm = api.import("Module");
+    // The manager FIRST, hardcoded (docs/44 Phase 5b): it defines the
+    // `named:requires:`/`loadOrder:`/`markLoaded:` protocol this very function —
+    // and every self-hosted source's opening statement — sequences the layer
+    // with, so it cannot ride the flow it implements. Same dylib-else-embedded-
+    // source floor as the rest; it stays out of the scanned set below (no deps
+    // by construction, and its body contains the literal "named:requires:" the
+    // first-substring scan would misread).
+    loadSelfHosted(a, api, codegen, "modules", MODULES_SRC);
+    const mm = birnamGlobal(api, "Module");
+    if (mm != null) refreshModuleManager(a, api, mm.?);
     const vector = api.import("Vector");
     if (mm != null and vector != null) {
         const m = mm.?;
@@ -437,20 +448,37 @@ fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
     if (api.import("Store")) |st| {
         _ = api.send(st, api.intern("backfillMirror"), &[_]Oop{}, 0);
     }
-    // Represent the kernel modules in the module graph (stage 3): registered, kind
-    // #kernel, no requires — the manager KNOWS they exist (so a self-hosted module
-    // may `requires:` one and `loadOrder:` treats it as a satisfied leaf) but does
-    // NOT load them; they are already up. Names mirror script_modules.
-    if (api.import("Module")) |mm| {
-        const kernel = [_][:0]const u8{
-            "store",      "peg",     "lang",  "tcc",        "codegen", "prelude",
-            "collection", "modules", "error", "relational", "alien",   "image",
-        };
-        for (kernel) |name| _ = api.send(mm, api.intern("kernel:"), &[_]Oop{api.intern(name.ptr)}, 1);
-        // Tell the manager where module dylibs live, so `[Module load: #x]` can
-        // resolve `<libDir>/libbirnam_x.dylib` at runtime.
+    // The module MANAGER is no longer registered here: it is birnam now
+    // (modules.birnam), brought up as loadStdlib's first act — the kernel tier is
+    // represented in its graph there (registerKernelModules), once it exists.
+}
+
+/// The Module manager singleton — a birnam-minted global (`[Globals at: #Module
+/// put: …]` in modules.birnam), NOT a C-level export, so it is looked up through
+/// Globals. Null when the self-hosted layer (or the manager itself) isn't up.
+fn birnamGlobal(api: *IdApi, name: [:0]const u8) ?Oop {
+    const globals = api.import("Globals") orelse return null;
+    const r = api.send(globals, api.intern("at:"), &[_]Oop{api.intern(name.ptr)}, 1);
+    return if (r == api.nilObj) null else r;
+}
+
+/// Represent the kernel modules in the manager's graph: registered, kind #kernel,
+/// no requires — the manager KNOWS they exist (so a self-hosted module may
+/// `requires:` one and `loadOrder:` treats it as a satisfied leaf) but does NOT
+/// load them; they are already up. Names mirror script_modules. Also points the
+/// manager at the freshly-resolved dylib dir so `[Module load: #x]` resolves
+/// `<libDir>/libbirnam_x.dylib` — re-sent at every boot (images included), so a
+/// booted image loads from ITS tree, not the one it was saved in.
+fn refreshModuleManager(a: std.mem.Allocator, api: *IdApi, mm: Oop) void {
+    const kernel = [_][:0]const u8{
+        "store",      "peg",   "lang",       "tcc",   "codegen", "prelude",
+        "collection", "error", "relational", "alien", "image",
+    };
+    for (kernel) |name| _ = api.send(mm, api.intern("kernel:"), &[_]Oop{api.intern(name.ptr)}, 1);
+    if (resolveLibDir(a)) |lib_dir| {
+        defer a.free(lib_dir);
         _ = api.send(mm, api.intern("libDir:"), &[_]Oop{api.mkString(lib_dir.ptr, lib_dir.len)}, 1);
-    }
+    } else |_| {}
 }
 
 /// Compile + run a birnam script file. Loads the full stack quietly, then
@@ -687,6 +715,13 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
     // durable values (docs/40 §6). Their recorded source runs over the now-resolved
     // compiled layer; the entry-point `main` closure lands through this path.
     _ = api.send(codegen, api.intern("deriveImageGlobals"), &[_]Oop{}, 0);
+
+    // The Module manager rode the image (it is birnam, docs/44 Phase 5b); its
+    // libDir cell holds the SAVING tree's path. Re-point it at this boot's
+    // resolved dir (and re-assert the kernel tier — idempotent facts) so
+    // `[Module load: #x]` resolves against the tree the image runs in. Before
+    // the checkpoint, so the refresh is never journaled.
+    if (birnamGlobal(api, "Module")) |mm| refreshModuleManager(a, api, mm);
 
     // Checkpoint the append baseline: boot reconstruction (mapped/replayed code,
     // re-derived globals) re-asserts facts we must NOT re-journal — a later
