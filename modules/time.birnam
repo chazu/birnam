@@ -15,6 +15,11 @@
 // the tv buffer (a Word from `Alien alloc:`) and `tz` is the one birnam argument.
 [Alien wrap: "gettimeofday" signature: "i p p" as: #fillTimeval: on: Word];
 
+// uint64_t clock_gettime_nsec_np(clockid_t) — macOS-only: a monotonic clock in
+// ONE call, no out-param buffer. The receiver (an Integer) is the clock id;
+// `u` marshals the uint64 return as an Integer (ns-since-boot fits i64 easily).
+[Alien wrap: "clock_gettime_nsec_np" signature: "u i" as: #clockNanos on: Integer];
+
 // The module: a named singleton, the same shape as the self-hosted Config / Toml.
 [Globals at: #Time put: [Object clone]];
 [Reflect docModule: #time is: "Wall-clock time over libc gettimeofday()."];
@@ -32,4 +37,11 @@
 
 [Reflect defineMethod: #nowSeconds on: Time as: [:self |
   [[self nowMillis] / 1000]] doc:
-  "Epoch seconds as an Integer."]
+  "Epoch seconds as an Integer."];
+
+// CLOCK_MONOTONIC = 6 on Darwin. Monotonic: never steps backward (NTP-immune),
+// so deltas are safe for interval timing — this is the benchmark timer
+// (docs/design/46). NOT epoch-anchored: only differences mean anything.
+[Reflect defineMethod: #monotonicMicros on: Time as: [:self |
+  [[6 clockNanos] / 1000]] doc:
+  "Monotonic microseconds (CLOCK_MONOTONIC) — for interval timing; not epoch-anchored."]

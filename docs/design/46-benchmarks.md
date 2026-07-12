@@ -96,10 +96,17 @@ runner executes and reports. The runner's contract:
   **net ns/op** (per single op, i.e. ÷ K); the raw number is also recorded
   so the subtraction is auditable. Exception: the `loops.*` cases (whose
   subject *is* the loop) report **raw only**.
-- **GC discipline.** `[System autoGc: false]` at suite start; `[System gc]`
-  immediately before each timed rep — collections never land inside a timed
-  window by default. Cases where allocation-with-collection is the subject
-  (`gc.*`) opt back in per-case.
+- **GC discipline.** `[System autoGc: false]` at suite start (restored at
+  suite end — safe to run from a live REPL); `[System gc]` immediately
+  before each timed rep — collections never land inside a timed window by
+  default. Cases where allocation-with-collection is the subject (`gc.*`)
+  opt back in per-case.
+- **Failure containment.** The warmup doubles as an error gate: an erroring
+  case body (an error aborts its `to:do:` at iteration 1) is reported as a
+  `FAIL` line and counted on `[Bench failures]` — the suite continues, and
+  entry scripts gate their exit code on failures + a verified write.
+  Calibration is also ceilinged (2^30 iterations) so a pathological
+  zero-cost body terminates with visible garbage instead of spiraling.
 - **Calibration.** Auto-double the iteration count until one timed run
   exceeds a floor (~100ms), so cases need no hand-tuned counts and stay
   meaningful as the system speeds up or slows down. (Safe for micro cases,
@@ -114,9 +121,12 @@ runner executes and reports. The runner's contract:
   outside the timed region from a fixed `Random seed:` (e.g.
   `vector.at-random` draws its index vector up front — a libc FFI call per
   draw inside the loop would dominate the trie `at:` under test).
-- **Output.** JSON via the existing `Json` module, written with
-  `File write:contents:`: one object per case —
-  `{name, ns_per_op, ns_per_op_raw, iters, reps, median_ms, min_ms}`.
+- **Output.** JSON assembled with `StringBuilder` (stable field/case order —
+  `Json stringify:` over a HAMT Map would order keys arbitrarily, which is
+  hostile to diffing), written with `File write:contents:`: one object per
+  case — `{name, ns_per_op, ns_per_op_raw, iters, reps, median_us, min_us}`.
+  With an even rep count (quick mode's R=2) the "median" is the upper-middle
+  element — conservative, and irrelevant at the tracked R=5.
 
 ### The relational suite is process-isolated
 

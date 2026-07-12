@@ -1,0 +1,283 @@
+// bench.birnam — the benchmark harness (docs/design/46), pure birnam.
+//
+// Mirrors test.birnam's shape: a BenchSuite is a named bag of deferred cases;
+// the Bench singleton runs them and accumulates result records. The measurement
+// contract (docs/design/46 rev. 2):
+//
+//   - the timed-loop shape is native `to:do:` — its counter lives in the Zig
+//     frame, so an "empty" loop really is empty (NO cell traffic inside any
+//     timed window; the harness's own bookkeeping writes cells only BETWEEN
+//     windows)
+//   - case bodies UNROLL K copies of the op per `to:do:` iteration (declared
+//     via opsPerIter:) so the loop's own overhead stays well below the raw
+//     time and the baseline subtraction is well-conditioned
+//   - the runner times an empty loop at the same iteration count and
+//     subtracts; results carry BOTH net and raw ns/op so the subtraction is
+//     auditable. rawCase:… cases (the loops.* family — their subject IS the
+//     loop) skip the subtraction and report raw as net
+//   - GC discipline: `[System autoGc: false]` for the whole run, `[System gc]`
+//     immediately before every timed window — collections never land inside
+//     one (a case measuring allocation+collection opts out by being a macro
+//     case, not a micro one)
+//   - calibration doubles the iteration count until one timed run exceeds the
+//     floor (~100ms); then R reps after one untimed warmup; the MEDIAN is the
+//     tracked number, the MIN is the noise floor
+//   - BENCH_QUICK (any value, read via a libc getenv wrap) lowers the floor
+//     and reps for the dev loop; BENCH_OUT overrides where writeResults: lands
+//
+// Load it (from the repo root) with:
+//   [System load: "modules/bench.birnam"]
+//
+// DEFINE (registers; runs nothing):
+//   let s := [BenchSuite named: "micro"];
+//   [s case: "sends.unary" opsPerIter: 8 do: [:n |
+//     [1 to: n do: [:i | ...eight copies of the op under test...]]]];
+//   [s rawCase: "loops.to-do" opsPerIter: 1 do: [:n |
+//     [1 to: n do: [:i | nil]]]];
+// RUN + WRITE:
+//   [Bench runSuite: s];
+//   [Bench writeResults: "bench/results/dev/micro.json"]
+
+// -- dependencies (guarded — a second load would re-wrap noisily) ---------------
+[[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [System load: "modules/time.birnam"]]];
+[[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
+
+// char *getenv(const char *) — the receiver (a String) is the variable name; a
+// missing variable answers nil (the shim maps a NULL char* to nil).
+[Alien wrap: "getenv" signature: "s s" as: #getenvValue on: String];
+
+// Everything here is cwd-relative (module loads, the results layout) — warn
+// loudly if this isn't the repo root. (bench.sh is the sanctioned entry.)
+[[File isDir: "modules"] ifTrue: [| nil] ifFalse: [|
+  [System println: "bench: WARNING — cwd is not the repo root; modules/ and bench/ paths will misresolve"]]];
+
+// ===========================================================================
+// BenchSuite — a named bag of deferred cases.
+// ===========================================================================
+[Globals at: #BenchSuite put: [Object clone]];
+[Reflect docModule: #bench is: "The benchmark harness — calibrated, GC-disciplined timing over a native to:do: loop (docs/design/46)."];
+
+[Reflect defineMethod: #name on: BenchSuite as: [:self |
+  [[db cellFor: self attr: #name] value]]];
+[Reflect defineMethod: #cases on: BenchSuite as: [:self |
+  [[db cellFor: self attr: #cases] value]]];
+
+[Reflect defineMethod: #named: on: BenchSuite as: [:self :nm |
+  let s := [BenchSuite clone];
+  [[db cellFor: s attr: #name]  set: nm];
+  [[db cellFor: s attr: #cases] set: #[]];
+  s] doc:
+  "A fresh suite named `nm`."];
+
+// The shared case constructor. rawFlag 1 = report raw only (no subtraction).
+// Kept ≤4 block params (self + 3) by splitting the public surface in two below.
+[Reflect defineMethod: #addCase:k:blk: on: BenchSuite as: [:self :nm :k :blk |
+  let cse := [Object clone];
+  [[db cellFor: cse attr: #cname]  set: nm];
+  [[db cellFor: cse attr: #k]      set: k];
+  [[db cellFor: cse attr: #raw]    set: 0];
+  [[db cellFor: cse attr: #cblock] set: blk];
+  [[db cellFor: self attr: #cases] set: [[self cases] add: cse]];
+  cse]];
+
+[Reflect defineMethod: #case:opsPerIter:do: on: BenchSuite as: [:self :nm :k :blk |
+  [self addCase: nm k: k blk: blk];
+  self] doc:
+  "Add a subtracted case: `blk` is [:n | one to:do: loop of n iterations, K ops each]. Net ns/op = (median - empty-loop baseline) / (n*K). Chainable."];
+
+[Reflect defineMethod: #rawCase:opsPerIter:do: on: BenchSuite as: [:self :nm :k :blk |
+  let cse := [self addCase: nm k: k blk: blk];
+  [[db cellFor: cse attr: #raw] set: 1];
+  self] doc:
+  "Add a raw-only case (no baseline subtraction) — for cases whose subject IS the loop. Chainable."];
+
+// ===========================================================================
+// Bench — the runner. Results accumulate on #results (reset per runSuite:).
+// ===========================================================================
+[Globals at: #Bench put: [Object clone]];
+
+[Reflect defineMethod: #results on: Bench as: [:self |
+  [[db cellFor: self attr: #results] value]] doc:
+  "The result records of the last runSuite: (a Vector of record objects)."];
+
+[Reflect defineMethod: #failures on: Bench as: [:self |
+  [[db cellFor: self attr: #failures] value]] doc:
+  "How many cases FAILed (erroring bodies) in the last runSuite: — the exit-code gate."];
+[[db cellFor: Bench attr: #failures] set: 0];
+
+// Quick mode: BENCH_QUICK set (to anything) — the dev loop.
+[Reflect defineMethod: #quick on: Bench as: [:self |
+  [[["BENCH_QUICK" getenvValue] isNil] ifTrue: [| false] ifFalse: [| true]]]];
+
+// Calibration floor (µs a single timed run must exceed) and rep count.
+[Reflect defineMethod: #floorUs on: Bench as: [:self |
+  [[self quick] ifTrue: [| 20000] ifFalse: [| 100000]]]];
+[Reflect defineMethod: #benchReps on: Bench as: [:self |
+  [[self quick] ifTrue: [| 2] ifFalse: [| 5]]]];
+
+// The one shared empty loop — the baseline every subtracted case measures
+// against. Same shape as every case body: one native to:do:, nothing in it.
+[[db cellFor: Bench attr: #emptyLoop] set: [:m | [1 to: m do: [:i | nil]]]];
+
+// -- the ONLY timed window in the module ----------------------------------------
+// GC immediately before, then start..run..stop. Nothing else may read the clock.
+[Reflect defineMethod: #timeOnce:iters: on: Bench as: [:self :blk :m |
+  [System gc];
+  let t0 := [Time monotonicMicros];
+  [blk value: m];
+  let t1 := [Time monotonicMicros];
+  [t1 - t0]] doc:
+  "One GC-preceded timed run of `blk` at m iterations; answers elapsed µs."];
+
+// Double m until one timed run exceeds the floor. Recursive — depth is log2.
+// Ceiling at 2^30: a body that costs ~nothing (broken case, broken timer)
+// must terminate with garbage-but-visible numbers, not spiral into overflow.
+[Reflect defineMethod: #calibrate:from: on: Bench as: [:self :blk :m |
+  let e := [self timeOnce: blk iters: m];
+  [[e >= [self floorUs]]
+    ifTrue:  [| m]
+    ifFalse: [| [[m >= 1073741824]
+      ifTrue:  [| m]
+      ifFalse: [| [self calibrate: blk from: [m * 2]]]]]]]];
+
+// R timed runs at m iterations; answers the Vector of elapsed µs. The cell
+// writes land BETWEEN timed windows (timeOnce: brackets only the block).
+[Reflect defineMethod: #sample:iters: on: Bench as: [:self :blk :m |
+  let run := [Object clone];
+  let acc := [db cellFor: run attr: #acc];
+  [acc set: #[]];
+  [1 to: [self benchReps] do: [:r |
+    let e := [self timeOnce: blk iters: m];
+    [acc set: [[acc value] add: e]]]];
+  [acc value]]];
+
+// Median = middle element of the sorted runs; min via fold. NOTE: `sortBy:`
+// takes a one-arg KEY block (elements sort by `<` on their keys), NOT a
+// two-arg comparator — identity is the ascending sort of Integers.
+[Reflect defineMethod: #medianOf: on: Bench as: [:self :v |
+  let sorted := [v sortBy: [:x | x]];
+  [sorted at: [[v size] / 2]]]];
+[Reflect defineMethod: #minOf: on: Bench as: [:self :v |
+  [v inject: [v at: 0] into: [:acc :x | [[x < acc] ifTrue: [| x] ifFalse: [| acc]]]]]];
+
+// -- run one case -----------------------------------------------------------------
+// The warmup doubles as the error gate: an erroring body aborts its to:do: at
+// iteration 1, so an unchecked case would calibrate forever — FAIL it instead
+// (counted on #failures) and keep the suite going.
+[Reflect defineMethod: #runCase: on: Bench as: [:self :cse |
+  let blk := [[db cellFor: cse attr: #cblock] value];
+  let nm  := [[db cellFor: cse attr: #cname] value];
+  let w := [blk value: 64];
+  [[w isError]
+    ifTrue:  [|
+      [[db cellFor: Bench attr: #failures] set: [[self failures] + 1]];
+      [System println: ["  FAIL " , nm , ": " , [w printString]]]]
+    ifFalse: [| [self measureCase: cse]]];
+  self]];
+
+[Reflect defineMethod: #measureCase: on: Bench as: [:self :cse |
+  let blk := [[db cellFor: cse attr: #cblock] value];
+  let k   := [[db cellFor: cse attr: #k] value];
+  let nm  := [[db cellFor: cse attr: #cname] value];
+  let raw := [[db cellFor: cse attr: #raw] value];
+  let n := [self calibrate: blk from: 256];
+  let runs   := [self sample: blk iters: n];
+  let rawMed := [self medianOf: runs];
+  let rawMin := [self minOf: runs];
+  let baseMed := [[raw = 1]
+    ifTrue:  [| 0]
+    ifFalse: [| [self medianOf: [self sample: [[db cellFor: Bench attr: #emptyLoop] value] iters: n]]]];
+  let netUs := [rawMed - baseMed];
+  [[netUs < 0] ifTrue: [|
+    [System println: ["  WARN " , nm , ": negative net (baseline > case) — ill-conditioned; raise opsPerIter"]]]
+    ifFalse: [| nil]];
+  let netClamped := [[netUs < 0] ifTrue: [| 0] ifFalse: [| netUs]];
+  let ops := [n * k];
+  let rec := [Object clone];
+  [[db cellFor: rec attr: #rname]    set: nm];
+  [[db cellFor: rec attr: #nsOp]     set: [[netClamped * 1000] / ops]];
+  [[db cellFor: rec attr: #nsOpRaw]  set: [[rawMed * 1000] / ops]];
+  [[db cellFor: rec attr: #netUs]    set: netUs];
+  [[db cellFor: rec attr: #ops]      set: ops];
+  [[db cellFor: rec attr: #iters]    set: n];
+  [[db cellFor: rec attr: #nreps]    set: [self benchReps]];
+  [[db cellFor: rec attr: #medianUs] set: rawMed];
+  [[db cellFor: rec attr: #minUs]    set: rawMin];
+  [[db cellFor: Bench attr: #results] set: [[self results] add: rec]];
+  [System println: ["  " , nm , ": " , [[[db cellFor: rec attr: #nsOp] value] printString]
+                   , " ns/op (raw " , [[[db cellFor: rec attr: #nsOpRaw] value] printString]
+                   , ", n=" , [n printString] , ", k=" , [k printString] , ")"]];
+  self]];
+
+// -- run a suite --------------------------------------------------------------------
+[Reflect defineMethod: #runSuite: on: Bench as: [:self :s |
+  [System autoGc: false];
+  [[db cellFor: Bench attr: #results]   set: #[]];
+  [[db cellFor: Bench attr: #failures]  set: 0];
+  [[db cellFor: Bench attr: #suiteName] set: [s name]];
+  [System println: ["== bench: " , [s name] , [[self quick] ifTrue: [| " (quick) =="] ifFalse: [| " =="]]]];
+  [[s cases] do: [:cse | [self runCase: cse]]];
+  [System autoGc: true];
+  s] doc:
+  "Run every case of suite `s` under the GC discipline (autoGc off for the run, restored after — safe to run from a live REPL). Results land on [Bench results]; erroring cases FAIL and count on [Bench failures]."];
+
+// -- JSON emit ----------------------------------------------------------------------
+// Assembled by hand with StringBuilder for a STABLE field/case order (Json
+// stringify over a HAMT Map would order keys arbitrarily — bad for diffing).
+[Reflect defineMethod: #jsonFor: on: Bench as: [:self :rec |
+  let sb := [StringBuilder new];
+  [sb add: "{\"name\":\""];
+  [sb add: [[db cellFor: rec attr: #rname] value]];
+  [sb add: "\",\"ns_per_op\":"];
+  [sb add: [[[db cellFor: rec attr: #nsOp] value] printString]];
+  [sb add: ",\"ns_per_op_raw\":"];
+  [sb add: [[[db cellFor: rec attr: #nsOpRaw] value] printString]];
+  [sb add: ",\"net_us\":"];
+  [sb add: [[[db cellFor: rec attr: #netUs] value] printString]];
+  [sb add: ",\"ops\":"];
+  [sb add: [[[db cellFor: rec attr: #ops] value] printString]];
+  [sb add: ",\"iters\":"];
+  [sb add: [[[db cellFor: rec attr: #iters] value] printString]];
+  [sb add: ",\"reps\":"];
+  [sb add: [[[db cellFor: rec attr: #nreps] value] printString]];
+  [sb add: ",\"median_us\":"];
+  [sb add: [[[db cellFor: rec attr: #medianUs] value] printString]];
+  [sb add: ",\"min_us\":"];
+  [sb add: [[[db cellFor: rec attr: #minUs] value] printString]];
+  [sb add: "}"];
+  [sb asString]]];
+
+[Reflect defineMethod: #jsonString on: Bench as: [:self |
+  let sb := [StringBuilder new];
+  let run := [Object clone];
+  let first := [db cellFor: run attr: #first];
+  [first set: 1];
+  [sb add: "{\"suite\":\""];
+  [sb add: [[db cellFor: Bench attr: #suiteName] value]];
+  [sb add: "\",\"cases\":["];
+  [[self results] do: [:rec |
+    [[[first value] = 1] ifTrue: [| [first set: 0]] ifFalse: [| [sb add: ","]]];
+    [sb add: [self jsonFor: rec]]]];
+  [sb add: "]}"];
+  [sb asString]] doc:
+  "The last run's results as one JSON object (stable field order)."];
+
+// -- write --------------------------------------------------------------------------
+[Reflect defineMethod: #ensureDir: on: Bench as: [:self :p |
+  [[File isDir: p] ifTrue: [| nil] ifFalse: [| [File makeDir: p]]]]];
+
+[Reflect defineMethod: #writeResults: on: Bench as: [:self :path |
+  let env := ["BENCH_OUT" getenvValue];
+  let out := [[env isNil] ifTrue: [| path] ifFalse: [| env]];
+  [self ensureDir: "bench"];
+  [self ensureDir: "bench/results"];
+  [self ensureDir: "bench/results/dev"];
+  let res := [File write: out contents: [self jsonString]];
+  [[res isError]
+    ifTrue:  [|
+      [System println: ["write FAILED -> " , out , ": " , [res printString]]];
+      res]
+    ifFalse: [|
+      [System println: ["results -> " , out]];
+      out]]] doc:
+  "Write the last run's JSON to `path` (BENCH_OUT overrides). Answers the path, or the error if the write failed (gate on [result isError]). Ensures the standard bench/results/dev layout; a custom path's directory is the caller's job."]

@@ -1,0 +1,33 @@
+// smoke.birnam — the harness smoke test (docs/design/46 Phase 1).
+//
+// Not a real benchmark: proves the harness's whole path runs — load, register,
+// warmup, calibrate, sample, subtract, JSON, write — and gates an exit code on
+// it, so `birnam bench/smoke.birnam; echo $?` is a one-line health check.
+//
+//   BENCH_QUICK=1 ./zig-out/bin/birnam bench/smoke.birnam   # fast form
+
+[System load: "modules/bench.birnam"];
+[System load: "modules/os.birnam"];
+
+let s := [BenchSuite named: "smoke"];
+
+// A subtracted case: eight adds per iteration.
+[s case: "smoke.add" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [1 + 1]; [1 + 1]; [1 + 1]; [1 + 1];
+    [1 + 1]; [1 + 1]; [1 + 1]; [1 + 1]]]]];
+
+// A raw-only case: the empty loop itself.
+[s rawCase: "smoke.loop" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | nil]]]];
+
+[Bench runSuite: s];
+let written := [Bench writeResults: "bench/results/dev/smoke.json"];
+
+// Gate: both cases measured, no FAILs, and the JSON really landed on disk.
+let ok := [[[[[Bench results] size] = 2]
+           & [[Bench failures] = 0]]
+           & [[written isError] ifTrue: [| false] ifFalse: [| true]]];
+[ok
+  ifTrue:  [| [OS exit: 0]]
+  ifFalse: [| [OS exit: 1]]]

@@ -14,3 +14,7 @@ chat.md
 # Built first-party wrapped C libraries (produced by `birnam wrap`)
 wrapped/**/lib*.dylib
 wrapped/**/lib*.so
+
+# Between-version benchmark runs are disposable; only per-tag snapshots
+# (bench/results/v*.json) are tracked. (docs/design/46)
+bench/results/dev/
