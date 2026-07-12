@@ -132,6 +132,63 @@ test "relational: equal-valued Float bindings dedup to one solution (valEq by va
     try std.testing.expectEqual(@as(f64, 1.75), api.floatValue(s1(r, "at:", api.mkSmallInt(1))));
 }
 
+test "relational: value-typed pattern constants match by VALUE (the footgun is closed)" {
+    const api = setup();
+    const db = freshDb(api);
+
+    const a = s0(db, "entity");
+    const b = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", a, api.intern("age"), api.mkSmallInt(33));
+    _ = s3(db, "assert:attr:value:", b, api.intern("age"), api.mkSmallInt(44));
+    _ = s3(db, "assert:attr:value:", a, api.intern("height"), api.mkFloat(1.5));
+    _ = s3(db, "assert:attr:value:", a, api.intern("nick"), api.mkString("al", 2));
+
+    // ?e where [?e #age 33] — a FRESH boxed 33 as the pattern constant matches
+    // the asserted (distinct) box. This exact shape used to match nothing.
+    const c1 = vec(api, &.{vec(api, &.{ lvar(api, "e"), api.intern("age"), api.mkSmallInt(33) })});
+    const r1 = s2(db, "findAll:where:", lvar(api, "e"), c1);
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(r1, "size")));
+    try std.testing.expect(s1(r1, "at:", api.mkSmallInt(0)) == a);
+
+    // Float and String constants likewise; a non-matching value still misses.
+    const c2 = vec(api, &.{vec(api, &.{ lvar(api, "e"), api.intern("height"), api.mkFloat(1.5) })});
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(s2(db, "findAll:where:", lvar(api, "e"), c2), "size")));
+    const c3 = vec(api, &.{vec(api, &.{ lvar(api, "e"), api.intern("nick"), api.mkString("al", 2) })});
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(s2(db, "findAll:where:", lvar(api, "e"), c3), "size")));
+    const c4 = vec(api, &.{vec(api, &.{ lvar(api, "e"), api.intern("age"), api.mkSmallInt(99) })});
+    try std.testing.expectEqual(@as(i64, 0), ival(s0(s2(db, "findAll:where:", lvar(api, "e"), c4), "size")));
+
+    // Join agreement is by value too: ?v bound from a's age must agree with b's
+    // age fact through a DISTINCT equal-valued box.
+    _ = s3(db, "assert:attr:value:", b, api.intern("age2"), api.mkSmallInt(44));
+    const c5 = vec(api, &.{
+        vec(api, &.{ lvar(api, "x"), api.intern("age"), lvar(api, "v") }),
+        vec(api, &.{ lvar(api, "y"), api.intern("age2"), lvar(api, "v") }),
+    });
+    const r5 = s2(db, "findAll:where:", lvar(api, "x"), c5);
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(r5, "size")));
+    try std.testing.expect(s1(r5, "at:", api.mkSmallInt(0)) == b);
+}
+
+test "relational: rule args unify value constants by VALUE" {
+    const api = setup();
+    const db = freshDb(api);
+
+    const e1 = s0(db, "entity");
+    const e2 = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", e1, api.intern("score"), api.mkSmallInt(7));
+    _ = s3(db, "assert:attr:value:", e2, api.intern("score"), api.mkSmallInt(9));
+
+    // scored(?p ?s) :- [?p #score ?s]; invoke with a fresh boxed 7 as the arg.
+    const params = vec(api, &.{ lvar(api, "p"), lvar(api, "s") });
+    const body = vec(api, &.{vec(api, &.{ lvar(api, "p"), api.intern("score"), lvar(api, "s") })});
+    _ = s3(db, "defineRule:params:body:", api.intern("scored"), params, body);
+    const call = vec(api, &.{vec(api, &.{ api.intern("rule"), api.intern("scored"), lvar(api, "p"), api.mkSmallInt(7) })});
+    const r = s2(db, "findAll:where:", lvar(api, "p"), call);
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(r, "size")));
+    try std.testing.expect(s1(r, "at:", api.mkSmallInt(0)) == e1);
+}
+
 test "relational: two-clause conjunction joins on the shared variable" {
     const api = setup();
     const db = freshDb(api);

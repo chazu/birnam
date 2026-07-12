@@ -12,10 +12,11 @@
 // entity whose city is Boston. `pull:spec:` then materializes a matched entity
 // into a record map.
 //
-// Note the values: cities are *symbols* (`#Boston`) because clause constants
-// match by identity, and interned symbols share identity — two `"Boston"`
-// string literals would be distinct objects and never match. Names are plain
-// strings: we only display them, never query by them.
+// Note the values: cities are *symbols* (`#Boston`) — the idiomatic key for a
+// closed category. Clause constants match by value equality (valEq: numbers,
+// floats, and strings by value; symbols and entities by identity), so string
+// or number constants work in patterns too. Names are plain strings: we only
+// display them, never query by them.
 
 // Add a person: mint the entity, assert its facts, hand the entity back.
 let person := [:name :city |

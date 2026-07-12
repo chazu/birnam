@@ -273,15 +273,18 @@ loop.
 Two engine truths the suite's construction surfaced (both verified against
 `relational.zig`):
 
-- **Pattern-constant footgun:** an Integer literal in a triple pattern
-  matches by **pointer identity** — boxed numbers don't intern, so
-  `#[?e #age 33]` silently matches nothing, ever. The sanctioned form is a
-  variable + predicate clause (`#[?e #age ?v] #[?v #eq 33]`, value
-  equality); symbols and entities are fine as pattern constants. The first
-  draft of this suite timed empty-set scans because of this; the suite now
-  **gates on expected cardinalities** (fixed seed → known constants) and
-  refuses to pass on wrong answers. Worth an engine fix or a loud doc
-  warning independent of benchmarking.
+- **Pattern-constant footgun — FIXED 2026-07-12:** an Integer literal in a
+  triple pattern used to match by **pointer identity** — boxed numbers
+  don't intern, so `#[?e #age 33]` silently matched nothing, ever; the
+  workaround was a variable + predicate clause (`#[?e #age ?v] #[?v #eq
+  33]`). The engine fix landed with the index arc: `tryClause`,
+  `matchRuleClause`, and the derived-tuple set all ride `valEq` now, so
+  value-typed constants (Integer/Float/String) match by value everywhere
+  the engine compares. The first draft of this suite timed empty-set scans
+  because of the footgun; the suite still **gates on expected
+  cardinalities** (fixed seed → known constants) and refuses to pass on
+  wrong answers, and its value-filtered cases keep the predicate form for
+  cross-version comparability (the case-order contract).
 - **The rule fixpoint is naive, not semi-naive** (whole-relation
   materialization per query, O(n²) dedup) — `query.rule-recursive` tracks
   full-closure cost over the 999-node forest, not leaf-restricted

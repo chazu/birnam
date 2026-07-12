@@ -20,9 +20,10 @@ let text := [[[raw asLowercase] replace: "." with: ""] replace: "," with: ""];
 
 // Build the frequency table by folding the word vector into a map.
 //
-// Maps key by *identity*, and two equal string literals are distinct objects —
-// so a raw string key would never match on the second occurrence. Interning
-// each word with `asSymbol` gives a stable identity key that deduplicates.
+// Map keys compare by VALUE for value types (String bytes, Integer, Float) —
+// a raw string key would dedupe fine. Interning each word with `asSymbol` is
+// still the idiomatic move: a closed vocabulary reads as symbols, and symbol
+// keys compare by (interned) identity, the cheapest path.
 //
 // The stored *value* is a `#[word count]` pair: we keep the original word
 // string for display (a symbol does not render back to a clean string), and

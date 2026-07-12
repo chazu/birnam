@@ -24,8 +24,10 @@
 //!   [db pull: e spec: #[ #attr … ]]   → a record Map; #[#ref <subspec>] recurses,
 //!                                        :many attrs yield Vectors
 //!
-//! A clause is `#[ e a v ]` (a Vector); each position is either a CONSTANT (matched
-//! by identity) or a LOGIC VARIABLE (`?p` in source). A clause whose MIDDLE position
+//! A clause is `#[ e a v ]` (a Vector); each position is either a CONSTANT —
+//! matched by `valEq`: value types (Integer/Float/String) by value, entities and
+//! interned symbols by identity, so `#[?e #age 33]` matches an asserted 33 — or a
+//! LOGIC VARIABLE (`?p` in source). A clause whose MIDDLE position
 //! is a comparison-op symbol (`#lt #le #gt #ge #eq #ne`, or the glyphs `#< #<= #>
 //! #>= #= #~=`) is instead a PREDICATE clause `#[ lhs op rhs ]` — it filters the
 //! current solutions (keep the row iff `lhs op rhs`) and binds nothing, so it must
@@ -351,7 +353,11 @@ fn predicateOp(o: Oop) ?PredOp {
 
 /// Extend solution `sol` by matching clause positions `pos` against triple `tri`.
 /// A logic-var position binds (or must agree with an existing binding); a constant
-/// must equal (by identity). Returns the extended binding set, or null on mismatch.
+/// must equal by `valEq` — value types (Integer/Float/String) by value, everything
+/// else (entities, interned symbols) by identity. So `#[?e #age 33]` matches the
+/// asserted boxed 33 (the old pointer-identity match silently matched nothing —
+/// the pattern-constant footgun, docs/46). Returns the extended binding set, or
+/// null on mismatch.
 fn tryClause(aa: std.mem.Allocator, sol: []const Binding, pos: [3]Oop, tri: Triple) ?[]Binding {
     var b: std.ArrayList(Binding) = .{};
     b.appendSlice(aa, sol) catch @panic("relational: oom");
@@ -359,11 +365,11 @@ fn tryClause(aa: std.mem.Allocator, sol: []const Binding, pos: [3]Oop, tri: Trip
     for (pos, vals) |p, val| {
         if (isLogicVar(p)) {
             if (lookup(b.items, p)) |existing| {
-                if (existing != val) return null;
+                if (!valEq(existing, val)) return null;
             } else {
                 b.append(aa, .{ .v = p, .val = val }) catch @panic("relational: oom");
             }
-        } else if (p != val) return null;
+        } else if (!valEq(p, val)) return null;
     }
     return b.toOwnedSlice(aa) catch @panic("relational: oom");
 }
@@ -452,10 +458,15 @@ fn mRebuildRules(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
+// Derived relations are SETS under value equality, like every other set in the
+// engine — two tuples carrying equal-valued boxed numbers are one tuple (the
+// identity compare here was the rule-side face of the pattern-constant footgun:
+// it let value-duplicate tuples accumulate and stopped fixpoints converging on
+// value-typed heads).
 fn tupleInSet(d: *const DerivedSet, t: []const Oop) bool {
     outer: for (d.items) |row| {
         if (row.len != t.len) continue;
-        for (row, t) |a, b| if (a != b) continue :outer;
+        for (row, t) |a, b| if (!valEq(a, b)) continue :outer;
         return true;
     }
     return false;
@@ -547,7 +558,7 @@ fn materialize(aa: std.mem.Allocator, name: Oop, tidx: *TripleIndex) *DerivedSet
 /// Match a `#[ #rule #name arg… ]` clause: extend each solution by unifying the
 /// call args (positionally, like a triple) against every tuple of the rule's
 /// materialized relation. An arg may be a bound var (must agree), a free var
-/// (binds), or a constant (must equal by identity).
+/// (binds), or a constant (must equal by `valEq`, like a triple constant).
 fn matchRuleClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, csz: usize, tidx: *TripleIndex) []const []Binding {
     const name = send1(clause, s_at, g_api.mkSmallInt(1));
     const arity = csz - 2;
@@ -566,12 +577,12 @@ fn matchRuleClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, 
                 const val = row[i];
                 if (isLogicVar(p)) {
                     if (lookup(b.items, p)) |ex| {
-                        if (ex != val) {
+                        if (!valEq(ex, val)) {
                             ok = false;
                             break;
                         }
                     } else b.append(aa, .{ .v = p, .val = val }) catch @panic("relational: oom");
-                } else if (p != val) {
+                } else if (!valEq(p, val)) {
                     ok = false;
                     break;
                 }

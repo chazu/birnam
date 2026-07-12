@@ -63,12 +63,12 @@ let ROOT := [E at: 0];
 let LEAF := [E at: 999];
 
 // -- the query cases (stationary — reads only) --------------------------------------
-// VALUE MATCHING FOOTGUN (discovered writing this suite): an Integer literal
-// in a triple pattern matches by POINTER IDENTITY — boxed numbers don't
-// intern, so `#[?e #age 33]` never matches anything asserted. The sanctioned
-// form binds a variable and filters with a predicate clause (`#eq` sends `=`,
-// value equality): `#[?e #age ?v] #[?v #eq 33]`. Every value-filtered case
-// here uses that form. Symbols/entities DO match as pattern constants.
+// Pattern constants match by VALUE since 2026-07-12 (tryClause rides valEq —
+// the pointer-identity footgun this suite discovered is closed), so
+// `#[?e #age 33]` now works directly. The value-filtered cases below KEEP the
+// older bind+predicate form (`#[?e #age ?v] #[?v #eq 33]`): the case-order
+// contract freezes each case's shape for cross-version comparability, and the
+// form exercises the predicate path. Correct answers are gated either way.
 let s := [BenchSuite named: "relational"];
 
 // One op = one full query (k=1 throughout; loop overhead is noise against a
