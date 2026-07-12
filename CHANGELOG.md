@@ -6,6 +6,58 @@ All notable changes to birnam are recorded here. Format follows
 other targets are rejected at build time until their libtcc and shared-library
 loader ports are complete.
 
+## [Unreleased]
+
+The measurement release: the benchmark infrastructure landed, and what it
+measured got fixed. The relational read path went from seconds-per-query to
+milliseconds (the index arc), value equality became one story everywhere the
+system compares values, and the first stdlib migrations gated by measurement
+shipped.
+
+### Added
+- **Benchmark infrastructure (docs/46).** `[Time monotonicMicros]` and a
+  calibrated, GC-disciplined harness (`modules/bench.birnam`); the micro
+  suite (28 migration-gate cases plus a process-isolated parse suite); the
+  relational suite over a fixed 10k-entity base that **gates on expected
+  cardinalities** — it refuses to pass on wrong answers; macro whole-process
+  cases (boot paths, image save/boot, stage1 compile, scripts, docgen, GC)
+  via `scripts/bench.sh`; `bench-compare` with regression thresholds; mise
+  tasks and `docs/misc/BENCHMARKS.md`. Tracked snapshots live in
+  `bench/results/v<VERSION>.json`.
+
+### Changed
+- **Collection tier-B boundary, settled by measurement.** `includes:` and
+  `asVector` moved to stdlib birnam (`includes:` is a one-send delegation to
+  the retained native `indexOf:` — the fully-derived form measured 116×);
+  `reversed` and `copyFrom:to:` stay native (2.58× / 1.60× — per-row loops
+  fail the gate, as docs/44 §7 predicted). The whole boundary surface is
+  pinned in stdlib-test either way.
+
+### Fixed
+- **Floats compare by value everywhere the system compares values.** Map
+  keys, `includes:`/`indexOf:`, store facts (set semantics + retract by an
+  equal-valued box), and datalog bindings — `[#[1.5 2.5] includes: 1.5]` is
+  true now. Per-type like `=` (`1.0 = 1` stays false); `-0.0` and `0.0` are
+  one Map key.
+- **Datalog pattern constants match by value.** `#[?e #age 33]` matches an
+  asserted 33 — previously number/float/string constants in triple patterns
+  compared by pointer identity and silently matched nothing. Join agreement,
+  rule args, and derived-tuple dedup ride the same value equality, so the
+  engine now compares values one way everywhere.
+
+### Performance
+- **The index arc — the relational read path is ~quadratic no more.** The
+  store gained an (e,a) postings index (an access path only: the append-only
+  log stays canonical and is what serializes; the index rebuilds from it),
+  the engine partitions gathered triples by attribute lazily per query,
+  derived-tuple membership is hashed, and the join copies bindings only on
+  match. Measured over the ~23k-fact bench base: single-pattern query
+  **3.6 s → 3 ms (~1200×)**, nested pull **10.9 s → 8 ms (~1400×)**,
+  recursive-rule query **4.3 s → 39 ms (~110×)**, 3-way join
+  **4.7 s → 80 ms (~59×)**, asserts **102 µs → 2.7 µs/op (~44×)**. Point
+  reads speed up system-wide — compiled global references ride the same
+  store.
+
 ## [0.8.0] — 2026-07-11
 
 The refounding. The legacy fact-store kernel is retired and birnam is rebuilt
