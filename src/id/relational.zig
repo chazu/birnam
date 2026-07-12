@@ -201,6 +201,79 @@ fn mEntityPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 const Triple = struct { e: Oop, a: Oop, v: Oop };
 const Triples = std.ArrayList(Triple);
 
+// -- the per-query attr partition ---------------------------------------------
+//
+// The join in `applyClause` is sols × candidate-triples per clause. Almost every
+// triple pattern names its attribute as a constant (`#[?e #age ?v]`), so the
+// gathered triples are partitioned by attribute ONCE per query and each clause
+// scans only its attribute's partition. This is a pre-filter, not a matcher:
+// `tryClause` still decides every match exactly as before (the partition is
+// keyed by `valEq`, a superset of tryClause's identity match — sound), so
+// results are unchanged. Lives in the query's arena; freed wholesale with it.
+
+fn mix64(x0: u64) u64 {
+    var x = x0; // splitmix64 finalizer
+    x ^= x >> 30;
+    x *%= 0xbf58476d1ce4e5b9;
+    x ^= x >> 27;
+    x *%= 0x94d049bb133111eb;
+    x ^= x >> 31;
+    return x;
+}
+
+/// Hash consistent with `valEq` (below): valEq(a,b) implies valHash(a) ==
+/// valHash(b). Value types by value, everything else by address (the collector
+/// is non-moving; this structure is per-query, so no image-stability concern).
+fn valHash(o: Oop) u64 {
+    if (o == null) return mix64(0);
+    if (g_api.isSmallInt(o) != 0) return mix64(@bitCast(g_api.smallIntValue(o)));
+    const vt = g_api.vtableOf(o);
+    if (vt == g_api.string_vt) {
+        var len: usize = 0;
+        const p = g_api.stringBytes(o, &len);
+        return std.hash.Wyhash.hash(0, p[0..len]);
+    }
+    if (vt == g_api.float_vt) {
+        const f = g_api.floatValue(o);
+        const bits: u64 = if (f == 0) 0 else @bitCast(f);
+        return mix64(bits);
+    }
+    return mix64(@intFromPtr(o.?));
+}
+
+const ValCtx = struct {
+    pub fn hash(_: ValCtx, k: Oop) u64 {
+        return valHash(k);
+    }
+    pub fn eql(_: ValCtx, a: Oop, b: Oop) bool {
+        return valEq(a, b);
+    }
+};
+
+const TripleList = std.ArrayList(Triple);
+
+const TripleIndex = struct {
+    all: []const Triple,
+    aa: std.mem.Allocator, // the query's arena — partitions free with the query
+    by_attr: std.HashMapUnmanaged(Oop, TripleList, ValCtx, std.hash_map.default_max_load_percentage) = .{},
+
+    /// The triples a clause whose attr term resolved to `a` can possibly match:
+    /// `a`'s partition, built LAZILY on first request (one linear scan per
+    /// distinct attr per query) — a query that never joins on `a` never pays.
+    /// Returned slices stay valid across later builds: a map rehash moves the
+    /// list headers, not the buffers they point at, and a built partition is
+    /// never grown again.
+    fn candidates(self: *TripleIndex, a: Oop) []const Triple {
+        const gop = self.by_attr.getOrPut(self.aa, a) catch @panic("relational: oom");
+        if (!gop.found_existing) {
+            gop.value_ptr.* = .{};
+            for (self.all) |t| if (valEq(t.a, a))
+                gop.value_ptr.append(self.aa, t) catch @panic("relational: oom");
+        }
+        return gop.value_ptr.items;
+    }
+};
+
 /// The store sends `value:value:value:` here once per live triple; we push it into
 /// the Zig list whose address is stashed in the block's payload.
 fn mCollect3(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -407,12 +480,12 @@ fn totalActiveTuples() usize {
 /// adding any NEW tuples to the rule's set. A reference to another (or the same)
 /// rule in a body reads that rule's current partial set (see `materialize`), so one
 /// pass propagates one layer of derivation.
-fn evalRuleInto(aa: std.mem.Allocator, name: Oop, triples: []const Triple) void {
+fn evalRuleInto(aa: std.mem.Allocator, name: Oop, tidx: *TripleIndex) void {
     const rules = g_rules.getPtr(name) orelse return;
     const d = g_active.get(name).?;
     for (rules.items) |rule| {
         const arity: usize = @intCast(g_api.smallIntValue(send0(rule.params, s_size)));
-        const sols = applyClauses(aa, rule.body, triples);
+        const sols = applyClauses(aa, rule.body, tidx);
         for (sols) |sol| {
             const tuple = aa.alloc(Oop, arity) catch @panic("relational: oom");
             var ok = true;
@@ -437,7 +510,7 @@ fn evalRuleInto(aa: std.mem.Allocator, name: Oop, triples: []const Triple) void 
 /// MUTUAL recursion correct, not just self-recursion. A nested reference during the
 /// loop just reads the current partial set. `max_iter` is a safety net (a finite
 /// store reaches the fixpoint well before it).
-fn materialize(aa: std.mem.Allocator, name: Oop, triples: []const Triple) *DerivedSet {
+fn materialize(aa: std.mem.Allocator, name: Oop, tidx: *TripleIndex) *DerivedSet {
     const d = ensureSet(aa, name);
     if (g_fixpoint_depth > 0 or g_fixpoint_done) return d; // mid-loop, or already converged
 
@@ -453,7 +526,7 @@ fn materialize(aa: std.mem.Allocator, name: Oop, triples: []const Triple) *Deriv
         defer names.deinit(ca);
         var it = g_active.keyIterator();
         while (it.next()) |kp| names.append(ca, kp.*) catch @panic("relational: oom");
-        for (names.items) |nm| evalRuleInto(aa, nm, triples);
+        for (names.items) |nm| evalRuleInto(aa, nm, tidx);
         if (totalActiveTuples() == tuples_before and g_active.count() == rules_before) {
             converged = true;
             break;
@@ -475,10 +548,10 @@ fn materialize(aa: std.mem.Allocator, name: Oop, triples: []const Triple) *Deriv
 /// call args (positionally, like a triple) against every tuple of the rule's
 /// materialized relation. An arg may be a bound var (must agree), a free var
 /// (binds), or a constant (must equal by identity).
-fn matchRuleClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, csz: usize, triples: []const Triple) []const []Binding {
+fn matchRuleClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, csz: usize, tidx: *TripleIndex) []const []Binding {
     const name = send1(clause, s_at, g_api.mkSmallInt(1));
     const arity = csz - 2;
-    const d = materialize(aa, name, triples);
+    const d = materialize(aa, name, tidx);
 
     var next: std.ArrayList([]Binding) = .{};
     for (sols) |sol| {
@@ -515,7 +588,7 @@ fn matchRuleClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, 
 /// joins against a (possibly recursive) rule relation, a comparison-symbol middle
 /// FILTERS, otherwise it is a TRIPLE pattern that joins/extends. Compound clauses
 /// run their inner clauses back through this same function.
-fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, triples: []const Triple) []const []Binding {
+fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, tidx: *TripleIndex) []const []Binding {
     const csz: usize = @intCast(g_api.smallIntValue(send0(clause, s_size)));
     const pos0 = if (csz > 0) send1(clause, s_at, g_api.mkSmallInt(0)) else g_api.nilObj;
 
@@ -529,7 +602,7 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
         var i: usize = 1;
         while (i < csz) : (i += 1) {
             const branch = send1(clause, s_at, g_api.mkSmallInt(@intCast(i)));
-            const br = applyClause(aa, sols, branch, triples);
+            const br = applyClause(aa, sols, branch, tidx);
             unioned.appendSlice(aa, br) catch @panic("relational: oom");
         }
         return unioned.toOwnedSlice(aa) catch @panic("relational: oom");
@@ -538,7 +611,7 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
     // Rule invocation: `#[ #rule #name arg… ]`. Join against the rule's
     // materialized (possibly recursive) relation.
     if (isSym(pos0, "rule") and csz >= 2) {
-        return matchRuleClause(aa, sols, clause, csz, triples);
+        return matchRuleClause(aa, sols, clause, csz, tidx);
     }
 
     // Negation as failure: `#[ #not innerClause… ]`. Keep a solution iff threading
@@ -551,7 +624,7 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
             var i: usize = 1;
             while (i < csz) : (i += 1) {
                 const ic = send1(clause, s_at, g_api.mkSmallInt(@intCast(i)));
-                inner = applyClause(aa, inner, ic, triples);
+                inner = applyClause(aa, inner, ic, tidx);
             }
             if (inner.len == 0) kept.append(aa, sol) catch @panic("relational: oom");
         }
@@ -576,9 +649,14 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, trip
             if (pass) next.append(aa, sol) catch @panic("relational: oom");
         }
     } else {
-        // A triple pattern EXTENDS solutions: join against every live triple.
+        // A triple pattern EXTENDS solutions: join against the candidate triples —
+        // the attr PARTITION when the attr term resolves to a constant or a bound
+        // var (the overwhelmingly common shape), every live triple only when the
+        // attr is still unbound. tryClause still decides each match, so this
+        // changes wall-time, not results.
         for (sols) |sol| {
-            for (triples) |tri| {
+            const cand = if (resolveTerm(sol, pos[1])) |a| tidx.candidates(a) else tidx.all;
+            for (cand) |tri| {
                 if (tryClause(aa, sol, pos, tri)) |ns|
                     next.append(aa, ns) catch @panic("relational: oom");
             }
@@ -644,7 +722,7 @@ fn isBinderClause(clause: Oop) bool {
 
 /// Seed one empty solution, then run the clauses of `clausesVec` in a binding-aware
 /// order (filters deferred until their variables are bound), threading solutions.
-fn applyClauses(aa: std.mem.Allocator, clausesVec: Oop, triples: []const Triple) []const []Binding {
+fn applyClauses(aa: std.mem.Allocator, clausesVec: Oop, tidx: *TripleIndex) []const []Binding {
     const n: usize = @intCast(g_api.smallIntValue(send0(clausesVec, s_size)));
     const clauseObjs = aa.alloc(Oop, n) catch @panic("relational: oom");
     for (clauseObjs, 0..) |*co, i| co.* = send1(clausesVec, s_at, g_api.mkSmallInt(@intCast(i)));
@@ -686,7 +764,7 @@ fn applyClauses(aa: std.mem.Allocator, clausesVec: Oop, triples: []const Triple)
     var seed: std.ArrayList([]Binding) = .{};
     seed.append(aa, &[_]Binding{}) catch @panic("relational: oom");
     var sols: []const []Binding = seed.items;
-    for (order) |idx| sols = applyClause(aa, sols, clauseObjs[idx], triples);
+    for (order) |ci| sols = applyClause(aa, sols, clauseObjs[ci], tidx);
     return sols;
 }
 
@@ -730,7 +808,8 @@ fn runQuery(self: Oop, result_var: Oop, clauses: Oop, lo: Oop, hi: Oop) Oop {
     defer arena.deinit();
     const aa = arena.allocator();
 
-    const sols = applyClauses(aa, clauses, triples.items);
+    var tidx: TripleIndex = .{ .all = triples.items, .aa = aa };
+    const sols = applyClauses(aa, clauses, &tidx);
 
     // Project the result variable, dropping duplicates (set semantics).
     var out = send0(vectorFactory(), s_new);
@@ -896,7 +975,8 @@ fn mGroupBy(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     defer arena.deinit();
     const aa = arena.allocator();
 
-    const sols = applyClauses(aa, clauses, triples.items);
+    var tidx: TripleIndex = .{ .all = triples.items, .aa = aa };
+    const sols = applyClauses(aa, clauses, &tidx);
 
     // Bucket distinct `?v` values under each distinct `?g` value (group order =
     // first-appearance order).
