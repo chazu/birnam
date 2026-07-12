@@ -1,0 +1,150 @@
+// relational.birnam — the relational/datalog benchmark suite (docs/design/46
+// Phase 3). These are the acceptance numbers for the docs/44 Tier-B surface
+// lift: run before, lift, run after, compare.
+//
+// PROCESS-ISOLATED PROTOCOL (docs/46): the store is append-only with no
+// in-process reset, so this suite seeds ONCE — the timed seeding pass IS the
+// store.assert-10k measurement (one number per process; re-running it would
+// hit the idempotent-assert no-op, not the write path) — and the query cases
+// then run against that now-stationary base, calibrating freely (reads don't
+// mutate). bench.sh runs the whole suite as fresh processes and medians
+// across them.
+//
+//   ./zig-out/bin/birnam bench/relational.birnam
+//   BENCH_QUICK=1 ./zig-out/bin/birnam bench/relational.birnam
+//
+// The base: 10,000 entities. All 10k carry #age (i mod 100 → ~100 rows per
+// age) and #group (i mod 10). The first 1,000 form a #follows ring
+// (i → i+1 mod 1000; cyclic is fine for a bounded join) and a #parent forest
+// (i → i/10, depth ~3 — small enough that the recursive rule's fixpoint is a
+// bounded workload, acyclic as rules require).
+//
+// EXPECT SECONDS-PER-QUERY (2026-07 reality): the id store is a flat fact
+// log with linear scans and no indexes yet, so query cost is ~quadratic in
+// base size — a single-pattern findAll over this ~23k-fact base measures
+// seconds. That is the finding, not a suite bug: these numbers are the
+// before-picture for any index/Tier-B work, and comparability holds because
+// the seeded base is fixed. Consequence: this suite takes minutes, not
+// seconds — it is for relational work and release snapshots, not the
+// every-edit dev loop.
+
+[System load: "modules/bench.birnam"];
+[System load: "modules/os.birnam"];
+
+// -- seed (assert pass timed by hand — the one-shot protocol above) ---------------
+// The loop scaffolding (block invoke, at:, arithmetic) rides inside the
+// number; measured at ~1.2% of the assert cost — disclosed, not subtracted.
+let E := [[1 to: 10000] inject: #[] into: [:v :i | [v add: [db entity]]]];
+
+[System autoGc: false];
+[System gc];
+let t0 := [Time monotonicMicros];
+[1 to: 10000 do: [:i |
+  [db assert: [E at: [i - 1]] attr: #age value: [[i - 1] mod: 100]]]];
+let t1 := [Time monotonicMicros];
+let assertUs := [t1 - t0];
+
+// The rest of the base, untimed.
+[1 to: 10000 do: [:i |
+  [db assert: [E at: [i - 1]] attr: #group value: [[i - 1] mod: 10]]]];
+[1 to: 1000 do: [:i |
+  [db assert: [E at: [i - 1]] attr: #follows value: [E at: [i mod: 1000]]]]];
+[2 to: 1000 do: [:i |
+  [db assert: [E at: [i - 1]] attr: #parent value: [E at: [[i - 1] / 10]]]]];
+
+// ancestor(?x ?y): transitive closure of #parent (base + recursive case).
+[db defineRule: #ancestor params: #[?x ?y] body: #[ #[?x #parent ?y] ]];
+[db defineRule: #ancestor params: #[?x ?y]
+   body: #[ #[?x #parent ?z] #[#rule #ancestor ?z ?y] ]];
+
+// The time-travel basis: everything above is visible asOf B.
+let B := [db basis];
+let ROOT := [E at: 0];
+let LEAF := [E at: 999];
+
+// -- the query cases (stationary — reads only) --------------------------------------
+// VALUE MATCHING FOOTGUN (discovered writing this suite): an Integer literal
+// in a triple pattern matches by POINTER IDENTITY — boxed numbers don't
+// intern, so `#[?e #age 33]` never matches anything asserted. The sanctioned
+// form binds a variable and filters with a predicate clause (`#eq` sends `=`,
+// value equality): `#[?e #age ?v] #[?v #eq 33]`. Every value-filtered case
+// here uses that form. Symbols/entities DO match as pattern constants.
+let s := [BenchSuite named: "relational"];
+
+// One op = one full query (k=1 throughout; loop overhead is noise against a
+// multi-row scan/join). Expected cardinalities are gated below.
+[s case: "query.single-clause" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    [db findAll: ?e where: #[ #[?e #age ?v] #[?v #eq 33] ]]]]]];
+
+[s case: "query.join-3way" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    [db findAll: ?a where: #[ #[?a #follows ?b] #[?b #follows ?c]
+                              #[?c #age ?v] #[?v #eq 33] ]]]]]];
+
+// Negation on #follows, which is UNCORRELATED with the age slice (group
+// would be degenerate: (i mod 100)=33 implies (i mod 10)=3, retaining zero
+// rows — indistinguishable from a negation that wrongly drops everything).
+// Retains 90 of the 100 age-33 entities (10 are in the follows ring).
+[s case: "query.negation" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    [db findAll: ?e where: #[ #[?e #age ?v] #[?v #eq 33]
+                              #[#not #[?e #follows ?f]] ]]]]]];
+
+[s case: "query.aggregate" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    [db count: ?e where: #[ #[?e #age ?v] #[?v #eq 33] ]]]]]];
+
+// All ancestors of a depth-3 leaf (999 → 99 → 9 → 0). NOTE: the engine's
+// fixpoint is NAIVE (whole-relation materialization per query, ~2.9k tuples
+// over the 999-node forest; the constant filters after) — this case tracks
+// full-closure cost, not leaf-restricted derivation.
+[s case: "query.rule-recursive" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    [db findAll: ?x where: #[ #[#rule #ancestor LEAF ?x] ]]]]]];
+
+[s case: "query.asOf" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    [db findAll: ?e where: #[ #[?e #age ?v] #[?v #eq 33] ] asOf: B]]]]];
+
+// One op = pull a leaf one ref-level deep (~3 attribute resolutions — each
+// resolution costs a full log scan today, so a deeper spec only multiplies
+// wall time without adding signal).
+[s case: "pull.nested" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    [db pull: LEAF spec: #[ #age #[#parent #[ #age ]] ]]]]]];
+
+// -- result-validity gate ------------------------------------------------------------
+// The seed is fixed, so every case's cardinality is a known constant. Timing
+// queries that silently answer the empty set once shipped from this file (the
+// pointer-identity footgun above) — never again: each query runs once here
+// and the suite REFUSES to pass on wrong answers.
+let v1 := [[db findAll: ?e where: #[ #[?e #age ?v] #[?v #eq 33] ]] size];
+let v2 := [[db findAll: ?a where: #[ #[?a #follows ?b] #[?b #follows ?c]
+                                     #[?c #age ?v] #[?v #eq 33] ]] size];
+let v3 := [[db findAll: ?e where: #[ #[?e #age ?v] #[?v #eq 33]
+                                     #[#not #[?e #follows ?f]] ]] size];
+let v4 := [db count: ?e where: #[ #[?e #age ?v] #[?v #eq 33] ]];
+let v5 := [[db findAll: ?x where: #[ #[#rule #ancestor LEAF ?x] ]] size];
+let v6 := [[db findAll: ?e where: #[ #[?e #age ?v] #[?v #eq 33] ] asOf: B] size];
+let v7 := [[db pull: LEAF spec: #[ #age ]] at: #age];
+let valid := [[[[[[[v1 = 100] & [v2 = 10]] & [v3 = 90]] & [v4 = 100]]
+               & [v5 = 3]] & [v6 = 100]] & [v7 = 99]];
+[valid ifTrue: [| nil] ifFalse: [|
+  [System println: ["VALIDITY GATE FAILED — cardinalities: "
+    , [v1 printString] , " " , [v2 printString] , " " , [v3 printString] , " "
+    , [v4 printString] , " " , [v5 printString] , " " , [v6 printString] , " "
+    , [v7 printString] , " (want 100 10 90 100 3 100 99)"]]]];
+
+// -- run, then record the one-shot (runSuite: resets results, so record after) ------
+[Bench runSuite: s];
+[Bench record: "store.assert-10k" us: assertUs ops: 10000];
+let written := [Bench writeResults: "bench/results/dev/relational.json"];
+
+let ok := [[[[[[Bench results] size] = 8]
+           & [[Bench failures] = 0]]
+           & valid]
+           & [[written isError] ifTrue: [| false] ifFalse: [| true]]];
+[ok
+  ifTrue:  [| [OS exit: 0]]
+  ifFalse: [| [OS exit: 1]]]

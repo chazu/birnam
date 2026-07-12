@@ -251,6 +251,35 @@ present, falling back to `zig-out`.
 These are the acceptance numbers for the Tier-B lift: run before, lift,
 run after, compare.
 
+**Measured 2026-07-11 (validated suite — every case's cardinality gated):**
+the id store is a flat fact log with linear scans and no indexes, so query
+cost is ~quadratic in base size — a single-pattern `findAll:` (predicate
+form) over the ~23k-fact base is **~2.7s**, the 3-way join ~3.7s, the rule
+fixpoint ~3.5s, a one-level nested pull ~8s (each attribute resolution is a
+full log scan); one assert during seeding averages **~75–89µs**. The legacy
+kernel's "read 10–50×/write 100–1000× native" budget assumed its six
+indexes, which the id store does not have yet — these numbers are the
+before-picture for any index work, and the suite takes **minutes**: it is
+for relational-work sessions and release snapshots, not the every-edit dev
+loop.
+
+Two engine truths the suite's construction surfaced (both verified against
+`relational.zig`):
+
+- **Pattern-constant footgun:** an Integer literal in a triple pattern
+  matches by **pointer identity** — boxed numbers don't intern, so
+  `#[?e #age 33]` silently matches nothing, ever. The sanctioned form is a
+  variable + predicate clause (`#[?e #age ?v] #[?v #eq 33]`, value
+  equality); symbols and entities are fine as pattern constants. The first
+  draft of this suite timed empty-set scans because of this; the suite now
+  **gates on expected cardinalities** (fixed seed → known constants) and
+  refuses to pass on wrong answers. Worth an engine fix or a loud doc
+  warning independent of benchmarking.
+- **The rule fixpoint is naive, not semi-naive** (whole-relation
+  materialization per query, O(n²) dedup) — `query.rule-recursive` tracks
+  full-closure cost over the 999-node forest, not leaf-restricted
+  derivation.
+
 ### Macro — cases in `scripts/bench.sh`
 
 Wall ms + peak RSS each. Boot cases run a checked-in one-line stub

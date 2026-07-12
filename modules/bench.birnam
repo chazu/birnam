@@ -225,6 +225,27 @@
                    , ", n=" , [n printString] , ", k=" , [k printString] , ")"]];
   self]];
 
+// -- one-shot external measurements ---------------------------------------------
+// For work that can run exactly ONCE per process (e.g. a store-seeding pass:
+// re-running it would hit the idempotent-assert no-op path, not the write
+// path). The caller times it and records the result; reps=1, median=min=us.
+[Reflect defineMethod: #record:us:ops: on: Bench as: [:self :nm :us :ops |
+  let rec := [Object clone];
+  [[db cellFor: rec attr: #rname]    set: nm];
+  [[db cellFor: rec attr: #nsOp]     set: [[us * 1000] / ops]];
+  [[db cellFor: rec attr: #nsOpRaw]  set: [[us * 1000] / ops]];
+  [[db cellFor: rec attr: #netUs]    set: us];
+  [[db cellFor: rec attr: #ops]      set: ops];
+  [[db cellFor: rec attr: #iters]    set: 1];
+  [[db cellFor: rec attr: #nreps]    set: 1];
+  [[db cellFor: rec attr: #medianUs] set: us];
+  [[db cellFor: rec attr: #minUs]    set: us];
+  [[db cellFor: Bench attr: #results] set: [[self results] add: rec]];
+  [System println: ["  " , nm , ": " , [[[db cellFor: rec attr: #nsOp] value] printString]
+                   , " ns/op (one-shot, ops=" , [ops printString] , ")"]];
+  self] doc:
+  "Record an externally timed one-shot measurement: `us` elapsed microseconds over `ops` operations."];
+
 // -- run a suite --------------------------------------------------------------------
 [Reflect defineMethod: #runSuite: on: Bench as: [:self :s |
   [System autoGc: false];
