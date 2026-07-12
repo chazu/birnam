@@ -85,13 +85,13 @@
 [Reflect defineMethod: #methodsOf: on: Doc as: [:self :mod |
   [[db cellFor: mod attr: #docMethods] value]]];
 
-// A selector's clean display name: "#tag:body:" printString -> "tag:body:".
+// A selector's clean display name — the mirror's inverse of interning.
 [Reflect defineMethod: #nameOf: on: Doc as: [:self :sel |
-  [[sel printString] replace: "#" with: ""]]];
+  [Reflect nameOf: sel]]];
 
-// Every documented method entry whose selector prints as `name` (a String),
+// Every documented method entry whose selector's name equals `name` (a String),
 // across all modules — the hover / `birnam doc <sel>` path (a selector may occur
-// in several modules). Symbols compare by printed name (bare `=` on symbols fails).
+// in several modules).
 [Reflect defineMethod: #lookup: on: Doc as: [:self :name |
   [[self modules] inject: #[] into: [:acc :m |
     [[self methodsOf: m] inject: acc into: [:a2 :e |
@@ -99,11 +99,10 @@
         ifTrue:  [| [a2 add: e]]
         ifFalse: [| a2]]]]]]]];
 
-// Is `mod` a documented module? Compares by printed name (bare `=` on symbols
-// fails) and reads only the queryable modules list — never an unset cell.
+// Is `mod` a documented module? Reads only the queryable modules list — never
+// an unset cell.
 [Reflect defineMethod: #isDocumented: on: Doc as: [:self :mod |
-  let want := [mod printString];
-  [[self modules] inject: false into: [:found :m | [found | [[m printString] = want]]]]]];
+  [[self modules] includes: mod]]];
 
 // -- source view: the facts the compiler records for every loaded module ---------
 //
