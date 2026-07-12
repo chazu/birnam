@@ -26,9 +26,9 @@ sub-5% claims need a deliberate same-boot A/B.
   printed ns/op by eye. Quick mode (R=2, low calibration floor) is for
   iteration; drop `BENCH_QUICK` for numbers you'll quote.
 - **Touching relational/store code**: `./zig-out/bin/birnam
-  bench/relational.birnam` — it takes minutes (queries are ~seconds each
-  until the store grows indexes; that's the recorded finding, not a bug),
-  which is why it's not part of the tight loop.
+  bench/relational.birnam` — ~a minute since the 2026-07-12 index arc
+  (queries are ms-scale; the join and rule-fixpoint cases still run
+  ~¼–⅔s each and dominate the wall time).
 - **Before merging / when you want the full picture**: `mise run bench`,
   then `mise run bench-compare <last-release-snapshot> <your-dev-result>`.
 - **After cutting a release** (part of the release process): on the tagged

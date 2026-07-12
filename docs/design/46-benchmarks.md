@@ -298,6 +298,29 @@ retained native `indexOf:` scan. `vector.reversed` **2.58×** and
 predicted). Every macro case moved 0% under all four derived forms — the
 micro gate protects large-vector tails, not the measured workloads.
 
+**Measured 2026-07-12 (the index arc — the before-picture above is
+retired):** two commits, each gated by same-day pre/post ReleaseSafe dev
+runs of this suite (validity gate green throughout). (1) **The store's
+(e,a) postings index** (`0c68c51`): a hashmap (e,a) → log positions — an
+access path under the docs/42 rebuilt-cache discipline; the log stays
+canonical, within-pair visit order is exactly the old full scans', zero
+semantics moved. Every point read and the assert-path consults went
+O(F) → O(pair); `enumerateTriples` went ~O(F²) → O(F).
+`query.single-clause` **3.62s → 2.76ms (~1300×)**, `pull.nested`
+**10.9s → 6.6ms (~1660×)**, `store.assert-10k` **102µs → 2.3µs/op (~44×)**.
+(2) **The engine's lazy per-query attr partition** (`793f963`): gathered
+triples partition by attribute on first request (memoized in the query
+arena), so a clause with a constant attr scans only its partition.
+`query.join-3way` **1.02s → 236ms (4.3×)**, `query.negation` **49ms →
+4.7ms (10.5×)**; an eager up-front build was tried first and REJECTED by
+measurement (~0.5ms flat cost per query — single-clause/pull regressed
+~17%). Net across the arc: single-pattern reads ~1300×, joins ~20×,
+negation ~780×, writes ~44× — the suite now runs in ~a minute and is fine
+for the every-edit loop. Remaining known costs: `query.rule-recursive`
+(~640ms) is bounded by the naive fixpoint + O(n²) tuple dedup (the bullet
+above), and `query.join-3way` by sols×partition binding churn — engine
+work, not store scans.
+
 ### Macro — whole-process cases in `scripts/bench.sh`, plus two one-shot suites
 
 The bash-driven cases report wall µs (median + min over R runs, python3

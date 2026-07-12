@@ -19,14 +19,14 @@
 // (i → i/10, depth ~3 — small enough that the recursive rule's fixpoint is a
 // bounded workload, acyclic as rules require).
 //
-// EXPECT SECONDS-PER-QUERY (2026-07 reality): the id store is a flat fact
-// log with linear scans and no indexes yet, so query cost is ~quadratic in
-// base size — a single-pattern findAll over this ~23k-fact base measures
-// seconds. That is the finding, not a suite bug: these numbers are the
-// before-picture for any index/Tier-B work, and comparability holds because
-// the seeded base is fixed. Consequence: this suite takes minutes, not
-// seconds — it is for relational work and release snapshots, not the
-// every-edit dev loop.
+// EXPECT MILLISECONDS-PER-QUERY (since the 2026-07-12 index arc; the
+// seconds-scale before-picture is recorded in docs/46): the store's (e,a)
+// postings index killed the ~quadratic scans and the engine partitions
+// gathered triples by attr per query — single-pattern findAll over this
+// ~23k-fact base is ~3ms, pull ~7ms, the 3-way join ~240ms and the rule
+// fixpoint ~640ms (those two are bounded by engine join/fixpoint work, not
+// store scans). The suite runs in ~a minute and is fine for the every-edit
+// loop; comparability holds because the seeded base is fixed.
 
 [System load: "modules/bench.birnam"];
 [System load: "modules/os.birnam"];
@@ -108,8 +108,8 @@ let s := [BenchSuite named: "relational"];
     [db findAll: ?e where: #[ #[?e #age ?v] #[?v #eq 33] ] asOf: B]]]]];
 
 // One op = pull a leaf one ref-level deep (~3 attribute resolutions — each
-// resolution costs a full log scan today, so a deeper spec only multiplies
-// wall time without adding signal).
+// resolution is a sub-query over the gathered triples, so a deeper spec only
+// multiplies wall time without adding signal).
 [s case: "pull.nested" opsPerIter: 1 do: [:n |
   [1 to: n do: [:i |
     [db pull: LEAF spec: #[ #age #[#parent #[ #age ]] ]]]]]];
