@@ -1,0 +1,38 @@
+// parse.birnam — the parse benchmark suite (docs/design/46 Phase 2).
+//
+// Its own process, NOT part of micro.birnam: loading json.birnam measurably
+// shifts send cost for every case sharing the process (+39% on the same
+// pre-compiled send loop), so micro's module environment stays frozen at
+// bench+os and the PEG-engine case lives here with json loaded.
+//
+//   ./zig-out/bin/birnam bench/parse.birnam
+//   BENCH_QUICK=1 ./zig-out/bin/birnam bench/parse.birnam
+
+[System load: "modules/bench.birnam"];
+[System load: "modules/os.birnam"];
+[[Globals includes: #Json] ifTrue: [| nil] ifFalse: [| [System load: "modules/json.birnam"]]];
+
+// ~20KB JSON: an array of 1,000 small objects. (20KB, not 100KB: the PEG
+// engine measures ~7µs/byte, so 100KB would be a 15s op.)
+let sbJ := [StringBuilder new];
+[sbJ add: "["];
+[1 to: 999 do: [:i | [sbJ add: "{\"a\":1,\"b\":\"xy\"},"]]];
+[sbJ add: "{\"a\":1,\"b\":\"xy\"}]"];
+let JT := [sbJ asString];
+
+let s := [BenchSuite named: "parse"];
+
+// The PEG engine under Json parse: — the LSP's per-message hot path and a
+// past regression site. One op = one full 20KB parse.
+[s case: "parse.json-20kb" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | [Json parse: JT]]]]];
+
+[Bench runSuite: s];
+let written := [Bench writeResults: "bench/results/dev/parse.json"];
+
+let ok := [[[[[Bench results] size] = 1]
+           & [[Bench failures] = 0]]
+           & [[written isError] ifTrue: [| false] ifFalse: [| true]]];
+[ok
+  ifTrue:  [| [OS exit: 0]]
+  ifFalse: [| [OS exit: 1]]]

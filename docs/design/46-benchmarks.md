@@ -112,21 +112,48 @@ runner executes and reports. The runner's contract:
   meaningful as the system speeds up or slows down. (Safe for micro cases,
   which don't grow the store; see the relational section for why it is NOT
   safe there.)
+- **Fixed-iteration cases.** A case whose per-op cost grows with
+  accumulated process state (store-appending ops — `codegen.define-method`
+  measured 314µs/op at n=128 vs 570µs/op at n=512 even with fresh
+  receivers) skips calibration and runs a declared, version-stable
+  iteration count (`fixedCase:iters:do:`) — deterministic work per rep is
+  what keeps runs comparable.
 - **Repetitions.** R timed runs per case (default 5) after one untimed
-  warmup; report **median** (the tracked number) and **min** (the noise
-  floor). Quick mode (R=2, lower floor) for the dev loop, selected via a
-  libc `getenv` wrap (`BENCH_QUICK=1`) — one more Alien wrap in
-  bench.birnam, same precedent as lsp.birnam's `exit`.
+  single-iteration warmup (which doubles as the error gate; calibration's
+  own runs warm further — a heavier warmup would cost seconds on expensive
+  k=1 cases and pre-append store state before fixed-n cases measure);
+  report **median** (the tracked number) and **min** (the noise floor).
+  Quick mode (R=2, lower floor) for the dev loop, selected via a libc
+  `getenv` wrap (`BENCH_QUICK=1`) — one more Alien wrap in bench.birnam,
+  same precedent as lsp.birnam's `exit`.
+- **Frozen module environment.** Send cost is coupled to the loaded-code
+  footprint: loading json.birnam shifted the *same pre-compiled send loop*
+  +39% (bench+os alone ≈ +24% over a bare process; mechanism is
+  layout-class, not symbol-table growth). So the micro suite's loaded set
+  is FROZEN at bench+os, heavier-module cases run as their own suite
+  processes (`bench/parse.birnam` carries json), and a `sends.*` regression
+  must be cross-checked against module-size changes before blaming
+  dispatch.
+- **Process replication for tracked micro runs.** Send-path cost varies
+  ±8% between fresh processes (layout/ASLR effects) — larger than the
+  in-process rep noise and right at the compare threshold. So `bench.sh`
+  runs the micro suite as **3 fresh processes** for tracked (`--release`)
+  snapshots and takes the per-case **median of the 3 process medians**; the
+  dev loop runs one process and lives with the noise.
 - **Determinism.** Any case needing randomness pregenerates its inputs
-  outside the timed region from a fixed `Random seed:` (e.g.
-  `vector.at-random` draws its index vector up front — a libc FFI call per
-  draw inside the loop would dominate the trie `at:` under test).
+  outside the timed region, deterministically by construction — e.g.
+  `vector.at-random` builds its index vector up front from a fixed
+  multiplicative scramble (`i·48271 mod 9973`, a bijection), avoiding both
+  a libc-RNG dependency and an FFI call per draw inside the loop.
 - **Output.** JSON assembled with `StringBuilder` (stable field/case order —
   `Json stringify:` over a HAMT Map would order keys arbitrarily, which is
   hostile to diffing), written with `File write:contents:`: one object per
-  case — `{name, ns_per_op, ns_per_op_raw, iters, reps, median_us, min_us}`.
-  With an even rep count (quick mode's R=2) the "median" is the upper-middle
-  element — conservative, and irrelevant at the tracked R=5.
+  case — `{name, ns_per_op, ns_per_op_raw, net_us, ops, iters, reps,
+  median_us, min_us}` (`net_us` is UNCLAMPED — negative flags an
+  ill-conditioned case; `net_us`/`ops` let the compare tool divide at full
+  precision past `ns_per_op`'s integer truncation). With an even rep count
+  (quick mode's R=2) the "median" is the upper-middle element —
+  conservative, and irrelevant at the tracked R=5.
 
 ### The relational suite is process-isolated
 
@@ -192,21 +219,21 @@ present, falling back to `zig-out`.
 |---|---|
 | `sends.unary` | the send constant itself |
 | `sends.keyword3` | arity cost |
-| `sends.dnu-handler` | the DNU/`doesNotUnderstand:` path |
+| `sends.dnu-mint` | the DNU path: a failed lookup minting its error value (measures CHEAPER than a successful send — genuine: objDnu/mkError is native Zig and never enters TCC-emitted method code) |
 | `blocks.value` | closure invocation |
 | `loops.to-do` | the native loop (counter in the Zig frame) — **raw only** |
 | `loops.whileTrue` | the s13 native loop prim; its condition state necessarily rides a cell, so this number *includes* cell traffic — **raw only**, noted as such |
 | `loops.timesRepeat` | the derived wrapper over `to:do:` (stdlib birnam code) — the native/derived loop pair |
 | `string.indexOf-native` / `string.split-native` | the perf-retained native scanners over ~100KB |
 | `string.scan-derived` | the same scan as a derived per-byte loop — tracks the native/derived ratio (re-baselined under ReleaseSafe; 44's ~10× was Debug-mode) |
-| `stringbuilder.append-10k` | the Phase-5 StringBuilder |
+| `stringbuilder.build-10k` | the Phase-5 StringBuilder: one op = fresh builder + 1,000 adds + materialize |
 | `vector.push-10k` / `vector.at-random` / `vector.fold-sum` | persistent trie + the shared native fold (indices pregenerated, fixed seed) |
 | `map.put-10k` / `map.at-hit` / `map.at-miss` | HAMT |
 | `cells.write` / `cells.read` | `[db cellFor:attr:]` — object state rides this; the write is historied and this case owns that cost |
 | `error.raise-handle` / `error.propagate-5-deep` | the (now birnam) Result-style error path |
-| `parse.json-100kb` | the PEG engine under `Json parse:` — the LSP's per-message hot path and a past regression site |
-| `codegen.define-method` | `defineMethod:` → codegen → TCC install — the REPL's interactive latency |
-| `ffi.wrapped-call` | Alien call overhead (a `gettimeofday` loop) |
+| `parse.json-20kb` | the PEG engine under `Json parse:` — the LSP's per-message hot path and a past regression site (20KB, not 100KB: PEG measures ~7µs/byte, so 100KB would be a 15s op). **Its own suite process** (`bench/parse.birnam`): loading json shifts every co-resident case's send cost (see the frozen-environment bullet) |
+| `codegen.define-method` | the `defineMethod:` install + method-mirror path (the block literal pre-compiles at load, so TCC compilation is NOT in this number; bulk compile cost is `compile.stage1-stdlib`) |
+| `ffi.wrapped-call` | Alien call overhead (a `clockNanos` loop — one wrapped libc call + boxing) |
 | `ffi.peek-poke` | raw C memory |
 
 ### Relational — `bench/relational.birnam` (process-isolated, see above)
@@ -248,10 +275,21 @@ avoids adding one.
    `.gitignore` for `bench/results/dev/`.
 2. **Micro suite.** Acceptance check: **re-measure the send constant by
    hand under ReleaseSafe first** (a one-line loop timed in the REPL) and
-   record it here — the harness must then reproduce *that* number. The
-   ~1.5–2µs in docs/44 is Debug-mode; ReleaseSafe rebuilds the Zig floor
-   (dispatch is Zig code) and can move it substantially, so "reproduce
-   1.5–2µs" would wrongly fail a correct harness.
+   record it here — the harness must then reproduce *that* number.
+   **Measured 2026-07-11 (ReleaseSafe, M-series arm64): one unary send ≈
+   1.5–2.2µs standalone depending on the PROCESS (median ≈ 1.8µs across 12
+   fresh bare processes); ≈ 2.3–2.6µs in-suite with bench+os loaded; one
+   empty native `to:do:` iteration (block invoke) ≈ 280ns.** Three
+   instructive findings: (a) ReleaseSafe moved the *loop/block-invoke* cost
+   6× (Debug ≈ 1.8µs/iter) but the *method send* barely at all — the send
+   path runs mostly through TCC-emitted code, which `-Doptimize` does not
+   touch; docs/44's constant survives ReleaseSafe. (b) Send-path cost
+   varies ±8% **between processes** (layout/ASLR effects), far above the
+   in-process rep noise — which is why tracked micro runs are
+   process-replicated. (c) Send-path cost is coupled to the **loaded-module
+   footprint** (+24% bench+os, +39% with json) — which is why micro's
+   module set is frozen and `sends.unary`'s acceptance anchor is the
+   *in-suite* number.
 3. **Relational suite** (the process-isolated protocol above).
 4. **Macro cases + `scripts/bench.sh`** (build, run, merge, stamp).
 5. **`bench-compare` + `mise` task + a short `docs/misc/BENCHMARKS.md`**

@@ -69,13 +69,17 @@
   s] doc:
   "A fresh suite named `nm`."];
 
-// The shared case constructor. rawFlag 1 = report raw only (no subtraction).
-// Kept ≤4 block params (self + 3) by splitting the public surface in two below.
+// The shared case constructor. rawFlag 1 = report raw only (no subtraction);
+// fixedN 0 = calibrate, else run exactly fixedN iterations (for cases whose
+// per-op cost grows with accumulated process state — e.g. store-appending ops
+// — where a calibrated, machine-dependent n would make runs incomparable).
+// Kept ≤4 block params (self + 3) by splitting the public surface below.
 [Reflect defineMethod: #addCase:k:blk: on: BenchSuite as: [:self :nm :k :blk |
   let cse := [Object clone];
   [[db cellFor: cse attr: #cname]  set: nm];
   [[db cellFor: cse attr: #k]      set: k];
   [[db cellFor: cse attr: #raw]    set: 0];
+  [[db cellFor: cse attr: #fixedN] set: 0];
   [[db cellFor: cse attr: #cblock] set: blk];
   [[db cellFor: self attr: #cases] set: [[self cases] add: cse]];
   cse]];
@@ -90,6 +94,12 @@
   [[db cellFor: cse attr: #raw] set: 1];
   self] doc:
   "Add a raw-only case (no baseline subtraction) — for cases whose subject IS the loop. Chainable."];
+
+[Reflect defineMethod: #fixedCase:iters:do: on: BenchSuite as: [:self :nm :n0 :blk |
+  let cse := [self addCase: nm k: 1 blk: blk];
+  [[db cellFor: cse attr: #fixedN] set: n0];
+  self] doc:
+  "Add a fixed-iteration case (no calibration; k=1): exactly n0 iterations per rep. For ops whose cost grows with accumulated process state — a calibrated n would make runs incomparable. Chainable."];
 
 // ===========================================================================
 // Bench — the runner. Results accumulate on #results (reset per runSuite:).
@@ -161,13 +171,16 @@
   [v inject: [v at: 0] into: [:acc :x | [[x < acc] ifTrue: [| x] ifFalse: [| acc]]]]]];
 
 // -- run one case -----------------------------------------------------------------
-// The warmup doubles as the error gate: an erroring body aborts its to:do: at
-// iteration 1, so an unchecked case would calibrate forever — FAIL it instead
-// (counted on #failures) and keep the suite going.
+// The warmup is ONE iteration and doubles as the error gate: an erroring body
+// aborts its to:do: at iteration 1, so an unchecked case would calibrate
+// forever — FAIL it instead (counted on #failures) and keep the suite going.
+// One iteration suffices to warm (tcc compiles at load; calibration's own
+// runs warm further), and a heavier warmup would cost seconds on expensive
+// k=1 cases and pre-append state before fixed-n cases measure.
 [Reflect defineMethod: #runCase: on: Bench as: [:self :cse |
   let blk := [[db cellFor: cse attr: #cblock] value];
   let nm  := [[db cellFor: cse attr: #cname] value];
-  let w := [blk value: 64];
+  let w := [blk value: 1];
   [[w isError]
     ifTrue:  [|
       [[db cellFor: Bench attr: #failures] set: [[self failures] + 1]];
@@ -180,7 +193,10 @@
   let k   := [[db cellFor: cse attr: #k] value];
   let nm  := [[db cellFor: cse attr: #cname] value];
   let raw := [[db cellFor: cse attr: #raw] value];
-  let n := [self calibrate: blk from: 256];
+  let fixedN := [[db cellFor: cse attr: #fixedN] value];
+  let n := [[fixedN = 0]
+    ifTrue:  [| [self calibrate: blk from: 1]]
+    ifFalse: [| fixedN]];
   let runs   := [self sample: blk iters: n];
   let rawMed := [self medianOf: runs];
   let rawMin := [self minOf: runs];

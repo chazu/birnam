@@ -1,0 +1,253 @@
+// micro.birnam — the micro benchmark suite (docs/design/46 Phase 2).
+//
+// The migration-gate numbers: the send constant and the native-vs-derived
+// boundaries that decide every self-hosting lift. Case names are a CONTRACT
+// (never rename — retire + add instead; see docs/design/46).
+//
+// Every case body is one native `to:do:` loop whose body unrolls K copies of
+// the op under test (K = opsPerIter:). All setup — probe objects, texts,
+// vectors, maps, buffers — happens HERE, outside every timed window.
+//
+//   ./zig-out/bin/birnam bench/micro.birnam            # tracked run (R=5)
+//   BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam
+//
+// TWO CONTRACTS BEYOND THE NAMES (docs/design/46):
+//   - The loaded-module set here is FROZEN at bench+os. Send cost is coupled
+//     to the loaded-code footprint (measured: loading json.birnam shifted the
+//     same pre-compiled send loop +39%), so heavier modules get their own
+//     suite processes (bench/parse.birnam) and micro's environment stays
+//     minimal. A sends.* regression must be cross-checked against module-size
+//     changes before blaming dispatch.
+//   - CASE ORDER is load-bearing for the store-backed cases (cells.*,
+//     loops.whileTrue): store reads/writes scan the fact log linearly, so
+//     their numbers depend on how many facts earlier cases appended. Append
+//     new cases at the END.
+//
+// Acceptance anchor (docs/46 Phase 2): sends.unary must land near the
+// in-suite ReleaseSafe constant recorded there (standalone hand loops run
+// ~1.5–1.8µs; in-suite, with bench+os loaded, ~2.3µs on the 2026-07 machine).
+
+[System load: "modules/bench.birnam"];
+[System load: "modules/os.birnam"];
+
+// ---------------------------------------------------------------------------
+// Setup (untimed)
+// ---------------------------------------------------------------------------
+
+// Probe: a dedicated prototype so bench methods never pollute Object.
+let P := [Object clone];
+[Reflect defineMethod: #idself on: P as: [:self | self]];
+[Reflect defineMethod: #k1:k2:k3: on: P as: [:self :a :b :c | self]];
+// A 5-frame call chain whose bottom errors (DNU) — the propagation case.
+[Reflect defineMethod: #d5 on: P as: [:self | [nil benchBoom]]];
+[Reflect defineMethod: #d4 on: P as: [:self | [self d5]]];
+[Reflect defineMethod: #d3 on: P as: [:self | [self d4]]];
+[Reflect defineMethod: #d2 on: P as: [:self | [self d3]]];
+[Reflect defineMethod: #d1 on: P as: [:self | [self d2]]];
+
+// The block codegen.define-method installs (pre-compiled at load).
+let DEFBLK := [:self | 1];
+
+// A shared zero-arg block for blocks.value.
+let B := [| 1];
+
+// ~100KB text: 10,000 x "abcdefghi " (trailing space -> 10k split pieces).
+let sbT := [StringBuilder new];
+[1 to: 10000 do: [:i | [sbT add: "abcdefghi "]]];
+let TEXT := [sbT asString];
+
+// 10k-element vector + deterministic "random" indices (no RNG dependency —
+// a fixed multiplicative scramble; per-op = mod + IDX at: + V at:).
+let V := [[1 to: 10000] asVector];
+let IDX := [[0 to: 8191] collect: [:i | [[i * 48271] mod: 9973]]];
+
+// 10k-entry map (Integer keys 1..10000).
+let M := [[1 to: 10000] inject: {} into: [:m :i | [m at: i put: i]]];
+
+// A cell for the cells.* cases (object state and the loop-state idiom ride
+// this). Mechanism, so the numbers read right: history is OFF by default and
+// a changing write replaces in place (no growth), but reads and cardinality
+// checks scan the fact LOG linearly — so cells.* cost tracks total log size
+// (everything loaded + appended before these cases run), which is why case
+// order is part of this file's contract.
+let CR := [Object clone];
+let CC := [db cellFor: CR attr: #c];
+[CC set: 0];
+
+// A raw C buffer for ffi.peek-poke.
+let BUF := [Alien alloc: 16];
+
+// ---------------------------------------------------------------------------
+// The suite
+// ---------------------------------------------------------------------------
+let s := [BenchSuite named: "micro"];
+
+// -- sends: the constant itself ------------------------------------------------
+[s case: "sends.unary" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [P idself]; [P idself]; [P idself]; [P idself];
+    [P idself]; [P idself]; [P idself]; [P idself]]]]];
+
+[s case: "sends.keyword3" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [P k1: 1 k2: 2 k3: 3]; [P k1: 1 k2: 2 k3: 3];
+    [P k1: 1 k2: 2 k3: 3]; [P k1: 1 k2: 2 k3: 3];
+    [P k1: 1 k2: 2 k3: 3]; [P k1: 1 k2: 2 k3: 3];
+    [P k1: 1 k2: 2 k3: 3]; [P k1: 1 k2: 2 k3: 3]]]]];
+
+// Each op mints a fresh #doesNotUnderstand error value — that IS the DNU cost
+// (no handler here; error.raise-handle owns handling). The results ride `let`s
+// and the body answers nil: an error ANSWER would abort the to:do: at
+// iteration 1 (error propagation is the loop's contract). Genuine, not a bug:
+// DNU measures CHEAPER than a successful send — a failed lookup runs native
+// objDnu/mkError Zig and never enters TCC-emitted method code.
+[s case: "sends.dnu-mint" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    let e1 := [P benchMissing]; let e2 := [P benchMissing];
+    let e3 := [P benchMissing]; let e4 := [P benchMissing];
+    let e5 := [P benchMissing]; let e6 := [P benchMissing];
+    let e7 := [P benchMissing]; let e8 := [P benchMissing];
+    nil]]]];
+
+// -- blocks + loops --------------------------------------------------------------
+[s case: "blocks.value" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [B value]; [B value]; [B value]; [B value];
+    [B value]; [B value]; [B value]; [B value]]]]];
+
+// The loops.* subjects ARE loops — raw only (docs/46). to-do is the native
+// baseline shape; whileTrue's condition state necessarily rides a cell, so
+// ~95% of its number is store traffic (2-3 linear log scans per iteration) —
+// it tracks the loop-with-cell-state IDIOM, not the s13 prim in isolation;
+// timesRepeat is the derived stdlib wrapper.
+[s rawCase: "loops.to-do" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | nil]]]];
+
+[s rawCase: "loops.whileTrue" opsPerIter: 1 do: [:n |
+  let run := [Object clone];
+  let c := [db cellFor: run attr: #i];
+  [c set: 0];
+  [[| [[c value] < n]] whileTrue: [| [c set: [[c value] + 1]]]]]];
+
+[s rawCase: "loops.timesRepeat" opsPerIter: 1 do: [:n |
+  [n timesRepeat: [| nil]]]];
+
+// -- string: the perf-retained native scanners vs a derived per-byte fold --------
+// One op = one full pass over the ~100KB TEXT (k=1; the loop overhead is
+// negligible against a bulk scan).
+[s case: "string.indexOf-native" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | [TEXT indexOf: "zzz"]]]]];
+
+[s case: "string.split-native" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | [TEXT split: " "]]]]];
+
+[s case: "string.scan-derived" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | [TEXT inject: 0 into: [:acc :c | acc]]]]]];
+
+// One op = build a 10,000-byte string: fresh builder, 1,000 adds, materialize.
+[s case: "stringbuilder.build-10k" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    let sb := [StringBuilder new];
+    [1 to: 1000 do: [:j | [sb add: "0123456789"]]];
+    [sb asString]]]]];
+
+// -- vector ----------------------------------------------------------------------
+// One op = build a 10k vector by persistent add: (includes the fold's sends).
+[s case: "vector.push-10k" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    [[1 to: 10000] inject: #[] into: [:v :x | [v add: x]]]]]]];
+
+[s case: "vector.at-random" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [V at: [IDX at: [i mod: 8192]]]; [V at: [IDX at: [i mod: 8192]]];
+    [V at: [IDX at: [i mod: 8192]]]; [V at: [IDX at: [i mod: 8192]]];
+    [V at: [IDX at: [i mod: 8192]]]; [V at: [IDX at: [i mod: 8192]]];
+    [V at: [IDX at: [i mod: 8192]]]; [V at: [IDX at: [i mod: 8192]]]]]]];
+
+[s case: "vector.fold-sum" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | [V inject: 0 into: [:a :x | [a + x]]]]]]];
+
+// -- map -------------------------------------------------------------------------
+// at-hit/at-miss deliberately repeat ONE key each: the stable cache-hot
+// single-path number (HAMT cost varies by hash-path depth, so this is the
+// optimistic bound — a native/derived gating decision should not read it as
+// the average lookup).
+[s case: "map.put-10k" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    [[1 to: 10000] inject: {} into: [:m :x | [m at: x put: x]]]]]]];
+
+[s case: "map.at-hit" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [M at: 5000]; [M at: 5000]; [M at: 5000]; [M at: 5000];
+    [M at: 5000]; [M at: 5000]; [M at: 5000]; [M at: 5000]]]]];
+
+[s case: "map.at-miss" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [M at: 999999]; [M at: 999999]; [M at: 999999]; [M at: 999999];
+    [M at: 999999]; [M at: 999999]; [M at: 999999]; [M at: 999999]]]]];
+
+// -- cells (object state; see the CC setup comment for the real mechanism) -------
+// Values ALTERNATE: a same-value set: is an idempotent no-op early-return in
+// the store (measured 1.9µs vs 3.4µs for a real write) — constant writes
+// would measure the wrong path entirely.
+[s case: "cells.write" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [CC set: 1]; [CC set: 2]; [CC set: 1]; [CC set: 2];
+    [CC set: 1]; [CC set: 2]; [CC set: 1]; [CC set: 2]]]]];
+
+[s case: "cells.read" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [CC value]; [CC value]; [CC value]; [CC value];
+    [CC value]; [CC value]; [CC value]; [CC value]]]]];
+
+// -- errors (Result-style; now birnam code) ---------------------------------------
+// One op = raise (via DNU) + catch through on:do:.
+[s case: "error.raise-handle" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    [[| [nil benchBoom]] on: #doesNotUnderstand do: [:e | nil]]]]]];
+
+// One op = an error minted 5 frames down, propagating up through 5 returns.
+// let-captured (see sends.dnu-handler) so the loop survives.
+[s case: "error.propagate-5-deep" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | let e := [P d1]; nil]]]];
+
+// -- codegen (the REPL's define latency) --------------------------------------------
+// The block is PRE-compiled (block literals compile at load), so this measures
+// the clone + ensurePrivateVtable + install + method-mirror path, not tcc
+// compilation (bulk compile cost is the macro case compile.stage1-stdlib).
+// FIXED iterations: every define appends to the store, so per-op cost grows
+// with accumulated definitions (measured: 314µs at n=128 vs 570µs at n=512
+// even with fresh receivers) — a calibrated, machine-dependent n would make
+// runs incomparable. The tracked workload is the whole tuple: warmup(1) +
+// R×128 defines at this file position — R (benchReps) is part of the
+// contract, not just iters.
+[s fixedCase: "codegen.define-method" iters: 128 do: [:n |
+  [1 to: n do: [:i |
+    let p := [Object clone];
+    [Reflect defineMethod: #benchTmp on: p as: DEFBLK]]]]];
+
+// -- ffi ----------------------------------------------------------------------------
+[s case: "ffi.wrapped-call" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [6 clockNanos]; [6 clockNanos]; [6 clockNanos]; [6 clockNanos];
+    [6 clockNanos]; [6 clockNanos]; [6 clockNanos]; [6 clockNanos]]]]];
+
+[s case: "ffi.peek-poke" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [BUF pokeInt: 7 at: 0]; [BUF peekIntAt: 0];
+    [BUF pokeInt: 7 at: 8]; [BUF peekIntAt: 8];
+    [BUF pokeInt: 9 at: 0]; [BUF peekIntAt: 0];
+    [BUF pokeInt: 9 at: 8]; [BUF peekIntAt: 8]]]]];
+
+// ---------------------------------------------------------------------------
+// Run + write + gate
+// ---------------------------------------------------------------------------
+[Bench runSuite: s];
+let written := [Bench writeResults: "bench/results/dev/micro.json"];
+
+let ok := [[[[[Bench results] size] = 24]
+           & [[Bench failures] = 0]]
+           & [[written isError] ifTrue: [| false] ifFalse: [| true]]];
+[ok
+  ifTrue:  [| [OS exit: 0]]
+  ifFalse: [| [OS exit: 1]]]
