@@ -70,7 +70,9 @@
               [[db cellFor: sc attr: #pending] set: ""]]]]]]];
   sc]];
 
-// Scan one .zig file into Doc facts under `mod`. Answers `mod`.
+// Scan one .zig file into Doc facts under `mod`. Answers `mod`. Also marks the
+// module `#docKind #zigFloor` — a fact the doc renderers read to badge/group
+// Zig-floor entries apart from loadable birnam modules.
 [Reflect defineMethod: #scan:as: on: Zigdoc as: [:self :path :mod |
   let text  := [File readText: path];
   let lines := [text split: "\n"];
@@ -78,6 +80,7 @@
   [[db cellFor: sc attr: #pending] set: ""];
   [[db cellFor: sc attr: #summary] set: ""];
   [Reflect docModule: mod is: ""];
+  [db assert: mod attr: #docKind value: #zigFloor];
   [0 to: [[lines size] - 1] do: [:i |
     [self feedLine: [lines at: i] scanner: sc module: mod]]];
   let sum := [[db cellFor: sc attr: #summary] value];

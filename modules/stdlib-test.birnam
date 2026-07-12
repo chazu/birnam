@@ -144,3 +144,17 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: [Reflect nameOf: #stdlib] equals: "stdlib" describes: "bare name, no sigil"];
   [t expect: [Reflect nameOf: #named:requires:] equals: "named:requires:" describes: "keyword selector keeps its colons"];
   [t expect: [[Reflect nameOf: "str"] kind] equals: #notASymbol describes: "a non-symbol answers the kinded error"]]];
+
+// String < is byte-order strcmp: first unequal byte decides, a fully shared
+// prefix defers to length, and it doubles as the `sortBy:` key protocol.
+[s test: "String < is lexicographic byte order (a sortBy: key)" do: [:t |
+  [t expect: ["abc" < "abd"] equals: true  describes: "first unequal byte decides"];
+  [t expect: ["abd" < "abc"] equals: false describes: "and in the other direction"];
+  [t expect: ["ab" < "ab"]   equals: false describes: "equal strings are not <"];
+  [t expect: ["ab" < "abc"]  equals: true  describes: "shared prefix: shorter first"];
+  [t expect: ["abc" < "ab"]  equals: false describes: "shared prefix: longer is not <"];
+  [t expect: ["" < "a"]      equals: true  describes: "empty sorts before everything"];
+  [t expect: ["" < ""]       equals: false describes: "empty is not < empty"];
+  [t expect: ["B" < "a"]     equals: true  describes: "byte order, not case-folded (B=66 < a=97)"];
+  [t expect: [[#[ "peg" "cli" "alien" ] sortBy: [:x | x]] printString]
+     equals: "#[alien cli peg]" describes: "String keys drive sortBy:"]]];

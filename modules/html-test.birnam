@@ -53,4 +53,9 @@ let s := [TestSuite named: "Html" module: #html];
      equals: "<!DOCTYPE html><html><head><title>Hi</title></head><body><h1>Welcome</h1></body></html>"
      describes: "page:"]]];
 
+[s test: "page:style:body: adds metas and an inline stylesheet" do: [:t |
+  [t expect: [Html page: "Hi" style: "body{margin:0}" body: [Html tag: "h1" text: "Welcome"]]
+     equals: "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Hi</title><style>body{margin:0}</style></head><body><h1>Welcome</h1></body></html>"
+     describes: "page:style:body:"]]];
+
 s

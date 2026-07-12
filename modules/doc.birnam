@@ -59,11 +59,14 @@
   self]];
 
 // A docstring for one selector in a module (which must already be documented).
-// Appended to the module's ordered method-list as a small entry clone.
+// Appended to the module's ordered method-list as a small entry clone. The
+// receiver prototype is unknown on this path, so `#proto` is seeded nil (a
+// VALUE — the renderers read it, and an unset cell's sentinel answers nothing).
 [Reflect defineMethod: #for:in:says: on: Doc as: [:self :sel :mod :text |
   let e := [Object clone];
-  [[db cellFor: e attr: #sel]  set: sel];
-  [[db cellFor: e attr: #text] set: text];
+  [[db cellFor: e attr: #sel]   set: sel];
+  [[db cellFor: e attr: #text]  set: text];
+  [[db cellFor: e attr: #proto] set: nil];
   let cur := [[db cellFor: mod attr: #docMethods] value];
   [[db cellFor: mod attr: #docMethods] set: [cur add: e]];
   self]];
@@ -104,6 +107,28 @@
 [Reflect defineMethod: #isDocumented: on: Doc as: [:self :mod |
   [[self modules] includes: mod]]];
 
+// Is `mod` a Zig-floor doc set (recorded by Zigdoc's scan) rather than a
+// loadable birnam module?
+[Reflect defineMethod: #isZigFloor: on: Doc as: [:self :mod |
+  [[db findAll: ?m where: #[ #[?m #docKind #zigFloor] ]] includes: mod]]];
+
+// Every documented module, ordered by display name (String `<` under sortBy:).
+[Reflect defineMethod: #sortedModules on: Doc as: [:self |
+  let me := self;
+  [[self modules] sortBy: [:m | [me nameOf: m]]]]];
+
+// The Globals name whose binding IS `obj` (identity), or "" if it has none —
+// the reverse of `Globals at:`, for showing a prototype (prototypes print as
+// anObject). Reads the `#__globals__` facts codegen records for every binding.
+[Reflect defineMethod: #globalNameOf: on: Doc as: [:self :obj |
+  let names := [db findAll: ?n where: #[ #[ #__globals__ ?n ?v ] ]];
+  [names inject: "" into: [:acc :n |
+    [[acc isEmpty]
+      ifTrue:  [| [[[Globals at: n ifAbsent: [| nil]] == obj]
+                    ifTrue:  [| [Reflect nameOf: n]]
+                    ifFalse: [| acc]]]
+      ifFalse: [| acc]]]]]];
+
 // -- source view: the facts the compiler records for every loaded module ---------
 //
 // Loading ANY module (from source OR a compiled dylib) records each method's source
@@ -131,10 +156,70 @@
       ifTrue:  [| [acc add: src]]
       ifFalse: [| acc]]]]]];
 
+// Every recorded source, indexed: a Map from selector name (String) to a Vector
+// of source strings. One pass over the sources — the whole-site renderer builds
+// this ONCE and looks up per entry (per-selector `sourcesForSelector:` scans
+// would make the page build quadratic).
+[Reflect defineMethod: #sourceIndex on: Doc as: [:self |
+  let me := self;
+  [[self methodSources] inject: [Map new] into: [:idx :src |
+    let nm := [me selectorInSource: src];
+    [[nm isEmpty]
+      ifTrue:  [| idx]
+      ifFalse: [| [idx at: nm put: [[idx at: nm ifAbsent: [| #[] ]] add: src]]]]]]]];
+
+// Every recorded-but-undocumented selector name, sorted — the doc-gap audit.
+// A name counts as documented if ANY module registered a docstring for it.
+[Reflect defineMethod: #undocumentedSelectors on: Doc as: [:self |
+  let me := self;
+  let documented := [[self modules] inject: [Map new] into: [:acc :m |
+    [[me methodsOf: m] inject: acc into: [:a2 :e |
+      [a2 at: [me nameOf: [[db cellFor: e attr: #sel] value]] put: true]]]]];
+  [[[[self sourceIndex] keys] inject: #[] into: [:acc :k |
+    [[documented includesKey: k] ifTrue: [| acc] ifFalse: [| [acc add: k]]]]]
+    sortBy: [:x | x]]]];
+
+// The indexed sources for one selector, narrowed to the receiver when known:
+// `protoName` non-empty keeps only definitions on that prototype (the recorded
+// span reads `… on: <Name> …`), falling back to all matches if none survive.
+[Reflect defineMethod: #sourcesFor:proto:in: on: Doc as: [:self :selName :protoName :srcIdx |
+  let all := [srcIdx at: selName ifAbsent: [| #[] ]];
+  [[protoName isEmpty]
+    ifTrue:  [| all]
+    ifFalse: [|
+      let mark := [["on: " , protoName] , " "];
+      let hits := [all inject: #[] into: [:acc :s |
+        [[s includesSubstring: mark] ifTrue: [| [acc add: s]] ifFalse: [| acc]]]];
+      [[hits isEmpty] ifTrue: [| all] ifFalse: [| hits]]]]]];
+
 // The whole-module source recorded for `mod` (a symbol) by a dylib load, or "".
 [Reflect defineMethod: #moduleSource: on: Doc as: [:self :mod |
   let hits := [db findAll: ?src where: #[ #[ #__modsrc__ mod ?src ] ]];
   [[hits isEmpty] ifTrue: [| ""] ifFalse: [| [hits first]]]]];
+
+// "// x" -> "x": eat the marker and ONE following space (deeper indentation
+// kept, so example blocks hold their alignment); a bare "//" -> "".
+[Reflect defineMethod: #stripSlashes: on: Doc as: [:self :ln |
+  [[ln startsWith: "// "]
+    ifTrue:  [| [ln copyFrom: 3 to: [ln size]]]
+    ifFalse: [| [ln copyFrom: 2 to: [ln size]]]]]];
+
+// The leading `//` comment block of `mod`'s recorded source — the hand-written
+// header prose (usage, examples, gotchas), or "" when the module has none (or
+// no recorded source). Zigdoc's `//!` trick applied to birnam files: the source
+// is already a fact, so the header needs no file I/O and no re-registration.
+[Reflect defineMethod: #headerOf: on: Doc as: [:self :mod |
+  let src := [self moduleSource: mod];
+  [[src isEmpty]
+    ifTrue:  [| ""]
+    ifFalse: [|
+      let me := self;
+      let lines := [src split: "\n"];
+      let r := [lines inject: #[ true "" ] into: [:acc :ln |
+        [[[acc at: 0] & [ln startsWith: "//"]]
+          ifTrue:  [| #[ true [[[acc at: 1] , [me stripSlashes: ln]] , "\n"] ]]
+          ifFalse: [| #[ false [acc at: 1] ] ]]]];
+      [[r at: 1] trimmed]]]]];
 
 // -- CLI ----------------------------------------------------------------------
 
@@ -212,33 +297,155 @@
 
 // -- rendering: HTML (composes modules/html.birnam) ---------------------------
 
-[Reflect defineMethod: #htmlForModule: on: Doc as: [:self :mod |
+// The reference site's stylesheet: sticky sidebar + readable measure, light and
+// dark via prefers-color-scheme. Pure CSS (no quotes — it rides a <style> raw).
+[Reflect defineMethod: #stylesheet on: Doc as: [:self |
+  [":root{--fg:#1c1c22;--bg:#ffffff;--muted:#666677;--line:#e2e2e8;--chip:#f4f4f7;--accent:#2757a8}"
+    , "@media (prefers-color-scheme:dark){:root{--fg:#e8e8ee;--bg:#16161a;--muted:#9999aa;--line:#2c2c34;--chip:#232329;--accent:#7aa2e8}}"
+    , "*{box-sizing:border-box}"
+    , "body{margin:0;display:flex;gap:2rem;font:16px/1.55 system-ui,sans-serif;color:var(--fg);background:var(--bg)}"
+    , "nav{position:sticky;top:0;height:100vh;overflow-y:auto;flex:0 0 15rem;padding:1.25rem 1rem;border-right:1px solid var(--line)}"
+    , "nav h2{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:1.1rem 0 .3rem}"
+    , "nav ul{list-style:none;margin:0;padding:0}"
+    , "nav a{color:var(--fg);text-decoration:none;display:block;padding:.15rem .45rem;border-radius:4px}"
+    , "nav a:hover{background:var(--chip)}"
+    , "main{max-width:48rem;min-width:0;padding:1.25rem 2rem 4rem 0}"
+    , "main h1{font-size:1.6rem;margin:.5rem 0 1rem}"
+    , "section{border-top:1px solid var(--line);padding-top:1rem;margin-top:1.5rem}"
+    , "main h2{font-size:1.25rem;margin:.2rem 0 .3rem}"
+    , "main h2 a{color:inherit;text-decoration:none}"
+    , ".kind{font-size:.68rem;vertical-align:middle;background:var(--chip);color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:.12rem .55rem;margin-left:.55rem;text-transform:uppercase;letter-spacing:.06em}"
+    , ".summary{color:var(--muted);margin:.2rem 0 1rem}"
+    , "code{font:.875em ui-monospace,monospace;background:var(--chip);padding:.1em .35em;border-radius:4px}"
+    , "dl{margin:0}"
+    , "dt{margin-top:.9rem}"
+    , "dt code{color:var(--accent)}"
+    , ".proto{font-size:.8rem;color:var(--muted);margin-left:.45rem}"
+    , "dd{margin:.25rem 0 0 1rem}"
+    , "details{margin-top:.3rem}"
+    , "summary{cursor:pointer;font-size:.8rem;color:var(--muted)}"
+    , "pre{background:var(--chip);border:1px solid var(--line);border-radius:6px;padding:.7rem .9rem;overflow-x:auto}"
+    , "pre code{background:none;padding:0}"
+    , "#q{width:100%;padding:.35rem .5rem;border:1px solid var(--line);border-radius:6px;background:var(--chip);color:var(--fg);font:inherit;font-size:.85rem;margin-bottom:.5rem}"
+    , ".notes{margin:.4rem 0 1rem}"
+    , ".notes pre{white-space:pre-wrap}"
+    , "footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}"
+    , "@media (max-width:52rem){body{flex-direction:column}nav{position:static;height:auto;flex:none;border-right:none;border-bottom:1px solid var(--line)}main{padding:0 1.25rem 3rem}}"]]];
+
+// The type-to-filter script: hide entries whose anchor (mod-sel) misses the
+// needle, then sections with no hits and a missing name. Single-quoted JS only
+// (it rides a birnam double-quoted literal into a raw <script>).
+[Reflect defineMethod: #filterScript on: Doc as: [:self |
+  ["var q=document.getElementById('q');"
+    , "if(q){q.addEventListener('input',function(){"
+    , "var needle=q.value.toLowerCase();"
+    , "document.querySelectorAll('main section').forEach(function(sec){"
+    , "var any=false;"
+    , "sec.querySelectorAll('dt').forEach(function(dt){"
+    , "var hit=needle===''||dt.id.toLowerCase().indexOf(needle)>-1;"
+    , "dt.style.display=hit?'':'none';"
+    , "var dd=dt.nextElementSibling;"
+    , "if(dd&&dd.tagName==='DD'){dd.style.display=hit?'':'none';}"
+    , "if(hit){any=true;}"
+    , "});"
+    , "var show=needle===''||any||sec.id.toLowerCase().indexOf(needle)>-1;"
+    , "sec.style.display=show?'':'none';"
+    , "});"
+    , "});}"]]];
+
+// One method entry: <dt id="mod-sel"><code>sel</code> on Proto</dt> then a <dd>
+// with the docstring and, when the store has it, the recorded source in a
+// collapsed <details> — the source IS the documentation, now on the page too.
+[Reflect defineMethod: #htmlForEntry:module:sources: on: Doc as: [:self :e :modName :srcIdx |
+  let sel   := [self nameOf: [[db cellFor: e attr: #sel] value]];
+  let txt   := [[db cellFor: e attr: #text] value];
+  let proto := [[db cellFor: e attr: #proto] value];
+  let protoName := [[proto isNil] ifTrue: [| ""] ifFalse: [| [self globalNameOf: proto]]];
+  let onSpan := [[protoName isEmpty]
+    ifTrue:  [| ""]
+    ifFalse: [| [Html tag: "span" attrs: [Html attr: "class" value: "proto"]
+                      body: ["on " , [Html escape: protoName]]]]];
+  let srcs := [self sourcesFor: sel proto: protoName in: srcIdx];
+  let srcHtml := [[srcs isEmpty]
+    ifTrue:  [| ""]
+    ifFalse: [|
+      let pre := [srcs inject: "" into: [:acc :s |
+        [acc , [Html tag: "pre" body: [Html tag: "code" text: s]]]]];
+      [Html tag: "details" body: [[Html tag: "summary" text: "source"] , pre]]]];
+  [[Html tag: "dt" attrs: [Html attr: "id" value: [[modName , "-"] , sel]]
+         body: [[Html tag: "code" text: sel] , onSpan]]
+    , [Html tag: "dd" body: [[Html escape: txt] , srcHtml]]]]];
+
+// One module's section body: <h2> (self-link + Zig-floor badge), the summary,
+// the header prose (when the source records one) in a collapsed <details>, and
+// a <dl> of entries. `srcIdx` is a prebuilt `sourceIndex`.
+[Reflect defineMethod: #htmlForModule:sources: on: Doc as: [:self :mod :srcIdx |
+  let me := self;
   let name    := [self nameOf: mod];
   let summary := [[db cellFor: mod attr: #docSummary] value];
-  let items   := [StringBuilder new];
+  let badge := [[self isZigFloor: mod]
+    ifTrue:  [| [Html tag: "span" attrs: [Html attr: "class" value: "kind"] body: "Zig floor"]]
+    ifFalse: [| ""]];
+  let header := [self headerOf: mod];
+  let notes := [[header isEmpty]
+    ifTrue:  [| ""]
+    ifFalse: [| [Html tag: "details" attrs: [Html attr: "class" value: "notes"]
+                      body: [[Html tag: "summary" text: "module notes"]
+                              , [Html tag: "pre" body: [Html tag: "code" text: header]]]]]];
+  let items := [StringBuilder new];
   [[self methodsOf: mod] do: [:e |
-    let sel  := [self nameOf: [[db cellFor: e attr: #sel] value]];
-    let txt  := [[db cellFor: e attr: #text] value];
-    let code := [Html tag: "code" text: sel];
-    [items add: [Html tag: "li" body: [code , " — " , [Html escape: txt]]]]]];
-  [[Html tag: "h1" text: name]
-    , [Html tag: "p" text: summary]
-    , [Html tag: "ul" body: [items asString]]]]];
+    [items add: [me htmlForEntry: e module: name sources: srcIdx]]]];
+  [[Html tag: "h2" body: [[Html tag: "a" attrs: [Html attr: "href" value: ["#" , name]] body: [Html escape: name]] , badge]]
+    , [Html tag: "p" attrs: [Html attr: "class" value: "summary"] body: [Html escape: summary]]
+    , [notes
+    , [Html tag: "dl" body: [items asString]]]]]];
 
-// One HTML page for EVERY documented module: a nav list + a section each.
-// (Accumulation rides StringBuilder — `secs` is the WHOLE page body, the single
-// biggest string docgen builds; the old inject `,` fold re-copied it per module.)
+// The standalone form builds its own source index (whole-site rendering passes
+// one shared index instead — see htmlIndex).
+[Reflect defineMethod: #htmlForModule: on: Doc as: [:self :mod |
+  [self htmlForModule: mod sources: [self sourceIndex]]]];
+
+// A sidebar list for `mods`: one <li><a href="#name">name</a></li> each.
+[Reflect defineMethod: #navListFor: on: Doc as: [:self :mods |
+  let sb := [StringBuilder new];
+  [mods do: [:m |
+    let nm := [self nameOf: m];
+    [sb add: [Html tag: "li" body: [Html tag: "a" attrs: [Html attr: "href" value: ["#" , nm]] body: nm]]]]];
+  [sb asString]]];
+
+// One HTML page for EVERY documented module: a grouped, name-sorted sidebar
+// (birnam modules apart from the Zig floor) + a section each, styled by
+// `stylesheet`. (Accumulation rides StringBuilder — `secs` is the WHOLE page
+// body, the single biggest string docgen builds; an inject `,` fold would
+// re-copy it per module.)
 [Reflect defineMethod: #htmlIndex on: Doc as: [:self |
   let me := self;
+  let mods := [self sortedModules];
+  let birnamMods := [mods inject: #[] into: [:acc :m |
+    [[me isZigFloor: m] ifTrue: [| acc] ifFalse: [| [acc add: m]]]]];
+  let zigMods := [mods inject: #[] into: [:acc :m |
+    [[me isZigFloor: m] ifTrue: [| [acc add: m]] ifFalse: [| acc]]]];
+  let srcIdx := [self sourceIndex];
   let nav := [StringBuilder new];
-  [[self modules] do: [:m |
-    let nm := [self nameOf: m];
-    [nav add: [Html tag: "li" body: [Html tag: "a" attrs: [Html attr: "href" value: ["#" , nm]] body: nm]]]]];
+  [nav add: [Html void: "input" attrs: [[[Html attr: "id" value: "q"] , [Html attr: "type" value: "search"]]
+                                          , [Html attr: "placeholder" value: "filter selectors"]]]];
+  [nav add: [Html tag: "h2" text: "modules"]];
+  [nav add: [Html tag: "ul" body: [me navListFor: birnamMods]]];
+  [[zigMods isEmpty] ifTrue: [| nil] ifFalse: [|
+    [nav add: [Html tag: "h2" text: "Zig floor"]];
+    [nav add: [Html tag: "ul" body: [me navListFor: zigMods]]]]];
   let secs := [StringBuilder new];
-  [[self modules] do: [:m |
-    [secs add: [Html tag: "section" attrs: [Html attr: "id" value: [self nameOf: m]] body: [me htmlForModule: m]]]]];
-  let body := [[Html tag: "nav" body: [Html tag: "ul" body: [nav asString]]] , [secs asString]];
-  [Html page: "birnam documentation" body: body]]];
+  [secs add: [Html tag: "h1" text: "birnam documentation"]];
+  [mods do: [:m |
+    [secs add: [Html tag: "section" attrs: [Html attr: "id" value: [me nameOf: m]] body: [me htmlForModule: m sources: srcIdx]]]]];
+  let docCount := [mods inject: 0 into: [:acc :m | [acc + [[me methodsOf: m] size]]]];
+  let gapCount := [[self undocumentedSelectors] size];
+  let stats := [[[[[mods size] printString] , " modules — "] , [[docCount printString] , " documented selectors — "]]
+                 , [[gapCount printString] , " recorded selectors still source-only"]];
+  [secs add: [Html tag: "footer" body: [Html escape: stats]]];
+  let body := [[[Html tag: "nav" body: [nav asString]] , [Html tag: "main" body: [secs asString]]]
+                , [Html tag: "script" body: [self filterScript]]];
+  [Html page: "birnam documentation" style: [self stylesheet] body: body]]];
 
 // True for a loadable LIBRARY module file (excludes tests, run-tests, and the doc
 // modules themselves — re-loading doc.birnam would wipe the Doc registry).

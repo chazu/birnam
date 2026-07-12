@@ -70,4 +70,15 @@
   let head := [self tag: "head" body: [self tag: "title" text: title]];
   let bodyEl := [self tag: "body" body: body];
   ["<!DOCTYPE html>" , [self tag: "html" body: [head , bodyEl]]]] doc:
-  "Wrap `body` markup in a minimal HTML5 document with the given <title>."]
+  "Wrap `body` markup in a minimal HTML5 document with the given <title>."];
+
+[Reflect defineMethod: #page:style:body: on: Html as: [:self :title :css :body |
+  let head := [self tag: "head" body:
+    [[self void: "meta" attrs: [self attr: "charset" value: "utf-8"]]
+      , [self void: "meta" attrs: [[self attr: "name" value: "viewport"]
+                                    , [self attr: "content" value: "width=device-width, initial-scale=1"]]]
+      , [self tag: "title" text: title]
+      , [self tag: "style" body: css]]];
+  let bodyEl := [self tag: "body" body: body];
+  ["<!DOCTYPE html>" , [self tag: "html" body: [head , bodyEl]]]] doc:
+  "A styled HTML5 document: charset + viewport metas, <title>, and `css` inlined in a <style> (raw — no </style> inside)."]

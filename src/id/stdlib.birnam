@@ -378,6 +378,23 @@
    [[self indexOf: sub] notNil]] doc:
    "True iff `sub` occurs in the receiver (empty `sub` is everywhere; a non-String answers false)."];
 
+// < — lexicographic byte order, folded over the shared prefix: the accumulator
+// is nil while undecided, then latches the first unequal byte's verdict; a fully
+// shared prefix defers to length (shorter first — plain strcmp order). This is
+// what makes a String a `sortBy:` key (the sort comparator sends `<`).
+[Reflect defineMethod: #< on: String as: [:self :other |
+   let lim := [[[self size] < [other size]] ifTrue: [| [self size]] ifFalse: [| [other size]]];
+   let verdict := [[0 to: [lim - 1]] inject: nil into: [:acc :i |
+      [[acc isNil]
+         ifTrue:  [| let ba := [self byteAt: i];
+                     let bb := [other byteAt: i];
+                     [[ba = bb] ifTrue: [| nil] ifFalse: [| [ba < bb]]]]
+         ifFalse: [| acc]]]];
+   [[verdict isNil]
+      ifTrue:  [| [[self size] < [other size]]]
+      ifFalse: [| verdict]]] doc:
+   "True iff the receiver sorts strictly before `other` in byte order (shared prefix: shorter first)."];
+
 // Internal: the six ASCII whitespace bytes (space \t \n \v \f \r), as trimmed/
 // words define them — matching the native set exactly.
 [Reflect defineMethod: #isWhitespaceByte: on: String as: [:self :b |
