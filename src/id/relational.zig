@@ -351,34 +351,71 @@ fn predicateOp(o: Oop) ?PredOp {
     return null;
 }
 
+/// `v`'s binding in the solution, or among the not-yet-committed fresh bindings
+/// of the clause being matched (a var repeated WITHIN one clause must agree with
+/// its own earlier position).
+fn lookupWithFresh(sol: []const Binding, fresh: []const Binding, v: Oop) ?Oop {
+    if (lookup(sol, v)) |x| return x;
+    for (fresh) |b| if (b.v == v) return b.val;
+    return null;
+}
+
 /// Extend solution `sol` by matching clause positions `pos` against triple `tri`.
 /// A logic-var position binds (or must agree with an existing binding); a constant
 /// must equal by `valEq` — value types (Integer/Float/String) by value, everything
 /// else (entities, interned symbols) by identity. So `#[?e #age 33]` matches the
 /// asserted boxed 33 (the old pointer-identity match silently matched nothing —
 /// the pattern-constant footgun, docs/46). Returns the extended binding set, or
-/// null on mismatch.
+/// null on mismatch. Matches BEFORE allocating: the miss path is the common one
+/// in a scan (copying the binding list per candidate was join-3way's bound), so
+/// fresh bindings collect in a stack buffer and the single copy happens on match.
 fn tryClause(aa: std.mem.Allocator, sol: []const Binding, pos: [3]Oop, tri: Triple) ?[]Binding {
-    var b: std.ArrayList(Binding) = .{};
-    b.appendSlice(aa, sol) catch @panic("relational: oom");
     const vals = [3]Oop{ tri.e, tri.a, tri.v };
+    var fresh: [3]Binding = undefined;
+    var nfresh: usize = 0;
     for (pos, vals) |p, val| {
         if (isLogicVar(p)) {
-            if (lookup(b.items, p)) |existing| {
+            if (lookupWithFresh(sol, fresh[0..nfresh], p)) |existing| {
                 if (!valEq(existing, val)) return null;
             } else {
-                b.append(aa, .{ .v = p, .val = val }) catch @panic("relational: oom");
+                fresh[nfresh] = .{ .v = p, .val = val };
+                nfresh += 1;
             }
         } else if (!valEq(p, val)) return null;
     }
-    return b.toOwnedSlice(aa) catch @panic("relational: oom");
+    const b = aa.alloc(Binding, sol.len + nfresh) catch @panic("relational: oom");
+    @memcpy(b[0..sol.len], sol);
+    @memcpy(b[sol.len..], fresh[0..nfresh]);
+    return b;
 }
 
 // -- rules -------------------------------------------------------------------
 
 const Rule = struct { params: Oop, body: Oop };
 const RuleList = std.ArrayList(Rule);
-const DerivedSet = std.ArrayList([]Oop);
+
+// A rule's materialized head tuples: `rows` is the relation in derivation order
+// (what matchRuleClause joins against), `seen` the valEq-keyed membership hash
+// behind it. Membership used to be an O(n²) linear scan (`tupleInSet`) — it
+// dominated query.rule-recursive; the hash made it O(1) per candidate. The set
+// lives in the query's arena; keys are the row slices themselves (arena-owned,
+// stable across map rehashes).
+const TupleCtx = struct {
+    pub fn hash(_: TupleCtx, t: []const Oop) u64 {
+        var h: u64 = 0x9e3779b97f4a7c15;
+        for (t) |o| h = mix64(h ^ valHash(o));
+        return h;
+    }
+    pub fn eql(_: TupleCtx, a: []const Oop, b: []const Oop) bool {
+        if (a.len != b.len) return false;
+        for (a, b) |x, y| if (!valEq(x, y)) return false;
+        return true;
+    }
+};
+const DerivedSet = struct {
+    rows: std.ArrayList([]Oop) = .{},
+    seen: std.HashMapUnmanaged([]const Oop, void, TupleCtx, std.hash_map.default_max_load_percentage) = .{},
+};
 
 // A rule NAME maps to several definitions; the relation it denotes is their UNION
 // (the datalog reading — base and recursive cases are separate `defineRule:`
@@ -458,19 +495,6 @@ fn mRebuildRules(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
-// Derived relations are SETS under value equality, like every other set in the
-// engine — two tuples carrying equal-valued boxed numbers are one tuple (the
-// identity compare here was the rule-side face of the pattern-constant footgun:
-// it let value-duplicate tuples accumulate and stopped fixpoints converging on
-// value-typed heads).
-fn tupleInSet(d: *const DerivedSet, t: []const Oop) bool {
-    outer: for (d.items) |row| {
-        if (row.len != t.len) continue;
-        for (row, t) |a, b| if (!valEq(a, b)) continue :outer;
-        return true;
-    }
-    return false;
-}
 
 fn ensureSet(aa: std.mem.Allocator, name: Oop) *DerivedSet {
     if (g_active.get(name)) |d| return d;
@@ -483,7 +507,7 @@ fn ensureSet(aa: std.mem.Allocator, name: Oop) *DerivedSet {
 fn totalActiveTuples() usize {
     var t: usize = 0;
     var it = g_active.valueIterator();
-    while (it.next()) |dp| t += dp.*.items.len;
+    while (it.next()) |dp| t += dp.*.rows.items.len;
     return t;
 }
 
@@ -496,19 +520,24 @@ fn evalRuleInto(aa: std.mem.Allocator, name: Oop, tidx: *TripleIndex) void {
     const d = g_active.get(name).?;
     for (rules.items) |rule| {
         const arity: usize = @intCast(g_api.smallIntValue(send0(rule.params, s_size)));
+        // Hoist the head vars out of the solution loop (they are per-rule constants).
+        const pvars = aa.alloc(Oop, arity) catch @panic("relational: oom");
+        for (pvars, 0..) |*pv, i| pv.* = send1(rule.params, s_at, g_api.mkSmallInt(@intCast(i)));
         const sols = applyClauses(aa, rule.body, tidx);
         for (sols) |sol| {
             const tuple = aa.alloc(Oop, arity) catch @panic("relational: oom");
             var ok = true;
-            var i: usize = 0;
-            while (i < arity) : (i += 1) {
-                const pv = send1(rule.params, s_at, g_api.mkSmallInt(@intCast(i)));
-                tuple[i] = lookup(sol, pv) orelse {
+            for (tuple, pvars) |*slot, pv| {
+                slot.* = lookup(sol, pv) orelse {
                     ok = false;
                     break;
                 };
             }
-            if (ok and !tupleInSet(d, tuple)) d.append(aa, tuple) catch @panic("relational: oom");
+            if (!ok) continue;
+            // Derived relations are SETS under value equality, like every other
+            // set in the engine: getOrPut is the membership test AND the insert.
+            const gop = d.seen.getOrPut(aa, tuple) catch @panic("relational: oom");
+            if (!gop.found_existing) d.rows.append(aa, tuple) catch @panic("relational: oom");
         }
     }
 }
@@ -564,30 +593,38 @@ fn matchRuleClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, 
     const arity = csz - 2;
     const d = materialize(aa, name, tidx);
 
+    // Hoist the call args out of the row loop (per-clause constants), and match
+    // each row against a reused fresh-binding buffer before allocating — the
+    // same copy-on-match shape as tryClause, with rule arity in place of 3.
+    const argv = aa.alloc(Oop, arity) catch @panic("relational: oom");
+    for (argv, 0..) |*p, i| p.* = send1(clause, s_at, g_api.mkSmallInt(@intCast(2 + i)));
+
     var next: std.ArrayList([]Binding) = .{};
+    var fresh: std.ArrayList(Binding) = .{};
+    defer fresh.deinit(ca);
     for (sols) |sol| {
-        for (d.items) |row| {
+        for (d.rows.items) |row| {
             if (row.len != arity) continue;
-            var b: std.ArrayList(Binding) = .{};
-            b.appendSlice(aa, sol) catch @panic("relational: oom");
+            fresh.clearRetainingCapacity();
             var ok = true;
-            var i: usize = 0;
-            while (i < arity) : (i += 1) {
-                const p = send1(clause, s_at, g_api.mkSmallInt(@intCast(2 + i)));
-                const val = row[i];
+            for (argv, row) |p, val| {
                 if (isLogicVar(p)) {
-                    if (lookup(b.items, p)) |ex| {
+                    if (lookupWithFresh(sol, fresh.items, p)) |ex| {
                         if (!valEq(ex, val)) {
                             ok = false;
                             break;
                         }
-                    } else b.append(aa, .{ .v = p, .val = val }) catch @panic("relational: oom");
+                    } else fresh.append(ca, .{ .v = p, .val = val }) catch @panic("relational: oom");
                 } else if (!valEq(p, val)) {
                     ok = false;
                     break;
                 }
             }
-            if (ok) next.append(aa, b.toOwnedSlice(aa) catch @panic("relational: oom")) catch @panic("relational: oom");
+            if (!ok) continue;
+            const b = aa.alloc(Binding, sol.len + fresh.items.len) catch @panic("relational: oom");
+            @memcpy(b[0..sol.len], sol);
+            @memcpy(b[sol.len..], fresh.items);
+            next.append(aa, b) catch @panic("relational: oom");
         }
     }
     return next.toOwnedSlice(aa) catch @panic("relational: oom");
