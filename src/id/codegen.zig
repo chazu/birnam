@@ -354,6 +354,21 @@ fn rtRecordGlobalSrc(name: [*:0]const u8, src: [*]const u8, n: c_long) callconv(
     _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_globalsrc_entity, g_api.intern(name), s }, 3);
 }
 
+/// `birnam_is_error(v)` — 1 iff `v` is an error VALUE (its vtable IS the error
+/// module's ErrorVt; a bare-floor boot with no error module answers 0). A raw
+/// vt compare, not an `isError` send: top-level statement values include raw
+/// vtables (the artifact defineMethod lowering answers `_vt`), which must not
+/// be dispatched into. Emitted programs check every DISCARDED top-level
+/// statement result through this and abort with the error instead: discarding
+/// an error silently is the one illegal fate for one — the same contract the
+/// loop primitives keep ("a body error stops the loop and propagates").
+fn rtIsError(v: Oop) callconv(.c) c_long {
+    if (v == null or v == g_api.nilObj) return 0;
+    const evt = g_api.import("ErrorVt");
+    if (evt == null or evt == g_api.nilObj) return 0;
+    return if (g_api.vtableOf(v) == evt) 1 else 0;
+}
+
 // Like tcc.zig's floor shims, the global-namespace shims are also real dynamic
 // symbols (docs/40 §3a, slice 1): an emitted artifact leaves them undefined and
 // the dynamic loader resolves them here at dlopen. The JIT path keeps patching
@@ -363,6 +378,7 @@ comptime {
     @export(&rtGlobalB, .{ .name = "birnam_global_b" });
     @export(&rtGlobalSet, .{ .name = "birnam_global_set" });
     @export(&rtRecordGlobalSrc, .{ .name = "birnam_record_global_src" });
+    @export(&rtIsError, .{ .name = "birnam_is_error" });
 }
 
 /// Register a codegen-owned shim into a unit's pre-relocate symbol window.
@@ -1103,7 +1119,7 @@ fn emitBlock(buf: *std.ArrayList(u8), blockNode: Oop) bool {
     for (caps.items, 0..) |cName, i| {
         putFmt(&body_buf, "void* b_{s} = ((void**)self)[{d}];\n", .{ cName, i });
     }
-    const body_ok = if (body != null) emitBody(&body_buf, body, false) else blk: {
+    const body_ok = if (body != null) emitBody(&body_buf, body, false, false) else blk: {
         put(&body_buf, "return birnam_nil();\n");
         break :blk true;
     };
@@ -1147,7 +1163,7 @@ fn emitBlock(buf: *std.ArrayList(u8), blockNode: Oop) bool {
 /// With `persist` true (REPL mode — only ever the OUTERMOST statements, never a
 /// block body), each top-level `let` ALSO writes its value to the Globals namespace
 /// so it survives to the next evaluation; block-local lets stay local.
-fn emitBody(buf: *std.ArrayList(u8), statements: Oop, persist: bool) bool {
+fn emitBody(buf: *std.ArrayList(u8), statements: Oop, persist: bool, top: bool) bool {
     const ns = nchild(statements);
     var i: usize = 0;
     while (i < ns) : (i += 1) {
@@ -1190,6 +1206,17 @@ fn emitBody(buf: *std.ArrayList(u8), statements: Oop, persist: bool) bool {
             put(buf, "return ");
             if (!emit(buf, inner)) return false;
             put(buf, ";\n");
+        } else if (top) {
+            // A non-last TOP-LEVEL statement's result is DISCARDED — which would
+            // silently swallow an error value (the one illegal fate for one; a
+            // `let`-bound error is intentional capture and stays). Check it and
+            // abort the program with the error instead, so a fileIn of a broken
+            // form propagates rather than limping on. Block/method bodies keep
+            // discard semantics (`top` false): there, ignoring a returned error
+            // is an authoring choice with on:do:/ifError: as the handled path.
+            putFmt(buf, "{{ void* __s{d} = ", .{i});
+            if (!emit(buf, inner)) return false;
+            putFmt(buf, "; if (birnam_is_error(__s{d})) return __s{d}; }}\n", .{ i, i });
         } else {
             put(buf, "(void)(");
             if (!emit(buf, inner)) return false;
@@ -1252,7 +1279,7 @@ fn mCompileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const op = g_api.stringBytes(a[1], &olen);
     g_module_name = moduleNameFromPath(op[0..olen]);
     defer g_module_name = null;
-    var buf = emitProgram(a[0], false, true) orelse return g_api.nilObj;
+    var buf = emitProgram(a[0], false, true, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);
     // Embed a `__birnam_module_meta` symbol carrying this unit's DEPENDENCIES (scanned
     // from its `[Module … requires: #[…]]` declaration). A runtime loader reads it via
@@ -1330,7 +1357,9 @@ fn mCompileImageCode(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const has_methods = appendImageSources(&prog, g_methods_entity);
     if (!has_modules and !has_methods) return g_api.nilObj;
     const progStr = g_api.mkString(prog.items.ptr, prog.items.len);
-    var buf = emitProgram(progStr, false, true) orelse return g_api.nilObj;
+    // UNCHECKED: this program is a composition of independent records — a stale
+    // one aborting the rest would hold the whole image hostage at boot.
+    var buf = emitProgram(progStr, false, true, false) orelse return g_api.nilObj;
     defer buf.deinit(ca);
     const c_src = g_api.mkString(buf.items.ptr, buf.items.len);
     return g_api.send(tcc, g_api.intern("compile:output:as:"), &[_]Oop{ c_src, a[0], g_api.intern("dll") }, 3);
@@ -1508,7 +1537,13 @@ fn mModuleMetaOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 /// written to disk, dlopen'd elsewhere, and fixed up there. The JIT keeps the
 /// baked handles (`artifact` false) — nothing changes for a live session.
 /// Returns null on a parse or emit failure.
-fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
+/// `checked` — abort-on-discarded-error at the top level (the fileIn contract).
+/// True for user programs (eval / fileIn / module compiles); FALSE only for the
+/// image's composed `.code` program, which concatenates INDEPENDENT records —
+/// there one stale record must not keep the rest of the image from installing
+/// (the same best-effort stance as replayAliens' "one dead wrap must not kill
+/// the boot").
+fn emitProgram(src: Oop, persist: bool, artifact: bool, checked: bool) ?std.ArrayList(u8) {
     var len: usize = 0;
     const p = g_api.stringBytes(src, &len);
     src_bytes = p[0..len];
@@ -1563,7 +1598,7 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
         putCStr(&ev, src_bytes);
         putFmt(&ev, "\", {d}L)}}, 3L);\n", .{src_bytes.len});
     }
-    if (!emitBody(&ev, statements, persist)) {
+    if (!emitBody(&ev, statements, persist, checked)) {
         noteError("cannot compile this program (not in the compilable subset)", spanStart(statements));
         return null;
     }
@@ -1591,6 +1626,7 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
         \\extern void* birnam_global_b(void* sym);
         \\extern void birnam_global_set(const char* name, void* value);
         \\extern void birnam_record_global_src(const char* name, const char* src, long n);
+        \\extern long birnam_is_error(void* v);
         \\
     );
     if (artifact) {
@@ -1621,7 +1657,7 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool) ?std.ArrayList(u8) {
 }
 
 fn runProgram(src: Oop, persist: bool) Oop {
-    var buf = emitProgram(src, persist, false) orelse return g_api.nilObj;
+    var buf = emitProgram(src, persist, false, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);
 
     // Staged compile: bind the runtime shims into the symbol window between
@@ -1641,6 +1677,7 @@ fn runProgram(src: Oop, persist: bool) Oop {
     addShim(unit, "birnam_global_b", @ptrCast(&rtGlobalB));
     addShim(unit, "birnam_global_set", @ptrCast(&rtGlobalSet));
     addShim(unit, "birnam_record_global_src", @ptrCast(&rtRecordGlobalSrc));
+    addShim(unit, "birnam_is_error", @ptrCast(&rtIsError));
     // Patch each baked handle `__g<i>` to its interned symbol's address.
     for (baked_globals.items, 0..) |sym, i| {
         var nb: [16]u8 = undefined;

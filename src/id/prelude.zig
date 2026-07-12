@@ -650,7 +650,29 @@ fn sysLoad(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         const namez = std.fmt.bufPrintZ(&nb, "{s}", .{base}) catch break :blk;
         _ = g_api.send(store, g_api.intern("assert:attr:value:"), &[_]Oop{ g_api.intern("__modsrc__"), g_api.intern(namez.ptr), src_oop }, 3);
     }
-    return g_api.send(codegen, g_api.intern("evalPersisting:"), &[_]Oop{src_oop}, 1);
+    const r = g_api.send(codegen, g_api.intern("evalPersisting:"), &[_]Oop{src_oop}, 1);
+    // fileIn does NOT swallow failures: a compile/syntax failure (nil result +
+    // a noted lastError) becomes a kinded #syntaxError, and an error VALUE that
+    // propagated out of a top-level form is announced with the path. Both are
+    // ALSO printed to stderr, because most load sites (dep guard-loads) ignore
+    // the answer — the answer is still the error for callers that check.
+    if (r == g_api.nilObj) {
+        const le = g_api.send(codegen, g_api.intern("lastError"), &[_]Oop{}, 0);
+        if (le != g_api.nilObj) {
+            var ll: usize = 0;
+            const lt = g_api.stringBytes(le, &ll);
+            std.debug.print("birnam: load {s} failed:\n{s}\n", .{ path, lt[0..ll] });
+            return mkErr("syntaxError", "source file failed to compile");
+        }
+        return r;
+    }
+    if (g_api.isExported("Error") != 0 and g_api.send(r, g_api.intern("isError"), &[_]Oop{}, 0) == g_api.trueObj) {
+        const ps = g_api.send(r, g_api.intern("printString"), &[_]Oop{}, 0);
+        var pl: usize = 0;
+        const pt = g_api.stringBytes(ps, &pl);
+        std.debug.print("birnam: load {s}: {s}\n", .{ path, pt[0..pl] });
+    }
+    return r;
 }
 
 /// `[System loadModule: pathString]` — dlopen a birnam MODULE dylib and run its

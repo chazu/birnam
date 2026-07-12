@@ -760,3 +760,47 @@ test "slice-4: a defineMethod artifact installs a method with no recompile" {
     const r = api.send(Codegen, api.intern("load:"), &[_]Oop{ppath}, 1);
     try std.testing.expectEqual(@as(i64, 21), api.smallIntValue(r)); // 7 * 3
 }
+
+// -- fileIn contract: errors are values; DISCARDING one is the only sin ---------
+
+test "fileIn contract: a discarded top-level error ABORTS the program and propagates" {
+    const api = setupFull();
+    // [5 frobnicate] answers a #doesNotUnderstand error VALUE; it is not the
+    // last form, so the old emit dropped it on the floor and the file limped
+    // on. Now the program aborts with the error — the final form never runs.
+    const r = eval(api, "[5 frobnicate]; 42");
+    try std.testing.expect(api.send(r, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(r, api.intern("kind"), &[_]Oop{}, 0) == api.intern("doesNotUnderstand"));
+}
+
+test "fileIn contract: a let-BOUND error is intentional capture, not a swallow" {
+    const api = setupFull();
+    // Binding an error value is the errors-as-values idiom for keeping one to
+    // inspect — the program continues.
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "let e := [5 frobnicate]; 42"));
+}
+
+test "fileIn contract: block bodies keep discard semantics" {
+    const api = setupFull();
+    // Inside a block/method, ignoring a returned error is an authoring choice
+    // (on:do:/ifError: is the handled path) — only the TOP level aborts.
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "[[:x | [x frobnicate]; 42] value: 5]"));
+}
+
+test "fileIn contract: [System load:] answers a kinded #syntaxError on a broken file" {
+    const api = setupFull();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "bad.birnam", .data = "let x := [3 +" });
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const p = try std.fs.path.join(a, &.{ dir, "bad.birnam" });
+    defer a.free(p);
+    const System = api.import("System").?;
+    const r = api.send(System, api.intern("load:"), &[_]Oop{api.mkString(p.ptr, p.len)}, 1);
+    // Not a bare nil with the detail hidden in [Codegen lastError] — the load
+    // itself answers the kinded failure (and names the file on stderr).
+    try std.testing.expect(api.send(r, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(r, api.intern("kind"), &[_]Oop{}, 0) == api.intern("syntaxError"));
+}

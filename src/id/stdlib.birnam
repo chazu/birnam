@@ -14,7 +14,14 @@
 
 // This module's dependency declaration (stage 3): the self-hosted stdlib sits
 // directly on the Zig primitives, so it requires no other self-hosted module.
-[Module named: #stdlib requires: #[]];
+// Guarded on the manager being up: this file is ALSO evaluated on the bare
+// floor (codegen's own tests) where `Module` is unbound — and a top-level
+// error now ABORTS a fileIn rather than being swallowed, so the DNU that used
+// to pass silently would kill the whole load.
+let __birnamModuleMgr := Module;
+[[__birnamModuleMgr isNil]
+   ifTrue:  [| nil]
+   ifFalse: [| [__birnamModuleMgr named: #stdlib requires: #[]]]];
 
 // -- documentation hooks (baseline no-ops; Doc overrides them) ----------------
 // A method's docstring can ride its definition (`… as: block doc: "…"`) and a
