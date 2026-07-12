@@ -44,6 +44,16 @@ fn strEq(o: Oop, want: []const u8) bool {
     return std.mem.eql(u8, p[0..len], want);
 }
 
+/// `#[from … to]` via `add:` sends on the exported empty Vector prototype —
+/// the bare-floor construction idiom (Range `asVector` is stdlib.birnam now,
+/// the tier-B lift, so it does not exist at this test's rung). from > to → empty.
+fn rangeVec(from: i64, to: i64) Oop {
+    var v = gapi.import("Vector");
+    var i = from;
+    while (i <= to) : (i += 1) v = s1(v, "add:", gapi.mkSmallInt(i));
+    return v;
+}
+
 // Stand-in blocks: plain objects whose value:/value:value: run a Zig predicate.
 fn evenPred(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
@@ -82,17 +92,16 @@ fn block(api: *idapi.IdApi, sel: [*:0]const u8, impl: idapi.Method) Oop {
     return api.alloc(vt, 0);
 }
 
-test "collection: Range size / includes: / asVector" {
+test "collection: Range size / includes:" {
     const api = setup();
     const r = s1(api.mkSmallInt(2), "to:", api.mkSmallInt(10));
     try std.testing.expectEqual(@as(i64, 9), ival(s0(r, "size")));
     try std.testing.expect(s1(r, "includes:", api.mkSmallInt(5)) == api.trueObj);
     try std.testing.expect(s1(r, "includes:", api.mkSmallInt(11)) == api.falseObj);
-
-    const v = s0(r, "asVector");
-    try std.testing.expectEqual(@as(i64, 9), ival(s0(v, "size")));
-    try std.testing.expectEqual(@as(i64, 2), ival(s1(v, "at:", api.mkSmallInt(0))));
-    try std.testing.expectEqual(@as(i64, 10), ival(s1(v, "at:", api.mkSmallInt(8))));
+    // asVector is Collection's (stdlib.birnam, the tier-B lift) — asserted
+    // through the full stack in stdlib-test.birnam.
+    try std.testing.expectEqual(@as(i64, 2), ival(s1(r, "at:", api.mkSmallInt(0))));
+    try std.testing.expectEqual(@as(i64, 10), ival(s1(r, "at:", api.mkSmallInt(8))));
 }
 
 test "collection: empty range is empty; start>end" {
@@ -101,7 +110,6 @@ test "collection: empty range is empty; start>end" {
     try std.testing.expectEqual(@as(i64, 0), ival(s0(r, "size")));
     // isEmpty itself lives in stdlib.birnam now (the tier-A surface lift, over
     // size) — asserted through the full stack in stdlib-test.birnam.
-    try std.testing.expectEqual(@as(i64, 0), ival(s0(s0(r, "asVector"), "size")));
 }
 
 // select:/collect:/detect: moved off the native collection vtables onto the shared
@@ -127,7 +135,7 @@ test "collection: inject:into: folds" {
 
 test "collection: Vector add: is persistent (structural sharing, old unchanged)" {
     const api = setup();
-    const empty = s0(s1(api.mkSmallInt(1), "to:", api.mkSmallInt(0)), "asVector"); // size 0
+    const empty = rangeVec(1, 0); // size 0
     try std.testing.expectEqual(@as(i64, 0), ival(s0(empty, "size")));
     const v1 = s1(empty, "add:", api.mkSmallInt(7));
     const v2 = s1(v1, "add:", api.mkSmallInt(8));
@@ -143,7 +151,7 @@ test "collection: the trie overflows the tail correctly (>32 elements)" {
     const api = setup();
     // 1..100 forces several tail-flushes + a root-overflow, exercising pushTail
     // and newPath — not just the tail fast-path.
-    const v = s0(s1(api.mkSmallInt(1), "to:", api.mkSmallInt(100)), "asVector");
+    const v = rangeVec(1, 100);
     try std.testing.expectEqual(@as(i64, 100), ival(s0(v, "size")));
     var i: i64 = 0;
     while (i < 100) : (i += 1) {
@@ -159,9 +167,9 @@ test "collection: String concatenation builds a fresh String" {
 }
 
 test "collection: Vector , Vector concatenates" {
-    const api = setup();
-    const a = s0(s1(api.mkSmallInt(1), "to:", api.mkSmallInt(3)), "asVector"); // #[1 2 3]
-    const b = s0(s1(api.mkSmallInt(4), "to:", api.mkSmallInt(5)), "asVector"); // #[4 5]
+    _ = setup();
+    const a = rangeVec(1, 3); // #[1 2 3]
+    const b = rangeVec(4, 5); // #[4 5]
     const c = s1(a, ",", b);
     try std.testing.expectEqual(@as(i64, 5), ival(s0(c, "size")));
     try std.testing.expect(strEq(s0(c, "printString"), "#[1 2 3 4 5]"));

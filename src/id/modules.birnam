@@ -16,9 +16,10 @@
 // sequence that set, and every self-hosted source opens with `named:requires:`.
 // Consequences, both deliberate:
 //   * NATIVE FLOOR ONLY. No stdlib is up yet, so everything here rides native
-//     sends (cells via `[db cellFor:attr:]`, Vector add:/includes:/inject:into:,
+//     sends (cells via `[db cellFor:attr:]`, Vector add:/indexOf:/inject:into:,
 //     the split:/trimmed scanners, `[Reflect nameOf:]`) — the same discipline as
-//     the console REPL, and doubly so: this file IS the bring-up.
+//     the console REPL, and doubly so: this file IS the bring-up. Membership is
+//     `indexOf: … notNil`, NOT `includes:` — includes: is stdlib (tier-B lift).
 //   * SELF-REGISTRATION AT THE END. The `named:requires:` declaration is the
 //     LAST statement here, not the first: the method must exist before it can
 //     run. Position is free for the runtime declaration — the first-statement
@@ -89,10 +90,10 @@
 // persistent Vector, grown per call, so there is nothing to pop; re-meeting a
 // path member is a cycle. Answers nil, or the #circularDependency error.
 [Reflect defineMethod: #visit:order:path: on: Module as: [:self :name :ord :path |
-  [[[ord value] includes: name]
+  [[[[ord value] indexOf: name] notNil]
     ifTrue:  [| nil]
     ifFalse: [|
-      [[path includes: name]
+      [[[path indexOf: name] notNil]
         ifTrue:  [| [Error kind: #circularDependency
                        message: ["circular dependency at module: " , [Reflect nameOf: name]]]]
         ifFalse: [|
@@ -142,7 +143,7 @@
   [[self isLoaded: name]
     ifTrue:  [| self]
     ifFalse: [|
-      [[path includes: name]
+      [[[path indexOf: name] notNil]
         ifTrue:  [| [Error kind: #circularDependency
                        message: ["circular dependency loading module: " , [Reflect nameOf: name]]]]
         ifFalse: [|

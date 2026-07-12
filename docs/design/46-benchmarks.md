@@ -287,6 +287,17 @@ Two engine truths the suite's construction surfaced (both verified against
   full-closure cost over the 999-node forest, not leaf-restricted
   derivation.
 
+**Measured 2026-07-12 (the collection tier-B boundary — the suite's first
+real gating decision):** the four appended cases ran native-then-derived on
+the same machine. `range.asVector` **1.02×** (the persistent-vector build is
+allocation-dominated; the added per-element send drowns) → lifted.
+`vector.includes-miss` as the full-derived Collection `count:` form ran
+**116×** (59µs → 6.9ms over 10k) → re-lifted as a one-send delegation to the
+retained native `indexOf:` scan. `vector.reversed` **2.58×** and
+`vector.copy-1k` **1.60×** → stayed native (per-row loops, as docs/44 §7
+predicted). Every macro case moved 0% under all four derived forms — the
+micro gate protects large-vector tails, not the measured workloads.
+
 ### Macro — whole-process cases in `scripts/bench.sh`, plus two one-shot suites
 
 The bash-driven cases report wall µs (median + min over R runs, python3

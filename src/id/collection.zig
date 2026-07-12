@@ -14,12 +14,16 @@
 //!
 //! Provides:
 //!   Vector (vector_vt)  a persistent ordered vector over a 32-way radix trie:
-//!                         size at: at:ifAbsent: add: do: select: collect: detect:
-//!                         inject:into: isEmpty asVector printString , sortBy:
-//!                         first last includes: indexOf: copyFrom:to: reversed
+//!                         size at: add: do: inject:into: printString , sortBy:
+//!                         indexOf: copyFrom:to: reversed  (the derived protocol
+//!                         — at:ifAbsent: select: collect: detect: isEmpty first
+//!                         last includes: asVector — is stdlib.birnam; the tier-B
+//!                         lift, docs/44 §7: includes: delegates to the native
+//!                         indexOf: scan, reversed/copyFrom:to: stay native by
+//!                         measurement)
 //!   Range  (range_vt)   a lazy inclusive integer range (start..end), value type:
-//!                         size do: select: collect: detect: inject:into:
-//!                         includes: asVector printString ,
+//!                         size at: do: inject:into: includes: reversed
+//!                         printString ,  (asVector → Collection in stdlib.birnam)
 //!   Integer (smallint_vt)  to:  → a Range
 //!   Object  (object_vt)    isNil → false,  notNil → true
 //!   nil                    isNil → true,   notNil → false
@@ -286,12 +290,6 @@ fn vInject(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     while (i < v.count) : (i += 1) acc = call2(a[1], acc, vecAt(v, i));
     return acc;
 }
-fn vAsVector(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    return self;
-}
-
 // Stable sort by a precomputed key per element. The comparator sends `<` between
 // keys, so any key type with a `<` protocol works (SmallInt via the prelude is
 // the common case); ties keep input order (insertion sort is stable).
@@ -344,16 +342,14 @@ fn vComma(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 }
 
 // -- Vector: the accessors/queries every program assumes ---------------------
+// includes:/asVector are stdlib.birnam now (the tier-B lift, docs/44 §7 —
+// includes: delegates to indexOf:, so the floor keeps ONE scan primitive).
+// indexOf: stays native — it is the floor's membership primitive
+// (modules.birnam's topo-sort rides `indexOf: … notNil` pre-stdlib) and the
+// derived path would put a send on every element. reversed/copyFrom:to: stay
+// native by measurement (2026-07-12): the derived per-row loops ran 2.58× /
+// 1.60× (bench/micro.birnam vector.reversed / vector.copy-1k).
 
-/// `[v includes: x]` — membership by value (floor types compare by value, per
-/// `keyEq`; other objects by identity).
-fn vIncludes(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = n;
-    const v = vec(self);
-    var i: usize = 0;
-    while (i < v.count) : (i += 1) if (keyEq(vecAt(v, i), a[0])) return g_api.trueObj;
-    return g_api.falseObj;
-}
 /// `[v indexOf: x]` — the 0-based index of the first element equal to x, or nil.
 fn vIndexOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
@@ -496,15 +492,6 @@ fn rInject(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     while (i <= r.end) : (i += 1) acc = call2(a[1], acc, mki(i));
     return acc;
 }
-fn rAsVector(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    const r = rng(self);
-    var out = emptyVec();
-    var i = r.start;
-    while (i <= r.end) : (i += 1) out = vecCons(out, mki(i));
-    return out;
-}
 fn rPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
@@ -512,7 +499,13 @@ fn rPrintString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 }
 fn rComma(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    return vComma(rAsVector(self, undefined, 0), a, 1);
+    // Materialize the range directly (its `asVector` is stdlib.birnam now —
+    // the tier-B lift — and `,` must not depend on a rung above this one).
+    const r = rng(self);
+    var out = emptyVec();
+    var i = r.start;
+    while (i <= r.end) : (i += 1) out = vecCons(out, mki(i));
+    return vComma(out, a, 1);
 }
 
 // -- the HAMT (hash array-mapped trie) ---------------------------------------
@@ -1313,11 +1306,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     // select:/collect:/detect: are now defined ONCE on Collection over inject:into:
     // (stdlib.birnam). `inject:into:` is the irreducible native fold primitive.
     api.method(vector_vt, api.intern("inject:into:"), &vInject);
-    api.method(vector_vt, api.intern("asVector"), &vAsVector);
+    // asVector + includes: → stdlib.birnam (tier-B lift; includes: rides indexOf:).
     api.method(vector_vt, api.intern("printString"), &vPrintString);
     api.method(vector_vt, api.intern(","), &vComma);
     api.method(vector_vt, api.intern("sortBy:"), &vSortBy);
-    api.method(vector_vt, api.intern("includes:"), &vIncludes);
     api.method(vector_vt, api.intern("indexOf:"), &vIndexOf);
     api.method(vector_vt, api.intern("copyFrom:to:"), &vCopyFromTo);
     api.method(vector_vt, api.intern("reversed"), &vReversed);
@@ -1328,7 +1320,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(range_vt, api.intern("do:"), &rDo);
     // select:/collect:/detect: → Collection (stdlib.birnam) over the fold below.
     api.method(range_vt, api.intern("inject:into:"), &rInject);
-    api.method(range_vt, api.intern("asVector"), &rAsVector);
+    // asVector → Collection (stdlib.birnam) over the fold above (tier-B lift).
     api.method(range_vt, api.intern("at:"), &rAt); // §B5
     api.method(range_vt, api.intern("reversed"), &rReversed);
     api.method(range_vt, api.intern("printString"), &rPrintString);

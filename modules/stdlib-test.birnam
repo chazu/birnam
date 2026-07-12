@@ -90,6 +90,26 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: ["hello" count: [:c | [c = "l"]]] equals: 2 describes: "count:"];
   [t expect: ["hello" detect: [:c | [c = "e"]]] equals: "e" describes: "detect:"]]];
 
+// The tier-B lift boundary (docs/44 §7, measured 2026-07-12): includes: and
+// asVector are stdlib.birnam now; reversed/copyFrom:to: stayed native (the
+// derived per-row loops failed the gate) — the whole surface is pinned HERE
+// either way, so a future re-lift is behavior-checked by this block.
+[s test: "tier-B boundary: reversed / copyFrom:to: / includes: / asVector" do: [:t |
+  [t expect: [#[1 2 3] reversed] equals: #[3 2 1] describes: "reversed"];
+  [t expect: [#[] reversed] equals: #[] describes: "empty reversed"];
+  [t expect: [#[1 2 3 4] copyFrom: 1 to: 3] equals: #[2 3] describes: "copyFrom:to: is half-open"];
+  [t expect: [#[1 2 3] copyFrom: 0 to: 0] equals: #[] describes: "empty slice"];
+  [t expect: [#[1 2 3] copyFrom: 2 to: 1] equals: nil describes: "to < from answers nil"];
+  [t expect: [#[1 2 3] copyFrom: 0 to: 9] equals: nil describes: "past-end answers nil"];
+  [t expect: [#[1 2 3] includes: 2] equals: true describes: "includes: hit"];
+  [t expect: [#[1 2 3] includes: 9] equals: false describes: "includes: miss"];
+  [t expect: [#[1.5 2.5] includes: 1.5] equals: false
+     describes: "includes: rides indexOf:'s keyEq — Floats by identity (the keyEq wart, one place to fix)"];
+  [t expect: [[1 to: 3] asVector] equals: #[1 2 3] describes: "Range asVector (Collection derived)"];
+  [t expect: [[3 to: 1] asVector] equals: #[] describes: "empty Range asVector"];
+  let v := #[1 2];
+  [t expect: [v asVector] equals: v describes: "Vector asVector is the identity"]]];
+
 // The perf-retained native scanners keep their exact contract (they are the
 // floor under includesSubstring: and zigdoc's bulk sweeps).
 [s test: "native scanners: split: / trimmed / indexOf: contracts hold" do: [:t |

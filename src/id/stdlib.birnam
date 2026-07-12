@@ -126,6 +126,27 @@
    as: [:self :blk :none | [[[self detect: blk] notNil]
       ifTrue: [| [self detect: blk]] ifFalse: [| [none value]]]]];
 
+// -- Vector: the tier-B SURFACE lifts (docs/44 §7, measured 2026-07-12) ----------
+// The gate's verdict, case by case (bench/micro.birnam vector.*/range.*):
+//   asVector   (identity)              LIFTED — pure surface, no loop.
+//   asVector   (Range → Collection's)  LIFTED — 1.02× (the build is allocation-
+//                                      dominated, so the per-element send drowns).
+//   includes:                          LIFTED as a DELEGATION to the retained
+//                                      native indexOf: scan — one send total. The
+//                                      full-derived form (Collection's count:)
+//                                      measured 116× and failed. Delegation also
+//                                      keeps includes:/indexOf: agreeing on keyEq
+//                                      (both identity on Floats — a keyEq wart,
+//                                      one place to fix).
+//   reversed / copyFrom:to:            STAY NATIVE — the derived per-row loops
+//                                      measured 2.58× / 1.60× and failed.
+
+[Reflect defineMethod: #asVector on: Vector as: [:self | self]];
+
+[Reflect defineMethod: #includes: on: Vector
+   as: [:self :x | [[self indexOf: x] notNil]] doc:
+   "Membership via the native indexOf: scan (keyEq: value for Integer/String/Symbol, identity otherwise)."];
+
 // -- Integer: rounding / coercion are identity on a whole number; sqrt via Float ---
 [Reflect defineMethod: #floor on: Integer as: [:self | self]];
 [Reflect defineMethod: #ceiling on: Integer as: [:self | self]];
