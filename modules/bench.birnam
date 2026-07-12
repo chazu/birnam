@@ -125,9 +125,15 @@
 [Reflect defineMethod: #benchReps on: Bench as: [:self |
   [[self quick] ifTrue: [| 2] ifFalse: [| 5]]]];
 
-// The one shared empty loop — the baseline every subtracted case measures
-// against. Same shape as every case body: one native to:do:, nothing in it.
-[[db cellFor: Bench attr: #emptyLoop] set: [:m | [1 to: m do: [:i | nil]]]];
+// The empty loop — the baseline every subtracted case measures against. Same
+// shape as every case body: one native to:do:, nothing in it. A METHOD
+// answering a fresh block, deliberately NOT a block in a cell: a block-valued
+// durable store fact has no image restoration recipe and would reject every
+// [System saveImage:] in a bench-loaded process (bench/image.birnam saves).
+// NOTE the same applies to registered SUITES (case blocks live in cells) —
+// define suites only in processes that don't save images.
+[Reflect defineMethod: #emptyLoop on: Bench as: [:self |
+  [:m | [1 to: m do: [:i | nil]]]]];
 
 // -- the ONLY timed window in the module ----------------------------------------
 // GC immediately before, then start..run..stop. Nothing else may read the clock.
@@ -202,7 +208,7 @@
   let rawMin := [self minOf: runs];
   let baseMed := [[raw = 1]
     ifTrue:  [| 0]
-    ifFalse: [| [self medianOf: [self sample: [[db cellFor: Bench attr: #emptyLoop] value] iters: n]]]];
+    ifFalse: [| [self medianOf: [self sample: [self emptyLoop] iters: n]]]];
   let netUs := [rawMed - baseMed];
   [[netUs < 0] ifTrue: [|
     [System println: ["  WARN " , nm , ": negative net (baseline > case) — ill-conditioned; raise opsPerIter"]]]

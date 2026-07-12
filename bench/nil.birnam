@@ -1,0 +1,4 @@
+// nil.birnam — the boot-benchmark stub (docs/design/46): the cheapest
+// possible script, so a timed run measures the boot path itself. There is
+// deliberately no -e flag; this file is the substitute.
+nil

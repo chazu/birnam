@@ -170,10 +170,11 @@ The design that stays honest:
   number per process, no calibration. The query cases then run against that
   now-stationary base and may calibrate/repeat freely in-process (reads
   don't mutate).
-- `scripts/bench.sh` runs the whole relational suite as **R=3 fresh
-  processes** and takes per-case medians across them. 10k asserts and
-  multi-clause queries sit far above µs resolution, so cross-process ms
-  timing loses nothing.
+- `scripts/bench.sh` runs the whole relational suite as **3 fresh processes
+  for tracked (`--release`) runs** (1 in dev mode, like micro) and the
+  compare tool medians per case across them. 10k asserts and multi-clause
+  queries sit far above µs resolution, so cross-process ms timing loses
+  nothing.
 
 ### Driver: `scripts/bench.sh`
 
@@ -184,8 +185,10 @@ The design that stays honest:
 - Runs the micro suite in-process, the relational suite as R fresh
   processes, and the macro cases itself: wall time from the shell, peak RSS
   via `/usr/bin/time -l` (macOS).
-- Merges all three into `bench/results/dev/<git-sha>.json` (or
-  `bench/results/v<X.Y.Z>.json` with `--release`), stamped with sha,
+- Merges all three into `bench/results/dev/bench-<sha>.json` (or
+  `bench/results/v<X.Y.Z>.json` with `--release`; quick runs refuse
+  `--release` so a low-rep run can never become the kept snapshot), each
+  suite element tagged `{label, run, data}`, stamped with sha, dirty flag,
   version, date, `sysctl hw.model`, and build mode.
 
 ### Compare: `scripts/bench-compare.sh a.json b.json`
@@ -280,21 +283,26 @@ Two engine truths the suite's construction surfaced (both verified against
   full-closure cost over the 999-node forest, not leaf-restricted
   derivation.
 
-### Macro — cases in `scripts/bench.sh`
+### Macro — whole-process cases in `scripts/bench.sh`, plus two one-shot suites
 
-Wall ms + peak RSS each. Boot cases run a checked-in one-line stub
+The bash-driven cases report wall µs (median + min over R runs, python3
+monotonic clock around the subprocess) and peak RSS from one extra
+unmeasured `/usr/bin/time -l` run. Boot cases run a checked-in one-line stub
 (`bench/nil.birnam`, containing `nil`) — there is no `-e` flag, and the stub
-avoids adding one.
+avoids adding one. Two cases that need in-process timing — `image.save` and
+`gc.collect-known-heap` — are **birnam one-shot suites** (`bench/image.birnam`,
+`bench/gc.birnam`, via `[Bench record:us:ops:]`): they report µs like the
+other suites and carry no RSS.
 
 | case | pins |
 |---|---|
-| `boot.bare` / `boot.stdlib-dylib` / `boot.stdlib-source` | boot paths via the stub; dylib-vs-source is the stage1 payoff. Forcing the source path per-run: point `BIRNAM_LIB_DIR` at a decoy dir (hiding `libbirnam_stdlib.dylib` et al.) while `BIRNAM_ID_DYLIB` keeps the id floor findable — `loadStdlib` prefers the dylib and falls back to embedded source only when it is absent |
-| `image.save` | save cost on a warm heap: boot, build a known graph, save — the image's `main` is `[OS exit: 0]` |
-| `boot.image` | boot the image `image.save` just produced (its exiting `main` terminates the run) — the docs/40 payoff |
+| `boot.bare` / `boot.stdlib-dylib` / `boot.stdlib-source` | boot paths via the stub; dylib-vs-source is the stage1 payoff. Forcing the source path: `BIRNAM_LIB_DIR` points at a decoy dir holding symlinks to every dylib EXCEPT the four self-hosted ones (modules/stdlib/toml/config) — the id floor resolves normally, `loadStdlib` finds no dylib and falls back to embedded source |
+| `image.save` (suite) | one-shot: boot, install a marker binding, time one `[System saveImage:]` on the warm heap. Discovered building it: a block-valued durable cell fact REJECTS the save (no restoration recipe) — the harness keeps its baseline block in a method, and suites (whose case blocks live in cells) must not be defined in image-saving processes |
+| `boot.image` | boot the artifact `image.save` produced — the docs/40 payoff. No `main`: the image drops into a REPL that exits 0 at stdin EOF, so the number includes REPL bring-up |
 | `compile.stage1-stdlib` | `--compile-module` on `stdlib.birnam` |
 | `script.primes` / `script.word-frequency` | end-to-end language throughput on existing examples |
 | `docgen.full` | the known heavyweight workload — the canary for string-protocol regressions |
-| `gc.collect-known-heap` | build a known graph, force `[System gc]`, time it (allocation + collection are the subject here — the autoGc-off harness rule is opted out) |
+| `gc.collect-known-heap` (suite) | one-shot: build 20k live objects + a discarded 20k build (the real garbage is those objects plus ~120k persistent-vector fold intermediates), then time ONE `[System gc]` — collection only, allocation is outside the window. Gated on the collect's reclaimed count (>100k) and live-half integrity, so the heap shape is verified, not assumed |
 
 ## Build phases (one commit each)
 

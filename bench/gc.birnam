@@ -1,0 +1,57 @@
+// gc.birnam — the GC benchmark (docs/design/46 Phase 4).
+//
+// One-shot protocol (like the relational seeding pass): build a known live
+// graph plus a known pile of garbage, then time ONE full collection over that
+// exact heap. Repeating a collect in-process would measure a nothing-to-sweep
+// pass, so the number is one-per-process; bench.sh medians across processes
+// if it wants reps.
+//
+// WHAT THE HEAP ACTUALLY IS (top-level `let`s persist to Globals, so a "junk"
+// binding would be LIVE — the first draft made that mistake): the live half is
+// LIVE (a 20k-object vector, reachable via its let); the garbage half is a
+// second 20k-object build in a DISCARDED expression, whose objects and whose
+// persistent-vector fold intermediates (~120k tail/spine copies from both
+// builds) are unreachable when the collect runs. The gate below checks the
+// collect's answer (the reclaimed count) so the heap shape is verified, not
+// assumed — same principle as the relational suite's cardinality gate.
+//
+//   ./zig-out/bin/birnam bench/gc.birnam
+
+[System load: "modules/bench.birnam"];
+[System load: "modules/os.birnam"];
+
+// No collections during setup — the timed collect must see the WHOLE pile
+// (the auto-GC allocation threshold is otherwise close enough to this
+// workload that module-load growth could silently flip a mid-setup collect).
+[System autoGc: false];
+
+// Live: 20k objects held by a vector.
+let LIVE := [[1 to: 20000] inject: #[] into: [:v :i | [v add: [Object clone]]]];
+
+// Garbage: 20k more objects built and immediately DISCARDED (only the size,
+// an Integer, survives) — plus both builds' fold intermediates.
+let junkSize := [[[1 to: 20000] inject: #[] into: [:v :i | [v add: [Object clone]]]] size];
+
+let t0 := [Time monotonicMicros];
+let reclaimed := [System gc];
+let t1 := [Time monotonicMicros];
+
+let s := [BenchSuite named: "gc"];
+[Bench runSuite: s];
+[Bench record: "gc.collect-known-heap" us: [t1 - t0] ops: 1];
+let written := [Bench writeResults: "bench/results/dev/gc.json"];
+
+// Gates: the collect must have swept the real pile (>100k objects), the live
+// half must still be intact, and the JSON must have landed.
+let heapOk := [[reclaimed > 100000] & [[LIVE size] = 20000]];
+[heapOk ifTrue: [| nil] ifFalse: [|
+  [System println: ["HEAP GATE FAILED — reclaimed " , [reclaimed printString]
+                   , ", live " , [[LIVE size] printString] , " (want >100000, 20000)"]]]];
+
+let ok := [[[[[[Bench results] size] = 1]
+           & [[Bench failures] = 0]]
+           & heapOk]
+           & [[written isError] ifTrue: [| false] ifFalse: [| true]]];
+[ok
+  ifTrue:  [| [OS exit: 0]]
+  ifFalse: [| [OS exit: 1]]]
