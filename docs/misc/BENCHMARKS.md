@@ -42,8 +42,10 @@ sub-5% claims need a deliberate same-boot A/B.
 
 ```
 bench/
-  micro.birnam        24 in-process cases: sends, blocks, loops, string,
-                      vector, map, cells, errors, codegen, ffi
+  micro.birnam        28 in-process cases: sends, blocks, loops, string,
+                      vector, map, cells, errors, codegen, ffi, plus the
+                      four tier-B lift boundaries (includes:/reversed/
+                      copyFrom:to:/asVector)
   parse.birnam        the PEG/Json case (own process: loading json shifts
                       send cost for everything sharing the process)
   relational.birnam   datalog over a fixed 10k-entity base; gates on known

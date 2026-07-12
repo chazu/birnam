@@ -239,13 +239,29 @@ let s := [BenchSuite named: "micro"];
     [BUF pokeInt: 9 at: 0]; [BUF peekIntAt: 0];
     [BUF pokeInt: 9 at: 8]; [BUF peekIntAt: 8]]]]];
 
+// -- tier-B lift targets (docs/44 §7): the four candidate native/derived
+// boundaries, measured on the shared 10k fixture V. One op = one full
+// operation (a miss for includes: — the whole-scan bound). Appended at the
+// END per the case-order contract.
+[s case: "vector.includes-miss" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | [V includes: 0]]]]];
+
+[s case: "vector.reversed" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | [V reversed]]]]];
+
+[s case: "vector.copy-1k" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | [V copyFrom: 4500 to: 5500]]]]];
+
+[s case: "range.asVector" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i | [[1 to: 10000] asVector]]]]];
+
 // ---------------------------------------------------------------------------
 // Run + write + gate
 // ---------------------------------------------------------------------------
 [Bench runSuite: s];
 let written := [Bench writeResults: "bench/results/dev/micro.json"];
 
-let ok := [[[[[Bench results] size] = 24]
+let ok := [[[[[Bench results] size] = 28]
            & [[Bench failures] = 0]]
            & [[written isError] ifTrue: [| false] ifFalse: [| true]]];
 [ok

@@ -241,6 +241,7 @@ compare tool.
 | `codegen.define-method` | the `defineMethod:` install + method-mirror path (the block literal pre-compiles at load, so TCC compilation is NOT in this number; bulk compile cost is `compile.stage1-stdlib`) |
 | `ffi.wrapped-call` | Alien call overhead (a `clockNanos` loop — one wrapped libc call + boxing) |
 | `ffi.peek-poke` | raw C memory |
+| `vector.includes-miss` / `vector.reversed` / `vector.copy-1k` / `range.asVector` | the four tier-B lift boundaries (docs/44 §7), one case per candidate, on the shared 10k fixture — added post-v0.8.0, so the v0.8.0 snapshot lacks them (bench-compare reports new cases as notes) |
 
 ### Relational — `bench/relational.birnam` (process-isolated, see above)
 
