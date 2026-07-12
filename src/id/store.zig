@@ -42,6 +42,16 @@ const StoreState = struct {
     facts: std.ArrayList(Fact) = .{},
     raw: bool = true,
     tx: u64 = 0,
+    // The (e,a) postings index — an ACCESS PATH, never a second source of truth
+    // (docs/42 §D rebuilt-cache discipline). Maps each distinct (e,a) pair to the
+    // positions of its facts in the canonical log, in log order, so every
+    // per-pair read walks its own few facts instead of the whole log. Holds
+    // positions only (no Oops beyond the keys, which live facts already hold),
+    // is maintained write-through at the three mutation chokepoints (`appendOp`,
+    // `removeLive`, the image-load appends; `replaceInPlace` is position-stable),
+    // and is rebuilt wholesale from the log whenever positions shift. Never
+    // serialized: an image load re-derives it.
+    ea: EaMap = .{},
 };
 
 // -- Well-known objects + selectors (set by `bringUp`) ----------------------
@@ -125,8 +135,89 @@ inline fn eq(a: Oop, b: Oop) bool {
     return false;
 }
 
+// -- The (e,a) postings index -------------------------------------------------
+//
+// Hash keys the way `eq` compares (the single identity chokepoint above): value
+// types by value, everything else by address — safe because the collector is
+// non-moving, and the index never crosses an image boundary (it is rebuilt from
+// the loaded log, so per-process addresses are fine where a serialized structure
+// could not use them).
+
+fn mix64(x0: u64) u64 {
+    var x = x0; // splitmix64 finalizer — full avalanche for address/int keys
+    x ^= x >> 30;
+    x *%= 0xbf58476d1ce4e5b9;
+    x ^= x >> 27;
+    x *%= 0x94d049bb133111eb;
+    x ^= x >> 31;
+    return x;
+}
+
+/// Hash consistent with `eq`: eq(a,b) implies valHash(a) == valHash(b).
+fn valHash(o: Oop) u64 {
+    if (o == null) return mix64(0);
+    if (g_api.isSmallInt(o) != 0) return mix64(@bitCast(g_api.smallIntValue(o)));
+    const vt = g_api.vtableOf(o);
+    if (vt == g_api.string_vt) {
+        var len: usize = 0;
+        const p = g_api.stringBytes(o, &len);
+        return std.hash.Wyhash.hash(0, p[0..len]);
+    }
+    if (vt == g_api.float_vt) {
+        // Value bits; -0.0 normalizes to +0.0 (IEEE == calls them equal).
+        const f = g_api.floatValue(o);
+        const bits: u64 = if (f == 0) 0 else @bitCast(f);
+        return mix64(bits);
+    }
+    return mix64(@intFromPtr(o.?));
+}
+
+const EaKey = struct { e: Oop, a: Oop };
+
+const EaCtx = struct {
+    pub fn hash(_: EaCtx, k: EaKey) u64 {
+        return mix64(valHash(k.e) *% 0x9e3779b97f4a7c15 +% valHash(k.a));
+    }
+    pub fn eql(_: EaCtx, x: EaKey, y: EaKey) bool {
+        return eq(x.e, y.e) and eq(x.a, y.a);
+    }
+};
+
+const Postings = std.ArrayList(u32);
+const EaMap = std.HashMapUnmanaged(EaKey, Postings, EaCtx, std.hash_map.default_max_load_percentage);
+
+fn indexAppend(st: *StoreState, e: Oop, a: Oop, pos: usize) void {
+    const gop = st.ea.getOrPut(ca, .{ .e = e, .a = a }) catch @panic("store: oom");
+    if (!gop.found_existing) gop.value_ptr.* = .{};
+    gop.value_ptr.append(ca, @intCast(pos)) catch @panic("store: oom");
+}
+
+fn clearIndex(st: *StoreState) void {
+    var it = st.ea.valueIterator();
+    while (it.next()) |p| p.deinit(ca);
+    st.ea.clearRetainingCapacity();
+}
+
+/// Re-derive the index from the log — the recovery path for any mutation that
+/// shifts fact positions (`removeLive`). O(F), which is what the shifting
+/// mutation itself already costs.
+fn rebuildIndex(st: *StoreState) void {
+    clearIndex(st);
+    for (st.facts.items, 0..) |f, i| indexAppend(st, f.e, f.a, i);
+}
+
+/// The log positions of (e,a)'s facts, in log order — empty if the pair has none.
+/// Every per-pair read walks this instead of the whole log; within-pair visit
+/// order is identical to the old full scans, so all fold semantics (newest
+/// decides, op-awareness, tx windows) are unchanged.
+fn postingsOf(st: *StoreState, e: Oop, a: Oop) []const u32 {
+    const p = st.ea.getPtr(.{ .e = e, .a = a }) orelse return &.{};
+    return p.items;
+}
+
 fn appendOp(st: *StoreState, e: Oop, a: Oop, v: Oop, op: Op) void {
     st.facts.append(ca, .{ .e = e, .a = a, .v = v, .tx = st.tx, .op = op }) catch @panic("store: oom");
+    indexAppend(st, e, a, st.facts.items.len - 1);
     st.tx += 1;
 }
 fn appendFact(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
@@ -134,25 +225,34 @@ fn appendFact(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
 }
 
 /// Physically drop currently-live asserted facts matching (e, a, v) — the
-/// history-off retention path (no retract entry lingers, no growth).
+/// history-off retention path (no retract entry lingers, no growth). Removal
+/// shifts every later fact's position, so the index is rebuilt after — O(F),
+/// the same order the removal's own shifting already costs.
 fn removeLive(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
-    var i: usize = 0;
-    while (i < st.facts.items.len) {
+    var matches: std.ArrayList(u32) = .{};
+    defer matches.deinit(ca);
+    for (postingsOf(st, e, a)) |i| {
         const f = st.facts.items[i];
-        if (eq(f.e, e) and eq(f.a, a) and eq(f.v, v) and f.op == .assert) {
-            _ = st.facts.orderedRemove(i);
-        } else i += 1;
+        if (eq(f.v, v) and f.op == .assert) matches.append(ca, i) catch @panic("store: oom");
     }
+    if (matches.items.len == 0) return;
+    var i = matches.items.len; // remove highest-first so earlier positions stay valid
+    while (i > 0) {
+        i -= 1;
+        _ = st.facts.orderedRemove(matches.items[i]);
+    }
+    rebuildIndex(st);
 }
 
 /// Is value `v` currently a live member of (e, a)? The newest matching (e,a,v)
 /// fact decides (assert → present, retract → absent). Op-aware.
 fn isMember(st: *StoreState, e: Oop, a: Oop, v: Oop) bool {
-    var i = st.facts.items.len;
+    const posts = postingsOf(st, e, a);
+    var i = posts.len;
     while (i > 0) {
         i -= 1;
-        const f = st.facts.items[i];
-        if (eq(f.e, e) and eq(f.a, a) and eq(f.v, v)) return f.op == .assert;
+        const f = st.facts.items[posts[i]];
+        if (eq(f.v, v)) return f.op == .assert;
     }
     return false;
 }
@@ -163,12 +263,13 @@ fn isMember(st: *StoreState, e: Oop, a: Oop, v: Oop) bool {
 /// anything committed at/after it). The newest visible matching fact decides; a
 /// retract entry means the value is absent.
 fn currentValueRawAsOf(st: *StoreState, e: Oop, a: Oop, asof: ?u64) Oop {
-    var i = st.facts.items.len;
+    const posts = postingsOf(st, e, a);
+    var i = posts.len;
     while (i > 0) {
         i -= 1;
-        const f = st.facts.items[i];
+        const f = st.facts.items[posts[i]];
         if (asof) |t| if (f.tx >= t) continue; // asof is a watermark: visible iff tx < asof
-        if (eq(f.e, e) and eq(f.a, a)) return if (f.op == .retract) null else f.v;
+        return if (f.op == .retract) null else f.v;
     }
     return null;
 }
@@ -206,25 +307,21 @@ fn historyOf(st: *StoreState, a: Oop) Oop {
 
 /// Number of facts the log currently holds for (e, a) — the timeline length.
 fn historyLen(st: *StoreState, e: Oop, a: Oop) usize {
-    var c: usize = 0;
-    for (st.facts.items) |f| {
-        if (eq(f.e, e) and eq(f.a, a)) c += 1;
-    }
-    return c;
+    return postingsOf(st, e, a).len;
 }
 
 /// Overwrite the value of the newest (e, a) fact in place (no growth); append if
-/// none exists. The no-history retention path for `:one`.
+/// none exists. The no-history retention path for `:one`. Position-stable: the
+/// newest (e,a) fact is the pair's last posting, and it stays newest (its tx
+/// bumps to the write time), so the index needs no maintenance here.
 fn replaceInPlace(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
-    var i = st.facts.items.len;
-    while (i > 0) {
-        i -= 1;
-        if (eq(st.facts.items[i].e, e) and eq(st.facts.items[i].a, a)) {
-            st.facts.items[i].v = v;
-            st.facts.items[i].tx = st.tx;
-            st.tx += 1;
-            return;
-        }
+    const posts = postingsOf(st, e, a);
+    if (posts.len > 0) {
+        const i = posts[posts.len - 1];
+        st.facts.items[i].v = v;
+        st.facts.items[i].tx = st.tx;
+        st.tx += 1;
+        return;
     }
     appendFact(st, e, a, v);
 }
@@ -236,11 +333,11 @@ fn valueCount(st: *StoreState, e: Oop, a: Oop) usize {
     var seen: std.ArrayList(Oop) = .{};
     defer seen.deinit(ca);
     var present: usize = 0;
-    var i = st.facts.items.len;
+    const posts = postingsOf(st, e, a);
+    var i = posts.len;
     while (i > 0) {
         i -= 1;
-        const f = st.facts.items[i];
-        if (!eq(f.e, e) or !eq(f.a, a)) continue;
+        const f = st.facts.items[posts[i]];
         var dup = false;
         for (seen.items) |s| {
             if (eq(s, f.v)) {
@@ -374,7 +471,7 @@ fn mRawCurrentValue(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// history-off `:one` fact bumps its tx to the write time, so a value that WAS held
 /// before `basis` can present as a single fact with `tx >= basis`.)
 fn hasFactAtOrAfter(st: *StoreState, e: Oop, a: Oop, basis: u64) bool {
-    for (st.facts.items) |f| if (f.tx >= basis and eq(f.e, e) and eq(f.a, a)) return true;
+    for (postingsOf(st, e, a)) |i| if (st.facts.items[i].tx >= basis) return true;
     return false;
 }
 
@@ -496,13 +593,6 @@ fn mAttrAt(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 // like any other, so they enumerate too (a query simply won't match them unless
 // it asks). Collection-free by design — the block does any accumulation.
 
-const EA = struct { e: Oop, a: Oop };
-
-fn pairSeen(pairs: []const EA, e: Oop, a: Oop) bool {
-    for (pairs) |p| if (eq(p.e, e) and eq(p.a, a)) return true;
-    return false;
-}
-
 // A transaction WINDOW [lo, hi): `hi` is the snapshot watermark (deciding fact must
 // have tx < hi; null = current), `lo` is a lower bound for emission (the deciding
 // fact must have tx >= lo; null = 0). asOf = [null, hi); since = [lo, null);
@@ -522,24 +612,29 @@ fn inLo(tx: u64, lo: ?u64) bool {
 /// deciding fact is the newest with `tx < hi`, and a triple is emitted only if that
 /// fact is an assert AND its `tx >= lo`.
 fn enumerateTriples(st: *StoreState, blk: Oop, lo: ?u64, hi: ?u64) void {
-    // Distinct (e,a) pairs in first-appearance order, among facts within `hi`.
-    var pairs: std.ArrayList(EA) = .{};
+    // Distinct (e,a) pairs in first-appearance order, among facts within `hi` —
+    // the same scan-order contract as ever, with a hash SET as the seen-check so
+    // the pass is O(F), not O(F²).
+    var pairs: std.ArrayList(EaKey) = .{};
     defer pairs.deinit(ca);
+    var seenPair: std.HashMapUnmanaged(EaKey, void, EaCtx, std.hash_map.default_max_load_percentage) = .{};
+    defer seenPair.deinit(ca);
     for (st.facts.items) |f| {
         if (!visibleHi(f.tx, hi)) continue;
-        if (!pairSeen(pairs.items, f.e, f.a))
+        const gop = seenPair.getOrPut(ca, .{ .e = f.e, .a = f.a }) catch @panic("store: oom");
+        if (!gop.found_existing)
             pairs.append(ca, .{ .e = f.e, .a = f.a }) catch @panic("store: oom");
     }
 
     for (pairs.items) |p| {
+        const posts = postingsOf(st, p.e, p.a);
         if (eq(cardinalityOfAsOf(st, p.a, hi), s_one)) {
             // The deciding fact: newest matching with tx < hi.
-            var i = st.facts.items.len;
+            var i = posts.len;
             while (i > 0) {
                 i -= 1;
-                const f = st.facts.items[i];
+                const f = st.facts.items[posts[i]];
                 if (!visibleHi(f.tx, hi)) continue;
-                if (!eq(f.e, p.e) or !eq(f.a, p.a)) continue;
                 if (f.op == .assert and inLo(f.tx, lo)) emitTriple(blk, p.e, p.a, f.v);
                 break; // newest matching fact decides
             }
@@ -547,12 +642,11 @@ fn enumerateTriples(st: *StoreState, blk: Oop, lo: ?u64, hi: ?u64) void {
             // :many — each distinct value whose newest fact (within hi) is an assert.
             var seen: std.ArrayList(Oop) = .{};
             defer seen.deinit(ca);
-            var i = st.facts.items.len;
+            var i = posts.len;
             while (i > 0) {
                 i -= 1;
-                const f = st.facts.items[i];
+                const f = st.facts.items[posts[i]];
                 if (!visibleHi(f.tx, hi)) continue;
-                if (!eq(f.e, p.e) or !eq(f.a, p.a)) continue;
                 var dup = false;
                 for (seen.items) |s| if (eq(s, f.v)) {
                     dup = true;
@@ -880,7 +974,9 @@ fn mImageFactsInto(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 fn mImageLoadBegin(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = args;
     _ = n;
-    stateOf(self).facts.clearRetainingCapacity();
+    const st = stateOf(self);
+    st.facts.clearRetainingCapacity();
+    clearIndex(st); // the index is a cache of the log — dropped and re-derived
     return self;
 }
 
@@ -888,13 +984,15 @@ fn mImageLoadBegin(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// its tx + op preserved (`t`/`o` are SmallInts). Answers self.
 fn mImageAddFact(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    stateOf(self).facts.append(ca, .{
+    const st = stateOf(self);
+    st.facts.append(ca, .{
         .e = args[0],
         .a = args[1],
         .v = args[2],
         .tx = @intCast(g_api.smallIntValue(args[3])),
         .op = @enumFromInt(@as(u8, @intCast(g_api.smallIntValue(args[4])))),
     }) catch @panic("store: oom");
+    indexAppend(st, args[0], args[1], st.facts.items.len - 1);
     return self;
 }
 
