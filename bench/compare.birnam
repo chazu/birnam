@@ -48,8 +48,9 @@ let THRESH_OTHER := 5.0;
       out]]]];
 
 // Every (name, label, value) in a merged result doc, grouped by name.
-// NOTE: `#[…]` vector literals are LITERAL-only (a variable element does not
-// evaluate — discovered here) — runtime pairs are built with add:.
+// (The label/value pair is built with add: — equivalent to a `#[lbl val]`
+// literal, which does evaluate variable elements; an earlier note here
+// claiming otherwise was a misdiagnosis of a selector typo.)
 [Reflect defineMethod: #gather: on: Cmp as: [:self :doc |
   let fromSuites := [[doc at: "suites"] inject: #[] into: [:out :se |
     let lbl := [se at: "label"];
