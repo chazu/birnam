@@ -131,6 +131,29 @@ pub fn build(b: *std.Build) void {
     siphon_exe.linkLibC();
     b.installArtifact(siphon_exe);
 
+    // Source-backed tools are part of an installed birnam, not checkout-only
+    // extras. Keep the same relative tree that Cli/Doc use in development:
+    //   modules/../src/id     (Zig-floor source docs)
+    //   modules/../docs/guide (the authored guide chapters)
+    b.installDirectory(.{
+        .source_dir = b.path("modules"),
+        .install_dir = .prefix,
+        .install_subdir = "share/birnam/modules",
+        .include_extensions = &.{".birnam"},
+    });
+    b.installDirectory(.{
+        .source_dir = b.path("src/id"),
+        .install_dir = .prefix,
+        .install_subdir = "share/birnam/src/id",
+        .include_extensions = &.{ ".zig", ".birnam" },
+    });
+    b.installDirectory(.{
+        .source_dir = b.path("docs/guide"),
+        .install_dir = .prefix,
+        .install_subdir = "share/birnam/docs/guide",
+        .include_extensions = &.{".md"},
+    });
+
     // -- stage 1: AOT-compile birnam-source modules to installable dylibs -------
     // The default build ("stage 0") ships a binary that embeds the stdlib SOURCE
     // and evals it at boot. `zig build stage1` then RUNS that binary to compile
@@ -173,8 +196,14 @@ pub fn build(b: *std.Build) void {
     repl_goldens.step.dependOn(&birnam_tests.step);
     b.step("test-repl", "Run console REPL end-to-end golden transcripts").dependOn(&repl_goldens.step);
 
+    const install_smoke = b.addSystemCommand(&.{ "bash", "scripts/install-smoke.sh" });
+    install_smoke.setEnvironmentVariable("BIRNAM_PREFIX", b.getInstallPath(.prefix, ""));
+    install_smoke.step.dependOn(stage1);
+    b.step("test-install", "Run source-backed tools from an isolated installed tree").dependOn(&install_smoke.step);
+
     verify_step.dependOn(test_step);
     verify_step.dependOn(&repl_goldens.step);
+    verify_step.dependOn(&install_smoke.step);
 
     // The siphon/REPL host's own unit tests (e.g. the REPL bracket balancer).
     const main_test_mod = b.createModule(.{

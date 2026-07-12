@@ -250,18 +250,36 @@
   r] doc:
   "One prompt/read/dispatch step; false when the session is over (EOF or a quit command), true to go again."];
 
-// birnam.toml `main` (stage 4): if `[Config main]` names a source file, run it as
-// the project entry point before the prompt. A no-op when the config module, a
-// birnam.toml, or the `main` key is absent.
+// birnam.toml project bring-up: load configured compiled modules dependency-first,
+// then run the root-resolved `main`, all before the prompt.
+[Reflect defineMethod: #applyConfigLoads on: Repl as: [:self |
+  let config := [Globals at: #Config];
+  [[config isNil]
+    ifTrue: [| self]
+    ifFalse: [|
+      [[config loads] inject: self into: [:status :name |
+        [[status isError]
+          ifTrue:  [| status]
+          ifFalse: [| [Module load: [name asSymbol]]]]]]]]] doc:
+  "Loads every module named by birnam.toml `load` through Module (dependencies first); answers the first propagated error."];
+
 [Reflect defineMethod: #applyConfigMain on: Repl as: [:self |
   let config := [Globals at: #Config];
   [[config notNil]
     ifTrue:  [|
       let m := [config main];
       [[m notNil] ifTrue: [| [System load: m]] ifFalse: [| self]]]
-    ifFalse: [| self]];
-  self] doc:
-  "Runs the birnam.toml `main` source file before the prompt; a no-op when Config, birnam.toml, or the key is absent."];
+    ifFalse: [| self]]] doc:
+  "Runs the nearest birnam.toml's root-resolved `main` before the prompt; a no-op when absent."];
+
+[Reflect defineMethod: #applyConfig on: Repl as: [:self |
+  let config := [Globals at: #Config];
+  [[config notNil] ifTrue: [| [config refresh]] ifFalse: [| nil]];
+  let loaded := [self applyConfigLoads];
+  [[loaded isError]
+    ifTrue:  [| loaded]
+    ifFalse: [| [self applyConfigMain]]]] doc:
+  "Applies project configuration in order: compiled module loads, then the main source entry point."];
 
 // Session bring-up: wire the stdio FILE*s, honor config main, greet. `console`
 // then loops `consoleStep` until it answers false, and closes with consoleDone.
@@ -270,10 +288,13 @@
   [[db cellFor: self attr: #cin]  set: [0 fdopenMode: "r"]];
   [[db cellFor: self attr: #cerr] set: [2 fdopenMode: "w"]];
   [[db cellFor: self attr: #cbuf] set: [Alien alloc: 4096]];
-  [self applyConfigMain];
-  [System println: "birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave."];
-  self] doc:
-  "Session bring-up: wires the stdio FILE*s and read buffer, honors config main, prints the greeting."];
+  let configured := [self applyConfig];
+  [[configured isError]
+    ifTrue: [| configured]
+    ifFalse: [|
+      [System println: "birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave."];
+      self]]] doc:
+  "Session bring-up: wires stdio, applies nearest-project config (load then main), and prints the greeting."];
 
 [Reflect defineMethod: #consoleDone on: Repl as: [:self |
   [System println: ""];
@@ -288,9 +309,11 @@
 // becomes `r` — teardown still runs, and `console` answers the error for the
 // driver to report.
 [Reflect defineMethod: #console on: Repl as: [:self |
-  [self consoleInit];
+  let init := [self consoleInit];
   let me := self;
-  let r := [[| [me consoleStep]] whileTrue: [| 0]];
+  let r := [[init isError]
+    ifTrue:  [| init]
+    ifFalse: [| [[| [me consoleStep]] whileTrue: [| 0]]]];
   [self consoleDone];
   r] doc:
   "Runs the whole console session: bring-up, a native whileTrue: over consoleStep, teardown; a faulting step's error is answered."]

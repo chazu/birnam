@@ -1,32 +1,79 @@
 // config.birnam — birnam.toml runtime configuration, parsed with the built-in Toml.
 //
-// `Config` reads `./birnam.toml` (cwd) and exposes it as a Map, parsed by the
-// self-hosted `Toml` module — so the language's own config format is its own TOML
+// `Config` finds the nearest `birnam.toml` from cwd upward and exposes it as a
+// Map, parsed by the self-hosted `Toml` module — so the language's own config
+// format is its own TOML
 // parser dogfooding itself. A named singleton bound in Globals, like `Toml`.
 //
 //   [Config at: "name"]        "=> the top-level `name` value, or nil"
-//   [Config main]              "=> the `main` entry-point path, or nil"
+//   [Config main]              "=> the root-resolved `main` path, or nil"
+//   [Config loads]             "=> module names from `load = [...]`"
 //
-// Discovery is cwd-only for now (cwd-upward walk wants directory ops we don't yet
-// expose). A missing or malformed birnam.toml is not an error — `map` answers nil
-// and every accessor degrades to nil, so a project without config just works.
+// Discovery uses relative probes (`birnam.toml`, `../birnam.toml`, …), capped at
+// 64 parents. This stays pure birnam and preserves cwd for user programs. A
+// missing or malformed file is not an error — `map` answers nil and every
+// accessor degrades to nil, so a project without config just works.
 
 // This module parses birnam.toml with Toml, so it requires the toml module.
 [Module named: #config requires: #[#toml]];
 
 [Globals at: #Config put: [Object clone]];
-[Reflect docModule: #config is: "birnam.toml project configuration — parsed via Toml, exposed as at: lookups; a missing or invalid file degrades to nil."];
+[Reflect docModule: #config is: "Nearest-ancestor birnam.toml project configuration — parsed via Toml, with root-relative main and module loading."];
+[[db cellFor: Config attr: #configPath] set: nil];
+
+// The nearest readable config path. Walking with relative `../` probes avoids a
+// host cwd/chdir primitive and, importantly, does not change the program's cwd.
+[Reflect defineMethod: #findPath:depth: on: Config as: [:self :path :depth |
+  let text := [System readFile: path];
+  [[text isError]
+    ifTrue: [| [[depth >= 64]
+      ifTrue:  [| nil]
+      ifFalse: [| [self findPath: ["../" , path] depth: [depth + 1]]]]]
+    ifFalse: [| path]]] doc:
+  "Find the nearest readable birnam.toml by prepending ../, or nil after 64 parents."];
+
+[Reflect defineMethod: #discoverPath on: Config as: [:self |
+  [self findPath: "birnam.toml" depth: 0]] doc:
+  "Discover the nearest birnam.toml path from cwd upward, or nil."];
+
+[Reflect defineMethod: #refresh on: Config as: [:self |
+  [[db cellFor: self attr: #configPath] set: [self discoverPath]];
+  self] doc:
+  "Refresh the cached project config path from the process cwd; called at module load and console-session start."];
+
+[Reflect defineMethod: #path on: Config as: [:self |
+  [[db cellFor: self attr: #configPath] value]] doc:
+  "The nearest birnam.toml path discovered for this session, or nil."];
+
+// Resolve a config-relative value without changing cwd. `configPath` always ends
+// in birnam.toml; stripping that basename leaves "", "../", "../../", … .
+[Reflect defineMethod: #resolve:from: on: Config as: [:self :path :configPath |
+  [[path startsWith: "/"]
+    ifTrue: [| path]
+    ifFalse: [|
+      let root := [configPath copyFrom: 0 to: [[configPath size] - 11]];
+      [root , path]]]] doc:
+  "Resolve `path` relative to the directory containing `configPath`; absolute paths pass through."];
+
+[Reflect defineMethod: #resolve: on: Config as: [:self :path |
+  let p := [self path];
+  [[p isNil] ifTrue: [| path] ifFalse: [| [self resolve: path from: p]]]] doc:
+  "Resolve `path` relative to the discovered project root (or leave it unchanged without a config)."];
 
 // The parsed birnam.toml as a Map, or nil when the file is absent or invalid.
 // Read fresh each call (a project rarely rereads its config; keep it simple).
 [Reflect defineMethod: #map on: Config as: [:self |
-  let text := [System readFile: "birnam.toml"];
-  [[text isError]
+  let p := [self path];
+  [[p isNil]
     ifTrue: [| nil]
     ifFalse: [|
-      let m := [Toml parse: text];
-      [[m isError] ifTrue: [| nil] ifFalse: [| m]]]]] doc:
-  "The parsed birnam.toml as a Map, or nil when the file is absent or invalid (read fresh each call)."];
+      let text := [System readFile: p];
+      [[text isError]
+        ifTrue: [| nil]
+        ifFalse: [|
+          let m := [Toml parse: text];
+          [[m isError] ifTrue: [| nil] ifFalse: [| m]]]]]]] doc:
+  "The nearest parsed birnam.toml as a Map, or nil when absent/invalid (read fresh each call)."];
 
 // The value bound to `aKey` in birnam.toml, or nil (no file / key absent).
 [Reflect defineMethod: #at: on: Config as: [:self :aKey |
@@ -38,5 +85,20 @@
 
 // The project entry-point source file (`main = "..."`), or nil. The bare/REPL boot
 // runs this before dropping to the prompt.
-[Reflect defineMethod: #main on: Config as: [:self | [self at: "main"]] doc:
-  "The project entry-point source path (the `main` key), or nil."]
+[Reflect defineMethod: #main on: Config as: [:self |
+  let m := [self at: "main"];
+  [[m isNil] ifTrue: [| nil] ifFalse: [| [self resolve: m]]]] doc:
+  "The project-root-resolved entry-point source path (the `main` key), or nil."];
+
+// `load` accepts the documented TOML array, with one string also accepted as a
+// convenience. Invalid non-collection values flow to `inject:into:` as a visible error.
+[Reflect defineMethod: #loads on: Config as: [:self |
+  let xs := [self at: "load"];
+  [[xs isNil]
+    ifTrue:  [| #[]]
+    ifFalse: [| [[Reflect isString: xs] ifTrue: [| #[xs]] ifFalse: [| xs]]]]] doc:
+  "Module names requested by `load` as a collection; absent means an empty Vector, one string is normalized."];
+
+// Normal source/AOT load discovery. A REPL over an image refreshes again at
+// session start so it never inherits the saving process's project path.
+[Config refresh]

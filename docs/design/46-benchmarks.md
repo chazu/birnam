@@ -1,9 +1,9 @@
 # The Benchmark Suite
 
-> **Status:** plan of record, 2026-07-11, rev. 2 after adversarial review.
-> Not yet built. Motivated by [44 — Toward Self-Hosting](44-toward-self-hosting.md),
-> which gates every migration on a measured send constant and explicitly parks
-> the relational Tier-B lift "behind a benchmark" that does not exist. Builds
+> **Status:** SHIPPED (2026-07-12; released in v0.9.0). This document remains the
+> plan of record and operating rationale. Motivated by
+> [44 — Toward Self-Hosting](44-toward-self-hosting.md), which gates every
+> migration on a measured send constant. Builds
 > on the harness patterns already proven here: the `Test` module +
 > `run-tests.birnam` for birnam-level suites, and `scripts/repl-golden.sh`
 > for scripted whole-process runs.

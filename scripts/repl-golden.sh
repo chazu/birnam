@@ -13,6 +13,7 @@
 set -u
 cd "$(dirname "$0")/.."
 BIN=${BIRNAM_BIN:-./zig-out/bin/birnam}
+BIN_ABS="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")"
 BANNER='birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave.'
 
 pass=0 fail=0
@@ -138,6 +139,27 @@ actual=$(printf '[3 + 4]\n:quit\n' | BIRNAM_NO_STDLIB=1 "$BIN" --repl 2>&1); st=
 expected='birnam: the REPL requires the stdlib (unset BIRNAM_NO_STDLIB)'
 check "no-stdlib: --repl reports the REPL unavailable" "$expected" "$actual"
 check "no-stdlib: exit status 1" "1" "$st"
+
+# ---- project config: nearest ancestor, root-relative main, dependency load ----
+# Compile one tiny module beside the runtime dylibs, then launch from two levels
+# below its birnam.toml. Config must find the ancestor, load the module BEFORE
+# main, resolve main relative to the project root, and preserve the caller's cwd.
+tdir=$(mktemp -d)
+libdir="$(cd "$(dirname "$BIN_ABS")/../lib" && pwd)"
+modlib="$libdir/libbirnam_cfgloadtest.dylib"
+printf '[Module named: #cfgloadtest requires: #[]];\n[Reflect defineMethod: #cfgLoadProbe on: Integer as: [:x | [x + 9]]]\n' > "$tdir/cfgloadtest.birnam"
+"$BIN_ABS" --compile-module "$tdir/cfgloadtest.birnam" "$modlib" >/dev/null 2>&1
+printf 'load = ["cfgloadtest"]\nmain = "main.birnam"\n' > "$tdir/birnam.toml"
+printf 'let configMainSeen := [1 cfgLoadProbe]\n' > "$tdir/main.birnam"
+mkdir -p "$tdir/a/b"
+actual=$(cd "$tdir/a/b" && printf '[1 cfgLoadProbe]\nconfigMainSeen\n:quit\n' | "$BIN_ABS" --repl 2>&1)
+expected="$BANNER
+birnam> 10
+birnam> 10
+birnam> "
+check "config: ancestor discovery + load-before-root-relative-main" "$expected" "$actual"
+rm -f "$modlib"
+rm -rf "$tdir"
 
 # ---- booted-image REPL: `birnam foo.image` drops into the REPL with bindings ---
 tdir=$(mktemp -d)

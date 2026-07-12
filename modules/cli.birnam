@@ -159,14 +159,17 @@
 // [Config at:] read surface documented inline — a new project's config is
 // self-describing without opening src/id/config.birnam.
 [Reflect defineMethod: #initTemplate on: Cli as: [:self |
-"# birnam.toml — project configuration, read from the current directory.
+"# birnam.toml — project configuration, discovered from cwd upward.
 #
 # Every key here is also readable from code: [Config at: \"key\"] answers
 # the value, or nil when the file or key is absent — nothing is required,
 # and a project without a birnam.toml just works.
 
-# The project entry point. A bare `birnam` run in this directory evaluates
-# this file first, then drops into the REPL with its state live.
+# Compiled modules to load dependency-first before the entry point.
+# load = [\"my_module\"]
+
+# The project-root-relative entry point. A bare `birnam` run anywhere under
+# this project evaluates it after `load`, then drops into the REPL.
 # main = \"main.birnam\"
 "] doc:
   "The birnam.toml contents `birnam init` writes — recognised keys commented out, usage documented inline."];

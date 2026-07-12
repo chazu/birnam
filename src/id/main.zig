@@ -600,8 +600,9 @@ extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int
 /// Locate the source `modules/` directory independently of the current working
 /// directory, so `--lsp` (launched by an editor from an arbitrary project) still
 /// finds json.birnam/lsp.birnam. Probes `$BIRNAM_MODULES_DIR`, then candidates
-/// relative to the executable (dev layout: <repo>/zig-out/bin/birnam →
-/// <repo>/modules), then falls back to `./modules`.
+/// relative to the executable (installed layout: <prefix>/share/birnam/modules;
+/// dev layout: <repo>/zig-out/bin/birnam → <repo>/modules), then falls back to
+/// `./modules`.
 fn resolveModulesDir(a: std.mem.Allocator) ![]u8 {
     if (std.posix.getenv("BIRNAM_MODULES_DIR")) |d| return a.dupe(u8, d);
     const probe = "json.birnam";
@@ -613,7 +614,9 @@ fn resolveModulesDir(a: std.mem.Allocator) ![]u8 {
         defer a.free(c2);
         const c3 = try std.fs.path.join(a, &.{ exedir, "modules" });
         defer a.free(c3);
-        for ([_][]const u8{ c1, c2, c3 }) |cand| {
+        const installed = try std.fs.path.join(a, &.{ exedir, "..", "share", "birnam", "modules" });
+        defer a.free(installed);
+        for ([_][]const u8{ installed, c1, c2, c3 }) |cand| {
             const p = try std.fs.path.join(a, &.{ cand, probe });
             defer a.free(p);
             if (std.fs.cwd().access(p, .{})) |_| return a.dupe(u8, cand) else |_| {}

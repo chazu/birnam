@@ -40,6 +40,7 @@ let s := [TestSuite named: "Cli" module: #cli];
   [t expect: [Cli initAt: p] equals: 0 describes: "fresh init succeeds"];
   let text := [System readFile: p];
   [t assert: [text includesSubstring: "main = "] describes: "template shows the main key"];
+  [t assert: [text includesSubstring: "load = "] describes: "template shows the module load key"];
   [t assert: [text includesSubstring: "[Config at: "] describes: "template documents the Config read surface"];
   [t expect: [Cli initAt: p] equals: 1 describes: "an existing file is refused"];
   [t expect: [File delete: p] equals: true describes: "scratch file cleanup"]]];

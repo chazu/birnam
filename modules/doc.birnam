@@ -31,8 +31,10 @@
 [Globals at: #Doc put: [Object clone]];
 // Seed the current-module cell (a VALUE — nil means "none"): the stdlib's
 // Doc-aware `defineMethod:on:as:doc:` reads it the moment #Doc exists, and an
-// unset cell's sentinel answers nothing.
+// unset cell's sentinel answers nothing. Guides seed empty for the same reason
+// (htmlIndex reads the cell whether or not loadGuides: ever ran).
 [[db cellFor: Doc attr: #currentModule] set: nil];
+[[db cellFor: Doc attr: #guides] set: #[]];
 
 // -- registration -------------------------------------------------------------
 
@@ -308,6 +310,41 @@
   [sb asString]] doc:
   "Every documented module's Markdown, concatenated (module order unspecified)."];
 
+// -- guides: static Markdown pages rendered into the reference -------------------
+
+// The page title of a guide: its first `# ` heading's text, else "guide".
+[Reflect defineMethod: #guideTitleOf: on: Doc as: [:self :md |
+  let first := [[md split: "\n"] first];
+  [[first startsWith: "# "]
+    ifTrue:  [| [first copyFrom: 2 to: [first size]]]
+    ifFalse: [| "guide"]]] doc:
+  "The page title of a guide: the text of its first `# ` heading, else \"guide\"."];
+
+// Load every `*.md` under `dir` (filename order — number the files to order the
+// chapters), render each via Markdown (headings shifted one level so a page's
+// `#` sits under the site's h1), and remember them for htmlIndex. Answers the
+// guide entities; a missing dir is an empty guide set, not an error.
+[Reflect defineMethod: #loadGuides: on: Doc as: [:self :dir |
+  [[Globals includes: #Markdown] ifTrue: [| nil] ifFalse: [| [System load: "modules/markdown.birnam"]]];
+  let me := self;
+  let gs := [[File isDir: dir]
+    ifTrue: [|
+      let names := [[File listDir: dir] sortBy: [:x | x]];
+      [names inject: #[] into: [:acc :nm |
+        [[nm endsWith: ".md"]
+          ifTrue: [|
+            let md := [File readText: [[dir , "/"] , nm]];
+            let g := [Object clone];
+            [[db cellFor: g attr: #slug]  set: [[nm split: "."] first]];
+            [[db cellFor: g attr: #title] set: [me guideTitleOf: md]];
+            [[db cellFor: g attr: #html]  set: [Markdown toHtml: md shiftHeadings: 1]];
+            [acc add: g]]
+          ifFalse: [| acc]]]]]
+    ifFalse: [| #[]]];
+  [[db cellFor: Doc attr: #guides] set: gs];
+  gs] doc:
+  "Load every `*.md` under `dir` (filename order) as a guide page: title from the first heading, body via Markdown. Answers the guides."];
+
 // -- rendering: HTML (composes modules/html.birnam) ---------------------------
 
 // The reference site's stylesheet: sticky sidebar + readable measure, light and
@@ -327,6 +364,9 @@
     , "section{border-top:1px solid var(--line);padding-top:1rem;margin-top:1.5rem}"
     , "main h2{font-size:1.25rem;margin:.2rem 0 .3rem}"
     , "main h2 a{color:inherit;text-decoration:none}"
+    , "main h3{font-size:1.05rem;margin:1.2rem 0 .3rem}"
+    , "main h4{font-size:.95rem;margin:1rem 0 .25rem}"
+    , "main li{margin:.15rem 0}"
     , ".kind{font-size:.68rem;vertical-align:middle;background:var(--chip);color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:.12rem .55rem;margin-left:.55rem;text-transform:uppercase;letter-spacing:.06em}"
     , ".summary{color:var(--muted);margin:.2rem 0 1rem}"
     , "code{font:.875em ui-monospace,monospace;background:var(--chip);padding:.1em .35em;border-radius:4px}"
@@ -445,9 +485,18 @@
   let zigMods := [mods inject: #[] into: [:acc :m |
     [[me isZigFloor: m] ifTrue: [| [acc add: m]] ifFalse: [| acc]]]];
   let srcIdx := [self sourceIndex];
+  let guides := [[db cellFor: Doc attr: #guides] value];
   let nav := [StringBuilder new];
   [nav add: [Html void: "input" attrs: [[[Html attr: "id" value: "q"] , [Html attr: "type" value: "search"]]
                                           , [Html attr: "placeholder" value: "filter selectors"]]]];
+  [[guides isEmpty] ifTrue: [| nil] ifFalse: [|
+    [nav add: [Html tag: "h2" text: "guide"]];
+    let gl := [StringBuilder new];
+    [guides do: [:g |
+      let slug  := [[db cellFor: g attr: #slug] value];
+      let title := [[db cellFor: g attr: #title] value];
+      [gl add: [Html tag: "li" body: [Html tag: "a" attrs: [Html attr: "href" value: ["#guide-" , slug]] body: [Html escape: title]]]]]];
+    [nav add: [Html tag: "ul" body: [gl asString]]]]];
   [nav add: [Html tag: "h2" text: "modules"]];
   [nav add: [Html tag: "ul" body: [me navListFor: birnamMods]]];
   [[zigMods isEmpty] ifTrue: [| nil] ifFalse: [|
@@ -455,6 +504,11 @@
     [nav add: [Html tag: "ul" body: [me navListFor: zigMods]]]]];
   let secs := [StringBuilder new];
   [secs add: [Html tag: "h1" text: "birnam documentation"]];
+  [guides do: [:g |
+    let slug := [[db cellFor: g attr: #slug] value];
+    [secs add: [Html tag: "section"
+                     attrs: [[Html attr: "id" value: ["guide-" , slug]] , [Html attr: "class" value: "guide"]]
+                     body: [[db cellFor: g attr: #html] value]]]]];
   [mods do: [:m |
     [secs add: [Html tag: "section" attrs: [Html attr: "id" value: [me nameOf: m]] body: [me htmlForModule: m sources: srcIdx]]]]];
   let docCount := [mods inject: 0 into: [:acc :m | [acc + [[me methodsOf: m] size]]]];
@@ -507,10 +561,11 @@
   let me := self;
   [self loadAllModules: md];
   [self loadFloorSources: zd];
+  [self loadGuides: [md , "/../docs/guide"]];
   [Zigdoc scanDir: zd];
   [File write: out contents: [me htmlIndex]];
   out] doc:
-  "Build the full HTML reference to `out`: load modules under `md` + floor sources, scan Zig under `zd`, write htmlIndex. Answers `out`."];
+  "Build the full HTML reference to `out`: load modules under `md` + floor sources + the docs/guide pages, scan Zig under `zd`, write htmlIndex. Answers `out`."];
 
 // module:is: predates the #doc registration above (it IS the registrar), so its
 // docstring rides the appended path instead of a doc: define:

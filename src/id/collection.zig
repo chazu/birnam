@@ -1046,6 +1046,7 @@ fn sbAdd(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (!isString(arg)) arg = g_api.send(arg, s_printString, &[_]Oop{}, 0);
     if (!isString(arg)) return self; // a non-String printString contributes nothing
     const bytes = strBytes(arg);
+    if (bytes.len == 0) return self; // appending "" to a FRESH builder must not touch the (still-null) backing
     const s = sbOf(self);
     sbEnsure(s, bytes.len);
     @memcpy(s.ptr.?[s.len..][0..bytes.len], bytes);

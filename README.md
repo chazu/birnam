@@ -60,6 +60,11 @@ Run a source file directly:
 birnam examples/fizzbuzz.birnam
 ```
 
+For a project, `birnam` discovers the nearest `birnam.toml` from the current
+directory upward. A `load = ["module"]` list loads compiled modules dependency-
+first, then a root-relative `main = "main.birnam"` runs before the REPL opens.
+`birnam init` writes a commented starter file.
+
 `birnam --help` is the authoritative command reference. The primary entry
 points are:
 
@@ -98,8 +103,8 @@ recovery paths.
 
 ## Developer Tools
 
-The source-backed tools below currently require a checkout containing
-`modules/`; they are not yet staged by `zig build install` or release bundles.
+The source-backed tools below are included by `zig build install` and in release
+bundles. In a development checkout, use the binary under `zig-out/bin`.
 
 ```sh
 ./zig-out/bin/birnam doc time nowMillis
@@ -112,6 +117,10 @@ The source-backed tools below currently require a checkout containing
 - `docgen` writes an HTML reference for birnam modules and Zig floor APIs.
 - `--lsp` serves the language server over stdio.
 - `--listen` starts a socket REPL, optionally after running a script.
+
+The generated reference opens with the authored language, idioms, fact-store,
+and image guide, followed by the API reference extracted from live module facts
+and Zig source documentation.
 
 `wrap` is a binary-only scaffolder and works from an installed executable:
 

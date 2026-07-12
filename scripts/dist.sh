@@ -42,6 +42,8 @@ mkdir -p "$stage/bin" "$stage/lib"
 cp "$prefix/bin/birnam" "$stage/bin/birnam.bin"
 # All supported artifacts are Mach-O dylibs.
 cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/"
+# Source-backed tools + guide, in the same prefix-relative layout as install.
+cp -R "$prefix/share" "$stage/share"
 
 # Wrapped C libs (built via FFI absorption) into the same lib dir, so alien
 # resolves them by bare name in the bundle. Best-effort — they may not be built.

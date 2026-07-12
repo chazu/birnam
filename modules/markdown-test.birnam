@@ -1,0 +1,49 @@
+// markdown-test.birnam — the test suite for modules/markdown.birnam, live style.
+// Loading only registers the suite; run via modules/run-tests.birnam.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+[[Globals includes: #Markdown]  ifTrue: [| nil] ifFalse: [| [System load: "modules/markdown.birnam"]]];
+
+let s := [TestSuite named: "Markdown" module: #markdown];
+
+[s test: "headings get levels, shifts, and slug ids" do: [:t |
+  [t expect: [Markdown toHtml: "# Big Title"]
+     equals: "<h1 id=\"big-title\">Big Title</h1>" describes: "# -> h1 + slug"];
+  [t expect: [Markdown toHtml: "### Deep `code` head"]
+     equals: "<h3 id=\"deep-code-head\">Deep <code>code</code> head</h3>"
+     describes: "inline code in a heading; markup dropped from the slug"];
+  [t expect: [Markdown toHtml: "# Title" shiftHeadings: 1]
+     equals: "<h2 id=\"title\">Title</h2>" describes: "shiftHeadings: demotes"]]];
+
+[s test: "paragraphs join wrapped lines and escape markup" do: [:t |
+  [t expect: [Markdown toHtml: "one\ntwo"]
+     equals: "<p>one two</p>" describes: "soft wrap joins with a space"];
+  [t expect: [Markdown toHtml: "a\n\nb"]
+     equals: "<p>a</p><p>b</p>" describes: "blank line separates paragraphs"];
+  [t expect: [Markdown toHtml: "1 < 2 & so"]
+     equals: "<p>1 &lt; 2 &amp; so</p>" describes: "prose is escaped"]]];
+
+[s test: "inline code protects its content; bold wraps the rest" do: [:t |
+  [t expect: [Markdown toHtml: "use `[a **send**]` here"]
+     equals: "<p>use <code>[a **send**]</code> here</p>"
+     describes: "no bold inside a code span"];
+  [t expect: [Markdown toHtml: "very **important** thing"]
+     equals: "<p>very <strong>important</strong> thing</p>" describes: "**bold**"]]];
+
+[s test: "fences are verbatim, escaped, and survive being unclosed" do: [:t |
+  [t expect: [Markdown toHtml: "```\nlet v := #[1 2];\n\n[v size]\n```"]
+     equals: "<pre><code>let v := #[1 2];\n\n[v size]</code></pre>"
+     describes: "newlines and blank lines kept; no inline processing"];
+  [t expect: [Markdown toHtml: "```\n<raw> & such\n```"]
+     equals: "<pre><code>&lt;raw&gt; &amp; such</code></pre>" describes: "code is escaped"];
+  [t expect: [Markdown toHtml: "```\ndangling"]
+     equals: "<pre><code>dangling</code></pre>" describes: "an unclosed fence still emits"]]];
+
+[s test: "list items collect into one ul with inline markup" do: [:t |
+  [t expect: [Markdown toHtml: "- one `x`\n- two"]
+     equals: "<ul><li>one <code>x</code></li><li>two</li></ul>" describes: "adjacent items"];
+  [t expect: [Markdown toHtml: "para\n- item\n\ntail"]
+     equals: "<p>para</p><ul><li>item</li></ul><p>tail</p>"
+     describes: "a list closes the open paragraph; a blank closes the list"]]];
+
+s

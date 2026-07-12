@@ -260,8 +260,9 @@ them.
   derived per-byte scan over bulk text is ~10× end-to-end — docgen went 4s→39s
   in the naive all-birnam version): the per-byte SCANNERS split:/trimmed/
   indexOf: stay native ("lift the surface, keep the native join", as with
-  relational), and asLowercase/asUppercase/replace:with: still wait on Phase 5's
-  StringBuilder. Result: docgen 4s→9.4s (accepted, batch-only), everything
+  relational). StringBuilder has since shipped; asLowercase/asUppercase moved
+  to birnam over it, while hot `replace:with:` remains native by measurement.
+  Result: docgen 4s→9.4s (accepted, batch-only), everything
   interactive unchanged. **NOT `modules.zig`** — it is boot-critical (§3
   correction); defer it to a deliberate bootstrap-restructure step, not an
   early one.
@@ -277,8 +278,9 @@ them.
   argv reaches birnam through an escaper instead of raw interpolation.
 - **Phase 4 (perf-gated) — lift the `relational` surface**, keep the native join.
   Behind a benchmark. (~300–400)
-- **Phase 5 — the mutable-buffer utility** (`StringBuilder`) — a prerequisite for any
-  birnam codegen, useful on its own.
+- **Phase 5 ✅ SHIPPED — the mutable-buffer utility** (`StringBuilder`) — now used
+  across JSON, HTML, docs, benchmarks, and self-hosted case transforms; still a
+  prerequisite for any birnam codegen.
 - **Phase 5b ✅ SHIPPED — `modules.birnam` via compile-first.** The module manager
   as a self-hosted module loaded before the rest of the self-hosted layer, dylib
   preferred / embedded source the floor; `[Reflect nameOf:]` added for

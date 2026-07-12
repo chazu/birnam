@@ -126,6 +126,27 @@ let s := [TestSuite named: "Doc" module: #doc];
   [t assert: [gaps includes: "zzDemoSrc"] describes: "the bare install is a gap"];
   [t assert: [[gaps includes: "zzHovSel"] not] describes: "a documented selector is not"]]];
 
+// Guides: static .md pages load in filename order, take their title from the
+// first heading, and render into #guide-<slug> sections ahead of the modules.
+[s test: "loadGuides: reads, orders, titles, and renders markdown pages" do: [:t |
+  let dir := "/tmp/birnam-doc-test-guides";
+  [File makeDir: dir];
+  [File write: [dir , "/02-second.md"] contents: "# Second page\n\nlater."];
+  [File write: [dir , "/01-first.md"]  contents: "# First page\n\nwith `code`."];
+  let gs := [Doc loadGuides: dir];
+  [t expect: [gs size] equals: 2 describes: "both pages loaded"];
+  [t expect: [[db cellFor: [gs first] attr: #title] value] equals: "First page"
+     describes: "filename order, title from the # heading"];
+  let page := [Doc htmlIndex];
+  [t assert: [page includesSubstring: "<section id=\"guide-01-first\" class=\"guide\">"]
+     describes: "a guide section with the slug anchor"];
+  [t assert: [page includesSubstring: "<h2 id=\"first-page\">First page</h2>"]
+     describes: "the page # heading renders shifted to h2"];
+  [t assert: [page includesSubstring: ">guide</h2>"] describes: "nav has the guide group"];
+  [Doc loadGuides: "/tmp/birnam-doc-test-no-such-dir"];
+  [t expect: [[[db cellFor: Doc attr: #guides] value] size] equals: 0
+     describes: "a missing dir is an empty guide set"]]];
+
 // The whole-site page grows the interactive bits: filter box, script, footer.
 [s test: "htmlIndex carries the filter box and the coverage footer" do: [:t |
   let page := [Doc htmlIndex];

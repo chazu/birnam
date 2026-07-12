@@ -6,6 +6,21 @@ All notable changes to birnam are recorded here. Format follows
 other targets are rejected at build time until their libtcc and shared-library
 loader ports are complete.
 
+## [Unreleased]
+
+### Added
+- **Installed documentation and developer tools.** Installs and release bundles
+  now carry the birnam module sources, Zig-floor documentation sources, and the
+  authored guide under `share/birnam`; `doc`, `docgen`, `--lsp`, and `--listen`
+  work from an installed tree without a source checkout. The complete
+  verification gate includes an isolated-install smoke test.
+- **User guide + self-hosted Markdown.** The generated HTML reference now opens
+  with chapters covering the language, idioms, fact store, and images, rendered
+  by a deliberately small Markdown module written in birnam.
+- **Project-root configuration.** `birnam.toml` is discovered from cwd upward;
+  `main` resolves relative to the discovered root, and `load = ["module", …]`
+  loads compiled modules dependency-first before the entry point and REPL.
+
 ## [0.9.0] — 2026-07-12
 
 The measurement release: the benchmark infrastructure landed, and what it

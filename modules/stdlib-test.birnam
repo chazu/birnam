@@ -145,6 +145,15 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: [Reflect nameOf: #named:requires:] equals: "named:requires:" describes: "keyword selector keeps its colons"];
   [t expect: [[Reflect nameOf: "str"] kind] equals: #notASymbol describes: "a non-symbol answers the kinded error"]]];
 
+// Appending "" must be a no-op even on a FRESH builder (backing still null) —
+// pinned because inline-markup folds add empty segments routinely.
+[s test: "StringBuilder add: of an empty string is a safe no-op" do: [:t |
+  let sb := [StringBuilder new];
+  [sb add: ""];
+  [t expect: [sb asString] equals: "" describes: "fresh builder + empty add"];
+  [[sb add: "x"] add: ""];
+  [t expect: [sb asString] equals: "x" describes: "empty add after content"]]];
+
 // String < is byte-order strcmp: first unequal byte decides, a fully shared
 // prefix defers to length, and it doubles as the `sortBy:` key protocol.
 [s test: "String < is lexicographic byte order (a sortBy: key)" do: [:t |

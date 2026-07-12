@@ -131,24 +131,24 @@ contract.
 
 ## `birnam.toml` — runtime configuration
 
-`Config` (`config.birnam`, `requires: #[#toml]`) reads `./birnam.toml` and exposes
-it parsed as a Map — **pure birnam** over `[System readFile:]` + `[Toml parse:]`
-(birnam's own PEG-based TOML parser). A missing or malformed file is not an error:
-`map` answers nil and every accessor degrades to nil, so a project without config
-just works.
+`Config` (`config.birnam`, `requires: #[#toml]`) discovers the nearest
+`birnam.toml` from cwd upward and exposes it parsed as a Map — **pure birnam**
+over `[System readFile:]` + `[Toml parse:]` (birnam's own PEG-based TOML parser).
+A missing or malformed file is not an error: `map` answers nil and every accessor
+degrades to nil, so a project without config just works.
 
-- `[Config at: "key"]` — any value; `[Config main]` — the entry-point key.
+- `[Config at: "key"]` — any value; `[Config main]` — the root-resolved entry
+  point; `[Config loads]` — the normalized `load` collection.
 - On **bare/`--repl`** boot, `main` names a source file run before the prompt (a
   `birnam <file>` invocation names its own entry, so it's ignored there).
-- Discovery is **cwd-only** for now. Demo: `examples/config/`.
+- Discovery walks **cwd upward** to the nearest `birnam.toml` without changing
+  process cwd. `main` is resolved relative to that project root, and `load`
+  names compiled modules for dependency-first `[Module load:]` before `main`.
+  Demo: `examples/config/`.
 
 ## Open items (next session)
 
-- **cwd-upward `birnam.toml` discovery** — run from a subdirectory. Needs host
-  `chdir` to the project root, or threading a path prefix through relative config
-  values.
-- **`load` / `image` config keys** — `load = ["x"]` can now wire straight to
-  `[Module load: #x]` (cheap, since runtime loading exists). `image = "x.image"`
+- **`image` config key** — `image = "x.image"`
   is harder: image loading is a whole boot *mode* (`runImage` orchestrates
   loadStack→loadImage→deriveImageGlobals), an awkward chicken-and-egg with reading
   config after the stack is up.
