@@ -26,21 +26,24 @@
 [Reflect docModule: #log is: "Leveled logging (debug<info<warn<error) over Time + File."];
 
 // Level rank. `=` doesn't work on symbols, so compare by printString ("#warn").
-// Unknown names fall back to info. (Internal helper — undocumented on purpose.)
+// Unknown names fall back to info. (Internal helper.)
 [Reflect defineMethod: #rankOf: on: Logger as: [:self :lvl |
   let s := [lvl printString];
   [[s = "#debug"] ifTrue: [| 0] ifFalse: [|
   [[s = "#warn"]  ifTrue: [| 2] ifFalse: [|
-  [[s = "#error"] ifTrue: [| 3] ifFalse: [| 1]]]]]]]];
+  [[s = "#error"] ifTrue: [| 3] ifFalse: [| 1]]]]]]] doc:
+  "Numeric rank of level `lvl` (#debug=0, #info=1, #warn=2, #error=3); unknown names rank as info."];
 
 // -- per-instance state (cells keyed on self) ---------------------------------
 [Reflect defineMethod: #name on: Logger as: [:self |
   [[db cellFor: self attr: #name] value]] doc:
   "This logger's tag (a String), e.g. \"log\" or \"net\"."];
 [Reflect defineMethod: #thresholdRank on: Logger as: [:self |
-  [[db cellFor: self attr: #level] value]]];
+  [[db cellFor: self attr: #level] value]] doc:
+  "This logger's minimum emitted rank (0-3; default 1 = info)."];
 [Reflect defineMethod: #sinkPath on: Logger as: [:self |
-  [[db cellFor: self attr: #sink] value]]];
+  [[db cellFor: self attr: #sink] value]] doc:
+  "The file path this logger appends to, or nil when writing to stdout."];
 
 // -- configuration (chainable — each answers self) ----------------------------
 
@@ -65,7 +68,7 @@
 // -- emission -----------------------------------------------------------------
 
 // The heart: emit `msg` at `rank` (labelled `label`) if it meets the threshold.
-// Format: "<millis> <LABEL> <name>: <msg>". (Internal — undocumented on purpose.)
+// Format: "<millis> <LABEL> <name>: <msg>". (Internal helper.)
 [Reflect defineMethod: #emitRank:label:message: on: Logger as: [:self :rank :label :msg |
   [[rank >= [self thresholdRank]]
     ifTrue: [|
@@ -76,7 +79,8 @@
         ifTrue:  [| [System println: line]]
         ifFalse: [| [File append: sink contents: [line , "\n"]]]];
       self]
-    ifFalse: [| self]]]];
+    ifFalse: [| self]]] doc:
+  "Emit `msg` tagged `label` when `rank` meets the threshold, as \"<millis> <LABEL> <name>: <msg>\" to the sink. Answers self."];
 
 [Reflect defineMethod: #debug: on: Logger as: [:self :msg | [self emitRank: 0 label: "DEBUG" message: msg]] doc:
   "Log `msg` at level debug."];

@@ -26,6 +26,7 @@
 // -- the REPL -----------------------------------------------------------------
 
 [Globals at: #Repl put: [Object clone]];
+[Reflect docModule: #repl is: "The REPL — bracket-aware form reader, eval-print loop, console session, and the --listen network server."];
 
 // Brackets balanced? Rides the native `bracketDepth` scanner (per-byte work is
 // perf-retained native, like split:/trimmed — docs/design/44 §7): net `[`/`{`
@@ -33,13 +34,15 @@
 // reads as done — the parser reports the real error.
 [Reflect defineMethod: #isBalanced: on: Repl as: [:self :src |
   let r := [[src bracketDepth] <= 0];
-  r]];
+  r] doc:
+  "True iff `src`'s brackets balance (net depth <= 0 via the native bracketDepth scanner); over-closed reads as done."];
 
 // True once `src` holds at least one non-blank char AND its brackets balance.
 [Reflect defineMethod: #isComplete: on: Repl as: [:self :src |
   let hasText := [[[src trimmed] size] > 0];
   let done := [hasText & [self isBalanced: src]];
-  done]];
+  done] doc:
+  "True once `src` holds at least one non-blank char AND its brackets balance."];
 
 // Evaluate one complete form against the live image and write the reply.
 [Reflect defineMethod: #replyTo:src: on: Repl as: [:self :conn :src |
@@ -49,7 +52,8 @@
     ifTrue:  [| [["!! " , [err printString]] , "\r\n"]]
     ifFalse: [| [["=> " , [val printString]] , "\r\n"]]];
   [conn sendString: msg];
-  self]];
+  self] doc:
+  "Evaluates the complete form `src` against the live image and writes the value (or `!! error`) reply to `conn`."];
 
 // Read/accumulate/evaluate loop for one connected client. Recurses per read;
 // ends when the client hangs up ("" from recv) or sends `:quit`.
@@ -68,20 +72,23 @@
               [conn sendString: "birnam> "];
               [self loop: conn buffer: ""]]
             ifFalse: [| [self loop: conn buffer: acc]]]]]]];
-  done]];
+  done] doc:
+  "Read/accumulate/evaluate loop for one client on `conn`; recurses per read, ends on hang-up (empty recv) or `:quit`."];
 
 // One client session: greet, then loop.
 [Reflect defineMethod: #session: on: Repl as: [:self :conn |
   [conn sendString: "birnam socket REPL — type a form (multi-line ok), :quit to leave.\r\nbirnam> "];
   [self loop: conn buffer: ""];
-  self]];
+  self] doc:
+  "One client session on `conn`: greet, then run the read/eval loop until it ends."];
 
 // Listen on `port` and serve one client at a time. Blocks (Socket accept loop).
 [Reflect defineMethod: #serveOn: on: Repl as: [:self :port |
   let me := self;
   [System println: ["birnam socket REPL listening on :" , [port printString]]];
   [Socket serve: port with: [:conn | [me session: conn]]];
-  self]];
+  self] doc:
+  "Listens on `port` and serves one socket-REPL client at a time; blocks in the Socket accept loop."];
 
 // -- the console REPL ----------------------------------------------------------
 // The interactive loop the binary drops into. Reads stdin through libc fgets
@@ -103,7 +110,8 @@
   [Alien wrap: "fputs"  signature: "i s p"   as: #fputsTo:        on: String];
   // int fflush(FILE *stream)  — receiver = the FILE* word.
   [Alien wrap: "fflush" signature: "i p"     as: #fflush          on: Word];
-  self]];
+  self] doc:
+  "Installs the libc stdio Alien wraps (fdopen/fgets/fputs/fflush); idempotent, re-run at every console session start."];
 
 // Write `s` to stderr, immediately (fputs is buffered; the flush keeps stderr
 // interleaved correctly with the unbuffered stdout prompts).
@@ -111,7 +119,8 @@
   let fe := [[db cellFor: self attr: #cerr] value];
   [s fputsTo: fe];
   [fe fflush];
-  self]];
+  self] doc:
+  "Writes `s` to stderr and flushes immediately, keeping stderr interleaved with the unbuffered stdout prompts."];
 
 // One raw line from stdin, INCLUDING its trailing newline (a partial last line —
 // EOF with no newline — comes back as-is). nil at EOF with nothing read.
@@ -130,7 +139,8 @@
       let line := [acc , [buf peekStringAt: 0]];
       [[[line byteAt: [[line size] - 1]] = 10]
         ifTrue:  [| line]
-        ifFalse: [| [self readLineInto: line]]]]]]];
+        ifFalse: [| [self readLineInto: line]]]]]] doc:
+  "Reads one raw stdin line onto `acc`, INCLUDING its trailing newline; nil at EOF with nothing read."];
 
 // Accumulate lines (a continuation prompt between them) until brackets balance.
 // nil at EOF-with-nothing; EOF mid-form answers the partial form — the evaluator
@@ -145,13 +155,15 @@
         ifTrue:  [| form]
         ifFalse: [|
           [System print: "   ... "];
-          [self readFormInto: form]]]]]]];
+          [self readFormInto: form]]]]]] doc:
+  "Accumulates lines onto `acc` until brackets balance; nil at EOF-with-nothing, the partial form at EOF mid-form."];
 
 // A value for the human: nil directly (it has no printString of its own),
 // everything else via printString (errors render as `error(#kind: msg)`).
 [Reflect defineMethod: #resultString: on: Repl as: [:self :v |
   let r := [[v isNil] ifTrue: [| "nil"] ifFalse: [| [v printString]]];
-  r]];
+  r] doc:
+  "A display string for `v`: nil renders as \"nil\", everything else via printString."];
 
 // List the user-visible globals (the persisted bindings), skipping internal
 // `__`-prefixed entries (block stashes, etc). Symbols print as `#name`, so the
@@ -177,7 +189,8 @@
   [[[shown value] = 0]
     ifTrue:  [| [System println: "  (no globals defined yet)"]]
     ifFalse: [| self]];
-  self]];
+  self] doc:
+  "Prints the user-visible globals (persisted bindings), skipping internal `__`-prefixed entries."];
 
 [Reflect defineMethod: #printHelp on: Repl as: [:self |
   [System println: "Commands:"];
@@ -187,7 +200,8 @@
   [System println: "Everything else is birnam: an expression prints its value; `let x := …`"];
   [System println: "binds a name that persists across lines; `[Reflect defineMethod:…]` extends"];
   [System println: "the live system. Multi-line forms continue until the brackets balance."];
-  self]];
+  self] doc:
+  "Prints the console REPL's `:help` text: the commands and the basics of a session."];
 
 // Handle a `:command` (exact match — `:quit extra` is unknown). True to quit.
 [Reflect defineMethod: #command: on: Repl as: [:self :cmd |
@@ -201,7 +215,8 @@
           [[[cmd = ":globals"] | [cmd = ":g"]]
             ifTrue:  [| [self printGlobals]; false]
             ifFalse: [| [System println: "unknown command (try :help)"]; false]]]]]];
-  r]];
+  r] doc:
+  "Handles a `:command` line `cmd` (exact match; unknown prints a hint). True iff the session should quit."];
 
 // Evaluate one form: a compile failure (syntax or out-of-subset) reports its
 // located block on stderr; otherwise the value prints. Faults are catchable
@@ -212,7 +227,8 @@
   [[err notNil]
     ifTrue:  [| [self conErr: [err , "\n"]]]
     ifFalse: [| [System println: [self resultString: val]]]];
-  self]];
+  self] doc:
+  "Evaluates one form `src`: a compile failure reports its located block on stderr, otherwise the value prints on stdout."];
 
 // One prompt → read → dispatch step. Answers false when the session is over
 // (EOF, or a quit command); true to go again. The loop is `console`'s native
@@ -231,7 +247,8 @@
           [[[src byteAt: 0] = 58]
             ifTrue:  [| [[self command: src] ifTrue: [| false] ifFalse: [| true]]]
             ifFalse: [| [self evalConsole: src]; true]]]]]];
-  r]];
+  r] doc:
+  "One prompt/read/dispatch step; false when the session is over (EOF or a quit command), true to go again."];
 
 // birnam.toml `main` (stage 4): if `[Config main]` names a source file, run it as
 // the project entry point before the prompt. A no-op when the config module, a
@@ -243,7 +260,8 @@
       let m := [config main];
       [[m notNil] ifTrue: [| [System load: m]] ifFalse: [| self]]]
     ifFalse: [| self]];
-  self]];
+  self] doc:
+  "Runs the birnam.toml `main` source file before the prompt; a no-op when Config, birnam.toml, or the key is absent."];
 
 // Session bring-up: wire the stdio FILE*s, honor config main, greet. `console`
 // then loops `consoleStep` until it answers false, and closes with consoleDone.
@@ -254,12 +272,14 @@
   [[db cellFor: self attr: #cbuf] set: [Alien alloc: 4096]];
   [self applyConfigMain];
   [System println: "birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave."];
-  self]];
+  self] doc:
+  "Session bring-up: wires the stdio FILE*s and read buffer, honors config main, prints the greeting."];
 
 [Reflect defineMethod: #consoleDone on: Repl as: [:self |
   [System println: ""];
   [[[db cellFor: self attr: #cbuf] value] free];
-  self]];
+  self] doc:
+  "Session teardown: prints a final newline and frees the stdin read buffer."];
 
 // The whole session: bring-up, the read-eval-print loop, teardown. The loop is
 // a native whileTrue: (stack-flat), so it lives here and not in a Zig driver
@@ -272,4 +292,5 @@
   let me := self;
   let r := [[| [me consoleStep]] whileTrue: [| 0]];
   [self consoleDone];
-  r]]
+  r] doc:
+  "Runs the whole console session: bring-up, a native whileTrue: over consoleStep, teardown; a faulting step's error is answered."]

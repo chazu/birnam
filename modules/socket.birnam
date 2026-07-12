@@ -68,10 +68,14 @@
 [Reflect docModule: #socket is: "TCP sockets over libc via Alien (the Layer-0 networking floor)."];
 
 // macOS values (see PLATFORM note above).
-[Reflect defineMethod: #afInet      on: Socket as: [:self | 2]];
-[Reflect defineMethod: #sockStream  on: Socket as: [:self | 1]];
-[Reflect defineMethod: #solSocket   on: Socket as: [:self | 65535]];
-[Reflect defineMethod: #soReuseAddr on: Socket as: [:self | 4]];
+[Reflect defineMethod: #afInet      on: Socket as: [:self | 2] doc:
+  "The AF_INET address-family constant (IPv4) for the libc socket calls."];
+[Reflect defineMethod: #sockStream  on: Socket as: [:self | 1] doc:
+  "The SOCK_STREAM type constant (TCP) for the libc socket calls."];
+[Reflect defineMethod: #solSocket   on: Socket as: [:self | 65535] doc:
+  "The SOL_SOCKET level constant (macOS value) for setsockopt."];
+[Reflect defineMethod: #soReuseAddr on: Socket as: [:self | 4] doc:
+  "The SO_REUSEADDR option constant (macOS value 4)."];
 
 // Ignore SIGPIPE process-wide. SIG_IGN is (void*)1 — a Word can't be minted from a
 // bare Integer (`p` args untag through a Word), so build one: alloc 8 zeroed bytes,
@@ -80,7 +84,8 @@
   let h := [Alien alloc: 8];
   [h pokeInt: 1 at: 0];
   [13 signalHandler: [h peekPtrAt: 0]];
-  [h free]]];
+  [h free]] doc:
+  "Ignore SIGPIPE process-wide (installs SIG_IGN), so a write to a hung-up peer cannot kill the process."];
 
 // Build a 16-byte `struct sockaddr_in` for INADDR_ANY:port (macOS layout).
 // byte 0 = sin_len (16), byte 1 = sin_family (AF_INET=2), bytes 2..3 = port in
@@ -91,7 +96,8 @@
   [sa pokeByte: [self afInet] at: 1];
   [sa pokeByte: [port / 256] at: 2];
   [sa pokeByte: [port mod: 256] at: 3];
-  sa]];
+  sa] doc:
+  "A freshly-allocated 16-byte struct sockaddr_in for INADDR_ANY:`port` (macOS layout); the caller frees it."];
 
 // Create + bind + listen on `port`. Answers the listening fd, or a negative fd on
 // error (socket()/bind() failed — e.g. the port is already in use).
@@ -121,14 +127,16 @@
   let cfd := [serverFd acceptAddr: addr len: alen];
   [addr free];
   [alen free];
-  cfd]];
+  cfd] doc:
+  "Block until a client connects on `serverFd`; answers the raw connection fd (negative on a spurious error such as EINTR)."];
 
 // Wrap a connected fd in a SockConn, minting its per-connection recv buffer.
 [Reflect defineMethod: #wrapFd: on: Socket as: [:self :cfd |
   let conn := [SockConn clone];
   [[db cellFor: conn attr: #fd]  set: cfd];
   [[db cellFor: conn attr: #buf] set: [Alien alloc: 65536]];
-  conn]];
+  conn] doc:
+  "Wrap connected fd `cfd` in a SockConn, minting its 64 KB per-connection recv buffer."];
 
 // -- Layer 1: the blocking accept loop ----------------------------------------
 // One connection at a time: accept, hand a live SockConn to `handler`, close, repeat.
@@ -157,8 +165,10 @@
 
 [Globals at: #SockConn put: [Object clone]];
 
-[Reflect defineMethod: #fd     on: SockConn as: [:self | [[db cellFor: self attr: #fd] value]]];
-[Reflect defineMethod: #buffer on: SockConn as: [:self | [[db cellFor: self attr: #buf] value]]];
+[Reflect defineMethod: #fd     on: SockConn as: [:self | [[db cellFor: self attr: #fd] value]] doc:
+  "The connection's file descriptor (an Integer), read from its state cell."];
+[Reflect defineMethod: #buffer on: SockConn as: [:self | [[db cellFor: self attr: #buf] value]] doc:
+  "Answers the connection's per-connection recv buffer (an Alien)."];
 
 // Read one chunk of up to 64 KB. Answers the bytes as a String ("" on EOF/error).
 // The bytes are NUL-terminated in the buffer before reading them back, so this is

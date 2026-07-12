@@ -19,43 +19,73 @@
 // -- documentation hooks (baseline no-ops; Doc overrides them) ----------------
 // A method's docstring can ride its definition (`… as: block doc: "…"`) and a
 // module can declare a one-line summary (`[Reflect docModule: #x is: "…"]`) with
-// ZERO dependency on the Doc system: here both just install / do nothing. Loading
-// modules/doc.birnam OVERRIDES both on Reflect to capture the docstrings as
-// queryable facts — so docs materialize only when Doc is loaded before the modules,
-// and cost nothing otherwise.
+// ZERO static dependency on the Doc system: `Doc` resolves at SEND time, so
+// before modules/doc.birnam loads both just install / do nothing, and once Doc
+// exists the same sends record the docstring as queryable facts under Doc's
+// current module (docgen re-loads library sources for exactly this). A method
+// documented while no module is current still installs; its text is dropped.
 [Reflect defineMethod: #defineMethod:on:as:doc: on: Reflect as: [:self :sel :proto :blk :doc |
   [self defineMethod: sel on: proto as: blk];
+  [[Globals includes: #Doc]
+    ifTrue: [|
+      let mod := [[db cellFor: Doc attr: #currentModule] value];
+      [[mod isNil]
+        ifTrue:  [| nil]
+        ifFalse: [|
+          let e := [Object clone];
+          [[db cellFor: e attr: #sel]   set: sel];
+          [[db cellFor: e attr: #proto] set: proto];
+          [[db cellFor: e attr: #text]  set: doc];
+          let cur := [[db cellFor: mod attr: #docMethods] value];
+          [[db cellFor: mod attr: #docMethods] set: [cur add: e]]]]]
+    ifFalse: [| nil]];
   self]];
-[Reflect defineMethod: #docModule:is: on: Reflect as: [:self :mod :summary | self]];
+[Reflect defineMethod: #docModule:is: on: Reflect as: [:self :mod :summary |
+  [[Globals includes: #Doc]
+    ifTrue:  [| [Doc module: mod is: summary]]
+    ifFalse: [| nil]];
+  self]];
+
+[Reflect docModule: #stdlib is: "The self-hosted standard library — derived Integer/Collection/String protocol, value equality, error handling, and the |> thread."];
 
 // -- Integer: derived arithmetic on top of the primitive + - * / mod: < <= = -----
 
-[Reflect defineMethod: #negated on: Integer as: [:self | [0 - self]]];
-[Reflect defineMethod: #squared on: Integer as: [:self | [self * self]]];
+[Reflect defineMethod: #negated on: Integer as: [:self | [0 - self]] doc:
+   "The arithmetic negation of the receiver (0 - self)."];
+[Reflect defineMethod: #squared on: Integer as: [:self | [self * self]] doc:
+   "The receiver multiplied by itself."];
 [Reflect defineMethod: #abs on: Integer
-   as: [:self | [[self < 0] ifTrue: [| [0 - self]] ifFalse: [| self]]]];
+   as: [:self | [[self < 0] ifTrue: [| [0 - self]] ifFalse: [| self]]] doc:
+   "The absolute value of the receiver."];
 
-[Reflect defineMethod: #even on: Integer as: [:self | [[self mod: 2] = 0]]];
-[Reflect defineMethod: #odd  on: Integer as: [:self | [[self even] not]]];
+[Reflect defineMethod: #even on: Integer as: [:self | [[self mod: 2] = 0]] doc:
+   "True iff the receiver is divisible by 2."];
+[Reflect defineMethod: #odd  on: Integer as: [:self | [[self even] not]] doc:
+   "True iff the receiver is not divisible by 2."];
 
 [Reflect defineMethod: #max: on: Integer
-   as: [:self :other | [[self > other] ifTrue: [| self] ifFalse: [| other]]]];
+   as: [:self :other | [[self > other] ifTrue: [| self] ifFalse: [| other]]] doc:
+   "The larger of the receiver and `other`."];
 [Reflect defineMethod: #min: on: Integer
-   as: [:self :other | [[self < other] ifTrue: [| self] ifFalse: [| other]]]];
+   as: [:self :other | [[self < other] ifTrue: [| self] ifFalse: [| other]]] doc:
+   "The smaller of the receiver and `other`."];
 
 [Reflect defineMethod: #between:and: on: Integer
-   as: [:self :lo :hi | [[self >= lo] & [self <= hi]]]];
+   as: [:self :lo :hi | [[self >= lo] & [self <= hi]]] doc:
+   "True iff the receiver lies between `lo` and `hi`, both bounds inclusive."];
 
 // Recursive — the method dispatches to itself (late-bound through the send).
 [Reflect defineMethod: #factorial on: Integer
-   as: [:self | [[self <= 1] ifTrue: [| 1] ifFalse: [| [self * [[self - 1] factorial]]]]]];
+   as: [:self | [[self <= 1] ifTrue: [| 1] ifFalse: [| [self * [[self - 1] factorial]]]]] doc:
+   "The factorial of the receiver, computed recursively (any receiver <= 1 answers 1)."];
 
 // -- Object: a display helper everything inherits -------------------------------
 
 // Print the receiver's printString followed by a newline, and answer the receiver
 // (so it chains). Handy in scripts and the REPL.
 [Reflect defineMethod: #printNl on: Object
-   as: [:self | [System println: [self printString]]; self]];
+   as: [:self | [System println: [self printString]]; self] doc:
+   "Prints the receiver's printString and a newline; answers the receiver (so it chains)."];
 
 // -- Collection: the higher-order protocol, defined ONCE over inject:into: -------
 //
@@ -67,28 +97,35 @@
 // Vector — the universal sequence — regardless of the source's family.
 
 [Reflect defineMethod: #collect: on: Collection
-   as: [:self :blk | [self inject: #[] into: [:acc :e | [acc add: [blk value: e]]]]]];
+   as: [:self :blk | [self inject: #[] into: [:acc :e | [acc add: [blk value: e]]]]] doc:
+   "A Vector of `blk`'s value for each element, in order (always a Vector, whatever the source family)."];
 
 [Reflect defineMethod: #select: on: Collection
    as: [:self :blk | [self inject: #[] into: [:acc :e |
-      [[blk value: e] ifTrue: [| [acc add: e]] ifFalse: [| acc]]]]]];
+      [[blk value: e] ifTrue: [| [acc add: e]] ifFalse: [| acc]]]]] doc:
+   "A Vector of the elements for which `blk` answers true, in order."];
 
 [Reflect defineMethod: #reject: on: Collection
    as: [:self :blk | [self inject: #[] into: [:acc :e |
-      [[blk value: e] ifTrue: [| acc] ifFalse: [| [acc add: e]]]]]]];
+      [[blk value: e] ifTrue: [| acc] ifFalse: [| [acc add: e]]]]]] doc:
+   "A Vector of the elements for which `blk` answers false, in order."];
 
 [Reflect defineMethod: #asVector on: Collection
-   as: [:self | [self inject: #[] into: [:acc :e | [acc add: e]]]]];
+   as: [:self | [self inject: #[] into: [:acc :e | [acc add: e]]]] doc:
+   "A Vector of the elements in order — the universal sequence, whatever the source family."];
 
 // count: aBlock — how many elements satisfy the predicate (cardinality is `size`).
 [Reflect defineMethod: #count: on: Collection
    as: [:self :blk | [self inject: 0 into: [:acc :e |
-      [[blk value: e] ifTrue: [| [acc + 1]] ifFalse: [| acc]]]]]];
+      [[blk value: e] ifTrue: [| [acc + 1]] ifFalse: [| acc]]]]] doc:
+   "How many elements satisfy `blk` (whole-collection cardinality is size)."];
 
 // isEmpty over size — no family keeps a native isEmpty; this covers them all
 // (Vector/Map had Zig ones until the tier-A surface lift; Range never did).
-[Reflect defineMethod: #isEmpty on: Collection as: [:self | [[self size] = 0]]];
-[Reflect defineMethod: #notEmpty on: Collection as: [:self | [[self isEmpty] not]]];
+[Reflect defineMethod: #isEmpty on: Collection as: [:self | [[self size] = 0]] doc:
+   "True iff the collection has no elements (size = 0)."];
+[Reflect defineMethod: #notEmpty on: Collection as: [:self | [[self isEmpty] not]] doc:
+   "True iff the collection has at least one element."];
 
 // first / last / at:ifAbsent: over size + at: — pure surface (no per-element
 // loop), lifted from Zig (collection.zig's vFirst/vLast/vAtIfAbsent/rFirst/
@@ -110,21 +147,26 @@
 // never seed a fold with a boolean (avoids depending on literal true/false) and
 // stay correct even when an element is nil (unlike a detect:-based membership test).
 [Reflect defineMethod: #includes: on: Collection
-   as: [:self :x | [[self count: [:e | [e = x]]] > 0]]];
+   as: [:self :x | [[self count: [:e | [e = x]]] > 0]] doc:
+   "True iff some element is `=` to `x` (value equality; correct even when the matching element is nil)."];
 [Reflect defineMethod: #anySatisfy: on: Collection
-   as: [:self :blk | [[self count: blk] > 0]]];
+   as: [:self :blk | [[self count: blk] > 0]] doc:
+   "True iff at least one element satisfies `blk`."];
 [Reflect defineMethod: #allSatisfy: on: Collection
-   as: [:self :blk | [[self count: blk] = [self size]]]];
+   as: [:self :blk | [[self count: blk] = [self size]]] doc:
+   "True iff every element satisfies `blk` (an empty collection answers true)."];
 
 // detect: — first matching element, or nil. detect:ifNone: evaluates a block when
 // none match (matches Smalltalk; nil elements that match read as "not found").
 [Reflect defineMethod: #detect: on: Collection
    as: [:self :blk | [self inject: nil into: [:acc :e |
       [[acc notNil] ifTrue: [| acc]
-                    ifFalse: [| [[blk value: e] ifTrue: [| e] ifFalse: [| nil]]]]]]]];
+                    ifFalse: [| [[blk value: e] ifTrue: [| e] ifFalse: [| nil]]]]]]] doc:
+   "The first element satisfying `blk`, or nil when none (a matching nil element reads as not found)."];
 [Reflect defineMethod: #detect:ifNone: on: Collection
    as: [:self :blk :none | [[[self detect: blk] notNil]
-      ifTrue: [| [self detect: blk]] ifFalse: [| [none value]]]]];
+      ifTrue: [| [self detect: blk]] ifFalse: [| [none value]]]] doc:
+   "The first element satisfying `blk`, or `none`'s value when no element matches."];
 
 // -- Vector: the tier-B SURFACE lifts (docs/44 §7, measured 2026-07-12) ----------
 // The gate's verdict, case by case (bench/micro.birnam vector.*/range.*):
@@ -141,19 +183,26 @@
 //   reversed / copyFrom:to:            STAY NATIVE — the derived per-row loops
 //                                      measured 2.58× / 1.60× and failed.
 
-[Reflect defineMethod: #asVector on: Vector as: [:self | self]];
+[Reflect defineMethod: #asVector on: Vector as: [:self | self] doc:
+   "The receiver itself — a Vector is already a Vector."];
 
 [Reflect defineMethod: #includes: on: Vector
    as: [:self :x | [[self indexOf: x] notNil]] doc:
    "Membership via the native indexOf: scan (keyEq: value for Integer/String/Symbol, identity otherwise)."];
 
 // -- Integer: rounding / coercion are identity on a whole number; sqrt via Float ---
-[Reflect defineMethod: #floor on: Integer as: [:self | self]];
-[Reflect defineMethod: #ceiling on: Integer as: [:self | self]];
-[Reflect defineMethod: #rounded on: Integer as: [:self | self]];
-[Reflect defineMethod: #truncated on: Integer as: [:self | self]];
-[Reflect defineMethod: #asInteger on: Integer as: [:self | self]];
-[Reflect defineMethod: #sqrt on: Integer as: [:self | [[self asFloat] sqrt]]];
+[Reflect defineMethod: #floor on: Integer as: [:self | self] doc:
+   "The receiver — floor is identity on a whole number."];
+[Reflect defineMethod: #ceiling on: Integer as: [:self | self] doc:
+   "The receiver — ceiling is identity on a whole number."];
+[Reflect defineMethod: #rounded on: Integer as: [:self | self] doc:
+   "The receiver — rounding is identity on a whole number."];
+[Reflect defineMethod: #truncated on: Integer as: [:self | self] doc:
+   "The receiver — truncation is identity on a whole number."];
+[Reflect defineMethod: #asInteger on: Integer as: [:self | self] doc:
+   "The receiver — an Integer coerces to itself."];
+[Reflect defineMethod: #sqrt on: Integer as: [:self | [[self asFloat] sqrt]] doc:
+   "The square root of the receiver as a Float (via asFloat)."];
 
 // -- Integer: timesRepeat:, in birnam over the native to:do: loop -----------------
 // Rides the prim to:do: frame, so the stack stays flat. to:do: stops-and-
@@ -200,7 +249,8 @@
    [coll do: [:e | [self add: e]]];
    self] doc:
    "Append every element of coll in order; answers self."];
-[Reflect defineMethod: #isEmpty on: StringBuilderVt as: [:self | [[self size] = 0]]];
+[Reflect defineMethod: #isEmpty on: StringBuilderVt as: [:self | [[self size] = 0]] doc:
+   "True iff nothing has been appended yet (size = 0)."];
 
 // All elements appended into one String — the O(n) way to fold strings together
 // (an `inject:into:` fold over `,` copies O(n²) bytes; docgen measured it).
@@ -234,35 +284,46 @@
 // default to false on Object, so `#[1] = aMap` or `#[1] = 5` answers false with no
 // type tag and no special case in dispatch. Element comparison recurses through the
 // ordinary `=`, so nested and mixed-type collections just work.
-[Reflect defineMethod: #= on: Object as: [:self :other | [self == other]]];
-[Reflect defineMethod: #equalsVector: on: Object as: [:self :other | false]];
-[Reflect defineMethod: #equalsRange:  on: Object as: [:self :other | false]];
-[Reflect defineMethod: #equalsMap:    on: Object as: [:self :other | false]];
+[Reflect defineMethod: #= on: Object as: [:self :other | [self == other]] doc:
+   "Identity equality (the floor's ==); Integer/Float/String and the collections override with value equality."];
+[Reflect defineMethod: #equalsVector: on: Object as: [:self :other | false] doc:
+   "Double-dispatch default: false — only Vector overrides, so a non-Vector never equals a Vector."];
+[Reflect defineMethod: #equalsRange:  on: Object as: [:self :other | false] doc:
+   "False — only a Range value-equals a Range (the double-dispatch default)."];
+[Reflect defineMethod: #equalsMap:    on: Object as: [:self :other | false] doc:
+   "False — only a Map value-equals a Map (the double-dispatch default)."];
 
 // Element-wise compare for indexable sequences (both operands already same-kind).
 [Reflect defineMethod: #hasSameElementsAs: on: Collection
    as: [:self :other | [[[self size] = [other size]]
       ifTrue: [| [[0 to: [[self size] - 1]] allSatisfy: [:i | [[self at: i] = [other at: i]]]] ]
-      ifFalse: [| false ]]]];
+      ifFalse: [| false ]]] doc:
+   "True iff `other` has the same size and an `=` element at every index (element-wise value compare, order matters)."];
 
-[Reflect defineMethod: #= on: Vector as: [:self :other | [other equalsVector: self]]];
+[Reflect defineMethod: #= on: Vector as: [:self :other | [other equalsVector: self]] doc:
+   "Value equality via double dispatch: true iff `other` is a Vector with the same elements (by =) in order."];
 [Reflect defineMethod: #equalsVector: on: Vector
-   as: [:self :other | [self hasSameElementsAs: other]]];
+   as: [:self :other | [self hasSameElementsAs: other]] doc:
+   "The Vector side of the double dispatch — element-wise value compare against `other`."];
 
-[Reflect defineMethod: #= on: Range as: [:self :other | [other equalsRange: self]]];
+[Reflect defineMethod: #= on: Range as: [:self :other | [other equalsRange: self]] doc:
+   "Value equality via double dispatch: true iff `other` is a Range with the same elements (by =) in order."];
 [Reflect defineMethod: #equalsRange: on: Range
-   as: [:self :other | [self hasSameElementsAs: other]]];
+   as: [:self :other | [self hasSameElementsAs: other]] doc:
+   "The Range side of the double dispatch — element-wise value compare against `other`."];
 
 // Maps compare by key→value content, independent of internal HAMT layout: same size,
 // and every key of self present in other with an equal value (looked up, not walked).
-[Reflect defineMethod: #= on: Map as: [:self :other | [other equalsMap: self]]];
+[Reflect defineMethod: #= on: Map as: [:self :other | [other equalsMap: self]] doc:
+   "Value equality via double dispatch: true iff `other` is a Map with the same key→value content."];
 [Reflect defineMethod: #equalsMap: on: Map
    as: [:self :other | [[[self size] = [other size]]
       ifTrue: [| [[self keys] allSatisfy: [:k |
          [[other includesKey: k]
             ifTrue:  [| [[self at: k] = [other at: k]] ]
             ifFalse: [| false ]]]] ]
-      ifFalse: [| false ]]]];
+      ifFalse: [| false ]]] doc:
+   "The Map side of the double dispatch — same size and every key of self in `other` with an `=` value (layout-independent)."];
 
 // -- Object: the pipeline operator |> — thread a value into a block --------------
 //
@@ -273,7 +334,8 @@
 // [parse value: data]]]`. Defined on Object so any value pipes; the block chooses
 // what to do with it (send, combine, guard), which recovers Smalltalk's
 // thread-as-receiver fluency over birnam's native blocks.
-[Reflect defineMethod: #|> on: Object as: [:self :block | [block value: self]]];
+[Reflect defineMethod: #|> on: Object as: [:self :block | [block value: self]] doc:
+   "Threads the receiver into `block` — [x |> b] is [b value: x], so a nest of sends reads left-to-right."];
 
 // ── error protocol (migrated from error.zig; docs/design/44a) ────────────────
 // The representation (native Err payload), the doesNotUnderstand: SWAP, and the
@@ -292,8 +354,10 @@
 // re-deriving per query would allocate a fresh "" on every string-protocol guard.
 [Globals at: #SymbolExemplarVt put: [Reflect vtableOf: #s]];
 [Globals at: #StringExemplarVt put: [Reflect vtableOf: ""]];
-[Reflect defineMethod: #isSymbol: on: Reflect as: [:self :x | [[self vtableOf: x] == SymbolExemplarVt]]];
-[Reflect defineMethod: #isString: on: Reflect as: [:self :x | [[self vtableOf: x] == StringExemplarVt]]];
+[Reflect defineMethod: #isSymbol: on: Reflect as: [:self :x | [[self vtableOf: x] == SymbolExemplarVt]] doc:
+   "True iff `x` is a Symbol (a mirror query: compares x's vtable to the Symbol exemplar's)."];
+[Reflect defineMethod: #isString: on: Reflect as: [:self :x | [[self vtableOf: x] == StringExemplarVt]] doc:
+   "True iff `x` is a String (a mirror query: compares x's vtable to the String exemplar's)."];
 
 // Does a caught error's kind satisfy an on:do: spec? the wildcard #error, an exact
 // kind symbol, or any collection of kinds. A single symbol short-circuits to false
@@ -302,7 +366,8 @@
    [[[want = #error] | [want = [self kind]]]
       ifTrue:  [| true]
       ifFalse: [| [[Reflect isSymbol: want] ifTrue:  [| false]
-                                            ifFalse: [| [want includes: [self kind]]]]]]]];
+                                            ifFalse: [| [want includes: [self kind]]]]]]] doc:
+   "True iff the receiver's kind satisfies `want` — the wildcard #error, the exact kind symbol, or a collection of kinds."];
 
 // [[block] on: spec do: handler] — run the protected block; if it yields an error
 // whose kind matches spec, run the handler with it; else pass the value through.
@@ -311,27 +376,36 @@
    [[val isError]
       ifTrue:  [| [[val kindMatches: spec] ifTrue:  [| [handler value: val]]
                                            ifFalse: [| val]]]
-      ifFalse: [| val]]]];
+      ifFalse: [| val]]] doc:
+   "Runs the receiver block; an error whose kind matches `spec` goes to `handler`, any other result passes through."];
 
 // [protected ensure: cleanup] — always run cleanup, answer protected's result.
 [Reflect defineMethod: #ensure: on: Object as: [:self :cleanup |
-   let val := [self value]; [cleanup value]; val]];
+   let val := [self value]; [cleanup value]; val] doc:
+   "Runs the receiver block, then always runs `cleanup`; answers the protected block's result (error or not)."];
 
 // ifError:/ifNotError: — dispatch on whether the receiver is an error.
-[Reflect defineMethod: #ifError:    on: Object  as: [:self :h | self]];
-[Reflect defineMethod: #ifNotError: on: Object  as: [:self :h | [h value: self]]];
-[Reflect defineMethod: #ifError:    on: ErrorVt as: [:self :h | [h value: self]]];
-[Reflect defineMethod: #ifNotError: on: ErrorVt as: [:self :h | self]];
+[Reflect defineMethod: #ifError:    on: Object  as: [:self :h | self] doc:
+   "Answers the receiver untouched — a non-error skips the error branch; `h` never runs (ErrorVt overrides)."];
+[Reflect defineMethod: #ifNotError: on: Object  as: [:self :h | [h value: self]] doc:
+   "Runs `h` with the receiver — a non-error takes the not-error branch (ErrorVt overrides to skip it)."];
+[Reflect defineMethod: #ifError:    on: ErrorVt as: [:self :h | [h value: self]]  doc:
+   "Runs `h` with the receiver — an error takes the error branch."];
+[Reflect defineMethod: #ifNotError: on: ErrorVt as: [:self :h | self] doc:
+   "Answers the receiver untouched — an error skips the not-error branch; `h` never runs."];
 
 // printString — "error(#kind: message)"; kind is always a symbol, message may be nil.
 [Reflect defineMethod: #printString on: ErrorVt as: [:self |
    let k := [[self kind] printString];
    let m := [[[self message] isNil] ifTrue: [| ""] ifFalse: [| [": " , [self message]]]];
-   [[["error(" , k] , m] , ")"]]];
+   [[["error(" , k] , m] , ")"]] doc:
+   "Renders the error as error(#kind: message); the message part is dropped when message is nil."];
 
 // Raise from a message string: ["boom" error] → #error; ["boom" error: #kind].
-[Reflect defineMethod: #error  on: String as: [:self | [Error message: self]]];
-[Reflect defineMethod: #error: on: String as: [:self :kind | [Error kind: kind message: self]]];
+[Reflect defineMethod: #error  on: String as: [:self | [Error message: self]] doc:
+   "A fresh #error-kinded error carrying the receiver as its message."];
+[Reflect defineMethod: #error: on: String as: [:self :kind | [Error kind: kind message: self]] doc:
+   "A fresh error of kind `kind` carrying the receiver as its message."];
 
 // ── String: the derived protocol over the byte floor (docs/design/44 Phase 2) ──
 //
@@ -352,13 +426,15 @@
 // The fold primitive, derived: fold the 1-byte Strings through Range's fold.
 [Reflect defineMethod: #inject:into: on: String
    as: [:self :acc :blk | [[0 to: [[self size] - 1]]
-      inject: acc into: [:a :i | [blk value: a value: [self at: i]]]]]];
+      inject: acc into: [:a :i | [blk value: a value: [self at: i]]]]] doc:
+   "Folds `blk` over the characters as 1-byte Strings, threading `acc` — the fold the Collection protocol derives from."];
 
 // do: — evaluate the block with each 1-byte String; answers self.
 [Reflect defineMethod: #do: on: String
    as: [:self :blk |
       [[0 to: [[self size] - 1]] do: [:i | [blk value: [self at: i]]]];
-      self]];
+      self] doc:
+   "Evaluates `blk` with each character as a 1-byte String; answers the receiver."];
 
 [Reflect defineMethod: #startsWith: on: String as: [:self :prefix |
    [[Reflect isString: prefix]
@@ -398,7 +474,8 @@
 // Internal: the six ASCII whitespace bytes (space \t \n \v \f \r), as trimmed/
 // words define them — matching the native set exactly.
 [Reflect defineMethod: #isWhitespaceByte: on: String as: [:self :b |
-   [[[b = 32] | [b = 9]] | [[[b = 10] | [b = 11]] | [[b = 12] | [b = 13]]]]]];
+   [[[b = 32] | [b = 9]] | [[[b = 10] | [b = 11]] | [[b = 12] | [b = 13]]]]] doc:
+   "Internal: true iff byte `b` is one of the six ASCII whitespace bytes (space, tab, LF, VT, FF, CR) — the trimmed/words set."];
 
 // words — the whitespace-run tokenizer: thread #[parts runStart], runStart nil
 // while inside whitespace; empty runs never open, so they are dropped.

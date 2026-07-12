@@ -17,12 +17,14 @@
 [[Globals includes: #Doc]  ifTrue: [| nil] ifFalse: [| [System load: "modules/doc.birnam"]]];
 
 [Globals at: #Zigdoc put: [Object clone]];
+[Reflect docModule: #zigdoc is: "Zig floor doc extraction — scans //! and /// comments out of .zig files into Doc facts, no Zig runtime."];
 
 // The text after a `//` marker on `line` (trimmed). `[line split: mark] last` is
 // the tail after the last occurrence of the marker.
 [Reflect defineMethod: #after:mark: on: Zigdoc as: [:self :line :mark |
   let r := [[[line split: mark] last] trimmed];
-  r]];
+  r] doc:
+  "The trimmed text after the last `mark` occurrence on `line` (the whole line, trimmed, when absent)."];
 
 // The declared name on a (trimmed) Zig line, or "" if it isn't a fn/const decl.
 // Takes the identifier after `fn `/`const `, up to the first `(`, ` ` or `=`.
@@ -32,7 +34,8 @@
   let b := [[a split: " "] first];
   let c := [[b split: "="] first];
   let r := [c trimmed];
-  r]];
+  r] doc:
+  "The identifier following `mark` in a declaration line — up to the first (, space or =."];
 
 [Reflect defineMethod: #declName: on: Zigdoc as: [:self :t |
   let r := [[t includesSubstring: "fn "]
@@ -40,7 +43,8 @@
     ifFalse: [| [[t includesSubstring: "const "]
       ifTrue:  [| [self identAfter: t mark: "const "]]
       ifFalse: [| ""]]]];
-  r]];
+  r] doc:
+  "The declared fn/const name on a trimmed Zig line, or \"\" if it isn't a declaration."];
 
 // Process one line against the scanner state (cells: #pending doc, #summary).
 // //! -> module summary (first one wins); /// -> accumulate a pending docstring;
@@ -68,7 +72,8 @@
                 ifTrue:  [| sc]
                 ifFalse: [| [Doc for: [nm asSymbol] in: mod says: [p trimmed]]]];
               [[db cellFor: sc attr: #pending] set: ""]]]]]]];
-  sc]];
+  sc] doc:
+  "Feed one line to scanner `sc`: //! seeds the module summary (first wins), /// accumulates, a declaration consumes the pending doc (other lines drop it)."];
 
 // Scan one .zig file into Doc facts under `mod`. Answers `mod`. Also marks the
 // module `#docKind #zigFloor` — a fact the doc renderers read to badge/group
@@ -85,7 +90,8 @@
     [self feedLine: [lines at: i] scanner: sc module: mod]]];
   let sum := [[db cellFor: sc attr: #summary] value];
   [[db cellFor: mod attr: #docSummary] set: [[sum isEmpty] ifTrue: [| [path , " (Zig)"]] ifFalse: [| sum]]];
-  mod]];
+  mod] doc:
+  "Scan one .zig file at `path` into Doc facts under `mod`, marking it #zigFloor. Answers `mod`."];
 
 // Make `mod` documented if it isn't already: load the birnam module at `bp` (a
 // no-op if that file is absent — its `doc:` registrations then fire), and if `mod`
@@ -97,7 +103,8 @@
     ifTrue:  [| mod]
     ifFalse: [| [[File exists: zp]
       ifTrue:  [| [self scan: zp as: mod]]
-      ifFalse: [| mod]]]]]];
+      ifFalse: [| mod]]]]] doc:
+  "Document `mod` one way or the other: load the birnam module at `bp`, else scan the Zig file at `zp` — the `birnam doc` fallback chain. Answers `mod`."];
 
 // Scan every `*.zig` in `dir` (excluding *_test.zig), each into module #<basename>.
 // Answers a Vector of the module symbols documented.
@@ -110,4 +117,5 @@
         [self scan: [[dir , "/"] , nm] as: [base asSymbol]];
         [acc add: [base asSymbol]]]
       ifFalse: [| acc]]]];
-  mods]]
+  mods] doc:
+  "Scan every non-test .zig in `dir`, each into module #<basename>; answers the Vector of module symbols documented."]

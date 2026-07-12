@@ -71,7 +71,13 @@ let s := [TestSuite named: "Doc" module: #doc];
 [s test: "selectorInSource: reads the selector out of a definition span" do: [:t |
   [t expect: [Doc selectorInSource: "[Reflect defineMethod: #tag:body: on: Html as: [x]]"]
      equals: "tag:body:"
-     describes: "selectorInSource: keeps a keyword selector's colons"]]];
+     describes: "selectorInSource: keeps a keyword selector's colons"];
+  [t expect: [Doc selectorInSource: "[Reflect defineMethod: #go on: X as: [:s | [s at: #k]]]"]
+     equals: "go"
+     describes: "a symbol in the BODY is not the selector (first-# parse)"];
+  [t expect: [Doc selectorInSource: "[x at: #k]"]
+     equals: ""
+     describes: "not a definition -> empty"]]];
 
 // A bare `defineMethod:on:as:` records its source on `#__methods__`, so an
 // undocumented selector is still queryable — Doc falls back to that source.

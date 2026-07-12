@@ -15,6 +15,7 @@
 [Module named: #config requires: #[#toml]];
 
 [Globals at: #Config put: [Object clone]];
+[Reflect docModule: #config is: "birnam.toml project configuration — parsed via Toml, exposed as at: lookups; a missing or invalid file degrades to nil."];
 
 // The parsed birnam.toml as a Map, or nil when the file is absent or invalid.
 // Read fresh each call (a project rarely rereads its config; keep it simple).
@@ -24,15 +25,18 @@
     ifTrue: [| nil]
     ifFalse: [|
       let m := [Toml parse: text];
-      [[m isError] ifTrue: [| nil] ifFalse: [| m]]]]]];
+      [[m isError] ifTrue: [| nil] ifFalse: [| m]]]]] doc:
+  "The parsed birnam.toml as a Map, or nil when the file is absent or invalid (read fresh each call)."];
 
 // The value bound to `aKey` in birnam.toml, or nil (no file / key absent).
 [Reflect defineMethod: #at: on: Config as: [:self :aKey |
   let m := [self map];
   [[m notNil]
     ifTrue: [| [m at: aKey ifAbsent: [| nil]]]
-    ifFalse: [| nil]]]];
+    ifFalse: [| nil]]] doc:
+  "The value bound to `aKey` in birnam.toml, or nil (no file / key absent)."];
 
 // The project entry-point source file (`main = "..."`), or nil. The bare/REPL boot
 // runs this before dropping to the prompt.
-[Reflect defineMethod: #main on: Config as: [:self | [self at: "main"]]]
+[Reflect defineMethod: #main on: Config as: [:self | [self at: "main"]] doc:
+  "The project entry-point source path (the `main` key), or nil."]

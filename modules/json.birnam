@@ -81,6 +81,10 @@
 
   g] value]];
 
+// Register FIRST — doc: entries record under the CURRENT module, so the
+// summary must precede every define (helpers on String/PegCst included).
+[Reflect docModule: #json is: "JSON parse + stringify (native values <-> text), over Peg."];
+
 // -- string escapes (parse side) ----------------------------------------------
 
 // The unescaped meaning of the byte after a backslash. Default (else) is the byte
@@ -89,7 +93,8 @@
   let a := [[self = "n"] ifTrue: [| "\n"] ifFalse: [| self]];
   let b := [[self = "t"] ifTrue: [| "\t"] ifFalse: [| a]];
   let c := [[self = "r"] ifTrue: [| "\r"] ifFalse: [| b]];
-  c]];
+  c] doc:
+  "Answers the unescaped meaning of the receiver as the byte after a backslash (n/t/r; else the byte itself)."];
 
 // Process backslash escapes in a string body (a fold that skips the byte each
 // escape consumes). Lifted from the TOML unescaper.
@@ -107,13 +112,15 @@
   let r := [[n = 0]
     ifTrue: [| self]
     ifFalse: [| [[[0 to: [n - 1]] inject: #[ "" 0 ] into: step] at: 0]]];
-  r]];
+  r] doc:
+  "Processes backslash escapes in a JSON string body; answers the decoded String."];
 
 // A quoted JSON string token → its decoded content (strip the quotes, unescape).
 [Reflect defineMethod: #jsonDecodeString on: String as: [:self |
   let body := [self copyFrom: 1 to: [[self size] - 1]];
   let r := [body jsonUnescape];
-  r]];
+  r] doc:
+  "Decodes a quoted JSON string token: strips the surrounding quotes and unescapes the body."];
 
 // -- string escapes (stringify side) ------------------------------------------
 
@@ -125,20 +132,23 @@
   let c := [b replace: "\n" with: "\\n"];
   let d := [c replace: "\t" with: "\\t"];
   let e := [d replace: "\r" with: "\\r"];
-  e]];
+  e] doc:
+  "Escapes the receiver for embedding in JSON text (backslash first, then quote/newline/tab/return)."];
 
 // -- CST → native value lowering (on the parse-tree node vtable) --------------
 
 [Reflect defineMethod: #jsonText: on: PegCstVt as: [:self :src |
   let r := [src copyFrom: [self start] to: [self end]];
-  r]];
+  r] doc:
+  "Answers the slice of source `src` that this CST node spans."];
 
 // A #number span → Integer, or Float when it has a fraction or exponent.
 [Reflect defineMethod: #jsonNumber: on: PegCstVt as: [:self :src |
   let t := [self jsonText: src];
   let isF := [[t includesSubstring: "."] | [[t includesSubstring: "e"] | [t includesSubstring: "E"]]];
   let r := [isF ifTrue: [| [t asNumber]] ifFalse: [| [t asInteger]]];
-  r]];
+  r] doc:
+  "Lowers a #number node over source `src` to an Integer, or a Float when it has a fraction or exponent."];
 
 // A #literal span → true / false / nil.
 [Reflect defineMethod: #jsonLiteral: on: PegCstVt as: [:self :src |
@@ -146,7 +156,8 @@
   let r := [[t = "true"]
     ifTrue:  [| true]
     ifFalse: [| [[t = "false"] ifTrue: [| false] ifFalse: [| nil]]]];
-  r]];
+  r] doc:
+  "Lowers a #literal node over source `src` to true, false, or nil."];
 
 // An #object node → a Map (its children are #member nodes: [keyString, value]).
 [Reflect defineMethod: #jsonObject: on: PegCstVt as: [:self :src |
@@ -155,7 +166,8 @@
     let v := [[[mem children] at: 1] jsonValue: src];
     [m at: k put: v]];
   let r := [[self children] inject: [Map new] into: step];
-  r]];
+  r] doc:
+  "Lowers an #object node over source `src` to a Map (each #member child yields a decoded key and value)."];
 
 // A typed value node → the birnam value it denotes (recursive for object/array).
 [Reflect defineMethod: #jsonValue: on: PegCstVt as: [:self :src |
@@ -165,7 +177,8 @@
   let vObj := [[r = "object"]  ifTrue: [| [self jsonObject: src]] ifFalse: [| vNum]];
   let vArr := [[r = "array"]   ifTrue: [| [[self children] collect: [:c | [c jsonValue: src]]]] ifFalse: [| vObj]];
   let vLit := [[r = "literal"] ifTrue: [| [self jsonLiteral: src]] ifFalse: [| vArr]];
-  vLit]];
+  vLit] doc:
+  "Lowers a typed value node over source `src` to the birnam value it denotes (recursive for objects/arrays)."];
 
 // -- parse entry point --------------------------------------------------------
 
@@ -176,38 +189,47 @@
   let r := [ok
     ifTrue:  [| [[[cst children] at: 0] jsonValue: self]]
     ifFalse: [| ["not valid JSON" error: #jsonParse]]];
-  r]];
+  r] doc:
+  "Parses the receiver as JSON text; answers a native value, or a #jsonParse error if it isn't valid JSON."];
 
 // -- stringify: double dispatch (each type renders itself) --------------------
 
-[Reflect defineMethod: #asJson on: nil     as: [:self | "null"]];
-[Reflect defineMethod: #asJson on: Boolean as: [:self | [self ifTrue: [| "true"] ifFalse: [| "false"]]]];
-[Reflect defineMethod: #asJson on: Integer as: [:self | [self printString]]];
-[Reflect defineMethod: #asJson on: Float   as: [:self | [self printString]]];
-[Reflect defineMethod: #asJson on: String  as: [:self | let r := [Json quote: self]; r]];
-[Reflect defineMethod: #asJson on: Symbol  as: [:self | let r := [Json quote: [self asString]]; r]];
+[Reflect defineMethod: #asJson on: nil     as: [:self | "null"] doc:
+  "Renders nil as the JSON literal null."];
+[Reflect defineMethod: #asJson on: Boolean as: [:self | [self ifTrue: [| "true"] ifFalse: [| "false"]]] doc:
+  "Renders the receiver as the JSON literal true or false."];
+[Reflect defineMethod: #asJson on: Integer as: [:self | [self printString]] doc:
+  "Renders the receiver as a JSON integer (its printString)."];
+[Reflect defineMethod: #asJson on: Float   as: [:self | [self printString]] doc:
+  "Renders the receiver as a JSON number (its printString)."];
+[Reflect defineMethod: #asJson on: String  as: [:self | let r := [Json quote: self]; r] doc:
+  "Renders the receiver as a JSON string literal (quoted and escaped)."];
+[Reflect defineMethod: #asJson on: Symbol  as: [:self | let r := [Json quote: [self asString]]; r] doc:
+  "Renders the receiver's name as a JSON string literal (quoted and escaped)."];
 
 [Reflect defineMethod: #asJson on: VectorVt as: [:self |
   let parts := [self collect: [:e | [e asJson]]];
   let r := [["[" , [Json joinComma: parts]] , "]"];
-  r]];
+  r] doc:
+  "Renders the receiver as a JSON array, each element rendered by its own asJson."];
 
 [Reflect defineMethod: #asJson on: MapVt as: [:self |
   let me := self;
   let parts := [[self keys] collect: [:k |
     [[[Json quote: [k asString]] , ":"] , [[me at: k] asJson]]]];
   let r := [["{" , [Json joinComma: parts]] , "}"];
-  r]];
+  r] doc:
+  "Renders the receiver as a JSON object: keys quoted as strings, values rendered by their own asJson."];
 
 // Fallback: anything without a specific asJson is not representable.
 [Reflect defineMethod: #asJson on: Object as: [:self |
   let r := ["value is not JSON-serializable" error: #notSerializable];
-  r]];
+  r] doc:
+  "Fallback for types without a specific asJson: answers a #notSerializable error."];
 
 // -- the Json namespace object ------------------------------------------------
 
 [Globals at: #Json put: [Object clone]];
-[Reflect docModule: #json is: "JSON parse + stringify (native values <-> text), over Peg."];
 [Reflect defineMethod: #parse:     on: Json as: [:self :src | [src parseJson]] doc:
   "Parse JSON `src` into native Map/Vector/String/Integer/Float/true/false/nil, or a #jsonParse error."];
 [Reflect defineMethod: #stringify: on: Json as: [:self :v   | [v asJson]] doc:
@@ -216,7 +238,8 @@
 // Quote + escape a raw string as a JSON string literal (shared by values/keys).
 [Reflect defineMethod: #quote: on: Json as: [:self :s |
   let r := [["\"" , [s jsonEscaped]] , "\""];
-  r]];
+  r] doc:
+  "Quotes and escapes raw string `s` as a JSON string literal (shared by values and keys)."];
 
 // Join already-rendered parts with commas (shared by array + object rendering).
 // StringBuilder-backed: an LSP response serializes per message, and the old
@@ -225,4 +248,5 @@
   let sb := [StringBuilder new];
   [parts do: [:p |
     [[[sb size] = 0] ifTrue: [| [sb add: p]] ifFalse: [| [[sb add: ","] add: p]]]]];
-  [sb asString]]]
+  [sb asString]] doc:
+  "Joins already-rendered `parts` with commas (StringBuilder-backed; shared by array and object rendering)."]

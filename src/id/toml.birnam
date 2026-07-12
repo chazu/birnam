@@ -117,6 +117,10 @@
 
   g] value]];
 
+// Register FIRST — doc: entries record under the CURRENT module, so the
+// summary must precede every define (helpers on String/PegCst included).
+[Reflect docModule: #toml is: "TOML parsing in pure birnam over the Peg engine — parse: answers nested Maps, or a #tomlParse error."];
+
 // -- string escapes ----------------------------------------------------------
 
 // The unescaped meaning of the byte after a backslash (default: the byte itself,
@@ -124,7 +128,8 @@
 [Reflect defineMethod: #tomlEscChar on: String as: [:self |
   let a := [[self = "n"] ifTrue: [| "\n"] ifFalse: [| self]];
   let b := [[self = "t"] ifTrue: [| "\t"] ifFalse: [| a]];
-  [[self = "r"] ifTrue: [| "\r"] ifFalse: [| b]]]];
+  [[self = "r"] ifTrue: [| "\r"] ifFalse: [| b]]] doc:
+  "The unescaped meaning of `self`, the byte after a backslash: n/t/r map to control chars, any other byte answers itself."];
 
 // Process backslash escapes in a string body (a fold that skips the byte
 // consumed by each escape).
@@ -141,20 +146,23 @@
         ifFalse: [| #[ [out , ch] 0 ]]]]]];
   [[n = 0]
     ifTrue: [| self]
-    ifFalse: [| [[[0 to: [n - 1]] inject: #[ "" 0 ] into: step] at: 0]]]]];
+    ifFalse: [| [[[0 to: [n - 1]] inject: #[ "" 0 ] into: step] at: 0]]]] doc:
+  "Answers `self` with backslash escapes in a string body processed (a fold that skips the byte each escape consumes)."];
 
 // -- CST → birnam value lowering (on the parse-tree node vtable) --------------
 
 // The raw source text this node spans.
 [Reflect defineMethod: #tomlText: on: PegCstVt as: [:self :src |
-  [src copyFrom: [self start] to: [self end]]]];
+  [src copyFrom: [self start] to: [self end]]] doc:
+  "The raw source text this CST node spans in `src`."];
 
 // A key node's name (a quoted key has its surrounding quotes stripped).
 [Reflect defineMethod: #tomlKey: on: PegCstVt as: [:self :src |
   let t := [self tomlText: src];
   [[t startsWith: "\""]
     ifTrue: [| [t copyFrom: 1 to: [[t size] - 1]]]
-    ifFalse: [| t]]]];
+    ifFalse: [| t]]] doc:
+  "This key node's name from `src` (a quoted key has its surrounding quotes stripped)."];
 
 // Fold a table-ish node's keyval children into a Map.
 [Reflect defineMethod: #tomlKeyvalsInto: on: PegCstVt as: [:self :src |
@@ -162,7 +170,8 @@
     let k := [[[kv children] at: 0] tomlKey: src];
     let v := [[[kv children] at: 1] tomlValue: src];
     [m at: k put: v]];
-  [[self children] inject: [Map new] into: step]]];
+  [[self children] inject: [Map new] into: step]] doc:
+  "Fold this table-ish node's keyval children into a Map, lowering each value from `src`."];
 
 // A typed value node → the birnam value it denotes (recursive for arrays and
 // inline tables).
@@ -176,7 +185,8 @@
   let vBoo := [[r = "boolean"] ifTrue: [| [[self tomlText: src] = "true"]] ifFalse: [| vFlt]];
   let vStr := [[r = "string"]  ifTrue: asStr ifFalse: [| vBoo]];
   let vArr := [[r = "array"]   ifTrue: [| [[self children] collect: [:c | [c tomlValue: src]]]] ifFalse: [| vStr]];
-  [[r = "inlineTable"] ifTrue: [| [self tomlKeyvalsInto: src]] ifFalse: [| vArr]]]];
+  [[r = "inlineTable"] ifTrue: [| [self tomlKeyvalsInto: src]] ifFalse: [| vArr]]] doc:
+  "The birnam value this typed node denotes from `src` (recursive for arrays and inline tables)."];
 
 // -- persistent nested insert on Map -----------------------------------------
 
@@ -189,7 +199,8 @@
     ifFalse: [|
       let rest := [path copyFrom: 1 to: [path size]];
       let sub  := [self at: k ifAbsent: [| [Map new]]];
-      [self at: k put: [sub atPath: rest put: val]]]]]];
+      [self at: k put: [sub atPath: rest put: val]]]]] doc:
+  "A new Map with `val` set at nested key `path` (a Vector), creating intermediate Maps as needed (persistent)."];
 
 // -- the entry point ---------------------------------------------------------
 
@@ -209,7 +220,8 @@
   let ok := [[cst notNil] & [[cst end] = [self size]]];
   [ok
     ifTrue: [| [[[cst children] inject: #[ [Map new] [Vector new] ] into: step] at: 0]]
-    ifFalse: [| ["not valid TOML" error: #tomlParse]]]]];
+    ifFalse: [| ["not valid TOML" error: #tomlParse]]]] doc:
+  "Parses `self` as TOML; answers a Map (nested Maps for tables, Vectors for arrays), or a #tomlParse error."];
 
 // -- the Toml namespace object -----------------------------------------------
 
@@ -217,4 +229,5 @@
 // in Globals so birnam code can name `Toml`. The public API forwards to the
 // String workhorse above.
 [Globals at: #Toml put: [Object clone]];
-[Reflect defineMethod: #parse: on: Toml as: [:self :src | [src parseToml]]]
+[Reflect defineMethod: #parse: on: Toml as: [:self :src | [src parseToml]] doc:
+  "Parses TOML `src`; answers a Map, or a #tomlParse error if the text isn't valid TOML."]

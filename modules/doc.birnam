@@ -29,6 +29,10 @@
 [[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [System load: "modules/html.birnam"]]];
 
 [Globals at: #Doc put: [Object clone]];
+// Seed the current-module cell (a VALUE — nil means "none"): the stdlib's
+// Doc-aware `defineMethod:on:as:doc:` reads it the moment #Doc exists, and an
+// unset cell's sentinel answers nothing.
+[[db cellFor: Doc attr: #currentModule] set: nil];
 
 // -- registration -------------------------------------------------------------
 
@@ -42,21 +46,11 @@
   [[db cellFor: Doc attr: #currentModule] set: mod];
   self]];
 
-// The documented way to define a method: install it (via the Reflect primitive)
-// AND record its docstring under the CURRENT module (the last `module:is:`), keyed
-// to the receiver prototype. One source of truth — the docstring rides the
-// definition, captured at load time, nothing to keep in sync. Requires a prior
-// `module:is:` (which sets the current module).
-[Reflect defineMethod: #defineMethod:on:as:doc: on: Reflect as: [:self :sel :proto :blk :doc |
-  [self defineMethod: sel on: proto as: blk];
-  let mod := [[db cellFor: Doc attr: #currentModule] value];
-  let e := [Object clone];
-  [[db cellFor: e attr: #sel]   set: sel];
-  [[db cellFor: e attr: #proto] set: proto];
-  [[db cellFor: e attr: #text]  set: doc];
-  let cur := [[db cellFor: mod attr: #docMethods] value];
-  [[db cellFor: mod attr: #docMethods] set: [cur add: e]];
-  self]];
+// Doc documents itself — from here down, `doc:` definitions record under #doc.
+// (The `defineMethod:on:as:doc:` and `docModule:is:` funnels live in the STDLIB
+// now, Doc-aware via a send-time Globals check — loading this module is what
+// switches them from install-and-drop to install-and-record.)
+[Doc module: #doc is: "Docstrings + documentation generation — the registry, its queries, and the plaintext/Markdown/HTML renderers."];
 
 // A docstring for one selector in a module (which must already be documented).
 // Appended to the module's ordered method-list as a small entry clone. The
@@ -69,28 +63,25 @@
   [[db cellFor: e attr: #proto] set: nil];
   let cur := [[db cellFor: mod attr: #docMethods] value];
   [[db cellFor: mod attr: #docMethods] set: [cur add: e]];
-  self]];
-
-// Override the stdlib no-op: a module's summary declaration now records it (and
-// sets the current module) — so a module writes `[Reflect docModule: #x is: "…"]`
-// with no direct dependency on Doc, and it only takes effect when Doc is loaded.
-[Reflect defineMethod: #docModule:is: on: Reflect as: [:self :mod :summary |
-  [Doc module: mod is: summary];
-  self]];
+  self] doc:
+  "Record a docstring for `sel` in the (already documented) module `mod`, appended to its ordered entry list; receiver unknown (proto nil)."];
 
 // -- queries ------------------------------------------------------------------
 
 // Every documented module symbol.
 [Reflect defineMethod: #modules on: Doc as: [:self |
-  [db findAll: ?m where: #[ #[?m #isDocumented #true] ]]]];
+  [db findAll: ?m where: #[ #[?m #isDocumented #true] ]]] doc:
+  "Every documented module symbol (the `isDocumented` fact — a query, so the doc set is data)."];
 
 // A module's ordered method-doc entries (module must be documented).
 [Reflect defineMethod: #methodsOf: on: Doc as: [:self :mod |
-  [[db cellFor: mod attr: #docMethods] value]]];
+  [[db cellFor: mod attr: #docMethods] value]] doc:
+  "The ordered method-doc entries of `mod` (which must be documented — the cell is seeded by module:is:)."];
 
 // A selector's clean display name — the mirror's inverse of interning.
 [Reflect defineMethod: #nameOf: on: Doc as: [:self :sel |
-  [Reflect nameOf: sel]]];
+  [Reflect nameOf: sel]] doc:
+  "A selector's clean display name (colons kept, no sigil) — the mirror's inverse of interning."];
 
 // Every documented method entry whose selector's name equals `name` (a String),
 // across all modules — the hover / `birnam doc <sel>` path (a selector may occur
@@ -100,22 +91,26 @@
     [[self methodsOf: m] inject: acc into: [:a2 :e |
       [[[self nameOf: [[db cellFor: e attr: #sel] value]] = name]
         ifTrue:  [| [a2 add: e]]
-        ifFalse: [| a2]]]]]]]];
+        ifFalse: [| a2]]]]]]] doc:
+  "Every documented entry whose selector prints as `name` (a String), across all modules — the hover / `birnam doc <sel>` path."];
 
 // Is `mod` a documented module? Reads only the queryable modules list — never
 // an unset cell.
 [Reflect defineMethod: #isDocumented: on: Doc as: [:self :mod |
-  [[self modules] includes: mod]]];
+  [[self modules] includes: mod]] doc:
+  "True iff `mod` was registered with module:is: (reads only the queryable modules list, never an unset cell)."];
 
 // Is `mod` a Zig-floor doc set (recorded by Zigdoc's scan) rather than a
 // loadable birnam module?
 [Reflect defineMethod: #isZigFloor: on: Doc as: [:self :mod |
-  [[db findAll: ?m where: #[ #[?m #docKind #zigFloor] ]] includes: mod]]];
+  [[db findAll: ?m where: #[ #[?m #docKind #zigFloor] ]] includes: mod]] doc:
+  "True iff `mod`'s docs came from a Zigdoc scan (the #docKind #zigFloor fact) rather than a loadable birnam module."];
 
 // Every documented module, ordered by display name (String `<` under sortBy:).
 [Reflect defineMethod: #sortedModules on: Doc as: [:self |
   let me := self;
-  [[self modules] sortBy: [:m | [me nameOf: m]]]]];
+  [[self modules] sortBy: [:m | [me nameOf: m]]]] doc:
+  "Every documented module, ordered by display name (String `<` under sortBy:)."];
 
 // The Globals name whose binding IS `obj` (identity), or "" if it has none —
 // the reverse of `Globals at:`, for showing a prototype (prototypes print as
@@ -127,7 +122,8 @@
       ifTrue:  [| [[[Globals at: n ifAbsent: [| nil]] == obj]
                     ifTrue:  [| [Reflect nameOf: n]]
                     ifFalse: [| acc]]]
-      ifFalse: [| acc]]]]]];
+      ifFalse: [| acc]]]]] doc:
+  "The Globals name whose binding IS `obj` (identity), or \"\" — the reverse of `Globals at:`, for naming prototypes (they print as anObject)."];
 
 // -- source view: the facts the compiler records for every loaded module ---------
 //
@@ -138,23 +134,28 @@
 // selector has no hand-written docstring — the source IS the documentation.
 
 // The selector token in a `[Reflect defineMethod: #sel on: T as: …]` source string:
-// the `#…` right after `defineMethod:`, up to the next space — a keyword selector
-// keeps its colons ("#tag:body:" -> "tag:body:"). "" if `src` isn't a definition.
+// the `#…` right after the FIRST `defineMethod:`, up to the next space — a keyword
+// selector keeps its colons ("#tag:body:" -> "tag:body:"). "" if `src` isn't a
+// definition. First occurrence on BOTH splits: a method body freely mentions
+// symbols (`[x at: #k]`), and last-occurrence parsing read those as the selector.
 [Reflect defineMethod: #selectorInSource: on: Doc as: [:self :src |
-  let afterDM   := [[src split: "defineMethod:"] last];
-  let afterHash := [[afterDM split: "#"] last];
-  [[afterHash split: " "] first]]];
+  let afterDM   := [[src split: "defineMethod:"] at: 1 ifAbsent: [| ""]];
+  let afterHash := [[afterDM split: "#"] at: 1 ifAbsent: [| ""]];
+  [[[afterHash split: " "] first] trimmed]] doc:
+  "The selector token of a defineMethod source span (first-occurrence parse, colons kept), or \"\" if `src` isn't a definition."];
 
 // Every recorded method-source string, across all loaded modules.
 [Reflect defineMethod: #methodSources on: Doc as: [:self |
-  [db findAll: ?src where: #[ #[ #__methods__ ?attr ?src ] ]]]];
+  [db findAll: ?src where: #[ #[ #__methods__ ?attr ?src ] ]]] doc:
+  "Every recorded method-source string across all loaded modules (the #__methods__ facts the compiler writes)."];
 
 // The recorded source(s) of every method whose selector prints as `name` (a String).
 [Reflect defineMethod: #sourcesForSelector: on: Doc as: [:self :name |
   [[self methodSources] inject: #[] into: [:acc :src |
     [[[self selectorInSource: src] = name]
       ifTrue:  [| [acc add: src]]
-      ifFalse: [| acc]]]]]];
+      ifFalse: [| acc]]]]] doc:
+  "The recorded source(s) of every method whose selector prints as `name` — the fallback when nothing is registered (the source IS the documentation)."];
 
 // Every recorded source, indexed: a Map from selector name (String) to a Vector
 // of source strings. One pass over the sources — the whole-site renderer builds
@@ -166,7 +167,8 @@
     let nm := [me selectorInSource: src];
     [[nm isEmpty]
       ifTrue:  [| idx]
-      ifFalse: [| [idx at: nm put: [[idx at: nm ifAbsent: [| #[] ]] add: src]]]]]]]];
+      ifFalse: [| [idx at: nm put: [[idx at: nm ifAbsent: [| #[] ]] add: src]]]]]]] doc:
+  "A Map from selector name to its recorded source strings, built in ONE pass — the whole-site renderer's lookup table."];
 
 // Every recorded-but-undocumented selector name, sorted — the doc-gap audit.
 // A name counts as documented if ANY module registered a docstring for it.
@@ -177,7 +179,8 @@
       [a2 at: [me nameOf: [[db cellFor: e attr: #sel] value]] put: true]]]]];
   [[[[self sourceIndex] keys] inject: #[] into: [:acc :k |
     [[documented includesKey: k] ifTrue: [| acc] ifFalse: [| [acc add: k]]]]]
-    sortBy: [:x | x]]]];
+    sortBy: [:x | x]]] doc:
+  "Every recorded-but-undocumented selector name, sorted — the doc-gap worklist (documented anywhere counts)."];
 
 // The indexed sources for one selector, narrowed to the receiver when known:
 // `protoName` non-empty keeps only definitions on that prototype (the recorded
@@ -190,19 +193,22 @@
       let mark := [["on: " , protoName] , " "];
       let hits := [all inject: #[] into: [:acc :s |
         [[s includesSubstring: mark] ifTrue: [| [acc add: s]] ifFalse: [| acc]]]];
-      [[hits isEmpty] ifTrue: [| all] ifFalse: [| hits]]]]]];
+      [[hits isEmpty] ifTrue: [| all] ifFalse: [| hits]]]]] doc:
+  "The indexed sources for `selName`, narrowed to definitions on `protoName` when non-empty (falls back to all matches)."];
 
 // The whole-module source recorded for `mod` (a symbol) by a dylib load, or "".
 [Reflect defineMethod: #moduleSource: on: Doc as: [:self :mod |
   let hits := [db findAll: ?src where: #[ #[ #__modsrc__ mod ?src ] ]];
-  [[hits isEmpty] ifTrue: [| ""] ifFalse: [| [hits first]]]]];
+  [[hits isEmpty] ifTrue: [| ""] ifFalse: [| [hits first]]]] doc:
+  "The whole-module source recorded for `mod` under #__modsrc__ (any load records it), or \"\"."];
 
 // "// x" -> "x": eat the marker and ONE following space (deeper indentation
 // kept, so example blocks hold their alignment); a bare "//" -> "".
 [Reflect defineMethod: #stripSlashes: on: Doc as: [:self :ln |
   [[ln startsWith: "// "]
     ifTrue:  [| [ln copyFrom: 3 to: [ln size]]]
-    ifFalse: [| [ln copyFrom: 2 to: [ln size]]]]]];
+    ifFalse: [| [ln copyFrom: 2 to: [ln size]]]]] doc:
+  "\"// x\" -> \"x\": eat the marker and ONE space, keeping deeper indentation (example alignment); bare \"//\" -> \"\"."];
 
 // The leading `//` comment block of `mod`'s recorded source — the hand-written
 // header prose (usage, examples, gotchas), or "" when the module has none (or
@@ -219,7 +225,8 @@
         [[[acc at: 0] & [ln startsWith: "//"]]
           ifTrue:  [| #[ true [[[acc at: 1] , [me stripSlashes: ln]] , "\n"] ]]
           ifFalse: [| #[ false [acc at: 1] ] ]]]];
-      [[r at: 1] trimmed]]]]];
+      [[r at: 1] trimmed]]]] doc:
+  "The leading // comment block of `mod`'s recorded source — the hand-written header prose (usage, gotchas), or \"\"."];
 
 // -- CLI ----------------------------------------------------------------------
 
@@ -232,7 +239,8 @@
       let src := [self moduleSource: mod];
       [[src isEmpty]
         ifTrue:  [| [["no documentation for " , [self nameOf: mod]] , "\n"]]
-        ifFalse: [| [[[self nameOf: mod] , "\n\n"] , [src , "\n"]]]]]]]];
+        ifFalse: [| [[[self nameOf: mod] , "\n\n"] , [src , "\n"]]]]]]] doc:
+  "`birnam doc <mod>` — the registered docs, else the recorded whole-module source, else a friendly note."];
 
 // `birnam doc <mod> <sel>` — the docstring(s) for one selector name (a String),
 // else the recorded source(s) of that selector, else a friendly note.
@@ -247,7 +255,8 @@
     ifFalse: [| [hits inject: "" into: [:acc :e |
       let s := [self nameOf: [[db cellFor: e attr: #sel] value]];
       let t := [[db cellFor: e attr: #text] value];
-      [acc , [[s , "\n    "] , [t , "\n"]]]]]]]]];
+      [acc , [[s , "\n    "] , [t , "\n"]]]]]]]] doc:
+  "`birnam doc <mod> <sel>` — the docstring(s) for one selector name, else its recorded source(s), else a note."];
 
 // Markdown hover body for a selector NAME: registered docstrings if any, else the
 // recorded source in a code block, else "" (nothing to show). The single source of
@@ -259,7 +268,8 @@
       [[self sourcesForSelector: name] inject: "" into: [:acc :s |
         [acc , [["```birnam\n" , s] , "\n```\n\n"]]]]]
     ifFalse: [| [hits inject: "" into: [:acc :e |
-      [acc , [[[db cellFor: e attr: #text] value] , "\n\n"]]]]]]]];
+      [acc , [[[db cellFor: e attr: #text] value] , "\n\n"]]]]]]] doc:
+  "The Markdown hover body for selector `name`: registered docstrings, else fenced recorded source, else \"\" — the LSP's single source of truth."];
 
 // -- rendering: plaintext (the REPL / `birnam doc` view) ----------------------
 
@@ -274,7 +284,8 @@
     let sel := [self nameOf: [[db cellFor: e attr: #sel] value]];
     let txt := [[db cellFor: e attr: #text] value];
     [sb add: [["  " , sel] , [["\n      " , txt] , "\n"]]]]];
-  [sb asString]]];
+  [sb asString]] doc:
+  "The module's docs as indented plain text — what the REPL and the `birnam doc` CLI print."];
 
 // -- rendering: Markdown ------------------------------------------------------
 
@@ -287,13 +298,15 @@
     let sel := [self nameOf: [[db cellFor: e attr: #sel] value]];
     let txt := [[db cellFor: e attr: #text] value];
     [sb add: ["- `" , sel , "` — " , txt , "\n"]]]];
-  [sb asString]]];
+  [sb asString]] doc:
+  "One module's docs as a Markdown section: # name, the summary, a bullet per selector."];
 
 // Every documented module's Markdown, back to back (module order unspecified).
 [Reflect defineMethod: #markdownAll on: Doc as: [:self |
   let sb := [StringBuilder new];
   [[self modules] do: [:m | [[sb add: [self markdownForModule: m]] add: "\n"]]];
-  [sb asString]]];
+  [sb asString]] doc:
+  "Every documented module's Markdown, concatenated (module order unspecified)."];
 
 // -- rendering: HTML (composes modules/html.birnam) ---------------------------
 
@@ -330,7 +343,8 @@
     , ".notes{margin:.4rem 0 1rem}"
     , ".notes pre{white-space:pre-wrap}"
     , "footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}"
-    , "@media (max-width:52rem){body{flex-direction:column}nav{position:static;height:auto;flex:none;border-right:none;border-bottom:1px solid var(--line)}main{padding:0 1.25rem 3rem}}"]]];
+    , "@media (max-width:52rem){body{flex-direction:column}nav{position:static;height:auto;flex:none;border-right:none;border-bottom:1px solid var(--line)}main{padding:0 1.25rem 3rem}}"]] doc:
+  "The reference site's CSS: sticky sidebar, readable measure, light/dark via prefers-color-scheme (quote-free, rides <style> raw)."];
 
 // The type-to-filter script: hide entries whose anchor (mod-sel) misses the
 // needle, then sections with no hits and a missing name. Single-quoted JS only
@@ -351,7 +365,8 @@
     , "var show=needle===''||any||sec.id.toLowerCase().indexOf(needle)>-1;"
     , "sec.style.display=show?'':'none';"
     , "});"
-    , "});}"]]];
+    , "});}"]] doc:
+  "The type-to-filter JS: hides entries whose anchor misses the needle, then sections with no hits and a non-matching name."];
 
 // One method entry: <dt id="mod-sel"><code>sel</code> on Proto</dt> then a <dd>
 // with the docstring and, when the store has it, the recorded source in a
@@ -374,7 +389,8 @@
       [Html tag: "details" body: [[Html tag: "summary" text: "source"] , pre]]]];
   [[Html tag: "dt" attrs: [Html attr: "id" value: [[modName , "-"] , sel]]
          body: [[Html tag: "code" text: sel] , onSpan]]
-    , [Html tag: "dd" body: [[Html escape: txt] , srcHtml]]]]];
+    , [Html tag: "dd" body: [[Html escape: txt] , srcHtml]]]] doc:
+  "One entry: an anchored <dt> (#modName-sel, selector + receiver badge) and a <dd> with the docstring and any recorded source in <details>."];
 
 // One module's section body: <h2> (self-link + Zig-floor badge), the summary,
 // the header prose (when the source records one) in a collapsed <details>, and
@@ -398,12 +414,14 @@
   [[Html tag: "h2" body: [[Html tag: "a" attrs: [Html attr: "href" value: ["#" , name]] body: [Html escape: name]] , badge]]
     , [Html tag: "p" attrs: [Html attr: "class" value: "summary"] body: [Html escape: summary]]
     , [notes
-    , [Html tag: "dl" body: [items asString]]]]]];
+    , [Html tag: "dl" body: [items asString]]]]] doc:
+  "One module's section body: self-linked <h2> (+ Zig-floor badge), summary, header-prose notes, and a <dl> of entries (`srcIdx` = a prebuilt sourceIndex)."];
 
 // The standalone form builds its own source index (whole-site rendering passes
 // one shared index instead — see htmlIndex).
 [Reflect defineMethod: #htmlForModule: on: Doc as: [:self :mod |
-  [self htmlForModule: mod sources: [self sourceIndex]]]];
+  [self htmlForModule: mod sources: [self sourceIndex]]] doc:
+  "One module's HTML section body, standalone — builds its own source index (htmlIndex shares one instead)."];
 
 // A sidebar list for `mods`: one <li><a href="#name">name</a></li> each.
 [Reflect defineMethod: #navListFor: on: Doc as: [:self :mods |
@@ -411,7 +429,8 @@
   [mods do: [:m |
     let nm := [self nameOf: m];
     [sb add: [Html tag: "li" body: [Html tag: "a" attrs: [Html attr: "href" value: ["#" , nm]] body: nm]]]]];
-  [sb asString]]];
+  [sb asString]] doc:
+  "A sidebar list for `mods`: one <li><a href=\"#name\">name</a></li> each."];
 
 // One HTML page for EVERY documented module: a grouped, name-sorted sidebar
 // (birnam modules apart from the Zig floor) + a section each, styled by
@@ -445,7 +464,8 @@
   [secs add: [Html tag: "footer" body: [Html escape: stats]]];
   let body := [[[Html tag: "nav" body: [nav asString]] , [Html tag: "main" body: [secs asString]]]
                 , [Html tag: "script" body: [self filterScript]]];
-  [Html page: "birnam documentation" style: [self stylesheet] body: body]]];
+  [Html page: "birnam documentation" style: [self stylesheet] body: body]] doc:
+  "The whole reference page: filter box, grouped name-sorted nav, a section per documented module, coverage footer — styled and scripted."];
 
 // True for a loadable LIBRARY module file (excludes tests, run-tests, and the doc
 // modules themselves — re-loading doc.birnam would wipe the Doc registry).
@@ -453,7 +473,8 @@
   let ok := [[[nm endsWith: ".birnam"] & [[nm includesSubstring: "-test"] not]] & [[nm includesSubstring: "run-tests"] not]];
   [[[nm = "doc.birnam"] | [nm = "zigdoc.birnam"]]
     ifTrue:  [| false]
-    ifFalse: [| ok]]]];
+    ifFalse: [| ok]]] doc:
+  "True iff `nm` names a loadable LIBRARY module file — excludes tests and the doc modules themselves (re-loading doc.birnam wipes the registry)."];
 
 // Load every library module under `md` (so their `doc:` registrations fire).
 // Guard-loads File first (from `md`) since it drives the directory walk. Answers self.
@@ -461,13 +482,36 @@
   [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: [md , "/file.birnam"]]]];
   [[File listDir: md] do: [:nm |
     [[self isLibModule: nm] ifTrue: [| [System load: [[md , "/"] , nm]]] ifFalse: [| nil]]]];
-  self]];
+  self] doc:
+  "Load every library module under `md` so their doc: registrations fire (guard-loads File first). Answers self."];
 
-// Build the full HTML reference to `out`: load every library module under `md`,
-// extract every Zig floor file under `zd`, then write `htmlIndex`. Answers `out`.
+// Re-load the birnam FLOOR files (compiled to dylibs at boot, so their doc:
+// registrations fired before Doc existed and were dropped) from source under
+// `zd`, now that Doc is loaded — their docstrings land like any module's.
+// Re-loading them is idempotent (method installs funnel ensurePrivateVtable;
+// their top level only re-registers Module deps and re-derives globals). The
+// module MANAGER (modules.birnam) is deliberately absent: re-running its
+// self-registration mid-session buys docs at too much risk. Existence-guarded
+// (an installed birnam need not carry src/id).
+[Reflect defineMethod: #loadFloorSources: on: Doc as: [:self :zd |
+  [#[ "stdlib.birnam" "toml.birnam" "config.birnam" ] do: [:nm |
+    let p := [[zd , "/"] , nm];
+    [[File exists: p] ifTrue: [| [System load: p]] ifFalse: [| nil]]]];
+  self] doc:
+  "Re-load the birnam floor sources under `zd` (stdlib/toml/config) so their boot-dropped docstrings land; the module manager is deliberately skipped. Answers self."];
+
+// Build the full HTML reference to `out`: load every library module under `md`
+// plus the birnam floor sources under `zd`, extract every Zig floor file under
+// `zd`, then write `htmlIndex`. Answers `out`.
 [Reflect defineMethod: #buildSite:modules:zig: on: Doc as: [:self :out :md :zd |
   let me := self;
   [self loadAllModules: md];
+  [self loadFloorSources: zd];
   [Zigdoc scanDir: zd];
   [File write: out contents: [me htmlIndex]];
-  out]]
+  out] doc:
+  "Build the full HTML reference to `out`: load modules under `md` + floor sources, scan Zig under `zd`, write htmlIndex. Answers `out`."];
+
+// module:is: predates the #doc registration above (it IS the registrar), so its
+// docstring rides the appended path instead of a doc: define:
+[Doc for: #module:is: in: #doc says: "Register `mod` with a one-line `summary`: marks it documented, seeds its cells, and makes it the CURRENT module for doc: definitions. Call once, first — calling again resets the method list."]

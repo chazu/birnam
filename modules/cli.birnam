@@ -25,23 +25,28 @@
 // Print a line and answer a status: say = help/progress (0), fail = error (1).
 [Reflect defineMethod: #say: on: Cli as: [:self :msg |
   [System println: msg];
-  0]];
+  0] doc:
+  "Prints `msg` and answers status 0 — for help/progress output."];
 [Reflect defineMethod: #fail: on: Cli as: [:self :msg |
   [System println: msg];
-  1]];
+  1] doc:
+  "Prints `msg` and answers status 1 — for error output."];
 
 // Load a module source once: skip when NAME is already bound (an earlier load),
 // else load PATH — the same guard idiom the modules use among themselves.
 [Reflect defineMethod: #ensure:loaded: on: Cli as: [:self :name :path |
-  [[Globals includes: name] ifTrue: [| nil] ifFalse: [| [System load: path]]]]];
+  [[Globals includes: name] ifTrue: [| nil] ifFalse: [| [System load: path]]]] doc:
+  "Loads module source `path` unless `name` is already bound in Globals (the modules' own load-once guard idiom)."];
 
 // The last compile's outcome as a process status. `status` reports the error;
 // `statusQuiet` only answers it (for --lsp, whose stdout is protocol-only).
 [Reflect defineMethod: #statusQuiet on: Cli as: [:self |
-  [[[Codegen lastError] isNil] ifTrue: [| 0] ifFalse: [| 1]]]];
+  [[[Codegen lastError] isNil] ifTrue: [| 0] ifFalse: [| 1]]] doc:
+  "The last compile's outcome as a status (0 ok, 1 error) without printing — for --lsp, whose stdout is protocol-only."];
 [Reflect defineMethod: #status on: Cli as: [:self |
   let e := [Codegen lastError];
-  [[e isNil] ifTrue: [| 0] ifFalse: [| [self fail: ["birnam: " , e]]]]]];
+  [[e isNil] ifTrue: [| 0] ifFalse: [| [self fail: ["birnam: " , e]]]]] doc:
+  "The last compile's outcome as a status: 0 when clean, else reports the error and answers 1."];
 
 // -- doc: `birnam doc <module> [selector]` --------------------------------------
 
@@ -63,7 +68,8 @@
   [[sel isNil]
     ifTrue:  [| [System print: [Doc cli: [mod asSymbol]]]]
     ifFalse: [| [System print: [Doc cli: [mod asSymbol] sel: sel]]]];
-  [self status]]];
+  [self status]] doc:
+  "Print docs for module `mod` (all of it, or one selector when `sel` is non-nil) via [Doc cli:], resolving birnam or Zig floor sources."];
 
 // -- docgen: `birnam docgen [out.html]` -----------------------------------------
 
@@ -104,12 +110,14 @@
 [Reflect defineMethod: #validPort: on: Cli as: [:self :port |
   [[port isNil]
     ifTrue:  [| false]
-    ifFalse: [| [[port >= 0] & [port <= 65535]]]]]];
+    ifFalse: [| [[port >= 0] & [port <= 65535]]]]] doc:
+  "True iff `port` is a usable TCP port: non-nil (asInteger answers nil for a non-number) and in 0..65535."];
 
 [Reflect defineMethod: #listenOn:file:dir: on: Cli as: [:self :port :file :mdir |
   [[self validPort: port]
     ifTrue:  [| [self listenGo: port file: file dir: mdir]]
-    ifFalse: [| [self say: "birnam --listen: port must be a number in 0..65535"]]]]];
+    ifFalse: [| [self say: "birnam --listen: port must be a number in 0..65535"]]]] doc:
+  "Serves the socket REPL on `port` (running `file` first when non-nil) after validating it; a bad port prints the range message."];
 
 // Optionally run FILE against the fresh image first (the listener then attaches
 // to its state), then load the networking + REPL modules and block in accept().
@@ -118,13 +126,15 @@
   let fst := [[file isNil] ifTrue: [| 0] ifFalse: [| [self runFile: file]]];
   [[fst = 0]
     ifTrue:  [| [self serveRepl: port dir: mdir]]
-    ifFalse: [| 1]]]];
+    ifFalse: [| 1]]] doc:
+  "Runs `file` against the fresh image first when non-nil (a failure answers 1), then serves the REPL on `port`."];
 
 [Reflect defineMethod: #serveRepl:dir: on: Cli as: [:self :port :mdir |
   [self ensure: #Socket loaded: [mdir , "/socket.birnam"]];
   [self ensure: #Repl   loaded: [mdir , "/repl.birnam"]];
   [Repl serveOn: port];
-  [self status]]];
+  [self status]] doc:
+  "Loads the socket + repl modules, then blocks in [Repl serveOn: port]; answers the compile status."];
 
 // Evaluate a birnam source file against the live image, reporting a compile
 // error the way the script runner does (status 1; the driver exits with it).
@@ -132,14 +142,16 @@
   let src := [System readFile: path];
   [[src isError]
     ifTrue:  [| [self fail: ["birnam: could not read " , path]]]
-    ifFalse: [| [self evalSource: src from: path]]]]];
+    ifFalse: [| [self evalSource: src from: path]]]] doc:
+  "Evaluates birnam file `path` against the live image; an unreadable file answers status 1."];
 
 [Reflect defineMethod: #evalSource:from: on: Cli as: [:self :src :path |
   [Codegen evalPersisting: src];
   let e := [Codegen lastError];
   [[e isNil]
     ifTrue:  [| 0]
-    ifFalse: [| [self fail: [[["birnam: compile error in " , path] , ":\n"] , e]]]]]];
+    ifFalse: [| [self fail: [[["birnam: compile error in " , path] , ":\n"] , e]]]]] doc:
+  "Evaluates `src` via [Codegen evalPersisting:]; a compile error is reported naming `path` (status 1), else 0."];
 
 // -- init: `birnam init` ---------------------------------------------------------
 
@@ -210,12 +222,14 @@
 // Add more wraps following the same pattern, e.g. a one-argument call:
 //   [Alien wrap: \"%N%_do\" signature: \"i i\" as: #do: on: %C%]
 // then `[%C% do: 5]` calls `%N%_do(5)`.
-"]];
+"] doc:
+  "The raw wrap scaffold source — %N% = the library name as typed, %C% = the capitalized Globals binding."];
 
 // The template with %N%/%C% substituted for NAME (Config/Toml capitalization).
 [Reflect defineMethod: #wrapTemplate: on: Cli as: [:self :name |
   let cap := [[[name copyFrom: 0 to: 1] asUppercase] , [name copyFrom: 1 to: [name size]]];
-  [[[self wrapTemplateRaw] replace: "%N%" with: name] replace: "%C%" with: cap]]];
+  [[[self wrapTemplateRaw] replace: "%N%" with: name] replace: "%C%" with: cap]] doc:
+  "The wrap scaffold with %N%/%C% substituted for `name` (Config/Toml capitalization)."];
 
 [Reflect defineMethod: #wrap:dir: on: Cli as: [:self :args :mdir |
   let name := [args at: 1 ifAbsent: [| nil]];
@@ -240,7 +254,8 @@
       [[w isError]
         ifTrue:  [| [self fail: ["birnam wrap: could not write " , path]]]
         ifFalse: [| [self say: [[[[["[wrap] scaffolded " , path] , "
-        edit the wraps, build lib"] , name] , ".dylib, then: birnam "] , path]]]]]]]];
+        edit the wraps, build lib"] , name] , ".dylib, then: birnam "] , path]]]]]]] doc:
+  "Scaffold `base`/`name`/`name`.birnam; an existing file is never clobbered (status 0), a write failure answers 1."];
 
 // -- the dispatcher --------------------------------------------------------------
 

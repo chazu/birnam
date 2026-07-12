@@ -58,9 +58,11 @@
 [Reflect docModule: #bench is: "The benchmark harness — calibrated, GC-disciplined timing over a native to:do: loop (docs/design/46)."];
 
 [Reflect defineMethod: #name on: BenchSuite as: [:self |
-  [[db cellFor: self attr: #name] value]]];
+  [[db cellFor: self attr: #name] value]] doc:
+  "The suite's name."];
 [Reflect defineMethod: #cases on: BenchSuite as: [:self |
-  [[db cellFor: self attr: #cases] value]]];
+  [[db cellFor: self attr: #cases] value]] doc:
+  "The suite's registered cases (a Vector of case objects)."];
 
 [Reflect defineMethod: #named: on: BenchSuite as: [:self :nm |
   let s := [BenchSuite clone];
@@ -82,7 +84,8 @@
   [[db cellFor: cse attr: #fixedN] set: 0];
   [[db cellFor: cse attr: #cblock] set: blk];
   [[db cellFor: self attr: #cases] set: [[self cases] add: cse]];
-  cse]];
+  cse] doc:
+  "The shared case constructor: registers case `nm` with `k` ops per iteration and body `blk`; answers the case object."];
 
 [Reflect defineMethod: #case:opsPerIter:do: on: BenchSuite as: [:self :nm :k :blk |
   [self addCase: nm k: k blk: blk];
@@ -117,13 +120,16 @@
 
 // Quick mode: BENCH_QUICK set (to anything) — the dev loop.
 [Reflect defineMethod: #quick on: Bench as: [:self |
-  [[["BENCH_QUICK" getenvValue] isNil] ifTrue: [| false] ifFalse: [| true]]]];
+  [[["BENCH_QUICK" getenvValue] isNil] ifTrue: [| false] ifFalse: [| true]]] doc:
+  "True iff BENCH_QUICK is set (to anything) in the environment — the dev loop's lower floor and rep count."];
 
 // Calibration floor (µs a single timed run must exceed) and rep count.
 [Reflect defineMethod: #floorUs on: Bench as: [:self |
-  [[self quick] ifTrue: [| 20000] ifFalse: [| 100000]]]];
+  [[self quick] ifTrue: [| 20000] ifFalse: [| 100000]]] doc:
+  "The calibration floor in µs one timed run must exceed (20000 quick, 100000 full)."];
 [Reflect defineMethod: #benchReps on: Bench as: [:self |
-  [[self quick] ifTrue: [| 2] ifFalse: [| 5]]]];
+  [[self quick] ifTrue: [| 2] ifFalse: [| 5]]] doc:
+  "How many timed reps per case (2 quick, 5 full)."];
 
 // The empty loop — the baseline every subtracted case measures against. Same
 // shape as every case body: one native to:do:, nothing in it. A METHOD
@@ -133,7 +139,8 @@
 // NOTE the same applies to registered SUITES (case blocks live in cells) —
 // define suites only in processes that don't save images.
 [Reflect defineMethod: #emptyLoop on: Bench as: [:self |
-  [:m | [1 to: m do: [:i | nil]]]]];
+  [:m | [1 to: m do: [:i | nil]]]] doc:
+  "A fresh empty-loop block — the baseline every subtracted case measures against (a method, not a cell, so images stay saveable)."];
 
 // -- the ONLY timed window in the module ----------------------------------------
 // GC immediately before, then start..run..stop. Nothing else may read the clock.
@@ -154,7 +161,8 @@
     ifTrue:  [| m]
     ifFalse: [| [[m >= 1073741824]
       ifTrue:  [| m]
-      ifFalse: [| [self calibrate: blk from: [m * 2]]]]]]]];
+      ifFalse: [| [self calibrate: blk from: [m * 2]]]]]]] doc:
+  "Doubles `m` until one timed run of `blk` exceeds the floor (ceiling 2^30); answers the iteration count."];
 
 // R timed runs at m iterations; answers the Vector of elapsed µs. The cell
 // writes land BETWEEN timed windows (timeOnce: brackets only the block).
@@ -165,16 +173,19 @@
   [1 to: [self benchReps] do: [:r |
     let e := [self timeOnce: blk iters: m];
     [acc set: [[acc value] add: e]]]];
-  [acc value]]];
+  [acc value]] doc:
+  "benchReps timed runs of `blk` at `m` iterations; answers the Vector of elapsed µs (cell writes land between windows)."];
 
 // Median = middle element of the sorted runs; min via fold. NOTE: `sortBy:`
 // takes a one-arg KEY block (elements sort by `<` on their keys), NOT a
 // two-arg comparator — identity is the ascending sort of Integers.
 [Reflect defineMethod: #medianOf: on: Bench as: [:self :v |
   let sorted := [v sortBy: [:x | x]];
-  [sorted at: [[v size] / 2]]]];
+  [sorted at: [[v size] / 2]]] doc:
+  "The median of `v` — the middle element of the ascending sort."];
 [Reflect defineMethod: #minOf: on: Bench as: [:self :v |
-  [v inject: [v at: 0] into: [:acc :x | [[x < acc] ifTrue: [| x] ifFalse: [| acc]]]]]];
+  [v inject: [v at: 0] into: [:acc :x | [[x < acc] ifTrue: [| x] ifFalse: [| acc]]]]] doc:
+  "The minimum element of `v`, via a fold."];
 
 // -- run one case -----------------------------------------------------------------
 // The warmup is ONE iteration and doubles as the error gate: an erroring body
@@ -192,7 +203,8 @@
       [[db cellFor: Bench attr: #failures] set: [[self failures] + 1]];
       [System println: ["  FAIL " , nm , ": " , [w printString]]]]
     ifFalse: [| [self measureCase: cse]]];
-  self]];
+  self] doc:
+  "Run one case: a one-iteration warmup doubles as the error gate — an erroring body FAILs (counts on #failures), else measure."];
 
 [Reflect defineMethod: #measureCase: on: Bench as: [:self :cse |
   let blk := [[db cellFor: cse attr: #cblock] value];
@@ -229,7 +241,8 @@
   [System println: ["  " , nm , ": " , [[[db cellFor: rec attr: #nsOp] value] printString]
                    , " ns/op (raw " , [[[db cellFor: rec attr: #nsOpRaw] value] printString]
                    , ", n=" , [n printString] , ", k=" , [k printString] , ")"]];
-  self]];
+  self] doc:
+  "Measure one case: calibrate (or use fixedN), sample, subtract the empty-loop baseline (unless raw); record and print."];
 
 // -- one-shot external measurements ---------------------------------------------
 // For work that can run exactly ONCE per process (e.g. a store-seeding pass:
@@ -288,7 +301,8 @@
   [sb add: ",\"min_us\":"];
   [sb add: [[[db cellFor: rec attr: #minUs] value] printString]];
   [sb add: "}"];
-  [sb asString]]];
+  [sb asString]] doc:
+  "One result record `rec` as a JSON object string, hand-assembled for a stable field order."];
 
 [Reflect defineMethod: #jsonString on: Bench as: [:self |
   let sb := [StringBuilder new];
@@ -307,7 +321,8 @@
 
 // -- write --------------------------------------------------------------------------
 [Reflect defineMethod: #ensureDir: on: Bench as: [:self :p |
-  [[File isDir: p] ifTrue: [| nil] ifFalse: [| [File makeDir: p]]]]];
+  [[File isDir: p] ifTrue: [| nil] ifFalse: [| [File makeDir: p]]]] doc:
+  "Creates directory `p` unless it already exists."];
 
 [Reflect defineMethod: #writeResults: on: Bench as: [:self :path |
   let env := ["BENCH_OUT" getenvValue];

@@ -54,7 +54,8 @@
   [[db cellFor: req attr: #method] set: m];
   [[db cellFor: req attr: #path]   set: clean];
   [[db cellFor: req attr: #raw]    set: raw];
-  req]];
+  req] doc:
+  "Parse `raw` request bytes into an HttpRequest; query string stripped from the path, malformed/empty defaults to GET /."];
 
 // -- content types ------------------------------------------------------------
 
@@ -69,15 +70,18 @@
              #svg  -> "image/svg+xml",
              #txt  -> "text/plain; charset=utf-8",
              #md   -> "text/plain; charset=utf-8" };
-  t]];
+  t] doc:
+  "The extension-symbol -> content-type Map (identity-keyed, so interned symbol keys match)."];
 
 [Reflect defineMethod: #extOf: on: Http as: [:self :path |
   let e := [[[path split: "."] last] asLowercase];
-  e]];
+  e] doc:
+  "The lowercased extension of `path` (the segment after the last dot)."];
 
 [Reflect defineMethod: #mimeFor: on: Http as: [:self :path |
   let m := [[self mimeTable] at: [[self extOf: path] asSymbol] ifAbsent: [| "text/plain; charset=utf-8"]];
-  m]];
+  m] doc:
+  "The content type for `path`, by extension; unknown extensions default to text/plain."];
 
 // -- responses ----------------------------------------------------------------
 
@@ -111,12 +115,14 @@
 // The index file inside a directory path (with a single joining slash).
 [Reflect defineMethod: #indexUnder: on: Http as: [:self :dirpath |
   let idx := [[dirpath endsWith: "/"] ifTrue: [| [dirpath , "index.html"]] ifFalse: [| [dirpath , "/index.html"]]];
-  idx]];
+  idx] doc:
+  "The index.html path inside directory `dirpath` (with a single joining slash)."];
 
 // One <li> link for a directory listing.
 [Reflect defineMethod: #linkItem:base: on: Http as: [:self :nm :base |
   let li := [[[[["<li><a href=\"" , base] , nm] , "\">"] , nm] , "</a></li>"];
-  li]];
+  li] doc:
+  "One <li> link for directory entry `nm` under URL prefix `base`."];
 
 // A browsable HTML index of `fsdir`, linking each entry under `urlpath`.
 [Reflect defineMethod: #listing:url: on: Http as: [:self :fsdir :urlpath |
@@ -127,7 +133,8 @@
   let top   := [["<!doctype html><meta charset=utf-8><title>Index of " , urlpath] , "</title><h1>Index of "];
   let html  := [[top , urlpath] , [[" </h1><ul>" , items] , "</ul>"]];
   let r     := [self ok: html type: "text/html; charset=utf-8"];
-  r]];
+  r] doc:
+  "A 200 response carrying a browsable HTML index of `fsdir`, linking each entry under `urlpath`."];
 
 // A directory: serve its index.html if present, else a generated listing.
 [Reflect defineMethod: #dirResponse:url: on: Http as: [:self :fsdir :urlpath |
@@ -135,7 +142,8 @@
   let r   := [[File exists: idx]
                ifTrue:  [| [self ok: [File readText: idx] type: "text/html; charset=utf-8"]]
                ifFalse: [| [self listing: fsdir url: urlpath]]];
-  r]];
+  r] doc:
+  "Serve directory `fsdir`: its index.html if present, else a generated listing under `urlpath`."];
 
 // Map a URL path to a file under `docroot` and build the response. A path
 // containing ".." is refused (no traversal above the root).
@@ -144,7 +152,8 @@
   let r  := [[urlpath includesSubstring: ".."]
               ifTrue:  [| [me forbidden]]
               ifFalse: [| [me servePath: [docroot , urlpath] url: urlpath]]];
-  r]];
+  r] doc:
+  "Map `urlpath` to a file under `docroot` and build the response; a path containing \"..\" answers 403 (no traversal)."];
 
 // Given a filesystem path, serve a directory (index/listing), a file, or 404.
 [Reflect defineMethod: #servePath:url: on: Http as: [:self :fp :urlpath |
@@ -154,7 +163,8 @@
               ifFalse: [| [[File exists: fp]
                             ifTrue:  [| [me ok: [File readText: fp] type: [me mimeFor: fp]]]
                             ifFalse: [| [me notFound]]]]];
-  r]];
+  r] doc:
+  "Serve filesystem path `fp` as `urlpath`: a directory (index/listing), an existing file, or 404."];
 
 // -- the servers --------------------------------------------------------------
 

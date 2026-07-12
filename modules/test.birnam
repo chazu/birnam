@@ -42,20 +42,23 @@
 [Reflect docModule: #test is: "A live, Smalltalk-style test system — suites as store facts, pluggable runner."];
 
 [Reflect defineMethod: #runner on: TestContext as: [:self |
-  [[db cellFor: self attr: #runner] value]]];
+  [[db cellFor: self attr: #runner] value]] doc:
+  "Answers the runner this context reports outcomes to."];
 
 // A fresh context bound to a runner.
 [Reflect defineMethod: #for: on: TestContext as: [:self :r |
   let t := [TestContext clone];
   [[db cellFor: t attr: #runner] set: r];
-  t]];
+  t] doc:
+  "A fresh TestContext bound to runner `r`."];
 
 // The funnel: report a pass or a failure (with detail) to the runner.
 [Reflect defineMethod: #note:label:detail: on: TestContext as: [:self :ok :label :detail |
   [ok
     ifTrue:  [| [[self runner] passed: label]]
     ifFalse: [| [[self runner] failed: label detail: detail]]];
-  self]];
+  self] doc:
+  "The funnel: report `ok` as a pass or a failure of `label` (with `detail`) to the runner. Chainable."];
 
 [Reflect defineMethod: #assert:describes: on: TestContext as: [:self :cond :label |
   [self note: [[cond printString] = "true"] label: label detail: "expected true"]] doc:
@@ -79,32 +82,39 @@
 [Globals at: #ConsoleRunner put: [Object clone]];
 
 [Reflect defineMethod: #passedCount on: ConsoleRunner as: [:self |
-  [[db cellFor: self attr: #pass] value]]];
+  [[db cellFor: self attr: #pass] value]] doc:
+  "The cumulative count of passed checks."];
 [Reflect defineMethod: #failedCount on: ConsoleRunner as: [:self |
-  [[db cellFor: self attr: #fail] value]]];
+  [[db cellFor: self attr: #fail] value]] doc:
+  "The cumulative count of failed checks."];
 
 // Zero the cumulative totals. The run-all/run-module entry points call this;
 // runSuite:withRunner: does NOT, so several suites can accumulate into one runner.
 [Reflect defineMethod: #reset on: ConsoleRunner as: [:self |
   [[db cellFor: self attr: #pass] set: 0];
   [[db cellFor: self attr: #fail] set: 0];
-  self]];
+  self] doc:
+  "Zero the cumulative totals; runSuite:withRunner: does NOT call this, so several suites can accumulate into one runner."];
 
 [Reflect defineMethod: #suiteStarted: on: ConsoleRunner as: [:self :nm |
   [System println: ["== " , nm , " =="]];
-  self]];
+  self] doc:
+  "Print the `== nm ==` header announcing a suite."];
 
 [Reflect defineMethod: #passed: on: ConsoleRunner as: [:self :label |
   [[db cellFor: self attr: #pass] set: [[self passedCount] + 1]];
   [System println: ["  ok   " , label]];
-  self]];
+  self] doc:
+  "Count a pass and print its ok line for `label`."];
 
 [Reflect defineMethod: #failed:detail: on: ConsoleRunner as: [:self :label :detail |
   [[db cellFor: self attr: #fail] set: [[self failedCount] + 1]];
   [System println: ["  FAIL " , label , " (" , detail , ")"]];
-  self]];
+  self] doc:
+  "Count a failure and print its FAIL line for `label` with `detail`."];
 
-[Reflect defineMethod: #suiteFinished: on: ConsoleRunner as: [:self :nm | self]];
+[Reflect defineMethod: #suiteFinished: on: ConsoleRunner as: [:self :nm | self] doc:
+  "A no-op hook after suite `nm` finishes; answers self."];
 
 [Reflect defineMethod: #summary on: ConsoleRunner as: [:self |
   [System println:
@@ -129,9 +139,11 @@
 [Globals at: #TestSuite put: [Object clone]];
 
 [Reflect defineMethod: #name on: TestSuite as: [:self |
-  [[db cellFor: self attr: #name] value]]];
+  [[db cellFor: self attr: #name] value]] doc:
+  "Answers the suite's name."];
 [Reflect defineMethod: #cases on: TestSuite as: [:self |
-  [[db cellFor: self attr: #cases] value]]];
+  [[db cellFor: self attr: #cases] value]] doc:
+  "Answers the suite's deferred (name, block) cases."];
 
 [Reflect defineMethod: #named:module: on: TestSuite as: [:self :nm :mod |
   let s := [TestSuite clone];
@@ -157,7 +169,8 @@
 
 // Every registered suite.
 [Reflect defineMethod: #suites on: Test as: [:self |
-  [db findAll: ?s where: #[ #[?s #isTestSuite #true] ]]]];
+  [db findAll: ?s where: #[ #[?s #isTestSuite #true] ]]] doc:
+  "Every registered suite (queried from the store)."];
 
 [Reflect defineMethod: #suitesForModule: on: Test as: [:self :mod |
   [db findAll: ?s where: #[ #[?s #testsModule mod] ]]] doc:
@@ -171,7 +184,8 @@
   [[s cases] do: [:cse |
     [[[db cellFor: cse attr: #cblock] value] value: t]]];
   [r suiteFinished: [s name]];
-  s]];
+  s] doc:
+  "Run suite `s` against runner `r`, handing each case block a fresh TestContext; does NOT reset `r` (see reset)."];
 
 // Run every registered suite through the runner (reset first, summarise after).
 // Answers the runner, so `[[Test runAllSuitesWithRunner: R] allPassed]` gates.

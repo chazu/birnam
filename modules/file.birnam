@@ -90,7 +90,8 @@
       let name := [d peekStringAt: 21];        // macOS struct dirent: d_name at offset 21
       let skip := [[name = "."] | [name = ".."]];
       let acc2 := [skip ifTrue: [| acc] ifFalse: [| [acc add: name]]];
-      [self entriesOf: dir into: acc2]]]]];
+      [self entriesOf: dir into: acc2]]]] doc:
+  "Accumulate the remaining entry names of open DIR* `dir` onto `acc`, skipping . and ..; answers the Vector."];
 
 [Reflect defineMethod: #listDir: on: File as: [:self :path |
   let dir := [path opendir];

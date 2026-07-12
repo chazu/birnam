@@ -52,7 +52,8 @@
   let r := [buf fgetsSize: 4096 stream: fp];
   [[r isNull]
     ifTrue:  [| acc]
-    ifFalse: [| [self drainFp: fp buf: buf into: [acc , [buf peekStringAt: 0]]]]]]];
+    ifFalse: [| [self drainFp: fp buf: buf into: [acc , [buf peekStringAt: 0]]]]]] doc:
+  "Read the rest of `fp` through reusable buffer `buf`, accumulating onto `acc`; answers the text at EOF."];
 
 // -- the public surface -------------------------------------------------------
 
