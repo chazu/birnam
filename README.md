@@ -14,6 +14,8 @@ Birnam currently supports **arm64 macOS** with **Zig 0.15.1**. This applies to
 development builds, installed binaries, and release bundles. Other targets fail
 early rather than producing an artifact that cannot link or boot.
 
+Linux support is planned.
+
 See [Platform support](docs/misc/PLATFORM-SUPPORT.md) for the porting boundary
 and acceptance criteria.
 
@@ -131,6 +133,39 @@ It runs the Zig unit/integration suites, rebuilds self-hosted artifacts with
 `stage1`, executes the birnam-level suites, and checks REPL transcripts. The
 narrower commands are `zig build test`, `zig build test-birnam`, and `zig build
 test-repl`. GitHub Actions runs `verify` on the supported arm64 macOS target.
+
+## Benchmarks
+
+Performance is tracked per tagged release. The suite measures the send
+constant and the native-vs-derived boundaries that gate self-hosting
+migrations, the datalog read/write path, GC, images, boot paths, and
+whole-process workloads — always against a ReleaseSafe build.
+
+```sh
+BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam   # tight dev loop (~5s)
+mise run bench                                          # full run -> bench/results/dev/
+mise run bench-compare bench/results/v0.8.0.json bench/results/dev/bench-<sha>.json
+```
+
+When to run: the affected suite before and after any perf-relevant change
+(dispatch, collections, strings, store, codegen); the full `mise run bench` +
+a compare against the last release snapshot before merging bigger work.
+`bench-compare` exits non-zero when a case regresses past its threshold
+(10% micro, 5% elsewhere), so it can gate scripts.
+
+**As part of the release process:** after `mise run release`, on the tagged
+commit and a quiet machine, run
+
+```sh
+mise run bench-release
+git add bench/results/v<X.Y.Z>.json && git commit
+```
+
+The committed snapshot is the baseline all future runs compare against.
+(This step is intentionally outside `release.sh` — bench noise must never
+block a release.) `docs/misc/BENCHMARKS.md` is the full operational guide;
+[docs/design/46-benchmarks.md](docs/design/46-benchmarks.md) records the
+methodology and the measured constants.
 
 ## Architecture
 

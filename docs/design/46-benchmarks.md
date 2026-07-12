@@ -198,15 +198,18 @@ deltas, exits non-zero if any regression exceeds the threshold — **10% for
 micro** (noisier), **5% for macro** — or if a case is missing without an
 entry in the retired-case list. Improvements are listed, never fatal.
 Thresholds and the retired list live at the top of the script.
-Bootstrap caveat: the compare tool runs on a birnam binary; when the build
-under investigation is itself broken, run compare under the **last installed
-release binary** (`~/.local/bin/birnam`) — the script prefers it when
-present, falling back to `zig-out`.
+Bootstrap caveat: the compare tool's module sources live in this repo, so
+the wrapper runs the **repo's own build** by default — an older installed
+binary can silently mis-run newer module sources (measured: the installed
+0.7.4 produced empty-but-passing output on current files; "prefer the
+installed binary" was tried and reverted). When the working-tree build is
+broken, point `BENCH_BIN` at any known-good birnam at least as new as the
+compare tool.
 
 ### Wiring
 
 - `mise run bench` → `scripts/bench.sh` (dev mode).
-- `mise run bench --release` → the checked-in snapshot, run **after**
+- `mise run bench-release` → the checked-in snapshot, run **after**
   `release.sh` on the tagged commit; committing the result is part of the
   release procedure (documented in this doc and in `mise.toml`'s comment
   header). Deliberately **not** inside `release.sh`: bench noise must not be

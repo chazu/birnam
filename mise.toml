@@ -5,6 +5,10 @@
 #   mise run install        # install to a prefix
 #   mise run dist           # build a release tarball for this platform
 #   mise run release minor  # bump version, tag, build, publish a GitHub release
+#   mise run bench          # full benchmark run (ReleaseSafe) -> bench/results/dev/
+#   mise run bench-release  # tracked snapshot -> bench/results/v<VERSION>.json
+#                           # (run AFTER release, on the tagged commit; commit the file)
+#   mise run bench-compare bench/results/v0.8.0.json bench/results/dev/bench-<sha>.json
 
 [tools]
 zig = "0.15.1"
@@ -33,3 +37,15 @@ run = "./scripts/dist.sh"
 [tasks.release]
 description = "Bump version, build, tag, and publish a GitHub release (patch|minor|major)"
 run = "./scripts/release.sh {{arg(name='level')}}"
+
+[tasks.bench]
+description = "Run the full benchmark suite (ReleaseSafe) — results to bench/results/dev/ (docs/misc/BENCHMARKS.md)"
+run = "./scripts/bench.sh"
+
+[tasks.bench-release]
+description = "Tracked benchmark snapshot -> bench/results/v<VERSION>.json (run after a release, on the tagged commit, quiet machine; then commit the file)"
+run = "./scripts/bench.sh --release"
+
+[tasks.bench-compare]
+description = "Diff two merged benchmark results; exits 1 on regression past threshold"
+run = "./scripts/bench-compare.sh {{arg(name='old')}} {{arg(name='new')}}"

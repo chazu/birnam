@@ -56,11 +56,14 @@ run_suite() { # run_suite <script> <label> <runs>
 REP_SUITES=1
 [ $MODE = release ] && REP_SUITES=3
 
+# gc and image are one-shot-per-process, so their only defense against
+# run-to-run noise (gc measured ±5% back-to-back) is process replication —
+# they replicate with micro/relational in release mode.
 run_suite bench/micro.birnam micro $REP_SUITES
 run_suite bench/parse.birnam parse 1
 run_suite bench/relational.birnam relational $REP_SUITES
-run_suite bench/gc.birnam gc 1
-BENCH_IMG="$TMP/bench.image" run_suite bench/image.birnam image 1
+run_suite bench/gc.birnam gc $REP_SUITES
+BENCH_IMG="$TMP/bench.image" run_suite bench/image.birnam image $REP_SUITES
 
 # ---------------------------------------------------------------------------
 # macro cases — whole-process wall time (python3 monotonic clock around a

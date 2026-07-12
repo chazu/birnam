@@ -1,0 +1,175 @@
+// compare.birnam — diff two merged bench-result files (docs/design/46 Phase 5).
+//
+// Driven by scripts/bench-compare.sh, which passes the two paths as BENCH_A
+// (old / baseline) and BENCH_B (new). Works on the DRIVER's merged format
+// ({stamp, suites:[{label,run,data}], macro:[…]}), not bare per-suite files.
+//
+// Per case: value = net_us*1000/ops (full-precision ns/op; wall_us_median for
+// macro cases), medianed across a release run's replicated processes. Deltas
+// past the per-layer threshold are REGRESSIONs and fail the compare; a case
+// missing from the new side fails unless listed in RETIRED (names are a
+// contract). Improvements and new cases are notes, never fatal.
+//
+// Exit: 0 clean, 1 regression/missing case, 2 usage or parse failure.
+
+[System load: "modules/bench.birnam"];
+[System load: "modules/os.birnam"];
+[[Globals includes: #Json] ifTrue: [| nil] ifFalse: [| [System load: "modules/json.birnam"]]];
+
+// -- policy (edit here) -----------------------------------------------------
+// Retired case names (see docs/design/46 "Retired cases").
+let RETIRED := #[];
+// Regression thresholds, percent. Micro is noisier (±8% between processes).
+let THRESH_MICRO := 10.0;
+let THRESH_OTHER := 5.0;
+
+// -- helpers ------------------------------------------------------------------
+[Globals at: #Cmp put: [Object clone]];
+
+// A grouped record: name, layer label, and the values seen across runs.
+[Reflect defineMethod: #rec:label:value: on: Cmp as: [:self :nm :lbl :val |
+  let r := [Object clone];
+  [[db cellFor: r attr: #nm]   set: nm];
+  [[db cellFor: r attr: #lbl]  set: lbl];
+  [[db cellFor: r attr: #vals] set: [#[] add: val]];
+  r]];
+
+// Fold a (name, label, value) into the grouped vector: append to an existing
+// group or start a new one.
+[Reflect defineMethod: #into:name:label: on: Cmp as: [:self :out :nm :more |
+  let lbl := [more at: 0];
+  let val := [more at: 1];
+  let ex := [out detect: [:o | [[[db cellFor: o attr: #nm] value] = nm]]];
+  [[ex isNil]
+    ifTrue:  [| [out add: [self rec: nm label: lbl value: val]]]
+    ifFalse: [|
+      let c := [db cellFor: ex attr: #vals];
+      [c set: [[c value] add: val]];
+      out]]]];
+
+// Every (name, label, value) in a merged result doc, grouped by name.
+// NOTE: `#[…]` vector literals are LITERAL-only (a variable element does not
+// evaluate — discovered here) — runtime pairs are built with add:.
+[Reflect defineMethod: #gather: on: Cmp as: [:self :doc |
+  let fromSuites := [[doc at: "suites"] inject: #[] into: [:out :se |
+    let lbl := [se at: "label"];
+    [[[se at: "data"] at: "cases"] inject: out into: [:o2 :c |
+      let val := [[[self toFloat: [c at: "net_us"]] * 1000.0] / [self toFloat: [c at: "ops"]]];
+      [self into: o2 name: [c at: "name"] label: [[#[] add: lbl] add: val]]]]]];
+  [[doc at: "macro"] inject: fromSuites into: [:o2 :m |
+    let mv := [self toFloat: [m at: "wall_us_median"]];
+    [self into: o2 name: [m at: "name"] label: [[#[] add: "macro"] add: mv]]]]]];
+
+[Reflect defineMethod: #medianVal: on: Cmp as: [:self :r |
+  let v := [[db cellFor: r attr: #vals] value];
+  let sorted := [v sortBy: [:x | x]];
+  [sorted at: [[v size] / 2]]]];
+
+// Robust number → Float: Integer answers asFloat; a Float DNUs on asFloat
+// (discovered here) and answers itself via the fallback. Anything else
+// propagates the error, which the ill-conditioned gate below turns fatal.
+[Reflect defineMethod: #toFloat: on: Cmp as: [:self :x |
+  let f := [x asFloat];
+  [[f isError] ifTrue: [| x] ifFalse: [| f]]]];
+
+// "+3.2%" from a Float percent (tenths, truncating).
+[Reflect defineMethod: #fmtPct: on: Cmp as: [:self :p |
+  let t := [[p * 10.0] asInteger];
+  let neg := [t < 0];
+  let a := [neg ifTrue: [| [0 - t]] ifFalse: [| t]];
+  [[neg ifTrue: [| "-"] ifFalse: [| "+"]]
+    , [[a / 10] printString] , "." , [[a mod: 10] printString] , "%"]]];
+
+// -- load ---------------------------------------------------------------------
+let pa := ["BENCH_A" getenvValue];
+let pb := ["BENCH_B" getenvValue];
+[[[pa isNil] | [pb isNil]] ifTrue: [|
+  [System println: "bench-compare: BENCH_A/BENCH_B unset (run via scripts/bench-compare.sh <old> <new>)"];
+  [OS exit: 2]] ifFalse: [| nil]];
+
+let ja := [Json parse: [File readText: pa]];
+let jb := [Json parse: [File readText: pb]];
+[[[ja isError] | [jb isError]] ifTrue: [|
+  [System println: "bench-compare: could not parse one of the result files"];
+  [OS exit: 2]] ifFalse: [| nil]];
+
+let A := [Cmp gather: ja];
+let Bv := [Cmp gather: jb];
+
+// Fail CLOSED on wrong-shape input: a valid-JSON file without the driver's
+// merged format (a bare per-suite file, an old format) must not compare as
+// vacuously clean.
+[[[A isError] | [Bv isError]] ifTrue: [|
+  [System println: "bench-compare: result files are not in the driver's merged format"];
+  [OS exit: 2]] ifFalse: [| nil]];
+[[[[A size] = 0] | [[Bv size] = 0]] ifTrue: [|
+  [System println: "bench-compare: no cases found (not driver-merged results?)"];
+  [OS exit: 2]] ifFalse: [| nil]];
+
+[System println: ["comparing " , pa , " -> " , pb]];
+
+// -- diff ---------------------------------------------------------------------
+let ctr := [Object clone];
+let regressions := [db cellFor: ctr attr: #reg];
+let missing     := [db cellFor: ctr attr: #miss];
+let illc        := [db cellFor: ctr attr: #ill];
+[regressions set: 0];
+[missing set: 0];
+[illc set: 0];
+
+[A do: [:ra |
+  let nm  := [[db cellFor: ra attr: #nm] value];
+  let lbl := [[db cellFor: ra attr: #lbl] value];
+  let rb := [Bv detect: [:o | [[[db cellFor: o attr: #nm] value] = nm]]];
+  [[rb isNil]
+    ifTrue: [|
+      [[RETIRED includes: nm]
+        ifTrue:  [| [System println: ["  retired    " , nm]]]
+        ifFalse: [|
+          [missing set: [[missing value] + 1]];
+          [System println: ["  MISSING    " , nm , " (not in new results, not retired)"]]]]]
+    ifFalse: [|
+      let va := [Cmp medianVal: ra];
+      let vb := [Cmp medianVal: rb];
+      // Fail CLOSED on unusable values: an error (odd/missing field) or a
+      // zero/negative value (net_us < 0 = the documented ill-conditioned
+      // flag) is a broken measurement, not a pass — and never an "IMP".
+      // (`|` is EAGER: comparing an error would itself error and be
+      // swallowed, so the isError check must gate via ifTrue:, not `|`.)
+      let bad := [[[va isError] | [vb isError]]
+        ifTrue:  [| true]
+        ifFalse: [| [[va < 0.001] | [vb < 0.001]]]];
+      [bad
+        ifTrue: [|
+          [illc set: [[illc value] + 1]];
+          [System println: ["ILL  " , nm , ": unusable value(s) — zero/negative/error (broken or ill-conditioned measurement)"]]]
+        ifFalse: [|
+          let pct := [[[vb - va] * 100.0] / va];
+          let th := [[lbl = "micro"] ifTrue: [| THRESH_MICRO] ifFalse: [| THRESH_OTHER]];
+          let line := ["  " , nm , ": " , [[va asInteger] printString] , " -> "
+                      , [[vb asInteger] printString] , " (" , [Cmp fmtPct: pct] , ")"];
+          [[pct > th]
+            ifTrue: [|
+              [regressions set: [[regressions value] + 1]];
+              [System println: ["REG" , line]]]
+            ifFalse: [|
+              [[pct < [0.0 - th]]
+                ifTrue:  [| [System println: ["IMP" , line]]]
+                ifFalse: [| [System println: ["ok " , line]]]]]]]]]]]];
+
+// New cases (in B, not in A) — informational.
+[Bv do: [:rb |
+  let nm := [[db cellFor: rb attr: #nm] value];
+  let ra := [A detect: [:o | [[[db cellFor: o attr: #nm] value] = nm]]];
+  [[ra isNil]
+    ifTrue:  [| [System println: ["  new        " , nm]]]
+    ifFalse: [| nil]]]];
+
+let regs := [regressions value];
+let miss := [missing value];
+let ills := [illc value];
+[System println: ["regressions: " , [regs printString] , ", missing: " , [miss printString]
+                 , ", unusable: " , [ills printString]]];
+[[[[regs = 0] & [miss = 0]] & [ills = 0]]
+  ifTrue:  [| [OS exit: 0]]
+  ifFalse: [| [OS exit: 1]]]
