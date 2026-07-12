@@ -103,8 +103,11 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: [#[1 2 3] copyFrom: 0 to: 9] equals: nil describes: "past-end answers nil"];
   [t expect: [#[1 2 3] includes: 2] equals: true describes: "includes: hit"];
   [t expect: [#[1 2 3] includes: 9] equals: false describes: "includes: miss"];
-  [t expect: [#[1.5 2.5] includes: 1.5] equals: false
-     describes: "includes: rides indexOf:'s keyEq — Floats by identity (the keyEq wart, one place to fix)"];
+  [t expect: [#[1.5 2.5] includes: 1.5] equals: true
+     describes: "includes: rides indexOf:'s keyEq — Floats by VALUE (the keyEq wart is fixed)"];
+  [t expect: [#[1.5 2.5] indexOf: 2.5] equals: 1 describes: "indexOf: finds an equal-valued Float"];
+  [t expect: [#[1.5] includes: 1.25] equals: false describes: "unequal Floats still miss"];
+  [t expect: [#[1.5] includes: 1] equals: false describes: "per-type: an Integer never equals a Float key"];
   [t expect: [[1 to: 3] asVector] equals: #[1 2 3] describes: "Range asVector (Collection derived)"];
   [t expect: [[3 to: 1] asVector] equals: #[] describes: "empty Range asVector"];
   let v := #[1 2];

@@ -218,6 +218,31 @@ test "rung 2 polish: retraction — :one removal, :many member removal, history 
     try std.testing.expectEqual(@as(usize, 2), histLen(api, e, hm)); // both events kept
 }
 
+test "store eq: Float values match by VALUE — set semantics + retract by a fresh box" {
+    const api = id.id_init();
+    store.bringUp(api);
+    const e = api.intern("f_e");
+
+    // :many — a fresh equal-valued Float box is the SAME member (no growth).
+    const many = api.intern("f_many");
+    cardMany(api, many);
+    assert3(api, e, many, api.mkFloat(1.5));
+    assert3(api, e, many, api.mkFloat(1.5));
+    try std.testing.expectEqual(@as(usize, 1), count(api, e, many));
+    assert3(api, e, many, api.mkFloat(2.5)); // an UNEQUAL float does grow the set
+    try std.testing.expectEqual(@as(usize, 2), count(api, e, many));
+    // Retract by a fresh equal-valued box finds the stored fact.
+    retract3(api, e, many, api.mkFloat(1.5));
+    try std.testing.expectEqual(@as(usize, 1), count(api, e, many));
+
+    // :one + history — re-asserting an equal-valued box is a no-op (no growth).
+    const one = api.intern("f_one");
+    _ = api.send(store.store_instance, store.s_assert, &[_]Oop{ one, store.s_history, store.s_true }, 3);
+    assert3(api, e, one, api.mkFloat(3.25));
+    assert3(api, e, one, api.mkFloat(3.25));
+    try std.testing.expectEqual(@as(usize, 1), histLen(api, e, one));
+}
+
 test "rung 2 polish: query surface — enumerate an entity's attrs / a type's selectors" {
     const api = id.id_init();
     store.bringUp(api);

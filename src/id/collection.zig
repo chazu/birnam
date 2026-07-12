@@ -599,6 +599,14 @@ fn keyHash(k: Oop) u32 {
     // can't reproduce (docs/40 §3c). This also makes map order deterministic across
     // runs. Other objects still hash by identity (not image-stable — documented).
     if (vt == g_api.symbol_vt) return fnv1a(std.mem.span(g_api.symbolName(k)));
+    // Floats hash by value BITS (keyEq compares them by value, so equal floats
+    // must share a slot). -0.0 normalizes to +0.0 first: IEEE == calls them
+    // equal, but their bit patterns differ.
+    if (vt == g_api.float_vt) {
+        const f = g_api.floatValue(k);
+        const bits: u64 = if (f == 0) 0 else @bitCast(f);
+        return mix(bits);
+    }
     return mix(@intFromPtr(k.?));
 }
 fn keyEq(a: Oop, b: Oop) bool {
@@ -614,6 +622,12 @@ fn keyEq(a: Oop, b: Oop) bool {
         const pb = g_api.stringBytes(b, &lb);
         return std.mem.eql(u8, pa[0..la], pb[0..lb]);
     }
+    // Floats by VALUE (IEEE ==), mirroring the prelude's per-type `=` (fEq):
+    // two boxed 1.5s are one key; `1.0` never equals the Integer `1`. NaN keeps
+    // `=`'s semantics (a distinct equal-bits NaN is NOT equal; the identity
+    // fast path above still finds the very same box).
+    if (g_api.vtableOf(a) == g_api.float_vt and g_api.vtableOf(b) == g_api.float_vt)
+        return g_api.floatValue(a) == g_api.floatValue(b);
     return false;
 }
 

@@ -706,6 +706,10 @@ fn valEq(a: Oop, b: Oop) bool {
         const pb = g_api.stringBytes(b, &lb);
         return std.mem.eql(u8, pa[0..la], pb[0..lb]);
     }
+    // Floats by VALUE (IEEE ==), mirroring the prelude's per-type `=` — equal-
+    // valued float bindings are ONE solution under set semantics.
+    if (g_api.vtableOf(a) == g_api.float_vt and g_api.vtableOf(b) == g_api.float_vt)
+        return g_api.floatValue(a) == g_api.floatValue(b);
     return false;
 }
 

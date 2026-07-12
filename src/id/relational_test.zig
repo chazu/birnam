@@ -112,6 +112,26 @@ test "relational: a logic var in the value position projects distinct values" {
     try std.testing.expect(s1(r, "at:", api.mkSmallInt(1)) == api.intern("Denver"));
 }
 
+test "relational: equal-valued Float bindings dedup to one solution (valEq by value)" {
+    const api = setup();
+    const db = freshDb(api);
+
+    // Two people share height 1.5 (DISTINCT boxes); one is 1.75.
+    const a = s0(db, "entity");
+    const b = s0(db, "entity");
+    const c = s0(db, "entity");
+    _ = s3(db, "assert:attr:value:", a, api.intern("height"), api.mkFloat(1.5));
+    _ = s3(db, "assert:attr:value:", b, api.intern("height"), api.mkFloat(1.5));
+    _ = s3(db, "assert:attr:value:", c, api.intern("height"), api.mkFloat(1.75));
+
+    // ?h where [?p #height ?h] → the distinct heights {1.5, 1.75}, deduped by VALUE.
+    const clauses = vec(api, &.{vec(api, &.{ lvar(api, "p"), api.intern("height"), lvar(api, "h") })});
+    const r = s2(db, "findAll:where:", lvar(api, "h"), clauses);
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(r, "size")));
+    try std.testing.expectEqual(@as(f64, 1.5), api.floatValue(s1(r, "at:", api.mkSmallInt(0))));
+    try std.testing.expectEqual(@as(f64, 1.75), api.floatValue(s1(r, "at:", api.mkSmallInt(1))));
+}
+
 test "relational: two-clause conjunction joins on the shared variable" {
     const api = setup();
     const db = freshDb(api);

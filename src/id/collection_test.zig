@@ -215,6 +215,28 @@ test "collection: Map String keys compare by VALUE (equal literals dedupe)" {
     try std.testing.expect(s1(m, "includesKey:", api.mkString("bye", 3)) == api.falseObj);
 }
 
+test "collection: Map Float keys compare by VALUE (equal boxes dedupe, -0.0 is 0.0)" {
+    const api = setup();
+    var m = mapNew(api);
+    m = s2(m, "at:put:", api.mkFloat(1.5), api.mkSmallInt(1));
+    // A DISTINCT Float box with an equal value updates the SAME entry.
+    m = s2(m, "at:put:", api.mkFloat(1.5), api.mkSmallInt(2));
+    try std.testing.expectEqual(@as(i64, 1), ival(s0(m, "size")));
+    try std.testing.expectEqual(@as(i64, 2), ival(s1(m, "at:", api.mkFloat(1.5))));
+    try std.testing.expect(s1(m, "includesKey:", api.mkFloat(1.5)) == api.trueObj);
+    try std.testing.expect(s1(m, "includesKey:", api.mkFloat(2.5)) == api.falseObj);
+    // -0.0 == 0.0 under IEEE, so they must be ONE key (the hash normalizes).
+    m = s2(m, "at:put:", api.mkFloat(0.0), api.mkSmallInt(3));
+    m = s2(m, "at:put:", api.mkFloat(-0.0), api.mkSmallInt(4));
+    try std.testing.expectEqual(@as(i64, 2), ival(s0(m, "size")));
+    try std.testing.expectEqual(@as(i64, 4), ival(s1(m, "at:", api.mkFloat(0.0))));
+    // Per-type: the Float 1.0 and the Integer 1 are DIFFERENT keys.
+    m = s2(m, "at:put:", api.mkFloat(1.0), api.mkSmallInt(5));
+    m = s2(m, "at:put:", api.mkSmallInt(1), api.mkSmallInt(6));
+    try std.testing.expectEqual(@as(i64, 5), ival(s1(m, "at:", api.mkFloat(1.0))));
+    try std.testing.expectEqual(@as(i64, 6), ival(s1(m, "at:", api.mkSmallInt(1))));
+}
+
 test "collection: Map at:ifAbsent: runs the block only when absent" {
     const api = setup();
     var m = mapNew(api);
