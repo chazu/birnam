@@ -94,6 +94,12 @@ The current platform and verification boundary is deliberately narrow:
 
 ## Next: CompiledUnit Lifecycle
 
+The concrete design is [47 — CompiledUnit Lifecycle](47-compiled-unit-lifecycle.md),
+revised after adversarial review. It scopes "transactional" to staged dispatch
+generations (add/replace/remove), keeps arbitrary initializer effects outside the
+claim, routes supported mutation through Store's MOP, and gives image composition
+an honest reflected executable generation.
+
 The next architectural slice should make a compiled unit a reflected runtime
 object with at least an identity, generation, ABI/platform data, checksum,
 dependencies, provided selectors/globals, and activation state.

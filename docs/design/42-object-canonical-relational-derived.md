@@ -76,61 +76,128 @@ bug is a *wrong-value* failure. Absence — "the mirror doesn't reflect this bin
 is truthful, and it is exactly what makes escape hatches safe: a hatch is allowed to
 be *silent*, never to *lie*.
 
-### The seam already exists — put the mirror on it
+### The actual seam: Store operation over id mechanism
 
-`api.method` (`methodC` in `id.zig`) is a **direct Zig call** to `vtableAddMethod`: it
-pokes the dict and **bypasses `send`/`bind`**. The dispatched form
-`[vt addMethod: sel with: m]` goes through `send`. So the send-vs-direct-call
-distinction *already is* the mirrored-vs-raw distinction:
+The physical primitive is `vtableAddMethod` in id. Both its internal message and
+`api.method` reach the same dictionary mutation; neither asserts a Store fact. The
+tracked semantic operation is instead **`[Store addMethod: sel on: vt with: m]`**:
+it calls the id primitive, then asserts `[vt sel m]`. `Reflect defineMethod...`
+reaches this Store operation through Codegen, so live definitions use the tracked
+path today.
 
-- **`[vt addMethod: sel with: m]` (dispatched) is the MOP install — the mirroring
-  chokepoint.** Because `addMethod` is a real, overridable message, post-init it is
-  the seam that performs *bind-in-dict + assert-in-mirror as one operation*. This is
-  the "so tightly interwoven it can't desync" property: there is no bind-then-sync
-  with a skippable second step; install *is* the paired operation. It is also
-  Piumarta-faithful — "you may override `bind`" applied to install.
-- **`api.method` (direct call) is the raw escape hatch, by construction.** It never
-  reaches the seam, so it is dict-only. The boot seed uses it (the store does not yet
-  exist); perf-critical bulk installs may use it deliberately.
+Any overwrite through `vtableAddMethod` after Store mounts fires Store's registered
+mutation hook first. The hook retracts a fact the mutation would make stale. There
+are not two raw variants: the same physical primitive is unhooked before Store,
+hooked afterward, and fact-asserting only when a caller chooses the tracked Store
+operation.
 
-No mass conversion of native call sites is required: seed-time installs stay on the
-fast raw path and are reconciled by backfill (below); only installs that must be
-reflected go through `addMethod`.
+One current delivery exception is explicit: artifact-mode user-method lowering
+still emits raw `birnam_method` installs. The hook keeps its mirror honest but may
+leave it absent; artifact source is separately recorded under `__methods__`. The
+CompiledUnit work in doc 47 closes this gap for user-method artifacts by routing
+them through a tracked runtime shim. Artifact-private block-vtable plumbing remains
+raw/private and does not claim a public MOP mirror.
+
+### Who arbitrates the MOP (codification, 2026-07-12)
+
+"The Store is the MOP" does **not** mean facts are authoritative over dispatch —
+that polarity is the decision this document reverses. It means that, once Store is
+mounted, every **supported, post-bootstrap meta-level mutation** enters through a
+Store operation. Store owns the semantic operation, its history, and its mirror;
+the id object model owns the physical vtable representation and remains canonical
+for dispatch.
+
+The supported live method-install path is the model:
+
+```
+Reflect defineMethod:on:as:
+  → Codegen installMethod
+  → Store addMethod:on:with:       semantic + historied MOP operation
+  → id vtableAddMethod             physical dictionary mutation
+  → Store asserts [vt sel method]  derived mirror
+```
+
+The raw id operation exists because boot must install methods before Store exists,
+because artifact-private method dictionaries need no public mirror, and because a
+thin floor must remain independently usable. It is mechanism, not the supported
+post-bootstrap API for user-visible meta-mutation. A raw mutation may leave the
+mirror absent; once Store is mounted, the registered hook first retracts any fact it
+would make false. Thus the exact invariant is:
+
+> **Supported post-bootstrap MOP mutation is Store-arbitrated. Raw floor mutation
+> is a bootstrap/private escape hatch. In either case the object dictionary is
+> canonical, and the Store mirror is current or absent, never false.**
+
+This is the per-layer primacy decision in operational form: Store does not command
+the vtable dictionary from facts, but it is the public chokepoint through which the
+live environment becomes reflectable, historied, and queryable.
+
+### Removal follows the same split (codification, 2026-07-12)
+
+Method removal is not representable as a composition of lookup + add. Installing
+the inherited pointer as a direct binding is observably wrong: the selector remains
+direct, shadows later parent changes, and lies about protocol structure. Exact
+removal therefore has the same two-layer shape as addition:
+
+- **id mechanism — `vtableRemoveMethod`.** The vtable metaobject owns the dense
+  key/value arrays, so only id removes a direct entry: find it, invoke the existing
+  mutation hook, shift the arrays, decrement `tally`, and answer the removed method
+  (or raw absence). It knows nothing about facts, history, CompiledUnits, or
+  rollback. It is an internal message reached through the existing `send` API; it
+  does not enlarge IdApi.
+- **Store MOP — `removeMethod:on:`.** This is the supported post-bootstrap
+  operation. It requires a direct binding, drives the raw removal, preserves the
+  method history, and exposes absence/error in Birnam terms. `Reflect` may provide
+  the stratified public spelling, but the operation still routes through Store.
+
+The existing mutation hook generalises from "overwrite" to "change/remove": before
+any existing direct binding changes, retract its mirror value **including a
+`#primitive` marker**. A tracked replacement immediately asserts its new mirror; a
+tracked removal leaves the direct mirror absent; a raw replacement/removal leaves it
+honestly absent until backfill. The law remains:
+
+```
+tracked replace: retract mirror → replace dict entry → assert new mirror
+tracked remove:  retract mirror → remove dict entry
+raw change:      retract mirror → mutate dict       (absence is honest)
+```
+
+Removing a direct override naturally reveals the inherited parent binding. No
+tombstone, disabled trampoline, or copied parent pointer is an acceptable
+substitute.
 
 ### Maintaining the law atomically (the concurrency answer)
 
-Every mirrored install orders its two effects as **retract-old-fact → mutate-dict →
-assert-new-fact**. There is therefore never an observable instant at which the mirror
-holds a *wrong* value — at worst it is transiently *absent* while the dict flips.
-This is what lets us **not concede the single-transactor / consistent-snapshot
-invariant**: no observer ever sees the mirror contradict the dict. (Single-threaded
-today, so moot in practice; the ordering costs nothing and keeps the door open.)
+Every tracked install orders its effects as **retract-old-fact → mutate-dict →
+assert-new-fact**; tracked removal is **retract-old-fact → mutate-dict**. There is
+therefore never an observable instant at which the mirror holds a *wrong* value — at
+worst it is transiently absent while the dict flips. This preserves the
+single-transactor/consistent-snapshot posture. The runtime is single-threaded today,
+but the ordering is still the contract.
 
-The raw escape hatch is *outside* the law by definition. To keep it from *lying*, the
-**safe** raw variant retracts any present fact on overwrite (degrading to absent, not
-wrong); the truly-raw `api.method` is "you are bypassing the MOP, on your own" — used
-only where correctness of the mirror is not wanted (seed pre-backfill, deliberate
-private installs).
+Before Store exists the raw primitive has no hook and no mirror to protect. After
+Store mounts, even a raw overwrite/removal fires the hook and degrades any affected
+mirror to honest absence. Raw addition has no old fact to invalidate and remains
+absent until a tracked install or backfill supplies one.
 
 ### Bootstrap, backfill, and the image
 
 - **Boot:** the kernel seed installs via raw `api.method` *before the store exists* —
   no floor→store upward call during boot, no chicken-and-egg.
-- **Init flips the default on:** once the relational engine is initialized, the
-  `addMethod` seam mirrors. From that point the law holds for every dispatched
-  install.
+- **Init registers the hook and tracked MOP:** once Store is initialized, supported
+  meta-mutation routes through its operations, and any raw overwrite/removal still
+  retracts facts it would make false.
 - **Seed backfill (decided: YES).** At init we enumerate every seed vtable's dict and
   assert the corresponding `[vt sel m]` facts, so the mirror is **total** — reflection
   works over the kernel primitives too, and *no functionality is lost merely by
   loading an image*. This needs **one small floor primitive: enumerate a vtable's
   selectors** (also what any live reflection query wants).
 - **The mirror is a rebuilt cache, not independently serialized.** Loading an image
-  *replays installs* (bringUp re-seeds the kernel + backfills; user methods re-fileIn
-  / relink from their canonical source/bytecode facts), and each replay flows through
-  the mirroring seam — so the mirror **regenerates** on load. There is thus no
-  stale-mirror-in-the-image failure mode. Canonical durable state stays the object
-  environment (seed + persisted source/bytecode); the mirror is derived, like the
-  native-code cache.
+  re-seeds/backfills the kernel and reinstalls user behavior from compiled/source
+  operations. Tracked installs regenerate exact mirrors; raw artifact installs may
+  be honestly absent until backfill. There is no stale-mirror-in-the-image failure
+  mode. Canonical durable state stays the object environment plus its compiled/source
+  recovery material; the mirror is derived.
 
 ### Why performance is safe
 
@@ -179,10 +246,11 @@ Mechanical, independent, and *more* relevant under strong Date adherence:
 1. **Object model canonical; relational reading derived.** "Code is a cache of facts"
    retired. The fact store is a MOP mirror + a relational data lens, both derived.
 2. **§D1** — complete the mirror under the consistency law (mirror = dict, or absent,
-   never wrong). Mirroring lives on the dispatched `addMethod` seam; `api.method` is
-   the raw escape hatch. Ordering retract→set→assert. Init flips mirroring on; **seed
-   backfilled** for a total MOP. One new floor primitive: enumerate a vtable's
-   selectors.
+   never wrong). Supported post-bootstrap addition/removal is Store-arbitrated;
+   raw id mutation is the bootstrap/private escape hatch. Ordering is
+   retract→set→assert for replacement and retract→remove for deletion. Init flips
+   mirroring on; **seed backfilled** for a total MOP. Floor mechanisms are selector
+   enumeration plus exact direct-entry removal; policy and history stay in Store.
 3. **§D2** — rules reified as canonical relational data; engine derived; fixpoint
    scratch per-query.
 4. **§D3 / §D4** — honest history-off `asOf`; schema time-travel.
