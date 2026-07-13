@@ -87,8 +87,7 @@ test "rung 2a.2: history is opt-in per attribute, default OFF (the 4 GB lesson)"
 
     // Opt `score` into history (a schema cell), then the timeline IS retained.
     const score = api.intern("score");
-    _ = api.send(store.store_instance, store.s_assert,
-        &[_]Oop{ score, store.s_history, store.s_true }, 3);
+    _ = api.send(store.store_instance, store.s_assert, &[_]Oop{ score, store.s_history, store.s_true }, 3);
     assert3(api, player, score, v10);
     assert3(api, player, score, v20);
     assert3(api, player, score, v30);
@@ -168,8 +167,7 @@ test "rung 2 polish: Store new mints independent, seeded stores" {
     try std.testing.expect(s2 != store.store_instance);
 
     // s2 is seeded: the cardinality knot resolves through it too.
-    try std.testing.expect(api.send(s2, store.s_currentValue,
-        &[_]Oop{ store.s_cardinality, store.s_cardinality }, 2) == store.s_one);
+    try std.testing.expect(api.send(s2, store.s_currentValue, &[_]Oop{ store.s_cardinality, store.s_cardinality }, 2) == store.s_one);
 
     // Independent: asserting into s2 does not touch the well-known store.
     const e = api.intern("new_e");
@@ -261,7 +259,7 @@ test "rung 2 polish: query surface — enumerate an entity's attrs / a type's se
 
     // Same mechanism over a tracked vtable: attrCount == # mirrored selectors.
     const vt = api.proto(api.object_vt);
-    const m: Oop = @constCast(@ptrCast(&answer42));
+    const m: Oop = @ptrCast(@constCast(&answer42));
     _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ api.intern("q_m1"), vt, m }, 3);
     _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ api.intern("q_m2"), vt, m }, 3);
     try std.testing.expectEqual(@as(usize, 2), attrCount(api, vt));
@@ -277,7 +275,7 @@ test "rung 2b.1: tracked dispatch mirror — one write, two representations; esc
 
     const widget_vt = api.proto(api.object_vt);
     const s_answer = api.intern("answer");
-    const m: Oop = @constCast(@ptrCast(&answer42));
+    const m: Oop = @ptrCast(@constCast(&answer42));
 
     // Tracked install THROUGH the mirror.
     _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ s_answer, widget_vt, m }, 3);
@@ -304,8 +302,8 @@ test "rung 2b.1: the mirror can't desync — a raw overwrite retracts the stale 
 
     const gadget_vt = api.proto(api.object_vt);
     const s_go = api.intern("go");
-    const m1: Oop = @constCast(@ptrCast(&answer42));
-    const m2: Oop = @constCast(@ptrCast(&answer7));
+    const m1: Oop = @ptrCast(@constCast(&answer42));
+    const m2: Oop = @ptrCast(@constCast(&answer7));
 
     // 1. Tracked install through the mirror: fact records m1.
     _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ s_go, gadget_vt, m1 }, 3);
@@ -324,6 +322,58 @@ test "rung 2b.1: the mirror can't desync — a raw overwrite retracts the stale 
     // 4. Re-tracking through the mirror restores a CURRENT fact (m2), not a stale one.
     _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ s_go, gadget_vt, m2 }, 3);
     try std.testing.expect(cv(api, gadget_vt, s_go) == m2);
+}
+
+test "Store exact removal restores inheritance and preserves method history" {
+    const api = id.id_init();
+    store.bringUp(api);
+    errmod.bringUp(api);
+
+    const parent_vt = api.proto(api.object_vt);
+    const parent = api.alloc(parent_vt, 0);
+    api.setOwner(parent_vt, parent);
+    const child_vt = api.proto(parent_vt);
+    const child = api.alloc(child_vt, 0);
+    api.setOwner(child_vt, child);
+    const sel = api.intern("trackedRemovalAnswer");
+    const m42: Oop = @ptrCast(@constCast(&answer42));
+    const m7: Oop = @ptrCast(@constCast(&answer7));
+    assert3(api, sel, store.s_history, store.s_true);
+
+    _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ sel, parent_vt, m42 }, 3);
+    _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ sel, child_vt, m7 }, 3);
+    try std.testing.expectEqual(@as(usize, 7), @intFromPtr(api.send(child, sel, &.{}, 0)));
+
+    const r = api.send(store.store_instance, store.s_removeMethodOn, &[_]Oop{ sel, child_vt }, 2);
+    try std.testing.expect(r == store.store_instance);
+    try std.testing.expect(cv(api, child_vt, sel) == null);
+    try std.testing.expectEqual(@as(usize, 42), @intFromPtr(api.send(child, sel, &.{}, 0)));
+    try std.testing.expectEqual(@as(usize, 2), histLen(api, child_vt, sel));
+
+    // A second exact removal is a visible kinded error, not inherited removal.
+    const missing = api.send(store.store_instance, store.s_removeMethodOn, &[_]Oop{ sel, child_vt }, 2);
+    try std.testing.expect(api.send(missing, api.intern("isError"), &.{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(missing, api.intern("kind"), &.{}, 0) == api.intern("missingDirectMethod"));
+
+    // No tombstone/copy: changing the parent remains visible through the child.
+    _ = api.send(store.store_instance, store.s_addMethodOn, &[_]Oop{ sel, parent_vt, m7 }, 3);
+    try std.testing.expectEqual(@as(usize, 7), @intFromPtr(api.send(child, sel, &.{}, 0)));
+}
+
+test "raw method mutation retracts a primitive mirror marker" {
+    const api = id.id_init();
+    store.bringUp(api);
+
+    const vt = api.proto(api.object_vt);
+    const owner = api.alloc(vt, 0);
+    api.setOwner(vt, owner);
+    const sel = api.intern("nativeMarkerRemoval");
+    api.method(vt, sel, &answer42);
+    _ = api.send(store.store_instance, api.intern("backfillMirror"), &.{}, 0);
+    try std.testing.expect(cv(api, vt, sel) == api.intern("primitive"));
+
+    api.method(vt, sel, &answer7);
+    try std.testing.expect(cv(api, vt, sel) == null);
 }
 
 test "rung 2d: history-off asOf is HONEST, not silently nil (docs/42 §D3)" {

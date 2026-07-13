@@ -129,8 +129,8 @@
 
 // -- source view: the facts the compiler records for every loaded module ---------
 //
-// Loading ANY module (from source OR a compiled dylib) records each method's source
-// on the `#__methods__` entity, and a dylib also records its whole text under
+// The frozen pre-cutover base lives on `#__methods__`; every later install/remove
+// is sequenced on `#__methodops__`. A dylib also records its whole text under
 // `#__modsrc__` keyed by module name (see codegen's `defineMethod:on:as:source:` /
 // `mCompileOutput`). These read those facts so docs can fall back to source when a
 // selector has no hand-written docstring — the source IS the documentation.
@@ -148,8 +148,11 @@
 
 // Every recorded method-source string, across all loaded modules.
 [Reflect defineMethod: #methodSources on: Doc as: [:self |
-  [db findAll: ?src where: #[ #[ #__methods__ ?attr ?src ] ]]] doc:
-  "Every recorded method-source string across all loaded modules (the #__methods__ facts the compiler writes)."];
+  let legacy := [db findAll: ?src where: #[ #[ #__methods__ ?attr ?src ] ]];
+  [[db findAll: ?opSrc where: #[ #[ #__methodops__ ?opAttr ?opSrc ] ]]
+    inject: legacy into: [:all :src |
+      [[all includes: src] ifTrue: [| all] ifFalse: [| [all add: src]]]]]] doc:
+  "Every recorded method-operation source across the frozen #__methods__ base and sequenced #__methodops__ log."];
 
 // The recorded source(s) of every method whose selector prints as `name` (a String).
 [Reflect defineMethod: #sourcesForSelector: on: Doc as: [:self :name |

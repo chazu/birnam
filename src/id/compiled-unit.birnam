@@ -1,0 +1,188 @@
+// compiled-unit.birnam — pure-Birnam lifecycle policy over Codegen's narrow
+// candidate/ledger mechanism (docs/design/47). Candidate opening and validation
+// are inert; dependency loading and native mapping are explicit operations.
+
+[Module named: #compiledUnit requires: #[#modules #stdlib]];
+
+[Globals at: #CompiledUnit put: [Object clone]];
+
+// Lifecycle cells are single-valued. History is represented by immutable event
+// entities, so stale #active assertions never remain query-visible.
+[db assert: #state attr: #cardinality value: #one];
+[db assert: #activeCompiledUnit attr: #cardinality value: #one];
+[db assert: #nextCompiledGeneration attr: #cardinality value: #one];
+[db assert: #rollbackAvailable attr: #cardinality value: #one];
+[db assert: #requires attr: #cardinality value: #one];
+[db assert: #provides attr: #cardinality value: #one];
+
+[Reflect defineMethod: #state on: CompiledUnit as: [:self |
+  [Codegen reconcileCandidate: self];
+  [db currentValue: self attr: #state]]];
+
+[Reflect defineMethod: #unitName on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #unitName]]];
+
+[Reflect defineMethod: #generation on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #generation]]];
+
+[Reflect defineMethod: #requires on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #requires]]];
+
+[Reflect defineMethod: #provides on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #provides]]];
+
+[Reflect defineMethod: #setState: on: CompiledUnit as: [:self :state |
+  [[db cellFor: self attr: #state] set: state];
+  self]];
+
+[Reflect defineMethod: #nextGenerationFor: on: CompiledUnit as: [:self :name |
+  let cell := [db cellFor: name attr: #nextCompiledGeneration];
+  let old := [cell value];
+  let next := [[old isNil] ifTrue: [| 1] ifFalse: [| [old + 1]]];
+  [cell set: next];
+  next]];
+
+// Produces the dylib plus its pointer-free `.candidate` envelope. It does not
+// open, map, or activate the result.
+[Reflect defineMethod: #compile:named:output: on: CompiledUnit as: [:self :source :name :path |
+  [Codegen compileCandidate: source named: name output: path]]];
+
+// Inspect-only open. Codegen verifies the sidecar and complete artifact hash
+// before reflecting metadata into this freshly minted policy object.
+[Reflect defineMethod: #open: on: CompiledUnit as: [:self :path |
+  let unit := [self clone];
+  let inspected := [Codegen inspectCandidate: path into: unit];
+  [[inspected isError]
+    ifTrue: [| inspected]
+    ifFalse: [|
+      [db assert: unit attr: #generation value: [self nextGenerationFor: [unit unitName]]];
+      [unit setState: #candidate];
+      unit]]]];
+
+[Reflect defineMethod: #missingDependencies on: CompiledUnit as: [:self |
+  [[self requires] inject: #[] into: [:missing :dep |
+    [[Module isLoaded: dep]
+      ifTrue: [| missing]
+      ifFalse: [| [missing add: dep]]]]]]];
+
+// Explicit ordinary effects. Candidate rejection/rollback never claims to undo
+// what these module initializers did.
+[Reflect defineMethod: #prepareDependencies on: CompiledUnit as: [:self |
+  let me := self;
+  [[self missingDependencies] inject: self into: [:answer :dep |
+    [[answer isError] ifTrue: [| answer] ifFalse: [| [Module load: dep]; me]]]]]];
+
+[Reflect defineMethod: #map on: CompiledUnit as: [:self |
+  let missing := [self missingDependencies];
+  [[[missing size] = 0]
+    ifTrue: [| [Codegen mapCandidate: self]]
+    ifFalse: [| [Error kind: #dependenciesMissing]]]]];
+
+// Validation consumes no dispatch capability: preparation snapshots the complete
+// plan and discard immediately invalidates the one-shot token.
+[Reflect defineMethod: #validate on: CompiledUnit as: [:self |
+  let token := [Codegen prepareActivation: self plan: [self publicationPlan: #activate prior: [db currentValue: [self unitName] attr: #activeCompiledUnit]]];
+  [[token isError]
+    ifTrue: [| token]
+    ifFalse: [| [Codegen discardPrepared: token]; self]]]];
+
+[Reflect defineMethod: #recordEvent:prior: on: CompiledUnit as: [:self :action :prior |
+  let event := [Object clone];
+  [db assert: event attr: #unit value: self];
+  [db assert: event attr: #action value: action];
+  [db assert: event attr: #basis value: [db basis]];
+  [[prior isNil] ifTrue: [| nil] ifFalse: [| [db assert: event attr: #priorUnit value: prior]]];
+  [db assert: self attr: #activationEvent value: event];
+  event]];
+
+// Policy chooses every object/value that the commit will publish. Codegen copies
+// this positional plan during preparation and later applies it mechanically,
+// after dispatch mutation, without invoking another CompiledUnit method.
+[Reflect defineMethod: #publicationPlan:prior: on: CompiledUnit as: [:self :action :prior |
+  #[action self [self unitName] prior [Object clone] [db basis]]]];
+
+[Reflect defineMethod: #activate on: CompiledUnit as: [:self |
+  [[[self state] = #candidate]
+    ifTrue: [|
+      let name := [self unitName];
+      let prior := [db currentValue: name attr: #activeCompiledUnit];
+      let token := [Codegen prepareActivation: self plan: [self publicationPlan: #activate prior: prior]];
+      [[token isError]
+        ifTrue: [| token]
+        ifFalse: [|
+          let committed := [Codegen commitPrepared: token];
+          [[committed isError]
+            ifTrue: [| committed]
+            ifFalse: [| self]]]]]
+    ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]];
+
+[Reflect defineMethod: #rollback on: CompiledUnit as: [:self |
+  let state := [self state];
+  [[state = #rolledBack]
+    ifTrue: [| self]
+    ifFalse: [|
+      [[state = #active]
+        ifTrue: [|
+          let prior := [db currentValue: self attr: #supersedes];
+          let token := [Codegen prepareRollback: self plan: [self publicationPlan: #rollback prior: prior]];
+          [[token isError]
+            ifTrue: [| token]
+            ifFalse: [|
+              let rolled := [Codegen commitPreparedRollback: token];
+              [[rolled isError]
+                ifTrue: [| rolled]
+                ifFalse: [| self]]]]]
+        ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]]]];
+
+[Reflect defineMethod: #activeFor: on: CompiledUnit as: [:self :name |
+  let unit := [db currentValue: name attr: #activeCompiledUnit];
+  [[unit isNil] ifTrue: [| nil] ifFalse: [| [unit state]; unit]]]];
+
+// Re-enter managed generations after a portable ordinary edit. No dispatch is
+// changed: Codegen only snapshots the current dictionary into a fresh transient
+// baseline ledger after proving the changed pairs have sequenced source records.
+[Reflect defineMethod: #adoptLive on: CompiledUnit as: [:self |
+  [[[self state] = #drifted]
+    ifTrue: [|
+      let baseline := [CompiledUnit clone];
+      let adopted := [Codegen adoptCandidateLive: self into: baseline];
+      [[adopted isError]
+        ifTrue: [| adopted]
+        ifFalse: [|
+          let name := [self unitName];
+          [db assert: baseline attr: #unitName value: name];
+          [db assert: baseline attr: #generation value: [CompiledUnit nextGenerationFor: name]];
+          [db assert: baseline attr: #kind value: #adHocBaseline];
+          [db assert: baseline attr: #supersedes value: self];
+          [baseline setState: #active];
+          [self setState: #historical];
+          [[db cellFor: name attr: #activeCompiledUnit] set: baseline];
+          [baseline recordEvent: #adopt prior: self];
+          baseline]]]
+    ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]];
+
+// Image code is a new executable owner: raw rollback capabilities did not cross
+// the process boundary, so saved origins become historical and one composed unit
+// owns the reconstructed live ledger.
+[Reflect defineMethod: #reconcileImageComposition: on: CompiledUnit as: [:self :identity |
+  let origins := [db findAll: ?unit where: #[ #[ ?unit #state #active ] ]];
+  [[[origins size] = 0]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let composed := [self clone];
+      [db assert: composed attr: #unitName value: #imageComposition];
+      [db assert: composed attr: #generation value: [self nextGenerationFor: #imageComposition]];
+      [db assert: composed attr: #kind value: #composed];
+      [db assert: composed attr: #sourceHash value: identity];
+      let me := self;
+      [origins do: [:origin |
+        [db assert: origin attr: #composedInto value: composed];
+        [origin setState: #historical];
+        [db assert: origin attr: #rollbackAvailable value: false];
+        [[db cellFor: [origin unitName] attr: #activeCompiledUnit] set: composed]]];
+      [composed setState: #active];
+      [db assert: composed attr: #rollbackAvailable value: false];
+      [Codegen rebuildComposedLedger: composed from: origins];
+      composed]]]];
+
+[Module markLoaded: #compiledUnit]

@@ -87,6 +87,14 @@ fn evalStr(api: *idapi.IdApi, src: []const u8) ![]const u8 {
     return p[0..len];
 }
 
+fn directTestMethod(api: *idapi.IdApi, vt: Oop, sel: Oop) Oop {
+    var i: usize = 0;
+    while (api.vtableSelectorAt(vt, i)) |bound| : (i += 1) {
+        if (bound == sel) return api.send(vt, api.intern("lookup"), &.{sel}, 1);
+    }
+    return null;
+}
+
 test "codegen 3c.2: birnam arithmetic → C → native → value" {
     const api = setup();
 
@@ -99,6 +107,162 @@ test "codegen 3c.2: birnam arithmetic → C → native → value" {
 
     // Deeper nesting recurses correctly.
     try std.testing.expectEqual(@as(i64, 20), try evalInt(api, "[[2 * 3] + [7 * 2]]"));
+}
+
+test "Reflect removeMethod:on: removes only an existing stable direct binding" {
+    const api = setupFull();
+    const target = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
+    _ = api.send(store.globals_obj, api.intern("at:put:"), &[_]Oop{ api.intern("RemovalTarget"), target }, 2);
+
+    const defined = eval(api, "[Reflect defineMethod: #answer on: RemovalTarget as: [:self | 42]]");
+    try std.testing.expect(defined != api.nilObj);
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "[RemovalTarget answer]"));
+
+    const vt = api.vtableOf(target);
+    const removed = eval(api, "[Reflect removeMethod: #answer on: RemovalTarget]");
+    try std.testing.expect(removed == store.store_instance);
+    try std.testing.expect(api.send(store.store_instance, api.intern("rawCurrentValue:attr:"), &[_]Oop{ vt, api.intern("answer") }, 2) == null);
+
+    const unstable = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
+    _ = api.send(store.globals_obj, api.intern("at:put:"), &[_]Oop{ api.intern("UnstableRemovalTarget"), unstable }, 2);
+    const err = eval(api, "[Reflect removeMethod: #answer on: UnstableRemovalTarget]");
+    try std.testing.expect(api.send(err, api.intern("isError"), &.{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(err, api.intern("kind"), &.{}, 0) == api.intern("unstableMethodTarget"));
+}
+
+test "CompiledUnit candidate stages add replace remove and rolls back exactly" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    _ = eval(api, "[Reflect defineMethod: #cuReplace on: Integer as: [:self | 1]]; [Reflect defineMethod: #cuRemove on: Integer as: [:self | 2]]");
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ dir, "candidate.dylib" });
+    defer std.testing.allocator.free(path);
+    const source =
+        "[Module named: #candidateTest requires: #[]]; " ++
+        "[Reflect defineMethod: #cuReplace on: Integer as: [:self | 100]]; " ++
+        "[Reflect defineMethod: #cuAdd on: Integer as: [:self | 200]]; " ++
+        "[Reflect removeMethod: #cuRemove on: Integer]";
+    const compiled = api.send(Codegen, api.intern("compileCandidate:named:output:"), &.{
+        api.mkString(source.ptr, source.len), api.intern("candidateTest"), api.mkString(path.ptr, path.len),
+    }, 3);
+    try std.testing.expect(compiled != api.nilObj);
+    try std.testing.expect(api.send(compiled, api.intern("isError"), &.{}, 0) != api.trueObj);
+
+    const unit = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
+    const inspected = api.send(Codegen, api.intern("inspectCandidate:into:"), &.{ api.mkString(path.ptr, path.len), unit }, 2);
+    try std.testing.expect(inspected == unit);
+    try std.testing.expectEqual(@as(i64, 1), try evalInt(api, "[3 cuReplace]"));
+    try std.testing.expectEqual(@as(i64, 2), try evalInt(api, "[3 cuRemove]"));
+
+    const mapped = api.send(Codegen, api.intern("mapCandidate:"), &.{unit}, 1);
+    try std.testing.expect(mapped == unit);
+    try std.testing.expectEqual(@as(i64, 1), try evalInt(api, "[3 cuReplace]"));
+
+    const abandoned = api.send(Codegen, api.intern("prepareActivation:"), &.{unit}, 1);
+    try std.testing.expect(api.send(Codegen, api.intern("discardPrepared:"), &.{abandoned}, 1) == api.trueObj);
+    const abandoned_commit = api.send(Codegen, api.intern("commitPrepared:"), &.{abandoned}, 1);
+    try std.testing.expect(api.send(abandoned_commit, api.intern("kind"), &.{}, 0) == api.intern("invalidPreparedToken"));
+    try std.testing.expectEqual(@as(i64, 1), try evalInt(api, "[3 cuReplace]"));
+
+    // An explicit publication plan is copied at prepare and rechecked before
+    // the first dispatch mutation.  Changing the active-generation fact in the
+    // gap consumes the token and leaves both dispatch and lifecycle untouched.
+    const name = api.intern("candidateTest");
+    _ = api.send(store.store_instance, api.intern("assert:attr:value:"), &.{ unit, api.intern("state"), api.intern("candidate") }, 3);
+    var plan = api.send(api.import("Vector").?, api.intern("new"), &.{}, 0);
+    const event = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
+    const basis = api.send(store.store_instance, api.intern("basis"), &.{}, 0);
+    for ([_]Oop{ api.intern("activate"), unit, name, api.nilObj, event, basis }) |item|
+        plan = api.send(plan, api.intern("add:"), &.{item}, 1);
+    const stale_token = api.send(Codegen, api.intern("prepareActivation:plan:"), &.{ unit, plan }, 2);
+    try std.testing.expect(api.send(stale_token, api.intern("isError"), &.{}, 0) != api.trueObj);
+    const blocker = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
+    _ = api.send(store.store_instance, api.intern("assert:attr:value:"), &.{ name, api.intern("activeCompiledUnit"), blocker }, 3);
+    const stale_commit = api.send(Codegen, api.intern("commitPrepared:"), &.{stale_token}, 1);
+    try std.testing.expect(api.send(stale_commit, api.intern("isError"), &.{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(stale_commit, api.intern("kind"), &.{}, 0) == api.intern("stalePublicationPlan"));
+    try std.testing.expectEqual(@as(i64, 1), try evalInt(api, "[3 cuReplace]"));
+    try std.testing.expect(api.send(store.store_instance, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2) == api.intern("candidate"));
+    _ = api.send(store.store_instance, api.intern("assert:attr:value:"), &.{ name, api.intern("activeCompiledUnit"), api.nilObj }, 3);
+
+    const token = api.send(Codegen, api.intern("prepareActivation:"), &.{unit}, 1);
+    try std.testing.expect(token != api.nilObj);
+    try std.testing.expect(api.send(token, api.intern("isError"), &.{}, 0) != api.trueObj);
+    const committed = api.send(Codegen, api.intern("commitPrepared:"), &.{token}, 1);
+    try std.testing.expect(api.send(committed, api.intern("isError"), &.{}, 0) != api.trueObj);
+    const integer_vt = api.vtableOf(api.import("Integer").?);
+    const installed = directTestMethod(api, integer_vt, api.intern("cuReplace"));
+    try std.testing.expectEqual(@as(i64, 100), try evalInt(api, "[3 cuReplace]"));
+    try std.testing.expect(installed == directTestMethod(api, integer_vt, api.intern("cuReplace")));
+    try std.testing.expectEqual(@as(i64, 200), try evalInt(api, "[3 cuAdd]"));
+    try std.testing.expect(installed == directTestMethod(api, integer_vt, api.intern("cuReplace")));
+    const removed_send = api.send(api.mkSmallInt(3), api.intern("cuRemove"), &.{}, 0);
+    try std.testing.expect(api.send(removed_send, api.intern("isError"), &.{}, 0) == api.trueObj);
+
+    const rollback = api.send(Codegen, api.intern("prepareRollback:"), &.{unit}, 1);
+    try std.testing.expect(rollback != api.nilObj);
+    try std.testing.expect(api.send(rollback, api.intern("isError"), &.{}, 0) != api.trueObj);
+    const rolled = api.send(Codegen, api.intern("commitPreparedRollback:"), &.{rollback}, 1);
+    try std.testing.expect(rolled == unit);
+    try std.testing.expectEqual(@as(i64, 1), try evalInt(api, "[3 cuReplace]"));
+    try std.testing.expectEqual(@as(i64, 2), try evalInt(api, "[3 cuRemove]"));
+    var found_add = false;
+    var i: usize = 0;
+    while (api.vtableSelectorAt(api.vtableOf(api.mkSmallInt(0)), i)) |sel| : (i += 1) {
+        if (sel == api.intern("cuAdd")) found_add = true;
+    }
+    try std.testing.expect(!found_add);
+
+    // The symmetric stale check protects an intervening supported live edit.
+    const token2 = api.send(Codegen, api.intern("prepareActivation:"), &.{unit}, 1);
+    _ = api.send(Codegen, api.intern("commitPrepared:"), &.{token2}, 1);
+    _ = eval(api, "[Reflect defineMethod: #cuReplace on: Integer as: [:self | 999]]");
+    const stale_rollback = api.send(Codegen, api.intern("prepareRollback:"), &.{unit}, 1);
+    try std.testing.expect(api.send(stale_rollback, api.intern("isError"), &.{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(stale_rollback, api.intern("kind"), &.{}, 0) == api.intern("candidateDrifted"));
+    try std.testing.expectEqual(@as(i64, 999), try evalInt(api, "[3 cuReplace]"));
+}
+
+test "CompiledUnit inspection rejects unsafe and checksum-mismatched artifacts before mapping" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    _ = eval(api, "[Reflect defineMethod: #cuIntegrity on: Integer as: [:self | 5]]");
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ dir, "integrity.dylib" });
+    defer std.testing.allocator.free(path);
+    const source = "[Module named: #integrityTest requires: #[]]; [Reflect defineMethod: #cuIntegrity on: Integer as: [:self | 55]]";
+    const source_oop = api.mkString(source.ptr, source.len);
+    const path_oop = api.mkString(path.ptr, path.len);
+    const name = api.intern("integrityTest");
+    const compiled = api.send(Codegen, api.intern("compileCandidate:named:output:"), &.{ source_oop, name, path_oop }, 3);
+    try std.testing.expect(api.send(compiled, api.intern("isError"), &.{}, 0) != api.trueObj);
+
+    var bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, path, 1 << 30);
+    defer std.testing.allocator.free(bytes);
+    bytes[0] ^= 1;
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = bytes });
+    const unsafe_unit = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
+    const unsafe = api.send(Codegen, api.intern("inspectCandidate:into:"), &.{ path_oop, unsafe_unit }, 2);
+    try std.testing.expect(api.send(unsafe, api.intern("kind"), &.{}, 0) == api.intern("unsafeCandidateArtifact"));
+    try std.testing.expectEqual(@as(i64, 5), try evalInt(api, "[3 cuIntegrity]"));
+
+    _ = api.send(Codegen, api.intern("compileCandidate:named:output:"), &.{ source_oop, name, path_oop }, 3);
+    std.testing.allocator.free(bytes);
+    bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, path, 1 << 30);
+    bytes[bytes.len - 1] ^= 1;
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = bytes });
+    const mismatch_unit = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
+    const mismatch = api.send(Codegen, api.intern("inspectCandidate:into:"), &.{ path_oop, mismatch_unit }, 2);
+    try std.testing.expect(api.send(mismatch, api.intern("kind"), &.{}, 0) == api.intern("candidateChecksumMismatch"));
+    try std.testing.expectEqual(@as(i64, 5), try evalInt(api, "[3 cuIntegrity]"));
 }
 
 test "codegen: multi-char binary operators parse and dispatch (>=, <=)" {
@@ -327,12 +491,10 @@ test "codegen 3c.3: globals — define, reference from native, late binding" {
 
     // Late binding: one compiled block reads x through its binding on each call,
     // so it sees a redefinition that happens between calls.
-    try std.testing.expectEqual(@as(i64, 3), try evalInt(api,
-        "let g := [| x]; [Globals at: #x put: 1]; let a := [g value]; [Globals at: #x put: 2]; let b := [g value]; [a plus: b]"));
+    try std.testing.expectEqual(@as(i64, 3), try evalInt(api, "let g := [| x]; [Globals at: #x put: 1]; let a := [g value]; [Globals at: #x put: 2]; let b := [g value]; [a plus: b]"));
 
     // A global can hold a block; fetch and invoke it.
-    try std.testing.expectEqual(@as(i64, 42), try evalInt(api,
-        "[Globals at: #f put: [:n | [n double]]]; [[Globals at: #f] value: 21]"));
+    try std.testing.expectEqual(@as(i64, 42), try evalInt(api, "[Globals at: #f put: [:n | [n double]]]; [[Globals at: #f] value: 21]"));
 }
 
 test "codegen 3c.3: symbol literals intern to selectors" {

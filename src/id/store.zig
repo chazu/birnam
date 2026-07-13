@@ -77,6 +77,7 @@ pub var s_cellFor: Oop = null; // `[store cellFor: e attr: a]`
 pub var s_value: Oop = null; // `[cell value]`
 pub var s_set: Oop = null; // `[cell set: v]`
 pub var s_addMethodOn: Oop = null; // `[store addMethod: sel on: vt with: m]`
+pub var s_removeMethodOn: Oop = null; // `[store removeMethod: sel on: vt]`
 pub var s_retract: Oop = null; // `[store retract: e attr: a value: v]`
 pub var s_new: Oop = null; // `[store new]`
 pub var s_attrCount: Oop = null; // `[store attrCount: e]`
@@ -412,11 +413,15 @@ fn mRetract(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const a = args[1];
     const v = args[2];
     if (!isMember(st, e, a, v)) return self; // retracting an absent value is a no-op
+    retractHeld(st, e, a, v);
+    return self;
+}
+
+fn retractHeld(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
     if (!st.raw and eq(historyOf(st, a), s_true))
         appendOp(st, e, a, v, .retract) // keep the timeline
     else
         removeLive(st, e, a, v); // default: drop the live fact, no growth
-    return self;
 }
 
 /// `[store currentValue: e attr: a]` — the latest value of (e, a), or nil.
@@ -796,11 +801,42 @@ fn mTrackedAddMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const sel = args[0];
     const vt = args[1];
     const m = args[2];
-    // `api.method` fires the overwrite hook first (retracting any prior mirror fact
-    // for (vt,sel)), THEN we assert the new one — the law-preserving retract→set→
-    // assert order, so the mirror is never a stale value, only ever current or absent.
+    // Preserve history in the TRACKED path before entering id's allocation-free
+    // raw-mutation hook. The hook then sees absence and is a no-op.
+    const st = stateOf(self);
+    if (currentValueRaw(st, vt, sel)) |old| retractHeld(st, vt, sel, old);
     g_api.method(vt, sel, @ptrCast(@alignCast(m.?))); // 1. authoritative dict
     _ = g_api.send(self, s_assert, &[_]Oop{ vt, sel, m }, 3); // 2. derived fact
+    return self;
+}
+
+fn mopError(kind: [*:0]const u8) Oop {
+    const ef = g_api.import("Error") orelse return g_api.nilObj;
+    return g_api.send(ef, g_api.intern("kind:"), &[_]Oop{g_api.intern(kind)}, 1);
+}
+
+/// `[Store removeMethod: sel on: vt]` — the supported exact-removal MOP.
+/// Only a direct binding may be removed, and candidate/lifecycle callers must name
+/// an already-owned stable vtable. The raw floor method returns the old pointer;
+/// this public operation deliberately returns Store/error instead.
+fn mTrackedRemoveMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const sel = args[0];
+    const vt = args[1];
+    if (g_api.vtableOwner(vt) == null) return mopError("unstableMethodTarget");
+    var direct = false;
+    var i: usize = 0;
+    while (g_api.vtableSelectorAt(vt, i)) |bound| : (i += 1) {
+        if (bound == sel) {
+            direct = true;
+            break;
+        }
+    }
+    if (!direct) return mopError("missingDirectMethod");
+    const st = stateOf(self);
+    if (currentValueRaw(st, vt, sel)) |old| retractHeld(st, vt, sel, old);
+    const removed = g_api.send(vt, g_api.intern("removeMethod:"), &[_]Oop{sel}, 1);
+    std.debug.assert(removed != null);
     return self;
 }
 
@@ -813,6 +849,15 @@ fn isTypeVtable(vt: Oop) bool {
     while (cur != null) {
         if (cur == g_api.object_vt) return true;
         cur = g_api.vtableParent(cur);
+    }
+    return false;
+}
+
+fn isRegisteredTypeVtable(o: Oop) bool {
+    var i: usize = 0;
+    while (i < g_api.vtableCount()) : (i += 1) {
+        const vt = g_api.vtableAt(i);
+        if (vt == o) return isTypeVtable(vt);
     }
     return false;
 }
@@ -850,20 +895,16 @@ pub fn backfillMirror(api: *idapi.IdApi) void {
 }
 
 /// The method-overwrite hook (docs/42 §D1, the consistency law). When any path
-/// rebinds an existing (vt,sel) in the dict, an OBJECT-valued mirror fact for it is
-/// now stale — retract it so `currentValue(vt,sel)` never returns a method no longer
-/// bound. A `#primitive` marker (a native binding re-installed natively, e.g. an
-/// idempotent re-bringUp) stays valid and is left. Pure: touches only the fact log
-/// (no send/alloc), safe to run mid-install and reentrantly under `mTrackedAddMethod`.
+/// changes/removes an existing (vt,sel) in the dict, any mirror fact for it is now
+/// stale — retract it so `currentValue(vt,sel)` never returns a binding no longer
+/// present. This includes `#primitive`: a replacement/removal invalidates presence
+/// just as surely as it invalidates an object-valued method. Pure: touches only the
+/// fact log (no send/alloc), safe mid-mutation and reentrantly under Store's MOP.
 fn mirrorOverwriteHook(vt: Oop, sel: Oop) callconv(.c) void {
     if (store_instance == null) return;
     const st = stateOf(store_instance);
     const cur = currentValueRawAsOf(st, vt, sel, null);
     if (cur == null) return; // not mirrored — absent stays absent (honest)
-    // Identity, NOT `eq`: a mirror value may be a raw native fn pointer (not an
-    // Oop), and `eq` would read a vtable off it. The marker is a unique interned
-    // symbol, so pointer identity is exactly right — and total.
-    if (cur == s_primitive) return; // native marker stays valid
     removeLive(st, vt, sel, cur); // stale object binding → retract (→ absent)
 }
 
@@ -956,14 +997,14 @@ fn mImageFactsInto(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const collector = args[0];
     for (st.facts.items) |f| {
         // The MOP mirror is a rebuilt cache, not independently serialized (docs/42
-        // §D1): native #primitive markers are regenerated by `backfillMirror` on
-        // load, and object-valued mirror facts by re-installing their methods — so
-        // skip the markers here (the object facts already defer on their unexported
-        // trampoline values). One less rebuilt-on-load stratum in the image.
-        if (f.v == s_primitive) continue;
+        // §D1). Skip the entire vtable-entity projection, including retired raw
+        // trampoline pointers retained by selector history: those are not Oops and
+        // must never reach the heap codec. Code replay rebuilds user bindings and
+        // `backfillMirror` rebuilds primitive presence markers.
+        if (isRegisteredTypeVtable(f.e)) continue;
         _ = g_api.send(collector, s_eavto, &[_]Oop{
-            f.e,                                    f.a, f.v,
-            g_api.mkSmallInt(@intCast(f.tx)),       g_api.mkSmallInt(@intFromEnum(f.op)),
+            f.e,                              f.a,                                  f.v,
+            g_api.mkSmallInt(@intCast(f.tx)), g_api.mkSmallInt(@intFromEnum(f.op)),
         }, 5);
     }
     return self;
@@ -1036,6 +1077,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_value = api.intern("value");
     s_set = api.intern("set:");
     s_addMethodOn = api.intern("addMethod:on:with:");
+    s_removeMethodOn = api.intern("removeMethod:on:");
     s_retract = api.intern("retract:attr:value:");
     s_new = api.intern("new");
     s_attrCount = api.intern("attrCount:");
@@ -1070,6 +1112,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_history_read, &mHistory);
     api.method(store_vt, s_cellFor, &mCellFor);
     api.method(store_vt, s_addMethodOn, &mTrackedAddMethod);
+    api.method(store_vt, s_removeMethodOn, &mTrackedRemoveMethod);
     api.method(store_vt, s_retract, &mRetract);
     api.method(store_vt, s_new, &mNew);
     api.method(store_vt, s_attrCount, &mAttrCount);

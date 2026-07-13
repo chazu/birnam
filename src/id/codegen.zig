@@ -52,10 +52,86 @@ var sel_addSymbol: Oop = null;
 var sel_assert: Oop = null;
 var sel_addMethodOn: Oop = null;
 var method_blk_counter: usize = 0; // unique keys for stashed method blocks
-var method_src_counter: usize = 0; // unique keys for recorded method sources
 var g_methods_entity: Oop = null; // the reserved entity method-source facts hang off of
+var g_methodops_entity: Oop = null; // post-cutover sequenced install/remove sources
 var g_globalsrc_entity: Oop = null; // the reserved entity top-level global-source facts hang off of
 var artifact_method_counter: usize = 0; // per-emit ids for installable artifact methods
+var method_op_counter: usize = 0; // tie-breaker within a Store basis
+var suppress_methodop_recording = false; // image replay/load must not log its own recovery
+var artifact_record_ops = true; // false only for compacted image-code emission
+var candidate_preparing = false;
+
+const ARTIFACT_ABI = "birnam-artifact-methodops-v1";
+const CANDIDATE_ABI: u32 = 1;
+const CANDIDATE_PLATFORM = "aarch64-macos";
+const CANDIDATE_MAGIC = "BIRNAM-CANDIDATE-1";
+
+const CandidateOpKind = enum { install, remove };
+const CandidateOp = struct {
+    target_name: Oop,
+    selector: Oop,
+    kind: CandidateOpKind,
+    source: Oop,
+    opened_captured: bool = false,
+    opened_target: Oop = null,
+    opened_vt: Oop = null,
+    opened_present: bool = false,
+    opened_method: Oop = null,
+    target: Oop = null,
+    vt: Oop = null,
+    prior_present: bool = false,
+    prior_method: Oop = null,
+    prior_source: Oop = null,
+    post_present: bool = false,
+    post_method: Oop = null,
+    post_log_source: Oop = null,
+};
+
+const CandidateState = struct {
+    unit: Oop,
+    name: Oop,
+    source: Oop,
+    author_path: []u8,
+    content_path: ?[]u8 = null,
+    checksum: [64]u8,
+    exported_manifest: []u8,
+    requires: std.ArrayList(Oop) = .{},
+    ops: std.ArrayList(CandidateOp) = .{},
+    handle: ?*anyopaque = null,
+    activate_fn: ?idapi.Method = null,
+    prepare_fn: ?idapi.Method = null,
+    prepared_token: Oop = null,
+    prepared_rollback: bool = false,
+    prepared_publication: ?CandidatePublication = null,
+    active: bool = false,
+    predecessor: ?*CandidateState = null,
+    prepared_predecessor: ?*CandidateState = null,
+};
+
+const PublicationAction = enum { activate, rollback };
+
+/// Oops copied out of the pure-Birnam publication plan before candidate
+/// preparation.  Keeping this positional and native makes the eventual commit a
+/// mechanical Store projection: no replaceable CompiledUnit method runs after
+/// the first dispatch mutation.
+const CandidatePublication = struct {
+    action: PublicationAction,
+    enforce_lifecycle: bool,
+    unit: Oop,
+    name: Oop,
+    prior: Oop,
+    event: Oop,
+    basis: Oop,
+};
+
+const TokenPayload = extern struct {
+    unit: Oop,
+    consumed: usize,
+};
+
+var candidate_states: std.AutoHashMapUnmanaged(Oop, *CandidateState) = .{};
+var candidate_token_vt: Oop = null;
+var candidate_roots_registered = false;
 
 // The `__ev` entry-point harness vtable. Minted once, reused every eval: each
 // eval reinstalls its fresh `__ev` method (install:as:on: REPLACES an existing
@@ -171,6 +247,7 @@ var global_memo: std.AutoHashMapUnmanaged(Oop, usize) = .{};
 // `__birnam_unit_init` hook fills by interning the NAME at load time. Set for
 // the duration of one `emitProgram(…, artifact=true)`.
 var artifact_mode: bool = false;
+var candidate_artifact_mode: bool = false;
 // Per-unit salt for the artifact method-block GLOBAL keys (`__amblk`). Those keys
 // live in the process-wide `birnam_global` string namespace, so without a salt two
 // separately-compiled dylibs (stdlib, toml, config) would both write `__amblk0…`
@@ -185,6 +262,9 @@ var artifact_salt: u64 = 0;
 // `__modsrc__` fact at load. Points into the caller's out-path bytes, valid for the
 // synchronous emitProgram call; cleared right after.
 var g_module_name: ?[]const u8 = null;
+
+const CandidateRootKey = struct { salt: u64, index: usize };
+var candidate_roots: std.AutoHashMapUnmanaged(CandidateRootKey, Oop) = .{};
 
 /// Resolve `name` to its interned symbol (once), assign it a stable `__g<i>` slot,
 /// and return that index. Keyed by symbol identity, so the same global referenced
@@ -369,6 +449,39 @@ fn rtIsError(v: Oop) callconv(.c) c_long {
     return if (g_api.vtableOf(v) == evt) 1 else 0;
 }
 
+/// Artifact user-method install: mutate through Store's tracked MOP and append the
+/// same sequenced portable operation as live source evaluation. `n == 0` is the
+/// compacted image path: its source is already present in the loaded facts.
+fn rtInstallMethod(vt: Oop, sel: Oop, method: Oop, src: [*]const u8, n: c_long) callconv(.c) Oop {
+    if (candidate_preparing) return g_store;
+    const result = g_api.send(g_store, g_api.intern("addMethod:on:with:"), &[_]Oop{ sel, vt, method }, 3);
+    if (n > 0) recordMethodOp(g_api.mkString(src, @intCast(n)));
+    return result;
+}
+
+/// Artifact exact removal with optional post-cutover operation recording.
+fn rtRemoveMethod(target: Oop, sel: Oop, src: [*]const u8, n: c_long) callconv(.c) Oop {
+    if (candidate_preparing) return g_store;
+    const vt = g_api.vtableOf(target);
+    if (vt == null or g_api.vtableOwner(vt) != target) return g_api.nilObj;
+    const result = g_api.send(g_store, g_api.intern("removeMethod:on:"), &[_]Oop{ sel, vt }, 2);
+    if (result == g_store and n > 0) recordMethodOp(g_api.mkString(src, @intCast(n)));
+    return result;
+}
+
+fn rtCandidateRootSet(salt: u64, index: c_long, value: Oop) callconv(.c) Oop {
+    candidate_roots.put(ca, .{ .salt = salt, .index = @intCast(index) }, value) catch @panic("codegen: oom");
+    return value;
+}
+
+fn rtCandidateRootGet(salt: u64, index: c_long) callconv(.c) Oop {
+    return candidate_roots.get(.{ .salt = salt, .index = @intCast(index) }) orelse g_api.nilObj;
+}
+
+fn rtCandidatePrepareMode(on: c_long) callconv(.c) void {
+    candidate_preparing = on != 0;
+}
+
 // Like tcc.zig's floor shims, the global-namespace shims are also real dynamic
 // symbols (docs/40 §3a, slice 1): an emitted artifact leaves them undefined and
 // the dynamic loader resolves them here at dlopen. The JIT path keeps patching
@@ -379,6 +492,11 @@ comptime {
     @export(&rtGlobalSet, .{ .name = "birnam_global_set" });
     @export(&rtRecordGlobalSrc, .{ .name = "birnam_record_global_src" });
     @export(&rtIsError, .{ .name = "birnam_is_error" });
+    @export(&rtInstallMethod, .{ .name = "birnam_install_method" });
+    @export(&rtRemoveMethod, .{ .name = "birnam_remove_method" });
+    @export(&rtCandidateRootSet, .{ .name = "birnam_candidate_root_set" });
+    @export(&rtCandidateRootGet, .{ .name = "birnam_candidate_root_get" });
+    @export(&rtCandidatePrepareMode, .{ .name = "birnam_candidate_prepare_mode" });
 }
 
 /// Register a codegen-owned shim into a unit's pre-relocate symbol window.
@@ -423,6 +541,136 @@ fn selectorArityStr(sel: []const u8) usize {
     return if (is_letter) 0 else 1;
 }
 
+const CandidateScan = struct {
+    name: Oop = null,
+    requires: std.ArrayList(Oop) = .{},
+    ops: std.ArrayList(CandidateOp) = .{},
+
+    fn deinit(self: *CandidateScan) void {
+        self.requires.deinit(ca);
+        self.ops.deinit(ca);
+    }
+};
+
+fn candidateError(kind: [*:0]const u8) Oop {
+    const ef = g_api.import("Error") orelse return g_api.nilObj;
+    return g_api.send(ef, g_api.intern("kind:"), &[_]Oop{g_api.intern(kind)}, 1);
+}
+
+fn keywordParts(msg: Oop, selector: *std.ArrayList(u8), args: *std.ArrayList(Oop)) bool {
+    if (ruleOf(msg) != r_keywordMsg) return false;
+    const nc = nchild(msg);
+    var i: usize = 0;
+    while (i + 1 < nc) : (i += 2) {
+        selector.appendSlice(ca, text(child(msg, i))) catch @panic("codegen: oom");
+        args.append(ca, child(msg, i + 1)) catch @panic("codegen: oom");
+    }
+    return true;
+}
+
+fn symbolNode(node0: Oop) ?Oop {
+    const node = skip(node0);
+    if (ruleOf(node) != r_symbol) return null;
+    const raw = text(node);
+    if (raw.len < 2 or raw[0] != '#') return null;
+    const z = ca.allocSentinel(u8, raw.len - 1, 0) catch @panic("codegen: oom");
+    defer ca.free(z);
+    @memcpy(z[0 .. raw.len - 1], raw[1..]);
+    return g_api.intern(z.ptr);
+}
+
+fn identNode(node0: Oop) ?Oop {
+    const node = skip(node0);
+    if (ruleOf(node) != r_ident) return null;
+    const raw = text(node);
+    const z = ca.allocSentinel(u8, raw.len, 0) catch @panic("codegen: oom");
+    defer ca.free(z);
+    @memcpy(z[0..raw.len], raw);
+    return g_api.intern(z.ptr);
+}
+
+fn blockParamCount(node0: Oop) ?usize {
+    const node = skip(node0);
+    if (ruleOf(node) != r_block) return null;
+    var count: usize = 0;
+    var i: usize = 0;
+    while (i < nchild(node)) : (i += 1) if (ruleOf(child(node, i)) == r_ident) {
+        count += 1;
+    };
+    return count;
+}
+
+/// Parse the deliberately narrow candidate language without evaluating it. This
+/// is shared by compilation and pre-map sidecar inspection, so source and binary
+/// delivery accept exactly the same safe subset.
+fn scanCandidateSource(src: Oop) ?CandidateScan {
+    var len: usize = 0;
+    const p = g_api.stringBytes(src, &len);
+    src_bytes = p[0..len];
+    const cst = s1(lang, "parse:", src);
+    if (cst == g_api.nilObj or nchild(cst) < 1) return null;
+    const statements = child(cst, 0);
+    var scan: CandidateScan = .{};
+    errdefer scan.deinit();
+
+    var si: usize = 0;
+    while (si < nchild(statements)) : (si += 1) {
+        const stmt = child(statements, si);
+        if (nchild(stmt) < 1) return null;
+        const whole = skip(child(stmt, 0));
+        if (ruleOf(whole) != r_send) return null;
+        const recv = skip(child(whole, 0));
+        const msg = skip(child(whole, 1));
+        if (ruleOf(recv) != r_ident) return null;
+        var selector: std.ArrayList(u8) = .{};
+        defer selector.deinit(ca);
+        var args: std.ArrayList(Oop) = .{};
+        defer args.deinit(ca);
+        if (!keywordParts(msg, &selector, &args)) return null;
+        const recv_name = text(recv);
+
+        if (std.mem.eql(u8, recv_name, "Module") and std.mem.eql(u8, selector.items, "named:requires:") and args.items.len == 2) {
+            if (scan.name != null) return null;
+            scan.name = symbolNode(args.items[0]) orelse return null;
+            const req = skip(args.items[1]);
+            if (ruleOf(req) != r_vectorLit) return null;
+            var ri: usize = 0;
+            while (ri < nchild(req)) : (ri += 1)
+                scan.requires.append(ca, symbolNode(child(req, ri)) orelse return null) catch @panic("codegen: oom");
+            continue;
+        }
+        if (!std.mem.eql(u8, recv_name, "Reflect")) return null;
+        const is_define = (std.mem.eql(u8, selector.items, "defineMethod:on:as:") and args.items.len == 3) or
+            (std.mem.eql(u8, selector.items, "defineMethod:on:as:doc:") and args.items.len == 4);
+        const is_remove = std.mem.eql(u8, selector.items, "removeMethod:on:") and args.items.len == 2;
+        if (!is_define and !is_remove) return null;
+        const sel = symbolNode(args.items[0]) orelse return null;
+        const target_name = identNode(args.items[1]) orelse return null;
+        if (is_define) {
+            const params = blockParamCount(args.items[2]) orelse return null;
+            if (params != selectorArity(sel) + 1) return null;
+        }
+        for (scan.ops.items) |old| if (old.target_name == target_name and old.selector == sel) return null;
+        const op_text = text(whole);
+        scan.ops.append(ca, .{
+            .target_name = target_name,
+            .selector = sel,
+            .kind = if (is_define) .install else .remove,
+            .source = g_api.mkString(op_text.ptr, op_text.len),
+        }) catch @panic("codegen: oom");
+    }
+    if (scan.ops.items.len == 0) return null;
+    return scan;
+}
+
+fn directMethod(vt: Oop, sel: Oop) ?Oop {
+    var i: usize = 0;
+    while (g_api.vtableSelectorAt(vt, i)) |bound| : (i += 1) {
+        if (bound == sel) return g_api.send(vt, g_api.intern("lookup"), &[_]Oop{sel}, 1);
+    }
+    return null;
+}
+
 /// Staged-compile a single C function and return its native address as an Oop
 /// (raw fn pointer), or nil. The TccState (holding the code) is intentionally
 /// kept alive by the installed method; no GC yet, so it simply persists.
@@ -447,6 +695,22 @@ fn mDefineMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
     return installMethod(args[0], args[1], args[2]);
+}
+
+/// `[Reflect removeMethod: #sel on: target]` — exact direct removal through
+/// Store's supported MOP. Removal never calls ensurePrivateVtable: the target must
+/// already own its stable family/private vtable, otherwise changing its structural
+/// identity would make an exact inverse impossible.
+fn mRemoveMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const target = args[1];
+    const vt = g_api.vtableOf(target);
+    if (vt == null or g_api.vtableOwner(vt) != target) {
+        const ef = g_api.import("Error") orelse return g_api.nilObj;
+        return g_api.send(ef, g_api.intern("kind:"), &[_]Oop{g_api.intern("unstableMethodTarget")}, 1);
+    }
+    return g_api.send(g_store, g_api.intern("removeMethod:on:"), &[_]Oop{ args[0], vt }, 2);
 }
 /// `[Reflect vtableOf: x]` — the mirror's structural read: surface the floor's
 /// `vtableOf` as a meta-capability (Bracha stratification — type identity is a
@@ -478,27 +742,29 @@ fn mNameOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkString(nm.ptr, nm.len);
 }
 
+/// Append one supported post-cutover method operation. The Store basis is captured
+/// immediately before the unique assertion; that assertion advances it, so sorting
+/// these numeric keys reproduces live mutation order independently of attrAt order.
+fn recordMethodOp(src: Oop) void {
+    if (suppress_methodop_recording) return;
+    const basis = g_api.smallIntValue(g_api.send(g_store, g_api.intern("basis"), &[_]Oop{}, 0));
+    const tie = method_op_counter;
+    method_op_counter += 1;
+    var keybuf: [80]u8 = undefined;
+    const key = std.fmt.bufPrintZ(&keybuf, "__mop_{d}_{d}", .{ basis, tie }) catch return;
+    _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_methodops_entity, g_api.intern(key.ptr), src }, 3);
+}
+
 /// `[Reflect defineMethod: #sel on: T as: blk source: srcString]` — the source-
-/// carrying form codegen lowers `defineMethod:on:as:` to. Records the definition's
-/// source as a store fact (the portable truth for image save/replay, docs/40 §4)
-/// keyed by a fresh `__msrc_N` on the reserved methods entity — a String leaf, so
-/// it survives an image directly — then installs the method exactly as the 3-arg
-/// form does.
+/// carrying form codegen lowers `defineMethod:on:as:` to. Install first, then append
+/// the portable operation; after the dictionary commit only fatal allocation can
+/// interrupt recording.
 fn mDefineMethodSourced(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
-    recordMethodSrc(args[3]);
-    return installMethod(args[0], args[1], args[2]);
-}
-
-/// Assert `src` (a String) as a fresh `__msrc_N` fact on the reserved methods
-/// entity — the portable definition record image save/replay reads.
-fn recordMethodSrc(src: Oop) void {
-    const id = method_src_counter;
-    method_src_counter += 1;
-    var keybuf: [40]u8 = undefined;
-    const key = std.fmt.bufPrintZ(&keybuf, "__msrc_{d}", .{id}) catch return;
-    _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_methods_entity, g_api.intern(key.ptr), src }, 3);
+    const result = installMethod(args[0], args[1], args[2]);
+    if (result != g_api.nilObj) recordMethodOp(args[3]);
+    return result;
 }
 
 /// `[Reflect defineMethod: #sel on: T as: blk doc: d source: srcString]` — the
@@ -510,8 +776,18 @@ fn recordMethodSrc(src: Oop) void {
 /// must keep seeing every doc'd definition.
 fn mDefineMethodDocSourced(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    recordMethodSrc(args[4]);
-    return g_api.send(self, g_api.intern("defineMethod:on:as:doc:"), args, 4);
+    const result = g_api.send(self, g_api.intern("defineMethod:on:as:doc:"), args, 4);
+    if (result != g_api.nilObj) recordMethodOp(args[4]);
+    return result;
+}
+
+/// Source-carrying exact removal used by live codegen. The plain operation remains
+/// the public API; this internal spelling is what makes removal image-recoverable.
+fn mRemoveMethodSourced(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const result = mRemoveMethod(self, args, 2);
+    if (result != g_api.nilObj and result == g_store) recordMethodOp(args[2]);
+    return result;
 }
 
 /// The vtable an `on:` target names. Uniform, no family/instance fork
@@ -649,13 +925,31 @@ fn emitDefineMethodSourced(buf: *std.ArrayList(u8), recvNode: Oop, argNodes: []c
     return true;
 }
 
+/// Live exact removal with its portable source operation appended only after the
+/// direct dictionary mutation succeeds.
+fn emitRemoveMethodLiveSourced(buf: *std.ArrayList(u8), recvNode: Oop, argNodes: []const Oop, sendNode: Oop) bool {
+    put(buf, "birnam_send(");
+    if (!emit(buf, recvNode)) return false;
+    put(buf, ", birnam_intern(\"removeMethod:on:source:\"), (void*[]){");
+    for (argNodes) |an| {
+        if (!emit(buf, an)) return false;
+        put(buf, ", ");
+    }
+    put(buf, "birnam_mkString(\"");
+    const s = text(sendNode);
+    putCStr(buf, s);
+    var nb: [24]u8 = undefined;
+    put(buf, std.fmt.bufPrint(&nb, "\", {d}L)}}, 3L)", .{s.len}) catch return false);
+    return true;
+}
+
 /// Artifact-mode `[Reflect defineMethod: #sel on: T as: blk]` (docs/40 slice 4):
 /// emit the method so that LOADING the artifact installs PRE-COMPILED code — no
 /// runtime compile. Mirrors `installMethod` (the JIT path) but statically: the
 /// block becomes an artifact function+instance stashed in a per-artifact global
 /// (`__amblk_N`), a forwarding trampoline (`__amtramp_N`) is emitted into
-/// `fn_defs`, and a statement-expression stashes the block then `birnam_method`-
-/// installs the trampoline pointer directly. The `__amblk`/`__amtramp` namespace
+/// `fn_defs`, and a statement-expression stashes the block then installs the
+/// trampoline through Store's tracked MOP shim. The `__amblk`/`__amtramp` namespace
 /// is distinct from the live session's `__mblk` so a boot's stdlib re-eval can't
 /// collide. `sel`/`T` resolve relocatably (birnam_intern / birnam_global).
 fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop, sendNode: Oop) bool {
@@ -664,9 +958,15 @@ fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop, s
     const k = selectorArityStr(sel);
     const n = artifact_method_counter;
     artifact_method_counter += 1;
+    const src = text(sendNode);
 
     // The trampoline: forward [self, args…] to the stashed block via value:…(k+1).
-    putFmt(&fn_defs, "void* __amtramp{d}(void* self, void** args, long n){{ (void)n; void* a[{d}]; a[0]=self; long i; for(i=0;i<{d};i++) a[i+1]=args[i]; return birnam_send(birnam_global(\"__amblk_{x}_{d}\"), birnam_intern(\"", .{ n, k + 1, k, artifact_salt, n });
+    putFmt(&fn_defs, "void* __amtramp{d}(void* self, void** args, long n){{ (void)n; void* a[{d}]; a[0]=self; long i; for(i=0;i<{d};i++) a[i+1]=args[i]; return birnam_send(", .{ n, k + 1, k });
+    if (candidate_artifact_mode)
+        putFmt(&fn_defs, "birnam_candidate_root_get({d}ULL, {d}L)", .{ artifact_salt, n })
+    else
+        putFmt(&fn_defs, "birnam_global(\"__amblk_{x}_{d}\")", .{ artifact_salt, n });
+    put(&fn_defs, ", birnam_intern(\"");
     var vi: usize = 0;
     while (vi < k + 1) : (vi += 1) put(&fn_defs, "value:");
     putFmt(&fn_defs, "\"), a, {d}); }}\n", .{k + 1});
@@ -676,24 +976,29 @@ fn emitDefineMethodInstallable(buf: *std.ArrayList(u8), argNodes: []const Oop, s
     // its owned family via ensurePrivateVtable — same as the JIT path's targetVtable.
     putFmt(buf, "({{ void* _vt = birnam_ensurePrivateVtable(", .{});
     if (!emit(buf, argNodes[1])) return false; // the type expression (e.g. Integer)
-    putFmt(buf, "); birnam_global_set(\"__amblk_{x}_{d}\", ", .{ artifact_salt, n });
+    if (candidate_artifact_mode) {
+        putFmt(buf, "); void* _blk = birnam_candidate_root_get({d}ULL, {d}L); if(_blk == birnam_nil()){{ _blk = birnam_candidate_root_set({d}ULL, {d}L, ", .{ artifact_salt, n, artifact_salt, n });
+    } else {
+        putFmt(buf, "); birnam_global_set(\"__amblk_{x}_{d}\", ", .{ artifact_salt, n });
+    }
     if (!emit(buf, argNodes[2])) return false; // the block literal → instance
-    put(buf, "); birnam_method(_vt, birnam_intern(\"");
+    put(buf, if (candidate_artifact_mode) "); } birnam_install_method(_vt, birnam_intern(\"" else "); birnam_install_method(_vt, birnam_intern(\"");
     putCStr(buf, sel);
-    putFmt(buf, "\"), (void*)&__amtramp{d}); ", .{n});
-    // Record the definition's source as a `__methods__` fact — the same portable
-    // truth the JIT path records (mDefineMethodSourced), so a method installed from a
-    // compiled dylib is fact-level indistinguishable from a source-loaded one:
-    // queryable for docs/introspection, and carried by image save/replay. Keyed
-    // `__msrc_<salt>_<n>` — the per-unit salt + method index makes it collision-free
-    // across modules and against the JIT counter, and idempotent on reload (the cell
-    // just re-takes the same value).
-    put(buf, "birnam_send(birnam_global(\"Store\"), birnam_intern(\"assert:attr:value:\"), (void*[]){birnam_intern(\"__methods__\"), birnam_intern(\"");
-    putFmt(buf, "__msrc_{x}_{d}", .{ artifact_salt, n });
-    put(buf, "\"), birnam_mkString(\"");
+    putFmt(buf, "\"), (void*)&__amtramp{d}, \"", .{n});
+    putCStr(buf, src);
+    putFmt(buf, "\", {d}L); _vt; }})", .{if (artifact_record_ops) src.len else 0});
+    return true;
+}
+
+fn emitRemoveMethodSourced(buf: *std.ArrayList(u8), argNodes: []const Oop, sendNode: Oop) bool {
+    put(buf, "birnam_remove_method(");
+    if (!emit(buf, argNodes[1])) return false;
+    put(buf, ", ");
+    if (!emit(buf, argNodes[0])) return false;
+    put(buf, ", \"");
     const src = text(sendNode);
     putCStr(buf, src);
-    putFmt(buf, "\", {d}L)}}, 3L); _vt; }})", .{src.len});
+    putFmt(buf, "\", {d}L)", .{if (artifact_record_ops) src.len else 0});
     return true;
 }
 
@@ -880,6 +1185,11 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
                 // The JIT/source-recording path is used only for LIVE definition.
                 if (artifact_mode) return emitDefineMethodInstallable(buf, args.items[0..3], node);
                 return emitDefineMethodSourced(buf, recv, args.items, node);
+            }
+            const rm = std.mem.eql(u8, sel.items, "removeMethod:on:") and args.items.len == 2;
+            if (rm and isReflectRecv(recv)) {
+                if (artifact_mode) return emitRemoveMethodSourced(buf, args.items, node);
+                return emitRemoveMethodLiveSourced(buf, recv, args.items, node);
             }
             return emitGeneralSend(buf, recv, sel.items, args.items);
         }
@@ -1258,6 +1568,961 @@ fn moduleNameFromPath(path: []const u8) []const u8 {
     return base;
 }
 
+fn sha256Hex(bytes: []const u8) [64]u8 {
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
+    return std.fmt.bytesToHex(digest, .lower);
+}
+
+fn oopBytes(o: Oop) []const u8 {
+    var len: usize = 0;
+    const p = g_api.stringBytes(o, &len);
+    return p[0..len];
+}
+
+fn writeAtomic(path: []const u8, bytes: []const u8) bool {
+    const tmp = std.fmt.allocPrint(ca, "{s}.tmp.{x}", .{ path, std.crypto.random.int(u64) }) catch return false;
+    defer ca.free(tmp);
+    const f = std.fs.cwd().createFile(tmp, .{ .exclusive = true }) catch return false;
+    defer f.close();
+    f.writeAll(bytes) catch return false;
+    f.sync() catch return false;
+    std.fs.cwd().rename(tmp, path) catch return false;
+    return true;
+}
+
+fn publishExclusive(path: []const u8, bytes: []const u8) bool {
+    const tmp = std.fmt.allocPrint(ca, "{s}.tmp.{x}", .{ path, std.crypto.random.int(u64) }) catch return false;
+    defer ca.free(tmp);
+    const f = std.fs.cwd().createFile(tmp, .{ .exclusive = true }) catch return false;
+    f.writeAll(bytes) catch {
+        f.close();
+        std.fs.cwd().deleteFile(tmp) catch {};
+        return false;
+    };
+    f.sync() catch {
+        f.close();
+        std.fs.cwd().deleteFile(tmp) catch {};
+        return false;
+    };
+    f.close();
+    std.posix.link(tmp, path) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => {
+            std.fs.cwd().deleteFile(tmp) catch {};
+            return false;
+        },
+    };
+    std.fs.cwd().deleteFile(tmp) catch {};
+    return true;
+}
+
+fn appendCandidateManifest(buf: *std.ArrayList(u8), name: Oop, source_hash: [64]u8, requires: []const Oop, ops: []const CandidateOp) void {
+    buf.appendSlice(ca, "v1|") catch @panic("codegen: oom");
+    buf.appendSlice(ca, ARTIFACT_ABI) catch @panic("codegen: oom");
+    buf.append(ca, '|') catch @panic("codegen: oom");
+    buf.appendSlice(ca, std.mem.span(g_api.symbolName(name))) catch @panic("codegen: oom");
+    buf.append(ca, '|') catch @panic("codegen: oom");
+    buf.appendSlice(ca, &source_hash) catch @panic("codegen: oom");
+    buf.append(ca, '|') catch @panic("codegen: oom");
+    for (requires, 0..) |dep, i| {
+        if (i != 0) buf.append(ca, ',') catch @panic("codegen: oom");
+        buf.appendSlice(ca, std.mem.span(g_api.symbolName(dep))) catch @panic("codegen: oom");
+    }
+    buf.append(ca, '|') catch @panic("codegen: oom");
+    for (ops, 0..) |op, i| {
+        if (i != 0) buf.append(ca, ';') catch @panic("codegen: oom");
+        const target = std.mem.span(g_api.symbolName(op.target_name));
+        const selector = std.mem.span(g_api.symbolName(op.selector));
+        const row = std.fmt.allocPrint(ca, "{s},{s},{c},{d}", .{ target, selector, if (op.kind == .install) @as(u8, 'I') else @as(u8, 'R'), selectorArity(op.selector) }) catch @panic("codegen: oom");
+        defer ca.free(row);
+        buf.appendSlice(ca, row) catch @panic("codegen: oom");
+    }
+}
+
+/// Compile only the declarative operation body into a candidate-capable artifact
+/// and publish its pre-map pointer-free sidecar after hashing the finished dylib.
+fn mCompileCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var scan = scanCandidateSource(a[0]) orelse return candidateError("unsafeCandidateSource");
+    defer scan.deinit();
+    if (scan.name != null and scan.name != a[1]) return candidateError("candidateMetadataMismatch");
+
+    var program: std.ArrayList(u8) = .{};
+    defer program.deinit(ca);
+    for (scan.ops.items) |op| {
+        program.appendSlice(ca, oopBytes(op.source)) catch @panic("codegen: oom");
+        program.appendSlice(ca, ";\n") catch @panic("codegen: oom");
+    }
+    const program_oop = g_api.mkString(program.items.ptr, program.items.len);
+    artifact_record_ops = true;
+    candidate_artifact_mode = true;
+    defer candidate_artifact_mode = false;
+    var emitted = emitProgram(program_oop, false, true, true) orelse return candidateError("candidateCompileFailed");
+    defer emitted.deinit(ca);
+    const src_hash = sha256Hex(oopBytes(a[0]));
+    var manifest: std.ArrayList(u8) = .{};
+    defer manifest.deinit(ca);
+    appendCandidateManifest(&manifest, a[1], src_hash, scan.requires.items, scan.ops.items);
+
+    var out: std.ArrayList(u8) = .{};
+    defer out.deinit(ca);
+    out.appendSlice(ca, "const char __birnam_artifact_abi[] = \"" ++ ARTIFACT_ABI ++ "\";\n") catch @panic("codegen: oom");
+    out.appendSlice(ca, "const char __birnam_module_meta[] = \"") catch @panic("codegen: oom");
+    for (scan.requires.items, 0..) |dep, i| {
+        if (i != 0) out.append(ca, ',') catch @panic("codegen: oom");
+        out.appendSlice(ca, std.mem.span(g_api.symbolName(dep))) catch @panic("codegen: oom");
+    }
+    out.appendSlice(ca, "\";\nconst char __birnam_candidate_manifest[] = \"") catch @panic("codegen: oom");
+    putCStr(&out, manifest.items);
+    out.appendSlice(ca, "\";\n") catch @panic("codegen: oom");
+    out.appendSlice(ca, emitted.items) catch @panic("codegen: oom");
+    out.appendSlice(ca,
+        \\void* __birnam_candidate_validate(void* s, void** a, long n){(void)s;(void)a;(void)n;return birnam_true();}
+        \\void* __birnam_candidate_prepare(void* s, void** a, long n){birnam_candidate_prepare_mode(1L);(void)__ev(s,a,n);birnam_candidate_prepare_mode(0L);return birnam_true();}
+        \\void* __birnam_candidate_activate(void* s, void** a, long n){return __ev(s,a,n);}
+        \\void* __birnam_candidate_rollback(void* s, void** a, long n){(void)s;(void)a;(void)n;return birnam_nil();}
+        \\
+    ) catch @panic("codegen: oom");
+    const compiled = g_api.send(tcc, g_api.intern("compile:output:as:"), &[_]Oop{ g_api.mkString(out.items.ptr, out.items.len), a[2], g_api.intern("dll") }, 3);
+    if (compiled == g_api.nilObj) return candidateError("candidateCompileFailed");
+
+    const artifact = std.fs.cwd().readFileAlloc(ca, oopBytes(a[2]), 1 << 30) catch return candidateError("candidateArtifactUnreadable");
+    defer ca.free(artifact);
+    const checksum = sha256Hex(artifact);
+    var sidecar: std.ArrayList(u8) = .{};
+    defer sidecar.deinit(ca);
+    const w = sidecar.writer(ca);
+    w.print("{s}\nartifact={s}\nruntime={s}\ncandidate={d}\nplatform={s}\nmanifest={s}\nsource={d}\n", .{
+        CANDIDATE_MAGIC, checksum, ARTIFACT_ABI, CANDIDATE_ABI, CANDIDATE_PLATFORM, manifest.items, oopBytes(a[0]).len,
+    }) catch @panic("codegen: oom");
+    sidecar.appendSlice(ca, oopBytes(a[0])) catch @panic("codegen: oom");
+    const side_path = std.fmt.allocPrint(ca, "{s}.candidate", .{oopBytes(a[2])}) catch return candidateError("candidateManifestWriteFailed");
+    defer ca.free(side_path);
+    if (!writeAtomic(side_path, sidecar.items)) return candidateError("candidateManifestWriteFailed");
+    return a[2];
+}
+
+fn nextLine(bytes: []const u8, pos: *usize) ?[]const u8 {
+    if (pos.* >= bytes.len) return null;
+    const end = std.mem.indexOfScalarPos(u8, bytes, pos.*, '\n') orelse return null;
+    const line = bytes[pos.*..end];
+    pos.* = end + 1;
+    return line;
+}
+
+fn fieldValue(line: []const u8, key: []const u8) ?[]const u8 {
+    if (!std.mem.startsWith(u8, line, key) or line.len <= key.len or line[key.len] != '=') return null;
+    return line[key.len + 1 ..];
+}
+
+fn fixedName(bytes: []const u8) []const u8 {
+    return bytes[0 .. std.mem.indexOfScalar(u8, bytes, 0) orelse bytes.len];
+}
+
+/// Trusted-candidate Mach-O policy: a thin arm64 MH_DYLIB, no initializer
+/// sections, and no load command beyond libSystem. This inspection runs on bytes
+/// before dlopen, so constructors cannot evade it by lying through an export.
+fn candidateMachOSafe(bytes: []const u8) bool {
+    if (bytes.len < 32 or std.mem.readInt(u32, bytes[0..4], .little) != 0xfeedfacf) return false;
+    if (std.mem.readInt(u32, bytes[4..8], .little) != 0x0100000c) return false; // arm64
+    if (std.mem.readInt(u32, bytes[12..16], .little) != 6) return false; // MH_DYLIB
+    const ncmds = std.mem.readInt(u32, bytes[16..20], .little);
+    const sizeofcmds = std.mem.readInt(u32, bytes[20..24], .little);
+    if (32 + @as(usize, sizeofcmds) > bytes.len) return false;
+    var off: usize = 32;
+    var ci: u32 = 0;
+    while (ci < ncmds) : (ci += 1) {
+        if (off + 8 > bytes.len) return false;
+        const cmd = std.mem.readInt(u32, bytes[off..][0..4], .little);
+        const cmdsize: usize = std.mem.readInt(u32, bytes[off + 4 ..][0..4], .little);
+        if (cmdsize < 8 or off + cmdsize > bytes.len) return false;
+        if (cmd == 0x19) { // LC_SEGMENT_64
+            if (cmdsize < 72) return false;
+            const nsects = std.mem.readInt(u32, bytes[off + 64 ..][0..4], .little);
+            if (72 + @as(usize, nsects) * 80 > cmdsize) return false;
+            var so = off + 72;
+            var si: u32 = 0;
+            while (si < nsects) : (si += 1) {
+                const sect = fixedName(bytes[so..][0..16]);
+                if (std.mem.eql(u8, sect, "__mod_init_func") or std.mem.eql(u8, sect, "__init_offsets")) return false;
+                so += 80;
+            }
+        } else if (cmd == 0xc or cmd == 0x18 or cmd == 0x80000018 or cmd == 0x1f or cmd == 0x8000001f or cmd == 0x20 or cmd == 0x23 or cmd == 0x80000023) {
+            // Every dylib-loading command is denied except the compiler's one
+            // ordinary libSystem dependency.
+            if (cmdsize < 24) return false;
+            const noff: usize = std.mem.readInt(u32, bytes[off + 8 ..][0..4], .little);
+            if (noff >= cmdsize) return false;
+            const dep = fixedName(bytes[off + noff .. off + cmdsize]);
+            if (cmd != 0xc or !std.mem.eql(u8, dep, "/usr/lib/libSystem.B.dylib")) return false;
+        }
+        off += cmdsize;
+    }
+    return off == 32 + sizeofcmds;
+}
+
+fn assertUnitFact(unit: Oop, attr: [*:0]const u8, value: Oop) void {
+    _ = g_api.send(g_store, sel_assert, &[_]Oop{ unit, g_api.intern(attr), value }, 3);
+}
+
+fn makeVector(items: []const Oop) Oop {
+    const vector = g_api.import("Vector") orelse return g_api.nilObj;
+    var result = g_api.send(vector, g_api.intern("new"), &[_]Oop{}, 0);
+    for (items) |item| result = g_api.send(result, g_api.intern("add:"), &[_]Oop{item}, 1);
+    return result;
+}
+
+fn freeCandidateState(st: *CandidateState) void {
+    ca.free(st.author_path);
+    if (st.content_path) |p| ca.free(p);
+    ca.free(st.exported_manifest);
+    st.requires.deinit(ca);
+    st.ops.deinit(ca);
+    ca.destroy(st);
+}
+
+/// Read and verify the detached envelope and dylib bytes without mapping native
+/// code. `unit` is minted by pure Birnam policy; this mechanism only reflects the
+/// inspected pointer-free metadata and retains its transient native record.
+fn mInspectCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const path = oopBytes(a[0]);
+    const side_path = std.fmt.allocPrint(ca, "{s}.candidate", .{path}) catch return candidateError("candidateManifestUnreadable");
+    defer ca.free(side_path);
+    const side = std.fs.cwd().readFileAlloc(ca, side_path, 1 << 30) catch return candidateError("candidateManifestUnreadable");
+    defer ca.free(side);
+    var pos: usize = 0;
+    if (!std.mem.eql(u8, nextLine(side, &pos) orelse return candidateError("candidateManifestInvalid"), CANDIDATE_MAGIC))
+        return candidateError("candidateManifestInvalid");
+    const checksum_s = fieldValue(nextLine(side, &pos) orelse return candidateError("candidateManifestInvalid"), "artifact") orelse return candidateError("candidateManifestInvalid");
+    const runtime = fieldValue(nextLine(side, &pos) orelse return candidateError("candidateManifestInvalid"), "runtime") orelse return candidateError("candidateManifestInvalid");
+    const cand_s = fieldValue(nextLine(side, &pos) orelse return candidateError("candidateManifestInvalid"), "candidate") orelse return candidateError("candidateManifestInvalid");
+    const platform = fieldValue(nextLine(side, &pos) orelse return candidateError("candidateManifestInvalid"), "platform") orelse return candidateError("candidateManifestInvalid");
+    const manifest = fieldValue(nextLine(side, &pos) orelse return candidateError("candidateManifestInvalid"), "manifest") orelse return candidateError("candidateManifestInvalid");
+    const source_len_s = fieldValue(nextLine(side, &pos) orelse return candidateError("candidateManifestInvalid"), "source") orelse return candidateError("candidateManifestInvalid");
+    if (!std.mem.eql(u8, runtime, ARTIFACT_ABI) or !std.mem.eql(u8, platform, CANDIDATE_PLATFORM) or
+        (std.fmt.parseInt(u32, cand_s, 10) catch 0) != CANDIDATE_ABI or checksum_s.len != 64)
+        return candidateError("candidateAbiMismatch");
+    const source_len = std.fmt.parseInt(usize, source_len_s, 10) catch return candidateError("candidateManifestInvalid");
+    if (source_len != side.len - pos) return candidateError("candidateManifestInvalid");
+    const source = g_api.mkString(side[pos..].ptr, source_len);
+
+    const artifact = std.fs.cwd().readFileAlloc(ca, path, 1 << 30) catch return candidateError("candidateArtifactUnreadable");
+    defer ca.free(artifact);
+    if (!candidateMachOSafe(artifact)) return candidateError("unsafeCandidateArtifact");
+    const actual = sha256Hex(artifact);
+    if (!std.mem.eql(u8, &actual, checksum_s)) return candidateError("candidateChecksumMismatch");
+
+    var parts = std.mem.splitScalar(u8, manifest, '|');
+    if (!std.mem.eql(u8, parts.next() orelse "", "v1") or
+        !std.mem.eql(u8, parts.next() orelse "", ARTIFACT_ABI)) return candidateError("candidateManifestInvalid");
+    const name_s = parts.next() orelse return candidateError("candidateManifestInvalid");
+    const source_hash_s = parts.next() orelse return candidateError("candidateManifestInvalid");
+    const deps_s = parts.next() orelse "";
+    const ops_s = parts.next() orelse return candidateError("candidateManifestInvalid");
+    if (parts.next() != null or source_hash_s.len != 64) return candidateError("candidateManifestInvalid");
+    const source_hash = sha256Hex(side[pos..]);
+    if (!std.mem.eql(u8, &source_hash, source_hash_s)) return candidateError("candidateChecksumMismatch");
+    const name_z = ca.dupeZ(u8, name_s) catch @panic("codegen: oom");
+    defer ca.free(name_z);
+    const name = g_api.intern(name_z.ptr);
+    var scan = scanCandidateSource(source) orelse return candidateError("unsafeCandidateSource");
+    defer scan.deinit();
+    if (scan.name != null and scan.name != name) return candidateError("candidateMetadataMismatch");
+    var deps_check: std.ArrayList(u8) = .{};
+    defer deps_check.deinit(ca);
+    for (scan.requires.items, 0..) |dep, i| {
+        if (i != 0) deps_check.append(ca, ',') catch @panic("codegen: oom");
+        deps_check.appendSlice(ca, std.mem.span(g_api.symbolName(dep))) catch @panic("codegen: oom");
+    }
+    if (!std.mem.eql(u8, deps_check.items, deps_s)) return candidateError("candidateMetadataMismatch");
+    var ops_check: std.ArrayList(u8) = .{};
+    defer ops_check.deinit(ca);
+    for (scan.ops.items, 0..) |op, i| {
+        if (i != 0) ops_check.append(ca, ';') catch @panic("codegen: oom");
+        const row = std.fmt.allocPrint(ca, "{s},{s},{c},{d}", .{
+            std.mem.span(g_api.symbolName(op.target_name)),          std.mem.span(g_api.symbolName(op.selector)),
+            if (op.kind == .install) @as(u8, 'I') else @as(u8, 'R'), selectorArity(op.selector),
+        }) catch @panic("codegen: oom");
+        defer ca.free(row);
+        ops_check.appendSlice(ca, row) catch @panic("codegen: oom");
+    }
+    if (!std.mem.eql(u8, ops_check.items, ops_s)) return candidateError("candidateMetadataMismatch");
+
+    if (candidate_states.get(a[1])) |existing| {
+        if (std.mem.eql(u8, &existing.checksum, checksum_s)) return a[1];
+        return candidateError("candidateUnitAlreadyStaged");
+    }
+    const st = ca.create(CandidateState) catch @panic("codegen: oom");
+    st.* = .{
+        .unit = a[1],
+        .name = name,
+        .source = source,
+        .author_path = ca.dupe(u8, path) catch @panic("codegen: oom"),
+        .checksum = actual,
+        .exported_manifest = ca.dupe(u8, manifest) catch @panic("codegen: oom"),
+    };
+    st.requires.appendSlice(ca, scan.requires.items) catch @panic("codegen: oom");
+    st.ops.appendSlice(ca, scan.ops.items) catch @panic("codegen: oom");
+    for (st.ops.items) |*op| {
+        const target = globalBySymbol(op.target_name);
+        if (target == g_api.nilObj) continue;
+        const vt = g_api.vtableOf(target);
+        op.opened_captured = true;
+        op.opened_target = target;
+        op.opened_vt = vt;
+        op.opened_method = directMethod(vt, op.selector) orelse null;
+        op.opened_present = op.opened_method != null;
+    }
+    candidate_states.put(ca, a[1], st) catch @panic("codegen: oom");
+
+    assertUnitFact(a[1], "unitName", name);
+    assertUnitFact(a[1], "kind", g_api.intern("candidateArtifact"));
+    assertUnitFact(a[1], "sourceHash", g_api.mkString(source_hash_s.ptr, source_hash_s.len));
+    assertUnitFact(a[1], "artifactChecksum", g_api.mkString(checksum_s.ptr, checksum_s.len));
+    assertUnitFact(a[1], "platform", g_api.intern(CANDIDATE_PLATFORM));
+    assertUnitFact(a[1], "runtimeAbi", g_api.intern(ARTIFACT_ABI));
+    assertUnitFact(a[1], "candidateAbi", g_api.mkSmallInt(CANDIDATE_ABI));
+    assertUnitFact(a[1], "requires", makeVector(st.requires.items));
+    var provided: std.ArrayList(Oop) = .{};
+    defer provided.deinit(ca);
+    const object = g_api.import("Object") orelse return candidateError("candidateRuntimeUnavailable");
+    for (st.ops.items, 0..) |op, i| {
+        const oe = g_api.send(object, g_api.intern("clone"), &[_]Oop{}, 0);
+        assertUnitFact(oe, "targetName", op.target_name);
+        assertUnitFact(oe, "selector", op.selector);
+        assertUnitFact(oe, "operation", g_api.intern(if (op.kind == .install) "install" else "remove"));
+        assertUnitFact(oe, "definitionSource", op.source);
+        assertUnitFact(oe, "operationSequence", g_api.mkSmallInt(@intCast(i)));
+        provided.append(ca, oe) catch @panic("codegen: oom");
+    }
+    assertUnitFact(a[1], "provides", makeVector(provided.items));
+    return a[1];
+}
+
+fn gcCandidateRoots(mark: idapi.MarkFn) callconv(.c) void {
+    var root_it = candidate_roots.valueIterator();
+    while (root_it.next()) |value| mark(value.*);
+    var it = candidate_states.valueIterator();
+    while (it.next()) |pst| {
+        const st = pst.*;
+        mark(st.unit);
+        mark(st.name);
+        mark(st.source);
+        if (st.prepared_publication) |plan| {
+            mark(plan.unit);
+            mark(plan.name);
+            mark(plan.prior);
+            mark(plan.event);
+            mark(plan.basis);
+        }
+        for (st.requires.items) |dep| mark(dep);
+        for (st.ops.items) |op| {
+            mark(op.target_name);
+            mark(op.selector);
+            mark(op.source);
+            mark(op.opened_target);
+            mark(op.opened_vt);
+            mark(op.target);
+            mark(op.vt);
+            mark(op.prior_source);
+            mark(op.post_log_source);
+        }
+    }
+}
+
+fn globalBySymbol(sym: Oop) Oop {
+    return rtGlobalB(sym);
+}
+
+fn ensureContentPath(st: *CandidateState) bool {
+    if (st.content_path != null) return true;
+    const dir = std.fs.path.dirname(st.author_path) orelse ".";
+    const object_dir = std.fs.path.join(ca, &.{ dir, ".birnam-candidates" }) catch return false;
+    defer ca.free(object_dir);
+    std.fs.cwd().makePath(object_dir) catch return false;
+    const file_name = std.fmt.allocPrint(ca, "{s}.dylib", .{st.checksum}) catch return false;
+    defer ca.free(file_name);
+    const dest = std.fs.path.join(ca, &.{ object_dir, file_name }) catch return false;
+    errdefer ca.free(dest);
+    const source = std.fs.cwd().readFileAlloc(ca, st.author_path, 1 << 30) catch return false;
+    defer ca.free(source);
+    if (!std.mem.eql(u8, &sha256Hex(source), &st.checksum)) return false;
+    if (std.fs.cwd().readFileAlloc(ca, dest, 1 << 30)) |existing| {
+        defer ca.free(existing);
+        if (!std.mem.eql(u8, &sha256Hex(existing), &st.checksum)) return false;
+    } else |_| {
+        if (!publishExclusive(dest, source)) return false;
+    }
+    const published = std.fs.cwd().readFileAlloc(ca, dest, 1 << 30) catch return false;
+    defer ca.free(published);
+    if (!std.mem.eql(u8, &sha256Hex(published), &st.checksum)) return false;
+    st.content_path = dest;
+    return true;
+}
+
+/// The explicitly named native mapping boundary. Inspection and dependency
+/// reporting happen earlier and never call dlopen.
+fn mMapCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const st = candidate_states.get(a[0]) orelse return candidateError("unknownCandidate");
+    if (st.handle != null) return a[0];
+    if (st.requires.items.len != 0) {
+        const module = globalBySymbol(g_api.intern("Module"));
+        if (module == g_api.nilObj) return candidateError("dependenciesMissing");
+        for (st.requires.items) |dep| {
+            if (g_api.send(module, g_api.intern("isLoaded:"), &[_]Oop{dep}, 1) != g_api.trueObj)
+                return candidateError("dependenciesMissing");
+        }
+    }
+    if (!ensureContentPath(st)) return candidateError("candidatePublicationFailed");
+    const z = ca.dupeZ(u8, st.content_path.?) catch @panic("codegen: oom");
+    defer ca.free(z);
+    const h = g_api.dlopen(z.ptr, RTLD_LAZY) orelse return candidateError("candidateMapFailed");
+    const abi_p = g_api.dlsym(h, "__birnam_artifact_abi") orelse return candidateError("candidateAbiMismatch");
+    if (!std.mem.eql(u8, std.mem.span(@as([*:0]const u8, @ptrCast(abi_p))), ARTIFACT_ABI)) return candidateError("candidateAbiMismatch");
+    const manifest_p = g_api.dlsym(h, "__birnam_candidate_manifest") orelse return candidateError("candidateManifestMismatch");
+    if (!std.mem.eql(u8, std.mem.span(@as([*:0]const u8, @ptrCast(manifest_p))), st.exported_manifest)) return candidateError("candidateManifestMismatch");
+    _ = g_api.dlsym(h, "__birnam_candidate_validate") orelse return candidateError("candidateAbiMismatch");
+    const prepare_p = g_api.dlsym(h, "__birnam_candidate_prepare") orelse return candidateError("candidateAbiMismatch");
+    const activate_p = g_api.dlsym(h, "__birnam_candidate_activate") orelse return candidateError("candidateAbiMismatch");
+    _ = g_api.dlsym(h, "__birnam_candidate_rollback") orelse return candidateError("candidateAbiMismatch");
+    const init_p = g_api.dlsym(h, "__birnam_unit_init") orelse return candidateError("candidateAbiMismatch");
+    const init_fn: *const fn () callconv(.c) void = @ptrCast(@alignCast(init_p));
+    init_fn();
+    st.handle = h;
+    st.prepare_fn = @ptrCast(@alignCast(prepare_p));
+    st.activate_fn = @ptrCast(@alignCast(activate_p));
+    return a[0];
+}
+
+fn sourceOperation(src: Oop, target_name: Oop, selector: Oop) ?CandidateOpKind {
+    var scan = scanCandidateSource(src) orelse return null;
+    defer scan.deinit();
+    if (scan.ops.items.len != 1) return null;
+    const op = scan.ops.items[0];
+    if (op.target_name != target_name or op.selector != selector) return null;
+    return op.kind;
+}
+
+const PortableOperation = struct { kind: CandidateOpKind, source: Oop };
+
+fn latestPortableOperation(target_name: Oop, selector: Oop) ?PortableOperation {
+    var latest: ?PortableOperation = null;
+    const legacy_count = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{g_methods_entity}, 1));
+    var i: i64 = 0;
+    while (i < legacy_count) : (i += 1) {
+        const attr = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ g_methods_entity, g_api.mkSmallInt(i) }, 2);
+        const src = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_methods_entity, attr }, 2);
+        if (src != g_api.nilObj) {
+            if (sourceOperation(src, target_name, selector)) |kind|
+                latest = .{ .kind = kind, .source = src };
+        }
+    }
+    var ops: std.ArrayList(MethodOpRec) = .{};
+    defer ops.deinit(ca);
+    collectMethodOps(&ops);
+    for (ops.items) |rec| {
+        if (sourceOperation(rec.src, target_name, selector)) |kind|
+            latest = .{ .kind = kind, .source = rec.src };
+    }
+    return latest;
+}
+
+fn latestPortableSource(target_name: Oop, selector: Oop) Oop {
+    const latest = latestPortableOperation(target_name, selector) orelse return null;
+    return if (latest.kind == .install) latest.source else null;
+}
+
+fn clearPrepared(st: *CandidateState) void {
+    st.prepared_publication = null;
+    st.prepared_predecessor = null;
+}
+
+fn vectorItem(vector: Oop, index: i64) Oop {
+    return g_api.send(vector, g_api.intern("at:"), &[_]Oop{g_api.mkSmallInt(index)}, 1);
+}
+
+fn publicationStillCurrent(plan: CandidatePublication) bool {
+    if (!plan.enforce_lifecycle) return true;
+    const state = factValue(plan.unit, "state");
+    const active = factValue(plan.name, "activeCompiledUnit");
+    if (plan.action == .activate) {
+        if (state != g_api.intern("candidate") or active != plan.prior) return false;
+        if (plan.prior != g_api.nilObj and factValue(plan.prior, "state") != g_api.intern("active")) return false;
+        return true;
+    }
+    return state == g_api.intern("active") and active == plan.unit and
+        factValue(plan.unit, "supersedes") == plan.prior;
+}
+
+fn copyPublicationPlan(st: *CandidateState, plan: Oop, expected: PublicationAction, strict: bool) Oop {
+    const vector_vt = g_api.import("VectorVt") orelse return candidateError("candidateRuntimeUnavailable");
+    if (plan == null or g_api.vtableOf(plan) != vector_vt) return candidateError("invalidPublicationPlan");
+    const size = g_api.send(plan, g_api.intern("size"), &[_]Oop{}, 0);
+    if (g_api.smallIntValue(size) != 6) return candidateError("invalidPublicationPlan");
+    const action = vectorItem(plan, 0);
+    const unit = vectorItem(plan, 1);
+    const name = vectorItem(plan, 2);
+    const prior = vectorItem(plan, 3);
+    const event = vectorItem(plan, 4);
+    const basis = vectorItem(plan, 5);
+    const expected_symbol = g_api.intern(if (expected == .activate) "activate" else "rollback");
+    if (action != expected_symbol or unit != st.unit or name != st.name or event == null or basis == null)
+        return candidateError("invalidPublicationPlan");
+
+    const copied: CandidatePublication = .{
+        .action = expected,
+        .enforce_lifecycle = strict,
+        .unit = unit,
+        .name = name,
+        .prior = prior,
+        .event = event,
+        .basis = basis,
+    };
+    if (strict and !publicationStillCurrent(copied)) return candidateError("stalePublicationPlan");
+    st.prepared_publication = copied;
+    return unit;
+}
+
+fn syntheticPublicationPlan(st: *CandidateState, action: PublicationAction, prior: Oop) Oop {
+    const object = g_api.import("Object") orelse return g_api.nilObj;
+    const event = g_api.send(object, g_api.intern("clone"), &[_]Oop{}, 0);
+    const basis = g_api.send(g_store, g_api.intern("basis"), &[_]Oop{}, 0);
+    return makeVector(&.{
+        g_api.intern(if (action == .activate) "activate" else "rollback"),
+        st.unit,
+        st.name,
+        prior,
+        event,
+        basis,
+    });
+}
+
+fn applyPublication(plan: CandidatePublication) void {
+    if (plan.action == .activate) {
+        if (plan.prior != g_api.nilObj) {
+            assertUnitFact(plan.unit, "supersedes", plan.prior);
+            assertUnitFact(plan.prior, "state", g_api.intern("superseded"));
+        }
+        assertUnitFact(plan.name, "activeCompiledUnit", plan.unit);
+        assertUnitFact(plan.unit, "state", g_api.intern("active"));
+        assertUnitFact(plan.unit, "rollbackAvailable", g_api.trueObj);
+        assertUnitFact(plan.unit, "recoveryPortable", g_api.trueObj);
+    } else {
+        assertUnitFact(plan.name, "activeCompiledUnit", plan.prior);
+        if (plan.prior != g_api.nilObj)
+            assertUnitFact(plan.prior, "state", g_api.intern("active"));
+        assertUnitFact(plan.unit, "state", g_api.intern("rolledBack"));
+        assertUnitFact(plan.unit, "rollbackAvailable", g_api.falseObj);
+    }
+    assertUnitFact(plan.event, "unit", plan.unit);
+    assertUnitFact(plan.event, "action", g_api.intern(if (plan.action == .activate) "activate" else "rollback"));
+    assertUnitFact(plan.event, "basis", plan.basis);
+    if (plan.prior != g_api.nilObj) assertUnitFact(plan.event, "priorUnit", plan.prior);
+    assertUnitFact(plan.unit, "activationEvent", plan.event);
+}
+
+fn tokenPayload(token: Oop) *TokenPayload {
+    return @ptrCast(@alignCast(token.?));
+}
+
+fn tokenFinalizer(token: Oop) callconv(.c) void {
+    const p = tokenPayload(token);
+    if (p.consumed != 0) return;
+    if (candidate_states.get(p.unit)) |st| {
+        if (st.prepared_token == token) {
+            st.prepared_token = null;
+            clearPrepared(st);
+        }
+    }
+    p.consumed = 1;
+}
+
+fn makePreparedToken(st: *CandidateState, rollback: bool) Oop {
+    if (st.prepared_token != null) return candidateError("candidateAlreadyPrepared");
+    const token = g_api.alloc(candidate_token_vt, @sizeOf(TokenPayload));
+    const p = tokenPayload(token);
+    p.* = .{ .unit = st.unit, .consumed = 0 };
+    g_api.setFinalizer(token, &tokenFinalizer);
+    st.prepared_token = token;
+    st.prepared_rollback = rollback;
+    return token;
+}
+
+fn sameBinding(a: CandidateOp, b: CandidateOp) bool {
+    return a.target_name == b.target_name and a.selector == b.selector;
+}
+
+fn bindingShadowed(root: *CandidateState, owner: *CandidateState, needle: CandidateOp) bool {
+    var cursor: ?*CandidateState = root;
+    while (cursor) |st| : (cursor = st.predecessor) {
+        if (st == owner) return false;
+        for (st.ops.items) |op| if (sameBinding(op, needle)) return true;
+    }
+    return false;
+}
+
+/// Validate the inherited, overlayed ledger represented by `root`.  A newer
+/// generation's entry shadows the same pair in every predecessor; untouched
+/// predecessor entries remain live obligations of the active generation.
+fn validateEffectiveLedger(root: *CandidateState) Oop {
+    var cursor: ?*CandidateState = root;
+    while (cursor) |owner| : (cursor = owner.predecessor) {
+        for (owner.ops.items) |op| {
+            if (bindingShadowed(root, owner, op)) continue;
+            if (globalBySymbol(op.target_name) != op.target or g_api.vtableOf(op.target) != op.vt)
+                return candidateError("candidateDrifted");
+            const cur = directMethod(op.vt, op.selector);
+            if ((cur != null) != op.post_present or (cur orelse null) != op.post_method)
+                return candidateError("candidateDrifted");
+        }
+    }
+    return root.unit;
+}
+
+fn validateCandidateBase(st: *CandidateState, rollback: bool) Oop {
+    if (st.handle == null) return candidateError("candidateNotMapped");
+    if (rollback and !st.active) return candidateError("candidateNotActive");
+    if (!rollback and st.active) return candidateError("candidateAlreadyActive");
+    if (rollback) return validateEffectiveLedger(st);
+    if (st.prepared_predecessor) |prior| {
+        if (!prior.active) return candidateError("candidateStaleBase");
+        const inherited = validateEffectiveLedger(prior);
+        if (inherited != prior.unit) return inherited;
+    }
+    for (st.ops.items) |*op| {
+        if (!rollback) {
+            const target = globalBySymbol(op.target_name);
+            if (target == g_api.nilObj) return candidateError("candidateTargetMissing");
+            const vt = g_api.vtableOf(target);
+            if (vt == null or g_api.vtableOwner(vt) != target) return candidateError("unstableMethodTarget");
+            if (op.opened_captured) {
+                const opened_cur = directMethod(vt, op.selector);
+                if (target != op.opened_target or vt != op.opened_vt or
+                    (opened_cur != null) != op.opened_present or (opened_cur orelse null) != op.opened_method)
+                    return candidateError("candidateStaleBase");
+            }
+            op.target = target;
+            op.vt = vt;
+            op.prior_method = directMethod(vt, op.selector) orelse null;
+            op.prior_present = op.prior_method != null;
+            if (op.kind == .remove and !op.prior_present) return candidateError("missingDirectMethod");
+            if (op.prior_present) {
+                op.prior_source = latestPortableSource(op.target_name, op.selector);
+                if (op.prior_source == null) return candidateError("nonPortableBase");
+            }
+        }
+    }
+    return st.unit;
+}
+
+fn mPrepareCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    const st = candidate_states.get(a[0]) orelse return candidateError("unknownCandidate");
+    if (st.prepared_token != null) return candidateError("candidateAlreadyPrepared");
+    const vector_vt = g_api.import("VectorVt");
+    const explicit_plan = n > 1 and vector_vt != null and g_api.vtableOf(a[1]) == vector_vt.?;
+    const prior = if (explicit_plan) vectorItem(a[1], 3) else if (n > 1) a[1] else g_api.nilObj;
+    const plan = if (explicit_plan) a[1] else syntheticPublicationPlan(st, .activate, prior);
+    const copied = copyPublicationPlan(st, plan, .activate, explicit_plan);
+    if (copied != st.unit) return copied;
+    st.prepared_predecessor = if (prior != g_api.nilObj) candidate_states.get(prior) orelse {
+        clearPrepared(st);
+        return candidateError("unmanagedActiveBase");
+    } else null;
+    const valid = validateCandidateBase(st, false);
+    if (valid != st.unit) {
+        clearPrepared(st);
+        return valid;
+    }
+    const prepared = st.prepare_fn.?(g_api.nilObj, &[_]Oop{}, 0);
+    if (prepared != g_api.trueObj) {
+        clearPrepared(st);
+        return candidateError("candidatePrepareFailed");
+    }
+    return makePreparedToken(st, false);
+}
+
+fn mPrepareCandidateRollback(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    const st = candidate_states.get(a[0]) orelse return candidateError("unknownCandidate");
+    if (st.prepared_token != null) return candidateError("candidateAlreadyPrepared");
+    const prior = if (st.predecessor) |p| p.unit else g_api.nilObj;
+    const explicit_plan = n > 1;
+    const plan = if (explicit_plan) a[1] else syntheticPublicationPlan(st, .rollback, prior);
+    const copied = copyPublicationPlan(st, plan, .rollback, explicit_plan);
+    if (copied != st.unit) return copied;
+    const valid = validateCandidateBase(st, true);
+    if (valid != st.unit) {
+        clearPrepared(st);
+        assertUnitFact(st.unit, "state", g_api.intern("drifted"));
+        assertUnitFact(st.unit, "rollbackAvailable", g_api.falseObj);
+        return valid;
+    }
+    return makePreparedToken(st, true);
+}
+
+fn consumeToken(token: Oop) ?*CandidateState {
+    if (token == null or g_api.vtableOf(token) != candidate_token_vt) return null;
+    const p = tokenPayload(token);
+    if (p.consumed != 0) return null;
+    const st = candidate_states.get(p.unit) orelse return null;
+    if (st.prepared_token != token) return null;
+    p.consumed = 1;
+    st.prepared_token = null;
+    return st;
+}
+
+fn mCommitPrepared(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const token = a[0];
+    if (token == null or g_api.vtableOf(token) != candidate_token_vt) return candidateError("invalidPreparedToken");
+    const p = tokenPayload(token);
+    const st = candidate_states.get(p.unit) orelse return candidateError("invalidPreparedToken");
+    if (p.consumed != 0 or st.prepared_token != token or st.prepared_rollback) return candidateError("invalidPreparedToken");
+    const publication = st.prepared_publication orelse return candidateError("invalidPreparedToken");
+    if (!publicationStillCurrent(publication)) {
+        _ = consumeToken(token);
+        clearPrepared(st);
+        return candidateError("stalePublicationPlan");
+    }
+    const valid = validateCandidateBase(st, false);
+    if (valid != st.unit) {
+        _ = consumeToken(token);
+        clearPrepared(st);
+        return valid;
+    }
+    _ = consumeToken(token);
+    const result = st.activate_fn.?(g_api.nilObj, &[_]Oop{}, 0);
+    for (st.ops.items) |*op| {
+        op.post_method = directMethod(op.vt, op.selector) orelse null;
+        op.post_present = op.post_method != null;
+        op.post_log_source = if (latestPortableOperation(op.target_name, op.selector)) |latest| latest.source else null;
+    }
+    st.active = true;
+    st.predecessor = st.prepared_predecessor;
+    if (st.predecessor) |prior| prior.active = false;
+    applyPublication(publication);
+    clearPrepared(st);
+    _ = result;
+    return st.unit;
+}
+
+fn removalSource(op: CandidateOp) Oop {
+    var b: std.ArrayList(u8) = .{};
+    defer b.deinit(ca);
+    b.appendSlice(ca, "[Reflect removeMethod: #") catch @panic("codegen: oom");
+    b.appendSlice(ca, std.mem.span(g_api.symbolName(op.selector))) catch @panic("codegen: oom");
+    b.appendSlice(ca, " on: ") catch @panic("codegen: oom");
+    b.appendSlice(ca, std.mem.span(g_api.symbolName(op.target_name))) catch @panic("codegen: oom");
+    b.append(ca, ']') catch @panic("codegen: oom");
+    return g_api.mkString(b.items.ptr, b.items.len);
+}
+
+fn mCommitPreparedRollback(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const token = a[0];
+    if (token == null or g_api.vtableOf(token) != candidate_token_vt) return candidateError("invalidPreparedToken");
+    const p = tokenPayload(token);
+    const st = candidate_states.get(p.unit) orelse return candidateError("invalidPreparedToken");
+    if (p.consumed != 0 or st.prepared_token != token or !st.prepared_rollback) return candidateError("invalidPreparedToken");
+    const publication = st.prepared_publication orelse return candidateError("invalidPreparedToken");
+    if (!publicationStillCurrent(publication)) {
+        _ = consumeToken(token);
+        clearPrepared(st);
+        return candidateError("stalePublicationPlan");
+    }
+    const valid = validateCandidateBase(st, true);
+    if (valid != st.unit) {
+        _ = consumeToken(token);
+        clearPrepared(st);
+        assertUnitFact(st.unit, "state", g_api.intern("drifted"));
+        return valid;
+    }
+    _ = consumeToken(token);
+    var i = st.ops.items.len;
+    while (i > 0) {
+        i -= 1;
+        const op = st.ops.items[i];
+        if (op.prior_present) {
+            _ = g_api.send(g_store, sel_addMethodOn, &[_]Oop{ op.selector, op.vt, op.prior_method }, 3);
+            recordMethodOp(op.prior_source);
+        } else {
+            _ = g_api.send(g_store, g_api.intern("removeMethod:on:"), &[_]Oop{ op.selector, op.vt }, 2);
+            recordMethodOp(removalSource(op));
+        }
+    }
+    st.active = false;
+    if (st.predecessor) |prior| prior.active = true;
+    applyPublication(publication);
+    clearPrepared(st);
+    return st.unit;
+}
+
+fn mDiscardPrepared(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const st = consumeToken(a[0]) orelse return candidateError("invalidPreparedToken");
+    clearPrepared(st);
+    return g_api.trueObj;
+}
+
+fn mReconcileCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const st = candidate_states.get(a[0]) orelse return a[0];
+    if (!st.active) return st.unit;
+    const valid = validateCandidateBase(st, true);
+    if (valid == st.unit) return st.unit;
+    assertUnitFact(st.unit, "state", g_api.intern("drifted"));
+    assertUnitFact(st.unit, "rollbackAvailable", g_api.falseObj);
+    return valid;
+}
+
+fn mReconcileAllCandidates(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    var portable = true;
+    var it = candidate_states.valueIterator();
+    while (it.next()) |pst| {
+        const st = pst.*;
+        if (!st.active) continue;
+        var drifted = false;
+        var cursor: ?*CandidateState = st;
+        while (cursor) |owner| : (cursor = owner.predecessor) {
+            for (owner.ops.items) |op| {
+                if (bindingShadowed(st, owner, op)) continue;
+                if (globalBySymbol(op.target_name) != op.target or g_api.vtableOf(op.target) != op.vt) {
+                    drifted = true;
+                    portable = false;
+                    continue;
+                }
+                const cur = directMethod(op.vt, op.selector);
+                if ((cur != null) == op.post_present and (cur orelse null) == op.post_method) continue;
+                drifted = true;
+                const latest = latestPortableOperation(op.target_name, op.selector);
+                if (latest == null or latest.?.source == op.post_log_source or
+                    ((cur != null) and latest.?.kind != .install) or ((cur == null) and latest.?.kind != .remove))
+                    portable = false;
+            }
+        }
+        if (drifted) {
+            assertUnitFact(st.unit, "state", g_api.intern("drifted"));
+            assertUnitFact(st.unit, "rollbackAvailable", g_api.falseObj);
+        }
+    }
+    return if (portable) g_api.trueObj else candidateError("nonPortableDrift");
+}
+
+fn mAdoptCandidateLive(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const old = candidate_states.get(a[0]) orelse return candidateError("unknownCandidate");
+    if (!old.active) return candidateError("candidateNotActive");
+    if (candidate_states.contains(a[1])) return candidateError("candidateUnitAlreadyStaged");
+    const baseline = ca.create(CandidateState) catch @panic("codegen: oom");
+    baseline.* = .{
+        .unit = a[1],
+        .name = old.name,
+        .source = old.source,
+        .author_path = ca.dupe(u8, "") catch @panic("codegen: oom"),
+        .checksum = [_]u8{'0'} ** 64,
+        .exported_manifest = ca.dupe(u8, "") catch @panic("codegen: oom"),
+        .handle = old.handle,
+        .active = true,
+        .predecessor = old,
+    };
+    errdefer freeCandidateState(baseline);
+    baseline.requires.appendSlice(ca, old.requires.items) catch @panic("codegen: oom");
+    var cursor: ?*CandidateState = old;
+    while (cursor) |owner| : (cursor = owner.predecessor) {
+        for (owner.ops.items) |old_op| {
+            if (bindingShadowed(old, owner, old_op)) continue;
+            var op = old_op;
+            if (globalBySymbol(op.target_name) != op.target or g_api.vtableOf(op.target) != op.vt)
+                return candidateError("nonPortableDrift");
+            const cur = directMethod(op.vt, op.selector);
+            if ((cur != null) != op.post_present or (cur orelse null) != op.post_method) {
+                const latest = latestPortableOperation(op.target_name, op.selector) orelse return candidateError("nonPortableDrift");
+                if (latest.source == op.post_log_source or ((cur != null) and latest.kind != .install) or
+                    ((cur == null) and latest.kind != .remove)) return candidateError("nonPortableDrift");
+                op.post_log_source = latest.source;
+            }
+            op.post_present = cur != null;
+            op.post_method = cur orelse null;
+            op.prior_present = false;
+            op.prior_method = null;
+            op.prior_source = null;
+            baseline.ops.append(ca, op) catch @panic("codegen: oom");
+        }
+    }
+    candidate_states.put(ca, a[1], baseline) catch @panic("codegen: oom");
+    old.active = false;
+    return a[1];
+}
+
+fn factValue(entity: Oop, attr: [*:0]const u8) Oop {
+    return g_api.send(g_store, sel_currentValue, &[_]Oop{ entity, g_api.intern(attr) }, 2);
+}
+
+fn mRebuildComposedLedger(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    if (candidate_states.contains(a[0])) return a[0];
+    const st = ca.create(CandidateState) catch @panic("codegen: oom");
+    st.* = .{
+        .unit = a[0],
+        .name = g_api.intern("imageComposition"),
+        .source = g_api.mkString("", 0),
+        .author_path = ca.dupe(u8, "") catch @panic("codegen: oom"),
+        .checksum = [_]u8{'0'} ** 64,
+        .exported_manifest = ca.dupe(u8, "") catch @panic("codegen: oom"),
+        .active = true,
+    };
+    errdefer freeCandidateState(st);
+    const origins = a[1];
+    const origin_count = g_api.smallIntValue(g_api.send(origins, g_api.intern("size"), &[_]Oop{}, 0));
+    var oi: i64 = 0;
+    while (oi < origin_count) : (oi += 1) {
+        const origin = g_api.send(origins, g_api.intern("at:"), &[_]Oop{g_api.mkSmallInt(oi)}, 1);
+        const provided = factValue(origin, "provides");
+        if (provided == g_api.nilObj) continue;
+        const count = g_api.smallIntValue(g_api.send(provided, g_api.intern("size"), &[_]Oop{}, 0));
+        var pi: i64 = 0;
+        while (pi < count) : (pi += 1) {
+            const entity = g_api.send(provided, g_api.intern("at:"), &[_]Oop{g_api.mkSmallInt(pi)}, 1);
+            const target_name = factValue(entity, "targetName");
+            const selector = factValue(entity, "selector");
+            const target = globalBySymbol(target_name);
+            if (target == g_api.nilObj) continue;
+            const vt = g_api.vtableOf(target);
+            const cur = directMethod(vt, selector);
+            const latest = latestPortableOperation(target_name, selector);
+            st.ops.append(ca, .{
+                .target_name = target_name,
+                .selector = selector,
+                .kind = if (cur != null) .install else .remove,
+                .source = factValue(entity, "definitionSource"),
+                .target = target,
+                .vt = vt,
+                .post_present = cur != null,
+                .post_method = cur orelse null,
+                .post_log_source = if (latest) |op| op.source else null,
+            }) catch @panic("codegen: oom");
+        }
+    }
+    candidate_states.put(ca, a[0], st) catch @panic("codegen: oom");
+    return a[0];
+}
+
 /// `[Codegen compile: src output: path]` — compile a birnam program to a shared
 /// library on disk (the relocatable artifact form, docs/40 §3a). The artifact
 /// leaves the `birnam_*` shims as undefined externals — the dynamic loader
@@ -1267,8 +2532,8 @@ fn moduleNameFromPath(path: []const u8) []const u8 {
 /// addresses. Load with `[Codegen load: path]`. Returns the path, or nil.
 ///
 /// A compiled module also self-records its source at load — the whole-module text as
-/// a `__modsrc__` fact keyed by module name, and each method's text on `__methods__`
-/// (via `emitDefineMethodInstallable`) — so a compiled module is fact-level
+/// a `__modsrc__` fact keyed by module name, and each method operation on
+/// `__methodops__` — so a compiled module is fact-level
 /// indistinguishable from a source load: queryable, and carried by image save/replay.
 fn mCompileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
@@ -1290,6 +2555,7 @@ fn mCompileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     defer out.deinit(ca);
     var slen: usize = 0;
     const sp = g_api.stringBytes(a[0], &slen);
+    out.appendSlice(ca, "const char __birnam_artifact_abi[] = \"" ++ ARTIFACT_ABI ++ "\";\n") catch @panic("codegen: oom");
     out.appendSlice(ca, "const char __birnam_module_meta[] = \"") catch @panic("codegen: oom");
     scanRequiresCsv(sp[0..slen], &out); // only [A-Za-z0-9_,] — no C-string escaping needed
     out.appendSlice(ca, "\";\n") catch @panic("codegen: oom");
@@ -1342,9 +2608,53 @@ fn appendImageSources(prog: *std.ArrayList(u8), entity: Oop) bool {
     return found;
 }
 
+const MethodOpRec = struct {
+    seq: i64,
+    tie: i64,
+    src: Oop,
+};
+
+fn methodOpLess(_: void, x: MethodOpRec, y: MethodOpRec) bool {
+    return x.seq < y.seq or (x.seq == y.seq and x.tie < y.tie);
+}
+
+/// Collect post-cutover operations by their numeric Store-basis key. Store
+/// attribute enumeration is deliberately not an ordering contract.
+fn collectMethodOps(recs: *std.ArrayList(MethodOpRec)) void {
+    const nAttrs = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{g_methodops_entity}, 1));
+    var i: i64 = 0;
+    while (i < nAttrs) : (i += 1) {
+        const attr = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ g_methodops_entity, g_api.mkSmallInt(i) }, 2);
+        const src = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_methodops_entity, attr }, 2);
+        if (src == null or src == g_api.nilObj or g_api.vtableOf(src) != g_api.string_vt) continue;
+        const nm = std.mem.span(g_api.symbolName(attr));
+        if (!std.mem.startsWith(u8, nm, "__mop_")) continue;
+        const rest = nm["__mop_".len..];
+        const split = std.mem.indexOfScalar(u8, rest, '_') orelse continue;
+        const seq = std.fmt.parseInt(i64, rest[0..split], 10) catch continue;
+        const tie = std.fmt.parseInt(i64, rest[split + 1 ..], 10) catch continue;
+        recs.append(ca, .{ .seq = seq, .tie = tie, .src = src }) catch @panic("codegen: oom");
+    }
+    std.mem.sort(MethodOpRec, recs.items, {}, methodOpLess);
+}
+
+fn appendMethodOps(prog: *std.ArrayList(u8)) bool {
+    var recs: std.ArrayList(MethodOpRec) = .{};
+    defer recs.deinit(ca);
+    collectMethodOps(&recs);
+    for (recs.items) |rec| {
+        var len: usize = 0;
+        const p = g_api.stringBytes(rec.src, &len);
+        prog.appendSlice(ca, p[0..len]) catch @panic("codegen: oom");
+        prog.appendSlice(ca, ";\n") catch @panic("codegen: oom");
+    }
+    return recs.items.len != 0;
+}
+
 /// `[Codegen compileImageCode: path]` — the image's primary `.code` section.
-/// It compiles recorded module programs (`__modsrc__`) plus method definitions
-/// (`__methods__`) into one relocatable, installable artifact. Module programs
+/// It compiles recorded module programs (`__modsrc__`), legacy method definitions
+/// (`__methods__`), then the ordered post-cutover `__methodops__` stream into one
+/// relocatable, installable artifact. Module programs
 /// are essential: their top-level initializers construct named live state such
 /// as parser grammars, which is not merely a reflection-store cache. Returns the
 /// path, or nil when there is no code source to capture or compilation fails.
@@ -1354,20 +2664,27 @@ fn mCompileImageCode(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     var prog: std.ArrayList(u8) = .{};
     defer prog.deinit(ca);
     const has_modules = appendImageSources(&prog, g_api.intern("__modsrc__"));
-    const has_methods = appendImageSources(&prog, g_methods_entity);
-    if (!has_modules and !has_methods) return g_api.nilObj;
+    const has_legacy_methods = appendImageSources(&prog, g_methods_entity);
+    const has_method_ops = appendMethodOps(&prog);
+    if (!has_modules and !has_legacy_methods and !has_method_ops) return g_api.nilObj;
     const progStr = g_api.mkString(prog.items.ptr, prog.items.len);
     // UNCHECKED: this program is a composition of independent records — a stale
     // one aborting the rest would hold the whole image hostage at boot.
+    artifact_record_ops = false;
+    defer artifact_record_ops = true;
     var buf = emitProgram(progStr, false, true, false) orelse return g_api.nilObj;
     defer buf.deinit(ca);
-    const c_src = g_api.mkString(buf.items.ptr, buf.items.len);
+    var out: std.ArrayList(u8) = .{};
+    defer out.deinit(ca);
+    out.appendSlice(ca, "const char __birnam_artifact_abi[] = \"" ++ ARTIFACT_ABI ++ "\";\n") catch @panic("codegen: oom");
+    out.appendSlice(ca, buf.items) catch @panic("codegen: oom");
+    const c_src = g_api.mkString(out.items.ptr, out.items.len);
     return g_api.send(tcc, g_api.intern("compile:output:as:"), &[_]Oop{ c_src, a[0], g_api.intern("dll") }, 3);
 }
 
 /// `[Codegen replayMethods]` — the image's explicit source-recovery path
 /// (docs/40 §4). Re-evaluate recorded module programs first, then every recorded
-/// method definition. Used when the compiled `.code` section cannot be mapped or
+/// legacy definition, then every sequenced method operation. Used when the compiled `.code` section cannot be mapped or
 /// the user requested `--rebuild`. Sources are gathered FIRST because evaluation
 /// reasserts the same facts. Answers the count replayed.
 fn mReplayMethods(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -1385,6 +2702,12 @@ fn mReplayMethods(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
                 srcs.append(ca, src) catch @panic("codegen: oom");
         }
     }
+    var ops: std.ArrayList(MethodOpRec) = .{};
+    defer ops.deinit(ca);
+    collectMethodOps(&ops);
+    for (ops.items) |op| srcs.append(ca, op.src) catch @panic("codegen: oom");
+    suppress_methodop_recording = true;
+    defer suppress_methodop_recording = false;
     for (srcs.items) |src| _ = g_api.send(self, g_api.intern("eval:"), &[_]Oop{src}, 1);
     return g_api.mkSmallInt(@intCast(srcs.items.len));
 }
@@ -1490,7 +2813,8 @@ const RTLD_LAZY: c_int = 1;
 /// loader resolves its `birnam_*` externals against this process), run its
 /// `__birnam_unit_init` fix-up hook (re-derives the global handles here), then
 /// evaluate its `__ev` entry point. Returns the program's value, or nil if the
-/// library or either symbol is missing.
+/// library or either symbol is missing. The explicit artifact ABI is checked
+/// before either initializer or entry point can mutate live state.
 fn mLoadUnit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
@@ -1501,6 +2825,15 @@ fn mLoadUnit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     @memcpy(path[0..len], p[0..len]);
 
     const h = g_api.dlopen(path.ptr, RTLD_LAZY) orelse return g_api.nilObj;
+    const abi_p = g_api.dlsym(h, "__birnam_artifact_abi") orelse {
+        _ = std.c.dlclose(h);
+        return g_api.nilObj;
+    };
+    const abi = std.mem.span(@as([*:0]const u8, @ptrCast(abi_p)));
+    if (!std.mem.eql(u8, abi, ARTIFACT_ABI)) {
+        _ = std.c.dlclose(h);
+        return g_api.nilObj;
+    }
     const init_p = g_api.dlsym(h, "__birnam_unit_init") orelse return g_api.nilObj;
     const init_fn: *const fn () callconv(.c) void = @ptrCast(@alignCast(init_p));
     init_fn();
@@ -1627,6 +2960,11 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool, checked: bool) ?std.Arra
         \\extern void birnam_global_set(const char* name, void* value);
         \\extern void birnam_record_global_src(const char* name, const char* src, long n);
         \\extern long birnam_is_error(void* v);
+        \\extern void* birnam_install_method(void* vt, void* sel, void* method, const char* src, long n);
+        \\extern void* birnam_remove_method(void* target, void* sel, const char* src, long n);
+        \\extern void* birnam_candidate_root_set(unsigned long long salt, long index, void* value);
+        \\extern void* birnam_candidate_root_get(unsigned long long salt, long index);
+        \\extern void birnam_candidate_prepare_mode(long on);
         \\
     );
     if (artifact) {
@@ -1678,6 +3016,8 @@ fn runProgram(src: Oop, persist: bool) Oop {
     addShim(unit, "birnam_global_set", @ptrCast(&rtGlobalSet));
     addShim(unit, "birnam_record_global_src", @ptrCast(&rtRecordGlobalSrc));
     addShim(unit, "birnam_is_error", @ptrCast(&rtIsError));
+    addShim(unit, "birnam_install_method", @ptrCast(&rtInstallMethod));
+    addShim(unit, "birnam_remove_method", @ptrCast(&rtRemoveMethod));
     // Patch each baked handle `__g<i>` to its interned symbol's address.
     for (baked_globals.items, 0..) |sym, i| {
         var nb: [16]u8 = undefined;
@@ -1722,6 +3062,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     g_store = api.import("Store") orelse @panic("codegen: Store not loaded");
     g_globals_entity = api.intern("__globals__");
     g_methods_entity = api.intern("__methods__");
+    g_methodops_entity = api.intern("__methodops__");
     g_globalsrc_entity = api.intern("__globalsrc__");
     sel_currentValue = api.intern("currentValue:attr:");
     sel_rawCurrentValue = api.intern("rawCurrentValue:attr:");
@@ -1750,6 +3091,15 @@ pub fn bringUp(api: *idapi.IdApi) void {
     r_logicVar = api.intern("logicVar");
 
     const reloading = api.isExported("Codegen") != 0;
+    if (candidate_token_vt == null) {
+        candidate_token_vt = api.proto(api.object_vt);
+        const token_layout = [_]u8{ idapi.slot_oop, idapi.slot_raw };
+        api.setLayout(candidate_token_vt, &token_layout, token_layout.len, idapi.slot_raw);
+    }
+    if (!candidate_roots_registered) {
+        api.gcRegisterRootProvider(&gcCandidateRoots);
+        candidate_roots_registered = true;
+    }
     if (reloading) {
         codegen_vt = api.import("CodegenVt");
         codegen_obj = api.import("Codegen");
@@ -1765,6 +3115,21 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("eval:"), &mEval);
     api.method(codegen_vt, api.intern("evalPersisting:"), &mEvalPersisting);
     api.method(codegen_vt, api.intern("compile:output:"), &mCompileOutput);
+    api.method(codegen_vt, api.intern("compileCandidate:named:output:"), &mCompileCandidate);
+    api.method(codegen_vt, api.intern("inspectCandidate:into:"), &mInspectCandidate);
+    api.method(codegen_vt, api.intern("mapCandidate:"), &mMapCandidate);
+    api.method(codegen_vt, api.intern("prepareActivation:"), &mPrepareCandidate);
+    api.method(codegen_vt, api.intern("prepareActivation:prior:"), &mPrepareCandidate);
+    api.method(codegen_vt, api.intern("prepareActivation:plan:"), &mPrepareCandidate);
+    api.method(codegen_vt, api.intern("commitPrepared:"), &mCommitPrepared);
+    api.method(codegen_vt, api.intern("prepareRollback:"), &mPrepareCandidateRollback);
+    api.method(codegen_vt, api.intern("prepareRollback:plan:"), &mPrepareCandidateRollback);
+    api.method(codegen_vt, api.intern("commitPreparedRollback:"), &mCommitPreparedRollback);
+    api.method(codegen_vt, api.intern("discardPrepared:"), &mDiscardPrepared);
+    api.method(codegen_vt, api.intern("reconcileCandidate:"), &mReconcileCandidate);
+    api.method(codegen_vt, api.intern("reconcileAllCandidates"), &mReconcileAllCandidates);
+    api.method(codegen_vt, api.intern("adoptCandidateLive:into:"), &mAdoptCandidateLive);
+    api.method(codegen_vt, api.intern("rebuildComposedLedger:from:"), &mRebuildComposedLedger);
     api.method(codegen_vt, api.intern("compileImageCode:"), &mCompileImageCode);
     api.method(codegen_vt, api.intern("replayMethods"), &mReplayMethods);
     api.method(codegen_vt, api.intern("replayAliens"), &mReplayAliens);
@@ -1773,6 +3138,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
     api.method(codegen_vt, api.intern("moduleMetaOf:"), &mModuleMetaOf);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
+    api.method(reflect_vt, api.intern("removeMethod:on:"), &mRemoveMethod);
+    api.method(reflect_vt, api.intern("removeMethod:on:source:"), &mRemoveMethodSourced);
     api.method(reflect_vt, api.intern("defineMethod:on:as:source:"), &mDefineMethodSourced);
     api.method(reflect_vt, api.intern("defineMethod:on:as:doc:source:"), &mDefineMethodDocSourced);
     api.method(reflect_vt, api.intern("vtableOf:"), &mVtableOf);

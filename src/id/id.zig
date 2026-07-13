@@ -112,6 +112,7 @@ var env: *Vtable = undefined; // the export environment (keys = symbols, values 
 
 pub var s_lookup: *Symbol = undefined;
 pub var s_addMethod: *Symbol = undefined;
+pub var s_removeMethod: *Symbol = undefined;
 pub var s_allocate: *Symbol = undefined;
 pub var s_delegated: *Symbol = undefined;
 pub var s_dnu: *Symbol = undefined; // doesNotUnderstand:
@@ -448,6 +449,33 @@ fn vtableAddMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return method;
 }
 
+/// `[vt removeMethod: key]` — remove only `vt`'s DIRECT binding for `key`.
+/// Inherited bindings are deliberately untouched: after removal, ordinary lookup
+/// naturally reveals the parent implementation and later parent changes remain
+/// visible. Answers the removed method pointer, or raw absence when no direct entry
+/// exists. This is floor mechanism only; Store owns the supported historied MOP.
+fn vtableRemoveMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const vt = asVtable(self);
+    const key = args[0];
+    var i: usize = 0;
+    while (i < vt.tally) : (i += 1) {
+        if (vt.keys.?[i] != key) continue;
+        if (g_method_overwrite_hook) |h| h(self, key);
+        const removed = vt.values.?[i];
+        var j = i;
+        while (j + 1 < vt.tally) : (j += 1) {
+            vt.keys.?[j] = vt.keys.?[j + 1];
+            vt.values.?[j] = vt.values.?[j + 1];
+        }
+        vt.tally -= 1;
+        vt.keys.?[vt.tally] = null;
+        vt.values.?[vt.tally] = null;
+        return removed;
+    }
+    return null;
+}
+
 /// `[vt allocate: size]` — a fresh instance whose vtable is `vt`. `size` is the
 /// payload byte count, passed pointer-encoded (libid is pre-SmallInt).
 fn vtableAllocate(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -561,33 +589,35 @@ pub fn boot() void {
 
     s_lookup = intern("lookup");
     s_addMethod = intern("addMethod");
+    s_removeMethod = intern("removeMethod:");
     s_allocate = intern("allocate");
     s_delegated = intern("delegated");
     s_dnu = intern("doesNotUnderstand:");
 
     // Install lookup + addMethod directly (send can't work without them), then
     // use addMethod *via send* (metacircular) for the rest.
-    _ = vtableAddMethod(oop(vtable_vt), &[_]Oop{ oop(s_lookup), @constCast(@ptrCast(&vtableLookup)) }, 2);
-    _ = vtableAddMethod(oop(vtable_vt), &[_]Oop{ oop(s_addMethod), @constCast(@ptrCast(&vtableAddMethod)) }, 2);
-    _ = send2(oop(vtable_vt), s_addMethod, oop(s_allocate), @constCast(@ptrCast(&vtableAllocate)));
-    _ = send2(oop(vtable_vt), s_addMethod, oop(s_delegated), @constCast(@ptrCast(&vtableDelegated)));
+    _ = vtableAddMethod(oop(vtable_vt), &[_]Oop{ oop(s_lookup), @ptrCast(@constCast(&vtableLookup)) }, 2);
+    _ = vtableAddMethod(oop(vtable_vt), &[_]Oop{ oop(s_addMethod), @ptrCast(@constCast(&vtableAddMethod)) }, 2);
+    _ = vtableAddMethod(oop(vtable_vt), &[_]Oop{ oop(s_removeMethod), @ptrCast(@constCast(&vtableRemoveMethod)) }, 2);
+    _ = send2(oop(vtable_vt), s_addMethod, oop(s_allocate), @ptrCast(@constCast(&vtableAllocate)));
+    _ = send2(oop(vtable_vt), s_addMethod, oop(s_delegated), @ptrCast(@constCast(&vtableDelegated)));
 
     // The default doesNotUnderstand: lives on object_vt (top of every delegation
     // chain), so every object inherits an overridable handler (F2 / docs/34).
-    _ = send2(oop(object_vt), s_addMethod, oop(s_dnu), @constCast(@ptrCast(&objectDoesNotUnderstand)));
+    _ = send2(oop(object_vt), s_addMethod, oop(s_dnu), @ptrCast(@constCast(&objectDoesNotUnderstand)));
 
     // Base-level object creation, on object_vt so every object answers it. `clone`
     // is THE verb (shallow-copy the receiver as itself); `new` is an alias (no
     // distinct "instantiate" — docs/design/41 §A).
-    _ = send2(oop(object_vt), s_addMethod, oop(intern("clone")), @constCast(@ptrCast(&objectClone)));
-    _ = send2(oop(object_vt), s_addMethod, oop(intern("new")), @constCast(@ptrCast(&objectClone)));
+    _ = send2(oop(object_vt), s_addMethod, oop(intern("clone")), @ptrCast(@constCast(&objectClone)));
+    _ = send2(oop(object_vt), s_addMethod, oop(intern("new")), @ptrCast(@constCast(&objectClone)));
 
     // `==` identity, on object_vt so every object inherits it (docs/design/41 §B3).
-    _ = send2(oop(object_vt), s_addMethod, oop(intern("==")), @constCast(@ptrCast(&objectIdentical)));
+    _ = send2(oop(object_vt), s_addMethod, oop(intern("==")), @ptrCast(@constCast(&objectIdentical)));
     // String owns a byte buffer via a finalizer, so it must deep-copy on clone
     // (a shallow copy would double-free). Override both verbs on string_vt.
-    _ = send2(oop(string_vt), s_addMethod, oop(intern("clone")), @constCast(@ptrCast(&stringClone)));
-    _ = send2(oop(string_vt), s_addMethod, oop(intern("new")), @constCast(@ptrCast(&stringClone)));
+    _ = send2(oop(string_vt), s_addMethod, oop(intern("clone")), @ptrCast(@constCast(&stringClone)));
+    _ = send2(oop(string_vt), s_addMethod, oop(intern("new")), @ptrCast(@constCast(&stringClone)));
 }
 
 /// Intern a symbol from outside (the siphon / later modules need this).
@@ -630,7 +660,7 @@ fn protoC(base: Oop) callconv(.c) Oop {
     return oop(newVtable(asVtable(base)));
 }
 fn methodC(vt: Oop, sel: Oop, m: idapi.Method) callconv(.c) void {
-    _ = vtableAddMethod(vt, &[_]Oop{ sel, @constCast(@ptrCast(m)) }, 2);
+    _ = vtableAddMethod(vt, &[_]Oop{ sel, @ptrCast(@constCast(m)) }, 2);
 }
 fn allocC(vt: Oop, size: usize) callconv(.c) Oop {
     const obj = allocRaw(size, .collectable);
@@ -1099,7 +1129,7 @@ test "libid: metacircular bootstrap + a user method dispatches" {
 
     // Install a method on it via send: [point_vt addMethod: #answer with: fn]
     const s_answer = intern("answer");
-    _ = send2(oop(point_vt), s_addMethod, oop(s_answer), @constCast(@ptrCast(&answerImpl)));
+    _ = send2(oop(point_vt), s_addMethod, oop(s_answer), @ptrCast(@constCast(&answerImpl)));
 
     // Allocate an instance: [point_vt allocate: 0], then send it #answer.
     const p = send1(oop(point_vt), s_allocate, @ptrFromInt(0));
@@ -1119,12 +1149,40 @@ fn answerImpl(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return @ptrFromInt(42);
 }
 
+fn answerImpl7(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = args;
+    _ = n;
+    return @ptrFromInt(7);
+}
+
+test "libid: exact direct method removal reveals inheritance" {
+    boot();
+
+    const parent_vt = asVtable(send0(oop(object_vt), s_delegated));
+    const child_vt = asVtable(send0(oop(parent_vt), s_delegated));
+    const sel = intern("removableAnswer");
+    _ = send2(oop(parent_vt), s_addMethod, oop(sel), @ptrCast(@constCast(&answerImpl)));
+    _ = send2(oop(child_vt), s_addMethod, oop(sel), @ptrCast(@constCast(&answerImpl7)));
+    const obj = send1(oop(child_vt), s_allocate, @ptrFromInt(0));
+    try std.testing.expectEqual(@as(usize, 7), @intFromPtr(send0(obj, sel)));
+
+    const removed = send1(oop(child_vt), s_removeMethod, oop(sel));
+    try std.testing.expect(removed == @as(Oop, @ptrCast(@constCast(&answerImpl7))));
+    try std.testing.expectEqual(@as(usize, 42), @intFromPtr(send0(obj, sel)));
+
+    // No copied-parent tombstone: a later parent change is immediately visible.
+    _ = send2(oop(parent_vt), s_addMethod, oop(sel), @ptrCast(@constCast(&answerImpl7)));
+    try std.testing.expectEqual(@as(usize, 7), @intFromPtr(send0(obj, sel)));
+    try std.testing.expect(send1(oop(child_vt), s_removeMethod, oop(sel)) == null);
+}
+
 test "libid: doesNotUnderstand: is an overridable message (F2)" {
     boot();
 
     // A prototype whose doesNotUnderstand: returns a sentinel instead of trapping.
     const proxy_vt = asVtable(send0(oop(object_vt), s_delegated));
-    _ = send2(oop(proxy_vt), s_addMethod, oop(s_dnu), @constCast(@ptrCast(&dnuTo99)));
+    _ = send2(oop(proxy_vt), s_addMethod, oop(s_dnu), @ptrCast(@constCast(&dnuTo99)));
     const proxy = send1(oop(proxy_vt), s_allocate, @ptrFromInt(0));
 
     // Sending an unknown selector is intercepted by the override (no panic),

@@ -166,6 +166,7 @@ pub fn build(b: *std.Build) void {
     const self_hosted = [_]struct { src: []const u8, name: []const u8 }{
         .{ .src = "src/id/modules.birnam", .name = "modules" },
         .{ .src = "src/id/stdlib.birnam", .name = "stdlib" },
+        .{ .src = "src/id/compiled-unit.birnam", .name = "compiledUnit" },
         .{ .src = "src/id/toml.birnam", .name = "toml" },
         .{ .src = "src/id/config.birnam", .name = "config" },
     };

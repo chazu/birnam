@@ -263,8 +263,9 @@ fn setSaveReportDetail(comptime fmt: []const u8, args: anytype) void {
 // append. `-1` basis = no base established in this process yet.
 var g_saved_basis: i64 = -1; // basis tx captured at the last save/append/load
 var g_min_tx: i64 = 0; // collector filter: skip facts with tx < this (append = delta only)
-var g_delta_has_code_source: bool = false; // a delta touched `__methods__` or `__modsrc__` → re-emit a composing `.code` record
+var g_delta_has_code_source: bool = false; // a delta touched a portable code-source entity → emit composing `.code`
 var g_methods_entity: Oop = null; // interned `__methods__`, for that detection
+var g_methodops_entity: Oop = null; // ordered post-cutover installs/removals
 
 /// Reset the save worklist for a FULL save (a fresh base / compaction). An append
 /// deliberately does NOT call this — it reuses the base's numbering.
@@ -509,7 +510,8 @@ fn mCollect(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     if (encodeField(&scratch, args[0]) and encodeField(&scratch, args[1]) and encodeField(&scratch, args[2])) {
         g_facts_buf.appendSlice(ca, scratch.items) catch @panic("image: oom");
         g_kept += 1;
-        if (args[0] == g_methods_entity or args[0] == g_modsrc_entity) g_delta_has_code_source = true;
+        if (args[0] == g_methods_entity or args[0] == g_methodops_entity or args[0] == g_modsrc_entity)
+            g_delta_has_code_source = true;
     } else noteDeferredFact(args[0], args[1]);
     return g_api.nilObj;
 }
@@ -577,6 +579,13 @@ fn codeTempPath(bufz: []u8, suffix: []const u8) [:0]const u8 {
 
 const CodeCapture = enum { absent, captured, failed };
 
+fn reconcileCompiledUnits() bool {
+    const codegen = g_api.import("Codegen") orelse return true;
+    const result = g_api.send(codegen, g_api.intern("reconcileAllCandidates"), &[_]Oop{}, 0);
+    const error_vt = g_api.import("ErrorVt");
+    return result != g_api.nilObj and (error_vt == null or g_api.vtableOf(result) != error_vt);
+}
+
 /// Capture one primary compiled unit into a v3 `.code` record. The checksum is a
 /// unit manifest: before a loader writes the dylib to disk or dlopens it, it can
 /// prove that the executable bytes are the ones the image saved.
@@ -605,6 +614,11 @@ pub fn saveImage(path: []const u8) bool {
     defer g_api.gcSetAuto(1);
     resetSaveState();
     resetSaveReport();
+    if (!reconcileCompiledUnits()) {
+        setSaveReportDetail("managed dispatch has unlogged non-portable drift", .{});
+        finishSaveReport(.rejected);
+        return false;
+    }
     g_min_tx = 0; // a full save carries EVERY fact (the compacted base)
     g_delta_has_code_source = false;
 
@@ -711,6 +725,12 @@ pub fn appendImage(path: []const u8) bool {
     g_slots_needing_code = 0;
     g_code_captured = false;
     resetSaveReport();
+    if (!reconcileCompiledUnits()) {
+        setSaveReportDetail("managed dispatch has unlogged non-portable drift", .{});
+        finishSaveReport(.rejected);
+        rollbackAppend(base_obj_count);
+        return false;
+    }
     g_delta_has_code_source = false;
     g_min_tx = g_saved_basis;
 
@@ -843,6 +863,7 @@ var g_load_objs: std.ArrayListUnmanaged(ObjRec) = .{};
 // caller falls back to replay/stdlib (docs/40 §4). Reset per load.
 var g_mapped_code: bool = false;
 var g_loaded_code_units: u32 = 0;
+var g_code_composition: u64 = 0;
 var g_img_format: u32 = FORMAT_VERSION;
 var g_img_arch: u32 = 0;
 var g_img_abi: u64 = 0;
@@ -995,6 +1016,10 @@ fn loadFacts(payload: []const u8, began: *bool, max_basis: *i64) bool {
 var g_code_load_seq: u32 = 0; // distinguishes multiple `.code` records in one load
 
 fn loadCode(payload: []const u8) bool {
+    if (g_img_format != PREVIOUS_FORMAT_VERSION and payload.len >= 8) {
+        const checksum = std.mem.readInt(u64, payload[0..8], .little);
+        g_code_composition = std.hash.Wyhash.hash(g_code_composition, std.mem.asBytes(&checksum));
+    }
     if (!codeMappable()) return true; // not an error — leave it to replay/stdlib
     const unit = codeUnitBytes(payload) orelse return false;
     const codegen = g_api.import("Codegen") orelse return false;
@@ -1037,6 +1062,7 @@ pub fn loadImage(path: []const u8) bool {
     defer g_api.gcSetAuto(1);
     g_mapped_code = false;
     g_loaded_code_units = 0;
+    g_code_composition = 0;
     g_code_load_seq = 0;
     g_load_reloc.clearRetainingCapacity(); // ids are global across this load's records
     var facts_began = false;
@@ -1286,6 +1312,15 @@ fn sysLoadImageRebuild(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return if (g_mapped_code) g_api.trueObj else g_api.falseObj;
 }
 
+fn sysImageCompositionIdentity(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    var buf: [16]u8 = undefined;
+    const text = std.fmt.bufPrint(&buf, "{x:0>16}", .{g_code_composition}) catch unreachable;
+    return g_api.mkString(text.ptr, text.len);
+}
+
 // -- exe bake: package the running system as a self-booting executable -------
 //
 // The standalone-exe bake (docs/40 §6): append the image to a copy of the running
@@ -1342,8 +1377,10 @@ pub fn bringUp(api: *IdApi) void {
     api.method(system_vt, api.intern("imageCheckpoint"), &sysImageCheckpoint);
     api.method(system_vt, api.intern("loadImage:"), &sysLoadImage);
     api.method(system_vt, api.intern("loadImage:rebuild:"), &sysLoadImageRebuild);
+    api.method(system_vt, api.intern("imageCompositionIdentity"), &sysImageCompositionIdentity);
     api.method(system_vt, api.intern("bakeExe:"), &sysBakeExe);
     g_methods_entity = api.intern("__methods__"); // to flag method-defining appends
+    g_methodops_entity = api.intern("__methodops__");
     g_globals_entity = api.intern("__globals__");
     g_globalsrc_entity = api.intern("__globalsrc__");
     g_modsrc_entity = api.intern("__modsrc__");

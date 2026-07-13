@@ -270,6 +270,7 @@ const script_modules = [_][]const u8{
 const STDLIB_SRC = @embedFile("stdlib.birnam");
 const TOML_SRC = @embedFile("toml.birnam");
 const CONFIG_SRC = @embedFile("config.birnam");
+const COMPILED_UNIT_SRC = @embedFile("compiled-unit.birnam");
 // The module MANAGER itself (docs/44 Phase 5b) — self-hosted like the rest, but
 // loaded FIRST and by name (never through the scan/loadOrder flow it implements).
 const MODULES_SRC = @embedFile("modules.birnam");
@@ -307,6 +308,7 @@ const SelfHosted = struct { name: [:0]const u8, src: []const u8 };
 // in its source; the sort places it correctly.
 const self_hosted_modules = [_]SelfHosted{
     .{ .name = "stdlib", .src = STDLIB_SRC },
+    .{ .name = "compiledUnit", .src = COMPILED_UNIT_SRC },
     .{ .name = "toml", .src = TOML_SRC },
     .{ .name = "config", .src = CONFIG_SRC },
 };
@@ -725,6 +727,15 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
     // `[Module load: #x]` resolves against the tree the image runs in. Before
     // the checkpoint, so the refresh is never journaled.
     if (birnamGlobal(api, "Module")) |mm| refreshModuleManager(a, api, mm);
+
+    // A mapped/rebuilt image is one composed executable generation. Saved source
+    // generations remain provenance, but their process-local rollback pointers do
+    // not; publish the composed owner and rebuild its transient direct-binding
+    // ledger before the checkpoint/user entry point.
+    if (birnamGlobal(api, "CompiledUnit")) |cu| {
+        const identity = api.send(system, api.intern("imageCompositionIdentity"), &[_]Oop{}, 0);
+        _ = api.send(cu, api.intern("reconcileImageComposition:"), &[_]Oop{identity}, 1);
+    }
 
     // Checkpoint the append baseline: boot reconstruction (mapped/replayed code,
     // re-derived globals) re-asserts facts we must NOT re-journal — a later
