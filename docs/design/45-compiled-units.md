@@ -78,12 +78,13 @@ normal compatible-image boot path.
 
 ## Current Boundary
 
-The runtime can compile and load native code live, and an image can compose
-compiled generations. It does **not** yet have a first-class transactional
-`CompiledUnit` lifecycle for replacing one active unit while preserving a
-rollback point. Existing dylibs also remain loaded for process lifetime; Birnam
-does not attempt unsafe native-code unloading while closures or dispatch entries
-could still reference an old unit.
+The runtime can compile and load native code live, images compose compiled
+generations, and `CompiledUnit` provides a first-class staged dispatch lifecycle
+for replacing one active generation while preserving an exact rollback point.
+The transaction covers method additions, replacements, and explicit removals; it
+does not pretend arbitrary initializer effects are reversible. Existing dylibs
+remain loaded for process lifetime because Birnam cannot safely unload code while
+closures or dispatch entries may still reference it.
 
 The current platform and verification boundary is deliberately narrow:
 
@@ -92,19 +93,15 @@ The current platform and verification boundary is deliberately narrow:
 - the verification suite covers checksums, rejected-save preservation, mapped
   boot, source recovery, module initialization, and composing code generations.
 
-## Next: CompiledUnit Lifecycle
+## CompiledUnit Lifecycle
 
 The concrete design is [47 — CompiledUnit Lifecycle](47-compiled-unit-lifecycle.md),
-revised after adversarial review. It scopes "transactional" to staged dispatch
+implemented after adversarial review. It scopes "transactional" to staged dispatch
 generations (add/replace/remove), keeps arbitrary initializer effects outside the
 claim, routes supported mutation through Store's MOP, and gives image composition
 an honest reflected executable generation.
 
-The next architectural slice should make a compiled unit a reflected runtime
-object with at least an identity, generation, ABI/platform data, checksum,
-dependencies, provided selectors/globals, and activation state.
-
-Its first vertical slice should:
+The implemented vertical slice:
 
 1. compile a named candidate unit without changing active dispatch;
 2. validate its metadata and load it as a candidate;
@@ -112,10 +109,10 @@ Its first vertical slice should:
 4. retain the prior unit as the rollback generation; and
 5. expose active units and activation history through the reflection/meta API.
 
-The initial implementation may retain old dylibs indefinitely. Safe unloading
+The implementation retains old dylibs indefinitely. Safe unloading
 requires a later proof that no method, block, callback, or object slot can reach
 their code. Correct live replacement and observable provenance come first.
 
-Acceptance is a named-unit reload that changes a method immediately, rejects a
-broken candidate without changing the old behavior, and survives image
-save/boot with the new generation mapped as the primary executable unit.
+The verification suite covers named-unit reload, failed-candidate inertness,
+supersession and rollback, managed drift, and compatible/rebuilt image boot. See
+the [user guide](../guide/05-compiled-units.md) for the supported API.

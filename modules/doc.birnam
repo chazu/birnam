@@ -551,11 +551,13 @@
 // self-registration mid-session buys docs at too much risk. Existence-guarded
 // (an installed birnam need not carry src/id).
 [Reflect defineMethod: #loadFloorSources: on: Doc as: [:self :zd |
+  [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
   [#[ "stdlib.birnam" "toml.birnam" "config.birnam" ] do: [:nm |
     let p := [[zd , "/"] , nm];
     [[File exists: p] ifTrue: [| [System load: p]] ifFalse: [| nil]]]];
+  [System load: "modules/compiled-unit-docs.birnam"];
   self] doc:
-  "Re-load the birnam floor sources under `zd` (stdlib/toml/config) so their boot-dropped docstrings land; the module manager is deliberately skipped. Answers self."];
+  "Ensure File, re-load stdlib/toml/config under `zd`, and load the CompiledUnit reference registrations; the module manager is deliberately skipped. Answers self."];
 
 // Build the full HTML reference to `out`: load every library module under `md`
 // plus the birnam floor sources under `zd`, extract every Zig floor file under

@@ -101,6 +101,20 @@ portable encoding or a registered recovery path; inspect
 [The Image](docs/design/40-the-image.md) for the exact durability contract and
 recovery paths.
 
+## Staged Code Changes
+
+`CompiledUnit` stages a native method patch so it can be inspected and mapped
+without changing live dispatch, then activated as one generation and rolled back
+exactly while its process-local rollback capability remains valid. Candidate
+source is deliberately declarative: module metadata plus method definitions and
+explicit removals. Ordinary `Module load:` remains available for initializers,
+globals, FFI, and other immediate effects.
+
+See [Staged compiled units](docs/guide/05-compiled-units.md) for the lifecycle,
+failure and drift behavior, dependency boundary, and image semantics. The live API
+is also available through `birnam doc compiledUnit` and selector lookups such as
+`birnam doc compiledUnit activate`.
+
 ## Developer Tools
 
 The source-backed tools below are included by `zig build install` and in release

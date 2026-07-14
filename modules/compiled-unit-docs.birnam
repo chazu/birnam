@@ -1,0 +1,36 @@
+// compiled-unit-docs.birnam — reference-only registrations for the staged
+// CompiledUnit lifecycle. Kept separate from compiled-unit.birnam so adding or
+// revising prose cannot change its portable executable method-operation stream.
+
+[Doc module: #compiledUnit is: "Staged native dispatch generations: inspect, map, validate, activate, roll back, and reconcile CompiledUnit candidates."];
+
+[Doc for: #state in: #compiledUnit says:
+  "The unit's reconciled lifecycle state: #candidate, #active, #superseded, #drifted, #rolledBack, or #historical."];
+[Doc for: #unitName in: #compiledUnit says:
+  "The stable Symbol naming this candidate generation."];
+[Doc for: #generation in: #compiledUnit says:
+  "The monotonically increasing generation number within unitName."];
+[Doc for: #requires in: #compiledUnit says:
+  "The Vector of module Symbols declared as dependencies by this candidate."];
+[Doc for: #provides in: #compiledUnit says:
+  "The Vector of reflected install/remove operation entities provided by this candidate."];
+[Doc for: #compile:named:output: in: #compiledUnit says:
+  "Compile candidate-safe source named by Symbol `name` to `path` and its `.candidate` envelope without opening, mapping, or activating it. Answers path or an Error."];
+[Doc for: #open: in: #compiledUnit says:
+  "Inspect and verify the candidate bundle at `path` without mapping native code or changing dispatch. Answers a #candidate CompiledUnit or an Error."];
+[Doc for: #missingDependencies in: #compiledUnit says:
+  "The Vector of declared dependency Symbols that Module has not loaded."];
+[Doc for: #prepareDependencies in: #compiledUnit says:
+  "Explicitly load every missing dependency using ordinary Module semantics. These initializer effects are not part of candidate rollback. Answers self or an Error."];
+[Doc for: #map in: #compiledUnit says:
+  "Map and mechanically verify this trusted native candidate after its dependencies are loaded, without publishing its methods. Answers self or an Error."];
+[Doc for: #validate in: #compiledUnit says:
+  "Check that this mapped candidate can activate over the exact current dispatch base, then discard the one-shot prepared capability. Answers self or an Error."];
+[Doc for: #activate in: #compiledUnit says:
+  "Atomically publish every install/removal in this mapped #candidate generation. Answers self or an Error; rejection before commit leaves dispatch unchanged."];
+[Doc for: #rollback in: #compiledUnit says:
+  "Restore this active generation's exact predecessor bindings. A repeated rollback of #rolledBack is a no-op; drift or unavailable process-local capability answers an Error without mutation."];
+[Doc for: #activeFor: in: #compiledUnit says:
+  "The reconciled active CompiledUnit for Symbol `name`, or nil. Reconciliation may mark a mismatching managed generation #drifted."];
+[Doc for: #adoptLive in: #compiledUnit says:
+  "Adopt portable ordinary edits over this #drifted unit as a fresh active ad-hoc baseline without changing dispatch. Answers the baseline or an Error for unrecorded/non-portable drift."]

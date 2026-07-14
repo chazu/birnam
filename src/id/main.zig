@@ -677,6 +677,14 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
+    // Heap facts may refer to lifecycle instances through the stable
+    // CompiledUnitPrototype/CompiledUnitVt exports. Recreate that facade before
+    // image decoding; mapped/replayed image code will refresh its methods later.
+    // The module manager is the only prerequisite needed at this point: method
+    // bodies can refer to stdlib protocol before that protocol is installed.
+    loadSelfHosted(a, api, codegen, "modules", MODULES_SRC);
+    loadSelfHosted(a, api, codegen, "compiledUnit", COMPILED_UNIT_SRC);
+
     var stack_anchor: usize = 0;
     api.gcSetStackBottom(@intFromPtr(&stack_anchor));
     _ = &stack_anchor;

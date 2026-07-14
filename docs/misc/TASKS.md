@@ -16,12 +16,13 @@ Convention: `[ ]` open, `[~]` in progress, `[x]` done (with commit/date). Severi
   saves atomically, and rejects unsupported durable values with
   `[System imageSaveReport]`. See
   [`docs/design/45-compiled-units.md`](../design/45-compiled-units.md).
-- [ ] **gap: first-class `CompiledUnit` lifecycle** — make a candidate native
-  unit visible to reflection with identity, generation, checksum, dependencies,
-  provided selectors/globals, and activation state. The first slice must stage
-  compile/load, atomically activate bindings, retain the prior generation for
-  rollback, and prove a failed candidate cannot alter live behavior or the next
-  mapped image boot.
+- [x] **First-class `CompiledUnit` lifecycle** (2026-07-13; `f21a2ae`,
+  `f7f5827`) — reflected candidate generations now separate inspect, dependency
+  preparation, native mapping, validation, activation, rollback, drift adoption,
+  and image composition. Failed candidates leave dispatch unchanged; exact
+  rollback and mapped/rebuilt image behavior are covered by the verification
+  suite. See the [user guide](../guide/05-compiled-units.md) and
+  [design 47](../design/47-compiled-unit-lifecycle.md).
 
 ---
 

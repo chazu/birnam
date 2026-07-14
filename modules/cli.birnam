@@ -62,6 +62,7 @@
 [Reflect defineMethod: #docNamed:sel:dir: on: Cli as: [:self :mod :sel :mdir |
   [self ensure: #Doc    loaded: [mdir , "/doc.birnam"]];
   [self ensure: #Zigdoc loaded: [mdir , "/zigdoc.birnam"]];
+  [Doc loadFloorSources: [mdir , "/../src/id"]];
   [Zigdoc ensure: [mod asSymbol]
           birnam: [[[mdir , "/"] , mod] , ".birnam"]
           zig:    [[[mdir , "/../src/id/"] , mod] , ".zig"]];
@@ -69,7 +70,7 @@
     ifTrue:  [| [System print: [Doc cli: [mod asSymbol]]]]
     ifFalse: [| [System print: [Doc cli: [mod asSymbol] sel: sel]]]];
   [self status]] doc:
-  "Print docs for module `mod` (all of it, or one selector when `sel` is non-nil) via [Doc cli:], resolving birnam or Zig floor sources."];
+  "Print docs for module `mod` (all of it, or one selector when `sel` is non-nil) via [Doc cli:], reloading documented birnam floor sources before the birnam/Zig fallback chain."];
 
 // -- docgen: `birnam docgen [out.html]` -----------------------------------------
 

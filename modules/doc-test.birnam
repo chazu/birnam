@@ -155,4 +155,16 @@ let s := [TestSuite named: "Doc" module: #doc];
   [t assert: [page includesSubstring: "still source-only</footer>"] describes: "coverage footer closes the main column"];
   [t assert: [page includesSubstring: "module notes"] describes: "a header-prose details rendered (doc module has one)"]]];
 
+// Lifecycle reference prose is registered separately so documentation changes do
+// not alter CompiledUnit's executable method-operation stream.
+[s test: "CompiledUnit reference registrations cover the public lifecycle" do: [:t |
+  [System load: "modules/compiled-unit-docs.birnam"];
+  [t expect: [[Doc methodsOf: #compiledUnit] size] equals: 15
+     describes: "all public lifecycle selectors registered"];
+  let md := [Doc markdownForModule: #compiledUnit];
+  [t assert: [md includesSubstring: "`activate` — Atomically publish"]
+     describes: "authored activation reference is rendered"];
+  [t assert: [md includesSubstring: "`adoptLive` — Adopt portable ordinary edits"]
+     describes: "drift-adoption reference is rendered"]]];
+
 s
