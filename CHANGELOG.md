@@ -6,7 +6,7 @@ All notable changes to birnam are recorded here. Format follows
 other targets are rejected at build time until their libtcc and shared-library
 loader ports are complete.
 
-## [Unreleased]
+## [0.10.0] — 2026-07-14
 
 ### Added
 - **Blocking process isolates and live-worker rollout.** Trusted workers now
