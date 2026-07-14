@@ -882,17 +882,16 @@ fn failureStatus(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
 fn failureRequestId(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
     return failure(self).request_id;
 }
-fn fixtureEcho(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    return args[0];
-}
-fn fixtureError(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    return g_api.send(g_api.import("Error"), g_api.intern("kind:message:"), &[_]Oop{ g_api.intern("fixture"), g_api.mkString("fixture application error", 25) }, 2);
-}
+
+// Private process-lifecycle fixtures. Application dispatch is covered with a
+// named receiver restored from the smoke image; these two native hooks retain
+// deterministic coverage of post-transmission timeout and abrupt child exit.
 fn fixtureSleep(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     if (g_api.isSmallInt(args[0]) != 0 and g_api.smallIntValue(args[0]) > 0)
         std.Thread.sleep(@as(u64, @intCast(g_api.smallIntValue(args[0]))) * std.time.ns_per_ms);
     return args[0];
 }
+
 fn fixtureCrash(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
     std.c.abort();
 }
@@ -915,10 +914,6 @@ pub fn bringUp(api: *IdApi) void {
     api.setLayout(handle_vt, null, 0, idapi.slot_raw);
     api.setLayout(failure_vt, null, 0, idapi.slot_oop);
     api.method(isolate_vt, api.intern("start:selector:image:"), &startWorker);
-    // Private cross-process fixture: deliberately underscored and undocumented.
-    // It exercises the substrate without introducing a test-only G0 escape hatch.
-    api.method(isolate_vt, api.intern("_isolateEcho:"), &fixtureEcho);
-    api.method(isolate_vt, api.intern("_isolateError:"), &fixtureError);
     api.method(isolate_vt, api.intern("_isolateSleep:"), &fixtureSleep);
     api.method(isolate_vt, api.intern("_isolateCrash:"), &fixtureCrash);
     api.method(handle_vt, api.intern("request:timeout:"), &requestWithTimeout);

@@ -1,3 +1,6 @@
 [Module named: #isolateFixture requires: #[#stdlib #isolate]];
 
-[Reflect defineMethod: #handle: on: Isolate as: [:self :value | value]]
+let IsolateFixture := [Object clone];
+[Reflect defineMethod: #handle: on: IsolateFixture as: [:self :value | value]];
+[Reflect defineMethod: #fail: on: IsolateFixture as: [:self :value |
+  [Error kind: #fixture message: "fixture application error"]]]

@@ -1061,7 +1061,8 @@ fn loadCode(payload: []const u8) bool {
     if (!writeFile(tmp, unit)) return false;
     const r = g_api.send(codegen, g_api.intern("load:"), &[_]Oop{g_api.mkString(tmp.ptr, tmp.len)}, 1);
     std.fs.cwd().deleteFile(tmp) catch {};
-    if (r == g_api.nilObj) return false;
+    if (r == null or r == g_api.nilObj or
+        (g_api.isExported("ErrorVt") != 0 and g_api.vtableOf(r) == g_api.import("ErrorVt"))) return false;
     g_mapped_code = true;
     g_loaded_code_units += 1;
     return true;
@@ -1109,6 +1110,8 @@ pub fn loadImage(path: []const u8) bool {
     g_load_reloc.clearRetainingCapacity(); // ids are global across this load's records
     var facts_began = false;
     var max_basis: i64 = 0;
+    var code_records: std.ArrayList([]const u8) = .{};
+    defer code_records.deinit(ca);
     var r = Reader{ .b = bytes };
     if (!readHeader(&r)) return false;
     // Verify every record boundary and compiled-unit manifest before touching
@@ -1129,9 +1132,9 @@ pub fn loadImage(path: []const u8) bool {
             },
             .heap => if (!loadHeap(payload)) return false,
             .facts => if (!loadFacts(payload, &facts_began, &max_basis)) return false,
-            .code => {
-                if (!loadedGenerationMatchesAuthority() or !loadCode(payload)) return false;
-            },
+            // Install dispatch only after the Store has completed recovery and
+            // unencoded named method receivers have been materialized.
+            .code => code_records.append(ca, payload) catch @panic("image: oom"),
             else => {}, // unknown/not-yet-handled record: skip by its framed length
         }
     }
@@ -1149,6 +1152,14 @@ pub fn loadImage(path: []const u8) bool {
         // facts (guarded: only if the relational module is loaded).
         if (g_api.isExported("db") != 0)
             _ = g_api.send(store, g_api.intern("rebuildRules"), &[_]Oop{}, 0);
+    }
+    if (code_records.items.len != 0) {
+        const cg = codegen orelse return false;
+        const derived = g_api.send(cg, g_api.intern("deriveImageMethodTargets"), &[_]Oop{}, 0);
+        if (derived == null or derived == g_api.nilObj or
+            (g_api.isExported("ErrorVt") != 0 and g_api.vtableOf(derived) == g_api.import("ErrorVt"))) return false;
+        for (code_records.items) |payload|
+            if (!loadedGenerationMatchesAuthority() or !loadCode(payload)) return false;
     }
     return true;
 }

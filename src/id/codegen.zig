@@ -59,6 +59,11 @@ var artifact_method_counter: usize = 0; // per-emit ids for installable artifact
 var method_op_counter: usize = 0; // tie-breaker within a Store basis
 var suppress_methodop_recording = false; // image replay/load must not log its own recovery
 var artifact_record_ops = true; // false only for compacted image-code emission
+// Image dispatch programs consume complete module documents, but their top-level
+// globals already come from the restored Store (or targeted source derivation).
+// Do not recreate a lexical shadow for `let` while installing mapped/rebuilt
+// methods: a method target must resolve the restored named receiver.
+var image_dispatch_program = false;
 var candidate_preparing = false;
 var candidate_commit_in_progress = false;
 var image_dispatch_recovery = false;
@@ -1660,6 +1665,20 @@ fn emitBody(buf: *std.ArrayList(u8), statements: Oop, persist: bool, top: bool) 
         if (ruleOf(inner) == r_letBinding) {
             const name = text(child(inner, 0));
             const rhs = child(inner, 1);
+            if (top and image_dispatch_program) {
+                put(buf, "void* b_");
+                put(buf, name);
+                put(buf, " = birnam_global(\"");
+                putCStr(buf, name);
+                put(buf, "\");\n");
+                bound_names.append(ca, name) catch @panic("codegen: oom");
+                if (last) {
+                    put(buf, "return b_");
+                    put(buf, name);
+                    put(buf, ";\n");
+                }
+                continue;
+            }
             put(buf, "void* b_");
             put(buf, name);
             put(buf, " = ");
@@ -3280,6 +3299,8 @@ fn mCompileImageCode(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const progStr = g_api.mkString(prog.items.ptr, prog.items.len);
     artifact_record_ops = false;
     defer artifact_record_ops = true;
+    image_dispatch_program = true;
+    defer image_dispatch_program = false;
     var buf = emitProgram(progStr, false, true, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);
     var out: std.ArrayList(u8) = .{};
@@ -3300,8 +3321,50 @@ fn mReplayMethods(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     defer srcs.deinit(ca);
     suppress_methodop_recording = true;
     defer suppress_methodop_recording = false;
+    image_dispatch_program = true;
+    defer image_dispatch_program = false;
     for (srcs.items) |src| _ = g_api.send(self, g_api.intern("eval:"), &[_]Oop{src}, 1);
     return g_api.mkSmallInt(@intCast(srcs.items.len));
+}
+
+fn deriveNamedGlobal(self: Oop, name_sym: Oop) bool {
+    const bound = g_api.send(g_store, g_api.intern("hasValue:attr:"), &[_]Oop{ g_globals_entity, name_sym }, 2);
+    if (bound == g_api.trueObj) return false;
+    const src = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globalsrc_entity, name_sym }, 2);
+    if (src == null or src == g_api.nilObj or g_api.vtableOf(src) != g_api.string_vt) return false;
+    var prog: std.ArrayList(u8) = .{};
+    defer prog.deinit(ca);
+    prog.appendSlice(ca, "let ") catch @panic("codegen: oom");
+    prog.appendSlice(ca, std.mem.span(g_api.symbolName(name_sym))) catch @panic("codegen: oom");
+    prog.appendSlice(ca, " := ") catch @panic("codegen: oom");
+    prog.appendSlice(ca, oopBytes(src)) catch @panic("codegen: oom");
+    const result = g_api.send(self, g_api.intern("evalPersisting:"), &[_]Oop{g_api.mkString(prog.items.ptr, prog.items.len)}, 1);
+    return result != null and result != g_api.nilObj and
+        (g_api.isExported("ErrorVt") == 0 or g_api.vtableOf(result) != g_api.import("ErrorVt"));
+}
+
+/// Materialize only currently-unbound named method receivers before an image's
+/// compiled unit installs dispatch. Ordinary deferred globals remain on the late
+/// `deriveImageGlobals` path, where user behavior is already available.
+fn mDeriveImageMethodTargets(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = a;
+    _ = n;
+    var sources = orderedGenerationSources() orelse return candidateError("invalidSourceMap");
+    defer sources.deinit(ca);
+    var seen: std.AutoHashMapUnmanaged(usize, void) = .{};
+    defer seen.deinit(ca);
+    var count: i64 = 0;
+    for (sources.items) |source| {
+        var scan = scanCandidateSource(source) orelse return candidateError("invalidModuleSource");
+        defer scan.deinit();
+        for (scan.ops.items) |op| {
+            const key = @intFromPtr(op.target_name.?);
+            if (seen.contains(key)) continue;
+            seen.put(ca, key, {}) catch @panic("codegen: oom");
+            if (deriveNamedGlobal(self, op.target_name)) count += 1;
+        }
+    }
+    return g_api.mkSmallInt(count);
 }
 
 /// `[Codegen replayAliens]` — re-install the Alien surface at boot. A wrap's
@@ -3764,6 +3827,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("replayMethods"), &mReplayMethods);
     api.method(codegen_vt, api.intern("replayAliens"), &mReplayAliens);
     api.method(codegen_vt, api.intern("deriveImageGlobals"), &mDeriveImageGlobals);
+    api.method(codegen_vt, api.intern("deriveImageMethodTargets"), &mDeriveImageMethodTargets);
     api.method(codegen_vt, api.intern("lastError"), &mLastError);
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
     api.method(codegen_vt, api.intern("moduleMetaOf:"), &mModuleMetaOf);

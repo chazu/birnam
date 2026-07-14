@@ -1,4 +1,4 @@
-let failing := [Isolate start: #Isolate selector: #_isolateError: image: "/tmp/birnam-isolate-smoke.image"];
+let failing := [Isolate start: #IsolateFixture selector: #fail: image: "/tmp/birnam-isolate-smoke.image"];
 let application := [failing request: nil timeout: 5000];
 [System println: [application class]];
 [failing stop];

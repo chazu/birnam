@@ -1,5 +1,5 @@
-let worker := [Isolate start: #Isolate selector: #_isolateEcho: image: "/tmp/birnam-isolate-smoke.image"];
-let worker2 := [Isolate start: #Isolate selector: #_isolateEcho: image: "/tmp/birnam-isolate-smoke.image"];
+let worker := [Isolate start: #IsolateFixture selector: #handle: image: "/tmp/birnam-isolate-smoke.image"];
+let worker2 := [Isolate start: #IsolateFixture selector: #handle: image: "/tmp/birnam-isolate-smoke.image"];
 [[worker isError]
   ifTrue: [| [System println: [worker message]]]
   ifFalse: [|

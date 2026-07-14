@@ -276,13 +276,14 @@ fn setupWithCompiledUnits() *idapi.IdApi {
     const existing_generations = gAt(Globals, "DispatchGeneration");
     if (existing_generations != api.nilObj and
         api.send(existing_generations, api.intern("current"), &.{}, 0) != api.nilObj) return api;
-    const fixture = "[Module named: #cuImage requires: #[]]; [Reflect defineMethod: #cuImageProbe on: Integer as: [:self | 41]]";
+    const fixture = "[Module named: #cuImage requires: #[]]; let ImageReceiver := [Object clone]; [Reflect defineMethod: #cuImageProbe on: Integer as: [:self | 41]]; [Reflect defineMethod: #cuImageHandle: on: ImageReceiver as: [:self :value | value]]";
     const sources = [_][]const u8{ MODULES_SRC, STDLIB_SRC, COMPILED_UNIT_SRC, fixture };
     const names = [_][*:0]const u8{ "modules", "stdlib", "compiledUnit", "cuImage" };
     for (sources, names) |src, name| {
         const staged = api.send(Codegen, api.intern("recordModuleSource:named:"), &.{ api.mkString(src.ptr, src.len), api.intern(name) }, 2);
         std.debug.assert(api.send(staged, api.intern("isError"), &.{}, 0) != api.trueObj);
-        const result = api.send(Codegen, api.intern("eval:"), &.{api.mkString(src.ptr, src.len)}, 1);
+        const eval_selector: Oop = if (std.mem.eql(u8, std.mem.span(name), "cuImage")) api.intern("evalPersisting:") else api.intern("eval:");
+        const result = api.send(Codegen, eval_selector, &.{api.mkString(src.ptr, src.len)}, 1);
         std.debug.assert(result != api.nilObj);
     }
     const generations = gAt(Globals, "DispatchGeneration");
@@ -317,6 +318,7 @@ test "round-trip: generation code is mapped by default and rebuilt from the same
     const globals = api.import("Globals").?;
     gPut(globals, "n", api.mkSmallInt(9));
     try std.testing.expectEqual(@as(i64, 41), api.smallIntValue(send(api.mkSmallInt(5), "cuImageProbe", &.{})));
+    try std.testing.expectEqual(@as(i64, 17), api.smallIntValue(send(gAt(globals, "ImageReceiver"), "cuImageHandle:", &.{api.mkSmallInt(17)})));
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -332,6 +334,7 @@ test "round-trip: generation code is mapped by default and rebuilt from the same
     try std.testing.expect(image.mappedCode());
     try std.testing.expectEqual(@as(i64, 41), api.smallIntValue(send(api.mkSmallInt(5), "cuImageProbe", &.{})));
     try std.testing.expectEqual(@as(i64, 9), api.smallIntValue(gAt(globals, "n")));
+    try std.testing.expectEqual(@as(i64, 23), api.smallIntValue(send(gAt(globals, "ImageReceiver"), "cuImageHandle:", &.{api.mkSmallInt(23)})));
 
     // Forced rebuild takes the REPLAY path: the load maps NO code (answers false),
     // and the boot orchestration (here, as in runImage) rebuilds the library by
@@ -342,6 +345,7 @@ test "round-trip: generation code is mapped by default and rebuilt from the same
     try std.testing.expect(!image.mappedCode());
     _ = api.send(Codegen, api.intern("replayMethods"), &.{}, 0); // what runImage does on the false branch
     try std.testing.expectEqual(@as(i64, 41), api.smallIntValue(send(api.mkSmallInt(5), "cuImageProbe", &.{})));
+    try std.testing.expectEqual(@as(i64, 29), api.smallIntValue(send(gAt(globals, "ImageReceiver"), "cuImageHandle:", &.{api.mkSmallInt(29)})));
 }
 
 test "active candidate image restores the exact authoritative generation" {
@@ -364,7 +368,7 @@ test "active candidate image restores the exact authoritative generation" {
     defer a.free(candidate2_path);
     const successor_image_path = try std.fs.path.join(a, &.{ dir, "successor.image" });
     defer a.free(successor_image_path);
-    const candidate_source = "[Module named: #cuImage requires: #[]]; [Reflect defineMethod: #cuImageProbe on: Integer as: [:self | 410]]";
+    const candidate_source = "[Module named: #cuImage requires: #[]]; let ImageReceiver := [Object clone]; [Reflect defineMethod: #cuImageProbe on: Integer as: [:self | 410]]; [Reflect defineMethod: #cuImageHandle: on: ImageReceiver as: [:self :value | value]]";
     const compiled = api.send(CompiledUnit, api.intern("compile:named:output:"), &.{
         api.mkString(candidate_source.ptr, candidate_source.len), api.intern("cuImage"), api.mkString(candidate_path.ptr, candidate_path.len),
     }, 3);
@@ -386,7 +390,7 @@ test "active candidate image restores the exact authoritative generation" {
     // A restored provenance object has no native handle, but it is not an
     // authority bottleneck: a fresh complete successor can activate over the
     // restored generation, save, and boot normally.
-    const candidate2_source = "[Module named: #cuImage requires: #[]]; [Reflect defineMethod: #cuImageProbe on: Integer as: [:self | 411]]";
+    const candidate2_source = "[Module named: #cuImage requires: #[]]; let ImageReceiver := [Object clone]; [Reflect defineMethod: #cuImageProbe on: Integer as: [:self | 411]]; [Reflect defineMethod: #cuImageHandle: on: ImageReceiver as: [:self :value | value]]";
     _ = api.send(LoadedCompiledUnit, api.intern("compile:named:output:"), &.{
         api.mkString(candidate2_source.ptr, candidate2_source.len), api.intern("cuImage"), api.mkString(candidate2_path.ptr, candidate2_path.len),
     }, 3);
