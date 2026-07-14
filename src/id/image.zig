@@ -13,14 +13,14 @@
 //! `exportedNameOf`, `slotKind`); and THIS module owns the codec (leaf + symbol
 //! + heap-ref), the relocation map, the heap walk, and the container format.
 //!
-//! On-disk format — a header then a stream of framed records read until EOF, so
-//! appending is just writing more records (docs/40 §2, the journal shape):
+//! On-disk format — a header then one sealed generation's framed records:
 //!   header: magic · format · endian · arch · abi_hash        (28 bytes)
 //!   record: u32 kind · u64 length · payload
 //! Record kinds this slice writes, HEAP BEFORE FACTS (facts reference heap ids):
+//!   .authority 64-byte current generation digest
 //!   .heap   u32 n · n×(name · u32 nwords · words)  — the object graph
 //!   .facts  u64 tx · u32 kept · kept×(u8 op · u64 tx · e · a · v)
-//!   .code   v3: u64 unit_hash · dylib bytes
+//!   .code   u64 unit_hash · 64-byte generation digest · dylib bytes
 //! A payload field is a tagged value: nil/true/false, int, float, symbol (by
 //! name — the durable anchor), string (bytes), heapref (a u32 relocation id), or
 //! a null Oop slot. A durable fact that cannot encode MUST have a registered
@@ -42,8 +42,7 @@ var g_api: *IdApi = undefined;
 // -- Header ------------------------------------------------------------------
 
 pub const MAGIC = "BIRNAMIM";
-pub const FORMAT_VERSION: u32 = 3; // v3: integrity-checked primary compiled-unit records
-const PREVIOUS_FORMAT_VERSION: u32 = 2; // v2 code payloads were raw dylib bytes
+pub const FORMAT_VERSION: u32 = 4; // v4: one generation authority bound to one code unit
 const ENDIAN_TAG: u32 = 0x01020304;
 
 /// Architecture tag — code sections are per-arch (docs/40 §4); data is portable.
@@ -88,6 +87,7 @@ const RecordKind = enum(u32) {
     facts = 2, // the store's (e,a,v,tx,op) stream
     heap = 3, // the reachable object graph
     code = 4, // compiled units (primary executable layer)
+    authority = 5, // canonical current-generation digest
     _,
 };
 
@@ -200,6 +200,10 @@ pub fn writeHeaderOnly(path: []const u8) bool {
     var buf: Buf = .{};
     defer buf.deinit(ca);
     writeHeader(&buf);
+    const at = beginRecord(&buf, .authority);
+    var empty: [64]u8 = [_]u8{'0'} ** 64;
+    putBytes(&buf, &empty);
+    endRecord(&buf, at);
     return writeFile(path, buf.items);
 }
 
@@ -224,7 +228,6 @@ var g_code_captured: bool = false;
 var g_collector_vt: Oop = null;
 var g_globals_entity: Oop = null;
 var g_globalsrc_entity: Oop = null;
-var g_modsrc_entity: Oop = null;
 
 const ReportStatus = enum { never, saved, rejected, io_failed };
 const SaveReport = struct {
@@ -302,21 +305,22 @@ fn hasGlobalRecoverySource(attr: Oop) bool {
     return g_api.send(store, g_api.intern("hasValue:attr:"), &[_]Oop{ g_globalsrc_entity, attr }, 2) == g_api.trueObj;
 }
 
-/// A self-hosted module's top-level program may establish a named runtime object
-/// (for example, a PEG grammar). The image compiler includes every `__modsrc__`
-/// program in its primary unit, so this binding has a concrete compiled
-/// reconstruction path only when that source explicitly initializes the name.
+/// A module's complete current document may establish a named runtime object
+/// (for example, a PEG grammar). The image compiler consumes the generation's
+/// source map, so recovery classification must inspect that same input.
 fn hasModuleGlobalRecoverySource(attr: Oop) bool {
     if (!isSymbol(attr)) return false;
-    const store = g_api.import("Store") orelse return false;
+    const codegen = g_api.import("Codegen") orelse return false;
     const name = std.mem.span(g_api.symbolName(attr));
     const marker = std.fmt.allocPrint(ca, "Globals at: #{s} put:", .{name}) catch return false;
     defer ca.free(marker);
-    const count = g_api.smallIntValue(g_api.send(store, g_api.intern("attrCount:"), &[_]Oop{g_modsrc_entity}, 1));
+    const sources = g_api.send(codegen, g_api.intern("generationSources"), &.{}, 0);
+    const error_vt = g_api.import("ErrorVt");
+    if (sources == g_api.nilObj or (error_vt != null and g_api.vtableOf(sources) == error_vt)) return false;
+    const count = g_api.smallIntValue(g_api.send(sources, g_api.intern("size"), &.{}, 0));
     var i: i64 = 0;
     while (i < count) : (i += 1) {
-        const key = g_api.send(store, g_api.intern("attrAt:index:"), &[_]Oop{ g_modsrc_entity, g_api.mkSmallInt(i) }, 2);
-        const src = g_api.send(store, g_api.intern("currentValue:attr:"), &[_]Oop{ g_modsrc_entity, key }, 2);
+        const src = g_api.send(sources, g_api.intern("at:"), &.{g_api.mkSmallInt(i)}, 1);
         if (src == null or src == g_api.nilObj or g_api.vtableOf(src) != g_api.string_vt) continue;
         var len: usize = 0;
         const p = g_api.stringBytes(src, &len);
@@ -511,8 +515,6 @@ fn mCollect(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     if (encodeField(&scratch, args[0]) and encodeField(&scratch, args[1]) and encodeField(&scratch, args[2])) {
         g_facts_buf.appendSlice(ca, scratch.items) catch @panic("image: oom");
         g_kept += 1;
-        if (args[0] == g_methods_entity or args[0] == g_methodops_entity or args[0] == g_modsrc_entity)
-            g_delta_has_code_source = true;
     } else noteDeferredFact(args[0], args[1]);
     return g_api.nilObj;
 }
@@ -587,11 +589,24 @@ fn reconcileCompiledUnits() bool {
     return result != g_api.nilObj and (error_vt == null or g_api.vtableOf(result) != error_vt);
 }
 
-/// Capture one primary compiled unit into a v3 `.code` record. The checksum is a
-/// unit manifest: before a loader writes the dylib to disk or dlopens it, it can
-/// prove that the executable bytes are the ones the image saved.
-fn captureCode(buf: *Buf) CodeCapture {
+fn generationDigest(codegen: Oop, out: *[64]u8) bool {
+    const digest = g_api.send(codegen, g_api.intern("currentGenerationDigest"), &.{}, 0);
+    const error_vt = g_api.import("ErrorVt");
+    if (digest == null or digest == g_api.nilObj or
+        (error_vt != null and g_api.vtableOf(digest) == error_vt) or
+        g_api.vtableOf(digest) != g_api.string_vt) return false;
+    var len: usize = 0;
+    const bytes = g_api.stringBytes(digest, &len);
+    if (len != out.len) return false;
+    @memcpy(out, bytes[0..out.len]);
+    return true;
+}
+
+/// Capture the one primary compiled unit and bind it to the exact generation
+/// authority from which it was built.
+fn captureCode(buf: *Buf, digest: *[64]u8) CodeCapture {
     const codegen = g_api.import("Codegen") orelse return .absent;
+    if (!generationDigest(codegen, digest)) return .absent;
     var pbuf: [128]u8 = undefined;
     const tmp = codeTempPath(&pbuf, "save");
     const r = g_api.send(codegen, g_api.intern("compileImageCode:"), &[_]Oop{g_api.mkString(tmp.ptr, tmp.len)}, 1);
@@ -601,6 +616,7 @@ fn captureCode(buf: *Buf) CodeCapture {
     defer ca.free(bytes);
     const at = beginRecord(buf, .code);
     putU64(buf, std.hash.Wyhash.hash(0, bytes));
+    putBytes(buf, digest);
     putBytes(buf, bytes);
     endRecord(buf, at);
     return .captured;
@@ -627,7 +643,8 @@ pub fn saveImage(path: []const u8) bool {
     // codegen-owned globals are admissible only when this unit exists.
     var code_buf: Buf = .{};
     defer code_buf.deinit(ca);
-    const code_capture = captureCode(&code_buf);
+    var authority_digest: [64]u8 = [_]u8{'0'} ** 64;
+    const code_capture = captureCode(&code_buf, &authority_digest);
     g_code_captured = code_capture == .captured;
     if (g_code_captured) g_save_report.code_units = 1;
     if (code_capture == .failed) {
@@ -667,6 +684,9 @@ pub fn saveImage(path: []const u8) bool {
     var buf: Buf = .{};
     defer buf.deinit(ca);
     writeHeader(&buf);
+    const authority_at = beginRecord(&buf, .authority);
+    putBytes(&buf, &authority_digest);
+    endRecord(&buf, authority_at);
     if (g_objs.items.len > 0) {
         const at = beginRecord(&buf, .heap);
         putBytes(&buf, heap_buf.items);
@@ -689,9 +709,6 @@ pub fn saveImage(path: []const u8) bool {
         resetSaveState();
         return false;
     }
-    // This save is now the base for any subsequent append (docs/40 §7.4): keep the
-    // object numbering and remember the basis so the next append writes only newer.
-    g_saved_basis = tx;
     finishSaveReport(.saved);
     return true;
 }
@@ -706,7 +723,7 @@ pub fn saveImage(path: []const u8) bool {
 /// re-emits a composing `.code` record (§G2) so the appended image is self-consistent
 /// — the appended install overrides the base's stale method on load, no `--rebuild`
 /// or compacting `saveImage:` required.
-pub fn appendImage(path: []const u8) bool {
+fn appendImageLegacy(path: []const u8) bool {
     if (g_saved_basis < 0) {
         resetSaveReport();
         setSaveReportDetail("append requires a successful full save or image load first", .{});
@@ -756,7 +773,8 @@ pub fn appendImage(path: []const u8) bool {
     var code_buf: Buf = .{};
     defer code_buf.deinit(ca);
     if (g_delta_has_code_source) {
-        const code_capture = captureCode(&code_buf);
+        var ignored_digest: [64]u8 = undefined;
+        const code_capture = captureCode(&code_buf, &ignored_digest);
         g_code_captured = code_capture == .captured;
         if (g_code_captured) g_save_report.code_units = 1 else if (code_capture == .failed) {
             g_rejected_facts += 1;
@@ -869,6 +887,8 @@ var g_img_format: u32 = FORMAT_VERSION;
 var g_img_arch: u32 = 0;
 var g_img_abi: u64 = 0;
 var g_force_rebuild: bool = false; // set by [System loadImage:rebuild:] / --rebuild
+var g_authority_digest: [64]u8 = undefined;
+var g_has_authority: bool = false;
 
 fn importName(name: []const u8) Oop {
     const z = ca.dupeZ(u8, name) catch @panic("image: oom");
@@ -1017,12 +1037,11 @@ fn loadFacts(payload: []const u8, began: *bool, max_basis: *i64) bool {
 var g_code_load_seq: u32 = 0; // distinguishes multiple `.code` records in one load
 
 fn loadCode(payload: []const u8) bool {
-    if (g_img_format != PREVIOUS_FORMAT_VERSION and payload.len >= 8) {
-        const checksum = std.mem.readInt(u64, payload[0..8], .little);
-        g_code_composition = std.hash.Wyhash.hash(g_code_composition, std.mem.asBytes(&checksum));
-    }
+    if (!g_has_authority or payload.len < 72) return false;
+    const checksum = std.mem.readInt(u64, payload[0..8], .little);
+    g_code_composition = std.hash.Wyhash.hash(g_code_composition, std.mem.asBytes(&checksum));
     if (!codeMappable()) return true; // not an error — leave it to replay/stdlib
-    const unit = codeUnitBytes(payload) orelse return false;
+    const unit = codeUnitBytes(payload, &g_authority_digest) orelse return false;
     const codegen = g_api.import("Codegen") orelse return false;
     // Per-record temp path: an image may carry more than one `.code` record (a base
     // plus appended code); each dlopen+install composes, but they must not collide.
@@ -1040,15 +1059,23 @@ fn loadCode(payload: []const u8) bool {
     return true;
 }
 
-/// v3 code records carry a hash before the dylib bytes. v2 images used raw
-/// dylib payloads, which remain readable for recovery and migration.
-fn codeUnitBytes(payload: []const u8) ?[]const u8 {
-    if (g_img_format == PREVIOUS_FORMAT_VERSION) return payload;
-    if (payload.len < 8) return null;
+/// Code records carry both a byte-integrity checksum and the generation digest
+/// which authorized their construction. There is deliberately no old-format
+/// recovery path.
+fn codeUnitBytes(payload: []const u8, authority: *const [64]u8) ?[]const u8 {
+    if (payload.len < 72) return null;
     const want = std.mem.readInt(u64, payload[0..8], .little);
-    const unit = payload[8..];
+    if (!std.mem.eql(u8, payload[8..72], authority)) return null;
+    const unit = payload[72..];
     if (std.hash.Wyhash.hash(0, unit) != want) return null;
     return unit;
+}
+
+fn loadedGenerationMatchesAuthority() bool {
+    if (!g_has_authority) return false;
+    const codegen = g_api.import("Codegen") orelse return false;
+    var actual: [64]u8 = undefined;
+    return generationDigest(codegen, &actual) and std.mem.eql(u8, &actual, &g_authority_digest);
 }
 
 /// Map an image back into the running system: validate the header, then dispatch
@@ -1070,6 +1097,7 @@ pub fn loadImage(path: []const u8) bool {
     g_loaded_code_units = 0;
     g_code_composition = 0;
     g_code_load_seq = 0;
+    g_has_authority = false;
     g_load_reloc.clearRetainingCapacity(); // ids are global across this load's records
     var facts_began = false;
     var max_basis: i64 = 0;
@@ -1086,9 +1114,16 @@ pub fn loadImage(path: []const u8) bool {
         const len = r.u64v() orelse return false;
         const payload = r.take(@intCast(len)) orelse return false;
         switch (@as(RecordKind, @enumFromInt(kind))) {
+            .authority => {
+                if (payload.len != g_authority_digest.len or g_has_authority) return false;
+                @memcpy(&g_authority_digest, payload);
+                g_has_authority = true;
+            },
             .heap => if (!loadHeap(payload)) return false,
             .facts => if (!loadFacts(payload, &facts_began, &max_basis)) return false,
-            .code => if (!loadCode(payload)) return false,
+            .code => {
+                if (!loadedGenerationMatchesAuthority() or !loadCode(payload)) return false;
+            },
             else => {}, // unknown/not-yet-handled record: skip by its framed length
         }
     }
@@ -1107,10 +1142,6 @@ pub fn loadImage(path: []const u8) bool {
         if (g_api.isExported("db") != 0)
             _ = g_api.send(store, g_api.intern("rebuildRules"), &[_]Oop{}, 0);
     }
-    // Seed the SAVE-side journaling state from what we just mapped, so a booted app
-    // can `appendImage:` a delta afterward (docs/40 §7.4): the object→id inverse of
-    // the load table, the object worklist in id order, and the loaded basis.
-    seedSaveStateFromLoad(max_basis);
     return true;
 }
 
@@ -1148,13 +1179,27 @@ pub fn validate(path: []const u8) bool {
 /// Kept separate from `validate` so `loadImage` can run the same preflight before
 /// it mutates the store or materializes heap objects.
 fn validateRecords(r: *Reader) bool {
+    var authority: [64]u8 = undefined;
+    var has_authority = false;
+    var has_code = false;
     while (r.i < r.b.len) {
         const kind = r.u32v() orelse return false;
         const len = r.u64v() orelse return false;
         const payload = r.take(@intCast(len)) orelse return false;
-        if (@as(RecordKind, @enumFromInt(kind)) == .code and codeUnitBytes(payload) == null) return false;
+        switch (@as(RecordKind, @enumFromInt(kind))) {
+            .authority => {
+                if (has_authority or payload.len != authority.len or has_code) return false;
+                @memcpy(&authority, payload);
+                has_authority = true;
+            },
+            .code => {
+                if (!has_authority or has_code or codeUnitBytes(payload, &authority) == null) return false;
+                has_code = true;
+            },
+            else => {},
+        }
     }
-    return true;
+    return has_authority;
 }
 
 /// Validate the header: magic, format version, byte order. The ABI/arch fields
@@ -1164,7 +1209,7 @@ fn readHeader(r: *Reader) bool {
     const magic = r.take(MAGIC.len) orelse return false;
     if (!std.mem.eql(u8, magic, MAGIC)) return false;
     const version = r.u32v() orelse return false;
-    if (version != FORMAT_VERSION and version != PREVIOUS_FORMAT_VERSION) return false;
+    if (version != FORMAT_VERSION) return false;
     g_img_format = version;
     if ((r.u32v() orelse return false) != ENDIAN_TAG) return false;
     g_img_arch = r.u32v() orelse return false; // arch tag (code sections are per-arch)
@@ -1251,7 +1296,7 @@ fn mReportDetail(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkString(g_save_report.detail[0..g_save_report.detail_len].ptr, g_save_report.detail_len);
 }
 
-/// `[System imageSaveReport]` — the result of the latest save or append. Its
+/// `[System imageSaveReport]` — the result of the latest save. Its
 /// selectors are `status`, `savedFacts`, `recoveredFacts`, `rejectedFacts`,
 /// `recoveredSlots`, `rejectedSlots`, `codeUnits`, and `detail`.
 fn sysImageSaveReport(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -1259,34 +1304,6 @@ fn sysImageSaveReport(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
     return g_report_obj;
-}
-
-/// `[System imageCheckpoint]` — mark the CURRENT store basis as the append baseline
-/// (docs/40 §7.4). The boot path calls this after reconstruction (mapped/replayed
-/// code + re-derived globals), so the facts that boot itself re-asserts — method
-/// installs, `__amblk`/`__mblk` closures, re-derived globals — are treated as part
-/// of restoring the saved state, not as a new delta. Without it, the first
-/// `appendImage:` after a boot would re-journal all of that reconstruction. Answers
-/// self.
-fn sysImageCheckpoint(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = a;
-    _ = n;
-    if (g_api.import("Store")) |store| {
-        g_saved_basis = g_api.smallIntValue(g_api.send(store, g_api.intern("basis"), &[_]Oop{}, 0));
-    }
-    return self;
-}
-
-/// `[System appendImage: path]` — the journal write mode (docs/40 §7.4): append
-/// only the delta since the last save/append/load in this process to an EXISTING
-/// image, no rewrite. Answers self on success, nil on failure — including when no
-/// base is known yet (do a `saveImage:` first). A fresh boot of the resulting image
-/// applies base + every appended delta cumulatively.
-fn sysAppendImage(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = n;
-    var len: usize = 0;
-    const p = pathArg(a[0], &len) orelse return g_api.nilObj;
-    return if (appendImage(p[0..len])) self else g_api.nilObj;
 }
 
 /// `[System loadImage: path]` — map an image back in (mapping compiled code by
@@ -1379,17 +1396,12 @@ pub fn bringUp(api: *IdApi) void {
     const system_vt = api.import("SystemVt");
     api.method(system_vt, api.intern("saveImage:"), &sysSaveImage);
     api.method(system_vt, api.intern("imageSaveReport"), &sysImageSaveReport);
-    api.method(system_vt, api.intern("appendImage:"), &sysAppendImage);
-    api.method(system_vt, api.intern("imageCheckpoint"), &sysImageCheckpoint);
     api.method(system_vt, api.intern("loadImage:"), &sysLoadImage);
     api.method(system_vt, api.intern("loadImage:rebuild:"), &sysLoadImageRebuild);
     api.method(system_vt, api.intern("imageCompositionIdentity"), &sysImageCompositionIdentity);
     api.method(system_vt, api.intern("bakeExe:"), &sysBakeExe);
-    g_methods_entity = api.intern("__methods__"); // to flag method-defining appends
-    g_methodops_entity = api.intern("__methodops__");
     g_globals_entity = api.intern("__globals__");
     g_globalsrc_entity = api.intern("__globalsrc__");
-    g_modsrc_entity = api.intern("__modsrc__");
     if (api.isExported("ImageSaveReport") != 0) {
         g_report_vt = api.import("ImageSaveReportVt");
         g_report_obj = api.import("ImageSaveReport");

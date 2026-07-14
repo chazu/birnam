@@ -1,6 +1,6 @@
 # 50 — Five-Phase Implementation Plan: Live Modules and Isolates
 
-> **Status:** Ready for implementation, 2026-07-14.
+> **Status:** L1a implemented; I1a next. Revised 2026-07-14.
 >
 > Executes [48 — Concurrency](48-concurrency-reactors-and-isolates.md) and
 > [49 — Live Module Evolution](49-live-module-evolution.md) after the
@@ -31,20 +31,19 @@ suspended execution.
    candidate/artifact delta and provenance record.
 2. Dispatch changes only while a host-owned process-local quiescence guard is
    active. Ordinary Birnam sends cannot enter that phase.
-3. A generation publishes dispatch, its complete source map, and its portable
-   provenance at one non-failing commit seam.
-4. `__modsrc__` and per-name `activeCompiledUnit` become derived compatibility
-   mirrors in L1a. Image compilation, rebuild, and current-source queries must stop
-   reading them as authority in that same phase.
+3. A generation publishes dispatch and its complete canonical source map at one
+   non-failing commit seam. That map is also the portable provenance.
+4. `__modsrc__`, `__methods__`, `__methodops__`, and per-name
+   `activeCompiledUnit` leave the authority model in L1a. Image compilation,
+   rebuild, inspection, and current-source queries read only the generation.
 5. Isolate messages always pass through wire-v1 encode/decode. Multiple handles
    may exist, but each handle is single-flight and blocking through L2.
 6. Worker PIDs, descriptors, pending requests, native handles, and rollback
    capabilities are process-local and never become durable Store values.
 7. Every externally blocking process operation has a deadline. Timeout makes a
    worker terminal and ends with exactly one reap.
-8. Full-image save is the reliable generation baseline. Append remains available
-   only for data changes while the saved generation digest still equals the live
-   digest; otherwise it reports that a full save is required.
+8. Full-image save by temporary-file replacement is the only supported generation
+   baseline. Append is outside the generation-image contract.
 9. The reactor remains orthogonal. Nothing in these phases introduces an API whose
    implementation secretly needs a reactor or foreign thread.
 
@@ -61,26 +60,25 @@ Add a distinct `DispatchGeneration` prototype in the existing self-hosted
 entity #dispatch, attribute #activeGeneration, value DispatchGeneration
 ```
 
-`CompiledUnit activeFor:` remains a compatibility query derived from the current
-generation's provenance. Per-name active-unit facts may be updated eagerly for old
-tools, but no new lifecycle decision reads them back.
+`CompiledUnit activeFor:` may remain as a convenience query, but it derives its
+answer from the current generation. There are no per-name authority mirrors.
 
 A generation records immutable values for:
 
 - sealed source map;
 - canonical base digest;
-- normalized portable operations;
 - predecessor, when process-local rollback remains possible;
 - delta `CompiledUnit`, if this generation came from one candidate; and
 - state/provenance needed for inspection and image recovery.
 
-### 3.2 Source revisions and sealed source maps
+### 3.2 Universal source revisions and sealed source maps
 
-Represent a `SourceRevision` as an immutable Vector record rather than a mutable
-entity:
+Every module uses the same revision model. There is no permanent foundation/live,
+system/application, or file/image distinction. Represent a `SourceRevision` as an
+immutable Vector record rather than a mutable entity:
 
 ```text
-#[#sourceRevision module dependencies authoredSource revisionDigest]
+#[#sourceRevision module dependencies authoredSource nonMethodDigest methodDigest revisionDigest]
 ```
 
 Represent the complete source map as a sorted Vector of immutable entries:
@@ -89,9 +87,24 @@ Represent the complete source map as a sorted Vector of immutable entries:
 #[ #[moduleA revisionA] #[moduleB revisionB] ... ]
 ```
 
-No ordinary API returns a mutable cell for either value. Codegen rehashes the
-record before prepare, commit, save, and boot publication; a raw mutation or
-inconsistent durable record produces drift/error rather than new authority.
+`authoredSource` is always the complete document. Codegen derives, without
+rewriting it, a non-method projection and a declarative method manifest. Through
+L2 every existing module may replace any declarative method, but its canonical
+identity, dependency declaration, and non-method projection must remain unchanged.
+This is a temporary evolution-policy restriction, not a second class of module.
+Later initialization/migration work removes it for top-level-effect changes and
+module introduction.
+
+No ordinary API returns a mutable cell for either revision or map. Codegen
+rehashes the records before prepare, commit, save, and boot publication; a raw
+mutation or inconsistent durable record produces an error rather than new
+authority.
+
+The complete current source map is sufficient portable dispatch provenance.
+Image compilation and rebuild execute each current authored document exactly once,
+whole and in dependency order. L1a therefore retires `__methods__` and
+`__methodops__` as recovery inputs rather than manufacturing a second ordered
+operation history from the same source.
 
 ### 3.3 File metadata
 
@@ -107,13 +120,18 @@ only that first metadata line before hashing/compilation. `fileOut` preserves ev
 authored byte after it. Missing, malformed, stale, or sibling bases are distinct
 results; forced replacement is an explicit later policy, not an implicit fallback.
 
-### 3.4 Compatibility mirrors
+### 3.4 No compatibility authority
 
-Update `activeCompiledUnit` and `__modsrc__` eagerly at the same publication seam
-for compatibility with current inspection tools. Their values are derived from
-the successor generation. New module queries, image compilation, and replay never
-enumerate them as authority. Mirror mismatch is diagnostic drift and cannot alter
-the generation.
+Backward compatibility is not a goal. `activeCompiledUnit`, `__modsrc__`,
+`__methods__`, `__methodops__`, and pre-generation image formats do not participate
+in the shipped contract. They may exist transiently while the implementation is
+being replaced, but Phase L1a cannot exit while a production reader or writer
+depends on them. Documentation and tooling move directly to the generation.
+
+Ordinary `System load:` remains script evaluation, not a route into module
+authority. Once the initial generation is published, supported dispatch mutation
+requires an evolution intent and the host quiescence guard. Raw floor mutation is
+an explicitly unsupported corruption escape and makes reconciliation/save fail.
 
 ### 3.5 Initial isolate defaults
 
@@ -130,32 +148,24 @@ dedicated binary descriptor. I1a supports the three fixed substrate error record
 from design 48. Applications use scalar/vector/map payloads initially; a public
 record-schema registry is deferred until a real application requires it.
 
-## 4. Current implementation baseline
+## 4. Implemented L1a baseline
 
-The plan starts from these concrete seams:
-
-- `src/id/compiled-unit.birnam` owns per-name lifecycle policy and currently calls
-  unrestricted `Codegen commitPrepared:`/`commitPreparedRollback:`.
-- `src/id/codegen.zig` owns candidate manifests, process-local candidate roots,
-  binding ledgers, publication plans, `compileImageCode:`, and `replayMethods`.
-- `src/id/codegen.zig` and image recovery currently enumerate `__modsrc__` and
-  method facts; this must change atomically with L1a authority publication.
-- `src/id/image.zig` owns full save, append, preflight, mapping, and image reports.
-- `src/id/main.zig` owns CLI routing and image boot, but currently hands the whole
-  console loop to `[Repl console]` and normal image boot always runs `main` or the
-  REPL.
-- `modules/repl.birnam` already exposes `consoleInit`, `consoleStep`, and
-  `consoleDone`, so the host can regain a between-form boundary without moving the
-  reader or evaluator back into Zig.
-- Most current `modules/*.birnam` files have no canonical `Module named:`
-  declaration, and `System load:` records source under a basename. L1a must
-  normalize shipped durable modules and stop treating arbitrary filed scripts as
-  module authority before strict cutover can succeed.
-- `modules/process.birnam` uses shell/text `popen`; it is not a binary isolate
-  transport and remains unchanged.
-- `src/id/image_test.zig`, `src/id/codegen_test.zig`,
-  `modules/compiled-unit-test.birnam`, `scripts/repl-golden.sh`, and
-  `zig build verify` are the existing cross-layer gates.
+- Every shipped Birnam module declares one canonical identity; source and AOT boot
+  stage the same exact document and `test-source-fallback` compares their G0 digest.
+- `DispatchGeneration` owns the one current cell, sealed source map, predecessor,
+  and canonical digest. `CompiledUnit` is candidate delta/provenance only.
+- The host owns the REPL turn loop and native quiescence guard. Activation and
+  rollback return `EvolutionIntent` values fulfilled only at that safe point.
+- Store rejects ordinary method mutation while running. Post-G0 AOT module
+  introduction is explicitly unavailable through L2; all existing modules use the
+  same method-only successor path.
+- Image format v4 carries one authority record and one code unit bound to it. Full
+  replacement is the sole write mode; mapped and rebuilt paths consume the same
+  dependency-ordered complete documents.
+- Documentation and image/source inspection derive from the generation, not
+  `activeCompiledUnit`, `__modsrc__`, `__methods__`, or `__methodops__`.
+- `modules/process.birnam` still uses shell/text `popen`; I1a replaces that seam
+  with the binary isolate substrate.
 
 ## 5. Delivery discipline
 
@@ -174,59 +184,53 @@ For every phase:
 
 ### 6.1 Goal
 
-Replace per-name executable authority with one runtime-wide generation, enforce
-quiescent commit/rollback, migrate legacy authority atomically, and make mapped and
-rebuilt full images reproduce the same source map, portable operations, and base
-digest.
+Boot directly into one runtime-wide generation, enforce quiescent commit/rollback,
+make every existing module method-live-editable, and make mapped and rebuilt full
+images reproduce the same complete source map and base digest.
 
 L1a has no file import UI, worker, mailbox, reactor, promise, migration hook, or
 initializer transaction.
 
-### 6.2 Planned increments
+### 6.2 Implemented increments
 
-#### L1a.0 — Normalize durable module identity and freeze current behavior
+#### L1a.0 — Define the new boot and source contract — complete
 
-- Inventory every `src/id/*.birnam` and `modules/*.birnam` file loaded by normal
-  boot, tooling, or image recovery. Add canonical `Module named:requires:`
-  declarations to shipped files whose top-level programs must be durable, and
-  make their declared name the recording key instead of the basename.
-- Change `System load:` classification: declared module programs may enter durable
-  module-source authority; undeclared scripts still execute but are not silently
-  promoted to durable modules. If such a script creates state that has neither a
-  direct encoding nor another declared recovery path, full save must report that
-  unsupported ownership rather than replaying the whole script by basename.
-- Treat legacy undeclared `__modsrc__` entries as migration errors unless an
-  explicit one-time normalization maps them to a matching declaration. Never guess
-  a module identity from a path during authority cutover.
-- Extend `src/id/codegen_test.zig` and `modules/compiled-unit-test.birnam` to record
-  current candidate activation, rollback, drift, and per-name publication.
-- Add image fixtures with two canonical modules, dependency ordering, one removal,
-  and two successive save/boot cycles.
-- Add explicit fixtures for malformed legacy source, missing dependency, cycle,
-  and legacy binding drift.
-- Confirm the starting gate with `zig build test-codegen`, `zig build test-image`,
-  `zig build test-birnam`, and `zig build verify`.
+- Inventory every shipped Birnam module used by normal boot, tooling, tests, and
+  image recovery. Give each durable module one canonical
+  `Module named:requires:` declaration. Test programs remain scripts.
+- Make source fallback and AOT compilation validate that declaration and use it as
+  identity. Paths are diagnostic origins only. Remove basename authority rather
+  than migrating it.
+- Add a full-document Codegen projection that returns canonical identity,
+  dependencies, exact source digest, non-method digest, and the declarative method
+  manifest without evaluating the document or changing its bytes.
+- Define a method-only successor as equal identity, dependencies, and non-method
+  digest with any valid declarative-method difference. Reject duplicate bindings,
+  indirect/unstable targets, malformed declarations, and ambiguous documents.
+- Characterize current candidate activation, rollback, image source recovery, and
+  source/AOT fallback before changing their authority.
 
-#### L1a.1 — Add immutable revision/map values and canonical hashing
+Narrow gates: `zig build test-codegen`, `zig build test-birnam`, and a new
+`zig build test-source-fallback`.
+
+#### L1a.1 — Add immutable revisions, generations, and canonical hashing — complete
 
 - Add `SourceRevision` constructors/queries and `DispatchGeneration` policy to
   `src/id/compiled-unit.birnam`.
 - Add Codegen helpers that validate the Vector record shapes and compute the exact
-  domain-separated SHA-256 encodings from design 49.
-- Normalize portable operations from `__methodops__`/candidate envelopes into
-  dependency-topological module order plus `operationSequence`.
-- Derive two canonical image inputs from each authored revision without changing
-  its stored bytes: boot-only non-method top-level forms, and declarative method
-  operations. Compile/replay each method operation exactly once rather than both
-  through the whole module program and the portable overlay.
-- Reject duplicate modules, mismatched revision digests, unstable target names,
-  malformed dependency vectors, and non-portable operation records.
-- Add golden digest vectors shared by mapped/rebuilt tests; include formatting,
-  dependency-order, NaN-unrelated, and artifact-checksum exclusion cases.
+  domain-separated SHA-256 encodings from design 49, simplified so the complete
+  canonical source map is the portable generation input.
+- Build the initial complete source map from the boot manifest and publish `G0`
+  once, after all boot modules are installed and before user entry. There is no
+  legacy-authority state and no callable migration operation.
+- Reject duplicate modules, mismatched revision digests, malformed dependency
+  vectors, missing dependencies, cycles, and source/manifest disagreement before
+  publishing `G0`.
+- Add golden digest vectors shared by mapped/rebuilt tests.
 
-Narrow gate: `zig build test-codegen`.
+Narrow gates: `zig build test-codegen` and `zig build test-birnam`.
 
-#### L1a.2 — Introduce an enforceable host quiescence boundary
+#### L1a.2 — Introduce an enforceable host quiescence boundary — complete
 
 - Add a process-local phase enum and host-only begin/end exports in
   `src/id/codegen.zig`.
@@ -243,32 +247,20 @@ Narrow gate: `zig build test-codegen`.
 - Retain `[Repl console]` only as a compatibility helper, not the host's normal
   path. Add golden coverage for long sessions, EOF, faults, config bring-up, and
   teardown so the refactor changes no console behavior.
-- Add tests proving an ordinary method, top-level evaluation, and nested guard
-  cannot commit, while a host-boundary test helper can.
+- Make ordinary supported method installation/removal reject while `#running`;
+  candidate-private construction remains inert and boot/recovery have explicit
+  native phases. The existing post-mutation observer is not sufficient authority.
+- Add tests proving an ordinary method, top-level evaluation, raw public MOP, and
+  nested guard cannot publish dispatch, while a host-boundary helper can.
 
 Narrow gates: `zig build test-main`, `zig build test-codegen`, and
 `zig build test-repl`.
 
-#### L1a.3 — Build and publish the initial runtime generation
+#### L1a.3 — Publish whole-runtime successors and exact predecessors — complete
 
-- Add `[CompiledUnit ensureDispatchAuthority]` as the idempotent cutover entry.
-- Reconcile every legacy active unit with Codegen's binding ledger before creating
-  new authority.
-- Parse every legacy module source remaining after L1a.0 normalization, require
-  its declared `Module named:` identity to match the fact key, validate
-  dependencies, and compute deterministic order.
-- Construct the sealed source map and normalized effective operation stream
-  completely before writing `#dispatch/#activeGeneration`.
-- Publish the initial non-rollbackable composed generation once; failed cutover
-  leaves the old cells untouched and returns a kinded diagnostic listing the
-  offending module/reason.
-- Switch `CompiledUnit activeFor:` to derive its answer from the current generation;
-  eagerly refresh old facts only as mirrors.
-
-Narrow gates: `zig build test-codegen` and `zig build test-birnam`.
-
-#### L1a.4 — Publish whole-runtime successors and exact predecessors
-
+- Compile a candidate from a complete successor document, but materialize only its
+  declarative method delta. Revalidate that its non-method projection and
+  dependencies still match the active revision.
 - Extend the candidate publication plan to carry expected current generation,
   replacement `SourceRevision`, complete successor source map, and successor base
   digest.
@@ -280,66 +272,65 @@ Narrow gates: `zig build test-codegen` and `zig build test-birnam`.
   apply the inverse, and republish the exact predecessor generation.
 - Preserve `CompiledUnit` objects as delta/provenance records; do not make their
   per-name state the current-runtime authority.
-- Make the old unguarded `activate`/`rollback` routes enter the guarded lifecycle
-  or answer `#quiescenceRequired`; remove any direct policy escape from docs/tests.
+- Make `activate`/`rollback` produce value-like `EvolutionIntent`s. The host
+  recognizes them only after top-level evaluation returns, enters the guard,
+  commits synchronously, exits the guard, and reports the result.
 
 Narrow gates: `zig build test-codegen` and `zig build test-birnam`.
 
-#### L1a.5 — Move image compilation and rebuild to generation authority
+#### L1a.4 — Move image compilation and rebuild to generation authority — complete
 
-- Replace `appendImageSources(... __modsrc__)` in `compileImageCode:` with an
-  ordered walk of the current generation's sealed revisions: dependency-ordered
-  boot-only top-level forms first, then the normalized method operation stream.
-- Replace `replayMethods` enumeration of `__modsrc__`/legacy method facts with the
-  same canonical source-map and portable-operation input.
-- Keep a pre-cutover compatibility reader only inside the one-time upgrade path;
-  never fall back silently after `#activeGeneration` exists.
-- Extend image metadata/reporting with the saved base digest and authority version.
+- Replace `compileImageCode:` and rebuild enumeration with one dependency-ordered
+  walk of the current generation's complete authored revisions. Execute each
+  document whole and exactly once; preserve its internal statement order.
+- Introduce a new image format with an authority record before executable code.
+  Bind the code artifact to the generation digest and validate both before install.
+- Do not read old image formats and do not fall back to legacy facts.
 - Before full save, reconcile dispatch, rehash the generation, and reject drift or
   partial authority without replacing the prior image.
-- Permit `appendImage:` only when the checkpointed generation digest equals the
-  current one; otherwise answer failure with `#fullSaveRequiredForGeneration`.
+- Remove append from the supported generation-image path. L1a provides full
+  temporary-file replacement only; power-loss durability remains a separate claim.
 
 Narrow gates: `zig build test-image` and `zig build test-codegen`.
 
-#### L1a.6 — Reconstruct one generation on mapped and rebuilt boot
+#### L1a.5 — Reconstruct one generation on mapped and rebuilt boot — complete
 
 - Split image recovery from user entry in `src/id/main.zig` so recovery can finish
   and publish authority before `main`, REPL, or later worker entry.
-- On mapped boot, validate the saved map/digest, rebuild the transient binding
-  ledger, and mint one non-rollbackable composed generation.
-- On rebuilt boot, compile/replay the same ordered revisions and portable
-  operations, then assert the identical base digest.
-- Reject an image marked cut over when its map, operation stream, or digest cannot
-  be validated; do not fall back to legacy authority.
+- On mapped boot, validate the saved map/digest and restore that exact generation;
+  do not mint a second composed owner.
+- On rebuilt boot, compile/replay the same complete ordered revisions, then assert
+  the identical base digest.
+- Reject an image whose map, digest, or artifact binding cannot be validated.
 - Cover a second activation after boot, then another full save/boot, to prove the
   successor contains untouched modules and does not depend on an obsolete shared
   base.
 
 Narrow gate: `zig build test-image`.
 
-#### L1a.7 — Phase exit and documentation
+#### L1a.6 — Phase exit and documentation — complete
 
 - Update `docs/guide/05-compiled-units.md` from the per-name authority API to the
   shipped guarded generation semantics.
-- Update `docs/guide/04-images.md` with generation-aware full-save and append
-  gating.
+- Update `docs/guide/04-images.md` with generation-aware full-save semantics and
+  the removal of append from the supported format.
 - Mark the L1a task complete only after the design 49 §13.1 matrix is represented
   by named tests.
-- Add a `test-source-fallback` gate that runs the stage-0 binary against a temporary
-  lib tree containing kernel dylibs but no stage-1 self-hosted artifacts; do not
-  rely on deleting outputs before `verify`, because `verify` rebuilds stage 1.
 - Run `zig build test-source-fallback` and `zig build verify`.
 
 ### 6.3 L1a exit criteria
 
 - Exactly one current generation cell exists after cutover or boot.
 - Ordinary code cannot commit or rollback in a running turn.
-- Stale expected base and malformed cutover leave dispatch/source authority
+- Every existing module can activate a method-only successor; a changed
+  non-method projection is rejected without mutation.
+- Stale expected base and malformed revisions leave dispatch/source authority
   unchanged.
-- `compileImageCode:` and rebuild consume the generation, not `__modsrc__`.
+- `compileImageCode:` and rebuild consume complete generation revisions, not
+  `__modsrc__`, `__methods__`, or `__methodops__`.
 - Mapped and rebuilt boots produce the same canonical digest.
-- Full save is atomic; append rejects generation changes.
+- Full save uses temporary-file replacement and preserves the prior image on
+  reported failure; append is outside the supported generation path.
 - `zig build verify` is green.
 
 ## 7. I1a — blocking single-worker isolate substrate

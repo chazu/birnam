@@ -26,6 +26,7 @@
 // is written. module:is: seeds the summary and method-list cells; the other
 // methods assume the module was documented first (their stated precondition).
 
+[Module named: #doc requires: #[#html]];
 [[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [System load: "modules/html.birnam"]]];
 
 [Globals at: #Doc put: [Object clone]];
@@ -127,13 +128,11 @@
       ifFalse: [| acc]]]]] doc:
   "The Globals name whose binding IS `obj` (identity), or \"\" — the reverse of `Globals at:`, for naming prototypes (they print as anObject)."];
 
-// -- source view: the facts the compiler records for every loaded module ---------
+// -- source view: derived from the current generation ----------------------------
 //
-// The frozen pre-cutover base lives on `#__methods__`; every later install/remove
-// is sequenced on `#__methodops__`. A dylib also records its whole text under
-// `#__modsrc__` keyed by module name (see codegen's `defineMethod:on:as:source:` /
-// `mCompileOutput`). These read those facts so docs can fall back to source when a
-// selector has no hand-written docstring — the source IS the documentation.
+// The generation's complete authored documents are portable authority. Codegen
+// projects their declarative method spans for documentation; no method-operation
+// journal or module-source mirror participates.
 
 // The selector token in a `[Reflect defineMethod: #sel on: T as: …]` source string:
 // the `#…` right after the FIRST `defineMethod:`, up to the next space — a keyword
@@ -148,11 +147,8 @@
 
 // Every recorded method-source string, across all loaded modules.
 [Reflect defineMethod: #methodSources on: Doc as: [:self |
-  let legacy := [db findAll: ?src where: #[ #[ #__methods__ ?attr ?src ] ]];
-  [[db findAll: ?opSrc where: #[ #[ #__methodops__ ?opAttr ?opSrc ] ]]
-    inject: legacy into: [:all :src |
-      [[all includes: src] ifTrue: [| all] ifFalse: [| [all add: src]]]]]] doc:
-  "Every recorded method-operation source across the frozen #__methods__ base and sequenced #__methodops__ log."];
+  [Codegen generationMethodSources]] doc:
+  "Every declarative method source in the current generation's authored documents."];
 
 // The recorded source(s) of every method whose selector prints as `name` (a String).
 [Reflect defineMethod: #sourcesForSelector: on: Doc as: [:self :name |
@@ -201,11 +197,12 @@
       [[hits isEmpty] ifTrue: [| all] ifFalse: [| hits]]]]] doc:
   "The indexed sources for `selName`, narrowed to definitions on `protoName` when non-empty (falls back to all matches)."];
 
-// The whole-module source recorded for `mod` (a symbol) by a dylib load, or "".
+// The exact authored source in the current generation (or the boot stage before
+// G0 is sealed), never a path-derived compatibility fact.
 [Reflect defineMethod: #moduleSource: on: Doc as: [:self :mod |
-  let hits := [db findAll: ?src where: #[ #[ #__modsrc__ mod ?src ] ]];
-  [[hits isEmpty] ifTrue: [| ""] ifFalse: [| [hits first]]]] doc:
-  "The whole-module source recorded for `mod` under #__modsrc__ (any load records it), or \"\"."];
+  let source := [Codegen moduleSourceFor: mod];
+  [[source isNil] ifTrue: [| ""] ifFalse: [| source]]] doc:
+  "The exact authored source for `mod` in the current dispatch generation, or \"\"."];
 
 // "// x" -> "x": eat the marker and ONE following space (deeper indentation
 // kept, so example blocks hold their alignment); a bare "//" -> "".

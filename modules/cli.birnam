@@ -17,6 +17,7 @@
 // failure; the driver exits with it. args[0] is the subcommand token as typed
 // (so the --serve alias arrives as "--serve").
 
+[Module named: #cli requires: #[]];
 [Globals at: #Cli put: [Object clone]];
 [Reflect docModule: #cli is: "The CLI subcommand dispatcher (doc/docgen/init/wrap/--lsp/--listen) — one more client of the module APIs."];
 

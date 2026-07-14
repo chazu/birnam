@@ -4,6 +4,15 @@
 
 let s := [TestSuite named: "CompiledUnit" module: #compiledUnit];
 
+// The script harness has no host prompt boundary, so install the two fixture
+// modules into the boot source stage and seal G0 explicitly before exercising
+// successor generations.
+let cuPolicyBaseline := "[Module named: #cuPolicy requires: #[]]; [Reflect defineMethod: #cuPolicyReplace on: Integer as: [:self | 11]]; [Reflect defineMethod: #cuPolicyRemove on: Integer as: [:self | 22]]";
+let cuChainBaseline := "[Module named: #cuChain requires: #[]]; [Reflect defineMethod: #cuInherited on: Integer as: [:self | 7]]; [Reflect defineMethod: #cuOverlay on: Integer as: [:self | 8]]";
+[Codegen recordModuleSource: cuPolicyBaseline named: #cuPolicy];
+[Codegen recordModuleSource: cuChainBaseline named: #cuChain];
+[DispatchGeneration initializeCurrent];
+
 [s test: "inspect and map are inert; activation and rollback are exact" do: [:t |
   [Reflect defineMethod: #cuPolicyReplace on: Integer as: [:self | 11]];
   [Reflect defineMethod: #cuPolicyRemove on: Integer as: [:self | 22]];
@@ -17,7 +26,7 @@ let s := [TestSuite named: "CompiledUnit" module: #compiledUnit];
   [t expect: [3 cuPolicyRemove] equals: 22 describes: "inspection did not remove dispatch"];
   [unit map];
   [t expect: [3 cuPolicyReplace] equals: 11 describes: "mapping remains inert"];
-  [unit activate];
+  [[unit activate] fulfill];
   [t expect: [unit state] equals: #active describes: "activation publishes state"];
   [t expect: [CompiledUnit activeFor: #cuPolicy] equals: unit describes: "activation publishes the active generation"];
   let activatedEvent := [db currentValue: unit attr: #activationEvent];
@@ -25,7 +34,7 @@ let s := [TestSuite named: "CompiledUnit" module: #compiledUnit];
   [t expect: [3 cuPolicyReplace] equals: 111 describes: "replacement activated"];
   [t expect: [3 cuPolicyAdd] equals: 222 describes: "addition activated"];
   [t expect: [[3 cuPolicyRemove] isError] equals: true describes: "explicit removal activated"];
-  [unit rollback];
+  [[unit rollback] fulfill];
   [t expect: [unit state] equals: #rolledBack describes: "rollback publishes state"];
   [t expect: [[CompiledUnit activeFor: #cuPolicy] isNil] equals: true describes: "first-generation rollback clears the active generation"];
   let rollbackEvent := [db currentValue: unit attr: #activationEvent];
@@ -33,7 +42,7 @@ let s := [TestSuite named: "CompiledUnit" module: #compiledUnit];
   [t expect: [3 cuPolicyReplace] equals: 11 describes: "replacement restored"];
   [t expect: [3 cuPolicyRemove] equals: 22 describes: "removal restored"];
   [t expect: [[3 cuPolicyAdd] isError] equals: true describes: "addition exactly removed"];
-  [t expect: [unit rollback] equals: unit describes: "repeated rollback is an idempotent no-op"]]];
+  [t expect: [[unit rollback] fulfill] equals: unit describes: "repeated rollback is an idempotent no-op"]]];
 
 [s test: "missing dependencies keep mapping and dispatch inert" do: [:t |
   [Reflect defineMethod: #cuDependencyGuard on: Integer as: [:self | 31]];
@@ -55,19 +64,19 @@ let s := [TestSuite named: "CompiledUnit" module: #compiledUnit];
   [CompiledUnit compile: firstSource named: #cuChain output: "/tmp/birnam-compiled-unit-chain-1.dylib"];
   let first := [CompiledUnit open: "/tmp/birnam-compiled-unit-chain-1.dylib"];
   [first map];
-  [first activate];
+  [[first activate] fulfill];
 
   let secondSource := "[Module named: #cuChain requires: #[]]; [Reflect defineMethod: #cuOverlay on: Integer as: [:self | 80]]";
   [CompiledUnit compile: secondSource named: #cuChain output: "/tmp/birnam-compiled-unit-chain-2.dylib"];
   let second := [CompiledUnit open: "/tmp/birnam-compiled-unit-chain-2.dylib"];
   [second map];
-  [second activate];
+  [[second activate] fulfill];
   [t expect: [first state] equals: #superseded describes: "native commit supersedes the prior generation"];
   [t expect: [second state] equals: #active describes: "native commit activates the successor"];
   [t expect: [3 cuInherited] equals: 70 describes: "successor inherits an untouched predecessor binding"];
   [t expect: [3 cuOverlay] equals: 80 describes: "successor overlays its own binding"];
 
-  [second rollback];
+  [[second rollback] fulfill];
   [t expect: [CompiledUnit activeFor: #cuChain] equals: first describes: "rollback atomically republishes the predecessor"];
   [t expect: [first state] equals: #active describes: "rollback restores predecessor state"];
   [t expect: [3 cuInherited] equals: 70 describes: "rollback retains predecessor behavior"];
@@ -76,9 +85,9 @@ let s := [TestSuite named: "CompiledUnit" module: #compiledUnit];
   [CompiledUnit compile: secondSource named: #cuChain output: "/tmp/birnam-compiled-unit-chain-3.dylib"];
   let third := [CompiledUnit open: "/tmp/birnam-compiled-unit-chain-3.dylib"];
   [third map];
-  [third activate];
+  [[third activate] fulfill];
   [Reflect defineMethod: #cuInherited on: Integer as: [:self | 700]];
-  let rejected := [third rollback];
+  let rejected := [[third rollback] fulfill];
   [t expect: [rejected isError] equals: true describes: "rollback rejects drift in an inherited untouched binding"];
   [t expect: [third state] equals: #drifted describes: "inherited drift marks the active successor"];
   [t expect: [3 cuInherited] equals: 700 describes: "rejected rollback does not clobber the ordinary edit"];

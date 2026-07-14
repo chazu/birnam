@@ -33,15 +33,12 @@ let s := [TestSuite named: "Doc" module: #doc];
 // it (Globals reverse lookup — prototypes print as anObject) and folds the
 // method's recorded source into a collapsed <details>.
 [s test: "html render shows the receiver and the recorded source" do: [:t |
-  [Globals at: #ZzDocProto put: [Object clone]];
-  [Doc module: #demoP is: "proto demo"];
-  [Reflect defineMethod: #zzProtoSel on: ZzDocProto as: [:self | 7] doc: "answers seven"];
-  let h := [Doc htmlForModule: #demoP];
-  [t assert: [h includesSubstring: "<span class=\"proto\">on ZzDocProto</span>"]
+  let h := [Doc htmlForModule: #doc];
+  [t assert: [h includesSubstring: "<span class=\"proto\">on Doc</span>"]
      describes: "receiver prototype badged from Globals"];
   [t assert: [h includesSubstring: "<details><summary>source</summary>"]
      describes: "recorded source folded into <details>"];
-  [t assert: [h includesSubstring: "zzProtoSel on: ZzDocProto"]
+  [t assert: [h includesSubstring: "selectorInSource: on: Doc"]
      describes: "the source shown is this definition's own span"]]];
 
 // The whole-site page: a name-sorted sidebar with the Zig floor grouped apart
@@ -79,15 +76,13 @@ let s := [TestSuite named: "Doc" module: #doc];
      equals: ""
      describes: "not a definition -> empty"]]];
 
-// A bare `defineMethod:on:as:` records its source on `#__methods__`, so an
-// undocumented selector is still queryable — Doc falls back to that source.
-[s test: "source fallback surfaces an undocumented method's own source" do: [:t |
-  let demo := [Object clone];
-  [Reflect defineMethod: #zzDemoSrc on: demo as: [:self | 42]];
-  let srcs := [Doc sourcesForSelector: "zzDemoSrc"];
+// Undocumented methods in the current generation remain queryable from their
+// complete module documents.
+[s test: "source fallback surfaces a generation method's own source" do: [:t |
+  let srcs := [Doc sourcesForSelector: "escape:"];
   [t assert: [[srcs size] >= 1] describes: "sourcesForSelector: finds the recorded source"];
-  let body := [Doc hoverBodyFor: "zzDemoSrc"];
-  [t assert: [body includesSubstring: "zzDemoSrc"] describes: "hoverBodyFor: includes the source"];
+  let body := [Doc hoverBodyFor: "escape:"];
+  [t assert: [body includesSubstring: "escape"] describes: "hoverBodyFor: includes the source"];
   [t assert: [body includesSubstring: "```birnam"] describes: "hoverBodyFor: fences source as birnam"]]];
 
 // A hand-written docstring wins over the source fallback.
@@ -119,11 +114,11 @@ let s := [TestSuite named: "Doc" module: #doc];
      describes: "the block stops at the first non-comment line"];
   [t expect: [Doc headerOf: #zzNeverLoaded] equals: "" describes: "no recorded source -> empty"]]];
 
-// zzDemoSrc was installed bare (no docstring) by an earlier test, so the gap
-// audit must list it; zzHovSel was documented, so it must not appear.
+// Html escape is generation-owned and undocumented, so the gap audit lists it;
+// zzHovSel was documented, so it must not appear.
 [s test: "undocumentedSelectors lists recorded-but-undocumented names" do: [:t |
   let gaps := [Doc undocumentedSelectors];
-  [t assert: [gaps includes: "zzDemoSrc"] describes: "the bare install is a gap"];
+  [t assert: [gaps includes: "escape:"] describes: "the generation method is a gap"];
   [t assert: [[gaps includes: "zzHovSel"] not] describes: "a documented selector is not"]]];
 
 // Guides: static .md pages load in filename order, take their title from the
@@ -159,12 +154,12 @@ let s := [TestSuite named: "Doc" module: #doc];
 // not alter CompiledUnit's executable method-operation stream.
 [s test: "CompiledUnit reference registrations cover the public lifecycle" do: [:t |
   [System load: "modules/compiled-unit-docs.birnam"];
-  [t expect: [[Doc methodsOf: #compiledUnit] size] equals: 15
+  [t expect: [[Doc methodsOf: #compiledUnit] size] equals: 14
      describes: "all public lifecycle selectors registered"];
   let md := [Doc markdownForModule: #compiledUnit];
-  [t assert: [md includesSubstring: "`activate` — Atomically publish"]
+  [t assert: [md includesSubstring: "`activate` — Produce an activation"]
      describes: "authored activation reference is rendered"];
-  [t assert: [md includesSubstring: "`adoptLive` — Adopt portable ordinary edits"]
-     describes: "drift-adoption reference is rendered"]]];
+  [t assert: [md includesSubstring: "`rollback` — Produce a rollback"]
+     describes: "guarded rollback reference is rendered"]]];
 
 s

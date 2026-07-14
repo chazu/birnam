@@ -16,6 +16,7 @@
 // status. Signature "v i" = void return, one int argument (that receiver slot).
 [Alien wrap: "exit" signature: "v i" as: #exitProcess on: Integer];
 
+[Module named: #os requires: #[]];
 [Globals at: #OS put: [Object clone]];
 [Reflect docModule: #os is: "Process-level OS bits over libc (currently: exit)."];
 

@@ -25,6 +25,7 @@
 
 // -- the REPL -----------------------------------------------------------------
 
+[Module named: #repl requires: #[#config]];
 [Globals at: #Repl put: [Object clone]];
 [Reflect docModule: #repl is: "The REPL — bracket-aware form reader, eval-print loop, console session, and the --listen network server."];
 
@@ -250,6 +251,34 @@
   r] doc:
   "One prompt/read/dispatch step; false when the session is over (EOF or a quit command), true to go again."];
 
+// Host-owned step protocol. Evaluation returns its value to Zig before anything
+// can fulfill an EvolutionIntent; the host may then enter the native quiescence
+// guard, fulfill synchronously, leave the guard, and print the final answer.
+[Reflect defineMethod: #hostStep on: Repl as: [:self |
+  [System print: "birnam> "];
+  let form := [self readFormInto: ""];
+  [[form isNil]
+    ifTrue: [| #[#done nil]]
+    ifFalse: [|
+      let src := [form trimmed];
+      [[[src size] = 0]
+        ifTrue: [| #[#continue nil]]
+        ifFalse: [|
+          [[[src byteAt: 0] = 58]
+            ifTrue: [| [[self command: src] ifTrue: [| #[#done nil]] ifFalse: [| #[#continue nil]]]]
+            ifFalse: [|
+              let val := [Codegen evalPersisting: src];
+              let err := [Codegen lastError];
+              [[err notNil]
+                ifTrue: [| [self conErr: [err , "\n"]]; #[#continue nil]]
+                ifFalse: [| #[#evaluated val]]]]]]]]]] doc:
+  "Reads and evaluates at most one form, returning a host protocol record; evaluated values are not printed or fulfilled here."];
+
+[Reflect defineMethod: #printHostResult: on: Repl as: [:self :value |
+  [System println: [self resultString: value]];
+  self] doc:
+  "Prints the final value of one host-owned evaluation step."];
+
 // birnam.toml project bring-up: load configured compiled modules dependency-first,
 // then run the root-resolved `main`, all before the prompt.
 [Reflect defineMethod: #applyConfigLoads on: Repl as: [:self |
@@ -284,17 +313,30 @@
 // Session bring-up: wire the stdio FILE*s, honor config main, greet. `console`
 // then loops `consoleStep` until it answers false, and closes with consoleDone.
 [Reflect defineMethod: #consoleInit on: Repl as: [:self |
+  let initialized := [self consoleHostInit];
+  [[initialized isError]
+    ifTrue: [| initialized]
+    ifFalse: [| [self consoleHostReady]]]] doc:
+  "Compatibility bring-up combining consoleHostInit and consoleHostReady; the normal host inserts G0 publication between them."];
+
+[Reflect defineMethod: #consoleHostInit on: Repl as: [:self |
   [self wrapStdio];
   [[db cellFor: self attr: #cin]  set: [0 fdopenMode: "r"]];
   [[db cellFor: self attr: #cerr] set: [2 fdopenMode: "w"]];
   [[db cellFor: self attr: #cbuf] set: [Alien alloc: 4096]];
-  let configured := [self applyConfig];
+  let config := [Globals at: #Config];
+  [[config notNil] ifTrue: [| [config refresh]] ifFalse: [| nil]];
+  [self applyConfigLoads]] doc:
+  "Wires stdio and loads configured modules while the runtime is still bootstrapping."];
+
+[Reflect defineMethod: #consoleHostReady on: Repl as: [:self |
+  let configured := [self applyConfigMain];
   [[configured isError]
     ifTrue: [| configured]
     ifFalse: [|
       [System println: "birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave."];
       self]]] doc:
-  "Session bring-up: wires stdio, applies nearest-project config (load then main), and prints the greeting."];
+  "Runs the configured main and greets after G0 is published and the runtime is marked running."];
 
 [Reflect defineMethod: #consoleDone on: Repl as: [:self |
   [System println: ""];

@@ -2,7 +2,7 @@
 // CompiledUnit lifecycle. Kept separate from compiled-unit.birnam so adding or
 // revising prose cannot change its portable executable method-operation stream.
 
-[Doc module: #compiledUnit is: "Staged native dispatch generations: inspect, map, validate, activate, roll back, and reconcile CompiledUnit candidates."];
+[Doc module: #compiledUnit is: "Whole-runtime dispatch generations: inspect and map CompiledUnit candidates, then activate or roll back through a host-safe evolution intent."];
 
 [Doc for: #state in: #compiledUnit says:
   "The unit's reconciled lifecycle state: #candidate, #active, #superseded, #drifted, #rolledBack, or #historical."];
@@ -27,10 +27,8 @@
 [Doc for: #validate in: #compiledUnit says:
   "Check that this mapped candidate can activate over the exact current dispatch base, then discard the one-shot prepared capability. Answers self or an Error."];
 [Doc for: #activate in: #compiledUnit says:
-  "Atomically publish every install/removal in this mapped #candidate generation. Answers self or an Error; rejection before commit leaves dispatch unchanged."];
+  "Produce an activation EvolutionIntent. The host fulfills it only between turns while native quiescence is active; rejection leaves dispatch and source authority unchanged."];
 [Doc for: #rollback in: #compiledUnit says:
-  "Restore this active generation's exact predecessor bindings. A repeated rollback of #rolledBack is a no-op; drift or unavailable process-local capability answers an Error without mutation."];
+  "Produce a rollback EvolutionIntent. Host fulfillment republishes the exact predecessor generation; drift, staleness, or unavailable process-local capability answers an Error without mutation."];
 [Doc for: #activeFor: in: #compiledUnit says:
-  "The reconciled active CompiledUnit for Symbol `name`, or nil. Reconciliation may mark a mismatching managed generation #drifted."];
-[Doc for: #adoptLive in: #compiledUnit says:
-  "Adopt portable ordinary edits over this #drifted unit as a fresh active ad-hoc baseline without changing dispatch. Answers the baseline or an Error for unrecorded/non-portable drift."]
+  "The CompiledUnit delta associated with Symbol `name` in the single current DispatchGeneration, or nil for an untouched G0 entry."]

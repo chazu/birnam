@@ -39,6 +39,7 @@
 //   [Bench writeResults: "bench/results/dev/micro.json"]
 
 // -- dependencies (guarded — a second load would re-wrap noisily) ---------------
+[Module named: #bench requires: #[#time #file]];
 [[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [System load: "modules/time.birnam"]]];
 [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
 

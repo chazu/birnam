@@ -25,6 +25,8 @@ const Oop = idapi.Oop;
 const ca = std.heap.c_allocator;
 
 var method_mutation_observer: Oop = null;
+const MethodMutationAuthorizer = *const fn () callconv(.c) Oop;
+var method_mutation_authorizer: ?MethodMutationAuthorizer = null;
 
 /// Register the one mechanism-level observer of completed supported MOP writes.
 /// This stays private to the Zig modules rather than widening IdApi; raw floor
@@ -35,7 +37,18 @@ pub fn setMethodMutationObserver(observer: Oop) void {
 
 fn mSetMethodMutationObserver(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
+    if (method_mutation_observer != null and method_mutation_observer != args[0])
+        return mopError("methodMutationObserverAlreadySet");
     setMethodMutationObserver(args[0]);
+    return self;
+}
+
+fn mSetMethodMutationAuthorizer(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const candidate: MethodMutationAuthorizer = @ptrFromInt(@as(usize, @intCast(g_api.smallIntValue(args[0]))));
+    if (method_mutation_authorizer != null and method_mutation_authorizer.? != candidate)
+        return mopError("methodMutationAuthorizerAlreadySet");
+    method_mutation_authorizer = candidate;
     return self;
 }
 
@@ -816,6 +829,10 @@ fn mTrackedAddMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const sel = args[0];
     const vt = args[1];
     const m = args[2];
+    if (method_mutation_authorizer) |authorize| {
+        const allowed = authorize();
+        if (allowed != g_api.trueObj) return allowed;
+    }
     // Preserve history in the TRACKED path before entering id's allocation-free
     // raw-mutation hook. The hook then sees absence and is a no-op.
     const st = stateOf(self);
@@ -840,6 +857,10 @@ fn mTrackedRemoveMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oo
     _ = n;
     const sel = args[0];
     const vt = args[1];
+    if (method_mutation_authorizer) |authorize| {
+        const allowed = authorize();
+        if (allowed != g_api.trueObj) return allowed;
+    }
     if (g_api.vtableOwner(vt) == null) return mopError("unstableMethodTarget");
     var direct = false;
     var i: usize = 0;
@@ -1078,6 +1099,7 @@ fn mImageLoadEnd(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// namespace is its natural persistence, not the opaque module-state channel.
 pub fn bringUp(api: *idapi.IdApi) void {
     method_mutation_observer = null;
+    method_mutation_authorizer = null;
     g_api = api;
     s_cardinality = api.intern("cardinality");
     s_one = api.intern("one");
@@ -1134,6 +1156,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_addMethodOn, &mTrackedAddMethod);
     api.method(store_vt, s_removeMethodOn, &mTrackedRemoveMethod);
     api.method(store_vt, api.intern("setMethodMutationObserver:"), &mSetMethodMutationObserver);
+    api.method(store_vt, api.intern("setMethodMutationAuthorizer:"), &mSetMethodMutationAuthorizer);
     api.method(store_vt, s_retract, &mRetract);
     api.method(store_vt, s_new, &mNew);
     api.method(store_vt, s_attrCount, &mAttrCount);

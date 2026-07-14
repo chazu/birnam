@@ -28,6 +28,7 @@
 // then `]]` — closing the `[:self …|` body block and the `[Reflect …]` call. Keeps
 // the closing-bracket count trivial (deep inline nesting is where it goes wrong).
 
+[Module named: #http requires: #[#socket #file]];
 [Globals at: #Http put: [Object clone]];
 [Reflect docModule: #http is: "A static HTTP/1.1 server (routing, dir listings, mime), over Socket + File."];
 

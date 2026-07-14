@@ -13,6 +13,7 @@
 //   [Doc text: #alien]                             "=> the extracted docs"
 //   [Zigdoc scanDir: "src/id"]                     "=> scan every .zig in a dir"
 
+[Module named: #zigdoc requires: #[#file #doc]];
 [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
 [[Globals includes: #Doc]  ifTrue: [| nil] ifFalse: [| [System load: "modules/doc.birnam"]]];
 

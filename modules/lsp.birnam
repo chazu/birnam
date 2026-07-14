@@ -19,6 +19,7 @@
 // runs INSIDE a live image (answering from real runtime state) is a later layer;
 // the dispatch here is transport-agnostic (it only calls readMessage/sendMessage).
 
+[Module named: #lsp requires: #[#json]];
 [Globals at: #Lsp put: [Object clone]];
 [Reflect docModule: #lsp is: "A stdio language server (LSP: framing + diagnostics + hover), over Json."];
 [[db cellFor: Lsp attr: #docs] set: [Map new]];

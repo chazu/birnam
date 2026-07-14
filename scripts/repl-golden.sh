@@ -184,48 +184,44 @@ birnam> "
 check "image boot: doc'd stdlib string protocol survives (incl. guards)" "$expected" "$actual"
 rm -rf "$tdir"
 
-# ---- booted-image modules: a module singleton + its Alien wraps survive the boot.
-# Time is the canonical case: `[Globals at: #Time put: [Object clone]]` (a private
-# vtable — serialized under its exported parent, re-specialised by the replayed
-# installs) + a native gettimeofday trampoline (recorded as an `__aliens__` fact,
-# re-wrapped by replayAliens). This locks the whole chain: singleton survival →
-# installs land on it → wrap replay. Run from the repo root (module paths).
+# ---- booted-image modules: a G0 module singleton + its Alien wraps survive.
+# Modules loaded by project configuration run before G0 is sealed. Time therefore
+# participates in the same generation source map as every other live module.
 tdir=$(mktemp -d)
-printf '[System load: "modules/time.birnam"]\n[System saveImage: "%s/mod.image"]\n:quit\n' "$tdir" | "$BIN" --repl >/dev/null 2>&1
+libdir="$(cd "$(dirname "$BIN_ABS")/../lib" && pwd)"
+"$BIN_ABS" --compile-module "modules/time.birnam" "$libdir/libbirnam_time.dylib" >/dev/null 2>&1
+printf 'load = ["time"]\n' > "$tdir/birnam.toml"
+(cd "$tdir" && printf '[System saveImage: "%s/mod.image"]\n:quit\n' "$tdir" | "$BIN_ABS" --repl >/dev/null 2>&1)
 actual=$(printf '[Globals includes: #Time]\n[[Time nowMillis] > 1700000000000]\n:quit\n' | "$BIN" "$tdir/mod.image" 2>&1)
 expected="$BANNER
 birnam> true
 birnam> true
 birnam> "
 check "image boot: a module singleton and its Alien wraps survive" "$expected" "$actual"
+rm -f "$libdir/libbirnam_time.dylib"
 rm -rf "$tdir"
 
-# ---- booted-image module MANAGER: the birnam Module + runtime loads survive ----
-# The manager is birnam now (src/id/modules.birnam, docs/44 Phase 5b), so this
-# locks the whole self-hosted-sequencer chain across an image boot: a module
-# loaded at RUNTIME before the save keeps its method (42) and its #loaded fact
-# (true); the manager itself replays as a self-hosted module (#selfHosted); and
-# a FRESH [Module load:] still works post-boot (102). libDir is deliberately
-# re-resolved each boot (a booted image loads from ITS tree, pre-checkpoint),
-# so the session re-points it at the scratch dir before the second load.
-# load:/libDir: answer the Module singleton — "anObject" under the default
-# printString, same as the retired native manager.
+# ---- module manager: G0 modules survive; post-G0 introduction is explicit error.
+# L1a edits every module through replacement of an existing source-map entry.
+# Introducing a new module after G0 is deliberately deferred to L2.
 tdir=$(mktemp -d)
+libdir="$(cd "$(dirname "$BIN_ABS")/../lib" && pwd)"
 printf '[Module named: #ttg requires: #[]];\n[Reflect defineMethod: #ttgProbe on: Integer as: [:x | [x + 41]]]\n' > "$tdir/ttg.birnam"
 printf '[Module named: #tth requires: #[]];\n[Reflect defineMethod: #tthProbe on: Integer as: [:x | [x + 100]]]\n' > "$tdir/tth.birnam"
-"$BIN" --compile-module "$tdir/ttg.birnam" "$tdir/libbirnam_ttg.dylib" >/dev/null 2>&1
-"$BIN" --compile-module "$tdir/tth.birnam" "$tdir/libbirnam_tth.dylib" >/dev/null 2>&1
-printf '[Module libDir: "%s"]\n[Module load: #ttg]\n[System saveImage: "%s/t.image"]\n:quit\n' "$tdir" "$tdir" | "$BIN" --repl >/dev/null 2>&1
-actual=$(printf '[1 ttgProbe]\n[Module isLoaded: #ttg]\n[Module kindOf: #modules]\n[Module libDir: "%s"]\n[Module load: #tth]\n[2 tthProbe]\n:quit\n' "$tdir" | "$BIN" "$tdir/t.image" 2>&1)
+"$BIN_ABS" --compile-module "$tdir/ttg.birnam" "$libdir/libbirnam_ttg.dylib" >/dev/null 2>&1
+"$BIN_ABS" --compile-module "$tdir/tth.birnam" "$libdir/libbirnam_tth.dylib" >/dev/null 2>&1
+printf 'load = ["ttg"]\n' > "$tdir/birnam.toml"
+(cd "$tdir" && printf '[System saveImage: "%s/t.image"]\n:quit\n' "$tdir" | "$BIN_ABS" --repl >/dev/null 2>&1)
+actual=$(printf '[1 ttgProbe]\n[Module isLoaded: #ttg]\n[Module kindOf: #modules]\n[Module load: #tth]\n[2 tthProbe]\n:quit\n' | "$BIN" "$tdir/t.image" 2>&1)
 expected="$BANNER
 birnam> 42
 birnam> true
 birnam> #selfHosted
-birnam> anObject
-birnam> anObject
-birnam> 102
+birnam> error(#moduleIntroductionNotAvailable)
+birnam> error(#doesNotUnderstand: does not understand #tthProbe)
 birnam> "
-check "image boot: the birnam Module manager + a runtime-loaded module survive" "$expected" "$actual"
+check "image boot: G0 module survives and post-G0 introduction is rejected" "$expected" "$actual"
+rm -f "$libdir/libbirnam_ttg.dylib" "$libdir/libbirnam_tth.dylib"
 rm -rf "$tdir"
 
 # ---- store surface: reading an ABSENT fact answers nil, never a VM panic -------

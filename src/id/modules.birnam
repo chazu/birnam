@@ -168,10 +168,13 @@
               [[r isNil]
                 ifTrue:  [|
                   let ir := [Codegen load: p];
-                  [[ir isNil]
-                    ifTrue:  [| [Error kind: #loadFailed
-                                   message: ["could not install module dylib: " , p]]]
-                    ifFalse: [| [self markLoaded: name]; self]]]
+                  [[ir isError]
+                    ifTrue:  [| ir]
+                    ifFalse: [|
+                      [[ir isNil]
+                        ifTrue:  [| [Error kind: #loadFailed
+                                       message: ["could not install module dylib: " , p]]]
+                        ifFalse: [| [self markLoaded: name]; self]]]]]
                 ifFalse: [| r]]]]]]]]]];
 
 // Load module `name` and its transitive dependencies at runtime, deps first,

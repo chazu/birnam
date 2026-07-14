@@ -21,6 +21,7 @@
 [Alien wrap: "clock_gettime_nsec_np" signature: "u i" as: #clockNanos on: Integer];
 
 // The module: a named singleton, the same shape as the self-hosted Config / Toml.
+[Module named: #time requires: #[]];
 [Globals at: #Time put: [Object clone]];
 [Reflect docModule: #time is: "Wall-clock time over libc gettimeofday()."];
 

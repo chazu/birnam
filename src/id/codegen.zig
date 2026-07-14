@@ -62,11 +62,14 @@ var artifact_record_ops = true; // false only for compacted image-code emission
 var candidate_preparing = false;
 var candidate_commit_in_progress = false;
 var image_dispatch_recovery = false;
+var initial_generation_sealed = false;
+const RuntimePhase = enum { bootstrapping, running, quiescent, image_recovery };
+var runtime_phase: RuntimePhase = .bootstrapping;
 
-const ARTIFACT_ABI = "birnam-artifact-methodops-v2";
-const CANDIDATE_ABI: u32 = 2;
+const ARTIFACT_ABI = "birnam-artifact-generation-v1";
+const CANDIDATE_ABI: u32 = 3;
 const CANDIDATE_PLATFORM = "aarch64-macos";
-const CANDIDATE_MAGIC = "BIRNAM-CANDIDATE-1";
+const CANDIDATE_MAGIC = "BIRNAM-CANDIDATE-2";
 
 const CandidateOpKind = enum { install, remove };
 const CandidateOp = struct {
@@ -96,6 +99,10 @@ const CandidateState = struct {
     author_path: []u8,
     content_path: ?[]u8 = null,
     checksum: [64]u8,
+    source_digest: [64]u8 = [_]u8{'0'} ** 64,
+    non_method_digest: [64]u8 = [_]u8{'0'} ** 64,
+    method_digest: [64]u8 = [_]u8{'0'} ** 64,
+    revision_digest: [64]u8 = [_]u8{'0'} ** 64,
     exported_manifest: []u8,
     requires: std.ArrayList(Oop) = .{},
     ops: std.ArrayList(CandidateOp) = .{},
@@ -125,6 +132,8 @@ const CandidatePublication = struct {
     prior: Oop,
     event: Oop,
     basis: Oop,
+    expected_generation: Oop,
+    successor_generation: Oop,
 };
 
 const TokenPayload = extern struct {
@@ -133,6 +142,10 @@ const TokenPayload = extern struct {
 };
 
 var candidate_states: std.AutoHashMapUnmanaged(Oop, *CandidateState) = .{};
+// Complete authored module documents collected during boot. This is staging,
+// not durable authority: `initialGenerationProjection` seals these values into
+// G0, after which image/save/evolution read the generation's source map.
+var boot_module_sources: std.AutoHashMapUnmanaged(Oop, Oop) = .{};
 var candidate_token_vt: Oop = null;
 var candidate_roots_registered = false;
 
@@ -485,6 +498,37 @@ fn rtCandidatePrepareMode(on: c_long) callconv(.c) void {
     candidate_preparing = on != 0;
 }
 
+fn authorizeManagedMethodMutation() callconv(.c) Oop {
+    if (candidate_commit_in_progress or image_dispatch_recovery or runtime_phase == .bootstrapping or
+        runtime_phase == .quiescent or runtime_phase == .image_recovery) return g_api.trueObj;
+    return candidateError("dispatchMutationRequiresQuiescence");
+}
+
+fn mAuthorizeManagedMethodMutation(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    return authorizeManagedMethodMutation();
+}
+
+pub export fn birnam_codegen_enter_running() c_int {
+    if (runtime_phase != .bootstrapping and runtime_phase != .quiescent) return 0;
+    runtime_phase = .running;
+    return 1;
+}
+
+pub export fn birnam_codegen_begin_quiescence() c_int {
+    if (runtime_phase != .running) return 0;
+    runtime_phase = .quiescent;
+    return 1;
+}
+
+pub export fn birnam_codegen_end_quiescence() c_int {
+    if (runtime_phase != .quiescent) return 0;
+    runtime_phase = .running;
+    return 1;
+}
+
 /// Candidate-owned validation calls back once per manifest operation. This is
 /// deliberately independent of CandidateState: the artifact enumerates what it
 /// believes it will mutate, while Codegen separately validates the inspected
@@ -509,6 +553,7 @@ comptime {
     @export(&rtGlobalB, .{ .name = "birnam_global_b" });
     @export(&rtGlobalSet, .{ .name = "birnam_global_set" });
     @export(&rtRecordGlobalSrc, .{ .name = "birnam_record_global_src" });
+    @export(&rtRecordModuleSource, .{ .name = "birnam_record_module_source" });
     @export(&rtIsError, .{ .name = "birnam_is_error" });
     @export(&rtInstallMethod, .{ .name = "birnam_install_method" });
     @export(&rtRemoveMethod, .{ .name = "birnam_remove_method" });
@@ -564,6 +609,10 @@ const CandidateScan = struct {
     name: Oop = null,
     requires: std.ArrayList(Oop) = .{},
     ops: std.ArrayList(CandidateOp) = .{},
+    source_digest: [64]u8 = undefined,
+    non_method_digest: [64]u8 = undefined,
+    method_digest: [64]u8 = undefined,
+    revision_digest: [64]u8 = undefined,
 
     fn deinit(self: *CandidateScan) void {
         self.requires.deinit(ca);
@@ -619,33 +668,74 @@ fn blockParamCount(node0: Oop) ?usize {
     return count;
 }
 
-/// Parse the deliberately narrow candidate language without evaluating it. This
-/// is shared by compilation and pre-map sidecar inspection, so source and binary
-/// delivery accept exactly the same safe subset.
-fn scanCandidateSource(src: Oop) ?CandidateScan {
+const ScanMode = enum { operation, module };
+
+fn hashLength(hasher: *std.crypto.hash.sha2.Sha256, len: usize) void {
+    var encoded: [8]u8 = undefined;
+    std.mem.writeInt(u64, &encoded, @intCast(len), .big);
+    hasher.update(&encoded);
+}
+
+fn hashField(hasher: *std.crypto.hash.sha2.Sha256, bytes: []const u8) void {
+    hashLength(hasher, bytes.len);
+    hasher.update(bytes);
+}
+
+fn finishHex(hasher: *std.crypto.hash.sha2.Sha256) [64]u8 {
+    var digest: [32]u8 = undefined;
+    hasher.final(&digest);
+    return std.fmt.bytesToHex(digest, .lower);
+}
+
+/// Parse a complete module document without evaluating it. In `.module` mode,
+/// arbitrary top-level forms are retained as the non-method projection while
+/// direct declarative Reflect method operations are projected into an inert
+/// manifest. `.operation` mode is the deliberately narrow parser used only to
+/// recognize one historical sourced operation while that implementation is
+/// being retired.
+fn scanSource(src: Oop, mode: ScanMode) ?CandidateScan {
     var len: usize = 0;
     const p = g_api.stringBytes(src, &len);
     src_bytes = p[0..len];
     const cst = s1(lang, "parse:", src);
-    if (cst == g_api.nilObj or nchild(cst) < 1) return null;
+    const parse_failed = cst == g_api.nilObj or
+        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
+    if (parse_failed or nchild(cst) < 1) return null;
     const statements = child(cst, 0);
     var scan: CandidateScan = .{};
     errdefer scan.deinit();
+    var non_method_spans: std.ArrayList([2]usize) = .{};
+    defer non_method_spans.deinit(ca);
 
     var si: usize = 0;
     while (si < nchild(statements)) : (si += 1) {
         const stmt = child(statements, si);
-        if (nchild(stmt) < 1) return null;
+        if (nchild(stmt) < 1) {
+            if (mode == .operation) return null;
+            continue;
+        }
         const whole = skip(child(stmt, 0));
-        if (ruleOf(whole) != r_send) return null;
+        if (ruleOf(whole) != r_send) {
+            if (mode == .operation) return null;
+            non_method_spans.append(ca, .{ spanStart(whole), spanEnd(whole) }) catch @panic("codegen: oom");
+            continue;
+        }
         const recv = skip(child(whole, 0));
         const msg = skip(child(whole, 1));
-        if (ruleOf(recv) != r_ident) return null;
+        if (ruleOf(recv) != r_ident) {
+            if (mode == .operation) return null;
+            non_method_spans.append(ca, .{ spanStart(whole), spanEnd(whole) }) catch @panic("codegen: oom");
+            continue;
+        }
         var selector: std.ArrayList(u8) = .{};
         defer selector.deinit(ca);
         var args: std.ArrayList(Oop) = .{};
         defer args.deinit(ca);
-        if (!keywordParts(msg, &selector, &args)) return null;
+        if (!keywordParts(msg, &selector, &args)) {
+            if (mode == .operation) return null;
+            non_method_spans.append(ca, .{ spanStart(whole), spanEnd(whole) }) catch @panic("codegen: oom");
+            continue;
+        }
         const recv_name = text(recv);
 
         if (std.mem.eql(u8, recv_name, "Module") and std.mem.eql(u8, selector.items, "named:requires:") and args.items.len == 2) {
@@ -656,13 +746,22 @@ fn scanCandidateSource(src: Oop) ?CandidateScan {
             var ri: usize = 0;
             while (ri < nchild(req)) : (ri += 1)
                 scan.requires.append(ca, symbolNode(child(req, ri)) orelse return null) catch @panic("codegen: oom");
+            non_method_spans.append(ca, .{ spanStart(whole), spanEnd(whole) }) catch @panic("codegen: oom");
             continue;
         }
-        if (!std.mem.eql(u8, recv_name, "Reflect")) return null;
+        if (!std.mem.eql(u8, recv_name, "Reflect")) {
+            if (mode == .operation) return null;
+            non_method_spans.append(ca, .{ spanStart(whole), spanEnd(whole) }) catch @panic("codegen: oom");
+            continue;
+        }
         const is_define = (std.mem.eql(u8, selector.items, "defineMethod:on:as:") and args.items.len == 3) or
             (std.mem.eql(u8, selector.items, "defineMethod:on:as:doc:") and args.items.len == 4);
         const is_remove = std.mem.eql(u8, selector.items, "removeMethod:on:") and args.items.len == 2;
-        if (!is_define and !is_remove) return null;
+        if (!is_define and !is_remove) {
+            if (mode == .operation) return null;
+            non_method_spans.append(ca, .{ spanStart(whole), spanEnd(whole) }) catch @panic("codegen: oom");
+            continue;
+        }
         const sel = symbolNode(args.items[0]) orelse return null;
         const target_name = identNode(args.items[1]) orelse return null;
         if (is_define) {
@@ -678,8 +777,46 @@ fn scanCandidateSource(src: Oop) ?CandidateScan {
             .source = g_api.mkString(op_text.ptr, op_text.len),
         }) catch @panic("codegen: oom");
     }
-    if (scan.ops.items.len == 0) return null;
+
+    if (mode == .module and scan.name == null) return null;
+    if (mode == .operation and scan.ops.items.len == 0) return null;
+
+    scan.source_digest = sha256Hex(src_bytes);
+
+    var non_method = std.crypto.hash.sha2.Sha256.init(.{});
+    non_method.update("birnam.non-method.v1\x00");
+    for (non_method_spans.items) |span| {
+        if (span[1] < span[0] or span[1] > src_bytes.len) return null;
+        hashField(&non_method, src_bytes[span[0]..span[1]]);
+    }
+    scan.non_method_digest = finishHex(&non_method);
+
+    var methods = std.crypto.hash.sha2.Sha256.init(.{});
+    methods.update("birnam.methods.v1\x00");
+    for (scan.ops.items) |op| {
+        methods.update(&.{if (op.kind == .install) @as(u8, 'I') else @as(u8, 'R')});
+        hashField(&methods, std.mem.span(g_api.symbolName(op.target_name)));
+        hashField(&methods, std.mem.span(g_api.symbolName(op.selector)));
+        hashField(&methods, oopBytes(op.source));
+    }
+    scan.method_digest = finishHex(&methods);
+
+    var revision = std.crypto.hash.sha2.Sha256.init(.{});
+    revision.update("birnam.source-revision.v1\x00");
+    if (scan.name) |name| hashField(&revision, std.mem.span(g_api.symbolName(name)));
+    hashLength(&revision, scan.requires.items.len);
+    for (scan.requires.items) |dep| hashField(&revision, std.mem.span(g_api.symbolName(dep)));
+    hashField(&revision, src_bytes);
+    scan.revision_digest = finishHex(&revision);
     return scan;
+}
+
+fn scanCandidateSource(src: Oop) ?CandidateScan {
+    return scanSource(src, .module);
+}
+
+fn scanOperationSource(src: Oop) ?CandidateScan {
+    return scanSource(src, .operation);
 }
 
 fn directMethod(vt: Oop, sel: Oop) ?Oop {
@@ -790,13 +927,7 @@ fn mNameOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// immediately before the unique assertion; that assertion advances it, so sorting
 /// these numeric keys reproduces live mutation order independently of attrAt order.
 fn recordMethodOp(src: Oop) void {
-    if (suppress_methodop_recording) return;
-    const basis = g_api.smallIntValue(g_api.send(g_store, g_api.intern("basis"), &[_]Oop{}, 0));
-    const tie = method_op_counter;
-    method_op_counter += 1;
-    var keybuf: [80]u8 = undefined;
-    const key = std.fmt.bufPrintZ(&keybuf, "__mop_{d}_{d}", .{ basis, tie }) catch return;
-    _ = g_api.send(g_store, sel_assert, &[_]Oop{ g_methodops_entity, g_api.intern(key.ptr), src }, 3);
+    _ = src;
 }
 
 /// `[Reflect defineMethod: #sel on: T as: blk source: srcString]` — the source-
@@ -1661,20 +1792,26 @@ fn publishExclusive(path: []const u8, bytes: []const u8) bool {
     return true;
 }
 
-fn appendCandidateManifest(buf: *std.ArrayList(u8), name: Oop, source_hash: [64]u8, requires: []const Oop, ops: []const CandidateOp) void {
-    buf.appendSlice(ca, "v1|") catch @panic("codegen: oom");
+fn appendCandidateManifest(buf: *std.ArrayList(u8), name: Oop, scan: *const CandidateScan) void {
+    buf.appendSlice(ca, "v2|") catch @panic("codegen: oom");
     buf.appendSlice(ca, ARTIFACT_ABI) catch @panic("codegen: oom");
     buf.append(ca, '|') catch @panic("codegen: oom");
     buf.appendSlice(ca, std.mem.span(g_api.symbolName(name))) catch @panic("codegen: oom");
     buf.append(ca, '|') catch @panic("codegen: oom");
-    buf.appendSlice(ca, &source_hash) catch @panic("codegen: oom");
+    buf.appendSlice(ca, &scan.source_digest) catch @panic("codegen: oom");
     buf.append(ca, '|') catch @panic("codegen: oom");
-    for (requires, 0..) |dep, i| {
+    buf.appendSlice(ca, &scan.non_method_digest) catch @panic("codegen: oom");
+    buf.append(ca, '|') catch @panic("codegen: oom");
+    buf.appendSlice(ca, &scan.method_digest) catch @panic("codegen: oom");
+    buf.append(ca, '|') catch @panic("codegen: oom");
+    buf.appendSlice(ca, &scan.revision_digest) catch @panic("codegen: oom");
+    buf.append(ca, '|') catch @panic("codegen: oom");
+    for (scan.requires.items, 0..) |dep, i| {
         if (i != 0) buf.append(ca, ',') catch @panic("codegen: oom");
         buf.appendSlice(ca, std.mem.span(g_api.symbolName(dep))) catch @panic("codegen: oom");
     }
     buf.append(ca, '|') catch @panic("codegen: oom");
-    for (ops, 0..) |op, i| {
+    for (scan.ops.items, 0..) |op, i| {
         if (i != 0) buf.append(ca, ';') catch @panic("codegen: oom");
         const target = std.mem.span(g_api.symbolName(op.target_name));
         const selector = std.mem.span(g_api.symbolName(op.selector));
@@ -1691,7 +1828,8 @@ fn mCompileCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     var scan = scanCandidateSource(a[0]) orelse return candidateError("unsafeCandidateSource");
     defer scan.deinit();
-    if (scan.name != null and scan.name != a[1]) return candidateError("candidateMetadataMismatch");
+    if (scan.name != a[1]) return candidateError("candidateMetadataMismatch");
+    if (scan.ops.items.len == 0) return candidateError("candidateHasNoMethodDelta");
 
     var program: std.ArrayList(u8) = .{};
     defer program.deinit(ca);
@@ -1705,10 +1843,9 @@ fn mCompileCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     defer candidate_artifact_mode = false;
     var emitted = emitProgram(program_oop, false, true, true) orelse return candidateError("candidateCompileFailed");
     defer emitted.deinit(ca);
-    const src_hash = sha256Hex(oopBytes(a[0]));
     var manifest: std.ArrayList(u8) = .{};
     defer manifest.deinit(ca);
-    appendCandidateManifest(&manifest, a[1], src_hash, scan.requires.items, scan.ops.items);
+    appendCandidateManifest(&manifest, a[1], &scan);
 
     var out: std.ArrayList(u8) = .{};
     defer out.deinit(ca);
@@ -1830,6 +1967,173 @@ fn makeVector(items: []const Oop) Oop {
     return result;
 }
 
+fn makeSourceRevision(scan: *const CandidateScan, source: Oop) Oop {
+    return makeVector(&.{
+        g_api.intern("sourceRevision"),
+        scan.name,
+        makeVector(scan.requires.items),
+        source,
+        g_api.mkString(&scan.non_method_digest, scan.non_method_digest.len),
+        g_api.mkString(&scan.method_digest, scan.method_digest.len),
+        g_api.mkString(&scan.revision_digest, scan.revision_digest.len),
+    });
+}
+
+/// `[Codegen sourceRevisionOf: source]` parses a complete module document into
+/// the immutable revision value consumed by Birnam lifecycle policy. It neither
+/// evaluates the document nor rewrites authored bytes.
+fn mSourceRevisionOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var scan = scanCandidateSource(a[0]) orelse return candidateError("invalidModuleSource");
+    defer scan.deinit();
+    return makeSourceRevision(&scan, a[0]);
+}
+
+fn recordModuleSource(name: Oop, source: Oop) Oop {
+    var scan = scanCandidateSource(source) orelse return candidateError("invalidModuleSource");
+    defer scan.deinit();
+    if (scan.name != name) return candidateError("moduleIdentityMismatch");
+    if (boot_module_sources.get(name)) |old| {
+        if (std.mem.eql(u8, oopBytes(old), oopBytes(source))) return source;
+        return candidateError("duplicateModuleSource");
+    }
+    boot_module_sources.put(ca, name, source) catch @panic("codegen: oom");
+    return source;
+}
+
+fn mRecordModuleSource(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    if (initial_generation_sealed) return candidateError("moduleIntroductionNotAvailable");
+    if (g_api.vtableOf(a[1]) != g_api.symbol_vt) return candidateError("notASymbol");
+    return recordModuleSource(a[1], a[0]);
+}
+
+fn mSealInitialGeneration(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    initial_generation_sealed = true;
+    return g_api.trueObj;
+}
+
+fn rtRecordModuleSource(name: [*:0]const u8, src: [*]const u8, n: c_long) callconv(.c) void {
+    _ = recordModuleSource(g_api.intern(name), g_api.mkString(src, @intCast(n)));
+}
+
+fn sourceNameLessThan(_: void, lhs: Oop, rhs: Oop) bool {
+    return std.mem.order(u8, std.mem.span(g_api.symbolName(lhs)), std.mem.span(g_api.symbolName(rhs))) == .lt;
+}
+
+fn sourceMapDigest(source_map: Oop) ?[64]u8 {
+    const vector_vt = g_api.import("VectorVt") orelse return null;
+    if (g_api.vtableOf(source_map) != vector_vt) return null;
+    var hash = std.crypto.hash.sha2.Sha256.init(.{});
+    hash.update("birnam.dispatch-generation.v1\x00");
+    const count = g_api.smallIntValue(g_api.send(source_map, g_api.intern("size"), &.{}, 0));
+    if (count < 0) return null;
+    hashLength(&hash, @intCast(count));
+    var i: i64 = 0;
+    while (i < count) : (i += 1) {
+        const entry = vectorItem(source_map, i);
+        if (g_api.vtableOf(entry) != vector_vt or g_api.smallIntValue(g_api.send(entry, g_api.intern("size"), &.{}, 0)) != 3) return null;
+        const name = vectorItem(entry, 0);
+        const revision = vectorItem(entry, 1);
+        if (g_api.vtableOf(name) != g_api.symbol_vt or g_api.vtableOf(revision) != vector_vt or
+            g_api.smallIntValue(g_api.send(revision, g_api.intern("size"), &.{}, 0)) != 7 or
+            vectorItem(revision, 0) != g_api.intern("sourceRevision") or vectorItem(revision, 1) != name)
+            return null;
+        hashField(&hash, std.mem.span(g_api.symbolName(name)));
+        hashField(&hash, oopBytes(vectorItem(revision, 6)));
+    }
+    return finishHex(&hash);
+}
+
+/// Answers `#[#generationProjection sourceMap digest]`. Source entries are
+/// lexically ordered so the digest and image input are independent of load order.
+fn mInitialGenerationProjection(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    var names: std.ArrayList(Oop) = .{};
+    defer names.deinit(ca);
+    var it = boot_module_sources.keyIterator();
+    while (it.next()) |name| names.append(ca, name.*) catch @panic("codegen: oom");
+    std.mem.sort(Oop, names.items, {}, sourceNameLessThan);
+    var entries: std.ArrayList(Oop) = .{};
+    defer entries.deinit(ca);
+    for (names.items) |name| {
+        const source = boot_module_sources.get(name) orelse return candidateError("moduleSourceMissing");
+        var scan = scanCandidateSource(source) orelse return candidateError("invalidModuleSource");
+        defer scan.deinit();
+        if (scan.name != name) return candidateError("moduleIdentityMismatch");
+        entries.append(ca, makeVector(&.{ name, makeSourceRevision(&scan, source), g_api.nilObj })) catch @panic("codegen: oom");
+    }
+    const source_map = makeVector(entries.items);
+    const digest = sourceMapDigest(source_map) orelse return candidateError("invalidSourceMap");
+    return makeVector(&.{ g_api.intern("generationProjection"), source_map, g_api.mkString(&digest, digest.len) });
+}
+
+fn revisionsEqual(lhs: Oop, rhs: Oop, include_method: bool) bool {
+    const vector_vt = g_api.import("VectorVt") orelse return false;
+    if (g_api.vtableOf(lhs) != vector_vt or g_api.vtableOf(rhs) != vector_vt) return false;
+    if (g_api.smallIntValue(g_api.send(lhs, g_api.intern("size"), &.{}, 0)) != 7 or
+        g_api.smallIntValue(g_api.send(rhs, g_api.intern("size"), &.{}, 0)) != 7) return false;
+    if (vectorItem(lhs, 0) != g_api.intern("sourceRevision") or vectorItem(rhs, 0) != g_api.intern("sourceRevision") or
+        vectorItem(lhs, 1) != vectorItem(rhs, 1)) return false;
+    const ldeps = vectorItem(lhs, 2);
+    const rdeps = vectorItem(rhs, 2);
+    const ln = g_api.smallIntValue(g_api.send(ldeps, g_api.intern("size"), &.{}, 0));
+    if (ln != g_api.smallIntValue(g_api.send(rdeps, g_api.intern("size"), &.{}, 0))) return false;
+    var i: i64 = 0;
+    while (i < ln) : (i += 1) if (vectorItem(ldeps, i) != vectorItem(rdeps, i)) return false;
+    if (!std.mem.eql(u8, oopBytes(vectorItem(lhs, 4)), oopBytes(vectorItem(rhs, 4)))) return false;
+    return !include_method or std.mem.eql(u8, oopBytes(vectorItem(lhs, 5)), oopBytes(vectorItem(rhs, 5)));
+}
+
+/// Replace one existing module entry. This is intentionally not an insertion
+/// API: L1a permits every module's declarative method revision to change, but
+/// module introduction and top-level migration arrive in later phases.
+fn mSuccessorGenerationProjection(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const source_map = a[0];
+    const name = a[1];
+    const revision = a[2];
+    const unit = a[3];
+    var entries: std.ArrayList(Oop) = .{};
+    defer entries.deinit(ca);
+    const count = g_api.smallIntValue(g_api.send(source_map, g_api.intern("size"), &.{}, 0));
+    var found = false;
+    var i: i64 = 0;
+    while (i < count) : (i += 1) {
+        const entry = vectorItem(source_map, i);
+        if (vectorItem(entry, 0) == name) {
+            if (found) return candidateError("duplicateModuleSource");
+            found = true;
+            const current = vectorItem(entry, 1);
+            if (!revisionsEqual(current, revision, false)) return candidateError("topLevelEvolutionNotAvailable");
+            entries.append(ca, makeVector(&.{ name, revision, unit })) catch @panic("codegen: oom");
+        } else entries.append(ca, entry) catch @panic("codegen: oom");
+    }
+    if (!found) return candidateError("moduleIntroductionNotAvailable");
+    const successor = makeVector(entries.items);
+    const digest = sourceMapDigest(successor) orelse return candidateError("invalidSourceMap");
+    return makeVector(&.{ g_api.intern("generationProjection"), successor, g_api.mkString(&digest, digest.len) });
+}
+
+fn mModuleSourceFor(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const current = factValue(g_api.intern("dispatch"), "activeGeneration");
+    if (current != g_api.nilObj) {
+        const entry = sourceMapEntry(factValue(current, "sourceMap"), a[0]);
+        return if (entry == g_api.nilObj) g_api.nilObj else vectorItem(vectorItem(entry, 1), 3);
+    }
+    return boot_module_sources.get(a[0]) orelse g_api.nilObj;
+}
+
 fn freeCandidateState(st: *CandidateState) void {
     ca.free(st.author_path);
     if (st.content_path) |p| ca.free(p);
@@ -1873,13 +2177,17 @@ fn mInspectCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (!std.mem.eql(u8, &actual, checksum_s)) return candidateError("candidateChecksumMismatch");
 
     var parts = std.mem.splitScalar(u8, manifest, '|');
-    if (!std.mem.eql(u8, parts.next() orelse "", "v1") or
+    if (!std.mem.eql(u8, parts.next() orelse "", "v2") or
         !std.mem.eql(u8, parts.next() orelse "", ARTIFACT_ABI)) return candidateError("candidateManifestInvalid");
     const name_s = parts.next() orelse return candidateError("candidateManifestInvalid");
     const source_hash_s = parts.next() orelse return candidateError("candidateManifestInvalid");
+    const non_method_hash_s = parts.next() orelse return candidateError("candidateManifestInvalid");
+    const method_hash_s = parts.next() orelse return candidateError("candidateManifestInvalid");
+    const revision_hash_s = parts.next() orelse return candidateError("candidateManifestInvalid");
     const deps_s = parts.next() orelse "";
     const ops_s = parts.next() orelse return candidateError("candidateManifestInvalid");
-    if (parts.next() != null or source_hash_s.len != 64) return candidateError("candidateManifestInvalid");
+    if (parts.next() != null or source_hash_s.len != 64 or non_method_hash_s.len != 64 or
+        method_hash_s.len != 64 or revision_hash_s.len != 64) return candidateError("candidateManifestInvalid");
     const source_hash = sha256Hex(side[pos..]);
     if (!std.mem.eql(u8, &source_hash, source_hash_s)) return candidateError("candidateChecksumMismatch");
     const name_z = ca.dupeZ(u8, name_s) catch @panic("codegen: oom");
@@ -1887,7 +2195,11 @@ fn mInspectCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const name = g_api.intern(name_z.ptr);
     var scan = scanCandidateSource(source) orelse return candidateError("unsafeCandidateSource");
     defer scan.deinit();
-    if (scan.name != null and scan.name != name) return candidateError("candidateMetadataMismatch");
+    if (scan.name != name or !std.mem.eql(u8, &scan.source_digest, source_hash_s) or
+        !std.mem.eql(u8, &scan.non_method_digest, non_method_hash_s) or
+        !std.mem.eql(u8, &scan.method_digest, method_hash_s) or
+        !std.mem.eql(u8, &scan.revision_digest, revision_hash_s))
+        return candidateError("candidateMetadataMismatch");
     var deps_check: std.ArrayList(u8) = .{};
     defer deps_check.deinit(ca);
     for (scan.requires.items, 0..) |dep, i| {
@@ -1919,6 +2231,10 @@ fn mInspectCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         .source = source,
         .author_path = ca.dupe(u8, path) catch @panic("codegen: oom"),
         .checksum = actual,
+        .source_digest = scan.source_digest,
+        .non_method_digest = scan.non_method_digest,
+        .method_digest = scan.method_digest,
+        .revision_digest = scan.revision_digest,
         .exported_manifest = ca.dupe(u8, manifest) catch @panic("codegen: oom"),
     };
     st.requires.appendSlice(ca, scan.requires.items) catch @panic("codegen: oom");
@@ -1938,6 +2254,10 @@ fn mInspectCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     assertUnitFact(a[1], "unitName", name);
     assertUnitFact(a[1], "kind", g_api.intern("candidateArtifact"));
     assertUnitFact(a[1], "sourceHash", g_api.mkString(source_hash_s.ptr, source_hash_s.len));
+    assertUnitFact(a[1], "authoredSource", source);
+    assertUnitFact(a[1], "nonMethodDigest", g_api.mkString(non_method_hash_s.ptr, non_method_hash_s.len));
+    assertUnitFact(a[1], "methodDigest", g_api.mkString(method_hash_s.ptr, method_hash_s.len));
+    assertUnitFact(a[1], "revisionDigest", g_api.mkString(revision_hash_s.ptr, revision_hash_s.len));
     assertUnitFact(a[1], "artifactChecksum", g_api.mkString(checksum_s.ptr, checksum_s.len));
     assertUnitFact(a[1], "platform", g_api.intern(CANDIDATE_PLATFORM));
     assertUnitFact(a[1], "runtimeAbi", g_api.intern(ARTIFACT_ABI));
@@ -1960,6 +2280,11 @@ fn mInspectCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 }
 
 fn gcCandidateRoots(mark: idapi.MarkFn) callconv(.c) void {
+    var source_it = boot_module_sources.iterator();
+    while (source_it.next()) |entry| {
+        mark(entry.key_ptr.*);
+        mark(entry.value_ptr.*);
+    }
     var root_it = candidate_roots.valueIterator();
     while (root_it.next()) |value| mark(value.*);
     var it = candidate_states.valueIterator();
@@ -2060,7 +2385,7 @@ fn mMapCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 }
 
 fn sourceOperation(src: Oop, target_name: Oop, selector: Oop) ?CandidateOpKind {
-    var scan = scanCandidateSource(src) orelse return null;
+    var scan = scanOperationSource(src) orelse return null;
     defer scan.deinit();
     if (scan.ops.items.len != 1) return null;
     const op = scan.ops.items[0];
@@ -2106,32 +2431,84 @@ fn vectorItem(vector: Oop, index: i64) Oop {
     return g_api.send(vector, g_api.intern("at:"), &[_]Oop{g_api.mkSmallInt(index)}, 1);
 }
 
+fn sourceMapEntry(source_map: Oop, name: Oop) Oop {
+    const count = g_api.smallIntValue(g_api.send(source_map, g_api.intern("size"), &.{}, 0));
+    var i: i64 = 0;
+    while (i < count) : (i += 1) {
+        const entry = vectorItem(source_map, i);
+        if (vectorItem(entry, 0) == name) return entry;
+    }
+    return g_api.nilObj;
+}
+
+fn candidateMatchesRevision(st: *CandidateState, revision: Oop) bool {
+    if (revision == g_api.nilObj or vectorItem(revision, 0) != g_api.intern("sourceRevision") or
+        vectorItem(revision, 1) != st.name) return false;
+    if (!std.mem.eql(u8, oopBytes(vectorItem(revision, 3)), oopBytes(st.source)) or
+        !std.mem.eql(u8, oopBytes(vectorItem(revision, 4)), &st.non_method_digest) or
+        !std.mem.eql(u8, oopBytes(vectorItem(revision, 5)), &st.method_digest) or
+        !std.mem.eql(u8, oopBytes(vectorItem(revision, 6)), &st.revision_digest)) return false;
+    const deps = vectorItem(revision, 2);
+    if (g_api.smallIntValue(g_api.send(deps, g_api.intern("size"), &.{}, 0)) != st.requires.items.len) return false;
+    for (st.requires.items, 0..) |dep, i| if (vectorItem(deps, @intCast(i)) != dep) return false;
+    return true;
+}
+
+fn generationIsCanonical(generation: Oop) bool {
+    if (generation == g_api.nilObj) return false;
+    const source_map = factValue(generation, "sourceMap");
+    const recorded = factValue(generation, "baseDigest");
+    const actual = sourceMapDigest(source_map) orelse return false;
+    return std.mem.eql(u8, oopBytes(recorded), &actual);
+}
+
+fn publicationGenerationValid(st: *CandidateState, plan: CandidatePublication) bool {
+    if (!plan.enforce_lifecycle) return true;
+    if (!generationIsCanonical(plan.expected_generation) or !generationIsCanonical(plan.successor_generation)) return false;
+    const expected_entry = sourceMapEntry(factValue(plan.expected_generation, "sourceMap"), st.name);
+    const successor_entry = sourceMapEntry(factValue(plan.successor_generation, "sourceMap"), st.name);
+    if (expected_entry == g_api.nilObj or successor_entry == g_api.nilObj) return false;
+    if (plan.action == .activate) {
+        if (vectorItem(expected_entry, 2) != plan.prior or vectorItem(successor_entry, 2) != st.unit or
+            factValue(plan.successor_generation, "predecessor") != plan.expected_generation or
+            factValue(plan.successor_generation, "deltaUnit") != st.unit) return false;
+        const current_revision = vectorItem(expected_entry, 1);
+        const successor_revision = vectorItem(successor_entry, 1);
+        return revisionsEqual(current_revision, successor_revision, false) and candidateMatchesRevision(st, successor_revision);
+    }
+    return vectorItem(expected_entry, 2) == st.unit and factValue(plan.expected_generation, "predecessor") == plan.successor_generation and
+        factValue(plan.expected_generation, "deltaUnit") == st.unit and vectorItem(successor_entry, 2) == plan.prior;
+}
+
 fn publicationStillCurrent(plan: CandidatePublication) bool {
     if (!plan.enforce_lifecycle) return true;
     const state = factValue(plan.unit, "state");
-    const active = factValue(plan.name, "activeCompiledUnit");
+    const active = factValue(g_api.intern("dispatch"), "activeGeneration");
+    if (active != plan.expected_generation) return false;
     if (plan.action == .activate) {
-        if (state != g_api.intern("candidate") or active != plan.prior) return false;
+        if (state != g_api.intern("candidate")) return false;
         if (plan.prior != g_api.nilObj and factValue(plan.prior, "state") != g_api.intern("active")) return false;
         return true;
     }
-    return state == g_api.intern("active") and active == plan.unit and
-        factValue(plan.unit, "supersedes") == plan.prior;
+    return state == g_api.intern("active") and factValue(plan.unit, "supersedes") == plan.prior;
 }
 
 fn copyPublicationPlan(st: *CandidateState, plan: Oop, expected: PublicationAction, strict: bool) Oop {
     const vector_vt = g_api.import("VectorVt") orelse return candidateError("candidateRuntimeUnavailable");
     if (plan == null or g_api.vtableOf(plan) != vector_vt) return candidateError("invalidPublicationPlan");
     const size = g_api.send(plan, g_api.intern("size"), &[_]Oop{}, 0);
-    if (g_api.smallIntValue(size) != 6) return candidateError("invalidPublicationPlan");
+    if (g_api.smallIntValue(size) != 8) return candidateError("invalidPublicationPlan");
     const action = vectorItem(plan, 0);
     const unit = vectorItem(plan, 1);
     const name = vectorItem(plan, 2);
     const prior = vectorItem(plan, 3);
     const event = vectorItem(plan, 4);
     const basis = vectorItem(plan, 5);
+    const expected_generation = vectorItem(plan, 6);
+    const successor_generation = vectorItem(plan, 7);
     const expected_symbol = g_api.intern(if (expected == .activate) "activate" else "rollback");
-    if (action != expected_symbol or unit != st.unit or name != st.name or event == null or basis == null)
+    if (action != expected_symbol or unit != st.unit or name != st.name or event == null or basis == null or
+        (strict and (expected_generation == g_api.nilObj or successor_generation == g_api.nilObj)))
         return candidateError("invalidPublicationPlan");
 
     const copied: CandidatePublication = .{
@@ -2142,7 +2519,10 @@ fn copyPublicationPlan(st: *CandidateState, plan: Oop, expected: PublicationActi
         .prior = prior,
         .event = event,
         .basis = basis,
+        .expected_generation = expected_generation,
+        .successor_generation = successor_generation,
     };
+    if (strict and !publicationGenerationValid(st, copied)) return candidateError("invalidGenerationProjection");
     if (strict and !publicationStillCurrent(copied)) return candidateError("stalePublicationPlan");
     st.prepared_publication = copied;
     return unit;
@@ -2159,6 +2539,8 @@ fn syntheticPublicationPlan(st: *CandidateState, action: PublicationAction, prio
         prior,
         event,
         basis,
+        g_api.nilObj,
+        g_api.nilObj,
     });
 }
 
@@ -2168,16 +2550,18 @@ fn applyPublication(plan: CandidatePublication) void {
             assertUnitFact(plan.unit, "supersedes", plan.prior);
             assertUnitFact(plan.prior, "state", g_api.intern("superseded"));
         }
-        assertUnitFact(plan.name, "activeCompiledUnit", plan.unit);
         assertUnitFact(plan.unit, "state", g_api.intern("active"));
         assertUnitFact(plan.unit, "rollbackAvailable", g_api.trueObj);
         assertUnitFact(plan.unit, "recoveryPortable", g_api.trueObj);
     } else {
-        assertUnitFact(plan.name, "activeCompiledUnit", plan.prior);
         if (plan.prior != g_api.nilObj)
             assertUnitFact(plan.prior, "state", g_api.intern("active"));
         assertUnitFact(plan.unit, "state", g_api.intern("rolledBack"));
         assertUnitFact(plan.unit, "rollbackAvailable", g_api.falseObj);
+    }
+    if (plan.enforce_lifecycle) {
+        const cell = g_api.send(g_store, g_api.intern("cellFor:attr:"), &.{ g_api.intern("dispatch"), g_api.intern("activeGeneration") }, 2);
+        _ = g_api.send(cell, g_api.intern("set:"), &.{plan.successor_generation}, 1);
     }
     assertUnitFact(plan.event, "unit", plan.unit);
     assertUnitFact(plan.event, "action", g_api.intern(if (plan.action == .activate) "activate" else "rollback"));
@@ -2276,15 +2660,18 @@ fn mManagedMethodChanged(self: Oop, args: [*]const Oop, n: usize) callconv(.c) O
 
 pub fn beginImageDispatchRecovery() void {
     image_dispatch_recovery = true;
-    // Loading replaces the executable owner even in the in-process test path.
-    // No pre-load raw-pointer ledger remains authoritative; boot composition
-    // will mint exactly one fresh active ledger after code resolution.
+    // Raw candidate handles are process-local; the durable generation remains
+    // authoritative and its complete documents rebuild executable dispatch.
     var it = candidate_states.valueIterator();
     while (it.next()) |pst| pst.*.active = false;
 }
 
 pub fn endImageDispatchRecovery() void {
     image_dispatch_recovery = false;
+    // A successfully restored image already carries G0 (or a successor). Mirror
+    // that durable fact in the native bootstrap gate so ordinary AOT loading
+    // cannot introduce modules behind the generation model.
+    initial_generation_sealed = true;
 }
 
 fn mBeginImageDispatchRecovery(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -2328,10 +2715,6 @@ fn validateCandidateBase(st: *CandidateState, rollback: bool) Oop {
             op.prior_method = directMethod(vt, op.selector) orelse null;
             op.prior_present = op.prior_method != null;
             if (op.kind == .remove and !op.prior_present) return candidateError("missingDirectMethod");
-            if (op.prior_present) {
-                op.prior_source = latestPortableSource(op.target_name, op.selector);
-                if (op.prior_source == null) return candidateError("nonPortableBase");
-            }
         }
     }
     return st.unit;
@@ -2347,10 +2730,11 @@ fn mPrepareCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const plan = if (explicit_plan) a[1] else syntheticPublicationPlan(st, .activate, prior);
     const copied = copyPublicationPlan(st, plan, .activate, explicit_plan);
     if (copied != st.unit) return copied;
-    st.prepared_predecessor = if (prior != g_api.nilObj) candidate_states.get(prior) orelse {
-        clearPrepared(st);
-        return candidateError("unmanagedActiveBase");
-    } else null;
+    // A durable generation may name a prior CompiledUnit whose process-local
+    // candidate handle did not cross image boot. The current generation/source
+    // digest and opened binding snapshot are the validation base; a native prior
+    // ledger is optional, used only when it still exists in this process.
+    st.prepared_predecessor = if (prior != g_api.nilObj) candidate_states.get(prior) else null;
     if (st.validate_fn.?(g_api.nilObj, &[_]Oop{}, 0) != g_api.trueObj) {
         clearPrepared(st);
         return candidateError("candidateValidationFailed");
@@ -2407,6 +2791,11 @@ fn mCommitPrepared(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const st = candidate_states.get(p.unit) orelse return candidateError("invalidPreparedToken");
     if (p.consumed != 0 or st.prepared_token != token or st.prepared_rollback) return candidateError("invalidPreparedToken");
     const publication = st.prepared_publication orelse return candidateError("invalidPreparedToken");
+    if (publication.enforce_lifecycle and runtime_phase != .quiescent and runtime_phase != .bootstrapping) {
+        _ = consumeToken(token);
+        clearPrepared(st);
+        return candidateError("quiescenceRequired");
+    }
     if (!publicationStillCurrent(publication)) {
         _ = consumeToken(token);
         clearPrepared(st);
@@ -2425,7 +2814,7 @@ fn mCommitPrepared(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     for (st.ops.items) |*op| {
         op.post_method = directMethod(op.vt, op.selector) orelse null;
         op.post_present = op.post_method != null;
-        op.post_log_source = if (latestPortableOperation(op.target_name, op.selector)) |latest| latest.source else null;
+        op.post_log_source = null;
     }
     st.active = true;
     st.predecessor = st.prepared_predecessor;
@@ -2456,6 +2845,11 @@ fn mCommitPreparedRollback(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oo
     const st = candidate_states.get(p.unit) orelse return candidateError("invalidPreparedToken");
     if (p.consumed != 0 or st.prepared_token != token or !st.prepared_rollback) return candidateError("invalidPreparedToken");
     const publication = st.prepared_publication orelse return candidateError("invalidPreparedToken");
+    if (publication.enforce_lifecycle and runtime_phase != .quiescent and runtime_phase != .bootstrapping) {
+        _ = consumeToken(token);
+        clearPrepared(st);
+        return candidateError("quiescenceRequired");
+    }
     if (!publicationStillCurrent(publication)) {
         _ = consumeToken(token);
         clearPrepared(st);
@@ -2477,10 +2871,8 @@ fn mCommitPreparedRollback(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oo
         const op = st.ops.items[i];
         if (op.prior_present) {
             _ = g_api.send(g_store, sel_addMethodOn, &[_]Oop{ op.selector, op.vt, op.prior_method }, 3);
-            recordMethodOp(op.prior_source);
         } else {
             _ = g_api.send(g_store, g_api.intern("removeMethod:on:"), &[_]Oop{ op.selector, op.vt }, 2);
-            recordMethodOp(removalSource(op));
         }
     }
     st.active = false;
@@ -2532,10 +2924,7 @@ fn mReconcileAllCandidates(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oo
                 const cur = directMethod(op.vt, op.selector);
                 if ((cur != null) == op.post_present and (cur orelse null) == op.post_method) continue;
                 drifted = true;
-                const latest = latestPortableOperation(op.target_name, op.selector);
-                if (latest == null or latest.?.source == op.post_log_source or
-                    ((cur != null) and latest.?.kind != .install) or ((cur == null) and latest.?.kind != .remove))
-                    portable = false;
+                portable = false;
             }
         }
         if (drifted) {
@@ -2776,28 +3165,122 @@ fn appendMethodOps(prog: *std.ArrayList(u8)) bool {
     return recs.items.len != 0;
 }
 
-/// `[Codegen compileImageCode: path]` — the image's primary `.code` section.
-/// It compiles recorded module programs (`__modsrc__`), legacy method definitions
-/// (`__methods__`), then the ordered post-cutover `__methodops__` stream into one
-/// relocatable, installable artifact. Module programs
-/// are essential: their top-level initializers construct named live state such
-/// as parser grammars, which is not merely a reflection-store cache. Returns the
-/// path, or nil when there is no code source to capture or compilation fails.
+fn sourceMapIndex(source_map: Oop, name: Oop) ?usize {
+    const count = g_api.smallIntValue(g_api.send(source_map, g_api.intern("size"), &.{}, 0));
+    var i: i64 = 0;
+    while (i < count) : (i += 1) if (vectorItem(vectorItem(source_map, i), 0) == name) return @intCast(i);
+    return null;
+}
+
+fn appendGenerationSourceAt(source_map: Oop, index: usize, state: []u8, ordered: *std.ArrayList(Oop)) bool {
+    if (state[index] == 2) return true;
+    if (state[index] == 1) return false;
+    state[index] = 1;
+    const entry = vectorItem(source_map, @intCast(index));
+    const revision = vectorItem(entry, 1);
+    const dependencies = vectorItem(revision, 2);
+    const dep_count = g_api.smallIntValue(g_api.send(dependencies, g_api.intern("size"), &.{}, 0));
+    var i: i64 = 0;
+    while (i < dep_count) : (i += 1) {
+        const dependency = vectorItem(dependencies, i);
+        if (sourceMapIndex(source_map, dependency)) |dep_index| {
+            if (!appendGenerationSourceAt(source_map, dep_index, state, ordered)) return false;
+        } else {
+            const module = globalBySymbol(g_api.intern("Module"));
+            if (module == g_api.nilObj or g_api.send(module, g_api.intern("kindOf:"), &.{dependency}, 1) != g_api.intern("kernel"))
+                return false;
+        }
+    }
+    ordered.append(ca, vectorItem(revision, 3)) catch @panic("codegen: oom");
+    state[index] = 2;
+    return true;
+}
+
+fn orderedGenerationSources() ?std.ArrayList(Oop) {
+    const generation = factValue(g_api.intern("dispatch"), "activeGeneration");
+    if (!generationIsCanonical(generation)) return null;
+    const source_map = factValue(generation, "sourceMap");
+    const count_i = g_api.smallIntValue(g_api.send(source_map, g_api.intern("size"), &.{}, 0));
+    if (count_i < 0) return null;
+    const count: usize = @intCast(count_i);
+    const state = ca.alloc(u8, count) catch @panic("codegen: oom");
+    defer ca.free(state);
+    @memset(state, 0);
+    var ordered: std.ArrayList(Oop) = .{};
+    errdefer ordered.deinit(ca);
+    for (0..count) |index| if (!appendGenerationSourceAt(source_map, index, state, &ordered)) return null;
+    return ordered;
+}
+
+fn mGenerationSources(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    var sources = orderedGenerationSources() orelse return candidateError("invalidSourceMap");
+    defer sources.deinit(ca);
+    return makeVector(sources.items);
+}
+
+fn mGenerationMethodSources(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+    var documents = orderedGenerationSources() orelse blk: {
+        // Tooling may inspect sources during boot before the host seals G0 (CLI
+        // dispatch loads its requested documentation modules in that window).
+        // The process-local stage is the sole pre-G0 source set; after G0 the
+        // branch above always uses durable generation authority.
+        var staged: std.ArrayList(Oop) = .{};
+        var it = boot_module_sources.valueIterator();
+        while (it.next()) |source| staged.append(ca, source.*) catch @panic("codegen: oom");
+        break :blk staged;
+    };
+    defer documents.deinit(ca);
+    var methods: std.ArrayList(Oop) = .{};
+    defer methods.deinit(ca);
+    for (documents.items) |document| {
+        var scan = scanCandidateSource(document) orelse return candidateError("invalidModuleSource");
+        defer scan.deinit();
+        for (scan.ops.items) |op| if (op.kind == .install)
+            methods.append(ca, op.source) catch @panic("codegen: oom");
+    }
+    return makeVector(methods.items);
+}
+
+/// The content identity which seals the current dispatch generation. Image
+/// authority and the compiled image unit both carry this exact digest, so a
+/// loader can reject mixed source/fact/code state before mapping executable
+/// bytes.
+fn mCurrentGenerationDigest(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = a;
+    _ = n;
+    const generation = factValue(g_api.intern("dispatch"), "activeGeneration");
+    if (!generationIsCanonical(generation)) return candidateError("invalidGeneration");
+    return factValue(generation, "baseDigest");
+}
+
+/// `[Codegen compileImageCode: path]` compiles each current generation document
+/// whole and exactly once, in dependency order. The sealed source map is the only
+/// portable dispatch provenance; legacy module/method fact streams are ignored.
 fn mCompileImageCode(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
     var prog: std.ArrayList(u8) = .{};
     defer prog.deinit(ca);
-    const has_modules = appendImageSources(&prog, g_api.intern("__modsrc__"));
-    const has_legacy_methods = appendImageSources(&prog, g_methods_entity);
-    const has_method_ops = appendMethodOps(&prog);
-    if (!has_modules and !has_legacy_methods and !has_method_ops) return g_api.nilObj;
+    var sources = orderedGenerationSources() orelse return g_api.nilObj;
+    defer sources.deinit(ca);
+    if (sources.items.len == 0) return g_api.nilObj;
+    for (sources.items) |source| {
+        prog.appendSlice(ca, oopBytes(source)) catch @panic("codegen: oom");
+        prog.appendSlice(ca, ";\n") catch @panic("codegen: oom");
+    }
     const progStr = g_api.mkString(prog.items.ptr, prog.items.len);
-    // UNCHECKED: this program is a composition of independent records — a stale
-    // one aborting the rest would hold the whole image hostage at boot.
     artifact_record_ops = false;
     defer artifact_record_ops = true;
-    var buf = emitProgram(progStr, false, true, false) orelse return g_api.nilObj;
+    var buf = emitProgram(progStr, false, true, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);
     var out: std.ArrayList(u8) = .{};
     defer out.deinit(ca);
@@ -2807,30 +3290,14 @@ fn mCompileImageCode(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.send(tcc, g_api.intern("compile:output:as:"), &[_]Oop{ c_src, a[0], g_api.intern("dll") }, 3);
 }
 
-/// `[Codegen replayMethods]` — the image's explicit source-recovery path
-/// (docs/40 §4). Re-evaluate recorded module programs first, then every recorded
-/// legacy definition, then every sequenced method operation. Used when the compiled `.code` section cannot be mapped or
-/// the user requested `--rebuild`. Sources are gathered FIRST because evaluation
-/// reasserts the same facts. Answers the count replayed.
+/// Rebuild dispatch from the same dependency-ordered complete documents used by
+/// mapped code capture. Each document executes once and preserves its own form
+/// order.
 fn mReplayMethods(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = a;
     _ = n;
-    var srcs: std.ArrayList(Oop) = .{};
+    var srcs = orderedGenerationSources() orelse return candidateError("invalidSourceMap");
     defer srcs.deinit(ca);
-    for ([_]Oop{ g_api.intern("__modsrc__"), g_methods_entity }) |entity| {
-        const nAttrs = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{entity}, 1));
-        var i: i64 = 0;
-        while (i < nAttrs) : (i += 1) {
-            const attr = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ entity, g_api.mkSmallInt(i) }, 2);
-            const src = g_api.send(g_store, g_api.intern("currentValue:attr:"), &[_]Oop{ entity, attr }, 2);
-            if (src != null and src != g_api.nilObj and g_api.vtableOf(src) == g_api.string_vt)
-                srcs.append(ca, src) catch @panic("codegen: oom");
-        }
-    }
-    var ops: std.ArrayList(MethodOpRec) = .{};
-    defer ops.deinit(ca);
-    collectMethodOps(&ops);
-    for (ops.items) |op| srcs.append(ca, op.src) catch @panic("codegen: oom");
     suppress_methodop_recording = true;
     defer suppress_methodop_recording = false;
     for (srcs.items) |src| _ = g_api.send(self, g_api.intern("eval:"), &[_]Oop{src}, 1);
@@ -2959,6 +3426,13 @@ fn mLoadUnit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         _ = std.c.dlclose(h);
         return g_api.nilObj;
     }
+    // Ordinary AOT module loading is the G0 bootstrap path. Once the source map
+    // is sealed, every module change must go through a checked CompiledUnit
+    // replacement and host safe point; L1a deliberately has no module-introduction
+    // operation. Image recovery is the sole exception because it reinstalls the
+    // already-authorized generation carried by the image.
+    if (initial_generation_sealed and !image_dispatch_recovery)
+        return candidateError("moduleIntroductionNotAvailable");
     const init_p = g_api.dlsym(h, "__birnam_unit_init") orelse return g_api.nilObj;
     const init_fn: *const fn () callconv(.c) void = @ptrCast(@alignCast(init_p));
     init_fn();
@@ -3045,16 +3519,15 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool, checked: bool) ?std.Arra
     var ev: std.ArrayList(u8) = .{};
     defer ev.deinit(ca);
     put(&ev, "void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\n");
-    // Module dylibs self-record their whole source as a `__modsrc__` fact keyed by
-    // module name (docs/40): loading a compiled module makes its source queryable in
-    // the store, the same as loading it from source. Only the module-compile path
-    // sets `g_module_name`; the image `.code` compile leaves it null and skips this.
+    // Module dylibs stage their exact whole source for G0. The stage is native and
+    // process-local; durable authority begins only when DispatchGeneration is
+    // published. Only the module-compile path sets `g_module_name`.
     if (artifact and g_module_name != null) {
-        put(&ev, "birnam_send(birnam_global(\"Store\"), birnam_intern(\"assert:attr:value:\"), (void*[]){birnam_intern(\"__modsrc__\"), birnam_intern(\"");
+        put(&ev, "birnam_record_module_source(\"");
         putCStr(&ev, g_module_name.?);
-        put(&ev, "\"), birnam_mkString(\"");
+        put(&ev, "\", \"");
         putCStr(&ev, src_bytes);
-        putFmt(&ev, "\", {d}L)}}, 3L);\n", .{src_bytes.len});
+        putFmt(&ev, "\", {d}L);\n", .{src_bytes.len});
     }
     if (!emitBody(&ev, statements, persist, checked)) {
         noteError("cannot compile this program (not in the compilable subset)", spanStart(statements));
@@ -3084,6 +3557,7 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool, checked: bool) ?std.Arra
         \\extern void* birnam_global_b(void* sym);
         \\extern void birnam_global_set(const char* name, void* value);
         \\extern void birnam_record_global_src(const char* name, const char* src, long n);
+        \\extern void birnam_record_module_source(const char* name, const char* src, long n);
         \\extern long birnam_is_error(void* v);
         \\extern void* birnam_install_method(void* vt, void* sel, void* method, const char* src, long n);
         \\extern void* birnam_remove_method(void* target, void* sel, const char* src, long n);
@@ -3223,6 +3697,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
         while (stale.next()) |pst| freeCandidateState(pst.*);
         candidate_states.deinit(ca);
         candidate_states = .{};
+        boot_module_sources.deinit(ca);
+        boot_module_sources = .{};
         candidate_roots.deinit(ca);
         candidate_roots = .{};
         candidate_token_vt = null;
@@ -3231,6 +3707,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
         candidate_preparing = false;
         candidate_commit_in_progress = false;
         image_dispatch_recovery = false;
+        initial_generation_sealed = false;
+        runtime_phase = .bootstrapping;
     }
     if (candidate_token_vt == null) {
         candidate_token_vt = api.proto(api.object_vt);
@@ -3256,6 +3734,12 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("eval:"), &mEval);
     api.method(codegen_vt, api.intern("evalPersisting:"), &mEvalPersisting);
     api.method(codegen_vt, api.intern("compile:output:"), &mCompileOutput);
+    api.method(codegen_vt, api.intern("sourceRevisionOf:"), &mSourceRevisionOf);
+    api.method(codegen_vt, api.intern("recordModuleSource:named:"), &mRecordModuleSource);
+    api.method(codegen_vt, api.intern("initialGenerationProjection"), &mInitialGenerationProjection);
+    api.method(codegen_vt, api.intern("sealInitialGeneration"), &mSealInitialGeneration);
+    api.method(codegen_vt, api.intern("successorGenerationProjection:replacing:with:unit:"), &mSuccessorGenerationProjection);
+    api.method(codegen_vt, api.intern("moduleSourceFor:"), &mModuleSourceFor);
     api.method(codegen_vt, api.intern("compileCandidate:named:output:"), &mCompileCandidate);
     api.method(codegen_vt, api.intern("inspectCandidate:into:"), &mInspectCandidate);
     api.method(codegen_vt, api.intern("mapCandidate:"), &mMapCandidate);
@@ -3269,12 +3753,14 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("discardPrepared:"), &mDiscardPrepared);
     api.method(codegen_vt, api.intern("reconcileCandidate:"), &mReconcileCandidate);
     api.method(codegen_vt, api.intern("reconcileAllCandidates"), &mReconcileAllCandidates);
-    api.method(codegen_vt, api.intern("adoptCandidateLive:into:"), &mAdoptCandidateLive);
-    api.method(codegen_vt, api.intern("rebuildComposedLedger:from:"), &mRebuildComposedLedger);
     api.method(codegen_vt, api.intern("managedMethodChanged:on:"), &mManagedMethodChanged);
+    api.method(codegen_vt, api.intern("authorizeManagedMethodMutation"), &mAuthorizeManagedMethodMutation);
     api.method(codegen_vt, api.intern("beginImageDispatchRecovery"), &mBeginImageDispatchRecovery);
     api.method(codegen_vt, api.intern("endImageDispatchRecovery"), &mEndImageDispatchRecovery);
     api.method(codegen_vt, api.intern("compileImageCode:"), &mCompileImageCode);
+    api.method(codegen_vt, api.intern("generationSources"), &mGenerationSources);
+    api.method(codegen_vt, api.intern("generationMethodSources"), &mGenerationMethodSources);
+    api.method(codegen_vt, api.intern("currentGenerationDigest"), &mCurrentGenerationDigest);
     api.method(codegen_vt, api.intern("replayMethods"), &mReplayMethods);
     api.method(codegen_vt, api.intern("replayAliens"), &mReplayAliens);
     api.method(codegen_vt, api.intern("deriveImageGlobals"), &mDeriveImageGlobals);
@@ -3292,6 +3778,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(reflect_vt, api.intern("nameOf:"), &mNameOf);
 
     _ = api.send(g_store, api.intern("setMethodMutationObserver:"), &[_]Oop{codegen_obj}, 1);
+    _ = api.send(g_store, api.intern("setMethodMutationAuthorizer:"), &[_]Oop{api.mkSmallInt(@intCast(@intFromPtr(&authorizeManagedMethodMutation)))}, 1);
 
     if (!reloading) {
         _ = api.exportObj("CodegenVt", codegen_vt);

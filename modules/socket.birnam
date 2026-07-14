@@ -64,6 +64,7 @@
 
 // -- the module singleton + constants -----------------------------------------
 
+[Module named: #socket requires: #[]];
 [Globals at: #Socket put: [Object clone]];
 [Reflect docModule: #socket is: "TCP sockets over libc via Alien (the Layer-0 networking floor)."];
 

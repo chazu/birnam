@@ -29,6 +29,7 @@
 // (string/number/object/array/literal) becomes the enclosing node's child directly
 // and its ruleName drives lowering.
 
+[Module named: #json requires: #[]];
 [Globals at: #jsonGrammar put: [[|
   let g := [Peg newGrammar];
 

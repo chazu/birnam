@@ -10,15 +10,100 @@
 [[[Globals at: #CompiledUnit] isNil]
   ifTrue: [| [Globals at: #CompiledUnit put: [Object clone]]]
   ifFalse: [| nil]];
+[[[Globals at: #DispatchGeneration] isNil]
+  ifTrue: [| [Globals at: #DispatchGeneration put: [Object clone]]]
+  ifFalse: [| nil]];
+[[[Globals at: #EvolutionIntent] isNil]
+  ifTrue: [| [Globals at: #EvolutionIntent put: [Object clone]]]
+  ifFalse: [| nil]];
 
 // Lifecycle cells are single-valued. History is represented by immutable event
 // entities, so stale #active assertions never remain query-visible.
 [db assert: #state attr: #cardinality value: #one];
-[db assert: #activeCompiledUnit attr: #cardinality value: #one];
 [db assert: #nextCompiledGeneration attr: #cardinality value: #one];
-[db assert: #rollbackAvailable attr: #cardinality value: #one];
 [db assert: #requires attr: #cardinality value: #one];
 [db assert: #provides attr: #cardinality value: #one];
+[db assert: #sourceRevision attr: #cardinality value: #one];
+[db assert: #sourceMap attr: #cardinality value: #one];
+[db assert: #baseDigest attr: #cardinality value: #one];
+[db assert: #predecessor attr: #cardinality value: #one];
+[db assert: #deltaUnit attr: #cardinality value: #one];
+[db assert: #activeGeneration attr: #cardinality value: #one];
+[db assert: #intentUnit attr: #cardinality value: #one];
+[db assert: #intentAction attr: #cardinality value: #one];
+
+[Reflect defineMethod: #for:action: on: EvolutionIntent as: [:self :unit :action |
+  let intent := [self clone];
+  [db assert: intent attr: #intentUnit value: unit];
+  [db assert: intent attr: #intentAction value: action];
+  intent]];
+
+[Reflect defineMethod: #isIntent: on: EvolutionIntent as: [:self :value |
+  [[Reflect vtableOf: value] == [Reflect vtableOf: self]]]];
+
+[Reflect defineMethod: #fulfill on: EvolutionIntent as: [:self |
+  let unit := [db currentValue: self attr: #intentUnit];
+  let action := [db currentValue: self attr: #intentAction];
+  [[action = #activate]
+    ifTrue: [| [unit commitActivation]]
+    ifFalse: [|
+      [[action = #rollback]
+        ifTrue: [| [unit commitRollback]]
+        ifFalse: [| [Error kind: #invalidEvolutionIntent]]]]]]];
+
+[Reflect defineMethod: #current on: DispatchGeneration as: [:self |
+  [db currentValue: #dispatch attr: #activeGeneration]]];
+
+[Reflect defineMethod: #sourceMap on: DispatchGeneration as: [:self |
+  [db currentValue: self attr: #sourceMap]]];
+
+[Reflect defineMethod: #baseDigest on: DispatchGeneration as: [:self |
+  [db currentValue: self attr: #baseDigest]]];
+
+[Reflect defineMethod: #predecessor on: DispatchGeneration as: [:self |
+  [db currentValue: self attr: #predecessor]]];
+
+[Reflect defineMethod: #deltaUnit on: DispatchGeneration as: [:self |
+  [db currentValue: self attr: #deltaUnit]]];
+
+[Reflect defineMethod: #entryFor: on: DispatchGeneration as: [:self :name |
+  [[self sourceMap] inject: nil into: [:found :entry |
+    [[found notNil]
+      ifTrue: [| found]
+      ifFalse: [|
+        [[[entry at: 0] = name]
+          ifTrue: [| entry]
+          ifFalse: [| nil]]]]]]]];
+
+[Reflect defineMethod: #revisionFor: on: DispatchGeneration as: [:self :name |
+  let entry := [self entryFor: name];
+  [[entry isNil] ifTrue: [| nil] ifFalse: [| [entry at: 1]]]]];
+
+[Reflect defineMethod: #unitFor: on: DispatchGeneration as: [:self :name |
+  let entry := [self entryFor: name];
+  [[entry isNil] ifTrue: [| nil] ifFalse: [| [entry at: 2]]]]];
+
+[Reflect defineMethod: #fromProjection:predecessor:delta: on: DispatchGeneration as: [:self :projection :prior :unit |
+  let generation := [self clone];
+  [db assert: generation attr: #sourceMap value: [projection at: 1]];
+  [db assert: generation attr: #baseDigest value: [projection at: 2]];
+  [[prior isNil] ifTrue: [| nil] ifFalse: [| [db assert: generation attr: #predecessor value: prior]]];
+  [[unit isNil] ifTrue: [| nil] ifFalse: [| [db assert: generation attr: #deltaUnit value: unit]]];
+  generation]];
+
+[Reflect defineMethod: #initializeCurrent on: DispatchGeneration as: [:self |
+  let current := [self current];
+  [[current notNil]
+    ifTrue: [| current]
+    ifFalse: [|
+      let projection := [Codegen initialGenerationProjection];
+      [[projection isError]
+        ifTrue: [| projection]
+        ifFalse: [|
+          let generation := [self fromProjection: projection predecessor: nil delta: nil];
+          [[db cellFor: #dispatch attr: #activeGeneration] set: generation];
+          [Codegen sealInitialGeneration];
+          generation]]]]]];
 
 [Reflect defineMethod: #state on: CompiledUnit as: [:self |
   [Codegen reconcileCandidate: self];
@@ -35,6 +120,14 @@
 
 [Reflect defineMethod: #provides on: CompiledUnit as: [:self |
   [db currentValue: self attr: #provides]]];
+
+[Reflect defineMethod: #sourceRevision on: CompiledUnit as: [:self |
+  let revision := [db currentValue: self attr: #sourceRevision];
+  [[revision isNil]
+    ifTrue: [|
+      let projected := [Codegen sourceRevisionOf: [db currentValue: self attr: #authoredSource]];
+      [[projected isError] ifTrue: [| projected] ifFalse: [| [db assert: self attr: #sourceRevision value: projected]; projected]]]
+    ifFalse: [| revision]]]];
 
 [Reflect defineMethod: #setState: on: CompiledUnit as: [:self :state |
   [[db cellFor: self attr: #state] set: state];
@@ -86,10 +179,19 @@
 // Validation consumes no dispatch capability: preparation snapshots the complete
 // plan and discard immediately invalidates the one-shot token.
 [Reflect defineMethod: #validate on: CompiledUnit as: [:self |
-  let token := [Codegen prepareActivation: self plan: [self publicationPlan: #activate prior: [db currentValue: [self unitName] attr: #activeCompiledUnit]]];
-  [[token isError]
-    ifTrue: [| token]
-    ifFalse: [| [Codegen discardPrepared: token]; self]]]];
+  let current := [DispatchGeneration current];
+  [[current isNil]
+    ifTrue: [| [Error kind: #generationNotInitialized]]
+    ifFalse: [|
+      let projection := [Codegen successorGenerationProjection: [current sourceMap] replacing: [self unitName] with: [self sourceRevision] unit: self];
+      [[projection isError]
+        ifTrue: [| projection]
+        ifFalse: [|
+          let successor := [DispatchGeneration fromProjection: projection predecessor: current delta: self];
+          let token := [Codegen prepareActivation: self plan: [self publicationPlan: #activate prior: [current unitFor: [self unitName]] expected: current successor: successor]];
+          [[token isError]
+            ifTrue: [| token]
+            ifFalse: [| [Codegen discardPrepared: token]; self]]]]]]]];
 
 [Reflect defineMethod: #recordEvent:prior: on: CompiledUnit as: [:self :action :prior |
   let event := [Object clone];
@@ -103,97 +205,78 @@
 // Policy chooses every object/value that the commit will publish. Codegen copies
 // this positional plan during preparation and later applies it mechanically,
 // after dispatch mutation, without invoking another CompiledUnit method.
-[Reflect defineMethod: #publicationPlan:prior: on: CompiledUnit as: [:self :action :prior |
-  #[action self [self unitName] prior [Object clone] [db basis]]]];
+[Reflect defineMethod: #publicationPlan:prior:expected:successor: on: CompiledUnit as: [:self :action :prior :expected :successor |
+  #[action self [self unitName] prior [Object clone] [db basis] expected successor]]];
 
 [Reflect defineMethod: #activate on: CompiledUnit as: [:self |
+  [EvolutionIntent for: self action: #activate]]];
+
+[Reflect defineMethod: #commitActivation on: CompiledUnit as: [:self |
   [[[self state] = #candidate]
     ifTrue: [|
       let name := [self unitName];
-      let prior := [db currentValue: name attr: #activeCompiledUnit];
-      let token := [Codegen prepareActivation: self plan: [self publicationPlan: #activate prior: prior]];
-      [[token isError]
-        ifTrue: [| token]
+      let current := [DispatchGeneration current];
+      [[current isNil]
+        ifTrue: [| [Error kind: #generationNotInitialized]]
         ifFalse: [|
-          let committed := [Codegen commitPrepared: token];
-          [[committed isError]
-            ifTrue: [| committed]
-            ifFalse: [| self]]]]]
+          let projection := [Codegen successorGenerationProjection: [current sourceMap] replacing: name with: [self sourceRevision] unit: self];
+          [[projection isError]
+            ifTrue: [| projection]
+            ifFalse: [|
+              let successor := [DispatchGeneration fromProjection: projection predecessor: current delta: self];
+              let prior := [current unitFor: name];
+              let token := [Codegen prepareActivation: self plan: [self publicationPlan: #activate prior: prior expected: current successor: successor]];
+              [[token isError]
+                ifTrue: [| token]
+                ifFalse: [|
+                  let committed := [Codegen commitPrepared: token];
+                  [[committed isError]
+                    ifTrue: [| committed]
+                    ifFalse: [| self]]]]]]]]]
     ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]];
 
 [Reflect defineMethod: #rollback on: CompiledUnit as: [:self |
+  [EvolutionIntent for: self action: #rollback]]];
+
+[Reflect defineMethod: #commitRollback on: CompiledUnit as: [:self |
   let state := [self state];
   [[state = #rolledBack]
     ifTrue: [| self]
     ifFalse: [|
       [[state = #active]
         ifTrue: [|
-          let prior := [db currentValue: self attr: #supersedes];
-          let token := [Codegen prepareRollback: self plan: [self publicationPlan: #rollback prior: prior]];
-          [[token isError]
-            ifTrue: [| token]
+          let current := [DispatchGeneration current];
+          [[[current isNil] or: [| [[[current deltaUnit] == self] not]]]
+            ifTrue: [| [Error kind: #staleGeneration]]
             ifFalse: [|
-              let rolled := [Codegen commitPreparedRollback: token];
-              [[rolled isError]
-                ifTrue: [| rolled]
-                ifFalse: [| self]]]]]
+              let predecessor := [current predecessor];
+              [[predecessor isNil]
+                ifTrue: [| [Error kind: #rollbackUnavailable]]
+                ifFalse: [|
+                  let prior := [predecessor unitFor: [self unitName]];
+                  let token := [Codegen prepareRollback: self plan: [self publicationPlan: #rollback prior: prior expected: current successor: predecessor]];
+                  [[token isError]
+                    ifTrue: [| token]
+                    ifFalse: [|
+                      let rolled := [Codegen commitPreparedRollback: token];
+                      [[rolled isError]
+                        ifTrue: [| rolled]
+                        ifFalse: [| self]]]]]]]]]
         ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]]]];
 
 [Reflect defineMethod: #activeFor: on: CompiledUnit as: [:self :name |
-  let unit := [db currentValue: name attr: #activeCompiledUnit];
+  let generation := [DispatchGeneration current];
+  let unit := [[generation isNil] ifTrue: [| nil] ifFalse: [| [generation unitFor: name]]];
   [[unit isNil] ifTrue: [| nil] ifFalse: [| [unit state]; unit]]]];
-
-// Re-enter managed generations after a portable ordinary edit. No dispatch is
-// changed: Codegen only snapshots the current dictionary into a fresh transient
-// baseline ledger after proving the changed pairs have sequenced source records.
-[Reflect defineMethod: #adoptLive on: CompiledUnit as: [:self |
-  [[[self state] = #drifted]
-    ifTrue: [|
-      let baseline := [CompiledUnit clone];
-      let adopted := [Codegen adoptCandidateLive: self into: baseline];
-      [[adopted isError]
-        ifTrue: [| adopted]
-        ifFalse: [|
-          let name := [self unitName];
-          [db assert: baseline attr: #unitName value: name];
-          [db assert: baseline attr: #generation value: [CompiledUnit nextGenerationFor: name]];
-          [db assert: baseline attr: #kind value: #adHocBaseline];
-          [db assert: baseline attr: #supersedes value: self];
-          [baseline setState: #active];
-          [self setState: #historical];
-          [[db cellFor: name attr: #activeCompiledUnit] set: baseline];
-          [baseline recordEvent: #adopt prior: self];
-          baseline]]]
-    ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]];
-
-// Image code is a new executable owner: raw rollback capabilities did not cross
-// the process boundary, so saved origins become historical and one composed unit
-// owns the reconstructed live ledger.
-[Reflect defineMethod: #reconcileImageComposition: on: CompiledUnit as: [:self :identity |
-  let origins := [db findAll: ?unit where: #[ #[ ?unit #state #active ] ]];
-  [[[origins size] = 0]
-    ifTrue: [| nil]
-    ifFalse: [|
-      let composed := [self clone];
-      [db assert: composed attr: #unitName value: #imageComposition];
-      [db assert: composed attr: #generation value: [self nextGenerationFor: #imageComposition]];
-      [db assert: composed attr: #kind value: #composed];
-      [db assert: composed attr: #sourceHash value: identity];
-      let me := self;
-      [origins do: [:origin |
-        [db assert: origin attr: #composedInto value: composed];
-        [origin setState: #historical];
-        [db assert: origin attr: #rollbackAvailable value: false];
-        [[db cellFor: [origin unitName] attr: #activeCompiledUnit] set: composed]]];
-      [composed setState: #active];
-      [db assert: composed attr: #rollbackAvailable value: false];
-      [Codegen rebuildComposedLedger: composed from: origins];
-      composed]]]];
 
 // Lifecycle instances share this pure-Birnam prototype family. Its stable
 // loader name lets image heap records relink those instances before module code
 // reconstructs the facade and composed-generation policy.
 [Reflect exportObject: CompiledUnit as: #CompiledUnitPrototype];
 [Reflect exportVtableOf: CompiledUnit as: #CompiledUnitVt];
+[Reflect exportObject: DispatchGeneration as: #DispatchGenerationPrototype];
+[Reflect exportVtableOf: DispatchGeneration as: #DispatchGenerationVt];
+[Reflect exportObject: EvolutionIntent as: #EvolutionIntentPrototype];
+[Reflect exportVtableOf: EvolutionIntent as: #EvolutionIntentVt];
 
 [Module markLoaded: #compiledUnit]

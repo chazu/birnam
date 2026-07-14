@@ -50,6 +50,7 @@
 [Alien wrap: "closedir" signature: "i p"     as: #closedir           on: Word];  // int closedir(DIR*)
 
 // The module: a named singleton, the Config / Toml / Time shape.
+[Module named: #file requires: #[]];
 [Globals at: #File put: [Object clone]];
 [Reflect docModule: #file is: "Filesystem access (paths, dirs, contents) over libc."];
 

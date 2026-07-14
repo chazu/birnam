@@ -30,6 +30,7 @@
 [Alien wrap: "pclose" signature: "i p"    as: #pclose         on: Word];
 
 // The module + a result prototype (its fields live in cells keyed on self).
+[Module named: #process requires: #[]];
 [Globals at: #Process put: [Object clone]];
 [Globals at: #ProcResult put: [Object clone]];
 [Reflect docModule: #process is: "Run shell commands, capture stdout + exit code, over libc popen."];

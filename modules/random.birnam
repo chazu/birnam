@@ -18,6 +18,7 @@
 // this one source. No dependency on Doc either way.
 
 // Dependency: Time, for the load-time auto-seed.
+[Module named: #random requires: #[#time]];
 [[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [System load: "modules/time.birnam"]]];
 
 // The module singleton + its one-line summary (a no-op without Doc loaded).

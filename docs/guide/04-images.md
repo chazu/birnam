@@ -1,103 +1,84 @@
-# Images: create, save, bake
+# Images: save, boot, bake
 
-A birnam session is an **image** — the live store plus compiled code. Saving
-one writes the system to disk; booting one maps it back, methods and all, with
-no recompilation. Persistence is a property of the system, not a feature you
-add to a program.
+A Birnam image is the durable Store plus one authoritative dispatch generation.
+The generation contains the exact complete source map and canonical digest; its
+compiled code is an optimization bound to that same digest.
 
 ## Saving
 
-```
-[System saveImage: "/tmp/app.image"];       // a fresh, fully-compacted base
-[System appendImage: "/tmp/app.image"];     // ONLY what changed since last save/append
-```
-
-`appendImage:` is the cheap checkpoint: a long-running program can append its
-evolving data repeatedly and `saveImage:` occasionally to compact. A method
-redefined after the base save is re-emitted in the append as a composing code
-record, so the image stays self-consistent without a rebuild.
-
-> **Current boundary:** the paragraph above describes the implemented pre-L1a
-> behavior. L1a keeps data-only append when the saved and live generation digests
-> match, but requires a full atomic save after a dispatch/source generation change.
-> See [plan 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).
-
-`saveImage:` answers self on success and **nil on failure** — gate on `isNil`
-and read `[[System imageSaveReport] detail]` when it refuses. The classic
-refusal: a **block stored in a durable cell** ("unserializable durable store
-fact"). Closures can't be serialized as values — keep shared blocks in methods
-that answer fresh ones, or in top-level `let` globals (those survive by a
-different mechanism, below).
-
-## Booting
-
-```
-birnam /tmp/app.image             // boot: REPL over the image's bindings
-birnam --rebuild /tmp/app.image   // same, via the source-replay path
-```
-
-What comes back, and how:
-
-- **Data** — globals, entities, facts, cells — maps directly.
-- **Methods** — the compiled `.code` section maps in and installs with no
-  recompile; `--rebuild` ignores it and re-evaluates the recorded sources
-  instead (the recovery path — every method's source is a fact).
-- **Module singletons and their Alien FFI wraps** — replayed from recorded,
-  replayable source at boot (`dlopen`s rerun; a missing library warns and
-  continues rather than killing the boot).
-- **Block-valued globals** — a closure's value can't serialize, but a
-  top-level `let` records its SOURCE, and the boot re-derives the block after
-  code and data are restored. Captured globals resolve because data comes
-  back first.
-
-## An app image: the main convention
-
-If the global `main` is bound to a block, booting the image **runs it**
-instead of opening the REPL:
-
-```
-let banner := "my app v1";
-[Reflect defineMethod: #total on: Integer as: [:x | [x + x]]];
-
-let main := [|
-  [System println: banner];
-  [System println: [[10 total] printString]]];
-
+```text
 [System saveImage: "/tmp/app.image"]
 ```
 
-`birnam /tmp/app.image` now prints and exits — a packaged program.
+Full temporary-file replacement is the only supported write mode. `appendImage:`
+is not part of the generation format: source, facts, and executable code cannot be
+advanced as independent journals without recreating split authority.
 
-## Baking: a self-booting executable
+`saveImage:` answers self on success and nil on failure. Inspect
+`[[System imageSaveReport] detail]` when it refuses. Save rehashes the current
+generation, compiles every complete module document once in dependency order,
+binds the resulting code record to the generation digest, and publishes only after
+all durable values have an encoding or recovery recipe. A rejected save preserves
+the prior image.
 
-Baking appends the image to a copy of the runtime, producing one file that
-boots itself — no `birnam` invocation, no `.image` argument:
+Closures still cannot serialize as ordinary values. Keep shared blocks in methods
+that answer fresh blocks, or in top-level `let` globals whose source-backed recovery
+contract can rederive them.
 
-```
-birnam --bake /tmp/app.image ./myapp     // then just:  ./myapp
-[System bakeExe: "./myapp"]              // or bake the RUNNING system in one step
-```
+## Booting
 
-A baked executable still resolves the runtime dylibs the normal way — keep
-them in `<exe>/../lib`, or point `$BIRNAM_LIB_DIR` at them.
-
-## AOT artifacts and compiled modules
-
-Below whole-image persistence sits the same machinery à la carte:
-
-```
-let p := [Codegen compile: src output: "/tmp/unit.dylib"];   // program -> relocatable dylib
-[Codegen load: p]                                            // dlopen + run, ANY process
+```text
+birnam /tmp/app.image
+birnam --rebuild /tmp/app.image
 ```
 
-The artifact carries no addresses from the compiling process — runtime calls
-stay dynamic symbols, global references re-derive by name at load. Library
-modules use the same path with a manager on top:
+Normal boot validates the image format, source-map authority, generation digest,
+code checksum, and code-to-generation binding before mapping executable bytes.
+There is deliberately no old-format migration path.
 
-```
-birnam --compile-module modules/greeter.birnam zig-out/lib/libbirnam_greeter.dylib
-[Module load: #greeter]      // runtime load, dependencies first, cycle-safe
+`--rebuild` skips the mapped unit and evaluates the same complete authored module
+documents, each exactly once and in dependency order. Both paths restore the same
+generation digest.
+
+What comes back:
+
+- globals, entities, facts, and cells from the durable Store;
+- the single current `DispatchGeneration` and its sealed source map;
+- methods from the mapped unit or the complete-document rebuild;
+- module singletons and Alien FFI wrappers, with external capabilities replayed;
+- source-backed block globals, rederived after data and dispatch are restored.
+
+## Main convention
+
+If global `main` is a block, image boot runs it instead of opening the REPL:
+
+```text
+let banner := "my app";
+let main := [| [System println: banner]];
+[System saveImage: "/tmp/app.image"]
 ```
 
-The build's `zig build stage1` bakes the standard modules this way; from-source
-loading remains the floor every compiled path can fall back to.
+Module method changes should be activated through `CompiledUnit` before saving;
+ordinary direct method edits are rejected while the runtime is running.
+
+## Baking
+
+```text
+birnam --bake /tmp/app.image ./myapp
+[System bakeExe: "./myapp"]
+```
+
+Baking appends the image to a copy of the runtime. The resulting executable still
+resolves runtime dylibs from `<exe>/../lib` or `$BIRNAM_LIB_DIR`.
+
+## AOT modules and source fallback
+
+`zig build stage1` compiles the boot modules ahead of time. These artifacts stage
+their exact canonical documents for G0; embedded source remains the floor. The
+named `zig build test-source-fallback` gate proves both routes publish the same G0
+digest.
+
+Ordinary AOT `Module load:` is a bootstrap operation. After G0 it answers
+`#moduleIntroductionNotAvailable`; existing modules evolve through checked
+`CompiledUnit` successors. Later phases add module introduction and top-level
+migration without changing the universal module representation.

@@ -95,6 +95,60 @@ fn directTestMethod(api: *idapi.IdApi, vt: Oop, sel: Oop) Oop {
     return null;
 }
 
+fn vectorAt(api: *idapi.IdApi, vector: Oop, index: i64) Oop {
+    return api.send(vector, api.intern("at:"), &.{api.mkSmallInt(index)}, 1);
+}
+
+fn stringBytes(api: *idapi.IdApi, string: Oop) []const u8 {
+    var len: usize = 0;
+    const p = api.stringBytes(string, &len);
+    return p[0..len];
+}
+
+fn sourceRevision(api: *idapi.IdApi, source: []const u8) Oop {
+    return api.send(api.import("Codegen").?, api.intern("sourceRevisionOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
+}
+
+test "source revision projects complete documents and isolates method changes" {
+    const api = setupFull();
+    const before =
+        "let bootValue := 1;\n" ++
+        "[Module named: #projected requires: #[#core]];\n" ++
+        "[Reflect defineMethod: #answer on: Integer as: [:self | 41]];\n" ++
+        "[Store assert: #projected attr: #bootValue value: bootValue]";
+    const method_edit =
+        "let bootValue := 1;\n" ++
+        "[Module named: #projected requires: #[#core]];\n" ++
+        "[Reflect defineMethod: #answer on: Integer as: [:self | 42]];\n" ++
+        "[Store assert: #projected attr: #bootValue value: bootValue]";
+    const top_level_edit =
+        "let bootValue := 2;\n" ++
+        "[Module named: #projected requires: #[#core]];\n" ++
+        "[Reflect defineMethod: #answer on: Integer as: [:self | 42]];\n" ++
+        "[Store assert: #projected attr: #bootValue value: bootValue]";
+
+    const r0 = sourceRevision(api, before);
+    const r1 = sourceRevision(api, method_edit);
+    const r2 = sourceRevision(api, top_level_edit);
+    try std.testing.expect(vectorAt(api, r0, 0) == api.intern("sourceRevision"));
+    try std.testing.expect(vectorAt(api, r0, 1) == api.intern("projected"));
+    try std.testing.expectEqualStrings(before, stringBytes(api, vectorAt(api, r0, 3)));
+    try std.testing.expectEqualStrings(stringBytes(api, vectorAt(api, r0, 4)), stringBytes(api, vectorAt(api, r1, 4)));
+    try std.testing.expect(!std.mem.eql(u8, stringBytes(api, vectorAt(api, r0, 5)), stringBytes(api, vectorAt(api, r1, 5))));
+    try std.testing.expect(!std.mem.eql(u8, stringBytes(api, vectorAt(api, r0, 6)), stringBytes(api, vectorAt(api, r1, 6))));
+    try std.testing.expect(!std.mem.eql(u8, stringBytes(api, vectorAt(api, r1, 4)), stringBytes(api, vectorAt(api, r2, 4))));
+}
+
+test "source revision accepts the real module manager document with declaration last" {
+    const api = setupFull();
+    const bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, "src/id/modules.birnam", 1 << 20);
+    defer std.testing.allocator.free(bytes);
+    const revision = sourceRevision(api, bytes);
+    try std.testing.expect(api.send(revision, api.intern("isError"), &.{}, 0) != api.trueObj);
+    try std.testing.expect(vectorAt(api, revision, 1) == api.intern("modules"));
+    try std.testing.expectEqualStrings(bytes, stringBytes(api, vectorAt(api, revision, 3)));
+}
+
 test "codegen 3c.2: birnam arithmetic → C → native → value" {
     const api = setup();
 
@@ -142,6 +196,7 @@ test "CompiledUnit candidate stages add replace remove and rolls back exactly" {
     const path = try std.fs.path.join(std.testing.allocator, &.{ dir, "candidate.dylib" });
     defer std.testing.allocator.free(path);
     const source =
+        "let candidateMetadata := 7; " ++
         "[Module named: #candidateTest requires: #[]]; " ++
         "[Reflect defineMethod: #cuReplace on: Integer as: [:self | 100]]; " ++
         "[Reflect defineMethod: #cuAdd on: Integer as: [:self | 200]]; " ++
@@ -167,27 +222,6 @@ test "CompiledUnit candidate stages add replace remove and rolls back exactly" {
     const abandoned_commit = api.send(Codegen, api.intern("commitPrepared:"), &.{abandoned}, 1);
     try std.testing.expect(api.send(abandoned_commit, api.intern("kind"), &.{}, 0) == api.intern("invalidPreparedToken"));
     try std.testing.expectEqual(@as(i64, 1), try evalInt(api, "[3 cuReplace]"));
-
-    // An explicit publication plan is copied at prepare and rechecked before
-    // the first dispatch mutation.  Changing the active-generation fact in the
-    // gap consumes the token and leaves both dispatch and lifecycle untouched.
-    const name = api.intern("candidateTest");
-    _ = api.send(store.store_instance, api.intern("assert:attr:value:"), &.{ unit, api.intern("state"), api.intern("candidate") }, 3);
-    var plan = api.send(api.import("Vector").?, api.intern("new"), &.{}, 0);
-    const event = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
-    const basis = api.send(store.store_instance, api.intern("basis"), &.{}, 0);
-    for ([_]Oop{ api.intern("activate"), unit, name, api.nilObj, event, basis }) |item|
-        plan = api.send(plan, api.intern("add:"), &.{item}, 1);
-    const stale_token = api.send(Codegen, api.intern("prepareActivation:plan:"), &.{ unit, plan }, 2);
-    try std.testing.expect(api.send(stale_token, api.intern("isError"), &.{}, 0) != api.trueObj);
-    const blocker = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
-    _ = api.send(store.store_instance, api.intern("assert:attr:value:"), &.{ name, api.intern("activeCompiledUnit"), blocker }, 3);
-    const stale_commit = api.send(Codegen, api.intern("commitPrepared:"), &.{stale_token}, 1);
-    try std.testing.expect(api.send(stale_commit, api.intern("isError"), &.{}, 0) == api.trueObj);
-    try std.testing.expect(api.send(stale_commit, api.intern("kind"), &.{}, 0) == api.intern("stalePublicationPlan"));
-    try std.testing.expectEqual(@as(i64, 1), try evalInt(api, "[3 cuReplace]"));
-    try std.testing.expect(api.send(store.store_instance, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2) == api.intern("candidate"));
-    _ = api.send(store.store_instance, api.intern("assert:attr:value:"), &.{ name, api.intern("activeCompiledUnit"), api.nilObj }, 3);
 
     const token = api.send(Codegen, api.intern("prepareActivation:"), &.{unit}, 1);
     try std.testing.expect(token != api.nilObj);

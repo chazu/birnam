@@ -637,18 +637,20 @@ fn sysLoad(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     const codegen = g_api.import("Codegen");
     if (codegen == null) return mkErr("noCodegen", "Codegen module is not loaded");
     const src_oop = g_api.mkString(src.ptr, src.len);
-    // Record the whole-module source under `#__modsrc__`, keyed by the file's basename
-    // (sans `.birnam`). This mirrors the dylib path (`mCompileOutput` in codegen), so a
-    // from-source load is fact-level identical to a compiled one: `[Doc moduleSource:
-    // #x]` and `birnam doc <x>` surface the source whichever way the module was loaded.
-    if (g_api.import("Store")) |store| blk: {
-        var base = path;
-        if (std.mem.lastIndexOfScalar(u8, base, '/')) |s| base = base[s + 1 ..];
-        if (std.mem.lastIndexOfScalar(u8, base, '.')) |d| base = base[0..d];
-        if (base.len == 0 or base.len >= 256) break :blk;
-        var nb: [256]u8 = undefined;
-        const namez = std.fmt.bufPrintZ(&nb, "{s}", .{base}) catch break :blk;
-        _ = g_api.send(store, g_api.intern("assert:attr:value:"), &[_]Oop{ g_api.intern("__modsrc__"), g_api.intern(namez.ptr), src_oop }, 3);
+    // A direct canonical declaration makes this a module document. Stage it by
+    // declared identity for G0; paths never become authority. Undeclared files
+    // remain ordinary scripts. Once G0 is sealed, module introduction is rejected
+    // before any top-level effect executes.
+    const revision = g_api.send(codegen, g_api.intern("sourceRevisionOf:"), &[_]Oop{src_oop}, 1);
+    const revision_is_error = g_api.isExported("Error") != 0 and
+        g_api.send(revision, g_api.intern("isError"), &[_]Oop{}, 0) == g_api.trueObj;
+    var declared_name: Oop = null;
+    if (!revision_is_error and revision != g_api.nilObj) {
+        const name = g_api.send(revision, g_api.intern("at:"), &[_]Oop{g_api.mkSmallInt(1)}, 1);
+        declared_name = name;
+        const recorded = g_api.send(codegen, g_api.intern("recordModuleSource:named:"), &[_]Oop{ src_oop, name }, 2);
+        if (g_api.isExported("Error") != 0 and g_api.send(recorded, g_api.intern("isError"), &[_]Oop{}, 0) == g_api.trueObj)
+            return recorded;
     }
     const r = g_api.send(codegen, g_api.intern("evalPersisting:"), &[_]Oop{src_oop}, 1);
     // fileIn does NOT swallow failures: a compile/syntax failure (nil result +
@@ -671,6 +673,9 @@ fn sysLoad(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         var pl: usize = 0;
         const pt = g_api.stringBytes(ps, &pl);
         std.debug.print("birnam: load {s}: {s}\n", .{ path, pt[0..pl] });
+    } else if (declared_name != null) {
+        if (g_api.import("Module")) |module|
+            _ = g_api.send(module, g_api.intern("markLoaded:"), &[_]Oop{declared_name}, 1);
     }
     return r;
 }

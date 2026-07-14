@@ -23,6 +23,14 @@ Convention: `[ ]` open, `[~]` in progress, `[x]` done (with commit/date). Severi
   rollback and mapped/rebuilt image behavior are covered by the verification
   suite. See the [user guide](../guide/05-compiled-units.md) and
   [design 47](../design/47-compiled-unit-lifecycle.md).
+- [x] **L1a generation authority and image coherence** (2026-07-14) — one
+  runtime-wide `DispatchGeneration` now owns canonical source and dispatch
+  authority; activation and rollback publish only at the host quiescence
+  boundary; image v4 saves and restores the same generation on mapped and rebuilt
+  boot; legacy `__modsrc__`, `__methods__`, `__methodops__`, and per-module active
+  units no longer drive production recovery or inspection. `zig build verify`
+  includes source/AOT G0 parity and generation-aware image coverage. See the
+  [implementation plan](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).
 
 ---
 
@@ -32,15 +40,6 @@ Detailed increments, current file ownership, narrow test commands, and exit gate
 for all five tasks live in
 [design 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
 
-- [ ] **L1a — generation authority and image coherence** — replace per-name
-  executable authority with one current dispatch generation per runtime; add
-  canonical durable-module identity normalization, immutable source revisions,
-  sealed source-map/base digests, expected-base synchronous commit guarded by a
-  host-owned quiescent runtime phase, exact local rollback, atomic legacy-authority
-  cutover, dependency-topological image input, and atomic full-image save/recovery.
-  Complete when [L1a
-  verification](../design/49-live-module-evolution.md#131-l1a--generation-authority-and-image-coherence)
-  passes with no queue, promise, reactor, mailbox, or file UX.
 - [ ] **I1a — blocking single-worker isolate substrate** — add a clean worker boot
   mode that suppresses ordinary `main`/REPL; implement bounded wire-v1 framing and
   the complete tagged copied-value codec; let the substrate own the receive loop;

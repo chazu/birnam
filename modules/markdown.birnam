@@ -21,6 +21,7 @@
 // whatever is open. Rendering is offline (docgen), so per-line birnam work is
 // fine — the perf gate concerns hot paths, not site builds.
 
+[Module named: #markdown requires: #[#html]];
 [[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [System load: "modules/html.birnam"]]];
 
 [Globals at: #Markdown put: [Object clone]];

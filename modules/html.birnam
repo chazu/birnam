@@ -19,6 +19,7 @@
 // Build attribute lists by concatenating `attr:value:` results — each carries a
 // leading space, so `[a1 , a2]` spaces correctly.
 
+[Module named: #html requires: #[]];
 [Globals at: #Html put: [Object clone]];
 [Reflect docModule: #html is: "HTML generation — string combinators, every method answers a String."];
 

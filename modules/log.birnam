@@ -18,6 +18,7 @@
 // milliseconds for now (human Y-M-D H:M:S wants localtime + a struct tm, later).
 
 // Dependencies: load the OS modules this one stands on, if not already present.
+[Module named: #log requires: #[#time #file]];
 [[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [System load: "modules/time.birnam"]]];
 [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
 

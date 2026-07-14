@@ -282,23 +282,33 @@ const MODULES_SRC = @embedFile("modules.birnam");
 /// the dylib is the optimization. (Stage 3's `Modules` manager will generalize
 /// this into a dependency-ordered load; for now it's a direct helper.)
 fn loadSelfHosted(a: std.mem.Allocator, api: *IdApi, codegen: Oop, name: []const u8, src: []const u8) void {
-    if (resolveLibDir(a)) |dir| {
-        defer a.free(dir);
-        const fname = std.fmt.allocPrint(a, "libbirnam_{s}.dylib", .{name}) catch null;
-        if (fname) |fn_| {
-            defer a.free(fn_);
-            if (std.fs.path.join(a, &.{ dir, fn_ })) |p| {
-                defer a.free(p);
-                // Only attempt the load if the file is actually there (a missing
-                // file is the common dev case; skip the dlopen-error noise).
-                if (std.fs.cwd().access(p, .{})) |_| {
-                    const r = api.send(codegen, api.intern("load:"), &[_]Oop{api.mkString(p.ptr, p.len)}, 1);
-                    if (r != api.nilObj) return; // installed from the precompiled dylib
+    const force_source = std.posix.getenv("BIRNAM_FORCE_SOURCE") != null;
+    if (!force_source) {
+        if (resolveLibDir(a)) |dir| {
+            defer a.free(dir);
+            const fname = std.fmt.allocPrint(a, "libbirnam_{s}.dylib", .{name}) catch null;
+            if (fname) |fn_| {
+                defer a.free(fn_);
+                if (std.fs.path.join(a, &.{ dir, fn_ })) |p| {
+                    defer a.free(p);
+                    // Only attempt the load if the file is actually there (a missing
+                    // file is the common dev case; skip the dlopen-error noise).
+                    if (std.fs.cwd().access(p, .{})) |_| {
+                        const r = api.send(codegen, api.intern("load:"), &[_]Oop{api.mkString(p.ptr, p.len)}, 1);
+                        const is_error = api.isExported("Error") != 0 and
+                            api.send(r, api.intern("isError"), &.{}, 0) == api.trueObj;
+                        if (r != api.nilObj and !is_error) return; // installed from the precompiled dylib
+                    } else |_| {}
                 } else |_| {}
-            } else |_| {}
-        }
-    } else |_| {}
-    _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
+            }
+        } else |_| {}
+    }
+    const source = api.mkString(src.ptr, src.len);
+    const name_z = a.dupeZ(u8, name) catch return;
+    defer a.free(name_z);
+    const recorded = api.send(codegen, api.intern("recordModuleSource:named:"), &[_]Oop{ source, api.intern(name_z.ptr) }, 2);
+    if (api.isExported("Error") != 0 and api.send(recorded, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj) return;
+    _ = api.send(codegen, api.intern("eval:"), &[_]Oop{source}, 1);
 }
 
 const SelfHosted = struct { name: [:0]const u8, src: []const u8 };
@@ -736,20 +746,6 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
     // the checkpoint, so the refresh is never journaled.
     if (birnamGlobal(api, "Module")) |mm| refreshModuleManager(a, api, mm);
 
-    // A mapped/rebuilt image is one composed executable generation. Saved source
-    // generations remain provenance, but their process-local rollback pointers do
-    // not; publish the composed owner and rebuild its transient direct-binding
-    // ledger before the checkpoint/user entry point.
-    if (birnamGlobal(api, "CompiledUnit")) |cu| {
-        const identity = api.send(system, api.intern("imageCompositionIdentity"), &[_]Oop{}, 0);
-        _ = api.send(cu, api.intern("reconcileImageComposition:"), &[_]Oop{identity}, 1);
-    }
-
-    // Checkpoint the append baseline: boot reconstruction (mapped/replayed code,
-    // re-derived globals) re-asserts facts we must NOT re-journal — a later
-    // `appendImage:` should carry only changes made AFTER boot (docs/40 §7.4).
-    _ = api.send(system, api.intern("imageCheckpoint"), &[_]Oop{}, 0);
-
     // Entry-point convention: `main` bound → run it; else drop into the REPL.
     if (api.import("Globals")) |globals| {
         const m = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("main")}, 1);
@@ -771,9 +767,9 @@ fn out(s: []const u8) void {
 /// the `:commands`, config-main, and the eval/print loop (`[Repl console]`); only
 /// the boot + GC-anchored driver frame stays Zig, the same split as `runCli`.
 /// `booted` = entered from a mapped image (`runImage`), where the stack and stdlib
-/// are ALREADY up — re-loading them would re-JIT the whole library and pollute the
-/// store with fresh reconstruction facts (which a later `appendImage:` would then
-/// journal). A standalone `--repl` passes false to do the one-time init itself.
+/// are ALREADY up — re-loading them would re-JIT the whole library and replace
+/// the restored generation's dispatch. A standalone `--repl` passes false to do
+/// the one-time init itself.
 fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
     // repl.birnam rides the stdlib's string protocol, so no-stdlib mode has no
     // interactive loop — `birnam <file>` remains for bare-floor debugging.
@@ -819,18 +815,63 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
             std.process.exit(1);
         }
     }
-    // The whole session — bring-up, the whileTrue: eval/print loop, teardown —
-    // is [Repl console]. A fault that stops the loop (or a stale image whose
-    // Repl predates #console) comes back as an error value; report it.
-    const r = api.send(repl, api.intern("console"), &[_]Oop{}, 0);
-    if (api.send(r, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj) {
-        std.fs.File.stderr().writeAll("birnam: the console session faulted:\n") catch {};
-        outErrorString(api, r);
-        std.process.exit(1);
+    const initialized = api.send(repl, api.intern("consoleHostInit"), &[_]Oop{}, 0);
+    if (api.send(initialized, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj) {
+        outErrorString(api, initialized);
+        return;
     }
+    const generations = birnamGlobal(api, "DispatchGeneration") orelse return error.NoDispatchGeneration;
+    const generation = api.send(generations, api.intern("initializeCurrent"), &[_]Oop{}, 0);
+    if (api.send(generation, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj) {
+        outErrorString(api, generation);
+        return;
+    }
+    try resolveHostPhaseFunctions(a, api);
+    if (host_enter_running.?() == 0) return error.InvalidRuntimePhase;
+    const ready = api.send(repl, api.intern("consoleHostReady"), &[_]Oop{}, 0);
+    if (api.send(ready, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj) {
+        outErrorString(api, ready);
+        _ = api.send(repl, api.intern("consoleDone"), &[_]Oop{}, 0);
+        return;
+    }
+
+    const intents = birnamGlobal(api, "EvolutionIntent") orelse return error.NoEvolutionIntent;
+    while (true) {
+        const step = api.send(repl, api.intern("hostStep"), &[_]Oop{}, 0);
+        const tag = api.send(step, api.intern("at:"), &[_]Oop{api.mkSmallInt(0)}, 1);
+        if (tag == api.intern("done")) break;
+        if (tag != api.intern("evaluated")) continue;
+        var value = api.send(step, api.intern("at:"), &[_]Oop{api.mkSmallInt(1)}, 1);
+        if (api.send(intents, api.intern("isIntent:"), &[_]Oop{value}, 1) == api.trueObj) {
+            if (host_begin_quiescence.?() == 0) return error.InvalidRuntimePhase;
+            value = api.send(value, api.intern("fulfill"), &[_]Oop{}, 0);
+            if (host_end_quiescence.?() == 0) return error.InvalidRuntimePhase;
+        }
+        _ = api.send(repl, api.intern("printHostResult:"), &[_]Oop{value}, 1);
+    }
+    _ = api.send(repl, api.intern("consoleDone"), &[_]Oop{}, 0);
 }
 
 const RTLD_LAZY: c_int = 1;
+
+const HostPhaseFn = *const fn () callconv(.c) c_int;
+var host_enter_running: ?HostPhaseFn = null;
+var host_begin_quiescence: ?HostPhaseFn = null;
+var host_end_quiescence: ?HostPhaseFn = null;
+
+fn resolveHostPhaseFunctions(a: std.mem.Allocator, api: *IdApi) !void {
+    if (host_enter_running != null) return;
+    const dir = try resolveLibDir(a);
+    defer a.free(dir);
+    const path = try std.fs.path.join(a, &.{ dir, "libbirnam_id_codegen.dylib" });
+    defer a.free(path);
+    const path_z = try a.dupeZ(u8, path);
+    defer a.free(path_z);
+    const handle = api.dlopen(path_z.ptr, RTLD_LAZY) orelse return error.NoCodegen;
+    host_enter_running = @ptrCast(@alignCast(api.dlsym(handle, "birnam_codegen_enter_running") orelse return error.NoCodegen));
+    host_begin_quiescence = @ptrCast(@alignCast(api.dlsym(handle, "birnam_codegen_begin_quiescence") orelse return error.NoCodegen));
+    host_end_quiescence = @ptrCast(@alignCast(api.dlsym(handle, "birnam_codegen_end_quiescence") orelse return error.NoCodegen));
+}
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading
 /// the opaque per-module `state` so arbitrary state survives a hot reload.

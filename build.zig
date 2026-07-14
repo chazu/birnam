@@ -197,6 +197,11 @@ pub fn build(b: *std.Build) void {
     repl_goldens.step.dependOn(&birnam_tests.step);
     b.step("test-repl", "Run console REPL end-to-end golden transcripts").dependOn(&repl_goldens.step);
 
+    const source_fallback = b.addSystemCommand(&.{ "bash", "scripts/source-fallback.sh" });
+    source_fallback.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    source_fallback.step.dependOn(stage1);
+    b.step("test-source-fallback", "Compare AOT and embedded-source G0 authority").dependOn(&source_fallback.step);
+
     const install_smoke = b.addSystemCommand(&.{ "bash", "scripts/install-smoke.sh" });
     install_smoke.setEnvironmentVariable("BIRNAM_PREFIX", b.getInstallPath(.prefix, ""));
     install_smoke.step.dependOn(stage1);
@@ -204,6 +209,7 @@ pub fn build(b: *std.Build) void {
 
     verify_step.dependOn(test_step);
     verify_step.dependOn(&repl_goldens.step);
+    verify_step.dependOn(&source_fallback.step);
     verify_step.dependOn(&install_smoke.step);
 
     // The siphon/REPL host's own unit tests (e.g. the REPL bracket balancer).

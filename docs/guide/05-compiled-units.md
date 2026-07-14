@@ -1,163 +1,104 @@
-# Staged compiled units
+# Live compiled units
 
-`CompiledUnit` lets you prepare a native method patch without changing the running
-system, then publish all of its method additions, replacements, and removals as one
-dispatch generation. If the live bindings have not changed afterward, that
-generation can be rolled back exactly.
+`CompiledUnit` prepares one module's complete successor document without changing
+the running system. Activation asks the host to publish its declarative method
+delta and a new whole-runtime `DispatchGeneration` together. Rollback asks the
+host to republish the exact predecessor.
 
-Use this lifecycle when inspection, atomic publication, and rollback matter. Use
-ordinary source evaluation or `Module load:` when you want immediate initializer,
-global, object, FFI, filesystem, or other effects.
+Every module has the same representation and is live-editable. The current L1a
+policy permits method-only successors: module identity, dependencies, and the
+derived non-method projection must stay equal. Top-level initializer/global/FFI
+changes and module introduction are deferred to the later migration phase.
 
-> **Current API boundary:** this chapter documents the implemented per-name
-> lifecycle. L1a will retain `CompiledUnit` as candidate/provenance while moving
-> current executable authority and guarded commit to `DispatchGeneration`. Until
-> that phase ships, the examples below are the supported behavior. See
-> [the five-phase implementation plan](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
+## Lifecycle
 
-## The lifecycle
-
-A candidate moves through these explicit operations:
-
-```
-compile -> open -> prepare dependencies -> map -> validate -> activate -> rollback
+```text
+compile -> open -> map -> validate -> activation intent -> host safe point
+                                                     -> rollback intent
 ```
 
-- `compile:named:output:` accepts candidate-safe source and writes both a dylib and its pointer-free `.candidate` envelope. It does not open or map the result.
-- `open:` verifies the envelope, complete artifact checksum, platform, ABI, source, and declarative operation list without mapping native code.
-- `prepareDependencies` performs ordinary `Module load:` effects for dependencies that are still missing. It is optional when `missingDependencies` is empty.
-- `map` is the explicit trusted-native boundary. It maps and mechanically verifies the candidate, but still does not publish methods.
-- `validate` proves the candidate can activate over the exact live base. `activate` performs the same validation itself, so a separate call is useful as a check but is not required.
-- `activate` publishes the complete operation set and lifecycle facts together.
-- `rollback` restores the exact predecessor bindings while the rollback capability remains valid in the current process.
+- `compile:named:output:` accepts a complete module document and writes a dylib
+  plus its pointer-free `.candidate` envelope.
+- `open:` verifies the envelope, artifact checksum, platform, ABI, exact source,
+  source revision, dependencies, and declarative method manifest without mapping.
+- `map` crosses the trusted-native boundary but remains inert.
+- `validate` checks the candidate against the exact current generation and then
+  discards its one-shot prepared capability.
+- `activate` returns an `EvolutionIntent`. The console host fulfills it only
+  between top-level forms while native quiescence is active.
+- `rollback` returns the corresponding predecessor intent.
 
-Every operation that can fail answers an `Error` value. Check `isError` before
-continuing; a rejected open, map, validation, activation, or rollback does not
-partially change dispatch.
+Errors are values. Rejection before commit leaves dispatch and source authority
+unchanged.
 
-## A complete patch
+## Complete replacement example
 
-The source may contain one matching `Module` declaration, method definitions, and
-explicit method removals:
+Assume `#pricing` is already in the current source map:
 
-```
-let source := "[Module named: #pricePatch requires: #[]];
+```text
+let source := "[Module named: #pricing requires: #[]];
 [Reflect defineMethod: #salePrice on: Product as: [:self | [[self price] * 90 / 100]]];
 [Reflect removeMethod: #legacyPrice on: Product]";
 
-let path := "/tmp/price-patch.dylib";
-let built := [CompiledUnit compile: source named: #pricePatch output: path];
+let path := "/tmp/pricing-next.dylib";
+[CompiledUnit compile: source named: #pricing output: path];
 
 let unit := [CompiledUnit open: path];
-[unit missingDependencies];       // #[]
-[unit map];                       // still no dispatch change
-[unit validate];                  // optional preflight
-[unit activate];                  // both operations become visible together
-
-[CompiledUnit activeFor: #pricePatch];
-[unit rollback]                   // restores salePrice and legacyPrice exactly
+[unit map];
+[unit validate];
+[unit activate]                  // return the intent as the top-level result
 ```
 
-In production code, stop when any answer is an error:
+The REPL host recognizes that result, enters quiescence, fulfills it, exits the
+guard, and prints the committed unit. A later top-level `[unit rollback]` follows
+the same path.
 
-```
-let answer := [unit activate];
-[[answer isError]
-  ifTrue: [| [System println: [answer message]]]
-  ifFalse: [| [System println: "patch active"]]]
-```
+The candidate declaration must match the existing module. Its dependency vector
+and non-method digest must equal the active revision. Declarative method additions,
+replacements, and removals may differ. Duplicate bindings, indirect targets,
+first-time target specialization, malformed declarations, stale bases, and changed
+top-level forms are rejected.
 
-The candidate's name is a Symbol and must agree with any `Module named:` declaration
-inside the source. Targets such as `Product` must already be stable named globals
-with their own method-family vtable. Candidate source cannot create or specialize a
-target for the first time.
+## One runtime-wide generation
 
-## Dependencies are an explicit ordinary effect
+Authority is the single-valued Store cell:
 
-Opening a candidate reports dependency names but never loads them. Mapping refuses
-to proceed while any are missing:
-
-```
-let missing := [unit missingDependencies];
-[unit prepareDependencies];
-[unit map]
+```text
+entity #dispatch, attribute #activeGeneration, value DispatchGeneration
 ```
 
-`prepareDependencies` uses normal module loading. Module initializers may therefore
-change globals, objects, FFI state, or the outside world, and rejecting or rolling
-back the candidate does not undo those effects. Keeping this step visible prevents
-a candidate transaction from making a false promise about arbitrary module code.
+The generation owns a sealed, sorted source map and its canonical digest.
+`CompiledUnit activeFor:` is only a convenience derived from that map; there is no
+per-module active-authority mirror. Activation replaces one source-map entry and
+inherits every untouched entry. Rollback republishes the predecessor map and
+restores only bindings touched by the successor.
 
-## What candidate source can contain
+## Dependencies and module introduction
 
-The candidate compiler accepts this declarative subset:
+In L1a dependencies must already be present in G0. `prepareDependencies` remains
+useful during bootstrap, but ordinary AOT `Module load:` after G0 answers
+`#moduleIntroductionNotAvailable`. Later work adds checked initializer/migration
+semantics rather than hiding arbitrary effects inside activation.
 
-- an optional matching `[Module named: #name requires: #[...]]` declaration;
-- `[Reflect defineMethod: #selector on: NamedTarget as: block]`, including the `doc:` form; and
-- `[Reflect removeMethod: #selector on: NamedTarget]`.
+## Direct edits and drift
 
-It rejects arbitrary top-level sends and object creation, global creation or
-replacement, FFI operations, external effects, vtable layout/parent changes,
-first-time vtable specialization, and duplicate operations for one target/selector
-pair.
-
-Those operations are not forbidden in Birnam. They remain available through normal
-source and binary module loading, with immediate non-transactional semantics; they
-are simply outside the staged candidate API.
-
-## Generations, supersession, and rollback
-
-`unitName`, `generation`, `requires`, `provides`, and `state` expose the reflected
-candidate. The important states are:
-
-- `#candidate` — inspected and eligible for mapping/activation;
-- `#active` — owns the current managed dispatch generation;
-- `#superseded` — replaced by a later generation and retained as its predecessor;
-- `#drifted` — managed dispatch changed outside the lifecycle;
-- `#rolledBack` — its inverse was applied; another rollback is an idempotent no-op;
-- `#historical` — provenance remains, but it no longer owns executable dispatch.
-
-Activating another candidate with the same name supersedes the active generation.
-Bindings omitted from the newer patch are inherited, not removed. Rolling the newer
-generation back republishes its predecessor and restores only the bindings touched
-by the newer generation.
-
-Rollback is deliberately conservative. Before changing anything, it verifies that
-the live target identities and direct method bindings still equal the activated
-post-state. If an ordinary edit intervened, rollback answers an error and marks the
-generation `#drifted` instead of overwriting that edit.
-
-## Drift and adopting live edits
-
-An ordinary supported method edit to a binding owned by an active generation marks
-that generation `#drifted` immediately. A raw floor mutation is detected when the
-unit is next reconciled through `state`, `activeFor:`, another lifecycle operation,
-or image save.
-
-If every intervening edit has portable recorded source, adopt the current behavior
-as a new baseline:
-
-```
-let baseline := [unit adoptLive]
-```
-
-`adoptLive` does not change dispatch. It makes the drifted unit historical and
-answers a fresh active `#adHocBaseline` generation that later candidates may safely
-supersede. It rejects raw or native drift that cannot be replayed from the portable
-method-operation log.
+While the runtime is running, ordinary method installation/removal is rejected by
+the native Store/Codegen guard. Candidate commits are the supported mutation path.
+A raw floor mutation is unsupported corruption; reconciliation and image save
+reject it rather than adopting an untracked second authority.
 
 ## Images and process boundaries
 
-Active candidate behavior is part of image code and the portable method-operation
-history. Both normal mapped boot and `--rebuild` reproduce the behavior that was
-current when the image was saved, including removals and rollbacks.
+An image carries the exact generation source map, its digest, and one code unit
+built from every complete document once in dependency order. Normal boot maps that
+unit only when its embedded authority matches; `--rebuild` evaluates the same
+documents and retains the same digest.
 
-Native rollback pointers, candidate roots, and dylib handles are process-local and
-do not cross an image boundary. On boot, saved origin generations become
-`#historical` and point to a new active `#composed` generation that owns the
-reconstructed dispatch ledger. Consequently, an old unit object restored from an
-image is useful provenance, but it cannot roll back code from the prior process.
+Candidate handles, native roots, and rollback pointers are process-local. The
+saved `DispatchGeneration` remains durable authority, and new post-boot candidates
+may create successors, but prior-process rollback capabilities do not become
+durable merely because their provenance objects did.
 
-Candidate bundles are trusted native input, not a security sandbox. `open:` performs
-byte-level inspection without loading code, and `map` makes the native-code boundary
-explicit, but checksums establish identity rather than authorship.
+Candidate bundles are trusted native input, not a security sandbox. `open:`
+performs byte-level inspection without loading code, and `map` makes the native
+boundary explicit; checksums establish identity, not authorship.
