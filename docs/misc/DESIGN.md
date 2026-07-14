@@ -9,10 +9,9 @@ store is a durable data and reflection/meta API; recorded source supports
 authoring, bootstrap, and explicit recovery. Any future work on persistence,
 reflection, modules, or live reload must preserve that ordering.
 
-## Next Architecture Sequence
+## Implemented Architecture Sequence
 
-L1a and I1a are shipped. The next implementation slice is L1b; the sequence
-continues to interleave executable evolution and isolation:
+The five interleaved executable-evolution and isolation slices are shipped:
 
 ```text
 L1a — generation authority and image coherence
@@ -23,17 +22,18 @@ L1a — generation authority and image coherence
 ```
 
 L1a established one current dispatch generation and coherent image recovery. I1a
-now provides clean process boot and bounded, blocking copied-value IPC. L1b adds the
+provides clean process boot and bounded, blocking copied-value IPC. L1b adds the
 file-backed authoring and saved-baseline workflow; I1b proves one health-checked
-worker handoff. L2 then adds between-request candidate activation and per-worker
+worker handoff. L2 adds between-request candidate activation and per-worker
 receipts, never pool-wide atomicity or asynchronous completion. See
 [design 49](../design/49-live-module-evolution.md) and
 [design 48](../design/48-concurrency-reactors-and-isolates.md). The concrete
 file-by-file execution plan and phase gates are
 [design 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
 
-Initialization, image-native source editing, migration, and structured operations
-remain later slices selected from actual isolate/reactor needs.
+The next architecture choice is deliberately open. Initialization, image-native
+source editing, migration, reactors/pools, richer supervision, and structured
+operations remain later slices selected from actual product evidence.
 
 ## Abstractly
 - To build a completely moldable programming environment, where everything is accessible to the programmer - like Piumarta's COLA

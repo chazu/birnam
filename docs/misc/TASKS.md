@@ -61,18 +61,34 @@ for all five tasks live in
   images. Tests cover the [L1b matrix](../design/49-live-module-evolution.md#132-l1b--file-backed-revision-and-image-baseline-workflow)
   without initialization, migration, file watching, forced replacement, or async
   activation. See the [user guide](../guide/07-live-modules.md).
-- [ ] **I1b — single-worker rolling replacement** — while idle worker A remains
+- [x] **I1b — single-worker rolling replacement** (2026-07-14) — while idle worker A remains
   selected, start B from an L1b baseline, wait for ready, run one bounded health
   `request:timeout:`, switch the selected reference between calls, then stop and
   reap A.
   Every B failure leaves A selected. Pools, concurrent routing, busy draining,
-  retry, and reversible health effects remain later policy.
-- [ ] **L2 — blocking mailbox-safe live rollout** — transfer canonical
+  retry, and reversible health effects remain later policy. The shipped
+  `Isolate replace:using:` policy requires one `#healthy` application reply and
+  returns an explicit outcome retaining the current and any pending-cleanup
+  handle. The named process matrix now covers missing/corrupt images, receiver
+  and selector boot errors, ready timeout, application/malformed/timeout/crash
+  health failures with A reuse after each, distinct L1b baselines, repeated
+  A→B→C, forced TERM/KILL, sole `#reapPending` ownership, later drain, and
+  idempotent reap. The runnable recipe is gated with the implementation.
+- [x] **L2 — blocking mailbox-safe live rollout** (2026-07-14) — transfer canonical
   source/artifact identity plus a value-like base digest in one blocking control
   request; bind preparation to the worker's local generation; activate only
   between requests; and return an independent receipt, with rollback as a later
   blocking request while locally valid. Complete when [L2 verification](../design/49-live-module-evolution.md#133-l2--blocking-mailbox-safe-live-rollout)
-  passes without pool-wide atomicity, concurrent rollout, or promises.
+  passes without pool-wide atomicity, concurrent rollout, or promises. Wire-v1
+  frame kinds 9/10 now carry fixed activate/rollback/receipt records;
+  `evolve:timeout:` commits under worker-local quiescence and returns an
+  `EvolutionReceipt`. Codec/golden and mailbox-order tests cover malformed
+  controls and non-interruption; the process matrix covers invalid source,
+  missing/checksum-invalid/map-invalid artifacts, exact receipt fields,
+  independent workers, accepted behavior, durable successor boot with lost
+  rollback capability, local and second rollback, and intervening generations.
+  Candidate tests cover commit-time drift. The runnable rollout/rollback recipe
+  is part of `zig build verify`.
 
 The minimal reactor remains orthogonal and may be inserted before I1a when
 concurrent I/O is the immediate product target. Standard initialization,

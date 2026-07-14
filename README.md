@@ -124,6 +124,30 @@ failure and drift behavior, dependency boundary, and image semantics. The live A
 is also available through `birnam doc compiledUnit` and selector lookups such as
 `birnam doc compiledUnit activate`.
 
+## Live Workers
+
+`Isolate replace:using:` performs one blocking, health-checked handoff from an
+idle selected worker A to a baseline-backed worker B. Every B startup or health
+failure retains usable A; after B answers `#healthy`, selection changes between
+calls and A is reaped or reported as the sole pending cleanup owner.
+
+`worker evolve:request timeout:` sends one copied live-module control to one idle
+worker. The worker verifies its own base and checksum-addressed candidate,
+commits under quiescence before reading another request, and returns an
+`EvolutionReceipt`. Rollback is another digest-bound control while that process's
+latest capability remains valid.
+
+Run the complete examples with:
+
+```sh
+bash examples/isolates/run.sh
+bash examples/live-modules/run.sh
+```
+
+See the [isolate guide](docs/guide/06-isolates.md) and
+[live-module guide](docs/guide/07-live-modules.md). Generated API reference is
+available through `birnam doc isolate` and `birnam doc liveModules`.
+
 ## Developer Tools
 
 The source-backed tools below are included by `zig build install` and in release
@@ -235,9 +259,9 @@ from-zero bootstrap compiler and performance floor.
 - [Concurrency](docs/design/48-concurrency-reactors-and-isolates.md) and
   [live module evolution](docs/design/49-live-module-evolution.md) define the
   interleaved sequence. Generation authority (L1a) and the blocking single-worker
-  isolate substrate (I1a), and file-backed image baselines (L1b) are shipped;
-  single-worker replacement (I1b) and blocking mailbox-safe live rollout (L2)
-  remain next. The
+  isolate substrate (I1a), file-backed image baselines (L1b), and health-checked
+  single-worker replacement (I1b), and blocking mailbox-safe live rollout (L2)
+  are shipped. The
   [five-phase implementation plan](docs/design/50-five-phase-live-modules-and-isolates-implementation-plan.md)
   maps every slice to current files, tests, and exit criteria.
 - [Blocking process isolates](docs/guide/06-isolates.md) documents the shipped

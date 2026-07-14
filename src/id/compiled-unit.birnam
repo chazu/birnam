@@ -141,6 +141,9 @@
 [Reflect defineMethod: #artifactChecksum on: CompiledUnit as: [:self |
   [db currentValue: self attr: #artifactChecksum]]];
 
+[Reflect defineMethod: #artifactLocation on: CompiledUnit as: [:self |
+  [Codegen candidateContentPath: self]]];
+
 [Reflect defineMethod: #operations on: CompiledUnit as: [:self |
   let ops := [db currentValue: self attr: #provides];
   [[ops isNil] ifTrue: [| #[]] ifFalse: [| ops]]]];

@@ -1,0 +1,4 @@
+[System load: "scripts/isolate-rollout-v1-module.birnam"];
+[System load: "modules/repl.birnam"];
+[DispatchGeneration initializeCurrent];
+[[LiveModules saveBaseline: "/tmp/birnam-l2-base.image"] fulfill]

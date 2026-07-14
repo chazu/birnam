@@ -1,0 +1,19 @@
+let selected := [Isolate
+  start: #ReplacementExampleWorker selector: #handle:
+  image: "/tmp/birnam-isolate-replacement-example-v1.image"];
+[System println: ["before: " , [[selected request: "first"] printString]]];
+
+let spec := {
+  #receiver -> #ReplacementExampleWorker,
+  #selector -> #handle:,
+  #image -> "/tmp/birnam-isolate-replacement-example-v2.image",
+  #healthRequest -> #health,
+  #readyTimeout -> 5000,
+  #healthTimeout -> 5000,
+  #stopTimeout -> 2000};
+let replacement := [Isolate replace: selected using: spec];
+[System println: ["replacement status: " , [[replacement status] printString]]];
+
+let current := [replacement currentWorker];
+[System println: ["after:  " , [[current request: "second"] printString]]];
+[current stop]

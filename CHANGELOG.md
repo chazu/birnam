@@ -9,6 +9,15 @@ loader ports are complete.
 ## [Unreleased]
 
 ### Added
+- **Blocking process isolates and live-worker rollout.** Trusted workers now
+  support copied-value request boundaries, deadlines, structured failures,
+  health-checked single-worker replacement, and explicit cleanup ownership.
+  Mailbox-safe live evolution carries checksum-bound activation and rollback
+  controls with independent evolution receipts.
+- **File-backed live module baselines.** Live module revisions can be exported,
+  inspected, staged inertly, activated at the host boundary, rolled back while
+  locally valid, and saved as guarded baselines that behave consistently under
+  mapped boot and source rebuild.
 - **Installed documentation and developer tools.** Installs and release bundles
   now carry the birnam module sources, Zig-floor documentation sources, and the
   authored guide under `share/birnam`; `doc`, `docgen`, `--lsp`, and `--listen`

@@ -1,7 +1,7 @@
 # Isolate examples
 
-These examples build one worker image and exercise I1a's blocking process-isolate
-API with application-defined Birnam code.
+These examples build explicit worker images and exercise blocking process
+isolates plus I1b's health-checked single-worker replacement.
 
 From the repository root:
 
@@ -17,8 +17,17 @@ The examples cover:
 - `two-workers.birnam` — two independent, single-flight handles;
 - `failures.birnam` — structured application failures, continued use after an
   application error, and a zero-budget deadline expiring before transmission
-  without consuming the worker.
+  without consuming the worker;
+- `replacement.birnam` — select a v1 worker, boot and health-check v2, switch
+  only between calls, and continue through the returned `currentWorker`.
 
 `build-image.birnam` loads `worker.birnam` before initializing the current
 generation, then saves `/tmp/birnam-isolate-example.image`. Coordinator examples
 start clean processes from that explicit image. The runner removes it on exit.
+
+The replacement example builds v1 and v2 with `LiveModules saveBaseline:`. Its
+spec makes every boundary explicit: worker receiver/selector/image, the trusted
+health request, and ready/health/stop deadlines. `replace:using:` returns an
+`IsolateReplacement`; inspect `status`, `currentWorker`, `priorWorker`,
+`pendingCleanup`, and `failure` instead of assuming success. This is a blocking
+one-worker handoff—there is no pool, busy draining, retry, or concurrent routing.

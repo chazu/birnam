@@ -12,13 +12,13 @@ A **system** is a binary that runs as an executable OR loads as a library, and w
 > contract. Treat the tenets below as historical mechanisms and aspirations, not
 > as the authority model for the running system.
 
-> **Current near-term direction (2026-07-14):** L1a and I1a are shipped;
-> implementation now proceeds with **L1b
-> file-backed image baselines → I1b single-worker replacement → L2 blocking
-> mailbox-safe rollout**. This separates executable authority, transport,
+> **Current near-term direction (2026-07-14):** the five-phase **L1a → I1a →
+> L1b → I1b → L2** live-module/isolate sequence is shipped. It separates
+> executable authority, transport,
 > authoring workflow, replacement policy, and live rollout into independently
 > testable steps. L2 retains single-flight, per-worker semantics with no pool-wide
-> atomicity or asynchronous completion. See
+> atomicity or asynchronous completion. The next slice is intentionally selected
+> from product evidence rather than implied by this historical vision. See
 > [49 — Live Module Evolution](../design/49-live-module-evolution.md) and
 > [48 — Concurrency](../design/48-concurrency-reactors-and-isolates.md). The
 > concrete delivery plan is

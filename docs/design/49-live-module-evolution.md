@@ -1,6 +1,6 @@
 # 49 — Live Module Evolution: Source Revisions and Dispatch Generations
 
-> **Status:** L1a and L1b implemented, 2026-07-14, rev. 4; L2 remains planned.
+> **Status:** L1a, L1b, and L2 implemented, 2026-07-14, rev. 5.
 > Accepted with corrections by the
 > [combined adversarial review](48a-live-evolution-isolate-combined-adversarial-review.md).
 > Rev. 3, accepted by the second
@@ -727,6 +727,10 @@ Tests must prove:
 
 ### 13.3 L2 — blocking mailbox-safe live rollout
 
+Implemented integration coverage runs under `zig build test-isolate-rollout` and
+the complete `zig build verify` gate. It composes the codec tests, candidate
+validation suite, generation/image tests, and repeated real-process rollout path.
+
 Tests must prove:
 
 - rollout transfers only wire-v1 values and rejects Oops, generation objects,
@@ -741,8 +745,21 @@ Tests must prove:
   local capability remains valid;
 - two workers may accept different generations without either claiming global
   atomicity; and
+- invalid source, missing artifact, checksum mismatch, map/ABI failure, stale or
+  intervening base, second rollback, and lost post-boot capability leave the
+  worker's dispatch deterministic;
+- a queued evolution frame is read only after an executing application request
+  replies, malformed evolution records terminate as protocol failures, and a
+  prepared candidate whose binding drifts is rejected before publication; and
 - L2 exposes no promise, multi-flight, pool-wide commit, retry, or concurrent
   rollout semantics.
+
+The named matrix is implemented by `src/id/isolate_test.zig` (wire records,
+receipt validation, malformed frame, and mailbox order), `src/id/codegen_test.zig`
+(candidate integrity and commit-time drift), and
+`scripts/isolate-rollout-smoke.sh` (real worker failures, independence,
+persistence, rollback lifetime, and intervening generation). The documented
+recipe is itself gated by `zig build test-live-feature-examples`.
 
 ## 14. Implementation choices
 

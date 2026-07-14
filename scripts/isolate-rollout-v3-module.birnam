@@ -1,0 +1,11 @@
+[Module named: #rolloutFixture requires: #[#isolate]];
+
+[Reflect defineMethod: #l2Version on: Integer as: [:self | 300]];
+[Reflect defineMethod: #_l2Probe: on: Isolate as: [:self :value |
+  let handler := [{
+    #save -> [|
+      let saved := [System saveImage: "/tmp/birnam-l2-successor.image"];
+      [[saved isNil] ifTrue: [| #saveFailed] ifFalse: [| #saved]]],
+    #digest -> [| [LiveModules currentDigest]],
+    #version -> [| [1 l2Version]]} at: value];
+  [[handler isNil] ifTrue: [| [1 l2Version]] ifFalse: [| [handler value]]]]]

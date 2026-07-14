@@ -59,6 +59,9 @@ fn mTilde(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n; // non-arithmetic binary op: self*10 + arg, just to be distinguishable
     return gapi.mkSmallInt(gapi.smallIntValue(self) * 10 + gapi.smallIntValue(args[0]));
 }
+fn mCommitDrift(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    return gapi.mkSmallInt(77);
+}
 fn mFromTo(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
@@ -309,6 +312,35 @@ test "CompiledUnit exported validator rejects a mechanically invalid mapped cand
     const mapped = api.send(Codegen, api.intern("mapCandidate:"), &.{unit}, 1);
     try std.testing.expect(api.send(mapped, api.intern("isError"), &.{}, 0) == api.trueObj);
     try std.testing.expect(api.send(mapped, api.intern("kind"), &.{}, 0) == api.intern("candidateValidationFailed"));
+}
+
+test "prepared candidate rejects commit-time binding drift without partial publication" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    _ = eval(api, "[Reflect defineMethod: #cuCommitDrift on: Integer as: [:self | 10]]");
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ dir, "commit-drift.dylib" });
+    defer std.testing.allocator.free(path);
+    const source = "[Module named: #commitDriftTest requires: #[]]; [Reflect defineMethod: #cuCommitDrift on: Integer as: [:self | 20]]";
+    const compiled = api.send(Codegen, api.intern("compileCandidate:named:output:"), &.{
+        api.mkString(source.ptr, source.len), api.intern("commitDriftTest"), api.mkString(path.ptr, path.len),
+    }, 3);
+    try std.testing.expect(api.send(compiled, api.intern("isError"), &.{}, 0) != api.trueObj);
+    const unit = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
+    try std.testing.expect(api.send(Codegen, api.intern("inspectCandidate:into:"), &.{ api.mkString(path.ptr, path.len), unit }, 2) == unit);
+    try std.testing.expect(api.send(Codegen, api.intern("mapCandidate:"), &.{unit}, 1) == unit);
+    const token = api.send(Codegen, api.intern("prepareActivation:"), &.{unit}, 1);
+    try std.testing.expect(api.send(token, api.intern("isError"), &.{}, 0) != api.trueObj);
+
+    api.method(api.vtableOf(api.mkSmallInt(0)), api.intern("cuCommitDrift"), &mCommitDrift);
+    const rejected = api.send(Codegen, api.intern("commitPrepared:"), &.{token}, 1);
+    try std.testing.expect(api.send(rejected, api.intern("isError"), &.{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(rejected, api.intern("kind"), &.{}, 0) == api.intern("candidateStaleBase"));
+    try std.testing.expectEqual(@as(i64, 77), try evalInt(api, "[3 cuCommitDrift]"));
 }
 
 test "CompiledUnit inspection rejects unsafe and checksum-mismatched artifacts before mapping" {

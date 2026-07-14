@@ -1,3 +1,102 @@
 [Module named: #isolate requires: #[#stdlib]];
 
-[Reflect docModule: #isolate is: "Blocking process isolates. Isolate starts a worker from an explicit image; handles exchange copied wire-v1 values and IsolateFailure reports structured failures."]
+[Reflect docModule: #isolate is: "Blocking process isolates and health-checked single-worker replacement. Isolate starts a worker from an explicit image; handles exchange copied wire-v1 values, IsolateFailure reports structured failures, and replace:using: switches only between calls."];
+
+[[[Globals at: #IsolateReplacement] isNil]
+  ifTrue: [| [Globals at: #IsolateReplacement put: [Object clone]]]
+  ifFalse: [| nil]];
+
+[db assert: #replacementStatus attr: #cardinality value: #one];
+[db assert: #replacementCurrent attr: #cardinality value: #one];
+[db assert: #replacementPrior attr: #cardinality value: #one];
+[db assert: #replacementPending attr: #cardinality value: #one];
+[db assert: #replacementFailure attr: #cardinality value: #one];
+
+[Reflect defineMethod: #status on: IsolateReplacement as: [:self |
+  [db currentValue: self attr: #replacementStatus]]];
+
+[Reflect defineMethod: #currentWorker on: IsolateReplacement as: [:self |
+  [db currentValue: self attr: #replacementCurrent]]];
+
+[Reflect defineMethod: #priorWorker on: IsolateReplacement as: [:self |
+  [db currentValue: self attr: #replacementPrior]]];
+
+[Reflect defineMethod: #pendingCleanup on: IsolateReplacement as: [:self |
+  [db currentValue: self attr: #replacementPending]]];
+
+[Reflect defineMethod: #failure on: IsolateReplacement as: [:self |
+  [db currentValue: self attr: #replacementFailure]]];
+
+[Reflect defineMethod: #isError on: IsolateReplacement as: [:self |
+  [[self status] = #failed]]];
+
+[Reflect defineMethod: #kind on: IsolateReplacement as: [:self |
+  let failed := [self failure];
+  [[failed isNil] ifTrue: [| [self status]] ifFalse: [| [failed kind]]]]];
+
+[Reflect defineMethod: #message on: IsolateReplacement as: [:self |
+  let failed := [self failure];
+  [[failed isNil]
+    ifTrue: [| [[self status] printString]]
+    ifFalse: [| [failed message]]]]];
+
+[Reflect defineMethod: #status:current:prior:pending:failure: on: IsolateReplacement as: [:self :status :current :prior :pending :failure |
+  let result := [self clone];
+  [db assert: result attr: #replacementStatus value: status];
+  [db assert: result attr: #replacementCurrent value: current];
+  [db assert: result attr: #replacementPrior value: prior];
+  [[pending isNil] ifTrue: [| nil] ifFalse: [| [db assert: result attr: #replacementPending value: pending]]];
+  [[failure isNil] ifTrue: [| nil] ifFalse: [| [db assert: result attr: #replacementFailure value: failure]]];
+  result]];
+
+[Reflect defineMethod: #failed:current:pending: on: IsolateReplacement as: [:self :failure :current :pending |
+  [self status: #failed current: current prior: current pending: pending failure: failure]]];
+
+[Reflect defineMethod: #replaced:prior: on: IsolateReplacement as: [:self :current :prior |
+  [self status: #replaced current: current prior: prior pending: nil failure: nil]]];
+
+[Reflect defineMethod: #partial:prior:pending:failure: on: IsolateReplacement as: [:self :current :prior :pending :failure |
+  [self status: #cleanupPending current: current prior: prior pending: pending failure: failure]]];
+
+// `spec` is a Map containing receiver, selector, image, healthRequest,
+// readyTimeout, healthTimeout, and stopTimeout.  The health reply must be the
+// Symbol #healthy.  A is never stopped until B has answered that value.
+[Reflect defineMethod: #finishReplacement:current:using: on: Isolate as: [:self :next :current :spec |
+  let health := [next request: [spec at: #healthRequest] timeout: [spec at: #healthTimeout]];
+  [[[health isError] or: [| [[health = #healthy] not]]]
+    ifTrue: [|
+      let failure := [[health isError]
+        ifTrue: [| health]
+        ifFalse: [| [Error kind: #unhealthyReplacement message: "replacement health request did not answer #healthy"]]];
+      let cleanup := [next stopWithTimeout: [spec at: #stopTimeout]];
+      [[cleanup isError]
+        ifTrue: [| [IsolateReplacement failed: failure current: current pending: next]]
+        ifFalse: [| [IsolateReplacement failed: failure current: current pending: nil]]]]
+    ifFalse: [|
+      let cleanup := [current stopWithTimeout: [spec at: #stopTimeout]];
+      [[cleanup isError]
+        ifTrue: [| [IsolateReplacement partial: next prior: current pending: current failure: cleanup]]
+        ifFalse: [| [IsolateReplacement replaced: next prior: current]]]]]]];
+
+[Reflect defineMethod: #replaceReady:using: on: Isolate as: [:self :current :spec |
+  let next := [self
+    start: [spec at: #receiver]
+    selector: [spec at: #selector]
+    image: [spec at: #image]
+    timeout: [spec at: #readyTimeout]];
+  [[next isError]
+    ifTrue: [| [IsolateReplacement failed: next current: current pending: nil]]
+    ifFalse: [| [self finishReplacement: next current: current using: spec]]]]];
+
+[Reflect defineMethod: #replace:using: on: Isolate as: [:self :current :spec |
+  [[[current state] = #ready]
+    ifTrue: [| [self replaceReady: current using: spec]]
+    ifFalse: [|
+      [IsolateReplacement failed: [Error kind: #selectedWorkerNotReady message: "selected worker must be idle and ready"] current: current pending: nil]]]]];
+
+[Reflect defineMethod: #apiVersion on: Isolate as: [:self | #I1b]];
+
+[Reflect defineMethod: #printString on: IsolateReplacement as: [:self |
+  [["isolate replacement(" , [[self status] printString]] , ")"]]];
+
+[Module markLoaded: #isolate]

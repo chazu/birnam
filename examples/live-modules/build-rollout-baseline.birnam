@@ -1,0 +1,5 @@
+let LiveExampleWorker := [Object clone];
+[System load: "examples/live-modules/worker-v1.birnam"];
+[System load: "modules/repl.birnam"];
+[DispatchGeneration initializeCurrent];
+[[LiveModules saveBaseline: "/tmp/birnam-live-rollout-example.image"] fulfill]

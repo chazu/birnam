@@ -1,6 +1,6 @@
 # 50 — Five-Phase Implementation Plan: Live Modules and Isolates
 
-> **Status:** L1a, I1a, and L1b implemented; I1b is next. Revised 2026-07-14.
+> **Status:** All five phases implemented. Revised 2026-07-14.
 >
 > Executes [48 — Concurrency](48-concurrency-reactors-and-isolates.md) and
 > [49 — Live Module Evolution](49-live-module-evolution.md) after the
@@ -464,7 +464,7 @@ one blocking request per handle, distinguish all failure classes, and close the
 channel plus retain the sole reap owner on every terminal path. Several independent
 handles may coexist, but there is no pool or replacement policy yet.
 
-### 7.2 Planned increments
+### 7.2 Implemented increments
 
 #### I1a.0 — Extract and characterize the worker-safe host seams
 
@@ -639,7 +639,7 @@ Make the L1a generation lifecycle usable from ordinary source files: exact expor
 candidate-safe import, divergence detection, staged inspection, host-safe
 activation, and full saved baselines suitable for I1b.
 
-### 8.2 Planned increments
+### 8.2 Implemented increments
 
 #### L1b.0 — Add project policy module and revision API
 
@@ -721,7 +721,7 @@ Prove an idle selected worker A can be replaced by a healthy worker B built from
 L1b baseline, while every B failure leaves A usable. This is one blocking handoff,
 not a pool.
 
-### 9.2 Planned increments
+### 9.2 Implemented increments
 
 #### I1b.0 — Add the Birnam replacement policy
 
@@ -763,6 +763,20 @@ still answers. For the post-selection cleanup case, assert B answers and A canno
 be reused. Assert one reap owner and one recorded successful reap for both handles,
 with no hidden pool state.
 
+The shipped I1b acceptance matrix is named and executable:
+
+| Contract | Evidence |
+| --- | --- |
+| missing/corrupt image, missing receiver/selector, ready timeout | `scripts/isolate-replacement-smoke.birnam` |
+| application error, malformed reply, health timeout/crash; A answers after each | `scripts/isolate-replacement-smoke.birnam` |
+| distinct L1b generation digests/behavior and repeated A→B→C | `scripts/isolate-replacement-{v1,v2}.birnam`, `scripts/isolate-replacement-smoke.birnam` |
+| forced TERM/KILL, B remains selected, A is sole `#reapPending` owner, later drain and repeated stop | `scripts/isolate-replacement-cleanup-smoke.birnam` with the environment-only native fault fixture |
+| user recipe remains runnable | `examples/isolates/replacement.birnam`, `zig build test-live-feature-examples` |
+
+`zig build test-isolate-replacement` runs the matrix. The fault fixture changes
+no public selector or result shape and is enabled only by
+`BIRNAM_TEST_ISOLATE_FAULTS` in the process acceptance script.
+
 #### I1b.3 — Baseline integration and phase exit
 
 - Generate B through the L1b full-baseline API rather than a test-only image path.
@@ -790,7 +804,7 @@ Deliver one live-module candidate to one stateful worker, compare a value-like b
 digest, prepare and commit entirely inside that worker between ordinary requests,
 and return an independent receipt. Rollback is another blocking local control.
 
-### 10.2 Planned increments
+### 10.2 Implemented increments
 
 #### L2.0 — Extend wire-v1 with fixed evolution controls
 
@@ -846,6 +860,22 @@ and return an independent receipt. Rollback is another blocking local control.
   test or API claims cross-worker atomicity.
 - Save/boot after accepted rollout uses the worker's current generation, while the
   old process-local rollback capability does not survive.
+
+The shipped L2 acceptance matrix is named and executable:
+
+| Contract | Evidence |
+| --- | --- |
+| fixed activate/rollback/receipt schemas, canonical digests/content addresses, malformed records | `src/id/isolate_test.zig` |
+| a queued evolution frame cannot interrupt an executing request; malformed frame is terminal protocol input | `src/id/isolate_test.zig` worker-loop socket test |
+| zero budget, wrong base, invalid source, missing artifact, checksum mismatch, map/ABI failure leave G1 | `scripts/isolate-rollout-smoke.sh` |
+| prepared commit rejects binding drift without partial publication | `src/id/codegen_test.zig` commit-time drift test |
+| G1→G2, copied receipt fields, independent worker, rollback/second rollback, G2→G3 intervening digest | `scripts/isolate-rollout-smoke.sh` |
+| accepted save/boot preserves G2 but loses the old rollback capability | `scripts/isolate-rollout-smoke.sh` |
+| user rollout and rollback recipe remains runnable | `examples/live-modules/rollout.input`, `zig build test-live-feature-examples` |
+
+`zig build test-isolate-rollout` runs the real-process rows; `zig build test`
+runs the codec, mailbox-order, candidate integrity, quiescence, and commit-drift
+rows. The complete composition is `zig build verify`.
 
 #### L2.5 — Documentation and phase exit
 

@@ -212,7 +212,9 @@
 [Reflect defineMethod: #rollback on: LiveModules as: [:self |
   let current := [self currentGeneration];
   let unit := [[current isNil] ifTrue: [| nil] ifFalse: [| [current deltaUnit]]];
-  [[unit isNil] ifTrue: [| [Error kind: #rollbackUnavailable]] ifFalse: [| [unit rollback]]]]];
+  [[[unit isNil] or: [| [[unit isMapped] not]]]
+    ifTrue: [| [Error kind: #rollbackUnavailable message: "the current generation has no process-local rollback capability"]]
+    ifFalse: [| [unit rollback]]]]];
 
 [Reflect defineMethod: #saveBaseline: on: LiveModules as: [:self :path |
   [EvolutionIntent for: path action: #saveBaseline]]];
@@ -235,7 +237,80 @@
            #baseDigest -> [current baseDigest],
            #sourceCount -> [[current sourceMap] size]}]]]]]];
 
-[Reflect defineMethod: #apiVersion on: LiveModules as: [:self | #L1b]];
+// L2 wire requests are positional copied values. The native isolate codec turns
+// these vectors into fixed versioned records; no CompiledUnit, generation, Oop,
+// prepared token, or rollback capability crosses the process boundary.
+[Reflect defineMethod: #evolutionRequestFor: on: LiveModules as: [:self :unit |
+  let location := [unit artifactLocation];
+  [[location isError]
+    ifTrue: [| location]
+    ifFalse: [|
+      #[#activate
+        [unit unitName]
+        [unit revisionDigest]
+        [unit authoredSource]
+        [unit artifactChecksum]
+        location
+        [unit expectedBaseDigest]]]]]];
+
+[Reflect defineMethod: #rollbackRequest on: LiveModules as: [:self |
+  #[#rollback [self currentDigest]]]];
+
+[Reflect defineMethod: #rollbackRequestForDigest: on: LiveModules as: [:self :digest |
+  #[#rollback digest]]];
+
+[Reflect defineMethod: #releaseEvolution:kind:message: on: LiveModules as: [:self :unit :kind :message |
+  [Codegen releaseCandidate: unit];
+  [Error kind: kind message: message]]];
+
+[Reflect defineMethod: #mapEvolutionUnit: on: LiveModules as: [:self :unit |
+  let deps := [unit prepareDependencies];
+  [[deps isError]
+    ifTrue: [| [self releaseEvolution: unit kind: [deps kind] message: [deps message]]]
+    ifFalse: [|
+      let mapped := [unit map];
+      [[mapped isError]
+        ifTrue: [| [self releaseEvolution: unit kind: [mapped kind] message: [mapped message]]]
+        ifFalse: [|
+          let valid := [unit validate];
+          [[valid isError]
+            ifTrue: [| [self releaseEvolution: unit kind: [valid kind] message: [valid message]]]
+            ifFalse: [| [unit activate]]]]]]]]];
+
+[Reflect defineMethod: #validateEvolutionUnit:request: on: LiveModules as: [:self :unit :request |
+  let source := [request at: 3];
+  let identityMatches := [[[unit unitName] = [request at: 1]] & [[unit revisionDigest] = [request at: 2]]];
+  let artifactMatches := [[unit artifactChecksum] = [request at: 4]];
+  let sourceMatches := [[source isNil] or: [| [[unit authoredSource] = source]]];
+  [[[identityMatches & artifactMatches] & sourceMatches]
+    ifTrue: [|
+      [db assert: unit attr: #expectedBaseDigest value: [request at: 6]];
+      [self mapEvolutionUnit: unit]]
+    ifFalse: [|
+      [self releaseEvolution: unit kind: #evolutionIdentityMismatch message: "candidate metadata does not match the evolution request"]]]]];
+
+[Reflect defineMethod: #prepareEvolutionActivation: on: LiveModules as: [:self :request |
+  [[[self currentDigest] = [request at: 6]]
+    ifTrue: [|
+      let unit := [CompiledUnit open: [request at: 5]];
+      [[unit isError]
+        ifTrue: [| unit]
+        ifFalse: [| [self validateEvolutionUnit: unit request: request]]]]
+    ifFalse: [| [Error kind: #staleGeneration message: "worker generation does not match the requested base"]]]]];
+
+[Reflect defineMethod: #prepareEvolution: on: LiveModules as: [:self :request |
+  let operation := [request at: 0];
+  [[operation = #activate]
+    ifTrue: [| [self prepareEvolutionActivation: request]]
+    ifFalse: [|
+      [[operation = #rollback]
+        ifTrue: [|
+          [[[self currentDigest] = [request at: 1]]
+            ifTrue: [| [self rollback]]
+            ifFalse: [| [Error kind: #staleGeneration message: "worker generation does not match the rollback digest"]]]]
+        ifFalse: [| [Error kind: #invalidEvolutionOperation]]]]]]];
+
+[Reflect defineMethod: #apiVersion on: LiveModules as: [:self | #L2]];
 
 [Reflect defineMethod: #printString on: CompiledUnit as: [:self |
   [[[["candidate(" , [[self unitName] printString]] , " "] , [[self state] printString]] , ")"]]];

@@ -107,4 +107,33 @@ watcher, forced replacement, source-aware `adoptLive`, initializer, migration,
 promise, background activation, pool policy, or cross-isolate atomicity.
 
 See `examples/live-modules/` for a runnable export, edit, activation, baseline,
-mapped/rebuilt boot, and isolate request.
+mapped/rebuilt boot, isolate request, worker-local L2 rollout, receipt inspection,
+and digest-bound rollback.
+
+## Prepare a copied isolate rollout
+
+An inspected L1b candidate can also become an L2 copied-value request without
+mapping or activating it in the coordinator:
+
+```text
+let candidate := [LiveModules import: "/tmp/pricing.birnam"];
+let request := [LiveModules evolutionRequestFor: candidate];
+let receipt := [worker evolve: request timeout: 10000]
+```
+
+`evolutionRequestFor:` publishes the verified dylib and pointer-free sidecar under
+the artifact checksum, then returns the fixed positional activate record. The
+worker independently verifies its expected base, module and revision identity,
+source, checksum, content-addressed path, dependency state, bindings, and
+candidate manifest before committing. The coordinator's candidate and the
+worker's prepared capability are separate process-local objects.
+
+Use `[LiveModules rollbackRequestForDigest: digest]` to construct a rollback
+control from an accepted receipt. Rollback availability is local to the worker
+process and is intentionally lost across save/boot, even though the accepted
+generation itself remains durable.
+
+From the repository root, `bash examples/live-modules/run.sh` executes both the
+host-side L1b lifecycle and the worker-side L2 lifecycle. The rollout portion is
+kept in `rollout.input` so the coordinator itself boots from the exact v1 baseline
+whose digest the worker compares.

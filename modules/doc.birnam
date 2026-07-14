@@ -554,8 +554,9 @@
     [[File exists: p] ifTrue: [| [System load: p]] ifFalse: [| nil]]]];
   [System load: "modules/compiled-unit-docs.birnam"];
   [System load: "modules/live-modules-docs.birnam"];
+  [System load: "modules/isolate-docs.birnam"];
   self] doc:
-  "Ensure File, re-load the self-hosted floor sources under `zd`, and load the CompiledUnit and LiveModules reference registrations; the module manager is deliberately skipped. Answers self."];
+  "Ensure File, re-load the self-hosted floor sources under `zd`, and load the CompiledUnit, LiveModules, and Isolate reference registrations; the module manager is deliberately skipped. Answers self."];
 
 // Build the full HTML reference to `out`: load every library module under `md`
 // plus the birnam floor sources under `zd`, extract every Zig floor file under

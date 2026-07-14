@@ -886,7 +886,7 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
 const RTLD_LAZY: c_int = 1;
 
 const HostPhaseFn = *const fn () callconv(.c) c_int;
-const IsolateDriverFn = *const fn (*IdApi, c_int, Oop, Oop) callconv(.c) c_int;
+const IsolateDriverFn = *const fn (*IdApi, c_int, Oop, Oop, HostPhaseFn, HostPhaseFn) callconv(.c) c_int;
 const IsolateBootErrorFn = *const fn (*IdApi, c_int, [*:0]const u8, [*]const u8, usize) callconv(.c) void;
 const IsolateDrainFn = *const fn () callconv(.c) void;
 const IsolateShutdownFn = *const fn () callconv(.c) void;
@@ -983,7 +983,7 @@ fn runWorker(a: std.mem.Allocator, api: *IdApi, image: []const u8, receiver_name
 
     resolveHostPhaseFunctions(a, api) catch workerFail(api, fd, "noPhaseHooks", "could not resolve runtime phase hooks");
     if (host_enter_running.?() == 0) workerFail(api, fd, "invalidRuntimePhase", "could not enter running phase");
-    const status = host_isolate_driver.?(api, fd, receiver, selector);
+    const status = host_isolate_driver.?(api, fd, receiver, selector, host_begin_quiescence.?, host_end_quiescence.?);
     std.posix.close(fd);
     if (status != 0) std.process.exit(1);
 }

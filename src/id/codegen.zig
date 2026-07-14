@@ -2444,6 +2444,20 @@ fn ensureContentPath(st: *CandidateState) bool {
     const published = std.fs.cwd().readFileAlloc(ca, dest, 1 << 30) catch return false;
     defer ca.free(published);
     if (!std.mem.eql(u8, &sha256Hex(published), &st.checksum)) return false;
+    // L2 workers inspect the candidate independently, so publish the verified
+    // pointer-free sidecar beside the checksum-addressed dylib as well.
+    const author_side = std.fmt.allocPrint(ca, "{s}.candidate", .{st.author_path}) catch return false;
+    defer ca.free(author_side);
+    const content_side = std.fmt.allocPrint(ca, "{s}.candidate", .{dest}) catch return false;
+    defer ca.free(content_side);
+    const side_bytes = std.fs.cwd().readFileAlloc(ca, author_side, 1 << 30) catch return false;
+    defer ca.free(side_bytes);
+    if (std.fs.cwd().readFileAlloc(ca, content_side, 1 << 30)) |existing_side| {
+        defer ca.free(existing_side);
+        if (!std.mem.eql(u8, existing_side, side_bytes)) return false;
+    } else |_| {
+        if (!publishExclusive(content_side, side_bytes)) return false;
+    }
     st.content_path = dest;
     return true;
 }
@@ -2527,6 +2541,14 @@ fn mCandidateTempPath(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return g_api.mkString(path.ptr, path.len);
 }
 
+fn mCandidateContentPath(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const st = candidate_states.get(a[0]) orelse return candidateError("unknownCandidate");
+    if (!ensureContentPath(st)) return candidateError("candidatePublicationFailed");
+    return g_api.mkString(st.content_path.?.ptr, st.content_path.?.len);
+}
+
 fn removeCandidateAuthorArtifacts(st: *CandidateState) void {
     std.fs.cwd().deleteFile(st.author_path) catch {};
     const side = std.fmt.allocPrint(ca, "{s}.candidate", .{st.author_path}) catch return;
@@ -2550,6 +2572,22 @@ fn mDiscardCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (st.active) return candidateError("candidateActive");
     if (st.prepared_token != null) return candidateError("candidateAlreadyPrepared");
     removeCandidateAuthorArtifacts(st);
+    if (st.handle) |h| _ = std.c.dlclose(h);
+    _ = candidate_states.remove(a[0]);
+    freeCandidateState(st);
+    assertUnitFact(a[0], "state", g_api.intern("discarded"));
+    return a[0];
+}
+
+// Drop only this process's inspected/mapped state. L2 workers use a shared
+// checksum-addressed artifact, so rejection must not unlink the coordinator's
+// content object or its sidecar.
+fn mReleaseCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const st = candidate_states.get(a[0]) orelse return a[0];
+    if (st.active) return candidateError("candidateActive");
+    if (st.prepared_token != null) return candidateError("candidateAlreadyPrepared");
     if (st.handle) |h| _ = std.c.dlclose(h);
     _ = candidate_states.remove(a[0]);
     freeCandidateState(st);
@@ -3993,8 +4031,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("mapCandidate:"), &mMapCandidate);
     api.method(codegen_vt, api.intern("candidateMapped:"), &mCandidateMapped);
     api.method(codegen_vt, api.intern("candidateTempPathFor:"), &mCandidateTempPath);
+    api.method(codegen_vt, api.intern("candidateContentPath:"), &mCandidateContentPath);
     api.method(codegen_vt, api.intern("retireCandidateArtifacts:"), &mRetireCandidateArtifacts);
     api.method(codegen_vt, api.intern("discardCandidate:"), &mDiscardCandidate);
+    api.method(codegen_vt, api.intern("releaseCandidate:"), &mReleaseCandidate);
     api.method(codegen_vt, api.intern("stagedCandidates"), &mStagedCandidates);
     api.method(codegen_vt, api.intern("prepareActivation:"), &mPrepareCandidate);
     api.method(codegen_vt, api.intern("prepareActivation:prior:"), &mPrepareCandidate);

@@ -1,0 +1,73 @@
+[System load: "modules/os.birnam"];
+let require := [:condition :message |
+  [condition ifFalse: [| [System println: message]; [OS exit: 1]]]];
+let specFor := [:receiver :selector :image :health :readyTimeout :healthTimeout |
+  {#receiver -> receiver,
+   #selector -> selector,
+   #image -> image,
+   #healthRequest -> health,
+   #readyTimeout -> readyTimeout,
+   #healthTimeout -> healthTimeout,
+   #stopTimeout -> 1000}];
+let retained := [:current :result :label |
+  [require value: [result isError] value: [label , " did not fail"]];
+  [require value: [[result currentWorker] == current] value: [label , " changed selection"]];
+  [require value: [[current request: #version timeout: 1000] = #v1]
+           value: [label , " left worker A unusable"]]];
+
+let a := [Isolate start: #ReplacementFixture selector: #handle: image: "/tmp/birnam-isolate-replacement-v1.image"];
+[require value: [[a request: #version timeout: 1000] = #v1] value: "worker A did not answer v1"];
+let aDigest := [a request: #digest timeout: 1000];
+
+let missing := [Isolate replace: a using:
+  [specFor value: #ReplacementFixture value: #handle: value: "/tmp/definitely-missing-replacement.image" value: #health value: 1000 value: 1000]];
+[retained value: a value: missing value: "missing image"];
+
+let corrupt := [Isolate replace: a using:
+  [specFor value: #ReplacementFixture value: #handle: value: "/tmp/birnam-isolate-replacement-corrupt.image" value: #health value: 1000 value: 1000]];
+[retained value: a value: corrupt value: "corrupt image"];
+
+let missingReceiver := [Isolate replace: a using:
+  [specFor value: #DefinitelyMissingReceiver value: #handle: value: "/tmp/birnam-isolate-replacement-v2.image" value: #health value: 1000 value: 1000]];
+[retained value: a value: missingReceiver value: "missing receiver"];
+
+let missingSelector := [Isolate replace: a using:
+  [specFor value: #ReplacementFixture value: #definitelyMissing: value: "/tmp/birnam-isolate-replacement-v2.image" value: #health value: 1000 value: 1000]];
+[retained value: a value: missingSelector value: "missing selector"];
+
+let readyTimeout := [Isolate replace: a using:
+  [specFor value: #ReplacementFixture value: #handle: value: "/tmp/birnam-isolate-replacement-v2.image" value: #health value: 0 value: 1000]];
+[retained value: a value: readyTimeout value: "ready timeout"];
+
+let applicationError := [Isolate replace: a using:
+  [specFor value: #ReplacementFixture value: #handle: value: "/tmp/birnam-isolate-replacement-v2.image" value: #healthError value: 1000 value: 1000]];
+[retained value: a value: applicationError value: "application health error"];
+
+let malformed := [Isolate replace: a using:
+  [specFor value: #ReplacementFixture value: #handle: value: "/tmp/birnam-isolate-replacement-v2.image" value: #malformedHealth value: 1000 value: 1000]];
+[retained value: a value: malformed value: "malformed health reply"];
+
+let healthTimeout := [Isolate replace: a using:
+  [specFor value: #ReplacementFixture value: #handle: value: "/tmp/birnam-isolate-replacement-v2.image" value: #healthSleep value: 1000 value: 10]];
+[retained value: a value: healthTimeout value: "health timeout"];
+
+let healthCrash := [Isolate replace: a using:
+  [specFor value: #ReplacementFixture value: #handle: value: "/tmp/birnam-isolate-replacement-v2.image" value: #healthCrash value: 1000 value: 1000]];
+[retained value: a value: healthCrash value: "health crash"];
+
+let healthy := [specFor value: #ReplacementFixture value: #handle: value: "/tmp/birnam-isolate-replacement-v2.image" value: #health value: 1000 value: 1000];
+let first := [Isolate replace: a using: healthy];
+[require value: [[first isError] not] value: "healthy replacement failed"];
+let b := [first currentWorker];
+[require value: [[b request: #version timeout: 1000] = #v2] value: "worker B did not answer v2"];
+[require value: [[a state] = #exited] value: "worker A was not reaped"];
+[require value: [[[b request: #digest timeout: 1000] = aDigest] not] value: "replacement baseline did not carry a distinct generation"];
+
+let second := [Isolate replace: b using: healthy];
+[require value: [[second isError] not] value: "repeated B-to-C replacement failed"];
+let c := [second currentWorker];
+[require value: [[c request: #version timeout: 1000] = #v2] value: "worker C did not answer v2"];
+[require value: [[b state] = #exited] value: "worker B was not reaped"];
+[c stop];
+[require value: [[c state] = #exited] value: "worker C was not reaped"];
+[System println: "isolate-replacement-smoke: I1b failure matrix, distinct baselines, and A-to-B-to-C replacement passed"]

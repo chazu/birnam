@@ -1,6 +1,6 @@
 # 48 — Concurrency: Reactors, Isolates, and Structured Operations
 
-> **Status:** Exploration with an implementation sequence, 2026-07-14, rev. 3,
+> **Status:** I1a, I1b, and the L2 mailbox bridge implemented, 2026-07-14, rev. 4,
 > accepted with corrections by the
 > [combined adversarial review](48a-live-evolution-isolate-combined-adversarial-review.md).
 > The leading direction is a
@@ -12,7 +12,8 @@
 > failures, spawn inheritance, request ids, handle durability, and bounded
 > reap-pending ownership before I1a implementation; the
 > [follow-up review](50a-i1a-plan-hardening-follow-up-review.md) accepts those
-> contracts for implementation.
+> contracts for implementation. Reactor and structured-operation work remains
+> exploratory and orthogonal to the shipped blocking isolate path.
 >
 > Builds on [40 — The Image](40-the-image.md),
 > [44 — Toward Self-Hosting](44-toward-self-hosting.md), and

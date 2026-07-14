@@ -1,0 +1,4 @@
+[Module named: #isolateReplacementExample requires: #[#isolate]];
+
+[Reflect defineMethod: #handle: on: ReplacementExampleWorker as: [:self :request |
+  [[request = #health] ifTrue: [| #healthy] ifFalse: [| {#version -> 1, #request -> request}]]]]

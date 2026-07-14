@@ -1,6 +1,6 @@
 // Reference registrations kept outside the executable policy source.
 
-[Doc module: #liveModules is: "Exact file-backed source revisions, inert candidate inspection, host-boundary activation and rollback, plus guarded full-image worker baselines with mapped/rebuilt recovery."];
+[Doc module: #liveModules is: "Exact file-backed source revisions, inert candidate inspection, host-boundary activation and rollback, guarded full-image worker baselines, and copied L2 isolate rollout requests."];
 
 [Doc for: #currentGeneration in: #liveModules says:
   "The single current DispatchGeneration, or nil before G0 publication."];
@@ -28,5 +28,11 @@
   "Answer an EvolutionIntent for a guarded full-image worker baseline. Host fulfillment refuses inert staged candidates, reconciles managed dispatch, detaches process-local REPL console handles for the save, and atomically writes the active generation and exact source map. The image supports equivalent mapped and source-rebuilt boot and can be passed to Isolate start:selector:image:. Append persistence and process-local rollback capabilities are not carried into the baseline."];
 [Doc for: #durabilityStatus in: #liveModules says:
   "Preflight a live baseline: reject with #stagedCandidatesPresent while any inert edit remains, reconcile all managed candidates, validate the current generation, then report #fullImageReady with its base digest or return the original kinded drift/error."];
+[Doc for: #evolutionRequestFor: in: #liveModules says:
+  "Publish an inspected candidate under its artifact checksum and answer the fixed copied-value L2 activate request. The receiving worker independently verifies and prepares it against its own current generation."];
+[Doc for: #rollbackRequestForDigest: in: #liveModules says:
+  "Answer the fixed copied-value L2 rollback request for an expected worker-local current digest. No rollback capability or generation object crosses the isolate seam."];
+[Doc for: #rollbackRequest in: #liveModules says:
+  "Answer an L2 rollback request using this process's current digest. Use rollbackRequestForDigest: when coordinating a different worker generation explicitly."];
 [Doc for: #apiVersion in: #liveModules says:
-  "The implemented live-module workflow level, currently #L1b."]
+  "The implemented live-module workflow level, currently #L2."]
