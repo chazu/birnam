@@ -4,7 +4,12 @@
 
 [Module named: #compiledUnit requires: #[#modules #stdlib]];
 
-[Globals at: #CompiledUnit put: [Object clone]];
+// Idempotent because image boot preloads this module before restoring facts, then
+// mapped/replayed image code runs it again to refresh method blocks on the same
+// exported prototype family used by deserialized lifecycle instances.
+[[[Globals at: #CompiledUnit] isNil]
+  ifTrue: [| [Globals at: #CompiledUnit put: [Object clone]]]
+  ifFalse: [| nil]];
 
 // Lifecycle cells are single-valued. History is represented by immutable event
 // entities, so stale #active assertions never remain query-visible.
@@ -184,5 +189,11 @@
       [db assert: composed attr: #rollbackAvailable value: false];
       [Codegen rebuildComposedLedger: composed from: origins];
       composed]]]];
+
+// Lifecycle instances share this pure-Birnam prototype family. Its stable
+// loader name lets image heap records relink those instances before module code
+// reconstructs the facade and composed-generation policy.
+[Reflect exportObject: CompiledUnit as: #CompiledUnitPrototype];
+[Reflect exportVtableOf: CompiledUnit as: #CompiledUnitVt];
 
 [Module markLoaded: #compiledUnit]

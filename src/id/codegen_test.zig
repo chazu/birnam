@@ -220,11 +220,38 @@ test "CompiledUnit candidate stages add replace remove and rolls back exactly" {
     // The symmetric stale check protects an intervening supported live edit.
     const token2 = api.send(Codegen, api.intern("prepareActivation:"), &.{unit}, 1);
     _ = api.send(Codegen, api.intern("commitPrepared:"), &.{token2}, 1);
+    _ = eval(api, "[Reflect defineMethod: #cuUnrelated on: Integer as: [:self | 77]]");
+    try std.testing.expect(api.send(store.store_instance, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2) == api.intern("active"));
     _ = eval(api, "[Reflect defineMethod: #cuReplace on: Integer as: [:self | 999]]");
+    // No state query or rollback reconciliation is needed: Store's completed
+    // tracked-MOP observer marks the managed generation immediately.
+    try std.testing.expect(api.send(store.store_instance, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2) == api.intern("drifted"));
+    try std.testing.expect(api.send(store.store_instance, api.intern("currentValue:attr:"), &.{ unit, api.intern("rollbackAvailable") }, 2) == api.falseObj);
     const stale_rollback = api.send(Codegen, api.intern("prepareRollback:"), &.{unit}, 1);
     try std.testing.expect(api.send(stale_rollback, api.intern("isError"), &.{}, 0) == api.trueObj);
     try std.testing.expect(api.send(stale_rollback, api.intern("kind"), &.{}, 0) == api.intern("candidateDrifted"));
     try std.testing.expectEqual(@as(i64, 999), try evalInt(api, "[3 cuReplace]"));
+}
+
+test "CompiledUnit exported validator rejects a mechanically invalid mapped candidate" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ dir, "invalid-candidate.dylib" });
+    defer std.testing.allocator.free(path);
+    const source = "[Module named: #invalidCandidate requires: #[]]; [Reflect removeMethod: #cuDefinitelyAbsent on: Integer]";
+    const compiled = api.send(Codegen, api.intern("compileCandidate:named:output:"), &.{
+        api.mkString(source.ptr, source.len), api.intern("invalidCandidate"), api.mkString(path.ptr, path.len),
+    }, 3);
+    try std.testing.expect(api.send(compiled, api.intern("isError"), &.{}, 0) != api.trueObj);
+    const unit = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
+    try std.testing.expect(api.send(Codegen, api.intern("inspectCandidate:into:"), &.{ api.mkString(path.ptr, path.len), unit }, 2) == unit);
+    const mapped = api.send(Codegen, api.intern("mapCandidate:"), &.{unit}, 1);
+    try std.testing.expect(api.send(mapped, api.intern("isError"), &.{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(mapped, api.intern("kind"), &.{}, 0) == api.intern("candidateValidationFailed"));
 }
 
 test "CompiledUnit inspection rejects unsafe and checksum-mismatched artifacts before mapping" {

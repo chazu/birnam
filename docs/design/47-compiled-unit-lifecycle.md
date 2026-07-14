@@ -205,7 +205,8 @@ __birnam_unit_init
 __ev
 ```
 
-`__birnam_artifact_abi` is new at the portable-log cutover. Its absence identifies a
+`__birnam_artifact_abi` is new at the portable-log cutover. The candidate-validator
+contract is ABI v2: v1 candidates with the former no-op export are rejected. Absence identifies a
 pre-cutover artifact whose `__ev` may still append to `__methods__`; post-cutover
 ordinary loading rejects it and uses the existing source-recovery/recompile path.
 The other symbols and immediate-load semantics remain unchanged.
@@ -214,7 +215,7 @@ A candidate-capable artifact additionally exports:
 
 ```
 __birnam_candidate_manifest   versioned, pointer-free bytes
-__birnam_candidate_validate   mechanical target/binding/ABI checks only; no policy
+__birnam_candidate_validate   artifact-enumerated mechanical target/binding/ABI checks; no policy
 __birnam_candidate_prepare    create private block state; no public dispatch mutation
 __birnam_candidate_activate   tracked MOP commit using prepared state
 __birnam_candidate_rollback   exact inverse while process-local pointers exist
@@ -389,14 +390,17 @@ replayed before an older candidate operation.
 
 A supported non-lifecycle edit of a ledger-managed pair also notifies
 `CompiledUnit` after the tracked mutation/log append, transitioning the prior active
-generation to `#drifted`. Direct Store/raw use remains an explicit escape; every
+generation to `#drifted`. The observer sits at Store's completed tracked-MOP
+chokepoint, so direct Store installs/removals notify immediately too, though they
+remain non-portable unless accompanied by a sequenced source operation. Raw floor
+mutation remains the explicit lazy escape; every
 lifecycle operation, public active-unit query, and image save independently compares
 the dictionary with the ledger and performs the same drift reconciliation before it
 trusts lifecycle facts.
 
 Direct Store mutation remains a valid Store-arbitrated MOP operation and preserves
-the mirror law; it is an "escape" only from CompiledUnit generation management when
-the caller supplies no portable operation/provenance wrapper.
+the mirror law; CompiledUnit marks it as drift immediately, and adoption rejects it
+unless the caller also supplied portable operation/provenance.
 
 ## 8. Lifecycle algorithms
 
@@ -570,6 +574,9 @@ does not mint lifecycle objects or choose states.
 The existing persistence pieces remain:
 
 - CompiledUnit/binding/event facts serialize as ordinary durable data.
+- The pure-Birnam CompiledUnit prototype and its shared instance vtable have stable
+  loader exports, so origin instances relink before mapped/replayed module code
+  refreshes their methods.
 - The method-operation log makes `compileImageCode:` capture the behavior current at
   save time, including removals and rollbacks.
 - A normal compatible boot maps the compacted image unit as primary executable code.
@@ -590,6 +597,8 @@ reserves `#active` for the composed unit that actually owns dispatch, and asks
 Codegen to rebuild the transient ledger for every managed pair from the live direct
 bindings. A rebuild similarly mints a recovered composition from the normalized
 operation identity and reconstructs the same ledger after replay.
+Entering image dispatch recovery first retires every pre-load transient active
+ledger, including in-process loads; only the newly composed owner becomes active.
 
 This boot-time reconciliation happens before the image append checkpoint, so it is
 not journaled as a user mutation. Historical units always answer

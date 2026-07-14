@@ -60,9 +60,11 @@ var method_op_counter: usize = 0; // tie-breaker within a Store basis
 var suppress_methodop_recording = false; // image replay/load must not log its own recovery
 var artifact_record_ops = true; // false only for compacted image-code emission
 var candidate_preparing = false;
+var candidate_commit_in_progress = false;
+var image_dispatch_recovery = false;
 
-const ARTIFACT_ABI = "birnam-artifact-methodops-v1";
-const CANDIDATE_ABI: u32 = 1;
+const ARTIFACT_ABI = "birnam-artifact-methodops-v2";
+const CANDIDATE_ABI: u32 = 2;
 const CANDIDATE_PLATFORM = "aarch64-macos";
 const CANDIDATE_MAGIC = "BIRNAM-CANDIDATE-1";
 
@@ -98,6 +100,7 @@ const CandidateState = struct {
     requires: std.ArrayList(Oop) = .{},
     ops: std.ArrayList(CandidateOp) = .{},
     handle: ?*anyopaque = null,
+    validate_fn: ?idapi.Method = null,
     activate_fn: ?idapi.Method = null,
     prepare_fn: ?idapi.Method = null,
     prepared_token: Oop = null,
@@ -482,6 +485,21 @@ fn rtCandidatePrepareMode(on: c_long) callconv(.c) void {
     candidate_preparing = on != 0;
 }
 
+/// Candidate-owned validation calls back once per manifest operation. This is
+/// deliberately independent of CandidateState: the artifact enumerates what it
+/// believes it will mutate, while Codegen separately validates the inspected
+/// envelope and captured base. Activation proceeds only when both agree.
+fn rtCandidateValidateBinding(target_name: [*:0]const u8, selector_name: [*:0]const u8, arity: c_long, removal: c_long) callconv(.c) Oop {
+    const target = globalBySymbol(g_api.intern(target_name));
+    if (target == g_api.nilObj) return g_api.falseObj;
+    const vt = g_api.vtableOf(target);
+    if (vt == null or g_api.vtableOwner(vt) != target) return g_api.falseObj;
+    const selector = g_api.intern(selector_name);
+    if (selectorArity(selector) != @as(usize, @intCast(arity))) return g_api.falseObj;
+    if (removal != 0 and directMethod(vt, selector) == null) return g_api.falseObj;
+    return g_api.trueObj;
+}
+
 // Like tcc.zig's floor shims, the global-namespace shims are also real dynamic
 // symbols (docs/40 §3a, slice 1): an emitted artifact leaves them undefined and
 // the dynamic loader resolves them here at dlopen. The JIT path keeps patching
@@ -497,6 +515,7 @@ comptime {
     @export(&rtCandidateRootSet, .{ .name = "birnam_candidate_root_set" });
     @export(&rtCandidateRootGet, .{ .name = "birnam_candidate_root_get" });
     @export(&rtCandidatePrepareMode, .{ .name = "birnam_candidate_prepare_mode" });
+    @export(&rtCandidateValidateBinding, .{ .name = "birnam_candidate_validate_binding" });
 }
 
 /// Register a codegen-owned shim into a unit's pre-relocate symbol window.
@@ -721,6 +740,31 @@ fn mVtableOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
     return g_api.vtableOf(args[0]);
+}
+
+/// Give a pure-Birnam prototype family a process-stable loader name. Durable
+/// instances sharing that private vtable can then serialize by name and relink
+/// during image heap load, before the module source reconstructs its facade.
+fn mExportVtableOfAs(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    if (g_api.vtableOf(args[1]) != g_api.symbol_vt) return candidateError("notASymbol");
+    const vt = g_api.vtableOf(args[0]);
+    if (vt == null or g_api.vtableOwner(vt) != args[0]) return candidateError("unstableMethodTarget");
+    const name = g_api.symbolName(args[1]);
+    if (g_api.isExported(name) != 0) return if (g_api.import(name) == vt) args[0] else candidateError("vtableNameConflict");
+    if (g_api.exportObj(name, vt) == null) return candidateError("vtableExportFailed");
+    return args[0];
+}
+
+fn mExportObjectAs(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    if (g_api.vtableOf(args[1]) != g_api.symbol_vt) return candidateError("notASymbol");
+    const name = g_api.symbolName(args[1]);
+    if (g_api.isExported(name) != 0) return if (g_api.import(name) == args[0]) args[0] else candidateError("objectNameConflict");
+    if (g_api.exportObj(name, args[0]) == null) return candidateError("objectExportFailed");
+    return args[0];
 }
 
 /// `[Reflect nameOf: #sym]` — a symbol's bare name as a String ("stdlib" for
@@ -1678,8 +1722,20 @@ fn mCompileCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     putCStr(&out, manifest.items);
     out.appendSlice(ca, "\";\n") catch @panic("codegen: oom");
     out.appendSlice(ca, emitted.items) catch @panic("codegen: oom");
+    out.appendSlice(ca, "void* __birnam_candidate_validate(void* s, void** a, long n){(void)s;(void)a;(void)n;\n") catch @panic("codegen: oom");
+    for (scan.ops.items) |op| {
+        out.appendSlice(ca, "if(birnam_candidate_validate_binding(\"") catch @panic("codegen: oom");
+        out.appendSlice(ca, std.mem.span(g_api.symbolName(op.target_name))) catch @panic("codegen: oom");
+        out.appendSlice(ca, "\",\"") catch @panic("codegen: oom");
+        out.appendSlice(ca, std.mem.span(g_api.symbolName(op.selector))) catch @panic("codegen: oom");
+        const check = std.fmt.allocPrint(ca, "\",{d}L,{d}L)!=birnam_true())return birnam_false();\n", .{
+            selectorArity(op.selector), @intFromBool(op.kind == .remove),
+        }) catch @panic("codegen: oom");
+        defer ca.free(check);
+        out.appendSlice(ca, check) catch @panic("codegen: oom");
+    }
+    out.appendSlice(ca, "return birnam_true();}\n") catch @panic("codegen: oom");
     out.appendSlice(ca,
-        \\void* __birnam_candidate_validate(void* s, void** a, long n){(void)s;(void)a;(void)n;return birnam_true();}
         \\void* __birnam_candidate_prepare(void* s, void** a, long n){birnam_candidate_prepare_mode(1L);(void)__ev(s,a,n);birnam_candidate_prepare_mode(0L);return birnam_true();}
         \\void* __birnam_candidate_activate(void* s, void** a, long n){return __ev(s,a,n);}
         \\void* __birnam_candidate_rollback(void* s, void** a, long n){(void)s;(void)a;(void)n;return birnam_nil();}
@@ -1987,14 +2043,17 @@ fn mMapCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (!std.mem.eql(u8, std.mem.span(@as([*:0]const u8, @ptrCast(abi_p))), ARTIFACT_ABI)) return candidateError("candidateAbiMismatch");
     const manifest_p = g_api.dlsym(h, "__birnam_candidate_manifest") orelse return candidateError("candidateManifestMismatch");
     if (!std.mem.eql(u8, std.mem.span(@as([*:0]const u8, @ptrCast(manifest_p))), st.exported_manifest)) return candidateError("candidateManifestMismatch");
-    _ = g_api.dlsym(h, "__birnam_candidate_validate") orelse return candidateError("candidateAbiMismatch");
+    const validate_p = g_api.dlsym(h, "__birnam_candidate_validate") orelse return candidateError("candidateAbiMismatch");
     const prepare_p = g_api.dlsym(h, "__birnam_candidate_prepare") orelse return candidateError("candidateAbiMismatch");
     const activate_p = g_api.dlsym(h, "__birnam_candidate_activate") orelse return candidateError("candidateAbiMismatch");
     _ = g_api.dlsym(h, "__birnam_candidate_rollback") orelse return candidateError("candidateAbiMismatch");
     const init_p = g_api.dlsym(h, "__birnam_unit_init") orelse return candidateError("candidateAbiMismatch");
     const init_fn: *const fn () callconv(.c) void = @ptrCast(@alignCast(init_p));
     init_fn();
+    const validate_fn: idapi.Method = @ptrCast(@alignCast(validate_p));
+    if (validate_fn(g_api.nilObj, &[_]Oop{}, 0) != g_api.trueObj) return candidateError("candidateValidationFailed");
     st.handle = h;
+    st.validate_fn = validate_fn;
     st.prepare_fn = @ptrCast(@alignCast(prepare_p));
     st.activate_fn = @ptrCast(@alignCast(activate_p));
     return a[0];
@@ -2185,6 +2244,63 @@ fn validateEffectiveLedger(root: *CandidateState) Oop {
     return root.unit;
 }
 
+fn managedMethodMutation(vt: Oop, selector: Oop) callconv(.c) void {
+    if (candidate_commit_in_progress or image_dispatch_recovery or suppress_methodop_recording) return;
+    var it = candidate_states.valueIterator();
+    while (it.next()) |pst| {
+        const root = pst.*;
+        if (!root.active) continue;
+        var cursor: ?*CandidateState = root;
+        var changed = false;
+        while (cursor) |owner| : (cursor = owner.predecessor) {
+            for (owner.ops.items) |op| {
+                if (bindingShadowed(root, owner, op) or op.vt != vt or op.selector != selector) continue;
+                const cur = directMethod(vt, selector);
+                changed = (cur != null) != op.post_present or (cur orelse null) != op.post_method;
+                break;
+            }
+            if (changed) break;
+        }
+        if (changed) {
+            assertUnitFact(root.unit, "state", g_api.intern("drifted"));
+            assertUnitFact(root.unit, "rollbackAvailable", g_api.falseObj);
+        }
+    }
+}
+
+fn mManagedMethodChanged(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    managedMethodMutation(args[1], args[0]);
+    return self;
+}
+
+pub fn beginImageDispatchRecovery() void {
+    image_dispatch_recovery = true;
+    // Loading replaces the executable owner even in the in-process test path.
+    // No pre-load raw-pointer ledger remains authoritative; boot composition
+    // will mint exactly one fresh active ledger after code resolution.
+    var it = candidate_states.valueIterator();
+    while (it.next()) |pst| pst.*.active = false;
+}
+
+pub fn endImageDispatchRecovery() void {
+    image_dispatch_recovery = false;
+}
+
+fn mBeginImageDispatchRecovery(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    beginImageDispatchRecovery();
+    return self;
+}
+
+fn mEndImageDispatchRecovery(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    endImageDispatchRecovery();
+    return self;
+}
+
 fn validateCandidateBase(st: *CandidateState, rollback: bool) Oop {
     if (st.handle == null) return candidateError("candidateNotMapped");
     if (rollback and !st.active) return candidateError("candidateNotActive");
@@ -2235,6 +2351,10 @@ fn mPrepareCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         clearPrepared(st);
         return candidateError("unmanagedActiveBase");
     } else null;
+    if (st.validate_fn.?(g_api.nilObj, &[_]Oop{}, 0) != g_api.trueObj) {
+        clearPrepared(st);
+        return candidateError("candidateValidationFailed");
+    }
     const valid = validateCandidateBase(st, false);
     if (valid != st.unit) {
         clearPrepared(st);
@@ -2299,6 +2419,8 @@ fn mCommitPrepared(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         return valid;
     }
     _ = consumeToken(token);
+    candidate_commit_in_progress = true;
+    defer candidate_commit_in_progress = false;
     const result = st.activate_fn.?(g_api.nilObj, &[_]Oop{}, 0);
     for (st.ops.items) |*op| {
         op.post_method = directMethod(op.vt, op.selector) orelse null;
@@ -2347,6 +2469,8 @@ fn mCommitPreparedRollback(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oo
         return valid;
     }
     _ = consumeToken(token);
+    candidate_commit_in_progress = true;
+    defer candidate_commit_in_progress = false;
     var i = st.ops.items.len;
     while (i > 0) {
         i -= 1;
@@ -2493,6 +2617,7 @@ fn mRebuildComposedLedger(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop
     var oi: i64 = 0;
     while (oi < origin_count) : (oi += 1) {
         const origin = g_api.send(origins, g_api.intern("at:"), &[_]Oop{g_api.mkSmallInt(oi)}, 1);
+        if (candidate_states.get(origin)) |origin_state| origin_state.active = false;
         const provided = factValue(origin, "provides");
         if (provided == g_api.nilObj) continue;
         const count = g_api.smallIntValue(g_api.send(provided, g_api.intern("size"), &[_]Oop{}, 0));
@@ -2965,6 +3090,7 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool, checked: bool) ?std.Arra
         \\extern void* birnam_candidate_root_set(unsigned long long salt, long index, void* value);
         \\extern void* birnam_candidate_root_get(unsigned long long salt, long index);
         \\extern void birnam_candidate_prepare_mode(long on);
+        \\extern void* birnam_candidate_validate_binding(const char* target, const char* selector, long arity, long removal);
         \\
     );
     if (artifact) {
@@ -3018,6 +3144,7 @@ fn runProgram(src: Oop, persist: bool) Oop {
     addShim(unit, "birnam_is_error", @ptrCast(&rtIsError));
     addShim(unit, "birnam_install_method", @ptrCast(&rtInstallMethod));
     addShim(unit, "birnam_remove_method", @ptrCast(&rtRemoveMethod));
+    addShim(unit, "birnam_candidate_validate_binding", @ptrCast(&rtCandidateValidateBinding));
     // Patch each baked handle `__g<i>` to its interned symbol's address.
     for (baked_globals.items, 0..) |sym, i| {
         var nb: [16]u8 = undefined;
@@ -3091,6 +3218,20 @@ pub fn bringUp(api: *idapi.IdApi) void {
     r_logicVar = api.intern("logicVar");
 
     const reloading = api.isExported("Codegen") != 0;
+    if (!reloading) {
+        var stale = candidate_states.valueIterator();
+        while (stale.next()) |pst| freeCandidateState(pst.*);
+        candidate_states.deinit(ca);
+        candidate_states = .{};
+        candidate_roots.deinit(ca);
+        candidate_roots = .{};
+        candidate_token_vt = null;
+        candidate_roots_registered = false;
+        ev_harness_vt = null;
+        candidate_preparing = false;
+        candidate_commit_in_progress = false;
+        image_dispatch_recovery = false;
+    }
     if (candidate_token_vt == null) {
         candidate_token_vt = api.proto(api.object_vt);
         const token_layout = [_]u8{ idapi.slot_oop, idapi.slot_raw };
@@ -3130,6 +3271,9 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("reconcileAllCandidates"), &mReconcileAllCandidates);
     api.method(codegen_vt, api.intern("adoptCandidateLive:into:"), &mAdoptCandidateLive);
     api.method(codegen_vt, api.intern("rebuildComposedLedger:from:"), &mRebuildComposedLedger);
+    api.method(codegen_vt, api.intern("managedMethodChanged:on:"), &mManagedMethodChanged);
+    api.method(codegen_vt, api.intern("beginImageDispatchRecovery"), &mBeginImageDispatchRecovery);
+    api.method(codegen_vt, api.intern("endImageDispatchRecovery"), &mEndImageDispatchRecovery);
     api.method(codegen_vt, api.intern("compileImageCode:"), &mCompileImageCode);
     api.method(codegen_vt, api.intern("replayMethods"), &mReplayMethods);
     api.method(codegen_vt, api.intern("replayAliens"), &mReplayAliens);
@@ -3143,7 +3287,11 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(reflect_vt, api.intern("defineMethod:on:as:source:"), &mDefineMethodSourced);
     api.method(reflect_vt, api.intern("defineMethod:on:as:doc:source:"), &mDefineMethodDocSourced);
     api.method(reflect_vt, api.intern("vtableOf:"), &mVtableOf);
+    api.method(reflect_vt, api.intern("exportVtableOf:as:"), &mExportVtableOfAs);
+    api.method(reflect_vt, api.intern("exportObject:as:"), &mExportObjectAs);
     api.method(reflect_vt, api.intern("nameOf:"), &mNameOf);
+
+    _ = api.send(g_store, api.intern("setMethodMutationObserver:"), &[_]Oop{codegen_obj}, 1);
 
     if (!reloading) {
         _ = api.exportObj("CodegenVt", codegen_vt);

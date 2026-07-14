@@ -19,6 +19,8 @@ const codegen = @import("codegen.zig");
 // tests that need it eval this source on the bare floor — which is exactly the
 // driver's from-zero fallback path, so the test doubles as its proof.
 const MODULES_SRC = @embedFile("modules.birnam");
+const STDLIB_SRC = @embedFile("stdlib.birnam");
+const COMPILED_UNIT_SRC = @embedFile("compiled-unit.birnam");
 const err_mod = @import("error.zig");
 const relational = @import("relational.zig");
 const alien = @import("alien.zig");
@@ -305,6 +307,22 @@ fn setupWithCodegen() *idapi.IdApi {
     return api;
 }
 
+fn setupWithCompiledUnits() *idapi.IdApi {
+    const api = setupWithCodegen();
+    err_mod.bringUp(api);
+    relational.bringUp(api);
+    const Codegen = api.import("Codegen").?;
+    const Store = api.import("Store").?;
+    const sources = [_][]const u8{ MODULES_SRC, STDLIB_SRC, COMPILED_UNIT_SRC };
+    const names = [_][*:0]const u8{ "modules", "stdlib", "compiledUnit" };
+    for (sources, names) |src, name| {
+        const result = api.send(Codegen, api.intern("eval:"), &.{api.mkString(src.ptr, src.len)}, 1);
+        std.debug.assert(result != api.nilObj);
+        _ = api.send(Store, api.intern("assert:attr:value:"), &.{ api.intern("__modsrc__"), api.intern(name), api.mkString(src.ptr, src.len) }, 3);
+    }
+    return api;
+}
+
 test "round-trip: a user method's compiled code is mapped (default), replayed (--rebuild)" {
     const api = setupWithCodegen();
     const Codegen = api.import("Codegen").?;
@@ -342,6 +360,78 @@ test "round-trip: a user method's compiled code is mapped (default), replayed (-
     try std.testing.expect(!image.mappedCode());
     _ = api.send(Codegen, api.intern("replayMethods"), &.{}, 0); // what runImage does on the false branch
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api.mkSmallInt(5), "quad", &.{})));
+}
+
+test "active candidate image boots as an honest composed generation" {
+    const api = setupWithCompiledUnits();
+    const Codegen = api.import("Codegen").?;
+    const Globals = api.import("Globals").?;
+    const Store = api.import("Store").?;
+    const System = api.import("System").?;
+    const CompiledUnit = gAt(Globals, "CompiledUnit");
+    try std.testing.expect(CompiledUnit != api.nilObj);
+    const base = "[Reflect defineMethod: #cuImageProbe on: Integer as: [:self | 41]]";
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(base.ptr, base.len)}, 1);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const candidate_path = try std.fs.path.join(a, &.{ dir, "image-candidate.dylib" });
+    defer a.free(candidate_path);
+    const image_path = try std.fs.path.join(a, &.{ dir, "active.image" });
+    defer a.free(image_path);
+    const composed_path = try std.fs.path.join(a, &.{ dir, "composed.image" });
+    defer a.free(composed_path);
+
+    const candidate_source = "[Module named: #cuImage requires: #[]]; [Reflect defineMethod: #cuImageProbe on: Integer as: [:self | 410]]";
+    const compiled = api.send(CompiledUnit, api.intern("compile:named:output:"), &.{
+        api.mkString(candidate_source.ptr, candidate_source.len), api.intern("cuImage"), api.mkString(candidate_path.ptr, candidate_path.len),
+    }, 3);
+    try std.testing.expect(api.send(compiled, api.intern("isError"), &.{}, 0) != api.trueObj);
+    const origin = api.send(CompiledUnit, api.intern("open:"), &.{api.mkString(candidate_path.ptr, candidate_path.len)}, 1);
+    try std.testing.expect(api.send(origin, api.intern("map"), &.{}, 0) == origin);
+    try std.testing.expect(api.send(origin, api.intern("activate"), &.{}, 0) == origin);
+    try std.testing.expectEqual(@as(i64, 410), api.smallIntValue(send(api.mkSmallInt(3), "cuImageProbe", &.{})));
+    try std.testing.expect(image.saveImage(image_path));
+
+    // Compatible boot maps the composed image code. Boot orchestration then
+    // turns the saved process-local origin into provenance and reconstructs one
+    // non-rollbackable ledger owner from the mapped direct bindings.
+    try std.testing.expect(image.loadImage(image_path));
+    try std.testing.expect(image.mappedCode());
+    const LoadedCompiledUnit = gAt(Globals, "CompiledUnit");
+    // Boot composition runs before public activeFor:/state reconciliation: the
+    // saved process-local pointer ledger belongs to the old executable owner.
+    const loaded_origin = api.send(Store, api.intern("currentValue:attr:"), &.{ api.intern("cuImage"), api.intern("activeCompiledUnit") }, 2);
+    try std.testing.expect(loaded_origin != api.nilObj);
+    const identity = api.send(System, api.intern("imageCompositionIdentity"), &.{}, 0);
+    const composed = api.send(LoadedCompiledUnit, api.intern("reconcileImageComposition:"), &.{identity}, 1);
+    try std.testing.expect(composed != api.nilObj);
+    const loaded_origin_state = api.send(Store, api.intern("currentValue:attr:"), &.{ loaded_origin, api.intern("state") }, 2);
+    try std.testing.expect(loaded_origin_state == api.intern("historical"));
+    try std.testing.expect(api.send(Store, api.intern("currentValue:attr:"), &.{ loaded_origin, api.intern("composedInto") }, 2) == composed);
+    try std.testing.expect(api.send(Store, api.intern("currentValue:attr:"), &.{ composed, api.intern("state") }, 2) == api.intern("active"));
+    try std.testing.expect(api.send(Store, api.intern("currentValue:attr:"), &.{ composed, api.intern("rollbackAvailable") }, 2) == api.falseObj);
+    try std.testing.expect(api.send(LoadedCompiledUnit, api.intern("activeFor:"), &.{api.intern("cuImage")}, 1) == composed);
+    try std.testing.expectEqual(@as(i64, 410), api.smallIntValue(send(api.mkSmallInt(3), "cuImageProbe", &.{})));
+    try std.testing.expect(image.saveImage(composed_path));
+
+    // Forced rebuild replays the same normalized method-operation stream, then
+    // reaches the same composition/provenance state without stale rollback data.
+    const rebuilt = api.send(System, api.intern("loadImage:rebuild:"), &.{ api.mkString(image_path.ptr, image_path.len), api.trueObj }, 2);
+    try std.testing.expect(rebuilt == api.falseObj);
+    _ = api.send(Codegen, api.intern("replayMethods"), &.{}, 0);
+    const RebuiltCompiledUnit = gAt(Globals, "CompiledUnit");
+    const rebuilt_identity = api.send(System, api.intern("imageCompositionIdentity"), &.{}, 0);
+    const rebuilt_composed = api.send(RebuiltCompiledUnit, api.intern("reconcileImageComposition:"), &.{rebuilt_identity}, 1);
+    try std.testing.expect(rebuilt_composed != api.nilObj);
+    try std.testing.expect(api.send(Store, api.intern("currentValue:attr:"), &.{ rebuilt_composed, api.intern("rollbackAvailable") }, 2) == api.falseObj);
+    try std.testing.expectEqual(@as(i64, 410), api.smallIntValue(send(api.mkSmallInt(3), "cuImageProbe", &.{})));
+    // The remaining tests reuse this process as independent scenarios.
+    codegen.beginImageDispatchRecovery();
+    codegen.endImageDispatchRecovery();
 }
 
 test "compiled-unit integrity rejects corruption before restoring image data" {

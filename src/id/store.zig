@@ -24,6 +24,21 @@ const idapi = @import("idapi.zig");
 const Oop = idapi.Oop;
 const ca = std.heap.c_allocator;
 
+var method_mutation_observer: Oop = null;
+
+/// Register the one mechanism-level observer of completed supported MOP writes.
+/// This stays private to the Zig modules rather than widening IdApi; raw floor
+/// mutation deliberately bypasses it and is discovered by lazy reconciliation.
+pub fn setMethodMutationObserver(observer: Oop) void {
+    method_mutation_observer = observer;
+}
+
+fn mSetMethodMutationObserver(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    setMethodMutationObserver(args[0]);
+    return self;
+}
+
 /// Whether a fact asserts a value or retracts one (Datomic-style op-tagging).
 const Op = enum(u8) { assert, retract };
 
@@ -807,6 +822,8 @@ fn mTrackedAddMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     if (currentValueRaw(st, vt, sel)) |old| retractHeld(st, vt, sel, old);
     g_api.method(vt, sel, @ptrCast(@alignCast(m.?))); // 1. authoritative dict
     _ = g_api.send(self, s_assert, &[_]Oop{ vt, sel, m }, 3); // 2. derived fact
+    if (method_mutation_observer != null)
+        _ = g_api.send(method_mutation_observer, g_api.intern("managedMethodChanged:on:"), &[_]Oop{ sel, vt }, 2);
     return self;
 }
 
@@ -837,6 +854,8 @@ fn mTrackedRemoveMethod(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oo
     if (currentValueRaw(st, vt, sel)) |old| retractHeld(st, vt, sel, old);
     const removed = g_api.send(vt, g_api.intern("removeMethod:"), &[_]Oop{sel}, 1);
     std.debug.assert(removed != null);
+    if (method_mutation_observer != null)
+        _ = g_api.send(method_mutation_observer, g_api.intern("managedMethodChanged:on:"), &[_]Oop{ sel, vt }, 2);
     return self;
 }
 
@@ -1058,6 +1077,7 @@ fn mImageLoadEnd(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// id environment (`import`/`export`) — the store IS a libid object, so the id
 /// namespace is its natural persistence, not the opaque module-state channel.
 pub fn bringUp(api: *idapi.IdApi) void {
+    method_mutation_observer = null;
     g_api = api;
     s_cardinality = api.intern("cardinality");
     s_one = api.intern("one");
@@ -1113,6 +1133,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(store_vt, s_cellFor, &mCellFor);
     api.method(store_vt, s_addMethodOn, &mTrackedAddMethod);
     api.method(store_vt, s_removeMethodOn, &mTrackedRemoveMethod);
+    api.method(store_vt, api.intern("setMethodMutationObserver:"), &mSetMethodMutationObserver);
     api.method(store_vt, s_retract, &mRetract);
     api.method(store_vt, s_new, &mNew);
     api.method(store_vt, s_attrCount, &mAttrCount);

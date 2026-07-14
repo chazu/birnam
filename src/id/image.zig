@@ -57,14 +57,15 @@ const ARCH_TAG: u32 = switch (builtin.cpu.arch) {
 /// idea). Folds a manual ABI version with the `birnam_*` shim NAME list (kept in
 /// sync with tcc.zig + codegen). On load a mismatch means compiled sections can't
 /// be trusted → replay (slice 4); the data sections stay portable regardless.
-const RUNTIME_ABI_VERSION: u32 = 1;
+const RUNTIME_ABI_VERSION: u32 = 2;
 const shim_names = [_][]const u8{
-    "birnam_send",          "birnam_intern",        "birnam_mkSmallInt",
-    "birnam_smallIntValue", "birnam_mkFloat",       "birnam_floatValue",
-    "birnam_mkString",      "birnam_nil",           "birnam_true",
-    "birnam_false",         "birnam_objectVt",      "birnam_proto",
-    "birnam_method",        "birnam_alloc",         "birnam_cstr",
-    "birnam_free_cstr",     "birnam_layoutAllOops", "birnam_global",
+    "birnam_send",                       "birnam_intern",        "birnam_mkSmallInt",
+    "birnam_smallIntValue",              "birnam_mkFloat",       "birnam_floatValue",
+    "birnam_mkString",                   "birnam_nil",           "birnam_true",
+    "birnam_false",                      "birnam_objectVt",      "birnam_proto",
+    "birnam_method",                     "birnam_alloc",         "birnam_cstr",
+    "birnam_free_cstr",                  "birnam_layoutAllOops", "birnam_global",
+    "birnam_candidate_validate_binding",
 };
 pub fn abiHash() u64 {
     var h: u64 = 0xcbf29ce484222325; // FNV-1a
@@ -1060,6 +1061,11 @@ pub fn loadImage(path: []const u8) bool {
     defer ca.free(bytes);
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
+    const codegen = g_api.import("Codegen");
+    if (codegen) |cg| _ = g_api.send(cg, g_api.intern("beginImageDispatchRecovery"), &[_]Oop{}, 0);
+    defer {
+        if (codegen) |cg| _ = g_api.send(cg, g_api.intern("endImageDispatchRecovery"), &[_]Oop{}, 0);
+    }
     g_mapped_code = false;
     g_loaded_code_units = 0;
     g_code_composition = 0;
