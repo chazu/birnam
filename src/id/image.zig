@@ -1,4 +1,4 @@
-//! The image — the running system made durable (docs/40).
+//! Image persistence — atomic full saves, mapped/source-rebuilt boots, baked apps, and LiveModules worker baselines (docs/40).
 //!
 //! An image is a live native system made durable: its compiled units are mapped
 //! back as the primary executable layer, while durable store state and selected
@@ -633,7 +633,9 @@ fn captureCode(buf: *Buf, digest: *[64]u8) CodeCapture {
 /// Serialize the live system to `path`: first capture its primary compiled unit,
 /// then collect durable data and selected meta-state. The completed image is
 /// published with one rename only after every durable value has an encoding or a
-/// registered recovery path.
+/// registered recovery path. File-backed live evolution normally reaches this
+/// primitive through `LiveModules saveBaseline:`, whose host intent first rejects
+/// inert staged candidates and reconciles the active dispatch generation.
 pub fn saveImage(path: []const u8) bool {
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
@@ -1253,7 +1255,10 @@ fn pathArg(o: Oop, len: *usize) ?[*]const u8 {
 /// `[System saveImage: path]` — serialize the running native system to `path`.
 /// Answers self only after every durable value is encoded or has a registered
 /// recovery path; answers nil on rejection or I/O failure. Inspect the structured
-/// outcome through `[System imageSaveReport]`.
+/// outcome through `[System imageSaveReport]`. This is the low-level full-save
+/// primitive; after file-backed live evolution, `[LiveModules saveBaseline: path]`
+/// adds staged-candidate, reconciliation, host-quiescence, and console-capability
+/// guards before calling it.
 fn sysSaveImage(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     var len: usize = 0;

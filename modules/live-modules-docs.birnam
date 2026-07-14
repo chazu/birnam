@@ -1,6 +1,6 @@
 // Reference registrations kept outside the executable policy source.
 
-[Doc module: #liveModules is: "Exact file-backed source revisions, inert candidate inspection, host-boundary activation, rollback, and full worker-image baselines."];
+[Doc module: #liveModules is: "Exact file-backed source revisions, inert candidate inspection, host-boundary activation and rollback, plus guarded full-image worker baselines with mapped/rebuilt recovery."];
 
 [Doc for: #currentGeneration in: #liveModules says:
   "The single current DispatchGeneration, or nil before G0 publication."];
@@ -25,6 +25,8 @@
 [Doc for: #rollback in: #liveModules says:
   "Answer a rollback EvolutionIntent for the current generation delta, or #rollbackUnavailable."];
 [Doc for: #saveBaseline: in: #liveModules says:
-  "Answer a host-fulfilled intent for a reconciled full-image baseline; append persistence is not used."];
+  "Answer an EvolutionIntent for a guarded full-image worker baseline. Host fulfillment refuses inert staged candidates, reconciles managed dispatch, detaches process-local REPL console handles for the save, and atomically writes the active generation and exact source map. The image supports equivalent mapped and source-rebuilt boot and can be passed to Isolate start:selector:image:. Append persistence and process-local rollback capabilities are not carried into the baseline."];
 [Doc for: #durabilityStatus in: #liveModules says:
-  "Reconcile active candidates and report #fullImageReady with the current base digest, or the kinded drift/error."]
+  "Preflight a live baseline: reject with #stagedCandidatesPresent while any inert edit remains, reconcile all managed candidates, validate the current generation, then report #fullImageReady with its base digest or return the original kinded drift/error."];
+[Doc for: #apiVersion in: #liveModules says:
+  "The implemented live-module workflow level, currently #L1b."]

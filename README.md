@@ -94,6 +94,15 @@ Inside birnam, save with `[System saveImage: path]`. A global `main` block makes
 an image an application entry point; [examples/app.birnam](examples/app.birnam)
 shows saving and baking one.
 
+After file-backed live evolution, use `:live save PATH` (or fulfill
+`[LiveModules saveBaseline: path]`) to create a guarded worker baseline. This
+refuses unactivated staged candidates, reconciles managed dispatch, preserves the
+active generation's exact source authority, and produces an image that behaves
+the same under mapped boot and `--rebuild`. The same image can be passed directly
+to `Isolate start:selector:image:`. See the [image guide](docs/guide/04-images.md),
+[live-module guide](docs/guide/07-live-modules.md), and
+[runnable baseline example](examples/live-modules/README.md).
+
 Persistence is intentionally not a claim that every process value can be
 serialized. Saving is atomic and rejects durable values without either a
 portable encoding or a registered recovery path; inspect

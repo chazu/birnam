@@ -21,6 +21,8 @@ unset BIRNAM_MODULES_DIR BIRNAM_LIB_DIR BIRNAM_ID_DYLIB
 "$bin" docgen reference.html >/dev/null
 grep -q 'id="guide-01-language"' reference.html
 grep -q 'id="guide-04-images"' reference.html
+grep -q 'Saving after live evolution' reference.html
+grep -q 'guarded full-image worker baseline' reference.html
 "$bin" --lsp </dev/null >/dev/null
 
 echo "install-smoke: doc, Zig docs, guide docgen, and LSP passed"

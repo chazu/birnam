@@ -25,6 +25,50 @@ Closures still cannot serialize as ordinary values. Keep shared blocks in method
 that answer fresh blocks, or in top-level `let` globals whose source-backed recovery
 contract can rederive them.
 
+### Saving after live evolution
+
+`System saveImage:` is the low-level full-image operation for a system that is
+already ready to become durable. After editing through `LiveModules`, prefer the
+guarded host workflow:
+
+```text
+:live save /tmp/pricing-worker.image
+```
+
+The programmatic form produces an `EvolutionIntent`, which the host fulfills at
+the same top-level quiescent boundary used for activation and rollback:
+
+```text
+[LiveModules saveBaseline: "/tmp/pricing-worker.image"]
+```
+
+That expression answers the intent; a console/host integration fulfills it only
+after the current turn returns. Ordinary running code does not acquire a bypass
+around the quiescence guard.
+
+Before it calls `System saveImage:`, the facade:
+
+- refuses to save while any inert candidate remains staged, so an unactivated
+  edit cannot be mistaken for durable behavior;
+- reconciles every managed compiled unit and rejects drift or an invalid current
+  generation;
+- temporarily detaches REPL console capabilities, then restores them in the
+  saving process; and
+- performs a full atomic image replacement—never an append or partial
+  source/fact/code journal.
+
+Success answers a report containing `#status -> #saved`, the output `#path`, the
+active generation's `#baseDigest`, and its `#sourceCount`. The image contains the
+activated generation and its exact authored source map. Staged candidates and
+process-local rollback capabilities do not become portable merely because an
+image was saved.
+
+The resulting file is a worker baseline: normal boot may map its checked code,
+`--rebuild` evaluates the same complete source documents, and
+`Isolate start:selector:image:` can start a worker directly from it. The
+[live-module example](../../examples/live-modules/README.md) exercises all three
+paths.
+
 ## Booting
 
 ```text
@@ -48,6 +92,10 @@ What comes back:
 - module singletons and Alien FFI wrappers, with external capabilities replayed;
 - source-backed block globals, rederived after data and dispatch are restored.
 
+For a baseline saved through `LiveModules`, both boot paths also restore the same
+active generation digest and revision digests. That identity is what makes the
+next `fileOut:to:` export and divergence check meaningful after restart.
+
 ## Main convention
 
 If global `main` is a block, image boot runs it instead of opening the REPL:
@@ -58,7 +106,8 @@ let main := [| [System println: banner]];
 [System saveImage: "/tmp/app.image"]
 ```
 
-Module method changes should be activated through `CompiledUnit` before saving;
+File-backed module changes should be staged and activated through `LiveModules`
+before saving. `CompiledUnit` remains the lower-level candidate mechanism;
 ordinary direct method edits are rejected while the runtime is running.
 
 ## Baking
