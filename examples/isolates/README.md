@@ -1,0 +1,24 @@
+# Isolate examples
+
+These examples build one worker image and exercise I1a's blocking process-isolate
+API with application-defined Birnam code.
+
+From the repository root:
+
+```sh
+zig build
+bash examples/isolates/run.sh
+```
+
+The examples cover:
+
+- `copied-values.birnam` — nested maps/vectors and scalar values crossing the
+  wire boundary;
+- `two-workers.birnam` — two independent, single-flight handles;
+- `failures.birnam` — structured application failures, continued use after an
+  application error, and a zero-budget deadline expiring before transmission
+  without consuming the worker.
+
+`build-image.birnam` loads `worker.birnam` before initializing the current
+generation, then saves `/tmp/birnam-isolate-example.image`. Coordinator examples
+start clean processes from that explicit image. The runner removes it on exit.

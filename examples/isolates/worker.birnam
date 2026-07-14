@@ -1,0 +1,14 @@
+[Module named: #isolateExampleWorker requires: #[#stdlib #isolate]];
+
+let IsolateExampleWorker := [Object clone];
+
+[Reflect defineMethod: #handle: on: IsolateExampleWorker as: [:self :request |
+  let operation := [request at: #operation];
+  [[operation = #echo]
+    ifTrue: [| {#worker -> #echo, #value -> [request at: #value]}]
+    ifFalse: [|
+      [[operation = #sum]
+        ifTrue: [|
+          let values := [request at: #values];
+          {#worker -> #sum, #result -> [values inject: 0 into: [:total :each | [total + each]]]}]
+        ifFalse: [| [Error kind: #unknownOperation message: "expected #echo or #sum"]]]]]]]

@@ -25,6 +25,10 @@ expires. `request:timeout:` takes a timeout in milliseconds. `request:` uses the
 default five-second service budget. A handle permits one request at a time;
 several independent handles may coexist.
 
+Runnable examples live in `examples/isolates/`. From the repository root, run
+`bash examples/isolates/run.sh` to build a worker image and exercise copied
+values, concurrent handles, application failures, and deadline behavior.
+
 Transferable values are `nil`, booleans, signed 64-bit integers, floats, strings,
 symbols, vectors, and maps composed from those values. Map keys are limited to
 `nil`, booleans, integers, strings, and symbols. The wire codec rejects cycles,

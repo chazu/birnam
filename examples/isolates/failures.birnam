@@ -1,0 +1,20 @@
+// Application failures and pre-transmission timeouts leave the worker usable.
+let worker := [Isolate
+  start: #IsolateExampleWorker selector: #handle:
+  image: "/tmp/birnam-isolate-example.image"];
+
+let applicationFailure := [worker request: {#operation -> #notSupported}];
+[System println: ["application class: " , [[applicationFailure class] printString]]];
+[System println: ["application kind:  " , [[applicationFailure kind] printString]]];
+
+let recovered := [worker request: {#operation -> #sum, #values -> #[20 22]}];
+[System println: ["same worker after error: " , [recovered printString]]];
+let timeoutFailure := [worker request:
+  {#operation -> #sum, #values -> #[1 2 3]}
+  timeout: 0];
+[System println: ["timeout class: " , [[timeoutFailure class] printString]]];
+[System println: ["handle state:  " , [[worker state] printString]]];
+
+let afterTimeout := [worker request: {#operation -> #echo, #value -> "still ready"}];
+[System println: ["same worker after timeout: " , [afterTimeout printString]]];
+[worker stop]

@@ -1,0 +1,14 @@
+// I1a is single-flight per handle, but independent worker handles may coexist.
+let left := [Isolate
+  start: #IsolateExampleWorker selector: #handle:
+  image: "/tmp/birnam-isolate-example.image"];
+let right := [Isolate
+  start: #IsolateExampleWorker selector: #handle:
+  image: "/tmp/birnam-isolate-example.image"];
+
+let leftReply := [left request: {#operation -> #sum, #values -> #[1 2 3]}];
+let rightReply := [right request: {#operation -> #sum, #values -> #[10 20 30]}];
+[System println: ["left:  " , [leftReply printString]]];
+[System println: ["right: " , [rightReply printString]]];
+[left stop];
+[right stop]

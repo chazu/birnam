@@ -1,0 +1,20 @@
+// Maps, vectors, strings, symbols, numbers, booleans, and nil cross by value.
+let worker := [Isolate
+  start: #IsolateExampleWorker
+  selector: #handle:
+  image: "/tmp/birnam-isolate-example.image"];
+
+[[worker isError]
+  ifTrue: [| [System println: [worker message]]]
+  ifFalse: [|
+    let echoed := [worker request:
+      {#operation -> #echo,
+       #value -> {#name -> "Birnam", #flags -> #[true false nil], #ratio -> 1.5}}
+      timeout: 5000];
+    [System println: [echoed printString]];
+
+    let summed := [worker request:
+      {#operation -> #sum, #values -> #[3 5 8 13 21]}
+      timeout: 5000];
+    [System println: [summed printString]];
+    [worker stop]]]

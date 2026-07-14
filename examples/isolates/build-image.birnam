@@ -1,0 +1,9 @@
+// Stage the worker module before G0 is sealed, then save its complete generation.
+[System load: "examples/isolates/worker.birnam"];
+[DispatchGeneration initializeCurrent];
+
+let imagePath := "/tmp/birnam-isolate-example.image";
+let saved := [System saveImage: imagePath];
+[[saved isNil]
+  ifTrue: [| [System println: [[System imageSaveReport] detail]]]
+  ifFalse: [| [System println: ["saved worker image: " , imagePath]]]]
