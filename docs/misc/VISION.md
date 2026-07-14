@@ -12,6 +12,18 @@ A **system** is a binary that runs as an executable OR loads as a library, and w
 > contract. Treat the tenets below as historical mechanisms and aspirations, not
 > as the authority model for the running system.
 
+> **Current near-term direction (2026-07-14):** implementation proceeds as
+> **L1a generation authority → I1a blocking single-worker isolates → L1b
+> file-backed image baselines → I1b single-worker replacement → L2 blocking
+> mailbox-safe rollout**. This separates executable authority, transport,
+> authoring workflow, replacement policy, and live rollout into independently
+> testable steps. L2 retains single-flight, per-worker semantics with no pool-wide
+> atomicity or asynchronous completion. See
+> [49 — Live Module Evolution](../design/49-live-module-evolution.md) and
+> [48 — Concurrency](../design/48-concurrency-reactors-and-isolates.md). The
+> concrete delivery plan is
+> [50 — Five-Phase Implementation Plan](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
+
 ## Core Tenets
 
 0. **The image is a database.** Code, data, history, modules, and schema all live as facts `[entity attribute value tx op]` in persistent (HAMT/RRB) indexes. Everything else in this document follows from this.
@@ -356,4 +368,6 @@ The metacircular property holds: you can rewrite `bind` while the system runs. Y
 
 ## Roadmap
 
-See `docs/archive/ROADMAP.md` (archived — a historical phase ledger through Phase 15) for the phase-by-phase work sequence and reasoning. This document is the design; the roadmap was the original implementation plan.
+See [plan 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md)
+for the current five-phase implementation sequence. `docs/archive/ROADMAP.md`
+remains the historical phase ledger through Phase 15; it is not the active plan.

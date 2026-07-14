@@ -26,6 +26,57 @@ Convention: `[ ]` open, `[~]` in progress, `[x]` done (with commit/date). Severi
 
 ---
 
+## Next Architecture Sequence
+
+Detailed increments, current file ownership, narrow test commands, and exit gates
+for all five tasks live in
+[design 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
+
+- [ ] **L1a — generation authority and image coherence** — replace per-name
+  executable authority with one current dispatch generation per runtime; add
+  canonical durable-module identity normalization, immutable source revisions,
+  sealed source-map/base digests, expected-base synchronous commit guarded by a
+  host-owned quiescent runtime phase, exact local rollback, atomic legacy-authority
+  cutover, dependency-topological image input, and atomic full-image save/recovery.
+  Complete when [L1a
+  verification](../design/49-live-module-evolution.md#131-l1a--generation-authority-and-image-coherence)
+  passes with no queue, promise, reactor, mailbox, or file UX.
+- [ ] **I1a — blocking single-worker isolate substrate** — add a clean worker boot
+  mode that suppresses ordinary `main`/REPL; implement bounded wire-v1 framing and
+  the complete tagged copied-value codec; let the substrate own the receive loop;
+  support exactly one deadline-bearing blocking request; distinguish application,
+  protocol, timeout, transport, and exit failures; and own channel closure,
+  bounded termination, orphan cleanup, and exactly-once reaping. Prepared
+  candidates, Oops, native pointers, pools, promises, and replacement policy
+  remain absent. See
+  [design 48](../design/48-concurrency-reactors-and-isolates.md#9-interleaved-implementation-sequence).
+- [ ] **L1b — file-backed revision and image-baseline workflow** — add canonical
+  candidate-safe document import/export, exact authored text, idempotence and
+  divergence, dependency errors, staged inspection, immediate top-level
+  activation over L1a, and full saved worker baselines. Complete when [L1b
+  verification](../design/49-live-module-evolution.md#132-l1b--file-backed-revision-and-image-baseline-workflow)
+  passes without initialization, migration, file watching, or async activation.
+- [ ] **I1b — single-worker rolling replacement** — while idle worker A remains
+  selected, start B from an L1b baseline, wait for ready, run one bounded health
+  `request:timeout:`, switch the selected reference between calls, then stop and
+  reap A.
+  Every B failure leaves A selected. Pools, concurrent routing, busy draining,
+  retry, and reversible health effects remain later policy.
+- [ ] **L2 — blocking mailbox-safe live rollout** — transfer canonical
+  source/artifact identity plus a value-like base digest in one blocking control
+  request; bind preparation to the worker's local generation; activate only
+  between requests; and return an independent receipt, with rollback as a later
+  blocking request while locally valid. Complete when [L2 verification](../design/49-live-module-evolution.md#133-l2--blocking-mailbox-safe-live-rollout)
+  passes without pool-wide atomicity, concurrent rollout, or promises.
+
+The minimal reactor remains orthogonal and may be inserted before I1a when
+concurrent I/O is the immediate product target. Standard initialization,
+image-native source editing, migration, structured operations, richer supervision,
+append persistence, pools, and multi-module or cross-isolate atomic activation
+remain deferred until these five slices select the next failure model.
+
+---
+
 ## Tooling
 
 - [x] **emacs mode** (2026-06-18) — `birnam-mode` in `tools/emacs/birnam-mode.el`: font-lock (keyword selectors, symbols `#x`, query vars `?x`, block args `:x`, `:=`/`|>`, `//` comments that don't swallow division, literals), bracket-depth indentation, comint REPL (`run-birnam`), eval-region/eval-buffer (file in a temp unit via `:in`) + eval-line. Byte-compiles clean; verified via the emacs MCP. Deeper `:`-command awareness in the REPL buffer still open.

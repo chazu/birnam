@@ -129,6 +129,12 @@ compatible boot maps the image unit without recompiling. See
 [45 — Compiled Units](45-compiled-units.md) for the authority and integrity
 contract.
 
+This paragraph describes the implemented pre-L1a reader. The accepted next step
+makes the sealed current generation's ordered source map authoritative and retains
+`__modsrc__` only as a compatibility mirror; the reader migration is part of
+[plan 50's L1a](50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence),
+not a later cleanup.
+
 ## `birnam.toml` — runtime configuration
 
 `Config` (`config.birnam`, `requires: #[#toml]`) discovers the nearest

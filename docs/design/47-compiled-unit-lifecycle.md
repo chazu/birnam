@@ -10,6 +10,11 @@
 > implementable live-reload boundary. Governed by
 > [42 — Object Canonical, Relational Derived](42-object-canonical-relational-derived.md),
 > especially the Store-arbitrated MOP and exact-removal codifications.
+>
+> **Forward boundary:** this page remains the implemented per-name lifecycle.
+> [49 — Live Module Evolution](49-live-module-evolution.md) deliberately replaces
+> its publication authority with one runtime-wide generation in L1a; the concrete
+> migration is [plan 50](50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).
 
 ## Decision in one paragraph
 

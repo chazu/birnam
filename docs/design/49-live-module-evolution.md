@@ -1,718 +1,763 @@
-# 49 — Live Module Evolution: Source Revisions, Initialization, and Migration
+# 49 — Live Module Evolution: Source Revisions and Dispatch Generations
 
-> **Status:** Exploration, 2026-07-13, rev. 2 after
-> [adversarial review](49a-live-module-evolution-adversarial-review.md). This
-> document extends the implemented `CompiledUnit` lifecycle into a project-level
-> development model. Rev. 2 corrects initializer ordering, source publication,
-> canonical identity, image composition, migration rollback, persistence
-> terminology, and implementation slicing. It records the current direction, not
-> a final interface or implementation plan.
+> **Status:** Exploration, 2026-07-14, rev. 4, accepted with corrections by the
+> [combined adversarial review](48a-live-evolution-isolate-combined-adversarial-review.md).
+> Rev. 3, accepted by the second
+> [adversarial review](49b-live-module-evolution-second-adversarial-review.md),
+> replaced per-module active-generation state with one active
+> dispatch generation per runtime, narrowed the first authoring workflow to
+> file-backed source revisions and atomic full-image save, and made
+> reactor/isolate safe points
+> an explicit boundary. Rev. 4 splits that work around the blocking isolate
+> substrate as L1a, L1b, and L2. Initialization, image-native source patching,
+> migration, and append persistence are deferred.
 >
 > Builds on [40 — The Image](40-the-image.md),
 > [43 — Modules and the Self-Hosted Layer](43-modules-and-config.md),
-> [45 — Compiled Units Are Primary](45-compiled-units.md), and
-> [47 — CompiledUnit Lifecycle](47-compiled-unit-lifecycle.md).
+> [45 — Compiled Units Are Primary](45-compiled-units.md),
+> [47 — CompiledUnit Lifecycle](47-compiled-unit-lifecycle.md), and
+> [48 — Concurrency: Reactors, Isolates, and Structured Operations](48-concurrency-reactors-and-isolates.md).
+> The first review is retained as
+> [49a — Adversarial Review: Live Module Evolution](49a-live-module-evolution-adversarial-review.md).
 
 ## 1. The question
 
-Birnam now has a first-class `CompiledUnit` lifecycle for compiling, inspecting,
-mapping, validating, activating, superseding, and rolling back native dispatch
-generations. The remaining question is how that mechanism becomes the normal
-development workflow for a real project.
-
-The intended experience is:
+Birnam has an implemented `CompiledUnit` lifecycle for inspecting, mapping,
+validating, activating, and rolling back a native dispatch delta. The next useful
+step is smaller than arbitrary module reload:
 
 ```text
-edit module source
-→ prepare a candidate generation
-→ inspect or immediately activate it
-→ keep the running objects and application state
-→ test the new behavior
-→ explicitly persist it, or roll back
+edit a candidate-safe module file
+→ prepare an inert candidate against the current runtime generation
+→ inspect it or request immediate activation
+→ activate it at a runtime safe point
+→ keep the running heap and application state
+→ save a new image explicitly, or roll back while the capability remains valid
 ```
 
-This workflow must support ordinary source files without making file-based
-development second-class. It must also preserve image-native editing: code may be
-changed reflectively inside the running system and written to a file later.
+This design answers how source and dispatch authority move together. It does not
+make initializer effects, migration, I/O, FFI, suspended work, or a pool of
+isolates part of the dispatch transaction.
 
-The design must distinguish exact dispatch rollback from initialization,
-migration, I/O, FFI, and other effects that cannot honestly participate in the
-same transaction.
+## 2. Governing simplification
 
-## 2. Existing mechanism
+**One Birnam runtime has one active dispatch generation.**
 
-The hard runtime pieces already exist:
-
-- candidate source compiles to a relocatable native artifact and pointer-free
-  envelope;
-- opening verifies the source, artifact, checksum, platform, ABI, dependencies,
-  and declarative method operations without mapping code;
-- dependencies are prepared explicitly through ordinary module loading;
-- mapping is an explicit trusted-native step that does not publish dispatch;
-- validation checks the exact live base;
-- activation atomically publishes additions, replacements, and removals for one
-  named generation;
-- rollback restores the exact predecessor while the process-local capability
-  remains valid;
-- ordinary method edits produce observable drift and may be adopted when their
-  source is portable; and
-- images compose the active behavior and retain portable source for recovery.
-
-The missing module is project-level policy: source revision ownership, file
-import/export, initialization, candidate presentation, migration, and explicit
-persistence.
-
-## 3. Design direction
-
-The leading direction rests on these decisions:
-
-1. Files and image-native editing produce revisions of the same first-class module
-   source. Neither silently overwrites the other.
-2. Immediate and staged activation are two policies over the same `CompiledUnit`
-   lifecycle.
-3. One source module may contain both initialization and reloadable definitions;
-   it does not need to be split into two physical modules.
-4. Migration is optional and orthogonal. A separate migration module may be
-   invoked from initialization or from the live-evolution workflow, but migration
-   is not part of the dispatch transaction.
-5. The declared `Module named:` symbol is the canonical identity for a
-   project-managed module. File and artifact paths are origins only.
-6. A prepared compiled unit carries immutable source revisions keyed by canonical
-   module name. Active source is derived through `activeCompiledUnit`; it is not a
-   separately published module cell.
-7. Normal image-native editing is source-first. Immediate reflective mutation is
-   an escape hatch that requires ownership-aware `adoptLive`.
-8. Module-level programs execute dependency-first during fresh load, rebuild, and
-   recovery.
-9. Starting migration closes ordinary application rollback before effects begin,
-   though native dispatch rollback remains an explicitly unsafe mechanism.
-10. Activation controls live authority; `saveImage:` and `appendImage:` control
-    durability. There is no first-class acceptance state in the initial design.
-
-## 4. Source authority: revisions, not files versus images
-
-Choosing either the filesystem or the image as the sole source of truth would
-discard an important use case.
-
-- If files are uniquely authoritative, reflective editing becomes a temporary
-  mutation that is easy to lose and difficult to compose with images.
-- If the image is uniquely authoritative, ordinary editors, version control,
-  build tools, diffs, and source-oriented project habits become awkward.
-
-Birnam should instead separate three authorities:
-
-- **Live dispatch is authoritative for current behavior.**
-- **The active source revision is authoritative for rebuilding that behavior.**
-- **A source file is an editable representation of a revision.** It may be
-  current, ahead, stale, or divergent.
-
-### 4.1 Revision model
-
-Each module source revision should record enough information to answer:
+Modules remain the units of source ownership, dependencies, and candidate deltas.
+They are not independently active executable owners inside one runtime. Activating
+one module revision produces a successor generation for the whole runtime:
 
 ```text
-module name
-revision identity
-parent revision
+generation G7
+  sources: #ledger → revision 8
+           #http   → revision 3
+           #app    → revision 12
+
+activate #ledger revision 9
+
+generation G8
+  predecessor: G7
+  sources: #ledger → revision 9
+           #http   → revision 3
+           #app    → revision 12
+  dispatch delta: ledger operations only
+```
+
+The successor need not copy every native binding. Its predecessor chain and
+operation ledger may represent the effective dispatch mechanically. Its source map
+is nevertheless the complete authority for the runtime generation.
+
+This choice deliberately avoids per-module active-state facets. Such facets would
+need independent lifecycle state, native ledgers, rollback chains, image
+composition rules, and multi-module conflict handling. The current single-threaded
+runtime and the reactor design both execute one effective dispatch generation at a
+time, while isolates each own a separate runtime and generation.
+
+This is an intentional revision to design 47's implemented per-name
+`activeCompiledUnit` publication policy, not a claim about current behavior. The
+candidate envelope, mapping, binding ledger, tracked-MOP commit, drift detection,
+and exact inverse remain useful mechanism. `activeFor: M` may survive as a
+compatibility query, but its answer must be derived from the one current generation
+rather than stored as independently mutable lifecycle authority for `M`.
+
+## 3. Three roles
+
+The design has three conceptual roles. They may share implementation machinery,
+but their authority must remain distinct.
+
+### 3.1 SourceRevision
+
+A `SourceRevision` is immutable authored input for one canonical module. It
+records:
+
+```text
+canonical Module name
+content-derived revision identity
+optional parent revision identity
 complete authored source text
-definition provenance and spans
-materializing compiled-unit generation or image composition
-source/artifact identity
-activation state
-origin, such as file import or live edit
+parsed dependency and module metadata
+origin, such as a file path
 ```
 
-Revision identity must be stable and content-derived or otherwise unambiguous. A
-file imported from revision 7 and a live edit made from revision 7 create sibling
-revisions rather than silently pretending to be a linear sequence:
+It does not record mutable activation state or a singular materializing
+generation. One revision may be staged repeatedly and may appear in several saved
+or process-local generations.
+
+Revision identity covers the complete source and canonical metadata. The prepare
+and commit paths revalidate the content hash; ordinary Store mutation must not be
+able to change the meaning of an already named revision.
+
+### 3.2 Candidate
+
+A candidate is an inert proposed dispatch delta:
 
 ```text
-revision 7 ── file edit ───── revision 8a
-          └─ live edit ───── revision 8b
+candidate module
+candidate SourceRevision
+expected predecessor DispatchGeneration
+artifact and source hashes
+dependencies
+ordered method operations
+process-local mapping and rollback material
 ```
 
-The first implementation need not merge these revisions automatically. It must
-detect and present the divergence. Explicit replacement remains possible, but
-silent clobbering does not.
+Opening and inspection do not map code, load dependencies, mutate dispatch, or
+publish source authority. Dependency preparation remains an explicit ordinary
+module-loading effect. Mapping remains an explicit trusted-native boundary.
 
-### 4.2 File-oriented workflow
+### 3.3 DispatchGeneration
+
+A `DispatchGeneration` is the effective executable owner for one runtime. It has:
 
 ```text
-fileOut active revision
-→ edit with an ordinary editor
-→ fileIn as a candidate revision
-→ inspect and activate, or immediately activate
+generation identity
+predecessor generation, if any
+complete module → SourceRevision map
+dispatch delta and portable operation provenance
+image-composition provenance, when recovered from an image
+current process-local rollback capability, if any
 ```
 
-`fileOut` records or embeds enough base-revision information for a later `fileIn`
-to detect whether the live module advanced independently. The exact representation
-may be module metadata in the source, a sidecar, or project metadata; that remains
-open.
+The complete module-to-revision map is itself a sealed, content-addressed value.
+Its digest is part of the generation's reproducible identity and is revalidated by
+prepare and commit. Publishing a generation never exposes a mutable map whose
+entries can later be replaced through ordinary Store operations. If a raw/private
+mechanism nevertheless changes a published association, reconciliation marks the
+generation drifted just as it would for an untracked binding change.
 
-### 4.3 Image-oriented workflow
+Generation object identity remains runtime-local. A generation also exposes a
+value-like **base digest** covering its sealed source map and portable dispatch
+provenance. Digests may be compared across runtimes; generation objects, numeric
+allocation order, and rollback chains may not.
+
+The digest is canonically computable. All integer lengths below are unsigned
+big-endian; names are their UTF-8 spelling; hashes are raw 32-byte values. A source
+revision hash is:
 
 ```text
-edit the stored module document
-→ create a candidate source revision
-→ inspect or immediately activate it
-→ optionally fileOut the new active revision
+SHA-256(
+  "birnam.source-revision.v1\0"
+  || u32(module-name length) || module-name
+  || u32(sorted dependency count)
+  || each dependency as u32(length) || spelling
+  || u64(authored-source length) || exact authored-source bytes
+)
 ```
 
-This source-first path is the normal image-native editor behavior. It uses no
-filesystem but creates the revision before dispatch changes.
+Parent revision and origin path are lineage/diagnostic metadata and are excluded.
+The base digest is `SHA-256("birnam.dispatch-base.v1\0" || u32(source-map count) ||
+canonical source-map records || u32(operation count) || canonical
+portable-operation records)`. Source-map records are sorted by module-name bytes
+and encode the length-prefixed name plus its 32-byte revision hash. Portable
+operations are ordered by dependency-topological module order with module-name
+bytes as the tie-breaker, then by their explicit `operationSequence`. Each
+operation encodes length-prefixed module, target, and selector spellings; one
+action byte (`1` install, `2` remove); and either
+`SHA-256("birnam.definition.v1\0" || exact portable definition-source bytes)` or 32
+zero bytes for removal.
 
-Immediate `Reflect` mutation remains an escape hatch. It changes dispatch first,
-marks the managed generation drifted, and must follow this recovery path:
+Native artifact checksums, image-composition checksums, local generation numbers,
+pointers, mapping paths, predecessor/rollback chains, and Store entity IDs are
+excluded. Mapped and rebuilt recovery must retain or reconstruct the same canonical
+portable records. Digests render as lowercase hexadecimal only at text/wire
+boundaries; hashing always uses the binary encoding above.
+
+Exactly one Store cell identifies the current generation conceptually:
 
 ```text
-identify or explicitly choose the owning module/document
-→ patch or reconstruct portable source
-→ create a revision
-→ adoptLive
-→ associate the adopted baseline with that revision
+#dispatch activeGeneration G8
 ```
 
-Installed definitions therefore need ownership provenance: module revision,
-document identity, span or node identity, target, selector, and operation kind.
-Target and selector alone are insufficient because several modules may
-intentionally patch the same binding. Raw native drift may remain observable
-provenance but cannot become a reproducible source revision.
+`#active`, `#historical`, and rollback capability apply to whole dispatch
+generations, never independently to each module name.
 
-### 4.4 Preserve authored source
+## 4. Source authority
 
-The image must retain the complete authored module document, not only independent
-method strings. Reconstructing a file solely from method facts would discard:
+Birnam separates three authorities:
 
-- comments and prose;
-- deliberate ordering;
-- formatting;
-- initialization and module metadata;
-- helper declarations; and
-- source that is not itself a method definition.
+- **Live dispatch** is the current runtime behavior.
+- **The current generation's source map** is the reproducible source authority for
+  that behavior.
+- **A source file** is an editable representation of a revision. It may be current,
+  ahead, stale, or divergent.
 
-Definition provenance supplies the update mechanism:
-
-- replacing a method patches its source span;
-- removing a method removes its span;
-- adding a method inserts it in a predictable place; and
-- when no authored document exists, `fileOut` produces a canonical module.
-
-Exact preservation under overlapping or stale edits is a later merge problem. The
-first requirement is honest divergence detection and deterministic output.
-
-### 4.5 Canonical identity and atomic source authority
-
-For project-managed source, `Module named:` is required and canonical. The
-candidate unit name and embedded artifact metadata must match it. Source filenames
-and artifact paths are recorded as origins, and renaming a file does not rename the
-module. A module rename is an explicit identity transition. Standalone scripts and
-ad hoc patches may retain looser naming rules outside this workflow.
-
-Before activation, a candidate carries an immutable source-revision association
-whose content hash matches the candidate source hash. Active source is derived,
-not separately written:
+Active source is derived through the one current generation:
 
 ```text
 active source for M
-= [[CompiledUnit activeFor: M] sourceRevisionFor: M]
+= [[DispatchGeneration current] sourceRevisionFor: M]
 ```
 
-Activation already atomically changes `activeCompiledUnit`; source authority
-therefore changes at the same commit seam. Rollback republishes the predecessor
-unit and restores its revision association without a second Store write.
+There is no separately written active-source cell and no revision-level active
+flag. Before commit, the candidate already contains the verified replacement
+revision and a complete successor source map. Commit changes dispatch and the
+single current-generation cell at the same non-failing seam. Rollback restores the
+predecessor generation and therefore its complete source map without another
+source publication.
 
-An ordinary candidate usually carries one module/revision entry. A composed image
-generation carries a module-indexed map:
+If live dispatch drifts outside the managed lifecycle, the generation is no longer
+a trustworthy source authority. The system reports drift rather than continuing to
+claim that its source map reproduces live behavior.
+
+### 4.1 Canonical identity
+
+Project-managed source requires a canonical `Module named:` declaration. Candidate
+name, revision metadata, and embedded artifact identity must match it. File and
+artifact paths are origins only. Renaming a file does not rename a module; module
+rename is a later explicit identity transition.
+
+Standalone scripts and ad hoc patches may keep looser naming rules outside this
+workflow.
+
+### 4.2 Module metadata follows active source
+
+Dependencies and other declarative module metadata are parsed into the
+`SourceRevision`. Queries about the current module graph derive from the current
+generation's source map. Activation must not leave `Module`, `__modsrc__`, or image
+rebuild ordering on predecessor metadata while the source map names a successor.
+
+Image capture and rebuild therefore consume the current generation's canonical
+source map rather than treating legacy `__modsrc__` enumeration as an independent
+authority. Legacy facts may remain recovery input during a format transition, but
+they do not compete with the current generation.
+
+Whenever module programs are compiled or replayed, the canonical dependency graph
+is ordered deterministically with the module manager first, then dependencies, then
+dependents. Missing dependencies and cycles are errors. Neither Store enumeration
+nor source-map iteration order has execution semantics.
+
+## 5. File-backed revision workflow
+
+L1b's first authoring workflow is deliberately file-backed and candidate-safe:
 
 ```text
-image composition
-  sourceRevisionFor: #ledger → ledger revision 8
-  sourceRevisionFor: #http   → http revision 3
-  sourceRevisionFor: #app    → app revision 12
+fileOut current revision
+→ edit with an ordinary editor
+→ import as a SourceRevision
+→ prepare a Candidate
+→ inspect and activate, or request immediate activation
 ```
 
-Saved origins become historical as they do today; the composition copies their
-active revision associations before taking executable ownership. A later module
-generation may supersede the composition for only its name, while other module
-names continue to resolve through the composition.
+`fileOut` records or embeds a base-revision identity. Import compares that base
+with the current revision for the canonical module:
 
-## 5. Immediate and staged activation
+- matching base: prepare normally;
+- identical content: idempotent import;
+- stale or sibling base: report divergence;
+- missing base: require an explicit forced-replacement policy.
 
-Birnam should support both a convenience path and an inspection path.
+A file import never changes recorded active source merely because parsing or
+evaluation began. Rejected source remains an inactive revision or an error, not a
+partial `__modsrc__` update.
 
-### 5.1 Immediate path
+The accepted document subset is the implemented candidate-safe shape: one required
+canonical `Module named:requires:` declaration plus declarative method additions,
+replacements, and removals over already-established stable targets. Unsupported
+top-level forms reject the revision. The evolution layer never extracts only the
+methods from a more general module while publishing the complete document as
+though its top-level effects had occurred.
+
+Authored source is retained whole so comments, ordering, formatting, declarations,
+and non-method text survive `fileOut`. Lossless mutation of that document through a
+reflective editor is not part of this slice.
+
+## 6. Preparation and activation
+
+Immediate and staged use drive the same lifecycle.
+
+### 6.1 Prepare
 
 ```text
-source
-→ compile
-→ open and verify
-→ prepare dependencies according to policy
-→ map
-→ validate
-→ activate
+parse and hash the SourceRevision
+→ compile candidate-safe operations
+→ open and verify the pointer-free envelope
+→ record the expected current DispatchGeneration
+→ inspect operations, dependencies, and divergence
+→ optionally load dependencies explicitly
+→ map and mechanically validate
+→ produce a prepared one-shot capability
 ```
 
-The operation stops at the first error and leaves dispatch unchanged. It answers
-the resulting `CompiledUnit` or a detailed error, so a successful generation can
-still be inspected and rolled back afterward.
+Preparation does not publish dispatch or source authority. It may have explicit
+dependency-loading effects when the caller requests them; rejection and rollback
+do not claim to undo those effects.
 
-Immediate activation must not be a separate implementation with weaker checks. It
-is a policy that drives the staged lifecycle to completion.
+Inspection exposes at least:
 
-Dependency preparation propagates the original `Module load:` error and stops at
-the failing dependency. Dependencies loaded earlier in the attempt remain loaded:
-preparation is ordinary, non-transactional module loading. The candidate remains
-inspectable, with already-loaded and still-missing dependencies visible.
-
-### 5.2 Staged path
-
-```text
-compile and open
-→ inspect source, operations, dependencies, and live base
-→ optionally prepare dependencies
-→ map
-→ validate
-→ activate at an explicit safe point
-```
-
-Inspection should expose at least:
-
-- module and candidate revision identity;
-- parent and current active revisions;
+- module and revision identity;
+- expected and current dispatch generations;
 - additions, replacements, and removals;
 - dependency changes and missing dependencies;
-- the live generation the candidate expects;
-- whether initialization or migration is implicated;
-- whether rollback will be available after activation; and
-- any incompatibility or divergence report.
+- source divergence;
+- whether mapping has occurred; and
+- whether exact process-local rollback will be available.
 
-### 5.3 Later policies
+### 6.2 Commit at a safe point
 
-The same lifecycle may later support:
+Commit is a small runtime operation:
 
-- activate immediately when valid;
-- activate, run checks, and roll back on failure;
-- prepare a candidate now and activate it at an application safe point; and
-- activate several dependent units under an explicitly designed batch policy.
+1. Require the expected generation still to be current.
+2. Revalidate revision/artifact hashes, target identities, vtables, direct
+   bindings, and the complete publication plan.
+3. Apply the dispatch delta through Store's tracked MOP.
+4. Publish the successor as the one current dispatch generation.
+5. Consume the prepared capability.
 
-The current atomicity guarantee is one compiled unit. Multi-unit atomic activation
-is a separate native and lifecycle design problem, not implied by this document.
+No ordinary send may observe a half-generation. Today the runtime is
+single-threaded and the native commit path is non-failing after its final
+validation. Future scheduling does not change that transaction; it controls when
+the transaction may run.
 
-## 6. Why arbitrary module reload is not transactional
+L1a exposes a synchronous commit only at an explicit quiescent top-level boundary,
+such as a tool or REPL command after the previous evaluation has returned. It does
+not invent a queue, promise, scheduler, or general asynchronous submission API.
+“Immediate activation” in L1a means prepare and commit within that top-level
+operation after final validation.
 
-A normal module may do much more than define methods:
+This is enforced, not conventional. The native runtime owns a process-local phase
+guard with at least `#running` and `#quiescentEvolution` states. Ordinary Birnam
+code cannot mint or enter the latter phase, and the guard is never durable. A
+shell/tool host enters it only after top-level evaluation returns; the isolate
+driver enters it only between request-handler calls; a future reactor enters it
+only between turns. Commit and rollback require the guard, reject nesting or
+re-entry, and restore `#running` on every exit. The existing unrestricted
+`CompiledUnit activate` and `rollback` entry points become bootstrap-private
+mechanism or acquire the same guard as part of L1a.
 
-```birnam
-[Globals at: #Server put: [Object clone]];
-[db assert: #config attr: #port value: 8080];
-[Alien dlopen: "libthing.dylib"];
-[Server startListening];
+Later execution substrates decide when they satisfy the same quiescence
+precondition. I1a's blocking mailbox loop provides the first non-top-level example:
+L2 processes an evolution control request between ordinary requests, commits before
+reading the next request, and returns a blocking receipt. A future reactor may call
+the same commit between turns. No operation claims atomic activation across several
+isolates.
 
-[Reflect defineMethod: #handle: on: Server as: ...];
-```
+### 6.3 Rollback
 
-Repeating this source on reload may:
+Rollback is another safe-point operation. While its process-local capability is
+valid, it verifies that the candidate generation is still current and that every
+touched binding still has the recorded post-activation state. It then applies the
+inverse delta and republishes the predecessor generation.
 
-- replace the stable `Server` identity while live objects still reference it;
-- duplicate or overwrite state;
-- acquire another foreign-library handle;
-- open a second socket or fail because the first remains open; and
-- perform an external effect that method rollback cannot undo.
+Rollback restores dispatch and source authority. It does not undo dependency
+loading, application state changes, I/O, FFI, messages already sent, or work
+already completed by reactor turns or isolates.
 
-The current candidate subset is deliberately declarative because method additions,
-replacements, and removals admit an exact dispatch transaction. This does not mean
-one user-facing module must become two modules. It means one source module has
-different semantic phases.
+## 7. Images and durability
 
-## 7. Standard module initialization
+### 7.1 Legacy-authority cutover
 
-A module declaration may carry a standard initializer hook:
+L1a includes one explicit upgrade from today's per-name `activeCompiledUnit` and
+`__modsrc__` authority; it is not deferred representation work:
 
-```birnam
-[Module named: #ledger
-        requires: #[#file]
-      initialize: [|
-        [[Globals includes: #Ledger]
-          ifFalse: [| [Globals at: #Ledger put: [Object clone]]]]]];
-```
+1. reconcile every legacy active unit against actual dispatch and reject drift;
+2. normalize shipped durable modules to declared identities, then parse legacy
+   module sources, require canonical identities and complete source, and validate
+   the dependency graph;
+3. deterministically order that graph and derive the complete sealed source map,
+   base digest, and portable operation provenance;
+4. construct one initial, non-rollbackable composed `DispatchGeneration`;
+5. publish the single current-generation cell only after all prior steps succeed,
+   and switch module queries, image compilation, and replay to that authority; and
+6. thereafter treat `activeCompiledUnit` and `__modsrc__` only as compatibility
+   mirrors derived from the current generation, never as inputs that compete with
+   it.
 
-The syntax is illustrative. The important properties are explicitness,
-inspectability before effects, and a durable record of initialization attempts.
-Supporting the form is an explicit parser/Codegen slice: the current candidate
-subset accepts only `Module named:requires:` plus method operations.
+The cutover and the code paths that consume the new authority ship in the same L1a
+slice. Failure publishes no current-generation cell, mutates no legacy mirrors,
+and refuses L1a activation or a new-format save; an image already marked as cut
+over rejects boot if its sealed map cannot be validated. Compatibility mirrors
+are updated at the generation commit seam or regenerated from it, and mirror drift
+is reported rather than read back into authority.
 
-The hook is bootstrap-only. It may use floor protocol and already-initialized
-dependencies to establish stable named targets and seed state. It must not call
-methods supplied by its own candidate generation. If installation needs behavior
-from the new generation, that behavior belongs to a later explicit hook with a
-different failure contract, not to bootstrap initialization.
+Undeclared filed scripts are not silently promoted to modules by basename. They may
+execute normally, but durable state requiring whole-program replay must acquire an
+explicit module owner before cutover/save; a legacy undeclared `__modsrc__` entry is
+a migration diagnostic, not guessed identity.
 
-### 7.1 Initial installation
+The first reliable persistence path is atomic full-image save.
 
-```text
-read and verify the module declaration
-→ compile and inspect the candidate without effects
-→ load dependencies
-→ if uninitialized, record an attempt and run the bootstrap initializer
-→ record initialized or initializationFailed
-→ map and validate
-→ activate
-```
+Before save:
 
-Initialization is ordinary effectful code. It is not part of the dispatch
-transaction and has at-least-once semantics for external effects. Its state is
-independent of compiled-unit activity:
+1. reconcile the current generation against actual dispatch;
+2. reject unlogged non-portable drift;
+3. capture the effective portable operation stream;
+4. persist the complete canonical module-to-revision map; and
+5. write through the existing temporary-file/rename path.
 
-```text
-#uninitialized
-#initializing
-#initialized
-#initializationFailed
-```
+If full save reports failure, the running generation remains active and the prior
+image remains intact through temporary-file replacement. This is not yet a claim
+of power-loss durability: the current writer does not fsync both file and parent
+directory before rename. The UI may report that live state is newer than the last
+successful save; this is derived durability status, not another generation state.
 
-Each attempt records its source revision, identity, start basis, result, and
-failure details. If the hook fails after producing effects, `Module` records the
-failure and does not pretend those effects were rolled back. Retry is explicit;
-hooks must be idempotent or resumable.
+On mapped or rebuilt boot, image code is the executable owner. Boot mints one
+non-rollbackable composed `DispatchGeneration`, attaches the saved source map,
+marks saved process-local origins historical, rebuilds the binding ledger, and
+publishes that generation before user entry or a reactor turn.
 
-An initializer may succeed before mapping or validation later fails. The resulting
-state—initialized stable targets with no active generation—is legitimate. A
-corrected candidate may target those objects without rerunning initialization.
+The next module activation produces a whole-runtime successor of that composition.
+All module queries therefore see the successor generation, even though its native
+delta touched only one module. A second module can then activate against that same
+successor without depending on a globally superseded shared base.
 
-### 7.2 Reload
+`appendImage:` is excluded from the first durability guarantee. The current append
+path writes directly to the live image and does not have the full save's atomic
+replacement semantics. It may be reconsidered with transactional framing or
+tail-recovery rules.
 
-```text
-read changed source
-→ observe durable initialized marker
-→ do not rerun initializer
-→ compile the method candidate against stable targets
-→ inspect or activate
-```
+## 8. Concurrency and isolation contract
 
-Changing the initializer in a later source revision does not silently rerun it.
-State evolution belongs to migration or another explicit effect.
+This design does not implement concurrency, but it preserves the boundaries in
+design 48.
 
-### 7.3 Dependency order, images, and rebuild
+### 8.1 One generation per runtime
 
-The initialized marker is durable across the image lineage. Normal image boot and
-`--rebuild` must not rerun initialization merely because compiled methods are being
-mapped or replayed.
+A reactor preserves one heap, Store, and dispatch generation. Its queue may contain
+an activation request, but a running turn completes under the generation with which
+it began. Later turns resolve sends through the successor.
 
-Every execution of module-level programs is dependency-ordered: fresh source load,
-compiled module load, rebuild, appended-image reconstruction, and future recovery.
-The module manager runs first, followed by dependencies and then dependents. Cycles
-remain errors rather than acquiring special image semantics.
+Long-lived scheduled behavior should be represented by receiver and selector where
+possible. A retained native block may capture code from its creation generation and
+is not silently upgraded.
 
-Conceptually, rebuilt boot does:
+### 8.2 Isolates evolve independently
 
-```text
-bring up Module
-→ restore durable facts and initialization markers
-→ reconstruct the canonical module graph
-→ topologically order module programs
-→ evaluate declarations dependency-first, skipping completed initializers
-→ replay or compile method generations
-→ run explicit recovery hooks dependency-first
-→ establish the composed executable generation
-```
+Each isolate owns its heap, Store, compiler, current generation, and rollback
+capability. Transferable rollout data is deliberately value-like:
 
-An entirely fresh installation has no marker and runs the initializer. Importing
-an existing image restores the marker and established objects. A legacy image
-missing a marker initializes dependency-first under an explicit compatibility
-policy.
+- canonical module name;
+- source-revision identity or source bytes;
+- artifact checksum and content-addressed artifact location;
+- expected base digest; and
+- explicit health-check or rollout policy.
 
-## 8. Migration as an orthogonal module
+Mapped handles, Oops, blocks, native pointers, prepared tokens, and rollback
+snapshots do not cross the isolate seam.
 
-Migration should be optional and implemented as a separate module rather than as
-hidden behavior inside `CompiledUnit`.
+The receiving worker compares the digest with its own current generation, then
+binds preparation to that runtime-local generation object. It returns a value-like
+receipt containing the accepted source/base digest and outcome. A coordinator
+never sends its own generation object or assumes that equal local generation
+numbers mean equal runtime state.
 
-Illustratively:
+A later pool policy may use rolling replacement: start and check a new pool, route
+new work, drain the old pool, then stop it. I1b proves only the single-worker
+version of that handoff. A stateful worker may instead activate at a mailbox safe
+point. The coordinator records per-worker results; it does not claim one atomic
+generation across the pool.
 
-```birnam
-[Migration for: #ledger
-           from: 1
-             to: 2
-             do: [|
-               [Ledger migrateNames]]];
+### 8.3 Durable descriptions are not in-flight work
 
-[Migration bring: #ledger to: 2]
-```
+Images may retain desired worker generations, rollout intent, durable job IDs, and
+recovery descriptions. They do not retain running turns, mailbox receives, pending
+replies, open channels, or partially executed callbacks. Live evolution must not
+turn process-local execution into apparently durable state.
 
-The migration module may own:
+## 9. Explicit deferrals
 
-- current state/schema version by module;
-- ordered migration discovery;
-- applied migration records;
-- source and generation identity for each migration;
-- failure reports; and
-- retry or resumption policy.
+The following are useful directions, but are not prerequisites for the first
+file-backed workflow.
 
-### 8.1 Invocation from initialization
+### 9.1 Standard initialization
 
-A module initializer may ask the migration module to establish the expected state:
+The initial slice requires stable targets to have been established already through
+ordinary module loading or bootstrap. It adds no initializer declaration, durable
+attempt state machine, or exactly-once claim.
 
-```birnam
-[Module named: #ledger
-        requires: #[#migration]
-      initialize: [|
-        [[Globals includes: #Ledger]
-          ifFalse: [| [Globals at: #Ledger put: [Object clone]]]];
-        [Migration bring: #ledger to: 2]]];
-```
+A later initialization design may provide an at-least-once, idempotent/resumable
+hook with explicit persistence and recovery rules. It should be informed by the
+same durable-operation model used for reactor jobs and isolate recovery rather than
+inventing a second partial task system inside `CompiledUnit`.
 
-This lets a fresh installation and an old installation use the same versioned
-state-evolution logic where appropriate. Alternatively, an initializer may create
-the latest state directly and record its version. The migration module should not
-force one construction strategy. Any migration invoked before first activation
-must live in already-loaded dependency protocol and must not depend on the pending
-module generation.
+### 9.2 Image-native source editing and `adoptLive`
 
-### 8.2 Invocation from live evolution
+Source-first editing without files remains a goal, but lossless document patching,
+definition ownership, spans, ambiguous patch ownership, and source-associated
+`adoptLive` are deferred together.
 
-The project-level evolution module may invoke migration after trial activation:
+The existing low-level `adoptLive` may remain a dispatch-ledger escape hatch, but
+the project workflow must not claim source authority for its result. A later
+source-aware adoption must verify and attach the complete successor source map
+before publishing the adopted generation; it must not publish first and associate
+source afterward.
 
-```text
-activate method generation
-→ run non-migrating checks while application rollback is safe
-→ explicitly choose migration
-→ record migration intent and persist it
-→ mark application rollback unsafe
-→ run optional migration
-→ record and persist success or failure
-```
+### 9.3 Migration
 
-`Module` need not understand migration internals. It supplies the initialization
-hook and module identity; `Migration` owns version transitions.
+Migration remains optional and orthogonal. The first evolution module does not run
+migrations, gate application rollback, or claim that old methods remain compatible
+with changed state.
 
-### 8.3 Transactional honesty
+A later migration design belongs with durable operation identity, recovery mode,
+idempotence/resumption, and per-isolate rollout policy. Native dispatch rollback
+will remain mechanically narrower than application rollback.
 
-The migration module must not claim more atomicity than its effects possess. A
-failed migration may have partially changed facts or the outside world. Migrations
-should normally be:
+### 9.4 Multi-module candidates
 
-- idempotent;
-- resumable;
-- small;
-- explicit about external effects; and
-- recorded as complete only after their bodies succeed.
+One candidate changes one module revision in the first slice. A later batch may
+produce one successor generation containing several validated deltas, but no such
+atomicity is implied now.
 
-If the Store later grows a suitable transaction for a migration's fact changes,
-that adapter may strengthen the guarantee. It still cannot automatically undo
-files, sockets, foreign processes, or arbitrary FFI effects.
+### 9.5 Module rename
 
-### 8.4 Migration and rollback
-
-Dispatch rollback and application rollback are different capabilities:
-
-```text
-activate new methods
-→ migrate live state
-→ restore old methods
-```
-
-The old methods may not understand the migrated state. `CompiledUnit` can still
-mechanically restore their bindings, but doing so may not restore a valid
-application.
-
-Before migration begins, both native dispatch rollback and application rollback may
-be available. Before invoking any migration body, the evolution module durably
-records `#migrationInProgress` and marks ordinary application rollback unsafe. The
-native dispatch capability remains observable only as an explicitly unsafe expert
-mechanism.
-
-If persistence of the intent fails, migration does not start. If migration fails,
-the new methods remain active and boot enters migration recovery or maintenance
-mode rather than the normal application entry point. Recovery may resume, retry,
-repair, or invoke an explicit reverse migration.
-
-Application rollback becomes safe again only after a suitable reverse migration
-succeeds, or under a separately justified compatibility guarantee. No automatic
-migration runs during activation.
-
-## 9. Recovery is not initialization
-
-Initialization establishes durable module identities and state. It does not cover
-runtime-only resources that must be recreated in every process, such as:
-
-- listening sockets;
-- child processes;
-- reactor registrations;
-- open files;
-- foreign handles; and
-- callbacks into external libraries.
-
-Eventually `Module` may need a separate recovery hook:
-
-```text
-initialize — once per image lineage
-recover    — once per process boot
-migrate    — explicitly between state versions
-```
-
-Recovery should be added only when a concrete module requires it. The initial
-design must nevertheless avoid defining `initialize` so broadly that it secretly
-means both durable construction and per-process resource recovery.
+Canonical module rename must eventually define revision lineage, dependency edges,
+initialization/migration identity, and image membership. File rename alone remains
+an origin change and is not module rename.
 
 ## 10. Project-level evolution module
 
-One deep birnam module should coordinate the complete workflow while leaving the
-existing mechanisms in their present owners. Its implementation is expected to be
-almost entirely birnam over `CompiledUnit`, `Module`, Store, File, and System.
+One deep Birnam module should coordinate policy over the existing mechanisms. It
+owns:
 
-It owns policy for:
-
-- importing and exporting module source revisions;
-- detecting stale or divergent bases;
-- associating source documents with compiled generations;
-- creating and retaining candidates;
-- presenting operation and dependency summaries;
-- choosing immediate or staged activation;
-- running optional project checks;
-- coordinating explicit migration;
-- exposing whether active state is newer than durable image state;
-- coordinating explicit `saveImage:` or `appendImage:` operations; and
-- cleaning abandoned candidate artifacts and transient records.
+- source-revision import and export;
+- content identity and base/divergence checks;
+- complete successor source-map construction;
+- candidate retention and inspection;
+- immediate versus staged top-level activation;
+- proof that synchronous commit is entered at a quiescent runtime boundary;
+- explicit full-image save; and
+- cleanup of abandoned candidate artifacts and transient records.
 
 It does not duplicate:
 
-- candidate validation or native mapping from Codegen;
-- dispatch generation policy from `CompiledUnit`;
+- source parsing or native compilation from Codegen;
+- Store-arbitrated dispatch mutation;
 - dependency loading from `Module`;
-- migration policy from `Migration`; or
-- image encoding from Image/System.
+- image encoding from Image/System;
+- reactor scheduling or isolate transport; or
+- migration policy.
 
-If this module were deleted, the lifecycle would remain usable at its lower level,
-but callers would again need to reproduce the ordering, divergence, durability,
-and failure policy. That is the complexity the module exists to hide.
+The module depends on a narrow synchronous commit boundary rather than on a
+particular scheduler. L1a invokes it only at a top-level quiescent point. L2 later
+invokes it from the worker's blocking control-message path between requests; a
+future reactor may invoke it between turns. Queueing and asynchronous completion
+belong to those execution substrates, not to the L1a transaction API.
 
-### 10.1 Activation is not persistence
+## 11. Live-evolution bodies of work
 
-There is no first-class `#accepted` transition in the initial design. Activation
-makes a revision authoritative for current behavior. `saveImage:` or
-`appendImage:` makes current behavior durable. `imageCheckpoint` remains internal
-reconstruction machinery and is not a persistence operation.
+### 11.1 L1a — generation authority and image coherence
 
-If persistence fails after activation:
-
-- the generation and its source revision remain active;
-- rollback availability is unchanged;
-- the prior image remains intact under atomic-save rules; and
-- the workflow reports that live state is newer than durable state.
-
-A convenience “activate and persist” policy is a two-step operation whose result
-must represent partial success. It never reports a persistence failure as though
-activation had not occurred, and it does not automatically roll back successful
-activation.
-
-## 11. Implementation slices
-
-The work is split so each slice has one dominant failure model. Every slice remains
-explicit and file-watcher free.
-
-### 11.1 Slice A — file-based revision lifecycle
-
-Use a module whose stable targets are already initialized. Implement:
-
-- canonical declared module identity;
-- complete source-revision entities;
-- immutable revision association on prepared candidates;
-- exact file import/export of whole authored documents;
-- base-revision and divergence detection;
-- immediate and staged activation;
-- dependency-error propagation;
-- rollback restoring source authority;
-- module-indexed source associations in image compositions; and
-- mapped and rebuilt image survival.
-
-Do not include initialization, reflective editing, source-span patching, or
-migration. This slice proves:
+L1a proves the executable authority model before adding file UX or scheduling:
 
 ```text
-file revision ↔ candidate ↔ live generation ↔ image
+inert candidate against expected generation
+→ synchronous commit at a quiescent top-level boundary
+→ whole-runtime successor generation
+→ exact process-local rollback
+→ full-image save and mapped/rebuilt recovery
 ```
 
-### 11.2 Slice B — module initialization
+It includes:
 
-Add initializer declaration parsing, compile-before-effect ordering, the
-bootstrap-only contract, initialization attempt states, explicit retry,
-dependency-ordered module programs, and image persistence of initialization
-status.
+1. immutable, content-addressed `SourceRevision` values and sealed source-map/base
+   digests;
+2. the atomic legacy-authority cutover and one current-generation cell per runtime;
+3. candidate preparation and stale-base rejection against that whole-runtime base;
+4. one non-failing commit that publishes dispatch and successor authority together;
+5. exact rollback to the predecessor while the local capability remains valid;
+6. module graph and deterministic dependency order derived from the source map;
+7. mapped/rebuilt recovery into one composed generation; and
+8. atomic full-image persistence only.
 
-This slice proves that one module file can establish stable targets once per image
-lineage and then activate replaceable generations repeatedly.
+L1a's public commit is synchronous and top-level. It has no queue, promise,
+reactor, mailbox, or asynchronous completion abstraction. Tests may construct
+candidate-safe revisions directly; file import/export is L1b.
 
-### 11.3 Slice C — image-native source editing
+### 11.2 L1b — file-backed revision and image-baseline workflow
 
-Add definition ownership, persistent source spans or node identities, source-first
-image editing, lossless document patching, ownership-aware `adoptLive`, ambiguous
-owner handling, and canonical output where no authored document exists.
+After I1a has proven the actual process/message boundary, L1b adds the authoring
+workflow:
 
-This slice proves that files and the image are peer editing media without making
-raw reflective drift the normal path.
-
-### 11.4 Slice D — migration
-
-Add versioned migration registration, durable intent and completion records,
-application rollback gating, recovery/maintenance boot behavior, optional reverse
-migrations, and explicit persistence semantics.
-
-## 12. Verification requirements
-
-Tests should exercise the interfaces callers actually use:
-
-- an invalid immediate load leaves behavior and active revision unchanged;
-- staged inspection maps no code before the explicit map step and publishes no
-  methods before activation;
-- candidate name, declared module name, and embedded artifact identity must match;
-- duplicate import of identical content is idempotent;
-- an imported file based on a stale revision reports divergence;
-- a forced replacement of a stale or unknown base is explicit;
-- a rejected import never changes recorded module source;
-- file output preserves untouched source text and comments;
-- activation and rollback atomically select the source revision through the active
-  compiled unit;
-- composed-image boot reassociates every active canonical module with its source
-  revision;
-- dependency preparation returns the original module-load error while leaving the
-  candidate inspectable;
-- initialization is at-least-once and idempotent across every body/marker failure
-  window;
-- initialization does not call candidate methods and may remain complete after
-  later candidate failure;
-- a completed initializer does not rerun on reload, mapped boot, rebuild, or
-  appended-image reconstruction;
-- an initialization failure is visible and never reported as rolled back;
-- module programs execute dependency-first even when Store enumeration is reversed;
-- activation and exact rollback preserve application objects and facts;
-- active behavior and source survive mapped and rebuilt image boot;
-- source-first image edits activate through the candidate lifecycle;
-- immediate reflective edits require an unambiguous owner and `adoptLive`;
-- migration intent persists before the body and disables application rollback;
-- migration interruption at every intent/body/completion window enters recovery;
-- method rollback after migration requires explicit compatibility or a reverse
-  migration;
-- persistence failure after activation leaves live authority and rollback intact;
+- required canonical `Module named:requires:` identity;
+- candidate-safe whole documents and rejection of unsupported top-level forms;
+- exact file import/export of authored source;
+- revision/base identity, idempotent import, and divergence detection;
+- original dependency-error propagation;
+- staged inspection and immediate top-level activation over the L1a transaction;
   and
-- changed initializer source never reruns an already initialized module.
+- production of full saved image baselines suitable for I1b replacement.
 
-## 13. Open decisions
+L1b does not add source-aware `adoptLive`, initialization, migration, file watching,
+or asynchronous activation.
 
-1. The exact representation of source-revision identity in ordinary files.
-2. Whether the complete source document is stored directly as a revision fact or
-   through a content-addressed source object.
-3. The initial policy for patching live method edits into authored source while
-   preserving formatting.
-4. The exact `Module` initializer declaration and how its source is inspected
-   before candidate target validation.
-5. Whether migration definitions live beside their module source, in separate
-   files, or merely register with a generic `Migration` module regardless of file
-   layout.
-6. When a separate recovery hook becomes necessary and how it composes with image
-   boot.
-7. Whether active revisions form a strictly linear history while inactive
-   candidates may branch.
-8. How dependent multi-unit revisions are prepared and eventually activated
-   without overstating the current single-unit atomicity guarantee.
-9. Whether source-revision maps on composed generations are Store facts directly
-   or reflected through per-module facet objects.
-10. The exact durable representation and recovery interface for migration intent.
+### 11.3 L2 — blocking mailbox-safe live rollout
+
+L2 bridges the proven live-generation and blocking-isolate substrates without
+changing either into an asynchronous framework. The coordinator sends one blocking
+control request containing:
+
+- canonical module and source-revision identity or source bytes;
+- artifact checksum and content-addressed location;
+- expected value-like base digest; and
+- the requested operation: prepare-and-activate or rollback.
+
+The worker handles that control frame between ordinary requests. It compares the
+digest with its local current generation, prepares and validates locally, commits
+synchronously before reading another request, and returns a value-like receipt with
+the prior/current digest and success or kinded failure. Optional rollback is a later
+blocking control request while that worker's local capability remains valid.
+
+L2 assigns wire-v1's reserved frame kinds 9 and 10 to `evolutionRequest` and
+`evolutionReply`. It registers three positional record schemas:
+
+- `birnam.evolution-activate.v1`: module Symbol, revision digest String, source
+  String-or-nil, artifact checksum String, artifact location String, expected base
+  digest String;
+- `birnam.evolution-rollback.v1`: expected current digest String; and
+- `birnam.evolution-receipt.v1`: operation Symbol, module Symbol-or-nil, accepted
+  base digest String, prior digest String, current digest String, outcome Symbol,
+  error kind Symbol-or-nil, and message String.
+
+Digests use canonical lowercase hexadecimal text. Rollback means “roll back the
+locally retained current generation if its digest equals this expected digest”; it
+does not export a capability token or assume that local generation numbers match.
+
+Prepared tokens, generation objects, Oops, mapped handles, and rollback snapshots
+never cross the isolate seam. L2 remains single-worker and single-flight. It does
+not claim pool-wide atomicity, concurrent rollout, automatic retry, or asynchronous
+completion.
+
+All three bodies explicitly exclude initialization, reflective document editing,
+project-level source-aware `adoptLive`, migration, append persistence, file
+watching, multi-module atomic activation, and cross-isolate atomicity.
+
+## 12. Interleaved roadmap with isolates
+
+The architecture work alternates at the dependency boundaries:
+
+```text
+L1a — generation authority and image coherence
+→ I1a — blocking single-worker isolate substrate
+→ L1b — file-backed revision and image-baseline workflow
+→ I1b — single-worker rolling replacement
+→ L2  — blocking mailbox-safe live rollout
+→ choose later features from evidence
+```
+
+I1a owns clean worker boot, bounded wire-v1 encode/decode copying, opaque
+process-local ownership, one blocking request at a time, crash/EOF observation, and
+bounded stop/terminate/reap. It boots a static image and has no replacement or live
+candidate policy.
+
+I1b starts B while idle A remains selected, waits for transport-ready, performs one
+bounded application health request, switches one coordinator-held worker reference
+between calls, then stops and reaps A. Failure leaves A selected. Pools and busy
+draining remain later policy.
+
+Only after L2 should the project choose among standard initialization,
+image-native source editing, migration, pools, richer supervision, or structured
+operations. The reactor remains orthogonal: it may be implemented earlier for an
+I/O-driven product, but neither I1a nor L2 depends on it. A future reactor invokes
+the same L1a commit between turns rather than changing the generation transaction.
+
+The executable breakdown is
+[50 — Five-Phase Implementation Plan](50-five-phase-live-modules-and-isolates-implementation-plan.md).
+It fixes the first representations, current code seams, test matrix, and exit gate
+for each arrow above.
+
+## 13. Verification requirements
+
+### 13.1 L1a — generation authority and image coherence
+
+Tests must prove:
+
+- an invalid immediate load leaves dispatch and the current generation unchanged;
+- opening and inspection map no code and publish no source;
+- revision content is rehashed at prepare and commit;
+- published source maps are sealed, their digest participates in generation
+  identity, and raw association drift is detected;
+- activation rejects a stale expected whole-runtime generation;
+- one commit atomically publishes dispatch and the successor source map;
+- rollback restores the exact predecessor dispatch and source map;
+- commit and rollback reject ordinary `#running` execution, nested evolution, and
+  forged or durable phase state;
+- failed legacy cutover leaves the old authority untouched and cannot publish or
+  save a partial new contract;
+- successful cutover makes module queries, compilation, replay, and compatibility
+  mirrors derive from the one sealed generation;
+- boot creates one composed generation for several modules;
+- activating module A over a composition leaves module B represented by the new
+  whole-runtime successor;
+- module B can then activate against that successor;
+- two successive full-image save/boot cycles preserve the complete source map;
+- image rebuild derives module order and source from the current generation rather
+  than Store enumeration;
+- mapped and rebuilt module programs run in deterministic dependency-topological
+  order with the module manager first, and reject missing/cyclic graphs;
+- commit is callable only from an explicit quiescent top-level boundary and L1a
+  exposes no queue, promise, callback, or asynchronous submission surface;
+- persistence failure leaves live authority unchanged and the prior full image
+  intact; and
+- `appendImage:` is not advertised through the reliable persistence workflow.
+
+### 13.2 L1b — file-backed revision and image-baseline workflow
+
+Tests must prove:
+
+- candidate name, declared module name, revision metadata, and artifact identity
+  match;
+- a document containing unsupported top-level forms is rejected rather than
+  partially activated;
+- identical import is idempotent and stale/sibling import reports divergence;
+- rejected import changes neither current source nor legacy module-source facts;
+- authored file output preserves untouched text and comments;
+- dependency preparation returns the original `Module load:` error; and
+- a saved baseline boots with the same complete source-map and generation digests
+  under both mapped and rebuilt recovery.
+
+### 13.3 L2 — blocking mailbox-safe live rollout
+
+Tests must prove:
+
+- rollout transfers only wire-v1 values and rejects Oops, generation objects,
+  mapped handles, prepared tokens, and rollback snapshots;
+- the worker compares the value-like base digest and binds preparation to its own
+  runtime-local current generation;
+- a control request is processed only between ordinary requests, and the next
+  ordinary request observes the successor generation;
+- the receipt contains the accepted base, prior/current digest, and a kinded
+  success or failure result;
+- a later blocking rollback request restores that worker's predecessor while its
+  local capability remains valid;
+- two workers may accept different generations without either claiming global
+  atomicity; and
+- L2 exposes no promise, multi-flight, pool-wide commit, retry, or concurrent
+  rollout semantics.
+
+## 14. Implementation choices
+
+[Plan 50](50-five-phase-live-modules-and-isolates-implementation-plan.md#3-representation-choices-fixed-by-this-plan)
+fixes the first implementation choices:
+
+1. `#dispatch/#activeGeneration` is the one current-generation cell.
+2. `DispatchGeneration` is a small distinct policy object; `CompiledUnit` remains
+   candidate delta and provenance.
+3. `SourceRevision` and the sorted source map are immutable Vector records whose
+   canonical hashes are revalidated at every authority boundary.
+4. A file-backed revision carries its base digest in the first-line
+   `// birnam-live-base sha256:...` envelope comment; the remaining authored bytes
+   are exact source.
+5. `activeCompiledUnit` and `__modsrc__` are refreshed eagerly as compatibility
+   mirrors, while all new readers derive from the generation.
+
+These are implementation choices, not new invariants. They may be replaced later
+without reopening one-active-generation-per-runtime or the copied isolate seam.

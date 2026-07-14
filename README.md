@@ -223,6 +223,13 @@ from-zero bootstrap compiler and performance floor.
   behavior.
 - [Compiled units](docs/design/45-compiled-units.md) defines executable
   authority, image integrity, recovery, and the next live-reload boundary.
+- [Concurrency](docs/design/48-concurrency-reactors-and-isolates.md) and
+  [live module evolution](docs/design/49-live-module-evolution.md) define the
+  interleaved next sequence: generation authority (L1a), a blocking single-worker
+  isolate substrate (I1a), file-backed image baselines (L1b), single-worker
+  replacement (I1b), then blocking mailbox-safe live rollout (L2). The
+  [five-phase implementation plan](docs/design/50-five-phase-live-modules-and-isolates-implementation-plan.md)
+  maps every slice to current files, tests, and exit criteria.
 - [Modules and the self-hosted layer](docs/design/43-modules-and-config.md)
   explains source, artifacts, and loading.
 - [Toward self-hosting](docs/design/44-toward-self-hosting.md) records the

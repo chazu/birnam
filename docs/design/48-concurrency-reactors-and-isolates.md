@@ -1,10 +1,14 @@
 # 48 — Concurrency: Reactors, Isolates, and Structured Operations
 
-> **Status:** Exploration, 2026-07-13. This document compares candidate designs;
-> it is not yet a decision or implementation plan. The leading direction is a
+> **Status:** Exploration with an implementation sequence, 2026-07-14, rev. 2,
+> accepted with corrections by the
+> [combined adversarial review](48a-live-evolution-isolate-combined-adversarial-review.md).
+> The leading direction is a
 > small single-image reactor for concurrent I/O plus process-isolated workers for
 > CPU parallelism. Structured asynchronous operations may later deepen the
-> interface shared by those mechanisms.
+> interface shared by those mechanisms. Rev. 2 narrows the first isolate to a
+> blocking, single-flight worker substrate and separates it from single-worker
+> replacement and live candidate rollout.
 >
 > Builds on [40 — The Image](40-the-image.md),
 > [44 — Toward Self-Hosting](44-toward-self-hosting.md), and
@@ -98,6 +102,12 @@ transferable set should be deliberately closed:
 Blocks, arbitrary object identities, cells, entity handles, vtables, Aliens,
 sockets, and native pointers do not cross an isolate seam. Domain identity crosses
 as a stable value key rather than as an object address.
+
+Copying is semantic, not merely an implementation consequence of processes. Every
+message is encoded and decoded even if a future backend hosts several isolated
+`Runtime` instances in one process. Symbols cross by spelling, records cross through
+explicit schemas, and the backend may never substitute shared Oops, mutable backing
+storage, or pointer identity for the wire contract.
 
 ## 4. Design A: a minimal reactor
 
@@ -225,31 +235,48 @@ messages.
 
 ```birnam
 let worker := [Isolate start: #BuildWorker
-                       image: "/tmp/worker.image"];
+                      selector: #handle:
+                         image: "/tmp/worker.image"];
 
-[worker send: #[#warmCache input]];
-
-let reply := [worker request: #[#compile source]];
-[reply whenComplete: #compiled: to: coordinator];
+let reply := [worker request: #[#compile source] timeout: 30000];
 
 [worker stop]
 ```
 
-The entry is a named object in the worker image:
+The first public surface is deliberately blocking and single-flight:
 
-```birnam
-[Reflect defineMethod: #run: on: BuildWorker as: [:self :inbox |
-  [true whileTrue: [|
-    let envelope := [inbox receive];
-    [[envelope isStop]
-      ifTrue: [| false]
-      ifFalse: [|
-        [envelope reply: [self handle: [envelope value]]];
-        true]]]]]];
+```text
+start             → ready worker or bounded boot/transport error
+request:timeout:  → decoded reply or application/timeout/transport/exit error
+stop              → acknowledged exit and reaped child, or bounded terminate-and-reap
 ```
 
-Pools, supervision, request correlation, retries, and load distribution are
-birnam modules above the small isolate mechanism.
+Only one request may be in flight for a worker. One-way sends, unsolicited child
+events, promises, `whenComplete:`, multiple outstanding requests, and asynchronous
+pool APIs require a reactor or later structured-operation layer and are not I1a.
+`request:` may be a shorthand using the worker's configured default deadline; it
+is never an unbounded semantic promise.
+
+The entry is a named per-request handler in the worker image:
+
+```birnam
+[Reflect defineMethod: #handle: on: BuildWorker as: [:self :request |
+  [self compileRequest: request]]];
+```
+
+The child substrate, not application code, owns the receive loop. It decodes one
+frame, handles reserved control kinds such as stop (and later L2 evolution) only
+between application calls, invokes the named selector once for an ordinary
+request, encodes its result or application error, and only then reads the next
+frame. This ownership is the mailbox safe-point seam; applications never receive
+raw envelopes or substrate controls.
+
+I1a handles one worker per opaque handle and one in-flight request per handle. A
+coordinator may own several independent handles, which is required for I1b's brief
+A/B overlap, but I1a supplies no pool abstraction, concurrent routing, shared
+queue, or coordination policy. Supervision, retries, asynchronous request
+correlation, load distribution, and unsolicited event delivery remain birnam
+modules above the small mechanism.
 
 ### 5.2 Why processes first
 
@@ -266,31 +293,159 @@ heap and Store.
 
 ### 5.3 Hidden implementation
 
-The irreducible adapter needs process and byte-channel capabilities, likely built
-from `posix_spawn`, `socketpair` or pipes, `dup2`, `poll`, `waitpid`, and process
-termination. A channel frame can begin as:
+The irreducible adapter needs process and binary-channel capabilities built from
+`posix_spawn`, `socketpair` or pipes, `dup2`, bounded blocking `poll`, `waitpid`, and
+process termination. The existing shell-based, text-only `Process` module is not
+this adapter.
+
+#### Worker boot mode
+
+I1a adds one explicit child mode conceptually equivalent to:
 
 ```text
-length | kind | request-id | payload
+birnam --worker IMAGE RECEIVER SELECTOR --channel-fd N
 ```
 
-Birnam modules can own:
+The exact argv spelling is not contractual, but the boot order is:
+
+1. spawn-and-exec a clean Birnam process; never execute Birnam in a post-`fork`
+   copy of the parent runtime;
+2. inherit only the dedicated channel and explicitly requested capabilities, with
+   close-on-exec on every other parent descriptor;
+3. load and recover the image while suppressing its ordinary global `main` and
+   REPL entry paths;
+4. resolve the receiver and selector inside the child runtime;
+5. create the child-local driver over the dedicated channel;
+6. send `#ready` only after image recovery and entry resolution succeed; and
+7. enter the substrate-owned receive loop, invoking the named selector once per
+   ordinary request and handling reserved controls between calls.
+
+A boot failure sends a bounded boot-error frame when possible and exits nonzero.
+The parent treats EOF before `#ready` as boot failure and always reaps the child.
+
+#### Wire v1
+
+Every frame uses a fixed 20-byte network-byte-order header:
+
+```text
+magic[4] | version:u16 | kind:u8 | flags:u8 | request-id:u64 | payload-length:u32
+payload[payload-length]
+```
+
+`magic` is `BISO`; version is `1`; flags must be zero. Frame-kind values are fixed:
+
+| Value | Kind | Payload |
+| ---: | --- | --- |
+| 1 | `ready` | empty |
+| 2 | `bootError` | `birnam.boot-error.v1` |
+| 3 | `request` | one transferable value |
+| 4 | `replyOk` | one transferable value |
+| 5 | `replyError` | `birnam.application-error.v1` |
+| 6 | `stop` | empty |
+| 7 | `stopped` | empty |
+| 8 | `protocolError` | `birnam.protocol-error.v1` |
+
+Zero is invalid; 9–31 are reserved for later substrate controls such as L2; 32–255
+are reserved and rejected by wire v1. One request is in flight, but the monotonic
+request id detects a stale or mismatched reply and leaves room for later
+multiplexing without changing the header.
+
+The first implementation fixes conservative resource limits: 16 MiB per frame,
+64 levels of nesting, 65,536 elements in one container, and 1,000,000 decoded
+nodes total. The decoder rejects unknown versions/tags, oversized lengths,
+duplicate decoded map keys, invalid UTF-8 where text is required, cyclic input,
+and trailing bytes. Encoders reject cycles and non-transferable values rather
+than silently changing their meaning.
+
+The payload tag table is also fixed:
+
+| Tag | Value | Encoding after tag |
+| ---: | --- | --- |
+| 0 | nil | empty |
+| 1 | false | empty |
+| 2 | true | empty |
+| 3 | integer | signed two's-complement i64, network byte order |
+| 4 | float | bit-preserving IEEE-754 f64 as network-order u64 |
+| 5 | string | u32 byte length, then arbitrary bytes |
+| 6 | symbol | u32 byte length, then a valid UTF-8 spelling |
+| 7 | vector | u32 element count, then recursively encoded values |
+| 8 | map | u32 pair count, then recursively encoded key/value pairs |
+| 9 | record | u16 UTF-8 schema-name length and bytes, u16 field count, then fields in registered order |
+
+Integers outside i64 are not transferable. All f64 bit patterns are preserved,
+including NaN payloads, but floats are not legal map keys. Map keys are restricted
+to nil, booleans, integers, strings, and symbols; duplicate keys after decoding are
+an error. Collection elements and map values must recursively be transferable.
+Shared object identity is not preserved.
+
+Wire v1 fixes three substrate record schemas. Each has exactly two fields in this
+order: `kind` (Symbol) and `message` (String):
+
+- `birnam.boot-error.v1`;
+- `birnam.application-error.v1`; and
+- `birnam.protocol-error.v1`.
+
+Unknown schemas, wrong field counts, and wrong field types are protocol errors.
+Later application schemas require explicit registration on both sides; extending
+that registry is an open design, but these I1a records are not. Empty-payload
+kinds must have a zero payload length.
+
+Reads and writes loop over partial progress and interruption. EOF at a frame
+boundary is orderly peer exit; EOF within a header or payload is a transport
+error. A malformed or resource-violating frame produces `protocolError` when safe,
+then closes the channel. Application errors are encoded as `replyError`; transport
+and child-exit errors remain distinct coordinator results.
+
+#### Worker ownership and termination
+
+One opaque Birnam handle refers to a process-local native registry entry that
+exclusively owns:
+
+- the PID and channel descriptor;
+- lifecycle state `#starting`, `#ready`, `#busy`, `#stopping`, or `#exited`;
+- the one in-flight request id and its rooted Birnam values;
+- channel closure and exactly-once child reaping; and
+- the selected receiver, selector, image origin, and diagnostic exit status.
+
+PID, descriptor, pending request, and native wait state never live in ordinary
+durable Store cells. A native table that retains Oops registers a GC root provider.
+Image save either ignores the opaque process-local handle by explicit policy or
+rejects an attempt to make it durable; it never serializes a numeric PID as worker
+identity.
+
+Graceful stop is `stop` → `stopped` or EOF → `waitpid`. A bounded blocking timeout
+then escalates through terminate and kill as needed, followed by mandatory reaping.
+Repeating stop after a reaped exit is idempotent.
+
+Every blocking start, request, health, and stop operation has a deadline. A request
+timeout is terminal for that worker: close the channel, terminate and then kill on
+the configured deadlines if needed, reap exactly once, mark the entry exited, and
+return a timeout/exit result. Code never resumes use of a worker whose reply may
+arrive after its caller timed out.
+
+GC finalization does not block on process shutdown. If a Birnam handle becomes
+unreachable, its finalizer only marks the native entry orphaned and enqueues it in
+a process-local cleanup registry. The host drains that registry at top-level,
+between worker calls, and during orderly process exit, performing the same bounded
+close/terminate/reap sequence. Explicit `stop` remains the deterministic ownership
+operation; a program that never yields a host safe point cannot demand prompt
+orphan cleanup.
+
+Birnam modules may own:
 
 - frame construction and parsing;
 - the transferable-value codec;
 - inbox and envelope objects;
-- request/reply correlation;
-- pools and load balancing;
-- crash observation and restart policy; and
-- durable job/recovery facts.
+- worker-facing request/reply policy; and
+- later pools, restart policy, and durable job descriptions.
 
 No callback should enter a Birnam runtime from a foreign OS thread. The coordinator
 receives child events through its reactor or through an explicitly blocking wait.
 
 Process startup and value copying require jobs coarse enough to amortize their
-cost. Prestarted pools avoid paying boot cost per request. Mapping compiled code
-from stable content-addressed files allows the OS to share read-only code pages
-between workers rather than charging every process for unique temporary dylibs.
+cost. Stable content-addressed code mappings may later let the OS share read-only
+pages between workers, but current image boot uses temporary dylib paths and I1a
+does not claim this optimization.
 
 ### 5.4 Web-server shape
 
@@ -316,18 +471,26 @@ process-local and must be recreated after boot.
 Exactly-once execution is not a primitive. Applications choose at-most-once or
 at-least-once behavior using durable task IDs and idempotent handlers.
 
-The default code-upgrade policy is rolling replacement:
+I1b proves only single-worker rolling replacement:
 
-1. build or save the new worker baseline;
-2. start and health-check a new pool;
-3. route new work to it;
-4. drain the old pool; and
-5. stop it.
+1. worker A is the coordinator's selected worker and has no request in flight;
+2. build or save a new worker baseline and start worker B;
+3. receive B's transport `#ready`;
+4. perform one application-defined health `request:timeout:`;
+5. between calls, replace the coordinator's selected-worker reference A with B;
+6. send stop to idle A and reap it.
+
+If B fails to boot, times out, or fails health, A remains selected and B is closed,
+terminated if necessary, and reaped. I1b does not route concurrently, drain a busy
+worker, replace a pool, retry automatically, or claim that external effects made by
+the health request are reversible.
 
 Long-lived stateful isolates may instead receive a compiled-unit candidate and
 activate it at a mailbox safe point. Activation is atomic within each isolate,
 never globally atomic across a pool. The coordinator records which generation
-each worker accepted and may request per-worker rollback while valid.
+each worker accepted and may request per-worker rollback while valid. This is the
+L2 bridge in [49 — Live Module Evolution](49-live-module-evolution.md), not I1a or
+I1b.
 
 ### 5.6 Properties
 
@@ -335,6 +498,11 @@ Isolates offer strong ownership, crash isolation, and multicore execution. Their
 costs are IPC, copying, worker memory, startup, and explicit code rollout. They are
 best for coarse jobs and per-core server workers, not message-per-arithmetic-step
 parallelism.
+
+Process isolation is not a security sandbox. A trusted worker retains the user's
+filesystem and process authority plus the environment and descriptors deliberately
+passed at spawn. Sandboxing, privilege reduction, and hostile-worker containment
+are separate designs.
 
 ## 6. Design C: structured asynchronous operations
 
@@ -366,7 +534,7 @@ arbitrary native code or FFI.
 Parallel jobs enter the same style through an isolate-backed operation:
 
 ```birnam
-let compile := [workers request: #[#compile source]];
+let compile := [workers requestOperation: #[#compile source]];
 
 [scope fork:
   [[compile timeoutAfter: 30000]
@@ -437,27 +605,57 @@ run one reactor per worker. The main design risk is forcing them behind an
 interface that falsely treats a local block as transferable. Cross-isolate work
 must remain an explicit copied message or job description.
 
-## 9. Leading implementation sequence
+## 9. Interleaved implementation sequence
 
-1. Implement a deterministic reactor adapter and registration model in pure
-   birnam.
-2. Complete nonblocking socket results and add a `poll` adapter.
-3. Port the HTTP server to receiver/selector event turns.
-4. Benchmark throughput, latency, memory, fairness, and live replacement under
-   load.
-5. Add clean child-process spawning, framed channels, and a copied-value codec.
-6. Build isolate pools, crash observation, and rolling image replacement.
-7. Extract only the structured operation and scope behavior demanded by the first
-   real programs.
+Concurrency work now interleaves with live evolution so neither design invents the
+other's boundary in the abstract:
+
+```text
+L1a — generation authority and image coherence
+→ I1a — blocking single-worker isolate substrate
+→ L1b — file-backed revision and image-baseline workflow
+→ I1b — single-worker rolling replacement
+→ L2  — blocking mailbox-safe live rollout
+```
+
+1. Complete L1a from
+   [49 — Live Module Evolution](49-live-module-evolution.md): one current
+   generation per runtime, sealed source-map/base digests, expected-base commit,
+   exact local rollback, and coherent full-image recovery. Commit is synchronous
+   at an explicit quiescent top-level boundary; L1a invents no queue or promise.
+2. Implement I1a: clean worker boot mode, wire-v1 framing and bounded codec, opaque
+   process-local ownership, one blocking request at a time, crash/EOF observation,
+   and bounded stop/terminate/reap.
+3. Complete L1b: candidate-safe file import/export, divergence, dependency
+   metadata/order, staged inspection, and production of saved worker baselines.
+4. Prove I1b through the single-worker A→B health-checked handoff in §5.5. Pools,
+   busy draining, retries, and candidate delivery remain absent.
+5. Implement L2 only after I1b: transfer source/artifact identity plus a value-like
+   base digest in a blocking control request, bind preparation to the worker's
+   runtime-local generation, activate between requests, and return one value-like
+   receipt. Per-worker rollback is another blocking control request while valid.
+6. Add the deterministic reactor adapter, nonblocking socket results, and `poll`
+   when concurrent I/O is the next product requirement; port the HTTP server to
+   receiver/selector turns and measure live replacement under load.
+7. Extract only the structured operation, supervision, and scope behavior demanded
+   by the first real reactor and isolate programs.
 8. Consider compiler sugar, fibers, or in-process isolated runtimes only after
    measurement identifies a concrete limitation.
 
-If the first target is specifically CPU-bound rather than network throughput,
-steps 1–4 and 5–6 may be reversed. Neither sequence requires shared-memory threads.
+The reactor remains orthogonal rather than blocked behind L2. If network throughput
+is the immediate target, the reactor work in step 6 may run before I1a. If CPU
+parallelism or failure isolation is the target, I1a proceeds with explicitly
+blocking coordination. Neither path requires shared-memory threads. L2 uses the
+mailbox boundary proved by I1a instead of retrofitting asynchronous completion into
+the isolate substrate.
+
+Commit-sized implementation steps, initial timeout choices, concrete file owners,
+and phase exit gates are specified in
+[50 — Five-Phase Implementation Plan](50-five-phase-live-modules-and-isolates-implementation-plan.md).
 
 ## 10. Acceptance questions and measurements
 
-Before either design becomes architectural policy, a prototype should answer:
+During implementation and prototyping, the phase gates should answer:
 
 - How many idle and active connections can the `poll` reactor serve before
   kqueue/epoll materially matters?
@@ -466,25 +664,42 @@ Before either design becomes architectural policy, a prototype should answer:
 - Can compiled-unit activation occur between turns with deterministic subsequent
   behavior and no stale long-lived callback blocks?
 - What job size amortizes isolate encoding and IPC?
-- What are worker startup time and steady-state RSS when code mappings are shared?
-- Can a worker crash, timeout, or malformed message leave the coordinator and
-  other workers healthy?
+- Can worker mode recover an image, suppress `main`/REPL, resolve its named entry,
+  and report ready before accepting a request?
+- Does the substrate retain the receive loop, invoke the application handler once
+  per ordinary request, and consume stop or L2 controls only between calls?
+- Do wire-v1 limits reject oversized, deeply nested, truncated, unknown, and
+  malformed messages without unbounded allocation or coordinator corruption?
+- Do all fixed tags, scalar map-key rules, duplicate detection, f64 bit patterns,
+  and substrate error records round-trip identically on both ends?
+- Does every exit/stop/error path close descriptors and reap exactly once, with no
+  durable PID/channel facts and no lost native Oop roots?
+- Does request timeout make the worker terminal, boundedly terminate/reap it, and
+  leave the coordinator usable; does orphan cleanup do the same at the next host
+  safe point without blocking GC?
+- Can a worker crash or timeout leave the coordinator and its previously selected
+  worker healthy?
+- Does single-worker replacement leave A selected on every B boot/health failure
+  and select B only between blocking calls?
+- What are worker startup time, codec overhead, and steady-state RSS before any
+  code-page-sharing optimization?
 - Does image save clearly reject or exclude runtime-only registrations, channels,
   and pending replies while retaining recovery descriptions?
 - Can both the reactor adapter and isolate transport be replaced in tests without
-  altering application methods?
+  altering application methods or sharing Oops/backing storage?
 
-## 11. Open decisions
+## 11. Remaining open decisions
 
-1. Whether the first isolate transport uses a small tagged binary codec or an
-   intentionally temporary JSON subset.
-2. Whether a simple multi-process blocking HTTP server should precede the reactor
+Plan 50 fixes I1a's starting choices: only the three substrate record schemas are
+registered, applications use scalar/vector/map payloads; boot/request/stop/TERM/
+KILL defaults are 10/30/2/2/2 seconds; and stdout/stderr are inherited while the
+protocol uses its dedicated descriptor. A public application-record registry,
+captured output, and other defaults require evidence rather than blocking I1a.
+
+1. Whether a simple multi-process blocking HTTP server should precede the reactor
    as the fastest parallel-server experiment.
-3. Which failure policy a future task scope applies when one child fails.
-4. Whether reactor registrations live entirely in process-local objects or have
+2. Which failure policy a future task scope applies when one child fails.
+3. Whether reactor registrations live entirely in process-local objects or have
    reflected, explicitly non-durable fact records for inspection.
-5. How an application declares durable recovery descriptions without making
+4. How an application declares durable recovery descriptions without making
    ordinary transient tasks look persistent.
-6. Whether worker code rollout is always rolling replacement initially or also
-   exposes compiled-unit activation in the first isolate slice.
-

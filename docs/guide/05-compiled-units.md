@@ -9,6 +9,12 @@ Use this lifecycle when inspection, atomic publication, and rollback matter. Use
 ordinary source evaluation or `Module load:` when you want immediate initializer,
 global, object, FFI, filesystem, or other effects.
 
+> **Current API boundary:** this chapter documents the implemented per-name
+> lifecycle. L1a will retain `CompiledUnit` as candidate/provenance while moving
+> current executable authority and guarded commit to `DispatchGeneration`. Until
+> that phase ships, the examples below are the supported behavior. See
+> [the five-phase implementation plan](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
+
 ## The lifecycle
 
 A candidate moves through these explicit operations:

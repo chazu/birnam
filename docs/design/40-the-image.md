@@ -120,7 +120,10 @@
 > code-unit count, and a reason. v2 images remain readable; v3 is emitted for
 > new images. `--rebuild` and ABI/architecture fallback visibly enter source
 > recovery rather than pretending to be normal boot. The next live replacement
-> boundary is [45 — Compiled Units](45-compiled-units.md).
+> boundary is [45 — Compiled Units](45-compiled-units.md). Its accepted successor
+> replaces `__modsrc__` enumeration with one sealed runtime-generation authority
+> during L1a; see [49 — Live Module Evolution](49-live-module-evolution.md) and
+> [plan 50](50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).
 >
 > Builds on the
 > [running system](../archive/work-breakdowns/36-the-running-system.md) (globals are cells, method source

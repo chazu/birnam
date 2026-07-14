@@ -116,3 +116,8 @@ The reflective spine uses the same facts you do: `#__methods__` carries every
 method's source, `#__modsrc__` every loaded module's text, `#__globals__` the
 namespace, and the doc registry the docstrings. `[Doc undocumentedSelectors]`,
 hover in the LSP, and this reference are all just queries.
+
+Today `__modsrc__` is also consumed by image compilation/rebuild. L1a will retain
+it as a derived compatibility mirror while moving executable source authority to
+the sealed current `DispatchGeneration`; see
+[the implementation plan](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).

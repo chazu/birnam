@@ -17,6 +17,11 @@ evolving data repeatedly and `saveImage:` occasionally to compact. A method
 redefined after the base save is re-emitted in the append as a composing code
 record, so the image stays self-consistent without a rebuild.
 
+> **Current boundary:** the paragraph above describes the implemented pre-L1a
+> behavior. L1a keeps data-only append when the saved and live generation digests
+> match, but requires a full atomic save after a dispatch/source generation change.
+> See [plan 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).
+
 `saveImage:` answers self on success and **nil on failure** — gate on `isNil`
 and read `[[System imageSaveReport] detail]` when it refuses. The classic
 refusal: a **block stored in a durable cell** ("unserializable durable store
