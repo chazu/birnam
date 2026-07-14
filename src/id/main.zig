@@ -200,6 +200,24 @@ pub fn main() !void {
     var lib = try std.DynLib.open(id_path);
     const id_init = lib.lookup(idapi.IdInitFn, "id_init") orelse return error.NoIdInit;
     const api = id_init();
+    defer if (host_isolate_shutdown) |shutdown| shutdown();
+
+    // Worker routing deliberately precedes baked-image discovery: a baked
+    // coordinator executable must still recover the explicit worker image and
+    // must never dispatch its embedded application's main entry.
+    if (script_path) |sp| {
+        if (std.mem.eql(u8, sp, "--worker")) {
+            const image = args.next() orelse return error.InvalidWorkerArguments;
+            const receiver = args.next() orelse return error.InvalidWorkerArguments;
+            const selector = args.next() orelse return error.InvalidWorkerArguments;
+            const fd_flag = args.next() orelse return error.InvalidWorkerArguments;
+            if (!std.mem.eql(u8, fd_flag, "--channel-fd")) return error.InvalidWorkerArguments;
+            const fd_text = args.next() orelse return error.InvalidWorkerArguments;
+            const fd = try std.fmt.parseInt(c_int, fd_text, 10);
+            if (args.next() != null) return error.InvalidWorkerArguments;
+            return runWorker(a, api, image, receiver, selector, fd);
+        }
+    }
 
     // Baked exe: if this binary carries an appended image, boot it — this IS the
     // app. A plain birnam has no trailer and falls through to normal handling.
@@ -256,6 +274,7 @@ const script_modules = [_][]const u8{
     "libbirnam_id_prelude",
     "libbirnam_id_collection",
     "libbirnam_id_error",
+    "libbirnam_id_isolate",
     "libbirnam_id_relational",
     "libbirnam_id_alien",
     "libbirnam_id_image",
@@ -271,6 +290,7 @@ const STDLIB_SRC = @embedFile("stdlib.birnam");
 const TOML_SRC = @embedFile("toml.birnam");
 const CONFIG_SRC = @embedFile("config.birnam");
 const COMPILED_UNIT_SRC = @embedFile("compiled-unit.birnam");
+const ISOLATE_SRC = @embedFile("isolate.birnam");
 // The module MANAGER itself (docs/44 Phase 5b) — self-hosted like the rest, but
 // loaded FIRST and by name (never through the scan/loadOrder flow it implements).
 const MODULES_SRC = @embedFile("modules.birnam");
@@ -321,6 +341,7 @@ const self_hosted_modules = [_]SelfHosted{
     .{ .name = "compiledUnit", .src = COMPILED_UNIT_SRC },
     .{ .name = "toml", .src = TOML_SRC },
     .{ .name = "config", .src = CONFIG_SRC },
+    .{ .name = "isolate", .src = ISOLATE_SRC },
 };
 
 /// Scan a self-hosted module's source for its `[Module … requires: #[ #a #b ]]`
@@ -455,6 +476,7 @@ fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
         defer a.free(p);
         _ = try loadModule(api, p.ptr, null);
     }
+    try resolveIsolateFunctions(a, api);
     // The whole type universe now exists: make the MOP mirror total (docs/42 §D1) —
     // every native selector reflects through the fact store, alongside user methods.
     if (api.import("Store")) |st| {
@@ -683,7 +705,7 @@ fn runCompileModule(a: std.mem.Allocator, api: *IdApi, src_path: []const u8, out
 /// data-only image or an arch/ABI mismatch (or `--rebuild`), where we fall back to
 /// re-evaluating the library from source (here: the stdlib; user-method replay is
 /// slice 4's next step).
-fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) !void {
+fn recoverImageRuntime(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) !void {
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
@@ -694,11 +716,6 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
     // bodies can refer to stdlib protocol before that protocol is installed.
     loadSelfHosted(a, api, codegen, "modules", MODULES_SRC);
     loadSelfHosted(a, api, codegen, "compiledUnit", COMPILED_UNIT_SRC);
-
-    var stack_anchor: usize = 0;
-    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
-    _ = &stack_anchor;
-    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
 
     // Map the image. NOTE: stdlib is NOT loaded up front — a mapped `.code` section
     // installs the whole library (stdlib + user) with no recompile, which is the
@@ -745,6 +762,15 @@ fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) 
     // `[Module load: #x]` resolves against the tree the image runs in. Before
     // the checkpoint, so the refresh is never journaled.
     if (birnamGlobal(api, "Module")) |mm| refreshModuleManager(a, api, mm);
+}
+
+fn runImage(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebuild: bool) !void {
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+
+    try recoverImageRuntime(a, api, path, rebuild);
 
     // Entry-point convention: `main` bound → run it; else drop into the REPL.
     if (api.import("Globals")) |globals| {
@@ -837,6 +863,7 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
 
     const intents = birnamGlobal(api, "EvolutionIntent") orelse return error.NoEvolutionIntent;
     while (true) {
+        if (host_isolate_drain) |drain| drain();
         const step = api.send(repl, api.intern("hostStep"), &[_]Oop{}, 0);
         const tag = api.send(step, api.intern("at:"), &[_]Oop{api.mkSmallInt(0)}, 1);
         if (tag == api.intern("done")) break;
@@ -848,6 +875,7 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
             if (host_end_quiescence.?() == 0) return error.InvalidRuntimePhase;
         }
         _ = api.send(repl, api.intern("printHostResult:"), &[_]Oop{value}, 1);
+        if (host_isolate_drain) |drain| drain();
     }
     _ = api.send(repl, api.intern("consoleDone"), &[_]Oop{}, 0);
 }
@@ -855,9 +883,17 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
 const RTLD_LAZY: c_int = 1;
 
 const HostPhaseFn = *const fn () callconv(.c) c_int;
+const IsolateDriverFn = *const fn (*IdApi, c_int, Oop, Oop) callconv(.c) c_int;
+const IsolateBootErrorFn = *const fn (*IdApi, c_int, [*:0]const u8, [*]const u8, usize) callconv(.c) void;
+const IsolateDrainFn = *const fn () callconv(.c) void;
+const IsolateShutdownFn = *const fn () callconv(.c) void;
 var host_enter_running: ?HostPhaseFn = null;
 var host_begin_quiescence: ?HostPhaseFn = null;
 var host_end_quiescence: ?HostPhaseFn = null;
+var host_isolate_driver: ?IsolateDriverFn = null;
+var host_isolate_boot_error: ?IsolateBootErrorFn = null;
+var host_isolate_drain: ?IsolateDrainFn = null;
+var host_isolate_shutdown: ?IsolateShutdownFn = null;
 
 fn resolveHostPhaseFunctions(a: std.mem.Allocator, api: *IdApi) !void {
     if (host_enter_running != null) return;
@@ -871,6 +907,82 @@ fn resolveHostPhaseFunctions(a: std.mem.Allocator, api: *IdApi) !void {
     host_enter_running = @ptrCast(@alignCast(api.dlsym(handle, "birnam_codegen_enter_running") orelse return error.NoCodegen));
     host_begin_quiescence = @ptrCast(@alignCast(api.dlsym(handle, "birnam_codegen_begin_quiescence") orelse return error.NoCodegen));
     host_end_quiescence = @ptrCast(@alignCast(api.dlsym(handle, "birnam_codegen_end_quiescence") orelse return error.NoCodegen));
+}
+
+fn resolveIsolateFunctions(a: std.mem.Allocator, api: *IdApi) !void {
+    if (host_isolate_driver != null) return;
+    const dir = try resolveLibDir(a);
+    defer a.free(dir);
+    const path = try std.fs.path.join(a, &.{ dir, "libbirnam_id_isolate.dylib" });
+    defer a.free(path);
+    const path_z = try a.dupeZ(u8, path);
+    defer a.free(path_z);
+    const handle = api.dlopen(path_z.ptr, RTLD_LAZY) orelse return error.NoIsolate;
+    host_isolate_driver = @ptrCast(@alignCast(api.dlsym(handle, "birnam_isolate_worker_driver") orelse return error.NoIsolate));
+    host_isolate_boot_error = @ptrCast(@alignCast(api.dlsym(handle, "birnam_isolate_worker_boot_error") orelse return error.NoIsolate));
+    host_isolate_drain = @ptrCast(@alignCast(api.dlsym(handle, "birnam_isolate_drain") orelse return error.NoIsolate));
+    host_isolate_shutdown = @ptrCast(@alignCast(api.dlsym(handle, "birnam_isolate_shutdown") orelse return error.NoIsolate));
+}
+
+fn workerFail(api: *IdApi, fd: c_int, kind: [*:0]const u8, message: []const u8) noreturn {
+    if (host_isolate_boot_error) |send_error| send_error(api, fd, kind, message.ptr, message.len);
+    std.posix.close(fd);
+    std.process.exit(1);
+}
+
+fn receiverHasSelector(api: *IdApi, receiver: Oop, selector: Oop) bool {
+    var vt = api.vtableOf(receiver);
+    while (vt != null) : (vt = api.vtableParent(vt)) {
+        var i: usize = 0;
+        while (api.vtableSelectorAt(vt, i)) |candidate| : (i += 1)
+            if (candidate == selector) return true;
+    }
+    return false;
+}
+
+fn selectorHasArityOne(selector: []const u8) bool {
+    const colons = std.mem.count(u8, selector, ":");
+    if (colons != 0) return colons == 1;
+    return selector.len != 0 and !std.ascii.isAlphabetic(selector[0]);
+}
+
+fn runWorker(a: std.mem.Allocator, api: *IdApi, image: []const u8, receiver_name: []const u8, selector_name: []const u8, fd: c_int) !void {
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+
+    recoverImageRuntime(a, api, image, false) catch |e| workerFail(api, fd, "imageRecoveryFailed", @errorName(e));
+    const generations = birnamGlobal(api, "DispatchGeneration") orelse workerFail(api, fd, "noDispatchGeneration", "image has no DispatchGeneration");
+    const current = api.send(generations, api.intern("current"), &.{}, 0);
+    if (current == api.nilObj) workerFail(api, fd, "noCurrentGeneration", "image has no current generation");
+    if (api.send(current, api.intern("isError"), &.{}, 0) == api.trueObj)
+        workerFail(api, fd, "invalidCurrentGeneration", "current generation is invalid");
+    const codegen = api.import("Codegen") orelse workerFail(api, fd, "noCodegen", "image has no Codegen");
+    const digest = api.send(codegen, api.intern("currentGenerationDigest"), &.{}, 0);
+    var digest_len: usize = 0;
+    if (digest == api.nilObj or api.vtableOf(digest) != api.string_vt or api.stringBytes(digest, &digest_len)[0..digest_len].len != 64)
+        workerFail(api, fd, "invalidCurrentGeneration", "current generation digest is invalid");
+
+    if (!selectorHasArityOne(selector_name))
+        workerFail(api, fd, "wrongArity", "worker selector must have arity one");
+    const receiver_z = a.dupeZ(u8, receiver_name) catch workerFail(api, fd, "outOfMemory", "could not copy receiver name");
+    defer a.free(receiver_z);
+    const selector_z = a.dupeZ(u8, selector_name) catch workerFail(api, fd, "outOfMemory", "could not copy selector name");
+    defer a.free(selector_z);
+    const globals = api.import("Globals") orelse workerFail(api, fd, "noGlobals", "image has no Globals");
+    var receiver = api.send(globals, api.intern("at:"), &[_]Oop{api.intern(receiver_z.ptr)}, 1);
+    if (receiver == api.nilObj) receiver = api.import(receiver_z.ptr);
+    if (receiver == api.nilObj) workerFail(api, fd, "receiverNotFound", "named worker receiver was not found");
+    const selector = api.intern(selector_z.ptr);
+    if (!receiverHasSelector(api, receiver, selector))
+        workerFail(api, fd, "selectorNotFound", "worker receiver does not implement the selector");
+
+    resolveHostPhaseFunctions(a, api) catch workerFail(api, fd, "noPhaseHooks", "could not resolve runtime phase hooks");
+    if (host_enter_running.?() == 0) workerFail(api, fd, "invalidRuntimePhase", "could not enter running phase");
+    const status = host_isolate_driver.?(api, fd, receiver, selector);
+    std.posix.close(fd);
+    if (status != 0) std.process.exit(1);
 }
 
 /// Load (or reload) a module THROUGH the id api's own `dlopen`/`dlsym`, threading

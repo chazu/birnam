@@ -473,6 +473,14 @@ fn encodeField(buf: *Buf, o: Oop) bool {
         return true;
     }
     const vt = g_api.vtableOf(o);
+    // Worker handles are process capabilities, not durable values. Reject a
+    // Store-reachable handle explicitly; serializing its registry token would
+    // create a stale capability on the next boot, while silently omitting the
+    // fact would corrupt durable state.
+    if (g_api.isExported("IsolateHandleVt") != 0 and vt == g_api.import("IsolateHandleVt")) {
+        setSaveReportDetail("nonDurableIsolateHandle: durable Store value refers to a worker handle", .{});
+        return false;
+    }
     if (vt == g_api.symbol_vt) {
         putTag(buf, .symbol);
         putLenBytes(buf, std.mem.span(g_api.symbolName(o)));

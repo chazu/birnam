@@ -11,8 +11,8 @@ reflection, modules, or live reload must preserve that ordering.
 
 ## Next Architecture Sequence
 
-The current plan interleaves executable evolution and isolation rather than
-finishing either design in the abstract:
+L1a and I1a are shipped. The next implementation slice is L1b; the sequence
+continues to interleave executable evolution and isolation:
 
 ```text
 L1a — generation authority and image coherence
@@ -22,8 +22,8 @@ L1a — generation authority and image coherence
 → L2  — blocking mailbox-safe live rollout
 ```
 
-L1a establishes one current dispatch generation and coherent image recovery. I1a
-proves clean process boot and bounded, blocking copied-value IPC. L1b adds the
+L1a established one current dispatch generation and coherent image recovery. I1a
+now provides clean process boot and bounded, blocking copied-value IPC. L1b adds the
 file-backed authoring and saved-baseline workflow; I1b proves one health-checked
 worker handoff. L2 then adds between-request candidate activation and per-worker
 receipts, never pool-wide atomicity or asynchronous completion. See

@@ -1,10 +1,13 @@
 # 50 — Five-Phase Implementation Plan: Live Modules and Isolates
 
-> **Status:** L1a implemented; I1a next. Revised 2026-07-14.
+> **Status:** L1a implemented; I1a contract hardened and ready. Revised
+> 2026-07-14.
 >
 > Executes [48 — Concurrency](48-concurrency-reactors-and-isolates.md) and
 > [49 — Live Module Evolution](49-live-module-evolution.md) after the
 > [combined adversarial review](48a-live-evolution-isolate-combined-adversarial-review.md).
+> I1a's executable contracts were accepted by the
+> [plan-hardening follow-up review](50a-i1a-plan-hardening-follow-up-review.md).
 > The implemented starting point remains
 > [47 — CompiledUnit Lifecycle](47-compiled-unit-lifecycle.md).
 
@@ -40,8 +43,10 @@ suspended execution.
    may exist, but each handle is single-flight and blocking through L2.
 6. Worker PIDs, descriptors, pending requests, native handles, and rollback
    capabilities are process-local and never become durable Store values.
-7. Every externally blocking process operation has a deadline. Timeout makes a
-   worker terminal and ends with exactly one reap.
+7. Every externally blocking process operation has a caller-visible deadline.
+   Timeout makes a worker terminal. Cleanup either reaps it once within the
+   escalation budget or leaves one process-local `#reapPending` owner for later
+   nonblocking host-boundary drains; no caller waits without a bound.
 8. Full-image save by temporary-file replacement is the only supported generation
    baseline. Append is outside the generation-image contract.
 9. The reactor remains orthogonal. Nothing in these phases introduces an API whose
@@ -148,6 +153,124 @@ dedicated binary descriptor. I1a supports the three fixed substrate error record
 from design 48. Applications use scalar/vector/map payloads initially; a public
 record-schema registry is deferred until a real application requires it.
 
+A supplied request timeout is the service budget and begins before local encoding.
+If it expires before any frame byte is written, the request answers `#timeout` and
+the worker remains ready. After the first frame byte, expiry is terminal and may
+add at most the configured graceful/TERM/KILL-to-reap cleanup budgets to the
+caller-visible duration. The API documents that total upper bound rather than
+pretending cleanup consumes time remaining on an already-expired service budget.
+The boot-ready timeout uses the same rule: boot work receives its service budget,
+then terminal cleanup receives the separate bounded escalation budget.
+
+### 3.6 Recovery-only worker boot
+
+Extract image recovery from entry dispatch before adding worker mode. A
+`recoverImageRuntime`-shaped helper loads the native stack, restores or rebuilds
+the image, re-derives globals, refreshes module paths, validates the current
+generation, and returns without invoking global `main` or the REPL. Ordinary
+`runImage` calls that helper and then applies the existing entry convention.
+
+The outer ordinary-image or worker runner, not the recovery helper, owns the live
+GC stack anchor for the whole runtime turn. Worker boot performs this exact order:
+
+1. parse worker arguments before baked-image and ordinary image routing;
+2. establish the caller-owned GC stack anchor and load/recover the explicit image;
+3. require and validate its current `DispatchGeneration`;
+4. resolve one named global receiver and a selector of arity one;
+5. resolve the isolate driver and Codegen host-phase exports;
+6. enter `#running` exactly once; and
+7. send `ready` with request id zero, then enter the substrate-owned loop.
+
+Any failure before step 7 attempts one `bootError` with request id zero, closes the
+channel, and exits nonzero. No worker path calls `main`, constructs a REPL, or
+leaves the Codegen phase at `#boot` after reporting ready.
+
+### 3.7 Public isolate outcomes
+
+Successful `start` answers the ready opaque handle, `request:timeout:` answers the
+decoded reply value, and `stop` (including repeated stop after a reaped exit)
+answers its handle. A stop that exhausts its reap budget answers an `#exit` failure
+with kind `#reapPending`; subsequent stop is idempotent, performs one nonblocking
+drain attempt, and answers the same failure until the reap succeeds. Every failure
+answers an `IsolateFailure`, a value-like error object with read-only queries:
+
+```text
+class       #boot | #application | #protocol | #encode | #timeout |
+            #transport | #exit | #busy | #stopped
+kind        the remote or local reason Symbol
+message     diagnostic String
+exitStatus  Integer or nil
+requestId   Integer or nil
+```
+
+`IsolateFailure` answers `isError` true and carries no worker handle, PID,
+descriptor, prepared capability, or mutable registry reference. The wire
+`bootError`, `replyError`, and `protocolError` records supply `kind` and `message`;
+the coordinator assigns their outer classes. Local failures use the same object,
+so callers can distinguish every failure class without parsing text or consulting
+ambient `lastError` state.
+
+Birnam errors are values: if a handler result answers `isError` true, the child
+encodes it as `replyError`. An application that intends to return error-shaped
+data must wrap its fields in an ordinary transferable map or vector. Encode
+failure occurs before a request frame is written and leaves a ready worker usable;
+a timeout or any failure after a request may have been sent is terminal.
+
+### 3.8 Process-local handle and reap ownership
+
+Each collectable handle stores only a monotonically increasing nonzero `u64`
+registry token. Tokens are never reused during a process lifetime; exhaustion
+refuses another start. Registry entries retain native bytes and process state, not
+Oops. An exited entry remains as a tombstone while its handle is reachable, so
+repeated `stop` is idempotent and a stale handle can never address a newer worker.
+
+Worker handles are explicitly non-durable. Full-image preflight rejects a reachable
+handle in durable Store state with `#nonDurableIsolateHandle`; it never omits the
+binding silently and never serializes the token, PID, or descriptor.
+
+Termination closes the channel, waits through the graceful and TERM budgets,
+sends KILL if necessary, and polls `waitpid(..., WNOHANG)` through the final reap
+budget. A successful `waitpid` is recorded once as `#exited`. If the child is not
+yet waitable, the entry becomes terminal `#reapPending`; the caller returns on
+time and later host-boundary drains retry nonblocking `waitpid` until the sole
+owner records the reap. No API can reuse a `#reapPending` worker.
+
+The isolate native module exports nonallocating `drain` and bounded `shutdown`
+hooks. Runtime host frames call `drain` before and after isolate operations and at
+top-level REPL boundaries, and install `shutdown` as a defer after the isolate
+module loads. GC finalization only enqueues the token. Shutdown performs the same
+bounded escalation and reports any still-pending PID rather than blocking without
+a deadline. Ordinary `drain` never sleeps or polls with a positive timeout: it
+closes newly orphaned channels, sends any signal whose monotonic escalation time
+has arrived, performs `waitpid(..., WNOHANG)`, and returns. Repeated boundaries
+advance pending cleanup without adding latency to unrelated top-level turns.
+
+### 3.9 Spawn, descriptor, environment, and request-id contract
+
+The parent resolves absolute executable and image paths before spawn. A platform
+adapter creates one full-duplex local stream channel with close-on-exec set on both
+original descriptors; spawn file actions duplicate only the child endpoint to the
+fixed protocol descriptor and close both originals. The implementation must use a
+close-from/CLOEXEC-default facility where available, with an enumerated-close
+fallback covered by descriptor-leak tests. Both endpoints use a no-SIGPIPE write
+operation (`SO_NOSIGPIPE` on Darwin or `MSG_NOSIGNAL` where available).
+
+I1a is a trusted-worker API and inherits the parent environment and working
+directory unchanged. Only descriptors are capability-filtered. Environment
+filtering, per-worker overrides, captured output, changed credentials, and hostile
+sandboxing remain later policy. Stdout and stderr are inherited; protocol bytes
+use only the dedicated descriptor.
+
+Wire request ids start at one and increase monotonically through `maxInt(i64)` so
+they remain representable by Birnam `Integer` diagnostics. `request`, `stop`, and
+later request/reply controls use a nonzero id; their response must echo it.
+`ready` and `bootError` use zero. `protocolError` echoes an offending id only when
+the header was trustworthy, otherwise zero. Attempting to advance past
+`maxInt(i64)` makes the handle terminal with `#requestIdExhausted`; ids never wrap.
+The encoder enforces the same frame, nesting, container, node, and string limits
+as the decoder while building into a bounded buffer, so an oversized local value
+fails before any frame byte is written.
+
 ## 4. Implemented L1a baseline
 
 - Every shipped Birnam module declares one canonical identity; source and AOT boot
@@ -164,8 +287,8 @@ record-schema registry is deferred until a real application requires it.
   dependency-ordered complete documents.
 - Documentation and image/source inspection derive from the generation, not
   `activeCompiledUnit`, `__modsrc__`, `__methods__`, or `__methodops__`.
-- `modules/process.birnam` still uses shell/text `popen`; I1a replaces that seam
-  with the binary isolate substrate.
+- `modules/process.birnam` still uses shell/text `popen`; I1a adds a separate
+  binary isolate substrate rather than changing that API.
 
 ## 5. Delivery discipline
 
@@ -338,44 +461,73 @@ Narrow gate: `zig build test-image`.
 ### 7.1 Goal
 
 Boot a clean child from an explicit image, exchange bounded copied values through
-one blocking request per handle, distinguish all failure classes, and close/reap
-the child on every terminal path. Several independent handles may coexist, but
-there is no pool or replacement policy yet.
+one blocking request per handle, distinguish all failure classes, and close the
+channel plus retain the sole reap owner on every terminal path. Several independent
+handles may coexist, but there is no pool or replacement policy yet.
 
 ### 7.2 Planned increments
 
-#### I1a.0 — Add the native mechanism and test target
+#### I1a.0 — Extract and characterize the worker-safe host seams
 
-- Add `src/id/isolate.zig` and `src/id/isolate_test.zig`; register
-  `libbirnam_id_isolate` in `build.zig` and the normal runtime load stack.
-- Add `src/id/isolate.birnam` for the small Birnam-facing facade and documentation;
-  include it in the stage-1 self-hosted set.
+- Add `src/id/isolate.zig`, `src/id/isolate_test.zig`, and the isolated
+  `test-isolate` build target with a replaceable fake process adapter; do not add
+  it to the production load stack yet.
+- Add `src/id/isolate.birnam` plus focused self-hosted tests for the facade and
+  `IsolateFailure`; include that source in the narrow test boot set before its test
+  G0 is sealed until I1a.1 makes it part of the production G0.
+- Extract recovery-only image boot as fixed in §3.6; keep the GC stack anchor in
+  each outer host runner and make ordinary image behavior a characterized caller
+  of the new seam.
+- Add worker-argument tests proving parsing precedes baked/ordinary image routing,
+  and recovery tests proving neither `main` nor the REPL runs.
+- Define `IsolateFailure` and lock the class/kind/message/status/request-id matrix
+  with self-hosted tests before transport code returns it.
+- Add the native token/reap state machine with fake-process tests for ready,
+  stopping, exited, reap-pending, repeated stop, orphan enqueue, token exhaustion,
+  and exactly-once successful `waitpid` recording.
+- Add host `drain`/`shutdown` resolution and defer wiring against an empty registry
+  before a real child can exist.
+
+Narrow gates: `zig build test-main`, `zig build test-birnam`, and
+`zig build test-isolate` with a fake process adapter.
+
+#### I1a.1 — Publish the isolate mechanism and facade into G0
+
+- Register the I1a.0 native mechanism as `libbirnam_id_isolate` in the normal
+  runtime load stack.
+- Embed the I1a.0 Birnam facade and include it in the dependency-ordered stage-1
+  self-hosted set before G0 is sealed. Update the source/AOT fallback manifest and
+  assert identical G0 digests with the isolate facade present.
 - Keep `modules/process.birnam` unchanged and explicitly separate.
-- Add fixture helpers that save a worker image with a named `handle:` receiver.
+- Add a test-only worker fixture module with a named `handle:` receiver to the
+  fixture boot manifest before its G0 is sealed, then save that image. Never file
+  the handler in after G0 or add a fixture-only module-introduction escape hatch.
 
-#### I1a.1 — Implement wire-v1 frame and value codecs
+#### I1a.2 — Implement wire-v1 frame and value codecs
 
 - Implement the exact 20-byte header, kind values, tag table, network byte order,
-  scalar map-key restriction, duplicate-key rejection, and fixed error schemas
-  from design 48.
-- Enforce frame, nesting, container, decoded-node, and string/resource limits before
-  allocation.
+  request-id/direction rules, scalar map-key restriction, duplicate-key rejection,
+  and fixed error schemas from design 48.
+- Enforce frame, nesting, container, decoded-node, and string/resource limits while
+  encoding and before decoder allocation; use a bounded encoder buffer.
 - Loop on partial reads/writes and EINTR; distinguish clean EOF, truncated header,
   truncated payload, unknown tag/version/kind, and trailing bytes.
 - Add table-driven round trips, every malformed case, f64 bit patterns, embedded
-  NUL strings, symbol spelling, and cyclic/non-transferable encode rejection.
+  NUL strings, symbol spelling, request-id/state-direction mismatches, and
+  cyclic/non-transferable/oversized encode rejection.
 - Fuzz the decoder with bounded random bytes and assert no unbounded allocation or
   crash.
 
 Narrow gate: `zig build test-isolate`.
 
-#### I1a.2 — Add worker boot mode without normal entry
+#### I1a.3 — Add worker boot mode without normal entry
 
 - Add `--worker IMAGE RECEIVER SELECTOR --channel-fd N` parsing in
-  `src/id/main.zig` before ordinary image routing.
-- Reuse L1a's recovery-only function; suppress global `main` and REPL.
-- Resolve receiver/selector after recovery, construct the child driver, and send
-  `ready` only after all three succeed.
+  `src/id/main.zig` before baked-image and ordinary image routing.
+- Use §3.6's recovery-only function under a worker-owned live stack anchor.
+- Require a current generation, resolve a named receiver and arity-one selector,
+  resolve the driver/phase hooks, enter `#running`, and only then send zero-id
+  `ready`. Every earlier error is a zero-id `bootError` when the channel is usable.
 - Make the substrate own the frame loop and invoke the selector once per ordinary
   request. Applications receive decoded values, never envelopes or stop/control
   frames.
@@ -383,47 +535,66 @@ Narrow gate: `zig build test-isolate`.
   it the IdApi, channel, resolved entry, and the already-resolved Codegen phase
   hooks; this keeps codec/process mechanics in `isolate.zig` while preserving
   host-only authority for later L2 controls.
-- Encode caught application errors as `replyError`; boot/protocol/transport errors
-  remain distinct.
+- Encode handler-returned Birnam errors as `replyError`; boot/protocol/transport
+  errors map to the distinct `IsolateFailure` classes fixed in §3.7.
 
 Narrow gates: `zig build test-main` and `zig build test-isolate`.
 
-#### I1a.3 — Implement spawn, handle ownership, and ready handshake
+#### I1a.4 — Implement spawn, handle ownership, and ready handshake
 
 - Use `posix_spawn`, `socketpair` (or two pipes if required), file actions, and a
   dedicated inherited descriptor. Never run Birnam in a post-fork parent copy.
-- Mark unrelated descriptors close-on-exec and pass only explicitly requested
-  capabilities/environment.
-- Add an opaque handle backed by a native registry entry containing PID, channel,
-  lifecycle state, request id, image/entry diagnostics, and reap state.
+- Implement §3.9's absolute-path, descriptor-closing, inherited-environment, and
+  no-SIGPIPE contract behind a replaceable process adapter.
+- Add an opaque token handle backed by a native registry entry containing PID,
+  channel, lifecycle/reap state, request id, and owned byte diagnostics. Keep Oops
+  out of the registry and reject durable handle reachability during image save.
 - Permit several registry entries/handles, but one active request per entry.
 - Wait for `ready` under the boot deadline; EOF or error before ready is boot
-  failure followed by mandatory reap.
+  failure followed by terminal bounded cleanup or `#reapPending` ownership.
+- Test inherited stdout/stderr and environment, absence of unrelated descriptors,
+  relative-to-absolute image resolution, peer-close writes without SIGPIPE, and
+  stage-1/source-fallback parity.
+- Add image preflight coverage proving a durable Store path to a handle reports
+  `#nonDurableIsolateHandle`, while an unreachable or stack-local handle does not
+  contaminate an otherwise valid save.
 
-#### I1a.4 — Implement deadline-bearing request and stop
+Narrow gates: `zig build test-isolate`, `zig build test-image`, and
+`zig build test-source-fallback`.
+
+#### I1a.5 — Implement deadline-bearing request and stop
 
 - Expose `request:timeout:` and a `request:` shorthand using the configured default.
-- Poll under a monotonic deadline; match the reply request id and reject stale or
-  unsolicited frames.
-- Make request timeout terminal: close, TERM, KILL if required, reap once, and
-  answer a distinct timeout/exit result.
-- Implement `stop` as stop/stopped-or-EOF/waitpid with the same bounded escalation.
+- Start the service deadline before encoding, check it during bounded traversal,
+  pass only the remaining service budget to write/read, match the reply request
+  id, and reject stale or unsolicited frames. A pre-write expiry is nonterminal;
+  a post-write expiry starts the separate bounded cleanup budget fixed in §3.5.
+- Reject an unencodable/oversized value before writing and keep the worker ready.
+  After any frame byte is written, timeout or uncertain transport is terminal.
+- Make a post-write request timeout terminal: close, TERM, KILL if required, then
+  answer a `#timeout` failure after either one reap or transition to
+  `#reapPending`.
+- Implement `stop` as stop/stopped-or-EOF/waitpid with the same bounded escalation
+  and request-id echo rules.
 - Make stop after exit/reap idempotent.
-- Preserve application error values separately from protocol, timeout, transport,
-  and child-exit results.
+- Preserve application failures separately from encode, protocol, timeout,
+  transport, busy/stopped, and child-exit results through `IsolateFailure`.
 
-#### I1a.5 — Make orphan and process-exit cleanup honest
+#### I1a.6 — Make orphan and process-exit cleanup honest
 
 - Attach a non-allocating handle finalizer that only marks/enqueues the native
-  registry entry.
+  registry token.
 - Drain orphan cleanup at top-level host boundaries, before/after isolate calls,
-  and during orderly runtime exit; never block inside GC sweep.
-- Ensure the registry owns no unregistered Oops. If the implementation retains
-  any, register one GC root provider and test collection during a request.
+  and through the installed bounded orderly-runtime-exit defer; never block inside
+  GC sweep and never call Birnam from a finalizer or shutdown hook.
+- Keep the registry Oop-free. Test collection during a request and after dropping
+  ready, exited, and reap-pending handles.
 - Test drop-without-stop, crash, protocol failure, timeout, repeated stop, parent
-  shutdown, and simultaneous independent handles for descriptor/zombie leaks.
+  shutdown, delayed reap, and simultaneous independent handles for descriptor and
+  zombie leaks. A shutdown that exhausts its final reap budget reports the PID and
+  returns; it does not make an unbounded wait promise.
 
-#### I1a.6 — Integration, measurement, and phase exit
+#### I1a.7 — Integration, measurement, and phase exit
 
 - Add cross-process tests for ready, scalar/vector/map round trips, application
   error, crash, malformed frame, timeout, clean stop, and two independent handles.
@@ -436,12 +607,30 @@ Narrow gates: `zig build test-main` and `zig build test-isolate`.
 ### 7.3 I1a exit criteria
 
 - Worker boot never runs image `main` or REPL.
+- Worker ready implies a validated current generation and runtime phase `#running`.
 - The substrate, not the application, owns the receive loop.
 - Wire-v1 malformed input is bounded and terminal without corrupting the parent.
-- Every exit path closes descriptors and reaps exactly once.
+- Every terminal path closes descriptors within a bound; each child has one native
+  reap owner, and each successful reap is recorded exactly once. Repeated drains
+  leave no zombies in the process tests.
 - Multiple handles coexist; every handle remains single-flight.
+- Handles are token-stable, non-durable, and stale handles cannot address a newer
+  worker.
+- Every public failure class is distinguishable without parsing message text.
 - No promise, callback, reactor, pool, or candidate-delivery API exists.
 - `zig build verify` is green.
+
+### 7.4 Implementation status
+
+Shipped 2026-07-14. The runtime now loads `libbirnam_id_isolate`, stages the
+`#isolate` facade in G0, routes `--worker` before baked/ordinary image entry,
+recovers without invoking `main` or the REPL, enters `#running`, and hands the
+dedicated descriptor to the substrate-owned loop. Wire v1, structured failures,
+opaque token handles, service deadlines, bounded stop/termination, orphan drains,
+shutdown cleanup, and explicit non-durable image rejection are implemented.
+`test-isolate-process` exercises real worker image boot, copied replies,
+application errors, terminal timeout cleanup, two independent handles, and clean
+stop/reap; it is part of `zig build verify`.
 
 ## 8. L1b — file-backed revision and image-baseline workflow
 
@@ -550,7 +739,10 @@ not a pool.
 3. send exactly one application health `request:timeout:`;
 4. on any B failure, terminate/reap B and answer an error containing A unchanged;
 5. on health success, return/select B between calls; and
-6. stop/reap idle A before declaring replacement complete.
+6. stop/reap idle A before declaring replacement complete. If A becomes
+   `#reapPending`, keep B selected and answer a partial-cleanup result naming B as
+   current and A as the sole pending reap; never claim A remained selected or
+   switch traffic back to a worker whose termination began.
 
 The health request may have external effects; failure handling never claims to
 reverse them.
@@ -564,10 +756,13 @@ reverse them.
 - malformed health reply;
 - health timeout/crash;
 - B succeeds but A stop needs TERM/KILL; and
+- B is selected but A exhausts the reap budget, then a later drain reaps A; and
 - repeated successful replacements A→B→C.
 
 For every pre-selection B failure, send another ordinary request to A and assert it
-still answers. Assert exactly-once reap for both handles and no hidden pool state.
+still answers. For the post-selection cleanup case, assert B answers and A cannot
+be reused. Assert one reap owner and one recorded successful reap for both handles,
+with no hidden pool state.
 
 #### I1b.3 — Baseline integration and phase exit
 
@@ -582,6 +777,8 @@ still answers. Assert exactly-once reap for both handles and no hidden pool stat
 - A remains selected/usable on every B startup or health failure.
 - Selection changes only between blocking calls.
 - Successful handoff ends with B ready and A reaped.
+- A post-selection reap-pending outcome keeps B selected, exposes A's cleanup
+  status, and becomes complete only after a later drain records A's reap.
 - No pool, retry loop, concurrent route, busy drain, or reversible-health claim is
   present.
 - `zig build verify` is green.
@@ -678,7 +875,7 @@ and return an independent receipt. Rollback is another blocking local control.
 | Mapped/rebuilt image equivalence | ✓ | boot fixture | ✓ | baseline | post-rollout |
 | Quiescent commit enforcement | ✓ | boundary only | ✓ |  | ✓ |
 | Bounded resource/timeout behavior |  | ✓ |  | ✓ | ✓ |
-| Exactly-once process reap |  | ✓ |  | ✓ | ✓ |
+| Single-owner eventual process reap |  | ✓ |  | ✓ | ✓ |
 | No process-local value crosses wire/image | image | ✓ | image | ✓ | ✓ |
 | Full `zig build verify` | ✓ | ✓ | ✓ | ✓ | ✓ |
 

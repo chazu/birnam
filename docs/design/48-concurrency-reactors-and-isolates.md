@@ -1,14 +1,18 @@
 # 48 — Concurrency: Reactors, Isolates, and Structured Operations
 
-> **Status:** Exploration with an implementation sequence, 2026-07-14, rev. 2,
+> **Status:** Exploration with an implementation sequence, 2026-07-14, rev. 3,
 > accepted with corrections by the
 > [combined adversarial review](48a-live-evolution-isolate-combined-adversarial-review.md).
 > The leading direction is a
 > small single-image reactor for concurrent I/O plus process-isolated workers for
 > CPU parallelism. Structured asynchronous operations may later deepen the
-> interface shared by those mechanisms. Rev. 2 narrows the first isolate to a
+> interface shared by those mechanisms. Rev. 2 narrowed the first isolate to a
 > blocking, single-flight worker substrate and separates it from single-worker
-> replacement and live candidate rollout.
+> replacement and live candidate rollout. Rev. 3 fixes worker recovery, public
+> failures, spawn inheritance, request ids, handle durability, and bounded
+> reap-pending ownership before I1a implementation; the
+> [follow-up review](50a-i1a-plan-hardening-follow-up-review.md) accepts those
+> contracts for implementation.
 >
 > Builds on [40 — The Image](40-the-image.md),
 > [44 — Toward Self-Hosting](44-toward-self-hosting.md), and
@@ -248,7 +252,7 @@ The first public surface is deliberately blocking and single-flight:
 ```text
 start             → ready worker or bounded boot/transport error
 request:timeout:  → decoded reply or application/timeout/transport/exit error
-stop              → acknowledged exit and reaped child, or bounded terminate-and-reap
+stop              → acknowledged/reaped child, or bounded terminal `#reapPending`
 ```
 
 Only one request may be in flight for a worker. One-way sends, unsolicited child
@@ -306,22 +310,29 @@ I1a adds one explicit child mode conceptually equivalent to:
 birnam --worker IMAGE RECEIVER SELECTOR --channel-fd N
 ```
 
-The exact argv spelling is not contractual, but the boot order is:
+The exact argv spelling is not contractual. Worker parsing precedes baked-image
+and ordinary image routing. Image recovery is a shared helper that returns before
+entry dispatch; its caller owns a live GC stack anchor for the entire runtime
+turn. The boot order is:
 
 1. spawn-and-exec a clean Birnam process; never execute Birnam in a post-`fork`
    copy of the parent runtime;
-2. inherit only the dedicated channel and explicitly requested capabilities, with
-   close-on-exec on every other parent descriptor;
+2. inherit the trusted parent's environment, working directory, stdout, and
+   stderr, but only the dedicated protocol descriptor among nonstandard file
+   descriptors; use close-on-exec/close-from spawn actions for the rest;
 3. load and recover the image while suppressing its ordinary global `main` and
    REPL entry paths;
-4. resolve the receiver and selector inside the child runtime;
-5. create the child-local driver over the dedicated channel;
-6. send `#ready` only after image recovery and entry resolution succeed; and
-7. enter the substrate-owned receive loop, invoking the named selector once per
+4. validate its current generation and resolve a named receiver plus an arity-one
+   selector inside the child runtime;
+5. create the child-local driver and resolve the host-only Codegen phase hooks;
+6. enter `#running` exactly once;
+7. send zero-id `#ready` only after all preceding steps succeed; and
+8. enter the substrate-owned receive loop, invoking the named selector once per
    ordinary request and handling reserved controls between calls.
 
-A boot failure sends a bounded boot-error frame when possible and exits nonzero.
-The parent treats EOF before `#ready` as boot failure and always reaps the child.
+A boot failure sends a zero-id bounded boot-error frame when possible and exits
+nonzero. The parent treats EOF before `#ready` as boot failure and enters the same
+bounded terminal cleanup state machine as every other child failure.
 
 #### Wire v1
 
@@ -346,16 +357,23 @@ payload[payload-length]
 | 8 | `protocolError` | `birnam.protocol-error.v1` |
 
 Zero is invalid; 9–31 are reserved for later substrate controls such as L2; 32–255
-are reserved and rejected by wire v1. One request is in flight, but the monotonic
-request id detects a stale or mismatched reply and leaves room for later
-multiplexing without changing the header.
+are reserved and rejected by wire v1. Request ids begin at one and increase
+monotonically through `maxInt(i64)` so every diagnostic id remains a Birnam
+`Integer`. `request`, `stop`, and later correlated controls use a nonzero id and
+the response echoes it. `ready` and `bootError` use zero.
+`protocolError` echoes the offending id only when the header was trustworthy,
+otherwise zero. Attempting to advance beyond `maxInt(i64)` makes the handle
+terminal with `#requestIdExhausted`. One request is in flight, but the id detects a
+stale or mismatched reply and leaves room for later multiplexing without changing
+the header.
 
 The first implementation fixes conservative resource limits: 16 MiB per frame,
 64 levels of nesting, 65,536 elements in one container, and 1,000,000 decoded
 nodes total. The decoder rejects unknown versions/tags, oversized lengths,
 duplicate decoded map keys, invalid UTF-8 where text is required, cyclic input,
-and trailing bytes. Encoders reject cycles and non-transferable values rather
-than silently changing their meaning.
+and trailing bytes. Encoders enforce the same limits while building into a bounded
+buffer and reject cycles, non-transferable values, or oversized output before any
+frame byte is written.
 
 The payload tag table is also fixed:
 
@@ -396,40 +414,82 @@ error. A malformed or resource-violating frame produces `protocolError` when saf
 then closes the channel. Application errors are encoded as `replyError`; transport
 and child-exit errors remain distinct coordinator results.
 
+Birnam errors are values. A handler result answering `isError` true is encoded as
+`replyError`; applications return error-shaped data by wrapping ordinary fields in
+a transferable vector or map. The coordinator maps every failure to a value-like
+`IsolateFailure` answering `isError` true, with read-only `class`, `kind`,
+`message`, `exitStatus`, and `requestId` queries. Classes are `#boot`,
+`#application`, `#protocol`, `#encode`, `#timeout`, `#transport`, `#exit`, `#busy`,
+and `#stopped`. This preserves the remote kind while making the failure source
+structurally distinguishable without ambient last-error state.
+
+Successful `start` answers the ready opaque handle, a successful request answers
+the decoded reply, and `stop` (including repeated stop after a reaped exit) answers
+its handle. A stop that exhausts the reap budget answers an `#exit` failure with
+kind `#reapPending`; repeated stop performs one nonblocking drain attempt and
+answers the same failure until the reap succeeds.
+
 #### Worker ownership and termination
 
-One opaque Birnam handle refers to a process-local native registry entry that
-exclusively owns:
+One opaque Birnam handle stores only a monotonically increasing nonzero `u64`
+token for a process-local native registry entry. Tokens are not reused during the
+process lifetime; exhaustion refuses another start. The entry exclusively owns:
 
 - the PID and channel descriptor;
-- lifecycle state `#starting`, `#ready`, `#busy`, `#stopping`, or `#exited`;
-- the one in-flight request id and its rooted Birnam values;
-- channel closure and exactly-once child reaping; and
-- the selected receiver, selector, image origin, and diagnostic exit status.
+- lifecycle state `#starting`, `#ready`, `#busy`, `#stopping`, `#reapPending`, or
+  `#exited`;
+- the one in-flight request id;
+- channel closure and the sole authority to record a successful child reap; and
+- owned-byte receiver, selector, image-origin, and exit diagnostics.
 
 PID, descriptor, pending request, and native wait state never live in ordinary
-durable Store cells. A native table that retains Oops registers a GC root provider.
-Image save either ignores the opaque process-local handle by explicit policy or
-rejects an attempt to make it durable; it never serializes a numeric PID as worker
-identity.
+durable Store cells. The registry retains no Oops. An exited tombstone remains
+while its handle is reachable, making repeated stop idempotent without token reuse.
+Image save rejects a reachable handle in durable Store state with
+`#nonDurableIsolateHandle`; it never silently omits the binding or serializes the
+token, PID, or descriptor.
 
 Graceful stop is `stop` → `stopped` or EOF → `waitpid`. A bounded blocking timeout
-then escalates through terminate and kill as needed, followed by mandatory reaping.
-Repeating stop after a reaped exit is idempotent.
+then escalates through terminate and kill as needed. The owner polls
+`waitpid(..., WNOHANG)` through the final reap budget. A successful wait is
+recorded once as `#exited`; if the process is not yet waitable, the owner becomes
+terminal `#reapPending` and the caller returns within its deadline. Repeating stop
+after either terminal state is idempotent.
 
-Every blocking start, request, health, and stop operation has a deadline. A request
-timeout is terminal for that worker: close the channel, terminate and then kill on
-the configured deadlines if needed, reap exactly once, mark the entry exited, and
-return a timeout/exit result. Code never resumes use of a worker whose reply may
-arrive after its caller timed out.
+Every blocking start, request, health, and stop operation has a deadline. A
+post-write request timeout is terminal for that worker: close the channel,
+terminate and then kill on the configured deadlines if needed, transition to
+`#exited` or `#reapPending`, and return a timeout result. A pre-write timeout leaves
+the worker ready. Later nonblocking host drains retry the sole pending wait until
+they record the one successful reap. Code never resumes use of a worker whose
+reply may arrive after its caller timed out.
 
 GC finalization does not block on process shutdown. If a Birnam handle becomes
 unreachable, its finalizer only marks the native entry orphaned and enqueues it in
-a process-local cleanup registry. The host drains that registry at top-level,
-between worker calls, and during orderly process exit, performing the same bounded
-close/terminate/reap sequence. Explicit `stop` remains the deterministic ownership
-operation; a program that never yields a host safe point cannot demand prompt
-orphan cleanup.
+a process-local cleanup registry. The native module exports nonallocating `drain`
+and bounded `shutdown` hooks. Host runtime frames drain at top-level and around
+worker calls, and install shutdown as a defer after loading the isolate module.
+The hook performs the same bounded close/terminate/reap-or-pending sequence and
+reports a PID still pending after its final budget rather than blocking without a
+deadline. Explicit `stop` remains deterministic ownership; a program that never
+yields a host safe point cannot demand prompt orphan cleanup.
+
+Ordinary host-boundary `drain` never sleeps or polls with a positive timeout. It
+closes newly orphaned channels, sends signals whose monotonic escalation times
+have arrived, performs `waitpid(..., WNOHANG)`, and returns. Repeated boundaries
+advance cleanup; only explicit operations and the final shutdown hook consume a
+bounded positive wait budget.
+
+The parent resolves absolute executable and image paths before spawn. Both channel
+endpoints prevent peer-close writes from raising SIGPIPE (`SO_NOSIGPIPE` on Darwin
+or `MSG_NOSIGNAL` where available). I1a inherits the trusted parent's environment
+and working directory. Environment filtering, per-worker overrides, captured
+output, credential changes, and hostile sandboxing are later policy. A request's
+service deadline begins before encoding and covers traversal, write, and reply
+wait. Expiry before the first frame byte is nonterminal. Expiry after that point
+is terminal and starts the separate bounded graceful/TERM/KILL-to-reap cleanup
+budget; the caller-visible upper bound is the supplied service timeout plus those
+configured cleanup budgets.
 
 Birnam modules may own:
 
@@ -478,12 +538,15 @@ I1b proves only single-worker rolling replacement:
 3. receive B's transport `#ready`;
 4. perform one application-defined health `request:timeout:`;
 5. between calls, replace the coordinator's selected-worker reference A with B;
-6. send stop to idle A and reap it.
+6. send stop to idle A and reap it. If A becomes `#reapPending`, keep B selected,
+   expose that partial-cleanup outcome, and let the sole native owner finish A's
+   reap on later drains.
 
 If B fails to boot, times out, or fails health, A remains selected and B is closed,
 terminated if necessary, and reaped. I1b does not route concurrently, drain a busy
 worker, replace a pool, retry automatically, or claim that external effects made by
-the health request are reversible.
+the health request are reversible. Once healthy B is selected and A termination
+starts, a delayed A reap never switches selection back to A.
 
 Long-lived stateful isolates may instead receive a compiled-unit candidate and
 activate it at a mailbox safe point. Activation is atomic within each isolate,
@@ -672,8 +735,9 @@ During implementation and prototyping, the phase gates should answer:
   malformed messages without unbounded allocation or coordinator corruption?
 - Do all fixed tags, scalar map-key rules, duplicate detection, f64 bit patterns,
   and substrate error records round-trip identically on both ends?
-- Does every exit/stop/error path close descriptors and reap exactly once, with no
-  durable PID/channel facts and no lost native Oop roots?
+- Does every exit/stop/error path close descriptors within its bound, retain one
+  reap owner until `waitpid` succeeds, and record that success exactly once, with
+  no durable PID/channel facts or native Oops in the registry?
 - Does request timeout make the worker terminal, boundedly terminate/reap it, and
   leave the coordinator usable; does orphan cleanup do the same at the next host
   safe point without blocking GC?

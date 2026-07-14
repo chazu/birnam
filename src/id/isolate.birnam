@@ -1,0 +1,5 @@
+[Module named: #isolate requires: #[#stdlib]];
+
+[Reflect docModule: #isolate is: "Blocking process isolates. Isolate starts a worker from an explicit image; handles exchange copied wire-v1 values and IsolateFailure reports structured failures."];
+[Reflect docType: Isolate is: "Factory for trusted process-isolate workers."];
+[Reflect docType: IsolateFailureVt is: "Structured isolate error with class, kind, message, exitStatus, and requestId."]

@@ -1,0 +1,9 @@
+let worker := [Isolate start: #Isolate selector: #_isolateEcho: image: "/tmp/birnam-isolate-smoke.image"];
+let worker2 := [Isolate start: #Isolate selector: #_isolateEcho: image: "/tmp/birnam-isolate-smoke.image"];
+[[worker isError]
+  ifTrue: [| [System println: [worker message]]]
+  ifFalse: [|
+    [System println: [worker request: 42 timeout: 5000]];
+    [System println: [worker2 request: "two" timeout: 5000]];
+    [worker stop];
+    [worker2 stop]]]

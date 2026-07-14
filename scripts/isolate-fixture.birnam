@@ -1,0 +1,6 @@
+[System load: "scripts/isolate-fixture-module.birnam"];
+[DispatchGeneration initializeCurrent];
+[System println: [Codegen currentGenerationDigest]];
+[System saveImage: "/tmp/birnam-isolate-smoke.image"];
+[System println: [Codegen lastError]];
+[System println: [[System imageSaveReport] detail]];

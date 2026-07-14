@@ -1,0 +1,3 @@
+[Module named: #isolateFixture requires: #[#stdlib #isolate]];
+
+[Reflect defineMethod: #handle: on: Isolate as: [:self :value | value]]

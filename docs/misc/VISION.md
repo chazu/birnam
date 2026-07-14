@@ -12,8 +12,8 @@ A **system** is a binary that runs as an executable OR loads as a library, and w
 > contract. Treat the tenets below as historical mechanisms and aspirations, not
 > as the authority model for the running system.
 
-> **Current near-term direction (2026-07-14):** implementation proceeds as
-> **L1a generation authority → I1a blocking single-worker isolates → L1b
+> **Current near-term direction (2026-07-14):** L1a and I1a are shipped;
+> implementation now proceeds with **L1b
 > file-backed image baselines → I1b single-worker replacement → L2 blocking
 > mailbox-safe rollout**. This separates executable authority, transport,
 > authoring workflow, replacement policy, and live rollout into independently

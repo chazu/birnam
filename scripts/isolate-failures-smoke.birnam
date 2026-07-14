@@ -1,0 +1,12 @@
+let failing := [Isolate start: #Isolate selector: #_isolateError: image: "/tmp/birnam-isolate-smoke.image"];
+let application := [failing request: nil timeout: 5000];
+[System println: [application class]];
+[failing stop];
+
+let sleeping := [Isolate start: #Isolate selector: #_isolateSleep: image: "/tmp/birnam-isolate-smoke.image"];
+let timedOut := [sleeping request: 100 timeout: 1];
+[System println: [timedOut class]];
+
+let crashing := [Isolate start: #Isolate selector: #_isolateCrash: image: "/tmp/birnam-isolate-smoke.image"];
+let crashed := [crashing request: nil timeout: 5000];
+[System println: [crashed class]]

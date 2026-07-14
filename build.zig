@@ -7,7 +7,7 @@ const std = @import("std");
 // pointers at [-1], no eids/facts). Each rung is its own module + test suite:
 //
 //   libid (id.zig) → store → peg → lang → tcc → codegen → prelude
-//                  → collection → error → relational → alien
+//                  → collection → error → isolate → relational → alien → image
 //
 // The legacy fact-store kernel that preceded this lives only in git history; a
 // handful of its files (image/persistence, gc, the libffi FFI, macho/elf,
@@ -84,6 +84,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "birnam_id_prelude", .src = "prelude.zig", .test_src = "prelude_test.zig", .step = "test-prelude", .desc = "the primitive stdlib: Integer/Boolean/System" },
         .{ .name = "birnam_id_collection", .src = "collection.zig", .test_src = "collection_test.zig", .step = "test-collection", .desc = "the id-native collection library: Vector trie + Range" },
         .{ .name = "birnam_id_error", .src = "error.zig", .test_src = "error_test.zig", .step = "test-error", .desc = "F7: the error model (propagating values + DNU swap)" },
+        .{ .name = "birnam_id_isolate", .src = "isolate.zig", .test_src = "isolate_test.zig", .step = "test-isolate", .desc = "I1a: blocking process isolates + wire-v1" },
         .{ .name = "birnam_id_relational", .src = "relational.zig", .test_src = "relational_test.zig", .step = "test-relational", .desc = "the relational reading: datalog join + pull" },
         .{ .name = "birnam_id_alien", .src = "alien.zig", .test_src = "alien_test.zig", .step = "test-alien", .desc = "the FFI: wrap + absorb C libraries via Tcc", .test_links_tcc = true },
         .{ .name = "birnam_id_image", .src = "image.zig", .test_src = "image_test.zig", .step = "test-image", .desc = "the image: store-reachable durability + mapped code (docs/40)", .test_links_tcc = true },
@@ -161,7 +162,7 @@ pub fn build(b: *std.Build) void {
     // (installing methods with no recompile) and falls back to source if absent.
     // Kept opt-in: a plain `zig build` still works via the source fallback. Points
     // the binary at the just-installed lib dir so it finds the fresh kernel dylibs.
-    const stage1 = b.step("stage1", "AOT-compile birnam-source modules (modules, stdlib, toml, config) to installable dylibs");
+    const stage1 = b.step("stage1", "AOT-compile the dependency-ordered self-hosted modules to installable dylibs");
     // Each self-hosted module: `birnam --compile-module <src> <lib>/libbirnam_<name>.dylib`.
     const self_hosted = [_]struct { src: []const u8, name: []const u8 }{
         .{ .src = "src/id/modules.birnam", .name = "modules" },
@@ -169,6 +170,7 @@ pub fn build(b: *std.Build) void {
         .{ .src = "src/id/compiled-unit.birnam", .name = "compiledUnit" },
         .{ .src = "src/id/toml.birnam", .name = "toml" },
         .{ .src = "src/id/config.birnam", .name = "config" },
+        .{ .src = "src/id/isolate.birnam", .name = "isolate" },
     };
     inline for (self_hosted) |m| {
         const compile = b.addRunArtifact(siphon_exe);
@@ -207,10 +209,17 @@ pub fn build(b: *std.Build) void {
     install_smoke.step.dependOn(stage1);
     b.step("test-install", "Run source-backed tools from an isolated installed tree").dependOn(&install_smoke.step);
 
+    const isolate_smoke = b.addSystemCommand(&.{ "bash", "scripts/isolate-smoke.sh" });
+    isolate_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    isolate_smoke.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
+    isolate_smoke.step.dependOn(stage1);
+    b.step("test-isolate-process", "Boot a worker image and round-trip a copied value").dependOn(&isolate_smoke.step);
+
     verify_step.dependOn(test_step);
     verify_step.dependOn(&repl_goldens.step);
     verify_step.dependOn(&source_fallback.step);
     verify_step.dependOn(&install_smoke.step);
+    verify_step.dependOn(&isolate_smoke.step);
 
     // The siphon/REPL host's own unit tests (e.g. the REPL bracket balancer).
     const main_test_mod = b.createModule(.{

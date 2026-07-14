@@ -40,14 +40,17 @@ Detailed increments, current file ownership, narrow test commands, and exit gate
 for all five tasks live in
 [design 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
 
-- [ ] **I1a — blocking single-worker isolate substrate** — add a clean worker boot
+- [x] **I1a — blocking single-worker isolate substrate** (2026-07-14) — adds a clean worker boot
   mode that suppresses ordinary `main`/REPL; implement bounded wire-v1 framing and
   the complete tagged copied-value codec; let the substrate own the receive loop;
   support exactly one deadline-bearing blocking request; distinguish application,
   protocol, timeout, transport, and exit failures; and own channel closure,
-  bounded termination, orphan cleanup, and exactly-once reaping. Prepared
+  bounded termination, orphan cleanup, and single-owner eventual reaping. Prepared
   candidates, Oops, native pointers, pools, promises, and replacement policy
-  remain absent. See
+  remain absent. `zig build verify` covers wire/value codec bounds, structured
+  failures, non-durable handle rejection, real image boot, application errors,
+  terminal timeout cleanup, clean stop, and two independent handles. See the
+  [user guide](../guide/06-isolates.md) and
   [design 48](../design/48-concurrency-reactors-and-isolates.md#9-interleaved-implementation-sequence).
 - [ ] **L1b — file-backed revision and image-baseline workflow** — add canonical
   candidate-safe document import/export, exact authored text, idempotence and

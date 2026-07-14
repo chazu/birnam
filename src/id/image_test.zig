@@ -24,6 +24,7 @@ const COMPILED_UNIT_SRC = @embedFile("compiled-unit.birnam");
 const err_mod = @import("error.zig");
 const relational = @import("relational.zig");
 const alien = @import("alien.zig");
+const isolate = @import("isolate.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
@@ -288,6 +289,26 @@ fn setupWithCompiledUnits() *idapi.IdApi {
     const initialized = api.send(generations, api.intern("initializeCurrent"), &.{}, 0);
     std.debug.assert(api.send(initialized, api.intern("isError"), &.{}, 0) != api.trueObj);
     return api;
+}
+
+test "Store-reachable isolate handles are explicitly non-durable" {
+    const api = setupWithCompiledUnits();
+    isolate.bringUp(api);
+    const globals = api.import("Globals").?;
+    const token_only_handle = api.alloc(api.import("IsolateHandleVt"), @sizeOf(u64));
+    gPut(globals, "nonDurableHandle", token_only_handle);
+    defer _ = send(api.import("Store").?, "retract:attr:value:", &.{ api.intern("__globals__"), api.intern("nonDurableHandle"), token_only_handle });
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const path = try tmpImagePath(std.testing.allocator, &tmp);
+    defer std.testing.allocator.free(path);
+    try std.testing.expect(!image.saveImage(path));
+    const report = send(api.import("System").?, "imageSaveReport", &.{});
+    const detail = send(report, "detail", &.{});
+    var len: usize = 0;
+    const bytes = api.stringBytes(detail, &len)[0..len];
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "nonDurableIsolateHandle") != null);
 }
 
 test "round-trip: generation code is mapped by default and rebuilt from the same documents" {
