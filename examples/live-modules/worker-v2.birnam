@@ -1,0 +1,4 @@
+// This comment and all formatting remain part of the exact authored revision.
+[Module named: #liveExample requires: #[]];
+[Reflect defineMethod: #handle: on: LiveExampleWorker as: [:self :request |
+  {#version -> 2, #request -> request}]]

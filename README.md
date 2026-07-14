@@ -226,13 +226,15 @@ from-zero bootstrap compiler and performance floor.
 - [Concurrency](docs/design/48-concurrency-reactors-and-isolates.md) and
   [live module evolution](docs/design/49-live-module-evolution.md) define the
   interleaved sequence. Generation authority (L1a) and the blocking single-worker
-  isolate substrate (I1a) are shipped; file-backed image baselines (L1b),
-  single-worker replacement (I1b), and blocking mailbox-safe live rollout (L2)
+  isolate substrate (I1a), and file-backed image baselines (L1b) are shipped;
+  single-worker replacement (I1b) and blocking mailbox-safe live rollout (L2)
   remain next. The
   [five-phase implementation plan](docs/design/50-five-phase-live-modules-and-isolates-implementation-plan.md)
   maps every slice to current files, tests, and exit criteria.
 - [Blocking process isolates](docs/guide/06-isolates.md) documents the shipped
   trusted-worker API, copied-value boundary, structured failures, and deadlines.
+- [File-backed live modules](docs/guide/07-live-modules.md) documents exact
+  export/import, inert staging, host-boundary activation, rollback, and baselines.
 - [Modules and the self-hosted layer](docs/design/43-modules-and-config.md)
   explains source, artifacts, and loading.
 - [Toward self-hosting](docs/design/44-toward-self-hosting.md) records the

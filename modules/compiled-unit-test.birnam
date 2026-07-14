@@ -9,8 +9,10 @@ let s := [TestSuite named: "CompiledUnit" module: #compiledUnit];
 // successor generations.
 let cuPolicyBaseline := "[Module named: #cuPolicy requires: #[]]; [Reflect defineMethod: #cuPolicyReplace on: Integer as: [:self | 11]]; [Reflect defineMethod: #cuPolicyRemove on: Integer as: [:self | 22]]";
 let cuChainBaseline := "[Module named: #cuChain requires: #[]]; [Reflect defineMethod: #cuInherited on: Integer as: [:self | 7]]; [Reflect defineMethod: #cuOverlay on: Integer as: [:self | 8]]";
+let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy requires: #[]]; [Reflect defineMethod: #liveReplace on: Integer as: [:self | 10]]; [Reflect defineMethod: #liveRemove on: Integer as: [:self | 20]]";
 [Codegen recordModuleSource: cuPolicyBaseline named: #cuPolicy];
 [Codegen recordModuleSource: cuChainBaseline named: #cuChain];
+[Codegen recordModuleSource: livePolicyBaseline named: #livePolicy];
 [DispatchGeneration initializeCurrent];
 
 [s test: "inspect and map are inert; activation and rollback are exact" do: [:t |
@@ -26,6 +28,7 @@ let cuChainBaseline := "[Module named: #cuChain requires: #[]]; [Reflect defineM
   [t expect: [3 cuPolicyRemove] equals: 22 describes: "inspection did not remove dispatch"];
   [unit map];
   [t expect: [3 cuPolicyReplace] equals: 11 describes: "mapping remains inert"];
+  [t expect: [[System readFile: path] isError] equals: false describes: "mapping preserves caller-owned artifacts"];
   [[unit activate] fulfill];
   [t expect: [unit state] equals: #active describes: "activation publishes state"];
   [t expect: [CompiledUnit activeFor: #cuPolicy] equals: unit describes: "activation publishes the active generation"];

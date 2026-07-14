@@ -1,0 +1,6 @@
+let worker := [Isolate
+  start: #LiveExampleWorker selector: #handle:
+  image: "/tmp/birnam-live-example.image"];
+let reply := [worker request: "from isolate"];
+[System println: ["worker reply: " , [reply printString]]];
+[worker stop]

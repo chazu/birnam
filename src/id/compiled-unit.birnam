@@ -49,7 +49,10 @@
     ifFalse: [|
       [[action = #rollback]
         ifTrue: [| [unit commitRollback]]
-        ifFalse: [| [Error kind: #invalidEvolutionIntent]]]]]]];
+        ifFalse: [|
+          [[action = #saveBaseline]
+            ifTrue: [| [LiveModules commitSaveBaseline: unit]]
+            ifFalse: [| [Error kind: #invalidEvolutionIntent]]]]]]]]];
 
 [Reflect defineMethod: #current on: DispatchGeneration as: [:self |
   [db currentValue: #dispatch attr: #activeGeneration]]];
@@ -129,6 +132,67 @@
       [[projected isError] ifTrue: [| projected] ifFalse: [| [db assert: self attr: #sourceRevision value: projected]; projected]]]
     ifFalse: [| revision]]]];
 
+[Reflect defineMethod: #authoredSource on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #authoredSource]]];
+
+[Reflect defineMethod: #revisionDigest on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #revisionDigest]]];
+
+[Reflect defineMethod: #artifactChecksum on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #artifactChecksum]]];
+
+[Reflect defineMethod: #operations on: CompiledUnit as: [:self |
+  let ops := [db currentValue: self attr: #provides];
+  [[ops isNil] ifTrue: [| #[]] ifFalse: [| ops]]]];
+
+[Reflect defineMethod: #additions on: CompiledUnit as: [:self |
+  [[self operations] inject: #[] into: [:rows :op |
+    [[[db currentValue: op attr: #operation] = #install]
+      ifTrue: [|
+        [[db currentValue: op attr: #priorPresent]
+          ifTrue: [| rows]
+          ifFalse: [| [rows add: op]]]]
+      ifFalse: [| rows]]]]]];
+
+[Reflect defineMethod: #replacements on: CompiledUnit as: [:self |
+  [[self operations] inject: #[] into: [:rows :op |
+    [[[db currentValue: op attr: #operation] = #install]
+      ifTrue: [|
+        [[db currentValue: op attr: #priorPresent]
+          ifTrue: [| [rows add: op]]
+          ifFalse: [| rows]]]
+      ifFalse: [| rows]]]]]];
+
+[Reflect defineMethod: #removals on: CompiledUnit as: [:self |
+  [[self operations] inject: #[] into: [:rows :op |
+    [[[db currentValue: op attr: #operation] = #remove]
+      ifTrue: [| [rows add: op]]
+      ifFalse: [| rows]]]]]];
+
+[Reflect defineMethod: #expectedBaseDigest on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #expectedBaseDigest]]];
+
+[Reflect defineMethod: #importStatus on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #importStatus]]];
+
+[Reflect defineMethod: #isMapped on: CompiledUnit as: [:self |
+  [Codegen candidateMapped: self]]];
+
+[Reflect defineMethod: #rollbackAvailable on: CompiledUnit as: [:self |
+  let available := [db currentValue: self attr: #rollbackAvailable];
+  [[available isNil] ifTrue: [| false] ifFalse: [| available]]]];
+
+[Reflect defineMethod: #dependencyChanges on: CompiledUnit as: [:self |
+  let current := [DispatchGeneration current];
+  let priorRevision := [[current isNil] ifTrue: [| nil] ifFalse: [| [current revisionFor: [self unitName]]]];
+  let old := [[priorRevision isNil] ifTrue: [| #[]] ifFalse: [| [priorRevision at: 2]]];
+  let now := [self requires];
+  let added := [now inject: #[] into: [:rows :dep |
+    [[old includes: dep] ifTrue: [| rows] ifFalse: [| [rows add: dep]]]]];
+  let removed := [old inject: #[] into: [:rows :dep |
+    [[now includes: dep] ifTrue: [| rows] ifFalse: [| [rows add: dep]]]]];
+  {#added -> added, #removed -> removed}]];
+
 [Reflect defineMethod: #setState: on: CompiledUnit as: [:self :state |
   [[db cellFor: self attr: #state] set: state];
   self]];
@@ -168,13 +232,20 @@
 [Reflect defineMethod: #prepareDependencies on: CompiledUnit as: [:self |
   let me := self;
   [[self missingDependencies] inject: self into: [:answer :dep |
-    [[answer isError] ifTrue: [| answer] ifFalse: [| [Module load: dep]; me]]]]]];
+    [[answer isError]
+      ifTrue: [| answer]
+      ifFalse: [|
+        let loaded := [Module load: dep];
+        [[loaded isError] ifTrue: [| loaded] ifFalse: [| me]]]]]]]];
 
 [Reflect defineMethod: #map on: CompiledUnit as: [:self |
   let missing := [self missingDependencies];
   [[[missing size] = 0]
     ifTrue: [| [Codegen mapCandidate: self]]
     ifFalse: [| [Error kind: #dependenciesMissing]]]]];
+
+[Reflect defineMethod: #discard on: CompiledUnit as: [:self |
+  [Codegen discardCandidate: self]]];
 
 // Validation consumes no dispatch capability: preparation snapshots the complete
 // plan and discard immediately invalidates the one-shot token.

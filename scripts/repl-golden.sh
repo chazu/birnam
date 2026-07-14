@@ -74,6 +74,10 @@ expected="$BANNER
 birnam> Commands:
   :help        this message
   :globals     list the bindings you've defined
+  :live stage PATH      inspect an inert file-backed revision
+  :live activate PATH   stage and activate at the next host boundary
+  :live rollback        restore the current local predecessor
+  :live save PATH       save a full worker baseline
   :quit        leave the REPL  (or Ctrl-D)
 Everything else is birnam: an expression prints its value; \`let x := …\`
 binds a name that persists across lines; \`[Reflect defineMethod:…]\` extends

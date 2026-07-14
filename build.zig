@@ -168,6 +168,7 @@ pub fn build(b: *std.Build) void {
         .{ .src = "src/id/modules.birnam", .name = "modules" },
         .{ .src = "src/id/stdlib.birnam", .name = "stdlib" },
         .{ .src = "src/id/compiled-unit.birnam", .name = "compiledUnit" },
+        .{ .src = "src/id/live-modules.birnam", .name = "liveModules" },
         .{ .src = "src/id/toml.birnam", .name = "toml" },
         .{ .src = "src/id/config.birnam", .name = "config" },
         .{ .src = "src/id/isolate.birnam", .name = "isolate" },
@@ -215,11 +216,18 @@ pub fn build(b: *std.Build) void {
     isolate_smoke.step.dependOn(stage1);
     b.step("test-isolate-process", "Boot a worker image and round-trip a copied value").dependOn(&isolate_smoke.step);
 
+    const live_modules_smoke = b.addSystemCommand(&.{ "bash", "scripts/live-modules-smoke.sh" });
+    live_modules_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    live_modules_smoke.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
+    live_modules_smoke.step.dependOn(stage1);
+    b.step("test-live-modules", "Exercise L1b host activation and mapped/rebuilt baselines").dependOn(&live_modules_smoke.step);
+
     verify_step.dependOn(test_step);
     verify_step.dependOn(&repl_goldens.step);
     verify_step.dependOn(&source_fallback.step);
     verify_step.dependOn(&install_smoke.step);
     verify_step.dependOn(&isolate_smoke.step);
+    verify_step.dependOn(&live_modules_smoke.step);
 
     // The siphon/REPL host's own unit tests (e.g. the REPL bracket balancer).
     const main_test_mod = b.createModule(.{

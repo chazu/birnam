@@ -52,12 +52,15 @@ for all five tasks live in
   terminal timeout cleanup, clean stop, and two independent handles. See the
   [user guide](../guide/06-isolates.md) and
   [design 48](../design/48-concurrency-reactors-and-isolates.md#9-interleaved-implementation-sequence).
-- [ ] **L1b — file-backed revision and image-baseline workflow** — add canonical
-  candidate-safe document import/export, exact authored text, idempotence and
-  divergence, dependency errors, staged inspection, immediate top-level
-  activation over L1a, and full saved worker baselines. Complete when [L1b
-  verification](../design/49-live-module-evolution.md#132-l1b--file-backed-revision-and-image-baseline-workflow)
-  passes without initialization, migration, file watching, or async activation.
+- [x] **L1b — file-backed revision and image-baseline workflow** (2026-07-14) —
+  adds the self-hosted `LiveModules` facade; exact envelope-preserving `fileOut`
+  and inert import; explicit identical, stale-ancestor, sibling-divergence,
+  malformed, unsafe-form, dependency, and identity failures; retained staged
+  inspection; `:live stage/activate/rollback/save` at the host quiescence seam;
+  and reconciled full baselines verified under mapped/rebuilt boot and as isolate
+  images. Tests cover the [L1b matrix](../design/49-live-module-evolution.md#132-l1b--file-backed-revision-and-image-baseline-workflow)
+  without initialization, migration, file watching, forced replacement, or async
+  activation. See the [user guide](../guide/07-live-modules.md).
 - [ ] **I1b — single-worker rolling replacement** — while idle worker A remains
   selected, start B from an L1b baseline, wait for ready, run one bounded health
   `request:timeout:`, switch the selected reference between calls, then stop and

@@ -109,6 +109,29 @@ fn sourceRevision(api: *idapi.IdApi, source: []const u8) Oop {
     return api.send(api.import("Codegen").?, api.intern("sourceRevisionOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
 }
 
+test "L1b live file envelope preserves authored bytes and rejects bad metadata" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    const source = "// authored comment\n[Module named: #liveFile requires: #[]];\n[Reflect defineMethod: #liveFileProbe on: Integer as: [:self | 42]]\n";
+    const base = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const file = "// birnam-live-base sha256:" ++ base ++ "\n" ++ source;
+    const parsed = api.send(Codegen, api.intern("liveRevisionOf:"), &.{api.mkString(file.ptr, file.len)}, 1);
+    try std.testing.expect(vectorAt(api, parsed, 0) == api.intern("liveRevision"));
+    try std.testing.expectEqualStrings(base, stringBytes(api, vectorAt(api, parsed, 1)));
+    const revision = vectorAt(api, parsed, 2);
+    try std.testing.expect(vectorAt(api, revision, 1) == api.intern("liveFile"));
+    try std.testing.expectEqualStrings(source, stringBytes(api, vectorAt(api, revision, 3)));
+
+    const missing = api.send(Codegen, api.intern("liveRevisionOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
+    try std.testing.expect(api.send(missing, api.intern("kind"), &.{}, 0) == api.intern("missingBase"));
+    const malformed_text = "// birnam-live-base sha256:ABC\n" ++ source;
+    const malformed = api.send(Codegen, api.intern("liveRevisionOf:"), &.{api.mkString(malformed_text.ptr, malformed_text.len)}, 1);
+    try std.testing.expect(api.send(malformed, api.intern("kind"), &.{}, 0) == api.intern("malformedEnvelope"));
+    const unsafe_text = "// birnam-live-base sha256:" ++ base ++ "\n[Module named: #liveFile requires: #[]]; 42";
+    const unsafe = api.send(Codegen, api.intern("liveRevisionOf:"), &.{api.mkString(unsafe_text.ptr, unsafe_text.len)}, 1);
+    try std.testing.expect(api.send(unsafe, api.intern("kind"), &.{}, 0) == api.intern("unsupportedTopLevelForm"));
+}
+
 test "source revision projects complete documents and isolates method changes" {
     const api = setupFull();
     const before =

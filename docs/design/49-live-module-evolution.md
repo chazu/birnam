@@ -1,6 +1,7 @@
 # 49 — Live Module Evolution: Source Revisions and Dispatch Generations
 
-> **Status:** Exploration, 2026-07-14, rev. 4, accepted with corrections by the
+> **Status:** L1a and L1b implemented, 2026-07-14, rev. 4; L2 remains planned.
+> Accepted with corrections by the
 > [combined adversarial review](48a-live-evolution-isolate-combined-adversarial-review.md).
 > Rev. 3, accepted by the second
 > [adversarial review](49b-live-module-evolution-second-adversarial-review.md),

@@ -1,7 +1,6 @@
 # 50 — Five-Phase Implementation Plan: Live Modules and Isolates
 
-> **Status:** L1a implemented; I1a contract hardened and ready. Revised
-> 2026-07-14.
+> **Status:** L1a, I1a, and L1b implemented; I1b is next. Revised 2026-07-14.
 >
 > Executes [48 — Concurrency](48-concurrency-reactors-and-isolates.md) and
 > [49 — Live Module Evolution](49-live-module-evolution.md) after the

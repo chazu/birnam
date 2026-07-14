@@ -1,0 +1,3 @@
+[Module named: #liveExample requires: #[]];
+[Reflect defineMethod: #handle: on: LiveExampleWorker as: [:self :request |
+  {#version -> 1, #request -> request}]]

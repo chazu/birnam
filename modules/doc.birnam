@@ -549,10 +549,11 @@
 // (an installed birnam need not carry src/id).
 [Reflect defineMethod: #loadFloorSources: on: Doc as: [:self :zd |
   [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
-  [#[ "stdlib.birnam" "toml.birnam" "config.birnam" ] do: [:nm |
+  [#[ "stdlib.birnam" "toml.birnam" "config.birnam" "live-modules.birnam" ] do: [:nm |
     let p := [[zd , "/"] , nm];
     [[File exists: p] ifTrue: [| [System load: p]] ifFalse: [| nil]]]];
   [System load: "modules/compiled-unit-docs.birnam"];
+  [System load: "modules/live-modules-docs.birnam"];
   self] doc:
   "Ensure File, re-load stdlib/toml/config under `zd`, and load the CompiledUnit reference registrations; the module manager is deliberately skipped. Answers self."];
 

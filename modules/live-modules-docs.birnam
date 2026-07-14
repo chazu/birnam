@@ -1,0 +1,30 @@
+// Reference registrations kept outside the executable policy source.
+
+[Doc module: #liveModules is: "Exact file-backed source revisions, inert candidate inspection, host-boundary activation, rollback, and full worker-image baselines."];
+
+[Doc for: #currentGeneration in: #liveModules says:
+  "The single current DispatchGeneration, or nil before G0 publication."];
+[Doc for: #currentDigest in: #liveModules says:
+  "The current whole-runtime source-map digest as a lowercase hexadecimal String."];
+[Doc for: #revisionFor: in: #liveModules says:
+  "The immutable SourceRevision Vector for a canonical module Symbol in the current generation, or nil."];
+[Doc for: #sourceFor: in: #liveModules says:
+  "The exact authored source bytes for a canonical module Symbol in the current generation, or nil."];
+[Doc for: #fileOut:to: in: #liveModules says:
+  "Write the L1b base envelope followed by the exact current authored source. Answers the path or a kinded Error."];
+[Doc for: #import: in: #liveModules says:
+  "Parse, classify, compile, and inspect a file-backed revision without mapping code or publishing dispatch/source authority."];
+[Doc for: #import:for: in: #liveModules says:
+  "As import:, additionally requiring the canonical Module declaration to match the supplied Symbol."];
+[Doc for: #stagedCandidates in: #liveModules says:
+  "The process-local Vector of retained CompiledUnit candidates still in #candidate state."];
+[Doc for: #activationFor: in: #liveModules says:
+  "Prepare dependencies, map, validate, and answer an EvolutionIntent for host-boundary activation."];
+[Doc for: #activate: in: #liveModules says:
+  "Import a path and answer either its idempotent LiveImport or an activation EvolutionIntent."];
+[Doc for: #rollback in: #liveModules says:
+  "Answer a rollback EvolutionIntent for the current generation delta, or #rollbackUnavailable."];
+[Doc for: #saveBaseline: in: #liveModules says:
+  "Answer a host-fulfilled intent for a reconciled full-image baseline; append persistence is not used."];
+[Doc for: #durabilityStatus in: #liveModules says:
+  "Reconcile active candidates and report #fullImageReady with the current base digest, or the kinded drift/error."]

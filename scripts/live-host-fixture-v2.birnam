@@ -1,0 +1,3 @@
+// Edited with an ordinary file tool; the envelope is added by fileOut/import workflow.
+[Module named: #hostLiveFixture requires: #[#stdlib]];
+[Reflect defineMethod: #hostLiveProbe on: Integer as: [:self | 200]]

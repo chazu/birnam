@@ -290,6 +290,7 @@ const STDLIB_SRC = @embedFile("stdlib.birnam");
 const TOML_SRC = @embedFile("toml.birnam");
 const CONFIG_SRC = @embedFile("config.birnam");
 const COMPILED_UNIT_SRC = @embedFile("compiled-unit.birnam");
+const LIVE_MODULES_SRC = @embedFile("live-modules.birnam");
 const ISOLATE_SRC = @embedFile("isolate.birnam");
 // The module MANAGER itself (docs/44 Phase 5b) — self-hosted like the rest, but
 // loaded FIRST and by name (never through the scan/loadOrder flow it implements).
@@ -339,6 +340,7 @@ const SelfHosted = struct { name: [:0]const u8, src: []const u8 };
 const self_hosted_modules = [_]SelfHosted{
     .{ .name = "stdlib", .src = STDLIB_SRC },
     .{ .name = "compiledUnit", .src = COMPILED_UNIT_SRC },
+    .{ .name = "liveModules", .src = LIVE_MODULES_SRC },
     .{ .name = "toml", .src = TOML_SRC },
     .{ .name = "config", .src = CONFIG_SRC },
     .{ .name = "isolate", .src = ISOLATE_SRC },
@@ -716,6 +718,7 @@ fn recoverImageRuntime(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebu
     // bodies can refer to stdlib protocol before that protocol is installed.
     loadSelfHosted(a, api, codegen, "modules", MODULES_SRC);
     loadSelfHosted(a, api, codegen, "compiledUnit", COMPILED_UNIT_SRC);
+    loadSelfHosted(a, api, codegen, "liveModules", LIVE_MODULES_SRC);
 
     // Map the image. NOTE: stdlib is NOT loaded up front — a mapped `.code` section
     // installs the whole library (stdlib + user) with no recompile, which is the

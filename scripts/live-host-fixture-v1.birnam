@@ -1,0 +1,2 @@
+[Module named: #hostLiveFixture requires: #[#stdlib]];
+[Reflect defineMethod: #hostLiveProbe on: Integer as: [:self | 100]]
