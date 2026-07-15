@@ -84,12 +84,18 @@
   "One client session on `conn`: greet, then run the read/eval loop until it ends."];
 
 // Listen on `port` and serve one client at a time. Blocks (Socket accept loop).
-[Reflect defineMethod: #serveOn: on: Repl as: [:self :port |
+[Reflect defineMethod: #serveOn:bind: on: Repl as: [:self :port :bind |
   let me := self;
-  [System println: ["birnam socket REPL listening on :" , [port printString]]];
-  [Socket serve: port with: [:conn | [me session: conn]]];
-  self] doc:
-  "Listens on `port` and serves one socket-REPL client at a time; blocks in the Socket accept loop."];
+  [System println: ["birnam socket REPL listening on " , [bind , [":" , [port printString]]]]];
+  let status := [Socket serve: port bind: bind with: [:conn | [me session: conn]]];
+  [[status < 0]
+    ifTrue: [| [Error kind: #socketBindFailed message: ["could not bind " , [bind , [":" , [port printString]]]]]]
+    ifFalse: [| self]]] doc:
+  "Listens on IPv4 `bind` and `port` and serves one socket-REPL client at a time; blocks in the Socket accept loop."];
+
+[Reflect defineMethod: #serveOn: on: Repl as: [:self :port |
+  [self serveOn: port bind: "0.0.0.0"]] doc:
+  "Listens on `port` on all IPv4 interfaces and serves a socket-REPL client at a time."];
 
 // -- the console REPL ----------------------------------------------------------
 // The interactive loop the binary drops into. Reads stdin through libc fgets
@@ -370,6 +376,17 @@
   [self applyConfigLoads]] doc:
   "Wires stdio and loads configured modules while the runtime is still bootstrapping."];
 
+// Project `birnam run --repl=tty` has already resolved and loaded its artifact
+// graph and evaluated main. It needs the same host-owned stdio capabilities,
+// but must not rediscover the caller's Config or run the project entry twice.
+[Reflect defineMethod: #consoleHostInitNoConfig on: Repl as: [:self |
+  [self wrapStdio];
+  [[db cellFor: self attr: #cin]  set: [0 fdopenMode: "r"]];
+  [[db cellFor: self attr: #cerr]  set: [2 fdopenMode: "w"]];
+  [[db cellFor: self attr: #cbuf]  set: [Alien alloc: 4096]];
+  self] doc:
+  "Wires stdio for a project run without applying Config loads or Config main."];
+
 [Reflect defineMethod: #consoleHostReady on: Repl as: [:self |
   let configured := [self applyConfigMain];
   [[configured isError]
@@ -378,6 +395,11 @@
       [System println: "birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave."];
       self]]] doc:
   "Runs the configured main and greets after G0 is published and the runtime is marked running."];
+
+[Reflect defineMethod: #consoleHostReadyNoMain on: Repl as: [:self |
+  [System println: "birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave."];
+  self] doc:
+  "Greets after a project run has already evaluated main, without evaluating Config main again."];
 
 [Reflect defineMethod: #consoleDone on: Repl as: [:self |
   [System println: ""];

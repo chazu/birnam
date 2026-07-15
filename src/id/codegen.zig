@@ -37,6 +37,7 @@
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
+const artifact_contract = @import("artifact.zig");
 
 const Oop = idapi.Oop;
 const ca = std.heap.c_allocator;
@@ -72,7 +73,7 @@ var initial_generation_sealed = false;
 const RuntimePhase = enum { bootstrapping, running, quiescent, image_recovery };
 var runtime_phase: RuntimePhase = .bootstrapping;
 
-const ARTIFACT_ABI = "birnam-artifact-generation-v1";
+const ARTIFACT_ABI = artifact_contract.abi;
 const CANDIDATE_ABI: u32 = 3;
 const CANDIDATE_PLATFORM = "aarch64-macos";
 const CANDIDATE_MAGIC = "BIRNAM-CANDIDATE-2";
@@ -2015,6 +2016,31 @@ fn mSourceRevisionOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     var scan = scanCandidateSource(a[0]) orelse return candidateError("invalidModuleSource");
     defer scan.deinit();
     return makeSourceRevision(&scan, a[0]);
+}
+
+/// `[Codegen moduleMetadataOf: source]` parses source without evaluating it and
+/// answers `#[#moduleMetadata name requires sourceDigest revisionDigest]` for an
+/// indexable module. A valid source without the exact literal
+/// `Module named:requires:` declaration answers nil: that is a legacy or
+/// runtime-dynamic source, not a project module. A syntax-invalid source answers
+/// a kinded error so a project check can distinguish malformed source from an
+/// intentionally non-indexable legacy file.
+fn mModuleMetadataOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const cst = s1(lang, "parse:", a[0]);
+    const parse_failed = cst == g_api.nilObj or
+        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
+    if (parse_failed) return candidateError("sourceMalformed");
+    var scan = scanCandidateSource(a[0]) orelse return g_api.nilObj;
+    defer scan.deinit();
+    return makeVector(&.{
+        g_api.intern("moduleMetadata"),
+        scan.name,
+        makeVector(scan.requires.items),
+        g_api.mkString(&scan.source_digest, scan.source_digest.len),
+        g_api.mkString(&scan.revision_digest, scan.revision_digest.len),
+    });
 }
 
 /// Parse L1b's byte-exact file envelope without evaluating the authored source.
@@ -4029,6 +4055,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("evalPersisting:"), &mEvalPersisting);
     api.method(codegen_vt, api.intern("compile:output:"), &mCompileOutput);
     api.method(codegen_vt, api.intern("sourceRevisionOf:"), &mSourceRevisionOf);
+    api.method(codegen_vt, api.intern("moduleMetadataOf:"), &mModuleMetadataOf);
     api.method(codegen_vt, api.intern("liveRevisionOf:"), &mLiveRevisionOf);
     api.method(codegen_vt, api.intern("recordModuleSource:named:"), &mRecordModuleSource);
     api.method(codegen_vt, api.intern("initialGenerationProjection"), &mInitialGenerationProjection);

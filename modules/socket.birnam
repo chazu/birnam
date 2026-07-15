@@ -88,21 +88,47 @@
   [h free]] doc:
   "Ignore SIGPIPE process-wide (installs SIG_IGN), so a write to a hung-up peer cannot kill the process."];
 
-// Build a 16-byte `struct sockaddr_in` for INADDR_ANY:port (macOS layout).
-// byte 0 = sin_len (16), byte 1 = sin_family (AF_INET=2), bytes 2..3 = port in
-// network (big-endian) order, bytes 4..7 = addr (0 = any), bytes 8..15 = zero.
-[Reflect defineMethod: #makeSockaddrPort: on: Socket as: [:self :port |
-  let sa := [Alien alloc: 16];
-  [sa pokeByte: 16 at: 0];
-  [sa pokeByte: [self afInet] at: 1];
-  [sa pokeByte: [port / 256] at: 2];
-  [sa pokeByte: [port mod: 256] at: 3];
-  sa] doc:
-  "A freshly-allocated 16-byte struct sockaddr_in for INADDR_ANY:`port` (macOS layout); the caller frees it."];
+// Parse a dotted IPv4 address, plus the convenient localhost spelling, into
+// four bytes. `nil` means the bind address is not a supported IPv4 literal.
+[Reflect defineMethod: #ipv4Bytes: on: Socket as: [:self :bind |
+  [[bind = "localhost"]
+    ifTrue: [| #[127 0 0 1]]
+    ifFalse: [|
+      let parts := [bind split: "."];
+      let bytes := [parts collect: [:part | [part asInteger]]];
+      let valid := [[[bytes size] = 4]
+        ifTrue: [| [bytes allSatisfy: [:byte |
+          [[byte isNil]
+            ifTrue: [| false]
+            ifFalse: [| [[byte >= 0] & [byte <= 255]]]]]]]
+        ifFalse: [| false]];
+      [valid ifTrue: [| bytes] ifFalse: [| nil]]]]] doc:
+  "Parse `localhost` or a dotted IPv4 literal into four bytes, or answer nil."];
 
-// Create + bind + listen on `port`. Answers the listening fd, or a negative fd on
-// error (socket()/bind() failed — e.g. the port is already in use).
-[Reflect defineMethod: #listenOn: on: Socket as: [:self :port |
+// Build a 16-byte `struct sockaddr_in` for address:port (macOS layout).
+// byte 0 = sin_len (16), byte 1 = sin_family (AF_INET=2), bytes 2..3 = port in
+// network (big-endian) order, bytes 4..7 = IPv4 address, bytes 8..15 = zero.
+[Reflect defineMethod: #makeSockaddrPort:bind: on: Socket as: [:self :port :bind |
+  let ip := [self ipv4Bytes: bind];
+  [[ip isNil]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let sa := [Alien alloc: 16];
+      [sa pokeByte: 16 at: 0];
+      [sa pokeByte: [self afInet] at: 1];
+      [sa pokeByte: [port / 256] at: 2];
+      [sa pokeByte: [port mod: 256] at: 3];
+      [0 to: 3 do: [:i | [sa pokeByte: [ip at: i] at: [i + 4]]]];
+      sa]]] doc:
+  "A sockaddr_in for a dotted IPv4/localhost bind address and port, or nil for an invalid address; the caller frees it."];
+
+[Reflect defineMethod: #makeSockaddrPort: on: Socket as: [:self :port |
+  [self makeSockaddrPort: port bind: "0.0.0.0"]] doc:
+  "A sockaddr_in for INADDR_ANY:port; the caller frees it."];
+
+// Create + bind + listen on `port` and `bind`. Answers the listening fd, or a
+// negative fd on error (invalid address, socket(), or bind() failure).
+[Reflect defineMethod: #listenOn:bind: on: Socket as: [:self :port :bind |
   let fd := [[self afInet] socketType: [self sockStream] proto: 0];
   [[fd < 0]
     ifTrue:  [| fd]
@@ -111,13 +137,20 @@
       [one pokeInt: 1 at: 0];
       [fd setsockLevel: [self solSocket] opt: [self soReuseAddr] val: one len: 4];
       [one free];
-      let sa := [self makeSockaddrPort: port];
-      let br := [fd bindAddr: sa len: 16];
-      [sa free];
-      [[br < 0]
-        ifTrue:  [| [fd closeFd]; br]
-        ifFalse: [| [fd listenBacklog: 16]; fd]]]]] doc:
-  "Create + bind + listen on `port`; answers the listening fd, or a negative fd on error (e.g. the port is already in use)."];
+      let sa := [self makeSockaddrPort: port bind: bind];
+      [[sa isNil]
+        ifTrue: [| [fd closeFd]; -2]
+        ifFalse: [|
+          let br := [fd bindAddr: sa len: 16];
+          [sa free];
+          [[br < 0]
+            ifTrue:  [| [fd closeFd]; br]
+            ifFalse: [| [fd listenBacklog: 16]; fd]]]]]]] doc:
+  "Create + bind + listen on `port` and IPv4 `bind`; answers a listening fd or a negative error code."];
+
+[Reflect defineMethod: #listenOn: on: Socket as: [:self :port |
+  [self listenOn: port bind: "0.0.0.0"]] doc:
+  "Create + bind + listen on `port` on all IPv4 interfaces."];
 
 // Block until a client connects; answer the raw connection fd (negative on a
 // spurious error such as EINTR, which the caller skips).
@@ -144,7 +177,11 @@
 // `to:do:` is a native (iterative) loop, so this does not grow the stack per
 // connection; the billion-iteration bound is effectively unbounded and exits cleanly.
 [Reflect defineMethod: #serve:with: on: Socket as: [:self :port :handler |
-  let fd := [self listenOn: port];
+  [self serve: port bind: "0.0.0.0" with: handler]] doc:
+  "Listen on `port` on all IPv4 interfaces, then serve connections one at a time."];
+
+[Reflect defineMethod: #serve:bind:with: on: Socket as: [:self :port :bind :handler |
+  let fd := [self listenOn: port bind: bind];
   [[fd < 0]
     ifTrue:  [| fd]
     ifFalse: [|
@@ -160,7 +197,7 @@
         // (handler or close) must not stop the accept loop — swallow it here.
         0]];
       [fd closeFd]]]] doc:
-  "Listen on `port`, then accept connections one at a time, handing each live SockConn to `handler` (a 1-arg block); blocks. Answers a negative fd if it could not listen."];
+  "Listen on IPv4 `bind` and `port`, then accept connections one at a time, handing each live SockConn to `handler`; blocks and answers a negative fd if it could not listen."];
 
 // -- SockConn: one live connection --------------------------------------------
 

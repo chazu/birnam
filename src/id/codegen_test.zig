@@ -112,6 +112,21 @@ fn sourceRevision(api: *idapi.IdApi, source: []const u8) Oop {
     return api.send(api.import("Codegen").?, api.intern("sourceRevisionOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
 }
 
+test "module metadata scanner accepts literal declarations anywhere and ignores legacy source" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    const source = "// prose first\n[Globals at: #MetadataProbe put: [Object clone]];\n[Module named: #metadataProbe requires: #[#file #time]];\n";
+    const metadata = api.send(Codegen, api.intern("moduleMetadataOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
+    try std.testing.expect(metadata != api.nilObj);
+    try std.testing.expectEqualStrings("metadataProbe", std.mem.span(api.symbolName(vectorAt(api, metadata, 1))));
+    const requires = vectorAt(api, metadata, 2);
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(requires, api.intern("size"), &.{}, 0)));
+
+    const legacy = "[Globals at: #LegacyProbe put: [Object clone]];\n";
+    const ignored = api.send(Codegen, api.intern("moduleMetadataOf:"), &.{api.mkString(legacy.ptr, legacy.len)}, 1);
+    try std.testing.expect(ignored == api.nilObj);
+}
+
 test "L1b live file envelope preserves authored bytes and rejects bad metadata" {
     const api = setupFull();
     const Codegen = api.import("Codegen").?;

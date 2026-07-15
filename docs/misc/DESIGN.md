@@ -35,6 +35,29 @@ The next architecture choice is deliberately open. Initialization, image-native
 source editing, migration, reactors/pools, richer supervision, and structured
 operations remain later slices selected from actual product evidence.
 
+## Proposed Developer-Experience Sequence
+
+The next product-facing sequence is deliberately orthogonal to those runtime
+follow-ups. It makes the shipped compiled-unit and isolate architecture usable
+as an ordinary project workflow:
+
+~~~text
+51 — project manifest and dependency resolution
+→ 52 — project check, build, and run
+→ 53 — project-aware LSP and Emacs integration
+→ 54 — relocatable bundles and runtime distribution
+~~~
+
+The source resolver, materialized `check`/`build` workflow, and first
+project-oriented `run` slice are now implemented. Editor integration and bundle
+relocation remain proposals. These slices share one project resolver, preserve
+declared Module named:requires: identity, keep resolution read-only, and leave
+runtime dispatch authority with compatible compiled units.
+See [design 51](../design/51-project-manifests-and-dependency-resolution.md),
+[design 52](../design/52-project-check-build-and-run.md), [design
+53](../design/53-project-aware-language-tools.md), and [design
+54](../design/54-relocatable-bundles.md).
+
 ## Abstractly
 - To build a completely moldable programming environment, where everything is accessible to the programmer - like Piumarta's COLA
 - To build up semantics gradually, like iolang

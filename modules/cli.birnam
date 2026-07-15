@@ -170,9 +170,22 @@
 # Compiled modules to load dependency-first before the entry point.
 # load = [\"my_module\"]
 
+# Source modules indexed by `birnam check`; omitted means [\"src\"].
+# source_roots = [\"src\"]
+
+# Standalone local source projects, resolved relative to this manifest.
+# [dependencies]
+# http = { path = \"../birnam-http\" }
+
 # The project-root-relative entry point. A bare `birnam` run anywhere under
 # this project evaluates it after `load`, then drops into the REPL.
 # main = \"main.birnam\"
+
+# birnam run evaluates main once and exits unless a REPL is selected.
+# [run]
+# repl = \"none\"                 # none, tty, or socket
+# socket_bind = \"127.0.0.1\"    # used when repl = \"socket\"
+# socket_port = 4400            # used when repl = \"socket\"
 "] doc:
   "The birnam.toml contents `birnam init` writes — recognised keys commented out, usage documented inline."];
 

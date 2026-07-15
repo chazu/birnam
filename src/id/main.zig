@@ -10,6 +10,8 @@
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
+const project = @import("project.zig");
+const project_build = @import("project_build.zig");
 const build_opts = @import("build_opts");
 
 const USAGE =
@@ -37,6 +39,15 @@ const USAGE =
     \\  birnam init                Write a starter birnam.toml (the recognised keys,
     \\                             commented) into the current directory. Refuses to
     \\                             overwrite an existing one.
+    \\  birnam check [directory]   Resolve the nearest source project and print its
+    \\                             deterministic dependency-first module graph.
+    \\  birnam check --help       Print check command documentation and exit.
+    \\  birnam build [directory]  Compile the resolved source project and publish
+    \\                             a complete project-local build directory.
+    \\  birnam build --help       Print build command documentation and exit.
+    \\  birnam run [directory] [options] [-- args...]
+    \\                             Run a built project main; default is no REPL.
+    \\  birnam run --help          Print run command documentation and exit.
     \\  birnam wrap <name>         Scaffold wrapped/<name>/<name>.birnam — a
     \\                             barebones Alien-based C-library wrapper to edit.
     \\  birnam --bake <img> <exe>  Bake an image into a standalone executable.
@@ -57,6 +68,172 @@ const USAGE =
 
 const IdApi = idapi.IdApi;
 const Oop = idapi.Oop;
+
+const CHECK_USAGE =
+    \\Usage: birnam check [directory]
+    \\
+    \\Resolve the nearest birnam.toml and print its deterministic,
+    \\dependency-first source module graph. The command is read-only: it does
+    \\not evaluate project modules, load compiled units, or write build output.
+    \\
+    \\Arguments:
+    \\  directory       Directory to search from; defaults to the current directory.
+    \\
+    \\Options:
+    \\  -h, --help      Show this help and exit.
+    \\
+    \\Examples:
+    \\  birnam check
+    \\  birnam check ./path/to/project
+    \\  birnam check --help
+    \\
+;
+
+const BUILD_USAGE =
+    \\Usage: birnam build [directory]
+    \\
+    \\Resolve and compile the nearest birnam.toml source project. Build outputs
+    \\are staged under .birnam/build and published only after every module and
+    \\build record succeeds. This first slice uses the debug profile and the
+    \\current target; it does not run or activate the project.
+    \\
+    \\Arguments:
+    \\  directory       Directory to search from; defaults to the current directory.
+    \\
+    \\Options:
+    \\  -h, --help      Show this help and exit.
+    \\
+    \\Examples:
+    \\  birnam build
+    \\  birnam build ./path/to/project
+    \\  birnam build --help
+    \\
+;
+
+const RUN_USAGE =
+    \\Usage: birnam run [directory] [options] [-- args...]
+    \\
+    \\Run the nearest project using its last successful build. The default is
+    \\no-repl: resolve, load compiled modules, evaluate main, then exit.
+    \\
+    \\Arguments:
+    \\  directory       Directory to search from; defaults to the current directory.
+    \\
+    \\Options:
+    \\  --build         Build and publish before running.
+    \\  --no-repl       Evaluate main and exit (the default).
+    \\  --repl          Start the terminal REPL after main (same as --repl=tty).
+    \\  --repl=tty      Start the terminal REPL after main.
+    \\  --repl=socket   Start the socket REPL after main.
+    \\  --repl-bind IP  Override the socket bind address/host.
+    \\  --repl-port N   Override the socket port (0..65535).
+    \\  -h, --help      Show this help and exit.
+    \\
+    \\Arguments after `--` are exposed to main in `ProjectArgs` as a Vector of
+    \\Strings. Command-line settings override the [run] table in birnam.toml.
+    \\
+    \\Examples:
+    \\  birnam run --build
+    \\  birnam run ./app --repl=tty
+    \\  birnam run --repl=socket --repl-bind 127.0.0.1 --repl-port 4400
+    \\
+;
+
+const ReplMode = enum { none, tty, socket };
+
+const ProjectRunOptions = struct {
+    directory: []const u8,
+    build: bool,
+    repl: ?ReplMode,
+    socket_bind: ?[]const u8,
+    socket_port: ?i64,
+    arguments: []const []const u8,
+};
+
+fn parseReplMode(value: []const u8) ?ReplMode {
+    if (std.mem.eql(u8, value, "none")) return .none;
+    if (std.mem.eql(u8, value, "tty")) return .tty;
+    if (std.mem.eql(u8, value, "socket")) return .socket;
+    return null;
+}
+
+fn parseProjectRunOptions(a: std.mem.Allocator, args: *std.process.ArgIterator) ProjectRunOptions {
+    var directory: []const u8 = ".";
+    var has_directory = false;
+    var build = false;
+    var repl: ?ReplMode = null;
+    var socket_bind: ?[]const u8 = null;
+    var socket_port: ?i64 = null;
+    var arguments: std.ArrayList([]const u8) = .{};
+    defer arguments.deinit(a);
+
+    while (args.next()) |raw| {
+        const token: []const u8 = raw;
+        if (std.mem.eql(u8, token, "--")) {
+            while (args.next()) |argument| arguments.append(a, argument) catch runUsageError("out of memory while reading arguments", .{});
+            break;
+        }
+        if (std.mem.eql(u8, token, "--help") or std.mem.eql(u8, token, "-h")) {
+            out(RUN_USAGE);
+            std.process.exit(0);
+        }
+        if (std.mem.eql(u8, token, "--build")) {
+            build = true;
+            continue;
+        }
+        if (std.mem.eql(u8, token, "--no-repl")) {
+            repl = .none;
+            continue;
+        }
+        if (std.mem.eql(u8, token, "--repl")) {
+            repl = .tty;
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "--repl=")) {
+            repl = parseReplMode(token["--repl=".len..]) orelse
+                runUsageError("--repl must be one of none, tty, or socket", .{});
+            continue;
+        }
+        if (std.mem.eql(u8, token, "--repl-bind")) {
+            socket_bind = args.next() orelse runUsageError("--repl-bind requires an address or host", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "--repl-bind=")) {
+            socket_bind = token["--repl-bind=".len..];
+            if (socket_bind.?.len == 0) runUsageError("--repl-bind requires an address or host", .{});
+            continue;
+        }
+        if (std.mem.eql(u8, token, "--repl-port")) {
+            const value = args.next() orelse runUsageError("--repl-port requires an integer", .{});
+            socket_port = std.fmt.parseInt(i64, value, 10) catch
+                runUsageError("--repl-port must be an integer from 0 to 65535", .{});
+            if (socket_port.? < 0 or socket_port.? > 65535)
+                runUsageError("--repl-port must be an integer from 0 to 65535", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "--repl-port=")) {
+            socket_port = std.fmt.parseInt(i64, token["--repl-port=".len..], 10) catch
+                runUsageError("--repl-port must be an integer from 0 to 65535", .{});
+            if (socket_port.? < 0 or socket_port.? > 65535)
+                runUsageError("--repl-port must be an integer from 0 to 65535", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "-"))
+            runUsageError("unknown option '{s}'", .{token});
+        if (has_directory) runUsageError("expected at most one project directory", .{});
+        directory = token;
+        has_directory = true;
+    }
+    const owned_arguments = arguments.toOwnedSlice(a) catch runUsageError("out of memory while reading arguments", .{});
+    return .{
+        .directory = directory,
+        .build = build,
+        .repl = repl,
+        .socket_bind = socket_bind,
+        .socket_port = socket_port,
+        .arguments = owned_arguments,
+    };
+}
 
 // -- exe bake: a self-booting executable = this runtime + an appended image ---
 //
@@ -158,6 +335,42 @@ pub fn main() !void {
             return;
         }
     }
+
+    // `check --help` and malformed check invocations are pure CLI operations:
+    // answer them before resolving or loading any runtime dylib, just like the
+    // top-level help/version paths above.
+    var check_directory_arg: ?[]const u8 = null;
+    var build_directory_arg: ?[]const u8 = null;
+    var project_run_options: ?ProjectRunOptions = null;
+    if (script_path) |sp| {
+        if (std.mem.eql(u8, sp, "check")) {
+            if (args.next()) |candidate| {
+                if (std.mem.eql(u8, candidate, "--help") or std.mem.eql(u8, candidate, "-h")) {
+                    if (args.next() != null) checkUsageError("unexpected argument after --help", .{});
+                    out(CHECK_USAGE);
+                    return;
+                }
+                if (std.mem.startsWith(u8, candidate, "-"))
+                    checkUsageError("unknown option '{s}'", .{candidate});
+                check_directory_arg = candidate;
+                if (args.next() != null) checkUsageError("expected at most one directory argument", .{});
+            }
+        } else if (std.mem.eql(u8, sp, "build")) {
+            if (args.next()) |candidate| {
+                if (std.mem.eql(u8, candidate, "--help") or std.mem.eql(u8, candidate, "-h")) {
+                    if (args.next() != null) buildUsageError("unexpected argument after --help", .{});
+                    out(BUILD_USAGE);
+                    return;
+                }
+                if (std.mem.startsWith(u8, candidate, "-"))
+                    buildUsageError("unknown option '{s}'", .{candidate});
+                build_directory_arg = candidate;
+                if (args.next() != null) buildUsageError("expected at most one directory argument", .{});
+            }
+        } else if (std.mem.eql(u8, sp, "run")) {
+            project_run_options = parseProjectRunOptions(a, &args);
+        }
+    }
     // `--rebuild foo.image` forces the replay path (rebuild code from the image's
     // own source) instead of mapping the compiled `.code` section.
     var rebuild = false;
@@ -201,6 +414,25 @@ pub fn main() !void {
     const id_init = lib.lookup(idapi.IdInitFn, "id_init") orelse return error.NoIdInit;
     const api = id_init();
     defer if (host_isolate_shutdown) |shutdown| shutdown();
+
+    // The first project workflow is intentionally read-only and source-only.
+    // It boots the parser/TOML stack, then resolves without evaluating a project
+    // source or calling Module load:.
+    if (script_path) |sp| {
+        if (std.mem.eql(u8, sp, "check")) {
+            const directory = check_directory_arg orelse ".";
+            return runProjectCheck(a, api, directory) catch |err| checkCommandError(err);
+        }
+        if (std.mem.eql(u8, sp, "build")) {
+            const directory = build_directory_arg orelse ".";
+            return runProjectBuild(a, api, directory) catch |err| buildCommandError(err);
+        }
+        if (std.mem.eql(u8, sp, "run")) {
+            const options = project_run_options.?;
+            defer a.free(options.arguments);
+            return runProject(a, api, options) catch |err| runCommandError(err);
+        }
+    }
 
     // Worker routing deliberately precedes baked-image discovery: a baked
     // coordinator executable must still recover the explicit worker image and
@@ -554,6 +786,279 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     }
 }
 
+/// `birnam check [directory]` — resolve the nearest manifest and print the
+/// source-only ProjectResolution. The resolver uses Toml and Codegen's full-CST
+/// metadata scanner after the language floor is up, but never evaluates project
+/// source or mutates Module/Store state.
+fn runProjectCheck(a: std.mem.Allocator, api: *IdApi, directory: []const u8) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+    loadStdlib(a, api, codegen);
+
+    var result = project.resolve(api, a, directory);
+    defer result.deinit();
+    if (result.diagnostic) |diagnostic| {
+        checkDiagnosticError(diagnostic.kind, diagnostic.message);
+    }
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    project.writeReport(&result, &stdout_writer.interface) catch |err| return err;
+    stdout_writer.interface.flush() catch |err| return err;
+    if (result.diagnostic != null) std.process.exit(1);
+}
+
+fn checkUsageError(comptime fmt: []const u8, args: anytype) noreturn {
+    var buffer: [512]u8 = undefined;
+    const message = std.fmt.bufPrint(&buffer, fmt, args) catch "invalid command arguments";
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam check: ") catch {};
+    stderr.writeAll(message) catch {};
+    stderr.writeAll("\n") catch {};
+    stderr.writeAll(CHECK_USAGE) catch {};
+    std.process.exit(2);
+}
+
+fn checkDiagnosticError(kind: []const u8, message: []const u8) noreturn {
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam check: ") catch {};
+    stderr.writeAll(kind) catch {};
+    stderr.writeAll(": ") catch {};
+    stderr.writeAll(message) catch {};
+    stderr.writeAll("\nusage: birnam check [directory]\n") catch {};
+    stderr.writeAll("try 'birnam check --help' for more information\n") catch {};
+    std.process.exit(1);
+}
+
+fn checkCommandError(err: anyerror) noreturn {
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam check: ") catch {};
+    stderr.writeAll(@errorName(err)) catch {};
+    stderr.writeAll("\nusage: birnam check [directory]\n") catch {};
+    stderr.writeAll("try 'birnam check --help' for more information\n") catch {};
+    std.process.exit(1);
+}
+
+/// `birnam build [directory]` — materialize the resolved source graph into a
+/// complete project-local artifact directory. Compilation happens through the
+/// existing Codegen artifact primitive; this command never loads the project
+/// modules or activates their runtime behavior.
+fn runProjectBuild(a: std.mem.Allocator, api: *IdApi, directory: []const u8) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+    loadStdlib(a, api, codegen);
+
+    var resolution = project.resolve(api, a, directory);
+    defer resolution.deinit();
+    if (resolution.diagnostic) |diagnostic|
+        buildDiagnosticError(diagnostic.kind, diagnostic.message);
+
+    var result = project_build.build(api, a, &resolution.resolution.?, build_opts.version);
+    defer result.deinit();
+    if (result.diagnostic) |diagnostic|
+        buildDiagnosticError(diagnostic.kind, diagnostic.message);
+
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    project_build.writeReport(&result, &stdout_writer.interface) catch |err| return err;
+    stdout_writer.interface.flush() catch |err| return err;
+}
+
+fn buildUsageError(comptime fmt: []const u8, args: anytype) noreturn {
+    var buffer: [512]u8 = undefined;
+    const message = std.fmt.bufPrint(&buffer, fmt, args) catch "invalid command arguments";
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam build: ") catch {};
+    stderr.writeAll(message) catch {};
+    stderr.writeAll("\n") catch {};
+    stderr.writeAll(BUILD_USAGE) catch {};
+    std.process.exit(2);
+}
+
+fn buildDiagnosticError(kind: []const u8, message: []const u8) noreturn {
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam build: ") catch {};
+    stderr.writeAll(kind) catch {};
+    stderr.writeAll(": ") catch {};
+    stderr.writeAll(message) catch {};
+    stderr.writeAll("\nusage: birnam build [directory]\n") catch {};
+    stderr.writeAll("try 'birnam build --help' for more information\n") catch {};
+    std.process.exit(1);
+}
+
+fn buildCommandError(err: anyerror) noreturn {
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam build: ") catch {};
+    stderr.writeAll(@errorName(err)) catch {};
+    stderr.writeAll("\nusage: birnam build [directory]\n") catch {};
+    stderr.writeAll("try 'birnam build --help' for more information\n") catch {};
+    std.process.exit(1);
+}
+
+fn runUsageError(comptime fmt: []const u8, args: anytype) noreturn {
+    var buffer: [512]u8 = undefined;
+    const message = std.fmt.bufPrint(&buffer, fmt, args) catch "invalid command arguments";
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam run: ") catch {};
+    stderr.writeAll(message) catch {};
+    stderr.writeAll("\n") catch {};
+    stderr.writeAll(RUN_USAGE) catch {};
+    std.process.exit(2);
+}
+
+fn runDiagnosticError(kind: []const u8, message: []const u8) noreturn {
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam run: ") catch {};
+    stderr.writeAll(kind) catch {};
+    stderr.writeAll(": ") catch {};
+    stderr.writeAll(message) catch {};
+    stderr.writeAll("\nusage: birnam run [directory] [options] [-- args...]\n") catch {};
+    stderr.writeAll("try 'birnam run --help' for more information\n") catch {};
+    std.process.exit(1);
+}
+
+fn runCommandError(err: anyerror) noreturn {
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam run: ") catch {};
+    stderr.writeAll(@errorName(err)) catch {};
+    stderr.writeAll("\nusage: birnam run [directory] [options] [-- args...]\n") catch {};
+    stderr.writeAll("try 'birnam run --help' for more information\n") catch {};
+    std.process.exit(1);
+}
+
+fn apiErrorValue(api: *IdApi, value: Oop) bool {
+    return value != null and api.isExported("Error") != 0 and
+        api.send(value, api.intern("isError"), &.{}, 0) == api.trueObj;
+}
+
+fn loadProjectArtifacts(api: *IdApi, build: *const project_build.Build) void {
+    const codegen = api.import("Codegen") orelse runDiagnosticError("buildToolUnavailable", "Codegen is not available");
+    for (build.artifacts) |artifact| {
+        const path = std.fs.path.join(std.heap.c_allocator, &.{ build.output_root, artifact.relative_path }) catch
+            runDiagnosticError("projectArtifactLoadFailed", "could not construct a project artifact path");
+        defer std.heap.c_allocator.free(path);
+        const result = api.send(codegen, api.intern("load:"), &[_]Oop{api.mkString(path.ptr, path.len)}, 1);
+        if (result == api.nilObj) {
+            runDiagnosticError("projectArtifactLoadFailed", std.fmt.allocPrint(std.heap.c_allocator, "could not load artifact for #{s} at {s}", .{ artifact.name, path }) catch "could not load project artifact");
+        }
+        if (apiErrorValue(api, result)) {
+            outErrorString(api, result);
+            runDiagnosticError("projectArtifactLoadFailed", std.fmt.allocPrint(std.heap.c_allocator, "artifact load failed for #{s}", .{artifact.name}) catch "artifact load failed");
+        }
+    }
+}
+
+fn installProjectArguments(api: *IdApi, arguments: []const []const u8) !void {
+    const vector = api.import("Vector") orelse return error.NoVector;
+    const globals = api.import("Globals") orelse return error.NoGlobals;
+    var values = api.send(vector, api.intern("new"), &.{}, 0);
+    for (arguments) |argument| {
+        values = api.send(values, api.intern("add:"), &[_]Oop{api.mkString(argument.ptr, argument.len)}, 1);
+    }
+    _ = api.send(globals, api.intern("at:put:"), &[_]Oop{ api.intern("ProjectArgs"), values }, 2);
+}
+
+fn evalProjectSource(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+    const source = std.fs.cwd().readFileAlloc(a, path, 16 << 20) catch {
+        runDiagnosticError("projectMainReadFailed", std.fmt.allocPrint(std.heap.c_allocator, "could not read project main {s}", .{path}) catch "could not read project main");
+    };
+    defer a.free(source);
+    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(source.ptr, source.len)}, 1);
+    const last_error = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    if (last_error != api.nilObj) {
+        out("birnam: compile error in ");
+        out(path);
+        out(":\n");
+        outErrorString(api, last_error);
+        std.process.exit(1);
+    }
+}
+
+fn loadProjectRuntimeSource(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+    const source = std.fs.cwd().readFileAlloc(a, path, 16 << 20) catch {
+        return error.RuntimeModuleMissing;
+    };
+    defer a.free(source);
+    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(source.ptr, source.len)}, 1);
+    const last_error = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    if (last_error != api.nilObj) {
+        outErrorString(api, last_error);
+        return error.RuntimeModuleFailed;
+    }
+}
+
+fn runProjectSocketRepl(a: std.mem.Allocator, api: *IdApi, bind: []const u8, port: i64) !void {
+    const modules_dir = try resolveModulesDir(a);
+    defer a.free(modules_dir);
+    const socket_path = try std.fs.path.join(a, &.{ modules_dir, "socket.birnam" });
+    defer a.free(socket_path);
+    const repl_path = try std.fs.path.join(a, &.{ modules_dir, "repl.birnam" });
+    defer a.free(repl_path);
+    try loadProjectRuntimeSource(a, api, socket_path);
+    try loadProjectRuntimeSource(a, api, repl_path);
+    const repl = birnamGlobal(api, "Repl") orelse return error.NoRepl;
+    const result = api.send(repl, api.intern("serveOn:bind:"), &[_]Oop{
+        api.mkSmallInt(port), api.mkString(bind.ptr, bind.len),
+    }, 2);
+    if (apiErrorValue(api, result)) {
+        outErrorString(api, result);
+        return error.SocketServeFailed;
+    }
+    return;
+}
+
+fn runProject(a: std.mem.Allocator, api: *IdApi, options: ProjectRunOptions) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+    loadStdlib(a, api, codegen);
+
+    var resolution_result = project.resolve(api, a, options.directory);
+    defer resolution_result.deinit();
+    if (resolution_result.diagnostic) |diagnostic|
+        runDiagnosticError(diagnostic.kind, diagnostic.message);
+    const resolution = &resolution_result.resolution.?;
+    const main_path = resolution.main_path orelse
+        runDiagnosticError("projectMainMissing", "the project has no main entry; set main = \"...\" in birnam.toml");
+
+    var artifact_result = if (options.build)
+        project_build.build(api, a, resolution, build_opts.version)
+    else
+        project_build.validate(api, a, resolution, build_opts.version);
+    defer artifact_result.deinit();
+    if (artifact_result.diagnostic) |diagnostic|
+        runDiagnosticError(diagnostic.kind, diagnostic.message);
+    loadProjectArtifacts(api, &artifact_result.build.?);
+    try installProjectArguments(api, options.arguments);
+    try evalProjectSource(a, api, main_path);
+
+    const mode_name = options.repl orelse parseReplMode(resolution.run.repl).?;
+    const bind = options.socket_bind orelse resolution.run.socket_bind;
+    const port = options.socket_port orelse resolution.run.socket_port;
+    if ((options.socket_bind != null or options.socket_port != null) and mode_name != .socket)
+        runUsageError("socket bind and port options require --repl=socket", .{});
+    switch (mode_name) {
+        .none => return,
+        .tty => return runReplSession(a, api, true, true),
+        .socket => return runProjectSocketRepl(a, api, bind, port),
+    }
+}
+
 // The subcommands whose handlers live in birnam (modules/cli.birnam).
 const cli_subcommands = [_][]const u8{ "--listen", "--serve", "--lsp", "doc", "docgen", "init", "wrap" };
 
@@ -805,6 +1310,10 @@ fn out(s: []const u8) void {
 /// the restored generation's dispatch. A standalone `--repl` passes false to do
 /// the one-time init itself.
 fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
+    return runReplSession(a, api, booted, false);
+}
+
+fn runReplSession(a: std.mem.Allocator, api: *IdApi, booted: bool, project_run: bool) !void {
     // repl.birnam rides the stdlib's string protocol, so no-stdlib mode has no
     // interactive loop — `birnam <file>` remains for bare-floor debugging.
     if (std.posix.getenv("BIRNAM_NO_STDLIB") != null) {
@@ -863,7 +1372,7 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
             std.process.exit(1);
         }
     }
-    const initialized = api.send(repl, api.intern("consoleHostInit"), &[_]Oop{}, 0);
+    const initialized = api.send(repl, api.intern(if (project_run) "consoleHostInitNoConfig" else "consoleHostInit"), &[_]Oop{}, 0);
     if (api.send(initialized, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj) {
         outErrorString(api, initialized);
         return;
@@ -876,7 +1385,7 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
     }
     try resolveHostPhaseFunctions(a, api);
     if (host_enter_running.?() == 0) return error.InvalidRuntimePhase;
-    const ready = api.send(repl, api.intern("consoleHostReady"), &[_]Oop{}, 0);
+    const ready = api.send(repl, api.intern(if (project_run) "consoleHostReadyNoMain" else "consoleHostReady"), &[_]Oop{}, 0);
     if (api.send(ready, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj) {
         outErrorString(api, ready);
         _ = api.send(repl, api.intern("consoleDone"), &[_]Oop{}, 0);

@@ -63,7 +63,26 @@ birnam examples/fizzbuzz.birnam
 For a project, `birnam` discovers the nearest `birnam.toml` from the current
 directory upward. A `load = ["module"]` list loads compiled modules dependency-
 first, then a root-relative `main = "main.birnam"` runs before the REPL opens.
-`birnam init` writes a commented starter file.
+For an explicit project run, use `birnam run`: it evaluates `main` once and
+exits by default, or can start a tty/socket REPL through the manifest's `[run]`
+table or command flags. `birnam init` writes a commented starter file.
+
+`birnam check [directory]` resolves the nearest source project without loading
+or evaluating project modules. It supports manifest-relative source roots and
+standalone local path dependencies, and prints a deterministic dependency-first
+module order. The directory defaults to the current directory; use
+`birnam check --help` for the command's arguments, options, and examples.
+
+`birnam build [directory]` compiles that same graph dependency-first into
+`.birnam/build/<target>/debug`. It publishes `lib/`, `resolution.toml`, and
+`artifacts.toml` together after a successful build; it does not run or activate
+the project. Use `birnam build --help` for the current build contract.
+
+`birnam run [directory] [options] [-- args...]` consumes the last successful
+build; add `--build` to rebuild first. The default is no REPL. Use
+`--repl=tty` or `--repl=socket`, with `--repl-bind` and `--repl-port` for the
+socket endpoint. Arguments after `--` are available to the entry source as
+`Globals at: #ProjectArgs`.
 
 `birnam --help` is the authoritative command reference. The primary entry
 points are:
@@ -74,6 +93,12 @@ birnam <file.image>        Boot a saved image.
 birnam --rebuild <image>   Boot an image by replaying source.
 birnam --bake <image> <executable>
                              Bake an image into a self-booting executable.
+birnam check [directory]     Resolve and print a source project graph.
+birnam check --help          Show check command documentation.
+birnam build [directory]     Compile and publish a project-local build.
+birnam build --help          Show build command documentation.
+birnam run [directory]       Run a project main; default is no REPL.
+birnam run --help            Show run, REPL, socket, and argument documentation.
 birnam wrap <name>         Scaffold a C-library wrapper.
 ```
 
@@ -273,3 +298,8 @@ from-zero bootstrap compiler and performance floor.
 - [Toward self-hosting](docs/design/44-toward-self-hosting.md) records the
   migration boundary: retain the Zig bootstrap and move only appropriate
   library surface into birnam.
+- [Project manifests and dependency resolution](docs/design/51-project-manifests-and-dependency-resolution.md)
+  and [project check/build/run](docs/design/52-project-check-build-and-run.md)
+  document the implemented project workflow; [project-aware language tools](docs/design/53-project-aware-language-tools.md)
+  and [relocatable bundles](docs/design/54-relocatable-bundles.md) are the next
+  developer-experience slices.

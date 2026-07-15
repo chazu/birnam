@@ -1,0 +1,653 @@
+//! Read-only source project resolution for `birnam check`.
+//!
+//! This is deliberately a host-side seam. TOML is still parsed by Birnam's
+//! self-hosted Toml module, while module declarations are inspected by the
+//! existing full-CST Codegen scanner. The resolver owns filesystem traversal,
+//! path dependency boundaries, deterministic ordering, and diagnostics; it
+//! never evaluates a project source or calls Module load:.
+
+const std = @import("std");
+const idapi = @import("idapi.zig");
+
+const IdApi = idapi.IdApi;
+const Oop = idapi.Oop;
+
+const max_source_bytes = 16 << 20;
+const FailureError = error{ProjectResolutionFailed};
+
+pub const Diagnostic = struct {
+    kind: []const u8,
+    message: []const u8,
+};
+
+pub const Module = struct {
+    name: []const u8,
+    path: []const u8,
+    project_root: []const u8,
+    requires: []const []const u8,
+    source_digest: []const u8,
+    revision_digest: []const u8,
+};
+
+pub const RunConfig = struct {
+    repl: []const u8,
+    socket_bind: []const u8,
+    socket_port: i64,
+};
+
+pub const Resolution = struct {
+    project_root: []const u8,
+    manifest_path: []const u8,
+    project_name: []const u8,
+    main_path: ?[]const u8,
+    load_roots: []const []const u8,
+    run: RunConfig,
+    modules: []const Module,
+    digest: []const u8,
+};
+
+/// The arena lives in the result so both successful records and failure
+/// diagnostics have one explicit lifetime. Callers must always deinit it.
+pub const Result = struct {
+    arena: std.heap.ArenaAllocator,
+    resolution: ?Resolution,
+    diagnostic: ?Diagnostic,
+
+    pub fn deinit(self: *Result) void {
+        self.arena.deinit();
+    }
+};
+
+const Dependency = struct {
+    name: []const u8,
+    path: []const u8,
+};
+
+const Manifest = struct {
+    name: []const u8,
+    version: ?[]const u8,
+    main: ?[]const u8,
+    source_roots: []const []const u8,
+    loads: []const []const u8,
+    dependencies: []const Dependency,
+    run: RunConfig,
+    digest: []const u8,
+};
+
+const Source = struct {
+    name: []const u8,
+    path: []const u8,
+    project_root: []const u8,
+    requires: []const []const u8,
+    source_digest: []const u8,
+    revision_digest: []const u8,
+};
+
+const Project = struct {
+    root: []const u8,
+    manifest_path: []const u8,
+    manifest: Manifest,
+    sources: []const Source,
+};
+
+const Selected = struct {
+    project: *Project,
+    source: *const Source,
+};
+
+const State = struct {
+    arena: std.mem.Allocator,
+    api: *IdApi,
+    projects: std.ArrayList(*Project) = .{},
+    resolved: std.ArrayList(Selected) = .{},
+    visiting: std.ArrayList([]const u8) = .{},
+    diagnostic_kind: []const u8 = "projectResolutionFailed",
+    diagnostic_message: []const u8 = "project resolution failed",
+
+    fn fail(self: *State, kind: []const u8, comptime fmt: []const u8, args: anytype) FailureError {
+        self.diagnostic_kind = kind;
+        self.diagnostic_message = std.fmt.allocPrint(self.arena, fmt, args) catch {
+            self.diagnostic_kind = "projectResolutionFailed";
+            self.diagnostic_message = "could not format project diagnostic";
+            return FailureError.ProjectResolutionFailed;
+        };
+        return FailureError.ProjectResolutionFailed;
+    }
+};
+
+fn lessString(_: void, a: []const u8, b: []const u8) bool {
+    return std.mem.order(u8, a, b) == .lt;
+}
+
+fn sortStrings(items: []const []const u8) void {
+    std.sort.heap([]const u8, @constCast(items), {}, lessString);
+}
+
+fn isString(api: *IdApi, value: Oop) bool {
+    return value != null and api.vtableOf(value) == api.string_vt;
+}
+
+fn isSymbol(api: *IdApi, value: Oop) bool {
+    return value != null and api.vtableOf(value) == api.symbol_vt;
+}
+
+fn isVector(api: *IdApi, value: Oop) bool {
+    const vt = api.import("VectorVt") orelse return false;
+    return value != null and api.vtableOf(value) == vt;
+}
+
+fn isMap(api: *IdApi, value: Oop) bool {
+    const vt = api.import("MapVt") orelse return false;
+    return value != null and api.vtableOf(value) == vt;
+}
+
+fn isError(api: *IdApi, value: Oop) bool {
+    return value != null and api.isExported("Error") != 0 and
+        api.send(value, api.intern("isError"), &.{}, 0) == api.trueObj;
+}
+
+fn global(state: *State, name: [:0]const u8) ?Oop {
+    const globals = state.api.import("Globals") orelse return null;
+    const value = state.api.send(globals, state.api.intern("at:"), &.{state.api.intern(name)}, 1);
+    return if (value == state.api.nilObj) null else value;
+}
+
+fn stringBytes(api: *IdApi, value: Oop) []const u8 {
+    var len: usize = 0;
+    const ptr = api.stringBytes(value, &len);
+    return ptr[0..len];
+}
+
+fn duplicateString(state: *State, value: Oop, field: []const u8) FailureError![]const u8 {
+    if (!isString(state.api, value)) return state.fail("manifestValueInvalid", "{s} must be a string", .{field});
+    return state.arena.dupe(u8, stringBytes(state.api, value)) catch
+        return state.fail("projectResolutionFailed", "out of memory while reading {s}", .{field});
+}
+
+fn mapAt(state: *State, map: Oop, key: []const u8) FailureError!Oop {
+    if (!isMap(state.api, map)) return state.fail("manifestMalformed", "expected a TOML table while reading {s}", .{key});
+    const key_oop = state.api.mkString(key.ptr, key.len);
+    return state.api.send(map, state.api.intern("at:"), &.{key_oop}, 1);
+}
+
+fn vectorSize(state: *State, vector: Oop, field: []const u8) FailureError!usize {
+    if (!isVector(state.api, vector)) return state.fail("manifestValueInvalid", "{s} must be an array", .{field});
+    const size = state.api.send(vector, state.api.intern("size"), &.{}, 0);
+    if (state.api.isSmallInt(size) == 0 or state.api.smallIntValue(size) < 0)
+        return state.fail("manifestValueInvalid", "could not read array {s}", .{field});
+    return @intCast(state.api.smallIntValue(size));
+}
+
+fn duplicateStringSlice(state: *State, values: []const []const u8) FailureError![]const []const u8 {
+    const out = state.arena.alloc([]const u8, values.len) catch
+        return state.fail("projectResolutionFailed", "out of memory while copying project values", .{});
+    for (values, 0..) |value, i| {
+        out[i] = state.arena.dupe(u8, value) catch
+            return state.fail("projectResolutionFailed", "out of memory while copying project values", .{});
+    }
+    return out;
+}
+
+fn parseStringList(state: *State, value: Oop, field: []const u8, allow_single: bool) FailureError![]const []const u8 {
+    if (value == state.api.nilObj) return state.arena.alloc([]const u8, 0) catch
+        return state.fail("projectResolutionFailed", "out of memory while reading {s}", .{field});
+
+    if (allow_single and isString(state.api, value)) {
+        const one = try duplicateString(state, value, field);
+        const out = state.arena.alloc([]const u8, 1) catch
+            return state.fail("projectResolutionFailed", "out of memory while reading {s}", .{field});
+        out[0] = one;
+        return out;
+    }
+
+    const n = try vectorSize(state, value, field);
+    const out = state.arena.alloc([]const u8, n) catch
+        return state.fail("projectResolutionFailed", "out of memory while reading {s}", .{field});
+    for (0..n) |i| {
+        const item = state.api.send(value, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        out[i] = try duplicateString(state, item, field);
+    }
+    return out;
+}
+
+fn parseRunConfig(state: *State, parsed: Oop) FailureError!RunConfig {
+    const run_value = try mapAt(state, parsed, "run");
+    if (run_value == state.api.nilObj) return .{
+        .repl = state.arena.dupe(u8, "none") catch return state.fail("projectResolutionFailed", "out of memory while reading run config", .{}),
+        .socket_bind = state.arena.dupe(u8, "127.0.0.1") catch return state.fail("projectResolutionFailed", "out of memory while reading run config", .{}),
+        .socket_port = 4400,
+    };
+    if (!isMap(state.api, run_value)) return state.fail("manifestValueInvalid", "run must be a TOML table", .{});
+
+    const repl_value = try mapAt(state, run_value, "repl");
+    const repl = if (repl_value == state.api.nilObj)
+        state.arena.dupe(u8, "none") catch return state.fail("projectResolutionFailed", "out of memory while reading run config", .{})
+    else
+        try duplicateString(state, repl_value, "run.repl");
+    if (!std.mem.eql(u8, repl, "none") and !std.mem.eql(u8, repl, "tty") and !std.mem.eql(u8, repl, "socket"))
+        return state.fail("manifestValueInvalid", "run.repl must be one of none, tty, or socket", .{});
+
+    const bind_value = try mapAt(state, run_value, "socket_bind");
+    const socket_bind = if (bind_value == state.api.nilObj)
+        state.arena.dupe(u8, "127.0.0.1") catch return state.fail("projectResolutionFailed", "out of memory while reading run config", .{})
+    else
+        try duplicateString(state, bind_value, "run.socket_bind");
+    if (socket_bind.len == 0) return state.fail("manifestValueInvalid", "run.socket_bind must not be empty", .{});
+
+    const port_value = try mapAt(state, run_value, "socket_port");
+    const socket_port = if (port_value == state.api.nilObj) 4400 else blk: {
+        if (state.api.isSmallInt(port_value) == 0)
+            return state.fail("manifestValueInvalid", "run.socket_port must be an integer from 0 to 65535", .{});
+        const port = state.api.smallIntValue(port_value);
+        if (port < 0 or port > 65535)
+            return state.fail("manifestValueInvalid", "run.socket_port must be an integer from 0 to 65535", .{});
+        break :blk port;
+    };
+    return .{ .repl = repl, .socket_bind = socket_bind, .socket_port = socket_port };
+}
+
+fn sha256Hex(state: *State, bytes: []const u8) []const u8 {
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
+    return state.arena.dupe(u8, &std.fmt.bytesToHex(digest, .lower)) catch @panic("project: oom");
+}
+
+fn parseManifest(state: *State, manifest_path: []const u8, bytes: []const u8) FailureError!Manifest {
+    const toml = global(state, "Toml") orelse
+        return state.fail("manifestMalformed", "Toml is not available while reading {s}", .{manifest_path});
+    const parsed = state.api.send(toml, state.api.intern("parse:"), &.{state.api.mkString(bytes.ptr, bytes.len)}, 1);
+    if (isError(state.api, parsed)) return state.fail("manifestMalformed", "could not parse {s} as TOML", .{manifest_path});
+    if (!isMap(state.api, parsed)) return state.fail("manifestMalformed", "{s} did not produce a TOML table", .{manifest_path});
+
+    const name_value = try mapAt(state, parsed, "name");
+    const name = if (name_value == state.api.nilObj)
+        ""
+    else
+        try duplicateString(state, name_value, "name");
+
+    const version_value = try mapAt(state, parsed, "version");
+    const version = if (version_value == state.api.nilObj)
+        null
+    else
+        try duplicateString(state, version_value, "version");
+
+    const main_value = try mapAt(state, parsed, "main");
+    const main = if (main_value == state.api.nilObj)
+        null
+    else
+        try duplicateString(state, main_value, "main");
+    if (main) |main_path| if (std.fs.path.isAbsolute(main_path))
+        return state.fail("manifestValueInvalid", "main must be project-relative", .{});
+
+    const roots_value = try mapAt(state, parsed, "source_roots");
+    const source_roots = if (roots_value == state.api.nilObj) blk: {
+        const defaults = [_][]const u8{"src"};
+        break :blk try duplicateStringSlice(state, &defaults);
+    } else try parseStringList(state, roots_value, "source_roots", false);
+    if (source_roots.len == 0) return state.fail("manifestValueInvalid", "source_roots must not be empty", .{});
+    for (source_roots) |source_root| if (std.fs.path.isAbsolute(source_root))
+        return state.fail("manifestValueInvalid", "source_roots must be project-relative", .{});
+
+    const load_value = try mapAt(state, parsed, "load");
+    const loads = try parseStringList(state, load_value, "load", true);
+    const run_config = try parseRunConfig(state, parsed);
+
+    const dep_value = try mapAt(state, parsed, "dependencies");
+    var dependencies_list: std.ArrayList(Dependency) = .{};
+    if (dep_value != state.api.nilObj) {
+        if (!isMap(state.api, dep_value)) return state.fail("manifestValueInvalid", "dependencies must be a TOML table", .{});
+        const keys = state.api.send(dep_value, state.api.intern("keys"), &.{}, 0);
+        const key_count = try vectorSize(state, keys, "dependencies");
+        for (0..key_count) |i| {
+            const key = state.api.send(keys, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+            const dep_name = try duplicateString(state, key, "dependency name");
+            const spec = try mapAt(state, dep_value, dep_name);
+            const path_value = try mapAt(state, spec, "path");
+            const dep_path = try duplicateString(state, path_value, "dependency path");
+            if (std.fs.path.isAbsolute(dep_path))
+                return state.fail("dependencyOriginInvalid", "dependency #{s} uses an absolute path", .{dep_name});
+            dependencies_list.append(state.arena, .{ .name = dep_name, .path = dep_path }) catch
+                return state.fail("projectResolutionFailed", "out of memory while reading dependencies", .{});
+        }
+    }
+    const dependencies = dependencies_list.toOwnedSlice(state.arena) catch
+        return state.fail("projectResolutionFailed", "out of memory while reading dependencies", .{});
+    std.sort.heap(Dependency, dependencies, {}, struct {
+        fn lessThan(_: void, a: Dependency, b: Dependency) bool {
+            return std.mem.order(u8, a.name, b.name) == .lt;
+        }
+    }.lessThan);
+
+    return .{
+        .name = name,
+        .version = version,
+        .main = main,
+        .source_roots = source_roots,
+        .loads = loads,
+        .dependencies = dependencies,
+        .run = run_config,
+        .digest = sha256Hex(state, bytes),
+    };
+}
+
+fn joinPath(state: *State, left: []const u8, right: []const u8) FailureError![]const u8 {
+    return std.fs.path.join(state.arena, &.{ left, right }) catch
+        return state.fail("projectResolutionFailed", "out of memory while joining paths", .{});
+}
+
+fn canonicalPath(state: *State, path: []const u8, kind: []const u8) FailureError![]const u8 {
+    return std.fs.cwd().realpathAlloc(state.arena, path) catch
+        return state.fail(kind, "could not resolve path {s}", .{path});
+}
+
+fn readManifest(state: *State, root: []const u8) FailureError!struct { path: []const u8, bytes: []u8 } {
+    const path = try joinPath(state, root, "birnam.toml");
+    const bytes = std.fs.cwd().readFileAlloc(state.arena, path, max_source_bytes) catch
+        return state.fail("dependencyOriginInvalid", "project {s} has no readable birnam.toml", .{root});
+    return .{ .path = path, .bytes = bytes };
+}
+
+fn collectSourceFiles(state: *State, root: []const u8, files: *std.ArrayList([]const u8)) FailureError!void {
+    var dir = std.fs.cwd().openDir(root, .{ .iterate = true }) catch
+        return state.fail("dependencyOriginInvalid", "source root {s} is not readable", .{root});
+    defer dir.close();
+
+    var iterator = dir.iterate();
+    while (true) {
+        const entry = iterator.next() catch
+            return state.fail("sourceMalformed", "could not enumerate source root {s}", .{root});
+        const item = entry orelse break;
+        const path = try joinPath(state, root, item.name);
+        switch (item.kind) {
+            .directory => try collectSourceFiles(state, path, files),
+            .file => if (std.mem.endsWith(u8, item.name, ".birnam")) {
+                files.append(state.arena, path) catch
+                    return state.fail("projectResolutionFailed", "out of memory while indexing sources", .{});
+            },
+            else => {},
+        }
+    }
+}
+
+fn metadataName(state: *State, metadata: Oop) FailureError![]const u8 {
+    const name = state.api.send(metadata, state.api.intern("at:"), &.{state.api.mkSmallInt(1)}, 1);
+    if (!isSymbol(state.api, name)) return state.fail("sourceMalformed", "module metadata has a non-symbol name", .{});
+    return state.arena.dupe(u8, std.mem.span(state.api.symbolName(name))) catch
+        return state.fail("projectResolutionFailed", "out of memory while reading module metadata", .{});
+}
+
+fn metadataRequires(state: *State, metadata: Oop) FailureError![]const []const u8 {
+    const requires = state.api.send(metadata, state.api.intern("at:"), &.{state.api.mkSmallInt(2)}, 1);
+    const n = try vectorSize(state, requires, "module requires");
+    const out = state.arena.alloc([]const u8, n) catch
+        return state.fail("projectResolutionFailed", "out of memory while reading module dependencies", .{});
+    for (0..n) |i| {
+        const name = state.api.send(requires, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        if (!isSymbol(state.api, name)) return state.fail("sourceMalformed", "module requires contains a non-symbol", .{});
+        out[i] = state.arena.dupe(u8, std.mem.span(state.api.symbolName(name))) catch
+            return state.fail("projectResolutionFailed", "out of memory while reading module dependencies", .{});
+    }
+    return out;
+}
+
+fn metadataString(state: *State, metadata: Oop, index: i64, label: []const u8) FailureError![]const u8 {
+    const value = state.api.send(metadata, state.api.intern("at:"), &.{state.api.mkSmallInt(index)}, 1);
+    return duplicateString(state, value, label);
+}
+
+fn indexProject(state: *State, project: *Project) FailureError!void {
+    var files: std.ArrayList([]const u8) = .{};
+    for (project.manifest.source_roots) |root_name| {
+        const root = try joinPath(state, project.root, root_name);
+        try collectSourceFiles(state, root, &files);
+    }
+    sortStrings(files.items);
+
+    var sources: std.ArrayList(Source) = .{};
+    const codegen = state.api.import("Codegen") orelse
+        return state.fail("projectResolutionFailed", "Codegen is not available for source indexing", .{});
+    for (files.items) |path| {
+        const bytes = std.fs.cwd().readFileAlloc(state.arena, path, max_source_bytes) catch
+            return state.fail("sourceMalformed", "could not read source {s}", .{path});
+        const metadata = state.api.send(codegen, state.api.intern("moduleMetadataOf:"), &.{state.api.mkString(bytes.ptr, bytes.len)}, 1);
+        if (metadata == state.api.nilObj) continue; // legacy or runtime-dynamic source
+        if (isError(state.api, metadata)) return state.fail("sourceMalformed", "source {s} has no valid static module declaration", .{path});
+        const name = try metadataName(state, metadata);
+        for (sources.items) |old| if (std.mem.eql(u8, old.name, name))
+            return state.fail("duplicateModuleProvider", "module #{s} is provided by both {s} and {s}", .{ name, old.path, path });
+        const requires = try metadataRequires(state, metadata);
+        const source_digest = try metadataString(state, metadata, 3, "source digest");
+        const revision_digest = try metadataString(state, metadata, 4, "revision digest");
+        sources.append(state.arena, .{
+            .name = name,
+            .path = path,
+            .project_root = project.root,
+            .requires = requires,
+            .source_digest = source_digest,
+            .revision_digest = revision_digest,
+        }) catch return state.fail("projectResolutionFailed", "out of memory while indexing sources", .{});
+    }
+    project.sources = sources.toOwnedSlice(state.arena) catch
+        return state.fail("projectResolutionFailed", "out of memory while indexing sources", .{});
+}
+
+fn findProject(state: *State, root: []const u8) ?*Project {
+    for (state.projects.items) |project| if (std.mem.eql(u8, project.root, root)) return project;
+    return null;
+}
+
+fn loadProjectAt(state: *State, root_path: []const u8) FailureError!*Project {
+    const root = try canonicalPath(state, root_path, "dependencyOriginInvalid");
+    if (findProject(state, root)) |project| return project;
+
+    const project = state.arena.create(Project) catch
+        return state.fail("projectResolutionFailed", "out of memory while creating a project", .{});
+    project.* = undefined;
+    state.projects.append(state.arena, project) catch
+        return state.fail("projectResolutionFailed", "out of memory while tracking projects", .{});
+
+    const manifest_file = try readManifest(state, root);
+    project.root = root;
+    project.manifest_path = manifest_file.path;
+    project.manifest = try parseManifest(state, manifest_file.path, manifest_file.bytes);
+    project.sources = &.{};
+    try indexProject(state, project);
+    return project;
+}
+
+fn nearestManifestRoot(state: *State, path: []const u8) FailureError![]const u8 {
+    var current = try canonicalPath(state, path, "projectNotFound");
+    while (true) {
+        const manifest = try joinPath(state, current, "birnam.toml");
+        if (std.fs.cwd().access(manifest, .{})) |_| return current else |err| switch (err) {
+            error.FileNotFound => {},
+            else => return state.fail("projectNotFound", "could not inspect {s}", .{manifest}),
+        }
+        const parent = std.fs.path.dirname(current) orelse return state.fail("projectNotFound", "no birnam.toml found above {s}", .{path});
+        if (std.mem.eql(u8, parent, current)) return state.fail("projectNotFound", "no birnam.toml found above {s}", .{path});
+        current = parent;
+    }
+}
+
+fn findSource(project: *Project, name: []const u8) ?*const Source {
+    for (project.sources) |*source| if (std.mem.eql(u8, source.name, name)) return source;
+    return null;
+}
+
+fn findDependency(project: *Project, name: []const u8) ?Dependency {
+    for (project.manifest.dependencies) |dependency| if (std.mem.eql(u8, dependency.name, name)) return dependency;
+    return null;
+}
+
+fn chainText(state: *State, include: ?[]const u8) []const u8 {
+    var out: std.ArrayList(u8) = .{};
+    for (state.visiting.items, 0..) |name, i| {
+        if (i != 0) out.appendSlice(state.arena, " -> ") catch return "<cycle>";
+        out.appendSlice(state.arena, "#") catch return "<cycle>";
+        out.appendSlice(state.arena, name) catch return "<cycle>";
+    }
+    if (include) |name| {
+        if (state.visiting.items.len != 0) out.appendSlice(state.arena, " -> ") catch return "<chain>";
+        out.appendSlice(state.arena, "#") catch return "<chain>";
+        out.appendSlice(state.arena, name) catch return "<chain>";
+    }
+    return out.toOwnedSlice(state.arena) catch "<chain>";
+}
+
+fn resolveProvider(state: *State, project: *Project, name: []const u8) FailureError!Selected {
+    const local = findSource(project, name);
+    if (findDependency(project, name)) |dependency| {
+        if (local != null) return state.fail("duplicateModuleProvider", "module #{s} is both project-owned and dependency-provided", .{name});
+        const dependency_root = try joinPath(state, project.root, dependency.path);
+        const dependency_project = loadProjectAt(state, dependency_root) catch |err| return err;
+        if (findSource(dependency_project, name)) |source| return .{ .project = dependency_project, .source = source };
+        if (dependency_project.sources.len == 1)
+            return state.fail("moduleNameMismatch", "dependency #{s} at {s} declares #{s}", .{ name, dependency_project.root, dependency_project.sources[0].name });
+        return state.fail("moduleNotFound", "dependency #{s} at {s} provides no indexable module #{s}", .{ name, dependency_project.root, name });
+    }
+    if (local) |source| return .{ .project = project, .source = source };
+    return state.fail("moduleNotFound", "module #{s} is not provided by {s}; legacy/dynamic sources are outside the resolver (chain: {s})", .{ name, project.root, chainText(state, name) });
+}
+
+fn findResolved(state: *State, name: []const u8) ?Selected {
+    for (state.resolved.items) |selected| if (std.mem.eql(u8, selected.source.name, name)) return selected;
+    return null;
+}
+
+fn isVisiting(state: *State, name: []const u8) bool {
+    for (state.visiting.items) |active| if (std.mem.eql(u8, active, name)) return true;
+    return false;
+}
+
+fn resolveModule(state: *State, project: *Project, name: []const u8) FailureError!void {
+    if (findResolved(state, name)) |existing| {
+        const selected = try resolveProvider(state, project, name);
+        if (!std.mem.eql(u8, existing.source.path, selected.source.path))
+            return state.fail("duplicateModuleProvider", "module #{s} resolves to both {s} and {s}", .{ name, existing.source.path, selected.source.path });
+        return;
+    }
+    if (isVisiting(state, name)) return state.fail("dependencyCycle", "dependency cycle: {s}", .{chainText(state, name)});
+
+    state.visiting.append(state.arena, name) catch
+        return state.fail("projectResolutionFailed", "out of memory while resolving dependencies", .{});
+    defer _ = state.visiting.pop();
+
+    const selected = try resolveProvider(state, project, name);
+    const dependencies = state.arena.dupe([]const u8, selected.source.requires) catch
+        return state.fail("projectResolutionFailed", "out of memory while resolving dependencies", .{});
+    sortStrings(dependencies);
+    for (dependencies) |dependency| try resolveModule(state, selected.project, dependency);
+    state.resolved.append(state.arena, selected) catch
+        return state.fail("projectResolutionFailed", "out of memory while resolving dependencies", .{});
+}
+
+fn digestResolution(state: *State, root: *Project) []const u8 {
+    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+    const add = struct {
+        fn field(h: *std.crypto.hash.sha2.Sha256, value: []const u8) void {
+            var len: [8]u8 = undefined;
+            std.mem.writeInt(u64, &len, value.len, .big);
+            h.update(&len);
+            h.update(value);
+        }
+    }.field;
+    add(&hasher, "birnam.project-resolution.v1");
+    add(&hasher, root.root);
+    add(&hasher, root.manifest.digest);
+    for (state.resolved.items) |selected| {
+        add(&hasher, selected.source.name);
+        add(&hasher, selected.source.path);
+        add(&hasher, selected.source.source_digest);
+        for (selected.source.requires) |dependency| add(&hasher, dependency);
+    }
+    var digest: [32]u8 = undefined;
+    hasher.final(&digest);
+    return state.arena.dupe(u8, &std.fmt.bytesToHex(digest, .lower)) catch @panic("project: oom");
+}
+
+fn run(state: *State, working_dir: []const u8) FailureError!Resolution {
+    const root_path = try nearestManifestRoot(state, working_dir);
+    const root = try loadProjectAt(state, root_path);
+    const load_roots = try duplicateStringSlice(state, root.manifest.loads);
+    sortStrings(load_roots);
+    for (load_roots) |name| try resolveModule(state, root, name);
+
+    const modules = state.arena.alloc(Module, state.resolved.items.len) catch
+        return state.fail("projectResolutionFailed", "out of memory while creating resolution", .{});
+    for (state.resolved.items, 0..) |selected, i| {
+        modules[i] = .{
+            .name = selected.source.name,
+            .path = selected.source.path,
+            .project_root = selected.source.project_root,
+            .requires = selected.source.requires,
+            .source_digest = selected.source.source_digest,
+            .revision_digest = selected.source.revision_digest,
+        };
+    }
+    const main_path = if (root.manifest.main) |main| blk: {
+        const path = try joinPath(state, root.root, main);
+        if (std.fs.cwd().access(path, .{})) |_| {} else |_| return state.fail("entrySourceMissing", "main source {s} does not exist", .{path});
+        break :blk path;
+    } else null;
+    return .{
+        .project_root = root.root,
+        .manifest_path = root.manifest_path,
+        .project_name = root.manifest.name,
+        .main_path = main_path,
+        .load_roots = load_roots,
+        .run = root.manifest.run,
+        .modules = modules,
+        .digest = digestResolution(state, root),
+    };
+}
+
+pub fn resolve(api: *IdApi, allocator: std.mem.Allocator, working_dir: []const u8) Result {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    var state = State{ .arena = arena.allocator(), .api = api };
+    const resolution = run(&state, working_dir) catch {
+        return .{
+            .arena = arena,
+            .resolution = null,
+            .diagnostic = .{ .kind = state.diagnostic_kind, .message = state.diagnostic_message },
+        };
+    };
+    return .{ .arena = arena, .resolution = resolution, .diagnostic = null };
+}
+
+pub fn writeReport(result: *const Result, writer: anytype) !void {
+    if (result.diagnostic) |diagnostic| {
+        try writer.print("{s}: {s}\n", .{ diagnostic.kind, diagnostic.message });
+        return;
+    }
+    const resolution = result.resolution.?;
+    try writer.print("project: {s}\n", .{resolution.project_root});
+    try writer.print("manifest: {s}\n", .{resolution.manifest_path});
+    if (resolution.project_name.len != 0) try writer.print("name: {s}\n", .{resolution.project_name});
+    if (resolution.main_path) |main| try writer.print("main: {s}\n", .{main});
+    try writer.writeAll("module-order:\n");
+    if (resolution.modules.len == 0) try writer.writeAll("  (none)\n");
+    for (resolution.modules) |module| {
+        try writer.print("  #{s} <- {s}", .{ module.name, module.path });
+        if (module.requires.len != 0) {
+            try writer.writeAll(" requires");
+            for (module.requires, 0..) |dependency, i| {
+                if (i == 0) {
+                    try writer.writeAll(" #");
+                } else {
+                    try writer.writeAll(", #");
+                }
+                try writer.writeAll(dependency);
+            }
+        }
+        try writer.writeAll("\n");
+    }
+    try writer.print("resolution-digest: {s}\n", .{resolution.digest});
+}
+
+test "project path sorting is byte deterministic" {
+    var paths = [_][]const u8{ "z/src.birnam", "a/src.birnam", "m/src.birnam" };
+    sortStrings(&paths);
+    try std.testing.expectEqualStrings("a/src.birnam", paths[0]);
+    try std.testing.expectEqualStrings("m/src.birnam", paths[1]);
+    try std.testing.expectEqualStrings("z/src.birnam", paths[2]);
+}
