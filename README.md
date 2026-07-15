@@ -300,7 +300,8 @@ from-zero bootstrap compiler and performance floor.
   library surface into birnam.
 - [Project manifests and dependency resolution](docs/design/51-project-manifests-and-dependency-resolution.md)
   and [project check/build/run](docs/design/52-project-check-build-and-run.md)
-  document the implemented project workflow. The first project-aware LSP
-  workspace/coordinate slice is shipped in [design 53](docs/design/53-project-aware-language-tools.md);
-  safe static diagnostics, navigation, and [relocatable bundles](docs/design/54-relocatable-bundles.md)
-  remain the next developer-experience slices.
+  document the implemented project workflow. The project-aware LSP has shipped
+  its workspace/coordinate, safe static-diagnostics, and first source-navigation
+  slices in [design 53](docs/design/53-project-aware-language-tools.md);
+  dependency-wide indexing, richer semantic assistance, and
+  [relocatable bundles](docs/design/54-relocatable-bundles.md) remain staged.
