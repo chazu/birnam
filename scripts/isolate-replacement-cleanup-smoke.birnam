@@ -17,6 +17,9 @@ let result := [Isolate replace: a using: spec];
 [require value: [[result kind] = #reapPending] value: "pending cleanup did not preserve the reap outcome"];
 let b := [result currentWorker];
 [require value: [[b request: #version timeout: 1000] = #v2] value: "selected worker B was not usable"];
+// Reaping is intentionally eventual after the bounded KILL path. Give the
+// child a bounded scheduling window before the next host-boundary drain.
+[0 to: 100 do: [:i | [Isolate _isolateSleep: 1]]];
 [require value: [[a state] = #exited] value: "a later boundary did not reap worker A"];
 [require value: [[a stopWithTimeout: 0] == a] value: "reaped worker A was not idempotent"];
 [b stopWithTimeout: 10];
