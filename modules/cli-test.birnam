@@ -91,10 +91,14 @@ let s := [TestSuite named: "Cli" module: #cli];
 ]"] equals: true describes: "a // comment ends at its newline"];
   [t expect: [Repl isComplete: "a]"] equals: true describes: "over-closed evaluates (parser reports it)"]]];
 
-[s test: "Lsp is a library: header parse + compile diagnostics, no stdio involved" do: [:t |
+[s test: "Lsp is a library: framing + static diagnostics, no stdio involved" do: [:t |
   [t expect: [Lsp contentLengthOf: "Content-Length: 42\r\n"] equals: 42 describes: "contentLengthOf:"];
   [t expect: [[Lsp compileDiagnostics: "[1 + 2]"] size] equals: 0 describes: "clean source, no diagnostics"];
-  [t assert: [[[Lsp compileDiagnostics: "[1 + ]"] size] >= 1] describes: "a syntax error yields a diagnostic"]]];
+  [t assert: [[[Lsp compileDiagnostics: "[1 + ]"] size] >= 1] describes: "a syntax error yields a diagnostic"];
+  let arity := [Lsp compileDiagnostics: "[Reflect defineMethod: #needs: on: Integer as: [:self | 1]]"];
+  [t expect: [[arity size] = 1] equals: true describes: "a provable selector arity mismatch yields one diagnostic"];
+  [t expect: [[arity at: 0] at: "code"] equals: "selectorArity" describes: "selector arity diagnostics preserve their code"];
+  [t expect: [[Lsp compileDiagnostics: "[Globals at: #answer put: 1]; [answer + 1]"] size] equals: 0 describes: "late-bound names do not produce false positives"]]];
 
 [s test: "Lsp translates UTF-8 byte spans and UTF-16 positions" do: [:t |
   [t expect: [Lsp utf16Offset: 3 in: "aé"] equals: 2 describes: "a two-byte code point is one UTF-16 unit"];

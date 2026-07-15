@@ -130,9 +130,8 @@
 
 // -- diagnostics --------------------------------------------------------------
 
-// A #lastError object → one LSP Diagnostic (severity 1 = Error). The error's
-// "line:col: message" first line drives a byte offset; convert it to an LSP
-// UTF-16 range at the protocol boundary.
+// Static diagnostics carry byte spans from Codegen. Convert those spans to LSP
+// UTF-16 positions only at this protocol boundary.
 [Reflect defineMethod: #utf16UnitsAt:in: on: Lsp as: [:self :i :line |
   let b := [line byteAt: i];
   let width := [[b >= 240] ifTrue: [| 2] ifFalse: [| 1]];
@@ -175,6 +174,18 @@
   [bytes value]
   ] doc:
   "Converts an LSP UTF-16 character offset in `line` to a UTF-8 byte offset for lexical features." ];
+
+[Reflect defineMethod: #positionAtByte:in: on: Lsp as: [:self :byteOffset :text |
+  let off := [[byteOffset < 0] ifTrue: [| 0] ifFalse: [| [[byteOffset > [text size]] ifTrue: [| [text size]] ifFalse: [| byteOffset]]]];
+  let prefix := [text copyFrom: 0 to: off];
+  let lines := [prefix split: "\n"];
+  let line := [[lines size] - 1];
+  let lineText := [lines at: line];
+  let p0 := [Map new];
+  let p1 := [p0 at: "line" put: line];
+  [p1 at: "character" put: [self utf16Offset: [lineText size] in: lineText]]
+  ] doc:
+  "Converts an absolute UTF-8 byte offset in `text` to an LSP line/UTF-16 position." ];
 
 [Reflect defineMethod: #diagFromError:text: on: Lsp as: [:self :err :text |
   let firstLine := [[[err printString] split: "\n"] first];
@@ -220,16 +231,32 @@
   ] doc:
   "Answers one LSP Diagnostic for a shared project-resolver failure, preserving its kind and message." ];
 
-// Compile `text` (compile-only, no eval) → a Vector of Diagnostics (empty if OK).
-[Reflect defineMethod: #compileDiagnostics: on: Lsp as: [:self :text |
-  let path := [Codegen compile: text output: "/tmp/birnam-lsp-check.dylib"];
-  let r := [[path isNil]
-    ifTrue:  [| #[ [self diagFromError: [Codegen lastError] text: text] ]]
-    ifFalse: [| #[] ]];
-  r] doc:
-  "Compiles `text` (compile-only, no eval); answers a Vector of Diagnostics — empty when it compiles clean."];
+[Reflect defineMethod: #diagFromStatic:text: on: Lsp as: [:self :snapshot :text |
+  let start := [snapshot at: "start" ifAbsent: [| 0]];
+  let finish := [snapshot at: "end" ifAbsent: [| start]];
+  let range0 := [Map new];
+  let range1 := [range0 at: "start" put: [self positionAtByte: start in: text]];
+  let range := [range1 at: "end" put: [self positionAtByte: finish in: text]];
+  let kind := [snapshot at: "kind" ifAbsent: [| "static" ]];
+  let message := [snapshot at: "message" ifAbsent: [| "static diagnostic" ]];
+  let d0 := [Map new];
+  let d1 := [d0 at: "range" put: range];
+  let d2 := [d1 at: "severity" put: 1];
+  let d3 := [d2 at: "source" put: "birnam"];
+  let d4 := [d3 at: "code" put: kind];
+  [d4 at: "message" put: message]
+  ] doc:
+  "Converts one Codegen static diagnostic with byte spans into an LSP Diagnostic." ];
 
-// Compile `text` and publish diagnostics for `uri`.
+// Parse and inspect `text` without eval, Store mutation, or artifact writes →
+// a Vector of Diagnostics (empty if OK).
+[Reflect defineMethod: #compileDiagnostics: on: Lsp as: [:self :text |
+  let raw := [Codegen staticDiagnosticsOf: text];
+  [raw inject: #[] into: [:out :entry | [out add: [self diagFromStatic: entry text: text]]]]
+  ] doc:
+  "Parses and statically inspects `text`; answers a Vector of Diagnostics — empty when it is clean." ];
+
+// Statically diagnose `text` and publish diagnostics for `uri`.
 [Reflect defineMethod: #diagnoseUri:text: on: Lsp as: [:self :uri :text |
   let diags := [self compileDiagnostics: text];
   let project := [self projectSnapshotFor: uri];
@@ -241,7 +268,7 @@
   let params := [[[Map new] at: "uri" put: uri] at: "diagnostics" put: all];
   [self sendNote: "textDocument/publishDiagnostics" params: params];
   self] doc:
-  "Compiles `text`, appends a shared project-resolution diagnostic when needed, and publishes the resulting diagnostics for `uri`." ];
+  "Statically diagnoses `text`, appends a shared project-resolution diagnostic when needed, and publishes the resulting diagnostics for `uri`." ];
 
 // -- JSON-RPC response builders -----------------------------------------------
 

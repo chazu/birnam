@@ -39,11 +39,15 @@ my $other_root = $ENV{OTHER_ROOT_URI};
 my $doc = $ENV{DOC_URI};
 my $manifest = $ENV{OTHER_MANIFEST};
 my $bad = "[\\\"" . "\xC3\xA9" . "\\\" + ]";
+my $arity = "[Reflect defineMethod: #needs: on: Integer as: [:self | 1]]";
 sendm("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"workspaceFolders\":[{\"uri\":\"$root\"},{\"uri\":\"$other_root\"}]}}");
 sendm("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":2,\"text\":\"$bad\"}}}");
 sleep 5;
 sendm("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":1},\"contentChanges\":[{\"text\":\"[1 + 2]\"}]}}");
-sendm("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":3},\"contentChanges\":[{\"text\":\"[1 + 2]\"}]}}");
+sendm("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":3},\"contentChanges\":[{\"text\":\"$arity\"}]}}");
+for my $version (4 .. 20) {
+  sendm("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":$version},\"contentChanges\":[{\"text\":\"$arity\"}]}}");
+}
 open my $fh, ">", $manifest or die "open $manifest: $!";
 print {$fh} "name = \"other\"\nsource_roots = [\"src\"]\nload = []\n";
 close $fh or die "close $manifest: $!";
@@ -58,7 +62,8 @@ grep -q '"code":"moduleNotFound"' "$tmp/out"
 grep -q '#othermissing' "$tmp/out"
 ! grep -q '#appmissing' "$tmp/out"
 grep -q '"character":7' "$tmp/out"
-test "$(grep -o 'textDocument/publishDiagnostics' "$tmp/out" | wc -l | tr -d ' ')" = 3
+grep -q '"code":"selectorArity"' "$tmp/out"
+test "$(grep -o 'textDocument/publishDiagnostics' "$tmp/out" | wc -l | tr -d ' ')" -ge 20
 grep -q '"diagnostics":\[\]' "$tmp/out"
 test ! -s "$tmp/err"
 

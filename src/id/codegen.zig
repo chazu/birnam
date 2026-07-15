@@ -1995,6 +1995,131 @@ fn makeVector(items: []const Oop) Oop {
     return result;
 }
 
+fn staticDiagnostic(kind: []const u8, message: []const u8, start: usize, end: usize) Oop {
+    const map_type = g_api.import("Map") orelse return g_api.nilObj;
+    var result = g_api.send(map_type, g_api.intern("new"), &[_]Oop{}, 0);
+    const put_sel = g_api.intern("at:put:");
+    const key_kind = g_api.mkString("kind", 4);
+    const key_message = g_api.mkString("message", 7);
+    const key_start = g_api.mkString("start", 5);
+    const key_end = g_api.mkString("end", 3);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_kind, g_api.mkString(kind.ptr, kind.len) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_message, g_api.mkString(message.ptr, message.len) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_start, g_api.mkSmallInt(@intCast(start)) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_end, g_api.mkSmallInt(@intCast(end)) }, 2);
+    return result;
+}
+
+fn addStaticDiagnostic(out: *std.ArrayList(Oop), kind: []const u8, message: []const u8, start: usize, end: usize) void {
+    out.append(ca, staticDiagnostic(kind, message, start, end)) catch @panic("codegen: oom");
+}
+
+/// Check only declarations whose invalidity is visible in the source itself.
+/// Ordinary sends are deliberately not checked for missing methods: identifiers
+/// are late-bound globals and dispatch is late-bound, so a project-local checker
+/// cannot safely turn an unresolved name or receiver into a false error.
+fn analyzeStaticNode(node0: Oop, out: *std.ArrayList(Oop)) void {
+    const node = skip(node0);
+    const r = ruleOf(node);
+    if (r == r_send) {
+        const recv = child(node, 0);
+        const msg = skip(child(node, 1));
+        const mr = ruleOf(msg);
+
+        if (mr == r_keywordMsg) {
+            var selector: std.ArrayList(u8) = .{};
+            defer selector.deinit(ca);
+            var args: std.ArrayList(Oop) = .{};
+            defer args.deinit(ca);
+            _ = keywordParts(msg, &selector, &args);
+
+            const is_define = std.mem.eql(u8, selector.items, "defineMethod:on:as:") and args.items.len == 3;
+            const is_define_doc = std.mem.eql(u8, selector.items, "defineMethod:on:as:doc:") and args.items.len == 4;
+            if ((is_define or is_define_doc) and isReflectRecv(recv)) {
+                if (symbolNode(args.items[0])) |sel| {
+                    if (blockParamCount(args.items[2])) |actual| {
+                        const expected = selectorArity(sel) + 1;
+                        if (actual != expected) {
+                            const raw = text(skip(args.items[0]));
+                            const message = std.fmt.allocPrint(ca,
+                                "selector {s} expects {d} block parameter{s} including self, got {d}",
+                                .{ raw, expected, if (expected == 1) "" else "s", actual },
+                            ) catch @panic("codegen: oom");
+                            defer ca.free(message);
+                            addStaticDiagnostic(out, "selectorArity", message,
+                                spanStart(skip(args.items[0])), spanEnd(skip(args.items[0])));
+                        }
+                    }
+                }
+            }
+
+            var i: usize = 1;
+            while (i < nchild(msg)) : (i += 2) analyzeStaticNode(child(msg, i), out);
+        } else if (mr == r_binaryMsg) {
+            analyzeStaticNode(child(msg, 1), out);
+        } else if (mr == r_message) {
+            var i: usize = 0;
+            while (i < nchild(msg)) : (i += 1) analyzeStaticNode(child(msg, i), out);
+        }
+        analyzeStaticNode(recv, out);
+        return;
+    }
+    if (r == r_block) {
+        var i: usize = 0;
+        while (i < nchild(node)) : (i += 1)
+            if (ruleOf(child(node, i)) == r_statements) analyzeStaticNode(child(node, i), out);
+        return;
+    }
+    if (r == r_statements) {
+        var i: usize = 0;
+        while (i < nchild(node)) : (i += 1) {
+            const stmt = child(node, i);
+            if (nchild(stmt) == 0) continue;
+            const inner = child(stmt, 0);
+            if (ruleOf(inner) == r_letBinding) analyzeStaticNode(child(inner, 1), out) else analyzeStaticNode(inner, out);
+        }
+        return;
+    }
+    if (r == r_vectorLit) {
+        var i: usize = 0;
+        while (i < nchild(node)) : (i += 1) analyzeStaticNode(child(node, i), out);
+        return;
+    }
+    if (r == r_mapLit) {
+        var i: usize = 0;
+        while (i < nchild(node)) : (i += 1) {
+            const entry = child(node, i);
+            if (nchild(entry) >= 2) {
+                analyzeStaticNode(child(entry, 0), out);
+                analyzeStaticNode(child(entry, 1), out);
+            }
+        }
+    }
+}
+
+/// Parse and inspect source without evaluating, compiling, writing an artifact,
+/// installing methods, or asserting Store facts. The returned maps intentionally
+/// carry byte spans; the LSP converts them to UTF-16 protocol positions.
+fn mStaticDiagnosticsOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var len: usize = 0;
+    src_bytes = g_api.stringBytes(a[0], &len)[0..len];
+    var diagnostics: std.ArrayList(Oop) = .{};
+    defer diagnostics.deinit(ca);
+
+    const cst = s1(lang, "parse:", a[0]);
+    const parse_failed = cst == g_api.nilObj or
+        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
+    if (parse_failed) {
+        const off: usize = @intCast(g_api.smallIntValue(s0(lang, "furthestFail")));
+        addStaticDiagnostic(&diagnostics, "syntaxError", "syntax error", off, @min(off + 1, len));
+        return makeVector(diagnostics.items);
+    }
+    if (nchild(cst) > 0) analyzeStaticNode(child(cst, 0), &diagnostics);
+    return makeVector(diagnostics.items);
+}
+
 fn makeSourceRevision(scan: *const CandidateScan, source: Oop) Oop {
     return makeVector(&.{
         g_api.intern("sourceRevision"),
@@ -4056,6 +4181,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("compile:output:"), &mCompileOutput);
     api.method(codegen_vt, api.intern("sourceRevisionOf:"), &mSourceRevisionOf);
     api.method(codegen_vt, api.intern("moduleMetadataOf:"), &mModuleMetadataOf);
+    api.method(codegen_vt, api.intern("staticDiagnosticsOf:"), &mStaticDiagnosticsOf);
     api.method(codegen_vt, api.intern("liveRevisionOf:"), &mLiveRevisionOf);
     api.method(codegen_vt, api.intern("recordModuleSource:named:"), &mRecordModuleSource);
     api.method(codegen_vt, api.intern("initialGenerationProjection"), &mInitialGenerationProjection);

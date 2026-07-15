@@ -1,7 +1,7 @@
 # 53 — Project-Aware Language Tools
 
-> **Status:** P0 workspace/coordinate slice implemented, 2026-07-15; safe
-> static diagnostics and navigation remain staged follow-ups. This document
+> **Status:** P0 workspace/coordinate slice and P1 safe static diagnostics
+> implemented, 2026-07-15; navigation remains staged. This document
 > extends the shipped modules/lsp.birnam server and tools/emacs/birnam-mode.el
 > around the shared project resolver in [51 — Project Manifests and Dependency
 > Resolution](51-project-manifests-and-dependency-resolution.md). It is not a
@@ -14,7 +14,7 @@ Birnam already has a useful editor foothold:
 - birnam-mode provides syntax highlighting, indentation, comint, and
   evaluation commands;
 - birnam --lsp speaks stdio LSP;
-- the server stores open documents, publishes compile diagnostics, and answers
+- the server stores open documents, publishes diagnostics, and answers
   hover requests from Birnam documentation;
 - the current verification gate exercises installed LSP startup.
 
@@ -102,9 +102,6 @@ Keep the existing stdio and JSON-RPC contract while adding:
 
 - UTF-16 position conversion;
 - full didOpen/didChange/didClose version handling;
-- parse diagnostics with accurate spans and expected-token information;
-- static unbound-variable and selector-arity diagnostics where the existing AST
-  and reflection surface can prove them;
 - bounded document storage and cleanup on close;
 - workspace/root initialization using design 51;
 - a narrow host `Project snapshotForUri:` bridge that returns the shared
@@ -113,7 +110,7 @@ Keep the existing stdio and JSON-RPC contract while adding:
 Diagnostics remain parse/static only. A malformed or incomplete buffer should
 produce useful diagnostics without crashing or mutating the live image.
 
-### P1 — project symbols and navigation
+### P2 — project symbols and navigation
 
 Add or complete:
 
@@ -199,10 +196,23 @@ workspaces. The first slice publishes resolver failures as LSP diagnostics with
 the same kind and message as `birnam check`; open buffers still override only
 buffer analysis, not the on-disk project graph.
 
-### P1 — safe static diagnostics
+### P1 — safe static diagnostics — implemented
 
-Add non-mutating static checks and project-resolution diagnostics. Confirm that
-repeated didChange requests do not grow the Store or leave stale documents.
+`Codegen staticDiagnosticsOf:` parses and inspects source without evaluation,
+Store mutation, method installation, or artifact writes. The LSP converts its
+byte spans to UTF-16 ranges and combines those diagnostics with the shared
+project resolver's immutable failure snapshot. The implemented static boundary
+is deliberately narrow:
+
+- syntax errors with a source span;
+- selector-arity mismatches for literal `Reflect defineMethod:on:as:` and
+  `defineMethod:on:as:doc:` declarations when the block parameter count is
+  provable;
+- no invented unbound-name errors, because ordinary identifiers and dispatch
+  remain late-bound globals/runtime behavior.
+
+Repeated didChange requests replace the document text/version and republish
+fresh diagnostics without compiling an artifact or retaining stale documents.
 
 ### P2 — navigation and completion
 

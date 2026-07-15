@@ -127,6 +127,32 @@ test "module metadata scanner accepts literal declarations anywhere and ignores 
     try std.testing.expect(ignored == api.nilObj);
 }
 
+test "static diagnostics are parse-only and only report provable selector arity" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+
+    const arity_source = "[Reflect defineMethod: #needs: on: Integer as: [:self | 1]]";
+    const arity = api.send(Codegen, api.intern("staticDiagnosticsOf:"), &.{api.mkString(arity_source.ptr, arity_source.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(arity, api.intern("size"), &.{}, 0)));
+    const arity_diag = vectorAt(api, arity, 0);
+    try std.testing.expectEqualStrings("selectorArity", stringBytes(api, api.send(arity_diag, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
+    const expected_selector_start = std.mem.indexOf(u8, arity_source, "#needs:").?;
+    try std.testing.expectEqual(@as(i64, @intCast(expected_selector_start)), api.smallIntValue(api.send(arity_diag, api.intern("at:"), &.{api.mkString("start", 5)}, 1)));
+    try std.testing.expectEqual(@as(i64, @intCast(expected_selector_start + "#needs:".len)), api.smallIntValue(api.send(arity_diag, api.intern("at:"), &.{api.mkString("end", 3)}, 1)));
+
+    const syntax_source = "[1 + ]";
+    const syntax = api.send(Codegen, api.intern("staticDiagnosticsOf:"), &.{api.mkString(syntax_source.ptr, syntax_source.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(syntax, api.intern("size"), &.{}, 0)));
+    const syntax_diag = vectorAt(api, syntax, 0);
+    try std.testing.expectEqualStrings("syntaxError", stringBytes(api, api.send(syntax_diag, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
+
+    // Ordinary identifiers are late-bound globals in Birnam; static checking
+    // must not turn a missing-at-analysis-time name into a false error.
+    const late_bound = "[Globals at: #answer put: 1]; [answer + 1]";
+    const clean = api.send(Codegen, api.intern("staticDiagnosticsOf:"), &.{api.mkString(late_bound.ptr, late_bound.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(api.send(clean, api.intern("size"), &.{}, 0)));
+}
+
 test "L1b live file envelope preserves authored bytes and rejects bad metadata" {
     const api = setupFull();
     const Codegen = api.import("Codegen").?;
