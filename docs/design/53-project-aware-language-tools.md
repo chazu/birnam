@@ -83,9 +83,13 @@ diagnostic version per document
 selected build/profile status
 ~~~
 
-Workspace refresh is explicit at initialization, configuration change, and
-dependency/build notification. A document change refreshes only the affected
-source analysis unless the module declaration or dependency metadata changed.
+Workspace metadata is selected at initialization, but project identity is
+resolved per document. Successful snapshots are cached by canonical project
+root, so multiple documents in one project share one project context while
+documents in different workspace folders remain independent. A document change
+refreshes only the affected source analysis. Saving a manifest or dependency
+file refreshes the disk-backed project snapshot and republishes affected open
+documents; unsaved project-topology edits do not alter the resolver graph.
 
 The server may report a project-resolution diagnostic while still providing
 buffer-local syntax features for an otherwise editable file.
@@ -187,12 +191,13 @@ diagnostic rather than inventing a type system.
 
 ### P0 — workspace and coordinates — implemented first slice
 
-Project discovery now goes through the shared host resolver, with UTF-16
-conversion, document versions, stale-change rejection, close cleanup, and
-protocol coverage for multibyte source and nested project paths. The first
-slice publishes resolver failures as LSP diagnostics with the same kind and
-message as `birnam check`; open buffers still override only buffer analysis,
-not the on-disk project graph.
+Project discovery now goes through the shared host resolver, with per-document
+project identity, canonical-root snapshot caching, UTF-16 conversion, document
+versions, stale-change rejection, close cleanup, save-triggered refresh, and
+protocol coverage for multibyte source, nested project paths, and multi-root
+workspaces. The first slice publishes resolver failures as LSP diagnostics with
+the same kind and message as `birnam check`; open buffers still override only
+buffer analysis, not the on-disk project graph.
 
 ### P1 — safe static diagnostics
 

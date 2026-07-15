@@ -2,7 +2,7 @@
 //
 // Speaks LSP (JSON-RPC + `Content-Length` framing) on stdin/stdout, backed by the
 // pure-birnam Json module. The first project-aware slice adds read-only workspace
-// resolution, shared project diagnostics, UTF-16 coordinates, full-document
+// resolution, per-document project contexts, UTF-16 coordinates, full-document
 // versions, and bounded document retention. On didOpen/didChange it compiles the
 // document with `[Codegen compile:output:]` (compile-only: NO eval, no side
 // effects) and reports `[Codegen lastError]`'s line:col as an error squiggle.
@@ -26,8 +26,10 @@
 [Reflect docModule: #lsp is: "A stdio language server (LSP: framing + diagnostics + hover), over Json."];
 [[db cellFor: Lsp attr: #docs] set: [Map new]];
 [[db cellFor: Lsp attr: #versions] set: [Map new]];
+[[db cellFor: Lsp attr: #projectRoots] set: [Map new]];
+[[db cellFor: Lsp attr: #projectCache] set: [Map new]];
+[[db cellFor: Lsp attr: #projectFailures] set: [Map new]];
 [[db cellFor: Lsp attr: #workspaceUri] set: ""];
-[[db cellFor: Lsp attr: #project] set: nil];
 
 // -- libc I/O (fd 0 = stdin, 1 = stdout, 2 = stderr) --------------------------
 // recv/send are socket-only; stdio is a pipe, so use raw read/write on the fd.
@@ -230,7 +232,7 @@
 // Compile `text` and publish diagnostics for `uri`.
 [Reflect defineMethod: #diagnoseUri:text: on: Lsp as: [:self :uri :text |
   let diags := [self compileDiagnostics: text];
-  let project := [self projectSnapshot];
+  let project := [self projectSnapshotFor: uri];
   let all := [[project notNil]
     ifTrue: [| [[project at: "ok" ifAbsent: [| false]]
       ifTrue: [| diags]
@@ -264,7 +266,7 @@
 
 // -- request/notification handlers --------------------------------------------
 
-[Reflect defineMethod: #projectSnapshotFor: on: Lsp as: [:self :uri |
+[Reflect defineMethod: #loadProjectSnapshotFor: on: Lsp as: [:self :uri |
   [[Globals includes: #Project]
     ifTrue: [|
       let raw := [Project snapshotForUri: uri];
@@ -274,29 +276,80 @@
   ] doc:
   "Asks the host-side shared Project resolver for a JSON snapshot for `uri`; answers a parsed map or nil when the bridge is unavailable." ];
 
-[Reflect defineMethod: #setWorkspace:uri: on: Lsp as: [:self :snapshot :uri |
-  [[db cellFor: self attr: #project] set: snapshot];
+[Reflect defineMethod: #projectRootsMap on: Lsp as: [:self |
+  [[db cellFor: self attr: #projectRoots] value]
+  ] doc:
+  "Answers the URI-to-canonical-project-root map." ];
+
+[Reflect defineMethod: #projectCacheMap on: Lsp as: [:self |
+  [[db cellFor: self attr: #projectCache] value]
+  ] doc:
+  "Answers the canonical-project-root-to-snapshot cache." ];
+
+[Reflect defineMethod: #projectFailuresMap on: Lsp as: [:self |
+  [[db cellFor: self attr: #projectFailures] value]
+  ] doc:
+  "Answers the URI-to-failed-project-snapshot map." ];
+
+[Reflect defineMethod: #projectRootOf: on: Lsp as: [:self :uri |
+  [[self projectRootsMap] at: uri ifAbsent: [| nil]]
+  ] doc:
+  "Answers the canonical project root associated with `uri`, or nil when resolution has failed or not run." ];
+
+[Reflect defineMethod: #projectSnapshotFor: on: Lsp as: [:self :uri |
+  let root := [self projectRootOf: uri];
+  [[root notNil]
+    ifTrue: [| [[self projectCacheMap] at: root ifAbsent: [| nil]]]
+    ifFalse: [| [[self projectFailuresMap] at: uri ifAbsent: [| nil]]]]
+  ] doc:
+  "Answers the cached project snapshot for a document URI, resolving project identity per document rather than through one global workspace snapshot." ];
+
+[Reflect defineMethod: #rememberProjectSnapshot:for:oldRoot: on: Lsp as: [:self :snapshot :uri :oldRoot |
+  let ok := [snapshot at: "ok" ifAbsent: [| false]];
+  let root := [snapshot at: "projectRoot" ifAbsent: [| ""]];
+  let valid := [ok & [[root isEmpty] not]];
+  [valid
+    ifTrue: [|
+      [[db cellFor: self attr: #projectRoots] set: [[self projectRootsMap] at: uri put: root]];
+      [[db cellFor: self attr: #projectCache] set: [[self projectCacheMap] at: root put: snapshot]];
+      [[db cellFor: self attr: #projectFailures] set: [[self projectFailuresMap] at: uri put: nil]];
+      snapshot]
+    ifFalse: [|
+      [[oldRoot notNil]
+        ifTrue: [|
+          [[db cellFor: self attr: #projectRoots] set: [[self projectRootsMap] at: uri put: oldRoot]];
+          [[db cellFor: self attr: #projectCache] set: [[self projectCacheMap] at: oldRoot put: snapshot]];
+          [[db cellFor: self attr: #projectFailures] set: [[self projectFailuresMap] at: uri put: nil]]]
+        ifFalse: [|
+          [[db cellFor: self attr: #projectRoots] set: [[self projectRootsMap] at: uri put: nil]];
+          [[db cellFor: self attr: #projectFailures] set: [[self projectFailuresMap] at: uri put: snapshot]]]];
+      snapshot]]
+  ] doc:
+  "Stores a successful snapshot in the canonical-root cache, or retains a failure per URI; a refresh failure for an existing project replaces that project's cached snapshot." ];
+
+[Reflect defineMethod: #refreshProjectFor: on: Lsp as: [:self :uri |
+  let oldRoot := [self projectRootOf: uri];
+  let snapshot := [self loadProjectSnapshotFor: uri];
+  [[snapshot notNil] ifTrue: [| [self rememberProjectSnapshot: snapshot for: uri oldRoot: oldRoot]]];
+  snapshot
+  ] doc:
+  "Refreshes the project snapshot for one document URI and updates the shared canonical-root cache." ];
+
+[Reflect defineMethod: #primeWorkspaceFor: on: Lsp as: [:self :uri |
+  let snapshot := [self loadProjectSnapshotFor: uri];
+  let ok := [[snapshot notNil] ifTrue: [| [snapshot at: "ok" ifAbsent: [| false]]] ifFalse: [| false]];
+  let root := [[snapshot notNil] ifTrue: [| [snapshot at: "projectRoot" ifAbsent: [| ""]]] ifFalse: [| ""]];
+  [[ok & [[root isEmpty] not]] ifTrue: [|
+    [[db cellFor: self attr: #projectCache] set: [[self projectCacheMap] at: root put: snapshot]]]];
   [[db cellFor: self attr: #workspaceUri] set: uri];
   snapshot
   ] doc:
-  "Stores the current project snapshot and the URI used to obtain it." ];
+  "Primes the canonical-root cache from an explicit workspace URI without assigning that workspace snapshot to every document." ];
 
 [Reflect defineMethod: #workspaceUri on: Lsp as: [:self |
   [[db cellFor: self attr: #workspaceUri] value]
   ] doc:
   "Answers the URI used for the current project workspace." ];
-
-[Reflect defineMethod: #projectSnapshot on: Lsp as: [:self |
-  [[db cellFor: self attr: #project] value]
-  ] doc:
-  "Answers the current parsed project snapshot, or nil when no project is resolved." ];
-
-[Reflect defineMethod: #refreshWorkspaceFor: on: Lsp as: [:self :uri |
-  let snapshot := [self projectSnapshotFor: uri];
-  [[snapshot notNil] ifTrue: [| [self setWorkspace: snapshot uri: uri]]];
-  snapshot
-  ] doc:
-  "Refreshes the shared project snapshot from `uri` and retains it for diagnostics and future features." ];
 
 [Reflect defineMethod: #onInitialize:params: on: Lsp as: [:self :id :p |
   let foldersRaw := [p at: "workspaceFolders" ifAbsent: [| #[]]];
@@ -304,8 +357,9 @@
   let folder := [[folders isEmpty] ifTrue: [| [Map new]] ifFalse: [| [folders at: 0]]];
   let rootRaw := [folder at: "uri" ifAbsent: [| [p at: "rootUri" ifAbsent: [| [p at: "rootPath" ifAbsent: [| ""]]]]]];
   let root := [[rootRaw isNil] ifTrue: [| ""] ifFalse: [| rootRaw]];
-  [[root isEmpty] ifFalse: [| [self refreshWorkspaceFor: root]]];
-  let caps := [[[Map new] at: "textDocumentSync" put: 1] at: "hoverProvider" put: true];
+  [[root isEmpty] ifFalse: [| [self primeWorkspaceFor: root]]];
+  let sync := [[[[Map new] at: "openClose" put: true] at: "change" put: 1] at: "save" put: true];
+  let caps := [[[Map new] at: "textDocumentSync" put: sync] at: "hoverProvider" put: true];
   let info := [[[Map new] at: "name" put: "birnam"] at: "version" put: "0.1"];
   let result := [[[Map new] at: "capabilities" put: caps] at: "serverInfo" put: info];
   [self respond: id result: result];
@@ -322,11 +376,11 @@
   let uri := [td at: "uri" ifAbsent: [| ""]];
   let text := [td at: "text" ifAbsent: [| ""]];
   let version := [td at: "version" ifAbsent: [| 0]];
-  [[[self projectSnapshot] isNil] ifTrue: [| [self refreshWorkspaceFor: uri]]];
+  [self refreshProjectFor: uri];
   [self storeDoc: uri text: text version: version];
   [self diagnoseUri: uri text: text];
   self] doc:
-  "didOpen: stores the opened document and version, resolves its nearest project when initialize had no workspace, and publishes diagnostics."];
+  "didOpen: stores the opened document and version, resolves its document-scoped project, and publishes diagnostics."];
 
 [Reflect defineMethod: #onDidChange: on: Lsp as: [:self :p |
   let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
@@ -339,6 +393,28 @@
     ifTrue: [| [self storeDoc: uri text: text version: version]; [self diagnoseUri: uri text: text]]];
   self] doc:
   "didChange: accepts only non-stale full-text versions, replaces the document, and republishes diagnostics."];
+
+[Reflect defineMethod: #republishProjectDiagnosticsFor:and: on: Lsp as: [:self :oldRoot :newRoot |
+  let docs := [self docsMap];
+  [[docs keys] do: [:candidate |
+    let text := [docs at: candidate ifAbsent: [| nil]];
+    [[text isNil] ifFalse: [|
+      let root := [self projectRootOf: candidate];
+      let sameOld := [[oldRoot notNil] & [root = oldRoot]];
+      let sameNew := [[newRoot notNil] & [root = newRoot]];
+      [[sameOld | sameNew] ifTrue: [| [self diagnoseUri: candidate text: text]]]]]]];
+  self] doc:
+  "Republishes open-document diagnostics for documents attached to either project root after a saved project refresh." ];
+
+[Reflect defineMethod: #onDidSave: on: Lsp as: [:self :p |
+  let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
+  let uri := [td at: "uri" ifAbsent: [| ""]];
+  let oldRoot := [self projectRootOf: uri];
+  [self refreshProjectFor: uri];
+  let newRoot := [self projectRootOf: uri];
+  [self republishProjectDiagnosticsFor: oldRoot and: newRoot];
+  self] doc:
+  "didSave: refreshes the disk-backed project graph and republishes diagnostics for open documents in the affected project." ];
 
 [Reflect defineMethod: #onDidClose: on: Lsp as: [:self :p |
   let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
@@ -459,16 +535,18 @@
       ifFalse: [| [[m = "textDocument/didOpen"]
       ifTrue: [| [self onDidOpen: p]]
       ifFalse: [| [[m = "textDocument/didChange"]
-        ifTrue: [| [self onDidChange: p]]
-        ifFalse: [| [[m = "textDocument/didClose"]
+      ifTrue: [| [self onDidChange: p]]
+      ifFalse: [| [[m = "textDocument/didClose"]
           ifTrue: [| [self onDidClose: p]]
-          ifFalse: [| [[m = "shutdown"]
+          ifFalse: [| [[m = "textDocument/didSave"]
+            ifTrue: [| [self onDidSave: p]]
+            ifFalse: [| [[m = "shutdown"]
             ifTrue: [| [self onShutdown: id]]
             ifFalse: [| [[m = "exit"]
               ifTrue: [| [0 cExit]]
               ifFalse: [| [[id notNil]
                 ifTrue: [| [self respondError: id]]
-                ifFalse: [| self]]]]]]]]]]]]]]]];
+                ifFalse: [| self]]]]]]]]]]]]]]]]]];
   r] doc:
   "Routes a parsed JSON-RPC `msg` to its handler by method name; unknown requests answer method-not-found."];
 
