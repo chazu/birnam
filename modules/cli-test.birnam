@@ -98,7 +98,11 @@ let s := [TestSuite named: "Cli" module: #cli];
   let arity := [Lsp compileDiagnostics: "[Reflect defineMethod: #needs: on: Integer as: [:self | 1]]"];
   [t expect: [[arity size] = 1] equals: true describes: "a provable selector arity mismatch yields one diagnostic"];
   [t expect: [[arity at: 0] at: "code"] equals: "selectorArity" describes: "selector arity diagnostics preserve their code"];
-  [t expect: [[Lsp compileDiagnostics: "[Globals at: #answer put: 1]; [answer + 1]"] size] equals: 0 describes: "late-bound names do not produce false positives"]]];
+  [t expect: [[Lsp compileDiagnostics: "[Globals at: #answer put: 1]; [answer + 1]"] size] equals: 0 describes: "late-bound names do not produce false positives"];
+  let symbols := [Lsp sourceSymbolsFor: "let answer := 1; [Reflect defineMethod: #needs: on: Integer as: [:self | 1]]"];
+  [t expect: [[symbols size] = 2] equals: true describes: "source symbols include top-level lets and methods"];
+  [t expect: [[symbols at: 0] at: "name"] equals: "answer" describes: "let symbol keeps its name"];
+  [t expect: [[symbols at: 1] at: "name"] equals: "needs:" describes: "method symbol keeps its selector"]]];
 
 [s test: "Lsp translates UTF-8 byte spans and UTF-16 positions" do: [:t |
   [t expect: [Lsp utf16Offset: 3 in: "aé"] equals: 2 describes: "a two-byte code point is one UTF-16 unit"];

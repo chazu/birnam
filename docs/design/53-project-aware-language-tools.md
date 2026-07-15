@@ -1,7 +1,8 @@
 # 53 — Project-Aware Language Tools
 
-> **Status:** P0 workspace/coordinate slice and P1 safe static diagnostics
-> implemented, 2026-07-15; navigation remains staged. This document
+> **Status:** P0 workspace/coordinate slice, P1 safe static diagnostics, and
+> the first P2 source-navigation slice implemented, 2026-07-15; dependency
+> indexing and richer semantic assistance remain staged. This document
 > extends the shipped modules/lsp.birnam server and tools/emacs/birnam-mode.el
 > around the shared project resolver in [51 — Project Manifests and Dependency
 > Resolution](51-project-manifests-and-dependency-resolution.md). It is not a
@@ -110,7 +111,7 @@ Keep the existing stdio and JSON-RPC contract while adding:
 Diagnostics remain parse/static only. A malformed or incomplete buffer should
 produce useful diagnostics without crashing or mutating the live image.
 
-### P2 — project symbols and navigation
+### P2 — project symbols and navigation — first slice implemented
 
 Add or complete:
 
@@ -121,12 +122,15 @@ definition
 references
 ~~~
 
-Definitions and references use source-location provenance recorded when a module
-or method is installed or indexed. A definition in an unopened dependency may
-be served from the resolver's source index; it must not require executing that
-dependency in the user's image.
+The first slice uses the existing parser's CST spans over retained open buffers:
+`documentSymbol` reports top-level `let`, module, and literal Reflect method
+declarations; `definition` and `references` resolve same-document lexical names;
+`workspace/symbol` searches currently open documents. It does not claim to
+resolve late-bound dispatch or unopened dependency locations. Dependency-wide
+source indexing remains a follow-up and must use authored source provenance, not
+generated artifacts or image execution.
 
-### P2 — semantic assistance
+### P2 — semantic assistance — staged
 
 Extend the current lexical hover/signature support with:
 
@@ -216,8 +220,9 @@ fresh diagnostics without compiling an artifact or retaining stale documents.
 
 ### P2 — navigation and completion
 
-Record/consume source provenance, implement definitions/references, then improve
-hover, signature help, and scoped completion.
+The first source-backed navigation slice is implemented. Remaining work is
+dependency-wide source indexing, richer method/receiver hover, signature help,
+scoped completion, and reference resolution across unopened project modules.
 
 ### P3 — Emacs project commands
 
@@ -233,6 +238,8 @@ the existing REPL/evaluation workflow available throughout.
   unbounded old document/store record.
 - A missing dependency is reported by both birnam check and LSP with the same
   diagnostic kind and chain.
+- Document symbols include top-level bindings and literal method declarations;
+  same-document definition and reference requests return authored source ranges.
 - Hover and go-to-definition for a method in a dependency open its authored
   source, not a temporary artifact or unrelated generated code.
 - Completion in a local scope does not dump every interned name by default.

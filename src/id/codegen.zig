@@ -2014,6 +2014,114 @@ fn addStaticDiagnostic(out: *std.ArrayList(Oop), kind: []const u8, message: []co
     out.append(ca, staticDiagnostic(kind, message, start, end)) catch @panic("codegen: oom");
 }
 
+fn sourceSymbolEntry(kind: i64, name: []const u8, detail: []const u8, start: usize, end: usize, selection_start: usize, selection_end: usize) Oop {
+    const map_type = g_api.import("Map") orelse return g_api.nilObj;
+    var result = g_api.send(map_type, g_api.intern("new"), &[_]Oop{}, 0);
+    const put_sel = g_api.intern("at:put:");
+    const key_name = g_api.mkString("name", 4);
+    const key_kind = g_api.mkString("kind", 4);
+    const key_detail = g_api.mkString("detail", 6);
+    const key_start = g_api.mkString("start", 5);
+    const key_end = g_api.mkString("end", 3);
+    const key_selection_start = g_api.mkString("selectionStart", 14);
+    const key_selection_end = g_api.mkString("selectionEnd", 12);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_name, g_api.mkString(name.ptr, name.len) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_kind, g_api.mkSmallInt(kind) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_detail, g_api.mkString(detail.ptr, detail.len) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_start, g_api.mkSmallInt(@intCast(start)) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_end, g_api.mkSmallInt(@intCast(end)) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_selection_start, g_api.mkSmallInt(@intCast(selection_start)) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ key_selection_end, g_api.mkSmallInt(@intCast(selection_end)) }, 2);
+    return result;
+}
+
+fn sourceOccurrenceEntry(name: []const u8, start: usize, end: usize) Oop {
+    const map_type = g_api.import("Map") orelse return g_api.nilObj;
+    var result = g_api.send(map_type, g_api.intern("new"), &[_]Oop{}, 0);
+    const put_sel = g_api.intern("at:put:");
+    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("name", 4), g_api.mkString(name.ptr, name.len) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("start", 5), g_api.mkSmallInt(@intCast(start)) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("end", 3), g_api.mkSmallInt(@intCast(end)) }, 2);
+    return result;
+}
+
+fn sourceSymbolName(node0: Oop) []const u8 {
+    const raw = text(skip(node0));
+    return if (raw.len > 0 and raw[0] == '#') raw[1..] else raw;
+}
+
+fn addSourceSymbol(out: *std.ArrayList(Oop), kind: i64, name: []const u8, detail: []const u8, node: Oop, selection_node: Oop) void {
+    const selected = skip(selection_node);
+    out.append(ca, sourceSymbolEntry(kind, name, detail, spanStart(node), spanEnd(node),
+        spanStart(selected) + if (ruleOf(selected) == r_symbol) @as(usize, 1) else @as(usize, 0), spanEnd(selected))) catch @panic("codegen: oom");
+}
+
+fn collectSourceSymbols(statements: Oop, out: *std.ArrayList(Oop)) void {
+    var i: usize = 0;
+    while (i < nchild(statements)) : (i += 1) {
+        const stmt = child(statements, i);
+        if (nchild(stmt) < 1) continue;
+        const whole = skip(child(stmt, 0));
+        if (ruleOf(whole) == r_letBinding) {
+            const name = skip(child(whole, 0));
+            addSourceSymbol(out, 13, text(name), "top-level let", whole, name);
+            continue;
+        }
+        if (ruleOf(whole) != r_send) continue;
+        const recv = skip(child(whole, 0));
+        const msg = skip(child(whole, 1));
+        if (ruleOf(recv) != r_ident or ruleOf(msg) != r_keywordMsg) continue;
+
+        var selector: std.ArrayList(u8) = .{};
+        defer selector.deinit(ca);
+        var args: std.ArrayList(Oop) = .{};
+        defer args.deinit(ca);
+        _ = keywordParts(msg, &selector, &args);
+
+        if (std.mem.eql(u8, text(recv), "Module") and
+            std.mem.eql(u8, selector.items, "named:requires:") and args.items.len == 2)
+        {
+            if (symbolNode(args.items[0]) != null) {
+                addSourceSymbol(out, 3, sourceSymbolName(args.items[0]), "module", whole, args.items[0]);
+            }
+            continue;
+        }
+
+        const is_define = (std.mem.eql(u8, selector.items, "defineMethod:on:as:") and args.items.len == 3) or
+            (std.mem.eql(u8, selector.items, "defineMethod:on:as:doc:") and args.items.len == 4);
+        if (!is_define or !isReflectRecv(recv)) continue;
+        if (symbolNode(args.items[0]) == null or identNode(args.items[1]) == null) continue;
+        const detail = text(skip(args.items[1]));
+        addSourceSymbol(out, 6, sourceSymbolName(args.items[0]), detail, whole, args.items[0]);
+    }
+}
+
+/// Collect lexical identifiers and keyword selector parts from a parsed CST.
+/// This is intentionally an occurrence index, not a resolver: the LSP only uses
+/// it for same-document references to declarations it can identify safely.
+fn collectSourceOccurrences(node0: Oop, out: *std.ArrayList(Oop)) void {
+    const node = node0;
+    const r = ruleOf(node);
+    if (r == r_symbol or r == r_number or r == r_float or r == r_string or r == r_logicVar) return;
+    if (r == r_ident) {
+        const raw = text(node);
+        out.append(ca, sourceOccurrenceEntry(raw, spanStart(node), spanEnd(node))) catch @panic("codegen: oom");
+        return;
+    }
+    if (r == r_keywordMsg) {
+        var i: usize = 0;
+        while (i + 1 < nchild(node)) : (i += 2) {
+            const part = child(node, i);
+            const raw = text(part);
+            out.append(ca, sourceOccurrenceEntry(raw, spanStart(part), spanEnd(part))) catch @panic("codegen: oom");
+            collectSourceOccurrences(child(node, i + 1), out);
+        }
+        return;
+    }
+    var i: usize = 0;
+    while (i < nchild(node)) : (i += 1) collectSourceOccurrences(child(node, i), out);
+}
+
 /// Check only declarations whose invalidity is visible in the source itself.
 /// Ordinary sends are deliberately not checked for missing methods: identifiers
 /// are late-bound globals and dispatch is late-bound, so a project-local checker
@@ -2118,6 +2226,37 @@ fn mStaticDiagnosticsOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     }
     if (nchild(cst) > 0) analyzeStaticNode(child(cst, 0), &diagnostics);
     return makeVector(diagnostics.items);
+}
+
+/// Parse source into source-backed top-level symbols without evaluating it or
+/// mutating the Store. Entries carry byte spans for the LSP boundary.
+fn mSourceSymbolsOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var len: usize = 0;
+    src_bytes = g_api.stringBytes(a[0], &len)[0..len];
+    var symbols: std.ArrayList(Oop) = .{};
+    defer symbols.deinit(ca);
+    const cst = s1(lang, "parse:", a[0]);
+    const parse_failed = cst == g_api.nilObj or
+        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
+    if (!parse_failed and nchild(cst) > 0) collectSourceSymbols(child(cst, 0), &symbols);
+    return makeVector(symbols.items);
+}
+
+/// Parse source into lexical identifier/keyword occurrences with byte spans.
+fn mSourceOccurrencesOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var len: usize = 0;
+    src_bytes = g_api.stringBytes(a[0], &len)[0..len];
+    var occurrences: std.ArrayList(Oop) = .{};
+    defer occurrences.deinit(ca);
+    const cst = s1(lang, "parse:", a[0]);
+    const parse_failed = cst == g_api.nilObj or
+        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
+    if (!parse_failed and nchild(cst) > 0) collectSourceOccurrences(child(cst, 0), &occurrences);
+    return makeVector(occurrences.items);
 }
 
 fn makeSourceRevision(scan: *const CandidateScan, source: Oop) Oop {
@@ -4182,6 +4321,8 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("sourceRevisionOf:"), &mSourceRevisionOf);
     api.method(codegen_vt, api.intern("moduleMetadataOf:"), &mModuleMetadataOf);
     api.method(codegen_vt, api.intern("staticDiagnosticsOf:"), &mStaticDiagnosticsOf);
+    api.method(codegen_vt, api.intern("sourceSymbolsOf:"), &mSourceSymbolsOf);
+    api.method(codegen_vt, api.intern("sourceOccurrencesOf:"), &mSourceOccurrencesOf);
     api.method(codegen_vt, api.intern("liveRevisionOf:"), &mLiveRevisionOf);
     api.method(codegen_vt, api.intern("recordModuleSource:named:"), &mRecordModuleSource);
     api.method(codegen_vt, api.intern("initialGenerationProjection"), &mInitialGenerationProjection);

@@ -153,6 +153,27 @@ test "static diagnostics are parse-only and only report provable selector arity"
     try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(api.send(clean, api.intern("size"), &.{}, 0)));
 }
 
+test "source navigation exposes top-level symbols and lexical occurrences" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    const source = "let answer := 1; [Reflect defineMethod: #needs: on: Integer as: [:self | 1]]";
+
+    const symbols = api.send(Codegen, api.intern("sourceSymbolsOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(symbols, api.intern("size"), &.{}, 0)));
+    const global = vectorAt(api, symbols, 0);
+    try std.testing.expectEqualStrings("answer", stringBytes(api, api.send(global, api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
+    try std.testing.expectEqual(@as(i64, 13), api.smallIntValue(api.send(global, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
+    const method = vectorAt(api, symbols, 1);
+    try std.testing.expectEqualStrings("needs:", stringBytes(api, api.send(method, api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
+    try std.testing.expectEqual(@as(i64, 6), api.smallIntValue(api.send(method, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
+
+    const occurrences_source = "let answer := 1; [answer + 1]";
+    const occurrences = api.send(Codegen, api.intern("sourceOccurrencesOf:"), &.{api.mkString(occurrences_source.ptr, occurrences_source.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(occurrences, api.intern("size"), &.{}, 0)));
+    try std.testing.expectEqualStrings("answer", stringBytes(api, api.send(vectorAt(api, occurrences, 0), api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
+    try std.testing.expectEqualStrings("answer", stringBytes(api, api.send(vectorAt(api, occurrences, 1), api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
+}
+
 test "L1b live file envelope preserves authored bytes and rejects bad metadata" {
     const api = setupFull();
     const Codegen = api.import("Codegen").?;

@@ -3,11 +3,11 @@
 // Speaks LSP (JSON-RPC + `Content-Length` framing) on stdin/stdout, backed by the
 // pure-birnam Json module. The first project-aware slice adds read-only workspace
 // resolution, per-document project contexts, UTF-16 coordinates, full-document
-// versions, and bounded document retention. On didOpen/didChange it compiles the
-// document with `[Codegen compile:output:]` (compile-only: NO eval, no side
-// effects) and reports `[Codegen lastError]`'s line:col as an error squiggle.
-// Lifecycle (initialize/initialized/shutdown/exit) + didOpen/didChange/didClose
-// are handled; other requests answer method-not-found.
+// versions, and bounded document retention. On didOpen/didChange it performs
+// parse-only diagnostics; source-backed navigation reads retained open buffers
+// and never activates code.
+// Lifecycle, document synchronization, diagnostics, hover, and source-backed
+// navigation are handled; unsupported requests answer method-not-found.
 //
 // DEPENDENCIES — load first (needs Json + the self-hosted stdlib):
 //   [System load: "modules/json.birnam"];
@@ -23,7 +23,7 @@
 
 [Module named: #lsp requires: #[#json]];
 [Globals at: #Lsp put: [Object clone]];
-[Reflect docModule: #lsp is: "A stdio language server (LSP: framing + diagnostics + hover), over Json."];
+[Reflect docModule: #lsp is: "A stdio language server (LSP: framing, diagnostics, hover, and navigation), over Json."];
 [[db cellFor: Lsp attr: #docs] set: [Map new]];
 [[db cellFor: Lsp attr: #versions] set: [Map new]];
 [[db cellFor: Lsp attr: #projectRoots] set: [Map new]];
@@ -270,6 +270,148 @@
   self] doc:
   "Statically diagnoses `text`, appends a shared project-resolution diagnostic when needed, and publishes the resulting diagnostics for `uri`." ];
 
+// -- source-backed navigation -----------------------------------------------
+
+[Reflect defineMethod: #rangeForStart:end:in: on: Lsp as: [:self :start :finish :text |
+  let r0 := [Map new];
+  let r1 := [r0 at: "start" put: [self positionAtByte: start in: text]];
+  [r1 at: "end" put: [self positionAtByte: finish in: text]]
+  ] doc:
+  "Builds an LSP range from Codegen's absolute UTF-8 byte spans." ];
+
+[Reflect defineMethod: #lspSymbolFrom:text: on: Lsp as: [:self :entry :text |
+  let name := [entry at: "name" ifAbsent: [| ""]];
+  let kind := [entry at: "kind" ifAbsent: [| 13]];
+  let detail := [entry at: "detail" ifAbsent: [| ""]];
+  let start := [entry at: "start" ifAbsent: [| 0]];
+  let finish := [entry at: "end" ifAbsent: [| start]];
+  let selectionStart := [entry at: "selectionStart" ifAbsent: [| start]];
+  let selectionEnd := [entry at: "selectionEnd" ifAbsent: [| finish]];
+  let range := [self rangeForStart: start end: finish in: text];
+  let selection := [self rangeForStart: selectionStart end: selectionEnd in: text];
+  let d0 := [Map new];
+  let d1 := [d0 at: "name" put: name];
+  let d2 := [d1 at: "kind" put: kind];
+  let d3 := [d2 at: "detail" put: detail];
+  let d4 := [d3 at: "range" put: range];
+  [d4 at: "selectionRange" put: selection]
+  ] doc:
+  "Converts one Codegen source symbol into an LSP DocumentSymbol." ];
+
+[Reflect defineMethod: #sourceSymbolsFor: on: Lsp as: [:self :text |
+  let raw := [Codegen sourceSymbolsOf: text];
+  [raw inject: #[] into: [:out :entry | [out add: [self lspSymbolFrom: entry text: text]]]]
+  ] doc:
+  "Answers source-backed top-level document symbols for `text`." ];
+
+[Reflect defineMethod: #locationForEntry:uri:text: on: Lsp as: [:self :entry :uri :text |
+  let start := [entry at: "start" ifAbsent: [| 0]];
+  let finish := [entry at: "end" ifAbsent: [| start]];
+  let range := [self rangeForStart: start end: finish in: text];
+  let d0 := [Map new];
+  let d1 := [d0 at: "uri" put: uri];
+  [d1 at: "range" put: range]
+  ] doc:
+  "Answers an LSP Location for a source occurrence or declaration entry." ];
+
+[Reflect defineMethod: #locationForSymbol:uri:text: on: Lsp as: [:self :entry :uri :text |
+  let start := [entry at: "selectionStart" ifAbsent: [| [entry at: "start" ifAbsent: [| 0]]]];
+  let finish := [entry at: "selectionEnd" ifAbsent: [| [entry at: "end" ifAbsent: [| start]]]];
+  let range := [self rangeForStart: start end: finish in: text];
+  let d0 := [Map new];
+  let d1 := [d0 at: "uri" put: uri];
+  [d1 at: "range" put: range]
+  ] doc:
+  "Answers an LSP definition Location using a symbol's selection range." ];
+
+[Reflect defineMethod: #tokenAtPosition:in: on: Lsp as: [:self :pos :text |
+  let lineNo := [pos at: "line" ifAbsent: [| 0]];
+  let character := [pos at: "character" ifAbsent: [| 0]];
+  let lineText := [self lineAt: lineNo in: text];
+  let byteCol := [self byteOffsetForUtf16: character in: lineText];
+  [self tokenAt: byteCol in: lineText]
+  ] doc:
+  "Answers the lexical token at an LSP position, using UTF-16 protocol coordinates." ];
+
+[Reflect defineMethod: #onDocumentSymbol:id: on: Lsp as: [:self :p :id |
+  let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
+  let uri := [td at: "uri" ifAbsent: [| ""]];
+  let stored := [[self docsMap] at: uri ifAbsent: [| ""]];
+  let text := [[stored isNil] ifTrue: [| ""] ifFalse: [| stored]];
+  [self respond: id result: [self sourceSymbolsFor: text]];
+  self] doc:
+  "Answers documentSymbol from the open buffer's parsed source spans." ];
+
+[Reflect defineMethod: #onDefinition:id: on: Lsp as: [:self :p :id |
+  let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
+  let uri := [td at: "uri" ifAbsent: [| ""]];
+  let pos := [p at: "position" ifAbsent: [| [Map new]]];
+  let stored := [[self docsMap] at: uri ifAbsent: [| ""]];
+  let text := [[stored isNil] ifTrue: [| ""] ifFalse: [| stored]];
+  let token := [self tokenAtPosition: pos in: text];
+  let raw := [Codegen sourceSymbolsOf: text];
+  let found := [raw detect: [:entry | [[entry at: "name" ifAbsent: [| ""]] = token]] ifNone: [| nil]];
+  let result := [[found isNil]
+    ifTrue: [| nil]
+    ifFalse: [| [self locationForSymbol: found uri: uri text: text]]];
+  [self respond: id result: result];
+  self] doc:
+  "Answers a conservative same-document definition for a parsed top-level symbol." ];
+
+[Reflect defineMethod: #onReferences:id: on: Lsp as: [:self :p :id |
+  let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
+  let uri := [td at: "uri" ifAbsent: [| ""]];
+  let pos := [p at: "position" ifAbsent: [| [Map new]]];
+  let context := [p at: "context" ifAbsent: [| [Map new]]];
+  let includeDeclaration := [context at: "includeDeclaration" ifAbsent: [| false]];
+  let stored := [[self docsMap] at: uri ifAbsent: [| ""]];
+  let text := [[stored isNil] ifTrue: [| ""] ifFalse: [| stored]];
+  let token := [self tokenAtPosition: pos in: text];
+  let symbols := [Codegen sourceSymbolsOf: text];
+  let found := [symbols detect: [:entry | [[entry at: "name" ifAbsent: [| ""]] = token]] ifNone: [| nil]];
+  let occurrences := [[found isNil]
+    ifTrue: [| #[]]
+    ifFalse: [| [Codegen sourceOccurrencesOf: text]]];
+  let result := [occurrences inject: #[] into: [:out :entry |
+    let sameName := [[entry at: "name" ifAbsent: [| ""]] = token];
+    let declaration := [symbols anySatisfy: [:symbol |
+      [[[symbol at: "name" ifAbsent: [| ""]] = token] &
+       [[symbol at: "selectionStart" ifAbsent: [| -1]] = [entry at: "start" ifAbsent: [| -2]]]]]];
+    let allowed := [includeDeclaration ifTrue: [| true] ifFalse: [| [declaration not]]];
+    [[sameName & allowed]
+      ifTrue: [| [out add: [self locationForEntry: entry uri: uri text: text]]]
+      ifFalse: [| out]]]];
+  [self respond: id result: result];
+  self] doc:
+  "Answers same-document lexical references for a declaration known in the open buffer." ];
+
+[Reflect defineMethod: #workspaceSymbolsFor: on: Lsp as: [:self :query |
+  let docs := [self docsMap];
+  [[docs keys] inject: #[] into: [:out :uri |
+    let stored := [docs at: uri ifAbsent: [| nil]];
+    [[stored isNil]
+      ifTrue: [| out]
+      ifFalse: [|
+        let raw := [Codegen sourceSymbolsOf: stored];
+        [raw inject: out into: [:acc :entry |
+          let name := [entry at: "name" ifAbsent: [| ""]];
+          [[[query isEmpty] | [name includesSubstring: query]]
+            ifTrue: [|
+              let location := [self locationForSymbol: entry uri: uri text: stored];
+              let d0 := [Map new];
+              let d1 := [d0 at: "name" put: name];
+              let d2 := [d1 at: "kind" put: [entry at: "kind" ifAbsent: [| 13]]];
+              [acc add: [d2 at: "location" put: location]]]
+            ifFalse: [| acc]]]]]]]]
+  ] doc:
+  "Answers workspace/symbol over currently open documents only; unopened dependency indexing remains explicit future work." ];
+
+[Reflect defineMethod: #onWorkspaceSymbol:id: on: Lsp as: [:self :p :id |
+  let query := [p at: "query" ifAbsent: [| ""]];
+  [self respond: id result: [self workspaceSymbolsFor: query]];
+  self] doc:
+  "Answers workspace/symbol from currently retained open documents." ];
+
 // -- JSON-RPC response builders -----------------------------------------------
 
 [Reflect defineMethod: #respond:result: on: Lsp as: [:self :id :result |
@@ -386,7 +528,11 @@
   let root := [[rootRaw isNil] ifTrue: [| ""] ifFalse: [| rootRaw]];
   [[root isEmpty] ifFalse: [| [self primeWorkspaceFor: root]]];
   let sync := [[[[Map new] at: "openClose" put: true] at: "change" put: 1] at: "save" put: true];
-  let caps := [[[Map new] at: "textDocumentSync" put: sync] at: "hoverProvider" put: true];
+  let caps0 := [[[Map new] at: "textDocumentSync" put: sync] at: "hoverProvider" put: true];
+  let caps1 := [caps0 at: "documentSymbolProvider" put: true];
+  let caps2 := [caps1 at: "definitionProvider" put: true];
+  let caps3 := [caps2 at: "referencesProvider" put: true];
+  let caps := [caps3 at: "workspaceSymbolProvider" put: true];
   let info := [[[Map new] at: "name" put: "birnam"] at: "version" put: "0.1"];
   let result := [[[Map new] at: "capabilities" put: caps] at: "serverInfo" put: info];
   [self respond: id result: result];
@@ -560,20 +706,28 @@
     ifFalse: [| [[m = "textDocument/hover"]
       ifTrue: [| [self onHover: p id: id]]
       ifFalse: [| [[m = "textDocument/didOpen"]
-      ifTrue: [| [self onDidOpen: p]]
-      ifFalse: [| [[m = "textDocument/didChange"]
-      ifTrue: [| [self onDidChange: p]]
-      ifFalse: [| [[m = "textDocument/didClose"]
-          ifTrue: [| [self onDidClose: p]]
-          ifFalse: [| [[m = "textDocument/didSave"]
-            ifTrue: [| [self onDidSave: p]]
-            ifFalse: [| [[m = "shutdown"]
-            ifTrue: [| [self onShutdown: id]]
-            ifFalse: [| [[m = "exit"]
-              ifTrue: [| [0 cExit]]
-              ifFalse: [| [[id notNil]
-                ifTrue: [| [self respondError: id]]
-                ifFalse: [| self]]]]]]]]]]]]]]]]]];
+        ifTrue: [| [self onDidOpen: p]]
+        ifFalse: [| [[m = "textDocument/didChange"]
+          ifTrue: [| [self onDidChange: p]]
+          ifFalse: [| [[m = "textDocument/didClose"]
+            ifTrue: [| [self onDidClose: p]]
+            ifFalse: [| [[m = "textDocument/didSave"]
+              ifTrue: [| [self onDidSave: p]]
+              ifFalse: [| [[m = "textDocument/documentSymbol"]
+                ifTrue: [| [self onDocumentSymbol: p id: id]]
+                ifFalse: [| [[m = "textDocument/definition"]
+                  ifTrue: [| [self onDefinition: p id: id]]
+                  ifFalse: [| [[m = "textDocument/references"]
+                    ifTrue: [| [self onReferences: p id: id]]
+                    ifFalse: [| [[m = "workspace/symbol"]
+                      ifTrue: [| [self onWorkspaceSymbol: p id: id]]
+                      ifFalse: [| [[m = "shutdown"]
+                        ifTrue: [| [self onShutdown: id]]
+                        ifFalse: [| [[m = "exit"]
+                          ifTrue: [| [0 cExit]]
+                          ifFalse: [| [[id notNil]
+                            ifTrue: [| [self respondError: id]]
+                            ifFalse: [| self]]]]]]]]]]]]]]]]]]]]]]]]]];
   r] doc:
   "Routes a parsed JSON-RPC `msg` to its handler by method name; unknown requests answer method-not-found."];
 
