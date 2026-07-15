@@ -6,7 +6,7 @@ All notable changes to birnam are recorded here. Format follows
 other targets are rejected at build time until their libtcc and shared-library
 loader ports are complete.
 
-## [Unreleased]
+## [0.11.0] — 2026-07-15
 
 ### Added
 - **Project-aware language tools.** The LSP now indexes authored source across
