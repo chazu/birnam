@@ -8,7 +8,7 @@
 ;;; Commentary:
 
 ;; A basic major mode for editing Birnam source (`.birnam') files, plus an
-;; inferior REPL via comint (`run-birnam').
+;; inferior REPL via comint (`run-birnam') and optional lsp-mode integration.
 ;;
 ;; Birnam is a prototypal, Smalltalk-family language: there are no classes.
 ;; Behaviour lives on objects/prototypes, code is bracketed message sends
@@ -33,10 +33,15 @@
 ;;
 ;; Set the binary if `birnam' is not on PATH:
 ;;   (setq birnam-program "/path/to/zig-out/bin/birnam")
+;;
+;; lsp-mode is started automatically when it is loaded:
+;;   (setq birnam-lsp-program "/path/to/zig-out/bin/birnam")
 
 ;;; Code:
 
 (require 'comint)
+(require 'compile)
+(require 'project)
 
 (defgroup birnam nil
   "Major mode for editing Birnam source."
@@ -57,6 +62,21 @@
   "Arguments passed to `birnam-program' when starting the REPL.
 Defaults to `--repl', which starts the interactive read-eval-print loop."
   :type '(repeat string)
+  :group 'birnam)
+
+(defcustom birnam-lsp-program birnam-program
+  "Path to the Birnam executable used by lsp-mode."
+  :type 'string
+  :group 'birnam)
+
+(defcustom birnam-lsp-args '("--lsp")
+  "Arguments passed to `birnam-lsp-program' for the LSP server."
+  :type '(repeat string)
+  :group 'birnam)
+
+(defcustom birnam-lsp-automatic-start t
+  "When non-nil, start lsp-mode when a Birnam buffer is opened."
+  :type 'boolean
   :group 'birnam)
 
 ;;;; Faces / font-lock ---------------------------------------------------
@@ -248,6 +268,110 @@ the receiver needs a re-TAB of the continuation lines to re-flow."
 
 ;;;; REPL (comint) -------------------------------------------------------
 
+(defun birnam--project-root (&optional directory)
+  "Return the nearest directory containing `birnam.toml', or nil.
+DIRECTORY defaults to the current buffer's directory and then
+`default-directory'."
+  (let* ((candidate (expand-file-name
+                     (or directory
+                         (and (buffer-file-name)
+                              (expand-file-name (buffer-file-name)))
+                         default-directory)))
+         (dir (if (file-directory-p candidate)
+                  (file-name-as-directory candidate)
+                (file-name-directory candidate))))
+    (when dir
+      (locate-dominating-file dir "birnam.toml"))))
+
+(defun birnam--project-try (directory)
+  "Recognize a Birnam project for Emacs `project.el'."
+  (let ((root (birnam--project-root directory)))
+    (when root
+      (cons 'birnam (file-name-as-directory (expand-file-name root))))))
+
+(cl-defmethod project-root ((project (head birnam)))
+  "Return the root stored in a Birnam `project.el' object."
+  (cdr project))
+
+(add-hook 'project-find-functions #'birnam--project-try)
+
+(defun birnam--workspace-directory ()
+  "Return the project root for the current buffer, or `default-directory'."
+  (file-name-as-directory
+   (expand-file-name (or (birnam--project-root) default-directory))))
+
+(defun birnam--compile-project (subcommand)
+  "Run Birnam SUBCOMMAND for the current project in compilation-mode."
+  (let* ((root (birnam--workspace-directory))
+         (default-directory root)
+         (command (mapconcat #'shell-quote-argument
+                             (list birnam-program subcommand root)
+                             " ")))
+    (compile command)))
+
+;;;###autoload
+(defun birnam-check-project ()
+  "Run `birnam check' for the current project."
+  (interactive)
+  (birnam--compile-project "check"))
+
+;;;###autoload
+(defun birnam-build-project ()
+  "Run `birnam build' for the current project."
+  (interactive)
+  (birnam--compile-project "build"))
+
+;;;###autoload
+(defun birnam-run-project ()
+  "Run the current project with `birnam run' in compilation-mode."
+  (interactive)
+  (birnam--compile-project "run"))
+
+;;;; lsp-mode ------------------------------------------------------------
+
+(defun birnam--lsp-activate (_filename mode)
+  "Activate the Birnam lsp-mode client only for `birnam-mode'."
+  (eq mode 'birnam-mode))
+
+(defvar birnam--lsp-client-registered nil)
+
+(defun birnam--register-lsp-client ()
+  "Register Birnam's stdio LSP client with lsp-mode."
+  (when (and (featurep 'lsp-mode)
+             (fboundp 'lsp-register-client)
+             (not birnam--lsp-client-registered))
+    (add-to-list 'lsp-language-id-configuration '(birnam-mode . "birnam"))
+    (lsp-register-client
+     (make-lsp-client
+      :new-connection
+      (lsp-stdio-connection
+       (lambda () (append (list birnam-lsp-program) birnam-lsp-args)))
+      :activation-fn #'birnam--lsp-activate
+      :server-id 'birnam-lsp
+      :priority -1))
+    (setq birnam--lsp-client-registered t)))
+
+(with-eval-after-load 'lsp-mode
+  (birnam--register-lsp-client))
+
+;;;###autoload
+(defun birnam-lsp-start ()
+  "Start lsp-mode for the current Birnam buffer."
+  (interactive)
+  (unless (fboundp 'lsp)
+    (user-error "lsp-mode is not installed or loaded"))
+  (birnam--register-lsp-client)
+  (let ((default-directory (birnam--workspace-directory))
+        (lsp-auto-guess-root t))
+    (lsp)))
+
+(defun birnam--maybe-start-lsp ()
+  "Start lsp-mode when configured and available."
+  (when (and birnam-lsp-automatic-start
+             (fboundp 'lsp)
+             (derived-mode-p 'birnam-mode))
+    (birnam-lsp-start)))
+
 (defvar birnam-repl-buffer-name "*birnam*"
   "Buffer name for the inferior Birnam REPL.")
 
@@ -264,9 +388,10 @@ value, `let x := …' binds a name that persists across lines, and
 multi-line forms continue until the brackets balance.  Commands are
 `:help', `:globals', and `:quit'."
   (interactive)
-  (unless (comint-check-proc birnam-repl-buffer-name)
-    (apply #'make-comint-in-buffer "birnam" birnam-repl-buffer-name
-           birnam-program nil birnam-program-args))
+  (let ((default-directory (birnam--workspace-directory)))
+    (unless (comint-check-proc birnam-repl-buffer-name)
+      (apply #'make-comint-in-buffer "birnam" birnam-repl-buffer-name
+             birnam-program nil birnam-program-args)))
   (pop-to-buffer birnam-repl-buffer-name))
 
 (defun birnam--ensure-repl ()
@@ -310,6 +435,10 @@ rather than filed in as a unit."
     (define-key map (kbd "C-c C-b") #'birnam-eval-buffer)
     (define-key map (kbd "C-c C-l") #'birnam-eval-line)
     (define-key map (kbd "C-c C-z") #'run-birnam)
+    (define-key map (kbd "C-c C-k") #'birnam-check-project)
+    (define-key map (kbd "C-c C-u") #'birnam-build-project)
+    (define-key map (kbd "C-c C-p") #'birnam-run-project)
+    (define-key map (kbd "C-c C-e") #'birnam-lsp-start)
     map)
   "Keymap for `birnam-mode'.")
 
@@ -332,6 +461,8 @@ rather than filed in as a unit."
   (setq-local indent-line-function #'birnam-indent-line)
   (setq-local electric-indent-chars
               (append '(?\] ?} ?\)) electric-indent-chars)))
+
+(add-hook 'birnam-mode-hook #'birnam--maybe-start-lsp)
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.birnam\\'" . birnam-mode))

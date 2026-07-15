@@ -14,7 +14,7 @@
 //   [System load: "modules/lsp.birnam"];
 //   [Lsp serveStdio]                       "blocks, reading LSP messages from stdin"
 // Or just run examples/lsp-server.birnam. Point your editor's LSP client (e.g.
-// Emacs eglot) at that command, from the repo root. STDOUT carries only protocol
+// Emacs lsp-mode) at that command, from the repo root. STDOUT carries only protocol
 // bytes; all logging goes to STDERR (`log:`).
 //
 // TRANSPORT is stdio (what editors default to). A socket transport / a server that
@@ -29,6 +29,8 @@
 [[db cellFor: Lsp attr: #projectRoots] set: [Map new]];
 [[db cellFor: Lsp attr: #projectCache] set: [Map new]];
 [[db cellFor: Lsp attr: #projectFailures] set: [Map new]];
+[[db cellFor: Lsp attr: #documentPaths] set: [Map new]];
+[[db cellFor: Lsp attr: #projectIndexes] set: [Map new]];
 [[db cellFor: Lsp attr: #workspaceUri] set: ""];
 
 // -- libc I/O (fd 0 = stdin, 1 = stdout, 2 = stderr) --------------------------
@@ -346,17 +348,12 @@
   let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
   let uri := [td at: "uri" ifAbsent: [| ""]];
   let pos := [p at: "position" ifAbsent: [| [Map new]]];
-  let stored := [[self docsMap] at: uri ifAbsent: [| ""]];
-  let text := [[stored isNil] ifTrue: [| ""] ifFalse: [| stored]];
-  let token := [self tokenAtPosition: pos in: text];
-  let raw := [Codegen sourceSymbolsOf: text];
-  let found := [raw detect: [:entry | [[entry at: "name" ifAbsent: [| ""]] = token]] ifNone: [| nil]];
-  let result := [[found isNil]
-    ifTrue: [| nil]
-    ifFalse: [| [self locationForSymbol: found uri: uri text: text]]];
+  let index := [self projectIndexFor: uri];
+  let found := [[index notNil] ifTrue: [| [self symbolForPosition: pos uri: uri index: index]] ifFalse: [| nil]];
+  let result := [[found isNil] ifTrue: [| nil] ifFalse: [| [self locationForIndexedSymbol: found]]];
   [self respond: id result: result];
   self] doc:
-  "Answers a conservative same-document definition for a parsed top-level symbol." ];
+  "Answers a source-backed definition from the current project, including unopened dependency modules." ];
 
 [Reflect defineMethod: #onReferences:id: on: Lsp as: [:self :p :id |
   let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
@@ -364,53 +361,163 @@
   let pos := [p at: "position" ifAbsent: [| [Map new]]];
   let context := [p at: "context" ifAbsent: [| [Map new]]];
   let includeDeclaration := [context at: "includeDeclaration" ifAbsent: [| false]];
-  let stored := [[self docsMap] at: uri ifAbsent: [| ""]];
-  let text := [[stored isNil] ifTrue: [| ""] ifFalse: [| stored]];
-  let token := [self tokenAtPosition: pos in: text];
-  let symbols := [Codegen sourceSymbolsOf: text];
-  let found := [symbols detect: [:entry | [[entry at: "name" ifAbsent: [| ""]] = token]] ifNone: [| nil]];
-  let occurrences := [[found isNil]
-    ifTrue: [| #[]]
-    ifFalse: [| [Codegen sourceOccurrencesOf: text]]];
-  let result := [occurrences inject: #[] into: [:out :entry |
-    let sameName := [[entry at: "name" ifAbsent: [| ""]] = token];
-    let declaration := [symbols anySatisfy: [:symbol |
-      [[[symbol at: "name" ifAbsent: [| ""]] = token] &
-       [[symbol at: "selectionStart" ifAbsent: [| -1]] = [entry at: "start" ifAbsent: [| -2]]]]]];
-    let allowed := [includeDeclaration ifTrue: [| true] ifFalse: [| [declaration not]]];
-    [[sameName & allowed]
-      ifTrue: [| [out add: [self locationForEntry: entry uri: uri text: text]]]
-      ifFalse: [| out]]]];
-  [self respond: id result: result];
+  let index := [self projectIndexFor: uri];
+  let found := [[index notNil] ifTrue: [| [self symbolForPosition: pos uri: uri index: index]] ifFalse: [| nil]];
+  let result := [#[] asCell];
+  [[found notNil] ifTrue: [|
+    [includeDeclaration ifTrue: [| [result set: [[result value] add: [self locationForIndexedSymbol: found]]]]];
+    let documents := [index at: "documents" ifAbsent: [| #[]]];
+    [documents do: [:doc |
+      let localOnly := [[found at: "kind" ifAbsent: [| 13]] = 13];
+      let sameDocument := [[doc at: "uri" ifAbsent: [| ""]] = [found at: "uri" ifAbsent: [| ""]]];
+      let eligible := [localOnly ifTrue: [| sameDocument] ifFalse: [| true]];
+      [eligible ifTrue: [|
+        let occurrences := [doc at: "occurrences" ifAbsent: [| #[]]];
+        [occurrences do: [:occurrence |
+          let start := [occurrence at: "start" ifAbsent: [| 0]];
+          let selection := [found at: "selectionStart" ifAbsent: [| -1]];
+          let declaration := [[start = selection] & sameDocument];
+          let matches := [[declaration not] & [self occurrenceMatchesSymbol: found entry: occurrence]];
+          [matches ifTrue: [| [result set: [[result value] add: [self locationForIndexedOccurrence: occurrence doc: doc]]]]]]]]]]]]];
+  [self respond: id result: [result value]];
   self] doc:
-  "Answers same-document lexical references for a declaration known in the open buffer." ];
+  "Answers authored references across the resolved project without pretending to resolve late-bound dispatch." ];
 
 [Reflect defineMethod: #workspaceSymbolsFor: on: Lsp as: [:self :query |
-  let docs := [self docsMap];
-  [[docs keys] inject: #[] into: [:out :uri |
-    let stored := [docs at: uri ifAbsent: [| nil]];
-    [[stored isNil]
-      ifTrue: [| out]
-      ifFalse: [|
-        let raw := [Codegen sourceSymbolsOf: stored];
-        [raw inject: out into: [:acc :entry |
-          let name := [entry at: "name" ifAbsent: [| ""]];
-          [[[query isEmpty] | [name includesSubstring: query]]
-            ifTrue: [|
-              let location := [self locationForSymbol: entry uri: uri text: stored];
-              let d0 := [Map new];
-              let d1 := [d0 at: "name" put: name];
-              let d2 := [d1 at: "kind" put: [entry at: "kind" ifAbsent: [| 13]]];
-              [acc add: [d2 at: "location" put: location]]]
-            ifFalse: [| acc]]]]]]]]
+  let workspace := [self workspaceUri];
+  let workspaceIndex := [[workspace isEmpty] ifTrue: [| nil] ifFalse: [| [self projectIndexFor: workspace]]];
+  let fallback := [[self docsMap] keys];
+  let useFallback := [workspaceIndex isNil];
+  let uri := [useFallback
+    ifTrue: [| [fallback at: 0 ifAbsent: [| ""]]]
+    ifFalse: [| workspace]];
+  let index := [useFallback
+    ifTrue: [| [self projectIndexFor: uri]]
+    ifFalse: [| workspaceIndex]];
+  [[index isNil]
+    ifTrue: [| #[]]
+    ifFalse: [|
+      let seen := [Map new asCell];
+      let symbols := [index at: "symbols" ifAbsent: [| #[]]];
+      [symbols inject: #[] into: [:out :entry |
+        let name := [entry at: "name" ifAbsent: [| ""]];
+        let already := [[seen value] at: name ifAbsent: [| nil]];
+        [[[already isNil] & [[query isEmpty] | [name includesSubstring: query]]]
+          ifTrue: [|
+            [seen set: [[seen value] at: name put: true]];
+            let d0 := [Map new];
+            let d1 := [d0 at: "name" put: name];
+            let d2 := [d1 at: "kind" put: [entry at: "kind" ifAbsent: [| 13]]];
+            [out add: [d2 at: "location" put: [self locationForIndexedSymbol: entry]]]]
+          ifFalse: [| out]]]]]]
   ] doc:
-  "Answers workspace/symbol over currently open documents only; unopened dependency indexing remains explicit future work." ];
+  "Answers workspace/symbol over the resolver-selected authored modules, including unopened dependencies." ];
 
 [Reflect defineMethod: #onWorkspaceSymbol:id: on: Lsp as: [:self :p :id |
   let query := [p at: "query" ifAbsent: [| ""]];
   [self respond: id result: [self workspaceSymbolsFor: query]];
   self] doc:
   "Answers workspace/symbol from currently retained open documents." ];
+
+[Reflect defineMethod: #completionItemForBinding: on: Lsp as: [:self :entry |
+  let name := [entry at: "name" ifAbsent: [| ""]];
+  let module := [entry at: "module" ifAbsent: [| "<buffer>"]];
+  let d0 := [Map new];
+  let d1 := [d0 at: "label" put: name];
+  let d2 := [d1 at: "kind" put: 6];
+  let d3 := [d2 at: "detail" put: [[entry at: "kind" ifAbsent: [| "local"]] , " in #" , module]];
+  [d3 at: "documentation" put: ["authored binding in " , [entry at: "path" ifAbsent: [| ""]]]]
+  ] doc:
+  "Builds a variable or parameter CompletionItem from an authored binding." ];
+
+[Reflect defineMethod: #completionItemForSymbol: on: Lsp as: [:self :entry |
+  let kind := [entry at: "kind" ifAbsent: [| 13]];
+  let itemKind := [[kind = 6] ifTrue: [| 2] ifFalse: [| [[kind = 3] ifTrue: [| 9] ifFalse: [| 13]]]];
+  let name := [entry at: "name" ifAbsent: [| ""]];
+  let detail := [[kind = 6]
+    ifTrue: [| ["method on " , [entry at: "detail" ifAbsent: [| ""]]]]
+    ifFalse: [| [[kind = 3] ifTrue: [| "module"] ifFalse: [| "symbol"]]]];
+  let d0 := [Map new];
+  let d1 := [d0 at: "label" put: name];
+  let d2 := [d1 at: "kind" put: itemKind];
+  let d3 := [d2 at: "detail" put: detail];
+  [d3 at: "documentation" put: [self symbolSourceBody: entry]]
+  ] doc:
+  "Builds a method, module, or authored symbol CompletionItem." ];
+
+[Reflect defineMethod: #completionItemsFor:uri:position:index: on: Lsp as: [:self :text :uri :position :index |
+  let prefix := [self completionPrefixAtPosition: position in: text];
+  let offset := [self byteOffsetAtPosition: position in: text];
+  let doc := [self documentInIndex: index uri: uri];
+  let seen := [Map new asCell];
+  let items := [#[] asCell];
+  [[doc notNil] ifTrue: [|
+    let bindings := [doc at: "bindings" ifAbsent: [| #[]]];
+    [bindings do: [:entry |
+      let name := [entry at: "name" ifAbsent: [| ""]];
+      let start := [entry at: "scopeStart" ifAbsent: [| 0]];
+      let finish := [entry at: "scopeEnd" ifAbsent: [| [text size]]];
+      let already := [[seen value] at: name ifAbsent: [| nil]];
+      let inScope := [[offset >= start] & [offset <= finish]];
+      let wanted := [[already isNil] & [name startsWith: prefix]];
+      let shouldAdd := [wanted & inScope];
+      [shouldAdd ifTrue: [| [seen set: [[seen value] at: name put: true]]; [items set: [[items value] add: [self completionItemForBinding: entry]]]]]]];
+  let symbols := [index at: "symbols" ifAbsent: [| #[]]];
+      [symbols do: [:entry |
+        let name := [entry at: "name" ifAbsent: [| ""]];
+    let already := [[seen value] at: name ifAbsent: [| nil]];
+    let shouldAdd := [[already isNil] & [name startsWith: prefix]];
+    [shouldAdd ifTrue: [| [seen set: [[seen value] at: name put: true]]; [items set: [[items value] add: [self completionItemForSymbol: entry]]]]]]];
+  [items value]]]
+  ] doc:
+  "Answers scoped authored bindings first, then resolver-selected methods and modules filtered by the typed prefix." ];
+
+[Reflect defineMethod: #onCompletion:id: on: Lsp as: [:self :p :id |
+  let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
+  let uri := [td at: "uri" ifAbsent: [| ""]];
+  let position := [p at: "position" ifAbsent: [| [Map new]]];
+  let stored := [[self docsMap] at: uri ifAbsent: [| ""]];
+  let text := [[stored isNil] ifTrue: [| ""] ifFalse: [| stored]];
+  let index := [self projectIndexFor: uri];
+  let result := [[index isNil] ifTrue: [| #[]] ifFalse: [| [self completionItemsFor: text uri: uri position: position index: index]]];
+  [self respond: id result: result];
+  self] doc:
+  "Answers LSP completion from in-scope bindings and resolver-selected authored symbols." ];
+
+[Reflect defineMethod: #signatureForSymbol: on: Lsp as: [:self :entry |
+  let selector := [entry at: "name" ifAbsent: [| ""]];
+  let count := [self selectorArity: selector];
+  let params := #[];
+  [[count > 0] ifTrue: [|
+    [0 to: [count - 1] do: [:i |
+      let d0 := [Map new];
+      let d1 := [d0 at: "label" put: ["arg" , [[i + 1] printString]]];
+      [params add: d1]]]]];
+  let label := [["#" , selector] , " on " , [entry at: "detail" ifAbsent: [| ""]]];
+  let d0 := [Map new];
+  let d1 := [d0 at: "label" put: label];
+  let d2 := [d1 at: "documentation" put: [self symbolSourceBody: entry]];
+  [d2 at: "parameters" put: params]
+  ] doc:
+  "Builds one LSP SignatureInformation from a source-backed method selector." ];
+
+[Reflect defineMethod: #onSignatureHelp:id: on: Lsp as: [:self :p :id |
+  let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
+  let uri := [td at: "uri" ifAbsent: [| ""]];
+  let position := [p at: "position" ifAbsent: [| [Map new]]];
+  let index := [self projectIndexFor: uri];
+  let stored := [[self docsMap] at: uri ifAbsent: [| ""]];
+  let text := [[stored isNil] ifTrue: [| ""] ifFalse: [| stored]];
+  let found := [[index isNil] ifTrue: [| nil] ifFalse: [| [self symbolForPosition: position uri: uri index: index]]];
+  let result := [[found isNil] ifTrue: [| nil] ifFalse: [|
+    let signature := [self signatureForSymbol: found];
+    let d0 := [Map new];
+    let d1 := [d0 at: "signatures" put: #[signature]];
+    let d2 := [d1 at: "activeSignature" put: 0];
+    [d2 at: "activeParameter" put: 0]]];
+  [self respond: id result: result];
+  self] doc:
+  "Answers signature help for a method selector under the cursor; dynamic receiver dispatch remains intentionally unresolved." ];
 
 // -- JSON-RPC response builders -----------------------------------------------
 
@@ -473,6 +580,263 @@
   ] doc:
   "Answers the cached project snapshot for a document URI, resolving project identity per document rather than through one global workspace snapshot." ];
 
+[Reflect defineMethod: #documentPathsMap on: Lsp as: [:self |
+  [[db cellFor: self attr: #documentPaths] value]
+  ] doc:
+  "Answers the open-document URI-to-decoded-path map." ];
+
+[Reflect defineMethod: #projectIndexesMap on: Lsp as: [:self |
+  [[db cellFor: self attr: #projectIndexes] value]
+  ] doc:
+  "Answers the read-only authored-source index cache keyed by project root." ];
+
+[Reflect defineMethod: #pathForUri: on: Lsp as: [:self :uri |
+  [[Globals includes: #Project]
+    ifTrue: [| [Project pathForUri: uri]]
+    ifFalse: [| nil]]
+  ] doc:
+  "Asks the host project bridge to decode a document URI into its filesystem path." ];
+
+[Reflect defineMethod: #uriForPath: on: Lsp as: [:self :path |
+  let found := [nil asCell];
+  let paths := [[self documentPathsMap] keys];
+  [paths do: [:uri |
+    let known := [[self documentPathsMap] at: uri ifAbsent: [| nil]];
+    let match := [[known notNil] & [known = path]];
+    [match ifTrue: [| [found set: uri]]]]];
+  let hasFound := [[found value] notNil];
+  [hasFound ifTrue: [| [found value]] ifFalse: [| ["file://" , path]]]
+  ] doc:
+  "Answers the retained open URI for `path`, or a file URI for an unopened authored source." ];
+
+[Reflect defineMethod: #invalidateProjectIndexes on: Lsp as: [:self |
+  [[db cellFor: self attr: #projectIndexes] set: [Map new]];
+  self] doc:
+  "Drops derived authored-source indexes after a document or project-topology change." ];
+
+[Reflect defineMethod: #sourceTextForPath: on: Lsp as: [:self :path |
+  let uri := [self uriForPath: path];
+  let open := [[self docsMap] at: uri ifAbsent: [| nil]];
+  [[open notNil]
+    ifTrue: [| open]
+    ifFalse: [|
+      let disk := [System readFile: path];
+      [[disk isError] ifTrue: [| ""] ifFalse: [| disk]]]]
+  ] doc:
+  "Answers open-buffer text when available, otherwise the authored source at `path`; errors become empty analysis text." ];
+
+[Reflect defineMethod: #indexedSymbol:module:path:uri:text: on: Lsp as: [:self :entry :module :path :uri :text |
+  let d0 := [Map new];
+  let d1 := [d0 at: "name" put: [entry at: "name" ifAbsent: [| ""]]];
+  let d2 := [d1 at: "kind" put: [entry at: "kind" ifAbsent: [| 13]]];
+  let d3 := [d2 at: "detail" put: [entry at: "detail" ifAbsent: [| ""]]];
+  let d4 := [d3 at: "start" put: [entry at: "start" ifAbsent: [| 0]]];
+  let d5 := [d4 at: "end" put: [entry at: "end" ifAbsent: [| 0]]];
+  let d6 := [d5 at: "selectionStart" put: [entry at: "selectionStart" ifAbsent: [| 0]]];
+  let d7 := [d6 at: "selectionEnd" put: [entry at: "selectionEnd" ifAbsent: [| 0]]];
+  let d8 := [d7 at: "module" put: module];
+  let d9 := [d8 at: "path" put: path];
+  let d10 := [d9 at: "uri" put: uri];
+  [d10 at: "source" put: text]
+  ] doc:
+  "Adds canonical module/path/URI/source provenance to one parser-backed source symbol." ];
+
+[Reflect defineMethod: #indexedBinding:module:path:uri:text: on: Lsp as: [:self :entry :module :path :uri :text |
+  let d0 := [Map new];
+  let d1 := [d0 at: "kind" put: [entry at: "kind" ifAbsent: [| "local"]]];
+  let d2 := [d1 at: "name" put: [entry at: "name" ifAbsent: [| ""]]];
+  let d3 := [d2 at: "start" put: [entry at: "start" ifAbsent: [| 0]]];
+  let d4 := [d3 at: "end" put: [entry at: "end" ifAbsent: [| 0]]];
+  let d5 := [d4 at: "scopeStart" put: [entry at: "scopeStart" ifAbsent: [| 0]]];
+  let d6 := [d5 at: "scopeEnd" put: [entry at: "scopeEnd" ifAbsent: [| 0]]];
+  let d7 := [d6 at: "module" put: module];
+  let d8 := [d7 at: "path" put: path];
+  let d9 := [d8 at: "uri" put: uri];
+  [d9 at: "source" put: text]
+  ] doc:
+  "Adds canonical module/path/URI/source provenance to one lexical binding." ];
+
+[Reflect defineMethod: #sourceDocumentIndex:path:uri:text: on: Lsp as: [:self :module :path :uri :text |
+  let rawSymbols := [Codegen sourceSymbolsOf: text];
+  let symbols := [rawSymbols inject: #[] into: [:out :entry |
+    [out add: [self indexedSymbol: entry module: module path: path uri: uri text: text]]]];
+  let rawOccurrences := [Codegen sourceOccurrencesOf: text];
+  let rawBindings := [Codegen sourceBindingsOf: text];
+  let bindings := [rawBindings inject: #[] into: [:out :entry |
+    [out add: [self indexedBinding: entry module: module path: path uri: uri text: text]]]];
+  let d0 := [Map new];
+  let d1 := [d0 at: "module" put: module];
+  let d2 := [d1 at: "path" put: path];
+  let d3 := [d2 at: "uri" put: uri];
+  let d4 := [d3 at: "source" put: text];
+  let d5 := [d4 at: "symbols" put: symbols];
+  let d6 := [d5 at: "occurrences" put: rawOccurrences];
+  [d6 at: "bindings" put: bindings]
+  ] doc:
+  "Builds one parser-backed authored document index without evaluating its source." ];
+
+[Reflect defineMethod: #sourceIndexFor:uri: on: Lsp as: [:self :snapshot :currentUri |
+  let root := [snapshot at: "projectRoot" ifAbsent: [| ""]];
+  let digest := [snapshot at: "digest" ifAbsent: [| ""]];
+  let cached := [[self projectIndexesMap] at: root ifAbsent: [| nil]];
+  let sameDigest := [[cached notNil] & [[cached at: "digest" ifAbsent: [| ""]] = digest]];
+  [sameDigest ifTrue: [| cached] ifFalse: [|
+      let modules := [snapshot at: "modules" ifAbsent: [| #[]]];
+      let docs := [modules inject: #[] into: [:out :module |
+        let path := [module at: "path" ifAbsent: [| ""]];
+        let uri := [self uriForPath: path];
+        let text := [self sourceTextForPath: path];
+        let moduleName := [module at: "name" ifAbsent: [| ""]];
+        let doc := [self sourceDocumentIndex: moduleName path: path uri: uri text: text];
+        [out add: doc]]];
+      let symbols := [docs inject: #[] into: [:out :doc |
+        let docSymbols := [doc at: "symbols" ifAbsent: [| #[]]];
+        [docSymbols inject: out into: [:acc :entry | [acc add: entry]]]]];
+      let currentPath := [self pathForUri: currentUri];
+      let already := [docs anySatisfy: [:doc | [[doc at: "uri" ifAbsent: [| ""]] = currentUri]]];
+      let addCurrent := [[already not] & [currentPath notNil]];
+      let currentDoc := [addCurrent ifTrue: [|
+        let text := [[self docsMap] at: currentUri ifAbsent: [| ""]];
+        [self sourceDocumentIndex: "<buffer>" path: currentPath uri: currentUri text: text]] ifFalse: [| nil]];
+      let allDocs := [addCurrent ifTrue: [| [docs add: currentDoc]] ifFalse: [| docs]];
+      let currentSymbols := [addCurrent ifTrue: [| [currentDoc at: "symbols" ifAbsent: [| #[]]]] ifFalse: [| #[]]];
+      let allSymbols := [currentSymbols inject: symbols into: [:out :entry | [out add: entry]]];
+      let d0 := [Map new];
+      let d1 := [d0 at: "digest" put: digest];
+      let d2 := [d1 at: "root" put: root];
+      let d3 := [d2 at: "documents" put: allDocs];
+      let d4 := [d3 at: "symbols" put: allSymbols];
+      [[db cellFor: self attr: #projectIndexes] set: [[self projectIndexesMap] at: root put: d4]];
+      d4]]
+  ] doc:
+  "Builds or returns the canonical-root authored-source index, using open buffers only for analysis." ];
+
+[Reflect defineMethod: #documentInIndex:uri: on: Lsp as: [:self :index :uri |
+  [[index at: "documents" ifAbsent: [| #[]]] detect: [:doc |
+    [[doc at: "uri" ifAbsent: [| ""]] = uri]] ifNone: [| nil]]
+  ] doc:
+  "Answers one indexed document by URI." ];
+
+[Reflect defineMethod: #projectIndexFor: on: Lsp as: [:self :uri |
+  let snapshot := [self projectSnapshotFor: uri];
+  let valid := [[snapshot notNil] & [snapshot at: "ok" ifAbsent: [| false]]];
+  [valid ifTrue: [| [self sourceIndexFor: snapshot uri: uri]] ifFalse: [| nil]]
+  ] doc:
+  "Answers the authored-source index for a document's resolved project, or nil on resolution failure." ];
+
+[Reflect defineMethod: #symbolMatchesToken:token: on: Lsp as: [:self :entry :token |
+  let name := [entry at: "name" ifAbsent: [| ""]];
+  let kind := [entry at: "kind" ifAbsent: [| 13]];
+  [[name = token] | [[kind = 6] & [name startsWith: token]]]
+  ] doc:
+  "Matches an exact symbol or a method selector whose current keyword part is under the cursor." ];
+
+[Reflect defineMethod: #symbolInDocument:token: on: Lsp as: [:self :doc :token |
+  let symbols := [doc at: "symbols" ifAbsent: [| #[]]];
+  let exact := [symbols detect: [:entry |
+    [[entry at: "name" ifAbsent: [| ""]] = token]] ifNone: [| nil]];
+  [[exact notNil]
+    ifTrue: [| exact]
+    ifFalse: [| [symbols detect: [:entry | [self symbolMatchesToken: entry token: token]] ifNone: [| nil]]]]
+  ] doc:
+  "Finds the best source-backed symbol in one indexed document." ];
+
+[Reflect defineMethod: #symbolForPosition:uri:index: on: Lsp as: [:self :position :uri :index |
+  let doc := [self documentInIndex: index uri: uri];
+  let text := [[doc notNil] ifTrue: [| [doc at: "source" ifAbsent: [| ""]]] ifFalse: [| ""]];
+  let lineNo := [position at: "line" ifAbsent: [| 0]];
+  let lineText := [self lineAt: lineNo in: text];
+  let col := [self byteOffsetForUtf16: [position at: "character" ifAbsent: [| 0]] in: lineText];
+  let token := [self tokenAt: col in: lineText];
+  let local := [[doc notNil] ifTrue: [| [self symbolInDocument: doc token: token]] ifFalse: [| nil]];
+  [[local notNil]
+    ifTrue: [| local]
+    ifFalse: [| [[index at: "symbols" ifAbsent: [| #[]]] detect: [:entry |
+      [self symbolMatchesToken: entry token: token]] ifNone: [| nil]]]]
+  ] doc:
+  "Resolves a cursor token to a source-backed project symbol, preferring its open document." ];
+
+[Reflect defineMethod: #locationForIndexedSymbol: on: Lsp as: [:self :entry |
+  let start := [entry at: "selectionStart" ifAbsent: [| [entry at: "start" ifAbsent: [| 0]]]];
+  let finish := [entry at: "selectionEnd" ifAbsent: [| [entry at: "end" ifAbsent: [| start]]]];
+  let range := [self rangeForStart: start end: finish in: [entry at: "source" ifAbsent: [| ""]]];
+  let d0 := [Map new];
+  let d1 := [d0 at: "uri" put: [entry at: "uri" ifAbsent: [| ""]]];
+  [d1 at: "range" put: range]
+  ] doc:
+  "Answers an LSP Location for an indexed authored symbol definition." ];
+
+[Reflect defineMethod: #locationForIndexedOccurrence:doc: on: Lsp as: [:self :entry :doc |
+  let start := [entry at: "start" ifAbsent: [| 0]];
+  let finish := [entry at: "end" ifAbsent: [| start]];
+  let range := [self rangeForStart: start end: finish in: [doc at: "source" ifAbsent: [| ""]]];
+  let d0 := [Map new];
+  let d1 := [d0 at: "uri" put: [doc at: "uri" ifAbsent: [| ""]]];
+  [d1 at: "range" put: range]
+  ] doc:
+  "Answers an LSP Location for an indexed authored occurrence." ];
+
+[Reflect defineMethod: #occurrenceMatchesSymbol:entry: on: Lsp as: [:self :symbol :entry |
+  let symbolName := [symbol at: "name" ifAbsent: [| ""]];
+  let entryName := [entry at: "name" ifAbsent: [| ""]];
+  let kind := [symbol at: "kind" ifAbsent: [| 13]];
+  [[kind = 6] ifTrue: [| [symbolName startsWith: entryName]] ifFalse: [| [symbolName = entryName]]]
+  ] doc:
+  "Matches lexical occurrences to a method selector or local binding without claiming dynamic dispatch." ];
+
+[Reflect defineMethod: #symbolSourceBody: on: Lsp as: [:self :entry |
+  let name := [entry at: "name" ifAbsent: [| ""]];
+  let kind := [entry at: "kind" ifAbsent: [| 13]];
+  let module := [entry at: "module" ifAbsent: [| "<buffer>"]];
+  let path := [entry at: "path" ifAbsent: [| ""]];
+  let detail := [entry at: "detail" ifAbsent: [| ""]];
+  let source := [entry at: "source" ifAbsent: [| ""]];
+  let method0 := ["Birnam method `#" , name];
+  let method1 := [method0 , "` on `"];
+  let method2 := [method1 , detail];
+  let method3 := [method2 , "\n\nmodule `#"];
+  let method4 := [method3 , module];
+  let method5 := [method4 , "`\n\nsource: `"];
+  let method6 := [method5 , path];
+  let method7 := [method6 , "`\n\n```birnam\n"];
+  let methodBody := [method7 , [source , "\n```"]];
+  let module0 := ["Birnam module `#" , name];
+  let module1 := [module0 , "`\n\nsource: `"];
+  let module2 := [module1 , path];
+  let moduleBody := [module2 , "`\n\nrequires its resolver-selected dependencies."];
+  let binding0 := ["Birnam binding `" , name];
+  let binding1 := [binding0 , "`\n\nmodule `#"];
+  let binding2 := [binding1 , module];
+  let binding3 := [binding2 , "`\n\nsource: `"];
+  let bindingBody := [binding3 , path];
+  [[kind = 6] ifTrue: [| methodBody] ifFalse: [| [[kind = 3] ifTrue: [| moduleBody] ifFalse: [| bindingBody]]]]
+  ] doc:
+  "Builds semantic hover text from authored source provenance." ];
+
+[Reflect defineMethod: #selectorArity: on: Lsp as: [:self :selector |
+  [[[selector split: ":"] size] - 1]
+  ] doc:
+  "Answers the number of keyword arguments in a selector." ];
+
+[Reflect defineMethod: #byteOffsetAtPosition:in: on: Lsp as: [:self :position :text |
+  let lineNo := [position at: "line" ifAbsent: [| 0]];
+  let character := [position at: "character" ifAbsent: [| 0]];
+  let offset := [0 asCell];
+  [0 to: lineNo do: [:i |
+    [[i < lineNo] ifTrue: [| [offset set: [[offset value] + [[self lineAt: i in: text] size] + 1]]]]]];
+  [[offset value] + [self byteOffsetForUtf16: character in: [self lineAt: lineNo in: text]]]
+  ] doc:
+  "Converts an LSP position to an absolute UTF-8 byte offset for lexical scope filtering." ];
+
+[Reflect defineMethod: #completionPrefixAtPosition:in: on: Lsp as: [:self :position :text |
+  let lineNo := [position at: "line" ifAbsent: [| 0]];
+  let line := [self lineAt: lineNo in: text];
+  let col := [self byteOffsetForUtf16: [position at: "character" ifAbsent: [| 0]] in: line];
+  let start := [self scanLeft: col in: line];
+  [line copyFrom: start to: col]
+  ] doc:
+  "Answers the identifier prefix immediately before an LSP completion cursor." ];
+
 [Reflect defineMethod: #rememberProjectSnapshot:for:oldRoot: on: Lsp as: [:self :snapshot :uri :oldRoot |
   let ok := [snapshot at: "ok" ifAbsent: [| false]];
   let root := [snapshot at: "projectRoot" ifAbsent: [| ""]];
@@ -532,7 +896,11 @@
   let caps1 := [caps0 at: "documentSymbolProvider" put: true];
   let caps2 := [caps1 at: "definitionProvider" put: true];
   let caps3 := [caps2 at: "referencesProvider" put: true];
-  let caps := [caps3 at: "workspaceSymbolProvider" put: true];
+  let caps4 := [caps3 at: "workspaceSymbolProvider" put: true];
+  let completion := [[Map new] at: "resolveProvider" put: false];
+  let caps5 := [caps4 at: "completionProvider" put: completion];
+  let signature := [[Map new] at: "triggerCharacters" put: #[":"]];
+  let caps := [caps5 at: "signatureHelpProvider" put: signature];
   let info := [[[Map new] at: "name" put: "birnam"] at: "version" put: "0.1"];
   let result := [[[Map new] at: "capabilities" put: caps] at: "serverInfo" put: info];
   [self respond: id result: result];
@@ -550,6 +918,7 @@
   let text := [td at: "text" ifAbsent: [| ""]];
   let version := [td at: "version" ifAbsent: [| 0]];
   [self refreshProjectFor: uri];
+  [self rememberDocumentPath: uri];
   [self storeDoc: uri text: text version: version];
   [self diagnoseUri: uri text: text];
   self] doc:
@@ -594,6 +963,8 @@
   let uri := [td at: "uri" ifAbsent: [| ""]];
   [[db cellFor: self attr: #docs] set: [[self docsMap] at: uri put: nil]];
   [[db cellFor: self attr: #versions] set: [[self versionsMap] at: uri put: nil]];
+  [[db cellFor: self attr: #documentPaths] set: [[self documentPathsMap] at: uri put: nil]];
+  [self invalidateProjectIndexes];
   let params := [[[Map new] at: "uri" put: uri] at: "diagnostics" put: #[]];
   [self sendNote: "textDocument/publishDiagnostics" params: params];
   self] doc:
@@ -614,8 +985,15 @@
 [Reflect defineMethod: #storeDoc:text:version: on: Lsp as: [:self :uri :text :version |
   [[db cellFor: self attr: #docs] set: [[self docsMap] at: uri put: text]];
   [[db cellFor: self attr: #versions] set: [[self versionsMap] at: uri put: version]];
+  [self invalidateProjectIndexes];
   self] doc:
   "Stores a full-text document and its accepted LSP version for `uri`." ];
+
+[Reflect defineMethod: #rememberDocumentPath: on: Lsp as: [:self :uri |
+  let path := [self pathForUri: uri];
+  [[db cellFor: self attr: #documentPaths] set: [[self documentPathsMap] at: uri put: path]];
+  self] doc:
+  "Stores the host-decoded path for one open document so disk modules can be overridden by its buffer." ];
 
 // The 0-based line `n` of `text`.
 [Reflect defineMethod: #lineAt:in: on: Lsp as: [:self :n :text |
@@ -689,11 +1067,17 @@
   let byteCol := [self byteOffsetForUtf16: ch in: lineText];
   let tok  := [self tokenAt: byteCol in: lineText];
   let body := [[Globals includes: #Doc] ifTrue: [| [Doc hoverBodyFor: tok]] ifFalse: [| ""]];
-  [[body isEmpty]
+  let index := [self projectIndexFor: uri];
+  let symbol := [[index notNil] ifTrue: [| [self symbolForPosition: pos uri: uri index: index]] ifFalse: [| nil]];
+  let semantic := [[symbol isNil] ifTrue: [| ""] ifFalse: [| [self symbolSourceBody: symbol]]];
+  let combined := [[body isEmpty]
+    ifTrue: [| semantic]
+    ifFalse: [| [[semantic isEmpty] ifTrue: [| body] ifFalse: [| [body , "\n\n" , semantic]]]]];
+  [[combined isEmpty]
     ifTrue:  [| [self respond: id result: nil]]
-    ifFalse: [| [self respond: id result: [self hoverResult: body token: tok]]]];
+    ifFalse: [| [self respond: id result: [self hoverResult: combined token: tok]]]];
   self] doc:
-  "Answers hover request `id` with the Doc body for the token under the cursor in `p`, or nil when there is nothing to show."];
+  "Answers documentation plus authored method/module/binding provenance for the token under the cursor." ];
 
 // -- dispatch + loop ----------------------------------------------------------
 
@@ -719,15 +1103,19 @@
                   ifTrue: [| [self onDefinition: p id: id]]
                   ifFalse: [| [[m = "textDocument/references"]
                     ifTrue: [| [self onReferences: p id: id]]
-                    ifFalse: [| [[m = "workspace/symbol"]
-                      ifTrue: [| [self onWorkspaceSymbol: p id: id]]
-                      ifFalse: [| [[m = "shutdown"]
+                    ifFalse: [| [[m = "textDocument/completion"]
+                      ifTrue: [| [self onCompletion: p id: id]]
+                      ifFalse: [| [[m = "textDocument/signatureHelp"]
+                        ifTrue: [| [self onSignatureHelp: p id: id]]
+                        ifFalse: [| [[m = "workspace/symbol"]
+                          ifTrue: [| [self onWorkspaceSymbol: p id: id]]
+                          ifFalse: [| [[m = "shutdown"]
                         ifTrue: [| [self onShutdown: id]]
                         ifFalse: [| [[m = "exit"]
                           ifTrue: [| [0 cExit]]
                           ifFalse: [| [[id notNil]
                             ifTrue: [| [self respondError: id]]
-                            ifFalse: [| self]]]]]]]]]]]]]]]]]]]]]]]]]];
+                            ifFalse: [| self]]]]]]]]]]]]]]]]]]]]]]]]]]]]]];
   r] doc:
   "Routes a parsed JSON-RPC `msg` to its handler by method name; unknown requests answer method-not-found."];
 
@@ -758,4 +1146,4 @@
   let me := self;
   [1 to: 1000000000 do: [:i | [me step]; 0]];
   self] doc:
-  "Run the LSP server loop on stdin/stdout: read framed messages, dispatch, reply. Blocks until exit/EOF."]
+  "Run the LSP server loop on stdin/stdout: read framed messages, dispatch, reply. Blocks until exit/EOF."];

@@ -172,6 +172,30 @@ test "source navigation exposes top-level symbols and lexical occurrences" {
     try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(occurrences, api.intern("size"), &.{}, 0)));
     try std.testing.expectEqualStrings("answer", stringBytes(api, api.send(vectorAt(api, occurrences, 0), api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
     try std.testing.expectEqualStrings("answer", stringBytes(api, api.send(vectorAt(api, occurrences, 1), api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
+
+    const module_source = "[Module named: #dep requires: #[]];\n[Reflect defineMethod: #dependencyAnswer on: Integer as: [:self | 7]]";
+    const module_symbols = api.send(Codegen, api.intern("sourceSymbolsOf:"), &.{api.mkString(module_source.ptr, module_source.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(module_symbols, api.intern("size"), &.{}, 0)));
+}
+
+test "source bindings expose lexical names and CST-derived scopes" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    const source = "let x := 10; let f := [:y | [x plus: y]]; [f value: 32]";
+    const symbols = api.send(Codegen, api.intern("sourceSymbolsOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
+    try std.testing.expect(api.smallIntValue(api.send(symbols, api.intern("size"), &.{}, 0)) > 0);
+    const bindings = api.send(Codegen, api.intern("sourceBindingsOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(api.send(bindings, api.intern("size"), &.{}, 0)));
+
+    const top = vectorAt(api, bindings, 0);
+    try std.testing.expectEqualStrings("local", stringBytes(api, api.send(top, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
+    try std.testing.expectEqualStrings("x", stringBytes(api, api.send(top, api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
+    const parameter = vectorAt(api, bindings, 2);
+    try std.testing.expectEqualStrings("parameter", stringBytes(api, api.send(parameter, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
+    try std.testing.expectEqualStrings("y", stringBytes(api, api.send(parameter, api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
+    const parameter_scope_start = api.smallIntValue(api.send(parameter, api.intern("at:"), &.{api.mkString("scopeStart", 10)}, 1));
+    const parameter_start = api.smallIntValue(api.send(parameter, api.intern("at:"), &.{api.mkString("start", 5)}, 1));
+    try std.testing.expect(parameter_scope_start < parameter_start);
 }
 
 test "L1b live file envelope preserves authored bytes and rejects bad metadata" {

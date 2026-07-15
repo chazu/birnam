@@ -6,6 +6,16 @@ All notable changes to birnam are recorded here. Format follows
 other targets are rejected at build time until their libtcc and shared-library
 loader ports are complete.
 
+## [Unreleased]
+
+### Added
+- **Project-aware language tools.** The LSP now indexes authored source across
+  resolver-selected dependencies for navigation, references, hover, scoped
+  completion, and signature help, with UTF-16 and document lifecycle coverage.
+- **Emacs lsp-mode integration.** `birnam-mode` now discovers `birnam.toml`,
+  starts `birnam --lsp`, roots the REPL at the project, and exposes project
+  check/build/run commands with integration tests.
+
 ## [0.10.0] — 2026-07-14
 
 ### Added

@@ -2045,6 +2045,52 @@ fn sourceOccurrenceEntry(name: []const u8, start: usize, end: usize) Oop {
     return result;
 }
 
+fn sourceBindingEntry(kind: []const u8, name: []const u8, start: usize, end: usize, scope_start: usize, scope_end: usize) Oop {
+    const map_type = g_api.import("Map") orelse return g_api.nilObj;
+    var result = g_api.send(map_type, g_api.intern("new"), &[_]Oop{}, 0);
+    const put_sel = g_api.intern("at:put:");
+    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("kind", 4), g_api.mkString(kind.ptr, kind.len) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("name", 4), g_api.mkString(name.ptr, name.len) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("start", 5), g_api.mkSmallInt(@intCast(start)) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("end", 3), g_api.mkSmallInt(@intCast(end)) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("scopeStart", 10), g_api.mkSmallInt(@intCast(scope_start)) }, 2);
+    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("scopeEnd", 8), g_api.mkSmallInt(@intCast(scope_end)) }, 2);
+    return result;
+}
+
+fn addSourceBinding(out: *std.ArrayList(Oop), kind: []const u8, name_node: Oop, scope_start: usize, scope_end: usize) void {
+    const name = skip(name_node);
+    out.append(ca, sourceBindingEntry(kind, text(name), spanStart(name), spanEnd(name), scope_start, scope_end)) catch @panic("codegen: oom");
+}
+
+/// Collect declarations that are safe to expose as lexical completion entries.
+/// The CST owns the scope boundaries, so the editor never needs a second
+/// implementation of Birnam's block/let grammar.
+fn collectSourceBindings(node0: Oop, scope_start: usize, scope_end: usize, out: *std.ArrayList(Oop)) void {
+    const node = skip(node0);
+    const r = ruleOf(node);
+    if (r == r_block) {
+        var i: usize = 0;
+        while (i < nchild(node)) : (i += 1) {
+            const c = skip(child(node, i));
+            if (ruleOf(c) == r_ident) addSourceBinding(out, "parameter", c, spanStart(node), spanEnd(node));
+        }
+        i = 0;
+        while (i < nchild(node)) : (i += 1) {
+            const c = skip(child(node, i));
+            if (ruleOf(c) == r_statements) collectSourceBindings(c, spanStart(node), spanEnd(node), out);
+        }
+        return;
+    }
+    if (r == r_letBinding) {
+        if (nchild(node) > 0) addSourceBinding(out, "local", child(node, 0), scope_start, scope_end);
+        if (nchild(node) > 1) collectSourceBindings(child(node, 1), scope_start, scope_end, out);
+        return;
+    }
+    var i: usize = 0;
+    while (i < nchild(node)) : (i += 1) collectSourceBindings(child(node, i), scope_start, scope_end, out);
+}
+
 fn sourceSymbolName(node0: Oop) []const u8 {
     const raw = text(skip(node0));
     return if (raw.len > 0 and raw[0] == '#') raw[1..] else raw;
@@ -2257,6 +2303,22 @@ fn mSourceOccurrencesOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
     if (!parse_failed and nchild(cst) > 0) collectSourceOccurrences(child(cst, 0), &occurrences);
     return makeVector(occurrences.items);
+}
+
+/// Parse source into lexical bindings with CST-derived scope spans. This is
+/// analysis-only: it does not evaluate source or mutate the Store.
+fn mSourceBindingsOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    var len: usize = 0;
+    src_bytes = g_api.stringBytes(a[0], &len)[0..len];
+    var bindings: std.ArrayList(Oop) = .{};
+    defer bindings.deinit(ca);
+    const cst = s1(lang, "parse:", a[0]);
+    const parse_failed = cst == g_api.nilObj or
+        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
+    if (!parse_failed and nchild(cst) > 0) collectSourceBindings(child(cst, 0), 0, len, &bindings);
+    return makeVector(bindings.items);
 }
 
 fn makeSourceRevision(scan: *const CandidateScan, source: Oop) Oop {
@@ -4323,6 +4385,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("staticDiagnosticsOf:"), &mStaticDiagnosticsOf);
     api.method(codegen_vt, api.intern("sourceSymbolsOf:"), &mSourceSymbolsOf);
     api.method(codegen_vt, api.intern("sourceOccurrencesOf:"), &mSourceOccurrencesOf);
+    api.method(codegen_vt, api.intern("sourceBindingsOf:"), &mSourceBindingsOf);
     api.method(codegen_vt, api.intern("liveRevisionOf:"), &mLiveRevisionOf);
     api.method(codegen_vt, api.intern("recordModuleSource:named:"), &mRecordModuleSource);
     api.method(codegen_vt, api.intern("initialGenerationProjection"), &mInitialGenerationProjection);

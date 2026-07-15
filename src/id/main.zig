@@ -29,7 +29,7 @@ const USAGE =
     \\                             attaches to its state. Run from the repo root so
     \\                             modules/ is visible. Blocks; Ctrl-C to stop.
     \\  birnam --lsp               Run the birnam language server on stdio (LSP).
-    \\                             Point lsp-mode / eglot at this. Resolves the
+    \\                             Point lsp-mode at this. Resolves the
     \\                             modules/ dir relative to the executable, so it
     \\                             works launched from any project directory.
     \\  birnam doc <mod> [sel]     Print documentation for a module (like `go doc`):
@@ -209,12 +209,26 @@ fn mProjectSnapshotForUri(_: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop
     return api.mkString(bytes.ptr, bytes.len);
 }
 
+/// Host-only path decoding for the LSP's authored-source index. URI policy
+/// stays beside the resolver so Birnam does not grow an editor-specific URI
+/// parser; this answers the decoded path without reading or evaluating it.
+fn mProjectPathForUri(_: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    const api = project_bridge_api orelse return null;
+    if (n < 1) return api.nilObj;
+    var uri_len: usize = 0;
+    const uri = api.stringBytes(args[0], &uri_len);
+    const path = projectPathFromUri(std.heap.c_allocator, uri[0..uri_len]) catch return api.nilObj;
+    defer std.heap.c_allocator.free(path);
+    return api.mkString(path.ptr, path.len);
+}
+
 fn installProjectBridge(api: *IdApi) !void {
     if (project_bridge_api != null) return;
     const object = api.import("Object") orelse return error.NoObject;
     const project_object = api.send(object, api.intern("clone"), &.{}, 0);
     if (project_object == null) return error.NoProjectBridge;
     api.method(api.vtableOf(project_object), api.intern("snapshotForUri:"), &mProjectSnapshotForUri);
+    api.method(api.vtableOf(project_object), api.intern("pathForUri:"), &mProjectPathForUri);
     _ = api.exportObj("Project", project_object);
     if (api.import("Globals")) |globals| {
         _ = api.send(globals, api.intern("at:put:"), &[_]Oop{ api.intern("Project"), project_object }, 2);

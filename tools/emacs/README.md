@@ -10,6 +10,9 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
 
 ;; if `birnam' is not on PATH:
 (setq birnam-program "/path/to/birnam/zig-out/bin/birnam")
+
+;; optional: lsp-mode uses the same binary with --lsp
+(setq birnam-lsp-program birnam-program)
 ```
 
 `birnam-mode` auto-activates for `.birnam` and `.bim` files.
@@ -30,6 +33,15 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
   buffer. The REPL reads Birnam directly: an expression prints its value,
   `let x := …` binds a name that persists across lines, and multi-line forms
   continue until the brackets balance. Commands: `:help`, `:globals`, `:quit`.
+- **lsp-mode** — when lsp-mode is installed, Birnam buffers start the bundled
+  `birnam --lsp` client automatically. Set `birnam-lsp-automatic-start` to nil
+  to make startup manual with `M-x birnam-lsp-start`. The nearest
+  `birnam.toml` is used as the project root, including when Emacs was launched
+  from another directory. The server provides project navigation, hover,
+  references, completion, and signature help across authored dependencies.
+- **Project commands** — `birnam-check-project`, `birnam-build-project`, and
+  `birnam-run-project` use the nearest project root and show standard output in
+  `compilation-mode`.
 
 ## Keys
 
@@ -39,7 +51,14 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
 | `C-c C-r` | `birnam-eval-region` |
 | `C-c C-b` | `birnam-eval-buffer` |
 | `C-c C-l` | `birnam-eval-line`   |
+| `C-c C-k` | `birnam-check-project` |
+| `C-c C-u` | `birnam-build-project` |
+| `C-c C-p` | `birnam-run-project` |
+| `C-c C-e` | `birnam-lsp-start` |
 
 `eval-region`/`eval-buffer` send the text to the REPL verbatim (the REPL
 accumulates multi-line forms until brackets balance); `eval-line` sends the
-current line as one expression.
+current line as one expression. The integration tests run with
+`zig build test-emacs` and use a small lsp-mode API stub, so they do not require
+the package to be installed to validate client registration and project-root
+behavior.

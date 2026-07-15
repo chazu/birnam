@@ -1,8 +1,8 @@
 # 53 — Project-Aware Language Tools
 
-> **Status:** P0 workspace/coordinate slice, P1 safe static diagnostics, and
-> the first P2 source-navigation slice implemented, 2026-07-15; dependency
-> indexing and richer semantic assistance remain staged. This document
+> **Status:** P0 workspace/coordinate slice, P1 safe static diagnostics, the P2
+> project source index/navigation/semantic assistance slice, and the P3 Emacs
+> integration slice implemented, 2026-07-15. This document
 > extends the shipped modules/lsp.birnam server and tools/emacs/birnam-mode.el
 > around the shared project resolver in [51 — Project Manifests and Dependency
 > Resolution](51-project-manifests-and-dependency-resolution.md). It is not a
@@ -111,7 +111,7 @@ Keep the existing stdio and JSON-RPC contract while adding:
 Diagnostics remain parse/static only. A malformed or incomplete buffer should
 produce useful diagnostics without crashing or mutating the live image.
 
-### P2 — project symbols and navigation — first slice implemented
+### P2 — project symbols and navigation — implemented
 
 Add or complete:
 
@@ -122,17 +122,16 @@ definition
 references
 ~~~
 
-The first slice uses the existing parser's CST spans over retained open buffers:
-`documentSymbol` reports top-level `let`, module, and literal Reflect method
-declarations; `definition` and `references` resolve same-document lexical names;
-`workspace/symbol` searches currently open documents. It does not claim to
-resolve late-bound dispatch or unopened dependency locations. Dependency-wide
-source indexing remains a follow-up and must use authored source provenance, not
-generated artifacts or image execution.
+The server builds a dependency-aware authored-source index from the resolver's
+module closure. `documentSymbol` reports top-level `let`, module, and literal
+Reflect method declarations; `definition` and `references` use lexical bindings
+and indexed method/module occurrences across open and unopened dependency
+modules; `workspace/symbol` searches the same index. It does not claim to prove
+late-bound dispatch or infer runtime receiver identity.
 
-### P2 — semantic assistance — staged
+### P2 — semantic assistance — implemented
 
-Extend the current lexical hover/signature support with:
+The implemented semantic assistance provides:
 
 - method responders and method source;
 - canonical module/dependency information;
@@ -141,35 +140,38 @@ Extend the current lexical hover/signature support with:
 - completion entries that distinguish globals, locals, modules, methods, and
   symbols.
 
-The server can use the existing documentation generator and reflection facts,
-but must preserve authored source spans and avoid presenting generated Zig
-implementation details as Birnam source.
+The server uses the existing documentation generator plus authored-source
+indexing, while preserving source spans and avoiding generated Zig
+implementation details as Birnam source. Completion is intentionally scoped to
+the current project and lexical bindings rather than every interned runtime
+name. References remain conservative around late-bound dispatch.
 
 ### P3 — project commands and live workflow
 
-Expose check, build, and run through LSP command/code-action hooks only after
-design 52 has stable machine diagnostics. Live staging, activation, rollback,
-and baseline save remain explicit commands; an editor action must never activate
-code merely because a buffer changed.
+Emacs exposes check, build, and run through project-root-aware compilation
+commands. Live staging, activation, rollback, and baseline save remain explicit
+commands; an editor action must never activate code merely because a buffer
+changed. LSP command/code-action plumbing is deliberately deferred until the
+CLI command result contract is exposed as a stable machine-readable protocol;
+the editor integration does not hide that boundary.
 
 ## 5. Emacs integration
 
 birnam-mode remains a normal major mode and delegates semantic behavior to
-Eglot. The proposed integration is:
+lsp-mode. The implemented integration is:
 
 - detect the nearest birnam.toml with project.el;
 - start birnam --lsp with the project root as the working directory;
-- register the server without requiring users to hand-edit an Eglot entry;
+- register the server without requiring users to hand-edit an lsp-mode entry;
 - retain run-birnam, region/buffer/line evaluation, and the comint REPL;
 - make REPL and evaluation commands use the project root and selected binary;
-- add compilation-mode commands for birnam check, build, and run once those
-  commands exist;
+- add compilation-mode commands for birnam check, build, and run;
 - expose explicit live-module commands only when the user invokes them.
 
-The mode should not become a package manager or duplicate LSP responses. Its
+The mode does not become a package manager or duplicate LSP responses. Its
 remaining syntax-specific responsibility is presentation: font-lock,
-indentation, balanced editing, and convenient command bindings. Deeper :
-command awareness is a small mode enhancement, not a replacement for LSP.
+indentation, balanced editing, and convenient command bindings. Deeper command
+awareness is a small mode enhancement, not a replacement for LSP.
 
 ## 6. Static analysis boundary
 
@@ -218,16 +220,16 @@ is deliberately narrow:
 Repeated didChange requests replace the document text/version and republish
 fresh diagnostics without compiling an artifact or retaining stale documents.
 
-### P2 — navigation and completion
+### P2 — navigation and completion — implemented
 
-The first source-backed navigation slice is implemented. Remaining work is
-dependency-wide source indexing, richer method/receiver hover, signature help,
-scoped completion, and reference resolution across unopened project modules.
+Dependency-wide authored-source indexing, method/module provenance hover,
+signature help, scoped completion, and conservative references across unopened
+project modules are implemented.
 
-### P3 — Emacs project commands
+### P3 — Emacs project commands — implemented
 
-Wire project-root-aware Eglot and compilation commands to the stable CLI. Keep
-the existing REPL/evaluation workflow available throughout.
+Project-root-aware lsp-mode startup and compilation commands are wired to the
+stable CLI. The existing REPL/evaluation workflow remains independent.
 
 ## 8. Acceptance scenarios
 
@@ -243,7 +245,7 @@ the existing REPL/evaluation workflow available throughout.
 - Hover and go-to-definition for a method in a dependency open its authored
   source, not a temporary artifact or unrelated generated code.
 - Completion in a local scope does not dump every interned name by default.
-- M-x eglot/automatic Eglot startup works from a clean installed bundle and a
+- M-x lsp/automatic lsp-mode startup works from a clean installed bundle and a
   checkout, regardless of the editor's current cwd.
 - Emacs check and build commands show standard compiler diagnostics in a
   compilation buffer and leave the REPL/live image untouched.

@@ -209,6 +209,10 @@ pub fn build(b: *std.Build) void {
     const lsp_project_step = b.step("test-lsp-project", "Run project-aware LSP protocol smoke tests");
     lsp_project_step.dependOn(&lsp_project_smoke.step);
 
+    const emacs_mode_tests = b.addSystemCommand(&.{ "bash", "scripts/emacs-test.sh" });
+    const emacs_mode_step = b.step("test-emacs", "Run birnam-mode project and lsp-mode integration tests");
+    emacs_mode_step.dependOn(&emacs_mode_tests.step);
+
     const repl_goldens = b.addSystemCommand(&.{ "bash", "scripts/repl-golden.sh" });
     repl_goldens.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
     repl_goldens.step.dependOn(&birnam_tests.step);
@@ -264,6 +268,7 @@ pub fn build(b: *std.Build) void {
     verify_step.dependOn(&source_fallback.step);
     verify_step.dependOn(project_check_step);
     verify_step.dependOn(lsp_project_step);
+    verify_step.dependOn(emacs_mode_step);
     verify_step.dependOn(&image_save_smoke.step);
     verify_step.dependOn(&install_smoke.step);
     verify_step.dependOn(&isolate_smoke.step);
