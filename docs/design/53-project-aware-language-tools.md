@@ -1,8 +1,9 @@
 # 53 — Project-Aware Language Tools
 
-> **Status:** Proposed, 2026-07-14. This document extends the shipped
-> modules/lsp.birnam server and tools/emacs/birnam-mode.el around the shared
-> project resolver in [51 — Project Manifests and Dependency
+> **Status:** P0 workspace/coordinate slice implemented, 2026-07-15; safe
+> static diagnostics and navigation remain staged follow-ups. This document
+> extends the shipped modules/lsp.birnam server and tools/emacs/birnam-mode.el
+> around the shared project resolver in [51 — Project Manifests and Dependency
 > Resolution](51-project-manifests-and-dependency-resolution.md). It is not a
 > second compiler or a second project index.
 
@@ -91,7 +92,7 @@ buffer-local syntax features for an otherwise editable file.
 
 ## 4. Protocol surface
 
-### P0 — harden the existing MVP
+### P0 — harden the existing MVP — implemented first slice
 
 Keep the existing stdio and JSON-RPC contract while adding:
 
@@ -101,7 +102,9 @@ Keep the existing stdio and JSON-RPC contract while adding:
 - static unbound-variable and selector-arity diagnostics where the existing AST
   and reflection surface can prove them;
 - bounded document storage and cleanup on close;
-- workspace/root initialization using design 51.
+- workspace/root initialization using design 51;
+- a narrow host `Project snapshotForUri:` bridge that returns the shared
+  resolver's immutable JSON snapshot without duplicating manifest parsing.
 
 Diagnostics remain parse/static only. A malformed or incomplete buffer should
 produce useful diagnostics without crashing or mutating the live image.
@@ -182,11 +185,14 @@ diagnostic rather than inventing a type system.
 
 ## 7. Implementation slices
 
-### P0 — workspace and coordinates
+### P0 — workspace and coordinates — implemented first slice
 
-Factor project discovery into the shared resolver, add UTF-16 conversion and
-document versions, and lock the behavior with protocol fixtures containing
-multibyte source and nested project paths.
+Project discovery now goes through the shared host resolver, with UTF-16
+conversion, document versions, stale-change rejection, close cleanup, and
+protocol coverage for multibyte source and nested project paths. The first
+slice publishes resolver failures as LSP diagnostics with the same kind and
+message as `birnam check`; open buffers still override only buffer analysis,
+not the on-disk project graph.
 
 ### P1 — safe static diagnostics
 

@@ -95,3 +95,7 @@ let s := [TestSuite named: "Cli" module: #cli];
   [t expect: [Lsp contentLengthOf: "Content-Length: 42\r\n"] equals: 42 describes: "contentLengthOf:"];
   [t expect: [[Lsp compileDiagnostics: "[1 + 2]"] size] equals: 0 describes: "clean source, no diagnostics"];
   [t assert: [[[Lsp compileDiagnostics: "[1 + ]"] size] >= 1] describes: "a syntax error yields a diagnostic"]]];
+
+[s test: "Lsp translates UTF-8 byte spans and UTF-16 positions" do: [:t |
+  [t expect: [Lsp utf16Offset: 3 in: "aé"] equals: 2 describes: "a two-byte code point is one UTF-16 unit"];
+  [t expect: [Lsp byteOffsetForUtf16: 2 in: "aé"] equals: 3 describes: "a UTF-16 cursor advances over the full UTF-8 code point"]]];

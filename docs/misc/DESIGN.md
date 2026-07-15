@@ -48,9 +48,10 @@ as an ordinary project workflow:
 → 54 — relocatable bundles and runtime distribution
 ~~~
 
-The source resolver, materialized `check`/`build` workflow, and first
-project-oriented `run` slice are now implemented. Editor integration and bundle
-relocation remain proposals. These slices share one project resolver, preserve
+The source resolver, materialized `check`/`build` workflow, first
+project-oriented `run` slice, and the first project-aware LSP
+workspace/coordinate slice are now implemented. Safe editor diagnostics,
+navigation, and bundle relocation remain staged proposals. These slices share one project resolver, preserve
 declared Module named:requires: identity, keep resolution read-only, and leave
 runtime dispatch authority with compatible compiled units.
 See [design 51](../design/51-project-manifests-and-dependency-resolution.md),

@@ -69,6 +69,159 @@ const USAGE =
 const IdApi = idapi.IdApi;
 const Oop = idapi.Oop;
 
+// The project resolver is host-side because it owns filesystem traversal and
+// the existing Toml/Codegen seams. The LSP itself remains authored in Birnam;
+// this bridge gives it one immutable JSON snapshot per workspace lookup rather
+// than a second manifest parser or a second dependency graph.
+var project_bridge_api: ?*IdApi = null;
+
+const ProjectJsonModule = struct {
+    name: []const u8,
+    path: []const u8,
+    projectRoot: []const u8,
+    requires: []const []const u8,
+    sourceDigest: []const u8,
+    revisionDigest: []const u8,
+};
+
+const ProjectJsonSuccess = struct {
+    ok: bool,
+    projectRoot: []const u8,
+    manifest: []const u8,
+    projectName: []const u8,
+    main: ?[]const u8,
+    digest: []const u8,
+    modules: []ProjectJsonModule,
+};
+
+const ProjectJsonFailure = struct {
+    ok: bool,
+    kind: []const u8,
+    message: []const u8,
+};
+
+fn hexNibble(c: u8) ?u8 {
+    return switch (c) {
+        '0'...'9' => c - '0',
+        'a'...'f' => c - 'a' + 10,
+        'A'...'F' => c - 'A' + 10,
+        else => null,
+    };
+}
+
+/// Convert a file URI (or a plain path used by tests/tools) into a filesystem
+/// path. LSP clients normally send file:/// URIs; percent decoding belongs at
+/// this host boundary so the Birnam LSP never needs URL/path policy.
+fn projectPathFromUri(a: std.mem.Allocator, raw: []const u8) ![]u8 {
+    if (raw.len == 0) return std.fs.cwd().realpathAlloc(a, ".");
+    var input = raw;
+    var is_file_uri = false;
+    if (std.mem.startsWith(u8, raw, "file://")) {
+        is_file_uri = true;
+        input = raw[7..];
+        if (std.mem.startsWith(u8, input, "localhost/")) input = input[9..];
+    } else if (std.mem.indexOf(u8, raw, "://") != null) {
+        return error.UnsupportedProjectUri;
+    }
+
+    var path: std.ArrayList(u8) = .{};
+    errdefer path.deinit(a);
+    var i: usize = 0;
+    while (i < input.len) : (i += 1) {
+        if (is_file_uri and input[i] == '%' and i + 2 < input.len) {
+            const hi = hexNibble(input[i + 1]) orelse return error.InvalidProjectUri;
+            const lo = hexNibble(input[i + 2]) orelse return error.InvalidProjectUri;
+            try path.append(a, (hi << 4) | lo);
+            i += 2;
+        } else {
+            try path.append(a, input[i]);
+        }
+    }
+    if (path.items.len == 0) return std.fs.cwd().realpathAlloc(a, ".");
+    return path.toOwnedSlice(a);
+}
+
+/// `project.resolve` starts from a directory. A document URI names a file, so
+/// use its parent unless the path itself contains a manifest (the root-URI
+/// case). This also handles unsaved files: their parent is still discoverable.
+fn projectWorkingDirectory(a: std.mem.Allocator, raw: []const u8) ![]u8 {
+    const path = try projectPathFromUri(a, raw);
+    defer a.free(path);
+    const manifest = try std.fs.path.join(a, &.{ path, "birnam.toml" });
+    defer a.free(manifest);
+    if (std.fs.cwd().access(manifest, .{})) |_| return a.dupe(u8, path) else |_| {}
+    if (std.fs.path.dirname(path)) |parent| return a.dupe(u8, parent);
+    return a.dupe(u8, path);
+}
+
+fn projectJsonFailure(diagnostic: project.Diagnostic) ?[]u8 {
+    return std.json.Stringify.valueAlloc(std.heap.c_allocator, ProjectJsonFailure{
+        .ok = false,
+        .kind = diagnostic.kind,
+        .message = diagnostic.message,
+    }, .{}) catch null;
+}
+
+fn projectJsonSuccess(resolution: *const project.Resolution) ?[]u8 {
+    const modules = std.heap.c_allocator.alloc(ProjectJsonModule, resolution.modules.len) catch return null;
+    defer std.heap.c_allocator.free(modules);
+    for (resolution.modules, 0..) |module, i| {
+        modules[i] = .{
+            .name = module.name,
+            .path = module.path,
+            .projectRoot = module.project_root,
+            .requires = module.requires,
+            .sourceDigest = module.source_digest,
+            .revisionDigest = module.revision_digest,
+        };
+    }
+    return std.json.Stringify.valueAlloc(std.heap.c_allocator, ProjectJsonSuccess{
+        .ok = true,
+        .projectRoot = resolution.project_root,
+        .manifest = resolution.manifest_path,
+        .projectName = resolution.project_name,
+        .main = resolution.main_path,
+        .digest = resolution.digest,
+        .modules = modules,
+    }, .{}) catch null;
+}
+
+fn mProjectSnapshotForUri(_: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    const api = project_bridge_api orelse return null;
+    if (n < 1) return api.nilObj;
+    var uri_len: usize = 0;
+    const uri = api.stringBytes(args[0], &uri_len);
+    const raw = uri[0..uri_len];
+    const working_dir = projectWorkingDirectory(std.heap.c_allocator, raw) catch return api.mkString(
+        "{\"ok\":false,\"kind\":\"projectUriInvalid\",\"message\":\"could not decode workspace URI\"}",
+        "{\"ok\":false,\"kind\":\"projectUriInvalid\",\"message\":\"could not decode workspace URI\"}".len,
+    );
+    defer std.heap.c_allocator.free(working_dir);
+
+    var result = project.resolve(api, std.heap.c_allocator, working_dir);
+    defer result.deinit();
+    const json = if (result.diagnostic) |diagnostic|
+        projectJsonFailure(diagnostic)
+    else
+        projectJsonSuccess(&result.resolution.?);
+    const bytes = json orelse return api.nilObj;
+    defer std.heap.c_allocator.free(bytes);
+    return api.mkString(bytes.ptr, bytes.len);
+}
+
+fn installProjectBridge(api: *IdApi) !void {
+    if (project_bridge_api != null) return;
+    const object = api.import("Object") orelse return error.NoObject;
+    const project_object = api.send(object, api.intern("clone"), &.{}, 0);
+    if (project_object == null) return error.NoProjectBridge;
+    api.method(api.vtableOf(project_object), api.intern("snapshotForUri:"), &mProjectSnapshotForUri);
+    _ = api.exportObj("Project", project_object);
+    if (api.import("Globals")) |globals| {
+        _ = api.send(globals, api.intern("at:put:"), &[_]Oop{ api.intern("Project"), project_object }, 2);
+    }
+    project_bridge_api = api;
+}
+
 const CHECK_USAGE =
     \\Usage: birnam check [directory]
     \\
@@ -1091,6 +1244,7 @@ fn appendBirnamString(buf: *std.ArrayList(u8), a: std.mem.Allocator, s: []const 
 /// reported on stderr, so `--lsp`'s stdout stays protocol-only.
 fn runCli(a: std.mem.Allocator, api: *IdApi, argv: []const []const u8) !void {
     try loadStack(a, api);
+    try installProjectBridge(api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
     var stack_anchor: usize = 0;
