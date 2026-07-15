@@ -3448,6 +3448,15 @@ fn orderedGenerationSources() ?std.ArrayList(Oop) {
     @memset(state, 0);
     var ordered: std.ArrayList(Oop) = .{};
     errdefer ordered.deinit(ca);
+    // The module manager is the bootstrap root for every source module, and the
+    // stdlib provides protocols used by every later source document. Their
+    // declarations do not fully express those host bootstrap prerequisites
+    // (ordinary modules may declare only their domain dependencies), so install
+    // this pair before the otherwise dependency-ordered documents.
+    for ([_]Oop{ g_api.intern("modules"), g_api.intern("stdlib") }) |name| {
+        if (sourceMapIndex(source_map, name)) |index|
+            if (!appendGenerationSourceAt(source_map, index, state, &ordered)) return null;
+    }
     for (0..count) |index| if (!appendGenerationSourceAt(source_map, index, state, &ordered)) return null;
     return ordered;
 }

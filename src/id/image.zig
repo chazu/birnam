@@ -597,6 +597,25 @@ fn reconcileCompiledUnits() bool {
     return result != g_api.nilObj and (error_vt == null or g_api.vtableOf(result) != error_vt);
 }
 
+/// A script may load source modules while the host is still bootstrapping. The
+/// first image save is the boundary that closes that window: publish G0 only
+/// after those modules are present, so image recovery can classify their globals
+/// from the complete generation source map.
+fn ensureGenerationAuthority() bool {
+    // Data-only image users (and the lower-level image tests) may not bring up
+    // the self-hosted lifecycle layer. They retain the original image format
+    // path; generation authority is required only when that layer is present.
+    const globals = g_api.import("Globals") orelse return true;
+    const generations = g_api.send(globals, g_api.intern("at:"), &[_]Oop{g_api.intern("DispatchGeneration")}, 1);
+    if (generations == g_api.nilObj) return true;
+    const current = g_api.send(generations, g_api.intern("current"), &.{}, 0);
+    if (current != g_api.nilObj) return true;
+    const initialized = g_api.send(generations, g_api.intern("initializeCurrent"), &.{}, 0);
+    const error_vt = g_api.import("ErrorVt");
+    return initialized != g_api.nilObj and
+        (error_vt == null or g_api.vtableOf(initialized) != error_vt);
+}
+
 fn generationDigest(codegen: Oop, out: *[64]u8) bool {
     const digest = g_api.send(codegen, g_api.intern("currentGenerationDigest"), &.{}, 0);
     const error_vt = g_api.import("ErrorVt");
@@ -641,6 +660,11 @@ pub fn saveImage(path: []const u8) bool {
     defer g_api.gcSetAuto(1);
     resetSaveState();
     resetSaveReport();
+    if (!ensureGenerationAuthority()) {
+        setSaveReportDetail("could not establish current dispatch generation", .{});
+        finishSaveReport(.rejected);
+        return false;
+    }
     if (!reconcileCompiledUnits()) {
         setSaveReportDetail("managed dispatch has unlogged non-portable drift", .{});
         finishSaveReport(.rejected);

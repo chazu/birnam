@@ -717,6 +717,11 @@ fn recoverImageRuntime(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebu
     // The module manager is the only prerequisite needed at this point: method
     // bodies can refer to stdlib protocol before that protocol is installed.
     loadSelfHosted(a, api, codegen, "modules", MODULES_SRC);
+    // Restore the stdlib protocol before mapped image code evaluates ordinary
+    // source documents. Those documents may use the documentation hooks and
+    // other derived sends even though their compiled methods are carried by the
+    // image itself.
+    loadSelfHosted(a, api, codegen, "stdlib", STDLIB_SRC);
     loadSelfHosted(a, api, codegen, "compiledUnit", COMPILED_UNIT_SRC);
     loadSelfHosted(a, api, codegen, "liveModules", LIVE_MODULES_SRC);
 
@@ -821,20 +826,34 @@ fn runRepl(a: std.mem.Allocator, api: *IdApi, booted: bool) !void {
     // Not already in the image: load the module (checked BEFORE the session so a
     // load failure can't be confused with a user's stray in-session lastError).
     if (repl == api.nilObj) {
-        const mdir = try resolveModulesDir(a);
-        defer a.free(mdir);
-        const mdirZ = try a.dupeZ(u8, mdir);
-        defer a.free(mdirZ);
-        _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
+        if (booted) {
+            // Image recovery seals the generation before the interactive host
+            // starts. Repl is a host capability, not part of the saved image's
+            // application generation, so evaluate its source without trying to
+            // introduce a new durable module after that boundary.
+            const mdir = try resolveModulesDir(a);
+            defer a.free(mdir);
+            const repl_path = try std.fmt.allocPrint(a, "{s}/repl.birnam", .{mdir});
+            defer a.free(repl_path);
+            const repl_src = try std.fs.cwd().readFileAlloc(a, repl_path, 16 << 20);
+            defer a.free(repl_src);
+            _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(repl_src.ptr, repl_src.len)}, 1);
+        } else {
+            const mdir = try resolveModulesDir(a);
+            defer a.free(mdir);
+            const mdirZ = try a.dupeZ(u8, mdir);
+            defer a.free(mdirZ);
+            _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
 
-        var boot: std.ArrayList(u8) = .{};
-        defer boot.deinit(a);
-        try boot.appendSlice(a, "[System load: ");
-        const repl_path = try std.fmt.allocPrint(a, "{s}/repl.birnam", .{mdir});
-        defer a.free(repl_path);
-        try appendBirnamString(&boot, a, repl_path);
-        try boot.appendSlice(a, "]");
-        _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.items.ptr, boot.items.len)}, 1);
+            var boot: std.ArrayList(u8) = .{};
+            defer boot.deinit(a);
+            try boot.appendSlice(a, "[System load: ");
+            const repl_path = try std.fmt.allocPrint(a, "{s}/repl.birnam", .{mdir});
+            defer a.free(repl_path);
+            try appendBirnamString(&boot, a, repl_path);
+            try boot.appendSlice(a, "]");
+            _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.items.ptr, boot.items.len)}, 1);
+        }
 
         repl = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("Repl")}, 1);
         if (repl == api.nilObj) {
