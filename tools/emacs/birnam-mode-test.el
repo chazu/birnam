@@ -79,4 +79,12 @@
       (birnam-mode)
       (should birnam-test-lsp-started))))
 
+(ert-deftest birnam-mode-lsp-root-binding-is-special ()
+  "Keep the lazy lsp-mode binding dynamically scoped.
+
+The mode file uses lexical binding, but lsp-mode declares this option with
+`defcustom' when it is loaded.  It must be declared special here too so the
+two files can be loaded in either order without a lexical/dynamic conflict."
+  (should (special-variable-p 'lsp-auto-guess-root)))
+
 ;;; birnam-mode-test.el ends here

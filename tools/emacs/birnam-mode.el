@@ -329,6 +329,12 @@ DIRECTORY defaults to the current buffer's directory and then
 
 ;;;; lsp-mode ------------------------------------------------------------
 
+;; `birnam-mode.el' is lexically scoped, while lsp-mode declares this option
+;; dynamically with `defcustom'.  Declare it special before the lazy lsp-mode
+;; load so the temporary root binding below is valid in either load order.
+(defvar lsp-auto-guess-root nil
+  "Whether lsp-mode should infer a project root when none is configured.")
+
 (defun birnam--lsp-activate (_filename mode)
   "Activate the Birnam lsp-mode client only for `birnam-mode'."
   (eq mode 'birnam-mode))
