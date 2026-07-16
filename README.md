@@ -82,7 +82,30 @@ module order. The directory defaults to the current directory; use
 the project. A manifest can also declare `[[wrapped]]` C libraries; each
 declaration runs its argv build commands with `{output}` expanded to a private
 staging path, then publishes `lib/lib<name>.dylib` beside the compiled Birnam
-wrapper. Use `birnam build --help` for the current build contract.
+wrapper. A logical Birnam module can be composed from multiple ordered source
+files and is still emitted as one `libbirnam_<name>.dylib`:
+
+```toml
+[[module]]
+entry = "src/json.birnam"
+files = ["src/json/parser.birnam", "src/json/render.birnam"]
+```
+
+The entry owns the module declaration; the additional files are ordinary
+Birnam source and are concatenated in the listed order. Use
+`birnam build --help` for the current build contract.
+
+Source can also embed a project-relative file directly into the compiled
+dylib:
+
+```birnam
+[System embedFile: "assets/schema.json"]
+```
+
+The path must be a literal and the result is a binary-safe `String`; the file
+is read during compilation and is not needed when the dylib is loaded. Asset
+contents participate in build invalidation, so changing the file recompiles
+its owning module.
 
 `birnam install [directory]` validates that project-local publication and copies
 all of its `libbirnam_<name>.dylib` modules and `[[wrapped]]` native libraries
@@ -187,6 +210,9 @@ bash examples/live-modules/run.sh
 See the [isolate guide](docs/guide/06-isolates.md) and
 [live-module guide](docs/guide/07-live-modules.md). Generated API reference is
 available through `birnam doc isolate` and `birnam doc liveModules`.
+
+For interactive object and fact-store wayfinding, see the
+[image exploration guide](docs/guide/08-exploring-the-image.md).
 
 ## Developer Tools
 
@@ -322,3 +348,9 @@ from-zero bootstrap compiler and performance floor.
   slices in [design 53](docs/design/53-project-aware-language-tools.md);
   dependency-wide indexing, richer semantic assistance, and
   [relocatable bundles](docs/design/54-relocatable-bundles.md) remain staged.
+- [Birnam Digla](docs/design/55-birnam-digla.md) proposes the first
+  product application built around the live image's reflective and historied
+  fact-store surfaces, beginning with a local read-only report and growing into
+  image and worker views.
+- [Embedded files](docs/design/56-embedded-files.md) documents the
+  compile-time `System embedFile:` intrinsic and its project-build contract.

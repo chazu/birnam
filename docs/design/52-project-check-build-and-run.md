@@ -91,7 +91,8 @@ process, or run main.
 ### 3.2 birnam build [PROJECT] — P0 implemented
 
 Resolve and check the project, execute each declared `[[wrapped]]` build argv in
-private staging, compile each source module to an installable
+private staging, compose each selected module entry and ordered source parts,
+and compile each logical module once to an installable
 libbirnam_<name>.dylib, record native and Birnam artifact checksums, write the
 resolution record, and publish the complete result. Wrapped commands run from
 the project root and must use `{output}` for the expected `lib<name>.dylib`
@@ -111,8 +112,9 @@ The proposed layout is:
 
 The first implementation supports the current target and `debug` profile. It
 builds resolved source modules in dependency-first order, reusing only
-Birnam artifacts whose target/profile/tool/ABI, source metadata, dependency metadata,
-expected path, and on-disk checksum all match the previous successful
+Birnam artifacts whose target/profile/tool/ABI, ordered source-path metadata,
+source digest, dependency metadata, expected path, and on-disk checksum all match
+the previous successful
 publication. A changed or tampered module invalidates its dependents; unrelated
 matching modules may be copied into the new staging directory. It writes both
 records before publication and retains the previous published directory when
@@ -203,6 +205,7 @@ resolver/schema version
 target and optimization profile
 resolution digest
 ordered modules
+ordered source paths per module
 source revision/content digest per module
 artifact path and checksum per module
 logical wrapped library name, path, and checksum per native dylib
@@ -254,7 +257,8 @@ failure; usage/help remains successful as it is today.
 
 Build logs should identify whether each module was compiled, reused from a
 matching artifact, or rejected as stale. This makes the stale-dylib authoring
-gotcha observable instead of mysterious.
+gotcha observable instead of mysterious. For a composed module, the log and
+resolution record include the entry followed by its ordered source parts.
 
 ## 7. Implementation slices
 
@@ -294,6 +298,8 @@ basic source-to-artifact loop is stable.
   resolution record.
 - A successful build records each module's source/revision digest and artifact
   checksum.
+- A module declared with an entry and multiple source parts produces one dylib
+  and executes every part when that dylib is loaded.
 - A repeated unchanged build reports all modules as reused.
 - Changing a leaf module recompiles the leaf and every dependent while an
   unrelated module is reused; tampering with the leaf artifact has the same

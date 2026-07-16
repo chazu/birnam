@@ -127,77 +127,6 @@ test "module metadata scanner accepts literal declarations anywhere and ignores 
     try std.testing.expect(ignored == api.nilObj);
 }
 
-test "static diagnostics are parse-only and only report provable selector arity" {
-    const api = setupFull();
-    const Codegen = api.import("Codegen").?;
-
-    const arity_source = "[Reflect defineMethod: #needs: on: Integer as: [:self | 1]]";
-    const arity = api.send(Codegen, api.intern("staticDiagnosticsOf:"), &.{api.mkString(arity_source.ptr, arity_source.len)}, 1);
-    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(arity, api.intern("size"), &.{}, 0)));
-    const arity_diag = vectorAt(api, arity, 0);
-    try std.testing.expectEqualStrings("selectorArity", stringBytes(api, api.send(arity_diag, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
-    const expected_selector_start = std.mem.indexOf(u8, arity_source, "#needs:").?;
-    try std.testing.expectEqual(@as(i64, @intCast(expected_selector_start)), api.smallIntValue(api.send(arity_diag, api.intern("at:"), &.{api.mkString("start", 5)}, 1)));
-    try std.testing.expectEqual(@as(i64, @intCast(expected_selector_start + "#needs:".len)), api.smallIntValue(api.send(arity_diag, api.intern("at:"), &.{api.mkString("end", 3)}, 1)));
-
-    const syntax_source = "[1 + ]";
-    const syntax = api.send(Codegen, api.intern("staticDiagnosticsOf:"), &.{api.mkString(syntax_source.ptr, syntax_source.len)}, 1);
-    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(syntax, api.intern("size"), &.{}, 0)));
-    const syntax_diag = vectorAt(api, syntax, 0);
-    try std.testing.expectEqualStrings("syntaxError", stringBytes(api, api.send(syntax_diag, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
-
-    // Ordinary identifiers are late-bound globals in Birnam; static checking
-    // must not turn a missing-at-analysis-time name into a false error.
-    const late_bound = "[Globals at: #answer put: 1]; [answer + 1]";
-    const clean = api.send(Codegen, api.intern("staticDiagnosticsOf:"), &.{api.mkString(late_bound.ptr, late_bound.len)}, 1);
-    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(api.send(clean, api.intern("size"), &.{}, 0)));
-}
-
-test "source navigation exposes top-level symbols and lexical occurrences" {
-    const api = setupFull();
-    const Codegen = api.import("Codegen").?;
-    const source = "let answer := 1; [Reflect defineMethod: #needs: on: Integer as: [:self | 1]]";
-
-    const symbols = api.send(Codegen, api.intern("sourceSymbolsOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
-    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(symbols, api.intern("size"), &.{}, 0)));
-    const global = vectorAt(api, symbols, 0);
-    try std.testing.expectEqualStrings("answer", stringBytes(api, api.send(global, api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
-    try std.testing.expectEqual(@as(i64, 13), api.smallIntValue(api.send(global, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
-    const method = vectorAt(api, symbols, 1);
-    try std.testing.expectEqualStrings("needs:", stringBytes(api, api.send(method, api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
-    try std.testing.expectEqual(@as(i64, 6), api.smallIntValue(api.send(method, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
-
-    const occurrences_source = "let answer := 1; [answer + 1]";
-    const occurrences = api.send(Codegen, api.intern("sourceOccurrencesOf:"), &.{api.mkString(occurrences_source.ptr, occurrences_source.len)}, 1);
-    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(occurrences, api.intern("size"), &.{}, 0)));
-    try std.testing.expectEqualStrings("answer", stringBytes(api, api.send(vectorAt(api, occurrences, 0), api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
-    try std.testing.expectEqualStrings("answer", stringBytes(api, api.send(vectorAt(api, occurrences, 1), api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
-
-    const module_source = "[Module named: #dep requires: #[]];\n[Reflect defineMethod: #dependencyAnswer on: Integer as: [:self | 7]]";
-    const module_symbols = api.send(Codegen, api.intern("sourceSymbolsOf:"), &.{api.mkString(module_source.ptr, module_source.len)}, 1);
-    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(module_symbols, api.intern("size"), &.{}, 0)));
-}
-
-test "source bindings expose lexical names and CST-derived scopes" {
-    const api = setupFull();
-    const Codegen = api.import("Codegen").?;
-    const source = "let x := 10; let f := [:y | [x plus: y]]; [f value: 32]";
-    const symbols = api.send(Codegen, api.intern("sourceSymbolsOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
-    try std.testing.expect(api.smallIntValue(api.send(symbols, api.intern("size"), &.{}, 0)) > 0);
-    const bindings = api.send(Codegen, api.intern("sourceBindingsOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
-    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(api.send(bindings, api.intern("size"), &.{}, 0)));
-
-    const top = vectorAt(api, bindings, 0);
-    try std.testing.expectEqualStrings("local", stringBytes(api, api.send(top, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
-    try std.testing.expectEqualStrings("x", stringBytes(api, api.send(top, api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
-    const parameter = vectorAt(api, bindings, 2);
-    try std.testing.expectEqualStrings("parameter", stringBytes(api, api.send(parameter, api.intern("at:"), &.{api.mkString("kind", 4)}, 1)));
-    try std.testing.expectEqualStrings("y", stringBytes(api, api.send(parameter, api.intern("at:"), &.{api.mkString("name", 4)}, 1)));
-    const parameter_scope_start = api.smallIntValue(api.send(parameter, api.intern("at:"), &.{api.mkString("scopeStart", 10)}, 1));
-    const parameter_start = api.smallIntValue(api.send(parameter, api.intern("at:"), &.{api.mkString("start", 5)}, 1));
-    try std.testing.expect(parameter_scope_start < parameter_start);
-}
-
 test "L1b live file envelope preserves authored bytes and rejects bad metadata" {
     const api = setupFull();
     const Codegen = api.import("Codegen").?;
@@ -794,6 +723,43 @@ test "docs/42 §D1: backfillMirror makes the MOP total over the native protocol"
     // to nothing — so their data keys never become mirror facts.
 }
 
+test "Reflect enumerates effective methods and current facts without raw pointers" {
+    const api = setupFull();
+    store.backfillMirror(api);
+    const Reflect = api.import("Reflect").?;
+
+    const methods = api.send(Reflect, api.intern("allMethodsOf:"), &[_]Oop{api.import("String").?}, 1);
+    try std.testing.expect(api.smallIntValue(api.send(methods, api.intern("size"), &.{}, 0)) > 0);
+    var saw_clone = false;
+    var selectors: std.ArrayList(Oop) = .{};
+    defer selectors.deinit(std.heap.c_allocator);
+    const count = api.smallIntValue(api.send(methods, api.intern("size"), &.{}, 0));
+    var i: i64 = 0;
+    while (i < count) : (i += 1) {
+        const descriptor = vectorAt(api, methods, i);
+        const selector = api.send(descriptor, api.intern("at:"), &[_]Oop{api.intern("selector")}, 1);
+        for (selectors.items) |seen| try std.testing.expect(seen != selector);
+        selectors.append(std.heap.c_allocator, selector) catch @panic("test: oom");
+        if (selector == api.intern("clone")) {
+            saw_clone = true;
+            try std.testing.expect(api.send(descriptor, api.intern("at:"), &[_]Oop{api.intern("method")}, 1) == api.intern("primitive"));
+            try std.testing.expect(api.send(Reflect, api.intern("methodSource:"), &[_]Oop{descriptor}, 1) == api.nilObj);
+        }
+    }
+    try std.testing.expect(saw_clone);
+
+    const person = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);
+    const name = api.intern("name");
+    const ada = api.mkString("Ada", 3);
+    _ = api.send(store.store_instance, api.intern("assert:attr:value:"), &[_]Oop{ person, name, ada }, 3);
+    const facts = api.send(Reflect, api.intern("factsOf:"), &[_]Oop{person}, 1);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(facts, api.intern("size"), &.{}, 0)));
+    const fact = vectorAt(api, facts, 0);
+    try std.testing.expect(api.send(fact, api.intern("at:"), &[_]Oop{api.intern("entity")}, 1) == person);
+    try std.testing.expect(api.send(fact, api.intern("at:"), &[_]Oop{api.intern("attribute")}, 1) == name);
+    try std.testing.expect(api.send(fact, api.intern("at:"), &[_]Oop{api.intern("value")}, 1) == ada);
+}
+
 test "codegen E1: a captured var in a chained send is not dropped by capture analysis" {
     const api = setupFull();
 
@@ -1053,6 +1019,72 @@ test "slice-1: compile birnam to a relocatable .dylib, load it, run it" {
     // would poison dlopen), and __birnam_unit_init must be present.
     const r = api.send(Codegen, api.intern("load:"), &[_]Oop{ppath}, 1);
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(r)); // 2 + 40
+}
+
+test "embedFile: embeds binary bytes into a dylib relative to the source file" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    const a = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "asset.bin", .data = "a\x00b\xff" });
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const source_path = try std.fs.path.join(a, &.{ dir, "module.birnam" });
+    defer a.free(source_path);
+    const output_path = try std.fs.path.join(a, &.{ dir, "libbirnam_embedProbe.dylib" });
+    defer a.free(output_path);
+
+    const source =
+        "[Module named: #embedProbe requires: #[]];\n" ++
+        "[Globals at: #EmbedProbe put: [Object clone]];\n" ++
+        "[Reflect defineMethod: #payload on: EmbedProbe as: [:self | [System embedFile: \"asset.bin\"]]];\n";
+    const result = api.send(Codegen, api.intern("compile:output:from:"), &[_]Oop{
+        api.mkString(source.ptr, source.len),
+        api.mkString(output_path.ptr, output_path.len),
+        api.mkString(source_path.ptr, source_path.len),
+    }, 3);
+    try std.testing.expect(result != api.nilObj);
+
+    // Prove the loaded dylib no longer depends on the authoring file.
+    try tmp.dir.deleteFile("asset.bin");
+    const loaded = api.send(Codegen, api.intern("load:"), &[_]Oop{api.mkString(output_path.ptr, output_path.len)}, 1);
+    try std.testing.expect(loaded != api.nilObj);
+    const globals = api.import("Globals").?;
+    const probe = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("EmbedProbe")}, 1);
+    const payload = api.send(probe, api.intern("payload"), &.{}, 0);
+    var payload_len: usize = 0;
+    const payload_bytes = api.stringBytes(payload, &payload_len);
+    try std.testing.expectEqualSlices(u8, "a\x00b\xff", payload_bytes[0..payload_len]);
+}
+
+test "embedFile: source evaluation resolves relative to its source path" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    const a = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "asset.txt", .data = "from-source" });
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const source_path = try std.fs.path.join(a, &.{ dir, "script.birnam" });
+    defer a.free(source_path);
+    const source = "[System embedFile: \"asset.txt\"]";
+    const result = api.send(Codegen, api.intern("eval:from:"), &[_]Oop{
+        api.mkString(source.ptr, source.len),
+        api.mkString(source_path.ptr, source_path.len),
+    }, 2);
+    try std.testing.expectEqualStrings("from-source", stringBytes(api, result));
+}
+
+test "embedFile: static analysis reports distinct literal inputs" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    const source = "[System embedFile: \"a.txt\"]; [[:x | [System embedFile: \"b.bin\"]] value: 1]; [System embedFile: \"a.txt\"]";
+    const files = api.send(Codegen, api.intern("embeddedFilesOf:"), &.{api.mkString(source.ptr, source.len)}, 1);
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(files, api.intern("size"), &.{}, 0)));
+    try std.testing.expectEqualStrings("a.txt", stringBytes(api, vectorAt(api, files, 0)));
+    try std.testing.expectEqualStrings("b.bin", stringBytes(api, vectorAt(api, files, 1)));
 }
 
 test "slice-1: artifact failures are nil — bad source, missing library" {

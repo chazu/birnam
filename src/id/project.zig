@@ -23,6 +23,8 @@ pub const Diagnostic = struct {
 pub const Module = struct {
     name: []const u8,
     path: []const u8,
+    sources: []const []const u8,
+    source: []const u8,
     project_root: []const u8,
     requires: []const []const u8,
     source_digest: []const u8,
@@ -73,12 +75,21 @@ const Dependency = struct {
     path: []const u8,
 };
 
+/// An explicit ordered source composition. `entry` owns the canonical
+/// `Module named:requires:` declaration; `files` are source fragments that
+/// become part of the same compiled unit in the order written.
+pub const ModuleSpec = struct {
+    entry: []const u8,
+    files: []const []const u8,
+};
+
 const Manifest = struct {
     name: []const u8,
     version: ?[]const u8,
     main: ?[]const u8,
     source_roots: []const []const u8,
     loads: []const []const u8,
+    modules: []const ModuleSpec,
     dependencies: []const Dependency,
     run: RunConfig,
     wrapped: []const Wrapped,
@@ -88,6 +99,8 @@ const Manifest = struct {
 const Source = struct {
     name: []const u8,
     path: []const u8,
+    sources: []const []const u8,
+    source: []const u8,
     project_root: []const u8,
     requires: []const []const u8,
     source_digest: []const u8,
@@ -262,6 +275,50 @@ fn parseWrapped(state: *State, parsed: Oop) FailureError![]const Wrapped {
     return wrapped;
 }
 
+fn parseModuleSpecs(state: *State, parsed: Oop) FailureError![]const ModuleSpec {
+    const modules_value = try mapAt(state, parsed, "module");
+    if (modules_value == state.api.nilObj) return state.arena.alloc(ModuleSpec, 0) catch
+        return state.fail("projectResolutionFailed", "out of memory while reading module compositions", .{});
+
+    const count = try vectorSize(state, modules_value, "module");
+    const modules = state.arena.alloc(ModuleSpec, count) catch
+        return state.fail("projectResolutionFailed", "out of memory while reading module compositions", .{});
+    for (0..count) |i| {
+        const item = state.api.send(modules_value, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        if (!isMap(state.api, item)) return state.fail("manifestValueInvalid", "module entries must be TOML tables", .{});
+
+        const entry = try duplicateString(state, try mapAt(state, item, "entry"), "module.entry");
+        if (entry.len == 0 or std.fs.path.isAbsolute(entry) or !std.mem.endsWith(u8, entry, ".birnam"))
+            return state.fail("manifestValueInvalid", "module.entry must be a non-empty project-relative .birnam path", .{});
+
+        const files_value = try mapAt(state, item, "files");
+        const files = try parseStringList(state, files_value, "module.files", false);
+        for (files) |path| {
+            if (path.len == 0 or std.fs.path.isAbsolute(path) or !std.mem.endsWith(u8, path, ".birnam"))
+                return state.fail("manifestValueInvalid", "module.files must contain project-relative .birnam paths", .{});
+            if (std.mem.eql(u8, path, entry))
+                return state.fail("duplicateModulePart", "module entry {s} is also listed as a source part", .{entry});
+        }
+        for (files, 0..) |path, file_index| for (files[0..file_index]) |old| if (std.mem.eql(u8, old, path))
+            return state.fail("duplicateModulePart", "module source part {s} is listed more than once", .{path});
+
+        modules[i] = .{ .entry = entry, .files = files };
+    }
+    for (modules, 0..) |entry, i| {
+        for (modules[0..i]) |old| {
+            if (std.mem.eql(u8, old.entry, entry.entry))
+                return state.fail("duplicateModuleComposition", "module entry {s} is declared more than once", .{entry.entry});
+            for (entry.files) |path| for (old.files) |old_path| if (std.mem.eql(u8, old_path, path))
+                return state.fail("duplicateModulePart", "module source part {s} belongs to more than one composition", .{path});
+            for (entry.files) |path| if (std.mem.eql(u8, old.entry, path))
+                return state.fail("duplicateModulePart", "module entry {s} is also a source part", .{old.entry});
+            for (old.files) |path| if (std.mem.eql(u8, entry.entry, path))
+                return state.fail("duplicateModulePart", "module entry {s} is also a source part", .{entry.entry});
+        }
+    }
+    return modules;
+}
+
 fn parseRunConfig(state: *State, parsed: Oop) FailureError!RunConfig {
     const run_value = try mapAt(state, parsed, "run");
     if (run_value == state.api.nilObj) return .{
@@ -301,6 +358,60 @@ fn parseRunConfig(state: *State, parsed: Oop) FailureError!RunConfig {
 fn sha256Hex(state: *State, bytes: []const u8) []const u8 {
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
+    return state.arena.dupe(u8, &std.fmt.bytesToHex(digest, .lower)) catch @panic("project: oom");
+}
+
+fn hasDotPathComponent(path: []const u8) bool {
+    var parts = std.mem.splitScalar(u8, path, '/');
+    while (parts.next()) |part| if (std.mem.eql(u8, part, ".") or std.mem.eql(u8, part, "..")) return true;
+    return false;
+}
+
+/// Hash the literal files referenced by embedFile:. The source digest exposed
+/// by project resolution includes this value, so changing an asset invalidates
+/// the owning dylib even when its Birnam source is unchanged.
+fn embeddedDigest(state: *State, codegen: Oop, source: []const u8, project_root: []const u8, source_path: []const u8) FailureError![]const u8 {
+    const files = state.api.send(codegen, state.api.intern("embeddedFilesOf:"), &.{state.api.mkString(source.ptr, source.len)}, 1);
+    const count = try vectorSize(state, files, "embedded files");
+    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+    const add = struct {
+        fn field(h: *std.crypto.hash.sha2.Sha256, value: []const u8) void {
+            var len: [8]u8 = undefined;
+            std.mem.writeInt(u64, &len, value.len, .big);
+            h.update(&len);
+            h.update(value);
+        }
+    }.field;
+    add(&hasher, "birnam.embedded-inputs.v1");
+    for (0..count) |i| {
+        const item = state.api.send(files, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        const relative = try duplicateString(state, item, "embedded file path");
+        if (relative.len == 0 or std.fs.path.isAbsolute(relative) or hasDotPathComponent(relative))
+            return state.fail("embeddedPathInvalid", "embedFile: path {s} in {s} must be a non-empty relative path without '.' or '..'", .{ relative, source_path });
+        const full = try joinPath(state, project_root, relative);
+        const bytes = std.fs.cwd().readFileAlloc(state.arena, full, max_source_bytes) catch
+            return state.fail("embeddedFileMissing", "could not read embedFile: path {s} in {s}", .{ relative, source_path });
+        add(&hasher, relative);
+        add(&hasher, bytes);
+    }
+    var digest: [32]u8 = undefined;
+    hasher.final(&digest);
+    return state.arena.dupe(u8, &std.fmt.bytesToHex(digest, .lower)) catch @panic("project: oom");
+}
+
+fn sourceDigestWithEmbedded(state: *State, source_digest: []const u8, assets_digest: []const u8) []const u8 {
+    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+    hasher.update("birnam.source-with-embedded-inputs.v1");
+    var source_len: [8]u8 = undefined;
+    std.mem.writeInt(u64, &source_len, source_digest.len, .big);
+    hasher.update(&source_len);
+    hasher.update(source_digest);
+    var assets_len: [8]u8 = undefined;
+    std.mem.writeInt(u64, &assets_len, assets_digest.len, .big);
+    hasher.update(&assets_len);
+    hasher.update(assets_digest);
+    var digest: [32]u8 = undefined;
+    hasher.final(&digest);
     return state.arena.dupe(u8, &std.fmt.bytesToHex(digest, .lower)) catch @panic("project: oom");
 }
 
@@ -344,6 +455,7 @@ fn parseManifest(state: *State, manifest_path: []const u8, bytes: []const u8) Fa
     const loads = try parseStringList(state, load_value, "load", true);
     const run_config = try parseRunConfig(state, parsed);
     const wrapped = try parseWrapped(state, parsed);
+    const modules = try parseModuleSpecs(state, parsed);
 
     const dep_value = try mapAt(state, parsed, "dependencies");
     var dependencies_list: std.ArrayList(Dependency) = .{};
@@ -377,6 +489,7 @@ fn parseManifest(state: *State, manifest_path: []const u8, bytes: []const u8) Fa
         .main = main,
         .source_roots = source_roots,
         .loads = loads,
+        .modules = modules,
         .dependencies = dependencies,
         .run = run_config,
         .wrapped = wrapped,
@@ -449,6 +562,76 @@ fn metadataString(state: *State, metadata: Oop, index: i64, label: []const u8) F
     return duplicateString(state, value, label);
 }
 
+fn containsPath(paths: []const []const u8, path: []const u8) bool {
+    for (paths) |candidate| if (std.mem.eql(u8, candidate, path)) return true;
+    return false;
+}
+
+fn composeSource(state: *State, paths: []const []const u8) FailureError![]const u8 {
+    const module = global(state, "Module") orelse
+        return state.fail("moduleCompositionUnavailable", "Module composeSources: is not available while resolving sources", .{});
+    const vector_type = state.api.import("Vector") orelse
+        return state.fail("moduleCompositionUnavailable", "Vector is not available while resolving sources", .{});
+    var source_paths = state.api.send(vector_type, state.api.intern("new"), &.{}, 0);
+    for (paths) |path| {
+        const path_value = state.api.mkString(path.ptr, path.len);
+        source_paths = state.api.send(source_paths, state.api.intern("add:"), &.{path_value}, 1);
+    }
+    const result = state.api.send(module, state.api.intern("composeSources:"), &.{source_paths}, 1);
+    if (isError(state.api, result))
+        return state.fail("sourceReadFailed", "could not compose module source at {s}", .{paths[0]});
+    if (!isString(state.api, result))
+        return state.fail("sourceReadFailed", "module composition at {s} did not return source text", .{paths[0]});
+    const bytes = stringBytes(state.api, result);
+    if (bytes.len > max_source_bytes)
+        return state.fail("sourceTooLarge", "composed module source exceeds {d} bytes at {s}", .{ max_source_bytes, paths[0] });
+    return state.arena.dupe(u8, bytes) catch
+        return state.fail("projectResolutionFailed", "out of memory while recording composed module source", .{});
+}
+
+fn moduleMetadata(state: *State, codegen: Oop, source: []const u8, path: []const u8) FailureError!Oop {
+    const metadata = state.api.send(codegen, state.api.intern("moduleMetadataOf:"), &.{state.api.mkString(source.ptr, source.len)}, 1);
+    if (metadata == state.api.nilObj)
+        return state.fail("sourceMalformed", "module entry {s} has no valid static module declaration", .{path});
+    if (isError(state.api, metadata))
+        return state.fail("sourceMalformed", "module entry {s} has an invalid static module declaration", .{path});
+    return metadata;
+}
+
+fn rejectPartDeclaration(state: *State, codegen: Oop, path: []const u8) FailureError!void {
+    const source = try composeSource(state, &.{path});
+    const metadata = state.api.send(codegen, state.api.intern("moduleMetadataOf:"), &.{state.api.mkString(source.ptr, source.len)}, 1);
+    if (isError(state.api, metadata))
+        return state.fail("sourceMalformed", "module source part {s} has an invalid static module declaration", .{path});
+    if (metadata != state.api.nilObj)
+        return state.fail("modulePartDeclaration", "module source part {s} must not declare a module; put Module named:requires: in the entry", .{path});
+}
+
+fn appendIndexedSource(state: *State, project: *Project, codegen: Oop, sources: *std.ArrayList(Source), paths: []const []const u8) FailureError!void {
+    const source = try composeSource(state, paths);
+    const metadata = try moduleMetadata(state, codegen, source, paths[0]);
+    const name = try metadataName(state, metadata);
+    for (sources.items) |old| if (std.mem.eql(u8, old.name, name))
+        return state.fail("duplicateModuleProvider", "module #{s} is provided by both {s} and {s}", .{ name, old.path, paths[0] });
+    const requires = try metadataRequires(state, metadata);
+    const metadata_source_digest = try metadataString(state, metadata, 3, "source digest");
+    const assets_digest = try embeddedDigest(state, codegen, source, project.root, paths[0]);
+    const source_digest = sourceDigestWithEmbedded(state, metadata_source_digest, assets_digest);
+    const source_paths = state.arena.alloc([]const u8, paths.len) catch
+        return state.fail("projectResolutionFailed", "out of memory while recording module source paths", .{});
+    for (paths, 0..) |path, i| source_paths[i] = path;
+    sources.append(state.arena, .{
+        .name = name,
+        .path = paths[0],
+        .sources = source_paths,
+        .source = source,
+        .project_root = project.root,
+        .requires = requires,
+        .source_digest = source_digest,
+        .revision_digest = try metadataString(state, metadata, 4, "revision digest"),
+    }) catch return state.fail("projectResolutionFailed", "out of memory while indexing sources", .{});
+}
+
 fn indexProject(state: *State, project: *Project) FailureError!void {
     var files: std.ArrayList([]const u8) = .{};
     for (project.manifest.source_roots) |root_name| {
@@ -457,29 +640,37 @@ fn indexProject(state: *State, project: *Project) FailureError!void {
     }
     sortStrings(files.items);
 
-    var sources: std.ArrayList(Source) = .{};
     const codegen = state.api.import("Codegen") orelse
         return state.fail("projectResolutionFailed", "Codegen is not available for source indexing", .{});
+
+    var sources: std.ArrayList(Source) = .{};
+    var explicit_paths: std.ArrayList([]const u8) = .{};
+    for (project.manifest.modules) |spec| {
+        const paths = state.arena.alloc([]const u8, 1 + spec.files.len) catch
+            return state.fail("projectResolutionFailed", "out of memory while preparing module composition", .{});
+        paths[0] = try joinPath(state, project.root, spec.entry);
+        if (containsPath(explicit_paths.items, paths[0]))
+            return state.fail("duplicateModulePart", "module source {s} belongs to more than one composition", .{paths[0]});
+        explicit_paths.append(state.arena, paths[0]) catch
+            return state.fail("projectResolutionFailed", "out of memory while tracking module composition", .{});
+        for (spec.files, 0..) |file, i| {
+            paths[i + 1] = try joinPath(state, project.root, file);
+            if (containsPath(explicit_paths.items, paths[i + 1]))
+                return state.fail("duplicateModulePart", "module source {s} belongs to more than one composition", .{paths[i + 1]});
+            explicit_paths.append(state.arena, paths[i + 1]) catch
+                return state.fail("projectResolutionFailed", "out of memory while tracking module composition", .{});
+            try rejectPartDeclaration(state, codegen, paths[i + 1]);
+        }
+        try appendIndexedSource(state, project, codegen, &sources, paths);
+    }
+
     for (files.items) |path| {
-        const bytes = std.fs.cwd().readFileAlloc(state.arena, path, max_source_bytes) catch
-            return state.fail("sourceMalformed", "could not read source {s}", .{path});
-        const metadata = state.api.send(codegen, state.api.intern("moduleMetadataOf:"), &.{state.api.mkString(bytes.ptr, bytes.len)}, 1);
+        if (containsPath(explicit_paths.items, path)) continue;
+        const source = try composeSource(state, &.{path});
+        const metadata = state.api.send(codegen, state.api.intern("moduleMetadataOf:"), &.{state.api.mkString(source.ptr, source.len)}, 1);
         if (metadata == state.api.nilObj) continue; // legacy or runtime-dynamic source
         if (isError(state.api, metadata)) return state.fail("sourceMalformed", "source {s} has no valid static module declaration", .{path});
-        const name = try metadataName(state, metadata);
-        for (sources.items) |old| if (std.mem.eql(u8, old.name, name))
-            return state.fail("duplicateModuleProvider", "module #{s} is provided by both {s} and {s}", .{ name, old.path, path });
-        const requires = try metadataRequires(state, metadata);
-        const source_digest = try metadataString(state, metadata, 3, "source digest");
-        const revision_digest = try metadataString(state, metadata, 4, "revision digest");
-        sources.append(state.arena, .{
-            .name = name,
-            .path = path,
-            .project_root = project.root,
-            .requires = requires,
-            .source_digest = source_digest,
-            .revision_digest = revision_digest,
-        }) catch return state.fail("projectResolutionFailed", "out of memory while indexing sources", .{});
+        try appendIndexedSource(state, project, codegen, &sources, &.{path});
     }
     project.sources = sources.toOwnedSlice(state.arena) catch
         return state.fail("projectResolutionFailed", "out of memory while indexing sources", .{});
@@ -611,6 +802,7 @@ fn digestResolution(state: *State, root: *Project) []const u8 {
     for (state.resolved.items) |selected| {
         add(&hasher, selected.source.name);
         add(&hasher, selected.source.path);
+        for (selected.source.sources) |path| add(&hasher, path);
         add(&hasher, selected.source.source_digest);
         for (selected.source.requires) |dependency| add(&hasher, dependency);
     }
@@ -632,6 +824,8 @@ fn run(state: *State, working_dir: []const u8) FailureError!Resolution {
         modules[i] = .{
             .name = selected.source.name,
             .path = selected.source.path,
+            .sources = selected.source.sources,
+            .source = selected.source.source,
             .project_root = selected.source.project_root,
             .requires = selected.source.requires,
             .source_digest = selected.source.source_digest,
@@ -687,6 +881,10 @@ pub fn writeReport(result: *const Result, writer: anytype) !void {
     if (resolution.modules.len == 0) try writer.writeAll("  (none)\n");
     for (resolution.modules) |module| {
         try writer.print("  #{s} <- {s}", .{ module.name, module.path });
+        if (module.sources.len > 1) {
+            try writer.writeAll(" +");
+            for (module.sources[1..]) |path| try writer.print(" {s}", .{path});
+        }
         if (module.requires.len != 0) {
             try writer.writeAll(" requires");
             for (module.requires, 0..) |dependency, i| {

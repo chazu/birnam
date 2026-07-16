@@ -102,7 +102,14 @@ let s := [TestSuite named: "Cli" module: #cli];
   let symbols := [Lsp sourceSymbolsFor: "let answer := 1; [Reflect defineMethod: #needs: on: Integer as: [:self | 1]]"];
   [t expect: [[symbols size] = 2] equals: true describes: "source symbols include top-level lets and methods"];
   [t expect: [[symbols at: 0] at: "name"] equals: "answer" describes: "let symbol keeps its name"];
-  [t expect: [[symbols at: 1] at: "name"] equals: "needs:" describes: "method symbol keeps its selector"]]];
+  [t expect: [[symbols at: 1] at: "name"] equals: "needs:" describes: "method symbol keeps its selector"];
+  let occurrences := [Lsp sourceOccurrencesOf: "let answer := 1; [answer + 1]"];
+  [t expect: [[occurrences size] = 2] equals: true describes: "source occurrences include the declaration and use"];
+  [t expect: [[occurrences at: 0] at: "name"] equals: "answer" describes: "occurrence keeps the declaration spelling"];
+  let bindings := [Lsp sourceBindingsOf: "let x := 10; let f := [:y | [x plus: y]]; [f value: 32]"];
+  [t expect: [[bindings size] = 3] equals: true describes: "source bindings include locals and parameters"];
+  [t expect: [[bindings at: 0] at: "kind"] equals: "local" describes: "binding marks top-level locals"];
+  [t expect: [[bindings at: 2] at: "kind"] equals: "parameter" describes: "binding marks block parameters"]]];
 
 [s test: "Lsp translates UTF-8 byte spans and UTF-16 positions" do: [:t |
   [t expect: [Lsp utf16Offset: 3 in: "aé"] equals: 2 describes: "a two-byte code point is one UTF-16 unit"];

@@ -9,11 +9,9 @@ const std = @import("std");
 //   libid (id.zig) → store → peg → lang → tcc → codegen → prelude
 //                  → collection → error → isolate → relational → alien → image
 //
-// The legacy fact-store kernel that preceded this lives only in git history; a
-// handful of its files (image/persistence, gc, the libffi FFI, macho/elf,
-// boxed) are parked in src/attic/ as reference for arcs not yet rebuilt on the
-// id floor (persistence/images, struct-by-value FFI, value-slot globals). The
-// attic is NOT part of the build.
+// The legacy fact-store kernel that preceded this lives only in git history.
+// Its unrecovered arcs (persistence/images, struct-by-value FFI, value-slot
+// globals) are intentionally outside the active source tree.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});

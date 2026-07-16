@@ -74,34 +74,9 @@ const Oop = idapi.Oop;
 
 // The project resolver is host-side because it owns filesystem traversal and
 // the existing Toml/Codegen seams. The LSP itself remains authored in Birnam;
-// this bridge gives it one immutable JSON snapshot per workspace lookup rather
+// this bridge gives it one immutable native snapshot per workspace lookup rather
 // than a second manifest parser or a second dependency graph.
 var project_bridge_api: ?*IdApi = null;
-
-const ProjectJsonModule = struct {
-    name: []const u8,
-    path: []const u8,
-    projectRoot: []const u8,
-    requires: []const []const u8,
-    sourceDigest: []const u8,
-    revisionDigest: []const u8,
-};
-
-const ProjectJsonSuccess = struct {
-    ok: bool,
-    projectRoot: []const u8,
-    manifest: []const u8,
-    projectName: []const u8,
-    main: ?[]const u8,
-    digest: []const u8,
-    modules: []ProjectJsonModule,
-};
-
-const ProjectJsonFailure = struct {
-    ok: bool,
-    kind: []const u8,
-    message: []const u8,
-};
 
 fn hexNibble(c: u8) ?u8 {
     return switch (c) {
@@ -157,36 +132,72 @@ fn projectWorkingDirectory(a: std.mem.Allocator, raw: []const u8) ![]u8 {
     return a.dupe(u8, path);
 }
 
-fn projectJsonFailure(diagnostic: project.Diagnostic) ?[]u8 {
-    return std.json.Stringify.valueAlloc(std.heap.c_allocator, ProjectJsonFailure{
-        .ok = false,
-        .kind = diagnostic.kind,
-        .message = diagnostic.message,
-    }, .{}) catch null;
+fn nativeMap(api: *IdApi) ?Oop {
+    const map = api.import("Map") orelse return null;
+    const value = api.send(map, api.intern("new"), &.{}, 0);
+    return if (value == null or value == api.nilObj) null else value;
 }
 
-fn projectJsonSuccess(resolution: *const project.Resolution) ?[]u8 {
-    const modules = std.heap.c_allocator.alloc(ProjectJsonModule, resolution.modules.len) catch return null;
-    defer std.heap.c_allocator.free(modules);
-    for (resolution.modules, 0..) |module, i| {
-        modules[i] = .{
-            .name = module.name,
-            .path = module.path,
-            .projectRoot = module.project_root,
-            .requires = module.requires,
-            .sourceDigest = module.source_digest,
-            .revisionDigest = module.revision_digest,
-        };
+fn nativeMapPut(api: *IdApi, map: Oop, key: []const u8, value: Oop) ?Oop {
+    const key_oop = api.mkString(key.ptr, key.len);
+    const updated = api.send(map, api.intern("at:put:"), &[_]Oop{ key_oop, value }, 2);
+    return if (updated == null or updated == api.nilObj) null else updated;
+}
+
+fn nativeVector(api: *IdApi) ?Oop {
+    const vector = api.import("Vector") orelse return null;
+    const value = api.send(vector, api.intern("new"), &.{}, 0);
+    return if (value == null or value == api.nilObj) null else value;
+}
+
+fn nativeVectorAdd(api: *IdApi, vector: Oop, value: Oop) ?Oop {
+    const updated = api.send(vector, api.intern("add:"), &[_]Oop{value}, 1);
+    return if (updated == null or updated == api.nilObj) null else updated;
+}
+
+fn nativeStringVector(api: *IdApi, values: []const []const u8) ?Oop {
+    var vector = nativeVector(api) orelse return null;
+    for (values) |value| {
+        const string = api.mkString(value.ptr, value.len);
+        vector = nativeVectorAdd(api, vector, string) orelse return null;
     }
-    return std.json.Stringify.valueAlloc(std.heap.c_allocator, ProjectJsonSuccess{
-        .ok = true,
-        .projectRoot = resolution.project_root,
-        .manifest = resolution.manifest_path,
-        .projectName = resolution.project_name,
-        .main = resolution.main_path,
-        .digest = resolution.digest,
-        .modules = modules,
-    }, .{}) catch null;
+    return vector;
+}
+
+fn projectNativeFailure(api: *IdApi, diagnostic: project.Diagnostic) ?Oop {
+    var map = nativeMap(api) orelse return null;
+    map = nativeMapPut(api, map, "ok", api.falseObj) orelse return null;
+    map = nativeMapPut(api, map, "kind", api.mkString(diagnostic.kind.ptr, diagnostic.kind.len)) orelse return null;
+    map = nativeMapPut(api, map, "message", api.mkString(diagnostic.message.ptr, diagnostic.message.len)) orelse return null;
+    return map;
+}
+
+fn projectNativeSuccess(api: *IdApi, resolution: *const project.Resolution) ?Oop {
+    var modules = nativeVector(api) orelse return null;
+    for (resolution.modules) |module| {
+        var item = nativeMap(api) orelse return null;
+        item = nativeMapPut(api, item, "name", api.mkString(module.name.ptr, module.name.len)) orelse return null;
+        item = nativeMapPut(api, item, "path", api.mkString(module.path.ptr, module.path.len)) orelse return null;
+        item = nativeMapPut(api, item, "sources", nativeStringVector(api, module.sources) orelse return null) orelse return null;
+        item = nativeMapPut(api, item, "projectRoot", api.mkString(module.project_root.ptr, module.project_root.len)) orelse return null;
+        item = nativeMapPut(api, item, "requires", nativeStringVector(api, module.requires) orelse return null) orelse return null;
+        item = nativeMapPut(api, item, "sourceDigest", api.mkString(module.source_digest.ptr, module.source_digest.len)) orelse return null;
+        item = nativeMapPut(api, item, "revisionDigest", api.mkString(module.revision_digest.ptr, module.revision_digest.len)) orelse return null;
+        modules = nativeVectorAdd(api, modules, item) orelse return null;
+    }
+
+    var map = nativeMap(api) orelse return null;
+    map = nativeMapPut(api, map, "ok", api.trueObj) orelse return null;
+    map = nativeMapPut(api, map, "projectRoot", api.mkString(resolution.project_root.ptr, resolution.project_root.len)) orelse return null;
+    map = nativeMapPut(api, map, "manifest", api.mkString(resolution.manifest_path.ptr, resolution.manifest_path.len)) orelse return null;
+    map = nativeMapPut(api, map, "projectName", api.mkString(resolution.project_name.ptr, resolution.project_name.len)) orelse return null;
+    map = nativeMapPut(api, map, "main", if (resolution.main_path) |path|
+        api.mkString(path.ptr, path.len)
+    else
+        api.nilObj) orelse return null;
+    map = nativeMapPut(api, map, "digest", api.mkString(resolution.digest.ptr, resolution.digest.len)) orelse return null;
+    map = nativeMapPut(api, map, "modules", modules) orelse return null;
+    return map;
 }
 
 fn mProjectSnapshotForUri(_: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -195,21 +206,18 @@ fn mProjectSnapshotForUri(_: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop
     var uri_len: usize = 0;
     const uri = api.stringBytes(args[0], &uri_len);
     const raw = uri[0..uri_len];
-    const working_dir = projectWorkingDirectory(std.heap.c_allocator, raw) catch return api.mkString(
-        "{\"ok\":false,\"kind\":\"projectUriInvalid\",\"message\":\"could not decode workspace URI\"}",
-        "{\"ok\":false,\"kind\":\"projectUriInvalid\",\"message\":\"could not decode workspace URI\"}".len,
-    );
+    const working_dir = projectWorkingDirectory(std.heap.c_allocator, raw) catch return projectNativeFailure(api, .{
+        .kind = "projectUriInvalid",
+        .message = "could not decode workspace URI",
+    }) orelse api.nilObj;
     defer std.heap.c_allocator.free(working_dir);
 
     var result = project.resolve(api, std.heap.c_allocator, working_dir);
     defer result.deinit();
-    const json = if (result.diagnostic) |diagnostic|
-        projectJsonFailure(diagnostic)
+    return if (result.diagnostic) |diagnostic|
+        projectNativeFailure(api, diagnostic) orelse api.nilObj
     else
-        projectJsonSuccess(&result.resolution.?);
-    const bytes = json orelse return api.nilObj;
-    defer std.heap.c_allocator.free(bytes);
-    return api.mkString(bytes.ptr, bytes.len);
+        projectNativeSuccess(api, &result.resolution.?) orelse api.nilObj;
 }
 
 /// Host-only path decoding for the LSP's authored-source index. URI policy
@@ -265,7 +273,14 @@ const BUILD_USAGE =
     \\Resolve and compile the nearest birnam.toml source project. Build outputs
     \\are staged under .birnam/build and published only after every module and
     \\build record succeeds. This first slice uses the debug profile and the
-    \\current target; it does not run or activate the project.
+    \\current target; it does not run or activate the project. Use one
+    \\[[module]] table to compose an entry source and optional ordered files
+    \\into one compiled dylib.
+    \\
+    \\Module example:
+    \\  [[module]]
+    \\  entry = "src/app.birnam"
+    \\  files = ["src/app-extra.birnam"]
     \\
     \\Arguments:
     \\  directory       Directory to search from; defaults to the current directory.
@@ -1002,7 +1017,7 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
 
     const src = try std.fs.cwd().readFileAlloc(a, path, 16 << 20);
     defer a.free(src);
-    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(src.ptr, src.len)}, 1);
+    _ = api.send(codegen, api.intern("evalPersisting:from:"), &[_]Oop{ api.mkString(src.ptr, src.len), api.mkString(path.ptr, path.len) }, 2);
 
     // Surface a compile failure instead of exiting quietly on a program that
     // silently became nil (a syntax error or an out-of-subset construct).
@@ -1355,7 +1370,7 @@ fn evalProjectSource(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void 
         runDiagnosticError("projectMainReadFailed", std.fmt.allocPrint(std.heap.c_allocator, "could not read project main {s}", .{path}) catch "could not read project main");
     };
     defer a.free(source);
-    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(source.ptr, source.len)}, 1);
+    _ = api.send(codegen, api.intern("evalPersisting:from:"), &[_]Oop{ api.mkString(source.ptr, source.len), api.mkString(path.ptr, path.len) }, 2);
     const last_error = api.send(codegen, api.intern("lastError"), &.{}, 0);
     if (last_error != api.nilObj) {
         out("birnam: compile error in ");
@@ -1372,7 +1387,7 @@ fn loadProjectRuntimeSource(a: std.mem.Allocator, api: *IdApi, path: []const u8)
         return error.RuntimeModuleMissing;
     };
     defer a.free(source);
-    _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(source.ptr, source.len)}, 1);
+    _ = api.send(codegen, api.intern("evalPersisting:from:"), &[_]Oop{ api.mkString(source.ptr, source.len), api.mkString(path.ptr, path.len) }, 2);
     const last_error = api.send(codegen, api.intern("lastError"), &.{}, 0);
     if (last_error != api.nilObj) {
         outErrorString(api, last_error);
@@ -1622,9 +1637,9 @@ fn runCompileModule(a: std.mem.Allocator, api: *IdApi, src_path: []const u8, out
 
     const src = try std.fs.cwd().readFileAlloc(a, src_path, 16 << 20);
     defer a.free(src);
-    const r = api.send(codegen, api.intern("compile:output:"), &[_]Oop{
-        api.mkString(src.ptr, src.len), api.mkString(out_path.ptr, out_path.len),
-    }, 2);
+    const r = api.send(codegen, api.intern("compile:output:from:"), &[_]Oop{
+        api.mkString(src.ptr, src.len), api.mkString(out_path.ptr, out_path.len), api.mkString(src_path.ptr, src_path.len),
+    }, 3);
     if (r == api.nilObj) {
         out("birnam: could not compile module ");
         out(src_path);

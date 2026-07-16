@@ -132,8 +132,8 @@
 
 // -- diagnostics --------------------------------------------------------------
 
-// Static diagnostics carry byte spans from Codegen. Convert those spans to LSP
-// UTF-16 positions only at this protocol boundary.
+// Static diagnostics carry byte spans from the local source-analysis policy.
+// Convert those spans to LSP UTF-16 positions only at this protocol boundary.
 [Reflect defineMethod: #utf16UnitsAt:in: on: Lsp as: [:self :i :line |
   let b := [line byteAt: i];
   let width := [[b >= 240] ifTrue: [| 2] ifFalse: [| 1]];
@@ -233,6 +233,410 @@
   ] doc:
   "Answers one LSP Diagnostic for a shared project-resolver failure, preserving its kind and message." ];
 
+// -- source inspection -------------------------------------------------------
+//
+// Lang and Peg already expose the parser/CST seam to Birnam. Keep the compiler
+// floor responsible for parsing and move the LSP policy — what counts as a
+// symbol, occurrence, binding, or provable diagnostic — into this module.
+// The walkers use `rule`/`childAt:` instead of `ruleName`/`children` so the hot
+// path does not allocate a String or a Vector for every CST node.
+
+[Reflect defineMethod: #analysisText:from: on: Lsp as: [:self :node :source |
+  [source copyFrom: [node start] to: [node end]]
+  ] doc:
+  "Returns the source slice covered by one CST node." ];
+
+[Reflect defineMethod: #analysisSkip: on: Lsp as: [:self :node |
+  let rule := [node rule];
+  let count := [node childCount];
+  let wrapper := [[count = 1] & [[[rule = #expr] | [rule = #primary]] | [rule = #message]]];
+  [wrapper
+    ifTrue: [| [self analysisSkip: [node childAt: 0]]]
+    ifFalse: [| node]]
+  ] doc:
+  "Descends through single-child expression, primary, and message wrappers." ];
+
+[Reflect defineMethod: #analysisAppend:to: on: Lsp as: [:self :entry :out |
+  [out set: [[out value] add: entry]];
+  out
+  ] doc:
+  "Appends one analysis entry through a persistent-vector cell." ];
+
+[Reflect defineMethod: #analysisDiagnostic:message:start:end: on: Lsp as: [:self :kind :message :start :finish |
+  let d0 := [Map new];
+  let d1 := [d0 at: "kind" put: kind];
+  let d2 := [d1 at: "message" put: message];
+  let d3 := [d2 at: "start" put: start];
+  [d3 at: "end" put: finish]
+  ] doc:
+  "Builds one byte-span static-analysis diagnostic." ];
+
+[Reflect defineMethod: #analysisSymbolEntry:kind:name:detail:start:end:selectionStart: on: Lsp as: [:self :kind :name :detail :start :finish :selectionStart :selectionEnd |
+  let d0 := [Map new];
+  let d1 := [d0 at: "name" put: name];
+  let d2 := [d1 at: "kind" put: kind];
+  let d3 := [d2 at: "detail" put: detail];
+  let d4 := [d3 at: "start" put: start];
+  let d5 := [d4 at: "end" put: finish];
+  let d6 := [d5 at: "selectionStart" put: selectionStart];
+  [d6 at: "selectionEnd" put: selectionEnd]
+  ] doc:
+  "Builds one source-symbol entry with byte spans." ];
+
+[Reflect defineMethod: #analysisOccurrenceEntry:name:start: on: Lsp as: [:self :name :start :finish |
+  let d0 := [Map new];
+  let d1 := [d0 at: "name" put: name];
+  let d2 := [d1 at: "start" put: start];
+  [d2 at: "end" put: finish]
+  ] doc:
+  "Builds one lexical occurrence entry with a byte span." ];
+
+[Reflect defineMethod: #analysisBindingEntry:kind:name:start:end:scopeStart: on: Lsp as: [:self :kind :name :start :finish :scopeStart :scopeEnd |
+  let d0 := [Map new];
+  let d1 := [d0 at: "kind" put: kind];
+  let d2 := [d1 at: "name" put: name];
+  let d3 := [d2 at: "start" put: start];
+  let d4 := [d3 at: "end" put: finish];
+  let d5 := [d4 at: "scopeStart" put: scopeStart];
+  [d5 at: "scopeEnd" put: scopeEnd]
+  ] doc:
+  "Builds one lexical binding entry with its CST-derived scope." ];
+
+[Reflect defineMethod: #analysisParsed: on: Lsp as: [:self :text |
+  let cst := [Lang parse: text];
+  [[[cst isNil] | [cst isError]] ifTrue: [| nil] ifFalse: [| cst]]
+  ] doc:
+  "Parses source without evaluation and returns a CST, or nil on syntax failure." ];
+
+[Reflect defineMethod: #analysisSymbolName:source: on: Lsp as: [:self :node0 :source |
+  let node := [self analysisSkip: node0];
+  let raw := [self analysisText: node from: source];
+  let validRule := [[node rule] = #symbol];
+  let validSize := [[raw size] > 1];
+  let valid := [[validRule & validSize] & [raw startsWith: "#"]];
+  [valid ifTrue: [| [raw copyFrom: 1 to: [raw size]]] ifFalse: [| nil]]
+  ] doc:
+  "Returns a selector/module symbol's spelling without its leading hash." ];
+
+[Reflect defineMethod: #analysisIdentName:source: on: Lsp as: [:self :node0 :source |
+  let node := [self analysisSkip: node0];
+  [[[node rule] = #ident] ifTrue: [| [self analysisText: node from: source]] ifFalse: [| nil]]
+  ] doc:
+  "Returns an identifier spelling, or nil for a non-identifier CST node." ];
+
+[Reflect defineMethod: #analysisReflectReceiver:source: on: Lsp as: [:self :node :source |
+  let name := [self analysisIdentName: node source: source];
+  [[name notNil] & [name = "Reflect"]]
+  ] doc:
+  "Recognizes the literal Reflect receiver without claiming aliases are special." ];
+
+[Reflect defineMethod: #analysisKeywordParts:source: on: Lsp as: [:self :node :source |
+  let selector := ["" asCell];
+  let args := [#[] asCell];
+  [0 to: [[node childCount] - 1] do: [:i |
+    let part := [node childAt: i];
+    [[[i mod: 2] = 0]
+      ifTrue: [| let word := [self analysisText: part from: source];
+                 [selector set: [[selector value] , word]]]
+      ifFalse: [| [args set: [[args value] add: part]]]]]];
+  let result := [#[] add: [selector value]];
+  [result add: [args value]]
+  ] doc:
+  "Returns a keyword message's concatenated selector and expression arguments." ];
+
+[Reflect defineMethod: #analysisBlockParamCount: on: Lsp as: [:self :node0 |
+  let node := [self analysisSkip: node0];
+  [[[node rule] = #block]
+    ifTrue: [|
+      let count := [0 asCell];
+      [0 to: [[node childCount] - 1] do: [:i |
+        let child := [node childAt: i];
+        let childRule := [child rule];
+        [[childRule = #ident] ifTrue: [| [count set: [[count value] + 1]]]]]];
+      [count value]]
+    ifFalse: [| nil]]
+  ] doc:
+  "Counts direct block parameter identifiers, or answers nil for another node." ];
+
+[Reflect defineMethod: #analysisAddModuleSymbol:selector:args:source:whole:out: on: Lsp as: [:self :receiver :selector :args :source :whole :out |
+  let shape := [[receiver = "Module"] & [[selector = "named:requires:"] & [[args size] = 2]]];
+  [shape ifTrue: [|
+    let name := [self analysisSymbolName: [args at: 0] source: source];
+    [[name notNil] ifTrue: [|
+      let selected := [self analysisSkip: [args at: 0]];
+      [self analysisAppend:
+        [self analysisSymbolEntry: 3 kind: name name: "module"
+          detail: [whole start] start: [whole end] end: [[selected start] + 1]
+          selectionStart: [selected end]] to: out]]]]];
+  out
+  ] doc:
+  "Adds a Module named:requires: symbol when the source shape proves it." ];
+
+[Reflect defineMethod: #analysisAddMethodSymbol:selector:args:source:whole:out: on: Lsp as: [:self :receiver :selector :args :source :whole :out |
+  let methodDecl := [[selector = "defineMethod:on:as:"] & [[args size] = 3]];
+  let methodDoc := [[selector = "defineMethod:on:as:doc:"] & [[args size] = 4]];
+  let shape := [[methodDecl | methodDoc] & [receiver = "Reflect"]];
+  [shape ifTrue: [|
+    let name := [self analysisSymbolName: [args at: 0] source: source];
+    let detail := [self analysisIdentName: [args at: 1] source: source];
+    let valid := [[name notNil] & [detail notNil]];
+    [valid ifTrue: [|
+      let selected := [self analysisSkip: [args at: 0]];
+      [self analysisAppend:
+        [self analysisSymbolEntry: 6 kind: name name: detail
+          detail: [whole start] start: [whole end] end: [[selected start] + 1]
+          selectionStart: [selected end]] to: out]]]]];
+  out
+  ] doc:
+  "Adds a literal Reflect defineMethod: symbol when the source shape proves it." ];
+
+[Reflect defineMethod: #analysisCollectSymbolStatement:source:out: on: Lsp as: [:self :stmt :source :out |
+  let count := [stmt childCount];
+  [[count > 0] ifTrue: [|
+    let whole := [self analysisSkip: [stmt childAt: 0]];
+    let rule := [whole rule];
+    let isLet := [rule = #letBinding];
+    [isLet ifTrue: [|
+      let name := [whole childAt: 0];
+      [self analysisAppend:
+        [self analysisSymbolEntry: 13 kind: [self analysisText: name from: source]
+          name: "top-level let" detail: [whole start] start: [whole end] end: [name start]
+          selectionStart: [name end]] to: out]]];
+    let isSend := [rule = #send];
+    [isSend ifTrue: [|
+      let recv := [self analysisSkip: [whole childAt: 0]];
+      let msg := [self analysisSkip: [whole childAt: 1]];
+      let sendShape := [[[recv rule] = #ident] & [[msg rule] = #keywordMsg]];
+      [sendShape ifTrue: [|
+        let parts := [self analysisKeywordParts: msg source: source];
+        let selector := [parts at: 0];
+        let args := [parts at: 1];
+        let recvName := [self analysisText: recv from: source];
+        [self analysisAddModuleSymbol: recvName selector: selector args: args
+          source: source whole: whole out: out];
+        [self analysisAddMethodSymbol: recvName selector: selector args: args
+          source: source whole: whole out: out]]]]]]];
+  out
+  ] doc:
+  "Collects one top-level let, module, or literal Reflect method symbol." ];
+
+[Reflect defineMethod: #analysisCollectSymbols:source:out: on: Lsp as: [:self :statements :source :out |
+  [0 to: [[statements childCount] - 1] do: [:i |
+    [self analysisCollectSymbolStatement: [statements childAt: i] source: source out: out]]];
+  out
+  ] doc:
+  "Collects top-level let, module, and literal Reflect method symbols." ];
+
+[Reflect defineMethod: #analysisCollectKeywordOccurrences:source:index:out: on: Lsp as: [:self :node :source :index :out |
+  [[[index + 1] < [node childCount]] ifTrue: [|
+    let part := [node childAt: index];
+    [self analysisAppend:
+      [self analysisOccurrenceEntry: [self analysisText: part from: source]
+        name: [part start] start: [part end]] to: out];
+    [self analysisCollectOccurrences: [node childAt: [index + 1]] source: source out: out];
+    [self analysisCollectKeywordOccurrences: node source: source index: [index + 2] out: out]]]
+  ] doc:
+  "Collects selector parts and their expression arguments in source order." ];
+
+[Reflect defineMethod: #analysisCollectOccurrences:source:out: on: Lsp as: [:self :node :source :out |
+  let rule := [node rule];
+  let literal := [[[rule = #symbol] | [rule = #number]] | [[rule = #float] | [rule = #string]]];
+  let skip := [literal | [rule = #logicVar]];
+  let ident := [rule = #ident];
+  let keyword := [rule = #keywordMsg];
+  let walk := [[[skip not] & [ident not]] & [keyword not]];
+  [ident ifTrue: [|
+    [self analysisAppend:
+      [self analysisOccurrenceEntry: [self analysisText: node from: source]
+        name: [node start] start: [node end]] to: out]]];
+  [keyword ifTrue: [| [self analysisCollectKeywordOccurrences: node source: source index: 0 out: out]]];
+  [walk ifTrue: [|
+    [0 to: [[node childCount] - 1] do: [:i |
+      [self analysisCollectOccurrences: [node childAt: i] source: source out: out]]]]];
+  out
+  ] doc:
+  "Collects lexical identifiers and keyword selector parts without resolving dispatch." ];
+
+[Reflect defineMethod: #analysisCollectBindings:source:scopeStart:scopeEnd:out: on: Lsp as: [:self :node0 :source :scopeStart :scopeEnd :out |
+  let node := [self analysisSkip: node0];
+  let rule := [node rule];
+  let isBlock := [rule = #block];
+  let isLet := [rule = #letBinding];
+  [isBlock ifTrue: [|
+    [0 to: [[node childCount] - 1] do: [:i |
+      let child := [node childAt: i];
+      let isParam := [[child rule] = #ident];
+      [isParam ifTrue: [|
+        [self analysisAppend:
+          [self analysisBindingEntry: "parameter" kind: [self analysisText: child from: source]
+            name: [child start] start: [child end] end: [node start]
+            scopeStart: [node end]] to: out]]]]];
+    [0 to: [[node childCount] - 1] do: [:i |
+      let child := [node childAt: i];
+      let isStatements := [[child rule] = #statements];
+      [isStatements ifTrue: [|
+        [self analysisCollectBindings: child source: source scopeStart: [node start] scopeEnd: [node end] out: out]]]]]]];
+  [isLet ifTrue: [|
+    let name := [node childAt: 0];
+    [self analysisAppend:
+      [self analysisBindingEntry: "local" kind: [self analysisText: name from: source]
+        name: [name start] start: [name end] end: scopeStart
+        scopeStart: scopeEnd] to: out];
+    let hasValue := [[node childCount] > 1];
+    [hasValue ifTrue: [|
+      [self analysisCollectBindings: [node childAt: 1] source: source
+        scopeStart: scopeStart scopeEnd: scopeEnd out: out]]]]];
+  let recurse := [[isBlock not] & [isLet not]];
+  [recurse ifTrue: [|
+    [0 to: [[node childCount] - 1] do: [:i |
+      [self analysisCollectBindings: [node childAt: i] source: source
+        scopeStart: scopeStart scopeEnd: scopeEnd out: out]]]]];
+  out
+  ] doc:
+  "Collects lexical locals and block parameters with CST-derived scopes." ];
+
+[Reflect defineMethod: #analysisStaticStatement:source:out: on: Lsp as: [:self :stmt :source :out |
+  let count := [stmt childCount];
+  [[count > 0] ifTrue: [|
+    let inner := [stmt childAt: 0];
+    let isLet := [[inner rule] = #letBinding];
+    [isLet ifTrue: [| [self analysisStaticNode: [inner childAt: 1] source: source out: out]]];
+    [isLet ifFalse: [| [self analysisStaticNode: inner source: source out: out]]]]];
+  out
+  ] doc:
+  "Checks one statement, skipping the binding name and visiting its value." ];
+
+[Reflect defineMethod: #analysisStaticStatements:source:out: on: Lsp as: [:self :statements :source :out |
+  [0 to: [[statements childCount] - 1] do: [:i |
+    [self analysisStaticStatement: [statements childAt: i] source: source out: out]]];
+  out
+  ] doc:
+  "Checks every statement in one CST statements node." ];
+
+[Reflect defineMethod: #analysisStaticNode:source:out: on: Lsp as: [:self :node0 :source :out |
+  let node := [self analysisSkip: node0];
+  let rule := [node rule];
+  let isSend := [rule = #send];
+  [isSend ifTrue: [|
+    let recv := [node childAt: 0];
+    let msg := [self analysisSkip: [node childAt: 1]];
+    let msgRule := [msg rule];
+    let isKeyword := [msgRule = #keywordMsg];
+    [isKeyword ifTrue: [|
+      let parts := [self analysisKeywordParts: msg source: source];
+      let selector := [parts at: 0];
+      let args := [parts at: 1];
+      let isDefine := [[selector = "defineMethod:on:as:"] & [[args size] = 3]];
+      let isDefineDoc := [[selector = "defineMethod:on:as:doc:"] & [[args size] = 4]];
+      let isReflectDefine := [[isDefine | isDefineDoc] & [self analysisReflectReceiver: recv source: source]];
+      [isReflectDefine ifTrue: [|
+        let selected := [self analysisSkip: [args at: 0]];
+        let actual := [self analysisBlockParamCount: [args at: 2]];
+        let valid := [[selected notNil] & [actual notNil]];
+        [valid ifTrue: [|
+          let expected := [[self selectorArity: [self analysisSymbolName: [args at: 0] source: source]] + 1];
+          let mismatch := [[actual = expected] not];
+          [mismatch ifTrue: [|
+            let raw := [self analysisText: selected from: source];
+            let plural := [[expected = 1] ifTrue: [| ""] ifFalse: [| "s"]];
+            let message := ["selector " , raw , " expects " , [expected printString]
+              , " block parameter" , plural , " including self"];
+            let suffix := [", got " , [actual printString]];
+            [self analysisAppend:
+              [self analysisDiagnostic: "selectorArity" message: [message , suffix]
+                start: [selected start] end: [selected end]] to: out]]]]]]];
+      [args do: [:arg | [self analysisStaticNode: arg source: source out: out]]];
+    let isBinary := [msgRule = #binaryMsg];
+    [isBinary ifTrue: [| [self analysisStaticNode: [msg childAt: 1] source: source out: out]]];
+    let isMessage := [msgRule = #message];
+    [isMessage ifTrue: [|
+      [0 to: [[msg childCount] - 1] do: [:i |
+        [self analysisStaticNode: [msg childAt: i] source: source out: out]]]]];
+    [self analysisStaticNode: recv source: source out: out]]];
+  let isStatements := [rule = #statements];
+  [isStatements ifTrue: [| [self analysisStaticStatements: node source: source out: out]]];
+  let isBlock := [rule = #block];
+  [isBlock ifTrue: [|
+    [0 to: [[node childCount] - 1] do: [:i |
+      let child := [node childAt: i];
+      let isStatements := [[child rule] = #statements];
+      [isStatements ifTrue: [| [self analysisStaticNode: child source: source out: out]]]]]]];
+  let isVector := [rule = #vectorLit];
+  [isVector ifTrue: [|
+    [0 to: [[node childCount] - 1] do: [:i |
+      [self analysisStaticNode: [node childAt: i] source: source out: out]]]]];
+  let isMap := [rule = #mapLit];
+  [isMap ifTrue: [|
+    [0 to: [[node childCount] - 1] do: [:i |
+      let entry := [node childAt: i];
+      let hasPair := [[entry childCount] >= 2];
+      [hasPair ifTrue: [|
+        [self analysisStaticNode: [entry childAt: 0] source: source out: out];
+        [self analysisStaticNode: [entry childAt: 1] source: source out: out]]]]]]]]];
+  out
+  ] doc:
+  "Checks only source-provable selector arity and recursively visits expression nodes." ];
+
+[Reflect defineMethod: #staticDiagnosticsOf: on: Lsp as: [:self :text |
+  let cst := [self analysisParsed: text];
+  [[cst isNil]
+    ifTrue: [|
+      let off := [Lang furthestFail];
+      [#[] add: [self analysisDiagnostic: "syntaxError" message: "syntax error"
+        start: off end: [[off + 1] min: [text size]]]]]
+    ifFalse: [|
+      let out := [#[] asCell];
+      [[[cst childCount] > 0] ifTrue: [|
+        [self analysisStaticStatements: [cst childAt: 0] source: text out: out]]];
+      [out value]]]
+  ] doc:
+  "Parses source and answers static diagnostics without evaluation or Store mutation." ];
+
+[Reflect defineMethod: #sourceSymbolsOf: on: Lsp as: [:self :text |
+  let cst := [self analysisParsed: text];
+  let out := [#[] asCell];
+  [[[cst notNil] & [[cst childCount] > 0]] ifTrue: [|
+    [self analysisCollectSymbols: [cst childAt: 0] source: text out: out]]];
+  [out value]
+  ] doc:
+  "Parses source and answers top-level authored symbols with byte spans." ];
+
+[Reflect defineMethod: #sourceOccurrencesOf: on: Lsp as: [:self :text |
+  let cst := [self analysisParsed: text];
+  let out := [#[] asCell];
+  [[[cst notNil] & [[cst childCount] > 0]] ifTrue: [|
+    [self analysisCollectOccurrences: [cst childAt: 0] source: text out: out]]];
+  [out value]
+  ] doc:
+  "Parses source and answers lexical identifier/keyword occurrences." ];
+
+[Reflect defineMethod: #sourceBindingsOf: on: Lsp as: [:self :text |
+  let cst := [self analysisParsed: text];
+  let out := [#[] asCell];
+  [[[cst notNil] & [[cst childCount] > 0]] ifTrue: [|
+    [self analysisCollectBindings: [cst childAt: 0] source: text
+      scopeStart: 0 scopeEnd: [text size] out: out]]];
+  [out value]
+  ] doc:
+  "Parses source and answers lexical locals and parameters with scope spans." ];
+
+[Reflect defineMethod: #sourceAnalysisOf: on: Lsp as: [:self :text |
+  let cst := [self analysisParsed: text];
+  let symbols := [#[] asCell];
+  let occurrences := [#[] asCell];
+  let bindings := [#[] asCell];
+  [[[cst notNil] & [[cst childCount] > 0]] ifTrue: [|
+    let root := [cst childAt: 0];
+    [self analysisCollectSymbols: root source: text out: symbols];
+    [self analysisCollectOccurrences: root source: text out: occurrences];
+    [self analysisCollectBindings: root source: text scopeStart: 0 scopeEnd: [text size] out: bindings]]];
+  let d0 := [Map new];
+  let d1 := [d0 at: "symbols" put: [symbols value]];
+  let d2 := [d1 at: "occurrences" put: [occurrences value]];
+  [d2 at: "bindings" put: [bindings value]]
+  ] doc:
+  "Parses once and answers the three source indexes used by project-aware navigation." ];
+
 [Reflect defineMethod: #diagFromStatic:text: on: Lsp as: [:self :snapshot :text |
   let start := [snapshot at: "start" ifAbsent: [| 0]];
   let finish := [snapshot at: "end" ifAbsent: [| start]];
@@ -248,12 +652,12 @@
   let d4 := [d3 at: "code" put: kind];
   [d4 at: "message" put: message]
   ] doc:
-  "Converts one Codegen static diagnostic with byte spans into an LSP Diagnostic." ];
+  "Converts one source-analysis diagnostic with byte spans into an LSP Diagnostic." ];
 
 // Parse and inspect `text` without eval, Store mutation, or artifact writes →
 // a Vector of Diagnostics (empty if OK).
 [Reflect defineMethod: #compileDiagnostics: on: Lsp as: [:self :text |
-  let raw := [Codegen staticDiagnosticsOf: text];
+  let raw := [self staticDiagnosticsOf: text];
   [raw inject: #[] into: [:out :entry | [out add: [self diagFromStatic: entry text: text]]]]
   ] doc:
   "Parses and statically inspects `text`; answers a Vector of Diagnostics — empty when it is clean." ];
@@ -279,7 +683,7 @@
   let r1 := [r0 at: "start" put: [self positionAtByte: start in: text]];
   [r1 at: "end" put: [self positionAtByte: finish in: text]]
   ] doc:
-  "Builds an LSP range from Codegen's absolute UTF-8 byte spans." ];
+  "Builds an LSP range from absolute UTF-8 byte spans." ];
 
 [Reflect defineMethod: #lspSymbolFrom:text: on: Lsp as: [:self :entry :text |
   let name := [entry at: "name" ifAbsent: [| ""]];
@@ -298,10 +702,10 @@
   let d4 := [d3 at: "range" put: range];
   [d4 at: "selectionRange" put: selection]
   ] doc:
-  "Converts one Codegen source symbol into an LSP DocumentSymbol." ];
+  "Converts one source-analysis symbol into an LSP DocumentSymbol." ];
 
 [Reflect defineMethod: #sourceSymbolsFor: on: Lsp as: [:self :text |
-  let raw := [Codegen sourceSymbolsOf: text];
+  let raw := [self sourceSymbolsOf: text];
   [raw inject: #[] into: [:out :entry | [out add: [self lspSymbolFrom: entry text: text]]]]
   ] doc:
   "Answers source-backed top-level document symbols for `text`." ];
@@ -545,12 +949,11 @@
 [Reflect defineMethod: #loadProjectSnapshotFor: on: Lsp as: [:self :uri |
   [[Globals includes: #Project]
     ifTrue: [|
-      let raw := [Project snapshotForUri: uri];
-      let parsed := [Json parse: raw];
-      [[parsed isError] ifTrue: [| nil] ifFalse: [| parsed]]]
+      let snapshot := [Project snapshotForUri: uri];
+      [[snapshot isNil] ifTrue: [| nil] ifFalse: [| snapshot]]]
     ifFalse: [| nil]]
   ] doc:
-  "Asks the host-side shared Project resolver for a JSON snapshot for `uri`; answers a parsed map or nil when the bridge is unavailable." ];
+  "Asks the host-side shared Project resolver for a native snapshot for `uri`; answers a map or nil when the bridge is unavailable." ];
 
 [Reflect defineMethod: #projectRootsMap on: Lsp as: [:self |
   [[db cellFor: self attr: #projectRoots] value]
@@ -657,11 +1060,12 @@
   "Adds canonical module/path/URI/source provenance to one lexical binding." ];
 
 [Reflect defineMethod: #sourceDocumentIndex:path:uri:text: on: Lsp as: [:self :module :path :uri :text |
-  let rawSymbols := [Codegen sourceSymbolsOf: text];
+  let raw := [self sourceAnalysisOf: text];
+  let rawSymbols := [raw at: "symbols"];
   let symbols := [rawSymbols inject: #[] into: [:out :entry |
     [out add: [self indexedSymbol: entry module: module path: path uri: uri text: text]]]];
-  let rawOccurrences := [Codegen sourceOccurrencesOf: text];
-  let rawBindings := [Codegen sourceBindingsOf: text];
+  let rawOccurrences := [raw at: "occurrences"];
+  let rawBindings := [raw at: "bindings"];
   let bindings := [rawBindings inject: #[] into: [:out :entry |
     [out add: [self indexedBinding: entry module: module path: path uri: uri text: text]]]];
   let d0 := [Map new];
@@ -814,9 +1218,12 @@
   "Builds semantic hover text from authored source provenance." ];
 
 [Reflect defineMethod: #selectorArity: on: Lsp as: [:self :selector |
-  [[[selector split: ":"] size] - 1]
+  let colons := [[[selector split: ":"] size] - 1];
+  let first := [[[selector size] > 0] ifTrue: [| [selector byteAt: 0]] ifFalse: [| 0]];
+  let letter := [[[first >= 97] & [first <= 122]] | [[first >= 65] & [first <= 90]]];
+  [[colons > 0] ifTrue: [| colons] ifFalse: [| [letter ifTrue: [| 0] ifFalse: [| 1]]]]
   ] doc:
-  "Answers the number of keyword arguments in a selector." ];
+  "Answers keyword colon arity, or one for a non-letter binary selector." ];
 
 [Reflect defineMethod: #byteOffsetAtPosition:in: on: Lsp as: [:self :position :text |
   let lineNo := [position at: "line" ifAbsent: [| 0]];

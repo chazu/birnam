@@ -29,6 +29,7 @@ pub const Artifact = struct {
     name: []const u8,
     relative_path: []const u8,
     source_path: []const u8,
+    source_paths: []const []const u8,
     source_digest: []const u8,
     revision_digest: []const u8,
     requires: []const []const u8,
@@ -49,6 +50,7 @@ const PreviousArtifact = struct {
     name: []const u8,
     relative_path: []const u8,
     source_path: []const u8,
+    source_paths: []const []const u8,
     source_digest: []const u8,
     revision_digest: []const u8,
     requires: []const []const u8,
@@ -204,6 +206,18 @@ fn recordStringList(state: *State, value: Oop, field: []const u8) FailureError![
     return values;
 }
 
+fn recordSourcePaths(state: *State, item: Oop) FailureError![]const []const u8 {
+    const sources = try mapAt(state, item, "sources");
+    if (sources != state.api.nilObj) return recordStringList(state, sources, "artifact sources");
+    // birnam-artifacts-v3 originally recorded only the entry path. Keep those
+    // records reusable as a one-file composition when a project is rebuilt.
+    const source = try recordString(state, try mapAt(state, item, "source"), "artifact source");
+    const result = state.arena.alloc([]const u8, 1) catch
+        return state.fail("buildFailed", "out of memory while reading artifact sources", .{});
+    result[0] = source;
+    return result;
+}
+
 fn parsePreviousBuildRecord(state: *State, final: []const u8) FailureError!PreviousBuild {
     const record_path = try pathJoin(state, final, "artifacts.toml");
     const bytes = std.fs.cwd().readFileAlloc(state.arena, record_path, max_source_bytes) catch
@@ -235,6 +249,7 @@ fn parsePreviousBuildRecord(state: *State, final: []const u8) FailureError!Previ
             .name = try recordString(state, try mapAt(state, item, "name"), "artifact name"),
             .relative_path = try recordString(state, try mapAt(state, item, "path"), "artifact path"),
             .source_path = try recordString(state, try mapAt(state, item, "source"), "artifact source"),
+            .source_paths = try recordSourcePaths(state, item),
             .source_digest = try recordString(state, try mapAt(state, item, "source_digest"), "artifact source digest"),
             .revision_digest = try recordString(state, try mapAt(state, item, "revision_digest"), "artifact revision digest"),
             .requires = try recordStringList(state, try mapAt(state, item, "requires"), "artifact requires"),
@@ -316,6 +331,7 @@ fn reusableChecksum(state: *State, record: PreviousBuild, resolution: *const pro
         return state.fail("buildFailed", "out of memory while naming module #{s}", .{module.name});
     if (!std.mem.eql(u8, old.relative_path, relative_path) or
         !std.mem.eql(u8, old.source_path, module.path) or
+        !stringsEqual(old.source_paths, module.sources) or
         !std.mem.eql(u8, old.source_digest, module.source_digest) or
         !std.mem.eql(u8, old.revision_digest, module.revision_digest) or
         !stringsEqual(old.requires, module.requires)) return null;
@@ -334,6 +350,7 @@ fn artifactFromModule(state: *State, module: project.Module, relative_path: []co
         .name = state.arena.dupe(u8, module.name) catch @panic("project_build: oom"),
         .relative_path = relative_path,
         .source_path = state.arena.dupe(u8, module.path) catch @panic("project_build: oom"),
+        .source_paths = try duplicateStrings(state, module.sources),
         .source_digest = state.arena.dupe(u8, module.source_digest) catch @panic("project_build: oom"),
         .revision_digest = state.arena.dupe(u8, module.revision_digest) catch @panic("project_build: oom"),
         .requires = try duplicateStrings(state, module.requires),
@@ -448,6 +465,7 @@ fn writeInlineModule(state: *State, out: *std.ArrayList(u8), module: project.Mod
     try put(state, out, "{ ");
     try appendInlineString(state, out, &first, "name", module.name);
     try appendInlineString(state, out, &first, "source", module.path);
+    try appendInlineArray(state, out, &first, "sources", module.sources);
     try appendInlineString(state, out, &first, "source_digest", module.source_digest);
     try appendInlineString(state, out, &first, "revision_digest", module.revision_digest);
     try appendInlineArray(state, out, &first, "requires", module.requires);
@@ -460,6 +478,7 @@ fn writeInlineArtifact(state: *State, out: *std.ArrayList(u8), artifact: Artifac
     try appendInlineString(state, out, &first, "name", artifact.name);
     try appendInlineString(state, out, &first, "path", artifact.relative_path);
     try appendInlineString(state, out, &first, "source", artifact.source_path);
+    try appendInlineArray(state, out, &first, "sources", artifact.source_paths);
     try appendInlineString(state, out, &first, "source_digest", artifact.source_digest);
     try appendInlineString(state, out, &first, "revision_digest", artifact.revision_digest);
     try appendInlineArray(state, out, &first, "requires", artifact.requires);
@@ -531,13 +550,13 @@ fn compilerError(state: *State, module: []const u8) FailureError {
 }
 
 fn compileArtifact(state: *State, module: project.Module, output_path: []const u8) FailureError!Artifact {
-    const source = std.fs.cwd().readFileAlloc(state.arena, module.path, max_source_bytes) catch
-        return state.fail("sourceReadFailed", "could not read source for #{s}: {s}", .{ module.name, module.path });
+    const source = module.source;
     const codegen = state.codegen orelse return state.fail("buildToolUnavailable", "Codegen is not available", .{});
-    const result = state.api.send(codegen, state.api.intern("compile:output:"), &[_]Oop{
+    const result = state.api.send(codegen, state.api.intern("compile:output:root:"), &[_]Oop{
         state.api.mkString(source.ptr, source.len),
         state.api.mkString(output_path.ptr, output_path.len),
-    }, 2);
+        state.api.mkString(module.project_root.ptr, module.project_root.len),
+    }, 3);
     if (result == state.api.nilObj) return compilerError(state, module.name);
 
     const artifact_bytes = std.fs.cwd().readFileAlloc(state.arena, output_path, 1 << 30) catch
@@ -548,6 +567,7 @@ fn compileArtifact(state: *State, module: project.Module, output_path: []const u
         .name = state.arena.dupe(u8, module.name) catch @panic("project_build: oom"),
         .relative_path = relative_path,
         .source_path = state.arena.dupe(u8, module.path) catch @panic("project_build: oom"),
+        .source_paths = try duplicateStrings(state, module.sources),
         .source_digest = state.arena.dupe(u8, module.source_digest) catch @panic("project_build: oom"),
         .revision_digest = state.arena.dupe(u8, module.revision_digest) catch @panic("project_build: oom"),
         .requires = try duplicateStrings(state, module.requires),
@@ -651,6 +671,7 @@ fn artifactMetadataMatches(state: *State, old: PreviousArtifact, module: project
     return std.mem.eql(u8, old.name, module.name) and
         std.mem.eql(u8, old.relative_path, relative_path) and
         std.mem.eql(u8, old.source_path, module.path) and
+        stringsEqual(old.source_paths, module.sources) and
         std.mem.eql(u8, old.source_digest, module.source_digest) and
         std.mem.eql(u8, old.revision_digest, module.revision_digest) and
         stringsEqual(old.requires, module.requires);
@@ -833,7 +854,12 @@ pub fn writeReport(result: *const Result, writer: anytype) !void {
     try writer.writeAll("artifacts:\n");
     if (build_result.artifacts.len == 0) try writer.writeAll("  (none)\n");
     for (build_result.artifacts) |artifact| {
-        try writer.print("  #{s} [{s}] <- {s} checksum={s}\n", .{ artifact.name, @tagName(artifact.action), artifact.relative_path, artifact.checksum });
+        try writer.print("  #{s} [{s}] <- {s}", .{ artifact.name, @tagName(artifact.action), artifact.relative_path });
+        if (artifact.source_paths.len > 1) {
+            try writer.print(" sources={s}", .{artifact.source_paths[0]});
+            for (artifact.source_paths[1..]) |path| try writer.print(" + {s}", .{path});
+        }
+        try writer.print(" checksum={s}\n", .{artifact.checksum});
     }
     if (build_result.native.len != 0) {
         try writer.writeAll("native:\n");

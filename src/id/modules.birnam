@@ -135,6 +135,21 @@
 [Reflect defineMethod: #dylibPathFor: on: Module as: [:self :name |
   [[[[self libDir] , "/libbirnam_"] , [Reflect nameOf: name]] , ".dylib"]]];
 
+// Compose an explicitly ordered set of source files into one module document.
+// The project resolver owns discovery and validation; the actual file reads and
+// source assembly stay in Birnam so the same operation is available to future
+// file-backed tooling and live-module workflows. Every part after the entry is
+// ordinary source and must not carry another Module named:requires: declaration.
+[Reflect defineMethod: #composeSources: on: Module as: [:self :paths |
+  [paths inject: "" into: [:text :path |
+    [[text isError]
+      ifTrue: [| text]
+      ifFalse: [|
+        let part := [System readFile: path];
+        [[part isError]
+          ifTrue: [| part]
+          ifFalse: [| [[text , part] , "\n"]]]]]]]]];
+
 // The recursive load: `within` is the in-progress chain (cycle guard), the same
 // persistent-Vector idiom as visit:order:path:. Dependencies (from the
 // compiler-embedded meta, read WITHOUT installing) load before the unit's own

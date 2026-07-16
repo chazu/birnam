@@ -50,3 +50,13 @@ let s := [TestSuite named: "Modules" module: #modules];
   [t expect: [Module kindOf: #modules] equals: #selfHosted describes: "no longer a kernel dylib"];
   [t expect: [Module isLoaded: #modules] equals: true describes: "self-marked loaded"];
   [t expect: [Module kindOf: #stdlib] equals: #selfHosted describes: "stdlib registered by its own opening statement"]]];
+
+[s test: "composeSources: joins an entry and ordered source parts" do: [:t |
+  let entryPath := "/tmp/birnam-module-compose-entry.birnam";
+  let partPath := "/tmp/birnam-module-compose-part.birnam";
+  [System writeFile: entryPath contents: "[Module named: #ttcompose requires: #[]];"];
+  [System writeFile: partPath contents: "// compose-part\n[Reflect defineMethod: #composePart on: Integer as: [:self | self]];"];
+  let source := [Module composeSources: #[entryPath partPath]];
+  [t expect: [source isError] equals: false describes: "composition returns source text"];
+  [t assert: [source includesSubstring: "#ttcompose"] describes: "entry source is present"];
+  [t assert: [source includesSubstring: "compose-part"] describes: "part source is present"]]];

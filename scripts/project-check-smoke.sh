@@ -7,13 +7,17 @@ tmp="$(mktemp -d /tmp/birnam-project-check.XXXXXX)"
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
-mkdir -p "$tmp/app/src/nested" "$tmp/app/native" "$tmp/dep/src"
+mkdir -p "$tmp/app/src/nested" "$tmp/app/native" "$tmp/app/assets" "$tmp/dep/src"
 
 cat >"$tmp/app/birnam.toml" <<'EOF'
 name = "app"
 main = "main.birnam"
 load = ["app"]
 source_roots = ["src"]
+
+[[module]]
+entry = "src/app.birnam"
+files = ["src/app-extra.birnam"]
 
 [[wrapped]]
 name = "foo"
@@ -27,12 +31,22 @@ cat >"$tmp/app/main.birnam" <<'EOF'
 // The entry source is not itself a project module.
 [System println: "project-main"];
 [System println: [[Foo version] printString]];
+[System println: [[AppPart marker] printString]];
+[System println: [[AppPart embedded] printString]];
 [System println: [[Globals at: #ProjectArgs] printString]];
 EOF
 
 cat >"$tmp/app/src/app.birnam" <<'EOF'
 [Module named: #app requires: #[#util #dep #foo]];
 EOF
+
+cat >"$tmp/app/src/app-extra.birnam" <<'EOF'
+[Globals at: #AppPart put: [Object clone]];
+[Reflect defineMethod: #marker on: AppPart as: [:self | "part-loaded"]];
+[Reflect defineMethod: #embedded on: AppPart as: [:self | [System embedFile: "assets/message.txt"]]];
+EOF
+
+printf 'embedded-from-project-root' >"$tmp/app/assets/message.txt"
 
 cat >"$tmp/app/src/foo.birnam" <<'EOF'
 [Module named: #foo requires: #[]];
@@ -73,6 +87,7 @@ grep -q "project: $tmp/app" <<<"$output"
 grep -q "main: $tmp/app/main.birnam" <<<"$output"
 order="$(grep '^  #' <<<"$output" | sed 's/^  #\([^ ]*\).*/\1/' | paste -sd ' ' -)"
 test "$order" = "leaf dep foo util app"
+grep -q "#app <- $tmp/app/src/app.birnam + $tmp/app/src/app-extra.birnam" <<<"$output"
 
 build_output="$(BIRNAM_FORCE_SOURCE=1 "$bin" build "$tmp/app/src/nested")"
 printf '%s\n' "$build_output"
@@ -84,6 +99,7 @@ for module in leaf dep util foo app; do
     test -f "$build_root/lib/libbirnam_${module}.dylib"
     grep -q "name = \"$module\"" "$build_root/artifacts.toml"
 done
+grep -q "sources = \[\"$tmp/app/src/app.birnam\", \"$tmp/app/src/app-extra.birnam\"\]" "$build_root/artifacts.toml"
 test -f "$build_root/lib/libfoo.dylib"
 grep -q 'foo \[compiled\].*lib/libfoo.dylib' <<<"$build_output"
 grep -q 'artifact_abi = "birnam-artifact-generation-v1"' "$build_root/artifacts.toml"
@@ -104,12 +120,30 @@ bare_output="$(cd "$tmp/app" && printf ':quit\n' | BIRNAM_FORCE_SOURCE=1 BIRNAM_
 printf '%s\n' "$bare_output"
 test "$(grep -c 'project-main' <<<"$bare_output")" = 1
 grep -q '^7$' <<<"$bare_output"
+grep -q 'part-loaded' <<<"$bare_output"
+grep -q 'embedded-from-project-root' <<<"$bare_output"
 grep -q 'interactive image' <<<"$bare_output"
 
 reused_output="$(BIRNAM_FORCE_SOURCE=1 "$bin" build "$tmp/app")"
 printf '%s\n' "$reused_output"
 for module in leaf dep util foo app; do
     grep -q "#$module \[reused\]" <<<"$reused_output"
+done
+
+printf 'changed-embedded-bytes' >"$tmp/app/assets/message.txt"
+asset_changed_output="$(BIRNAM_FORCE_SOURCE=1 "$bin" build "$tmp/app")"
+printf '%s\n' "$asset_changed_output"
+grep -q '#app \[compiled\]' <<<"$asset_changed_output"
+for module in leaf dep util foo; do
+    grep -q "#$module \[reused\]" <<<"$asset_changed_output"
+done
+
+printf '// changing a source part must invalidate its composed module\n' >>"$tmp/app/src/app-extra.birnam"
+part_changed_output="$(BIRNAM_FORCE_SOURCE=1 "$bin" build "$tmp/app")"
+printf '%s\n' "$part_changed_output"
+grep -q '#app \[compiled\]' <<<"$part_changed_output"
+for module in leaf dep util foo; do
+    grep -q "#$module \[reused\]" <<<"$part_changed_output"
 done
 
 cat >"$tmp/dep/src/leaf.birnam" <<'EOF'
@@ -150,6 +184,10 @@ main = "main.birnam"
 load = ["app"]
 source_roots = ["src"]
 
+[[module]]
+entry = "src/app.birnam"
+files = ["src/app-extra.birnam"]
+
 [[wrapped]]
 name = "foo"
 build = [["cc", "-dynamiclib", "-fPIC", "native/foo.c", "-o", "{output}"]]
@@ -173,10 +211,22 @@ for _ in $(seq 1 50); do
 done
 grep -q 'socket REPL listening on 127.0.0.1:45678' "$socket_output"
 test "$(grep -c 'project-main' "$socket_output")" = 1
+grep -q 'part-loaded' "$socket_output"
 printf ':quit\n' | nc -w 1 127.0.0.1 45678 >"$tmp/socket-client.out" || true
 grep -q 'socket REPL' "$tmp/socket-client.out"
 kill "$socket_pid" 2>/dev/null || true
 wait "$socket_pid" 2>/dev/null || true
+
+cp "$tmp/app/src/app-extra.birnam" "$tmp/app/src/app-extra.birnam.valid"
+cat >"$tmp/app/src/app-extra.birnam" <<'EOF'
+[Module named: #unexpectedPart requires: #[]];
+EOF
+if BIRNAM_FORCE_SOURCE=1 "$bin" check "$tmp/app" >"$tmp/part-declaration.out" 2>&1; then
+    echo "expected module part declaration failure" >&2
+    exit 1
+fi
+grep -q "modulePartDeclaration" "$tmp/part-declaration.out"
+mv "$tmp/app/src/app-extra.birnam.valid" "$tmp/app/src/app-extra.birnam"
 
 cat >"$tmp/app/src/app.birnam" <<'EOF'
 [Module named: #app requires: #[#util #dep]];

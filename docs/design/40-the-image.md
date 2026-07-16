@@ -130,8 +130,9 @@
 > is mirrored into the store) and the codegen/Tcc stack
 > ([rung 3](../archive/work-breakdowns/35-rung-3-front-end.md)). Supersedes the old kernel's
 > `2e-images-aot.md` framing and closes out ADR-image-1's direction on the id
-> stack. Reference-only salvage from the old kernel lives in `src/attic/`
-> (`image.zig`, `freeze.zig`, `loader.zig`, `macho.zig`, `elf.zig`).
+> stack. The old kernel implementation is preserved only in git history; the
+> active image contract below is implemented by the current `src/id/image.zig`
+> floor.
 
 Today every `birnam` run starts from nothing: REPL bindings, defined
 methods, and store facts all die with the process. The image is the fix — and
@@ -238,8 +239,8 @@ a dlopen-able shared object.**
 Facts are immutable; the store appends. The image's data section is an
 append-only segment holding the fact stream, the counters, and the
 **interner** — the eid/name bijection was the old kernel's hardest-won lesson
-(the durable anchor: everything relinks by interned name; see
-`attic/image.zig`). Loading maps the segment; incremental save appends new
+(the durable anchor: everything relinks by interned name). Loading maps the
+segment; incremental save appends new
 facts and new compiled units; `[System saveImage:]` compacts. The mmap fast
 path can come after a first version that reads the segment eagerly — same
 logical format either way.

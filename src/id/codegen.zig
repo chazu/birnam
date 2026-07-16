@@ -58,6 +58,7 @@ var g_methodops_entity: Oop = null; // post-cutover sequenced install/remove sou
 var g_globalsrc_entity: Oop = null; // the reserved entity top-level global-source facts hang off of
 var artifact_method_counter: usize = 0; // per-emit ids for installable artifact methods
 var method_op_counter: usize = 0; // tie-breaker within a Store basis
+var reflect_fact_collector_vt: Oop = null; // private callback vtable for Reflect factsOf:
 var suppress_methodop_recording = false; // image replay/load must not log its own recovery
 var artifact_record_ops = true; // false only for compacted image-code emission
 // Image dispatch programs consume complete module documents, but their top-level
@@ -285,6 +286,14 @@ var artifact_salt: u64 = 0;
 // `__modsrc__` fact at load. Points into the caller's out-path bytes, valid for the
 // synchronous emitProgram call; cleared right after.
 var g_module_name: ?[]const u8 = null;
+// Root used by the source document currently being compiled/evaluated. Direct
+// source paths use their containing directory; project builds pass the owning
+// project root so composed source fragments share one package-local namespace.
+// The slice is borrowed from the synchronous path argument and is only live for
+// the call.
+var g_embed_root: ?[]const u8 = null;
+
+const max_embedded_file_bytes = 16 << 20;
 
 const CandidateRootKey = struct { salt: u64, index: usize };
 var candidate_roots: std.AutoHashMapUnmanaged(CandidateRootKey, Oop) = .{};
@@ -841,6 +850,218 @@ fn directMethod(vt: Oop, sel: Oop) ?Oop {
     return null;
 }
 
+const ReflectFact = struct { e: Oop, a: Oop, v: Oop };
+
+const ReflectFactState = struct {
+    target: Oop,
+    rows: std.ArrayList(ReflectFact) = .{},
+};
+
+fn mCollectReflectFact(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const slot: *usize = @ptrCast(@alignCast(self.?));
+    const state: *ReflectFactState = @ptrFromInt(slot.*);
+    if (args[0] == state.target)
+        state.rows.append(ca, .{ .e = args[0], .a = args[1], .v = args[2] }) catch @panic("codegen: oom");
+    return g_api.nilObj;
+}
+
+fn mapPut(map: Oop, key: Oop, value: Oop) Oop {
+    return g_api.send(map, g_api.intern("at:put:"), &[_]Oop{ key, value }, 2);
+}
+
+fn newMap() Oop {
+    const map = g_api.import("Map") orelse return g_api.nilObj;
+    return g_api.send(map, g_api.intern("new"), &.{}, 0);
+}
+
+fn globalNameForValue(value: Oop) Oop {
+    const count = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{g_globals_entity}, 1));
+    var i: i64 = 0;
+    while (i < count) : (i += 1) {
+        const name = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ g_globals_entity, g_api.mkSmallInt(i) }, 2);
+        const bound = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globals_entity, name }, 2);
+        if (bound == value) return name;
+    }
+    return g_api.nilObj;
+}
+
+fn exportedSymbolForValue(value: Oop) Oop {
+    if (value == null) return g_api.nilObj;
+    if (g_api.exportedNameOf(value)) |name| return g_api.intern(name);
+    return g_api.nilObj;
+}
+
+fn methodTargetName(vt: Oop) Oop {
+    const owner = g_api.vtableOwner(vt);
+    const owner_name = exportedSymbolForValue(owner);
+    if (owner_name != g_api.nilObj) return owner_name;
+    const owner_global = globalNameForValue(owner);
+    if (owner_global != g_api.nilObj) return owner_global;
+
+    // Abstract families such as Collection export their vtable directly rather
+    // than an owning prototype. That export is still the source-level target
+    // name used by method operation records.
+    const vtable_name = exportedSymbolForValue(vt);
+    if (vtable_name != g_api.nilObj) return vtable_name;
+    return globalNameForValue(vt);
+}
+
+fn isRegisteredVtable(value: Oop) bool {
+    if (value == null) return false;
+    var i: usize = 0;
+    while (i < g_api.vtableCount()) : (i += 1) if (g_api.vtableAt(i) == value) return true;
+    return false;
+}
+
+fn vtableForTargetName(name: Oop) Oop {
+    const target = globalBySymbol(name);
+    if (target == g_api.nilObj) return null;
+    if (isRegisteredVtable(target)) return target;
+    return g_api.vtableOf(target);
+}
+
+fn generationMethodSource(target_name: Oop, selector: Oop) Oop {
+    var documents = orderedGenerationSources() orelse return g_api.nilObj;
+    defer documents.deinit(ca);
+    var found: Oop = null;
+    for (documents.items) |document| {
+        var scan = scanCandidateSource(document) orelse continue;
+        defer scan.deinit();
+        for (scan.ops.items) |op| {
+            if (op.kind == .install and op.target_name == target_name and op.selector == selector)
+                found = op.source;
+        }
+    }
+    return found orelse g_api.nilObj;
+}
+
+fn methodSourceForVtableSelector(vt: Oop, selector: Oop) Oop {
+    const target_name = methodTargetName(vt);
+    if (target_name == g_api.nilObj) return g_api.nilObj;
+    const portable = latestPortableSource(target_name, selector);
+    if (portable != null) return portable;
+    return generationMethodSource(target_name, selector);
+}
+
+fn reflectMethodDescriptor(vt: Oop, selector: Oop) Oop {
+    const owner = g_api.vtableOwner(vt);
+    const mirror = g_api.send(g_store, sel_currentValue, &[_]Oop{ vt, selector }, 2);
+    const primitive = g_api.intern("primitive");
+    const method = if (mirror == g_api.nilObj)
+        primitive
+    else if (mirror == primitive or g_api.objectPayloadSize(mirror) != 0)
+        mirror
+    else
+        g_api.intern("compiled");
+    var descriptor = newMap();
+    descriptor = mapPut(descriptor, g_api.intern("selector"), selector);
+    descriptor = mapPut(descriptor, g_api.intern("owner"), owner orelse g_api.nilObj);
+    descriptor = mapPut(descriptor, g_api.intern("target"), methodTargetName(vt));
+    descriptor = mapPut(descriptor, g_api.intern("method"), method);
+    // Source lookup is intentionally lazy: walking the active generation's
+    // method documents is useful for one method, but would make enumerating a
+    // whole protocol repeatedly rescan every module. `methodSource:` performs
+    // that lookup on demand.
+    return descriptor;
+}
+
+/// `[Reflect allMethodsOf: value]` — enumerate the effective method protocol of
+/// `value`, nearest vtable first. Each entry is a Map containing `#selector`,
+/// `#owner` (or nil for an abstract unowned family), `#target` (the source-level
+/// target name), and `#method` (the store mirror, #primitive for a native
+/// binding, or #compiled for a raw compiled trampoline). Raw vtable/method
+/// pointers stay internal and are not placed in the returned maps. Use
+/// `Reflect methodSource:` for the optional source text.
+/// A selector is emitted once: a direct child binding shadows its parent.
+fn mAllMethodsOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+
+    var result = g_api.send(g_api.import("Vector") orelse return g_api.nilObj, g_api.intern("new"), &.{}, 0);
+    var seen_selectors: std.ArrayList(Oop) = .{};
+    defer seen_selectors.deinit(ca);
+    var seen_vtables: std.ArrayList(Oop) = .{};
+    defer seen_vtables.deinit(ca);
+
+    var vt = g_api.vtableOf(args[0]);
+    while (vt != null) {
+        var repeated_vtable = false;
+        for (seen_vtables.items) |seen| if (seen == vt) {
+            repeated_vtable = true;
+            break;
+        };
+        if (repeated_vtable) break;
+        seen_vtables.append(ca, vt) catch @panic("codegen: oom");
+
+        var i: usize = 0;
+        while (g_api.vtableSelectorAt(vt, i)) |selector| : (i += 1) {
+            var repeated_selector = false;
+            for (seen_selectors.items) |seen| if (seen == selector) {
+                repeated_selector = true;
+                break;
+            };
+            if (repeated_selector) continue;
+            seen_selectors.append(ca, selector) catch @panic("codegen: oom");
+            result = g_api.send(result, g_api.intern("add:"), &[_]Oop{reflectMethodDescriptor(vt, selector)}, 1);
+        }
+        vt = g_api.vtableParent(vt);
+    }
+    return result;
+}
+
+/// `[Reflect methodSource: descriptor]` — return the source recorded for a
+/// descriptor returned by `allMethodsOf:`, or nil for a native/undocumented
+/// method. The descriptor's target and selector are consulted again so the
+/// answer remains useful when the descriptor was copied without `#source`.
+fn mMethodSource(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+    const descriptor = args[0];
+    const map_vt = g_api.import("MapVt") orelse return g_api.nilObj;
+    if (g_api.vtableOf(descriptor) != map_vt) return g_api.nilObj;
+    const source = g_api.send(descriptor, g_api.intern("at:"), &[_]Oop{g_api.intern("source")}, 1);
+    if (source != g_api.nilObj) return source;
+    const target_name = g_api.send(descriptor, g_api.intern("at:"), &[_]Oop{g_api.intern("target")}, 1);
+    const selector = g_api.send(descriptor, g_api.intern("at:"), &[_]Oop{g_api.intern("selector")}, 1);
+    if (target_name == g_api.nilObj or selector == g_api.nilObj) return g_api.nilObj;
+    const vt = vtableForTargetName(target_name);
+    if (vt == null) return g_api.nilObj;
+    return methodSourceForVtableSelector(vt, selector);
+}
+
+/// `[Reflect factsOf: entity]` — return the current live store facts for an
+/// entity as Maps with `#entity`, `#attribute`, and `#value`. This is a snapshot
+/// of liveness, not the transaction log: retractions and superseded :one values
+/// are absent.
+fn mFactsOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+
+    var state = ReflectFactState{ .target = args[0] };
+    defer state.rows.deinit(ca);
+    const collector = g_api.alloc(reflect_fact_collector_vt, @sizeOf(usize));
+    const slot: *usize = @ptrCast(@alignCast(collector.?));
+    slot.* = @intFromPtr(&state);
+    _ = g_api.send(g_store, g_api.intern("liveTriplesDo:"), &[_]Oop{collector}, 1);
+
+    var result = g_api.send(g_api.import("Vector") orelse return g_api.nilObj, g_api.intern("new"), &.{}, 0);
+    for (state.rows.items) |row| {
+        var fact = newMap();
+        fact = mapPut(fact, g_api.intern("entity"), row.e);
+        fact = mapPut(fact, g_api.intern("attribute"), row.a);
+        fact = mapPut(fact, g_api.intern("value"), row.v);
+        result = g_api.send(result, g_api.intern("add:"), &[_]Oop{fact}, 1);
+    }
+    return result;
+}
+
 /// Staged-compile a single C function and return its native address as an Oop
 /// (raw fn pointer), or nil. The TccState (holding the code) is intentionally
 /// kept alive by the installed method; no GC yet, so it simply persists.
@@ -1088,6 +1309,125 @@ fn emitGeneralSend(buf: *std.ArrayList(u8), recvNode: Oop, sel: []const u8, argN
 fn isReflectRecv(recv: Oop) bool {
     const nd = skip(recv);
     return ruleOf(nd) == r_ident and std.mem.eql(u8, text(nd), "Reflect");
+}
+
+/// Is `recv` syntactically the `System` global? `embedFile:` is a compiler
+/// intrinsic, so only the canonical receiver gets the transformation. An
+/// alias or arbitrary object remains an ordinary late-bound send.
+fn isSystemRecv(recv: Oop) bool {
+    const nd = skip(recv);
+    return ruleOf(nd) == r_ident and std.mem.eql(u8, text(nd), "System");
+}
+
+fn sourceDirectory(path: []const u8) []const u8 {
+    return if (std.mem.lastIndexOfScalar(u8, path, '/')) |slash|
+        if (slash == 0) path[0..1] else path[0..slash]
+    else
+        ".";
+}
+
+fn sourceDirectoryOf(o: Oop) []const u8 {
+    var len: usize = 0;
+    return sourceDirectory(g_api.stringBytes(o, &len)[0..len]);
+}
+
+fn decodeStringLiteral(node0: Oop, out: *std.ArrayList(u8)) bool {
+    const node = skip(node0);
+    if (ruleOf(node) != r_string) return false;
+    const raw = text(node);
+    const inner = if (raw.len >= 2) raw[1 .. raw.len - 1] else raw;
+    var i: usize = 0;
+    while (i < inner.len) : (i += 1) {
+        if (inner[i] == '\\' and i + 1 < inner.len) {
+            const decoded: ?u8 = switch (inner[i + 1]) {
+                '"' => '"',
+                '\\' => '\\',
+                'n' => '\n',
+                't' => '\t',
+                'r' => '\r',
+                '0' => 0,
+                else => null,
+            };
+            if (decoded) |d| {
+                out.append(ca, d) catch @panic("codegen: oom");
+                i += 1;
+                continue;
+            }
+        }
+        out.append(ca, inner[i]) catch @panic("codegen: oom");
+    }
+    return true;
+}
+
+fn appendEmbeddedPath(paths: *std.ArrayList(Oop), node: Oop) void {
+    var path: std.ArrayList(u8) = .{};
+    defer path.deinit(ca);
+    if (!decodeStringLiteral(node, &path)) return;
+    for (paths.items) |existing| {
+        var len: usize = 0;
+        const bytes = g_api.stringBytes(existing, &len);
+        if (std.mem.eql(u8, bytes[0..len], path.items)) return;
+    }
+    paths.append(ca, g_api.mkString(path.items.ptr, path.items.len)) catch @panic("codegen: oom");
+}
+
+fn collectEmbeddedPaths(node0: Oop, paths: *std.ArrayList(Oop)) void {
+    const node = skip(node0);
+    if (ruleOf(node) == r_send and nchild(node) >= 2) {
+        const recv = skip(child(node, 0));
+        const msg = skip(child(node, 1));
+        if (ruleOf(recv) == r_ident and std.mem.eql(u8, text(recv), "System")) {
+            var selector: std.ArrayList(u8) = .{};
+            defer selector.deinit(ca);
+            var args: std.ArrayList(Oop) = .{};
+            defer args.deinit(ca);
+            if (keywordParts(msg, &selector, &args) and
+                std.mem.eql(u8, selector.items, "embedFile:") and args.items.len == 1)
+            {
+                appendEmbeddedPath(paths, args.items[0]);
+            }
+        }
+    }
+    var i: usize = 0;
+    while (i < nchild(node)) : (i += 1) collectEmbeddedPaths(child(node, i), paths);
+}
+
+fn hasParentPath(path: []const u8) bool {
+    var parts = std.mem.splitScalar(u8, path, '/');
+    while (parts.next()) |part| if (std.mem.eql(u8, part, ".") or std.mem.eql(u8, part, "..")) return true;
+    return false;
+}
+
+fn emitEmbeddedFile(buf: *std.ArrayList(u8), path_node: Oop, send_node: Oop) bool {
+    var relative: std.ArrayList(u8) = .{};
+    defer relative.deinit(ca);
+    if (!decodeStringLiteral(path_node, &relative)) {
+        noteError("embedFile: requires a string literal path", spanStart(send_node));
+        return false;
+    }
+    if (relative.items.len == 0 or std.fs.path.isAbsolute(relative.items) or hasParentPath(relative.items)) {
+        noteError("embedFile: path must be a non-empty relative path without '.' or '..'", spanStart(send_node));
+        return false;
+    }
+
+    const root = g_embed_root orelse ".";
+    const full_path = std.fs.path.join(ca, &.{ root, relative.items }) catch {
+        noteError("embedFile: could not resolve the path", spanStart(send_node));
+        return false;
+    };
+    defer ca.free(full_path);
+    const bytes = std.fs.cwd().readFileAlloc(ca, full_path, max_embedded_file_bytes) catch {
+        noteError("embedFile: could not read the file", spanStart(send_node));
+        return false;
+    };
+    defer ca.free(bytes);
+
+    put(buf, "birnam_mkString(\"");
+    putCStr(buf, bytes);
+    put(buf, "\", ");
+    var length: [24]u8 = undefined;
+    put(buf, std.fmt.bufPrint(&length, "{d}L)", .{bytes.len}) catch return false);
+    return true;
 }
 
 /// Emit `[<recv> defineMethod: … on: … as: …]` (3 args) or `[… defineMethod: …
@@ -1364,6 +1704,8 @@ fn emit(buf: *std.ArrayList(u8), node0: Oop) bool {
             // save/replay (the pre-slice-4 stdlib-string gap).
             const dm3 = std.mem.eql(u8, sel.items, "defineMethod:on:as:") and args.items.len == 3;
             const dm4 = std.mem.eql(u8, sel.items, "defineMethod:on:as:doc:") and args.items.len == 4;
+            const embed = std.mem.eql(u8, sel.items, "embedFile:") and args.items.len == 1;
+            if (embed and isSystemRecv(recv)) return emitEmbeddedFile(buf, args.items[0], node);
             if ((dm3 or dm4) and isReflectRecv(recv)) {
                 // Artifact mode (docs/40 slice 4): emit the method PRE-COMPILED —
                 // the trampoline as a static fn + a direct `birnam_method` install,
@@ -1744,6 +2086,9 @@ fn emitBody(buf: *std.ArrayList(u8), statements: Oop, persist: bool, top: bool) 
 fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    const prior = g_embed_root;
+    g_embed_root = null;
+    defer g_embed_root = prior;
     return runProgram(a[0], false);
 }
 
@@ -1752,6 +2097,31 @@ fn mEval(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 fn mEvalPersisting(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    const prior = g_embed_root;
+    g_embed_root = null;
+    defer g_embed_root = prior;
+    return runProgram(a[0], true);
+}
+
+/// `[Codegen eval: source from: sourcePath]` — evaluate source with relative
+/// embedFile: paths anchored at the source document's directory.
+fn mEvalFrom(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const prior = g_embed_root;
+    g_embed_root = sourceDirectoryOf(a[1]);
+    defer g_embed_root = prior;
+    return runProgram(a[0], false);
+}
+
+/// `[Codegen evalPersisting: source from: sourcePath]` — the source-file-aware
+/// persisting evaluator used by System load: and project/script entrypoints.
+fn mEvalPersistingFrom(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const prior = g_embed_root;
+    g_embed_root = sourceDirectoryOf(a[1]);
+    defer g_embed_root = prior;
     return runProgram(a[0], true);
 }
 
@@ -1995,330 +2365,22 @@ fn makeVector(items: []const Oop) Oop {
     return result;
 }
 
-fn staticDiagnostic(kind: []const u8, message: []const u8, start: usize, end: usize) Oop {
-    const map_type = g_api.import("Map") orelse return g_api.nilObj;
-    var result = g_api.send(map_type, g_api.intern("new"), &[_]Oop{}, 0);
-    const put_sel = g_api.intern("at:put:");
-    const key_kind = g_api.mkString("kind", 4);
-    const key_message = g_api.mkString("message", 7);
-    const key_start = g_api.mkString("start", 5);
-    const key_end = g_api.mkString("end", 3);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_kind, g_api.mkString(kind.ptr, kind.len) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_message, g_api.mkString(message.ptr, message.len) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_start, g_api.mkSmallInt(@intCast(start)) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_end, g_api.mkSmallInt(@intCast(end)) }, 2);
-    return result;
-}
-
-fn addStaticDiagnostic(out: *std.ArrayList(Oop), kind: []const u8, message: []const u8, start: usize, end: usize) void {
-    out.append(ca, staticDiagnostic(kind, message, start, end)) catch @panic("codegen: oom");
-}
-
-fn sourceSymbolEntry(kind: i64, name: []const u8, detail: []const u8, start: usize, end: usize, selection_start: usize, selection_end: usize) Oop {
-    const map_type = g_api.import("Map") orelse return g_api.nilObj;
-    var result = g_api.send(map_type, g_api.intern("new"), &[_]Oop{}, 0);
-    const put_sel = g_api.intern("at:put:");
-    const key_name = g_api.mkString("name", 4);
-    const key_kind = g_api.mkString("kind", 4);
-    const key_detail = g_api.mkString("detail", 6);
-    const key_start = g_api.mkString("start", 5);
-    const key_end = g_api.mkString("end", 3);
-    const key_selection_start = g_api.mkString("selectionStart", 14);
-    const key_selection_end = g_api.mkString("selectionEnd", 12);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_name, g_api.mkString(name.ptr, name.len) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_kind, g_api.mkSmallInt(kind) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_detail, g_api.mkString(detail.ptr, detail.len) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_start, g_api.mkSmallInt(@intCast(start)) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_end, g_api.mkSmallInt(@intCast(end)) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_selection_start, g_api.mkSmallInt(@intCast(selection_start)) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ key_selection_end, g_api.mkSmallInt(@intCast(selection_end)) }, 2);
-    return result;
-}
-
-fn sourceOccurrenceEntry(name: []const u8, start: usize, end: usize) Oop {
-    const map_type = g_api.import("Map") orelse return g_api.nilObj;
-    var result = g_api.send(map_type, g_api.intern("new"), &[_]Oop{}, 0);
-    const put_sel = g_api.intern("at:put:");
-    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("name", 4), g_api.mkString(name.ptr, name.len) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("start", 5), g_api.mkSmallInt(@intCast(start)) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("end", 3), g_api.mkSmallInt(@intCast(end)) }, 2);
-    return result;
-}
-
-fn sourceBindingEntry(kind: []const u8, name: []const u8, start: usize, end: usize, scope_start: usize, scope_end: usize) Oop {
-    const map_type = g_api.import("Map") orelse return g_api.nilObj;
-    var result = g_api.send(map_type, g_api.intern("new"), &[_]Oop{}, 0);
-    const put_sel = g_api.intern("at:put:");
-    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("kind", 4), g_api.mkString(kind.ptr, kind.len) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("name", 4), g_api.mkString(name.ptr, name.len) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("start", 5), g_api.mkSmallInt(@intCast(start)) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("end", 3), g_api.mkSmallInt(@intCast(end)) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("scopeStart", 10), g_api.mkSmallInt(@intCast(scope_start)) }, 2);
-    result = g_api.send(result, put_sel, &[_]Oop{ g_api.mkString("scopeEnd", 8), g_api.mkSmallInt(@intCast(scope_end)) }, 2);
-    return result;
-}
-
-fn addSourceBinding(out: *std.ArrayList(Oop), kind: []const u8, name_node: Oop, scope_start: usize, scope_end: usize) void {
-    const name = skip(name_node);
-    out.append(ca, sourceBindingEntry(kind, text(name), spanStart(name), spanEnd(name), scope_start, scope_end)) catch @panic("codegen: oom");
-}
-
-/// Collect declarations that are safe to expose as lexical completion entries.
-/// The CST owns the scope boundaries, so the editor never needs a second
-/// implementation of Birnam's block/let grammar.
-fn collectSourceBindings(node0: Oop, scope_start: usize, scope_end: usize, out: *std.ArrayList(Oop)) void {
-    const node = skip(node0);
-    const r = ruleOf(node);
-    if (r == r_block) {
-        var i: usize = 0;
-        while (i < nchild(node)) : (i += 1) {
-            const c = skip(child(node, i));
-            if (ruleOf(c) == r_ident) addSourceBinding(out, "parameter", c, spanStart(node), spanEnd(node));
-        }
-        i = 0;
-        while (i < nchild(node)) : (i += 1) {
-            const c = skip(child(node, i));
-            if (ruleOf(c) == r_statements) collectSourceBindings(c, spanStart(node), spanEnd(node), out);
-        }
-        return;
-    }
-    if (r == r_letBinding) {
-        if (nchild(node) > 0) addSourceBinding(out, "local", child(node, 0), scope_start, scope_end);
-        if (nchild(node) > 1) collectSourceBindings(child(node, 1), scope_start, scope_end, out);
-        return;
-    }
-    var i: usize = 0;
-    while (i < nchild(node)) : (i += 1) collectSourceBindings(child(node, i), scope_start, scope_end, out);
-}
-
-fn sourceSymbolName(node0: Oop) []const u8 {
-    const raw = text(skip(node0));
-    return if (raw.len > 0 and raw[0] == '#') raw[1..] else raw;
-}
-
-fn addSourceSymbol(out: *std.ArrayList(Oop), kind: i64, name: []const u8, detail: []const u8, node: Oop, selection_node: Oop) void {
-    const selected = skip(selection_node);
-    out.append(ca, sourceSymbolEntry(kind, name, detail, spanStart(node), spanEnd(node),
-        spanStart(selected) + if (ruleOf(selected) == r_symbol) @as(usize, 1) else @as(usize, 0), spanEnd(selected))) catch @panic("codegen: oom");
-}
-
-fn collectSourceSymbols(statements: Oop, out: *std.ArrayList(Oop)) void {
-    var i: usize = 0;
-    while (i < nchild(statements)) : (i += 1) {
-        const stmt = child(statements, i);
-        if (nchild(stmt) < 1) continue;
-        const whole = skip(child(stmt, 0));
-        if (ruleOf(whole) == r_letBinding) {
-            const name = skip(child(whole, 0));
-            addSourceSymbol(out, 13, text(name), "top-level let", whole, name);
-            continue;
-        }
-        if (ruleOf(whole) != r_send) continue;
-        const recv = skip(child(whole, 0));
-        const msg = skip(child(whole, 1));
-        if (ruleOf(recv) != r_ident or ruleOf(msg) != r_keywordMsg) continue;
-
-        var selector: std.ArrayList(u8) = .{};
-        defer selector.deinit(ca);
-        var args: std.ArrayList(Oop) = .{};
-        defer args.deinit(ca);
-        _ = keywordParts(msg, &selector, &args);
-
-        if (std.mem.eql(u8, text(recv), "Module") and
-            std.mem.eql(u8, selector.items, "named:requires:") and args.items.len == 2)
-        {
-            if (symbolNode(args.items[0]) != null) {
-                addSourceSymbol(out, 3, sourceSymbolName(args.items[0]), "module", whole, args.items[0]);
-            }
-            continue;
-        }
-
-        const is_define = (std.mem.eql(u8, selector.items, "defineMethod:on:as:") and args.items.len == 3) or
-            (std.mem.eql(u8, selector.items, "defineMethod:on:as:doc:") and args.items.len == 4);
-        if (!is_define or !isReflectRecv(recv)) continue;
-        if (symbolNode(args.items[0]) == null or identNode(args.items[1]) == null) continue;
-        const detail = text(skip(args.items[1]));
-        addSourceSymbol(out, 6, sourceSymbolName(args.items[0]), detail, whole, args.items[0]);
-    }
-}
-
-/// Collect lexical identifiers and keyword selector parts from a parsed CST.
-/// This is intentionally an occurrence index, not a resolver: the LSP only uses
-/// it for same-document references to declarations it can identify safely.
-fn collectSourceOccurrences(node0: Oop, out: *std.ArrayList(Oop)) void {
-    const node = node0;
-    const r = ruleOf(node);
-    if (r == r_symbol or r == r_number or r == r_float or r == r_string or r == r_logicVar) return;
-    if (r == r_ident) {
-        const raw = text(node);
-        out.append(ca, sourceOccurrenceEntry(raw, spanStart(node), spanEnd(node))) catch @panic("codegen: oom");
-        return;
-    }
-    if (r == r_keywordMsg) {
-        var i: usize = 0;
-        while (i + 1 < nchild(node)) : (i += 2) {
-            const part = child(node, i);
-            const raw = text(part);
-            out.append(ca, sourceOccurrenceEntry(raw, spanStart(part), spanEnd(part))) catch @panic("codegen: oom");
-            collectSourceOccurrences(child(node, i + 1), out);
-        }
-        return;
-    }
-    var i: usize = 0;
-    while (i < nchild(node)) : (i += 1) collectSourceOccurrences(child(node, i), out);
-}
-
-/// Check only declarations whose invalidity is visible in the source itself.
-/// Ordinary sends are deliberately not checked for missing methods: identifiers
-/// are late-bound globals and dispatch is late-bound, so a project-local checker
-/// cannot safely turn an unresolved name or receiver into a false error.
-fn analyzeStaticNode(node0: Oop, out: *std.ArrayList(Oop)) void {
-    const node = skip(node0);
-    const r = ruleOf(node);
-    if (r == r_send) {
-        const recv = child(node, 0);
-        const msg = skip(child(node, 1));
-        const mr = ruleOf(msg);
-
-        if (mr == r_keywordMsg) {
-            var selector: std.ArrayList(u8) = .{};
-            defer selector.deinit(ca);
-            var args: std.ArrayList(Oop) = .{};
-            defer args.deinit(ca);
-            _ = keywordParts(msg, &selector, &args);
-
-            const is_define = std.mem.eql(u8, selector.items, "defineMethod:on:as:") and args.items.len == 3;
-            const is_define_doc = std.mem.eql(u8, selector.items, "defineMethod:on:as:doc:") and args.items.len == 4;
-            if ((is_define or is_define_doc) and isReflectRecv(recv)) {
-                if (symbolNode(args.items[0])) |sel| {
-                    if (blockParamCount(args.items[2])) |actual| {
-                        const expected = selectorArity(sel) + 1;
-                        if (actual != expected) {
-                            const raw = text(skip(args.items[0]));
-                            const message = std.fmt.allocPrint(ca,
-                                "selector {s} expects {d} block parameter{s} including self, got {d}",
-                                .{ raw, expected, if (expected == 1) "" else "s", actual },
-                            ) catch @panic("codegen: oom");
-                            defer ca.free(message);
-                            addStaticDiagnostic(out, "selectorArity", message,
-                                spanStart(skip(args.items[0])), spanEnd(skip(args.items[0])));
-                        }
-                    }
-                }
-            }
-
-            var i: usize = 1;
-            while (i < nchild(msg)) : (i += 2) analyzeStaticNode(child(msg, i), out);
-        } else if (mr == r_binaryMsg) {
-            analyzeStaticNode(child(msg, 1), out);
-        } else if (mr == r_message) {
-            var i: usize = 0;
-            while (i < nchild(msg)) : (i += 1) analyzeStaticNode(child(msg, i), out);
-        }
-        analyzeStaticNode(recv, out);
-        return;
-    }
-    if (r == r_block) {
-        var i: usize = 0;
-        while (i < nchild(node)) : (i += 1)
-            if (ruleOf(child(node, i)) == r_statements) analyzeStaticNode(child(node, i), out);
-        return;
-    }
-    if (r == r_statements) {
-        var i: usize = 0;
-        while (i < nchild(node)) : (i += 1) {
-            const stmt = child(node, i);
-            if (nchild(stmt) == 0) continue;
-            const inner = child(stmt, 0);
-            if (ruleOf(inner) == r_letBinding) analyzeStaticNode(child(inner, 1), out) else analyzeStaticNode(inner, out);
-        }
-        return;
-    }
-    if (r == r_vectorLit) {
-        var i: usize = 0;
-        while (i < nchild(node)) : (i += 1) analyzeStaticNode(child(node, i), out);
-        return;
-    }
-    if (r == r_mapLit) {
-        var i: usize = 0;
-        while (i < nchild(node)) : (i += 1) {
-            const entry = child(node, i);
-            if (nchild(entry) >= 2) {
-                analyzeStaticNode(child(entry, 0), out);
-                analyzeStaticNode(child(entry, 1), out);
-            }
-        }
-    }
-}
-
-/// Parse and inspect source without evaluating, compiling, writing an artifact,
-/// installing methods, or asserting Store facts. The returned maps intentionally
-/// carry byte spans; the LSP converts them to UTF-16 protocol positions.
-fn mStaticDiagnosticsOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+/// `[Codegen embeddedFilesOf: source]` returns the distinct literal paths used
+/// by `[System embedFile: "..."]` sends. This is an analysis-only operation:
+/// it does not read the files, compile source, or mutate the Store. Project
+/// resolution uses the result to include file contents in artifact invalidation.
+fn mEmbeddedFilesOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
     var len: usize = 0;
     src_bytes = g_api.stringBytes(a[0], &len)[0..len];
-    var diagnostics: std.ArrayList(Oop) = .{};
-    defer diagnostics.deinit(ca);
-
+    var paths: std.ArrayList(Oop) = .{};
+    defer paths.deinit(ca);
     const cst = s1(lang, "parse:", a[0]);
     const parse_failed = cst == g_api.nilObj or
         (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
-    if (parse_failed) {
-        const off: usize = @intCast(g_api.smallIntValue(s0(lang, "furthestFail")));
-        addStaticDiagnostic(&diagnostics, "syntaxError", "syntax error", off, @min(off + 1, len));
-        return makeVector(diagnostics.items);
-    }
-    if (nchild(cst) > 0) analyzeStaticNode(child(cst, 0), &diagnostics);
-    return makeVector(diagnostics.items);
-}
-
-/// Parse source into source-backed top-level symbols without evaluating it or
-/// mutating the Store. Entries carry byte spans for the LSP boundary.
-fn mSourceSymbolsOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = self;
-    _ = n;
-    var len: usize = 0;
-    src_bytes = g_api.stringBytes(a[0], &len)[0..len];
-    var symbols: std.ArrayList(Oop) = .{};
-    defer symbols.deinit(ca);
-    const cst = s1(lang, "parse:", a[0]);
-    const parse_failed = cst == g_api.nilObj or
-        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
-    if (!parse_failed and nchild(cst) > 0) collectSourceSymbols(child(cst, 0), &symbols);
-    return makeVector(symbols.items);
-}
-
-/// Parse source into lexical identifier/keyword occurrences with byte spans.
-fn mSourceOccurrencesOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = self;
-    _ = n;
-    var len: usize = 0;
-    src_bytes = g_api.stringBytes(a[0], &len)[0..len];
-    var occurrences: std.ArrayList(Oop) = .{};
-    defer occurrences.deinit(ca);
-    const cst = s1(lang, "parse:", a[0]);
-    const parse_failed = cst == g_api.nilObj or
-        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
-    if (!parse_failed and nchild(cst) > 0) collectSourceOccurrences(child(cst, 0), &occurrences);
-    return makeVector(occurrences.items);
-}
-
-/// Parse source into lexical bindings with CST-derived scope spans. This is
-/// analysis-only: it does not evaluate source or mutate the Store.
-fn mSourceBindingsOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = self;
-    _ = n;
-    var len: usize = 0;
-    src_bytes = g_api.stringBytes(a[0], &len)[0..len];
-    var bindings: std.ArrayList(Oop) = .{};
-    defer bindings.deinit(ca);
-    const cst = s1(lang, "parse:", a[0]);
-    const parse_failed = cst == g_api.nilObj or
-        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
-    if (!parse_failed and nchild(cst) > 0) collectSourceBindings(child(cst, 0), 0, len, &bindings);
-    return makeVector(bindings.items);
+    if (!parse_failed and nchild(cst) > 0) collectEmbeddedPaths(child(cst, 0), &paths);
+    return makeVector(paths.items);
 }
 
 fn makeSourceRevision(scan: *const CandidateScan, source: Oop) Oop {
@@ -3616,19 +3678,31 @@ fn mRebuildComposedLedger(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop
     return a[0];
 }
 
-/// `[Codegen compile: src output: path]` — compile a birnam program to a shared
-/// library on disk (the relocatable artifact form, docs/40 §3a). The artifact
-/// leaves the `birnam_*` shims as undefined externals — the dynamic loader
-/// resolves them against the running process at dlopen (tcc.zig/codegen.zig
-/// export them as dynamic symbols) — and re-derives its global handles by name
-/// in `__birnam_unit_init`, so nothing in it depends on this process's
-/// addresses. Load with `[Codegen load: path]`. Returns the path, or nil.
-///
-/// A compiled module also self-records its source at load — the whole-module text as
-/// a `__modsrc__` fact keyed by module name, and each method operation on
-/// `__methodops__` — so a compiled module is fact-level
-/// indistinguishable from a source load: queryable, and carried by image save/replay.
+/// `[Codegen compile: src output: path from: sourcePath]` compiles with
+/// embedFile: paths anchored at the source document's directory.
 fn mCompileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    const prior_embed_root = g_embed_root;
+    g_embed_root = if (n >= 3) sourceDirectoryOf(a[2]) else null;
+    defer g_embed_root = prior_embed_root;
+    return compileOutput(self, a, n);
+}
+
+/// `[Codegen compile: src output: path root: projectRoot]` is the project
+/// build entrypoint. All source fragments in a composed module share the
+/// module's project root, matching Go package embedding semantics.
+fn mCompileOutputRoot(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    var root_len: usize = 0;
+    const root = g_api.stringBytes(a[2], &root_len);
+    const prior_embed_root = g_embed_root;
+    g_embed_root = root[0..root_len];
+    defer g_embed_root = prior_embed_root;
+    return compileOutput(self, a, n);
+}
+
+/// Shared compile implementation. The artifact leaves the `birnam_*` shims as
+/// undefined externals, re-derives its global handles by name in
+/// `__birnam_unit_init`, and self-records its source for image recovery.
+fn compileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
     // Name the module from its output path (`…/libbirnam_<name>.dylib`) so `emitProgram`
@@ -4370,22 +4444,26 @@ pub fn bringUp(api: *idapi.IdApi) void {
         codegen_obj = api.import("Codegen");
         reflect_vt = api.import("ReflectVt");
         reflect_obj = api.import("Reflect");
+        reflect_fact_collector_vt = api.import("ReflectFactCollectorVt") orelse api.proto(api.object_vt);
     } else {
         codegen_vt = api.proto(api.object_vt);
         codegen_obj = api.alloc(codegen_vt, 0);
         reflect_vt = api.proto(api.object_vt);
         reflect_obj = api.alloc(reflect_vt, 0);
+        reflect_fact_collector_vt = api.proto(api.object_vt);
     }
+    api.setLayout(reflect_fact_collector_vt, null, 0, idapi.slot_raw);
 
     api.method(codegen_vt, api.intern("eval:"), &mEval);
     api.method(codegen_vt, api.intern("evalPersisting:"), &mEvalPersisting);
+    api.method(codegen_vt, api.intern("eval:from:"), &mEvalFrom);
+    api.method(codegen_vt, api.intern("evalPersisting:from:"), &mEvalPersistingFrom);
     api.method(codegen_vt, api.intern("compile:output:"), &mCompileOutput);
+    api.method(codegen_vt, api.intern("compile:output:from:"), &mCompileOutput);
+    api.method(codegen_vt, api.intern("compile:output:root:"), &mCompileOutputRoot);
     api.method(codegen_vt, api.intern("sourceRevisionOf:"), &mSourceRevisionOf);
     api.method(codegen_vt, api.intern("moduleMetadataOf:"), &mModuleMetadataOf);
-    api.method(codegen_vt, api.intern("staticDiagnosticsOf:"), &mStaticDiagnosticsOf);
-    api.method(codegen_vt, api.intern("sourceSymbolsOf:"), &mSourceSymbolsOf);
-    api.method(codegen_vt, api.intern("sourceOccurrencesOf:"), &mSourceOccurrencesOf);
-    api.method(codegen_vt, api.intern("sourceBindingsOf:"), &mSourceBindingsOf);
+    api.method(codegen_vt, api.intern("embeddedFilesOf:"), &mEmbeddedFilesOf);
     api.method(codegen_vt, api.intern("liveRevisionOf:"), &mLiveRevisionOf);
     api.method(codegen_vt, api.intern("recordModuleSource:named:"), &mRecordModuleSource);
     api.method(codegen_vt, api.intern("initialGenerationProjection"), &mInitialGenerationProjection);
@@ -4436,6 +4514,10 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(reflect_vt, api.intern("exportVtableOf:as:"), &mExportVtableOfAs);
     api.method(reflect_vt, api.intern("exportObject:as:"), &mExportObjectAs);
     api.method(reflect_vt, api.intern("nameOf:"), &mNameOf);
+    api.method(reflect_vt, api.intern("allMethodsOf:"), &mAllMethodsOf);
+    api.method(reflect_vt, api.intern("methodSource:"), &mMethodSource);
+    api.method(reflect_vt, api.intern("factsOf:"), &mFactsOf);
+    api.method(reflect_fact_collector_vt, api.intern("value:value:value:"), &mCollectReflectFact);
 
     _ = api.send(g_store, api.intern("setMethodMutationObserver:"), &[_]Oop{codegen_obj}, 1);
     _ = api.send(g_store, api.intern("setMethodMutationAuthorizer:"), &[_]Oop{api.mkSmallInt(@intCast(@intFromPtr(&authorizeManagedMethodMutation)))}, 1);
@@ -4445,6 +4527,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
         _ = api.exportObj("Codegen", codegen_obj);
         _ = api.exportObj("ReflectVt", reflect_vt);
         _ = api.exportObj("Reflect", reflect_obj);
+        _ = api.exportObj("ReflectFactCollectorVt", reflect_fact_collector_vt);
         // Object/Integer/String and the other floor names are exported by libid
         // now, bound to their PROTOTYPES (docs/design/41 §A) — not re-exported here.
     }

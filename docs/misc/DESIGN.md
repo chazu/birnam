@@ -59,6 +59,23 @@ See [design 51](../design/51-project-manifests-and-dependency-resolution.md),
 53](../design/53-project-aware-language-tools.md), and [design
 54](../design/54-relocatable-bundles.md).
 
+## Proposed Application Sequence
+
+The first application slice should showcase Birnam's unusual combination of a
+live object environment, a historied relational Store, and reflective metadata
+without adding a second authority model:
+
+~~~text
+55 — Birnam Digla: local object/fact inspection
+→ deterministic JSON and HTML snapshots
+→ loopback read-only HTTP report
+→ image-facing inspection
+→ worker observations and rollout history
+~~~
+
+[Design 55 — Birnam Digla](../design/55-birnam-digla.md) defines
+the snapshot contract, read-only boundary, and thin-slice implementation plan.
+
 ## Abstractly
 - To build a completely moldable programming environment, where everything is accessible to the programmer - like Piumarta's COLA
 - To build up semantics gradually, like iolang

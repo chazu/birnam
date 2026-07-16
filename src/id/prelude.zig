@@ -652,7 +652,7 @@ fn sysLoad(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
         if (g_api.isExported("Error") != 0 and g_api.send(recorded, g_api.intern("isError"), &[_]Oop{}, 0) == g_api.trueObj)
             return recorded;
     }
-    const r = g_api.send(codegen, g_api.intern("evalPersisting:"), &[_]Oop{src_oop}, 1);
+    const r = g_api.send(codegen, g_api.intern("evalPersisting:from:"), &[_]Oop{ src_oop, a[0] }, 2);
     // fileIn does NOT swallow failures: a compile/syntax failure (nil result +
     // a noted lastError) becomes a kinded #syntaxError, and an error VALUE that
     // propagated out of a top-level form is announced with the path. Both are

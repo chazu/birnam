@@ -106,7 +106,8 @@ Keep the existing stdio and JSON-RPC contract while adding:
 - bounded document storage and cleanup on close;
 - workspace/root initialization using design 51;
 - a narrow host `Project snapshotForUri:` bridge that returns the shared
-  resolver's immutable JSON snapshot without duplicating manifest parsing.
+  resolver's immutable native Map snapshot without duplicating manifest parsing
+  or serializing the result through JSON.
 
 Diagnostics remain parse/static only. A malformed or incomplete buffer should
 produce useful diagnostics without crashing or mutating the live image.
@@ -204,11 +205,12 @@ buffer analysis, not the on-disk project graph.
 
 ### P1 — safe static diagnostics — implemented
 
-`Codegen staticDiagnosticsOf:` parses and inspects source without evaluation,
-Store mutation, method installation, or artifact writes. The LSP converts its
-byte spans to UTF-16 ranges and combines those diagnostics with the shared
-project resolver's immutable failure snapshot. The implemented static boundary
-is deliberately narrow:
+`Lsp staticDiagnosticsOf:` parses and inspects source without evaluation, Store
+mutation, method installation, or artifact writes. The parser/CST is still a
+Zig floor capability; the LSP module owns the policy that interprets it. The
+LSP converts byte spans to UTF-16 ranges and combines those diagnostics with
+the shared project resolver's immutable failure snapshot. The implemented
+static boundary is deliberately narrow:
 
 - syntax errors with a source span;
 - selector-arity mismatches for literal `Reflect defineMethod:on:as:` and
@@ -224,7 +226,9 @@ fresh diagnostics without compiling an artifact or retaining stale documents.
 
 Dependency-wide authored-source indexing, method/module provenance hover,
 signature help, scoped completion, and conservative references across unopened
-project modules are implemented.
+project modules are implemented. Source symbols, lexical occurrences, and
+lexical bindings are CST walks owned by `modules/lsp.birnam`; Zig only supplies
+the parser/CST construction seam.
 
 ### P3 — Emacs project commands — implemented
 

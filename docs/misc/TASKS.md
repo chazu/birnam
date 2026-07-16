@@ -98,13 +98,25 @@ remain deferred until these five slices select the next failure model.
 
 ---
 
+## Proposed Applications
+
+- [ ] **Birnam Digla / Design 55** — begin with a local, read-only object
+  card over `Reflect` and the Store; add effective methods, named-global lookup,
+  deterministic JSON/HTML snapshots, loopback HTTP, image-facing reports, and
+  only then worker observations and rollout history. The complete sequence,
+  ownership boundary, snapshot schema, and acceptance gates live in
+  [design 55](../design/55-birnam-digla.md). The first implementation
+  slice should be Slices 0–3 as one narrow fixture project.
+
+---
+
 ## Tooling
 
 - [x] **emacs mode** (2026-06-18) — `birnam-mode` in `tools/emacs/birnam-mode.el`: font-lock (keyword selectors, symbols `#x`, query vars `?x`, block args `:x`, `:=`/`|>`, `//` comments that don't swallow division, literals), bracket-depth indentation, comint REPL (`run-birnam`), eval-region/eval-buffer (file in a temp unit via `:in`) + eval-line. Byte-compiles clean; verified via the emacs MCP. Deeper `:`-command awareness in the REPL buffer still open.
 - [x] **LSP server / Design 53** (2026-07-15) — `birnam --lsp` remains a thin stdio JSON-RPC envelope with semantics delegated to the in-process parser/compiler/reflection APIs. The current contract and staged roadmap live in [design 53](../design/53-project-aware-language-tools.md).
   - [x] **P0 workspace/coordinates** — shared project-resolver snapshots, UTF-16 positions, document versions and cleanup, stale-change rejection, save refresh, and multi-root/nested-project coverage.
-  - [x] **P1 safe static diagnostics** — parse-only syntax and provable literal selector-arity diagnostics through `Codegen staticDiagnosticsOf:`; no evaluation, Store mutation, artifact writes, or invented unbound-name errors.
-  - [x] **P2 first navigation slice** — parser/CST-backed document symbols, same-document lexical definitions/references, and open-buffer workspace symbols through `Codegen sourceSymbolsOf:` and `sourceOccurrencesOf:`. Landed in `c9f4cad` and `979a54f`.
+  - [x] **P1 safe static diagnostics** — parse-only syntax and provable literal selector-arity diagnostics through `Lsp staticDiagnosticsOf:`; no evaluation, Store mutation, artifact writes, or invented unbound-name errors. Zig retains only parser/CST construction.
+  - [x] **P2 first navigation slice** — parser/CST-backed document symbols, same-document lexical definitions/references, and open-buffer workspace symbols through `Lsp sourceSymbolsOf:`, `sourceOccurrencesOf:`, and `sourceBindingsOf:`. Landed in `c9f4cad` and `979a54f`.
   - [ ] **Next P2 slice** — dependency-wide authored-source indexing, richer method/receiver hover, signature help, scoped completion, and references across unopened project modules. Do not use generated artifacts or image execution as source locations.
   - Editor wiring: `(add-to-list 'eglot-server-programs '(birnam-mode "birnam" "--lsp"))`.
 

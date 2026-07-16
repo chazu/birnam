@@ -97,9 +97,9 @@ crosses the corresponding effect boundary after resolution succeeds.
 
 ### 2.5 Static source declarations are the first-pass boundary
 
-A source file is indexable by the first resolver only when a full-CST scan can
-find exactly one literal declaration of this shape, without evaluating the
-file:
+A source module entry is indexable by the first resolver only when a full-CST
+scan can find exactly one literal declaration of this shape, without evaluating
+the file:
 
 ~~~birnam
 [Module named: #http requires: #[#socket #file]];
@@ -116,7 +116,27 @@ The first resolver does not claim to account for those runtime-only edges.
 This boundary is about source metadata, not dynamic libraries. A dylib is a
 compiled artifact and is outside the source-only first pass.
 
-### 2.6 Artifact identity is explicit
+### 2.6 Explicit multi-file module composition
+
+A manifest may group an entry source with an ordered list of ordinary Birnam
+source files:
+
+~~~toml
+[[module]]
+entry = "src/json.birnam"
+files = ["src/json/parser.birnam", "src/json/render.birnam"]
+~~~
+
+The entry must contain the module declaration and owns the canonical module
+name and dependencies. The listed files are source parts: they must not contain
+another module declaration, are read in the listed order, and are composed into
+one source input before compilation. The resolver retains the complete path
+list and combined source digest, so one logical module still produces exactly
+one `libbirnam_<name>.dylib` and changes to any part invalidate that artifact.
+Explicitly composed paths are removed from the generic source scan, preventing
+them from becoming duplicate module providers.
+
+### 2.7 Artifact identity is explicit
 
 A compiled artifact is usable for a selected source revision only when its
 recorded module identity, dependency metadata, target identity, and source
@@ -127,14 +147,14 @@ The normal runtime authority remains the compatible compiled unit. Source is the
 authoring and recovery representation, consistent with design 45 and the live
 module generation model.
 
-### 2.7 Local-first means no hidden network behavior
+### 2.8 Local-first means no hidden network behavior
 
 The first resolver handles the local filesystem and explicitly named path
 dependencies. Normal check, build, run, and LSP startup do not contact a
 registry or mutate a global cache. Registry and remote transport can be added
 behind an explicit later policy without changing the graph contract.
 
-### 2.8 One resolver serves every front end
+### 2.9 One resolver serves every front end
 
 The CLI, LSP, Emacs commands, stage-1 build, image/baseline workflows, and
 future package tooling consume the same project-resolution records. None grows a
@@ -149,6 +169,10 @@ name = "hello-birnam"
 version = "0.1.0"
 main = "app.birnam"
 load = ["app_support"]
+
+[[module]]
+entry = "src/json.birnam"
+files = ["src/json/parser.birnam", "src/json/render.birnam"]
 
 [run]
 # main exits without starting a REPL unless explicitly configured.
@@ -182,6 +206,9 @@ build slice. Its semantics are:
 - name and version describe the project and do not rename modules.
 - main is a project-root-relative entry source, not a module dependency.
 - load names startup module roots for the existing bare/configured run path.
+- each `[[module]]` groups one entry and optional ordered source parts into one
+  logical compiled module. The entry owns the `Module named:requires:`
+  declaration; parts do not declare modules.
 - run selects the explicit post-main interaction mode; `repl` is `none`, `tty`,
   or `socket`, with socket bind-address/port settings consumed by design 52.
 - source_roots are ordered search roots for project-owned source modules.
@@ -237,16 +264,18 @@ The algorithm is:
 1. Discover the nearest manifest from the requested working directory, unless a
    command supplies an explicit project path.
 2. Parse and validate manifest keys without loading Birnam modules.
-3. Index candidate `.birnam` source files by exactly one statically readable
-   canonical Module named:requires: declaration. Legacy/non-indexable files
-   are not project modules. File discovery order is sorted by path bytes.
-4. Add project load roots and explicit dependency roots. The entry source is
+3. Parse explicit `[[module]]` groups and compose each entry plus its ordered
+   parts. Reject duplicate paths and module declarations in source parts.
+4. Index remaining candidate `.birnam` source files by exactly one statically
+   readable canonical Module named:requires: declaration. Legacy/non-indexable
+   files are not project modules. File discovery order is sorted by path bytes.
+5. Add project load roots and explicit dependency roots. The entry source is
    checked for existence separately and is not silently turned into a module.
-5. Read each selected module's declarative dependency metadata and recursively
+6. Read each selected module's declarative dependency metadata and recursively
    resolve its dependencies.
-6. Reject missing providers, duplicate providers, declaration/name mismatches,
+7. Reject missing providers, duplicate providers, declaration/name mismatches,
    malformed source, and cycles with a diagnostic chain.
-7. Emit a stable dependency-first order, with module-name bytes as the tie
+8. Emit a stable dependency-first order, with module-name bytes as the tie
    breaker, plus a content-addressed resolution digest.
 
 The resolver does not call Module load:. Runtime loading consumes the resolved
@@ -257,7 +286,7 @@ records after a command has established its effect policy.
 The first resolver has one selection policy:
 
 ~~~text
-source       require an indexable source module
+source       require an indexable source module entry or explicit module group
 ~~~
 
 `birnam check` is read-only. Build uses the materialized artifact record for
@@ -269,6 +298,7 @@ The first materialized build writes `artifacts.toml` alongside the dylibs. It is
 an identity record, not a second runtime graph. Every artifact record contains:
 
 - canonical module name;
+- ordered source path list, including the entry;
 - dependency metadata;
 - target/ABI identity;
 - source revision/content digest;
@@ -355,6 +385,8 @@ need. A registry is not part of the initial developer-experience milestone.
 - Two projects can be resolved independently without mutating a global registry
   or cache; different revisions in one runtime are not supported by this slice.
 - The source-only resolver never loads or selects a dylib.
+- A module entry plus multiple source parts compiles once, loads once, and
+  publishes one dylib; changing any listed part invalidates that artifact.
 - The same resolution digest and module order are observed by check, build,
   run, and LSP workspace initialization.
 
