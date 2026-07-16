@@ -34,8 +34,9 @@ directory. For development, `zig build` produces `zig-out/bin/birnam` and the
 runtime modules under `zig-out/lib/`.
 
 [`mise`](https://mise.jdx.dev) is optional; [mise.toml](mise.toml) pins the same
-Zig version and exposes `mise run build`, `mise run verify`, and `mise run
-install`.
+Zig version and exposes `mise run clean`, `mise run build`, `mise run verify`,
+and `mise run install`. Use `mise run clean && mise run build` when you need a
+fresh local build, including fresh project artifacts.
 
 ## First Session
 

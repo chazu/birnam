@@ -1,4 +1,5 @@
 # mise (https://mise.jdx.dev) — pins the toolchain and exposes common tasks.
+#   mise run clean          # remove generated outputs and project artifacts
 #   mise install            # fetch the pinned Zig
 #   mise run build          # zig build (Debug)
 #   mise run verify         # full native + self-hosted + REPL test gate
@@ -16,6 +17,10 @@ zig = "0.15.1"
 [tasks.build]
 description = "Build everything (Debug)"
 run = "zig build"
+
+[tasks.clean]
+description = "Remove generated build outputs, Zig cache, and project artifacts"
+run = "rm -rf .zig-cache zig-out .birnam"
 
 [tasks.verify]
 description = "Run every native, self-hosted, and REPL verification gate"
