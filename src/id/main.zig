@@ -45,6 +45,9 @@ const USAGE =
     \\  birnam build [directory]  Compile the resolved source project and publish
     \\                             a complete project-local build directory.
     \\  birnam build --help       Print build command documentation and exit.
+    \\  birnam install [directory] Install the latest project build into the
+    \\                             runtime library directory.
+    \\  birnam install --help     Print install command documentation and exit.
     \\  birnam run [directory] [options] [-- args...]
     \\                             Run a built project main; default is no REPL.
     \\  birnam run --help          Print run command documentation and exit.
@@ -277,6 +280,30 @@ const BUILD_USAGE =
     \\
 ;
 
+const INSTALL_USAGE =
+    \\Usage: birnam install [directory] [options]
+    \\
+    \\Install the nearest project's last successful build into the runtime
+    \\library directory. This includes both libbirnam_<name>.dylib modules and
+    \\lib<name>.dylib libraries declared by [[wrapped]].
+    \\
+    \\Arguments:
+    \\  directory       Directory to search from; defaults to the current directory.
+    \\
+    \\Options:
+    \\  --build         Build and publish before installing.
+    \\  -h, --help      Print this command documentation.
+    \\
+    \\The destination is BIRNAM_LIB_DIR when set, otherwise the default runtime
+    \\library directory used by birnam (normally <prefix>/lib).
+    \\
+    \\Examples:
+    \\  birnam install
+    \\  birnam install --build
+    \\  BIRNAM_LIB_DIR=/opt/birnam/lib birnam install ./app
+    \\
+;
+
 const RUN_USAGE =
     \\Usage: birnam run [directory] [options] [-- args...]
     \\
@@ -315,6 +342,11 @@ const ProjectRunOptions = struct {
     socket_bind: ?[]const u8,
     socket_port: ?i64,
     arguments: []const []const u8,
+};
+
+const ProjectInstallOptions = struct {
+    directory: []const u8,
+    build: bool,
 };
 
 fn parseReplMode(value: []const u8) ?ReplMode {
@@ -400,6 +432,30 @@ fn parseProjectRunOptions(a: std.mem.Allocator, args: *std.process.ArgIterator) 
         .socket_port = socket_port,
         .arguments = owned_arguments,
     };
+}
+
+fn parseProjectInstallOptions(a: std.mem.Allocator, args: *std.process.ArgIterator) ProjectInstallOptions {
+    _ = a;
+    var directory: []const u8 = ".";
+    var has_directory = false;
+    var build = false;
+    while (args.next()) |token| {
+        if (std.mem.eql(u8, token, "--help") or std.mem.eql(u8, token, "-h")) {
+            if (args.next() != null) installUsageError("unexpected argument after --help", .{});
+            out(INSTALL_USAGE);
+            std.process.exit(0);
+        }
+        if (std.mem.eql(u8, token, "--build")) {
+            build = true;
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "-"))
+            installUsageError("unknown option '{s}'", .{token});
+        if (has_directory) installUsageError("expected at most one project directory", .{});
+        directory = token;
+        has_directory = true;
+    }
+    return .{ .directory = directory, .build = build };
 }
 
 // -- exe bake: a self-booting executable = this runtime + an appended image ---
@@ -509,6 +565,7 @@ pub fn main() !void {
     var check_directory_arg: ?[]const u8 = null;
     var build_directory_arg: ?[]const u8 = null;
     var project_run_options: ?ProjectRunOptions = null;
+    var project_install_options: ?ProjectInstallOptions = null;
     if (script_path) |sp| {
         if (std.mem.eql(u8, sp, "check")) {
             if (args.next()) |candidate| {
@@ -536,6 +593,8 @@ pub fn main() !void {
             }
         } else if (std.mem.eql(u8, sp, "run")) {
             project_run_options = parseProjectRunOptions(a, &args);
+        } else if (std.mem.eql(u8, sp, "install")) {
+            project_install_options = parseProjectInstallOptions(a, &args);
         }
     }
     // `--rebuild foo.image` forces the replay path (rebuild code from the image's
@@ -598,6 +657,10 @@ pub fn main() !void {
             const options = project_run_options.?;
             defer a.free(options.arguments);
             return runProject(a, api, options) catch |err| runCommandError(err);
+        }
+        if (std.mem.eql(u8, sp, "install")) {
+            const options = project_install_options.?;
+            return runProjectInstall(a, api, options) catch |err| installCommandError(err);
         }
     }
 
@@ -1040,6 +1103,99 @@ fn runProjectBuild(a: std.mem.Allocator, api: *IdApi, directory: []const u8) !vo
     stdout_writer.interface.flush() catch |err| return err;
 }
 
+/// Install a validated project publication into the runtime's module directory.
+/// The build record is the authority for the exact artifact set; no source is
+/// compiled and no project code is evaluated unless `--build` was requested.
+fn installProjectBuild(a: std.mem.Allocator, build: *const project_build.Build, destination: []const u8) !void {
+    try std.fs.cwd().makePath(destination);
+
+    var token_value: u64 = undefined;
+    std.crypto.random.bytes(std.mem.asBytes(&token_value));
+    const token = try std.fmt.allocPrint(a, ".birnam-install-{x}", .{token_value});
+    defer a.free(token);
+    const stage = try std.fs.path.join(a, &.{ destination, token });
+    defer a.free(stage);
+    try std.fs.cwd().makePath(stage);
+    defer std.fs.cwd().deleteTree(stage) catch {};
+
+    const copyToStage = struct {
+        fn run(allocator: std.mem.Allocator, stage_path: []const u8, build_root: []const u8, relative_path: []const u8) ![]u8 {
+            const source = try std.fs.path.join(allocator, &.{ build_root, relative_path });
+            defer allocator.free(source);
+            const filename = std.fs.path.basename(relative_path);
+            const staged = try std.fs.path.join(allocator, &.{ stage_path, filename });
+            errdefer allocator.free(staged);
+            try std.fs.cwd().copyFile(source, std.fs.cwd(), staged, .{});
+            return staged;
+        }
+    }.run;
+
+    var staged_paths: std.ArrayList([]u8) = .{};
+    defer {
+        for (staged_paths.items) |path| a.free(path);
+        staged_paths.deinit(a);
+    }
+    for (build.artifacts) |artifact|
+        try staged_paths.append(a, try copyToStage(a, stage, build.output_root, artifact.relative_path));
+    for (build.native) |artifact|
+        try staged_paths.append(a, try copyToStage(a, stage, build.output_root, artifact.relative_path));
+
+    for (staged_paths.items) |staged| {
+        const filename = std.fs.path.basename(staged);
+        const installed = try std.fs.path.join(a, &.{ destination, filename });
+        defer a.free(installed);
+        try std.fs.cwd().rename(staged, installed);
+    }
+}
+
+/// `birnam install [directory]` — copy the complete, validated project
+/// publication into the same library directory used by the runtime loader.
+fn runProjectInstall(a: std.mem.Allocator, api: *IdApi, options: ProjectInstallOptions) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+    loadStdlib(a, api, codegen);
+
+    var resolution = project.resolve(api, a, options.directory);
+    defer resolution.deinit();
+    if (resolution.diagnostic) |diagnostic|
+        installDiagnosticError(diagnostic.kind, diagnostic.message);
+
+    var result = if (options.build)
+        project_build.build(api, a, &resolution.resolution.?, build_opts.version)
+    else
+        project_build.validate(api, a, &resolution.resolution.?, build_opts.version);
+    defer result.deinit();
+    if (result.diagnostic) |diagnostic|
+        installDiagnosticError(diagnostic.kind, diagnostic.message);
+
+    const destination = try resolveLibDir(a);
+    defer a.free(destination);
+    try installProjectBuild(a, &result.build.?, destination);
+
+    out("installed: ");
+    out(destination);
+    out("\n");
+    for (result.build.?.artifacts) |artifact| {
+        out("  #");
+        out(artifact.name);
+        out(" -> ");
+        out(std.fs.path.basename(artifact.relative_path));
+        out("\n");
+    }
+    for (result.build.?.native) |artifact| {
+        out("  ");
+        out(artifact.name);
+        out(" -> ");
+        out(std.fs.path.basename(artifact.relative_path));
+        out("\n");
+    }
+}
+
 fn buildUsageError(comptime fmt: []const u8, args: anytype) noreturn {
     var buffer: [512]u8 = undefined;
     const message = std.fmt.bufPrint(&buffer, fmt, args) catch "invalid command arguments";
@@ -1068,6 +1224,37 @@ fn buildCommandError(err: anyerror) noreturn {
     stderr.writeAll(@errorName(err)) catch {};
     stderr.writeAll("\nusage: birnam build [directory]\n") catch {};
     stderr.writeAll("try 'birnam build --help' for more information\n") catch {};
+    std.process.exit(1);
+}
+
+fn installUsageError(comptime fmt: []const u8, args: anytype) noreturn {
+    var buffer: [512]u8 = undefined;
+    const message = std.fmt.bufPrint(&buffer, fmt, args) catch "invalid command arguments";
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam install: ") catch {};
+    stderr.writeAll(message) catch {};
+    stderr.writeAll("\n") catch {};
+    stderr.writeAll(INSTALL_USAGE) catch {};
+    std.process.exit(2);
+}
+
+fn installDiagnosticError(kind: []const u8, message: []const u8) noreturn {
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam install: ") catch {};
+    stderr.writeAll(kind) catch {};
+    stderr.writeAll(": ") catch {};
+    stderr.writeAll(message) catch {};
+    stderr.writeAll("\nusage: birnam install [directory] [--build]\n") catch {};
+    stderr.writeAll("try 'birnam install --help' for more information\n") catch {};
+    std.process.exit(1);
+}
+
+fn installCommandError(err: anyerror) noreturn {
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam install: ") catch {};
+    stderr.writeAll(@errorName(err)) catch {};
+    stderr.writeAll("\nusage: birnam install [directory] [--build]\n") catch {};
+    stderr.writeAll("try 'birnam install --help' for more information\n") catch {};
     std.process.exit(1);
 }
 
@@ -1122,6 +1309,34 @@ fn loadProjectArtifacts(api: *IdApi, build: *const project_build.Build) void {
             runDiagnosticError("projectArtifactLoadFailed", std.fmt.allocPrint(std.heap.c_allocator, "artifact load failed for #{s}", .{artifact.name}) catch "artifact load failed");
         }
     }
+}
+
+fn configureProjectRuntimeDirs(api: *IdApi, build: *const project_build.Build) void {
+    const lib_dir = std.fs.path.join(std.heap.c_allocator, &.{ build.output_root, "lib" }) catch
+        runDiagnosticError("projectArtifactLoadFailed", "could not construct the project native library directory");
+    defer std.heap.c_allocator.free(lib_dir);
+
+    const manager = birnamGlobal(api, "Module") orelse
+        runDiagnosticError("projectArtifactLoadFailed", "Module is not available");
+    const module_result = api.send(manager, api.intern("libDir:"), &[_]Oop{api.mkString(lib_dir.ptr, lib_dir.len)}, 1);
+    if (module_result == api.nilObj or apiErrorValue(api, module_result))
+        runDiagnosticError("projectArtifactLoadFailed", "could not configure the project module directory");
+
+    const alien = api.import("Alien") orelse
+        runDiagnosticError("projectArtifactLoadFailed", "Alien is not available");
+    const native_result = api.send(alien, api.intern("libraryDir:"), &[_]Oop{api.mkString(lib_dir.ptr, lib_dir.len)}, 1);
+    if (native_result == api.nilObj or apiErrorValue(api, native_result))
+        runDiagnosticError("projectArtifactLoadFailed", "could not configure the project native library directory");
+}
+
+/// The process-wide default for bare Alien dlopen names follows the same
+/// resolved directory as Module and the kernel dylibs. A project run overrides
+/// this with its project-local build/lib directory before loading project code.
+fn configureRuntimeNativeDir(a: std.mem.Allocator, api: *IdApi) void {
+    const alien = api.import("Alien") orelse return;
+    const lib_dir = resolveLibDir(a) catch return;
+    defer a.free(lib_dir);
+    _ = api.send(alien, api.intern("libraryDir:"), &[_]Oop{api.mkString(lib_dir.ptr, lib_dir.len)}, 1);
 }
 
 fn installProjectArguments(api: *IdApi, arguments: []const []const u8) !void {
@@ -1185,6 +1400,23 @@ fn runProjectSocketRepl(a: std.mem.Allocator, api: *IdApi, bind: []const u8, por
     return;
 }
 
+/// Bare REPL startup is project-aware when a valid project publication is
+/// present. It configures both module resolvers to that publication's lib
+/// directory and leaves main/config loading to the REPL lifecycle. A missing or
+/// not-yet-buildable project publication falls through to the existing Config
+/// path, preserving source-backed REPL projects and the standalone REPL.
+fn prepareBareProject(a: std.mem.Allocator, api: *IdApi) !void {
+    var resolution_result = project.resolve(api, a, ".");
+    defer resolution_result.deinit();
+    if (resolution_result.diagnostic != null) return;
+
+    var artifact_result = project_build.validate(api, a, &resolution_result.resolution.?, build_opts.version);
+    defer artifact_result.deinit();
+    if (artifact_result.diagnostic != null) return;
+    configureProjectRuntimeDirs(api, &artifact_result.build.?);
+    loadProjectArtifacts(api, &artifact_result.build.?);
+}
+
 fn runProject(a: std.mem.Allocator, api: *IdApi, options: ProjectRunOptions) !void {
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
@@ -1210,6 +1442,7 @@ fn runProject(a: std.mem.Allocator, api: *IdApi, options: ProjectRunOptions) !vo
     defer artifact_result.deinit();
     if (artifact_result.diagnostic) |diagnostic|
         runDiagnosticError(diagnostic.kind, diagnostic.message);
+    configureProjectRuntimeDirs(api, &artifact_result.build.?);
     loadProjectArtifacts(api, &artifact_result.build.?);
     try installProjectArguments(api, options.arguments);
     try evalProjectSource(a, api, main_path);
@@ -1334,12 +1567,45 @@ fn resolveModulesDir(a: std.mem.Allocator) ![]u8 {
     return a.dupe(u8, "modules");
 }
 
-/// Print a `[Codegen lastError]` String (a `line:col: message` block) to stderr.
-fn outErrorString(api: *IdApi, s: Oop) void {
+fn writeStringOop(api: *IdApi, value: Oop) bool {
+    if (value == null or api.vtableOf(value) != api.string_vt) return false;
     var len: usize = 0;
-    const p = api.stringBytes(s, &len);
+    const p = api.stringBytes(value, &len);
     std.fs.File.stderr().writeAll(p[0..len]) catch {};
-    std.fs.File.stderr().writeAll("\n") catch {};
+    return true;
+}
+
+/// Print a compiler/runtime error without interpreting arbitrary object payload
+/// bytes as a String. `[Codegen lastError]` is usually a String, while runtime
+/// module and Alien failures are ordinary Error objects.
+fn outErrorString(api: *IdApi, s: Oop) void {
+    if (writeStringOop(api, s)) {
+        std.fs.File.stderr().writeAll("\n") catch {};
+        return;
+    }
+
+    if (s != null) {
+        const rendered = api.send(s, api.intern("printString"), &.{}, 0);
+        if (rendered != s and writeStringOop(api, rendered)) {
+            std.fs.File.stderr().writeAll("\n") catch {};
+            return;
+        }
+        if (apiErrorValue(api, s)) {
+            const stderr = std.fs.File.stderr();
+            stderr.writeAll("error(") catch {};
+            const kind = api.send(s, api.intern("kind"), &.{}, 0);
+            if (kind != null and api.vtableOf(kind) == api.symbol_vt)
+                stderr.writeAll(std.mem.span(api.symbolName(kind))) catch {};
+            const message = api.send(s, api.intern("message"), &.{}, 0);
+            if (message != null and api.vtableOf(message) == api.string_vt) {
+                stderr.writeAll(": ") catch {};
+                _ = writeStringOop(api, message);
+            }
+            stderr.writeAll(")\n") catch {};
+            return;
+        }
+    }
+    std.fs.File.stderr().writeAll("birnam: non-string error value\n") catch {};
 }
 
 /// `birnam --compile-module <src.birnam> <out.dylib>` — AOT-compile a birnam-source
@@ -1497,6 +1763,10 @@ fn runReplSession(a: std.mem.Allocator, api: *IdApi, booted: bool, project_run: 
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
 
     if (!booted) loadStdlib(a, api, codegen);
+    if (!booted) {
+        configureRuntimeNativeDir(a, api);
+        try prepareBareProject(a, api);
+    }
 
     const globals = api.import("Globals") orelse return error.NoGlobals;
     var repl = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("Repl")}, 1);

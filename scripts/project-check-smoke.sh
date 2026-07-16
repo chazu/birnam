@@ -2,17 +2,22 @@
 set -euo pipefail
 
 bin="${BIRNAM_BIN:?BIRNAM_BIN must point to the installed birnam binary}"
+runtime_lib="$(cd "$(dirname "$bin")/../lib" && pwd -P)"
 tmp="$(mktemp -d /tmp/birnam-project-check.XXXXXX)"
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
-mkdir -p "$tmp/app/src/nested" "$tmp/dep/src"
+mkdir -p "$tmp/app/src/nested" "$tmp/app/native" "$tmp/dep/src"
 
 cat >"$tmp/app/birnam.toml" <<'EOF'
 name = "app"
 main = "main.birnam"
 load = ["app"]
 source_roots = ["src"]
+
+[[wrapped]]
+name = "foo"
+build = [["cc", "-dynamiclib", "-fPIC", "native/foo.c", "-o", "{output}"]]
 
 [dependencies]
 dep = { path = "../dep" }
@@ -21,11 +26,23 @@ EOF
 cat >"$tmp/app/main.birnam" <<'EOF'
 // The entry source is not itself a project module.
 [System println: "project-main"];
+[System println: [[Foo version] printString]];
 [System println: [[Globals at: #ProjectArgs] printString]];
 EOF
 
 cat >"$tmp/app/src/app.birnam" <<'EOF'
-[Module named: #app requires: #[#util #dep]];
+[Module named: #app requires: #[#util #dep #foo]];
+EOF
+
+cat >"$tmp/app/src/foo.birnam" <<'EOF'
+[Module named: #foo requires: #[]];
+[Alien dlopen: "libfoo.dylib"];
+[Globals at: #Foo put: [Object clone]];
+[Alien wrap: "foo_version" signature: "i" as: #version on: Foo];
+EOF
+
+cat >"$tmp/app/native/foo.c" <<'EOF'
+int foo_version(void) { return 7; }
 EOF
 
 cat >"$tmp/app/src/util.birnam" <<'EOF'
@@ -55,7 +72,7 @@ printf '%s\n' "$output"
 grep -q "project: $tmp/app" <<<"$output"
 grep -q "main: $tmp/app/main.birnam" <<<"$output"
 order="$(grep '^  #' <<<"$output" | sed 's/^  #\([^ ]*\).*/\1/' | paste -sd ' ' -)"
-test "$order" = "leaf dep util app"
+test "$order" = "leaf dep foo util app"
 
 build_output="$(BIRNAM_FORCE_SOURCE=1 "$bin" build "$tmp/app/src/nested")"
 printf '%s\n' "$build_output"
@@ -63,16 +80,35 @@ build_root="$(sed -n 's/^build: //p' <<<"$build_output")"
 test -d "$build_root/lib"
 test -f "$build_root/resolution.toml"
 test -f "$build_root/artifacts.toml"
-for module in leaf dep util app; do
+for module in leaf dep util foo app; do
     test -f "$build_root/lib/libbirnam_${module}.dylib"
     grep -q "name = \"$module\"" "$build_root/artifacts.toml"
 done
+test -f "$build_root/lib/libfoo.dylib"
+grep -q 'foo \[compiled\].*lib/libfoo.dylib' <<<"$build_output"
 grep -q 'artifact_abi = "birnam-artifact-generation-v1"' "$build_root/artifacts.toml"
 old_leaf_checksum="$(shasum -a 256 "$build_root/lib/libbirnam_leaf.dylib" | awk '{print $1}')"
 
+install_lib="$tmp/install/lib"
+mkdir -p "$install_lib"
+cp "$runtime_lib"/*.dylib "$install_lib/"
+install_output="$(BIRNAM_FORCE_SOURCE=1 BIRNAM_LIB_DIR="$install_lib" "$bin" install "$tmp/app")"
+printf '%s\n' "$install_output"
+grep -q "installed: $install_lib" <<<"$install_output"
+for module in leaf dep util foo app; do
+    test -f "$install_lib/libbirnam_${module}.dylib"
+done
+test -f "$install_lib/libfoo.dylib"
+
+bare_output="$(cd "$tmp/app" && printf ':quit\n' | BIRNAM_FORCE_SOURCE=1 BIRNAM_LIB_DIR="$install_lib" "$bin")"
+printf '%s\n' "$bare_output"
+test "$(grep -c 'project-main' <<<"$bare_output")" = 1
+grep -q '^7$' <<<"$bare_output"
+grep -q 'interactive image' <<<"$bare_output"
+
 reused_output="$(BIRNAM_FORCE_SOURCE=1 "$bin" build "$tmp/app")"
 printf '%s\n' "$reused_output"
-for module in leaf dep util app; do
+for module in leaf dep util foo app; do
     grep -q "#$module \[reused\]" <<<"$reused_output"
 done
 
@@ -99,6 +135,7 @@ old_leaf_checksum="$(shasum -a 256 "$build_root/lib/libbirnam_leaf.dylib" | awk 
 run_output="$(cd /tmp && BIRNAM_FORCE_SOURCE=1 "$bin" run "$tmp/app" -- first second)"
 printf '%s\n' "$run_output"
 test "$(grep -c 'project-main' <<<"$run_output")" = 1
+grep -q '^7$' <<<"$run_output"
 grep -q 'first' <<<"$run_output"
 grep -q 'second' <<<"$run_output"
 
@@ -112,6 +149,10 @@ name = "app"
 main = "main.birnam"
 load = ["app"]
 source_roots = ["src"]
+
+[[wrapped]]
+name = "foo"
+build = [["cc", "-dynamiclib", "-fPIC", "native/foo.c", "-o", "{output}"]]
 
 [dependencies]
 dep = { path = "../dep" }

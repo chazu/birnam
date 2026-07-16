@@ -61,11 +61,13 @@ birnam examples/fizzbuzz.birnam
 ```
 
 For a project, `birnam` discovers the nearest `birnam.toml` from the current
-directory upward. A `load = ["module"]` list loads compiled modules dependency-
-first, then a root-relative `main = "main.birnam"` runs before the REPL opens.
-For an explicit project run, use `birnam run`: it evaluates `main` once and
-exits by default, or can start a tty/socket REPL through the manifest's `[run]`
-table or command flags. `birnam init` writes a commented starter file.
+directory upward and consumes its latest successful project build. It points
+both module and native-library loading at that build's `lib/` directory, loads
+the `load = ["module"]` list dependency-first, then runs a root-relative
+`main = "main.birnam"` before the REPL opens. For an explicit project run, use
+`birnam run`: it evaluates `main` once and exits by default, or can start a
+tty/socket REPL through the manifest's `[run]` table or command flags.
+`birnam init` writes a commented starter file.
 
 `birnam check [directory]` resolves the nearest source project without loading
 or evaluating project modules. It supports manifest-relative source roots and
@@ -76,7 +78,16 @@ module order. The directory defaults to the current directory; use
 `birnam build [directory]` compiles that same graph dependency-first into
 `.birnam/build/<target>/debug`. It publishes `lib/`, `resolution.toml`, and
 `artifacts.toml` together after a successful build; it does not run or activate
-the project. Use `birnam build --help` for the current build contract.
+the project. A manifest can also declare `[[wrapped]]` C libraries; each
+declaration runs its argv build commands with `{output}` expanded to a private
+staging path, then publishes `lib/lib<name>.dylib` beside the compiled Birnam
+wrapper. Use `birnam build --help` for the current build contract.
+
+`birnam install [directory]` validates that project-local publication and copies
+all of its `libbirnam_<name>.dylib` modules and `[[wrapped]]` native libraries
+into the runtime library directory. The destination is `$BIRNAM_LIB_DIR` when
+set, otherwise the installed runtime's sibling `lib/`; pass `--build` to build
+before installing.
 
 `birnam run [directory] [options] [-- args...]` consumes the last successful
 build; add `--build` to rebuild first. The default is no REPL. Use
@@ -97,6 +108,9 @@ birnam check [directory]     Resolve and print a source project graph.
 birnam check --help          Show check command documentation.
 birnam build [directory]     Compile and publish a project-local build.
 birnam build --help          Show build command documentation.
+birnam install [directory]   Install a project's published modules into the
+                             runtime library directory.
+birnam install --help        Show install command documentation.
 birnam run [directory]       Run a project main; default is no REPL.
 birnam run --help            Show run, REPL, socket, and argument documentation.
 birnam wrap <name>         Scaffold a C-library wrapper.
@@ -200,7 +214,9 @@ and Zig source documentation.
 birnam wrap mylib
 ```
 
-It creates an Alien-based C-library wrapper under `wrapped/`.
+It creates an Alien-based C-library wrapper under `wrapped/`. Add that source to
+the project's `source_roots` and pair it with a `[[wrapped]]` build declaration
+to have `birnam build` produce and stage its native dylib.
 
 ## Verification
 

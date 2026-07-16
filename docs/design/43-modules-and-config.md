@@ -112,7 +112,11 @@ declaration) to every unit dylib. `load:` reads it via `dlsym` *before* running
 The host sets `[Module libDir:]` (its resolved lib dir) and marks the boot-time
 self-hosted layer `#loaded`, so a later `load:` of `stdlib`/`toml`/`config` as some
 module's dependency is a no-op. v1 is **name-based**: user modules live in the lib
-dir (or a `BIRNAM_LIB_DIR` you control) as `libbirnam_<name>.dylib`.
+dir (or a `BIRNAM_LIB_DIR` you control) as `libbirnam_<name>.dylib`. Project
+builds publish into their private `.birnam/build/<target>/debug/lib`; the
+host-aware bare REPL and `birnam run` point both Module and Alien at that
+directory, while `birnam install` copies the validated project publication into
+the runtime directory for use outside the project build tree.
 
 ## Image composition
 

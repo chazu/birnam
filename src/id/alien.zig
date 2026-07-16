@@ -10,6 +10,8 @@
 //! Message api (driven through `api.send`):
 //!   [Alien dlopen: pathString]                       load a shared library so its
 //!                                                    symbols become resolvable
+//!   [Alien libraryDir: pathString]                   resolve bare dlopen names
+//!                                                    against a project build dir
 //!   [Alien dlclose: pathString]                      release one such handle (§G10)
 //!   [Alien wrap: cFnName signature: sig as: #sel on: vt]
 //!                                                    wrap a C function as a method
@@ -106,6 +108,9 @@ fn strBytes(o: Oop) []const u8 {
 }
 fn dupZ(o: Oop) [:0]u8 {
     const b = strBytes(o);
+    return dupZBytes(b);
+}
+fn dupZBytes(b: []const u8) [:0]u8 {
     const z = ca.allocSentinel(u8, b.len, 0) catch @panic("alien: oom");
     @memcpy(z[0..b.len], b);
     return z;
@@ -845,6 +850,19 @@ fn mWrap(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 /// GC root provider is needed.
 const DlEntry = struct { path: []u8, handle: *anyopaque };
 var g_dls: std.ArrayList(DlEntry) = .{};
+var g_library_dir: ?[]u8 = null;
+
+/// `[Alien libraryDir: path]` sets the process-local directory used for bare
+/// `dlopen:` names. The source path remains the recorded key, so image replay
+/// keeps the wrapper's logical library name while the current project chooses
+/// where that name is materialized.
+fn mLibraryDir(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const path = strBytes(a[0]);
+    if (g_library_dir) |old| ca.free(old);
+    g_library_dir = ca.dupe(u8, path) catch @panic("alien: oom");
+    return self;
+}
 
 /// `[Alien dlopen: path]` — load a shared library into the process so its symbols
 /// become resolvable by later `wrap:`. Answers true, or nil if it cannot load. The
@@ -853,10 +871,19 @@ var g_dls: std.ArrayList(DlEntry) = .{};
 fn mDlopen(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
-    const path = dupZ(a[0]);
+    const requested = strBytes(a[0]);
+    const resolved = if (g_library_dir) |dir|
+        if (!std.fs.path.isAbsolute(requested) and std.mem.indexOfScalar(u8, requested, '/') == null)
+            std.fs.path.join(ca, &.{ dir, requested }) catch @panic("alien: oom")
+        else
+            ca.dupe(u8, requested) catch @panic("alien: oom")
+    else
+        ca.dupe(u8, requested) catch @panic("alien: oom");
+    defer ca.free(resolved);
+    const path = dupZBytes(resolved);
     defer ca.free(path);
     const h = g_api.dlopen(path.ptr, RTLD_LAZY) orelse return g_api.nilObj;
-    const owned = ca.dupe(u8, path[0..path.len]) catch @panic("alien: oom");
+    const owned = ca.dupe(u8, requested) catch @panic("alien: oom");
     g_dls.append(ca, .{ .path = owned, .handle = h }) catch @panic("alien: oom");
     recordDlopen(owned);
     return g_api.trueObj;
@@ -1064,6 +1091,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(alien_vt, api.intern("wrap:signature:as:on:"), &mWrap);
     api.method(alien_vt, api.intern("callback:signature:"), &mCallback);
     api.method(alien_vt, api.intern("releaseCallback:"), &mReleaseCallback);
+    api.method(alien_vt, api.intern("libraryDir:"), &mLibraryDir);
     api.method(alien_vt, api.intern("dlopen:"), &mDlopen);
     api.method(alien_vt, api.intern("dlclose:"), &mDlclose);
     api.method(alien_vt, api.intern("alloc:"), &mAlloc);

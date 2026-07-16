@@ -35,6 +35,15 @@ pub const RunConfig = struct {
     socket_port: i64,
 };
 
+/// A project-owned native wrapper. Each build entry is an argv vector; the
+/// host substitutes `{output}` with a private staging path before execution.
+/// The first slice intentionally keeps wrapper declarations on the root
+/// project, matching the project-local build output and run directory.
+pub const Wrapped = struct {
+    name: []const u8,
+    build: []const []const []const u8,
+};
+
 pub const Resolution = struct {
     project_root: []const u8,
     manifest_path: []const u8,
@@ -43,6 +52,7 @@ pub const Resolution = struct {
     load_roots: []const []const u8,
     run: RunConfig,
     modules: []const Module,
+    wrapped: []const Wrapped,
     digest: []const u8,
 };
 
@@ -71,6 +81,7 @@ const Manifest = struct {
     loads: []const []const u8,
     dependencies: []const Dependency,
     run: RunConfig,
+    wrapped: []const Wrapped,
     digest: []const u8,
 };
 
@@ -210,6 +221,47 @@ fn parseStringList(state: *State, value: Oop, field: []const u8, allow_single: b
     return out;
 }
 
+fn parseWrapped(state: *State, parsed: Oop) FailureError![]const Wrapped {
+    const wrapped_value = try mapAt(state, parsed, "wrapped");
+    if (wrapped_value == state.api.nilObj) return state.arena.alloc(Wrapped, 0) catch
+        return state.fail("projectResolutionFailed", "out of memory while reading wrapped declarations", .{});
+
+    const count = try vectorSize(state, wrapped_value, "wrapped");
+    const wrapped = state.arena.alloc(Wrapped, count) catch
+        return state.fail("projectResolutionFailed", "out of memory while reading wrapped declarations", .{});
+    for (0..count) |i| {
+        const item = state.api.send(wrapped_value, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        if (!isMap(state.api, item)) return state.fail("manifestValueInvalid", "wrapped entries must be TOML tables", .{});
+        const name = try duplicateString(state, try mapAt(state, item, "name"), "wrapped.name");
+        if (name.len == 0 or std.mem.indexOfScalar(u8, name, '/') != null or std.fs.path.isAbsolute(name))
+            return state.fail("manifestValueInvalid", "wrapped.name must be a non-empty logical name without path separators", .{});
+
+        const build_value = try mapAt(state, item, "build");
+        if (build_value == state.api.nilObj)
+            return state.fail("manifestValueInvalid", "wrapped.{s} must declare build commands", .{name});
+        const command_count = try vectorSize(state, build_value, "wrapped.build");
+        if (command_count == 0) return state.fail("manifestValueInvalid", "wrapped.{s}.build must not be empty", .{name});
+        const commands = state.arena.alloc([]const []const u8, command_count) catch
+            return state.fail("projectResolutionFailed", "out of memory while reading wrapped build commands", .{});
+        var has_output = false;
+        for (0..command_count) |command_index| {
+            const command = state.api.send(build_value, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(command_index))}, 1);
+            commands[command_index] = try parseStringList(state, command, "wrapped.build command", false);
+            if (commands[command_index].len == 0)
+                return state.fail("manifestValueInvalid", "wrapped.{s}.build commands must not be empty", .{name});
+            for (commands[command_index]) |argument| {
+                if (std.mem.indexOf(u8, argument, "{output}") != null) has_output = true;
+            }
+        }
+        if (!has_output)
+            return state.fail("manifestValueInvalid", "wrapped.{s}.build must use {{output}} for the dylib output path", .{name});
+        wrapped[i] = .{ .name = name, .build = commands };
+    }
+    for (wrapped, 0..) |entry, i| for (wrapped[0..i]) |old| if (std.mem.eql(u8, old.name, entry.name))
+        return state.fail("duplicateWrappedDeclaration", "wrapped library {s} is declared more than once", .{entry.name});
+    return wrapped;
+}
+
 fn parseRunConfig(state: *State, parsed: Oop) FailureError!RunConfig {
     const run_value = try mapAt(state, parsed, "run");
     if (run_value == state.api.nilObj) return .{
@@ -291,6 +343,7 @@ fn parseManifest(state: *State, manifest_path: []const u8, bytes: []const u8) Fa
     const load_value = try mapAt(state, parsed, "load");
     const loads = try parseStringList(state, load_value, "load", true);
     const run_config = try parseRunConfig(state, parsed);
+    const wrapped = try parseWrapped(state, parsed);
 
     const dep_value = try mapAt(state, parsed, "dependencies");
     var dependencies_list: std.ArrayList(Dependency) = .{};
@@ -326,6 +379,7 @@ fn parseManifest(state: *State, manifest_path: []const u8, bytes: []const u8) Fa
         .loads = loads,
         .dependencies = dependencies,
         .run = run_config,
+        .wrapped = wrapped,
         .digest = sha256Hex(state, bytes),
     };
 }
@@ -597,6 +651,7 @@ fn run(state: *State, working_dir: []const u8) FailureError!Resolution {
         .load_roots = load_roots,
         .run = root.manifest.run,
         .modules = modules,
+        .wrapped = root.manifest.wrapped,
         .digest = digestResolution(state, root),
     };
 }
@@ -624,6 +679,10 @@ pub fn writeReport(result: *const Result, writer: anytype) !void {
     try writer.print("manifest: {s}\n", .{resolution.manifest_path});
     if (resolution.project_name.len != 0) try writer.print("name: {s}\n", .{resolution.project_name});
     if (resolution.main_path) |main| try writer.print("main: {s}\n", .{main});
+    if (resolution.wrapped.len != 0) {
+        try writer.writeAll("wrapped:\n");
+        for (resolution.wrapped) |wrapped| try writer.print("  {s} -> lib/lib{s}.dylib\n", .{ wrapped.name, wrapped.name });
+    }
     try writer.writeAll("module-order:\n");
     if (resolution.modules.len == 0) try writer.writeAll("  (none)\n");
     for (resolution.modules) |module| {

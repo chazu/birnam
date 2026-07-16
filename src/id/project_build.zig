@@ -36,6 +36,13 @@ pub const Artifact = struct {
     action: Action,
 };
 
+pub const NativeArtifact = struct {
+    name: []const u8,
+    relative_path: []const u8,
+    checksum: []const u8,
+    action: Action,
+};
+
 pub const Action = enum { compiled, reused };
 
 const PreviousArtifact = struct {
@@ -48,6 +55,12 @@ const PreviousArtifact = struct {
     checksum: []const u8,
 };
 
+const PreviousNativeArtifact = struct {
+    name: []const u8,
+    relative_path: []const u8,
+    checksum: []const u8,
+};
+
 const PreviousBuild = struct {
     project_root: []const u8,
     target: []const u8,
@@ -57,6 +70,7 @@ const PreviousBuild = struct {
     resolution_digest: []const u8,
     built_at: []const u8,
     artifacts: []const PreviousArtifact,
+    native: []const PreviousNativeArtifact,
 };
 
 pub const Build = struct {
@@ -68,6 +82,7 @@ pub const Build = struct {
     built_at: []const u8,
     resolution_digest: []const u8,
     artifacts: []const Artifact,
+    native: []const NativeArtifact,
 };
 
 pub const Result = struct {
@@ -200,7 +215,7 @@ fn parsePreviousBuildRecord(state: *State, final: []const u8) FailureError!Previ
     if (!isMap(state, parsed)) return state.fail("buildRecordMalformed", "{s} did not produce a TOML table", .{record_path});
 
     const schema = try recordString(state, try mapAt(state, parsed, "schema"), "schema");
-    if (!std.mem.eql(u8, schema, "birnam-artifacts-v2"))
+    if (!std.mem.eql(u8, schema, "birnam-artifacts-v3"))
         return state.fail("buildRecordMalformed", "unsupported artifact record schema in {s}", .{record_path});
     const project_root = try recordString(state, try mapAt(state, parsed, "project_root"), "project_root");
     const target = try recordString(state, try mapAt(state, parsed, "target"), "target");
@@ -226,6 +241,19 @@ fn parsePreviousBuildRecord(state: *State, final: []const u8) FailureError!Previ
             .checksum = try recordString(state, try mapAt(state, item, "checksum"), "artifact checksum"),
         };
     }
+    const native_values = try mapAt(state, parsed, "native");
+    const native_count = try vectorSize(state, native_values, "native");
+    const native = state.arena.alloc(PreviousNativeArtifact, native_count) catch
+        return state.fail("buildFailed", "out of memory while reading native artifact records", .{});
+    for (0..native_count) |i| {
+        const item = state.api.send(native_values, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        if (!isMap(state, item)) return state.fail("buildRecordMalformed", "native must contain inline tables", .{});
+        native[i] = .{
+            .name = try recordString(state, try mapAt(state, item, "name"), "native artifact name"),
+            .relative_path = try recordString(state, try mapAt(state, item, "path"), "native artifact path"),
+            .checksum = try recordString(state, try mapAt(state, item, "checksum"), "native artifact checksum"),
+        };
+    }
     return .{
         .project_root = project_root,
         .target = target,
@@ -235,6 +263,7 @@ fn parsePreviousBuildRecord(state: *State, final: []const u8) FailureError!Previ
         .resolution_digest = resolution_digest,
         .built_at = built_at,
         .artifacts = artifacts,
+        .native = native,
     };
 }
 
@@ -244,6 +273,13 @@ fn readPreviousBuildRecord(state: *State, final: []const u8) ?PreviousBuild {
 
 fn previousArtifact(build_record: PreviousBuild, name: []const u8) ?PreviousArtifact {
     for (build_record.artifacts) |artifact| {
+        if (std.mem.eql(u8, artifact.name, name)) return artifact;
+    }
+    return null;
+}
+
+fn previousNative(build_record: PreviousBuild, name: []const u8) ?PreviousNativeArtifact {
+    for (build_record.native) |artifact| {
         if (std.mem.eql(u8, artifact.name, name)) return artifact;
     }
     return null;
@@ -431,6 +467,15 @@ fn writeInlineArtifact(state: *State, out: *std.ArrayList(u8), artifact: Artifac
     try put(state, out, " },\n");
 }
 
+fn writeInlineNative(state: *State, out: *std.ArrayList(u8), artifact: NativeArtifact) FailureError!void {
+    var first = true;
+    try put(state, out, "{ ");
+    try appendInlineString(state, out, &first, "name", artifact.name);
+    try appendInlineString(state, out, &first, "path", artifact.relative_path);
+    try appendInlineString(state, out, &first, "checksum", artifact.checksum);
+    try put(state, out, " },\n");
+}
+
 fn writeResolutionRecord(state: *State, resolution: *const project.Resolution, stage: []const u8, target: []const u8, tool_version: []const u8, built_at: []const u8) FailureError!void {
     var out: std.ArrayList(u8) = .{};
     const record_path = try pathJoin(state, stage, "resolution.toml");
@@ -455,7 +500,7 @@ fn writeArtifactRecord(state: *State, build_result: *const Build) FailureError!v
     const record_path = try pathJoin(state, build_result.output_root, "artifacts.toml");
     defer out.deinit(state.arena);
 
-    try appendTomlString(state, &out, "schema", "birnam-artifacts-v2");
+    try appendTomlString(state, &out, "schema", "birnam-artifacts-v3");
     try appendTomlString(state, &out, "project_root", build_result.project_root);
     try appendTomlString(state, &out, "target", build_result.target);
     try appendTomlString(state, &out, "profile", build_result.profile);
@@ -465,6 +510,9 @@ fn writeArtifactRecord(state: *State, build_result: *const Build) FailureError!v
     try appendTomlString(state, &out, "resolution_digest", build_result.resolution_digest);
     try put(state, &out, "artifacts = [\n");
     for (build_result.artifacts) |artifact| try writeInlineArtifact(state, &out, artifact);
+    try put(state, &out, "]\n");
+    try put(state, &out, "native = [\n");
+    for (build_result.native) |artifact| try writeInlineNative(state, &out, artifact);
     try put(state, &out, "]\n");
     try writeFile(state, record_path, out.items);
 }
@@ -504,6 +552,73 @@ fn compileArtifact(state: *State, module: project.Module, output_path: []const u
         .revision_digest = state.arena.dupe(u8, module.revision_digest) catch @panic("project_build: oom"),
         .requires = try duplicateStrings(state, module.requires),
         .checksum = sha256Hex(state, artifact_bytes),
+        .action = .compiled,
+    };
+}
+
+fn expandCommandArg(state: *State, input: []const u8, project_root: []const u8, wrapped: project.Wrapped, output: []const u8, stage: []const u8, stage_lib: []const u8) FailureError![]const u8 {
+    var out: std.ArrayList(u8) = .{};
+    var i: usize = 0;
+    while (i < input.len) {
+        const replacement: ?[]const u8 = if (std.mem.startsWith(u8, input[i..], "{output}")) output else if (std.mem.startsWith(u8, input[i..], "{project}")) project_root else if (std.mem.startsWith(u8, input[i..], "{build}")) stage else if (std.mem.startsWith(u8, input[i..], "{lib}")) stage_lib else null;
+        if (replacement) |value| {
+            const token_len = if (std.mem.startsWith(u8, input[i..], "{output}")) "{output}".len else if (std.mem.startsWith(u8, input[i..], "{project}")) "{project}".len else if (std.mem.startsWith(u8, input[i..], "{build}")) "{build}".len else "{lib}".len;
+            out.appendSlice(state.arena, value) catch
+                return state.fail("nativeBuildFailed", "out of memory while expanding the build command for wrapped {s}", .{wrapped.name});
+            i += token_len;
+        } else {
+            out.append(state.arena, input[i]) catch
+                return state.fail("nativeBuildFailed", "out of memory while expanding the build command for wrapped {s}", .{wrapped.name});
+            i += 1;
+        }
+    }
+    return out.toOwnedSlice(state.arena) catch
+        return state.fail("nativeBuildFailed", "out of memory while expanding the build command for wrapped {s}", .{wrapped.name});
+}
+
+fn runWrappedCommand(state: *State, resolution: *const project.Resolution, wrapped: project.Wrapped, command: []const []const u8, output: []const u8, stage: []const u8, stage_lib: []const u8) FailureError!void {
+    const argv = state.arena.alloc([]const u8, command.len) catch
+        return state.fail("nativeBuildFailed", "out of memory while preparing the build command for wrapped {s}", .{wrapped.name});
+    for (command, 0..) |argument, i| argv[i] = try expandCommandArg(state, argument, resolution.project_root, wrapped, output, stage, stage_lib);
+    const result = std.process.Child.run(.{
+        .allocator = state.arena,
+        .argv = argv,
+        .cwd = resolution.project_root,
+        .max_output_bytes = 16 << 20,
+    }) catch |err|
+        return state.fail("nativeBuildFailed", "could not run the build command for wrapped {s}: {s}", .{ wrapped.name, @errorName(err) });
+    switch (result.term) {
+        .Exited => |code| if (code != 0)
+            return state.fail("nativeBuildFailed", "build command for wrapped {s} exited {d}: {s}{s}", .{ wrapped.name, code, result.stdout, result.stderr }),
+        else => return state.fail("nativeBuildFailed", "build command for wrapped {s} did not exit normally: {s}", .{ wrapped.name, @tagName(result.term) }),
+    }
+}
+
+fn expectedNativePath(state: *State, wrapped: project.Wrapped) FailureError![]const u8 {
+    return std.fmt.allocPrint(state.arena, "lib/lib{s}.dylib", .{wrapped.name}) catch
+        return state.fail("buildFailed", "out of memory while naming wrapped library {s}", .{wrapped.name});
+}
+
+fn buildWrapped(state: *State, resolution: *const project.Resolution, wrapped: project.Wrapped, stage: []const u8, stage_lib: []const u8) FailureError!NativeArtifact {
+    const native_root = try pathJoin(state, stage, "native");
+    const wrapped_root = try pathJoin(state, native_root, wrapped.name);
+    try makePath(state, wrapped_root);
+    const filename = std.fmt.allocPrint(state.arena, "lib{s}.dylib", .{wrapped.name}) catch
+        return state.fail("buildFailed", "out of memory while naming wrapped library {s}", .{wrapped.name});
+    const output = try pathJoin(state, wrapped_root, filename);
+    const stage_output = try pathJoin(state, stage_lib, filename);
+    std.fs.cwd().deleteFile(output) catch {};
+    for (wrapped.build) |command| try runWrappedCommand(state, resolution, wrapped, command, output, stage, stage_lib);
+    if (!pathExists(output))
+        return state.fail("nativeArtifactMissing", "build commands for wrapped {s} did not produce {s}", .{ wrapped.name, output });
+    std.fs.cwd().copyFile(output, std.fs.cwd(), stage_output, .{}) catch |err|
+        return state.fail("nativeArtifactMissing", "could not stage wrapped library {s}: {s}", .{ wrapped.name, @errorName(err) });
+    const bytes = std.fs.cwd().readFileAlloc(state.arena, stage_output, 1 << 30) catch
+        return state.fail("nativeArtifactMissing", "could not read staged wrapped library {s}", .{wrapped.name});
+    return .{
+        .name = state.arena.dupe(u8, wrapped.name) catch @panic("project_build: oom"),
+        .relative_path = try expectedNativePath(state, wrapped),
+        .checksum = sha256Hex(state, bytes),
         .action = .compiled,
     };
 }
@@ -558,6 +673,8 @@ fn validatePublished(state: *State, resolution: *const project.Resolution, tool_
         return state.fail("projectArtifactStale", "published artifacts at {s} do not match the current project resolution", .{final});
     if (record.artifacts.len != resolution.modules.len)
         return state.fail("projectArtifactStale", "published artifact set at {s} is incomplete", .{final});
+    if (record.native.len != resolution.wrapped.len)
+        return state.fail("projectArtifactStale", "published native artifact set at {s} is incomplete", .{final});
 
     const artifacts = state.arena.alloc(Artifact, resolution.modules.len) catch
         return state.fail("buildFailed", "out of memory while validating artifacts", .{});
@@ -574,6 +691,27 @@ fn validatePublished(state: *State, resolution: *const project.Resolution, tool_
             return state.fail("projectArtifactStale", "published artifact for #{s} failed checksum validation", .{module.name});
         artifacts[i] = try artifactFromModule(state, module, try expectedArtifactPath(state, module), checksum, .reused);
     }
+    const native = state.arena.alloc(NativeArtifact, resolution.wrapped.len) catch
+        return state.fail("buildFailed", "out of memory while validating native artifacts", .{});
+    for (resolution.wrapped, 0..) |wrapped, i| {
+        const old = previousNative(record, wrapped.name) orelse
+            return state.fail("projectArtifactStale", "published artifacts do not contain wrapped library {s}", .{wrapped.name});
+        const expected_path = try expectedNativePath(state, wrapped);
+        if (!std.mem.eql(u8, old.relative_path, expected_path))
+            return state.fail("projectArtifactStale", "published wrapped library {s} has an unexpected path", .{wrapped.name});
+        const path = try pathJoin(state, final, old.relative_path);
+        if (!pathExists(path)) return state.fail("projectArtifactMissing", "published wrapped library {s} is missing at {s}", .{ wrapped.name, path });
+        const checksum = fileChecksum(state, path) orelse
+            return state.fail("projectArtifactMissing", "could not read published wrapped library {s}", .{wrapped.name});
+        if (!std.mem.eql(u8, checksum, old.checksum))
+            return state.fail("projectArtifactStale", "published wrapped library {s} failed checksum validation", .{wrapped.name});
+        native[i] = .{
+            .name = state.arena.dupe(u8, wrapped.name) catch @panic("project_build: oom"),
+            .relative_path = expected_path,
+            .checksum = checksum,
+            .action = .reused,
+        };
+    }
     return .{
         .project_root = resolution.project_root,
         .output_root = final,
@@ -583,6 +721,7 @@ fn validatePublished(state: *State, resolution: *const project.Resolution, tool_
         .built_at = record.built_at,
         .resolution_digest = resolution.digest,
         .artifacts = artifacts,
+        .native = native,
     };
 }
 
@@ -611,6 +750,9 @@ fn run(state: *State, resolution: *const project.Resolution, tool_version: []con
 
     const artifacts = state.arena.alloc(Artifact, resolution.modules.len) catch
         return state.fail("buildFailed", "out of memory while preparing artifacts", .{});
+    const native = state.arena.alloc(NativeArtifact, resolution.wrapped.len) catch
+        return state.fail("buildFailed", "out of memory while preparing native artifacts", .{});
+    for (resolution.wrapped, 0..) |wrapped, i| native[i] = try buildWrapped(state, resolution, wrapped, stage, stage_lib);
     const dirty = state.arena.alloc(bool, resolution.modules.len) catch
         return state.fail("buildFailed", "out of memory while preparing invalidation state", .{});
     @memset(dirty, false);
@@ -644,12 +786,13 @@ fn run(state: *State, resolution: *const project.Resolution, tool_version: []con
         .built_at = built_at,
         .resolution_digest = resolution.digest,
         .artifacts = artifacts,
+        .native = native,
     };
     try writeResolutionRecord(state, resolution, stage, target, tool_version, built_at);
     // The artifact record is written into the staging directory before the
     // directory is made visible. Its path is temporarily patched to the stage
     // for this write; all paths inside the record remain project-relative.
-    const staged_build = Build{ .project_root = materialized.project_root, .output_root = stage, .target = materialized.target, .profile = materialized.profile, .tool_version = materialized.tool_version, .built_at = materialized.built_at, .resolution_digest = materialized.resolution_digest, .artifacts = materialized.artifacts };
+    const staged_build = Build{ .project_root = materialized.project_root, .output_root = stage, .target = materialized.target, .profile = materialized.profile, .tool_version = materialized.tool_version, .built_at = materialized.built_at, .resolution_digest = materialized.resolution_digest, .artifacts = materialized.artifacts, .native = materialized.native };
     try writeArtifactRecord(state, &staged_build);
     try publish(state, stage, final, target_root, token);
     published = true;
@@ -691,5 +834,11 @@ pub fn writeReport(result: *const Result, writer: anytype) !void {
     if (build_result.artifacts.len == 0) try writer.writeAll("  (none)\n");
     for (build_result.artifacts) |artifact| {
         try writer.print("  #{s} [{s}] <- {s} checksum={s}\n", .{ artifact.name, @tagName(artifact.action), artifact.relative_path, artifact.checksum });
+    }
+    if (build_result.native.len != 0) {
+        try writer.writeAll("native:\n");
+        for (build_result.native) |artifact| {
+            try writer.print("  {s} [{s}] <- {s} checksum={s}\n", .{ artifact.name, @tagName(artifact.action), artifact.relative_path, artifact.checksum });
+        }
     }
 }

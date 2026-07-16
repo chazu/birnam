@@ -170,10 +170,14 @@ source_roots = ["src", "modules"]
 [dependencies]
 http = { path = "../birnam-http" }
 shared = { path = "vendor/shared" }
+
+[[wrapped]]
+name = "foo"
+build = [["cc", "-dynamiclib", "native/foo.c", "-o", "{output}"]]
 ~~~
 
-The exact TOML spelling may change during implementation, but the semantics are
-fixed here:
+The wrapped declaration is implemented as the first project-native C-library
+build slice. Its semantics are:
 
 - name and version describe the project and do not rename modules.
 - main is a project-root-relative entry source, not a module dependency.
@@ -183,6 +187,14 @@ fixed here:
 - source_roots are ordered search roots for project-owned source modules.
 - dependencies maps canonical module names to standalone local project roots
   in the first slice. Each path dependency has its own birnam.toml.
+- wrapped names a logical C library. Each `build` entry is an argv array, not a
+  shell string; `{output}` is required and is replaced with a private staging
+  path. `{project}`, `{build}`, and `{lib}` are also available as path
+  placeholders.
+- the first slice executes wrapped commands from the root project's directory,
+  stages the resulting `lib<name>.dylib` under the project's published `lib/`,
+  and exposes it to a wrapper's bare `[Alien dlopen: "lib<name>.dylib"]` during
+  `birnam run`. `birnam check` validates the declaration but never executes it.
 
 One dependency entry initially selects one canonical module from the dependency
 project. The dependency project may contain other source modules for its own

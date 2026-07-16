@@ -15,8 +15,8 @@
 // Supported (v1): comments, bare & basic-quoted keys, `[table]` and dotted
 // `[a.b.c]` headers, basic strings (with \n \t \r \" \\ escapes), integers
 // (sign + `_` separators), floats, booleans, arrays (nested, multi-line), and
-// inline tables. Deferred: dotted keys in key/vals, datetimes (kept as strings
-// if quoted), multi-line strings, arrays-of-tables.
+// inline tables, and arrays-of-tables. Deferred: dotted keys in key/vals,
+// datetimes (kept as strings if quoted), and multi-line strings.
 
 // This module's dependency declaration (stage 3): `parse:` and its helpers call
 // stdlib methods (`collect:`, `inject:into:`, `asInteger`, …) at run time, so Toml
@@ -66,7 +66,7 @@
   let arrsp := [Peg star: [Peg choiceOf: #[ sp nl [Peg seqOf: #[ comment nl ]] ]]];
 
   // one document line: an entry (table header or key/val) + trailing comment
-  let entry := [Peg choiceOf: #[ [Peg ruleRef: #table] [Peg ruleRef: #keyval] ]];
+  let entry := [Peg choiceOf: #[ [Peg ruleRef: #arrayTable] [Peg ruleRef: #table] [Peg ruleRef: #keyval] ]];
   let line  := [Peg seqOf: #[ wsp entry wsp [Peg opt: comment] eol ]];
 
   // ---- rules (these make CST nodes) ----
@@ -79,6 +79,12 @@
     [Peg ruleRef: #key]
     [Peg star: [Peg seqOf: #[ wsp [Peg literal: "."] wsp [Peg ruleRef: #key] ]]]
     wsp [Peg literal: "]"] ]]];
+
+  [g rule: #arrayTable is: [Peg seqOf: #[
+    [Peg literal: "["] [Peg literal: "["] wsp
+    [Peg ruleRef: #key]
+    [Peg star: [Peg seqOf: #[ wsp [Peg literal: "."] wsp [Peg ruleRef: #key] ]]]
+    wsp [Peg literal: "]"] [Peg literal: "]"] ]]];
 
   [g rule: #keyval is: [Peg seqOf: #[
     [Peg ruleRef: #key] wsp [Peg literal: "="] wsp value ]]];
@@ -202,6 +208,37 @@
       [self at: k put: [sub atPath: rest put: val]]]]] doc:
   "A new Map with `val` set at nested key `path` (a Vector), creating intermediate Maps as needed (persistent)."];
 
+// Append a fresh table to an array-of-tables path. TOML's `[[a.b]]` lowering
+// keeps the public representation simple: the path names a Vector of Maps.
+[Reflect defineMethod: #appendTableAtPath: on: MapVt as: [:self :path |
+  let k := [path at: 0];
+  [[[path size] = 1]
+    ifTrue: [|
+      let old := [self at: k ifAbsent: [| #[] ]];
+      [self at: k put: [old add: [Map new]]]]
+    ifFalse: [|
+      let rest := [path copyFrom: 1 to: [path size]];
+      let sub  := [self at: k ifAbsent: [| [Map new]]];
+      [self at: k put: [sub appendTableAtPath: rest]]]]]
+  doc: "Append an empty table to an array-of-tables path."];
+
+// Put a key/value into the most recently appended table at an array-of-tables
+// path. The parser tracks that path separately from ordinary table headers.
+[Reflect defineMethod: #atPath:lastTableAt:put: on: MapVt as: [:self :path :key :val |
+  let k := [path at: 0];
+  [[[path size] = 1]
+    ifTrue: [|
+      let tables := [self at: k];
+      let last := [tables last];
+      let updated := [last at: key put: val];
+      let prefix := [tables copyFrom: 0 to: [[tables size] - 1]];
+      [self at: k put: [prefix add: updated]]]
+    ifFalse: [|
+      let rest := [path copyFrom: 1 to: [path size]];
+      let sub := [self at: k];
+      [self at: k put: [sub atPath: rest lastTableAt: key put: val]]]]]
+  doc: "Put a key/value into the last table appended at an array-of-tables path."];
+
 // -- the entry point ---------------------------------------------------------
 
 [Reflect defineMethod: #parseToml on: String as: [:self |
@@ -211,15 +248,25 @@
   let step := [:acc :node |
     let result := [acc at: 0];
     let curPath := [acc at: 1];
-    [[[node ruleName] = "table"]
-      ifTrue: [| #[ result [[node children] collect: [:kn | [kn tomlKey: src]]] ]]
+    let arrayPath := [acc at: 2];
+    [[[node ruleName] = "arrayTable"]
+      ifTrue: [|
+        let path := [[node children] collect: [:kn | [kn tomlKey: src]]];
+        #[ [result appendTableAtPath: path] path path ]]
       ifFalse: [|
-        let k := [[[node children] at: 0] tomlKey: src];
-        let v := [[[node children] at: 1] tomlValue: src];
-        #[ [result atPath: [curPath , #[ k ]] put: v] curPath ]]]];
+        [[[node ruleName] = "table"]
+          ifTrue: [|
+            let path := [[node children] collect: [:kn | [kn tomlKey: src]]];
+            #[ result path nil ]]
+          ifFalse: [|
+            let k := [[[node children] at: 0] tomlKey: src];
+            let v := [[[node children] at: 1] tomlValue: src];
+            [[arrayPath notNil]
+              ifTrue: [| #[ [result atPath: arrayPath lastTableAt: k put: v] curPath arrayPath ]]
+              ifFalse: [| #[ [result atPath: [curPath , #[ k ]] put: v] curPath nil ]]]]]]]];
   let ok := [[cst notNil] & [[cst end] = [self size]]];
   [ok
-    ifTrue: [| [[[cst children] inject: #[ [Map new] [Vector new] ] into: step] at: 0]]
+    ifTrue: [| [[[cst children] inject: #[ [Map new] [Vector new] nil ] into: step] at: 0]]
     ifFalse: [| ["not valid TOML" error: #tomlParse]]]] doc:
   "Parses `self` as TOML; answers a Map (nested Maps for tables, Vectors for arrays), or a #tomlParse error."];
 

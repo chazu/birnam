@@ -177,8 +177,16 @@
 # [dependencies]
 # http = { path = \"../birnam-http\" }
 
+# C-library wrappers: each build entry is an argv array; {output} is the
+# required staged dylib path. The wrapper source should be under source_roots.
+# [[wrapped]]
+# name = \"foo\"
+# build = [[\"cc\", \"-dynamiclib\", \"native/foo.c\", \"-o\", \"{output}\"]]
+
 # The project-root-relative entry point. A bare `birnam` run anywhere under
-# this project evaluates it after `load`, then drops into the REPL.
+# this project validates/loads the latest build, evaluates it after `load`,
+# then drops into the REPL. `birnam install` copies that build into the
+# runtime library directory for use outside the project tree.
 # main = \"main.birnam\"
 
 # birnam run evaluates main once and exits unless a REPL is selected.
@@ -213,11 +221,11 @@
 // below to match %N%'s real functions, add more, then run it once the dylib
 // is built:
 //
-//   birnam wrapped/%N%/%N%.birnam
+//   birnam build   (after adding this file to a project's source_roots)
 //
-// How lib%N%.dylib gets built is up to you for now (system `cc`, a vendored
-// build, an already-installed lib on the loader path, …). Alien needs only
-// that the library be loadable by `dlopen:` and its symbols found by `dlsym`.
+// Add a matching `[[wrapped]]` entry to birnam.toml. Its build argv uses
+// `{output}` for the dylib path; birnam stages the result beside the compiled
+// wrapper and resolves this logical name at project run time.
 //
 // SIGNATURES are strings: the FIRST type is the return, the rest are the
 // arguments (whitespace ignored) — i=int l=long u=ulong d=double f=float
@@ -225,9 +233,9 @@
 // The RECEIVER is the first C argument, so a K-argument C function becomes a
 // method of arity K-1; a no-argument C function is just sent to the module.
 
-// 1. Load the shared library so its symbols become resolvable by `wrap:` below.
-//    Point this at wherever lib%N%.dylib actually lives.
-[Alien dlopen: \"wrapped/%N%/lib%N%.dylib\"];
+// 1. Load the staged shared library so its symbols become resolvable by `wrap:`.
+[Module named: #%N% requires: #[]];
+[Alien dlopen: \"lib%N%.dylib\"];
 
 // 2. The module: a named singleton bound in Globals to hang the wrapped
 //    methods on (the same shape as the self-hosted Config / Toml modules).

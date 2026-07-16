@@ -90,9 +90,12 @@ process, or run main.
 
 ### 3.2 birnam build [PROJECT] — P0 implemented
 
-Resolve and check the project, compile each source module to an installable
-libbirnam_<name>.dylib, record its metadata/checksum, write the resolution
-record, and publish the complete result.
+Resolve and check the project, execute each declared `[[wrapped]]` build argv in
+private staging, compile each source module to an installable
+libbirnam_<name>.dylib, record native and Birnam artifact checksums, write the
+resolution record, and publish the complete result. Wrapped commands run from
+the project root and must use `{output}` for the expected `lib<name>.dylib`
+path; they are not passed through a shell.
 
 The proposed layout is:
 
@@ -108,7 +111,7 @@ The proposed layout is:
 
 The first implementation supports the current target and `debug` profile. It
 builds resolved source modules in dependency-first order, reusing only
-artifacts whose target/profile/tool/ABI, source metadata, dependency metadata,
+Birnam artifacts whose target/profile/tool/ABI, source metadata, dependency metadata,
 expected path, and on-disk checksum all match the previous successful
 publication. A changed or tampered module invalidates its dependents; unrelated
 matching modules may be copied into the new staging directory. It writes both
@@ -119,9 +122,23 @@ later hardening slice. It does not yet select artifacts for `run` or activate a
 module in a running image.
 
 The directory name is an implementation detail; the invariant is that the
-published directory contains a complete, self-describing build.
+published directory contains a complete, self-describing build. Native outputs
+are published as `lib/lib<name>.dylib`; `birnam run` configures the project
+`lib/` as the resolution directory for bare Alien `dlopen:` names. Native
+commands currently run on each explicit build, while their published checksums
+are validated before a run.
 
-### 3.3 birnam run [PROJECT] [-- args...]
+### 3.3 `birnam install [PROJECT]` — implemented
+
+Install consumes the latest successful project publication, or performs an
+explicit build first with `--build`. It validates the artifact record and copies
+every `lib/libbirnam_<name>.dylib` and `lib/lib<name>.dylib` from that publication
+into the runtime library directory. The destination is `$BIRNAM_LIB_DIR` when
+set, otherwise the installed executable's sibling `lib/` directory. Staging is
+complete before installed filenames are replaced, so a failed copy does not
+leave a half-written artifact.
+
+### 3.4 birnam run [PROJECT] [-- args...]
 
 Resolve the project, validate the requested build, load its compiled artifacts
 in dependency order, evaluate the project entry source exactly once, and exit
@@ -169,7 +186,7 @@ The process receives arguments after -- without interpolation through Birnam
 source. The project root and selected build are available to diagnostics and
 runtime configuration but do not change the process cwd.
 
-### 3.4 birnam test [PROJECT]
+### 3.5 birnam test [PROJECT]
 
 This command is a planned consumer of the same resolver, not a prerequisite for
 P0. It should discover project test sources, run them in isolated processes or
@@ -188,6 +205,7 @@ resolution digest
 ordered modules
 source revision/content digest per module
 artifact path and checksum per module
+logical wrapped library name, path, and checksum per native dylib
 build timestamp and tool version for diagnostics
 ~~~
 
