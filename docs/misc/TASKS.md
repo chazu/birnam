@@ -30,14 +30,13 @@ Convention: `[ ]` open, `[~]` in progress, `[x]` done (with commit/date). Severi
   boot; legacy `__modsrc__`, `__methods__`, `__methodops__`, and per-module active
   units no longer drive production recovery or inspection. `zig build verify`
   includes source/AOT G0 parity and generation-aware image coverage. See the
-  [implementation plan](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).
+  [historical implementation plan](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).
 
 ---
 
 ## Next Architecture Sequence
 
-Detailed increments, current file ownership, narrow test commands, and exit gates
-for all five tasks live in
+The retired phase plan remains available as historical rationale in
 [design 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
 
 - [x] **I1a — blocking single-worker isolate substrate** (2026-07-14) — adds a clean worker boot
@@ -52,49 +51,16 @@ for all five tasks live in
   terminal timeout cleanup, clean stop, and two independent handles. See the
   [user guide](../guide/06-isolates.md) and
   [design 48](../design/48-concurrency-reactors-and-isolates.md#9-interleaved-implementation-sequence).
-- [x] **L1b — file-backed revision and image-baseline workflow** (2026-07-14) —
-  adds the self-hosted `LiveModules` facade; exact envelope-preserving `fileOut`
-  and inert import; explicit identical, stale-ancestor, sibling-divergence,
-  malformed, unsafe-form, dependency, and identity failures; retained staged
-  inspection; `:live stage/activate/rollback/save` at the host quiescence seam;
-  and reconciled full baselines verified under mapped/rebuilt boot and as isolate
-  images. Tests cover the [L1b matrix](../design/49-live-module-evolution.md#132-l1b--file-backed-revision-and-image-baseline-workflow)
-  without initialization, migration, file watching, forced replacement, or async
-  activation. See the [user guide](../guide/07-live-modules.md).
-- [x] **I1b — single-worker rolling replacement** (2026-07-14) — while idle worker A remains
-  selected, start B from an L1b baseline, wait for ready, run one bounded health
-  `request:timeout:`, switch the selected reference between calls, then stop and
-  reap A.
-  Every B failure leaves A selected. Pools, concurrent routing, busy draining,
-  retry, and reversible health effects remain later policy. The shipped
-  `Isolate replace:using:` policy requires one `#healthy` application reply and
-  returns an explicit outcome retaining the current and any pending-cleanup
-  handle. The named process matrix now covers missing/corrupt images, receiver
-  and selector boot errors, ready timeout, application/malformed/timeout/crash
-  health failures with A reuse after each, distinct L1b baselines, repeated
-  A→B→C, forced TERM/KILL, sole `#reapPending` ownership, later drain, and
-  idempotent reap. The runnable recipe is gated with the implementation.
-- [x] **L2 — blocking mailbox-safe live rollout** (2026-07-14) — transfer canonical
-  source/artifact identity plus a value-like base digest in one blocking control
-  request; bind preparation to the worker's local generation; activate only
-  between requests; and return an independent receipt, with rollback as a later
-  blocking request while locally valid. Complete when [L2 verification](../design/49-live-module-evolution.md#133-l2--blocking-mailbox-safe-live-rollout)
-  passes without pool-wide atomicity, concurrent rollout, or promises. Wire-v1
-  frame kinds 9/10 now carry fixed activate/rollback/receipt records;
-  `evolve:timeout:` commits under worker-local quiescence and returns an
-  `EvolutionReceipt`. Codec/golden and mailbox-order tests cover malformed
-  controls and non-interruption; the process matrix covers invalid source,
-  missing/checksum-invalid/map-invalid artifacts, exact receipt fields,
-  independent workers, accepted behavior, durable successor boot with lost
-  rollback capability, local and second rollback, and intervening generations.
-  Candidate tests cover commit-time drift. The runnable rollout/rollback recipe
-  is part of `zig build verify`.
+The file-backed live-module, worker-replacement, and worker-rollout policy slices
+were intentionally withdrawn on 2026-07-17. Their design notes remain historical;
+the current verification surface stops at compiled-unit lifecycle and the I1a
+blocking isolate substrate.
 
-The minimal reactor remains orthogonal and may be inserted before I1a when
-concurrent I/O is the immediate product target. Standard initialization,
-image-native source editing, migration, structured operations, richer supervision,
-append persistence, pools, and multi-module or cross-isolate atomic activation
-remain deferred until these five slices select the next failure model.
+The minimal reactor remains orthogonal and may be added when concurrent I/O is
+the immediate product target. Standard initialization, image-native source
+editing, migration, structured operations, richer supervision, append
+persistence, pools, and multi-module or cross-isolate activation remain deferred
+until product evidence selects the next failure model.
 
 ---
 

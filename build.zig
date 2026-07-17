@@ -82,7 +82,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "birnam_id_prelude", .src = "prelude.zig", .test_src = "prelude_test.zig", .step = "test-prelude", .desc = "the primitive stdlib: Integer/Boolean/System" },
         .{ .name = "birnam_id_collection", .src = "collection.zig", .test_src = "collection_test.zig", .step = "test-collection", .desc = "the id-native collection library: Vector trie + Range" },
         .{ .name = "birnam_id_error", .src = "error.zig", .test_src = "error_test.zig", .step = "test-error", .desc = "F7: the error model (propagating values + DNU swap)" },
-        .{ .name = "birnam_id_isolate", .src = "isolate.zig", .test_src = "isolate_test.zig", .step = "test-isolate", .desc = "Blocking isolates, wire-v1, and L2 evolution records" },
+        .{ .name = "birnam_id_isolate", .src = "isolate.zig", .test_src = "isolate_test.zig", .step = "test-isolate", .desc = "Blocking isolates and wire-v1" },
         .{ .name = "birnam_id_relational", .src = "relational.zig", .test_src = "relational_test.zig", .step = "test-relational", .desc = "the relational reading: datalog join + pull" },
         .{ .name = "birnam_id_alien", .src = "alien.zig", .test_src = "alien_test.zig", .step = "test-alien", .desc = "the FFI: wrap + absorb C libraries via Tcc", .test_links_tcc = true },
         .{ .name = "birnam_id_image", .src = "image.zig", .test_src = "image_test.zig", .step = "test-image", .desc = "the image: store-reachable durability + mapped code (docs/40)", .test_links_tcc = true },
@@ -166,7 +166,6 @@ pub fn build(b: *std.Build) void {
         .{ .src = "src/id/modules.birnam", .name = "modules" },
         .{ .src = "src/id/stdlib.birnam", .name = "stdlib" },
         .{ .src = "src/id/compiled-unit.birnam", .name = "compiledUnit" },
-        .{ .src = "src/id/live-modules.birnam", .name = "liveModules" },
         .{ .src = "src/id/toml.birnam", .name = "toml" },
         .{ .src = "src/id/config.birnam", .name = "config" },
         .{ .src = "src/id/project-policy.birnam", .name = "projectPolicy" },
@@ -239,29 +238,6 @@ pub fn build(b: *std.Build) void {
     isolate_smoke.step.dependOn(stage1);
     b.step("test-isolate-process", "Boot a worker image and round-trip a copied value").dependOn(&isolate_smoke.step);
 
-    const isolate_replacement_smoke = b.addSystemCommand(&.{ "bash", "scripts/isolate-replacement-smoke.sh" });
-    isolate_replacement_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
-    isolate_replacement_smoke.step.dependOn(stage1);
-    b.step("test-isolate-replacement", "Health-check and replace one selected worker").dependOn(&isolate_replacement_smoke.step);
-
-    const isolate_rollout_smoke = b.addSystemCommand(&.{ "bash", "scripts/isolate-rollout-smoke.sh" });
-    isolate_rollout_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
-    isolate_rollout_smoke.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
-    isolate_rollout_smoke.step.dependOn(stage1);
-    b.step("test-isolate-rollout", "Activate and roll back one worker between requests").dependOn(&isolate_rollout_smoke.step);
-
-    const live_modules_smoke = b.addSystemCommand(&.{ "bash", "scripts/live-modules-smoke.sh" });
-    live_modules_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
-    live_modules_smoke.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
-    live_modules_smoke.step.dependOn(stage1);
-    b.step("test-live-modules", "Exercise L1b host activation and mapped/rebuilt baselines").dependOn(&live_modules_smoke.step);
-
-    const live_features_examples = b.addSystemCommand(&.{ "bash", "scripts/live-features-examples-smoke.sh" });
-    live_features_examples.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
-    live_features_examples.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
-    live_features_examples.step.dependOn(stage1);
-    b.step("test-live-feature-examples", "Run the documented I1b and L2 examples").dependOn(&live_features_examples.step);
-
     verify_step.dependOn(test_step);
     verify_step.dependOn(&repl_goldens.step);
     verify_step.dependOn(&source_fallback.step);
@@ -271,10 +247,6 @@ pub fn build(b: *std.Build) void {
     verify_step.dependOn(&image_save_smoke.step);
     verify_step.dependOn(&install_smoke.step);
     verify_step.dependOn(&isolate_smoke.step);
-    verify_step.dependOn(&isolate_replacement_smoke.step);
-    verify_step.dependOn(&isolate_rollout_smoke.step);
-    verify_step.dependOn(&live_modules_smoke.step);
-    verify_step.dependOn(&live_features_examples.step);
 
     // The siphon/REPL host's own unit tests (e.g. the REPL bracket balancer).
     const main_test_mod = b.createModule(.{

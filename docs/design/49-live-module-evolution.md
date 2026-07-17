@@ -1,6 +1,10 @@
 # 49 — Live Module Evolution: Source Revisions and Dispatch Generations
 
-> **Status:** L1a, L1b, and L2 implemented, 2026-07-14, rev. 5.
+> **Status:** Withdrawn, 2026-07-17. The L1b/L2 policy layer was removed after
+> implementation review. This document is retained as design history; the
+> current runtime keeps the lower-level `CompiledUnit`/Codegen mechanism and
+> ordinary blocking isolates, but does not ship `LiveModules`, file-backed live
+> rollout, worker replacement, or cross-request evolution policy.
 > Accepted with corrections by the
 > [combined adversarial review](48a-live-evolution-isolate-combined-adversarial-review.md).
 > Rev. 3, accepted by the second

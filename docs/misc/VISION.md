@@ -12,17 +12,11 @@ A **system** is a binary that runs as an executable OR loads as a library, and w
 > contract. Treat the tenets below as historical mechanisms and aspirations, not
 > as the authority model for the running system.
 
-> **Current near-term direction (2026-07-14):** the five-phase **L1a → I1a →
-> L1b → I1b → L2** live-module/isolate sequence is shipped. It separates
-> executable authority, transport,
-> authoring workflow, replacement policy, and live rollout into independently
-> testable steps. L2 retains single-flight, per-worker semantics with no pool-wide
-> atomicity or asynchronous completion. The next slice is intentionally selected
-> from product evidence rather than implied by this historical vision. See
-> [49 — Live Module Evolution](../design/49-live-module-evolution.md) and
-> [48 — Concurrency](../design/48-concurrency-reactors-and-isolates.md). The
-> concrete delivery plan is
-> [50 — Five-Phase Implementation Plan](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
+> **Current near-term direction (2026-07-17):** the file-backed live-module,
+> worker-replacement, and worker-rollout policy layer was withdrawn. The runtime
+> retains compiled-unit candidates and the blocking isolate substrate; future
+> evolution policy will be reconsidered from product evidence rather than
+> extended from the retired five-phase plan.
 
 ## Core Tenets
 
@@ -368,6 +362,7 @@ The metacircular property holds: you can rewrite `bind` while the system runs. Y
 
 ## Roadmap
 
-See [plan 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md)
-for the current five-phase implementation sequence. `docs/archive/ROADMAP.md`
-remains the historical phase ledger through Phase 15; it is not the active plan.
+The retired five-phase implementation rationale remains in
+[plan 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
+`docs/archive/ROADMAP.md` remains the historical phase ledger through Phase 15;
+neither is an active live-rollout plan.

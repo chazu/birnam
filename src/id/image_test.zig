@@ -348,6 +348,51 @@ test "round-trip: generation code is mapped by default and rebuilt from the same
     try std.testing.expectEqual(@as(i64, 29), api.smallIntValue(send(gAt(globals, "ImageReceiver"), "cuImageHandle:", &.{api.mkSmallInt(29)})));
 }
 
+test "round-trip: standalone script method sources are mapped and rebuilt" {
+    const api = setupWithCodegen();
+    const Codegen = api.import("Codegen").?;
+    const globals = api.import("Globals").?;
+    const source = "[Reflect defineMethod: #directImageProbe on: Integer as: [:self | 73]]";
+    const source_path = "/tmp/direct-script-image.birnam";
+    const eval_result = api.send(Codegen, api.intern("evalPersisting:from:"), &.{
+        api.mkString(source.ptr, source.len),
+        api.mkString(source_path.ptr, source_path.len),
+    }, 2);
+    try std.testing.expect(eval_result != api.nilObj);
+    try std.testing.expectEqual(@as(i64, 73), api.smallIntValue(send(api.mkSmallInt(1), "directImageProbe", &.{})));
+
+    const generations = gAt(globals, "DispatchGeneration");
+    try std.testing.expect(send(generations, "initializeCurrent", &.{}) != api.nilObj);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const path = try std.fs.path.join(a, &.{ dir, "direct-script.image" });
+    defer a.free(path);
+
+    try std.testing.expect(image.saveImage(path));
+
+    const reflect = api.import("Reflect").?;
+    const integer = api.import("Integer").?;
+    try std.testing.expect(send(reflect, "removeMethod:on:", &.{ api.intern("directImageProbe"), integer }) != api.nilObj);
+
+    try std.testing.expect(image.loadImage(path));
+    try std.testing.expect(image.mappedCode());
+    try std.testing.expectEqual(@as(i64, 73), api.smallIntValue(send(api.mkSmallInt(1), "directImageProbe", &.{})));
+
+    try std.testing.expect(send(reflect, "removeMethod:on:", &.{ api.intern("directImageProbe"), integer }) != api.nilObj);
+    const system = api.import("System").?;
+    const rebuilt = api.send(system, api.intern("loadImage:rebuild:"), &.{
+        api.mkString(path.ptr, path.len), api.trueObj,
+    }, 2);
+    try std.testing.expect(rebuilt == api.falseObj);
+    try std.testing.expect(!image.mappedCode());
+    _ = api.send(Codegen, api.intern("replayMethods"), &.{}, 0);
+    try std.testing.expectEqual(@as(i64, 73), api.smallIntValue(send(api.mkSmallInt(1), "directImageProbe", &.{})));
+}
+
 test "active candidate image restores the exact authoritative generation" {
     const api = setupWithCompiledUnits();
     const Codegen = api.import("Codegen").?;

@@ -112,12 +112,17 @@ its pulls answer a Vector:
 
 ## The system is in the store
 
-The reflective spine uses the same facts you do: `#__methods__` carries every
-method's source, `#__modsrc__` every loaded module's text, `#__globals__` the
-namespace, and the doc registry the docstrings. `[Doc undocumentedSelectors]`,
-hover in the LSP, and this reference are all just queries.
+The reflective spine uses the same facts you do: the sealed current
+`DispatchGeneration` owns executable source authority, `#__modsrc__` mirrors
+loaded module text, `#__methodops__` preserves ordered source-backed method
+operations from ordinary scripts and the REPL, `#__globals__` holds the
+namespace, and the doc registry holds docstrings. `#__methods__` is retained as
+legacy/base method-source storage rather than the complete current source
+authority. `[Doc undocumentedSelectors]`, hover in the LSP, and this reference
+are all just queries.
 
-Today `__modsrc__` is also consumed by image compilation/rebuild. L1a will retain
-it as a derived compatibility mirror while moving executable source authority to
-the sealed current `DispatchGeneration`; see
-[the implementation plan](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).
+The compatibility records support reflection and explicit image recovery; they
+do not override live dispatch. Image compilation and `--rebuild` consume the
+generation's sealed module source map followed by its ordered method operations.
+The later file-backed evolution policy that was planned around that authority
+was withdrawn.

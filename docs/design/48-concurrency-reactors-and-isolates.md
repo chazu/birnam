@@ -1,9 +1,10 @@
 # 48 — Concurrency: Reactors, Isolates, and Structured Operations
 
-> **Status:** I1a, I1b, and the L2 mailbox bridge implemented, 2026-07-14, rev. 4,
-> accepted with corrections by the
+> **Status:** I1a retained; I1b and the L2 mailbox bridge withdrawn, 2026-07-17.
+> This document retains the concurrency and isolate design history, including the
+> accepted corrections from the
 > [combined adversarial review](48a-live-evolution-isolate-combined-adversarial-review.md).
-> The leading direction is a
+> The leading direction remains a
 > small single-image reactor for concurrent I/O plus process-isolated workers for
 > CPU parallelism. Structured asynchronous operations may later deepen the
 > interface shared by those mechanisms. Rev. 2 narrowed the first isolate to a

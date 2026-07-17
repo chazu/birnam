@@ -1,6 +1,9 @@
 # 50 — Five-Phase Implementation Plan: Live Modules and Isolates
 
-> **Status:** All five phases implemented. Revised 2026-07-14.
+> **Status:** Retired, 2026-07-17. L1b/I1b/L2 policy work was removed after
+> implementation review. This plan is retained as historical rationale; only
+> the lower-level compiled-unit mechanism and I1a blocking isolate substrate
+> remain shipped.
 >
 > Executes [48 — Concurrency](48-concurrency-reactors-and-isolates.md) and
 > [49 — Live Module Evolution](49-live-module-evolution.md) after the

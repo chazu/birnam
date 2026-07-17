@@ -203,10 +203,6 @@
   [System println: "Commands:"];
   [System println: "  :help        this message"];
   [System println: "  :globals     list the bindings you've defined"];
-  [System println: "  :live stage PATH      inspect an inert file-backed revision"];
-  [System println: "  :live activate PATH   stage and activate at the next host boundary"];
-  [System println: "  :live rollback        restore the current local predecessor"];
-  [System println: "  :live save PATH       save a full worker baseline"];
   [System println: "  :quit        leave the REPL  (or Ctrl-D)"];
   [System println: "Everything else is birnam: an expression prints its value; `let x := …`"];
   [System println: "binds a name that persists across lines; `[Reflect defineMethod:…]` extends"];
@@ -228,40 +224,6 @@
             ifFalse: [| [System println: "unknown command (try :help)"]; false]]]]]];
   r] doc:
   "Handles a `:command` line `cmd` (exact match; unknown prints a hint). True iff the session should quit."];
-
-[Reflect defineMethod: #liveSaveOrError:action: on: Repl as: [:self :parts :action |
-  [[action = "save"]
-    ifTrue: [|
-      [[[parts size] = 3]
-        ifTrue: [| [LiveModules saveBaseline: [parts at: 2]]]
-        ifFalse: [| [Error kind: #invalidLiveCommand message: "usage: :live save PATH"]]]]
-    ifFalse: [| [Error kind: #invalidLiveCommand message: "expected stage, activate, rollback, or save"]]]]];
-
-[Reflect defineMethod: #liveRollbackOrLater:action: on: Repl as: [:self :parts :action |
-  [[action = "rollback"]
-    ifTrue: [|
-      [[[parts size] = 2]
-        ifTrue: [| [LiveModules rollback]]
-        ifFalse: [| [Error kind: #invalidLiveCommand message: "usage: :live rollback"]]]]
-    ifFalse: [| [self liveSaveOrError: parts action: action]]]]];
-
-[Reflect defineMethod: #liveActivateOrLater:action: on: Repl as: [:self :parts :action |
-  [[action = "activate"]
-    ifTrue: [|
-      [[[parts size] = 3]
-        ifTrue: [| [LiveModules activate: [parts at: 2]]]
-        ifFalse: [| [Error kind: #invalidLiveCommand message: "usage: :live activate PATH"]]]]
-    ifFalse: [| [self liveRollbackOrLater: parts action: action]]]]];
-
-[Reflect defineMethod: #liveCommand: on: Repl as: [:self :cmd |
-  let parts := [cmd split: " "];
-  let action := [[[parts size] > 1] ifTrue: [| [parts at: 1]] ifFalse: [| ""]];
-  [[action = "stage"]
-    ifTrue: [|
-      [[[parts size] = 3]
-        ifTrue: [| [LiveModules import: [parts at: 2]]]
-        ifFalse: [| [Error kind: #invalidLiveCommand message: "usage: :live stage PATH"]]]]
-    ifFalse: [| [self liveActivateOrLater: parts action: action]]]]];
 
 // Evaluate one form: a compile failure (syntax or out-of-subset) reports its
 // located block on stderr; otherwise the value prints. Faults are catchable
@@ -295,9 +257,8 @@
   r] doc:
   "One prompt/read/dispatch step; false when the session is over (EOF or a quit command), true to go again."];
 
-// Host-owned step protocol. Evaluation returns its value to Zig before anything
-// can fulfill an EvolutionIntent; the host may then enter the native quiescence
-// guard, fulfill synchronously, leave the guard, and print the final answer.
+// Host-owned step protocol. Evaluation returns its value to Zig before the host
+// prints it, allowing the host to drain any process-isolate cleanup between turns.
 [Reflect defineMethod: #hostStep on: Repl as: [:self |
   [System print: "birnam> "];
   let form := [self readFormInto: ""];
@@ -310,9 +271,7 @@
         ifFalse: [|
           [[[src byteAt: 0] = 58]
             ifTrue: [|
-              [[src startsWith: ":live"]
-                ifTrue: [| #[#evaluated [self liveCommand: src]]]
-                ifFalse: [| [[self command: src] ifTrue: [| #[#done nil]] ifFalse: [| #[#continue nil]]]]]]
+              [[self command: src] ifTrue: [| #[#done nil]] ifFalse: [| #[#continue nil]]]]
             ifFalse: [|
               let val := [Codegen evalPersisting: src];
               let err := [Codegen lastError];
@@ -406,26 +365,6 @@
   [[[db cellFor: self attr: #cbuf] value] free];
   self] doc:
   "Session teardown: prints a final newline and frees the stdin read buffer."];
-
-// A full baseline taken between console turns must not serialize FILE*/buffer
-// capabilities. The host still owns them; detach only for the synchronous save,
-// then restore this process immediately. Image boot runs consoleHostInit again.
-[Reflect defineMethod: #detachConsoleForBaseline on: Repl as: [:self |
-  let state := #[[[db cellFor: self attr: #cin] value]
-                 [[db cellFor: self attr: #cerr] value]
-                 [[db cellFor: self attr: #cbuf] value]];
-  [[db cellFor: self attr: #cin] set: nil];
-  [[db cellFor: self attr: #cerr] set: nil];
-  [[db cellFor: self attr: #cbuf] set: nil];
-  state] doc:
-  "Detach process-local console capabilities immediately before a synchronous full-baseline save."];
-
-[Reflect defineMethod: #restoreConsoleAfterBaseline: on: Repl as: [:self :state |
-  [[db cellFor: self attr: #cin] set: [state at: 0]];
-  [[db cellFor: self attr: #cerr] set: [state at: 1]];
-  [[db cellFor: self attr: #cbuf] set: [state at: 2]];
-  self] doc:
-  "Restore the process-local console capabilities detached for a baseline save."];
 
 // The whole session: bring-up, the read-eval-print loop, teardown. The loop is
 // a native whileTrue: (stack-flat), so it lives here and not in a Zig driver

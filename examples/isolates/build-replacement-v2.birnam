@@ -1,4 +1,0 @@
-let ReplacementExampleWorker := [Object clone];
-[System load: "examples/isolates/replacement-worker-v2.birnam"];
-[DispatchGeneration initializeCurrent];
-[[LiveModules saveBaseline: "/tmp/birnam-isolate-replacement-example-v2.image"] fulfill]

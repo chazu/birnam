@@ -231,21 +231,19 @@ old program for changed source.
 
 ## 5. Boundary with live images and compiled units
 
-Project builds produce normal compiled modules. They do not implicitly activate
-a candidate in a running image. A user may then choose an existing workflow:
+Project builds produce normal compiled modules. They do not implicitly mutate a
+running image. A user may explicitly save an image or use the retained
+lower-level `CompiledUnit` candidate mechanism:
 
 ~~~text
-build → Module load: / live candidate workflow → save image/baseline
+build → Module load: / CompiledUnit candidate → save image
 ~~~
 
-The :live workflow remains responsible for staged inspection, host-boundary
-activation, rollback, and worker rollout. Project commands provide the source
-and artifact identities those workflows consume; they do not reimplement their
-transaction semantics.
+Project commands provide source and artifact identities; they do not reimplement
+candidate inspection, activation, or rollback semantics.
 
-An eventual birnam baseline command may wrap the existing guarded full-image
-save, but baseline creation is a later command slice and must retain the
-explicit save/durability boundary.
+Any future project-facing save command must retain the explicit full-image
+save/durability boundary.
 
 ## 6. Diagnostics and exit status
 

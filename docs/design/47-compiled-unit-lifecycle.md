@@ -11,10 +11,10 @@
 > [42 — Object Canonical, Relational Derived](42-object-canonical-relational-derived.md),
 > especially the Store-arbitrated MOP and exact-removal codifications.
 >
-> **Forward boundary:** this page remains the implemented per-name lifecycle.
-> [49 — Live Module Evolution](49-live-module-evolution.md) deliberately replaces
-> its publication authority with one runtime-wide generation in L1a; the concrete
-> migration is [plan 50](50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).
+> **Current boundary:** this page remains the retained low-level candidate
+> lifecycle. The later file-backed, replacement, and cross-worker rollout policy
+> described by designs 49/50 was withdrawn; the runtime keeps the
+> runtime-wide-generation and host-safe candidate mechanism already implemented.
 
 ## Decision in one paragraph
 

@@ -117,32 +117,23 @@ The verification suite covers named-unit reload, failed-candidate inertness,
 supersession and rollback, managed drift, and compatible/rebuilt image boot. See
 the [user guide](../guide/05-compiled-units.md) for the supported API.
 
-## Next Architecture Sequence
+## Adjacent Architecture Boundary
 
-The implemented boundary above is followed by an interleaved live-evolution and
-isolation roadmap:
+The retained adjacent runtime slices are:
 
 ```text
 L1a — generation authority and image coherence
 → I1a — blocking single-worker isolate substrate
-→ L1b — file-backed revision and image-baseline workflow
-→ I1b — single-worker rolling replacement
-→ L2  — blocking mailbox-safe live rollout
 ```
 
-[Design 49](49-live-module-evolution.md) defines L1a as one current dispatch
-generation per runtime, sealed source-map/base digests, synchronous top-level
-commit, exact local rollback, and coherent full-image recovery. [Design
-48](48-concurrency-reactors-and-isolates.md) then proves I1a's clean worker boot,
-bounded copied-value wire protocol, single blocking request, and owned
-termination. L1b adds the candidate-safe file workflow and saved baselines; I1b
-proves one health-checked A-to-B replacement; only then does L2 deliver candidates
-to one worker for between-request activation and independent receipts.
+[Design 49](49-live-module-evolution.md) records the generation authority and
+candidate boundary; [design 48](48-concurrency-reactors-and-isolates.md) records
+I1a's clean worker boot, bounded copied-value wire protocol, single blocking
+request, and owned termination. The later file-backed, replacement, and
+cross-worker rollout slices were withdrawn as unnecessary policy surface.
 
 Initialization, image-native source patching, migration, structured operations,
-and pool-wide live-evolution policy remain later evidence-driven slices rather than
-prerequisites for these five slices.
+and pool-wide live-evolution policy remain later evidence-driven slices.
 
-The executable work breakdown, fixed representation choices, file ownership, test
-matrix, and phase gates are in
+The retired executable work breakdown is preserved in
 [50 — Five-Phase Implementation Plan](50-five-phase-live-modules-and-isolates-implementation-plan.md).

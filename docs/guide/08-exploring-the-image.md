@@ -197,7 +197,6 @@ Prefer the documentation tools for source-level questions:
 ```sh
 birnam doc stdlib
 birnam doc compiledUnit
-birnam doc liveModules
 ```
 
 The source-backed HTML reference includes both Birnam module docs and the Zig

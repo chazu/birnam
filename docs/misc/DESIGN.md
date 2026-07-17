@@ -11,25 +11,20 @@ reflection, modules, or live reload must preserve that ordering.
 
 ## Implemented Architecture Sequence
 
-The five interleaved executable-evolution and isolation slices are shipped:
+The retained executable-evolution and isolation slices are:
 
 ```text
 L1a — generation authority and image coherence
 → I1a — blocking single-worker isolate substrate
-→ L1b — file-backed revision and image-baseline workflow
-→ I1b — single-worker rolling replacement
-→ L2  — blocking mailbox-safe live rollout
 ```
 
 L1a established one current dispatch generation and coherent image recovery. I1a
-provides clean process boot and bounded, blocking copied-value IPC. L1b adds the
-file-backed authoring and saved-baseline workflow; I1b proves one health-checked
-worker handoff. L2 adds between-request candidate activation and per-worker
-receipts, never pool-wide atomicity or asynchronous completion. See
+provides clean process boot and bounded, blocking copied-value IPC. The planned
+file-backed source workflow, worker replacement, and cross-worker rollout were
+withdrawn as unnecessary policy surface. See
 [design 49](../design/49-live-module-evolution.md) and
-[design 48](../design/48-concurrency-reactors-and-isolates.md). The concrete
-file-by-file execution plan and phase gates are
-[design 50](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).
+[design 48](../design/48-concurrency-reactors-and-isolates.md) for the retained
+boundaries and historical rationale.
 
 The next architecture choice is deliberately open. Initialization, image-native
 source editing, migration, reactors/pools, richer supervision, and structured

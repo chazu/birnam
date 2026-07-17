@@ -1,3 +1,0 @@
-[System load: "scripts/isolate-replacement-v1-module.birnam"];
-[DispatchGeneration initializeCurrent];
-[[LiveModules saveBaseline: "/tmp/birnam-isolate-replacement-v1.image"] fulfill]

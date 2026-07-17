@@ -1,4 +1,4 @@
-// compiled-unit.birnam — pure-Birnam lifecycle policy over Codegen's narrow
+// compiled-unit.birnam — the low-level reflected candidate lifecycle over Codegen's narrow
 // candidate/ledger mechanism (docs/design/47). Candidate opening and validation
 // are inert; dependency loading and native mapping are explicit operations.
 
@@ -50,9 +50,7 @@
       [[action = #rollback]
         ifTrue: [| [unit commitRollback]]
         ifFalse: [|
-          [[action = #saveBaseline]
-            ifTrue: [| [LiveModules commitSaveBaseline: unit]]
-            ifFalse: [| [Error kind: #invalidEvolutionIntent]]]]]]]]];
+          [Error kind: #invalidEvolutionIntent]]]]]]];
 
 [Reflect defineMethod: #current on: DispatchGeneration as: [:self |
   [db currentValue: #dispatch attr: #activeGeneration]]];
@@ -276,7 +274,7 @@
   [db assert: self attr: #activationEvent value: event];
   event]];
 
-// Policy chooses every object/value that the commit will publish. Codegen copies
+// The candidate facade chooses every object/value that the commit will publish. Codegen copies
 // this positional plan during preparation and later applies it mechanically,
 // after dispatch mutation, without invoking another CompiledUnit method.
 [Reflect defineMethod: #publicationPlan:prior:expected:successor: on: CompiledUnit as: [:self :action :prior :expected :successor |
@@ -345,7 +343,7 @@
 
 // Lifecycle instances share this pure-Birnam prototype family. Its stable
 // loader name lets image heap records relink those instances before module code
-// reconstructs the facade and composed-generation policy.
+// reconstructs the candidate lifecycle facade.
 [Reflect exportObject: CompiledUnit as: #CompiledUnitPrototype];
 [Reflect exportVtableOf: CompiledUnit as: #CompiledUnitVt];
 [Reflect exportObject: DispatchGeneration as: #DispatchGenerationPrototype];

@@ -1,5 +1,4 @@
-//! Blocking process-isolate substrate, replacement policy mechanism, and
-//! mailbox-safe live rollout transport (designs 48–50, I1a/I1b/L2).
+//! Blocking process-isolate substrate (design 48, I1a).
 //!
 //! This module owns the versioned binary wire format and the process-local
 //! handle/failure representations.  Process launch and the worker loop are kept
@@ -30,8 +29,6 @@ pub const FrameKind = enum(u8) {
     stop = 6,
     stopped = 7,
     protocol_error = 8,
-    evolution_request = 9,
-    evolution_reply = 10,
 };
 
 pub const Header = struct {
@@ -449,113 +446,11 @@ fn decodeErrorRecord(api: *IdApi, schema: []const u8, bytes: []const u8) CodecEr
     return .{ .kind = kind, .message = message };
 }
 
-const evolution_activate_schema = "birnam.evolution-activate.v1";
-const evolution_rollback_schema = "birnam.evolution-rollback.v1";
-const evolution_receipt_schema = "birnam.evolution-receipt.v1";
-
-fn encodeRecordValues(api: *IdApi, schema: []const u8, values: []const Oop) CodecError![]u8 {
-    var e: Encoder = .{ .api = api };
-    errdefer e.deinit();
-    try e.byte(@intFromEnum(Tag.record));
-    if (schema.len > std.math.maxInt(u16) or values.len > std.math.maxInt(u16)) return error.FrameTooLarge;
-    try e.putU16(@intCast(schema.len));
-    try e.reserve(schema.len);
-    e.buf.appendSliceAssumeCapacity(schema);
-    try e.putU16(@intCast(values.len));
-    for (values) |value| try e.value(value, 1);
-    e.active.deinit(ca);
-    return e.buf.toOwnedSlice(ca) catch error.OutOfMemory;
-}
-
-fn makeVector(api: *IdApi, values: []const Oop) Oop {
-    var out = api.send(api.import("Vector"), api.intern("new"), &.{}, 0);
-    for (values) |value| out = api.send(out, api.intern("add:"), &[_]Oop{value}, 1);
-    return out;
-}
-
-fn vectorValues(api: *IdApi, value: Oop, expected: usize, out: []Oop) bool {
-    if (api.vtableOf(value) != api.import("VectorVt") or out.len != expected) return false;
-    const size = api.send(value, api.intern("size"), &.{}, 0);
-    if (api.isSmallInt(size) == 0 or api.smallIntValue(size) != expected) return false;
-    for (out, 0..) |*slot, i|
-        slot.* = api.send(value, api.intern("at:"), &[_]Oop{api.mkSmallInt(@intCast(i))}, 1);
-    return true;
-}
-
-fn isDigest(api: *IdApi, value: Oop) bool {
-    if (api.vtableOf(value) != api.string_vt) return false;
-    var len: usize = 0;
-    const bytes = api.stringBytes(value, &len)[0..len];
-    if (bytes.len != 64) return false;
-    for (bytes) |b| if (!std.ascii.isDigit(b) and !(b >= 'a' and b <= 'f')) return false;
-    return true;
-}
-
-fn contentAddressMatches(api: *IdApi, location: Oop, checksum: Oop) bool {
-    if (api.vtableOf(location) != api.string_vt or !isDigest(api, checksum)) return false;
-    var path_len: usize = 0;
-    var checksum_len: usize = 0;
-    const path = api.stringBytes(location, &path_len)[0..path_len];
-    const digest = api.stringBytes(checksum, &checksum_len)[0..checksum_len];
-    const base = std.fs.path.basename(path);
-    return base.len == 70 and std.mem.eql(u8, base[0..64], digest) and std.mem.eql(u8, base[64..], ".dylib");
-}
-
-pub fn encodeEvolutionRequest(api: *IdApi, request: Oop) CodecError![]u8 {
-    var short: [2]Oop = undefined;
-    if (vectorValues(api, request, 2, &short) and short[0] == api.intern("rollback")) {
-        if (!isDigest(api, short[1])) return error.InvalidRecord;
-        return encodeRecordValues(api, evolution_rollback_schema, short[1..2]);
-    }
-    var fields: [7]Oop = undefined;
-    if (!vectorValues(api, request, 7, &fields) or fields[0] != api.intern("activate")) return error.InvalidRecord;
-    if (api.vtableOf(fields[1]) != api.symbol_vt or !isDigest(api, fields[2]) or
-        (fields[3] != api.nilObj and api.vtableOf(fields[3]) != api.string_vt) or
-        !isDigest(api, fields[4]) or !contentAddressMatches(api, fields[5], fields[4]) or !isDigest(api, fields[6]))
-        return error.InvalidRecord;
-    return encodeRecordValues(api, evolution_activate_schema, fields[1..7]);
-}
-
-pub const DecodedEvolution = struct { request: Oop, operation: Oop, module: Oop, accepted_base: Oop };
-
-pub fn decodeEvolutionRequest(api: *IdApi, bytes: []const u8) CodecError!DecodedEvolution {
-    var d: Decoder = .{ .api = api, .bytes = bytes };
-    const tag = std.meta.intToEnum(Tag, try d.byte()) catch return error.UnknownTag;
-    if (tag != .record) return error.InvalidRecord;
-    const name = try d.take(try d.getU16());
-    const count = try d.getU16();
-    if (std.mem.eql(u8, name, evolution_rollback_schema)) {
-        if (count != 1) return error.InvalidRecord;
-        const expected = try d.value(1);
-        if (!isDigest(api, expected) or d.pos != bytes.len) return error.InvalidRecord;
-        const op = api.intern("rollback");
-        return .{ .request = makeVector(api, &.{ op, expected }), .operation = op, .module = api.nilObj, .accepted_base = expected };
-    }
-    if (!std.mem.eql(u8, name, evolution_activate_schema) or count != 6) return error.UnknownRecordSchema;
-    var fields: [6]Oop = undefined;
-    for (&fields) |*field| field.* = try d.value(1);
-    if (d.pos != bytes.len or api.vtableOf(fields[0]) != api.symbol_vt or !isDigest(api, fields[1]) or
-        (fields[2] != api.nilObj and api.vtableOf(fields[2]) != api.string_vt) or
-        !isDigest(api, fields[3]) or !contentAddressMatches(api, fields[4], fields[3]) or !isDigest(api, fields[5]))
-        return error.InvalidRecord;
-    const op = api.intern("activate");
-    return .{
-        .request = makeVector(api, &.{ op, fields[0], fields[1], fields[2], fields[3], fields[4], fields[5] }),
-        .operation = op,
-        .module = fields[0],
-        .accepted_base = fields[5],
-    };
-}
-
 var g_api: *IdApi = undefined;
 pub var isolate_vt: Oop = null;
 pub var isolate_obj: Oop = null;
 pub var handle_vt: Oop = null;
 pub var failure_vt: Oop = null;
-pub var replacement_vt: Oop = null;
-pub var replacement_obj: Oop = null;
-pub var receipt_vt: Oop = null;
-pub var receipt_obj: Oop = null;
 
 const Handle = extern struct { token: u64 };
 const Failure = extern struct {
@@ -565,73 +460,12 @@ const Failure = extern struct {
     exit_status: Oop,
     request_id: Oop,
 };
-const EvolutionReceipt = extern struct {
-    operation: Oop,
-    module: Oop,
-    accepted_base: Oop,
-    prior_digest: Oop,
-    current_digest: Oop,
-    outcome: Oop,
-    error_kind: Oop,
-    message: Oop,
-};
 
 fn failure(o: Oop) *Failure {
     return @ptrCast(@alignCast(o.?));
 }
 fn handle(o: Oop) *Handle {
     return @ptrCast(@alignCast(o.?));
-}
-fn receipt(o: Oop) *EvolutionReceipt {
-    return @ptrCast(@alignCast(o.?));
-}
-
-pub fn makeReceipt(fields: [8]Oop) Oop {
-    const out = g_api.alloc(receipt_vt, @sizeOf(EvolutionReceipt));
-    receipt(out).* = .{
-        .operation = fields[0],
-        .module = fields[1],
-        .accepted_base = fields[2],
-        .prior_digest = fields[3],
-        .current_digest = fields[4],
-        .outcome = fields[5],
-        .error_kind = fields[6],
-        .message = fields[7],
-    };
-    return out;
-}
-
-fn receiptFields(value: Oop) [8]Oop {
-    const r = receipt(value);
-    return .{ r.operation, r.module, r.accepted_base, r.prior_digest, r.current_digest, r.outcome, r.error_kind, r.message };
-}
-
-fn validReceiptFields(api: *IdApi, fields: [8]Oop) bool {
-    return api.vtableOf(fields[0]) == api.symbol_vt and
-        (fields[1] == api.nilObj or api.vtableOf(fields[1]) == api.symbol_vt) and
-        isDigest(api, fields[2]) and isDigest(api, fields[3]) and isDigest(api, fields[4]) and
-        api.vtableOf(fields[5]) == api.symbol_vt and
-        (fields[6] == api.nilObj or api.vtableOf(fields[6]) == api.symbol_vt) and
-        api.vtableOf(fields[7]) == api.string_vt;
-}
-
-pub fn encodeEvolutionReceipt(api: *IdApi, value: Oop) CodecError![]u8 {
-    const fields = receiptFields(value);
-    if (!validReceiptFields(api, fields)) return error.InvalidRecord;
-    return encodeRecordValues(api, evolution_receipt_schema, &fields);
-}
-
-pub fn decodeEvolutionReceipt(api: *IdApi, bytes: []const u8) CodecError!Oop {
-    var d: Decoder = .{ .api = api, .bytes = bytes };
-    const tag = std.meta.intToEnum(Tag, try d.byte()) catch return error.UnknownTag;
-    if (tag != .record) return error.InvalidRecord;
-    const name = try d.take(try d.getU16());
-    if (!std.mem.eql(u8, name, evolution_receipt_schema) or try d.getU16() != 8) return error.UnknownRecordSchema;
-    var fields: [8]Oop = undefined;
-    for (&fields) |*field| field.* = try d.value(1);
-    if (d.pos != bytes.len) return error.TrailingBytes;
-    if (!validReceiptFields(api, fields)) return error.InvalidRecord;
-    return makeReceipt(fields);
 }
 
 const Lifecycle = enum { starting, ready, busy, stopping, reap_pending, exited };
@@ -645,20 +479,6 @@ const Entry = struct {
     term_at: ?std.time.Instant = null,
     kill_at: ?std.time.Instant = null,
 };
-
-// Deterministic process-fault injection for the acceptance suite. These hooks
-// are intentionally environment-only: they do not add selectors or state to the
-// Birnam API, and normal processes pay only the getenv checks on shutdown paths.
-fn testFault(name: []const u8) bool {
-    const faults = std.posix.getenv("BIRNAM_TEST_ISOLATE_FAULTS") orelse return false;
-    var it = std.mem.splitScalar(u8, faults, ',');
-    while (it.next()) |fault| if (std.mem.eql(u8, fault, name)) return true;
-    return false;
-}
-
-fn cleanupStageBudget() u64 {
-    return if (testFault("fast-escalation")) 20 * std.time.ns_per_ms else 2 * std.time.ns_per_s;
-}
 
 var registry: std.AutoHashMapUnmanaged(u64, Entry) = .{};
 var next_token: u64 = 1;
@@ -704,7 +524,7 @@ fn terminate(entry: *Entry) void {
     };
     while (true) {
         const now = std.time.Instant.now() catch break;
-        if (now.since(start) >= cleanupStageBudget()) break;
+        if (now.since(start) >= 2 * std.time.ns_per_s) break;
         if (statusOf(entry) != null) return;
         std.Thread.sleep(10 * std.time.ns_per_ms);
     }
@@ -716,23 +536,19 @@ fn terminate(entry: *Entry) void {
     };
     while (true) {
         const now = std.time.Instant.now() catch break;
-        if (now.since(term_start) >= cleanupStageBudget()) break;
+        if (now.since(term_start) >= 2 * std.time.ns_per_s) break;
         if (statusOf(entry) != null) return;
         std.Thread.sleep(10 * std.time.ns_per_ms);
     }
     std.posix.kill(entry.pid, std.posix.SIG.KILL) catch {};
     entry.kill_at = std.time.Instant.now() catch null;
-    if (testFault("reap-pending")) {
-        entry.state = .reap_pending;
-        return;
-    }
     const kill_start = std.time.Instant.now() catch {
         entry.state = .reap_pending;
         return;
     };
     while (true) {
         const now = std.time.Instant.now() catch break;
-        if (now.since(kill_start) >= cleanupStageBudget()) break;
+        if (now.since(kill_start) >= 2 * std.time.ns_per_s) break;
         if (statusOf(entry) != null) return;
         std.Thread.sleep(10 * std.time.ns_per_ms);
     }
@@ -823,7 +639,7 @@ fn newHandle(entry: Entry) ?Oop {
     return out;
 }
 
-fn startWorkerWithReadyTimeout(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+fn startWorker(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     drainImpl();
     const receiver = oopText(g_api, args[0]) orelse return mkFailure("encode", "invalidReceiver", "receiver must be a Symbol or String", null, null);
     const selector = oopText(g_api, args[1]) orelse return mkFailure("encode", "invalidSelector", "selector must be a Symbol or String", null, null);
@@ -832,12 +648,9 @@ fn startWorkerWithReadyTimeout(_: Oop, args: [*]const Oop, _: usize) callconv(.c
         return mkFailure("encode", "embeddedNul", "worker names and image path may not contain NUL", null, null);
     if (!arityOne(selector))
         return mkFailure("boot", "wrongArity", "worker selector must have arity one", null, null);
-    if (g_api.isSmallInt(args[3]) == 0 or g_api.smallIntValue(args[3]) < 0)
-        return mkFailure("encode", "invalidTimeout", "ready timeout must be a nonnegative Integer", null, null);
-    const ready_timeout: u32 = @intCast(@min(g_api.smallIntValue(args[3]), std.math.maxInt(u32)));
     var entry = spawnWorker(image, receiver, selector) catch |e|
         return mkFailure("boot", "spawnFailed", @errorName(e), null, null);
-    const ready = readFrame(entry.fd, ready_timeout) catch |e| {
+    const ready = readFrame(entry.fd, 10_000) catch |e| {
         terminate(&entry);
         return mkFailure("boot", "handshakeFailed", @errorName(e), entry.exit_status, null);
     };
@@ -857,10 +670,6 @@ fn startWorkerWithReadyTimeout(_: Oop, args: [*]const Oop, _: usize) callconv(.c
         terminate(&entry);
         return mkFailure("exit", "tokenExhausted", "isolate handle token space exhausted", entry.exit_status, null);
     };
-}
-
-fn startWorker(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    return startWorkerWithReadyTimeout(self, &[_]Oop{ args[0], args[1], args[2], g_api.mkSmallInt(10_000) }, 4);
 }
 
 fn requestWithTimeout(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
@@ -929,56 +738,7 @@ fn requestDefault(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     return requestWithTimeout(self, &[_]Oop{ args[0], g_api.mkSmallInt(5_000) }, 2);
 }
 
-fn evolveWithTimeout(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    drainImpl();
-    const entry = registryEntry(handle(self).token) orelse return mkFailure("stopped", "unknownHandle", "unknown isolate handle", null, null);
-    if (entry.state != .ready) return mkFailure(if (entry.state == .busy) "busy" else "stopped", "notReady", "isolate is not ready", entry.exit_status, null);
-    if (g_api.isSmallInt(args[1]) == 0 or g_api.smallIntValue(args[1]) < 0)
-        return mkFailure("encode", "invalidTimeout", "timeout must be a nonnegative Integer", null, null);
-    const timeout: u32 = @intCast(@min(g_api.smallIntValue(args[1]), std.math.maxInt(u32)));
-    const service_start = std.time.Instant.now() catch return mkFailure("timeout", "clockUnavailable", "monotonic clock unavailable", null, null);
-    const payload = encodeEvolutionRequest(g_api, args[0]) catch |e|
-        return mkFailure("encode", "invalidEvolutionRequest", @errorName(e), null, null);
-    defer ca.free(payload);
-    const now = std.time.Instant.now() catch return mkFailure("timeout", "clockUnavailable", "monotonic clock unavailable", null, null);
-    const elapsed_ms = now.since(service_start) / std.time.ns_per_ms;
-    if (elapsed_ms >= timeout)
-        return mkFailure("timeout", "deadline", "evolution deadline expired before transmission", null, null);
-    const remaining: u32 = @intCast(timeout - elapsed_ms);
-    if (entry.next_request > std.math.maxInt(i64)) {
-        entry.state = .stopping;
-        terminate(entry);
-        return mkFailure("protocol", "requestIdExhausted", "request id space exhausted", entry.exit_status, null);
-    }
-    const id = entry.next_request;
-    entry.next_request += 1;
-    entry.state = .busy;
-    writeFrame(entry.fd, .evolution_request, id, payload, remaining) catch |e| {
-        entry.state = .stopping;
-        terminate(entry);
-        return mkFailure(if (e == error.Timeout) "timeout" else if (entry.exit_status != null) "exit" else "transport", @errorName(e), "evolution write failed", entry.exit_status, id);
-    };
-    const reply = readFrame(entry.fd, remaining) catch |e| {
-        entry.state = .stopping;
-        terminate(entry);
-        return mkFailure(if (e == error.Timeout) "timeout" else if (entry.exit_status != null) "exit" else "transport", @errorName(e), "evolution read failed", entry.exit_status, id);
-    };
-    defer reply.deinit();
-    if (reply.header.request_id != id or reply.header.kind != .evolution_reply) {
-        entry.state = .stopping;
-        terminate(entry);
-        return mkFailure("protocol", "invalidEvolutionReply", "worker returned an invalid evolution reply", entry.exit_status, id);
-    }
-    const result = decodeEvolutionReceipt(g_api, reply.payload) catch |e| {
-        entry.state = .stopping;
-        terminate(entry);
-        return mkFailure("protocol", "invalidEvolutionReceipt", @errorName(e), entry.exit_status, id);
-    };
-    entry.state = .ready;
-    return result;
-}
-
-fn stopWorkerWithTimeout(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+fn stopWorker(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
     drainImpl();
     const entry = registryEntry(handle(self).token) orelse return self;
     if (entry.state == .exited) return self;
@@ -987,15 +747,12 @@ fn stopWorkerWithTimeout(self: Oop, args: [*]const Oop, _: usize) callconv(.c) O
         return mkFailure("exit", "reapPending", "worker has not yet been reaped", null, null);
     }
     if (entry.state != .ready) return mkFailure("busy", "notReady", "isolate is not ready", entry.exit_status, null);
-    if (g_api.isSmallInt(args[0]) == 0 or g_api.smallIntValue(args[0]) < 0)
-        return mkFailure("encode", "invalidTimeout", "stop timeout must be a nonnegative Integer", null, null);
-    const timeout: u32 = @intCast(@min(g_api.smallIntValue(args[0]), std.math.maxInt(u32)));
     const id = entry.next_request;
     if (id > std.math.maxInt(i64)) return mkFailure("protocol", "requestIdExhausted", "request id space exhausted", null, null);
     entry.next_request += 1;
     entry.state = .stopping;
-    writeFrame(entry.fd, .stop, id, &.{}, timeout) catch {};
-    const reply = readFrame(entry.fd, timeout) catch null;
+    writeFrame(entry.fd, .stop, id, &.{}, 2_000) catch {};
+    const reply = readFrame(entry.fd, 2_000) catch null;
     if (reply) |frame| {
         defer frame.deinit();
         if (frame.header.kind != .stopped or frame.header.request_id != id) {
@@ -1006,11 +763,6 @@ fn stopWorkerWithTimeout(self: Oop, args: [*]const Oop, _: usize) callconv(.c) O
     terminate(entry);
     if (entry.state == .reap_pending) return mkFailure("exit", "reapPending", "worker has not yet been reaped", null, id);
     return self;
-}
-
-fn stopWorker(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    _ = args;
-    return stopWorkerWithTimeout(self, &[_]Oop{g_api.mkSmallInt(2_000)}, 1);
 }
 
 fn handleState(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
@@ -1055,84 +807,8 @@ pub fn shutdown() callconv(.c) void {
     while (it.next()) |row| if (row.value_ptr.state != .exited) terminate(row.value_ptr);
 }
 
-const PhaseFn = *const fn () callconv(.c) c_int;
-
-fn currentDigest(api: *IdApi) ?Oop {
-    const codegen = api.import("Codegen") orelse return null;
-    const digest = api.send(codegen, api.intern("currentGenerationDigest"), &.{}, 0);
-    return if (isDigest(api, digest)) digest else null;
-}
-
-fn writeEvolutionResult(api: *IdApi, fd: c_int, id: u64, decoded: DecodedEvolution, prior: Oop, outcome: Oop, error_kind: Oop, message: []const u8) bool {
-    const current = currentDigest(api) orelse prior;
-    const result = makeReceipt(.{
-        decoded.operation,
-        decoded.module,
-        decoded.accepted_base,
-        prior,
-        current,
-        outcome,
-        error_kind,
-        api.mkString(message.ptr, message.len),
-    });
-    const payload = encodeEvolutionReceipt(api, result) catch return false;
-    defer ca.free(payload);
-    writeFrame(fd, .evolution_reply, id, payload, 10_000) catch return false;
-    return true;
-}
-
-fn workerEvolution(api: *IdApi, fd: c_int, frame: Frame, begin_quiescence: PhaseFn, end_quiescence: PhaseFn) bool {
-    if (testFault("evolution-delay")) std.Thread.sleep(200 * std.time.ns_per_ms);
-    const decoded = decodeEvolutionRequest(api, frame.payload) catch |e| {
-        const msg = @errorName(e);
-        const payload = encodeErrorRecord(api, error_schemas[2], api.intern("invalidEvolutionRequest"), api.mkString(msg.ptr, msg.len)) catch return false;
-        defer ca.free(payload);
-        writeFrame(fd, .protocol_error, frame.header.request_id, payload, 10_000) catch {};
-        return false;
-    };
-    const prior = currentDigest(api) orelse return false;
-    const globals = api.import("Globals") orelse
-        return writeEvolutionResult(api, fd, frame.header.request_id, decoded, prior, api.intern("rejected"), api.intern("evolutionUnavailable"), "worker image has no Globals facade");
-    const live = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("LiveModules")}, 1);
-    if (live == api.nilObj)
-        return writeEvolutionResult(api, fd, frame.header.request_id, decoded, prior, api.intern("rejected"), api.intern("evolutionUnavailable"), "worker image has no LiveModules facade");
-    const prepared = api.send(live, api.intern("prepareEvolution:"), &[_]Oop{decoded.request}, 1);
-    if (api.send(prepared, api.intern("isError"), &.{}, 0) == api.trueObj) {
-        const kind = api.send(prepared, api.intern("kind"), &.{}, 0);
-        const message = api.send(prepared, api.intern("message"), &.{}, 0);
-        var len: usize = 0;
-        const bytes = if (api.vtableOf(message) == api.string_vt) api.stringBytes(message, &len)[0..len] else "evolution preparation failed";
-        return writeEvolutionResult(api, fd, frame.header.request_id, decoded, prior, api.intern("rejected"), kind, bytes);
-    }
-    const intents = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("EvolutionIntent")}, 1);
-    if (intents == api.nilObj or api.send(intents, api.intern("isIntent:"), &[_]Oop{prepared}, 1) != api.trueObj)
-        return writeEvolutionResult(api, fd, frame.header.request_id, decoded, prior, api.intern("rejected"), api.intern("invalidEvolutionIntent"), "worker policy did not produce an evolution intent");
-    if (begin_quiescence() == 0)
-        return writeEvolutionResult(api, fd, frame.header.request_id, decoded, prior, api.intern("rejected"), api.intern("invalidRuntimePhase"), "worker could not enter evolution quiescence");
-    const committed = api.send(prepared, api.intern("fulfill"), &.{}, 0);
-    if (end_quiescence() == 0) return false;
-    if (api.send(committed, api.intern("isError"), &.{}, 0) == api.trueObj) {
-        const kind = api.send(committed, api.intern("kind"), &.{}, 0);
-        const message = api.send(committed, api.intern("message"), &.{}, 0);
-        var len: usize = 0;
-        const bytes = if (api.vtableOf(message) == api.string_vt) api.stringBytes(message, &len)[0..len] else "evolution commit failed";
-        return writeEvolutionResult(api, fd, frame.header.request_id, decoded, prior, api.intern("rejected"), kind, bytes);
-    }
-    const outcome = if (decoded.operation == api.intern("activate")) api.intern("activated") else api.intern("rolledBack");
-    const message = if (decoded.operation == api.intern("activate")) "generation activated" else "generation rolled back";
-    return writeEvolutionResult(api, fd, frame.header.request_id, decoded, prior, outcome, api.nilObj, message);
-}
-
-pub fn workerDriver(api: *IdApi, fd: c_int, receiver: Oop, selector: Oop, begin_quiescence: PhaseFn, end_quiescence: PhaseFn) callconv(.c) c_int {
+pub fn workerDriver(api: *IdApi, fd: c_int, receiver: Oop, selector: Oop) callconv(.c) c_int {
     g_api = api;
-    if (testFault("hard-stop")) {
-        const ignore_term: std.posix.Sigaction = .{
-            .handler = .{ .handler = std.posix.SIG.IGN },
-            .mask = std.posix.sigemptyset(),
-            .flags = 0,
-        };
-        std.posix.sigaction(std.posix.SIG.TERM, &ignore_term, null);
-    }
     writeFrame(fd, .ready, 0, &.{}, 10_000) catch return 1;
     while (true) {
         const frame = readFrame(fd, std.math.maxInt(u32)) catch return 1;
@@ -1167,11 +843,9 @@ pub fn workerDriver(api: *IdApi, fd: c_int, receiver: Oop, selector: Oop, begin_
                 }
             },
             .stop => {
-                if (testFault("hard-stop")) while (true) std.Thread.sleep(std.time.ns_per_s);
                 writeFrame(fd, .stopped, frame.header.request_id, &.{}, 10_000) catch return 1;
                 return 0;
             },
-            .evolution_request => if (!workerEvolution(api, fd, frame, begin_quiescence, end_quiescence)) return 1,
             else => return 1,
         }
     }
@@ -1209,34 +883,6 @@ fn failureRequestId(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
     return failure(self).request_id;
 }
 
-fn receiptOperation(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    return receipt(self).operation;
-}
-fn receiptModule(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    return receipt(self).module;
-}
-fn receiptAcceptedBase(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    return receipt(self).accepted_base;
-}
-fn receiptPriorDigest(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    return receipt(self).prior_digest;
-}
-fn receiptCurrentDigest(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    return receipt(self).current_digest;
-}
-fn receiptOutcome(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    return receipt(self).outcome;
-}
-fn receiptErrorKind(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    return receipt(self).error_kind;
-}
-fn receiptMessage(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    return receipt(self).message;
-}
-fn receiptIsError(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    return if (receipt(self).outcome == g_api.intern("rejected")) g_api.trueObj else g_api.falseObj;
-}
-
 // Private process-lifecycle fixtures. Application dispatch is covered with a
 // named receiver restored from the smoke image; these two native hooks retain
 // deterministic coverage of post-transmission timeout and abrupt child exit.
@@ -1258,34 +904,21 @@ pub fn bringUp(api: *IdApi) void {
         isolate_obj = api.import("Isolate");
         handle_vt = api.import("IsolateHandleVt");
         failure_vt = api.import("IsolateFailureVt");
-        replacement_vt = api.import("IsolateReplacementVt");
-        replacement_obj = api.import("IsolateReplacementPrototype");
-        receipt_vt = api.import("EvolutionReceiptVt");
-        receipt_obj = api.import("EvolutionReceiptPrototype");
     } else {
         isolate_vt = api.proto(api.object_vt);
         isolate_obj = api.alloc(isolate_vt, 0);
         handle_vt = api.proto(api.object_vt);
         failure_vt = api.proto(api.import("ErrorVt"));
-        replacement_vt = api.proto(api.object_vt);
-        replacement_obj = api.alloc(replacement_vt, 0);
-        receipt_vt = api.proto(api.object_vt);
-        receipt_obj = api.alloc(receipt_vt, 0);
     }
     api.setLayout(isolate_vt, null, 0, idapi.slot_raw);
     api.setLayout(handle_vt, null, 0, idapi.slot_raw);
     api.setLayout(failure_vt, null, 0, idapi.slot_oop);
-    api.setLayout(replacement_vt, null, 0, idapi.slot_raw);
-    api.setLayout(receipt_vt, null, 0, idapi.slot_oop);
     api.method(isolate_vt, api.intern("start:selector:image:"), &startWorker);
-    api.method(isolate_vt, api.intern("start:selector:image:timeout:"), &startWorkerWithReadyTimeout);
     api.method(isolate_vt, api.intern("_isolateSleep:"), &fixtureSleep);
     api.method(isolate_vt, api.intern("_isolateCrash:"), &fixtureCrash);
     api.method(handle_vt, api.intern("request:timeout:"), &requestWithTimeout);
     api.method(handle_vt, api.intern("request:"), &requestDefault);
-    api.method(handle_vt, api.intern("evolve:timeout:"), &evolveWithTimeout);
     api.method(handle_vt, api.intern("stop"), &stopWorker);
-    api.method(handle_vt, api.intern("stopWithTimeout:"), &stopWorkerWithTimeout);
     api.method(handle_vt, api.intern("state"), &handleState);
     api.method(failure_vt, api.intern("isError"), &failureIsError);
     api.method(failure_vt, api.intern("class"), &failureClass);
@@ -1293,30 +926,12 @@ pub fn bringUp(api: *IdApi) void {
     api.method(failure_vt, api.intern("message"), &failureMessage);
     api.method(failure_vt, api.intern("exitStatus"), &failureStatus);
     api.method(failure_vt, api.intern("requestId"), &failureRequestId);
-    api.method(receipt_vt, api.intern("operation"), &receiptOperation);
-    api.method(receipt_vt, api.intern("module"), &receiptModule);
-    api.method(receipt_vt, api.intern("acceptedBaseDigest"), &receiptAcceptedBase);
-    api.method(receipt_vt, api.intern("priorDigest"), &receiptPriorDigest);
-    api.method(receipt_vt, api.intern("currentDigest"), &receiptCurrentDigest);
-    api.method(receipt_vt, api.intern("outcome"), &receiptOutcome);
-    api.method(receipt_vt, api.intern("errorKind"), &receiptErrorKind);
-    api.method(receipt_vt, api.intern("message"), &receiptMessage);
-    api.method(receipt_vt, api.intern("isError"), &receiptIsError);
     if (!reloading) {
         _ = api.exportObj("IsolateVt", isolate_vt);
         _ = api.exportObj("Isolate", isolate_obj);
         _ = api.exportObj("IsolateHandleVt", handle_vt);
         _ = api.exportObj("IsolateFailureVt", failure_vt);
-        _ = api.exportObj("IsolateReplacementVt", replacement_vt);
-        _ = api.exportObj("IsolateReplacementPrototype", replacement_obj);
-        _ = api.exportObj("EvolutionReceiptVt", receipt_vt);
-        _ = api.exportObj("EvolutionReceiptPrototype", receipt_obj);
     }
-    const globals = api.import("Globals");
-    if (globals != null)
-        _ = api.send(globals, api.intern("at:put:"), &[_]Oop{ api.intern("IsolateReplacement"), replacement_obj }, 2);
-    if (globals != null)
-        _ = api.send(globals, api.intern("at:put:"), &[_]Oop{ api.intern("EvolutionReceipt"), receipt_obj }, 2);
 }
 
 fn moduleInit(api: *IdApi, state: ?*anyopaque) callconv(.c) ?*anyopaque {

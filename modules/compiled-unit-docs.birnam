@@ -2,7 +2,7 @@
 // CompiledUnit lifecycle. Kept separate from compiled-unit.birnam so adding or
 // revising prose cannot change its portable executable method-operation stream.
 
-[Doc module: #compiledUnit is: "Whole-runtime dispatch generations: inspect and map CompiledUnit candidates, then activate or roll back through a host-safe evolution intent."];
+[Doc module: #compiledUnit is: "Whole-runtime dispatch generations: inspect and map CompiledUnit candidates, then activate or roll back at a host-safe boundary."];
 
 [Doc for: #state in: #compiledUnit says:
   "The unit's reconciled lifecycle state: #candidate, #active, #superseded, #drifted, #rolledBack, or #historical."];

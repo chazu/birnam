@@ -74,10 +74,6 @@ expected="$BANNER
 birnam> Commands:
   :help        this message
   :globals     list the bindings you've defined
-  :live stage PATH      inspect an inert file-backed revision
-  :live activate PATH   stage and activate at the next host boundary
-  :live rollback        restore the current local predecessor
-  :live save PATH       save a full worker baseline
   :quit        leave the REPL  (or Ctrl-D)
 Everything else is birnam: an expression prints its value; \`let x := …\`
 binds a name that persists across lines; \`[Reflect defineMethod:…]\` extends
@@ -206,8 +202,8 @@ rm -f "$libdir/libbirnam_time.dylib"
 rm -rf "$tdir"
 
 # ---- module manager: G0 modules survive; post-G0 introduction is explicit error.
-# L1a edits every module through replacement of an existing source-map entry.
-# Introducing a new module after G0 is deliberately deferred to L2.
+# Candidate lifecycle edits retain an existing source-map entry.
+# Introducing a new module after G0 remains outside this narrow mechanism.
 tdir=$(mktemp -d)
 libdir="$(cd "$(dirname "$BIN_ABS")/../lib" && pwd)"
 printf '[Module named: #ttg requires: #[]];\n[Reflect defineMethod: #ttgProbe on: Integer as: [:x | [x + 41]]]\n' > "$tdir/ttg.birnam"

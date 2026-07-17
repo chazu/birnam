@@ -157,14 +157,9 @@ Inside birnam, save with `[System saveImage: path]`. A global `main` block makes
 an image an application entry point; [examples/app.birnam](examples/app.birnam)
 shows saving and baking one.
 
-After file-backed live evolution, use `:live save PATH` (or fulfill
-`[LiveModules saveBaseline: path]`) to create a guarded worker baseline. This
-refuses unactivated staged candidates, reconciles managed dispatch, preserves the
-active generation's exact source authority, and produces an image that behaves
-the same under mapped boot and `--rebuild`. The same image can be passed directly
-to `Isolate start:selector:image:`. See the [image guide](docs/guide/04-images.md),
-[live-module guide](docs/guide/07-live-modules.md), and
-[runnable baseline example](examples/live-modules/README.md).
+Use `[System saveImage: path]` to create a worker image. The same image can be
+passed directly to `Isolate start:selector:image:`. See the
+[image guide](docs/guide/04-images.md).
 
 Persistence is intentionally not a claim that every process value can be
 serialized. Saving is atomic and rejects durable values without either a
@@ -187,29 +182,16 @@ failure and drift behavior, dependency boundary, and image semantics. The live A
 is also available through `birnam doc compiledUnit` and selector lookups such as
 `birnam doc compiledUnit activate`.
 
-## Live Workers
+## Isolated workers
 
-`Isolate replace:using:` performs one blocking, health-checked handoff from an
-idle selected worker A to a baseline-backed worker B. Every B startup or health
-failure retains usable A; after B answers `#healthy`, selection changes between
-calls and A is reaped or reported as the sole pending cleanup owner.
-
-`worker evolve:request timeout:` sends one copied live-module control to one idle
-worker. The worker verifies its own base and checksum-addressed candidate,
-commits under quiescence before reading another request, and returns an
-`EvolutionReceipt`. Rollback is another digest-bound control while that process's
-latest capability remains valid.
-
-Run the complete examples with:
+Run the blocking worker examples with:
 
 ```sh
 bash examples/isolates/run.sh
-bash examples/live-modules/run.sh
 ```
 
-See the [isolate guide](docs/guide/06-isolates.md) and
-[live-module guide](docs/guide/07-live-modules.md). Generated API reference is
-available through `birnam doc isolate` and `birnam doc liveModules`.
+See the [isolate guide](docs/guide/06-isolates.md). Generated API reference is
+available through `birnam doc isolate`.
 
 For interactive object and fact-store wayfinding, see the
 [image exploration guide](docs/guide/08-exploring-the-image.md).
@@ -232,8 +214,8 @@ bundles. In a development checkout, use the binary under `zig-out/bin`.
 - `--listen` starts a socket REPL, optionally after running a script.
 
 The generated reference opens with the authored language, idioms, fact-store,
-and image guide, followed by the API reference extracted from live module facts
-and Zig source documentation.
+and image guide, followed by the API reference extracted from current module
+facts and Zig source documentation.
 
 `wrap` is a binary-only scaffolder and works from an installed executable:
 
@@ -325,17 +307,11 @@ from-zero bootstrap compiler and performance floor.
 - [Compiled units](docs/design/45-compiled-units.md) defines executable
   authority, image integrity, recovery, and the next live-reload boundary.
 - [Concurrency](docs/design/48-concurrency-reactors-and-isolates.md) and
-  [live module evolution](docs/design/49-live-module-evolution.md) define the
-  interleaved sequence. Generation authority (L1a) and the blocking single-worker
-  isolate substrate (I1a), file-backed image baselines (L1b), and health-checked
-  single-worker replacement (I1b), and blocking mailbox-safe live rollout (L2)
-  are shipped. The
-  [five-phase implementation plan](docs/design/50-five-phase-live-modules-and-isolates-implementation-plan.md)
-  maps every slice to current files, tests, and exit criteria.
+  [live module evolution](docs/design/49-live-module-evolution.md) document
+  withdrawn live-reload policy experiments; only the blocking single-worker
+  isolate substrate is currently shipped.
 - [Blocking process isolates](docs/guide/06-isolates.md) documents the shipped
   trusted-worker API, copied-value boundary, structured failures, and deadlines.
-- [File-backed live modules](docs/guide/07-live-modules.md) documents exact
-  export/import, inert staging, host-boundary activation, rollback, and baselines.
 - [Modules and the self-hosted layer](docs/design/43-modules-and-config.md)
   explains source, artifacts, and loading.
 - [Toward self-hosting](docs/design/44-toward-self-hosting.md) records the

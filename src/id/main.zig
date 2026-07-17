@@ -769,7 +769,6 @@ const TOML_SRC = @embedFile("toml.birnam");
 const CONFIG_SRC = @embedFile("config.birnam");
 const PROJECT_POLICY_SRC = @embedFile("project-policy.birnam");
 const COMPILED_UNIT_SRC = @embedFile("compiled-unit.birnam");
-const LIVE_MODULES_SRC = @embedFile("live-modules.birnam");
 const ISOLATE_SRC = @embedFile("isolate.birnam");
 // The module MANAGER itself (docs/44 Phase 5b) — self-hosted like the rest, but
 // loaded FIRST and by name (never through the scan/loadOrder flow it implements).
@@ -819,7 +818,6 @@ const SelfHosted = struct { name: [:0]const u8, src: []const u8 };
 const self_hosted_modules = [_]SelfHosted{
     .{ .name = "stdlib", .src = STDLIB_SRC },
     .{ .name = "compiledUnit", .src = COMPILED_UNIT_SRC },
-    .{ .name = "liveModules", .src = LIVE_MODULES_SRC },
     .{ .name = "toml", .src = TOML_SRC },
     .{ .name = "config", .src = CONFIG_SRC },
     .{ .name = "isolate", .src = ISOLATE_SRC },
@@ -1704,8 +1702,6 @@ fn recoverImageRuntime(a: std.mem.Allocator, api: *IdApi, path: []const u8, rebu
     // image itself.
     loadSelfHosted(a, api, codegen, "stdlib", STDLIB_SRC);
     loadSelfHosted(a, api, codegen, "compiledUnit", COMPILED_UNIT_SRC);
-    loadSelfHosted(a, api, codegen, "liveModules", LIVE_MODULES_SRC);
-
     // Map the image. NOTE: stdlib is NOT loaded up front — a mapped `.code` section
     // installs the whole library (stdlib + user) with no recompile, which is the
     // point. We only re-eval the stdlib if the image had no mappable code.
@@ -1894,7 +1890,7 @@ fn runReplSession(a: std.mem.Allocator, api: *IdApi, booted: bool, project_run: 
 const RTLD_LAZY: c_int = 1;
 
 const HostPhaseFn = *const fn () callconv(.c) c_int;
-const IsolateDriverFn = *const fn (*IdApi, c_int, Oop, Oop, HostPhaseFn, HostPhaseFn) callconv(.c) c_int;
+const IsolateDriverFn = *const fn (*IdApi, c_int, Oop, Oop) callconv(.c) c_int;
 const IsolateBootErrorFn = *const fn (*IdApi, c_int, [*:0]const u8, [*]const u8, usize) callconv(.c) void;
 const IsolateDrainFn = *const fn () callconv(.c) void;
 const IsolateShutdownFn = *const fn () callconv(.c) void;
@@ -1974,7 +1970,6 @@ fn runWorker(a: std.mem.Allocator, api: *IdApi, image: []const u8, receiver_name
     var digest_len: usize = 0;
     if (digest == api.nilObj or api.vtableOf(digest) != api.string_vt or api.stringBytes(digest, &digest_len)[0..digest_len].len != 64)
         workerFail(api, fd, "invalidCurrentGeneration", "current generation digest is invalid");
-
     if (!selectorHasArityOne(selector_name))
         workerFail(api, fd, "wrongArity", "worker selector must have arity one");
     const receiver_z = a.dupeZ(u8, receiver_name) catch workerFail(api, fd, "outOfMemory", "could not copy receiver name");
@@ -1991,7 +1986,7 @@ fn runWorker(a: std.mem.Allocator, api: *IdApi, image: []const u8, receiver_name
 
     resolveHostPhaseFunctions(a, api) catch workerFail(api, fd, "noPhaseHooks", "could not resolve runtime phase hooks");
     if (host_enter_running.?() == 0) workerFail(api, fd, "invalidRuntimePhase", "could not enter running phase");
-    const status = host_isolate_driver.?(api, fd, receiver, selector, host_begin_quiescence.?, host_end_quiescence.?);
+    const status = host_isolate_driver.?(api, fd, receiver, selector);
     std.posix.close(fd);
     if (status != 0) std.process.exit(1);
 }

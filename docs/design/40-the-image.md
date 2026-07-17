@@ -15,8 +15,8 @@
 > frees raw-word-aliased garbage conservative retains (docs/34 §F3). The fix
 > sweep also rooted the grammar and gave peg's pattern/grammar/CST externals
 > trace hooks — `[System gc]` mid-REPL used to segfault the next parse.
-> **Slice 3 SHIPPED (2026-07-02):** the image itself. New `image` module + an
-> append-ready format (header — magic/format/arch/ABI-validity hash — then a
+> **Slice 3 SHIPPED (2026-07-02):** the image itself. New `image` module + a
+> record-stream format (header — magic/format/arch/ABI-validity hash — then a
 > record stream read to EOF, heap before facts). `[System saveImage:]` /
 > `birnam foo.image` (entry convention: global `main` → `value`, else REPL).
 > Layering (approach A): the store yields/accepts facts RAW (`imageFactsInto:` /
@@ -85,27 +85,11 @@
 > OS-level dual-format file (dyld/glibc fight it, §1) — "runnable" is this bake
 > step over the same content, as designed.
 >
-> **Slice 4 follow-up — incremental append + compact SHIPPED (2026-07-02):** the
-> journal write mode (§7.4). The on-disk format was already a record stream read
-> to EOF, so `[System appendImage: path]` writes only the delta since the last
-> save/append/load — facts with `tx >= g_saved_basis` plus a `.heap` record for
-> objects newly reachable from them — to the END of an existing image, no rewrite.
-> Object ids continue the base's numbering (save state `g_reloc`/`g_objs` persists
-> across saves and is seeded from a load), so a delta fact referencing a BASE object
-> reuses its id (no duplication, identity kept). Load is now CUMULATIVE: the
-> relocation table accumulates across `.heap` records (global ids), facts apply
-> begin-once/add-all/end-once across `.facts` generations (newest tx wins), and
-> multiple `.code` records compose. A booted app can append too — the load seeds the
-> save state and `runImage` calls `[System imageCheckpoint]` after reconstruction so
-> boot-regenerated facts aren't re-journaled (this also stopped the booted REPL from
-> re-JITing the stdlib — it now skips the redundant re-init). `[System saveImage:]`
-> is the COMPACTOR (a fresh single-generation base). A delta that (re)defines
-> methods carries a composing `.code` unit, so its newest native definition wins
-> on normal mapped load; data-only deltas do not recompile. VERIFIED: base + N
-> deltas + rebind restored cumulatively cross-process (`examples/journal.birnam`),
-> boot-then-append, heap objects born in a delta, and method-defining append in
-> process. This closes the images arc's follow-ups; only depth (mmap fast path,
-> cross-image merge §5) remains, none load-bearing.
+> **Current persistence boundary (2026-07-17):** the earlier incremental-append
+> prototype was withdrawn. The public image API supports atomic full replacement
+> through `[System saveImage: path]` only; `[System appendImage: path]` is not a
+> runtime selector and the old journal example has been removed. The record stream
+> remains an implementation detail of the full image format, not an append journal.
 >
 > **Compiled-unit authority and integrity (2026-07-10):** the `.code` dylibs are
 > the image's primary executable layer, not a cache over source or store facts.
@@ -121,9 +105,9 @@
 > new images. `--rebuild` and ABI/architecture fallback visibly enter source
 > recovery rather than pretending to be normal boot. The next live replacement
 > boundary is [45 — Compiled Units](45-compiled-units.md). Its accepted successor
-> replaces `__modsrc__` enumeration with one sealed runtime-generation authority
-> during L1a; see [49 — Live Module Evolution](49-live-module-evolution.md) and
-> [plan 50](50-five-phase-live-modules-and-isolates-implementation-plan.md#6-l1a--generation-authority-and-image-coherence).
+> uses one sealed runtime-generation authority; the file-backed evolution workflow
+> planned in [49 — Live Module Evolution](49-live-module-evolution.md) was
+> withdrawn after the lower-level candidate boundary shipped.
 >
 > Builds on the
 > [running system](../archive/work-breakdowns/36-the-running-system.md) (globals are cells, method source
@@ -334,12 +318,12 @@ Each slice is independently valuable before the image itself lands:
 2. **Exact heap** — per-vtable layout descriptors (F3 completed); a precise
    trace mode validated against the conservative collector in tests.
    **Ships:** precise heap knowledge (also a GC improvement on its own).
-3. **The image** — append-only segment format (facts + interner + counters +
+3. **The image** — record-stream format (facts + interner + counters +
    heap section), save = serialize store-reachable graph via the descriptors,
    load = map + swizzle + relink vtables by name. **Ships:**
    `[System saveImage: path]`, `birnam foo.image`, `main`-or-REPL entry.
 4. **Unify + harden** — compiled units as image sections with the validity
-   hash; replay fallback wired; incremental append + compact; the exe bake.
+   hash; replay fallback wired; full-save integrity; the exe bake.
 
 Slice 1 first: it is the smallest, it unblocks nothing-else-depends-on-me
 value immediately, and every later slice needs its de-baking anyway.

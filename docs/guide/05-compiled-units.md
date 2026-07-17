@@ -5,8 +5,8 @@ the running system. Activation asks the host to publish its declarative method
 delta and a new whole-runtime `DispatchGeneration` together. Rollback asks the
 host to republish the exact predecessor.
 
-Every module has the same representation and is live-editable. The current L1a
-policy permits method-only successors: module identity, dependencies, and the
+Every module has the same representation and is live-editable. The current
+candidate contract permits method-only successors: module identity, dependencies, and the
 derived non-method projection must stay equal. Top-level initializer/global/FFI
 changes and module introduction are deferred to the later migration phase.
 
@@ -90,9 +90,11 @@ reject it rather than adopting an untracked second authority.
 ## Images and process boundaries
 
 An image carries the exact generation source map, its digest, and one code unit
-built from every complete document once in dependency order. Normal boot maps that
-unit only when its embedded authority matches; `--rebuild` evaluates the same
-documents and retains the same digest.
+built from every complete document once in dependency order followed by the
+ordered source-backed method operations recorded by direct scripts and REPL
+forms. Normal boot maps that unit only when its embedded authority matches;
+`--rebuild` evaluates the same documents, replays those method operations, and
+retains the same digest.
 
 Candidate handles, native roots, and rollback pointers are process-local. The
 saved `DispatchGeneration` remains durable authority, and new post-boot candidates

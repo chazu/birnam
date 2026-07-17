@@ -162,16 +162,4 @@ let s := [TestSuite named: "Doc" module: #doc];
   [t assert: [md includesSubstring: "`rollback` — Produce a rollback"]
      describes: "guarded rollback reference is rendered"]]];
 
-[s test: "Isolate reference registrations cover replacement and rollout" do: [:t |
-  [System load: "modules/isolate-docs.birnam"];
-  let md := [Doc markdownForModule: #isolate];
-  [t assert: [md includesSubstring: "`replace:using:` — Replace selected idle worker A"]
-     describes: "replacement policy is in generated reference docs"];
-  [t assert: [md includesSubstring: "`evolve:timeout:` — On an idle worker handle"]
-     describes: "worker rollout is in generated reference docs"];
-  [t assert: [md includesSubstring: "`acceptedBaseDigest` — On EvolutionReceipt"]
-     describes: "receipt fields are in generated reference docs"];
-  [t assert: [md includesSubstring: "#reapPending"]
-     describes: "partial cleanup semantics are in generated reference docs"]]];
-
 s
