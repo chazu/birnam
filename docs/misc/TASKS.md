@@ -77,9 +77,9 @@ until product evidence selects the next failure model.
 - [x] **Digla terminal editor foundation / Design 58** (2026-07-17) — the
   multi-file `modules/digla/` project now includes a headless editor model,
   UTF-8 byte-boundary cursor movement, history, local evaluation, transcript
-  rendering, and an optional Termbox `--ui` entrypoint. Next: extract the shared
-  PositionMap/display-layout layer so LSP UTF-16 positions and terminal cells
-  stop being renderer-local concerns.
+  rendering, an optional Termbox `--ui` entrypoint, and the initial source/LSP
+  PositionMap conversion slice. Next: add terminal-cell DisplayLayout mapping
+  so LSP UTF-16 positions and terminal cells share one projection boundary.
 
 ---
 

@@ -15,19 +15,6 @@
   [s4 at: "lastError" put: nil]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
 
-[Reflect defineMethod: #isContinuationByte: on: Digla as: [:self :b |
-  [[b >= 128] & [b <= 191]]] doc:
-  "True when a byte is a UTF-8 continuation byte."];
-
-[Reflect defineMethod: #utf8WidthAt:in: on: Digla as: [:self :i :text |
-  let b := [text byteAt: i];
-  let width := [1 asCell];
-  [[[b >= 128] & [b < 224]] ifTrue: [| [width set: 2]] ifFalse: [| nil]];
-  [[[b >= 224] & [b < 240]] ifTrue: [| [width set: 3]] ifFalse: [| nil]];
-  [[b >= 240] ifTrue: [| [width set: 4]] ifFalse: [| nil]];
-  [width value]] doc:
-  "Return the width of the UTF-8 codepoint beginning at byte offset `i`. Invalid input is treated conservatively as width four."];
-
 [Reflect defineMethod: #previousBoundaryStep:in: on: Digla as: [:self :p :text |
   [[[p <= 0] | [[self isContinuationByte: [text byteAt: p]] not]]
     ifTrue: [| p]

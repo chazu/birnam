@@ -37,6 +37,8 @@ modules/digla/digla.birnam       module entry
 modules/digla/config.birnam      AppConfig adapter
 modules/digla/session.birnam     value-only editor/session state
 modules/digla/render.birnam      headless startup summary
+modules/digla/position-map.birnam source-byte/LSP UTF-16 conversion
+modules/digla/position-map-test.birnam coordinate contract tests
 modules/digla/editor.birnam      value-only cursor/edit/history/evaluation model
 modules/digla/editor-test.birnam headless editor contract
 modules/digla/termbox.birnam     Termbox module entry
@@ -48,13 +50,14 @@ examples/digla/birnam.toml       composed application project
 application manifest's `[[wrapped]]` declaration, so the standard image and
 headless Digla tests do not acquire a terminal dependency.
 
-The first local editor slice is now implemented. `birnam run examples/digla --
---ui` launches the Termbox client; Escape exits, character input edits the
+The first local editor slice is now implemented. `birnam run examples/digla -- --ui`
+launches the Termbox client; Escape exits, character input edits the
 buffer, Ctrl-J inserts a newline, Enter evaluates the current Birnam form
 against the local image, and history is recalled with Ctrl-P/Ctrl-N or the
 arrow keys. The model is headless and stores source cursors as UTF-8 byte
-boundaries. Syntax highlighting, diagnostics, terminal-cell mapping, and
-remote sessions remain intentionally later slices.
+boundaries. The initial PositionMap source/LSP conversion slice is also
+implemented and tested; syntax highlighting, diagnostics, terminal-cell
+DisplayLayout mapping, and remote sessions remain intentionally later slices.
 
 ## 2. Goals and boundaries
 
@@ -324,8 +327,9 @@ The core invariants are:
 
 ## 8. Implementation sequence
 
-1. **PositionMap next.** Extract the shared line/UTF-16 mapping seam from the
-   existing LSP behavior and add terminal-cell projection tests.
+1. **PositionMap — initial source/LSP slice implemented.** Extract the shared
+   UTF-8/UTF-16 and absolute byte-position seam from the existing LSP behavior.
+   The remaining work is terminal-cell projection and DisplayLayout tests.
 2. **Reusable termbox module — implemented.** Promote the Logue wrapper into an optional,
    reusable terminal module. Keep terminal setup out of the boot-critical REPL.
 3. **Local terminal editor — initial slice implemented.** Add a single-buffer

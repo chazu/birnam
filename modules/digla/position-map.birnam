@@ -1,0 +1,76 @@
+// position-map.birnam — source-byte and LSP UTF-16 coordinate conversion.
+//
+// The editor and terminal renderer keep source byte boundaries internally.
+// LSP positions are converted only at this boundary; terminal-cell projection
+// will build on the same source offsets in a later DisplayLayout slice.
+
+[Reflect defineMethod: #isContinuationByte: on: Digla as: [:self :b |
+  [[b >= 128] & [b <= 191]]] doc:
+  "True when a byte is a UTF-8 continuation byte."];
+
+[Reflect defineMethod: #utf8WidthAt:in: on: Digla as: [:self :i :text |
+  let b := [text byteAt: i];
+  let wide := [[b < 240] ifTrue: [| 3] ifFalse: [| 4]];
+  let middle := [[b < 224] ifTrue: [| 2] ifFalse: [| wide]];
+  [[b < 128] ifTrue: [| 1] ifFalse: [| middle]]
+  ] doc:
+  "Return the byte width of the UTF-8 codepoint beginning at `i`; malformed high bytes conservatively consume four bytes."];
+
+[Reflect defineMethod: #utf16UnitsAt:in: on: Digla as: [:self :i :line |
+  let b := [line byteAt: i];
+  let width := [[b >= 240] ifTrue: [| 2] ifFalse: [| 1]];
+  [[b < 128] ifTrue: [| 1] ifFalse: [| width]]
+  ] doc:
+  "Return the UTF-16 width of the UTF-8 codepoint beginning at `i`."];
+
+[Reflect defineMethod: #utf16Offset:in: on: Digla as: [:self :byteOffset :line |
+  let units := [0 asCell];
+  let finish := [[byteOffset < 0]
+    ifTrue: [| 0]
+    ifFalse: [| [[byteOffset > [line size]] ifTrue: [| [line size]] ifFalse: [| byteOffset]]]];
+  [0 to: [finish - 1] do: [:i |
+    let b := [line byteAt: i];
+    [[[self isContinuationByte: b] not]
+      ifTrue: [| [units set: [[units value] + [self utf16UnitsAt: i in: line]]]]
+      ifFalse: [| nil]]]];
+  [units value]
+  ] doc:
+  "Convert a UTF-8 byte offset in one line to an LSP UTF-16 character offset."];
+
+[Reflect defineMethod: #byteOffsetForUtf16:in: on: Digla as: [:self :target :line |
+  let bytes := [0 asCell];
+  let units := [0 asCell];
+  [0 to: [[line size] - 1] do: [:i |
+    [[[units value] < target]
+      ifTrue: [|
+        let b := [line byteAt: i];
+        [[self isContinuationByte: b] ifTrue: [| nil] ifFalse: [|
+          [units set: [[units value] + [self utf16UnitsAt: i in: line]]];
+          [bytes set: [i + [self utf8WidthAt: i in: line]]]]]]
+      ifFalse: [| nil]]]];
+  [bytes value]
+  ] doc:
+  "Convert an LSP UTF-16 character offset to the nearest source byte boundary."];
+
+[Reflect defineMethod: #positionAtByte:in: on: Digla as: [:self :byteOffset :text |
+  let off := [[byteOffset < 0]
+    ifTrue: [| 0]
+    ifFalse: [| [[byteOffset > [text size]] ifTrue: [| [text size]] ifFalse: [| byteOffset]]]];
+  let prefix := [text copyFrom: 0 to: off];
+  let lines := [prefix split: "\n"];
+  let line := [[lines size] - 1];
+  let lineText := [lines at: line];
+  let p0 := [Map new];
+  let p1 := [p0 at: "line" put: line];
+  [p1 at: "character" put: [self utf16Offset: [lineText size] in: lineText]]
+  ] doc:
+  "Convert an absolute source byte offset to an LSP line/UTF-16 position."];
+
+[Reflect defineMethod: #byteAtLine:character:in: on: Digla as: [:self :line :character :text |
+  let lines := [text split: "\n"];
+  let selected := [lines at: line ifAbsent: [| ""]];
+  let within := [self byteOffsetForUtf16: character in: selected];
+  let before := [[0 to: [line - 1]] inject: 0 into: [:total :i |
+    [total + [[lines at: i] size] + 1]]];
+  [before + within]] doc:
+  "Convert an LSP line/UTF-16 position to an absolute source byte boundary."];

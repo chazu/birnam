@@ -337,4 +337,5 @@ from-zero bootstrap compiler and performance floor.
 - [Terminal REPL and programming environment](docs/design/58-terminal-repl-and-programming-environment.md)
   tracks the termbox2 editor client, shared language-service coordinates, and
   explicit local/remote image sessions. The first local `--ui` editor slice is
-  runnable; PositionMap and remote sessions remain staged.
+  runnable, and the initial source/LSP PositionMap slice is landed; terminal
+  DisplayLayout and remote sessions remain staged.
