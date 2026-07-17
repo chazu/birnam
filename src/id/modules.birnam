@@ -136,10 +136,11 @@
   [[[[self libDir] , "/libbirnam_"] , [Reflect nameOf: name]] , ".dylib"]]];
 
 // Compose an explicitly ordered set of source files into one module document.
-// The project resolver owns discovery and validation; the actual file reads and
-// source assembly stay in Birnam so the same operation is available to future
-// file-backed tooling and live-module workflows. Every part after the entry is
-// ordinary source and must not carry another Module named:requires: declaration.
+// The project adapter observes source declarations and ProjectPolicy owns
+// provider validation/order; the actual file reads and source assembly stay in
+// Birnam so the same operation is available to future file-backed tooling and
+// live-module workflows. Every part after the entry is ordinary source and must
+// not carry another Module named:requires: declaration.
 [Reflect defineMethod: #composeSources: on: Module as: [:self :paths |
   [paths inject: "" into: [:text :path |
     [[text isError]

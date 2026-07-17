@@ -48,7 +48,7 @@ as an ordinary project workflow:
 → 54 — relocatable bundles and runtime distribution
 ~~~
 
-The source resolver, materialized `check`/`build` workflow, first
+The source resolver, Birnam-owned project policy, materialized `check`/`build` workflow, first
 project-oriented `run` slice, and the first project-aware LSP
 workspace/coordinate slice are now implemented. Safe editor diagnostics,
 navigation, and bundle relocation remain staged proposals. These slices share one project resolver, preserve
@@ -57,7 +57,7 @@ runtime dispatch authority with compatible compiled units.
 See [design 51](../design/51-project-manifests-and-dependency-resolution.md),
 [design 52](../design/52-project-check-build-and-run.md), [design
 53](../design/53-project-aware-language-tools.md), and [design
-54](../design/54-relocatable-bundles.md).
+54](../design/54-relocatable-bundles.md), plus [design 57](../design/57-project-policy-in-birnam.md).
 
 ## Proposed Application Sequence
 

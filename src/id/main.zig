@@ -72,10 +72,11 @@ const USAGE =
 const IdApi = idapi.IdApi;
 const Oop = idapi.Oop;
 
-// The project resolver is host-side because it owns filesystem traversal and
-// the existing Toml/Codegen seams. The LSP itself remains authored in Birnam;
-// this bridge gives it one immutable native snapshot per workspace lookup rather
-// than a second manifest parser or a second dependency graph.
+// The project adapter is host-side because it owns filesystem traversal and the
+// existing Toml/Codegen seams. ProjectPolicy owns the semantic resolution over
+// its value snapshot. The LSP itself remains authored in Birnam; this bridge
+// gives it one immutable native snapshot per workspace lookup rather than a
+// second manifest parser or a second dependency graph.
 var project_bridge_api: ?*IdApi = null;
 
 fn hexNibble(c: u8) ?u8 {
@@ -766,6 +767,7 @@ const script_modules = [_][]const u8{
 const STDLIB_SRC = @embedFile("stdlib.birnam");
 const TOML_SRC = @embedFile("toml.birnam");
 const CONFIG_SRC = @embedFile("config.birnam");
+const PROJECT_POLICY_SRC = @embedFile("project-policy.birnam");
 const COMPILED_UNIT_SRC = @embedFile("compiled-unit.birnam");
 const LIVE_MODULES_SRC = @embedFile("live-modules.birnam");
 const ISOLATE_SRC = @embedFile("isolate.birnam");
@@ -822,6 +824,17 @@ const self_hosted_modules = [_]SelfHosted{
     .{ .name = "config", .src = CONFIG_SRC },
     .{ .name = "isolate", .src = ISOLATE_SRC },
 };
+
+/// Project policy is loaded on demand. It is a build/check decision module,
+/// not part of the ordinary image generation set: keeping it lazy preserves
+/// image capture for interactive/runtime-only sessions while project commands
+/// still get the precompiled Birnam implementation (or its embedded source
+/// fallback).
+fn loadProjectPolicy(a: std.mem.Allocator, api: *IdApi, codegen: Oop) void {
+    if (birnamGlobal(api, "ProjectPolicy") != null) return;
+    loadSelfHosted(a, api, codegen, "projectPolicy", PROJECT_POLICY_SRC);
+    markLoaded(api, "projectPolicy");
+}
 
 /// Scan a self-hosted module's source for its `[Module … requires: #[ #a #b ]]`
 /// declaration and build a Vector of the dependency-name symbols. The declaration
@@ -1031,10 +1044,11 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     }
 }
 
-/// `birnam check [directory]` — resolve the nearest manifest and print the
-/// source-only ProjectResolution. The resolver uses Toml and Codegen's full-CST
-/// metadata scanner after the language floor is up, but never evaluates project
-/// source or mutates Module/Store state.
+/// `birnam check [directory]` — observe the nearest manifest and print the
+/// source-only ProjectResolution. The host adapter uses Toml and Codegen's
+/// full-CST metadata scanner; ProjectPolicy makes the resolution decisions
+/// after the language floor is up. Neither side evaluates project source or
+/// mutates Module/Store state.
 fn runProjectCheck(a: std.mem.Allocator, api: *IdApi, directory: []const u8) !void {
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
@@ -1044,6 +1058,7 @@ fn runProjectCheck(a: std.mem.Allocator, api: *IdApi, directory: []const u8) !vo
     _ = &stack_anchor;
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
     loadStdlib(a, api, codegen);
+    loadProjectPolicy(a, api, codegen);
 
     var result = project.resolve(api, a, directory);
     defer result.deinit();
@@ -1101,6 +1116,7 @@ fn runProjectBuild(a: std.mem.Allocator, api: *IdApi, directory: []const u8) !vo
     _ = &stack_anchor;
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
     loadStdlib(a, api, codegen);
+    loadProjectPolicy(a, api, codegen);
 
     var resolution = project.resolve(api, a, directory);
     defer resolution.deinit();
@@ -1174,6 +1190,7 @@ fn runProjectInstall(a: std.mem.Allocator, api: *IdApi, options: ProjectInstallO
     _ = &stack_anchor;
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
     loadStdlib(a, api, codegen);
+    loadProjectPolicy(a, api, codegen);
 
     var resolution = project.resolve(api, a, options.directory);
     defer resolution.deinit();
@@ -1415,12 +1432,15 @@ fn runProjectSocketRepl(a: std.mem.Allocator, api: *IdApi, bind: []const u8, por
     return;
 }
 
-/// Bare REPL startup is project-aware when a valid project publication is
-/// present. It configures both module resolvers to that publication's lib
-/// directory and leaves main/config loading to the REPL lifecycle. A missing or
-/// not-yet-buildable project publication falls through to the existing Config
-/// path, preserving source-backed REPL projects and the standalone REPL.
-fn prepareBareProject(a: std.mem.Allocator, api: *IdApi) !void {
+/// Bare REPL startup adopts a validated project publication only for a
+/// configured project with a `main`. This preserves project-local runs while
+/// keeping ordinary/image-save REPL startup free of the lazy policy module.
+fn prepareBareProject(a: std.mem.Allocator, api: *IdApi, codegen: Oop) !void {
+    const config = birnamGlobal(api, "Config") orelse return;
+    const main_path = api.send(config, api.intern("main"), &.{}, 0);
+    if (main_path == api.nilObj or api.vtableOf(main_path) != api.string_vt) return;
+
+    loadProjectPolicy(a, api, codegen);
     var resolution_result = project.resolve(api, a, ".");
     defer resolution_result.deinit();
     if (resolution_result.diagnostic != null) return;
@@ -1441,6 +1461,7 @@ fn runProject(a: std.mem.Allocator, api: *IdApi, options: ProjectRunOptions) !vo
     _ = &stack_anchor;
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
     loadStdlib(a, api, codegen);
+    loadProjectPolicy(a, api, codegen);
 
     var resolution_result = project.resolve(api, a, options.directory);
     defer resolution_result.deinit();
@@ -1488,6 +1509,11 @@ fn isCliSubcommand(tok: []const u8) bool {
     return false;
 }
 
+fn cliNeedsProjectPolicy(argv: []const []const u8) bool {
+    for (argv) |arg| if (std.mem.eql(u8, arg, "--lsp")) return true;
+    return false;
+}
+
 /// Append S to BUF as a birnam string literal (`\` escapes `"` and `\`), so an
 /// arbitrary path or CLI argument survives the trip through boot source intact.
 fn appendBirnamString(buf: *std.ArrayList(u8), a: std.mem.Allocator, s: []const u8) !void {
@@ -1515,6 +1541,7 @@ fn runCli(a: std.mem.Allocator, api: *IdApi, argv: []const []const u8) !void {
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
 
     loadStdlib(a, api, codegen);
+    if (cliNeedsProjectPolicy(argv)) loadProjectPolicy(a, api, codegen);
 
     const mdir = try resolveModulesDir(a);
     defer a.free(mdir);
@@ -1780,7 +1807,7 @@ fn runReplSession(a: std.mem.Allocator, api: *IdApi, booted: bool, project_run: 
     if (!booted) loadStdlib(a, api, codegen);
     if (!booted) {
         configureRuntimeNativeDir(a, api);
-        try prepareBareProject(a, api);
+        try prepareBareProject(a, api, codegen);
     }
 
     const globals = api.import("Globals") orelse return error.NoGlobals;

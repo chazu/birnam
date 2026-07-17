@@ -169,6 +169,7 @@ pub fn build(b: *std.Build) void {
         .{ .src = "src/id/live-modules.birnam", .name = "liveModules" },
         .{ .src = "src/id/toml.birnam", .name = "toml" },
         .{ .src = "src/id/config.birnam", .name = "config" },
+        .{ .src = "src/id/project-policy.birnam", .name = "projectPolicy" },
         .{ .src = "src/id/isolate.birnam", .name = "isolate" },
     };
     inline for (self_hosted) |m| {

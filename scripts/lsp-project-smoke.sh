@@ -67,7 +67,7 @@ my $answer_use = index($nav, "answer +");
 sendm("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"workspaceFolders\":[{\"uri\":\"$root\"},{\"uri\":\"$other_root\"}]}}");
 sendm("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"$app_doc\",\"version\":1,\"text\":\"[1 + 2]\"}}}");
 sendm("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":2,\"text\":\"$bad\"}}}");
-sleep 5;
+sleep 10;
 sendm("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":1},\"contentChanges\":[{\"text\":\"[1 + 2]\"}]}}");
 sendm("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":3},\"contentChanges\":[{\"text\":\"$nav\"}]}}");
 sendm("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"textDocument/documentSymbol\",\"params\":{\"textDocument\":{\"uri\":\"$doc\"}}}");

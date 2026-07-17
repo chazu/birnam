@@ -1,8 +1,9 @@
 # 51 — Project Manifests and Dependency Resolution
 
 > **Status:** Source resolver, materialized artifact records, conservative
-> artifact reuse, and the first project-run consumer implemented,
-> 2026-07-15. This is the first design in the developer experience sequence.
+> artifact reuse, the first project-run consumer, and the Birnam-owned project
+> policy slice implemented, 2026-07-16. This is the first design in the
+> developer experience sequence.
 > It defines the project graph consumed by [52 — Project
 > Check, Build, and Run](52-project-check-build-and-run.md), [53 — Project-Aware
 > Language Tools](53-project-aware-language-tools.md), and [54 — Relocatable
@@ -159,6 +160,19 @@ behind an explicit later policy without changing the graph contract.
 The CLI, LSP, Emacs commands, stage-1 build, image/baseline workflows, and
 future package tooling consume the same project-resolution records. None grows a
 second parser, source index, or dependency algorithm.
+
+### 2.10 Project policy is Birnam-owned
+
+The host adapter supplies a value-shaped observation of projects, manifests,
+source declarations, and prior artifact checksums. `ProjectPolicy` in
+`src/id/project-policy.birnam` owns provider selection, dependency closure,
+diagnostics, deterministic order, artifact reuse/compile decisions, dirty
+dependency propagation, artifact-record shape, and publication authorization.
+
+Filesystem traversal, source/CST observation, hashing, compiler/process launch,
+copying, TOML serialization, and atomic rename remain host effects. This keeps
+the policy call cheap while making the semantic rules executable and testable in
+Birnam. See [57 — Project Policy in Birnam](57-project-policy-in-birnam.md).
 
 ## 3. Manifest shape
 

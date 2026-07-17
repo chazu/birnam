@@ -1,0 +1,211 @@
+// project-policy-test.birnam — executable contract tests for Birnam-owned
+// project resolution. These tests use value-shaped observations, so they do
+// not touch the filesystem or require the Zig project adapter.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+
+[Globals at: #ProjectPolicyTest put: [Object clone]];
+
+[Reflect defineMethod: #source:requires: on: ProjectPolicyTest as: [:self :name :requires |
+  let result := [Map new];
+  let r1 := [result at: "name" put: name];
+  [r1 at: "requires" put: requires]]];
+
+[Reflect defineMethod: #dependency:name: on: ProjectPolicyTest as: [:self :root :name |
+  let result := [Map new];
+  let r1 := [result at: "name" put: name];
+  [r1 at: "root" put: root]]];
+
+[Reflect defineMethod: #project:name:loads:dependencies:sources: on: ProjectPolicyTest as: [:self :root :name :loads :dependencies :sources |
+  let run := [Map new];
+  let run1 := [run at: "repl" put: "none"];
+  let run2 := [run1 at: "socketBind" put: "127.0.0.1"];
+  let run3 := [run2 at: "socketPort" put: 0];
+  let result := [Map new];
+  let r1 := [result at: "root" put: root];
+  let r2 := [r1 at: "manifest" put: [root , "/birnam.toml"]];
+  let r3 := [r2 at: "name" put: name];
+  let r4 := [r3 at: "main" put: nil];
+  let r5 := [r4 at: "loads" put: loads];
+  let r6 := [r5 at: "run" put: run3];
+  let r7 := [r6 at: "wrapped" put: #[]];
+  let r8 := [r7 at: "dependencies" put: dependencies];
+  [r8 at: "sources" put: sources]]];
+
+[Reflect defineMethod: #snapshot: on: ProjectPolicyTest as: [:self :projects |
+  let result := [Map new];
+  let r1 := [result at: "root" put: [[projects at: 0] at: "root"]];
+  [r1 at: "projects" put: projects]]];
+
+[Reflect defineMethod: #artifactModule:name:path:requires:digest: on: ProjectPolicyTest as: [:self :label :name :path :requires :digest |
+  let sourcePaths0 := [Vector new];
+  let sourcePaths := [sourcePaths0 add: path];
+  let result := [Map new];
+  let r1 := [result at: "name" put: name];
+  let r2 := [r1 at: "path" put: path];
+  let r3 := [r2 at: "sources" put: sourcePaths];
+  let r4 := [r3 at: "sourceDigest" put: digest];
+  let r5 := [r4 at: "revisionDigest" put: digest];
+  [r5 at: "requires" put: requires]]];
+
+[Reflect defineMethod: #artifactRecord:name:checksum:observed: on: ProjectPolicyTest as: [:self :module :name :checksum :observed |
+  let result := [Map new];
+  let r1 := [result at: "name" put: name];
+  let r2 := [r1 at: "path" put: [["lib/libbirnam_" , name] , ".dylib"]];
+  let r3 := [r2 at: "source" put: [module at: "path"]];
+  let r4 := [r3 at: "sources" put: [module at: "sources"]];
+  let r5 := [r4 at: "sourceDigest" put: [module at: "sourceDigest"]];
+  let r6 := [r5 at: "revisionDigest" put: [module at: "revisionDigest"]];
+  let r7 := [r6 at: "requires" put: [module at: "requires"]];
+  let r8 := [r7 at: "checksum" put: checksum];
+  [r8 at: "observedChecksum" put: observed]]];
+
+[Reflect defineMethod: #artifactSnapshot:previous: on: ProjectPolicyTest as: [:self :modules :previous |
+  let result := [Map new];
+  let r1 := [result at: "projectRoot" put: "/app"];
+  let r2 := [r1 at: "target" put: "target"];
+  let r3 := [r2 at: "profile" put: "debug"];
+  let r4 := [r3 at: "toolVersion" put: "tool"];
+  let r5 := [r4 at: "artifactAbi" put: "abi"];
+  let r6 := [r5 at: "resolutionDigest" put: "digest"];
+  let r7 := [r6 at: "builtAt" put: "now"];
+  let r8 := [r7 at: "modules" put: modules];
+  let r9 := [r8 at: "previous" put: previous];
+  [r9 at: "wrapped" put: #[]]]];
+
+[Reflect defineMethod: #previousFor: on: ProjectPolicyTest as: [:self :artifacts |
+  let result := [Map new];
+  let r1 := [result at: "projectRoot" put: "/app"];
+  let r2 := [r1 at: "target" put: "target"];
+  let r3 := [r2 at: "profile" put: "debug"];
+  let r4 := [r3 at: "toolVersion" put: "tool"];
+  let r5 := [r4 at: "artifactAbi" put: "abi"];
+  let r6 := [r5 at: "artifacts" put: artifacts];
+  [r6 at: "resolutionDigest" put: "digest"]]];
+
+let s := [TestSuite named: "ProjectPolicy" module: #projectPolicy];
+
+[s test: "resolution is deterministic and dependency-first" do: [:t |
+  let leafSource := [ProjectPolicyTest source: "leaf" requires: #[]];
+  let depSource := [ProjectPolicyTest source: "dep" requires: #["leaf"]];
+  let utilSource := [ProjectPolicyTest source: "util" requires: #[]];
+  let appSource := [ProjectPolicyTest source: "app" requires: #["util" "dep"]];
+  let depSources0 := [Vector new];
+  let depSources1 := [depSources0 add: depSource];
+  let depSources := [depSources1 add: leafSource];
+  let appSources0 := [Vector new];
+  let appSources := [appSources0 add: appSource];
+  let appSources2 := [appSources add: utilSource];
+  let dep := [ProjectPolicyTest project: "/dep" name: "dep" loads: #[] dependencies: #[] sources: depSources];
+  let depRef := [ProjectPolicyTest dependency: "/dep" name: "dep"];
+  let appDeps0 := [Vector new];
+  let appDeps := [appDeps0 add: depRef];
+  let app := [ProjectPolicyTest project: "/app" name: "app" loads: #["app"] dependencies: appDeps sources: appSources2];
+  let projects0 := [Vector new];
+  let projects1 := [projects0 add: app];
+  let projects := [projects1 add: dep];
+  let result := [ProjectPolicy resolveSnapshot: [ProjectPolicyTest snapshot: projects]];
+  let names := [[result at: "modules"] collect: [:entry | [entry at: "name"]]];
+  [t expect: names equals: #["leaf" "dep" "util" "app"] describes: "dependency-first module order"]]];
+
+[s test: "missing providers carry the dependency path" do: [:t |
+  let appSource := [ProjectPolicyTest source: "app" requires: #["missing"]];
+  let appSources0 := [Vector new];
+  let appSources := [appSources0 add: appSource];
+  let app := [ProjectPolicyTest project: "/app" name: "app" loads: #["app"] dependencies: #[] sources: appSources];
+  let projects0 := [Vector new];
+  let projects := [projects0 add: app];
+  let result := [ProjectPolicy resolveSnapshot: [ProjectPolicyTest snapshot: projects]];
+  [t expect: [result kind] equals: #moduleNotFound describes: "missing provider kind"];
+  [t assert: [[result message] includesSubstring: "#app -> #missing"] describes: "missing provider path"]]];
+
+[s test: "dependency cycles are reported with the complete path" do: [:t |
+  let appSource := [ProjectPolicyTest source: "app" requires: #["util"]];
+  let utilSource := [ProjectPolicyTest source: "util" requires: #["app"]];
+  let appSources0 := [Vector new];
+  let appSources1 := [appSources0 add: appSource];
+  let appSources := [appSources1 add: utilSource];
+  let app := [ProjectPolicyTest project: "/app" name: "app" loads: #["app"] dependencies: #[] sources: appSources];
+  let projects0 := [Vector new];
+  let projects := [projects0 add: app];
+  let result := [ProjectPolicy resolveSnapshot: [ProjectPolicyTest snapshot: projects]];
+  [t expect: [result kind] equals: #dependencyCycle describes: "cycle kind"];
+  [t assert: [[result message] includesSubstring: "#app -> #util -> #app"] describes: "complete cycle path"]]];
+
+[s test: "a local and dependency provider are rejected as ambiguous" do: [:t |
+  let localSource := [ProjectPolicyTest source: "util" requires: #[]];
+  let appSource := [ProjectPolicyTest source: "app" requires: #["util"]];
+  let depSource := [ProjectPolicyTest source: "util" requires: #[]];
+  let appSources0 := [Vector new];
+  let appSources1 := [appSources0 add: appSource];
+  let appSources := [appSources1 add: localSource];
+  let depSources0 := [Vector new];
+  let depSources := [depSources0 add: depSource];
+  let dep := [ProjectPolicyTest project: "/dep" name: "dep" loads: #[] dependencies: #[] sources: depSources];
+  let depRef := [ProjectPolicyTest dependency: "/dep" name: "util"];
+  let appDeps0 := [Vector new];
+  let appDeps := [appDeps0 add: depRef];
+  let app := [ProjectPolicyTest project: "/app" name: "app" loads: #["app"] dependencies: appDeps sources: appSources];
+  let projects0 := [Vector new];
+  let projects1 := [projects0 add: app];
+  let projects := [projects1 add: dep];
+  let result := [ProjectPolicy resolveSnapshot: [ProjectPolicyTest snapshot: projects]];
+  [t expect: [result kind] equals: #duplicateModuleProvider describes: "duplicate provider kind"]]];
+
+[s test: "artifact policy compiles when no prior record exists" do: [:t |
+  let module := [ProjectPolicyTest artifactModule: "app" name: "app" path: "/app/src/app.birnam" requires: #[] digest: "app"];
+  let modules0 := [Vector new];
+  let modules := [modules0 add: module];
+  let snapshot := [ProjectPolicyTest artifactSnapshot: modules previous: nil];
+  let plan := [ProjectPolicy artifactPlan: snapshot];
+  let item := [[plan at: "artifacts"] at: 0];
+  [t expect: [item at: "action"] equals: "compile" describes: "missing prior artifact compiles"]]];
+
+[s test: "artifact policy reuses an unchanged prior record" do: [:t |
+  let module := [ProjectPolicyTest artifactModule: "app" name: "app" path: "/app/src/app.birnam" requires: #[] digest: "app"];
+  let artifacts0 := [Vector new];
+  let artifact := [ProjectPolicyTest artifactRecord: module name: "app" checksum: "app-checksum" observed: "app-checksum"];
+  let artifacts := [artifacts0 add: artifact];
+  let previous := [ProjectPolicyTest previousFor: artifacts];
+  let modules0 := [Vector new];
+  let modules := [modules0 add: module];
+  let plan := [ProjectPolicy artifactPlan: [ProjectPolicyTest artifactSnapshot: modules previous: previous]];
+  let item := [[plan at: "artifacts"] at: 0];
+  [t expect: [item at: "action"] equals: "reuse" describes: "unchanged prior artifact reuses"]]];
+
+[s test: "a dirty dependency invalidates its dependent artifact" do: [:t |
+  let oldLeaf := [ProjectPolicyTest artifactModule: "leaf" name: "leaf" path: "/app/src/leaf.birnam" requires: #[] digest: "old-leaf"];
+  let newLeaf := [ProjectPolicyTest artifactModule: "leaf" name: "leaf" path: "/app/src/leaf.birnam" requires: #[] digest: "new-leaf"];
+  let app := [ProjectPolicyTest artifactModule: "app" name: "app" path: "/app/src/app.birnam" requires: #["leaf"] digest: "app"];
+  let oldArtifacts0 := [Vector new];
+  let oldArtifacts1 := [oldArtifacts0 add: [ProjectPolicyTest artifactRecord: oldLeaf name: "leaf" checksum: "leaf-checksum" observed: "leaf-checksum"]];
+  let oldArtifacts := [oldArtifacts1 add: [ProjectPolicyTest artifactRecord: app name: "app" checksum: "app-checksum" observed: "app-checksum"]];
+  let previous := [ProjectPolicyTest previousFor: oldArtifacts];
+  let modules0 := [Vector new];
+  let modules1 := [modules0 add: newLeaf];
+  let modules := [modules1 add: app];
+  let plan := [ProjectPolicy artifactPlan: [ProjectPolicyTest artifactSnapshot: modules previous: previous]];
+  let decisions := [plan at: "artifacts"];
+  [t expect: [[decisions at: 0] at: "action"] equals: "compile" describes: "changed dependency compiles"];
+  [t expect: [[decisions at: 1] at: "action"] equals: "compile" describes: "dependent recompiles"]]];
+
+[s test: "artifact record policy owns the persisted record shape" do: [:t |
+  let module := [ProjectPolicyTest artifactModule: "app" name: "app" path: "/app/src/app.birnam" requires: #[] digest: "app"];
+  let modules0 := [Vector new];
+  let modules := [modules0 add: module];
+  let snapshot := [ProjectPolicyTest artifactSnapshot: modules previous: nil];
+  let artifacts0 := [Vector new];
+  let artifacts := [artifacts0 add: [ProjectPolicyTest artifactRecord: module name: "app" checksum: "app-checksum" observed: nil]];
+  let record := [ProjectPolicy artifactRecord: snapshot artifacts: artifacts native: #[]];
+  [t expect: [record at: "schema"] equals: "birnam-artifacts-v3" describes: "policy selects artifact schema"];
+  [t expect: [[[record at: "artifacts"] at: 0] at: "source"] equals: "/app/src/app.birnam" describes: "policy retains source identity"]]];
+
+[s test: "publication policy rejects incomplete staging" do: [:t |
+  let notReady0 := [Map new];
+  let notReady := [notReady0 at: "stageReady" put: false];
+  let rejected := [ProjectPolicy publicationPlan: notReady];
+  [t expect: [rejected isError] equals: true describes: "incomplete staging is rejected"];
+  let ready0 := [Map new];
+  let ready := [ready0 at: "stageReady" put: true];
+  let published := [ProjectPolicy publicationPlan: ready];
+  [t expect: [published at: "decision"] equals: "publish" describes: "complete staging is publishable"]]];

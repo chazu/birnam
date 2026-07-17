@@ -1,10 +1,11 @@
 //! Read-only source project resolution for `birnam check`.
 //!
-//! This is deliberately a host-side seam. TOML is still parsed by Birnam's
+//! This is deliberately a host-side adapter. TOML is still parsed by Birnam's
 //! self-hosted Toml module, while module declarations are inspected by the
-//! existing full-CST Codegen scanner. The resolver owns filesystem traversal,
-//! path dependency boundaries, deterministic ordering, and diagnostics; it
-//! never evaluates a project source or calls Module load:.
+//! existing full-CST Codegen scanner. The adapter owns filesystem traversal,
+//! source/CST observation, and hashing; ProjectPolicy owns provider selection,
+//! dependency closure, deterministic ordering, and diagnostics. It never
+//! evaluates a project source or calls Module load:.
 
 const std = @import("std");
 const idapi = @import("idapi.zig");
@@ -114,17 +115,10 @@ const Project = struct {
     sources: []const Source,
 };
 
-const Selected = struct {
-    project: *Project,
-    source: *const Source,
-};
-
 const State = struct {
     arena: std.mem.Allocator,
     api: *IdApi,
     projects: std.ArrayList(*Project) = .{},
-    resolved: std.ArrayList(Selected) = .{},
-    visiting: std.ArrayList([]const u8) = .{},
     diagnostic_kind: []const u8 = "projectResolutionFailed",
     diagnostic_message: []const u8 = "project resolution failed",
 
@@ -200,6 +194,49 @@ fn vectorSize(state: *State, vector: Oop, field: []const u8) FailureError!usize 
     if (state.api.isSmallInt(size) == 0 or state.api.smallIntValue(size) < 0)
         return state.fail("manifestValueInvalid", "could not read array {s}", .{field});
     return @intCast(state.api.smallIntValue(size));
+}
+
+fn newVector(state: *State) FailureError!Oop {
+    const vector = state.api.import("Vector") orelse
+        return state.fail("projectPolicyUnavailable", "Vector is not available while preparing project observations", .{});
+    const result = state.api.send(vector, state.api.intern("new"), &.{}, 0);
+    if (result == null or result == state.api.nilObj)
+        return state.fail("projectPolicyUnavailable", "could not allocate a project observation vector", .{});
+    return result;
+}
+
+fn vectorAdd(state: *State, vector: Oop, value: Oop) FailureError!Oop {
+    const result = state.api.send(vector, state.api.intern("add:"), &.{value}, 1);
+    if (result == null or result == state.api.nilObj)
+        return state.fail("projectPolicyUnavailable", "could not append to a project observation vector", .{});
+    return result;
+}
+
+fn newMap(state: *State) FailureError!Oop {
+    const map = state.api.import("Map") orelse
+        return state.fail("projectPolicyUnavailable", "Map is not available while preparing project observations", .{});
+    const result = state.api.send(map, state.api.intern("new"), &.{}, 0);
+    if (result == null or result == state.api.nilObj)
+        return state.fail("projectPolicyUnavailable", "could not allocate a project observation map", .{});
+    return result;
+}
+
+fn mapPut(state: *State, map: Oop, key: []const u8, value: Oop) FailureError!Oop {
+    const key_value = state.api.mkString(key.ptr, key.len);
+    const result = state.api.send(map, state.api.intern("at:put:"), &.{ key_value, value }, 2);
+    if (result == null or result == state.api.nilObj)
+        return state.fail("projectPolicyUnavailable", "could not write project observation field {s}", .{key});
+    return result;
+}
+
+fn mapPutString(state: *State, map: Oop, key: []const u8, value: []const u8) FailureError!Oop {
+    return mapPut(state, map, key, state.api.mkString(value.ptr, value.len));
+}
+
+fn mapPutStringVector(state: *State, map: Oop, key: []const u8, values: []const []const u8) FailureError!Oop {
+    var vector = try newVector(state);
+    for (values) |value| vector = try vectorAdd(state, vector, state.api.mkString(value.ptr, value.len));
+    return mapPut(state, map, key, vector);
 }
 
 fn duplicateStringSlice(state: *State, values: []const []const u8) FailureError![]const []const u8 {
@@ -700,6 +737,96 @@ fn loadProjectAt(state: *State, root_path: []const u8) FailureError!*Project {
     return project;
 }
 
+fn loadDependencyClosure(state: *State, project: *Project) FailureError!void {
+    for (project.manifest.dependencies) |dependency| {
+        const dependency_root = try joinPath(state, project.root, dependency.path);
+        const dependency_project = try loadProjectAt(state, dependency_root);
+        try loadDependencyClosure(state, dependency_project);
+    }
+}
+
+fn observedRun(state: *State, run_config: RunConfig) FailureError!Oop {
+    var run_map = try newMap(state);
+    run_map = try mapPutString(state, run_map, "repl", run_config.repl);
+    run_map = try mapPutString(state, run_map, "socketBind", run_config.socket_bind);
+    run_map = try mapPut(state, run_map, "socketPort", state.api.mkSmallInt(run_config.socket_port));
+    return run_map;
+}
+
+fn observedWrapped(state: *State, wrapped: []const Wrapped) FailureError!Oop {
+    var result = try newVector(state);
+    for (wrapped) |entry| {
+        var item = try newMap(state);
+        item = try mapPutString(state, item, "name", entry.name);
+        var commands = try newVector(state);
+        for (entry.build) |command| {
+            var argv = try newVector(state);
+            for (command) |argument| argv = try vectorAdd(state, argv, state.api.mkString(argument.ptr, argument.len));
+            commands = try vectorAdd(state, commands, argv);
+        }
+        item = try mapPut(state, item, "build", commands);
+        result = try vectorAdd(state, result, item);
+    }
+    return result;
+}
+
+fn observedProject(state: *State, project: *Project, root: *Project) FailureError!Oop {
+    var result = try newMap(state);
+    result = try mapPutString(state, result, "root", project.root);
+    result = try mapPutString(state, result, "manifest", project.manifest_path);
+    result = try mapPutString(state, result, "name", project.manifest.name);
+    result = try mapPut(state, result, "main", state.api.nilObj);
+    result = try mapPutStringVector(state, result, "loads", project.manifest.loads);
+    result = try mapPut(state, result, "run", try observedRun(state, project.manifest.run));
+    result = try mapPut(state, result, "wrapped", try observedWrapped(state, project.manifest.wrapped));
+
+    var dependencies = try newVector(state);
+    for (project.manifest.dependencies) |dependency| {
+        const dependency_root = try joinPath(state, project.root, dependency.path);
+        const dependency_project = try loadProjectAt(state, dependency_root);
+        var item = try newMap(state);
+        item = try mapPutString(state, item, "name", dependency.name);
+        item = try mapPutString(state, item, "root", dependency_project.root);
+        dependencies = try vectorAdd(state, dependencies, item);
+    }
+    result = try mapPut(state, result, "dependencies", dependencies);
+
+    var sources = try newVector(state);
+    for (project.sources) |source| {
+        var item = try newMap(state);
+        item = try mapPutString(state, item, "name", source.name);
+        item = try mapPutString(state, item, "path", source.path);
+        item = try mapPutStringVector(state, item, "sources", source.sources);
+        item = try mapPutString(state, item, "projectRoot", source.project_root);
+        item = try mapPutString(state, item, "source", source.source);
+        item = try mapPutStringVector(state, item, "requires", source.requires);
+        item = try mapPutString(state, item, "sourceDigest", source.source_digest);
+        item = try mapPutString(state, item, "revisionDigest", source.revision_digest);
+        sources = try vectorAdd(state, sources, item);
+    }
+    result = try mapPut(state, result, "sources", sources);
+
+    if (project == root) if (project.manifest.main) |main| {
+        const main_path = try joinPath(state, project.root, main);
+        if (std.fs.cwd().access(main_path, .{})) |_| {
+            result = try mapPutString(state, result, "main", main_path);
+        } else |_| {
+            return state.fail("entrySourceMissing", "main source {s} does not exist", .{main_path});
+        }
+    };
+    return result;
+}
+
+fn projectObservation(state: *State, root: *Project) FailureError!Oop {
+    try loadDependencyClosure(state, root);
+    var projects = try newVector(state);
+    for (state.projects.items) |project| projects = try vectorAdd(state, projects, try observedProject(state, project, root));
+    var snapshot = try newMap(state);
+    snapshot = try mapPutString(state, snapshot, "root", root.root);
+    snapshot = try mapPut(state, snapshot, "projects", projects);
+    return snapshot;
+}
+
 fn nearestManifestRoot(state: *State, path: []const u8) FailureError![]const u8 {
     var current = try canonicalPath(state, path, "projectNotFound");
     while (true) {
@@ -714,79 +841,7 @@ fn nearestManifestRoot(state: *State, path: []const u8) FailureError![]const u8 
     }
 }
 
-fn findSource(project: *Project, name: []const u8) ?*const Source {
-    for (project.sources) |*source| if (std.mem.eql(u8, source.name, name)) return source;
-    return null;
-}
-
-fn findDependency(project: *Project, name: []const u8) ?Dependency {
-    for (project.manifest.dependencies) |dependency| if (std.mem.eql(u8, dependency.name, name)) return dependency;
-    return null;
-}
-
-fn chainText(state: *State, include: ?[]const u8) []const u8 {
-    var out: std.ArrayList(u8) = .{};
-    for (state.visiting.items, 0..) |name, i| {
-        if (i != 0) out.appendSlice(state.arena, " -> ") catch return "<cycle>";
-        out.appendSlice(state.arena, "#") catch return "<cycle>";
-        out.appendSlice(state.arena, name) catch return "<cycle>";
-    }
-    if (include) |name| {
-        if (state.visiting.items.len != 0) out.appendSlice(state.arena, " -> ") catch return "<chain>";
-        out.appendSlice(state.arena, "#") catch return "<chain>";
-        out.appendSlice(state.arena, name) catch return "<chain>";
-    }
-    return out.toOwnedSlice(state.arena) catch "<chain>";
-}
-
-fn resolveProvider(state: *State, project: *Project, name: []const u8) FailureError!Selected {
-    const local = findSource(project, name);
-    if (findDependency(project, name)) |dependency| {
-        if (local != null) return state.fail("duplicateModuleProvider", "module #{s} is both project-owned and dependency-provided", .{name});
-        const dependency_root = try joinPath(state, project.root, dependency.path);
-        const dependency_project = loadProjectAt(state, dependency_root) catch |err| return err;
-        if (findSource(dependency_project, name)) |source| return .{ .project = dependency_project, .source = source };
-        if (dependency_project.sources.len == 1)
-            return state.fail("moduleNameMismatch", "dependency #{s} at {s} declares #{s}", .{ name, dependency_project.root, dependency_project.sources[0].name });
-        return state.fail("moduleNotFound", "dependency #{s} at {s} provides no indexable module #{s}", .{ name, dependency_project.root, name });
-    }
-    if (local) |source| return .{ .project = project, .source = source };
-    return state.fail("moduleNotFound", "module #{s} is not provided by {s}; legacy/dynamic sources are outside the resolver (chain: {s})", .{ name, project.root, chainText(state, name) });
-}
-
-fn findResolved(state: *State, name: []const u8) ?Selected {
-    for (state.resolved.items) |selected| if (std.mem.eql(u8, selected.source.name, name)) return selected;
-    return null;
-}
-
-fn isVisiting(state: *State, name: []const u8) bool {
-    for (state.visiting.items) |active| if (std.mem.eql(u8, active, name)) return true;
-    return false;
-}
-
-fn resolveModule(state: *State, project: *Project, name: []const u8) FailureError!void {
-    if (findResolved(state, name)) |existing| {
-        const selected = try resolveProvider(state, project, name);
-        if (!std.mem.eql(u8, existing.source.path, selected.source.path))
-            return state.fail("duplicateModuleProvider", "module #{s} resolves to both {s} and {s}", .{ name, existing.source.path, selected.source.path });
-        return;
-    }
-    if (isVisiting(state, name)) return state.fail("dependencyCycle", "dependency cycle: {s}", .{chainText(state, name)});
-
-    state.visiting.append(state.arena, name) catch
-        return state.fail("projectResolutionFailed", "out of memory while resolving dependencies", .{});
-    defer _ = state.visiting.pop();
-
-    const selected = try resolveProvider(state, project, name);
-    const dependencies = state.arena.dupe([]const u8, selected.source.requires) catch
-        return state.fail("projectResolutionFailed", "out of memory while resolving dependencies", .{});
-    sortStrings(dependencies);
-    for (dependencies) |dependency| try resolveModule(state, selected.project, dependency);
-    state.resolved.append(state.arena, selected) catch
-        return state.fail("projectResolutionFailed", "out of memory while resolving dependencies", .{});
-}
-
-fn digestResolution(state: *State, root: *Project) []const u8 {
+fn digestResolutionModules(state: *State, root: *Project, modules: []const Module) []const u8 {
     var hasher = std.crypto.hash.sha2.Sha256.init(.{});
     const add = struct {
         fn field(h: *std.crypto.hash.sha2.Sha256, value: []const u8) void {
@@ -799,55 +854,110 @@ fn digestResolution(state: *State, root: *Project) []const u8 {
     add(&hasher, "birnam.project-resolution.v1");
     add(&hasher, root.root);
     add(&hasher, root.manifest.digest);
-    for (state.resolved.items) |selected| {
-        add(&hasher, selected.source.name);
-        add(&hasher, selected.source.path);
-        for (selected.source.sources) |path| add(&hasher, path);
-        add(&hasher, selected.source.source_digest);
-        for (selected.source.requires) |dependency| add(&hasher, dependency);
+    for (modules) |module| {
+        add(&hasher, module.name);
+        add(&hasher, module.path);
+        for (module.sources) |path| add(&hasher, path);
+        add(&hasher, module.source_digest);
+        for (module.requires) |dependency| add(&hasher, dependency);
     }
     var digest: [32]u8 = undefined;
     hasher.final(&digest);
     return state.arena.dupe(u8, &std.fmt.bytesToHex(digest, .lower)) catch @panic("project: oom");
 }
 
+fn policyFailure(state: *State, value: Oop) FailureError {
+    const kind_value = state.api.send(value, state.api.intern("kind"), &.{}, 0);
+    const message_value = state.api.send(value, state.api.intern("message"), &.{}, 0);
+    const rendered_value = state.api.send(value, state.api.intern("printString"), &.{}, 0);
+    const kind = if (isSymbol(state.api, kind_value))
+        state.arena.dupe(u8, std.mem.span(state.api.symbolName(kind_value))) catch
+            return state.fail("projectPolicyFailed", "could not read project policy failure kind", .{})
+    else
+        "projectPolicyFailed";
+    const message = if (isString(state.api, message_value))
+        state.arena.dupe(u8, stringBytes(state.api, message_value)) catch
+            return state.fail("projectPolicyFailed", "could not read project policy failure message", .{})
+    else if (isString(state.api, rendered_value))
+        state.arena.dupe(u8, stringBytes(state.api, rendered_value)) catch
+            return state.fail("projectPolicyFailed", "could not render project policy failure", .{})
+    else
+        "project policy returned an unclassified failure";
+    return state.fail(kind, "{s}", .{message});
+}
+
+fn policyStringVector(state: *State, value: Oop, field: []const u8) FailureError![]const []const u8 {
+    const count = try vectorSize(state, value, field);
+    const result = state.arena.alloc([]const u8, count) catch
+        return state.fail("projectPolicyFailed", "out of memory while reading policy field {s}", .{field});
+    for (0..count) |i| {
+        const item = state.api.send(value, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        result[i] = try duplicateString(state, item, field);
+    }
+    return result;
+}
+
+fn policyRunConfig(state: *State, value: Oop) FailureError!RunConfig {
+    if (!isMap(state.api, value)) return state.fail("projectPolicyFailed", "policy run value is not a map", .{});
+    const repl = try duplicateString(state, try mapAt(state, value, "repl"), "run.repl");
+    const bind = try duplicateString(state, try mapAt(state, value, "socketBind"), "run.socketBind");
+    const port_value = try mapAt(state, value, "socketPort");
+    if (state.api.isSmallInt(port_value) == 0)
+        return state.fail("projectPolicyFailed", "policy run socketPort is not an integer", .{});
+    return .{ .repl = repl, .socket_bind = bind, .socket_port = state.api.smallIntValue(port_value) };
+}
+
+fn policyModule(state: *State, value: Oop) FailureError!Module {
+    if (!isMap(state.api, value)) return state.fail("projectPolicyFailed", "policy module entry is not a map", .{});
+    const sources = try policyStringVector(state, try mapAt(state, value, "sources"), "module.sources");
+    const requires = try policyStringVector(state, try mapAt(state, value, "requires"), "module.requires");
+    return .{
+        .name = try duplicateString(state, try mapAt(state, value, "name"), "module.name"),
+        .path = try duplicateString(state, try mapAt(state, value, "path"), "module.path"),
+        .sources = sources,
+        .source = try duplicateString(state, try mapAt(state, value, "source"), "module.source"),
+        .project_root = try duplicateString(state, try mapAt(state, value, "projectRoot"), "module.projectRoot"),
+        .requires = requires,
+        .source_digest = try duplicateString(state, try mapAt(state, value, "sourceDigest"), "module.sourceDigest"),
+        .revision_digest = try duplicateString(state, try mapAt(state, value, "revisionDigest"), "module.revisionDigest"),
+    };
+}
+
+fn resolutionFromPolicy(state: *State, root: *Project, value: Oop) FailureError!Resolution {
+    if (isError(state.api, value)) return policyFailure(state, value);
+    if (!isMap(state.api, value)) return state.fail("projectPolicyFailed", "ProjectPolicy did not return a resolution map", .{});
+    const module_values = try mapAt(state, value, "modules");
+    const module_count = try vectorSize(state, module_values, "policy modules");
+    const modules = state.arena.alloc(Module, module_count) catch
+        return state.fail("projectPolicyFailed", "out of memory while reading policy modules", .{});
+    for (0..module_count) |i| {
+        const item = state.api.send(module_values, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        modules[i] = try policyModule(state, item);
+    }
+    const load_roots = try policyStringVector(state, try mapAt(state, value, "loadRoots"), "policy loadRoots");
+    const main_value = try mapAt(state, value, "main");
+    const main_path = if (main_value == state.api.nilObj) null else try duplicateString(state, main_value, "main");
+    return .{
+        .project_root = try duplicateString(state, try mapAt(state, value, "projectRoot"), "projectRoot"),
+        .manifest_path = try duplicateString(state, try mapAt(state, value, "manifest"), "manifest"),
+        .project_name = try duplicateString(state, try mapAt(state, value, "projectName"), "projectName"),
+        .main_path = main_path,
+        .load_roots = load_roots,
+        .run = try policyRunConfig(state, try mapAt(state, value, "run")),
+        .modules = modules,
+        .wrapped = root.manifest.wrapped,
+        .digest = digestResolutionModules(state, root, modules),
+    };
+}
+
 fn run(state: *State, working_dir: []const u8) FailureError!Resolution {
     const root_path = try nearestManifestRoot(state, working_dir);
     const root = try loadProjectAt(state, root_path);
-    const load_roots = try duplicateStringSlice(state, root.manifest.loads);
-    sortStrings(load_roots);
-    for (load_roots) |name| try resolveModule(state, root, name);
-
-    const modules = state.arena.alloc(Module, state.resolved.items.len) catch
-        return state.fail("projectResolutionFailed", "out of memory while creating resolution", .{});
-    for (state.resolved.items, 0..) |selected, i| {
-        modules[i] = .{
-            .name = selected.source.name,
-            .path = selected.source.path,
-            .sources = selected.source.sources,
-            .source = selected.source.source,
-            .project_root = selected.source.project_root,
-            .requires = selected.source.requires,
-            .source_digest = selected.source.source_digest,
-            .revision_digest = selected.source.revision_digest,
-        };
-    }
-    const main_path = if (root.manifest.main) |main| blk: {
-        const path = try joinPath(state, root.root, main);
-        if (std.fs.cwd().access(path, .{})) |_| {} else |_| return state.fail("entrySourceMissing", "main source {s} does not exist", .{path});
-        break :blk path;
-    } else null;
-    return .{
-        .project_root = root.root,
-        .manifest_path = root.manifest_path,
-        .project_name = root.manifest.name,
-        .main_path = main_path,
-        .load_roots = load_roots,
-        .run = root.manifest.run,
-        .modules = modules,
-        .wrapped = root.manifest.wrapped,
-        .digest = digestResolution(state, root),
-    };
+    const snapshot = try projectObservation(state, root);
+    const policy = global(state, "ProjectPolicy") orelse
+        return state.fail("projectPolicyUnavailable", "ProjectPolicy is not loaded", .{});
+    const result = state.api.send(policy, state.api.intern("resolveSnapshot:"), &.{snapshot}, 1);
+    return resolutionFromPolicy(state, root, result);
 }
 
 pub fn resolve(api: *IdApi, allocator: std.mem.Allocator, working_dir: []const u8) Result {

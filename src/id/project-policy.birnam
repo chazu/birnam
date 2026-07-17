@@ -1,0 +1,328 @@
+// project-policy.birnam — project resolution policy in Birnam.
+//
+// The host supplies one value-shaped observation containing discovered projects,
+// manifests, and statically indexed source records. This module owns the
+// semantic decisions over that observation: provider selection, dependency
+// closure, cycle/missing diagnostics, and deterministic dependency-first order.
+// Filesystem traversal, source/CST scanning, and hashing remain host adapters.
+
+[Module named: #projectPolicy requires: #[#stdlib]];
+
+[Globals at: #ProjectPolicy put: [Object clone]];
+[Reflect docModule: #projectPolicy is: "Birnam-owned project resolution policy over host observations."];
+
+// -- small value helpers ------------------------------------------------------
+
+[Reflect defineMethod: #projectNamed:in:at: on: ProjectPolicy as: [:self :root :projects :index |
+  [[index >= [projects size]]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let project := [projects at: index];
+      [[[project at: "root"] = root]
+        ifTrue: [| project]
+        ifFalse: [| [self projectNamed: root in: projects at: [index + 1]]]]]]]];
+
+[Reflect defineMethod: #sourceNamed:in:at: on: ProjectPolicy as: [:self :name :sources :index |
+  [[index >= [sources size]]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let source := [sources at: index];
+      [[[source at: "name"] = name]
+        ifTrue: [| source]
+        ifFalse: [| [self sourceNamed: name in: sources at: [index + 1]]]]]]]];
+
+[Reflect defineMethod: #dependencyNamed:in:at: on: ProjectPolicy as: [:self :name :dependencies :index |
+  [[index >= [dependencies size]]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let dependency := [dependencies at: index];
+      [[[dependency at: "name"] = name]
+        ifTrue: [| dependency]
+        ifFalse: [| [self dependencyNamed: name in: dependencies at: [index + 1]]]]]]]];
+
+[Reflect defineMethod: #hasName:in: on: ProjectPolicy as: [:self :name :names |
+  [[names indexOf: name] notNil]]];
+
+[Reflect defineMethod: #chain:with: on: ProjectPolicy as: [:self :chain :name |
+  let prefix := [chain inject: "" into: [:acc :item |
+    [[[acc size] = 0]
+      ifTrue: [| ["#" , item]]
+      ifFalse: [| [acc , " -> #" , item]]]]];
+  [[[prefix size] = 0]
+    ifTrue: [| ["#" , name]]
+    ifFalse: [| [prefix , " -> #" , name]]]]];
+
+[Reflect defineMethod: #providerValue:source: on: ProjectPolicy as: [:self :project :source |
+  let result := [Map new];
+  let withProject := [result at: "project" put: project];
+  [withProject at: "source" put: source]]];
+
+[Reflect defineMethod: #dependencyProvider:name:project:state: on: ProjectPolicy as: [:self :dependency :name :project :state |
+  let dependencyProject := [self projectNamed: [dependency at: "root"] in: [state at: "projects"] at: 0];
+  [[dependencyProject isNil]
+    ifTrue: [| [Error kind: #dependencyOriginInvalid
+                message: ["dependency #" , name , " has no observed project root"]]]
+    ifFalse: [|
+      let dependencySource := [self sourceNamed: name in: [dependencyProject at: "sources"] at: 0];
+      [[dependencySource notNil]
+        ifTrue: [| [self providerValue: dependencyProject source: dependencySource]]
+        ifFalse: [|
+          let allSources := [dependencyProject at: "sources"];
+          [[[allSources size] = 1]
+            ifTrue: [|
+              let declared := [[allSources at: 0] at: "name"];
+              [Error kind: #moduleNameMismatch
+                message: ["dependency #" , name , " declares #" , declared]]]
+            ifFalse: [| [Error kind: #moduleNotFound
+                message: ["dependency #" , name , " provides no matching module"]]]]]]]]]];
+
+[Reflect defineMethod: #provider:from:state: on: ProjectPolicy as: [:self :name :project :state |
+  let local := [self sourceNamed: name in: [project at: "sources"] at: 0];
+  let dependency := [self dependencyNamed: name in: [project at: "dependencies"] at: 0];
+  [[local notNil]
+    ifTrue: [|
+      [[dependency notNil]
+        ifTrue: [| [Error kind: #duplicateModuleProvider
+                    message: ["module #" , name , " is both project-owned and dependency-provided"]]]
+        ifFalse: [| [self providerValue: project source: local]]]]
+    ifFalse: [|
+      [[dependency isNil]
+        ifTrue: [| [Error kind: #moduleNotFound
+                    message: ["module #" , name , " is not provided by project " , [project at: "root"]]]]
+        ifFalse: [| [self dependencyProvider: dependency name: name project: project state: state]]]]]]];
+
+// Visit one module. State contains cells for the mutable DFS accumulators so
+// recursion remains ordinary late-bound Birnam code while the records stay
+// persistent values.
+[Reflect defineMethod: #visit:from:state: on: ProjectPolicy as: [:self :name :project :state |
+  let resolved := [[state at: "resolved"] value];
+  [[self hasName: name in: resolved]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let visiting := [[state at: "visiting"] value];
+      [[[visiting indexOf: name] notNil]
+        ifTrue: [| [Error kind: #dependencyCycle
+                    message: ["dependency cycle: " , [self chain: visiting with: name]]]]
+        ifFalse: [|
+          let provider := [self provider: name from: project state: state];
+          [[provider isError]
+            ifTrue: [| [Error kind: [provider kind]
+                        message: [[self chain: visiting with: name] , ": " , [provider message]]]]
+            ifFalse: [|
+              [[state at: "visiting"] set: [visiting add: name]];
+              let source := [provider at: "source"];
+              let owner := [provider at: "project"];
+              let dependencies := [[source at: "requires" ifAbsent: [| #[]]] sortBy: [:x | x]];
+              let failure := [dependencies inject: nil into: [:acc :dependency |
+                [[acc isNil]
+                  ifTrue: [| [self visit: dependency from: owner state: state]]
+                  ifFalse: [| acc]]]];
+              [[state at: "visiting"] set: visiting];
+              [[failure isNil]
+                ifTrue: [|
+                  [[state at: "resolved"] set: [[[state at: "resolved"] value] add: source]];
+                  nil]
+                ifFalse: [| failure]]]]]]]]]];
+
+[Reflect defineMethod: #resolutionFrom: on: ProjectPolicy as: [:self :snapshot |
+  let projects := [snapshot at: "projects"];
+  let root := [snapshot at: "root"];
+  let rootProject := [self projectNamed: root in: projects at: 0];
+  [[rootProject isNil]
+    ifTrue: [| [Error kind: #projectNotFound message: "observed project root is missing"]]
+    ifFalse: [|
+      let state := [Map new];
+      let withProjects := [state at: "projects" put: projects];
+      let withResolved := [withProjects at: "resolved" put: [#[] asCell]];
+      let withVisiting := [withResolved at: "visiting" put: [#[] asCell]];
+      let roots := [[rootProject at: "loads"] sortBy: [:x | x]];
+      let failure := [roots inject: nil into: [:acc :name |
+        [[acc isNil]
+          ifTrue: [| [self visit: name from: rootProject state: withVisiting]]
+          ifFalse: [| acc]]]];
+      [[failure notNil]
+        ifTrue: [| failure]
+        ifFalse: [|
+          let result := [Map new];
+          let r1 := [result at: "projectRoot" put: [rootProject at: "root"]];
+          let r2 := [r1 at: "manifest" put: [rootProject at: "manifest"]];
+          let r3 := [r2 at: "projectName" put: [rootProject at: "name"]];
+          let r4 := [r3 at: "main" put: [rootProject at: "main"]];
+          let r5 := [r4 at: "run" put: [rootProject at: "run"]];
+          let r6 := [r5 at: "wrapped" put: [rootProject at: "wrapped"]];
+          let r7 := [r6 at: "loadRoots" put: roots];
+          let resolved := [[withVisiting at: "resolved"] value];
+          let final := [r7 at: "modules" put: resolved];
+          final]]]]]];
+
+[Reflect defineMethod: #resolveSnapshot: on: ProjectPolicy as: [:self :snapshot |
+  [self resolutionFrom: snapshot]] doc:
+  "Resolve an observed project graph into a deterministic dependency-first plan without effects."];
+
+// -- build policy -------------------------------------------------------------
+// The host supplies the previous record plus checksums already observed at the
+// filesystem seam. Birnam decides whether each dependency-first artifact can
+// be reused, which records must be rebuilt, and whether the staged result may
+// be published. Compilation, copying, hashing, and the final rename remain
+// host adapters.
+
+[Reflect defineMethod: #artifactNamed:in:at: on: ProjectPolicy as: [:self :name :artifacts :index |
+  [[index >= [artifacts size]]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let artifact := [artifacts at: index];
+      [[[artifact at: "name"] = name]
+        ifTrue: [| artifact]
+        ifFalse: [| [self artifactNamed: name in: artifacts at: [index + 1]]]]]]]];
+
+[Reflect defineMethod: #sameStrings:with:at: on: ProjectPolicy as: [:self :left :right :index |
+  [[index >= [left size]]
+    ifTrue: [| true]
+    ifFalse: [|
+      [[[left at: index] = [right at: index]]
+        ifTrue: [| [self sameStrings: left with: right at: [index + 1]]]
+        ifFalse: [| false]]]]]];
+
+[Reflect defineMethod: #sameStrings:with: on: ProjectPolicy as: [:self :left :right |
+  [[[left size] = [right size]]
+    ifTrue: [| [self sameStrings: left with: right at: 0]]
+    ifFalse: [| false]]]];
+
+[Reflect defineMethod: #recordCompatible:with: on: ProjectPolicy as: [:self :record :snapshot |
+  [[record isNil]
+    ifTrue: [| false]
+    ifFalse: [|
+      let project := [[record at: "projectRoot"] = [snapshot at: "projectRoot"]];
+      let target := [[record at: "target"] = [snapshot at: "target"]];
+      let profile := [[record at: "profile"] = [snapshot at: "profile"]];
+      let tool := [[record at: "toolVersion"] = [snapshot at: "toolVersion"]];
+      let abi := [[record at: "artifactAbi"] = [snapshot at: "artifactAbi"]];
+      [project & [target & [profile & [tool & abi]]]]]]]];
+
+[Reflect defineMethod: #metadataMatches:module: on: ProjectPolicy as: [:self :old :module |
+  let expectedPath := [["lib/libbirnam_" , [module at: "name"]] , ".dylib"];
+  let name := [[old at: "name"] = [module at: "name"]];
+  let path := [[old at: "path"] = expectedPath];
+  let source := [[old at: "source"] = [module at: "path"]];
+  let sources := [self sameStrings: [old at: "sources"] with: [module at: "sources"]];
+  let sourceDigest := [[old at: "sourceDigest"] = [module at: "sourceDigest"]];
+  let revisionDigest := [[old at: "revisionDigest"] = [module at: "revisionDigest"]];
+  let requires := [self sameStrings: [old at: "requires"] with: [module at: "requires"]];
+  [name & [path & [source & [sources & [sourceDigest & [revisionDigest & requires]]]]]]]];
+
+[Reflect defineMethod: #dependenciesDirty:state: on: ProjectPolicy as: [:self :module :state |
+  [[module at: "requires" ifAbsent: [| #[]]] anySatisfy: [:dependency |
+    [[[state at: "dirty"] value] at: dependency ifAbsent: [| false]]]]]];
+
+[Reflect defineMethod: #planItem:action:checksum: on: ProjectPolicy as: [:self :module :action :checksum |
+  let result := [Map new];
+  let r1 := [result at: "name" put: [module at: "name"]];
+  let r2 := [r1 at: "path" put: [["lib/libbirnam_" , [module at: "name"]] , ".dylib"]];
+  let r3 := [r2 at: "action" put: action];
+  let r4 := [r3 at: "source" put: [module at: "path"]];
+  let r5 := [r4 at: "sources" put: [module at: "sources"]];
+  let r6 := [r5 at: "sourceDigest" put: [module at: "sourceDigest"]];
+  let r7 := [r6 at: "revisionDigest" put: [module at: "revisionDigest"]];
+  let r8 := [r7 at: "requires" put: [module at: "requires"]];
+  [r8 at: "checksum" put: checksum]]];
+
+[Reflect defineMethod: #artifactPlanFor:state: on: ProjectPolicy as: [:self :module :state |
+  let previous := [state at: "previous"];
+  let artifacts := [[previous isNil] ifTrue: [| #[]] ifFalse: [| [previous at: "artifacts"]]];
+  let old := [self artifactNamed: [module at: "name"] in: artifacts at: 0];
+  let compatible := [self recordCompatible: previous with: [state at: "snapshot"]];
+  [[old notNil]
+    ifTrue: [|
+      let metadata := [self metadataMatches: old module: module];
+      let observed := [[old at: "observedChecksum" ifAbsent: [| nil]] = [old at: "checksum"]];
+      let dependencyClean := [[self dependenciesDirty: module state: state] not];
+      [[compatible & [metadata & [observed & dependencyClean]]]
+        ifTrue: [| [self planItem: module action: "reuse" checksum: [old at: "checksum"]]]
+        ifFalse: [|
+          [[state at: "dirty"] set: [[[state at: "dirty"] value] at: [module at: "name"] put: true]];
+          [self planItem: module action: "compile" checksum: nil]]]]
+    ifFalse: [|
+      [[state at: "dirty"] set: [[[state at: "dirty"] value] at: [module at: "name"] put: true]];
+      [self planItem: module action: "compile" checksum: nil]]]]];
+
+[Reflect defineMethod: #artifactPlan: on: ProjectPolicy as: [:self :snapshot |
+  let state0 := [Map new];
+  let state1 := [state0 at: "snapshot" put: snapshot];
+  let state2 := [state1 at: "previous" put: [snapshot at: "previous" ifAbsent: [| nil]]];
+  let state3 := [state2 at: "dirty" put: [[Map new] asCell]];
+  let plans := [[snapshot at: "modules"] inject: #[] into: [:items :module |
+    [items add: [self artifactPlanFor: module state: state3]]]];
+  let record0 := [Map new];
+  let record1 := [record0 at: "schema" put: "birnam-artifacts-v3"];
+  let record2 := [record1 at: "projectRoot" put: [snapshot at: "projectRoot"]];
+  let record3 := [record2 at: "target" put: [snapshot at: "target"]];
+  let record4 := [record3 at: "profile" put: [snapshot at: "profile"]];
+  let record5 := [record4 at: "toolVersion" put: [snapshot at: "toolVersion"]];
+  let record6 := [record5 at: "artifactAbi" put: [snapshot at: "artifactAbi"]];
+  let record7 := [record6 at: "resolutionDigest" put: [snapshot at: "resolutionDigest"]];
+  let record := [record7 at: "artifacts" put: plans];
+  let result0 := [Map new];
+  let result1 := [result0 at: "artifacts" put: plans];
+  let result2 := [result1 at: "record" put: record];
+  [result2 at: "publication" put: "publish"]]];
+
+[Reflect defineMethod: #recordArtifact: on: ProjectPolicy as: [:self :artifact |
+  let result := [Map new];
+  let r1 := [result at: "name" put: [artifact at: "name"]];
+  let r2 := [r1 at: "path" put: [artifact at: "path"]];
+  let r3 := [r2 at: "source" put: [artifact at: "source"]];
+  let r4 := [r3 at: "sources" put: [artifact at: "sources"]];
+  let r5 := [r4 at: "sourceDigest" put: [artifact at: "sourceDigest"]];
+  let r6 := [r5 at: "revisionDigest" put: [artifact at: "revisionDigest"]];
+  let r7 := [r6 at: "requires" put: [artifact at: "requires"]];
+  [r7 at: "checksum" put: [artifact at: "checksum"]]]];
+
+[Reflect defineMethod: #recordNative: on: ProjectPolicy as: [:self :artifact |
+  let result := [Map new];
+  let r1 := [result at: "name" put: [artifact at: "name"]];
+  let r2 := [r1 at: "path" put: [artifact at: "path"]];
+  [r2 at: "checksum" put: [artifact at: "checksum"]]]];
+
+[Reflect defineMethod: #artifactRecord:artifacts:native: on: ProjectPolicy as: [:self :snapshot :artifacts :native |
+  let result := [Map new];
+  let r1 := [result at: "schema" put: "birnam-artifacts-v3"];
+  let r2 := [r1 at: "projectRoot" put: [snapshot at: "projectRoot"]];
+  let r3 := [r2 at: "target" put: [snapshot at: "target"]];
+  let r4 := [r3 at: "profile" put: [snapshot at: "profile"]];
+  let r5 := [r4 at: "toolVersion" put: [snapshot at: "toolVersion"]];
+  let r6 := [r5 at: "builtAt" put: [snapshot at: "builtAt"]];
+  let r7 := [r6 at: "artifactAbi" put: [snapshot at: "artifactAbi"]];
+  let r8 := [r7 at: "resolutionDigest" put: [snapshot at: "resolutionDigest"]];
+  let sourceRecords := [artifacts collect: [:artifact | [self recordArtifact: artifact]]];
+  let r9 := [r8 at: "artifacts" put: sourceRecords];
+  let nativeRecords := [native collect: [:artifact | [self recordNative: artifact]]];
+  [r9 at: "native" put: nativeRecords]]];
+
+[Reflect defineMethod: #artifactValid:module: on: ProjectPolicy as: [:self :old :module |
+  [[old isNil]
+    ifTrue: [| false]
+    ifFalse: [|
+      let metadata := [self metadataMatches: old module: module];
+      let observed := [old at: "observedChecksum" ifAbsent: [| nil]];
+      let present := [observed notNil];
+      let checksumMatches := [observed = [old at: "checksum"]];
+      [metadata & [present & checksumMatches]]]]]];
+
+[Reflect defineMethod: #validateArtifacts: on: ProjectPolicy as: [:self :snapshot |
+  let previous := [snapshot at: "previous" ifAbsent: [| nil]];
+  [[previous isNil]
+    ifTrue: [| false]
+    ifFalse: [|
+      let compatible := [self recordCompatible: previous with: snapshot];
+      let digestMatches := [[previous at: "resolutionDigest"] = [snapshot at: "resolutionDigest"]];
+      let modules := [snapshot at: "modules"];
+      let artifacts := [previous at: "artifacts"];
+      let complete := [[artifacts size] = [modules size]];
+      let valid := [modules allSatisfy: [:module |
+        [self artifactValid: [self artifactNamed: [module at: "name"] in: artifacts at: 0] module: module]]];
+      [compatible & [digestMatches & [complete & valid]]]]]]];
+
+[Reflect defineMethod: #publicationPlan: on: ProjectPolicy as: [:self :snapshot |
+  [[snapshot at: "stageReady" ifAbsent: [| false]]
+    ifTrue: [| [[Map new] at: "decision" put: "publish"]]
+    ifFalse: [| [Error kind: #buildPublicationIncomplete message: "staged build is not complete"]]]]];

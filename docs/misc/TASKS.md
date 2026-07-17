@@ -112,6 +112,13 @@ remain deferred until these five slices select the next failure model.
 
 ## Tooling
 
+- [x] **Birnam-owned project policy** (2026-07-16) — resolution, dependency-aware
+  artifact invalidation, artifact-record shape, and publication authorization
+  run through `src/id/project-policy.birnam`; Zig retains filesystem/source
+  observation, hashing, process launch, serialization, and atomic rename. See
+  [design 57](../design/57-project-policy-in-birnam.md). Next: apply the same
+  boundary to install/run artifact selection and native-record validation.
+
 - [x] **emacs mode** (2026-06-18) — `birnam-mode` in `tools/emacs/birnam-mode.el`: font-lock (keyword selectors, symbols `#x`, query vars `?x`, block args `:x`, `:=`/`|>`, `//` comments that don't swallow division, literals), bracket-depth indentation, comint REPL (`run-birnam`), eval-region/eval-buffer (file in a temp unit via `:in`) + eval-line. Byte-compiles clean; verified via the emacs MCP. Deeper `:`-command awareness in the REPL buffer still open.
 - [x] **LSP server / Design 53** (2026-07-15) — `birnam --lsp` remains a thin stdio JSON-RPC envelope with semantics delegated to the in-process parser/compiler/reflection APIs. The current contract and staged roadmap live in [design 53](../design/53-project-aware-language-tools.md).
   - [x] **P0 workspace/coordinates** — shared project-resolver snapshots, UTF-16 positions, document versions and cleanup, stale-change rejection, save refresh, and multi-root/nested-project coverage.

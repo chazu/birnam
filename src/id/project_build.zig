@@ -1,8 +1,8 @@
 //! Materialized source-project builds for `birnam build`.
 //!
-//! This is deliberately a host-side layer over project.Resolution. It compiles
-//! the already-resolved source modules in dependency-first order, records the
-//! identity of every resulting dylib, and publishes a complete build directory
+//! This is deliberately a host-side effect adapter over project.Resolution and
+//! ProjectPolicy. It observes prior artifacts, launches compilation/wrappers,
+//! serializes the policy-owned record, and publishes a complete build directory
 //! only after all artifacts and manifests are present.
 
 const builtin = @import("builtin");
@@ -114,6 +114,49 @@ const State = struct {
         return FailureError.BuildFailed;
     }
 };
+
+fn newVector(state: *State) FailureError!Oop {
+    const vector = state.api.import("Vector") orelse
+        return state.fail("buildPolicyUnavailable", "Vector is not available while preparing build policy input", .{});
+    const result = state.api.send(vector, state.api.intern("new"), &.{}, 0);
+    if (result == null or result == state.api.nilObj)
+        return state.fail("buildPolicyUnavailable", "could not allocate a build policy vector", .{});
+    return result;
+}
+
+fn vectorAdd(state: *State, vector: Oop, value: Oop) FailureError!Oop {
+    const result = state.api.send(vector, state.api.intern("add:"), &.{value}, 1);
+    if (result == null or result == state.api.nilObj)
+        return state.fail("buildPolicyUnavailable", "could not append to a build policy vector", .{});
+    return result;
+}
+
+fn newMap(state: *State) FailureError!Oop {
+    const map = state.api.import("Map") orelse
+        return state.fail("buildPolicyUnavailable", "Map is not available while preparing build policy input", .{});
+    const result = state.api.send(map, state.api.intern("new"), &.{}, 0);
+    if (result == null or result == state.api.nilObj)
+        return state.fail("buildPolicyUnavailable", "could not allocate a build policy map", .{});
+    return result;
+}
+
+fn mapPut(state: *State, map: Oop, key: []const u8, value: Oop) FailureError!Oop {
+    const key_value = state.api.mkString(key.ptr, key.len);
+    const result = state.api.send(map, state.api.intern("at:put:"), &.{ key_value, value }, 2);
+    if (result == null or result == state.api.nilObj)
+        return state.fail("buildPolicyUnavailable", "could not write build policy field {s}", .{key});
+    return result;
+}
+
+fn mapPutString(state: *State, map: Oop, key: []const u8, value: []const u8) FailureError!Oop {
+    return mapPut(state, map, key, state.api.mkString(value.ptr, value.len));
+}
+
+fn mapPutStringVector(state: *State, map: Oop, key: []const u8, values: []const []const u8) FailureError!Oop {
+    var vector = try newVector(state);
+    for (values) |value| vector = try vectorAdd(state, vector, state.api.mkString(value.ptr, value.len));
+    return mapPut(state, map, key, vector);
+}
 
 fn put(state: *State, out: *std.ArrayList(u8), bytes: []const u8) FailureError!void {
     out.appendSlice(state.arena, bytes) catch
@@ -286,6 +329,165 @@ fn readPreviousBuildRecord(state: *State, final: []const u8) ?PreviousBuild {
     return parsePreviousBuildRecord(state, final) catch null;
 }
 
+fn policyModuleValue(state: *State, module: project.Module) FailureError!Oop {
+    var result = try newMap(state);
+    result = try mapPutString(state, result, "name", module.name);
+    result = try mapPutString(state, result, "path", module.path);
+    result = try mapPutStringVector(state, result, "sources", module.sources);
+    result = try mapPutString(state, result, "sourceDigest", module.source_digest);
+    result = try mapPutString(state, result, "revisionDigest", module.revision_digest);
+    result = try mapPutStringVector(state, result, "requires", module.requires);
+    return result;
+}
+
+fn policyArtifactValue(state: *State, artifact: Artifact) FailureError!Oop {
+    var result = try newMap(state);
+    result = try mapPutString(state, result, "name", artifact.name);
+    result = try mapPutString(state, result, "path", artifact.relative_path);
+    result = try mapPutString(state, result, "source", artifact.source_path);
+    result = try mapPutStringVector(state, result, "sources", artifact.source_paths);
+    result = try mapPutString(state, result, "sourceDigest", artifact.source_digest);
+    result = try mapPutString(state, result, "revisionDigest", artifact.revision_digest);
+    result = try mapPutStringVector(state, result, "requires", artifact.requires);
+    return mapPutString(state, result, "checksum", artifact.checksum);
+}
+
+fn policyNativeValue(state: *State, artifact: NativeArtifact) FailureError!Oop {
+    var result = try newMap(state);
+    result = try mapPutString(state, result, "name", artifact.name);
+    result = try mapPutString(state, result, "path", artifact.relative_path);
+    return mapPutString(state, result, "checksum", artifact.checksum);
+}
+
+fn policyPreviousValue(state: *State, previous: PreviousBuild, final: []const u8) FailureError!Oop {
+    var result = try newMap(state);
+    result = try mapPutString(state, result, "projectRoot", previous.project_root);
+    result = try mapPutString(state, result, "target", previous.target);
+    result = try mapPutString(state, result, "profile", previous.profile);
+    result = try mapPutString(state, result, "toolVersion", previous.tool_version);
+    result = try mapPutString(state, result, "artifactAbi", previous.artifact_abi);
+    result = try mapPutString(state, result, "resolutionDigest", previous.resolution_digest);
+
+    var artifacts = try newVector(state);
+    for (previous.artifacts) |artifact| {
+        var item = try newMap(state);
+        item = try mapPutString(state, item, "name", artifact.name);
+        item = try mapPutString(state, item, "path", artifact.relative_path);
+        item = try mapPutString(state, item, "source", artifact.source_path);
+        item = try mapPutStringVector(state, item, "sources", artifact.source_paths);
+        item = try mapPutString(state, item, "sourceDigest", artifact.source_digest);
+        item = try mapPutString(state, item, "revisionDigest", artifact.revision_digest);
+        item = try mapPutStringVector(state, item, "requires", artifact.requires);
+        item = try mapPutString(state, item, "checksum", artifact.checksum);
+        const old_path = try pathJoin(state, final, artifact.relative_path);
+        if (fileChecksum(state, old_path)) |observed| item = try mapPutString(state, item, "observedChecksum", observed);
+        artifacts = try vectorAdd(state, artifacts, item);
+    }
+    result = try mapPut(state, result, "artifacts", artifacts);
+    var native = try newVector(state);
+    for (previous.native) |artifact| {
+        var item = try newMap(state);
+        item = try mapPutString(state, item, "name", artifact.name);
+        item = try mapPutString(state, item, "path", artifact.relative_path);
+        item = try mapPutString(state, item, "checksum", artifact.checksum);
+        const old_path = try pathJoin(state, final, artifact.relative_path);
+        if (fileChecksum(state, old_path)) |observed| item = try mapPutString(state, item, "observedChecksum", observed);
+        native = try vectorAdd(state, native, item);
+    }
+    return mapPut(state, result, "native", native);
+}
+
+fn policyWrappedValue(state: *State, wrapped: project.Wrapped) FailureError!Oop {
+    const result = try newMap(state);
+    return mapPutString(state, result, "name", wrapped.name);
+}
+
+fn policySnapshot(state: *State, resolution: *const project.Resolution, previous: ?PreviousBuild, final: []const u8, target: []const u8, tool_version: []const u8, built_at: []const u8) FailureError!Oop {
+    var result = try newMap(state);
+    result = try mapPutString(state, result, "projectRoot", resolution.project_root);
+    result = try mapPutString(state, result, "target", target);
+    result = try mapPutString(state, result, "profile", profile);
+    result = try mapPutString(state, result, "toolVersion", tool_version);
+    result = try mapPutString(state, result, "artifactAbi", artifact_abi);
+    result = try mapPutString(state, result, "resolutionDigest", resolution.digest);
+    result = try mapPutString(state, result, "builtAt", built_at);
+    var modules = try newVector(state);
+    for (resolution.modules) |module| modules = try vectorAdd(state, modules, try policyModuleValue(state, module));
+    result = try mapPut(state, result, "modules", modules);
+    var wrapped = try newVector(state);
+    for (resolution.wrapped) |item| wrapped = try vectorAdd(state, wrapped, try policyWrappedValue(state, item));
+    result = try mapPut(state, result, "wrapped", wrapped);
+    const previous_value = if (previous) |record| try policyPreviousValue(state, record, final) else state.api.nilObj;
+    return mapPut(state, result, "previous", previous_value);
+}
+
+fn isSymbol(state: *State, value: Oop) bool {
+    return value != null and state.api.vtableOf(value) == state.api.symbol_vt;
+}
+
+fn policyFailure(state: *State, value: Oop) FailureError {
+    const kind_value = state.api.send(value, state.api.intern("kind"), &.{}, 0);
+    const message_value = state.api.send(value, state.api.intern("message"), &.{}, 0);
+    const kind = if (isSymbol(state, kind_value))
+        state.arena.dupe(u8, std.mem.span(state.api.symbolName(kind_value))) catch
+            return state.fail("buildPolicyFailed", "could not read build policy failure kind", .{})
+    else
+        "buildPolicyFailed";
+    const message = if (isString(state, message_value))
+        state.arena.dupe(u8, stringBytes(state, message_value)) catch
+            return state.fail("buildPolicyFailed", "could not read build policy failure message", .{})
+    else
+        "build policy returned an unclassified failure";
+    return state.fail(kind, "{s}", .{message});
+}
+
+fn policyBuildPlan(state: *State, resolution: *const project.Resolution, previous: ?PreviousBuild, final: []const u8, target: []const u8, tool_version: []const u8, built_at: []const u8) FailureError!Oop {
+    const policy = global(state, "ProjectPolicy") orelse
+        return state.fail("buildPolicyUnavailable", "ProjectPolicy is not loaded", .{});
+    const snapshot = try policySnapshot(state, resolution, previous, final, target, tool_version, built_at);
+    const result = state.api.send(policy, state.api.intern("artifactPlan:"), &.{snapshot}, 1);
+    if (isError(state, result)) return policyFailure(state, result);
+    if (!isMap(state, result)) return state.fail("buildPolicyFailed", "ProjectPolicy did not return an artifact plan", .{});
+    return result;
+}
+
+fn policyArtifactRecord(state: *State, resolution: *const project.Resolution, build_result: *const Build) FailureError!Oop {
+    const policy = global(state, "ProjectPolicy") orelse
+        return state.fail("buildPolicyUnavailable", "ProjectPolicy is not loaded", .{});
+    const snapshot = try policySnapshot(state, resolution, null, "", build_result.target, build_result.tool_version, build_result.built_at);
+    var artifacts = try newVector(state);
+    for (build_result.artifacts) |artifact| artifacts = try vectorAdd(state, artifacts, try policyArtifactValue(state, artifact));
+    var native = try newVector(state);
+    for (build_result.native) |artifact| native = try vectorAdd(state, native, try policyNativeValue(state, artifact));
+    const result = state.api.send(policy, state.api.intern("artifactRecord:artifacts:native:"), &.{ snapshot, artifacts, native }, 3);
+    if (isError(state, result)) return policyFailure(state, result);
+    if (!isMap(state, result)) return state.fail("buildPolicyFailed", "ProjectPolicy did not return an artifact record", .{});
+    return result;
+}
+
+fn policyPublication(state: *State) FailureError!void {
+    const policy = global(state, "ProjectPolicy") orelse
+        return state.fail("buildPolicyUnavailable", "ProjectPolicy is not loaded", .{});
+    var snapshot = try newMap(state);
+    snapshot = try mapPut(state, snapshot, "stageReady", state.api.trueObj);
+    const result = state.api.send(policy, state.api.intern("publicationPlan:"), &.{snapshot}, 1);
+    if (isError(state, result)) return policyFailure(state, result);
+    if (!isMap(state, result)) return state.fail("buildPolicyFailed", "ProjectPolicy did not return a publication decision", .{});
+    const decision = try recordString(state, try mapAt(state, result, "decision"), "policy publication decision");
+    if (!std.mem.eql(u8, decision, "publish"))
+        return state.fail("buildPublicationRejected", "ProjectPolicy did not authorize publication", .{});
+}
+
+fn policyValidatePublished(state: *State, resolution: *const project.Resolution, previous: PreviousBuild, final: []const u8, target: []const u8, tool_version: []const u8) FailureError!void {
+    const policy = global(state, "ProjectPolicy") orelse
+        return state.fail("buildPolicyUnavailable", "ProjectPolicy is not loaded", .{});
+    const snapshot = try policySnapshot(state, resolution, previous, final, target, tool_version, previous.built_at);
+    const result = state.api.send(policy, state.api.intern("validateArtifacts:"), &.{snapshot}, 1);
+    if (isError(state, result)) return policyFailure(state, result);
+    if (result != state.api.trueObj)
+        return state.fail("projectArtifactStale", "published artifacts at {s} do not match the current project resolution", .{final});
+}
+
 fn previousArtifact(build_record: PreviousBuild, name: []const u8) ?PreviousArtifact {
     for (build_record.artifacts) |artifact| {
         if (std.mem.eql(u8, artifact.name, name)) return artifact;
@@ -300,49 +502,9 @@ fn previousNative(build_record: PreviousBuild, name: []const u8) ?PreviousNative
     return null;
 }
 
-fn stringsEqual(left: []const []const u8, right: []const []const u8) bool {
-    if (left.len != right.len) return false;
-    for (left, right) |a, b| if (!std.mem.eql(u8, a, b)) return false;
-    return true;
-}
-
-fn buildRecordCompatible(record: PreviousBuild, resolution: *const project.Resolution, target: []const u8, tool_version: []const u8) bool {
-    return std.mem.eql(u8, record.project_root, resolution.project_root) and
-        std.mem.eql(u8, record.target, target) and
-        std.mem.eql(u8, record.profile, profile) and
-        std.mem.eql(u8, record.tool_version, tool_version) and
-        std.mem.eql(u8, record.artifact_abi, artifact_abi);
-}
-
-fn moduleIndex(resolution: *const project.Resolution, name: []const u8) ?usize {
-    for (resolution.modules, 0..) |module, i| if (std.mem.eql(u8, module.name, name)) return i;
-    return null;
-}
-
 fn fileChecksum(state: *State, path: []const u8) ?[]const u8 {
     const bytes = std.fs.cwd().readFileAlloc(state.arena, path, 1 << 30) catch return null;
     return sha256Hex(state, bytes);
-}
-
-fn reusableChecksum(state: *State, record: PreviousBuild, resolution: *const project.Resolution, module: project.Module, final: []const u8, target: []const u8, tool_version: []const u8, dirty: []const bool) FailureError!?[]const u8 {
-    if (!buildRecordCompatible(record, resolution, target, tool_version)) return null;
-    const old = previousArtifact(record, module.name) orelse return null;
-    const relative_path = std.fmt.allocPrint(state.arena, "lib/libbirnam_{s}.dylib", .{module.name}) catch
-        return state.fail("buildFailed", "out of memory while naming module #{s}", .{module.name});
-    if (!std.mem.eql(u8, old.relative_path, relative_path) or
-        !std.mem.eql(u8, old.source_path, module.path) or
-        !stringsEqual(old.source_paths, module.sources) or
-        !std.mem.eql(u8, old.source_digest, module.source_digest) or
-        !std.mem.eql(u8, old.revision_digest, module.revision_digest) or
-        !stringsEqual(old.requires, module.requires)) return null;
-    for (module.requires) |dependency| {
-        const dependency_index = moduleIndex(resolution, dependency) orelse return null;
-        if (dirty[dependency_index]) return null;
-    }
-    const old_path = try pathJoin(state, final, old.relative_path);
-    const checksum = fileChecksum(state, old_path) orelse return null;
-    if (!std.mem.eql(u8, checksum, old.checksum)) return null;
-    return checksum;
 }
 
 fn artifactFromModule(state: *State, module: project.Module, relative_path: []const u8, checksum: []const u8, action: Action) FailureError!Artifact {
@@ -495,6 +657,32 @@ fn writeInlineNative(state: *State, out: *std.ArrayList(u8), artifact: NativeArt
     try put(state, out, " },\n");
 }
 
+fn writePolicyArtifact(state: *State, out: *std.ArrayList(u8), item: Oop) FailureError!void {
+    const source_paths = try recordStringList(state, try mapAt(state, item, "sources"), "policy artifact sources");
+    const artifact = Artifact{
+        .name = try recordString(state, try mapAt(state, item, "name"), "policy artifact name"),
+        .relative_path = try recordString(state, try mapAt(state, item, "path"), "policy artifact path"),
+        .source_path = try recordString(state, try mapAt(state, item, "source"), "policy artifact source"),
+        .source_paths = source_paths,
+        .source_digest = try recordString(state, try mapAt(state, item, "sourceDigest"), "policy artifact source digest"),
+        .revision_digest = try recordString(state, try mapAt(state, item, "revisionDigest"), "policy artifact revision digest"),
+        .requires = try recordStringList(state, try mapAt(state, item, "requires"), "policy artifact requires"),
+        .checksum = try recordString(state, try mapAt(state, item, "checksum"), "policy artifact checksum"),
+        .action = .compiled,
+    };
+    try writeInlineArtifact(state, out, artifact);
+}
+
+fn writePolicyNative(state: *State, out: *std.ArrayList(u8), item: Oop) FailureError!void {
+    const artifact = NativeArtifact{
+        .name = try recordString(state, try mapAt(state, item, "name"), "policy native artifact name"),
+        .relative_path = try recordString(state, try mapAt(state, item, "path"), "policy native artifact path"),
+        .checksum = try recordString(state, try mapAt(state, item, "checksum"), "policy native artifact checksum"),
+        .action = .compiled,
+    };
+    try writeInlineNative(state, out, artifact);
+}
+
 fn writeResolutionRecord(state: *State, resolution: *const project.Resolution, stage: []const u8, target: []const u8, tool_version: []const u8, built_at: []const u8) FailureError!void {
     var out: std.ArrayList(u8) = .{};
     const record_path = try pathJoin(state, stage, "resolution.toml");
@@ -514,24 +702,34 @@ fn writeResolutionRecord(state: *State, resolution: *const project.Resolution, s
     try writeFile(state, record_path, out.items);
 }
 
-fn writeArtifactRecord(state: *State, build_result: *const Build) FailureError!void {
+fn writeArtifactRecord(state: *State, build_result: *const Build, policy_record: Oop) FailureError!void {
     var out: std.ArrayList(u8) = .{};
     const record_path = try pathJoin(state, build_result.output_root, "artifacts.toml");
     defer out.deinit(state.arena);
 
-    try appendTomlString(state, &out, "schema", "birnam-artifacts-v3");
-    try appendTomlString(state, &out, "project_root", build_result.project_root);
-    try appendTomlString(state, &out, "target", build_result.target);
-    try appendTomlString(state, &out, "profile", build_result.profile);
-    try appendTomlString(state, &out, "tool_version", build_result.tool_version);
-    try appendTomlString(state, &out, "built_at", build_result.built_at);
-    try appendTomlString(state, &out, "artifact_abi", artifact_abi);
-    try appendTomlString(state, &out, "resolution_digest", build_result.resolution_digest);
+    try appendTomlString(state, &out, "schema", try recordString(state, try mapAt(state, policy_record, "schema"), "policy record schema"));
+    try appendTomlString(state, &out, "project_root", try recordString(state, try mapAt(state, policy_record, "projectRoot"), "policy record project root"));
+    try appendTomlString(state, &out, "target", try recordString(state, try mapAt(state, policy_record, "target"), "policy record target"));
+    try appendTomlString(state, &out, "profile", try recordString(state, try mapAt(state, policy_record, "profile"), "policy record profile"));
+    try appendTomlString(state, &out, "tool_version", try recordString(state, try mapAt(state, policy_record, "toolVersion"), "policy record tool version"));
+    try appendTomlString(state, &out, "built_at", try recordString(state, try mapAt(state, policy_record, "builtAt"), "policy record built at"));
+    try appendTomlString(state, &out, "artifact_abi", try recordString(state, try mapAt(state, policy_record, "artifactAbi"), "policy artifact ABI"));
+    try appendTomlString(state, &out, "resolution_digest", try recordString(state, try mapAt(state, policy_record, "resolutionDigest"), "policy record resolution digest"));
     try put(state, &out, "artifacts = [\n");
-    for (build_result.artifacts) |artifact| try writeInlineArtifact(state, &out, artifact);
+    const artifacts = try mapAt(state, policy_record, "artifacts");
+    const artifact_count = try vectorSize(state, artifacts, "policy record artifacts");
+    for (0..artifact_count) |i| {
+        const item = state.api.send(artifacts, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        try writePolicyArtifact(state, &out, item);
+    }
     try put(state, &out, "]\n");
     try put(state, &out, "native = [\n");
-    for (build_result.native) |artifact| try writeInlineNative(state, &out, artifact);
+    const native = try mapAt(state, policy_record, "native");
+    const native_count = try vectorSize(state, native, "policy record native");
+    for (0..native_count) |i| {
+        const item = state.api.send(native, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        try writePolicyNative(state, &out, item);
+    }
     try put(state, &out, "]\n");
     try writeFile(state, record_path, out.items);
 }
@@ -666,17 +864,6 @@ fn expectedArtifactPath(state: *State, module: project.Module) FailureError![]co
         return state.fail("buildFailed", "out of memory while naming module #{s}", .{module.name});
 }
 
-fn artifactMetadataMatches(state: *State, old: PreviousArtifact, module: project.Module) FailureError!bool {
-    const relative_path = try expectedArtifactPath(state, module);
-    return std.mem.eql(u8, old.name, module.name) and
-        std.mem.eql(u8, old.relative_path, relative_path) and
-        std.mem.eql(u8, old.source_path, module.path) and
-        stringsEqual(old.source_paths, module.sources) and
-        std.mem.eql(u8, old.source_digest, module.source_digest) and
-        std.mem.eql(u8, old.revision_digest, module.revision_digest) and
-        stringsEqual(old.requires, module.requires);
-}
-
 fn validatePublished(state: *State, resolution: *const project.Resolution, tool_version: []const u8) FailureError!Build {
     const target = targetIdentity(state);
     const build_root = try pathJoin(state, resolution.project_root, ".birnam/build");
@@ -689,27 +876,16 @@ fn validatePublished(state: *State, resolution: *const project.Resolution, tool_
     const record = parsePreviousBuildRecord(state, final) catch {
         return state.fail("projectArtifactRecordInvalid", "could not read a valid artifact record at {s}", .{record_path});
     };
-    if (!buildRecordCompatible(record, resolution, target, tool_version) or
-        !std.mem.eql(u8, record.resolution_digest, resolution.digest))
-        return state.fail("projectArtifactStale", "published artifacts at {s} do not match the current project resolution", .{final});
-    if (record.artifacts.len != resolution.modules.len)
-        return state.fail("projectArtifactStale", "published artifact set at {s} is incomplete", .{final});
-    if (record.native.len != resolution.wrapped.len)
-        return state.fail("projectArtifactStale", "published native artifact set at {s} is incomplete", .{final});
+    try policyValidatePublished(state, resolution, record, final, target, tool_version);
 
     const artifacts = state.arena.alloc(Artifact, resolution.modules.len) catch
         return state.fail("buildFailed", "out of memory while validating artifacts", .{});
     for (resolution.modules, 0..) |module, i| {
         const old = previousArtifact(record, module.name) orelse
             return state.fail("projectArtifactStale", "published artifacts do not contain module #{s}", .{module.name});
-        if (!(try artifactMetadataMatches(state, old, module)))
-            return state.fail("projectArtifactStale", "published artifact for #{s} does not match its source metadata", .{module.name});
         const path = try pathJoin(state, final, old.relative_path);
-        if (!pathExists(path)) return state.fail("projectArtifactMissing", "published artifact for #{s} is missing at {s}", .{ module.name, path });
         const checksum = fileChecksum(state, path) orelse
             return state.fail("projectArtifactMissing", "could not read published artifact for #{s}", .{module.name});
-        if (!std.mem.eql(u8, checksum, old.checksum))
-            return state.fail("projectArtifactStale", "published artifact for #{s} failed checksum validation", .{module.name});
         artifacts[i] = try artifactFromModule(state, module, try expectedArtifactPath(state, module), checksum, .reused);
     }
     const native = state.arena.alloc(NativeArtifact, resolution.wrapped.len) catch
@@ -721,7 +897,6 @@ fn validatePublished(state: *State, resolution: *const project.Resolution, tool_
         if (!std.mem.eql(u8, old.relative_path, expected_path))
             return state.fail("projectArtifactStale", "published wrapped library {s} has an unexpected path", .{wrapped.name});
         const path = try pathJoin(state, final, old.relative_path);
-        if (!pathExists(path)) return state.fail("projectArtifactMissing", "published wrapped library {s} is missing at {s}", .{ wrapped.name, path });
         const checksum = fileChecksum(state, path) orelse
             return state.fail("projectArtifactMissing", "could not read published wrapped library {s}", .{wrapped.name});
         if (!std.mem.eql(u8, checksum, old.checksum))
@@ -763,6 +938,11 @@ fn run(state: *State, resolution: *const project.Resolution, tool_version: []con
         return state.fail("buildPublicationFailed", "out of memory while preparing staging", .{}));
     const final = try pathJoin(state, target_root, profile);
     const previous = readPreviousBuildRecord(state, final);
+    const policy_plan = try policyBuildPlan(state, resolution, previous, final, target, tool_version, built_at);
+    const policy_artifacts = try mapAt(state, policy_plan, "artifacts");
+    const policy_count = try vectorSize(state, policy_artifacts, "policy artifacts");
+    if (policy_count != resolution.modules.len)
+        return state.fail("buildPolicyFailed", "ProjectPolicy returned {d} artifact decisions for {d} modules", .{ policy_count, resolution.modules.len });
     const stage_lib = try pathJoin(state, stage, "lib");
     std.fs.cwd().deleteTree(stage) catch {};
     try makePath(state, stage_lib);
@@ -774,27 +954,24 @@ fn run(state: *State, resolution: *const project.Resolution, tool_version: []con
     const native = state.arena.alloc(NativeArtifact, resolution.wrapped.len) catch
         return state.fail("buildFailed", "out of memory while preparing native artifacts", .{});
     for (resolution.wrapped, 0..) |wrapped, i| native[i] = try buildWrapped(state, resolution, wrapped, stage, stage_lib);
-    const dirty = state.arena.alloc(bool, resolution.modules.len) catch
-        return state.fail("buildFailed", "out of memory while preparing invalidation state", .{});
-    @memset(dirty, false);
     for (resolution.modules, 0..) |module, i| {
+        const policy_item = state.api.send(policy_artifacts, state.api.intern("at:"), &.{state.api.mkSmallInt(@intCast(i))}, 1);
+        if (!isMap(state, policy_item)) return state.fail("buildPolicyFailed", "ProjectPolicy returned a malformed decision for #{s}", .{module.name});
+        const action = try recordString(state, try mapAt(state, policy_item, "action"), "policy action");
         const filename = std.fmt.allocPrint(state.arena, "libbirnam_{s}.dylib", .{module.name}) catch
             return state.fail("buildFailed", "out of memory while naming module #{s}", .{module.name});
         const output_path = try pathJoin(state, stage_lib, filename);
-        const reused_checksum = if (previous) |record|
-            try reusableChecksum(state, record, resolution, module, final, target, tool_version, dirty)
-        else
-            null;
-        if (reused_checksum) |checksum| {
-            const old_path = try pathJoin(state, final, std.fmt.allocPrint(state.arena, "lib/libbirnam_{s}.dylib", .{module.name}) catch
-                return state.fail("buildFailed", "out of memory while naming module #{s}", .{module.name}));
+        if (std.mem.eql(u8, action, "reuse")) {
+            const relative_path = try recordString(state, try mapAt(state, policy_item, "path"), "policy artifact path");
+            const checksum = try recordString(state, try mapAt(state, policy_item, "checksum"), "policy artifact checksum");
+            const old_path = try pathJoin(state, final, relative_path);
             std.fs.cwd().copyFile(old_path, std.fs.cwd(), output_path, .{}) catch |err|
                 return state.fail("artifactReuseFailed", "could not reuse artifact for #{s}: {s}", .{ module.name, @errorName(err) });
-            artifacts[i] = try artifactFromModule(state, module, std.fmt.allocPrint(state.arena, "lib/libbirnam_{s}.dylib", .{module.name}) catch
-                return state.fail("buildFailed", "out of memory while naming module #{s}", .{module.name}), checksum, .reused);
-        } else {
-            dirty[i] = true;
+            artifacts[i] = try artifactFromModule(state, module, relative_path, checksum, .reused);
+        } else if (std.mem.eql(u8, action, "compile")) {
             artifacts[i] = try compileArtifact(state, module, output_path);
+        } else {
+            return state.fail("buildPolicyFailed", "ProjectPolicy returned unknown artifact action {s} for #{s}", .{ action, module.name });
         }
     }
 
@@ -814,7 +991,9 @@ fn run(state: *State, resolution: *const project.Resolution, tool_version: []con
     // directory is made visible. Its path is temporarily patched to the stage
     // for this write; all paths inside the record remain project-relative.
     const staged_build = Build{ .project_root = materialized.project_root, .output_root = stage, .target = materialized.target, .profile = materialized.profile, .tool_version = materialized.tool_version, .built_at = materialized.built_at, .resolution_digest = materialized.resolution_digest, .artifacts = materialized.artifacts, .native = materialized.native };
-    try writeArtifactRecord(state, &staged_build);
+    const policy_record = try policyArtifactRecord(state, resolution, &materialized);
+    try writeArtifactRecord(state, &staged_build, policy_record);
+    try policyPublication(state);
     try publish(state, stage, final, target_root, token);
     published = true;
     return materialized;

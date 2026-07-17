@@ -1,6 +1,6 @@
 # 52 — Project Check, Build, and Run
 
-> **Status:** P0 and the first P1 run slice implemented, 2026-07-15; later
+> **Status:** P0 and the first P1 run slice implemented, 2026-07-16; later
 > profile/tooling/test slices remain proposed. This document
 > defines the command and artifact workflow over [51 — Project Manifests and Dependency
 > Resolution](51-project-manifests-and-dependency-resolution.md). It is a
@@ -51,6 +51,13 @@ atomic replacement. A failed build leaves the previous successful build intact.
 
 No command may report success while leaving a partially compiled dependency
 graph that a later run could accidentally consume.
+
+The semantic build policy is implemented in Birnam. The host passes
+`ProjectPolicy` a snapshot containing current module metadata and prior records
+with observed checksums. Birnam selects reuse or compile actions, propagates
+dirty dependencies, constructs the artifact-record value, and authorizes
+publication after staging. Zig remains the adapter for compiler/process launch,
+hashing, file copies, TOML serialization, and the atomic rename.
 
 ### 2.4 Run names its runtime inputs
 

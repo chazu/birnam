@@ -21,6 +21,8 @@
 [System load: "modules/stdlib-test.birnam"];
 [System load: "modules/block-test.birnam"];
 [System load: "modules/modules-test.birnam"];
+[System load: "src/id/project-policy.birnam"];
+[System load: "modules/project-policy-test.birnam"];
 [System load: "modules/compiled-unit-test.birnam"];
 [System load: "modules/live-modules-test.birnam"];
 
