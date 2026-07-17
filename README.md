@@ -335,5 +335,6 @@ from-zero bootstrap compiler and performance floor.
 - [Embedded files](docs/design/56-embedded-files.md) documents the
   compile-time `System embedFile:` intrinsic and its project-build contract.
 - [Terminal REPL and programming environment](docs/design/58-terminal-repl-and-programming-environment.md)
-  proposes a termbox2 editor client, shared language-service coordinates, and
-  explicit local/remote image sessions.
+  tracks the termbox2 editor client, shared language-service coordinates, and
+  explicit local/remote image sessions. The first local `--ui` editor slice is
+  runnable; PositionMap and remote sessions remain staged.

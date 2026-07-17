@@ -1,0 +1,248 @@
+// editor.birnam — the value-only editor model used by Digla.
+//
+// Cursor positions are UTF-8 byte boundaries. The model never stores terminal
+// x/y coordinates; render.birnam projects the current source position into the
+// terminal after it has chosen a viewport. This first slice handles codepoint
+// boundaries and line movement, while full UTF-16 and cell maps remain the
+// shared PositionMap slice described in design 58.
+
+[Reflect defineMethod: #editorStateFor: on: Digla as: [:self :config |
+  let s0 := [self sessionStateFor: config];
+  let s1 := [s0 at: "running" put: true];
+  let s2 := [s1 at: "status" put: "ready"];
+  let s3 := [s2 at: "historyIndex" put: nil];
+  let s4 := [s3 at: "lastResult" put: nil];
+  [s4 at: "lastError" put: nil]] doc:
+  "Create the serializable editor state for a local or remote Digla session."];
+
+[Reflect defineMethod: #isContinuationByte: on: Digla as: [:self :b |
+  [[b >= 128] & [b <= 191]]] doc:
+  "True when a byte is a UTF-8 continuation byte."];
+
+[Reflect defineMethod: #utf8WidthAt:in: on: Digla as: [:self :i :text |
+  let b := [text byteAt: i];
+  let width := [1 asCell];
+  [[[b >= 128] & [b < 224]] ifTrue: [| [width set: 2]] ifFalse: [| nil]];
+  [[[b >= 224] & [b < 240]] ifTrue: [| [width set: 3]] ifFalse: [| nil]];
+  [[b >= 240] ifTrue: [| [width set: 4]] ifFalse: [| nil]];
+  [width value]] doc:
+  "Return the width of the UTF-8 codepoint beginning at byte offset `i`. Invalid input is treated conservatively as width four."];
+
+[Reflect defineMethod: #previousBoundaryStep:in: on: Digla as: [:self :p :text |
+  [[[p <= 0] | [[self isContinuationByte: [text byteAt: p]] not]]
+    ifTrue: [| p]
+    ifFalse: [| [self previousBoundaryStep: [p - 1] in: text]]]] doc:
+  "Recursive worker for moving a cursor left to a UTF-8 codepoint boundary."];
+
+[Reflect defineMethod: #previousBoundaryIn:at: on: Digla as: [:self :text :cursor |
+  [[cursor = 0]
+    ifTrue: [| 0]
+    ifFalse: [| [self previousBoundaryStep: [cursor - 1] in: text]]]] doc:
+  "Move a source cursor one UTF-8 codepoint to the left."];
+
+[Reflect defineMethod: #nextBoundaryIn:at: on: Digla as: [:self :text :cursor |
+  [[cursor >= [text size]]
+    ifTrue: [| [text size]]
+    ifFalse: [|
+      let width := [self utf8WidthAt: cursor in: text];
+      let next := [cursor + width];
+      [[next > [text size]] ifTrue: [| [text size]] ifFalse: [| next]]]]] doc:
+  "Move a source cursor one UTF-8 codepoint to the right."];
+
+[Reflect defineMethod: #lineStartStep:in: on: Digla as: [:self :p :text |
+  [[[p <= 0] | [[text byteAt: [p - 1]] = 10]]
+    ifTrue: [| p]
+    ifFalse: [| [self lineStartStep: [p - 1] in: text]]]] doc:
+  "Recursive worker for finding the beginning of a logical line."];
+
+[Reflect defineMethod: #lineStartIn:at: on: Digla as: [:self :text :cursor |
+  [self lineStartStep: cursor in: text]] doc:
+  "Return the byte offset of the logical line containing `cursor`."];
+
+[Reflect defineMethod: #lineEndStep:in: on: Digla as: [:self :p :text |
+  [[[p >= [text size]] | [[text byteAt: p] = 10]]
+    ifTrue: [| p]
+    ifFalse: [| [self lineEndStep: [p + 1] in: text]]]] doc:
+  "Recursive worker for finding the end of a logical line."];
+
+[Reflect defineMethod: #lineEndIn:at: on: Digla as: [:self :text :cursor |
+  [self lineEndStep: cursor in: text]] doc:
+  "Return the byte offset just before the newline or end of the line."];
+
+[Reflect defineMethod: #lineIndexIn:at: on: Digla as: [:self :text :cursor |
+  let n := [0 asCell];
+  [0 to: [cursor - 1] do: [:i |
+    [[[text byteAt: i] = 10] ifTrue: [| [n set: [[n value] + 1]]] ifFalse: [| nil]]]];
+  [n value]] doc:
+  "Return the zero-based logical line index for a byte cursor."];
+
+[Reflect defineMethod: #lineColumnIn:at: on: Digla as: [:self :text :cursor |
+  [cursor - [self lineStartIn: text at: cursor]]] doc:
+  "Return the byte column within the logical line for a source cursor."];
+
+[Reflect defineMethod: #insertText:into: on: Digla as: [:self :text :state |
+  let buffer := [state at: "buffer"];
+  let cursor := [state at: "cursor"];
+  let prefix := [buffer copyFrom: 0 to: cursor];
+  let suffix := [buffer copyFrom: cursor to: [buffer size]];
+  let nextBuffer := [[prefix , text] , suffix];
+  let nextCursor := [cursor + [text size]];
+  let s1 := [state at: "buffer" put: nextBuffer];
+  let s2 := [s1 at: "cursor" put: nextCursor];
+  let s3 := [s2 at: "historyIndex" put: nil];
+  [s3 at: "status" put: "editing"]] doc:
+  "Insert UTF-8 text at the source cursor and answer the next editor state."];
+
+[Reflect defineMethod: #backspaceIn: on: Digla as: [:self :state |
+  let buffer := [state at: "buffer"];
+  let cursor := [state at: "cursor"];
+  [[cursor = 0]
+    ifTrue: [| state]
+    ifFalse: [|
+      let previous := [self previousBoundaryIn: buffer at: cursor];
+      let prefix := [buffer copyFrom: 0 to: previous];
+      let suffix := [buffer copyFrom: cursor to: [buffer size]];
+      let s1 := [state at: "buffer" put: [prefix , suffix]];
+      let s2 := [s1 at: "cursor" put: previous];
+      let s3 := [s2 at: "historyIndex" put: nil];
+      [s3 at: "status" put: "editing"]]]] doc:
+  "Delete the codepoint immediately before the source cursor."];
+
+[Reflect defineMethod: #deleteForwardIn: on: Digla as: [:self :state |
+  let buffer := [state at: "buffer"];
+  let cursor := [state at: "cursor"];
+  [[cursor >= [buffer size]]
+    ifTrue: [| state]
+    ifFalse: [|
+      let next := [self nextBoundaryIn: buffer at: cursor];
+      let prefix := [buffer copyFrom: 0 to: cursor];
+      let suffix := [buffer copyFrom: next to: [buffer size]];
+      let s1 := [state at: "buffer" put: [prefix , suffix]];
+      let s2 := [s1 at: "historyIndex" put: nil];
+      [s2 at: "status" put: "editing"]]]] doc:
+  "Delete the codepoint immediately after the source cursor."];
+
+[Reflect defineMethod: #moveLeftIn: on: Digla as: [:self :state |
+  let buffer := [state at: "buffer"];
+  let cursor := [self previousBoundaryIn: buffer at: [state at: "cursor"]];
+  [state at: "cursor" put: cursor]] doc:
+  "Move the source cursor left by one UTF-8 codepoint."];
+
+[Reflect defineMethod: #moveRightIn: on: Digla as: [:self :state |
+  let buffer := [state at: "buffer"];
+  let cursor := [self nextBoundaryIn: buffer at: [state at: "cursor"]];
+  [state at: "cursor" put: cursor]] doc:
+  "Move the source cursor right by one UTF-8 codepoint."];
+
+[Reflect defineMethod: #moveHomeIn: on: Digla as: [:self :state |
+  let buffer := [state at: "buffer"];
+  [state at: "cursor" put: [self lineStartIn: buffer at: [state at: "cursor"]]]] doc:
+  "Move the source cursor to the beginning of its logical line."];
+
+[Reflect defineMethod: #moveEndIn: on: Digla as: [:self :state |
+  let buffer := [state at: "buffer"];
+  [state at: "cursor" put: [self lineEndIn: buffer at: [state at: "cursor"]]]] doc:
+  "Move the source cursor to the end of its logical line."];
+
+[Reflect defineMethod: #moveUpIn: on: Digla as: [:self :state |
+  let buffer := [state at: "buffer"];
+  let cursor := [state at: "cursor"];
+  let start := [self lineStartIn: buffer at: cursor];
+  [[start = 0]
+    ifTrue: [| state]
+    ifFalse: [|
+      let previousEnd := [start - 1];
+      let previousStart := [self lineStartIn: buffer at: previousEnd];
+      let previousLength := [previousEnd - previousStart];
+      let column := [cursor - start];
+      let targetColumn := [[column < previousLength] ifTrue: [| column] ifFalse: [| previousLength]];
+      [state at: "cursor" put: [previousStart + targetColumn]]]]] doc:
+  "Move up one logical line, clamping the byte column at the previous line's end."];
+
+[Reflect defineMethod: #moveDownIn: on: Digla as: [:self :state |
+  let buffer := [state at: "buffer"];
+  let cursor := [state at: "cursor"];
+  let end := [self lineEndIn: buffer at: cursor];
+  [[end >= [buffer size]]
+    ifTrue: [| state]
+    ifFalse: [|
+      let nextStart := [end + 1];
+      let nextEnd := [self lineEndIn: buffer at: nextStart];
+      let nextLength := [nextEnd - nextStart];
+      let column := [cursor - [self lineStartIn: buffer at: cursor]];
+      let targetColumn := [[column < nextLength] ifTrue: [| column] ifFalse: [| nextLength]];
+      [state at: "cursor" put: [nextStart + targetColumn]]]]] doc:
+  "Move down one logical line, clamping the byte column at the next line's end."];
+
+[Reflect defineMethod: #resultText: on: Digla as: [:self :value |
+  [[value isNil] ifTrue: [| "nil"] ifFalse: [| [value printString]]]] doc:
+  "Render a local evaluation result for the transcript."];
+
+[Reflect defineMethod: #submitIn: on: Digla as: [:self :state |
+  let input := [state at: "buffer"];
+  [[input isEmpty]
+    ifTrue: [| [state at: "status" put: "empty form"]]
+    ifFalse: [|
+      let value := [Codegen evalPersisting: input];
+      let error := [Codegen lastError];
+      let shown := [[error notNil] ifTrue: [| error] ifFalse: [| [self resultText: value]]];
+      let transcript0 := [state at: "transcript"];
+      let transcript1 := [transcript0 add: ["> " , input]];
+      let transcript2 := [transcript1 add: shown];
+      let history := [[state at: "history"] add: input];
+      let s1 := [state at: "buffer" put: ""];
+      let s2 := [s1 at: "cursor" put: 0];
+      let s3 := [s2 at: "history" put: history];
+      let s4 := [s3 at: "historyIndex" put: nil];
+      let s5 := [s4 at: "transcript" put: transcript2];
+      let s6 := [s5 at: "lastResult" put: value];
+      let s7 := [s6 at: "lastError" put: error];
+      let resultStatus := [[error notNil] ifTrue: [| "error"] ifFalse: [| "ready"]];
+      [s7 at: "status" put: resultStatus]]]] doc:
+  "Evaluate the current form against the local live image and append its result to the transcript."];
+
+[Reflect defineMethod: #historyMove:in: on: Digla as: [:self :direction :state |
+  let history := [state at: "history"];
+  let count := [history size];
+  [[count = 0]
+    ifTrue: [| state]
+    ifFalse: [|
+      let old := [state at: "historyIndex"];
+      let index := [[old isNil]
+        ifTrue: [| [[direction < 0] ifTrue: [| [count - 1]] ifFalse: [| 0]]]
+        ifFalse: [| [old + direction]]];
+      [[index < 0]
+        ifTrue: [| state]
+        ifFalse: [|
+          [[index >= count]
+            ifTrue: [|
+              let s1 := [state at: "historyIndex" put: nil];
+              let s2 := [s1 at: "buffer" put: ""];
+              let s3 := [s2 at: "cursor" put: 0];
+              [s3 at: "status" put: "editing"]]
+            ifFalse: [|
+              let text := [history at: index];
+              let s1 := [state at: "historyIndex" put: index];
+              let s2 := [s1 at: "buffer" put: text];
+              let s3 := [s2 at: "cursor" put: [text size]];
+              [s3 at: "status" put: "history"]]]]]]]] doc:
+  "Recall a prior form with direction -1 for older or +1 for newer history."];
+
+[Reflect defineMethod: #handleKey:character:state: on: Digla as: [:self :key :character :state |
+  let s0 := state;
+  let s1 := [[key = 27] ifTrue: [| [s0 at: "running" put: false]] ifFalse: [| s0]];
+  let s2 := [[key = 65515] ifTrue: [| [self moveLeftIn: s1]] ifFalse: [| s1]];
+  let s3 := [[key = 65514] ifTrue: [| [self moveRightIn: s2]] ifFalse: [| s2]];
+  let s4 := [[key = 65517] ifTrue: [| [self moveUpIn: s3]] ifFalse: [| s3]];
+  let s5 := [[key = 65516] ifTrue: [| [self moveDownIn: s4]] ifFalse: [| s4]];
+  let s6 := [[key = 65521] ifTrue: [| [self moveHomeIn: s5]] ifFalse: [| s5]];
+  let s7 := [[key = 65520] ifTrue: [| [self moveEndIn: s6]] ifFalse: [| s6]];
+  let backspace := [[key = 8] | [key = 127]];
+  let s8 := [backspace ifTrue: [| [self backspaceIn: s7]] ifFalse: [| s7]];
+  let s9 := [[key = 65522] ifTrue: [| [self deleteForwardIn: s8]] ifFalse: [| s8]];
+  let s10 := [[key = 16] ifTrue: [| [self historyMove: -1 in: s9]] ifFalse: [| s9]];
+  let s11 := [[key = 14] ifTrue: [| [self historyMove: 1 in: s10]] ifFalse: [| s10]];
+  let s12 := [[key = 13] ifTrue: [| [self submitIn: s11]] ifFalse: [| s11]];
+  let s13 := [[key = 10] ifTrue: [| [self insertText: "\n" into: s12]] ifFalse: [| s12]];
+  [[character isEmpty] ifTrue: [| s13] ifFalse: [| [self insertText: character into: s13]]]] doc:
+  "Apply one Termbox key and character event to the pure editor state."];

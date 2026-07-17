@@ -1,6 +1,6 @@
 # 58 — Terminal REPL and Programming Environment
 
-> **Status:** Proposed, 2026-07-17. This design explores a terminal-native
+> **Status:** In progress, 2026-07-17. This design explores a terminal-native
 > programming environment for Birnam, backed by termbox2, the project-aware
 > language service, and an explicit session connection to a running image. It
 > does not change the current REPL, LSP, or socket protocol yet.
@@ -37,6 +37,8 @@ modules/digla/digla.birnam       module entry
 modules/digla/config.birnam      AppConfig adapter
 modules/digla/session.birnam     value-only editor/session state
 modules/digla/render.birnam      headless startup summary
+modules/digla/editor.birnam      value-only cursor/edit/history/evaluation model
+modules/digla/editor-test.birnam headless editor contract
 modules/digla/termbox.birnam     Termbox module entry
 wrapped/termbox2/                vendored C library and Alien wrapper
 examples/digla/birnam.toml       composed application project
@@ -45,6 +47,14 @@ examples/digla/birnam.toml       composed application project
 `Termbox` is a separate optional module. Its C artifact is built through the
 application manifest's `[[wrapped]]` declaration, so the standard image and
 headless Digla tests do not acquire a terminal dependency.
+
+The first local editor slice is now implemented. `birnam run examples/digla --
+--ui` launches the Termbox client; Escape exits, character input edits the
+buffer, Ctrl-J inserts a newline, Enter evaluates the current Birnam form
+against the local image, and history is recalled with Ctrl-P/Ctrl-N or the
+arrow keys. The model is headless and stores source cursors as UTF-8 byte
+boundaries. Syntax highlighting, diagnostics, terminal-cell mapping, and
+remote sessions remain intentionally later slices.
 
 ## 2. Goals and boundaries
 
@@ -314,13 +324,15 @@ The core invariants are:
 
 ## 8. Implementation sequence
 
-1. **PositionMap first.** Extract the shared line/UTF-16 mapping seam from the
+1. **PositionMap next.** Extract the shared line/UTF-16 mapping seam from the
    existing LSP behavior and add terminal-cell projection tests.
-2. **Reusable termbox module.** Promote the Logue wrapper into an optional,
+2. **Reusable termbox module — implemented.** Promote the Logue wrapper into an optional,
    reusable terminal module. Keep terminal setup out of the boot-critical REPL.
-3. **Local terminal editor.** Add a single-buffer `birnam term`-style entrypoint
-   with editing, multiline input, history, syntax spans, diagnostics, evaluation,
-   and a scrollable transcript against the local image.
+3. **Local terminal editor — initial slice implemented.** Add a single-buffer
+   `--ui` entrypoint with editing, UTF-8-aware cursor movement, multiline input,
+   history, local evaluation, and a scrollable transcript against the local
+   image. PositionMap, syntax spans, diagnostics, and viewport refinements are
+   still open.
 4. **Compatibility remote session.** Connect the same UI to the current
    line-oriented socket REPL so the client/session boundary is exercised early.
 5. **Framed session protocol.** Add JSON-RPC requests, structured results,

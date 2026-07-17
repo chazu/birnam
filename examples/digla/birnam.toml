@@ -13,6 +13,7 @@ files = [
   "../../modules/digla/config.birnam",
   "../../modules/digla/session.birnam",
   "../../modules/digla/render.birnam",
+  "../../modules/digla/editor.birnam",
 ]
 
 [[module]]

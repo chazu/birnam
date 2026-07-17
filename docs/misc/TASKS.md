@@ -74,6 +74,13 @@ until product evidence selects the next failure model.
   [design 55](../design/55-birnam-digla.md). The first implementation
   slice should be Slices 0–3 as one narrow fixture project.
 
+- [x] **Digla terminal editor foundation / Design 58** (2026-07-17) — the
+  multi-file `modules/digla/` project now includes a headless editor model,
+  UTF-8 byte-boundary cursor movement, history, local evaluation, transcript
+  rendering, and an optional Termbox `--ui` entrypoint. Next: extract the shared
+  PositionMap/display-layout layer so LSP UTF-16 positions and terminal cells
+  stop being renderer-local concerns.
+
 ---
 
 ## Tooling

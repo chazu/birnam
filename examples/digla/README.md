@@ -11,5 +11,14 @@ zig-out/bin/birnam build examples/digla
 zig-out/bin/birnam run examples/digla --build -- --port=5555
 ```
 
-The current entrypoint prints the resolved AppConfig snapshot. Terminal editing,
-history, syntax highlighting, and image sessions will build on the same module.
+The default entrypoint prints the resolved AppConfig snapshot. To launch the
+first local Termbox editor slice on a real terminal:
+
+```sh
+zig-out/bin/birnam run examples/digla --build -- --ui
+```
+
+The editor supports character insertion, UTF-8-aware backspace, cursor motion,
+history, multiline input with Ctrl-J, and local evaluation with Enter. Enter
+evaluates the current Birnam form, for example `[1 + 2]`. The remote session
+protocol, syntax services, and full position maps are later slices.

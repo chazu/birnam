@@ -29,6 +29,10 @@ int lg_height(void)      { return tb_height(); }
 int lg_clear(void)       { return tb_clear(); }
 int lg_present(void)     { return tb_present(); }
 int lg_hide_cursor(void) { return tb_hide_cursor(); }
+int lg_set_cursor(void *self, int x, int y) {
+    (void)self;
+    return tb_set_cursor(x, y);
+}
 
 /* --- drawing ------------------------------------------------------------ */
 /* These two take arguments, so under birnam's Alien FFI the method receiver is
@@ -54,3 +58,28 @@ int lg_poll(void)    { return tb_poll_event(&lg_ev); }
 int lg_ev_type(void) { return (int)lg_ev.type; } /* TB_EVENT_* */
 int lg_ev_key(void)  { return (int)lg_ev.key; }  /* TB_KEY_*  (0 if a char)  */
 int lg_ev_ch(void)   { return (int)lg_ev.ch; }   /* codepoint (0 if special) */
+
+/* Return the last character as a short UTF-8 string. Alien copies cstring
+ * returns into an image String, so the static buffer is safe between polls. */
+const char *lg_ev_char(void) {
+    static char out[5];
+    uint32_t ch = lg_ev.ch;
+    int n = 0;
+    if (ch <= 0x7f) {
+        out[n++] = (char)ch;
+    } else if (ch <= 0x7ff) {
+        out[n++] = (char)(0xc0 | (ch >> 6));
+        out[n++] = (char)(0x80 | (ch & 0x3f));
+    } else if (ch <= 0xffff) {
+        out[n++] = (char)(0xe0 | (ch >> 12));
+        out[n++] = (char)(0x80 | ((ch >> 6) & 0x3f));
+        out[n++] = (char)(0x80 | (ch & 0x3f));
+    } else if (ch <= 0x10ffff) {
+        out[n++] = (char)(0xf0 | (ch >> 18));
+        out[n++] = (char)(0x80 | ((ch >> 12) & 0x3f));
+        out[n++] = (char)(0x80 | ((ch >> 6) & 0x3f));
+        out[n++] = (char)(0x80 | (ch & 0x3f));
+    }
+    out[n] = '\0';
+    return out;
+}

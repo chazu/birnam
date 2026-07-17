@@ -35,6 +35,7 @@
 [Alien wrap: "lg_clear"       signature: "i" as: #clear      on: Termbox];   // clear back buffer
 [Alien wrap: "lg_present"     signature: "i" as: #present    on: Termbox];   // flush to screen
 [Alien wrap: "lg_hide_cursor" signature: "i" as: #hideCursor on: Termbox];
+[Alien wrap: "lg_set_cursor" signature: "i p i i" as: #setCursor:y: on: Termbox];
 
 // -- drawing --------------------------------------------------------------
 // These take arguments, so Alien marshals the receiver as the first C arg. The
@@ -51,3 +52,4 @@
 [Alien wrap: "lg_ev_type" signature: "i" as: #evType on: Termbox];   // TB_EVENT_*
 [Alien wrap: "lg_ev_key"  signature: "i" as: #evKey  on: Termbox];   // TB_KEY_* (0 if a char)
 [Alien wrap: "lg_ev_ch"   signature: "i" as: #evCh   on: Termbox];    // codepoint (0 if special)
+[Alien wrap: "lg_ev_char" signature: "s" as: #evChar on: Termbox]; // last character as UTF-8

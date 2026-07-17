@@ -17,3 +17,41 @@
   let d := [c , ":" , port];
   [d , " config=" , pathText]] doc:
   "Render the resolved startup configuration as a deterministic one-line summary."];
+
+[Reflect defineMethod: #renderTerminal: on: Digla as: [:self :state |
+  let height := [Termbox height];
+  let buffer := [state at: "buffer"];
+  let lines := [buffer split: "\n"];
+  let editorRows := [lines size];
+  let editorStart := [height - editorRows - 2];
+  let start := [[editorStart < 1] ifTrue: [| 1] ifFalse: [| editorStart]];
+  [Termbox clear];
+  [Termbox printX: 0 y: 0 fg: 7 bg: 0 str: "Digla  local image editor  (Esc quit, Ctrl-J newline, Enter evaluate)"];
+  let transcriptY := [1 asCell];
+  [[state at: "transcript"] do: [:entry |
+    [[[transcriptY value] < start]
+      ifTrue: [|
+        [[entry split: "\n"] do: [:line |
+          [[[transcriptY value] < start]
+            ifTrue: [| [Termbox printX: 0 y: [transcriptY value] fg: 7 bg: 0 str: line];
+                     [transcriptY set: [[transcriptY value] + 1]]]
+            ifFalse: [| nil]]]]]
+      ifFalse: [| nil]]]];
+  [[0 to: [[lines size] - 1]] do: [:i |
+    let prompt := [[i = 0] ifTrue: [| "> "] ifFalse: [| "| "]];
+    let line := [lines at: i];
+    let y := [start + i];
+    [[[y < [height - 1]] & [y >= 1]]
+      ifTrue: [| [Termbox printX: 0 y: y fg: 7 bg: 0 str: [prompt , line]]]
+      ifFalse: [| nil]]]];
+  let status := [[state at: "status"] , "  bytes=" , [[buffer size] printString]];
+  [Termbox printX: 0 y: [height - 1] fg: 6 bg: 0 str: status];
+  let lineIndex := [self lineIndexIn: buffer at: [state at: "cursor"]];
+  let column := [self lineColumnIn: buffer at: [state at: "cursor"]];
+  let cursorX := [2 + column];
+  let cursorY := [start + lineIndex];
+  [[[cursorY >= 1] & [cursorY < [height - 1]]]
+    ifTrue: [| [Termbox setCursor: cursorX y: cursorY]]
+    ifFalse: [| [Termbox setCursor: 0 y: 0]]];
+  [Termbox present]] doc:
+  "Render the transcript and active source buffer to Termbox. Source cursor positions remain byte offsets."];

@@ -1,0 +1,46 @@
+// editor-test.birnam — headless editor-model contract.
+
+let e := [TestSuite named: "Digla editor" module: #diglaEditor];
+
+[e test: "insert and UTF-8 boundary deletion" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let s0 := [Digla editorStateFor: config];
+  let s1 := [Digla insertText: "a🙂b" into: s0];
+  let s2 := [Digla backspaceIn: s1];
+  [t expect: [s1 at: "buffer"] equals: "a🙂b" describes: "inserted text"];
+  [t expect: [s1 at: "cursor"] equals: 6 describes: "cursor uses UTF-8 bytes"];
+  [t expect: [s2 at: "buffer"] equals: "a🙂" describes: "backspace removes one codepoint"];
+  [t expect: [s2 at: "cursor"] equals: 5 describes: "cursor retreats to codepoint boundary"]]];
+
+[e test: "line movement clamps to adjacent line" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let s0 := [Digla editorStateFor: config];
+  let s1 := [Digla insertText: "long\nx" into: s0];
+  let s2 := [Digla moveHomeIn: s1];
+  let s3 := [Digla moveUpIn: s2];
+  let s4 := [Digla moveEndIn: s3];
+  let s5 := [Digla moveDownIn: s4];
+  [t expect: [s2 at: "cursor"] equals: 5 describes: "home starts second line"];
+  [t expect: [s3 at: "cursor"] equals: 0 describes: "up clamps at first line"];
+  [t expect: [s4 at: "cursor"] equals: 4 describes: "end reaches first line"];
+  [t expect: [s5 at: "cursor"] equals: 6 describes: "down clamps to second line"]]];
+
+[e test: "submit evaluates and records history" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let s0 := [Digla editorStateFor: config];
+  let s1 := [Digla insertText: "[1 + 2]" into: s0];
+  let s2 := [Digla submitIn: s1];
+  let s3 := [Digla historyMove: -1 in: s2];
+  [t expect: [s2 at: "buffer"] equals: "" describes: "submit clears buffer"];
+  [t expect: [s2 at: "lastResult"] equals: 3 describes: "submit evaluates locally"];
+  [t expect: [[s2 at: "history"] at: 0] equals: "[1 + 2]" describes: "submit records history"];
+  [t expect: [s3 at: "buffer"] equals: "[1 + 2]" describes: "history recalls form"]]];
+
+[e test: "key handling separates newline from evaluation" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let s0 := [Digla editorStateFor: config];
+  let s1 := [Digla handleKey: 0 character: "x" state: s0];
+  let s2 := [Digla handleKey: 10 character: "" state: s1];
+  let s3 := [Digla handleKey: 13 character: "" state: s2];
+  [t expect: [s2 at: "buffer"] equals: "x\n" describes: "control-j inserts newline"];
+  [t expect: [s3 at: "buffer"] equals: "" describes: "enter submits form"]]];

@@ -1,8 +1,27 @@
-// Digla's first runnable entrypoint: resolve startup configuration and print a
-// stable report. The full-screen editor will take over this entry later.
+// Digla's runnable entrypoint. The default remains a headless configuration
+// report so project checks and scripts are safe; pass `--ui` after `--` for the
+// local Termbox editor.
 
 let args := [Globals at: #ProjectArgs];
 let config := [Digla configForArgs: args];
 [[config isError]
   ifTrue: [| [System println: [config printString]]]
-  ifFalse: [| [System println: [Digla summary: config]]]];
+  ifFalse: [|
+    let ui := [[args includes: "--ui"] | [args includes: "--interactive"]];
+    let runUi := [|
+      let init := [Termbox init];
+      [[init = 0]
+        ifTrue: [|
+          [Termbox hideCursor];
+          let loop := [:state |
+            [Digla renderTerminal: state];
+            [Termbox poll];
+            let next := [Digla handleKey: [Termbox evKey]
+              character: [Termbox evChar]
+              state: state];
+            [[next at: "running"] ifTrue: [| [loop value: next]] ifFalse: [| nil]]];
+          [loop value: [Digla editorStateFor: config]];
+          [Termbox shutdown]]
+        ifFalse: [| [System println: "Digla: unable to initialize Termbox"]]]];
+    [ui ifTrue: [| [runUi value]]];
+    [ui ifFalse: [| [System println: [Digla summary: config]]]]]];
