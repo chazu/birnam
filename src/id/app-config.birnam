@@ -1,0 +1,243 @@
+// app-config.birnam — application configuration over TOML, environment, and
+// command-line arguments.
+//
+// AppConfig is deliberately a resolver, not a global settings registry. It
+// produces an immutable startup snapshot for one application instance. The
+// precedence is:
+//
+//   defaults < TOML file < environment < command line
+//
+// The application name is normally a symbol (`#digla`); strings are accepted by
+// the lower-level helpers so tests and launchers can pass a computed name. A
+// default config path is `~/.<app>/<app>.toml`, with `--config PATH` and
+// `<APP>_CONFIG` taking precedence over it. Environment names are derived from
+// the application and setting names, e.g. `DIGLA_PORT` for `#digla`/`"port"`.
+//
+// The first version intentionally handles scalar settings only: String,
+// Integer, and Boolean defaults establish the coercion contract. TOML maps and
+// vectors remain available to callers through a future typed extension.
+
+[Module named: #appConfig requires: #[#toml]];
+[Globals at: #AppConfig put: [Object clone]];
+[Reflect docModule: #appConfig is: "Application configuration snapshots with defaults, TOML, environment, and CLI precedence."];
+
+// -- naming and paths --------------------------------------------------------
+
+[Reflect defineMethod: #nameString: on: AppConfig as: [:self :name |
+  [[Reflect isString: name]
+    ifTrue: [| name]
+    ifFalse: [| [Reflect nameOf: name]]]] doc:
+  "Normalize an application symbol or String to its bare String name."];
+
+[Reflect defineMethod: #environmentNameFor:key: on: AppConfig as: [:self :app :key |
+  [[[app , "_" , key] replace: "-" with: "_"] asUppercase]] doc:
+  "Derive an environment variable name from an application and setting name."];
+
+[Reflect defineMethod: #defaultPathFor: on: AppConfig as: [:self :app |
+  let home := [System getEnv: "HOME"];
+  [[home isNil]
+    ifTrue: [| nil]
+    ifFalse: [| [home , "/." , app , "/" , app , ".toml"]]]] doc:
+  "The conventional config path `~/.<app>/<app>.toml`, or nil when HOME is unavailable."];
+
+// -- command-line lookup -----------------------------------------------------
+
+// Return the value from `--key=value`, preserving an explicitly empty value.
+[Reflect defineMethod: #cliEquals:key:args: on: AppConfig as: [:self :prefix :key :args |
+  let marker := [prefix , key , "="];
+  let item := [args detect: [:arg | [arg startsWith: marker]]];
+  [[item isNil]
+    ifTrue: [| nil]
+    ifFalse: [| [item copyFrom: [marker size] to: [item size]]]]] doc:
+  "Read a `--key=value` option from an argument vector, or nil when absent."];
+
+[Reflect defineMethod: #cliIndex:key:args: on: AppConfig as: [:self :prefix :key :args |
+  [args indexOf: [prefix , key]]] doc:
+  "Find an exact `--key` option in an argument vector, or nil when absent."];
+
+[Reflect defineMethod: #cliValue:key:args: on: AppConfig as: [:self :key :args |
+  let eq := [self cliEquals: "--" key: key args: args];
+  let index := [self cliIndex: "--" key: key args: args];
+  [[eq notNil]
+    ifTrue: [| eq]
+    ifFalse: [|
+      [[index isNil]
+        ifTrue: [| nil]
+        ifFalse: [| [args at: [index + 1]]]]]]] doc:
+  "Read a command-line option in either `--key=value` or `--key value` form."];
+
+[Reflect defineMethod: #cliPresent:key:args: on: AppConfig as: [:self :key :args |
+  let value := [self cliValue: key args: args];
+  let index := [self cliIndex: "--" key: key args: args];
+  [[value notNil] | [index notNil]]] doc:
+  "True when an option is present, including an option with an empty value."];
+
+[Reflect defineMethod: #configPathFor:args: on: AppConfig as: [:self :app :args |
+  let cli := [self cliValue: "config" args: args];
+  let envName := [self environmentNameFor: app key: "config"];
+  let env := [System getEnv: envName];
+  [[cli notNil]
+    ifTrue: [| cli]
+    ifFalse: [[env notNil]
+      ifTrue: [| env]
+      ifFalse: [| [self defaultPathFor: app]]]]] doc:
+  "Resolve `--config`, `<APP>_CONFIG`, or the conventional per-user config path."];
+
+// -- source loading and coercion --------------------------------------------
+
+[Reflect defineMethod: #failure:message: on: AppConfig as: [:self :kind :message |
+  [[Globals includes: #Error]
+    ifTrue: [| [Error kind: kind message: message]]
+    ifFalse: [| nil]]] doc:
+  "Create a kinded configuration error when the Error floor is available."];
+
+[Reflect defineMethod: #configMapAt: on: AppConfig as: [:self :path |
+  [[path isNil]
+    ifTrue: [| [Map new]]
+    ifFalse: [|
+      let text := [System readFile: path];
+      [[text isError]
+        ifTrue: [|
+          // A missing default file is normal. Other read failures remain
+          // visible to callers rather than silently becoming defaults.
+          let kind := [text kind];
+          [[kind = #ioError]
+            ifTrue: [| [Map new]]
+            ifFalse: [| text]]]
+        ifFalse: [|
+          let parsed := [Toml parse: text];
+          [[parsed isError]
+            ifTrue: [| [self failure: #configParse message: "could not parse application config"]]
+            ifFalse: [| parsed]]]]]]] doc:
+  "Read and parse a TOML config file, ignoring a missing file and reporting malformed TOML."];
+
+[Reflect defineMethod: #booleanValue:key: on: AppConfig as: [:self :value :key |
+  let ok := [[value = true] | [value = "true"]];
+  [ok ifTrue: [| true] ifFalse: [| false]]] doc:
+  "Coerce a Boolean TOML value or its textual environment/CLI spelling."];
+
+[Reflect defineMethod: #invalidValue: on: AppConfig as: [:self :key |
+  [self failure: #configValue message: "invalid application setting"]] doc:
+  "Create the standard invalid-value error for an application setting."];
+
+[Reflect defineMethod: #integerValue:key: on: AppConfig as: [:self :value :key |
+  let n := [value asInteger];
+  [[n isNil]
+    ifTrue: [| [self invalidValue: key]]
+    ifFalse: [| n]]] doc:
+  "Coerce an Integer TOML value or its textual environment/CLI spelling."];
+
+[Reflect defineMethod: #coerce:like:key: on: AppConfig as: [:self :value :default :key |
+  [[default = true]
+    ifTrue: [| [self booleanValue: value key: key]]
+    ifFalse: [|
+      [[default = false]
+        ifTrue: [| [self booleanValue: value key: key]]
+        ifFalse: [|
+          [[Reflect isString: default]
+            ifTrue: [| value]
+            ifFalse: [| [self integerValue: value key: key]]]]]]]] doc:
+  "Coerce an environment/CLI string or validate a TOML value against a default's scalar type."];
+
+[Reflect defineMethod: #environmentFor:defaults: on: AppConfig as: [:self :app :defaults |
+  [[defaults keys] inject: [Map new] into: [:env :key |
+    let envName := [self environmentNameFor: app key: key];
+    let value := [System getEnv: envName];
+    [[value isNil]
+      ifTrue: [| env]
+      ifFalse: [| [env at: envName put: value]]]]]] doc:
+  "Collect environment overrides for the keys declared by a defaults map."];
+
+// -- resolved snapshot -------------------------------------------------------
+
+[Reflect defineMethod: #at: on: AppConfig as: [:self :key |
+  let values := [[db cellFor: self attr: #values] value];
+  [values at: key ifAbsent: [| nil]]] doc:
+  "Return a resolved setting, or nil when the key was not declared in defaults."];
+
+[Reflect defineMethod: #originAt: on: AppConfig as: [:self :key |
+  let origins := [[db cellFor: self attr: #origins] value];
+  [origins at: key ifAbsent: [| nil]]] doc:
+  "Return `default`, `file`, `environment`, or `cli` for a resolved setting."];
+
+[Reflect defineMethod: #path on: AppConfig as: [:self |
+  [[db cellFor: self attr: #configPath] value]] doc:
+  "The config path selected for this snapshot, whether or not the file existed."];
+
+[Reflect defineMethod: #values on: AppConfig as: [:self |
+  [[db cellFor: self attr: #values] value]] doc:
+  "The complete resolved settings Map."];
+
+[Reflect defineMethod: #origins on: AppConfig as: [:self |
+  [[db cellFor: self attr: #origins] value]] doc:
+  "The setting-to-source Map for this snapshot."];
+
+[Reflect defineMethod: #resolve:defaults:configPath:environment:args: on: AppConfig as: [:self :name :defaults :path :environment :args |
+  let file := [self configMapAt: path];
+  [[file isError]
+    ifTrue: [| file]
+    ifFalse: [|
+      let state := [[defaults keys] inject: #[ [Map new] [Map new] ] into: [:st :key |
+        let values := [st at: 0];
+        let origins := [st at: 1];
+        let default := [defaults at: key];
+        let fileValue := [[file includesKey: key] ifTrue: [| [file at: key]] ifFalse: [| nil]];
+        let envName := [self environmentNameFor: name key: key];
+        let envValue := [[environment includesKey: envName] ifTrue: [| [environment at: envName]] ifFalse: [| nil]];
+        let cliEq := [self cliEquals: "--" key: key args: args];
+        let cliIndex := [self cliIndex: "--" key: key args: args];
+        let cliPresent := [[cliEq notNil] | [cliIndex notNil]];
+        let sourceValue := [cliPresent
+          ifTrue: [|
+            [[cliEq notNil]
+              ifTrue: [| cliEq]
+              ifFalse: [|
+                [[default = true]
+                  ifTrue: [| true]
+                  ifFalse: [|
+                    [[default = false]
+                      ifTrue: [| true]
+                      ifFalse: [| [args at: [cliIndex + 1]]]]]]]]]
+          ifFalse: [|
+            [[envValue notNil]
+              ifTrue: [| envValue]
+              ifFalse: [|
+                [[fileValue notNil]
+                  ifTrue: [| fileValue]
+                  ifFalse: [| default]]]]]];
+        let origin := [cliPresent
+          ifTrue: [| "cli"]
+          ifFalse: [|
+            [[envValue notNil]
+              ifTrue: [| "environment"]
+              ifFalse: [|
+                [[fileValue notNil]
+                  ifTrue: [| "file"]
+                  ifFalse: [| "default"]]]]]];
+        let resolved := [[sourceValue == default]
+          ifTrue: [| sourceValue]
+          ifFalse: [| [self coerce: sourceValue like: default key: key]]] ;
+        let nextValues := [values at: key put: resolved];
+        let nextOrigins := [origins at: key put: origin];
+        [[resolved isError]
+          ifTrue: [| #[resolved]]
+          ifFalse: [| #[nextValues nextOrigins]]]]];
+      // A failed coercion is represented by a one-element state vector whose
+      // first item is the Error; otherwise the normal two-map state is returned.
+      let failure := [state detect: [:x | [x isError]]];
+      [[failure notNil]
+        ifTrue: [| failure]
+        ifFalse: [|
+          let config := [self clone];
+          [[db cellFor: config attr: #values] set: [state at: 0]];
+          [[db cellFor: config attr: #origins] set: [state at: 1]];
+          [[db cellFor: config attr: #configPath] set: path];
+          config]]]]] doc:
+  "Resolve one application snapshot from an explicit TOML path, environment map, and argument vector."];
+
+[Reflect defineMethod: #resolve:defaults:args: on: AppConfig as: [:self :name :defaults :args |
+  let app := [self nameString: name];
+  let path := [self configPathFor: app args: args];
+  let environment := [self environmentFor: app defaults: defaults];
+  [self resolve: app defaults: defaults configPath: path environment: environment args: args]] doc:
+  "Resolve an application snapshot using process environment and conventional config-path discovery."];

@@ -18,7 +18,7 @@
 //!                          (`&`/`|` eager; `and:`/`or:` take a block and short-circuit)
 //!   System (a singleton):  print:  println:  readFile:  writeFile:contents:
 //!                          load: (eval a .birnam source file) loadModule: (dlopen
-//!                          a module dylib) readLine  gc  liveObjects  autoGc:
+//!                          a module dylib) getEnv: readLine  gc  liveObjects  autoGc:
 //! Exports `System` and `Boolean` into the id environment so birnam can name them.
 
 const std = @import("std");
@@ -608,6 +608,19 @@ fn sysWriteFile(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
+/// `[System getEnv: nameString]` → the current environment value as a String,
+/// or nil when the variable is not present. The returned String owns its copy,
+/// so it is safe across later environment changes and image operations.
+fn sysGetEnv(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    const name = pathOf(a[0]);
+    const name_z = ca.dupeZ(u8, name) catch return mkErr("ioError", "could not read environment");
+    defer ca.free(name_z);
+    const value = std.posix.getenv(name_z) orelse return g_api.nilObj;
+    return g_api.mkString(value.ptr, value.len);
+}
+
 const RTLD_LAZY: c_int = 1;
 
 /// `[System load: pathString]` — read a birnam SOURCE file and evaluate it in the
@@ -852,6 +865,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(system_vt, api.intern("println:"), &sysPrintln);
     api.method(system_vt, api.intern("readFile:"), &sysReadFile);
     api.method(system_vt, api.intern("writeFile:contents:"), &sysWriteFile);
+    api.method(system_vt, api.intern("getEnv:"), &sysGetEnv);
     api.method(system_vt, api.intern("load:"), &sysLoad);
     api.method(system_vt, api.intern("loadModule:"), &sysLoadModule);
     api.method(system_vt, api.intern("readLine"), &sysReadLine);

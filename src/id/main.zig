@@ -767,6 +767,7 @@ const script_modules = [_][]const u8{
 const STDLIB_SRC = @embedFile("stdlib.birnam");
 const TOML_SRC = @embedFile("toml.birnam");
 const CONFIG_SRC = @embedFile("config.birnam");
+const APP_CONFIG_SRC = @embedFile("app-config.birnam");
 const PROJECT_POLICY_SRC = @embedFile("project-policy.birnam");
 const COMPILED_UNIT_SRC = @embedFile("compiled-unit.birnam");
 const ISOLATE_SRC = @embedFile("isolate.birnam");
@@ -820,6 +821,7 @@ const self_hosted_modules = [_]SelfHosted{
     .{ .name = "compiledUnit", .src = COMPILED_UNIT_SRC },
     .{ .name = "toml", .src = TOML_SRC },
     .{ .name = "config", .src = CONFIG_SRC },
+    .{ .name = "appConfig", .src = APP_CONFIG_SRC },
     .{ .name = "isolate", .src = ISOLATE_SRC },
 };
 

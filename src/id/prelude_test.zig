@@ -223,6 +223,17 @@ test "prelude: System readFile:/writeFile:contents: round-trips through disk" {
     std.fs.cwd().deleteFile(path) catch {};
 }
 
+test "prelude: System getEnv: returns strings and nil for absent variables" {
+    const api = setup();
+    const sys = api.import("System").?;
+
+    const path = api.send(sys, api.intern("getEnv:"), &[_]Oop{api.mkString("PATH", 4)}, 1);
+    try std.testing.expect(api.vtableOf(path) == api.string_vt);
+
+    const missing = api.send(sys, api.intern("getEnv:"), &[_]Oop{api.mkString("BIRNAM_PRELUDE_TEST_MISSING_7F3A", 32)}, 1);
+    try std.testing.expect(missing == api.nilObj);
+}
+
 test "prelude: to:do: iterates inclusively" {
     const api = setup();
     loop_sum = 0;

@@ -54,6 +54,14 @@ See [design 51](../design/51-project-manifests-and-dependency-resolution.md),
 53](../design/53-project-aware-language-tools.md), and [design
 54](../design/54-relocatable-bundles.md), plus [design 57](../design/57-project-policy-in-birnam.md).
 
+## Proposed Interactive Programming Environment
+
+[Design 58](../design/58-terminal-repl-and-programming-environment.md) extends
+the existing REPL, LSP, and termbox2 seams into a terminal-native programming
+environment. The proposed first boundary is a separate terminal client with
+pluggable local and remote image sessions; position mapping is shared across
+parser byte spans, LSP UTF-16 positions, and terminal-cell rendering.
+
 ## Proposed Application Sequence
 
 The first application slice should showcase Birnam's unusual combination of a

@@ -1,0 +1,327 @@
+# 58 — Terminal REPL and Programming Environment
+
+> **Status:** Proposed, 2026-07-17. This design explores a terminal-native
+> programming environment for Birnam, backed by termbox2, the project-aware
+> language service, and an explicit session connection to a running image. It
+> does not change the current REPL, LSP, or socket protocol yet.
+
+## 1. The question
+
+Birnam already has three useful but separate editor surfaces:
+
+- the pure-Birnam console and socket REPL in `modules/repl.birnam`;
+- the project-aware JSON-RPC language server in `modules/lsp.birnam`; and
+- a termbox2 wrapper used by the interactive Logue example.
+
+The next environment should feel like a real programming tool while retaining
+Birnam's defining property: evaluation happens against a live image. A user
+should be able to open a terminal editor, connect it to an already-running
+image, edit a multiline form, see source diagnostics and completions, evaluate
+explicitly, inspect the resulting value, and keep working with history.
+
+The terminal surface is a client. It is not a second compiler, evaluator, project
+resolver, or authority model.
+
+The first shared application foundation is now shipped as the self-hosted
+`AppConfig` module. It resolves an application's startup snapshot from defaults,
+TOML, environment, and CLI layers, with the conventional per-user path. Digla
+can consume that snapshot while keeping history and terminal-session state in
+their own modules; the terminal client and session protocol described here
+remain the next product slice.
+
+## 2. Goals and boundaries
+
+The first environment should provide:
+
+- a terminal-native editor with cursor movement, insertion, deletion, selection,
+  multiline input, scrolling, resize handling, and a visible prompt;
+- command history stored by the client, with recall and search later;
+- parser-backed syntax highlighting, bracket matching, and diagnostics;
+- project-aware completion, hover, signature help, and source navigation from
+  the existing language-service APIs;
+- explicit evaluation against either the local image or a connected image;
+- structured values, errors, output, and source locations rather than only a
+  stream of preformatted prompt text; and
+- one UI that can switch between a local session and a remote session.
+
+The first slice does not promise a full-screen IDE, multiple concurrent users,
+remote authentication, arbitrary background execution, or implicit activation of
+unsaved source. Changing a buffer is analysis; pressing the evaluation key is an
+explicit runtime operation.
+
+## 3. Three interface shapes
+
+### A. Separate terminal client with pluggable sessions — selected
+
+```text
+termbox client
+  ├── EditorModel
+  ├── LanguageService
+  └── ReplSession
+        ├── LocalImageSession
+        └── TcpImageSession
+```
+
+The terminal process owns presentation, editing state, history, and local source
+analysis. A session owns evaluation and runtime requests. The local session calls
+the current image APIs; the TCP session speaks a framed protocol to a running
+image.
+
+This keeps terminal failures, terminal modes, and UI state out of the application
+image. It also lets the same running image serve a terminal client, an ordinary
+socket client, or a future graphical client.
+
+### B. Terminal UI inside the running image
+
+The image would load termbox2, own the terminal, and run the editor beside the
+application's live objects.
+
+This gives direct access to runtime state and avoids a session protocol, but it
+couples application lifetime to terminal lifetime, makes the image's blocking
+loop responsible for terminal redraw, and prevents a clean separation between
+the user's editor and the program being edited. It is a useful demonstration mode
+for a single-process application, not the foundation for connecting to arbitrary
+running images.
+
+### C. LSP-first terminal shell
+
+The terminal would be primarily an LSP client. Evaluation would be a custom LSP
+command, and the running image would be treated as another language-server
+backend.
+
+This maximizes reuse of editor concepts and standard protocol vocabulary, but
+LSP's document model is not a runtime-session model. Evaluation, streamed output,
+runtime values, image identity, interrupts, and session capabilities would become
+awkward extensions of an editor protocol. LSP remains the language-service
+interface; the runtime session is a sibling interface carried by the same framing
+where convenient.
+
+The selected design takes the clean ownership boundary from A, the protocol reuse
+from C, and the direct runtime access of B only in the local session adapter.
+
+## 4. Ownership model
+
+| Layer | Owns | Does not own |
+|---|---|---|
+| `EditorModel` | buffer text, cursor, selection, history, viewport, transcript | parsing, evaluation, runtime state |
+| `LanguageService` | CST-backed spans, diagnostics, completion, hover, signatures | terminal cells, image mutation |
+| `ReplSession` | evaluate, interrupt, inspect, globals, runtime capabilities | key handling, syntax colors |
+| `TerminalRenderer` | termbox cells, colors, cursor, resize, redraw | source offsets, protocol framing |
+| Running image | evaluation, Store/dispatch, runtime reflection, output events | terminal layout, client history |
+
+The editor model stores the cursor as a source position. The renderer projects
+that position into terminal cells; the language service projects it into LSP
+positions only at the protocol boundary. No layer should pass terminal `x/y`
+coordinates into the parser or use UTF-16 columns as internal source indexes.
+
+## 5. Session protocol
+
+The current `Repl serveOn:` path is a useful compatibility target: it accepts
+multiline forms, evaluates them persistently, and serves one blocking client.
+Its prompt-oriented string protocol is too weak for a programming environment,
+though. It cannot distinguish a value from an error, stream output structurally,
+carry source ranges, report capabilities, or support an interrupt cleanly.
+
+The target protocol should reuse the existing JSON-RPC envelope and
+`Content-Length` framing already used by LSP. Stdio remains the LSP transport;
+TCP becomes an additional transport for a running image. Runtime methods live in
+a `birnam/` namespace rather than pretending to be standard LSP methods.
+
+The initial target surface is deliberately small:
+
+```text
+birnam/session/open       → session id, image identity, capabilities
+birnam/evaluate           → value/error result plus streamed output
+birnam/interrupt          → cancel the current evaluation at a safe boundary
+birnam/inspect            → structured print value or selected runtime object
+birnam/globals            → user-visible persisted bindings
+birnam/close              → release the session
+```
+
+Language features continue to use ordinary LSP requests such as
+`textDocument/completion`, `textDocument/hover`, and diagnostics. Runtime-aware
+completion can be added later as `birnam/runtimeCompletion` or as an enriched
+completion provider with an explicit capability.
+
+The server must default to loopback binding. A socket REPL is arbitrary code
+execution, so binding beyond loopback requires an explicit choice and eventually
+an authentication token or equivalent capability. The existing all-interface
+default is not suitable as the default for this environment.
+
+## 6. Editor model
+
+The first editor can use a simple one-document model rather than a general text
+editor framework:
+
+```text
+EditorBuffer
+  text
+  cursor: SourceOffset
+  selection: optional SourceRange
+  history: HistoryStore
+  diagnostics: [Diagnostic]
+  completion: optional CompletionMenu
+  viewport: Viewport
+
+Transcript
+  prompt / input
+  value / error / stdout / stderr entries
+```
+
+History is client-side state, not an image fact. A first implementation may use a
+bounded line list and a history file; prefix search and reverse search can follow
+once the basic loop is reliable. The transcript is separate from the active
+buffer, so output can scroll without changing the source being edited.
+
+The editor should reuse the native bracket scanner for fast continuation decisions
+and the parser/CST for highlighting and diagnostics. A balanced form is eligible
+for evaluation, but balance alone never substitutes for compilation.
+
+## 7. Position and coordinate model
+
+Birnam needs three coordinate systems. They describe the same source but answer
+different questions.
+
+### 7.1 Source bytes
+
+The parser and compiler operate on the exact UTF-8 byte string. Internal spans
+should therefore use half-open byte ranges:
+
+```text
+ByteSpan(start: 12, end: 24)
+```
+
+Byte offsets are stable for slicing the original source and are the natural
+currency for CST nodes, compiler diagnostics, source-backed method spans, and
+editor mutations. A cursor is a boundary between bytes, not a byte that points
+at a character. Normal cursor positions must lie on UTF-8 codepoint boundaries.
+
+The document maintains a line index containing raw byte offsets for line starts.
+CRLF is treated as one logical newline for line calculations while the original
+bytes remain available for evaluation and edits.
+
+### 7.2 LSP UTF-16 positions
+
+LSP positions are `(line, character)`, where `character` counts UTF-16 code units.
+This is not a byte offset and not a terminal column: a non-BMP codepoint counts as
+two UTF-16 units, while a combining mark usually counts as one even though it may
+occupy zero terminal cells.
+
+The LSP adapter owns conversion:
+
+```text
+byteOffset → (line, utf16Character)
+(line, utf16Character) → byteOffset
+```
+
+Conversions should be performed against the exact document version associated
+with the request. A position from an old `didChange` version must not be applied
+to the new buffer. Positions that land inside a multibyte codepoint or surrogate
+pair are normalized to a codepoint boundary consistently and covered by tests.
+
+### 7.3 Terminal cells
+
+Termbox renders a rectangular grid of cells `(x, y)`. Cell coordinates depend on
+presentation state:
+
+- tabs expand according to the configured tab width;
+- soft-wrapped source lines create additional visual rows;
+- combining marks have zero display width;
+- wide characters consume two cells;
+- prompts and continuation indentation shift the visible origin; and
+- the viewport may show only a slice of the transcript or buffer.
+
+The terminal cursor therefore cannot be calculated as `byteOffset - lineStart`.
+The renderer builds a `DisplayLayout` for the current buffer and viewport. Each
+visual row records the source byte boundary before each displayed cluster, and
+the layout supplies both directions:
+
+```text
+source byte boundary → terminal cell
+terminal cell         → nearest source byte boundary
+```
+
+The editor cursor remains a source boundary. The renderer projects it into a cell,
+including the special cases for a cursor at the end of a wide or combining
+cluster. Mouse selection, if added, projects the selected cell back through the
+same layout rather than inventing a second text index.
+
+### 7.4 The mapping layer
+
+The shared document package should own these structures:
+
+```text
+TextDocument
+  text: String
+  version: Integer
+  lineIndex: LineIndex
+  utf16Index: lazy per-line map
+
+PositionMap
+  byteAt(line, utf16Column)
+  lspPositionAt(byteOffset)
+  byteAtCell(layout, x, y)
+  cellAtByte(layout, byteOffset)
+
+DisplayLayout
+  visual rows
+  source-boundary ↔ cell mappings
+  diagnostic/style spans projected onto rows
+```
+
+The language service returns byte spans internally. The LSP adapter calls
+`lspPositionAt`; the terminal renderer calls `cellAtByte`; edit commands use
+`byteAtCell` or the source cursor directly. This keeps Unicode rules in one place
+and prevents syntax highlighting, diagnostics, completion, and cursor movement
+from drifting apart.
+
+The first mapping tests should cover:
+
+- ASCII and multiline text;
+- accented characters and non-BMP emoji;
+- combining marks;
+- CJK/wide characters;
+- tabs and mixed indentation;
+- CRLF input;
+- soft-wrapped long lines; and
+- diagnostics and completion requests after edits to multibyte text.
+
+The core invariants are:
+
+1. every internal source span can be sliced from the document without changing
+   its meaning;
+2. byte → UTF-16 → byte round-trips at valid codepoint boundaries;
+3. byte → cell → byte returns the same or the nearest visible source boundary;
+4. all conversions use one document version; and
+5. a rendering change never changes the source range sent to the compiler.
+
+## 8. Implementation sequence
+
+1. **PositionMap first.** Extract the shared line/UTF-16 mapping seam from the
+   existing LSP behavior and add terminal-cell projection tests.
+2. **Reusable termbox module.** Promote the Logue wrapper into an optional,
+   reusable terminal module. Keep terminal setup out of the boot-critical REPL.
+3. **Local terminal editor.** Add a single-buffer `birnam term`-style entrypoint
+   with editing, multiline input, history, syntax spans, diagnostics, evaluation,
+   and a scrollable transcript against the local image.
+4. **Compatibility remote session.** Connect the same UI to the current
+   line-oriented socket REPL so the client/session boundary is exercised early.
+5. **Framed session protocol.** Add JSON-RPC requests, structured results,
+   capabilities, output notifications, and bounded interrupt behavior.
+6. **Runtime-aware assistance.** Add explicit reflection, globals, docs, and
+   runtime completion without making unsaved editor text mutate the image.
+
+The first usable milestone is complete when a user can launch the terminal editor,
+edit and evaluate multiline Birnam forms locally, recall history, see parser-backed
+highlighting and diagnostics, and attach the same client to a running image over
+loopback.
+
+## 9. Open decisions
+
+- final CLI spelling: `birnam term`, `birnam --repl=term`, or a separate binary;
+- whether the first remote adapter translates the existing prompt protocol or
+  requires the framed protocol immediately;
+- history-file location, retention, and opt-out behavior;
+- whether runtime values are returned as print strings first or as a small typed
+  inspection schema from the beginning; and
+- authentication and session ownership once connections can leave loopback.

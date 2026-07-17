@@ -82,6 +82,31 @@ scanner on the native floor.
 Equality is by **value** where it makes sense: numbers, strings, symbols, and
 whole collections compare element-wise with `=`. Identity is `==`.
 
+## Application configuration
+
+The standard `AppConfig` module resolves one application's startup snapshot;
+it does not become a mutable global settings registry. Give it defaults and the
+arguments that belong to the application:
+
+```
+let defaults0 := [Map new];
+let defaults1 := [defaults0 at: "bind" put: "127.0.0.1"];
+let defaults := [defaults1 at: "port" put: 4400];
+let config := [AppConfig resolve: #digla defaults: defaults args: args];
+[config at: "port"];
+[config originAt: "port"]
+```
+
+Values resolve in this order: defaults, TOML, environment, then command-line
+arguments. The conventional file is `~/.digla/digla.toml`; `--config PATH` and
+`DIGLA_CONFIG` select another path. A setting named `port` uses `DIGLA_PORT`
+and `--port VALUE` (or `--port=VALUE`). `String`, `Integer`, and `Boolean`
+defaults establish the scalar conversion contract. `path`, `values`, and
+`origins` expose the selected file and resolved snapshot for diagnostics.
+
+Keep history and other durable application data in a separate module; an
+`AppConfig` snapshot should not own those writes.
+
 ## Errors as values
 
 There are no exceptions. A failure is a **kinded error value** that propagates

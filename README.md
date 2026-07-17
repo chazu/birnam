@@ -292,7 +292,8 @@ from-zero bootstrap compiler and performance floor.
 ## Repository Guide
 
 - `src/id/` — Zig floor, compiler, image, FFI, and test suites.
-- `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration.
+- `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
+  (`Config` for project manifests, `AppConfig` for application startup).
 - `modules/` — source-backed libraries, CLI, LSP, documentation, and tests.
 - `examples/` — runnable programs, including images and AOT artifacts.
 - `docs/design/` — current design decisions and implementation status.
@@ -330,3 +331,6 @@ from-zero bootstrap compiler and performance floor.
   image and worker views.
 - [Embedded files](docs/design/56-embedded-files.md) documents the
   compile-time `System embedFile:` intrinsic and its project-build contract.
+- [Terminal REPL and programming environment](docs/design/58-terminal-repl-and-programming-environment.md)
+  proposes a termbox2 editor client, shared language-service coordinates, and
+  explicit local/remote image sessions.

@@ -1,0 +1,45 @@
+// app-config-test.birnam — executable contract for the AppConfig resolver.
+// The explicit path/environment entry point keeps this suite deterministic;
+// the public process-backed entry point is covered by its path/name assertions.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+[[Globals includes: #AppConfig] ifTrue: [| nil] ifFalse: [| [System load: "src/id/app-config.birnam"]]];
+
+let s := [TestSuite named: "AppConfig" module: #appConfig];
+
+[s test: "default path and derived environment names are conventional" do: [:t |
+  [t expect: [AppConfig environmentNameFor: "digla" key: "port"]
+      equals: "DIGLA_PORT" describes: "environment name" ];
+  let path := [AppConfig defaultPathFor: "digla"];
+  [t assert: [[path isNil] | [path endsWith: "/.digla/digla.toml"]]
+      describes: "default path is HOME-relative"]]];
+
+[s test: "TOML, environment, and CLI layers override in order" do: [:t |
+  let defaults0 := [Map new];
+  let defaults1 := [defaults0 at: "port" put: 1000];
+  let defaults2 := [defaults1 at: "bind" put: "127.0.0.1"];
+  let defaults := [defaults2 at: "history" put: true];
+  let path := "/tmp/birnam-app-config-test.toml";
+  let env0 := [Map new];
+  let env1 := [env0 at: "DIGLA_PORT" put: "2000"];
+  let env := [env1 at: "DIGLA_BIND" put: "env.example"];
+  let args := #["--port=3000" "--history"];
+  [System writeFile: path contents: "port = 1500\nbind = \"file.example\"\nhistory = false\n"];
+  let config := [AppConfig resolve: "digla" defaults: defaults configPath: path environment: env args: args];
+  [t expect: [config at: "port"] equals: 3000 describes: "CLI beats environment and file"];
+  [t expect: [config at: "bind"] equals: "env.example" describes: "environment beats file"];
+  [t expect: [config at: "history"] equals: true describes: "boolean CLI flag"];
+  [t expect: [config originAt: "port"] equals: "cli" describes: "CLI origin"];
+  [t expect: [config originAt: "bind"] equals: "environment" describes: "environment origin"];
+  [t expect: [config path] equals: path describes: "selected path is retained"];
+  [File delete: path]]];
+
+[s test: "file values apply when higher-precedence layers are absent" do: [:t |
+  let defaults0 := [Map new];
+  let defaults := [defaults0 at: "port" put: 1000];
+  let path := "/tmp/birnam-app-config-file-only.toml";
+  [System writeFile: path contents: "port = 1500\n"];
+  let config := [AppConfig resolve: "digla" defaults: defaults configPath: path environment: [Map new] args: #[]];
+  [t expect: [config at: "port"] equals: 1500 describes: "TOML value"];
+  [t expect: [config originAt: "port"] equals: "file" describes: "TOML origin"];
+  [File delete: path]]];
