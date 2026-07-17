@@ -294,7 +294,10 @@ from-zero bootstrap compiler and performance floor.
 - `src/id/` — Zig floor, compiler, image, FFI, and test suites.
 - `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
   (`Config` for project manifests, `AppConfig` for application startup).
-- `modules/` — source-backed libraries, CLI, LSP, documentation, and tests.
+- `modules/` — source-backed libraries, CLI, LSP, documentation, tests, and the
+  multi-file Digla module.
+- `wrapped/` — first-party C libraries used by optional application projects,
+  including the Termbox2 wrapper.
 - `examples/` — runnable programs, including images and AOT artifacts.
 - `docs/design/` — current design decisions and implementation status.
 - `docs/archive/` — superseded kernel plans and historical material.

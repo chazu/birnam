@@ -1,0 +1,8 @@
+// Digla's first runnable entrypoint: resolve startup configuration and print a
+// stable report. The full-screen editor will take over this entry later.
+
+let args := [Globals at: #ProjectArgs];
+let config := [Digla configForArgs: args];
+[[config isError]
+  ifTrue: [| [System println: [config printString]]]
+  ifFalse: [| [System println: [Digla summary: config]]]];

@@ -12,7 +12,9 @@ let s := [TestSuite named: "AppConfig" module: #appConfig];
       equals: "DIGLA_PORT" describes: "environment name" ];
   let path := [AppConfig defaultPathFor: "digla"];
   [t assert: [[path isNil] | [path endsWith: "/.digla/digla.toml"]]
-      describes: "default path is HOME-relative"]]];
+      describes: "default path is HOME-relative"];
+  let selected := [AppConfig configPathFor: "digla" args: #["--config" "/tmp/digla.toml"]];
+  [t expect: selected equals: "/tmp/digla.toml" describes: "CLI config path"]]];
 
 [s test: "TOML, environment, and CLI layers override in order" do: [:t |
   let defaults0 := [Map new];

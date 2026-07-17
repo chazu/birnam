@@ -1,5 +1,5 @@
-// logue — the interactive render + input layer over termbox2. This is the ONLY
-// file that touches `tb`; all game logic lives in logue-core.birnam (and is
+// logue — the interactive render + input layer over Termbox. This is the ONLY
+// file that touches `Termbox`; all game logic lives in logue-core.birnam (and is
 // fully exercised headlessly by logue-test.birnam).
 //
 // Run it from THIS directory, on a real terminal (termbox opens /dev/tty):
@@ -8,10 +8,12 @@
 //
 // birnam runs a single script; a script pulls in its dependencies with
 // `[System load: …]`, evaluated into the shared global scope. Build the termbox2
-// dylib once first (wrapped/termbox2/build.sh); the wrapper dlopens it and binds
-// the `tb` module (a private singleton) over `Alien` — see termbox2.birnam.
-[System load: "wrapped/termbox2/termbox2.birnam"];
+// dylib once first (`../../wrapped/termbox2/build.sh`); configure Alien to find
+// it, then load the reusable Termbox module.
+[Alien libraryDir: "../../wrapped/termbox2"];
+[System load: "../../wrapped/termbox2/termbox2.birnam"];
 [System load: "logue-core.birnam"];
+let tb := Termbox;
 
 // ---- key codes ----------------------------------------------------------
 let K_UP    := 65517;

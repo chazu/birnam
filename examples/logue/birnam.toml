@@ -2,17 +2,16 @@
 #
 # This is a self-contained birnam sub-project. Run it from this directory:
 #
-#   sh wrapped/termbox2/build.sh                 # build libtermbox2.dylib (cc, no zig)
+#   sh ../../wrapped/termbox2/build.sh           # build libtermbox2.dylib (cc, no zig)
 #   birnam logue.birnam                          # play (needs a real terminal)
 #   birnam logue-test.birnam                     # headless logic tests (no termbox)
 #
 # logue.birnam files in its dependencies with `[System load: …]` (the termbox2
 # wrapper, then logue-core), each a commit boundary — so the FFI wraps declared
-# in termbox2.birnam are resolved before the renderer calls them.
+# in Termbox are resolved before the renderer calls them.
 
 # The base image already carries peg + lang + stdlib (Random, Time, string
-# utilities), so the game needs no extra module loads. termbox2 is not a birnam
-# module — it is a raw C library the wrapper pulls in with `[Alien dlopen: …]`
-# and binds with `[Alien wrap: … signature: … as: … on: tb]` (see termbox2.birnam).
-# Its dylib is built by wrapped/termbox2/build.sh; how wrapped-lib builds should
-# work in general is still an open question.
+# utilities), so the game needs no extra module loads. Termbox is an optional
+# Birnam module backed by the first-party wrapped C library in `../../wrapped`.
+# Its project-native build path is exercised by the Digla application; Logue's
+# standalone launcher retains the small direct build command above.

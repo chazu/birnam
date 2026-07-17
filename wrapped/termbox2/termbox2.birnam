@@ -1,0 +1,53 @@
+// termbox2 — terminal cell grid + keyboard events, wrapped for birnam via Alien.
+//
+// First-party wrapped C library. All calls go through a thin int-clean C adapter
+// (`lg_*`, see termbox2.c), so every signature here is int->int, (ints…)->int, or
+// (ints…, cstring)->int — no struct peeks, no uint64 attr-width marshalling.
+//
+// BUILD the dylib first (single-header lib; TB_IMPL is instantiated in termbox2.c):
+//
+//   cd wrapped/termbox2 && ./build.sh   # -> libtermbox2.dylib
+//
+// LOAD it before the renderer. A project build configures Alien's native
+// library directory before loading this module. Direct script users should do
+// the equivalent with `[Alien libraryDir: …]` first.
+//
+//   [System load: "../../wrapped/termbox2/termbox2.birnam"];
+//
+// The wraps declared here resolve at commit, so `Termbox` is only callable in a LATER
+// unit — which is exactly how the renderer uses it (System load is one commit,
+// the renderer body another).
+
+// Make the library's symbols resolvable by `wrap:` below. The project runner
+// points Alien at its private build/lib directory, so this remains relocatable.
+[Alien dlopen: "libtermbox2.dylib"];
+
+// Termbox is the public singleton. `on: Termbox` gives it its own copy-on-write
+// vtable, so these methods do not leak onto Object.
+[Globals at: #Termbox put: [Object clone]];
+
+// -- lifecycle / screen ---------------------------------------------------
+// No C arguments, so the receiver is unused: signature is just the return type.
+[Alien wrap: "lg_init"        signature: "i" as: #init       on: Termbox];   // 0 on success
+[Alien wrap: "lg_shutdown"    signature: "i" as: #shutdown   on: Termbox];
+[Alien wrap: "lg_width"       signature: "i" as: #width      on: Termbox];   // columns
+[Alien wrap: "lg_height"      signature: "i" as: #height     on: Termbox];   // rows
+[Alien wrap: "lg_clear"       signature: "i" as: #clear      on: Termbox];   // clear back buffer
+[Alien wrap: "lg_present"     signature: "i" as: #present    on: Termbox];   // flush to screen
+[Alien wrap: "lg_hide_cursor" signature: "i" as: #hideCursor on: Termbox];
+
+// -- drawing --------------------------------------------------------------
+// These take arguments, so Alien marshals the receiver as the first C arg. The
+// adapter's leading `void* self` is a dummy that absorbs `Termbox`; the real values
+// follow (see the receiver-idiom note in termbox2.c). Hence the `p` after the
+// return type in each signature.
+// [Termbox setX: c y: r ch: codepoint fg: fgColor bg: bgColor]
+[Alien wrap: "lg_set_cell" signature: "i p i i i i i" as: #setX:y:ch:fg:bg: on: Termbox];
+// [Termbox printX: c y: r fg: fgColor bg: bgColor str: "text"]
+[Alien wrap: "lg_print"    signature: "i p i i i i s" as: #printX:y:fg:bg:str: on: Termbox];
+
+// -- input ----------------------------------------------------------------
+[Alien wrap: "lg_poll"    signature: "i" as: #poll   on: Termbox];   // BLOCKS; returns event type
+[Alien wrap: "lg_ev_type" signature: "i" as: #evType on: Termbox];   // TB_EVENT_*
+[Alien wrap: "lg_ev_key"  signature: "i" as: #evKey  on: Termbox];   // TB_KEY_* (0 if a char)
+[Alien wrap: "lg_ev_ch"   signature: "i" as: #evCh   on: Termbox];    // codepoint (0 if special)

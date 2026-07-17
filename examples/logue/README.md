@@ -35,16 +35,16 @@ climb back out alive to win.
 
 ```
 logue/
-  birnam.toml                  project config: modules + [[wrapped]] termbox2
+  birnam.toml                  project notes for the example
   logue-core.birnam            ALL game logic — no termbox; headless-testable
   logue.birnam                 thin render + input layer (the only file using `tb`)
   logue-test.birnam            headless test: deterministic seed + assertions
-  wrapped/termbox2/
-    termbox2.h                 vendored upstream single header (MIT)
-    termbox2.c                 TB_IMPL + int-clean `lg_*` FFI adapter
-    termbox2.birnam            the wrapper: Alien dlopen: + wrap:signature:as:on:
-    build.sh                   cc the adapter into libtermbox2.dylib
-    libtermbox2.dylib          built by build.sh (git-ignored)
+../../wrapped/termbox2/
+  termbox2.h                   vendored upstream single header (MIT)
+  termbox2.c                   TB_IMPL + int-clean `lg_*` FFI adapter
+  termbox2.birnam              the reusable `Termbox` module
+  build.sh                     cc the adapter into libtermbox2.dylib
+  libtermbox2.dylib            built by build.sh (git-ignored)
 ```
 
 The split is deliberate: **`logue-core.birnam` contains no terminal code at all**,
@@ -60,7 +60,7 @@ From this directory, on a real terminal:
 ./play.sh          # builds libtermbox2.dylib if needed, then plays
 ```
 
-`play.sh` builds the termbox2 dylib on first run (`wrapped/termbox2/build.sh`)
+`play.sh` builds the termbox2 dylib on first run (`../../wrapped/termbox2/build.sh`)
 and launches `logue.birnam`, which files in the wrapper and `logue-core.birnam`
 via `[System load: …]`. From this repo without an installed birnam:
 
@@ -103,7 +103,7 @@ eating, quaffing, combat, descent, every class, and the macguffin/win path.
 
 ## How termbox2 is wrapped
 
-termbox2 is a single-header library, so `wrapped/termbox2/termbox2.c` is a 2-line
+termbox2 is a single-header library, so `../../wrapped/termbox2/termbox2.c` is a 2-line
 instantiation shim (`#define TB_IMPL` + `#include "termbox2.h"`) **plus** a thin
 int-clean adapter (`lg_*`). The adapter exists so birnam's `Alien` FFI
 (`wrap:signature:as:on:`) never has to deal with two awkward edges of the real API:
@@ -119,11 +119,11 @@ There is a third, FFI-shaped detail: `Alien` marshals a method's **receiver as
 the first C argument**. The no-argument calls (`init`, `clear`, `poll`, …) don't
 care — their receiver is unused. But the two drawing calls take arguments, so
 `lg_set_cell`/`lg_print` carry a leading `void *self` the wrapper fills with the
-`tb` module object and the adapter ignores; it just shifts the real arguments
+`Termbox` module object and the adapter ignores; it just shifts the real arguments
 into place (hence the `p` after the return type in those signatures).
 
 The result is that every wrapped call is `int -> int` or `(ints…, cstring) -> int`
-— see `termbox2.birnam`. `tb` itself is a private singleton (`[Object clone]` with
-its own copy-on-write vtable), so wrapping these methods `on: tb` keeps them off
-`Object`. This "thin C adapter over a single-header lib" is the clean pattern for
-wrapping header-only C from birnam without any zig.
+— see `termbox2.birnam`. `Termbox` itself is a public singleton (`[Object clone]`
+with its own copy-on-write vtable), so wrapping these methods `on: Termbox` keeps
+them off `Object`. This "thin C adapter over a single-header lib" is the clean
+pattern for wrapping header-only C from birnam without any zig.

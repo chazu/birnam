@@ -1,0 +1,27 @@
+# Digla's runnable project. The module entry and source parts are composed into
+# one libbirnam_digla artifact; Termbox remains a separate optional module.
+
+name = "digla"
+version = "0.1.0"
+main = "main.birnam"
+load = ["digla", "termbox"]
+source_roots = ["../../modules"]
+
+[[module]]
+entry = "../../modules/digla/digla.birnam"
+files = [
+  "../../modules/digla/config.birnam",
+  "../../modules/digla/session.birnam",
+  "../../modules/digla/render.birnam",
+]
+
+[[module]]
+entry = "../../modules/digla/termbox.birnam"
+files = ["../../wrapped/termbox2/termbox2.birnam"]
+
+[[wrapped]]
+name = "termbox2"
+build = [["cc", "-O2", "-dynamiclib", "-fPIC", "../../wrapped/termbox2/termbox2.c", "-o", "{output}"]]
+
+[run]
+repl = "none"

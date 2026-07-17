@@ -1,0 +1,6 @@
+// termbox.birnam — the project module entry for the reusable Termbox wrapper.
+// The implementation part lives beside the vendored C source under wrapped/;
+// keeping the declaration here lets direct source users load the wrapper after
+// image sealing while project builds still get a static #termbox provider.
+
+[Module named: #termbox requires: #[]];

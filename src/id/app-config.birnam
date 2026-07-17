@@ -55,7 +55,7 @@
   [args indexOf: [prefix , key]]] doc:
   "Find an exact `--key` option in an argument vector, or nil when absent."];
 
-[Reflect defineMethod: #cliValue:key:args: on: AppConfig as: [:self :key :args |
+[Reflect defineMethod: #cliValue:args: on: AppConfig as: [:self :key :args |
   let eq := [self cliEquals: "--" key: key args: args];
   let index := [self cliIndex: "--" key: key args: args];
   [[eq notNil]
@@ -78,9 +78,10 @@
   let env := [System getEnv: envName];
   [[cli notNil]
     ifTrue: [| cli]
-    ifFalse: [[env notNil]
-      ifTrue: [| env]
-      ifFalse: [| [self defaultPathFor: app]]]]] doc:
+    ifFalse: [|
+      [[env notNil]
+        ifTrue: [| env]
+        ifFalse: [| [self defaultPathFor: app]]]]]] doc:
   "Resolve `--config`, `<APP>_CONFIG`, or the conventional per-user config path."];
 
 // -- source loading and coercion --------------------------------------------

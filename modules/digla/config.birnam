@@ -1,0 +1,23 @@
+// config.birnam — Digla's application-startup configuration.
+//
+// AppConfig owns precedence and TOML/environment/CLI coercion. Digla owns only
+// its setting names and defaults; terminal history and editor state belong to
+// later modules.
+
+[Reflect defineMethod: #defaults on: Digla as: [:self |
+  let d0 := [Map new];
+  let d1 := [d0 at: "mode" put: "local"];
+  let d2 := [d1 at: "connect" put: "local"];
+  let d3 := [d2 at: "bind" put: "127.0.0.1"];
+  let d4 := [d3 at: "port" put: 4400];
+  [d4 at: "history" put: true]] doc:
+  "The default Digla settings used by AppConfig."];
+
+[Reflect defineMethod: #configForArgs: on: Digla as: [:self :args |
+  [AppConfig resolve: #digla defaults: [self defaults] args: args]] doc:
+  "Resolve Digla settings from the process environment, config file, and args."];
+
+[Reflect defineMethod: #configAtPath:environment:args: on: Digla as: [:self :path :environment :args |
+  [AppConfig resolve: "digla" defaults: [self defaults]
+    configPath: path environment: environment args: args]] doc:
+  "Resolve Digla settings through explicit inputs for deterministic tests and embedders."];

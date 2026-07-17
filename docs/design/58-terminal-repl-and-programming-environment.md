@@ -11,7 +11,7 @@ Birnam already has three useful but separate editor surfaces:
 
 - the pure-Birnam console and socket REPL in `modules/repl.birnam`;
 - the project-aware JSON-RPC language server in `modules/lsp.birnam`; and
-- a termbox2 wrapper used by the interactive Logue example.
+- the reusable `Termbox` module backed by `wrapped/termbox2/`.
 
 The next environment should feel like a real programming tool while retaining
 Birnam's defining property: evaluation happens against a live image. A user
@@ -28,6 +28,23 @@ TOML, environment, and CLI layers, with the conventional per-user path. Digla
 can consume that snapshot while keeping history and terminal-session state in
 their own modules; the terminal client and session protocol described here
 remain the next product slice.
+
+The first Digla project slice uses the project builder's multi-file module
+composition:
+
+```text
+modules/digla/digla.birnam       module entry
+modules/digla/config.birnam      AppConfig adapter
+modules/digla/session.birnam     value-only editor/session state
+modules/digla/render.birnam      headless startup summary
+modules/digla/termbox.birnam     Termbox module entry
+wrapped/termbox2/                vendored C library and Alien wrapper
+examples/digla/birnam.toml       composed application project
+```
+
+`Termbox` is a separate optional module. Its C artifact is built through the
+application manifest's `[[wrapped]]` declaration, so the standard image and
+headless Digla tests do not acquire a terminal dependency.
 
 ## 2. Goals and boundaries
 

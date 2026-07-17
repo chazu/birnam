@@ -1,0 +1,14 @@
+// session.birnam — the first value-only editor/session state shape.
+//
+// This is deliberately independent of Termbox. It can be tested without a
+// controlling terminal and will become the seam between the editor model and
+// local/remote image sessions.
+
+[Reflect defineMethod: #sessionStateFor: on: Digla as: [:self :config |
+  let s0 := [Map new];
+  let s1 := [s0 at: "config" put: config];
+  let s2 := [s1 at: "buffer" put: ""];
+  let s3 := [s2 at: "cursor" put: 0];
+  let s4 := [s3 at: "history" put: #[]];
+  [s4 at: "transcript" put: #[]]] doc:
+  "Create the initial serializable editor/session state for a Digla config."];

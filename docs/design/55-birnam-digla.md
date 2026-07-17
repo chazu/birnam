@@ -361,8 +361,8 @@ Implement the smallest `Digla inspect: value` method. It returns a Map
 with `printString`, `globalName`, `vtableName`, and current `facts`. Do not
 enumerate the whole image, add JSON, or add HTTP.
 
-**Likely files:** `modules/digla.birnam`, `modules/digla-test.birnam`, and the
-fixture project.
+**Likely files:** `modules/digla/digla.birnam`, its composed source parts and
+`modules/digla/digla-test.birnam`, plus the fixture project.
 
 **Acceptance:** the fixture prints a deterministic object card; the test covers
 a named object, an anonymous object, an object with no facts, and a fact with a
@@ -502,8 +502,9 @@ The first slices should be Birnam-authored. Zig changes are justified only when
 an existing public surface cannot produce a safe, serializable result.
 
 ```text
-modules/digla.birnam             query and snapshot facade
-modules/digla-test.birnam        Store/reflection/report tests
+modules/digla/digla.birnam      query and snapshot facade entry
+modules/digla/*.birnam          composed Digla implementation parts
+modules/digla/digla-test.birnam Store/reflection/report tests
 examples/digla/                  runnable fixture and project smoke
 scripts/digla-smoke.sh           later text/JSON/HTML/HTTP acceptance
 src/id/codegen.zig                only if a missing reflection seam is proven

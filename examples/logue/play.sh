@@ -13,5 +13,5 @@ set -e
 cd "$(dirname "$0")"
 BIRNAM="${BIRNAM:-birnam}"
 # Build the termbox2 dylib on first run (the wrapper dlopens it).
-[ -f wrapped/termbox2/libtermbox2.dylib ] || sh wrapped/termbox2/build.sh
+[ -f ../../wrapped/termbox2/libtermbox2.dylib ] || sh ../../wrapped/termbox2/build.sh
 exec "$BIRNAM" logue.birnam

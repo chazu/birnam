@@ -25,6 +25,7 @@
 [System load: "modules/project-policy-test.birnam"];
 [System load: "modules/compiled-unit-test.birnam"];
 [System load: "modules/app-config-test.birnam"];
+[System load: "modules/digla/digla-test.birnam"];
 
 // -- run them all through the console runner, then gate the exit code ----------
 [Test runAllSuitesWithRunner: ConsoleRunner];

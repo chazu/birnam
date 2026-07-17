@@ -1,0 +1,11 @@
+// digla.birnam — the Digla application module entry.
+//
+// The implementation is intentionally composed from the neighboring source
+// parts in the Digla project manifest. Keep the module declaration here; the
+// project resolver uses it as the identity and dependency boundary.
+
+// AppConfig is a boot-provided standard module, already present in the stage-1
+// image. Project-owned modules do not rebuild that standard dependency.
+[Module named: #digla requires: #[]];
+[Globals at: #Digla put: [Object clone]];
+[Reflect docModule: #digla is: "The Digla terminal programming environment and its image-session model."];
