@@ -46,10 +46,9 @@
       ifFalse: [| nil]]]];
   let status := [[state at: "status"] , "  bytes=" , [[buffer size] printString]];
   [Termbox printX: 0 y: [height - 1] fg: 6 bg: 0 str: status];
-  let lineIndex := [self lineIndexIn: buffer at: [state at: "cursor"]];
-  let column := [self lineColumnIn: buffer at: [state at: "cursor"]];
-  let cursorX := [2 + column];
-  let cursorY := [start + lineIndex];
+  let position := [self terminalPositionForByte: [state at: "cursor"] in: buffer promptWidth: 2];
+  let cursorX := [position at: "x"];
+  let cursorY := [start + [position at: "line"]];
   [[[cursorY >= 1] & [cursorY < [height - 1]]]
     ifTrue: [| [Termbox setCursor: cursorX y: cursorY]]
     ifFalse: [| [Termbox setCursor: 0 y: 0]]];

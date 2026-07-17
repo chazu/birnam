@@ -78,8 +78,9 @@ until product evidence selects the next failure model.
   multi-file `modules/digla/` project now includes a headless editor model,
   UTF-8 byte-boundary cursor movement, history, local evaluation, transcript
   rendering, an optional Termbox `--ui` entrypoint, and the initial source/LSP
-  PositionMap conversion slice. Next: add terminal-cell DisplayLayout mapping
-  so LSP UTF-16 positions and terminal cells share one projection boundary.
+  PositionMap conversion plus terminal-cell DisplayLayout mapping. Next: add
+  syntax spans and diagnostics, then selection and autocomplete on the same
+  source-coordinate seam.
 
 ---
 

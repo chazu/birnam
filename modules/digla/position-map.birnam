@@ -1,8 +1,8 @@
 // position-map.birnam — source-byte and LSP UTF-16 coordinate conversion.
 //
 // The editor and terminal renderer keep source byte boundaries internally.
-// LSP positions are converted only at this boundary; terminal-cell projection
-// will build on the same source offsets in a later DisplayLayout slice.
+// LSP positions and terminal-cell positions are converted only at these shared
+// boundaries; display-layout.birnam builds on the same source offsets.
 
 [Reflect defineMethod: #isContinuationByte: on: Digla as: [:self :b |
   [[b >= 128] & [b <= 191]]] doc:

@@ -16,6 +16,7 @@ files = [
   "../../modules/digla/terminal.birnam",
   "../../modules/digla/position-map.birnam",
   "../../modules/digla/editor.birnam",
+  "../../modules/digla/display-layout.birnam",
 ]
 
 [[module]]

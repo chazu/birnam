@@ -1,0 +1,34 @@
+// display-layout-test.birnam — source/terminal coordinate contract.
+
+let e := [TestSuite named: "Digla display layout" module: #diglaDisplayLayout];
+
+[e test: "unicode cell widths" do: [:t |
+  [t expect: [Digla terminalCellWidthAt: 0 column: 0 in: "a"] equals: 1 describes: "ASCII occupies one cell"];
+  [t expect: [Digla terminalCellWidthAt: 0 column: 0 in: "é"] equals: 1 describes: "accented codepoint occupies one cell"];
+  [t expect: [Digla terminalCellWidthAt: 0 column: 0 in: "🙂"] equals: 2 describes: "emoji occupies two cells"];
+  [t expect: [Digla terminalCellWidthAt: 0 column: 0 in: "界"] equals: 2 describes: "CJK occupies two cells"]]];
+
+[e test: "source bytes map to display columns" do: [:t |
+  let text := "a🙂b\nx";
+  [t expect: [Digla displayColumnIn: text at: 0] equals: 0 describes: "line start column"];
+  [t expect: [Digla displayColumnIn: text at: 1] equals: 1 describes: "column before emoji"];
+  [t expect: [Digla displayColumnIn: text at: 5] equals: 3 describes: "column before b"];
+  [t expect: [Digla displayColumnIn: text at: 6] equals: 4 describes: "column after b"];
+  [t expect: [Digla byteOffsetForDisplayColumn: 1 in: text lineStart: 0] equals: 1 describes: "inverse starts at emoji"];
+  [t expect: [Digla byteOffsetForDisplayColumn: 2 in: text lineStart: 0] equals: 1 describes: "inside wide glyph clamps to its start"];
+  [t expect: [Digla byteOffsetForDisplayColumn: 3 in: text lineStart: 0] equals: 5 describes: "inverse crosses wide glyph"]]];
+
+[e test: "layout records source lines and prompt projection" do: [:t |
+  let text := "a🙂b\nx";
+  let layout := [Digla displayLayoutFor: text promptWidth: 2];
+  let lines := [layout at: "lines"];
+  let first := [lines at: 0];
+  let second := [lines at: 1];
+  let position := [Digla terminalPositionForByte: 5 in: text promptWidth: 2];
+  [t expect: [lines size] equals: 2 describes: "layout has two logical lines"];
+  [t expect: [first at: "sourceStart"] equals: 0 describes: "first source start"];
+  [t expect: [first at: "sourceEnd"] equals: 6 describes: "first source end"];
+  [t expect: [first at: "cellWidth"] equals: 4 describes: "first cell width"];
+  [t expect: [second at: "sourceStart"] equals: 7 describes: "second source start"];
+  [t expect: [position at: "line"] equals: 0 describes: "cursor line"];
+  [t expect: [position at: "x"] equals: 5 describes: "cursor x includes prompt cells"]]];

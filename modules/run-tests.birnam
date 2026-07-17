@@ -30,6 +30,8 @@
 [System load: "modules/digla/position-map-test.birnam"];
 [System load: "modules/digla/editor.birnam"];
 [System load: "modules/digla/editor-test.birnam"];
+[System load: "modules/digla/display-layout.birnam"];
+[System load: "modules/digla/display-layout-test.birnam"];
 
 // -- run them all through the console runner, then gate the exit code ----------
 [Test runAllSuitesWithRunner: ConsoleRunner];

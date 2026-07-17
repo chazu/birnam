@@ -1,0 +1,141 @@
+// display-layout.birnam — the source-to-terminal projection for Digla.
+//
+// Source byte offsets remain authoritative. This module derives terminal-cell
+// columns and line records from them, so the editor, renderer, selection, and
+// later LSP features can share one coordinate boundary.
+
+[Reflect defineMethod: #codepointAt:in: on: Digla as: [:self :i :text |
+  let b0 := [text byteAt: i];
+  let b1 := [[[i + 1] < [text size]] ifTrue: [| [text byteAt: [i + 1]]] ifFalse: [| 128]];
+  let b2 := [[[i + 2] < [text size]] ifTrue: [| [text byteAt: [i + 2]]] ifFalse: [| 128]];
+  let b3 := [[[i + 3] < [text size]] ifTrue: [| [text byteAt: [i + 3]]] ifFalse: [| 128]];
+  let two := [[[b0 - 192] * 64] + [b1 - 128]];
+  let three0 := [[[b0 - 224] * 4096] + [[b1 - 128] * 64]];
+  let three := [three0 + [b2 - 128]];
+  let four0 := [[[b0 - 240] * 262144] + [[b1 - 128] * 4096]];
+  let four1 := [four0 + [[b2 - 128] * 64]];
+  let four := [four1 + [b3 - 128]];
+  let result := [b0 asCell];
+  let isTwo := [[b0 >= 192] & [b0 < 224]];
+  let isThree := [[b0 >= 224] & [b0 < 240]];
+  let isFour := [b0 >= 240];
+  [isTwo ifTrue: [| [result set: two]]];
+  [isThree ifTrue: [| [result set: three]]];
+  [isFour ifTrue: [| [result set: four]]];
+  [result value]
+  ] doc:
+  "Decode the UTF-8 codepoint beginning at a source byte boundary." ];
+
+[Reflect defineMethod: #codepointInRange:from:to: on: Digla as: [:self :cp :low :high |
+  [[cp >= low] & [cp <= high]]
+  ] doc:
+  "Answer whether a decoded codepoint falls within an inclusive Unicode range." ];
+
+[Reflect defineMethod: #terminalCellWidthAt:column:in: on: Digla as: [:self :i :column :text |
+  let b := [text byteAt: i];
+  [[b = 9]
+    ifTrue: [| [4 - [column mod: 4]]]
+    ifFalse: [|
+      [[b < 32]
+        ifTrue: [| 0]
+        ifFalse: [|
+          let cp := [self codepointAt: i in: text];
+          let combining := [false asCell];
+          let wide := [false asCell];
+          [[self codepointInRange: cp from: 768 to: 879] ifTrue: [| [combining set: true]]];
+          [[self codepointInRange: cp from: 6832 to: 6911] ifTrue: [| [combining set: true]]];
+          [[self codepointInRange: cp from: 7424 to: 7679] ifTrue: [| [combining set: true]]];
+          [[self codepointInRange: cp from: 8400 to: 8431] ifTrue: [| [combining set: true]]];
+          [[self codepointInRange: cp from: 65056 to: 65071] ifTrue: [| [combining set: true]]];
+          [[self codepointInRange: cp from: 4352 to: 4607] ifTrue: [| [wide set: true]]];
+          [[self codepointInRange: cp from: 9001 to: 9002] ifTrue: [| [wide set: true]]];
+          [[self codepointInRange: cp from: 11904 to: 42191] ifTrue: [| [wide set: true]]];
+          [[self codepointInRange: cp from: 44032 to: 55203] ifTrue: [| [wide set: true]]];
+          [[self codepointInRange: cp from: 63744 to: 64255] ifTrue: [| [wide set: true]]];
+          [[self codepointInRange: cp from: 65040 to: 65071] ifTrue: [| [wide set: true]]];
+          [[self codepointInRange: cp from: 65281 to: 65376] ifTrue: [| [wide set: true]]];
+          [[self codepointInRange: cp from: 65504 to: 65510] ifTrue: [| [wide set: true]]];
+          [[self codepointInRange: cp from: 127744 to: 129791] ifTrue: [| [wide set: true]]];
+          let result := [1 asCell];
+          [[wide value] ifTrue: [| [result set: 2]]];
+          [[combining value] ifTrue: [| [result set: 0]]];
+          [result value]
+          ]]]]] doc:
+  "Return the terminal-cell width of one UTF-8 codepoint, including tabs and wide glyphs." ];
+
+[Reflect defineMethod: #displayColumnIn:at: on: Digla as: [:self :text :cursor |
+  let start := [self lineStartIn: text at: cursor];
+  let column := [0 asCell];
+  [start to: [cursor - 1] do: [:i |
+    [[[self isContinuationByte: [text byteAt: i]] not]
+      ifTrue: [|
+        let width := [self terminalCellWidthAt: i column: [column value] in: text];
+        [column set: [[column value] + width]]]
+      ifFalse: [| nil]]]];
+  [column value]
+  ] doc:
+  "Map an absolute source byte cursor to a terminal-cell column within its logical line." ];
+
+[Reflect defineMethod: #byteOffsetForDisplayColumn:in:lineStart: on: Digla as: [:self :target :text :start |
+  let end := [self lineEndIn: text at: start];
+  let column := [0 asCell];
+  let byte := [start asCell];
+  [start to: [end - 1] do: [:i |
+    let shouldScan := [[column value] < target];
+    [shouldScan
+      ifTrue: [|
+        let continuation := [self isContinuationByte: [text byteAt: i]];
+        let scan := [continuation not];
+        [scan ifTrue: [|
+          let width := [self terminalCellWidthAt: i column: [column value] in: text];
+          let fits := [[column value] + width <= target];
+          [byte set: i];
+          [fits ifTrue: [| [byte set: [i + [self utf8WidthAt: i in: text]]]]];
+          [column set: [[column value] + width]]]]]]]];
+  [byte value]
+  ] doc:
+  "Map a terminal-cell column to the nearest source byte boundary in one line." ];
+
+[Reflect defineMethod: #displayLineForByte:in: on: Digla as: [:self :cursor :text |
+  let line := [self lineIndexIn: text at: cursor];
+  let start := [self lineStartIn: text at: cursor];
+  let finish := [self lineEndIn: text at: cursor];
+  { "line" -> line,
+    "sourceStart" -> start,
+    "sourceEnd" -> finish,
+    "cellColumn" -> [self displayColumnIn: text at: cursor],
+    "text" -> [text copyFrom: start to: finish] }
+  ] doc:
+  "Describe the logical line containing an absolute source byte cursor." ];
+
+[Reflect defineMethod: #terminalPositionForByte:in:promptWidth: on: Digla as: [:self :cursor :text :promptWidth |
+  let line := [self displayLineForByte: cursor in: text];
+  { "line" -> [line at: "line"],
+    "x" -> [promptWidth + [line at: "cellColumn"]] }
+  ] doc:
+  "Map a source byte cursor to a terminal line and x coordinate." ];
+
+[Reflect defineMethod: #displayLayoutFor:promptWidth: on: Digla as: [:self :text :promptWidth |
+  let rows := [#[] asCell];
+  let sourceStart := [0 asCell];
+  let lineNumber := [0 asCell];
+  [[text split: "\n"] do: [:lineText |
+    let start := [sourceStart value];
+    let finish := [start + [lineText size]];
+    let cells := [self displayColumnIn: text at: finish];
+    let row := {
+      "line" -> [lineNumber value],
+      "sourceStart" -> start,
+      "sourceEnd" -> finish,
+      "text" -> lineText,
+      "promptWidth" -> promptWidth,
+      "cellWidth" -> cells
+    };
+    [rows set: [[rows value] add: row]];
+    [sourceStart set: [finish + 1]];
+    [lineNumber set: [[lineNumber value] + 1]]]];
+  { "lines" -> [rows value],
+    "promptWidth" -> promptWidth,
+    "sourceSize" -> [text size] }
+  ] doc:
+  "Build the logical source lines and terminal-cell widths used by rendering." ];
