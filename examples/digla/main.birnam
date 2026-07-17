@@ -13,14 +13,7 @@ let config := [Digla configForArgs: args];
       [[init = 0]
         ifTrue: [|
           [Termbox hideCursor];
-          let loop := [:state |
-            [Digla renderTerminal: state];
-            [Termbox poll];
-            let next := [Digla handleKey: [Termbox evKey]
-              character: [Termbox evChar]
-              state: state];
-            [[next at: "running"] ifTrue: [| [loop value: next]] ifFalse: [| nil]]];
-          [loop value: [Digla editorStateFor: config]];
+          [Digla runTerminalLoop: [Digla editorStateFor: config]];
           [Termbox shutdown]]
         ifFalse: [| [System println: "Digla: unable to initialize Termbox"]]]];
     [ui ifTrue: [| [runUi value]]];

@@ -1,0 +1,11 @@
+// terminal.birnam — the effectful local terminal loop for Digla.
+
+[Reflect defineMethod: #runTerminalLoop: on: Digla as: [:self :state |
+  let step := [:current |
+    [self renderTerminal: current];
+    [Termbox poll];
+    [self handleKey: [Termbox evKey]
+      character: [Termbox evChar]
+      state: current]];
+  [self runWhileRunning: state step: step]] doc:
+  "Render, wait for one terminal event, apply it, and continue while running."];

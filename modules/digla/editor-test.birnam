@@ -42,5 +42,18 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let s1 := [Digla handleKey: 0 character: "x" state: s0];
   let s2 := [Digla handleKey: 10 character: "" state: s1];
   let s3 := [Digla handleKey: 13 character: "" state: s2];
+  let s4 := [Digla handleKey: 0 character: "a" state: s0];
   [t expect: [s2 at: "buffer"] equals: "x\n" describes: "control-j inserts newline"];
-  [t expect: [s3 at: "buffer"] equals: "" describes: "enter submits form"]]];
+  [t expect: [s3 at: "buffer"] equals: "" describes: "enter submits form"];
+  [t expect: [s4 at: "running"] equals: true describes: "ordinary characters keep the editor running"]]];
+
+[e test: "terminal continuation stops only after the state says so" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let s0 := [Digla editorStateFor: config];
+  let remaining := [2 asCell];
+  let step := [:state |
+    [remaining set: [[remaining value] - 1]];
+    [state at: "running" put: [[remaining value] > 0]]];
+  let final := [Digla runWhileRunning: s0 step: step];
+  [t expect: [final at: "running"] equals: false describes: "loop returns the stopped state"];
+  [t expect: [remaining value] equals: 0 describes: "loop applies each transition"]]];

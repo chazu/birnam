@@ -37,6 +37,7 @@ modules/digla/digla.birnam       module entry
 modules/digla/config.birnam      AppConfig adapter
 modules/digla/session.birnam     value-only editor/session state
 modules/digla/render.birnam      headless startup summary
+modules/digla/terminal.birnam    local Termbox event loop
 modules/digla/position-map.birnam source-byte/LSP UTF-16 conversion
 modules/digla/position-map-test.birnam coordinate contract tests
 modules/digla/editor.birnam      value-only cursor/edit/history/evaluation model

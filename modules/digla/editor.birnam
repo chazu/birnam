@@ -233,3 +233,10 @@
   let s13 := [[key = 10] ifTrue: [| [self insertText: "\n" into: s12]] ifFalse: [| s12]];
   [[character isEmpty] ifTrue: [| s13] ifFalse: [| [self insertText: character into: s13]]]] doc:
   "Apply one Termbox key and character event to the pure editor state."];
+
+[Reflect defineMethod: #runWhileRunning:step: on: Digla as: [:self :state :step |
+  let next := [step value: state];
+  [[next at: "running"]
+    ifTrue: [| [self runWhileRunning: next step: step]]
+    ifFalse: [| next]]] doc:
+  "Apply a state transition repeatedly until the editor state is no longer running."];
