@@ -1,0 +1,83 @@
+// style-proof.birnam — validates the style guide's Rule 1 against the compiler.
+//
+// highlightColorFor: (kind -> Termbox color) is a METHOD in the real code
+// (defineMethod: on Digla), so every variant here is benchmarked AS A METHOD —
+// method dispatch is a constant we must not hide by testing bare blocks.
+//
+//   A. nested ifTrue:ifFalse:      (original — rightward drift)
+//   B. inline map + ifAbsent:      (Rule 1, table rebuilt every call)
+//   C. let-hoisted map             (Rule 1, method closes over a module-level let)
+//   D. Globals-hoisted map         (Rule 1, table read from Globals each call)
+//
+// Asserts all four agree on every kind (incl. a miss -> default 8), then times
+// them so the guide can state real ns/call, not a guess.
+//
+//   birnam docs/guide/style-proof.birnam
+
+[System load: "modules/time.birnam"];
+
+let obj := [Object clone];
+
+// ---- A. nested ifTrue:ifFalse: (original shape) --------------------------
+[Reflect defineMethod: #colorNested: on: obj as: [:self :kind |
+  [[kind = "comment"] ifTrue: [| 5] ifFalse: [|
+    [[kind = "string"] ifTrue: [| 3] ifFalse: [|
+      [[kind = "number"] ifTrue: [| 6] ifFalse: [|
+        [[kind = "symbol"] ifTrue: [| 6] ifFalse: [|
+          [[kind = "keyword"] ifTrue: [| 7] ifFalse: [|
+            [[kind = "selector"] ifTrue: [| 4] ifFalse: [| 8]]]]]]]]]]]]] doc: "A"];
+
+// ---- B. inline map (rebuilt every call) ----------------------------------
+[Reflect defineMethod: #colorInline: on: obj as: [:self :kind |
+  [{ "comment" -> 5, "string" -> 3, "number" -> 6,
+     "symbol" -> 6, "keyword" -> 7, "selector" -> 4 } at: kind ifAbsent: [| 8]]] doc: "B"];
+
+// ---- C. let-hoisted: method closes over a module-level table -------------
+let colorTable := { "comment" -> 5, "string" -> 3, "number" -> 6,
+                    "symbol" -> 6, "keyword" -> 7, "selector" -> 4 };
+[Reflect defineMethod: #colorLet: on: obj as: [:self :kind |
+  [colorTable at: kind ifAbsent: [| 8]]] doc: "C"];
+
+// ---- D. Globals-hoisted: table read from Globals each call ---------------
+[Globals at: #ProofColorTable put: { "comment" -> 5, "string" -> 3, "number" -> 6,
+                                      "symbol" -> 6, "keyword" -> 7, "selector" -> 4 }];
+[Reflect defineMethod: #colorGlobals: on: obj as: [:self :kind |
+  [[Globals at: #ProofColorTable] at: kind ifAbsent: [| 8]]] doc: "D"];
+
+// ---- Correctness: all four must agree on every kind ----------------------
+// identifier/literal/punctuation are MISSES -> default 8, and the nested form
+// pays its FULL 6-compare worst case on exactly those common inputs.
+let kinds := #[ "comment" "string" "number" "symbol" "keyword" "selector"
+                "identifier" "literal" "punctuation" ];
+
+let ok := [true asCell];
+[kinds do: [:k |
+  let a := [obj colorNested: k];
+  let b := [obj colorInline: k];
+  let c := [obj colorLet: k];
+  let d := [obj colorGlobals: k];
+  [[[[a = b] & [b = c]] & [c = d]]
+    ifTrue:  [| nil]
+    ifFalse: [| [ok set: false];
+                [System println: ["  DISAGREE on " , k]]]]]];
+[System println: ["agreement: " , [[ok value] ifTrue: [| "PASS"] ifFalse: [| "FAIL"]]]];
+
+// ---- Benchmark (method dispatch included, as in real code) ---------------
+let reps := 40000;
+let calls := [reps * [kinds size]];
+
+let bench := [:name :fn |
+  let sink := [0 asCell];
+  let t0 := [Time monotonicMicros];
+  [[1 to: reps] do: [:r |
+    [kinds do: [:k | [sink set: [[sink value] + [fn value: k]]]]]]];
+  let t1 := [Time monotonicMicros];
+  let nsPer := [[[t1 - t0] * 1000] / calls];
+  [System println: ["  " , name , ": " , [nsPer printString] , " ns/call  (checksum "
+                    , [[sink value] printString] , ")"]]];
+
+[System println: ["\nbenchmark: " , [calls printString] , " method calls each\n"]];
+[bench value: "A nested-if      " value: [:k | [obj colorNested: k]]];
+[bench value: "B inline-map     " value: [:k | [obj colorInline: k]]];
+[bench value: "C let-hoisted    " value: [:k | [obj colorLet: k]]];
+[bench value: "D globals-hoisted" value: [:k | [obj colorGlobals: k]]]
