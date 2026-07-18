@@ -1,0 +1,158 @@
+// analysis.birnam — source analysis owned by the Digla editor.
+//
+// Diagnostics come from the shared LSP parser/analysis surface. Highlighting is
+// deliberately a small lexical pass: it preserves byte spans, does not eval,
+// and gives the renderer enough information to color source without coupling
+// terminal coordinates to the editor model.
+
+[Reflect defineMethod: #highlightWordByte: on: Digla as: [:self :b |
+  [[[b >= 48] & [b <= 57]] |
+   [[b >= 65] & [b <= 90]] |
+   [[b >= 97] & [b <= 122]] |
+   [b = 95] |
+   [b = 63]]
+  ] doc:
+  "Answer whether a byte can continue a Birnam identifier or selector word." ];
+
+[Reflect defineMethod: #highlightWordEnd:in: on: Digla as: [:self :start :text |
+  let i := [start asCell];
+  let done := [false asCell];
+  [[| [[[i value] < [text size]] & [[done value] not]]] whileTrue: [|
+    let b := [text byteAt: [i value]];
+    [[self highlightWordByte: b]
+      ifTrue: [| [i set: [[i value] + 1]]]
+      ifFalse: [| [done set: true]]]]];
+  [i value]
+  ] doc:
+  "Find the first byte after an identifier/selector word." ];
+
+[Reflect defineMethod: #highlightNumberEnd:in: on: Digla as: [:self :start :text |
+  let i := [start asCell];
+  let dot := [false asCell];
+  let done := [false asCell];
+  [[| [[[i value] < [text size]] & [[done value] not]]] whileTrue: [|
+    let b := [text byteAt: [i value]];
+    let digit := [[b >= 48] & [b <= 57]];
+    [[digit | [[b = 46] & [[dot value] not]]]
+      ifTrue: [|
+        [[b = 46] ifTrue: [| [dot set: true]]];
+        [i set: [[i value] + 1]]]
+      ifFalse: [| [done set: true]]]]];
+  [i value]
+  ] doc:
+  "Find the first byte after a simple integer or decimal literal." ];
+
+[Reflect defineMethod: #highlightStringEnd:in: on: Digla as: [:self :start :text |
+  let i := [start asCell];
+  let done := [false asCell];
+  [[| [[[i value] < [text size]] & [[done value] not]]]
+    whileTrue: [|
+      let b := [text byteAt: [i value]];
+      [[b = 92]
+        ifTrue: [|
+          [[[[i value] + 1] < [text size]]
+            ifTrue: [| [i set: [[i value] + 2]]]
+            ifFalse: [| [i set: [text size]]]]]
+        ifFalse: [|
+          [[b = 34]
+            ifTrue: [| [i set: [[i value] + 1]]; [done set: true]]
+            ifFalse: [|
+              [[b = 10]
+                ifTrue: [| [i set: [text size]]; [done set: true]]
+                ifFalse: [| [i set: [[i value] + 1]]]]]]]]]];
+  [i value]
+  ] doc:
+  "Find the end of a quoted string, including its closing quote when present." ];
+
+[Reflect defineMethod: #highlightCommentEnd:in: on: Digla as: [:self :start :text |
+  let i := [start asCell];
+  [[| [[[i value] < [text size]] & [[[text byteAt: [i value]] = 10] not]]]
+    whileTrue: [| [i set: [[i value] + 1]]]];
+  [i value]
+  ] doc:
+  "Find the newline or end of source after a line comment." ];
+
+[Reflect defineMethod: #highlightKindForWord:colon: on: Digla as: [:self :word :colon |
+  [[[word = "let"] | [word = "ifTrue"] | [word = "ifFalse"] |
+   [word = "do"] | [word = "value"] | [word = "on"] |
+   [word = "as"] | [word = "doc"]]
+    ifTrue: [| "keyword"]
+    ifFalse: [|
+      [[[word = "true"] | [word = "false"] | [word = "nil"]]
+        ifTrue: [| "literal"]
+        ifFalse: [| [colon ifTrue: [| "selector"] ifFalse: [| "identifier"]]]]]]
+  ] doc:
+  "Classify one scanned identifier for syntax coloring." ];
+
+[Reflect defineMethod: #highlightEntry:kind:end: on: Digla as: [:self :kind :start :finish |
+  { "kind" -> kind, "start" -> start, "end" -> finish }
+  ] doc:
+  "Build one byte-span syntax highlight entry." ];
+
+[Reflect defineMethod: #highlightRangesIn: on: Digla as: [:self :text |
+  let out := [#[] asCell];
+  let i := [0 asCell];
+  [[| [[i value] < [text size]]] whileTrue: [|
+    let start := [i value];
+    let b := [text byteAt: start];
+    [[b = 47]
+      ifTrue: [|
+        [[start + 1 < [text size]]
+          ifTrue: [|
+            [[[text byteAt: [start + 1]] = 47]
+              ifTrue: [|
+                let finish := [self highlightCommentEnd: [start + 2] in: text];
+                [out set: [[out value] add: [self highlightEntry: "comment" kind: start end: finish]]];
+                [i set: finish]]
+              ifFalse: [| [i set: [start + 1]]]]]
+          ifFalse: [| [i set: [start + 1]]]]]
+      ifFalse: [|
+        [[b = 34]
+          ifTrue: [|
+            let finish := [self highlightStringEnd: [start + 1] in: text];
+            [out set: [[out value] add: [self highlightEntry: "string" kind: start end: finish]]];
+            [i set: finish]]
+          ifFalse: [|
+            [[b = 35]
+              ifTrue: [|
+                let finish := [[start + 1] asCell];
+                [[[finish value] < [text size]]
+                  ifTrue: [|
+                    [[self highlightWordByte: [text byteAt: [finish value]]]
+                      ifTrue: [| [finish set: [self highlightWordEnd: [finish value] in: text]]]]]
+                  ifFalse: [| nil]];
+                [out set: [[out value] add: [self highlightEntry: "symbol" kind: start end: [finish value]]]];
+                [i set: [finish value]]]
+              ifFalse: [|
+                let digit := [[b >= 48] & [b <= 57]];
+                [digit
+                  ifTrue: [|
+                    let finish := [self highlightNumberEnd: start in: text];
+                    [out set: [[out value] add: [self highlightEntry: "number" kind: start end: finish]]];
+                    [i set: finish]]
+                  ifFalse: [|
+                    let word := [self highlightWordByte: b];
+                    [word
+                      ifTrue: [|
+                        let finish := [self highlightWordEnd: start in: text];
+                        let colon := [[finish < [text size]] & [[text byteAt: finish] = 58]];
+                        let actualFinish := [colon ifTrue: [| [finish + 1]] ifFalse: [| finish]];
+                        let wordText := [text copyFrom: start to: finish];
+                        let kind := [self highlightKindForWord: wordText colon: colon];
+                        [out set: [[out value] add: [self highlightEntry: kind kind: start end: actualFinish]]];
+                        [i set: actualFinish]]
+                      ifFalse: [|
+                        [[[b = 32] | [b = 9] | [b = 10] | [b = 13]]
+                          ifTrue: [| [i set: [start + 1]]]
+                          ifFalse: [|
+                            [out set: [[out value] add: [self highlightEntry: "punctuation" kind: start end: [start + 1]]]];
+                            [i set: [start + 1]]]]]]]]]]]]]]]];
+  [out value]
+  ] doc:
+  "Scan source into non-overlapping byte-span syntax highlights without evaluation." ];
+
+[Reflect defineMethod: #analysisFor: on: Digla as: [:self :text |
+  { "highlights" -> [self highlightRangesIn: text],
+    "diagnostics" -> [Lsp staticDiagnosticsOf: text] }
+  ] doc:
+  "Parse source for byte-span diagnostics and scan it for terminal syntax highlights." ];

@@ -1,0 +1,31 @@
+// analysis-test.birnam — lexical highlighting and parser diagnostics.
+
+let e := [TestSuite named: "Digla analysis" module: #diglaAnalysis];
+
+[e test: "highlighting preserves byte spans and token kinds" do: [:t |
+  let text := "let answer := 42; // note\n[answer printString]";
+  let spans := [Digla highlightRangesIn: text];
+  let first := [spans at: 0];
+  let second := [spans at: 1];
+  let number := [spans detect: [:entry | [[entry at: "kind"] = "number"]]];
+  let comment := [spans detect: [:entry | [[entry at: "kind"] = "comment"]]];
+  [t expect: [first at: "kind"] equals: "keyword" describes: "let is a keyword"];
+  [t expect: [first at: "start"] equals: 0 describes: "keyword begins at byte zero"];
+  [t expect: [second at: "kind"] equals: "identifier" describes: "binding is an identifier"];
+  [t expect: [number at: "start"] equals: 14 describes: "number span starts at its source byte"];
+  [t expect: [comment at: "kind"] equals: "comment" describes: "line comment is highlighted"]]];
+
+[e test: "analysis returns shared static diagnostics" do: [:t |
+  let clean := [Digla analysisFor: "let x := 1"];
+  let bad := [Digla analysisFor: "let x := [3 +"];
+  let diagnostic := [[bad at: "diagnostics"] at: 0];
+  [t expect: [[clean at: "diagnostics"] size] equals: 0 describes: "clean source has no diagnostics"];
+  [t expect: [[bad at: "diagnostics"] size] equals: 1 describes: "incomplete source has one diagnostic"];
+  [t expect: [diagnostic at: "kind" ifAbsent: [| nil]] equals: "syntaxError"
+    describes: "diagnostics retain the static-analysis kind"];
+  [t expect: [diagnostic at: "start" ifAbsent: [| nil]] equals: 13
+    describes: "Digla diagnostics retain source-byte starts"];
+  [t expect: [diagnostic at: "end" ifAbsent: [| nil]] equals: 13
+    describes: "end-of-input diagnostics retain a source-byte point"];
+  [t expect: [diagnostic at: "range" ifAbsent: [| nil]] equals: nil
+    describes: "Digla does not format diagnostics as LSP ranges"]]];

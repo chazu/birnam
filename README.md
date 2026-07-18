@@ -338,5 +338,6 @@ from-zero bootstrap compiler and performance floor.
   tracks the termbox2 editor client, shared language-service coordinates, and
   explicit local/remote image sessions. The first local `--ui` editor slice is
   runnable, the source/LSP PositionMap and terminal DisplayLayout slices are
-  landed; highlighting, diagnostics, selection, autocomplete, and remote
-  sessions remain staged.
+  landed, and lexical highlighting, parser-backed diagnostics, and wrapped
+  evaluation results are visible; selection, autocomplete, and remote sessions
+  remain staged.

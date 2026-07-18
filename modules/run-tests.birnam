@@ -32,6 +32,10 @@
 [System load: "modules/digla/editor-test.birnam"];
 [System load: "modules/digla/display-layout.birnam"];
 [System load: "modules/digla/display-layout-test.birnam"];
+[System load: "modules/digla/analysis.birnam"];
+[System load: "modules/digla/analysis-test.birnam"];
+[System load: "modules/digla/render.birnam"];
+[System load: "modules/digla/render-test.birnam"];
 
 // -- run them all through the console runner, then gate the exit code ----------
 [Test runAllSuitesWithRunner: ConsoleRunner];

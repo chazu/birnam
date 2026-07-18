@@ -44,6 +44,9 @@ modules/digla/editor.birnam      value-only cursor/edit/history/evaluation model
 modules/digla/editor-test.birnam headless editor contract
 modules/digla/display-layout.birnam source-to-terminal-cell projection
 modules/digla/display-layout-test.birnam terminal coordinate contract tests
+modules/digla/analysis.birnam       lexical highlights and LSP diagnostics
+modules/digla/analysis-test.birnam analysis contract tests
+modules/digla/render-test.birnam    headless renderer decision tests
 modules/digla/termbox.birnam     Termbox module entry
 wrapped/termbox2/                vendored C library and Alien wrapper
 examples/digla/birnam.toml       composed application project
@@ -59,8 +62,10 @@ buffer, Ctrl-J inserts a newline, Enter evaluates the current Birnam form
 against the local image, and history is recalled with Ctrl-P/Ctrl-N or the
 arrow keys. The model is headless and stores source cursors as UTF-8 byte
 boundaries. The initial PositionMap source/LSP conversion and terminal-cell
-DisplayLayout projection slices are implemented and tested; syntax highlighting,
-diagnostics, and remote sessions remain later slices.
+DisplayLayout projection slices are implemented and tested. Lexical syntax
+highlights and parser-backed diagnostics are now projected through that same
+source-coordinate seam; selection, completion, and remote sessions remain later
+slices.
 
 ## 2. Goals and boundaries
 
@@ -334,12 +339,15 @@ The core invariants are:
    UTF-8/UTF-16 and absolute byte-position seam from the existing LSP behavior,
    then project source boundaries into terminal cells with Unicode width and
    logical-line records. Viewport and soft-wrap refinements remain open.
-2. **Reusable termbox module — implemented.** Promote the Logue wrapper into an optional,
-   reusable terminal module. Keep terminal setup out of the boot-critical REPL.
+2. **Reusable termbox module — implemented.** Promote the Logue wrapper into an
+   optional, reusable terminal module. Its public selectors share one native
+   Alien dispatcher so startup does not compile a trampoline per terminal
+   operation. Keep terminal setup out of the boot-critical REPL.
 3. **Local terminal editor — initial slice implemented.** Add a single-buffer
    `--ui` entrypoint with editing, UTF-8-aware cursor movement, multiline input,
-   history, local evaluation, and a scrollable transcript against the local
-   image. Syntax spans, diagnostics, selection, autocomplete, and viewport
+   history, local evaluation, a scrollable transcript against the local image,
+   terminal-cell-aware wrapping for evaluation results, lexical syntax spans,
+   and parser-backed diagnostics. Selection, autocomplete, and viewport
    refinements are still open.
 4. **Compatibility remote session.** Connect the same UI to the current
    line-oriented socket REPL so the client/session boundary is exercised early.

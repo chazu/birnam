@@ -76,11 +76,11 @@ until product evidence selects the next failure model.
 
 - [x] **Digla terminal editor foundation / Design 58** (2026-07-17) — the
   multi-file `modules/digla/` project now includes a headless editor model,
-  UTF-8 byte-boundary cursor movement, history, local evaluation, transcript
-  rendering, an optional Termbox `--ui` entrypoint, and the initial source/LSP
-  PositionMap conversion plus terminal-cell DisplayLayout mapping. Next: add
-  syntax spans and diagnostics, then selection and autocomplete on the same
-  source-coordinate seam.
+  UTF-8 byte-boundary cursor movement, history, local evaluation, terminal-cell
+  wrapped transcript rendering, an optional Termbox `--ui` entrypoint, and the initial source/LSP
+  PositionMap conversion plus terminal-cell DisplayLayout mapping, lexical
+  syntax spans, and parser-backed diagnostics. Next: add selection and
+  autocomplete on the same source-coordinate seam.
 
 ---
 

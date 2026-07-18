@@ -1,0 +1,31 @@
+// render-test.birnam — headless tests for renderer decisions.
+
+let e := [TestSuite named: "Digla render" module: #diglaRender];
+
+[e test: "highlight colors and diagnostics" do: [:t |
+  let text := "let x := [3 +";
+  let analysis := [Digla analysisFor: text];
+  let row := { "sourceStart" -> 0, "sourceEnd" -> [text size] };
+  let promptColor := [Digla diagnosticColorForRow: row analysis: analysis text: text];
+  [t expect: [Digla highlightColorFor: "keyword"] equals: 7 describes: "keywords use cyan"];
+  [t expect: [Digla highlightColorFor: "string"] equals: 3 describes: "strings use green"];
+  [t expect: promptColor equals: 2 describes: "diagnostic lines use red prompts"]]];
+
+[e test: "an end-of-input diagnostic does not black out the preceding word" do: [:t |
+  let text := "[word";
+  let analysis := [Digla analysisFor: text];
+  let word := [[analysis at: "highlights"] detect: [:entry | [[entry at: "kind"] = "identifier"]]];
+  let color := [Digla highlightColorFor: word diagnostics: [analysis at: "diagnostics"]
+    start: [word at: "start"] end: [word at: "end"] text: text];
+  let row := { "sourceStart" -> 0, "sourceEnd" -> [text size] };
+  [t expect: color equals: 8 describes: "the word keeps the visible default foreground"];
+  [t expect: [Digla diagnosticColorForRow: row analysis: analysis text: text]
+    equals: 2 describes: "the row still reports the end-of-input diagnostic in red"]]];
+
+[e test: "transcript lines wrap at terminal-cell boundaries" do: [:t |
+  let ascii := [Digla transcriptLines: #["abcdef"] width: 4];
+  let unicode := [Digla transcriptLines: #["a🙂b"] width: 3];
+  let explicit := [Digla transcriptLines: #["ab\ncdef"] width: 3];
+  [t expect: ascii equals: #["abcd" "ef"] describes: "ASCII results hard-wrap to terminal width"];
+  [t expect: unicode equals: #["a🙂" "b"] describes: "wide glyphs wrap by display cells, not bytes"];
+  [t expect: explicit equals: #["ab" "cde" "f"] describes: "explicit newlines and width wrapping compose"]]];

@@ -18,34 +18,176 @@
   [d , " config=" , pathText]] doc:
   "Render the resolved startup configuration as a deterministic one-line summary."];
 
+[Reflect defineMethod: #highlightColorFor: on: Digla as: [:self :kind |
+  [[kind = "comment"] ifTrue: [| 5] ifFalse: [|
+    [[kind = "string"] ifTrue: [| 3] ifFalse: [|
+      [[kind = "number"] ifTrue: [| 6] ifFalse: [|
+        [[kind = "symbol"] ifTrue: [| 6] ifFalse: [|
+          [[kind = "keyword"] ifTrue: [| 7] ifFalse: [|
+            [[kind = "selector"] ifTrue: [| 4] ifFalse: [| 8]]]]]]]]]]]]
+  ] doc:
+  "Map a lexical highlight kind to a Termbox foreground color." ];
+
+[Reflect defineMethod: #diagnosticIntersects:start:end:in: on: Digla as: [:self :diagnostic :start :finish :text |
+  let diagnosticStart := [diagnostic at: "start"];
+  let diagnosticEnd := [diagnostic at: "end"];
+  let span := [[diagnosticStart < finish] & [diagnosticEnd > start]];
+  let point := [[[diagnosticStart = diagnosticEnd] & [diagnosticStart >= start]]
+    & [diagnosticStart < finish]];
+  [span | point]
+  ] doc:
+  "Answer whether one static diagnostic overlaps a half-open source byte span." ];
+
+[Reflect defineMethod: #diagnosticTouchesRow:start:end:in: on: Digla as: [:self :diagnostic :start :finish :text |
+  let diagnosticStart := [diagnostic at: "start"];
+  let diagnosticEnd := [diagnostic at: "end"];
+  let span := [[diagnosticStart < finish] & [diagnosticEnd > start]];
+  let point := [[[diagnosticStart = diagnosticEnd] & [diagnosticStart >= start]]
+    & [diagnosticStart <= finish]];
+  [span | point]
+  ] doc:
+  "Answer whether a diagnostic touches a logical row, including its end boundary." ];
+
+[Reflect defineMethod: #highlightColorFor:diagnostics:start:end:text: on: Digla as: [:self :entry :diagnostics :start :finish :text |
+  let color := [[self highlightColorFor: [entry at: "kind"]] asCell];
+  [diagnostics do: [:diagnostic |
+    [[self diagnosticIntersects: diagnostic start: start end: finish in: text]
+      ifTrue: [| [color set: 2]]]]];
+  [color value]
+  ] doc:
+  "Choose syntax color, overriding a span with red when a diagnostic overlaps it." ];
+
+[Reflect defineMethod: #diagnosticColorForRow:analysis:text: on: Digla as: [:self :row :analysis :text |
+  let start := [row at: "sourceStart"];
+  let finish := [row at: "sourceEnd"];
+  let color := [8 asCell];
+  [[analysis at: "diagnostics"] do: [:diagnostic |
+    [[self diagnosticTouchesRow: diagnostic start: start end: finish in: text]
+      ifTrue: [| [color set: 2]]]]];
+  [color value]
+  ] doc:
+  "Choose the prompt color for a source line containing a diagnostic." ];
+
+[Reflect defineMethod: #renderSourceRange:start:end:y:promptWidth:fg:text: on: Digla as: [:self :rowStart :start :finish :y :promptWidth :fg :text |
+  let x := [promptWidth + [self displayColumnIn: text at: start]];
+  [[start < finish]
+    ifTrue: [| [Termbox printX: x y: y fg: fg bg: 0 str: [text copyFrom: start to: finish]]]
+    ifFalse: [| nil]];
+  nil
+  ] doc:
+  "Render one source byte range at its projected terminal-cell x coordinate." ];
+
+[Reflect defineMethod: #renderSourceRow:analysis:y:promptWidth:in: on: Digla as: [:self :row :analysis :y :promptWidth :text |
+  let lineStart := [row at: "sourceStart"];
+  let lineEnd := [row at: "sourceEnd"];
+  let cursor := [lineStart asCell];
+  let highlights := [analysis at: "highlights"];
+  let diagnostics := [analysis at: "diagnostics"];
+  [highlights do: [:entry |
+    let entryStart := [entry at: "start"];
+    let entryEnd := [entry at: "end"];
+    [[[entryStart < lineEnd] & [entryEnd > lineStart]] ifTrue: [|
+      let start := [[entryStart < lineStart] ifTrue: [| lineStart] ifFalse: [| entryStart]];
+      let finish := [[entryEnd > lineEnd] ifTrue: [| lineEnd] ifFalse: [| entryEnd]];
+      [[[cursor value] < start]
+        ifTrue: [|
+          [self renderSourceRange: lineStart start: [cursor value] end: start
+            y: y promptWidth: promptWidth fg: 8 text: text]]
+        ifFalse: [| nil]];
+      [[start < finish]
+        ifTrue: [|
+          let color := [self highlightColorFor: entry diagnostics: diagnostics
+            start: start end: finish text: text];
+          [self renderSourceRange: lineStart start: start end: finish
+            y: y promptWidth: promptWidth fg: color text: text]]
+        ifFalse: [| nil]];
+      [cursor set: finish]]]]];
+  [[[cursor value] < lineEnd]
+    ifTrue: [|
+      [self renderSourceRange: lineStart start: [cursor value] end: lineEnd
+        y: y promptWidth: promptWidth fg: 8 text: text]]
+    ifFalse: [| nil]];
+  nil
+  ] doc:
+  "Render one logical source row from byte spans through terminal-cell positions." ];
+
+[Reflect defineMethod: #wrapTranscriptLine:width: on: Digla as: [:self :text :requestedWidth |
+  let width := [[requestedWidth < 1] ifTrue: [| 1] ifFalse: [| requestedWidth]];
+  let lines := [#[] asCell];
+  let start := [0 asCell];
+  let byte := [0 asCell];
+  let column := [0 asCell];
+  [[| [[byte value] < [text size]]] whileTrue: [|
+    let i := [byte value];
+    let glyphWidth := [self terminalCellWidthAt: i column: [column value] in: text];
+    let overflows := [[[column value] > 0] & [[[column value] + glyphWidth] > width]];
+    [overflows
+      ifTrue: [|
+        [lines set: [[lines value] add: [text copyFrom: [start value] to: i]]];
+        [start set: i];
+        [column set: 0]]
+      ifFalse: [|
+        [byte set: [i + [self utf8WidthAt: i in: text]]];
+        [column set: [[column value] + glyphWidth]]]]]];
+  [lines set: [[lines value] add: [text copyFrom: [start value] to: [text size]]]];
+  [lines value]
+  ] doc:
+  "Hard-wrap one transcript line at terminal-cell boundaries without splitting UTF-8." ];
+
+[Reflect defineMethod: #transcriptLines:width: on: Digla as: [:self :transcript :width |
+  let lines := [#[] asCell];
+  [transcript do: [:entry |
+    let logicalLines := [entry split: "\n"];
+    [logicalLines do: [:logicalLine |
+      let wrapped := [self wrapTranscriptLine: logicalLine width: width];
+      [wrapped do: [:line |
+        [lines set: [[lines value] add: line]]
+      ]]
+    ]]
+  ]];
+  [lines value]
+  ] doc:
+  "Flatten transcript entries into terminal-width display rows." ];
+
 [Reflect defineMethod: #renderTerminal: on: Digla as: [:self :state |
+  let width := [Termbox width];
   let height := [Termbox height];
   let buffer := [state at: "buffer"];
-  let lines := [buffer split: "\n"];
-  let editorRows := [lines size];
+  let analysis := [self analysisFor: buffer];
+  let layout := [self displayLayoutFor: buffer promptWidth: 2];
+  let rows := [layout at: "lines"];
+  let editorRows := [rows size];
   let editorStart := [height - editorRows - 2];
   let start := [[editorStart < 1] ifTrue: [| 1] ifFalse: [| editorStart]];
   [Termbox clear];
-  [Termbox printX: 0 y: 0 fg: 7 bg: 0 str: "Digla  local image editor  (Esc quit, Ctrl-J newline, Enter evaluate)"];
+  [Termbox printX: 0 y: 0 fg: 8 bg: 0 str: "Digla  local image editor  (Esc quit, Ctrl-J newline, Enter evaluate)"];
+  let transcriptLines := [self transcriptLines: [state at: "transcript"] width: width];
+  let availableTranscriptRows := [start - 1];
+  let firstTranscriptLine0 := [[transcriptLines size] - availableTranscriptRows];
+  let firstTranscriptLine := [[firstTranscriptLine0 < 0]
+    ifTrue: [| 0]
+    ifFalse: [| firstTranscriptLine0]];
   let transcriptY := [1 asCell];
-  [[state at: "transcript"] do: [:entry |
-    [[[transcriptY value] < start]
-      ifTrue: [|
-        [[entry split: "\n"] do: [:line |
-          [[[transcriptY value] < start]
-            ifTrue: [| [Termbox printX: 0 y: [transcriptY value] fg: 7 bg: 0 str: line];
-                     [transcriptY set: [[transcriptY value] + 1]]]
-            ifFalse: [| nil]]]]]
-      ifFalse: [| nil]]]];
-  [[0 to: [[lines size] - 1]] do: [:i |
+  [[[[transcriptLines size] > 0] & [availableTranscriptRows > 0]]
+    ifTrue: [|
+      [firstTranscriptLine to: [[transcriptLines size] - 1] do: [:i |
+        [Termbox printX: 0 y: [transcriptY value] fg: 8 bg: 0 str: [transcriptLines at: i]];
+        [transcriptY set: [[transcriptY value] + 1]]]]]
+    ifFalse: [| nil]];
+  [rows do: [:row |
+    let i := [row at: "line"];
     let prompt := [[i = 0] ifTrue: [| "> "] ifFalse: [| "| "]];
-    let line := [lines at: i];
     let y := [start + i];
     [[[y < [height - 1]] & [y >= 1]]
-      ifTrue: [| [Termbox printX: 0 y: y fg: 7 bg: 0 str: [prompt , line]]]
+      ifTrue: [|
+        let promptColor := [self diagnosticColorForRow: row analysis: analysis text: buffer];
+        [Termbox printX: 0 y: y fg: promptColor bg: 0 str: prompt];
+        [self renderSourceRow: row analysis: analysis y: y promptWidth: 2 in: buffer]]
       ifFalse: [| nil]]]];
-  let status := [[state at: "status"] , "  bytes=" , [[buffer size] printString]];
-  [Termbox printX: 0 y: [height - 1] fg: 6 bg: 0 str: status];
+  let diagnosticCount := [[[analysis at: "diagnostics"] size] printString];
+  let status := [[state at: "status"] , "  bytes=" , [[buffer size] printString]
+    , "  diagnostics=" , diagnosticCount];
+  [Termbox printX: 0 y: [height - 1] fg: 7 bg: 0 str: status];
   let position := [self terminalPositionForByte: [state at: "cursor"] in: buffer promptWidth: 2];
   let cursorX := [position at: "x"];
   let cursorY := [start + [position at: "line"]];

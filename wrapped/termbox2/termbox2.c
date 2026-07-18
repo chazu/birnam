@@ -83,3 +83,55 @@ const char *lg_ev_char(void) {
     out[n] = '\0';
     return out;
 }
+
+/* Compile one Alien trampoline, then dispatch here. Alien uses TCC for every
+ * `wrap:` declaration, so keeping the public Birnam API in the image while
+ * sharing this native entry point avoids paying that compilation cost once per
+ * Termbox operation at startup. */
+enum lg_operation {
+    LG_INIT = 1,
+    LG_SHUTDOWN,
+    LG_WIDTH,
+    LG_HEIGHT,
+    LG_CLEAR,
+    LG_PRESENT,
+    LG_HIDE_CURSOR,
+    LG_POLL,
+    LG_EV_TYPE,
+    LG_EV_KEY,
+    LG_EV_CH,
+    LG_SET_CURSOR,
+    LG_SET_CELL,
+    LG_PRINT,
+    LG_EV_CHAR,
+};
+
+int lg_dispatch(void *self, int op, int a, int b, int c, int d, int e,
+                const char *text, char *out) {
+    (void)self;
+    switch (op) {
+    case LG_INIT:        return lg_init();
+    case LG_SHUTDOWN:    return lg_shutdown();
+    case LG_WIDTH:       return lg_width();
+    case LG_HEIGHT:      return lg_height();
+    case LG_CLEAR:       return lg_clear();
+    case LG_PRESENT:     return lg_present();
+    case LG_HIDE_CURSOR: return lg_hide_cursor();
+    case LG_POLL:        return lg_poll();
+    case LG_EV_TYPE:     return lg_ev_type();
+    case LG_EV_KEY:      return lg_ev_key();
+    case LG_EV_CH:       return lg_ev_ch();
+    case LG_SET_CURSOR:  return lg_set_cursor(NULL, a, b);
+    case LG_SET_CELL:    return lg_set_cell(NULL, a, b, c, d, e);
+    case LG_PRINT:       return lg_print(NULL, a, b, c, d, text);
+    case LG_EV_CHAR: {
+        const char *character;
+        int i;
+        if (out == NULL) return -1;
+        character = lg_ev_char();
+        for (i = 0; i < 5; i++) out[i] = character[i];
+        return 0;
+    }
+    default:             return -1;
+    }
+}

@@ -36,6 +36,7 @@
 //! hook, and evaluates its `__ev` entry.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const idapi = @import("idapi.zig");
 const artifact_contract = @import("artifact.zig");
 
@@ -70,6 +71,7 @@ var candidate_preparing = false;
 var candidate_commit_in_progress = false;
 var image_dispatch_recovery = false;
 var initial_generation_sealed = false;
+var reflect_target_resolution_count: usize = 0;
 const RuntimePhase = enum { bootstrapping, running, quiescent, image_recovery };
 var runtime_phase: RuntimePhase = .bootstrapping;
 
@@ -886,6 +888,7 @@ fn exportedSymbolForValue(value: Oop) Oop {
 }
 
 fn methodTargetName(vt: Oop) Oop {
+    if (builtin.is_test) reflect_target_resolution_count += 1;
     const owner = g_api.vtableOwner(vt);
     const owner_name = exportedSymbolForValue(owner);
     if (owner_name != g_api.nilObj) return owner_name;
@@ -898,6 +901,14 @@ fn methodTargetName(vt: Oop) Oop {
     const vtable_name = exportedSymbolForValue(vt);
     if (vtable_name != g_api.nilObj) return vtable_name;
     return globalNameForValue(vt);
+}
+
+pub fn resetReflectTargetResolutionCountForTesting() void {
+    if (builtin.is_test) reflect_target_resolution_count = 0;
+}
+
+pub fn reflectTargetResolutionCountForTesting() usize {
+    return if (builtin.is_test) reflect_target_resolution_count else 0;
 }
 
 fn isRegisteredVtable(value: Oop) bool {
@@ -937,7 +948,7 @@ fn methodSourceForVtableSelector(vt: Oop, selector: Oop) Oop {
     return generationMethodSource(target_name, selector);
 }
 
-fn reflectMethodDescriptor(vt: Oop, selector: Oop) Oop {
+fn reflectMethodDescriptor(vt: Oop, selector: Oop, target_name: Oop) Oop {
     const owner = g_api.vtableOwner(vt);
     const mirror = g_api.send(g_store, sel_currentValue, &[_]Oop{ vt, selector }, 2);
     const primitive = g_api.intern("primitive");
@@ -950,7 +961,7 @@ fn reflectMethodDescriptor(vt: Oop, selector: Oop) Oop {
     var descriptor = newMap();
     descriptor = mapPut(descriptor, g_api.intern("selector"), selector);
     descriptor = mapPut(descriptor, g_api.intern("owner"), owner orelse g_api.nilObj);
-    descriptor = mapPut(descriptor, g_api.intern("target"), methodTargetName(vt));
+    descriptor = mapPut(descriptor, g_api.intern("target"), target_name);
     descriptor = mapPut(descriptor, g_api.intern("method"), method);
     // Source lookup is intentionally lazy: walking the active generation's
     // method documents is useful for one method, but would make enumerating a
@@ -988,6 +999,7 @@ fn mAllMethodsOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
         };
         if (repeated_vtable) break;
         seen_vtables.append(ca, vt) catch @panic("codegen: oom");
+        const target_name = methodTargetName(vt);
 
         var i: usize = 0;
         while (g_api.vtableSelectorAt(vt, i)) |selector| : (i += 1) {
@@ -998,7 +1010,7 @@ fn mAllMethodsOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
             };
             if (repeated_selector) continue;
             seen_selectors.append(ca, selector) catch @panic("codegen: oom");
-            result = g_api.send(result, g_api.intern("add:"), &[_]Oop{reflectMethodDescriptor(vt, selector)}, 1);
+            result = g_api.send(result, g_api.intern("add:"), &[_]Oop{reflectMethodDescriptor(vt, selector, target_name)}, 1);
         }
         vt = g_api.vtableParent(vt);
     }

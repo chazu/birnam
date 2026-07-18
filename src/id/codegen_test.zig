@@ -705,12 +705,14 @@ test "Reflect enumerates effective methods and current facts without raw pointer
     store.backfillMirror(api);
     const Reflect = api.import("Reflect").?;
 
+    codegen.resetReflectTargetResolutionCountForTesting();
     const methods = api.send(Reflect, api.intern("allMethodsOf:"), &[_]Oop{api.import("String").?}, 1);
     try std.testing.expect(api.smallIntValue(api.send(methods, api.intern("size"), &.{}, 0)) > 0);
     var saw_clone = false;
     var selectors: std.ArrayList(Oop) = .{};
     defer selectors.deinit(std.heap.c_allocator);
     const count = api.smallIntValue(api.send(methods, api.intern("size"), &.{}, 0));
+    try std.testing.expect(codegen.reflectTargetResolutionCountForTesting() < count);
     var i: i64 = 0;
     while (i < count) : (i += 1) {
         const descriptor = vectorAt(api, methods, i);

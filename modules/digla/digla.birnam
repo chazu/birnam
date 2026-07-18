@@ -6,6 +6,6 @@
 
 // AppConfig is a boot-provided standard module, already present in the stage-1
 // image. Project-owned modules do not rebuild that standard dependency.
-[Module named: #digla requires: #[]];
+[Module named: #digla requires: #[#lsp]];
 [Globals at: #Digla put: [Object clone]];
 [Reflect docModule: #digla is: "The Digla terminal programming environment and its image-session model."];

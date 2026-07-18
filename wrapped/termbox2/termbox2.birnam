@@ -26,30 +26,43 @@
 // vtable, so these methods do not leak onto Object.
 [Globals at: #Termbox put: [Object clone]];
 
-// -- lifecycle / screen ---------------------------------------------------
-// No C arguments, so the receiver is unused: signature is just the return type.
-[Alien wrap: "lg_init"        signature: "i" as: #init       on: Termbox];   // 0 on success
-[Alien wrap: "lg_shutdown"    signature: "i" as: #shutdown   on: Termbox];
-[Alien wrap: "lg_width"       signature: "i" as: #width      on: Termbox];   // columns
-[Alien wrap: "lg_height"      signature: "i" as: #height     on: Termbox];   // rows
-[Alien wrap: "lg_clear"       signature: "i" as: #clear      on: Termbox];   // clear back buffer
-[Alien wrap: "lg_present"     signature: "i" as: #present    on: Termbox];   // flush to screen
-[Alien wrap: "lg_hide_cursor" signature: "i" as: #hideCursor on: Termbox];
-[Alien wrap: "lg_set_cursor" signature: "i p i i" as: #setCursor:y: on: Termbox];
+// Alien compiles one TCC trampoline per `wrap:` declaration. One generic
+// native entry point keeps that fixed startup cost small; the public Termbox
+// selectors below remain ordinary image methods and preserve the existing API.
+[Alien wrap: "lg_dispatch" signature: "i p i i i i i i s p"
+  as: #dispatch:a:b:c:d:e:text:output: on: Termbox];
 
-// -- drawing --------------------------------------------------------------
-// These take arguments, so Alien marshals the receiver as the first C arg. The
-// adapter's leading `void* self` is a dummy that absorbs `Termbox`; the real values
-// follow (see the receiver-idiom note in termbox2.c). Hence the `p` after the
-// return type in each signature.
-// [Termbox setX: c y: r ch: codepoint fg: fgColor bg: bgColor]
-[Alien wrap: "lg_set_cell" signature: "i p i i i i i" as: #setX:y:ch:fg:bg: on: Termbox];
-// [Termbox printX: c y: r fg: fgColor bg: bgColor str: "text"]
-[Alien wrap: "lg_print"    signature: "i p i i i i s" as: #printX:y:fg:bg:str: on: Termbox];
-
-// -- input ----------------------------------------------------------------
-[Alien wrap: "lg_poll"    signature: "i" as: #poll   on: Termbox];   // BLOCKS; returns event type
-[Alien wrap: "lg_ev_type" signature: "i" as: #evType on: Termbox];   // TB_EVENT_*
-[Alien wrap: "lg_ev_key"  signature: "i" as: #evKey  on: Termbox];   // TB_KEY_* (0 if a char)
-[Alien wrap: "lg_ev_ch"   signature: "i" as: #evCh   on: Termbox];    // codepoint (0 if special)
-[Alien wrap: "lg_ev_char" signature: "s" as: #evChar on: Termbox]; // last character as UTF-8
+[Reflect defineMethod: #init on: Termbox as: [:self |
+  [self dispatch: 1 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #shutdown on: Termbox as: [:self |
+  [self dispatch: 2 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #width on: Termbox as: [:self |
+  [self dispatch: 3 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #height on: Termbox as: [:self |
+  [self dispatch: 4 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #clear on: Termbox as: [:self |
+  [self dispatch: 5 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #present on: Termbox as: [:self |
+  [self dispatch: 6 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #hideCursor on: Termbox as: [:self |
+  [self dispatch: 7 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #poll on: Termbox as: [:self |
+  [self dispatch: 8 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #evType on: Termbox as: [:self |
+  [self dispatch: 9 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #evKey on: Termbox as: [:self |
+  [self dispatch: 10 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #evCh on: Termbox as: [:self |
+  [self dispatch: 11 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #setCursor:y: on: Termbox as: [:self :x :y |
+  [self dispatch: 12 a: x b: y c: 0 d: 0 e: 0 text: "" output: 0]]];
+[Reflect defineMethod: #setX:y:ch:fg:bg: on: Termbox as: [:self :x :y :ch :fg :bg |
+  [self dispatch: 13 a: x b: y c: ch d: fg e: bg text: "" output: 0]]];
+[Reflect defineMethod: #printX:y:fg:bg:str: on: Termbox as: [:self :x :y :fg :bg :str |
+  [self dispatch: 14 a: x b: y c: fg d: bg e: 0 text: str output: 0]]];
+[Reflect defineMethod: #evChar on: Termbox as: [:self |
+  let out := [Alien alloc: 5];
+  [self dispatch: 15 a: 0 b: 0 c: 0 d: 0 e: 0 text: "" output: out];
+  let character := [out peekStringAt: 0];
+  [out free];
+  character]];

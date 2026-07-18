@@ -5,7 +5,13 @@ name = "digla"
 version = "0.1.0"
 main = "main.birnam"
 load = ["digla", "termbox"]
-source_roots = ["../../modules"]
+source_roots = ["."]
+
+[[module]]
+entry = "../../modules/json.birnam"
+
+[[module]]
+entry = "../../modules/lsp.birnam"
 
 [[module]]
 entry = "../../modules/digla/digla.birnam"
@@ -17,6 +23,7 @@ files = [
   "../../modules/digla/position-map.birnam",
   "../../modules/digla/editor.birnam",
   "../../modules/digla/display-layout.birnam",
+  "../../modules/digla/analysis.birnam",
 ]
 
 [[module]]
