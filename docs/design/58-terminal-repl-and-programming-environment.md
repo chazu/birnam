@@ -116,9 +116,10 @@ selection, and viewport following remain byte-authoritative across those rows.
 Positive `timeoutMs` evaluation requests now bound the canonical stack-flat Block
 and Integer loops with application-local cooperative safepoints. Captured `System`
 writes now cross framed protocol transports immediately through an evaluation-local
-sink while retaining the bounded response fallback. Protocol-driven interruption
-during a still-running evaluation remains a later slice; the synchronous evaluator
-advertises `interrupt=false` truthfully.
+sink while retaining the bounded response fallback. A TCP session can also consume
+a correlated `birnam/interrupt` frame nonblockingly at those same cooperative loop
+boundaries, reject stale request IDs, and keep the live session usable. Stdio and
+the current serial terminal submit path remain truthfully non-interruptible.
 
 ## 2. Goals and boundaries
 
@@ -443,10 +444,13 @@ The core invariants are:
    on `Block whileTrue:/whileFalse:` and `Integer to:do:`. Expiry propagates an
    `#evaluationDeadline` error into a structured `phase="timeout"` response and
    leaves the session usable. The adapter advertises this narrower contract as
-   `cooperativeDeadline=true` while retaining `interrupt=false`: the serial JSON
-   loop cannot consume an interrupt request during evaluation, and arbitrary
-   recursion or a blocking native/foreign call has no safe application-level
-   preemption point.
+   `cooperativeDeadline=true`. TCP sessions additionally install a transport-owned
+   nonblocking probe at those same loop boundaries and advertise `interrupt=true`
+   plus `cooperativeInterrupt=true`. A pipelined, correlated interrupt receives its
+   own response before the evaluation returns `phase="interrupted"`; a stale target
+   is rejected, and a following request proves the image session remains usable.
+   Stdio retains `interrupt=false`, and arbitrary recursion or a blocking
+   native/foreign call still has no safe application-level preemption point.
 6. **Runtime-aware assistance — inspection, completion, and explicit semantic slices implemented.** `:inspect`,
    `:globals`, and `:session` use the shared session layer without evaluating
    report expressions. `birnam/runtimeCompletion` supplies bounded live-image
@@ -481,8 +485,8 @@ runtime-compiled Alien layer with the precompiled wrapped module reduced full
 Digla cold launch from about 3.5 s to 1.89-2.00 s in three consecutive runs; a
 real Termbox alternate-screen render and Escape shutdown smoke also passed.
 After the subsequent navigation, structured-output, deadline, and TCP-client
-slices, the current larger application image launches in 2.65-2.67 s across
-three consecutive runs. The TCP client implementation is kept to two registered
+slices, the current larger application image launches in 2.72-2.79 s across
+five consecutive runs. The TCP client implementation is kept to two registered
 adapter methods plus transport-neutral session selection so the remote slice does
 not grow into another layer of startup helpers.
 
@@ -516,9 +520,8 @@ closes normally.
 The TCP client path is also covered process-to-process: a terminal-independent
 editor model starts local, switches with `:connect remote`, evaluates
 two `System` writes followed by `[6 * 7]`, receives one duplicate-free buffered
-transcript entry plus the value in order, and
-closes both ends. Five steady remote
-round trips of `[ Reflect allMethodsOf: "YourMom" ]` completed in 23.2-24.3 ms
+transcript entry plus the value in order, and closes both ends. Three steady remote
+round trips of `[ Reflect allMethodsOf: "YourMom" ]` completed in 25.3-25.9 ms
 each including framing, JSON, copied-value rendering, and a 6,099-character
 response.
 
@@ -526,6 +529,9 @@ Real-time delivery has a separate timing regression: the server emits `"early"`
 before entering a 250,000-iteration evaluation loop, and the test requires the
 output frame to precede the final value by more than 100 ms. The response still
 contains its bounded aggregate event for clients that implement request/reply only.
+That same process test pipelines first a stale and then a correlated interrupt
+behind an infinite `whileTrue:` evaluation, verifies only the correlated request
+stops it, evaluates `42` afterward, and closes normally.
 
 The typing path is also bounded away from whole-buffer parser work. Diagnostics
 are cached and explicitly refreshed, already-buffered Termbox events are applied
@@ -557,7 +563,7 @@ delivered correctly.
 - runtime values use a small typed copied-value record, while deeper inspection
   uses the capability-free snapshot schema from Design 55;
 - authentication and session ownership once connections can leave loopback.
-- whether a future protocol interrupt justifies an explicit evaluator safepoint
-  below the application layer. The current cooperative deadline intentionally
-  covers only Birnam's canonical stack-flat loops; it cannot safely preempt
-  recursion, arbitrary native work, or a foreign call.
+- whether broader interruption justifies an explicit evaluator safepoint below
+  the application layer. The current TCP interrupt intentionally covers only
+  Birnam's canonical stack-flat loops; it cannot safely preempt recursion,
+  arbitrary native work, or a foreign call.

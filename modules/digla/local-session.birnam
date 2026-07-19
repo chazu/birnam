@@ -60,6 +60,8 @@
     "globals" -> true,
     "runtimeCompletion" -> true,
     "interrupt" -> false,
+    "cooperativeInterrupt" -> false,
+    "interruptSafeBoundaries" -> #[],
     "structuredValues" -> true,
     "outputEvents" -> output,
     "outputNotifications" -> output,
@@ -249,13 +251,19 @@
               let timedOut := [runtimeError
                 ifTrue: [| [[value kind] = #evaluationDeadline]]
                 ifFalse: [| false]];
+              let interrupted := [runtimeError
+                ifTrue: [| [[value kind] = #evaluationInterrupted]]
+                ifFalse: [| false]];
               let phase := [[compileError notNil]
                 ifTrue: [| "compile"]
-                ifFalse: [| [timedOut ifTrue: [| "timeout"] ifFalse: [| "runtime"]]]];
+                ifFalse: [| [timedOut
+                  ifTrue: [| "timeout"]
+                  ifFalse: [| [interrupted ifTrue: [| "interrupted"] ifFalse: [| "runtime"]]]]]];
               let next0 := [session at: "lastError" put: message];
               let next := [next0 at: "globalNamesCache" put: nil];
               { "result" -> { "ok" -> false, "kind" -> "error", "phase" -> phase,
-                               "timedOut" -> timedOut, "timeoutMs" -> timeoutMs,
+                               "timedOut" -> timedOut, "interrupted" -> interrupted,
+                               "timeoutMs" -> timeoutMs,
                                "message" -> message, "display" -> message, "events" -> events },
                 "session" -> next }]
             ifFalse: [|

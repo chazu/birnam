@@ -162,6 +162,9 @@ sub receive_message {
 send_request({jsonrpc => "2.0", id => 1, method => "birnam/session/open", params => {}});
 my $open = receive_message();
 die "streamed output capability missing\n" unless $open->{result}{capabilities}{streamedOutput};
+die "cooperative interrupt capability missing\n" unless $open->{result}{capabilities}{interrupt};
+die "interrupt contract not marked cooperative\n"
+  unless $open->{result}{capabilities}{cooperativeInterrupt};
 my $started = time;
 send_request({jsonrpc => "2.0", id => 2, method => "birnam/evaluate", params => {
   source => q{[System println: "early"]; [1 to: 250000 do: [:i | nil]]; 42}}});
@@ -175,8 +178,37 @@ die "streaming evaluation value changed\n" unless $response->{result}{value}{val
 die "output was buffered until evaluation completed\n" unless $response_ms - $output_ms > 100;
 printf "output %.1f ms result %.1f ms gap %.1f ms\n",
   $output_ms, $response_ms, $response_ms - $output_ms;
-send_request({jsonrpc => "2.0", id => 3, method => "birnam/close", params => {}});
-receive_message();
+send_request({jsonrpc => "2.0", id => 3, method => "birnam/evaluate", params => {
+  source => q{[[| true] whileTrue: [| nil]]}, timeoutMs => 200}});
+send_request({jsonrpc => "2.0", id => 4, method => "birnam/interrupt", params => {
+  requestId => 999}});
+my $stale_interrupt = receive_message();
+die "stale interrupt response id changed: " . encode_json($stale_interrupt) . "\n"
+  unless $stale_interrupt->{id} == 4;
+die "stale request interrupted the active evaluation\n" if $stale_interrupt->{result}{interrupted};
+my $stale_evaluation = receive_message();
+die "stale-target evaluation response id changed\n" unless $stale_evaluation->{id} == 3;
+die "stale target bypassed the evaluation deadline\n"
+  unless $stale_evaluation->{result}{phase} eq "timeout";
+send_request({jsonrpc => "2.0", id => 5, method => "birnam/evaluate", params => {
+  source => q{[[| true] whileTrue: [| nil]]}}});
+send_request({jsonrpc => "2.0", id => 6, method => "birnam/interrupt", params => {
+  requestId => 5}});
+my $interrupt = receive_message();
+die "interrupt response id changed\n" unless $interrupt->{id} == 6;
+die "active evaluation was not interrupted\n" unless $interrupt->{result}{interrupted};
+die "interrupt response lost request correlation\n" unless $interrupt->{result}{requestId} == 5;
+my $interrupted = receive_message();
+die "interrupted evaluation response id changed\n" unless $interrupted->{id} == 5;
+die "evaluation interruption phase missing\n" unless $interrupted->{result}{phase} eq "interrupted";
+die "evaluation interruption flag missing\n" unless $interrupted->{result}{interrupted};
+send_request({jsonrpc => "2.0", id => 7, method => "birnam/evaluate", params => {
+  source => q{[20 + 22]}}});
+my $healthy = receive_message();
+die "session unusable after interrupt\n" unless $healthy->{result}{value}{value} == 42;
+send_request({jsonrpc => "2.0", id => 8, method => "birnam/close", params => {}});
+my $closed = receive_message();
+die "interrupted session did not close\n" unless $closed->{result}{closed};
 ' "$port" >"$tmp/stream-timing" &
 stream_client_pid=$!
 for _ in $(seq 1 100); do

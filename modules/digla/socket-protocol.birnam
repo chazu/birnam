@@ -214,9 +214,71 @@
   let me := self;
   let read := [| [me readSocketSessionBody: conn pending: pending]];
   let write := [:body | [me sendSocketSessionBody: body on: conn]];
-  [self serveSessionJson: [self localSessionFor: config] read: read write: write]
+  let interruptAvailable := [self evaluationDeadlineAvailable];
+  let base := [self localSessionFor: config];
+  let capabilities0 := [base at: "capabilities"];
+  let capabilities1 := [capabilities0 at: "interrupt" put: interruptAvailable];
+  let capabilities2 := [capabilities1 at: "cooperativeInterrupt" put: interruptAvailable];
+  let safeBoundaries := [interruptAvailable
+    ifTrue: [| #["Block whileTrue:/whileFalse:" "Integer to:do:"]]
+    ifFalse: [| #[]]];
+  let capabilities := [capabilities2 at: "interruptSafeBoundaries" put: safeBoundaries];
+  let configured := [base at: "capabilities" put: capabilities];
+  let interruptProbeFor := [:evaluationRequest |
+    let evaluationId := [evaluationRequest at: "id" ifAbsent: [| nil]];
+    let blocked := [false asCell];
+    [|
+      [[blocked value]
+        ifTrue: [| false]
+        ifFalse: [|
+          let buffer := [conn buffer];
+          let received := [[conn fd] recvInto: buffer len: 65535 flags: 128];
+          let chunk := [[received < 0]
+            ifTrue: [| nil]
+            ifFalse: [|
+              [[received = 0]
+                ifTrue: [| ""]
+                ifFalse: [|
+                  [buffer pokeByte: 0 at: received];
+                  [buffer peekStringAt: 0]]]]];
+          [[chunk notNil]
+            ifTrue: [| [pending set: [[pending value] , chunk]]]
+            ifFalse: [| nil]];
+          let frame := [me sessionFrameStep: [pending value]];
+          [[[frame at: "status"] = "ready"]
+            ifTrue: [|
+              let message := [Json parse: [frame at: "body"]];
+              let valid := [[message isError]
+                ifTrue: [| false]
+                ifFalse: [| [me sessionRequestIsValid: message]]];
+              let method := [valid
+                ifTrue: [| [message at: "method"]]
+                ifFalse: [| ""]];
+              [[method = "birnam/interrupt"]
+                ifTrue: [|
+                  let params := [message at: "params"];
+                  let target := [params at: "requestId" ifAbsent: [| evaluationId]];
+                  let matches := [target = evaluationId];
+                  [pending set: [frame at: "rest"]];
+                  let result := { "interrupted" -> matches,
+                    "requestId" -> evaluationId, "cooperative" -> true,
+                    "reason" -> [matches
+                      ifTrue: [| "interrupt accepted at a safe boundary"]
+                      ifFalse: [| "request is not active"]] };
+                  let response := [me sessionSuccess:
+                    [message at: "id" ifAbsent: [| nil]] result: result];
+                  [write value: [Json stringify: response]];
+                  matches]
+                ifFalse: [| [blocked set: true]; false]]]
+            ifFalse: [|
+              [[[frame at: "status"] = "invalid"]
+                ifTrue: [| [blocked set: true]]
+                ifFalse: [| nil]];
+              false]]]]]];
+  let session := [configured at: "interruptProbeFor" put: interruptProbeFor];
+  [self serveSessionJson: session read: read write: write]
   ] doc:
-  "Serve one connected socket with the shared framed runtime-session dispatcher." ];
+  "Serve one connected socket with framed output and cooperative interrupt probing." ];
 
 [Reflect defineMethod: #sessionTcpBindAllowed:allowRemote: on: Digla as: [:self :bind :allowRemote |
   let loopback := [[bind = "127.0.0.1"] | [bind = "localhost"]];

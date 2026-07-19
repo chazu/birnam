@@ -86,9 +86,17 @@ canonical stack-flat loops (`Block whileTrue:/whileFalse:` and `Integer to:do:`)
 An expired deadline returns a structured `phase="timeout"` error while keeping
 the live session usable. The terminal uses `evaluation-timeout-ms` from Digla's
 config (`--evaluation-timeout-ms=5000`, `DIGLA_EVALUATION_TIMEOUT_MS`, or TOML);
-the default is `0`, meaning unlimited. This is deliberately advertised as
-`cooperativeDeadline`, not `interrupt`: recursive code, foreign calls, and native
-operations without those loop boundaries cannot be preempted safely.
+the default is `0`, meaning unlimited.
+
+The TCP server also advertises `interrupt=true` and `cooperativeInterrupt=true`.
+While an evaluation is active, a client may pipeline `birnam/interrupt` on the
+same connection with an optional `params.requestId`. The server nonblockingly
+checks for that frame at the same canonical Block/Integer loop boundaries, answers
+the interrupt request immediately, and returns the evaluation with
+`phase="interrupted"`; stale request IDs are rejected and the session remains
+usable. Stdio and the current serial terminal submit path still advertise or
+behave as non-interruptible. Recursive code, foreign calls, and native operations
+without those safe boundaries cannot be preempted.
 
 The same protocol is available to a long-lived loopback client over TCP:
 

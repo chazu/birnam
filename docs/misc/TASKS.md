@@ -110,12 +110,14 @@ until product evidence selects the next failure model.
   unframed bytes onto session stdout. Framed clients now receive each captured
   write immediately through an evaluation-local sink while the response retains
   its bounded aggregate fallback; a process timing regression proves output leads
-  a long-running result by more than 100 ms. Bounded interruption remains a
-  truthful unsupported capability. Positive `timeoutMs` requests and the
+  a long-running result by more than 100 ms. TCP sessions now also consume a
+  correlated `birnam/interrupt` nonblockingly at the same canonical loop
+  boundaries, reject stale targets, return a structured interrupted phase, and
+  remain usable; stdio and the serial terminal submit path stay non-interruptible.
+  Positive `timeoutMs` requests and the
   `evaluation-timeout-ms` application setting now provide the narrower safe slice:
   application-local cooperative deadlines on canonical Block and Integer loops,
-  returning structured timeout errors while leaving `interrupt=false` for the
-  still-serial protocol.
+  returning structured timeout errors for every transport.
   A real PTY consumed and rendered a 60-byte form in under 500 ms, and evaluated
   and visibly wrapped the full `allMethodsOf:` result within one second. Page Up
   and Page Down now navigate those wrapped transcript rows with clamped offsets;
@@ -126,9 +128,10 @@ until product evidence selects the next failure model.
   inside a 500 ms observation window. Resolver snapshots reuse the active project
   resolution, while source lookup parses only files containing the requested token;
   the measured lookup adds roughly 0.24-0.29 s beyond startup. The current enriched
-  image starts in 2.65-2.67 s, and five steady remote `allMethodsOf:` round trips
-  complete in 23.2-24.3 ms including framing and a 6,099-character result. Next: add structured
-  bounded protocol interruption on the session seam.
+  image starts in 2.72-2.79 s, and three steady remote `allMethodsOf:` round trips
+  complete in 25.3-25.9 ms including framing and a 6,099-character result. Next:
+  add a reactor-backed terminal receive/interrupt interaction without moving terminal
+  ownership into the session or runtime layers.
 
 ---
 

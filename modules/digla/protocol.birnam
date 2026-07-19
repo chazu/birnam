@@ -57,6 +57,13 @@
                 let method := [request at: "method" ifAbsent: [| ""]];
                 let streaming := [[method = "birnam/evaluate"] &
                   [self evaluationOutputStreamingAvailable]];
+                let interruptFactory := [[current value] at: "interruptProbeFor"
+                  ifAbsent: [| nil]];
+                let interruptible := [[[method = "birnam/evaluate"] &
+                  [interruptFactory notNil]] & [self evaluationDeadlineAvailable]];
+                let interruptProbe := [interruptible
+                  ifTrue: [| [interruptFactory value: request]]
+                  ifFalse: [| [| false]]];
                 let outputSink := [:event |
                   let active := [current value];
                   let notification := [self sessionNotification: "birnam/output" params: {
@@ -67,7 +74,13 @@
                 [streaming
                   ifTrue: [| [self beginEvaluationOutputStreaming: outputSink]]
                   ifFalse: [| nil]];
+                [interruptible
+                  ifTrue: [| [self beginEvaluationInterruptProbe: interruptProbe]]
+                  ifFalse: [| nil]];
                 let reply := [self performSessionRequest: request in: [current value]];
+                [interruptible
+                  ifTrue: [| [self endEvaluationInterruptProbe]]
+                  ifFalse: [| nil]];
                 [streaming
                   ifTrue: [| [self endEvaluationOutputStreaming]]
                   ifFalse: [| nil]];

@@ -33,6 +33,7 @@ var output_sequence: usize = 0;
 var evaluation_deadline_active = false;
 var evaluation_deadline_start: std.time.Instant = undefined;
 var evaluation_deadline_ns: u64 = 0;
+var evaluation_interrupt_probe: Oop = null;
 var error_vt: Oop = null;
 
 fn send0(receiver: Oop, selector: [*:0]const u8) Oop {
@@ -202,10 +203,14 @@ fn mEndEvaluationDeadline(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop
     return self;
 }
 
-fn deadlineExpired(iteration: usize) bool {
-    if (!evaluation_deadline_active or iteration & 255 != 0) return false;
-    const now = std.time.Instant.now() catch return false;
-    return now.since(evaluation_deadline_start) >= evaluation_deadline_ns;
+fn mBeginEvaluationInterruptProbe(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    evaluation_interrupt_probe = args[0];
+    return self;
+}
+
+fn mEndEvaluationInterruptProbe(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    evaluation_interrupt_probe = null;
+    return self;
 }
 
 fn isError(value: Oop) bool {
@@ -224,10 +229,37 @@ fn evaluationDeadlineError() Oop {
     );
 }
 
+fn evaluationInterruptedError() Oop {
+    return g_api.send(
+        g_api.import("Error"),
+        g_api.intern("kind:message:"),
+        &[_]Oop{
+            g_api.intern("evaluationInterrupted"),
+            string("evaluation interrupted at a cooperative loop boundary"),
+        },
+        2,
+    );
+}
+
+fn cooperativeFailure(iteration: usize) ?Oop {
+    if (iteration & 255 != 0) return null;
+    if (evaluation_interrupt_probe != null) {
+        const interrupted = send0(evaluation_interrupt_probe, "value");
+        if (isError(interrupted)) return interrupted;
+        if (interrupted == g_api.trueObj) return evaluationInterruptedError();
+    }
+    if (evaluation_deadline_active) {
+        const now = std.time.Instant.now() catch return null;
+        if (now.since(evaluation_deadline_start) >= evaluation_deadline_ns)
+            return evaluationDeadlineError();
+    }
+    return null;
+}
+
 fn cooperativeWhile(condition: Oop, body: Oop, continue_on: Oop) Oop {
     var iteration: usize = 0;
     while (true) : (iteration +%= 1) {
-        if (deadlineExpired(iteration)) return evaluationDeadlineError();
+        if (cooperativeFailure(iteration)) |failure| return failure;
         const value = send0(condition, "value");
         if (isError(value)) return value;
         if (value != g_api.trueObj and value != g_api.falseObj) {
@@ -264,7 +296,7 @@ fn mIntegerToDo(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
         value += 1;
         iteration +%= 1;
     }) {
-        if (deadlineExpired(iteration)) return evaluationDeadlineError();
+        if (cooperativeFailure(iteration)) |failure| return failure;
         const result = send1(block, "value:", g_api.mkSmallInt(value));
         if (isError(result)) return result;
     }
@@ -778,6 +810,8 @@ fn bringUp(api: *idapi.IdApi) void {
     api.method(api.vtableOf(digla), api.intern("evaluationDeadlineAvailable"), &mEvaluationDeadlineAvailable);
     api.method(api.vtableOf(digla), api.intern("beginEvaluationDeadline:"), &mBeginEvaluationDeadline);
     api.method(api.vtableOf(digla), api.intern("endEvaluationDeadline"), &mEndEvaluationDeadline);
+    api.method(api.vtableOf(digla), api.intern("beginEvaluationInterruptProbe:"), &mBeginEvaluationInterruptProbe);
+    api.method(api.vtableOf(digla), api.intern("endEvaluationInterruptProbe"), &mEndEvaluationInterruptProbe);
     api.method(api.vtableOf(digla), api.intern("runtimeNamed:"), &mRuntimeNamed);
     api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:"), &mRenderFrame);
     api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:width:"), &mRenderWrappedFrame);
