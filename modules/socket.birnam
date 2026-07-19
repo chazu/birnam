@@ -221,19 +221,21 @@
       [buf peekStringAt: 0]]]] doc:
   "Read up to 64 KB; answers the bytes as a String (\"\" on EOF/error). Text-safe (an embedded NUL truncates)."];
 
-// Send the whole String, looping over partial writes (recurses on the unsent tail).
+// Send the whole String, iterating over partial writes.
 [Reflect defineMethod: #sendString: on: SockConn as: [:self :s |
-  let n := [s size];
-  [[n = 0]
-    ifTrue:  [| 0]
-    ifFalse: [|
-      let sent := [[self fd] sendStr: s len: n flags: 0];
-      [[sent < n]
-        ifTrue:  [|
-          [[sent < 1]
-            ifTrue:  [| sent]
-            ifFalse: [| [self sendString: [s copyFrom: sent to: n]]]]]
-        ifFalse: [| sent]]]]] doc:
+  let remaining := [s asCell];
+  let total := [0 asCell];
+  let failed := [nil asCell];
+  [[| [[[[remaining value] isEmpty] not] & [[failed value] isNil]]] whileTrue: [|
+    let part := [remaining value];
+    let sent := [[self fd] sendStr: part len: [part size] flags: 0];
+    [[sent < 1]
+      ifTrue: [| [failed set: sent]]
+      ifFalse: [|
+        [total set: [[total value] + sent]];
+        [remaining set: [part copyFrom: sent to: [part size]]]]]]];
+  [[[failed value] isNil] ifTrue: [| [total value]] ifFalse: [| [failed value]]]
+  ] doc:
   "Send the whole String `s`, looping over any partial writes."];
 
 // Free the recv buffer (libc malloc, not GC'd) and close the fd.
@@ -250,5 +252,8 @@
   [[self fd] fcntlCmd: 4 arg: 4]] doc:
   "Set the connection fd non-blocking (reactor stub; the blocking path doesn't use it)."];
 
-// Arm the SIGPIPE guard as the last step of loading.
-[Socket ignoreSigpipe]
+// Arm the SIGPIPE guard as the last step of loading. The side effect itself may
+// answer nil, so finish with the module object: Codegen load: uses nil to signal
+// an artifact-load failure.
+[Socket ignoreSigpipe];
+Socket

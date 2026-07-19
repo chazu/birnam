@@ -1,6 +1,7 @@
 // Digla's runnable entrypoint. The default remains a headless configuration
 // report so project checks and scripts are safe; pass `--ui` after `--` for the
-// local Termbox editor.
+// local Termbox editor, `--session-stdio` for a child-process protocol, or
+// `--session-listen` for a loopback TCP session server.
 
 let args := [Globals at: #ProjectArgs];
 let config := [Digla configForArgs: args];
@@ -9,6 +10,10 @@ let config := [Digla configForArgs: args];
   ifFalse: [|
     let ui := [[args includes: "--ui"] | [args includes: "--interactive"]];
     let sessionStdio := [args includes: "--session-stdio"];
+    let sessionListen := [args includes: "--session-listen"];
+    let sessionListenOnce := [args includes: "--session-listen-once"];
+    let allowRemote := [args includes: "--allow-remote"];
+    let sessionTcp := [sessionListen | sessionListenOnce];
     let runUi := [|
       let init := [Termbox init];
       [[init = 0]
@@ -20,5 +25,16 @@ let config := [Digla configForArgs: args];
     [sessionStdio
       ifTrue: [| [Digla serveSessionStdio: [Digla localSessionFor: config]]]
       ifFalse: [|
-        [ui ifTrue: [| [runUi value]]];
-        [ui ifFalse: [| [System println: [Digla summary: config]]]]]]]];
+        [sessionTcp
+          ifTrue: [|
+            let endpoint := [[config at: "bind"] , ":" , [[config at: "port"] printString]];
+            [System println: ["Digla framed session listening on " , endpoint]];
+            let result := [sessionListenOnce
+              ifTrue: [| [Digla serveOneSessionTcpWith: config allowRemote: allowRemote]]
+              ifFalse: [| [Digla serveSessionTcpWith: config allowRemote: allowRemote]]];
+            [[result isError]
+              ifTrue: [| [System println: [result printString]]]
+              ifFalse: [| result]]]
+          ifFalse: [|
+            [ui ifTrue: [| [runUi value]]];
+            [ui ifFalse: [| [System println: [Digla summary: config]]]]]]]]]];

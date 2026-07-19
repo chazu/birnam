@@ -58,3 +58,22 @@ let e := [TestSuite named: "Digla protocol" module: #diglaProtocol];
     describes: "valid JSON with the wrong shape is rejected"];
   [t expect: [[[[responses value] at: 2] at: "result"] at: "adapter"] equals: "local"
     describes: "loop continues after malformed input"]]];
+
+[e test: "session loop stays stack-flat across a long client stream" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let requestCount := [0 asCell];
+  let responseCount := [0 asCell];
+  let interrupt := [Json stringify: { "jsonrpc" -> "2.0", "id" -> 1,
+    "method" -> "birnam/interrupt", "params" -> [Map new] }];
+  let close := [Json stringify: { "jsonrpc" -> "2.0", "id" -> 2,
+    "method" -> "birnam/close", "params" -> [Map new] }];
+  let read := [|
+    let current := [requestCount value];
+    [requestCount set: [current + 1]];
+    [[current < 2048] ifTrue: [| interrupt] ifFalse: [| close]]];
+  let write := [:body | [responseCount set: [[responseCount value] + 1]]];
+  let final := [Digla serveSessionJson: [Digla localSessionFor: config]
+    read: read write: write];
+  [t expect: [final at: "status"] equals: "closed" describes: "close still terminates"];
+  [t expect: [responseCount value] equals: 2049
+    describes: "iterative loop serves every request without recursive growth"]]];

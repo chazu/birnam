@@ -82,9 +82,11 @@ until product evidence selects the next failure model.
   syntax spans, parser-backed diagnostics, and a bounded completion menu merging
   scoped source candidates with live-image globals. Evaluation, inspection,
   globals, runtime completion, and image identity use one JSON-RPC-shaped session
-  boundary; terminal commands and `--session-stdio` consume the same copied-value
-  responses. Next: add the loopback TCP adapter, selection, viewport refinement,
-  and hover/signature/source navigation on the same seams.
+  boundary; terminal commands, `--session-stdio`, and the loopback-only-by-default
+  `--session-listen` adapter consume the same copied-value responses. Next:
+  remove the remaining `Reflect allMethodsOf:` project-image hot path, then add
+  selection, viewport refinement, and hover/signature/source navigation on the
+  same seams.
 
 ---
 

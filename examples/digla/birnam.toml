@@ -4,7 +4,7 @@
 name = "digla"
 version = "0.1.0"
 main = "main.birnam"
-load = ["digla", "termbox"]
+load = ["diglaSocket", "termbox"]
 source_roots = ["."]
 
 [[module]]
@@ -12,6 +12,9 @@ entry = "../../modules/json.birnam"
 
 [[module]]
 entry = "../../modules/lsp.birnam"
+
+[[module]]
+entry = "../../modules/socket.birnam"
 
 [[module]]
 entry = "../../modules/digla/digla.birnam"
@@ -29,6 +32,9 @@ files = [
   "../../modules/digla/analysis.birnam",
   "../../modules/digla/language-service.birnam",
 ]
+
+[[module]]
+entry = "../../modules/digla/socket-protocol.birnam"
 
 [[module]]
 entry = "../../modules/digla/termbox.birnam"

@@ -1,0 +1,32 @@
+// socket-protocol-test.birnam — pure framing and bind-policy contracts.
+
+let e := [TestSuite named: "Digla socket protocol" module: #diglaSocket];
+
+[e test: "frame decoder handles partial and pipelined messages" do: [:t |
+  let firstBody := "{\"id\":1}";
+  let secondBody := "{\"id\":2}";
+  let first := ["Content-Length: 8\r\n\r\n" , firstBody];
+  let second := ["Content-Length: 8\r\n\r\n" , secondBody];
+  let partial := [Digla sessionFrameStep: [first copyFrom: 0 to: 12]];
+  let decodedFirst := [Digla sessionFrameStep: [first , second]];
+  let decodedSecond := [Digla sessionFrameStep: [decodedFirst at: "rest"]];
+  [t expect: [partial at: "status"] equals: "incomplete" describes: "partial header waits"];
+  [t expect: [decodedFirst at: "body"] equals: firstBody describes: "first body decoded"];
+  [t expect: [decodedSecond at: "body"] equals: secondBody describes: "pipelined remainder decoded"];
+  [t expect: [decodedSecond at: "rest"] equals: "" describes: "remainder exhausted"]]];
+
+[e test: "frame decoder rejects missing and oversized lengths" do: [:t |
+  let missing := [Digla sessionFrameStep: "X-Test: 1\r\n\r\n{}"];
+  let oversized := [Digla sessionFrameStep: "Content-Length: 1048577\r\n\r\n"];
+  [t expect: [missing at: "status"] equals: "invalid" describes: "length is required"];
+  [t expect: [oversized at: "status"] equals: "invalid" describes: "body limit enforced"]]];
+
+[e test: "TCP bind policy defaults to loopback" do: [:t |
+  [t expect: [Digla sessionTcpBindAllowed: "127.0.0.1" allowRemote: false]
+    equals: true describes: "numeric loopback allowed"];
+  [t expect: [Digla sessionTcpBindAllowed: "localhost" allowRemote: false]
+    equals: true describes: "localhost allowed"];
+  [t expect: [Digla sessionTcpBindAllowed: "0.0.0.0" allowRemote: false]
+    equals: false describes: "all-interface bind denied by default"];
+  [t expect: [Digla sessionTcpBindAllowed: "0.0.0.0" allowRemote: true]
+    equals: true describes: "explicit remote opt-in allowed"]]];

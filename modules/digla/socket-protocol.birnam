@@ -1,0 +1,129 @@
+// socket-protocol.birnam — loopback TCP delivery for Digla sessions.
+//
+// Framing is pure copied-value logic over accumulated String chunks. Socket
+// ownership and blocking accept live only in this optional adapter module; the
+// editor, language service, and session dispatcher remain transport-neutral.
+
+[Module named: #diglaSocket requires: #[#digla #socket]];
+[Reflect docModule: #diglaSocket is:
+  "The optional loopback TCP adapter for framed Digla image sessions." ];
+
+[Reflect defineMethod: #sessionFrameStep: on: Digla as: [:self :pending |
+  let marker := "\r\n\r\n";
+  let headerEnd := [pending indexOf: marker];
+  [[headerEnd isNil]
+    ifTrue: [|
+      [[[pending size] > 8192]
+        ifTrue: [| { "status" -> "invalid", "reason" -> "session header exceeds 8192 bytes" }]
+        ifFalse: [| { "status" -> "incomplete" }]]]
+    ifFalse: [|
+      let bodyStart := [headerEnd + [marker size]];
+      let header := [pending copyFrom: 0 to: bodyStart];
+      let length := [Lsp contentLengthOf: header];
+      [[length isNil]
+        ifTrue: [| { "status" -> "invalid", "reason" -> "missing Content-Length" }]
+        ifFalse: [|
+          let validLength := [[length >= 0] & [length <= 1048576]];
+          [validLength
+            ifTrue: [|
+              let finish := [bodyStart + length];
+              [[[pending size] < finish]
+                ifTrue: [| { "status" -> "incomplete" }]
+                ifFalse: [|
+                  { "status" -> "ready",
+                    "body" -> [pending copyFrom: bodyStart to: finish],
+                    "rest" -> [pending copyFrom: finish to: [pending size]] }]]]
+            ifFalse: [| { "status" -> "invalid",
+                           "reason" -> "session body exceeds 1 MiB limit" }]]]]]]
+  ] doc:
+  "Decode at most one Content-Length frame from accumulated connection bytes." ];
+
+[Reflect defineMethod: #readSocketSessionBody:pending: on: Digla as: [:self :conn :pending |
+  let reading := [true asCell];
+  let answer := [nil asCell];
+  [[| [reading value]] whileTrue: [|
+    let frame := [self sessionFrameStep: [pending value]];
+    let status := [frame at: "status"];
+    [[status = "ready"]
+      ifTrue: [|
+        [pending set: [frame at: "rest"]];
+        [answer set: [frame at: "body"]];
+        [reading set: false]]
+      ifFalse: [|
+        [[status = "invalid"]
+          ifTrue: [| [pending set: ""]; [reading set: false]]
+          ifFalse: [|
+            let chunk := [conn recv];
+            [[chunk isEmpty]
+              ifTrue: [| [reading set: false]]
+              ifFalse: [| [pending set: [[pending value] , chunk]]]]]]]]]];
+  [answer value]
+  ] doc:
+  "Read chunks iteratively until one framed JSON body is ready, or answer nil on EOF/invalid framing." ];
+
+[Reflect defineMethod: #sendSocketSessionBody:on: on: Digla as: [:self :body :conn |
+  let frame := ["Content-Length: " , [[body size] printString] , "\r\n\r\n" , body];
+  [conn sendString: frame]
+  ] doc:
+  "Write one Content-Length-framed JSON body to a connected socket." ];
+
+[Reflect defineMethod: #serveSessionConnection:config: on: Digla as: [:self :conn :config |
+  let pending := ["" asCell];
+  let me := self;
+  let read := [| [me readSocketSessionBody: conn pending: pending]];
+  let write := [:body | [me sendSocketSessionBody: body on: conn]];
+  [self serveSessionJson: [self localSessionFor: config] read: read write: write]
+  ] doc:
+  "Serve one connected socket with the shared framed runtime-session dispatcher." ];
+
+[Reflect defineMethod: #sessionTcpBindAllowed:allowRemote: on: Digla as: [:self :bind :allowRemote |
+  let loopback := [[bind = "127.0.0.1"] | [bind = "localhost"]];
+  [loopback | allowRemote]
+  ] doc:
+  "Authorize loopback binds by default and non-loopback binds only by explicit opt-in." ];
+
+[Reflect defineMethod: #sessionSocketError:bind:port: on: Digla as: [:self :kind :bind :port |
+  [Error kind: kind message: ["could not serve Digla session on " , bind , ":" , [port printString]]]
+  ] doc:
+  "Build a structured socket-session failure for the configured endpoint." ];
+
+[Reflect defineMethod: #serveOneSessionTcpWith:allowRemote: on: Digla as: [:self :config :allowRemote |
+  let bind := [config at: "bind"];
+  let port := [config at: "port"];
+  [[self sessionTcpBindAllowed: bind allowRemote: allowRemote]
+    ifTrue: [|
+      let fd := [Socket listenOn: port bind: bind];
+      [[fd < 0]
+        ifTrue: [| [self sessionSocketError: #socketBindFailed bind: bind port: port]]
+        ifFalse: [|
+          let cfd := [Socket rawAccept: fd];
+          [[cfd < 0]
+            ifTrue: [|
+              [fd closeFd];
+              [self sessionSocketError: #socketAcceptFailed bind: bind port: port]]
+            ifFalse: [|
+              let conn := [Socket wrapFd: cfd];
+              let final := [self serveSessionConnection: conn config: config];
+              [conn close];
+              [fd closeFd];
+              final]]]]]
+    ifFalse: [| [Error kind: #unsafeSocketBind message:
+      ["refusing non-loopback Digla bind without --allow-remote: " , bind]]]]
+  ] doc:
+  "Serve one framed TCP session and close the listener, for scripts and smoke tests." ];
+
+[Reflect defineMethod: #serveSessionTcpWith:allowRemote: on: Digla as: [:self :config :allowRemote |
+  let bind := [config at: "bind"];
+  let port := [config at: "port"];
+  [[self sessionTcpBindAllowed: bind allowRemote: allowRemote]
+    ifTrue: [|
+      let me := self;
+      let status := [Socket serve: port bind: bind with: [:conn |
+        [me serveSessionConnection: conn config: config]]];
+      [[status < 0]
+        ifTrue: [| [self sessionSocketError: #socketBindFailed bind: bind port: port]]
+        ifFalse: [| self]]]
+    ifFalse: [| [Error kind: #unsafeSocketBind message:
+      ["refusing non-loopback Digla bind without --allow-remote: " , bind]]]]
+  ] doc:
+  "Serve framed TCP sessions serially, enforcing loopback unless explicitly overridden." ];

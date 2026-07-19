@@ -16,32 +16,36 @@
   "Validate the copied-value shape required before runtime-session dispatch." ];
 
 [Reflect defineMethod: #serveSessionJson:read:write: on: Digla as: [:self :session :read :write |
-  let body := [read value];
-  [[body isNil]
-    ifTrue: [| session]
-    ifFalse: [|
-      let request := [Json parse: body];
-      [[request isError]
-        ifTrue: [|
-          let message := [self sessionError: nil code: -32700 message: "parse error"
-            data: [request printString]];
-          [write value: [Json stringify: message]];
-          [self serveSessionJson: session read: read write: write]]
-        ifFalse: [|
-          [[self sessionRequestIsValid: request]
-            ifTrue: [|
-              let reply := [self performSessionRequest: request in: session];
-              let next := [reply at: "session"];
-              [write value: [Json stringify: [reply at: "message"]]];
-              [[[next at: "status"] = "closed"]
-                ifTrue: [| next]
-                ifFalse: [| [self serveSessionJson: next read: read write: write]]]]
-            ifFalse: [|
-              let message := [self sessionError: nil code: -32600 message: "invalid request" data: nil];
-              [write value: [Json stringify: message]];
-              [self serveSessionJson: session read: read write: write]]]]]]]
+  let current := [session asCell];
+  let running := [true asCell];
+  [[| [running value]] whileTrue: [|
+    let body := [read value];
+    [[body isNil]
+      ifTrue: [| [running set: false]]
+      ifFalse: [|
+        let request := [Json parse: body];
+        [[request isError]
+          ifTrue: [|
+            let message := [self sessionError: nil code: -32700 message: "parse error"
+              data: [request printString]];
+            [write value: [Json stringify: message]]]
+          ifFalse: [|
+            [[self sessionRequestIsValid: request]
+              ifTrue: [|
+                let reply := [self performSessionRequest: request in: [current value]];
+                let next := [reply at: "session"];
+                [current set: next];
+                [write value: [Json stringify: [reply at: "message"]]];
+                [[[next at: "status"] = "closed"]
+                  ifTrue: [| [running set: false]]
+                  ifFalse: [| nil]]]
+              ifFalse: [|
+                let message := [self sessionError: nil code: -32600
+                  message: "invalid request" data: nil];
+                [write value: [Json stringify: message]]]]]]]]]];
+  [current value]
   ] doc:
-  "Serve JSON request bodies until EOF or birnam/close using injected transport blocks." ];
+  "Serve JSON request bodies iteratively until EOF or birnam/close using injected transport blocks." ];
 
 [Reflect defineMethod: #serveSessionStdio: on: Digla as: [:self :session |
   let read := [| [Lsp readMessage]];

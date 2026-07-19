@@ -48,5 +48,16 @@ Messages use `Content-Length` framing and the methods
 `birnam/session/open`, `birnam/evaluate`, `birnam/inspect`, `birnam/globals`,
 `birnam/runtimeCompletion`, `birnam/interrupt`, and `birnam/close`. Responses
 contain only copied JSON-safe values; the local adapter retains raw runtime values only so a later
-`birnam/inspect` can inspect the last successful evaluation. The next transport
-slice is a loopback TCP adapter over this same contract.
+`birnam/inspect` can inspect the last successful evaluation.
+
+The same protocol is available to a long-lived loopback client over TCP:
+
+```sh
+zig-out/bin/birnam run examples/digla --build -- --session-listen --port=4400
+```
+
+Use `--session-listen-once` for a script or smoke test that should serve one
+connection and exit. The server accepts one client at a time, caps frames at
+1 MiB, and defaults to `127.0.0.1`. A non-loopback `--bind` is refused unless
+`--allow-remote` is also present; that opt-in exposes arbitrary live-image
+evaluation and should only be used behind an appropriate security boundary.

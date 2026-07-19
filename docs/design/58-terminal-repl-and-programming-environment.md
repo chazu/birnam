@@ -3,8 +3,8 @@
 > **Status:** In progress, updated 2026-07-19. This design explores a terminal-native
 > programming environment for Birnam, backed by termbox2, the project-aware
 > language service, and an explicit session connection to a running image. It
-> leaves the current REPL, LSP, and socket REPL intact; an initial sibling
-> runtime-session protocol is now available over framed stdio.
+> leaves the current REPL, LSP, and socket REPL intact; its sibling
+> runtime-session protocol is now available over framed stdio and loopback TCP.
 
 ## 1. The question
 
@@ -40,6 +40,8 @@ modules/digla/session.birnam     transport-neutral request/reply and editor stat
 modules/digla/inspection.birnam  capability-free live-image snapshots
 modules/digla/local-session.birnam synchronous live-image session adapter
 modules/digla/protocol.birnam    injected JSON loop and framed stdio adapter
+modules/digla/socket-protocol.birnam optional framed TCP adapter
+modules/digla/socket-protocol-test.birnam framing and bind-policy tests
 modules/digla/render.birnam      headless startup summary
 modules/digla/terminal.birnam    local Termbox event loop
 modules/digla/position-map.birnam source-byte/LSP UTF-16 conversion
@@ -73,11 +75,14 @@ highlights and parser-backed diagnostics are now projected through that same
 source-coordinate seam. Evaluation, inspection, global enumeration, and image
 identity now cross one JSON-RPC-shaped `ReplSession` contract instead of being
 called directly by the editor. `--session-stdio` exposes that same contract as
-Content-Length-framed JSON for scripts and AI agents. Tab now opens a completion
+Content-Length-framed JSON for child processes, while `--session-listen` and
+`--session-listen-once` expose it over serial loopback TCP sessions for scripts
+and AI agents. Tab now opens a completion
 menu that merges in-scope parser/CST candidates with bounded live-image globals;
 Tab or Down cycles, Up cycles backward, Enter accepts, and Escape dismisses the
 menu before it quits the editor. Selection, viewport refinements, hover,
-signature help, source navigation, and a loopback TCP adapter remain later slices.
+signature help, source navigation, streamed output, and bounded interruption
+remain later slices.
 
 ## 2. Goals and boundaries
 
@@ -199,10 +204,12 @@ session, and invalidates it after every evaluation; prefix filtering remains
 bounded to 64 results. This keeps repeated explicit completion requests out of
 the Store's indexed-attribute loop without adding a new runtime primitive.
 
-The server must default to loopback binding. A socket REPL is arbitrary code
-execution, so binding beyond loopback requires an explicit choice and eventually
-an authentication token or equivalent capability. The existing all-interface
-default is not suitable as the default for this environment.
+The server defaults to loopback binding. A socket REPL is arbitrary code
+execution, so binding beyond loopback requires both a non-loopback `--bind` and
+the explicit `--allow-remote` flag. The current adapter serves clients serially,
+rejects headers above 8 KiB and bodies above 1 MiB, and closes malformed framed
+connections. Authentication or an equivalent capability remains necessary
+before a future design makes remote binding routine.
 
 ## 6. Editor model
 
@@ -373,13 +380,14 @@ The core invariants are:
    prompt-oriented socket REPL cannot preserve structured values, errors, or
    capabilities without ambiguous text parsing. Keep it compatible for comint
    clients, but put Digla's next remote adapter over the framed contract.
-5. **Framed session protocol — initial stdio slice implemented.** JSON-RPC-shaped
+5. **Framed session protocol — stdio and loopback TCP implemented.** JSON-RPC-shaped
    `open`, `evaluate`, `inspect`, `globals`, `interrupt`, and `close` requests now
    run through a transport-neutral value layer. `--session-stdio` reuses the
-   shipped Content-Length framing. Evaluation results, compile/runtime errors,
-   inspection snapshots, image identity, and truthful capabilities are copied
-   values; output notifications, loopback TCP delivery, and bounded interrupt
-   behavior remain open.
+   shipped Content-Length framing. The optional `diglaSocket` module adds a
+   loopback-only-by-default serial TCP listener over the same iterative request
+   loop, with a one-client mode for scripts. Evaluation results, compile/runtime
+   errors, inspection snapshots, image identity, and truthful capabilities are
+   copied values; output notifications and bounded interrupt behavior remain open.
 6. **Runtime-aware assistance — inspection and completion slices implemented.** `:inspect`,
    `:globals`, and `:session` use the shared session layer without evaluating
    report expressions. `birnam/runtimeCompletion` supplies bounded live-image
@@ -387,16 +395,23 @@ The core invariants are:
    service and presented by the terminal menu. Docs, hover, signatures, and
    source-on-demand remain.
 
-The first usable milestone is complete when a user can launch the terminal editor,
+The first usable milestone is now complete: a user can launch the terminal editor,
 edit and evaluate multiline Birnam forms locally, recall history, see parser-backed
-highlighting and diagnostics, and attach the same client to a running image over
-loopback.
+highlighting and diagnostics, and attach a client to a running image over loopback.
+
+The next performance seam is below the Digla transport. In a real project-image
+TCP smoke, `[8 * 8]` evaluates in about 8 ms while
+`[ Reflect allMethodsOf: "YourMom" ]` takes about 1.76 s. Framing, JSON, and
+compilation were separately ruled out; the remaining time is target-name
+resolution inside `Reflect allMethodsOf:` against the larger project image. That
+floor path needs improvement without coupling the editor or session protocol to
+a special-case reflection cache.
 
 ## 9. Open decisions
 
 - final CLI spelling: `birnam term`, `birnam --repl=term`, or a separate binary;
-- the first Digla remote adapter will use the framed protocol; translating the
-  prompt REPL would discard the structured contract already implemented;
+- whether the serial listener should evolve into the planned poll-based reactor
+  before multiple simultaneous clients become a product requirement;
 - history-file location, retention, and opt-out behavior;
 - runtime values use a small typed copied-value record, while deeper inspection
   uses the capability-free snapshot schema from Design 55;
