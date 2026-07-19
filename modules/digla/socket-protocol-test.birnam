@@ -30,3 +30,49 @@ let e := [TestSuite named: "Digla socket protocol" module: #diglaSocket];
     equals: false describes: "all-interface bind denied by default"];
   [t expect: [Digla sessionTcpBindAllowed: "0.0.0.0" allowRemote: true]
     equals: true describes: "explicit remote opt-in allowed"]]];
+
+[e test: "TCP client core correlates replies and preserves output notifications" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new]
+    args: #["--connect=remote"]];
+  let session := [Digla tcpSessionFor: config];
+  let request := [Digla sessionRequest: "birnam/evaluate"
+    params: { "source" -> "42" } id: 9];
+  let notification := [Json stringify: {
+    "jsonrpc" -> "2.0", "method" -> "birnam/output", "params" -> {
+      "requestId" -> 9, "event" -> {
+        "kind" -> "output", "channel" -> "stdout", "text" -> "hello\n",
+        "sequence" -> 1 } } }];
+  let response := [Json stringify: {
+    "jsonrpc" -> "2.0", "id" -> 9, "result" -> {
+      "ok" -> true, "display" -> "42", "value" -> {
+        "kind" -> "integer", "value" -> 42, "display" -> "42",
+        "rendered" -> false }, "events" -> #[] } }];
+  let incoming := [#[notification response] asCell];
+  let written := [nil asCell];
+  let write := [:body | [written set: body]; [body size]];
+  let read := [|
+    let first := [[incoming value] at: 0 ifAbsent: [| nil]];
+    [[first isNil]
+      ifTrue: [| nil]
+      ifFalse: [| [incoming set: [[incoming value] copyFrom: 1 to: [[incoming value] size]]]; first]]];
+  let reply := [Digla performTcpSessionRequest: request in: session write: write read: read];
+  let sent := [Json parse: [written value]];
+  let result := [Digla sessionResultOf: reply];
+  [t expect: [sent at: "method"] equals: "birnam/evaluate" describes: "request serialized"];
+  [t expect: [[[result at: "events"] at: 0] at: "text"] equals: "hello\n"
+    describes: "notification retained when response fallback is empty"];
+  [t expect: [[result at: "value"] at: "value"] equals: 42 describes: "response correlated"];
+  [t expect: [[reply at: "session"] at: "status"] equals: "connected"
+    describes: "successful exchange keeps the client connected"]]];
+
+[e test: "TCP client EOF becomes a structured closed-session failure" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new]
+    args: #["--connect=remote"]];
+  let session := [[Digla tcpSessionFor: config] at: "status" put: "connected"];
+  let request := [Digla sessionRequest: "birnam/globals" params: [Map new] id: 3];
+  let reply := [Digla performTcpSessionRequest: request in: session
+    write: [:body | [body size]] read: [| nil]];
+  [t expect: [[[[reply at: "message"] at: "error"] at: "code"] equals: -32003
+    describes: "EOF is protocol data"];
+  [t expect: [[reply at: "session"] at: "status"] equals: "closed"
+    describes: "EOF closes the client state"]]];

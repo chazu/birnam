@@ -83,7 +83,11 @@ until product evidence selects the next failure model.
   scoped source candidates with live-image globals. Evaluation, inspection,
   globals, runtime completion, and image identity use one JSON-RPC-shaped session
   boundary; terminal commands, `--session-stdio`, and the loopback-only-by-default
-  `--session-listen` adapter consume the same copied-value responses. The
+  `--session-listen` adapter consume the same copied-value responses. A lazy
+  `--ui --connect=remote` client now drives that TCP session through the unchanged
+  terminal-independent editor model, correlates output notifications, and closes
+  the active connection on editor exit. A real loopback server/client smoke test
+  covers evaluation, transcript insertion, copied values, and close. The
   Termbox surface now loads through a precompiled application wrapper rather
   than runtime Alien compilation, reducing measured full-project cold launch
   from about 3.5 s to 1.9-2.0 s. A second project-local wrapper accelerates
@@ -116,8 +120,11 @@ until product evidence selects the next failure model.
   coalesced into one persistent-buffer edit; a 2.2 KiB PTY paste plus redraw completed
   inside a 500 ms observation window. Resolver snapshots reuse the active project
   resolution, while source lookup parses only files containing the requested token;
-  the measured lookup adds roughly 0.24-0.29 s beyond startup. Next: add structured
-  streamed output and bounded interruption on the session seam.
+  the measured lookup adds roughly 0.24-0.29 s beyond startup. The current enriched
+  image starts in 2.60-2.64 s, and five steady remote `allMethodsOf:` round trips
+  complete in 23.2-24.3 ms including framing and a 6,099-character result. Next: add structured
+  streamed output and bounded interruption on the session seam; then expose an
+  explicit in-editor local/remote session switch without coupling it to Termbox.
 
 ---
 

@@ -23,12 +23,12 @@ explicitly, inspect the resulting value, and keep working with history.
 The terminal surface is a client. It is not a second compiler, evaluator, project
 resolver, or authority model.
 
-The first shared application foundation is now shipped as the self-hosted
+The shared application foundation is now shipped as the self-hosted
 `AppConfig` module. It resolves an application's startup snapshot from defaults,
 TOML, environment, and CLI layers, with the conventional per-user path. Digla
-can consume that snapshot while keeping history and terminal-session state in
-their own modules; the terminal client and session protocol described here
-remain the next product slice.
+consumes that snapshot while keeping history and terminal-session state in its
+own modules. The terminal-independent editor now selects either its synchronous
+local-image adapter or a lazy framed TCP client from the same configuration.
 
 The first Digla project slice uses the project builder's multi-file module
 composition:
@@ -40,8 +40,8 @@ modules/digla/session.birnam     transport-neutral request/reply and editor stat
 modules/digla/inspection.birnam  capability-free live-image snapshots
 modules/digla/local-session.birnam synchronous live-image session adapter
 modules/digla/protocol.birnam    injected JSON loop and framed stdio adapter
-modules/digla/socket-protocol.birnam optional framed TCP adapter
-modules/digla/socket-protocol-test.birnam framing and bind-policy tests
+modules/digla/socket-protocol.birnam optional framed TCP client/server adapter
+modules/digla/socket-protocol-test.birnam framing, client, and bind-policy tests
 modules/digla/reflect-accelerator.birnam optional project-local reflection fast path
 modules/digla/app.birnam        one dependency root for optional runtime adapters
 modules/digla/render.birnam      headless summary and terminal renderer
@@ -84,7 +84,12 @@ identity now cross one JSON-RPC-shaped `ReplSession` contract instead of being
 called directly by the editor. `--session-stdio` exposes that same contract as
 Content-Length-framed JSON for child processes, while `--session-listen` and
 `--session-listen-once` expose it over serial loopback TCP sessions for scripts
-and AI agents. Tab now opens a completion
+and AI agents. `--ui --connect=remote` selects the matching lazy client adapter;
+the same editor model then sends evaluation, inspection, globals, runtime
+completion, identity, and close requests to the connected image while retaining
+source analysis and terminal state locally. Correlated `birnam/output`
+notifications are merged into the normal transcript without duplicating the
+response's buffered event fallback. Tab now opens a completion
 menu that merges in-scope parser/CST candidates with bounded live-image globals;
 Tab or Down cycles, Up cycles backward, Enter accepts, and Escape dismisses the
 menu before it quits the editor. Shift-arrow/Home/End selection now uses source
@@ -469,6 +474,11 @@ The terminal wrapper is no longer part of that startup bottleneck. Replacing its
 runtime-compiled Alien layer with the precompiled wrapped module reduced full
 Digla cold launch from about 3.5 s to 1.89-2.00 s in three consecutive runs; a
 real Termbox alternate-screen render and Escape shutdown smoke also passed.
+After the subsequent navigation, structured-output, deadline, and TCP-client
+slices, the current larger application image launches in 2.60-2.64 s across
+three consecutive runs. The TCP client implementation is kept to two registered
+adapter methods plus transport-neutral session selection so the remote slice does
+not grow into another layer of startup helpers.
 
 Project-aware source navigation does not add another manifest parser or eager
 workspace index. A project run now installs the same existing read-only `Project`
@@ -496,6 +506,13 @@ outside the expected frames. The same process smoke runs a nonterminating
 `whileTrue:` and an effectively unbounded `to:do:` with 10 ms deadlines; both
 return structured timeout responses before the watchdog and the session then
 closes normally.
+
+The TCP client path is also covered process-to-process: a terminal-independent
+editor model connects lazily, evaluates `[System println: 7]; [6 * 7]`, receives
+three transcript entries in order, and closes both ends. Five steady remote
+round trips of `[ Reflect allMethodsOf: "YourMom" ]` completed in 23.2-24.3 ms
+each including framing, JSON, copied-value rendering, and a 6,099-character
+response.
 
 The typing path is also bounded away from whole-buffer parser work. Diagnostics
 are cached and explicitly refreshed, already-buffered Termbox events are applied

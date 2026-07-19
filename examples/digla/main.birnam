@@ -1,7 +1,7 @@
 // Digla's runnable entrypoint. The default remains a headless configuration
 // report so project checks and scripts are safe; pass `--ui` after `--` for the
-// local Termbox editor, `--session-stdio` for a child-process protocol, or
-// `--session-listen` for a loopback TCP session server.
+// local or remote Termbox editor, `--session-stdio` for a child-process
+// protocol, or `--session-listen` for a loopback TCP session server.
 
 let args := [Globals at: #ProjectArgs];
 let config := [Digla configForArgs: args];

@@ -69,6 +69,28 @@
   ] doc:
   "Create the internal state of a synchronous session against this live image." ];
 
+[Reflect defineMethod: #tcpSessionFor: on: Digla as: [:self :config |
+  { "adapter" -> "tcp",
+    "id" -> "remote",
+    "status" -> "disconnected",
+    "nextId" -> 1,
+    "config" -> config,
+    "capabilities" -> [Map new],
+    "connection" -> nil,
+    "pending" -> ["" asCell],
+    "lastError" -> nil }
+  ] doc:
+  "Create lazy internal state for a serial framed TCP image session." ];
+
+[Reflect defineMethod: #sessionForConfig: on: Digla as: [:self :config |
+  let connect := [config at: "connect"];
+  let remote := [[connect = "remote"] | [connect = "tcp"]];
+  [remote
+    ifTrue: [| [self tcpSessionFor: config]]
+    ifFalse: [| [self localSessionFor: config]]]
+  ] doc:
+  "Select a local or lazy TCP session from the resolved application configuration." ];
+
 [Reflect defineMethod: #sessionDisplayValue: on: Digla as: [:self :value |
   [[value isNil] ifTrue: [| "nil"] ifFalse: [| [value printString]]]
   ] doc:
@@ -336,9 +358,20 @@
   [[adapter = "local"]
     ifTrue: [| [self performLocalSessionRequest: request in: session]]
     ifFalse: [|
-      let id := [request at: "id" ifAbsent: [| nil]];
-      [self sessionReply:
-        [self sessionError: id code: -32000 message: "unsupported session adapter" data: adapter]
-        state: session]]]
+      [[adapter = "tcp"]
+        ifTrue: [| [self performTcpSessionRequest: request in: session]]
+        ifFalse: [|
+          let id := [request at: "id" ifAbsent: [| nil]];
+          [self sessionReply:
+            [self sessionError: id code: -32000 message: "unsupported session adapter" data: adapter]
+            state: session]]]]]
   ] doc:
   "Route a runtime request without exposing adapter details to the editor model." ];
+
+[Reflect defineMethod: #performTcpSessionRequest:in: on: Digla as: [:self :request :session |
+  let id := [request at: "id" ifAbsent: [| nil]];
+  [self sessionReply:
+    [self sessionError: id code: -32005 message: "TCP session adapter is not loaded" data: nil]
+    state: session]
+  ] doc:
+  "Return an explicit failure when the optional TCP client adapter is absent." ];

@@ -32,5 +32,8 @@
     let rendered := [self renderTerminal: current];
     [Termbox poll];
     [self drainTerminalEventsFrom: rendered]];
-  [self runWhileRunning: state step: step]] doc:
-  "Render, wait for one terminal event, apply it, and continue while running."];
+  let final := [self runWhileRunning: state step: step];
+  let released := [self releaseSession: [final at: "session"]];
+  [final at: "session" put: released]
+  ] doc:
+  "Run the terminal editor and release its active local or remote session on exit."];

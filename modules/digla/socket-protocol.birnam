@@ -67,6 +67,148 @@
   ] doc:
   "Write one Content-Length-framed JSON body to a connected socket." ];
 
+[Reflect defineMethod: #performTcpSessionRequest:in:write:read: on: Digla as:
+  [:self :request :session :write :read |
+    let requestId := [request at: "id" ifAbsent: [| nil]];
+    let failureFor := [:code :message :state :status |
+      let s1 := [state at: "status" put: status];
+      let next := [s1 at: "lastError" put: message];
+      [self sessionReply:
+        [self sessionError: requestId code: code message: message data: nil]
+        state: next]];
+    let encoded := [Json stringify: request];
+    let sent := [write value: encoded];
+    [[sent < 0]
+      ifTrue: [| [failureFor value: -32005 value: "could not write TCP session request"
+        value: session value: "disconnected"]]
+      ifFalse: [|
+        let events := [#[] asCell];
+        let response := [nil asCell];
+        let failure := [nil asCell];
+        let reading := [true asCell];
+        [[| [reading value]] whileTrue: [|
+          let body := [read value];
+          [[body isNil]
+            ifTrue: [|
+              [failure set: { "code" -> -32003, "message" -> "TCP session closed by peer" }];
+              [reading set: false]]
+            ifFalse: [|
+              let message := [Json parse: body];
+              let step := [[message isError]
+                ifTrue: [| { "status" -> "failure", "code" -> -32004,
+                  "message" -> "invalid TCP session JSON" }]
+                ifFalse: [|
+                  let messageId := [message at: "id" ifAbsent: [| nil]];
+                  [[messageId isNil]
+                    ifTrue: [|
+                      let method := [message at: "method" ifAbsent: [| ""]];
+                      let params := [message at: "params" ifAbsent: [| [Map new]]];
+                      let output := [[method = "birnam/output"] &
+                        [[params at: "requestId" ifAbsent: [| nil]] = requestId]];
+                      [output
+                        ifTrue: [| { "status" -> "notification",
+                          "event" -> [params at: "event" ifAbsent: [| nil]] }]
+                        ifFalse: [| { "status" -> "ignored" }]]]
+                    ifFalse: [|
+                      [[messageId = requestId]
+                        ifTrue: [| { "status" -> "response", "message" -> message }]
+                        ifFalse: [| { "status" -> "failure", "code" -> -32004,
+                          "message" -> "mismatched TCP session response id" }]]]]]];
+              let status := [step at: "status"];
+              [[status = "notification"] ifTrue: [|
+                let event := [step at: "event"];
+                let bounded := [[[events value] size] < 4096];
+                [[[event notNil] & bounded]
+                  ifTrue: [| [events set: [[events value] add: event]]]
+                  ifFalse: [| nil]]
+              ] ifFalse: [| nil]];
+              [[status = "response"]
+                ifTrue: [| [response set: [step at: "message"]]; [reading set: false]]
+                ifFalse: [| nil]];
+              [[status = "failure"]
+                ifTrue: [|
+                  [failure set: { "code" -> [step at: "code"],
+                    "message" -> [step at: "message"] }];
+                  [reading set: false]]
+                ifFalse: [| nil]]]]]];
+        let failed := [failure value];
+        [[failed notNil]
+          ifTrue: [| [failureFor value: [failed at: "code"] value: [failed at: "message"]
+            value: session value: "closed"]]
+          ifFalse: [|
+            let rawMessage := [response value];
+            let rawResult := [rawMessage at: "result" ifAbsent: [| nil]];
+            let message := [[rawResult isNil]
+              ifTrue: [| rawMessage]
+              ifFalse: [|
+                let buffered := [rawResult at: "events" ifAbsent: [| #[]]];
+                let selected := [[buffered isEmpty]
+                  ifTrue: [| [events value]]
+                  ifFalse: [| buffered]];
+                let nextResult := [rawResult at: "events" put: selected];
+                [rawMessage at: "result" put: nextResult]]];
+            let method := [request at: "method" ifAbsent: [| ""]];
+            let result := [message at: "result" ifAbsent: [| nil]];
+            let connected := [session at: "status" put: "connected"];
+            let clean := [connected at: "lastError" put: nil];
+            let opened := [[[method = "birnam/session/open"] & [result notNil]]
+              ifTrue: [|
+                let s1 := [clean at: "id" put: [result at: "sessionId"]];
+                [s1 at: "capabilities" put: [result at: "capabilities"]]]
+              ifFalse: [| clean]];
+            let next := [[method = "birnam/close"]
+              ifTrue: [| [opened at: "status" put: "closed"]]
+              ifFalse: [| opened]];
+            [self sessionReply: message state: next]]]]]
+  ] doc:
+  "Perform one serial TCP request through injected body I/O, collecting correlated notifications." ];
+
+[Reflect defineMethod: #performTcpSessionRequest:in: on: Digla as: [:self :request :session |
+  let requestId := [request at: "id" ifAbsent: [| nil]];
+  let failureFor := [:code :message :state :status |
+    let s1 := [state at: "status" put: status];
+    let next := [s1 at: "lastError" put: message];
+    [self sessionReply:
+      [self sessionError: requestId code: code message: message data: nil]
+      state: next]];
+  [[[session at: "status"] = "closed"]
+    ifTrue: [| [failureFor value: -32001 value: "session is closed"
+      value: session value: "closed"]]
+    ifFalse: [|
+      let existing := [session at: "connection"];
+      let prepared := [[existing notNil]
+        ifTrue: [| { "ok" -> true, "session" -> session }]
+        ifFalse: [|
+          let config := [session at: "config"];
+          let connection := [Socket connectTo: [config at: "bind"] port: [config at: "port"]];
+          let failed := [[Reflect vtableOf: connection] == [Reflect vtableOf: 0]];
+          [failed
+            ifTrue: [| { "ok" -> false, "session" -> session }]
+            ifFalse: [|
+              let s1 := [session at: "connection" put: connection];
+              let s2 := [s1 at: "pending" put: ["" asCell]];
+              { "ok" -> true, "session" -> [s2 at: "status" put: "connected"] }]]]];
+      [[[prepared at: "ok"] not]
+        ifTrue: [| [failureFor value: -32005 value: "could not connect TCP session"
+          value: [prepared at: "session"] value: "disconnected"]]
+        ifFalse: [|
+          let connected := [prepared at: "session"];
+          let connection := [connected at: "connection"];
+          let pending := [connected at: "pending"];
+          let write := [:body | [self sendSocketSessionBody: body on: connection]];
+          let read := [| [self readSocketSessionBody: connection pending: pending]];
+          let reply := [self performTcpSessionRequest: request in: connected
+            write: write read: read];
+          let next := [reply at: "session"];
+          [[[next at: "status"] = "closed"]
+            ifTrue: [|
+              [connection close];
+              let released := [next at: "connection" put: nil];
+              [reply at: "session" put: released]]
+            ifFalse: [| reply]]]]]]
+  ] doc:
+  "Connect lazily and perform one request against a framed TCP image session." ];
+
 [Reflect defineMethod: #serveSessionConnection:config: on: Digla as: [:self :conn :config |
   let pending := ["" asCell];
   let me := self;

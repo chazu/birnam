@@ -109,3 +109,21 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
   let target := [[[Digla sessionResultOf: reply] at: "snapshot"] at: "target"];
   [t expect: [target at: "printString"] equals: "11"
     describes: "runtimeName has explicit precedence over globalName"]]];
+
+[e test: "session selection keeps remote transport state out of the editor" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new]
+    args: #["--connect=remote"]];
+  let state := [Digla sessionStateFor: config];
+  let session := [state at: "session"];
+  [t expect: [session at: "adapter"] equals: "tcp" describes: "remote adapter selected"];
+  [t expect: [session at: "status"] equals: "disconnected" describes: "connection is lazy"];
+  [t expect: [state at: "buffer"] equals: "" describes: "editor remains transport-neutral"]]];
+
+[e test: "releasing a lazy remote session does not connect it" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new]
+    args: #["--connect=remote"]];
+  let released := [Digla releaseSession: [Digla tcpSessionFor: config]];
+  [t expect: [released at: "status"] equals: "disconnected"
+    describes: "unused remote session remains lazy"];
+  [t expect: [released at: "connection"] equals: nil
+    describes: "release does not allocate a connection"]]];

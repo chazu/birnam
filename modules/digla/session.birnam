@@ -44,10 +44,21 @@
   ] doc:
   "Perform one request through the selected session adapter and return reply plus next state." ];
 
+[Reflect defineMethod: #releaseSession: on: Digla as: [:self :session |
+  let status := [session at: "status" ifAbsent: [| "closed"]];
+  let active := [[status = "open"] | [status = "connected"]];
+  [active
+    ifTrue: [|
+      let reply := [self callSession: "birnam/close" params: [Map new] in: session];
+      [reply at: "session"]]
+    ifFalse: [| session]]
+  ] doc:
+  "Close an active runtime session and return its final state without opening a lazy session." ];
+
 [Reflect defineMethod: #sessionStateFor: on: Digla as: [:self :config |
   let s0 := [Map new];
   let s1 := [s0 at: "config" put: config];
-  let s2 := [s1 at: "session" put: [self localSessionFor: config]];
+  let s2 := [s1 at: "session" put: [self sessionForConfig: config]];
   let s3 := [s2 at: "buffer" put: ""];
   let s4 := [s3 at: "cursor" put: 0];
   let s5 := [s4 at: "history" put: #[]];

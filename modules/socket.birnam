@@ -172,6 +172,23 @@
   conn] doc:
   "Wrap connected fd `cfd` in a SockConn, minting its 64 KB per-connection recv buffer."];
 
+[Reflect defineMethod: #connectTo:port: on: Socket as: [:self :host :port |
+  let fd := [[self afInet] socketType: [self sockStream] proto: 0];
+  [[fd < 0]
+    ifTrue: [| fd]
+    ifFalse: [|
+      let address := [self makeSockaddrPort: port bind: host];
+      [[address isNil]
+        ifTrue: [| [fd closeFd]; -2]
+        ifFalse: [|
+          let connected := [fd connectAddr: address len: 16];
+          [address free];
+          [[connected < 0]
+            ifTrue: [| [fd closeFd]; connected]
+            ifFalse: [| [self wrapFd: fd]]]]]]]
+  ] doc:
+  "Connect to a dotted IPv4/localhost TCP endpoint and answer a SockConn or negative error code." ];
+
 // -- Layer 1: the blocking accept loop ----------------------------------------
 // One connection at a time: accept, hand a live SockConn to `handler`, close, repeat.
 // `to:do:` is a native (iterative) loop, so this does not grow the stack per

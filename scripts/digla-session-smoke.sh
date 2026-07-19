@@ -6,7 +6,15 @@ export LANG=C
 bin="${BIRNAM_BIN:?BIRNAM_BIN must point to the installed birnam binary}"
 project="${BIRNAM_DIGLA_PROJECT:?BIRNAM_DIGLA_PROJECT must point to examples/digla}"
 tmp="$(mktemp -d /tmp/birnam-digla-session.XXXXXX)"
-trap 'rm -rf "$tmp"' EXIT
+remote_pid=""
+cleanup() {
+  if [[ -n "$remote_pid" ]] && kill -0 "$remote_pid" 2>/dev/null; then
+    kill "$remote_pid" 2>/dev/null || true
+    wait "$remote_pid" 2>/dev/null || true
+  fi
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
 
 "$bin" build "$project" >/dev/null
 
@@ -87,3 +95,67 @@ die "integer loop did not time out\n" unless $range_timed_out->{result}{phase} e
 die "integer timeout flag missing\n" unless $range_timed_out->{result}{timedOut};
 die "session did not close\n" unless $closed->{result}{closed};
 ' "$tmp/replies"
+
+# Exercise the same lazy TCP adapter used by the terminal editor. The probe
+# submits through the terminal-independent editor model so transport output,
+# value insertion, state threading, and close semantics all cross the socket.
+port="$(perl -MIO::Socket::INET -e '
+  my $socket = IO::Socket::INET->new(LocalAddr => "127.0.0.1", LocalPort => 0,
+    Listen => 1, Proto => "tcp") or die $!;
+  print $socket->sockport;
+')"
+"$bin" run "$project" -- --session-listen-once --port="$port" >"$tmp/remote-server" 2>&1 &
+remote_pid=$!
+ready=0
+for _ in $(seq 1 100); do
+  if grep -q "listening on 127.0.0.1:$port" "$tmp/remote-server" 2>/dev/null; then
+    ready=1
+    break
+  fi
+  if ! kill -0 "$remote_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$ready" -ne 1 ]]; then
+  echo "Digla TCP session server did not become ready" >&2
+  sed -n '1,120p' "$tmp/remote-server" >&2
+  exit 1
+fi
+
+probe="let c := [Digla configAtPath: nil environment: [Map new] args: #[\"--connect=remote\" \"--port=$port\"]]; let s := [Digla editorStateFor: c]; let r := [Digla submitIn: [s at: \"buffer\" put: \"[System println: 7]; [6 * 7]\"]]; let lines := [r at: \"transcript\"]; [System println: [\"REMOTE-LINES:\" , [[lines size] printString]]]; [System println: [\"REMOTE-INPUT:\" , [lines at: 0]]]; [System println: [\"REMOTE-OUTPUT:\" , [lines at: 1]]]; [System println: [\"REMOTE-VALUE:\" , [lines at: 2]]]; let closed := [Digla callSession: \"birnam/close\" params: [Map new] in: [r at: \"session\"]]; [System println: [\"REMOTE-CLOSED:\" , [[[Digla sessionResultOf: closed] at: \"closed\"] printString]]]"
+printf '%s\n:quit\n' "$probe" | "$bin" run "$project" --repl=tty -- \
+  --connect=remote --port="$port" >"$tmp/remote-client" 2>&1 &
+client_pid=$!
+for _ in $(seq 1 100); do
+  if ! kill -0 "$client_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+if kill -0 "$client_pid" 2>/dev/null; then
+  kill "$client_pid" 2>/dev/null || true
+  wait "$client_pid" 2>/dev/null || true
+  echo "Digla TCP editor client did not finish" >&2
+  exit 1
+fi
+wait "$client_pid"
+
+for _ in $(seq 1 100); do
+  if ! kill -0 "$remote_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+if kill -0 "$remote_pid" 2>/dev/null; then
+  echo "Digla TCP session server did not close with the client" >&2
+  exit 1
+fi
+wait "$remote_pid"
+remote_pid=""
+
+grep -q '^birnam> REMOTE-LINES:3$' "$tmp/remote-client"
+grep -q '^REMOTE-INPUT:> \[System println: 7\]; \[6 \* 7\]$' "$tmp/remote-client"
+grep -q '^REMOTE-OUTPUT:7$' "$tmp/remote-client"
+grep -q '^REMOTE-VALUE:42$' "$tmp/remote-client"
+grep -q '^REMOTE-CLOSED:true$' "$tmp/remote-client"

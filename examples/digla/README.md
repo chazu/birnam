@@ -91,6 +91,20 @@ The same protocol is available to a long-lived loopback client over TCP:
 zig-out/bin/birnam run examples/digla --build -- --session-listen --port=4400
 ```
 
+In a second terminal, the ordinary Termbox editor can target that image instead
+of evaluating in its own process:
+
+```sh
+zig-out/bin/birnam run examples/digla --build -- --ui --connect=remote --port=4400
+```
+
+The editor keeps its buffer, source analysis, navigation, history, layout, and
+transcript locally. Evaluation, inspection, runtime completion, globals, and
+session identity cross the serial framed connection. The connection opens lazily
+on the first runtime request and is closed when the editor exits. `--bind` selects
+another endpoint address; non-loopback servers still require the explicit
+`--allow-remote` security opt-in described below.
+
 Use `--session-listen-once` for a script or smoke test that should serve one
 connection and exit. The server accepts one client at a time, caps frames at
 1 MiB, and defaults to `127.0.0.1`. A non-loopback `--bind` is refused unless
