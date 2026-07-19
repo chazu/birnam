@@ -29,3 +29,16 @@ let e := [TestSuite named: "Digla render" module: #diglaRender];
   [t expect: ascii equals: #["abcd" "ef"] describes: "ASCII results hard-wrap to terminal width"];
   [t expect: unicode equals: #["a🙂" "b"] describes: "wide glyphs wrap by display cells, not bytes"];
   [t expect: explicit equals: #["ab" "cde" "f"] describes: "explicit newlines and width wrapping compose"]]];
+
+[e test: "completion display rows keep the selected item inside a bounded window" do: [:t |
+  let items := #[
+    { "label" -> "alpha", "kind" -> "binding", "detail" -> "buffer binding" }
+    { "label" -> "beta", "kind" -> "global", "detail" -> "live image global" }
+    { "label" -> "gamma", "kind" -> "keyword", "detail" -> "Birnam keyword" }
+  ];
+  let menu := { "items" -> items, "index" -> 2, "start" -> 0, "end" -> 0 };
+  let rows := [Digla completionRowsFor: { "completion" -> menu } limit: 2];
+  [t expect: [rows size] equals: 2 describes: "menu height is bounded"];
+  [t assert: [[rows at: 0] at: "text"] includesSubstring: "beta" describes: "window follows selection"];
+  [t expect: [[rows at: 1] at: "selected"] equals: true describes: "selected row retained"];
+  [t assert: [[rows at: 1] at: "text"] includesSubstring: "> gamma" describes: "selected marker shown"]]];

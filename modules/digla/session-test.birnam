@@ -61,3 +61,25 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
     describes: "runtime completion is prefix-filtered"];
   [t expect: [[[rejected at: "message"] at: "error"] at: "code"] equals: -32001 describes: "closed session rejected"];
   [t expect: [[[unknown at: "message"] at: "error"] at: "code"] equals: -32601 describes: "unknown method rejected"]]];
+
+[e test: "runtime completion caches global names and refreshes after evaluation" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let session := [Digla localSessionFor: config];
+  let first := [Digla callSession: "birnam/runtimeCompletion"
+    params: { "prefix" -> "DiglaCacheRefresh" } in: session];
+  let cachedSession := [first at: "session"];
+  let second := [Digla callSession: "birnam/runtimeCompletion"
+    params: { "prefix" -> "DiglaCacheRefresh" } in: cachedSession];
+  let evaluated := [Digla callSession: "birnam/evaluate"
+    params: { "source" -> "[Globals at: #DiglaCacheRefresh put: 1]" }
+    in: [second at: "session"]];
+  let refreshed := [Digla callSession: "birnam/runtimeCompletion"
+    params: { "prefix" -> "DiglaCacheRefresh" } in: [evaluated at: "session"]];
+  let refreshedItems := [[Digla sessionResultOf: refreshed] at: "items"];
+  [t expect: [[cachedSession at: "globalNamesCache"] notNil] equals: true
+    describes: "first request populates session cache"];
+  [t expect: [[cachedSession at: "globalNamesCache"] ==
+    [[second at: "session"] at: "globalNamesCache"]] equals: true
+    describes: "unchanged session reuses cached vector"];
+  [t expect: [[[refreshedItems at: 0] at: "label"] = "DiglaCacheRefresh"] equals: true
+    describes: "evaluation invalidates and refreshes runtime names"]]];

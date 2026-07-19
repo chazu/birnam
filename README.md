@@ -339,5 +339,6 @@ from-zero bootstrap compiler and performance floor.
   explicit local/remote image sessions. The first local `--ui` editor slice is
   runnable, the source/LSP PositionMap and terminal DisplayLayout slices are
   landed, and lexical highlighting, parser-backed diagnostics, and wrapped
-  evaluation results are visible; selection, autocomplete, and remote sessions
-  remain staged.
+  evaluation results are visible. Tab completion merges scoped source candidates
+  with bounded live-image globals; selection, richer assistance, and remote
+  sessions remain staged.

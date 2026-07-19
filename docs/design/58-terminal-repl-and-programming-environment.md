@@ -50,6 +50,8 @@ modules/digla/display-layout.birnam source-to-terminal-cell projection
 modules/digla/display-layout-test.birnam terminal coordinate contract tests
 modules/digla/analysis.birnam       lexical highlights and LSP diagnostics
 modules/digla/analysis-test.birnam analysis contract tests
+modules/digla/language-service.birnam source/runtime completion merge
+modules/digla/language-service-test.birnam completion contract tests
 modules/digla/render-test.birnam    headless renderer decision tests
 modules/digla/termbox.birnam     Termbox module entry
 wrapped/termbox2/                vendored C library and Alien wrapper
@@ -71,8 +73,11 @@ highlights and parser-backed diagnostics are now projected through that same
 source-coordinate seam. Evaluation, inspection, global enumeration, and image
 identity now cross one JSON-RPC-shaped `ReplSession` contract instead of being
 called directly by the editor. `--session-stdio` exposes that same contract as
-Content-Length-framed JSON for scripts and AI agents. Selection, completion,
-viewport refinements, and a loopback TCP adapter remain later slices.
+Content-Length-framed JSON for scripts and AI agents. Tab now opens a completion
+menu that merges in-scope parser/CST candidates with bounded live-image globals;
+Tab or Down cycles, Up cycles backward, Enter accepts, and Escape dismisses the
+menu before it quits the editor. Selection, viewport refinements, hover,
+signature help, source navigation, and a loopback TCP adapter remain later slices.
 
 ## 2. Goals and boundaries
 
@@ -185,8 +190,14 @@ birnam/close              → release the session
 
 Language features continue to use ordinary LSP requests such as
 `textDocument/completion`, `textDocument/hover`, and diagnostics. Runtime-aware
-completion can be added later as `birnam/runtimeCompletion` or as an enriched
-completion provider with an explicit capability.
+completion now uses the explicit `birnam/runtimeCompletion` capability. The
+terminal-independent language-service seam merges those copied-value results
+with source candidates; a client can still offer source candidates when a
+session does not implement the runtime method. The local adapter enumerates
+global names with one indexed relational query, caches the sorted snapshot per
+session, and invalidates it after every evaluation; prefix filtering remains
+bounded to 64 results. This keeps repeated explicit completion requests out of
+the Store's indexed-attribute loop without adding a new runtime primitive.
 
 The server must default to loopback binding. A socket REPL is arbitrary code
 execution, so binding beyond loopback requires an explicit choice and eventually
@@ -354,8 +365,10 @@ The core invariants are:
    `--ui` entrypoint with editing, UTF-8-aware cursor movement, multiline input,
    history, local evaluation, a scrollable transcript against the local image,
    terminal-cell-aware wrapping for evaluation results, lexical syntax spans,
-   and parser-backed diagnostics. Selection, autocomplete, and viewport
-   refinements are still open.
+   and parser-backed diagnostics. Autocomplete now merges scoped source
+   candidates and bounded runtime globals behind a terminal-independent language
+   service, while the editor owns menu state and the renderer owns its cells.
+   Selection and viewport refinements are still open.
 4. **Compatibility remote session — superseded by the framed seam.** The
    prompt-oriented socket REPL cannot preserve structured values, errors, or
    capabilities without ambiguous text parsing. Keep it compatible for comint
@@ -367,9 +380,12 @@ The core invariants are:
    inspection snapshots, image identity, and truthful capabilities are copied
    values; output notifications, loopback TCP delivery, and bounded interrupt
    behavior remain open.
-6. **Runtime-aware assistance — inspection slice implemented.** `:inspect`,
+6. **Runtime-aware assistance — inspection and completion slices implemented.** `:inspect`,
    `:globals`, and `:session` use the shared session layer without evaluating
-   report expressions. Docs, runtime completion, and source-on-demand remain.
+   report expressions. `birnam/runtimeCompletion` supplies bounded live-image
+   globals, merged with parser/CST source candidates in the shared language
+   service and presented by the terminal menu. Docs, hover, signatures, and
+   source-on-demand remain.
 
 The first usable milestone is complete when a user can launch the terminal editor,
 edit and evaluate multiline Birnam forms locally, recall history, see parser-backed

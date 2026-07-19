@@ -79,10 +79,12 @@ until product evidence selects the next failure model.
   UTF-8 byte-boundary cursor movement, history, local evaluation, terminal-cell
   wrapped transcript rendering, an optional Termbox `--ui` entrypoint, and the initial source/LSP
   PositionMap conversion plus terminal-cell DisplayLayout mapping, lexical
-  syntax spans, and parser-backed diagnostics. Evaluation, inspection, globals,
-  and image identity now use one JSON-RPC-shaped session boundary; terminal
-  commands and `--session-stdio` consume the same copied-value responses. Next:
-  add the loopback TCP adapter, selection, and autocomplete on the same seams.
+  syntax spans, parser-backed diagnostics, and a bounded completion menu merging
+  scoped source candidates with live-image globals. Evaluation, inspection,
+  globals, runtime completion, and image identity use one JSON-RPC-shaped session
+  boundary; terminal commands and `--session-stdio` consume the same copied-value
+  responses. Next: add the loopback TCP adapter, selection, viewport refinement,
+  and hover/signature/source navigation on the same seams.
 
 ---
 

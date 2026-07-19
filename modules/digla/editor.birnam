@@ -13,7 +13,8 @@
   let s3 := [s2 at: "historyIndex" put: nil];
   let s4 := [s3 at: "lastResult" put: nil];
   let s5 := [s4 at: "hasLastResult" put: false];
-  [s5 at: "lastError" put: nil]] doc:
+  let s6 := [s5 at: "lastError" put: nil];
+  [s6 at: "completion" put: nil]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
 
 [Reflect defineMethod: #previousBoundaryStep:in: on: Digla as: [:self :p :text |
@@ -341,7 +342,75 @@
               [s3 at: "status" put: "history"]]]]]]]] doc:
   "Recall a prior form with direction -1 for older or +1 for newer history."];
 
-[Reflect defineMethod: #handleKey:character:state: on: Digla as: [:self :key :character :state |
+[Reflect defineMethod: #clearCompletionIn: on: Digla as: [:self :state |
+  [state at: "completion" put: nil]
+  ] doc:
+  "Dismiss the transient completion menu without changing the source buffer." ];
+
+[Reflect defineMethod: #openCompletionIn: on: Digla as: [:self :state |
+  let completion := [self completionFor: [state at: "buffer"]
+    cursor: [state at: "cursor"] session: [state at: "session"]];
+  let withSession := [state at: "session" put: [completion at: "session"]];
+  let error := [completion at: "error"];
+  let items := [completion at: "items"];
+  [[items isEmpty]
+    ifTrue: [|
+      let withoutMenu := [withSession at: "completion" put: nil];
+      let status := [[error isNil] ifTrue: [| "no completions"]
+        ifFalse: [| ["completion error: " , error]]];
+      [withoutMenu at: "status" put: status]]
+    ifFalse: [|
+      let menu := [completion at: "index" put: 0];
+      let withMenu := [withSession at: "completion" put: menu];
+      let suffix := [[error isNil] ifTrue: [| ""] ifFalse: [| " (source only)"]];
+      [withMenu at: "status" put: ["completion 1/" , [[items size] printString] , suffix]]]]
+  ] doc:
+  "Request source and live-image candidates and open a terminal-independent menu." ];
+
+[Reflect defineMethod: #moveCompletion:in: on: Digla as: [:self :direction :state |
+  let menu := [state at: "completion"];
+  [[menu isNil]
+    ifTrue: [| state]
+    ifFalse: [|
+      let items := [menu at: "items"];
+      let count := [items size];
+      [[count = 0]
+        ifTrue: [| [self clearCompletionIn: state]]
+        ifFalse: [|
+          let candidate := [[menu at: "index"] + direction];
+          let wrappedLow := [[candidate < 0] ifTrue: [| [count - 1]] ifFalse: [| candidate]];
+          let index := [[wrappedLow >= count] ifTrue: [| 0] ifFalse: [| wrappedLow]];
+          let nextMenu := [menu at: "index" put: index];
+          let next := [state at: "completion" put: nextMenu];
+          [next at: "status" put: ["completion " , [[index + 1] printString]
+            , "/" , [count printString]]]]]]]
+  ] doc:
+  "Move the active completion selection cyclically by `direction`." ];
+
+[Reflect defineMethod: #acceptCompletionIn: on: Digla as: [:self :state |
+  let menu := [state at: "completion"];
+  [[menu isNil]
+    ifTrue: [| state]
+    ifFalse: [|
+      let items := [menu at: "items"];
+      [[items isEmpty]
+        ifTrue: [| [self clearCompletionIn: state]]
+        ifFalse: [|
+          let item := [items at: [menu at: "index"]];
+          let label := [item at: "label"];
+          let buffer := [state at: "buffer"];
+          let prefix := [buffer copyFrom: 0 to: [menu at: "start"]];
+          let suffix := [buffer copyFrom: [menu at: "end"] to: [buffer size]];
+          let nextBuffer := [[prefix , label] , suffix];
+          let s1 := [state at: "buffer" put: nextBuffer];
+          let s2 := [s1 at: "cursor" put: [[menu at: "start"] + [label size]]];
+          let s3 := [s2 at: "historyIndex" put: nil];
+          let s4 := [s3 at: "completion" put: nil];
+          [s4 at: "status" put: ["completed " , label]]]]]]
+  ] doc:
+  "Replace the requested source prefix with the selected copied-value candidate." ];
+
+[Reflect defineMethod: #handleEditorKey:character:state: on: Digla as: [:self :key :character :state |
   let s0 := state;
   let s1 := [[key = 27] ifTrue: [| [s0 at: "running" put: false]] ifFalse: [| s0]];
   let s2 := [[key = 65515] ifTrue: [| [self moveLeftIn: s1]] ifFalse: [| s1]];
@@ -358,7 +427,45 @@
   let s12 := [[key = 13] ifTrue: [| [self submitIn: s11]] ifFalse: [| s11]];
   let s13 := [[key = 10] ifTrue: [| [self insertText: "\n" into: s12]] ifFalse: [| s12]];
   [[character isEmpty] ifTrue: [| s13] ifFalse: [| [self insertText: character into: s13]]]] doc:
-  "Apply one Termbox key and character event to the pure editor state."];
+  "Apply one ordinary editing key after completion-menu dispatch." ];
+
+[Reflect defineMethod: #handleCompletionKey:character:state: on: Digla as: [:self :key :character :state |
+  let forward := [[[key = 9] | [key = 14]] | [key = 65516]];
+  let backward := [[[key = 16] | [key = 65517]] | [key = 65513]];
+  let outcome := [nil asCell];
+  [[key = 27]
+    ifTrue: [|
+      let next := [self clearCompletionIn: state];
+      [outcome set: [next at: "status" put: "completion closed"]]]
+    ifFalse: [| nil]];
+  [[[[outcome value] isNil] & forward]
+    ifTrue: [| [outcome set: [self moveCompletion: 1 in: state]]]
+    ifFalse: [| nil]];
+  [[[[outcome value] isNil] & backward]
+    ifTrue: [| [outcome set: [self moveCompletion: -1 in: state]]]
+    ifFalse: [| nil]];
+  [[[[outcome value] isNil] & [key = 13]]
+    ifTrue: [| [outcome set: [self acceptCompletionIn: state]]]
+    ifFalse: [| nil]];
+  [[[outcome value] isNil]
+    ifTrue: [|
+      [outcome set: [self handleEditorKey: key character: character
+        state: [self clearCompletionIn: state]]]]
+    ifFalse: [| nil]];
+  [outcome value]
+  ] doc:
+  "Dispatch a key while completion is open, with Escape reserved for dismissal." ];
+
+[Reflect defineMethod: #handleKey:character:state: on: Digla as: [:self :key :character :state |
+  let menu := [state at: "completion"];
+  [[menu notNil]
+    ifTrue: [| [self handleCompletionKey: key character: character state: state]]
+    ifFalse: [|
+      [[key = 9]
+        ifTrue: [| [self openCompletionIn: state]]
+        ifFalse: [| [self handleEditorKey: key character: character state: state]]]]]
+  ] doc:
+  "Apply one Termbox key and character event to the pure editor state." ];
 
 [Reflect defineMethod: #runWhileRunning:step: on: Digla as: [:self :state :step |
   let next := [step value: state];

@@ -149,6 +149,34 @@
   ] doc:
   "Flatten transcript entries into terminal-width display rows." ];
 
+[Reflect defineMethod: #completionRowsFor:limit: on: Digla as: [:self :state :requestedLimit |
+  let menu := [state at: "completion"];
+  [[menu isNil]
+    ifTrue: [| #[]]
+    ifFalse: [|
+      let items := [menu at: "items"];
+      let count := [items size];
+      [[count = 0]
+        ifTrue: [| #[]]
+        ifFalse: [|
+          let limit := [count min: requestedLimit];
+          let index := [menu at: "index"];
+          let desiredStart := [[index >= limit] ifTrue: [| [[index - limit] + 1]] ifFalse: [| 0]];
+          let latestStart := [count - limit];
+          let start := [[desiredStart > latestStart] ifTrue: [| latestStart] ifFalse: [| desiredStart]];
+          let rows := [#[] asCell];
+          [start to: [[start + limit] - 1] do: [:i |
+            let item := [items at: i];
+            let selected := [i = index];
+            let marker := [selected ifTrue: [| "> "] ifFalse: [| "  "]];
+            let text := [marker , [item at: "label"] , "  " , [item at: "kind"]
+              , "  " , [item at: "detail"]];
+            [rows set: [[rows value] add: {
+              "text" -> text, "selected" -> selected, "itemIndex" -> i }]]]];
+          [rows value]]]]]
+  ] doc:
+  "Project the active completion menu into a bounded window of display rows." ];
+
 [Reflect defineMethod: #renderTerminal: on: Digla as: [:self :state |
   let width := [Termbox width];
   let height := [Termbox height];
@@ -157,10 +185,14 @@
   let layout := [self displayLayoutFor: buffer promptWidth: 2];
   let rows := [layout at: "lines"];
   let editorRows := [rows size];
-  let editorStart := [height - editorRows - 2];
+  let completionRows := [self completionRowsFor: state limit: 6];
+  let completionRowCount := [completionRows size];
+  let completionStart := [height - completionRowCount - 1];
+  let editorStart := [height - editorRows - completionRowCount - 2];
   let start := [[editorStart < 1] ifTrue: [| 1] ifFalse: [| editorStart]];
   [Termbox clear];
-  [Termbox printX: 0 y: 0 fg: 8 bg: 0 str: "Digla  local image editor  (Esc quit, Ctrl-J newline, Enter evaluate)"];
+  [Termbox printX: 0 y: 0 fg: 8 bg: 0 str:
+    "Digla  local image editor  (Tab complete, Esc quit, Ctrl-J newline, Enter evaluate)"];
   let transcriptLines := [self transcriptLines: [state at: "transcript"] width: width];
   let availableTranscriptRows := [start - 1];
   let firstTranscriptLine0 := [[transcriptLines size] - availableTranscriptRows];
@@ -178,12 +210,19 @@
     let i := [row at: "line"];
     let prompt := [[i = 0] ifTrue: [| "> "] ifFalse: [| "| "]];
     let y := [start + i];
-    [[[y < [height - 1]] & [y >= 1]]
+    [[[y < completionStart] & [y >= 1]]
       ifTrue: [|
         let promptColor := [self diagnosticColorForRow: row analysis: analysis text: buffer];
         [Termbox printX: 0 y: y fg: promptColor bg: 0 str: prompt];
         [self renderSourceRow: row analysis: analysis y: y promptWidth: 2 in: buffer]]
       ifFalse: [| nil]]]];
+  let completionY := [completionStart asCell];
+  [completionRows do: [:row |
+    let selected := [row at: "selected"];
+    let fg := [selected ifTrue: [| 0] ifFalse: [| 8]];
+    let bg := [selected ifTrue: [| 7] ifFalse: [| 0]];
+    [Termbox printX: 0 y: [completionY value] fg: fg bg: bg str: [row at: "text"]];
+    [completionY set: [[completionY value] + 1]]]];
   let diagnosticCount := [[[analysis at: "diagnostics"] size] printString];
   let status := [[state at: "status"] , "  bytes=" , [[buffer size] printString]
     , "  diagnostics=" , diagnosticCount];
@@ -191,7 +230,7 @@
   let position := [self terminalPositionForByte: [state at: "cursor"] in: buffer promptWidth: 2];
   let cursorX := [position at: "x"];
   let cursorY := [start + [position at: "line"]];
-  [[[cursorY >= 1] & [cursorY < [height - 1]]]
+  [[[cursorY >= 1] & [cursorY < completionStart]]
     ifTrue: [| [Termbox setCursor: cursorX y: cursorY]]
     ifFalse: [| [Termbox setCursor: 0 y: 0]]];
   [Termbox present]] doc:

@@ -24,7 +24,8 @@
     "capabilities" -> [self localSessionCapabilities],
     "lastValue" -> nil,
     "hasLastValue" -> false,
-    "lastError" -> nil }
+    "lastError" -> nil,
+    "globalNamesCache" -> nil }
   ] doc:
   "Create the internal state of a synchronous session against this live image." ];
 
@@ -68,26 +69,38 @@
   ] doc:
   "Return the handshake payload for an open local image session." ];
 
-[Reflect defineMethod: #userGlobalNamesStartingWith: on: Digla as: [:self :prefix |
+[Reflect defineMethod: #visibleUserGlobalNames on: Digla as: [:self |
   let names := [#[] asCell];
-  let count := [db attrCount: #__globals__];
-  [0 to: [count - 1] do: [:i |
-    let attribute := [db attrAt: #__globals__ index: i];
+  let attributes := [db findAll: ?name where: #[ #[ #__globals__ ?name ?value ] ]];
+  [attributes do: [:attribute |
     let name := [Reflect nameOf: attribute];
-    let visible := [[name startsWith: "__"] not];
-    [[visible & [name startsWith: prefix]]
+    [[name startsWith: "__"]
+      ifTrue: [| nil]
+      ifFalse: [| [names set: [[names value] add: name]]]]]];
+  [[names value] sortBy: [:name | name]]
+  ] doc:
+  "Return every sorted user-visible global name with one indexed relational read." ];
+
+[Reflect defineMethod: #userGlobalNamesStartingWith:in: on: Digla as: [:self :prefix :allNames |
+  let names := [#[] asCell];
+  [allNames do: [:name |
+    let belowLimit := [[[names value] size] < 64];
+    [[belowLimit & [name startsWith: prefix]]
       ifTrue: [| [names set: [[names value] add: name]]]
       ifFalse: [| nil]]]];
-  let sorted := [[names value] sortBy: [:name | name]];
-  let limit := [[sorted size] min: 64];
-  [sorted copyFrom: 0 to: limit]
+  [names value]
+  ] doc:
+  "Filter a sorted global-name snapshot to at most 64 prefix matches." ];
+
+[Reflect defineMethod: #userGlobalNamesStartingWith: on: Digla as: [:self :prefix |
+  [self userGlobalNamesStartingWith: prefix in: [self visibleUserGlobalNames]]
   ] doc:
   "Return at most 64 sorted visible global names matching a prefix." ];
 
 [Reflect defineMethod: #userGlobalNames on: Digla as: [:self |
-  [self userGlobalNamesStartingWith: ""]
+  [self visibleUserGlobalNames]
   ] doc:
-  "Return the bounded sorted user-visible persisted global names." ];
+  "Return all sorted user-visible persisted global names." ];
 
 [Reflect defineMethod: #runtimeCompletionItemsFor: on: Digla as: [:self :prefix |
   [[self userGlobalNamesStartingWith: prefix] collect: [:name |
@@ -95,6 +108,17 @@
       "source" -> "runtime" }]]
   ] doc:
   "Return copied-value runtime completion items for visible globals matching a prefix." ];
+
+[Reflect defineMethod: #localGlobalNamesIn: on: Digla as: [:self :session |
+  let cached := [session at: "globalNamesCache"];
+  [[cached notNil]
+    ifTrue: [| { "names" -> cached, "session" -> session, "cached" -> true }]
+    ifFalse: [|
+      let names := [self visibleUserGlobalNames];
+      let next := [session at: "globalNamesCache" put: names];
+      { "names" -> names, "session" -> next, "cached" -> false }]]
+  ] doc:
+  "Return the session's global-name snapshot, populating it on first use." ];
 
 [Reflect defineMethod: #localEvaluate:session: on: Digla as: [:self :params :session |
   let source := [params at: "source" ifAbsent: [| nil]];
@@ -115,7 +139,8 @@
             ifTrue: [| [compileError printString]]
             ifFalse: [| [value printString]]];
           let phase := [[compileError notNil] ifTrue: [| "compile"] ifFalse: [| "runtime"]];
-          let next := [session at: "lastError" put: message];
+          let next0 := [session at: "lastError" put: message];
+          let next := [next0 at: "globalNamesCache" put: nil];
           { "result" -> { "ok" -> false, "kind" -> "error", "phase" -> phase,
                            "message" -> message, "display" -> message, "events" -> #[] },
             "session" -> next }]
@@ -123,7 +148,8 @@
           let copied := [self sessionValue: value];
           let s1 := [session at: "lastValue" put: value];
           let s2 := [s1 at: "hasLastValue" put: true];
-          let next := [s2 at: "lastError" put: nil];
+          let next0 := [s2 at: "lastError" put: nil];
+          let next := [next0 at: "globalNamesCache" put: nil];
           { "result" -> { "ok" -> true, "kind" -> "value", "value" -> copied,
                            "display" -> [copied at: "display"], "events" -> #[] },
             "session" -> next }]]]]
@@ -156,14 +182,21 @@
     ifTrue: [| [outcome set: [self localInspect: params session: session]]]
     ifFalse: [| nil]];
   [[method = "birnam/globals"]
-    ifTrue: [| [outcome set: {
-      "result" -> { "globals" -> [self userGlobalNames] }, "session" -> session }]]
+    ifTrue: [|
+      let listing := [self localGlobalNamesIn: session];
+      [outcome set: { "result" -> { "globals" -> [listing at: "names"] },
+        "session" -> [listing at: "session"] }]]
     ifFalse: [| nil]];
   [[method = "birnam/runtimeCompletion"]
     ifTrue: [|
       let prefix := [params at: "prefix" ifAbsent: [| ""]];
-      [outcome set: { "result" -> { "items" -> [self runtimeCompletionItemsFor: prefix] },
-        "session" -> session }]]
+      let listing := [self localGlobalNamesIn: session];
+      let names := [self userGlobalNamesStartingWith: prefix in: [listing at: "names"]];
+      let items := [names collect: [:name |
+        { "label" -> name, "kind" -> "global", "detail" -> "live image global",
+          "source" -> "runtime" }]];
+      [outcome set: { "result" -> { "items" -> items },
+        "session" -> [listing at: "session"] }]]
     ifFalse: [| nil]];
   [[method = "birnam/interrupt"]
     ifTrue: [| [outcome set: {

@@ -98,3 +98,52 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
     describes: "globals command uses session result"];
   [t assert: [[[sessionInfo at: "transcript"] last] includesSubstring: "structuredValues=true"]
     describes: "session command exposes capabilities"]]];
+
+[e test: "completion opens through the session, cycles, and replaces the source prefix" do: [:t |
+  [Globals at: #DiglaCompletionAlpha put: 1];
+  [Globals at: #DiglaCompletionBeta put: 2];
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial0 := [Digla editorStateFor: config];
+  let initial1 := [initial0 at: "buffer" put: "DiglaCompletion"];
+  let initial := [initial1 at: "cursor" put: [[initial1 at: "buffer"] size]];
+  let opened := [Digla handleKey: 9 character: "" state: initial];
+  let menu := [opened at: "completion"];
+  let firstLabel := [[[menu at: "items"] at: 0] at: "label"];
+  let moved := [Digla handleKey: 9 character: "" state: opened];
+  let selectedLabel := [[[[moved at: "completion"] at: "items"]
+    at: [[moved at: "completion"] at: "index"]] at: "label"];
+  let accepted := [Digla handleKey: 13 character: "" state: moved];
+  [t expect: [[menu at: "items"] size] equals: 2 describes: "runtime candidates opened"];
+  [t expect: [[[opened at: "session"] at: "nextId"] > [[initial at: "session"] at: "nextId"]]
+    equals: true describes: "completion advances session request ids"];
+  [t expect: [[selectedLabel = firstLabel] not] equals: true describes: "Tab cycles the menu"];
+  [t expect: [accepted at: "buffer"] equals: selectedLabel describes: "Enter accepts selection"];
+  [t expect: [accepted at: "cursor"] equals: [selectedLabel size] describes: "cursor follows insertion"];
+  [t expect: [accepted at: "completion"] equals: nil describes: "acceptance closes menu"]]];
+
+[e test: "Escape dismisses completion before it quits the editor" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial0 := [Digla editorStateFor: config];
+  let initial1 := [initial0 at: "buffer" put: "le"];
+  let initial := [initial1 at: "cursor" put: 2];
+  let opened := [Digla handleKey: 9 character: "" state: initial];
+  let dismissed := [Digla handleKey: 27 character: "" state: opened];
+  let stopped := [Digla handleKey: 27 character: "" state: dismissed];
+  [t expect: [[opened at: "completion"] notNil] equals: true describes: "Tab opens menu"];
+  [t expect: [dismissed at: "completion"] equals: nil describes: "first Escape dismisses"];
+  [t expect: [dismissed at: "running"] equals: true describes: "dismissal keeps editor alive"];
+  [t expect: [stopped at: "running"] equals: false describes: "second Escape quits"]]];
+
+[e test: "source completion survives an unavailable runtime provider" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial0 := [Digla editorStateFor: config];
+  let closedSession := [[initial0 at: "session"] at: "status" put: "closed"];
+  let initial1 := [initial0 at: "session" put: closedSession];
+  let initial2 := [initial1 at: "buffer" put: "le"];
+  let initial := [initial2 at: "cursor" put: 2];
+  let opened := [Digla openCompletionIn: initial];
+  let labels := [[[opened at: "completion"] at: "items"]
+    collect: [:item | [item at: "label"]]];
+  [t expect: [labels includes: "let"] equals: true describes: "source candidate remains"];
+  [t assert: [[opened at: "status"] includesSubstring: "source only"]
+    describes: "provider failure is visible without suppressing source results"]]];
