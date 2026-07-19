@@ -27,6 +27,7 @@ files = [
   "../../modules/digla/editor.birnam",
   "../../modules/digla/display-layout.birnam",
   "../../modules/digla/analysis.birnam",
+  "../../modules/digla/language-service.birnam",
 ]
 
 [[module]]

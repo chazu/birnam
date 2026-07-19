@@ -1,0 +1,85 @@
+// language-service.birnam — terminal-independent assistance for Digla buffers.
+//
+// Static candidates come from the shared parser/CST analysis. Runtime globals
+// cross ReplSession as copied values. Menu layout and key handling live in the
+// editor/renderer, not here.
+
+[Reflect defineMethod: #completionStartIn:at: on: Digla as: [:self :text :cursor |
+  let start := [cursor asCell];
+  let done := [false asCell];
+  [[| [[[start value] > 0] & [[done value] not]]] whileTrue: [|
+    let previous := [[start value] - 1];
+    [[self highlightWordByte: [text byteAt: previous]]
+      ifTrue: [| [start set: previous]]
+      ifFalse: [| [done set: true]]]]];
+  [start value]
+  ] doc:
+  "Return the ASCII identifier-prefix boundary immediately before a byte cursor." ];
+
+[Reflect defineMethod: #completionItem:kind:detail:source: on: Digla as: [:self :label :kind :detail :source |
+  { "label" -> label, "kind" -> kind, "detail" -> detail, "source" -> source }
+  ] doc:
+  "Build one copied-value completion item shared by terminal and protocol clients." ];
+
+[Reflect defineMethod: #completionAdd:seen:items: on: Digla as: [:self :item :seen :items |
+  let label := [item at: "label"];
+  let already := [[seen value] at: label ifAbsent: [| false]];
+  [already
+    ifTrue: [| items]
+    ifFalse: [|
+      [seen set: [[seen value] at: label put: true]];
+      [items set: [[items value] add: item]];
+      items]]
+  ] doc:
+  "Append a completion item once, preserving source-before-runtime priority." ];
+
+[Reflect defineMethod: #sourceCompletionItemsFor:cursor:prefix: on: Digla as: [:self :text :cursor :prefix |
+  let analysis := [Lsp sourceAnalysisOf: text];
+  let seen := [Map new asCell];
+  let items := [#[] asCell];
+  let me := self;
+  [[analysis at: "bindings"] do: [:entry |
+    let name := [entry at: "name"];
+    let start := [entry at: "scopeStart"];
+    let finish := [entry at: "scopeEnd"];
+    let visible := [[cursor >= start] & [cursor <= finish]];
+    [[visible & [name startsWith: prefix]] ifTrue: [|
+      let item := [me completionItem: name kind: [entry at: "kind"]
+        detail: "buffer binding" source: "source"];
+      [me completionAdd: item seen: seen items: items]]]]];
+  [[analysis at: "symbols"] do: [:entry |
+    let name := [entry at: "name"];
+    [[name startsWith: prefix] ifTrue: [|
+      let item := [me completionItem: name kind: "symbol"
+        detail: [entry at: "detail"] source: "source"];
+      [me completionAdd: item seen: seen items: items]]]]];
+  [#["let" "true" "false" "nil"] do: [:word |
+    [[word startsWith: prefix] ifTrue: [|
+      let item := [me completionItem: word kind: "keyword"
+        detail: "Birnam keyword" source: "source"];
+      [me completionAdd: item seen: seen items: items]]]]];
+  { "items" -> [items value], "seen" -> [seen value] }
+  ] doc:
+  "Return in-scope buffer candidates using one parser/CST analysis pass." ];
+
+[Reflect defineMethod: #completionFor:cursor:session: on: Digla as: [:self :text :cursor :session |
+  let start := [self completionStartIn: text at: cursor];
+  let prefix := [text copyFrom: start to: cursor];
+  let source := [self sourceCompletionItemsFor: text cursor: cursor prefix: prefix];
+  let seen := [[source at: "seen"] asCell];
+  let items := [[source at: "items"] asCell];
+  let reply := [self callSession: "birnam/runtimeCompletion"
+    params: { "prefix" -> prefix } in: session];
+  let message := [reply at: "message"];
+  let error := [message at: "error" ifAbsent: [| nil]];
+  [[error isNil]
+    ifTrue: [|
+      let runtime := [[self sessionResultOf: reply] at: "items"];
+      let me := self;
+      [runtime do: [:item | [me completionAdd: item seen: seen items: items]]]]
+    ifFalse: [| nil]];
+  { "start" -> start, "end" -> cursor, "prefix" -> prefix,
+    "items" -> [items value], "session" -> [reply at: "session"],
+    "error" -> [[error isNil] ifTrue: [| nil] ifFalse: [| [error at: "message"]]] }
+  ] doc:
+  "Merge buffer-scope and runtime completion candidates without terminal coordinates." ];

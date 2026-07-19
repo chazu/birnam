@@ -1,0 +1,27 @@
+// language-service-test.birnam — completion merge and prefix contracts.
+
+let e := [TestSuite named: "Digla language service" module: #diglaLanguageService];
+
+[e test: "completion merges source scope with runtime globals and deduplicates" do: [:t |
+  [Globals at: #alphaLocal put: 10];
+  [Globals at: #alphaRuntime put: 20];
+  let text := "let alphaLocal := 1; al";
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let completion := [Digla completionFor: text cursor: [text size]
+    session: [Digla localSessionFor: config]];
+  let items := [completion at: "items"];
+  let labels := [items collect: [:item | [item at: "label"]]];
+  [t expect: [completion at: "prefix"] equals: "al" describes: "prefix text"];
+  [t expect: [completion at: "start"] equals: [[text size] - 2] describes: "prefix byte start"];
+  [t expect: [labels count: [:label | [label = "alphaLocal"]]] equals: 1
+    describes: "source binding wins duplicate runtime global"];
+  [t expect: [labels includes: "alphaRuntime"] equals: true describes: "runtime global merged"];
+  [t expect: [[items at: 0] at: "source"] equals: "source" describes: "source candidates lead"]]];
+
+[e test: "completion is bounded and JSON-safe at an empty prefix" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let completion := [Digla completionFor: "" cursor: 0 session: [Digla localSessionFor: config]];
+  [t expect: [[[completion at: "items"] size] <= 68] equals: true
+    describes: "runtime plus keywords bounded"];
+  [t expect: [[Json parse: [Json stringify: [completion at: "items"]]] isError]
+    equals: false describes: "completion items round-trip as JSON"]]];

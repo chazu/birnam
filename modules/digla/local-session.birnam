@@ -8,6 +8,7 @@
   { "evaluate" -> true,
     "inspect" -> true,
     "globals" -> true,
+    "runtimeCompletion" -> true,
     "interrupt" -> false,
     "structuredValues" -> true,
     "streamedOutput" -> false }
@@ -67,18 +68,33 @@
   ] doc:
   "Return the handshake payload for an open local image session." ];
 
-[Reflect defineMethod: #userGlobalNames on: Digla as: [:self |
+[Reflect defineMethod: #userGlobalNamesStartingWith: on: Digla as: [:self :prefix |
   let names := [#[] asCell];
   let count := [db attrCount: #__globals__];
   [0 to: [count - 1] do: [:i |
     let attribute := [db attrAt: #__globals__ index: i];
     let name := [Reflect nameOf: attribute];
-    [[name startsWith: "__"]
-      ifTrue: [| nil]
-      ifFalse: [| [names set: [[names value] add: name]]]]]];
-  [[names value] sortBy: [:name | name]]
+    let visible := [[name startsWith: "__"] not];
+    [[visible & [name startsWith: prefix]]
+      ifTrue: [| [names set: [[names value] add: name]]]
+      ifFalse: [| nil]]]];
+  let sorted := [[names value] sortBy: [:name | name]];
+  let limit := [[sorted size] min: 64];
+  [sorted copyFrom: 0 to: limit]
   ] doc:
-  "Return sorted user-visible persisted global names without their symbol sigils." ];
+  "Return at most 64 sorted visible global names matching a prefix." ];
+
+[Reflect defineMethod: #userGlobalNames on: Digla as: [:self |
+  [self userGlobalNamesStartingWith: ""]
+  ] doc:
+  "Return the bounded sorted user-visible persisted global names." ];
+
+[Reflect defineMethod: #runtimeCompletionItemsFor: on: Digla as: [:self :prefix |
+  [[self userGlobalNamesStartingWith: prefix] collect: [:name |
+    { "label" -> name, "kind" -> "global", "detail" -> "live image global",
+      "source" -> "runtime" }]]
+  ] doc:
+  "Return copied-value runtime completion items for visible globals matching a prefix." ];
 
 [Reflect defineMethod: #localEvaluate:session: on: Digla as: [:self :params :session |
   let source := [params at: "source" ifAbsent: [| nil]];
@@ -142,6 +158,12 @@
   [[method = "birnam/globals"]
     ifTrue: [| [outcome set: {
       "result" -> { "globals" -> [self userGlobalNames] }, "session" -> session }]]
+    ifFalse: [| nil]];
+  [[method = "birnam/runtimeCompletion"]
+    ifTrue: [|
+      let prefix := [params at: "prefix" ifAbsent: [| ""]];
+      [outcome set: { "result" -> { "items" -> [self runtimeCompletionItemsFor: prefix] },
+        "session" -> session }]]
     ifFalse: [| nil]];
   [[method = "birnam/interrupt"]
     ifTrue: [| [outcome set: {
