@@ -86,7 +86,9 @@ until product evidence selects the next failure model.
   `--session-listen` adapter consume the same copied-value responses. A lazy
   `--ui --connect=remote` client now drives that TCP session through the unchanged
   terminal-independent editor model, correlates output notifications, and closes
-  the active connection on editor exit. A real loopback server/client smoke test
+  the active connection on editor exit. `:connect local|remote` performs an
+  explicit handshake and switches adapters without replacing editor state or the
+  immutable startup snapshot. A real loopback server/client smoke test
   covers evaluation, transcript insertion, copied values, and close. The
   Termbox surface now loads through a precompiled application wrapper rather
   than runtime Alien compilation, reducing measured full-project cold launch
@@ -123,8 +125,7 @@ until product evidence selects the next failure model.
   the measured lookup adds roughly 0.24-0.29 s beyond startup. The current enriched
   image starts in 2.60-2.64 s, and five steady remote `allMethodsOf:` round trips
   complete in 23.2-24.3 ms including framing and a 6,099-character result. Next: add structured
-  streamed output and bounded interruption on the session seam; then expose an
-  explicit in-editor local/remote session switch without coupling it to Termbox.
+  streamed output and bounded interruption on the session seam.
 
 ---
 

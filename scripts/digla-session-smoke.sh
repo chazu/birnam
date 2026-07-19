@@ -123,9 +123,9 @@ if [[ "$ready" -ne 1 ]]; then
   exit 1
 fi
 
-probe="let c := [Digla configAtPath: nil environment: [Map new] args: #[\"--connect=remote\" \"--port=$port\"]]; let s := [Digla editorStateFor: c]; let r := [Digla submitIn: [s at: \"buffer\" put: \"[System println: 7]; [6 * 7]\"]]; let lines := [r at: \"transcript\"]; [System println: [\"REMOTE-LINES:\" , [[lines size] printString]]]; [System println: [\"REMOTE-INPUT:\" , [lines at: 0]]]; [System println: [\"REMOTE-OUTPUT:\" , [lines at: 1]]]; [System println: [\"REMOTE-VALUE:\" , [lines at: 2]]]; let closed := [Digla callSession: \"birnam/close\" params: [Map new] in: [r at: \"session\"]]; [System println: [\"REMOTE-CLOSED:\" , [[[Digla sessionResultOf: closed] at: \"closed\"] printString]]]"
+probe="let c := [Digla configAtPath: nil environment: [Map new] args: #[\"--port=$port\"]]; let s := [Digla editorStateFor: c]; let switched := [Digla submitIn: [s at: \"buffer\" put: \":connect remote\"]]; [System println: [\"REMOTE-ADAPTER:\" , [[switched at: \"session\"] at: \"adapter\"]]]; let r := [Digla submitIn: [switched at: \"buffer\" put: \"[System println: 7]; [6 * 7]\"]]; let lines := [r at: \"transcript\"]; [System println: [\"REMOTE-LINES:\" , [[lines size] printString]]]; [System println: [\"REMOTE-INPUT:\" , [lines at: 2]]]; [System println: [\"REMOTE-OUTPUT:\" , [lines at: 3]]]; [System println: [\"REMOTE-VALUE:\" , [lines at: 4]]]; let closed := [Digla callSession: \"birnam/close\" params: [Map new] in: [r at: \"session\"]]; [System println: [\"REMOTE-CLOSED:\" , [[[Digla sessionResultOf: closed] at: \"closed\"] printString]]]"
 printf '%s\n:quit\n' "$probe" | "$bin" run "$project" --repl=tty -- \
-  --connect=remote --port="$port" >"$tmp/remote-client" 2>&1 &
+  --port="$port" >"$tmp/remote-client" 2>&1 &
 client_pid=$!
 for _ in $(seq 1 100); do
   if ! kill -0 "$client_pid" 2>/dev/null; then
@@ -154,7 +154,8 @@ fi
 wait "$remote_pid"
 remote_pid=""
 
-grep -q '^birnam> REMOTE-LINES:3$' "$tmp/remote-client"
+grep -q '^birnam> REMOTE-ADAPTER:tcp$' "$tmp/remote-client"
+grep -q '^REMOTE-LINES:5$' "$tmp/remote-client"
 grep -q '^REMOTE-INPUT:> \[System println: 7\]; \[6 \* 7\]$' "$tmp/remote-client"
 grep -q '^REMOTE-OUTPUT:7$' "$tmp/remote-client"
 grep -q '^REMOTE-VALUE:42$' "$tmp/remote-client"

@@ -89,7 +89,10 @@ the same editor model then sends evaluation, inspection, globals, runtime
 completion, identity, and close requests to the connected image while retaining
 source analysis and terminal state locally. Correlated `birnam/output`
 notifications are merged into the normal transcript without duplicating the
-response's buffered event fallback. Tab now opens a completion
+response's buffered event fallback. `:connect local|remote` now switches that
+adapter through the terminal-independent command model, performing a handshake
+before releasing the old active session and preserving the immutable startup
+configuration plus all editor-owned state. Tab now opens a completion
 menu that merges in-scope parser/CST candidates with bounded live-image globals;
 Tab or Down cycles, Up cycles backward, Enter accepts, and Escape dismisses the
 menu before it quits the editor. Shift-arrow/Home/End selection now uses source
@@ -508,8 +511,9 @@ return structured timeout responses before the watchdog and the session then
 closes normally.
 
 The TCP client path is also covered process-to-process: a terminal-independent
-editor model connects lazily, evaluates `[System println: 7]; [6 * 7]`, receives
-three transcript entries in order, and closes both ends. Five steady remote
+editor model starts local, switches with `:connect remote`, evaluates
+`[System println: 7]; [6 * 7]`, receives the transcript entries in order, and
+closes both ends. Five steady remote
 round trips of `[ Reflect allMethodsOf: "YourMom" ]` completed in 23.2-24.3 ms
 each including framing, JSON, copied-value rendering, and a 6,099-character
 response.

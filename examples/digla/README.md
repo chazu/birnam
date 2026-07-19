@@ -54,6 +54,7 @@ evaluator from the terminal model. The current commands are:
 :inspect        inspect the last successful result
 :globals        list user-visible live-image globals
 :session        show image identity and capabilities
+:connect TARGET switch to the local or configured remote image
 :help           show command help
 ```
 
@@ -104,6 +105,11 @@ session identity cross the serial framed connection. The connection opens lazily
 on the first runtime request and is closed when the editor exits. `--bind` selects
 another endpoint address; non-loopback servers still require the explicit
 `--allow-remote` security opt-in described below.
+
+The same editor can switch without restarting: `:connect remote` handshakes with
+the configured `--bind`/`--port`, while `:connect local` returns runtime requests
+to the client process's image. Buffer, transcript, history, navigation, and the
+immutable startup configuration survive the switch.
 
 Use `--session-listen-once` for a script or smoke test that should serve one
 connection and exit. The server accepts one client at a time, caps frames at

@@ -312,7 +312,7 @@
   "Record a submission without output events, as used by editor commands." ];
 
 [Reflect defineMethod: #commandHelpText on: Digla as: [:self |
-  "Digla commands:\n  :inspect NAME  inspect a named global\n  :inspect       inspect the last successful result\n  :globals       list visible live-image globals\n  :session       show image identity and capabilities\n  :help          show this help"
+  "Digla commands:\n  :inspect NAME  inspect a named global\n  :inspect       inspect the last successful result\n  :globals       list visible live-image globals\n  :session       show image identity and capabilities\n  :connect TARGET switch to local or remote image\n  :help          show this help"
   ] doc:
   "Return the terminal-native command summary." ];
 
@@ -406,8 +406,49 @@
             ifFalse: [|
               [[command = ":session"]
                 ifTrue: [| [self sessionCommand: "birnam/session/open" state: state]]
-                ifFalse: [| { "text" -> ["unknown Digla command: " , command],
-                              "status" -> "command error", "session" -> [state at: "session"] }]]]]]]]]
+                ifFalse: [|
+                  [[command = ":connect"]
+                    ifTrue: [|
+                      let requested := [words at: 1 ifAbsent: [| ""]];
+                      let target := [[requested = "tcp"]
+                        ifTrue: [| "remote"]
+                        ifFalse: [| requested]];
+                      let validTarget := [[target = "local"] | [target = "remote"]];
+                      let valid := [[[words size] = 2] & validTarget];
+                      [valid
+                        ifTrue: [|
+                          let current := [state at: "session"];
+                          let currentAdapter := [current at: "adapter"];
+                          let currentTarget := [[currentAdapter = "tcp"]
+                            ifTrue: [| "remote"]
+                            ifFalse: [| currentAdapter]];
+                          let currentStatus := [current at: "status"];
+                          let active := [[currentStatus = "open"] | [currentStatus = "connected"]];
+                          [[active & [currentTarget = target]]
+                            ifTrue: [| { "text" -> ["already connected " , target],
+                              "status" -> ["connected " , target], "session" -> current }]
+                            ifFalse: [|
+                              let config := [state at: "config"];
+                              let candidate := [[target = "local"]
+                                ifTrue: [| [self localSessionFor: config]]
+                                ifFalse: [| [self tcpSessionFor: config]]];
+                              let reply := [self callSession: "birnam/session/open"
+                                params: [Map new] in: candidate];
+                              let error := [self sessionReplyErrorText: reply];
+                              [[error notNil]
+                                ifTrue: [| { "text" -> error, "status" -> "command error",
+                                  "session" -> current }]
+                                ifFalse: [|
+                                  let released := [self releaseSession: current];
+                                  let result := [self sessionResultOf: reply];
+                                  { "text" -> [["connected " , target] , "\n" ,
+                                    [self renderSessionResult: result]],
+                                    "status" -> ["connected " , target],
+                                    "session" -> [reply at: "session"] }]]]]]
+                        ifFalse: [| { "text" -> "usage: :connect local|remote",
+                          "status" -> "command error", "session" -> [state at: "session"] }]]]
+                    ifFalse: [| { "text" -> ["unknown Digla command: " , command],
+                                  "status" -> "command error", "session" -> [state at: "session"] }]]]]]]]]]]
   ] doc:
   "Dispatch one terminal-native Digla command without evaluating source." ];
 

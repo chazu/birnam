@@ -162,8 +162,21 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let missing := [Digla submitIn: [help at: "buffer" put: ":inspect NoSuchDiglaGlobal"]];
   let unknown := [Digla submitIn: [missing at: "buffer" put: ":wat"]];
   [t assert: [[[help at: "transcript"] last] includesSubstring: ":inspect NAME"] describes: "help lists inspect"];
+  [t assert: [[[help at: "transcript"] last] includesSubstring: ":connect TARGET"] describes: "help lists session switching"];
   [t assert: [[[missing at: "transcript"] last] includesSubstring: "global not found"] describes: "missing global warning"];
   [t expect: [unknown at: "status"] equals: "command error" describes: "unknown command status"]]];
+
+[e test: "connect command switches session adapters without terminal state" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new]
+    args: #["--connect=remote"]];
+  let initial := [Digla editorStateFor: config];
+  let switched := [Digla submitIn: [initial at: "buffer" put: ":connect local"]];
+  [t expect: [[switched at: "session"] at: "adapter"] equals: "local"
+    describes: "command selects the local adapter"];
+  [t expect: [[switched at: "config"] at: "connect"] equals: "remote"
+    describes: "runtime switching leaves the startup snapshot immutable"];
+  [t expect: [switched at: "status"] equals: "connected local"
+    describes: "switch is visible in terminal-independent state"]]];
 
 [e test: "editor routes runtime work through one session and preserves last success" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
