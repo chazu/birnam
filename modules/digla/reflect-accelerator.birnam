@@ -1,0 +1,10 @@
+// reflect-accelerator.birnam — Digla-local acceleration of method reflection.
+//
+// The wrapped module rebinds Reflect allMethodsOf: inside the Digla application
+// image. It uses only the existing IdApi and Store surfaces; it does not expand
+// the language floor.
+
+[Module named: #diglaReflect requires: #[#digla]];
+let path := [[Module libDir] , "/libdiglareflect.dylib"];
+let loaded := [System loadModule: path];
+[[loaded isError] ifTrue: [| loaded] ifFalse: [| Module]]

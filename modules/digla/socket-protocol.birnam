@@ -4,7 +4,7 @@
 // ownership and blocking accept live only in this optional adapter module; the
 // editor, language service, and session dispatcher remain transport-neutral.
 
-[Module named: #diglaSocket requires: #[#digla #socket]];
+[Module named: #diglaSocket requires: #[#diglaReflect #socket]];
 [Reflect docModule: #diglaSocket is:
   "The optional loopback TCP adapter for framed Digla image sessions." ];
 

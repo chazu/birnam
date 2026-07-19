@@ -296,8 +296,8 @@ from-zero bootstrap compiler and performance floor.
   (`Config` for project manifests, `AppConfig` for application startup).
 - `modules/` — source-backed libraries, CLI, LSP, documentation, tests, and the
   multi-file Digla module.
-- `wrapped/` — first-party C libraries used by optional application projects,
-  including the Termbox2 wrapper.
+- `wrapped/` — first-party native libraries used by optional application
+  projects, including Digla's Termbox2 and reflection wrappers.
 - `examples/` — runnable programs, including images and AOT artifacts.
 - `docs/design/` — current design decisions and implementation status.
 - `docs/archive/` — superseded kernel plans and historical material.
@@ -343,5 +343,7 @@ from-zero bootstrap compiler and performance floor.
   with bounded live-image globals, and the structured session protocol now runs
   over framed stdio or a loopback-only-by-default TCP listener. Termbox enters
   through a precompiled application wrapper rather than a runtime-compiled Alien
-  trampoline. Selection, richer assistance, streamed output, and bounded
-  interruption remain staged.
+  trampoline; a second project-local wrapper removes the full-image
+  `Reflect allMethodsOf:` hot path without expanding the core/runtime floor.
+  Selection, richer assistance, streamed output, and bounded interruption remain
+  staged.

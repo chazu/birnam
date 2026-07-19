@@ -1,0 +1,3 @@
+// app.birnam — one project root for Digla's optional runtime adapters.
+
+[Module named: #diglaApp requires: #[#diglaSocket #termbox]]

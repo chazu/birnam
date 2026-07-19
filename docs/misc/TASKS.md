@@ -86,10 +86,12 @@ until product evidence selects the next failure model.
   `--session-listen` adapter consume the same copied-value responses. The
   Termbox surface now loads through a precompiled application wrapper rather
   than runtime Alien compilation, reducing measured full-project cold launch
-  from about 3.5 s to 1.9-2.0 s. Next:
-  remove the remaining `Reflect allMethodsOf:` project-image hot path, then add
-  selection, viewport refinement, and hover/signature/source navigation on the
-  same seams.
+  from about 3.5 s to 1.9-2.0 s. A second project-local wrapper accelerates
+  `Reflect allMethodsOf:` with exported-name lookup and a basis-keyed, single-pass
+  reverse-global index: a controlled full-image request fell from 1.587 s to
+  17.7 ms with byte-identical rendered output, while reflection after live-image
+  mutation completes in 12.9 ms. Next: add selection, viewport refinement, and
+  hover/signature/source navigation on the same seams.
 
 ---
 

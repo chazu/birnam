@@ -42,6 +42,8 @@ modules/digla/local-session.birnam synchronous live-image session adapter
 modules/digla/protocol.birnam    injected JSON loop and framed stdio adapter
 modules/digla/socket-protocol.birnam optional framed TCP adapter
 modules/digla/socket-protocol-test.birnam framing and bind-policy tests
+modules/digla/reflect-accelerator.birnam optional project-local reflection fast path
+modules/digla/app.birnam        one dependency root for optional runtime adapters
 modules/digla/render.birnam      headless startup summary
 modules/digla/terminal.birnam    local Termbox event loop
 modules/digla/position-map.birnam source-byte/LSP UTF-16 conversion
@@ -57,6 +59,7 @@ modules/digla/language-service-test.birnam completion contract tests
 modules/digla/render-test.birnam    headless renderer decision tests
 modules/digla/termbox.birnam     Termbox module entry
 wrapped/termbox2/                vendored C library and native wrapper module
+wrapped/digla-reflect/           application-local reflection accelerator
 examples/digla/birnam.toml       composed application project
 ```
 
@@ -402,13 +405,20 @@ The first usable milestone is now complete: a user can launch the terminal edito
 edit and evaluate multiline Birnam forms locally, recall history, see parser-backed
 highlighting and diagnostics, and attach a client to a running image over loopback.
 
-The next performance seam is below the Digla transport. In a real project-image
-TCP smoke, `[8 * 8]` evaluates in about 8 ms while
-`[ Reflect allMethodsOf: "YourMom" ]` takes about 1.76 s. Framing, JSON, and
-compilation were separately ruled out; the remaining time is target-name
-resolution inside `Reflect allMethodsOf:` against the larger project image. That
-floor path needs improvement without coupling the editor or session protocol to
-a special-case reflection cache.
+The reflection hot path is now resolved without changing Birnam's core/runtime
+floor. Digla loads an application-local native wrapper through `IdApi` and
+rebinds `Reflect allMethodsOf:` only in its project image. Exported targets use
+the existing constant-time export lookup; live globals use a basis-keyed reverse
+index rebuilt through one `Store liveTriplesDo:` pass. The editor and session
+protocol remain unaware of the optimization.
+
+In a controlled full-project TCP comparison, the exact expression
+`[ Reflect allMethodsOf: "YourMom" ]` produced an identical 5,913-character
+result before and after the override (including an identical SHA-256) while
+falling from 1.587 s to 17.7 ms, about 90x. After adding a new global and method
+to the live image, reflection correctly named both and completed in 12.9 ms;
+this also exercises Store-basis cache invalidation. Simple evaluation remains
+about 8 ms.
 
 The terminal wrapper is no longer part of that startup bottleneck. Replacing its
 runtime-compiled Alien layer with the precompiled wrapped module reduced full
