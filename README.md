@@ -349,5 +349,6 @@ from-zero bootstrap compiler and performance floor.
   `Reflect allMethodsOf:` hot path without expanding the core/runtime floor.
   Shift-movement selection, cursor-following multiline viewports, buffered-event
   coalescing, and a project-local native source-frame/wrapping accelerator are
-  also live. Project/dependency navigation, manual transcript scrolling, streamed
-  output, and bounded interruption remain staged.
+  also live. Page Up/Page Down navigate wrapped transcript rows with automatic
+  tail following after evaluation. Project/dependency navigation, streamed output,
+  and bounded interruption remain staged.

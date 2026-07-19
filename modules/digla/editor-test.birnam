@@ -225,3 +225,18 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
     describes: "F4 refreshes parser diagnostics"];
   [t expect: [checked at: "diagnosticsDirty"] equals: false
     describes: "explicit refresh marks the cache clean"]]];
+
+[e test: "Page Up and Page Down move the transcript viewport and evaluation follows the tail" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let up := [Digla handleKey: 65519 modifier: 0 character: "" state: initial];
+  let farther := [Digla handleKey: 65519 modifier: 0 character: "" state: up];
+  let down := [Digla handleKey: 65518 modifier: 0 character: "" state: farther];
+  [t expect: [[up at: "viewport"] at: "transcriptOffset"] equals: 10
+    describes: "Page Up moves one transcript page from the tail"];
+  [t expect: [[down at: "viewport"] at: "transcriptOffset"] equals: 10
+    describes: "Page Down moves back toward the tail"];
+  let source := [down at: "buffer" put: "[1 + 1]"];
+  let submitted := [Digla submitIn: source];
+  [t expect: [[submitted at: "viewport"] at: "transcriptOffset"] equals: 0
+    describes: "new transcript output resumes tail following"]]];

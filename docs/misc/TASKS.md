@@ -98,9 +98,10 @@ until product evidence selects the next failure model.
   invokes the parser per key; buffered terminal events are coalesced and the
   application wrapper accelerates source-frame projection and transcript wrapping.
   A real PTY consumed and rendered a 60-byte form in under 500 ms, and evaluated
-  and visibly wrapped the full `allMethodsOf:` result within one second. Next: add
-  manual transcript scrolling, soft-wrapped source rows, and project/dependency
-  source navigation on the same seams.
+  and visibly wrapped the full `allMethodsOf:` result within one second. Page Up
+  and Page Down now navigate those wrapped transcript rows with clamped offsets;
+  new evaluation output resumes tail following. Next: add soft-wrapped source rows
+  and project/dependency source navigation on the same seams.
 
 ---
 

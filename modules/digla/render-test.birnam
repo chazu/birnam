@@ -42,3 +42,14 @@ let e := [TestSuite named: "Digla render" module: #diglaRender];
   [t assert: [[rows at: 0] at: "text"] includesSubstring: "beta" describes: "window follows selection"];
   [t expect: [[rows at: 1] at: "selected"] equals: true describes: "selected row retained"];
   [t assert: [[rows at: 1] at: "text"] includesSubstring: "> gamma" describes: "selected marker shown"]]];
+
+[e test: "transcript windows scroll from the tail and clamp at the oldest row" do: [:t |
+  let middle := [Digla transcriptWindowFor: 20 availableRows: 5 offset: 10];
+  let oldest := [Digla transcriptWindowFor: 20 availableRows: 5 offset: 99];
+  let tail := [Digla transcriptWindowFor: 3 availableRows: 5 offset: -4];
+  [t expect: middle equals: { "start" -> 5, "end" -> 10, "offset" -> 10 }
+    describes: "offset selects a half-open middle page"];
+  [t expect: oldest equals: { "start" -> 0, "end" -> 5, "offset" -> 15 }
+    describes: "overscroll clamps to the oldest full page"];
+  [t expect: tail equals: { "start" -> 0, "end" -> 3, "offset" -> 0 }
+    describes: "negative offsets and short transcripts follow the tail"]]];

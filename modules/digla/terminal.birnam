@@ -24,8 +24,8 @@
 
 [Reflect defineMethod: #runTerminalLoop: on: Digla as: [:self :state |
   let step := [:current |
-    [self renderTerminal: current];
+    let rendered := [self renderTerminal: current];
     [Termbox poll];
-    [self drainTerminalEventsFrom: current]];
+    [self drainTerminalEventsFrom: rendered]];
   [self runWhileRunning: state step: step]] doc:
   "Render, wait for one terminal event, apply it, and continue while running."];

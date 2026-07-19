@@ -214,6 +214,20 @@
   ] doc:
   "Project copied hover/signature text into bounded terminal-width rows." ];
 
+[Reflect defineMethod: #transcriptWindowFor:availableRows:offset: on: Digla as:
+  [:self :lineCount :requestedRows :requestedOffset |
+  let rows := [[requestedRows < 0] ifTrue: [| 0] ifFalse: [| requestedRows]];
+  let maxOffset0 := [lineCount - rows];
+  let maxOffset := [[maxOffset0 < 0] ifTrue: [| 0] ifFalse: [| maxOffset0]];
+  let nonnegative := [[requestedOffset < 0] ifTrue: [| 0] ifFalse: [| requestedOffset]];
+  let offset := [[nonnegative > maxOffset] ifTrue: [| maxOffset] ifFalse: [| nonnegative]];
+  let finish := [lineCount - offset];
+  let start0 := [finish - rows];
+  let start := [[start0 < 0] ifTrue: [| 0] ifFalse: [| start0]];
+  { "start" -> start, "end" -> finish, "offset" -> offset }
+  ] doc:
+  "Clamp a tail-relative transcript offset and answer its half-open visible row window." ];
+
 [Reflect defineMethod: #renderTerminal: on: Digla as: [:self :state |
   let width := [Termbox width];
   let height := [Termbox height];
@@ -237,17 +251,21 @@
   let start := [completionStart - visibleEditorRows];
   [Termbox clear];
   [Termbox printX: 0 y: 0 fg: 8 bg: 0 str:
-    "Digla | Tab complete | F1 hover | F2 sig | F3 definition | F4 diagnostics"];
+    "Digla | PgUp/PgDn scroll | Tab complete | F1 hover | F2 sig | F3 def | F4 check"];
   let transcriptLines := [self transcriptLines: [visibleState at: "transcript"] width: width];
   let availableTranscriptRows := [start - 1];
-  let firstTranscriptLine0 := [[transcriptLines size] - availableTranscriptRows];
-  let firstTranscriptLine := [[firstTranscriptLine0 < 0]
-    ifTrue: [| 0]
-    ifFalse: [| firstTranscriptLine0]];
+  let viewport := [visibleState at: "viewport"];
+  let requestedOffset := [viewport at: "transcriptOffset" ifAbsent: [| 0]];
+  let transcriptWindow := [self transcriptWindowFor: [transcriptLines size]
+    availableRows: availableTranscriptRows offset: requestedOffset];
+  let nextViewport := [viewport at: "transcriptOffset" put: [transcriptWindow at: "offset"]];
+  let scrolledState := [visibleState at: "viewport" put: nextViewport];
+  let firstTranscriptLine := [transcriptWindow at: "start"];
+  let lastTranscriptLine := [transcriptWindow at: "end"];
   let transcriptY := [1 asCell];
-  [[[[transcriptLines size] > 0] & [availableTranscriptRows > 0]]
+  [[[lastTranscriptLine > firstTranscriptLine] & [availableTranscriptRows > 0]]
     ifTrue: [|
-      [firstTranscriptLine to: [[transcriptLines size] - 1] do: [:i |
+      [firstTranscriptLine to: [lastTranscriptLine - 1] do: [:i |
         [Termbox printX: 0 y: [transcriptY value] fg: 8 bg: 0 str: [transcriptLines at: i]];
         [transcriptY set: [[transcriptY value] + 1]]]]]
     ifFalse: [| nil]];
@@ -262,7 +280,7 @@
         let promptColor := [self diagnosticColorForRow: row analysis: analysis text: buffer];
         [Termbox printX: 0 y: y fg: promptColor bg: 0 str: prompt];
         [self renderSourceRow: row analysis: analysis y: y promptWidth: 2 in: buffer];
-        [self renderSelectionForRow: row state: visibleState y: y promptWidth: 2 in: buffer]]
+        [self renderSelectionForRow: row state: scrolledState y: y promptWidth: 2 in: buffer]]
       ifFalse: [| nil]]]];
   let completionY := [completionStart asCell];
   [completionRows do: [:row |
@@ -272,13 +290,16 @@
     [Termbox printX: 0 y: [completionY value] fg: fg bg: bg str: [row at: "text"]];
     [completionY set: [[completionY value] + 1]]]];
   let diagnosticCount := [[[analysis at: "diagnostics"] size] printString];
-  let selected := [self selectionRangeIn: visibleState];
+  let selected := [self selectionRangeIn: scrolledState];
   let selectionStatus := [[selected isNil]
     ifTrue: [| ""]
     ifFalse: [| ["  selected=" , [[[selected at: "end"] - [selected at: "start"]] printString]]]];
-  let dirty := [[visibleState at: "diagnosticsDirty"] ifTrue: [| "*"] ifFalse: [| ""]];
-  let status := [[visibleState at: "status"] , "  bytes=" , [[buffer size] printString]
-    , selectionStatus , "  diagnostics=" , diagnosticCount , dirty];
+  let dirty := [[scrolledState at: "diagnosticsDirty"] ifTrue: [| "*"] ifFalse: [| ""]];
+  let transcriptOffset := [[scrolledState at: "viewport"] at: "transcriptOffset"];
+  let scrollStatus := [[transcriptOffset = 0] ifTrue: [| ""]
+    ifFalse: [| ["  transcript=-" , [transcriptOffset printString]]]];
+  let status := [[scrolledState at: "status"] , "  bytes=" , [[buffer size] printString]
+    , selectionStatus , scrollStatus , "  diagnostics=" , diagnosticCount , dirty];
   [Termbox printX: 0 y: [height - 1] fg: 7 bg: 0 str: status];
   let position := [frame at: "position"];
   let cursorX := [position at: "x"];
@@ -286,5 +307,6 @@
   [[[cursorY >= 1] & [cursorY < completionStart]]
     ifTrue: [| [Termbox setCursor: cursorX y: cursorY]]
     ifFalse: [| [Termbox setCursor: 0 y: 0]]];
-  [Termbox present]] doc:
+  [Termbox present];
+  scrolledState] doc:
   "Render the transcript and active source buffer to Termbox. Source cursor positions remain byte offsets."];

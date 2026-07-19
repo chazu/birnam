@@ -19,7 +19,7 @@
   let s9 := [s8 at: "selection" put: nil];
   let s10 := [s9 at: "diagnostics" put: #[]];
   let s11 := [s10 at: "diagnosticsDirty" put: false];
-  [s11 at: "viewport" put: { "editorTopLine" -> 0 }]] doc:
+  [s11 at: "viewport" put: { "editorTopLine" -> 0, "transcriptOffset" -> 0 }]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
 
 [Reflect defineMethod: #selectionRangeIn: on: Digla as: [:self :state |
@@ -42,6 +42,19 @@
   [state at: "selection" put: nil]
   ] doc:
   "Clear the source selection without moving the cursor." ];
+
+[Reflect defineMethod: #scrollTranscriptBy:in: on: Digla as: [:self :delta :state |
+  let viewport := [state at: "viewport"];
+  let current := [viewport at: "transcriptOffset" ifAbsent: [| 0]];
+  let candidate := [current + delta];
+  let offset := [[candidate < 0] ifTrue: [| 0] ifFalse: [| candidate]];
+  let nextViewport := [viewport at: "transcriptOffset" put: offset];
+  let next := [state at: "viewport" put: nextViewport];
+  let status := [[offset = 0] ifTrue: [| "transcript tail"]
+    ifFalse: [| ["transcript -" , [offset printString] , " rows"]]];
+  [next at: "status" put: status]
+  ] doc:
+  "Move the transcript viewport by display rows measured backward from its tail." ];
 
 [Reflect defineMethod: #markDiagnosticsDirtyIn: on: Digla as: [:self :state |
   [state at: "diagnosticsDirty" put: true]
@@ -263,7 +276,9 @@
   let s6 := [s5 at: "selection" put: nil];
   let s7 := [s6 at: "diagnostics" put: #[]];
   let s8 := [s7 at: "diagnosticsDirty" put: false];
-  [s8 at: "status" put: status]
+  let viewport := [[s8 at: "viewport"] at: "transcriptOffset" put: 0];
+  let s9 := [s8 at: "viewport" put: viewport];
+  [s9 at: "status" put: status]
   ] doc:
   "Record one evaluated form or editor command in history and the transcript." ];
 
@@ -588,7 +603,9 @@
 [Reflect defineMethod: #handleEditorKey:modifier:character:state: on: Digla as:
   [:self :key :modifier :character :state |
   let shift := [modifier >= 4];
-  let s0 := [self applyMovementKey: key extend: shift in: state];
+  let pageUp := [[key = 65519] ifTrue: [| [self scrollTranscriptBy: 10 in: state]] ifFalse: [| state]];
+  let pageDown := [[key = 65518] ifTrue: [| [self scrollTranscriptBy: -10 in: pageUp]] ifFalse: [| pageUp]];
+  let s0 := [self applyMovementKey: key extend: shift in: pageDown];
   let s1 := [[key = 27] ifTrue: [| [s0 at: "running" put: false]] ifFalse: [| s0]];
   let backspace := [[key = 8] | [key = 127]];
   let s2 := [backspace ifTrue: [| [self backspaceIn: s1]] ifFalse: [| s1]];

@@ -32,7 +32,8 @@ through the menu, Enter accepts, and Escape dismisses it. F1 opens source/runtim
 hover, F2 shows the full selector signature, F3 jumps to a same-buffer definition,
 and F4 explicitly refreshes diagnostics. A `*` after the diagnostic count means
 the cache is stale after editing; typing never reparses the whole buffer. Enter
-evaluates the current Birnam form, for example `[1 + 2]`.
+evaluates the current Birnam form, for example `[1 + 2]`. Page Up and Page Down
+move through wrapped transcript rows; a new evaluation resumes following the tail.
 
 Runtime operations use a transport-neutral session rather than calling the
 evaluator from the terminal model. The current commands are:

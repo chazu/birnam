@@ -93,8 +93,10 @@ same-buffer provenance with copied live-image inspection, F2 reconstructs full
 keyword selectors for signature help, and F3 jumps to same-buffer bindings or
 authored definitions. F4 refreshes cached parser diagnostics explicitly; source
 edits only mark the cache stale, so parsing is not on the per-key render path.
-Manual transcript scrolling, soft-wrapped source rows, project/dependency source
-navigation, streamed output, and bounded interruption remain later slices.
+Page Up/Page Down now navigate the wrapped transcript with a clamped tail-relative
+offset, and new evaluation output resumes tail following. Soft-wrapped source rows,
+project/dependency source navigation, streamed output, and bounded interruption
+remain later slices.
 
 ## 2. Goals and boundaries
 
@@ -394,8 +396,9 @@ The core invariants are:
    than reparsed after each edit. Autocomplete merges scoped source
    candidates and bounded runtime globals behind a terminal-independent language
    service, while the editor owns menu state and the renderer owns its cells.
-   Shift-movement selection and a cursor-following logical-line viewport are now
-   implemented; manual transcript scrolling and soft-wrapped source rows remain.
+   Shift-movement selection, a cursor-following logical-line viewport, and manual
+   Page Up/Page Down transcript navigation are implemented; soft-wrapped source
+   rows remain.
 4. **Compatibility remote session — superseded by the framed seam.** The
    prompt-oriented socket REPL cannot preserve structured values, errors, or
    capabilities without ambiguous text parsing. Keep it compatible for comint
@@ -449,7 +452,9 @@ and transcript wrapping. In a real PTY smoke, a 60-byte method definition was
 consumed and rendered with syntax colors inside a 500 ms observation window. The
 exact `allMethodsOf:` expression above evaluated and rendered its full result as
 terminal-width rows inside a one-second observation window; F1/F2/F3/F4 behavior
-was verified in that same live project image.
+was verified in that same live project image. Page Up/Page Down then moved through
+the wrapped result in persisted 10-row pages, and a subsequent evaluation reset the
+viewport to its new tail.
 
 ## 9. Open decisions
 
