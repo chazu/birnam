@@ -24,7 +24,8 @@
   let s12 := [s11 at: "document" put: document];
   let s13 := [s12 at: "navigation" put: #[]];
   let s14 := [s13 at: "projectSnapshot" put: nil];
-  [s14 at: "viewport" put: { "editorTopRow" -> 0, "transcriptOffset" -> 0 }]] doc:
+  let s15 := [s14 at: "evaluation" put: nil];
+  [s15 at: "viewport" put: { "editorTopRow" -> 0, "transcriptOffset" -> 0 }]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
 
 [Reflect defineMethod: #selectionRangeIn: on: Digla as: [:self :state |
@@ -461,34 +462,159 @@
   ] doc:
   "Run one Digla editor command and append its result to the transcript." ];
 
+[Reflect defineMethod: #applyEvaluationReply:input:recordPrompt:in: on: Digla as:
+  [:self :reply :input :recordPrompt :state |
+    let protocolError := [self sessionReplyErrorText: reply];
+    let result := [[protocolError notNil]
+      ifTrue: [| { "ok" -> false, "display" -> protocolError,
+        "message" -> protocolError, "phase" -> "protocol" }]
+      ifFalse: [| [self sessionResultOf: reply]]];
+    let ok := [result at: "ok" ifAbsent: [| false]];
+    let phase := [result at: "phase" ifAbsent: [| "error"]];
+    let status := [ok
+      ifTrue: [| "ready"]
+      ifFalse: [| [[[phase = "interrupted"] | [phase = "timeout"]]
+        ifTrue: [| phase]
+        ifFalse: [| "error"]]]];
+    let next0 := [state at: "session" put: [reply at: "session"]];
+    let events := [result at: "events" ifAbsent: [| #[]]];
+    let shown := [result at: "display" ifAbsent: [| protocolError]];
+    let recorded := [recordPrompt
+      ifTrue: [| [self recordSubmission: input events: events
+        shown: shown status: status in: next0]]
+      ifFalse: [|
+        let transcript := [[next0 at: "transcript"] add: shown];
+        let s1 := [next0 at: "transcript" put: transcript];
+        let viewport := [[s1 at: "viewport"] at: "transcriptOffset" put: 0];
+        let s2 := [s1 at: "viewport" put: viewport];
+        [s2 at: "status" put: status]]];
+    let withoutOperation := [recorded at: "evaluation" put: nil];
+    let error := [ok ifTrue: [| nil] ifFalse: [| [result at: "message" ifAbsent: [| shown]]]];
+    let withError := [withoutOperation at: "lastError" put: error];
+    [ok
+      ifTrue: [|
+        let copied := [result at: "value"];
+        let s1 := [withError at: "lastResult" put: [copied at: "value"]];
+        [s1 at: "hasLastResult" put: true]]
+      ifFalse: [| withError]]
+  ] doc:
+  "Apply a structured evaluation reply after either synchronous or incremental delivery." ];
+
+[Reflect defineMethod: #advanceEvaluationIn: on: Digla as: [:self :state |
+  let operation := [state at: "evaluation" ifAbsent: [| nil]];
+  [[operation isNil]
+    ifTrue: [| state]
+    ifFalse: [|
+      let stepped := [self stepTcpSessionOperation: operation];
+      [[stepped == operation]
+        ifTrue: [| state]
+        ifFalse: [|
+      let transcript := [[state at: "transcript"] asCell];
+      let added := [false asCell];
+      [[stepped at: "newEvents"] do: [:event |
+        [[[event at: "kind" ifAbsent: [| ""]] = "output"]
+          ifTrue: [|
+            [transcript set: [[transcript value] add: [event at: "text"]]];
+            [added set: true]]
+          ifFalse: [| nil]]]];
+      let s0 := [state at: "transcript" put: [transcript value]];
+      let s1 := [s0 at: "session" put: [stepped at: "session"]];
+      let clean0 := [stepped at: "newEvents" put: #[]];
+      let clean := [clean0 at: "newInterrupt" put: nil];
+      let s2 := [s1 at: "evaluation" put: clean];
+      let s3 := [[added value]
+        ifTrue: [|
+          let viewport := [[s2 at: "viewport"] at: "transcriptOffset" put: 0];
+          [s2 at: "viewport" put: viewport]]
+        ifFalse: [| s2]];
+      let interruptMessage := [stepped at: "newInterrupt"];
+      let interruptStatus := [[interruptMessage isNil]
+        ifTrue: [| "evaluating"]
+        ifFalse: [|
+          let error := [interruptMessage at: "error" ifAbsent: [| nil]];
+          [[error notNil]
+            ifTrue: [| ["interrupt error: " , [error at: "message"]]]
+            ifFalse: [|
+              let interruptResult := [interruptMessage at: "result"];
+              [[interruptResult at: "interrupted"]
+                ifTrue: [| "interrupt accepted"]
+                ifFalse: [| ["interrupt rejected: " , [interruptResult at: "reason"]]]]]]]];
+      let progressing := [s3 at: "status" put: interruptStatus];
+      let finished := [[[stepped at: "status"] = "complete"] |
+        [[stepped at: "status"] = "failed"]];
+      [finished
+        ifTrue: [|
+          let reply := { "message" -> [stepped at: "message"],
+            "session" -> [stepped at: "session"] };
+          [self applyEvaluationReply: reply input: [operation at: "input"]
+            recordPrompt: false in: progressing]]
+        ifFalse: [| progressing]]]]]]
+  ] doc:
+  "Advance an incremental evaluation once, appending available output without blocking for completion." ];
+
+[Reflect defineMethod: #beginAsyncEvaluationIn: on: Digla as: [:self :state |
+  let input := [state at: "buffer"];
+  let session := [state at: "session"];
+  let id := [session at: "nextId"];
+  let advanced := [session at: "nextId" put: [id + 1]];
+  let timeout := [[state at: "config"] at: "evaluation-timeout-ms"];
+  let request := [self sessionRequest: "birnam/evaluate"
+    params: { "source" -> input, "timeoutMs" -> timeout } id: id];
+  let operation0 := [self beginTcpSessionOperation: request in: advanced];
+  let operation := [operation0 at: "input" put: input];
+  let transcript := [[state at: "transcript"] add: ["> " , input]];
+  let history := [[state at: "history"] add: input];
+  let s1 := [state at: "buffer" put: ""];
+  let s2 := [s1 at: "cursor" put: 0];
+  let s3 := [s2 at: "history" put: history];
+  let s4 := [s3 at: "historyIndex" put: nil];
+  let s5 := [s4 at: "transcript" put: transcript];
+  let s6 := [s5 at: "selection" put: nil];
+  let s7 := [s6 at: "diagnostics" put: #[]];
+  let s8 := [s7 at: "diagnosticsDirty" put: false];
+  let s9 := [s8 at: "session" put: [operation at: "session"]];
+  let s10 := [s9 at: "evaluation" put: operation];
+  let viewport := [[s10 at: "viewport"] at: "transcriptOffset" put: 0];
+  let s11 := [s10 at: "viewport" put: viewport];
+  [self advanceEvaluationIn: [s11 at: "status" put: "evaluating"]]
+  ] doc:
+  "Start a TCP evaluation, recording its input while leaving completion to explicit progress steps." ];
+
+[Reflect defineMethod: #interruptEvaluationIn: on: Digla as: [:self :state |
+  let operation := [state at: "evaluation" ifAbsent: [| nil]];
+  [[operation isNil]
+    ifTrue: [| [state at: "status" put: "no active evaluation"]]
+    ifFalse: [|
+      let interrupted := [self interruptTcpSessionOperation: operation];
+      let s1 := [state at: "session" put: [interrupted at: "session"]];
+      let s2 := [s1 at: "evaluation" put: interrupted];
+      let next := [s2 at: "status" put: "interrupt requested"];
+      [[[interrupted at: "status"] = "failed"]
+        ifTrue: [| [self advanceEvaluationIn: next]]
+        ifFalse: [| next]]]]
+  ] doc:
+  "Request cooperative interruption of the active incremental evaluation." ];
+
 [Reflect defineMethod: #submitIn: on: Digla as: [:self :state |
   let input := [state at: "buffer"];
-  [[input isEmpty]
+  let active := [[state at: "evaluation" ifAbsent: [| nil]] notNil];
+  [active
+    ifTrue: [| [state at: "status" put: "evaluation already running"]]
+    ifFalse: [| [[input isEmpty]
     ifTrue: [| [state at: "status" put: "empty form"]]
     ifFalse: [|
       [[input startsWith: ":"]
         ifTrue: [| [self submitCommandIn: state]]
         ifFalse: [|
-          let reply := [self callSession: "birnam/evaluate" params: { "source" -> input }
-            in: [state at: "session"]];
-          let protocolError := [self sessionReplyErrorText: reply];
-          let result := [[protocolError notNil]
-            ifTrue: [| { "ok" -> false, "display" -> protocolError, "message" -> protocolError }]
-            ifFalse: [| [self sessionResultOf: reply]]];
-          let ok := [result at: "ok"];
-          let status := [ok ifTrue: [| "ready"] ifFalse: [| "error"]];
-          let next0 := [state at: "session" put: [reply at: "session"]];
-          let events := [result at: "events" ifAbsent: [| #[]]];
-          let recorded := [self recordSubmission: input events: events
-            shown: [result at: "display"] status: status in: next0];
-          let error := [ok ifTrue: [| nil] ifFalse: [| [result at: "message"]]];
-          let withError := [recorded at: "lastError" put: error];
-          [ok
-            ifTrue: [|
-              let copied := [result at: "value"];
-              let s1 := [withError at: "lastResult" put: [copied at: "value"]];
-              [s1 at: "hasLastResult" put: true]]
-            ifFalse: [| withError]]]]]]] doc:
+          let session := [state at: "session"];
+          [[session at: "asyncEvaluation" ifAbsent: [| false]]
+            ifTrue: [| [self beginAsyncEvaluationIn: state]]
+            ifFalse: [|
+              let timeout := [[state at: "config"] at: "evaluation-timeout-ms"];
+              let reply := [self callSession: "birnam/evaluate"
+                params: { "source" -> input, "timeoutMs" -> timeout } in: session];
+              [self applyEvaluationReply: reply input: input recordPrompt: true in: state]]]]]]]]]
+  ] doc:
   "Evaluate through the selected runtime session and append its structured result to the transcript."];
 
 [Reflect defineMethod: #historyMove:in: on: Digla as: [:self :direction :state |
@@ -807,31 +933,45 @@
 
 [Reflect defineMethod: #handleKey:modifier:character:state: on: Digla as:
   [:self :key :modifier :character :state |
-  let menu := [state at: "completion"];
-  [[menu notNil]
-    ifTrue: [| [self handleCompletionKey: key modifier: modifier character: character state: state]]
+  let evaluation := [state at: "evaluation" ifAbsent: [| nil]];
+  [[evaluation notNil]
+    ifTrue: [|
+      let interrupt := [[key = 3] | [key = 27]];
+      [interrupt
+        ifTrue: [| [self interruptEvaluationIn: state]]
+        ifFalse: [|
+          let pageUp := [[key = 65519]
+            ifTrue: [| [self scrollTranscriptBy: 10 in: state]]
+            ifFalse: [| state]];
+          [[key = 65518]
+            ifTrue: [| [self scrollTranscriptBy: -10 in: pageUp]]
+            ifFalse: [| pageUp]]]]]
     ifFalse: [|
-      let assistance := [state at: "assistance"];
-      let outcome := [nil asCell];
-      [[[assistance notNil] & [key = 27]] ifTrue: [|
-        let next := [self clearAssistanceIn: state];
-        [outcome set: [next at: "status" put: "assistance closed"]]]];
-      [[[[outcome value] isNil] & [key = 65535]]
-        ifTrue: [| [outcome set: [self openHoverIn: state]]]];
-      [[[[outcome value] isNil] & [key = 65534]]
-        ifTrue: [| [outcome set: [self openSignatureIn: state]]]];
-      [[[[outcome value] isNil] & [key = 65533]] ifTrue: [|
-        [outcome set: [self jumpToDefinitionIn: [self clearAssistanceIn: state]]]]];
-      [[[[outcome value] isNil] & [key = 65532]] ifTrue: [|
-        [outcome set: [self refreshDiagnosticsIn: [self clearAssistanceIn: state]]]]];
-      [[[[outcome value] isNil] & [key = 65531]] ifTrue: [|
-        [outcome set: [self returnFromDefinitionIn: [self clearAssistanceIn: state]]]]];
-      [[[[outcome value] isNil] & [key = 9]] ifTrue: [|
-        [outcome set: [self openCompletionIn: [self clearAssistanceIn: state]]]]];
-      [[[outcome value] isNil] ifTrue: [|
-        [outcome set: [self handleEditorKey: key modifier: modifier character: character
-          state: [self clearAssistanceIn: state]]]]];
-      [outcome value]]]
+      let menu := [state at: "completion"];
+      [[menu notNil]
+        ifTrue: [| [self handleCompletionKey: key modifier: modifier character: character state: state]]
+        ifFalse: [|
+          let assistance := [state at: "assistance"];
+          let outcome := [nil asCell];
+          [[[assistance notNil] & [key = 27]] ifTrue: [|
+            let next := [self clearAssistanceIn: state];
+            [outcome set: [next at: "status" put: "assistance closed"]]]];
+          [[[[outcome value] isNil] & [key = 65535]]
+            ifTrue: [| [outcome set: [self openHoverIn: state]]]];
+          [[[[outcome value] isNil] & [key = 65534]]
+            ifTrue: [| [outcome set: [self openSignatureIn: state]]]];
+          [[[[outcome value] isNil] & [key = 65533]] ifTrue: [|
+            [outcome set: [self jumpToDefinitionIn: [self clearAssistanceIn: state]]]]];
+          [[[[outcome value] isNil] & [key = 65532]] ifTrue: [|
+            [outcome set: [self refreshDiagnosticsIn: [self clearAssistanceIn: state]]]]];
+          [[[[outcome value] isNil] & [key = 65531]] ifTrue: [|
+            [outcome set: [self returnFromDefinitionIn: [self clearAssistanceIn: state]]]]];
+          [[[[outcome value] isNil] & [key = 9]] ifTrue: [|
+            [outcome set: [self openCompletionIn: [self clearAssistanceIn: state]]]]];
+          [[[outcome value] isNil] ifTrue: [|
+            [outcome set: [self handleEditorKey: key modifier: modifier character: character
+              state: [self clearAssistanceIn: state]]]]];
+          [outcome value]]]]]
   ] doc:
   "Apply one Termbox key and character event to the pure editor state." ];
 

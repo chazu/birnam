@@ -72,7 +72,8 @@ core runtime primitive, and headless Digla tests do not acquire a terminal
 dependency.
 
 The first local editor slice is now implemented. `birnam run examples/digla -- --ui`
-launches the Termbox client; Escape exits, character input edits the
+launches the Termbox client; Escape exits while idle (and interrupts an active
+remote evaluation), character input edits the
 buffer, Ctrl-J inserts a newline, Enter evaluates the current Birnam form
 against the local image, and history is recalled with Ctrl-P/Ctrl-N or the
 arrow keys. The model is headless and stores source cursors as UTF-8 byte
@@ -118,8 +119,12 @@ and Integer loops with application-local cooperative safepoints. Captured `Syste
 writes now cross framed protocol transports immediately through an evaluation-local
 sink while retaining the bounded response fallback. A TCP session can also consume
 a correlated `birnam/interrupt` frame nonblockingly at those same cooperative loop
-boundaries, reject stale request IDs, and keep the live session usable. Stdio and
-the current serial terminal submit path remain truthfully non-interruptible.
+boundaries, reject stale request IDs, and keep the live session usable. The remote
+terminal client now drives that transport as an explicit incremental operation:
+captured writes appear as they arrive, the editor remains responsive to transcript
+scrolling, and Ctrl-C or Escape pipelines a correlated interrupt without entering
+the runtime concurrently. Stdio and the synchronous local-image adapter remain
+truthfully non-interruptible except for request deadlines.
 
 ## 2. Goals and boundaries
 
@@ -449,6 +454,13 @@ The core invariants are:
    plus `cooperativeInterrupt=true`. A pipelined, correlated interrupt receives its
    own response before the evaluation returns `phase="interrupted"`; a stale target
    is rejected, and a following request proves the image session remains usable.
+   The TCP client exposes start/step/interrupt operations independent of Termbox.
+   Digla's terminal loop combines those operations with a timed Termbox wait: it
+   polls at 16 ms only while an evaluation is active, redraws only after input or
+   session progress, appends each output event immediately, and reserves Ctrl-C or
+   Escape for cooperative interruption. Idle input remains event-driven with no
+   periodic redraw. The client forwards its configured `evaluation-timeout-ms` as
+   `timeoutMs`, so local and remote terminal requests share the same deadline policy.
    Stdio retains `interrupt=false`, and arbitrary recursion or a blocking
    native/foreign call still has no safe application-level preemption point.
 6. **Runtime-aware assistance — inspection, completion, and explicit semantic slices implemented.** `:inspect`,
@@ -484,11 +496,12 @@ The terminal wrapper is no longer part of that startup bottleneck. Replacing its
 runtime-compiled Alien layer with the precompiled wrapped module reduced full
 Digla cold launch from about 3.5 s to 1.89-2.00 s in three consecutive runs; a
 real Termbox alternate-screen render and Escape shutdown smoke also passed.
-After the subsequent navigation, structured-output, deadline, and TCP-client
-slices, the current larger application image launches in 2.72-2.79 s across
-five consecutive runs. The TCP client implementation is kept to two registered
-adapter methods plus transport-neutral session selection so the remote slice does
-not grow into another layer of startup helpers.
+After the subsequent navigation, structured-output, deadline, and serial TCP-client
+slices, the larger application image launched in 2.72-2.79 s across five
+consecutive runs. The incremental client adds three focused start/step/interrupt
+methods while keeping socket state out of the editor and renderer. Five current
+launches complete in 2.79-2.84 s, so live terminal progress adds no material cold
+startup regression beyond normal run-to-run variation.
 
 Project-aware source navigation does not add another manifest parser or eager
 workspace index. A project run now installs the same existing read-only `Project`
@@ -518,9 +531,12 @@ return structured timeout responses before the watchdog and the session then
 closes normally.
 
 The TCP client path is also covered process-to-process: a terminal-independent
-editor model starts local, switches with `:connect remote`, evaluates
-two `System` writes followed by `[6 * 7]`, receives one duplicate-free buffered
-transcript entry plus the value in order, and closes both ends. Three steady remote
+editor model starts local, switches with `:connect remote`, enters a visibly pending
+evaluation, receives two live `System` writes as distinct transcript entries before
+the value, and deduplicates the response fallback. It then starts an infinite loop,
+requests interruption through the same editor-operation seam, observes
+`phase="interrupted"`, evaluates `42` on the still-usable image, and closes both
+ends. Three steady remote
 round trips of `[ Reflect allMethodsOf: "YourMom" ]` completed in 25.3-25.9 ms
 each including framing, JSON, copied-value rendering, and a 6,099-character
 response.
@@ -535,7 +551,8 @@ stops it, evaluates `42` afterward, and closes normally.
 
 The typing path is also bounded away from whole-buffer parser work. Diagnostics
 are cached and explicitly refreshed, already-buffered Termbox events are applied
-before the next redraw, and the same application-local native wrapper accelerates
+before the next redraw, and a timed Termbox wait now interleaves input with session
+progress without a busy redraw loop. The same application-local native wrapper accelerates
 the terminal-independent source-frame projection, display columns, lexical spans,
 and transcript wrapping. In a real PTY smoke, a 60-byte method definition was
 consumed and rendered with syntax colors inside a 500 ms observation window. The
@@ -544,6 +561,13 @@ terminal-width rows inside a one-second observation window; F1/F2/F3/F4 behavior
 was verified in that same live project image. Page Up/Page Down then moved through
 the wrapped result in persisted 10-row pages, and a subsequent evaluation reset the
 viewport to its new tail.
+
+The incremental terminal interaction was also exercised in a real remote PTY. An
+infinite evaluation printed `early`, and that row painted while the header still
+said `evaluating`. Escape changed the status to `interrupt requested`, the server
+returned `#evaluationInterrupted`, the editor stayed open, and a following
+`[20 + 22]` painted `42` before a final Escape shut down both client and one-shot
+server cleanly.
 
 Source wrapping and paste behavior were verified separately in the real PTY. A
 2,201-byte logical line occupied 29 visual rows; moving left across a wrap boundary
@@ -557,8 +581,8 @@ delivered correctly.
 ## 9. Open decisions
 
 - final CLI spelling: `birnam term`, `birnam --repl=term`, or a separate binary;
-- whether the serial listener should evolve into the planned poll-based reactor
-  before multiple simultaneous clients become a product requirement;
+- whether the serial server listener should evolve into the planned poll-based
+  reactor before multiple simultaneous clients become a product requirement;
 - history-file location, retention, and opt-out behavior;
 - runtime values use a small typed copied-value record, while deeper inspection
   uses the capability-free snapshot schema from Design 55;

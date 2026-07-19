@@ -28,12 +28,22 @@
   "Coalesce already-buffered terminal events before the next expensive frame projection." ];
 
 [Reflect defineMethod: #runTerminalLoop: on: Digla as: [:self :state |
-  let step := [:current |
-    let rendered := [self renderTerminal: current];
-    [Termbox poll];
-    [self drainTerminalEventsFrom: rendered]];
-  let final := [self runWhileRunning: state step: step];
+  let current := [[self renderTerminal: state] asCell];
+  [[| [[current value] at: "running"]] whileTrue: [|
+    let before := [current value];
+    let evaluating := [[before at: "evaluation" ifAbsent: [| nil]] notNil];
+    let waitMs := [evaluating ifTrue: [| 16] ifFalse: [| 250]];
+    let ready := [Termbox wait: waitMs];
+    let handled := [[ready = 1]
+      ifTrue: [| [self drainTerminalEventsFrom: before]]
+      ifFalse: [| before]];
+    let advanced := [self advanceEvaluationIn: handled];
+    let changed := [[ready = 1] | [[advanced == before] not]];
+    [changed
+      ifTrue: [| [current set: [self renderTerminal: advanced]]]
+      ifFalse: [| [current set: advanced]]]]];
+  let final := [current value];
   let released := [self releaseSession: [final at: "session"]];
   [final at: "session" put: released]
   ] doc:
-  "Run the terminal editor and release its active local or remote session on exit."];
+  "Interleave timed terminal input with incremental session progress, then release the active session."];

@@ -72,7 +72,64 @@ let e := [TestSuite named: "Digla socket protocol" module: #diglaSocket];
   let request := [Digla sessionRequest: "birnam/globals" params: [Map new] id: 3];
   let reply := [Digla performTcpSessionRequest: request in: session
     write: [:body | [body size]] read: [| nil]];
-  [t expect: [[[[reply at: "message"] at: "error"] at: "code"] equals: -32003
+  [t expect: [[[reply at: "message"] at: "error"] at: "code"] equals: -32003
     describes: "EOF is protocol data"];
   [t expect: [[reply at: "session"] at: "status"] equals: "closed"
     describes: "EOF closes the client state"]]];
+
+[e test: "incremental TCP operation drains output and a correlated interrupt" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new]
+    args: #["--connect=remote"]];
+  let session0 := [Digla tcpSessionFor: config];
+  let session1 := [session0 at: "status" put: "connected"];
+  let session := [session1 at: "nextId" put: 10];
+  let request := [Digla sessionRequest: "birnam/evaluate"
+    params: { "source" -> "42" } id: 9];
+  let event1 := { "kind" -> "output", "channel" -> "stdout",
+    "text" -> "early\n", "sequence" -> 1 };
+  let event2 := { "kind" -> "output", "channel" -> "stdout",
+    "text" -> "late\n", "sequence" -> 2 };
+  let notification := [Json stringify: {
+    "jsonrpc" -> "2.0", "method" -> "birnam/output",
+    "params" -> { "requestId" -> 9, "event" -> event1 } }];
+  let interruptResponse := [Json stringify: {
+    "jsonrpc" -> "2.0", "id" -> 10,
+    "result" -> { "interrupted" -> true, "requestId" -> 9 } }];
+  let response := [Json stringify: {
+    "jsonrpc" -> "2.0", "id" -> 9, "result" -> {
+      "ok" -> true, "display" -> "42", "value" -> {
+        "kind" -> "integer", "value" -> 42, "display" -> "42",
+        "rendered" -> false }, "events" -> #[event1 event2] } }];
+  let incoming := [#[notification interruptResponse response] asCell];
+  let written := [nil asCell];
+  let read := [|
+    let body := [[incoming value] at: 0 ifAbsent: [| nil]];
+    [[body isNil]
+      ifTrue: [| { "status" -> "idle" }]
+      ifFalse: [|
+        [incoming set: [[incoming value] copyFrom: 1 to: [[incoming value] size]]];
+        { "status" -> "ready", "body" -> body }]]];
+  let operation := { "status" -> "pending", "request" -> request,
+    "requestId" -> 9, "session" -> session, "events" -> #[],
+    "newEvents" -> #[], "message" -> nil, "interruptId" -> nil,
+    "interruptResponse" -> nil, "newInterrupt" -> nil,
+    "write" -> [:body | [written set: body]; [body size]], "read" -> read };
+  let interrupted := [Digla interruptTcpSessionOperation: operation];
+  let sent := [Json parse: [written value]];
+  let stepped := [Digla stepTcpSessionOperation: interrupted];
+  [t expect: [sent at: "method"] equals: "birnam/interrupt"
+    describes: "interrupt request serialized separately"];
+  [t expect: [[sent at: "params"] at: "requestId"] equals: 9
+    describes: "interrupt targets active evaluation"];
+  [t expect: [stepped at: "status"] equals: "complete"
+    describes: "final evaluation response completes operation"];
+  [t expect: [[stepped at: "events"] size] equals: 2
+    describes: "buffered fallback fills only missing streamed events"];
+  [t expect: [[[stepped at: "events"] at: 0] at: "text"] equals: "early\n"
+    describes: "streamed output remains first"];
+  [t expect: [[[stepped at: "events"] at: 1] at: "text"] equals: "late\n"
+    describes: "missing fallback output follows without duplication"];
+  [t expect: [[stepped at: "newInterrupt"] at: "id"] equals: 10
+    describes: "interrupt acknowledgement remains observable to the editor"];
+  [t expect: [[stepped at: "session"] at: "nextId"] equals: 11
+    describes: "interrupt consumes its own correlated request id"]]];

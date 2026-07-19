@@ -40,6 +40,8 @@ diagnostics. A `*` after the diagnostic count means the cache is stale after edi
 typing never reparses the whole buffer. Enter
 evaluates the current Birnam form, for example `[1 + 2]`. Page Up and Page Down
 move through wrapped transcript rows; a new evaluation resumes following the tail.
+Escape exits while idle. During an active remote evaluation, Ctrl-C or Escape
+requests cooperative interruption instead.
 
 The ordinary `birnam run examples/digla` path reuses its already-resolved project
 snapshot, so source navigation needs no workspace flag and does not repeat manifest
@@ -75,10 +77,11 @@ contain only copied JSON-safe values; the local adapter retains raw runtime valu
 that response's `events` array for simple request/reply clients. The current
 Digla application adapter advertises `streamedOutput=true`: framed stdio/TCP
 clients receive one correlated notification as each `System` write occurs, while
-the bounded aggregate remains in the response as a fallback. The current terminal
-submit path is still serial, so its screen incorporates those collected events
-when the evaluation response returns; a headless or AI protocol client can consume
-them immediately.
+the bounded aggregate remains in the response as a fallback. A remote terminal
+submission is an incremental client operation: each write is inserted into the
+wrapped transcript as it arrives, before the final value. The event loop waits on
+Termbox for at most 16 ms while that operation is active and redraws only for input
+or session progress, so live output does not introduce an idle render loop.
 
 `birnam/evaluate` also accepts an optional nonnegative `timeoutMs`. In the Digla
 project image, a positive timeout installs a cooperative deadline on Birnam's
@@ -94,9 +97,12 @@ same connection with an optional `params.requestId`. The server nonblockingly
 checks for that frame at the same canonical Block/Integer loop boundaries, answers
 the interrupt request immediately, and returns the evaluation with
 `phase="interrupted"`; stale request IDs are rejected and the session remains
-usable. Stdio and the current serial terminal submit path still advertise or
-behave as non-interruptible. Recursive code, foreign calls, and native operations
-without those safe boundaries cannot be preempted.
+usable. In a remote Termbox session, Ctrl-C or Escape sends that correlated request;
+Page Up/Page Down continue to scroll output while evaluation is active. The editor
+passes its configured `evaluation-timeout-ms` as `timeoutMs` on both local and
+remote submissions. Stdio and the synchronous local-image adapter still advertise
+or behave as non-interruptible except for deadlines. Recursive code, foreign calls,
+and native operations without those safe boundaries cannot be preempted.
 
 The same protocol is available to a long-lived loopback client over TCP:
 

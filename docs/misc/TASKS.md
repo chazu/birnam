@@ -113,7 +113,12 @@ until product evidence selects the next failure model.
   a long-running result by more than 100 ms. TCP sessions now also consume a
   correlated `birnam/interrupt` nonblockingly at the same canonical loop
   boundaries, reject stale targets, return a structured interrupted phase, and
-  remain usable; stdio and the serial terminal submit path stay non-interruptible.
+  remain usable. The remote terminal now drives TCP evaluation incrementally,
+  appends each output event before the result, stays responsive to transcript
+  scrolling, and pipelines Ctrl-C/Escape interrupts through a terminal-independent
+  operation seam. A timed Termbox wait polls at 16 ms only during active work and
+  avoids idle redraws; stdio and the synchronous local adapter stay non-interruptible
+  except for deadlines.
   Positive `timeoutMs` requests and the
   `evaluation-timeout-ms` application setting now provide the narrower safe slice:
   application-local cooperative deadlines on canonical Block and Integer loops,
@@ -128,10 +133,11 @@ until product evidence selects the next failure model.
   inside a 500 ms observation window. Resolver snapshots reuse the active project
   resolution, while source lookup parses only files containing the requested token;
   the measured lookup adds roughly 0.24-0.29 s beyond startup. The current enriched
-  image starts in 2.72-2.79 s, and three steady remote `allMethodsOf:` round trips
-  complete in 25.3-25.9 ms including framing and a 6,099-character result. Next:
-  add a reactor-backed terminal receive/interrupt interaction without moving terminal
-  ownership into the session or runtime layers.
+  image starts in 2.79-2.84 s across five current launches, and three steady remote
+  `allMethodsOf:` round trips complete in 25.3-25.9 ms including framing and a
+  6,099-character result. Next: carry Design 55's structured inspection model into
+  richer terminal object cards and navigation without coupling those snapshots to
+  Termbox or weakening the machine-client contract.
 
 ---
 

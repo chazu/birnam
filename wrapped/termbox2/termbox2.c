@@ -65,6 +65,15 @@ int lg_peek(void) {
     }
     return tb_peek_event(&lg_ev, 0) == TB_OK ? 1 : 0;
 }
+int lg_wait(void *self, int timeout_ms) {
+    (void)self;
+    if (lg_pending) {
+        lg_pending = 0;
+        return 1;
+    }
+    if (timeout_ms < 0) timeout_ms = 0;
+    return tb_peek_event(&lg_ev, timeout_ms) == TB_OK ? 1 : 0;
+}
 int lg_ev_type(void) { return (int)lg_ev.type; } /* TB_EVENT_* */
 int lg_ev_mod(void)  { return (int)lg_ev.mod; }  /* TB_MOD_* bit set */
 int lg_ev_key(void)  { return (int)lg_ev.key; }  /* TB_KEY_*  (0 if a char)  */
@@ -147,6 +156,7 @@ enum lg_operation {
     LG_EV_CHAR,
     LG_EV_MOD,
     LG_PEEK,
+    LG_WAIT,
 };
 
 int lg_dispatch(void *self, int op, int a, int b, int c, int d, int e,
@@ -166,6 +176,7 @@ int lg_dispatch(void *self, int op, int a, int b, int c, int d, int e,
     case LG_EV_CH:       return lg_ev_ch();
     case LG_EV_MOD:      return lg_ev_mod();
     case LG_PEEK:        return lg_peek();
+    case LG_WAIT:        return lg_wait(NULL, a);
     case LG_SET_CURSOR:  return lg_set_cursor(NULL, a, b);
     case LG_SET_CELL:    return lg_set_cell(NULL, a, b, c, d, e);
     case LG_PRINT:       return lg_print(NULL, a, b, c, d, text);

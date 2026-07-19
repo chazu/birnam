@@ -253,8 +253,11 @@
   let editorTopRow := [[visibleState at: "viewport"] at: "editorTopRow"];
   let start := [completionStart - visibleEditorRows];
   [Termbox clear];
-  [Termbox printX: 0 y: 0 fg: 8 bg: 0 str:
-    "Digla | PgUp/Dn scroll | Tab complete | F1 hover F2 sig F3 def F4 check F5 back"];
+  let evaluating := [[visibleState at: "evaluation" ifAbsent: [| nil]] notNil];
+  let header := [evaluating
+    ifTrue: [| "Digla | evaluating | Ctrl-C/Esc interrupt | PgUp/Dn scroll"]
+    ifFalse: [| "Digla | PgUp/Dn scroll | Tab complete | F1 hover F2 sig F3 def F4 check F5 back"]];
+  [Termbox printX: 0 y: 0 fg: 8 bg: 0 str: header];
   let transcriptLines := [self transcriptLines: [visibleState at: "transcript"] width: width];
   let availableTranscriptRows := [start - 1];
   let viewport := [visibleState at: "viewport"];

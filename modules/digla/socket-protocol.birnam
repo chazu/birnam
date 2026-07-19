@@ -209,6 +209,217 @@
   ] doc:
   "Connect lazily and perform one request against a framed TCP image session." ];
 
+[Reflect defineMethod: #beginTcpSessionOperation:in: on: Digla as: [:self :request :session |
+  let requestId := [request at: "id" ifAbsent: [| nil]];
+  let failureFor := [:code :message :state |
+    let s1 := [state at: "status" put: "disconnected"];
+    let next := [s1 at: "lastError" put: message];
+    { "status" -> "failed", "request" -> request, "requestId" -> requestId,
+      "session" -> next, "events" -> #[], "newEvents" -> #[],
+      "message" -> [self sessionError: requestId code: code message: message data: nil],
+      "interruptId" -> nil, "interruptResponse" -> nil, "newInterrupt" -> nil,
+      "write" -> nil, "read" -> nil }
+  ];
+  [[[session at: "status"] = "closed"]
+    ifTrue: [| [failureFor value: -32001 value: "session is closed" value: session]]
+    ifFalse: [|
+      let existing := [session at: "connection"];
+      let prepared := [[existing notNil]
+        ifTrue: [| { "ok" -> true, "session" -> session }]
+        ifFalse: [|
+          let config := [session at: "config"];
+          let connection := [Socket connectTo: [config at: "bind"] port: [config at: "port"]];
+          let failed := [[Reflect vtableOf: connection] == [Reflect vtableOf: 0]];
+          [failed
+            ifTrue: [| { "ok" -> false, "session" -> session }]
+            ifFalse: [|
+              let s1 := [session at: "connection" put: connection];
+              let s2 := [s1 at: "pending" put: ["" asCell]];
+              { "ok" -> true, "session" -> [s2 at: "status" put: "connected"] }]]]];
+      [[[prepared at: "ok"] not]
+        ifTrue: [| [failureFor value: -32005 value: "could not connect TCP session"
+          value: [prepared at: "session"]]]
+        ifFalse: [|
+          let connected := [prepared at: "session"];
+          let connection := [connected at: "connection"];
+          let pending := [connected at: "pending"];
+          let me := self;
+          let write := [:body | [me sendSocketSessionBody: body on: connection]];
+          let read := [|
+            let before := [me sessionFrameStep: [pending value]];
+            let beforeStatus := [before at: "status"];
+            [[beforeStatus = "ready"]
+              ifTrue: [|
+                [pending set: [before at: "rest"]];
+                { "status" -> "ready", "body" -> [before at: "body"] }]
+              ifFalse: [|
+                [[beforeStatus = "invalid"]
+                  ifTrue: [| { "status" -> "invalid", "reason" -> [before at: "reason"] }]
+                  ifFalse: [|
+                    let buffer := [connection buffer];
+                    let received := [[connection fd] recvInto: buffer len: 65535 flags: 128];
+                    [[received < 0]
+                      ifTrue: [| { "status" -> "idle" }]
+                      ifFalse: [|
+                        [[received = 0]
+                          ifTrue: [| { "status" -> "eof" }]
+                          ifFalse: [|
+                            [buffer pokeByte: 0 at: received];
+                            [pending set: [[pending value] , [buffer peekStringAt: 0]]];
+                            let after := [me sessionFrameStep: [pending value]];
+                            let afterStatus := [after at: "status"];
+                            [[afterStatus = "ready"]
+                              ifTrue: [|
+                                [pending set: [after at: "rest"]];
+                                { "status" -> "ready", "body" -> [after at: "body"] }]
+                              ifFalse: [|
+                                [[afterStatus = "invalid"]
+                                  ifTrue: [| { "status" -> "invalid", "reason" -> [after at: "reason"] }]
+                                  ifFalse: [| { "status" -> "idle" }]]]]]]]]]]]]];
+          let sent := [write value: [Json stringify: request]];
+          [[sent < 0]
+            ifTrue: [| [failureFor value: -32005 value: "could not write TCP session request"
+              value: connected]]
+            ifFalse: [|
+              { "status" -> "pending", "request" -> request, "requestId" -> requestId,
+                "session" -> connected, "events" -> #[], "newEvents" -> #[],
+                "message" -> nil, "interruptId" -> nil, "interruptResponse" -> nil,
+                "newInterrupt" -> nil, "write" -> write, "read" -> read }]]]]]]
+  ] doc:
+  "Start one nonblocking TCP request operation whose progress is driven explicitly by the client." ];
+
+[Reflect defineMethod: #stepTcpSessionOperation: on: Digla as: [:self :operation |
+  [[[[operation at: "status"] = "pending"] not]
+    ifTrue: [| operation]
+    ifFalse: [|
+      let current := [operation asCell];
+      let active := [true asCell];
+      let fail := [:code :message |
+        let op := [current value];
+        let session := [op at: "session"];
+        let connection := [session at: "connection" ifAbsent: [| nil]];
+        [[connection notNil] ifTrue: [| [connection close]] ifFalse: [| nil]];
+        let s1 := [session at: "connection" put: nil];
+        let s2 := [s1 at: "status" put: "closed"];
+        let next := [s2 at: "lastError" put: message];
+        let response := [self sessionError: [op at: "requestId"]
+          code: code message: message data: nil];
+        let failed0 := [op at: "session" put: next];
+        let failed1 := [failed0 at: "message" put: response];
+        [current set: [failed1 at: "status" put: "failed"]];
+        [active set: false]
+      ];
+      let appendEvent := [:event |
+        let op := [current value];
+        let events := [op at: "events"];
+        [[[event notNil] & [[events size] < 4096]]
+          ifTrue: [|
+            let withAll := [op at: "events" put: [events add: event]];
+            [current set: [withAll at: "newEvents" put:
+              [[op at: "newEvents"] add: event]]]]
+          ifFalse: [| nil]]
+      ];
+      let processMessage := [:message |
+        let messageId := [message at: "id" ifAbsent: [| nil]];
+        [[messageId isNil]
+          ifTrue: [|
+            let method := [message at: "method" ifAbsent: [| ""]];
+            let params := [message at: "params" ifAbsent: [| [Map new]]];
+            let correlated := [[params at: "requestId" ifAbsent: [| nil]] =
+              [[current value] at: "requestId"]];
+            let output := [[method = "birnam/output"] & correlated];
+            [output
+              ifTrue: [| [appendEvent value: [params at: "event" ifAbsent: [| nil]]]]
+              ifFalse: [| nil]]]
+          ifFalse: [|
+            let op := [current value];
+            let mainResponse := [messageId = [op at: "requestId"]];
+            let interruptId := [op at: "interruptId"];
+            let interruptResponse := [[interruptId notNil] & [messageId = interruptId]];
+            [mainResponse
+              ifTrue: [|
+                let result := [message at: "result" ifAbsent: [| nil]];
+                [[result notNil]
+                  ifTrue: [|
+                    let buffered := [result at: "events" ifAbsent: [| #[]]];
+                    [buffered do: [:event |
+                      let sequence := [event at: "sequence" ifAbsent: [| nil]];
+                      let seen := [[[current value] at: "events"] anySatisfy: [:prior |
+                        [[prior at: "sequence" ifAbsent: [| nil]] = sequence]]];
+                      [[seen not]
+                        ifTrue: [| [appendEvent value: event]]
+                        ifFalse: [| nil]]]]]
+                  ifFalse: [| nil]];
+                let complete0 := [[current value] at: "message" put: message];
+                let session0 := [complete0 at: "session"];
+                let session1 := [session0 at: "status" put: "connected"];
+                let session2 := [session1 at: "lastError" put: nil];
+                let complete1 := [complete0 at: "session" put: session2];
+                [current set: [complete1 at: "status" put: "complete"]];
+                [active set: false]]
+              ifFalse: [|
+                [interruptResponse
+                  ifTrue: [|
+                    let i0 := [op at: "interruptResponse" put: message];
+                    let i1 := [i0 at: "newInterrupt" put: message];
+                    [current set: [i1 at: "interruptId" put: nil]]]
+                  ifFalse: [| [fail value: -32004
+                    value: "mismatched TCP session response id"]]]]]]]
+      ];
+      [1 to: 128 do: [:iteration |
+        [[active value]
+          ifTrue: [|
+            let item := [[[current value] at: "read"] value];
+            let status := [item at: "status"];
+            [[status = "ready"]
+              ifTrue: [|
+                let message := [Json parse: [item at: "body"]];
+                [[message isError]
+                  ifTrue: [| [fail value: -32004 value: "invalid TCP session JSON"]]
+                  ifFalse: [| [processMessage value: message]]]]
+              ifFalse: [|
+                [[status = "idle"]
+                  ifTrue: [| [active set: false]]
+                  ifFalse: [|
+                    [[status = "eof"]
+                      ifTrue: [| [fail value: -32003 value: "TCP session closed by peer"]]
+                      ifFalse: [| [fail value: -32004 value:
+                        [item at: "reason" ifAbsent: [| "invalid TCP session frame"]]]]]]]]]]
+          ifFalse: [| nil]]]];
+      [current value]]]
+  ] doc:
+  "Drain available framed messages for a nonblocking TCP operation without waiting for more bytes." ];
+
+[Reflect defineMethod: #interruptTcpSessionOperation: on: Digla as: [:self :operation |
+  let pending := [[operation at: "status"] = "pending"];
+  let alreadyRequested := [[operation at: "interruptId"] notNil];
+  [[[pending & [alreadyRequested not]] not]
+    ifTrue: [| operation]
+    ifFalse: [|
+      let session := [operation at: "session"];
+      let id := [session at: "nextId"];
+      let advanced := [session at: "nextId" put: [id + 1]];
+      let request := [self sessionRequest: "birnam/interrupt"
+        params: { "requestId" -> [operation at: "requestId"] } id: id];
+      let sent := [[operation at: "write"] value: [Json stringify: request]];
+      [[sent < 0]
+        ifTrue: [|
+          let message := "could not write TCP interrupt request";
+          let connection := [advanced at: "connection" ifAbsent: [| nil]];
+          [[connection notNil] ifTrue: [| [connection close]] ifFalse: [| nil]];
+          let closed0 := [advanced at: "connection" put: nil];
+          let closed1 := [closed0 at: "status" put: "closed"];
+          let failed0 := [operation at: "session" put: [closed1 at: "lastError" put: message]];
+          let failed1 := [failed0 at: "message" put:
+            [self sessionError: [operation at: "requestId"] code: -32005 message: message data: nil]];
+          [failed1 at: "status" put: "failed"]]
+        ifFalse: [|
+          let next0 := [operation at: "session" put: advanced];
+          let next1 := [next0 at: "newInterrupt" put: nil];
+          [next1 at: "interruptId" put: id]]]]]
+  ] doc:
+  "Pipeline one correlated cooperative interrupt for an active TCP operation." ];
+
 [Reflect defineMethod: #serveSessionConnection:config: on: Digla as: [:self :conn :config |
   let pending := ["" asCell];
   let me := self;
