@@ -78,6 +78,12 @@ const Oop = idapi.Oop;
 // gives it one immutable native snapshot per workspace lookup rather than a
 // second manifest parser or a second dependency graph.
 var project_bridge_api: ?*IdApi = null;
+// A project run already owns one immutable resolution for its full lifetime.
+// Keep only a borrowed pointer while `runProject` is active so in-image tools
+// can request the current project without repeating filesystem/TOML/CST work.
+// The bridge still materializes a fresh Birnam value map per request, so no Oop
+// is hidden from the collector and explicit non-empty URIs retain normal lookup.
+var active_project_resolution: ?*const project.Resolution = null;
 
 fn hexNibble(c: u8) ?u8 {
     return switch (c) {
@@ -204,9 +210,15 @@ fn projectNativeSuccess(api: *IdApi, resolution: *const project.Resolution) ?Oop
 fn mProjectSnapshotForUri(_: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const api = project_bridge_api orelse return null;
     if (n < 1) return api.nilObj;
+    if (api.vtableOf(args[0]) != api.string_vt) return projectNativeFailure(api, .{
+        .kind = "projectUriInvalid",
+        .message = "project URI must be a String",
+    }) orelse api.nilObj;
     var uri_len: usize = 0;
     const uri = api.stringBytes(args[0], &uri_len);
     const raw = uri[0..uri_len];
+    if (raw.len == 0) if (active_project_resolution) |resolution|
+        return projectNativeSuccess(api, resolution) orelse api.nilObj;
     const working_dir = projectWorkingDirectory(std.heap.c_allocator, raw) catch return projectNativeFailure(api, .{
         .kind = "projectUriInvalid",
         .message = "could not decode workspace URI",
@@ -227,6 +239,7 @@ fn mProjectSnapshotForUri(_: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop
 fn mProjectPathForUri(_: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     const api = project_bridge_api orelse return null;
     if (n < 1) return api.nilObj;
+    if (api.vtableOf(args[0]) != api.string_vt) return api.nilObj;
     var uri_len: usize = 0;
     const uri = api.stringBytes(args[0], &uri_len);
     const path = projectPathFromUri(std.heap.c_allocator, uri[0..uri_len]) catch return api.nilObj;
@@ -1454,6 +1467,11 @@ fn prepareBareProject(a: std.mem.Allocator, api: *IdApi, codegen: Oop) !void {
 
 fn runProject(a: std.mem.Allocator, api: *IdApi, options: ProjectRunOptions) !void {
     try loadStack(a, api);
+    // Project applications can host language tools (Digla is the first one),
+    // so preserve the same read-only resolver bridge already installed for the
+    // LSP CLI. This binds only the existing snapshot/path selectors; it adds no
+    // new runtime primitive or project authority.
+    try installProjectBridge(api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
     var stack_anchor: usize = 0;
@@ -1468,6 +1486,8 @@ fn runProject(a: std.mem.Allocator, api: *IdApi, options: ProjectRunOptions) !vo
     if (resolution_result.diagnostic) |diagnostic|
         runDiagnosticError(diagnostic.kind, diagnostic.message);
     const resolution = &resolution_result.resolution.?;
+    active_project_resolution = resolution;
+    defer active_project_resolution = null;
     const main_path = resolution.main_path orelse
         runDiagnosticError("projectMainMissing", "the project has no main entry; set main = \"...\" in birnam.toml");
 

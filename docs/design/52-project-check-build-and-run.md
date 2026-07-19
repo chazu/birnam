@@ -193,7 +193,11 @@ running. It does not weaken build atomicity or resolution diagnostics.
 
 The process receives arguments after -- without interpolation through Birnam
 source. The project root and selected build are available to diagnostics and
-runtime configuration but do not change the process cwd.
+runtime configuration but do not change the process cwd. In-image language tools
+can ask the existing read-only `Project snapshotForUri:` bridge for an empty URI;
+during `birnam run` that request materializes the already-resolved active project
+instead of resolving again from the unchanged process cwd. Explicit non-empty URIs
+retain ordinary resolver behavior.
 
 ### 3.5 birnam test [PROJECT]
 

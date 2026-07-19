@@ -59,8 +59,10 @@ basis labels, deterministic text, and structured missing-global warnings all
 share one capability-free snapshot. The terminal exposes it through `:inspect`.
 The transport-neutral session layer also carries the same snapshot over framed
 JSON with `--session-stdio`, so machine clients do not need to scrape terminal
-text. A general `snapshot: spec`, JSON file artifact, source-on-demand, history,
-HTML, and HTTP remain the next Design 55 layers.
+text. The terminal sibling now provides resolver-backed authored source on
+demand for project and dependency methods, without putting bodies into inspection
+snapshots. A general `snapshot: spec`, JSON file artifact, opt-in method bodies in
+that snapshot, history, HTML, and HTTP remain the next Design 55 layers.
 
 ## 3. Governing invariants
 

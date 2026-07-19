@@ -56,6 +56,8 @@ modules/digla/analysis.birnam       lexical highlights and LSP diagnostics
 modules/digla/analysis-test.birnam analysis contract tests
 modules/digla/language-service.birnam completion, hover, signatures, definitions
 modules/digla/language-service-test.birnam semantic assistance contract tests
+modules/digla/project-source.birnam lazy resolver-backed authored source lookup
+modules/digla/project-source-test.birnam project/source-part navigation tests
 modules/digla/render-test.birnam    headless renderer decision tests
 modules/digla/termbox.birnam     Termbox module entry
 wrapped/termbox2/                vendored C library and native wrapper module
@@ -90,15 +92,17 @@ byte anchors and replaces or deletes through the ordinary edit operations. A
 visual-row viewport follows the cursor through buffers taller than the
 terminal without storing terminal coordinates in editor state. F1 hover merges
 same-buffer provenance with copied live-image inspection, F2 reconstructs full
-keyword selectors for signature help, and F3 jumps to same-buffer bindings or
-authored definitions. F4 refreshes cached parser diagnostics explicitly; source
-edits only mark the cache stale, so parsing is not on the per-key render path.
+keyword selectors for signature help, and F3 first jumps within the buffer, then
+lazily opens authored definitions from every composed source part in the active
+project or a dependency. F5 restores the previous buffer, cursor, diagnostics,
+and viewport from a terminal-independent navigation stack. F4 refreshes cached
+parser diagnostics explicitly; source edits only mark the cache stale, so parsing
+is not on the per-key render path.
 Page Up/Page Down now navigate the wrapped transcript with a clamped tail-relative
 offset, and new evaluation output resumes tail following. Long logical source lines
 soft-wrap into visual rows through the same byte/cell projection; cursor motion,
 selection, and viewport following remain byte-authoritative across those rows.
-Project/dependency source navigation, streamed output, and bounded interruption
-remain later slices.
+Streamed output and bounded interruption remain later slices.
 
 ## 2. Goals and boundaries
 
@@ -419,7 +423,8 @@ The core invariants are:
    globals, merged with parser/CST source candidates in the shared language
    service and presented by the terminal menu. F1 merges source information,
    optional docs, and copied runtime inspection; F2 reports full-selector signatures;
-   F3 resolves same-buffer definitions. Dependency-wide source-on-demand remains.
+   F3 resolves same-buffer definitions and lazily opens resolver-selected project
+   or dependency source parts; F5 restores prior in-memory document state.
 
 The first usable milestone is now complete: a user can launch the terminal editor,
 edit and evaluate multiline Birnam forms locally, recall history, see lexical
@@ -445,6 +450,17 @@ The terminal wrapper is no longer part of that startup bottleneck. Replacing its
 runtime-compiled Alien layer with the precompiled wrapped module reduced full
 Digla cold launch from about 3.5 s to 1.89-2.00 s in three consecutive runs; a
 real Termbox alternate-screen render and Escape shutdown smoke also passed.
+
+Project-aware source navigation does not add another manifest parser or eager
+workspace index. A project run now installs the same existing read-only `Project`
+bridge used by LSP and lends it the already-resolved active `Resolution` for an
+empty-workspace request. In three process-level comparisons, materializing that
+snapshot measured 2.88-2.90 s total versus a 2.84-2.87 s baseline; resolving and
+loading `definitionFor:` from a composed Digla source part measured 3.11-3.17 s,
+or about 0.24-0.29 s beyond startup. The lookup reads all ordered source paths but
+parses only files containing the requested token. A real PTY opened the authored
+file with F3 and restored the scratch buffer with F5. The native bridge also rejects
+non-String URI values as `projectUriInvalid` rather than dereferencing them.
 
 The typing path is also bounded away from whole-buffer parser work. Diagnostics
 are cached and explicitly refreshed, already-buffered Termbox events are applied

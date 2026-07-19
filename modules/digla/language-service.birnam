@@ -89,9 +89,19 @@
   let finish := [self lineEndIn: text at: cursor];
   let line := [text copyFrom: start to: finish];
   let column := [cursor - start];
-  [Lsp tokenAt: column in: line]
+  let token := [Lsp tokenAt: column in: line];
+  let previous := [[token isEmpty] & [column > 0]];
+  let tokenBefore := [previous
+    ifTrue: [| [Lsp tokenAt: [column - 1] in: line]]
+    ifFalse: [| token]];
+  [[tokenBefore isEmpty]
+    ifTrue: [|
+      [[column > 1]
+        ifTrue: [| [Lsp tokenAt: [column - 2] in: line]]
+        ifFalse: [| tokenBefore]]]
+    ifFalse: [| tokenBefore]]
   ] doc:
-  "Return the identifier or keyword-selector part under a source-byte cursor." ];
+  "Return the identifier or keyword-selector part under a source-byte cursor, including its trailing boundary." ];
 
 [Reflect defineMethod: #selectorAt:node:source: on: Digla as: [:self :cursor :node :text |
   let inside := [[cursor >= [node start]] & [cursor <= [node end]]];

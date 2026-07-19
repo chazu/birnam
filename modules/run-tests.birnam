@@ -44,6 +44,8 @@
 [System load: "modules/digla/analysis-test.birnam"];
 [System load: "modules/digla/language-service.birnam"];
 [System load: "modules/digla/language-service-test.birnam"];
+[System load: "modules/digla/project-source.birnam"];
+[System load: "modules/digla/project-source-test.birnam"];
 [System load: "modules/digla/render.birnam"];
 [System load: "modules/digla/render-test.birnam"];
 

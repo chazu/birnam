@@ -340,8 +340,9 @@ from-zero bootstrap compiler and performance floor.
   runnable, the source/LSP PositionMap and terminal DisplayLayout slices are
   landed, and lexical highlighting, parser-backed diagnostics, and wrapped
   evaluation results are visible. Tab completion merges scoped source candidates
-  with bounded live-image globals; F1/F2/F3 provide hover, full-selector signature
-  help, and same-buffer definition jumps, while F4 refreshes cached diagnostics
+  with bounded live-image globals; F1/F2 provide hover and full-selector signature
+  help, while F3 lazily opens same-buffer, project, or dependency definitions and
+  F5 returns through the source-navigation stack. F4 refreshes cached diagnostics
   outside the typing path. The structured session protocol now runs
   over framed stdio or a loopback-only-by-default TCP listener. Termbox enters
   through a precompiled application wrapper rather than a runtime-compiled Alien
@@ -352,5 +353,5 @@ from-zero bootstrap compiler and performance floor.
   also live. Page Up/Page Down navigate wrapped transcript rows with automatic
   tail following after evaluation. Source lines now soft-wrap through the shared
   byte-to-cell projection, with visual-row cursor/selection/viewports, and buffered
-  text bursts make multi-kilobyte pastes a single edit. Project/dependency navigation,
-  streamed output, and bounded interruption remain staged.
+  text bursts make multi-kilobyte pastes a single edit. Streamed output and bounded
+  interruption remain staged.

@@ -51,3 +51,8 @@ let e := [TestSuite named: "Digla language service" module: #diglaLanguageServic
   let result := [Digla definitionFor: text cursor: 18];
   [t expect: [result at: "found"] equals: true describes: "definition found"];
   [t expect: [result at: "cursor"] equals: 4 describes: "jump targets binding start"]]];
+
+[e test: "assistance resolves the token at its trailing cursor boundary" do: [:t |
+  let text := "definitionFor:";
+  [t expect: [Digla assistanceTokenIn: text at: [text size]] equals: "definitionFor:"
+    describes: "end cursor retains selector"]];

@@ -32,11 +32,19 @@ as one edit, so large pastes do not rebuild the persistent buffer once per byte.
 Tab opens completion for scoped source
 names, Birnam keywords, and bounded live-image globals; Tab/Down and Up move
 through the menu, Enter accepts, and Escape dismisses it. F1 opens source/runtime
-hover, F2 shows the full selector signature, F3 jumps to a same-buffer definition,
-and F4 explicitly refreshes diagnostics. A `*` after the diagnostic count means
-the cache is stale after editing; typing never reparses the whole buffer. Enter
+hover, F2 shows the full selector signature, and F3 first jumps within the buffer,
+then lazily opens authored source from the active project or its dependencies.
+F5 restores the previous buffer and cursor; navigation preserves unsaved buffers
+in memory and labels loaded source paths in the status row. F4 explicitly refreshes
+diagnostics. A `*` after the diagnostic count means the cache is stale after editing;
+typing never reparses the whole buffer. Enter
 evaluates the current Birnam form, for example `[1 + 2]`. Page Up and Page Down
 move through wrapped transcript rows; a new evaluation resumes following the tail.
+
+The ordinary `birnam run examples/digla` path reuses its already-resolved project
+snapshot, so source navigation needs no workspace flag and does not repeat manifest
+or dependency resolution. `--workspace PATH` (or `DIGLA_WORKSPACE`) selects a
+different authored project when Digla is deliberately used as an external client.
 
 Runtime operations use a transport-neutral session rather than calling the
 evaluator from the terminal model. The current commands are:

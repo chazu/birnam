@@ -1,0 +1,45 @@
+// project-source-test.birnam — resolver-backed source-on-demand contracts.
+
+let e := [TestSuite named: "Digla project source" module: #diglaProjectSource];
+
+[e test: "project source records retain every composed authored part" do: [:t |
+  let snapshot := [Project snapshotForUri: "examples/digla"];
+  let records := [Digla projectSourceRecordsFor: snapshot];
+  let paths := [records collect: [:record | [record at: "path"]]];
+  [t expect: [snapshot at: "ok"] equals: true describes: "project resolves"];
+  [t assert: [paths anySatisfy: [:path | [path endsWith: "/modules/digla/digla.birnam"]]]
+    describes: "module entry retained"];
+  [t assert: [paths anySatisfy: [:path | [path endsWith: "/modules/digla/language-service.birnam"]]]
+    describes: "composed source part retained"]]];
+
+[e test: "project definition opens a symbol from a composed source part" do: [:t |
+  let snapshot := [Project snapshotForUri: "examples/digla"];
+  let result := [Digla projectDefinitionNamed: "definitionFor:" inSnapshot: snapshot preferredPath: nil];
+  [t expect: [result at: "found"] equals: true describes: "definition found"];
+  [t expect: [result at: "name"] equals: "definitionFor:cursor:" describes: "full selector"];
+  [t assert: [[result at: "path"] endsWith: "/modules/digla/language-service.birnam"]
+    describes: "authored source path"];
+  [t assert: [[result at: "source"] includesSubstring: "#definitionFor:cursor:"]
+    describes: "source returned on demand"]]];
+
+[e test: "project definition prefers root source and still reaches dependencies" do: [:t |
+  let rootPath := "/tmp/birnam-digla-project-root-source.birnam";
+  let dependencyPath := "/tmp/birnam-digla-project-dependency-source.birnam";
+  [System writeFile: rootPath contents:
+    "[Reflect defineMethod: #sharedProbe on: Object as: [:self | #root]];"];
+  [System writeFile: dependencyPath contents:
+    "[Reflect defineMethod: #sharedProbe on: Object as: [:self | #dependency]];\n[Reflect defineMethod: #dependencyProbe on: Object as: [:self | true]];"];
+  let dependency := { "name" -> "dependency", "projectRoot" -> "/dependency",
+    "path" -> dependencyPath, "sources" -> #[dependencyPath] };
+  let root := { "name" -> "root", "projectRoot" -> "/root",
+    "path" -> rootPath, "sources" -> #[rootPath] };
+  let snapshot := { "ok" -> true, "projectRoot" -> "/root",
+    "modules" -> #[dependency root] };
+  let shared := [Digla projectDefinitionNamed: "sharedProbe" inSnapshot: snapshot preferredPath: nil];
+  let dependencyOnly := [Digla projectDefinitionNamed: "dependencyProbe" inSnapshot: snapshot preferredPath: nil];
+  [t expect: [shared at: "path"] equals: rootPath
+    describes: "root project wins dependency-first resolver order"];
+  [t expect: [dependencyOnly at: "path"] equals: dependencyPath
+    describes: "dependency source remains reachable"];
+  [File delete: rootPath];
+  [File delete: dependencyPath]]];

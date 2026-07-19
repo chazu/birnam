@@ -107,6 +107,28 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [final at: "running"] equals: false describes: "loop returns the stopped state"];
   [t expect: [remaining value] equals: 0 describes: "loop applies each transition"]]];
 
+[e test: "F3 opens project-authored source and F5 restores the prior buffer" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new]
+    args: #["--workspace" "examples/digla"]];
+  let initial0 := [Digla editorStateFor: config];
+  let initial1 := [initial0 at: "buffer" put: "definitionFor:"];
+  let initial := [initial1 at: "cursor" put: 4];
+  let opened := [Digla handleKey: 65533 character: "" state: initial];
+  let document := [opened at: "document"];
+  [t assert: [[document at: "path"] endsWith: "/modules/digla/language-service.birnam"]
+    describes: "F3 opens authored source part"];
+  [t expect: [document at: "module"] equals: "digla" describes: "module provenance"];
+  [t expect: [[opened at: "navigation"] size] equals: 1 describes: "prior buffer retained"];
+  [t assert: [[opened at: "buffer"] includesSubstring: "#definitionFor:cursor:"]
+    describes: "source loaded without evaluation"];
+  let edited := [Digla insertText: "x" into: opened];
+  [t expect: [[edited at: "document"] at: "dirty"] equals: true
+    describes: "authored buffer edit is explicit"];
+  let returned := [Digla handleKey: 65531 character: "" state: edited];
+  [t expect: [returned at: "buffer"] equals: "definitionFor:" describes: "F5 restores source"];
+  [t expect: [returned at: "cursor"] equals: 4 describes: "F5 restores cursor"];
+  [t expect: [[returned at: "navigation"] size] equals: 0 describes: "navigation stack pops"]]];
+
 [e test: "terminal commands inspect globals and the last result without eval" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let initial := [Digla editorStateFor: config];

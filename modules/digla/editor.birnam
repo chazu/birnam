@@ -19,7 +19,12 @@
   let s9 := [s8 at: "selection" put: nil];
   let s10 := [s9 at: "diagnostics" put: #[]];
   let s11 := [s10 at: "diagnosticsDirty" put: false];
-  [s11 at: "viewport" put: { "editorTopRow" -> 0, "transcriptOffset" -> 0 }]] doc:
+  let document := { "path" -> nil, "uri" -> "", "module" -> "<scratch>",
+    "projectRoot" -> nil, "dirty" -> false };
+  let s12 := [s11 at: "document" put: document];
+  let s13 := [s12 at: "navigation" put: #[]];
+  let s14 := [s13 at: "projectSnapshot" put: nil];
+  [s14 at: "viewport" put: { "editorTopRow" -> 0, "transcriptOffset" -> 0 }]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
 
 [Reflect defineMethod: #selectionRangeIn: on: Digla as: [:self :state |
@@ -57,9 +62,13 @@
   "Move the transcript viewport by display rows measured backward from its tail." ];
 
 [Reflect defineMethod: #markDiagnosticsDirtyIn: on: Digla as: [:self :state |
-  [state at: "diagnosticsDirty" put: true]
+  let stale := [state at: "diagnosticsDirty" put: true];
+  let document := [stale at: "document" ifAbsent: [| nil]];
+  [[document isNil]
+    ifTrue: [| stale]
+    ifFalse: [| [stale at: "document" put: [document at: "dirty" put: true]]]]
   ] doc:
-  "Mark cached parser diagnostics stale after a source edit." ];
+  "Mark cached parser diagnostics and the active authored document dirty after a source edit." ];
 
 [Reflect defineMethod: #refreshDiagnosticsIn: on: Digla as: [:self :state |
   let diagnostics := [Lsp staticDiagnosticsOf: [state at: "buffer"]];
@@ -492,9 +501,82 @@
       let moved := [state at: "cursor" put: [result at: "cursor"]];
       let cleared := [moved at: "selection" put: nil];
       [cleared at: "status" put: ["definition " , [result at: "name"]]]]
-    ifFalse: [| [state at: "status" put: ["definition not found: " , [result at: "name"]]]]]
+    ifFalse: [|
+      let name := [result at: "name"];
+      [[name isEmpty]
+        ifTrue: [| [state at: "status" put: "definition not found: no symbol at cursor"]]
+        ifFalse: [|
+          let cached := [state at: "projectSnapshot" ifAbsent: [| nil]];
+          let config := [state at: "config"];
+          let workspace := [config at: "workspace"];
+          let snapshot := [[cached notNil]
+            ifTrue: [| cached]
+            ifFalse: [| [self projectSnapshotForWorkspace: workspace]]];
+          let withSnapshot := [state at: "projectSnapshot" put: snapshot];
+          let document := [state at: "document" ifAbsent: [| [Map new]]];
+          let path := [document at: "path" ifAbsent: [| nil]];
+          let projectResult := [self projectDefinitionNamed: name inSnapshot: snapshot preferredPath: path];
+          [[projectResult at: "found"]
+            ifTrue: [| [self openProjectDefinition: projectResult in: withSnapshot]]
+            ifFalse: [|
+              let message := [projectResult at: "message" ifAbsent: [| "authored definition not found"]];
+              [withSnapshot at: "status" put: ["definition not found: " , name , " (" , message , ")"]]]]]]]]
   ] doc:
-  "Move to a same-buffer binding or authored symbol definition." ];
+  "Move to a same-buffer binding or lazily open authored project/dependency source." ];
+
+[Reflect defineMethod: #navigationFrameFor: on: Digla as: [:self :state |
+  let f0 := [Map new];
+  let f1 := [f0 at: "buffer" put: [state at: "buffer"]];
+  let f2 := [f1 at: "cursor" put: [state at: "cursor"]];
+  let f3 := [f2 at: "selection" put: [state at: "selection"]];
+  let f4 := [f3 at: "document" put: [state at: "document"]];
+  let f5 := [f4 at: "diagnostics" put: [state at: "diagnostics"]];
+  let f6 := [f5 at: "diagnosticsDirty" put: [state at: "diagnosticsDirty"]];
+  [f6 at: "viewport" put: [state at: "viewport"]]
+  ] doc:
+  "Capture the terminal-independent document state needed to return from source navigation." ];
+
+[Reflect defineMethod: #openProjectDefinition:in: on: Digla as: [:self :result :state |
+  let frame := [self navigationFrameFor: state];
+  let navigation := [[state at: "navigation"] add: frame];
+  let document := { "path" -> [result at: "path"], "uri" -> [result at: "uri"],
+    "module" -> [result at: "module"], "projectRoot" -> [result at: "projectRoot"],
+    "dirty" -> false };
+  let viewport := [state at: "viewport"];
+  let resetViewport := [viewport at: "editorTopRow" put: 0];
+  let s1 := [state at: "navigation" put: navigation];
+  let s2 := [s1 at: "document" put: document];
+  let s3 := [s2 at: "buffer" put: [result at: "source"]];
+  let s4 := [s3 at: "cursor" put: [result at: "selectionStart"]];
+  let s5 := [s4 at: "selection" put: nil];
+  let s6 := [s5 at: "completion" put: nil];
+  let s7 := [s6 at: "assistance" put: nil];
+  let s8 := [s7 at: "diagnostics" put: #[]];
+  let s9 := [s8 at: "diagnosticsDirty" put: true];
+  let s10 := [s9 at: "viewport" put: resetViewport];
+  [s10 at: "status" put: ["opened #" , [result at: "name"] , " in #",
+    [result at: "module"]]]
+  ] doc:
+  "Open an authored source result while retaining the current document on a navigation stack." ];
+
+[Reflect defineMethod: #returnFromDefinitionIn: on: Digla as: [:self :state |
+  let navigation := [state at: "navigation"];
+  [[navigation isEmpty]
+    ifTrue: [| [state at: "status" put: "definition history empty"]]
+    ifFalse: [|
+      let frame := [navigation last];
+      let remaining := [navigation copyFrom: 0 to: [[navigation size] - 1]];
+      let s1 := [state at: "navigation" put: remaining];
+      let s2 := [s1 at: "buffer" put: [frame at: "buffer"]];
+      let s3 := [s2 at: "cursor" put: [frame at: "cursor"]];
+      let s4 := [s3 at: "selection" put: [frame at: "selection"]];
+      let s5 := [s4 at: "document" put: [frame at: "document"]];
+      let s6 := [s5 at: "diagnostics" put: [frame at: "diagnostics"]];
+      let s7 := [s6 at: "diagnosticsDirty" put: [frame at: "diagnosticsDirty"]];
+      let s8 := [s7 at: "viewport" put: [frame at: "viewport"]];
+      [s8 at: "status" put: "returned from definition"]]]
+  ] doc:
+  "Restore the previous source buffer, cursor, diagnostics, and viewport after F3 navigation." ];
 
 [Reflect defineMethod: #openCompletionIn: on: Digla as: [:self :state |
   let checked := [self refreshDiagnosticsIn: state];
@@ -680,6 +762,8 @@
         [outcome set: [self jumpToDefinitionIn: [self clearAssistanceIn: state]]]]];
       [[[[outcome value] isNil] & [key = 65532]] ifTrue: [|
         [outcome set: [self refreshDiagnosticsIn: [self clearAssistanceIn: state]]]]];
+      [[[[outcome value] isNil] & [key = 65531]] ifTrue: [|
+        [outcome set: [self returnFromDefinitionIn: [self clearAssistanceIn: state]]]]];
       [[[[outcome value] isNil] & [key = 9]] ifTrue: [|
         [outcome set: [self openCompletionIn: [self clearAssistanceIn: state]]]]];
       [[[outcome value] isNil] ifTrue: [|

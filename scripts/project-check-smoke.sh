@@ -173,10 +173,16 @@ grep -q '^7$' <<<"$run_output"
 grep -q 'first' <<<"$run_output"
 grep -q 'second' <<<"$run_output"
 
-tty_output="$(cd /tmp && printf ':quit\n' | BIRNAM_FORCE_SOURCE=1 "$bin" run "$tmp/app" --repl=tty -- first second)"
+# An empty URI inside a project application means the already-resolved active
+# project, not the caller's process cwd (/tmp in this probe).
+project_probe='[System println: [[Project snapshotForUri: ""] printString]]'
+invalid_project_probe='[System println: [[Project snapshotForUri: 7] printString]]'
+tty_output="$(cd /tmp && printf '%s\n%s\n:quit\n' "$project_probe" "$invalid_project_probe" | BIRNAM_FORCE_SOURCE=1 "$bin" run "$tmp/app" --repl=tty -- first second)"
 printf '%s\n' "$tty_output"
 test "$(grep -c 'project-main' <<<"$tty_output")" = 1
 test "$(grep -c 'interactive image' <<<"$tty_output")" = 1
+grep -q "$tmp/app" <<<"$tty_output"
+grep -q 'projectUriInvalid' <<<"$tty_output"
 
 cat >"$tmp/app/birnam.toml" <<'EOF'
 name = "app"

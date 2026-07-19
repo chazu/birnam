@@ -31,6 +31,7 @@ files = [
   "../../modules/digla/display-layout.birnam",
   "../../modules/digla/analysis.birnam",
   "../../modules/digla/language-service.birnam",
+  "../../modules/digla/project-source.birnam",
 ]
 
 [[module]]

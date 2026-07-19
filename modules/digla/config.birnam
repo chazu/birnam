@@ -10,7 +10,8 @@
   let d2 := [d1 at: "connect" put: "local"];
   let d3 := [d2 at: "bind" put: "127.0.0.1"];
   let d4 := [d3 at: "port" put: 4400];
-  [d4 at: "history" put: true]] doc:
+  let d5 := [d4 at: "history" put: true];
+  [d5 at: "workspace" put: ""]] doc:
   "The default Digla settings used by AppConfig."];
 
 [Reflect defineMethod: #configForArgs: on: Digla as: [:self :args |

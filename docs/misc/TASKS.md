@@ -93,8 +93,9 @@ until product evidence selects the next failure model.
   mutation completes in 12.9 ms. Shift-movement selection now replaces/deletes
   through source-byte ranges, and a visual-row viewport keeps the cursor
   visible in buffers taller than the terminal. F1 merges source and copied runtime
-  hover, F2 reconstructs full keyword signatures, F3 jumps to same-buffer
-  definitions, and F4 explicitly refreshes cached diagnostics. Typing no longer
+  hover, F2 reconstructs full keyword signatures, F3 lazily opens same-buffer,
+  project, or dependency source definitions, F5 restores prior document state,
+  and F4 explicitly refreshes cached diagnostics. Typing no longer
   invokes the parser per key; buffered terminal events are coalesced and the
   application wrapper accelerates source-frame projection and transcript wrapping.
   A real PTY consumed and rendered a 60-byte form in under 500 ms, and evaluated
@@ -104,8 +105,10 @@ until product evidence selects the next failure model.
   rows without changing byte authority, including wide-glyph cursor boundaries,
   selection, and cursor-following viewports. Consecutive character events are
   coalesced into one persistent-buffer edit; a 2.2 KiB PTY paste plus redraw completed
-  inside a 500 ms observation window. Next: add project/dependency source navigation
-  on the same seams.
+  inside a 500 ms observation window. Resolver snapshots reuse the active project
+  resolution, while source lookup parses only files containing the requested token;
+  the measured lookup adds roughly 0.24-0.29 s beyond startup. Next: add structured
+  streamed output and bounded interruption on the session seam.
 
 ---
 

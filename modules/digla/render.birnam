@@ -254,7 +254,7 @@
   let start := [completionStart - visibleEditorRows];
   [Termbox clear];
   [Termbox printX: 0 y: 0 fg: 8 bg: 0 str:
-    "Digla | PgUp/PgDn scroll | Tab complete | F1 hover | F2 sig | F3 def | F4 check"];
+    "Digla | PgUp/Dn scroll | Tab complete | F1 hover F2 sig F3 def F4 check F5 back"];
   let transcriptLines := [self transcriptLines: [visibleState at: "transcript"] width: width];
   let availableTranscriptRows := [start - 1];
   let viewport := [visibleState at: "viewport"];
@@ -301,10 +301,19 @@
     ifTrue: [| ""]
     ifFalse: [| ["  selected=" , [[[selected at: "end"] - [selected at: "start"]] printString]]]];
   let dirty := [[scrolledState at: "diagnosticsDirty"] ifTrue: [| "*"] ifFalse: [| ""]];
+  let document := [scrolledState at: "document" ifAbsent: [| [Map new]]];
+  let path := [document at: "path" ifAbsent: [| nil]];
+  let documentText := [[path isNil]
+    ifTrue: [| "<scratch>"]
+    ifFalse: [| ["#" , [document at: "module" ifAbsent: [| "?"]]
+      , " " , [[path split: "/"] last]]]];
+  let documentDirty := [document at: "dirty" ifAbsent: [| false]];
+  let documentMark := [documentDirty ifTrue: [| "*"] ifFalse: [| ""]];
   let transcriptOffset := [[scrolledState at: "viewport"] at: "transcriptOffset"];
   let scrollStatus := [[transcriptOffset = 0] ifTrue: [| ""]
     ifFalse: [| ["  transcript=-" , [transcriptOffset printString]]]];
-  let status := [[scrolledState at: "status"] , "  bytes=" , [[buffer size] printString]
+  let status := [documentText , documentMark , "  " , [scrolledState at: "status"]
+    , "  bytes=" , [[buffer size] printString]
     , selectionStatus , scrollStatus , "  diagnostics=" , diagnosticCount , dirty];
   [Termbox printX: 0 y: [height - 1] fg: 7 bg: 0 str: status];
   let position := framePosition;
