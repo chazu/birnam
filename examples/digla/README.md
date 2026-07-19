@@ -22,7 +22,7 @@ zig-out/bin/birnam run examples/digla --build -- --ui
 ```
 
 The editor supports character insertion, UTF-8-aware backspace, cursor motion,
-history, multiline input with Ctrl-J, local evaluation with Enter, lexical
+history recall and Ctrl-R reverse search, multiline input with Ctrl-J, local evaluation with Enter, lexical
 highlighting, active bracket matching, cached parser-backed diagnostics, and terminal-cell-aware transcript
 wrapping. Shift with the arrow, Home, or End keys extends a source selection;
 typing, Backspace, or Delete replaces/removes it. Long multiline buffers keep
@@ -47,6 +47,12 @@ an unmatched opener remains visibly red while the form is being written. Bracket
 inside strings and comments are ignored.
 Escape exits while idle. During an active remote evaluation, Ctrl-C or Escape
 requests cooperative interruption instead.
+
+Ctrl-R searches the client-owned history from newest to oldest. Type to extend
+the substring query, press Ctrl-R again to cycle older matches, Enter to keep the
+displayed form for editing, or Escape to restore the exact draft and cursor from
+before search. `history = false` disables retention without affecting evaluation;
+history is still intentionally process-local until a file-location policy is chosen.
 
 The ordinary `birnam run examples/digla` path reuses its already-resolved project
 snapshot, so source navigation needs no workspace flag and does not repeat manifest

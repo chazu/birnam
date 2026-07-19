@@ -85,6 +85,51 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [[s2 at: "history"] at: 0] equals: "[1 + 2]" describes: "submit records history"];
   [t expect: [s3 at: "buffer"] equals: "[1 + 2]" describes: "history recalls form"]]];
 
+[e test: "history configuration provides a real client-side opt-out" do: [:t |
+  let base := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let config := [base at: "history" put: false];
+  let initial := [Digla editorStateFor: config];
+  let submitted := [Digla submitIn: [initial at: "buffer" put: "[1 + 2]"]];
+  [t expect: [[submitted at: "history"] size] equals: 0
+    describes: "disabled history retains no submitted source"];
+  [t expect: [submitted at: "lastResult"] equals: 3
+    describes: "history opt-out does not affect evaluation"]]];
+
+[e test: "Ctrl-R searches, cycles, and accepts history without evaluation" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial0 := [Digla editorStateFor: config];
+  let initial := [initial0 at: "history" put: #["[alpha]" "[beta]" "[alpha + 1]"]];
+  let opened := [Digla handleKey: 18 character: "" state: initial];
+  let queried := [Digla handleKey: 0 character: "alpha" state: opened];
+  let older := [Digla handleKey: 18 character: "" state: queried];
+  let accepted := [Digla handleKey: 13 character: "" state: older];
+  [t expect: [opened at: "buffer"] equals: "[alpha + 1]" describes: "empty search starts newest"];
+  [t expect: [[queried at: "historySearch"] at: "query"] equals: "alpha"
+    describes: "typed query stays separate from displayed form"];
+  [t expect: [older at: "buffer"] equals: "[alpha]" describes: "Ctrl-R cycles older match"];
+  [t expect: [accepted at: "historySearch"] equals: nil describes: "Enter accepts search"];
+  [t expect: [accepted at: "buffer"] equals: "[alpha]" describes: "acceptance keeps source editable"];
+  [t expect: [accepted at: "hasLastResult"] equals: false describes: "acceptance does not evaluate"]]];
+
+[e test: "reverse history search backspaces and Escape restores the draft" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial0 := [Digla editorStateFor: config];
+  let initial1 := [initial0 at: "history" put: #["alpha" "alpine" "beta"]];
+  let initial2 := [initial1 at: "buffer" put: "draft"];
+  let initial := [initial2 at: "cursor" put: 2];
+  let opened := [Digla handleKey: 18 character: "" state: initial];
+  let noMatch := [Digla handleKey: 0 character: "x" state: opened];
+  let shortened := [Digla handleKey: 127 character: "" state: noMatch];
+  let cancelled := [Digla handleKey: 27 character: "" state: shortened];
+  [t assert: [[noMatch at: "status"] includesSubstring: "no history match"]
+    describes: "failed query is visible"];
+  [t expect: [[shortened at: "historySearch"] at: "query"] equals: "draft"
+    describes: "Backspace edits the search query"];
+  [t expect: [cancelled at: "historySearch"] equals: nil describes: "Escape closes search"];
+  [t expect: [cancelled at: "buffer"] equals: "draft" describes: "draft restored exactly"];
+  [t expect: [cancelled at: "cursor"] equals: 2 describes: "draft cursor restored"];
+  [t expect: [cancelled at: "running"] equals: true describes: "cancel does not quit"]]];
+
 [e test: "structured output is inserted before the evaluation value" do: [:t |
   let events := #[
     { "kind" -> "output", "channel" -> "stdout", "text" -> "hello\n", "sequence" -> 1 }

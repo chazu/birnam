@@ -76,7 +76,10 @@ launches the Termbox client; Escape exits while idle (and interrupts an active
 remote evaluation), character input edits the
 buffer, Ctrl-J inserts a newline, Enter evaluates the current Birnam form
 against the local image, and history is recalled with Ctrl-P/Ctrl-N or the
-arrow keys. The model is headless and stores source cursors as UTF-8 byte
+arrow keys. Ctrl-R opens a terminal-independent substring search: typing narrows,
+Ctrl-R cycles older matches, Enter accepts without evaluation, and Escape restores
+the exact pre-search draft. The existing `history=false` setting now disables
+retention. The model is headless and stores source cursors as UTF-8 byte
 boundaries. The initial PositionMap source/LSP conversion and terminal-cell
 DisplayLayout projection slices are implemented and tested. Lexical syntax
 highlights, active bracket matching, and parser-backed diagnostics are now projected
@@ -434,7 +437,8 @@ The core invariants are:
    source rows, active matched/unmatched bracket overlays, and manual Page Up/Page Down
    transcript navigation are implemented. The bracket result is a terminal-independent
    byte-offset record; the project-local native frame scanner produces it alongside
-   lexical spans in the same pass, ignoring strings and comments.
+   lexical spans in the same pass, ignoring strings and comments. Ctrl-R reverse
+   history search is likewise pure editor state and honors the client history opt-out.
 4. **Compatibility remote session — superseded by the framed seam.** The
    prompt-oriented socket REPL cannot preserve structured values, errors, or
    capabilities without ambiguous text parsing. Keep it compatible for comint
@@ -521,6 +525,8 @@ launches completed in 2.89-2.93 s, showing no measurable startup regression.
 With structured failure diagnostics loaded, five launches completed in 2.92-3.00 s;
 successful evaluation still does no diagnostic parse, and the observed cold delta
 remains within roughly 0.1 s of the selected-source checkpoint.
+After reverse history search, five rebuilt-project launches completed in 2.91-3.02 s;
+the ordinary typing and render path does no history scan until Ctrl-R is pressed.
 
 Project-aware source navigation does not add another manifest parser or eager
 workspace index. A project run now installs the same existing read-only `Project`
@@ -601,12 +607,17 @@ one editor insertion while retaining a following special key; a 2.2 KiB paste an
 redraw completed inside a 500 ms observation window, and a queued Home key was then
 delivered correctly.
 
+Reverse search was also checked in the real PTY after evaluating `[1 + 2]`: Ctrl-R
+changed the header and prompt, displayed the prior form without evaluating it, and
+kept the active bracket pair visible. Escape restored the empty draft while keeping
+the editor open; the following Escape shut Termbox down cleanly.
+
 ## 9. Open decisions
 
 - final CLI spelling: `birnam term`, `birnam --repl=term`, or a separate binary;
 - whether the serial server listener should evolve into the planned poll-based
   reactor before multiple simultaneous clients become a product requirement;
-- history-file location, retention, and opt-out behavior;
+- history-file location and cross-process retention; in-memory search and opt-out are implemented;
 - runtime values use a small typed copied-value record, while deeper inspection
   uses the capability-free snapshot schema from Design 55;
 - authentication and session ownership once connections can leave loopback.

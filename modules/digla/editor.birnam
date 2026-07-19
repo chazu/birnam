@@ -25,7 +25,8 @@
   let s13 := [s12 at: "navigation" put: #[]];
   let s14 := [s13 at: "projectSnapshot" put: nil];
   let s15 := [s14 at: "evaluation" put: nil];
-  [s15 at: "viewport" put: { "editorTopRow" -> 0, "transcriptOffset" -> 0 }]] doc:
+  let s16 := [s15 at: "historySearch" put: nil];
+  [s16 at: "viewport" put: { "editorTopRow" -> 0, "transcriptOffset" -> 0 }]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
 
 [Reflect defineMethod: #selectionRangeIn: on: Digla as: [:self :state |
@@ -291,7 +292,10 @@
   let entries := [self evaluationTranscriptEntriesFor: input events: events display: shown];
   let transcript2 := [entries inject: transcript0 into: [:transcript :entry |
     [transcript add: entry]]];
-  let history := [[state at: "history"] add: input];
+  let historyEnabled := [[[state at: "config"] at: "history"] = true];
+  let history := [historyEnabled
+    ifTrue: [| [[state at: "history"] add: input]]
+    ifFalse: [| [state at: "history"]]];
   let s1 := [state at: "buffer" put: ""];
   let s2 := [s1 at: "cursor" put: 0];
   let s3 := [s2 at: "history" put: history];
@@ -584,7 +588,10 @@
   let operation0 := [self beginTcpSessionOperation: request in: advanced];
   let operation := [operation0 at: "input" put: input];
   let transcript := [[state at: "transcript"] add: ["> " , input]];
-  let history := [[state at: "history"] add: input];
+  let historyEnabled := [[[state at: "config"] at: "history"] = true];
+  let history := [historyEnabled
+    ifTrue: [| [[state at: "history"] add: input]]
+    ifFalse: [| [state at: "history"]]];
   let s1 := [state at: "buffer" put: ""];
   let s2 := [s1 at: "cursor" put: 0];
   let s3 := [s2 at: "history" put: history];
@@ -669,6 +676,109 @@
               let s5 := [s4 at: "status" put: "history"];
               [self markDiagnosticsDirtyIn: s5]]]]]]]] doc:
   "Recall a prior form with direction -1 for older or +1 for newer history."];
+
+[Reflect defineMethod: #historySearchFor:before:in: on: Digla as:
+  [:self :query :requestedIndex :history |
+    let latest := [[history size] - 1];
+    let before := [[requestedIndex < latest] ifTrue: [| requestedIndex] ifFalse: [| latest]];
+    let found := [nil asCell];
+    [[before >= 0] ifTrue: [|
+      [[[0 to: before] reversed] do: [:index |
+        let pending := [[found value] isNil];
+        let text := [history at: index];
+        [[pending & [text includesSubstring: query]]
+          ifTrue: [| [found set: { "index" -> index, "text" -> text }]]
+          ifFalse: [| nil]]]]]
+      ifFalse: [| nil]];
+    [found value]
+  ] doc:
+  "Find the newest history entry at or before an index containing a query." ];
+
+[Reflect defineMethod: #applyHistorySearchQuery:before:search:in: on: Digla as:
+  [:self :query :before :search :state |
+    let found := [self historySearchFor: query before: before in: [state at: "history"]];
+    let nextSearch0 := [search at: "query" put: query];
+    let nextSearch := [nextSearch0 at: "index" put:
+      [[found isNil] ifTrue: [| nil] ifFalse: [| [found at: "index"]]]];
+    let s1 := [state at: "historySearch" put: nextSearch];
+    let s2 := [[found isNil]
+      ifTrue: [| s1]
+      ifFalse: [|
+        let text := [found at: "text"];
+        let b1 := [s1 at: "buffer" put: text];
+        [b1 at: "cursor" put: [text size]]]];
+    let s3 := [s2 at: "selection" put: nil];
+    let s4 := [s3 at: "diagnostics" put: #[]];
+    let s5 := [s4 at: "diagnosticsDirty" put: false];
+    let status := [[found isNil]
+      ifTrue: [| ["no history match: " , query]]
+      ifFalse: [| ["reverse search: " , query]]];
+    [s5 at: "status" put: status]
+  ] doc:
+  "Update reverse-search query state and display its newest matching form." ];
+
+[Reflect defineMethod: #openHistorySearchIn: on: Digla as: [:self :state |
+  let query := [state at: "buffer"];
+  let search := { "query" -> query, "index" -> nil,
+    "savedBuffer" -> query, "savedCursor" -> [state at: "cursor"] };
+  [self applyHistorySearchQuery: query before: [[[state at: "history"] size] - 1]
+    search: search in: state]
+  ] doc:
+  "Open reverse history search, using the current buffer as its initial query." ];
+
+[Reflect defineMethod: #cycleHistorySearchIn: on: Digla as: [:self :state |
+  let search := [state at: "historySearch"];
+  let index := [search at: "index"];
+  let before := [[index isNil]
+    ifTrue: [| [[[state at: "history"] size] - 1]]
+    ifFalse: [| [index - 1]]];
+  [self applyHistorySearchQuery: [search at: "query"] before: before search: search in: state]
+  ] doc:
+  "Move reverse search to the next older matching history entry." ];
+
+[Reflect defineMethod: #cancelHistorySearchIn: on: Digla as: [:self :state |
+  let search := [state at: "historySearch"];
+  let text := [search at: "savedBuffer"];
+  let s1 := [state at: "historySearch" put: nil];
+  let s2 := [s1 at: "buffer" put: text];
+  let s3 := [s2 at: "cursor" put: [search at: "savedCursor"]];
+  let s4 := [s3 at: "diagnostics" put: #[]];
+  [s4 at: "status" put: "history search cancelled"]
+  ] doc:
+  "Cancel reverse search and restore the exact pre-search buffer and cursor." ];
+
+[Reflect defineMethod: #acceptHistorySearchIn: on: Digla as: [:self :state |
+  let next := [state at: "historySearch" put: nil];
+  [self markDiagnosticsDirtyIn: [next at: "status" put: "history match"]]
+  ] doc:
+  "Accept the displayed history match as editable source without evaluating it." ];
+
+[Reflect defineMethod: #handleHistorySearchKey:character:state: on: Digla as:
+  [:self :key :character :state |
+    let search := [state at: "historySearch"];
+    [[key = 27]
+      ifTrue: [| [self cancelHistorySearchIn: state]]
+      ifFalse: [| [[key = 13]
+        ifTrue: [| [self acceptHistorySearchIn: state]]
+        ifFalse: [| [[key = 18]
+          ifTrue: [| [self cycleHistorySearchIn: state]]
+          ifFalse: [|
+            let backspace := [[key = 8] | [key = 127]];
+            [backspace
+              ifTrue: [|
+                let query := [search at: "query"];
+                let boundary := [self previousBoundaryIn: query at: [query size]];
+                let shortened := [query copyFrom: 0 to: boundary];
+                [self applyHistorySearchQuery: shortened
+                  before: [[[state at: "history"] size] - 1] search: search in: state]]
+              ifFalse: [| [[character isEmpty]
+                ifTrue: [| [self acceptHistorySearchIn: state]]
+                ifFalse: [|
+                  let query := [[search at: "query"] , character];
+                  [self applyHistorySearchQuery: query
+                    before: [[[state at: "history"] size] - 1] search: search in: state]]]]]]]]]]]
+  ] doc:
+  "Dispatch editing keys while reverse history search owns the transient buffer." ];
 
 [Reflect defineMethod: #clearCompletionIn: on: Digla as: [:self :state |
   [state at: "completion" put: nil]
@@ -968,6 +1078,10 @@
             ifTrue: [| [self scrollTranscriptBy: -10 in: pageUp]]
             ifFalse: [| pageUp]]]]]
     ifFalse: [|
+      let historySearch := [state at: "historySearch" ifAbsent: [| nil]];
+      [[historySearch notNil]
+        ifTrue: [| [self handleHistorySearchKey: key character: character state: state]]
+        ifFalse: [|
       let menu := [state at: "completion"];
       [[menu notNil]
         ifTrue: [| [self handleCompletionKey: key modifier: modifier character: character state: state]]
@@ -989,10 +1103,12 @@
             [outcome set: [self returnFromDefinitionIn: [self clearAssistanceIn: state]]]]];
           [[[[outcome value] isNil] & [key = 9]] ifTrue: [|
             [outcome set: [self openCompletionIn: [self clearAssistanceIn: state]]]]];
+          [[[[outcome value] isNil] & [key = 18]] ifTrue: [|
+            [outcome set: [self openHistorySearchIn: [self clearAssistanceIn: state]]]]];
           [[[outcome value] isNil] ifTrue: [|
             [outcome set: [self handleEditorKey: key modifier: modifier character: character
               state: [self clearAssistanceIn: state]]]]];
-          [outcome value]]]]]
+          [outcome value]]]]]]]
   ] doc:
   "Apply one Termbox key and character event to the pure editor state." ];
 
