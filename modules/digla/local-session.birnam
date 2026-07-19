@@ -57,6 +57,7 @@
   let deadline := [self evaluationDeadlineAvailable];
   { "evaluate" -> true,
     "inspect" -> true,
+    "snapshot" -> true,
     "globals" -> true,
     "runtimeCompletion" -> true,
     "interrupt" -> false,
@@ -283,13 +284,22 @@
 [Reflect defineMethod: #localInspect:session: on: Digla as: [:self :params :session |
   let runtimeName := [params at: "runtimeName" ifAbsent: [| nil]];
   let globalName := [params at: "globalName" ifAbsent: [| nil]];
+  let selector := [params at: "selector" ifAbsent: [| nil]];
+  let includeSource := [params at: "includeSource" ifAbsent: [| false]];
   [[runtimeName notNil]
     ifTrue: [|
       { "result" -> { "snapshot" -> [self inspectRuntimeNamed: runtimeName] }, "session" -> session }]
     ifFalse: [|
       [[globalName notNil]
         ifTrue: [|
-          { "result" -> { "snapshot" -> [self inspectGlobal: globalName] }, "session" -> session }]
+          let snapshot := [[selector notNil]
+            ifTrue: [| [self snapshot: {
+              "target" -> globalName,
+              "sections" -> #["object" "methods" "source"],
+              "selector" -> selector,
+              "includeSource" -> includeSource }]]
+            ifFalse: [| [self inspectGlobal: globalName]]];
+          { "result" -> { "snapshot" -> snapshot }, "session" -> session }]
         ifFalse: [|
           [[session at: "hasLastValue"]
             ifTrue: [|
@@ -298,6 +308,11 @@
             ifFalse: [| { "error" -> "nothing has been evaluated yet", "session" -> session }]]]]]]
   ] doc:
   "Inspect a runtime/export name, a Store global, or the session's last successful result." ];
+
+[Reflect defineMethod: #localSnapshot:session: on: Digla as: [:self :params :session |
+  { "result" -> { "snapshot" -> [self snapshot: params] }, "session" -> session }
+  ] doc:
+  "Return one data-driven, capability-free named snapshot through the local session." ];
 
 [Reflect defineMethod: #localSessionMethod:params:session: on: Digla as: [:self :method :params :session |
   let outcome := [nil asCell];
@@ -309,6 +324,9 @@
     ifFalse: [| nil]];
   [[method = "birnam/inspect"]
     ifTrue: [| [outcome set: [self localInspect: params session: session]]]
+    ifFalse: [| nil]];
+  [[method = "birnam/snapshot"]
+    ifTrue: [| [outcome set: [self localSnapshot: params session: session]]]
     ifFalse: [| nil]];
   [[method = "birnam/globals"]
     ifTrue: [|

@@ -148,22 +148,30 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let evaluated := [Digla submitIn: [initial at: "buffer" put: "[20 + 1]"]];
   let inspectedResult := [Digla submitIn: [evaluated at: "buffer" put: ":inspect"]];
   let inspectedGlobal := [Digla submitIn: [inspectedResult at: "buffer" put: ":inspect String"]];
+  let inspectedMethod := [Digla submitIn:
+    [inspectedGlobal at: "buffer" put: ":inspect String asUppercase"]];
   let resultText := [[inspectedResult at: "transcript"] last];
   let globalText := [[inspectedGlobal at: "transcript"] last];
+  let methodText := [[inspectedMethod at: "transcript"] last];
   [t assert: [resultText includesSubstring: "value:      21"] describes: "last result inspection"];
   [t assert: [globalText includesSubstring: "target:     #String"] describes: "named global inspection"];
-  [t expect: [inspectedGlobal at: "lastResult"] equals: 21 describes: "commands preserve the last result"];
-  [t expect: [inspectedGlobal at: "status"] equals: "inspected global" describes: "command status"]]];
+  [t assert: [methodText includesSubstring: "#asUppercase"] describes: "selected source is shown"];
+  [t expect: [inspectedMethod at: "lastResult"] equals: 21 describes: "commands preserve the last result"];
+  [t expect: [inspectedMethod at: "status"] equals: "inspected method" describes: "method command status"]]];
 
 [e test: "terminal command help and failures stay structured" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let initial := [Digla editorStateFor: config];
   let help := [Digla submitIn: [initial at: "buffer" put: ":help"]];
   let missing := [Digla submitIn: [help at: "buffer" put: ":inspect NoSuchDiglaGlobal"]];
-  let unknown := [Digla submitIn: [missing at: "buffer" put: ":wat"]];
+  let badInspect := [Digla submitIn:
+    [missing at: "buffer" put: ":inspect String asUppercase extra"]];
+  let unknown := [Digla submitIn: [badInspect at: "buffer" put: ":wat"]];
   [t assert: [[[help at: "transcript"] last] includesSubstring: ":inspect NAME"] describes: "help lists inspect"];
   [t assert: [[[help at: "transcript"] last] includesSubstring: ":connect TARGET"] describes: "help lists session switching"];
   [t assert: [[[missing at: "transcript"] last] includesSubstring: "global not found"] describes: "missing global warning"];
+  [t assert: [[[badInspect at: "transcript"] last] includesSubstring: "usage: :inspect"]
+    describes: "inspect arity failure stays explicit"];
   [t expect: [unknown at: "status"] equals: "command error" describes: "unknown command status"]]];
 
 [e test: "connect command switches session adapters without terminal state" do: [:t |

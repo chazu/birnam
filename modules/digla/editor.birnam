@@ -313,7 +313,7 @@
   "Record a submission without output events, as used by editor commands." ];
 
 [Reflect defineMethod: #commandHelpText on: Digla as: [:self |
-  "Digla commands:\n  :inspect NAME  inspect a named global\n  :inspect       inspect the last successful result\n  :globals       list visible live-image globals\n  :session       show image identity and capabilities\n  :connect TARGET switch to local or remote image\n  :help          show this help"
+  "Digla commands:\n  :inspect NAME [SELECTOR]  inspect a global or one method's source\n  :inspect                  inspect the last successful result\n  :globals                  list visible live-image globals\n  :session                  show image identity and capabilities\n  :connect TARGET           switch to local or remote image\n  :help                     show this help"
   ] doc:
   "Return the terminal-native command summary." ];
 
@@ -354,14 +354,18 @@
   "Render a session handshake without reaching into the adapter or live image." ];
 
 [Reflect defineMethod: #inspectCommand:state: on: Digla as: [:self :words :state |
-  [[[words size] > 2]
-    ifTrue: [| { "text" -> "usage: :inspect [GLOBAL]", "status" -> "command error",
+  [[[words size] > 3]
+    ifTrue: [| { "text" -> "usage: :inspect [GLOBAL [SELECTOR]]", "status" -> "command error",
                   "session" -> [state at: "session"] }]
     ifFalse: [|
-      let named := [[words size] = 2];
-      let params := [named
-        ifTrue: [| { "globalName" -> [words at: 1] }]
-        ifFalse: [| [Map new]]];
+      let named := [[words size] >= 2];
+      let selected := [[words size] = 3];
+      let params := [selected
+        ifTrue: [| { "globalName" -> [words at: 1],
+          "selector" -> [words at: 2], "includeSource" -> true }]
+        ifFalse: [| [named
+          ifTrue: [| { "globalName" -> [words at: 1] }]
+          ifFalse: [| [Map new]]]]];
       let reply := [self callSession: "birnam/inspect" params: params in: [state at: "session"]];
       let error := [self sessionReplyErrorText: reply];
       [[error notNil]
@@ -369,7 +373,9 @@
                       "session" -> [reply at: "session"] }]
         ifFalse: [|
           let snapshot := [[self sessionResultOf: reply] at: "snapshot"];
-          let status := [named ifTrue: [| "inspected global"] ifFalse: [| "inspected result"]];
+          let status := [selected
+            ifTrue: [| "inspected method"]
+            ifFalse: [| [named ifTrue: [| "inspected global"] ifFalse: [| "inspected result"]]]];
           { "text" -> [self renderInspectionText: snapshot], "status" -> status,
             "session" -> [reply at: "session"] }]]]]
   ] doc:

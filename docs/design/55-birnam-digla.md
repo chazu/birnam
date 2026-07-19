@@ -188,7 +188,7 @@ MethodCard {
   target:             string | nil
   owner:              string | nil
   kind:               "primitive" | "compiled" | "method"
-  sourceAvailable:    boolean
+  sourceAvailable:    boolean | nil
   source:             string | nil
 }
 
@@ -204,6 +204,8 @@ The exact Map key representation may use strings for transport stability even
 though the in-image API uses symbols. The snapshot must make unavailable
 information explicit with nil or a warning; it must not turn an unnameable
 object, missing source, or unretained history into a plausible-looking value.
+`sourceAvailable` is `nil` when source was not requested, so the default method
+inventory does not perform a hidden per-method source probe.
 
 V1 intentionally omits raw entity IDs, complete-store dumps, transaction-log
 operation records, and historical method bodies. Those are separate design
@@ -230,6 +232,7 @@ The `spec` is data, not source. The initial fields are:
 {
   target: "global-name",
   sections: #["object" "facts" "methods" "source" "changes"],
+  selector: nil | "selectedMethod:",
   basis: nil | integer,
   since: nil | integer,
   includeSource: false | true
@@ -403,7 +406,7 @@ do not parse or evaluate a user expression.
 **Acceptance:** `main.birnam` can inspect `#Fixture` and `#db` by name. Missing
 globals produce a structured warning/result rather than a VM failure.
 
-### Slice 4 — snapshot record and JSON file — protocol serialization implemented
+### Slice 4 — snapshot record and JSON file — data contract implemented; file artifact pending
 
 **Goal:** freeze the first machine-readable contract.
 
@@ -416,11 +419,12 @@ parsed structure rather than unstable formatting.
 pointer, or runtime handle can reach the renderer. Repeated snapshots of the
 same fixture have equal semantic content.
 
-The live snapshot and session response are now JSON-safe and covered by
-round-trip tests. The remaining work in this slice is the data-driven
-`snapshot: spec` selector plus an explicit file artifact/golden acceptance path.
+The data-driven `snapshot: spec` selector is implemented for named targets and
+section filtering. `birnam/snapshot` exposes the same capability-free value over
+the framed session, and round-trip tests cover its JSON-safe result. The remaining
+work in this slice is an explicit file artifact/golden acceptance path.
 
-### Slice 5 — source lookup on demand
+### Slice 5 — source lookup on demand — implemented
 
 **Goal:** make the report explain behavior without making every snapshot large.
 
@@ -431,6 +435,12 @@ source search endpoint yet.
 **Acceptance:** a method with recorded source returns it; a primitive or
 undocumented method returns `nil` plus a truthful warning. The default snapshot
 does not contain method bodies.
+
+Callers must provide one `selector` when `includeSource` is true. Digla performs
+exactly that selected `Reflect methodSource:` lookup; ordinary inspection leaves
+`source` and `sourceAvailable` nil. The terminal exposes the same operation as
+`:inspect GLOBAL SELECTOR`, and both local and framed clients receive the shared
+snapshot shape.
 
 ### Slice 6 — deterministic HTML report
 

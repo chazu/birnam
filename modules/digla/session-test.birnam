@@ -12,6 +12,7 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
   let decoded := [Json parse: encoded];
   [t expect: [result at: "adapter"] equals: "local" describes: "adapter identity"];
   [t expect: [capabilities at: "evaluate"] equals: true describes: "evaluation advertised"];
+  [t expect: [capabilities at: "snapshot"] equals: true describes: "snapshot advertised"];
   [t expect: [capabilities at: "interrupt"] equals: false describes: "interrupt is truthful"];
   [t expect: [capabilities at: "outputEvents"] equals: false
     describes: "headless adapter does not claim an unloaded capture wrapper"];
@@ -19,6 +20,20 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
     describes: "headless adapter does not claim unloaded loop safepoints"];
   [t assert: [encoded startsWith: "{"] describes: "handshake is JSON-shaped"];
   [t expect: [decoded isError] equals: false describes: "handshake round-trips as JSON"]]];
+
+[e test: "snapshot protocol returns selected method source as copied data" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let reply := [Digla callSession: "birnam/snapshot" params: {
+    "target" -> "String", "sections" -> #["object" "methods" "source"],
+    "selector" -> "asUppercase", "includeSource" -> true }
+    in: [Digla localSessionFor: config]];
+  let snapshot := [[Digla sessionResultOf: reply] at: "snapshot"];
+  let method := [[snapshot at: "methods"] at: 0];
+  let encoded := [Json stringify: [reply at: "message"]];
+  [t expect: [method at: "sourceAvailable"] equals: true describes: "source lookup succeeds"];
+  [t assert: [[method at: "source"] includesSubstring: "#asUppercase"]
+    describes: "source crosses the session seam"];
+  [t assert: [encoded includesSubstring: "asUppercase"] describes: "snapshot is JSON-safe"]]];
 
 [e test: "evaluation copies values and preserves the last success across errors" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];

@@ -56,7 +56,8 @@
     "target" -> target,
     "owner" -> [[owner isNil] ifTrue: [| nil] ifFalse: [| target]],
     "kind" -> kind,
-    "sourceAvailable" -> [kind = "method"] }
+    "sourceAvailable" -> nil,
+    "source" -> nil }
   ] doc:
   "Convert one effective-method descriptor to a capability-free method card." ];
 
@@ -133,6 +134,70 @@
   ] doc:
   "Inspect a named global without parsing or evaluating an expression." ];
 
+[Reflect defineMethod: #snapshot: on: Digla as: [:self :spec |
+  let requestedTarget := [spec at: "target" ifAbsent: [| nil]];
+  [[requestedTarget isNil]
+    ifTrue: [|
+      let missing := [self missingGlobalSnapshot: ""];
+      [missing at: "warnings" put: #["snapshot requires a named target"]]]
+    ifFalse: [|
+      let targetName := [[Reflect isSymbol: requestedTarget]
+        ifTrue: [| [Reflect nameOf: requestedTarget]]
+        ifFalse: [| requestedTarget]];
+      let base := [self inspectGlobal: targetName];
+      let sections := [spec at: "sections"
+        ifAbsent: [| #["object" "facts" "methods"]]];
+      let requestedSelector := [spec at: "selector" ifAbsent: [| nil]];
+      let selector := [[requestedSelector isNil]
+        ifTrue: [| nil]
+        ifFalse: [| [[Reflect isSymbol: requestedSelector]
+          ifTrue: [| [Reflect nameOf: requestedSelector]]
+          ifFalse: [| requestedSelector]]]];
+      let includeSource := [[spec at: "includeSource" ifAbsent: [| false]] = true];
+      let warnings := [[base at: "warnings"] asCell];
+      [[includeSource & [selector isNil]] ifTrue: [|
+        [warnings set: [[warnings value] add: "includeSource requires a selected method"]]]
+        ifFalse: [| nil]];
+      let selected := [[selector isNil]
+        ifTrue: [| [base at: "methods"]]
+        ifFalse: [| [[base at: "methods"] select: [:method |
+          [[method at: "selector"] = selector]]]]];
+      [[[selector notNil] & [selected isEmpty]] ifTrue: [|
+        [warnings set: [[warnings value] add:
+          [["method not found: #" , targetName] , " " , selector]]]]
+        ifFalse: [| nil]];
+      let sourceRequested := [includeSource & [selector notNil]];
+      let methods := [selected collect: [:method |
+        [sourceRequested
+          ifTrue: [|
+            let target := [method at: "target"];
+            let source := [[target isNil]
+              ifTrue: [| nil]
+              ifFalse: [|
+                let descriptor := { #target -> [target asSymbol],
+                  #selector -> [selector asSymbol] };
+                [Reflect methodSource: descriptor]]];
+            [[source isNil] ifTrue: [|
+              [warnings set: [[warnings value] add:
+                [["source unavailable: #" , targetName] , " " , selector]]]]
+              ifFalse: [| nil]];
+            let m1 := [method at: "sourceAvailable" put: [source notNil]];
+            [m1 at: "source" put: source]]
+          ifFalse: [| method]]]];
+      let showObject := [sections includes: "object"];
+      let showFacts := [sections includes: "facts"];
+      let showMethods := [[sections includes: "methods"] | [sections includes: "source"]];
+      let s1 := [base at: "sections" put: sections];
+      let s2 := [s1 at: "object" put:
+        [showObject ifTrue: [| [base at: "object"]] ifFalse: [| nil]]];
+      let s3 := [s2 at: "facts" put:
+        [showFacts ifTrue: [| [base at: "facts"]] ifFalse: [| #[]]]];
+      let s4 := [s3 at: "methods" put:
+        [showMethods ifTrue: [| methods] ifFalse: [| #[]]]];
+      [s4 at: "warnings" put: [warnings value]]]]
+  ] doc:
+  "Build a data-driven named snapshot, optionally selecting one method and its recorded source." ];
+
 [Reflect defineMethod: #runtimeNamed: on: Digla as: [:self :name |
   let symbol := [[Reflect isSymbol: name] ifTrue: [| name] ifFalse: [| [name asSymbol]]];
   [Globals at: symbol ifAbsent: [| nil]]
@@ -177,7 +242,11 @@
       let targetName := [[[method at: "target"] isNil]
         ifTrue: [| "(unknown)"]
         ifFalse: [| [method at: "target"]]];
-      [sb addLine: ["  " , [method at: "selector"] , "  " , [method at: "kind"] , "  " , targetName]]]]]];
+      [sb addLine: ["  " , [method at: "selector"] , "  " , [method at: "kind"] , "  " , targetName]];
+      let source := [method at: "source" ifAbsent: [| nil]];
+      [[source notNil] ifTrue: [|
+        [sb addLine: ""];
+        [sb addLine: source]] ifFalse: [| nil]]]]]];
   [[[snapshot at: "warnings"] isEmpty]
     ifTrue:  [| nil]
     ifFalse: [|

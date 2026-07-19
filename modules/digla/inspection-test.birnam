@@ -30,8 +30,53 @@ let fixture := [fixtureBase clone];
   [t expect: [unsafeFact at: "rendered"] equals: true describes: "object fact is rendered, not leaked"];
   [t expect: [inherited at: "kind"] equals: "compiled" describes: "inherited method card"];
   [t expect: [direct at: "kind"] equals: "compiled" describes: "direct method card"];
+  [t expect: [direct at: "sourceAvailable"] equals: nil
+    describes: "ordinary inspection does not probe source"];
   [t expect: [primitive notNil] equals: true describes: "native protocol is represented"];
   [t expect: after equals: before describes: "inspection performs no Store writes"]]];
+
+[e test: "data-driven snapshot selects and sources exactly one method" do: [:t |
+  let before := [db basis];
+  let snapshot := [Digla snapshot: {
+    "target" -> "String",
+    "sections" -> #["object" "methods" "source"],
+    "selector" -> "asUppercase",
+    "includeSource" -> true }];
+  let after := [db basis];
+  let methods := [snapshot at: "methods"];
+  let method := [methods at: 0];
+  [t expect: [methods size] equals: 1 describes: "selector narrows the snapshot"];
+  [t expect: [method at: "selector"] equals: "asUppercase" describes: "selected method"];
+  [t expect: [method at: "sourceAvailable"] equals: true describes: "source was probed"];
+  [t assert: [[method at: "source"] includesSubstring: "#asUppercase"]
+    describes: "recorded source is copied into the card"];
+  [t expect: [[snapshot at: "facts"] size] equals: 0 describes: "unrequested facts omitted"];
+  [t expect: [[snapshot at: "warnings"] size] equals: 0 describes: "valid source request is clean"];
+  [t expect: after equals: before describes: "snapshot performs no Store writes"]]];
+
+[e test: "snapshot reports invalid and missing source selections explicitly" do: [:t |
+  let unselected := [Digla snapshot: {
+    "target" -> "String", "sections" -> #["source"], "includeSource" -> true }];
+  let missing := [Digla snapshot: {
+    "target" -> "String", "sections" -> #["source"],
+    "selector" -> "definitelyMissingSelector", "includeSource" -> true }];
+  [t assert: [[[unselected at: "warnings"] at: 0] includesSubstring: "requires a selected method"]
+    describes: "source requires a narrow selector"];
+  [t expect: [[missing at: "methods"] size] equals: 0 describes: "missing selector has no card"];
+  [t assert: [[[missing at: "warnings"] at: 0] includesSubstring: "method not found"]
+    describes: "missing selector is visible"]]];
+
+[e test: "snapshot reports unavailable primitive source truthfully" do: [:t |
+  let methods := [[Digla inspectGlobal: "DiglaInspectionFixture"] at: "methods"];
+  let primitive := [methods detect: [:method | [[method at: "kind"] = "primitive"]]];
+  let snapshot := [Digla snapshot: {
+    "target" -> "DiglaInspectionFixture", "sections" -> #["source"],
+    "selector" -> [primitive at: "selector"], "includeSource" -> true }];
+  let selected := [[snapshot at: "methods"] at: 0];
+  [t expect: [selected at: "sourceAvailable"] equals: false describes: "source probe is truthful"];
+  [t expect: [selected at: "source"] equals: nil describes: "primitive has no invented source"];
+  [t assert: [[[snapshot at: "warnings"] at: 0] includesSubstring: "source unavailable"]
+    describes: "unavailable source carries a warning"]]];
 
 [e test: "missing globals and anonymous values remain explicit" do: [:t |
   let missing := [Digla inspectGlobal: "DefinitelyMissingDiglaGlobal"];
@@ -46,3 +91,11 @@ let fixture := [fixtureBase clone];
   [t assert: [text includesSubstring: "facts:"] describes: "facts section"];
   [t assert: [text includesSubstring: "#name  Ada"] describes: "fact row"];
   [t assert: [text includesSubstring: "inspectionInherited  compiled"] describes: "method row"]]];
+
+[e test: "text rendering includes explicitly selected method source" do: [:t |
+  let snapshot := [Digla snapshot: {
+    "target" -> "String", "sections" -> #["source"],
+    "selector" -> "asUppercase", "includeSource" -> true }];
+  let text := [Digla renderInspectionText: snapshot];
+  [t assert: [text includesSubstring: "asUppercase  compiled"] describes: "selected method row"];
+  [t assert: [text includesSubstring: "#asUppercase"] describes: "selected source body"]]];

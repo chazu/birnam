@@ -52,12 +52,12 @@ Runtime operations use a transport-neutral session rather than calling the
 evaluator from the terminal model. The current commands are:
 
 ```text
-:inspect NAME   inspect a named global
-:inspect        inspect the last successful result
-:globals        list user-visible live-image globals
-:session        show image identity and capabilities
-:connect TARGET switch to the local or configured remote image
-:help           show command help
+:inspect NAME [SELECTOR] inspect a named global or one method's recorded source
+:inspect                 inspect the last successful result
+:globals                 list user-visible live-image globals
+:session                 show image identity and capabilities
+:connect TARGET          switch to the local or configured remote image
+:help                    show command help
 ```
 
 For a persistent headless client, including an AI agent, launch the same live
@@ -68,7 +68,7 @@ zig-out/bin/birnam run examples/digla --build -- --session-stdio
 ```
 
 Messages use `Content-Length` framing and the methods
-`birnam/session/open`, `birnam/evaluate`, `birnam/inspect`, `birnam/globals`,
+`birnam/session/open`, `birnam/evaluate`, `birnam/inspect`, `birnam/snapshot`, `birnam/globals`,
 `birnam/runtimeCompletion`, `birnam/interrupt`, and `birnam/close`. Responses
 contain only copied JSON-safe values; the local adapter retains raw runtime values only so a later
 `birnam/inspect` can inspect the last successful evaluation. `System print:` and
@@ -103,6 +103,13 @@ passes its configured `evaluation-timeout-ms` as `timeoutMs` on both local and
 remote submissions. Stdio and the synchronous local-image adapter still advertise
 or behave as non-interruptible except for deadlines. Recursive code, foreign calls,
 and native operations without those safe boundaries cannot be preempted.
+
+`birnam/snapshot` accepts a named `target`, a `sections` vector, and optional
+`selector`/`includeSource` fields. Source is only probed when one selector is
+explicitly requested; ordinary object inspection never scans source for every
+method. The terminal shortcut `:inspect String asUppercase` uses this contract,
+and its source text flows through the same soft-wrapped transcript layout as
+evaluation output.
 
 The same protocol is available to a long-lived loopback client over TCP:
 

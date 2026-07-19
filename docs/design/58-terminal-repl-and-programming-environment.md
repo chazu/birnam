@@ -231,6 +231,7 @@ birnam/session/open       → session id, image identity, capabilities
 birnam/evaluate           → value/error result plus streamed output
 birnam/interrupt          → cancel the current evaluation at a safe boundary
 birnam/inspect            → structured print value or selected runtime object
+birnam/snapshot           → section-filtered named object/method/source snapshot
 birnam/globals            → user-visible persisted bindings
 birnam/close              → release the session
 ```
@@ -471,6 +472,10 @@ The core invariants are:
    optional docs, and copied runtime inspection; F2 reports full-selector signatures;
    F3 resolves same-buffer definitions and lazily opens resolver-selected project
    or dependency source parts; F5 restores prior in-memory document state.
+   The data-driven Design 55 snapshot is available as `birnam/snapshot`; terminal
+   `:inspect GLOBAL SELECTOR` requests one recorded method body through that same
+   value-only contract. Default inspection does not probe source availability, so
+   method inventories retain the accelerated single `allMethodsOf:` traversal.
 
 The first usable milestone is now complete: a user can launch the terminal editor,
 edit and evaluate multiline Birnam forms locally, recall history, see lexical
@@ -500,8 +505,9 @@ After the subsequent navigation, structured-output, deadline, and serial TCP-cli
 slices, the larger application image launched in 2.72-2.79 s across five
 consecutive runs. The incremental client adds three focused start/step/interrupt
 methods while keeping socket state out of the editor and renderer. Five current
-launches complete in 2.79-2.84 s, so live terminal progress adds no material cold
-startup regression beyond normal run-to-run variation.
+launches after the selected-source snapshot slice complete in 2.92-2.96 s. The
+new data-driven query surface adds roughly 0.1 s to cold launch while keeping all
+per-method source reflection out of startup and ordinary inspection.
 
 Project-aware source navigation does not add another manifest parser or eager
 workspace index. A project run now installs the same existing read-only `Project`
