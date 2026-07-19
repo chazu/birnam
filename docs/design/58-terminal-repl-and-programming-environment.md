@@ -238,7 +238,7 @@ birnam/session/open       → session id, image identity, capabilities
 birnam/evaluate           → value/error result plus streamed output
 birnam/interrupt          → cancel the current evaluation at a safe boundary
 birnam/inspect            → structured print value or selected runtime object
-birnam/snapshot           → section-filtered named object/method/source snapshot
+birnam/snapshot           → section-filtered object/method/source/history snapshot
 birnam/globals            → user-visible persisted bindings
 birnam/close              → release the session
 ```
@@ -476,7 +476,7 @@ The core invariants are:
    `timeoutMs`, so local and remote terminal requests share the same deadline policy.
    Stdio retains `interrupt=false`, and arbitrary recursion or a blocking
    native/foreign call still has no safe application-level preemption point.
-6. **Runtime-aware assistance — inspection, completion, and explicit semantic slices implemented.** `:inspect`,
+6. **Runtime-aware assistance — inspection, history, completion, and explicit semantic slices implemented.** `:inspect`,
    `:globals`, and `:session` use the shared session layer without evaluating
    report expressions. `birnam/runtimeCompletion` supplies bounded live-image
    globals, merged with parser/CST source candidates in the shared language
@@ -486,8 +486,12 @@ The core invariants are:
    or dependency source parts; F5 restores prior in-memory document state.
    The data-driven Design 55 snapshot is available as `birnam/snapshot`; terminal
    `:inspect GLOBAL SELECTOR` requests one recorded method body through that same
-   value-only contract. Default inspection does not probe source availability, so
-   method inventories retain the accelerated single `allMethodsOf:` traversal.
+   value-only contract. `:changes GLOBAL BASIS` requests honest historical facts
+   and current changes since that Store basis; history-off overwrites are warnings,
+   never fabricated old values. Section-filtered fact/change snapshots also skip
+   the effective-method inventory. Default inspection does not probe source
+   availability, so method inventories retain the accelerated single
+   `allMethodsOf:` traversal.
 
 The first usable milestone is now complete: a user can launch the terminal editor,
 edit and evaluate multiline Birnam forms locally, recall history, see lexical

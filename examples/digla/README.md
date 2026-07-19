@@ -65,6 +65,7 @@ evaluator from the terminal model. The current commands are:
 ```text
 :inspect NAME [SELECTOR] inspect a named global or one method's recorded source
 :inspect                 inspect the last successful result
+:changes NAME BASIS      compare historical facts with changes since BASIS
 :globals                 list user-visible live-image globals
 :session                 show image identity and capabilities
 :connect TARGET          switch to the local or configured remote image
@@ -121,11 +122,16 @@ or behave as non-interruptible except for deadlines. Recursive code, foreign cal
 and native operations without those safe boundaries cannot be preempted.
 
 `birnam/snapshot` accepts a named `target`, a `sections` vector, and optional
-`selector`/`includeSource` fields. Source is only probed when one selector is
-explicitly requested; ordinary object inspection never scans source for every
-method. The terminal shortcut `:inspect String asUppercase` uses this contract,
-and its source text flows through the same soft-wrapped transcript layout as
-evaluation output.
+`selector`/`includeSource`, `asOf`, and `since` fields. Source is only probed
+when one selector is explicitly requested; ordinary object inspection never
+scans source for every method. Historical fact values are returned only for
+attributes that retained Store history; an overwritten history-off attribute
+produces a `history unavailable: #attribute` warning. `changes` cards contain
+the current fact values changed since the requested basis. The terminal
+shortcuts `:inspect String asUppercase` and `:changes NAME BASIS` use this
+contract, and their text flows through the same soft-wrapped transcript layout
+as evaluation output. Snapshot sections are lazy: fact/change-only requests do
+not build an effective-method inventory.
 
 The same protocol is available to a long-lived loopback client over TCP:
 

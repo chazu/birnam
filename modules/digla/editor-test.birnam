@@ -230,6 +230,31 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
     describes: "inspect arity failure stays explicit"];
   [t expect: [unknown at: "status"] equals: "command error" describes: "unknown command status"]]];
 
+[e test: "changes command compares a historical fact window without evaluation" do: [:t |
+  let fixture := [Object clone];
+  [Globals at: #DiglaEditorTemporal put: fixture];
+  [db assert: #diglaEditorHistoried attr: #history value: true];
+  [db assert: fixture attr: #diglaEditorHistoried value: "earlier"];
+  let basis := [db basis];
+  [db assert: fixture attr: #diglaEditorHistoried value: "later"];
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let source := [[":changes DiglaEditorTemporal " , [basis printString]]];
+  let changed := [Digla submitIn: [initial at: "buffer" put: source]];
+  let text := [[changed at: "transcript"] last];
+  let malformed := [Digla submitIn: [changed at: "buffer" put: ":changes String old"]];
+  [t assert: [text includesSubstring: ["facts as of " , [basis printString]]]
+    describes: "terminal labels historical facts"];
+  [t assert: [text includesSubstring: "#diglaEditorHistoried  earlier"]
+    describes: "terminal shows historical value"];
+  [t assert: [text includesSubstring: ["changes since " , [basis printString]]]
+    describes: "terminal labels change window"];
+  [t assert: [text includesSubstring: "#diglaEditorHistoried  later"]
+    describes: "terminal shows current changed value"];
+  [t expect: [changed at: "lastResult"] equals: nil describes: "command performs no evaluation"];
+  [t assert: [[[malformed at: "transcript"] last] includesSubstring: "usage: :changes"]
+    describes: "malformed basis is explicit"]]];
+
 [e test: "connect command switches session adapters without terminal state" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new]
     args: #["--connect=remote"]];

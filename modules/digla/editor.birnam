@@ -317,7 +317,7 @@
   "Record a submission without output events, as used by editor commands." ];
 
 [Reflect defineMethod: #commandHelpText on: Digla as: [:self |
-  "Digla commands:\n  :inspect NAME [SELECTOR]  inspect a global or one method's source\n  :inspect                  inspect the last successful result\n  :globals                  list visible live-image globals\n  :session                  show image identity and capabilities\n  :connect TARGET           switch to local or remote image\n  :help                     show this help"
+  "Digla commands:\n  :inspect NAME [SELECTOR]  inspect a global or one method's source\n  :inspect                  inspect the last successful result\n  :changes NAME BASIS       compare historical facts with changes since BASIS\n  :globals                  list visible live-image globals\n  :session                  show image identity and capabilities\n  :connect TARGET           switch to local or remote image\n  :help                     show this help"
   ] doc:
   "Return the terminal-native command summary." ];
 
@@ -402,6 +402,31 @@
   ] doc:
   "Execute a copied-value globals or session-information editor command." ];
 
+[Reflect defineMethod: #changesCommand:state: on: Digla as: [:self :words :state |
+  let basisText := [words at: 2 ifAbsent: [| ""]];
+  let basis := [basisText asInteger];
+  let valid := [[[words size] = 3] & [basis notNil]];
+  [valid
+    ifTrue: [|
+      let reply := [self callSession: "birnam/snapshot" params: {
+        "target" -> [words at: 1],
+        "sections" -> #["object" "facts" "changes"],
+        "asOf" -> basis,
+        "since" -> basis } in: [state at: "session"]];
+      let error := [self sessionReplyErrorText: reply];
+      [[error notNil]
+        ifTrue: [| { "text" -> error, "status" -> "command error",
+          "session" -> [reply at: "session"] }]
+        ifFalse: [|
+          let snapshot := [[self sessionResultOf: reply] at: "snapshot"];
+          { "text" -> [self renderInspectionText: snapshot],
+            "status" -> ["changes since " , [basis printString]],
+            "session" -> [reply at: "session"] }]]]
+    ifFalse: [| { "text" -> "usage: :changes GLOBAL BASIS",
+      "status" -> "command error", "session" -> [state at: "session"] }]]
+  ] doc:
+  "Render an honest historical fact snapshot beside current changes since its basis." ];
+
 [Reflect defineMethod: #commandResultFor:state: on: Digla as: [:self :input :state |
   let words := [input words];
   let command := [words at: 0 ifAbsent: [| ""]];
@@ -412,14 +437,17 @@
       [[command = ":inspect"]
         ifTrue: [| [self inspectCommand: words state: state]]
         ifFalse: [|
-          [[command = ":globals"]
-            ifTrue: [| [self sessionCommand: "birnam/globals" state: state]]
+          [[command = ":changes"]
+            ifTrue: [| [self changesCommand: words state: state]]
             ifFalse: [|
-              [[command = ":session"]
-                ifTrue: [| [self sessionCommand: "birnam/session/open" state: state]]
+              [[command = ":globals"]
+                ifTrue: [| [self sessionCommand: "birnam/globals" state: state]]
                 ifFalse: [|
-                  [[command = ":connect"]
-                    ifTrue: [|
+                  [[command = ":session"]
+                    ifTrue: [| [self sessionCommand: "birnam/session/open" state: state]]
+                    ifFalse: [|
+                      [[command = ":connect"]
+                        ifTrue: [|
                       let requested := [words at: 1 ifAbsent: [| ""]];
                       let target := [[requested = "tcp"]
                         ifTrue: [| "remote"]
@@ -458,8 +486,8 @@
                                     "session" -> [reply at: "session"] }]]]]]
                         ifFalse: [| { "text" -> "usage: :connect local|remote",
                           "status" -> "command error", "session" -> [state at: "session"] }]]]
-                    ifFalse: [| { "text" -> ["unknown Digla command: " , command],
-                                  "status" -> "command error", "session" -> [state at: "session"] }]]]]]]]]]]
+                        ifFalse: [| { "text" -> ["unknown Digla command: " , command],
+                          "status" -> "command error", "session" -> [state at: "session"] }]]]]]]]]]]]]
   ] doc:
   "Dispatch one terminal-native Digla command without evaluating source." ];
 

@@ -35,6 +35,29 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
     describes: "source crosses the session seam"];
   [t assert: [encoded includesSubstring: "asUppercase"] describes: "snapshot is JSON-safe"]]];
 
+[e test: "snapshot protocol carries historical facts and since changes as copied data" do: [:t |
+  let fixture := [Object clone];
+  [Globals at: #DiglaSessionTemporal put: fixture];
+  [db assert: #diglaSessionHistoried attr: #history value: true];
+  [db assert: fixture attr: #diglaSessionHistoried value: "old"];
+  let basis := [db basis];
+  [db assert: fixture attr: #diglaSessionHistoried value: "new"];
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let reply := [Digla callSession: "birnam/snapshot" params: {
+    "target" -> "DiglaSessionTemporal",
+    "sections" -> #["facts" "changes"], "asOf" -> basis, "since" -> basis }
+    in: [Digla localSessionFor: config]];
+  let snapshot := [[Digla sessionResultOf: reply] at: "snapshot"];
+  let fact := [[snapshot at: "facts"] detect: [:card |
+    [[card at: "attribute"] = "diglaSessionHistoried"]]];
+  let change := [[snapshot at: "changes"] detect: [:card |
+    [[card at: "attribute"] = "diglaSessionHistoried"]]];
+  let encoded := [Json stringify: [reply at: "message"]];
+  [t expect: [fact at: "value"] equals: "old" describes: "old fact crosses session seam"];
+  [t expect: [change at: "value"] equals: "new" describes: "change crosses session seam"];
+  [t assert: [encoded includesSubstring: "diglaSessionHistoried"]
+    describes: "temporal snapshot remains JSON-safe"]]];
+
 [e test: "evaluation copies values and preserves the last success across errors" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let first := [Digla callSession: "birnam/evaluate" params: { "source" -> "[40 + 2]" }

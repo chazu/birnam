@@ -53,7 +53,7 @@ worker-facing release adds a separate control-plane Store containing serializabl
 worker observations; it does not attempt to merge another process's Store or
 ship raw object handles across the isolate boundary.
 
-The first object-inspection slice is implemented in `modules/digla/inspection.birnam`:
+The object-inspection path is implemented in `modules/digla/inspection.birnam`:
 named and anonymous targets, current facts, effective methods, generation and
 basis labels, deterministic text, and structured missing-global warnings all
 share one capability-free snapshot. The terminal exposes it through `:inspect`.
@@ -61,8 +61,9 @@ The transport-neutral session layer also carries the same snapshot over framed
 JSON with `--session-stdio`, so machine clients do not need to scrape terminal
 text. The terminal sibling now provides resolver-backed authored source on
 demand for project and dependency methods, without putting bodies into inspection
-snapshots. A general `snapshot: spec`, JSON file artifact, opt-in method bodies in
-that snapshot, history, HTML, and HTTP remain the next Design 55 layers.
+snapshots. The general `snapshot: spec` also supports honest `asOf` facts and
+`since` changes, exposed in the terminal through `:changes NAME BASIS`. A JSON
+file artifact, HTML, and HTTP remain the next Design 55 layers.
 
 ## 3. Governing invariants
 
@@ -162,6 +163,8 @@ The initial shape is a plain value record:
 Snapshot {
   schema:             1
   basis:              integer | nil
+  asOf:               integer | nil
+  since:              integer | nil
   target:             Target
   generationDigest:   string | nil
   sections:           vector of strings
@@ -196,7 +199,9 @@ ChangeCard {
   entity:             string | nil
   attribute:          string
   value:              serializable value
+  rendered:           boolean
   window:             "since" | "between" | "asOf"
+  basis:              integer
 }
 ```
 
@@ -454,7 +459,7 @@ disk from the fixture project.
 the generation label when available, and escaped source/value text. A golden
 smoke checks the important headings and escaping.
 
-### Slice 7 — historical facts and changes
+### Slice 7 — historical facts and changes — implemented for snapshots, sessions, and terminal text
 
 **Goal:** demonstrate the Store's most distinctive application value.
 
@@ -466,6 +471,16 @@ result as a historical fact view rather than historical code.
 change window. A history-off attribute produces an explicit unavailable-history
 warning rather than a fabricated old value. Tests cover `asOf:`, `since:`, and
 the documented history-retention boundary.
+
+`snapshot:` accepts `asOf` (with `basis` as an alias) and `since`, validates
+both against the live Store watermark, and performs relational reads only for
+requested sections. Historical facts and current change cards cross the local
+and framed session seam as copied JSON-safe values. Text labels the windows as
+`facts as of N` and `changes since N`; `:changes NAME BASIS` requests those
+sections without evaluating source or traversing the method inventory. Methods
+and generation remain current observations and carry an explicit warning when
+requested beside historical facts. The remaining HTML/report work belongs to
+Slice 6 rather than this query contract.
 
 ### Slice 8 — loopback HTTP delivery
 

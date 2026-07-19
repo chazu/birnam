@@ -12,6 +12,15 @@ let fixture := [fixtureBase clone];
 [db assert: fixture attr: #name value: "Ada"];
 [db assert: fixture attr: #unsafe value: [Object clone]];
 
+let temporalFixture := [Object clone];
+[Globals at: #DiglaTemporalFixture put: temporalFixture];
+[db assert: #diglaHistoried attr: #history value: true];
+[db assert: temporalFixture attr: #diglaHistoried value: "before"];
+[db assert: temporalFixture attr: #diglaCurrentOnly value: "lost"];
+let temporalBasis := [db basis];
+[db assert: temporalFixture attr: #diglaHistoried value: "after"];
+[db assert: temporalFixture attr: #diglaCurrentOnly value: "now"];
+
 [e test: "named inspection returns deterministic safe object facts and methods" do: [:t |
   let before := [db basis];
   let snapshot := [Digla inspectGlobal: "DiglaInspectionFixture"];
@@ -53,6 +62,14 @@ let fixture := [fixtureBase clone];
   [t expect: [[snapshot at: "facts"] size] equals: 0 describes: "unrequested facts omitted"];
   [t expect: [[snapshot at: "warnings"] size] equals: 0 describes: "valid source request is clean"];
   [t expect: after equals: before describes: "snapshot performs no Store writes"]]];
+
+[e test: "section-filtered snapshots do not build an unrequested method inventory" do: [:t |
+  let snapshot := [Digla snapshot: {
+    "target" -> "DiglaInspectionFixture", "sections" -> #["facts"] }];
+  [t expect: [[snapshot at: "methods"] size] equals: 0 describes: "methods are omitted"];
+  [t expect: [[snapshot at: "target"] at: "vtableName"] equals: nil
+    describes: "fact-only snapshot does not derive type through method traversal"];
+  [t expect: [[snapshot at: "facts"] isEmpty] equals: false describes: "requested facts remain"]]];
 
 [e test: "snapshot reports invalid and missing source selections explicitly" do: [:t |
   let unselected := [Digla snapshot: {
@@ -99,3 +116,54 @@ let fixture := [fixtureBase clone];
   let text := [Digla renderInspectionText: snapshot];
   [t assert: [text includesSubstring: "asUppercase  compiled"] describes: "selected method row"];
   [t assert: [text includesSubstring: "#asUppercase"] describes: "selected source body"]]];
+
+[e test: "historical snapshots distinguish retained facts from unavailable history" do: [:t |
+  let before := [db basis];
+  let snapshot := [Digla snapshot: {
+    "target" -> "DiglaTemporalFixture",
+    "sections" -> #["object" "facts" "changes"],
+    "asOf" -> temporalBasis,
+    "since" -> temporalBasis }];
+  let after := [db basis];
+  let historical := [[snapshot at: "facts"] detect: [:fact |
+    [[fact at: "attribute"] = "diglaHistoried"]]];
+  let currentOnly := [[snapshot at: "facts"] detect: [:fact |
+    [[fact at: "attribute"] = "diglaCurrentOnly"]]];
+  let changed := [[snapshot at: "changes"] detect: [:change |
+    [[change at: "attribute"] = "diglaHistoried"]]];
+  [t expect: [snapshot at: "basis"] equals: temporalBasis describes: "snapshot uses requested basis"];
+  [t expect: [snapshot at: "asOf"] equals: temporalBasis describes: "asOf is explicit"];
+  [t expect: [snapshot at: "since"] equals: temporalBasis describes: "since is explicit"];
+  [t expect: [historical at: "value"] equals: "before" describes: "retained value is historical"];
+  [t expect: currentOnly equals: nil describes: "unretained old value is not fabricated"];
+  [t expect: [changed at: "value"] equals: "after" describes: "since reports current changed value"];
+  [t assert: [[[snapshot at: "warnings"] at: 0] includesSubstring:
+    "history unavailable: #diglaCurrentOnly"] describes: "missing history is explicit"];
+  [t expect: after equals: before describes: "historical snapshot performs no Store writes"]]];
+
+[e test: "historical text labels its fact and change windows" do: [:t |
+  let snapshot := [Digla snapshot: {
+    "target" -> "DiglaTemporalFixture",
+    "sections" -> #["facts" "changes"],
+    "asOf" -> temporalBasis,
+    "since" -> temporalBasis }];
+  let text := [Digla renderInspectionText: snapshot];
+  [t assert: [text includesSubstring: ["facts as of " , [temporalBasis printString] , ":"]]
+    describes: "historical facts are labelled"];
+  [t assert: [text includesSubstring: ["changes since " , [temporalBasis printString] , ":"]]
+    describes: "change window is labelled"];
+  [t assert: [[text includesSubstring: "methods:"] not]
+    describes: "unrequested current methods are omitted"]]];
+
+[e test: "invalid historical bases are rejected without querying" do: [:t |
+  let snapshot := [Digla snapshot: {
+    "target" -> "DiglaTemporalFixture", "sections" -> #["facts" "changes"],
+    "asOf" -> -1, "since" -> "old" }];
+  let current := [[snapshot at: "facts"] detect: [:fact |
+    [[fact at: "attribute"] = "diglaHistoried"]]];
+  [t expect: [snapshot at: "asOf"] equals: nil describes: "invalid asOf is cleared"];
+  [t expect: [snapshot at: "since"] equals: nil describes: "invalid since is cleared"];
+  [t expect: [current at: "value"] equals: "after"
+    describes: "invalid asOf falls back to current facts"];
+  [t expect: [[snapshot at: "changes"] size] equals: 0 describes: "invalid since has no changes"];
+  [t expect: [[snapshot at: "warnings"] size] equals: 2 describes: "both invalid fields warn"]]];

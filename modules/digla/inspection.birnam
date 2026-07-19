@@ -68,6 +68,81 @@
   ] doc:
   "Return deterministic transport-safe fact cards for `value`." ];
 
+[Reflect defineMethod: #inspectionBasisIsValid: on: Digla as: [:self :basis |
+  let integer := [[Reflect vtableOf: basis] == [Reflect vtableOf: 0]];
+  [integer & [integer
+    ifTrue: [| [[basis >= 0] & [basis <= [db basis]]]]
+    ifFalse: [| false]]]
+  ] doc:
+  "Answer whether a requested historical basis is a current nonnegative Store watermark." ];
+
+[Reflect defineMethod: #inspectionHistoricalFactsOf:asOf: on: Digla as:
+  [:self :value :basis |
+    let attributes := [#[] asCell];
+    [[Reflect factsOf: value] do: [:fact |
+      let attribute := [fact at: #attribute];
+      [[[attributes value] includes: attribute]
+        ifTrue: [| nil]
+        ifFalse: [| [attributes set: [[attributes value] add: attribute]]]]]];
+    let historicalAttributes := [db findAll: ?attribute
+      where: #[#[value ?attribute ?historicalValue]] asOf: basis];
+    [historicalAttributes do: [:attribute |
+      [[[attributes value] includes: attribute]
+        ifTrue: [| nil]
+        ifFalse: [| [attributes set: [[attributes value] add: attribute]]]]]];
+    let facts := [#[] asCell];
+    let warnings := [#[] asCell];
+    [[attributes value] do: [:attribute |
+      let values := [db findAll: ?historicalValue
+        where: #[#[value attribute ?historicalValue]] asOf: basis];
+      [[values isEmpty]
+        ifTrue: [|
+          let point := [db valueOf: value attr: attribute asOf: basis];
+          let unavailable := [[point notNil] & [point isError]];
+          let historyMissing := [unavailable
+            ifTrue: [| [[point kind] = #historyNotRetained]]
+            ifFalse: [| false]];
+          [historyMissing
+            ifTrue: [| [warnings set: [[warnings value] add:
+              ["history unavailable: #" , [self inspectionNameOf: attribute]]]]]
+            ifFalse: [| nil]]]
+        ifFalse: [|
+          [values do: [:historicalValue |
+            let descriptor := { #attribute -> attribute, #value -> historicalValue };
+            [facts set: [[facts value] add: [self inspectionFactCard: descriptor]]]]]]];
+    ]];
+    { "facts" -> [[facts value] sortBy: [:card | [card at: "attribute"]]],
+      "warnings" -> [warnings value] }
+  ] doc:
+  "Return honest historical fact cards, warning when an overwritten value was not retained." ];
+
+[Reflect defineMethod: #inspectionChangeCard:attribute:since: on: Digla as:
+  [:self :value :attribute :basis |
+    let normalized := [self inspectionValue: value];
+    { "entity" -> nil,
+      "attribute" -> [self inspectionNameOf: attribute],
+      "value" -> [normalized at: "value"],
+      "rendered" -> [normalized at: "rendered"],
+      "window" -> "since",
+      "basis" -> basis }
+  ] doc:
+  "Convert one changed fact into a transport-safe since-window card." ];
+
+[Reflect defineMethod: #inspectionChangesOf:since: on: Digla as: [:self :value :basis |
+  let attributes := [db findAll: ?attribute
+    where: #[#[value ?attribute ?changedValue]] since: basis];
+  let changes := [#[] asCell];
+  [attributes do: [:attribute |
+    let values := [db findAll: ?changedValue
+      where: #[#[value attribute ?changedValue]] since: basis];
+    [values do: [:changedValue |
+      [changes set: [[changes value] add:
+        [self inspectionChangeCard: changedValue attribute: attribute since: basis]]]]];
+  ]];
+  [[changes value] sortBy: [:card | [card at: "attribute"]]]
+  ] doc:
+  "Return deterministic current fact changes for one entity after a Store basis." ];
+
 [Reflect defineMethod: #inspectionMethodsOf: on: Digla as: [:self :value |
   let me := self;
   [[[Reflect allMethodsOf: value] collect: [:method | [me inspectionMethodCard: method]]]
@@ -94,6 +169,8 @@
   };
   { "schema" -> 1,
     "basis" -> [db basis],
+    "asOf" -> nil,
+    "since" -> nil,
     "target" -> target,
     "generationDigest" -> [self inspectionGenerationDigest],
     "sections" -> #["object" "facts" "methods"],
@@ -114,6 +191,8 @@
   let target := { "globalName" -> name, "printString" -> "", "vtableName" -> nil };
   { "schema" -> 1,
     "basis" -> [db basis],
+    "asOf" -> nil,
+    "since" -> nil,
     "target" -> target,
     "generationDigest" -> [self inspectionGenerationDigest],
     "sections" -> #[],
@@ -144,9 +223,25 @@
       let targetName := [[Reflect isSymbol: requestedTarget]
         ifTrue: [| [Reflect nameOf: requestedTarget]]
         ifFalse: [| requestedTarget]];
-      let base := [self inspectGlobal: targetName];
+      let targetSymbol := [targetName asSymbol];
+      let targetExists := [Globals includes: targetSymbol];
+      let targetValue := [Globals at: targetSymbol ifAbsent: [| nil]];
+      let currentBasis := [db basis];
       let sections := [spec at: "sections"
         ifAbsent: [| #["object" "facts" "methods"]]];
+      let showObject := [sections includes: "object"];
+      let showFacts := [sections includes: "facts"];
+      let showMethods := [[sections includes: "methods"] | [sections includes: "source"]];
+      let showChanges := [sections includes: "changes"];
+      let requestedAsOf := [spec at: "asOf"
+        ifAbsent: [| [spec at: "basis" ifAbsent: [| nil]]]];
+      let requestedSince := [spec at: "since" ifAbsent: [| nil]];
+      let asOfValid := [[requestedAsOf isNil] |
+        [[requestedAsOf notNil] & [self inspectionBasisIsValid: requestedAsOf]]];
+      let sinceValid := [[requestedSince isNil] |
+        [[requestedSince notNil] & [self inspectionBasisIsValid: requestedSince]]];
+      let asOf := [asOfValid ifTrue: [| requestedAsOf] ifFalse: [| nil]];
+      let since := [sinceValid ifTrue: [| requestedSince] ifFalse: [| nil]];
       let requestedSelector := [spec at: "selector" ifAbsent: [| nil]];
       let selector := [[requestedSelector isNil]
         ifTrue: [| nil]
@@ -154,19 +249,31 @@
           ifTrue: [| [Reflect nameOf: requestedSelector]]
           ifFalse: [| requestedSelector]]]];
       let includeSource := [[spec at: "includeSource" ifAbsent: [| false]] = true];
-      let warnings := [[base at: "warnings"] asCell];
+      let initialWarnings := [targetExists
+        ifTrue: [| #[]]
+        ifFalse: [| #[["global not found: " , targetName]]]];
+      let warnings := [initialWarnings asCell];
+      [[asOfValid not] ifTrue: [|
+        [warnings set: [[warnings value] add: "asOf must be a current nonnegative Store basis"]]]
+        ifFalse: [| nil]];
+      [[sinceValid not] ifTrue: [|
+        [warnings set: [[warnings value] add: "since must be a current nonnegative Store basis"]]]
+        ifFalse: [| nil]];
       [[includeSource & [selector isNil]] ifTrue: [|
         [warnings set: [[warnings value] add: "includeSource requires a selected method"]]]
         ifFalse: [| nil]];
+      let inventory := [[targetExists & showMethods]
+        ifTrue: [| [self inspectionMethodsOf: targetValue]]
+        ifFalse: [| #[]]];
       let selected := [[selector isNil]
-        ifTrue: [| [base at: "methods"]]
-        ifFalse: [| [[base at: "methods"] select: [:method |
+        ifTrue: [| inventory]
+        ifFalse: [| [inventory select: [:method |
           [[method at: "selector"] = selector]]]]];
-      [[[selector notNil] & [selected isEmpty]] ifTrue: [|
+      [[[[selector notNil] & showMethods] & [selected isEmpty]] ifTrue: [|
         [warnings set: [[warnings value] add:
           [["method not found: #" , targetName] , " " , selector]]]]
         ifFalse: [| nil]];
-      let sourceRequested := [includeSource & [selector notNil]];
+      let sourceRequested := [[includeSource & [selector notNil]] & showMethods];
       let methods := [selected collect: [:method |
         [sourceRequested
           ifTrue: [|
@@ -184,19 +291,50 @@
             let m1 := [method at: "sourceAvailable" put: [source notNil]];
             [m1 at: "source" put: source]]
           ifFalse: [| method]]]];
-      let showObject := [sections includes: "object"];
-      let showFacts := [sections includes: "facts"];
-      let showMethods := [[sections includes: "methods"] | [sections includes: "source"]];
-      let s1 := [base at: "sections" put: sections];
-      let s2 := [s1 at: "object" put:
-        [showObject ifTrue: [| [base at: "object"]] ifFalse: [| nil]]];
-      let s3 := [s2 at: "facts" put:
-        [showFacts ifTrue: [| [base at: "facts"]] ifFalse: [| #[]]]];
-      let s4 := [s3 at: "methods" put:
-        [showMethods ifTrue: [| methods] ifFalse: [| #[]]]];
-      [s4 at: "warnings" put: [warnings value]]]]
+      [[[asOf notNil] & showMethods] ifTrue: [|
+        [warnings set: [[warnings value] add:
+          "methods and generation are current runtime observations"]]]
+        ifFalse: [| nil]];
+      let historical := [[showFacts & [asOf notNil]] & targetExists];
+      let historicalFacts := [historical
+        ifTrue: [| [self inspectionHistoricalFactsOf: targetValue asOf: asOf]]
+        ifFalse: [| nil]];
+      [[historicalFacts notNil] ifTrue: [|
+        [[historicalFacts at: "warnings"] do: [:warning |
+          [warnings set: [[warnings value] add: warning]]]]]
+        ifFalse: [| nil]];
+      let facts := [historical
+        ifTrue: [| [historicalFacts at: "facts"]]
+        ifFalse: [| [[showFacts & targetExists]
+          ifTrue: [| [self inspectionFactsOf: targetValue]]
+          ifFalse: [| #[]]]]];
+      let changes := [[[showChanges & [since notNil]] & targetExists]
+        ifTrue: [| [self inspectionChangesOf: targetValue since: since]]
+        ifFalse: [| #[]]];
+      let firstMethod := [inventory at: 0 ifAbsent: [| nil]];
+      let vtableName := [[firstMethod isNil]
+        ifTrue: [| nil]
+        ifFalse: [| [firstMethod at: "target"]]];
+      let target := {
+        "globalName" -> targetName,
+        "printString" -> [targetExists
+          ifTrue: [| [targetValue printString]]
+          ifFalse: [| ""]],
+        "vtableName" -> vtableName };
+      { "schema" -> 1,
+        "basis" -> [[asOf notNil] ifTrue: [| asOf] ifFalse: [| currentBasis]],
+        "asOf" -> asOf,
+        "since" -> since,
+        "target" -> target,
+        "generationDigest" -> [self inspectionGenerationDigest],
+        "sections" -> sections,
+        "object" -> [[showObject & targetExists] ifTrue: [| target] ifFalse: [| nil]],
+        "facts" -> facts,
+        "methods" -> methods,
+        "changes" -> changes,
+        "warnings" -> [warnings value] }]]
   ] doc:
-  "Build a data-driven named snapshot, optionally selecting one method and its recorded source." ];
+  "Build a section-lazy named snapshot, optionally selecting one method and its recorded source." ];
 
 [Reflect defineMethod: #runtimeNamed: on: Digla as: [:self :name |
   let symbol := [[Reflect isSymbol: name] ifTrue: [| name] ifFalse: [| [name asSymbol]]];
@@ -228,25 +366,51 @@
   let shownDigest := [[digest isNil] ifTrue: [| "(unavailable)"] ifFalse: [| digest]];
   [sb addLine: ["generation: " , shownDigest]];
   [sb addLine: ""];
-  [sb addLine: "facts:"];
-  [[[snapshot at: "facts"] isEmpty]
-    ifTrue:  [| [sb addLine: "  (none)"]]
-    ifFalse: [| [[snapshot at: "facts"] do: [:fact |
-      let rendered := [[fact at: "rendered"] ifTrue: [| " (rendered)"] ifFalse: [| ""]];
-      [sb addLine: ["  #" , [fact at: "attribute"] , "  " , [[fact at: "value"] printString] , rendered]]]]]];
-  [sb addLine: ""];
-  [sb addLine: "methods:"];
-  [[[snapshot at: "methods"] isEmpty]
-    ifTrue:  [| [sb addLine: "  (none)"]]
-    ifFalse: [| [[snapshot at: "methods"] do: [:method |
-      let targetName := [[[method at: "target"] isNil]
-        ifTrue: [| "(unknown)"]
-        ifFalse: [| [method at: "target"]]];
-      [sb addLine: ["  " , [method at: "selector"] , "  " , [method at: "kind"] , "  " , targetName]];
-      let source := [method at: "source" ifAbsent: [| nil]];
-      [[source notNil] ifTrue: [|
-        [sb addLine: ""];
-        [sb addLine: source]] ifFalse: [| nil]]]]]];
+  let sections := [snapshot at: "sections"];
+  let showFacts := [sections includes: "facts"];
+  let showMethods := [[sections includes: "methods"] | [sections includes: "source"]];
+  let showChanges := [sections includes: "changes"];
+  [showFacts ifTrue: [|
+    let asOf := [snapshot at: "asOf" ifAbsent: [| nil]];
+    let heading := [[asOf isNil]
+      ifTrue: [| "facts:"]
+      ifFalse: [| ["facts as of " , [asOf printString] , ":"]]];
+    [sb addLine: heading];
+    [[[snapshot at: "facts"] isEmpty]
+      ifTrue:  [| [sb addLine: "  (none)"]]
+      ifFalse: [| [[snapshot at: "facts"] do: [:fact |
+        let rendered := [[fact at: "rendered"] ifTrue: [| " (rendered)"] ifFalse: [| ""]];
+        [sb addLine: ["  #" , [fact at: "attribute"] , "  " , [[fact at: "value"] printString] , rendered]]]]]];
+    [sb addLine: ""]]
+    ifFalse: [| nil]];
+  [showMethods ifTrue: [|
+    [sb addLine: "methods:"];
+    [[[snapshot at: "methods"] isEmpty]
+      ifTrue:  [| [sb addLine: "  (none)"]]
+      ifFalse: [| [[snapshot at: "methods"] do: [:method |
+        let targetName := [[[method at: "target"] isNil]
+          ifTrue: [| "(unknown)"]
+          ifFalse: [| [method at: "target"]]];
+        [sb addLine: ["  " , [method at: "selector"] , "  " , [method at: "kind"] , "  " , targetName]];
+        let source := [method at: "source" ifAbsent: [| nil]];
+        [[source notNil] ifTrue: [|
+          [sb addLine: ""];
+          [sb addLine: source]] ifFalse: [| nil]]]]]];
+    [sb addLine: ""]]
+    ifFalse: [| nil]];
+  [showChanges ifTrue: [|
+    let since := [snapshot at: "since" ifAbsent: [| nil]];
+    let heading := [[since isNil]
+      ifTrue: [| "changes:"]
+      ifFalse: [| ["changes since " , [since printString] , ":"]]];
+    [sb addLine: heading];
+    [[[snapshot at: "changes"] isEmpty]
+      ifTrue: [| [sb addLine: "  (none)"]]
+      ifFalse: [| [[snapshot at: "changes"] do: [:change |
+        let rendered := [[change at: "rendered"] ifTrue: [| " (rendered)"] ifFalse: [| ""]];
+        [sb addLine: ["  #" , [change at: "attribute"] , "  " ,
+          [[change at: "value"] printString] , rendered]]]]]]]
+    ifFalse: [| nil]];
   [[[snapshot at: "warnings"] isEmpty]
     ifTrue:  [| nil]
     ifFalse: [|
