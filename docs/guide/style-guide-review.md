@@ -98,6 +98,14 @@ enough to support “roughly comparable on this workload,” but it directly
 contradicts “never slower.” One machine, one method, one key distribution, and
 one build profile cannot justify a universal performance claim either way.
 
+A full-size recheck on 2026-07-19 passed the semantic agreement check and
+reported 64.0 us/call for the nested conditional, 57.9 us/call for the inline
+map, 29.8 us/call for the `let`-hoisted map, and 41.8 us/call for the
+Globals-hoisted map. The inline result reversed the shortened trials above.
+That does not invalidate either run; it demonstrates why a single ordered
+sample cannot support “never slower” and strengthens the case for repeated,
+rotated measurements.
+
 The proof should gain warm-up, multiple samples, median/minimum reporting,
 explicit GC treatment, and rotated or randomized variant order. The prose
 should say that readability motivates the inline form on cold paths; measured
