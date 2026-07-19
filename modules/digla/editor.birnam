@@ -272,10 +272,24 @@
       [state at: "cursor" put: [nextStart + targetColumn]]]]] doc:
   "Move down one logical line, clamping the byte column at the next line's end."];
 
-[Reflect defineMethod: #recordSubmission:shown:status:in: on: Digla as: [:self :input :shown :status :state |
+[Reflect defineMethod: #evaluationTranscriptEntriesFor:events:display: on: Digla as:
+  [:self :input :events :display |
+    let entries := [#[["> " , input]] asCell];
+    [events do: [:event |
+      [[[event at: "kind" ifAbsent: [| ""]] = "output"]
+        ifTrue: [| [entries set: [[entries value] add: [event at: "text"]]]]
+        ifFalse: [| nil]]]];
+    [entries set: [[entries value] add: display]];
+    [entries value]
+  ] doc:
+  "Build ordered transcript entries for one input, its output events, and result." ];
+
+[Reflect defineMethod: #recordSubmission:events:shown:status:in: on: Digla as:
+  [:self :input :events :shown :status :state |
   let transcript0 := [state at: "transcript"];
-  let transcript1 := [transcript0 add: ["> " , input]];
-  let transcript2 := [transcript1 add: shown];
+  let entries := [self evaluationTranscriptEntriesFor: input events: events display: shown];
+  let transcript2 := [entries inject: transcript0 into: [:transcript :entry |
+    [transcript add: entry]]];
   let history := [[state at: "history"] add: input];
   let s1 := [state at: "buffer" put: ""];
   let s2 := [s1 at: "cursor" put: 0];
@@ -289,7 +303,13 @@
   let s9 := [s8 at: "viewport" put: viewport];
   [s9 at: "status" put: status]
   ] doc:
-  "Record one evaluated form or editor command in history and the transcript." ];
+  "Record one form, its ordered output events, and its result in the transcript." ];
+
+[Reflect defineMethod: #recordSubmission:shown:status:in: on: Digla as:
+  [:self :input :shown :status :state |
+    [self recordSubmission: input events: #[] shown: shown status: status in: state]
+  ] doc:
+  "Record a submission without output events, as used by editor commands." ];
 
 [Reflect defineMethod: #commandHelpText on: Digla as: [:self |
   "Digla commands:\n  :inspect NAME  inspect a named global\n  :inspect       inspect the last successful result\n  :globals       list visible live-image globals\n  :session       show image identity and capabilities\n  :help          show this help"
@@ -417,8 +437,9 @@
           let ok := [result at: "ok"];
           let status := [ok ifTrue: [| "ready"] ifFalse: [| "error"]];
           let next0 := [state at: "session" put: [reply at: "session"]];
-          let recorded := [self recordSubmission: input shown: [result at: "display"]
-            status: status in: next0];
+          let events := [result at: "events" ifAbsent: [| #[]]];
+          let recorded := [self recordSubmission: input events: events
+            shown: [result at: "display"] status: status in: next0];
           let error := [ok ifTrue: [| nil] ifFalse: [| [result at: "message"]]];
           let withError := [recorded at: "lastError" put: error];
           [ok

@@ -98,6 +98,11 @@ until product evidence selects the next failure model.
   and F4 explicitly refreshes cached diagnostics. Typing no longer
   invokes the parser per key; buffered terminal events are coalesced and the
   application wrapper accelerates source-frame projection and transcript wrapping.
+  Evaluation-local `System` output is now captured by that application wrapper,
+  inserted before the value in the terminal transcript, and delivered as ordered
+  `birnam/output` notifications plus a buffered response fallback without leaking
+  unframed bytes onto session stdout. Real-time delivery and bounded interruption
+  remain truthful unsupported capabilities.
   A real PTY consumed and rendered a 60-byte form in under 500 ms, and evaluated
   and visibly wrapped the full `allMethodsOf:` result within one second. Page Up
   and Page Down now navigate those wrapped transcript rows with clamped offsets;

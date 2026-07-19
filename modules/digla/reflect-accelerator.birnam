@@ -1,8 +1,9 @@
 // reflect-accelerator.birnam — Digla-local runtime and display acceleration.
 //
 // The wrapped module rebinds Reflect allMethodsOf: inside the Digla application
-// image and accelerates high-frequency source/display projections. It uses only
-// the existing IdApi and Store surfaces; it does not expand the language floor.
+// image, accelerates high-frequency source/display projections, and captures
+// evaluation-local System output. It uses only the existing IdApi and Store
+// surfaces; it does not expand the language floor.
 
 [Module named: #diglaReflect requires: #[#digla]];
 let path := [[Module libDir] , "/libdiglareflect.dylib"];

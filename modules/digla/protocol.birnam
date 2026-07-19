@@ -2,6 +2,7 @@
 //
 // The request loop is parameterized by read/write blocks. Stdio is one adapter;
 // a loopback TCP connection can reuse the same JSON and session transitions.
+// Copied evaluation events become ordered notifications before the final reply.
 // Lsp supplies only the already-shipped Content-Length framing primitives.
 
 [Reflect defineMethod: #sessionRequestIsValid: on: Digla as: [:self :request |
@@ -14,6 +15,27 @@
     ifFalse: [| false]]
   ] doc:
   "Validate the copied-value shape required before runtime-session dispatch." ];
+
+[Reflect defineMethod: #sessionOutputNotificationsFor:reply: on: Digla as:
+  [:self :request :reply |
+    let method := [request at: "method" ifAbsent: [| ""]];
+    [[method = "birnam/evaluate"]
+      ifTrue: [|
+        let message := [reply at: "message"];
+        let result := [message at: "result" ifAbsent: [| nil]];
+        [[result isNil]
+          ifTrue: [| #[]]
+          ifFalse: [|
+            let events := [result at: "events" ifAbsent: [| #[]]];
+            let session := [reply at: "session"];
+            [events collect: [:event |
+              [self sessionNotification: "birnam/output" params: {
+                "sessionId" -> [session at: "id"],
+                "requestId" -> [request at: "id" ifAbsent: [| nil]],
+                "event" -> event }]]]]]]
+      ifFalse: [| #[]]]
+  ] doc:
+  "Project copied evaluation events into ordered JSON-RPC output notifications." ];
 
 [Reflect defineMethod: #serveSessionJson:read:write: on: Digla as: [:self :session :read :write |
   let current := [session asCell];
@@ -35,6 +57,8 @@
                 let reply := [self performSessionRequest: request in: [current value]];
                 let next := [reply at: "session"];
                 [current set: next];
+                [[self sessionOutputNotificationsFor: request reply: reply] do:
+                  [:notification | [write value: [Json stringify: notification]]]];
                 [write value: [Json stringify: [reply at: "message"]]];
                 [[[next at: "status"] = "closed"]
                   ifTrue: [| [running set: false]]

@@ -68,7 +68,12 @@ Messages use `Content-Length` framing and the methods
 `birnam/session/open`, `birnam/evaluate`, `birnam/inspect`, `birnam/globals`,
 `birnam/runtimeCompletion`, `birnam/interrupt`, and `birnam/close`. Responses
 contain only copied JSON-safe values; the local adapter retains raw runtime values only so a later
-`birnam/inspect` can inspect the last successful evaluation.
+`birnam/inspect` can inspect the last successful evaluation. `System print:` and
+`System println:` calls made by evaluated code are captured into bounded, ordered
+`birnam/output` notifications before the evaluation response and are also kept in
+that response's `events` array for simple request/reply clients. The current
+synchronous adapter advertises `streamedOutput=false`: output is structured and
+protocol-safe, but it is delivered only after the evaluation reaches a boundary.
 
 The same protocol is available to a long-lived loopback client over TCP:
 

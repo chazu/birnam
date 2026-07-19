@@ -59,6 +59,29 @@ let e := [TestSuite named: "Digla protocol" module: #diglaProtocol];
   [t expect: [[[[responses value] at: 2] at: "result"] at: "adapter"] equals: "local"
     describes: "loop continues after malformed input"]]];
 
+[e test: "evaluation output events become ordered protocol notifications" do: [:t |
+  let request := { "jsonrpc" -> "2.0", "id" -> 17,
+    "method" -> "birnam/evaluate", "params" -> { "source" -> "probe" } };
+  let events := #[
+    { "kind" -> "output", "channel" -> "stdout", "text" -> "one", "sequence" -> 1 }
+    { "kind" -> "output", "channel" -> "stdout", "text" -> "two\n", "sequence" -> 2 }
+  ];
+  let reply := { "message" -> {
+    "jsonrpc" -> "2.0", "id" -> 17,
+    "result" -> { "ok" -> true, "events" -> events } },
+    "session" -> { "id" -> "local" } };
+  let notifications := [Digla sessionOutputNotificationsFor: request reply: reply];
+  let first := [notifications at: 0];
+  let second := [notifications at: 1];
+  [t expect: [notifications size] equals: 2 describes: "one notification per event"];
+  [t expect: [first at: "method"] equals: "birnam/output" describes: "output method"];
+  [t expect: [[first at: "params"] at: "requestId"] equals: 17
+    describes: "notification correlates to evaluation"];
+  [t expect: [[[first at: "params"] at: "event"] at: "text"] equals: "one"
+    describes: "first event remains first"];
+  [t expect: [[[second at: "params"] at: "event"] at: "sequence"] equals: 2
+    describes: "event sequence crosses the protocol"]]];
+
 [e test: "session loop stays stack-flat across a long client stream" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let requestCount := [0 asCell];

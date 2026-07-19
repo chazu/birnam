@@ -20,6 +20,11 @@
   ] doc:
   "Build one JSON-RPC error response value without writing it to a transport." ];
 
+[Reflect defineMethod: #sessionNotification:params: on: Digla as: [:self :method :params |
+  { "jsonrpc" -> "2.0", "method" -> method, "params" -> params }
+  ] doc:
+  "Build one JSON-RPC notification without a request id." ];
+
 [Reflect defineMethod: #sessionReply:state: on: Digla as: [:self :message :session |
   { "message" -> message, "session" -> session }
   ] doc:

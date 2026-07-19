@@ -2,15 +2,34 @@
 //
 // This is the only Digla layer that evaluates source or retains a raw result.
 // Its responses are copied-value Maps/Vectors suitable for JSON, terminal text,
-// tests, or a future framed TCP transport.
+// tests, or framed transports. A project-local adapter may capture System output
+// around the synchronous evaluation without changing the core evaluator.
+
+[Reflect defineMethod: #outputCaptureAvailable on: Digla as: [:self |
+  false
+  ] doc:
+  "Answer whether the loaded application adapter can capture System output." ];
+
+[Reflect defineMethod: #beginEvaluationOutputCapture on: Digla as: [:self |
+  self
+  ] doc:
+  "Begin evaluation output capture when an application adapter provides it." ];
+
+[Reflect defineMethod: #endEvaluationOutputCapture on: Digla as: [:self |
+  #[]
+  ] doc:
+  "End evaluation output capture and answer copied output events, or none." ];
 
 [Reflect defineMethod: #localSessionCapabilities on: Digla as: [:self |
+  let output := [self outputCaptureAvailable];
   { "evaluate" -> true,
     "inspect" -> true,
     "globals" -> true,
     "runtimeCompletion" -> true,
     "interrupt" -> false,
     "structuredValues" -> true,
+    "outputEvents" -> output,
+    "outputNotifications" -> output,
     "streamedOutput" -> false }
   ] doc:
   "Return the truthful capabilities of the synchronous local image adapter." ];
@@ -129,7 +148,9 @@
                        "display" -> "evaluate requires source", "events" -> #[] },
         "session" -> session }]
     ifFalse: [|
+      [self beginEvaluationOutputCapture];
       let value := [Codegen evalPersisting: source];
+      let events := [self endEvaluationOutputCapture];
       let compileError := [Codegen lastError];
       let runtimeError := [[compileError isNil] & [value isError]];
       let failed := [[compileError notNil] | runtimeError];
@@ -142,7 +163,7 @@
           let next0 := [session at: "lastError" put: message];
           let next := [next0 at: "globalNamesCache" put: nil];
           { "result" -> { "ok" -> false, "kind" -> "error", "phase" -> phase,
-                           "message" -> message, "display" -> message, "events" -> #[] },
+                           "message" -> message, "display" -> message, "events" -> events },
             "session" -> next }]
         ifFalse: [|
           let copied := [self sessionValue: value];
@@ -151,7 +172,7 @@
           let next0 := [s2 at: "lastError" put: nil];
           let next := [next0 at: "globalNamesCache" put: nil];
           { "result" -> { "ok" -> true, "kind" -> "value", "value" -> copied,
-                           "display" -> [copied at: "display"], "events" -> #[] },
+                           "display" -> [copied at: "display"], "events" -> events },
             "session" -> next }]]]]
   ] doc:
   "Evaluate one explicit source form and return structured success or failure data." ];

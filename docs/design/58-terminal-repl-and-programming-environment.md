@@ -99,10 +99,14 @@ and viewport from a terminal-independent navigation stack. F4 refreshes cached
 parser diagnostics explicitly; source edits only mark the cache stale, so parsing
 is not on the per-key render path.
 Page Up/Page Down now navigate the wrapped transcript with a clamped tail-relative
-offset, and new evaluation output resumes tail following. Long logical source lines
+offset, and new evaluation output resumes tail following. Evaluated `System print:`
+and `System println:` calls are captured by the application wrapper as ordered,
+copied output events, inserted before the value in the terminal transcript, and
+emitted as `birnam/output` protocol notifications before the final response. Long logical source lines
 soft-wrap into visual rows through the same byte/cell projection; cursor motion,
 selection, and viewport following remain byte-authoritative across those rows.
-Streamed output and bounded interruption remain later slices.
+Real-time delivery during a still-running evaluation and bounded interruption
+remain later slices; the synchronous adapter advertises both limitations truthfully.
 
 ## 2. Goals and boundaries
 
@@ -416,7 +420,13 @@ The core invariants are:
    loopback-only-by-default serial TCP listener over the same iterative request
    loop, with a one-client mode for scripts. Evaluation results, compile/runtime
    errors, inspection snapshots, image identity, and truthful capabilities are
-   copied values; output notifications and bounded interrupt behavior remain open.
+   copied values. The Digla-local wrapped module captures evaluation `System`
+   output without touching the runtime floor. The shared protocol emits each event
+   as a correlated `birnam/output` notification before the result, retains the
+   ordered `events` array as a request/reply fallback, and rejects stray unframed
+   stdout in a process-level smoke. Because dispatch is still synchronous, the
+   capability remains `streamedOutput=false`; real-time delivery and bounded
+   interrupt behavior remain open.
 6. **Runtime-aware assistance — inspection, completion, and explicit semantic slices implemented.** `:inspect`,
    `:globals`, and `:session` use the shared session layer without evaluating
    report expressions. `birnam/runtimeCompletion` supplies bounded live-image
@@ -462,6 +472,19 @@ parses only files containing the requested token. A real PTY opened the authored
 file with F3 and restored the scratch buffer with F5. The native bridge also rejects
 non-String URI values as `projectUriInvalid` rather than dereferencing them.
 
+Evaluation output now follows the same application-local boundary. The wrapped
+module temporarily rebinds `System print:` and `System println:` to collect copied
+stdout records only while `Codegen evalPersisting:` runs; outside that interval it
+preserves ordinary stdout behavior. This prevents evaluated output from corrupting
+stdio JSON framing or painting behind Termbox. The local terminal inserts the
+ordered records between the submitted form and its value, while stdio and TCP
+clients receive correlated `birnam/output` notifications followed by the ordinary
+evaluation response. Consecutive stdout writes share one allocation-conscious
+buffer capped at 256 KiB; overflow is visibly marked and further writes are
+dropped for that evaluation. A strict process-level decoder verifies both an
+ordinary multi-write evaluation and a 512 KiB truncation probe, with no bytes
+outside the six expected frames for the open/evaluate/evaluate/close exchange.
+
 The typing path is also bounded away from whole-buffer parser work. Diagnostics
 are cached and explicitly refreshed, already-buffered Termbox events are applied
 before the next redraw, and the same application-local native wrapper accelerates
@@ -492,3 +515,5 @@ delivered correctly.
 - runtime values use a small typed copied-value record, while deeper inspection
   uses the capability-free snapshot schema from Design 55;
 - authentication and session ownership once connections can leave loopback.
+- the safe evaluation boundary for real-time output delivery and bounded interrupt
+  without moving cancellation machinery into Birnam's core/runtime floor.

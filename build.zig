@@ -208,6 +208,13 @@ pub fn build(b: *std.Build) void {
     const lsp_project_step = b.step("test-lsp-project", "Run project-aware LSP protocol smoke tests");
     lsp_project_step.dependOn(&lsp_project_smoke.step);
 
+    const digla_session_smoke = b.addSystemCommand(&.{ "bash", "scripts/digla-session-smoke.sh" });
+    digla_session_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    digla_session_smoke.setEnvironmentVariable("BIRNAM_DIGLA_PROJECT", b.pathFromRoot("examples/digla"));
+    digla_session_smoke.step.dependOn(stage1);
+    const digla_session_step = b.step("test-digla-session", "Run Digla framed output-event smoke tests");
+    digla_session_step.dependOn(&digla_session_smoke.step);
+
     const emacs_mode_tests = b.addSystemCommand(&.{ "bash", "scripts/emacs-test.sh" });
     const emacs_mode_step = b.step("test-emacs", "Run birnam-mode project and lsp-mode integration tests");
     emacs_mode_step.dependOn(&emacs_mode_tests.step);
@@ -244,6 +251,7 @@ pub fn build(b: *std.Build) void {
     verify_step.dependOn(&source_fallback.step);
     verify_step.dependOn(project_check_step);
     verify_step.dependOn(lsp_project_step);
+    verify_step.dependOn(digla_session_step);
     verify_step.dependOn(emacs_mode_step);
     verify_step.dependOn(&image_save_smoke.step);
     verify_step.dependOn(&install_smoke.step);

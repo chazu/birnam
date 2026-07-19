@@ -13,6 +13,8 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
   [t expect: [result at: "adapter"] equals: "local" describes: "adapter identity"];
   [t expect: [capabilities at: "evaluate"] equals: true describes: "evaluation advertised"];
   [t expect: [capabilities at: "interrupt"] equals: false describes: "interrupt is truthful"];
+  [t expect: [capabilities at: "outputEvents"] equals: false
+    describes: "headless adapter does not claim an unloaded capture wrapper"];
   [t assert: [encoded startsWith: "{"] describes: "handshake is JSON-shaped"];
   [t expect: [decoded isError] equals: false describes: "handshake round-trips as JSON"]]];
 

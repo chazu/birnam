@@ -2,8 +2,9 @@
 //!
 //! This application module preserves Birnam-level contracts while moving two
 //! measured hot paths behind the existing IdApi: method reflection uses a
-//! basis-keyed reverse-global index, and terminal frames scan source bytes once.
-//! It deliberately lives outside the language/runtime floor.
+//! basis-keyed reverse-global index, terminal frames scan source bytes once, and
+//! evaluation-local System output becomes copied session events. It deliberately
+//! lives outside the language/runtime floor.
 
 const std = @import("std");
 const idapi = @import("idapi");
@@ -20,6 +21,12 @@ var sel_live_triples_do: Oop = null;
 var global_collector_vt: Oop = null;
 var global_names: std.AutoHashMapUnmanaged(Oop, Oop) = .{};
 var global_names_basis: i64 = -1;
+
+const max_output_bytes = 256 * 1024;
+const output_truncated_suffix = "\n[Digla output truncated at 262144 bytes]\n";
+var output_capture_active = false;
+var output_bytes: std.ArrayListUnmanaged(u8) = .{};
+var output_truncated = false;
 
 fn send0(receiver: Oop, selector: [*:0]const u8) Oop {
     return g_api.send(receiver, g_api.intern(selector), &.{}, 0);
@@ -55,6 +62,85 @@ fn vectorAdd(vector: Oop, value: Oop) Oop {
 
 fn integer(value: usize) Oop {
     return g_api.mkSmallInt(@intCast(value));
+}
+
+fn clearOutput() void {
+    output_bytes.clearRetainingCapacity();
+    output_truncated = false;
+}
+
+fn printableBytes(value: Oop) []const u8 {
+    const rendered = if (value != null and g_api.vtableOf(value) == g_api.string_vt)
+        value
+    else
+        send0(value, "printString");
+    if (rendered == null or g_api.vtableOf(rendered) != g_api.string_vt) return "";
+    var len: usize = 0;
+    return g_api.stringBytes(rendered, &len)[0..len];
+}
+
+fn captureOutput(value: Oop, newline: bool) void {
+    if (output_truncated) return;
+    const bytes = printableBytes(value);
+    const requested = bytes.len + @intFromBool(newline);
+    const available = max_output_bytes - output_bytes.items.len;
+    if (requested <= available) {
+        output_bytes.appendSlice(ca, bytes) catch @panic("digla-reflect: oom");
+        if (newline) output_bytes.append(ca, '\n') catch @panic("digla-reflect: oom");
+        return;
+    }
+
+    const content_limit = max_output_bytes - output_truncated_suffix.len;
+    if (output_bytes.items.len > content_limit) output_bytes.items.len = content_limit;
+    const content_available = content_limit - output_bytes.items.len;
+    output_bytes.appendSlice(ca, bytes[0..@min(bytes.len, content_available)]) catch
+        @panic("digla-reflect: oom");
+    output_bytes.appendSlice(ca, output_truncated_suffix) catch @panic("digla-reflect: oom");
+    output_truncated = true;
+}
+
+fn writeOutput(value: Oop, newline: bool) void {
+    const bytes = printableBytes(value);
+    std.fs.File.stdout().writeAll(bytes) catch {};
+    if (newline) std.fs.File.stdout().writeAll("\n") catch {};
+}
+
+fn mSystemPrint(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    if (output_capture_active) captureOutput(args[0], false) else writeOutput(args[0], false);
+    return self;
+}
+
+fn mSystemPrintln(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    if (output_capture_active) captureOutput(args[0], true) else writeOutput(args[0], true);
+    return self;
+}
+
+fn mOutputCaptureAvailable(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    return g_api.trueObj;
+}
+
+fn mBeginOutputCapture(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    clearOutput();
+    output_capture_active = true;
+    return self;
+}
+
+fn mEndOutputCapture(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    output_capture_active = false;
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+    defer clearOutput();
+    var result = newVector();
+    if (output_bytes.items.len != 0) {
+        var record = newMap();
+        record = mapPutString(record, "kind", string("output"));
+        record = mapPutString(record, "channel", string("stdout"));
+        record = mapPutString(record, "text", string(output_bytes.items));
+        record = mapPutString(record, "sequence", integer(1));
+        record = mapPutString(record, "truncated", if (output_truncated) g_api.trueObj else g_api.falseObj);
+        result = vectorAdd(result, record);
+    }
+    return result;
 }
 
 fn utf8Width(first: u8) usize {
@@ -547,7 +633,13 @@ fn bringUp(api: *idapi.IdApi) void {
     api.method(global_collector_vt, api.intern("value:value:value:"), &mCollectGlobal);
     const reflect = api.import("Reflect");
     api.method(api.vtableOf(reflect), api.intern("allMethodsOf:"), &mAllMethodsOf);
+    const system = api.import("System");
+    api.method(api.vtableOf(system), api.intern("print:"), &mSystemPrint);
+    api.method(api.vtableOf(system), api.intern("println:"), &mSystemPrintln);
     const digla = api.send(g_store, sel_current_value, &[_]Oop{ g_globals, api.intern("Digla") }, 2);
+    api.method(api.vtableOf(digla), api.intern("outputCaptureAvailable"), &mOutputCaptureAvailable);
+    api.method(api.vtableOf(digla), api.intern("beginEvaluationOutputCapture"), &mBeginOutputCapture);
+    api.method(api.vtableOf(digla), api.intern("endEvaluationOutputCapture"), &mEndOutputCapture);
     api.method(api.vtableOf(digla), api.intern("runtimeNamed:"), &mRuntimeNamed);
     api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:"), &mRenderFrame);
     api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:width:"), &mRenderWrappedFrame);

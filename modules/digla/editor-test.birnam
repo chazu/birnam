@@ -85,6 +85,19 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [[s2 at: "history"] at: 0] equals: "[1 + 2]" describes: "submit records history"];
   [t expect: [s3 at: "buffer"] equals: "[1 + 2]" describes: "history recalls form"]]];
 
+[e test: "structured output is inserted before the evaluation value" do: [:t |
+  let events := #[
+    { "kind" -> "output", "channel" -> "stdout", "text" -> "hello\n", "sequence" -> 1 }
+    { "kind" -> "output", "channel" -> "stdout", "text" -> "there", "sequence" -> 2 }
+  ];
+  let entries := [Digla evaluationTranscriptEntriesFor: "[probe]"
+    events: events display: "42"];
+  [t expect: [entries size] equals: 4 describes: "input, output, and value are distinct"];
+  [t expect: [entries at: 0] equals: "> [probe]" describes: "input stays first"];
+  [t expect: [entries at: 1] equals: "hello\n" describes: "first output follows input"];
+  [t expect: [entries at: 2] equals: "there" describes: "second output remains ordered"];
+  [t expect: [entries at: 3] equals: "42" describes: "value follows emitted output"]]];
+
 [e test: "key handling separates newline from evaluation" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let s0 := [Digla editorStateFor: config];
