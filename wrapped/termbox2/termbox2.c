@@ -1,19 +1,19 @@
-/* termbox2.c — int-clean FFI adapter over termbox2 for birnam.
+/* termbox2.c — int-clean native adapter over termbox2 for birnam.
  *
  * termbox2 is a single-header library. This translation unit instantiates its
  * implementation (TB_IMPL) AND exposes a thin `lg_*` adapter whose every entry
- * point is int/cstring-clean, so birnam's `wrap:as:signature:` surface never has
- * to deal with:
+ * point is int/cstring-clean, so the Birnam-facing wrapper never has to deal
+ * with:
  *
  *   - `uintattr_t` fg/bg, which default to uint64_t (TB_OPT_ATTR_W=64) — a width
- *     a birnam SmallInt can't be marshalled to via the `i` (sint32) sigchar;
+ *     a Birnam Integer should not have to marshal directly;
  *   - the `struct tb_event` out-param of tb_poll_event — read here into a static
  *     struct and surfaced as scalar accessors (lg_ev_*), so birnam never peeks
  *     struct fields at byte offsets.
  *
- * The adapter casts birnam ints up to the library's real types. This keeps the
- * .birnam wrapper trivial (every call is int->int or (...,cstring)->int) and is
- * standard FFI adapter practice — still "no zig", just a thicker C shim.
+ * The adapter casts Birnam integers up to the library's real types. The native
+ * wrapper module binds these functions directly through IdApi; the generic
+ * dispatcher remains for compatibility with older Alien-based clients.
  */
 #define TB_IMPL
 #include "termbox2.h"
@@ -84,10 +84,8 @@ const char *lg_ev_char(void) {
     return out;
 }
 
-/* Compile one Alien trampoline, then dispatch here. Alien uses TCC for every
- * `wrap:` declaration, so keeping the public Birnam API in the image while
- * sharing this native entry point avoids paying that compilation cost once per
- * Termbox operation at startup. */
+/* Compatibility dispatcher for older Alien-based clients. The current native
+ * wrapper binds the individual lg_* functions directly. */
 enum lg_operation {
     LG_INIT = 1,
     LG_SHUTDOWN,

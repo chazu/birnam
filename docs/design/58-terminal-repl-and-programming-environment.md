@@ -56,13 +56,15 @@ modules/digla/language-service.birnam source/runtime completion merge
 modules/digla/language-service-test.birnam completion contract tests
 modules/digla/render-test.birnam    headless renderer decision tests
 modules/digla/termbox.birnam     Termbox module entry
-wrapped/termbox2/                vendored C library and Alien wrapper
+wrapped/termbox2/                vendored C library and native wrapper module
 examples/digla/birnam.toml       composed application project
 ```
 
-`Termbox` is a separate optional module. Its C artifact is built through the
-application manifest's `[[wrapped]]` declaration, so the standard image and
-headless Digla tests do not acquire a terminal dependency.
+`Termbox` is a separate optional module. Its application-owned Zig wrapper and C
+artifact are built together through the manifest's `[[wrapped]]` declaration.
+The wrapper binds public selectors directly through `IdApi`; it does not add a
+core runtime primitive, and headless Digla tests do not acquire a terminal
+dependency.
 
 The first local editor slice is now implemented. `birnam run examples/digla -- --ui`
 launches the Termbox client; Escape exits, character input edits the
@@ -364,10 +366,11 @@ The core invariants are:
    UTF-8/UTF-16 and absolute byte-position seam from the existing LSP behavior,
    then project source boundaries into terminal cells with Unicode width and
    logical-line records. Viewport and soft-wrap refinements remain open.
-2. **Reusable termbox module — implemented.** Promote the Logue wrapper into an
-   optional, reusable terminal module. Its public selectors share one native
-   Alien dispatcher so startup does not compile a trampoline per terminal
-   operation. Keep terminal setup out of the boot-critical REPL.
+2. **Reusable termbox module — implemented and precompiled.** Promote the Logue
+   wrapper into an optional, reusable terminal module. Its public selectors are
+   now bound by an application-owned native wrapper over the existing int-clean
+   C adapter, avoiding runtime Alien compilation and Birnam forwarding methods.
+   Keep terminal setup out of the boot-critical REPL.
 3. **Local terminal editor — initial slice implemented.** Add a single-buffer
    `--ui` entrypoint with editing, UTF-8-aware cursor movement, multiline input,
    history, local evaluation, a scrollable transcript against the local image,
@@ -406,6 +409,11 @@ compilation were separately ruled out; the remaining time is target-name
 resolution inside `Reflect allMethodsOf:` against the larger project image. That
 floor path needs improvement without coupling the editor or session protocol to
 a special-case reflection cache.
+
+The terminal wrapper is no longer part of that startup bottleneck. Replacing its
+runtime-compiled Alien layer with the precompiled wrapped module reduced full
+Digla cold launch from about 3.5 s to 1.89-2.00 s in three consecutive runs; a
+real Termbox alternate-screen render and Escape shutdown smoke also passed.
 
 ## 9. Open decisions
 

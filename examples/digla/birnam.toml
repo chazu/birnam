@@ -42,7 +42,7 @@ files = ["../../wrapped/termbox2/termbox2.birnam"]
 
 [[wrapped]]
 name = "termbox2"
-build = [["cc", "-O2", "-dynamiclib", "-fPIC", "../../wrapped/termbox2/termbox2.c", "-o", "{output}"]]
+build = [["zig", "build-lib", "-dynamic", "-O", "ReleaseSafe", "-lc", "-I", "../../wrapped/termbox2", "-cflags", "-std=c11", "--", "../../wrapped/termbox2/termbox2.c", "--dep", "idapi", "-Mroot=../../wrapped/termbox2/termbox2_module.zig", "-Midapi=../../src/id/idapi.zig", "--cache-dir", ".birnam/cache/termbox-zig", "--global-cache-dir", ".birnam/cache/termbox-zig-global", "-femit-bin={output}"]]
 
 [run]
 repl = "none"

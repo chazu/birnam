@@ -341,5 +341,7 @@ from-zero bootstrap compiler and performance floor.
   landed, and lexical highlighting, parser-backed diagnostics, and wrapped
   evaluation results are visible. Tab completion merges scoped source candidates
   with bounded live-image globals, and the structured session protocol now runs
-  over framed stdio or a loopback-only-by-default TCP listener. Selection,
-  richer assistance, streamed output, and bounded interruption remain staged.
+  over framed stdio or a loopback-only-by-default TCP listener. Termbox enters
+  through a precompiled application wrapper rather than a runtime-compiled Alien
+  trampoline. Selection, richer assistance, streamed output, and bounded
+  interruption remain staged.

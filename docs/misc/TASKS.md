@@ -83,7 +83,10 @@ until product evidence selects the next failure model.
   scoped source candidates with live-image globals. Evaluation, inspection,
   globals, runtime completion, and image identity use one JSON-RPC-shaped session
   boundary; terminal commands, `--session-stdio`, and the loopback-only-by-default
-  `--session-listen` adapter consume the same copied-value responses. Next:
+  `--session-listen` adapter consume the same copied-value responses. The
+  Termbox surface now loads through a precompiled application wrapper rather
+  than runtime Alien compilation, reducing measured full-project cold launch
+  from about 3.5 s to 1.9-2.0 s. Next:
   remove the remaining `Reflect allMethodsOf:` project-image hot path, then add
   selection, viewport refinement, and hover/signature/source navigation on the
   same seams.

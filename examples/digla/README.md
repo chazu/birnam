@@ -2,7 +2,8 @@
 
 Digla is the terminal programming environment for Birnam. Its source module is
 composed from [`modules/digla/`](../../modules/digla/); the project manifest
-also builds the optional Termbox native library through `[[wrapped]]`.
+also builds the optional precompiled Termbox wrapper through `[[wrapped]]`, so
+UI startup does not compile Alien trampolines at runtime.
 
 Build and run the first configuration-backed slice from the repository root:
 
