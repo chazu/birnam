@@ -468,12 +468,27 @@
   ] doc:
   "Run one Digla editor command and append its result to the transcript." ];
 
+[Reflect defineMethod: #focusEvaluationFailure:input:in: on: Digla as:
+  [:self :result :input :state |
+    let diagnostics := [result at: "diagnostics" ifAbsent: [| #[]]];
+    let first := [diagnostics at: 0 ifAbsent: [| nil]];
+    let cursor := [[first isNil]
+      ifTrue: [| [input size]]
+      ifFalse: [| [[first at: "start"] min: [input size]]]];
+    let s1 := [state at: "buffer" put: input];
+    let s2 := [s1 at: "cursor" put: cursor];
+    let s3 := [s2 at: "selection" put: nil];
+    let s4 := [s3 at: "diagnostics" put: diagnostics];
+    [s4 at: "diagnosticsDirty" put: false]
+  ] doc:
+  "Keep failed source editable and focus its first copied byte-span diagnostic." ];
+
 [Reflect defineMethod: #applyEvaluationReply:input:recordPrompt:in: on: Digla as:
   [:self :reply :input :recordPrompt :state |
     let protocolError := [self sessionReplyErrorText: reply];
     let result := [[protocolError notNil]
       ifTrue: [| { "ok" -> false, "display" -> protocolError,
-        "message" -> protocolError, "phase" -> "protocol" }]
+        "message" -> protocolError, "phase" -> "protocol", "diagnostics" -> #[] }]
       ifFalse: [| [self sessionResultOf: reply]]];
     let ok := [result at: "ok" ifAbsent: [| false]];
     let phase := [result at: "phase" ifAbsent: [| "error"]];
@@ -502,7 +517,7 @@
         let copied := [result at: "value"];
         let s1 := [withError at: "lastResult" put: [copied at: "value"]];
         [s1 at: "hasLastResult" put: true]]
-      ifFalse: [| withError]]
+      ifFalse: [| [self focusEvaluationFailure: result input: input in: withError]]]
   ] doc:
   "Apply a structured evaluation reply after either synchronous or incremental delivery." ];
 

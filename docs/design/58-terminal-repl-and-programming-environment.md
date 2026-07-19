@@ -125,6 +125,10 @@ captured writes appear as they arrive, the editor remains responsive to transcri
 scrolling, and Ctrl-C or Escape pipelines a correlated interrupt without entering
 the runtime concurrently. Stdio and the synchronous local-image adapter remain
 truthfully non-interruptible except for request deadlines.
+Compile failures now carry copied `diagnostics` with half-open source-byte spans
+through local, stdio, and TCP session replies. The editor keeps the rejected form
+in its buffer, focuses the first diagnostic, and renders that exact-span result;
+location data is no longer available only inside a formatted error string.
 
 ## 2. Goals and boundaries
 
@@ -441,7 +445,8 @@ The core invariants are:
    shipped Content-Length framing. The optional `diglaSocket` module adds a
    loopback-only-by-default serial TCP listener over the same iterative request
    loop, with a one-client mode for scripts. Evaluation results, compile/runtime
-   errors, inspection snapshots, image identity, and truthful capabilities are
+   errors with copied byte-span diagnostics, inspection snapshots, image identity,
+   and truthful capabilities are
    copied values. The Digla-local wrapped module captures evaluation `System`
    output without touching the runtime floor. The shared protocol emits each event
    as a correlated `birnam/output` notification, retains the ordered `events`
@@ -513,6 +518,9 @@ new data-driven query surface adds roughly 0.1 s to cold launch while keeping al
 per-method source reflection out of startup and ordinary inspection.
 After active bracket matching joined the existing native frame scan, five cold
 launches completed in 2.89-2.93 s, showing no measurable startup regression.
+With structured failure diagnostics loaded, five launches completed in 2.92-3.00 s;
+successful evaluation still does no diagnostic parse, and the observed cold delta
+remains within roughly 0.1 s of the selected-source checkpoint.
 
 Project-aware source navigation does not add another manifest parser or eager
 workspace index. A project run now installs the same existing read-only `Project`
@@ -559,6 +567,9 @@ contains its bounded aggregate event for clients that implement request/reply on
 That same process test pipelines first a stale and then a correlated interrupt
 behind an infinite `whileTrue:` evaluation, verifies only the correlated request
 stops it, evaluates `42` afterward, and closes normally.
+The strict stdio decoder also submits invalid source and requires a structured
+`syntaxError` diagnostic at the exact source-byte failure position before the
+session closes.
 
 The typing path is also bounded away from whole-buffer parser work. Diagnostics
 are cached and explicitly refreshed, already-buffered Termbox events are applied

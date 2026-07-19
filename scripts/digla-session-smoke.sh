@@ -40,7 +40,9 @@ for my $request (
     params => {source => q{[[| true] whileTrue: [| nil]]}}},
   {jsonrpc => "2.0", id => 5, method => "birnam/evaluate",
     params => {source => q{[1 to: 9223372036854775807 do: [:i | nil]]}}},
-  {jsonrpc => "2.0", id => 6, method => "birnam/close", params => {}}
+  {jsonrpc => "2.0", id => 6, method => "birnam/evaluate",
+    params => {source => q{[40 +}, timeoutMs => 0}},
+  {jsonrpc => "2.0", id => 7, method => "birnam/close", params => {}}
 ) {
   my $body = encode_json($request);
   print "Content-Length: ", length($body), "\r\n\r\n", $body;
@@ -72,10 +74,10 @@ while ($stream =~ s/^Content-Length: (\d+)\r\n\r\n//) {
   push @messages, decode_json($body);
 }
 die "unframed Digla stdout bytes\n" if length($stream);
-die "expected nine Digla messages\n" unless @messages == 9;
+die "expected ten Digla messages\n" unless @messages == 10;
 
 my ($open, $first_output, $second_output, $evaluated, $large_output, $large_evaluated, $timed_out,
-  $range_timed_out, $closed) = @messages;
+  $range_timed_out, $compile_failed, $closed) = @messages;
 my $capabilities = $open->{result}{capabilities};
 die "output events not advertised\n" unless $capabilities->{outputEvents};
 die "output notifications not advertised\n" unless $capabilities->{outputNotifications};
@@ -107,6 +109,12 @@ die "timeout flag missing\n" unless $timed_out->{result}{timedOut};
 die "timeout duration changed\n" unless $timed_out->{result}{timeoutMs} == 10;
 die "integer loop did not time out\n" unless $range_timed_out->{result}{phase} eq "timeout";
 die "integer timeout flag missing\n" unless $range_timed_out->{result}{timedOut};
+die "compile failure phase missing\n" unless $compile_failed->{result}{phase} eq "compile";
+die "compile diagnostic missing\n" unless @{$compile_failed->{result}{diagnostics}} == 1;
+die "compile diagnostic kind changed\n"
+  unless $compile_failed->{result}{diagnostics}[0]{kind} eq "syntaxError";
+die "compile diagnostic byte position changed\n"
+  unless $compile_failed->{result}{diagnostics}[0]{start} == 5;
 die "session did not close\n" unless $closed->{result}{closed};
 ' "$tmp/replies"
 

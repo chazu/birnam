@@ -40,6 +40,8 @@ diagnostics. A `*` after the diagnostic count means the cache is stale after edi
 typing never reparses the whole buffer. Enter
 evaluates the current Birnam form, for example `[1 + 2]`. Page Up and Page Down
 move through wrapped transcript rows; a new evaluation resumes following the tail.
+If compilation fails, the form remains in the editor, its copied diagnostics are
+shown immediately, and the cursor moves to the first source-byte failure position.
 The bracket under the cursor, or immediately before it, is overlaid with its peer;
 an unmatched opener remains visibly red while the form is being written. Brackets
 inside strings and comments are ignored.
@@ -93,6 +95,11 @@ An expired deadline returns a structured `phase="timeout"` error while keeping
 the live session usable. The terminal uses `evaluation-timeout-ms` from Digla's
 config (`--evaluation-timeout-ms=5000`, `DIGLA_EVALUATION_TIMEOUT_MS`, or TOML);
 the default is `0`, meaning unlimited.
+
+Every evaluation result contains a `diagnostics` vector. Source-provable compile
+failures populate it with transport-safe `kind`, `message`, `start`, and `end`
+fields measured in UTF-8 source bytes; other outcomes return an empty vector. This gives headless and
+AI clients the same location data the terminal uses without parsing display text.
 
 The TCP server also advertises `interrupt=true` and `cooperativeInterrupt=true`.
 While an evaluation is active, a client may pipeline `birnam/interrupt` on the

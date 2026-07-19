@@ -226,7 +226,8 @@
     ifTrue: [|
       { "result" -> { "ok" -> false, "kind" -> "error",
                        "phase" -> "request", "message" -> "evaluate requires source",
-                       "display" -> "evaluate requires source", "events" -> #[] },
+                       "display" -> "evaluate requires source", "events" -> #[],
+                       "diagnostics" -> #[] },
         "session" -> session }]
     ifFalse: [|
       let deadline := [self evaluationDeadlineFor: params session: session];
@@ -234,7 +235,8 @@
         ifTrue: [|
           let message := [deadline at: "message"];
           { "result" -> { "ok" -> false, "kind" -> "error", "phase" -> "request",
-                           "message" -> message, "display" -> message, "events" -> #[] },
+                           "message" -> message, "display" -> message, "events" -> #[],
+                           "diagnostics" -> #[] },
             "session" -> session }]
         ifFalse: [|
           let timeoutMs := [deadline at: "timeoutMs"];
@@ -262,12 +264,16 @@
                 ifFalse: [| [timedOut
                   ifTrue: [| "timeout"]
                   ifFalse: [| [interrupted ifTrue: [| "interrupted"] ifFalse: [| "runtime"]]]]]];
+              let diagnostics := [[compileError notNil]
+                ifTrue: [| [Lsp staticDiagnosticsOf: source]]
+                ifFalse: [| #[]]];
               let next0 := [session at: "lastError" put: message];
               let next := [next0 at: "globalNamesCache" put: nil];
               { "result" -> { "ok" -> false, "kind" -> "error", "phase" -> phase,
                                "timedOut" -> timedOut, "interrupted" -> interrupted,
                                "timeoutMs" -> timeoutMs,
-                               "message" -> message, "display" -> message, "events" -> events },
+                               "message" -> message, "display" -> message, "events" -> events,
+                               "diagnostics" -> diagnostics },
                 "session" -> next }]
             ifFalse: [|
               let copied := [self sessionValue: value];
@@ -276,7 +282,8 @@
               let next0 := [s2 at: "lastError" put: nil];
               let next := [next0 at: "globalNamesCache" put: nil];
               { "result" -> { "ok" -> true, "kind" -> "value", "value" -> copied,
-                               "display" -> [copied at: "display"], "events" -> events },
+                               "display" -> [copied at: "display"], "events" -> events,
+                               "diagnostics" -> #[] },
                 "session" -> next }]]]]]]
   ] doc:
   "Evaluate one explicit source form and return structured success or failure data." ];

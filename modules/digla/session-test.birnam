@@ -49,6 +49,10 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
   [t expect: [firstResult at: "ok"] equals: true describes: "successful evaluation"];
   [t expect: [[firstResult at: "value"] at: "value"] equals: 42 describes: "copied scalar value"];
   [t expect: [failedResult at: "phase"] equals: "compile" describes: "structured compile failure"];
+  [t expect: [[[failedResult at: "diagnostics"] at: 0] at: "kind"]
+    equals: "syntaxError" describes: "compile failure carries a structured diagnostic"];
+  [t expect: [[[failedResult at: "diagnostics"] at: 0] at: "start"]
+    equals: 5 describes: "diagnostic retains its source-byte position"];
   [t expect: [[snapshot at: "target"] at: "printString"] equals: "42"
     describes: "failed evaluation does not erase the last success"];
   [t assert: [[[Json stringify: [first at: "message"]] includesSubstring: "structured"] not]

@@ -98,6 +98,17 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [entries at: 2] equals: "there" describes: "second output remains ordered"];
   [t expect: [entries at: 3] equals: "42" describes: "value follows emitted output"]]];
 
+[e test: "runtime failures also preserve the editable form" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let source := "[1 / 0]";
+  let failed := [Digla submitIn: [initial at: "buffer" put: source]];
+  [t expect: [failed at: "status"] equals: "error" describes: "runtime failure remains structured"];
+  [t expect: [failed at: "buffer"] equals: source describes: "runtime source remains editable"];
+  [t expect: [failed at: "cursor"] equals: [source size] describes: "no-span failure focuses source end"];
+  [t expect: [[failed at: "diagnostics"] size] equals: 0
+    describes: "runtime failure does not invent a compile span"]]];
+
 [e test: "key handling separates newline from evaluation" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let s0 := [Digla editorStateFor: config];
@@ -197,6 +208,10 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [[[evaluated at: "session"] at: "nextId"] > [[initial at: "session"] at: "nextId"]]
     equals: true describes: "evaluation advances session request ids"];
   [t expect: [failed at: "status"] equals: "error" describes: "structured evaluation failure"];
+  [t expect: [failed at: "buffer"] equals: "[6 *" describes: "failed source remains editable"];
+  [t expect: [failed at: "cursor"] equals: 4 describes: "cursor focuses the compile failure"];
+  [t expect: [[[failed at: "diagnostics"] at: 0] at: "kind"] equals: "syntaxError"
+    describes: "editor retains copied evaluation diagnostics"];
   [t assert: [[[inspected at: "transcript"] last] includesSubstring: "value:      42"]
     describes: "last successful value survives a failure"];
   [t assert: [[[globals at: "transcript"] last] includesSubstring: "#String"]
