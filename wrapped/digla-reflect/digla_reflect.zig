@@ -1,8 +1,9 @@
-//! Digla-local accelerator for `Reflect allMethodsOf:`.
+//! Digla-local accelerator for reflection and source/display projection.
 //!
-//! This application module preserves the core descriptor contract while using
-//! a basis-keyed reverse-global index for target names. It deliberately lives
-//! outside the language/runtime floor.
+//! This application module preserves Birnam-level contracts while moving two
+//! measured hot paths behind the existing IdApi: method reflection uses a
+//! basis-keyed reverse-global index, and terminal frames scan source bytes once.
+//! It deliberately lives outside the language/runtime floor.
 
 const std = @import("std");
 const idapi = @import("idapi");
@@ -14,6 +15,7 @@ var g_api: *idapi.IdApi = undefined;
 var g_store: Oop = null;
 var g_globals: Oop = null;
 var sel_current_value: Oop = null;
+var sel_raw_current_value: Oop = null;
 var sel_live_triples_do: Oop = null;
 var global_collector_vt: Oop = null;
 var global_names: std.AutoHashMapUnmanaged(Oop, Oop) = .{};
@@ -29,6 +31,276 @@ fn send1(receiver: Oop, selector: [*:0]const u8, arg: Oop) Oop {
 
 fn mapPut(map: Oop, key: Oop, value: Oop) Oop {
     return g_api.send(map, g_api.intern("at:put:"), &[_]Oop{ key, value }, 2);
+}
+
+fn string(value: []const u8) Oop {
+    return g_api.mkString(value.ptr, value.len);
+}
+
+fn mapPutString(map: Oop, key: []const u8, value: Oop) Oop {
+    return mapPut(map, string(key), value);
+}
+
+fn newMap() Oop {
+    return send0(g_api.import("Map"), "new");
+}
+
+fn newVector() Oop {
+    return send0(g_api.import("Vector"), "new");
+}
+
+fn vectorAdd(vector: Oop, value: Oop) Oop {
+    return send1(vector, "add:", value);
+}
+
+fn integer(value: usize) Oop {
+    return g_api.mkSmallInt(@intCast(value));
+}
+
+fn utf8Width(first: u8) usize {
+    if (first < 0x80) return 1;
+    if (first < 0xe0) return 2;
+    if (first < 0xf0) return 3;
+    return 4;
+}
+
+fn codepointAt(bytes: []const u8, start: usize) u21 {
+    const first = bytes[start];
+    const width = @min(utf8Width(first), bytes.len - start);
+    if (width == 1) return first;
+    if (width == 2)
+        return @intCast((@as(u32, first & 0x1f) << 6) | @as(u32, bytes[start + 1] & 0x3f));
+    if (width == 3)
+        return @intCast((@as(u32, first & 0x0f) << 12) |
+            (@as(u32, bytes[start + 1] & 0x3f) << 6) |
+            @as(u32, bytes[start + 2] & 0x3f));
+    return @intCast((@as(u32, first & 0x07) << 18) |
+        (@as(u32, bytes[start + 1] & 0x3f) << 12) |
+        (@as(u32, bytes[start + 2] & 0x3f) << 6) |
+        @as(u32, bytes[start + 3] & 0x3f));
+}
+
+fn inRange(cp: u21, low: u21, high: u21) bool {
+    return cp >= low and cp <= high;
+}
+
+fn codepointCellWidth(bytes: []const u8, start: usize, column: usize) usize {
+    const first = bytes[start];
+    if (first == '\t') return 4 - (column % 4);
+    if (first < 32) return 0;
+    const cp = codepointAt(bytes, start);
+    const combining = inRange(cp, 768, 879) or inRange(cp, 6832, 6911) or
+        inRange(cp, 7424, 7679) or inRange(cp, 8400, 8431) or
+        inRange(cp, 65056, 65071);
+    if (combining) return 0;
+    const wide = inRange(cp, 4352, 4607) or inRange(cp, 9001, 9002) or
+        inRange(cp, 11904, 42191) or inRange(cp, 44032, 55203) or
+        inRange(cp, 63744, 64255) or inRange(cp, 65040, 65071) or
+        inRange(cp, 65281, 65376) or inRange(cp, 65504, 65510) or
+        inRange(cp, 127744, 129791);
+    return if (wide) 2 else 1;
+}
+
+fn displayWidth(bytes: []const u8, start: usize, end: usize) usize {
+    var byte = start;
+    var column: usize = 0;
+    while (byte < end) {
+        column += codepointCellWidth(bytes, byte, column);
+        byte += @min(utf8Width(bytes[byte]), end - byte);
+    }
+    return column;
+}
+
+fn isWordByte(byte: u8) bool {
+    return (byte >= '0' and byte <= '9') or (byte >= 'A' and byte <= 'Z') or
+        (byte >= 'a' and byte <= 'z') or byte == '_' or byte == '?';
+}
+
+fn wordEnd(bytes: []const u8, start: usize) usize {
+    var end = start;
+    while (end < bytes.len and isWordByte(bytes[end])) : (end += 1) {}
+    return end;
+}
+
+fn highlightKind(word: []const u8, colon: bool) []const u8 {
+    const keywords = [_][]const u8{ "let", "ifTrue", "ifFalse", "do", "value", "on", "as", "doc" };
+    for (keywords) |keyword| if (std.mem.eql(u8, word, keyword)) return "keyword";
+    if (std.mem.eql(u8, word, "true") or std.mem.eql(u8, word, "false") or
+        std.mem.eql(u8, word, "nil")) return "literal";
+    return if (colon) "selector" else "identifier";
+}
+
+fn highlightEntry(kind: []const u8, start: usize, end: usize) Oop {
+    var entry = newMap();
+    entry = mapPutString(entry, "kind", string(kind));
+    entry = mapPutString(entry, "start", integer(start));
+    entry = mapPutString(entry, "end", integer(end));
+    return entry;
+}
+
+fn highlightsFor(bytes: []const u8) Oop {
+    var out = newVector();
+    var i: usize = 0;
+    while (i < bytes.len) {
+        const start = i;
+        const byte = bytes[i];
+        if (byte == '/' and i + 1 < bytes.len and bytes[i + 1] == '/') {
+            i += 2;
+            while (i < bytes.len and bytes[i] != '\n') : (i += 1) {}
+            out = vectorAdd(out, highlightEntry("comment", start, i));
+        } else if (byte == '"') {
+            i += 1;
+            while (i < bytes.len) {
+                if (bytes[i] == '\\') {
+                    i = @min(i + 2, bytes.len);
+                } else if (bytes[i] == '"') {
+                    i += 1;
+                    break;
+                } else if (bytes[i] == '\n') {
+                    i = bytes.len;
+                    break;
+                } else {
+                    i += 1;
+                }
+            }
+            out = vectorAdd(out, highlightEntry("string", start, i));
+        } else if (byte == '#') {
+            i = if (i + 1 < bytes.len) wordEnd(bytes, i + 1) else i + 1;
+            out = vectorAdd(out, highlightEntry("symbol", start, i));
+        } else if (byte >= '0' and byte <= '9') {
+            var dot = false;
+            while (i < bytes.len) {
+                const current = bytes[i];
+                if (current >= '0' and current <= '9') {
+                    i += 1;
+                } else if (current == '.' and !dot) {
+                    dot = true;
+                    i += 1;
+                } else break;
+            }
+            out = vectorAdd(out, highlightEntry("number", start, i));
+        } else if (isWordByte(byte)) {
+            const finish = wordEnd(bytes, i);
+            const colon = finish < bytes.len and bytes[finish] == ':';
+            i = finish + @intFromBool(colon);
+            out = vectorAdd(out, highlightEntry(highlightKind(bytes[start..finish], colon), start, i));
+        } else if (byte == ' ' or byte == '\t' or byte == '\n' or byte == '\r') {
+            i += 1;
+        } else {
+            i += 1;
+            out = vectorAdd(out, highlightEntry("punctuation", start, i));
+        }
+    }
+    return out;
+}
+
+fn layoutRow(bytes: []const u8, line: usize, start: usize, end: usize, prompt_width: usize) Oop {
+    var row = newMap();
+    row = mapPutString(row, "line", integer(line));
+    row = mapPutString(row, "sourceStart", integer(start));
+    row = mapPutString(row, "sourceEnd", integer(end));
+    row = mapPutString(row, "text", string(bytes[start..end]));
+    row = mapPutString(row, "promptWidth", integer(prompt_width));
+    row = mapPutString(row, "cellWidth", integer(displayWidth(bytes, start, end)));
+    return row;
+}
+
+fn layoutFor(bytes: []const u8, prompt_width: usize) Oop {
+    var rows = newVector();
+    var line: usize = 0;
+    var start: usize = 0;
+    while (true) {
+        var end = start;
+        while (end < bytes.len and bytes[end] != '\n') : (end += 1) {}
+        rows = vectorAdd(rows, layoutRow(bytes, line, start, end, prompt_width));
+        if (end == bytes.len) break;
+        start = end + 1;
+        line += 1;
+    }
+    var layout = newMap();
+    layout = mapPutString(layout, "lines", rows);
+    layout = mapPutString(layout, "promptWidth", integer(prompt_width));
+    layout = mapPutString(layout, "sourceSize", integer(bytes.len));
+    return layout;
+}
+
+fn positionFor(bytes: []const u8, requested_cursor: usize, prompt_width: usize) Oop {
+    const cursor = @min(requested_cursor, bytes.len);
+    var line: usize = 0;
+    var start: usize = 0;
+    for (bytes[0..cursor], 0..) |byte, i| {
+        if (byte == '\n') {
+            line += 1;
+            start = i + 1;
+        }
+    }
+    var position = newMap();
+    position = mapPutString(position, "line", integer(line));
+    position = mapPutString(position, "x", integer(prompt_width + displayWidth(bytes, start, cursor)));
+    return position;
+}
+
+fn mRenderFrame(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+    var len: usize = 0;
+    const bytes = g_api.stringBytes(args[0], &len)[0..len];
+    const cursor: usize = @intCast(@max(g_api.smallIntValue(args[1]), 0));
+    const prompt_width: usize = @intCast(@max(g_api.smallIntValue(args[2]), 0));
+    var frame = newMap();
+    frame = mapPutString(frame, "layout", layoutFor(bytes, prompt_width));
+    frame = mapPutString(frame, "position", positionFor(bytes, cursor, prompt_width));
+    frame = mapPutString(frame, "highlights", highlightsFor(bytes));
+    return frame;
+}
+
+fn mDisplayColumn(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    var len: usize = 0;
+    const bytes = g_api.stringBytes(args[0], &len)[0..len];
+    const requested_cursor: usize = @intCast(@max(g_api.smallIntValue(args[1]), 0));
+    const cursor = @min(requested_cursor, bytes.len);
+    var start = cursor;
+    while (start > 0 and bytes[start - 1] != '\n') : (start -= 1) {}
+    return integer(displayWidth(bytes, start, cursor));
+}
+
+fn mWrapTranscriptLine(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+    var len: usize = 0;
+    const bytes = g_api.stringBytes(args[0], &len)[0..len];
+    const requested_width = g_api.smallIntValue(args[1]);
+    const width: usize = @intCast(@max(requested_width, 1));
+    var lines = newVector();
+    var start: usize = 0;
+    var byte: usize = 0;
+    var column: usize = 0;
+    while (byte < bytes.len) {
+        const glyph_width = codepointCellWidth(bytes, byte, column);
+        if (column > 0 and column + glyph_width > width) {
+            lines = vectorAdd(lines, string(bytes[start..byte]));
+            start = byte;
+            column = 0;
+        } else {
+            byte += @min(utf8Width(bytes[byte]), bytes.len - byte);
+            column += glyph_width;
+        }
+    }
+    lines = vectorAdd(lines, string(bytes[start..bytes.len]));
+    return lines;
+}
+
+fn mRuntimeNamed(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    var len: usize = 0;
+    const bytes = g_api.stringBytes(args[0], &len);
+    const name = ca.allocSentinel(u8, len, 0) catch @panic("digla-reflect: oom");
+    defer ca.free(name);
+    @memcpy(name[0..len], bytes[0..len]);
+
+    const symbol = g_api.intern(name.ptr);
+    const global = g_api.send(g_store, sel_raw_current_value, &[_]Oop{ g_globals, symbol }, 2);
+    if (global != null) return global;
+    return g_api.import(name.ptr) orelse g_api.nilObj;
 }
 
 fn mCollectGlobal(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
@@ -119,11 +391,17 @@ fn bringUp(api: *idapi.IdApi) void {
     g_store = api.import("Store");
     g_globals = api.intern("__globals__");
     sel_current_value = api.intern("currentValue:attr:");
+    sel_raw_current_value = api.intern("rawCurrentValue:attr:");
     sel_live_triples_do = api.intern("liveTriplesDo:");
     global_collector_vt = api.proto(api.object_vt);
     api.method(global_collector_vt, api.intern("value:value:value:"), &mCollectGlobal);
     const reflect = api.import("Reflect");
     api.method(api.vtableOf(reflect), api.intern("allMethodsOf:"), &mAllMethodsOf);
+    const digla = api.send(g_store, sel_current_value, &[_]Oop{ g_globals, api.intern("Digla") }, 2);
+    api.method(api.vtableOf(digla), api.intern("runtimeNamed:"), &mRuntimeNamed);
+    api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:"), &mRenderFrame);
+    api.method(api.vtableOf(digla), api.intern("displayColumnIn:at:"), &mDisplayColumn);
+    api.method(api.vtableOf(digla), api.intern("wrapTranscriptLine:width:"), &mWrapTranscriptLine);
 }
 
 fn moduleInit(api: *idapi.IdApi, state: ?*anyopaque) callconv(.c) ?*anyopaque {

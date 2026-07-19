@@ -197,15 +197,36 @@
   ] doc:
   "Project the active completion menu into a bounded window of display rows." ];
 
+[Reflect defineMethod: #assistanceRowsFor:width:limit: on: Digla as: [:self :state :width :requestedLimit |
+  let assistance := [state at: "assistance"];
+  [[assistance isNil]
+    ifTrue: [| #[]]
+    ifFalse: [|
+      let heading := [[assistance at: "kind"] , ": " , [assistance at: "title"]];
+      let lines := [self transcriptLines: #[heading [assistance at: "text"]] width: width];
+      let limit := [[lines size] min: requestedLimit];
+      let rows := [#[] asCell];
+      [[limit > 0] ifTrue: [|
+        [0 to: [limit - 1] do: [:i |
+          [rows set: [[rows value] add: {
+            "text" -> [lines at: i], "selected" -> false, "itemIndex" -> i }]]]]]];
+      [rows value]]]
+  ] doc:
+  "Project copied hover/signature text into bounded terminal-width rows." ];
+
 [Reflect defineMethod: #renderTerminal: on: Digla as: [:self :state |
   let width := [Termbox width];
   let height := [Termbox height];
   let buffer := [state at: "buffer"];
-  let analysis := [self analysisFor: buffer];
-  let layout := [self displayLayoutFor: buffer promptWidth: 2];
+  let frame := [self renderFrameFor: buffer cursor: [state at: "cursor"] promptWidth: 2];
+  let analysis := { "highlights" -> [frame at: "highlights"],
+    "diagnostics" -> [state at: "diagnostics"] };
+  let layout := [frame at: "layout"];
   let rows := [layout at: "lines"];
   let editorRows := [rows size];
-  let completionRows := [self completionRowsFor: state limit: 6];
+  let menuRows := [self completionRowsFor: state limit: 6];
+  let assistanceRows := [self assistanceRowsFor: state width: width limit: 8];
+  let completionRows := [[menuRows isEmpty] ifTrue: [| assistanceRows] ifFalse: [| menuRows]];
   let completionRowCount := [completionRows size];
   let completionStart := [height - completionRowCount - 1];
   let maxEditorRows0 := [completionStart - 1];
@@ -216,7 +237,7 @@
   let start := [completionStart - visibleEditorRows];
   [Termbox clear];
   [Termbox printX: 0 y: 0 fg: 8 bg: 0 str:
-    "Digla  Tab complete | Shift-arrows select | Ctrl-J newline | Enter eval | Esc quit"];
+    "Digla | Tab complete | F1 hover | F2 sig | F3 definition | F4 diagnostics"];
   let transcriptLines := [self transcriptLines: [visibleState at: "transcript"] width: width];
   let availableTranscriptRows := [start - 1];
   let firstTranscriptLine0 := [[transcriptLines size] - availableTranscriptRows];
@@ -255,10 +276,11 @@
   let selectionStatus := [[selected isNil]
     ifTrue: [| ""]
     ifFalse: [| ["  selected=" , [[[selected at: "end"] - [selected at: "start"]] printString]]]];
+  let dirty := [[visibleState at: "diagnosticsDirty"] ifTrue: [| "*"] ifFalse: [| ""]];
   let status := [[visibleState at: "status"] , "  bytes=" , [[buffer size] printString]
-    , selectionStatus , "  diagnostics=" , diagnosticCount];
+    , selectionStatus , "  diagnostics=" , diagnosticCount , dirty];
   [Termbox printX: 0 y: [height - 1] fg: 7 bg: 0 str: status];
-  let position := [self terminalPositionForByte: [state at: "cursor"] in: buffer promptWidth: 2];
+  let position := [frame at: "position"];
   let cursorX := [position at: "x"];
   let cursorY := [start + [[position at: "line"] - editorTopLine]];
   [[[cursorY >= 1] & [cursorY < completionStart]]

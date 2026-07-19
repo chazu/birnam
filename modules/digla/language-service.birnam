@@ -83,3 +83,145 @@
     "error" -> [[error isNil] ifTrue: [| nil] ifFalse: [| [error at: "message"]]] }
   ] doc:
   "Merge buffer-scope and runtime completion candidates without terminal coordinates." ];
+
+[Reflect defineMethod: #assistanceTokenIn:at: on: Digla as: [:self :text :cursor |
+  let start := [self lineStartIn: text at: cursor];
+  let finish := [self lineEndIn: text at: cursor];
+  let line := [text copyFrom: start to: finish];
+  let column := [cursor - start];
+  [Lsp tokenAt: column in: line]
+  ] doc:
+  "Return the identifier or keyword-selector part under a source-byte cursor." ];
+
+[Reflect defineMethod: #selectorAt:node:source: on: Digla as: [:self :cursor :node :text |
+  let inside := [[cursor >= [node start]] & [cursor <= [node end]]];
+  [inside
+    ifTrue: [|
+      [[[node rule] = #keywordMsg]
+        ifTrue: [| [[Lsp analysisKeywordParts: node source: text] at: 0]]
+        ifFalse: [|
+          let found := [nil asCell];
+          [0 to: [[node childCount] - 1] do: [:i |
+            [[[found value] isNil]
+              ifTrue: [| [found set: [self selectorAt: cursor node: [node childAt: i] source: text]]]
+              ifFalse: [| nil]]]];
+          [found value]]]]
+    ifFalse: [| nil]]
+  ] doc:
+  "Return the full keyword selector enclosing a byte cursor by walking the shared CST." ];
+
+[Reflect defineMethod: #selectorIn:at: on: Digla as: [:self :text :cursor |
+  let cst := [Lsp analysisParsed: text];
+  let full := [[cst isNil] ifTrue: [| nil] ifFalse: [| [self selectorAt: cursor node: cst source: text]]];
+  [[full isNil] ifTrue: [| [self assistanceTokenIn: text at: cursor]] ifFalse: [| full]]
+  ] doc:
+  "Return a full keyword selector when parseable, otherwise the token under the cursor." ];
+
+[Reflect defineMethod: #sourceEntryFor:name:cursor: on: Digla as: [:self :analysis :name :cursor |
+  let found := [nil asCell];
+  [[analysis at: "bindings"] do: [:entry |
+    let matchesName := [[entry at: "name"] = name];
+    let visible := [[cursor >= [entry at: "scopeStart"]] & [cursor <= [entry at: "scopeEnd"]]];
+    [[matchesName & visible] ifTrue: [| [found set: entry]] ifFalse: [| nil]]]];
+  [[[found value] isNil] ifTrue: [|
+    [[analysis at: "symbols"] do: [:entry |
+      let entryName := [entry at: "name"];
+      [[entryName = name] ifTrue: [| [found set: entry]] ifFalse: [| nil]]]]]];
+  [[[found value] isNil] ifTrue: [|
+    [[analysis at: "symbols"] do: [:entry |
+      let entryName := [entry at: "name"];
+      let matchesPrefix := [[[[name isEmpty] not] & [entryName startsWith: name]]
+        & [[found value] isNil]];
+      [matchesPrefix ifTrue: [| [found set: entry]] ifFalse: [| nil]]]]]];
+  [found value]
+  ] doc:
+  "Find the nearest visible buffer binding or authored symbol matching a token." ];
+
+[Reflect defineMethod: #sourceHoverTextFor:name:cursor: on: Digla as: [:self :analysis :name :cursor |
+  let entry := [self sourceEntryFor: analysis name: name cursor: cursor];
+  [[entry isNil]
+    ifTrue: [| ""]
+    ifFalse: [|
+      let kind := [entry at: "kind"];
+      let start := [entry at: "start"];
+      let finish := [entry at: "end"];
+      let detail := [entry at: "detail" ifAbsent: [| ""]];
+      let kindText := [[Reflect isString: kind] ifTrue: [| kind] ifFalse: [|
+        [[kind = 6] ifTrue: [| "method"] ifFalse: [| [[kind = 3] ifTrue: [| "module"] ifFalse: [| "symbol"]]]]]];
+      let suffix := [[detail isEmpty] ifTrue: [| ""] ifFalse: [| [" on " , detail]]];
+      [kindText , " `" , name , "`" , suffix , "\nsource bytes "
+        , [start printString] , "-" , [finish printString]]]]
+  ] doc:
+  "Render concise same-buffer provenance for hover assistance." ];
+
+[Reflect defineMethod: #runtimeHoverFor:session: on: Digla as: [:self :name :session |
+  [[name isEmpty]
+    ifTrue: [| { "text" -> "", "session" -> session }]
+    ifFalse: [|
+      let reply := [self callSession: "birnam/inspect" params: { "runtimeName" -> name } in: session];
+      let error := [self sessionReplyErrorText: reply];
+      [[error notNil]
+        ifTrue: [| { "text" -> "", "session" -> [reply at: "session"] }]
+        ifFalse: [|
+          let snapshot := [[self sessionResultOf: reply] at: "snapshot"];
+          let object := [snapshot at: "object"];
+          [[object isNil]
+            ifTrue: [| { "text" -> "", "session" -> [reply at: "session"] }]
+            ifFalse: [|
+              let target := [snapshot at: "target"];
+              let vtable := [target at: "vtableName"];
+              let shownVtable := [[vtable isNil] ifTrue: [| "(unknown)"] ifFalse: [| ["#" , vtable]]];
+              let text0 := ["runtime global #" , name];
+              let text1 := [text0 , "\nvalue: " , [target at: "printString"]];
+              let text2 := [text1 , "\nvtable: " , shownVtable];
+              let text3 := [text2 , "\nfacts: " , [[[snapshot at: "facts"] size] printString]];
+              let text4 := [text3 , "  methods: " , [[[snapshot at: "methods"] size] printString]];
+              { "text" -> text4, "session" -> [reply at: "session"] }]]]]]]
+  ] doc:
+  "Request a copied-value runtime-global summary through the active session." ];
+
+[Reflect defineMethod: #hoverFor:cursor:session: on: Digla as: [:self :text :cursor :session |
+  let token := [self assistanceTokenIn: text at: cursor];
+  let analysis := [Lsp sourceAnalysisOf: text];
+  let sourceText := [self sourceHoverTextFor: analysis name: token cursor: cursor];
+  let docs := [[[Globals includes: #Doc] & [[token isEmpty] not]]
+    ifTrue: [| [Doc hoverBodyFor: token]]
+    ifFalse: [| ""]];
+  let runtime := [self runtimeHoverFor: token session: session];
+  let runtimeText := [runtime at: "text"];
+  let parts := [#[sourceText docs runtimeText] select: [:part | [[part isEmpty] not]]];
+  let body := [parts inject: "" into: [:out :part |
+    [[out isEmpty] ifTrue: [| part] ifFalse: [| [out , "\n\n" , part]]]]];
+  let shown := [[body isEmpty] ifTrue: [| ["no hover information for `" , token , "`"]] ifFalse: [| body]];
+  { "kind" -> "hover", "title" -> [[token isEmpty] ifTrue: [| "hover"] ifFalse: [| token]],
+    "text" -> shown, "session" -> [runtime at: "session"] }
+  ] doc:
+  "Merge source, documentation, and copied runtime hover information." ];
+
+[Reflect defineMethod: #signatureFor:cursor:session: on: Digla as: [:self :text :cursor :session |
+  let selector := [self selectorIn: text at: cursor];
+  let count := [[selector isEmpty] ifTrue: [| 0] ifFalse: [| [Lsp selectorArity: selector]]];
+  let analysis := [Lsp sourceAnalysisOf: text];
+  let entry := [self sourceEntryFor: analysis name: selector cursor: cursor];
+  let detail := [[entry isNil] ifTrue: [| ""] ifFalse: [| [entry at: "detail" ifAbsent: [| ""]]]];
+  let receiver := [[detail isEmpty] ifTrue: [| ""] ifFalse: [| ["\nreceiver: " , detail]]];
+  let plural := [[count = 1] ifTrue: [| ""] ifFalse: [| "s"]];
+  let shown := [[selector isEmpty]
+    ifTrue: [| "no selector at cursor"]
+    ifFalse: [| ["#" , selector , "\n" , [count printString] , " argument" , plural , receiver]]];
+  { "kind" -> "signature", "title" -> [[selector isEmpty] ifTrue: [| "signature"] ifFalse: [| selector]],
+    "text" -> shown, "session" -> session }
+  ] doc:
+  "Build full-keyword-selector signature help from the shared parser CST." ];
+
+[Reflect defineMethod: #definitionFor:cursor: on: Digla as: [:self :text :cursor |
+  let name := [self selectorIn: text at: cursor];
+  let analysis := [Lsp sourceAnalysisOf: text];
+  let entry := [self sourceEntryFor: analysis name: name cursor: cursor];
+  [[entry isNil]
+    ifTrue: [| { "found" -> false, "cursor" -> cursor, "name" -> name }]
+    ifFalse: [|
+      let target := [entry at: "selectionStart" ifAbsent: [| [entry at: "start"]]];
+      { "found" -> true, "cursor" -> target, "name" -> name }]]
+  ] doc:
+  "Resolve a same-buffer binding or authored method/module definition." ];

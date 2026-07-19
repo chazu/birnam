@@ -340,11 +340,14 @@ from-zero bootstrap compiler and performance floor.
   runnable, the source/LSP PositionMap and terminal DisplayLayout slices are
   landed, and lexical highlighting, parser-backed diagnostics, and wrapped
   evaluation results are visible. Tab completion merges scoped source candidates
-  with bounded live-image globals, and the structured session protocol now runs
+  with bounded live-image globals; F1/F2/F3 provide hover, full-selector signature
+  help, and same-buffer definition jumps, while F4 refreshes cached diagnostics
+  outside the typing path. The structured session protocol now runs
   over framed stdio or a loopback-only-by-default TCP listener. Termbox enters
   through a precompiled application wrapper rather than a runtime-compiled Alien
   trampoline; a second project-local wrapper removes the full-image
   `Reflect allMethodsOf:` hot path without expanding the core/runtime floor.
-  Shift-movement selection and cursor-following multiline viewports are also
-  live. Richer assistance, manual transcript scrolling, streamed output, and
-  bounded interruption remain staged.
+  Shift-movement selection, cursor-following multiline viewports, buffered-event
+  coalescing, and a project-local native source-frame/wrapping accelerator are
+  also live. Project/dependency navigation, manual transcript scrolling, streamed
+  output, and bounded interruption remain staged.

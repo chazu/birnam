@@ -196,3 +196,32 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [labels includes: "let"] equals: true describes: "source candidate remains"];
   [t assert: [[opened at: "status"] includesSubstring: "source only"]
     describes: "provider failure is visible without suppressing source results"]]];
+
+[e test: "function keys open assistance and Escape dismisses before quitting" do: [:t |
+  [Globals at: #DiglaFunctionKeyProbe put: [Object clone]];
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial0 := [Digla editorStateFor: config];
+  let initial1 := [initial0 at: "buffer" put: "DiglaFunctionKeyProbe"];
+  let initial := [initial1 at: "cursor" put: 4];
+  let hovered := [Digla handleKey: 65535 modifier: 0 character: "" state: initial];
+  [t expect: [[hovered at: "assistance"] at: "kind"] equals: "hover"
+    describes: "F1 opens hover"];
+  let dismissed := [Digla handleKey: 27 modifier: 0 character: "" state: hovered];
+  [t expect: [dismissed at: "assistance"] equals: nil describes: "Escape dismisses assistance"];
+  [t expect: [dismissed at: "running"] equals: true describes: "dismissal keeps editor running"];
+  let stopped := [Digla handleKey: 27 modifier: 0 character: "" state: dismissed];
+  [t expect: [stopped at: "running"] equals: false describes: "next Escape quits"]]];
+
+[e test: "typing only dirties cached diagnostics until an explicit refresh" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let typed := [Digla insertText: "let x := [3 +" into: initial];
+  [t expect: [[typed at: "diagnostics"] size] equals: 0
+    describes: "typing does not synchronously parse the buffer"];
+  [t expect: [typed at: "diagnosticsDirty"] equals: true
+    describes: "source edits mark the diagnostic cache stale"];
+  let checked := [Digla handleKey: 65532 modifier: 0 character: "" state: typed];
+  [t expect: [[[checked at: "diagnostics"] size] > 0] equals: true
+    describes: "F4 refreshes parser diagnostics"];
+  [t expect: [checked at: "diagnosticsDirty"] equals: false
+    describes: "explicit refresh marks the cache clean"]]];

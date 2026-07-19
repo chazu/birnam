@@ -83,3 +83,15 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
     describes: "unchanged session reuses cached vector"];
   [t expect: [[[refreshedItems at: 0] at: "label"] = "DiglaCacheRefresh"] equals: true
     describes: "evaluation invalidates and refreshes runtime names"]]];
+
+[e test: "runtime-name inspection is distinct from Store-global inspection" do: [:t |
+  [Globals at: #DiglaRuntimeNameProbe put: 11];
+  [Globals at: #DiglaStoreNameProbe put: 22];
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let reply := [Digla callSession: "birnam/inspect" params: {
+    "runtimeName" -> "DiglaRuntimeNameProbe",
+    "globalName" -> "DiglaStoreNameProbe" }
+    in: [Digla localSessionFor: config]];
+  let target := [[[Digla sessionResultOf: reply] at: "snapshot"] at: "target"];
+  [t expect: [target at: "printString"] equals: "11"
+    describes: "runtimeName has explicit precedence over globalName"]]];

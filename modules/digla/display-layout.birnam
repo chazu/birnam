@@ -139,3 +139,11 @@
     "sourceSize" -> [text size] }
   ] doc:
   "Build the logical source lines and terminal-cell widths used by rendering." ];
+
+[Reflect defineMethod: #renderFrameFor:cursor:promptWidth: on: Digla as:
+  [:self :text :cursor :promptWidth |
+  { "layout" -> [self displayLayoutFor: text promptWidth: promptWidth],
+    "position" -> [self terminalPositionForByte: cursor in: text promptWidth: promptWidth],
+    "highlights" -> [self highlightRangesIn: text] }
+  ] doc:
+  "Project source into terminal-independent layout, cursor, and highlight data in one replaceable operation." ];

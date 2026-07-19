@@ -44,7 +44,7 @@ modules/digla/socket-protocol.birnam optional framed TCP adapter
 modules/digla/socket-protocol-test.birnam framing and bind-policy tests
 modules/digla/reflect-accelerator.birnam optional project-local reflection fast path
 modules/digla/app.birnam        one dependency root for optional runtime adapters
-modules/digla/render.birnam      headless startup summary
+modules/digla/render.birnam      headless summary and terminal renderer
 modules/digla/terminal.birnam    local Termbox event loop
 modules/digla/position-map.birnam source-byte/LSP UTF-16 conversion
 modules/digla/position-map-test.birnam coordinate contract tests
@@ -54,12 +54,12 @@ modules/digla/display-layout.birnam source-to-terminal-cell projection
 modules/digla/display-layout-test.birnam terminal coordinate contract tests
 modules/digla/analysis.birnam       lexical highlights and LSP diagnostics
 modules/digla/analysis-test.birnam analysis contract tests
-modules/digla/language-service.birnam source/runtime completion merge
-modules/digla/language-service-test.birnam completion contract tests
+modules/digla/language-service.birnam completion, hover, signatures, definitions
+modules/digla/language-service-test.birnam semantic assistance contract tests
 modules/digla/render-test.birnam    headless renderer decision tests
 modules/digla/termbox.birnam     Termbox module entry
 wrapped/termbox2/                vendored C library and native wrapper module
-wrapped/digla-reflect/           application-local reflection accelerator
+wrapped/digla-reflect/           application-local reflection and display accelerator
 examples/digla/birnam.toml       composed application project
 ```
 
@@ -88,9 +88,13 @@ Tab or Down cycles, Up cycles backward, Enter accepts, and Escape dismisses the
 menu before it quits the editor. Shift-arrow/Home/End selection now uses source
 byte anchors and replaces or deletes through the ordinary edit operations. A
 logical-line viewport follows the cursor through buffers taller than the
-terminal without storing terminal coordinates in editor state. Manual transcript
-scrolling, soft-wrapped source rows, hover, signature help, source navigation,
-streamed output, and bounded interruption remain later slices.
+terminal without storing terminal coordinates in editor state. F1 hover merges
+same-buffer provenance with copied live-image inspection, F2 reconstructs full
+keyword selectors for signature help, and F3 jumps to same-buffer bindings or
+authored definitions. F4 refreshes cached parser diagnostics explicitly; source
+edits only mark the cache stale, so parsing is not on the per-key render path.
+Manual transcript scrolling, soft-wrapped source rows, project/dependency source
+navigation, streamed output, and bounded interruption remain later slices.
 
 ## 2. Goals and boundaries
 
@@ -231,7 +235,9 @@ EditorBuffer
   selection: optional SourceRange
   history: HistoryStore
   diagnostics: [Diagnostic]
+  diagnosticsDirty: Boolean
   completion: optional CompletionMenu
+  assistance: optional AssistancePanel
   viewport: Viewport
 
 Transcript
@@ -244,9 +250,12 @@ bounded line list and a history file; prefix search and reverse search can follo
 once the basic loop is reliable. The transcript is separate from the active
 buffer, so output can scroll without changing the source being edited.
 
-The editor should reuse the native bracket scanner for fast continuation decisions
-and the parser/CST for highlighting and diagnostics. A balanced form is eligible
-for evaluation, but balance alone never substitutes for compilation.
+The editor should reuse the native bracket scanner for fast continuation decisions,
+a lexical scanner for highlighting, and the parser/CST for diagnostics and semantic
+assistance. Parser work must not run synchronously for every typed character: the
+current client marks diagnostics stale on edits and refreshes them on F4 or when Tab
+requests completion. A balanced form is eligible for evaluation, but balance alone
+never substitutes for compilation.
 
 ## 7. Position and coordinate model
 
@@ -380,8 +389,9 @@ The core invariants are:
 3. **Local terminal editor — initial slice implemented.** Add a single-buffer
    `--ui` entrypoint with editing, UTF-8-aware cursor movement, multiline input,
    history, local evaluation, a scrollable transcript against the local image,
-   terminal-cell-aware wrapping for evaluation results, lexical syntax spans,
-   and parser-backed diagnostics. Autocomplete now merges scoped source
+   terminal-cell-aware wrapping for evaluation results and lexical syntax spans.
+   Parser-backed diagnostics are cached and refreshed by F4 or completion rather
+   than reparsed after each edit. Autocomplete merges scoped source
    candidates and bounded runtime globals behind a terminal-independent language
    service, while the editor owns menu state and the renderer owns its cells.
    Shift-movement selection and a cursor-following logical-line viewport are now
@@ -398,16 +408,18 @@ The core invariants are:
    loop, with a one-client mode for scripts. Evaluation results, compile/runtime
    errors, inspection snapshots, image identity, and truthful capabilities are
    copied values; output notifications and bounded interrupt behavior remain open.
-6. **Runtime-aware assistance — inspection and completion slices implemented.** `:inspect`,
+6. **Runtime-aware assistance — inspection, completion, and explicit semantic slices implemented.** `:inspect`,
    `:globals`, and `:session` use the shared session layer without evaluating
    report expressions. `birnam/runtimeCompletion` supplies bounded live-image
    globals, merged with parser/CST source candidates in the shared language
-   service and presented by the terminal menu. Docs, hover, signatures, and
-   source-on-demand remain.
+   service and presented by the terminal menu. F1 merges source information,
+   optional docs, and copied runtime inspection; F2 reports full-selector signatures;
+   F3 resolves same-buffer definitions. Dependency-wide source-on-demand remains.
 
 The first usable milestone is now complete: a user can launch the terminal editor,
-edit and evaluate multiline Birnam forms locally, recall history, see parser-backed
-highlighting and diagnostics, and attach a client to a running image over loopback.
+edit and evaluate multiline Birnam forms locally, recall history, see lexical
+highlighting and parser-backed diagnostics, and attach a client to a running image
+over loopback.
 
 The reflection hot path is now resolved without changing Birnam's core/runtime
 floor. Digla loads an application-local native wrapper through `IdApi` and
@@ -428,6 +440,16 @@ The terminal wrapper is no longer part of that startup bottleneck. Replacing its
 runtime-compiled Alien layer with the precompiled wrapped module reduced full
 Digla cold launch from about 3.5 s to 1.89-2.00 s in three consecutive runs; a
 real Termbox alternate-screen render and Escape shutdown smoke also passed.
+
+The typing path is also bounded away from whole-buffer parser work. Diagnostics
+are cached and explicitly refreshed, already-buffered Termbox events are applied
+before the next redraw, and the same application-local native wrapper accelerates
+the terminal-independent source-frame projection, display columns, lexical spans,
+and transcript wrapping. In a real PTY smoke, a 60-byte method definition was
+consumed and rendered with syntax colors inside a 500 ms observation window. The
+exact `allMethodsOf:` expression above evaluated and rendered its full result as
+terminal-width rows inside a one-second observation window; F1/F2/F3/F4 behavior
+was verified in that same live project image.
 
 ## 9. Open decisions
 

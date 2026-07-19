@@ -157,18 +157,23 @@
   "Evaluate one explicit source form and return structured success or failure data." ];
 
 [Reflect defineMethod: #localInspect:session: on: Digla as: [:self :params :session |
+  let runtimeName := [params at: "runtimeName" ifAbsent: [| nil]];
   let globalName := [params at: "globalName" ifAbsent: [| nil]];
-  [[globalName notNil]
+  [[runtimeName notNil]
     ifTrue: [|
-      { "result" -> { "snapshot" -> [self inspectGlobal: globalName] }, "session" -> session }]
+      { "result" -> { "snapshot" -> [self inspectRuntimeNamed: runtimeName] }, "session" -> session }]
     ifFalse: [|
-      [[session at: "hasLastValue"]
+      [[globalName notNil]
         ifTrue: [|
-          { "result" -> { "snapshot" -> [self inspect: [session at: "lastValue"]] },
-            "session" -> session }]
-        ifFalse: [| { "error" -> "nothing has been evaluated yet", "session" -> session }]]]]
+          { "result" -> { "snapshot" -> [self inspectGlobal: globalName] }, "session" -> session }]
+        ifFalse: [|
+          [[session at: "hasLastValue"]
+            ifTrue: [|
+              { "result" -> { "snapshot" -> [self inspect: [session at: "lastValue"]] },
+                "session" -> session }]
+            ifFalse: [| { "error" -> "nothing has been evaluated yet", "session" -> session }]]]]]]
   ] doc:
-  "Inspect a named global or the session's last successful local result." ];
+  "Inspect a runtime/export name, a Store global, or the session's last successful result." ];
 
 [Reflect defineMethod: #localSessionMethod:params:session: on: Digla as: [:self :method :params :session |
   let outcome := [nil asCell];

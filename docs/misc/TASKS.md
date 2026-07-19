@@ -92,9 +92,15 @@ until product evidence selects the next failure model.
   17.7 ms with byte-identical rendered output, while reflection after live-image
   mutation completes in 12.9 ms. Shift-movement selection now replaces/deletes
   through source-byte ranges, and a logical-line viewport keeps the cursor
-  visible in buffers taller than the terminal. Next: add manual transcript
-  scrolling, soft-wrapped source rows, and hover/signature/source navigation on
-  the same seams.
+  visible in buffers taller than the terminal. F1 merges source and copied runtime
+  hover, F2 reconstructs full keyword signatures, F3 jumps to same-buffer
+  definitions, and F4 explicitly refreshes cached diagnostics. Typing no longer
+  invokes the parser per key; buffered terminal events are coalesced and the
+  application wrapper accelerates source-frame projection and transcript wrapping.
+  A real PTY consumed and rendered a 60-byte form in under 500 ms, and evaluated
+  and visibly wrapped the full `allMethodsOf:` result within one second. Next: add
+  manual transcript scrolling, soft-wrapped source rows, and project/dependency
+  source navigation on the same seams.
 
 ---
 

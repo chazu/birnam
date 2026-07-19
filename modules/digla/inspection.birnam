@@ -133,6 +133,21 @@
   ] doc:
   "Inspect a named global without parsing or evaluating an expression." ];
 
+[Reflect defineMethod: #runtimeNamed: on: Digla as: [:self :name |
+  let symbol := [[Reflect isSymbol: name] ifTrue: [| name] ifFalse: [| [name asSymbol]]];
+  [Globals at: symbol ifAbsent: [| nil]]
+  ] doc:
+  "Resolve a runtime name through the source-level Globals fallback." ];
+
+[Reflect defineMethod: #inspectRuntimeNamed: on: Digla as: [:self :name |
+  let text := [[Reflect isSymbol: name] ifTrue: [| [Reflect nameOf: name]] ifFalse: [| name]];
+  let value := [self runtimeNamed: text];
+  [[value isNil]
+    ifTrue: [| [self missingGlobalSnapshot: text]]
+    ifFalse: [| [self inspectionSnapshotFor: value name: text warnings: #[]]]]
+  ] doc:
+  "Inspect a runtime name resolved by the application adapter without evaluating source." ];
+
 [Reflect defineMethod: #renderInspectionText: on: Digla as: [:self :snapshot |
   let sb := [StringBuilder new];
   let target := [snapshot at: "target"];

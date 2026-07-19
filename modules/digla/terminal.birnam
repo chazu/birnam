@@ -1,12 +1,31 @@
 // terminal.birnam — the effectful local terminal loop for Digla.
 
+[Reflect defineMethod: #handleCurrentTerminalEventIn: on: Digla as: [:self :state |
+  [self handleKey: [Termbox evKey]
+    modifier: [Termbox evMod]
+    character: [Termbox evChar]
+    state: state]
+  ] doc:
+  "Apply the event currently held by Termbox to the terminal-independent editor state." ];
+
+[Reflect defineMethod: #drainTerminalEventsFrom: on: Digla as: [:self :state |
+  let current := [[self handleCurrentTerminalEventIn: state] asCell];
+  let draining := [[[current value] at: "running"] asCell];
+  [[| [draining value]] whileTrue: [|
+    let ready := [Termbox peek];
+    [[ready = 1]
+      ifTrue: [|
+        [current set: [self handleCurrentTerminalEventIn: [current value]]];
+        [draining set: [[current value] at: "running"]]]
+      ifFalse: [| [draining set: false]]]]];
+  [current value]
+  ] doc:
+  "Coalesce already-buffered terminal events before the next expensive frame projection." ];
+
 [Reflect defineMethod: #runTerminalLoop: on: Digla as: [:self :state |
   let step := [:current |
     [self renderTerminal: current];
     [Termbox poll];
-    [self handleKey: [Termbox evKey]
-      modifier: [Termbox evMod]
-      character: [Termbox evChar]
-      state: current]];
+    [self drainTerminalEventsFrom: current]];
   [self runWhileRunning: state step: step]] doc:
   "Render, wait for one terminal event, apply it, and continue while running."];

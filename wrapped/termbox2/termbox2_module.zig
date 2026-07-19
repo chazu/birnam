@@ -18,6 +18,7 @@ extern fn lg_clear() c_int;
 extern fn lg_present() c_int;
 extern fn lg_hide_cursor() c_int;
 extern fn lg_poll() c_int;
+extern fn lg_peek() c_int;
 extern fn lg_ev_type() c_int;
 extern fn lg_ev_mod() c_int;
 extern fn lg_ev_key() c_int;
@@ -62,6 +63,9 @@ fn mHideCursor(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
 }
 fn mPoll(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
     return result(lg_poll());
+}
+fn mPeek(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    return result(lg_peek());
 }
 fn mEvType(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
     return result(lg_ev_type());
@@ -117,6 +121,7 @@ fn bringUp(api: *idapi.IdApi) void {
     api.method(termbox_vt, api.intern("present"), &mPresent);
     api.method(termbox_vt, api.intern("hideCursor"), &mHideCursor);
     api.method(termbox_vt, api.intern("poll"), &mPoll);
+    api.method(termbox_vt, api.intern("peek"), &mPeek);
     api.method(termbox_vt, api.intern("evType"), &mEvType);
     api.method(termbox_vt, api.intern("evMod"), &mEvMod);
     api.method(termbox_vt, api.intern("evKey"), &mEvKey);

@@ -15,8 +15,11 @@
   let s5 := [s4 at: "hasLastResult" put: false];
   let s6 := [s5 at: "lastError" put: nil];
   let s7 := [s6 at: "completion" put: nil];
-  let s8 := [s7 at: "selection" put: nil];
-  [s8 at: "viewport" put: { "editorTopLine" -> 0 }]] doc:
+  let s8 := [s7 at: "assistance" put: nil];
+  let s9 := [s8 at: "selection" put: nil];
+  let s10 := [s9 at: "diagnostics" put: #[]];
+  let s11 := [s10 at: "diagnosticsDirty" put: false];
+  [s11 at: "viewport" put: { "editorTopLine" -> 0 }]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
 
 [Reflect defineMethod: #selectionRangeIn: on: Digla as: [:self :state |
@@ -39,6 +42,19 @@
   [state at: "selection" put: nil]
   ] doc:
   "Clear the source selection without moving the cursor." ];
+
+[Reflect defineMethod: #markDiagnosticsDirtyIn: on: Digla as: [:self :state |
+  [state at: "diagnosticsDirty" put: true]
+  ] doc:
+  "Mark cached parser diagnostics stale after a source edit." ];
+
+[Reflect defineMethod: #refreshDiagnosticsIn: on: Digla as: [:self :state |
+  let diagnostics := [Lsp staticDiagnosticsOf: [state at: "buffer"]];
+  let next := [state at: "diagnostics" put: diagnostics];
+  let clean := [next at: "diagnosticsDirty" put: false];
+  [clean at: "status" put: ["checked " , [[diagnostics size] printString] , " diagnostics"]]
+  ] doc:
+  "Refresh cached parser diagnostics explicitly, outside the per-key render path." ];
 
 [Reflect defineMethod: #selectionAfterMoveFrom:extend:previous:in: on: Digla as:
   [:self :oldCursor :extend :previous :state |
@@ -68,7 +84,8 @@
       let s2 := [s1 at: "cursor" put: [start + [text size]]];
       let s3 := [s2 at: "selection" put: nil];
       let s4 := [s3 at: "historyIndex" put: nil];
-      [s4 at: "status" put: "editing"]]]
+      let s5 := [s4 at: "status" put: "editing"];
+      [self markDiagnosticsDirtyIn: s5]]]
   ] doc:
   "Replace the selected half-open source range, or answer nil when none is selected." ];
 
@@ -138,7 +155,8 @@
       let s1 := [state at: "buffer" put: nextBuffer];
       let s2 := [s1 at: "cursor" put: nextCursor];
       let s3 := [s2 at: "historyIndex" put: nil];
-      [s3 at: "status" put: "editing"]]]] doc:
+      let s4 := [s3 at: "status" put: "editing"];
+      [self markDiagnosticsDirtyIn: s4]]]] doc:
   "Insert UTF-8 text at the source cursor and answer the next editor state."];
 
 [Reflect defineMethod: #backspaceIn: on: Digla as: [:self :state |
@@ -157,7 +175,8 @@
           let s1 := [state at: "buffer" put: [prefix , suffix]];
           let s2 := [s1 at: "cursor" put: previous];
           let s3 := [s2 at: "historyIndex" put: nil];
-          [s3 at: "status" put: "editing"]]]]]] doc:
+          let s4 := [s3 at: "status" put: "editing"];
+          [self markDiagnosticsDirtyIn: s4]]]]]] doc:
   "Delete the codepoint immediately before the source cursor."];
 
 [Reflect defineMethod: #deleteForwardIn: on: Digla as: [:self :state |
@@ -175,7 +194,8 @@
           let suffix := [buffer copyFrom: next to: [buffer size]];
           let s1 := [state at: "buffer" put: [prefix , suffix]];
           let s2 := [s1 at: "historyIndex" put: nil];
-          [s2 at: "status" put: "editing"]]]]]] doc:
+          let s3 := [s2 at: "status" put: "editing"];
+          [self markDiagnosticsDirtyIn: s3]]]]]] doc:
   "Delete the codepoint immediately after the source cursor."];
 
 [Reflect defineMethod: #moveLeftIn: on: Digla as: [:self :state |
@@ -241,7 +261,9 @@
   let s4 := [s3 at: "historyIndex" put: nil];
   let s5 := [s4 at: "transcript" put: transcript2];
   let s6 := [s5 at: "selection" put: nil];
-  [s6 at: "status" put: status]
+  let s7 := [s6 at: "diagnostics" put: #[]];
+  let s8 := [s7 at: "diagnosticsDirty" put: false];
+  [s8 at: "status" put: status]
   ] doc:
   "Record one evaluated form or editor command in history and the transcript." ];
 
@@ -402,14 +424,17 @@
               let s2 := [s1 at: "buffer" put: ""];
               let s3 := [s2 at: "cursor" put: 0];
               let s4 := [s3 at: "selection" put: nil];
-              [s4 at: "status" put: "editing"]]
+              let s5 := [s4 at: "diagnostics" put: #[]];
+              let s6 := [s5 at: "diagnosticsDirty" put: false];
+              [s6 at: "status" put: "editing"]]
             ifFalse: [|
               let text := [history at: index];
               let s1 := [state at: "historyIndex" put: index];
               let s2 := [s1 at: "buffer" put: text];
               let s3 := [s2 at: "cursor" put: [text size]];
               let s4 := [s3 at: "selection" put: nil];
-              [s4 at: "status" put: "history"]]]]]]]] doc:
+              let s5 := [s4 at: "status" put: "history"];
+              [self markDiagnosticsDirtyIn: s5]]]]]]]] doc:
   "Recall a prior form with direction -1 for older or +1 for newer history."];
 
 [Reflect defineMethod: #clearCompletionIn: on: Digla as: [:self :state |
@@ -417,10 +442,50 @@
   ] doc:
   "Dismiss the transient completion menu without changing the source buffer." ];
 
+[Reflect defineMethod: #clearAssistanceIn: on: Digla as: [:self :state |
+  [state at: "assistance" put: nil]
+  ] doc:
+  "Dismiss hover or signature assistance without changing source state." ];
+
+[Reflect defineMethod: #showAssistance:in: on: Digla as: [:self :result :state |
+  let panel := { "kind" -> [result at: "kind"], "title" -> [result at: "title"],
+    "text" -> [result at: "text"] };
+  let withSession := [state at: "session" put: [result at: "session"]];
+  let shown := [withSession at: "assistance" put: panel];
+  [shown at: "status" put: [[result at: "kind"] , " " , [result at: "title"]]]
+  ] doc:
+  "Install copied assistance text and any advanced session state in the editor." ];
+
+[Reflect defineMethod: #openHoverIn: on: Digla as: [:self :state |
+  let result := [self hoverFor: [state at: "buffer"] cursor: [state at: "cursor"]
+    session: [state at: "session"]];
+  [self showAssistance: result in: state]
+  ] doc:
+  "Open explicit hover assistance for the active source cursor." ];
+
+[Reflect defineMethod: #openSignatureIn: on: Digla as: [:self :state |
+  let result := [self signatureFor: [state at: "buffer"] cursor: [state at: "cursor"]
+    session: [state at: "session"]];
+  [self showAssistance: result in: state]
+  ] doc:
+  "Open full-selector signature assistance for the active source cursor." ];
+
+[Reflect defineMethod: #jumpToDefinitionIn: on: Digla as: [:self :state |
+  let result := [self definitionFor: [state at: "buffer"] cursor: [state at: "cursor"]];
+  [[result at: "found"]
+    ifTrue: [|
+      let moved := [state at: "cursor" put: [result at: "cursor"]];
+      let cleared := [moved at: "selection" put: nil];
+      [cleared at: "status" put: ["definition " , [result at: "name"]]]]
+    ifFalse: [| [state at: "status" put: ["definition not found: " , [result at: "name"]]]]]
+  ] doc:
+  "Move to a same-buffer binding or authored symbol definition." ];
+
 [Reflect defineMethod: #openCompletionIn: on: Digla as: [:self :state |
-  let completion := [self completionFor: [state at: "buffer"]
-    cursor: [state at: "cursor"] session: [state at: "session"]];
-  let withSession := [state at: "session" put: [completion at: "session"]];
+  let checked := [self refreshDiagnosticsIn: state];
+  let completion := [self completionFor: [checked at: "buffer"]
+    cursor: [checked at: "cursor"] session: [checked at: "session"]];
+  let withSession := [checked at: "session" put: [completion at: "session"]];
   let error := [completion at: "error"];
   let items := [completion at: "items"];
   [[items isEmpty]
@@ -477,7 +542,8 @@
           let s3 := [s2 at: "historyIndex" put: nil];
           let s4 := [s3 at: "completion" put: nil];
           let s5 := [s4 at: "selection" put: nil];
-          [s5 at: "status" put: ["completed " , label]]]]]]
+          let s6 := [s5 at: "status" put: ["completed " , label]];
+          [self markDiagnosticsDirtyIn: s6]]]]]
   ] doc:
   "Replace the requested source prefix with the selected copied-value candidate." ];
 
@@ -578,9 +644,25 @@
   [[menu notNil]
     ifTrue: [| [self handleCompletionKey: key modifier: modifier character: character state: state]]
     ifFalse: [|
-      [[key = 9]
-        ifTrue: [| [self openCompletionIn: state]]
-        ifFalse: [| [self handleEditorKey: key modifier: modifier character: character state: state]]]]]
+      let assistance := [state at: "assistance"];
+      let outcome := [nil asCell];
+      [[[assistance notNil] & [key = 27]] ifTrue: [|
+        let next := [self clearAssistanceIn: state];
+        [outcome set: [next at: "status" put: "assistance closed"]]]];
+      [[[[outcome value] isNil] & [key = 65535]]
+        ifTrue: [| [outcome set: [self openHoverIn: state]]]];
+      [[[[outcome value] isNil] & [key = 65534]]
+        ifTrue: [| [outcome set: [self openSignatureIn: state]]]];
+      [[[[outcome value] isNil] & [key = 65533]] ifTrue: [|
+        [outcome set: [self jumpToDefinitionIn: [self clearAssistanceIn: state]]]]];
+      [[[[outcome value] isNil] & [key = 65532]] ifTrue: [|
+        [outcome set: [self refreshDiagnosticsIn: [self clearAssistanceIn: state]]]]];
+      [[[[outcome value] isNil] & [key = 9]] ifTrue: [|
+        [outcome set: [self openCompletionIn: [self clearAssistanceIn: state]]]]];
+      [[[outcome value] isNil] ifTrue: [|
+        [outcome set: [self handleEditorKey: key modifier: modifier character: character
+          state: [self clearAssistanceIn: state]]]]];
+      [outcome value]]]
   ] doc:
   "Apply one Termbox key and character event to the pure editor state." ];
 

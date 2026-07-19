@@ -25,3 +25,29 @@ let e := [TestSuite named: "Digla language service" module: #diglaLanguageServic
     describes: "runtime plus keywords bounded"];
   [t expect: [[Json parse: [Json stringify: [completion at: "items"]]] isError]
     equals: false describes: "completion items round-trip as JSON"]]];
+
+[e test: "signature help reconstructs the full keyword selector from the CST" do: [:t |
+  let text := "[Reflect defineMethod: #probe on: Object as: [:self | self]]";
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let result := [Digla signatureFor: text cursor: 12 session: [Digla localSessionFor: config]];
+  [t expect: [result at: "title"] equals: "defineMethod:on:as:"
+    describes: "full selector joins all keyword parts"];
+  [t assert: [[result at: "text"] includesSubstring: "3 arguments"]
+    describes: "signature reports selector arity"]]];
+
+[e test: "hover merges same-buffer and copied runtime information" do: [:t |
+  [Globals at: #DiglaHoverProbe put: [Object clone]];
+  let text := "DiglaHoverProbe";
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let result := [Digla hoverFor: text cursor: 3 session: [Digla localSessionFor: config]];
+  [t expect: [result at: "title"] equals: "DiglaHoverProbe" describes: "hover token"];
+  [t assert: [[result at: "text"] includesSubstring: "runtime global #DiglaHoverProbe"]
+    describes: "runtime data crosses the session as copied text"];
+  [t assert: [[result at: "text"] includesSubstring: "methods:"]
+    describes: "runtime summary includes bounded metadata"]]];
+
+[e test: "definition resolves a visible same-buffer binding" do: [:t |
+  let text := "let alpha := 1; [alpha printString]";
+  let result := [Digla definitionFor: text cursor: 18];
+  [t expect: [result at: "found"] equals: true describes: "definition found"];
+  [t expect: [result at: "cursor"] equals: 4 describes: "jump targets binding start"]]];
