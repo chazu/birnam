@@ -19,6 +19,8 @@ files = [
   "../../modules/digla/config.birnam",
   "../../modules/digla/session.birnam",
   "../../modules/digla/inspection.birnam",
+  "../../modules/digla/local-session.birnam",
+  "../../modules/digla/protocol.birnam",
   "../../modules/digla/render.birnam",
   "../../modules/digla/terminal.birnam",
   "../../modules/digla/position-map.birnam",

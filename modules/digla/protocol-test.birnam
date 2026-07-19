@@ -1,0 +1,60 @@
+// protocol-test.birnam — deterministic in-memory session transport tests.
+
+let e := [TestSuite named: "Digla protocol" module: #diglaProtocol];
+
+[e test: "framed-session core preserves state and stops on close" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let requests := [#[
+    [Json stringify: { "jsonrpc" -> "2.0", "id" -> 1,
+      "method" -> "birnam/session/open", "params" -> [Map new] }]
+    [Json stringify: { "jsonrpc" -> "2.0", "id" -> 2,
+      "method" -> "birnam/evaluate", "params" -> { "source" -> "[8 * 8]" } }]
+    [Json stringify: { "jsonrpc" -> "2.0", "id" -> 3,
+      "method" -> "birnam/inspect", "params" -> [Map new] }]
+    [Json stringify: { "jsonrpc" -> "2.0", "id" -> 4,
+      "method" -> "birnam/close", "params" -> [Map new] }]
+  ] asCell];
+  let responses := [#[] asCell];
+  let read := [|
+    let pending := [requests value];
+    [[pending isEmpty]
+      ifTrue: [| nil]
+      ifFalse: [|
+        let first := [pending first];
+        [requests set: [pending copyFrom: 1 to: [pending size]]];
+        first]]];
+  let write := [:body | [responses set: [[responses value] add: body]]];
+  let final := [Digla serveSessionJson: [Digla localSessionFor: config] read: read write: write];
+  let parsed := [[responses value] collect: [:body | [Json parse: body]]];
+  let evaluated := [[parsed at: 1] at: "result"];
+  let inspected := [[[parsed at: 2] at: "result"] at: "snapshot"];
+  [t expect: [final at: "status"] equals: "closed" describes: "close ends the loop"];
+  [t expect: [[responses value] size] equals: 4 describes: "one response per request"];
+  [t expect: [parsed count: [:message | [message isError]]] equals: 0
+    describes: "every emitted body parses as JSON"];
+  [t expect: [[evaluated at: "value"] at: "value"] equals: 64
+    describes: "evaluation result crosses JSON"];
+  [t expect: [[inspected at: "target"] at: "printString"] equals: "64"
+    describes: "session state survives message framing"]]];
+
+[e test: "invalid JSON and request shapes leave the session usable" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let requests := [#["{" "[]" [Json stringify: { "jsonrpc" -> "2.0", "id" -> 9,
+    "method" -> "birnam/session/open", "params" -> [Map new] }]] asCell];
+  let responses := [#[] asCell];
+  let read := [|
+    let pending := [requests value];
+    [[pending isEmpty]
+      ifTrue: [| nil]
+      ifFalse: [|
+        let first := [pending first];
+        [requests set: [pending copyFrom: 1 to: [pending size]]];
+        first]]];
+  let write := [:body | [responses set: [[responses value] add: [Json parse: body]]]];
+  [Digla serveSessionJson: [Digla localSessionFor: config] read: read write: write];
+  [t expect: [[[[responses value] at: 0] at: "error"] at: "code"] equals: -32700
+    describes: "parse failure is JSON-RPC data"];
+  [t expect: [[[[responses value] at: 1] at: "error"] at: "code"] equals: -32600
+    describes: "valid JSON with the wrong shape is rejected"];
+  [t expect: [[[[responses value] at: 2] at: "result"] at: "adapter"] equals: "local"
+    describes: "loop continues after malformed input"]]];

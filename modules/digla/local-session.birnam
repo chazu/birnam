@@ -1,0 +1,205 @@
+// local-session.birnam — synchronous live-image adapter for Digla sessions.
+//
+// This is the only Digla layer that evaluates source or retains a raw result.
+// Its responses are copied-value Maps/Vectors suitable for JSON, terminal text,
+// tests, or a future framed TCP transport.
+
+[Reflect defineMethod: #localSessionCapabilities on: Digla as: [:self |
+  { "evaluate" -> true,
+    "inspect" -> true,
+    "globals" -> true,
+    "interrupt" -> false,
+    "structuredValues" -> true,
+    "streamedOutput" -> false }
+  ] doc:
+  "Return the truthful capabilities of the synchronous local image adapter." ];
+
+[Reflect defineMethod: #localSessionFor: on: Digla as: [:self :config |
+  { "adapter" -> "local",
+    "id" -> "local",
+    "status" -> "open",
+    "nextId" -> 1,
+    "config" -> config,
+    "capabilities" -> [self localSessionCapabilities],
+    "lastValue" -> nil,
+    "hasLastValue" -> false,
+    "lastError" -> nil }
+  ] doc:
+  "Create the internal state of a synchronous session against this live image." ];
+
+[Reflect defineMethod: #sessionDisplayValue: on: Digla as: [:self :value |
+  [[value isNil] ifTrue: [| "nil"] ifFalse: [| [value printString]]]
+  ] doc:
+  "Render a local result once for the copied-value session response." ];
+
+[Reflect defineMethod: #sessionValueKindOf: on: Digla as: [:self :value |
+  let vt := [Reflect vtableOf: value];
+  [[value isNil] ifTrue: [| "nil"] ifFalse: [|
+    [[Reflect isString: value] ifTrue: [| "string"] ifFalse: [|
+      [[Reflect isSymbol: value] ifTrue: [| "symbol"] ifFalse: [|
+        [[vt == [Reflect vtableOf: true]] ifTrue: [| "boolean"] ifFalse: [|
+          [[vt == [Reflect vtableOf: 0]] ifTrue: [| "integer"] ifFalse: [|
+            [[vt == [Reflect vtableOf: 0.0]] ifTrue: [| "float"] ifFalse: [| "object"]]]]]]]]]]]]
+  ] doc:
+  "Classify a runtime value using only kinds supported by the session wire contract." ];
+
+[Reflect defineMethod: #sessionValue: on: Digla as: [:self :value |
+  let normalized := [self inspectionValue: value];
+  { "kind" -> [self sessionValueKindOf: value],
+    "value" -> [normalized at: "value"],
+    "display" -> [self sessionDisplayValue: value],
+    "rendered" -> [normalized at: "rendered"] }
+  ] doc:
+  "Copy a live result into a typed transport-safe value record." ];
+
+[Reflect defineMethod: #sessionImageIdentity on: Digla as: [:self |
+  { "kind" -> "live-image",
+    "basis" -> [db basis],
+    "generationDigest" -> [self inspectionGenerationDigest] }
+  ] doc:
+  "Describe the currently running image without exposing an image capability." ];
+
+[Reflect defineMethod: #sessionOpenResult: on: Digla as: [:self :session |
+  { "sessionId" -> [session at: "id"],
+    "adapter" -> [session at: "adapter"],
+    "image" -> [self sessionImageIdentity],
+    "capabilities" -> [session at: "capabilities"] }
+  ] doc:
+  "Return the handshake payload for an open local image session." ];
+
+[Reflect defineMethod: #userGlobalNames on: Digla as: [:self |
+  let names := [#[] asCell];
+  let count := [db attrCount: #__globals__];
+  [0 to: [count - 1] do: [:i |
+    let attribute := [db attrAt: #__globals__ index: i];
+    let name := [Reflect nameOf: attribute];
+    [[name startsWith: "__"]
+      ifTrue: [| nil]
+      ifFalse: [| [names set: [[names value] add: name]]]]]];
+  [[names value] sortBy: [:name | name]]
+  ] doc:
+  "Return sorted user-visible persisted global names without their symbol sigils." ];
+
+[Reflect defineMethod: #localEvaluate:session: on: Digla as: [:self :params :session |
+  let source := [params at: "source" ifAbsent: [| nil]];
+  [[source isNil]
+    ifTrue: [|
+      { "result" -> { "ok" -> false, "kind" -> "error",
+                       "phase" -> "request", "message" -> "evaluate requires source",
+                       "display" -> "evaluate requires source", "events" -> #[] },
+        "session" -> session }]
+    ifFalse: [|
+      let value := [Codegen evalPersisting: source];
+      let compileError := [Codegen lastError];
+      let runtimeError := [[compileError isNil] & [value isError]];
+      let failed := [[compileError notNil] | runtimeError];
+      [failed
+        ifTrue: [|
+          let message := [[compileError notNil]
+            ifTrue: [| [compileError printString]]
+            ifFalse: [| [value printString]]];
+          let phase := [[compileError notNil] ifTrue: [| "compile"] ifFalse: [| "runtime"]];
+          let next := [session at: "lastError" put: message];
+          { "result" -> { "ok" -> false, "kind" -> "error", "phase" -> phase,
+                           "message" -> message, "display" -> message, "events" -> #[] },
+            "session" -> next }]
+        ifFalse: [|
+          let copied := [self sessionValue: value];
+          let s1 := [session at: "lastValue" put: value];
+          let s2 := [s1 at: "hasLastValue" put: true];
+          let next := [s2 at: "lastError" put: nil];
+          { "result" -> { "ok" -> true, "kind" -> "value", "value" -> copied,
+                           "display" -> [copied at: "display"], "events" -> #[] },
+            "session" -> next }]]]]
+  ] doc:
+  "Evaluate one explicit source form and return structured success or failure data." ];
+
+[Reflect defineMethod: #localInspect:session: on: Digla as: [:self :params :session |
+  let globalName := [params at: "globalName" ifAbsent: [| nil]];
+  [[globalName notNil]
+    ifTrue: [|
+      { "result" -> { "snapshot" -> [self inspectGlobal: globalName] }, "session" -> session }]
+    ifFalse: [|
+      [[session at: "hasLastValue"]
+        ifTrue: [|
+          { "result" -> { "snapshot" -> [self inspect: [session at: "lastValue"]] },
+            "session" -> session }]
+        ifFalse: [| { "error" -> "nothing has been evaluated yet", "session" -> session }]]]]
+  ] doc:
+  "Inspect a named global or the session's last successful local result." ];
+
+[Reflect defineMethod: #localSessionMethod:params:session: on: Digla as: [:self :method :params :session |
+  let outcome := [nil asCell];
+  [[method = "birnam/session/open"]
+    ifTrue: [| [outcome set: { "result" -> [self sessionOpenResult: session], "session" -> session }]]
+    ifFalse: [| nil]];
+  [[method = "birnam/evaluate"]
+    ifTrue: [| [outcome set: [self localEvaluate: params session: session]]]
+    ifFalse: [| nil]];
+  [[method = "birnam/inspect"]
+    ifTrue: [| [outcome set: [self localInspect: params session: session]]]
+    ifFalse: [| nil]];
+  [[method = "birnam/globals"]
+    ifTrue: [| [outcome set: {
+      "result" -> { "globals" -> [self userGlobalNames] }, "session" -> session }]]
+    ifFalse: [| nil]];
+  [[method = "birnam/interrupt"]
+    ifTrue: [| [outcome set: {
+      "result" -> { "interrupted" -> false, "reason" -> "synchronous session is idle" },
+      "session" -> session }]]
+    ifFalse: [| nil]];
+  [[method = "birnam/close"]
+    ifTrue: [|
+      let next := [session at: "status" put: "closed"];
+      [outcome set: { "result" -> { "closed" -> true }, "session" -> next }]]
+    ifFalse: [| nil]];
+  [[[outcome value] isNil]
+    ifTrue: [| { "unknown" -> true, "session" -> session }]
+    ifFalse: [| [outcome value]]]
+  ] doc:
+  "Dispatch the runtime method subset implemented by a local image session." ];
+
+[Reflect defineMethod: #performLocalSessionRequest:in: on: Digla as: [:self :request :session |
+  let id := [request at: "id" ifAbsent: [| nil]];
+  let method := [request at: "method" ifAbsent: [| ""]];
+  let params := [request at: "params" ifAbsent: [| [Map new]]];
+  let closed := [[session at: "status"] = "closed"];
+  [[closed & [[method = "birnam/session/open"] not]]
+    ifTrue: [|
+      [self sessionReply:
+        [self sessionError: id code: -32001 message: "session is closed" data: nil]
+        state: session]]
+    ifFalse: [|
+      let outcome := [self localSessionMethod: method params: params session: session];
+      let next := [outcome at: "session"];
+      let unknown := [outcome at: "unknown" ifAbsent: [| false]];
+      [unknown
+        ifTrue: [|
+          [self sessionReply:
+            [self sessionError: id code: -32601 message: "method not found" data: method]
+            state: next]]
+        ifFalse: [|
+          let localError := [outcome at: "error" ifAbsent: [| nil]];
+          [[localError notNil]
+            ifTrue: [|
+              [self sessionReply:
+                [self sessionError: id code: -32002 message: localError data: nil]
+                state: next]]
+            ifFalse: [|
+              [self sessionReply:
+                [self sessionSuccess: id result: [outcome at: "result"]]
+                state: next]]]]]]]
+  ] doc:
+  "Handle one JSON-RPC-shaped request against the synchronous local adapter." ];
+
+[Reflect defineMethod: #performSessionRequest:in: on: Digla as: [:self :request :session |
+  let adapter := [session at: "adapter" ifAbsent: [| ""]];
+  [[adapter = "local"]
+    ifTrue: [| [self performLocalSessionRequest: request in: session]]
+    ifFalse: [|
+      let id := [request at: "id" ifAbsent: [| nil]];
+      [self sessionReply:
+        [self sessionError: id code: -32000 message: "unsupported session adapter" data: adapter]
+        state: session]]]
+  ] doc:
+  "Route a runtime request without exposing adapter details to the editor model." ];

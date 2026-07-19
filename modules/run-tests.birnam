@@ -28,6 +28,10 @@
 [System load: "modules/digla/digla-test.birnam"];
 [System load: "modules/digla/inspection.birnam"];
 [System load: "modules/digla/inspection-test.birnam"];
+[System load: "modules/digla/local-session.birnam"];
+[System load: "modules/digla/session-test.birnam"];
+[System load: "modules/digla/protocol.birnam"];
+[System load: "modules/digla/protocol-test.birnam"];
 [System load: "modules/digla/position-map.birnam"];
 [System load: "modules/digla/position-map-test.birnam"];
 [System load: "modules/digla/editor.birnam"];

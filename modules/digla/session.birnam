@@ -1,14 +1,50 @@
-// session.birnam — the first value-only editor/session state shape.
+// session.birnam — transport-neutral Digla session requests and editor state.
 //
-// This is deliberately independent of Termbox. It can be tested without a
-// controlling terminal and will become the seam between the editor model and
-// local/remote image sessions.
+// The public seam is JSON-RPC-shaped Maps containing transport-safe values.
+// A session adapter may retain live capabilities internally, but neither the
+// editor nor a renderer needs to know whether the adapter is local or remote.
+
+[Reflect defineMethod: #sessionRequest:params:id: on: Digla as: [:self :method :params :id |
+  { "jsonrpc" -> "2.0", "id" -> id, "method" -> method, "params" -> params }
+  ] doc:
+  "Build one transport-safe runtime-session request." ];
+
+[Reflect defineMethod: #sessionSuccess:result: on: Digla as: [:self :id :result |
+  { "jsonrpc" -> "2.0", "id" -> id, "result" -> result }
+  ] doc:
+  "Build one JSON-RPC success response value." ];
+
+[Reflect defineMethod: #sessionError:code:message:data: on: Digla as: [:self :id :code :message :data |
+  let error := { "code" -> code, "message" -> message, "data" -> data };
+  { "jsonrpc" -> "2.0", "id" -> id, "error" -> error }
+  ] doc:
+  "Build one JSON-RPC error response value without writing it to a transport." ];
+
+[Reflect defineMethod: #sessionReply:state: on: Digla as: [:self :message :session |
+  { "message" -> message, "session" -> session }
+  ] doc:
+  "Pair a transport-safe response with the adapter's next internal state." ];
+
+[Reflect defineMethod: #sessionResultOf: on: Digla as: [:self :reply |
+  let message := [reply at: "message"];
+  [message at: "result" ifAbsent: [| nil]]
+  ] doc:
+  "Return the application result from a session reply, or nil for a protocol error." ];
+
+[Reflect defineMethod: #callSession:params:in: on: Digla as: [:self :method :params :session |
+  let id := [session at: "nextId"];
+  let advanced := [session at: "nextId" put: [id + 1]];
+  let request := [self sessionRequest: method params: params id: id];
+  [self performSessionRequest: request in: advanced]
+  ] doc:
+  "Perform one request through the selected session adapter and return reply plus next state." ];
 
 [Reflect defineMethod: #sessionStateFor: on: Digla as: [:self :config |
   let s0 := [Map new];
   let s1 := [s0 at: "config" put: config];
-  let s2 := [s1 at: "buffer" put: ""];
-  let s3 := [s2 at: "cursor" put: 0];
-  let s4 := [s3 at: "history" put: #[]];
-  [s4 at: "transcript" put: #[]]] doc:
-  "Create the initial serializable editor/session state for a Digla config."];
+  let s2 := [s1 at: "session" put: [self localSessionFor: config]];
+  let s3 := [s2 at: "buffer" put: ""];
+  let s4 := [s3 at: "cursor" put: 0];
+  let s5 := [s4 at: "history" put: #[]];
+  [s5 at: "transcript" put: #[]]] doc:
+  "Create terminal-independent editor state around a pluggable runtime session."];

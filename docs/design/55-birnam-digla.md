@@ -1,6 +1,6 @@
 # 55 — Birnam Digla
 
-> **Status:** Proposed, 2026-07-16. This is a product-facing application design
+> **Status:** In progress, updated 2026-07-19. This is a product-facing application design
 > over the shipped reflective runtime, relational Store, images, project
 > workflow, HTTP/HTML/JSON modules, and live-module/isolate boundaries. The
 > implementation sequence deliberately starts as a local, read-only report and
@@ -52,6 +52,15 @@ The second release can serve that same report over loopback HTTP. A later
 worker-facing release adds a separate control-plane Store containing serializable
 worker observations; it does not attempt to merge another process's Store or
 ship raw object handles across the isolate boundary.
+
+The first object-inspection slice is implemented in `modules/digla/inspection.birnam`:
+named and anonymous targets, current facts, effective methods, generation and
+basis labels, deterministic text, and structured missing-global warnings all
+share one capability-free snapshot. The terminal exposes it through `:inspect`.
+The transport-neutral session layer also carries the same snapshot over framed
+JSON with `--session-stdio`, so machine clients do not need to scrape terminal
+text. A general `snapshot: spec`, JSON file artifact, source-on-demand, history,
+HTML, and HTTP remain the next Design 55 layers.
 
 ## 3. Governing invariants
 
@@ -353,7 +362,7 @@ examples/digla/README.md
 current value and the basis used for its update. A fresh process produces the
 same semantic output.
 
-### Slice 1 — one local object card
+### Slice 1 — one local object card — implemented
 
 **Goal:** answer “what is this object?” in text.
 
@@ -368,7 +377,7 @@ enumerate the whole image, add JSON, or add HTTP.
 a named object, an anonymous object, an object with no facts, and a fact with a
 string value. The method performs no Store writes.
 
-### Slice 2 — effective method card
+### Slice 2 — effective method card — implemented
 
 **Goal:** connect the object to its behavior.
 
@@ -380,7 +389,7 @@ only `sourceAvailable`.
 selector, a primitive, and a Birnam-defined method. A shadowed selector appears
 once, with the nearest definition winning.
 
-### Slice 3 — inspect a named global
+### Slice 3 — inspect a named global — implemented
 
 **Goal:** make the application usable from a project main without passing a
 local object around.
@@ -392,7 +401,7 @@ do not parse or evaluate a user expression.
 **Acceptance:** `main.birnam` can inspect `#Fixture` and `#db` by name. Missing
 globals produce a structured warning/result rather than a VM failure.
 
-### Slice 4 — snapshot record and JSON file
+### Slice 4 — snapshot record and JSON file — protocol serialization implemented
 
 **Goal:** freeze the first machine-readable contract.
 
@@ -404,6 +413,10 @@ parsed structure rather than unstable formatting.
 **Acceptance:** JSON contains only serializable values; no Oop, closure, vtable
 pointer, or runtime handle can reach the renderer. Repeated snapshots of the
 same fixture have equal semantic content.
+
+The live snapshot and session response are now JSON-safe and covered by
+round-trip tests. The remaining work in this slice is the data-driven
+`snapshot: spec` selector plus an explicit file artifact/golden acceptance path.
 
 ### Slice 5 — source lookup on demand
 

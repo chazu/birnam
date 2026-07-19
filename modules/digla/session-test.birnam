@@ -1,0 +1,58 @@
+// session-test.birnam — transport-neutral live-image session contracts.
+
+let e := [TestSuite named: "Digla session" module: #diglaSession];
+
+[e test: "local session handshake is transport-safe and truthful" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let session := [Digla localSessionFor: config];
+  let reply := [Digla callSession: "birnam/session/open" params: [Map new] in: session];
+  let result := [Digla sessionResultOf: reply];
+  let capabilities := [result at: "capabilities"];
+  let encoded := [Json stringify: [reply at: "message"]];
+  let decoded := [Json parse: encoded];
+  [t expect: [result at: "adapter"] equals: "local" describes: "adapter identity"];
+  [t expect: [capabilities at: "evaluate"] equals: true describes: "evaluation advertised"];
+  [t expect: [capabilities at: "interrupt"] equals: false describes: "interrupt is truthful"];
+  [t assert: [encoded startsWith: "{"] describes: "handshake is JSON-shaped"];
+  [t expect: [decoded isError] equals: false describes: "handshake round-trips as JSON"]]];
+
+[e test: "evaluation copies values and preserves the last success across errors" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let first := [Digla callSession: "birnam/evaluate" params: { "source" -> "[40 + 2]" }
+    in: [Digla localSessionFor: config]];
+  let firstResult := [Digla sessionResultOf: first];
+  let failed := [Digla callSession: "birnam/evaluate" params: { "source" -> "[40 +" }
+    in: [first at: "session"]];
+  let failedResult := [Digla sessionResultOf: failed];
+  let inspected := [Digla callSession: "birnam/inspect" params: [Map new]
+    in: [failed at: "session"]];
+  let snapshot := [[Digla sessionResultOf: inspected] at: "snapshot"];
+  [t expect: [firstResult at: "ok"] equals: true describes: "successful evaluation"];
+  [t expect: [[firstResult at: "value"] at: "value"] equals: 42 describes: "copied scalar value"];
+  [t expect: [failedResult at: "phase"] equals: "compile" describes: "structured compile failure"];
+  [t expect: [[snapshot at: "target"] at: "printString"] equals: "42"
+    describes: "failed evaluation does not erase the last success"];
+  [t assert: [[[Json stringify: [first at: "message"]] includesSubstring: "structured"] not]
+    describes: "serialization succeeds without raw capabilities"]]];
+
+[e test: "inspection, globals, close, and protocol failures are explicit" do: [:t |
+  [Globals at: #DiglaSessionVisible put: 7];
+  [Globals at: #__DiglaSessionInternal put: 8];
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let session := [Digla localSessionFor: config];
+  let inspected := [Digla callSession: "birnam/inspect"
+    params: { "globalName" -> "DiglaSessionVisible" } in: session];
+  let globalsReply := [Digla callSession: "birnam/globals" params: [Map new]
+    in: [inspected at: "session"]];
+  let names := [[Digla sessionResultOf: globalsReply] at: "globals"];
+  let closed := [Digla callSession: "birnam/close" params: [Map new]
+    in: [globalsReply at: "session"]];
+  let rejected := [Digla callSession: "birnam/evaluate" params: { "source" -> "1" }
+    in: [closed at: "session"]];
+  let unknown := [Digla callSession: "birnam/nope" params: [Map new] in: session];
+  [t expect: [[[[Digla sessionResultOf: inspected] at: "snapshot"] at: "target"] at: "globalName"]
+    equals: "DiglaSessionVisible" describes: "named inspection"];
+  [t expect: [names includes: "DiglaSessionVisible"] equals: true describes: "visible global listed"];
+  [t expect: [names includes: "__DiglaSessionInternal"] equals: false describes: "internal global hidden"];
+  [t expect: [[[rejected at: "message"] at: "error"] at: "code"] equals: -32001 describes: "closed session rejected"];
+  [t expect: [[[unknown at: "message"] at: "error"] at: "code"] equals: -32601 describes: "unknown method rejected"]]];

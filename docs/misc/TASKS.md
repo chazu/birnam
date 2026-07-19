@@ -66,21 +66,23 @@ until product evidence selects the next failure model.
 
 ## Proposed Applications
 
-- [ ] **Birnam Digla / Design 55** — begin with a local, read-only object
-  card over `Reflect` and the Store; add effective methods, named-global lookup,
-  deterministic JSON/HTML snapshots, loopback HTTP, image-facing reports, and
-  only then worker observations and rollout history. The complete sequence,
-  ownership boundary, snapshot schema, and acceptance gates live in
-  [design 55](../design/55-birnam-digla.md). The first implementation
-  slice should be Slices 0–3 as one narrow fixture project.
+- [ ] **Birnam Digla / Design 55** — Slices 1–3 now provide a local, read-only,
+  capability-free object snapshot over `Reflect` and the Store, including
+  effective methods, named-global lookup, deterministic text, and structured
+  warnings. The snapshot round-trips through the framed JSON session protocol.
+  Next: finish Slice 4 with `snapshot: spec` plus a file artifact, then add
+  source-on-demand and deterministic HTML. The full sequence remains in
+  [design 55](../design/55-birnam-digla.md).
 
-- [x] **Digla terminal editor foundation / Design 58** (2026-07-17) — the
+- [x] **Digla terminal editor foundation / Design 58** (updated 2026-07-19) — the
   multi-file `modules/digla/` project now includes a headless editor model,
   UTF-8 byte-boundary cursor movement, history, local evaluation, terminal-cell
   wrapped transcript rendering, an optional Termbox `--ui` entrypoint, and the initial source/LSP
   PositionMap conversion plus terminal-cell DisplayLayout mapping, lexical
-  syntax spans, and parser-backed diagnostics. Next: add selection and
-  autocomplete on the same source-coordinate seam.
+  syntax spans, and parser-backed diagnostics. Evaluation, inspection, globals,
+  and image identity now use one JSON-RPC-shaped session boundary; terminal
+  commands and `--session-stdio` consume the same copied-value responses. Next:
+  add the loopback TCP adapter, selection, and autocomplete on the same seams.
 
 ---
 

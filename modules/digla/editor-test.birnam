@@ -80,3 +80,21 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t assert: [[[help at: "transcript"] last] includesSubstring: ":inspect NAME"] describes: "help lists inspect"];
   [t assert: [[[missing at: "transcript"] last] includesSubstring: "global not found"] describes: "missing global warning"];
   [t expect: [unknown at: "status"] equals: "command error" describes: "unknown command status"]]];
+
+[e test: "editor routes runtime work through one session and preserves last success" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let evaluated := [Digla submitIn: [initial at: "buffer" put: "[6 * 7]"]];
+  let failed := [Digla submitIn: [evaluated at: "buffer" put: "[6 *"]];
+  let inspected := [Digla submitIn: [failed at: "buffer" put: ":inspect"]];
+  let globals := [Digla submitIn: [inspected at: "buffer" put: ":globals"]];
+  let sessionInfo := [Digla submitIn: [globals at: "buffer" put: ":session"]];
+  [t expect: [[[evaluated at: "session"] at: "nextId"] > [[initial at: "session"] at: "nextId"]]
+    equals: true describes: "evaluation advances session request ids"];
+  [t expect: [failed at: "status"] equals: "error" describes: "structured evaluation failure"];
+  [t assert: [[[inspected at: "transcript"] last] includesSubstring: "value:      42"]
+    describes: "last successful value survives a failure"];
+  [t assert: [[[globals at: "transcript"] last] includesSubstring: "#String"]
+    describes: "globals command uses session result"];
+  [t assert: [[[sessionInfo at: "transcript"] last] includesSubstring: "structuredValues=true"]
+    describes: "session command exposes capabilities"]]];

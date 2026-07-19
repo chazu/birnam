@@ -8,6 +8,7 @@ let config := [Digla configForArgs: args];
   ifTrue: [| [System println: [config printString]]]
   ifFalse: [|
     let ui := [[args includes: "--ui"] | [args includes: "--interactive"]];
+    let sessionStdio := [args includes: "--session-stdio"];
     let runUi := [|
       let init := [Termbox init];
       [[init = 0]
@@ -16,5 +17,8 @@ let config := [Digla configForArgs: args];
           [Digla runTerminalLoop: [Digla editorStateFor: config]];
           [Termbox shutdown]]
         ifFalse: [| [System println: "Digla: unable to initialize Termbox"]]]];
-    [ui ifTrue: [| [runUi value]]];
-    [ui ifFalse: [| [System println: [Digla summary: config]]]]]];
+    [sessionStdio
+      ifTrue: [| [Digla serveSessionStdio: [Digla localSessionFor: config]]]
+      ifFalse: [|
+        [ui ifTrue: [| [runUi value]]];
+        [ui ifFalse: [| [System println: [Digla summary: config]]]]]]]];

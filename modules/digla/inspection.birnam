@@ -74,6 +74,12 @@
   ] doc:
   "Return deterministic transport-safe effective-method cards for `value`." ];
 
+[Reflect defineMethod: #inspectionGenerationDigest on: Digla as: [:self |
+  let digest := [Codegen currentGenerationDigest];
+  [[Reflect isString: digest] ifTrue: [| digest] ifFalse: [| nil]]
+  ] doc:
+  "Return the active generation digest as a String, or nil when it is unavailable." ];
+
 [Reflect defineMethod: #inspectionSnapshotFor:name:warnings: on: Digla as: [:self :value :name :warnings |
   let methods := [self inspectionMethodsOf: value];
   let firstMethod := [methods at: 0 ifAbsent: [| nil]];
@@ -88,7 +94,7 @@
   { "schema" -> 1,
     "basis" -> [db basis],
     "target" -> target,
-    "generationDigest" -> [Codegen currentGenerationDigest],
+    "generationDigest" -> [self inspectionGenerationDigest],
     "sections" -> #["object" "facts" "methods"],
     "object" -> target,
     "facts" -> [self inspectionFactsOf: value],
@@ -108,7 +114,7 @@
   { "schema" -> 1,
     "basis" -> [db basis],
     "target" -> target,
-    "generationDigest" -> [Codegen currentGenerationDigest],
+    "generationDigest" -> [self inspectionGenerationDigest],
     "sections" -> #[],
     "object" -> nil,
     "facts" -> #[],
@@ -138,7 +144,9 @@
   [sb addLine: ["value:      " , [target at: "printString"]]];
   [sb addLine: ["vtable:     " , shownVtable]];
   [sb addLine: ["basis:      " , [[snapshot at: "basis"] printString]]];
-  [sb addLine: ["generation: " , [snapshot at: "generationDigest"]]];
+  let digest := [snapshot at: "generationDigest"];
+  let shownDigest := [[digest isNil] ifTrue: [| "(unavailable)"] ifFalse: [| digest]];
+  [sb addLine: ["generation: " , shownDigest]];
   [sb addLine: ""];
   [sb addLine: "facts:"];
   [[[snapshot at: "facts"] isEmpty]

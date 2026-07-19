@@ -1,9 +1,10 @@
 # 58 — Terminal REPL and Programming Environment
 
-> **Status:** In progress, 2026-07-17. This design explores a terminal-native
+> **Status:** In progress, updated 2026-07-19. This design explores a terminal-native
 > programming environment for Birnam, backed by termbox2, the project-aware
 > language service, and an explicit session connection to a running image. It
-> does not change the current REPL, LSP, or socket protocol yet.
+> leaves the current REPL, LSP, and socket REPL intact; an initial sibling
+> runtime-session protocol is now available over framed stdio.
 
 ## 1. The question
 
@@ -35,7 +36,10 @@ composition:
 ```text
 modules/digla/digla.birnam       module entry
 modules/digla/config.birnam      AppConfig adapter
-modules/digla/session.birnam     value-only editor/session state
+modules/digla/session.birnam     transport-neutral request/reply and editor state
+modules/digla/inspection.birnam  capability-free live-image snapshots
+modules/digla/local-session.birnam synchronous live-image session adapter
+modules/digla/protocol.birnam    injected JSON loop and framed stdio adapter
 modules/digla/render.birnam      headless startup summary
 modules/digla/terminal.birnam    local Termbox event loop
 modules/digla/position-map.birnam source-byte/LSP UTF-16 conversion
@@ -64,8 +68,11 @@ arrow keys. The model is headless and stores source cursors as UTF-8 byte
 boundaries. The initial PositionMap source/LSP conversion and terminal-cell
 DisplayLayout projection slices are implemented and tested. Lexical syntax
 highlights and parser-backed diagnostics are now projected through that same
-source-coordinate seam; selection, completion, and remote sessions remain later
-slices.
+source-coordinate seam. Evaluation, inspection, global enumeration, and image
+identity now cross one JSON-RPC-shaped `ReplSession` contract instead of being
+called directly by the editor. `--session-stdio` exposes that same contract as
+Content-Length-framed JSON for scripts and AI agents. Selection, completion,
+viewport refinements, and a loopback TCP adapter remain later slices.
 
 ## 2. Goals and boundaries
 
@@ -349,12 +356,20 @@ The core invariants are:
    terminal-cell-aware wrapping for evaluation results, lexical syntax spans,
    and parser-backed diagnostics. Selection, autocomplete, and viewport
    refinements are still open.
-4. **Compatibility remote session.** Connect the same UI to the current
-   line-oriented socket REPL so the client/session boundary is exercised early.
-5. **Framed session protocol.** Add JSON-RPC requests, structured results,
-   capabilities, output notifications, and bounded interrupt behavior.
-6. **Runtime-aware assistance.** Add explicit reflection, globals, docs, and
-   runtime completion without making unsaved editor text mutate the image.
+4. **Compatibility remote session — superseded by the framed seam.** The
+   prompt-oriented socket REPL cannot preserve structured values, errors, or
+   capabilities without ambiguous text parsing. Keep it compatible for comint
+   clients, but put Digla's next remote adapter over the framed contract.
+5. **Framed session protocol — initial stdio slice implemented.** JSON-RPC-shaped
+   `open`, `evaluate`, `inspect`, `globals`, `interrupt`, and `close` requests now
+   run through a transport-neutral value layer. `--session-stdio` reuses the
+   shipped Content-Length framing. Evaluation results, compile/runtime errors,
+   inspection snapshots, image identity, and truthful capabilities are copied
+   values; output notifications, loopback TCP delivery, and bounded interrupt
+   behavior remain open.
+6. **Runtime-aware assistance — inspection slice implemented.** `:inspect`,
+   `:globals`, and `:session` use the shared session layer without evaluating
+   report expressions. Docs, runtime completion, and source-on-demand remain.
 
 The first usable milestone is complete when a user can launch the terminal editor,
 edit and evaluate multiline Birnam forms locally, recall history, see parser-backed
@@ -364,9 +379,9 @@ loopback.
 ## 9. Open decisions
 
 - final CLI spelling: `birnam term`, `birnam --repl=term`, or a separate binary;
-- whether the first remote adapter translates the existing prompt protocol or
-  requires the framed protocol immediately;
+- the first Digla remote adapter will use the framed protocol; translating the
+  prompt REPL would discard the structured contract already implemented;
 - history-file location, retention, and opt-out behavior;
-- whether runtime values are returned as print strings first or as a small typed
-  inspection schema from the beginning; and
+- runtime values use a small typed copied-value record, while deeper inspection
+  uses the capability-free snapshot schema from Design 55;
 - authentication and session ownership once connections can leave loopback.
