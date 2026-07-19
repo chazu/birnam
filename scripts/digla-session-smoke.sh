@@ -16,6 +16,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
+free_port() {
+  perl -MIO::Socket::INET -e '
+    my $socket = IO::Socket::INET->new(LocalAddr => "127.0.0.1", LocalPort => 0,
+      Listen => 1, Proto => "tcp") or die $!;
+    print $socket->sockport;
+  '
+}
+
 "$bin" build "$project" >/dev/null
 
 # The evaluated writes must become JSON events. Any direct System output would
@@ -64,24 +72,30 @@ while ($stream =~ s/^Content-Length: (\d+)\r\n\r\n//) {
   push @messages, decode_json($body);
 }
 die "unframed Digla stdout bytes\n" if length($stream);
-die "expected eight Digla messages\n" unless @messages == 8;
+die "expected nine Digla messages\n" unless @messages == 9;
 
-my ($open, $output, $evaluated, $large_output, $large_evaluated, $timed_out,
+my ($open, $first_output, $second_output, $evaluated, $large_output, $large_evaluated, $timed_out,
   $range_timed_out, $closed) = @messages;
 my $capabilities = $open->{result}{capabilities};
 die "output events not advertised\n" unless $capabilities->{outputEvents};
 die "output notifications not advertised\n" unless $capabilities->{outputNotifications};
-die "synchronous output incorrectly advertised as streamed\n" if $capabilities->{streamedOutput};
+die "real-time output not advertised\n" unless $capabilities->{streamedOutput};
 die "cooperative deadlines not advertised\n" unless $capabilities->{cooperativeDeadline};
 die "protocol interrupt incorrectly advertised\n" if $capabilities->{interrupt};
 
-die "output notification missing\n" unless $output->{method} eq "birnam/output";
-die "wrong output request correlation\n" unless $output->{params}{requestId} == 2;
-die "captured output text changed\n" unless $output->{params}{event}{text} eq "hello\nthere";
-die "output sequence changed\n" unless $output->{params}{event}{sequence} == 1;
-die "short output marked truncated\n" if $output->{params}{event}{truncated};
+die "first output notification missing\n" unless $first_output->{method} eq "birnam/output";
+die "wrong first output request correlation\n" unless $first_output->{params}{requestId} == 2;
+die "first output text changed\n" unless $first_output->{params}{event}{text} eq "hello\n";
+die "first output sequence changed\n" unless $first_output->{params}{event}{sequence} == 1;
+die "first output marked truncated\n" if $first_output->{params}{event}{truncated};
+die "second output notification missing\n" unless $second_output->{method} eq "birnam/output";
+die "wrong second output request correlation\n" unless $second_output->{params}{requestId} == 2;
+die "second output text changed\n" unless $second_output->{params}{event}{text} eq "there";
+die "second output sequence changed\n" unless $second_output->{params}{event}{sequence} == 2;
+die "second output marked truncated\n" if $second_output->{params}{event}{truncated};
 die "evaluation value changed\n" unless $evaluated->{result}{value}{value} == 42;
 die "buffered event fallback missing\n" unless @{$evaluated->{result}{events}} == 1;
+die "buffered event fallback changed\n" unless $evaluated->{result}{events}[0]{text} eq "hello\nthere";
 die "large output notification missing\n" unless $large_output->{method} eq "birnam/output";
 my $large_event = $large_output->{params}{event};
 die "large output not bounded\n" unless length($large_event->{text}) == 262144;
@@ -96,14 +110,95 @@ die "integer timeout flag missing\n" unless $range_timed_out->{result}{timedOut}
 die "session did not close\n" unless $closed->{result}{closed};
 ' "$tmp/replies"
 
+# Prove that a captured write crosses TCP before its evaluation completes. A
+# buffered-after-eval implementation sees essentially no gap between these two
+# frames; the application-local sink delivers the first one before the long loop.
+port="$(free_port)"
+"$bin" run "$project" -- --session-listen-once --port="$port" >"$tmp/stream-server" 2>&1 &
+remote_pid=$!
+ready=0
+for _ in $(seq 1 100); do
+  if grep -q "listening on 127.0.0.1:$port" "$tmp/stream-server" 2>/dev/null; then
+    ready=1
+    break
+  fi
+  if ! kill -0 "$remote_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$ready" -ne 1 ]]; then
+  echo "Digla streaming session server did not become ready" >&2
+  exit 1
+fi
+
+perl -MIO::Socket::INET -MJSON::PP -MTime::HiRes=time -e '
+use bytes;
+my $port = shift;
+my $socket = IO::Socket::INET->new(PeerAddr => "127.0.0.1", PeerPort => $port,
+  Proto => "tcp") or die $!;
+sub send_request {
+  my ($request) = @_;
+  my $body = encode_json($request);
+  print $socket "Content-Length: ", length($body), "\r\n\r\n", $body;
+}
+sub receive_message {
+  my $header = "";
+  while ($header !~ /\r\n\r\n\z/) {
+    my $byte;
+    sysread($socket, $byte, 1) == 1 or die "streaming session EOF\n";
+    $header .= $byte;
+  }
+  $header =~ /Content-Length: (\d+)/ or die "streaming response length missing\n";
+  my $length = $1;
+  my $body = "";
+  while (length($body) < $length) {
+    my $chunk;
+    sysread($socket, $chunk, $length - length($body)) or die "streaming body EOF\n";
+    $body .= $chunk;
+  }
+  decode_json($body);
+}
+send_request({jsonrpc => "2.0", id => 1, method => "birnam/session/open", params => {}});
+my $open = receive_message();
+die "streamed output capability missing\n" unless $open->{result}{capabilities}{streamedOutput};
+my $started = time;
+send_request({jsonrpc => "2.0", id => 2, method => "birnam/evaluate", params => {
+  source => q{[System println: "early"]; [1 to: 250000 do: [:i | nil]]; 42}}});
+my $output = receive_message();
+my $output_ms = (time - $started) * 1000;
+die "first streaming frame is not output\n" unless $output->{method} eq "birnam/output";
+die "streaming output text changed\n" unless $output->{params}{event}{text} eq "early\n";
+my $response = receive_message();
+my $response_ms = (time - $started) * 1000;
+die "streaming evaluation value changed\n" unless $response->{result}{value}{value} == 42;
+die "output was buffered until evaluation completed\n" unless $response_ms - $output_ms > 100;
+printf "output %.1f ms result %.1f ms gap %.1f ms\n",
+  $output_ms, $response_ms, $response_ms - $output_ms;
+send_request({jsonrpc => "2.0", id => 3, method => "birnam/close", params => {}});
+receive_message();
+' "$port" >"$tmp/stream-timing" &
+stream_client_pid=$!
+for _ in $(seq 1 100); do
+  if ! kill -0 "$stream_client_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+if kill -0 "$stream_client_pid" 2>/dev/null; then
+  kill "$stream_client_pid" 2>/dev/null || true
+  wait "$stream_client_pid" 2>/dev/null || true
+  echo "Digla real-time output probe did not finish" >&2
+  exit 1
+fi
+wait "$stream_client_pid"
+wait "$remote_pid"
+remote_pid=""
+
 # Exercise the same lazy TCP adapter used by the terminal editor. The probe
 # submits through the terminal-independent editor model so transport output,
 # value insertion, state threading, and close semantics all cross the socket.
-port="$(perl -MIO::Socket::INET -e '
-  my $socket = IO::Socket::INET->new(LocalAddr => "127.0.0.1", LocalPort => 0,
-    Listen => 1, Proto => "tcp") or die $!;
-  print $socket->sockport;
-')"
+port="$(free_port)"
 "$bin" run "$project" -- --session-listen-once --port="$port" >"$tmp/remote-server" 2>&1 &
 remote_pid=$!
 ready=0
@@ -123,7 +218,7 @@ if [[ "$ready" -ne 1 ]]; then
   exit 1
 fi
 
-probe="let c := [Digla configAtPath: nil environment: [Map new] args: #[\"--port=$port\"]]; let s := [Digla editorStateFor: c]; let switched := [Digla submitIn: [s at: \"buffer\" put: \":connect remote\"]]; [System println: [\"REMOTE-ADAPTER:\" , [[switched at: \"session\"] at: \"adapter\"]]]; let r := [Digla submitIn: [switched at: \"buffer\" put: \"[System println: 7]; [6 * 7]\"]]; let lines := [r at: \"transcript\"]; [System println: [\"REMOTE-LINES:\" , [[lines size] printString]]]; [System println: [\"REMOTE-INPUT:\" , [lines at: 2]]]; [System println: [\"REMOTE-OUTPUT:\" , [lines at: 3]]]; [System println: [\"REMOTE-VALUE:\" , [lines at: 4]]]; let closed := [Digla callSession: \"birnam/close\" params: [Map new] in: [r at: \"session\"]]; [System println: [\"REMOTE-CLOSED:\" , [[[Digla sessionResultOf: closed] at: \"closed\"] printString]]]"
+probe="let c := [Digla configAtPath: nil environment: [Map new] args: #[\"--port=$port\"]]; let s := [Digla editorStateFor: c]; let switched := [Digla submitIn: [s at: \"buffer\" put: \":connect remote\"]]; [System println: [\"REMOTE-ADAPTER:\" , [[switched at: \"session\"] at: \"adapter\"]]]; let r := [Digla submitIn: [switched at: \"buffer\" put: \"[System print: 7]; [System println: 8]; [6 * 7]\"]]; let lines := [r at: \"transcript\"]; [System println: [\"REMOTE-LINES:\" , [[lines size] printString]]]; [System println: [\"REMOTE-INPUT:\" , [lines at: 2]]]; [System println: [\"REMOTE-OUTPUT:\" , [lines at: 3]]]; [System println: [\"REMOTE-VALUE:\" , [lines at: 4]]]; let closed := [Digla callSession: \"birnam/close\" params: [Map new] in: [r at: \"session\"]]; [System println: [\"REMOTE-CLOSED:\" , [[[Digla sessionResultOf: closed] at: \"closed\"] printString]]]"
 printf '%s\n:quit\n' "$probe" | "$bin" run "$project" --repl=tty -- \
   --port="$port" >"$tmp/remote-client" 2>&1 &
 client_pid=$!
@@ -156,7 +251,7 @@ remote_pid=""
 
 grep -q '^birnam> REMOTE-ADAPTER:tcp$' "$tmp/remote-client"
 grep -q '^REMOTE-LINES:5$' "$tmp/remote-client"
-grep -q '^REMOTE-INPUT:> \[System println: 7\]; \[6 \* 7\]$' "$tmp/remote-client"
-grep -q '^REMOTE-OUTPUT:7$' "$tmp/remote-client"
+grep -q '^REMOTE-INPUT:> \[System print: 7\]; \[System println: 8\]; \[6 \* 7\]$' "$tmp/remote-client"
+grep -q '^REMOTE-OUTPUT:78$' "$tmp/remote-client"
 grep -q '^REMOTE-VALUE:42$' "$tmp/remote-client"
 grep -q '^REMOTE-CLOSED:true$' "$tmp/remote-client"

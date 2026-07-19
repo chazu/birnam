@@ -28,6 +28,8 @@ const output_truncated_suffix = "\n[Digla output truncated at 262144 bytes]\n";
 var output_capture_active = false;
 var output_bytes: std.ArrayListUnmanaged(u8) = .{};
 var output_truncated = false;
+var output_sink: Oop = null;
+var output_sequence: usize = 0;
 var evaluation_deadline_active = false;
 var evaluation_deadline_start: std.time.Instant = undefined;
 var evaluation_deadline_ns: u64 = 0;
@@ -72,6 +74,7 @@ fn integer(value: usize) Oop {
 fn clearOutput() void {
     output_bytes.clearRetainingCapacity();
     output_truncated = false;
+    output_sequence = 0;
 }
 
 fn printableBytes(value: Oop) []const u8 {
@@ -84,24 +87,41 @@ fn printableBytes(value: Oop) []const u8 {
     return g_api.stringBytes(rendered, &len)[0..len];
 }
 
-fn captureOutput(value: Oop, newline: bool) void {
-    if (output_truncated) return;
+fn captureOutput(value: Oop, newline: bool) []const u8 {
+    if (output_truncated) return &.{};
+    const start = output_bytes.items.len;
     const bytes = printableBytes(value);
     const requested = bytes.len + @intFromBool(newline);
-    const available = max_output_bytes - output_bytes.items.len;
+    const content_limit = max_output_bytes - output_truncated_suffix.len;
+    const available = content_limit - output_bytes.items.len;
     if (requested <= available) {
         output_bytes.appendSlice(ca, bytes) catch @panic("digla-reflect: oom");
         if (newline) output_bytes.append(ca, '\n') catch @panic("digla-reflect: oom");
-        return;
+        return output_bytes.items[start..];
     }
 
-    const content_limit = max_output_bytes - output_truncated_suffix.len;
-    if (output_bytes.items.len > content_limit) output_bytes.items.len = content_limit;
     const content_available = content_limit - output_bytes.items.len;
     output_bytes.appendSlice(ca, bytes[0..@min(bytes.len, content_available)]) catch
         @panic("digla-reflect: oom");
+    if (newline and bytes.len < content_available)
+        output_bytes.append(ca, '\n') catch @panic("digla-reflect: oom");
     output_bytes.appendSlice(ca, output_truncated_suffix) catch @panic("digla-reflect: oom");
     output_truncated = true;
+    return output_bytes.items[start..];
+}
+
+fn streamCaptured(bytes: []const u8) void {
+    if (output_sink == null or bytes.len == 0) return;
+    output_sequence += 1;
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+    var record = newMap();
+    record = mapPutString(record, "kind", string("output"));
+    record = mapPutString(record, "channel", string("stdout"));
+    record = mapPutString(record, "text", string(bytes));
+    record = mapPutString(record, "sequence", integer(output_sequence));
+    record = mapPutString(record, "truncated", if (output_truncated) g_api.trueObj else g_api.falseObj);
+    _ = send1(output_sink, "value:", record);
 }
 
 fn writeOutput(value: Oop, newline: bool) void {
@@ -111,12 +131,12 @@ fn writeOutput(value: Oop, newline: bool) void {
 }
 
 fn mSystemPrint(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    if (output_capture_active) captureOutput(args[0], false) else writeOutput(args[0], false);
+    if (output_capture_active) streamCaptured(captureOutput(args[0], false)) else writeOutput(args[0], false);
     return self;
 }
 
 fn mSystemPrintln(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    if (output_capture_active) captureOutput(args[0], true) else writeOutput(args[0], true);
+    if (output_capture_active) streamCaptured(captureOutput(args[0], true)) else writeOutput(args[0], true);
     return self;
 }
 
@@ -146,6 +166,20 @@ fn mEndOutputCapture(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
         result = vectorAdd(result, record);
     }
     return result;
+}
+
+fn mOutputStreamingAvailable(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    return g_api.trueObj;
+}
+
+fn mBeginOutputStreaming(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    output_sink = args[0];
+    return self;
+}
+
+fn mEndOutputStreaming(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    output_sink = null;
+    return self;
 }
 
 fn mEvaluationDeadlineAvailable(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
@@ -738,6 +772,9 @@ fn bringUp(api: *idapi.IdApi) void {
     api.method(api.vtableOf(digla), api.intern("outputCaptureAvailable"), &mOutputCaptureAvailable);
     api.method(api.vtableOf(digla), api.intern("beginEvaluationOutputCapture"), &mBeginOutputCapture);
     api.method(api.vtableOf(digla), api.intern("endEvaluationOutputCapture"), &mEndOutputCapture);
+    api.method(api.vtableOf(digla), api.intern("evaluationOutputStreamingAvailable"), &mOutputStreamingAvailable);
+    api.method(api.vtableOf(digla), api.intern("beginEvaluationOutputStreaming:"), &mBeginOutputStreaming);
+    api.method(api.vtableOf(digla), api.intern("endEvaluationOutputStreaming"), &mEndOutputStreaming);
     api.method(api.vtableOf(digla), api.intern("evaluationDeadlineAvailable"), &mEvaluationDeadlineAvailable);
     api.method(api.vtableOf(digla), api.intern("beginEvaluationDeadline:"), &mBeginEvaluationDeadline);
     api.method(api.vtableOf(digla), api.intern("endEvaluationDeadline"), &mEndEvaluationDeadline);

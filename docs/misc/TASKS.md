@@ -107,8 +107,11 @@ until product evidence selects the next failure model.
   Evaluation-local `System` output is now captured by that application wrapper,
   inserted before the value in the terminal transcript, and delivered as ordered
   `birnam/output` notifications plus a buffered response fallback without leaking
-  unframed bytes onto session stdout. Real-time delivery and bounded interruption
-  remain truthful unsupported capabilities. Positive `timeoutMs` requests and the
+  unframed bytes onto session stdout. Framed clients now receive each captured
+  write immediately through an evaluation-local sink while the response retains
+  its bounded aggregate fallback; a process timing regression proves output leads
+  a long-running result by more than 100 ms. Bounded interruption remains a
+  truthful unsupported capability. Positive `timeoutMs` requests and the
   `evaluation-timeout-ms` application setting now provide the narrower safe slice:
   application-local cooperative deadlines on canonical Block and Integer loops,
   returning structured timeout errors while leaving `interrupt=false` for the
@@ -123,9 +126,9 @@ until product evidence selects the next failure model.
   inside a 500 ms observation window. Resolver snapshots reuse the active project
   resolution, while source lookup parses only files containing the requested token;
   the measured lookup adds roughly 0.24-0.29 s beyond startup. The current enriched
-  image starts in 2.60-2.64 s, and five steady remote `allMethodsOf:` round trips
+  image starts in 2.65-2.67 s, and five steady remote `allMethodsOf:` round trips
   complete in 23.2-24.3 ms including framing and a 6,099-character result. Next: add structured
-  streamed output and bounded interruption on the session seam.
+  bounded protocol interruption on the session seam.
 
 ---
 

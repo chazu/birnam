@@ -114,9 +114,11 @@ emitted as `birnam/output` protocol notifications before the final response. Lon
 soft-wrap into visual rows through the same byte/cell projection; cursor motion,
 selection, and viewport following remain byte-authoritative across those rows.
 Positive `timeoutMs` evaluation requests now bound the canonical stack-flat Block
-and Integer loops with application-local cooperative safepoints. Real-time output
-delivery and protocol-driven interruption during a still-running evaluation remain
-later slices; the synchronous adapter advertises `interrupt=false` truthfully.
+and Integer loops with application-local cooperative safepoints. Captured `System`
+writes now cross framed protocol transports immediately through an evaluation-local
+sink while retaining the bounded response fallback. Protocol-driven interruption
+during a still-running evaluation remains a later slice; the synchronous evaluator
+advertises `interrupt=false` truthfully.
 
 ## 2. Goals and boundaries
 
@@ -432,10 +434,11 @@ The core invariants are:
    errors, inspection snapshots, image identity, and truthful capabilities are
    copied values. The Digla-local wrapped module captures evaluation `System`
    output without touching the runtime floor. The shared protocol emits each event
-   as a correlated `birnam/output` notification before the result, retains the
-   ordered `events` array as a request/reply fallback, and rejects stray unframed
-   stdout in a process-level smoke. Because dispatch is still synchronous, the
-   capability remains `streamedOutput=false`; real-time delivery remains open.
+   as a correlated `birnam/output` notification, retains the ordered `events`
+   array as a request/reply fallback, and rejects stray unframed stdout in a
+   process-level smoke. A temporary application-local sink now writes each event
+   before evaluation resumes, so framed clients advertise `streamedOutput=true`;
+   no foreign thread or concurrent runtime entry is involved.
    Positive `timeoutMs` requests now activate application-local cooperative checks
    on `Block whileTrue:/whileFalse:` and `Integer to:do:`. Expiry propagates an
    `#evaluationDeadline` error into a structured `phase="timeout"` response and
@@ -478,7 +481,7 @@ runtime-compiled Alien layer with the precompiled wrapped module reduced full
 Digla cold launch from about 3.5 s to 1.89-2.00 s in three consecutive runs; a
 real Termbox alternate-screen render and Escape shutdown smoke also passed.
 After the subsequent navigation, structured-output, deadline, and TCP-client
-slices, the current larger application image launches in 2.60-2.64 s across
+slices, the current larger application image launches in 2.65-2.67 s across
 three consecutive runs. The TCP client implementation is kept to two registered
 adapter methods plus transport-neutral session selection so the remote slice does
 not grow into another layer of startup helpers.
@@ -512,11 +515,17 @@ closes normally.
 
 The TCP client path is also covered process-to-process: a terminal-independent
 editor model starts local, switches with `:connect remote`, evaluates
-`[System println: 7]; [6 * 7]`, receives the transcript entries in order, and
+two `System` writes followed by `[6 * 7]`, receives one duplicate-free buffered
+transcript entry plus the value in order, and
 closes both ends. Five steady remote
 round trips of `[ Reflect allMethodsOf: "YourMom" ]` completed in 23.2-24.3 ms
 each including framing, JSON, copied-value rendering, and a 6,099-character
 response.
+
+Real-time delivery has a separate timing regression: the server emits `"early"`
+before entering a 250,000-iteration evaluation loop, and the test requires the
+output frame to precede the final value by more than 100 ms. The response still
+contains its bounded aggregate event for clients that implement request/reply only.
 
 The typing path is also bounded away from whole-buffer parser work. Diagnostics
 are cached and explicitly refreshed, already-buffered Termbox events are applied

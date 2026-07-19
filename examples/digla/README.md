@@ -73,8 +73,12 @@ contain only copied JSON-safe values; the local adapter retains raw runtime valu
 `System println:` calls made by evaluated code are captured into bounded, ordered
 `birnam/output` notifications before the evaluation response and are also kept in
 that response's `events` array for simple request/reply clients. The current
-synchronous adapter advertises `streamedOutput=false`: output is structured and
-protocol-safe, but it is delivered only after the evaluation reaches a boundary.
+Digla application adapter advertises `streamedOutput=true`: framed stdio/TCP
+clients receive one correlated notification as each `System` write occurs, while
+the bounded aggregate remains in the response as a fallback. The current terminal
+submit path is still serial, so its screen incorporates those collected events
+when the evaluation response returns; a headless or AI protocol client can consume
+them immediately.
 
 `birnam/evaluate` also accepts an optional nonnegative `timeoutMs`. In the Digla
 project image, a positive timeout installs a cooperative deadline on Birnam's

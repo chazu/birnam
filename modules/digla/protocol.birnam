@@ -54,10 +54,29 @@
           ifFalse: [|
             [[self sessionRequestIsValid: request]
               ifTrue: [|
+                let method := [request at: "method" ifAbsent: [| ""]];
+                let streaming := [[method = "birnam/evaluate"] &
+                  [self evaluationOutputStreamingAvailable]];
+                let outputSink := [:event |
+                  let active := [current value];
+                  let notification := [self sessionNotification: "birnam/output" params: {
+                    "sessionId" -> [active at: "id"],
+                    "requestId" -> [request at: "id" ifAbsent: [| nil]],
+                    "event" -> event }];
+                  [write value: [Json stringify: notification]]];
+                [streaming
+                  ifTrue: [| [self beginEvaluationOutputStreaming: outputSink]]
+                  ifFalse: [| nil]];
                 let reply := [self performSessionRequest: request in: [current value]];
+                [streaming
+                  ifTrue: [| [self endEvaluationOutputStreaming]]
+                  ifFalse: [| nil]];
                 let next := [reply at: "session"];
                 [current set: next];
-                [[self sessionOutputNotificationsFor: request reply: reply] do:
+                let bufferedNotifications := [streaming
+                  ifTrue: [| #[]]
+                  ifFalse: [| [self sessionOutputNotificationsFor: request reply: reply]]];
+                [bufferedNotifications do:
                   [:notification | [write value: [Json stringify: notification]]]];
                 [write value: [Json stringify: [reply at: "message"]]];
                 [[[next at: "status"] = "closed"]

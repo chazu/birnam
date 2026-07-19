@@ -21,6 +21,21 @@
   ] doc:
   "End evaluation output capture and answer copied output events, or none." ];
 
+[Reflect defineMethod: #evaluationOutputStreamingAvailable on: Digla as: [:self |
+  false
+  ] doc:
+  "Answer whether captured writes can be delivered through a temporary session sink." ];
+
+[Reflect defineMethod: #beginEvaluationOutputStreaming: on: Digla as: [:self :sink |
+  self
+  ] doc:
+  "Install an evaluation-local output sink when an application adapter supports it." ];
+
+[Reflect defineMethod: #endEvaluationOutputStreaming on: Digla as: [:self |
+  self
+  ] doc:
+  "Remove the application adapter's evaluation-local output sink." ];
+
 [Reflect defineMethod: #evaluationDeadlineAvailable on: Digla as: [:self |
   false
   ] doc:
@@ -38,6 +53,7 @@
 
 [Reflect defineMethod: #localSessionCapabilities on: Digla as: [:self |
   let output := [self outputCaptureAvailable];
+  let streaming := [self evaluationOutputStreamingAvailable];
   let deadline := [self evaluationDeadlineAvailable];
   { "evaluate" -> true,
     "inspect" -> true,
@@ -51,7 +67,7 @@
     "deadlineSafeBoundaries" -> [deadline
       ifTrue: [| #["Block whileTrue:/whileFalse:" "Integer to:do:"]]
       ifFalse: [| #[]]],
-    "streamedOutput" -> false }
+    "streamedOutput" -> streaming }
   ] doc:
   "Return the truthful capabilities of the synchronous local image adapter." ];
 
