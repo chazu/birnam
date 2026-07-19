@@ -23,7 +23,7 @@ zig-out/bin/birnam run examples/digla --build -- --ui
 
 The editor supports character insertion, UTF-8-aware backspace, cursor motion,
 history, multiline input with Ctrl-J, local evaluation with Enter, lexical
-highlighting, cached parser-backed diagnostics, and terminal-cell-aware transcript
+highlighting, active bracket matching, cached parser-backed diagnostics, and terminal-cell-aware transcript
 wrapping. Shift with the arrow, Home, or End keys extends a source selection;
 typing, Backspace, or Delete replaces/removes it. Long multiline buffers keep
 the cursor in a visual-row viewport, and long logical lines soft-wrap without
@@ -40,6 +40,9 @@ diagnostics. A `*` after the diagnostic count means the cache is stale after edi
 typing never reparses the whole buffer. Enter
 evaluates the current Birnam form, for example `[1 + 2]`. Page Up and Page Down
 move through wrapped transcript rows; a new evaluation resumes following the tail.
+The bracket under the cursor, or immediately before it, is overlaid with its peer;
+an unmatched opener remains visibly red while the form is being written. Brackets
+inside strings and comments are ignored.
 Escape exits while idle. During an active remote evaluation, Ctrl-C or Escape
 requests cooperative interruption instead.
 

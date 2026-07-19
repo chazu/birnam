@@ -384,8 +384,46 @@ fn highlightEntry(kind: []const u8, start: usize, end: usize) Oop {
     return entry;
 }
 
-fn highlightsFor(bytes: []const u8) Oop {
+const Bracket = struct { byte: u8, offset: usize };
+
+const SourceScan = struct { highlights: Oop, bracket_match: Oop };
+
+fn bracketKind(byte: u8) enum { none, open, close } {
+    return switch (byte) {
+        '[', '{', '(' => .open,
+        ']', '}', ')' => .close,
+        else => .none,
+    };
+}
+
+fn bracketsMatch(open: u8, close: u8) bool {
+    return (open == '[' and close == ']') or
+        (open == '{' and close == '}') or
+        (open == '(' and close == ')');
+}
+
+fn bracketCandidate(bytes: []const u8, requested_cursor: usize) ?usize {
+    const cursor = @min(requested_cursor, bytes.len);
+    if (cursor < bytes.len and bracketKind(bytes[cursor]) != .none) return cursor;
+    if (cursor > 0 and bracketKind(bytes[cursor - 1]) != .none) return cursor - 1;
+    return null;
+}
+
+fn bracketMatchEntry(anchor: usize, match: ?usize, matched: bool) Oop {
+    var entry = newMap();
+    entry = mapPutString(entry, "anchor", integer(anchor));
+    entry = mapPutString(entry, "match", if (match) |offset| integer(offset) else g_api.nilObj);
+    entry = mapPutString(entry, "matched", if (matched) g_api.trueObj else g_api.falseObj);
+    return entry;
+}
+
+fn sourceScanFor(bytes: []const u8, cursor: usize) SourceScan {
     var out = newVector();
+    const candidate = bracketCandidate(bytes, cursor);
+    var candidate_seen = false;
+    var bracket_match = g_api.nilObj;
+    var stack: std.ArrayListUnmanaged(Bracket) = .{};
+    defer stack.deinit(ca);
     var i: usize = 0;
     while (i < bytes.len) {
         const start = i;
@@ -435,9 +473,33 @@ fn highlightsFor(bytes: []const u8) Oop {
         } else {
             i += 1;
             out = vectorAdd(out, highlightEntry("punctuation", start, i));
+            const kind = bracketKind(byte);
+            if (kind != .none) {
+                if (candidate != null and candidate.? == start) candidate_seen = true;
+                if (kind == .open) {
+                    stack.append(ca, .{ .byte = byte, .offset = start }) catch
+                        @panic("digla-reflect: oom");
+                } else if (stack.items.len != 0) {
+                    const opening = stack.items[stack.items.len - 1];
+                    if (bracketsMatch(opening.byte, byte)) {
+                        stack.items.len -= 1;
+                        if (candidate != null and
+                            (candidate.? == opening.offset or candidate.? == start))
+                        {
+                            bracket_match = bracketMatchEntry(
+                                candidate.?,
+                                if (candidate.? == opening.offset) start else opening.offset,
+                                true,
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
-    return out;
+    if (bracket_match == g_api.nilObj and candidate != null and candidate_seen)
+        bracket_match = bracketMatchEntry(candidate.?, null, false);
+    return .{ .highlights = out, .bracket_match = bracket_match };
 }
 
 fn layoutRow(bytes: []const u8, line: usize, start: usize, end: usize, prompt_width: usize) Oop {
@@ -617,10 +679,12 @@ fn mRenderFrame(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     const bytes = g_api.stringBytes(args[0], &len)[0..len];
     const cursor: usize = @intCast(@max(g_api.smallIntValue(args[1]), 0));
     const prompt_width: usize = @intCast(@max(g_api.smallIntValue(args[2]), 0));
+    const scan = sourceScanFor(bytes, cursor);
     var frame = newMap();
     frame = mapPutString(frame, "layout", layoutFor(bytes, prompt_width));
     frame = mapPutString(frame, "position", positionFor(bytes, cursor, prompt_width));
-    frame = mapPutString(frame, "highlights", highlightsFor(bytes));
+    frame = mapPutString(frame, "highlights", scan.highlights);
+    frame = mapPutString(frame, "bracketMatch", scan.bracket_match);
     return frame;
 }
 
@@ -633,10 +697,12 @@ fn mRenderWrappedFrame(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     const prompt_width: usize = @intCast(@max(g_api.smallIntValue(args[2]), 0));
     const terminal_width: usize = @intCast(@max(g_api.smallIntValue(args[3]), 1));
     const wrapped = wrappedLayoutFor(bytes, cursor, prompt_width, terminal_width);
+    const scan = sourceScanFor(bytes, cursor);
     var frame = newMap();
     frame = mapPutString(frame, "layout", wrapped.layout);
     frame = mapPutString(frame, "position", wrapped.position);
-    frame = mapPutString(frame, "highlights", highlightsFor(bytes));
+    frame = mapPutString(frame, "highlights", scan.highlights);
+    frame = mapPutString(frame, "bracketMatch", scan.bracket_match);
     return frame;
 }
 

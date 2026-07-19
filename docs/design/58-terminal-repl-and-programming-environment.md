@@ -79,8 +79,8 @@ against the local image, and history is recalled with Ctrl-P/Ctrl-N or the
 arrow keys. The model is headless and stores source cursors as UTF-8 byte
 boundaries. The initial PositionMap source/LSP conversion and terminal-cell
 DisplayLayout projection slices are implemented and tested. Lexical syntax
-highlights and parser-backed diagnostics are now projected through that same
-source-coordinate seam. Evaluation, inspection, global enumeration, and image
+highlights, active bracket matching, and parser-backed diagnostics are now projected
+through that same source-coordinate seam. Evaluation, inspection, global enumeration, and image
 identity now cross one JSON-RPC-shaped `ReplSession` contract instead of being
 called directly by the editor. `--session-stdio` exposes that same contract as
 Content-Length-framed JSON for child processes, while `--session-listen` and
@@ -427,7 +427,10 @@ The core invariants are:
    candidates and bounded runtime globals behind a terminal-independent language
    service, while the editor owns menu state and the renderer owns its cells.
    Shift-movement selection, a cursor-following visual-row viewport, soft-wrapped
-   source rows, and manual Page Up/Page Down transcript navigation are implemented.
+   source rows, active matched/unmatched bracket overlays, and manual Page Up/Page Down
+   transcript navigation are implemented. The bracket result is a terminal-independent
+   byte-offset record; the project-local native frame scanner produces it alongside
+   lexical spans in the same pass, ignoring strings and comments.
 4. **Compatibility remote session — superseded by the framed seam.** The
    prompt-oriented socket REPL cannot preserve structured values, errors, or
    capabilities without ambiguous text parsing. Keep it compatible for comint
@@ -508,6 +511,8 @@ methods while keeping socket state out of the editor and renderer. Five current
 launches after the selected-source snapshot slice complete in 2.92-2.96 s. The
 new data-driven query surface adds roughly 0.1 s to cold launch while keeping all
 per-method source reflection out of startup and ordinary inspection.
+After active bracket matching joined the existing native frame scan, five cold
+launches completed in 2.89-2.93 s, showing no measurable startup regression.
 
 Project-aware source navigation does not add another manifest parser or eager
 workspace index. A project run now installs the same existing read-only `Project`
@@ -560,7 +565,8 @@ are cached and explicitly refreshed, already-buffered Termbox events are applied
 before the next redraw, and a timed Termbox wait now interleaves input with session
 progress without a busy redraw loop. The same application-local native wrapper accelerates
 the terminal-independent source-frame projection, display columns, lexical spans,
-and transcript wrapping. In a real PTY smoke, a 60-byte method definition was
+active bracket pairs, and transcript wrapping. Bracket matching adds no parser pass
+and no second native source scan to a redraw. In a real PTY smoke, a 60-byte method definition was
 consumed and rendered with syntax colors inside a 500 ms observation window. The
 exact `allMethodsOf:` expression above evaluated and rendered its full result as
 terminal-width rows inside a one-second observation window; F1/F2/F3/F4 behavior

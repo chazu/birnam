@@ -131,6 +131,37 @@
   ] doc:
   "Overlay the normalized source selection on one rendered logical row." ];
 
+[Reflect defineMethod: #bracketMarksForRow:match: on: Digla as: [:self :row :match |
+  [[match isNil]
+    ifTrue: [| #[]]
+    ifFalse: [|
+      let offsets0 := #[[match at: "anchor"]];
+      let paired := [match at: "match"];
+      let offsets := [[paired isNil] ifTrue: [| offsets0] ifFalse: [| [offsets0 add: paired]]];
+      let start := [row at: "sourceStart"];
+      let finish := [row at: "sourceEnd"];
+      [offsets select: [:offset | [[offset >= start] & [offset < finish]]]]]]
+  ] doc:
+  "Return active bracket byte offsets that intersect one soft-wrapped source row." ];
+
+[Reflect defineMethod: #bracketColorFor: on: Digla as: [:self :match |
+  [[match at: "matched"] ifTrue: [| 6] ifFalse: [| 2]]
+  ] doc:
+  "Use cyan for a matched pair and red for an unmatched active bracket." ];
+
+[Reflect defineMethod: #renderBracketMatchForRow:frame:y:promptWidth:in: on: Digla as:
+  [:self :row :frame :y :promptWidth :text |
+    let match := [frame at: "bracketMatch" ifAbsent: [| nil]];
+    let color := [[match isNil] ifTrue: [| 0] ifFalse: [| [self bracketColorFor: match]]];
+    [[self bracketMarksForRow: row match: match] do: [:offset |
+      let x := [promptWidth + [self displayWidthIn: text
+        from: [row at: "sourceStart"] to: offset]];
+      [Termbox printX: x y: y fg: 0 bg: color
+        str: [text copyFrom: offset to: [offset + 1]]]]];
+    nil
+  ] doc:
+  "Overlay the active matched or unmatched bracket pair on one terminal source row." ];
+
 [Reflect defineMethod: #wrapTranscriptLine:width: on: Digla as: [:self :text :requestedWidth |
   let width := [[requestedWidth < 1] ifTrue: [| 1] ifFalse: [| requestedWidth]];
   let lines := [#[] asCell];
@@ -289,7 +320,8 @@
         let promptColor := [self diagnosticColorForRow: row analysis: analysis text: buffer];
         [Termbox printX: 0 y: y fg: promptColor bg: 0 str: prompt];
         [self renderSourceRow: row analysis: analysis y: y promptWidth: 2 in: buffer];
-        [self renderSelectionForRow: row state: scrolledState y: y promptWidth: 2 in: buffer]]
+        [self renderSelectionForRow: row state: scrolledState y: y promptWidth: 2 in: buffer];
+        [self renderBracketMatchForRow: row frame: frame y: y promptWidth: 2 in: buffer]]
       ifFalse: [| nil]]]];
   let completionY := [completionStart asCell];
   [completionRows do: [:row |

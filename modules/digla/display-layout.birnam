@@ -254,8 +254,10 @@
 [Reflect defineMethod: #renderFrameFor:cursor:promptWidth:width: on: Digla as:
   [:self :text :cursor :promptWidth :width |
   let layout := [self wrappedDisplayLayoutFor: text promptWidth: promptWidth width: width];
+  let highlights := [self highlightRangesIn: text];
   { "layout" -> layout,
     "position" -> [self wrappedPositionFor: cursor in: text layout: layout promptWidth: promptWidth],
-    "highlights" -> [self highlightRangesIn: text] }
+    "highlights" -> highlights,
+    "bracketMatch" -> [self bracketMatchAt: cursor in: text highlights: highlights] }
   ] doc:
-  "Project source into soft-wrapped layout, cursor, and highlight data in one replaceable operation." ];
+  "Project source into soft-wrapped layout, cursor, highlight, and active-bracket data." ];

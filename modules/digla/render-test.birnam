@@ -22,6 +22,19 @@ let e := [TestSuite named: "Digla render" module: #diglaRender];
   [t expect: [Digla diagnosticColorForRow: row analysis: analysis text: text]
     equals: 2 describes: "the row still reports the end-of-input diagnostic in red"]]];
 
+[e test: "bracket overlay decisions remain source-row based" do: [:t |
+  let match := { "anchor" -> 0, "match" -> 4, "matched" -> true };
+  let first := [Digla bracketMarksForRow:
+    { "sourceStart" -> 0, "sourceEnd" -> 3 } match: match];
+  let second := [Digla bracketMarksForRow:
+    { "sourceStart" -> 3, "sourceEnd" -> 5 } match: match];
+  [t expect: first equals: #[0] describes: "opening mark stays on its visual row"];
+  [t expect: second equals: #[4] describes: "closing mark stays on its visual row"];
+  [t expect: [Digla bracketColorFor: match] equals: 6 describes: "matched pair uses cyan"];
+  [t expect: [Digla bracketColorFor:
+    { "anchor" -> 0, "match" -> nil, "matched" -> false }] equals: 2
+    describes: "unmatched bracket uses red"]]];
+
 [e test: "transcript lines wrap at terminal-cell boundaries" do: [:t |
   let ascii := [Digla transcriptLines: #["abcdef"] width: 4];
   let unicode := [Digla transcriptLines: #["a🙂b"] width: 3];

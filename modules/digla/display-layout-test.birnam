@@ -50,3 +50,25 @@ let e := [TestSuite named: "Digla display layout" module: #diglaDisplayLayout];
   [t expect: [[unicodeRows at: 0] at: "text"] equals: "a🙂" describes: "wide glyph is never split"];
   [t expect: [[unicode at: "position"] at: "line"] equals: 1
     describes: "cursor at a soft boundary belongs to the following row"]]];
+
+[e test: "source frames match the active nested bracket by byte offset" do: [:t |
+  let closing := [Digla renderFrameFor: "[{1}]" cursor: 5 promptWidth: 2 width: 80];
+  let closeMatch := [closing at: "bracketMatch"];
+  let opening := [Digla renderFrameFor: "[{1}]" cursor: 1 promptWidth: 2 width: 80];
+  let openMatch := [opening at: "bracketMatch"];
+  [t expect: [closeMatch at: "anchor"] equals: 4 describes: "cursor-after-close selects close"];
+  [t expect: [closeMatch at: "match"] equals: 0 describes: "outer square pair matched"];
+  [t expect: [closeMatch at: "matched"] equals: true describes: "close pair marked valid"];
+  [t expect: [openMatch at: "anchor"] equals: 1 describes: "cursor-on-open selects brace"];
+  [t expect: [openMatch at: "match"] equals: 3 describes: "nested brace pair matched"]]];
+
+[e test: "source frames ignore lexical brackets and report unmatched input" do: [:t |
+  let stringFrame := [Digla renderFrameFor: "\"[\"" cursor: 2 promptWidth: 2 width: 80];
+  let commentFrame := [Digla renderFrameFor: "// [\n1" cursor: 4 promptWidth: 2 width: 80];
+  let unmatchedFrame := [Digla renderFrameFor: "[1" cursor: 1 promptWidth: 2 width: 80];
+  let unmatched := [unmatchedFrame at: "bracketMatch"];
+  [t expect: [stringFrame at: "bracketMatch"] equals: nil describes: "string bracket ignored"];
+  [t expect: [commentFrame at: "bracketMatch"] equals: nil describes: "comment bracket ignored"];
+  [t expect: [unmatched at: "anchor"] equals: 0 describes: "typed opener remains active"];
+  [t expect: [unmatched at: "match"] equals: nil describes: "unmatched opener has no peer"];
+  [t expect: [unmatched at: "matched"] equals: false describes: "unmatched state explicit"]]];
