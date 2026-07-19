@@ -19,6 +19,7 @@ extern fn lg_present() c_int;
 extern fn lg_hide_cursor() c_int;
 extern fn lg_poll() c_int;
 extern fn lg_ev_type() c_int;
+extern fn lg_ev_mod() c_int;
 extern fn lg_ev_key() c_int;
 extern fn lg_ev_ch() c_int;
 extern fn lg_set_cursor(self: ?*anyopaque, x: c_int, y: c_int) c_int;
@@ -64,6 +65,9 @@ fn mPoll(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
 }
 fn mEvType(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
     return result(lg_ev_type());
+}
+fn mEvMod(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    return result(lg_ev_mod());
 }
 fn mEvKey(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
     return result(lg_ev_key());
@@ -114,6 +118,7 @@ fn bringUp(api: *idapi.IdApi) void {
     api.method(termbox_vt, api.intern("hideCursor"), &mHideCursor);
     api.method(termbox_vt, api.intern("poll"), &mPoll);
     api.method(termbox_vt, api.intern("evType"), &mEvType);
+    api.method(termbox_vt, api.intern("evMod"), &mEvMod);
     api.method(termbox_vt, api.intern("evKey"), &mEvKey);
     api.method(termbox_vt, api.intern("evCh"), &mEvCh);
     api.method(termbox_vt, api.intern("setCursor:y:"), &mSetCursor);

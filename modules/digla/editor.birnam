@@ -14,8 +14,63 @@
   let s4 := [s3 at: "lastResult" put: nil];
   let s5 := [s4 at: "hasLastResult" put: false];
   let s6 := [s5 at: "lastError" put: nil];
-  [s6 at: "completion" put: nil]] doc:
+  let s7 := [s6 at: "completion" put: nil];
+  let s8 := [s7 at: "selection" put: nil];
+  [s8 at: "viewport" put: { "editorTopLine" -> 0 }]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
+
+[Reflect defineMethod: #selectionRangeIn: on: Digla as: [:self :state |
+  let selection := [state at: "selection"];
+  [[selection isNil]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let anchor := [selection at: "anchor"];
+      let cursor := [state at: "cursor"];
+      [[anchor = cursor]
+        ifTrue: [| nil]
+        ifFalse: [|
+          [[anchor < cursor]
+            ifTrue: [| { "start" -> anchor, "end" -> cursor }]
+            ifFalse: [| { "start" -> cursor, "end" -> anchor }]]]]]]
+  ] doc:
+  "Return the normalized half-open source range selected by anchor and cursor." ];
+
+[Reflect defineMethod: #clearSelectionIn: on: Digla as: [:self :state |
+  [state at: "selection" put: nil]
+  ] doc:
+  "Clear the source selection without moving the cursor." ];
+
+[Reflect defineMethod: #selectionAfterMoveFrom:extend:previous:in: on: Digla as:
+  [:self :oldCursor :extend :previous :state |
+    [extend
+      ifTrue: [|
+        let anchor := [[previous isNil]
+          ifTrue: [| oldCursor]
+          ifFalse: [| [previous at: "anchor"]]];
+        [[[state at: "cursor"] = anchor]
+          ifTrue: [| [state at: "selection" put: nil]]
+          ifFalse: [| [state at: "selection" put: { "anchor" -> anchor }]]]]
+      ifFalse: [| [self clearSelectionIn: state]]]
+  ] doc:
+  "Preserve or create an anchor for Shift movement, otherwise clear selection." ];
+
+[Reflect defineMethod: #replaceSelectionWith:in: on: Digla as: [:self :text :state |
+  let range := [self selectionRangeIn: state];
+  [[range isNil]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let buffer := [state at: "buffer"];
+      let start := [range at: "start"];
+      let finish := [range at: "end"];
+      let prefix := [buffer copyFrom: 0 to: start];
+      let suffix := [buffer copyFrom: finish to: [buffer size]];
+      let s1 := [state at: "buffer" put: [[prefix , text] , suffix]];
+      let s2 := [s1 at: "cursor" put: [start + [text size]]];
+      let s3 := [s2 at: "selection" put: nil];
+      let s4 := [s3 at: "historyIndex" put: nil];
+      [s4 at: "status" put: "editing"]]]
+  ] doc:
+  "Replace the selected half-open source range, or answer nil when none is selected." ];
 
 [Reflect defineMethod: #previousBoundaryStep:in: on: Digla as: [:self :p :text |
   [[[p <= 0] | [[self isContinuationByte: [text byteAt: p]] not]]
@@ -70,45 +125,57 @@
   "Return the byte column within the logical line for a source cursor."];
 
 [Reflect defineMethod: #insertText:into: on: Digla as: [:self :text :state |
-  let buffer := [state at: "buffer"];
-  let cursor := [state at: "cursor"];
-  let prefix := [buffer copyFrom: 0 to: cursor];
-  let suffix := [buffer copyFrom: cursor to: [buffer size]];
-  let nextBuffer := [[prefix , text] , suffix];
-  let nextCursor := [cursor + [text size]];
-  let s1 := [state at: "buffer" put: nextBuffer];
-  let s2 := [s1 at: "cursor" put: nextCursor];
-  let s3 := [s2 at: "historyIndex" put: nil];
-  [s3 at: "status" put: "editing"]] doc:
+  let replaced := [self replaceSelectionWith: text in: state];
+  [[replaced notNil]
+    ifTrue: [| replaced]
+    ifFalse: [|
+      let buffer := [state at: "buffer"];
+      let cursor := [state at: "cursor"];
+      let prefix := [buffer copyFrom: 0 to: cursor];
+      let suffix := [buffer copyFrom: cursor to: [buffer size]];
+      let nextBuffer := [[prefix , text] , suffix];
+      let nextCursor := [cursor + [text size]];
+      let s1 := [state at: "buffer" put: nextBuffer];
+      let s2 := [s1 at: "cursor" put: nextCursor];
+      let s3 := [s2 at: "historyIndex" put: nil];
+      [s3 at: "status" put: "editing"]]]] doc:
   "Insert UTF-8 text at the source cursor and answer the next editor state."];
 
 [Reflect defineMethod: #backspaceIn: on: Digla as: [:self :state |
-  let buffer := [state at: "buffer"];
-  let cursor := [state at: "cursor"];
-  [[cursor = 0]
-    ifTrue: [| state]
+  let replaced := [self replaceSelectionWith: "" in: state];
+  [[replaced notNil]
+    ifTrue: [| replaced]
     ifFalse: [|
-      let previous := [self previousBoundaryIn: buffer at: cursor];
-      let prefix := [buffer copyFrom: 0 to: previous];
-      let suffix := [buffer copyFrom: cursor to: [buffer size]];
-      let s1 := [state at: "buffer" put: [prefix , suffix]];
-      let s2 := [s1 at: "cursor" put: previous];
-      let s3 := [s2 at: "historyIndex" put: nil];
-      [s3 at: "status" put: "editing"]]]] doc:
+      let buffer := [state at: "buffer"];
+      let cursor := [state at: "cursor"];
+      [[cursor = 0]
+        ifTrue: [| state]
+        ifFalse: [|
+          let previous := [self previousBoundaryIn: buffer at: cursor];
+          let prefix := [buffer copyFrom: 0 to: previous];
+          let suffix := [buffer copyFrom: cursor to: [buffer size]];
+          let s1 := [state at: "buffer" put: [prefix , suffix]];
+          let s2 := [s1 at: "cursor" put: previous];
+          let s3 := [s2 at: "historyIndex" put: nil];
+          [s3 at: "status" put: "editing"]]]]]] doc:
   "Delete the codepoint immediately before the source cursor."];
 
 [Reflect defineMethod: #deleteForwardIn: on: Digla as: [:self :state |
-  let buffer := [state at: "buffer"];
-  let cursor := [state at: "cursor"];
-  [[cursor >= [buffer size]]
-    ifTrue: [| state]
+  let replaced := [self replaceSelectionWith: "" in: state];
+  [[replaced notNil]
+    ifTrue: [| replaced]
     ifFalse: [|
-      let next := [self nextBoundaryIn: buffer at: cursor];
-      let prefix := [buffer copyFrom: 0 to: cursor];
-      let suffix := [buffer copyFrom: next to: [buffer size]];
-      let s1 := [state at: "buffer" put: [prefix , suffix]];
-      let s2 := [s1 at: "historyIndex" put: nil];
-      [s2 at: "status" put: "editing"]]]] doc:
+      let buffer := [state at: "buffer"];
+      let cursor := [state at: "cursor"];
+      [[cursor >= [buffer size]]
+        ifTrue: [| state]
+        ifFalse: [|
+          let next := [self nextBoundaryIn: buffer at: cursor];
+          let prefix := [buffer copyFrom: 0 to: cursor];
+          let suffix := [buffer copyFrom: next to: [buffer size]];
+          let s1 := [state at: "buffer" put: [prefix , suffix]];
+          let s2 := [s1 at: "historyIndex" put: nil];
+          [s2 at: "status" put: "editing"]]]]]] doc:
   "Delete the codepoint immediately after the source cursor."];
 
 [Reflect defineMethod: #moveLeftIn: on: Digla as: [:self :state |
@@ -173,7 +240,8 @@
   let s3 := [s2 at: "history" put: history];
   let s4 := [s3 at: "historyIndex" put: nil];
   let s5 := [s4 at: "transcript" put: transcript2];
-  [s5 at: "status" put: status]
+  let s6 := [s5 at: "selection" put: nil];
+  [s6 at: "status" put: status]
   ] doc:
   "Record one evaluated form or editor command in history and the transcript." ];
 
@@ -333,13 +401,15 @@
               let s1 := [state at: "historyIndex" put: nil];
               let s2 := [s1 at: "buffer" put: ""];
               let s3 := [s2 at: "cursor" put: 0];
-              [s3 at: "status" put: "editing"]]
+              let s4 := [s3 at: "selection" put: nil];
+              [s4 at: "status" put: "editing"]]
             ifFalse: [|
               let text := [history at: index];
               let s1 := [state at: "historyIndex" put: index];
               let s2 := [s1 at: "buffer" put: text];
               let s3 := [s2 at: "cursor" put: [text size]];
-              [s3 at: "status" put: "history"]]]]]]]] doc:
+              let s4 := [s3 at: "selection" put: nil];
+              [s4 at: "status" put: "history"]]]]]]]] doc:
   "Recall a prior form with direction -1 for older or +1 for newer history."];
 
 [Reflect defineMethod: #clearCompletionIn: on: Digla as: [:self :state |
@@ -406,30 +476,71 @@
           let s2 := [s1 at: "cursor" put: [[menu at: "start"] + [label size]]];
           let s3 := [s2 at: "historyIndex" put: nil];
           let s4 := [s3 at: "completion" put: nil];
-          [s4 at: "status" put: ["completed " , label]]]]]]
+          let s5 := [s4 at: "selection" put: nil];
+          [s5 at: "status" put: ["completed " , label]]]]]]
   ] doc:
   "Replace the requested source prefix with the selected copied-value candidate." ];
 
-[Reflect defineMethod: #handleEditorKey:character:state: on: Digla as: [:self :key :character :state |
-  let s0 := state;
+[Reflect defineMethod: #ensureEditorViewportRows:in: on: Digla as: [:self :requestedRows :state |
+  let visibleRows := [[requestedRows < 1] ifTrue: [| 1] ifFalse: [| requestedRows]];
+  let buffer := [state at: "buffer"];
+  let lineCount := [[buffer split: "\n"] size];
+  let cursorLine := [self lineIndexIn: buffer at: [state at: "cursor"]];
+  let viewport := [state at: "viewport"];
+  let currentTop := [viewport at: "editorTopLine"];
+  let maxTop0 := [lineCount - visibleRows];
+  let maxTop := [[maxTop0 < 0] ifTrue: [| 0] ifFalse: [| maxTop0]];
+  let clampedTop0 := [[currentTop < 0] ifTrue: [| 0] ifFalse: [| currentTop]];
+  let clampedTop := [[clampedTop0 > maxTop] ifTrue: [| maxTop] ifFalse: [| clampedTop0]];
+  let top := [clampedTop asCell];
+  [[cursorLine < [top value]] ifTrue: [| [top set: cursorLine]] ifFalse: [| nil]];
+  let below := [cursorLine >= [[top value] + visibleRows]];
+  [below ifTrue: [| [top set: [[cursorLine - visibleRows] + 1]]] ifFalse: [| nil]];
+  let nextViewport := [viewport at: "editorTopLine" put: [top value]];
+  [state at: "viewport" put: nextViewport]
+  ] doc:
+  "Keep the source cursor within a bounded logical-line viewport." ];
+
+[Reflect defineMethod: #applyMovementKey:extend:in: on: Digla as: [:self :key :extend :state |
+  let moving := [[[[[[key = 65515] | [key = 65514]] | [key = 65517]]
+    | [key = 65516]] | [key = 65521]] | [key = 65520]];
+  [moving
+    ifTrue: [|
+      let oldCursor := [state at: "cursor"];
+      let previous := [state at: "selection"];
+      let s1 := [[key = 65515] ifTrue: [| [self moveLeftIn: state]] ifFalse: [| state]];
+      let s2 := [[key = 65514] ifTrue: [| [self moveRightIn: s1]] ifFalse: [| s1]];
+      let s3 := [[key = 65517] ifTrue: [| [self moveUpIn: s2]] ifFalse: [| s2]];
+      let s4 := [[key = 65516] ifTrue: [| [self moveDownIn: s3]] ifFalse: [| s3]];
+      let s5 := [[key = 65521] ifTrue: [| [self moveHomeIn: s4]] ifFalse: [| s4]];
+      let s6 := [[key = 65520] ifTrue: [| [self moveEndIn: s5]] ifFalse: [| s5]];
+      [self selectionAfterMoveFrom: oldCursor extend: extend previous: previous in: s6]]
+    ifFalse: [| state]]
+  ] doc:
+  "Apply one cursor movement and maintain a source-byte selection anchor." ];
+
+[Reflect defineMethod: #handleEditorKey:modifier:character:state: on: Digla as:
+  [:self :key :modifier :character :state |
+  let shift := [modifier >= 4];
+  let s0 := [self applyMovementKey: key extend: shift in: state];
   let s1 := [[key = 27] ifTrue: [| [s0 at: "running" put: false]] ifFalse: [| s0]];
-  let s2 := [[key = 65515] ifTrue: [| [self moveLeftIn: s1]] ifFalse: [| s1]];
-  let s3 := [[key = 65514] ifTrue: [| [self moveRightIn: s2]] ifFalse: [| s2]];
-  let s4 := [[key = 65517] ifTrue: [| [self moveUpIn: s3]] ifFalse: [| s3]];
-  let s5 := [[key = 65516] ifTrue: [| [self moveDownIn: s4]] ifFalse: [| s4]];
-  let s6 := [[key = 65521] ifTrue: [| [self moveHomeIn: s5]] ifFalse: [| s5]];
-  let s7 := [[key = 65520] ifTrue: [| [self moveEndIn: s6]] ifFalse: [| s6]];
   let backspace := [[key = 8] | [key = 127]];
-  let s8 := [backspace ifTrue: [| [self backspaceIn: s7]] ifFalse: [| s7]];
-  let s9 := [[key = 65522] ifTrue: [| [self deleteForwardIn: s8]] ifFalse: [| s8]];
-  let s10 := [[key = 16] ifTrue: [| [self historyMove: -1 in: s9]] ifFalse: [| s9]];
-  let s11 := [[key = 14] ifTrue: [| [self historyMove: 1 in: s10]] ifFalse: [| s10]];
-  let s12 := [[key = 13] ifTrue: [| [self submitIn: s11]] ifFalse: [| s11]];
-  let s13 := [[key = 10] ifTrue: [| [self insertText: "\n" into: s12]] ifFalse: [| s12]];
-  [[character isEmpty] ifTrue: [| s13] ifFalse: [| [self insertText: character into: s13]]]] doc:
+  let s2 := [backspace ifTrue: [| [self backspaceIn: s1]] ifFalse: [| s1]];
+  let s3 := [[key = 65522] ifTrue: [| [self deleteForwardIn: s2]] ifFalse: [| s2]];
+  let s4 := [[key = 16] ifTrue: [| [self historyMove: -1 in: s3]] ifFalse: [| s3]];
+  let s5 := [[key = 14] ifTrue: [| [self historyMove: 1 in: s4]] ifFalse: [| s4]];
+  let s6 := [[key = 13] ifTrue: [| [self submitIn: s5]] ifFalse: [| s5]];
+  let s7 := [[key = 10] ifTrue: [| [self insertText: "\n" into: s6]] ifFalse: [| s6]];
+  [[character isEmpty] ifTrue: [| s7] ifFalse: [| [self insertText: character into: s7]]]] doc:
   "Apply one ordinary editing key after completion-menu dispatch." ];
 
-[Reflect defineMethod: #handleCompletionKey:character:state: on: Digla as: [:self :key :character :state |
+[Reflect defineMethod: #handleEditorKey:character:state: on: Digla as: [:self :key :character :state |
+  [self handleEditorKey: key modifier: 0 character: character state: state]
+  ] doc:
+  "Apply an unmodified editing key for headless clients and compatibility." ];
+
+[Reflect defineMethod: #handleCompletionKey:modifier:character:state: on: Digla as:
+  [:self :key :modifier :character :state |
   let forward := [[[key = 9] | [key = 14]] | [key = 65516]];
   let backward := [[[key = 16] | [key = 65517]] | [key = 65513]];
   let outcome := [nil asCell];
@@ -449,23 +560,34 @@
     ifFalse: [| nil]];
   [[[outcome value] isNil]
     ifTrue: [|
-      [outcome set: [self handleEditorKey: key character: character
+      [outcome set: [self handleEditorKey: key modifier: modifier character: character
         state: [self clearCompletionIn: state]]]]
     ifFalse: [| nil]];
   [outcome value]
   ] doc:
   "Dispatch a key while completion is open, with Escape reserved for dismissal." ];
 
-[Reflect defineMethod: #handleKey:character:state: on: Digla as: [:self :key :character :state |
+[Reflect defineMethod: #handleCompletionKey:character:state: on: Digla as: [:self :key :character :state |
+  [self handleCompletionKey: key modifier: 0 character: character state: state]
+  ] doc:
+  "Dispatch an unmodified completion key for headless clients and compatibility." ];
+
+[Reflect defineMethod: #handleKey:modifier:character:state: on: Digla as:
+  [:self :key :modifier :character :state |
   let menu := [state at: "completion"];
   [[menu notNil]
-    ifTrue: [| [self handleCompletionKey: key character: character state: state]]
+    ifTrue: [| [self handleCompletionKey: key modifier: modifier character: character state: state]]
     ifFalse: [|
       [[key = 9]
         ifTrue: [| [self openCompletionIn: state]]
-        ifFalse: [| [self handleEditorKey: key character: character state: state]]]]]
+        ifFalse: [| [self handleEditorKey: key modifier: modifier character: character state: state]]]]]
   ] doc:
   "Apply one Termbox key and character event to the pure editor state." ];
+
+[Reflect defineMethod: #handleKey:character:state: on: Digla as: [:self :key :character :state |
+  [self handleKey: key modifier: 0 character: character state: state]
+  ] doc:
+  "Apply an unmodified key event for headless clients and compatibility." ];
 
 [Reflect defineMethod: #runWhileRunning:step: on: Digla as: [:self :state :step |
   let next := [step value: state];

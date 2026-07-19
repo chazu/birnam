@@ -5,6 +5,7 @@
     [self renderTerminal: current];
     [Termbox poll];
     [self handleKey: [Termbox evKey]
+      modifier: [Termbox evMod]
       character: [Termbox evChar]
       state: current]];
   [self runWhileRunning: state step: step]] doc:

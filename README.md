@@ -345,5 +345,6 @@ from-zero bootstrap compiler and performance floor.
   through a precompiled application wrapper rather than a runtime-compiled Alien
   trampoline; a second project-local wrapper removes the full-image
   `Reflect allMethodsOf:` hot path without expanding the core/runtime floor.
-  Selection, richer assistance, streamed output, and bounded interruption remain
-  staged.
+  Shift-movement selection and cursor-following multiline viewports are also
+  live. Richer assistance, manual transcript scrolling, streamed output, and
+  bounded interruption remain staged.

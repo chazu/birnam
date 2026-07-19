@@ -111,6 +111,26 @@
   ] doc:
   "Render one logical source row from byte spans through terminal-cell positions." ];
 
+[Reflect defineMethod: #renderSelectionForRow:state:y:promptWidth:in: on: Digla as:
+  [:self :row :state :y :promptWidth :text |
+  let range := [self selectionRangeIn: state];
+  [[range isNil]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let lineStart := [row at: "sourceStart"];
+      let lineEnd := [row at: "sourceEnd"];
+      let rangeStart := [range at: "start"];
+      let rangeEnd := [range at: "end"];
+      let start := [[rangeStart < lineStart] ifTrue: [| lineStart] ifFalse: [| rangeStart]];
+      let finish := [[rangeEnd > lineEnd] ifTrue: [| lineEnd] ifFalse: [| rangeEnd]];
+      [[start < finish]
+        ifTrue: [|
+          let x := [promptWidth + [self displayColumnIn: text at: start]];
+          [Termbox printX: x y: y fg: 0 bg: 7 str: [text copyFrom: start to: finish]]]
+        ifFalse: [| nil]]]]
+  ] doc:
+  "Overlay the normalized source selection on one rendered logical row." ];
+
 [Reflect defineMethod: #wrapTranscriptLine:width: on: Digla as: [:self :text :requestedWidth |
   let width := [[requestedWidth < 1] ifTrue: [| 1] ifFalse: [| requestedWidth]];
   let lines := [#[] asCell];
@@ -188,12 +208,16 @@
   let completionRows := [self completionRowsFor: state limit: 6];
   let completionRowCount := [completionRows size];
   let completionStart := [height - completionRowCount - 1];
-  let editorStart := [height - editorRows - completionRowCount - 2];
-  let start := [[editorStart < 1] ifTrue: [| 1] ifFalse: [| editorStart]];
+  let maxEditorRows0 := [completionStart - 1];
+  let maxEditorRows := [[maxEditorRows0 < 1] ifTrue: [| 1] ifFalse: [| maxEditorRows0]];
+  let visibleEditorRows := [editorRows min: maxEditorRows];
+  let visibleState := [self ensureEditorViewportRows: visibleEditorRows in: state];
+  let editorTopLine := [[visibleState at: "viewport"] at: "editorTopLine"];
+  let start := [completionStart - visibleEditorRows];
   [Termbox clear];
   [Termbox printX: 0 y: 0 fg: 8 bg: 0 str:
-    "Digla  local image editor  (Tab complete, Esc quit, Ctrl-J newline, Enter evaluate)"];
-  let transcriptLines := [self transcriptLines: [state at: "transcript"] width: width];
+    "Digla  Tab complete | Shift-arrows select | Ctrl-J newline | Enter eval | Esc quit"];
+  let transcriptLines := [self transcriptLines: [visibleState at: "transcript"] width: width];
   let availableTranscriptRows := [start - 1];
   let firstTranscriptLine0 := [[transcriptLines size] - availableTranscriptRows];
   let firstTranscriptLine := [[firstTranscriptLine0 < 0]
@@ -209,12 +233,15 @@
   [rows do: [:row |
     let i := [row at: "line"];
     let prompt := [[i = 0] ifTrue: [| "> "] ifFalse: [| "| "]];
-    let y := [start + i];
-    [[[y < completionStart] & [y >= 1]]
+    let y := [start + [i - editorTopLine]];
+    let visibleTop := [i >= editorTopLine];
+    let visibleBottom := [i < [editorTopLine + visibleEditorRows]];
+    [[visibleTop & visibleBottom]
       ifTrue: [|
         let promptColor := [self diagnosticColorForRow: row analysis: analysis text: buffer];
         [Termbox printX: 0 y: y fg: promptColor bg: 0 str: prompt];
-        [self renderSourceRow: row analysis: analysis y: y promptWidth: 2 in: buffer]]
+        [self renderSourceRow: row analysis: analysis y: y promptWidth: 2 in: buffer];
+        [self renderSelectionForRow: row state: visibleState y: y promptWidth: 2 in: buffer]]
       ifFalse: [| nil]]]];
   let completionY := [completionStart asCell];
   [completionRows do: [:row |
@@ -224,12 +251,16 @@
     [Termbox printX: 0 y: [completionY value] fg: fg bg: bg str: [row at: "text"]];
     [completionY set: [[completionY value] + 1]]]];
   let diagnosticCount := [[[analysis at: "diagnostics"] size] printString];
-  let status := [[state at: "status"] , "  bytes=" , [[buffer size] printString]
-    , "  diagnostics=" , diagnosticCount];
+  let selected := [self selectionRangeIn: visibleState];
+  let selectionStatus := [[selected isNil]
+    ifTrue: [| ""]
+    ifFalse: [| ["  selected=" , [[[selected at: "end"] - [selected at: "start"]] printString]]]];
+  let status := [[visibleState at: "status"] , "  bytes=" , [[buffer size] printString]
+    , selectionStatus , "  diagnostics=" , diagnosticCount];
   [Termbox printX: 0 y: [height - 1] fg: 7 bg: 0 str: status];
   let position := [self terminalPositionForByte: [state at: "cursor"] in: buffer promptWidth: 2];
   let cursorX := [position at: "x"];
-  let cursorY := [start + [position at: "line"]];
+  let cursorY := [start + [[position at: "line"] - editorTopLine]];
   [[[cursorY >= 1] & [cursorY < completionStart]]
     ifTrue: [| [Termbox setCursor: cursorX y: cursorY]]
     ifFalse: [| [Termbox setCursor: 0 y: 0]]];

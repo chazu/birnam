@@ -85,9 +85,12 @@ Content-Length-framed JSON for child processes, while `--session-listen` and
 and AI agents. Tab now opens a completion
 menu that merges in-scope parser/CST candidates with bounded live-image globals;
 Tab or Down cycles, Up cycles backward, Enter accepts, and Escape dismisses the
-menu before it quits the editor. Selection, viewport refinements, hover,
-signature help, source navigation, streamed output, and bounded interruption
-remain later slices.
+menu before it quits the editor. Shift-arrow/Home/End selection now uses source
+byte anchors and replaces or deletes through the ordinary edit operations. A
+logical-line viewport follows the cursor through buffers taller than the
+terminal without storing terminal coordinates in editor state. Manual transcript
+scrolling, soft-wrapped source rows, hover, signature help, source navigation,
+streamed output, and bounded interruption remain later slices.
 
 ## 2. Goals and boundaries
 
@@ -381,7 +384,8 @@ The core invariants are:
    and parser-backed diagnostics. Autocomplete now merges scoped source
    candidates and bounded runtime globals behind a terminal-independent language
    service, while the editor owns menu state and the renderer owns its cells.
-   Selection and viewport refinements are still open.
+   Shift-movement selection and a cursor-following logical-line viewport are now
+   implemented; manual transcript scrolling and soft-wrapped source rows remain.
 4. **Compatibility remote session — superseded by the framed seam.** The
    prompt-oriented socket REPL cannot preserve structured values, errors, or
    capabilities without ambiguous text parsing. Keep it compatible for comint

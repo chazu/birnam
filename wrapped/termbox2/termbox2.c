@@ -56,6 +56,7 @@ int lg_print(void *self, int x, int y, int fg, int bg, const char *s) {
  * The filled event is stashed in lg_ev; read it with the accessors below. */
 int lg_poll(void)    { return tb_poll_event(&lg_ev); }
 int lg_ev_type(void) { return (int)lg_ev.type; } /* TB_EVENT_* */
+int lg_ev_mod(void)  { return (int)lg_ev.mod; }  /* TB_MOD_* bit set */
 int lg_ev_key(void)  { return (int)lg_ev.key; }  /* TB_KEY_*  (0 if a char)  */
 int lg_ev_ch(void)   { return (int)lg_ev.ch; }   /* codepoint (0 if special) */
 
@@ -102,6 +103,7 @@ enum lg_operation {
     LG_SET_CELL,
     LG_PRINT,
     LG_EV_CHAR,
+    LG_EV_MOD,
 };
 
 int lg_dispatch(void *self, int op, int a, int b, int c, int d, int e,
@@ -119,6 +121,7 @@ int lg_dispatch(void *self, int op, int a, int b, int c, int d, int e,
     case LG_EV_TYPE:     return lg_ev_type();
     case LG_EV_KEY:      return lg_ev_key();
     case LG_EV_CH:       return lg_ev_ch();
+    case LG_EV_MOD:      return lg_ev_mod();
     case LG_SET_CURSOR:  return lg_set_cursor(NULL, a, b);
     case LG_SET_CELL:    return lg_set_cell(NULL, a, b, c, d, e);
     case LG_PRINT:       return lg_print(NULL, a, b, c, d, text);

@@ -25,6 +25,55 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [s4 at: "cursor"] equals: 4 describes: "end reaches first line"];
   [t expect: [s5 at: "cursor"] equals: 6 describes: "down clamps to second line"]]];
 
+[e test: "Shift movement selects source bytes and ordinary movement clears it" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let s0 := [Digla editorStateFor: config];
+  let s1 := [s0 at: "buffer" put: "a🙂bc"];
+  let first := [Digla handleKey: 65514 modifier: 4 character: "" state: s1];
+  let firstRange := [Digla selectionRangeIn: first];
+  [t expect: [first at: "cursor"] equals: 1 describes: "first Shift-Right moves one codepoint"];
+  [t expect: [firstRange at: "start"] equals: 0 describes: "selection starts at anchor"];
+  [t expect: [firstRange at: "end"] equals: 1 describes: "selection ends at cursor"];
+  let second := [Digla handleKey: 65514 modifier: 4 character: "" state: first];
+  let secondRange := [Digla selectionRangeIn: second];
+  [t expect: [second at: "cursor"] equals: 5 describes: "selection crosses UTF-8 as one codepoint"];
+  [t expect: [secondRange at: "end"] equals: 5 describes: "selection range remains byte-based"];
+  let reversed := [Digla handleKey: 65515 modifier: 4 character: "" state: second];
+  let reversedRange := [Digla selectionRangeIn: reversed];
+  [t expect: [reversedRange at: "end"] equals: 1 describes: "Shift-Left contracts toward anchor"];
+  let cleared := [Digla handleKey: 65514 modifier: 0 character: "" state: reversed];
+  [t expect: [cleared at: "selection"] equals: nil describes: "ordinary movement clears selection"]]];
+
+[e test: "typing and deletion replace the selected range" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let s0 := [Digla editorStateFor: config];
+  let s1 := [s0 at: "buffer" put: "a🙂bc"];
+  let s2 := [s1 at: "cursor" put: 5];
+  let s3 := [s2 at: "selection" put: { "anchor" -> 1 }];
+  let typed := [Digla insertText: "Z" into: s3];
+  [t expect: [typed at: "buffer"] equals: "aZbc" describes: "typing replaces selection"];
+  [t expect: [typed at: "cursor"] equals: 2 describes: "cursor follows replacement"];
+  [t expect: [typed at: "selection"] equals: nil describes: "replacement clears selection"];
+  let s4 := [typed at: "cursor" put: 3];
+  let s5 := [s4 at: "selection" put: { "anchor" -> 1 }];
+  let deleted := [Digla backspaceIn: s5];
+  [t expect: [deleted at: "buffer"] equals: "ac" describes: "backspace removes selection"];
+  [t expect: [deleted at: "cursor"] equals: 1 describes: "deletion returns to selection start"]]];
+
+[e test: "editor viewport follows a cursor outside the visible logical rows" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let s0 := [Digla editorStateFor: config];
+  let text := "zero\none\ntwo\nthree\nfour\nfive";
+  let s1 := [s0 at: "buffer" put: text];
+  let s2 := [s1 at: "cursor" put: [text size]];
+  let atBottom := [Digla ensureEditorViewportRows: 3 in: s2];
+  [t expect: [[atBottom at: "viewport"] at: "editorTopLine"] equals: 3
+    describes: "viewport reveals bottom cursor"];
+  let s3 := [atBottom at: "cursor" put: 0];
+  let atTop := [Digla ensureEditorViewportRows: 3 in: s3];
+  [t expect: [[atTop at: "viewport"] at: "editorTopLine"] equals: 0
+    describes: "viewport follows cursor back to top"]]];
+
 [e test: "submit evaluates and records history" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let s0 := [Digla editorStateFor: config];

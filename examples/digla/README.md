@@ -24,10 +24,12 @@ zig-out/bin/birnam run examples/digla --build -- --ui
 The editor supports character insertion, UTF-8-aware backspace, cursor motion,
 history, multiline input with Ctrl-J, local evaluation with Enter, lexical
 highlighting, parser-backed diagnostics, and terminal-cell-aware transcript
-wrapping. Tab opens completion for scoped source names, Birnam keywords, and
-bounded live-image globals; Tab/Down and Up move through the menu, Enter accepts,
-and Escape dismisses it. Enter evaluates the current Birnam form, for example
-`[1 + 2]`.
+wrapping. Shift with the arrow, Home, or End keys extends a source selection;
+typing, Backspace, or Delete replaces/removes it. Long multiline buffers keep
+the cursor in a logical-line viewport. Tab opens completion for scoped source
+names, Birnam keywords, and bounded live-image globals; Tab/Down and Up move
+through the menu, Enter accepts, and Escape dismisses it. Enter evaluates the
+current Birnam form, for example `[1 + 2]`.
 
 Runtime operations use a transport-neutral session rather than calling the
 evaluator from the terminal model. The current commands are:

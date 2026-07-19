@@ -90,8 +90,11 @@ until product evidence selects the next failure model.
   `Reflect allMethodsOf:` with exported-name lookup and a basis-keyed, single-pass
   reverse-global index: a controlled full-image request fell from 1.587 s to
   17.7 ms with byte-identical rendered output, while reflection after live-image
-  mutation completes in 12.9 ms. Next: add selection, viewport refinement, and
-  hover/signature/source navigation on the same seams.
+  mutation completes in 12.9 ms. Shift-movement selection now replaces/deletes
+  through source-byte ranges, and a logical-line viewport keeps the cursor
+  visible in buffers taller than the terminal. Next: add manual transcript
+  scrolling, soft-wrapped source rows, and hover/signature/source navigation on
+  the same seams.
 
 ---
 
