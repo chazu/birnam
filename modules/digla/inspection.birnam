@@ -1,0 +1,166 @@
+// inspection.birnam — value-only inspection of the live image.
+//
+// Queries are independent of Termbox and return transport-safe Maps/Vectors.
+// The terminal transcript, a future framed session, JSON, and AI clients can
+// therefore share one read-only snapshot instead of walking Reflect or db.
+
+[Reflect defineMethod: #inspectionNameOf: on: Digla as: [:self :value |
+  [[value isNil]
+    ifTrue:  [| nil]
+    ifFalse: [|
+      [[Reflect isSymbol: value]
+        ifTrue:  [| [Reflect nameOf: value]]
+        ifFalse: [| [value printString]]]]]
+  ] doc:
+  "Return a transport-safe name for a symbol-like inspection field, or nil." ];
+
+[Reflect defineMethod: #inspectionValue: on: Digla as: [:self :value |
+  let vt := [Reflect vtableOf: value];
+  let scalar := [[vt == [Reflect vtableOf: 0]] |
+                 [vt == [Reflect vtableOf: 0.0]] |
+                 [vt == [Reflect vtableOf: true]]];
+  let native := [[value isNil] | scalar | [Reflect isString: value]];
+  let safe := [native
+    ifTrue:  [| value]
+    ifFalse: [|
+      [[Reflect isSymbol: value]
+        ifTrue:  [| [Reflect nameOf: value]]
+        ifFalse: [| [value printString]]]]];
+  { "value" -> safe,
+    "rendered" -> [[native | [Reflect isSymbol: value]] not] }
+  ] doc:
+  "Normalize a live value to a transport-safe scalar and label rendered fallbacks." ];
+
+[Reflect defineMethod: #inspectionFactCard: on: Digla as: [:self :fact |
+  let normalized := [self inspectionValue: [fact at: #value]];
+  { "attribute" -> [self inspectionNameOf: [fact at: #attribute]],
+    "value" -> [normalized at: "value"],
+    "rendered" -> [normalized at: "rendered"] }
+  ] doc:
+  "Convert one Reflect fact descriptor to a capability-free fact card." ];
+
+[Reflect defineMethod: #inspectionMethodKind: on: Digla as: [:self :method |
+  [[method = #primitive]
+    ifTrue:  [| "primitive"]
+    ifFalse: [| [[method = #compiled]
+      ifTrue:  [| "compiled"]
+      ifFalse: [| "method"]]]]
+  ] doc:
+  "Classify one reflected method representation without exposing it." ];
+
+[Reflect defineMethod: #inspectionMethodCard: on: Digla as: [:self :descriptor |
+  let target := [self inspectionNameOf: [descriptor at: #target]];
+  let owner := [descriptor at: #owner];
+  let kind := [self inspectionMethodKind: [descriptor at: #method]];
+  { "selector" -> [self inspectionNameOf: [descriptor at: #selector]],
+    "target" -> target,
+    "owner" -> [[owner isNil] ifTrue: [| nil] ifFalse: [| target]],
+    "kind" -> kind,
+    "sourceAvailable" -> [kind = "method"] }
+  ] doc:
+  "Convert one effective-method descriptor to a capability-free method card." ];
+
+[Reflect defineMethod: #inspectionFactsOf: on: Digla as: [:self :value |
+  let me := self;
+  [[[Reflect factsOf: value] collect: [:fact | [me inspectionFactCard: fact]]]
+    sortBy: [:card | [card at: "attribute"]]]
+  ] doc:
+  "Return deterministic transport-safe fact cards for `value`." ];
+
+[Reflect defineMethod: #inspectionMethodsOf: on: Digla as: [:self :value |
+  let me := self;
+  [[[Reflect allMethodsOf: value] collect: [:method | [me inspectionMethodCard: method]]]
+    sortBy: [:card | [card at: "selector"]]]
+  ] doc:
+  "Return deterministic transport-safe effective-method cards for `value`." ];
+
+[Reflect defineMethod: #inspectionSnapshotFor:name:warnings: on: Digla as: [:self :value :name :warnings |
+  let methods := [self inspectionMethodsOf: value];
+  let firstMethod := [methods at: 0 ifAbsent: [| nil]];
+  let vtableName := [[firstMethod isNil]
+    ifTrue:  [| nil]
+    ifFalse: [| [firstMethod at: "target"]]];
+  let target := {
+    "globalName" -> name,
+    "printString" -> [value printString],
+    "vtableName" -> vtableName
+  };
+  { "schema" -> 1,
+    "basis" -> [db basis],
+    "target" -> target,
+    "generationDigest" -> [Codegen currentGenerationDigest],
+    "sections" -> #["object" "facts" "methods"],
+    "object" -> target,
+    "facts" -> [self inspectionFactsOf: value],
+    "methods" -> methods,
+    "changes" -> #[],
+    "warnings" -> warnings }
+  ] doc:
+  "Build the read-only Digla snapshot for a live value and optional global name." ];
+
+[Reflect defineMethod: #inspect: on: Digla as: [:self :value |
+  [self inspectionSnapshotFor: value name: nil warnings: #[]]
+  ] doc:
+  "Inspect a live value as a deterministic, capability-free snapshot." ];
+
+[Reflect defineMethod: #missingGlobalSnapshot: on: Digla as: [:self :name |
+  let target := { "globalName" -> name, "printString" -> "", "vtableName" -> nil };
+  { "schema" -> 1,
+    "basis" -> [db basis],
+    "target" -> target,
+    "generationDigest" -> [Codegen currentGenerationDigest],
+    "sections" -> #[],
+    "object" -> nil,
+    "facts" -> #[],
+    "methods" -> #[],
+    "changes" -> #[],
+    "warnings" -> #[["global not found: " , name]] }
+  ] doc:
+  "Build the structured inspection result for an unbound global name." ];
+
+[Reflect defineMethod: #inspectGlobal: on: Digla as: [:self :name |
+  let symbol := [[Reflect isSymbol: name] ifTrue: [| name] ifFalse: [| [name asSymbol]]];
+  let text := [Reflect nameOf: symbol];
+  [[Globals includes: symbol]
+    ifTrue:  [| [self inspectionSnapshotFor: [Globals at: symbol] name: text warnings: #[]]]
+    ifFalse: [| [self missingGlobalSnapshot: text]]]
+  ] doc:
+  "Inspect a named global without parsing or evaluating an expression." ];
+
+[Reflect defineMethod: #renderInspectionText: on: Digla as: [:self :snapshot |
+  let sb := [StringBuilder new];
+  let target := [snapshot at: "target"];
+  let globalName := [target at: "globalName"];
+  let shownName := [[globalName isNil] ifTrue: [| "(anonymous)"] ifFalse: [| ["#" , globalName]]];
+  let vtableName := [target at: "vtableName"];
+  let shownVtable := [[vtableName isNil] ifTrue: [| "(unknown)"] ifFalse: [| ["#" , vtableName]]];
+  [sb addLine: ["target:     " , shownName]];
+  [sb addLine: ["value:      " , [target at: "printString"]]];
+  [sb addLine: ["vtable:     " , shownVtable]];
+  [sb addLine: ["basis:      " , [[snapshot at: "basis"] printString]]];
+  [sb addLine: ["generation: " , [snapshot at: "generationDigest"]]];
+  [sb addLine: ""];
+  [sb addLine: "facts:"];
+  [[[snapshot at: "facts"] isEmpty]
+    ifTrue:  [| [sb addLine: "  (none)"]]
+    ifFalse: [| [[snapshot at: "facts"] do: [:fact |
+      let rendered := [[fact at: "rendered"] ifTrue: [| " (rendered)"] ifFalse: [| ""]];
+      [sb addLine: ["  #" , [fact at: "attribute"] , "  " , [[fact at: "value"] printString] , rendered]]]]]];
+  [sb addLine: ""];
+  [sb addLine: "methods:"];
+  [[[snapshot at: "methods"] isEmpty]
+    ifTrue:  [| [sb addLine: "  (none)"]]
+    ifFalse: [| [[snapshot at: "methods"] do: [:method |
+      let targetName := [[[method at: "target"] isNil]
+        ifTrue: [| "(unknown)"]
+        ifFalse: [| [method at: "target"]]];
+      [sb addLine: ["  " , [method at: "selector"] , "  " , [method at: "kind"] , "  " , targetName]]]]]];
+  [[[snapshot at: "warnings"] isEmpty]
+    ifTrue:  [| nil]
+    ifFalse: [|
+      [sb addLine: ""];
+      [sb addLine: "warnings:"];
+      [[snapshot at: "warnings"] do: [:warning | [sb addLine: ["  " , warning]]]]]];
+  [sb asString]
+  ] doc:
+  "Render one inspection snapshot as deterministic terminal-friendly text." ];

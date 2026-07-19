@@ -57,3 +57,26 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let final := [Digla runWhileRunning: s0 step: step];
   [t expect: [final at: "running"] equals: false describes: "loop returns the stopped state"];
   [t expect: [remaining value] equals: 0 describes: "loop applies each transition"]]];
+
+[e test: "terminal commands inspect globals and the last result without eval" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let evaluated := [Digla submitIn: [initial at: "buffer" put: "[20 + 1]"]];
+  let inspectedResult := [Digla submitIn: [evaluated at: "buffer" put: ":inspect"]];
+  let inspectedGlobal := [Digla submitIn: [inspectedResult at: "buffer" put: ":inspect String"]];
+  let resultText := [[inspectedResult at: "transcript"] last];
+  let globalText := [[inspectedGlobal at: "transcript"] last];
+  [t assert: [resultText includesSubstring: "value:      21"] describes: "last result inspection"];
+  [t assert: [globalText includesSubstring: "target:     #String"] describes: "named global inspection"];
+  [t expect: [inspectedGlobal at: "lastResult"] equals: 21 describes: "commands preserve the last result"];
+  [t expect: [inspectedGlobal at: "status"] equals: "inspected global" describes: "command status"]]];
+
+[e test: "terminal command help and failures stay structured" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let help := [Digla submitIn: [initial at: "buffer" put: ":help"]];
+  let missing := [Digla submitIn: [help at: "buffer" put: ":inspect NoSuchDiglaGlobal"]];
+  let unknown := [Digla submitIn: [missing at: "buffer" put: ":wat"]];
+  [t assert: [[[help at: "transcript"] last] includesSubstring: ":inspect NAME"] describes: "help lists inspect"];
+  [t assert: [[[missing at: "transcript"] last] includesSubstring: "global not found"] describes: "missing global warning"];
+  [t expect: [unknown at: "status"] equals: "command error" describes: "unknown command status"]]];

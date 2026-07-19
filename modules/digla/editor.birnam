@@ -12,7 +12,8 @@
   let s2 := [s1 at: "status" put: "ready"];
   let s3 := [s2 at: "historyIndex" put: nil];
   let s4 := [s3 at: "lastResult" put: nil];
-  [s4 at: "lastError" put: nil]] doc:
+  let s5 := [s4 at: "hasLastResult" put: false];
+  [s5 at: "lastError" put: nil]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
 
 [Reflect defineMethod: #previousBoundaryStep:in: on: Digla as: [:self :p :text |
@@ -165,27 +166,78 @@
   [[value isNil] ifTrue: [| "nil"] ifFalse: [| [value printString]]]] doc:
   "Render a local evaluation result for the transcript."];
 
+[Reflect defineMethod: #recordSubmission:shown:status:in: on: Digla as: [:self :input :shown :status :state |
+  let transcript0 := [state at: "transcript"];
+  let transcript1 := [transcript0 add: ["> " , input]];
+  let transcript2 := [transcript1 add: shown];
+  let history := [[state at: "history"] add: input];
+  let s1 := [state at: "buffer" put: ""];
+  let s2 := [s1 at: "cursor" put: 0];
+  let s3 := [s2 at: "history" put: history];
+  let s4 := [s3 at: "historyIndex" put: nil];
+  let s5 := [s4 at: "transcript" put: transcript2];
+  [s5 at: "status" put: status]
+  ] doc:
+  "Record one evaluated form or editor command in history and the transcript." ];
+
+[Reflect defineMethod: #commandHelpText on: Digla as: [:self |
+  "Digla commands:\n  :inspect NAME  inspect a named global\n  :inspect       inspect the last evaluation result\n  :help          show this help"
+  ] doc:
+  "Return the terminal-native command summary." ];
+
+[Reflect defineMethod: #inspectCommand:state: on: Digla as: [:self :words :state |
+  [[[words size] > 2]
+    ifTrue: [| { "text" -> "usage: :inspect [GLOBAL]", "status" -> "command error" }]
+    ifFalse: [|
+      [[[words size] = 2]
+        ifTrue: [|
+          let snapshot := [self inspectGlobal: [words at: 1]];
+          { "text" -> [self renderInspectionText: snapshot], "status" -> "inspected global" }]
+        ifFalse: [|
+          [[state at: "hasLastResult"]
+            ifTrue: [|
+              let snapshot := [self inspect: [state at: "lastResult"]];
+              { "text" -> [self renderInspectionText: snapshot], "status" -> "inspected result" }]
+            ifFalse: [| { "text" -> "nothing has been evaluated yet", "status" -> "command error" }]]]]]]
+  ] doc:
+  "Execute the read-only inspect editor command and return its display result." ];
+
+[Reflect defineMethod: #commandResultFor:state: on: Digla as: [:self :input :state |
+  let words := [input words];
+  let command := [words at: 0 ifAbsent: [| ""]];
+  [[command = ":help"]
+    ifTrue: [| { "text" -> [self commandHelpText], "status" -> "help" }]
+    ifFalse: [|
+      [[command = ":inspect"]
+        ifTrue: [| [self inspectCommand: words state: state]]
+        ifFalse: [| { "text" -> ["unknown Digla command: " , command], "status" -> "command error" }]]]]
+  ] doc:
+  "Dispatch one terminal-native Digla command without evaluating source." ];
+
+[Reflect defineMethod: #submitCommandIn: on: Digla as: [:self :state |
+  let input := [state at: "buffer"];
+  let result := [self commandResultFor: input state: state];
+  [self recordSubmission: input shown: [result at: "text"]
+    status: [result at: "status"] in: state]
+  ] doc:
+  "Run one Digla editor command and append its result to the transcript." ];
+
 [Reflect defineMethod: #submitIn: on: Digla as: [:self :state |
   let input := [state at: "buffer"];
   [[input isEmpty]
     ifTrue: [| [state at: "status" put: "empty form"]]
     ifFalse: [|
-      let value := [Codegen evalPersisting: input];
-      let error := [Codegen lastError];
-      let shown := [[error notNil] ifTrue: [| error] ifFalse: [| [self resultText: value]]];
-      let transcript0 := [state at: "transcript"];
-      let transcript1 := [transcript0 add: ["> " , input]];
-      let transcript2 := [transcript1 add: shown];
-      let history := [[state at: "history"] add: input];
-      let s1 := [state at: "buffer" put: ""];
-      let s2 := [s1 at: "cursor" put: 0];
-      let s3 := [s2 at: "history" put: history];
-      let s4 := [s3 at: "historyIndex" put: nil];
-      let s5 := [s4 at: "transcript" put: transcript2];
-      let s6 := [s5 at: "lastResult" put: value];
-      let s7 := [s6 at: "lastError" put: error];
-      let resultStatus := [[error notNil] ifTrue: [| "error"] ifFalse: [| "ready"]];
-      [s7 at: "status" put: resultStatus]]]] doc:
+      [[input startsWith: ":"]
+        ifTrue: [| [self submitCommandIn: state]]
+        ifFalse: [|
+          let value := [Codegen evalPersisting: input];
+          let error := [Codegen lastError];
+          let shown := [[error notNil] ifTrue: [| error] ifFalse: [| [self resultText: value]]];
+          let resultStatus := [[error notNil] ifTrue: [| "error"] ifFalse: [| "ready"]];
+          let recorded := [self recordSubmission: input shown: shown status: resultStatus in: state];
+          let s1 := [recorded at: "lastResult" put: value];
+          let s2 := [s1 at: "hasLastResult" put: [error isNil]];
+          [s2 at: "lastError" put: error]]]]]] doc:
   "Evaluate the current form against the local live image and append its result to the transcript."];
 
 [Reflect defineMethod: #historyMove:in: on: Digla as: [:self :direction :state |

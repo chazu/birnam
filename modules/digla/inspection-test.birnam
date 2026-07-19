@@ -1,0 +1,48 @@
+// inspection-test.birnam — read-only runtime exploration contracts.
+
+let e := [TestSuite named: "Digla inspection" module: #diglaInspection];
+
+let fixtureBase := [Object clone];
+[Reflect defineMethod: #inspectionInherited on: fixtureBase as: [:self | "base"] doc:
+  "A fixture method inherited by the inspected object."];
+let fixture := [fixtureBase clone];
+[Reflect defineMethod: #inspectionDirect on: fixture as: [:self | "direct"] doc:
+  "A fixture method directly owned by the inspected object."];
+[Globals at: #DiglaInspectionFixture put: fixture];
+[db assert: fixture attr: #name value: "Ada"];
+[db assert: fixture attr: #unsafe value: [Object clone]];
+
+[e test: "named inspection returns deterministic safe object facts and methods" do: [:t |
+  let before := [db basis];
+  let snapshot := [Digla inspectGlobal: "DiglaInspectionFixture"];
+  let after := [db basis];
+  let target := [snapshot at: "target"];
+  let facts := [snapshot at: "facts"];
+  let methods := [snapshot at: "methods"];
+  let nameFact := [facts detect: [:fact | [[fact at: "attribute"] = "name"]]];
+  let unsafeFact := [facts detect: [:fact | [[fact at: "attribute"] = "unsafe"]]];
+  let inherited := [methods detect: [:method | [[method at: "selector"] = "inspectionInherited"]]];
+  let direct := [methods detect: [:method | [[method at: "selector"] = "inspectionDirect"]]];
+  let primitive := [methods detect: [:method | [[method at: "kind"] = "primitive"]]];
+  [t expect: [snapshot at: "schema"] equals: 1 describes: "snapshot schema"];
+  [t expect: [target at: "globalName"] equals: "DiglaInspectionFixture" describes: "stable global name"];
+  [t expect: [nameFact at: "value"] equals: "Ada" describes: "scalar fact survives"];
+  [t expect: [unsafeFact at: "rendered"] equals: true describes: "object fact is rendered, not leaked"];
+  [t expect: [inherited at: "kind"] equals: "compiled" describes: "inherited method card"];
+  [t expect: [direct at: "kind"] equals: "compiled" describes: "direct method card"];
+  [t expect: [primitive notNil] equals: true describes: "native protocol is represented"];
+  [t expect: after equals: before describes: "inspection performs no Store writes"]]];
+
+[e test: "missing globals and anonymous values remain explicit" do: [:t |
+  let missing := [Digla inspectGlobal: "DefinitelyMissingDiglaGlobal"];
+  let anonymous := [Digla inspect: [Object clone]];
+  [t expect: [missing at: "object"] equals: nil describes: "missing global has no object card"];
+  [t expect: [[missing at: "warnings"] size] equals: 1 describes: "missing global carries a warning"];
+  [t expect: [[anonymous at: "target"] at: "globalName"] equals: nil describes: "anonymous identity is not invented"]]];
+
+[e test: "text rendering exposes the shared exploration card" do: [:t |
+  let text := [Digla renderInspectionText: [Digla inspectGlobal: #DiglaInspectionFixture]];
+  [t assert: [text includesSubstring: "target:     #DiglaInspectionFixture"] describes: "target heading"];
+  [t assert: [text includesSubstring: "facts:"] describes: "facts section"];
+  [t assert: [text includesSubstring: "#name  Ada"] describes: "fact row"];
+  [t assert: [text includesSubstring: "inspectionInherited  compiled"] describes: "method row"]]];

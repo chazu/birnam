@@ -26,6 +26,8 @@
 [System load: "modules/compiled-unit-test.birnam"];
 [System load: "modules/app-config-test.birnam"];
 [System load: "modules/digla/digla-test.birnam"];
+[System load: "modules/digla/inspection.birnam"];
+[System load: "modules/digla/inspection-test.birnam"];
 [System load: "modules/digla/position-map.birnam"];
 [System load: "modules/digla/position-map-test.birnam"];
 [System load: "modules/digla/editor.birnam"];
