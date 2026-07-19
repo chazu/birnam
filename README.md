@@ -350,5 +350,7 @@ from-zero bootstrap compiler and performance floor.
   Shift-movement selection, cursor-following multiline viewports, buffered-event
   coalescing, and a project-local native source-frame/wrapping accelerator are
   also live. Page Up/Page Down navigate wrapped transcript rows with automatic
-  tail following after evaluation. Project/dependency navigation, streamed output,
-  and bounded interruption remain staged.
+  tail following after evaluation. Source lines now soft-wrap through the shared
+  byte-to-cell projection, with visual-row cursor/selection/viewports, and buffered
+  text bursts make multi-kilobyte pastes a single edit. Project/dependency navigation,
+  streamed output, and bounded interruption remain staged.

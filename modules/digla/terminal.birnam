@@ -1,9 +1,14 @@
 // terminal.birnam — the effectful local terminal loop for Digla.
 
 [Reflect defineMethod: #handleCurrentTerminalEventIn: on: Digla as: [:self :state |
-  [self handleKey: [Termbox evKey]
-    modifier: [Termbox evMod]
-    character: [Termbox evChar]
+  let key := [Termbox evKey];
+  let modifier := [Termbox evMod];
+  let character := [Termbox evChar];
+  let canBurst := [[key = 0] & [[character isEmpty] not]];
+  let input := [canBurst ifTrue: [| [Termbox textBurst]] ifFalse: [| character]];
+  [self handleKey: key
+    modifier: modifier
+    character: input
     state: state]
   ] doc:
   "Apply the event currently held by Termbox to the terminal-independent editor state." ];

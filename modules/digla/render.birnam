@@ -69,7 +69,7 @@
   "Choose the prompt color for a source line containing a diagnostic." ];
 
 [Reflect defineMethod: #renderSourceRange:start:end:y:promptWidth:fg:text: on: Digla as: [:self :rowStart :start :finish :y :promptWidth :fg :text |
-  let x := [promptWidth + [self displayColumnIn: text at: start]];
+  let x := [promptWidth + [self displayWidthIn: text from: rowStart to: start]];
   [[start < finish]
     ifTrue: [| [Termbox printX: x y: y fg: fg bg: 0 str: [text copyFrom: start to: finish]]]
     ifFalse: [| nil]];
@@ -125,7 +125,7 @@
       let finish := [[rangeEnd > lineEnd] ifTrue: [| lineEnd] ifFalse: [| rangeEnd]];
       [[start < finish]
         ifTrue: [|
-          let x := [promptWidth + [self displayColumnIn: text at: start]];
+          let x := [promptWidth + [self displayWidthIn: text from: lineStart to: start]];
           [Termbox printX: x y: y fg: 0 bg: 7 str: [text copyFrom: start to: finish]]]
         ifFalse: [| nil]]]]
   ] doc:
@@ -232,7 +232,8 @@
   let width := [Termbox width];
   let height := [Termbox height];
   let buffer := [state at: "buffer"];
-  let frame := [self renderFrameFor: buffer cursor: [state at: "cursor"] promptWidth: 2];
+  let frame := [self renderFrameFor: buffer cursor: [state at: "cursor"]
+    promptWidth: 2 width: width];
   let analysis := { "highlights" -> [frame at: "highlights"],
     "diagnostics" -> [state at: "diagnostics"] };
   let layout := [frame at: "layout"];
@@ -246,8 +247,10 @@
   let maxEditorRows0 := [completionStart - 1];
   let maxEditorRows := [[maxEditorRows0 < 1] ifTrue: [| 1] ifFalse: [| maxEditorRows0]];
   let visibleEditorRows := [editorRows min: maxEditorRows];
-  let visibleState := [self ensureEditorViewportRows: visibleEditorRows in: state];
-  let editorTopLine := [[visibleState at: "viewport"] at: "editorTopLine"];
+  let framePosition := [frame at: "position"];
+  let visibleState := [self ensureEditorViewportRows: visibleEditorRows
+    cursorRow: [framePosition at: "line"] rowCount: editorRows in: state];
+  let editorTopRow := [[visibleState at: "viewport"] at: "editorTopRow"];
   let start := [completionStart - visibleEditorRows];
   [Termbox clear];
   [Termbox printX: 0 y: 0 fg: 8 bg: 0 str:
@@ -270,11 +273,14 @@
         [transcriptY set: [[transcriptY value] + 1]]]]]
     ifFalse: [| nil]];
   [rows do: [:row |
-    let i := [row at: "line"];
-    let prompt := [[i = 0] ifTrue: [| "> "] ifFalse: [| "| "]];
-    let y := [start + [i - editorTopLine]];
-    let visibleTop := [i >= editorTopLine];
-    let visibleBottom := [i < [editorTopLine + visibleEditorRows]];
+    let i := [row at: "row"];
+    let logicalLine := [row at: "line"];
+    let prompt := [[row at: "continuation"]
+      ifTrue: [| ": "]
+      ifFalse: [| [[logicalLine = 0] ifTrue: [| "> "] ifFalse: [| "| "]]]];
+    let y := [start + [i - editorTopRow]];
+    let visibleTop := [i >= editorTopRow];
+    let visibleBottom := [i < [editorTopRow + visibleEditorRows]];
     [[visibleTop & visibleBottom]
       ifTrue: [|
         let promptColor := [self diagnosticColorForRow: row analysis: analysis text: buffer];
@@ -301,9 +307,9 @@
   let status := [[scrolledState at: "status"] , "  bytes=" , [[buffer size] printString]
     , selectionStatus , scrollStatus , "  diagnostics=" , diagnosticCount , dirty];
   [Termbox printX: 0 y: [height - 1] fg: 7 bg: 0 str: status];
-  let position := [frame at: "position"];
+  let position := framePosition;
   let cursorX := [position at: "x"];
-  let cursorY := [start + [[position at: "line"] - editorTopLine]];
+  let cursorY := [start + [[position at: "line"] - editorTopRow]];
   [[[cursorY >= 1] & [cursorY < completionStart]]
     ifTrue: [| [Termbox setCursor: cursorX y: cursorY]]
     ifFalse: [| [Termbox setCursor: 0 y: 0]]];

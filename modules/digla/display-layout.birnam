@@ -142,8 +142,120 @@
 
 [Reflect defineMethod: #renderFrameFor:cursor:promptWidth: on: Digla as:
   [:self :text :cursor :promptWidth |
-  { "layout" -> [self displayLayoutFor: text promptWidth: promptWidth],
-    "position" -> [self terminalPositionForByte: cursor in: text promptWidth: promptWidth],
+  [self renderFrameFor: text cursor: cursor promptWidth: promptWidth width: 1000000]
+  ] doc:
+  "Project source into an effectively unwrapped terminal-independent frame." ];
+
+[Reflect defineMethod: #displayWidthIn:from:to: on: Digla as: [:self :text :start :finish |
+  let byte := [start asCell];
+  let column := [0 asCell];
+  [[| [[byte value] < finish]] whileTrue: [|
+    let i := [byte value];
+    let width := [self terminalCellWidthAt: i column: [column value] in: text];
+    [column set: [[column value] + width]];
+    [byte set: [i + [self utf8WidthAt: i in: text]]]]];
+  [column value]
+  ] doc:
+  "Measure a source byte range in terminal cells with a row-relative origin." ];
+
+[Reflect defineMethod: #wrappedEndIn:from:to:width: on: Digla as:
+  [:self :text :start :finish :requestedWidth |
+  let width := [[requestedWidth < 1] ifTrue: [| 1] ifFalse: [| requestedWidth]];
+  let byte := [start asCell];
+  let column := [0 asCell];
+  let done := [false asCell];
+  [[| [[[byte value] < finish] & [[done value] not]]] whileTrue: [|
+    let i := [byte value];
+    let glyphWidth := [self terminalCellWidthAt: i column: [column value] in: text];
+    let overflows := [[[column value] > 0] & [[[column value] + glyphWidth] > width]];
+    [overflows
+      ifTrue: [| [done set: true]]
+      ifFalse: [|
+        [column set: [[column value] + glyphWidth]];
+        [byte set: [i + [self utf8WidthAt: i in: text]]]]]]];
+  [byte value]
+  ] doc:
+  "Return the next soft-wrap boundary without splitting a UTF-8 codepoint." ];
+
+[Reflect defineMethod: #wrappedSourceRow:line:start:end:lineStart:lineEnd:promptWidth: on: Digla as:
+  [:self :text :line :start :finish :lineStart :lineEnd :promptWidth |
+  { "row" -> 0,
+    "line" -> line,
+    "sourceStart" -> start,
+    "sourceEnd" -> finish,
+    "text" -> [text copyFrom: start to: finish],
+    "promptWidth" -> promptWidth,
+    "cellWidth" -> [self displayWidthIn: text from: start to: finish],
+    "continuation" -> [start > lineStart],
+    "wrapsAfter" -> [finish < lineEnd] }
+  ] doc:
+  "Build one terminal-independent soft-wrapped source row." ];
+
+[Reflect defineMethod: #wrappedDisplayLayoutFor:promptWidth:width: on: Digla as:
+  [:self :text :promptWidth :requestedWidth |
+  let contentWidth0 := [requestedWidth - promptWidth];
+  let contentWidth := [[contentWidth0 < 1] ifTrue: [| 1] ifFalse: [| contentWidth0]];
+  let rows := [#[] asCell];
+  let sourceStart := [0 asCell];
+  let lineNumber := [0 asCell];
+  let rowNumber := [0 asCell];
+  [[text split: "\n"] do: [:lineText |
+    let lineStart := [sourceStart value];
+    let lineEnd := [lineStart + [lineText size]];
+    [[lineStart = lineEnd]
+      ifTrue: [|
+        let row0 := [self wrappedSourceRow: text line: [lineNumber value]
+          start: lineStart end: lineEnd lineStart: lineStart lineEnd: lineEnd
+          promptWidth: promptWidth];
+        let row := [row0 at: "row" put: [rowNumber value]];
+        [rows set: [[rows value] add: row]];
+        [rowNumber set: [[rowNumber value] + 1]]]
+      ifFalse: [|
+        let chunkStart := [lineStart asCell];
+        [[| [[chunkStart value] < lineEnd]] whileTrue: [|
+          let start := [chunkStart value];
+          let finish := [self wrappedEndIn: text from: start to: lineEnd width: contentWidth];
+          let row0 := [self wrappedSourceRow: text line: [lineNumber value]
+            start: start end: finish lineStart: lineStart lineEnd: lineEnd
+            promptWidth: promptWidth];
+          let row := [row0 at: "row" put: [rowNumber value]];
+          [rows set: [[rows value] add: row]];
+          [rowNumber set: [[rowNumber value] + 1]];
+          [chunkStart set: finish]]]]];
+    [sourceStart set: [lineEnd + 1]];
+    [lineNumber set: [[lineNumber value] + 1]]]];
+  { "lines" -> [rows value], "promptWidth" -> promptWidth,
+    "sourceSize" -> [text size], "width" -> requestedWidth }
+  ] doc:
+  "Project logical source lines into terminal-width visual rows." ];
+
+[Reflect defineMethod: #wrappedPositionFor:in:layout:promptWidth: on: Digla as:
+  [:self :cursor :text :layout :promptWidth |
+  let found := [nil asCell];
+  [[layout at: "lines"] do: [:row |
+    let start := [row at: "sourceStart"];
+    let finish := [row at: "sourceEnd"];
+    let beforeEnd := [cursor < finish];
+    let atFinalEnd := [[cursor = finish] & [[row at: "wrapsAfter"] not]];
+    let belongs := [[cursor >= start] & [beforeEnd | atFinalEnd]];
+    [[[[found value] isNil] & belongs] ifTrue: [|
+      [found set: { "line" -> [row at: "row"],
+        "x" -> [promptWidth + [self displayWidthIn: text from: start to: cursor]] }]]]]];
+  [[[found value] isNil]
+    ifTrue: [|
+      let rows := [layout at: "lines"];
+      let row := [rows last];
+      { "line" -> [row at: "row"],
+        "x" -> [promptWidth + [row at: "cellWidth"]] }]
+    ifFalse: [| [found value]]]
+  ] doc:
+  "Map a source cursor into a soft-wrapped visual row and terminal column." ];
+
+[Reflect defineMethod: #renderFrameFor:cursor:promptWidth:width: on: Digla as:
+  [:self :text :cursor :promptWidth :width |
+  let layout := [self wrappedDisplayLayoutFor: text promptWidth: promptWidth width: width];
+  { "layout" -> layout,
+    "position" -> [self wrappedPositionFor: cursor in: text layout: layout promptWidth: promptWidth],
     "highlights" -> [self highlightRangesIn: text] }
   ] doc:
-  "Project source into terminal-independent layout, cursor, and highlight data in one replaceable operation." ];
+  "Project source into soft-wrapped layout, cursor, and highlight data in one replaceable operation." ];

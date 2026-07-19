@@ -32,3 +32,21 @@ let e := [TestSuite named: "Digla display layout" module: #diglaDisplayLayout];
   [t expect: [second at: "sourceStart"] equals: 7 describes: "second source start"];
   [t expect: [position at: "line"] equals: 0 describes: "cursor line"];
   [t expect: [position at: "x"] equals: 5 describes: "cursor x includes prompt cells"]]];
+
+[e test: "source frames soft-wrap logical lines and project boundary cursors" do: [:t |
+  let ascii := [Digla renderFrameFor: "abcdef\nxy" cursor: 5 promptWidth: 2 width: 6];
+  let rows := [[ascii at: "layout"] at: "lines"];
+  let position := [ascii at: "position"];
+  [t expect: [rows size] equals: 3 describes: "long logical line becomes two visual rows"];
+  [t expect: [[rows at: 0] at: "text"] equals: "abcd" describes: "first row fills content width"];
+  [t expect: [[rows at: 1] at: "text"] equals: "ef" describes: "continuation keeps remaining source"];
+  [t expect: [[rows at: 1] at: "continuation"] equals: true describes: "continuation row is explicit"];
+  [t expect: [[rows at: 2] at: "line"] equals: 1 describes: "next logical line retains identity"];
+  [t expect: [position at: "line"] equals: 1 describes: "cursor projects into continuation row"];
+  [t expect: [position at: "x"] equals: 3 describes: "continuation cursor uses row-relative cells"];
+  let unicode := [Digla renderFrameFor: "a🙂b" cursor: 5 promptWidth: 2 width: 5];
+  let unicodeRows := [[unicode at: "layout"] at: "lines"];
+  [t expect: [unicodeRows size] equals: 2 describes: "wide glyph participates in wrapping"];
+  [t expect: [[unicodeRows at: 0] at: "text"] equals: "a🙂" describes: "wide glyph is never split"];
+  [t expect: [[unicode at: "position"] at: "line"] equals: 1
+    describes: "cursor at a soft boundary belongs to the following row"]]];

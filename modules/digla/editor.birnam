@@ -19,7 +19,7 @@
   let s9 := [s8 at: "selection" put: nil];
   let s10 := [s9 at: "diagnostics" put: #[]];
   let s11 := [s10 at: "diagnosticsDirty" put: false];
-  [s11 at: "viewport" put: { "editorTopLine" -> 0, "transcriptOffset" -> 0 }]] doc:
+  [s11 at: "viewport" put: { "editorTopRow" -> 0, "transcriptOffset" -> 0 }]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
 
 [Reflect defineMethod: #selectionRangeIn: on: Digla as: [:self :state |
@@ -563,12 +563,18 @@
   "Replace the requested source prefix with the selected copied-value candidate." ];
 
 [Reflect defineMethod: #ensureEditorViewportRows:in: on: Digla as: [:self :requestedRows :state |
-  let visibleRows := [[requestedRows < 1] ifTrue: [| 1] ifFalse: [| requestedRows]];
   let buffer := [state at: "buffer"];
   let lineCount := [[buffer split: "\n"] size];
   let cursorLine := [self lineIndexIn: buffer at: [state at: "cursor"]];
+  [self ensureEditorViewportRows: requestedRows cursorRow: cursorLine rowCount: lineCount in: state]
+  ] doc:
+  "Keep a logical-line cursor visible for headless clients without a display layout." ];
+
+[Reflect defineMethod: #ensureEditorViewportRows:cursorRow:rowCount:in: on: Digla as:
+  [:self :requestedRows :cursorLine :lineCount :state |
+  let visibleRows := [[requestedRows < 1] ifTrue: [| 1] ifFalse: [| requestedRows]];
   let viewport := [state at: "viewport"];
-  let currentTop := [viewport at: "editorTopLine"];
+  let currentTop := [viewport at: "editorTopRow"];
   let maxTop0 := [lineCount - visibleRows];
   let maxTop := [[maxTop0 < 0] ifTrue: [| 0] ifFalse: [| maxTop0]];
   let clampedTop0 := [[currentTop < 0] ifTrue: [| 0] ifFalse: [| currentTop]];
@@ -577,10 +583,10 @@
   [[cursorLine < [top value]] ifTrue: [| [top set: cursorLine]] ifFalse: [| nil]];
   let below := [cursorLine >= [[top value] + visibleRows]];
   [below ifTrue: [| [top set: [[cursorLine - visibleRows] + 1]]] ifFalse: [| nil]];
-  let nextViewport := [viewport at: "editorTopLine" put: [top value]];
+  let nextViewport := [viewport at: "editorTopRow" put: [top value]];
   [state at: "viewport" put: nextViewport]
   ] doc:
-  "Keep the source cursor within a bounded logical-line viewport." ];
+  "Keep the source cursor within a bounded visual-row viewport." ];
 
 [Reflect defineMethod: #applyMovementKey:extend:in: on: Digla as: [:self :key :extend :state |
   let moving := [[[[[[key = 65515] | [key = 65514]] | [key = 65517]]

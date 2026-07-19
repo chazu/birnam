@@ -91,7 +91,7 @@ until product evidence selects the next failure model.
   reverse-global index: a controlled full-image request fell from 1.587 s to
   17.7 ms with byte-identical rendered output, while reflection after live-image
   mutation completes in 12.9 ms. Shift-movement selection now replaces/deletes
-  through source-byte ranges, and a logical-line viewport keeps the cursor
+  through source-byte ranges, and a visual-row viewport keeps the cursor
   visible in buffers taller than the terminal. F1 merges source and copied runtime
   hover, F2 reconstructs full keyword signatures, F3 jumps to same-buffer
   definitions, and F4 explicitly refreshes cached diagnostics. Typing no longer
@@ -100,8 +100,12 @@ until product evidence selects the next failure model.
   A real PTY consumed and rendered a 60-byte form in under 500 ms, and evaluated
   and visibly wrapped the full `allMethodsOf:` result within one second. Page Up
   and Page Down now navigate those wrapped transcript rows with clamped offsets;
-  new evaluation output resumes tail following. Next: add soft-wrapped source rows
-  and project/dependency source navigation on the same seams.
+  new evaluation output resumes tail following. Source now soft-wraps into visual
+  rows without changing byte authority, including wide-glyph cursor boundaries,
+  selection, and cursor-following viewports. Consecutive character events are
+  coalesced into one persistent-buffer edit; a 2.2 KiB PTY paste plus redraw completed
+  inside a 500 ms observation window. Next: add project/dependency source navigation
+  on the same seams.
 
 ---
 

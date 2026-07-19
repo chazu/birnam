@@ -26,7 +26,10 @@ history, multiline input with Ctrl-J, local evaluation with Enter, lexical
 highlighting, cached parser-backed diagnostics, and terminal-cell-aware transcript
 wrapping. Shift with the arrow, Home, or End keys extends a source selection;
 typing, Backspace, or Delete replaces/removes it. Long multiline buffers keep
-the cursor in a logical-line viewport. Tab opens completion for scoped source
+the cursor in a visual-row viewport, and long logical lines soft-wrap without
+changing source byte positions. Consecutive terminal character events are inserted
+as one edit, so large pastes do not rebuild the persistent buffer once per byte.
+Tab opens completion for scoped source
 names, Birnam keywords, and bounded live-image globals; Tab/Down and Up move
 through the menu, Enter accepts, and Escape dismisses it. F1 opens source/runtime
 hover, F2 shows the full selector signature, F3 jumps to a same-buffer definition,

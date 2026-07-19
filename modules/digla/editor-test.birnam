@@ -67,11 +67,11 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let s1 := [s0 at: "buffer" put: text];
   let s2 := [s1 at: "cursor" put: [text size]];
   let atBottom := [Digla ensureEditorViewportRows: 3 in: s2];
-  [t expect: [[atBottom at: "viewport"] at: "editorTopLine"] equals: 3
+  [t expect: [[atBottom at: "viewport"] at: "editorTopRow"] equals: 3
     describes: "viewport reveals bottom cursor"];
   let s3 := [atBottom at: "cursor" put: 0];
   let atTop := [Digla ensureEditorViewportRows: 3 in: s3];
-  [t expect: [[atTop at: "viewport"] at: "editorTopLine"] equals: 0
+  [t expect: [[atTop at: "viewport"] at: "editorTopRow"] equals: 0
     describes: "viewport follows cursor back to top"]]];
 
 [e test: "submit evaluates and records history" do: [:t |

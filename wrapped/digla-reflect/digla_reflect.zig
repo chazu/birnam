@@ -224,6 +224,130 @@ fn layoutFor(bytes: []const u8, prompt_width: usize) Oop {
     return layout;
 }
 
+fn wrappedEnd(bytes: []const u8, start: usize, end: usize, requested_width: usize) usize {
+    const width = @max(requested_width, 1);
+    var byte = start;
+    var column: usize = 0;
+    while (byte < end) {
+        const glyph_width = codepointCellWidth(bytes, byte, column);
+        if (column > 0 and column + glyph_width > width) break;
+        column += glyph_width;
+        byte += @min(utf8Width(bytes[byte]), end - byte);
+    }
+    return byte;
+}
+
+fn wrappedLayoutRow(
+    bytes: []const u8,
+    row_number: usize,
+    line_number: usize,
+    start: usize,
+    end: usize,
+    line_start: usize,
+    line_end: usize,
+    prompt_width: usize,
+) Oop {
+    var row = newMap();
+    row = mapPutString(row, "row", integer(row_number));
+    row = mapPutString(row, "line", integer(line_number));
+    row = mapPutString(row, "sourceStart", integer(start));
+    row = mapPutString(row, "sourceEnd", integer(end));
+    row = mapPutString(row, "text", string(bytes[start..end]));
+    row = mapPutString(row, "promptWidth", integer(prompt_width));
+    row = mapPutString(row, "cellWidth", integer(displayWidth(bytes, start, end)));
+    row = mapPutString(row, "continuation", if (start > line_start) g_api.trueObj else g_api.falseObj);
+    row = mapPutString(row, "wrapsAfter", if (end < line_end) g_api.trueObj else g_api.falseObj);
+    return row;
+}
+
+const WrappedLayout = struct { layout: Oop, position: Oop };
+
+fn wrappedLayoutFor(
+    bytes: []const u8,
+    requested_cursor: usize,
+    prompt_width: usize,
+    terminal_width: usize,
+) WrappedLayout {
+    const cursor = @min(requested_cursor, bytes.len);
+    const content_width = if (terminal_width > prompt_width) terminal_width - prompt_width else 1;
+    var rows = newVector();
+    var position: Oop = null;
+    var row_number: usize = 0;
+    var line_number: usize = 0;
+    var line_start: usize = 0;
+    var last_start: usize = 0;
+    var last_end: usize = 0;
+    while (true) {
+        var line_end = line_start;
+        while (line_end < bytes.len and bytes[line_end] != '\n') : (line_end += 1) {}
+        if (line_start == line_end) {
+            rows = vectorAdd(rows, wrappedLayoutRow(
+                bytes,
+                row_number,
+                line_number,
+                line_start,
+                line_end,
+                line_start,
+                line_end,
+                prompt_width,
+            ));
+            if (position == null and cursor == line_start) {
+                position = newMap();
+                position = mapPutString(position, "line", integer(row_number));
+                position = mapPutString(position, "x", integer(prompt_width));
+            }
+            last_start = line_start;
+            last_end = line_end;
+            row_number += 1;
+        } else {
+            var chunk_start = line_start;
+            while (chunk_start < line_end) {
+                const chunk_end = wrappedEnd(bytes, chunk_start, line_end, content_width);
+                const wraps_after = chunk_end < line_end;
+                rows = vectorAdd(rows, wrappedLayoutRow(
+                    bytes,
+                    row_number,
+                    line_number,
+                    chunk_start,
+                    chunk_end,
+                    line_start,
+                    line_end,
+                    prompt_width,
+                ));
+                const belongs = cursor >= chunk_start and
+                    (cursor < chunk_end or (cursor == chunk_end and !wraps_after));
+                if (position == null and belongs) {
+                    position = newMap();
+                    position = mapPutString(position, "line", integer(row_number));
+                    position = mapPutString(
+                        position,
+                        "x",
+                        integer(prompt_width + displayWidth(bytes, chunk_start, cursor)),
+                    );
+                }
+                last_start = chunk_start;
+                last_end = chunk_end;
+                row_number += 1;
+                chunk_start = chunk_end;
+            }
+        }
+        if (line_end == bytes.len) break;
+        line_start = line_end + 1;
+        line_number += 1;
+    }
+    if (position == null) {
+        position = newMap();
+        position = mapPutString(position, "line", integer(row_number - 1));
+        position = mapPutString(position, "x", integer(prompt_width + displayWidth(bytes, last_start, last_end)));
+    }
+    var layout = newMap();
+    layout = mapPutString(layout, "lines", rows);
+    layout = mapPutString(layout, "promptWidth", integer(prompt_width));
+    layout = mapPutString(layout, "sourceSize", integer(bytes.len));
+    layout = mapPutString(layout, "width", integer(terminal_width));
+    return .{ .layout = layout, .position = position };
+}
+
 fn positionFor(bytes: []const u8, requested_cursor: usize, prompt_width: usize) Oop {
     const cursor = @min(requested_cursor, bytes.len);
     var line: usize = 0;
@@ -254,6 +378,22 @@ fn mRenderFrame(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     return frame;
 }
 
+fn mRenderWrappedFrame(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+    var len: usize = 0;
+    const bytes = g_api.stringBytes(args[0], &len)[0..len];
+    const cursor: usize = @intCast(@max(g_api.smallIntValue(args[1]), 0));
+    const prompt_width: usize = @intCast(@max(g_api.smallIntValue(args[2]), 0));
+    const terminal_width: usize = @intCast(@max(g_api.smallIntValue(args[3]), 1));
+    const wrapped = wrappedLayoutFor(bytes, cursor, prompt_width, terminal_width);
+    var frame = newMap();
+    frame = mapPutString(frame, "layout", wrapped.layout);
+    frame = mapPutString(frame, "position", wrapped.position);
+    frame = mapPutString(frame, "highlights", highlightsFor(bytes));
+    return frame;
+}
+
 fn mDisplayColumn(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     var len: usize = 0;
     const bytes = g_api.stringBytes(args[0], &len)[0..len];
@@ -262,6 +402,16 @@ fn mDisplayColumn(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     var start = cursor;
     while (start > 0 and bytes[start - 1] != '\n') : (start -= 1) {}
     return integer(displayWidth(bytes, start, cursor));
+}
+
+fn mDisplayWidth(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    var len: usize = 0;
+    const bytes = g_api.stringBytes(args[0], &len)[0..len];
+    const requested_start: usize = @intCast(@max(g_api.smallIntValue(args[1]), 0));
+    const requested_end: usize = @intCast(@max(g_api.smallIntValue(args[2]), 0));
+    const start = @min(requested_start, bytes.len);
+    const end = @max(start, @min(requested_end, bytes.len));
+    return integer(displayWidth(bytes, start, end));
 }
 
 fn mWrapTranscriptLine(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
@@ -400,7 +550,9 @@ fn bringUp(api: *idapi.IdApi) void {
     const digla = api.send(g_store, sel_current_value, &[_]Oop{ g_globals, api.intern("Digla") }, 2);
     api.method(api.vtableOf(digla), api.intern("runtimeNamed:"), &mRuntimeNamed);
     api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:"), &mRenderFrame);
+    api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:width:"), &mRenderWrappedFrame);
     api.method(api.vtableOf(digla), api.intern("displayColumnIn:at:"), &mDisplayColumn);
+    api.method(api.vtableOf(digla), api.intern("displayWidthIn:from:to:"), &mDisplayWidth);
     api.method(api.vtableOf(digla), api.intern("wrapTranscriptLine:width:"), &mWrapTranscriptLine);
 }
 

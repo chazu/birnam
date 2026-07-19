@@ -87,15 +87,17 @@ menu that merges in-scope parser/CST candidates with bounded live-image globals;
 Tab or Down cycles, Up cycles backward, Enter accepts, and Escape dismisses the
 menu before it quits the editor. Shift-arrow/Home/End selection now uses source
 byte anchors and replaces or deletes through the ordinary edit operations. A
-logical-line viewport follows the cursor through buffers taller than the
+visual-row viewport follows the cursor through buffers taller than the
 terminal without storing terminal coordinates in editor state. F1 hover merges
 same-buffer provenance with copied live-image inspection, F2 reconstructs full
 keyword selectors for signature help, and F3 jumps to same-buffer bindings or
 authored definitions. F4 refreshes cached parser diagnostics explicitly; source
 edits only mark the cache stale, so parsing is not on the per-key render path.
 Page Up/Page Down now navigate the wrapped transcript with a clamped tail-relative
-offset, and new evaluation output resumes tail following. Soft-wrapped source rows,
-project/dependency source navigation, streamed output, and bounded interruption
+offset, and new evaluation output resumes tail following. Long logical source lines
+soft-wrap into visual rows through the same byte/cell projection; cursor motion,
+selection, and viewport following remain byte-authoritative across those rows.
+Project/dependency source navigation, streamed output, and bounded interruption
 remain later slices.
 
 ## 2. Goals and boundaries
@@ -382,7 +384,8 @@ The core invariants are:
 1. **PositionMap and DisplayLayout — implemented.** Extract the shared
    UTF-8/UTF-16 and absolute byte-position seam from the existing LSP behavior,
    then project source boundaries into terminal cells with Unicode width and
-   logical-line records. Viewport and soft-wrap refinements remain open.
+   logical-line records. DisplayLayout now also produces terminal-width soft rows,
+   row-relative cursor positions, and visual-row viewport coordinates.
 2. **Reusable termbox module — implemented and precompiled.** Promote the Logue
    wrapper into an optional, reusable terminal module. Its public selectors are
    now bound by an application-owned native wrapper over the existing int-clean
@@ -396,9 +399,8 @@ The core invariants are:
    than reparsed after each edit. Autocomplete merges scoped source
    candidates and bounded runtime globals behind a terminal-independent language
    service, while the editor owns menu state and the renderer owns its cells.
-   Shift-movement selection, a cursor-following logical-line viewport, and manual
-   Page Up/Page Down transcript navigation are implemented; soft-wrapped source
-   rows remain.
+   Shift-movement selection, a cursor-following visual-row viewport, soft-wrapped
+   source rows, and manual Page Up/Page Down transcript navigation are implemented.
 4. **Compatibility remote session — superseded by the framed seam.** The
    prompt-oriented socket REPL cannot preserve structured values, errors, or
    capabilities without ambiguous text parsing. Keep it compatible for comint
@@ -455,6 +457,15 @@ terminal-width rows inside a one-second observation window; F1/F2/F3/F4 behavior
 was verified in that same live project image. Page Up/Page Down then moved through
 the wrapped result in persisted 10-row pages, and a subsequent evaluation reset the
 viewport to its new tail.
+
+Source wrapping and paste behavior were verified separately in the real PTY. A
+2,201-byte logical line occupied 29 visual rows; moving left across a wrap boundary
+projected the cursor from continuation column 0 to the preceding row's final cell,
+and Shift-End selection rendered across the viewport before a replacement collapsed
+it to one row. The Termbox adapter now coalesces consecutive character events into
+one editor insertion while retaining a following special key; a 2.2 KiB paste and
+redraw completed inside a 500 ms observation window, and a queued Home key was then
+delivered correctly.
 
 ## 9. Open decisions
 

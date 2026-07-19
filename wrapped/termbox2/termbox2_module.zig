@@ -27,6 +27,7 @@ extern fn lg_set_cursor(self: ?*anyopaque, x: c_int, y: c_int) c_int;
 extern fn lg_set_cell(self: ?*anyopaque, x: c_int, y: c_int, ch: c_int, fg: c_int, bg: c_int) c_int;
 extern fn lg_print(self: ?*anyopaque, x: c_int, y: c_int, fg: c_int, bg: c_int, text: [*:0]const u8) c_int;
 extern fn lg_ev_char() [*:0]const u8;
+extern fn lg_text_burst() [*:0]const u8;
 
 var g_api: *idapi.IdApi = undefined;
 var termbox_vt: Oop = null;
@@ -97,6 +98,10 @@ fn mEvChar(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
     const text = std.mem.span(lg_ev_char());
     return g_api.mkString(text.ptr, text.len);
 }
+fn mTextBurst(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    const text = std.mem.span(lg_text_burst());
+    return g_api.mkString(text.ptr, text.len);
+}
 
 fn bringUp(api: *idapi.IdApi) void {
     g_api = api;
@@ -130,6 +135,7 @@ fn bringUp(api: *idapi.IdApi) void {
     api.method(termbox_vt, api.intern("setX:y:ch:fg:bg:"), &mSetCell);
     api.method(termbox_vt, api.intern("printX:y:fg:bg:str:"), &mPrint);
     api.method(termbox_vt, api.intern("evChar"), &mEvChar);
+    api.method(termbox_vt, api.intern("textBurst"), &mTextBurst);
 }
 
 fn moduleInit(api: *idapi.IdApi, state: ?*anyopaque) callconv(.c) ?*anyopaque {
