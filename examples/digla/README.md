@@ -75,6 +75,16 @@ that response's `events` array for simple request/reply clients. The current
 synchronous adapter advertises `streamedOutput=false`: output is structured and
 protocol-safe, but it is delivered only after the evaluation reaches a boundary.
 
+`birnam/evaluate` also accepts an optional nonnegative `timeoutMs`. In the Digla
+project image, a positive timeout installs a cooperative deadline on Birnam's
+canonical stack-flat loops (`Block whileTrue:/whileFalse:` and `Integer to:do:`).
+An expired deadline returns a structured `phase="timeout"` error while keeping
+the live session usable. The terminal uses `evaluation-timeout-ms` from Digla's
+config (`--evaluation-timeout-ms=5000`, `DIGLA_EVALUATION_TIMEOUT_MS`, or TOML);
+the default is `0`, meaning unlimited. This is deliberately advertised as
+`cooperativeDeadline`, not `interrupt`: recursive code, foreign calls, and native
+operations without those loop boundaries cannot be preempted safely.
+
 The same protocol is available to a long-lived loopback client over TCP:
 
 ```sh

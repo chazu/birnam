@@ -105,8 +105,10 @@ copied output events, inserted before the value in the terminal transcript, and
 emitted as `birnam/output` protocol notifications before the final response. Long logical source lines
 soft-wrap into visual rows through the same byte/cell projection; cursor motion,
 selection, and viewport following remain byte-authoritative across those rows.
-Real-time delivery during a still-running evaluation and bounded interruption
-remain later slices; the synchronous adapter advertises both limitations truthfully.
+Positive `timeoutMs` evaluation requests now bound the canonical stack-flat Block
+and Integer loops with application-local cooperative safepoints. Real-time output
+delivery and protocol-driven interruption during a still-running evaluation remain
+later slices; the synchronous adapter advertises `interrupt=false` truthfully.
 
 ## 2. Goals and boundaries
 
@@ -425,8 +427,15 @@ The core invariants are:
    as a correlated `birnam/output` notification before the result, retains the
    ordered `events` array as a request/reply fallback, and rejects stray unframed
    stdout in a process-level smoke. Because dispatch is still synchronous, the
-   capability remains `streamedOutput=false`; real-time delivery and bounded
-   interrupt behavior remain open.
+   capability remains `streamedOutput=false`; real-time delivery remains open.
+   Positive `timeoutMs` requests now activate application-local cooperative checks
+   on `Block whileTrue:/whileFalse:` and `Integer to:do:`. Expiry propagates an
+   `#evaluationDeadline` error into a structured `phase="timeout"` response and
+   leaves the session usable. The adapter advertises this narrower contract as
+   `cooperativeDeadline=true` while retaining `interrupt=false`: the serial JSON
+   loop cannot consume an interrupt request during evaluation, and arbitrary
+   recursion or a blocking native/foreign call has no safe application-level
+   preemption point.
 6. **Runtime-aware assistance — inspection, completion, and explicit semantic slices implemented.** `:inspect`,
    `:globals`, and `:session` use the shared session layer without evaluating
    report expressions. `birnam/runtimeCompletion` supplies bounded live-image
@@ -483,7 +492,10 @@ evaluation response. Consecutive stdout writes share one allocation-conscious
 buffer capped at 256 KiB; overflow is visibly marked and further writes are
 dropped for that evaluation. A strict process-level decoder verifies both an
 ordinary multi-write evaluation and a 512 KiB truncation probe, with no bytes
-outside the six expected frames for the open/evaluate/evaluate/close exchange.
+outside the expected frames. The same process smoke runs a nonterminating
+`whileTrue:` and an effectively unbounded `to:do:` with 10 ms deadlines; both
+return structured timeout responses before the watchdog and the session then
+closes normally.
 
 The typing path is also bounded away from whole-buffer parser work. Diagnostics
 are cached and explicitly refreshed, already-buffered Termbox events are applied
@@ -515,5 +527,7 @@ delivered correctly.
 - runtime values use a small typed copied-value record, while deeper inspection
   uses the capability-free snapshot schema from Design 55;
 - authentication and session ownership once connections can leave loopback.
-- the safe evaluation boundary for real-time output delivery and bounded interrupt
-  without moving cancellation machinery into Birnam's core/runtime floor.
+- whether a future protocol interrupt justifies an explicit evaluator safepoint
+  below the application layer. The current cooperative deadline intentionally
+  covers only Birnam's canonical stack-flat loops; it cannot safely preempt
+  recursion, arbitrary native work, or a foreign call.

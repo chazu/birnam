@@ -3,7 +3,8 @@
 //! This application module preserves Birnam-level contracts while moving two
 //! measured hot paths behind the existing IdApi: method reflection uses a
 //! basis-keyed reverse-global index, terminal frames scan source bytes once, and
-//! evaluation-local System output becomes copied session events. It deliberately
+//! evaluation-local System output becomes copied session events. Opt-in deadline
+//! checks wrap the canonical Block and Integer loop protocols. It deliberately
 //! lives outside the language/runtime floor.
 
 const std = @import("std");
@@ -27,6 +28,10 @@ const output_truncated_suffix = "\n[Digla output truncated at 262144 bytes]\n";
 var output_capture_active = false;
 var output_bytes: std.ArrayListUnmanaged(u8) = .{};
 var output_truncated = false;
+var evaluation_deadline_active = false;
+var evaluation_deadline_start: std.time.Instant = undefined;
+var evaluation_deadline_ns: u64 = 0;
+var error_vt: Oop = null;
 
 fn send0(receiver: Oop, selector: [*:0]const u8) Oop {
     return g_api.send(receiver, g_api.intern(selector), &.{}, 0);
@@ -141,6 +146,95 @@ fn mEndOutputCapture(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
         result = vectorAdd(result, record);
     }
     return result;
+}
+
+fn mEvaluationDeadlineAvailable(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    return g_api.trueObj;
+}
+
+fn mBeginEvaluationDeadline(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    evaluation_deadline_active = false;
+    const timeout_ms = g_api.smallIntValue(args[0]);
+    if (timeout_ms <= 0) return self;
+    evaluation_deadline_start = std.time.Instant.now() catch return self;
+    const max_ms = std.math.maxInt(u64) / std.time.ns_per_ms;
+    evaluation_deadline_ns = @min(@as(u64, @intCast(timeout_ms)), max_ms) * std.time.ns_per_ms;
+    evaluation_deadline_active = true;
+    return self;
+}
+
+fn mEndEvaluationDeadline(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    evaluation_deadline_active = false;
+    return self;
+}
+
+fn deadlineExpired(iteration: usize) bool {
+    if (!evaluation_deadline_active or iteration & 255 != 0) return false;
+    const now = std.time.Instant.now() catch return false;
+    return now.since(evaluation_deadline_start) >= evaluation_deadline_ns;
+}
+
+fn isError(value: Oop) bool {
+    return error_vt != null and value != null and g_api.vtableOf(value) == error_vt;
+}
+
+fn evaluationDeadlineError() Oop {
+    return g_api.send(
+        g_api.import("Error"),
+        g_api.intern("kind:message:"),
+        &[_]Oop{
+            g_api.intern("evaluationDeadline"),
+            string("evaluation exceeded its cooperative loop deadline"),
+        },
+        2,
+    );
+}
+
+fn cooperativeWhile(condition: Oop, body: Oop, continue_on: Oop) Oop {
+    var iteration: usize = 0;
+    while (true) : (iteration +%= 1) {
+        if (deadlineExpired(iteration)) return evaluationDeadlineError();
+        const value = send0(condition, "value");
+        if (isError(value)) return value;
+        if (value != g_api.trueObj and value != g_api.falseObj) {
+            return g_api.send(
+                g_api.import("Error"),
+                g_api.intern("kind:message:"),
+                &[_]Oop{
+                    g_api.intern("mustBeBoolean"),
+                    string("while loop condition must answer true or false"),
+                },
+                2,
+            );
+        }
+        if (value != continue_on) return g_api.nilObj;
+        const result = send0(body, "value");
+        if (isError(result)) return result;
+    }
+}
+
+fn mBlockWhileTrue(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    return cooperativeWhile(self, args[0], g_api.trueObj);
+}
+
+fn mBlockWhileFalse(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    return cooperativeWhile(self, args[0], g_api.falseObj);
+}
+
+fn mIntegerToDo(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    const end = g_api.smallIntValue(args[0]);
+    const block = args[1];
+    var value = g_api.smallIntValue(self);
+    var iteration: usize = 0;
+    while (value <= end) : ({
+        value += 1;
+        iteration +%= 1;
+    }) {
+        if (deadlineExpired(iteration)) return evaluationDeadlineError();
+        const result = send1(block, "value:", g_api.mkSmallInt(value));
+        if (isError(result)) return result;
+    }
+    return self;
 }
 
 fn utf8Width(first: u8) usize {
@@ -629,6 +723,7 @@ fn bringUp(api: *idapi.IdApi) void {
     sel_current_value = api.intern("currentValue:attr:");
     sel_raw_current_value = api.intern("rawCurrentValue:attr:");
     sel_live_triples_do = api.intern("liveTriplesDo:");
+    error_vt = api.import("ErrorVt");
     global_collector_vt = api.proto(api.object_vt);
     api.method(global_collector_vt, api.intern("value:value:value:"), &mCollectGlobal);
     const reflect = api.import("Reflect");
@@ -636,10 +731,16 @@ fn bringUp(api: *idapi.IdApi) void {
     const system = api.import("System");
     api.method(api.vtableOf(system), api.intern("print:"), &mSystemPrint);
     api.method(api.vtableOf(system), api.intern("println:"), &mSystemPrintln);
+    api.method(api.import("BlockVt"), api.intern("whileTrue:"), &mBlockWhileTrue);
+    api.method(api.import("BlockVt"), api.intern("whileFalse:"), &mBlockWhileFalse);
+    api.method(api.smallint_vt, api.intern("to:do:"), &mIntegerToDo);
     const digla = api.send(g_store, sel_current_value, &[_]Oop{ g_globals, api.intern("Digla") }, 2);
     api.method(api.vtableOf(digla), api.intern("outputCaptureAvailable"), &mOutputCaptureAvailable);
     api.method(api.vtableOf(digla), api.intern("beginEvaluationOutputCapture"), &mBeginOutputCapture);
     api.method(api.vtableOf(digla), api.intern("endEvaluationOutputCapture"), &mEndOutputCapture);
+    api.method(api.vtableOf(digla), api.intern("evaluationDeadlineAvailable"), &mEvaluationDeadlineAvailable);
+    api.method(api.vtableOf(digla), api.intern("beginEvaluationDeadline:"), &mBeginEvaluationDeadline);
+    api.method(api.vtableOf(digla), api.intern("endEvaluationDeadline"), &mEndEvaluationDeadline);
     api.method(api.vtableOf(digla), api.intern("runtimeNamed:"), &mRuntimeNamed);
     api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:"), &mRenderFrame);
     api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:width:"), &mRenderWrappedFrame);

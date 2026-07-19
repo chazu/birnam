@@ -102,7 +102,11 @@ until product evidence selects the next failure model.
   inserted before the value in the terminal transcript, and delivered as ordered
   `birnam/output` notifications plus a buffered response fallback without leaking
   unframed bytes onto session stdout. Real-time delivery and bounded interruption
-  remain truthful unsupported capabilities.
+  remain truthful unsupported capabilities. Positive `timeoutMs` requests and the
+  `evaluation-timeout-ms` application setting now provide the narrower safe slice:
+  application-local cooperative deadlines on canonical Block and Integer loops,
+  returning structured timeout errors while leaving `interrupt=false` for the
+  still-serial protocol.
   A real PTY consumed and rendered a 60-byte form in under 500 ms, and evaluated
   and visibly wrapped the full `allMethodsOf:` result within one second. Page Up
   and Page Down now navigate those wrapped transcript rows with clamped offsets;

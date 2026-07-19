@@ -3,7 +3,8 @@
 // This is the only Digla layer that evaluates source or retains a raw result.
 // Its responses are copied-value Maps/Vectors suitable for JSON, terminal text,
 // tests, or framed transports. A project-local adapter may capture System output
-// around the synchronous evaluation without changing the core evaluator.
+// around the synchronous evaluation and provide cooperative loop deadlines
+// without changing the core evaluator.
 
 [Reflect defineMethod: #outputCaptureAvailable on: Digla as: [:self |
   false
@@ -20,8 +21,24 @@
   ] doc:
   "End evaluation output capture and answer copied output events, or none." ];
 
+[Reflect defineMethod: #evaluationDeadlineAvailable on: Digla as: [:self |
+  false
+  ] doc:
+  "Answer whether the loaded application adapter provides cooperative loop deadlines." ];
+
+[Reflect defineMethod: #beginEvaluationDeadline: on: Digla as: [:self :timeoutMs |
+  self
+  ] doc:
+  "Begin an optional cooperative evaluation deadline when an adapter provides it." ];
+
+[Reflect defineMethod: #endEvaluationDeadline on: Digla as: [:self |
+  self
+  ] doc:
+  "Clear the application adapter's cooperative evaluation deadline." ];
+
 [Reflect defineMethod: #localSessionCapabilities on: Digla as: [:self |
   let output := [self outputCaptureAvailable];
+  let deadline := [self evaluationDeadlineAvailable];
   { "evaluate" -> true,
     "inspect" -> true,
     "globals" -> true,
@@ -30,6 +47,10 @@
     "structuredValues" -> true,
     "outputEvents" -> output,
     "outputNotifications" -> output,
+    "cooperativeDeadline" -> deadline,
+    "deadlineSafeBoundaries" -> [deadline
+      ifTrue: [| #["Block whileTrue:/whileFalse:" "Integer to:do:"]]
+      ifFalse: [| #[]]],
     "streamedOutput" -> false }
   ] doc:
   "Return the truthful capabilities of the synchronous local image adapter." ];
@@ -121,6 +142,23 @@
   ] doc:
   "Return all sorted user-visible persisted global names." ];
 
+[Reflect defineMethod: #evaluationDeadlineFor:session: on: Digla as: [:self :params :session |
+  let configured := [[session at: "config"] at: "evaluation-timeout-ms"];
+  let timeout := [params at: "timeoutMs" ifAbsent: [| configured]];
+  let integer := [[Reflect vtableOf: timeout] == [Reflect vtableOf: 0]];
+  let valid := [integer & [integer ifTrue: [| [timeout >= 0]] ifFalse: [| false]]];
+  [valid
+    ifTrue: [|
+      let supported := [[timeout = 0] | [self evaluationDeadlineAvailable]];
+      [supported
+        ifTrue: [| { "ok" -> true, "timeoutMs" -> timeout }]
+        ifFalse: [| { "ok" -> false,
+          "message" -> "evaluation deadline adapter is unavailable" }]]]
+    ifFalse: [| { "ok" -> false,
+      "message" -> "timeoutMs must be a nonnegative Integer" }]]
+  ] doc:
+  "Validate an explicit or configured cooperative evaluation deadline." ];
+
 [Reflect defineMethod: #runtimeCompletionItemsFor: on: Digla as: [:self :prefix |
   [[self userGlobalNamesStartingWith: prefix] collect: [:name |
     { "label" -> name, "kind" -> "global", "detail" -> "live image global",
@@ -148,32 +186,49 @@
                        "display" -> "evaluate requires source", "events" -> #[] },
         "session" -> session }]
     ifFalse: [|
-      [self beginEvaluationOutputCapture];
-      let value := [Codegen evalPersisting: source];
-      let events := [self endEvaluationOutputCapture];
-      let compileError := [Codegen lastError];
-      let runtimeError := [[compileError isNil] & [value isError]];
-      let failed := [[compileError notNil] | runtimeError];
-      [failed
+      let deadline := [self evaluationDeadlineFor: params session: session];
+      [[[deadline at: "ok"] not]
         ifTrue: [|
-          let message := [[compileError notNil]
-            ifTrue: [| [compileError printString]]
-            ifFalse: [| [value printString]]];
-          let phase := [[compileError notNil] ifTrue: [| "compile"] ifFalse: [| "runtime"]];
-          let next0 := [session at: "lastError" put: message];
-          let next := [next0 at: "globalNamesCache" put: nil];
-          { "result" -> { "ok" -> false, "kind" -> "error", "phase" -> phase,
-                           "message" -> message, "display" -> message, "events" -> events },
-            "session" -> next }]
+          let message := [deadline at: "message"];
+          { "result" -> { "ok" -> false, "kind" -> "error", "phase" -> "request",
+                           "message" -> message, "display" -> message, "events" -> #[] },
+            "session" -> session }]
         ifFalse: [|
-          let copied := [self sessionValue: value];
-          let s1 := [session at: "lastValue" put: value];
-          let s2 := [s1 at: "hasLastValue" put: true];
-          let next0 := [s2 at: "lastError" put: nil];
-          let next := [next0 at: "globalNamesCache" put: nil];
-          { "result" -> { "ok" -> true, "kind" -> "value", "value" -> copied,
-                           "display" -> [copied at: "display"], "events" -> events },
-            "session" -> next }]]]]
+          let timeoutMs := [deadline at: "timeoutMs"];
+          [self beginEvaluationOutputCapture];
+          [self beginEvaluationDeadline: timeoutMs];
+          let value := [Codegen evalPersisting: source];
+          [self endEvaluationDeadline];
+          let events := [self endEvaluationOutputCapture];
+          let compileError := [Codegen lastError];
+          let runtimeError := [[compileError isNil] & [value isError]];
+          let failed := [[compileError notNil] | runtimeError];
+          [failed
+            ifTrue: [|
+              let message := [[compileError notNil]
+                ifTrue: [| [compileError printString]]
+                ifFalse: [| [value printString]]];
+              let timedOut := [runtimeError
+                ifTrue: [| [[value kind] = #evaluationDeadline]]
+                ifFalse: [| false]];
+              let phase := [[compileError notNil]
+                ifTrue: [| "compile"]
+                ifFalse: [| [timedOut ifTrue: [| "timeout"] ifFalse: [| "runtime"]]]];
+              let next0 := [session at: "lastError" put: message];
+              let next := [next0 at: "globalNamesCache" put: nil];
+              { "result" -> { "ok" -> false, "kind" -> "error", "phase" -> phase,
+                               "timedOut" -> timedOut, "timeoutMs" -> timeoutMs,
+                               "message" -> message, "display" -> message, "events" -> events },
+                "session" -> next }]
+            ifFalse: [|
+              let copied := [self sessionValue: value];
+              let s1 := [session at: "lastValue" put: value];
+              let s2 := [s1 at: "hasLastValue" put: true];
+              let next0 := [s2 at: "lastError" put: nil];
+              let next := [next0 at: "globalNamesCache" put: nil];
+              { "result" -> { "ok" -> true, "kind" -> "value", "value" -> copied,
+                               "display" -> [copied at: "display"], "events" -> events },
+                "session" -> next }]]]]]]
   ] doc:
   "Evaluate one explicit source form and return structured success or failure data." ];
 
@@ -226,7 +281,10 @@
     ifFalse: [| nil]];
   [[method = "birnam/interrupt"]
     ifTrue: [| [outcome set: {
-      "result" -> { "interrupted" -> false, "reason" -> "synchronous session is idle" },
+      "result" -> { "interrupted" -> false,
+        "reason" -> [[self evaluationDeadlineAvailable]
+          ifTrue: [| "synchronous session; use evaluate timeoutMs for cooperative loop deadlines"]
+          ifFalse: [| "synchronous session is idle"]] },
       "session" -> session }]]
     ifFalse: [| nil]];
   [[method = "birnam/close"]

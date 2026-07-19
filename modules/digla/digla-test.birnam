@@ -17,15 +17,20 @@ let s := [TestSuite named: "Digla" module: #digla];
   let config := [Digla configAtPath: nil environment: env args: #[]];
   [t expect: [config at: "mode"] equals: "local" describes: "default mode"];
   [t expect: [config at: "port"] equals: 4400 describes: "default port"];
+  [t expect: [config at: "evaluation-timeout-ms"] equals: 0
+    describes: "interactive evaluation is unlimited by default"];
   [t expect: [config originAt: "history"] equals: "default" describes: "default origin"]]];
 
 [s test: "Digla keeps AppConfig precedence and exposes session state" do: [:t |
   let env0 := [Map new];
   let env := [env0 at: "DIGLA_CONNECT" put: "remote"];
-  let config := [Digla configAtPath: nil environment: env args: #["--port=5555"]];
+  let config := [Digla configAtPath: nil environment: env
+    args: #["--port=5555" "--evaluation-timeout-ms=25"]];
   let state := [Digla sessionStateFor: config];
   [t expect: [config at: "connect"] equals: "remote" describes: "environment connection"];
   [t expect: [config at: "port"] equals: 5555 describes: "CLI port"];
+  [t expect: [config at: "evaluation-timeout-ms"] equals: 25
+    describes: "CLI evaluation deadline"];
   [t expect: [state at: "buffer"] equals: "" describes: "empty editor buffer"];
   [t expect: [state at: "cursor"] equals: 0 describes: "initial cursor"]]];
 

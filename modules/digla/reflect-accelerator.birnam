@@ -2,8 +2,9 @@
 //
 // The wrapped module rebinds Reflect allMethodsOf: inside the Digla application
 // image, accelerates high-frequency source/display projections, and captures
-// evaluation-local System output. It uses only the existing IdApi and Store
-// surfaces; it does not expand the language floor.
+// evaluation-local System output, and adds opt-in deadline checks to the two
+// canonical stack-flat loop protocols. It uses only the existing IdApi and
+// Store surfaces; it does not expand the language floor.
 
 [Module named: #diglaReflect requires: #[#digla]];
 let path := [[Module libDir] , "/libdiglareflect.dylib"];

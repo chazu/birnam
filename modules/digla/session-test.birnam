@@ -15,6 +15,8 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
   [t expect: [capabilities at: "interrupt"] equals: false describes: "interrupt is truthful"];
   [t expect: [capabilities at: "outputEvents"] equals: false
     describes: "headless adapter does not claim an unloaded capture wrapper"];
+  [t expect: [capabilities at: "cooperativeDeadline"] equals: false
+    describes: "headless adapter does not claim unloaded loop safepoints"];
   [t assert: [encoded startsWith: "{"] describes: "handshake is JSON-shaped"];
   [t expect: [decoded isError] equals: false describes: "handshake round-trips as JSON"]]];
 
@@ -36,6 +38,16 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
     describes: "failed evaluation does not erase the last success"];
   [t assert: [[[Json stringify: [first at: "message"]] includesSubstring: "structured"] not]
     describes: "serialization succeeds without raw capabilities"]]];
+
+[e test: "requested deadlines fail explicitly when no safepoint adapter is loaded" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let reply := [Digla callSession: "birnam/evaluate" params: {
+    "source" -> "42", "timeoutMs" -> 5 } in: [Digla localSessionFor: config]];
+  let result := [Digla sessionResultOf: reply];
+  [t expect: [result at: "ok"] equals: false describes: "request is rejected"];
+  [t expect: [result at: "phase"] equals: "request" describes: "failure is pre-evaluation"];
+  [t assert: [[result at: "message"] includesSubstring: "deadline adapter"]
+    describes: "unsupported safety request is not silently ignored"]]];
 
 [e test: "inspection, globals, close, and protocol failures are explicit" do: [:t |
   [Globals at: #DiglaSessionVisible put: 7];
