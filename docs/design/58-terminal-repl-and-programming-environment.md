@@ -65,16 +65,16 @@ modules/digla/render-test.birnam    headless renderer decision tests
 modules/digla/termbox.birnam     Termbox module entry
 wrapped/termbox2/                vendored C library and native wrapper module
 wrapped/digla-reflect/           application-local reflection and display accelerator
-examples/digla/birnam.toml       composed application project
+examples/digla/birnam.toml       headless image-session project
+examples/digla-client/            Termbox editor/browser client project
 ```
 
-`Termbox` is a separate optional module. Its application-owned Zig wrapper and C
-artifact are built together through the manifest's `[[wrapped]]` declaration.
-The wrapper binds public selectors directly through `IdApi`; it does not add a
-core runtime primitive, and headless Digla tests do not acquire a terminal
-dependency.
+`Termbox` is a client-only module. Its application-owned Zig wrapper and C
+artifact are built only by `examples/digla-client`; the headless
+`examples/digla` closure contains the session, inspection, socket, and native
+reflection modules but no terminal, editor, or browser artifact.
 
-The first local editor slice is now implemented. `birnam run examples/digla -- --ui`
+The first local editor slice is now implemented. `birnam run examples/digla-client`
 launches the Termbox client; Escape exits while idle (and interrupts an active
 remote evaluation), character input edits the
 buffer, Ctrl-J inserts a newline, Enter evaluates the current Birnam form

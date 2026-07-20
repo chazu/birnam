@@ -5,6 +5,7 @@ export LANG=C
 
 bin="${BIRNAM_BIN:?BIRNAM_BIN must point to the installed birnam binary}"
 project="${BIRNAM_DIGLA_PROJECT:?BIRNAM_DIGLA_PROJECT must point to examples/digla}"
+client_project="${BIRNAM_DIGLA_CLIENT_PROJECT:-$(dirname "$project")/digla-client}"
 tmp="$(mktemp -d /tmp/birnam-digla-session.XXXXXX)"
 remote_pid=""
 cleanup() {
@@ -25,6 +26,7 @@ free_port() {
 }
 
 "$bin" build "$project" >/dev/null
+"$bin" build "$client_project" >/dev/null
 
 # The evaluated writes must become JSON events. Any direct System output would
 # leave bytes between frames and make the strict decoder below fail.
@@ -59,7 +61,13 @@ for my $request (
     [[db hasValue: BlockVt attr: #whileFalse:] ifFalse: [| [ok set: false]]];
     [[db hasValue: IntegerVt attr: #to:do:] ifFalse: [| [ok set: false]]];
     [ok value]}}},
-  {jsonrpc => "2.0", id => 9, method => "birnam/close", params => {}}
+  {jsonrpc => "2.0", id => 9, method => "birnam/evaluate", params => {source => q{
+    let diglaVt := [Reflect vtableOf: Digla];
+    let noTermbox := [[Digla runtimeNamed: "Termbox"] isNil];
+    let noEditor := [[db hasValue: diglaVt attr: #editorStateFor:] not];
+    let noBrowser := [[db hasValue: diglaVt attr: #browserStateFor:] not];
+    [[noTermbox & noEditor] & noBrowser]}}},
+  {jsonrpc => "2.0", id => 10, method => "birnam/close", params => {}}
 ) {
   my $body = encode_json($request);
   print "Content-Length: ", length($body), "\r\n\r\n", $body;
@@ -91,10 +99,10 @@ while ($stream =~ s/^Content-Length: (\d+)\r\n\r\n//) {
   push @messages, decode_json($body);
 }
 die "unframed Digla stdout bytes\n" if length($stream);
-die "expected twelve Digla messages\n" unless @messages == 12;
+die "expected thirteen Digla messages\n" unless @messages == 13;
 
 my ($open, $first_output, $second_output, $evaluated, $large_output, $large_evaluated, $timed_out,
-  $range_timed_out, $compile_failed, $isolated, $tracked, $closed) = @messages;
+  $range_timed_out, $compile_failed, $isolated, $tracked, $headless, $closed) = @messages;
 my $capabilities = $open->{result}{capabilities};
 die "output events not advertised\n" unless $capabilities->{outputEvents};
 die "output notifications not advertised\n" unless $capabilities->{outputNotifications};
@@ -136,6 +144,8 @@ die "evaluation contexts shared output state\n"
   unless $isolated->{result}{value}{value} eq "a1a2|b";
 die "Digla core hooks bypassed the Store MOP\n"
   unless $tracked->{result}{value}{value};
+die "headless Digla loaded client-only state\n"
+  unless $headless->{result}{value}{value};
 die "session did not close\n" unless $closed->{result}{closed};
 ' "$tmp/replies"
 
@@ -280,8 +290,8 @@ if [[ "$ready" -ne 1 ]]; then
 fi
 
 probe="let c := [Digla configAtPath: nil environment: [Map new] args: #[\"--port=$port\"]]; let s := [Digla editorStateFor: c]; let switched := [Digla submitIn: [s at: \"buffer\" put: \":connect remote\"]]; [System println: [\"REMOTE-ADAPTER:\" , [[switched at: \"session\"] at: \"adapter\"]]]; let r0 := [Digla submitIn: [switched at: \"buffer\" put: \"[System print: 7]; [System println: 8]; [6 * 7]\"]]; [System println: [\"REMOTE-PENDING:\" , [[[r0 at: \"evaluation\"] notNil] printString]]]; let rc := [r0 asCell]; [[| [[[rc value] at: \"evaluation\"] notNil]] whileTrue: [| [rc set: [Digla advanceEvaluationIn: [rc value]]]]]; let r := [rc value]; let lines := [r at: \"transcript\"]; [System println: [\"REMOTE-LINES:\" , [[lines size] printString]]]; [System println: [\"REMOTE-INPUT:\" , [lines at: 2]]]; [System println: [\"REMOTE-OUTPUT-1:\" , [lines at: 3]]]; [System println: [\"REMOTE-OUTPUT-2:\" , [lines at: 4]]]; [System println: [\"REMOTE-VALUE:\" , [lines at: 5]]]; let i0 := [Digla submitIn: [r at: \"buffer\" put: \"[[| true] whileTrue: [| nil]]\"]]; let ic := [[Digla interruptEvaluationIn: i0] asCell]; [[| [[[ic value] at: \"evaluation\"] notNil]] whileTrue: [| [ic set: [Digla advanceEvaluationIn: [ic value]]]]]; let interrupted := [ic value]; [System println: [\"REMOTE-INTERRUPTED:\" , [interrupted at: \"status\"]]]; let h0 := [Digla submitIn: [interrupted at: \"buffer\" put: \"[20 + 22]\"]]; let hc := [h0 asCell]; [[| [[[hc value] at: \"evaluation\"] notNil]] whileTrue: [| [hc set: [Digla advanceEvaluationIn: [hc value]]]]]; let healthy := [hc value]; [System println: [\"REMOTE-HEALTHY:\" , [[healthy at: \"lastResult\"] printString]]]; let closed := [Digla callSession: \"birnam/close\" params: [Map new] in: [healthy at: \"session\"]]; [System println: [\"REMOTE-CLOSED:\" , [[[Digla sessionResultOf: closed] at: \"closed\"] printString]]]"
-printf '%s\n:quit\n' "$probe" | "$bin" run "$project" --repl=tty -- \
-  --port="$port" >"$tmp/remote-client" 2>&1 &
+printf '%s\n:quit\n' "$probe" | "$bin" run "$client_project" --repl=tty -- \
+  --headless-client --port="$port" >"$tmp/remote-client" 2>&1 &
 client_pid=$!
 for _ in $(seq 1 100); do
   if ! kill -0 "$client_pid" 2>/dev/null; then

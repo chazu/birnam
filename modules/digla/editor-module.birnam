@@ -1,0 +1,5 @@
+// editor-module.birnam — client-only editor and language-service composition.
+
+[Module named: #diglaEditor requires: #[#diglaSocket]];
+[Reflect docModule: #diglaEditor is:
+  "Client-owned editor, rendering, analysis, and project-source services."];

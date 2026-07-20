@@ -1,11 +1,10 @@
 # Digla
 
-Digla is the terminal programming environment for Birnam. Its source module is
-composed from [`modules/digla/`](../../modules/digla/); the project manifest
-also builds optional precompiled Termbox and reflection wrappers through
-`[[wrapped]]`. UI startup does not compile Alien trampolines at runtime, and
-full-image method reflection uses a project-local reverse-name index rather
-than repeatedly scanning every global.
+Digla is Birnam's headless image-session and inspection service. Its source
+module is composed from [`modules/digla/`](../../modules/digla/), with a
+precompiled reflection wrapper built through `[[wrapped]]`. The Termbox editor
+is a separate client project at [`examples/digla-client`](../digla-client/), so
+server and stdio images do not load terminal, editor, or browser state.
 
 Build and run the first configuration-backed slice from the repository root:
 
@@ -18,7 +17,7 @@ The default entrypoint prints the resolved AppConfig snapshot. To launch the
 first local Termbox editor slice on a real terminal:
 
 ```sh
-zig-out/bin/birnam run examples/digla --build -- --ui
+zig-out/bin/birnam run examples/digla-client --build
 ```
 
 The editor supports character insertion, UTF-8-aware backspace, cursor motion,
@@ -72,7 +71,7 @@ displayed form for editing, or Escape to restore the exact draft and cursor from
 before search. `history = false` disables retention without affecting evaluation;
 history is still intentionally process-local until a file-location policy is chosen.
 
-The ordinary `birnam run examples/digla` path reuses its already-resolved project
+The ordinary `birnam run examples/digla-client` path reuses its already-resolved project
 snapshot, so source navigation needs no workspace flag and does not repeat manifest
 or dependency resolution. `--workspace PATH` (or `DIGLA_WORKSPACE`) selects a
 different authored project when Digla is deliberately used as an external client.
@@ -162,7 +161,7 @@ In a second terminal, the ordinary Termbox editor can target that image instead
 of evaluating in its own process:
 
 ```sh
-zig-out/bin/birnam run examples/digla --build -- --ui --connect=remote --port=4400
+zig-out/bin/birnam run examples/digla-client --build -- --connect=remote --port=4400
 ```
 
 The editor keeps its buffer, source analysis, navigation, history, layout, and

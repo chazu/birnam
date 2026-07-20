@@ -211,6 +211,7 @@ pub fn build(b: *std.Build) void {
     const digla_session_smoke = b.addSystemCommand(&.{ "bash", "scripts/digla-session-smoke.sh" });
     digla_session_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
     digla_session_smoke.setEnvironmentVariable("BIRNAM_DIGLA_PROJECT", b.pathFromRoot("examples/digla"));
+    digla_session_smoke.setEnvironmentVariable("BIRNAM_DIGLA_CLIENT_PROJECT", b.pathFromRoot("examples/digla-client"));
     digla_session_smoke.step.dependOn(stage1);
     const digla_session_step = b.step("test-digla-session", "Run Digla local and remote framed-session smoke tests");
     digla_session_step.dependOn(&digla_session_smoke.step);
