@@ -31,7 +31,7 @@
   let current := [[self renderTerminal: state] asCell];
   [[| [[current value] at: "running"]] whileTrue: [|
     let before := [current value];
-    let evaluating := [[before at: "evaluation" ifAbsent: [| nil]] notNil];
+    let evaluating := [DiglaOption isSome: [before at: "evaluation"]];
     let waitMs := [evaluating ifTrue: [| 16] ifFalse: [| 250]];
     let ready := [Termbox wait: waitMs];
     let handled := [[ready = 1]

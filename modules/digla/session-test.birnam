@@ -31,7 +31,7 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
     params: { "source" -> "[40 + 2]" } in: [inspected at: "session"]];
   [t expect: [capabilities at: "inspect"] equals: true describes: "inspection is explicit"];
   [t expect: [capabilities at: "evaluate"] equals: false describes: "evaluation is absent"];
-  [t expect: [[session at: "evaluationCapability"] isNil] equals: true
+  [t expect: [DiglaOption isSome: [session at: "evaluationCapability"]] equals: false
     describes: "session holds no hidden evaluator"];
   [t expect: [[[[Digla sessionResultOf: inspected] at: "snapshot"] at: "target"] at: "globalName"]
     equals: "String" describes: "inspection capability remains usable"];
@@ -98,6 +98,22 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
   [t assert: [[[Json stringify: [first at: "message"]] includesSubstring: "structured"] not]
     describes: "serialization succeeds without raw capabilities"]]];
 
+[e test: "a successful nil evaluation is present and inspectable" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let evaluated := [Digla callSession: "birnam/evaluate" params: { "source" -> "nil" }
+    in: [Digla localSessionFor: config]];
+  let session := [evaluated at: "session"];
+  let lastValue := [session at: "lastValue"];
+  let value := [DiglaOption valueOf: lastValue ifAbsent: [| "absent"]];
+  let inspected := [Digla callSession: "birnam/inspect" params: [Map new] in: session];
+  [t expect: [DiglaOption isSome: lastValue] equals: true
+    describes: "successful evaluation records presence independently of value"];
+  [t expect: [value isNil] equals: true describes: "the recorded value remains real nil"];
+  [t expect: [[[evaluated at: "message"] at: "error" ifAbsent: [| nil]] isNil]
+    equals: true describes: "nil evaluation is not mistaken for a request failure"];
+  [t expect: [[[[Digla sessionResultOf: inspected] at: "snapshot"] at: "target"]
+    at: "printString"] equals: "nil" describes: "present nil remains inspectable"]]];
+
 [e test: "requested deadlines fail explicitly when no safepoint adapter is loaded" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let reply := [Digla callSession: "birnam/evaluate" params: {
@@ -149,10 +165,11 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
   let refreshed := [Digla callSession: "birnam/runtimeCompletion"
     params: { "prefix" -> "DiglaCacheRefresh" } in: [evaluated at: "session"]];
   let refreshedItems := [[Digla sessionResultOf: refreshed] at: "items"];
-  [t expect: [[cachedSession at: "globalNamesCache"] notNil] equals: true
+  [t expect: [DiglaOption isSome: [cachedSession at: "globalNamesCache"]] equals: true
     describes: "first request populates session cache"];
-  [t expect: [[cachedSession at: "globalNamesCache"] ==
-    [[second at: "session"] at: "globalNamesCache"]] equals: true
+  [t expect: [[DiglaOption valueOf: [cachedSession at: "globalNamesCache"] ifAbsent: [| #[]]] ==
+    [DiglaOption valueOf: [[second at: "session"] at: "globalNamesCache"]
+      ifAbsent: [| #[]]]] equals: true
     describes: "unchanged session reuses cached vector"];
   [t expect: [[[refreshedItems at: 0] at: "label"] = "DiglaCacheRefresh"] equals: true
     describes: "evaluation invalidates and refreshes runtime names"]]];
@@ -184,5 +201,5 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
   let released := [Digla releaseSession: [Digla tcpSessionFor: config]];
   [t expect: [released at: "status"] equals: "disconnected"
     describes: "unused remote session remains lazy"];
-  [t expect: [released at: "connection"] equals: nil
+  [t expect: [DiglaOption isSome: [released at: "connection"]] equals: false
     describes: "release does not allocate a connection"]]];

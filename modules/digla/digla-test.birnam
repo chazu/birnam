@@ -12,6 +12,25 @@
 
 let s := [TestSuite named: "Digla" module: #digla];
 
+[s test: "tagged options distinguish absence from a present nil object" do: [:t |
+  let none := [DiglaOption none];
+  let someNil := [DiglaOption some: nil];
+  let absentRan := [false asCell];
+  let unwrapped := [DiglaOption valueOf: someNil ifAbsent: [|
+    [absentRan set: true]; "absent"]];
+  let storedNil := [DiglaOption at: "value" in: { "value" -> nil }];
+  let missing := [DiglaOption at: "missing" in: [Map new]];
+  [t expect: [DiglaOption isSome: none] equals: false describes: "none is absent"];
+  [t expect: [none at: "value" ifAbsent: [| "absent"]] equals: "absent"
+    describes: "none manufactures no value field"];
+  [t expect: [DiglaOption isSome: someNil] equals: true describes: "nil can be present"];
+  [t expect: [unwrapped isNil] equals: true describes: "present nil survives unwrapping"];
+  [t expect: [absentRan value] equals: false describes: "nil does not take absence channel"];
+  [t expect: [DiglaOption isSome: storedNil] equals: true
+    describes: "map lookup preserves a stored nil"];
+  [t expect: [DiglaOption isSome: missing] equals: false
+    describes: "map lookup reports a missing key separately"]]];
+
 [s test: "Digla defaults resolve through AppConfig" do: [:t |
   let env := [Map new];
   let config := [Digla configAtPath: nil environment: env args: #[]];

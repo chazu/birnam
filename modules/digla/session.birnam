@@ -32,9 +32,14 @@
 
 [Reflect defineMethod: #sessionResultOf: on: Digla as: [:self :reply |
   let message := [reply at: "message"];
-  [message at: "result" ifAbsent: [| nil]]
+  [message at: "result"]
   ] doc:
-  "Return the application result from a session reply, or nil for a protocol error." ];
+  "Return the required application result from a successful session reply." ];
+
+[Reflect defineMethod: #sessionResultOptionOf: on: Digla as: [:self :reply |
+  [DiglaOption at: "result" in: [reply at: "message"]]
+  ] doc:
+  "Return a tagged result option when the caller accepts success or protocol error." ];
 
 [Reflect defineMethod: #callSession:params:in: on: Digla as: [:self :method :params :session |
   let id := [session at: "nextId"];

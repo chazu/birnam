@@ -49,5 +49,6 @@ let e := [TestSuite named: "Digla browser" module: #diglaBrowser];
   let clamped := [Digla scrollBrowserDetailBy: -20 in: scrolled];
   [t expect: [scrolled at: "detailTopRow"] equals: 10 describes: "detail viewport advances"];
   [t expect: [clamped at: "detailTopRow"] equals: 0 describes: "detail viewport stays nonnegative"];
-  [t expect: [[Digla closeBrowserDetailIn: scrolled] at: "detail"] equals: nil
+  [t expect: [DiglaOption isSome:
+      [[Digla closeBrowserDetailIn: scrolled] at: "detail"]] equals: false
     describes: "detail closes without discarding list state"]]];

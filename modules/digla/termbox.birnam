@@ -4,3 +4,5 @@
 // image sealing while project builds still get a static #termbox provider.
 
 [Module named: #termbox requires: #[]];
+[Reflect docModule: #termbox is:
+  "The reusable Termbox terminal wrapper loaded only by interactive clients."];

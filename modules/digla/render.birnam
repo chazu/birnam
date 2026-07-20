@@ -201,10 +201,10 @@
   "Flatten transcript entries into terminal-width display rows." ];
 
 [Reflect defineMethod: #completionRowsFor:limit: on: Digla as: [:self :state :requestedLimit |
-  let menu := [state at: "completion"];
-  [[menu isNil]
-    ifTrue: [| #[]]
-    ifFalse: [|
+  let menuOption := [state at: "completion"];
+  [[DiglaOption isSome: menuOption]
+    ifTrue: [|
+      let menu := [DiglaOption valueOf: menuOption ifAbsent: [| [Map new]]];
       let items := [menu at: "items"];
       let count := [items size];
       [[count = 0]
@@ -224,15 +224,16 @@
               , "  " , [item at: "detail"]];
             [rows set: [[rows value] add: {
               "text" -> text, "selected" -> selected, "itemIndex" -> i }]]]];
-          [rows value]]]]]
+          [rows value]]]]
+    ifFalse: [| #[]]]
   ] doc:
   "Project the active completion menu into a bounded window of display rows." ];
 
 [Reflect defineMethod: #assistanceRowsFor:width:limit: on: Digla as: [:self :state :width :requestedLimit |
-  let assistance := [state at: "assistance"];
-  [[assistance isNil]
-    ifTrue: [| #[]]
-    ifFalse: [|
+  let assistanceOption := [state at: "assistance"];
+  [[DiglaOption isSome: assistanceOption]
+    ifTrue: [|
+      let assistance := [DiglaOption valueOf: assistanceOption ifAbsent: [| [Map new]]];
       let heading := [[assistance at: "kind"] , ": " , [assistance at: "title"]];
       let lines := [self transcriptLines: #[heading [assistance at: "text"]] width: width];
       let limit := [[lines size] min: requestedLimit];
@@ -241,7 +242,8 @@
         [0 to: [limit - 1] do: [:i |
           [rows set: [[rows value] add: {
             "text" -> [lines at: i], "selected" -> false, "itemIndex" -> i }]]]]]];
-      [rows value]]]
+      [rows value]]
+    ifFalse: [| #[]]]
   ] doc:
   "Project copied hover/signature text into bounded terminal-width rows." ];
 
@@ -302,7 +304,8 @@
   "Project a bounded browser item window while retaining the selected row." ];
 
 [Reflect defineMethod: #browserDetailTextFor: on: Digla as: [:self :browser |
-  let snapshot := [browser at: "detail"];
+  let snapshot := [DiglaOption valueOf: [browser at: "detail"]
+    ifAbsent: [| [Map new]]];
   let methods := [snapshot at: "methods" ifAbsent: [| #[]]];
   let method := [methods at: 0 ifAbsent: [| nil]];
   let source := [[method isNil]
@@ -322,7 +325,8 @@
   "Return copied method source or truthful snapshot warnings for browser detail." ];
 
 [Reflect defineMethod: #browserDetailTitleFor: on: Digla as: [:self :browser |
-  let snapshot := [browser at: "detail"];
+  let snapshot := [DiglaOption valueOf: [browser at: "detail"]
+    ifAbsent: [| [Map new]]];
   let method := [[snapshot at: "methods" ifAbsent: [| #[]]] at: 0 ifAbsent: [| nil]];
   [[method isNil]
     ifTrue: [| "source"]
@@ -359,7 +363,7 @@
 [Reflect defineMethod: #browserProjectionFor:width:limit: on: Digla as:
   [:self :browser :width :requestedLimit |
     let detail := [browser at: "detail"];
-    [[detail notNil]
+    [[DiglaOption isSome: detail]
       ifTrue: [| [self browserDetailProjectionFor: browser width: width limit: requestedLimit]]
       ifFalse: [|
         let snapshot := [browser at: "snapshot"];
@@ -393,14 +397,15 @@
 
 [Reflect defineMethod: #renderBrowserTerminal:width:height: on: Digla as:
   [:self :state :width :height |
-    let browser := [state at: "browser"];
+    let browser := [DiglaOption valueOf: [state at: "browser"]
+      ifAbsent: [| [Map new]]];
     let detail := [browser at: "detail"];
     let bodyRows := [[height - 2] max: 0];
     let projection := [self browserProjectionFor: browser width: width limit: bodyRows];
     let shownBrowser := [browser at: "detailTopRow" put: [projection at: "detailTopRow"]];
-    let shownState := [state at: "browser" put: shownBrowser];
+    let shownState := [state at: "browser" put: [DiglaOption some: shownBrowser]];
     [Termbox clear];
-    let header := [[detail notNil]
+    let header := [[DiglaOption isSome: detail]
       ifTrue: [| "Digla browser | source | Up/Dn/PgUp/PgDn scroll | Esc back"]
       ifFalse: [| "Digla browser | type filter | Tab/Left/Right section | Up/Dn | Enter source | Esc"]];
     [Termbox printX: 0 y: 0 fg: 8 bg: 0 str: header];
@@ -412,11 +417,13 @@
       [Termbox printX: 0 y: [y value] fg: fg bg: bg str: [row at: "text"]];
       [y set: [[y value] + 1]]]];
     let target := [shownBrowser at: "targetName"];
-    let shownTarget := [[target isNil] ifTrue: [| "(anonymous)"] ifFalse: [| ["#" , target]]];
-    let detailScroll := [[detail isNil]
-      ifTrue: [| ""]
-      ifFalse: [| ["  row=" , [[[projection at: "detailTopRow"] + 1] printString]
-        , "/" , [[projection at: "detailRowCount"] printString]]]];
+    let shownTarget := [[DiglaOption isSome: target]
+      ifTrue: [| ["#" , [DiglaOption valueOf: target ifAbsent: [| ""]]]]
+      ifFalse: [| "(anonymous)"]];
+    let detailScroll := [[DiglaOption isSome: detail]
+      ifTrue: [| ["  row=" , [[[projection at: "detailTopRow"] + 1] printString]
+        , "/" , [[projection at: "detailRowCount"] printString]]]
+      ifFalse: [| ""]];
     let status := [shownTarget , "  " , [shownState at: "status"] , detailScroll];
     [Termbox printX: 0 y: [height - 1] fg: 7 bg: 0 str: status];
     [Termbox setCursor: 0 y: 0];
@@ -450,8 +457,8 @@
   let editorTopRow := [[visibleState at: "viewport"] at: "editorTopRow"];
   let start := [completionStart - visibleEditorRows];
   [Termbox clear];
-  let evaluating := [[visibleState at: "evaluation" ifAbsent: [| nil]] notNil];
-  let searching := [[visibleState at: "historySearch" ifAbsent: [| nil]] notNil];
+  let evaluating := [DiglaOption isSome: [visibleState at: "evaluation"]];
+  let searching := [DiglaOption isSome: [visibleState at: "historySearch"]];
   let header := [evaluating
     ifTrue: [| "Digla | evaluating | Ctrl-C/Esc interrupt | PgUp/Dn scroll"]
     ifFalse: [| [searching
@@ -508,11 +515,13 @@
     ifFalse: [| ["  selected=" , [[[selected at: "end"] - [selected at: "start"]] printString]]]];
   let dirty := [[scrolledState at: "diagnosticsDirty"] ifTrue: [| "*"] ifFalse: [| ""]];
   let document := [scrolledState at: "document" ifAbsent: [| [Map new]]];
-  let path := [document at: "path" ifAbsent: [| nil]];
-  let documentText := [[path isNil]
-    ifTrue: [| "<scratch>"]
-    ifFalse: [| ["#" , [document at: "module" ifAbsent: [| "?"]]
-      , " " , [[path split: "/"] last]]]];
+  let path := [document at: "path" ifAbsent: [| [DiglaOption none]]];
+  let documentText := [[DiglaOption isSome: path]
+    ifTrue: [|
+      let value := [DiglaOption valueOf: path ifAbsent: [| ""]];
+      ["#" , [document at: "module" ifAbsent: [| "?"]]
+        , " " , [[value split: "/"] last]]]
+    ifFalse: [| "<scratch>"]];
   let documentDirty := [document at: "dirty" ifAbsent: [| false]];
   let documentMark := [documentDirty ifTrue: [| "*"] ifFalse: [| ""]];
   let transcriptOffset := [[scrolledState at: "viewport"] at: "transcriptOffset"];
@@ -533,9 +542,9 @@
   "Render the transcript and active source buffer to Termbox. Source cursor positions remain byte offsets."];
 
 [Reflect defineMethod: #renderTerminal: on: Digla as: [:self :state |
-  let browser := [state at: "browser" ifAbsent: [| nil]];
-  [[browser isNil]
-    ifTrue: [| [self renderEditorTerminal: state]]
-    ifFalse: [| [self renderBrowserTerminal: state width: [Termbox width] height: [Termbox height]]]]
+  let browser := [state at: "browser"];
+  [[DiglaOption isSome: browser]
+    ifTrue: [| [self renderBrowserTerminal: state width: [Termbox width] height: [Termbox height]]]
+    ifFalse: [| [self renderEditorTerminal: state]]]
   ] doc:
   "Render either the editor or copied-value browser without leaking terminal state into either model." ];

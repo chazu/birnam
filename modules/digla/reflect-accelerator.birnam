@@ -5,6 +5,8 @@
 // output and cooperative loops) are installed through Store's tracked MOP.
 
 [Module named: #diglaReflect requires: #[#digla]];
+[Reflect docModule: #diglaReflect is:
+  "Digla-owned native acceleration behind explicit session and evaluation contexts."];
 let path := [[Module libDir] , "/libdiglareflect.dylib"];
 let loaded := [System loadModule: path];
 [[loaded isError] ifTrue: [| loaded] ifFalse: [| Module]];

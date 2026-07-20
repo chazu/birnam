@@ -84,15 +84,18 @@
     ifTrue: [|
       let records := [self projectSourceRecordsFor: snapshot];
       let root := [snapshot at: "projectRoot" ifAbsent: [| ""]];
-      let preferred := [[[preferredPath isNil] | [preferredPath isEmpty]]
+      let hasPreferred := [DiglaOption isSome: preferredPath];
+      let preferredPathValue := [DiglaOption valueOf: preferredPath ifAbsent: [| ""]];
+      let preferred := [[[hasPreferred not] | [preferredPathValue isEmpty]]
         ifTrue: [| nil]
         ifFalse: [| [self definitionNamed: name inSourceRecords: records where: [:record |
-          [[record at: "path"] = preferredPath]]]]];
+          [[record at: "path"] = preferredPathValue]]]]];
       let local := [[preferred notNil]
         ifTrue: [| preferred]
         ifFalse: [| [self definitionNamed: name inSourceRecords: records where: [:record |
           let sameRoot := [[record at: "projectRoot"] = root];
-          let differentPath := [[preferredPath isNil] | [[record at: "path"] != preferredPath]];
+          let differentPath := [[hasPreferred not] |
+            [[record at: "path"] != preferredPathValue]];
           [sameRoot & differentPath]]]]];
       let dependency := [[local notNil]
         ifTrue: [| local]
@@ -113,17 +116,17 @@
 [Reflect defineMethod: #projectSnapshotForWorkspace: on: Digla as: [:self :workspace |
   [[Globals includes: #Project]
     ifTrue: [| [Project snapshotForUri: workspace]]
-    ifFalse: [| nil]]
+    ifFalse: [| { "ok" -> false, "message" -> "project resolver unavailable" }]]
   ] doc:
   "Request one immutable resolver snapshot for a configured workspace path or file URI." ];
 
 [Reflect defineMethod: #saveAuthoredSource:document: on: Digla as:
   [:self :source :document |
-    let path := [document at: "path" ifAbsent: [| nil]];
-    let baseline := [document at: "sourceOnDisk" ifAbsent: [| nil]];
-    let hasPath := [[path notNil]
-      ifTrue: [| [[path isEmpty] not]]
-      ifFalse: [| false]];
+    let pathOption := [document at: "path" ifAbsent: [| [DiglaOption none]]];
+    let baselineOption := [document at: "sourceOnDisk"
+      ifAbsent: [| [DiglaOption none]]];
+    let path := [DiglaOption valueOf: pathOption ifAbsent: [| ""]];
+    let hasPath := [[DiglaOption isSome: pathOption] & [[path isEmpty] not]];
     [hasPath
       ifTrue: [|
         let current := [System readFile: path];
@@ -132,11 +135,9 @@
             "message" -> ["could not read authored source before saving: " , path],
             "path" -> path, "document" -> document }]
           ifFalse: [|
-            [[baseline isNil]
-              ifTrue: [| { "ok" -> false, "kind" -> "untracked",
-                "message" -> "authored source has no disk baseline",
-                "path" -> path, "document" -> document }]
-              ifFalse: [|
+            [[DiglaOption isSome: baselineOption]
+              ifTrue: [|
+                let baseline := [DiglaOption valueOf: baselineOption ifAbsent: [| ""]];
                 [[current = baseline]
                   ifTrue: [|
                     let written := [System writeFile: path contents: source];
@@ -145,16 +146,20 @@
                         "message" -> ["could not write authored source: " , path],
                         "path" -> path, "document" -> document }]
                       ifFalse: [|
-                        let d1 := [document at: "sourceOnDisk" put: source];
+                        let d1 := [document at: "sourceOnDisk" put:
+                          [DiglaOption some: source]];
                         let nextDocument := [d1 at: "dirty" put: false];
                         { "ok" -> true, "kind" -> "saved", "message" -> ["saved " , path],
                           "path" -> path, "bytes" -> [source size],
                           "document" -> nextDocument }]]]
                   ifFalse: [| { "ok" -> false, "kind" -> "conflict",
                     "message" -> ["save blocked; source changed on disk: " , path],
-                    "path" -> path, "document" -> document }]]]]]]]
+                    "path" -> path, "document" -> document }]]]
+              ifFalse: [| { "ok" -> false, "kind" -> "untracked",
+                "message" -> "authored source has no disk baseline",
+                "path" -> path, "document" -> document }]]]]]
       ifFalse: [| { "ok" -> false, "kind" -> "scratch",
         "message" -> "scratch buffer has no authored path",
-        "path" -> nil, "document" -> document }]]
+        "path" -> [DiglaOption none], "document" -> document }]]
   ] doc:
   "Persist an authored source only when its on-disk bytes still match the load baseline." ];

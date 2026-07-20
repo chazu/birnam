@@ -9,9 +9,13 @@
   let map := [[Reflect vtableOf: request] == MapVt];
   [map
     ifTrue: [|
-      let method := [request at: "method" ifAbsent: [| nil]];
+      let methodOption := [DiglaOption at: "method" in: request];
       let params := [request at: "params" ifAbsent: [| [Map new]]];
-      [[Reflect isString: method] & [[Reflect vtableOf: params] == MapVt]]]
+      let methodIsString := [[DiglaOption isSome: methodOption]
+        ifTrue: [|
+          [Reflect isString: [DiglaOption valueOf: methodOption ifAbsent: [| nil]]]]
+        ifFalse: [| false]];
+      [methodIsString & [[Reflect vtableOf: params] == MapVt]]]
     ifFalse: [| false]]
   ] doc:
   "Validate the copied-value shape required before runtime-session dispatch." ];
@@ -22,90 +26,112 @@
     [[method = "birnam/evaluate"]
       ifTrue: [|
         let message := [reply at: "message"];
-        let result := [message at: "result" ifAbsent: [| nil]];
-        [[result isNil]
-          ifTrue: [| #[]]
-          ifFalse: [|
-            let events := [result at: "events" ifAbsent: [| #[]]];
+        let result := [DiglaOption at: "result" in: message];
+        [[DiglaOption isSome: result]
+          ifTrue: [|
+            let value := [DiglaOption valueOf: result ifAbsent: [| [Map new]]];
+            let events := [value at: "events" ifAbsent: [| #[]]];
             let session := [reply at: "session"];
             [events collect: [:event |
               [self sessionNotification: "birnam/output" params: {
                 "sessionId" -> [session at: "id"],
                 "requestId" -> [request at: "id" ifAbsent: [| nil]],
-                "event" -> event }]]]]]]
+                "event" -> event }]]]]
+          ifFalse: [| #[]]]]
       ifFalse: [| #[]]]
   ] doc:
   "Project copied evaluation events into ordered JSON-RPC output notifications." ];
+
+[Reflect defineMethod: #serveValidSessionRequest:current:running:write: on: Digla as:
+  [:self :request :current :running :write |
+    let method := [request at: "method"];
+    let streaming := [[method = "birnam/evaluate"] &
+      [self evaluationOutputStreamingAvailable]];
+    let interruptFactory := [DiglaOption at: "interruptProbeFor" in: [current value]];
+    let interruptible := [[[method = "birnam/evaluate"] &
+      [DiglaOption isSome: interruptFactory]] & [self evaluationDeadlineAvailable]];
+    let interruptProbe := [interruptible
+      ifTrue: [|
+        let factory := [DiglaOption valueOf: interruptFactory ifAbsent: [| [| false]]];
+        [factory value: request]]
+      ifFalse: [| [| false]]];
+    let evaluationContext := [DiglaOption valueOf:
+      [[current value] at: "evaluationContext"]
+      ifAbsent: [| [self newEvaluationContext]]];
+    let outputSink := [:event |
+      let active := [current value];
+      let notification := [self sessionNotification: "birnam/output" params: {
+        "sessionId" -> [active at: "id"],
+        "requestId" -> [request at: "id" ifAbsent: [| nil]],
+        "event" -> event }];
+      [write value: [Json stringify: notification]]];
+    [streaming
+      ifTrue: [| [self beginEvaluationOutputStreaming: outputSink in: evaluationContext]]
+      ifFalse: [| nil]];
+    [interruptible
+      ifTrue: [| [self beginEvaluationInterruptProbe: interruptProbe in: evaluationContext]]
+      ifFalse: [| nil]];
+    let reply := [self performSessionRequest: request in: [current value]];
+    [interruptible
+      ifTrue: [| [self endEvaluationInterruptProbeIn: evaluationContext]]
+      ifFalse: [| nil]];
+    [streaming
+      ifTrue: [| [self endEvaluationOutputStreamingIn: evaluationContext]]
+      ifFalse: [| nil]];
+    let next := [reply at: "session"];
+    [current set: next];
+    let bufferedNotifications := [streaming
+      ifTrue: [| #[]]
+      ifFalse: [| [self sessionOutputNotificationsFor: request reply: reply]]];
+    [bufferedNotifications do:
+      [:notification | [write value: [Json stringify: notification]]]];
+    [write value: [Json stringify: [reply at: "message"]]];
+    [[[next at: "status"] = "closed"]
+      ifTrue: [| [running set: false]]
+      ifFalse: [| nil]]
+  ] doc:
+  "Perform one validated request and advance the explicitly owned server session." ];
+
+[Reflect defineMethod: #serveSessionJsonBody:current:running:write: on: Digla as:
+  [:self :body :current :running :write |
+    let request := [Json parse: body];
+    [[request isError]
+      ifTrue: [|
+        let message := [self sessionError: nil code: -32700 message: "parse error"
+          data: [request printString]];
+        [write value: [Json stringify: message]]]
+      ifFalse: [|
+        [[self sessionRequestIsValid: request]
+          ifTrue: [|
+            [self serveValidSessionRequest: request current: current
+              running: running write: write]]
+          ifFalse: [|
+            let message := [self sessionError: nil code: -32600
+              message: "invalid request" data: nil];
+            [write value: [Json stringify: message]]]]]]
+  ] doc:
+  "Parse and handle one copied JSON body without owning the transport loop." ];
 
 [Reflect defineMethod: #serveSessionJson:read:write: on: Digla as: [:self :session :read :write |
   let current := [session asCell];
   let running := [true asCell];
   [[| [running value]] whileTrue: [|
-    let body := [read value];
-    [[body isNil]
-      ifTrue: [| [running set: false]]
-      ifFalse: [|
-        let request := [Json parse: body];
-        [[request isError]
-          ifTrue: [|
-            let message := [self sessionError: nil code: -32700 message: "parse error"
-              data: [request printString]];
-            [write value: [Json stringify: message]]]
-          ifFalse: [|
-            [[self sessionRequestIsValid: request]
-              ifTrue: [|
-                let method := [request at: "method" ifAbsent: [| ""]];
-                let streaming := [[method = "birnam/evaluate"] &
-                  [self evaluationOutputStreamingAvailable]];
-                let interruptFactory := [[current value] at: "interruptProbeFor"
-                  ifAbsent: [| nil]];
-                let interruptible := [[[method = "birnam/evaluate"] &
-                  [interruptFactory notNil]] & [self evaluationDeadlineAvailable]];
-                let interruptProbe := [interruptible
-                  ifTrue: [| [interruptFactory value: request]]
-                  ifFalse: [| [| false]]];
-                let evaluationContext := [[current value] at: "evaluationContext"];
-                let outputSink := [:event |
-                  let active := [current value];
-                  let notification := [self sessionNotification: "birnam/output" params: {
-                    "sessionId" -> [active at: "id"],
-                    "requestId" -> [request at: "id" ifAbsent: [| nil]],
-                    "event" -> event }];
-                  [write value: [Json stringify: notification]]];
-                [streaming
-                  ifTrue: [| [self beginEvaluationOutputStreaming: outputSink in: evaluationContext]]
-                  ifFalse: [| nil]];
-                [interruptible
-                  ifTrue: [| [self beginEvaluationInterruptProbe: interruptProbe in: evaluationContext]]
-                  ifFalse: [| nil]];
-                let reply := [self performSessionRequest: request in: [current value]];
-                [interruptible
-                  ifTrue: [| [self endEvaluationInterruptProbeIn: evaluationContext]]
-                  ifFalse: [| nil]];
-                [streaming
-                  ifTrue: [| [self endEvaluationOutputStreamingIn: evaluationContext]]
-                  ifFalse: [| nil]];
-                let next := [reply at: "session"];
-                [current set: next];
-                let bufferedNotifications := [streaming
-                  ifTrue: [| #[]]
-                  ifFalse: [| [self sessionOutputNotificationsFor: request reply: reply]]];
-                [bufferedNotifications do:
-                  [:notification | [write value: [Json stringify: notification]]]];
-                [write value: [Json stringify: [reply at: "message"]]];
-                [[[next at: "status"] = "closed"]
-                  ifTrue: [| [running set: false]]
-                  ifFalse: [| nil]]]
-              ifFalse: [|
-                let message := [self sessionError: nil code: -32600
-                  message: "invalid request" data: nil];
-                [write value: [Json stringify: message]]]]]]]]]];
+    let bodyOption := [read value];
+    [[DiglaOption isSome: bodyOption]
+      ifTrue: [|
+        let body := [DiglaOption valueOf: bodyOption ifAbsent: [| ""]];
+        [self serveSessionJsonBody: body current: current running: running write: write]]
+      ifFalse: [| [running set: false]]]]];
   [current value]
   ] doc:
-  "Serve JSON request bodies iteratively until EOF or birnam/close using injected transport blocks." ];
+  "Serve tagged JSON bodies iteratively until EOF or birnam/close." ];
 
 [Reflect defineMethod: #serveSessionStdio: on: Digla as: [:self :session |
-  let read := [| [Lsp readMessage]];
+  let read := [|
+    let body := [Lsp readMessage];
+    [[body isNil]
+      ifTrue: [| [DiglaOption none]]
+      ifFalse: [| [DiglaOption some: body]]]];
   let write := [:body | [Lsp sendMessage: body]];
   [self serveSessionJson: session read: read write: write]
   ] doc:

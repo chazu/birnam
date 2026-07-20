@@ -1,6 +1,8 @@
 // editor-test.birnam — headless editor-model contract.
 
 let e := [TestSuite named: "Digla editor" module: #diglaEditor];
+let optionValue := [:option |
+  [DiglaOption valueOf: option ifAbsent: [| nil]]];
 
 [e test: "insert and UTF-8 boundary deletion" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
@@ -42,20 +44,22 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let reversedRange := [Digla selectionRangeIn: reversed];
   [t expect: [reversedRange at: "end"] equals: 1 describes: "Shift-Left contracts toward anchor"];
   let cleared := [Digla handleKey: 65514 modifier: 0 character: "" state: reversed];
-  [t expect: [cleared at: "selection"] equals: nil describes: "ordinary movement clears selection"]]];
+  [t expect: [DiglaOption isSome: [cleared at: "selection"]] equals: false
+    describes: "ordinary movement clears selection"]]];
 
 [e test: "typing and deletion replace the selected range" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let s0 := [Digla editorStateFor: config];
   let s1 := [s0 at: "buffer" put: "a🙂bc"];
   let s2 := [s1 at: "cursor" put: 5];
-  let s3 := [s2 at: "selection" put: { "anchor" -> 1 }];
+  let s3 := [s2 at: "selection" put: [DiglaOption some: { "anchor" -> 1 }]];
   let typed := [Digla insertText: "Z" into: s3];
   [t expect: [typed at: "buffer"] equals: "aZbc" describes: "typing replaces selection"];
   [t expect: [typed at: "cursor"] equals: 2 describes: "cursor follows replacement"];
-  [t expect: [typed at: "selection"] equals: nil describes: "replacement clears selection"];
+  [t expect: [DiglaOption isSome: [typed at: "selection"]] equals: false
+    describes: "replacement clears selection"];
   let s4 := [typed at: "cursor" put: 3];
-  let s5 := [s4 at: "selection" put: { "anchor" -> 1 }];
+  let s5 := [s4 at: "selection" put: [DiglaOption some: { "anchor" -> 1 }]];
   let deleted := [Digla backspaceIn: s5];
   [t expect: [deleted at: "buffer"] equals: "ac" describes: "backspace removes selection"];
   [t expect: [deleted at: "cursor"] equals: 1 describes: "deletion returns to selection start"]]];
@@ -65,14 +69,14 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let initial := [Digla editorStateFor: config];
   let typed := [Digla insertText: "a🙂bc" into: initial];
   let selected0 := [typed at: "cursor" put: 5];
-  let selected := [selected0 at: "selection" put: { "anchor" -> 1 }];
+  let selected := [selected0 at: "selection" put: [DiglaOption some: { "anchor" -> 1 }]];
   let replaced := [Digla insertText: "Z" into: selected];
   let undone := [Digla handleKey: 26 character: "" state: replaced];
   let redone := [Digla handleKey: 25 character: "" state: undone];
   [t expect: [replaced at: "buffer"] equals: "aZbc" describes: "selection replaced"];
   [t expect: [undone at: "buffer"] equals: "a🙂bc" describes: "undo restores UTF-8 source"];
   [t expect: [undone at: "cursor"] equals: 5 describes: "undo restores byte cursor"];
-  [t expect: [[undone at: "selection"] at: "anchor"] equals: 1
+  [t expect: [[optionValue value: [undone at: "selection"]] at: "anchor"] equals: 1
     describes: "undo restores selection anchor"];
   [t expect: [undone at: "diagnosticsDirty"] equals: true
     describes: "undo restores the prior diagnostic state without reparsing"];
@@ -82,7 +86,8 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [redone at: "cursor"] equals: 2 describes: "redo restores replacement cursor"];
   [t expect: [redone at: "documentVersion"] equals: 4
     describes: "redo keeps document versions monotonic"];
-  [t expect: [redone at: "selection"] equals: nil describes: "redo restores cleared selection"]]];
+  [t expect: [DiglaOption isSome: [redone at: "selection"]] equals: false
+    describes: "redo restores cleared selection"]]];
 
 [e test: "a new edit after undo invalidates redo and checkpoints are bounded" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
@@ -105,16 +110,17 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [System writeFile: path contents: "old"];
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let initial0 := [Digla editorStateFor: config];
-  let document := { "path" -> path, "uri" -> ["file://" , path],
-    "module" -> "fixture", "projectRoot" -> "/tmp",
-    "sourceOnDisk" -> "old", "dirty" -> false };
+  let document := { "path" -> [DiglaOption some: path], "uri" -> ["file://" , path],
+    "module" -> "fixture", "projectRoot" -> [DiglaOption some: "/tmp"],
+    "sourceOnDisk" -> [DiglaOption some: "old"], "dirty" -> false };
   let initial1 := [initial0 at: "document" put: document];
   let initial2 := [initial1 at: "buffer" put: "old"];
   let initial := [initial2 at: "cursor" put: 3];
   let edited := [Digla insertText: "!" into: initial];
   let saved := [Digla handleKey: 19 character: "" state: edited];
   [t expect: [System readFile: path] equals: "old!" describes: "Ctrl-S writes authored source"];
-  [t expect: [[saved at: "document"] at: "sourceOnDisk"] equals: "old!"
+  [t expect: [optionValue value: [[saved at: "document"] at: "sourceOnDisk"]]
+    equals: "old!"
     describes: "editor installs the new baseline"];
   [t expect: [[saved at: "document"] at: "dirty"] equals: false
     describes: "saved document is clean"];
@@ -127,9 +133,9 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [System writeFile: path contents: "external"];
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let initial0 := [Digla editorStateFor: config];
-  let document := { "path" -> path, "uri" -> ["file://" , path],
-    "module" -> "fixture", "projectRoot" -> "/tmp",
-    "sourceOnDisk" -> "old", "dirty" -> false };
+  let document := { "path" -> [DiglaOption some: path], "uri" -> ["file://" , path],
+    "module" -> "fixture", "projectRoot" -> [DiglaOption some: "/tmp"],
+    "sourceOnDisk" -> [DiglaOption some: "old"], "dirty" -> false };
   let initial1 := [initial0 at: "document" put: document];
   let initial2 := [initial1 at: "buffer" put: "old"];
   let initial := [initial2 at: "cursor" put: 3];
@@ -159,7 +165,8 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let noUndo := [Digla undoEditIn: evaluated];
   [t expect: [failed at: "buffer"] equals: "[1 +" describes: "failed source remains"];
   [t expect: [recovered at: "buffer"] equals: "" describes: "failed source can be undone"];
-  [t expect: [evaluated at: "lastResult"] equals: 3 describes: "valid source evaluates"];
+  [t expect: [optionValue value: [evaluated at: "lastResult"]] equals: 3
+    describes: "valid source evaluates"];
   [t expect: [noUndo at: "buffer"] equals: "" describes: "success does not resurrect source"];
   [t expect: [noUndo at: "status"] equals: "nothing to undo"
     describes: "evaluation is an explicit undo boundary"]]];
@@ -187,7 +194,8 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [s2 at: "buffer"] equals: "" describes: "submit clears buffer"];
   [t expect: [s2 at: "documentVersion"] equals: 2
     describes: "evaluation clearing is a versioned source transition"];
-  [t expect: [s2 at: "lastResult"] equals: 3 describes: "submit evaluates locally"];
+  [t expect: [optionValue value: [s2 at: "lastResult"]] equals: 3
+    describes: "submit evaluates locally"];
   [t expect: [[s2 at: "history"] at: 0] equals: "[1 + 2]" describes: "submit records history"];
   [t expect: [s3 at: "buffer"] equals: "[1 + 2]" describes: "history recalls form"]]];
 
@@ -198,7 +206,7 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let submitted := [Digla submitIn: [initial at: "buffer" put: "[1 + 2]"]];
   [t expect: [[submitted at: "history"] size] equals: 0
     describes: "disabled history retains no submitted source"];
-  [t expect: [submitted at: "lastResult"] equals: 3
+  [t expect: [optionValue value: [submitted at: "lastResult"]] equals: 3
     describes: "history opt-out does not affect evaluation"]]];
 
 [e test: "Ctrl-R searches, cycles, and accepts history without evaluation" do: [:t |
@@ -210,12 +218,14 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let older := [Digla handleKey: 18 character: "" state: queried];
   let accepted := [Digla handleKey: 13 character: "" state: older];
   [t expect: [opened at: "buffer"] equals: "[alpha + 1]" describes: "empty search starts newest"];
-  [t expect: [[queried at: "historySearch"] at: "query"] equals: "alpha"
+  [t expect: [[optionValue value: [queried at: "historySearch"]] at: "query"] equals: "alpha"
     describes: "typed query stays separate from displayed form"];
   [t expect: [older at: "buffer"] equals: "[alpha]" describes: "Ctrl-R cycles older match"];
-  [t expect: [accepted at: "historySearch"] equals: nil describes: "Enter accepts search"];
+  [t expect: [DiglaOption isSome: [accepted at: "historySearch"]] equals: false
+    describes: "Enter accepts search"];
   [t expect: [accepted at: "buffer"] equals: "[alpha]" describes: "acceptance keeps source editable"];
-  [t expect: [accepted at: "hasLastResult"] equals: false describes: "acceptance does not evaluate"]]];
+  [t expect: [DiglaOption isSome: [accepted at: "lastResult"]] equals: false
+    describes: "acceptance does not evaluate"]]];
 
 [e test: "reverse history search backspaces and Escape restores the draft" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
@@ -230,19 +240,20 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let cancelled := [Digla handleKey: 27 character: "" state: shortened];
   [t assert: [[noMatch at: "status"] includesSubstring: "no history match"]
     describes: "failed query is visible"];
-  [t expect: [[shortened at: "historySearch"] at: "query"] equals: "draft"
+  [t expect: [[optionValue value: [shortened at: "historySearch"]] at: "query"] equals: "draft"
     describes: "Backspace edits the search query"];
   [t assert: [[saveRefused at: "status"] includesSubstring: "finish history search"]
     describes: "Ctrl-S never accepts transient search source"];
-  [t assert: [[saveRefused at: "historySearch"] notNil]
+  [t assert: [DiglaOption isSome: [saveRefused at: "historySearch"]]
     describes: "save refusal leaves history search active"];
-  [t expect: [cancelled at: "historySearch"] equals: nil describes: "Escape closes search"];
+  [t expect: [DiglaOption isSome: [cancelled at: "historySearch"]] equals: false
+    describes: "Escape closes search"];
   [t expect: [cancelled at: "buffer"] equals: "draft" describes: "draft restored exactly"];
   [t expect: [cancelled at: "cursor"] equals: 2 describes: "draft cursor restored"];
   [t expect: [cancelled at: "running"] equals: true describes: "cancel does not quit"];
   let reopened := [Digla handleKey: 18 character: "" state: cancelled];
   let undone := [Digla handleKey: 26 character: "" state: reopened];
-  [t expect: [undone at: "historySearch"] equals: nil
+  [t expect: [DiglaOption isSome: [undone at: "historySearch"]] equals: false
     describes: "undo first leaves transient search"];
   [t expect: [undone at: "buffer"] equals: ""
     describes: "undo then restores the prior source checkpoint"]]];
@@ -301,10 +312,12 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let initial := [initial1 at: "cursor" put: 4];
   let opened := [Digla handleKey: 65533 character: "" state: initial];
   let document := [opened at: "document"];
-  [t assert: [[document at: "path"] endsWith: "/modules/digla/language-service.birnam"]
+  [t assert: [[optionValue value: [document at: "path"]]
+      endsWith: "/modules/digla/language-service.birnam"]
     describes: "F3 opens authored source part"];
   [t expect: [document at: "module"] equals: "digla" describes: "module provenance"];
-  [t expect: [document at: "sourceOnDisk"] equals: [opened at: "buffer"]
+  [t expect: [optionValue value: [document at: "sourceOnDisk"]]
+    equals: [opened at: "buffer"]
     describes: "F3 records the exact authored disk baseline"];
   [t expect: [[opened at: "navigation"] size] equals: 1 describes: "prior buffer retained"];
   [t assert: [[opened at: "buffer"] includesSubstring: "#definitionFor:cursor:"]
@@ -340,7 +353,8 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t assert: [resultText includesSubstring: "value:      21"] describes: "last result inspection"];
   [t assert: [globalText includesSubstring: "target:     #String"] describes: "named global inspection"];
   [t assert: [methodText includesSubstring: "#asUppercase"] describes: "selected source is shown"];
-  [t expect: [inspectedMethod at: "lastResult"] equals: 21 describes: "commands preserve the last result"];
+  [t expect: [optionValue value: [inspectedMethod at: "lastResult"]] equals: 21
+    describes: "commands preserve the last result"];
   [t expect: [inspectedMethod at: "status"] equals: "inspected method" describes: "method command status"]]];
 
 [e test: "terminal command help and failures stay structured" do: [:t |
@@ -364,19 +378,22 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let initial := [Digla editorStateFor: config];
   let opened := [Digla submitIn: [initial at: "buffer" put: ":browse String"]];
-  let browser := [opened at: "browser"];
-  [t assert: [browser notNil] describes: "browser command installs a dedicated view"];
-  [t expect: [browser at: "targetName"] equals: "String" describes: "named target retained"];
+  let browser := [optionValue value: [opened at: "browser"]];
+  [t assert: [DiglaOption isSome: [opened at: "browser"]]
+    describes: "browser command installs a dedicated view"];
+  [t expect: [optionValue value: [browser at: "targetName"]] equals: "String"
+    describes: "named target retained"];
   [t expect: [browser at: "section"] equals: "methods" describes: "programming view opens methods"];
   [t assert: [[[browser at: "items"] size] > 0] describes: "effective methods are copied"];
   [t expect: [opened at: "buffer"] equals: "" describes: "command input is recorded and cleared"];
   let selector := [[Digla browserSelectedItemIn: browser] at: "selector"];
   let filtered := [Digla handleKey: 0 character: selector state: opened];
-  [t expect: [[[filtered at: "browser"] at: "query"] equals: selector
+  [t expect: [[optionValue value: [filtered at: "browser"]] at: "query"] equals: selector
     describes: "typing filters the browser rather than editor source"];
   [t expect: [filtered at: "buffer"] equals: "" describes: "source buffer stays untouched"];
   let closed := [Digla handleKey: 27 character: "" state: filtered];
-  [t expect: [closed at: "browser"] equals: nil describes: "Escape closes browser first"];
+  [t expect: [DiglaOption isSome: [closed at: "browser"]] equals: false
+    describes: "Escape closes browser first"];
   [t expect: [closed at: "running"] equals: true describes: "closing browser does not quit"]]];
 
 [e test: "browser Enter requests one selected method source through the session" do: [:t |
@@ -385,18 +402,20 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let opened := [Digla submitIn: [initial at: "buffer" put: ":browse String"]];
   let filtered := [Digla handleKey: 0 character: "asUppercase" state: opened];
   let detailed := [Digla handleKey: 13 character: "" state: filtered];
-  let browser := [detailed at: "browser"];
-  let detail := [browser at: "detail"];
+  let browser := [optionValue value: [detailed at: "browser"]];
+  let detail := [optionValue value: [browser at: "detail"]];
   let method := [[detail at: "methods"] at: 0];
-  [t assert: [detail notNil] describes: "Enter opens copied source detail"];
+  [t assert: [DiglaOption isSome: [browser at: "detail"]]
+    describes: "Enter opens copied source detail"];
   [t expect: [method at: "selector"] equals: "asUppercase" describes: "selected selector requested"];
   [t assert: [[method at: "source"] includesSubstring: "StringBuilder"]
     describes: "recorded Birnam source crosses the session seam"];
   [t expect: [detailed at: "buffer"] equals: "" describes: "source detail is read-only"];
   let list := [Digla handleKey: 27 character: "" state: detailed];
-  [t expect: [[list at: "browser"] at: "detail"] equals: nil
+  let listBrowser := [optionValue value: [list at: "browser"]];
+  [t expect: [DiglaOption isSome: [listBrowser at: "detail"]] equals: false
     describes: "first Escape returns to the filtered list"];
-  [t expect: [[[list at: "browser"] at: "query"] equals: "asUppercase"
+  [t expect: [listBrowser at: "query"] equals: "asUppercase"
     describes: "detail return preserves the filter"]]];
 
 [e test: ":browse BASIS exposes historical facts and current changes as sections" do: [:t |
@@ -410,7 +429,7 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let initial := [Digla editorStateFor: config];
   let input := [[":browse DiglaBrowserTemporal " , [basis printString]]];
   let opened := [Digla submitIn: [initial at: "buffer" put: input]];
-  let browser := [opened at: "browser"];
+  let browser := [optionValue value: [opened at: "browser"]];
   let snapshot := [browser at: "snapshot"];
   [t expect: [snapshot at: "asOf"] equals: basis describes: "browser labels historical basis"];
   [t expect: [[[snapshot at: "facts"] at: 0] at: "value"] equals: "earlier"
@@ -420,7 +439,8 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t assert: [[browser at: "sections"] includes: "changes"]
     describes: "changes become a navigable section"];
   let invalid := [Digla submitIn: [initial at: "buffer" put: ":browse String nope"]];
-  [t expect: [invalid at: "browser"] equals: nil describes: "invalid basis opens no browser"];
+  [t expect: [DiglaOption isSome: [invalid at: "browser"]] equals: false
+    describes: "invalid basis opens no browser"];
   [t assert: [[[invalid at: "transcript"] last] includesSubstring: "usage: :browse"]
     describes: "invalid basis is explicit"]]];
 
@@ -445,7 +465,8 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
     describes: "terminal labels change window"];
   [t assert: [text includesSubstring: "#diglaEditorHistoried  later"]
     describes: "terminal shows current changed value"];
-  [t expect: [changed at: "lastResult"] equals: nil describes: "command performs no evaluation"];
+  [t expect: [DiglaOption isSome: [changed at: "lastResult"]] equals: false
+    describes: "command performs no evaluation"];
   [t assert: [[[malformed at: "transcript"] last] includesSubstring: "usage: :changes"]
     describes: "malformed basis is explicit"]]];
 
@@ -491,11 +512,12 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let initial1 := [initial0 at: "buffer" put: "DiglaCompletion"];
   let initial := [initial1 at: "cursor" put: [[initial1 at: "buffer"] size]];
   let opened := [Digla handleKey: 9 character: "" state: initial];
-  let menu := [opened at: "completion"];
+  let menu := [optionValue value: [opened at: "completion"]];
   let firstLabel := [[[menu at: "items"] at: 0] at: "label"];
   let moved := [Digla handleKey: 9 character: "" state: opened];
-  let selectedLabel := [[[[moved at: "completion"] at: "items"]
-    at: [[moved at: "completion"] at: "index"]] at: "label"];
+  let movedMenu := [optionValue value: [moved at: "completion"]];
+  let selectedLabel := [[[movedMenu at: "items"]
+    at: [movedMenu at: "index"]] at: "label"];
   let accepted := [Digla handleKey: 13 character: "" state: moved];
   [t expect: [[menu at: "items"] size] equals: 2 describes: "runtime candidates opened"];
   [t expect: [[[opened at: "session"] at: "nextId"] > [[initial at: "session"] at: "nextId"]]
@@ -503,7 +525,8 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [[selectedLabel = firstLabel] not] equals: true describes: "Tab cycles the menu"];
   [t expect: [accepted at: "buffer"] equals: selectedLabel describes: "Enter accepts selection"];
   [t expect: [accepted at: "cursor"] equals: [selectedLabel size] describes: "cursor follows insertion"];
-  [t expect: [accepted at: "completion"] equals: nil describes: "acceptance closes menu"];
+  [t expect: [DiglaOption isSome: [accepted at: "completion"]] equals: false
+    describes: "acceptance closes menu"];
   let undone := [Digla undoEditIn: accepted];
   [t expect: [undone at: "buffer"] equals: "DiglaCompletion"
     describes: "completion acceptance is one reversible source edit"]]];
@@ -516,8 +539,10 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let opened := [Digla handleKey: 9 character: "" state: initial];
   let dismissed := [Digla handleKey: 27 character: "" state: opened];
   let stopped := [Digla handleKey: 27 character: "" state: dismissed];
-  [t expect: [[opened at: "completion"] notNil] equals: true describes: "Tab opens menu"];
-  [t expect: [dismissed at: "completion"] equals: nil describes: "first Escape dismisses"];
+  [t expect: [DiglaOption isSome: [opened at: "completion"]] equals: true
+    describes: "Tab opens menu"];
+  [t expect: [DiglaOption isSome: [dismissed at: "completion"]] equals: false
+    describes: "first Escape dismisses"];
   [t expect: [dismissed at: "running"] equals: true describes: "dismissal keeps editor alive"];
   [t expect: [stopped at: "running"] equals: false describes: "second Escape quits"]]];
 
@@ -529,7 +554,7 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let initial2 := [initial1 at: "buffer" put: "le"];
   let initial := [initial2 at: "cursor" put: 2];
   let opened := [Digla openCompletionIn: initial];
-  let labels := [[[opened at: "completion"] at: "items"]
+  let labels := [[optionValue value: [opened at: "completion"]] at: "items"]
     collect: [:item | [item at: "label"]]];
   [t expect: [labels includes: "let"] equals: true describes: "source candidate remains"];
   [t assert: [[opened at: "status"] includesSubstring: "source only"]
@@ -542,10 +567,11 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let initial1 := [initial0 at: "buffer" put: "DiglaFunctionKeyProbe"];
   let initial := [initial1 at: "cursor" put: 4];
   let hovered := [Digla handleKey: 65535 modifier: 0 character: "" state: initial];
-  [t expect: [[hovered at: "assistance"] at: "kind"] equals: "hover"
+  [t expect: [[optionValue value: [hovered at: "assistance"]] at: "kind"] equals: "hover"
     describes: "F1 opens hover"];
   let dismissed := [Digla handleKey: 27 modifier: 0 character: "" state: hovered];
-  [t expect: [dismissed at: "assistance"] equals: nil describes: "Escape dismisses assistance"];
+  [t expect: [DiglaOption isSome: [dismissed at: "assistance"]] equals: false
+    describes: "Escape dismisses assistance"];
   [t expect: [dismissed at: "running"] equals: true describes: "dismissal keeps editor running"];
   let stopped := [Digla handleKey: 27 modifier: 0 character: "" state: dismissed];
   [t expect: [stopped at: "running"] equals: false describes: "next Escape quits"]]];
@@ -560,14 +586,14 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
     describes: "source edits mark the diagnostic cache stale"];
   [t expect: [typed at: "documentVersion"] equals: 1
     describes: "source edits advance the immutable document version"];
-  [t expect: [typed at: "analysis"] equals: nil
+  [t expect: [DiglaOption isSome: [typed at: "analysis"]] equals: false
     describes: "editing drops analysis from the prior version"];
   let checked := [Digla handleKey: 65532 modifier: 0 character: "" state: typed];
   [t expect: [[[checked at: "diagnostics"] size] > 0] equals: true
     describes: "F4 refreshes parser diagnostics"];
   [t expect: [checked at: "diagnosticsDirty"] equals: false
     describes: "explicit refresh marks the cache clean"];
-  [t expect: [[checked at: "analysis"] at: "version"] equals: 1
+  [t expect: [[optionValue value: [checked at: "analysis"]] at: "version"] equals: 1
     describes: "cached analysis is tied to the edited document version"]]];
 
 [e test: "Page Up and Page Down move the transcript viewport and evaluation follows the tail" do: [:t |

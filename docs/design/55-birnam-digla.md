@@ -214,11 +214,16 @@ ChangeCard {
 ```
 
 The exact Map key representation may use strings for transport stability even
-though the in-image API uses symbols. The snapshot must make unavailable
-information explicit with nil or a warning; it must not turn an unnameable
-object, missing source, or unretained history into a plausible-looking value.
-`sourceAvailable` is `nil` when source was not requested, so the default method
-inventory does not perform a hidden per-method source probe.
+though the in-image API uses symbols. This record is the copied wire schema:
+its nullable fields are deliberately present JSON-null values, not Birnam's
+internal absence convention. Producers convert absence to those explicit nulls
+only while constructing a snapshot; editor, browser, session, and transport
+state use tagged options so a present `nil` object remains distinguishable from
+absence. The snapshot must make unavailable information explicit with null or a
+warning; it must not turn an unnameable object, missing source, or unretained
+history into a plausible-looking value. `sourceAvailable` is null when source
+was not requested, so the default method inventory does not perform a hidden
+per-method source probe.
 
 V1 intentionally omits raw entity IDs, complete-store dumps, transaction-log
 operation records, and historical method bodies. Those are separate design
@@ -452,14 +457,15 @@ Add `includeSource` to the spec. For a selected method, use
 source search endpoint yet.
 
 **Acceptance:** a method with recorded source returns it; a primitive or
-undocumented method returns `nil` plus a truthful warning. The default snapshot
+undocumented method returns wire-level null plus a truthful warning. The default snapshot
 does not contain method bodies.
 
 Callers must provide one `selector` when `includeSource` is true. Digla performs
 exactly that selected `Reflect methodSource:` lookup; ordinary inspection leaves
 `source` and `sourceAvailable` nil. The terminal exposes the same operation as
 `:inspect GLOBAL SELECTOR`, and both local and framed clients receive the shared
-snapshot shape.
+snapshot shape. These nullable keys belong to the versioned copied-value schema;
+they are not used as internal mode, capability, connection, or operation state.
 
 ### Slice 6 — deterministic HTML report
 

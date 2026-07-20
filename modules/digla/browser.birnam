@@ -75,7 +75,7 @@
   let b1 := [browser at: "section" put: section];
   let b2 := [b1 at: "items" put: items];
   let b3 := [b2 at: "index" put: index];
-  let b4 := [b3 at: "detail" put: nil];
+  let b4 := [b3 at: "detail" put: [DiglaOption none]];
   [b4 at: "detailTopRow" put: 0]
   ] doc:
   "Refresh cached filtered items after an explicit browser query or section change." ];
@@ -86,10 +86,10 @@
   let sectionIndex := [[methods isEmpty] ifTrue: [| 0] ifFalse: [| 1]];
   let target := [snapshot at: "target"];
   let b0 := { "snapshot" -> snapshot,
-    "targetName" -> [target at: "globalName" ifAbsent: [| nil]],
+    "targetName" -> [DiglaOption at: "globalName" in: target],
     "sections" -> sections, "sectionIndex" -> sectionIndex,
     "section" -> [sections at: sectionIndex], "query" -> "",
-    "items" -> #[], "index" -> 0, "detail" -> nil,
+    "items" -> #[], "index" -> 0, "detail" -> [DiglaOption none],
     "detailTopRow" -> 0 };
   [self refreshBrowserItemsIn: b0]
   ] doc:
@@ -152,13 +152,13 @@
   "Replace the browser filter and recompute its copied-value item cache." ];
 
 [Reflect defineMethod: #browserWithDetail:in: on: Digla as: [:self :snapshot :browser |
-  let changed := [browser at: "detail" put: snapshot];
+  let changed := [browser at: "detail" put: [DiglaOption some: snapshot]];
   [changed at: "detailTopRow" put: 0]
   ] doc:
   "Open one selected method's copied source snapshot as browser detail." ];
 
 [Reflect defineMethod: #closeBrowserDetailIn: on: Digla as: [:self :browser |
-  let changed := [browser at: "detail" put: nil];
+  let changed := [browser at: "detail" put: [DiglaOption none]];
   [changed at: "detailTopRow" put: 0]
   ] doc:
   "Return from source detail to the filtered snapshot list." ];

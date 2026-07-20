@@ -48,15 +48,18 @@ let e := [TestSuite named: "Digla socket protocol" module: #diglaSocket];
         "kind" -> "integer", "value" -> 42, "display" -> "42",
         "rendered" -> false }, "events" -> #[] } }];
   let incoming := [#[notification response] asCell];
-  let written := [nil asCell];
-  let write := [:body | [written set: body]; [body size]];
+  let written := [[DiglaOption none] asCell];
+  let write := [:body | [written set: [DiglaOption some: body]]; [body size]];
   let read := [|
     let first := [[incoming value] at: 0 ifAbsent: [| nil]];
     [[first isNil]
-      ifTrue: [| nil]
-      ifFalse: [| [incoming set: [[incoming value] copyFrom: 1 to: [[incoming value] size]]]; first]]];
+      ifTrue: [| [DiglaOption none]]
+      ifFalse: [|
+        [incoming set: [[incoming value] copyFrom: 1 to: [[incoming value] size]]];
+        [DiglaOption some: first]]]];
   let reply := [Digla performTcpSessionRequest: request in: session write: write read: read];
-  let sent := [Json parse: [written value]];
+  let sent := [Json parse:
+    [DiglaOption valueOf: [written value] ifAbsent: [| ""]]];
   let result := [Digla sessionResultOf: reply];
   [t expect: [sent at: "method"] equals: "birnam/evaluate" describes: "request serialized"];
   [t expect: [[[result at: "events"] at: 0] at: "text"] equals: "hello\n"
@@ -71,7 +74,7 @@ let e := [TestSuite named: "Digla socket protocol" module: #diglaSocket];
   let session := [[Digla tcpSessionFor: config] at: "status" put: "connected"];
   let request := [Digla sessionRequest: "birnam/globals" params: [Map new] id: 3];
   let reply := [Digla performTcpSessionRequest: request in: session
-    write: [:body | [body size]] read: [| nil]];
+    write: [:body | [body size]] read: [| [DiglaOption none]]];
   [t expect: [[[reply at: "message"] at: "error"] at: "code"] equals: -32003
     describes: "EOF is protocol data"];
   [t expect: [[reply at: "session"] at: "status"] equals: "closed"
@@ -101,7 +104,7 @@ let e := [TestSuite named: "Digla socket protocol" module: #diglaSocket];
         "kind" -> "integer", "value" -> 42, "display" -> "42",
         "rendered" -> false }, "events" -> #[event1 event2] } }];
   let incoming := [#[notification interruptResponse response] asCell];
-  let written := [nil asCell];
+  let written := [[DiglaOption none] asCell];
   let read := [|
     let body := [[incoming value] at: 0 ifAbsent: [| nil]];
     [[body isNil]
@@ -111,11 +114,16 @@ let e := [TestSuite named: "Digla socket protocol" module: #diglaSocket];
         { "status" -> "ready", "body" -> body }]]];
   let operation := { "status" -> "pending", "request" -> request,
     "requestId" -> 9, "session" -> session, "events" -> #[],
-    "newEvents" -> #[], "message" -> nil, "interruptId" -> nil,
-    "interruptResponse" -> nil, "newInterrupt" -> nil,
-    "write" -> [:body | [written set: body]; [body size]], "read" -> read };
+    "newEvents" -> #[], "message" -> [DiglaOption none],
+    "interruptId" -> [DiglaOption none],
+    "interruptResponse" -> [DiglaOption none],
+    "newInterrupt" -> [DiglaOption none],
+    "write" -> [DiglaOption some:
+      [:body | [written set: [DiglaOption some: body]]; [body size]]],
+    "read" -> [DiglaOption some: read] };
   let interrupted := [Digla interruptTcpSessionOperation: operation];
-  let sent := [Json parse: [written value]];
+  let sent := [Json parse:
+    [DiglaOption valueOf: [written value] ifAbsent: [| ""]]];
   let stepped := [Digla stepTcpSessionOperation: interrupted];
   [t expect: [sent at: "method"] equals: "birnam/interrupt"
     describes: "interrupt request serialized separately"];
@@ -129,7 +137,9 @@ let e := [TestSuite named: "Digla socket protocol" module: #diglaSocket];
     describes: "streamed output remains first"];
   [t expect: [[[stepped at: "events"] at: 1] at: "text"] equals: "late\n"
     describes: "missing fallback output follows without duplication"];
-  [t expect: [[stepped at: "newInterrupt"] at: "id"] equals: 10
+  let interruptMessage := [DiglaOption valueOf: [stepped at: "newInterrupt"]
+    ifAbsent: [| [Map new]]];
+  [t expect: [interruptMessage at: "id"] equals: 10
     describes: "interrupt acknowledgement remains observable to the editor"];
   [t expect: [[stepped at: "session"] at: "nextId"] equals: 11
     describes: "interrupt consumes its own correlated request id"]]];

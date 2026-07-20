@@ -10,25 +10,25 @@
   let s0 := [self sessionStateFor: config];
   let s1 := [s0 at: "running" put: true];
   let s2 := [s1 at: "status" put: "ready"];
-  let s3 := [s2 at: "historyIndex" put: nil];
-  let s4 := [s3 at: "lastResult" put: nil];
-  let s5 := [s4 at: "hasLastResult" put: false];
-  let s6 := [s5 at: "lastError" put: nil];
-  let s7 := [s6 at: "completion" put: nil];
-  let s8 := [s7 at: "assistance" put: nil];
-  let s8a := [s8 at: "browser" put: nil];
-  let s9 := [s8a at: "selection" put: nil];
+  let s3 := [s2 at: "historyIndex" put: [DiglaOption none]];
+  let s4 := [s3 at: "lastResult" put: [DiglaOption none]];
+  let s6 := [s4 at: "lastError" put: [DiglaOption none]];
+  let s7 := [s6 at: "completion" put: [DiglaOption none]];
+  let s8 := [s7 at: "assistance" put: [DiglaOption none]];
+  let s8a := [s8 at: "browser" put: [DiglaOption none]];
+  let s9 := [s8a at: "selection" put: [DiglaOption none]];
   let s10 := [s9 at: "diagnostics" put: #[]];
   let s11 := [s10 at: "diagnosticsDirty" put: false];
   let s11a := [s11 at: "documentVersion" put: 0];
-  let s11b := [s11a at: "analysis" put: nil];
-  let document := { "path" -> nil, "uri" -> "", "module" -> "<scratch>",
-    "projectRoot" -> nil, "sourceOnDisk" -> nil, "dirty" -> false };
+  let s11b := [s11a at: "analysis" put: [DiglaOption none]];
+  let document := { "path" -> [DiglaOption none], "uri" -> "",
+    "module" -> "<scratch>", "projectRoot" -> [DiglaOption none],
+    "sourceOnDisk" -> [DiglaOption none], "dirty" -> false };
   let s12 := [s11b at: "document" put: document];
   let s13 := [s12 at: "navigation" put: #[]];
-  let s14 := [s13 at: "projectSnapshot" put: nil];
-  let s15 := [s14 at: "evaluation" put: nil];
-  let s16 := [s15 at: "historySearch" put: nil];
+  let s14 := [s13 at: "projectSnapshot" put: [DiglaOption none]];
+  let s15 := [s14 at: "evaluation" put: [DiglaOption none]];
+  let s16 := [s15 at: "historySearch" put: [DiglaOption none]];
   let s17 := [s16 at: "undo" put: #[]];
   let s18 := [s17 at: "redo" put: #[]];
   [s18 at: "viewport" put: { "editorTopRow" -> 0, "transcriptOffset" -> 0 }]] doc:
@@ -36,22 +36,23 @@
 
 [Reflect defineMethod: #selectionRangeIn: on: Digla as: [:self :state |
   let selection := [state at: "selection"];
-  [[selection isNil]
-    ifTrue: [| nil]
-    ifFalse: [|
-      let anchor := [selection at: "anchor"];
+  [[DiglaOption isSome: selection]
+    ifTrue: [|
+      let value := [DiglaOption valueOf: selection ifAbsent: [| [Map new]]];
+      let anchor := [value at: "anchor"];
       let cursor := [state at: "cursor"];
       [[anchor = cursor]
         ifTrue: [| nil]
         ifFalse: [|
           [[anchor < cursor]
             ifTrue: [| { "start" -> anchor, "end" -> cursor }]
-            ifFalse: [| { "start" -> cursor, "end" -> anchor }]]]]]]
+            ifFalse: [| { "start" -> cursor, "end" -> anchor }]]]]]
+    ifFalse: [| nil]]
   ] doc:
   "Return the normalized half-open source range selected by anchor and cursor." ];
 
 [Reflect defineMethod: #clearSelectionIn: on: Digla as: [:self :state |
-  [state at: "selection" put: nil]
+  [state at: "selection" put: [DiglaOption none]]
   ] doc:
   "Clear the source selection without moving the cursor." ];
 
@@ -82,7 +83,7 @@
 [Reflect defineMethod: #advanceDocumentVersionIn: on: Digla as: [:self :state |
   let version := [state at: "documentVersion" ifAbsent: [| 0]];
   let advanced := [state at: "documentVersion" put: [version + 1]];
-  [advanced at: "analysis" put: nil]
+  [advanced at: "analysis" put: [DiglaOption none]]
   ] doc:
   "Advance the active source version and discard analysis belonging to its predecessor." ];
 
@@ -94,9 +95,11 @@
   "Advance source version only when replacement bytes differ from the active buffer." ];
 
 [Reflect defineMethod: #analysis:reboundToVersion: on: Digla as: [:self :analysis :version |
-  [[analysis isNil]
-    ifTrue: [| nil]
-    ifFalse: [| [analysis at: "version" put: version]]]
+  [[DiglaOption isSome: analysis]
+    ifTrue: [|
+      let value := [DiglaOption valueOf: analysis ifAbsent: [| [Map new]]];
+      [DiglaOption some: [value at: "version" put: version]]]
+    ifFalse: [| [DiglaOption none]]]
   ] doc:
   "Rebind cached analysis after restoring the exact source bytes it analyzed." ];
 
@@ -142,10 +145,10 @@
     let s6b := [s6a at: "analysis" put:
       [self analysis: [frame at: "analysis"] reboundToVersion: nextVersion]];
     let s7 := [s6b at: "viewport" put: [frame at: "viewport"]];
-    let s8 := [s7 at: "historyIndex" put: nil];
-    let s9 := [s8 at: "historySearch" put: nil];
-    let s10 := [s9 at: "completion" put: nil];
-    let s11 := [s10 at: "assistance" put: nil];
+    let s8 := [s7 at: "historyIndex" put: [DiglaOption none]];
+    let s9 := [s8 at: "historySearch" put: [DiglaOption none]];
+    let s10 := [s9 at: "completion" put: [DiglaOption none]];
+    let s11 := [s10 at: "assistance" put: [DiglaOption none]];
     [s11 at: "status" put: status]
   ] doc:
   "Restore one source frame while leaving transcript and runtime-session state untouched." ];
@@ -202,7 +205,7 @@
   let analysis := [self analysisFor: [state at: "buffer"]
     version: [state at: "documentVersion"]];
   let diagnostics := [analysis at: "diagnostics"];
-  let withAnalysis := [state at: "analysis" put: analysis];
+  let withAnalysis := [state at: "analysis" put: [DiglaOption some: analysis]];
   let next := [withAnalysis at: "diagnostics" put: diagnostics];
   let clean := [next at: "diagnosticsDirty" put: false];
   [clean at: "status" put: ["checked " , [[diagnostics size] printString] , " diagnostics"]]
@@ -213,12 +216,14 @@
   [:self :oldCursor :extend :previous :state |
     [extend
       ifTrue: [|
-        let anchor := [[previous isNil]
-          ifTrue: [| oldCursor]
-          ifFalse: [| [previous at: "anchor"]]];
+        let anchor := [[DiglaOption isSome: previous]
+          ifTrue: [|
+            [[DiglaOption valueOf: previous ifAbsent: [| [Map new]]] at: "anchor"]]
+          ifFalse: [| oldCursor]];
         [[[state at: "cursor"] = anchor]
-          ifTrue: [| [state at: "selection" put: nil]]
-          ifFalse: [| [state at: "selection" put: { "anchor" -> anchor }]]]]
+          ifTrue: [| [state at: "selection" put: [DiglaOption none]]]
+          ifFalse: [| [state at: "selection" put:
+            [DiglaOption some: { "anchor" -> anchor }]]]]]
       ifFalse: [| [self clearSelectionIn: state]]]
   ] doc:
   "Preserve or create an anchor for Shift movement, otherwise clear selection." ];
@@ -236,8 +241,8 @@
       let suffix := [buffer copyFrom: finish to: [buffer size]];
       let s1 := [editing at: "buffer" put: [[prefix , text] , suffix]];
       let s2 := [s1 at: "cursor" put: [start + [text size]]];
-      let s3 := [s2 at: "selection" put: nil];
-      let s4 := [s3 at: "historyIndex" put: nil];
+      let s3 := [s2 at: "selection" put: [DiglaOption none]];
+      let s4 := [s3 at: "historyIndex" put: [DiglaOption none]];
       let s5 := [s4 at: "status" put: "editing"];
       [self markDiagnosticsDirtyIn: s5]]]
   ] doc:
@@ -309,7 +314,7 @@
       let nextCursor := [cursor + [text size]];
       let s1 := [editing at: "buffer" put: nextBuffer];
       let s2 := [s1 at: "cursor" put: nextCursor];
-      let s3 := [s2 at: "historyIndex" put: nil];
+      let s3 := [s2 at: "historyIndex" put: [DiglaOption none]];
       let s4 := [s3 at: "status" put: "editing"];
       [self markDiagnosticsDirtyIn: s4]]]] doc:
   "Insert UTF-8 text at the source cursor and answer the next editor state."];
@@ -330,7 +335,7 @@
           let suffix := [buffer copyFrom: cursor to: [buffer size]];
           let s1 := [editing at: "buffer" put: [prefix , suffix]];
           let s2 := [s1 at: "cursor" put: previous];
-          let s3 := [s2 at: "historyIndex" put: nil];
+          let s3 := [s2 at: "historyIndex" put: [DiglaOption none]];
           let s4 := [s3 at: "status" put: "editing"];
           [self markDiagnosticsDirtyIn: s4]]]]]] doc:
   "Delete the codepoint immediately before the source cursor."];
@@ -350,7 +355,7 @@
           let prefix := [buffer copyFrom: 0 to: cursor];
           let suffix := [buffer copyFrom: next to: [buffer size]];
           let s1 := [editing at: "buffer" put: [prefix , suffix]];
-          let s2 := [s1 at: "historyIndex" put: nil];
+          let s2 := [s1 at: "historyIndex" put: [DiglaOption none]];
           let s3 := [s2 at: "status" put: "editing"];
           [self markDiagnosticsDirtyIn: s3]]]]]] doc:
   "Delete the codepoint immediately after the source cursor."];
@@ -433,9 +438,9 @@
   let s1 := [sourceAdvanced at: "buffer" put: ""];
   let s2 := [s1 at: "cursor" put: 0];
   let s3 := [s2 at: "history" put: history];
-  let s4 := [s3 at: "historyIndex" put: nil];
+  let s4 := [s3 at: "historyIndex" put: [DiglaOption none]];
   let s5 := [s4 at: "transcript" put: transcript2];
-  let s6 := [s5 at: "selection" put: nil];
+  let s6 := [s5 at: "selection" put: [DiglaOption none]];
   let s7 := [s6 at: "diagnostics" put: #[]];
   let s8 := [s7 at: "diagnosticsDirty" put: false];
   let viewport := [[s8 at: "viewport"] at: "transcriptOffset" put: 0];
@@ -457,10 +462,14 @@
 
 [Reflect defineMethod: #sessionReplyErrorText: on: Digla as: [:self :reply |
   let message := [reply at: "message"];
-  let error := [message at: "error" ifAbsent: [| nil]];
-  [[error isNil] ifTrue: [| nil] ifFalse: [| [error at: "message"]]]
+  let error := [DiglaOption at: "error" in: message];
+  [[DiglaOption isSome: error]
+    ifTrue: [|
+      let value := [DiglaOption valueOf: error ifAbsent: [| [Map new]]];
+      [DiglaOption some: [value at: "message"]]]
+    ifFalse: [| [DiglaOption none]]]
   ] doc:
-  "Return a session protocol error message, or nil for a successful response." ];
+  "Return a tagged protocol error message, preserving success as absence." ];
 
 [Reflect defineMethod: #renderGlobalsResult: on: Digla as: [:self :result |
   let names := [result at: "globals"];
@@ -506,8 +515,9 @@
           ifFalse: [| [Map new]]]]];
       let reply := [self callSession: "birnam/inspect" params: params in: [state at: "session"]];
       let error := [self sessionReplyErrorText: reply];
-      [[error notNil]
-        ifTrue: [| { "text" -> error, "status" -> "command error",
+      [[DiglaOption isSome: error]
+        ifTrue: [| { "text" -> [DiglaOption valueOf: error ifAbsent: [| "protocol error"]],
+                      "status" -> "command error",
                       "session" -> [reply at: "session"] }]
         ifFalse: [|
           let snapshot := [[self sessionResultOf: reply] at: "snapshot"];
@@ -522,8 +532,9 @@
 [Reflect defineMethod: #sessionCommand:state: on: Digla as: [:self :method :state |
   let reply := [self callSession: method params: [Map new] in: [state at: "session"]];
   let error := [self sessionReplyErrorText: reply];
-  [[error notNil]
-    ifTrue: [| { "text" -> error, "status" -> "command error",
+  [[DiglaOption isSome: error]
+    ifTrue: [| { "text" -> [DiglaOption valueOf: error ifAbsent: [| "protocol error"]],
+                  "status" -> "command error",
                   "session" -> [reply at: "session"] }]
     ifFalse: [|
       let result := [self sessionResultOf: reply];
@@ -548,8 +559,9 @@
         "asOf" -> basis,
         "since" -> basis } in: [state at: "session"]];
       let error := [self sessionReplyErrorText: reply];
-      [[error notNil]
-        ifTrue: [| { "text" -> error, "status" -> "command error",
+      [[DiglaOption isSome: error]
+        ifTrue: [| { "text" -> [DiglaOption valueOf: error ifAbsent: [| "protocol error"]],
+          "status" -> "command error",
           "session" -> [reply at: "session"] }]
         ifFalse: [|
           let snapshot := [[self sessionResultOf: reply] at: "snapshot"];
@@ -586,8 +598,9 @@
           let reply := [self callSession: "birnam/session/open"
             params: [Map new] in: candidate];
           let error := [self sessionReplyErrorText: reply];
-          [[error notNil]
-            ifTrue: [| { "text" -> error, "status" -> "command error",
+          [[DiglaOption isSome: error]
+            ifTrue: [| { "text" -> [DiglaOption valueOf: error ifAbsent: [| "protocol error"]],
+              "status" -> "command error",
               "session" -> current }]
             ifFalse: [|
               let released := [self releaseSession: current];
@@ -604,26 +617,29 @@
 [Reflect defineMethod: #commandResultFor:state: on: Digla as: [:self :input :state |
   let words := [input words];
   let command := [words at: 0 ifAbsent: [| ""]];
-  let result := [nil asCell];
+  let result := [[DiglaOption none] asCell];
   [[command = ":help"] ifTrue: [|
-    [result set: { "text" -> [self commandHelpText], "status" -> "help",
-      "session" -> [state at: "session"] }]]];
-  [[[[result value] isNil] & [command = ":browse"]] ifTrue: [|
-    [result set: [self browseCommand: words state: state]]]];
-  [[[[result value] isNil] & [command = ":inspect"]] ifTrue: [|
-    [result set: [self inspectCommand: words state: state]]]];
-  [[[[result value] isNil] & [command = ":changes"]] ifTrue: [|
-    [result set: [self changesCommand: words state: state]]]];
-  [[[[result value] isNil] & [command = ":globals"]] ifTrue: [|
-    [result set: [self sessionCommand: "birnam/globals" state: state]]]];
-  [[[[result value] isNil] & [command = ":session"]] ifTrue: [|
-    [result set: [self sessionCommand: "birnam/session/open" state: state]]]];
-  [[[[result value] isNil] & [command = ":connect"]] ifTrue: [|
-    [result set: [self connectCommand: words state: state]]]];
-  [[[result value] isNil] ifTrue: [|
-    [result set: { "text" -> ["unknown Digla command: " , command],
-      "status" -> "command error", "session" -> [state at: "session"] }]]];
-  [result value]
+    [result set: [DiglaOption some: {
+      "text" -> [self commandHelpText], "status" -> "help",
+      "session" -> [state at: "session"] }]]]];
+  [[[[DiglaOption isSome: [result value]] not] & [command = ":browse"]] ifTrue: [|
+    [result set: [DiglaOption some: [self browseCommand: words state: state]]]]];
+  [[[[DiglaOption isSome: [result value]] not] & [command = ":inspect"]] ifTrue: [|
+    [result set: [DiglaOption some: [self inspectCommand: words state: state]]]]];
+  [[[[DiglaOption isSome: [result value]] not] & [command = ":changes"]] ifTrue: [|
+    [result set: [DiglaOption some: [self changesCommand: words state: state]]]]];
+  [[[[DiglaOption isSome: [result value]] not] & [command = ":globals"]] ifTrue: [|
+    [result set: [DiglaOption some: [self sessionCommand: "birnam/globals" state: state]]]]];
+  [[[[DiglaOption isSome: [result value]] not] & [command = ":session"]] ifTrue: [|
+    [result set: [DiglaOption some:
+      [self sessionCommand: "birnam/session/open" state: state]]]]];
+  [[[[DiglaOption isSome: [result value]] not] & [command = ":connect"]] ifTrue: [|
+    [result set: [DiglaOption some: [self connectCommand: words state: state]]]]];
+  [[[DiglaOption isSome: [result value]] not] ifTrue: [|
+    [result set: [DiglaOption some: {
+      "text" -> ["unknown Digla command: " , command],
+      "status" -> "command error", "session" -> [state at: "session"] }]]]];
+  [DiglaOption valueOf: [result value] ifAbsent: [| [Map new]]]
   ] doc:
   "Dispatch one terminal-native Digla command without evaluating source." ];
 
@@ -633,7 +649,7 @@
   let next := [state at: "session" put: [result at: "session"]];
   let recorded := [self recordSubmission: input shown: [result at: "text"]
     status: [result at: "status"] in: next];
-  let browser := [result at: "browser" ifAbsent: [| nil]];
+  let browser := [result at: "browser" ifAbsent: [| [DiglaOption none]]];
   let withBrowser := [recorded at: "browser" put: browser];
   [self clearEditHistoryIn: withBrowser]
   ] doc:
@@ -649,7 +665,7 @@
     let sourceAdvanced := [self advanceDocumentVersionFor: input in: state];
     let s1 := [sourceAdvanced at: "buffer" put: input];
     let s2 := [s1 at: "cursor" put: cursor];
-    let s3 := [s2 at: "selection" put: nil];
+    let s3 := [s2 at: "selection" put: [DiglaOption none]];
     let s4 := [s3 at: "diagnostics" put: diagnostics];
     [s4 at: "diagnosticsDirty" put: false]
   ] doc:
@@ -658,9 +674,11 @@
 [Reflect defineMethod: #applyEvaluationReply:input:recordPrompt:in: on: Digla as:
   [:self :reply :input :recordPrompt :state |
     let protocolError := [self sessionReplyErrorText: reply];
-    let result := [[protocolError notNil]
-      ifTrue: [| { "ok" -> false, "display" -> protocolError,
-        "message" -> protocolError, "phase" -> "protocol", "diagnostics" -> #[] }]
+    let result := [[DiglaOption isSome: protocolError]
+      ifTrue: [|
+        let text := [DiglaOption valueOf: protocolError ifAbsent: [| "protocol error"]];
+        { "ok" -> false, "display" -> text,
+          "message" -> text, "phase" -> "protocol", "diagnostics" -> #[] }]
       ifFalse: [| [self sessionResultOf: reply]]];
     let ok := [result at: "ok" ifAbsent: [| false]];
     let phase := [result at: "phase" ifAbsent: [| "error"]];
@@ -671,7 +689,7 @@
         ifFalse: [| "error"]]]];
     let next0 := [state at: "session" put: [reply at: "session"]];
     let events := [result at: "events" ifAbsent: [| #[]]];
-    let shown := [result at: "display" ifAbsent: [| protocolError]];
+    let shown := [result at: "display" ifAbsent: [| "evaluation failed"]];
     let recorded := [recordPrompt
       ifTrue: [| [self recordSubmission: input events: events
         shown: shown status: status in: next0]]
@@ -681,24 +699,26 @@
         let viewport := [[s1 at: "viewport"] at: "transcriptOffset" put: 0];
         let s2 := [s1 at: "viewport" put: viewport];
         [s2 at: "status" put: status]]];
-    let withoutOperation := [recorded at: "evaluation" put: nil];
-    let error := [ok ifTrue: [| nil] ifFalse: [| [result at: "message" ifAbsent: [| shown]]]];
+    let withoutOperation := [recorded at: "evaluation" put: [DiglaOption none]];
+    let error := [ok
+      ifTrue: [| [DiglaOption none]]
+      ifFalse: [| [DiglaOption some: [result at: "message" ifAbsent: [| shown]]]]];
     let withError := [withoutOperation at: "lastError" put: error];
     [ok
       ifTrue: [|
         let copied := [result at: "value"];
-        let s1 := [withError at: "lastResult" put: [copied at: "value"]];
-        let s2 := [s1 at: "hasLastResult" put: true];
-        [self clearEditHistoryIn: s2]]
+        let s1 := [withError at: "lastResult" put:
+          [DiglaOption some: [copied at: "value"]]];
+        [self clearEditHistoryIn: s1]]
       ifFalse: [| [self focusEvaluationFailure: result input: input in: withError]]]
   ] doc:
   "Apply a structured evaluation reply after either synchronous or incremental delivery." ];
 
 [Reflect defineMethod: #advanceEvaluationIn: on: Digla as: [:self :state |
-  let operation := [state at: "evaluation" ifAbsent: [| nil]];
-  [[operation isNil]
-    ifTrue: [| state]
-    ifFalse: [|
+  let operationOption := [state at: "evaluation"];
+  [[DiglaOption isSome: operationOption]
+    ifTrue: [|
+      let operation := [DiglaOption valueOf: operationOption ifAbsent: [| [Map new]]];
       let stepped := [self stepTcpSessionOperation: operation];
       [[stepped == operation]
         ifTrue: [| state]
@@ -714,35 +734,41 @@
       let s0 := [state at: "transcript" put: [transcript value]];
       let s1 := [s0 at: "session" put: [stepped at: "session"]];
       let clean0 := [stepped at: "newEvents" put: #[]];
-      let clean := [clean0 at: "newInterrupt" put: nil];
-      let s2 := [s1 at: "evaluation" put: clean];
+      let clean := [clean0 at: "newInterrupt" put: [DiglaOption none]];
+      let s2 := [s1 at: "evaluation" put: [DiglaOption some: clean]];
       let s3 := [[added value]
         ifTrue: [|
           let viewport := [[s2 at: "viewport"] at: "transcriptOffset" put: 0];
           [s2 at: "viewport" put: viewport]]
         ifFalse: [| s2]];
       let interruptMessage := [stepped at: "newInterrupt"];
-      let interruptStatus := [[interruptMessage isNil]
-        ifTrue: [| "evaluating"]
-        ifFalse: [|
-          let error := [interruptMessage at: "error" ifAbsent: [| nil]];
-          [[error notNil]
-            ifTrue: [| ["interrupt error: " , [error at: "message"]]]
+      let interruptStatus := [[DiglaOption isSome: interruptMessage]
+        ifTrue: [|
+          let message := [DiglaOption valueOf: interruptMessage ifAbsent: [| [Map new]]];
+          let error := [DiglaOption at: "error" in: message];
+          [[DiglaOption isSome: error]
+            ifTrue: [|
+              let value := [DiglaOption valueOf: error ifAbsent: [| [Map new]]];
+              ["interrupt error: " , [value at: "message"]]]
             ifFalse: [|
-              let interruptResult := [interruptMessage at: "result"];
+              let interruptResult := [message at: "result"];
               [[interruptResult at: "interrupted"]
                 ifTrue: [| "interrupt accepted"]
-                ifFalse: [| ["interrupt rejected: " , [interruptResult at: "reason"]]]]]]]];
+                ifFalse: [| ["interrupt rejected: " , [interruptResult at: "reason"]]]]]]]
+        ifFalse: [| "evaluating"]];
       let progressing := [s3 at: "status" put: interruptStatus];
       let finished := [[[stepped at: "status"] = "complete"] |
         [[stepped at: "status"] = "failed"]];
       [finished
         ifTrue: [|
-          let reply := { "message" -> [stepped at: "message"],
+          let message := [DiglaOption valueOf: [stepped at: "message"]
+            ifAbsent: [| [Map new]]];
+          let reply := { "message" -> message,
             "session" -> [stepped at: "session"] };
           [self applyEvaluationReply: reply input: [operation at: "input"]
             recordPrompt: false in: progressing]]
-        ifFalse: [| progressing]]]]]]
+        ifFalse: [| progressing]]]]]
+    ifFalse: [| state]]
   ] doc:
   "Advance an incremental evaluation once, appending available output without blocking for completion." ];
 
@@ -765,13 +791,13 @@
   let s1 := [sourceAdvanced at: "buffer" put: ""];
   let s2 := [s1 at: "cursor" put: 0];
   let s3 := [s2 at: "history" put: history];
-  let s4 := [s3 at: "historyIndex" put: nil];
+  let s4 := [s3 at: "historyIndex" put: [DiglaOption none]];
   let s5 := [s4 at: "transcript" put: transcript];
-  let s6 := [s5 at: "selection" put: nil];
+  let s6 := [s5 at: "selection" put: [DiglaOption none]];
   let s7 := [s6 at: "diagnostics" put: #[]];
   let s8 := [s7 at: "diagnosticsDirty" put: false];
   let s9 := [s8 at: "session" put: [operation at: "session"]];
-  let s10 := [s9 at: "evaluation" put: operation];
+  let s10 := [s9 at: "evaluation" put: [DiglaOption some: operation]];
   let viewport := [[s10 at: "viewport"] at: "transcriptOffset" put: 0];
   let s11 := [s10 at: "viewport" put: viewport];
   [self advanceEvaluationIn: [s11 at: "status" put: "evaluating"]]
@@ -779,23 +805,24 @@
   "Start a TCP evaluation, recording its input while leaving completion to explicit progress steps." ];
 
 [Reflect defineMethod: #interruptEvaluationIn: on: Digla as: [:self :state |
-  let operation := [state at: "evaluation" ifAbsent: [| nil]];
-  [[operation isNil]
-    ifTrue: [| [state at: "status" put: "no active evaluation"]]
-    ifFalse: [|
+  let operationOption := [state at: "evaluation"];
+  [[DiglaOption isSome: operationOption]
+    ifTrue: [|
+      let operation := [DiglaOption valueOf: operationOption ifAbsent: [| [Map new]]];
       let interrupted := [self interruptTcpSessionOperation: operation];
       let s1 := [state at: "session" put: [interrupted at: "session"]];
-      let s2 := [s1 at: "evaluation" put: interrupted];
+      let s2 := [s1 at: "evaluation" put: [DiglaOption some: interrupted]];
       let next := [s2 at: "status" put: "interrupt requested"];
       [[[interrupted at: "status"] = "failed"]
         ifTrue: [| [self advanceEvaluationIn: next]]
-        ifFalse: [| next]]]]
+        ifFalse: [| next]]]
+    ifFalse: [| [state at: "status" put: "no active evaluation"]]]
   ] doc:
   "Request cooperative interruption of the active incremental evaluation." ];
 
 [Reflect defineMethod: #submitIn: on: Digla as: [:self :state |
   let input := [state at: "buffer"];
-  let active := [[state at: "evaluation" ifAbsent: [| nil]] notNil];
+  let active := [DiglaOption isSome: [state at: "evaluation"]];
   [active
     ifTrue: [| [state at: "status" put: "evaluation already running"]]
     ifFalse: [| [[input isEmpty]
@@ -822,9 +849,10 @@
     ifTrue: [| state]
     ifFalse: [|
       let old := [state at: "historyIndex"];
-      let index := [[old isNil]
-        ifTrue: [| [[direction < 0] ifTrue: [| [count - 1]] ifFalse: [| 0]]]
-        ifFalse: [| [old + direction]]];
+      let index := [[DiglaOption isSome: old]
+        ifTrue: [|
+          [[DiglaOption valueOf: old ifAbsent: [| 0]] + direction]]
+        ifFalse: [| [[direction < 0] ifTrue: [| [count - 1]] ifFalse: [| 0]]]];
       [[index < 0]
         ifTrue: [| state]
         ifFalse: [|
@@ -832,20 +860,20 @@
             ifTrue: [|
               let cleared := [self clearEditHistoryIn: state];
               let sourceAdvanced := [self advanceDocumentVersionFor: "" in: cleared];
-              let s1 := [sourceAdvanced at: "historyIndex" put: nil];
+              let s1 := [sourceAdvanced at: "historyIndex" put: [DiglaOption none]];
               let s2 := [s1 at: "buffer" put: ""];
               let s3 := [s2 at: "cursor" put: 0];
-              let s4 := [s3 at: "selection" put: nil];
+              let s4 := [s3 at: "selection" put: [DiglaOption none]];
               let s5 := [s4 at: "diagnostics" put: #[]];
               let s6 := [s5 at: "diagnosticsDirty" put: false];
               [s6 at: "status" put: "editing"]]
             ifFalse: [|
               let text := [history at: index];
               let cleared := [self clearEditHistoryIn: state];
-              let s1 := [cleared at: "historyIndex" put: index];
+              let s1 := [cleared at: "historyIndex" put: [DiglaOption some: index]];
               let s2 := [s1 at: "buffer" put: text];
               let s3 := [s2 at: "cursor" put: [text size]];
-              let s4 := [s3 at: "selection" put: nil];
+              let s4 := [s3 at: "selection" put: [DiglaOption none]];
               let s5 := [s4 at: "status" put: "history"];
               [self markDiagnosticsDirtyIn: s5]]]]]]]] doc:
   "Recall a prior form with direction -1 for older or +1 for newer history."];
@@ -854,13 +882,14 @@
   [:self :query :requestedIndex :history |
     let latest := [[history size] - 1];
     let before := [[requestedIndex < latest] ifTrue: [| requestedIndex] ifFalse: [| latest]];
-    let found := [nil asCell];
+    let found := [[DiglaOption none] asCell];
     [[before >= 0] ifTrue: [|
       [[[0 to: before] reversed] do: [:index |
-        let pending := [[found value] isNil];
+        let pending := [[DiglaOption isSome: [found value]] not];
         let text := [history at: index];
         [[pending & [text includesSubstring: query]]
-          ifTrue: [| [found set: { "index" -> index, "text" -> text }]]
+          ifTrue: [| [found set: [DiglaOption some:
+            { "index" -> index, "text" -> text }]]]
           ifFalse: [| nil]]]]]
       ifFalse: [| nil]];
     [found value]
@@ -872,28 +901,33 @@
     let found := [self historySearchFor: query before: before in: [state at: "history"]];
     let nextSearch0 := [search at: "query" put: query];
     let nextSearch := [nextSearch0 at: "index" put:
-      [[found isNil] ifTrue: [| nil] ifFalse: [| [found at: "index"]]]];
-    let s1 := [state at: "historySearch" put: nextSearch];
-    let s2 := [[found isNil]
-      ifTrue: [| s1]
-      ifFalse: [|
-        let text := [found at: "text"];
+      [[DiglaOption isSome: found]
+        ifTrue: [|
+          let value := [DiglaOption valueOf: found ifAbsent: [| [Map new]]];
+          [DiglaOption some: [value at: "index"]]]
+        ifFalse: [| [DiglaOption none]]]];
+    let s1 := [state at: "historySearch" put: [DiglaOption some: nextSearch]];
+    let s2 := [[DiglaOption isSome: found]
+      ifTrue: [|
+        let value := [DiglaOption valueOf: found ifAbsent: [| [Map new]]];
+        let text := [value at: "text"];
         let sourceAdvanced := [self advanceDocumentVersionFor: text in: s1];
         let b1 := [sourceAdvanced at: "buffer" put: text];
-        [b1 at: "cursor" put: [text size]]]];
-    let s3 := [s2 at: "selection" put: nil];
+        [b1 at: "cursor" put: [text size]]]
+      ifFalse: [| s1]];
+    let s3 := [s2 at: "selection" put: [DiglaOption none]];
     let s4 := [s3 at: "diagnostics" put: #[]];
     let s5 := [s4 at: "diagnosticsDirty" put: false];
-    let status := [[found isNil]
-      ifTrue: [| ["no history match: " , query]]
-      ifFalse: [| ["reverse search: " , query]]];
+    let status := [[DiglaOption isSome: found]
+      ifTrue: [| ["reverse search: " , query]]
+      ifFalse: [| ["no history match: " , query]]];
     [s5 at: "status" put: status]
   ] doc:
   "Update reverse-search query state and display its newest matching form." ];
 
 [Reflect defineMethod: #openHistorySearchIn: on: Digla as: [:self :state |
   let query := [state at: "buffer"];
-  let search := { "query" -> query, "index" -> nil,
+  let search := { "query" -> query, "index" -> [DiglaOption none],
     "savedBuffer" -> query, "savedCursor" -> [state at: "cursor"] };
   [self applyHistorySearchQuery: query before: [[[state at: "history"] size] - 1]
     search: search in: state]
@@ -901,20 +935,22 @@
   "Open reverse history search, using the current buffer as its initial query." ];
 
 [Reflect defineMethod: #cycleHistorySearchIn: on: Digla as: [:self :state |
-  let search := [state at: "historySearch"];
+  let search := [DiglaOption valueOf: [state at: "historySearch"]
+    ifAbsent: [| [Map new]]];
   let index := [search at: "index"];
-  let before := [[index isNil]
-    ifTrue: [| [[[state at: "history"] size] - 1]]
-    ifFalse: [| [index - 1]]];
+  let before := [[DiglaOption isSome: index]
+    ifTrue: [| [[DiglaOption valueOf: index ifAbsent: [| 0]] - 1]]
+    ifFalse: [| [[[state at: "history"] size] - 1]]];
   [self applyHistorySearchQuery: [search at: "query"] before: before search: search in: state]
   ] doc:
   "Move reverse search to the next older matching history entry." ];
 
 [Reflect defineMethod: #cancelHistorySearchIn: on: Digla as: [:self :state |
-  let search := [state at: "historySearch"];
+  let search := [DiglaOption valueOf: [state at: "historySearch"]
+    ifAbsent: [| [Map new]]];
   let text := [search at: "savedBuffer"];
   let sourceAdvanced := [self advanceDocumentVersionFor: text in: state];
-  let s1 := [sourceAdvanced at: "historySearch" put: nil];
+  let s1 := [sourceAdvanced at: "historySearch" put: [DiglaOption none]];
   let s2 := [s1 at: "buffer" put: text];
   let s3 := [s2 at: "cursor" put: [search at: "savedCursor"]];
   let s4 := [s3 at: "diagnostics" put: #[]];
@@ -923,7 +959,7 @@
   "Cancel reverse search and restore the exact pre-search buffer and cursor." ];
 
 [Reflect defineMethod: #acceptHistorySearchIn: on: Digla as: [:self :state |
-  let next := [state at: "historySearch" put: nil];
+  let next := [state at: "historySearch" put: [DiglaOption none]];
   let cleared := [self clearEditHistoryIn: next];
   [self markDiagnosticsDirtyIn: [cleared at: "status" put: "history match"]]
   ] doc:
@@ -931,7 +967,8 @@
 
 [Reflect defineMethod: #handleHistorySearchKey:character:state: on: Digla as:
   [:self :key :character :state |
-    let search := [state at: "historySearch"];
+    let search := [DiglaOption valueOf: [state at: "historySearch"]
+      ifAbsent: [| [Map new]]];
     [[key = 27]
       ifTrue: [| [self cancelHistorySearchIn: state]]
       ifFalse: [| [[key = 19]
@@ -963,12 +1000,12 @@
   "Dispatch editing keys while reverse history search owns the transient buffer." ];
 
 [Reflect defineMethod: #clearCompletionIn: on: Digla as: [:self :state |
-  [state at: "completion" put: nil]
+  [state at: "completion" put: [DiglaOption none]]
   ] doc:
   "Dismiss the transient completion menu without changing the source buffer." ];
 
 [Reflect defineMethod: #clearAssistanceIn: on: Digla as: [:self :state |
-  [state at: "assistance" put: nil]
+  [state at: "assistance" put: [DiglaOption none]]
   ] doc:
   "Dismiss hover or signature assistance without changing source state." ];
 
@@ -976,7 +1013,7 @@
   let panel := { "kind" -> [result at: "kind"], "title" -> [result at: "title"],
     "text" -> [result at: "text"] };
   let withSession := [state at: "session" put: [result at: "session"]];
-  let shown := [withSession at: "assistance" put: panel];
+  let shown := [withSession at: "assistance" put: [DiglaOption some: panel]];
   [shown at: "status" put: [[result at: "kind"] , " " , [result at: "title"]]]
   ] doc:
   "Install copied assistance text and any advanced session state in the editor." ];
@@ -1000,22 +1037,22 @@
   [[result at: "found"]
     ifTrue: [|
       let moved := [state at: "cursor" put: [result at: "cursor"]];
-      let cleared := [moved at: "selection" put: nil];
+      let cleared := [moved at: "selection" put: [DiglaOption none]];
       [cleared at: "status" put: ["definition " , [result at: "name"]]]]
     ifFalse: [|
       let name := [result at: "name"];
       [[name isEmpty]
         ifTrue: [| [state at: "status" put: "definition not found: no symbol at cursor"]]
         ifFalse: [|
-          let cached := [state at: "projectSnapshot" ifAbsent: [| nil]];
+          let cached := [state at: "projectSnapshot"];
           let config := [state at: "config"];
           let workspace := [config at: "workspace"];
-          let snapshot := [[cached notNil]
-            ifTrue: [| cached]
+          let snapshot := [[DiglaOption isSome: cached]
+            ifTrue: [| [DiglaOption valueOf: cached ifAbsent: [| [Map new]]]]
             ifFalse: [| [self projectSnapshotForWorkspace: workspace]]];
-          let withSnapshot := [state at: "projectSnapshot" put: snapshot];
+          let withSnapshot := [state at: "projectSnapshot" put: [DiglaOption some: snapshot]];
           let document := [state at: "document" ifAbsent: [| [Map new]]];
-          let path := [document at: "path" ifAbsent: [| nil]];
+          let path := [document at: "path" ifAbsent: [| [DiglaOption none]]];
           let projectResult := [self projectDefinitionNamed: name inSnapshot: snapshot preferredPath: path];
           [[projectResult at: "found"]
             ifTrue: [| [self openProjectDefinition: projectResult in: withSnapshot]]
@@ -1044,22 +1081,23 @@
 [Reflect defineMethod: #openProjectDefinition:in: on: Digla as: [:self :result :state |
   let frame := [self navigationFrameFor: state];
   let navigation := [[state at: "navigation"] add: frame];
-  let document := { "path" -> [result at: "path"], "uri" -> [result at: "uri"],
-    "module" -> [result at: "module"], "projectRoot" -> [result at: "projectRoot"],
-    "sourceOnDisk" -> [result at: "source"], "dirty" -> false };
+  let document := { "path" -> [DiglaOption some: [result at: "path"]],
+    "uri" -> [result at: "uri"], "module" -> [result at: "module"],
+    "projectRoot" -> [DiglaOption some: [result at: "projectRoot"]],
+    "sourceOnDisk" -> [DiglaOption some: [result at: "source"]], "dirty" -> false };
   let viewport := [state at: "viewport"];
   let resetViewport := [viewport at: "editorTopRow" put: 0];
   let s1 := [state at: "navigation" put: navigation];
   let s2 := [s1 at: "document" put: document];
   let s3 := [s2 at: "buffer" put: [result at: "source"]];
   let s4 := [s3 at: "cursor" put: [result at: "selectionStart"]];
-  let s5 := [s4 at: "selection" put: nil];
-  let s6 := [s5 at: "completion" put: nil];
-  let s7 := [s6 at: "assistance" put: nil];
+  let s5 := [s4 at: "selection" put: [DiglaOption none]];
+  let s6 := [s5 at: "completion" put: [DiglaOption none]];
+  let s7 := [s6 at: "assistance" put: [DiglaOption none]];
   let s8 := [s7 at: "diagnostics" put: #[]];
   let s9 := [s8 at: "diagnosticsDirty" put: true];
   let s9a := [s9 at: "documentVersion" put: 0];
-  let s9b := [s9a at: "analysis" put: nil];
+  let s9b := [s9a at: "analysis" put: [DiglaOption none]];
   let s10 := [s9b at: "viewport" put: resetViewport];
   let s11 := [s10 at: "undo" put: #[]];
   let s12 := [s11 at: "redo" put: #[]];
@@ -1100,23 +1138,23 @@
   let items := [completion at: "items"];
   [[items isEmpty]
     ifTrue: [|
-      let withoutMenu := [withSession at: "completion" put: nil];
+      let withoutMenu := [withSession at: "completion" put: [DiglaOption none]];
       let status := [[error isNil] ifTrue: [| "no completions"]
         ifFalse: [| ["completion error: " , error]]];
       [withoutMenu at: "status" put: status]]
     ifFalse: [|
       let menu := [completion at: "index" put: 0];
-      let withMenu := [withSession at: "completion" put: menu];
+      let withMenu := [withSession at: "completion" put: [DiglaOption some: menu]];
       let suffix := [[error isNil] ifTrue: [| ""] ifFalse: [| " (source only)"]];
       [withMenu at: "status" put: ["completion 1/" , [[items size] printString] , suffix]]]]
   ] doc:
   "Request source and live-image candidates and open a terminal-independent menu." ];
 
 [Reflect defineMethod: #moveCompletion:in: on: Digla as: [:self :direction :state |
-  let menu := [state at: "completion"];
-  [[menu isNil]
-    ifTrue: [| state]
-    ifFalse: [|
+  let menuOption := [state at: "completion"];
+  [[DiglaOption isSome: menuOption]
+    ifTrue: [|
+      let menu := [DiglaOption valueOf: menuOption ifAbsent: [| [Map new]]];
       let items := [menu at: "items"];
       let count := [items size];
       [[count = 0]
@@ -1126,17 +1164,18 @@
           let wrappedLow := [[candidate < 0] ifTrue: [| [count - 1]] ifFalse: [| candidate]];
           let index := [[wrappedLow >= count] ifTrue: [| 0] ifFalse: [| wrappedLow]];
           let nextMenu := [menu at: "index" put: index];
-          let next := [state at: "completion" put: nextMenu];
+          let next := [state at: "completion" put: [DiglaOption some: nextMenu]];
           [next at: "status" put: ["completion " , [[index + 1] printString]
-            , "/" , [count printString]]]]]]]
+            , "/" , [count printString]]]]]]
+    ifFalse: [| state]]
   ] doc:
   "Move the active completion selection cyclically by `direction`." ];
 
 [Reflect defineMethod: #acceptCompletionIn: on: Digla as: [:self :state |
-  let menu := [state at: "completion"];
-  [[menu isNil]
-    ifTrue: [| state]
-    ifFalse: [|
+  let menuOption := [state at: "completion"];
+  [[DiglaOption isSome: menuOption]
+    ifTrue: [|
+      let menu := [DiglaOption valueOf: menuOption ifAbsent: [| [Map new]]];
       let items := [menu at: "items"];
       [[items isEmpty]
         ifTrue: [| [self clearCompletionIn: state]]
@@ -1150,11 +1189,12 @@
           let nextBuffer := [[prefix , label] , suffix];
           let s1 := [editing at: "buffer" put: nextBuffer];
           let s2 := [s1 at: "cursor" put: [[menu at: "start"] + [label size]]];
-          let s3 := [s2 at: "historyIndex" put: nil];
-          let s4 := [s3 at: "completion" put: nil];
-          let s5 := [s4 at: "selection" put: nil];
+          let s3 := [s2 at: "historyIndex" put: [DiglaOption none]];
+          let s4 := [s3 at: "completion" put: [DiglaOption none]];
+          let s5 := [s4 at: "selection" put: [DiglaOption none]];
           let s6 := [s5 at: "status" put: ["completed " , label]];
-          [self markDiagnosticsDirtyIn: s6]]]]]
+          [self markDiagnosticsDirtyIn: s6]]]]
+    ifFalse: [| state]]
   ] doc:
   "Replace the requested source prefix with the selected copied-value candidate." ];
 
@@ -1231,27 +1271,29 @@
   [:self :key :modifier :character :state |
   let forward := [[[key = 9] | [key = 14]] | [key = 65516]];
   let backward := [[[key = 16] | [key = 65517]] | [key = 65513]];
-  let outcome := [nil asCell];
+  let outcome := [[DiglaOption none] asCell];
   [[key = 27]
     ifTrue: [|
       let next := [self clearCompletionIn: state];
-      [outcome set: [next at: "status" put: "completion closed"]]]
+      [outcome set: [DiglaOption some:
+        [next at: "status" put: "completion closed"]]]]
     ifFalse: [| nil]];
-  [[[[outcome value] isNil] & forward]
-    ifTrue: [| [outcome set: [self moveCompletion: 1 in: state]]]
+  [[[[DiglaOption isSome: [outcome value]] not] & forward]
+    ifTrue: [| [outcome set: [DiglaOption some: [self moveCompletion: 1 in: state]]]]
     ifFalse: [| nil]];
-  [[[[outcome value] isNil] & backward]
-    ifTrue: [| [outcome set: [self moveCompletion: -1 in: state]]]
+  [[[[DiglaOption isSome: [outcome value]] not] & backward]
+    ifTrue: [| [outcome set: [DiglaOption some: [self moveCompletion: -1 in: state]]]]
     ifFalse: [| nil]];
-  [[[[outcome value] isNil] & [key = 13]]
-    ifTrue: [| [outcome set: [self acceptCompletionIn: state]]]
+  [[[[DiglaOption isSome: [outcome value]] not] & [key = 13]]
+    ifTrue: [| [outcome set: [DiglaOption some: [self acceptCompletionIn: state]]]]
     ifFalse: [| nil]];
-  [[[outcome value] isNil]
+  [[[DiglaOption isSome: [outcome value]] not]
     ifTrue: [|
-      [outcome set: [self handleEditorKey: key modifier: modifier character: character
-        state: [self clearCompletionIn: state]]]]
+      [outcome set: [DiglaOption some:
+        [self handleEditorKey: key modifier: modifier character: character
+          state: [self clearCompletionIn: state]]]]]
     ifFalse: [| nil]];
-  [outcome value]
+  [DiglaOption valueOf: [outcome value] ifAbsent: [| state]]
   ] doc:
   "Dispatch a key while completion is open, with Escape reserved for dismissal." ];
 
@@ -1262,8 +1304,8 @@
 
 [Reflect defineMethod: #handleKey:modifier:character:state: on: Digla as:
   [:self :key :modifier :character :state |
-  let evaluation := [state at: "evaluation" ifAbsent: [| nil]];
-  [[evaluation notNil]
+  let evaluation := [state at: "evaluation"];
+  [[DiglaOption isSome: evaluation]
     ifTrue: [|
       let interrupt := [[key = 3] | [key = 27]];
       [interrupt
@@ -1276,41 +1318,48 @@
             ifTrue: [| [self scrollTranscriptBy: -10 in: pageUp]]
             ifFalse: [| pageUp]]]]]
     ifFalse: [|
-      let browser := [state at: "browser" ifAbsent: [| nil]];
-      [[browser notNil]
+      let browser := [state at: "browser"];
+      [[DiglaOption isSome: browser]
         ifTrue: [| [self handleBrowserKey: key modifier: modifier character: character state: state]]
         ifFalse: [|
-      let historySearch := [state at: "historySearch" ifAbsent: [| nil]];
-      [[historySearch notNil]
+      let historySearch := [state at: "historySearch"];
+      [[DiglaOption isSome: historySearch]
         ifTrue: [| [self handleHistorySearchKey: key character: character state: state]]
         ifFalse: [|
       let menu := [state at: "completion"];
-      [[menu notNil]
+      [[DiglaOption isSome: menu]
         ifTrue: [| [self handleCompletionKey: key modifier: modifier character: character state: state]]
         ifFalse: [|
           let assistance := [state at: "assistance"];
-          let outcome := [nil asCell];
-          [[[assistance notNil] & [key = 27]] ifTrue: [|
+          let outcome := [[DiglaOption none] asCell];
+          [[[DiglaOption isSome: assistance] & [key = 27]] ifTrue: [|
             let next := [self clearAssistanceIn: state];
-            [outcome set: [next at: "status" put: "assistance closed"]]]];
-          [[[[outcome value] isNil] & [key = 65535]]
-            ifTrue: [| [outcome set: [self openHoverIn: state]]]];
-          [[[[outcome value] isNil] & [key = 65534]]
-            ifTrue: [| [outcome set: [self openSignatureIn: state]]]];
-          [[[[outcome value] isNil] & [key = 65533]] ifTrue: [|
-            [outcome set: [self jumpToDefinitionIn: [self clearAssistanceIn: state]]]]];
-          [[[[outcome value] isNil] & [key = 65532]] ifTrue: [|
-            [outcome set: [self refreshDiagnosticsIn: [self clearAssistanceIn: state]]]]];
-          [[[[outcome value] isNil] & [key = 65531]] ifTrue: [|
-            [outcome set: [self returnFromDefinitionIn: [self clearAssistanceIn: state]]]]];
-          [[[[outcome value] isNil] & [key = 9]] ifTrue: [|
-            [outcome set: [self openCompletionIn: [self clearAssistanceIn: state]]]]];
-          [[[[outcome value] isNil] & [key = 18]] ifTrue: [|
-            [outcome set: [self openHistorySearchIn: [self clearAssistanceIn: state]]]]];
-          [[[outcome value] isNil] ifTrue: [|
-            [outcome set: [self handleEditorKey: key modifier: modifier character: character
-              state: [self clearAssistanceIn: state]]]]];
-          [outcome value]]]]]]]]]
+            [outcome set: [DiglaOption some:
+              [next at: "status" put: "assistance closed"]]]]];
+          [[[[DiglaOption isSome: [outcome value]] not] & [key = 65535]]
+            ifTrue: [| [outcome set: [DiglaOption some: [self openHoverIn: state]]]]];
+          [[[[DiglaOption isSome: [outcome value]] not] & [key = 65534]]
+            ifTrue: [| [outcome set: [DiglaOption some: [self openSignatureIn: state]]]]];
+          [[[[DiglaOption isSome: [outcome value]] not] & [key = 65533]] ifTrue: [|
+            [outcome set: [DiglaOption some:
+              [self jumpToDefinitionIn: [self clearAssistanceIn: state]]]]]];
+          [[[[DiglaOption isSome: [outcome value]] not] & [key = 65532]] ifTrue: [|
+            [outcome set: [DiglaOption some:
+              [self refreshDiagnosticsIn: [self clearAssistanceIn: state]]]]]];
+          [[[[DiglaOption isSome: [outcome value]] not] & [key = 65531]] ifTrue: [|
+            [outcome set: [DiglaOption some:
+              [self returnFromDefinitionIn: [self clearAssistanceIn: state]]]]]];
+          [[[[DiglaOption isSome: [outcome value]] not] & [key = 9]] ifTrue: [|
+            [outcome set: [DiglaOption some:
+              [self openCompletionIn: [self clearAssistanceIn: state]]]]]];
+          [[[[DiglaOption isSome: [outcome value]] not] & [key = 18]] ifTrue: [|
+            [outcome set: [DiglaOption some:
+              [self openHistorySearchIn: [self clearAssistanceIn: state]]]]]];
+          [[[DiglaOption isSome: [outcome value]] not] ifTrue: [|
+            [outcome set: [DiglaOption some:
+              [self handleEditorKey: key modifier: modifier character: character
+                state: [self clearAssistanceIn: state]]]]]];
+          [DiglaOption valueOf: [outcome value] ifAbsent: [| state]]]]]]]]]]
   ] doc:
   "Apply one Termbox key and character event to the pure editor state." ];
 

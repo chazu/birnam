@@ -18,11 +18,11 @@ let e := [TestSuite named: "Digla protocol" module: #diglaProtocol];
   let read := [|
     let pending := [requests value];
     [[pending isEmpty]
-      ifTrue: [| nil]
+      ifTrue: [| [DiglaOption none]]
       ifFalse: [|
         let first := [pending first];
         [requests set: [pending copyFrom: 1 to: [pending size]]];
-        first]]];
+        [DiglaOption some: first]]]];
   let write := [:body | [responses set: [[responses value] add: body]]];
   let final := [Digla serveSessionJson: [Digla localSessionFor: config] read: read write: write];
   let parsed := [[responses value] collect: [:body | [Json parse: body]]];
@@ -45,11 +45,11 @@ let e := [TestSuite named: "Digla protocol" module: #diglaProtocol];
   let read := [|
     let pending := [requests value];
     [[pending isEmpty]
-      ifTrue: [| nil]
+      ifTrue: [| [DiglaOption none]]
       ifFalse: [|
         let first := [pending first];
         [requests set: [pending copyFrom: 1 to: [pending size]]];
-        first]]];
+        [DiglaOption some: first]]]];
   let write := [:body | [responses set: [[responses value] add: [Json parse: body]]]];
   [Digla serveSessionJson: [Digla localSessionFor: config] read: read write: write];
   [t expect: [[[[responses value] at: 0] at: "error"] at: "code"] equals: -32700
@@ -93,7 +93,8 @@ let e := [TestSuite named: "Digla protocol" module: #diglaProtocol];
   let read := [|
     let current := [requestCount value];
     [requestCount set: [current + 1]];
-    [[current < 2048] ifTrue: [| interrupt] ifFalse: [| close]]];
+    [DiglaOption some:
+      [[current < 2048] ifTrue: [| interrupt] ifFalse: [| close]]]];
   let write := [:body | [responseCount set: [[responseCount value] + 1]]];
   let final := [Digla serveSessionJson: [Digla localSessionFor: config]
     read: read write: write];

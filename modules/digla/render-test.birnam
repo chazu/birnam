@@ -50,7 +50,8 @@ let e := [TestSuite named: "Digla render" module: #diglaRender];
     { "label" -> "gamma", "kind" -> "keyword", "detail" -> "Birnam keyword" }
   ];
   let menu := { "items" -> items, "index" -> 2, "start" -> 0, "end" -> 0 };
-  let rows := [Digla completionRowsFor: { "completion" -> menu } limit: 2];
+  let rows := [Digla completionRowsFor:
+    { "completion" -> [DiglaOption some: menu] } limit: 2];
   [t expect: [rows size] equals: 2 describes: "menu height is bounded"];
   [t assert: [[rows at: 0] at: "text"] includesSubstring: "beta" describes: "window follows selection"];
   [t expect: [[rows at: 1] at: "selected"] equals: true describes: "selected row retained"];

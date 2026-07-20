@@ -462,8 +462,9 @@ The core invariants are:
    Shift-movement selection, a cursor-following visual-row viewport, soft-wrapped
    source rows, active matched/unmatched bracket overlays, and manual Page Up/Page Down
    transcript navigation are implemented. The bracket result is a terminal-independent
-   byte-offset record; the project-local native frame scanner produces it alongside
-   lexical spans in the same pass, ignoring strings and comments. Ctrl-R reverse
+   byte-offset record produced by the versioned document-analysis seam; the
+   project-local native implementation is differentially checked against the
+   Birnam reference for supported syntax and Unicode cases. Ctrl-R reverse
    history search is likewise pure editor state and honors the client history opt-out.
    Ctrl-Z/Ctrl-Y restore terminal-independent source frames from bounded 128-entry
    stacks. The frames retain byte cursor, selection, diagnostics, document dirtiness,
@@ -538,12 +539,15 @@ edit and evaluate multiline Birnam forms locally, recall history, see lexical
 highlighting and parser-backed diagnostics, and attach a client to a running image
 over loopback.
 
-The reflection hot path is now resolved without changing Birnam's core/runtime
-floor. Digla loads an application-local native wrapper through `IdApi` and
-rebinds `Reflect allMethodsOf:` only in its project image. Exported targets use
-the existing constant-time export lookup; live globals use a basis-keyed reverse
-index rebuilt through one `Store liveTriplesDo:` pass. The editor and session
-protocol remain unaware of the optimization.
+The reflection hot path is now resolved without changing Birnam's public
+protocols or bypassing the Store MOP. Digla loads an application-local native
+wrapper through `IdApi` and calls private `DiglaAccelerator` helpers behind its
+own `effectiveMethodsOf:` seam. Exported targets use the existing constant-time
+export lookup; live globals use a basis-keyed reverse index owned by an explicit
+evaluation context and rebuilt through one `Store liveTriplesDo:` pass. Output
+capture, streaming, deadlines, and interrupt probes are owned by that same
+context, so sessions cannot overwrite process-global evaluation state. The
+editor and framed protocol remain unaware of the optimization.
 
 In a controlled full-project TCP comparison, the exact expression
 `[ Reflect allMethodsOf: "YourMom" ]` produced an identical 5,913-character
@@ -675,16 +679,27 @@ rows, session-backed source detail, wrapping, and viewport clamping. A real PTY
 opened `:browse String`, filtered the effective-method list to `asUppercase`,
 opened its copied Birnam source containing `StringBuilder`, and unwound detail,
 browser, and editor cleanly with Escape.
-The browser methods live in the existing final `diglaApp` compiled unit, after a
-single application-local collection at its dependency boundary. This keeps
-automatic collection away from the active-generation handoff without changing
-the runtime floor or disabling normal GC. Directly extending the already-large
-`digla` unit crossed that handoff with `invalidSourceMap`; a separate eager
-`diglaBrowser` load root avoided the fault but duplicated the project load closure
-and measured 3.83-3.96 s. Three warm framed-session launches with the final app
-boundary took 3.27-3.29 s, about 0.2 s above the preceding 3.04-3.08 s checkpoint.
+The browser methods live in the final client-only `diglaApp` compiled unit. The
+compiled-generation handoff now roots the prepared source projection across GC,
+so source composition remains valid without an application-triggered
+collection. The former `invalidSourceMap` timing dependency is covered at the
+compiled-unit seam, and normal automatic collection remains enabled. A separate
+eager `diglaBrowser` load root was rejected because it duplicated the project
+load closure and measured 3.83-3.96 s. Three warm framed-session launches at the
+older app-boundary checkpoint took 3.27-3.29 s, about 0.2 s above the preceding
+3.04-3.08 s checkpoint; current remediation measurements are recorded in Design
+59 rather than silently replacing that historical result.
 Browser filtering rebuilds its item cache only on explicit query/section changes
 and performs no Store or reflection work on selection movement or redraw.
+
+Persistent Digla state now uses tagged `DiglaOption` values for inactive modes,
+missing capabilities, connection state, transport operations, and last results;
+`some: nil` is therefore distinct from absence. Local session requests are
+resolved from one wire-name registry to handler prototypes implementing
+`perform:in:`, and local/TCP adapters implement the shared
+`performSessionRequest:in:` message instead of requiring a central adapter-tag
+switch. String method names remain confined to JSON-RPC framing and registry
+lookup.
 
 ## 9. Open decisions
 

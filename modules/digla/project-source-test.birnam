@@ -14,7 +14,8 @@ let e := [TestSuite named: "Digla project source" module: #diglaProjectSource];
 
 [e test: "project definition opens a symbol from a composed source part" do: [:t |
   let snapshot := [Project snapshotForUri: "examples/digla"];
-  let result := [Digla projectDefinitionNamed: "definitionFor:" inSnapshot: snapshot preferredPath: nil];
+  let result := [Digla projectDefinitionNamed: "definitionFor:" inSnapshot: snapshot
+    preferredPath: [DiglaOption none]];
   [t expect: [result at: "found"] equals: true describes: "definition found"];
   [t expect: [result at: "name"] equals: "definitionFor:cursor:" describes: "full selector"];
   [t assert: [[result at: "path"] endsWith: "/modules/digla/language-service.birnam"]
@@ -35,8 +36,10 @@ let e := [TestSuite named: "Digla project source" module: #diglaProjectSource];
     "path" -> rootPath, "sources" -> #[rootPath] };
   let snapshot := { "ok" -> true, "projectRoot" -> "/root",
     "modules" -> #[dependency root] };
-  let shared := [Digla projectDefinitionNamed: "sharedProbe" inSnapshot: snapshot preferredPath: nil];
-  let dependencyOnly := [Digla projectDefinitionNamed: "dependencyProbe" inSnapshot: snapshot preferredPath: nil];
+  let shared := [Digla projectDefinitionNamed: "sharedProbe" inSnapshot: snapshot
+    preferredPath: [DiglaOption none]];
+  let dependencyOnly := [Digla projectDefinitionNamed: "dependencyProbe" inSnapshot: snapshot
+    preferredPath: [DiglaOption none]];
   [t expect: [shared at: "path"] equals: rootPath
     describes: "root project wins dependency-first resolver order"];
   [t expect: [dependencyOnly at: "path"] equals: dependencyPath
@@ -47,15 +50,16 @@ let e := [TestSuite named: "Digla project source" module: #diglaProjectSource];
 [e test: "authored saves update their baseline and reject external conflicts" do: [:t |
   let path := "/tmp/birnam-digla-save-source.birnam";
   [System writeFile: path contents: "old"];
-  let document := { "path" -> path, "uri" -> ["file://" , path],
-    "module" -> "fixture", "projectRoot" -> "/tmp",
-    "sourceOnDisk" -> "old", "dirty" -> true };
+  let document := { "path" -> [DiglaOption some: path], "uri" -> ["file://" , path],
+    "module" -> "fixture", "projectRoot" -> [DiglaOption some: "/tmp"],
+    "sourceOnDisk" -> [DiglaOption some: "old"], "dirty" -> true };
   let saved := [Digla saveAuthoredSource: "new" document: document];
   [t expect: [saved at: "ok"] equals: true describes: "matching baseline saves"];
   [t expect: [saved at: "kind"] equals: "saved" describes: "save outcome is explicit"];
   [t expect: [saved at: "bytes"] equals: 3 describes: "saved byte count"];
   [t expect: [System readFile: path] equals: "new" describes: "authored bytes persisted"];
-  [t expect: [[saved at: "document"] at: "sourceOnDisk"] equals: "new"
+  [t expect: [DiglaOption valueOf: [[saved at: "document"] at: "sourceOnDisk"]
+      ifAbsent: [| "missing"]] equals: "new"
     describes: "successful save advances disk baseline"];
   [t expect: [[saved at: "document"] at: "dirty"] equals: false
     describes: "successful save marks document clean"];
@@ -68,7 +72,8 @@ let e := [TestSuite named: "Digla project source" module: #diglaProjectSource];
     describes: "external bytes are never overwritten"];
 
   let scratch := [Digla saveAuthoredSource: "draft" document:
-    { "path" -> nil, "sourceOnDisk" -> nil, "dirty" -> true }];
+    { "path" -> [DiglaOption none], "sourceOnDisk" -> [DiglaOption none],
+      "dirty" -> true }];
   [t expect: [scratch at: "kind"] equals: "scratch"
     describes: "scratch buffers cannot acquire an arbitrary path"];
   [File delete: path]]];

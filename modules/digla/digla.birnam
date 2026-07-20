@@ -8,8 +8,50 @@
 // image. Project-owned modules do not rebuild that standard dependency.
 [Module named: #digla requires: #[#lsp]];
 [Globals at: #Digla put: [Object clone]];
+[Globals at: #DiglaOption put: [Object clone]];
+[Globals at: #DiglaEvaluationContext put: [Object clone]];
 [Globals at: #DiglaInspectionCapability put: [Object clone]];
 [Globals at: #DiglaEvaluationCapability put: [Object clone]];
 [Globals at: #DiglaLocalSessionAdapter put: [Object clone]];
 [Globals at: #DiglaTcpSessionAdapter put: [Object clone]];
+[Globals at: #DiglaSessionOpenRequest put: [Object clone]];
+[Globals at: #DiglaSessionEvaluateRequest put: [Object clone]];
+[Globals at: #DiglaSessionInspectRequest put: [Object clone]];
+[Globals at: #DiglaSessionSnapshotRequest put: [Object clone]];
+[Globals at: #DiglaSessionGlobalsRequest put: [Object clone]];
+[Globals at: #DiglaSessionCompletionRequest put: [Object clone]];
+[Globals at: #DiglaSessionInterruptRequest put: [Object clone]];
+[Globals at: #DiglaSessionCloseRequest put: [Object clone]];
 [Reflect docModule: #digla is: "The Digla terminal programming environment and its image-session model."];
+
+[Reflect defineMethod: #none on: DiglaOption as: [:self |
+  { "kind" -> "none" }
+  ] doc:
+  "Represent absence without manufacturing a value sentinel." ];
+
+[Reflect defineMethod: #some: on: DiglaOption as: [:self :value |
+  { "kind" -> "some", "value" -> value }
+  ] doc:
+  "Represent a present value, including the real nil object." ];
+
+[Reflect defineMethod: #isSome: on: DiglaOption as: [:self :option |
+  [[option at: "kind"] = "some"]
+  ] doc:
+  "Answer whether a tagged Digla option carries a present value." ];
+
+[Reflect defineMethod: #at:in: on: DiglaOption as: [:self :key :map |
+  let present := [true asCell];
+  let value := [map at: key ifAbsent: [| [present set: false]; nil]];
+  [[present value]
+    ifTrue: [| [self some: value]]
+    ifFalse: [| [self none]]]
+  ] doc:
+  "Lift keyed lookup into an option so a stored nil remains distinguishable from absence." ];
+
+[Reflect defineMethod: #valueOf:ifAbsent: on: DiglaOption as:
+  [:self :option :absent |
+    [[self isSome: option]
+      ifTrue: [| [option at: "value"]]
+      ifFalse: [| [absent value]]]
+  ] doc:
+  "Unwrap a present option or evaluate the separate absence channel." ];
