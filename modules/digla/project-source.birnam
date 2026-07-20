@@ -116,3 +116,45 @@
     ifFalse: [| nil]]
   ] doc:
   "Request one immutable resolver snapshot for a configured workspace path or file URI." ];
+
+[Reflect defineMethod: #saveAuthoredSource:document: on: Digla as:
+  [:self :source :document |
+    let path := [document at: "path" ifAbsent: [| nil]];
+    let baseline := [document at: "sourceOnDisk" ifAbsent: [| nil]];
+    let hasPath := [[path notNil]
+      ifTrue: [| [[path isEmpty] not]]
+      ifFalse: [| false]];
+    [hasPath
+      ifTrue: [|
+        let current := [System readFile: path];
+        [[current isError]
+          ifTrue: [| { "ok" -> false, "kind" -> "io",
+            "message" -> ["could not read authored source before saving: " , path],
+            "path" -> path, "document" -> document }]
+          ifFalse: [|
+            [[baseline isNil]
+              ifTrue: [| { "ok" -> false, "kind" -> "untracked",
+                "message" -> "authored source has no disk baseline",
+                "path" -> path, "document" -> document }]
+              ifFalse: [|
+                [[current = baseline]
+                  ifTrue: [|
+                    let written := [System writeFile: path contents: source];
+                    [[written isError]
+                      ifTrue: [| { "ok" -> false, "kind" -> "io",
+                        "message" -> ["could not write authored source: " , path],
+                        "path" -> path, "document" -> document }]
+                      ifFalse: [|
+                        let d1 := [document at: "sourceOnDisk" put: source];
+                        let nextDocument := [d1 at: "dirty" put: false];
+                        { "ok" -> true, "kind" -> "saved", "message" -> ["saved " , path],
+                          "path" -> path, "bytes" -> [source size],
+                          "document" -> nextDocument }]]]
+                  ifFalse: [| { "ok" -> false, "kind" -> "conflict",
+                    "message" -> ["save blocked; source changed on disk: " , path],
+                    "path" -> path, "document" -> document }]]]]]]]
+      ifFalse: [| { "ok" -> false, "kind" -> "scratch",
+        "message" -> "scratch buffer has no authored path",
+        "path" -> nil, "document" -> document }]]
+  ] doc:
+  "Persist an authored source only when its on-disk bytes still match the load baseline." ];

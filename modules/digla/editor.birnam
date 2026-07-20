@@ -20,7 +20,7 @@
   let s10 := [s9 at: "diagnostics" put: #[]];
   let s11 := [s10 at: "diagnosticsDirty" put: false];
   let document := { "path" -> nil, "uri" -> "", "module" -> "<scratch>",
-    "projectRoot" -> nil, "dirty" -> false };
+    "projectRoot" -> nil, "sourceOnDisk" -> nil, "dirty" -> false };
   let s12 := [s11 at: "document" put: document];
   let s13 := [s12 at: "navigation" put: #[]];
   let s14 := [s13 at: "projectSnapshot" put: nil];
@@ -123,6 +123,18 @@
   [next at: "redo" put: #[]]
   ] doc:
   "Start a fresh undo branch at an evaluation, command, history, or document boundary." ];
+
+[Reflect defineMethod: #saveDocumentIn: on: Digla as: [:self :state |
+  let result := [self saveAuthoredSource: [state at: "buffer"]
+    document: [state at: "document"]];
+  [[result at: "ok"]
+    ifTrue: [|
+      let withDocument := [state at: "document" put: [result at: "document"]];
+      let cleared := [self clearEditHistoryIn: withDocument];
+      [cleared at: "status" put: [result at: "message"]]]
+    ifFalse: [| [state at: "status" put: [result at: "message"]]]]
+  ] doc:
+  "Save the active authored document and establish the saved bytes as a fresh undo boundary." ];
 
 [Reflect defineMethod: #undoEditIn: on: Digla as: [:self :state |
   let undo := [state at: "undo"];
@@ -877,7 +889,9 @@
     let search := [state at: "historySearch"];
     [[key = 27]
       ifTrue: [| [self cancelHistorySearchIn: state]]
-      ifFalse: [| [[key = 26]
+      ifFalse: [| [[key = 19]
+        ifTrue: [| [state at: "status" put: "finish history search before saving"]]
+        ifFalse: [| [[key = 26]
         ifTrue: [| [self undoEditIn: [self cancelHistorySearchIn: state]]]
         ifFalse: [| [[key = 25]
           ifTrue: [| [self redoEditIn: [self cancelHistorySearchIn: state]]]
@@ -899,7 +913,7 @@
                 ifFalse: [|
                   let query := [[search at: "query"] , character];
                   [self applyHistorySearchQuery: query
-                    before: [[[state at: "history"] size] - 1] search: search in: state]]]]]]]]]]]]]]]
+                    before: [[[state at: "history"] size] - 1] search: search in: state]]]]]]]]]]]]]]]]]
   ] doc:
   "Dispatch editing keys while reverse history search owns the transient buffer." ];
 
@@ -985,7 +999,7 @@
   let navigation := [[state at: "navigation"] add: frame];
   let document := { "path" -> [result at: "path"], "uri" -> [result at: "uri"],
     "module" -> [result at: "module"], "projectRoot" -> [result at: "projectRoot"],
-    "dirty" -> false };
+    "sourceOnDisk" -> [result at: "source"], "dirty" -> false };
   let viewport := [state at: "viewport"];
   let resetViewport := [viewport at: "editorTopRow" put: 0];
   let s1 := [state at: "navigation" put: navigation];
@@ -1143,7 +1157,8 @@
   let pageUp := [[key = 65519] ifTrue: [| [self scrollTranscriptBy: 10 in: state]] ifFalse: [| state]];
   let pageDown := [[key = 65518] ifTrue: [| [self scrollTranscriptBy: -10 in: pageUp]] ifFalse: [| pageUp]];
   let s0 := [self applyMovementKey: key extend: shift in: pageDown];
-  let s0a := [[key = 26] ifTrue: [| [self undoEditIn: s0]] ifFalse: [| s0]];
+  let s0save := [[key = 19] ifTrue: [| [self saveDocumentIn: s0]] ifFalse: [| s0]];
+  let s0a := [[key = 26] ifTrue: [| [self undoEditIn: s0save]] ifFalse: [| s0save]];
   let s0b := [[key = 25] ifTrue: [| [self redoEditIn: s0a]] ifFalse: [| s0a]];
   let s1 := [[key = 27] ifTrue: [| [s0b at: "running" put: false]] ifFalse: [| s0b]];
   let backspace := [[key = 8] | [key = 127]];

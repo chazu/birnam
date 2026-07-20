@@ -56,7 +56,7 @@ modules/digla/analysis.birnam       lexical highlights and LSP diagnostics
 modules/digla/analysis-test.birnam analysis contract tests
 modules/digla/language-service.birnam completion, hover, signatures, definitions
 modules/digla/language-service-test.birnam semantic assistance contract tests
-modules/digla/project-source.birnam lazy resolver-backed authored source lookup
+modules/digla/project-source.birnam lazy authored source lookup and guarded saving
 modules/digla/project-source-test.birnam project/source-part navigation tests
 modules/digla/render-test.birnam    headless renderer decision tests
 modules/digla/termbox.birnam     Termbox module entry
@@ -113,6 +113,12 @@ project or a dependency. F5 restores the previous buffer, cursor, diagnostics,
 and viewport from a terminal-independent navigation stack. F4 refreshes cached
 parser diagnostics explicitly; source edits only mark the cache stale, so parsing
 is not on the per-key render path.
+Ctrl-S saves only an F3-opened authored document. The editor retains the exact
+loaded bytes as its disk baseline, and the terminal-independent project-source
+operation rereads and compares that baseline before writing. A mismatch blocks
+the save without overwriting external work; scratch buffers cannot invent a path.
+A successful save advances the baseline, marks the document clean, and starts a
+fresh undo branch. It does not evaluate or activate the saved source.
 Page Up/Page Down now navigate the wrapped transcript with a clamped tail-relative
 offset, and new evaluation output resumes tail following. Evaluated `System print:`
 and `System println:` calls are captured by the application wrapper as ordered,
@@ -146,6 +152,8 @@ The first environment should provide:
 - parser-backed syntax highlighting, bracket matching, and diagnostics;
 - project-aware completion, hover, signature help, and source navigation from
   the existing language-service APIs;
+- explicit, conflict-aware persistence for authored documents opened through
+  source navigation, without implicit scratch paths or runtime activation;
 - explicit evaluation against either the local image or a connected image;
 - structured values, errors, output, and source locations rather than only a
   stream of preformatted prompt text; and
@@ -447,7 +455,9 @@ The core invariants are:
    Ctrl-Z/Ctrl-Y restore terminal-independent source frames from bounded 128-entry
    stacks. The frames retain byte cursor, selection, diagnostics, document dirtiness,
    and viewport state; evaluation/history boundaries and F3/F5 document navigation
-   keep their branches explicit.
+   keep their branches explicit. Ctrl-S crosses a terminal-independent authored-file
+   save seam: it compares the current disk bytes to the load baseline, refuses
+   conflicts and scratch buffers, and makes a successful write a new undo boundary.
 4. **Compatibility remote session — superseded by the framed seam.** The
    prompt-oriented socket REPL cannot preserve structured values, errors, or
    capabilities without ambiguous text parsing. Keep it compatible for comint
@@ -492,7 +502,9 @@ The core invariants are:
    service and presented by the terminal menu. F1 merges source information,
    optional docs, and copied runtime inspection; F2 reports full-selector signatures;
    F3 resolves same-buffer definitions and lazily opens resolver-selected project
-   or dependency source parts; F5 restores prior in-memory document state.
+   or dependency source parts; Ctrl-S guardedly persists the active authored part;
+   F5 restores prior in-memory document state. Persistence remains editor-owned and
+   does not cross the runtime session or imply evaluation.
    The data-driven Design 55 snapshot is available as `birnam/snapshot`; terminal
    `:inspect GLOBAL SELECTOR` requests one recorded method body through that same
    value-only contract. `:changes GLOBAL BASIS` requests honest historical facts
@@ -630,6 +642,13 @@ burst produced a three-byte buffer, Ctrl-Z restored the empty source with `undo`
 status, Ctrl-Y restored all three bytes with `redo` status, and Escape released
 the terminal cleanly. Three warm framed-session launches after this slice took
 3.02-3.03 s, remaining within 0.06 s of the preceding 2.97-2.99 s checkpoint.
+
+Guarded saving is covered at both seams: headless tests write an authored fixture,
+advance its baseline, then prove that an external edit blocks a later Ctrl-S without
+losing either the buffer or disk bytes. A real Termbox PTY typed `abc` into the
+scratch buffer, delivered Ctrl-S, retained `bytes=3`, displayed the no-authored-path
+status, and exited cleanly with Escape. Three warm framed-session launches after
+this slice took 3.04-3.08 s, within 0.05 s of the preceding 3.02-3.03 s checkpoint.
 
 ## 9. Open decisions
 

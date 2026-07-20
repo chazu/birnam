@@ -34,6 +34,11 @@ live image. The client retains at most 128 source snapshots; a successful
 evaluation, editor command, or history selection starts a fresh branch, while a
 failed evaluation keeps its editable undo history. F3/F5 navigation preserves a
 separate undo/redo stack for each in-memory document.
+Ctrl-S writes an F3-opened authored source file only when its current disk bytes
+still exactly match the bytes Digla loaded. An external change blocks the save
+without changing either copy; scratch buffers have no implicit save path. A
+successful save marks the document clean and starts a fresh undo branch. Saving
+does not evaluate or activate the source.
 Tab opens completion for scoped source
 names, Birnam keywords, and bounded live-image globals; Tab/Down and Up move
 through the menu, Enter accepts, and Escape dismisses it. F1 opens source/runtime

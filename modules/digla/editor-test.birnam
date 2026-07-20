@@ -96,6 +96,54 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [noRedo at: "status"] equals: "nothing to redo" describes: "redo failure is explicit"];
   [t expect: [[many at: "undo"] size] equals: 128 describes: "undo retention is bounded"]]];
 
+[e test: "Ctrl-S saves authored source and establishes a fresh undo boundary" do: [:t |
+  let path := "/tmp/birnam-digla-editor-save.birnam";
+  [System writeFile: path contents: "old"];
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial0 := [Digla editorStateFor: config];
+  let document := { "path" -> path, "uri" -> ["file://" , path],
+    "module" -> "fixture", "projectRoot" -> "/tmp",
+    "sourceOnDisk" -> "old", "dirty" -> false };
+  let initial1 := [initial0 at: "document" put: document];
+  let initial2 := [initial1 at: "buffer" put: "old"];
+  let initial := [initial2 at: "cursor" put: 3];
+  let edited := [Digla insertText: "!" into: initial];
+  let saved := [Digla handleKey: 19 character: "" state: edited];
+  [t expect: [System readFile: path] equals: "old!" describes: "Ctrl-S writes authored source"];
+  [t expect: [[saved at: "document"] at: "sourceOnDisk"] equals: "old!"
+    describes: "editor installs the new baseline"];
+  [t expect: [[saved at: "document"] at: "dirty"] equals: false
+    describes: "saved document is clean"];
+  [t expect: [[saved at: "undo"] size] equals: 0 describes: "save clears stale undo"];
+  [t expect: [[saved at: "redo"] size] equals: 0 describes: "save clears stale redo"];
+  [File delete: path]]];
+
+[e test: "Ctrl-S preserves authored conflicts and refuses scratch buffers" do: [:t |
+  let path := "/tmp/birnam-digla-editor-conflict.birnam";
+  [System writeFile: path contents: "external"];
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial0 := [Digla editorStateFor: config];
+  let document := { "path" -> path, "uri" -> ["file://" , path],
+    "module" -> "fixture", "projectRoot" -> "/tmp",
+    "sourceOnDisk" -> "old", "dirty" -> false };
+  let initial1 := [initial0 at: "document" put: document];
+  let initial2 := [initial1 at: "buffer" put: "old"];
+  let initial := [initial2 at: "cursor" put: 3];
+  let changed := [Digla insertText: "?" into: initial];
+  let conflicted := [Digla handleKey: 19 character: "" state: changed];
+  [t expect: [conflicted at: "buffer"] equals: "old?" describes: "conflicted source stays editable"];
+  [t expect: [System readFile: path] equals: "external" describes: "conflict preserves disk"];
+  [t assert: [[conflicted at: "status"] includesSubstring: "save blocked"]
+    describes: "conflict is visible"];
+  [t expect: [[conflicted at: "undo"] size] equals: 1
+    describes: "failed save preserves edit history"];
+  let scratch0 := [Digla insertText: "draft" into: [Digla editorStateFor: config]];
+  let scratch := [Digla handleKey: 19 character: "" state: scratch0];
+  [t expect: [scratch at: "buffer"] equals: "draft" describes: "scratch source is retained"];
+  [t assert: [[scratch at: "status"] includesSubstring: "no authored path"]
+    describes: "scratch refusal is explicit"];
+  [File delete: path]]];
+
 [e test: "failed evaluation preserves edit undo while successful evaluation starts fresh" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let initial := [Digla editorStateFor: config];
@@ -172,11 +220,16 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let opened := [Digla handleKey: 18 character: "" state: initial];
   let noMatch := [Digla handleKey: 0 character: "x" state: opened];
   let shortened := [Digla handleKey: 127 character: "" state: noMatch];
+  let saveRefused := [Digla handleKey: 19 character: "" state: shortened];
   let cancelled := [Digla handleKey: 27 character: "" state: shortened];
   [t assert: [[noMatch at: "status"] includesSubstring: "no history match"]
     describes: "failed query is visible"];
   [t expect: [[shortened at: "historySearch"] at: "query"] equals: "draft"
     describes: "Backspace edits the search query"];
+  [t assert: [[saveRefused at: "status"] includesSubstring: "finish history search"]
+    describes: "Ctrl-S never accepts transient search source"];
+  [t assert: [[saveRefused at: "historySearch"] notNil]
+    describes: "save refusal leaves history search active"];
   [t expect: [cancelled at: "historySearch"] equals: nil describes: "Escape closes search"];
   [t expect: [cancelled at: "buffer"] equals: "draft" describes: "draft restored exactly"];
   [t expect: [cancelled at: "cursor"] equals: 2 describes: "draft cursor restored"];
@@ -245,6 +298,8 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t assert: [[document at: "path"] endsWith: "/modules/digla/language-service.birnam"]
     describes: "F3 opens authored source part"];
   [t expect: [document at: "module"] equals: "digla" describes: "module provenance"];
+  [t expect: [document at: "sourceOnDisk"] equals: [opened at: "buffer"]
+    describes: "F3 records the exact authored disk baseline"];
   [t expect: [[opened at: "navigation"] size] equals: 1 describes: "prior buffer retained"];
   [t assert: [[opened at: "buffer"] includesSubstring: "#definitionFor:cursor:"]
     describes: "source loaded without evaluation"];

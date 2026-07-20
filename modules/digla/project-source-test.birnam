@@ -43,3 +43,32 @@ let e := [TestSuite named: "Digla project source" module: #diglaProjectSource];
     describes: "dependency source remains reachable"];
   [File delete: rootPath];
   [File delete: dependencyPath]]];
+
+[e test: "authored saves update their baseline and reject external conflicts" do: [:t |
+  let path := "/tmp/birnam-digla-save-source.birnam";
+  [System writeFile: path contents: "old"];
+  let document := { "path" -> path, "uri" -> ["file://" , path],
+    "module" -> "fixture", "projectRoot" -> "/tmp",
+    "sourceOnDisk" -> "old", "dirty" -> true };
+  let saved := [Digla saveAuthoredSource: "new" document: document];
+  [t expect: [saved at: "ok"] equals: true describes: "matching baseline saves"];
+  [t expect: [saved at: "kind"] equals: "saved" describes: "save outcome is explicit"];
+  [t expect: [saved at: "bytes"] equals: 3 describes: "saved byte count"];
+  [t expect: [System readFile: path] equals: "new" describes: "authored bytes persisted"];
+  [t expect: [[saved at: "document"] at: "sourceOnDisk"] equals: "new"
+    describes: "successful save advances disk baseline"];
+  [t expect: [[saved at: "document"] at: "dirty"] equals: false
+    describes: "successful save marks document clean"];
+
+  [System writeFile: path contents: "external"];
+  let conflicted := [Digla saveAuthoredSource: "mine" document: [saved at: "document"]];
+  [t expect: [conflicted at: "ok"] equals: false describes: "stale baseline is rejected"];
+  [t expect: [conflicted at: "kind"] equals: "conflict" describes: "conflict is distinguishable"];
+  [t expect: [System readFile: path] equals: "external"
+    describes: "external bytes are never overwritten"];
+
+  let scratch := [Digla saveAuthoredSource: "draft" document:
+    { "path" -> nil, "sourceOnDisk" -> nil, "dirty" -> true }];
+  [t expect: [scratch at: "kind"] equals: "scratch"
+    describes: "scratch buffers cannot acquire an arbitrary path"];
+  [File delete: path]]];
