@@ -20,21 +20,66 @@ var sel_current_value: Oop = null;
 var sel_raw_current_value: Oop = null;
 var sel_live_triples_do: Oop = null;
 var global_collector_vt: Oop = null;
-var global_names: std.AutoHashMapUnmanaged(Oop, Oop) = .{};
-var global_names_basis: i64 = -1;
+var accelerator_vt: Oop = null;
+var accelerator: Oop = null;
 
 const max_output_bytes = 256 * 1024;
 const output_truncated_suffix = "\n[Digla output truncated at 262144 bytes]\n";
-var output_capture_active = false;
-var output_bytes: std.ArrayListUnmanaged(u8) = .{};
-var output_truncated = false;
-var output_sink: Oop = null;
-var output_sequence: usize = 0;
-var evaluation_deadline_active = false;
-var evaluation_deadline_start: std.time.Instant = undefined;
-var evaluation_deadline_ns: u64 = 0;
-var evaluation_interrupt_probe: Oop = null;
 var error_vt: Oop = null;
+
+const AcceleratorState = struct {
+    global_names: std.AutoHashMapUnmanaged(Oop, Oop) = .{},
+    global_names_basis: i64 = -1,
+    output_capture_active: bool = false,
+    output_bytes: std.ArrayListUnmanaged(u8) = .{},
+    output_truncated: bool = false,
+    output_sink: Oop = null,
+    output_sequence: usize = 0,
+    evaluation_deadline_active: bool = false,
+    evaluation_deadline_start: std.time.Instant = undefined,
+    evaluation_deadline_ns: u64 = 0,
+    evaluation_interrupt_probe: Oop = null,
+    previous_active: Oop = null,
+};
+
+// The active pointer is execution-local routing, not evaluation state. Every
+// mutable byte, deadline, probe, and cache lives in the explicitly passed
+// Accelerator object. Thread-local routing prevents independent image workers
+// from observing one another while the core System/loop protocols are active.
+threadlocal var active_accelerator: Oop = null;
+
+fn stateOf(value: Oop) *AcceleratorState {
+    return @ptrCast(@alignCast(value.?));
+}
+
+fn newAccelerator() Oop {
+    const value = g_api.alloc(accelerator_vt, @sizeOf(AcceleratorState));
+    stateOf(value).* = .{};
+    g_api.setFinalizer(value, &finalizeAccelerator);
+    return value;
+}
+
+fn finalizeAccelerator(value: Oop) callconv(.c) void {
+    const state = stateOf(value);
+    state.global_names.deinit(ca);
+    state.output_bytes.deinit(ca);
+}
+
+fn traceAccelerator(value: Oop, mark: idapi.MarkFn) callconv(.c) void {
+    const state = stateOf(value);
+    if (state.output_sink != null) mark(state.output_sink);
+    if (state.evaluation_interrupt_probe != null) mark(state.evaluation_interrupt_probe);
+    if (state.previous_active != null) mark(state.previous_active);
+    var it = state.global_names.iterator();
+    while (it.next()) |entry| {
+        mark(entry.key_ptr.*);
+        mark(entry.value_ptr.*);
+    }
+}
+
+fn mNewAccelerator(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    return newAccelerator();
+}
 
 fn send0(receiver: Oop, selector: [*:0]const u8) Oop {
     return g_api.send(receiver, g_api.intern(selector), &.{}, 0);
@@ -72,10 +117,10 @@ fn integer(value: usize) Oop {
     return g_api.mkSmallInt(@intCast(value));
 }
 
-fn clearOutput() void {
-    output_bytes.clearRetainingCapacity();
-    output_truncated = false;
-    output_sequence = 0;
+fn clearOutput(state: *AcceleratorState) void {
+    state.output_bytes.clearRetainingCapacity();
+    state.output_truncated = false;
+    state.output_sequence = 0;
 }
 
 fn printableBytes(value: Oop) []const u8 {
@@ -88,41 +133,41 @@ fn printableBytes(value: Oop) []const u8 {
     return g_api.stringBytes(rendered, &len)[0..len];
 }
 
-fn captureOutput(value: Oop, newline: bool) []const u8 {
-    if (output_truncated) return &.{};
-    const start = output_bytes.items.len;
+fn captureOutput(state: *AcceleratorState, value: Oop, newline: bool) []const u8 {
+    if (state.output_truncated) return &.{};
+    const start = state.output_bytes.items.len;
     const bytes = printableBytes(value);
     const requested = bytes.len + @intFromBool(newline);
     const content_limit = max_output_bytes - output_truncated_suffix.len;
-    const available = content_limit - output_bytes.items.len;
+    const available = content_limit - state.output_bytes.items.len;
     if (requested <= available) {
-        output_bytes.appendSlice(ca, bytes) catch @panic("digla-reflect: oom");
-        if (newline) output_bytes.append(ca, '\n') catch @panic("digla-reflect: oom");
-        return output_bytes.items[start..];
+        state.output_bytes.appendSlice(ca, bytes) catch @panic("digla-reflect: oom");
+        if (newline) state.output_bytes.append(ca, '\n') catch @panic("digla-reflect: oom");
+        return state.output_bytes.items[start..];
     }
 
-    const content_available = content_limit - output_bytes.items.len;
-    output_bytes.appendSlice(ca, bytes[0..@min(bytes.len, content_available)]) catch
+    const content_available = content_limit - state.output_bytes.items.len;
+    state.output_bytes.appendSlice(ca, bytes[0..@min(bytes.len, content_available)]) catch
         @panic("digla-reflect: oom");
     if (newline and bytes.len < content_available)
-        output_bytes.append(ca, '\n') catch @panic("digla-reflect: oom");
-    output_bytes.appendSlice(ca, output_truncated_suffix) catch @panic("digla-reflect: oom");
-    output_truncated = true;
-    return output_bytes.items[start..];
+        state.output_bytes.append(ca, '\n') catch @panic("digla-reflect: oom");
+    state.output_bytes.appendSlice(ca, output_truncated_suffix) catch @panic("digla-reflect: oom");
+    state.output_truncated = true;
+    return state.output_bytes.items[start..];
 }
 
-fn streamCaptured(bytes: []const u8) void {
-    if (output_sink == null or bytes.len == 0) return;
-    output_sequence += 1;
+fn streamCaptured(state: *AcceleratorState, bytes: []const u8) void {
+    if (state.output_sink == null or bytes.len == 0) return;
+    state.output_sequence += 1;
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
     var record = newMap();
     record = mapPutString(record, "kind", string("output"));
     record = mapPutString(record, "channel", string("stdout"));
     record = mapPutString(record, "text", string(bytes));
-    record = mapPutString(record, "sequence", integer(output_sequence));
-    record = mapPutString(record, "truncated", if (output_truncated) g_api.trueObj else g_api.falseObj);
-    _ = send1(output_sink, "value:", record);
+    record = mapPutString(record, "sequence", integer(state.output_sequence));
+    record = mapPutString(record, "truncated", if (state.output_truncated) g_api.trueObj else g_api.falseObj);
+    _ = send1(state.output_sink, "value:", record);
 }
 
 fn writeOutput(value: Oop, newline: bool) void {
@@ -132,12 +177,18 @@ fn writeOutput(value: Oop, newline: bool) void {
 }
 
 fn mSystemPrint(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    if (output_capture_active) streamCaptured(captureOutput(args[0], false)) else writeOutput(args[0], false);
+    if (active_accelerator) |context| {
+        const state = stateOf(context);
+        if (state.output_capture_active) streamCaptured(state, captureOutput(state, args[0], false)) else writeOutput(args[0], false);
+    } else writeOutput(args[0], false);
     return self;
 }
 
 fn mSystemPrintln(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    if (output_capture_active) streamCaptured(captureOutput(args[0], true)) else writeOutput(args[0], true);
+    if (active_accelerator) |context| {
+        const state = stateOf(context);
+        if (state.output_capture_active) streamCaptured(state, captureOutput(state, args[0], true)) else writeOutput(args[0], true);
+    } else writeOutput(args[0], true);
     return self;
 }
 
@@ -146,24 +197,30 @@ fn mOutputCaptureAvailable(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
 }
 
 fn mBeginOutputCapture(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    clearOutput();
-    output_capture_active = true;
+    const state = stateOf(self);
+    clearOutput(state);
+    state.output_capture_active = true;
+    state.previous_active = active_accelerator;
+    active_accelerator = self;
     return self;
 }
 
-fn mEndOutputCapture(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    output_capture_active = false;
+fn mEndOutputCapture(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    const state = stateOf(self);
+    state.output_capture_active = false;
+    if (active_accelerator == self) active_accelerator = state.previous_active;
+    state.previous_active = null;
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
-    defer clearOutput();
+    defer clearOutput(state);
     var result = newVector();
-    if (output_bytes.items.len != 0) {
+    if (state.output_bytes.items.len != 0) {
         var record = newMap();
         record = mapPutString(record, "kind", string("output"));
         record = mapPutString(record, "channel", string("stdout"));
-        record = mapPutString(record, "text", string(output_bytes.items));
+        record = mapPutString(record, "text", string(state.output_bytes.items));
         record = mapPutString(record, "sequence", integer(1));
-        record = mapPutString(record, "truncated", if (output_truncated) g_api.trueObj else g_api.falseObj);
+        record = mapPutString(record, "truncated", if (state.output_truncated) g_api.trueObj else g_api.falseObj);
         result = vectorAdd(result, record);
     }
     return result;
@@ -174,12 +231,12 @@ fn mOutputStreamingAvailable(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop
 }
 
 fn mBeginOutputStreaming(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    output_sink = args[0];
+    stateOf(self).output_sink = args[0];
     return self;
 }
 
 fn mEndOutputStreaming(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    output_sink = null;
+    stateOf(self).output_sink = null;
     return self;
 }
 
@@ -188,28 +245,29 @@ fn mEvaluationDeadlineAvailable(_: Oop, _: [*]const Oop, _: usize) callconv(.c) 
 }
 
 fn mBeginEvaluationDeadline(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    evaluation_deadline_active = false;
+    const state = stateOf(self);
+    state.evaluation_deadline_active = false;
     const timeout_ms = g_api.smallIntValue(args[0]);
     if (timeout_ms <= 0) return self;
-    evaluation_deadline_start = std.time.Instant.now() catch return self;
+    state.evaluation_deadline_start = std.time.Instant.now() catch return self;
     const max_ms = std.math.maxInt(u64) / std.time.ns_per_ms;
-    evaluation_deadline_ns = @min(@as(u64, @intCast(timeout_ms)), max_ms) * std.time.ns_per_ms;
-    evaluation_deadline_active = true;
+    state.evaluation_deadline_ns = @min(@as(u64, @intCast(timeout_ms)), max_ms) * std.time.ns_per_ms;
+    state.evaluation_deadline_active = true;
     return self;
 }
 
 fn mEndEvaluationDeadline(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    evaluation_deadline_active = false;
+    stateOf(self).evaluation_deadline_active = false;
     return self;
 }
 
 fn mBeginEvaluationInterruptProbe(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    evaluation_interrupt_probe = args[0];
+    stateOf(self).evaluation_interrupt_probe = args[0];
     return self;
 }
 
 fn mEndEvaluationInterruptProbe(self: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
-    evaluation_interrupt_probe = null;
+    stateOf(self).evaluation_interrupt_probe = null;
     return self;
 }
 
@@ -243,14 +301,16 @@ fn evaluationInterruptedError() Oop {
 
 fn cooperativeFailure(iteration: usize) ?Oop {
     if (iteration & 255 != 0) return null;
-    if (evaluation_interrupt_probe != null) {
-        const interrupted = send0(evaluation_interrupt_probe, "value");
+    const context = active_accelerator orelse return null;
+    const state = stateOf(context);
+    if (state.evaluation_interrupt_probe != null) {
+        const interrupted = send0(state.evaluation_interrupt_probe, "value");
         if (isError(interrupted)) return interrupted;
         if (interrupted == g_api.trueObj) return evaluationInterruptedError();
     }
-    if (evaluation_deadline_active) {
+    if (state.evaluation_deadline_active) {
         const now = std.time.Instant.now() catch return null;
-        if (now.since(evaluation_deadline_start) >= evaluation_deadline_ns)
+        if (now.since(state.evaluation_deadline_start) >= state.evaluation_deadline_ns)
             return evaluationDeadlineError();
     }
     return null;
@@ -765,24 +825,29 @@ fn mRuntimeNamed(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     return g_api.import(name.ptr) orelse g_api.nilObj;
 }
 
-fn mCollectGlobal(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
-    if (args[0] == g_globals and args[2] != g_api.nilObj and !global_names.contains(args[2]))
-        global_names.put(ca, args[2], args[1]) catch @panic("digla-reflect: oom");
+fn mCollectGlobal(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+    const context = @as(*Oop, @ptrCast(@alignCast(self.?))).*;
+    const state = stateOf(context);
+    if (args[0] == g_globals and args[2] != g_api.nilObj and !state.global_names.contains(args[2]))
+        state.global_names.put(ca, args[2], args[1]) catch @panic("digla-reflect: oom");
     return g_api.nilObj;
 }
 
-fn refreshGlobalNames() void {
-    global_names.clearRetainingCapacity();
-    const collector = g_api.alloc(global_collector_vt, 0);
+fn refreshGlobalNames(context: Oop) void {
+    const state = stateOf(context);
+    state.global_names.clearRetainingCapacity();
+    const collector = g_api.alloc(global_collector_vt, @sizeOf(Oop));
+    @as(*Oop, @ptrCast(@alignCast(collector.?))).* = context;
     _ = g_api.send(g_store, sel_live_triples_do, &[_]Oop{collector}, 1);
-    global_names_basis = g_api.smallIntValue(send0(g_store, "basis"));
+    state.global_names_basis = g_api.smallIntValue(send0(g_store, "basis"));
 }
 
-fn globalNameForValue(value: Oop) Oop {
+fn globalNameForValue(context: Oop, value: Oop) Oop {
     if (value == null or value == g_api.nilObj) return g_api.nilObj;
+    const state = stateOf(context);
     const basis = g_api.smallIntValue(send0(g_store, "basis"));
-    if (basis != global_names_basis) refreshGlobalNames();
-    return global_names.get(value) orelse g_api.nilObj;
+    if (basis != state.global_names_basis) refreshGlobalNames(context);
+    return state.global_names.get(value) orelse g_api.nilObj;
 }
 
 fn exportedSymbolForValue(value: Oop) Oop {
@@ -791,18 +856,18 @@ fn exportedSymbolForValue(value: Oop) Oop {
     return g_api.nilObj;
 }
 
-fn methodTargetName(vtable: Oop) Oop {
+fn methodTargetName(context: Oop, vtable: Oop) Oop {
     const owner = g_api.vtableOwner(vtable);
     if (owner != null) {
         const exported_owner = exportedSymbolForValue(owner);
         if (exported_owner != g_api.nilObj) return exported_owner;
-        const global_owner = globalNameForValue(owner);
+        const global_owner = globalNameForValue(context, owner);
         if (global_owner != g_api.nilObj) return global_owner;
     }
 
     const exported_vtable = exportedSymbolForValue(vtable);
     if (exported_vtable != g_api.nilObj) return exported_vtable;
-    return globalNameForValue(vtable);
+    return globalNameForValue(context, vtable);
 }
 
 fn methodDescriptor(vtable: Oop, selector: Oop, target_name: Oop) Oop {
@@ -823,7 +888,7 @@ fn methodDescriptor(vtable: Oop, selector: Oop, target_name: Oop) Oop {
     return descriptor;
 }
 
-fn mAllMethodsOf(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
+fn mAllMethodsOf(self: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
 
@@ -836,7 +901,7 @@ fn mAllMethodsOf(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     var vtable = g_api.vtableOf(args[0]);
     while (vtable != null and !seen_vtables.contains(vtable)) : (vtable = g_api.vtableParent(vtable)) {
         seen_vtables.put(ca, vtable, {}) catch @panic("digla-reflect: oom");
-        const target_name = methodTargetName(vtable);
+        const target_name = methodTargetName(self, vtable);
 
         var i: usize = 0;
         while (g_api.vtableSelectorAt(vtable, i)) |selector| : (i += 1) {
@@ -848,6 +913,33 @@ fn mAllMethodsOf(_: Oop, args: [*]const Oop, _: usize) callconv(.c) Oop {
     return result;
 }
 
+fn trackedMethod(vtable: Oop, selector: [*:0]const u8, implementation: idapi.Method) void {
+    const method: Oop = @ptrFromInt(@intFromPtr(implementation));
+    const result = g_api.send(
+        g_store,
+        g_api.intern("addMethod:on:with:"),
+        &[_]Oop{ g_api.intern(selector), vtable, method },
+        3,
+    );
+    if (result != g_store) @panic("digla-reflect: tracked core method install rejected");
+}
+
+fn mCoreHooksTracked(_: Oop, _: [*]const Oop, _: usize) callconv(.c) Oop {
+    const has = g_api.intern("hasValue:attr:");
+    const checks = [_]struct { Oop, [*:0]const u8 }{
+        .{ g_api.import("SystemVt"), "print:" },
+        .{ g_api.import("SystemVt"), "println:" },
+        .{ g_api.import("BlockVt"), "whileTrue:" },
+        .{ g_api.import("BlockVt"), "whileFalse:" },
+        .{ g_api.import("IntegerVt"), "to:do:" },
+    };
+    for (checks) |check| {
+        const present = g_api.send(g_store, has, &[_]Oop{ check[0], g_api.intern(check[1]) }, 2);
+        if (present != g_api.trueObj) return g_api.falseObj;
+    }
+    return g_api.trueObj;
+}
+
 fn bringUp(api: *idapi.IdApi) void {
     g_api = api;
     g_store = api.import("Store");
@@ -857,33 +949,50 @@ fn bringUp(api: *idapi.IdApi) void {
     sel_live_triples_do = api.intern("liveTriplesDo:");
     error_vt = api.import("ErrorVt");
     global_collector_vt = api.proto(api.object_vt);
+    api.setLayout(global_collector_vt, null, 0, idapi.slot_oop);
     api.method(global_collector_vt, api.intern("value:value:value:"), &mCollectGlobal);
-    const reflect = api.import("Reflect");
-    api.method(api.vtableOf(reflect), api.intern("allMethodsOf:"), &mAllMethodsOf);
+
+    const reloading = api.isExported("DiglaAccelerator") != 0;
+    if (reloading) {
+        accelerator_vt = api.import("DiglaAcceleratorVt");
+        accelerator = api.import("DiglaAccelerator");
+    } else {
+        accelerator_vt = api.proto(api.object_vt);
+        accelerator = newAccelerator();
+        api.setOwner(accelerator_vt, accelerator);
+        api.setLayout(accelerator_vt, null, 0, idapi.slot_raw);
+        api.setTraceHook(accelerator_vt, &traceAccelerator);
+        _ = api.exportObj("DiglaAcceleratorVt", accelerator_vt);
+        _ = api.exportObj("DiglaAccelerator", accelerator);
+    }
+
+    api.method(accelerator_vt, api.intern("new"), &mNewAccelerator);
+    api.method(accelerator_vt, api.intern("coreHooksTracked"), &mCoreHooksTracked);
+    api.method(accelerator_vt, api.intern("allMethodsOf:"), &mAllMethodsOf);
+    api.method(accelerator_vt, api.intern("outputCaptureAvailable"), &mOutputCaptureAvailable);
+    api.method(accelerator_vt, api.intern("beginEvaluationOutputCapture"), &mBeginOutputCapture);
+    api.method(accelerator_vt, api.intern("endEvaluationOutputCapture"), &mEndOutputCapture);
+    api.method(accelerator_vt, api.intern("evaluationOutputStreamingAvailable"), &mOutputStreamingAvailable);
+    api.method(accelerator_vt, api.intern("beginEvaluationOutputStreaming:"), &mBeginOutputStreaming);
+    api.method(accelerator_vt, api.intern("endEvaluationOutputStreaming"), &mEndOutputStreaming);
+    api.method(accelerator_vt, api.intern("evaluationDeadlineAvailable"), &mEvaluationDeadlineAvailable);
+    api.method(accelerator_vt, api.intern("beginEvaluationDeadline:"), &mBeginEvaluationDeadline);
+    api.method(accelerator_vt, api.intern("endEvaluationDeadline"), &mEndEvaluationDeadline);
+    api.method(accelerator_vt, api.intern("beginEvaluationInterruptProbe:"), &mBeginEvaluationInterruptProbe);
+    api.method(accelerator_vt, api.intern("endEvaluationInterruptProbe"), &mEndEvaluationInterruptProbe);
+    api.method(accelerator_vt, api.intern("runtimeNamed:"), &mRuntimeNamed);
+    api.method(accelerator_vt, api.intern("renderFrameFor:cursor:promptWidth:"), &mRenderFrame);
+    api.method(accelerator_vt, api.intern("renderFrameFor:cursor:promptWidth:width:"), &mRenderWrappedFrame);
+    api.method(accelerator_vt, api.intern("displayColumnIn:at:"), &mDisplayColumn);
+    api.method(accelerator_vt, api.intern("displayWidthIn:from:to:"), &mDisplayWidth);
+    api.method(accelerator_vt, api.intern("wrapTranscriptLine:width:"), &mWrapTranscriptLine);
+
     const system = api.import("System");
-    api.method(api.vtableOf(system), api.intern("print:"), &mSystemPrint);
-    api.method(api.vtableOf(system), api.intern("println:"), &mSystemPrintln);
-    api.method(api.import("BlockVt"), api.intern("whileTrue:"), &mBlockWhileTrue);
-    api.method(api.import("BlockVt"), api.intern("whileFalse:"), &mBlockWhileFalse);
-    api.method(api.smallint_vt, api.intern("to:do:"), &mIntegerToDo);
-    const digla = api.send(g_store, sel_current_value, &[_]Oop{ g_globals, api.intern("Digla") }, 2);
-    api.method(api.vtableOf(digla), api.intern("outputCaptureAvailable"), &mOutputCaptureAvailable);
-    api.method(api.vtableOf(digla), api.intern("beginEvaluationOutputCapture"), &mBeginOutputCapture);
-    api.method(api.vtableOf(digla), api.intern("endEvaluationOutputCapture"), &mEndOutputCapture);
-    api.method(api.vtableOf(digla), api.intern("evaluationOutputStreamingAvailable"), &mOutputStreamingAvailable);
-    api.method(api.vtableOf(digla), api.intern("beginEvaluationOutputStreaming:"), &mBeginOutputStreaming);
-    api.method(api.vtableOf(digla), api.intern("endEvaluationOutputStreaming"), &mEndOutputStreaming);
-    api.method(api.vtableOf(digla), api.intern("evaluationDeadlineAvailable"), &mEvaluationDeadlineAvailable);
-    api.method(api.vtableOf(digla), api.intern("beginEvaluationDeadline:"), &mBeginEvaluationDeadline);
-    api.method(api.vtableOf(digla), api.intern("endEvaluationDeadline"), &mEndEvaluationDeadline);
-    api.method(api.vtableOf(digla), api.intern("beginEvaluationInterruptProbe:"), &mBeginEvaluationInterruptProbe);
-    api.method(api.vtableOf(digla), api.intern("endEvaluationInterruptProbe"), &mEndEvaluationInterruptProbe);
-    api.method(api.vtableOf(digla), api.intern("runtimeNamed:"), &mRuntimeNamed);
-    api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:"), &mRenderFrame);
-    api.method(api.vtableOf(digla), api.intern("renderFrameFor:cursor:promptWidth:width:"), &mRenderWrappedFrame);
-    api.method(api.vtableOf(digla), api.intern("displayColumnIn:at:"), &mDisplayColumn);
-    api.method(api.vtableOf(digla), api.intern("displayWidthIn:from:to:"), &mDisplayWidth);
-    api.method(api.vtableOf(digla), api.intern("wrapTranscriptLine:width:"), &mWrapTranscriptLine);
+    trackedMethod(api.vtableOf(system), "print:", &mSystemPrint);
+    trackedMethod(api.vtableOf(system), "println:", &mSystemPrintln);
+    trackedMethod(api.import("BlockVt"), "whileTrue:", &mBlockWhileTrue);
+    trackedMethod(api.import("BlockVt"), "whileFalse:", &mBlockWhileFalse);
+    trackedMethod(api.smallint_vt, "to:do:", &mIntegerToDo);
 }
 
 fn moduleInit(api: *idapi.IdApi, state: ?*anyopaque) callconv(.c) ?*anyopaque {

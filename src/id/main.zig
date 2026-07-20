@@ -1354,6 +1354,13 @@ fn loadProjectArtifacts(api: *IdApi, build: *const project_build.Build) void {
             runDiagnosticError("projectArtifactLoadFailed", std.fmt.allocPrint(std.heap.c_allocator, "artifact load failed for #{s}", .{artifact.name}) catch "artifact load failed");
         }
     }
+    // Project-native initializers may bind primitive methods while their owning
+    // compiled unit is being staged. Candidate activation preserves dispatch,
+    // but staging intentionally rolls incidental Store writes back. Re-project
+    // the now-active type universe once, just as full-stack and image loads do,
+    // so the MOP mirror is total and truthful before project main executes.
+    if (api.import("Store")) |store|
+        _ = api.send(store, api.intern("backfillMirror"), &.{}, 0);
 }
 
 fn configureProjectRuntimeDirs(api: *IdApi, build: *const project_build.Build) void {

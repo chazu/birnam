@@ -143,9 +143,14 @@
   ] doc:
   "Return deterministic current fact changes for one entity after a Store basis." ];
 
+[Reflect defineMethod: #effectiveMethodsOf: on: Digla as: [:self :value |
+  [Reflect allMethodsOf: value]
+  ] doc:
+  "Return effective method descriptors through the loaded inspection adapter." ];
+
 [Reflect defineMethod: #inspectionMethodsOf: on: Digla as: [:self :value |
   let me := self;
-  [[[Reflect allMethodsOf: value] collect: [:method | [me inspectionMethodCard: method]]]
+  [[[self effectiveMethodsOf: value] collect: [:method | [me inspectionMethodCard: method]]]
     sortBy: [:card | [card at: "selector"]]]
   ] doc:
   "Return deterministic transport-safe effective-method cards for `value`." ];

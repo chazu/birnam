@@ -42,7 +42,24 @@ for my $request (
     params => {source => q{[1 to: 9223372036854775807 do: [:i | nil]]}}},
   {jsonrpc => "2.0", id => 6, method => "birnam/evaluate",
     params => {source => q{[40 +}, timeoutMs => 0}},
-  {jsonrpc => "2.0", id => 7, method => "birnam/close", params => {}}
+  {jsonrpc => "2.0", id => 7, method => "birnam/evaluate", params => {source => q{
+    let a := [DiglaAccelerator new]; let b := [DiglaAccelerator new];
+    [a beginEvaluationOutputCapture]; [System print: "a1"];
+    [b beginEvaluationOutputCapture]; [System print: "b"];
+    let be := [b endEvaluationOutputCapture]; [System print: "a2"];
+    let ae := [a endEvaluationOutputCapture];
+    [[[[ae at: 0] at: "text"] , "|"] , [[be at: 0] at: "text"]]}}},
+  {jsonrpc => "2.0", id => 8, method => "birnam/evaluate", params => {source => q{
+    let ok := [true asCell];
+    [[DiglaAccelerator coreHooksTracked] ifFalse: [| [ok set: false]]];
+    [[SystemVt == [Reflect vtableOf: System]] ifFalse: [| [ok set: false]]];
+    [[db hasValue: SystemVt attr: #print:] ifFalse: [| [ok set: false]]];
+    [[db hasValue: SystemVt attr: #println:] ifFalse: [| [ok set: false]]];
+    [[db hasValue: BlockVt attr: #whileTrue:] ifFalse: [| [ok set: false]]];
+    [[db hasValue: BlockVt attr: #whileFalse:] ifFalse: [| [ok set: false]]];
+    [[db hasValue: IntegerVt attr: #to:do:] ifFalse: [| [ok set: false]]];
+    [ok value]}}},
+  {jsonrpc => "2.0", id => 9, method => "birnam/close", params => {}}
 ) {
   my $body = encode_json($request);
   print "Content-Length: ", length($body), "\r\n\r\n", $body;
@@ -74,10 +91,10 @@ while ($stream =~ s/^Content-Length: (\d+)\r\n\r\n//) {
   push @messages, decode_json($body);
 }
 die "unframed Digla stdout bytes\n" if length($stream);
-die "expected ten Digla messages\n" unless @messages == 10;
+die "expected twelve Digla messages\n" unless @messages == 12;
 
 my ($open, $first_output, $second_output, $evaluated, $large_output, $large_evaluated, $timed_out,
-  $range_timed_out, $compile_failed, $closed) = @messages;
+  $range_timed_out, $compile_failed, $isolated, $tracked, $closed) = @messages;
 my $capabilities = $open->{result}{capabilities};
 die "output events not advertised\n" unless $capabilities->{outputEvents};
 die "output notifications not advertised\n" unless $capabilities->{outputNotifications};
@@ -115,6 +132,10 @@ die "compile diagnostic kind changed\n"
   unless $compile_failed->{result}{diagnostics}[0]{kind} eq "syntaxError";
 die "compile diagnostic byte position changed\n"
   unless $compile_failed->{result}{diagnostics}[0]{start} == 5;
+die "evaluation contexts shared output state\n"
+  unless $isolated->{result}{value}{value} eq "a1a2|b";
+die "Digla core hooks bypassed the Store MOP\n"
+  unless $tracked->{result}{value}{value};
 die "session did not close\n" unless $closed->{result}{closed};
 ' "$tmp/replies"
 

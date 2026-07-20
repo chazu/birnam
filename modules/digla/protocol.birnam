@@ -64,6 +64,7 @@
                 let interruptProbe := [interruptible
                   ifTrue: [| [interruptFactory value: request]]
                   ifFalse: [| [| false]]];
+                let evaluationContext := [[current value] at: "evaluationContext"];
                 let outputSink := [:event |
                   let active := [current value];
                   let notification := [self sessionNotification: "birnam/output" params: {
@@ -72,17 +73,17 @@
                     "event" -> event }];
                   [write value: [Json stringify: notification]]];
                 [streaming
-                  ifTrue: [| [self beginEvaluationOutputStreaming: outputSink]]
+                  ifTrue: [| [self beginEvaluationOutputStreaming: outputSink in: evaluationContext]]
                   ifFalse: [| nil]];
                 [interruptible
-                  ifTrue: [| [self beginEvaluationInterruptProbe: interruptProbe]]
+                  ifTrue: [| [self beginEvaluationInterruptProbe: interruptProbe in: evaluationContext]]
                   ifFalse: [| nil]];
                 let reply := [self performSessionRequest: request in: [current value]];
                 [interruptible
-                  ifTrue: [| [self endEvaluationInterruptProbe]]
+                  ifTrue: [| [self endEvaluationInterruptProbeIn: evaluationContext]]
                   ifFalse: [| nil]];
                 [streaming
-                  ifTrue: [| [self endEvaluationOutputStreaming]]
+                  ifTrue: [| [self endEvaluationOutputStreamingIn: evaluationContext]]
                   ifFalse: [| nil]];
                 let next := [reply at: "session"];
                 [current set: next];

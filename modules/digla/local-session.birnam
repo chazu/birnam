@@ -11,45 +11,59 @@
   ] doc:
   "Answer whether the loaded application adapter can capture System output." ];
 
-[Reflect defineMethod: #beginEvaluationOutputCapture on: Digla as: [:self |
-  self
+[Reflect defineMethod: #newEvaluationContext on: Digla as: [:self |
+  nil
   ] doc:
-  "Begin evaluation output capture when an application adapter provides it." ];
+  "Create adapter-owned state for one session, or nil when no adapter is loaded." ];
 
-[Reflect defineMethod: #endEvaluationOutputCapture on: Digla as: [:self |
+[Reflect defineMethod: #beginEvaluationOutputCaptureIn: on: Digla as: [:self :context |
+  context
+  ] doc:
+  "Begin output capture in one explicitly owned evaluation context." ];
+
+[Reflect defineMethod: #endEvaluationOutputCaptureIn: on: Digla as: [:self :context |
   #[]
   ] doc:
-  "End evaluation output capture and answer copied output events, or none." ];
+  "End output capture in one context and answer copied output events, or none." ];
 
 [Reflect defineMethod: #evaluationOutputStreamingAvailable on: Digla as: [:self |
   false
   ] doc:
   "Answer whether captured writes can be delivered through a temporary session sink." ];
 
-[Reflect defineMethod: #beginEvaluationOutputStreaming: on: Digla as: [:self :sink |
-  self
+[Reflect defineMethod: #beginEvaluationOutputStreaming:in: on: Digla as: [:self :sink :context |
+  context
   ] doc:
-  "Install an evaluation-local output sink when an application adapter supports it." ];
+  "Install an output sink in one explicitly owned evaluation context." ];
 
-[Reflect defineMethod: #endEvaluationOutputStreaming on: Digla as: [:self |
-  self
+[Reflect defineMethod: #endEvaluationOutputStreamingIn: on: Digla as: [:self :context |
+  context
   ] doc:
-  "Remove the application adapter's evaluation-local output sink." ];
+  "Remove the output sink from one explicitly owned evaluation context." ];
 
 [Reflect defineMethod: #evaluationDeadlineAvailable on: Digla as: [:self |
   false
   ] doc:
   "Answer whether the loaded application adapter provides cooperative loop deadlines." ];
 
-[Reflect defineMethod: #beginEvaluationDeadline: on: Digla as: [:self :timeoutMs |
-  self
+[Reflect defineMethod: #beginEvaluationDeadline:in: on: Digla as: [:self :timeoutMs :context |
+  context
   ] doc:
-  "Begin an optional cooperative evaluation deadline when an adapter provides it." ];
+  "Begin a cooperative deadline in one explicitly owned evaluation context." ];
 
-[Reflect defineMethod: #endEvaluationDeadline on: Digla as: [:self |
-  self
+[Reflect defineMethod: #endEvaluationDeadlineIn: on: Digla as: [:self :context |
+  context
   ] doc:
-  "Clear the application adapter's cooperative evaluation deadline." ];
+  "Clear the cooperative deadline from one explicitly owned evaluation context." ];
+
+[Reflect defineMethod: #beginEvaluationInterruptProbe:in: on: Digla as:
+  [:self :probe :context | context] doc:
+  "Install an interrupt probe in one explicitly owned evaluation context." ];
+
+[Reflect defineMethod: #endEvaluationInterruptProbeIn: on: Digla as: [:self :context |
+  context
+  ] doc:
+  "Remove the interrupt probe from one explicitly owned evaluation context." ];
 
 [Reflect defineMethod: #localSessionCapabilities on: Digla as: [:self |
   let output := [self outputCaptureAvailable];
@@ -82,6 +96,7 @@
     "config" -> config,
     "asyncEvaluation" -> false,
     "capabilities" -> [self localSessionCapabilities],
+    "evaluationContext" -> [self newEvaluationContext],
     "lastValue" -> nil,
     "hasLastValue" -> false,
     "lastError" -> nil,
@@ -222,6 +237,7 @@
 
 [Reflect defineMethod: #localEvaluate:session: on: Digla as: [:self :params :session |
   let source := [params at: "source" ifAbsent: [| nil]];
+  let context := [session at: "evaluationContext"];
   [[source isNil]
     ifTrue: [|
       { "result" -> { "ok" -> false, "kind" -> "error",
@@ -240,11 +256,11 @@
             "session" -> session }]
         ifFalse: [|
           let timeoutMs := [deadline at: "timeoutMs"];
-          [self beginEvaluationOutputCapture];
-          [self beginEvaluationDeadline: timeoutMs];
+          [self beginEvaluationOutputCaptureIn: context];
+          [self beginEvaluationDeadline: timeoutMs in: context];
           let value := [Codegen evalPersisting: source];
-          [self endEvaluationDeadline];
-          let events := [self endEvaluationOutputCapture];
+          [self endEvaluationDeadlineIn: context];
+          let events := [self endEvaluationOutputCaptureIn: context];
           let compileError := [Codegen lastError];
           let runtimeError := [[compileError isNil] & [value isError]];
           let failed := [[compileError notNil] | runtimeError];
