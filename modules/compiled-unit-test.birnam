@@ -9,9 +9,11 @@ let s := [TestSuite named: "CompiledUnit" module: #compiledUnit];
 // successor generations.
 let cuPolicyBaseline := "[Module named: #cuPolicy requires: #[]]; [Reflect defineMethod: #cuPolicyReplace on: Integer as: [:self | 11]]; [Reflect defineMethod: #cuPolicyRemove on: Integer as: [:self | 22]]";
 let cuChainBaseline := "[Module named: #cuChain requires: #[]]; [Reflect defineMethod: #cuInherited on: Integer as: [:self | 7]]; [Reflect defineMethod: #cuOverlay on: Integer as: [:self | 8]]";
+let cuGcBaseline := "[Module named: #cuGc requires: #[]]; [Reflect defineMethod: #cuGcRootProbe on: Integer as: [:self | 9]]";
 let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy requires: #[]]; [Reflect defineMethod: #liveReplace on: Integer as: [:self | 10]]; [Reflect defineMethod: #liveRemove on: Integer as: [:self | 20]]";
 [Codegen recordModuleSource: cuPolicyBaseline named: #cuPolicy];
 [Codegen recordModuleSource: cuChainBaseline named: #cuChain];
+[Codegen recordModuleSource: cuGcBaseline named: #cuGc];
 [Codegen recordModuleSource: livePolicyBaseline named: #livePolicy];
 [DispatchGeneration initializeCurrent];
 
@@ -58,6 +60,28 @@ let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy
   [t expect: [mapped kind] equals: #dependenciesMissing describes: "dependency rejection is kinded"];
   [t expect: [3 cuDependencyGuard] equals: 31 describes: "dependency rejection leaves dispatch unchanged"];
   [t expect: [unit state] equals: #candidate describes: "dependency rejection leaves lifecycle unchanged"]]];
+
+[s test: "prepared generation plans remain rooted across collection" do: [:t |
+  [Reflect defineMethod: #cuGcRootProbe on: Integer as: [:self | 9]];
+  let source := "[Module named: #cuGc requires: #[]]; [Reflect defineMethod: #cuGcRootProbe on: Integer as: [:self | 99]]";
+  let path := "/tmp/birnam-compiled-unit-gc.dylib";
+  [CompiledUnit compile: source named: #cuGc output: path];
+  let unit := [CompiledUnit open: path];
+  [unit map];
+  let token := [[|
+    let current := [DispatchGeneration current];
+    let projection := [Codegen successorGenerationProjection: [current sourceMap]
+      replacing: #cuGc with: [unit sourceRevision] unit: unit];
+    let successor := [DispatchGeneration fromProjection: projection predecessor: current delta: unit];
+    [Codegen prepareActivation: unit plan:
+      [unit publicationPlan: #activate prior: [current unitFor: #cuGc]
+        expected: current successor: successor]]
+    ] value];
+  [t expect: [token isError] equals: false describes: "activation preparation succeeds"];
+  [System gc];
+  let committed := [Codegen commitPrepared: token];
+  [t expect: [committed isError] equals: false describes: "generation survives collection"];
+  [t expect: [3 cuGcRootProbe] equals: 99 describes: "rooted successor publishes dispatch"]]];
 
 [s test: "supersession inherits untouched managed bindings" do: [:t |
   [Reflect defineMethod: #cuInherited on: Integer as: [:self | 7]];

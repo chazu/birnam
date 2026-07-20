@@ -2759,6 +2759,8 @@ fn gcCandidateRoots(mark: idapi.MarkFn) callconv(.c) void {
             mark(plan.prior);
             mark(plan.event);
             mark(plan.basis);
+            mark(plan.expected_generation);
+            mark(plan.successor_generation);
         }
         for (st.requires.items) |dep| mark(dep);
         for (st.ops.items) |op| {
@@ -3257,8 +3259,8 @@ fn validateCandidateBase(st: *CandidateState, rollback: bool) Oop {
             op.vt = vt;
             op.prior_method = directMethod(vt, op.selector) orelse null;
             op.prior_present = op.prior_method != null;
-        if (op.kind == .remove and !op.prior_present)
-            return candidateError("missingDirectMethod");
+            if (op.kind == .remove and !op.prior_present)
+                return candidateError("missingDirectMethod");
         }
     }
     return st.unit;
