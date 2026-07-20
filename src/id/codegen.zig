@@ -2236,6 +2236,11 @@ fn appendCandidateManifest(buf: *std.ArrayList(u8), name: Oop, scan: *const Cand
 fn mCompileCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    // CandidateScan retains method-source Oops in native arrays while the
+    // artifact and manifest allocate. Keep that transient graph intact until
+    // every retained value has been copied into managed or byte-owned storage.
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
     var scan = scanCandidateSource(a[0]) orelse return candidateError("unsafeCandidateSource");
     defer scan.deinit();
     if (scan.name != a[1]) return candidateError("candidateMetadataMismatch");
@@ -2384,6 +2389,9 @@ fn makeVector(items: []const Oop) Oop {
 fn mEmbeddedFilesOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    // `paths` is native scratch storage containing managed Strings.
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
     var len: usize = 0;
     src_bytes = g_api.stringBytes(a[0], &len)[0..len];
     var paths: std.ArrayList(Oop) = .{};
@@ -2413,6 +2421,8 @@ fn makeSourceRevision(scan: *const CandidateScan, source: Oop) Oop {
 fn mSourceRevisionOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
     var scan = scanCandidateSource(a[0]) orelse return candidateError("invalidModuleSource");
     defer scan.deinit();
     return makeSourceRevision(&scan, a[0]);
@@ -2428,6 +2438,11 @@ fn mSourceRevisionOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 fn mModuleMetadataOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    // The CST and CandidateScan both retain managed objects in native scratch
+    // structures. Large composed modules can otherwise cross the automatic-GC
+    // threshold during metadata extraction and be misreported as malformed.
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
     const cst = s1(lang, "parse:", a[0]);
     const parse_failed = cst == g_api.nilObj or
         (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
@@ -2458,6 +2473,8 @@ fn recordModuleSource(name: Oop, source: Oop) Oop {
 fn mRecordModuleSource(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
     if (initial_generation_sealed) return candidateError("moduleIntroductionNotAvailable");
     if (g_api.vtableOf(a[1]) != g_api.symbol_vt) return candidateError("notASymbol");
     return recordModuleSource(a[1], a[0]);
@@ -2509,6 +2526,14 @@ fn mInitialGenerationProjection(self: Oop, a: [*]const Oop, n: usize) callconv(.
     _ = self;
     _ = a;
     _ = n;
+    // `entries` is native scratch storage, so the collector cannot discover the
+    // freshly allocated revision/entry vectors held there. A sufficiently large
+    // initial module set used to trigger auto-GC midway through this loop and
+    // leave a structurally corrupt source map (`#invalidSourceMap`). Keep the
+    // projection construction atomic with respect to automatic collection; the
+    // returned graph is stack-reachable before auto-GC is restored.
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
     var names: std.ArrayList(Oop) = .{};
     defer names.deinit(ca);
     var it = boot_module_sources.keyIterator();
@@ -2555,6 +2580,10 @@ fn revisionTransitionAllowed(current: Oop, successor: Oop) bool {
 fn mSuccessorGenerationProjection(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    // As above, the replacement entry is transiently retained only by the
+    // native `entries` buffer until the successor Vector is complete.
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
     const source_map = a[0];
     const name = a[1];
     const revision = a[2];
@@ -2607,6 +2636,10 @@ fn freeCandidateState(st: *CandidateState) void {
 fn mInspectCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
+    // Candidate inspection retains scanned managed values until the reflected
+    // unit facts and native CandidateState have both been published.
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
     const path = oopBytes(a[0]);
     const side_path = std.fmt.allocPrint(ca, "{s}.candidate", .{path}) catch return candidateError("candidateManifestUnreadable");
     defer ca.free(side_path);
