@@ -23,3 +23,17 @@
   [AppConfig resolve: "digla" defaults: [self defaults]
     configPath: path environment: environment args: args]] doc:
   "Resolve Digla settings through explicit inputs for deterministic tests and embedders."];
+
+[Reflect defineMethod: #summary: on: Digla as: [:self :config |
+  let mode := [config at: "mode"];
+  let connect := [config at: "connect"];
+  let bind := [config at: "bind"];
+  let port := [[config at: "port"] printString];
+  let path := [config path];
+  let pathText := [[path isNil] ifTrue: [| "(default)" ] ifFalse: [| path]];
+  let a := ["Digla mode=" , mode];
+  let b := [a , " connect=" , connect];
+  let c := [b , " endpoint=" , bind];
+  let d := [c , ":" , port];
+  [d , " config=" , pathText]] doc:
+  "Render the resolved startup configuration as a deterministic one-line summary."];

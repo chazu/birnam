@@ -28,6 +28,14 @@ free_port() {
 "$bin" build "$project" >/dev/null
 "$bin" build "$client_project" >/dev/null
 
+config_path="$tmp/missing-digla.toml"
+summary="$("$bin" run "$project" -- --config "$config_path" --port=5555)"
+expected_summary="Digla mode=local connect=local endpoint=127.0.0.1:5555 config=$config_path"
+if [[ "$summary" != "$expected_summary" ]]; then
+  echo "Digla headless summary entrypoint failed: $summary" >&2
+  exit 1
+fi
+
 # The evaluated writes must become JSON events. Any direct System output would
 # leave bytes between frames and make the strict decoder below fail.
 perl -MJSON::PP -e '
