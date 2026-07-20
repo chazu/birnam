@@ -8,4 +8,8 @@
 // image. Project-owned modules do not rebuild that standard dependency.
 [Module named: #digla requires: #[#lsp]];
 [Globals at: #Digla put: [Object clone]];
+[Globals at: #DiglaInspectionCapability put: [Object clone]];
+[Globals at: #DiglaEvaluationCapability put: [Object clone]];
+[Globals at: #DiglaLocalSessionAdapter put: [Object clone]];
+[Globals at: #DiglaTcpSessionAdapter put: [Object clone]];
 [Reflect docModule: #digla is: "The Digla terminal programming environment and its image-session model."];

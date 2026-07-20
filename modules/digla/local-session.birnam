@@ -88,6 +88,24 @@
   ] doc:
   "Return the truthful capabilities of the synchronous local image adapter." ];
 
+[Reflect defineMethod: #inspectionSessionCapabilities on: Digla as: [:self |
+  { "evaluate" -> false,
+    "inspect" -> true,
+    "snapshot" -> true,
+    "globals" -> true,
+    "runtimeCompletion" -> true,
+    "interrupt" -> false,
+    "cooperativeInterrupt" -> false,
+    "interruptSafeBoundaries" -> #[],
+    "structuredValues" -> true,
+    "outputEvents" -> false,
+    "outputNotifications" -> false,
+    "cooperativeDeadline" -> false,
+    "deadlineSafeBoundaries" -> #[],
+    "streamedOutput" -> false }
+  ] doc:
+  "Return the capabilities of a session that cannot evaluate source." ];
+
 [Reflect defineMethod: #localSessionFor: on: Digla as: [:self :config |
   { "adapter" -> "local",
     "id" -> "local",
@@ -96,6 +114,9 @@
     "config" -> config,
     "asyncEvaluation" -> false,
     "capabilities" -> [self localSessionCapabilities],
+    "adapterObject" -> DiglaLocalSessionAdapter,
+    "inspectionCapability" -> DiglaInspectionCapability,
+    "evaluationCapability" -> DiglaEvaluationCapability,
     "evaluationContext" -> [self newEvaluationContext],
     "lastValue" -> nil,
     "hasLastValue" -> false,
@@ -103,6 +124,14 @@
     "globalNamesCache" -> nil }
   ] doc:
   "Create the internal state of a synchronous session against this live image." ];
+
+[Reflect defineMethod: #inspectionSessionFor: on: Digla as: [:self :config |
+  let session := [self localSessionFor: config];
+  let s1 := [session at: "capabilities" put: [self inspectionSessionCapabilities]];
+  let s2 := [s1 at: "evaluationCapability" put: nil];
+  [s2 at: "evaluationContext" put: nil]
+  ] doc:
+  "Create a read-only local session carrying inspection but no evaluation capability." ];
 
 [Reflect defineMethod: #tcpSessionFor: on: Digla as: [:self :config |
   { "adapter" -> "tcp",
@@ -112,11 +141,46 @@
     "config" -> config,
     "asyncEvaluation" -> true,
     "capabilities" -> [Map new],
+    "adapterObject" -> DiglaTcpSessionAdapter,
+    "inspectionCapability" -> nil,
+    "evaluationCapability" -> nil,
     "connection" -> nil,
     "pending" -> ["" asCell],
     "lastError" -> nil }
   ] doc:
   "Create lazy internal state for a serial framed TCP image session." ];
+
+[Reflect defineMethod: #evaluate:session: on: DiglaEvaluationCapability as:
+  [:self :params :session | [Digla localEvaluate: params session: session]] doc:
+  "Exercise the explicit evaluation authority carried by a programming session." ];
+
+[Reflect defineMethod: #inspect:session: on: DiglaInspectionCapability as:
+  [:self :params :session | [Digla localInspect: params session: session]] doc:
+  "Inspect through a read capability without acquiring evaluation authority." ];
+
+[Reflect defineMethod: #snapshot:session: on: DiglaInspectionCapability as:
+  [:self :params :session | [Digla localSnapshot: params session: session]] doc:
+  "Build a copied snapshot through a read capability." ];
+
+[Reflect defineMethod: #globals:session: on: DiglaInspectionCapability as:
+  [:self :params :session |
+    let listing := [Digla localGlobalNamesIn: session];
+    { "result" -> { "globals" -> [listing at: "names"] },
+      "session" -> [listing at: "session"] }
+  ] doc:
+  "List visible globals through a read capability." ];
+
+[Reflect defineMethod: #runtimeCompletion:session: on: DiglaInspectionCapability as:
+  [:self :params :session |
+    let prefix := [params at: "prefix" ifAbsent: [| ""]];
+    let listing := [Digla localGlobalNamesIn: session];
+    let names := [Digla userGlobalNamesStartingWith: prefix in: [listing at: "names"]];
+    let items := [names collect: [:name |
+      { "label" -> name, "kind" -> "global", "detail" -> "live image global",
+        "source" -> "runtime" }]];
+    { "result" -> { "items" -> items }, "session" -> [listing at: "session"] }
+  ] doc:
+  "Complete visible runtime names through a read capability." ];
 
 [Reflect defineMethod: #sessionForConfig: on: Digla as: [:self :config |
   let connect := [config at: "connect"];
@@ -343,30 +407,31 @@
     ifTrue: [| [outcome set: { "result" -> [self sessionOpenResult: session], "session" -> session }]]
     ifFalse: [| nil]];
   [[method = "birnam/evaluate"]
-    ifTrue: [| [outcome set: [self localEvaluate: params session: session]]]
+    ifTrue: [|
+      let capability := [session at: "evaluationCapability"];
+      [outcome set: [[capability isNil]
+        ifTrue: [| { "error" -> "evaluation capability is unavailable", "session" -> session }]
+        ifFalse: [| [capability evaluate: params session: session]]]]]
     ifFalse: [| nil]];
   [[method = "birnam/inspect"]
-    ifTrue: [| [outcome set: [self localInspect: params session: session]]]
+    ifTrue: [|
+      let capability := [session at: "inspectionCapability"];
+      [outcome set: [capability inspect: params session: session]]]
     ifFalse: [| nil]];
   [[method = "birnam/snapshot"]
-    ifTrue: [| [outcome set: [self localSnapshot: params session: session]]]
+    ifTrue: [|
+      let capability := [session at: "inspectionCapability"];
+      [outcome set: [capability snapshot: params session: session]]]
     ifFalse: [| nil]];
   [[method = "birnam/globals"]
     ifTrue: [|
-      let listing := [self localGlobalNamesIn: session];
-      [outcome set: { "result" -> { "globals" -> [listing at: "names"] },
-        "session" -> [listing at: "session"] }]]
+      let capability := [session at: "inspectionCapability"];
+      [outcome set: [capability globals: params session: session]]]
     ifFalse: [| nil]];
   [[method = "birnam/runtimeCompletion"]
     ifTrue: [|
-      let prefix := [params at: "prefix" ifAbsent: [| ""]];
-      let listing := [self localGlobalNamesIn: session];
-      let names := [self userGlobalNamesStartingWith: prefix in: [listing at: "names"]];
-      let items := [names collect: [:name |
-        { "label" -> name, "kind" -> "global", "detail" -> "live image global",
-          "source" -> "runtime" }]];
-      [outcome set: { "result" -> { "items" -> items },
-        "session" -> [listing at: "session"] }]]
+      let capability := [session at: "inspectionCapability"];
+      [outcome set: [capability runtimeCompletion: params session: session]]]
     ifFalse: [| nil]];
   [[method = "birnam/interrupt"]
     ifTrue: [| [outcome set: {
@@ -421,19 +486,25 @@
   "Handle one JSON-RPC-shaped request against the synchronous local adapter." ];
 
 [Reflect defineMethod: #performSessionRequest:in: on: Digla as: [:self :request :session |
-  let adapter := [session at: "adapter" ifAbsent: [| ""]];
-  [[adapter = "local"]
-    ifTrue: [| [self performLocalSessionRequest: request in: session]]
-    ifFalse: [|
-      [[adapter = "tcp"]
-        ifTrue: [| [self performTcpSessionRequest: request in: session]]
-        ifFalse: [|
-          let id := [request at: "id" ifAbsent: [| nil]];
-          [self sessionReply:
-            [self sessionError: id code: -32000 message: "unsupported session adapter" data: adapter]
-            state: session]]]]]
+  let adapter := [session at: "adapterObject" ifAbsent: [| nil]];
+  [[adapter isNil]
+    ifTrue: [|
+      let id := [request at: "id" ifAbsent: [| nil]];
+      [self sessionReply:
+        [self sessionError: id code: -32000 message: "unsupported session adapter"
+          data: [session at: "adapter" ifAbsent: [| nil]]]
+        state: session]]
+    ifFalse: [| [adapter perform: request in: session]]]
   ] doc:
-  "Route a runtime request without exposing adapter details to the editor model." ];
+  "Route a runtime request through the session's adapter prototype." ];
+
+[Reflect defineMethod: #perform:in: on: DiglaLocalSessionAdapter as:
+  [:self :request :session | [Digla performLocalSessionRequest: request in: session]] doc:
+  "Perform one request through the synchronous local-image adapter." ];
+
+[Reflect defineMethod: #perform:in: on: DiglaTcpSessionAdapter as:
+  [:self :request :session | [Digla performTcpSessionRequest: request in: session]] doc:
+  "Perform one request through the optional TCP adapter implementation." ];
 
 [Reflect defineMethod: #performTcpSessionRequest:in: on: Digla as: [:self :request :session |
   let id := [request at: "id" ifAbsent: [| nil]];

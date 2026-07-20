@@ -21,6 +21,23 @@ let e := [TestSuite named: "Digla session" module: #diglaSession];
   [t assert: [encoded startsWith: "{"] describes: "handshake is JSON-shaped"];
   [t expect: [decoded isError] equals: false describes: "handshake round-trips as JSON"]]];
 
+[e test: "read-only sessions carry inspection without evaluation authority" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let session := [Digla inspectionSessionFor: config];
+  let capabilities := [session at: "capabilities"];
+  let inspected := [Digla callSession: "birnam/snapshot" params: {
+    "target" -> "String", "sections" -> #["object"] } in: session];
+  let evaluated := [Digla callSession: "birnam/evaluate"
+    params: { "source" -> "[40 + 2]" } in: [inspected at: "session"]];
+  [t expect: [capabilities at: "inspect"] equals: true describes: "inspection is explicit"];
+  [t expect: [capabilities at: "evaluate"] equals: false describes: "evaluation is absent"];
+  [t expect: [[session at: "evaluationCapability"] isNil] equals: true
+    describes: "session holds no hidden evaluator"];
+  [t expect: [[[[Digla sessionResultOf: inspected] at: "snapshot"] at: "target"] at: "globalName"]
+    equals: "String" describes: "inspection capability remains usable"];
+  [t expect: [[[evaluated at: "message"] at: "error"] at: "code"] equals: -32002
+    describes: "evaluation is rejected at the capability boundary"]]];
+
 [e test: "snapshot protocol returns selected method source as copied data" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let reply := [Digla callSession: "birnam/snapshot" params: {
