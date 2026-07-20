@@ -44,6 +44,13 @@ let temporalBasis := [db basis];
   [t expect: [primitive notNil] equals: true describes: "native protocol is represented"];
   [t expect: after equals: before describes: "inspection performs no Store writes"]]];
 
+[e test: "method cards preserve the reflected owner independently of target" do: [:t |
+  let card := [Digla inspectionMethodCard: {
+    #selector -> #probe, #target -> #TargetName, #owner -> #OwnerName,
+    #method -> #compiled }];
+  [t expect: [card at: "target"] equals: "TargetName" describes: "target is retained"];
+  [t expect: [card at: "owner"] equals: "OwnerName" describes: "owner is not rewritten"]]];
+
 [e test: "data-driven snapshot selects and sources exactly one method" do: [:t |
   let before := [db basis];
   let snapshot := [Digla snapshot: {

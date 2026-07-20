@@ -54,7 +54,7 @@
   let kind := [self inspectionMethodKind: [descriptor at: #method]];
   { "selector" -> [self inspectionNameOf: [descriptor at: #selector]],
     "target" -> target,
-    "owner" -> [[owner isNil] ifTrue: [| nil] ifFalse: [| target]],
+    "owner" -> [self inspectionNameOf: owner],
     "kind" -> kind,
     "sourceAvailable" -> nil,
     "source" -> nil }
@@ -128,20 +128,21 @@
   ] doc:
   "Convert one changed fact into a transport-safe since-window card." ];
 
-[Reflect defineMethod: #inspectionChangesOf:since: on: Digla as: [:self :value :basis |
+[Reflect defineMethod: #inspectionChangesOf:since:through: on: Digla as:
+  [:self :value :basis :upperBasis |
   let attributes := [db findAll: ?attribute
-    where: #[#[value ?attribute ?changedValue]] since: basis];
+    where: #[#[value ?attribute ?changedValue]] between: basis and: upperBasis];
   let changes := [#[] asCell];
   [attributes do: [:attribute |
     let values := [db findAll: ?changedValue
-      where: #[#[value attribute ?changedValue]] since: basis];
+      where: #[#[value attribute ?changedValue]] between: basis and: upperBasis];
     [values do: [:changedValue |
       [changes set: [[changes value] add:
         [self inspectionChangeCard: changedValue attribute: attribute since: basis]]]]];
   ]];
   [[changes value] sortBy: [:card | [card at: "attribute"]]]
   ] doc:
-  "Return deterministic current fact changes for one entity after a Store basis." ];
+  "Return deterministic fact changes for one entity in a closed Store basis window." ];
 
 [Reflect defineMethod: #effectiveMethodsOf: on: Digla as: [:self :value |
   [Reflect allMethodsOf: value]
@@ -254,6 +255,7 @@
         [[requestedSince notNil] & [self inspectionBasisIsValid: requestedSince]]];
       let asOf := [asOfValid ifTrue: [| requestedAsOf] ifFalse: [| nil]];
       let since := [sinceValid ifTrue: [| requestedSince] ifFalse: [| nil]];
+      let snapshotBasis := [[asOf notNil] ifTrue: [| asOf] ifFalse: [| currentBasis]];
       let requestedSelector := [spec at: "selector" ifAbsent: [| nil]];
       let selector := [[requestedSelector isNil]
         ifTrue: [| nil]
@@ -307,21 +309,19 @@
         [warnings set: [[warnings value] add:
           "methods and generation are current runtime observations"]]]
         ifFalse: [| nil]];
-      let historical := [[showFacts & [asOf notNil]] & targetExists];
-      let historicalFacts := [historical
-        ifTrue: [| [self inspectionHistoricalFactsOf: targetValue asOf: asOf]]
+      let factBearing := [showFacts & targetExists];
+      let basisFacts := [factBearing
+        ifTrue: [| [self inspectionHistoricalFactsOf: targetValue asOf: snapshotBasis]]
         ifFalse: [| nil]];
-      [[historicalFacts notNil] ifTrue: [|
-        [[historicalFacts at: "warnings"] do: [:warning |
+      [[basisFacts notNil] ifTrue: [|
+        [[basisFacts at: "warnings"] do: [:warning |
           [warnings set: [[warnings value] add: warning]]]]]
         ifFalse: [| nil]];
-      let facts := [historical
-        ifTrue: [| [historicalFacts at: "facts"]]
-        ifFalse: [| [[showFacts & targetExists]
-          ifTrue: [| [self inspectionFactsOf: targetValue]]
-          ifFalse: [| #[]]]]];
+      let facts := [factBearing
+        ifTrue: [| [basisFacts at: "facts"]]
+        ifFalse: [| #[]]];
       let changes := [[[showChanges & [since notNil]] & targetExists]
-        ifTrue: [| [self inspectionChangesOf: targetValue since: since]]
+        ifTrue: [| [self inspectionChangesOf: targetValue since: since through: currentBasis]]
         ifFalse: [| #[]]];
       let firstMethod := [inventory at: 0 ifAbsent: [| nil]];
       let vtableName := [[firstMethod isNil]
@@ -334,7 +334,7 @@
           ifFalse: [| ""]],
         "vtableName" -> vtableName };
       { "schema" -> 1,
-        "basis" -> [[asOf notNil] ifTrue: [| asOf] ifFalse: [| currentBasis]],
+        "basis" -> snapshotBasis,
         "asOf" -> asOf,
         "since" -> since,
         "target" -> target,
