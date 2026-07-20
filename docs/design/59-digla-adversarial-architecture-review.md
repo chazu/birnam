@@ -1,9 +1,10 @@
 # 59 — Digla Adversarial Architecture Review
 
-> **Status:** Review complete, findings open, 2026-07-19. This document reviews
-> Digla at `57f8c0e` against Birnam's current authority model, repository-wide
-> design principles, and Designs 55 and 58. It records defects and tensions; it
-> does not declare the proposed corrections accepted architecture.
+> **Status:** Remediation complete, 2026-07-20. This document reviews Digla at
+> `57f8c0e` against Birnam's current authority model, repository-wide design
+> principles, and Designs 55 and 58. Sections 3–6 preserve the original
+> adversarial findings; Section 8 records the accepted corrections and evidence
+> through `f9f6e8d`.
 
 ## 1. Scope and method
 
@@ -359,3 +360,69 @@ This review can be considered addressed when:
     `zig build verify` remain green with startup and interaction benchmarks
     recorded against the preceding checkpoint.
 
+## 8. Remediation outcome
+
+The correction order above was executed as a series of independently testable
+commits. The resulting architecture keeps Digla's performance helpers private,
+makes authority and deployment boundaries executable rather than conventional,
+and preserves explicit copied-value seams at the protocol boundary.
+
+| Criterion | Resolution | Evidence |
+|---|---|---|
+| 1. No raw public replacement | The wrapper installs only private `DiglaAccelerator` protocol. Cooperative core hooks enter through `Store addMethod:on:with:`. | `b9da9c8`; the session smoke checks the tracked Store facts and canonical vtable identities. |
+| 2. Isolated evaluation state | Output buffers/sinks, deadlines, interrupt probes, and the global-name index belong to explicit accelerator instances held by session evaluation contexts. | `b9da9c8`; nested-context smoke returns `a1a2|b`. |
+| 3. Truthful Store MOP | Every supported post-bootstrap core hook is Store-arbitrated and checked through `hasValue:attr:`. | `b9da9c8`; `coreHooksTracked` process assertion. |
+| 4. No application GC | Prepared dispatch generations and source projections are rooted across collection; `diglaApp` no longer schedules GC. | `0a3b712`, `96f549f`; compiled-unit GC regression coverage. |
+| 5. Headless closure | `examples/digla` contains session/inspection/server code; `examples/digla-client` alone composes editor, browser, Termbox, and native display. | `ce751e0`; process smoke proves no `Termbox`, `editorStateFor:`, or browser protocol in the headless image. |
+| 6. Explicit capabilities | Inspection and evaluation are distinct capability prototypes, and closed/headless session states carry neither implicitly. | `8ad77b3`; focused session capability tests. |
+| 7. Real method owner | `MethodCard.owner` is derived from the descriptor's defining owner rather than the inspected target. | `fc5e4db`; inherited-owner regression test. |
+| 8. Basis-bound snapshots | Fact-bearing reads use the captured snapshot basis; changes use an explicit closed basis window. | `fc5e4db`; snapshot mutation-after-basis test. |
+| 9. One versioned analysis seam | The editor consumes one document-versioned analysis/frame contract. The native display adapter implements that contract and is differentially checked against the Birnam reference. | `51fa8f4`; `NATIVE-CONFORMANCE:true` in the composed client smoke. |
+| 10. Honest optional state | `DiglaOption` distinguishes `none` from `some: nil`. Persistent editor, browser, session, connection, and transport-operation fields use it; snapshot nulls are confined to the explicit v1 copied wire schema. Requests resolve through handler prototypes and adapters share `performSessionRequest:in:`. | `640ea96`; option, nil-result, session, editor, browser, protocol, and socket tests. Designs 55 and 58 now state the boundary. |
+| 11. Verification | Focused suites, composed local/TCP session smoke, native/reference conformance, real Termbox PTY launch/input/Escape, and the repository verification graph pass. | Commands and measurements below. |
+
+Every composed module now calls `Reflect docModule:is:` before its first method
+definition, including `#diglaReflect` and `#termbox`. This closes S5 and keeps
+generated documentation ownership aligned with the actual load roots.
+
+### 8.1 Performance correction discovered during verification
+
+Removing Digla's public `Reflect` override exposed a pre-existing performance
+defect in canonical `Reflect allMethodsOf:`: resolving one unexported owner used
+repeated `attrAt:index:` and `currentValue:attr:` point reads over all globals.
+`f9f6e8d` replaces that path with one call-local `liveTriplesDo:` snapshot and a
+reverse index. The index is request-local, so the optimization adds no
+process-global scratch state and every descriptor in one result observes the
+same Store snapshot.
+
+Five framed evaluations of the exact reported expression, with a persistent
+session and a 6,099-byte result each time, measured:
+
+| Measurement | Before `f9f6e8d` | After `f9f6e8d` |
+|---|---:|---:|
+| `[ Reflect allMethodsOf: "YourMom" ]` | 1,807.1–1,811.7 ms | 30.5–32.2 ms |
+| Headless session ready | 1,792.8–1,820.6 ms | 1,801.0–1,814.3 ms |
+
+The reflection interaction is about 57× faster without changing its public
+owner or bypassing the MOP. Five real-PTY client launches reached Termbox's
+alternate screen in 3,455–3,514 ms. That is 0.17–0.24 s above the historical
+3.27–3.29 s app-boundary checkpoint in Design 58; the result is recorded rather
+than hidden, and the headless/service startup path remains materially smaller.
+
+### 8.2 Verification record
+
+The final tree passed:
+
+- `zig build test`;
+- `zig build test-birnam`;
+- `zig build test-project-check`;
+- `zig build test-lsp-project`;
+- `zig build test-digla-session`; and
+- `zig build verify`.
+
+The real PTY check launched `birnam run examples/digla-client`, entered a full
+evaluation form through Termbox, observed the client remain responsive, and
+shut the alternate screen down cleanly with Escape. The process-level Digla
+smoke additionally proves framed output ordering, bounded output, deadlines,
+interrupt correlation, post-interrupt health, headless dependency exclusion,
+context isolation, tracked hooks, and native/reference analysis conformance.
