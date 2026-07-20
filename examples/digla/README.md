@@ -29,6 +29,11 @@ typing, Backspace, or Delete replaces/removes it. Long multiline buffers keep
 the cursor in a visual-row viewport, and long logical lines soft-wrap without
 changing source byte positions. Consecutive terminal character events are inserted
 as one edit, so large pastes do not rebuild the persistent buffer once per byte.
+Ctrl-Z and Ctrl-Y undo and redo source edits without reparsing or contacting the
+live image. The client retains at most 128 source snapshots; a successful
+evaluation, editor command, or history selection starts a fresh branch, while a
+failed evaluation keeps its editable undo history. F3/F5 navigation preserves a
+separate undo/redo stack for each in-memory document.
 Tab opens completion for scoped source
 names, Birnam keywords, and bounded live-image globals; Tab/Down and Up move
 through the menu, Enter accepts, and Escape dismisses it. F1 opens source/runtime

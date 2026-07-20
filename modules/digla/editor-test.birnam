@@ -60,6 +60,58 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [deleted at: "buffer"] equals: "ac" describes: "backspace removes selection"];
   [t expect: [deleted at: "cursor"] equals: 1 describes: "deletion returns to selection start"]]];
 
+[e test: "Ctrl-Z and Ctrl-Y restore UTF-8 edits, cursor, selection, and diagnostics" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let typed := [Digla insertText: "a🙂bc" into: initial];
+  let selected0 := [typed at: "cursor" put: 5];
+  let selected := [selected0 at: "selection" put: { "anchor" -> 1 }];
+  let replaced := [Digla insertText: "Z" into: selected];
+  let undone := [Digla handleKey: 26 character: "" state: replaced];
+  let redone := [Digla handleKey: 25 character: "" state: undone];
+  [t expect: [replaced at: "buffer"] equals: "aZbc" describes: "selection replaced"];
+  [t expect: [undone at: "buffer"] equals: "a🙂bc" describes: "undo restores UTF-8 source"];
+  [t expect: [undone at: "cursor"] equals: 5 describes: "undo restores byte cursor"];
+  [t expect: [[undone at: "selection"] at: "anchor"] equals: 1
+    describes: "undo restores selection anchor"];
+  [t expect: [undone at: "diagnosticsDirty"] equals: true
+    describes: "undo restores the prior diagnostic state without reparsing"];
+  [t expect: [redone at: "buffer"] equals: "aZbc" describes: "redo reapplies replacement"];
+  [t expect: [redone at: "cursor"] equals: 2 describes: "redo restores replacement cursor"];
+  [t expect: [redone at: "selection"] equals: nil describes: "redo restores cleared selection"]]];
+
+[e test: "a new edit after undo invalidates redo and checkpoints are bounded" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let first := [Digla insertText: "a" into: initial];
+  let second := [Digla insertText: "b" into: first];
+  let undone := [Digla undoEditIn: second];
+  let branched := [Digla insertText: "x" into: undone];
+  let noRedo := [Digla redoEditIn: branched];
+  let many := [1 to: 140 inject: initial into: [:state :i |
+    [Digla insertText: "x" into: state]]];
+  [t expect: [undone at: "buffer"] equals: "a" describes: "undo reaches prior edit"];
+  [t expect: [branched at: "buffer"] equals: "ax" describes: "new branch edits prior source"];
+  [t expect: [noRedo at: "buffer"] equals: "ax" describes: "stale redo is unavailable"];
+  [t expect: [noRedo at: "status"] equals: "nothing to redo" describes: "redo failure is explicit"];
+  [t expect: [[many at: "undo"] size] equals: 128 describes: "undo retention is bounded"]]];
+
+[e test: "failed evaluation preserves edit undo while successful evaluation starts fresh" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let invalid := [Digla insertText: "[1 +" into: initial];
+  let failed := [Digla submitIn: invalid];
+  let recovered := [Digla undoEditIn: failed];
+  let valid := [Digla insertText: "[1 + 2]" into: recovered];
+  let evaluated := [Digla submitIn: valid];
+  let noUndo := [Digla undoEditIn: evaluated];
+  [t expect: [failed at: "buffer"] equals: "[1 +" describes: "failed source remains"];
+  [t expect: [recovered at: "buffer"] equals: "" describes: "failed source can be undone"];
+  [t expect: [evaluated at: "lastResult"] equals: 3 describes: "valid source evaluates"];
+  [t expect: [noUndo at: "buffer"] equals: "" describes: "success does not resurrect source"];
+  [t expect: [noUndo at: "status"] equals: "nothing to undo"
+    describes: "evaluation is an explicit undo boundary"]]];
+
 [e test: "editor viewport follows a cursor outside the visible logical rows" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let s0 := [Digla editorStateFor: config];
@@ -115,7 +167,7 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
   let initial0 := [Digla editorStateFor: config];
   let initial1 := [initial0 at: "history" put: #["alpha" "alpine" "beta"]];
-  let initial2 := [initial1 at: "buffer" put: "draft"];
+  let initial2 := [Digla insertText: "draft" into: initial1];
   let initial := [initial2 at: "cursor" put: 2];
   let opened := [Digla handleKey: 18 character: "" state: initial];
   let noMatch := [Digla handleKey: 0 character: "x" state: opened];
@@ -128,7 +180,13 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [cancelled at: "historySearch"] equals: nil describes: "Escape closes search"];
   [t expect: [cancelled at: "buffer"] equals: "draft" describes: "draft restored exactly"];
   [t expect: [cancelled at: "cursor"] equals: 2 describes: "draft cursor restored"];
-  [t expect: [cancelled at: "running"] equals: true describes: "cancel does not quit"]]];
+  [t expect: [cancelled at: "running"] equals: true describes: "cancel does not quit"];
+  let reopened := [Digla handleKey: 18 character: "" state: cancelled];
+  let undone := [Digla handleKey: 26 character: "" state: reopened];
+  [t expect: [undone at: "historySearch"] equals: nil
+    describes: "undo first leaves transient search"];
+  [t expect: [undone at: "buffer"] equals: ""
+    describes: "undo then restores the prior source checkpoint"]]];
 
 [e test: "structured output is inserted before the evaluation value" do: [:t |
   let events := #[
@@ -180,7 +238,7 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let config := [Digla configAtPath: nil environment: [Map new]
     args: #["--workspace" "examples/digla"]];
   let initial0 := [Digla editorStateFor: config];
-  let initial1 := [initial0 at: "buffer" put: "definitionFor:"];
+  let initial1 := [Digla insertText: "definitionFor:" into: initial0];
   let initial := [initial1 at: "cursor" put: 4];
   let opened := [Digla handleKey: 65533 character: "" state: initial];
   let document := [opened at: "document"];
@@ -193,10 +251,19 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let edited := [Digla insertText: "x" into: opened];
   [t expect: [[edited at: "document"] at: "dirty"] equals: true
     describes: "authored buffer edit is explicit"];
-  let returned := [Digla handleKey: 65531 character: "" state: edited];
+  let reverted := [Digla undoEditIn: edited];
+  let reapplied := [Digla redoEditIn: reverted];
+  [t expect: [[reverted at: "document"] at: "dirty"] equals: false
+    describes: "authored undo restores document cleanliness"];
+  [t expect: [reapplied at: "buffer"] equals: [edited at: "buffer"]
+    describes: "authored redo stays in the opened document"];
+  let returned := [Digla handleKey: 65531 character: "" state: reapplied];
   [t expect: [returned at: "buffer"] equals: "definitionFor:" describes: "F5 restores source"];
   [t expect: [returned at: "cursor"] equals: 4 describes: "F5 restores cursor"];
-  [t expect: [[returned at: "navigation"] size] equals: 0 describes: "navigation stack pops"]]];
+  [t expect: [[returned at: "navigation"] size] equals: 0 describes: "navigation stack pops"];
+  let scratchUndo := [Digla undoEditIn: returned];
+  [t expect: [scratchUndo at: "buffer"] equals: ""
+    describes: "return restores the scratch document's independent undo stack"]]];
 
 [e test: "terminal commands inspect globals and the last result without eval" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
@@ -309,7 +376,10 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   [t expect: [[selectedLabel = firstLabel] not] equals: true describes: "Tab cycles the menu"];
   [t expect: [accepted at: "buffer"] equals: selectedLabel describes: "Enter accepts selection"];
   [t expect: [accepted at: "cursor"] equals: [selectedLabel size] describes: "cursor follows insertion"];
-  [t expect: [accepted at: "completion"] equals: nil describes: "acceptance closes menu"]]];
+  [t expect: [accepted at: "completion"] equals: nil describes: "acceptance closes menu"];
+  let undone := [Digla undoEditIn: accepted];
+  [t expect: [undone at: "buffer"] equals: "DiglaCompletion"
+    describes: "completion acceptance is one reversible source edit"]]];
 
 [e test: "Escape dismisses completion before it quits the editor" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];

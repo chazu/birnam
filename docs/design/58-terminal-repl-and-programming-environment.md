@@ -76,7 +76,10 @@ launches the Termbox client; Escape exits while idle (and interrupts an active
 remote evaluation), character input edits the
 buffer, Ctrl-J inserts a newline, Enter evaluates the current Birnam form
 against the local image, and history is recalled with Ctrl-P/Ctrl-N or the
-arrow keys. Ctrl-R opens a terminal-independent substring search: typing narrows,
+arrow keys. Ctrl-Z/Ctrl-Y provide bounded terminal-independent undo/redo,
+including selection replacements and completion acceptance, without parser or
+runtime work on the typing path. Ctrl-R opens a terminal-independent substring
+search: typing narrows,
 Ctrl-R cycles older matches, Enter accepts without evaluation, and Escape restores
 the exact pre-search draft. The existing `history=false` setting now disables
 retention. The model is headless and stores source cursors as UTF-8 byte
@@ -276,6 +279,8 @@ EditorBuffer
   diagnosticsDirty: Boolean
   completion: optional CompletionMenu
   assistance: optional AssistancePanel
+  undo: [EditFrame]
+  redo: [EditFrame]
   viewport: Viewport
 
 Transcript
@@ -439,6 +444,10 @@ The core invariants are:
    byte-offset record; the project-local native frame scanner produces it alongside
    lexical spans in the same pass, ignoring strings and comments. Ctrl-R reverse
    history search is likewise pure editor state and honors the client history opt-out.
+   Ctrl-Z/Ctrl-Y restore terminal-independent source frames from bounded 128-entry
+   stacks. The frames retain byte cursor, selection, diagnostics, document dirtiness,
+   and viewport state; evaluation/history boundaries and F3/F5 document navigation
+   keep their branches explicit.
 4. **Compatibility remote session — superseded by the framed seam.** The
    prompt-oriented socket REPL cannot preserve structured values, errors, or
    capabilities without ambiguous text parsing. Keep it compatible for comint
@@ -615,6 +624,12 @@ Reverse search was also checked in the real PTY after evaluating `[1 + 2]`: Ctrl
 changed the header and prompt, displayed the prior form without evaluating it, and
 kept the active bracket pair visible. Escape restored the empty draft while keeping
 the editor open; the following Escape shut Termbox down cleanly.
+
+Undo/redo was checked through the same real Termbox path: one coalesced `abc`
+burst produced a three-byte buffer, Ctrl-Z restored the empty source with `undo`
+status, Ctrl-Y restored all three bytes with `redo` status, and Escape released
+the terminal cleanly. Three warm framed-session launches after this slice took
+3.02-3.03 s, remaining within 0.06 s of the preceding 2.97-2.99 s checkpoint.
 
 ## 9. Open decisions
 

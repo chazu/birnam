@@ -26,7 +26,9 @@
   let s14 := [s13 at: "projectSnapshot" put: nil];
   let s15 := [s14 at: "evaluation" put: nil];
   let s16 := [s15 at: "historySearch" put: nil];
-  [s16 at: "viewport" put: { "editorTopRow" -> 0, "transcriptOffset" -> 0 }]] doc:
+  let s17 := [s16 at: "undo" put: #[]];
+  let s18 := [s17 at: "redo" put: #[]];
+  [s18 at: "viewport" put: { "editorTopRow" -> 0, "transcriptOffset" -> 0 }]] doc:
   "Create the serializable editor state for a local or remote Digla session."];
 
 [Reflect defineMethod: #selectionRangeIn: on: Digla as: [:self :state |
@@ -72,6 +74,86 @@
   ] doc:
   "Mark cached parser diagnostics and the active authored document dirty after a source edit." ];
 
+[Reflect defineMethod: #editorEditFrameFor: on: Digla as: [:self :state |
+  { "buffer" -> [state at: "buffer"],
+    "cursor" -> [state at: "cursor"],
+    "selection" -> [state at: "selection"],
+    "document" -> [state at: "document"],
+    "diagnostics" -> [state at: "diagnostics"],
+    "diagnosticsDirty" -> [state at: "diagnosticsDirty"],
+    "viewport" -> [state at: "viewport"] }
+  ] doc:
+  "Capture the terminal-independent source state restored by one undo or redo step." ];
+
+[Reflect defineMethod: #boundedEditStackAdding:to: on: Digla as: [:self :frame :stack |
+  let added := [stack add: frame];
+  [[[added size] > 128]
+    ifTrue: [| [added copyFrom: [[added size] - 128] to: [added size]]]
+    ifFalse: [| added]]
+  ] doc:
+  "Append one edit frame while retaining at most 128 source snapshots." ];
+
+[Reflect defineMethod: #checkpointEditIn: on: Digla as: [:self :state |
+  let frame := [self editorEditFrameFor: state];
+  let undo := [self boundedEditStackAdding: frame to: [state at: "undo"]];
+  let withUndo := [state at: "undo" put: undo];
+  [withUndo at: "redo" put: #[]]
+  ] doc:
+  "Record one source mutation and invalidate the redo branch without parsing or runtime work." ];
+
+[Reflect defineMethod: #restoreEditorEditFrame:status:in: on: Digla as:
+  [:self :frame :status :state |
+    let s1 := [state at: "buffer" put: [frame at: "buffer"]];
+    let s2 := [s1 at: "cursor" put: [frame at: "cursor"]];
+    let s3 := [s2 at: "selection" put: [frame at: "selection"]];
+    let s4 := [s3 at: "document" put: [frame at: "document"]];
+    let s5 := [s4 at: "diagnostics" put: [frame at: "diagnostics"]];
+    let s6 := [s5 at: "diagnosticsDirty" put: [frame at: "diagnosticsDirty"]];
+    let s7 := [s6 at: "viewport" put: [frame at: "viewport"]];
+    let s8 := [s7 at: "historyIndex" put: nil];
+    let s9 := [s8 at: "historySearch" put: nil];
+    let s10 := [s9 at: "completion" put: nil];
+    let s11 := [s10 at: "assistance" put: nil];
+    [s11 at: "status" put: status]
+  ] doc:
+  "Restore one source frame while leaving transcript and runtime-session state untouched." ];
+
+[Reflect defineMethod: #clearEditHistoryIn: on: Digla as: [:self :state |
+  let next := [state at: "undo" put: #[]];
+  [next at: "redo" put: #[]]
+  ] doc:
+  "Start a fresh undo branch at an evaluation, command, history, or document boundary." ];
+
+[Reflect defineMethod: #undoEditIn: on: Digla as: [:self :state |
+  let undo := [state at: "undo"];
+  [[undo isEmpty]
+    ifTrue: [| [state at: "status" put: "nothing to undo"]]
+    ifFalse: [|
+      let frame := [undo last];
+      let remaining := [undo copyFrom: 0 to: [[undo size] - 1]];
+      let current := [self editorEditFrameFor: state];
+      let redo := [self boundedEditStackAdding: current to: [state at: "redo"]];
+      let s1 := [state at: "undo" put: remaining];
+      let s2 := [s1 at: "redo" put: redo];
+      [self restoreEditorEditFrame: frame status: "undo" in: s2]]]
+  ] doc:
+  "Restore the preceding source edit without changing transcript or live-image state." ];
+
+[Reflect defineMethod: #redoEditIn: on: Digla as: [:self :state |
+  let redo := [state at: "redo"];
+  [[redo isEmpty]
+    ifTrue: [| [state at: "status" put: "nothing to redo"]]
+    ifFalse: [|
+      let frame := [redo last];
+      let remaining := [redo copyFrom: 0 to: [[redo size] - 1]];
+      let current := [self editorEditFrameFor: state];
+      let undo := [self boundedEditStackAdding: current to: [state at: "undo"]];
+      let s1 := [state at: "redo" put: remaining];
+      let s2 := [s1 at: "undo" put: undo];
+      [self restoreEditorEditFrame: frame status: "redo" in: s2]]]
+  ] doc:
+  "Restore the next source edit on the current undo branch." ];
+
 [Reflect defineMethod: #refreshDiagnosticsIn: on: Digla as: [:self :state |
   let diagnostics := [Lsp staticDiagnosticsOf: [state at: "buffer"]];
   let next := [state at: "diagnostics" put: diagnostics];
@@ -99,12 +181,13 @@
   [[range isNil]
     ifTrue: [| nil]
     ifFalse: [|
-      let buffer := [state at: "buffer"];
+      let editing := [self checkpointEditIn: state];
+      let buffer := [editing at: "buffer"];
       let start := [range at: "start"];
       let finish := [range at: "end"];
       let prefix := [buffer copyFrom: 0 to: start];
       let suffix := [buffer copyFrom: finish to: [buffer size]];
-      let s1 := [state at: "buffer" put: [[prefix , text] , suffix]];
+      let s1 := [editing at: "buffer" put: [[prefix , text] , suffix]];
       let s2 := [s1 at: "cursor" put: [start + [text size]]];
       let s3 := [s2 at: "selection" put: nil];
       let s4 := [s3 at: "historyIndex" put: nil];
@@ -170,13 +253,14 @@
   [[replaced notNil]
     ifTrue: [| replaced]
     ifFalse: [|
-      let buffer := [state at: "buffer"];
-      let cursor := [state at: "cursor"];
+      let editing := [self checkpointEditIn: state];
+      let buffer := [editing at: "buffer"];
+      let cursor := [editing at: "cursor"];
       let prefix := [buffer copyFrom: 0 to: cursor];
       let suffix := [buffer copyFrom: cursor to: [buffer size]];
       let nextBuffer := [[prefix , text] , suffix];
       let nextCursor := [cursor + [text size]];
-      let s1 := [state at: "buffer" put: nextBuffer];
+      let s1 := [editing at: "buffer" put: nextBuffer];
       let s2 := [s1 at: "cursor" put: nextCursor];
       let s3 := [s2 at: "historyIndex" put: nil];
       let s4 := [s3 at: "status" put: "editing"];
@@ -193,10 +277,11 @@
       [[cursor = 0]
         ifTrue: [| state]
         ifFalse: [|
+          let editing := [self checkpointEditIn: state];
           let previous := [self previousBoundaryIn: buffer at: cursor];
           let prefix := [buffer copyFrom: 0 to: previous];
           let suffix := [buffer copyFrom: cursor to: [buffer size]];
-          let s1 := [state at: "buffer" put: [prefix , suffix]];
+          let s1 := [editing at: "buffer" put: [prefix , suffix]];
           let s2 := [s1 at: "cursor" put: previous];
           let s3 := [s2 at: "historyIndex" put: nil];
           let s4 := [s3 at: "status" put: "editing"];
@@ -213,10 +298,11 @@
       [[cursor >= [buffer size]]
         ifTrue: [| state]
         ifFalse: [|
+          let editing := [self checkpointEditIn: state];
           let next := [self nextBoundaryIn: buffer at: cursor];
           let prefix := [buffer copyFrom: 0 to: cursor];
           let suffix := [buffer copyFrom: next to: [buffer size]];
-          let s1 := [state at: "buffer" put: [prefix , suffix]];
+          let s1 := [editing at: "buffer" put: [prefix , suffix]];
           let s2 := [s1 at: "historyIndex" put: nil];
           let s3 := [s2 at: "status" put: "editing"];
           [self markDiagnosticsDirtyIn: s3]]]]]] doc:
@@ -495,8 +581,9 @@
   let input := [state at: "buffer"];
   let result := [self commandResultFor: input state: state];
   let next := [state at: "session" put: [result at: "session"]];
-  [self recordSubmission: input shown: [result at: "text"]
-    status: [result at: "status"] in: next]
+  let recorded := [self recordSubmission: input shown: [result at: "text"]
+    status: [result at: "status"] in: next];
+  [self clearEditHistoryIn: recorded]
   ] doc:
   "Run one Digla editor command and append its result to the transcript." ];
 
@@ -548,7 +635,8 @@
       ifTrue: [|
         let copied := [result at: "value"];
         let s1 := [withError at: "lastResult" put: [copied at: "value"]];
-        [s1 at: "hasLastResult" put: true]]
+        let s2 := [s1 at: "hasLastResult" put: true];
+        [self clearEditHistoryIn: s2]]
       ifFalse: [| [self focusEvaluationFailure: result input: input in: withError]]]
   ] doc:
   "Apply a structured evaluation reply after either synchronous or incremental delivery." ];
@@ -688,7 +776,8 @@
         ifFalse: [|
           [[index >= count]
             ifTrue: [|
-              let s1 := [state at: "historyIndex" put: nil];
+              let cleared := [self clearEditHistoryIn: state];
+              let s1 := [cleared at: "historyIndex" put: nil];
               let s2 := [s1 at: "buffer" put: ""];
               let s3 := [s2 at: "cursor" put: 0];
               let s4 := [s3 at: "selection" put: nil];
@@ -697,7 +786,8 @@
               [s6 at: "status" put: "editing"]]
             ifFalse: [|
               let text := [history at: index];
-              let s1 := [state at: "historyIndex" put: index];
+              let cleared := [self clearEditHistoryIn: state];
+              let s1 := [cleared at: "historyIndex" put: index];
               let s2 := [s1 at: "buffer" put: text];
               let s3 := [s2 at: "cursor" put: [text size]];
               let s4 := [s3 at: "selection" put: nil];
@@ -777,7 +867,8 @@
 
 [Reflect defineMethod: #acceptHistorySearchIn: on: Digla as: [:self :state |
   let next := [state at: "historySearch" put: nil];
-  [self markDiagnosticsDirtyIn: [next at: "status" put: "history match"]]
+  let cleared := [self clearEditHistoryIn: next];
+  [self markDiagnosticsDirtyIn: [cleared at: "status" put: "history match"]]
   ] doc:
   "Accept the displayed history match as editable source without evaluating it." ];
 
@@ -786,7 +877,11 @@
     let search := [state at: "historySearch"];
     [[key = 27]
       ifTrue: [| [self cancelHistorySearchIn: state]]
-      ifFalse: [| [[key = 13]
+      ifFalse: [| [[key = 26]
+        ifTrue: [| [self undoEditIn: [self cancelHistorySearchIn: state]]]
+        ifFalse: [| [[key = 25]
+          ifTrue: [| [self redoEditIn: [self cancelHistorySearchIn: state]]]
+          ifFalse: [| [[key = 13]
         ifTrue: [| [self acceptHistorySearchIn: state]]
         ifFalse: [| [[key = 18]
           ifTrue: [| [self cycleHistorySearchIn: state]]
@@ -804,7 +899,7 @@
                 ifFalse: [|
                   let query := [[search at: "query"] , character];
                   [self applyHistorySearchQuery: query
-                    before: [[[state at: "history"] size] - 1] search: search in: state]]]]]]]]]]]
+                    before: [[[state at: "history"] size] - 1] search: search in: state]]]]]]]]]]]]]]]
   ] doc:
   "Dispatch editing keys while reverse history search owns the transient buffer." ];
 
@@ -879,7 +974,9 @@
   let f4 := [f3 at: "document" put: [state at: "document"]];
   let f5 := [f4 at: "diagnostics" put: [state at: "diagnostics"]];
   let f6 := [f5 at: "diagnosticsDirty" put: [state at: "diagnosticsDirty"]];
-  [f6 at: "viewport" put: [state at: "viewport"]]
+  let f7 := [f6 at: "viewport" put: [state at: "viewport"]];
+  let f8 := [f7 at: "undo" put: [state at: "undo"]];
+  [f8 at: "redo" put: [state at: "redo"]]
   ] doc:
   "Capture the terminal-independent document state needed to return from source navigation." ];
 
@@ -901,7 +998,9 @@
   let s8 := [s7 at: "diagnostics" put: #[]];
   let s9 := [s8 at: "diagnosticsDirty" put: true];
   let s10 := [s9 at: "viewport" put: resetViewport];
-  [s10 at: "status" put: ["opened #" , [result at: "name"] , " in #",
+  let s11 := [s10 at: "undo" put: #[]];
+  let s12 := [s11 at: "redo" put: #[]];
+  [s12 at: "status" put: ["opened #" , [result at: "name"] , " in #",
     [result at: "module"]]]
   ] doc:
   "Open an authored source result while retaining the current document on a navigation stack." ];
@@ -921,7 +1020,9 @@
       let s6 := [s5 at: "diagnostics" put: [frame at: "diagnostics"]];
       let s7 := [s6 at: "diagnosticsDirty" put: [frame at: "diagnosticsDirty"]];
       let s8 := [s7 at: "viewport" put: [frame at: "viewport"]];
-      [s8 at: "status" put: "returned from definition"]]]
+      let s9 := [s8 at: "undo" put: [frame at: "undo"]];
+      let s10 := [s9 at: "redo" put: [frame at: "redo"]];
+      [s10 at: "status" put: "returned from definition"]]]
   ] doc:
   "Restore the previous source buffer, cursor, diagnostics, and viewport after F3 navigation." ];
 
@@ -977,11 +1078,12 @@
         ifFalse: [|
           let item := [items at: [menu at: "index"]];
           let label := [item at: "label"];
-          let buffer := [state at: "buffer"];
+          let editing := [self checkpointEditIn: state];
+          let buffer := [editing at: "buffer"];
           let prefix := [buffer copyFrom: 0 to: [menu at: "start"]];
           let suffix := [buffer copyFrom: [menu at: "end"] to: [buffer size]];
           let nextBuffer := [[prefix , label] , suffix];
-          let s1 := [state at: "buffer" put: nextBuffer];
+          let s1 := [editing at: "buffer" put: nextBuffer];
           let s2 := [s1 at: "cursor" put: [[menu at: "start"] + [label size]]];
           let s3 := [s2 at: "historyIndex" put: nil];
           let s4 := [s3 at: "completion" put: nil];
@@ -1041,7 +1143,9 @@
   let pageUp := [[key = 65519] ifTrue: [| [self scrollTranscriptBy: 10 in: state]] ifFalse: [| state]];
   let pageDown := [[key = 65518] ifTrue: [| [self scrollTranscriptBy: -10 in: pageUp]] ifFalse: [| pageUp]];
   let s0 := [self applyMovementKey: key extend: shift in: pageDown];
-  let s1 := [[key = 27] ifTrue: [| [s0 at: "running" put: false]] ifFalse: [| s0]];
+  let s0a := [[key = 26] ifTrue: [| [self undoEditIn: s0]] ifFalse: [| s0]];
+  let s0b := [[key = 25] ifTrue: [| [self redoEditIn: s0a]] ifFalse: [| s0a]];
+  let s1 := [[key = 27] ifTrue: [| [s0b at: "running" put: false]] ifFalse: [| s0b]];
   let backspace := [[key = 8] | [key = 127]];
   let s2 := [backspace ifTrue: [| [self backspaceIn: s1]] ifFalse: [| s1]];
   let s3 := [[key = 65522] ifTrue: [| [self deleteForwardIn: s2]] ifFalse: [| s2]];

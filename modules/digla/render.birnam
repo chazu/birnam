@@ -290,7 +290,7 @@
     ifTrue: [| "Digla | evaluating | Ctrl-C/Esc interrupt | PgUp/Dn scroll"]
     ifFalse: [| [searching
       ifTrue: [| "Digla | reverse search | type query | Ctrl-R older | Enter accept | Esc cancel"]
-      ifFalse: [| "Digla | Ctrl-R history | Tab complete | F1 hover F2 sig F3 def F4 check F5 back"]]]];
+      ifFalse: [| "Digla | Ctrl-Z/Y undo/redo | Ctrl-R history | Tab complete | F1-5 help/nav"]]]];
   [Termbox printX: 0 y: 0 fg: 8 bg: 0 str: header];
   let transcriptLines := [self transcriptLines: [visibleState at: "transcript"] width: width];
   let availableTranscriptRows := [start - 1];
