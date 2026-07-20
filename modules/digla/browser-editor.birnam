@@ -1,0 +1,144 @@
+// browser-editor.birnam — browser/session and editor-state integration.
+
+[Reflect defineMethod: #browseCommand:state: on: Digla as: [:self :words :state |
+  let historical := [[words size] = 3];
+  let basisText := [words at: 2 ifAbsent: [| ""]];
+  let basis := [basisText asInteger];
+  let validArity := [[[words size] = 2] | historical];
+  let validBasis := [[historical not] | [basis notNil]];
+  [[validArity & validBasis]
+    ifTrue: [|
+      let name := [words at: 1];
+      let params0 := {
+        "target" -> name,
+        "sections" -> #["object" "facts" "methods" "changes"] };
+      let params1 := [historical
+        ifTrue: [| [params0 at: "asOf" put: basis]]
+        ifFalse: [| params0]];
+      let params := [historical
+        ifTrue: [| [params1 at: "since" put: basis]]
+        ifFalse: [| params1]];
+      let reply := [self callSession: "birnam/snapshot" params: params
+        in: [state at: "session"]];
+      let error := [self sessionReplyErrorText: reply];
+      [[error notNil]
+        ifTrue: [| { "text" -> error, "status" -> "command error",
+          "session" -> [reply at: "session"], "browser" -> nil }]
+        ifFalse: [|
+          let snapshot := [[self sessionResultOf: reply] at: "snapshot"];
+          let browser := [self browserForSnapshot: snapshot];
+          { "text" -> ["opened browser #" , name],
+            "status" -> [self browserStatusTextFor: browser],
+            "session" -> [reply at: "session"], "browser" -> browser }]]]
+    ifFalse: [| { "text" -> "usage: :browse GLOBAL [BASIS]", "status" -> "command error",
+      "session" -> [state at: "session"], "browser" -> nil }]]
+  ] doc:
+  "Open a terminal-independent browser over one named live-image snapshot." ];
+
+[Reflect defineMethod: #installBrowser:in: on: Digla as: [:self :browser :state |
+  let next := [state at: "browser" put: browser];
+  [next at: "status" put: [self browserStatusTextFor: browser]]
+  ] doc:
+  "Install updated pure browser state and expose its compact status in the editor." ];
+
+[Reflect defineMethod: #requestBrowserDetailIn: on: Digla as: [:self :state |
+  let browser := [state at: "browser"];
+  let section := [browser at: "section"];
+  let item := [self browserSelectedItemIn: browser];
+  [[[section = "methods"] & [item notNil]]
+    ifTrue: [|
+      let target := [browser at: "targetName"];
+      [[target isNil]
+        ifTrue: [| [state at: "status" put: "source detail requires a named target"]]
+        ifFalse: [|
+          let selector := [item at: "selector"];
+          let reply := [self callSession: "birnam/snapshot" params: {
+            "target" -> target, "sections" -> #["object" "source"],
+            "selector" -> selector, "includeSource" -> true }
+            in: [state at: "session"]];
+          let error := [self sessionReplyErrorText: reply];
+          [[error notNil]
+            ifTrue: [|
+              let withSession := [state at: "session" put: [reply at: "session"]];
+              [withSession at: "status" put: ["source error: " , error]]]
+            ifFalse: [|
+              let snapshot := [[self sessionResultOf: reply] at: "snapshot"];
+              let detailed := [self browserWithDetail: snapshot in: browser];
+              let withSession := [state at: "session" put: [reply at: "session"]];
+              let withBrowser := [withSession at: "browser" put: detailed];
+              [withBrowser at: "status" put: ["source #" , selector]]]]]]]
+    ifFalse: [| [state at: "status" put: "Enter opens source for a selected method"]]]
+  ] doc:
+  "Request one selected method's source through the runtime-session snapshot seam." ];
+
+[Reflect defineMethod: #handleBrowserDetailKey:state: on: Digla as:
+  [:self :key :state |
+    let browser := [state at: "browser"];
+    [[key = 27]
+      ifTrue: [|
+        let closed := [self closeBrowserDetailIn: browser];
+        [self installBrowser: closed in: state]]
+      ifFalse: [|
+        let delta := [0 asCell];
+        [[[key = 65517] | [key = 16]] ifTrue: [| [delta set: -1]]];
+        [[[key = 65516] | [key = 14]] ifTrue: [| [delta set: 1]]];
+        [[key = 65519] ifTrue: [| [delta set: -10]]];
+        [[key = 65518] ifTrue: [| [delta set: 10]]];
+        [[key = 65521]
+          ifTrue: [|
+            let top := [browser at: "detailTopRow" put: 0];
+            [self installBrowser: top in: state]]
+          ifFalse: [|
+            let amount := [delta value];
+            [[amount = 0]
+              ifTrue: [| state]
+              ifFalse: [|
+                let scrolled := [self scrollBrowserDetailBy: amount in: browser];
+                [self installBrowser: scrolled in: state]]]]]]]
+  ] doc:
+  "Navigate copied source detail without editing the underlying source document." ];
+
+[Reflect defineMethod: #handleBrowserKey:modifier:character:state: on: Digla as:
+  [:self :key :modifier :character :state |
+    let browser := [state at: "browser"];
+    let detail := [browser at: "detail"];
+    [[detail notNil]
+      ifTrue: [| [self handleBrowserDetailKey: key state: state]]
+      ifFalse: [|
+        let outcome := [nil asCell];
+        [[key = 27] ifTrue: [|
+          let closed := [state at: "browser" put: nil];
+          [outcome set: [closed at: "status" put: "browser closed"]]]];
+        [[[[outcome value] isNil] & [[key = 9] | [key = 65514]]] ifTrue: [|
+          let changed := [self cycleBrowserSectionBy: 1 in: browser];
+          [outcome set: [self installBrowser: changed in: state]]]];
+        [[[[outcome value] isNil] & [[key = 65513] | [key = 65515]]] ifTrue: [|
+          let changed := [self cycleBrowserSectionBy: -1 in: browser];
+          [outcome set: [self installBrowser: changed in: state]]]];
+        [[[[outcome value] isNil] & [[key = 65517] | [key = 16]]] ifTrue: [|
+          let changed := [self moveBrowserSelectionBy: -1 in: browser];
+          [outcome set: [self installBrowser: changed in: state]]]];
+        [[[[outcome value] isNil] & [[key = 65516] | [key = 14]]] ifTrue: [|
+          let changed := [self moveBrowserSelectionBy: 1 in: browser];
+          [outcome set: [self installBrowser: changed in: state]]]];
+        [[[[outcome value] isNil] & [key = 13]] ifTrue: [|
+          [outcome set: [self requestBrowserDetailIn: state]]]];
+        [[[[outcome value] isNil] & [key = 19]] ifTrue: [|
+          [outcome set: [state at: "status" put: "close browser before saving"]]]];
+        [[[[outcome value] isNil] & [key = 21]] ifTrue: [|
+          let changed := [self browserWithQuery: "" in: browser];
+          [outcome set: [self installBrowser: changed in: state]]]];
+        let backspace := [[key = 8] | [key = 127]];
+        [[[[outcome value] isNil] & backspace] ifTrue: [|
+          let query := [browser at: "query"];
+          let boundary := [self previousBoundaryIn: query at: [query size]];
+          let shortened := [query copyFrom: 0 to: boundary];
+          let changed := [self browserWithQuery: shortened in: browser];
+          [outcome set: [self installBrowser: changed in: state]]]];
+        [[[[outcome value] isNil] & [[character isEmpty] not]] ifTrue: [|
+          let changed := [self browserWithQuery: [[browser at: "query"] , character]
+            in: browser];
+          [outcome set: [self installBrowser: changed in: state]]]];
+        [[[outcome value] isNil] ifTrue: [| state] ifFalse: [| [outcome value]]]]]
+  ] doc:
+  "Dispatch terminal keys into the copied-value browser while leaving editor source untouched." ];

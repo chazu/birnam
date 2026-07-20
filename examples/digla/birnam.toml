@@ -46,6 +46,10 @@ files = ["../../wrapped/termbox2/termbox2.birnam"]
 
 [[module]]
 entry = "../../modules/digla/app.birnam"
+files = [
+  "../../modules/digla/browser.birnam",
+  "../../modules/digla/browser-editor.birnam",
+]
 
 [[wrapped]]
 name = "termbox2"

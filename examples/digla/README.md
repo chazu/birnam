@@ -39,6 +39,14 @@ still exactly match the bytes Digla loaded. An external change blocks the save
 without changing either copy; scratch buffers have no implicit save path. A
 successful save marks the document clean and starts a fresh undo branch. Saving
 does not evaluate or activate the source.
+`:browse NAME [BASIS]` opens a full-screen, read-only browser over the same copied-value
+snapshot used by framed clients. It starts with effective methods; type to filter
+the cached section, use Tab or Left/Right to move between facts, methods, changes,
+and warnings, and use Up/Down to select. Supplying a Store basis adds historical
+facts and current changes as explicit sections. Enter requests only the selected method's
+recorded source through the runtime session. Source detail soft-wraps and scrolls
+with Up/Down or Page Up/Page Down. Escape returns from detail, then closes the
+browser without changing the editor buffer.
 Tab opens completion for scoped source
 names, Birnam keywords, and bounded live-image globals; Tab/Down and Up move
 through the menu, Enter accepts, and Escape dismisses it. F1 opens source/runtime
@@ -73,6 +81,7 @@ Runtime operations use a transport-neutral session rather than calling the
 evaluator from the terminal model. The current commands are:
 
 ```text
+:browse NAME [BASIS]      explore facts, methods, and optional changes
 :inspect NAME [SELECTOR] inspect a named global or one method's recorded source
 :inspect                 inspect the last successful result
 :changes NAME BASIS      compare historical facts with changes since BASIS

@@ -1,3 +1,7 @@
-// app.birnam — one project root for Digla's optional runtime adapters.
+// app.birnam — one project root for Digla's optional runtime adapters and UI.
 
-[Module named: #diglaApp requires: #[#diglaSocket #termbox]]
+[Module named: #diglaApp requires: #[#diglaSocket #termbox]];
+// Settle allocations at the dependency boundary before installing the browser's
+// methods. This keeps automatic collection away from the active-generation
+// handoff while preserving normal GC for the running application.
+[System gc];

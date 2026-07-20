@@ -259,7 +259,173 @@
   ] doc:
   "Clamp a tail-relative transcript offset and answer its half-open visible row window." ];
 
-[Reflect defineMethod: #renderTerminal: on: Digla as: [:self :state |
+[Reflect defineMethod: #browserSectionTabsFor: on: Digla as: [:self :browser |
+  let sb := [StringBuilder new];
+  let active := [browser at: "section"];
+  [[browser at: "sections"] do: [:section |
+    let label := [[section = active]
+      ifTrue: [| ["[" , section , "]"]]
+      ifFalse: [| section]];
+    [sb add: label];
+    [sb add: "  "]]];
+  [sb asString]
+  ] doc:
+  "Project browser sections to compact tabs without querying snapshot data." ];
+
+[Reflect defineMethod: #browserListRowsFor:limit: on: Digla as:
+  [:self :browser :requestedLimit |
+    let items := [browser at: "items"];
+    let count := [items size];
+    [[requestedLimit <= 0]
+      ifTrue: [| #[]]
+      ifFalse: [| [[count = 0]
+        ifTrue: [| #[{ "text" -> "  (no matching items)", "selected" -> false }]]
+        ifFalse: [|
+          let limit := [count min: requestedLimit];
+          let index := [browser at: "index"];
+          let desiredStart := [[index >= limit] ifTrue: [| [[index - limit] + 1]] ifFalse: [| 0]];
+          let latestStart := [count - limit];
+          let start := [[desiredStart > latestStart]
+            ifTrue: [| latestStart]
+            ifFalse: [| desiredStart]];
+          let rows := [#[] asCell];
+          [start to: [[start + limit] - 1] do: [:i |
+            let item := [items at: i];
+            let selected := [i = index];
+            let marker := [selected ifTrue: [| "> "] ifFalse: [| "  "]];
+            let label := [self browserItemLabel: item section: [browser at: "section"]];
+            [rows set: [[rows value] add: {
+              "text" -> [marker , label], "selected" -> selected,
+              "itemIndex" -> i }]]]];
+          [rows value]]]]]
+  ] doc:
+  "Project a bounded browser item window while retaining the selected row." ];
+
+[Reflect defineMethod: #browserDetailTextFor: on: Digla as: [:self :browser |
+  let snapshot := [browser at: "detail"];
+  let methods := [snapshot at: "methods" ifAbsent: [| #[]]];
+  let method := [methods at: 0 ifAbsent: [| nil]];
+  let source := [[method isNil]
+    ifTrue: [| nil]
+    ifFalse: [| [method at: "source" ifAbsent: [| nil]]]];
+  [[source notNil]
+    ifTrue: [| source]
+    ifFalse: [|
+      let warnings := [snapshot at: "warnings" ifAbsent: [| #[]]];
+      [[warnings isEmpty]
+        ifTrue: [| "(source unavailable)"]
+        ifFalse: [|
+          let sb := [StringBuilder new];
+          [warnings do: [:warning | [sb addLine: warning]]];
+          [sb asString]]]]]
+  ] doc:
+  "Return copied method source or truthful snapshot warnings for browser detail." ];
+
+[Reflect defineMethod: #browserDetailTitleFor: on: Digla as: [:self :browser |
+  let snapshot := [browser at: "detail"];
+  let method := [[snapshot at: "methods" ifAbsent: [| #[]]] at: 0 ifAbsent: [| nil]];
+  [[method isNil]
+    ifTrue: [| "source"]
+    ifFalse: [| ["source #" , [method at: "selector"]]]]
+  ] doc:
+  "Return the selected copied method label for the source-detail heading." ];
+
+[Reflect defineMethod: #browserDetailProjectionFor:width:limit: on: Digla as:
+  [:self :browser :width :requestedLimit |
+    let limit := [[requestedLimit < 0] ifTrue: [| 0] ifFalse: [| requestedLimit]];
+    let title := [self browserDetailTitleFor: browser];
+    let text := [self browserDetailTextFor: browser];
+    let content := [self transcriptLines: #[text] width: width];
+    let available := [[limit > 0] ifTrue: [| [limit - 1]] ifFalse: [| 0]];
+    let maxTop0 := [[content size] - available];
+    let maxTop := [[maxTop0 < 0] ifTrue: [| 0] ifFalse: [| maxTop0]];
+    let requestedTop := [browser at: "detailTopRow"];
+    let top := [[requestedTop > maxTop] ifTrue: [| maxTop] ifFalse: [| requestedTop]];
+    let finish := [[[top + available] < [content size]]
+      ifTrue: [| [top + available]]
+      ifFalse: [| [content size]]];
+    let rows := [#[] asCell];
+    [[limit > 0] ifTrue: [|
+      [rows set: [[rows value] add: { "text" -> title, "selected" -> false }]]]];
+    [[finish > top] ifTrue: [|
+      [top to: [finish - 1] do: [:i |
+        [rows set: [[rows value] add: {
+          "text" -> [content at: i], "selected" -> false }]]]]]];
+    { "rows" -> [rows value], "detailTopRow" -> top,
+      "detailRowCount" -> [content size] }
+  ] doc:
+  "Wrap and clamp copied source detail into a bounded display-row projection." ];
+
+[Reflect defineMethod: #browserProjectionFor:width:limit: on: Digla as:
+  [:self :browser :width :requestedLimit |
+    let detail := [browser at: "detail"];
+    [[detail notNil]
+      ifTrue: [| [self browserDetailProjectionFor: browser width: width limit: requestedLimit]]
+      ifFalse: [|
+        let snapshot := [browser at: "snapshot"];
+        let target := [snapshot at: "target"];
+        let name := [target at: "globalName" ifAbsent: [| nil]];
+        let shownName := [[name isNil] ifTrue: [| "(anonymous)"] ifFalse: [| ["#" , name]]];
+        let vtable := [target at: "vtableName" ifAbsent: [| nil]];
+        let shownVtable := [[vtable isNil] ifTrue: [| "(unknown)"] ifFalse: [| ["#" , vtable]]];
+        let basis := [[snapshot at: "basis" ifAbsent: [| nil]] printString];
+        let heading := [shownName , "  vtable=" , shownVtable , "  basis=" , basis];
+        let value := ["value: " , [target at: "printString"]];
+        let tabs := [self browserSectionTabsFor: browser];
+        let query := [browser at: "query"];
+        let filter := [[query isEmpty]
+          ifTrue: [| "filter: (type to filter; Ctrl-U clears)"]
+          ifFalse: [| ["filter: " , query]]];
+        let fixedLines := [self transcriptLines: #[heading value tabs filter] width: width];
+        let limit := [[requestedLimit < 0] ifTrue: [| 0] ifFalse: [| requestedLimit]];
+        let rows := [#[] asCell];
+        [fixedLines do: [:line |
+          [[[[rows value] size] < limit] ifTrue: [|
+            [rows set: [[rows value] add: { "text" -> line, "selected" -> false }]]]]]];
+        let remaining := [limit - [[rows value] size]];
+        [[remaining > 0] ifTrue: [|
+          [[self browserListRowsFor: browser limit: remaining] do: [:row |
+            [rows set: [[rows value] add: row]]]]]];
+        { "rows" -> [rows value], "detailTopRow" -> 0,
+          "detailRowCount" -> 0 }]]
+  ] doc:
+  "Project a copied snapshot browser into bounded terminal-width rows." ];
+
+[Reflect defineMethod: #renderBrowserTerminal:width:height: on: Digla as:
+  [:self :state :width :height |
+    let browser := [state at: "browser"];
+    let detail := [browser at: "detail"];
+    let bodyRows := [[height - 2] max: 0];
+    let projection := [self browserProjectionFor: browser width: width limit: bodyRows];
+    let shownBrowser := [browser at: "detailTopRow" put: [projection at: "detailTopRow"]];
+    let shownState := [state at: "browser" put: shownBrowser];
+    [Termbox clear];
+    let header := [[detail notNil]
+      ifTrue: [| "Digla browser | source | Up/Dn/PgUp/PgDn scroll | Esc back"]
+      ifFalse: [| "Digla browser | type filter | Tab/Left/Right section | Up/Dn | Enter source | Esc"]];
+    [Termbox printX: 0 y: 0 fg: 8 bg: 0 str: header];
+    let y := [1 asCell];
+    [[projection at: "rows"] do: [:row |
+      let selected := [row at: "selected"];
+      let fg := [selected ifTrue: [| 0] ifFalse: [| 8]];
+      let bg := [selected ifTrue: [| 7] ifFalse: [| 0]];
+      [Termbox printX: 0 y: [y value] fg: fg bg: bg str: [row at: "text"]];
+      [y set: [[y value] + 1]]]];
+    let target := [shownBrowser at: "targetName"];
+    let shownTarget := [[target isNil] ifTrue: [| "(anonymous)"] ifFalse: [| ["#" , target]]];
+    let detailScroll := [[detail isNil]
+      ifTrue: [| ""]
+      ifFalse: [| ["  row=" , [[[projection at: "detailTopRow"] + 1] printString]
+        , "/" , [[projection at: "detailRowCount"] printString]]]];
+    let status := [shownTarget , "  " , [shownState at: "status"] , detailScroll];
+    [Termbox printX: 0 y: [height - 1] fg: 7 bg: 0 str: status];
+    [Termbox setCursor: 0 y: 0];
+    [Termbox present];
+    shownState
+  ] doc:
+  "Render the copied-value browser as a dedicated full-screen terminal view." ];
+
+[Reflect defineMethod: #renderEditorTerminal: on: Digla as: [:self :state |
   let width := [Termbox width];
   let height := [Termbox height];
   let buffer := [state at: "buffer"];
@@ -365,3 +531,11 @@
   [Termbox present];
   scrolledState] doc:
   "Render the transcript and active source buffer to Termbox. Source cursor positions remain byte offsets."];
+
+[Reflect defineMethod: #renderTerminal: on: Digla as: [:self :state |
+  let browser := [state at: "browser" ifAbsent: [| nil]];
+  [[browser isNil]
+    ifTrue: [| [self renderEditorTerminal: state]]
+    ifFalse: [| [self renderBrowserTerminal: state width: [Termbox width] height: [Termbox height]]]]
+  ] doc:
+  "Render either the editor or copied-value browser without leaking terminal state into either model." ];

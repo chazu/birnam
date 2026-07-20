@@ -345,12 +345,78 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let badInspect := [Digla submitIn:
     [missing at: "buffer" put: ":inspect String asUppercase extra"]];
   let unknown := [Digla submitIn: [badInspect at: "buffer" put: ":wat"]];
+  [t assert: [[[help at: "transcript"] last] includesSubstring: ":browse NAME"]
+    describes: "help lists the interactive browser"];
   [t assert: [[[help at: "transcript"] last] includesSubstring: ":inspect NAME"] describes: "help lists inspect"];
   [t assert: [[[help at: "transcript"] last] includesSubstring: ":connect TARGET"] describes: "help lists session switching"];
   [t assert: [[[missing at: "transcript"] last] includesSubstring: "global not found"] describes: "missing global warning"];
   [t assert: [[[badInspect at: "transcript"] last] includesSubstring: "usage: :inspect"]
     describes: "inspect arity failure stays explicit"];
   [t expect: [unknown at: "status"] equals: "command error" describes: "unknown command status"]]];
+
+[e test: ":browse opens copied snapshot state and filtering never edits source" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let opened := [Digla submitIn: [initial at: "buffer" put: ":browse String"]];
+  let browser := [opened at: "browser"];
+  [t assert: [browser notNil] describes: "browser command installs a dedicated view"];
+  [t expect: [browser at: "targetName"] equals: "String" describes: "named target retained"];
+  [t expect: [browser at: "section"] equals: "methods" describes: "programming view opens methods"];
+  [t assert: [[[browser at: "items"] size] > 0] describes: "effective methods are copied"];
+  [t expect: [opened at: "buffer"] equals: "" describes: "command input is recorded and cleared"];
+  let selector := [[Digla browserSelectedItemIn: browser] at: "selector"];
+  let filtered := [Digla handleKey: 0 character: selector state: opened];
+  [t expect: [[[filtered at: "browser"] at: "query"] equals: selector
+    describes: "typing filters the browser rather than editor source"];
+  [t expect: [filtered at: "buffer"] equals: "" describes: "source buffer stays untouched"];
+  let closed := [Digla handleKey: 27 character: "" state: filtered];
+  [t expect: [closed at: "browser"] equals: nil describes: "Escape closes browser first"];
+  [t expect: [closed at: "running"] equals: true describes: "closing browser does not quit"]]];
+
+[e test: "browser Enter requests one selected method source through the session" do: [:t |
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let opened := [Digla submitIn: [initial at: "buffer" put: ":browse String"]];
+  let filtered := [Digla handleKey: 0 character: "asUppercase" state: opened];
+  let detailed := [Digla handleKey: 13 character: "" state: filtered];
+  let browser := [detailed at: "browser"];
+  let detail := [browser at: "detail"];
+  let method := [[detail at: "methods"] at: 0];
+  [t assert: [detail notNil] describes: "Enter opens copied source detail"];
+  [t expect: [method at: "selector"] equals: "asUppercase" describes: "selected selector requested"];
+  [t assert: [[method at: "source"] includesSubstring: "StringBuilder"]
+    describes: "recorded Birnam source crosses the session seam"];
+  [t expect: [detailed at: "buffer"] equals: "" describes: "source detail is read-only"];
+  let list := [Digla handleKey: 27 character: "" state: detailed];
+  [t expect: [[list at: "browser"] at: "detail"] equals: nil
+    describes: "first Escape returns to the filtered list"];
+  [t expect: [[[list at: "browser"] at: "query"] equals: "asUppercase"
+    describes: "detail return preserves the filter"]]];
+
+[e test: ":browse BASIS exposes historical facts and current changes as sections" do: [:t |
+  let fixture := [Object clone];
+  [Globals at: #DiglaBrowserTemporal put: fixture];
+  [db assert: #diglaBrowserStatus attr: #history value: true];
+  [db assert: fixture attr: #diglaBrowserStatus value: "earlier"];
+  let basis := [db basis];
+  [db assert: fixture attr: #diglaBrowserStatus value: "later"];
+  let config := [Digla configAtPath: nil environment: [Map new] args: #[]];
+  let initial := [Digla editorStateFor: config];
+  let input := [[":browse DiglaBrowserTemporal " , [basis printString]]];
+  let opened := [Digla submitIn: [initial at: "buffer" put: input]];
+  let browser := [opened at: "browser"];
+  let snapshot := [browser at: "snapshot"];
+  [t expect: [snapshot at: "asOf"] equals: basis describes: "browser labels historical basis"];
+  [t expect: [[[snapshot at: "facts"] at: 0] at: "value"] equals: "earlier"
+    describes: "browser receives historical fact value"];
+  [t expect: [[[snapshot at: "changes"] at: 0] at: "value"] equals: "later"
+    describes: "browser receives current change value"];
+  [t assert: [[browser at: "sections"] includes: "changes"]
+    describes: "changes become a navigable section"];
+  let invalid := [Digla submitIn: [initial at: "buffer" put: ":browse String nope"]];
+  [t expect: [invalid at: "browser"] equals: nil describes: "invalid basis opens no browser"];
+  [t assert: [[[invalid at: "transcript"] last] includesSubstring: "usage: :browse"]
+    describes: "invalid basis is explicit"]]];
 
 [e test: "changes command compares a historical fact window without evaluation" do: [:t |
   let fixture := [Object clone];

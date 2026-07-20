@@ -64,6 +64,14 @@ demand for project and dependency methods, without putting bodies into inspectio
 snapshots. The general `snapshot: spec` also supports honest `asOf` facts and
 `since` changes, exposed in the terminal through `:changes NAME BASIS`. A JSON
 file artifact, HTML, and HTTP remain the next Design 55 layers.
+The terminal now also exposes `:browse NAME [BASIS]`: a full-screen, read-only projection
+of the same snapshot record with cached filtering across facts, effective methods,
+changes, and warnings. Selecting one method requests its source on demand through
+the session contract; the browser never retains a runtime object or queries the
+Store from its renderer.
+When a basis is supplied, the browser requests the existing explicit `asOf` and
+`since` sections, so historical facts and current changes remain labelled and
+navigable rather than being merged into a plausible current object.
 
 ## 3. Governing invariants
 
@@ -287,6 +295,12 @@ methods:
 changes since 39:
   #status       #healthy
 ```
+
+The terminal-native sibling may preserve the snapshot's structure rather than
+flattening it into one report. Digla's `:browse NAME` view keeps section,
+selection, filter, and source-detail viewport state over copied values; Termbox
+owns only the bounded row/cell projection. This is still the same read-only query
+surface, not a second snapshot implementation.
 
 ### 7.2 JSON is the machine-readable snapshot
 

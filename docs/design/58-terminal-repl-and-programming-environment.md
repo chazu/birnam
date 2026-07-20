@@ -43,13 +43,16 @@ modules/digla/protocol.birnam    injected JSON loop and framed stdio adapter
 modules/digla/socket-protocol.birnam optional framed TCP client/server adapter
 modules/digla/socket-protocol-test.birnam framing, client, and bind-policy tests
 modules/digla/reflect-accelerator.birnam optional project-local reflection fast path
-modules/digla/app.birnam        one dependency root for optional runtime adapters
+modules/digla/app.birnam        one dependency root for optional adapters and UI
 modules/digla/render.birnam      headless summary and terminal renderer
 modules/digla/terminal.birnam    local Termbox event loop
 modules/digla/position-map.birnam source-byte/LSP UTF-16 conversion
 modules/digla/position-map-test.birnam coordinate contract tests
 modules/digla/editor.birnam      value-only cursor/edit/history/evaluation model
 modules/digla/editor-test.birnam headless editor contract
+modules/digla/browser.birnam     copied-snapshot filtering/navigation model
+modules/digla/browser-editor.birnam browser/session/editor integration
+modules/digla/browser-test.birnam headless browser contract
 modules/digla/display-layout.birnam source-to-terminal-cell projection
 modules/digla/display-layout-test.birnam terminal coordinate contract tests
 modules/digla/analysis.birnam       lexical highlights and LSP diagnostics
@@ -119,6 +122,16 @@ operation rereads and compares that baseline before writing. A mismatch blocks
 the save without overwriting external work; scratch buffers cannot invent a path.
 A successful save advances the baseline, marks the document clean, and starts a
 fresh undo branch. It does not evaluate or activate the saved source.
+`:browse NAME [BASIS]` translates Design 55's data-driven snapshot into a dedicated
+terminal-native explorer. The browser model stores copied snapshot values,
+section/filter/selection state, and a source-detail viewport, but no terminal
+coordinates or runtime capabilities. Typing filters a cache rebuilt only on
+explicit query or section changes; Tab/Left/Right changes sections, Up/Down
+selects, and Enter requests only the selected method's source through
+`birnam/snapshot`. Escape unwinds detail and browser state before it can quit the
+editor. The renderer owns the full-screen cell projection and source wrapping.
+An optional basis requests historical facts and current changes through the same
+explicit `asOf`/`since` contract, making both independently navigable sections.
 Page Up/Page Down now navigate the wrapped transcript with a clamped tail-relative
 offset, and new evaluation output resumes tail following. Evaluated `System print:`
 and `System println:` calls are captured by the application wrapper as ordered,
@@ -505,6 +518,12 @@ The core invariants are:
    or dependency source parts; Ctrl-S guardedly persists the active authored part;
    F5 restores prior in-memory document state. Persistence remains editor-owned and
    does not cross the runtime session or imply evaluation.
+   `:browse GLOBAL [BASIS]` now presents the same Design 55 snapshot as an interactive
+   terminal view instead of flattening every exploration into transcript text.
+   Its copied-value model caches section filtering, preserves editor state, and
+   requests one selected method body on demand through the session seam. The
+   Termbox renderer only projects that model into a bounded list or wrapped,
+   scrollable source detail.
    The data-driven Design 55 snapshot is available as `birnam/snapshot`; terminal
    `:inspect GLOBAL SELECTOR` requests one recorded method body through that same
    value-only contract. `:changes GLOBAL BASIS` requests honest historical facts
@@ -649,6 +668,23 @@ losing either the buffer or disk bytes. A real Termbox PTY typed `abc` into the
 scratch buffer, delivered Ctrl-S, retained `bytes=3`, displayed the no-authored-path
 status, and exited cleanly with Escape. Three warm framed-session launches after
 this slice took 3.04-3.08 s, within 0.05 s of the preceding 3.02-3.03 s checkpoint.
+
+The snapshot browser is likewise covered below Termbox and through it. Headless
+tests exercise section cycling, case-insensitive cached filtering, bounded selected
+rows, session-backed source detail, wrapping, and viewport clamping. A real PTY
+opened `:browse String`, filtered the effective-method list to `asUppercase`,
+opened its copied Birnam source containing `StringBuilder`, and unwound detail,
+browser, and editor cleanly with Escape.
+The browser methods live in the existing final `diglaApp` compiled unit, after a
+single application-local collection at its dependency boundary. This keeps
+automatic collection away from the active-generation handoff without changing
+the runtime floor or disabling normal GC. Directly extending the already-large
+`digla` unit crossed that handoff with `invalidSourceMap`; a separate eager
+`diglaBrowser` load root avoided the fault but duplicated the project load closure
+and measured 3.83-3.96 s. Three warm framed-session launches with the final app
+boundary took 3.27-3.29 s, about 0.2 s above the preceding 3.04-3.08 s checkpoint.
+Browser filtering rebuilds its item cache only on explicit query/section changes
+and performs no Store or reflection work on selection movement or redraw.
 
 ## 9. Open decisions
 

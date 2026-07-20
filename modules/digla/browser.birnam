@@ -1,0 +1,172 @@
+// browser.birnam — terminal-independent navigation over Design 55 snapshots.
+//
+// The browser stores copied values only. It knows about snapshot sections,
+// filtering, selection, and detail scroll state, but not terminal dimensions,
+// cells, key codes, or runtime objects.
+
+[Reflect defineMethod: #browserSectionsForSnapshot: on: Digla as: [:self :snapshot |
+  let sections0 := #["facts" "methods"];
+  let changes := [snapshot at: "changes" ifAbsent: [| #[]]];
+  let sections1 := [[changes isEmpty]
+    ifTrue: [| sections0]
+    ifFalse: [| [sections0 add: "changes"]]];
+  let warnings := [snapshot at: "warnings" ifAbsent: [| #[]]];
+  [[warnings isEmpty]
+    ifTrue: [| sections1]
+    ifFalse: [| [sections1 add: "warnings"]]]
+  ] doc:
+  "Return the ordered snapshot sections available to the interactive browser." ];
+
+[Reflect defineMethod: #browserRawItemsForSection:snapshot: on: Digla as:
+  [:self :section :snapshot |
+    let items := [#[] asCell];
+    [[section = "facts"] ifTrue: [|
+      [items set: [snapshot at: "facts" ifAbsent: [| #[]]]]]];
+    [[section = "methods"] ifTrue: [|
+      [items set: [snapshot at: "methods" ifAbsent: [| #[]]]]]];
+    [[section = "changes"] ifTrue: [|
+      [items set: [snapshot at: "changes" ifAbsent: [| #[]]]]]];
+    [[section = "warnings"] ifTrue: [|
+      [items set: [snapshot at: "warnings" ifAbsent: [| #[]]]]]];
+    [items value]
+  ] doc:
+  "Read one copied-value section without querying the image or presentation layer." ];
+
+[Reflect defineMethod: #browserItemLabel:section: on: Digla as: [:self :item :section |
+  let label := [item asCell];
+  [[section = "facts"] ifTrue: [|
+    [label set: ["#" , [item at: "attribute"] , "  " , [[item at: "value"] printString]]]]];
+  [[section = "methods"] ifTrue: [|
+    let target := [item at: "target" ifAbsent: [| nil]];
+    let shownTarget := [[target isNil] ifTrue: [| "(unknown)"] ifFalse: [| target]];
+    [label set: [[item at: "selector"] , "  " , [item at: "kind"] , "  " , shownTarget]]]];
+  [[section = "changes"] ifTrue: [|
+    [label set: ["#" , [item at: "attribute"] , "  " , [[item at: "value"] printString]]]]];
+  [label value]
+  ] doc:
+  "Render one snapshot item to stable searchable text without terminal coordinates." ];
+
+[Reflect defineMethod: #browserFilteredItemsFor:section:query: on: Digla as:
+  [:self :snapshot :section :query |
+    let items := [self browserRawItemsForSection: section snapshot: snapshot];
+    let wanted := [query asLowercase];
+    [[wanted isEmpty]
+      ifTrue: [| items]
+      ifFalse: [|
+        let me := self;
+        [items select: [:item |
+          [[[me browserItemLabel: item section: section] asLowercase]
+            includesSubstring: wanted]]]]]
+  ] doc:
+  "Filter the selected copied-value section with an ASCII-case-insensitive substring query." ];
+
+[Reflect defineMethod: #refreshBrowserItemsIn: on: Digla as: [:self :browser |
+  let sections := [browser at: "sections"];
+  let sectionIndex := [browser at: "sectionIndex"];
+  let section := [sections at: sectionIndex];
+  let query := [browser at: "query"];
+  let items := [self browserFilteredItemsFor: [browser at: "snapshot"]
+    section: section query: query];
+  let oldIndex := [browser at: "index"];
+  let last := [[items size] - 1];
+  let index := [[items isEmpty]
+    ifTrue: [| 0]
+    ifFalse: [| [[oldIndex > last] ifTrue: [| last] ifFalse: [| oldIndex]]]];
+  let b1 := [browser at: "section" put: section];
+  let b2 := [b1 at: "items" put: items];
+  let b3 := [b2 at: "index" put: index];
+  let b4 := [b3 at: "detail" put: nil];
+  [b4 at: "detailTopRow" put: 0]
+  ] doc:
+  "Refresh cached filtered items after an explicit browser query or section change." ];
+
+[Reflect defineMethod: #browserForSnapshot: on: Digla as: [:self :snapshot |
+  let sections := [self browserSectionsForSnapshot: snapshot];
+  let methods := [snapshot at: "methods" ifAbsent: [| #[]]];
+  let sectionIndex := [[methods isEmpty] ifTrue: [| 0] ifFalse: [| 1]];
+  let target := [snapshot at: "target"];
+  let b0 := { "snapshot" -> snapshot,
+    "targetName" -> [target at: "globalName" ifAbsent: [| nil]],
+    "sections" -> sections, "sectionIndex" -> sectionIndex,
+    "section" -> [sections at: sectionIndex], "query" -> "",
+    "items" -> #[], "index" -> 0, "detail" -> nil,
+    "detailTopRow" -> 0 };
+  [self refreshBrowserItemsIn: b0]
+  ] doc:
+  "Open a pure snapshot browser, preferring the effective-method section when available." ];
+
+[Reflect defineMethod: #browserSelectedItemIn: on: Digla as: [:self :browser |
+  let items := [browser at: "items"];
+  [[items isEmpty]
+    ifTrue: [| nil]
+    ifFalse: [| [items at: [browser at: "index"]]]]
+  ] doc:
+  "Return the selected copied-value item, or nil for an empty filtered section." ];
+
+[Reflect defineMethod: #browserStatusTextFor: on: Digla as: [:self :browser |
+  let section := [browser at: "section"];
+  let items := [browser at: "items"];
+  let selectedNumber := [[[browser at: "index"] + 1] printString];
+  let itemCount := [[items size] printString];
+  let position := [[items isEmpty]
+    ifTrue: [| "0/0"]
+    ifFalse: [| [[selectedNumber , "/"] , itemCount]]];
+  let query := [browser at: "query"];
+  let filter := [[query isEmpty] ifTrue: [| ""] ifFalse: [| ["  filter=" , query]]];
+  [[section , " " , position] , filter]
+  ] doc:
+  "Summarize browser section, selection, and explicit filter without presentation state." ];
+
+[Reflect defineMethod: #moveBrowserSelectionBy:in: on: Digla as:
+  [:self :direction :browser |
+    let items := [browser at: "items"];
+    [[items isEmpty]
+      ifTrue: [| browser]
+      ifFalse: [|
+        let count := [items size];
+        let candidate := [[browser at: "index"] + direction];
+        let index := [[candidate < 0]
+          ifTrue: [| [count - 1]]
+          ifFalse: [| [[candidate >= count] ifTrue: [| 0] ifFalse: [| candidate]]]];
+        [browser at: "index" put: index]]]
+  ] doc:
+  "Move the browser selection cyclically without touching the runtime session." ];
+
+[Reflect defineMethod: #cycleBrowserSectionBy:in: on: Digla as:
+  [:self :direction :browser |
+    let sections := [browser at: "sections"];
+    let count := [sections size];
+    let candidate := [[browser at: "sectionIndex"] + direction];
+    let index := [[candidate < 0]
+      ifTrue: [| [count - 1]]
+      ifFalse: [| [[candidate >= count] ifTrue: [| 0] ifFalse: [| candidate]]]];
+    let changed := [browser at: "sectionIndex" put: index];
+    [self refreshBrowserItemsIn: [changed at: "index" put: 0]]
+  ] doc:
+  "Cycle snapshot sections and refresh their cached filtered items." ];
+
+[Reflect defineMethod: #browserWithQuery:in: on: Digla as: [:self :query :browser |
+  let changed := [browser at: "query" put: query];
+  [self refreshBrowserItemsIn: [changed at: "index" put: 0]]
+  ] doc:
+  "Replace the browser filter and recompute its copied-value item cache." ];
+
+[Reflect defineMethod: #browserWithDetail:in: on: Digla as: [:self :snapshot :browser |
+  let changed := [browser at: "detail" put: snapshot];
+  [changed at: "detailTopRow" put: 0]
+  ] doc:
+  "Open one selected method's copied source snapshot as browser detail." ];
+
+[Reflect defineMethod: #closeBrowserDetailIn: on: Digla as: [:self :browser |
+  let changed := [browser at: "detail" put: nil];
+  [changed at: "detailTopRow" put: 0]
+  ] doc:
+  "Return from source detail to the filtered snapshot list." ];
+
+[Reflect defineMethod: #scrollBrowserDetailBy:in: on: Digla as:
+  [:self :delta :browser |
+    let candidate := [[browser at: "detailTopRow"] + delta];
+    let top := [[candidate < 0] ifTrue: [| 0] ifFalse: [| candidate]];
+    [browser at: "detailTopRow" put: top]
+  ] doc:
+  "Move the source-detail display-row viewport; the renderer clamps its upper bound." ];

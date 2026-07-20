@@ -224,8 +224,15 @@
         ifTrue: [| [Reflect nameOf: requestedTarget]]
         ifFalse: [| requestedTarget]];
       let targetSymbol := [targetName asSymbol];
-      let targetExists := [Globals includes: targetSymbol];
-      let targetValue := [Globals at: targetSymbol ifAbsent: [| nil]];
+      let sourceTargetExists := [Globals includes: targetSymbol];
+      let sourceTargetValue := [Globals at: targetSymbol ifAbsent: [| nil]];
+      let runtimeTargetValue := [sourceTargetExists
+        ifTrue: [| sourceTargetValue]
+        ifFalse: [| [self runtimeNamed: targetName]]];
+      let targetExists := [sourceTargetExists | [runtimeTargetValue notNil]];
+      let targetValue := [sourceTargetExists
+        ifTrue: [| sourceTargetValue]
+        ifFalse: [| runtimeTargetValue]];
       let currentBasis := [db basis];
       let sections := [spec at: "sections"
         ifAbsent: [| #["object" "facts" "methods"]]];

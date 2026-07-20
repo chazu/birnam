@@ -56,6 +56,42 @@ let e := [TestSuite named: "Digla render" module: #diglaRender];
   [t expect: [[rows at: 1] at: "selected"] equals: true describes: "selected row retained"];
   [t assert: [[rows at: 1] at: "text"] includesSubstring: "> gamma" describes: "selected marker shown"]]];
 
+[e test: "browser list projection keeps its selected copied method visible" do: [:t |
+  let methods := #[
+    { "selector" -> "alpha", "kind" -> "compiled", "target" -> "Fixture" }
+    { "selector" -> "beta", "kind" -> "compiled", "target" -> "Fixture" }
+    { "selector" -> "gamma", "kind" -> "compiled", "target" -> "Fixture" }
+    { "selector" -> "delta", "kind" -> "compiled", "target" -> "Fixture" }
+  ];
+  let snapshot := {
+    "basis" -> 7,
+    "target" -> { "globalName" -> "Fixture", "printString" -> "fixture", "vtableName" -> "Fixture" },
+    "facts" -> #[], "methods" -> methods, "changes" -> #[], "warnings" -> #[] };
+  let opened := [Digla browserForSnapshot: snapshot];
+  let selected := [opened at: "index" put: 3];
+  let rows := [Digla browserListRowsFor: selected limit: 2];
+  [t expect: [rows size] equals: 2 describes: "browser list is bounded"];
+  [t expect: [[rows at: 1] at: "selected"] equals: true describes: "selected method retained"];
+  [t assert: [[[rows at: 1] at: "text"] includesSubstring: "> delta"]
+    describes: "browser selection is explicit"]]];
+
+[e test: "browser source detail wraps and clamps its display-row viewport" do: [:t |
+  let snapshot := {
+    "target" -> { "globalName" -> "Fixture", "printString" -> "fixture", "vtableName" -> "Fixture" },
+    "facts" -> #[], "methods" -> #[
+      { "selector" -> "probe", "kind" -> "method", "target" -> "Fixture",
+        "source" -> "abcdefghijklmno" }
+    ], "changes" -> #[], "warnings" -> #[] };
+  let browser0 := [Digla browserForSnapshot: snapshot];
+  let browser1 := [Digla browserWithDetail: snapshot in: browser0];
+  let browser := [browser1 at: "detailTopRow" put: 99];
+  let projection := [Digla browserDetailProjectionFor: browser width: 5 limit: 3];
+  let rows := [projection at: "rows"];
+  [t expect: [projection at: "detailRowCount"] equals: 3 describes: "source wraps by cells"];
+  [t expect: [projection at: "detailTopRow"] equals: 1 describes: "overscroll clamps"];
+  [t expect: [rows size] equals: 3 describes: "title plus two source rows fit"];
+  [t expect: [[rows at: 2] at: "text"] equals: "klmno" describes: "last wrapped source row visible"]]];
+
 [e test: "transcript windows scroll from the tail and clamp at the oldest row" do: [:t |
   let middle := [Digla transcriptWindowFor: 20 availableRows: 5 offset: 10];
   let oldest := [Digla transcriptWindowFor: 20 availableRows: 5 offset: 99];

@@ -305,7 +305,7 @@
               "sections" -> #["object" "methods" "source"],
               "selector" -> selector,
               "includeSource" -> includeSource }]]
-            ifFalse: [| [self inspectGlobal: globalName]]];
+            ifFalse: [| [self inspectRuntimeNamed: globalName]]];
           { "result" -> { "snapshot" -> snapshot }, "session" -> session }]
         ifFalse: [|
           [[session at: "hasLastValue"]
