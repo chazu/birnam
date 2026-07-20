@@ -72,6 +72,7 @@ var candidate_commit_in_progress = false;
 var image_dispatch_recovery = false;
 var initial_generation_sealed = false;
 var reflect_target_resolution_count: usize = 0;
+var reflect_global_snapshot_count: usize = 0;
 const RuntimePhase = enum { bootstrapping, running, quiescent, image_recovery };
 var runtime_phase: RuntimePhase = .bootstrapping;
 
@@ -870,15 +871,8 @@ fn newMap() Oop {
     return g_api.send(map, g_api.intern("new"), &.{}, 0);
 }
 
-fn globalNameForValue(value: Oop) Oop {
-    const count = g_api.smallIntValue(g_api.send(g_store, g_api.intern("attrCount:"), &[_]Oop{g_globals_entity}, 1));
-    var i: i64 = 0;
-    while (i < count) : (i += 1) {
-        const name = g_api.send(g_store, g_api.intern("attrAt:index:"), &[_]Oop{ g_globals_entity, g_api.mkSmallInt(i) }, 2);
-        const bound = g_api.send(g_store, sel_currentValue, &[_]Oop{ g_globals_entity, name }, 2);
-        if (bound == value) return name;
-    }
-    return g_api.nilObj;
+fn globalNameForValue(value: Oop, names: *const std.AutoHashMapUnmanaged(Oop, Oop)) Oop {
+    return names.get(value) orelse g_api.nilObj;
 }
 
 fn exportedSymbolForValue(value: Oop) Oop {
@@ -887,12 +881,12 @@ fn exportedSymbolForValue(value: Oop) Oop {
     return g_api.nilObj;
 }
 
-fn methodTargetName(vt: Oop) Oop {
+fn methodTargetName(vt: Oop, global_names: *const std.AutoHashMapUnmanaged(Oop, Oop)) Oop {
     if (builtin.is_test) reflect_target_resolution_count += 1;
     const owner = g_api.vtableOwner(vt);
     const owner_name = exportedSymbolForValue(owner);
     if (owner_name != g_api.nilObj) return owner_name;
-    const owner_global = globalNameForValue(owner);
+    const owner_global = globalNameForValue(owner, global_names);
     if (owner_global != g_api.nilObj) return owner_global;
 
     // Abstract families such as Collection export their vtable directly rather
@@ -900,15 +894,22 @@ fn methodTargetName(vt: Oop) Oop {
     // name used by method operation records.
     const vtable_name = exportedSymbolForValue(vt);
     if (vtable_name != g_api.nilObj) return vtable_name;
-    return globalNameForValue(vt);
+    return globalNameForValue(vt, global_names);
 }
 
 pub fn resetReflectTargetResolutionCountForTesting() void {
-    if (builtin.is_test) reflect_target_resolution_count = 0;
+    if (builtin.is_test) {
+        reflect_target_resolution_count = 0;
+        reflect_global_snapshot_count = 0;
+    }
 }
 
 pub fn reflectTargetResolutionCountForTesting() usize {
     return if (builtin.is_test) reflect_target_resolution_count else 0;
+}
+
+pub fn reflectGlobalSnapshotCountForTesting() usize {
+    return if (builtin.is_test) reflect_global_snapshot_count else 0;
 }
 
 fn isRegisteredVtable(value: Oop) bool {
@@ -940,9 +941,7 @@ fn generationMethodSource(target_name: Oop, selector: Oop) Oop {
     return found orelse g_api.nilObj;
 }
 
-fn methodSourceForVtableSelector(vt: Oop, selector: Oop) Oop {
-    const target_name = methodTargetName(vt);
-    if (target_name == g_api.nilObj) return g_api.nilObj;
+fn methodSourceForTargetSelector(target_name: Oop, selector: Oop) Oop {
     const portable = latestPortableSource(target_name, selector);
     if (portable != null) return portable;
     return generationMethodSource(target_name, selector);
@@ -984,6 +983,26 @@ fn mAllMethodsOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     g_api.gcSetAuto(0);
     defer g_api.gcSetAuto(1);
 
+    // Resolve non-exported owners from one call-local Store snapshot. The old
+    // implementation walked `attrAt:index:` and `currentValue:attr:` for every
+    // unresolved owner; those relational point reads dominated an otherwise
+    // native protocol traversal. Keeping this index local preserves concurrency
+    // and ties every name in this result to one live-fact observation.
+    var global_state = ReflectFactState{ .target = g_globals_entity };
+    defer global_state.rows.deinit(ca);
+    const collector = g_api.alloc(reflect_fact_collector_vt, @sizeOf(usize));
+    const collector_slot: *usize = @ptrCast(@alignCast(collector.?));
+    collector_slot.* = @intFromPtr(&global_state);
+    _ = g_api.send(g_store, g_api.intern("liveTriplesDo:"), &[_]Oop{collector}, 1);
+    if (builtin.is_test) reflect_global_snapshot_count += 1;
+
+    var global_names: std.AutoHashMapUnmanaged(Oop, Oop) = .{};
+    defer global_names.deinit(ca);
+    for (global_state.rows.items) |row| {
+        if (row.v != g_api.nilObj and !global_names.contains(row.v))
+            global_names.put(ca, row.v, row.a) catch @panic("codegen: oom");
+    }
+
     var result = g_api.send(g_api.import("Vector") orelse return g_api.nilObj, g_api.intern("new"), &.{}, 0);
     var seen_selectors: std.ArrayList(Oop) = .{};
     defer seen_selectors.deinit(ca);
@@ -999,7 +1018,7 @@ fn mAllMethodsOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
         };
         if (repeated_vtable) break;
         seen_vtables.append(ca, vt) catch @panic("codegen: oom");
-        const target_name = methodTargetName(vt);
+        const target_name = methodTargetName(vt, &global_names);
 
         var i: usize = 0;
         while (g_api.vtableSelectorAt(vt, i)) |selector| : (i += 1) {
@@ -1036,7 +1055,7 @@ fn mMethodSource(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     if (target_name == g_api.nilObj or selector == g_api.nilObj) return g_api.nilObj;
     const vt = vtableForTargetName(target_name);
     if (vt == null) return g_api.nilObj;
-    return methodSourceForVtableSelector(vt, selector);
+    return methodSourceForTargetSelector(target_name, selector);
 }
 
 /// `[Reflect factsOf: entity]` — return the current live store facts for an

@@ -713,6 +713,7 @@ test "Reflect enumerates effective methods and current facts without raw pointer
     defer selectors.deinit(std.heap.c_allocator);
     const count = api.smallIntValue(api.send(methods, api.intern("size"), &.{}, 0));
     try std.testing.expect(codegen.reflectTargetResolutionCountForTesting() < count);
+    try std.testing.expectEqual(@as(usize, 1), codegen.reflectGlobalSnapshotCountForTesting());
     var i: i64 = 0;
     while (i < count) : (i += 1) {
         const descriptor = vectorAt(api, methods, i);
