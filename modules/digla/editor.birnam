@@ -20,9 +20,11 @@
   let s9 := [s8a at: "selection" put: nil];
   let s10 := [s9 at: "diagnostics" put: #[]];
   let s11 := [s10 at: "diagnosticsDirty" put: false];
+  let s11a := [s11 at: "documentVersion" put: 0];
+  let s11b := [s11a at: "analysis" put: nil];
   let document := { "path" -> nil, "uri" -> "", "module" -> "<scratch>",
     "projectRoot" -> nil, "sourceOnDisk" -> nil, "dirty" -> false };
-  let s12 := [s11 at: "document" put: document];
+  let s12 := [s11b at: "document" put: document];
   let s13 := [s12 at: "navigation" put: #[]];
   let s14 := [s13 at: "projectSnapshot" put: nil];
   let s15 := [s14 at: "evaluation" put: nil];
@@ -67,13 +69,36 @@
   "Move the transcript viewport by display rows measured backward from its tail." ];
 
 [Reflect defineMethod: #markDiagnosticsDirtyIn: on: Digla as: [:self :state |
-  let stale := [state at: "diagnosticsDirty" put: true];
+  let advanced := [self advanceDocumentVersionIn: state];
+  let withoutDiagnostics := [advanced at: "diagnostics" put: #[]];
+  let stale := [withoutDiagnostics at: "diagnosticsDirty" put: true];
   let document := [stale at: "document" ifAbsent: [| nil]];
   [[document isNil]
     ifTrue: [| stale]
     ifFalse: [| [stale at: "document" put: [document at: "dirty" put: true]]]]
   ] doc:
-  "Mark cached parser diagnostics and the active authored document dirty after a source edit." ];
+  "Advance the document version, discard stale analysis, and mark edited source dirty." ];
+
+[Reflect defineMethod: #advanceDocumentVersionIn: on: Digla as: [:self :state |
+  let version := [state at: "documentVersion" ifAbsent: [| 0]];
+  let advanced := [state at: "documentVersion" put: [version + 1]];
+  [advanced at: "analysis" put: nil]
+  ] doc:
+  "Advance the active source version and discard analysis belonging to its predecessor." ];
+
+[Reflect defineMethod: #advanceDocumentVersionFor:in: on: Digla as: [:self :text :state |
+  [[[state at: "buffer"] = text]
+    ifTrue: [| state]
+    ifFalse: [| [self advanceDocumentVersionIn: state]]]
+  ] doc:
+  "Advance source version only when replacement bytes differ from the active buffer." ];
+
+[Reflect defineMethod: #analysis:reboundToVersion: on: Digla as: [:self :analysis :version |
+  [[analysis isNil]
+    ifTrue: [| nil]
+    ifFalse: [| [analysis at: "version" put: version]]]
+  ] doc:
+  "Rebind cached analysis after restoring the exact source bytes it analyzed." ];
 
 [Reflect defineMethod: #editorEditFrameFor: on: Digla as: [:self :state |
   { "buffer" -> [state at: "buffer"],
@@ -82,6 +107,8 @@
     "document" -> [state at: "document"],
     "diagnostics" -> [state at: "diagnostics"],
     "diagnosticsDirty" -> [state at: "diagnosticsDirty"],
+    "documentVersion" -> [state at: "documentVersion"],
+    "analysis" -> [state at: "analysis"],
     "viewport" -> [state at: "viewport"] }
   ] doc:
   "Capture the terminal-independent source state restored by one undo or redo step." ];
@@ -104,13 +131,17 @@
 
 [Reflect defineMethod: #restoreEditorEditFrame:status:in: on: Digla as:
   [:self :frame :status :state |
+    let nextVersion := [[state at: "documentVersion"] + 1];
     let s1 := [state at: "buffer" put: [frame at: "buffer"]];
     let s2 := [s1 at: "cursor" put: [frame at: "cursor"]];
     let s3 := [s2 at: "selection" put: [frame at: "selection"]];
     let s4 := [s3 at: "document" put: [frame at: "document"]];
     let s5 := [s4 at: "diagnostics" put: [frame at: "diagnostics"]];
     let s6 := [s5 at: "diagnosticsDirty" put: [frame at: "diagnosticsDirty"]];
-    let s7 := [s6 at: "viewport" put: [frame at: "viewport"]];
+    let s6a := [s6 at: "documentVersion" put: nextVersion];
+    let s6b := [s6a at: "analysis" put:
+      [self analysis: [frame at: "analysis"] reboundToVersion: nextVersion]];
+    let s7 := [s6b at: "viewport" put: [frame at: "viewport"]];
     let s8 := [s7 at: "historyIndex" put: nil];
     let s9 := [s8 at: "historySearch" put: nil];
     let s10 := [s9 at: "completion" put: nil];
@@ -168,8 +199,11 @@
   "Restore the next source edit on the current undo branch." ];
 
 [Reflect defineMethod: #refreshDiagnosticsIn: on: Digla as: [:self :state |
-  let diagnostics := [Lsp staticDiagnosticsOf: [state at: "buffer"]];
-  let next := [state at: "diagnostics" put: diagnostics];
+  let analysis := [self analysisFor: [state at: "buffer"]
+    version: [state at: "documentVersion"]];
+  let diagnostics := [analysis at: "diagnostics"];
+  let withAnalysis := [state at: "analysis" put: analysis];
+  let next := [withAnalysis at: "diagnostics" put: diagnostics];
   let clean := [next at: "diagnosticsDirty" put: false];
   [clean at: "status" put: ["checked " , [[diagnostics size] printString] , " diagnostics"]]
   ] doc:
@@ -395,7 +429,8 @@
   let history := [historyEnabled
     ifTrue: [| [[state at: "history"] add: input]]
     ifFalse: [| [state at: "history"]]];
-  let s1 := [state at: "buffer" put: ""];
+  let sourceAdvanced := [self advanceDocumentVersionFor: "" in: state];
+  let s1 := [sourceAdvanced at: "buffer" put: ""];
   let s2 := [s1 at: "cursor" put: 0];
   let s3 := [s2 at: "history" put: history];
   let s4 := [s3 at: "historyIndex" put: nil];
@@ -611,7 +646,8 @@
     let cursor := [[first isNil]
       ifTrue: [| [input size]]
       ifFalse: [| [[first at: "start"] min: [input size]]]];
-    let s1 := [state at: "buffer" put: input];
+    let sourceAdvanced := [self advanceDocumentVersionFor: input in: state];
+    let s1 := [sourceAdvanced at: "buffer" put: input];
     let s2 := [s1 at: "cursor" put: cursor];
     let s3 := [s2 at: "selection" put: nil];
     let s4 := [s3 at: "diagnostics" put: diagnostics];
@@ -725,7 +761,8 @@
   let history := [historyEnabled
     ifTrue: [| [[state at: "history"] add: input]]
     ifFalse: [| [state at: "history"]]];
-  let s1 := [state at: "buffer" put: ""];
+  let sourceAdvanced := [self advanceDocumentVersionFor: "" in: state];
+  let s1 := [sourceAdvanced at: "buffer" put: ""];
   let s2 := [s1 at: "cursor" put: 0];
   let s3 := [s2 at: "history" put: history];
   let s4 := [s3 at: "historyIndex" put: nil];
@@ -794,7 +831,8 @@
           [[index >= count]
             ifTrue: [|
               let cleared := [self clearEditHistoryIn: state];
-              let s1 := [cleared at: "historyIndex" put: nil];
+              let sourceAdvanced := [self advanceDocumentVersionFor: "" in: cleared];
+              let s1 := [sourceAdvanced at: "historyIndex" put: nil];
               let s2 := [s1 at: "buffer" put: ""];
               let s3 := [s2 at: "cursor" put: 0];
               let s4 := [s3 at: "selection" put: nil];
@@ -840,7 +878,8 @@
       ifTrue: [| s1]
       ifFalse: [|
         let text := [found at: "text"];
-        let b1 := [s1 at: "buffer" put: text];
+        let sourceAdvanced := [self advanceDocumentVersionFor: text in: s1];
+        let b1 := [sourceAdvanced at: "buffer" put: text];
         [b1 at: "cursor" put: [text size]]]];
     let s3 := [s2 at: "selection" put: nil];
     let s4 := [s3 at: "diagnostics" put: #[]];
@@ -874,7 +913,8 @@
 [Reflect defineMethod: #cancelHistorySearchIn: on: Digla as: [:self :state |
   let search := [state at: "historySearch"];
   let text := [search at: "savedBuffer"];
-  let s1 := [state at: "historySearch" put: nil];
+  let sourceAdvanced := [self advanceDocumentVersionFor: text in: state];
+  let s1 := [sourceAdvanced at: "historySearch" put: nil];
   let s2 := [s1 at: "buffer" put: text];
   let s3 := [s2 at: "cursor" put: [search at: "savedCursor"]];
   let s4 := [s3 at: "diagnostics" put: #[]];
@@ -993,7 +1033,9 @@
   let f4 := [f3 at: "document" put: [state at: "document"]];
   let f5 := [f4 at: "diagnostics" put: [state at: "diagnostics"]];
   let f6 := [f5 at: "diagnosticsDirty" put: [state at: "diagnosticsDirty"]];
-  let f7 := [f6 at: "viewport" put: [state at: "viewport"]];
+  let f6a := [f6 at: "documentVersion" put: [state at: "documentVersion"]];
+  let f6b := [f6a at: "analysis" put: [state at: "analysis"]];
+  let f7 := [f6b at: "viewport" put: [state at: "viewport"]];
   let f8 := [f7 at: "undo" put: [state at: "undo"]];
   [f8 at: "redo" put: [state at: "redo"]]
   ] doc:
@@ -1016,7 +1058,9 @@
   let s7 := [s6 at: "assistance" put: nil];
   let s8 := [s7 at: "diagnostics" put: #[]];
   let s9 := [s8 at: "diagnosticsDirty" put: true];
-  let s10 := [s9 at: "viewport" put: resetViewport];
+  let s9a := [s9 at: "documentVersion" put: 0];
+  let s9b := [s9a at: "analysis" put: nil];
+  let s10 := [s9b at: "viewport" put: resetViewport];
   let s11 := [s10 at: "undo" put: #[]];
   let s12 := [s11 at: "redo" put: #[]];
   [s12 at: "status" put: ["opened #" , [result at: "name"] , " in #",
@@ -1038,7 +1082,9 @@
       let s5 := [s4 at: "document" put: [frame at: "document"]];
       let s6 := [s5 at: "diagnostics" put: [frame at: "diagnostics"]];
       let s7 := [s6 at: "diagnosticsDirty" put: [frame at: "diagnosticsDirty"]];
-      let s8 := [s7 at: "viewport" put: [frame at: "viewport"]];
+      let s7a := [s7 at: "documentVersion" put: [frame at: "documentVersion"]];
+      let s7b := [s7a at: "analysis" put: [frame at: "analysis"]];
+      let s8 := [s7b at: "viewport" put: [frame at: "viewport"]];
       let s9 := [s8 at: "undo" put: [frame at: "undo"]];
       let s10 := [s9 at: "redo" put: [frame at: "redo"]];
       [s10 at: "status" put: "returned from definition"]]]

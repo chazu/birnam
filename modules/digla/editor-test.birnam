@@ -76,8 +76,12 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
     describes: "undo restores selection anchor"];
   [t expect: [undone at: "diagnosticsDirty"] equals: true
     describes: "undo restores the prior diagnostic state without reparsing"];
+  [t expect: [undone at: "documentVersion"] equals: 3
+    describes: "undo creates a new version instead of reusing an old request identity"];
   [t expect: [redone at: "buffer"] equals: "aZbc" describes: "redo reapplies replacement"];
   [t expect: [redone at: "cursor"] equals: 2 describes: "redo restores replacement cursor"];
+  [t expect: [redone at: "documentVersion"] equals: 4
+    describes: "redo keeps document versions monotonic"];
   [t expect: [redone at: "selection"] equals: nil describes: "redo restores cleared selection"]]];
 
 [e test: "a new edit after undo invalidates redo and checkpoints are bounded" do: [:t |
@@ -181,6 +185,8 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
   let s2 := [Digla submitIn: s1];
   let s3 := [Digla historyMove: -1 in: s2];
   [t expect: [s2 at: "buffer"] equals: "" describes: "submit clears buffer"];
+  [t expect: [s2 at: "documentVersion"] equals: 2
+    describes: "evaluation clearing is a versioned source transition"];
   [t expect: [s2 at: "lastResult"] equals: 3 describes: "submit evaluates locally"];
   [t expect: [[s2 at: "history"] at: 0] equals: "[1 + 2]" describes: "submit records history"];
   [t expect: [s3 at: "buffer"] equals: "[1 + 2]" describes: "history recalls form"]]];
@@ -552,11 +558,17 @@ let e := [TestSuite named: "Digla editor" module: #diglaEditor];
     describes: "typing does not synchronously parse the buffer"];
   [t expect: [typed at: "diagnosticsDirty"] equals: true
     describes: "source edits mark the diagnostic cache stale"];
+  [t expect: [typed at: "documentVersion"] equals: 1
+    describes: "source edits advance the immutable document version"];
+  [t expect: [typed at: "analysis"] equals: nil
+    describes: "editing drops analysis from the prior version"];
   let checked := [Digla handleKey: 65532 modifier: 0 character: "" state: typed];
   [t expect: [[[checked at: "diagnostics"] size] > 0] equals: true
     describes: "F4 refreshes parser diagnostics"];
   [t expect: [checked at: "diagnosticsDirty"] equals: false
-    describes: "explicit refresh marks the cache clean"]]];
+    describes: "explicit refresh marks the cache clean"];
+  [t expect: [[checked at: "analysis"] at: "version"] equals: 1
+    describes: "cached analysis is tied to the edited document version"]]];
 
 [e test: "Page Up and Page Down move the transcript viewport and evaluation follows the tail" do: [:t |
   let config := [Digla configAtPath: nil environment: [Map new] args: #[]];

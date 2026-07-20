@@ -63,7 +63,7 @@
           ]]]]] doc:
   "Return the terminal-cell width of one UTF-8 codepoint, including tabs and wide glyphs." ];
 
-[Reflect defineMethod: #displayColumnIn:at: on: Digla as: [:self :text :cursor |
+[Reflect defineMethod: #referenceDisplayColumnIn:at: on: Digla as: [:self :text :cursor |
   let start := [self lineStartIn: text at: cursor];
   let column := [0 asCell];
   [start to: [cursor - 1] do: [:i |
@@ -75,6 +75,11 @@
   [column value]
   ] doc:
   "Map an absolute source byte cursor to a terminal-cell column within its logical line." ];
+
+[Reflect defineMethod: #displayColumnIn:at: on: Digla as: [:self :text :cursor |
+  [self referenceDisplayColumnIn: text at: cursor]
+  ] doc:
+  "Use the reference source-byte to terminal-column projection unless accelerated." ];
 
 [Reflect defineMethod: #byteOffsetForDisplayColumn:in:lineStart: on: Digla as: [:self :target :text :start |
   let end := [self lineEndIn: text at: start];
@@ -146,7 +151,7 @@
   ] doc:
   "Project source into an effectively unwrapped terminal-independent frame." ];
 
-[Reflect defineMethod: #displayWidthIn:from:to: on: Digla as: [:self :text :start :finish |
+[Reflect defineMethod: #referenceDisplayWidthIn:from:to: on: Digla as: [:self :text :start :finish |
   let byte := [start asCell];
   let column := [0 asCell];
   [[| [[byte value] < finish]] whileTrue: [|
@@ -157,6 +162,11 @@
   [column value]
   ] doc:
   "Measure a source byte range in terminal cells with a row-relative origin." ];
+
+[Reflect defineMethod: #displayWidthIn:from:to: on: Digla as: [:self :text :start :finish |
+  [self referenceDisplayWidthIn: text from: start to: finish]
+  ] doc:
+  "Use the reference source-byte range projection unless accelerated." ];
 
 [Reflect defineMethod: #wrappedEndIn:from:to:width: on: Digla as:
   [:self :text :start :finish :requestedWidth |
@@ -251,7 +261,7 @@
   ] doc:
   "Map a source cursor into a soft-wrapped visual row and terminal column." ];
 
-[Reflect defineMethod: #renderFrameFor:cursor:promptWidth:width: on: Digla as:
+[Reflect defineMethod: #referenceRenderFrameFor:cursor:promptWidth:width: on: Digla as:
   [:self :text :cursor :promptWidth :width |
   let layout := [self wrappedDisplayLayoutFor: text promptWidth: promptWidth width: width];
   let highlights := [self highlightRangesIn: text];
@@ -261,3 +271,34 @@
     "bracketMatch" -> [self bracketMatchAt: cursor in: text highlights: highlights] }
   ] doc:
   "Project source into soft-wrapped layout, cursor, highlight, and active-bracket data." ];
+
+[Reflect defineMethod: #renderFrameFor:cursor:promptWidth:width: on: Digla as:
+  [:self :text :cursor :promptWidth :width |
+  [self renderFrameFor: text version: 0 cursor: cursor promptWidth: promptWidth width: width]
+  ] doc:
+  "Project compatibility callers through the active versioned document-frame adapter." ];
+
+[Reflect defineMethod: #versionFrame:source:version: on: Digla as:
+  [:self :frame :text :version |
+  let f1 := [frame at: "schema" put: 1];
+  let f2 := [f1 at: "version" put: version];
+  let f3 := [f2 at: "sourceBytes" put: [text size]];
+  let f4 := [f3 at: "sourceCoordinates" put: "utf-8-bytes"];
+  [f4 at: "terminalCoordinates" put: "unicode-cells"]
+  ] doc:
+  "Bind a terminal-independent source frame to one immutable document version and coordinate contract." ];
+
+[Reflect defineMethod: #referenceRenderFrameFor:version:cursor:promptWidth:width: on: Digla as:
+  [:self :text :version :cursor :promptWidth :width |
+  [self versionFrame:
+    [self referenceRenderFrameFor: text cursor: cursor promptWidth: promptWidth width: width]
+    source: text version: version]
+  ] doc:
+  "Build the Birnam reference frame for one immutable document version." ];
+
+[Reflect defineMethod: #renderFrameFor:version:cursor:promptWidth:width: on: Digla as:
+  [:self :text :version :cursor :promptWidth :width |
+  [self referenceRenderFrameFor: text version: version cursor: cursor
+    promptWidth: promptWidth width: width]
+  ] doc:
+  "Build a versioned source frame through the reference adapter unless a client installs an accelerator." ];

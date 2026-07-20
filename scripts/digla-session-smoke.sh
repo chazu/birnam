@@ -290,7 +290,7 @@ if [[ "$ready" -ne 1 ]]; then
 fi
 
 probe="let c := [Digla configAtPath: nil environment: [Map new] args: #[\"--port=$port\"]]; let s := [Digla editorStateFor: c]; let switched := [Digla submitIn: [s at: \"buffer\" put: \":connect remote\"]]; [System println: [\"REMOTE-ADAPTER:\" , [[switched at: \"session\"] at: \"adapter\"]]]; let r0 := [Digla submitIn: [switched at: \"buffer\" put: \"[System print: 7]; [System println: 8]; [6 * 7]\"]]; [System println: [\"REMOTE-PENDING:\" , [[[r0 at: \"evaluation\"] notNil] printString]]]; let rc := [r0 asCell]; [[| [[[rc value] at: \"evaluation\"] notNil]] whileTrue: [| [rc set: [Digla advanceEvaluationIn: [rc value]]]]]; let r := [rc value]; let lines := [r at: \"transcript\"]; [System println: [\"REMOTE-LINES:\" , [[lines size] printString]]]; [System println: [\"REMOTE-INPUT:\" , [lines at: 2]]]; [System println: [\"REMOTE-OUTPUT-1:\" , [lines at: 3]]]; [System println: [\"REMOTE-OUTPUT-2:\" , [lines at: 4]]]; [System println: [\"REMOTE-VALUE:\" , [lines at: 5]]]; let i0 := [Digla submitIn: [r at: \"buffer\" put: \"[[| true] whileTrue: [| nil]]\"]]; let ic := [[Digla interruptEvaluationIn: i0] asCell]; [[| [[[ic value] at: \"evaluation\"] notNil]] whileTrue: [| [ic set: [Digla advanceEvaluationIn: [ic value]]]]]; let interrupted := [ic value]; [System println: [\"REMOTE-INTERRUPTED:\" , [interrupted at: \"status\"]]]; let h0 := [Digla submitIn: [interrupted at: \"buffer\" put: \"[20 + 22]\"]]; let hc := [h0 asCell]; [[| [[[hc value] at: \"evaluation\"] notNil]] whileTrue: [| [hc set: [Digla advanceEvaluationIn: [hc value]]]]]; let healthy := [hc value]; [System println: [\"REMOTE-HEALTHY:\" , [[healthy at: \"lastResult\"] printString]]]; let closed := [Digla callSession: \"birnam/close\" params: [Map new] in: [healthy at: \"session\"]]; [System println: [\"REMOTE-CLOSED:\" , [[[Digla sessionResultOf: closed] at: \"closed\"] printString]]]"
-printf '%s\n:quit\n' "$probe" | "$bin" run "$client_project" --repl=tty -- \
+{ sed -n '1,$p' scripts/digla-native-conformance.birnam; printf '%s\n:quit\n' "$probe"; } | "$bin" run "$client_project" --repl=tty -- \
   --headless-client --port="$port" >"$tmp/remote-client" 2>&1 &
 client_pid=$!
 for _ in $(seq 1 100); do
@@ -317,18 +317,34 @@ for _ in $(seq 1 100); do
 done
 if kill -0 "$remote_pid" 2>/dev/null; then
   echo "Digla TCP session server did not close with the client" >&2
+  sed -n '1,200p' "$tmp/remote-client" >&2
+  sed -n '1,200p' "$tmp/remote-server" >&2
   exit 1
 fi
 wait "$remote_pid"
 remote_pid=""
 
-grep -q '^birnam> REMOTE-ADAPTER:tcp$' "$tmp/remote-client"
-grep -q '^REMOTE-PENDING:true$' "$tmp/remote-client"
-grep -q '^REMOTE-LINES:6$' "$tmp/remote-client"
-grep -q '^REMOTE-INPUT:> \[System print: 7\]; \[System println: 8\]; \[6 \* 7\]$' "$tmp/remote-client"
-grep -q '^REMOTE-OUTPUT-1:7$' "$tmp/remote-client"
-grep -q '^REMOTE-OUTPUT-2:8$' "$tmp/remote-client"
-grep -q '^REMOTE-VALUE:42$' "$tmp/remote-client"
-grep -q '^REMOTE-INTERRUPTED:interrupted$' "$tmp/remote-client"
-grep -q '^REMOTE-HEALTHY:42$' "$tmp/remote-client"
-grep -q '^REMOTE-CLOSED:true$' "$tmp/remote-client"
+if ! grep -q 'NATIVE-CONFORMANCE:true$' "$tmp/remote-client"; then
+  echo "Digla native/reference conformance failed" >&2
+  sed -n '1,220p' "$tmp/remote-client" >&2
+  exit 1
+fi
+expect_remote() {
+  local pattern="$1"
+  local description="$2"
+  if ! grep -q "$pattern" "$tmp/remote-client"; then
+    echo "Digla TCP editor probe missing $description" >&2
+    sed -n '1,220p' "$tmp/remote-client" >&2
+    exit 1
+  fi
+}
+expect_remote '^birnam> REMOTE-ADAPTER:tcp$' 'remote adapter selection'
+expect_remote '^REMOTE-PENDING:true$' 'pending evaluation state'
+expect_remote '^REMOTE-LINES:6$' 'transcript line count'
+expect_remote '^REMOTE-INPUT:> \[System print: 7\]; \[System println: 8\]; \[6 \* 7\]$' 'input transcript row'
+expect_remote '^REMOTE-OUTPUT-1:7$' 'first output row'
+expect_remote '^REMOTE-OUTPUT-2:8$' 'second output row'
+expect_remote '^REMOTE-VALUE:42$' 'evaluation value row'
+expect_remote '^REMOTE-INTERRUPTED:interrupted$' 'interrupt status'
+expect_remote '^REMOTE-HEALTHY:42$' 'post-interrupt evaluation'
+expect_remote '^REMOTE-CLOSED:true$' 'session close result'

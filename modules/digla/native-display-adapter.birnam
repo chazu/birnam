@@ -1,0 +1,24 @@
+// native-display-adapter.birnam — client-side adapter for versioned source frames.
+//
+// This source part is deliberately composed last in #diglaEditor. The pure
+// Birnam reference remains executable in tests and as the conformance oracle;
+// the shipped client selects the Digla-owned native adapter at this seam.
+
+[Reflect defineMethod: #renderFrameFor:version:cursor:promptWidth:width: on: Digla as:
+  [:self :text :version :cursor :promptWidth :width |
+  [self versionFrame:
+    [DiglaAccelerator renderFrameFor: text cursor: cursor promptWidth: promptWidth width: width]
+    source: text version: version]
+  ] doc:
+  "Build one versioned source frame through the Digla-owned native adapter." ];
+
+[Reflect defineMethod: #displayColumnIn:at: on: Digla as: [:self :text :cursor |
+  [DiglaAccelerator displayColumnIn: text at: cursor]
+  ] doc:
+  "Project a valid UTF-8 source boundary to a terminal column through the native adapter." ];
+
+[Reflect defineMethod: #displayWidthIn:from:to: on: Digla as:
+  [:self :text :start :finish |
+  [DiglaAccelerator displayWidthIn: text from: start to: finish]
+  ] doc:
+  "Measure a valid UTF-8 source range in terminal cells through the native adapter." ];

@@ -235,8 +235,18 @@
   ] doc:
   "Scan source into non-overlapping byte-span syntax highlights without evaluation." ];
 
-[Reflect defineMethod: #analysisFor: on: Digla as: [:self :text |
-  { "highlights" -> [self highlightRangesIn: text],
+[Reflect defineMethod: #analysisFor:version: on: Digla as: [:self :text :version |
+  { "schema" -> 1,
+    "version" -> version,
+    "sourceBytes" -> [text size],
+    "sourceCoordinates" -> "utf-8-bytes",
+    "lspCoordinates" -> "utf-16-lines",
+    "highlights" -> [self highlightRangesIn: text],
     "diagnostics" -> [Lsp staticDiagnosticsOf: text] }
   ] doc:
-  "Parse source for byte-span diagnostics and scan it for terminal syntax highlights." ];
+  "Analyze one immutable document version in shared source-byte coordinates." ];
+
+[Reflect defineMethod: #analysisFor: on: Digla as: [:self :text |
+  [self analysisFor: text version: 0]
+  ] doc:
+  "Analyze unversioned source for compatibility with stateless callers." ];

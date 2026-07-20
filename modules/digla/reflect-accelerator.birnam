@@ -37,16 +37,5 @@ let loaded := [System loadModule: path];
   [context endEvaluationInterruptProbe]]];
 [Reflect defineMethod: #runtimeNamed: on: Digla as: [:self :name |
   [DiglaAccelerator runtimeNamed: name]]];
-[Reflect defineMethod: #renderFrameFor:cursor:promptWidth: on: Digla as:
-  [:self :text :cursor :promptWidth |
-    [DiglaAccelerator renderFrameFor: text cursor: cursor promptWidth: promptWidth]]];
-[Reflect defineMethod: #renderFrameFor:cursor:promptWidth:width: on: Digla as:
-  [:self :text :cursor :promptWidth :width |
-    [DiglaAccelerator renderFrameFor: text cursor: cursor promptWidth: promptWidth width: width]]];
-[Reflect defineMethod: #displayColumnIn:at: on: Digla as: [:self :text :cursor |
-  [DiglaAccelerator displayColumnIn: text at: cursor]]];
-[Reflect defineMethod: #displayWidthIn:from:to: on: Digla as:
-  [:self :text :start :finish |
-    [DiglaAccelerator displayWidthIn: text from: start to: finish]]];
 [Reflect defineMethod: #wrapTranscriptLine:width: on: Digla as: [:self :text :width |
   [DiglaAccelerator wrapTranscriptLine: text width: width]]]

@@ -47,6 +47,10 @@ entry = "../../modules/digla/termbox.birnam"
 files = ["../../wrapped/termbox2/termbox2.birnam"]
 
 [[module]]
+entry = "../../modules/digla/native-display-module.birnam"
+files = ["../../modules/digla/native-display-adapter.birnam"]
+
+[[module]]
 entry = "../../modules/digla/app.birnam"
 files = [
   "../../modules/digla/browser.birnam",

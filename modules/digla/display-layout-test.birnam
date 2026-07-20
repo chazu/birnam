@@ -51,6 +51,16 @@ let e := [TestSuite named: "Digla display layout" module: #diglaDisplayLayout];
   [t expect: [[unicode at: "position"] at: "line"] equals: 1
     describes: "cursor at a soft boundary belongs to the following row"]]];
 
+[e test: "source frames carry their document version and coordinate contract" do: [:t |
+  let frame := [Digla renderFrameFor: "a🙂b" version: 23 cursor: 5
+    promptWidth: 2 width: 5];
+  [t expect: [frame at: "version"] equals: 23 describes: "frame version is explicit"];
+  [t expect: [frame at: "sourceBytes"] equals: 6 describes: "source extent is bytes"];
+  [t expect: [frame at: "sourceCoordinates"] equals: "utf-8-bytes"
+    describes: "frame cursor authority is source bytes"];
+  [t expect: [frame at: "terminalCoordinates"] equals: "unicode-cells"
+    describes: "terminal projection has a distinct coordinate space"]]];
+
 [e test: "source frames match the active nested bracket by byte offset" do: [:t |
   let closing := [Digla renderFrameFor: "[{1}]" cursor: 5 promptWidth: 2 width: 80];
   let closeMatch := [closing at: "bracketMatch"];

@@ -429,8 +429,8 @@
   let width := [Termbox width];
   let height := [Termbox height];
   let buffer := [state at: "buffer"];
-  let frame := [self renderFrameFor: buffer cursor: [state at: "cursor"]
-    promptWidth: 2 width: width];
+  let frame := [self renderFrameFor: buffer version: [state at: "documentVersion"]
+    cursor: [state at: "cursor"] promptWidth: 2 width: width];
   let analysis := { "highlights" -> [frame at: "highlights"],
     "diagnostics" -> [state at: "diagnostics"] };
   let layout := [frame at: "layout"];

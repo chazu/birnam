@@ -1,4 +1,4 @@
 // app.birnam — one project root for Digla's optional runtime adapters and UI.
 
-[Module named: #diglaApp requires: #[#diglaEditor #termbox]];
+[Module named: #diglaApp requires: #[#diglaNativeDisplay #termbox]];
 [Reflect docModule: #diglaApp is: "The Digla Termbox client and snapshot browser composition."];

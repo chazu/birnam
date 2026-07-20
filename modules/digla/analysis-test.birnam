@@ -29,3 +29,12 @@ let e := [TestSuite named: "Digla analysis" module: #diglaAnalysis];
     describes: "end-of-input diagnostics retain a source-byte point"];
   [t expect: [diagnostic at: "range" ifAbsent: [| nil]] equals: nil
     describes: "Digla does not format diagnostics as LSP ranges"]]];
+
+[e test: "analysis records the immutable document version and coordinate contract" do: [:t |
+  let analysis := [Digla analysisFor: "a🙂b" version: 17];
+  [t expect: [analysis at: "version"] equals: 17 describes: "version is explicit"];
+  [t expect: [analysis at: "sourceBytes"] equals: 6 describes: "source extent is bytes"];
+  [t expect: [analysis at: "sourceCoordinates"] equals: "utf-8-bytes"
+    describes: "editor coordinate authority"];
+  [t expect: [analysis at: "lspCoordinates"] equals: "utf-16-lines"
+    describes: "LSP conversion boundary"]]];
