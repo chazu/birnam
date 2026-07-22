@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, and R3.0 through R3.5 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, and R3.0 through R3.6 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1435,6 +1435,38 @@ every process asserts the intended floor identity; independent outputs prove the
 two runs cannot overwrite each other; the normal `test` and installed runtime
 still default to Zig. The deferred GC/layout group is visibly assigned to R4,
 not reported as passing or silently skipped.
+
+#### R3.6 execution record — 2026-07-22
+
+The existing language-neutral test-floor adapter now selects either
+`zig-id-v1` or the Rust dylib's new `rust-id-v1` diagnostic identity before
+calling `id_init` once and retaining the handle for the process. Store, PEG,
+language, prelude, and collection tests all already imported this adapter rather
+than `id.zig`; the Zig floor's private tests remain unchanged. Publishing the
+Rust identity does not install or implicitly select Rust: the ordinary prefix
+still contains the Zig floor.
+
+Collection coverage is now split by capability instead of conditionals.
+`test-collection` contains 19 non-GC behavior tests. The two tests that require
+precise tracing, reclamation, and live-graph survival are in the explicitly
+named `test-collection-gc` group, remain part of the normal Zig gate, and are
+assigned to R4 for Rust. Stack-bottom registration stays real in the non-GC
+group while the R3.0 Rust collector remains inert. No test examines the selected
+identity to decide whether to skip.
+
+`test-rust-lower-rungs` creates fresh Zig-floor and Rust-floor roots. They have
+different install prefixes, local and global Zig caches, stage-1 output trees,
+and temporary roots; Rust also uses a fresh Cargo target. Each Rust profile is
+copied under its isolated prefix and selected by absolute path. The matrix runs
+59 tests per target: Store 17, image-reset MOP backfill 1, PEG 6, language 6,
+prelude 10, and non-GC collection 19. `zig-id-v1`, Rust debug, and Rust release
+all pass in separate processes. The harness prints each selected dylib digest,
+asserts the output trees are distinct and complete, and checksum-guards the
+ordinary installed Zig floor against mutation.
+
+The isolated matrix is wired into combined `zig build test`. Strict Rust Clippy,
+all prior cross-floor gates, the default Zig-only tracing/sweeping collection
+group, and the post-change combined gate pass.
 
 ### R3.7 — Prove ID-floor artifact preflight
 
