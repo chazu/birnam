@@ -373,7 +373,20 @@ pub fn build(b: *std.Build) void {
     });
     const artifact_preflight_tests = b.addTest(.{ .root_module = artifact_preflight_test_mod });
     artifact_preflight_tests.linkLibC();
-    const run_artifact_preflight_tests = b.addRunArtifact(artifact_preflight_tests);
+    const artifact_preflight_sentinel_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/artifact_preflight_sentinel.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const artifact_preflight_sentinel = b.addLibrary(.{
+        .name = "birnam_artifact_preflight_sentinel",
+        .root_module = artifact_preflight_sentinel_mod,
+        .linkage = .dynamic,
+    });
+    artifact_preflight_sentinel.linkLibC();
+    const run_artifact_preflight_tests = b.addSystemCommand(&.{ "bash", "scripts/artifact-preflight-sentinel.sh" });
+    run_artifact_preflight_tests.addArtifactArg(artifact_preflight_tests);
+    run_artifact_preflight_tests.addArtifactArg(artifact_preflight_sentinel);
     run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
     run_artifact_preflight_tests.step.dependOn(bootstrap_install);

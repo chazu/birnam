@@ -151,3 +151,33 @@ test "compatible closure reaches activation boundary without higher rungs" {
     try std.testing.expect(api.import("Codegen") == null);
     try std.testing.expect(api.import("Module") == null);
 }
+
+test "real aborting artifact initializer is unreachable during preflight" {
+    const api = setup();
+    const sentinel_path = std.posix.getenv("BIRNAM_PREFLIGHT_SENTINEL_DYLIB") orelse
+        @panic("BIRNAM_PREFLIGHT_SENTINEL_DYLIB must name the real sentinel fixture");
+    const dylib = try std.fs.cwd().readFileAlloc(std.testing.allocator, sentinel_path, 1 << 30);
+    defer std.testing.allocator.free(dylib);
+    const descriptor = try descriptorBytes("module", "sentinel", &.{});
+    defer std.testing.allocator.free(descriptor);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var candidate = try tmp.dir.createFile("candidate.dylib", .{});
+    try candidate.writeAll(dylib);
+    try candidate.writeAll(descriptor);
+    candidate.close();
+
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const description = try inspect(api, directory, "candidate.dylib");
+    var preflight = artifact_preflight.Preflight.init(std.testing.allocator, api, api.import("Artifact").?, directory);
+    defer preflight.deinit();
+    try preflight.walkRoot(description, api.intern("sentinel"));
+
+    // Reaching here proves neither exported aborting initializer ran. No higher
+    // rung was resolved as an incidental consequence of inspecting the dylib.
+    try std.testing.expect(api.import("Store") == null);
+    try std.testing.expect(api.import("Codegen") == null);
+    try std.testing.expect(api.import("Module") == null);
+}
