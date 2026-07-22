@@ -79,6 +79,10 @@ run = "bash scripts/rust-gc-metadata-smoke.sh"
 description = "Recover an Oop held across collection by optimized C"
 run = "bash scripts/rust-stack-root-smoke.sh"
 
+[tasks.rust-image-save-smoke]
+description = "Save an image through the CLI with both Rust floor profiles"
+run = "bash scripts/rust-image-save-smoke.sh"
+
 [tasks.rust-env-loader-smoke]
 description = "Reflect canonical exports and reload a fixture through Rust"
 run = "bash scripts/rust-env-loader-smoke.sh"

@@ -181,6 +181,19 @@ pub fn build(b: *std.Build) void {
     test_rust_stack_root_step.dependOn(&rust_stack_root_smoke.step);
     test_step.dependOn(&rust_stack_root_smoke.step);
 
+    const rust_image_save_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-image-save-smoke.sh",
+    });
+    rust_image_save_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    rust_image_save_smoke.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
+    const test_rust_image_save_step = b.step(
+        "test-rust-image-save",
+        "Save a representative image through the CLI with both Rust floor profiles",
+    );
+    test_rust_image_save_step.dependOn(&rust_image_save_smoke.step);
+    test_step.dependOn(&rust_image_save_smoke.step);
+
     const rust_env_loader_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/rust-env-loader-smoke.sh",
@@ -458,6 +471,7 @@ pub fn build(b: *std.Build) void {
     // recovery path. A complete ordinary install, however, always includes the
     // compiled self-hosted and production module closure.
     const stage1 = b.step("stage1", "AOT-compile the dependency-ordered self-hosted modules to installable dylibs");
+    rust_image_save_smoke.step.dependOn(stage1);
     // Each self-hosted module: `birnam --compile-module <src> <lib>/libbirnam_<name>.dylib`.
     const self_hosted = [_]struct { src: []const u8, name: []const u8 }{
         .{ .src = "src/id/modules.birnam", .name = "modules" },
