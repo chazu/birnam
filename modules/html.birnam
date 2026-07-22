@@ -5,7 +5,7 @@
 // a bag of functions hung on an `Html` singleton.
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/html.birnam"]
+//   [Module load: #html]
 //
 //   [Html tag: "p" text: "hi <there>"]     "=> <p>hi &lt;there&gt;</p>"   (text escaped)
 //   [Html tag: "div" body: inner]          "=> <div>...inner markup...</div>" (body raw)

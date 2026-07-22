@@ -25,32 +25,6 @@
 [System load: "modules/project-policy-test.birnam"];
 [System load: "modules/compiled-unit-test.birnam"];
 [System load: "modules/app-config-test.birnam"];
-[System load: "modules/digla/digla-test.birnam"];
-[System load: "modules/digla/inspection.birnam"];
-[System load: "modules/digla/inspection-test.birnam"];
-[System load: "modules/digla/local-session.birnam"];
-[System load: "modules/digla/session-test.birnam"];
-[System load: "modules/digla/protocol.birnam"];
-[System load: "modules/digla/protocol-test.birnam"];
-[System load: "modules/digla/socket-protocol.birnam"];
-[System load: "modules/digla/socket-protocol-test.birnam"];
-[System load: "modules/digla/position-map.birnam"];
-[System load: "modules/digla/position-map-test.birnam"];
-[System load: "modules/digla/editor.birnam"];
-[System load: "modules/digla/editor-test.birnam"];
-[System load: "modules/digla/browser.birnam"];
-[System load: "modules/digla/browser-editor.birnam"];
-[System load: "modules/digla/browser-test.birnam"];
-[System load: "modules/digla/display-layout.birnam"];
-[System load: "modules/digla/display-layout-test.birnam"];
-[System load: "modules/digla/analysis.birnam"];
-[System load: "modules/digla/analysis-test.birnam"];
-[System load: "modules/digla/language-service.birnam"];
-[System load: "modules/digla/language-service-test.birnam"];
-[System load: "modules/digla/project-source.birnam"];
-[System load: "modules/digla/project-source-test.birnam"];
-[System load: "modules/digla/render.birnam"];
-[System load: "modules/digla/render-test.birnam"];
 
 // -- run them all through the console runner, then gate the exit code ----------
 [Test runAllSuitesWithRunner: ConsoleRunner];

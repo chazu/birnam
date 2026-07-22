@@ -1,5 +1,0 @@
-// native-display-module.birnam — selects the client source-frame adapter.
-
-[Module named: #diglaNativeDisplay requires: #[#diglaEditor]];
-[Reflect docModule: #diglaNativeDisplay is:
-  "The client-only native adapter for versioned Digla source and terminal-coordinate frames." ];

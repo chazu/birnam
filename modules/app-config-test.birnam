@@ -8,13 +8,13 @@
 let s := [TestSuite named: "AppConfig" module: #appConfig];
 
 [s test: "default path and derived environment names are conventional" do: [:t |
-  [t expect: [AppConfig environmentNameFor: "digla" key: "port"]
-      equals: "DIGLA_PORT" describes: "environment name" ];
-  let path := [AppConfig defaultPathFor: "digla"];
-  [t assert: [[path isNil] | [path endsWith: "/.digla/digla.toml"]]
+  [t expect: [AppConfig environmentNameFor: "example" key: "port"]
+      equals: "EXAMPLE_PORT" describes: "environment name" ];
+  let path := [AppConfig defaultPathFor: "example"];
+  [t assert: [[path isNil] | [path endsWith: "/.example/example.toml"]]
       describes: "default path is HOME-relative"];
-  let selected := [AppConfig configPathFor: "digla" args: #["--config" "/tmp/digla.toml"]];
-  [t expect: selected equals: "/tmp/digla.toml" describes: "CLI config path"]]];
+  let selected := [AppConfig configPathFor: "example" args: #["--config" "/tmp/example.toml"]];
+  [t expect: selected equals: "/tmp/example.toml" describes: "CLI config path"]]];
 
 [s test: "TOML, environment, and CLI layers override in order" do: [:t |
   let defaults0 := [Map new];
@@ -23,11 +23,11 @@ let s := [TestSuite named: "AppConfig" module: #appConfig];
   let defaults := [defaults2 at: "history" put: true];
   let path := "/tmp/birnam-app-config-test.toml";
   let env0 := [Map new];
-  let env1 := [env0 at: "DIGLA_PORT" put: "2000"];
-  let env := [env1 at: "DIGLA_BIND" put: "env.example"];
+  let env1 := [env0 at: "EXAMPLE_PORT" put: "2000"];
+  let env := [env1 at: "EXAMPLE_BIND" put: "env.example"];
   let args := #["--port=3000" "--history"];
   [System writeFile: path contents: "port = 1500\nbind = \"file.example\"\nhistory = false\n"];
-  let config := [AppConfig resolve: "digla" defaults: defaults configPath: path environment: env args: args];
+  let config := [AppConfig resolve: "example" defaults: defaults configPath: path environment: env args: args];
   [t expect: [config at: "port"] equals: 3000 describes: "CLI beats environment and file"];
   [t expect: [config at: "bind"] equals: "env.example" describes: "environment beats file"];
   [t expect: [config at: "history"] equals: true describes: "boolean CLI flag"];
@@ -41,7 +41,7 @@ let s := [TestSuite named: "AppConfig" module: #appConfig];
   let defaults := [defaults0 at: "port" put: 1000];
   let path := "/tmp/birnam-app-config-file-only.toml";
   [System writeFile: path contents: "port = 1500\n"];
-  let config := [AppConfig resolve: "digla" defaults: defaults configPath: path environment: [Map new] args: #[]];
+  let config := [AppConfig resolve: "example" defaults: defaults configPath: path environment: [Map new] args: #[]];
   [t expect: [config at: "port"] equals: 1500 describes: "TOML value"];
   [t expect: [config originAt: "port"] equals: "file" describes: "TOML origin"];
   [File delete: path]]];

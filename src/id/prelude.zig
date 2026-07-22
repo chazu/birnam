@@ -632,18 +632,7 @@ fn sysLoad(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
     const path = pathOf(a[0]);
-    const src = std.fs.cwd().readFileAlloc(ca, path, 1 << 30) catch blk: {
-        // Fallback: resolve a relative "modules/<file>" path against
-        // $BIRNAM_MODULES_DIR, so a module's own relative dep-loads (and the
-        // `birnam doc`/`--lsp` launchers) work from ANY working directory.
-        if (std.posix.getenv("BIRNAM_MODULES_DIR")) |dir| {
-            const base = if (std.mem.startsWith(u8, path, "modules/")) path["modules/".len..] else path;
-            const alt = std.fs.path.join(ca, &.{ dir, base }) catch
-                return mkErr("ioError", "could not read source file");
-            defer ca.free(alt);
-            break :blk std.fs.cwd().readFileAlloc(ca, alt, 1 << 30) catch
-                return mkErr("ioError", "could not read source file");
-        }
+    const src = std.fs.cwd().readFileAlloc(ca, path, 1 << 30) catch {
         return mkErr("ioError", "could not read source file");
     };
     defer ca.free(src);

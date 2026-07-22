@@ -2,7 +2,8 @@
 
 > **Status:** P0 workspace/coordinate slice, P1 safe static diagnostics, the P2
 > project source index/navigation/semantic assistance slice, and the P3 Emacs
-> integration slice implemented, 2026-07-15. This document
+> integration slice implemented and extended with project test/profile commands,
+> 2026-07-22. This document
 > extends the shipped modules/lsp.birnam server and tools/emacs/birnam-mode.el
 > around the shared project resolver in [51 — Project Manifests and Dependency
 > Resolution](51-project-manifests-and-dependency-resolution.md). It is not a
@@ -19,10 +20,9 @@ Birnam already has a useful editor foothold:
   hover requests from Birnam documentation;
 - the current verification gate exercises installed LSP startup.
 
-The next step is to make those tools understand a project rather than a single
-buffer. A user should be able to open a file from a nested directory and get
-the same modules, dependency errors, source locations, and commands that
-birnam check/build/run use.
+These tools understand a project rather than a single buffer. A user can open a
+file from a nested directory and get the same modules, dependency errors, source
+locations, and project root used by `birnam check/build/run/test`.
 
 ## 2. Governing invariants
 
@@ -149,8 +149,9 @@ name. References remain conservative around late-bound dispatch.
 
 ### P3 — project commands and live workflow
 
-Emacs exposes check, build, and run through project-root-aware compilation
-commands. Live staging, activation, rollback, and baseline save remain explicit
+Emacs exposes check, build, run, and isolated project tests through
+project-root-aware compilation commands. Build, run, and test share an explicit
+debug/release profile selection. Live staging, activation, rollback, and baseline save remain explicit
 commands; an editor action must never activate code merely because a buffer
 changed. LSP command/code-action plumbing is deliberately deferred until the
 CLI command result contract is exposed as a stable machine-readable protocol;
@@ -166,7 +167,8 @@ lsp-mode. The implemented integration is:
 - register the server without requiring users to hand-edit an lsp-mode entry;
 - retain run-birnam, region/buffer/line evaluation, and the comint REPL;
 - make REPL and evaluation commands use the project root and selected binary;
-- add compilation-mode commands for birnam check, build, and run;
+- add compilation-mode commands for birnam check, build, run, and test, with an
+  explicit debug/release profile for artifact-consuming commands;
 - expose explicit live-module commands only when the user invokes them.
 
 The mode does not become a package manager or duplicate LSP responses. Its
@@ -233,7 +235,10 @@ the parser/CST construction seam.
 ### P3 — Emacs project commands — implemented
 
 Project-root-aware lsp-mode startup and compilation commands are wired to the
-stable CLI. The existing REPL/evaluation workflow remains independent.
+stable CLI. Build, run, and isolated-test commands honor the customizable
+`birnam-project-profile`; check retains source-only semantics. An active project
+snapshot exposes its selected `buildRoot` and `profile`. The existing
+REPL/evaluation workflow remains independent.
 
 ## 8. Acceptance scenarios
 

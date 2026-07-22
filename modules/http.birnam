@@ -4,11 +4,8 @@
 // (modules/file.birnam): parse a request line, route a URL path to a file under a
 // document root, guess a content type, and write the response. No new Zig.
 //
-// DEPENDENCIES — load these first (Http does NOT auto-load them, to avoid nested
-// eval during its own load):
-//   [System load: "modules/socket.birnam"];
-//   [System load: "modules/file.birnam"];
-//   [System load: "modules/http.birnam"];
+// Load the module and its declared dependency closure:
+//   [Module load: #http];
 //
 // Serve a directory of static files (blocking, one connection at a time):
 //   [Http serveDir: "docs" on: 8080]

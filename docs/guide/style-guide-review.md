@@ -32,8 +32,8 @@ styles.
 
 ### The guide is grounded in the actual repository
 
-The Digla and Minesweeper examples expose real problems rather than invented
-toy smells. The stale `whileDo` comment is an especially effective example of
+The retired terminal-renderer experiment and Minesweeper example expose real
+problems rather than invented toy smells. The stale `whileDo` comment is an especially effective example of
 why style includes knowing the current language floor, not merely arranging
 whitespace.
 

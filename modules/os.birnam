@@ -6,7 +6,7 @@
 // shell or CI.
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/os.birnam"]
+//   [Module load: #os]
 //   [OS exit: 0]        "=> terminate the process with status 0"
 //   [1 exitProcess]     "=> the raw form: the Integer receiver IS the status"
 //

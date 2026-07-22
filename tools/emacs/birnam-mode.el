@@ -64,6 +64,11 @@ Defaults to `--repl', which starts the interactive read-eval-print loop."
   :type '(repeat string)
   :group 'birnam)
 
+(defcustom birnam-project-profile "debug"
+  "Build profile used by Birnam project build, run, and test commands."
+  :type '(choice (const "debug") (const "release"))
+  :group 'birnam)
+
 (defcustom birnam-lsp-program birnam-program
   "Path to the Birnam executable used by lsp-mode."
   :type 'string
@@ -300,12 +305,15 @@ DIRECTORY defaults to the current buffer's directory and then
   (file-name-as-directory
    (expand-file-name (or (birnam--project-root) default-directory))))
 
-(defun birnam--compile-project (subcommand)
-  "Run Birnam SUBCOMMAND for the current project in compilation-mode."
+(defun birnam--compile-project (subcommand &optional use-profile)
+  "Run Birnam SUBCOMMAND for the current project in compilation-mode.
+When USE-PROFILE is non-nil, pass `birnam-project-profile'."
   (let* ((root (birnam--workspace-directory))
          (default-directory root)
          (command (mapconcat #'shell-quote-argument
-                             (list birnam-program subcommand root)
+                             (append (list birnam-program subcommand root)
+                                     (when use-profile
+                                       (list "--profile" birnam-project-profile)))
                              " ")))
     (compile command)))
 
@@ -319,13 +327,19 @@ DIRECTORY defaults to the current buffer's directory and then
 (defun birnam-build-project ()
   "Run `birnam build' for the current project."
   (interactive)
-  (birnam--compile-project "build"))
+  (birnam--compile-project "build" t))
 
 ;;;###autoload
 (defun birnam-run-project ()
   "Run the current project with `birnam run' in compilation-mode."
   (interactive)
-  (birnam--compile-project "run"))
+  (birnam--compile-project "run" t))
+
+;;;###autoload
+(defun birnam-test-project ()
+  "Run isolated project tests with `birnam test' in compilation-mode."
+  (interactive)
+  (birnam--compile-project "test" t))
 
 ;;;; lsp-mode ------------------------------------------------------------
 
@@ -444,6 +458,7 @@ rather than filed in as a unit."
     (define-key map (kbd "C-c C-k") #'birnam-check-project)
     (define-key map (kbd "C-c C-u") #'birnam-build-project)
     (define-key map (kbd "C-c C-p") #'birnam-run-project)
+    (define-key map (kbd "C-c C-t") #'birnam-test-project)
     (define-key map (kbd "C-c C-e") #'birnam-lsp-start)
     map)
   "Keymap for `birnam-mode'.")

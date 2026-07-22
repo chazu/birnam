@@ -15,9 +15,7 @@
 // front it with a reverse proxy (TLS, timeouts); a poll() reactor for many
 // concurrent clients in one image is a later layer.
 
-[System load: "modules/socket.birnam"];
-[System load: "modules/file.birnam"];
-[System load: "modules/http.birnam"];
+[Module load: #http];
 
 [System println: "birnam docs server on http://localhost:8080/  (Ctrl-C to stop)"];
 

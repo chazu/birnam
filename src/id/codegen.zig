@@ -70,6 +70,9 @@ var image_dispatch_program = false;
 var candidate_preparing = false;
 var candidate_commit_in_progress = false;
 var image_dispatch_recovery = false;
+// Process-local UI code loaded after image recovery is executable host
+// capability, not durable application-generation authority.
+var host_capability_loading = false;
 var initial_generation_sealed = false;
 var reflect_target_resolution_count: usize = 0;
 var reflect_global_snapshot_count: usize = 0;
@@ -77,6 +80,7 @@ const RuntimePhase = enum { bootstrapping, running, quiescent, image_recovery };
 var runtime_phase: RuntimePhase = .bootstrapping;
 
 const ARTIFACT_ABI = artifact_contract.abi;
+const ARTIFACT_TARGET = artifact_contract.target;
 const CANDIDATE_ABI: u32 = 3;
 const CANDIDATE_PLATFORM = "aarch64-macos";
 const CANDIDATE_MAGIC = "BIRNAM-CANDIDATE-2";
@@ -518,7 +522,7 @@ fn rtCandidatePrepareMode(on: c_long) callconv(.c) void {
 }
 
 fn authorizeManagedMethodMutation() callconv(.c) Oop {
-    if (candidate_commit_in_progress or image_dispatch_recovery or runtime_phase == .bootstrapping or
+    if (candidate_commit_in_progress or image_dispatch_recovery or host_capability_loading or runtime_phase == .bootstrapping or
         runtime_phase == .quiescent or runtime_phase == .image_recovery) return g_api.trueObj;
     return candidateError("dispatchMutationRequiresQuiescence");
 }
@@ -1187,7 +1191,7 @@ fn mNameOf(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 /// so sorting these numeric keys reproduces source order independently of attrAt
 /// order. This is an image source journal, not a live-evolution policy.
 fn recordMethodOp(src: Oop) void {
-    if (suppress_methodop_recording or image_dispatch_recovery) return;
+    if (suppress_methodop_recording or image_dispatch_recovery or host_capability_loading) return;
     const basis = g_api.smallIntValue(g_api.send(g_store, g_api.intern("basis"), &[_]Oop{}, 0));
     const tie = method_op_counter;
     method_op_counter += 1;
@@ -1400,6 +1404,55 @@ fn appendEmbeddedPath(paths: *std.ArrayList(Oop), node: Oop) void {
         if (std.mem.eql(u8, bytes[0..len], path.items)) return;
     }
     paths.append(ca, g_api.mkString(path.items.ptr, path.items.len)) catch @panic("codegen: oom");
+}
+
+fn appendDistinctString(values: *std.ArrayList(Oop), node: Oop) void {
+    var decoded: std.ArrayList(u8) = .{};
+    defer decoded.deinit(ca);
+    if (!decodeStringLiteral(node, &decoded)) return;
+    for (values.items) |existing| {
+        var len: usize = 0;
+        const bytes = g_api.stringBytes(existing, &len);
+        if (std.mem.eql(u8, bytes[0..len], decoded.items)) return;
+    }
+    values.append(ca, g_api.mkString(decoded.items.ptr, decoded.items.len)) catch @panic("codegen: oom");
+}
+
+/// Collect literal native-library requirements without evaluating source. The
+/// compiled wrapper remains the authority for the relationship: a native dylib
+/// does not need a Birnam sidecar merely to say which wrapper consumes it.
+fn collectNativeRequirements(node0: Oop, requirements: *std.ArrayList(Oop)) void {
+    const node = skip(node0);
+    if (ruleOf(node) == r_send and nchild(node) >= 2) {
+        const recv = skip(child(node, 0));
+        const msg = skip(child(node, 1));
+        if (ruleOf(recv) == r_ident and std.mem.eql(u8, text(recv), "Alien")) {
+            var selector: std.ArrayList(u8) = .{};
+            defer selector.deinit(ca);
+            var args: std.ArrayList(Oop) = .{};
+            defer args.deinit(ca);
+            if (keywordParts(msg, &selector, &args) and
+                std.mem.eql(u8, selector.items, "dlopen:") and args.items.len == 1)
+            {
+                appendDistinctString(requirements, args.items[0]);
+            }
+        }
+    }
+    var i: usize = 0;
+    while (i < nchild(node)) : (i += 1)
+        collectNativeRequirements(child(node, i), requirements);
+}
+
+fn nativeRequirementsOf(source: Oop) std.ArrayList(Oop) {
+    var requirements: std.ArrayList(Oop) = .{};
+    var len: usize = 0;
+    src_bytes = g_api.stringBytes(source, &len)[0..len];
+    const cst = s1(lang, "parse:", source);
+    const parse_failed = cst == g_api.nilObj or
+        (g_api.isExported("Error") != 0 and g_api.send(cst, g_api.intern("isError"), &.{}, 0) == g_api.trueObj);
+    if (!parse_failed and nchild(cst) > 0)
+        collectNativeRequirements(child(cst, 0), &requirements);
+    return requirements;
 }
 
 fn collectEmbeddedPaths(node0: Oop, paths: *std.ArrayList(Oop)) void {
@@ -2283,13 +2336,18 @@ fn mCompileCandidate(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 
     var out: std.ArrayList(u8) = .{};
     defer out.deinit(ca);
+    var native_requires = nativeRequirementsOf(a[0]);
+    defer native_requires.deinit(ca);
     out.appendSlice(ca, "const char __birnam_artifact_abi[] = \"" ++ ARTIFACT_ABI ++ "\";\n") catch @panic("codegen: oom");
-    out.appendSlice(ca, "const char __birnam_module_meta[] = \"") catch @panic("codegen: oom");
-    for (scan.requires.items, 0..) |dep, i| {
-        if (i != 0) out.append(ca, ',') catch @panic("codegen: oom");
-        out.appendSlice(ca, std.mem.span(g_api.symbolName(dep))) catch @panic("codegen: oom");
-    }
-    out.appendSlice(ca, "\";\nconst char __birnam_candidate_manifest[] = \"") catch @panic("codegen: oom");
+    appendArtifactDescriptorSymbols(
+        &out,
+        std.mem.span(g_api.symbolName(a[1])),
+        scan.requires.items,
+        native_requires.items,
+        &scan.source_digest,
+        &scan.revision_digest,
+    );
+    out.appendSlice(ca, "const char __birnam_candidate_manifest[] = \"") catch @panic("codegen: oom");
     putCStr(&out, manifest.items);
     out.appendSlice(ca, "\";\n") catch @panic("codegen: oom");
     out.appendSlice(ca, emitted.items) catch @panic("codegen: oom");
@@ -2508,6 +2566,7 @@ fn mSealInitialGeneration(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop
 }
 
 fn rtRecordModuleSource(name: [*:0]const u8, src: [*]const u8, n: c_long) callconv(.c) void {
+    if (host_capability_loading) return;
     _ = recordModuleSource(g_api.intern(name), g_api.mkString(src, @intCast(n)));
 }
 
@@ -3659,6 +3718,105 @@ fn mCompileOutputRoot(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 /// Shared compile implementation. The artifact leaves the `birnam_*` shims as
 /// undefined externals, re-derives its global handles by name in
 /// `__birnam_unit_init`, and self-records its source for image recovery.
+fn descriptorU32(bytes: *std.ArrayList(u8), value: usize) void {
+    var encoded: [4]u8 = undefined;
+    std.mem.writeInt(u32, &encoded, @intCast(value), .little);
+    bytes.appendSlice(ca, &encoded) catch @panic("codegen: oom");
+}
+
+fn descriptorField(bytes: *std.ArrayList(u8), value: []const u8) void {
+    descriptorU32(bytes, value.len);
+    bytes.appendSlice(ca, value) catch @panic("codegen: oom");
+}
+
+fn descriptorSymbolList(bytes: *std.ArrayList(u8), values: []const Oop) void {
+    descriptorU32(bytes, values.len);
+    for (values) |value| descriptorField(bytes, std.mem.span(g_api.symbolName(value)));
+}
+
+fn descriptorStringList(bytes: *std.ArrayList(u8), values: []const Oop) void {
+    descriptorU32(bytes, values.len);
+    for (values) |value| descriptorField(bytes, oopBytes(value));
+}
+
+fn appendArtifactDescriptorBlob(
+    out: *std.ArrayList(u8),
+    identity: []const u8,
+    requires: []const Oop,
+    native_requires: []const Oop,
+    source_digest: []const u8,
+    revision_digest: []const u8,
+) void {
+    var payload: std.ArrayList(u8) = .{};
+    defer payload.deinit(ca);
+    descriptorField(&payload, "module");
+    descriptorField(&payload, identity);
+    descriptorField(&payload, ARTIFACT_ABI);
+    descriptorField(&payload, ARTIFACT_TARGET);
+    descriptorField(&payload, source_digest);
+    descriptorField(&payload, revision_digest);
+    descriptorSymbolList(&payload, requires);
+    descriptorStringList(&payload, native_requires);
+    descriptorU32(&payload, 3);
+    descriptorField(&payload, "activate");
+    descriptorField(&payload, "source");
+    descriptorField(&payload, "reflection");
+
+    var bytes: std.ArrayList(u8) = .{};
+    defer bytes.deinit(ca);
+    bytes.appendSlice(ca, artifact_contract.descriptor_magic) catch @panic("codegen: oom");
+    descriptorU32(&bytes, payload.items.len);
+    bytes.appendSlice(ca, payload.items) catch @panic("codegen: oom");
+    out.appendSlice(ca, "const unsigned char __birnam_artifact_descriptor[] = {") catch @panic("codegen: oom");
+    for (bytes.items, 0..) |byte, i| {
+        if (i != 0) out.append(ca, ',') catch @panic("codegen: oom");
+        var rendered: [4]u8 = undefined;
+        out.appendSlice(ca, std.fmt.bufPrint(&rendered, "{d}", .{byte}) catch @panic("codegen: oom")) catch @panic("codegen: oom");
+    }
+    out.appendSlice(ca, "};\n") catch @panic("codegen: oom");
+}
+
+fn appendArtifactDescriptorSymbols(
+    out: *std.ArrayList(u8),
+    identity: []const u8,
+    requires: []const Oop,
+    native_requires: []const Oop,
+    source_digest: []const u8,
+    revision_digest: []const u8,
+) void {
+    appendArtifactDescriptorBlob(out, identity, requires, native_requires, source_digest, revision_digest);
+    out.appendSlice(ca, "const char __birnam_artifact_kind[] = \"module\";\n") catch @panic("codegen: oom");
+    out.appendSlice(ca, "const char __birnam_artifact_identity[] = \"") catch @panic("codegen: oom");
+    putCStr(out, identity);
+    out.appendSlice(ca, "\";\nconst char __birnam_artifact_target[] = \"" ++ ARTIFACT_TARGET ++ "\";\n") catch @panic("codegen: oom");
+    const requires_count = std.fmt.allocPrint(ca, "const unsigned long __birnam_artifact_requires_count = {d}UL;\nconst char* const __birnam_artifact_requires[] = {{", .{requires.len}) catch @panic("codegen: oom");
+    defer ca.free(requires_count);
+    out.appendSlice(ca, requires_count) catch @panic("codegen: oom");
+    if (requires.len == 0) out.appendSlice(ca, "0") catch @panic("codegen: oom");
+    for (requires, 0..) |requirement, i| {
+        if (i != 0) out.append(ca, ',') catch @panic("codegen: oom");
+        out.append(ca, '"') catch @panic("codegen: oom");
+        putCStr(out, std.mem.span(g_api.symbolName(requirement)));
+        out.append(ca, '"') catch @panic("codegen: oom");
+    }
+    const native_count = std.fmt.allocPrint(ca, "}};\nconst unsigned long __birnam_artifact_native_requires_count = {d}UL;\nconst char* const __birnam_artifact_native_requires[] = {{", .{native_requires.len}) catch @panic("codegen: oom");
+    defer ca.free(native_count);
+    out.appendSlice(ca, native_count) catch @panic("codegen: oom");
+    if (native_requires.len == 0) out.appendSlice(ca, "0") catch @panic("codegen: oom");
+    for (native_requires, 0..) |requirement, i| {
+        if (i != 0) out.append(ca, ',') catch @panic("codegen: oom");
+        out.append(ca, '"') catch @panic("codegen: oom");
+        putCStr(out, oopBytes(requirement));
+        out.append(ca, '"') catch @panic("codegen: oom");
+    }
+    out.appendSlice(ca, "};\nconst unsigned long __birnam_artifact_capabilities_count = 3UL;\nconst char* const __birnam_artifact_capabilities[] = {\"activate\",\"source\",\"reflection\"};\n") catch @panic("codegen: oom");
+    out.appendSlice(ca, "const char __birnam_artifact_source_digest[] = \"") catch @panic("codegen: oom");
+    putCStr(out, source_digest);
+    out.appendSlice(ca, "\";\nconst char __birnam_artifact_revision_digest[] = \"") catch @panic("codegen: oom");
+    putCStr(out, revision_digest);
+    out.appendSlice(ca, "\";\n") catch @panic("codegen: oom");
+}
+
 fn compileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
@@ -3670,46 +3828,38 @@ fn compileOutput(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     defer g_module_name = null;
     var buf = emitProgram(a[0], false, true, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);
-    // Embed a `__birnam_module_meta` symbol carrying this unit's DEPENDENCIES (scanned
-    // from its `[Module … requires: #[…]]` declaration). A runtime loader reads it via
-    // `dlsym` BEFORE running `__ev`, so it can load the dependencies first — the
-    // pre-install requires knowledge on-demand `[Module load:]` needs. Empty when the
-    // unit declares no requires (or isn't a module).
+    // Project/runtime loading consumes an inert ID descriptor before running
+    // either artifact entry point.
     var out: std.ArrayList(u8) = .{};
     defer out.deinit(ca);
     var slen: usize = 0;
     const sp = g_api.stringBytes(a[0], &slen);
+    g_api.gcSetAuto(0);
+    var scan = scanCandidateSource(a[0]);
+    var native_requires = nativeRequirementsOf(a[0]);
+    defer {
+        native_requires.deinit(ca);
+        if (scan) |*metadata| metadata.deinit();
+        g_api.gcSetAuto(1);
+    }
     out.appendSlice(ca, "const char __birnam_artifact_abi[] = \"" ++ ARTIFACT_ABI ++ "\";\n") catch @panic("codegen: oom");
-    out.appendSlice(ca, "const char __birnam_module_meta[] = \"") catch @panic("codegen: oom");
-    scanRequiresCsv(sp[0..slen], &out); // only [A-Za-z0-9_,] — no C-string escaping needed
-    out.appendSlice(ca, "\";\n") catch @panic("codegen: oom");
+    if (scan) |*metadata| {
+        appendArtifactDescriptorSymbols(
+            &out,
+            std.mem.span(g_api.symbolName(metadata.name)),
+            metadata.requires.items,
+            native_requires.items,
+            &metadata.source_digest,
+            &metadata.revision_digest,
+        );
+    } else {
+        const identity = g_module_name orelse "anonymous";
+        const source_digest = sha256Hex(sp[0..slen]);
+        appendArtifactDescriptorSymbols(&out, identity, &.{}, native_requires.items, &source_digest, &source_digest);
+    }
     out.appendSlice(ca, buf.items) catch @panic("codegen: oom");
     const c_src = g_api.mkString(out.items.ptr, out.items.len);
     return g_api.send(tcc, g_api.intern("compile:output:as:"), &[_]Oop{ c_src, a[1], g_api.intern("dll") }, 3);
-}
-
-/// Scan a module source for its `[Module … requires: #[ #a #b ]]` declaration and
-/// append the dependency names as a comma-separated list to `out` (empty if none).
-/// The declaration is the module's first statement (`requires:` never precedes it),
-/// so this reads the requires without parsing — mirrors main.zig's `scanRequires`.
-fn scanRequiresCsv(src: []const u8, out: *std.ArrayList(u8)) void {
-    const rk = std.mem.indexOf(u8, src, "requires:") orelse return;
-    const br = std.mem.indexOfPos(u8, src, rk, "#[") orelse return;
-    var i = br + 2;
-    var first = true;
-    while (i < src.len and src[i] != ']') {
-        if (src[i] == '#') {
-            const start = i + 1;
-            var j = start;
-            while (j < src.len and (std.ascii.isAlphanumeric(src[j]) or src[j] == '_')) j += 1;
-            if (j > start) {
-                if (!first) out.append(ca, ',') catch @panic("codegen: oom");
-                out.appendSlice(ca, src[start..j]) catch @panic("codegen: oom");
-                first = false;
-            }
-            i = j;
-        } else i += 1;
-    }
 }
 
 /// Append current String sources from one reserved store entity to `prog`. Module
@@ -4090,11 +4240,9 @@ const RTLD_LAZY: c_int = 1;
 /// evaluate its `__ev` entry point. Returns the program's value, or nil if the
 /// library or either symbol is missing. The explicit artifact ABI is checked
 /// before either initializer or entry point can mutate live state.
-fn mLoadUnit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
-    _ = self;
-    _ = n;
+fn loadUnitAt(path_value: Oop, host_capability: bool) Oop {
     var len: usize = 0;
-    const p = g_api.stringBytes(a[0], &len);
+    const p = g_api.stringBytes(path_value, &len);
     const path = ca.allocSentinel(u8, len, 0) catch @panic("codegen: oom");
     defer ca.free(path);
     @memcpy(path[0..len], p[0..len]);
@@ -4114,8 +4262,11 @@ fn mLoadUnit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     // replacement and host safe point; L1a deliberately has no module-introduction
     // operation. Image recovery is the sole exception because it reinstalls the
     // already-authorized generation carried by the image.
-    if (initial_generation_sealed and !image_dispatch_recovery)
+    if (initial_generation_sealed and !image_dispatch_recovery and !host_capability)
         return candidateError("moduleIntroductionNotAvailable");
+    const old_host_capability_loading = host_capability_loading;
+    if (host_capability) host_capability_loading = true;
+    defer host_capability_loading = old_host_capability_loading;
     const init_p = g_api.dlsym(h, "__birnam_unit_init") orelse return g_api.nilObj;
     const init_fn: *const fn () callconv(.c) void = @ptrCast(@alignCast(init_p));
     init_fn();
@@ -4124,24 +4275,19 @@ fn mLoadUnit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     return ev_fn(g_api.nilObj, &[_]Oop{}, 0);
 }
 
-/// `[Codegen moduleMetaOf: path]` — read a compiled unit's `__birnam_module_meta`
-/// symbol (the comma-separated dependency names embedded at compile time) WITHOUT
-/// running its install code: the pre-install knowledge a dependency-first runtime
-/// load needs (modules.birnam's `load:`). dlopen is refcounted, so the later
-/// `load:` of the same path is cheap. Answers nil when the dylib can't be opened,
-/// "" when it carries no meta (no declared deps).
-fn mModuleMetaOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+fn mLoadUnit(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = self;
     _ = n;
-    var len: usize = 0;
-    const p = g_api.stringBytes(a[0], &len);
-    const path = ca.allocSentinel(u8, len, 0) catch @panic("codegen: oom");
-    defer ca.free(path);
-    @memcpy(path[0..len], p[0..len]);
-    const h = g_api.dlopen(path.ptr, RTLD_LAZY) orelse return g_api.nilObj;
-    const mp = g_api.dlsym(h, "__birnam_module_meta") orelse return g_api.mkString("", 0);
-    const meta = std.mem.span(@as([*:0]const u8, @ptrCast(mp)));
-    return g_api.mkString(meta.ptr, meta.len);
+    return loadUnitAt(a[0], false);
+}
+
+/// Install a trusted process-local UI unit after image recovery without adding
+/// it to the sealed application generation. Used only for the REPL fallback of
+/// images that do not already carry Repl.
+fn mLoadHostCapability(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = n;
+    return loadUnitAt(a[0], true);
 }
 
 /// Parse `src` and emit the complete C translation unit into a fresh buffer
@@ -4393,6 +4539,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
         candidate_preparing = false;
         candidate_commit_in_progress = false;
         image_dispatch_recovery = false;
+        host_capability_loading = false;
         initial_generation_sealed = false;
         runtime_phase = .bootstrapping;
     }
@@ -4466,7 +4613,7 @@ pub fn bringUp(api: *idapi.IdApi) void {
     api.method(codegen_vt, api.intern("deriveImageMethodTargets"), &mDeriveImageMethodTargets);
     api.method(codegen_vt, api.intern("lastError"), &mLastError);
     api.method(codegen_vt, api.intern("load:"), &mLoadUnit);
-    api.method(codegen_vt, api.intern("moduleMetaOf:"), &mModuleMetaOf);
+    api.method(codegen_vt, api.intern("loadHostCapability:"), &mLoadHostCapability);
     api.method(reflect_vt, api.intern("defineMethod:on:as:"), &mDefineMethod);
     api.method(reflect_vt, api.intern("removeMethod:on:"), &mRemoveMethod);
     api.method(reflect_vt, api.intern("removeMethod:on:source:"), &mRemoveMethodSourced);

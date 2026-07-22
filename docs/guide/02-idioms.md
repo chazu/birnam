@@ -43,7 +43,7 @@ Two hard rules learned the slow way:
 - Guard-load dependencies rather than assuming them:
 
 ```
-[[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [System load: "modules/html.birnam"]]];
+[Module load: #html];
 ```
 
 ## State lives in cells
@@ -92,14 +92,14 @@ arguments that belong to the application:
 let defaults0 := [Map new];
 let defaults1 := [defaults0 at: "bind" put: "127.0.0.1"];
 let defaults := [defaults1 at: "port" put: 4400];
-let config := [AppConfig resolve: #digla defaults: defaults args: args];
+let config := [AppConfig resolve: #example defaults: defaults args: args];
 [config at: "port"];
 [config originAt: "port"]
 ```
 
 Values resolve in this order: defaults, TOML, environment, then command-line
-arguments. The conventional file is `~/.digla/digla.toml`; `--config PATH` and
-`DIGLA_CONFIG` select another path. A setting named `port` uses `DIGLA_PORT`
+arguments. The conventional file is `~/.example/example.toml`; `--config PATH` and
+`EXAMPLE_CONFIG` select another path. A setting named `port` uses `EXAMPLE_PORT`
 and `--port VALUE` (or `--port=VALUE`). `String`, `Integer`, and `Boolean`
 defaults establish the scalar conversion contract. `path`, `values`, and
 `origins` expose the selected file and resolved snapshot for diagnostics.

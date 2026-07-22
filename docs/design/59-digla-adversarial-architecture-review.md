@@ -1,10 +1,9 @@
 # 59 — Digla Adversarial Architecture Review
 
-> **Status:** Remediation complete, 2026-07-20. This document reviews Digla at
-> `57f8c0e` against Birnam's current authority model, repository-wide design
-> principles, and Designs 55 and 58. Sections 3–6 preserve the original
-> adversarial findings; Section 8 records the accepted corrections and evidence
-> through `f9f6e8d`.
+> **Status:** Historical, retired 2026-07-21. This document reviews the removed
+> Digla implementation at `57f8c0e`; Section 8 records its last remediation
+> state through `f9f6e8d`. Referenced application paths describe the tree before
+> retirement at `0496dbc` and are intentionally no longer live.
 
 ## 1. Scope and method
 

@@ -57,6 +57,11 @@ pub fn build(b: *std.Build) void {
         "verify",
         "Run the complete native, self-hosted, and REPL verification gate",
     );
+    // Stage-1 compilers need a runnable host and native floor before the final
+    // install can be complete. Keep that bootstrap closure distinct so the
+    // ordinary install step can depend on compiled production units without a
+    // dependency cycle.
+    const bootstrap_install = b.step("bootstrap-install", "Install the native floor and compiler host needed to build compiled units");
 
     // -- The id rungs: a dylib + its test suite, one row per module ----------
     // Every rung is a dynamic library the siphon dlopens at runtime, plus a test
@@ -74,6 +79,7 @@ pub fn build(b: *std.Build) void {
     };
     const mods = [_]Mod{
         .{ .name = "birnam_id", .src = "id.zig", .test_src = "id.zig", .step = "test-id", .desc = "libid: the Piumarta object-system bootstrap proof" },
+        .{ .name = "birnam_id_artifact", .src = "artifact_inspector.zig", .test_src = "artifact_inspector.zig", .step = "test-artifact", .desc = "minimal self-describing artifact inspection over IdApi" },
         .{ .name = "birnam_store", .src = "store.zig", .test_src = "store_test.zig", .step = "test-store", .desc = "rung 2: the cell/relational store bootstrap fixpoint" },
         .{ .name = "birnam_id_peg", .src = "peg.zig", .test_src = "peg_test.zig", .step = "test-peg", .desc = "rung 3a: the PEG engine on the libid floor" },
         .{ .name = "birnam_id_lang", .src = "lang.zig", .test_src = "lang_test.zig", .step = "test-lang", .desc = "rung 3b: birnam's grammar + parser via the peg message api" },
@@ -99,7 +105,9 @@ pub fn build(b: *std.Build) void {
         const lib = b.addLibrary(.{ .name = m.name, .root_module = lib_mod, .linkage = .dynamic });
         if (m.lib_links_tcc) lib.linkLibrary(libtcc_lib);
         lib.linkLibC();
-        b.installArtifact(lib);
+        const install_lib = b.addInstallArtifact(lib, .{});
+        b.getInstallStep().dependOn(&install_lib.step);
+        bootstrap_install.dependOn(&install_lib.step);
 
         // The test suite.
         const test_mod = b.createModule(.{
@@ -128,38 +136,36 @@ pub fn build(b: *std.Build) void {
     siphon_mod.addOptions("build_opts", build_opts);
     const siphon_exe = b.addExecutable(.{ .name = "birnam", .root_module = siphon_mod });
     siphon_exe.linkLibC();
-    b.installArtifact(siphon_exe);
+    const install_siphon = b.addInstallArtifact(siphon_exe, .{});
+    b.getInstallStep().dependOn(&install_siphon.step);
+    bootstrap_install.dependOn(&install_siphon.step);
 
-    // Source-backed tools are part of an installed birnam, not checkout-only
-    // extras. Keep the same relative tree that Cli/Doc use in development:
-    //   modules/../src/id     (Zig-floor source docs)
-    //   modules/../docs/guide (the authored guide chapters)
-    b.installDirectory(.{
-        .source_dir = b.path("modules"),
-        .install_dir = .prefix,
-        .install_subdir = "share/birnam/modules",
-        .include_extensions = &.{".birnam"},
-    });
-    b.installDirectory(.{
-        .source_dir = b.path("src/id"),
-        .install_dir = .prefix,
-        .install_subdir = "share/birnam/src/id",
-        .include_extensions = &.{ ".zig", ".birnam" },
-    });
+    // Birnam module source is embedded in its compiled unit. Only the native
+    // Zig floor and authored guides remain separate documentation resources.
+    var source_dir = std.fs.cwd().openDir("src/id", .{ .iterate = true }) catch
+        @panic("could not enumerate src/id for installed Zig-floor documentation");
+    defer source_dir.close();
+    var source_entries = source_dir.iterate();
+    while (source_entries.next() catch @panic("could not enumerate src/id")) |entry| {
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".zig") or
+            std.mem.endsWith(u8, entry.name, "_test.zig")) continue;
+        const install_source = b.addInstallFileWithDir(
+            b.path(b.fmt("src/id/{s}", .{entry.name})),
+            .prefix,
+            b.fmt("share/birnam/src/id/{s}", .{entry.name}),
+        );
+        b.getInstallStep().dependOn(&install_source.step);
+    }
     b.installDirectory(.{
         .source_dir = b.path("docs/guide"),
         .install_dir = .prefix,
         .install_subdir = "share/birnam/docs/guide",
         .include_extensions = &.{".md"},
     });
-
     // -- stage 1: AOT-compile birnam-source modules to installable dylibs -------
-    // The default build ("stage 0") ships a binary that embeds the stdlib SOURCE
-    // and evals it at boot. `zig build stage1` then RUNS that binary to compile
-    // the source into `libbirnam_stdlib.dylib`, which a subsequent boot prefers
-    // (installing methods with no recompile) and falls back to source if absent.
-    // Kept opt-in: a plain `zig build` still works via the source fallback. Points
-    // the binary at the just-installed lib dir so it finds the fresh kernel dylibs.
+    // The compiler host still embeds the small self-hosted boot floor as its
+    // recovery path. A complete ordinary install, however, always includes the
+    // compiled self-hosted and production module closure.
     const stage1 = b.step("stage1", "AOT-compile the dependency-ordered self-hosted modules to installable dylibs");
     // Each self-hosted module: `birnam --compile-module <src> <lib>/libbirnam_<name>.dylib`.
     const self_hosted = [_]struct { src: []const u8, name: []const u8 }{
@@ -171,6 +177,26 @@ pub fn build(b: *std.Build) void {
         .{ .src = "src/id/app-config.birnam", .name = "appConfig" },
         .{ .src = "src/id/project-policy.birnam", .name = "projectPolicy" },
         .{ .src = "src/id/isolate.birnam", .name = "isolate" },
+        // Runtime tools and libraries. These sources are build inputs only;
+        // the installed dylibs carry their source and dependency metadata.
+        .{ .src = "modules/html.birnam", .name = "html" },
+        .{ .src = "modules/file.birnam", .name = "file" },
+        .{ .src = "modules/json.birnam", .name = "json" },
+        .{ .src = "modules/socket.birnam", .name = "socket" },
+        .{ .src = "modules/time.birnam", .name = "time" },
+        .{ .src = "modules/doc.birnam", .name = "doc" },
+        .{ .src = "modules/zigdoc.birnam", .name = "zigdoc" },
+        .{ .src = "modules/lsp.birnam", .name = "lsp" },
+        .{ .src = "modules/repl.birnam", .name = "repl" },
+        .{ .src = "modules/cli.birnam", .name = "cli" },
+        .{ .src = "modules/http.birnam", .name = "http" },
+        .{ .src = "modules/log.birnam", .name = "log" },
+        .{ .src = "modules/markdown.birnam", .name = "markdown" },
+        .{ .src = "modules/os.birnam", .name = "os" },
+        .{ .src = "modules/process.birnam", .name = "process" },
+        .{ .src = "modules/random.birnam", .name = "random" },
+        .{ .src = "modules/test.birnam", .name = "test" },
+        .{ .src = "modules/compiled-unit-docs.birnam", .name = "compiledUnitDocs" },
     };
     inline for (self_hosted) |m| {
         const compile = b.addRunArtifact(siphon_exe);
@@ -178,9 +204,10 @@ pub fn build(b: *std.Build) void {
         compile.addArg("--compile-module");
         compile.addFileArg(b.path(m.src));
         compile.addArg(b.getInstallPath(.lib, "libbirnam_" ++ m.name ++ ".dylib"));
-        compile.step.dependOn(b.getInstallStep()); // exe + all kernel dylibs installed first
+        compile.step.dependOn(bootstrap_install); // exe + all kernel dylibs installed first
         stage1.dependOn(&compile.step);
     }
+    b.getInstallStep().dependOn(stage1);
 
     // -- Self-hosted and console integration gates ---------------------------
     // Keep these ordered after stage1: a stale compiled stdlib can mask source
@@ -196,25 +223,21 @@ pub fn build(b: *std.Build) void {
 
     const project_check_smoke = b.addSystemCommand(&.{ "bash", "scripts/project-check-smoke.sh" });
     project_check_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
-    project_check_smoke.setEnvironmentVariable("BIRNAM_MODULES_DIR", b.pathFromRoot("modules"));
     project_check_smoke.step.dependOn(stage1);
     const project_check_step = b.step("test-project-check", "Run source-project resolution and build smoke tests");
     project_check_step.dependOn(&project_check_smoke.step);
 
     const lsp_project_smoke = b.addSystemCommand(&.{ "bash", "scripts/lsp-project-smoke.sh" });
     lsp_project_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
-    lsp_project_smoke.setEnvironmentVariable("BIRNAM_MODULES_DIR", b.pathFromRoot("modules"));
     lsp_project_smoke.step.dependOn(stage1);
     const lsp_project_step = b.step("test-lsp-project", "Run project-aware LSP protocol smoke tests");
     lsp_project_step.dependOn(&lsp_project_smoke.step);
 
-    const digla_session_smoke = b.addSystemCommand(&.{ "bash", "scripts/digla-session-smoke.sh" });
-    digla_session_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
-    digla_session_smoke.setEnvironmentVariable("BIRNAM_DIGLA_PROJECT", b.pathFromRoot("examples/digla"));
-    digla_session_smoke.setEnvironmentVariable("BIRNAM_DIGLA_CLIENT_PROJECT", b.pathFromRoot("examples/digla-client"));
-    digla_session_smoke.step.dependOn(stage1);
-    const digla_session_step = b.step("test-digla-session", "Run Digla local and remote framed-session smoke tests");
-    digla_session_step.dependOn(&digla_session_smoke.step);
+    const termbox_load_smoke = b.addSystemCommand(&.{ "bash", "scripts/termbox-load-smoke.sh" });
+    termbox_load_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    termbox_load_smoke.step.dependOn(stage1);
+    const termbox_load_step = b.step("test-termbox-load", "Load the reusable Alien-backed Termbox adapter");
+    termbox_load_step.dependOn(&termbox_load_smoke.step);
 
     const emacs_mode_tests = b.addSystemCommand(&.{ "bash", "scripts/emacs-test.sh" });
     const emacs_mode_step = b.step("test-emacs", "Run birnam-mode project and lsp-mode integration tests");
@@ -238,8 +261,11 @@ pub fn build(b: *std.Build) void {
 
     const install_smoke = b.addSystemCommand(&.{ "bash", "scripts/install-smoke.sh" });
     install_smoke.setEnvironmentVariable("BIRNAM_PREFIX", b.getInstallPath(.prefix, ""));
-    install_smoke.step.dependOn(stage1);
-    b.step("test-install", "Run source-backed tools from an isolated installed tree").dependOn(&install_smoke.step);
+    // The install step owns docs and other non-artifact resources in addition
+    // to depending on stage1. Test the freshly assembled tree, not whatever a
+    // previous install happened to leave in zig-out.
+    install_smoke.step.dependOn(b.getInstallStep());
+    b.step("test-install", "Run compiled runtime tools from an isolated installed tree").dependOn(&install_smoke.step);
 
     const isolate_smoke = b.addSystemCommand(&.{ "bash", "scripts/isolate-smoke.sh" });
     isolate_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
@@ -252,7 +278,7 @@ pub fn build(b: *std.Build) void {
     verify_step.dependOn(&source_fallback.step);
     verify_step.dependOn(project_check_step);
     verify_step.dependOn(lsp_project_step);
-    verify_step.dependOn(digla_session_step);
+    verify_step.dependOn(termbox_load_step);
     verify_step.dependOn(emacs_mode_step);
     verify_step.dependOn(&image_save_smoke.step);
     verify_step.dependOn(&install_smoke.step);

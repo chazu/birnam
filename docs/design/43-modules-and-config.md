@@ -103,11 +103,11 @@ dependencies **first**, installs it, and marks it `#loaded`. Idempotent (the
 `#loaded` fact); a cycle answers `#circularDependency`; a missing dylib answers
 `#loadFailed`; neither crashes nor hangs.
 
-**Pre-install requires without source** (a dylib carries no source to scan) is
-solved by the **compiler embedding it**: `mCompileOutput` prepends a
-`__birnam_module_meta` symbol (the dep CSV, from `scanRequiresCsv` of the source
-declaration) to every unit dylib. `load:` reads it via `dlsym` *before* running
-`__ev`, recurses each dep, then runs `__birnam_unit_init` + `__ev` to install.
+**Pre-install requires without external source** is solved by the compiler
+embedding a pointer-free artifact descriptor. `[Artifact inspect:]` reads that
+descriptor from the dylib bytes without `dlopen`, checks identity/ABI/target and
+native requirements, and returns ordinary ID values. `load:` recurses through
+`requires` before `[Codegen load:]` runs `__birnam_unit_init` + `__ev` to install.
 
 The host sets `[Module libDir:]` (its resolved lib dir) and marks the boot-time
 self-hosted layer `#loaded`, so a later `load:` of `stdlib`/`toml`/`config` as some
@@ -160,6 +160,6 @@ degrades to nil, so a project without config just works.
   is harder: image loading is a whole boot *mode* (`runImage` orchestrates
   loadStack→loadImage→deriveImageGlobals), an awkward chicken-and-egg with reading
   config after the stack is up.
-- **Path-based `[Module load: "/abs/path.dylib"]`** + a module **name** in
-  `__birnam_module_meta`, so a dylib outside the lib dir is loadable and
-  self-identifying (needed for `#loaded` tracking of path-loaded modules).
+Path-selected roots are now handled by `[Module loadArtifact:]`; the embedded
+descriptor supplies their canonical identity while dependencies resolve beside
+the root through the ordinary library directory.

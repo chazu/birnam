@@ -1,6 +1,5 @@
 // The birnam language server, over stdio. Point your editor's LSP client at this
 // command (run from the repo root), e.g. Emacs eglot. STDOUT is protocol-only.
 // v1 capability: diagnostics — syntax/compile errors as you type. Load order:
-[System load: "modules/json.birnam"];
-[System load: "modules/lsp.birnam"];
+[Module load: #lsp];
 [Lsp serveStdio]

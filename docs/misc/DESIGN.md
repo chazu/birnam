@@ -30,9 +30,9 @@ The next architecture choice is deliberately open. Initialization, image-native
 source editing, migration, reactors/pools, richer supervision, and structured
 operations remain later slices selected from actual product evidence.
 
-## Proposed Developer-Experience Sequence
+## Implemented Developer-Experience Sequence
 
-The next product-facing sequence is deliberately orthogonal to those runtime
+This developer-experience sequence is deliberately orthogonal to those runtime
 follow-ups. It makes the shipped compiled-unit and isolate architecture usable
 as an ordinary project workflow:
 
@@ -43,12 +43,15 @@ as an ordinary project workflow:
 → 54 — relocatable bundles and runtime distribution
 ~~~
 
-The source resolver, Birnam-owned project policy, materialized `check`/`build` workflow, first
-project-oriented `run` slice, and the first project-aware LSP
-workspace/coordinate slice are now implemented. Safe editor diagnostics,
-navigation, and bundle relocation remain staged proposals. These slices share one project resolver, preserve
-declared Module named:requires: identity, keep resolution read-only, and leave
-runtime dispatch authority with compatible compiled units.
+The source resolver, Birnam-owned project policy, materialized `check`/`build`
+workflow, project-oriented `run` slice, project-aware LSP/Emacs integration, and
+the executable-relative runtime distribution closure are implemented. Compiled
+module artifacts now self-describe their identity, dependency/native closure,
+target/ABI, capabilities, and source/revision identity through the ID floor;
+installed project/application roots require no manifest or build receipt. These
+slices share one project resolver, preserve declared `Module named:requires:`
+identity, keep source resolution read-only, and leave runtime dispatch authority
+with compatible compiled units.
 See [design 51](../design/51-project-manifests-and-dependency-resolution.md),
 [design 52](../design/52-project-check-build-and-run.md), [design
 53](../design/53-project-aware-language-tools.md), and [design
@@ -56,28 +59,25 @@ See [design 51](../design/51-project-manifests-and-dependency-resolution.md),
 
 ## Proposed Interactive Programming Environment
 
-[Design 58](../design/58-terminal-repl-and-programming-environment.md) extends
-the existing REPL, LSP, and termbox2 seams into a terminal-native programming
-environment. The proposed first boundary is a separate terminal client with
-pluggable local and remote image sessions; position mapping is shared across
-parser byte spans, LSP UTF-16 positions, and terminal-cell rendering.
+[Design 58](../design/58-terminal-repl-and-programming-environment.md) preserves
+the retired Digla terminal-client experiment. Its useful lessons remain in the
+project-aware LSP and the generic Alien-backed Termbox adapter; the application
+and runtime-session protocol are no longer shipped.
 
-## Proposed Application Sequence
+## Active Product Sequence
 
-The first application slice should showcase Birnam's unusual combination of a
-live object environment, a historied relational Store, and reflective metadata
-without adding a second authority model:
+Distribution Design 54 and the Design 52 project workflow are complete through
+source-free roots, read-only compile diagnostics, independent profiles, and
+isolated project tests. The next product work should exercise those interfaces
+before adding another large subsystem:
 
 ~~~text
-55 — Birnam Digla: local object/fact inspection
-→ deterministic JSON and HTML snapshots
-→ loopback read-only HTTP report
-→ image-facing inspection
-→ worker observations and rollout history
+small applications as acceptance tests
+→ select the next failure model from evidence
 ~~~
 
-[Design 55 — Birnam Digla](../design/55-birnam-digla.md) defines
-the snapshot contract, read-only boundary, and thin-slice implementation plan.
+[Designs 55, 58, and 59](../design/59-digla-adversarial-architecture-review.md)
+remain as historical records of the retired Digla experiment.
 
 ## Abstractly
 - To build a completely moldable programming environment, where everything is accessible to the programmer - like Piumarta's COLA

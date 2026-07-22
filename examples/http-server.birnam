@@ -10,7 +10,7 @@
 // then visit http://localhost:8080/ (Ctrl-C to stop). Every browser request is
 // answered with the same page; the request bytes are read and ignored.
 
-[System load: "modules/socket.birnam"];
+[Module load: #socket];
 
 // Build a complete HTTP/1.1 response for a text/html body. `Connection: close`
 // tells the client we hang up after one response (matching the blocking loop),

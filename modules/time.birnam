@@ -7,7 +7,7 @@
 // microseconds back out and fold them into epoch milliseconds.
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/time.birnam"]
+//   [Module load: #time]
 
 // int gettimeofday(struct timeval *tv, struct timezone *tz)
 //   struct timeval { long tv_sec; int tv_usec; }   // macOS: 8 + 4 bytes (16 w/ pad)

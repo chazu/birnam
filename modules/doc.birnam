@@ -8,7 +8,7 @@
 // modules/html.birnam (a module documenting modules, rendered by another module).
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/doc.birnam"]   (pulls in Html for the HTML renderer)
+//   [Module load: #doc]
 //
 // REGISTER  (call module:is: ONCE per module, before its for:in:says: lines):
 //   [Doc module: #html is: "HTML generation — string combinators, no state."]
@@ -26,8 +26,7 @@
 // is written. module:is: seeds the summary and method-list cells; the other
 // methods assume the module was documented first (their stated precondition).
 
-[Module named: #doc requires: #[#html]];
-[[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [System load: "modules/html.birnam"]]];
+[Module named: #doc requires: #[]];
 
 [Globals at: #Doc put: [Object clone]];
 // Seed the current-module cell (a VALUE — nil means "none"): the stdlib's
@@ -325,7 +324,7 @@
 // `#` sits under the site's h1), and remember them for htmlIndex. Answers the
 // guide entities; a missing dir is an empty guide set, not an error.
 [Reflect defineMethod: #loadGuides: on: Doc as: [:self :dir |
-  [[Globals includes: #Markdown] ifTrue: [| nil] ifFalse: [| [System load: "modules/markdown.birnam"]]];
+  [[Globals includes: #Markdown] ifTrue: [| nil] ifFalse: [| [Module load: #markdown]]];
   let me := self;
   let gs := [[File isDir: dir]
     ifTrue: [|
@@ -521,53 +520,55 @@
   [Html page: "birnam documentation" style: [self stylesheet] body: body]] doc:
   "The whole reference page: filter box, grouped name-sorted nav, a section per documented module, coverage footer — styled and scripted."];
 
-// True for a loadable LIBRARY module file (excludes tests, run-tests, and the doc
-// modules themselves — re-loading doc.birnam would wipe the Doc registry).
-[Reflect defineMethod: #isLibModule: on: Doc as: [:self :nm |
-  let ok := [[[nm endsWith: ".birnam"] & [[nm includesSubstring: "-test"] not]] & [[nm includesSubstring: "run-tests"] not]];
-  [[[nm = "doc.birnam"] | [nm = "zigdoc.birnam"]]
-    ifTrue:  [| false]
-    ifFalse: [| ok]]] doc:
-  "True iff `nm` names a loadable LIBRARY module file — excludes tests and the doc modules themselves (re-loading doc.birnam wipes the registry)."];
+// The supported runtime modules. This is intentionally an identity catalog,
+// not a directory scan: repository files are build inputs, while installed
+// compiled units are the runtime authority.
+[Reflect defineMethod: #productionModules on: Doc as: [:self |
+  #[#cli #file #html #http #json #log #lsp #markdown #os #process #random #repl #socket #time #zigdoc]] doc:
+  "The canonical production-module identities included in the Birnam runtime bundle."];
 
-// Load every library module under `md` (so their `doc:` registrations fire).
-// Guard-loads File first (from `md`) since it drives the directory walk. Answers self.
-[Reflect defineMethod: #loadAllModules: on: Doc as: [:self :md |
-  [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: [md , "/file.birnam"]]]];
-  [[File listDir: md] do: [:nm |
-    [[self isLibModule: nm] ifTrue: [| [System load: [[md , "/"] , nm]]] ifFalse: [| nil]]]];
-  self] doc:
-  "Load every library module under `md` so their doc: registrations fire (guard-loads File first). Answers self."];
+[Reflect defineMethod: #isProductionModule: on: Doc as: [:self :name |
+  [[self productionModules] includes: name]] doc:
+  "True iff `name` is a supported production module identity in the runtime bundle."];
 
-// Re-load the birnam FLOOR files (compiled to dylibs at boot, so their doc:
-// registrations fired before Doc existed and were dropped) from source under
-// `zd`, now that Doc is loaded — their docstrings land like any module's.
-// Re-loading them is idempotent (method installs funnel ensurePrivateVtable;
-// their top level only re-registers Module deps and re-derives globals). The
-// module MANAGER (modules.birnam) is deliberately absent: re-running its
-// self-registration mid-session buys docs at too much risk. Existence-guarded
-// (an installed birnam need not carry src/id).
-[Reflect defineMethod: #loadFloorSources: on: Doc as: [:self :zd |
-  [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
-  [#[ "stdlib.birnam" "toml.birnam" "config.birnam" ] do: [:nm |
-    let p := [[zd , "/"] , nm];
-    [[File exists: p] ifTrue: [| [System load: p]] ifFalse: [| nil]]]];
-  [System load: "modules/compiled-unit-docs.birnam"];
-  self] doc:
-  "Ensure File and re-load the self-hosted floor sources under `zd`, then load the CompiledUnit reference registrations; the module manager is deliberately skipped. Answers self."];
+// The floor units boot before Doc exists, so their doc: sends were intentionally
+// dropped. Re-run those exact compiled units now: identical source metadata and
+// method installs are idempotent, while their documentation registrations land.
+[Reflect defineMethod: #loadFloorDocs on: Doc as: [:self |
+  [#[#stdlib #toml #config] inject: self into: [:acc :name |
+    [[acc isError]
+      ifTrue:  [| acc]
+      ifFalse: [| [Codegen load: [Module dylibPathFor: name]]]]]]] doc:
+  "Replay the compiled stdlib, Toml, and Config units after Doc exists so their reference registrations land without loose source."];
 
-// Build the full HTML reference to `out`: load every library module under `md`
-// plus the birnam floor sources under `zd`, extract every Zig floor file under
-// `zd`, then write `htmlIndex`. Answers `out`.
-[Reflect defineMethod: #buildSite:modules:zig: on: Doc as: [:self :out :md :zd |
+// Load every supported runtime module from its compiled unit so doc:
+// registrations and embedded source metadata enter the current image.
+[Reflect defineMethod: #loadAllModules on: Doc as: [:self |
+  let floor := [self loadFloorDocs];
+  [[floor isError]
+    ifTrue:  [| floor]
+    ifFalse: [|
+      let loaded := [[self productionModules] inject: self into: [:acc :name |
+        [[acc isError] ifTrue: [| acc] ifFalse: [| [Module load: name]]]]];
+      [[loaded isError]
+        ifTrue:  [| loaded]
+        ifFalse: [| [Module load: #compiledUnitDocs]]]]]] doc:
+  "Load every supported runtime module from its compiled unit so its documentation and source metadata become visible. Answers self."];
+
+// Build the full HTML reference to `out`: load the compiled production closure,
+// extract the separately shipped native Zig-floor docs, load authored guides,
+// then write `htmlIndex`. Answers `out`.
+[Reflect defineMethod: #buildSite:zig:guides: on: Doc as: [:self :out :zd :gd |
   let me := self;
-  [self loadAllModules: md];
-  [self loadFloorSources: zd];
-  [self loadGuides: [md , "/../docs/guide"]];
-  [Zigdoc scanDir: zd];
-  [File write: out contents: [me htmlIndex]];
-  out] doc:
-  "Build the full HTML reference to `out`: load modules under `md` + floor sources + the docs/guide pages, scan Zig under `zd`, write htmlIndex. Answers `out`."];
+  let loaded := [self loadAllModules];
+  [[loaded isError]
+    ifTrue:  [| loaded]
+    ifFalse: [|
+      [self loadGuides: gd];
+      [Zigdoc scanDir: zd];
+      [File write: out contents: [me htmlIndex]];
+      out]]] doc:
+  "Build the full HTML reference to `out`: load compiled production modules, guides, and Zig-floor docs, then write htmlIndex. Answers `out`."];
 
 // module:is: predates the #doc registration above (it IS the registrar), so its
 // docstring rides the appended path instead of a doc: define:

@@ -1,7 +1,7 @@
 // style-proof.birnam — validates the style guide's Rule 1 against the compiler.
 //
-// highlightColorFor: (kind -> Termbox color) is a METHOD in the real code
-// (defineMethod: on Digla), so every variant here is benchmarked AS A METHOD —
+// highlightColorFor: (kind -> terminal color) was a METHOD in the motivating
+// implementation, so every variant here is benchmarked AS A METHOD —
 // method dispatch is a constant we must not hide by testing bare blocks.
 //
 //   A. nested ifTrue:ifFalse:      (original — rightward drift)
@@ -14,7 +14,7 @@
 //
 //   birnam docs/guide/style-proof.birnam
 
-[System load: "modules/time.birnam"];
+[Module load: #time];
 
 let obj := [Object clone];
 

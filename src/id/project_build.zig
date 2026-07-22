@@ -15,7 +15,6 @@ const IdApi = idapi.IdApi;
 const Oop = idapi.Oop;
 
 pub const artifact_abi = artifact_contract.abi;
-pub const profile = "debug";
 
 const max_source_bytes = 16 << 20;
 const FailureError = error{BuildFailed};
@@ -100,6 +99,7 @@ pub const Result = struct {
 const State = struct {
     arena: std.mem.Allocator,
     api: *IdApi,
+    profile: []const u8,
     codegen: ?Oop = null,
     diagnostic_kind: []const u8 = "buildFailed",
     diagnostic_message: []const u8 = "project build failed",
@@ -406,7 +406,7 @@ fn policySnapshot(state: *State, resolution: *const project.Resolution, previous
     var result = try newMap(state);
     result = try mapPutString(state, result, "projectRoot", resolution.project_root);
     result = try mapPutString(state, result, "target", target);
-    result = try mapPutString(state, result, "profile", profile);
+    result = try mapPutString(state, result, "profile", state.profile);
     result = try mapPutString(state, result, "toolVersion", tool_version);
     result = try mapPutString(state, result, "artifactAbi", artifact_abi);
     result = try mapPutString(state, result, "resolutionDigest", resolution.digest);
@@ -692,7 +692,7 @@ fn writeResolutionRecord(state: *State, resolution: *const project.Resolution, s
     try appendTomlString(state, &out, "project_root", resolution.project_root);
     try appendTomlString(state, &out, "manifest", resolution.manifest_path);
     try appendTomlString(state, &out, "target", target);
-    try appendTomlString(state, &out, "profile", profile);
+    try appendTomlString(state, &out, "profile", state.profile);
     try appendTomlString(state, &out, "tool_version", tool_version);
     try appendTomlString(state, &out, "built_at", built_at);
     try appendTomlString(state, &out, "resolution_digest", resolution.digest);
@@ -868,7 +868,7 @@ fn validatePublished(state: *State, resolution: *const project.Resolution, tool_
     const target = targetIdentity(state);
     const build_root = try pathJoin(state, resolution.project_root, ".birnam/build");
     const target_root = try pathJoin(state, build_root, target);
-    const final = try pathJoin(state, target_root, profile);
+    const final = try pathJoin(state, target_root, state.profile);
     const record_path = try pathJoin(state, final, "artifacts.toml");
     if (!pathExists(final) or !pathExists(record_path))
         return state.fail("projectBuildNotFound", "no successful build exists at {s}; run birnam build or birnam run --build", .{final});
@@ -912,7 +912,7 @@ fn validatePublished(state: *State, resolution: *const project.Resolution, tool_
         .project_root = resolution.project_root,
         .output_root = final,
         .target = target,
-        .profile = profile,
+        .profile = state.profile,
         .tool_version = state.arena.dupe(u8, tool_version) catch @panic("project_build: oom"),
         .built_at = record.built_at,
         .resolution_digest = resolution.digest,
@@ -936,7 +936,7 @@ fn run(state: *State, resolution: *const project.Resolution, tool_version: []con
     const token = std.fmt.allocPrint(state.arena, "{x}", .{token_value}) catch @panic("project_build: oom");
     const stage = try pathJoin(state, target_root, std.fmt.allocPrint(state.arena, ".staging-{s}", .{token}) catch
         return state.fail("buildPublicationFailed", "out of memory while preparing staging", .{}));
-    const final = try pathJoin(state, target_root, profile);
+    const final = try pathJoin(state, target_root, state.profile);
     const previous = readPreviousBuildRecord(state, final);
     const policy_plan = try policyBuildPlan(state, resolution, previous, final, target, tool_version, built_at);
     const policy_artifacts = try mapAt(state, policy_plan, "artifacts");
@@ -979,7 +979,7 @@ fn run(state: *State, resolution: *const project.Resolution, tool_version: []con
         .project_root = resolution.project_root,
         .output_root = final,
         .target = target,
-        .profile = profile,
+        .profile = state.profile,
         .tool_version = state.arena.dupe(u8, tool_version) catch @panic("project_build: oom"),
         .built_at = built_at,
         .resolution_digest = resolution.digest,
@@ -999,18 +999,18 @@ fn run(state: *State, resolution: *const project.Resolution, tool_version: []con
     return materialized;
 }
 
-pub fn build(api: *IdApi, allocator: std.mem.Allocator, resolution: *const project.Resolution, tool_version: []const u8) Result {
+pub fn build(api: *IdApi, allocator: std.mem.Allocator, resolution: *const project.Resolution, tool_version: []const u8, selected_profile: []const u8) Result {
     var arena = std.heap.ArenaAllocator.init(allocator);
-    var state = State{ .arena = arena.allocator(), .api = api };
+    var state = State{ .arena = arena.allocator(), .api = api, .profile = selected_profile };
     const result = run(&state, resolution, tool_version) catch {
         return .{ .arena = arena, .build = null, .diagnostic = .{ .kind = state.diagnostic_kind, .message = state.diagnostic_message } };
     };
     return .{ .arena = arena, .build = result, .diagnostic = null };
 }
 
-pub fn validate(api: *IdApi, allocator: std.mem.Allocator, resolution: *const project.Resolution, tool_version: []const u8) Result {
+pub fn validate(api: *IdApi, allocator: std.mem.Allocator, resolution: *const project.Resolution, tool_version: []const u8, selected_profile: []const u8) Result {
     var arena = std.heap.ArenaAllocator.init(allocator);
-    var state = State{ .arena = arena.allocator(), .api = api };
+    var state = State{ .arena = arena.allocator(), .api = api, .profile = selected_profile };
     const result = validatePublished(&state, resolution, tool_version) catch {
         return .{ .arena = arena, .build = null, .diagnostic = .{ .kind = state.diagnostic_kind, .message = state.diagnostic_message } };
     };

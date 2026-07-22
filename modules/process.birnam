@@ -6,7 +6,7 @@
 // posix_spawn with a real argv array + pipes; that's the fiddly part.)
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/process.birnam"]
+//   [Module load: #process]
 //
 //   [Process output: "echo hi"]        "=> \"hi\\n\"          (stdout only)"
 //   [Process status: "false"]          "=> 1                 (exit code only)"

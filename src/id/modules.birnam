@@ -31,11 +31,12 @@
 // `[Module loadOrder: #[ … ]]` — DFS post-order topo-sort, deps first; a cycle
 // answers a kinded `#circularDependency` error rather than looping.
 // `[Module load: #x]` — load a compiled module dylib AT RUNTIME, deps first:
-// resolve `<libDir>/libbirnam_x.dylib`, read its compiler-embedded
-// `__birnam_module_meta` deps ([Codegen moduleMetaOf:], no install), load each
-// dependency, then install via `[Codegen load:]`. Idempotent (a `#loaded`
-// fact) and cycle-guarded. The graph serializes into the image for free — it
-// is ordinary store facts.
+// resolve `<libDir>/libbirnam_x.dylib`, inspect its complete self-description
+// as ID values ([Artifact inspect:], no install), validate the
+// requested identity and native requirements, load each module dependency, then
+// install via `[Codegen load:]`. Idempotent (a `#loaded` fact) and cycle-guarded.
+// The verified graph serializes into the image for free — it is ordinary store
+// facts.
 
 [Globals at: #Module put: [Object clone]];
 
@@ -151,52 +152,102 @@
           ifTrue: [| part]
           ifFalse: [| [[text , part] , "\n"]]]]]]]]];
 
-// The recursive load: `within` is the in-progress chain (cycle guard), the same
-// persistent-Vector idiom as visit:order:path:. Dependencies (from the
-// compiler-embedded meta, read WITHOUT installing) load before the unit's own
-// install code runs. Answers self, or a kinded #loadFailed/#circularDependency.
-[Reflect defineMethod: #load:within: on: Module as: [:self :name :path |
+// Inspect and validate one requested identity before walking any dependency.
+[Reflect defineMethod: #descriptionOf:path: on: Module as: [:self :name :p |
+  let descriptor := [Artifact inspect: p];
+  [[descriptor isNil]
+    ifTrue: [| [Error kind: [Artifact lastFailure]
+                   message: ["could not inspect artifact: " , p]]]
+    ifFalse: [|
+      let kindOk := [[descriptor kind] = #module];
+      [kindOk
+        ifTrue: [|
+          let identityOk := [[descriptor identity] = name];
+          [identityOk
+            ifTrue: [| descriptor]
+            ifFalse: [| [Error kind: #artifactIdentityMismatch
+                           message: ["artifact identity does not match requested module: " , p]]]]]
+        ifFalse: [| [Error kind: #artifactKindMismatch
+                       message: ["artifact is not a module: " , p]]]]]]]];
+
+// Build a complete dependency-first activation plan without installing any
+// artifact. `within` is the in-progress chain (cycle guard); `order` contains
+// already-planned descriptors and also prevents duplicate diamond dependencies.
+[Reflect defineMethod: #plan:path:within:order: on: Module as: [:self :name :p :path :order |
   [[self isLoaded: name]
-    ifTrue:  [| self]
+    ifTrue: [| order]
     ifFalse: [|
       [[[path indexOf: name] notNil]
-        ifTrue:  [| [Error kind: #circularDependency
+        ifTrue: [| [Error kind: #circularDependency
                        message: ["circular dependency loading module: " , [Reflect nameOf: name]]]]
         ifFalse: [|
-          let p := [self dylibPathFor: name];
-          let meta := [Codegen moduleMetaOf: p];
-          [[meta isNil]
-            ifTrue:  [| [Error kind: #loadFailed
-                           message: ["could not open module dylib: " , p]]]
+          let descriptor := [self descriptionOf: name path: p];
+          [[descriptor isError]
+            ifTrue: [| descriptor]
             ifFalse: [|
               let me := self;
               let deeper := [path add: name];
-              let r := [[meta split: ","] inject: nil into: [:acc :dep |
-                [[acc isNil]
-                  ifTrue:  [|
-                    let d := [dep trimmed];
-                    [[[d size] = 0]
-                      ifTrue:  [| nil]
-                      ifFalse: [|
-                        let lr := [me load: [d asSymbol] within: deeper];
-                        [[lr isError] ifTrue: [| lr] ifFalse: [| nil]]]]]
-                  ifFalse: [| acc]]]];
-              [[r isNil]
-                ifTrue:  [|
-                  let ir := [Codegen load: p];
-                  [[ir isError]
-                    ifTrue:  [| ir]
-                    ifFalse: [|
-                      [[ir isNil]
-                        ifTrue:  [| [Error kind: #loadFailed
-                                       message: ["could not install module dylib: " , p]]]
-                        ifFalse: [| [self markLoaded: name]; self]]]]]
-                ifFalse: [| r]]]]]]]]]];
+              let planned := [[descriptor requires] inject: order into: [:prior :dep |
+                [[prior isError]
+                  ifTrue: [| prior]
+                  ifFalse: [| [me plan: dep within: deeper order: prior]]]]];
+              [[planned isError]
+                ifTrue: [| planned]
+                ifFalse: [|
+                  let existing := [planned detect: [:item | [[item identity] = name]]];
+                  [[existing isNil]
+                    ifTrue: [| [planned add: descriptor]]
+                    ifFalse: [| planned]]]]]]]]]]]];
+
+[Reflect defineMethod: #plan:within:order: on: Module as: [:self :name :path :order |
+  [self plan: name path: [self dylibPathFor: name] within: path order: order]]];
+
+[Reflect defineMethod: #planFor:path: on: Module as: [:self :name :p |
+  [self plan: name path: p within: #[] order: #[]]]];
+
+// Activate only a completely validated plan. A failure during inspection never
+// reaches this method and therefore cannot leave a partially installed closure.
+[Reflect defineMethod: #activate: on: Module as: [:self :plan |
+  let me := self;
+  [plan inject: self into: [:prior :descriptor |
+    [[prior isError]
+      ifTrue: [| prior]
+      ifFalse: [|
+        let name := [descriptor identity];
+        [[me isLoaded: name]
+          ifTrue: [| me]
+          ifFalse: [|
+            let installed := [Codegen load: [descriptor path]];
+            [[installed isError]
+              ifTrue: [| installed]
+              ifFalse: [|
+                [[installed isNil]
+                  ifTrue: [| [Error kind: #loadFailed
+                                 message: ["could not install module dylib: " , [descriptor path]]]]
+                  ifFalse: [| [me markLoaded: name]; me]]]]]]]]]]]];
+
+[Reflect defineMethod: #load:path: on: Module as: [:self :name :p |
+  let plan := [self planFor: name path: p];
+  [[plan isError]
+    ifTrue: [| plan]
+    ifFalse: [| [self activate: plan]]]]];
 
 // Load module `name` and its transitive dependencies at runtime, deps first,
 // each installed once. A no-op if already loaded.
 [Reflect defineMethod: #load: on: Module as: [:self :name |
-  [self load: name within: #[]]]];
+  [self load: name path: [self dylibPathFor: name]]]];
+
+// Load an explicitly located root artifact. Its dependencies still resolve by
+// canonical identity beside it; only the user-selected root may have an
+// arbitrary filename.
+[Reflect defineMethod: #loadArtifact: on: Module as: [:self :p |
+  let descriptor := [Artifact inspect: p];
+  [[descriptor isNil]
+    ifTrue: [| [Error kind: [Artifact lastFailure]
+                   message: ["could not inspect artifact: " , p]]]
+    ifFalse: [|
+      let name := [descriptor identity];
+      [self load: name path: p]]]]];
 
 // -- self-registration (deliberately LAST — see the header) ----------------------
 

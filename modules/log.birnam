@@ -6,7 +6,7 @@
 // independent named loggers coexist while sharing one Logger vtable.
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/log.birnam"]    (pulls in Time + File if absent)
+//   [Module load: #log]    (loads Time + File first)
 //
 //   [Log info: "started"]                  "=> 1783… INFO log: started"   (default logger)
 //   let l := [Log named: "net"]            "=> a logger tagged 'net'"
@@ -19,8 +19,8 @@
 
 // Dependencies: load the OS modules this one stands on, if not already present.
 [Module named: #log requires: #[#time #file]];
-[[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [System load: "modules/time.birnam"]]];
-[[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
+[[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [Module load: #time]]];
+[[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [Module load: #file]]];
 
 // The Logger prototype: methods defined once, per-instance state in cells.
 [Globals at: #Logger put: [Object clone]];

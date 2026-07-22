@@ -2,6 +2,8 @@
 // CompiledUnit lifecycle. Kept separate from compiled-unit.birnam so adding or
 // revising prose cannot change its portable executable method-operation stream.
 
+[Module named: #compiledUnitDocs requires: #[#doc]];
+
 [Doc module: #compiledUnit is: "Whole-runtime dispatch generations: inspect and map CompiledUnit candidates, then activate or roll back at a host-safe boundary."];
 
 [Doc for: #state in: #compiledUnit says:

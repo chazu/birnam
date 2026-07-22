@@ -8,10 +8,9 @@
 #
 # logue.birnam files in its dependencies with `[System load: …]` (the termbox2
 # wrapper, then logue-core), each a commit boundary — so the FFI wraps declared
-# in Termbox are resolved before the renderer calls them.
+# in the Termbox wrapper are resolved before the renderer calls them.
 
 # The base image already carries peg + lang + stdlib (Random, Time, string
-# utilities), so the game needs no extra module loads. Termbox is an optional
-# Birnam module backed by the first-party wrapped C library in `../../wrapped`.
-# Its project-native build path is exercised by the Digla application; Logue's
-# standalone launcher retains the small direct build command above.
+# utilities), so the game needs no extra module loads. Termbox is a small Alien
+# wrapper over the first-party C adapter in `../../wrapped`; the standalone
+# launcher builds that dylib directly before loading the wrapper source.

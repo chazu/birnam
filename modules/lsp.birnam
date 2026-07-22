@@ -10,8 +10,7 @@
 // navigation are handled; unsupported requests answer method-not-found.
 //
 // DEPENDENCIES — load first (needs Json + the self-hosted stdlib):
-//   [System load: "modules/json.birnam"];
-//   [System load: "modules/lsp.birnam"];
+//   [Module load: #lsp];
 //   [Lsp serveStdio]                       "blocks, reading LSP messages from stdin"
 // Or just run examples/lsp-server.birnam. Point your editor's LSP client (e.g.
 // Emacs lsp-mode) at that command, from the repo root. STDOUT carries only protocol

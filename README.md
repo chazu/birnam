@@ -62,24 +62,29 @@ birnam examples/fizzbuzz.birnam
 ```
 
 For a project, `birnam` discovers the nearest `birnam.toml` from the current
-directory upward and consumes its latest successful project build. It points
-both module and native-library loading at that build's `lib/` directory, loads
-the `load = ["module"]` list dependency-first, then runs a root-relative
+directory upward and validates its latest successful project build. Project
+modules are loaded from their exact published artifact paths; the runtime's own
+modules remain rooted in the installed runtime `lib/`, while project-native
+libraries resolve beside the project artifacts. It loads the
+`load = ["module"]` list dependency-first, then runs a root-relative
 `main = "main.birnam"` before the REPL opens. For an explicit project run, use
 `birnam run`: it evaluates `main` once and exits by default, or can start a
 tty/socket REPL through the manifest's `[run]` table or command flags.
 `birnam init` writes a commented starter file.
 
-`birnam check [directory]` resolves the nearest source project without loading
-or evaluating project modules. It supports manifest-relative source roots and
-standalone local path dependencies, and prints a deterministic dependency-first
-module order. The directory defaults to the current directory; use
-`birnam check --help` for the command's arguments, options, and examples.
+`birnam check [directory]` resolves the nearest source project and compiles each
+module into a private temporary directory without loading, evaluating, or
+publishing it. Human output includes the deterministic dependency-first order
+and compiler diagnostics. `--format=json` emits the stable
+`birnam-check-v1` result for tools. The directory defaults to the current
+directory; use `birnam check --help` for the full contract.
 
 `birnam build [directory]` compiles that same graph dependency-first into
-`.birnam/build/<target>/debug`. It publishes `lib/`, `resolution.toml`, and
+`.birnam/build/<target>/<profile>`. It publishes `lib/`, `resolution.toml`, and
 `artifacts.toml` together after a successful build; it does not run or activate
-the project. A manifest can also declare `[[wrapped]]` C libraries; each
+the project. The TOML files are internal build receipts for freshness, reuse,
+and source-to-output validation; they are not installed and are not runtime
+module metadata. A manifest can also declare `[[wrapped]]` C libraries; each
 declaration runs its argv build commands with `{output}` expanded to a private
 staging path, then publishes `lib/lib<name>.dylib` beside the compiled Birnam
 wrapper. A logical Birnam module can be composed from multiple ordered source
@@ -94,6 +99,12 @@ files = ["src/json/parser.birnam", "src/json/render.birnam"]
 The entry owns the module declaration; the additional files are ordinary
 Birnam source and are concatenated in the listed order. Use
 `birnam build --help` for the current build contract.
+
+Build, run, install, and test accept `--profile debug|release`; `debug` is the
+default. Profiles have independent publications and validation records. The
+current TCC backend emits the same native compilation mode for both; `release`
+establishes a separate reproducible publication identity without claiming an
+optimizer that Birnam does not yet have.
 
 Source can also embed a project-relative file directly into the compiled
 dylib:
@@ -111,7 +122,20 @@ its owning module.
 all of its `libbirnam_<name>.dylib` modules and `[[wrapped]]` native libraries
 into the runtime library directory. The destination is `$BIRNAM_LIB_DIR` when
 set, otherwise the installed runtime's sibling `lib/`; pass `--build` to build
-before installing.
+before installing. It copies no `birnam.toml`, `resolution.toml`, or
+`artifacts.toml`: each installed module carries its own identity, dependency,
+ABI, target, native-requirement, capability, and source/revision description.
+
+An installed compiled root can be selected directly, without its source project
+or build receipt:
+
+```sh
+birnam /path/to/libbirnam_app.dylib
+```
+
+The siphon inspects the complete sibling closure through the ID-floor artifact
+protocol before it loads the activation stack. See [Shipping compiled
+artifacts](docs/guide/09-shipping-artifacts.md).
 
 `birnam run [directory] [options] [-- args...]` consumes the last successful
 build; add `--build` to rebuild first. The default is no REPL. Use
@@ -119,16 +143,25 @@ build; add `--build` to rebuild first. The default is no REPL. Use
 socket endpoint. Arguments after `--` are available to the entry source as
 `Globals at: #ProjectArgs`.
 
+`birnam test [directory]` validates the selected publication and runs every
+project test source in a fresh Birnam process. Configure an explicit ordered set
+with `[test].sources`, or omit it to discover `.birnam` files beneath `test/`
+and `tests/`. Each source registers one or more `TestSuite` values; the worker
+runs only those suites with `ConsoleRunner`, so mutable image and Store state
+cannot leak between test sources. Pass `--build` to publish before testing and
+`--profile` to select the build.
+
 `birnam --help` is the authoritative command reference. The primary entry
 points are:
 
 ```text
 birnam <file.birnam>       Compile and run a script.
 birnam <file.image>        Boot a saved image.
+birnam <artifact.dylib>    Inspect and activate a self-described compiled root.
 birnam --rebuild <image>   Boot an image by replaying source.
 birnam --bake <image> <executable>
                              Bake an image into a self-booting executable.
-birnam check [directory]     Resolve and print a source project graph.
+birnam check [directory]     Resolve and compile-check a source project.
 birnam check --help          Show check command documentation.
 birnam build [directory]     Compile and publish a project-local build.
 birnam build --help          Show build command documentation.
@@ -137,6 +170,8 @@ birnam install [directory]   Install a project's published modules into the
 birnam install --help        Show install command documentation.
 birnam run [directory]       Run a project main; default is no REPL.
 birnam run --help            Show run, REPL, socket, and argument documentation.
+birnam test [directory]      Run discovered project tests in fresh processes.
+birnam test --help           Show test discovery and profile documentation.
 birnam wrap <name>         Scaffold a C-library wrapper.
 ```
 
@@ -198,8 +233,9 @@ For interactive object and fact-store wayfinding, see the
 
 ## Developer Tools
 
-The source-backed tools below are included by `zig build install` and in release
-bundles. In a development checkout, use the binary under `zig-out/bin`.
+The compiled CLI, REPL, LSP, and documentation modules are included by
+`zig build install` and in release bundles. Their source is embedded in the
+installed compiled units. In a development checkout, use `zig-out/bin/birnam`.
 
 ```sh
 ./zig-out/bin/birnam doc time nowMillis
@@ -276,10 +312,12 @@ methodology and the measured constants.
 ## Architecture
 
 The runtime starts as a small Zig siphon that loads a set of reloadable dynamic
-libraries through a C ABI. The active rungs are:
+libraries through a C ABI. Artifact selection first adds only the ID-floor
+inspector; activation then brings up the required language rungs:
 
 ```text
-libid -> Store -> Peg -> Lang -> Tcc -> Codegen -> Prelude
+libid -> Artifact inspector
+      -> Store -> Peg -> Lang -> Tcc -> Codegen -> Prelude
       -> Collection -> Modules -> Error -> Relational -> Alien -> Image
 ```
 
@@ -294,10 +332,10 @@ from-zero bootstrap compiler and performance floor.
 - `src/id/` — Zig floor, compiler, image, FFI, and test suites.
 - `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
   (`Config` for project manifests, `AppConfig` for application startup).
-- `modules/` — source-backed libraries, CLI, LSP, documentation, tests, and the
-  multi-file Digla module.
-- `wrapped/` — first-party native libraries used by optional application
-  projects, including Digla's Termbox2 and reflection wrappers.
+- `modules/` — authored library, CLI, LSP, documentation, and test sources;
+  production modules compile into self-describing dylibs before distribution.
+- `wrapped/` — first-party native libraries used by optional applications,
+  including the Alien-backed Termbox2 adapter used by Logue.
 - `examples/` — runnable programs, including images and AOT artifacts.
 - `docs/design/` — current design decisions and implementation status.
 - `docs/archive/` — superseded kernel plans and historical material.
@@ -322,36 +360,20 @@ from-zero bootstrap compiler and performance floor.
   migration boundary: retain the Zig bootstrap and move only appropriate
   library surface into birnam.
 - [Project manifests and dependency resolution](docs/design/51-project-manifests-and-dependency-resolution.md)
-  and [project check/build/run](docs/design/52-project-check-build-and-run.md)
+  and the [project workflow](docs/design/52-project-check-build-and-run.md)
   document the implemented project workflow. The project-aware LSP has shipped
   its workspace/coordinate, safe static-diagnostics, and first source-navigation
   slices in [design 53](docs/design/53-project-aware-language-tools.md);
-  dependency-wide indexing, richer semantic assistance, and
-  [relocatable bundles](docs/design/54-relocatable-bundles.md) remain staged.
-- [Birnam Digla](docs/design/55-birnam-digla.md) proposes the first
-  product application built around the live image's reflective and historied
-  fact-store surfaces, beginning with a local read-only report and growing into
-  image and worker views.
+  dependency-wide indexing and richer semantic assistance are implemented.
+  [Relocatable bundles](docs/design/54-relocatable-bundles.md) now ship a fixed
+  executable-relative runtime closure with relocated project, image, and isolate
+  acceptance plus self-describing, source-free project/application roots.
+- [Shipping compiled artifacts](docs/guide/09-shipping-artifacts.md) explains the
+  source manifest, disposable build receipt, installed descriptor, and direct
+  dylib-root workflow.
 - [Embedded files](docs/design/56-embedded-files.md) documents the
   compile-time `System embedFile:` intrinsic and its project-build contract.
-- [Terminal REPL and programming environment](docs/design/58-terminal-repl-and-programming-environment.md)
-  tracks the termbox2 editor client, shared language-service coordinates, and
-  explicit local/remote image sessions. The first local `--ui` editor slice is
-  runnable, the source/LSP PositionMap and terminal DisplayLayout slices are
-  landed, and lexical highlighting, parser-backed diagnostics, and wrapped
-  evaluation results are visible. Tab completion merges scoped source candidates
-  with bounded live-image globals; F1/F2 provide hover and full-selector signature
-  help, while F3 lazily opens same-buffer, project, or dependency definitions and
-  F5 returns through the source-navigation stack. F4 refreshes cached diagnostics
-  outside the typing path. The structured session protocol now runs
-  over framed stdio or a loopback-only-by-default TCP listener. Termbox enters
-  through a precompiled application wrapper rather than a runtime-compiled Alien
-  trampoline; a second project-local wrapper removes the full-image
-  `Reflect allMethodsOf:` hot path without expanding the core/runtime floor.
-  Shift-movement selection, cursor-following multiline viewports, buffered-event
-  coalescing, and a project-local native source-frame/wrapping accelerator are
-  also live. Page Up/Page Down navigate wrapped transcript rows with automatic
-  tail following after evaluation. Source lines now soft-wrap through the shared
-  byte-to-cell projection, with visual-row cursor/selection/viewports, and buffered
-  text bursts make multi-kilobyte pastes a single edit. Streamed output and bounded
-  interruption remain staged.
+- [Designs 55, 58, and 59](docs/design/59-digla-adversarial-architecture-review.md)
+  preserve the retired Digla application experiment and its architectural
+  lessons. Digla is not part of the current runtime, verification graph, or
+  product roadmap.

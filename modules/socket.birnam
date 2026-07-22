@@ -7,7 +7,7 @@
 // REPL) rides on this floor.
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/socket.birnam"]
+//   [Module load: #socket]
 // then, the blocking one-connection-at-a-time server:
 //   [Socket serve: 8080 with: [:conn |
 //     let req := [conn recv];                      "the raw request bytes (a String)"

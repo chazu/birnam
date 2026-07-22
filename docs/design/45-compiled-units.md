@@ -1,7 +1,8 @@
 # Compiled Units Are Primary
 
-> **Status:** current contract, 2026-07-10. This document records the authority
-> model implemented by image format v3 and the next live-reload boundary. It
+> **Status:** Current contract, revised 2026-07-22 for self-describing standalone
+> artifacts. This document records the authority model implemented by image
+> format v3 and the live-reload boundary. It
 > refines [40 — The Image](40-the-image.md), [42 — Object Canonical](42-object-canonical-relational-derived.md),
 > and [43 — Modules](43-modules-and-config.md).
 
@@ -24,6 +25,32 @@ The remaining layers have distinct supporting roles:
 This order prevents a subtle but damaging interpretation: the dylib embedded in
 an image is not a cache that can be discarded in favor of facts or source. It is
 the executable artifact the image saved.
+
+## Standalone compiled artifacts
+
+The same authority rule applies outside an image. Every production module dylib
+contains a pointer-free descriptor with its canonical identity, artifact ABI,
+target, roots, module and native requirements, capabilities, and source/revision
+digests. Authored source and reflection metadata travel in the compiled unit;
+loose production `.birnam` files are build inputs, not installed runtime files.
+
+`[Artifact inspect:]` reads that descriptor directly from artifact bytes without
+`dlopen`, running constructors, or invoking `__birnam_unit_init` or `__ev`. The
+siphon uses only `libid` and the artifact-inspector rung to inspect a selected
+root and its complete sibling dependency closure. A wrong kind, requested
+identity, target, ABI, cycle, or unavailable native requirement is rejected
+before the language activation stack or any artifact initializer runs.
+
+After inspection succeeds, `Module` builds a complete dependency-first plan and
+only then asks Codegen to activate each artifact. This separation means an
+invalid later dependency cannot leave an earlier sibling partially installed.
+The descriptor is runtime authority; `artifacts.toml` is only a disposable local
+build receipt for source freshness, reuse, and output validation. Installed
+roots carry no project or build TOML sidecar.
+
+See [Design 54](54-relocatable-bundles.md) for distribution and [Shipping
+compiled artifacts](../guide/09-shipping-artifacts.md) for the user-facing
+workflow.
 
 ## What Is Shipped
 

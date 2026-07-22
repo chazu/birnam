@@ -40,8 +40,8 @@
 
 // -- dependencies (guarded — a second load would re-wrap noisily) ---------------
 [Module named: #bench requires: #[#time #file]];
-[[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [System load: "modules/time.birnam"]]];
-[[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
+[[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [Module load: #time]]];
+[[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [Module load: #file]]];
 
 // char *getenv(const char *) — the receiver (a String) is the variable name; a
 // missing variable answers nil (the shim maps a NULL char* to nil).

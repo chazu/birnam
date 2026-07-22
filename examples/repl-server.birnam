@@ -5,6 +5,6 @@
 //
 // then from another terminal:  nc localhost 5555
 // Type birnam forms; `let` bindings persist across lines; `:quit` disconnects.
-[System load: "modules/socket.birnam"];
-[System load: "modules/repl.birnam"];
+[Module load: #socket];
+[Module load: #repl];
 [Repl serveOn: 5555]

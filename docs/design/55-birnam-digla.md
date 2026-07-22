@@ -1,10 +1,9 @@
 # 55 — Birnam Digla
 
-> **Status:** In progress, updated 2026-07-19. This is a product-facing application design
-> over the shipped reflective runtime, relational Store, images, project
-> workflow, HTTP/HTML/JSON modules, and live-module/isolate boundaries. The
-> implementation sequence deliberately starts as a local, read-only report and
-> only later becomes a server or worker control plane.
+> **Status:** Retired, 2026-07-21. This document preserves the design of the
+> removed Digla experiment as historical rationale. Paths and implementation
+> claims below describe the final application tree at `0496dbc`; Digla is no
+> longer part of Birnam's runtime, verification graph, or roadmap.
 
 ## 1. The question
 

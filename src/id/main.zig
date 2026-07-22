@@ -9,9 +9,11 @@
 //! No eids, no fact store.
 
 const std = @import("std");
+const runtime_resources = @import("runtime_resources.zig");
 const idapi = @import("idapi.zig");
 const project = @import("project.zig");
 const project_build = @import("project_build.zig");
+const project_check = @import("project_check.zig");
 const build_opts = @import("build_opts");
 
 const USAGE =
@@ -20,6 +22,8 @@ const USAGE =
     \\Usage:
     \\  birnam                     Start the interactive REPL (the default).
     \\  birnam <file.birnam>       Compile and run a script, then exit.
+    \\  birnam <artifact.dylib>    Inspect and activate a self-described compiled
+    \\                             root and only its declared dependency closure.
     \\  birnam <file.image>        Boot a saved image (maps compiled code; runs
     \\                             `main`, else drops into the REPL).
     \\  birnam --repl              Start the REPL explicitly (aliases: -i, repl).
@@ -27,10 +31,12 @@ const USAGE =
     \\                             Start a socket REPL on <port> (alias: --serve).
     \\                             If FILE is given it is run first, so the listener
     \\                             attaches to its state. Run from the repo root so
-    \\                             modules/ is visible. Blocks; Ctrl-C to stop.
+    \\                             the configured script path is unambiguous.
+    \\                             Blocks; Ctrl-C to stop.
     \\  birnam --lsp               Run the birnam language server on stdio (LSP).
     \\                             Point lsp-mode at this. Resolves the
-    \\                             modules/ dir relative to the executable, so it
+    \\                             loads its compiled module closure relative to
+    \\                             the executable, so it
     \\                             works launched from any project directory.
     \\  birnam doc <mod> [sel]     Print documentation for a module (like `go doc`):
     \\                             its method docstrings, or one selector's doc.
@@ -51,6 +57,9 @@ const USAGE =
     \\  birnam run [directory] [options] [-- args...]
     \\                             Run a built project main; default is no REPL.
     \\  birnam run --help          Print run command documentation and exit.
+    \\  birnam test [directory]    Run each discovered project test in a fresh
+    \\                             process against the selected project build.
+    \\  birnam test --help         Print test command documentation and exit.
     \\  birnam wrap <name>         Scaffold wrapped/<name>/<name>.birnam — a
     \\                             barebones Alien-based C-library wrapper to edit.
     \\  birnam --bake <img> <exe>  Bake an image into a standalone executable.
@@ -61,8 +70,7 @@ const USAGE =
     \\
     \\Environment:
     \\  BIRNAM_LIB_DIR    Directory holding the module dylibs. Overrides the
-    \\                    default search (next to the exe, then ../lib, then
-    \\                    zig-out/lib).
+    \\                    executable-relative runtime lib directory.
     \\  BIRNAM_ID_DYLIB   Path to the id-floor dylib (libbirnam_id.dylib).
     \\  BIRNAM_NO_STDLIB  If set, skip the self-hosted stdlib (bare Zig floor).
     \\  BIRNAM_GC_PRECISE If set, use the precise (layout-descriptor) GC.
@@ -84,6 +92,7 @@ var project_bridge_api: ?*IdApi = null;
 // The bridge still materializes a fresh Birnam value map per request, so no Oop
 // is hidden from the collector and explicit non-empty URIs retain normal lookup.
 var active_project_resolution: ?*const project.Resolution = null;
+var active_project_build: ?*const project_build.Build = null;
 
 fn hexNibble(c: u8) ?u8 {
     return switch (c) {
@@ -179,7 +188,7 @@ fn projectNativeFailure(api: *IdApi, diagnostic: project.Diagnostic) ?Oop {
     return map;
 }
 
-fn projectNativeSuccess(api: *IdApi, resolution: *const project.Resolution) ?Oop {
+fn projectNativeSuccess(api: *IdApi, resolution: *const project.Resolution, build: ?*const project_build.Build) ?Oop {
     var modules = nativeVector(api) orelse return null;
     for (resolution.modules) |module| {
         var item = nativeMap(api) orelse return null;
@@ -203,6 +212,14 @@ fn projectNativeSuccess(api: *IdApi, resolution: *const project.Resolution) ?Oop
     else
         api.nilObj) orelse return null;
     map = nativeMapPut(api, map, "digest", api.mkString(resolution.digest.ptr, resolution.digest.len)) orelse return null;
+    map = nativeMapPut(api, map, "buildRoot", if (build) |selected|
+        api.mkString(selected.output_root.ptr, selected.output_root.len)
+    else
+        api.nilObj) orelse return null;
+    map = nativeMapPut(api, map, "profile", if (build) |selected|
+        api.mkString(selected.profile.ptr, selected.profile.len)
+    else
+        api.nilObj) orelse return null;
     map = nativeMapPut(api, map, "modules", modules) orelse return null;
     return map;
 }
@@ -218,7 +235,7 @@ fn mProjectSnapshotForUri(_: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop
     const uri = api.stringBytes(args[0], &uri_len);
     const raw = uri[0..uri_len];
     if (raw.len == 0) if (active_project_resolution) |resolution|
-        return projectNativeSuccess(api, resolution) orelse api.nilObj;
+        return projectNativeSuccess(api, resolution, active_project_build) orelse api.nilObj;
     const working_dir = projectWorkingDirectory(std.heap.c_allocator, raw) catch return projectNativeFailure(api, .{
         .kind = "projectUriInvalid",
         .message = "could not decode workspace URI",
@@ -230,7 +247,7 @@ fn mProjectSnapshotForUri(_: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop
     return if (result.diagnostic) |diagnostic|
         projectNativeFailure(api, diagnostic) orelse api.nilObj
     else
-        projectNativeSuccess(api, &result.resolution.?) orelse api.nilObj;
+        projectNativeSuccess(api, &result.resolution.?, null) orelse api.nilObj;
 }
 
 /// Host-only path decoding for the LSP's authored-source index. URI policy
@@ -262,16 +279,17 @@ fn installProjectBridge(api: *IdApi) !void {
 }
 
 const CHECK_USAGE =
-    \\Usage: birnam check [directory]
+    \\Usage: birnam check [directory] [--format human|json]
     \\
-    \\Resolve the nearest birnam.toml and print its deterministic,
-    \\dependency-first source module graph. The command is read-only: it does
-    \\not evaluate project modules, load compiled units, or write build output.
+    \\Resolve the nearest birnam.toml and compile-check every module in a private
+    \\temporary directory. The command is read-only: it does not evaluate
+    \\project modules, load compiled units, or publish build output.
     \\
     \\Arguments:
     \\  directory       Directory to search from; defaults to the current directory.
     \\
     \\Options:
+    \\  --format FMT    Output format: human (default) or json.
     \\  -h, --help      Show this help and exit.
     \\
     \\Examples:
@@ -282,12 +300,11 @@ const CHECK_USAGE =
 ;
 
 const BUILD_USAGE =
-    \\Usage: birnam build [directory]
+    \\Usage: birnam build [directory] [--profile debug|release]
     \\
     \\Resolve and compile the nearest birnam.toml source project. Build outputs
     \\are staged under .birnam/build and published only after every module and
-    \\build record succeeds. This first slice uses the debug profile and the
-    \\current target; it does not run or activate the project. Use one
+    \\build record succeeds. It does not run or activate the project. Use one
     \\[[module]] table to compose an entry source and optional ordered files
     \\into one compiled dylib.
     \\
@@ -300,6 +317,7 @@ const BUILD_USAGE =
     \\  directory       Directory to search from; defaults to the current directory.
     \\
     \\Options:
+    \\  --profile NAME  Select debug (default) or release publication.
     \\  -h, --help      Show this help and exit.
     \\
     \\Examples:
@@ -321,6 +339,7 @@ const INSTALL_USAGE =
     \\
     \\Options:
     \\  --build         Build and publish before installing.
+    \\  --profile NAME  Select debug (default) or release publication.
     \\  -h, --help      Print this command documentation.
     \\
     \\The destination is BIRNAM_LIB_DIR when set, otherwise the default runtime
@@ -344,6 +363,7 @@ const RUN_USAGE =
     \\
     \\Options:
     \\  --build         Build and publish before running.
+    \\  --profile NAME  Select debug (default) or release publication.
     \\  --no-repl       Evaluate main and exit (the default).
     \\  --repl          Start the terminal REPL after main (same as --repl=tty).
     \\  --repl=tty      Start the terminal REPL after main.
@@ -362,11 +382,45 @@ const RUN_USAGE =
     \\
 ;
 
+const TEST_USAGE =
+    \\Usage: birnam test [directory] [options]
+    \\
+    \\Run every configured or discovered project test in its own process.
+    \\Tests consume the selected successful project build; --build publishes it
+    \\first. Each test source registers one or more TestSuite values and Birnam
+    \\runs those suites with ConsoleRunner.
+    \\
+    \\Discovery:
+    \\  [test]
+    \\  sources = ["tests/app-test.birnam"]
+    \\
+    \\When [test].sources is absent, every .birnam file below test/ and tests/
+    \\is discovered in deterministic path order.
+    \\
+    \\Options:
+    \\  --build         Build and publish before testing.
+    \\  --profile NAME  Select debug (default) or release publication.
+    \\  -h, --help      Show this help and exit.
+    \\
+;
+
 const ReplMode = enum { none, tty, socket };
+const OutputFormat = enum { human, json };
+
+const ProjectCheckOptions = struct {
+    directory: []const u8,
+    format: OutputFormat,
+};
+
+const ProjectBuildOptions = struct {
+    directory: []const u8,
+    profile: []const u8,
+};
 
 const ProjectRunOptions = struct {
     directory: []const u8,
     build: bool,
+    profile: []const u8,
     repl: ?ReplMode,
     socket_bind: ?[]const u8,
     socket_port: ?i64,
@@ -376,6 +430,13 @@ const ProjectRunOptions = struct {
 const ProjectInstallOptions = struct {
     directory: []const u8,
     build: bool,
+    profile: []const u8,
+};
+
+const ProjectTestOptions = struct {
+    directory: []const u8,
+    build: bool,
+    profile: []const u8,
 };
 
 fn parseReplMode(value: []const u8) ?ReplMode {
@@ -385,10 +446,72 @@ fn parseReplMode(value: []const u8) ?ReplMode {
     return null;
 }
 
+fn projectProfile(value: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, value, "debug") or std.mem.eql(u8, value, "release")) return value;
+    return null;
+}
+
+fn parseProjectCheckOptions(args: *std.process.ArgIterator) ProjectCheckOptions {
+    var directory: []const u8 = ".";
+    var has_directory = false;
+    var format: OutputFormat = .human;
+    while (args.next()) |token| {
+        if (std.mem.eql(u8, token, "--help") or std.mem.eql(u8, token, "-h")) {
+            if (args.next() != null) checkUsageError("unexpected argument after --help", .{});
+            out(CHECK_USAGE);
+            std.process.exit(0);
+        }
+        if (std.mem.eql(u8, token, "--format")) {
+            const value = args.next() orelse checkUsageError("--format requires human or json", .{});
+            format = if (std.mem.eql(u8, value, "human")) .human else if (std.mem.eql(u8, value, "json")) .json else checkUsageError("--format must be human or json", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "--format=")) {
+            const value = token["--format=".len..];
+            format = if (std.mem.eql(u8, value, "human")) .human else if (std.mem.eql(u8, value, "json")) .json else checkUsageError("--format must be human or json", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "-")) checkUsageError("unknown option '{s}'", .{token});
+        if (has_directory) checkUsageError("expected at most one project directory", .{});
+        directory = token;
+        has_directory = true;
+    }
+    return .{ .directory = directory, .format = format };
+}
+
+fn parseProjectBuildOptions(args: *std.process.ArgIterator) ProjectBuildOptions {
+    var directory: []const u8 = ".";
+    var has_directory = false;
+    var profile: []const u8 = "debug";
+    while (args.next()) |token| {
+        if (std.mem.eql(u8, token, "--help") or std.mem.eql(u8, token, "-h")) {
+            if (args.next() != null) buildUsageError("unexpected argument after --help", .{});
+            out(BUILD_USAGE);
+            std.process.exit(0);
+        }
+        if (std.mem.eql(u8, token, "--profile")) {
+            profile = projectProfile(args.next() orelse buildUsageError("--profile requires debug or release", .{})) orelse
+                buildUsageError("--profile must be debug or release", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "--profile=")) {
+            profile = projectProfile(token["--profile=".len..]) orelse
+                buildUsageError("--profile must be debug or release", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "-")) buildUsageError("unknown option '{s}'", .{token});
+        if (has_directory) buildUsageError("expected at most one project directory", .{});
+        directory = token;
+        has_directory = true;
+    }
+    return .{ .directory = directory, .profile = profile };
+}
+
 fn parseProjectRunOptions(a: std.mem.Allocator, args: *std.process.ArgIterator) ProjectRunOptions {
     var directory: []const u8 = ".";
     var has_directory = false;
     var build = false;
+    var profile: []const u8 = "debug";
     var repl: ?ReplMode = null;
     var socket_bind: ?[]const u8 = null;
     var socket_port: ?i64 = null;
@@ -407,6 +530,16 @@ fn parseProjectRunOptions(a: std.mem.Allocator, args: *std.process.ArgIterator) 
         }
         if (std.mem.eql(u8, token, "--build")) {
             build = true;
+            continue;
+        }
+        if (std.mem.eql(u8, token, "--profile")) {
+            profile = projectProfile(args.next() orelse runUsageError("--profile requires debug or release", .{})) orelse
+                runUsageError("--profile must be debug or release", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "--profile=")) {
+            profile = projectProfile(token["--profile=".len..]) orelse
+                runUsageError("--profile must be debug or release", .{});
             continue;
         }
         if (std.mem.eql(u8, token, "--no-repl")) {
@@ -456,6 +589,7 @@ fn parseProjectRunOptions(a: std.mem.Allocator, args: *std.process.ArgIterator) 
     return .{
         .directory = directory,
         .build = build,
+        .profile = profile,
         .repl = repl,
         .socket_bind = socket_bind,
         .socket_port = socket_port,
@@ -468,6 +602,7 @@ fn parseProjectInstallOptions(a: std.mem.Allocator, args: *std.process.ArgIterat
     var directory: []const u8 = ".";
     var has_directory = false;
     var build = false;
+    var profile: []const u8 = "debug";
     while (args.next()) |token| {
         if (std.mem.eql(u8, token, "--help") or std.mem.eql(u8, token, "-h")) {
             if (args.next() != null) installUsageError("unexpected argument after --help", .{});
@@ -478,13 +613,56 @@ fn parseProjectInstallOptions(a: std.mem.Allocator, args: *std.process.ArgIterat
             build = true;
             continue;
         }
+        if (std.mem.eql(u8, token, "--profile")) {
+            profile = projectProfile(args.next() orelse installUsageError("--profile requires debug or release", .{})) orelse
+                installUsageError("--profile must be debug or release", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "--profile=")) {
+            profile = projectProfile(token["--profile=".len..]) orelse
+                installUsageError("--profile must be debug or release", .{});
+            continue;
+        }
         if (std.mem.startsWith(u8, token, "-"))
             installUsageError("unknown option '{s}'", .{token});
         if (has_directory) installUsageError("expected at most one project directory", .{});
         directory = token;
         has_directory = true;
     }
-    return .{ .directory = directory, .build = build };
+    return .{ .directory = directory, .build = build, .profile = profile };
+}
+
+fn parseProjectTestOptions(args: *std.process.ArgIterator) ProjectTestOptions {
+    var directory: []const u8 = ".";
+    var has_directory = false;
+    var build = false;
+    var profile: []const u8 = "debug";
+    while (args.next()) |token| {
+        if (std.mem.eql(u8, token, "--help") or std.mem.eql(u8, token, "-h")) {
+            if (args.next() != null) testUsageError("unexpected argument after --help", .{});
+            out(TEST_USAGE);
+            std.process.exit(0);
+        }
+        if (std.mem.eql(u8, token, "--build")) {
+            build = true;
+            continue;
+        }
+        if (std.mem.eql(u8, token, "--profile")) {
+            profile = projectProfile(args.next() orelse testUsageError("--profile requires debug or release", .{})) orelse
+                testUsageError("--profile must be debug or release", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "--profile=")) {
+            profile = projectProfile(token["--profile=".len..]) orelse
+                testUsageError("--profile must be debug or release", .{});
+            continue;
+        }
+        if (std.mem.startsWith(u8, token, "-")) testUsageError("unknown option '{s}'", .{token});
+        if (has_directory) testUsageError("expected at most one project directory", .{});
+        directory = token;
+        has_directory = true;
+    }
+    return .{ .directory = directory, .build = build, .profile = profile };
 }
 
 // -- exe bake: a self-booting executable = this runtime + an appended image ---
@@ -591,39 +769,22 @@ pub fn main() !void {
     // `check --help` and malformed check invocations are pure CLI operations:
     // answer them before resolving or loading any runtime dylib, just like the
     // top-level help/version paths above.
-    var check_directory_arg: ?[]const u8 = null;
-    var build_directory_arg: ?[]const u8 = null;
+    var project_check_options: ?ProjectCheckOptions = null;
+    var project_build_options: ?ProjectBuildOptions = null;
     var project_run_options: ?ProjectRunOptions = null;
     var project_install_options: ?ProjectInstallOptions = null;
+    var project_test_options: ?ProjectTestOptions = null;
     if (script_path) |sp| {
         if (std.mem.eql(u8, sp, "check")) {
-            if (args.next()) |candidate| {
-                if (std.mem.eql(u8, candidate, "--help") or std.mem.eql(u8, candidate, "-h")) {
-                    if (args.next() != null) checkUsageError("unexpected argument after --help", .{});
-                    out(CHECK_USAGE);
-                    return;
-                }
-                if (std.mem.startsWith(u8, candidate, "-"))
-                    checkUsageError("unknown option '{s}'", .{candidate});
-                check_directory_arg = candidate;
-                if (args.next() != null) checkUsageError("expected at most one directory argument", .{});
-            }
+            project_check_options = parseProjectCheckOptions(&args);
         } else if (std.mem.eql(u8, sp, "build")) {
-            if (args.next()) |candidate| {
-                if (std.mem.eql(u8, candidate, "--help") or std.mem.eql(u8, candidate, "-h")) {
-                    if (args.next() != null) buildUsageError("unexpected argument after --help", .{});
-                    out(BUILD_USAGE);
-                    return;
-                }
-                if (std.mem.startsWith(u8, candidate, "-"))
-                    buildUsageError("unknown option '{s}'", .{candidate});
-                build_directory_arg = candidate;
-                if (args.next() != null) buildUsageError("expected at most one directory argument", .{});
-            }
+            project_build_options = parseProjectBuildOptions(&args);
         } else if (std.mem.eql(u8, sp, "run")) {
             project_run_options = parseProjectRunOptions(a, &args);
         } else if (std.mem.eql(u8, sp, "install")) {
             project_install_options = parseProjectInstallOptions(a, &args);
+        } else if (std.mem.eql(u8, sp, "test")) {
+            project_test_options = parseProjectTestOptions(&args);
         }
     }
     // `--rebuild foo.image` forces the replay path (rebuild code from the image's
@@ -637,13 +798,9 @@ pub fn main() !void {
     }
     // The id dylib: an explicit `$BIRNAM_ID_DYLIB`, else libbirnam_id.dylib in the
     // resolved lib dir (exe-relative, so a baked exe boots from any cwd).
-    const id_path = if (std.posix.getenv("BIRNAM_ID_DYLIB")) |d|
-        try a.dupe(u8, d)
-    else blk: {
-        const dir = try resolveLibDir(a);
-        defer a.free(dir);
-        break :blk try std.fs.path.join(a, &.{ dir, "libbirnam_id.dylib" });
-    };
+    var runtime = try runtime_resources.resolve(a);
+    defer runtime.deinit();
+    const id_path = try a.dupe(u8, runtime.id_dylib);
     defer a.free(id_path);
 
     // `--bake <image> <out-exe>` — tooling op, no runtime needed yet.
@@ -665,22 +822,35 @@ pub fn main() !void {
 
     // The ONE irreducible raw load — open the id dylib, find `id_init`, call it
     // to get the id API table. Everything else goes through the api.
-    var lib = try std.DynLib.open(id_path);
+    var lib = std.DynLib.open(id_path) catch |err|
+        runtimeResourceUnavailable("runtime dylib", id_path, err);
     const id_init = lib.lookup(idapi.IdInitFn, "id_init") orelse return error.NoIdInit;
     const api = id_init();
     defer if (host_isolate_shutdown) |shutdown| shutdown();
+
+    // Private subprocess entry used by `birnam test`. Each invocation receives
+    // one absolute test source and therefore starts with a fresh heap, Store,
+    // module generation, and project artifact activation.
+    if (script_path) |sp| {
+        if (std.mem.eql(u8, sp, "--project-test-worker")) {
+            const directory = args.next() orelse return error.InvalidProjectTestWorkerArguments;
+            const profile = args.next() orelse return error.InvalidProjectTestWorkerArguments;
+            const test_path = args.next() orelse return error.InvalidProjectTestWorkerArguments;
+            if (args.next() != null or projectProfile(profile) == null)
+                return error.InvalidProjectTestWorkerArguments;
+            return runProjectTestWorker(a, api, directory, profile, test_path);
+        }
+    }
 
     // The first project workflow is intentionally read-only and source-only.
     // It boots the parser/TOML stack, then resolves without evaluating a project
     // source or calling Module load:.
     if (script_path) |sp| {
         if (std.mem.eql(u8, sp, "check")) {
-            const directory = check_directory_arg orelse ".";
-            return runProjectCheck(a, api, directory) catch |err| checkCommandError(err);
+            return runProjectCheck(a, api, project_check_options.?) catch |err| checkCommandError(err);
         }
         if (std.mem.eql(u8, sp, "build")) {
-            const directory = build_directory_arg orelse ".";
-            return runProjectBuild(a, api, directory) catch |err| buildCommandError(err);
+            return runProjectBuild(a, api, project_build_options.?) catch |err| buildCommandError(err);
         }
         if (std.mem.eql(u8, sp, "run")) {
             const options = project_run_options.?;
@@ -690,6 +860,10 @@ pub fn main() !void {
         if (std.mem.eql(u8, sp, "install")) {
             const options = project_install_options.?;
             return runProjectInstall(a, api, options) catch |err| installCommandError(err);
+        }
+        if (std.mem.eql(u8, sp, "test")) {
+            const options = project_test_options.?;
+            return runProjectTest(a, api, options) catch |err| testCommandError(err);
         }
     }
 
@@ -724,7 +898,7 @@ pub fn main() !void {
             return runRepl(a, api, false);
         // The birnam-side subcommands (doc/docgen/init/wrap/--lsp/--listen):
         // recognize the token, collect the rest of argv verbatim, and hand the
-        // whole invocation to `[Cli run:dir:]` (modules/cli.birnam) — usage
+        // whole invocation to the compiled Cli module — usage
         // checks included.
         if (isCliSubcommand(sp)) {
             var argv: std.ArrayList([]const u8) = .{};
@@ -746,6 +920,8 @@ pub fn main() !void {
         }
         if (std.mem.endsWith(u8, sp, ".image"))
             return runImage(a, api, sp, rebuild);
+        if (std.mem.endsWith(u8, sp, ".dylib"))
+            return runCompiledArtifact(a, api, sp);
         return runScript(a, api, sp);
     }
 
@@ -757,6 +933,7 @@ pub fn main() !void {
 /// through the id api; codegen resolves globals through the store, so the store
 /// comes first.
 const script_modules = [_][]const u8{
+    "libbirnam_id_artifact",
     "libbirnam_store",
     "libbirnam_id_peg",
     "libbirnam_id_lang",
@@ -936,6 +1113,7 @@ fn loadStdlib(a: std.mem.Allocator, api: *IdApi, codegen: Oop) void {
             var k: i64 = 0;
             while (k < n) : (k += 1)
                 installSelfHostedByName(a, api, codegen, api.send(order, api.intern("at:"), &[_]Oop{api.mkSmallInt(k)}, 1));
+            configureRuntimeNativeDir(a, api);
             return;
         }
     }
@@ -944,29 +1122,15 @@ fn loadStdlib(a: std.mem.Allocator, api: *IdApi, codegen: Oop) void {
         loadSelfHosted(a, api, codegen, sh.name, sh.src);
         markLoaded(api, sh.name);
     }
+    configureRuntimeNativeDir(a, api);
 }
 
-/// Resolve the directory holding the runtime module dylibs. Tries, in order:
-/// `$BIRNAM_LIB_DIR`, then next to this executable (`<exedir>` and `<exedir>/../lib`
-/// — so a baked exe placed beside its dylibs just works), then `zig-out/lib` (the
-/// dev tree). The first directory that actually holds `libbirnam_store.dylib` wins;
-/// falls back to `zig-out/lib`. Caller frees the returned slice.
+/// Resolve the directory holding runtime dylibs through the single runtime
+/// resource contract. `BIRNAM_LIB_DIR` remains an explicit escape hatch.
 fn resolveLibDir(a: std.mem.Allocator) ![]u8 {
-    if (std.posix.getenv("BIRNAM_LIB_DIR")) |d| return a.dupe(u8, d);
-    const probe = "libbirnam_store.dylib";
-    if (std.fs.selfExeDirPathAlloc(a)) |exedir| {
-        defer a.free(exedir);
-        const parent_lib = try std.fs.path.join(a, &.{ exedir, "..", "lib" });
-        defer a.free(parent_lib);
-        for ([_][]const u8{ exedir, parent_lib }) |cand| {
-            const p = try std.fs.path.join(a, &.{ cand, probe });
-            defer a.free(p);
-            if (std.fs.cwd().access(p, .{})) |_| {
-                return a.dupe(u8, cand); // cand is exedir/parent_lib, both freed after we dupe
-            } else |_| {}
-        }
-    } else |_| {}
-    return a.dupe(u8, "zig-out/lib");
+    var resources = try runtime_resources.resolve(a);
+    defer resources.deinit();
+    return a.dupe(u8, resources.lib_dir);
 }
 
 /// Load the full language stack quietly through the id api (store first, since
@@ -1010,8 +1174,8 @@ fn birnamGlobal(api: *IdApi, name: [:0]const u8) ?Oop {
 /// booted image loads from ITS tree, not the one it was saved in.
 fn refreshModuleManager(a: std.mem.Allocator, api: *IdApi, mm: Oop) void {
     const kernel = [_][:0]const u8{
-        "store",      "peg",   "lang",       "tcc",   "codegen", "prelude",
-        "collection", "error", "relational", "alien", "image",
+        "artifact", "store",      "peg",   "lang",       "tcc",   "codegen",
+        "prelude",  "collection", "error", "relational", "alien", "image",
     };
     for (kernel) |name| _ = api.send(mm, api.intern("kernel:"), &[_]Oop{api.intern(name.ptr)}, 1);
     if (resolveLibDir(a)) |lib_dir| {
@@ -1057,12 +1221,165 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     }
 }
 
+/// Inspect and activate an explicitly selected compiled root. The host knows
+/// only that this is a dynamic-library container; module identity, requirements,
+/// native requirements, and capabilities come from the artifact's ID
+/// descriptor. No project manifest or build receipt participates.
+const ArtifactPreflight = struct {
+    allocator: std.mem.Allocator,
+    api: *IdApi,
+    artifact: Oop,
+    directory: []const u8,
+    visiting: std.StringHashMap(void),
+    inspected: std.StringHashMap(void),
+
+    fn init(allocator: std.mem.Allocator, api: *IdApi, artifact: Oop, directory: []const u8) ArtifactPreflight {
+        return .{
+            .allocator = allocator,
+            .api = api,
+            .artifact = artifact,
+            .directory = directory,
+            .visiting = std.StringHashMap(void).init(allocator),
+            .inspected = std.StringHashMap(void).init(allocator),
+        };
+    }
+
+    fn deinit(self: *ArtifactPreflight) void {
+        self.visiting.deinit();
+        self.inspected.deinit();
+    }
+
+    fn diagnostic(kind: []const u8, path: []const u8) void {
+        const stderr = std.fs.File.stderr();
+        stderr.writeAll("birnam: artifact preflight failed: ") catch {};
+        stderr.writeAll(kind) catch {};
+        stderr.writeAll(": ") catch {};
+        stderr.writeAll(path) catch {};
+        stderr.writeAll("\n") catch {};
+    }
+
+    fn walk(self: *ArtifactPreflight, description: Oop) !void {
+        if (self.api.send(description, self.api.intern("kind"), &.{}, 0) != self.api.intern("module")) {
+            diagnostic("artifactKindMismatch", self.directory);
+            return error.ArtifactKindMismatch;
+        }
+        const identity = self.api.send(description, self.api.intern("identity"), &.{}, 0);
+        if (self.api.vtableOf(identity) != self.api.symbol_vt) {
+            diagnostic("artifactDescriptionMissing", self.directory);
+            return error.ArtifactDescriptionMissing;
+        }
+        const name = std.mem.span(self.api.symbolName(identity));
+        if (self.inspected.contains(name)) return;
+        if (self.visiting.contains(name)) {
+            diagnostic("circularDependency", name);
+            return error.ArtifactDependencyCycle;
+        }
+        try self.visiting.put(name, {});
+        defer _ = self.visiting.remove(name);
+
+        const count_value = self.api.send(description, self.api.intern("requiresCount"), &.{}, 0);
+        if (self.api.vtableOf(count_value) != self.api.smallint_vt) {
+            diagnostic("artifactDescriptionMissing", name);
+            return error.ArtifactDescriptionMissing;
+        }
+        const count = self.api.smallIntValue(count_value);
+        if (count < 0 or count > 4096) {
+            diagnostic("artifactDescriptionMissing", name);
+            return error.ArtifactDescriptionMissing;
+        }
+        var index: i64 = 0;
+        while (index < count) : (index += 1) {
+            const requirement = self.api.send(description, self.api.intern("requireAt:"), &.{self.api.mkSmallInt(index)}, 1);
+            if (self.api.vtableOf(requirement) != self.api.symbol_vt) {
+                diagnostic("artifactDescriptionMissing", name);
+                return error.ArtifactDescriptionMissing;
+            }
+            const required_name = std.mem.span(self.api.symbolName(requirement));
+            const filename = try std.fmt.allocPrint(self.allocator, "libbirnam_{s}.dylib", .{required_name});
+            defer self.allocator.free(filename);
+            const path = try std.fs.path.join(self.allocator, &.{ self.directory, filename });
+            defer self.allocator.free(path);
+            const dependency = self.api.send(self.artifact, self.api.intern("inspect:"), &.{self.api.mkString(path.ptr, path.len)}, 1);
+            if (dependency == self.api.nilObj) {
+                const failure = self.api.send(self.artifact, self.api.intern("lastFailure"), &.{}, 0);
+                const failure_name = if (failure != self.api.nilObj and self.api.vtableOf(failure) == self.api.symbol_vt)
+                    std.mem.span(self.api.symbolName(failure))
+                else
+                    "artifactDescriptionMissing";
+                diagnostic(failure_name, path);
+                return error.ArtifactDependencyInvalid;
+            }
+            if (self.api.send(dependency, self.api.intern("identity"), &.{}, 0) != requirement) {
+                diagnostic("artifactIdentityMismatch", path);
+                return error.ArtifactIdentityMismatch;
+            }
+            try self.walk(dependency);
+        }
+        try self.inspected.put(name, {});
+    }
+};
+
+fn runCompiledArtifact(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
+    // The only pre-inspection load after libid: the tiny Artifact rung. It
+    // returns an ID descriptor without Store, Codegen, Module, or artifact code.
+    const runtime_lib = try resolveLibDir(a);
+    defer a.free(runtime_lib);
+    const inspector_path = try std.fs.path.join(a, &.{ runtime_lib, "libbirnam_id_artifact.dylib" });
+    defer a.free(inspector_path);
+    const inspector_path_z = try a.dupeZ(u8, inspector_path);
+    defer a.free(inspector_path_z);
+    _ = try loadModule(api, inspector_path_z.ptr, null);
+    const artifact = api.import("Artifact") orelse return error.NoArtifactInspector;
+    const absolute = try std.fs.cwd().realpathAlloc(a, path);
+    defer a.free(absolute);
+    const inspected = api.send(artifact, api.intern("inspect:"), &.{api.mkString(absolute.ptr, absolute.len)}, 1);
+    if (inspected == api.nilObj) {
+        const failure = api.send(artifact, api.intern("lastFailure"), &.{}, 0);
+        std.fs.File.stderr().writeAll("birnam: artifact inspection failed") catch {};
+        if (failure != api.nilObj and api.vtableOf(failure) == api.symbol_vt) {
+            std.fs.File.stderr().writeAll(": ") catch {};
+            std.fs.File.stderr().writeAll(std.mem.span(api.symbolName(failure))) catch {};
+        }
+        std.fs.File.stderr().writeAll("\n") catch {};
+        return error.ArtifactInspectionFailed;
+    }
+
+    // The item-level descriptor protocol needs no Collection/Store rung. Walk
+    // and reject the entire sibling closure before loading the language stack
+    // or executing any artifact initializer.
+    const directory = std.fs.path.dirname(absolute) orelse ".";
+    var preflight = ArtifactPreflight.init(a, api, artifact, directory);
+    defer preflight.deinit();
+    try preflight.walk(inspected);
+
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+    loadStdlib(a, api, codegen);
+
+    const manager = birnamGlobal(api, "Module") orelse return error.NoModuleManager;
+    _ = api.send(manager, api.intern("libDir:"), &.{api.mkString(directory.ptr, directory.len)}, 1);
+    if (api.import("Alien")) |alien|
+        _ = api.send(alien, api.intern("libraryDir:"), &.{api.mkString(directory.ptr, directory.len)}, 1);
+
+    const result = api.send(manager, api.intern("loadArtifact:"), &.{api.mkString(absolute.ptr, absolute.len)}, 1);
+    if (result == api.nilObj or apiErrorValue(api, result)) {
+        std.fs.File.stderr().writeAll("birnam: artifact activation failed: ") catch {};
+        if (result != api.nilObj) outErrorString(api, result);
+        return error.ArtifactActivationFailed;
+    }
+}
+
 /// `birnam check [directory]` — observe the nearest manifest and print the
 /// source-only ProjectResolution. The host adapter uses Toml and Codegen's
 /// full-CST metadata scanner; ProjectPolicy makes the resolution decisions
 /// after the language floor is up. Neither side evaluates project source or
 /// mutates Module/Store state.
-fn runProjectCheck(a: std.mem.Allocator, api: *IdApi, directory: []const u8) !void {
+fn runProjectCheck(a: std.mem.Allocator, api: *IdApi, options: ProjectCheckOptions) !void {
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
@@ -1073,16 +1390,31 @@ fn runProjectCheck(a: std.mem.Allocator, api: *IdApi, directory: []const u8) !vo
     loadStdlib(a, api, codegen);
     loadProjectPolicy(a, api, codegen);
 
-    var result = project.resolve(api, a, directory);
-    defer result.deinit();
-    if (result.diagnostic) |diagnostic| {
+    var resolution_result = project.resolve(api, a, options.directory);
+    defer resolution_result.deinit();
+    if (resolution_result.diagnostic) |diagnostic| {
+        if (options.format == .json) {
+            var buffer: [4096]u8 = undefined;
+            var writer = std.fs.File.stdout().writer(&buffer);
+            try project_check.writeFailureJson(diagnostic, &writer.interface);
+            try writer.interface.flush();
+            std.process.exit(1);
+        }
         checkDiagnosticError(diagnostic.kind, diagnostic.message);
     }
+
+    var checked = try project_check.check(api, a, &resolution_result.resolution.?);
+    defer checked.deinit();
     var stdout_buffer: [4096]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    project.writeReport(&result, &stdout_writer.interface) catch |err| return err;
+    if (options.format == .json) {
+        try project_check.writeJson(&checked, &stdout_writer.interface);
+    } else {
+        try project.writeReport(&resolution_result, &stdout_writer.interface);
+        try project_check.writeHuman(&checked, &stdout_writer.interface);
+    }
     stdout_writer.interface.flush() catch |err| return err;
-    if (result.diagnostic != null) std.process.exit(1);
+    if (!checked.ok()) std.process.exit(1);
 }
 
 fn checkUsageError(comptime fmt: []const u8, args: anytype) noreturn {
@@ -1120,7 +1452,7 @@ fn checkCommandError(err: anyerror) noreturn {
 /// complete project-local artifact directory. Compilation happens through the
 /// existing Codegen artifact primitive; this command never loads the project
 /// modules or activates their runtime behavior.
-fn runProjectBuild(a: std.mem.Allocator, api: *IdApi, directory: []const u8) !void {
+fn runProjectBuild(a: std.mem.Allocator, api: *IdApi, options: ProjectBuildOptions) !void {
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
@@ -1131,12 +1463,12 @@ fn runProjectBuild(a: std.mem.Allocator, api: *IdApi, directory: []const u8) !vo
     loadStdlib(a, api, codegen);
     loadProjectPolicy(a, api, codegen);
 
-    var resolution = project.resolve(api, a, directory);
+    var resolution = project.resolve(api, a, options.directory);
     defer resolution.deinit();
     if (resolution.diagnostic) |diagnostic|
         buildDiagnosticError(diagnostic.kind, diagnostic.message);
 
-    var result = project_build.build(api, a, &resolution.resolution.?, build_opts.version);
+    var result = project_build.build(api, a, &resolution.resolution.?, build_opts.version, options.profile);
     defer result.deinit();
     if (result.diagnostic) |diagnostic|
         buildDiagnosticError(diagnostic.kind, diagnostic.message);
@@ -1211,9 +1543,9 @@ fn runProjectInstall(a: std.mem.Allocator, api: *IdApi, options: ProjectInstallO
         installDiagnosticError(diagnostic.kind, diagnostic.message);
 
     var result = if (options.build)
-        project_build.build(api, a, &resolution.resolution.?, build_opts.version)
+        project_build.build(api, a, &resolution.resolution.?, build_opts.version, options.profile)
     else
-        project_build.validate(api, a, &resolution.resolution.?, build_opts.version);
+        project_build.validate(api, a, &resolution.resolution.?, build_opts.version, options.profile);
     defer result.deinit();
     if (result.diagnostic) |diagnostic|
         installDiagnosticError(diagnostic.kind, diagnostic.message);
@@ -1334,45 +1666,130 @@ fn runCommandError(err: anyerror) noreturn {
     std.process.exit(1);
 }
 
+fn testUsageError(comptime fmt: []const u8, args: anytype) noreturn {
+    var buffer: [512]u8 = undefined;
+    const message = std.fmt.bufPrint(&buffer, fmt, args) catch "invalid command arguments";
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam test: ") catch {};
+    stderr.writeAll(message) catch {};
+    stderr.writeAll("\n") catch {};
+    stderr.writeAll(TEST_USAGE) catch {};
+    std.process.exit(2);
+}
+
+fn testDiagnosticError(kind: []const u8, message: []const u8) noreturn {
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam test: ") catch {};
+    stderr.writeAll(kind) catch {};
+    stderr.writeAll(": ") catch {};
+    stderr.writeAll(message) catch {};
+    stderr.writeAll("\nusage: birnam test [directory] [options]\n") catch {};
+    stderr.writeAll("try 'birnam test --help' for more information\n") catch {};
+    std.process.exit(1);
+}
+
+fn testCommandError(err: anyerror) noreturn {
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll("birnam test: ") catch {};
+    stderr.writeAll(@errorName(err)) catch {};
+    stderr.writeAll("\nusage: birnam test [directory] [options]\n") catch {};
+    stderr.writeAll("try 'birnam test --help' for more information\n") catch {};
+    std.process.exit(1);
+}
+
 fn apiErrorValue(api: *IdApi, value: Oop) bool {
     return value != null and api.isExported("Error") != 0 and
         api.send(value, api.intern("isError"), &.{}, 0) == api.trueObj;
 }
 
+/// Load one Birnam runtime module through the canonical compiled-unit manager.
+/// The manager resolves the exact executable-relative dylib path and recursively
+/// installs dependencies from compiler-embedded metadata.
+fn loadRuntimeModule(a: std.mem.Allocator, api: *IdApi, name: [:0]const u8) !void {
+    _ = a;
+    const manager = birnamGlobal(api, "Module") orelse return error.NoModuleManager;
+    const result = api.send(manager, api.intern("load:"), &[_]Oop{api.intern(name.ptr)}, 1);
+    if (result == api.nilObj or apiErrorValue(api, result)) {
+        if (result != api.nilObj) outErrorString(api, result);
+        return error.RuntimeModuleFailed;
+    }
+}
+
+/// Install a process-local host tool after image recovery. Unlike ordinary
+/// Module loading, this does not claim that the tool belongs to the image's
+/// sealed application generation; it is the compiled equivalent of the former
+/// non-persisting source evaluation used for the REPL fallback.
+fn loadHostRuntimeModule(a: std.mem.Allocator, api: *IdApi, name: [:0]const u8) !void {
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+    const manager = birnamGlobal(api, "Module") orelse return error.NoModuleManager;
+    const lib_dir = try resolveLibDir(a);
+    defer a.free(lib_dir);
+    const file_name = try std.fmt.allocPrint(a, "libbirnam_{s}.dylib", .{name});
+    defer a.free(file_name);
+    const path = try std.fs.path.join(a, &.{ lib_dir, file_name });
+    defer a.free(path);
+    const result = api.send(codegen, api.intern("loadHostCapability:"), &[_]Oop{api.mkString(path.ptr, path.len)}, 1);
+    if (result == api.nilObj or apiErrorValue(api, result)) {
+        if (result != api.nilObj) outErrorString(api, result);
+        return error.RuntimeModuleFailed;
+    }
+    _ = api.send(manager, api.intern("markLoaded:"), &[_]Oop{api.intern(name.ptr)}, 1);
+}
+
 fn loadProjectArtifacts(api: *IdApi, build: *const project_build.Build) void {
-    const codegen = api.import("Codegen") orelse runDiagnosticError("buildToolUnavailable", "Codegen is not available");
+    const inspector = api.import("Artifact") orelse
+        runDiagnosticError("projectArtifactInspectionUnavailable", "Artifact inspection is not available");
+    const manager = birnamGlobal(api, "Module") orelse
+        runDiagnosticError("projectArtifactLoadFailed", "Module is not available");
+
+    // Validate every selected output before activating the first one. The build
+    // receipt selects exact paths; embedded descriptors remain runtime authority.
     for (build.artifacts) |artifact| {
         const path = std.fs.path.join(std.heap.c_allocator, &.{ build.output_root, artifact.relative_path }) catch
             runDiagnosticError("projectArtifactLoadFailed", "could not construct a project artifact path");
         defer std.heap.c_allocator.free(path);
-        const result = api.send(codegen, api.intern("load:"), &[_]Oop{api.mkString(path.ptr, path.len)}, 1);
-        if (result == api.nilObj) {
-            runDiagnosticError("projectArtifactLoadFailed", std.fmt.allocPrint(std.heap.c_allocator, "could not load artifact for #{s} at {s}", .{ artifact.name, path }) catch "could not load project artifact");
+        const description = api.send(inspector, api.intern("inspect:"), &[_]Oop{api.mkString(path.ptr, path.len)}, 1);
+        if (description == api.nilObj) {
+            const failure = api.send(inspector, api.intern("lastFailure"), &.{}, 0);
+            const kind = if (failure != api.nilObj and api.vtableOf(failure) == api.symbol_vt)
+                std.mem.span(api.symbolName(failure))
+            else
+                "projectArtifactInspectionFailed";
+            runDiagnosticError(kind, std.fmt.allocPrint(std.heap.c_allocator, "could not inspect artifact for #{s} at {s}", .{ artifact.name, path }) catch "could not inspect project artifact");
         }
+        const name_z = std.heap.c_allocator.dupeZ(u8, artifact.name) catch
+            runDiagnosticError("projectArtifactLoadFailed", "out of memory while validating a project artifact");
+        defer std.heap.c_allocator.free(name_z);
+        if (api.send(description, api.intern("kind"), &.{}, 0) != api.intern("module"))
+            runDiagnosticError("artifactKindMismatch", std.fmt.allocPrint(std.heap.c_allocator, "artifact for #{s} is not a module", .{artifact.name}) catch "project artifact is not a module");
+        if (api.send(description, api.intern("identity"), &.{}, 0) != api.intern(name_z.ptr))
+            runDiagnosticError("artifactIdentityMismatch", std.fmt.allocPrint(std.heap.c_allocator, "artifact identity does not match #{s}", .{artifact.name}) catch "project artifact identity mismatch");
+    }
+
+    // The publication order is dependency-first. Each explicit path therefore
+    // reaches Module with its project dependencies already installed; runtime
+    // dependencies remain rooted in the runtime module directory.
+    for (build.artifacts) |artifact| {
+        const path = std.fs.path.join(std.heap.c_allocator, &.{ build.output_root, artifact.relative_path }) catch
+            runDiagnosticError("projectArtifactLoadFailed", "could not construct a project artifact path");
+        defer std.heap.c_allocator.free(path);
+        const name_z = std.heap.c_allocator.dupeZ(u8, artifact.name) catch
+            runDiagnosticError("projectArtifactLoadFailed", "out of memory while loading a project artifact");
+        defer std.heap.c_allocator.free(name_z);
+        const result = api.send(manager, api.intern("load:path:"), &[_]Oop{ api.intern(name_z.ptr), api.mkString(path.ptr, path.len) }, 2);
+        if (result == api.nilObj)
+            runDiagnosticError("projectArtifactLoadFailed", std.fmt.allocPrint(std.heap.c_allocator, "could not load artifact for #{s} at {s}", .{ artifact.name, path }) catch "could not load project artifact");
         if (apiErrorValue(api, result)) {
             outErrorString(api, result);
             runDiagnosticError("projectArtifactLoadFailed", std.fmt.allocPrint(std.heap.c_allocator, "artifact load failed for #{s}", .{artifact.name}) catch "artifact load failed");
         }
     }
-    // Project-native initializers may bind primitive methods while their owning
-    // compiled unit is being staged. Candidate activation preserves dispatch,
-    // but staging intentionally rolls incidental Store writes back. Re-project
-    // the now-active type universe once, just as full-stack and image loads do,
-    // so the MOP mirror is total and truthful before project main executes.
-    if (api.import("Store")) |store|
-        _ = api.send(store, api.intern("backfillMirror"), &.{}, 0);
 }
 
-fn configureProjectRuntimeDirs(api: *IdApi, build: *const project_build.Build) void {
+fn configureProjectNativeDir(api: *IdApi, build: *const project_build.Build) void {
     const lib_dir = std.fs.path.join(std.heap.c_allocator, &.{ build.output_root, "lib" }) catch
         runDiagnosticError("projectArtifactLoadFailed", "could not construct the project native library directory");
     defer std.heap.c_allocator.free(lib_dir);
-
-    const manager = birnamGlobal(api, "Module") orelse
-        runDiagnosticError("projectArtifactLoadFailed", "Module is not available");
-    const module_result = api.send(manager, api.intern("libDir:"), &[_]Oop{api.mkString(lib_dir.ptr, lib_dir.len)}, 1);
-    if (module_result == api.nilObj or apiErrorValue(api, module_result))
-        runDiagnosticError("projectArtifactLoadFailed", "could not configure the project module directory");
 
     const alien = api.import("Alien") orelse
         runDiagnosticError("projectArtifactLoadFailed", "Alien is not available");
@@ -1418,29 +1835,8 @@ fn evalProjectSource(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void 
     }
 }
 
-fn loadProjectRuntimeSource(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
-    const codegen = api.import("Codegen") orelse return error.NoCodegen;
-    const source = std.fs.cwd().readFileAlloc(a, path, 16 << 20) catch {
-        return error.RuntimeModuleMissing;
-    };
-    defer a.free(source);
-    _ = api.send(codegen, api.intern("evalPersisting:from:"), &[_]Oop{ api.mkString(source.ptr, source.len), api.mkString(path.ptr, path.len) }, 2);
-    const last_error = api.send(codegen, api.intern("lastError"), &.{}, 0);
-    if (last_error != api.nilObj) {
-        outErrorString(api, last_error);
-        return error.RuntimeModuleFailed;
-    }
-}
-
 fn runProjectSocketRepl(a: std.mem.Allocator, api: *IdApi, bind: []const u8, port: i64) !void {
-    const modules_dir = try resolveModulesDir(a);
-    defer a.free(modules_dir);
-    const socket_path = try std.fs.path.join(a, &.{ modules_dir, "socket.birnam" });
-    defer a.free(socket_path);
-    const repl_path = try std.fs.path.join(a, &.{ modules_dir, "repl.birnam" });
-    defer a.free(repl_path);
-    try loadProjectRuntimeSource(a, api, socket_path);
-    try loadProjectRuntimeSource(a, api, repl_path);
+    _ = a;
     const repl = birnamGlobal(api, "Repl") orelse return error.NoRepl;
     const result = api.send(repl, api.intern("serveOn:bind:"), &[_]Oop{
         api.mkSmallInt(port), api.mkString(bind.ptr, bind.len),
@@ -1465,19 +1861,19 @@ fn prepareBareProject(a: std.mem.Allocator, api: *IdApi, codegen: Oop) !void {
     defer resolution_result.deinit();
     if (resolution_result.diagnostic != null) return;
 
-    var artifact_result = project_build.validate(api, a, &resolution_result.resolution.?, build_opts.version);
+    var artifact_result = project_build.validate(api, a, &resolution_result.resolution.?, build_opts.version, "debug");
     defer artifact_result.deinit();
     if (artifact_result.diagnostic != null) return;
-    configureProjectRuntimeDirs(api, &artifact_result.build.?);
+    configureProjectNativeDir(api, &artifact_result.build.?);
     loadProjectArtifacts(api, &artifact_result.build.?);
 }
 
 fn runProject(a: std.mem.Allocator, api: *IdApi, options: ProjectRunOptions) !void {
     try loadStack(a, api);
-    // Project applications can host language tools (Digla is the first one),
-    // so preserve the same read-only resolver bridge already installed for the
-    // LSP CLI. This binds only the existing snapshot/path selectors; it adds no
-    // new runtime primitive or project authority.
+    // Project applications may host language tools, so preserve the same
+    // read-only resolver bridge already installed for the LSP CLI. This binds
+    // only the existing snapshot/path selectors; it adds no new runtime
+    // primitive or project authority.
     try installProjectBridge(api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
 
@@ -1498,19 +1894,32 @@ fn runProject(a: std.mem.Allocator, api: *IdApi, options: ProjectRunOptions) !vo
     const main_path = resolution.main_path orelse
         runDiagnosticError("projectMainMissing", "the project has no main entry; set main = \"...\" in birnam.toml");
 
+    const mode_name = options.repl orelse parseReplMode(resolution.run.repl).?;
+    // Load host tools from the runtime bundle before the manager is pointed at
+    // the project's published lib directory.
+    switch (mode_name) {
+        .none => {},
+        .tty => try loadRuntimeModule(a, api, "repl"),
+        .socket => {
+            try loadRuntimeModule(a, api, "socket");
+            try loadRuntimeModule(a, api, "repl");
+        },
+    }
+
     var artifact_result = if (options.build)
-        project_build.build(api, a, resolution, build_opts.version)
+        project_build.build(api, a, resolution, build_opts.version, options.profile)
     else
-        project_build.validate(api, a, resolution, build_opts.version);
+        project_build.validate(api, a, resolution, build_opts.version, options.profile);
     defer artifact_result.deinit();
     if (artifact_result.diagnostic) |diagnostic|
         runDiagnosticError(diagnostic.kind, diagnostic.message);
-    configureProjectRuntimeDirs(api, &artifact_result.build.?);
+    active_project_build = &artifact_result.build.?;
+    defer active_project_build = null;
+    configureProjectNativeDir(api, &artifact_result.build.?);
     loadProjectArtifacts(api, &artifact_result.build.?);
     try installProjectArguments(api, options.arguments);
     try evalProjectSource(a, api, main_path);
 
-    const mode_name = options.repl orelse parseReplMode(resolution.run.repl).?;
     const bind = options.socket_bind orelse resolution.run.socket_bind;
     const port = options.socket_port orelse resolution.run.socket_port;
     if ((options.socket_bind != null or options.socket_port != null) and mode_name != .socket)
@@ -1522,13 +1931,133 @@ fn runProject(a: std.mem.Allocator, api: *IdApi, options: ProjectRunOptions) !vo
     }
 }
 
+fn runProjectTestWorker(a: std.mem.Allocator, api: *IdApi, directory: []const u8, profile: []const u8, test_path: []const u8) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+    loadStdlib(a, api, codegen);
+    loadProjectPolicy(a, api, codegen);
+
+    var resolution_result = project.resolve(api, a, directory);
+    defer resolution_result.deinit();
+    if (resolution_result.diagnostic) |diagnostic|
+        testDiagnosticError(diagnostic.kind, diagnostic.message);
+    const resolution = &resolution_result.resolution.?;
+    active_project_resolution = resolution;
+    defer active_project_resolution = null;
+
+    // Load the test harness from the runtime closure before project-native
+    // requirements are selected. Project source is still evaluated only after
+    // its complete compiled artifact set has passed validation and activation.
+    try loadRuntimeModule(a, api, "test");
+    var artifact_result = project_build.validate(api, a, resolution, build_opts.version, profile);
+    defer artifact_result.deinit();
+    if (artifact_result.diagnostic) |diagnostic|
+        testDiagnosticError(diagnostic.kind, diagnostic.message);
+    active_project_build = &artifact_result.build.?;
+    defer active_project_build = null;
+    configureProjectNativeDir(api, &artifact_result.build.?);
+    loadProjectArtifacts(api, &artifact_result.build.?);
+    try installProjectArguments(api, &.{});
+    try evalProjectSource(a, api, test_path);
+
+    const test_object = birnamGlobal(api, "Test") orelse
+        testDiagnosticError("testHarnessUnavailable", "the Test runtime module did not publish Test");
+    const runner = birnamGlobal(api, "ConsoleRunner") orelse
+        testDiagnosticError("testHarnessUnavailable", "the Test runtime module did not publish ConsoleRunner");
+    const suites = api.send(test_object, api.intern("suites"), &.{}, 0);
+    const count = api.send(suites, api.intern("size"), &.{}, 0);
+    if (api.isSmallInt(count) == 0 or api.smallIntValue(count) == 0)
+        testDiagnosticError("testSuiteMissing", "the test source did not register a TestSuite");
+    const result = api.send(test_object, api.intern("runAllSuitesWithRunner:"), &.{runner}, 1);
+    if (api.send(result, api.intern("allPassed"), &.{}, 0) != api.trueObj) std.process.exit(1);
+}
+
+fn runProjectTest(a: std.mem.Allocator, api: *IdApi, options: ProjectTestOptions) !void {
+    try loadStack(a, api);
+    const codegen = api.import("Codegen") orelse return error.NoCodegen;
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    _ = &stack_anchor;
+    if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
+    loadStdlib(a, api, codegen);
+    loadProjectPolicy(a, api, codegen);
+
+    var resolution_result = project.resolve(api, a, options.directory);
+    defer resolution_result.deinit();
+    if (resolution_result.diagnostic) |diagnostic|
+        testDiagnosticError(diagnostic.kind, diagnostic.message);
+    const resolution = &resolution_result.resolution.?;
+    if (resolution.test_sources.len == 0)
+        testDiagnosticError("projectTestsNotFound", "no test sources were configured or discovered under test/ or tests/");
+
+    // Prove or create the selected publication once before starting workers.
+    // Workers validate it again immediately before activation, closing the
+    // selection/use boundary without sharing any mutable image state.
+    var artifact_result = if (options.build)
+        project_build.build(api, a, resolution, build_opts.version, options.profile)
+    else
+        project_build.validate(api, a, resolution, build_opts.version, options.profile);
+    defer artifact_result.deinit();
+    if (artifact_result.diagnostic) |diagnostic|
+        testDiagnosticError(diagnostic.kind, diagnostic.message);
+
+    const self_path = try std.fs.selfExePathAlloc(a);
+    defer a.free(self_path);
+    var failures: usize = 0;
+    for (resolution.test_sources) |test_path| {
+        out("== ");
+        out(test_path);
+        out(" ==\n");
+        const child = std.process.Child.run(.{
+            .allocator = a,
+            .argv = &.{ self_path, "--project-test-worker", resolution.project_root, options.profile, test_path },
+            .max_output_bytes = 16 << 20,
+        }) catch |err| {
+            std.debug.print("birnam test: could not start {s}: {s}\n", .{ test_path, @errorName(err) });
+            failures += 1;
+            continue;
+        };
+        defer a.free(child.stdout);
+        defer a.free(child.stderr);
+        if (child.stdout.len != 0) std.fs.File.stdout().writeAll(child.stdout) catch {};
+        if (child.stderr.len != 0) std.fs.File.stderr().writeAll(child.stderr) catch {};
+        const passed = switch (child.term) {
+            .Exited => |code| code == 0,
+            else => false,
+        };
+        if (passed) {
+            out("ok   ");
+            out(test_path);
+            out("\n");
+        } else {
+            out("FAIL ");
+            out(test_path);
+            out("\n");
+            failures += 1;
+        }
+    }
+    std.debug.print("birnam test: {d} source{s}, {d} failure{s}\n", .{
+        resolution.test_sources.len,
+        if (resolution.test_sources.len == 1) "" else "s",
+        failures,
+        if (failures == 1) "" else "s",
+    });
+    if (failures != 0) std.process.exit(1);
+}
+
 // The subcommands whose handlers live in birnam (modules/cli.birnam).
 const cli_subcommands = [_][]const u8{ "--listen", "--serve", "--lsp", "doc", "docgen", "init", "wrap" };
 
 /// A token `runCli` handles — a subcommand implemented in birnam. Recognized
-/// here, then handed over whole: `[Cli run: #["doc" "time"] dir: "<modules>"]`.
+/// here, then handed over whole through `[Cli run:source:guides:]`.
 /// Cli drives the same public module API any birnam program can call for itself —
-/// `[Doc cli:]`, `[Doc buildSite:modules:zig:]`, `[Lsp serveStdio]`,
+/// `[Doc cli:]`, `[Doc buildSite:zig:guides:]`, `[Lsp serveStdio]`,
 /// `[Repl serveOn:]` — so the CLI is one more client of the libraries, not their
 /// owner; only the boot + GC-anchored driver frame stays Zig.
 fn isCliSubcommand(tok: []const u8) bool {
@@ -1541,19 +2070,8 @@ fn cliNeedsProjectPolicy(argv: []const []const u8) bool {
     return false;
 }
 
-/// Append S to BUF as a birnam string literal (`\` escapes `"` and `\`), so an
-/// arbitrary path or CLI argument survives the trip through boot source intact.
-fn appendBirnamString(buf: *std.ArrayList(u8), a: std.mem.Allocator, s: []const u8) !void {
-    try buf.append(a, '"');
-    for (s) |c| {
-        if (c == '"' or c == '\\') try buf.append(a, '\\');
-        try buf.append(a, c);
-    }
-    try buf.append(a, '"');
-}
-
-/// Run one birnam-side subcommand: boot the image, resolve modules/, load the
-/// dispatcher, and hand it argv. `[Cli run:dir:]` answers the process status —
+/// Run one Birnam-side subcommand: boot the image, load the compiled dispatcher,
+/// and hand it argv plus native-source/guide resource paths.
 /// 0 is success (usage displays included), anything else exits 1. A leftover
 /// `[Codegen lastError]` (a module that failed to PARSE during dispatch) is
 /// reported on stderr, so `--lsp`'s stdout stays protocol-only.
@@ -1570,31 +2088,16 @@ fn runCli(a: std.mem.Allocator, api: *IdApi, argv: []const []const u8) !void {
     loadStdlib(a, api, codegen);
     if (cliNeedsProjectPolicy(argv)) loadProjectPolicy(a, api, codegen);
 
-    const mdir = try resolveModulesDir(a);
-    defer a.free(mdir);
-    // Export the resolved modules dir so a loaded module's relative dep-loads
-    // ("modules/x.birnam") resolve from this (possibly foreign) working directory.
-    const mdirZ = try a.dupeZ(u8, mdir);
-    defer a.free(mdirZ);
-    _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
-
-    // One boot form: load the dispatcher, hand it argv + the modules dir.
-    var boot: std.ArrayList(u8) = .{};
-    defer boot.deinit(a);
-    const cli_path = try std.fmt.allocPrint(a, "{s}/cli.birnam", .{mdir});
-    defer a.free(cli_path);
-    try boot.appendSlice(a, "[System load: ");
-    try appendBirnamString(&boot, a, cli_path);
-    try boot.appendSlice(a, "]; [Cli run: #[");
-    for (argv) |arg| {
-        try appendBirnamString(&boot, a, arg);
-        try boot.append(a, ' ');
-    }
-    try boot.appendSlice(a, "] dir: ");
-    try appendBirnamString(&boot, a, mdir);
-    try boot.appendSlice(a, "]");
-
-    const res = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.items.ptr, boot.items.len)}, 1);
+    try loadRuntimeModule(a, api, "cli");
+    const cli = birnamGlobal(api, "Cli") orelse return error.NoCli;
+    const args_value = nativeStringVector(api, argv) orelse return error.NoVector;
+    var resources = try runtime_resources.resolve(a);
+    defer resources.deinit();
+    const res = api.send(cli, api.intern("run:source:guides:"), &[_]Oop{
+        args_value,
+        api.mkString(resources.source_dir.ptr, resources.source_dir.len),
+        api.mkString(resources.guide_dir.ptr, resources.guide_dir.len),
+    }, 3);
     const ok = api.send(res, api.intern("="), &[_]Oop{api.mkSmallInt(0)}, 1);
     if (ok == api.trueObj) return;
     const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
@@ -1605,35 +2108,12 @@ fn runCli(a: std.mem.Allocator, api: *IdApi, argv: []const []const u8) !void {
     std.process.exit(1);
 }
 
-// libc setenv (we link libc) — set $BIRNAM_MODULES_DIR for child module loads.
-extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
-
-/// Locate the source `modules/` directory independently of the current working
-/// directory, so `--lsp` (launched by an editor from an arbitrary project) still
-/// finds json.birnam/lsp.birnam. Probes `$BIRNAM_MODULES_DIR`, then candidates
-/// relative to the executable (installed layout: <prefix>/share/birnam/modules;
-/// dev layout: <repo>/zig-out/bin/birnam → <repo>/modules), then falls back to
-/// `./modules`.
-fn resolveModulesDir(a: std.mem.Allocator) ![]u8 {
-    if (std.posix.getenv("BIRNAM_MODULES_DIR")) |d| return a.dupe(u8, d);
-    const probe = "json.birnam";
-    if (std.fs.selfExeDirPathAlloc(a)) |exedir| {
-        defer a.free(exedir);
-        const c1 = try std.fs.path.join(a, &.{ exedir, "..", "..", "modules" });
-        defer a.free(c1);
-        const c2 = try std.fs.path.join(a, &.{ exedir, "..", "modules" });
-        defer a.free(c2);
-        const c3 = try std.fs.path.join(a, &.{ exedir, "modules" });
-        defer a.free(c3);
-        const installed = try std.fs.path.join(a, &.{ exedir, "..", "share", "birnam", "modules" });
-        defer a.free(installed);
-        for ([_][]const u8{ installed, c1, c2, c3 }) |cand| {
-            const p = try std.fs.path.join(a, &.{ cand, probe });
-            defer a.free(p);
-            if (std.fs.cwd().access(p, .{})) |_| return a.dupe(u8, cand) else |_| {}
-        }
-    } else |_| {}
-    return a.dupe(u8, "modules");
+fn runtimeResourceUnavailable(kind: []const u8, path: []const u8, err: anyerror) noreturn {
+    var buffer: [1024]u8 = undefined;
+    var stderr = std.fs.File.stderr().writer(&buffer);
+    stderr.interface.print("birnam: required {s} is unavailable: {s} ({s})\n", .{ kind, path, @errorName(err) }) catch {};
+    stderr.interface.flush() catch {};
+    std.process.exit(1);
 }
 
 fn writeStringOop(api: *IdApi, value: Oop) bool {
@@ -1829,7 +2309,13 @@ fn runReplSession(a: std.mem.Allocator, api: *IdApi, booted: bool, project_run: 
     _ = &stack_anchor;
     if (std.posix.getenv("BIRNAM_GC_PRECISE") != null) api.gcSetPrecise(1);
 
-    if (!booted) loadStdlib(a, api, codegen);
+    if (!booted) {
+        loadStdlib(a, api, codegen);
+        // Load the runtime tool before a configured project's native-library
+        // cutover. Project artifacts are consumed from their build record;
+        // Module.libDir remains the Birnam runtime root.
+        try loadRuntimeModule(a, api, "repl");
+    }
     if (!booted) {
         configureRuntimeNativeDir(a, api);
         try prepareBareProject(a, api, codegen);
@@ -1837,41 +2323,17 @@ fn runReplSession(a: std.mem.Allocator, api: *IdApi, booted: bool, project_run: 
 
     const globals = api.import("Globals") orelse return error.NoGlobals;
     var repl = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("Repl")}, 1);
-    // Not already in the image: load the module (checked BEFORE the session so a
-    // load failure can't be confused with a user's stray in-session lastError).
+    // Not already in the image: load the compiled module before the session so
+    // a load failure cannot be confused with an in-session compile error.
     if (repl == api.nilObj) {
-        if (booted) {
-            // Image recovery seals the generation before the interactive host
-            // starts. Repl is a host capability, not part of the saved image's
-            // application generation, so evaluate its source without trying to
-            // introduce a new durable module after that boundary.
-            const mdir = try resolveModulesDir(a);
-            defer a.free(mdir);
-            const repl_path = try std.fmt.allocPrint(a, "{s}/repl.birnam", .{mdir});
-            defer a.free(repl_path);
-            const repl_src = try std.fs.cwd().readFileAlloc(a, repl_path, 16 << 20);
-            defer a.free(repl_src);
-            _ = api.send(codegen, api.intern("eval:"), &[_]Oop{api.mkString(repl_src.ptr, repl_src.len)}, 1);
-        } else {
-            const mdir = try resolveModulesDir(a);
-            defer a.free(mdir);
-            const mdirZ = try a.dupeZ(u8, mdir);
-            defer a.free(mdirZ);
-            _ = setenv("BIRNAM_MODULES_DIR", mdirZ.ptr, 1);
-
-            var boot: std.ArrayList(u8) = .{};
-            defer boot.deinit(a);
-            try boot.appendSlice(a, "[System load: ");
-            const repl_path = try std.fmt.allocPrint(a, "{s}/repl.birnam", .{mdir});
-            defer a.free(repl_path);
-            try appendBirnamString(&boot, a, repl_path);
-            try boot.appendSlice(a, "]");
-            _ = api.send(codegen, api.intern("evalPersisting:"), &[_]Oop{api.mkString(boot.items.ptr, boot.items.len)}, 1);
-        }
+        if (booted)
+            try loadHostRuntimeModule(a, api, "repl")
+        else
+            try loadRuntimeModule(a, api, "repl");
 
         repl = api.send(globals, api.intern("at:"), &[_]Oop{api.intern("Repl")}, 1);
         if (repl == api.nilObj) {
-            std.fs.File.stderr().writeAll("birnam: could not load the REPL (modules/repl.birnam):\n") catch {};
+            std.fs.File.stderr().writeAll("birnam: could not load the REPL compiled unit:\n") catch {};
             const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
             if (err != api.nilObj) outErrorString(api, err);
             std.process.exit(1);

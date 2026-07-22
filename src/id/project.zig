@@ -54,6 +54,7 @@ pub const Resolution = struct {
     main_path: ?[]const u8,
     load_roots: []const []const u8,
     run: RunConfig,
+    test_sources: []const []const u8,
     modules: []const Module,
     wrapped: []const Wrapped,
     digest: []const u8,
@@ -93,6 +94,7 @@ const Manifest = struct {
     modules: []const ModuleSpec,
     dependencies: []const Dependency,
     run: RunConfig,
+    test_sources: ?[]const []const u8,
     wrapped: []const Wrapped,
     digest: []const u8,
 };
@@ -392,6 +394,21 @@ fn parseRunConfig(state: *State, parsed: Oop) FailureError!RunConfig {
     return .{ .repl = repl, .socket_bind = socket_bind, .socket_port = socket_port };
 }
 
+fn parseTestSources(state: *State, parsed: Oop) FailureError!?[]const []const u8 {
+    const test_value = try mapAt(state, parsed, "test");
+    if (test_value == state.api.nilObj) return null;
+    if (!isMap(state.api, test_value)) return state.fail("manifestValueInvalid", "test must be a TOML table", .{});
+    const sources_value = try mapAt(state, test_value, "sources");
+    if (sources_value == state.api.nilObj)
+        return state.fail("manifestValueInvalid", "test.sources must be an array of project-relative paths", .{});
+    const sources = try parseStringList(state, sources_value, "test.sources", false);
+    for (sources) |path| {
+        if (path.len == 0 or std.fs.path.isAbsolute(path) or hasDotPathComponent(path))
+            return state.fail("manifestValueInvalid", "test.sources entries must be non-empty project-relative paths without '.' or '..'", .{});
+    }
+    return sources;
+}
+
 fn sha256Hex(state: *State, bytes: []const u8) []const u8 {
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
@@ -491,6 +508,7 @@ fn parseManifest(state: *State, manifest_path: []const u8, bytes: []const u8) Fa
     const load_value = try mapAt(state, parsed, "load");
     const loads = try parseStringList(state, load_value, "load", true);
     const run_config = try parseRunConfig(state, parsed);
+    const test_sources = try parseTestSources(state, parsed);
     const wrapped = try parseWrapped(state, parsed);
     const modules = try parseModuleSpecs(state, parsed);
 
@@ -529,6 +547,7 @@ fn parseManifest(state: *State, manifest_path: []const u8, bytes: []const u8) Fa
         .modules = modules,
         .dependencies = dependencies,
         .run = run_config,
+        .test_sources = test_sources,
         .wrapped = wrapped,
         .digest = sha256Hex(state, bytes),
     };
@@ -571,6 +590,32 @@ fn collectSourceFiles(state: *State, root: []const u8, files: *std.ArrayList([]c
             else => {},
         }
     }
+}
+
+fn resolvedTestSources(state: *State, root: *Project) FailureError![]const []const u8 {
+    var files: std.ArrayList([]const u8) = .{};
+    if (root.manifest.test_sources) |declared| {
+        for (declared) |relative| {
+            const joined = try joinPath(state, root.root, relative);
+            const path = try canonicalPath(state, joined, "testSourceMissing");
+            const prefix = std.fmt.allocPrint(state.arena, "{s}{c}", .{ root.root, std.fs.path.sep }) catch
+                return state.fail("projectResolutionFailed", "out of memory while validating test paths", .{});
+            if (!std.mem.startsWith(u8, path, prefix))
+                return state.fail("testSourceInvalid", "test source {s} escapes the project root", .{relative});
+            files.append(state.arena, path) catch
+                return state.fail("projectResolutionFailed", "out of memory while recording test sources", .{});
+        }
+    } else {
+        for ([_][]const u8{ "test", "tests" }) |relative| {
+            const directory = try joinPath(state, root.root, relative);
+            if (std.fs.cwd().access(directory, .{})) |_| {
+                try collectSourceFiles(state, directory, &files);
+            } else |_| {}
+        }
+    }
+    sortStrings(files.items);
+    return files.toOwnedSlice(state.arena) catch
+        return state.fail("projectResolutionFailed", "out of memory while recording test sources", .{});
 }
 
 fn metadataName(state: *State, metadata: Oop) FailureError![]const u8 {
@@ -944,6 +989,7 @@ fn resolutionFromPolicy(state: *State, root: *Project, value: Oop) FailureError!
         .main_path = main_path,
         .load_roots = load_roots,
         .run = try policyRunConfig(state, try mapAt(state, value, "run")),
+        .test_sources = try resolvedTestSources(state, root),
         .modules = modules,
         .wrapped = root.manifest.wrapped,
         .digest = digestResolutionModules(state, root, modules),
@@ -986,6 +1032,10 @@ pub fn writeReport(result: *const Result, writer: anytype) !void {
     if (resolution.wrapped.len != 0) {
         try writer.writeAll("wrapped:\n");
         for (resolution.wrapped) |wrapped| try writer.print("  {s} -> lib/lib{s}.dylib\n", .{ wrapped.name, wrapped.name });
+    }
+    if (resolution.test_sources.len != 0) {
+        try writer.writeAll("tests:\n");
+        for (resolution.test_sources) |path| try writer.print("  {s}\n", .{path});
     }
     try writer.writeAll("module-order:\n");
     if (resolution.modules.len == 0) try writer.writeAll("  (none)\n");

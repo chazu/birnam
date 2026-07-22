@@ -9,7 +9,7 @@
 // varies run to run; call `[Random seed: n]` to make it repeatable.
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/random.birnam"]   (pulls in Time for the auto-seed)
+//   [Module load: #random]   (loads Time first)
 //
 // This module is DOCUMENTED: each method carries its docstring on the definition
 // (`… as: block doc: "…"`) and declares a summary (`[Reflect docModule: …]`). Those
@@ -19,7 +19,7 @@
 
 // Dependency: Time, for the load-time auto-seed.
 [Module named: #random requires: #[#time]];
-[[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [System load: "modules/time.birnam"]]];
+[[Globals includes: #Time] ifTrue: [| nil] ifFalse: [| [Module load: #time]]];
 
 // The module singleton + its one-line summary (a no-op without Doc loaded).
 [Globals at: #Random put: [Object clone]];
@@ -54,4 +54,7 @@
 
 // Auto-seed from the clock so the default stream varies run to run. Calls the
 // wrapped srandom directly (not `seed:`) to avoid a same-unit method at load time.
-[[Time nowMillis] srandomSeed]
+[[Time nowMillis] srandomSeed];
+// A void Alien wrapper answers nil; compiled-unit loading reserves nil for an
+// artifact-load failure, so finish with the module singleton.
+Random

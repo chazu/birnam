@@ -185,11 +185,10 @@ check "image boot: doc'd stdlib string protocol survives (incl. guards)" "$expec
 rm -rf "$tdir"
 
 # ---- booted-image modules: a G0 module singleton + its Alien wraps survive.
-# Modules loaded by project configuration run before G0 is sealed. Time therefore
-# participates in the same generation source map as every other live module.
+# Shipped modules loaded by project configuration run before G0 is sealed. Time
+# therefore participates in the same generation source map as every other live
+# module, using the production compiled unit from the runtime closure.
 tdir=$(mktemp -d)
-libdir="$(cd "$(dirname "$BIN_ABS")/../lib" && pwd)"
-"$BIN_ABS" --compile-module "modules/time.birnam" "$libdir/libbirnam_time.dylib" >/dev/null 2>&1
 printf 'load = ["time"]\n' > "$tdir/birnam.toml"
 (cd "$tdir" && printf '[System saveImage: "%s/mod.image"]\n:quit\n' "$tdir" | "$BIN_ABS" --repl >/dev/null 2>&1)
 actual=$(printf '[Globals includes: #Time]\n[[Time nowMillis] > 1700000000000]\n:quit\n' | "$BIN" "$tdir/mod.image" 2>&1)
@@ -198,7 +197,6 @@ birnam> true
 birnam> true
 birnam> "
 check "image boot: a module singleton and its Alien wraps survive" "$expected" "$actual"
-rm -f "$libdir/libbirnam_time.dylib"
 rm -rf "$tdir"
 
 # ---- module manager: G0 modules survive; post-G0 introduction is explicit error.

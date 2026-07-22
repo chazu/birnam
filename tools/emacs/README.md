@@ -39,9 +39,10 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
   `birnam.toml` is used as the project root, including when Emacs was launched
   from another directory. The server provides project navigation, hover,
   references, completion, and signature help across authored dependencies.
-- **Project commands** — `birnam-check-project`, `birnam-build-project`, and
-  `birnam-run-project` use the nearest project root and show standard output in
-  `compilation-mode`.
+- **Project commands** — `birnam-check-project`, `birnam-build-project`,
+  `birnam-run-project`, and `birnam-test-project` use the nearest project root
+  and show standard output in `compilation-mode`. Build, run, and test use
+  `birnam-project-profile` (`debug` by default, or `release`).
 
 ## Keys
 
@@ -54,6 +55,7 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
 | `C-c C-k` | `birnam-check-project` |
 | `C-c C-u` | `birnam-build-project` |
 | `C-c C-p` | `birnam-run-project` |
+| `C-c C-t` | `birnam-test-project` |
 | `C-c C-e` | `birnam-lsp-start` |
 
 `eval-region`/`eval-buffer` send the text to the REPL verbatim (the REPL

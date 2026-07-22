@@ -8,8 +8,9 @@
 //
 //   ./zig-out/bin/birnam bench/image.birnam
 
-[System load: "modules/bench.birnam"];
-[System load: "modules/os.birnam"];
+let benchSource := [System getEnv: "BIRNAM_BENCH_SOURCE"];
+[System load: [[benchSource isNil] ifTrue: [| "modules/bench.birnam"] ifFalse: [| benchSource]]];
+[Module load: #os];
 
 let env := ["BENCH_IMG" getenvValue];
 let IMG := [[env isNil] ifTrue: [| "bench/results/dev/bench.image"] ifFalse: [| env]];

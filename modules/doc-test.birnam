@@ -4,7 +4,11 @@
 // Run from the repo root.
 
 [[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
-[[Globals includes: #Doc]       ifTrue: [| nil] ifFalse: [| [System load: "modules/doc.birnam"]]];
+[[Globals includes: #Doc] ifTrue: [| nil] ifFalse: [| [System load: "modules/doc.birnam"]]];
+// This suite intentionally exercises the source registration sequence. Mark it
+// loaded so the compiledUnitDocs dependency does not replace that test fixture.
+[Module markLoaded: #doc];
+[Module load: #compiledUnitDocs];
 
 let s := [TestSuite named: "Doc" module: #doc];
 
@@ -153,7 +157,6 @@ let s := [TestSuite named: "Doc" module: #doc];
 // Lifecycle reference prose is registered separately so documentation changes do
 // not alter CompiledUnit's executable method-operation stream.
 [s test: "CompiledUnit reference registrations cover the public lifecycle" do: [:t |
-  [System load: "modules/compiled-unit-docs.birnam"];
   [t expect: [[Doc methodsOf: #compiledUnit] size] equals: 14
      describes: "all public lifecycle selectors registered"];
   let md := [Doc markdownForModule: #compiledUnit];

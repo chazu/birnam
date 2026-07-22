@@ -134,7 +134,7 @@ honest near-term figure is **~700–750 LOC**, plus a perf-gated relational slic
 | `error.zig` protocol → birnam | ~110 ✅ SHIPPED | The control-flow protocol (`on:do:`/`ensure:`/`ifError:`/`printString`/String raising) moved; the representation, the **DNU swap** (`objDnu`, installed on `object_vt`), and the factory stay in core. [44a](44a-pilot-error-birnam.md). Actual: `error.zig` 286→179. |
 | `main.zig` subcommand boot-strings | ~200 ✅ SHIPPED | Collapsed `runLsp`/`runDoc`/`runDocgen`/`runListen` to one generic `runCli` → `modules/cli.birnam` ("load the dispatcher, pass argv"); the driver frame stays (2b). Actual: `main.zig` 1371→1276. |
 | more `stdlib` library protocol | ~100–200 ✅ SHIPPED (measured-partial) | The string protocol moved (isEmpty/notEmpty/startsWith:/endsWith:/includesSubstring:/words/do:/inject:into:); the per-byte **scanners** split:/trimmed/indexOf: are **perf-retained natives** (see §7 Phase 2 — a send measures ~1.5–2µs, so derived bulk scans are ~10×), and asLowercase/asUppercase/replace:with: wait on the Phase-5 StringBuilder. Actual: `collection.zig` 1405→1358. |
-| `main.zig` console REPL (rev. 3 addition) | ~190 ✅ SHIPPED | The console moved to `modules/repl.birnam` (consoleInit/consoleStep/consoleDone + the form reader, `:commands`, `:globals`, config-main); `runRepl` is a runCli-style boot stub. No `@embedFile` needed — it loads via `resolveModulesDir` like cli.birnam. **The send gate applied twice**: the per-byte balance scan became the native `bracketDepth` beside split:/trimmed (5KB paste 1.4s derived → 0.17s native), and the session *loop* stayed a Zig `while consoleStep` frame — birnam recursion segfaulted a ~1700-line piped session. (Superseded once native `whileTrue:` shipped: the loop moved into `[Repl console]`, stack-flat at 10k piped lines; the binary sends one selector and reports a faulted session's error value.) Behavior locked by `scripts/repl-golden.sh` (21 e2e transcripts); one deliberate change: `BIRNAM_NO_STDLIB` has no REPL now (exit 1). Actual: `main.zig` 1276→1032, `collection.zig` +36. |
+| `main.zig` console REPL (rev. 3 addition) | ~190 ✅ SHIPPED | The console moved to the compiled `#repl` module (consoleInit/consoleStep/consoleDone + the form reader, `:commands`, `:globals`, config-main); `runRepl` is a runCli-style host stub. The installed unit carries its source metadata and loads through `Module`, with a process-local compiled host-capability path for recovered images that do not contain Repl. **The send gate applied twice**: the per-byte balance scan became the native `bracketDepth` beside split:/trimmed (5KB paste 1.4s derived → 0.17s native), and the session *loop* stayed a Zig `while consoleStep` frame — birnam recursion segfaulted a ~1700-line piped session. (Superseded once native `whileTrue:` shipped: the loop moved into `[Repl console]`, stack-flat at 10k piped lines; the binary sends one selector and reports a faulted session's error value.) Behavior locked by `scripts/repl-golden.sh` (21 e2e transcripts); one deliberate change: `BIRNAM_NO_STDLIB` has no REPL now (exit 1). Actual: `main.zig` 1276→1032, `collection.zig` +36. |
 | **Near-term total (clean, low-risk)** | **~400–500 ✅ ALL SHIPPED** (≈448 net) | Invariant untouched, no duplication. |
 | `relational.zig` **surface** (Tier B) | ~300–400 | Perf-gated. Lift query planning/negation/aggregation wiring; **keep the native nested-loop join** (`relational.zig:383`) — part of the read-10–50× budget. Partial, behind a benchmark. The measured send constant (§7 Phase 2) predicts per-ROW derived loops miss the gate the same way per-byte scans did — expect only the surface wiring to pass. |
 | collection **tier-B boundary** (includes:/reversed/copyFrom:to:/asVector) | ~30 ✅ MEASURED, split verdict (2026-07-12) | Gated by the four bench/micro.birnam cases added for exactly this (`vector.includes-miss`/`vector.reversed`/`vector.copy-1k`/`range.asVector`). **Lifted**: Vector+Range `asVector` (identity / Collection's derived build — 1.02×, allocation-dominated) and Vector `includes:` as a *delegation* to the retained native `indexOf:` scan (the full-derived Collection form measured **116×** — the send gate at its purest). **Stayed native by measurement**: `reversed` (2.58×) and `copyFrom:to:` (1.60×) — per-row loops, exactly as §7 predicted. Macro cases moved 0% throughout: the gate is protecting large-vector tails, not the measured workloads. Bootstrap note: modules.birnam's topo-sort membership became `indexOf: … notNil` (includes: is stdlib now, above the manager's rung). |
@@ -149,10 +149,11 @@ prior birnam artifact needed), and `--compile-module` runs the bare floor (no
 self-hosted layer at all), so the system that builds the modules dylib never runs the
 artifact class it produces. The rev.-2 "loadName is genuine FFI floor with no clean
 non-boot subset" claim was WRONG on inspection: boot never used `loadName` (it uses
-`loadSelfHosted`/`[Codegen load:]`); the only genuinely-native missing piece was
-reading `__birnam_module_meta` without installing, now `[Codegen moduleMetaOf:]`
-(~20 lines in codegen.zig, beside `load:` which already owned the dlopen/`__ev`
-install). Everything else — declaration facts, the topo-sort, the deps-first
+`loadSelfHosted`/`[Codegen load:]`); the genuinely-native missing piece was reading
+dependency metadata without installing. That dependency-only Codegen bridge has
+since been replaced by Design 54's `[Artifact inspect:]`, which reads a complete
+pointer-free descriptor without `dlopen`. Everything else — declaration facts,
+the topo-sort, the deps-first
 runtime `load:` orchestration, `libDir` — is birnam (`src/id/modules.birnam`, 184
 lines, native floor only since it precedes stdlib). `[Reflect nameOf:]` landed as
 predicted. Self-registration sits at the module's END (the method must exist to
@@ -192,8 +193,9 @@ C as plain concatenation of `birnam_send(...)`/`birnam_mkString(...)` text. So a
   primitives, or a native buffer type) before a birnam codegen is practical. "No new
   primitive" was too strong — no new *semantics*, but yes a new *utility type*.
 - **Artifact mode must be reproduced.** `__amblk` salting (`Wyhash` per source),
-  `__birnam_unit_init`, `__birnam_module_meta` — the fiddly loadable-dylib path
-  (doc 43). The birnam codegen must re-implement all of it.
+  `__birnam_unit_init`, and the embedded artifact descriptor — the fiddly
+  loadable-dylib path (docs 43 and 54). The birnam codegen must re-implement all
+  of it.
 - **The runtime-shim half never moves** (2c).
 
 ## 5. The compiler: permanent-dual, long-term, not a ratio target
@@ -268,8 +270,9 @@ them.
   early one.
 - **Phase 3 ✅ SHIPPED — `main.zig` subcommand collapse.** doc/docgen/--lsp/
   --listen route through ONE generic driver (`runCli`: boot + GC anchor + argv
-  handover) to `modules/cli.birnam`, whose `[Cli run:dir:]` dispatches by driving
-  the modules' own public API (`[Doc cli:]`, `[Doc buildSite:modules:zig:]`,
+  handover) to the compiled `#cli` module, whose `[Cli run:source:guides:]`
+  dispatches by driving the modules' own public API (`[Doc cli:]`,
+  `[Doc buildSite:zig:guides:]`,
   `[Lsp serveStdio]`, `[Repl serveOn:]`) — the CLI is one more client of the
   libraries, and every module stays fully usable from code without it
   (locked in by cli-test.birnam's library-use tests). main.zig 1371→1276; the
@@ -284,8 +287,9 @@ them.
 - **Phase 5b ✅ SHIPPED — `modules.birnam` via compile-first.** The module manager
   as a self-hosted module loaded before the rest of the self-hosted layer, dylib
   preferred / embedded source the floor; `[Reflect nameOf:]` added for
-  path-building, `[Codegen moduleMetaOf:]` the one new native. `modules.zig`
-  deleted whole. Details in the §3 entry above.
+  path-building. The original dependency-only Codegen probe is now superseded
+  by the ID-floor artifact inspector. `modules.zig` deleted whole. Details in
+  the §3 entry above.
 - **Phase 6 (long-term, terminal) — `codegen.birnam`/`lang.birnam`** as an additive
   warm-path compiler; retain the Zig compiler; verify the ≥2-stage emitted-C
   fixpoint. Pursue only when self-hosting-the-compiler is worth its own weight — it

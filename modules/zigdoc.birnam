@@ -8,14 +8,14 @@
 // `birnam doc alien`, and the HTML reference all read them, with zero Zig runtime.
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/zigdoc.birnam"]     (pulls in File + Doc)
+//   [Module load: #zigdoc]     (loads File + Doc first)
 //   [Zigdoc scan: "src/id/alien.zig" as: #alien]   "=> records #alien's docs"
 //   [Doc text: #alien]                             "=> the extracted docs"
 //   [Zigdoc scanDir: "src/id"]                     "=> scan every .zig in a dir"
 
 [Module named: #zigdoc requires: #[#file #doc]];
-[[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [System load: "modules/file.birnam"]]];
-[[Globals includes: #Doc]  ifTrue: [| nil] ifFalse: [| [System load: "modules/doc.birnam"]]];
+[[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [Module load: #file]]];
+[[Globals includes: #Doc]  ifTrue: [| nil] ifFalse: [| [Module load: #doc]]];
 
 [Globals at: #Zigdoc put: [Object clone]];
 [Reflect docModule: #zigdoc is: "Zig floor doc extraction — scans //! and /// comments out of .zig files into Doc facts, no Zig runtime."];
@@ -94,18 +94,15 @@
   mod] doc:
   "Scan one .zig file at `path` into Doc facts under `mod`, marking it #zigFloor. Answers `mod`."];
 
-// Make `mod` documented if it isn't already: load the birnam module at `bp` (a
-// no-op if that file is absent — its `doc:` registrations then fire), and if `mod`
-// still isn't documented, scan the Zig file at `zp` (if present). The `birnam doc`
-// CLI calls this so one command documents either a birnam module OR a Zig file.
-[Reflect defineMethod: #ensure:birnam:zig: on: Zigdoc as: [:self :mod :bp :zp |
-  [System load: bp];
-  [[Doc isDocumented: mod]
-    ifTrue:  [| mod]
+// Make `mod` documented if it isn't already: load its compiled unit, and if
+// that identity is not a shipped Birnam module, scan the Zig file at `zp`.
+[Reflect defineMethod: #ensure:zig: on: Zigdoc as: [:self :mod :zp |
+  [[Doc isProductionModule: mod]
+    ifTrue:  [| [Module load: mod]]
     ifFalse: [| [[File exists: zp]
       ifTrue:  [| [self scan: zp as: mod]]
       ifFalse: [| mod]]]]] doc:
-  "Document `mod` one way or the other: load the birnam module at `bp`, else scan the Zig file at `zp` — the `birnam doc` fallback chain. Answers `mod`."];
+  "Document `mod` one way or the other: load its compiled unit, else scan the Zig file at `zp`. Answers `mod`."];
 
 // Scan every `*.zig` in `dir` (excluding *_test.zig), each into module #<basename>.
 // Answers a Vector of the module symbols documented.

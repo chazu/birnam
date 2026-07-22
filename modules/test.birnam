@@ -34,6 +34,8 @@
 // Comparison is by printString (birnam `=` only spans ints/strings), so symbols
 // and booleans compare through their print names; `assert:` wants a real boolean.
 
+[Module named: #test requires: #[#stdlib]];
+
 // ===========================================================================
 // TestContext — the `t` passed to each case block. Owns the comparison logic
 // (once), forwards each outcome to the current runner via passed:/failed:detail:.

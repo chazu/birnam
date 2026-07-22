@@ -2,7 +2,8 @@
 
 > **Status:** Source resolver, materialized artifact records, conservative
 > artifact reuse, the first project-run consumer, and the Birnam-owned project
-> policy slice implemented, 2026-07-16. This is the first design in the
+> policy slice implemented, 2026-07-16; reconciled with the self-describing
+> artifact/runtime boundary on 2026-07-22. This is the first design in the
 > developer experience sequence.
 > It defines the project graph consumed by [52 — Project
 > Check, Build, and Run](52-project-check-build-and-run.md), [53 — Project-Aware
@@ -45,10 +46,11 @@ birnam.toml
 The resolver implementation is deliberately narrower than the eventual project
 workflow. It resolves source modules only; the project-run consumer performs the
 explicit runtime loading step after resolution and artifact validation. The
-materialized build consumes these records, reuses validated artifacts when
-possible, and writes artifact identity alongside the compiled dylibs; build
-itself does not activate artifacts. This document does not introduce a registry,
-network fetches, or a new runtime module representation.
+materialized build consumes these records and reuses validated artifacts when
+possible. It writes an internal build receipt while compilation projects runtime
+identity into each dylib's descriptor; build itself does not activate artifacts.
+This document does not introduce a registry, network fetches, or a second
+runtime module representation.
 
 ## 2. Governing invariants
 
@@ -151,7 +153,7 @@ module generation model.
 ### 2.8 Local-first means no hidden network behavior
 
 The first resolver handles the local filesystem and explicitly named path
-dependencies. Normal check, build, run, and LSP startup do not contact a
+dependencies. Normal check, build, run, test, and LSP startup do not contact a
 registry or mutate a global cache. Registry and remote transport can be added
 behind an explicit later policy without changing the graph contract.
 
@@ -292,8 +294,10 @@ The algorithm is:
 8. Emit a stable dependency-first order, with module-name bytes as the tie
    breaker, plus a content-addressed resolution digest.
 
-The resolver does not call Module load:. Runtime loading consumes the resolved
-records after a command has established its effect policy.
+The resolver does not call `Module load:`. Source-project commands use the
+resolution and build receipt to select and validate exact output paths after
+establishing their effect policy. Runtime loading then consumes the embedded
+artifact descriptors, not the resolution record.
 
 ## 5. First-pass source selection
 
@@ -304,12 +308,15 @@ source       require an indexable source module entry or explicit module group
 ~~~
 
 `birnam check` is read-only. Build uses the materialized artifact record for
-staged reuse and invalidation; `birnam run` validates that published record and
-the on-disk artifact checksums before loading it. Source fallback remains
-outside this first project-run slice.
+staged reuse and invalidation; source-oriented `birnam run` validates that
+published record and the on-disk artifact checksums to select exact dylib paths.
+The artifact loader independently checks each selected dylib's embedded
+description before activation. Source fallback remains outside this first
+project-run slice.
 
 The first materialized build writes `artifacts.toml` alongside the dylibs. It is
-an identity record, not a second runtime graph. Every artifact record contains:
+an internal source-to-output receipt, not a second runtime graph, installed
+manifest, or input to `Module load:`. Every artifact record contains:
 
 - canonical module name;
 - ordered source path list, including the entry;
@@ -325,11 +332,12 @@ dependency metadata, expected relative path, and on-disk checksum all match.
 Invalidation is dependency-aware: a rebuilt module also rebuilds its
 dependents, while unrelated matching modules can be copied into the new
 staging directory. A missing, malformed, incompatible, or tampered record is
-treated conservatively as a cache miss and causes compilation. `run` consumes
-the validated published records; it does not fall back to an older artifact or
-source-evaluate a stale module.
+treated conservatively as a cache miss and causes compilation. Source-project
+`run` consumes the validated receipt only to select the current publication; it
+does not fall back to an older artifact or source-evaluate a stale module. Once
+selected, module identity and closure come from the artifacts themselves.
 
-The output must remain compatible with the existing
+The output must remain compatible with the self-describing
 `libbirnam_<name>.dylib` loader and the compiled-unit/image authority contract.
 
 ## 6. Failure vocabulary
@@ -373,9 +381,11 @@ resolution record.
 
 The project build records source/revision digests, dependency metadata, target,
 ABI, and artifact checksums in a complete staged publication. Matching-artifact
-reuse and dependency-aware invalidation are implemented for `build`; `run`
-validates the published record and on-disk checksums before loading artifacts.
-Source fallback remains intentionally outside this project-run slice.
+reuse and dependency-aware invalidation are implemented for `build`; source
+project `run` validates the publication before selecting artifacts. Installed
+and directly selected roots carry the corresponding runtime information in
+their descriptors and need no receipt. Source fallback remains intentionally
+outside this project-run slice.
 
 ### P3 — lock and remote policy, only if demanded
 

@@ -7,11 +7,11 @@
 //
 //   defaults < TOML file < environment < command line
 //
-// The application name is normally a symbol (`#digla`); strings are accepted by
+// The application name is normally a symbol (`#example`); strings are accepted by
 // the lower-level helpers so tests and launchers can pass a computed name. A
 // default config path is `~/.<app>/<app>.toml`, with `--config PATH` and
 // `<APP>_CONFIG` taking precedence over it. Environment names are derived from
-// the application and setting names, e.g. `DIGLA_PORT` for `#digla`/`"port"`.
+// the application and setting names, e.g. `EXAMPLE_PORT` for `#example`/`"port"`.
 //
 // The first version intentionally handles scalar settings only: String,
 // Integer, and Boolean defaults establish the coercion contract. TOML maps and

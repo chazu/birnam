@@ -42,7 +42,7 @@ logue/
 ../../wrapped/termbox2/
   termbox2.h                   vendored upstream single header (MIT)
   termbox2.c                   TB_IMPL + int-clean `lg_*` FFI adapter
-  termbox2.birnam              the reusable `Termbox` module
+  termbox2.birnam              the reusable Alien-backed `Termbox` module
   build.sh                     cc the adapter into libtermbox2.dylib
   libtermbox2.dylib            built by build.sh (git-ignored)
 ```
@@ -123,7 +123,7 @@ care — their receiver is unused. But the two drawing calls take arguments, so
 into place (hence the `p` after the return type in those signatures).
 
 The result is that every wrapped call is `int -> int` or `(ints…, cstring) -> int`
-— see `termbox2.birnam`. `Termbox` itself is a public singleton (`[Object clone]`
+— see `termbox2.birnam`. `Termbox` itself is a named singleton (`[Object clone]`
 with its own copy-on-write vtable), so wrapping these methods `on: Termbox` keeps
 them off `Object`. This "thin C adapter over a single-header lib" is the clean
 pattern for wrapping header-only C from birnam without any zig.

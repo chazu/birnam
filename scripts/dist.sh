@@ -3,11 +3,9 @@
 #
 # Stages the `birnam` siphon + its rung dylibs into a versioned directory,
 # ad-hoc signs them on macOS (softens Gatekeeper for a downloaded binary), and
-# tars it. `birnam` resolves its dylibs through $BIRNAM_LIB_DIR /
-# $BIRNAM_ID_DYLIB (no <exe>/../lib auto-probe), so the bundle ships a tiny
-# `bin/birnam` wrapper that points those at the bundle's own lib/ before
-# exec'ing the real binary (bin/birnam.bin). The bundle is portable: it runs
-# from wherever it's unpacked.
+# tars it. The real binary resolves the fixed runtime layout relative to itself;
+# there is no launcher or external layout manifest. The bundle is portable: it
+# runs from wherever it is unpacked.
 #
 # Prints the tarball path on stdout (progress goes to stderr) so callers can
 # capture it: TARBALL="$(scripts/dist.sh)".
@@ -30,41 +28,42 @@ fi
 target="aarch64-macos"
 
 name="birnam-${VERSION}-${target}"
-prefix="zig-out/_dist-prefix"
-stage="zig-out/dist/${name}"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+prefix="$work/prefix"
+stage="$work/${name}"
+archive="$work/${name}.tar.gz"
+published="zig-out/dist/${name}.tar.gz"
 
 log "building ${name} (ReleaseSafe)"
 zig build install -Doptimize=ReleaseSafe --prefix "$prefix"
 
 log "staging"
-rm -rf "$stage"
 mkdir -p "$stage/bin" "$stage/lib"
-cp "$prefix/bin/birnam" "$stage/bin/birnam.bin"
+cp "$prefix/bin/birnam" "$stage/bin/birnam"
 # All supported artifacts are Mach-O dylibs.
 cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/"
-# Source-backed tools + guide, in the same prefix-relative layout as install.
+# Native Zig-floor documentation + guides, in the install-relative layout.
 cp -R "$prefix/share" "$stage/share"
 
-# Wrapped C libs (built via FFI absorption) into the same lib dir, so alien
-# resolves them by bare name in the bundle. Best-effort — they may not be built.
-cp wrapped/*/lib*.dylib "$stage/lib/" 2>/dev/null || true
-
-# Launcher: point the dylib search at the bundle's own lib/ (overridable), then
-# exec the real binary. Resolves its own directory so it works from anywhere.
-cat > "$stage/bin/birnam" <<'WRAP'
-#!/usr/bin/env bash
-here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-export BIRNAM_LIB_DIR="${BIRNAM_LIB_DIR:-$here/../lib}"
-export BIRNAM_ID_DYLIB="${BIRNAM_ID_DYLIB:-$here/../lib/libbirnam_id.dylib}"
-exec "$here/birnam.bin" "$@"
-WRAP
-chmod +x "$stage/bin/birnam"
+# Optional wrappers are not copied opportunistically from developer build dirt.
+# A deliberately published wrapper is a named self-describing module plus its
+# native sibling. Project-owned [[wrapped]] outputs are selected from the local
+# build receipt, then installed without that receipt.
 
 log "ad-hoc signing"
-codesign -s - --force "$stage"/lib/*.dylib "$stage/bin/birnam.bin"
+codesign -s - --force "$stage"/lib/*.dylib "$stage/bin/birnam"
+for artifact in "$stage"/lib/*.dylib "$stage/bin/birnam"; do
+  codesign --verify --strict "$artifact"
+done
+
+log "smoke testing relocated bundle"
+BIRNAM_PREFIX="$stage" scripts/install-smoke.sh >&2
 
 log "tarball"
-tar -C zig-out/dist -czf "zig-out/dist/${name}.tar.gz" "$name"
+tar -C "$work" -czf "$archive" "$name"
+mkdir -p zig-out/dist
+mv "$archive" "$published"
 
-log "done: zig-out/dist/${name}.tar.gz"
-echo "zig-out/dist/${name}.tar.gz"
+log "done: $published"
+echo "$published"

@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const id = @import("id.zig");
+const artifact_inspector = @import("artifact_inspector.zig");
 const store = @import("store.zig");
 const peg = @import("peg.zig");
 const lang = @import("lang.zig");
@@ -23,6 +24,7 @@ var gapi: *idapi.IdApi = undefined;
 fn setup() *idapi.IdApi {
     const api = id.id_init();
     gapi = api;
+    artifact_inspector.bringUp(api);
     store.bringUp(api); // codegen resolves globals through the store
     peg.bringUp(api);
     lang.bringUp(api);
@@ -125,6 +127,58 @@ test "module metadata scanner accepts literal declarations anywhere and ignores 
     const legacy = "[Globals at: #LegacyProbe put: [Object clone]];\n";
     const ignored = api.send(Codegen, api.intern("moduleMetadataOf:"), &.{api.mkString(legacy.ptr, legacy.len)}, 1);
     try std.testing.expect(ignored == api.nilObj);
+}
+
+test "compiled artifacts self-describe as inert ID values before activation" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ dir, "libbirnam_described.dylib" });
+    defer std.testing.allocator.free(path);
+    const source =
+        "[Module named: #described requires: #[#file #time]]; " ++
+        "[Globals at: #descriptorMagicFixture put: \"BIRNAM-ARTIFACT-DESCRIPTOR-V1\"]; " ++
+        "[Reflect defineMethod: #descriptorProbe on: Integer as: [:self | 42]]";
+    try std.testing.expect(api.send(Codegen, api.intern("compile:output:"), &.{ api.mkString(source.ptr, source.len), api.mkString(path.ptr, path.len) }, 2) != api.nilObj);
+
+    const integer_vt = api.vtableOf(api.mkSmallInt(0));
+    try std.testing.expect(directTestMethod(api, integer_vt, api.intern("descriptorProbe")) == null);
+    const descriptor = api.send(api.import("Artifact").?, api.intern("inspect:"), &.{api.mkString(path.ptr, path.len)}, 1);
+    try std.testing.expect(descriptor != api.nilObj);
+    try std.testing.expect(api.send(descriptor, api.intern("kind"), &.{}, 0) == api.intern("module"));
+    try std.testing.expect(api.send(descriptor, api.intern("identity"), &.{}, 0) == api.intern("described"));
+    const requires = api.send(descriptor, api.intern("requires"), &.{}, 0);
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(requires, api.intern("size"), &.{}, 0)));
+    try std.testing.expect(vectorAt(api, requires, 0) == api.intern("file"));
+    try std.testing.expect(vectorAt(api, requires, 1) == api.intern("time"));
+    const roots = api.send(descriptor, api.intern("roots"), &.{}, 0);
+    try std.testing.expect(vectorAt(api, roots, 0) == api.intern("described"));
+    try std.testing.expectEqualStrings("aarch64-macos", stringBytes(api, api.send(descriptor, api.intern("target"), &.{}, 0)));
+    try std.testing.expect(directTestMethod(api, integer_vt, api.intern("descriptorProbe")) == null);
+}
+
+test "artifact inspection rejects unavailable native requirements before activation" {
+    const api = setupFull();
+    const Codegen = api.import("Codegen").?;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ dir, "libbirnam_nativeMissing.dylib" });
+    defer std.testing.allocator.free(path);
+    const source =
+        "[Module named: #nativeMissing requires: #[]]; " ++
+        "[Alien dlopen: \"libdefinitely_missing.dylib\"]; " ++
+        "[Reflect defineMethod: #nativeMissingProbe on: Integer as: [:self | 42]]";
+    try std.testing.expect(api.send(Codegen, api.intern("compile:output:"), &.{ api.mkString(source.ptr, source.len), api.mkString(path.ptr, path.len) }, 2) != api.nilObj);
+    const Artifact = api.import("Artifact").?;
+    const rejected = api.send(Artifact, api.intern("inspect:"), &.{api.mkString(path.ptr, path.len)}, 1);
+    try std.testing.expect(rejected == api.nilObj);
+    try std.testing.expect(api.send(Artifact, api.intern("lastFailure"), &.{}, 0) == api.intern("nativeRequirementUnavailable"));
+    try std.testing.expect(directTestMethod(api, api.vtableOf(api.mkSmallInt(0)), api.intern("nativeMissingProbe")) == null);
 }
 
 test "source revision projects complete documents and isolates method changes" {

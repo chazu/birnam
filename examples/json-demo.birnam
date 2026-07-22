@@ -3,7 +3,7 @@
 //
 //   birnam examples/json-demo.birnam
 
-[System load: "modules/json.birnam"];
+[Module load: #json];
 
 // Parse — objects become Maps (string keys), arrays become Vectors, with native
 // Integer / Float / true / false / nil leaves.

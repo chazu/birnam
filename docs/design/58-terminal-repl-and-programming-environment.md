@@ -1,10 +1,9 @@
 # 58 — Terminal REPL and Programming Environment
 
-> **Status:** In progress, updated 2026-07-19. This design explores a terminal-native
-> programming environment for Birnam, backed by termbox2, the project-aware
-> language service, and an explicit session connection to a running image. It
-> leaves the current REPL, LSP, and socket REPL intact; its sibling
-> runtime-session protocol is now available over framed stdio and loopback TCP.
+> **Status:** Retired, 2026-07-21. This document preserves the terminal-client
+> experiment removed after `0496dbc`. Paths and shipped-capability claims below
+> describe that historical tree; the ordinary REPL, socket REPL, project-aware
+> LSP, and Alien-backed Termbox adapter remain current.
 
 ## 1. The question
 

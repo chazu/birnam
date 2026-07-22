@@ -1,0 +1,171 @@
+# Shipping compiled artifacts
+
+Birnam keeps source authoring, local build bookkeeping, and installed execution
+as three separate boundaries:
+
+| Boundary | Artifact | Purpose |
+| --- | --- | --- |
+| Source | `birnam.toml` and `.birnam` files | Declare project roots, origins, source composition, wrapped builds, and developer run policy. |
+| Local build | `resolution.toml` and `artifacts.toml` | Validate source-to-output freshness, checksums, reuse, and atomic publication. |
+| Installed runtime | module dylibs, native siblings, or images | Describe and execute their own runtime closure without project/build TOML. |
+
+`artifacts.toml` is not a package manifest. It is disposable build state under
+`.birnam/build/<target>/<profile>/` and is never an input to the runtime module
+loader. `birnam install` copies artifacts, not the project manifest or receipts.
+
+## What a module artifact describes
+
+Every production module dylib embeds a pointer-free descriptor containing:
+
+- its artifact kind and canonical module identity;
+- the compiled-artifact ABI and architecture/operating-system target;
+- selectable root identities;
+- canonical Birnam module dependencies;
+- adjacent native-library requirements;
+- capabilities available after activation; and
+- source and executable-revision digests.
+
+The descriptor is ordinary ID surface. Scalar fields use messages such as
+`kind`, `identity`, `artifactAbi`, and `target`. The minimal list interface is:
+
+```text
+rootsCount / rootAt:
+requiresCount / requireAt:
+nativeRequiresCount / nativeRequireAt:
+capabilitiesCount / capabilityAt:
+```
+
+Those messages need only `libid` and `libbirnam_id_artifact`. After Collection
+is active, `roots`, `requires`, `nativeRequires`, and `capabilities` return
+Vectors over the same data.
+
+In a running Birnam environment, the descriptor can be inspected without
+activating its artifact:
+
+```birnam
+let description := [Artifact inspect: "/path/to/libbirnam_app.dylib"];
+[description identity];
+[description requires];
+[description nativeRequires]
+```
+
+If inspection answers nil, `[Artifact lastFailure]` identifies the failure.
+
+## Selecting a compiled root
+
+Pass a dylib directly to the siphon:
+
+```sh
+birnam /path/to/my-root.dylib
+```
+
+Only the explicitly selected root may have an arbitrary filename. Its module
+dependencies resolve beside it as `libbirnam_<identity>.dylib`; native
+requirements resolve as their exact declared basenames in the same directory.
+
+Before activation, the siphon:
+
+1. loads `libid` and the artifact inspector;
+2. reads the selected root without `dlopen`;
+3. recursively inspects its sibling dependency closure;
+4. rejects a wrong kind, identity, ABI, target, dependency cycle, or unavailable
+   native requirement; and
+5. only then loads the language activation stack and installs the complete
+   dependency-first plan.
+
+Inspection does not run constructors, `__birnam_unit_init`, `__ev`, module
+initializers, or entry behavior. Planning the complete graph first prevents an
+invalid later sibling from leaving an earlier dependency partially installed.
+
+Direct dylib selection activates the root module's own top-level program. It
+does not recover a separate `main.birnam` path that existed only in the source
+project manifest. A source-free application must therefore put its entry
+behavior in the selected root artifact, or ship an image whose application
+entry is already part of the image. A source project can continue to use
+`birnam run`, which deliberately validates its local receipt and evaluates its
+manifest-selected main.
+
+## Project build and installation
+
+The source workflow remains:
+
+```sh
+birnam check /path/to/project
+birnam build /path/to/project
+birnam run /path/to/project
+birnam test /path/to/project
+birnam install /path/to/project
+```
+
+`check` and `build` use `birnam.toml`. Check compile-validates every module in a
+private temporary directory and offers stable `--format=json` output. `build` publishes a complete local
+directory and writes its receipts atomically. Source-oriented `run` validates
+that publication, selects exact module paths, inspects their descriptors, loads
+project modules, and evaluates the manifest's `main` once.
+
+Build, run, test, and install select independent `debug` or `release`
+publications with `--profile`. `test` discovers or reads `[test].sources` and
+runs each test source in a fresh process against the validated compiled closure.
+
+`install` validates the same publication and copies its module/native artifacts
+into the selected runtime library directory. The installed result contains no
+`birnam.toml`, `resolution.toml`, or `artifacts.toml`. Installed module identity
+and dependency planning come from the descriptors.
+
+The standard Birnam CLI, REPL, LSP, documentation, and library modules follow
+the same rule: their authored files live in the repository, while install and
+release bundles contain compiled units with embedded source/reflection data.
+
+## Bundle layout and relocation
+
+The supported runtime layout is fixed relative to the executable:
+
+```text
+prefix/
+  bin/birnam
+  lib/libbirnam_*.dylib
+  share/birnam/src/id/*.zig
+  share/birnam/docs/guide/*.md
+```
+
+Moving `prefix/` as a unit preserves lookup. `BIRNAM_LIB_DIR` and
+`BIRNAM_ID_DYLIB` are narrow test/embedding overrides, not required runtime
+manifests. Production lookup does not fall through to the current directory or
+a source checkout.
+
+## Native wrappers
+
+A project authors a `[[wrapped]]` build recipe in `birnam.toml`. The generated
+Birnam wrapper artifact declares the native dylib it opens, and the native dylib
+is published beside that wrapper. Inspection checks presence before any wrapper
+initializer runs. Release staging copies optional wrappers only as deliberate,
+complete, signed closures; it never discovers them from developer build dirt.
+
+## Integrity and failures
+
+The embedded descriptor is routing and compatibility metadata, not an external
+checksum manifest. Local build receipts verify source freshness and artifact
+checksums before selection. Installed/release integrity belongs to the platform
+artifact and signing boundary; release staging signs and verifies each dylib and
+the siphon executable.
+
+Common pre-activation failures include:
+
+```text
+artifactUnavailable
+artifactDescriptionMissing
+artifactKindMismatch
+artifactIdentityMismatch
+artifactAbiMismatch
+artifactTargetMismatch
+nativeRequirementUnavailable
+circularDependency
+```
+
+Images use their checked image header and embedded code records rather than a
+sidecar descriptor file. Compatible boot maps code; `--rebuild` is the explicit
+source-recovery path.
+
+For the normative architecture, see [Compiled Units Are
+Primary](../design/45-compiled-units.md) and [Relocatable Bundles and Runtime
+Distribution](../design/54-relocatable-bundles.md).

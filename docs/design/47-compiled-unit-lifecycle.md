@@ -34,7 +34,7 @@ object mutation can be undone.
 The system already has every adjacent capability:
 
 - `[Codegen compile:output:]` emits relocatable dylibs;
-- `[Codegen moduleMetaOf:]` inspects dependency metadata without installation;
+- `[Artifact inspect:]` returns a complete inert descriptor without installation;
 - `[Codegen load:]` fixes up and executes an artifact;
 - `Module` stores the dependency graph as facts and loads dependencies first;
 - Store mirrors method installation under the consistency law;
@@ -205,7 +205,7 @@ alongside the current ABI:
 
 ```
 __birnam_artifact_abi
-__birnam_module_meta
+__birnam_artifact_descriptor
 __birnam_unit_init
 __ev
 ```
@@ -272,7 +272,7 @@ ordinary semantics; the manifest marks ineligible source rather than silently
 giving it partial candidate behavior. The manifest unit name comes from the
 candidate compile request, not its authoring path; when source carries a `Module`
 declaration, its name and dependency list must match both candidate metadata and
-`__birnam_module_meta` exactly.
+the artifact descriptor exactly.
 
 ## 7. Narrow Codegen mechanism
 

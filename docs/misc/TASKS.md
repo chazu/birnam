@@ -64,80 +64,37 @@ until product evidence selects the next failure model.
 
 ---
 
-## Proposed Applications
+## Current Product Sequence
 
-- [ ] **Birnam Digla / Design 55** — Slices 1–3 now provide a local, read-only,
-  capability-free object snapshot over `Reflect` and the Store, including
-  effective methods, named-global lookup, deterministic text, and structured
-  warnings. The snapshot round-trips through the framed JSON session protocol.
-  Next: finish Slice 4 with `snapshot: spec` plus a file artifact, then add
-  source-on-demand and deterministic HTML. The full sequence remains in
-  [design 55](../design/55-birnam-digla.md).
+- [x] **Relocatable runtime contract / Design 54** (2026-07-22) — fixed
+  executable-relative runtime layout plus self-describing module/project roots.
+  - [x] P0 (2026-07-21): one resolver, no launcher/manifest/cwd probes, and a
+    relocated install smoke covering docs, LSP, REPL, and project commands.
+  - [x] P1 (2026-07-21): exact installed source/dylib closure plus relocated
+    mapped-image, `--rebuild`, isolate-worker, and missing-resource acceptance.
+  - [x] Fresh atomic release staging; no opportunistic optional-wrapper copying.
+  - [x] P2 (2026-07-22): pointer-free artifact descriptors, ID-floor inspection,
+    complete pre-activation closure planning, target/ABI/identity/native checks,
+    and deliberate signed optional-closure publication.
+  - [x] P3 (2026-07-22): source-free installed module roots and images; project
+    and build TOML stop at the source/build boundary. A selected dylib owns its
+    module activation entry, while a standalone application entry lives in that
+    root's top-level program or in an image.
 
-- [x] **Digla terminal editor foundation / Design 58** (updated 2026-07-19) — the
-  multi-file `modules/digla/` project now includes a headless editor model,
-  UTF-8 byte-boundary cursor movement, history, local evaluation, terminal-cell
-  wrapped transcript rendering, an optional Termbox `--ui` entrypoint, and the initial source/LSP
-  PositionMap conversion plus terminal-cell DisplayLayout mapping, lexical
-  syntax spans, parser-backed diagnostics, and a bounded completion menu merging
-  scoped source candidates with live-image globals. Evaluation, inspection,
-  globals, runtime completion, and image identity use one JSON-RPC-shaped session
-  boundary; terminal commands, `--session-stdio`, and the loopback-only-by-default
-  `--session-listen` adapter consume the same copied-value responses. A lazy
-  `--ui --connect=remote` client now drives that TCP session through the unchanged
-  terminal-independent editor model, correlates output notifications, and closes
-  the active connection on editor exit. `:connect local|remote` performs an
-  explicit handshake and switches adapters without replacing editor state or the
-  immutable startup snapshot. A real loopback server/client smoke test
-  covers evaluation, transcript insertion, copied values, and close. The
-  Termbox surface now loads through a precompiled application wrapper rather
-  than runtime Alien compilation, reducing measured full-project cold launch
-  from about 3.5 s to 1.9-2.0 s. A second project-local wrapper accelerates
-  `Reflect allMethodsOf:` with exported-name lookup and a basis-keyed, single-pass
-  reverse-global index: a controlled full-image request fell from 1.587 s to
-  17.7 ms with byte-identical rendered output, while reflection after live-image
-  mutation completes in 12.9 ms. Shift-movement selection now replaces/deletes
-  through source-byte ranges, and a visual-row viewport keeps the cursor
-  visible in buffers taller than the terminal. F1 merges source and copied runtime
-  hover, F2 reconstructs full keyword signatures, F3 lazily opens same-buffer,
-  project, or dependency source definitions, F5 restores prior document state,
-  and F4 explicitly refreshes cached diagnostics. Typing no longer
-  invokes the parser per key; buffered terminal events are coalesced and the
-  application wrapper accelerates source-frame projection and transcript wrapping.
-  Evaluation-local `System` output is now captured by that application wrapper,
-  inserted before the value in the terminal transcript, and delivered as ordered
-  `birnam/output` notifications plus a buffered response fallback without leaking
-  unframed bytes onto session stdout. Framed clients now receive each captured
-  write immediately through an evaluation-local sink while the response retains
-  its bounded aggregate fallback; a process timing regression proves output leads
-  a long-running result by more than 100 ms. TCP sessions now also consume a
-  correlated `birnam/interrupt` nonblockingly at the same canonical loop
-  boundaries, reject stale targets, return a structured interrupted phase, and
-  remain usable. The remote terminal now drives TCP evaluation incrementally,
-  appends each output event before the result, stays responsive to transcript
-  scrolling, and pipelines Ctrl-C/Escape interrupts through a terminal-independent
-  operation seam. A timed Termbox wait polls at 16 ms only during active work and
-  avoids idle redraws; stdio and the synchronous local adapter stay non-interruptible
-  except for deadlines.
-  Positive `timeoutMs` requests and the
-  `evaluation-timeout-ms` application setting now provide the narrower safe slice:
-  application-local cooperative deadlines on canonical Block and Integer loops,
-  returning structured timeout errors for every transport.
-  A real PTY consumed and rendered a 60-byte form in under 500 ms, and evaluated
-  and visibly wrapped the full `allMethodsOf:` result within one second. Page Up
-  and Page Down now navigate those wrapped transcript rows with clamped offsets;
-  new evaluation output resumes tail following. Source now soft-wraps into visual
-  rows without changing byte authority, including wide-glyph cursor boundaries,
-  selection, and cursor-following viewports. Consecutive character events are
-  coalesced into one persistent-buffer edit; a 2.2 KiB PTY paste plus redraw completed
-  inside a 500 ms observation window. Resolver snapshots reuse the active project
-  resolution, while source lookup parses only files containing the requested token;
-  the measured lookup adds roughly 0.24-0.29 s beyond startup. The current enriched
-  image starts in 2.79-2.84 s across five current launches, and three steady remote
-  `allMethodsOf:` round trips complete in 25.3-25.9 ms including framing and a
-  6,099-character result. Next: carry Design 55's structured inspection model into
-  richer terminal object cards and navigation without coupling those snapshots to
-  Termbox or weakening the machine-client contract.
+- [x] **Source/build policy boundary / Design 57** (2026-07-22) — retained only
+  for source resolution and local build planning. Its proposed install/run
+  extension was withdrawn: self-describing artifacts and ID-floor preflight own
+  runtime identity, closure, and native validation.
+
+- [x] **Project workflow completion / Design 52** (2026-07-22) — read-only
+  compile checks and `birnam-check-v1`, independent debug/release publications,
+  selected build/profile workspace status, Emacs profile commands, and
+  fresh-process project test discovery/execution. Editor diagnostics remain
+  source-only and do not evaluate or activate project code.
+
+Small applications such as Logue, the HTTP example, images, and isolate fixtures
+are the acceptance tests for these interfaces. Designs 55, 58, and 59 preserve
+the retired Digla experiment; Digla is not an active application or roadmap item.
 
 ---
 
@@ -147,15 +104,14 @@ until product evidence selects the next failure model.
   artifact invalidation, artifact-record shape, and publication authorization
   run through `src/id/project-policy.birnam`; Zig retains filesystem/source
   observation, hashing, process launch, serialization, and atomic rename. See
-  [design 57](../design/57-project-policy-in-birnam.md). Next: apply the same
-  boundary to install/run artifact selection and native-record validation.
+  [design 57](../design/57-project-policy-in-birnam.md). The boundary terminates
+  at local build selection; it is not extended into installed runtime loading.
 
 - [x] **emacs mode** (2026-06-18) — `birnam-mode` in `tools/emacs/birnam-mode.el`: font-lock (keyword selectors, symbols `#x`, query vars `?x`, block args `:x`, `:=`/`|>`, `//` comments that don't swallow division, literals), bracket-depth indentation, comint REPL (`run-birnam`), eval-region/eval-buffer (file in a temp unit via `:in`) + eval-line. Byte-compiles clean; verified via the emacs MCP. Deeper `:`-command awareness in the REPL buffer still open.
 - [x] **LSP server / Design 53** (2026-07-15) — `birnam --lsp` remains a thin stdio JSON-RPC envelope with semantics delegated to the in-process parser/compiler/reflection APIs. The current contract and staged roadmap live in [design 53](../design/53-project-aware-language-tools.md).
   - [x] **P0 workspace/coordinates** — shared project-resolver snapshots, UTF-16 positions, document versions and cleanup, stale-change rejection, save refresh, and multi-root/nested-project coverage.
   - [x] **P1 safe static diagnostics** — parse-only syntax and provable literal selector-arity diagnostics through `Lsp staticDiagnosticsOf:`; no evaluation, Store mutation, artifact writes, or invented unbound-name errors. Zig retains only parser/CST construction.
-  - [x] **P2 first navigation slice** — parser/CST-backed document symbols, same-document lexical definitions/references, and open-buffer workspace symbols through `Lsp sourceSymbolsOf:`, `sourceOccurrencesOf:`, and `sourceBindingsOf:`. Landed in `c9f4cad` and `979a54f`.
-  - [ ] **Next P2 slice** — dependency-wide authored-source indexing, richer method/receiver hover, signature help, scoped completion, and references across unopened project modules. Do not use generated artifacts or image execution as source locations.
+  - [x] **P2 navigation and semantic assistance** — dependency-wide authored-source indexing, document/workspace symbols, lexical definitions and references, method/module provenance hover, signature help, and scoped completion across unopened project modules. Generated artifacts and image execution are not used as source locations.
   - Editor wiring: `(add-to-list 'eglot-server-programs '(birnam-mode "birnam" "--lsp"))`.
 
 ## Language surface

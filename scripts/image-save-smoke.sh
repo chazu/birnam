@@ -14,7 +14,7 @@ mkdir -p "$tmp/bench/results/dev"
 (
   cd "$tmp"
   BIRNAM_LIB_DIR="$libdir" \
-  BIRNAM_MODULES_DIR="$root/modules" \
+  BIRNAM_BENCH_SOURCE="$root/modules/bench.birnam" \
   BENCH_IMG="$tmp/bench.image" \
   BENCH_OUT="$tmp/image.json" \
   "$bin" "$root/bench/image.birnam" </dev/null

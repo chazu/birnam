@@ -29,8 +29,8 @@ There is no `cond`, `case`, or `elsif`. That is fine. A chain of
 `ifTrue:ifFalse:` that maps *a value to a value* is not a control structure —
 it is a **lookup table that forgot it was data**. Write the table.
 
-**Before** (`modules/digla/render.birnam`, the worst offender in the tree — a
-7-way branch nested 7 levels deep):
+**Before** (from the retired terminal-renderer experiment — a 7-way branch
+nested 7 levels deep):
 
 ```
 [[kind = "comment"] ifTrue: [| 5] ifFalse: [|
@@ -264,7 +264,7 @@ previous module.
 **Before** — 12 lines, 7 levels of drift, up to 6 string compares:
 
 ```
-[Reflect defineMethod: #highlightColorFor: on: Digla as: [:self :kind |
+[Reflect defineMethod: #highlightColorFor: on: HighlightTheme as: [:self :kind |
   [[kind = "comment"] ifTrue: [| 5] ifFalse: [|
     [[kind = "string"] ifTrue: [| 3] ifFalse: [|
       [[kind = "number"] ifTrue: [| 6] ifFalse: [|
@@ -277,7 +277,7 @@ previous module.
 **After** — 4 lines, zero drift, one lookup:
 
 ```
-[Reflect defineMethod: #highlightColorFor: on: Digla as: [:self :kind |
+[Reflect defineMethod: #highlightColorFor: on: HighlightTheme as: [:self :kind |
   [{ "comment" -> 5, "string" -> 3, "number" -> 6,
      "symbol" -> 6, "keyword" -> 7, "selector" -> 4 } at: kind ifAbsent: [| 8]]
   ] doc: "Map a lexical highlight kind to a Termbox foreground color."];
@@ -346,7 +346,7 @@ let colorTable := { "comment" -> 5, "string" -> 3, "number" -> 6,
                     "symbol" -> 6, "keyword" -> 7, "selector" -> 4 };
 
 // per call — one lookup, no rebuild, no Globals indirection:
-[Reflect defineMethod: #highlightColorFor: on: Digla as: [:self :kind |
+[Reflect defineMethod: #highlightColorFor: on: HighlightTheme as: [:self :kind |
   [colorTable at: kind ifAbsent: [| 8]]
   ] doc: "Map a lexical highlight kind to a Termbox foreground color."];
 ```

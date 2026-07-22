@@ -51,9 +51,9 @@ existing module graph.
 This keeps the language grammar unchanged and uses the existing binary-safe
 String and dylib compiler seams. A module method can return an embedded value,
 and the same source works whether the module is one file or an explicitly
-composed set of files. A manifest-level resource catalog would be useful for
-enumeration and metadata, but it would introduce a second runtime API before
-Birnam needs one.
+composed set of files. There is deliberately no manifest-level resource catalog:
+the bytes belong to the compiled artifact that consumes them, and artifact
+identity/requirements are already available through its ID descriptor.
 
 ## 5. Image recovery boundary
 
@@ -61,5 +61,6 @@ Compiled artifacts are self-contained with respect to embedded bytes. The
 current image source-recovery path records authored module source in
 `__modsrc__`; if recovery must re-evaluate that source, it still needs the
 original asset path. Normal dylib loading and project builds do not have this
-dependency. A future image-resource record can persist the materialized bytes
-or their resource manifest without changing the source intrinsic.
+dependency. A future image format may embed the materialized bytes in a checked
+image section. It must remain part of the self-describing image—not an external
+TOML/resource sidecar—and does not change the source intrinsic.

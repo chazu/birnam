@@ -12,7 +12,7 @@
 // parse that corrupts code-heavy prose is worse than no parse.
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/markdown.birnam"]
+//   [Module load: #markdown]
 //   [Markdown toHtml: "# Hi\n\nsome `code` here"]
 //   [Markdown toHtml: md shiftHeadings: 1]   "# -> <h2> (for embedding in a page)"
 //
@@ -22,7 +22,7 @@
 // fine — the perf gate concerns hot paths, not site builds.
 
 [Module named: #markdown requires: #[#html]];
-[[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [System load: "modules/html.birnam"]]];
+[[Globals includes: #Html] ifTrue: [| nil] ifFalse: [| [Module load: #html]]];
 
 [Globals at: #Markdown put: [Object clone]];
 [Reflect docModule: #markdown is: "Markdown -> HTML for the guide subset: headings, fences, lists, paragraphs, `code`, **bold**."];

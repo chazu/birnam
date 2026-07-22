@@ -10,8 +10,8 @@
 // evaluation of received source is a capability the image already has.
 //
 // DEPENDENCIES — load first (Repl does NOT auto-load, to keep loading simple):
-//   [System load: "modules/socket.birnam"];   // for serveOn: only; console needs none
-//   [System load: "modules/repl.birnam"];
+//   [Module load: #socket];   // for serveOn: only; console needs none
+//   [Module load: #repl];
 //   [Repl serveOn: 5555]
 // then, from another terminal:  nc localhost 5555
 //

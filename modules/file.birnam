@@ -7,7 +7,7 @@
 // gaps the floor lacks — as thin libc calls.
 //
 // Load it (from the repo root) with:
-//   [System load: "modules/file.birnam"]
+//   [Module load: #file]
 //
 // Query / mutate paths:
 //   [File exists: "x.txt"]              "=> true / false"

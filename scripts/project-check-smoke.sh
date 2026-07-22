@@ -7,7 +7,7 @@ tmp="$(mktemp -d /tmp/birnam-project-check.XXXXXX)"
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
-mkdir -p "$tmp/app/src/nested" "$tmp/app/native" "$tmp/app/assets" "$tmp/dep/src"
+mkdir -p "$tmp/app/src/nested" "$tmp/app/native" "$tmp/app/assets" "$tmp/app/tests" "$tmp/dep/src"
 
 cat >"$tmp/app/birnam.toml" <<'EOF'
 name = "app"
@@ -25,6 +25,9 @@ build = [["cc", "-dynamiclib", "-fPIC", "native/foo.c", "-o", "{output}"]]
 
 [dependencies]
 dep = { path = "../dep" }
+
+[test]
+sources = ["tests/app-test.birnam", "tests/isolation-test.birnam"]
 EOF
 
 cat >"$tmp/app/main.birnam" <<'EOF'
@@ -67,6 +70,19 @@ cat >"$tmp/app/src/legacy.birnam" <<'EOF'
 [Globals at: #LegacyFixture put: [Object clone]];
 EOF
 
+cat >"$tmp/app/tests/app-test.birnam" <<'EOF'
+[Globals at: #LeakedProjectTestState put: true];
+let suite := [TestSuite named: "Project App" module: #app];
+[suite test: "compiled project modules are active" do: [:t |
+  [t expect: [AppPart marker] equals: "part-loaded" describes: "project module loaded"]]];
+EOF
+
+cat >"$tmp/app/tests/isolation-test.birnam" <<'EOF'
+let suite := [TestSuite named: "Project Isolation" module: #app];
+[suite test: "test sources use fresh processes" do: [:t |
+  [t expect: [Globals includes: #LeakedProjectTestState] equals: false describes: "prior test state absent"]]];
+EOF
+
 cat >"$tmp/dep/birnam.toml" <<'EOF'
 name = "dep"
 source_roots = ["src"]
@@ -88,6 +104,14 @@ grep -q "main: $tmp/app/main.birnam" <<<"$output"
 order="$(grep '^  #' <<<"$output" | sed 's/^  #\([^ ]*\).*/\1/' | paste -sd ' ' -)"
 test "$order" = "leaf dep foo util app"
 grep -q "#app <- $tmp/app/src/app.birnam + $tmp/app/src/app-extra.birnam" <<<"$output"
+grep -q "  $tmp/app/tests/app-test.birnam" <<<"$output"
+grep -q "  $tmp/app/tests/isolation-test.birnam" <<<"$output"
+
+json_check="$(BIRNAM_FORCE_SOURCE=1 "$bin" check "$tmp/app" --format=json)"
+grep -q '"schema":"birnam-check-v1"' <<<"$json_check"
+grep -q '"ok":true' <<<"$json_check"
+grep -q '"checkedModules":5' <<<"$json_check"
+grep -q '"diagnostics":\[\]' <<<"$json_check"
 
 build_output="$(BIRNAM_FORCE_SOURCE=1 "$bin" build "$tmp/app/src/nested")"
 printf '%s\n' "$build_output"
@@ -105,6 +129,56 @@ grep -q 'foo \[compiled\].*lib/libfoo.dylib' <<<"$build_output"
 grep -q 'artifact_abi = "birnam-artifact-generation-v1"' "$build_root/artifacts.toml"
 old_leaf_checksum="$(shasum -a 256 "$build_root/lib/libbirnam_leaf.dylib" | awk '{print $1}')"
 
+test_output="$(BIRNAM_FORCE_SOURCE=1 "$bin" test "$tmp/app")"
+printf '%s\n' "$test_output"
+grep -q '== Project App ==' <<<"$test_output"
+grep -q 'ok   project module loaded' <<<"$test_output"
+grep -q "ok   $tmp/app/tests/app-test.birnam" <<<"$test_output"
+grep -q '== Project Isolation ==' <<<"$test_output"
+grep -q 'ok   prior test state absent' <<<"$test_output"
+grep -q "ok   $tmp/app/tests/isolation-test.birnam" <<<"$test_output"
+
+cp "$tmp/app/tests/isolation-test.birnam" "$tmp/app/tests/isolation-test.birnam.valid"
+cat >"$tmp/app/tests/isolation-test.birnam" <<'EOF'
+let suite := [TestSuite named: "Project Failure" module: #app];
+[suite test: "failure reaches the parent" do: [:t |
+  [t expect: true equals: false describes: "intentional project test failure"]]];
+EOF
+if BIRNAM_FORCE_SOURCE=1 "$bin" test "$tmp/app" >"$tmp/test-failure.out" 2>&1; then
+    echo "expected project test failure" >&2
+    exit 1
+fi
+grep -q 'FAIL intentional project test failure' "$tmp/test-failure.out"
+grep -q "FAIL $tmp/app/tests/isolation-test.birnam" "$tmp/test-failure.out"
+grep -q '2 sources, 1 failure' "$tmp/test-failure.out"
+mv "$tmp/app/tests/isolation-test.birnam.valid" "$tmp/app/tests/isolation-test.birnam"
+
+release_output="$(BIRNAM_FORCE_SOURCE=1 "$bin" build "$tmp/app" --profile=release)"
+printf '%s\n' "$release_output"
+release_root="$(sed -n 's/^build: //p' <<<"$release_output")"
+test "$release_root" = "$tmp/app/.birnam/build/aarch64-macos/release"
+test -f "$release_root/artifacts.toml"
+grep -q 'profile = "release"' "$release_root/artifacts.toml"
+test -f "$build_root/artifacts.toml"
+release_run="$(BIRNAM_FORCE_SOURCE=1 "$bin" run "$tmp/app" --profile release)"
+grep -q '^project-main$' <<<"$release_run"
+
+cp "$tmp/app/src/util.birnam" "$tmp/app/src/util.birnam.valid"
+cat >"$tmp/app/src/util.birnam" <<'EOF'
+[Module named: #util requires: #[]];
+let assetPath := "assets/message.txt";
+[System embedFile: assetPath];
+EOF
+if BIRNAM_FORCE_SOURCE=1 "$bin" check "$tmp/app" --format=json >"$tmp/compile-check.json"; then
+    echo "expected compile-check failure" >&2
+    exit 1
+fi
+grep -q '"schema":"birnam-check-v1"' "$tmp/compile-check.json"
+grep -q '"kind":"compileFailed"' "$tmp/compile-check.json"
+grep -q "\"path\":\"$tmp/app/src/util.birnam\"" "$tmp/compile-check.json"
+grep -q '"line":3' "$tmp/compile-check.json"
+mv "$tmp/app/src/util.birnam.valid" "$tmp/app/src/util.birnam"
+
 install_lib="$tmp/install/lib"
 mkdir -p "$install_lib"
 cp "$runtime_lib"/*.dylib "$install_lib/"
@@ -115,6 +189,14 @@ for module in leaf dep util foo app; do
     test -f "$install_lib/libbirnam_${module}.dylib"
 done
 test -f "$install_lib/libfoo.dylib"
+test ! -e "$install_lib/artifacts.toml"
+test ! -e "$install_lib/resolution.toml"
+test ! -e "$install_lib/birnam.toml"
+
+# The installed project root is executable without its source tree or build
+# receipts. Its embedded descriptor supplies the identity and complete sibling
+# module/native closure.
+(cd /tmp && BIRNAM_LIB_DIR="$install_lib" "$bin" "$install_lib/libbirnam_app.dylib")
 
 bare_output="$(cd "$tmp/app" && printf ':quit\n' | BIRNAM_FORCE_SOURCE=1 BIRNAM_LIB_DIR="$install_lib" "$bin")"
 printf '%s\n' "$bare_output"
@@ -123,6 +205,36 @@ grep -q '^7$' <<<"$bare_output"
 grep -q 'part-loaded' <<<"$bare_output"
 grep -q 'embedded-from-project-root' <<<"$bare_output"
 grep -q 'interactive image' <<<"$bare_output"
+
+mv "$install_lib/libfoo.dylib" "$install_lib/libfoo.dylib.unavailable"
+# Remove Codegen too: the siphon's ID-only preflight must still report the
+# transitive wrapper requirement, proving it walked the closure before loading
+# the activation stack.
+mv "$install_lib/libbirnam_id_codegen.dylib" "$install_lib/libbirnam_id_codegen.dylib.unavailable"
+(cd /tmp && BIRNAM_LIB_DIR="$install_lib" "$bin" "$install_lib/libbirnam_app.dylib") >"$tmp/missing-native-artifact.out" 2>&1 || true
+if ! grep -q 'nativeRequirementUnavailable' "$tmp/missing-native-artifact.out"; then
+    cat "$tmp/missing-native-artifact.out" >&2
+    echo "project-check-smoke: ID-only preflight missed the native requirement" >&2
+    exit 1
+fi
+mv "$install_lib/libbirnam_id_codegen.dylib.unavailable" "$install_lib/libbirnam_id_codegen.dylib"
+
+# A source-project run selects its validated local publication. Remove that
+# publication's native sibling as well as the installed fallback to prove the
+# same descriptor preflight happens before main.
+mv "$build_root/lib/libfoo.dylib" "$build_root/lib/libfoo.dylib.unavailable"
+(cd "$tmp/app" && printf ':quit\n' | BIRNAM_FORCE_SOURCE=1 BIRNAM_LIB_DIR="$install_lib" "$bin") >"$tmp/missing-native.out" 2>&1 || true
+if ! grep -q 'nativeRequirementUnavailable' "$tmp/missing-native.out"; then
+    cat "$tmp/missing-native.out" >&2
+    echo "project-check-smoke: missing native diagnostic was not preserved" >&2
+    exit 1
+fi
+if grep -q '^project-main$' "$tmp/missing-native.out"; then
+    echo "project-check-smoke: project main ran despite an unavailable native requirement" >&2
+    exit 1
+fi
+mv "$build_root/lib/libfoo.dylib.unavailable" "$build_root/lib/libfoo.dylib"
+mv "$install_lib/libfoo.dylib.unavailable" "$install_lib/libfoo.dylib"
 
 reused_output="$(BIRNAM_FORCE_SOURCE=1 "$bin" build "$tmp/app")"
 printf '%s\n' "$reused_output"
@@ -182,6 +294,8 @@ printf '%s\n' "$tty_output"
 test "$(grep -c 'project-main' <<<"$tty_output")" = 1
 test "$(grep -c 'interactive image' <<<"$tty_output")" = 1
 grep -q "$tmp/app" <<<"$tty_output"
+grep -q 'profile -> debug' <<<"$tty_output"
+grep -q "buildRoot -> $build_root" <<<"$tty_output"
 grep -q 'projectUriInvalid' <<<"$tty_output"
 
 cat >"$tmp/app/birnam.toml" <<'EOF'

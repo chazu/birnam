@@ -5,7 +5,7 @@
 // parsing in birnam, which yields native Map/Vector/String/number/bool/nil directly.
 //
 // Load it into a running image (needs the PEG engine + self-hosted stdlib), then:
-//   [System load: "modules/json.birnam"];
+//   [Module load: #json];
 //   let v := [Json parse: "{\"port\": 8080, \"tags\": [\"a\", true, null]}"];
 //   [v at: "port"]                        "=> 8080"
 //   [[v at: "tags"] at: 0]                "=> a"

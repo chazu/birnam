@@ -8,6 +8,7 @@
 const std = @import("std");
 const image = @import("image.zig");
 const id = @import("id.zig");
+const artifact_inspector = @import("artifact_inspector.zig");
 const store = @import("store.zig");
 const collection = @import("collection.zig");
 const prelude = @import("prelude.zig");
@@ -101,6 +102,7 @@ var gapi: *idapi.IdApi = undefined;
 fn setup() *idapi.IdApi {
     const api = id.id_init();
     gapi = api;
+    artifact_inspector.bringUp(api);
     prelude.bringUp(api); // exports SystemVt (image extends it)
     store.bringUp(api); // seeds the schema; exports Store + Globals
     collection.bringUp(api); // Vector + Map factories
@@ -256,6 +258,7 @@ test "append images are not part of the format surface" {
 fn setupWithCodegen() *idapi.IdApi {
     const api = id.id_init();
     gapi = api;
+    artifact_inspector.bringUp(api);
     store.bringUp(api);
     peg.bringUp(api);
     lang.bringUp(api);
@@ -594,7 +597,7 @@ test "modules: [Module load:] loads a compiled unit dylib and its deps at runtim
     _ = api.send(Module, api.intern("libDir:"), &.{api.mkString(dir.ptr, dir.len)}, 1); // search tmp
 
     // A dependency module + a dependent that uses its method. Compiled to
-    // libbirnam_<name>.dylib in tmp; each carries a `__birnam_module_meta` symbol.
+    // libbirnam_<name>.dylib in tmp; each carries an inert artifact descriptor.
     const co = api.intern("compile:output:");
     const depPath = try std.fs.path.join(a, &.{ dir, "libbirnam_tdep.dylib" });
     defer a.free(depPath);
@@ -620,6 +623,47 @@ test "modules: [Module load:] loads a compiled unit dylib and its deps at runtim
     try std.testing.expect(api.send(miss, api.intern("isError"), &.{}, 0) == api.trueObj);
     try std.testing.expect(api.send(miss, api.intern("kind"), &.{}, 0) == api.intern("loadFailed"));
     try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("tnope")}, 1) == api.falseObj);
+}
+
+test "modules: an invalid sibling rejects the complete closure before activation" {
+    const api = setupWithCodegen();
+    err_mod.bringUp(api);
+    relational.bringUp(api);
+    const Codegen = api.import("Codegen").?;
+    const digest = api.send(Codegen, api.intern("currentGenerationDigest"), &.{}, 0);
+    if (api.send(digest, api.intern("isError"), &.{}, 0) != api.trueObj) return error.SkipZigTest;
+    _ = api.send(Codegen, api.intern("eval:"), &.{api.mkString(MODULES_SRC.ptr, MODULES_SRC.len)}, 1);
+    const Globals = api.import("Globals").?;
+    const Module = api.send(Globals, api.intern("at:"), &.{api.intern("Module")}, 1);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    _ = api.send(Module, api.intern("libDir:"), &.{api.mkString(dir.ptr, dir.len)}, 1);
+
+    const good_path = try std.fs.path.join(a, &.{ dir, "libbirnam_planGood.dylib" });
+    defer a.free(good_path);
+    const bad_path = try std.fs.path.join(a, &.{ dir, "libbirnam_planBad.dylib" });
+    defer a.free(bad_path);
+    const root_path = try std.fs.path.join(a, &.{ dir, "libbirnam_planRoot.dylib" });
+    defer a.free(root_path);
+    const good_source = "[Module named: #planGood requires: #[]]";
+    // The filename promises #planBad while the descriptor says #wrongIdentity.
+    const bad_source = "[Module named: #wrongIdentity requires: #[]]";
+    const root_source = "[Module named: #planRoot requires: #[#planGood #planBad]]";
+    const compile = api.intern("compile:output:");
+    try std.testing.expect(api.send(Codegen, compile, &.{ api.mkString(good_source.ptr, good_source.len), api.mkString(good_path.ptr, good_path.len) }, 2) != api.nilObj);
+    try std.testing.expect(api.send(Codegen, compile, &.{ api.mkString(bad_source.ptr, bad_source.len), api.mkString(bad_path.ptr, bad_path.len) }, 2) != api.nilObj);
+    try std.testing.expect(api.send(Codegen, compile, &.{ api.mkString(root_source.ptr, root_source.len), api.mkString(root_path.ptr, root_path.len) }, 2) != api.nilObj);
+
+    const result = api.send(Module, api.intern("load:"), &.{api.intern("planRoot")}, 1);
+    try std.testing.expect(api.send(result, api.intern("isError"), &.{}, 0) == api.trueObj);
+    try std.testing.expect(api.send(result, api.intern("kind"), &.{}, 0) == api.intern("artifactIdentityMismatch"));
+    try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("planGood")}, 1) == api.falseObj);
+    try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("planBad")}, 1) == api.falseObj);
+    try std.testing.expect(api.send(Module, api.intern("isLoaded:"), &.{api.intern("planRoot")}, 1) == api.falseObj);
 }
 
 test "round-trip: a block-valued global is re-derived from its recorded source" {

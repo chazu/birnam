@@ -1,9 +1,29 @@
-// termbox2 — native terminal cell grid + keyboard event module.
+// termbox2 — terminal cell grid + keyboard events, wrapped through Alien.
 //
-// The wrapped dylib binds the public Termbox selectors directly through IdApi;
-// keeping this loader in Birnam preserves the ordinary project-module boundary
-// without paying for runtime Alien trampoline compilation during UI startup.
+// Build libtermbox2.dylib beside this file first. The caller selects that
+// directory with `Alien libraryDir:` before filing in this wrapper.
 
-let path := [[Module libDir] , "/libtermbox2.dylib"];
-let loaded := [System loadModule: path];
-[[loaded isError] ifTrue: [| loaded] ifFalse: [| Termbox]]
+[Alien dlopen: "libtermbox2.dylib"];
+
+// Give the wrapper one named singleton with a private copy-on-write vtable.
+// Keeping the interface in Birnam makes the same adapter usable by ordinary
+// scripts and projects; no application-specific IdApi initializer is required.
+let Termbox := [Object clone];
+
+[Alien wrap: "lg_init"        signature: "i" as: #init       on: Termbox];
+[Alien wrap: "lg_shutdown"    signature: "i" as: #shutdown   on: Termbox];
+[Alien wrap: "lg_width"       signature: "i" as: #width      on: Termbox];
+[Alien wrap: "lg_height"      signature: "i" as: #height     on: Termbox];
+[Alien wrap: "lg_clear"       signature: "i" as: #clear      on: Termbox];
+[Alien wrap: "lg_present"     signature: "i" as: #present    on: Termbox];
+[Alien wrap: "lg_hide_cursor" signature: "i" as: #hideCursor on: Termbox];
+
+[Alien wrap: "lg_set_cell" signature: "i p i i i i i"
+  as: #setX:y:ch:fg:bg: on: Termbox];
+[Alien wrap: "lg_print" signature: "i p i i i i s"
+  as: #printX:y:fg:bg:str: on: Termbox];
+
+[Alien wrap: "lg_poll"    signature: "i" as: #poll   on: Termbox];
+[Alien wrap: "lg_ev_type" signature: "i" as: #evType on: Termbox];
+[Alien wrap: "lg_ev_key"  signature: "i" as: #evKey  on: Termbox];
+[Alien wrap: "lg_ev_ch"   signature: "i" as: #evCh   on: Termbox]
