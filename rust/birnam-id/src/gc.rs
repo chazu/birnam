@@ -23,25 +23,43 @@ unsafe extern "C" {
     fn _setjmp(buffer: *mut usize) -> core::ffi::c_int;
 }
 
-/// Flush callee-saved registers and conservatively mark the downward-growing
-/// native stack up to the host-provided outer anchor. Returns false rather than
-/// scanning when the anchor is absent, reversed, or implausibly distant.
+/// Flush callee-saved registers in a shallow outer frame, validate the
+/// downward-growing native stack interval, and run collection below that frame.
+/// Keeping the collector's own frames below `start` prevents stale mark and
+/// sweep locals from becoming roots on the next collection.
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-pub(crate) fn mark_native_roots(heap: &mut Heap, marker: &mut Marker, stack_bottom: usize) -> bool {
+pub(crate) fn with_native_root_range<T>(
+    stack_bottom: usize,
+    operation: impl FnOnce(usize) -> T,
+) -> Option<T> {
     if stack_bottom == 0 {
-        return false;
+        return None;
     }
     let mut registers = RegisterSave([0; 24]);
     // SAFETY: RegisterSave provides more storage and at least the alignment
     // required by Darwin arm64's _setjmp implementation.
     unsafe { _setjmp(registers.0.as_mut_ptr()) };
     let start = core::ptr::addr_of!(registers).addr();
-    let Some(distance) = stack_bottom.checked_sub(start) else {
-        return false;
-    };
+    let distance = stack_bottom.checked_sub(start)?;
     if distance > MAX_STACK_SCAN_BYTES {
-        return false;
+        return None;
     }
+    Some(operation(start))
+}
+
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+pub(crate) fn with_native_root_range<T>(_: usize, _: impl FnOnce(usize) -> T) -> Option<T> {
+    None
+}
+
+/// Conservatively mark one validated native root interval. This runs in an
+/// inner collector frame below `start`, so its own locals are excluded.
+pub(crate) fn mark_native_root_range(
+    heap: &mut Heap,
+    marker: &mut Marker,
+    start: usize,
+    stack_bottom: usize,
+) {
     let mut address = start.next_multiple_of(size_of::<usize>());
     while address
         .checked_add(size_of::<usize>())
@@ -54,12 +72,6 @@ pub(crate) fn mark_native_roots(heap: &mut Heap, marker: &mut Marker, stack_bott
         marker.mark_address(heap, candidate);
         address += size_of::<usize>();
     }
-    true
-}
-
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-pub(crate) fn mark_native_roots(_: &mut Heap, _: &mut Marker, _: usize) -> bool {
-    false
 }
 
 /// One non-reentrant mark phase. Candidate membership is exact: only the
@@ -225,11 +237,6 @@ impl MetadataShell {
         self.root_providers.clone()
     }
 
-    /// R3 retains all metadata but deliberately performs no mark or sweep.
-    pub(crate) fn collect_disabled(&self) -> usize {
-        0
-    }
-
     pub(crate) fn stack_bottom(&self) -> usize {
         self.stack_bottom
     }
@@ -258,7 +265,7 @@ mod tests {
     unsafe extern "C" fn provider(_: MarkFn) {}
 
     #[test]
-    fn shell_retains_settings_and_maximum_provider_mix_without_collecting() {
+    fn shell_retains_settings_and_maximum_provider_mix() {
         let mut metadata = MetadataShell::new();
         metadata.set_stack_bottom(0x1234_5678);
         metadata.set_auto_requested(true);
@@ -270,7 +277,6 @@ mod tests {
         assert!(metadata.auto_requested());
         assert!(metadata.precise());
         assert_eq!(metadata.root_provider_count(), MAX_ROOT_PROVIDERS);
-        assert_eq!(metadata.collect_disabled(), 0);
     }
 
     fn write_word(object: crate::abi::Oop, index: usize, value: usize) {

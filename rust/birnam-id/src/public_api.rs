@@ -176,7 +176,7 @@ unsafe extern "C" fn api_gc_register_root_provider(provider: RootProvider) {
 }
 
 unsafe extern "C" fn api_gc_collect() -> usize {
-    runtime().gc_collect_disabled()
+    runtime().gc_collect()
 }
 
 unsafe extern "C" fn api_gc_live_count() -> usize {

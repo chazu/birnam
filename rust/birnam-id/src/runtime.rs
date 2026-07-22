@@ -7,7 +7,10 @@ use crate::abi::SLOT_OOP;
 use crate::abi::{Method, MethodOverwriteHook, Oop};
 use crate::boundary;
 use crate::env::Environment;
-use crate::gc::{Marker, MetadataShell, invoke_with_mark_callback, mark_native_roots};
+use crate::gc::{
+    Marker, MetadataShell, invoke_with_mark_callback, mark_native_root_range,
+    with_native_root_range,
+};
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
 use crate::symbol::{EmbeddedNul, Symbols};
@@ -63,7 +66,25 @@ struct RuntimeState {
 /// One runtime owned by the thread that constructed it.
 pub(crate) struct Runtime {
     owner: std::thread::ThreadId,
+    collection_phase: Cell<CollectionPhase>,
     state: UnsafeCell<RuntimeState>,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum CollectionPhase {
+    Idle,
+    Marking,
+    Finalizing,
+}
+
+struct CollectionGuard<'a> {
+    phase: &'a Cell<CollectionPhase>,
+}
+
+impl Drop for CollectionGuard<'_> {
+    fn drop(&mut self) {
+        self.phase.set(CollectionPhase::Idle);
+    }
 }
 
 impl Runtime {
@@ -85,6 +106,7 @@ impl Runtime {
     ) -> Self {
         Self {
             owner: std::thread::current().id(),
+            collection_phase: Cell::new(CollectionPhase::Idle),
             state: UnsafeCell::new(RuntimeState {
                 symbols,
                 values,
@@ -104,6 +126,13 @@ impl Runtime {
         boundary::require_invariant(
             std::thread::current().id() == self.owner,
             "Rust floor entered from a non-owner thread",
+        );
+    }
+
+    fn require_allocation_allowed(&self) {
+        boundary::require_invariant(
+            self.collection_phase.get() == CollectionPhase::Idle,
+            "id allocation attempted during collection",
         );
     }
 
@@ -176,6 +205,7 @@ impl Runtime {
 
     pub(crate) fn create_vtable(&self, parent: Oop) -> Oop {
         self.assert_owner();
+        self.require_allocation_allowed();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state
@@ -197,6 +227,7 @@ impl Runtime {
 
     pub(crate) fn allocate_instance(&self, vtable: Oop, payload_size: usize) -> Oop {
         self.assert_owner();
+        self.require_allocation_allowed();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         let object = state.heap.allocate(payload_size, Permanence::Collectable);
@@ -212,6 +243,7 @@ impl Runtime {
             return object;
         }
         self.assert_owner();
+        self.require_allocation_allowed();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         unsafe { (&mut *self.state.get()).heap.clone_collectable(object) }
             .unwrap_or_else(|| boundary::fatal_invariant("clone receiver is not a floor object"))
@@ -219,6 +251,7 @@ impl Runtime {
 
     pub(crate) fn ensure_private_vtable(&self, object: Oop) -> Oop {
         self.assert_owner();
+        self.require_allocation_allowed();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         let current = Vtables::checked_vtable_of(&state.heap, object);
@@ -245,6 +278,7 @@ impl Runtime {
 
     pub(crate) fn allocate_empty(&self, vtable: Oop, permanence: Permanence) -> Oop {
         self.assert_owner();
+        self.require_allocation_allowed();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state
@@ -254,6 +288,7 @@ impl Runtime {
 
     pub(crate) fn allocate_integer(&self, vtable: Oop, value: i64) -> Oop {
         self.assert_owner();
+        self.require_allocation_allowed();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state
@@ -263,6 +298,7 @@ impl Runtime {
 
     pub(crate) fn allocate_float(&self, vtable: Oop, value: f64) -> Oop {
         self.assert_owner();
+        self.require_allocation_allowed();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state.values.allocate_float(&mut state.heap, vtable, value)
@@ -270,6 +306,7 @@ impl Runtime {
 
     pub(crate) fn allocate_word(&self, vtable: Oop, value: u64) -> Oop {
         self.assert_owner();
+        self.require_allocation_allowed();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state.values.allocate_word(&mut state.heap, vtable, value)
@@ -277,6 +314,7 @@ impl Runtime {
 
     pub(crate) fn allocate_string(&self, vtable: Oop, bytes: &[u8]) -> Oop {
         self.assert_owner();
+        self.require_allocation_allowed();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state.values.allocate_string(&mut state.heap, vtable, bytes)
@@ -287,6 +325,7 @@ impl Runtime {
             return object;
         }
         self.assert_owner();
+        self.require_allocation_allowed();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         let bytes = state
@@ -539,38 +578,66 @@ impl Runtime {
         };
     }
 
-    pub(crate) fn gc_collect_disabled(&self) -> usize {
+    pub(crate) fn gc_collect(&self) -> usize {
         self.assert_owner();
-        // R4.1 activates heap marking but not foreign roots, stack scanning, or
-        // sweeping. Exercise the permanent floor roots, then clear the private
-        // marks so the still-disabled public operation remains observationally
-        // inert and returns the R3-compatible zero result.
-        // SAFETY: owner-thread serialization and copied metadata only.
+        if self.collection_phase.get() != CollectionPhase::Idle {
+            return 0;
+        }
+        // SAFETY: owner-thread serialization and a copied stack anchor.
         let stack_bottom = unsafe { (*self.state.get()).metadata.stack_bottom() };
         if stack_bottom == 0 {
-            // SAFETY: owner-thread serialization and no callback.
-            return unsafe { (*self.state.get()).metadata.collect_disabled() };
+            return 0;
         }
+        with_native_root_range(stack_bottom, |root_start| {
+            self.gc_collect_from_native_range(root_start, stack_bottom)
+        })
+        .unwrap_or(0)
+    }
+
+    fn gc_collect_from_native_range(&self, root_start: usize, stack_bottom: usize) -> usize {
+        self.collection_phase.set(CollectionPhase::Marking);
+        let collection_guard = CollectionGuard {
+            phase: &self.collection_phase,
+        };
         let mut marker = Marker::new();
         // End this state borrow before run_mark_phase can invoke foreign code.
         // SAFETY: owner-thread serialization and no callback in this scope.
-        let native_roots_ready = unsafe {
+        unsafe {
             let state = &mut *self.state.get();
             state.heap.clear_marks();
-            mark_native_roots(&mut state.heap, &mut marker, stack_bottom)
-        };
-        if !native_roots_ready {
-            // SAFETY: owner-thread serialization and no callback.
-            let state = unsafe { &mut *self.state.get() };
-            state.heap.clear_marks();
-            return state.metadata.collect_disabled();
+            mark_native_root_range(&mut state.heap, &mut marker, root_start, stack_bottom);
         }
         self.run_mark_phase(marker);
-        // SAFETY: all callbacks have returned and owner-thread serialization is
-        // restored before marks are cleared.
-        let state = unsafe { &mut *self.state.get() };
-        state.heap.clear_marks();
-        state.metadata.collect_disabled()
+        // Snapshot before mutation, then detach each allocation so no registry
+        // or RuntimeState borrow overlaps its foreign finalizer.
+        // SAFETY: mark callbacks have returned and owner-thread serialization is
+        // restored for the copied address list.
+        let dead = unsafe { (*self.state.get()).heap.dead_collectable_addresses() };
+        self.collection_phase.set(CollectionPhase::Finalizing);
+        let mut reclaimed = 0;
+        for address in dead {
+            // SAFETY: no callback occurs while the short heap borrow is live.
+            let detached = unsafe {
+                (&mut *self.state.get())
+                    .heap
+                    .detach_dead_collectable(address)
+            }
+            .unwrap_or_else(|| boundary::fatal_invariant("dead GC block could not be detached"));
+            let object = detached.object();
+            if let Some(finalizer) = detached.finalizer() {
+                // The detached payload remains live, but no Rust state borrow
+                // crosses the call. Allocation is dynamically forbidden until
+                // the complete sweep has finished.
+                unsafe { finalizer(object) };
+            }
+            detached.reclaim();
+            reclaimed += 1;
+        }
+        // SAFETY: all finalizers returned and the owner thread again has sole
+        // access to the registry.
+        unsafe { (&mut *self.state.get()).heap.clear_marks() };
+        drop(collection_guard);
+        reclaimed
     }
 
     pub(crate) fn gc_live_count(&self) -> usize {
