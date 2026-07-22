@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, R3.0 through R3.7, and R4.1 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.2 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1570,6 +1570,31 @@ pass while R4.2 through R4.5 add the remaining authority in order.
   instances with trace hooks.
 
 **Gate:** foreign provider and hook tests survive forced manual collection.
+
+#### R4.2 execution record — 2026-07-22
+
+The retained 32-entry provider registry now snapshots its function pointers
+before invocation. Each provider receives a dynamically scoped C mark function;
+no `RuntimeState`, heap, marker, registry, or vtable reference remains live
+across the foreign call. The same boundary invokes a copied trace hook only
+after the reachable instance's conservative payload has been scanned. Marks
+added by either callback rejoin the one worklist and are drained transitively.
+
+The mark function is installed in owner-thread TLS with raw pointers to the live
+heap and marker for exactly one synchronous callback. Its guard is cleared even
+when the callback unwinds through Rust. Calling a retained function after the
+provider returns is a contract violation and terminates with `GC mark callback
+escaped its invocation`; attempting nested collector callback authority also
+terminates. This makes the temporal lifetime executable rather than relying on
+an undocumented Rust borrow assumption.
+
+Rust graph tests prove a provider-rooted object fires its trace hook, that the
+hook's external child becomes reachable, and that an unreachable instance of
+the same vtable does not fire. The external Zig fixture repeats this in debug
+and release, reenters read-only `IdApi` queries from both callbacks, exercises
+the maximum provider count, and verifies the escaped-callback abort in a child
+process. Finalizers and sweeping remain inactive. Strict Rust checks, optimized
+tests, and the complete combined `zig build test` gate pass.
 
 ### R4.3 — Precise heap layouts
 
