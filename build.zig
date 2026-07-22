@@ -285,6 +285,28 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_conformance.step);
     test_step.dependOn(&null_args_check.step);
 
+    // Selected-floor native address-registry comparator. The executable refuses
+    // non-ReleaseSafe builds; later Rust parity uses the same binary with an
+    // isolated dylib path and expected diagnostic identity.
+    const membership_bench_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/membership_bench.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const membership_bench = b.addExecutable(.{
+        .name = "id-membership-bench",
+        .root_module = membership_bench_mod,
+    });
+    membership_bench.linkLibC();
+    const run_membership_bench = b.addRunArtifact(membership_bench);
+    run_membership_bench.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_membership_bench.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_membership_bench.step.dependOn(bootstrap_install);
+    b.step(
+        "bench-id-membership",
+        "Benchmark selected-floor exact-address predicates (ReleaseSafe only)",
+    ).dependOn(&run_membership_bench.step);
+
     // -- Self-hosted and console integration gates ---------------------------
     // Keep these ordered after stage1: a stale compiled stdlib can mask source
     // changes, while both suites must exercise the exact installed artifact a
