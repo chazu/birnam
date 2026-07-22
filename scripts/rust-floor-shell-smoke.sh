@@ -16,6 +16,10 @@ probe_rust_profile() {
   CARGO_TARGET_DIR="$target_dir" cargo "${cargo_args[@]}"
   test -f "$dylib"
   zig run "$repo/scripts/rust-floor-shell-probe.zig" -- "$dylib"
+  if nm -gU "$dylib" | grep -q ' _birnam_id_test_'; then
+    echo "rust-floor-shell: test hook leaked into ordinary $profile artifact" >&2
+    exit 1
+  fi
 }
 
 probe_rust_profile debug

@@ -106,6 +106,17 @@ pub fn build(b: *std.Build) void {
     test_id_abi_step.dependOn(&run_rust_id_abi_tests.step);
     test_step.dependOn(&run_rust_id_abi_tests.step);
 
+    const rust_ffi_abort_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-ffi-abort-smoke.sh",
+    });
+    const test_rust_ffi_abort_step = b.step(
+        "test-rust-ffi-abort",
+        "Prove Rust panics and fatal invariants abort at the C ABI boundary",
+    );
+    test_rust_ffi_abort_step.dependOn(&rust_ffi_abort_smoke.step);
+    test_step.dependOn(&rust_ffi_abort_smoke.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a
