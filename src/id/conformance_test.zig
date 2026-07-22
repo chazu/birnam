@@ -28,6 +28,13 @@ fn captureDnu(self: Oop, args: [*]const Oop, count: usize) callconv(.c) Oop {
     return self;
 }
 
+var null_zero_seen = false;
+
+fn captureNullZero(self: Oop, args: ?[*]const Oop, count: usize) callconv(.c) Oop {
+    null_zero_seen = args == null and count == 0;
+    return self;
+}
+
 test "conformance harness selects one identified floor and initializes it once" {
     const first = floor.api();
     const second = floor.api();
@@ -97,6 +104,22 @@ test "DNU is overridable and forwards exactly sixteen original arguments" {
     try std.testing.expect(dnu_selector == missing);
     try std.testing.expectEqual(@as(usize, 16), dnu_count);
     for (dnu_args, 0..) |arg, i| try std.testing.expect(arg == original[i]);
+}
+
+test "a null zero-argument buffer reaches the resolved Method unchanged" {
+    const api = floor.api();
+    const NullableMethod = *const fn (Oop, ?[*]const Oop, usize) callconv(.c) Oop;
+    const NullableSend = *const fn (Oop, Oop, ?[*]const Oop, usize) callconv(.c) Oop;
+    const vtable = api.proto(api.object_vt);
+    const selector = api.intern("conformanceNullZeroArgs");
+    const nullable_method: NullableMethod = &captureNullZero;
+    api.method(vtable, selector, @ptrCast(nullable_method));
+    const object = api.alloc(vtable, 0);
+    const send: NullableSend = @ptrCast(api.send);
+
+    null_zero_seen = false;
+    try std.testing.expect(send(object, selector, null, 0) == object);
+    try std.testing.expect(null_zero_seen);
 }
 
 test "Integer preserves the full signed width" {

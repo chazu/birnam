@@ -761,8 +761,20 @@ fn exportC(key: [*:0]const u8, value: Oop) callconv(.c) Oop {
 fn isExportedC(key: [*:0]const u8) callconv(.c) c_int {
     return if (importObj(std.mem.span(key)) != null) 1 else 0;
 }
-fn sendC(rcv: Oop, sel: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
-    return send(rcv, @ptrCast(@alignCast(sel)), args[0..n]);
+fn sendC(rcv: Oop, sel: Oop, args: ?[*]const Oop, n: usize) callconv(.c) Oop {
+    const selector: *Symbol = @ptrCast(@alignCast(sel));
+    if (args) |present| return send(rcv, selector, present[0..n]);
+    if (n != 0) @panic("libid: IdApi.send args is null with nonzero count");
+
+    // Preserve the C contract all the way to a resolved primitive: a null
+    // zero-length input remains `(null, 0)` at the Method boundary. Reinterpret
+    // only nullability; both function types have the same C ABI.
+    if (bind(rcv, selector)) |method_| {
+        const NullableMethod = *const fn (Oop, ?[*]const Oop, usize) callconv(.c) Oop;
+        const nullable_method: NullableMethod = @ptrCast(method_);
+        return nullable_method(rcv, null, 0);
+    }
+    return send(rcv, selector, &.{});
 }
 fn mkSmallIntC(v: i64) callconv(.c) Oop {
     return mkSmallInt(v);
@@ -1030,7 +1042,7 @@ pub export fn id_init() callconv(.c) *idapi.IdApi {
         .import = &importC,
         .exportObj = &exportC,
         .isExported = &isExportedC,
-        .send = &sendC,
+        .send = @ptrCast(&sendC),
         .smallint_vt = oop(smallint_vt),
         .nilObj = nil_obj,
         .trueObj = true_obj,
