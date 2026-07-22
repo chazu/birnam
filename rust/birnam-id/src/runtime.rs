@@ -8,6 +8,7 @@ use crate::boundary;
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
 use crate::symbol::{EmbeddedNul, Symbols};
+use crate::values::Values;
 use crate::vtable::{AddMethod, Vtables};
 
 #[derive(Clone, Copy)]
@@ -19,13 +20,37 @@ pub(crate) struct DispatchGlobals {
     pub(crate) does_not_understand: Oop,
 }
 
+/// Identities fixed by the one-way bootstrap transition.
+#[derive(Clone, Copy)]
+pub(crate) struct CanonicalObjects {
+    pub(crate) symbol_list: Oop,
+    pub(crate) environment: Oop,
+    pub(crate) smallint_vt: Oop,
+    pub(crate) string_vt: Oop,
+    pub(crate) float_vt: Oop,
+    pub(crate) word_vt: Oop,
+    pub(crate) nil_vt: Oop,
+    pub(crate) bool_vt: Oop,
+    pub(crate) nil: Oop,
+    pub(crate) true_object: Oop,
+    pub(crate) false_object: Oop,
+    pub(crate) object_prototype: Oop,
+    pub(crate) integer_prototype: Oop,
+    pub(crate) float_prototype: Oop,
+    pub(crate) word_prototype: Oop,
+    pub(crate) string_prototype: Oop,
+    pub(crate) symbol_prototype: Oop,
+}
+
 struct RuntimeState {
     // Ordered authorities are dropped before the raw heap owner at harness
     // teardown. No destructor dereferences a heap payload.
     symbols: Symbols,
+    values: Values,
     vtables: Vtables,
     heap: Heap,
     globals: DispatchGlobals,
+    canonical: Option<CanonicalObjects>,
 }
 
 /// One runtime owned by the thread that constructed it.
@@ -41,13 +66,25 @@ impl Runtime {
         symbols: Symbols,
         globals: DispatchGlobals,
     ) -> Self {
+        Self::new_with_values(heap, vtables, symbols, Values::new(), globals)
+    }
+
+    pub(crate) fn new_with_values(
+        heap: Heap,
+        vtables: Vtables,
+        symbols: Symbols,
+        values: Values,
+        globals: DispatchGlobals,
+    ) -> Self {
         Self {
             owner: std::thread::current().id(),
             state: UnsafeCell::new(RuntimeState {
                 symbols,
+                values,
                 vtables,
                 heap,
                 globals,
+                canonical: None,
             }),
         }
     }
@@ -82,6 +119,31 @@ impl Runtime {
         }
     }
 
+    pub(crate) fn remove_method(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe {
+            (&mut *self.state.get())
+                .vtables
+                .remove_method(vtable, selector)
+        }
+    }
+
+    pub(crate) fn create_vtable(&self, parent: Oop) -> Oop {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        state
+            .vtables
+            .create(&mut state.heap, parent, state.globals.vtable_vt)
+    }
+
+    pub(crate) fn set_vtable_owner(&self, vtable: Oop, owner: Oop) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe { (&mut *self.state.get()).vtables.set_owner(vtable, owner) };
+    }
+
     pub(crate) fn allocate_instance(&self, vtable: Oop, payload_size: usize) -> Oop {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
@@ -92,6 +154,60 @@ impl Runtime {
             "new instance block was not registered",
         );
         object
+    }
+
+    pub(crate) fn allocate_empty(&self, vtable: Oop, permanence: Permanence) -> Oop {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        state
+            .values
+            .allocate_empty(&mut state.heap, vtable, permanence)
+    }
+
+    pub(crate) fn allocate_integer(&self, vtable: Oop, value: i64) -> Oop {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        state
+            .values
+            .allocate_integer(&mut state.heap, vtable, value)
+    }
+
+    pub(crate) fn allocate_float(&self, vtable: Oop, value: f64) -> Oop {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        state.values.allocate_float(&mut state.heap, vtable, value)
+    }
+
+    pub(crate) fn allocate_word(&self, vtable: Oop, value: u64) -> Oop {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        state.values.allocate_word(&mut state.heap, vtable, value)
+    }
+
+    pub(crate) fn allocate_string(&self, vtable: Oop, bytes: &[u8]) -> Oop {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        state.values.allocate_string(&mut state.heap, vtable, bytes)
+    }
+
+    pub(crate) fn install_canonical(&self, canonical: CanonicalObjects) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let slot = unsafe { &mut (*self.state.get()).canonical };
+        boundary::require_invariant(slot.is_none(), "canonical objects installed twice");
+        *slot = Some(canonical);
+    }
+
+    pub(crate) fn canonical(&self) -> CanonicalObjects {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization; the identity set is copied out.
+        unsafe { (*self.state.get()).canonical }
+            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"))
     }
 
     pub(crate) fn intern(&self, bytes: &[u8]) -> Result<Oop, EmbeddedNul> {
@@ -131,6 +247,92 @@ impl Runtime {
     pub(crate) fn symbol_count(&self) -> usize {
         // SAFETY: test calls remain owner-thread and copy only the count.
         unsafe { (*self.state.get()).symbols.count() }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn symbol_at(&self, index: usize) -> Oop {
+        // SAFETY: test calls remain owner-thread and copy only an identity.
+        unsafe { (*self.state.get()).symbols.at(index) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn symbol_bytes(&self, symbol: Oop) -> Option<&[u8]> {
+        // SAFETY: test calls remain owner-thread; returned bytes are inspected
+        // synchronously without mutation or foreign calls.
+        unsafe { (*self.state.get()).symbols.bytes_of(symbol) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn vtable_count(&self) -> usize {
+        // SAFETY: test calls remain owner-thread and copy only the count.
+        unsafe { (*self.state.get()).vtables.count() }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn vtable_at(&self, index: usize) -> Oop {
+        // SAFETY: test calls remain owner-thread and copy only an identity.
+        unsafe { (*self.state.get()).vtables.at(index) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn vtable_parent(&self, vtable: Oop) -> Oop {
+        // SAFETY: test calls remain owner-thread and copy only an identity.
+        unsafe { (*self.state.get()).vtables.parent_of(vtable) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn vtable_owner(&self, vtable: Oop) -> Oop {
+        // SAFETY: test calls remain owner-thread and copy only an identity.
+        unsafe { (*self.state.get()).vtables.owner_of(vtable) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn vtable_selector_at(&self, vtable: Oop, index: usize) -> Oop {
+        // SAFETY: test calls remain owner-thread and copy only an identity.
+        unsafe { (*self.state.get()).vtables.selector_at(vtable, index) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn checked_vtable_of(&self, object: Oop) -> Oop {
+        // SAFETY: test calls remain owner-thread; checked lookup copies header.
+        unsafe { Vtables::checked_vtable_of(&(*self.state.get()).heap, object) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn payload_size(&self, object: Oop) -> Option<usize> {
+        // SAFETY: test calls remain owner-thread and copy only the size.
+        unsafe { (*self.state.get()).heap.payload_size(object) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn permanence_of(&self, object: Oop) -> Option<Permanence> {
+        // SAFETY: test calls remain owner-thread and copy only the class.
+        unsafe { (*self.state.get()).heap.permanence_of(object) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn integer_value(&self, object: Oop) -> i64 {
+        // SAFETY: test supplies the canonical Integer prototype.
+        unsafe { (*self.state.get()).values.integer_value(object) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn float_value(&self, object: Oop) -> f64 {
+        // SAFETY: test supplies the canonical Float prototype.
+        unsafe { (*self.state.get()).values.float_value(object) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn word_value(&self, object: Oop) -> u64 {
+        // SAFETY: test supplies the canonical Word prototype.
+        unsafe { (*self.state.get()).values.word_value(object) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn string_bytes(&self, object: Oop) -> Option<&[u8]> {
+        // SAFETY: test supplies the canonical String prototype and performs no
+        // mutation or foreign call while inspecting the owned bytes.
+        unsafe { (*self.state.get()).values.string_bytes(object) }
     }
 }
 

@@ -3,10 +3,11 @@
 
 use crate::abi::Oop;
 use crate::boundary;
-use crate::heap::Heap;
+use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
-use crate::runtime::{DispatchGlobals, Runtime, with_active};
+use crate::runtime::{CanonicalObjects, DispatchGlobals, Runtime, with_active};
 use crate::symbol::Symbols;
+use crate::values::Values;
 use crate::vtable::Vtables;
 
 const MAX_DNU_ARGS: usize = 16;
@@ -100,6 +101,220 @@ unsafe extern "C" fn vtable_lookup_method(receiver: Oop, args: *const Oop, count
             .map(MethodAddress::as_oop)
             .unwrap_or(core::ptr::null_mut())
     })
+}
+
+unsafe extern "C" fn vtable_add_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    if count < 2 || args.is_null() {
+        boundary::fatal_invariant("vtable addMethod requires selector and method");
+    }
+    // SAFETY: the Method ABI promises at least count entries and count >= 2.
+    let selector = unsafe { args.read() };
+    // SAFETY: the second entry is within the same live argument buffer.
+    let encoded_method = unsafe { args.add(1).read() };
+    // SAFETY: bootstrap and later IdApi.method callers encode a Method address.
+    let method = unsafe { MethodAddress::from_oop(encoded_method) }
+        .unwrap_or_else(|| boundary::fatal_invariant("vtable addMethod received null method"))
+        .to_method();
+    with_active(|runtime| {
+        let _ = runtime.add_method(receiver, selector, method);
+    });
+    encoded_method
+}
+
+unsafe extern "C" fn vtable_remove_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    if count == 0 || args.is_null() {
+        boundary::fatal_invariant("vtable removeMethod: requires one selector");
+    }
+    // SAFETY: the Method ABI promises at least count entries and count > 0.
+    let selector = unsafe { args.read() };
+    with_active(|runtime| {
+        runtime
+            .remove_method(receiver, selector)
+            .map(MethodAddress::as_oop)
+            .unwrap_or(core::ptr::null_mut())
+    })
+}
+
+unsafe extern "C" fn vtable_allocate(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    if count == 0 || args.is_null() {
+        boundary::fatal_invariant("vtable allocate requires pointer-encoded size");
+    }
+    // SAFETY: the Method ABI promises at least count entries and count > 0.
+    let payload_size = unsafe { args.read() }.addr();
+    with_active(|runtime| runtime.allocate_instance(receiver, payload_size))
+}
+
+unsafe extern "C" fn vtable_delegated(receiver: Oop, _: *const Oop, _: usize) -> Oop {
+    with_active(|runtime| runtime.create_vtable(receiver))
+}
+
+unsafe extern "C" fn object_does_not_understand(_: Oop, _: *const Oop, _: usize) -> Oop {
+    boundary::fatal_invariant("doesNotUnderstand:")
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct BootstrapSelectors {
+    pub(crate) lookup: Oop,
+    pub(crate) add_method: Oop,
+    pub(crate) remove_method: Oop,
+    pub(crate) allocate: Oop,
+    pub(crate) delegated: Oop,
+    pub(crate) does_not_understand: Oop,
+}
+
+pub(crate) struct Bootstrap {
+    pub(crate) runtime: Runtime,
+    pub(crate) selectors: BootstrapSelectors,
+}
+
+fn static_selector(symbols: &mut Symbols, heap: &mut Heap, symbol_vtable: Oop, name: &[u8]) -> Oop {
+    symbols
+        .intern(heap, symbol_vtable, name)
+        .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"))
+}
+
+/// Build the complete R2 identity graph without publishing an `IdApi` table.
+pub(crate) fn build_bootstrap() -> Bootstrap {
+    let mut heap = Heap::new();
+    let mut vtables = Vtables::new();
+
+    let vtable_vt = vtables.create(&mut heap, core::ptr::null_mut(), core::ptr::null_mut());
+    boundary::require_invariant(
+        heap.set_vtable(vtable_vt, vtable_vt),
+        "metavtable was not registered",
+    );
+    let object_vt = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
+    vtables.set_parent(vtable_vt, object_vt);
+    let symbol_vt = vtables.create(&mut heap, object_vt, vtable_vt);
+    let symbol_list = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
+    let environment = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
+    let smallint_vt = vtables.create(&mut heap, object_vt, vtable_vt);
+    let string_vt = vtables.create(&mut heap, object_vt, vtable_vt);
+    let float_vt = vtables.create(&mut heap, object_vt, vtable_vt);
+    let word_vt = vtables.create(&mut heap, object_vt, vtable_vt);
+    let nil_vt = vtables.create(&mut heap, object_vt, vtable_vt);
+    let bool_vt = vtables.create(&mut heap, object_vt, vtable_vt);
+
+    let mut values = Values::new();
+    let nil = values.allocate_empty(&mut heap, nil_vt, Permanence::Permanent);
+    let true_object = values.allocate_empty(&mut heap, bool_vt, Permanence::Permanent);
+    let false_object = values.allocate_empty(&mut heap, bool_vt, Permanence::Permanent);
+
+    let mut symbols = Symbols::new();
+    let selectors = BootstrapSelectors {
+        lookup: static_selector(&mut symbols, &mut heap, symbol_vt, b"lookup"),
+        add_method: static_selector(&mut symbols, &mut heap, symbol_vt, b"addMethod"),
+        remove_method: static_selector(&mut symbols, &mut heap, symbol_vt, b"removeMethod:"),
+        allocate: static_selector(&mut symbols, &mut heap, symbol_vt, b"allocate"),
+        delegated: static_selector(&mut symbols, &mut heap, symbol_vt, b"delegated"),
+        does_not_understand: static_selector(
+            &mut symbols,
+            &mut heap,
+            symbol_vt,
+            b"doesNotUnderstand:",
+        ),
+    };
+
+    let runtime = Runtime::new_with_values(
+        heap,
+        vtables,
+        symbols,
+        values,
+        DispatchGlobals {
+            vtable_vt,
+            object_vt,
+            symbol_vt,
+            lookup: selectors.lookup,
+            does_not_understand: selectors.does_not_understand,
+        },
+    );
+
+    boundary::require_invariant(
+        runtime.add_method(vtable_vt, selectors.lookup, vtable_lookup_method)
+            == crate::vtable::AddMethod::Added,
+        "bootstrap lookup binding was not new",
+    );
+    boundary::require_invariant(
+        runtime.add_method(vtable_vt, selectors.add_method, vtable_add_method)
+            == crate::vtable::AddMethod::Added,
+        "bootstrap addMethod binding was not new",
+    );
+    boundary::require_invariant(
+        runtime.add_method(vtable_vt, selectors.remove_method, vtable_remove_method)
+            == crate::vtable::AddMethod::Added,
+        "bootstrap removeMethod: binding was not new",
+    );
+
+    runtime.enter(|| {
+        for (vtable, selector, method) in [
+            (
+                vtable_vt,
+                selectors.allocate,
+                vtable_allocate as crate::abi::Method,
+            ),
+            (
+                vtable_vt,
+                selectors.delegated,
+                vtable_delegated as crate::abi::Method,
+            ),
+            (
+                object_vt,
+                selectors.does_not_understand,
+                object_does_not_understand as crate::abi::Method,
+            ),
+        ] {
+            let arguments = [selector, MethodAddress::from_method(method).as_oop()];
+            let installed = runtime.send_slice(vtable, selectors.add_method, &arguments);
+            boundary::require_invariant(
+                installed == arguments[1],
+                "metacircular addMethod changed method identity",
+            );
+        }
+    });
+
+    let object_prototype = runtime.allocate_empty(object_vt, Permanence::Permanent);
+    let integer_prototype = runtime.allocate_integer(smallint_vt, 0);
+    let float_prototype = runtime.allocate_float(float_vt, 0.0);
+    let word_prototype = runtime.allocate_word(word_vt, 0);
+    let string_prototype = runtime.allocate_string(string_vt, b"");
+    let symbol_prototype = runtime
+        .intern(b"Symbol")
+        .unwrap_or_else(|_| boundary::fatal_invariant("static prototype name contains NUL"));
+
+    for (vtable, owner) in [
+        (object_vt, object_prototype),
+        (smallint_vt, integer_prototype),
+        (float_vt, float_prototype),
+        (word_vt, word_prototype),
+        (string_vt, string_prototype),
+        (symbol_vt, symbol_prototype),
+        (nil_vt, nil),
+        (bool_vt, true_object),
+    ] {
+        runtime.set_vtable_owner(vtable, owner);
+    }
+
+    runtime.install_canonical(CanonicalObjects {
+        symbol_list,
+        environment,
+        smallint_vt,
+        string_vt,
+        float_vt,
+        word_vt,
+        nil_vt,
+        bool_vt,
+        nil,
+        true_object,
+        false_object,
+        object_prototype,
+        integer_prototype,
+        float_prototype,
+        word_prototype,
+        string_prototype,
+        symbol_prototype,
+    });
+
+    Bootstrap { runtime, selectors }
 }
 
 pub(crate) struct DispatchHarness {
@@ -224,6 +439,10 @@ mod tests {
         count as Oop
     }
 
+    unsafe extern "C" fn answer_77(_: Oop, _: *const Oop, _: usize) -> Oop {
+        77usize as Oop
+    }
+
     unsafe extern "C" fn reentrant_send(receiver: Oop, args: *const Oop, count: usize) -> Oop {
         if count != 1 || args.is_null() {
             return core::ptr::null_mut();
@@ -323,5 +542,233 @@ mod tests {
         let globals = harness.runtime.globals();
         assert_eq!(globals.object_vt, harness.object_vtable);
         assert!(!globals.symbol_vt.is_null());
+    }
+
+    #[test]
+    fn bootstrap_freezes_vtable_symbol_and_method_order() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let canonical = runtime.canonical();
+        let expected_vtables = [
+            globals.vtable_vt,
+            globals.object_vt,
+            globals.symbol_vt,
+            canonical.symbol_list,
+            canonical.environment,
+            canonical.smallint_vt,
+            canonical.string_vt,
+            canonical.float_vt,
+            canonical.word_vt,
+            canonical.nil_vt,
+            canonical.bool_vt,
+        ];
+        let expected_parents = [
+            globals.object_vt,
+            core::ptr::null_mut(),
+            globals.object_vt,
+            core::ptr::null_mut(),
+            core::ptr::null_mut(),
+            globals.object_vt,
+            globals.object_vt,
+            globals.object_vt,
+            globals.object_vt,
+            globals.object_vt,
+            globals.object_vt,
+        ];
+
+        assert_eq!(runtime.vtable_count(), expected_vtables.len());
+        for (index, expected) in expected_vtables.into_iter().enumerate() {
+            assert_eq!(runtime.vtable_at(index), expected);
+            assert_eq!(runtime.vtable_parent(expected), expected_parents[index]);
+            assert_eq!(runtime.checked_vtable_of(expected), globals.vtable_vt);
+            assert_eq!(runtime.permanence_of(expected), Some(Permanence::Permanent));
+            assert_eq!(runtime.payload_size(expected), Some(80));
+        }
+
+        let selector_names: [&[u8]; 7] = [
+            b"lookup",
+            b"addMethod",
+            b"removeMethod:",
+            b"allocate",
+            b"delegated",
+            b"doesNotUnderstand:",
+            b"Symbol",
+        ];
+        assert_eq!(runtime.symbol_count(), selector_names.len());
+        for (index, name) in selector_names.into_iter().enumerate() {
+            let symbol = runtime.symbol_at(index);
+            assert_eq!(runtime.symbol_bytes(symbol), Some(name));
+            assert_eq!(runtime.checked_vtable_of(symbol), globals.symbol_vt);
+            assert_eq!(runtime.permanence_of(symbol), Some(Permanence::Permanent));
+        }
+
+        let meta_selectors = [
+            bootstrap.selectors.lookup,
+            bootstrap.selectors.add_method,
+            bootstrap.selectors.remove_method,
+            bootstrap.selectors.allocate,
+            bootstrap.selectors.delegated,
+        ];
+        for (index, selector) in meta_selectors.into_iter().enumerate() {
+            assert_eq!(
+                runtime.vtable_selector_at(globals.vtable_vt, index),
+                selector
+            );
+        }
+        assert!(
+            runtime
+                .vtable_selector_at(globals.vtable_vt, meta_selectors.len())
+                .is_null()
+        );
+        assert_eq!(
+            runtime.vtable_selector_at(globals.object_vt, 0),
+            bootstrap.selectors.does_not_understand
+        );
+        assert!(runtime.vtable_selector_at(globals.object_vt, 1).is_null());
+    }
+
+    #[test]
+    fn bootstrap_canonical_identities_have_final_shapes_lifetimes_and_owners() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let canonical = runtime.canonical();
+
+        let all_identities = [
+            globals.vtable_vt,
+            globals.object_vt,
+            globals.symbol_vt,
+            canonical.symbol_list,
+            canonical.environment,
+            canonical.smallint_vt,
+            canonical.string_vt,
+            canonical.float_vt,
+            canonical.word_vt,
+            canonical.nil_vt,
+            canonical.bool_vt,
+            canonical.nil,
+            canonical.true_object,
+            canonical.false_object,
+            canonical.object_prototype,
+            canonical.integer_prototype,
+            canonical.float_prototype,
+            canonical.word_prototype,
+            canonical.string_prototype,
+            canonical.symbol_prototype,
+        ];
+        let unique_addresses: std::collections::HashSet<_> =
+            all_identities.into_iter().map(Oop::addr).collect();
+        assert_eq!(unique_addresses.len(), all_identities.len());
+
+        for (object, vtable) in [
+            (canonical.nil, canonical.nil_vt),
+            (canonical.true_object, canonical.bool_vt),
+            (canonical.false_object, canonical.bool_vt),
+            (canonical.object_prototype, globals.object_vt),
+            (canonical.integer_prototype, canonical.smallint_vt),
+            (canonical.float_prototype, canonical.float_vt),
+            (canonical.word_prototype, canonical.word_vt),
+            (canonical.string_prototype, canonical.string_vt),
+            (canonical.symbol_prototype, globals.symbol_vt),
+        ] {
+            assert_eq!(runtime.checked_vtable_of(object), vtable);
+        }
+        for (vtable, owner) in [
+            (canonical.nil_vt, canonical.nil),
+            (canonical.bool_vt, canonical.true_object),
+            (globals.object_vt, canonical.object_prototype),
+            (canonical.smallint_vt, canonical.integer_prototype),
+            (canonical.float_vt, canonical.float_prototype),
+            (canonical.word_vt, canonical.word_prototype),
+            (canonical.string_vt, canonical.string_prototype),
+            (globals.symbol_vt, canonical.symbol_prototype),
+        ] {
+            assert_eq!(runtime.vtable_owner(vtable), owner);
+        }
+        for object in [
+            canonical.nil,
+            canonical.true_object,
+            canonical.false_object,
+            canonical.object_prototype,
+            canonical.symbol_prototype,
+        ] {
+            assert_eq!(runtime.permanence_of(object), Some(Permanence::Permanent));
+        }
+        for object in [
+            canonical.integer_prototype,
+            canonical.float_prototype,
+            canonical.word_prototype,
+            canonical.string_prototype,
+        ] {
+            assert_eq!(runtime.permanence_of(object), Some(Permanence::Collectable));
+        }
+        for object in [
+            canonical.nil,
+            canonical.true_object,
+            canonical.false_object,
+            canonical.object_prototype,
+        ] {
+            assert_eq!(runtime.payload_size(object), Some(0));
+        }
+        assert_eq!(runtime.payload_size(canonical.integer_prototype), Some(8));
+        assert_eq!(runtime.payload_size(canonical.float_prototype), Some(8));
+        assert_eq!(runtime.payload_size(canonical.word_prototype), Some(8));
+        assert_eq!(runtime.payload_size(canonical.string_prototype), Some(16));
+        assert_eq!(runtime.payload_size(canonical.symbol_prototype), Some(8));
+        assert_eq!(runtime.integer_value(canonical.integer_prototype), 0);
+        assert_eq!(runtime.float_value(canonical.float_prototype), 0.0);
+        assert_eq!(runtime.word_value(canonical.word_prototype), 0);
+        assert_eq!(
+            runtime.string_bytes(canonical.string_prototype),
+            Some(&b""[..])
+        );
+        assert_eq!(
+            runtime.symbol_bytes(canonical.symbol_prototype),
+            Some(&b"Symbol"[..])
+        );
+    }
+
+    #[test]
+    fn bootstrap_primitives_support_metacircular_dispatch_removal_and_dnu() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let answer = selector(runtime, b"bootstrapAnswer");
+        let missing = selector(runtime, b"bootstrapMissing:");
+
+        runtime.enter(|| {
+            let child = runtime.send_slice(globals.object_vt, bootstrap.selectors.delegated, &[]);
+            let install = [answer, MethodAddress::from_method(answer_77).as_oop()];
+            assert_eq!(
+                runtime.send_slice(child, bootstrap.selectors.add_method, &install),
+                install[1]
+            );
+
+            let receiver = runtime.send_slice(
+                child,
+                bootstrap.selectors.allocate,
+                &[core::ptr::null_mut()],
+            );
+            assert_eq!(runtime.send_slice(receiver, answer, &[]).addr(), 77);
+
+            let dnu_install = [
+                bootstrap.selectors.does_not_understand,
+                MethodAddress::from_method(dnu_count).as_oop(),
+            ];
+            let _ = runtime.send_slice(child, bootstrap.selectors.add_method, &dnu_install);
+            assert_eq!(
+                runtime
+                    .send_slice(receiver, missing, &[core::ptr::null_mut(); 20])
+                    .addr(),
+                17
+            );
+
+            assert_eq!(
+                runtime.send_slice(child, bootstrap.selectors.remove_method, &[answer]),
+                install[1]
+            );
+            assert_eq!(runtime.send_slice(receiver, answer, &[]).addr(), 1);
+        });
     }
 }
