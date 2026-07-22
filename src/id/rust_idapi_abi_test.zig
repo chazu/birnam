@@ -188,7 +188,7 @@ test "Rust descriptor exactly matches the frozen IdApi v1 manifest" {
     var dylib = try std.DynLib.open(dylib_path);
     defer dylib.close();
 
-    try std.testing.expect(dylib.lookup(*const anyopaque, "id_init") == null);
+    try std.testing.expect(dylib.lookup(*const anyopaque, "id_init") != null);
     const describe = dylib.lookup(
         DescribeAbi,
         "birnam_id_rust_abi_descriptor_v1",

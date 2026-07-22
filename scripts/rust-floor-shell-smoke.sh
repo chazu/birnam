@@ -25,7 +25,7 @@ probe_rust_profile() {
 probe_rust_profile debug
 probe_rust_profile release
 
-# The diagnostic dylib remains outside Zig's install prefix. Prove that an
+# The spike dylib remains outside Zig's install prefix. Prove that an
 # ordinary build still installs the usable Zig floor under the production name.
 zig build
 test -f "$zig_floor"

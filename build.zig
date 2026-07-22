@@ -79,9 +79,9 @@ pub fn build(b: *std.Build) void {
     test_id_abi_step.dependOn(&run_idapi_abi_tests.step);
     test_step.dependOn(&run_idapi_abi_tests.step);
 
-    // Build the diagnostic-only Rust cdylib outside the Zig install prefix,
+    // Build the spike-only Rust cdylib outside the Zig install prefix,
     // then compare its compiler-derived layout descriptor with the same frozen
-    // manifest. This loads no floor and never calls id_init.
+    // manifest. The test loads the dylib but never calls id_init.
     const rust_id_build = b.addSystemCommand(&.{
         "cargo",
         "build",

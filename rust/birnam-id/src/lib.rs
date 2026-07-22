@@ -1,7 +1,7 @@
-//! Dependency-free shell for the prospective Rust libid implementation.
+//! Dependency-free R2.6 spike for the Rust libid implementation.
 //!
-//! This crate is deliberately not a usable Birnam floor yet: it does not
-//! export `id_init`, and normal Zig builds neither select nor install it.
+//! The crate exports a complete-shaped `IdApi` with explicit fatal gaps. Normal
+//! Zig builds neither select nor install it as the production floor.
 
 #[cfg(not(any(test, panic = "abort")))]
 compile_error!("every runnable birnam_id cdylib profile must use panic=abort");
@@ -15,6 +15,7 @@ mod heap;
 mod loader;
 #[cfg(feature = "ffi-test-hooks")]
 mod membership_bench;
+mod public_api;
 mod raw;
 mod runtime;
 mod symbol;
@@ -23,12 +24,12 @@ mod vtable;
 
 use core::ffi::c_char;
 
-const RUST_CRATE_IDENTITY: &[u8] = b"rust-id-shell-v1\0";
+const RUST_CRATE_IDENTITY: &[u8] = b"rust-id-spike-r2.6\0";
 
-/// Identifies the diagnostic-only R1 Rust artifact.
+/// Identifies the spike-only R2.6 Rust artifact.
 ///
 /// This intentionally has a different name from the selected-floor identity
-/// export. Its presence does not imply that the dylib implements `IdApi`.
+/// export. Its presence does not imply that ordinary Birnam selects this floor.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_id_rust_crate_identity() -> *const c_char {
     boundary::require_invariant(
@@ -40,11 +41,16 @@ pub extern "C" fn birnam_id_rust_crate_identity() -> *const c_char {
 
 /// Returns the pointer-free build/test descriptor for the frozen v1 ABI.
 ///
-/// The descriptor is diagnostic evidence only. It is not part of `IdApi` and
-/// does not make this shell a usable floor.
+/// The descriptor is diagnostic evidence only and is not part of `IdApi`.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_id_rust_abi_descriptor_v1() -> *const core::ffi::c_void {
     core::ptr::addr_of!(abi::ABI_DESCRIPTOR_V1).cast()
+}
+
+/// Initialize the R2.6 spike floor exactly once in this process.
+#[unsafe(no_mangle)]
+pub extern "C" fn id_init() -> *mut core::ffi::c_void {
+    public_api::initialize_once().cast()
 }
 
 /// Test-only proof that a Rust panic cannot unwind across the C ABI.

@@ -144,6 +144,12 @@ impl Runtime {
         unsafe { (&mut *self.state.get()).vtables.set_owner(vtable, owner) };
     }
 
+    pub(crate) fn set_vtable_parent(&self, vtable: Oop, parent: Oop) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe { (&mut *self.state.get()).vtables.set_parent(vtable, parent) };
+    }
+
     pub(crate) fn allocate_instance(&self, vtable: Oop, payload_size: usize) -> Oop {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
@@ -218,6 +224,13 @@ impl Runtime {
         state.symbols.intern(&mut state.heap, symbol_vtable, bytes)
     }
 
+    pub(crate) fn symbol_name(&self, symbol: Oop) -> *const core::ffi::c_char {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization; the permanent Symbol record owns
+        // the returned NUL-terminated bytes for the runtime lifetime.
+        unsafe { (*self.state.get()).symbols.c_name_of(symbol) }
+    }
+
     pub(crate) fn vtable_for_valid_receiver(&self, receiver: Oop) -> Oop {
         self.assert_owner();
         // SAFETY: dispatch callers guarantee a live floor receiver. No runtime
@@ -262,43 +275,36 @@ impl Runtime {
         unsafe { (*self.state.get()).symbols.bytes_of(symbol) }
     }
 
-    #[cfg(test)]
     pub(crate) fn vtable_count(&self) -> usize {
         // SAFETY: test calls remain owner-thread and copy only the count.
         unsafe { (*self.state.get()).vtables.count() }
     }
 
-    #[cfg(test)]
     pub(crate) fn vtable_at(&self, index: usize) -> Oop {
         // SAFETY: test calls remain owner-thread and copy only an identity.
         unsafe { (*self.state.get()).vtables.at(index) }
     }
 
-    #[cfg(test)]
     pub(crate) fn vtable_parent(&self, vtable: Oop) -> Oop {
         // SAFETY: test calls remain owner-thread and copy only an identity.
         unsafe { (*self.state.get()).vtables.parent_of(vtable) }
     }
 
-    #[cfg(test)]
     pub(crate) fn vtable_owner(&self, vtable: Oop) -> Oop {
         // SAFETY: test calls remain owner-thread and copy only an identity.
         unsafe { (*self.state.get()).vtables.owner_of(vtable) }
     }
 
-    #[cfg(test)]
     pub(crate) fn vtable_selector_at(&self, vtable: Oop, index: usize) -> Oop {
         // SAFETY: test calls remain owner-thread and copy only an identity.
         unsafe { (*self.state.get()).vtables.selector_at(vtable, index) }
     }
 
-    #[cfg(test)]
     pub(crate) fn checked_vtable_of(&self, object: Oop) -> Oop {
         // SAFETY: test calls remain owner-thread; checked lookup copies header.
         unsafe { Vtables::checked_vtable_of(&(*self.state.get()).heap, object) }
     }
 
-    #[cfg(test)]
     pub(crate) fn payload_size(&self, object: Oop) -> Option<usize> {
         // SAFETY: test calls remain owner-thread and copy only the size.
         unsafe { (*self.state.get()).heap.payload_size(object) }

@@ -1,4 +1,4 @@
-//! Direct loader probe for the diagnostic-only R1 Rust dylib.
+//! Direct loader probe for the spike-only R2.6 Rust dylib.
 
 const std = @import("std");
 
@@ -46,13 +46,12 @@ pub fn main() !void {
         CrateIdentity,
         "birnam_id_rust_crate_identity",
     ) orelse return error.MissingRustCrateIdentity;
-    if (!std.mem.eql(u8, std.mem.span(identity()), "rust-id-shell-v1")) {
+    if (!std.mem.eql(u8, std.mem.span(identity()), "rust-id-spike-r2.6")) {
         return error.WrongRustCrateIdentity;
     }
 
-    if (dylib.lookup(*const anyopaque, "id_init") != null) {
-        return error.PrematureIdInitExport;
-    }
+    _ = dylib.lookup(*const anyopaque, "id_init") orelse
+        return error.MissingIdInitExport;
 
     const describe = dylib.lookup(
         AbiDescriptorFn,
@@ -70,7 +69,7 @@ pub fn main() !void {
     }
 
     std.debug.print(
-        "rust-floor-shell: identity and ABI descriptor present; id_init absent\n",
+        "rust-floor-shell: spike identity, ABI descriptor, and id_init present\n",
         .{},
     );
 }
