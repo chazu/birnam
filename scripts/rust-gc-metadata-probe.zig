@@ -1,4 +1,4 @@
-//! External R4.2 collector callback fixture; sweeping remains disabled.
+//! External collector callback, sweep, and finalizer fixture.
 
 const std = @import("std");
 const idapi = @import("idapi");
@@ -8,6 +8,7 @@ var trace_calls: usize = 0;
 var finalizer_calls: usize = 0;
 var provider_root: idapi.Oop = null;
 var trace_child: idapi.Oop = null;
+var unreachable_address: usize = 0;
 var retained_mark: ?idapi.MarkFn = null;
 var active_api: ?*idapi.IdApi = null;
 
@@ -33,6 +34,18 @@ fn retainingProvider(mark: idapi.MarkFn) callconv(.c) void {
 
 fn finalize(_: idapi.Oop) callconv(.c) void {
     finalizer_calls += 1;
+}
+
+noinline fn makeUnreachable(api: *idapi.IdApi, vtable: idapi.Oop) void {
+    var object = api.alloc(vtable, 0);
+    unreachable_address = @intFromPtr(object.?);
+    std.mem.doNotOptimizeAway(&object);
+}
+
+noinline fn scrubConservativeStack() void {
+    var scratch: [4096]usize = @splat(0);
+    for (&scratch, 0..) |*word, index| word.* = index;
+    std.mem.doNotOptimizeAway(&scratch);
 }
 
 const layout_a = [_]u8{ idapi.slot_oop, idapi.slot_code, 9 };
@@ -73,7 +86,7 @@ fn runFunctional(api: *idapi.IdApi) !void {
     api.setTraceHook(child, trace);
     const live_before = api.gcLiveCount();
     const object = api.alloc(child, 16);
-    const unreachable_obj = api.alloc(child, 0);
+    makeUnreachable(api, child);
     const external_child = api.alloc(api.object_vt, 0);
     provider_root = object;
     trace_child = external_child;
@@ -85,16 +98,17 @@ fn runFunctional(api: *idapi.IdApi) !void {
     api.gcSetStackBottom(@intFromPtr(&stack_anchor));
     api.gcSetAuto(1);
     api.gcSetPrecise(1);
-    try require(api.gcCollect() == 0, error.DisabledCollectionReclaimed);
-    try require(api.gcLiveCount() == live_before + 3, error.DisabledCollectionChangedLiveSet);
+    scrubConservativeStack();
+    try require(api.gcCollect() == 1, error.SweepCountMismatch);
+    try require(api.gcLiveCount() == live_before + 2, error.SweepLiveCountMismatch);
     try require(provider_calls == 32, error.RootProviderNotInvoked);
     try require(trace_calls >= 1, error.TraceHookReachabilityWrong);
     try require(finalizer_calls == 0, error.DisabledCollectionInvokedFinalizer);
-    try require(api.vtableOf(unreachable_obj) == child, error.UnreachableFixtureChanged);
+    try require(api.vtableOf(@ptrFromInt(unreachable_address)) == null, error.UnreachableNotSwept);
     try require(api.vtableOf(external_child) == api.object_vt, error.TraceChildChanged);
     stack_anchor = api.gcLiveCount();
     std.mem.doNotOptimizeAway(&stack_anchor);
-    std.debug.print("rust-gc-metadata: providers and reachable hooks marked without sweeping\n", .{});
+    std.debug.print("rust-gc-metadata: providers and hooks retained roots while sweep reclaimed garbage\n", .{});
 }
 
 pub fn main() !void {
