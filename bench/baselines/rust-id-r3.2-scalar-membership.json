@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "purpose": "R3.2 optimized Rust boxed-scalar predicate scaling gate",
+  "source_commit": "d9e72c9",
+  "floor_identity": "rust-id-r3.2",
+  "mode": "release",
+  "iterations": 524288,
+  "repetitions_per_run": 5,
+  "independent_runs": 3,
+  "populations": [
+    { "live_objects": 5125, "vtables": 1029 },
+    { "live_objects": 35835, "vtables": 16384 },
+    { "live_objects": 265211, "vtables": 131072 }
+  ],
+  "thresholds": {
+    "maximum_scaling_exponent": 0.35,
+    "absolute_comparison": "R0.5 Zig per-population maximum plus 10 percent",
+    "isSmallInt_ns_per_call": [3.1713, 2.9315, 2.9865],
+    "isFloat_ns_per_call": [2.7126, 2.5762, 3.0514],
+    "isWord_ns_per_call": [2.9799, 2.8622, 3.1108]
+  },
+  "cases": [
+    {
+      "name": "isSmallInt",
+      "samples": [
+        { "median_ns_per_call": 1.478, "min_ns_per_call": 1.465, "max_ns_per_call": 1.583 },
+        { "median_ns_per_call": 1.633, "min_ns_per_call": 1.606, "max_ns_per_call": 1.702 },
+        { "median_ns_per_call": 2.111, "min_ns_per_call": 1.942, "max_ns_per_call": 2.134 }
+      ],
+      "median_scaling_exponent": 0.0756,
+      "min_scaling_exponent": 0.0714,
+      "max_scaling_exponent": 0.0904
+    },
+    {
+      "name": "isFloat",
+      "samples": [
+        { "median_ns_per_call": 1.628, "min_ns_per_call": 1.605, "max_ns_per_call": 1.680 },
+        { "median_ns_per_call": 1.926, "min_ns_per_call": 1.873, "max_ns_per_call": 1.936 },
+        { "median_ns_per_call": 2.340, "min_ns_per_call": 2.191, "max_ns_per_call": 2.368 }
+      ],
+      "median_scaling_exponent": 0.0870,
+      "min_scaling_exponent": 0.0753,
+      "max_scaling_exponent": 0.0954
+    },
+    {
+      "name": "isWord",
+      "samples": [
+        { "median_ns_per_call": 1.571, "min_ns_per_call": 1.512, "max_ns_per_call": 1.624 },
+        { "median_ns_per_call": 1.700, "min_ns_per_call": 1.612, "max_ns_per_call": 1.723 },
+        { "median_ns_per_call": 2.113, "min_ns_per_call": 1.992, "max_ns_per_call": 2.191 }
+      ],
+      "median_scaling_exponent": 0.0667,
+      "min_scaling_exponent": 0.0602,
+      "max_scaling_exponent": 0.0939
+    }
+  ],
+  "largest_observed_exponent_across_all_ten_rows": 0.1377
+}
