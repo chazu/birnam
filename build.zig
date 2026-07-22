@@ -170,6 +170,17 @@ pub fn build(b: *std.Build) void {
     test_rust_gc_metadata_step.dependOn(&rust_gc_metadata_smoke.step);
     test_step.dependOn(&rust_gc_metadata_smoke.step);
 
+    const rust_env_loader_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-env-loader-smoke.sh",
+    });
+    const test_rust_env_loader_step = b.step(
+        "test-rust-env-loader",
+        "Exercise Rust canonical exports and opaque module reload state",
+    );
+    test_rust_env_loader_step.dependOn(&rust_env_loader_smoke.step);
+    test_step.dependOn(&rust_env_loader_smoke.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a
