@@ -181,6 +181,17 @@ pub fn build(b: *std.Build) void {
     test_rust_env_loader_step.dependOn(&rust_env_loader_smoke.step);
     test_step.dependOn(&rust_env_loader_smoke.step);
 
+    const scalar_conformance_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/scalar-conformance-smoke.sh",
+    });
+    const test_scalar_conformance_step = b.step(
+        "test-scalar-conformance",
+        "Run boxed scalar conformance against Zig and Rust floors",
+    );
+    test_scalar_conformance_step.dependOn(&scalar_conformance_smoke.step);
+    test_step.dependOn(&scalar_conformance_smoke.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a

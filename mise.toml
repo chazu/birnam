@@ -13,6 +13,7 @@
 #   mise run rust-id-spike-smoke # exercise the spike IdApi from a Zig client
 #   mise run rust-gc-metadata-smoke # retain GC metadata without collecting
 #   mise run rust-env-loader-smoke # reflect exports and reload through Rust
+#   mise run scalar-conformance-smoke # compare boxed scalars on both floors
 #   mise run bootstrap-smoke # build a fixture-free source archive with pinned tools
 #   mise run install        # install to a prefix
 #   mise run dist           # build a release tarball for this platform
@@ -73,6 +74,10 @@ run = "bash scripts/rust-gc-metadata-smoke.sh"
 [tasks.rust-env-loader-smoke]
 description = "Reflect canonical exports and reload a fixture through Rust"
 run = "bash scripts/rust-env-loader-smoke.sh"
+
+[tasks.scalar-conformance-smoke]
+description = "Run boxed scalar conformance against Zig and Rust floors"
+run = "bash scripts/scalar-conformance-smoke.sh"
 
 [tasks.bootstrap-smoke]
 description = "Cold-build a fixture-free source archive with pinned Zig and Rust"
