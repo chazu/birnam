@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.4 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.5 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1683,6 +1683,29 @@ tests, the 72-test isolated three-floor matrix, and the complete combined
 
 **Gate:** all original GC/finalizer/String reclamation tests pass under both
 floors, including child-process tests for forbidden reentrancy.
+
+#### R4.5 execution record — 2026-07-22
+
+Sweep now snapshots unreachable collectable addresses before registry mutation,
+then detaches each block while keeping its payload live. A copied finalizer runs
+with no live Rust registry or runtime-state borrow, after which the detached
+owner deallocates the block with its original size and alignment. Permanent and
+marked blocks cannot enter this path. Marks and exact allocated-byte accounting
+reset only after a successful collection.
+
+Register capture was moved into a shallow frame outside the collector. Mark and
+sweep execute below its saved start address, preventing stale collector locals
+from self-retaining objects on a later debug collection. The precise collection
+group passes repeatedly under Rust debug as well as Rust release.
+
+A phase guard refuses recursive collection with a zero result and rejects every
+id allocation path while a collection is active. Child-process fixtures prove a
+recursive finalizer does not nest collection and that an allocating finalizer
+terminates with the expected invariant diagnostic. Manual collection reclaims
+all 2,000 baseline objects, String owners release their byte buffers, and all
+1,000 finalizers run exactly once. Active collection is now included in the
+74-test isolated Zig, Rust-debug, and Rust-release floor matrix; strict Rust
+checks and the complete combined `zig build test` gate pass.
 
 ### R4.6 — Automatic collection
 
