@@ -13,6 +13,8 @@ mod env;
 mod gc;
 mod heap;
 mod loader;
+#[cfg(feature = "ffi-test-hooks")]
+mod membership_bench;
 mod raw;
 mod runtime;
 mod symbol;
@@ -75,6 +77,27 @@ pub unsafe extern "C" fn birnam_id_test_heap_layout(
 ) -> core::ffi::c_int {
     // SAFETY: the exported function forwards the documented caller contract.
     unsafe { heap::run_layout_probe(requested_size, vtable, probe) }
+}
+
+/// Test-only optimized membership benchmark entrypoint.
+///
+/// # Safety
+///
+/// `output` must be non-null, aligned, and writable for one
+/// `membership_bench::BenchReport`.
+#[cfg(feature = "ffi-test-hooks")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_id_test_membership_bench(
+    output: *mut core::ffi::c_void,
+) -> core::ffi::c_int {
+    let Some(output) = core::ptr::NonNull::new(output.cast::<membership_bench::BenchReport>())
+    else {
+        return 0;
+    };
+    let report = membership_bench::run();
+    // SAFETY: the caller supplies exclusive writable storage for one report.
+    unsafe { output.as_ptr().write(report) };
+    1
 }
 
 #[cfg(test)]

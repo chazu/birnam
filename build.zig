@@ -128,6 +128,15 @@ pub fn build(b: *std.Build) void {
     test_rust_heap_layout_step.dependOn(&rust_heap_layout_smoke.step);
     test_step.dependOn(&rust_heap_layout_smoke.step);
 
+    const rust_membership_bench = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-membership-bench.sh",
+    });
+    b.step(
+        "bench-rust-id-membership",
+        "Benchmark optimized Rust exact-address membership scaling",
+    ).dependOn(&rust_membership_bench.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a
