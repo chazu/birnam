@@ -9,7 +9,7 @@ use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
 use crate::vtable::Vtables;
 
-pub(crate) const CASE_COUNT: usize = 7;
+pub(crate) const CASE_COUNT: usize = 10;
 pub(crate) const POPULATION_COUNT: usize = 3;
 const PROBE_COUNT: usize = 1024;
 const ITERATIONS: usize = 1 << 19;
@@ -57,6 +57,9 @@ enum Case {
     VtableOwner = 4,
     VtableOwnerMethod = 5,
     VtableOwnerForeign = 6,
+    IsSmallInt = 7,
+    IsFloat = 8,
+    IsWord = 9,
 }
 
 const CASES: [Case; CASE_COUNT] = [
@@ -67,12 +70,21 @@ const CASES: [Case; CASE_COUNT] = [
     Case::VtableOwner,
     Case::VtableOwnerMethod,
     Case::VtableOwnerForeign,
+    Case::IsSmallInt,
+    Case::IsFloat,
+    Case::IsWord,
 ];
 
 struct Probes {
     objects: [Oop; PROBE_COUNT],
     vtables: [Oop; PROBE_COUNT],
     foreign: [Oop; PROBE_COUNT],
+    integers: [Oop; PROBE_COUNT],
+    floats: [Oop; PROBE_COUNT],
+    words: [Oop; PROBE_COUNT],
+    smallint_vt: Oop,
+    float_vt: Oop,
+    word_vt: Oop,
     method: Oop,
 }
 
@@ -98,6 +110,17 @@ fn run_operation(case: Case, heap: &Heap, vtables: &Vtables, probes: &Probes) ->
             Case::VtableOwner => vtables.owner_of(black_box(probes.vtables[probe])).addr(),
             Case::VtableOwnerMethod => vtables.owner_of(black_box(probes.method)).addr(),
             Case::VtableOwnerForeign => vtables.owner_of(black_box(probes.foreign[probe])).addr(),
+            Case::IsSmallInt => usize::from(
+                Vtables::checked_vtable_of(heap, black_box(probes.integers[probe]))
+                    == probes.smallint_vt,
+            ),
+            Case::IsFloat => usize::from(
+                Vtables::checked_vtable_of(heap, black_box(probes.floats[probe]))
+                    == probes.float_vt,
+            ),
+            Case::IsWord => usize::from(
+                Vtables::checked_vtable_of(heap, black_box(probes.words[probe])) == probes.word_vt,
+            ),
         });
     }
     black_box(result)
@@ -162,12 +185,21 @@ pub(crate) fn run() -> BenchReport {
     let meta = vtables.create(&mut heap, core::ptr::null_mut(), core::ptr::null_mut());
     boundary_set_vtable(&mut heap, meta, meta);
     let root = vtables.create(&mut heap, core::ptr::null_mut(), meta);
+    let smallint_vt = vtables.create(&mut heap, root, meta);
+    let float_vt = vtables.create(&mut heap, root, meta);
+    let word_vt = vtables.create(&mut heap, root, meta);
 
     let mut foreign_words = [0usize; PROBE_COUNT * 2];
     let mut probes = Probes {
         objects: [core::ptr::null_mut(); PROBE_COUNT],
         vtables: [core::ptr::null_mut(); PROBE_COUNT],
         foreign: [core::ptr::null_mut(); PROBE_COUNT],
+        integers: [core::ptr::null_mut(); PROBE_COUNT],
+        floats: [core::ptr::null_mut(); PROBE_COUNT],
+        words: [core::ptr::null_mut(); PROBE_COUNT],
+        smallint_vt,
+        float_vt,
+        word_vt,
         method: MethodAddress::from_method(foreign_method).as_oop(),
     };
     for index in 0..PROBE_COUNT {
@@ -178,10 +210,19 @@ pub(crate) fn run() -> BenchReport {
         probes.objects[index] = object;
         probes.vtables[index] = vtable;
         probes.foreign[index] = core::ptr::from_mut(&mut foreign_words[index * 2]).cast::<c_void>();
+        for (target, family) in [
+            (&mut probes.integers[index], smallint_vt),
+            (&mut probes.floats[index], float_vt),
+            (&mut probes.words[index], word_vt),
+        ] {
+            let scalar = heap.allocate(size_of::<u64>(), Permanence::Collectable);
+            boundary_set_vtable(&mut heap, scalar, family);
+            *target = scalar;
+        }
     }
 
     let mut report = BenchReport {
-        schema: 1,
+        schema: 2,
         iterations: ITERATIONS,
         repetitions: REPETITIONS,
         case_count: CASE_COUNT,

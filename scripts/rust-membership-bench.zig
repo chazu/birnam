@@ -2,7 +2,7 @@
 
 const std = @import("std");
 
-const case_count = 7;
+const case_count = 10;
 const population_count = 3;
 
 const BenchSample = extern struct {
@@ -32,6 +32,9 @@ const case_names = [_][]const u8{
     "vtableOwner",
     "vtableOwner.method",
     "vtableOwner.foreign",
+    "isSmallInt",
+    "isFloat",
+    "isWord",
 };
 
 fn checkThresholds(report: *const BenchReport) !void {
@@ -52,6 +55,9 @@ fn checkThresholds(report: *const BenchReport) !void {
         .{ .case = 0, .maxima = .{ 1.823 * 1.10, 3.892 * 1.10, 4.946 * 1.10 } },
         .{ .case = 1, .maxima = .{ 1.951 * 1.10, 3.940 * 1.10, 4.987 * 1.10 } },
         .{ .case = 4, .maxima = .{ 4.148 * 1.10, 8.794 * 1.10, 11.338 * 1.10 } },
+        .{ .case = 7, .maxima = .{ 2.883 * 1.10, 2.665 * 1.10, 2.715 * 1.10 } },
+        .{ .case = 8, .maxima = .{ 2.466 * 1.10, 2.342 * 1.10, 2.774 * 1.10 } },
+        .{ .case = 9, .maxima = .{ 2.709 * 1.10, 2.602 * 1.10, 2.828 * 1.10 } },
     };
     for (zig_limits) |limit| {
         for (report.samples[limit.case], limit.maxima, 0..) |sample, maximum, population| {
@@ -79,7 +85,7 @@ pub fn main() !void {
 
     var report: BenchReport = undefined;
     if (run_bench(&report) != 1) return error.MembershipBenchFailed;
-    if (report.schema != 1 or
+    if (report.schema != 2 or
         report.iterations != 524_288 or
         report.repetitions != 5 or
         report.case_count != case_count or
@@ -91,7 +97,7 @@ pub fn main() !void {
 
     const stdout = std.fs.File.stdout().deprecatedWriter();
     try stdout.print(
-        "{{\"schema\":1,\"floor_identity\":\"rust-id-r2.2a\"," ++
+        "{{\"schema\":2,\"floor_identity\":\"rust-id-r3.2\"," ++
             "\"mode\":\"release\",\"iterations\":{},\"repetitions\":{},\"cases\":[",
         .{ report.iterations, report.repetitions },
     );
