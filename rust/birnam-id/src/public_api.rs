@@ -84,6 +84,45 @@ unsafe extern "C" fn api_send(receiver: Oop, selector: Oop, args: *const Oop, co
     })
 }
 
+unsafe extern "C" fn api_make_smallint(value: i64) -> Oop {
+    let canonical = runtime().canonical();
+    runtime().allocate_integer(canonical.smallint_vt, value)
+}
+
+unsafe extern "C" fn api_smallint_value(object: Oop) -> i64 {
+    runtime().integer_value(object)
+}
+
+unsafe extern "C" fn api_is_smallint(object: Oop) -> c_int {
+    i32::from(runtime().is_integer(object))
+}
+
+unsafe extern "C" fn api_make_float(value: f64) -> Oop {
+    let canonical = runtime().canonical();
+    runtime().allocate_float(canonical.float_vt, value)
+}
+
+unsafe extern "C" fn api_float_value(object: Oop) -> f64 {
+    runtime().float_value(object)
+}
+
+unsafe extern "C" fn api_is_float(object: Oop) -> c_int {
+    i32::from(runtime().is_float(object))
+}
+
+unsafe extern "C" fn api_make_word(value: u64) -> Oop {
+    let canonical = runtime().canonical();
+    runtime().allocate_word(canonical.word_vt, value)
+}
+
+unsafe extern "C" fn api_word_value(object: Oop) -> u64 {
+    runtime().word_value(object)
+}
+
+unsafe extern "C" fn api_is_word(object: Oop) -> c_int {
+    i32::from(runtime().is_word(object))
+}
+
 unsafe extern "C" fn api_symbol_name(symbol: Oop) -> *const c_char {
     runtime().symbol_name(symbol)
 }
@@ -180,19 +219,10 @@ macro_rules! fatal_stub {
     };
 }
 
-fatal_stub!(unsupported_make_smallint(value: i64) -> Oop, "mkSmallInt");
-fatal_stub!(unsupported_smallint_value(object: Oop) -> i64, "smallIntValue");
-fatal_stub!(unsupported_is_smallint(object: Oop) -> c_int, "isSmallInt");
 fatal_stub!(unsupported_make_string(bytes: *const u8, length: usize) -> Oop, "mkString");
 fatal_stub!(unsupported_string_bytes(object: Oop, length: *mut usize) -> *const u8, "stringBytes");
-fatal_stub!(unsupported_make_float(value: f64) -> Oop, "mkFloat");
-fatal_stub!(unsupported_float_value(object: Oop) -> f64, "floatValue");
-fatal_stub!(unsupported_is_float(object: Oop) -> c_int, "isFloat");
 fatal_stub!(unsupported_ensure_private_vtable(object: Oop) -> Oop, "ensurePrivateVtable");
 fatal_stub!(unsupported_set_method_overwrite_hook(hook: Option<MethodOverwriteHook>) -> (), "setMethodOverwriteHook");
-fatal_stub!(unsupported_make_word(value: u64) -> Oop, "mkWord");
-fatal_stub!(unsupported_word_value(object: Oop) -> u64, "wordValue");
-fatal_stub!(unsupported_is_word(object: Oop) -> c_int, "isWord");
 
 fn table_for(bootstrap: &Bootstrap) -> IdApi {
     let globals = bootstrap.runtime.globals();
@@ -215,9 +245,9 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         nilObj: canonical.nil,
         trueObj: canonical.true_object,
         falseObj: canonical.false_object,
-        mkSmallInt: unsupported_make_smallint,
-        smallIntValue: unsupported_smallint_value,
-        isSmallInt: unsupported_is_smallint,
+        mkSmallInt: api_make_smallint,
+        smallIntValue: api_smallint_value,
+        isSmallInt: api_is_smallint,
         string_vt: canonical.string_vt,
         mkString: unsupported_make_string,
         stringBytes: unsupported_string_bytes,
@@ -230,9 +260,9 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         setTraceHook: api_set_trace_hook,
         gcSetAuto: api_gc_set_auto,
         float_vt: canonical.float_vt,
-        mkFloat: unsupported_make_float,
-        floatValue: unsupported_float_value,
-        isFloat: unsupported_is_float,
+        mkFloat: api_make_float,
+        floatValue: api_float_value,
+        isFloat: api_is_float,
         setFinalizer: api_set_finalizer,
         setLayout: api_set_layout,
         gcSetPrecise: api_gc_set_precise,
@@ -247,9 +277,9 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         vtableAt: api_vtable_at,
         vtableSelectorAt: api_vtable_selector_at,
         vtableParent: api_vtable_parent,
-        mkWord: unsupported_make_word,
-        wordValue: unsupported_word_value,
-        isWord: unsupported_is_word,
+        mkWord: api_make_word,
+        wordValue: api_word_value,
+        isWord: api_is_word,
         word_vt: canonical.word_vt,
         vtableOwner: api_vtable_owner,
     }

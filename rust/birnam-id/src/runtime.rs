@@ -476,22 +476,34 @@ impl Runtime {
         unsafe { (*self.state.get()).heap.permanence_of(object) }
     }
 
-    #[cfg(test)]
     pub(crate) fn integer_value(&self, object: Oop) -> i64 {
-        // SAFETY: test supplies the canonical Integer prototype.
+        self.assert_owner();
+        // SAFETY: caller supplies an Integer object.
         unsafe { (*self.state.get()).values.integer_value(object) }
     }
 
-    #[cfg(test)]
     pub(crate) fn float_value(&self, object: Oop) -> f64 {
-        // SAFETY: test supplies the canonical Float prototype.
+        self.assert_owner();
+        // SAFETY: caller supplies a Float object.
         unsafe { (*self.state.get()).values.float_value(object) }
     }
 
-    #[cfg(test)]
     pub(crate) fn word_value(&self, object: Oop) -> u64 {
-        // SAFETY: test supplies the canonical Word prototype.
+        self.assert_owner();
+        // SAFETY: caller supplies a Word object.
         unsafe { (*self.state.get()).values.word_value(object) }
+    }
+
+    pub(crate) fn is_integer(&self, object: Oop) -> bool {
+        self.checked_vtable_of(object) == self.canonical().smallint_vt
+    }
+
+    pub(crate) fn is_float(&self, object: Oop) -> bool {
+        self.checked_vtable_of(object) == self.canonical().float_vt
+    }
+
+    pub(crate) fn is_word(&self, object: Oop) -> bool {
+        self.checked_vtable_of(object) == self.canonical().word_vt
     }
 
     #[cfg(test)]
