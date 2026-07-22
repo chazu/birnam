@@ -8,7 +8,7 @@
 //! libid object — not a Zig struct with a veneer.
 
 const std = @import("std");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const store = @import("store.zig");
 const errmod = @import("error.zig");
 const idapi = @import("idapi.zig");
@@ -33,7 +33,7 @@ fn histLen(api: *idapi.IdApi, e: Oop, a: Oop) usize {
 }
 
 test "rung 2a.1: raw-append → seed → flip; the relational model models itself" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
 
     // The knot is present and resolves THROUGH the store: cardinality of
@@ -69,7 +69,7 @@ test "rung 2a.1: raw-append → seed → flip; the relational model models itsel
 }
 
 test "rung 2a.2: history is opt-in per attribute, default OFF (the 4 GB lesson)" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
 
     // A default `:one` attribute keeps ONE slot however many times it changes —
@@ -100,7 +100,7 @@ test "rung 2a.2: history is opt-in per attribute, default OFF (the 4 GB lesson)"
 }
 
 test "rung 2a.3: a Cell is a handle onto (e,a) — value/set:/history, off base objects" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
 
     const door = api.intern("door");
@@ -132,7 +132,7 @@ test "rung 2a.3: a Cell is a handle onto (e,a) — value/set:/history, off base 
 
     // The stratification guarantee: `door` itself does not understand `value`
     // (the reflective/stateful protocol is on the cell mirror, not the entity).
-    try std.testing.expect(id.bind(door, @ptrCast(@alignCast(store.s_value.?))) == null);
+    try std.testing.expect(api.send(api.vtableOf(door), api.intern("lookup"), &.{store.s_value}, 1) == null);
 }
 
 fn answer42(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
@@ -160,7 +160,7 @@ fn attrCount(api: *idapi.IdApi, e: Oop) usize {
 }
 
 test "rung 2 polish: Store new mints independent, seeded stores" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
 
     const s2 = api.send(store.store_instance, store.s_new, &[_]Oop{}, 0);
@@ -179,7 +179,7 @@ test "rung 2 polish: Store new mints independent, seeded stores" {
 }
 
 test "rung 2 polish: retraction — :one removal, :many member removal, history timeline" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
     const e = api.intern("rt_e");
 
@@ -217,7 +217,7 @@ test "rung 2 polish: retraction — :one removal, :many member removal, history 
 }
 
 test "store eq: Float values match by VALUE — set semantics + retract by a fresh box" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
     const e = api.intern("f_e");
 
@@ -242,7 +242,7 @@ test "store eq: Float values match by VALUE — set semantics + retract by a fre
 }
 
 test "rung 2 polish: query surface — enumerate an entity's attrs / a type's selectors" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
 
     const e = api.intern("q_e");
@@ -270,7 +270,7 @@ test "rung 2 polish: query surface — enumerate an entity's attrs / a type's se
 }
 
 test "rung 2b.1: tracked dispatch mirror — one write, two representations; escape hatch" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
 
     const widget_vt = api.proto(api.object_vt);
@@ -297,7 +297,7 @@ test "rung 2b.1: tracked dispatch mirror — one write, two representations; esc
 }
 
 test "rung 2b.1: the mirror can't desync — a raw overwrite retracts the stale fact (docs/42 §D1)" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
 
     const gadget_vt = api.proto(api.object_vt);
@@ -325,7 +325,7 @@ test "rung 2b.1: the mirror can't desync — a raw overwrite retracts the stale 
 }
 
 test "Store exact removal restores inheritance and preserves method history" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
     errmod.bringUp(api);
 
@@ -361,7 +361,7 @@ test "Store exact removal restores inheritance and preserves method history" {
 }
 
 test "raw method mutation retracts a primitive mirror marker" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
 
     const vt = api.proto(api.object_vt);
@@ -377,7 +377,7 @@ test "raw method mutation retracts a primitive mirror marker" {
 }
 
 test "rung 2d: history-off asOf is HONEST, not silently nil (docs/42 §D3)" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
     errmod.bringUp(api); // so `valueOf:attr:asOf:` can yield a kinded error value
 
@@ -420,7 +420,7 @@ fn ifAbsent99(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 var gG6api: *idapi.IdApi = undefined;
 
 test "§G6: Globals tells 'absent' from 'bound to nil' — includes: honest, at:ifAbsent: distinguishes" {
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
     gG6api = api;
 
@@ -456,7 +456,7 @@ test "rung 2a.1: currentValue of an absent (e,a) is nil" {
     // Tests share one process: id_init + bringUp are both idempotent (bringUp
     // takes its reload path and re-imports the live store), so this just rides
     // the already-seeded store.
-    const api = id.id_init();
+    const api = floor.api();
     store.bringUp(api);
 
     const ghost = api.intern("ghost");

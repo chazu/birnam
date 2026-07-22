@@ -6,7 +6,7 @@
 //! seq / choice / literal / eof) and packrat memoization on the new representation.
 
 const std = @import("std");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const peg = @import("peg.zig");
 const err_mod = @import("error.zig");
 const idapi = @import("idapi.zig");
@@ -18,7 +18,7 @@ fn str(api: *idapi.IdApi, bytes: []const u8) Oop {
 }
 
 test "peg §C2/§C3: parse failures are kinded error values, distinguishable by kind" {
-    const api = id.id_init();
+    const api = floor.api();
     peg.bringUp(api);
     err_mod.bringUp(api); // so parse:from: can yield kinded error values
 
@@ -50,7 +50,7 @@ test "peg §C2/§C3: parse failures are kinded error values, distinguishable by 
 }
 
 test "peg §G4: a left-recursive rule is a kinded #leftRecursion error, not a stack overflow" {
-    const api = id.id_init();
+    const api = floor.api();
     peg.bringUp(api);
     err_mod.bringUp(api);
 
@@ -80,7 +80,7 @@ test "peg §G4: a left-recursive rule is a kinded #leftRecursion error, not a st
 }
 
 test "peg 3a: number grammar — charset + plus + rule-ref build a nested CST" {
-    const api = id.id_init();
+    const api = floor.api();
     peg.bringUp(api);
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -112,7 +112,7 @@ test "peg 3a: number grammar — charset + plus + rule-ref build a nested CST" {
 }
 
 test "peg 3a: choice of literals + eof + ordered-choice failure" {
-    const api = id.id_init();
+    const api = floor.api();
     peg.bringUp(api);
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -138,7 +138,7 @@ test "peg 3a: choice of literals + eof + ordered-choice failure" {
 }
 
 test "peg 3a: the message (id) api — build + parse + walk CST through api.send" {
-    const api = id.id_init();
+    const api = floor.api();
     peg.bringUp(api);
     const Peg = api.import("Peg") orelse return error.NoPeg;
     const empty = &[_]Oop{};
@@ -173,7 +173,7 @@ test "peg 3a: the message (id) api — build + parse + walk CST through api.send
 }
 
 test "peg 3a: opt + star + not, and left-recursion-free repetition" {
-    const api = id.id_init();
+    const api = floor.api();
     peg.bringUp(api);
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

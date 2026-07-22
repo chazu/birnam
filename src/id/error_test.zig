@@ -9,7 +9,7 @@
 //! tested here because this suite brings up the bare kernel without stdlib.
 
 const std = @import("std");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const prelude = @import("prelude.zig");
 const errmod = @import("error.zig");
 const idapi = @import("idapi.zig");
@@ -19,7 +19,7 @@ const Oop = idapi.Oop;
 var gapi: *idapi.IdApi = undefined;
 
 fn setup() *idapi.IdApi {
-    const api = id.id_init();
+    const api = floor.api();
     gapi = api;
     prelude.bringUp(api);
     errmod.bringUp(api); // exports "Error", swaps object_vt's DNU

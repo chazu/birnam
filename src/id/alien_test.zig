@@ -13,7 +13,7 @@
 //! `Vector`. Keep it first in this file.
 
 const std = @import("std");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const tcc = @import("tcc.zig");
 const alien = @import("alien.zig");
 const collection = @import("collection.zig");
@@ -24,7 +24,7 @@ const Oop = idapi.Oop;
 
 /// The floor + Tcc + Alien only — NO collection (see the first test).
 fn setupBare() *idapi.IdApi {
-    const api = id.id_init();
+    const api = floor.api();
     tcc.bringUp(api);
     alien.bringUp(api);
     return api;
@@ -33,7 +33,7 @@ fn setupBare() *idapi.IdApi {
 /// The full FFI stack: floor + Tcc + collection (Vectors for struct marshal) +
 /// error (DNU → Error value) + Alien, in the real load order.
 fn setup() *idapi.IdApi {
-    const api = id.id_init();
+    const api = floor.api();
     tcc.bringUp(api);
     collection.bringUp(api);
     err_mod.bringUp(api);

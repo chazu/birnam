@@ -2,7 +2,7 @@
 //! install the result as a method, and dispatch to it through the object model.
 
 const std = @import("std");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const tcc = @import("tcc.zig");
 const idapi = @import("idapi.zig");
 
@@ -13,7 +13,7 @@ fn str(api: *idapi.IdApi, bytes: []const u8) Oop {
 }
 
 test "tcc 3c: compile C → native → install as method → dispatch" {
-    const api = id.id_init();
+    const api = floor.api();
     tcc.bringUp(api);
     const Tcc = api.import("Tcc").?;
 
@@ -46,7 +46,7 @@ test "tcc 3c: compile C → native → install as method → dispatch" {
 }
 
 test "tcc: a disposable unit is reclaimed by the collector (frees its code)" {
-    const api = id.id_init();
+    const api = floor.api();
     tcc.bringUp(api);
     const Tcc = api.import("Tcc").?;
 
@@ -81,7 +81,7 @@ noinline fn makeDisposableUnits(api: *idapi.IdApi, Tcc: Oop, count: usize) void 
 }
 
 test "tcc: compile C to a loadable .dylib on disk (AOT output)" {
-    const api = id.id_init();
+    const api = floor.api();
     tcc.bringUp(api);
     const Tcc = api.import("Tcc").?;
 
@@ -117,7 +117,7 @@ export fn birnam_probe() callconv(.c) i64 {
 }
 
 test "tcc slice-1: a dylib's undefined external resolves against the host at dlopen" {
-    const api = id.id_init();
+    const api = floor.api();
     tcc.bringUp(api);
     const Tcc = api.import("Tcc").?;
 
@@ -138,7 +138,7 @@ test "tcc slice-1: a dylib's undefined external resolves against the host at dlo
 }
 
 test "tcc 3c: bad C returns nil; a missing symbol returns nil" {
-    const api = id.id_init();
+    const api = floor.api();
     tcc.bringUp(api);
     const Tcc = api.import("Tcc").?;
 
@@ -150,7 +150,7 @@ test "tcc 3c: bad C returns nil; a missing symbol returns nil" {
 }
 
 test "tcc 3c.3: staged compile opens a pre-relocate symbol window" {
-    const api = id.id_init();
+    const api = floor.api();
     tcc.bringUp(api);
     const Tcc = api.import("Tcc").?;
 
@@ -181,7 +181,7 @@ test "tcc 3c.3: staged compile opens a pre-relocate symbol window" {
 }
 
 test "tcc 3c.3: emitted C can send a message back through libid" {
-    const api = id.id_init();
+    const api = floor.api();
     tcc.bringUp(api);
     const Tcc = api.import("Tcc").?;
 

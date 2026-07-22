@@ -1,5 +1,5 @@
 const std = @import("std");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const prelude = @import("prelude.zig");
 const collection = @import("collection.zig");
 const errors = @import("error.zig");
@@ -8,7 +8,7 @@ const isolate = @import("isolate.zig");
 const Oop = @import("idapi.zig").Oop;
 
 fn apiReady() *@import("idapi.zig").IdApi {
-    const api = id.id_init();
+    const api = floor.api();
     prelude.bringUp(api);
     collection.bringUp(api);
     errors.bringUp(api);

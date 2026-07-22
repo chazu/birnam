@@ -3,7 +3,7 @@
 //! entities and logic variables by message, and runs queries.
 
 const std = @import("std");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const prelude = @import("prelude.zig");
 const store = @import("store.zig");
 const collection = @import("collection.zig");
@@ -15,7 +15,7 @@ const Oop = idapi.Oop;
 var gapi: *idapi.IdApi = undefined;
 
 fn setup() *idapi.IdApi {
-    const api = id.id_init();
+    const api = floor.api();
     gapi = api;
     prelude.bringUp(api);
     store.bringUp(api);

@@ -2,7 +2,7 @@
 //! through the object model (no compiler involved — these are floor primitives).
 
 const std = @import("std");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const prelude = @import("prelude.zig");
 const errmod = @import("error.zig");
 const idapi = @import("idapi.zig");
@@ -12,7 +12,7 @@ const Oop = idapi.Oop;
 var gapi: *idapi.IdApi = undefined;
 
 fn setup() *idapi.IdApi {
-    const api = id.id_init();
+    const api = floor.api();
     gapi = api;
     prelude.bringUp(api);
     return api;
@@ -154,7 +154,7 @@ test "prelude: and:/or: short-circuit — the block runs only on the deciding br
 }
 
 test "prelude: arithmetic faults are catchable errors, not panics" {
-    const api = id.id_init();
+    const api = floor.api();
     gapi = api;
     prelude.bringUp(api);
     errmod.bringUp(api); // F7 — faults now mint real Error values
@@ -200,7 +200,7 @@ test "prelude: arithmetic faults are catchable errors, not panics" {
 }
 
 test "prelude: System readFile:/writeFile:contents: round-trips through disk" {
-    const api = id.id_init();
+    const api = floor.api();
     gapi = api;
     prelude.bringUp(api);
     errmod.bringUp(api);

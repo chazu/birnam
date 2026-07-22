@@ -7,7 +7,7 @@
 
 const std = @import("std");
 const image = @import("image.zig");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const artifact_inspector = @import("artifact_inspector.zig");
 const store = @import("store.zig");
 const collection = @import("collection.zig");
@@ -100,7 +100,7 @@ test "load rejects a truncated header" {
 var gapi: *idapi.IdApi = undefined;
 
 fn setup() *idapi.IdApi {
-    const api = id.id_init();
+    const api = floor.api();
     gapi = api;
     artifact_inspector.bringUp(api);
     prelude.bringUp(api); // exports SystemVt (image extends it)
@@ -256,7 +256,7 @@ test "append images are not part of the format surface" {
 /// carry a compiled `.code` section. This test file defines NO other methods, so
 /// `__methods__` holds exactly what this test defines — a clean code section.
 fn setupWithCodegen() *idapi.IdApi {
-    const api = id.id_init();
+    const api = floor.api();
     gapi = api;
     artifact_inspector.bringUp(api);
     store.bringUp(api);

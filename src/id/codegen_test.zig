@@ -5,7 +5,7 @@
 //! libtcc, and run — the answer comes back from native code through the id api.
 
 const std = @import("std");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const artifact_inspector = @import("artifact_inspector.zig");
 const store = @import("store.zig");
 const peg = @import("peg.zig");
@@ -22,7 +22,7 @@ const Oop = idapi.Oop;
 var gapi: *idapi.IdApi = undefined;
 
 fn setup() *idapi.IdApi {
-    const api = id.id_init();
+    const api = floor.api();
     gapi = api;
     artifact_inspector.bringUp(api);
     store.bringUp(api); // codegen resolves globals through the store

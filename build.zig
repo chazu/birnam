@@ -84,6 +84,16 @@ pub fn build(b: *std.Build) void {
     // ordinary install step can depend on compiled production units without a
     // dependency cycle.
     const bootstrap_install = b.step("bootstrap-install", "Install the native floor and compiler host needed to build compiled units");
+    const conformance_floor = b.option(
+        []const u8,
+        "id-conformance-floor",
+        "Path to the one floor dylib loaded by selected-floor tests",
+    ) orelse b.getInstallPath(.lib, "libbirnam_id.dylib");
+    const conformance_identity = b.option(
+        []const u8,
+        "id-conformance-identity",
+        "Expected birnam_id_floor_identity for selected-floor tests",
+    ) orelse "zig-id-v1";
 
     // -- The id rungs: a dylib + its test suite, one row per module ----------
     // Every rung is a dynamic library the siphon dlopens at runtime, plus a test
@@ -142,6 +152,11 @@ pub fn build(b: *std.Build) void {
         if (m.test_links_tcc) tests.linkLibrary(libtcc_lib);
         tests.linkLibC();
         const run = b.addRunArtifact(tests);
+        if (!std.mem.eql(u8, m.test_src, "id.zig")) {
+            run.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+            run.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+            run.step.dependOn(bootstrap_install);
+        }
         b.step(m.step, m.desc).dependOn(&run.step);
         test_step.dependOn(&run.step);
     }
@@ -234,16 +249,6 @@ pub fn build(b: *std.Build) void {
     // External floor conformance imports only IdApi and dynamically loads the
     // explicitly selected implementation. The default remains the installed Zig
     // floor; later Rust parity runs override both options in an isolated prefix.
-    const conformance_floor = b.option(
-        []const u8,
-        "id-conformance-floor",
-        "Path to the one floor dylib loaded by test-id-conformance",
-    ) orelse b.getInstallPath(.lib, "libbirnam_id.dylib");
-    const conformance_identity = b.option(
-        []const u8,
-        "id-conformance-identity",
-        "Expected birnam_id_floor_identity for test-id-conformance",
-    ) orelse "zig-id-v1";
     const conformance_mod = b.createModule(.{
         .root_source_file = b.path("src/id/conformance_test.zig"),
         .target = target,

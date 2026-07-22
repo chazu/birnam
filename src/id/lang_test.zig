@@ -2,7 +2,7 @@
 //! message api and parses real birnam source.
 
 const std = @import("std");
-const id = @import("id.zig");
+const floor = @import("floor_adapter_test.zig");
 const peg = @import("peg.zig");
 const lang = @import("lang.zig");
 const idapi = @import("idapi.zig");
@@ -10,7 +10,7 @@ const idapi = @import("idapi.zig");
 const Oop = idapi.Oop;
 
 fn setup() *idapi.IdApi {
-    const api = id.id_init();
+    const api = floor.api();
     peg.bringUp(api); // exports "Peg"
     lang.bringUp(api); // imports "Peg", builds the grammar, exports "Lang"
     return api;
