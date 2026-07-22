@@ -7,4 +7,15 @@ edition = "2024"
 rust-version = "1.95"
 
 [workspace.lints.rust]
+rust_2018_idioms = "deny"
 unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+# Every profile that produces a runnable floor dylib aborts rather than
+# unwinding across the C ABI. Rust test harnesses retain their default unwind
+# policy so pure Rust unit tests can report ordinary assertion failures.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
