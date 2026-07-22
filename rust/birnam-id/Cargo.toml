@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+ffi-test-hooks = []
+
 [lib]
 name = "birnam_id"
 crate-type = ["cdylib"]

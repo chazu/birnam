@@ -7,6 +7,7 @@
 compile_error!("every runnable birnam_id cdylib profile must use panic=abort");
 
 mod abi;
+mod boundary;
 mod dispatch;
 mod env;
 mod gc;
@@ -28,6 +29,10 @@ const RUST_CRATE_IDENTITY: &[u8] = b"rust-id-shell-v1\0";
 /// export. Its presence does not imply that the dylib implements `IdApi`.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_id_rust_crate_identity() -> *const c_char {
+    boundary::require_invariant(
+        RUST_CRATE_IDENTITY.last() == Some(&0),
+        "diagnostic identity lost its C terminator",
+    );
     RUST_CRATE_IDENTITY.as_ptr().cast()
 }
 
@@ -38,6 +43,20 @@ pub extern "C" fn birnam_id_rust_crate_identity() -> *const c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_id_rust_abi_descriptor_v1() -> *const core::ffi::c_void {
     core::ptr::addr_of!(abi::ABI_DESCRIPTOR_V1).cast()
+}
+
+/// Test-only proof that a Rust panic cannot unwind across the C ABI.
+#[cfg(feature = "ffi-test-hooks")]
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_test_panic_across_ffi() {
+    panic!("intentional Rust FFI panic");
+}
+
+/// Test-only proof of the explicit fatal-invariant boundary helper.
+#[cfg(feature = "ffi-test-hooks")]
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_test_invariant_abort() {
+    boundary::require_invariant(false, "intentional Rust FFI invariant failure");
 }
 
 #[cfg(test)]
