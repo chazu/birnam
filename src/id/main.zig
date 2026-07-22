@@ -9,6 +9,7 @@
 //! No eids, no fact store.
 
 const std = @import("std");
+const artifact_preflight = @import("artifact_preflight.zig");
 const runtime_resources = @import("runtime_resources.zig");
 const idapi = @import("idapi.zig");
 const project = @import("project.zig");
@@ -1225,100 +1226,6 @@ fn runScript(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
 /// only that this is a dynamic-library container; module identity, requirements,
 /// native requirements, and capabilities come from the artifact's ID
 /// descriptor. No project manifest or build receipt participates.
-const ArtifactPreflight = struct {
-    allocator: std.mem.Allocator,
-    api: *IdApi,
-    artifact: Oop,
-    directory: []const u8,
-    visiting: std.StringHashMap(void),
-    inspected: std.StringHashMap(void),
-
-    fn init(allocator: std.mem.Allocator, api: *IdApi, artifact: Oop, directory: []const u8) ArtifactPreflight {
-        return .{
-            .allocator = allocator,
-            .api = api,
-            .artifact = artifact,
-            .directory = directory,
-            .visiting = std.StringHashMap(void).init(allocator),
-            .inspected = std.StringHashMap(void).init(allocator),
-        };
-    }
-
-    fn deinit(self: *ArtifactPreflight) void {
-        self.visiting.deinit();
-        self.inspected.deinit();
-    }
-
-    fn diagnostic(kind: []const u8, path: []const u8) void {
-        const stderr = std.fs.File.stderr();
-        stderr.writeAll("birnam: artifact preflight failed: ") catch {};
-        stderr.writeAll(kind) catch {};
-        stderr.writeAll(": ") catch {};
-        stderr.writeAll(path) catch {};
-        stderr.writeAll("\n") catch {};
-    }
-
-    fn walk(self: *ArtifactPreflight, description: Oop) !void {
-        if (self.api.send(description, self.api.intern("kind"), &.{}, 0) != self.api.intern("module")) {
-            diagnostic("artifactKindMismatch", self.directory);
-            return error.ArtifactKindMismatch;
-        }
-        const identity = self.api.send(description, self.api.intern("identity"), &.{}, 0);
-        if (self.api.vtableOf(identity) != self.api.symbol_vt) {
-            diagnostic("artifactDescriptionMissing", self.directory);
-            return error.ArtifactDescriptionMissing;
-        }
-        const name = std.mem.span(self.api.symbolName(identity));
-        if (self.inspected.contains(name)) return;
-        if (self.visiting.contains(name)) {
-            diagnostic("circularDependency", name);
-            return error.ArtifactDependencyCycle;
-        }
-        try self.visiting.put(name, {});
-        defer _ = self.visiting.remove(name);
-
-        const count_value = self.api.send(description, self.api.intern("requiresCount"), &.{}, 0);
-        if (self.api.vtableOf(count_value) != self.api.smallint_vt) {
-            diagnostic("artifactDescriptionMissing", name);
-            return error.ArtifactDescriptionMissing;
-        }
-        const count = self.api.smallIntValue(count_value);
-        if (count < 0 or count > 4096) {
-            diagnostic("artifactDescriptionMissing", name);
-            return error.ArtifactDescriptionMissing;
-        }
-        var index: i64 = 0;
-        while (index < count) : (index += 1) {
-            const requirement = self.api.send(description, self.api.intern("requireAt:"), &.{self.api.mkSmallInt(index)}, 1);
-            if (self.api.vtableOf(requirement) != self.api.symbol_vt) {
-                diagnostic("artifactDescriptionMissing", name);
-                return error.ArtifactDescriptionMissing;
-            }
-            const required_name = std.mem.span(self.api.symbolName(requirement));
-            const filename = try std.fmt.allocPrint(self.allocator, "libbirnam_{s}.dylib", .{required_name});
-            defer self.allocator.free(filename);
-            const path = try std.fs.path.join(self.allocator, &.{ self.directory, filename });
-            defer self.allocator.free(path);
-            const dependency = self.api.send(self.artifact, self.api.intern("inspect:"), &.{self.api.mkString(path.ptr, path.len)}, 1);
-            if (dependency == self.api.nilObj) {
-                const failure = self.api.send(self.artifact, self.api.intern("lastFailure"), &.{}, 0);
-                const failure_name = if (failure != self.api.nilObj and self.api.vtableOf(failure) == self.api.symbol_vt)
-                    std.mem.span(self.api.symbolName(failure))
-                else
-                    "artifactDescriptionMissing";
-                diagnostic(failure_name, path);
-                return error.ArtifactDependencyInvalid;
-            }
-            if (self.api.send(dependency, self.api.intern("identity"), &.{}, 0) != requirement) {
-                diagnostic("artifactIdentityMismatch", path);
-                return error.ArtifactIdentityMismatch;
-            }
-            try self.walk(dependency);
-        }
-        try self.inspected.put(name, {});
-    }
-};
-
 fn runCompiledArtifact(a: std.mem.Allocator, api: *IdApi, path: []const u8) !void {
     // The only pre-inspection load after libid: the tiny Artifact rung. It
     // returns an ID descriptor without Store, Codegen, Module, or artifact code.
@@ -1348,9 +1255,9 @@ fn runCompiledArtifact(a: std.mem.Allocator, api: *IdApi, path: []const u8) !voi
     // and reject the entire sibling closure before loading the language stack
     // or executing any artifact initializer.
     const directory = std.fs.path.dirname(absolute) orelse ".";
-    var preflight = ArtifactPreflight.init(a, api, artifact, directory);
+    var preflight = artifact_preflight.Preflight.init(a, api, artifact, directory);
     defer preflight.deinit();
-    try preflight.walk(inspected);
+    try preflight.walkRoot(inspected, null);
 
     try loadStack(a, api);
     const codegen = api.import("Codegen") orelse return error.NoCodegen;
