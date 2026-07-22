@@ -33,6 +33,38 @@ struct Block {
     finalizer: Option<Finalizer>,
 }
 
+/// One unreachable allocation detached from the registry before foreign code
+/// runs. Its payload remains live until `reclaim` consumes it.
+pub(crate) struct DetachedBlock {
+    object: Oop,
+    block: Block,
+}
+
+impl DetachedBlock {
+    pub(crate) fn object(&self) -> Oop {
+        self.object
+    }
+
+    pub(crate) fn finalizer(&self) -> Option<Finalizer> {
+        self.block.finalizer
+    }
+
+    pub(crate) fn reclaim(self) {
+        drop(self);
+    }
+}
+
+impl Drop for DetachedBlock {
+    fn drop(&mut self) {
+        let layout = Layout::from_size_align(self.block.total_size, BLOCK_ALIGNMENT)
+            .unwrap_or_else(|_| boundary::fatal_invariant("stored block layout became invalid"));
+        // SAFETY: detaching transferred this still-live allocation out of the
+        // Heap registry. DetachedBlock is its sole owner and drops exactly once
+        // with the same layout used by allocate.
+        unsafe { dealloc(self.block.base.as_ptr(), layout) };
+    }
+}
+
 /// Convert an owned block base to its payload address.
 ///
 /// # Safety
@@ -184,6 +216,34 @@ impl Heap {
         }
     }
 
+    /// Snapshot unreachable collectable identities before sweep mutates the
+    /// registry. Permanent blocks are never candidates.
+    pub(crate) fn dead_collectable_addresses(&self) -> Vec<usize> {
+        self.blocks
+            .iter()
+            .filter_map(|(address, block)| {
+                (block.permanence == Permanence::Collectable && !block.marked).then_some(*address)
+            })
+            .collect()
+    }
+
+    /// Remove one previously identified dead block while leaving its allocation
+    /// live for a finalizer. Marked and permanent blocks cannot be detached.
+    pub(crate) fn detach_dead_collectable(&mut self, address: usize) -> Option<DetachedBlock> {
+        let block = self.blocks.get(&address)?;
+        if block.permanence != Permanence::Collectable || block.marked {
+            return None;
+        }
+        let block = self
+            .blocks
+            .remove(&address)
+            .unwrap_or_else(|| boundary::fatal_invariant("dead GC block disappeared"));
+        Some(DetachedBlock {
+            object: address as Oop,
+            block,
+        })
+    }
+
     pub(crate) fn has_finalizer(&self, object: Oop) -> Option<bool> {
         self.blocks
             .get(&object.addr())
@@ -271,14 +331,10 @@ impl Heap {
 
     #[cfg(test)]
     pub(crate) fn reclaim_for_test(&mut self, object: Oop) -> bool {
-        let Some(block) = self.blocks.remove(&object.addr()) else {
+        let Some(detached) = self.detach_dead_collectable(object.addr()) else {
             return false;
         };
-        let layout = Layout::from_size_align(block.total_size, BLOCK_ALIGNMENT)
-            .expect("stored block layout must remain valid");
-        // SAFETY: removing exact membership transfers this still-live allocation
-        // to the test teardown path, which deallocates it exactly once.
-        unsafe { dealloc(block.base.as_ptr(), layout) };
+        detached.reclaim();
         true
     }
 }
@@ -344,6 +400,7 @@ pub(crate) unsafe fn run_layout_probe(
 mod tests {
     use super::*;
     use core::ffi::c_void;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn fake_vtable() -> Oop {
         static MARKER: u64 = 0;
@@ -351,6 +408,12 @@ mod tests {
     }
 
     unsafe extern "C" fn finalizer(_: Oop) {}
+
+    static FINALIZER_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    unsafe extern "C" fn counting_finalizer(_: Oop) {
+        FINALIZER_CALLS.fetch_add(1, Ordering::Relaxed);
+    }
 
     #[test]
     fn total_size_formula_handles_unaligned_and_overflowing_sizes() {
@@ -474,6 +537,43 @@ mod tests {
             assert!(!heap.set_vtable(invalid, fake_vtable()));
         }
         assert!(heap.contains(object));
+    }
+
+    #[test]
+    fn sweep_candidates_exclude_marked_and_permanent_blocks_before_detaching() {
+        let mut heap = Heap::new();
+        let first_dead = heap.allocate(8, Permanence::Collectable);
+        let live = heap.allocate(0, Permanence::Collectable);
+        let permanent = heap.allocate(0, Permanence::Permanent);
+        let second_dead = heap.allocate(17, Permanence::Collectable);
+        assert!(heap.set_finalizer(first_dead, counting_finalizer));
+        assert!(heap.mark_collectable_address(live.addr()));
+
+        let dead = heap.dead_collectable_addresses();
+        assert_eq!(dead.len(), 2);
+        assert!(dead.contains(&first_dead.addr()));
+        assert!(dead.contains(&second_dead.addr()));
+        assert!(!dead.contains(&live.addr()));
+        assert!(!dead.contains(&permanent.addr()));
+
+        FINALIZER_CALLS.store(0, Ordering::Relaxed);
+        let detached = heap
+            .detach_dead_collectable(first_dead.addr())
+            .expect("dead block detaches");
+        assert_eq!(detached.object(), first_dead);
+        assert!(!heap.contains(first_dead));
+        assert_eq!(heap.allocation_count(), 3);
+        // The allocation remains readable while detached so its finalizer can
+        // inspect or release resources named by the payload.
+        assert_eq!(unsafe { detached.object().cast::<usize>().read() }, 0);
+        let callback = detached.finalizer().expect("copied finalizer metadata");
+        unsafe { callback(detached.object()) };
+        assert_eq!(FINALIZER_CALLS.load(Ordering::Relaxed), 1);
+        detached.reclaim();
+
+        assert!(heap.detach_dead_collectable(live.addr()).is_none());
+        assert!(heap.detach_dead_collectable(permanent.addr()).is_none());
+        assert!(heap.detach_dead_collectable(first_dead.addr()).is_none());
     }
 
     #[test]
