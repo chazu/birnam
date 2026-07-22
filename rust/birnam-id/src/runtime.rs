@@ -635,7 +635,11 @@ impl Runtime {
         }
         // SAFETY: all finalizers returned and the owner thread again has sole
         // access to the registry.
-        unsafe { (&mut *self.state.get()).heap.clear_marks() };
+        unsafe {
+            let heap = &mut (&mut *self.state.get()).heap;
+            heap.clear_marks();
+            heap.reset_allocation_bytes();
+        }
         drop(collection_guard);
         reclaimed
     }

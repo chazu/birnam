@@ -93,12 +93,14 @@ unsafe fn vtable_slot_from_payload(payload: NonNull<u8>) -> *mut Oop {
 /// exposed as language behavior.
 pub(crate) struct Heap {
     blocks: AddressMap<Block>,
+    bytes_since_collection: usize,
 }
 
 impl Heap {
     pub(crate) fn new() -> Self {
         Self {
             blocks: AddressMap::default(),
+            bytes_since_collection: 0,
         }
     }
 
@@ -139,6 +141,10 @@ impl Heap {
             previous.is_none(),
             "allocator reused a live payload address",
         );
+        self.bytes_since_collection = self
+            .bytes_since_collection
+            .checked_add(total_size)
+            .unwrap_or_else(|| boundary::fatal_invariant("GC allocation byte counter overflow"));
         payload.as_ptr().cast()
     }
 
@@ -148,6 +154,14 @@ impl Heap {
 
     pub(crate) fn allocation_count(&self) -> usize {
         self.blocks.len()
+    }
+
+    pub(crate) fn bytes_since_collection(&self) -> usize {
+        self.bytes_since_collection
+    }
+
+    pub(crate) fn reset_allocation_bytes(&mut self) {
+        self.bytes_since_collection = 0;
     }
 
     pub(crate) fn base_address(&self, object: Oop) -> Option<usize> {
@@ -422,6 +436,26 @@ mod tests {
             assert_eq!(Heap::allocation_total_size(requested), Some(expected));
         }
         assert_eq!(Heap::allocation_total_size(usize::MAX), None);
+    }
+
+    #[test]
+    fn allocation_bytes_accumulate_exact_layouts_and_reset_only_after_collection() {
+        let mut heap = Heap::new();
+        assert_eq!(heap.bytes_since_collection(), 0);
+        let first = heap.allocate(0, Permanence::Collectable);
+        let first_size = Heap::allocation_total_size(0).unwrap();
+        let second_size = Heap::allocation_total_size(17).unwrap();
+        let _second = heap.allocate(17, Permanence::Permanent);
+        assert_eq!(heap.bytes_since_collection(), first_size + second_size);
+
+        assert!(heap.reclaim_for_test(first));
+        assert_eq!(heap.bytes_since_collection(), first_size + second_size);
+        heap.reset_allocation_bytes();
+        assert_eq!(heap.bytes_since_collection(), 0);
+
+        let third_size = Heap::allocation_total_size(9).unwrap();
+        let _third = heap.allocate(9, Permanence::Collectable);
+        assert_eq!(heap.bytes_since_collection(), third_size);
     }
 
     #[test]
