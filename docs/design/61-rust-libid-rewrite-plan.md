@@ -1,7 +1,8 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, and R3.0 complete as of 2026-07-22. This plan replaces the
+> R2.1 through R2.6, and R3.0 through R3.1 complete as of 2026-07-22. This plan
+> replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -1182,6 +1183,35 @@ gate (now using `mkSmallInt` as its still-fatal field), and combined
 **Gate:** the Rust floor loads a Zig `module_init` fixture entirely through its
 own `IdApi` loader entries and can reflect and reopen its own dylib without
 creating a second runtime.
+
+#### R3.1 execution record — 2026-07-22
+
+The runtime now owns an ordered export environment independent of hash
+iteration. Exporting a new Symbol appends one entry; rebinding the same name
+replaces its value without moving it. Import follows the Zig floor by interning
+the queried bytes before lookup. Reverse lookup scans current entries from the
+front by pointer identity, so the first current alias wins. Consequently, an
+earlier name rebound to another object becomes that object's reverse authority,
+while the old object's next surviving alias becomes authoritative. A null-valued
+entry imports as null and `isExported` reports false, matching current behavior.
+
+Initialization publishes the unchanged R2.5 objects under the 14 current names
+in order: `Object`, `Integer`, `Float`, `Word`, `String`, `Boolean`, `Vtable`,
+`Symbol`, `SymbolVt`, `ObjectVt`, `IntegerVt`, `FloatVt`, `WordVt`, and
+`StringVt`. Their prototype/family pointers are not recreated. `import`,
+`exportObj`, `isExported`, and `exportedNameOf` now use the ordered environment.
+`dlopen` and `dlsym` are transparent platform-ABI pass-throughs, including
+caller-selected lazy mode and null results for load/resolution failures.
+
+`test-rust-env-loader` validates every canonical import and reverse name before
+mutation, confirms the R2.5 11-vtable snapshot, and freezes alias, rebinding,
+and null-value behavior. It builds a tiny Zig module, loads it twice exclusively
+through the Rust table, and threads the same opaque state pointer through the
+second `module_init`, where its value advances from one to two. The client also
+reopens the Rust floor through its own loader, resolves and calls the diagnostic
+identity, resolves `id_init`, retains the handle, and deliberately does not call
+initialization again. Debug and optimized fixtures, all 37 Rust tests, strict
+all-target/all-feature Clippy, and combined `zig build test` pass.
 
 ### R3.2 — Integer, Float, and Word
 
