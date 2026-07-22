@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, and R3.0 through R3.7 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, R3.0 through R3.7, and R4.1 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1531,6 +1531,30 @@ verification.
 - Test object graphs, cycles, false-positive raw words, and permanent roots.
 
 **Gate:** pure Rust heap graph tests pass without scanning the native stack.
+
+#### R4.1 execution record — 2026-07-22
+
+The Rust heap registry now marks only an exact registered collectable payload
+address. Nulls, foreign pointers, allocation headers, interior addresses,
+permanent blocks, and already-marked blocks never enter the worklist. The marker
+copies each padded payload into machine-word candidates before mutating the
+registry, then drains the transitive conservative closure. Tests cover cycles,
+duplicate discovery, false pointer-shaped words, and mark clearing in debug and
+optimized Rust builds.
+
+The process export environment snapshots its values as roots, and the symbol
+interner explicitly contributes every interned identity. Symbols, vtables, and
+singletons remain permanent and therefore do not carry mark bits or enter the
+worklist. Permanent vtable payloads are not traced: in particular, a private
+vtable's owner field does not keep its collectable owner alive. A runtime-level
+test proves exported objects and their payload children are marked while an
+unexported object and an otherwise-unreachable private-vtable owner are not.
+
+This checkpoint activates marking only. The public collection call performs the
+floor-root mark pass, clears private marks, and still returns zero; it neither
+invokes foreign roots nor scans the native stack nor sweeps. The existing
+debug/release external metadata and fatal-capacity probes therefore continue to
+pass while R4.2 through R4.5 add the remaining authority in order.
 
 ### R4.2 — Root providers and trace hooks
 
