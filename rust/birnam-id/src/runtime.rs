@@ -3,7 +3,7 @@
 
 use core::cell::{Cell, UnsafeCell};
 
-use crate::abi::{Method, Oop};
+use crate::abi::{Method, MethodOverwriteHook, Oop};
 use crate::boundary;
 use crate::env::Environment;
 use crate::gc::MetadataShell;
@@ -55,6 +55,7 @@ struct RuntimeState {
     canonical: Option<CanonicalObjects>,
     metadata: MetadataShell,
     environment: Environment,
+    method_overwrite_hook: Option<MethodOverwriteHook>,
 }
 
 /// One runtime owned by the thread that constructed it.
@@ -91,6 +92,7 @@ impl Runtime {
                 canonical: None,
                 metadata: MetadataShell::new(),
                 environment: Environment::new(),
+                method_overwrite_hook: None,
             }),
         }
     }
@@ -117,7 +119,21 @@ impl Runtime {
 
     pub(crate) fn add_method(&self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
         self.assert_owner();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        // Copy all callback inputs and end the state borrow before foreign code.
+        // SAFETY: owner-thread serialization; direct_lookup and hook are copied.
+        let hook = unsafe {
+            let state = &*self.state.get();
+            state
+                .vtables
+                .direct_lookup(vtable, selector)
+                .and(state.method_overwrite_hook)
+        };
+        if let Some(hook) = hook {
+            // No Rust state borrow survives this callback. The ABI contract
+            // permits only pure Store-log mutation and read-only floor queries.
+            unsafe { hook(vtable, selector) };
+        }
+        // SAFETY: callback returned and owner-thread serialization is restored.
         unsafe {
             (&mut *self.state.get())
                 .vtables
@@ -127,12 +143,32 @@ impl Runtime {
 
     pub(crate) fn remove_method(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         self.assert_owner();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        // Copy all callback inputs and end the state borrow before foreign code.
+        // SAFETY: owner-thread serialization; direct_lookup and hook are copied.
+        let hook = unsafe {
+            let state = &*self.state.get();
+            state
+                .vtables
+                .direct_lookup(vtable, selector)
+                .and(state.method_overwrite_hook)
+        };
+        if let Some(hook) = hook {
+            // No Rust state borrow survives this callback. The ABI contract
+            // permits only pure Store-log mutation and read-only floor queries.
+            unsafe { hook(vtable, selector) };
+        }
+        // SAFETY: callback returned and owner-thread serialization is restored.
         unsafe {
             (&mut *self.state.get())
                 .vtables
                 .remove_method(vtable, selector)
         }
+    }
+
+    pub(crate) fn set_method_overwrite_hook(&self, hook: Option<MethodOverwriteHook>) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe { (&mut *self.state.get()).method_overwrite_hook = hook };
     }
 
     pub(crate) fn create_vtable(&self, parent: Oop) -> Oop {

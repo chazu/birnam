@@ -227,6 +227,10 @@ unsafe extern "C" fn api_set_parent(vtable: Oop, parent: Oop) {
     runtime().set_vtable_parent(vtable, parent);
 }
 
+unsafe extern "C" fn api_set_method_overwrite_hook(hook: Option<MethodOverwriteHook>) {
+    runtime().set_method_overwrite_hook(hook);
+}
+
 unsafe extern "C" fn api_vtable_count() -> usize {
     runtime().vtable_count()
 }
@@ -246,20 +250,6 @@ unsafe extern "C" fn api_vtable_parent(vtable: Oop) -> Oop {
 unsafe extern "C" fn api_vtable_owner(vtable: Oop) -> Oop {
     runtime().vtable_owner(vtable)
 }
-
-macro_rules! fatal_stub {
-    ($name:ident($($argument:ident: $argument_type:ty),* $(,)?) -> $result:ty, $field:literal) => {
-        unsafe extern "C" fn $name($($argument: $argument_type),*) -> $result {
-            $(let _ = $argument;)*
-            boundary::fatal_invariant(concat!(
-                "Rust R2.6 IdApi field is unsupported: ",
-                $field,
-            ))
-        }
-    };
-}
-
-fatal_stub!(unsupported_set_method_overwrite_hook(hook: Option<MethodOverwriteHook>) -> (), "setMethodOverwriteHook");
 
 fn table_for(bootstrap: &Bootstrap) -> IdApi {
     let globals = bootstrap.runtime.globals();
@@ -309,7 +299,7 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         ensurePrivateVtable: api_ensure_private_vtable,
         setOwner: api_set_owner,
         setParent: api_set_parent,
-        setMethodOverwriteHook: unsupported_set_method_overwrite_hook,
+        setMethodOverwriteHook: api_set_method_overwrite_hook,
         vtableCount: api_vtable_count,
         vtableAt: api_vtable_at,
         vtableSelectorAt: api_vtable_selector_at,

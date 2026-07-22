@@ -28,21 +28,3 @@ probe_profile() {
 
 probe_profile debug
 probe_profile release
-
-output="$scratch/unsupported.log"
-set +e
-"$probe" "$target_dir/debug/libbirnam_id.dylib" unsupported >"$output" 2>&1
-status=$?
-set -e
-if [[ $status -ne 134 ]]; then
-  echo "rust-id-spike: unsupported field exited $status, expected SIGABRT status 134" >&2
-  cat "$output" >&2
-  exit 1
-fi
-if ! grep -q "Rust R2.6 IdApi field is unsupported: setMethodOverwriteHook" "$output"; then
-  echo "rust-id-spike: unsupported field omitted its exact diagnostic" >&2
-  cat "$output" >&2
-  exit 1
-fi
-
-echo "rust-id-spike: unsupported setMethodOverwriteHook terminated with SIGABRT"

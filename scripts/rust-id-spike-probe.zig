@@ -112,9 +112,5 @@ pub fn main() !void {
     const api = init();
 
     if (std.mem.eql(u8, mode, "functional")) return runFunctional(api);
-    if (std.mem.eql(u8, mode, "unsupported")) {
-        api.setMethodOverwriteHook(null);
-        return error.UnsupportedFieldReturned;
-    }
     return error.UnknownMode;
 }

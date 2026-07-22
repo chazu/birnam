@@ -467,6 +467,18 @@ pub(crate) unsafe fn active_send(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vtable::AddMethod;
+    use core::cell::Cell;
+
+    thread_local! {
+        static HOOK_RUNTIME: Cell<*const Runtime> = const { Cell::new(core::ptr::null()) };
+        static HOOK_VTABLE: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
+        static HOOK_SELECTOR: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
+        static HOOK_EXPECTED_METHOD: Cell<usize> = const { Cell::new(0) };
+        static HOOK_CALLS: Cell<usize> = const { Cell::new(0) };
+        static HOOK_SAW_PRE_MUTATION: Cell<bool> = const { Cell::new(false) };
+        static HOOK_READ_REFLECTION: Cell<bool> = const { Cell::new(false) };
+    }
 
     unsafe extern "C" fn answer_42(_: Oop, _: *const Oop, _: usize) -> Oop {
         42usize as Oop
@@ -488,6 +500,31 @@ mod tests {
 
     unsafe extern "C" fn answer_77(_: Oop, _: *const Oop, _: usize) -> Oop {
         77usize as Oop
+    }
+
+    unsafe extern "C" fn observe_overwrite(vtable: Oop, selector: Oop) {
+        HOOK_CALLS.set(HOOK_CALLS.get() + 1);
+        let runtime = HOOK_RUNTIME.get();
+        if runtime.is_null() {
+            return;
+        }
+        // SAFETY: the test installs its live runtime pointer only for the
+        // synchronous mutation calls below.
+        let runtime = unsafe { &*runtime };
+        let expected = HOOK_EXPECTED_METHOD.get();
+        HOOK_SAW_PRE_MUTATION.set(
+            vtable == HOOK_VTABLE.get()
+                && selector == HOOK_SELECTOR.get()
+                && runtime
+                    .lookup_method(vtable, selector)
+                    .is_some_and(|method| method.as_oop().addr() == expected),
+        );
+        HOOK_READ_REFLECTION.set(
+            runtime.vtable_count() >= 3
+                && runtime.vtable_at(0) == runtime.globals().vtable_vt
+                && runtime.vtable_selector_at(vtable, 0) == selector
+                && runtime.vtable_parent(vtable) == runtime.globals().object_vt,
+        );
     }
 
     unsafe extern "C" fn reentrant_send(receiver: Oop, args: *const Oop, count: usize) -> Oop {
@@ -580,6 +617,65 @@ mod tests {
             .runtime
             .enter(|| harness.runtime.send_slice(receiver, outer, &[inner]));
         assert_eq!(result.addr(), 42);
+    }
+
+    #[test]
+    fn overwrite_hook_runs_before_replacement_and_removal_without_state_borrows() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let vtable = runtime.create_vtable(globals.object_vt);
+        let selector = selector(runtime, b"hookOrdering");
+
+        assert_eq!(
+            runtime.add_method(vtable, selector, answer_42),
+            AddMethod::Added
+        );
+        HOOK_RUNTIME.set(core::ptr::from_ref(runtime));
+        HOOK_VTABLE.set(vtable);
+        HOOK_SELECTOR.set(selector);
+        HOOK_EXPECTED_METHOD.set(MethodAddress::from_method(answer_42).as_oop().addr());
+        HOOK_CALLS.set(0);
+        HOOK_SAW_PRE_MUTATION.set(false);
+        HOOK_READ_REFLECTION.set(false);
+        runtime.set_method_overwrite_hook(Some(observe_overwrite));
+
+        assert!(matches!(
+            runtime.add_method(vtable, selector, answer_77),
+            AddMethod::Overwrote(previous)
+                if previous == MethodAddress::from_method(answer_42)
+        ));
+        assert_eq!(HOOK_CALLS.get(), 1);
+        assert!(HOOK_SAW_PRE_MUTATION.get());
+        assert!(HOOK_READ_REFLECTION.get());
+        assert_eq!(
+            runtime.lookup_method(vtable, selector),
+            Some(MethodAddress::from_method(answer_77))
+        );
+
+        HOOK_EXPECTED_METHOD.set(MethodAddress::from_method(answer_77).as_oop().addr());
+        HOOK_SAW_PRE_MUTATION.set(false);
+        assert_eq!(
+            runtime.remove_method(vtable, selector),
+            Some(MethodAddress::from_method(answer_77))
+        );
+        assert_eq!(HOOK_CALLS.get(), 2);
+        assert!(HOOK_SAW_PRE_MUTATION.get());
+        assert_eq!(runtime.lookup_method(vtable, selector), None);
+
+        assert_eq!(runtime.remove_method(vtable, selector), None);
+        assert_eq!(HOOK_CALLS.get(), 2);
+        runtime.set_method_overwrite_hook(None);
+        assert_eq!(
+            runtime.add_method(vtable, selector, answer_42),
+            AddMethod::Added
+        );
+        assert!(matches!(
+            runtime.add_method(vtable, selector, answer_77),
+            AddMethod::Overwrote(_)
+        ));
+        assert_eq!(HOOK_CALLS.get(), 2);
+        HOOK_RUNTIME.set(core::ptr::null());
     }
 
     #[test]
