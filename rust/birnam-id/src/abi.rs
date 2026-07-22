@@ -172,7 +172,7 @@ pub(crate) static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
     object_format: 1, // Mach-O
     endian: 0,        // little
     pointer_bits: usize::BITS as usize,
-    c_int_bits: (size_of::<c_int>() * 8),
+    c_int_bits: c_int::BITS as usize,
     id_api_size: size_of::<IdApi>(),
     id_api_alignment: align_of::<IdApi>(),
     type_count: ABI_TYPE_COUNT,
