@@ -1,8 +1,8 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> and R2.1 through R2.4 complete,
-> 2026-07-22. This plan replaces the implementation of
+> and R2.1 through R2.5 complete as of 2026-07-22. This plan replaces the
+> implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
 > and higher runtime rungs. It does not authorize implementation by itself.
@@ -1019,6 +1019,39 @@ still no Rust `id_init` or public `IdApi` table.
 **Gate:** the backend-neutral bootstrap/dispatch/DNU tests pass against the Rust
 floor in an isolated harness; the complete vtable creation order and canonical
 identity snapshot are recorded for later phase gates.
+
+#### R2.5 execution record — 2026-07-22
+
+The internal Rust harness now performs the one-way bootstrap in the Zig floor's
+deterministic order. It creates `VtableVt`, `ObjectVt`, `SymbolVt`, the internal
+Symbol-list and environment dictionaries, then Integer, String, Float, Word,
+Nil, and Boolean family vtables. `VtableVt` describes itself and delegates to
+`ObjectVt`; every other header and parent relation is checked against the
+frozen 11-entry order. All vtables retain the permanent 80-byte raw shape.
+
+The first six interned selectors are `lookup`, `addMethod`, `removeMethod:`,
+`allocate`, `delegated`, and `doesNotUnderstand:`. Bootstrap installs the first
+three directly on `VtableVt`, then sends `addMethod` through the metacircular
+dispatcher to install `allocate` and `delegated` on `VtableVt` and the default
+overridable DNU handler on `ObjectVt`. Tests use those messages to create a
+delegated family, install and remove a native Method, allocate an instance,
+dispatch it, and override DNU. No runtime borrow or collection guard crosses a
+Method call.
+
+The canonical nil, true, false, Object, Integer, Float, Word, String, and Symbol
+identities now have their final vtables and payload shapes. Vtables, Symbols,
+the three singletons, Object, and Symbol are permanent. The four boxed value
+prototypes are collectable; their initial values are zero or empty bytes. The
+owner map matches the prototype model exactly, including true (not false) as
+the Boolean family owner. All listed identities are distinct and later phases
+must extend them in place.
+
+`bench/baselines/rust-id-r2.5-bootstrap.json` records the symbolic vtable,
+selector, direct-method, canonical-object, lifetime, payload, and owner snapshot
+against implementation commit `0dabfb9`. All 31 debug and optimized Rust tests,
+strict all-target/all-feature Clippy, and combined `zig build test` pass. The
+bootstrap remains internal and the ordinary Zig floor remains selected: Rust
+still exports neither `id_init` nor an `IdApi` table.
 
 ### R2.6 — Publish the complete-shaped but spike-only API table
 
