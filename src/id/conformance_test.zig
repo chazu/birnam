@@ -98,3 +98,102 @@ test "DNU is overridable and forwards exactly sixteen original arguments" {
     try std.testing.expectEqual(@as(usize, 16), dnu_count);
     for (dnu_args, 0..) |arg, i| try std.testing.expect(arg == original[i]);
 }
+
+test "Integer preserves the full signed width" {
+    const api = floor.api();
+    const values = [_]i64{ std.math.minInt(i64), -1, 0, 1, 42, std.math.maxInt(i64) };
+    for (values) |value| {
+        const object = api.mkSmallInt(value);
+        try std.testing.expect(api.isSmallInt(object) != 0);
+        try std.testing.expect(api.vtableOf(object) == api.smallint_vt);
+        try std.testing.expectEqual(value, api.smallIntValue(object));
+        try std.testing.expect(api.isFloat(object) == 0);
+        try std.testing.expect(api.isWord(object) == 0);
+    }
+}
+
+test "Float preserves boxed f64 bit patterns" {
+    const api = floor.api();
+    const patterns = [_]u64{
+        0x0000000000000000, // +0
+        0x8000000000000000, // -0
+        0x3ff4000000000000, // 1.25
+        0x7ff0000000000000, // +infinity
+        0x7ff8000000001234, // quiet NaN with payload
+    };
+    for (patterns) |bits| {
+        const value: f64 = @bitCast(bits);
+        const object = api.mkFloat(value);
+        try std.testing.expect(api.isFloat(object) != 0);
+        try std.testing.expect(api.vtableOf(object) == api.float_vt);
+        try std.testing.expectEqual(bits, @as(u64, @bitCast(api.floatValue(object))));
+        try std.testing.expect(api.isSmallInt(object) == 0);
+        try std.testing.expect(api.isWord(object) == 0);
+    }
+}
+
+test "Word preserves every opaque machine bit" {
+    const api = floor.api();
+    const values = [_]u64{ 0, 1, 0x7fffffffffffffff, 0x8000000000000000, 0xfedcba9876543210, std.math.maxInt(u64) };
+    for (values) |value| {
+        const object = api.mkWord(value);
+        try std.testing.expect(api.isWord(object) != 0);
+        try std.testing.expect(api.vtableOf(object) == api.word_vt);
+        try std.testing.expectEqual(value, api.wordValue(object));
+        try std.testing.expect(api.isSmallInt(object) == 0);
+        try std.testing.expect(api.isFloat(object) == 0);
+    }
+}
+
+test "String owns an uninterned byte-for-byte copy" {
+    const api = floor.api();
+    var source = [_]u8{ 0xff, 0x00, 'b', 'i', 'r', 'n', 'a', 'm' };
+    const first = api.mkString(&source, source.len);
+    const second = api.mkString(&source, source.len);
+    source[0] = 0;
+
+    var first_len: usize = 0;
+    const first_bytes = api.stringBytes(first, &first_len);
+    try std.testing.expectEqual(@as(usize, 8), first_len);
+    try std.testing.expectEqualSlices(u8, &.{ 0xff, 0x00, 'b', 'i', 'r', 'n', 'a', 'm' }, first_bytes[0..first_len]);
+    try std.testing.expect(first != second);
+    try std.testing.expect(api.vtableOf(first) == api.string_vt);
+    try std.testing.expect(api.isSmallInt(first) == 0);
+
+    const empty = api.mkString("", 0);
+    var empty_len: usize = 1;
+    _ = api.stringBytes(empty, &empty_len);
+    try std.testing.expectEqual(@as(usize, 0), empty_len);
+}
+
+test "nil and Boolean are distinct canonical heap singletons" {
+    const api = floor.api();
+    try std.testing.expect(api.nilObj != null);
+    try std.testing.expect(api.trueObj != null);
+    try std.testing.expect(api.falseObj != null);
+    try std.testing.expect(api.nilObj != api.trueObj);
+    try std.testing.expect(api.nilObj != api.falseObj);
+    try std.testing.expect(api.trueObj != api.falseObj);
+    try std.testing.expect(api.vtableOf(api.nilObj) != null);
+    try std.testing.expect(api.vtableOf(api.trueObj) == api.vtableOf(api.falseObj));
+    try std.testing.expect(api.import("Boolean") == api.trueObj);
+}
+
+test "public pointer predicates reject non-object Oop carriers" {
+    const api = floor.api();
+    const foreign_words: [2]usize align(16) = .{ 0xfeed, 0xbeef };
+    const candidates = [_]Oop{
+        null,
+        @ptrCast(@constCast(&answer42)),
+        @ptrCast(@constCast(&foreign_words)),
+        @ptrFromInt(0x1000),
+        @ptrFromInt(0x1001),
+    };
+    for (candidates) |candidate| {
+        try std.testing.expect(api.vtableOf(candidate) == null);
+        try std.testing.expect(api.isSmallInt(candidate) == 0);
+        try std.testing.expect(api.isFloat(candidate) == 0);
+        try std.testing.expect(api.isWord(candidate) == 0);
+        try std.testing.expect(api.vtableOwner(candidate) == null);
+    }
+}
