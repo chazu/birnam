@@ -74,8 +74,11 @@ pub const IdApi = extern struct {
     /// keyword parts for define-method).
     symbolName: *const fn (Oop) callconv(.c) [*:0]const u8,
 
-    /// vtableOf(obj) -> the object's vtable (the `[-1]` header word; every object
-    /// has one now that immediates are gone — see docs/design/41 §A).
+    /// vtableOf(obj) -> the object's vtable (the `[-1]` header word) when `obj`
+    /// is an exact live floor-object address; null for absence, Method/code
+    /// pointers, foreign addresses, and any address absent from the current block
+    /// registry. Oop is an ABI carrier, not proof of object provenance. Exact
+    /// membership is expected O(1).
     /// Lets a library reach the type of a value to install protocol on it (e.g.
     /// the shared bool vtable behind true/false).
     vtableOf: *const fn (Oop) callconv(.c) Oop,
@@ -224,7 +227,8 @@ pub const IdApi = extern struct {
     /// (set by ensurePrivateVtable / the prototype wiring), or null if unowned.
     /// With vtableParent this lets the image tell a singleton's derived private
     /// vtable (owner == the object; serialize under the parent, installs rebuild
-    /// it at boot) from an image-born vtable that must defer (a block's).
+    /// it at boot) from an image-born vtable that must defer (a block's). Total
+    /// for arbitrary Oop values and expected O(1) by exact registered address.
     vtableOwner: *const fn (Oop) callconv(.c) Oop,
 };
 

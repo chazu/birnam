@@ -135,6 +135,16 @@ var g_vtables: std.ArrayListUnmanaged(*Vtable) = .{};
 pub const MethodOverwriteHook = *const fn (Oop, Oop) callconv(.c) void;
 var g_method_overwrite_hook: ?MethodOverwriteHook = null;
 
+// The ordered list is the observable MOP enumeration authority. This exact
+// address index is only a membership accelerator: public callers can carry
+// methods, code addresses, and other raw pointers in Oop-typed positions, so
+// vtableOwner must reject them without dereferencing or scanning linearly.
+var g_vtable_by_address: std.AutoHashMapUnmanaged(usize, *Vtable) = .{};
+
+fn registeredVtable(candidate: Oop) ?*Vtable {
+    return g_vtable_by_address.get(@intFromPtr(candidate orelse return null));
+}
+
 fn setMethodOverwriteHookC(h: ?MethodOverwriteHook) callconv(.c) void {
     g_method_overwrite_hook = h;
 }
@@ -179,12 +189,8 @@ fn vtableParentC(vt: Oop) callconv(.c) Oop {
 /// raw non-heap pointer (a method mirror's code address) whose "vtable" is garbage
 /// bits — so anything not a REGISTERED vtable answers null instead of being deref'd.
 fn vtableOwnerC(vt: Oop) callconv(.c) Oop {
-    if (vt == null or (@intFromPtr(vt.?) & 7) != 0) return null;
-    const v: *Vtable = @ptrCast(@alignCast(vt.?));
-    for (g_vtables.items) |reg| {
-        if (reg == v) return v.owner;
-    }
-    return null;
+    const v = registeredVtable(vt) orelse return null;
+    return v.owner;
 }
 
 // -- Raw allocation + the `-1` vtable-pointer trick -------------------------
@@ -232,7 +238,10 @@ fn vtSlot(obj: Oop) *?*Vtable {
     return @ptrFromInt(@intFromPtr(obj.?) - VT);
 }
 pub fn vtableOf(obj: Oop) ?*Vtable {
-    if (obj == null) return null; // internal absence has no vtable
+    // Oop is an ABI carrier, not proof of object provenance. Method pointers and
+    // arbitrary foreign addresses occur in Oop-typed facts; only exact live
+    // payload addresses in the block registry may use the [-1] header.
+    if (!g_blocks.contains(@intFromPtr(obj orelse return null))) return null;
     return vtSlot(obj).*; // the [-1] header — every object has one (no immediates)
 }
 
@@ -248,7 +257,7 @@ inline fn asInteger(o: Oop) *Integer {
     return @ptrCast(@alignCast(o.?));
 }
 pub fn isSmallInt(o: Oop) bool {
-    return o != null and vtSlot(o).* == smallint_vt;
+    return vtableOf(o) == smallint_vt;
 }
 pub fn mkSmallInt(v: i64) Oop {
     const obj = allocRaw(@sizeOf(Integer), .collectable);
@@ -307,7 +316,7 @@ pub fn mkFloat(v: f64) Oop {
     return obj;
 }
 pub fn isFloat(o: Oop) bool {
-    return o != null and vtSlot(o).* == float_vt;
+    return vtableOf(o) == float_vt;
 }
 pub fn floatValue(o: Oop) f64 {
     return asFloat(o).value;
@@ -334,7 +343,7 @@ pub fn mkWord(v: u64) Oop {
     return obj;
 }
 pub fn isWord(o: Oop) bool {
-    return o != null and vtSlot(o).* == word_vt;
+    return vtableOf(o) == word_vt;
 }
 pub fn wordValue(o: Oop) u64 {
     return asWord(o).value;
@@ -527,6 +536,7 @@ fn newVtable(parent: ?*Vtable) *Vtable {
     vt.layout_set = 0;
     vt.owner = null;
     g_vtables.append(ca, vt) catch @panic("libid: oom"); // registry (docs/42 §D1)
+    g_vtable_by_address.put(ca, @intFromPtr(vt), vt) catch @panic("libid: oom");
     return vt;
 }
 
@@ -793,11 +803,8 @@ fn isWordC(o: Oop) callconv(.c) c_int {
     return if (isWord(o)) 1 else 0;
 }
 fn vtableOfC(o: Oop) callconv(.c) Oop {
-    // Total: a value with no vtable slot (e.g. a raw method trampoline that leaked
-    // into a store fact) answers null rather than trapping, so the value-equality
-    // helpers (`store.eq`, relational `valEq`, Map `keyEq`) that compare `vtableOf(x)
-    // == string_vt` see "not a string" instead of crashing. The raw `vtableOf`
-    // already returns optional; only this C shim used to force-unwrap.
+    // Total: a value with no registered object block (e.g. a raw method
+    // trampoline in a store fact) answers null rather than being dereferenced.
     const vt = vtableOf(o) orelse return null;
     return oop(vt);
 }
@@ -1247,6 +1254,34 @@ test "libid: Float is a boxed-f64 floor value" {
     // nil / string are not floats.
     try std.testing.expect(!isFloat(nil_obj));
     try std.testing.expect(!isFloat(mkString("3.5")));
+}
+
+test "libid: public object predicates are total over Oop carrier values" {
+    const api = id_init();
+    const foreign_words: [2]usize align(16) = .{ 0xfeed, 0xbeef };
+    const candidates = [_]Oop{
+        null,
+        @ptrCast(@constCast(&answerImpl)), // a Method/code address
+        @ptrCast(@constCast(&foreign_words)), // aligned foreign memory
+        @ptrFromInt(0x1000), // aligned, mapped or unmapped, but not a floor block
+        @ptrFromInt(0x1001), // even a misaligned carrier is rejected before access
+    };
+
+    for (candidates) |candidate| {
+        try std.testing.expect(api.vtableOf(candidate) == null);
+        try std.testing.expect(api.isSmallInt(candidate) == 0);
+        try std.testing.expect(api.isFloat(candidate) == 0);
+        try std.testing.expect(api.isWord(candidate) == 0);
+        try std.testing.expect(api.vtableOwner(candidate) == null);
+    }
+
+    // Exact registered addresses still take the positive path.
+    const word = api.mkWord(0xfedcba9876543210);
+    try std.testing.expect(api.vtableOf(word) == api.word_vt);
+    try std.testing.expect(api.isWord(word) != 0);
+    const object = api.alloc(api.object_vt, 0);
+    const private_vt = api.ensurePrivateVtable(object);
+    try std.testing.expect(api.vtableOwner(private_vt) == object);
 }
 
 // -- GC tests (F3) -----------------------------------------------------------
