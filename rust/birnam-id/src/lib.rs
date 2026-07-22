@@ -59,6 +59,24 @@ pub extern "C" fn birnam_id_test_invariant_abort() {
     boundary::require_invariant(false, "intentional Rust FFI invariant failure");
 }
 
+/// Test-only bridge through which an external C-layout fixture inspects one
+/// isolated Rust heap block.
+///
+/// # Safety
+///
+/// The callback must obey `heap::run_layout_probe`'s pointer lifetime and
+/// bounds contract.
+#[cfg(feature = "ffi-test-hooks")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_id_test_heap_layout(
+    requested_size: usize,
+    vtable: abi::Oop,
+    probe: heap::LayoutProbe,
+) -> core::ffi::c_int {
+    // SAFETY: the exported function forwards the documented caller contract.
+    unsafe { heap::run_layout_probe(requested_size, vtable, probe) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{RUST_CRATE_IDENTITY, birnam_id_rust_crate_identity};

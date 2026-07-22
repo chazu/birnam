@@ -10,6 +10,10 @@ use std::ptr::NonNull;
 use crate::abi::{Finalizer, Oop};
 use crate::boundary;
 
+#[cfg(feature = "ffi-test-hooks")]
+pub(crate) type LayoutProbe =
+    unsafe extern "C" fn(*mut u8, Oop, usize, usize, Oop) -> core::ffi::c_int;
+
 pub(crate) const BLOCK_ALIGNMENT: usize = 16;
 pub(crate) const VTABLE_HEADER_SIZE: usize = size_of::<Oop>();
 pub(crate) const PAYLOAD_ALIGNMENT: usize = align_of::<Oop>();
@@ -187,6 +191,48 @@ impl Drop for Heap {
             unsafe { dealloc(block.base.as_ptr(), layout) };
         }
     }
+}
+
+/// Allocate one isolated block while a foreign C-layout probe inspects it.
+///
+/// # Safety
+///
+/// `probe` must access only the supplied header/payload allocation, within the
+/// reported extent, and must not retain either pointer after it returns.
+#[cfg(feature = "ffi-test-hooks")]
+pub(crate) unsafe fn run_layout_probe(
+    requested_size: usize,
+    vtable: Oop,
+    probe: LayoutProbe,
+) -> core::ffi::c_int {
+    let mut heap = Heap::new();
+    let object = heap.allocate(requested_size, Permanence::Collectable);
+    if !heap.set_vtable(object, vtable) {
+        return 0;
+    }
+    let Some(base_address) = heap.base_address(object) else {
+        return 0;
+    };
+    let Some(reported_size) = heap.payload_size(object) else {
+        return 0;
+    };
+
+    // No Heap reference or collection guard survives this call: all arguments
+    // are copied scalars/raw pointers, so the foreign callback cannot alias an
+    // outstanding Rust borrow of runtime state.
+    let accepted = unsafe {
+        probe(
+            base_address as *mut u8,
+            object,
+            requested_size,
+            reported_size,
+            vtable,
+        )
+    };
+    if accepted != 1 || heap.vtable_of(object) != Some(vtable) {
+        return 0;
+    }
+    1
 }
 
 #[cfg(test)]

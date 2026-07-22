@@ -7,6 +7,7 @@
 #   mise run rust-test      # offline Cargo tests for the isolated Rust workspace
 #   mise run rust-shell-smoke # build and probe the diagnostic-only Rust dylib
 #   mise run rust-ffi-abort-smoke # prove fatal Rust C-ABI boundary behavior
+#   mise run rust-heap-layout-smoke # probe Rust blocks from an external fixture
 #   mise run bootstrap-smoke # build a fixture-free source archive with pinned tools
 #   mise run install        # install to a prefix
 #   mise run dist           # build a release tarball for this platform
@@ -43,6 +44,10 @@ run = "bash scripts/rust-floor-shell-smoke.sh"
 [tasks.rust-ffi-abort-smoke]
 description = "Prove Rust panic and invariant failures abort at the C ABI boundary"
 run = "bash scripts/rust-ffi-abort-smoke.sh"
+
+[tasks.rust-heap-layout-smoke]
+description = "Probe Rust raw block layout from an external C-ABI fixture"
+run = "bash scripts/rust-heap-layout-smoke.sh"
 
 [tasks.bootstrap-smoke]
 description = "Cold-build a fixture-free source archive with pinned Zig and Rust"

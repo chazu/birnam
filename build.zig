@@ -117,6 +117,17 @@ pub fn build(b: *std.Build) void {
     test_rust_ffi_abort_step.dependOn(&rust_ffi_abort_smoke.step);
     test_step.dependOn(&rust_ffi_abort_smoke.step);
 
+    const rust_heap_layout_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-heap-layout-smoke.sh",
+    });
+    const test_rust_heap_layout_step = b.step(
+        "test-rust-heap-layout",
+        "Inspect Rust raw blocks through an external C-layout fixture",
+    );
+    test_rust_heap_layout_step.dependOn(&rust_heap_layout_smoke.step);
+    test_step.dependOn(&rust_heap_layout_smoke.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a
