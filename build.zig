@@ -148,6 +148,17 @@ pub fn build(b: *std.Build) void {
     test_rust_dispatch_reentry_step.dependOn(&rust_dispatch_reentry_smoke.step);
     test_step.dependOn(&rust_dispatch_reentry_smoke.step);
 
+    const rust_id_spike_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-id-spike-smoke.sh",
+    });
+    const test_rust_id_spike_step = b.step(
+        "test-rust-id-spike",
+        "Exercise the complete-shaped Rust IdApi from a frozen Zig client",
+    );
+    test_rust_id_spike_step.dependOn(&rust_id_spike_smoke.step);
+    test_step.dependOn(&rust_id_spike_smoke.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a

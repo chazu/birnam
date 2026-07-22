@@ -10,6 +10,7 @@
 #   mise run rust-heap-layout-smoke # probe Rust blocks from an external fixture
 #   mise run rust-membership-bench # benchmark optimized Rust membership scaling
 #   mise run rust-dispatch-reentry-smoke # reenter Rust send from a Zig Method
+#   mise run rust-id-spike-smoke # exercise the spike IdApi from a Zig client
 #   mise run bootstrap-smoke # build a fixture-free source archive with pinned tools
 #   mise run install        # install to a prefix
 #   mise run dist           # build a release tarball for this platform
@@ -58,6 +59,10 @@ run = "bash scripts/rust-membership-bench.sh"
 [tasks.rust-dispatch-reentry-smoke]
 description = "Reenter Rust dispatch synchronously from an external Zig Method"
 run = "bash scripts/rust-dispatch-reentry-smoke.sh"
+
+[tasks.rust-id-spike-smoke]
+description = "Exercise the complete-shaped Rust IdApi from a frozen Zig client"
+run = "bash scripts/rust-id-spike-smoke.sh"
 
 [tasks.bootstrap-smoke]
 description = "Cold-build a fixture-free source archive with pinned Zig and Rust"
