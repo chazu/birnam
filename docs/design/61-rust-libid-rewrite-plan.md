@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, and R3.0 through R3.3 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, and R3.0 through R3.4 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1309,6 +1309,36 @@ evolving unsupported-field spike gate, and combined `zig build test` pass.
 **Gate:** prototype, family extension, singleton specialization, and inherited
 method tests pass identically under both floors, and every canonical object and
 family pointer still equals the R2.5 identity snapshot.
+
+#### R3.4 execution record — 2026-07-22
+
+The Rust bootstrap now installs `clone`, `new`, and `==` in the Zig floor's
+direct-selector order immediately after `doesNotUnderstand:`. `clone` and its
+`new` alias make a collectable shallow copy of the receiver's complete padded
+payload with the same current vtable and no copied finalizer metadata. Identity
+answers the existing canonical true or false object by pointer comparison.
+String overrides both creation selectors, copies its arbitrary bytes into new
+Rust-owned storage, returns to the canonical String family just like Zig, and
+attaches fresh finalizer metadata so no allocation is shared or double-owned.
+
+`ensurePrivateVtable` now validates exact floor membership before access. Raw
+vtable objects remain their own method-install targets; a family prototype or
+singleton that already owns its family returns that family unchanged; any other
+object receives one permanent child vtable delegating to its former family and
+owning only that object. Repeated calls are idempotent. This preserves the
+intentional Boolean rule: true owns the shared Boolean family, while specializing
+false splits only false. Existing `proto`, `alloc`, `setOwner`, and `setParent`
+operations continue to mutate the ordered vtable authority without replacing a
+canonical prototype, singleton, family, or export.
+
+`test-prototype-conformance` runs one frozen `IdApi` client against the installed
+Zig floor and debug/optimized Rust floors. It checks direct-selector order,
+payload-copy extent and bytes, `clone`/`new`, String storage independence,
+identity on ordinary/nil/Boolean receivers, prototype and raw-vtable extension,
+ordinary instance isolation, false-only Boolean override, parent and owner
+mutation, and all 14 canonical exports before and after mutation. All 39 Rust
+tests, strict all-target/all-feature Clippy, the evolving unsupported-field
+spike gate, all earlier cross-floor gates, and combined `zig build test` pass.
 
 ### R3.5 — MOP enumeration and mutation hook
 
