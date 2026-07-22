@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> and R2.1 through R2.6 complete as of 2026-07-22. This plan replaces the
+> R2.1 through R2.6, and R3.0 complete as of 2026-07-22. This plan replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -1133,6 +1133,36 @@ queryable where the ABI permits, and a forced collection reports zero without
 invoking callbacks or reclaiming anything. R3.5/R3.6, after the required value
 and environment phases, prove registration by the real Store, PEG, prelude, and
 collection modules.
+
+#### R3.0 execution record — 2026-07-22
+
+The runtime now retains the stack-bottom address, requested automatic-GC state,
+precise-heap flag, and an ordered maximum of 32 root providers. Per-vtable trace
+hooks and borrowed static layout pointers replace in place and synchronize the
+raw 80-byte vtable view. `slotKind` reports `slot_unknown` before a layout is
+set, then uses the exact prefix/rest rule. A null kinds pointer is accepted only
+for a zero-length prefix. Collectable blocks retain replacement finalizers;
+permanent and unknown carriers ignore finalizer installation.
+
+All ten metadata callables now use real implementations:
+`gcSetStackBottom`, `gcRegisterRootProvider`, `gcCollect`, `gcLiveCount`,
+`setTraceHook`, `gcSetAuto`, `setFinalizer`, `setLayout`, `gcSetPrecise`, and
+`slotKind`. Requested auto/precise state is recorded but never activates a mark,
+trace, callback, finalizer, or sweep. `gcCollect` always returns zero and
+`gcLiveCount` remains an exact heap-registry count. Initialization also records
+raw-tail layouts for the six built-in value/singleton families without changing
+any R2.5 identity.
+
+`test-rust-gc-metadata` drives the table from an external Zig fixture in debug
+and optimized builds. It verifies built-in layouts, unknown new vtables,
+prefix/rest replacement, live-count growth, 32 retained providers, and disabled
+collection with provider, trace, and finalizer counters all untouched. Separate
+processes prove that a 33rd provider and a null/nonzero layout fail with exact
+SIGABRT diagnostics. The private Rust heap test attaches finalizer metadata to
+a collectable block and proves permanent/foreign no-op behavior. All 35
+debug/release Rust tests, strict all-target/all-feature Clippy, the R2.6 spike
+gate (now using `mkSmallInt` as its still-fatal field), and combined
+`zig build test` pass.
 
 ### R3.1 — Environment and loader
 
