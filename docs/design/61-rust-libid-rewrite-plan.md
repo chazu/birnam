@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, and R3.0 through R3.2 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, and R3.0 through R3.3 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1268,6 +1268,32 @@ combined `zig build test` pass.
 
 **Gate:** byte-for-byte string tests pass without UTF-8 assumptions or allocator
 ownership crossing the ABI.
+
+#### R3.3 execution record — 2026-07-22
+
+The Rust floor now copies every public String input into a Rust-owned
+`Box<[u8]>` indexed by the existing String object's exact address. Empty input
+accepts a null pointer without constructing a slice from it; non-empty null
+input is fatal. Byte access validates exact String membership, returns the
+stable boxed allocation pointer and length, and never creates a Rust `str` or
+otherwise interprets the bytes as UTF-8. The canonical empty String and every
+new String retain their R2.5 family, prototype, and owner identities.
+
+Initialization attaches the real String cleanup callback to the canonical
+prototype, and construction attaches the same callback to every new String.
+The callback releases the matching boxed bytes through the owning runtime.
+This is retained metadata only: R3.0 collection remains disabled, so no
+finalizer is invoked and no String is reclaimed yet. The callback's activation
+and exactly-once rule remain R4 work.
+
+`test-string-conformance` is one frozen `IdApi` client run in separate processes
+against the installed Zig floor and debug/optimized Rust floors. It proves an
+empty String remains distinct from the canonical prototype, copies embedded
+NUL and non-UTF-8 bytes, gives two equal inputs independent ownership, preserves
+an observed byte pointer across 4,096 unrelated String allocations, and copies
+a patterned 1 MiB input before the caller overwrites its buffer. All 37 Rust
+tests, strict all-target/all-feature Clippy, both-floor String conformance, the
+evolving unsupported-field spike gate, and combined `zig build test` pass.
 
 ### R3.4 — nil, Boolean, and prototypes
 
