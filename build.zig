@@ -225,11 +225,23 @@ pub fn build(b: *std.Build) void {
     test_rust_store_mop_step.dependOn(&rust_store_mop_smoke.step);
     test_step.dependOn(&rust_store_mop_smoke.step);
 
+    const rust_lower_rung_matrix = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-lower-rung-matrix.sh",
+    });
+    const test_rust_lower_rungs_step = b.step(
+        "test-rust-lower-rungs",
+        "Run isolated Store, PEG, language, prelude, and non-GC collection matrices",
+    );
+    test_rust_lower_rungs_step.dependOn(&rust_lower_rung_matrix.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a
     // dependency cycle.
     const bootstrap_install = b.step("bootstrap-install", "Install the native floor and compiler host needed to build compiled units");
+    rust_lower_rung_matrix.step.dependOn(bootstrap_install);
+    test_step.dependOn(&rust_lower_rung_matrix.step);
     const conformance_floor = b.option(
         []const u8,
         "id-conformance-floor",
