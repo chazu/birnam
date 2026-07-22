@@ -16,6 +16,9 @@ probe_profile() {
   zig build test-store \
     -Did-conformance-floor="$dylib" \
     -Did-conformance-identity=rust-id-v1
+  zig build test-store-image-backfill \
+    -Did-conformance-floor="$dylib" \
+    -Did-conformance-identity=rust-id-v1
   echo "rust-store-mop: $profile passed the Store consistency-law suite"
 }
 

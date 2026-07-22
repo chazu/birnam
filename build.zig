@@ -478,6 +478,24 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_conformance.step);
     test_step.dependOn(&null_args_check.step);
 
+    const store_image_backfill_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/store_image_backfill_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const store_image_backfill_tests = b.addTest(.{ .root_module = store_image_backfill_mod });
+    store_image_backfill_tests.linkLibC();
+    const run_store_image_backfill = b.addRunArtifact(store_image_backfill_tests);
+    run_store_image_backfill.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_store_image_backfill.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_store_image_backfill.step.dependOn(bootstrap_install);
+    const store_image_backfill_step = b.step(
+        "test-store-image-backfill",
+        "Prove image-style Store replacement rebuilds the primitive MOP mirror",
+    );
+    store_image_backfill_step.dependOn(&run_store_image_backfill.step);
+    test_step.dependOn(&run_store_image_backfill.step);
+
     // Selected-floor native address-registry comparator. The executable refuses
     // non-ReleaseSafe builds; later Rust parity uses the same binary with an
     // isolated dylib path and expected diagnostic identity.
