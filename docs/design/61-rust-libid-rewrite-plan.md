@@ -1,6 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
-> **Status:** Implementation in progress; R0.1 through R0.5 and R1.1 complete,
+> **Status:** Implementation in progress; R0.1 through R0.5 and R1.1 through
+> R1.2 complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -676,6 +677,24 @@ fallback, project, REPL, LSP, image, isolate, and relocated-install coverage.
 
 **Gate:** `cargo test` and a direct dylib symbol probe pass; Zig still installs
 the Zig floor.
+
+#### R1.2 execution record — 2026-07-22
+
+The dependency-free workspace member now builds `birnam_id` exclusively as a
+`cdylib`, producing `.cargo-target/{debug,release}/libbirnam_id.dylib`. Its
+planned internal module boundaries exist, but its only exported Birnam symbol
+is the diagnostic `birnam_id_rust_crate_identity`, which answers
+`rust-id-shell-v1`. It deliberately does not export `id_init` or the
+selected-floor identity.
+
+Development and release profiles set `panic = "abort"`, and a compile-time
+guard rejects any non-test dylib build whose panic strategy is not abort. Pure
+Rust unit tests retain the test harness's unwind behavior. The direct Zig
+loader probe opens and calls both debug and release Rust dylibs, verifies their
+identity, and proves `id_init` is absent. The same smoke runs an ordinary Zig
+build and proves that `zig-out/lib/libbirnam_id.dylib` still exports `id_init`
+and does not contain the Rust-shell identity. `cargo test --locked --offline`
+and the complete `rust-shell-smoke` pass locally and are wired into CI.
 
 ### R1.3 — Mirror primitive ABI types
 
