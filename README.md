@@ -245,7 +245,7 @@ installed compiled units. In a development checkout, use `zig-out/bin/birnam`.
 ```
 
 - `doc` prints module or selector documentation.
-- `docgen` writes an HTML reference for birnam modules and Zig floor APIs.
+- `docgen` writes an HTML reference for birnam modules and native floor APIs.
 - `--lsp` serves the language server over stdio.
 - `--listen` starts a socket REPL, optionally after running a script.
 
@@ -311,9 +311,9 @@ methodology and the measured constants.
 
 ## Architecture
 
-The runtime starts as a small Zig siphon that loads a set of reloadable dynamic
-libraries through a C ABI. Artifact selection first adds only the ID-floor
-inspector; activation then brings up the required language rungs:
+The runtime starts as a small native siphon (currently Zig) that loads a set of
+reloadable dynamic libraries through a C ABI. Artifact selection first adds only
+the ID-floor inspector; activation then brings up the required language rungs:
 
 ```text
 libid -> Artifact inspector
@@ -324,12 +324,15 @@ libid -> Artifact inspector
 `libid` provides the object model, allocation, dispatch, interning, and GC.
 Higher rungs add the relational substrate, parser, compiler, native-code
 backend, collections, FFI, and image format. The standard library and most
-application-facing modules are birnam source; Zig remains the permanent
-from-zero bootstrap compiler and performance floor.
+application-facing modules are Birnam source. Birnam retains a cold source
+bootstrap through declared non-Birnam toolchains, with no prebuilt Birnam
+artifact required; Design 61 adds Rust for `libid` while Zig remains the current
+host and cold compiler.
 
 ## Repository Guide
 
-- `src/id/` — Zig floor, compiler, image, FFI, and test suites.
+- `src/id/` — current Zig runtime rungs, compiler, image, FFI, and test suites;
+  Design 61 plans the Rust `libid` floor at `rust/birnam-id/`.
 - `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
   (`Config` for project manifests, `AppConfig` for application startup).
 - `modules/` — authored library, CLI, LSP, documentation, and test sources;
@@ -357,8 +360,8 @@ from-zero bootstrap compiler and performance floor.
 - [Modules and the self-hosted layer](docs/design/43-modules-and-config.md)
   explains source, artifacts, and loading.
 - [Toward self-hosting](docs/design/44-toward-self-hosting.md) records the
-  migration boundary: retain the Zig bootstrap and move only appropriate
-  library surface into birnam.
+  migration boundary: retain an independent cold source bootstrap and move only
+  appropriate library surface into Birnam.
 - [Project manifests and dependency resolution](docs/design/51-project-manifests-and-dependency-resolution.md)
   and the [project workflow](docs/design/52-project-check-build-and-run.md)
   document the implemented project workflow. The project-aware LSP has shipped
@@ -377,3 +380,11 @@ from-zero bootstrap compiler and performance floor.
   preserve the retired Digla application experiment and its architectural
   lessons. Digla is not part of the current runtime, verification graph, or
   product roadmap.
+- [Stackless native execution](docs/design/60-stackless-native-execution.md)
+  assesses a parallel resumable-method ABI, explicit per-fiber frames,
+  trampolining, and delimited continuations. It records a migration path and
+  first proof, not an active implementation commitment.
+- [The Rust libid rewrite plan](docs/design/61-rust-libid-rewrite-plan.md)
+  specifies the drop-in floor boundary, unsafe/reentrancy discipline,
+  commit-granular initial phases, dual-floor verification, performance gates,
+  cutover, and delayed Zig-floor retirement.

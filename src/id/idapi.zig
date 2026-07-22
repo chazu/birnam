@@ -191,13 +191,15 @@ pub const IdApi = extern struct {
     // -- The MOP mirror seam (docs/design/42 §D1; appended) ------------------
     /// setMethodOverwriteHook(h): register a hook called `h(vt, sel)` just before
     /// an EXISTING (vt,sel) binding is rebound in a vtable dict. The store uses it
-    /// to keep its `[vt sel m]` mirror from going stale (the consistency law:
-    /// mirror = the live dict binding, or absent, never a different value). Pass
-    /// null to clear. The hook must be pure (no send/alloc) — it runs mid-install.
+    /// to keep its `[vt sel m]` mirror from going stale (the consistency law: exact
+    /// tracked Method, honest `#primitive` presence, or absence; never a stale or
+    /// falsely-present value). Pass null to clear. The hook must be pure (no
+    /// send/alloc) — it runs mid-install.
     setMethodOverwriteHook: *const fn (?MethodOverwriteHook) callconv(.c) void,
     /// vtableCount() -> the number of vtables created so far (the registry length).
     /// vtableAt(i) enumerates them: together they walk the whole type universe, so
-    /// the store can backfill the seed's selectors into the mirror at init.
+    /// the store can backfill every registered real type's selectors into the
+    /// mirror at init and image boot.
     vtableCount: *const fn () callconv(.c) usize,
     /// vtableAt(i) -> the i-th registered vtable, or null past the end.
     vtableAt: *const fn (usize) callconv(.c) Oop,

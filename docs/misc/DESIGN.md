@@ -2,6 +2,13 @@
 
 ## Current Invariants
 
+Birnam must cold-bootstrap from a source checkout using its declared non-Birnam
+implementation toolchains, with no prebuilt Birnam binary, image, compiled
+module, or other Birnam artifact. The implementation language is not itself an
+invariant: Design 61 declares Zig and Rust for the planned floor rewrite while
+retaining the current Zig cold compiler until an equivalently proven
+non-Birnam replacement exists.
+
 Birnam's current authority model is documented in
 [Compiled Units Are Primary](../design/45-compiled-units.md): compatible
 compiled dylibs are the primary executable layer of a live image; the fact
@@ -29,6 +36,18 @@ boundaries and historical rationale.
 The next architecture choice is deliberately open. Initialization, image-native
 source editing, migration, reactors/pools, richer supervision, and structured
 operations remain later slices selected from actual product evidence.
+
+[Design 60](../design/60-stackless-native-execution.md) records a feasibility
+assessment for another possible substrate: explicit per-fiber frames and
+resumable native methods supporting trampolining and continuations. It recommends
+a narrow machine/ABI proof before any roadmap commitment and preserves the
+current distinction between durable image state and in-flight execution.
+
+[Design 61](../design/61-rust-libid-rewrite-plan.md) specifies a separate,
+behavior-preserving rewrite of `libbirnam_id.dylib` in Rust. It keeps the current
+synchronous ABI and higher Zig/Birnam rungs fixed, proves both floors through a
+dual-backend verification window, and deliberately precedes any Design 60
+execution-model change.
 
 ## Implemented Developer-Experience Sequence
 
@@ -92,7 +111,8 @@ remain as historical records of the retired Digla experiment.
 
 ## Concretely
 
-- To implement Ian Piumarta's 'id' object model in Zig
+- To implement Ian Piumarta's 'id' object model as a small native floor behind a
+  stable C ABI
 - To use this to bootstrap a very fine-grained runtime consisting of a module loader, the object system, a compiler, a base-level smalltalk-like object language, and so on
 - To grow that language piecemeal into a fully malleable programming language with distributed capabilities.
 

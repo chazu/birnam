@@ -67,14 +67,19 @@ over a tracked `(vt,sel)` leaves the fact pointing at a dead method.
 
 The fix is **completion, not removal**, governed by a single invariant:
 
-> **The consistency law.** For every `(vt, sel)`, the mirror fact `[vt sel m]` either
-> equals the live dict binding, or is **absent**. It is *never* a different, stale
-> value.
+> **The consistency law.** For every direct `(vt, sel)` binding, the mirror is
+> exactly one of: the live method pointer for a tracked binding; `#primitive`, a
+> presence-only marker for an unreified direct binding discovered by backfill; or
+> **absent**. With no direct binding it must be absent. It never names a different
+> method, and `#primitive` never survives after that direct binding is replaced or
+> removed.
 
-The asymmetry is the whole design: **absent is honest; wrong is forbidden.** Today's
-bug is a *wrong-value* failure. Absence — "the mirror doesn't reflect this binding" —
-is truthful, and it is exactly what makes escape hatches safe: a hatch is allowed to
-be *silent*, never to *lie*.
+The asymmetry is the whole design: **absent is honest; wrong is forbidden.** The
+`#primitive` marker is also honest but deliberately less informative: it says a
+direct unreified binding exists, not which raw code pointer implements it. Today's
+bug is a *wrong-value* failure. Absence — "the mirror doesn't reflect this binding"
+— is truthful, and it is exactly what makes escape hatches safe: a hatch is allowed
+to be *silent*, never to *lie*.
 
 ### The actual seam: Store operation over id mechanism
 
@@ -126,7 +131,8 @@ would make false. Thus the exact invariant is:
 
 > **Supported post-bootstrap MOP mutation is Store-arbitrated. Raw floor mutation
 > is a bootstrap/private escape hatch. In either case the object dictionary is
-> canonical, and the Store mirror is current or absent, never false.**
+> canonical, and the Store mirror is an exact tracked Method, an honest
+> `#primitive` presence marker, or absent—never stale or falsely present.**
 
 This is the per-layer primacy decision in operational form: Store does not command
 the vtable dictionary from facts, but it is the public chokepoint through which the
@@ -187,11 +193,13 @@ absent until a tracked install or backfill supplies one.
 - **Init registers the hook and tracked MOP:** once Store is initialized, supported
   meta-mutation routes through its operations, and any raw overwrite/removal still
   retracts facts it would make false.
-- **Seed backfill (decided: YES).** At init we enumerate every seed vtable's dict and
-  assert the corresponding `[vt sel m]` facts, so the mirror is **total** — reflection
-  works over the kernel primitives too, and *no functionality is lost merely by
-  loading an image*. This needs **one small floor primitive: enumerate a vtable's
-  selectors** (also what any live reflection query wants).
+- **Backfill (decided: YES).** At init and image boot we enumerate every currently
+  registered real type vtable's dict, including the seed vtables, and assert a
+  corresponding `[vt sel #primitive]` presence fact where no exact tracked fact
+  exists. Internal dictionaries are excluded. The seed mirror is therefore
+  **total** — reflection works over the kernel primitives too, and *no functionality
+  is lost merely by loading an image*. This needs **one small floor primitive:
+  enumerate a vtable's selectors** (also what any live reflection query wants).
 - **The mirror is a rebuilt cache, not independently serialized.** Loading an image
   re-seeds/backfills the kernel and reinstalls user behavior from compiled/source
   operations. Tracked installs regenerate exact mirrors; raw artifact installs may
@@ -245,8 +253,9 @@ Mechanical, independent, and *more* relevant under strong Date adherence:
 
 1. **Object model canonical; relational reading derived.** "Code is a cache of facts"
    retired. The fact store is a MOP mirror + a relational data lens, both derived.
-2. **§D1** — complete the mirror under the consistency law (mirror = dict, or absent,
-   never wrong). Supported post-bootstrap addition/removal is Store-arbitrated;
+2. **§D1** — complete the mirror under the consistency law (exact tracked method,
+   honest `#primitive` presence marker, or absence; never stale or falsely present).
+   Supported post-bootstrap addition/removal is Store-arbitrated;
    raw id mutation is the bootstrap/private escape hatch. Ordering is
    retract→set→assert for replacement and retract→remove for deletion. Init flips
    mirroring on; **seed backfilled** for a total MOP. Floor mechanisms are selector

@@ -56,8 +56,11 @@ The implementation is accepted only if all of these remain true.
    A raw floor mutation explicitly exits that guarantee until reconciliation.
 2. **Store arbitrates the supported MOP.** Candidate activation/removal goes through
    Store's tracked operations. Raw id mutation remains bootstrap/private mechanism.
-3. **The mirror is current or absent, never false.** Replacement orders
-   retract→set→assert; removal orders retract→remove.
+3. **The mirror is exact, presence-only, or absent—never false.** A direct
+   binding may have its exact tracked Method fact, an honest `#primitive`
+   presence marker, or no fact; a missing direct binding has no fact. Replacement
+   orders retract→set→assert; removal orders retract→remove, and neither may leave
+   a stale Method or marker.
 4. **Source and binary delivery are semantically identical.** Source candidates
    compile to the same artifact ABI and enter the same activation path as prebuilt
    candidates.
