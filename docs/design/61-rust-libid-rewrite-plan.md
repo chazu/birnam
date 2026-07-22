@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
-> **Status:** Implementation in progress; R0.1 through R0.5 and R1.1 through
-> R1.5 complete,
+> **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
+> and R2.1 complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -814,6 +814,32 @@ value, GC, image, or downstream parity.
 
 **Gate:** allocation-layout tests pass under Debug and release optimization; no
 GC or automatic reclamation is enabled yet.
+
+#### R2.1 execution record — 2026-07-22
+
+The private Rust `Heap` now allocates zeroed blocks with a 16-byte-aligned base,
+an 8-byte vtable header, an 8-byte-aligned payload at `base + 8`, and total size
+rounded to 8 bytes. Its exact-address `HashMap` registry owns base and payload
+pointers, total size, permanence, mark state, and optional finalizer metadata;
+registry iteration is not exposed. Checked operations establish exact
+membership before the audited payload/header conversion can dereference the
+preceding word. Reported payload size includes alignment padding exactly as the
+Zig floor does.
+
+Property-style Rust tests cover requested sizes 0 through 1,025, overflow,
+zero/unset headers, permanent and collectable metadata, foreign and null
+addresses, vtable round trips, zero fill, and writes throughout the padded
+payload. They pass in debug and release optimization. A feature-gated test hook
+keeps each allocation in an isolated local heap while a separately compiled Zig
+C-ABI callback inspects it without a surviving Rust borrow. That external
+fixture checks 264 zero, aligned, unaligned, and page-boundary sizes against
+both debug and release dylibs. Ordinary artifacts contain no test hook.
+
+There is still no runtime-global Rust heap, collector, automatic collection, or
+public allocator. `Heap` teardown only frees private harness ownership without
+running language finalizers; the eventual process-lifetime runtime will not be
+dropped while objects are observable. Rust debug/release tests,
+`test-rust-heap-layout`, and the combined `zig build test` gate pass.
 
 ### R2.2 — Implement raw vtables and ordered dictionaries
 
