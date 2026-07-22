@@ -203,6 +203,17 @@ pub fn build(b: *std.Build) void {
     test_string_conformance_step.dependOn(&string_conformance_smoke.step);
     test_step.dependOn(&string_conformance_smoke.step);
 
+    const prototype_conformance_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/prototype-conformance-smoke.sh",
+    });
+    const test_prototype_conformance_step = b.step(
+        "test-prototype-conformance",
+        "Run prototype and singleton conformance against Zig and Rust floors",
+    );
+    test_prototype_conformance_step.dependOn(&prototype_conformance_smoke.step);
+    test_step.dependOn(&prototype_conformance_smoke.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a
