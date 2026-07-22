@@ -57,6 +57,28 @@ pub fn build(b: *std.Build) void {
         "verify",
         "Run the complete native, self-hosted, and REPL verification gate",
     );
+
+    // Build/test-only ABI evidence. The JSON manifest is deliberately exposed
+    // only to this test module; runtime, install, and artifact-selection code do
+    // not import it.
+    const idapi_manifest_mod = b.createModule(.{
+        .root_source_file = b.path("abi/idapi_manifest.zig"),
+    });
+    const idapi_abi_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/idapi_abi_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    idapi_abi_test_mod.addImport("idapi_manifest", idapi_manifest_mod);
+    const idapi_abi_tests = b.addTest(.{ .root_module = idapi_abi_test_mod });
+    const run_idapi_abi_tests = b.addRunArtifact(idapi_abi_tests);
+    const test_id_abi_step = b.step(
+        "test-id-abi",
+        "Verify the committed language-neutral IdApi ABI manifest",
+    );
+    test_id_abi_step.dependOn(&run_idapi_abi_tests.step);
+    test_step.dependOn(&run_idapi_abi_tests.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a

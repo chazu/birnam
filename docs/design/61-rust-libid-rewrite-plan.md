@@ -343,6 +343,35 @@ Rust production code.
 
 **Gate:** documentation links resolve; no build behavior changes.
 
+#### R0.1 execution record — 2026-07-22
+
+The rewrite boundary and non-goals above are now reflected in Design 44, the
+repository design index, and README architecture text. The build already rejects
+anything except arm64 macOS at configuration time. The finite higher-rung test
+migration ledger is:
+
+| Test root | Exported `id_init` calls | Other private `id.zig` dependency |
+|---|---:|---|
+| `alien_test.zig` | 2 | — |
+| `codegen_test.zig` | 1 | — |
+| `collection_test.zig` | 1 | — |
+| `error_test.zig` | 1 | — |
+| `image_test.zig` | 2 | — |
+| `isolate_test.zig` | 1 | — |
+| `lang_test.zig` | 1 | — |
+| `peg_test.zig` | 6 | — |
+| `prelude_test.zig` | 3 | — |
+| `relational_test.zig` | 1 | — |
+| `store_test.zig` | 14 | one direct `id.bind` assertion |
+| `tcc_test.zig` | 7 | — |
+| **Total** | **40** | **one assertion** |
+
+R0.4 owns conversion of these twelve roots to the selected-floor adapter. The
+direct `id.bind` assertion remains floor-private or is replaced by an external
+send/lookup behavior test; it cannot pass through `IdApi` as written. This table
+is the migration ledger, not a promise that future test roots may import the Zig
+floor directly.
+
 ### R0.2 — Freeze a language-neutral ABI manifest
 
 - Add `abi/idapi-v1.json`, a committed manifest outside Zig and Rust source that
@@ -367,6 +396,22 @@ Rust production code.
 unreviewed source mutation fails before any function pointer is invoked, and a
 runtime/install smoke proves no code or installed artifact depends on the JSON
 file.
+
+#### R0.2 execution record — 2026-07-22
+
+`abi/idapi-v1.json` now freezes the 54-field, 432-byte arm64 macOS table and its
+supporting callback types under fingerprint
+`b04684b3107927c86b41e613e941df1694fb7b52ec401e423620fcc174a0dee2`.
+`src/id/idapi_abi_test.zig` derives field names, order, offsets, sizes,
+alignments, nested C-callable signatures, top-level nullability, target facts,
+and slot constants from the compiled Zig types and compares each item before
+checking the fingerprint. `zig build test-id-abi` is part of `zig build test`.
+
+A temporary `dlopen`/`dlsym` source reorder was rejected on the first mismatched
+field before runtime initialization; restoring the declarations returned the
+gate to green. The relocated install smoke also rejects either the JSON or its
+test-only Zig carrier if they appear in the installed tree, then boots and uses
+that tree without checkout-relative evidence.
 
 ### R0.3 — Freeze old-binary ABI and image fixtures
 

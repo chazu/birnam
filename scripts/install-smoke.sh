@@ -13,6 +13,13 @@ cp -R "$prefix/bin" "$prefix/lib" "$prefix/share" "$tmp/birnam/"
 
 test ! -e "$tmp/birnam/share/birnam/runtime.toml"
 
+# The IdApi JSON is repository-side compatibility evidence, not a runtime
+# manifest or distributed artifact. Its tiny Zig carrier is test-only too.
+if find "$tmp/birnam" -type f \( -name 'idapi-v1.json' -o -name 'idapi_manifest.zig' \) | grep -q .; then
+  echo "install-smoke: build/test-only IdApi manifest evidence was installed" >&2
+  exit 1
+fi
+
 # Production Birnam source lives in compiled-unit metadata, not a parallel
 # installed source tree.
 test ! -e "$tmp/birnam/share/birnam/modules"
