@@ -33,12 +33,15 @@ jobs:
       - name: Install Rust 1.95.0
         run: |
           rustup toolchain install 1.95.0 --profile minimal --no-self-update
-          rustup override set 1.95.0
+          rustup default 1.95.0
 
       - name: Verify Rust workspace offline
         run: |
           CARGO_TARGET_DIR=.cargo-target cargo check --workspace --locked --offline
           CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline
+
+      - name: Cold source bootstrap
+        run: bash scripts/source-bootstrap-smoke.sh
 
       - name: Verify
         run: zig build verify
