@@ -1,6 +1,6 @@
 # 61 — Rust libid Floor Rewrite Plan
 
-> **Status:** Proposed implementation plan, revised after adversarial review,
+> **Status:** Implementation in progress; R0.1 through R0.4 complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -508,6 +508,51 @@ the original behavioral coverage. Unsafe public predicates and `vtableOwner`
 are fixed in Zig with expected-O(1) exact-address membership before the Rust
 implementation begins, every shared worker calls exported `id_init` once, and
 repeated initialization is not added as a compatibility promise.
+
+#### R0.4 execution record — 2026-07-22
+
+`src/id/floor_adapter_test.zig` now owns the selected-floor process boundary:
+it opens exactly one dylib, requires the diagnostic identity `zig-id-v1`, calls
+`id_init` once, caches the resulting table, and retains the dylib handle. A
+negative test proves that an unexpected identity is rejected before
+initialization. All 40 setup calls in the twelve-root migration ledger now use
+that adapter; the one private `id.bind` assertion was replaced by public vtable
+lookup behavior.
+
+`src/id/conformance_test.zig` exercises the external table in fresh processes
+and covers dispatch, removal and inheritance, DNU and its 16-argument cap,
+boxed values and singletons, prototypes and private families, vtable parents and
+enumeration, environment aliases and rebinding, payload/layout behavior, null
+argument-buffer rules, exact object/vtable provenance predicates, and the
+collector lifecycle. The collector group includes root providers, conservative
+and precise trace behavior, finalizers, permanents, stack-bottom refusal,
+manual collection, and auto-collection. The null/nonzero argument violation is
+proved by expected abnormal termination in a child process.
+
+The Store conformance group freezes the complete MOP consistency law: tracked
+addition/replacement/removal ordering, honest raw-mutation absence, inherited
+revelation, `#primitive` invalidation and backfill, internal-dictionary
+exclusion, authorizer rejection before mutation, exactly-once post-commit
+observation, and post-image-load backfill. The existing downstream suites also
+run through the selected floor rather than importing the implementation.
+
+The initial exact membership repair exposed generic pointer hashing on the
+dispatch hot path: the LSP dependency index no longer completed before its
+protocol synchronization point. The registered-address maps now use exact
+equality with a multiplicative aligned-address hash. This preserves expected
+O(1) total predicates while returning the original ten-second LSP smoke to
+green.
+
+The closing gate passed:
+
+- `zig build verify`: 255 native tests passed, 3 skipped; 328 self-hosted tests,
+  26 REPL goldens, install/project/source-fallback/image/LSP smokes, and all
+  other verification steps passed;
+- `zig build test-id-abi-fixture`: the frozen native client, module, mapped
+  image, and rebuilt image passed;
+- `zig build -Doptimize=ReleaseSafe test-id-conformance`: passed, including the
+  expected child-process rejection;
+- `zig build -Doptimize=ReleaseSafe test-store`: passed.
 
 ### R0.5 — Capture compatibility and performance baselines
 
