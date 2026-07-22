@@ -307,6 +307,25 @@ pub fn build(b: *std.Build) void {
         "Benchmark selected-floor exact-address predicates (ReleaseSafe only)",
     ).dependOn(&run_membership_bench.step);
 
+    const gc_baseline_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/gc_baseline.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const gc_baseline = b.addExecutable(.{
+        .name = "id-gc-baseline",
+        .root_module = gc_baseline_mod,
+    });
+    gc_baseline.linkLibC();
+    const run_gc_baseline = b.addRunArtifact(gc_baseline);
+    run_gc_baseline.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_gc_baseline.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_gc_baseline.step.dependOn(bootstrap_install);
+    b.step(
+        "baseline-id-gc",
+        "Record selected-floor GC allocation and live-count invariants",
+    ).dependOn(&run_gc_baseline.step);
+
     // -- Self-hosted and console integration gates ---------------------------
     // Keep these ordered after stage1: a stale compiled stdlib can mask source
     // changes, while both suites must exercise the exact installed artifact a
