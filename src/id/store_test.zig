@@ -149,6 +149,41 @@ fn answer7(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return @ptrFromInt(7);
 }
 
+var mop_api: ?*idapi.IdApi = null;
+var mop_vt: Oop = null;
+var mop_sel: Oop = null;
+var mop_lookup: Oop = null;
+var mop_expected_before_dict: Oop = null;
+var mop_expected_before_mirror: Oop = null;
+var mop_expected_after: Oop = null;
+var mop_authorized = true;
+var mop_authorizer_calls: usize = 0;
+var mop_authorizer_saw_expected = false;
+var mop_observer_calls: usize = 0;
+var mop_observer_saw_expected = false;
+
+fn lookupMethod(api: *idapi.IdApi, vt: Oop, sel: Oop) Oop {
+    return api.send(vt, mop_lookup, &.{sel}, 1);
+}
+
+fn authorizeMopMutation() callconv(.c) Oop {
+    const api = mop_api.?;
+    mop_authorizer_calls += 1;
+    mop_authorizer_saw_expected = lookupMethod(api, mop_vt, mop_sel) == mop_expected_before_dict and
+        cv(api, mop_vt, mop_sel) == mop_expected_before_mirror;
+    return if (mop_authorized) api.trueObj else api.falseObj;
+}
+
+fn observeMopMutation(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = n;
+    const api = mop_api.?;
+    mop_observer_calls += 1;
+    mop_observer_saw_expected = args[0] == mop_sel and args[1] == mop_vt and
+        lookupMethod(api, mop_vt, mop_sel) == mop_expected_after and
+        cv(api, mop_vt, mop_sel) == mop_expected_after;
+    return self;
+}
+
 fn retract3(api: *idapi.IdApi, e: Oop, a: Oop, v: Oop) void {
     _ = api.send(store.store_instance, store.s_retract, &[_]Oop{ e, a, v }, 3);
 }
@@ -473,4 +508,136 @@ test "rung 2a.1: currentValue of an absent (e,a) is nil" {
     try std.testing.expect(api.send(store.store_instance, store.s_currentValue, &[_]Oop{ ghost, slot }, 2) == api.nilObj);
     try std.testing.expect(cv(api, ghost, slot) == api.nilObj);
     try std.testing.expect(api.send(store.store_instance, api.intern("hasValue:attr:"), &[_]Oop{ ghost, slot }, 2) == api.trueObj);
+}
+
+test "MOP authorization and observation bracket completed consistent mutations" {
+    const api = floor.api();
+    store.bringUp(api);
+
+    mop_api = api;
+    mop_lookup = api.intern("lookup");
+    mop_vt = api.proto(api.object_vt);
+    const owner = api.alloc(mop_vt, 0);
+    api.setOwner(mop_vt, owner);
+    mop_sel = api.intern("mopOrderingAnswer");
+    const m42: Oop = @ptrCast(@constCast(&answer42));
+    const m7: Oop = @ptrCast(@constCast(&answer7));
+
+    const observer_vt = api.proto(api.object_vt);
+    api.method(observer_vt, api.intern("managedMethodChanged:on:"), &observeMopMutation);
+    const observer = api.alloc(observer_vt, 0);
+    try std.testing.expect(api.send(store.store_instance, api.intern("setMethodMutationObserver:"), &.{observer}, 1) == store.store_instance);
+    const authorizer_address: i64 = @intCast(@intFromPtr(&authorizeMopMutation));
+    try std.testing.expect(api.send(store.store_instance, api.intern("setMethodMutationAuthorizer:"), &.{api.mkSmallInt(authorizer_address)}, 1) == store.store_instance);
+
+    // Rejection happens before either representation changes and never notifies.
+    mop_expected_before_dict = null;
+    mop_expected_before_mirror = null;
+    mop_authorized = false;
+    mop_authorizer_calls = 0;
+    mop_observer_calls = 0;
+    const rejected_add = api.send(store.store_instance, store.s_addMethodOn, &.{ mop_sel, mop_vt, m42 }, 3);
+    try std.testing.expect(rejected_add == api.falseObj);
+    try std.testing.expectEqual(@as(usize, 1), mop_authorizer_calls);
+    try std.testing.expect(mop_authorizer_saw_expected);
+    try std.testing.expectEqual(@as(usize, 0), mop_observer_calls);
+    try std.testing.expect(lookupMethod(api, mop_vt, mop_sel) == null);
+    try std.testing.expect(cv(api, mop_vt, mop_sel) == null);
+
+    // Addition and replacement notify once, only after dictionary and mirror
+    // agree on the completed value.
+    mop_authorized = true;
+    mop_expected_before_dict = null;
+    mop_expected_before_mirror = null;
+    mop_expected_after = m42;
+    mop_authorizer_calls = 0;
+    mop_observer_calls = 0;
+    _ = api.send(store.store_instance, store.s_addMethodOn, &.{ mop_sel, mop_vt, m42 }, 3);
+    try std.testing.expectEqual(@as(usize, 1), mop_authorizer_calls);
+    try std.testing.expect(mop_authorizer_saw_expected);
+    try std.testing.expectEqual(@as(usize, 1), mop_observer_calls);
+    try std.testing.expect(mop_observer_saw_expected);
+
+    mop_expected_before_dict = m42;
+    mop_expected_before_mirror = m42;
+    mop_expected_after = m7;
+    mop_authorizer_calls = 0;
+    mop_observer_calls = 0;
+    _ = api.send(store.store_instance, store.s_addMethodOn, &.{ mop_sel, mop_vt, m7 }, 3);
+    try std.testing.expectEqual(@as(usize, 1), mop_authorizer_calls);
+    try std.testing.expect(mop_authorizer_saw_expected);
+    try std.testing.expectEqual(@as(usize, 1), mop_observer_calls);
+    try std.testing.expect(mop_observer_saw_expected);
+
+    // Rejected removal preserves both; accepted removal completes both before
+    // the one observer callback.
+    mop_authorized = false;
+    mop_expected_before_dict = m7;
+    mop_expected_before_mirror = m7;
+    mop_authorizer_calls = 0;
+    mop_observer_calls = 0;
+    try std.testing.expect(api.send(store.store_instance, store.s_removeMethodOn, &.{ mop_sel, mop_vt }, 2) == api.falseObj);
+    try std.testing.expect(mop_authorizer_saw_expected);
+    try std.testing.expectEqual(@as(usize, 0), mop_observer_calls);
+    try std.testing.expect(lookupMethod(api, mop_vt, mop_sel) == m7);
+    try std.testing.expect(cv(api, mop_vt, mop_sel) == m7);
+
+    mop_authorized = true;
+    mop_expected_after = null;
+    mop_authorizer_calls = 0;
+    mop_observer_calls = 0;
+    _ = api.send(store.store_instance, store.s_removeMethodOn, &.{ mop_sel, mop_vt }, 2);
+    try std.testing.expectEqual(@as(usize, 1), mop_authorizer_calls);
+    try std.testing.expect(mop_authorizer_saw_expected);
+    try std.testing.expectEqual(@as(usize, 1), mop_observer_calls);
+    try std.testing.expect(mop_observer_saw_expected);
+}
+
+test "raw MOP mutation stays unobserved and primitive markers never go stale" {
+    const api = floor.api();
+    store.bringUp(api);
+    mop_api = api;
+    mop_lookup = api.intern("lookup");
+    mop_vt = api.proto(api.object_vt);
+    const owner = api.alloc(mop_vt, 0);
+    api.setOwner(mop_vt, owner);
+    mop_sel = api.intern("mopPrimitiveLifecycle");
+    const m42: Oop = @ptrCast(@constCast(&answer42));
+    const primitive = api.intern("primitive");
+
+    mop_observer_calls = 0;
+    api.method(mop_vt, mop_sel, &answer7);
+    try std.testing.expectEqual(@as(usize, 0), mop_observer_calls);
+    try std.testing.expect(cv(api, mop_vt, mop_sel) == null);
+
+    _ = api.send(store.store_instance, api.intern("backfillMirror"), &.{}, 0);
+    _ = api.send(store.store_instance, api.intern("backfillMirror"), &.{}, 0);
+    try std.testing.expect(cv(api, mop_vt, mop_sel) == primitive);
+    try std.testing.expectEqual(@as(usize, 1), count(api, mop_vt, mop_sel));
+    try std.testing.expectEqual(@as(usize, 0), mop_observer_calls);
+
+    // Tracked replacement retracts the presence marker and installs the exact
+    // method before notifying.
+    mop_authorized = true;
+    mop_expected_before_dict = @ptrCast(@constCast(&answer7));
+    mop_expected_before_mirror = primitive;
+    mop_expected_after = m42;
+    mop_authorizer_calls = 0;
+    mop_observer_calls = 0;
+    _ = api.send(store.store_instance, store.s_addMethodOn, &.{ mop_sel, mop_vt, m42 }, 3);
+    try std.testing.expect(mop_authorizer_saw_expected);
+    try std.testing.expect(mop_observer_saw_expected);
+    try std.testing.expect(cv(api, mop_vt, mop_sel) == m42);
+
+    // Raw replacement and removal retract any exact/primitive mirror, never
+    // synthesize a new one, and never invoke the supported-mutation observer.
+    mop_observer_calls = 0;
+    api.method(mop_vt, mop_sel, &answer7);
+    try std.testing.expect(cv(api, mop_vt, mop_sel) == null);
+    try std.testing.expectEqual(@as(usize, 0), mop_observer_calls);
+    _ = api.send(store.store_instance, api.intern("backfillMirror"), &.{}, 0);
+    try std.testing.expect(cv(api, mop_vt, mop_sel) == primitive);
+    _ = api.send(mop_vt, api.intern("removeMethod:"), &.{mop_sel}, 1);
+    try std.testing.expect(cv(api, mop_vt, mop_sel) == null);
+    try std.testing.expectEqual(@as(usize, 0), mop_observer_calls);
 }
