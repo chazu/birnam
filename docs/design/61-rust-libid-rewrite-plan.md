@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.6 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.7 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1757,6 +1757,36 @@ current threshold unchanged.
 **Gate:** the frozen native client, full collection GC/layout group, image unit
 tests, and image-save smoke pass under both floors, including mapped code and
 `--rebuild`.
+
+#### R4.7 execution record — 2026-07-22
+
+The production Rust table now names no fatal gap and is constructed directly
+from typed implementations for all 54 frozen fields. Introspection covers exact
+padded payload sizes, reverse export names, absent and prefix/rest layout kinds
+including code slots, private-vtable ownership, parent/owner mutation, and
+bounded vtable and selector enumeration. Source and debug/release dylib scans
+reject placeholder-like implementations, while the full external conformance
+suite safely exercises every callable field in scope.
+
+Selected-floor workers now hash the exact dylib before loading it and compare
+the digest supplied by the isolated matrix, then verify the exported floor
+identity before `id_init`. The CLI host applies the same optional digest and
+identity checks, so image evidence cannot silently use a stale or substituted
+floor. The floor-neutral null-argument child checks the shared invariant text
+rather than a Zig-specific diagnostic prefix.
+
+The isolated matrix now runs 111 tests under Zig, Rust debug, and Rust release.
+It includes the complete IdApi conformance suite, active collection/layout
+tests, and all 17 image tests: representative graph round trips, mapped code,
+`--rebuild`, compiled-unit integrity, module closure preflight, Alien replay,
+and block re-derivation. Separate CLI gates save a representative benchmark
+image through both Rust profiles.
+
+Finally, the committed pre-rewrite arm64 client and module execute unchanged
+against each Rust profile. The committed pre-rewrite image then boots through
+the Rust-selected CLI both by mapping its code and by rebuilding from recorded
+source. All 48 optimized Rust tests, strict checks, and the complete combined
+`zig build test` gate pass.
 
 ## 11. Phase R5 — Full dual-floor verification
 
