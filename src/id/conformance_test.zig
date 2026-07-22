@@ -29,6 +29,7 @@ fn captureDnu(self: Oop, args: [*]const Oop, count: usize) callconv(.c) Oop {
 }
 
 var null_zero_seen = false;
+const exact_layout = [_]u8{ idapi.slot_oop, idapi.slot_raw, idapi.slot_code };
 
 fn captureNullZero(self: Oop, args: ?[*]const Oop, count: usize) callconv(.c) Oop {
     null_zero_seen = args == null and count == 0;
@@ -329,4 +330,26 @@ test "exports preserve deterministic alias and rebinding behavior" {
     try std.testing.expect(api.import(primary) == second);
     try std.testing.expectEqualStrings(primary, std.mem.span(api.exportedNameOf(second).?));
     try std.testing.expectEqualStrings(alias, std.mem.span(api.exportedNameOf(first).?));
+}
+
+test "payload sizes and exact slot layouts are externally observable" {
+    const api = floor.api();
+    const unconfigured = api.proto(api.object_vt);
+    try std.testing.expectEqual(idapi.slot_unknown, api.slotKind(unconfigured, 0));
+
+    const laid_out = api.proto(api.object_vt);
+    api.setLayout(laid_out, &exact_layout, exact_layout.len, idapi.slot_raw);
+    try std.testing.expectEqual(idapi.slot_oop, api.slotKind(laid_out, 0));
+    try std.testing.expectEqual(idapi.slot_raw, api.slotKind(laid_out, 1));
+    try std.testing.expectEqual(idapi.slot_code, api.slotKind(laid_out, 2));
+    try std.testing.expectEqual(idapi.slot_raw, api.slotKind(laid_out, 3));
+    try std.testing.expectEqual(idapi.slot_raw, api.slotKind(laid_out, 100));
+
+    const empty = api.alloc(laid_out, 0);
+    const rounded = api.alloc(laid_out, 1);
+    const exact = api.alloc(laid_out, 3 * @sizeOf(usize));
+    try std.testing.expectEqual(@as(usize, 0), api.objectPayloadSize(empty));
+    try std.testing.expectEqual(@sizeOf(usize), api.objectPayloadSize(rounded));
+    try std.testing.expectEqual(3 * @sizeOf(usize), api.objectPayloadSize(exact));
+    try std.testing.expectEqual(@as(usize, 0), api.objectPayloadSize(@ptrFromInt(0x1000)));
 }
