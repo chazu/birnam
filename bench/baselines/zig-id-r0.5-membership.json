@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "purpose": "R0.5 repaired Zig floor comparator for Rust parity",
+  "source_commit": "9e0fe31",
+  "floor_identity": "zig-id-v1",
+  "mode": "ReleaseSafe",
+  "iterations": 524288,
+  "repetitions_per_run": 5,
+  "independent_runs": 2,
+  "cases": [
+    {
+      "name": "objectPayloadSize",
+      "samples": [
+        {
+          "live_objects": 5162,
+          "vtables": 1035,
+          "median_ns_per_call": 1.8,
+          "min_ns_per_call": 1.777,
+          "max_ns_per_call": 1.823
+        },
+        {
+          "live_objects": 35860,
+          "vtables": 16384,
+          "median_ns_per_call": 3.046,
+          "min_ns_per_call": 2.2,
+          "max_ns_per_call": 3.892
+        },
+        {
+          "live_objects": 265236,
+          "vtables": 131072,
+          "median_ns_per_call": 4.174,
+          "min_ns_per_call": 3.402,
+          "max_ns_per_call": 4.946
+        }
+      ],
+      "median_scaling_exponent": 0.2092,
+      "min_scaling_exponent": 0.1584,
+      "max_scaling_exponent": 0.2599
+    },
+    {
+      "name": "vtableOf",
+      "samples": [
+        {
+          "live_objects": 5162,
+          "vtables": 1035,
+          "median_ns_per_call": 1.928,
+          "min_ns_per_call": 1.905,
+          "max_ns_per_call": 1.951
+        },
+        {
+          "live_objects": 35860,
+          "vtables": 16384,
+          "median_ns_per_call": 3.194,
+          "min_ns_per_call": 2.449,
+          "max_ns_per_call": 3.94
+        },
+        {
+          "live_objects": 265236,
+          "vtables": 131072,
+          "median_ns_per_call": 4.163,
+          "min_ns_per_call": 3.339,
+          "max_ns_per_call": 4.987
+        }
+      ],
+      "median_scaling_exponent": 0.1904,
+      "min_scaling_exponent": 0.1365,
+      "max_scaling_exponent": 0.2443
+    },
+    {
+      "name": "vtableOf.reject",
+      "samples": [
+        {
+          "live_objects": 5162,
+          "vtables": 1035,
+          "median_ns_per_call": 1.919,
+          "min_ns_per_call": 1.842,
+          "max_ns_per_call": 1.996
+        },
+        {
+          "live_objects": 35860,
+          "vtables": 16384,
+          "median_ns_per_call": 1.304,
+          "min_ns_per_call": 1.301,
+          "max_ns_per_call": 1.306
+        },
+        {
+          "live_objects": 265236,
+          "vtables": 131072,
+          "median_ns_per_call": 1.314,
+          "min_ns_per_call": 1.302,
+          "max_ns_per_call": 1.326
+        }
+      ],
+      "median_scaling_exponent": -0.096,
+      "min_scaling_exponent": -0.1039,
+      "max_scaling_exponent": -0.0882
+    },
+    {
+      "name": "vtableOwner",
+      "samples": [
+        {
+          "live_objects": 5162,
+          "vtables": 1035,
+          "median_ns_per_call": 4.003,
+          "min_ns_per_call": 3.859,
+          "max_ns_per_call": 4.148
+        },
+        {
+          "live_objects": 35860,
+          "vtables": 16384,
+          "median_ns_per_call": 8.671,
+          "min_ns_per_call": 8.549,
+          "max_ns_per_call": 8.794
+        },
+        {
+          "live_objects": 265236,
+          "vtables": 131072,
+          "median_ns_per_call": 10.996,
+          "min_ns_per_call": 10.655,
+          "max_ns_per_call": 11.338
+        }
+      ],
+      "median_scaling_exponent": 0.2565,
+      "min_scaling_exponent": 0.2552,
+      "max_scaling_exponent": 0.2578
+    },
+    {
+      "name": "isSmallInt",
+      "samples": [
+        {
+          "live_objects": 5162,
+          "vtables": 1035,
+          "median_ns_per_call": 2.766,
+          "min_ns_per_call": 2.65,
+          "max_ns_per_call": 2.883
+        },
+        {
+          "live_objects": 35860,
+          "vtables": 16384,
+          "median_ns_per_call": 2.636,
+          "min_ns_per_call": 2.608,
+          "max_ns_per_call": 2.665
+        },
+        {
+          "live_objects": 265236,
+          "vtables": 131072,
+          "median_ns_per_call": 2.668,
+          "min_ns_per_call": 2.622,
+          "max_ns_per_call": 2.715
+        }
+      ],
+      "median_scaling_exponent": -0.009,
+      "min_scaling_exponent": -0.0152,
+      "max_scaling_exponent": -0.0028
+    },
+    {
+      "name": "isFloat",
+      "samples": [
+        {
+          "live_objects": 5162,
+          "vtables": 1035,
+          "median_ns_per_call": 2.357,
+          "min_ns_per_call": 2.247,
+          "max_ns_per_call": 2.466
+        },
+        {
+          "live_objects": 35860,
+          "vtables": 16384,
+          "median_ns_per_call": 2.342,
+          "min_ns_per_call": 2.342,
+          "max_ns_per_call": 2.342
+        },
+        {
+          "live_objects": 265236,
+          "vtables": 131072,
+          "median_ns_per_call": 2.692,
+          "min_ns_per_call": 2.609,
+          "max_ns_per_call": 2.774
+        }
+      ],
+      "median_scaling_exponent": 0.0339,
+      "min_scaling_exponent": 0.0298,
+      "max_scaling_exponent": 0.0379
+    },
+    {
+      "name": "isWord",
+      "samples": [
+        {
+          "live_objects": 5162,
+          "vtables": 1035,
+          "median_ns_per_call": 2.638,
+          "min_ns_per_call": 2.566,
+          "max_ns_per_call": 2.709
+        },
+        {
+          "live_objects": 35860,
+          "vtables": 16384,
+          "median_ns_per_call": 2.548,
+          "min_ns_per_call": 2.494,
+          "max_ns_per_call": 2.602
+        },
+        {
+          "live_objects": 265236,
+          "vtables": 131072,
+          "median_ns_per_call": 2.71,
+          "min_ns_per_call": 2.592,
+          "max_ns_per_call": 2.828
+        }
+      ],
+      "median_scaling_exponent": 0.0067,
+      "min_scaling_exponent": -0.0112,
+      "max_scaling_exponent": 0.0247
+    }
+  ]
+}
