@@ -197,3 +197,113 @@ test "public pointer predicates reject non-object Oop carriers" {
         try std.testing.expect(api.vtableOwner(candidate) == null);
     }
 }
+
+test "canonical prototypes own their families and instances split privately" {
+    const api = floor.api();
+    callback_api = api;
+
+    const object_proto = api.import("Object");
+    const integer_proto = api.import("Integer");
+    const string_proto = api.import("String");
+    try std.testing.expect(object_proto != null);
+    try std.testing.expect(api.vtableOf(object_proto) == api.object_vt);
+    try std.testing.expect(api.vtableOwner(api.object_vt) == object_proto);
+    try std.testing.expect(api.vtableOf(integer_proto) == api.smallint_vt);
+    try std.testing.expect(api.vtableOwner(api.smallint_vt) == integer_proto);
+    try std.testing.expect(api.vtableOf(string_proto) == api.string_vt);
+    try std.testing.expect(api.vtableOwner(api.string_vt) == string_proto);
+
+    // A family prototype is already its family's owner, so it does not split.
+    try std.testing.expect(api.ensurePrivateVtable(integer_proto) == api.smallint_vt);
+    const family_selector = api.intern("conformanceIntegerFamilyAnswer");
+    api.method(api.smallint_vt, family_selector, &answer42);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(api.send(api.mkSmallInt(9), family_selector, &.{}, 0)));
+
+    // An ordinary instance gets one stable private vtable; its sibling stays on
+    // the shared family and the split delegates to that family.
+    const first = api.alloc(api.object_vt, 0);
+    const sibling = api.alloc(api.object_vt, 0);
+    const private_vt = api.ensurePrivateVtable(first);
+    try std.testing.expect(private_vt != api.object_vt);
+    try std.testing.expect(api.ensurePrivateVtable(first) == private_vt);
+    try std.testing.expect(api.vtableOf(first) == private_vt);
+    try std.testing.expect(api.vtableOf(sibling) == api.object_vt);
+    try std.testing.expect(api.vtableParent(private_vt) == api.object_vt);
+    try std.testing.expect(api.vtableOwner(private_vt) == first);
+}
+
+test "clone and new preserve prototype-family semantics and String ownership" {
+    const api = floor.api();
+    const clone = api.intern("clone");
+    const new = api.intern("new");
+
+    const object_proto = api.import("Object");
+    const object_clone = api.send(object_proto, clone, &.{}, 0);
+    const object_new = api.send(object_proto, new, &.{}, 0);
+    try std.testing.expect(object_clone != object_proto);
+    try std.testing.expect(object_new != object_proto);
+    try std.testing.expect(api.vtableOf(object_clone) == api.object_vt);
+    try std.testing.expect(api.vtableOf(object_new) == api.object_vt);
+
+    const original = api.mkString("owned bytes", 11);
+    const copied = api.send(original, clone, &.{}, 0);
+    var original_len: usize = 0;
+    var copied_len: usize = 0;
+    const original_bytes = api.stringBytes(original, &original_len);
+    const copied_bytes = api.stringBytes(copied, &copied_len);
+    try std.testing.expect(copied != original);
+    try std.testing.expect(original_bytes != copied_bytes);
+    try std.testing.expectEqualStrings(original_bytes[0..original_len], copied_bytes[0..copied_len]);
+}
+
+test "vtable registry, parent mutation, and direct selectors are ordered" {
+    const api = floor.api();
+    const before = api.vtableCount();
+    const parent_a = api.proto(api.object_vt);
+    const parent_b = api.proto(api.object_vt);
+    const child = api.proto(parent_a);
+    try std.testing.expectEqual(before + 3, api.vtableCount());
+    try std.testing.expect(api.vtableAt(before) == parent_a);
+    try std.testing.expect(api.vtableAt(before + 1) == parent_b);
+    try std.testing.expect(api.vtableAt(before + 2) == child);
+    try std.testing.expect(api.vtableAt(api.vtableCount()) == null);
+    try std.testing.expect(api.vtableParent(child) == parent_a);
+
+    const first = api.intern("conformanceDirectFirst");
+    const second = api.intern("conformanceDirectSecond");
+    api.method(child, first, &answer42);
+    api.method(child, second, &answer7);
+    try std.testing.expect(api.vtableSelectorAt(child, 0) == first);
+    try std.testing.expect(api.vtableSelectorAt(child, 1) == second);
+    try std.testing.expect(api.vtableSelectorAt(child, 2) == null);
+
+    // Replacement preserves dictionary order; parent mutation changes only the
+    // delegation edge, not the direct protocol.
+    api.method(child, first, &answer7);
+    api.setParent(child, parent_b);
+    try std.testing.expect(api.vtableParent(child) == parent_b);
+    try std.testing.expect(api.vtableSelectorAt(child, 0) == first);
+    try std.testing.expect(api.vtableSelectorAt(child, 1) == second);
+}
+
+test "exports preserve deterministic alias and rebinding behavior" {
+    const api = floor.api();
+    const first = api.alloc(api.object_vt, 0);
+    const second = api.alloc(api.object_vt, 0);
+    const primary = "ConformanceExportPrimary";
+    const alias = "ConformanceExportAlias";
+
+    try std.testing.expect(api.isExported(primary) == 0);
+    try std.testing.expect(api.exportObj(primary, first) == first);
+    try std.testing.expect(api.exportObj(alias, first) == first);
+    try std.testing.expect(api.isExported(primary) != 0);
+    try std.testing.expect(api.import(primary) == first);
+    try std.testing.expectEqualStrings(primary, std.mem.span(api.exportedNameOf(first).?));
+
+    // Same-name rebinding moves the primary name to the new value. The old value
+    // remains reachable by its later alias, which becomes its deterministic name.
+    try std.testing.expect(api.exportObj(primary, second) == second);
+    try std.testing.expect(api.import(primary) == second);
+    try std.testing.expectEqualStrings(primary, std.mem.span(api.exportedNameOf(second).?));
+    try std.testing.expectEqualStrings(alias, std.mem.span(api.exportedNameOf(first).?));
+}
