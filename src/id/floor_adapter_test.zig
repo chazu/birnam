@@ -24,6 +24,31 @@ fn loaderPanic(operation: []const u8) noreturn {
     std.debug.panic("selected-floor {s}: {s}", .{ operation, detail });
 }
 
+fn assertFloorDigest(path: []const u8, expected: []const u8) void {
+    if (expected.len == 0) return;
+    const file = if (std.fs.path.isAbsolute(path))
+        std.fs.openFileAbsolute(path, .{}) catch @panic("selected-floor digest: open failed")
+    else
+        std.fs.cwd().openFile(path, .{}) catch @panic("selected-floor digest: open failed");
+    defer file.close();
+    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+    var buffer: [16 * 1024]u8 = undefined;
+    while (true) {
+        const count = file.read(&buffer) catch @panic("selected-floor digest: read failed");
+        if (count == 0) break;
+        hasher.update(buffer[0..count]);
+    }
+    var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+    hasher.final(&digest);
+    const actual = std.fmt.bytesToHex(digest, .lower);
+    if (!std.mem.eql(u8, &actual, expected)) {
+        std.debug.panic("selected-floor digest mismatch: expected {s}, got {s}", .{
+            expected,
+            &actual,
+        });
+    }
+}
+
 /// Load exactly the requested floor, assert its diagnostic identity, call
 /// exported id_init once, and retain the dylib for the test process lifetime.
 pub fn api() *idapi.IdApi {
@@ -35,6 +60,8 @@ pub fn api() *idapi.IdApi {
         @panic("BIRNAM_ID_DYLIB must select exactly one floor dylib");
     const expected_identity = std.posix.getenv("BIRNAM_ID_FLOOR_IDENTITY") orelse
         @panic("BIRNAM_ID_FLOOR_IDENTITY must name the selected floor");
+    const expected_digest = std.posix.getenv("BIRNAM_ID_FLOOR_SHA256") orelse "";
+    assertFloorDigest(path, expected_digest);
     const handle = dlopen(path.ptr, RTLD_NOW | RTLD_LOCAL) orelse loaderPanic("dlopen failed");
 
     const raw_identity = dlsym(handle, "birnam_id_floor_identity") orelse

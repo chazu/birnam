@@ -35,13 +35,20 @@ rungs=(
   test-collection
 )
 
-TMPDIR="$zig_root/tmp" zig build stage1 "${rungs[@]}" \
+TMPDIR="$zig_root/tmp" zig build stage1 \
   --prefix "$zig_prefix" \
   --cache-dir "$zig_root/cache" \
   --global-cache-dir "$zig_root/global-cache"
 zig_floor="$zig_prefix/lib/libbirnam_id.dylib"
 test -f "$zig_floor"
 zig_digest=$(shasum -a 256 "$zig_floor" | awk '{print $1}')
+TMPDIR="$zig_root/tmp" zig build "${rungs[@]}" \
+  --prefix "$zig_prefix" \
+  --cache-dir "$zig_root/cache" \
+  --global-cache-dir "$zig_root/global-cache" \
+  -Did-conformance-floor="$zig_floor" \
+  -Did-conformance-identity=zig-id-v1 \
+  -Did-conformance-sha256="$zig_digest"
 echo "lower-rung-matrix: zig-id-v1 passed 94 tests, dylib $zig_digest"
 
 CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline
@@ -59,15 +66,16 @@ probe_rust_profile() {
   local profile_tmp="$rust_root/tmp/$profile"
   mkdir -p "$selected_dir" "$profile_tmp"
   cp "$cargo_dylib" "$selected_floor"
+  local digest
+  digest=$(shasum -a 256 "$selected_floor" | awk '{print $1}')
 
   TMPDIR="$profile_tmp" zig build "${rungs[@]}" \
     --prefix "$rust_prefix" \
     --cache-dir "$rust_root/cache" \
     --global-cache-dir "$rust_root/global-cache" \
     -Did-conformance-floor="$selected_floor" \
-    -Did-conformance-identity=rust-id-v1
-  local digest
-  digest=$(shasum -a 256 "$selected_floor" | awk '{print $1}')
+    -Did-conformance-identity=rust-id-v1 \
+    -Did-conformance-sha256="$digest"
   echo "lower-rung-matrix: rust-id-v1 $profile passed 94 tests, dylib $digest"
 }
 

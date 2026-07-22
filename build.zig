@@ -263,6 +263,11 @@ pub fn build(b: *std.Build) void {
         "id-conformance-identity",
         "Expected birnam_id_floor_identity for selected-floor tests",
     ) orelse "zig-id-v1";
+    const conformance_digest = b.option(
+        []const u8,
+        "id-conformance-sha256",
+        "Expected SHA-256 of the selected floor dylib (empty disables the assertion)",
+    ) orelse "";
 
     // -- The id rungs: a dylib + its test suite, one row per module ----------
     // Every rung is a dynamic library the siphon dlopens at runtime, plus a test
@@ -371,6 +376,7 @@ pub fn build(b: *std.Build) void {
         if (!std.mem.eql(u8, m.test_src, "id.zig")) {
             run.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
             run.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+            run.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
             run.step.dependOn(bootstrap_install);
         }
         b.step(m.step, m.desc).dependOn(&run.step);
@@ -400,6 +406,7 @@ pub fn build(b: *std.Build) void {
     run_artifact_preflight_tests.addArtifactArg(artifact_preflight_sentinel);
     run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
     run_artifact_preflight_tests.step.dependOn(bootstrap_install);
     const artifact_preflight_test_step = b.step(
         "test-artifact-preflight",
@@ -506,6 +513,7 @@ pub fn build(b: *std.Build) void {
     const run_conformance = b.addRunArtifact(conformance_tests);
     run_conformance.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_conformance.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_conformance.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
     run_conformance.step.dependOn(bootstrap_install);
 
     const null_args_mod = b.createModule(.{
@@ -522,6 +530,7 @@ pub fn build(b: *std.Build) void {
     null_args_check.addArtifactArg(null_args_child);
     null_args_check.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     null_args_check.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    null_args_check.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
     null_args_check.step.dependOn(bootstrap_install);
     const conformance_step = b.step(
         "test-id-conformance",
@@ -542,6 +551,7 @@ pub fn build(b: *std.Build) void {
     const run_store_image_backfill = b.addRunArtifact(store_image_backfill_tests);
     run_store_image_backfill.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_store_image_backfill.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_store_image_backfill.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
     run_store_image_backfill.step.dependOn(bootstrap_install);
     const store_image_backfill_step = b.step(
         "test-store-image-backfill",
@@ -560,6 +570,7 @@ pub fn build(b: *std.Build) void {
     const run_collection_gc = b.addRunArtifact(collection_gc_tests);
     run_collection_gc.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_collection_gc.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_collection_gc.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
     run_collection_gc.step.dependOn(bootstrap_install);
     const collection_gc_step = b.step(
         "test-collection-gc",
@@ -578,6 +589,7 @@ pub fn build(b: *std.Build) void {
     const run_gc_layout_mark = b.addRunArtifact(gc_layout_mark_tests);
     run_gc_layout_mark.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_gc_layout_mark.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_gc_layout_mark.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
     run_gc_layout_mark.step.dependOn(bootstrap_install);
     const gc_layout_mark_step = b.step(
         "test-gc-layout-mark",
@@ -602,6 +614,7 @@ pub fn build(b: *std.Build) void {
     const run_membership_bench = b.addRunArtifact(membership_bench);
     run_membership_bench.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_membership_bench.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_membership_bench.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
     run_membership_bench.step.dependOn(bootstrap_install);
     b.step(
         "bench-id-membership",
@@ -621,6 +634,7 @@ pub fn build(b: *std.Build) void {
     const run_gc_baseline = b.addRunArtifact(gc_baseline);
     run_gc_baseline.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_gc_baseline.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_gc_baseline.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
     run_gc_baseline.step.dependOn(bootstrap_install);
     b.step(
         "baseline-id-gc",
