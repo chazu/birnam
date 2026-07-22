@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, and R3.0 through R3.6 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, and R3.0 through R3.7 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1486,6 +1486,32 @@ group, and the post-change combined gate pass.
 **Gate:** every incompatible fixture is rejected by `libid` plus the artifact
 inspector alone, before higher rungs or initialization, while one compatible
 descriptor reaches (but does not execute) the later activation boundary.
+
+#### R3.7 execution record — 2026-07-22
+
+The siphon's closure policy is now isolated in `artifact_preflight.zig`. It
+consumes only `IdApi` values returned by the pointer-free inspector. A path-only
+root calls `walkRoot` without an expected identity, so the host does not derive
+authority from a filename. Operations that already possess an independently
+selected identity pass it explicitly. Every dependency edge still verifies
+that the descriptor identity equals the required Symbol before recursion.
+
+Dedicated selected-floor tests construct descriptors for wrong ABI, wrong
+target, unavailable native requirements, wrong kind, explicit root-identity
+mismatch, dependency-identity mismatch, and an incomplete closure. The
+compatible fixture reaches the post-preflight activation seam while `Store`,
+`Codegen`, and `Module` remain unresolvable. The activation-authority test uses
+a real dylib whose `module_init` and `__birnam_unit_init` exports abort; the
+inspector reads its appended descriptor and completes preflight without loading
+the container or invoking either hook.
+
+Inspector-only tests live in a dedicated test root, rather than the production
+inspector module, so importing the inspector from higher-rung tests cannot
+silently rerun a fresh-floor assumption after those rungs are active. The
+isolated lower-rung matrix now runs 70 tests per target, including the four
+inspector cases and seven closure/authority cases. Zig, Rust debug, and Rust
+release pass in separate processes. Strict Rust formatting and Clippy plus the
+complete combined `zig build test` gate pass.
 
 ## 10. Phase R4 — Collector, layouts, and image primitives
 
