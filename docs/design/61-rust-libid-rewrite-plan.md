@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.3 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.4 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1646,6 +1646,29 @@ complete combined `zig build test` gate pass.
 
 **Gate:** root discovery passes in Debug and release builds and fails safely—not
 by sweeping—when no stack anchor is installed.
+
+#### R4.4 execution record — 2026-07-22
+
+The Rust floor now binds Darwin arm64 `_setjmp` with a 192-byte, 16-byte-aligned
+register-save buffer whose size is checked against the platform header. Before
+marking any runtime, provider, or foreign-hook roots, collection saves the
+current register state and word-scans from that save area through the
+host-provided stack bottom under the existing downward-growing-stack contract.
+Only exact registered collectable payload addresses become roots.
+
+An absent, reversed, or implausibly distant stack anchor makes native-root
+discovery fail closed. Public collection then returns without marking providers
+or sweeping, preserving every allocation until the host installs a valid
+anchor. The scan is unavailable on unsupported targets rather than silently
+using a guessed context layout.
+
+The external proof compiles an optimized C helper that allocates its object
+internally, keeps the only live Oop pinned in arm64 register `x19`, and crosses
+`gcCollect` without returning that identity to the Zig caller. Its trace hook
+fires under both Rust debug and Rust release floors. The same probe with a zero
+stack bottom confirms that no trace hook fires. Strict Rust checks, optimized
+tests, the 72-test isolated three-floor matrix, and the complete combined
+`zig build test` gate pass.
 
 ### R4.5 — Sweep and finalizers
 
