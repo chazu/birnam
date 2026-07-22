@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "purpose": "R2.5 Rust floor canonical bootstrap identity gate",
+  "source_commit": "0dabfb9",
+  "floor_identity": "rust-id-r2.5-internal-harness",
+  "public_id_api_exported": false,
+  "vtable_creation_order": [
+    { "name": "VtableVt", "vtable": "VtableVt", "parent": "ObjectVt", "payload_size": 80, "permanence": "permanent" },
+    { "name": "ObjectVt", "vtable": "VtableVt", "parent": null, "payload_size": 80, "permanence": "permanent" },
+    { "name": "SymbolVt", "vtable": "VtableVt", "parent": "ObjectVt", "payload_size": 80, "permanence": "permanent" },
+    { "name": "SymbolList", "vtable": "VtableVt", "parent": null, "payload_size": 80, "permanence": "permanent" },
+    { "name": "Environment", "vtable": "VtableVt", "parent": null, "payload_size": 80, "permanence": "permanent" },
+    { "name": "IntegerVt", "vtable": "VtableVt", "parent": "ObjectVt", "payload_size": 80, "permanence": "permanent" },
+    { "name": "StringVt", "vtable": "VtableVt", "parent": "ObjectVt", "payload_size": 80, "permanence": "permanent" },
+    { "name": "FloatVt", "vtable": "VtableVt", "parent": "ObjectVt", "payload_size": 80, "permanence": "permanent" },
+    { "name": "WordVt", "vtable": "VtableVt", "parent": "ObjectVt", "payload_size": 80, "permanence": "permanent" },
+    { "name": "NilVt", "vtable": "VtableVt", "parent": "ObjectVt", "payload_size": 80, "permanence": "permanent" },
+    { "name": "BooleanVt", "vtable": "VtableVt", "parent": "ObjectVt", "payload_size": 80, "permanence": "permanent" }
+  ],
+  "initial_symbol_order": [
+    "lookup",
+    "addMethod",
+    "removeMethod:",
+    "allocate",
+    "delegated",
+    "doesNotUnderstand:",
+    "Symbol"
+  ],
+  "direct_method_order": {
+    "VtableVt": [
+      { "selector": "lookup", "installation": "direct" },
+      { "selector": "addMethod", "installation": "direct" },
+      { "selector": "removeMethod:", "installation": "direct" },
+      { "selector": "allocate", "installation": "metacircular-addMethod" },
+      { "selector": "delegated", "installation": "metacircular-addMethod" }
+    ],
+    "ObjectVt": [
+      { "selector": "doesNotUnderstand:", "installation": "metacircular-addMethod" }
+    ]
+  },
+  "canonical_objects": [
+    { "name": "nil", "vtable": "NilVt", "payload_size": 0, "permanence": "permanent" },
+    { "name": "true", "vtable": "BooleanVt", "payload_size": 0, "permanence": "permanent" },
+    { "name": "false", "vtable": "BooleanVt", "payload_size": 0, "permanence": "permanent" },
+    { "name": "Object", "vtable": "ObjectVt", "payload_size": 0, "permanence": "permanent" },
+    { "name": "Integer", "vtable": "IntegerVt", "payload_size": 8, "permanence": "collectable", "initial_value": 0 },
+    { "name": "Float", "vtable": "FloatVt", "payload_size": 8, "permanence": "collectable", "initial_value": 0.0 },
+    { "name": "Word", "vtable": "WordVt", "payload_size": 8, "permanence": "collectable", "initial_value": 0 },
+    { "name": "String", "vtable": "StringVt", "payload_size": 16, "permanence": "collectable", "initial_bytes_hex": "" },
+    { "name": "Symbol", "vtable": "SymbolVt", "payload_size": 8, "permanence": "permanent", "initial_bytes_hex": "53796d626f6c" }
+  ],
+  "family_owners": {
+    "ObjectVt": "Object",
+    "IntegerVt": "Integer",
+    "FloatVt": "Float",
+    "WordVt": "Word",
+    "StringVt": "String",
+    "SymbolVt": "Symbol",
+    "NilVt": "nil",
+    "BooleanVt": "true"
+  },
+  "identity_rule": "Every listed vtable and canonical object has a distinct address except that true and false intentionally share BooleanVt; later phases may add behavior and exports but must not replace these identities or family vtables."
+}
