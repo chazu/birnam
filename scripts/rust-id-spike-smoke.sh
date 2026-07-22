@@ -23,8 +23,20 @@ probe_profile() {
 
   CARGO_TARGET_DIR="$target_dir" cargo "${cargo_args[@]}"
   test -f "$dylib"
+  if nm -a "$dylib" | grep -Eiq 'placeholder|fatal[_ -]?stub|unsupported[_ -]?(api|slot|field)'; then
+    echo "rust-id-api: placeholder-like symbol found in $dylib" >&2
+    exit 1
+  fi
   "$probe" "$dylib" functional
 }
 
+if rg -n -i 'placeholder|fatal[ _-]?stub|unsupported[ _-]?(api|slot|field)' \
+  "$repo/rust/birnam-id/src"; then
+  echo "rust-id-api: placeholder-like production source remains" >&2
+  exit 1
+fi
+
 probe_profile debug
 probe_profile release
+
+echo "rust-id-api: production source and both dylibs contain no placeholder-like implementation"

@@ -1,4 +1,4 @@
-//! Complete-shaped R2.6 API table with explicit fatal gaps.
+//! Complete frozen IdApi table backed only by production implementations.
 
 use core::ffi::{c_char, c_int, c_void};
 use std::ffi::CStr;

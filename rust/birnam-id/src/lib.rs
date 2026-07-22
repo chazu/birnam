@@ -1,7 +1,7 @@
-//! Dependency-free R2.6 spike for the Rust libid implementation.
+//! Dependency-free Rust libid floor candidate.
 //!
-//! The crate exports a complete-shaped `IdApi` with explicit fatal gaps. Normal
-//! Zig builds neither select nor install it as the production floor.
+//! The crate exports the complete frozen `IdApi` implementation. Normal Zig
+//! builds do not select or install it until the explicit cutover phase.
 
 #[cfg(not(any(test, panic = "abort")))]
 compile_error!("every runnable birnam_id cdylib profile must use panic=abort");

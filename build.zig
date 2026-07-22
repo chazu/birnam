@@ -154,7 +154,7 @@ pub fn build(b: *std.Build) void {
     });
     const test_rust_id_spike_step = b.step(
         "test-rust-id-spike",
-        "Exercise the complete-shaped Rust IdApi from a frozen Zig client",
+        "Exercise and inspect the complete Rust IdApi from a frozen Zig client",
     );
     test_rust_id_spike_step.dependOn(&rust_id_spike_smoke.step);
     test_step.dependOn(&rust_id_spike_smoke.step);
@@ -165,7 +165,7 @@ pub fn build(b: *std.Build) void {
     });
     const test_rust_gc_metadata_step = b.step(
         "test-rust-gc-metadata",
-        "Exercise Rust collector metadata and foreign marking callbacks without sweeping",
+        "Exercise Rust collection, foreign marking callbacks, and finalizer guards",
     );
     test_rust_gc_metadata_step.dependOn(&rust_gc_metadata_smoke.step);
     test_step.dependOn(&rust_gc_metadata_smoke.step);

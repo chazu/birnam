@@ -68,11 +68,11 @@ description = "Reenter Rust dispatch synchronously from an external Zig Method"
 run = "bash scripts/rust-dispatch-reentry-smoke.sh"
 
 [tasks.rust-id-spike-smoke]
-description = "Exercise the complete-shaped Rust IdApi from a frozen Zig client"
+description = "Exercise and inspect the complete Rust IdApi from a frozen Zig client"
 run = "bash scripts/rust-id-spike-smoke.sh"
 
 [tasks.rust-gc-metadata-smoke]
-description = "Retain collector metadata while Rust collection remains disabled"
+description = "Exercise Rust collection, foreign marking callbacks, and finalizer guards"
 run = "bash scripts/rust-gc-metadata-smoke.sh"
 
 [tasks.rust-stack-root-smoke]
