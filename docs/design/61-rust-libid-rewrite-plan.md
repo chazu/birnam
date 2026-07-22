@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5 and R1.1 through
-> R1.4 complete,
+> R1.5 complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -768,6 +768,30 @@ therefore CI; full `zig build test` and the debug/release Rust shell smoke pass.
 
 **Gate:** the child process terminates predictably; the test runner remains
 healthy and reports the correct failure.
+
+#### R1.5 execution record — 2026-07-22
+
+`boundary.rs` centralizes fatal exported-boundary checks in
+`require_invariant`/`fatal_invariant`; neither path can return or unwind. Normal
+debug and release dylibs remain `panic = "abort"`. A disabled-by-default
+`ffi-test-hooks` feature adds two test-only C symbols: one panics deliberately,
+and one enters the explicit fatal-invariant helper. The ordinary-artifact smoke
+proves those hook symbols are absent without the feature.
+
+`test-rust-ffi-abort` builds the isolated hook dylib offline, invokes each hook
+from a separately compiled Zig child executable, and requires SIGABRT status
+134 plus the expected diagnostic. Both children abort while the parent gate
+stays healthy; the step is part of ordinary `zig build test`.
+
+The parity policy is deliberately narrow. Allocation or runtime-metadata OOM,
+corrupt heap/registry/layout state, owner-thread or reentrancy violations,
+exhausted fixed runtime capacity, invalid ABI preconditions such as a null
+nonzero argument buffer, and dispatch that reaches the floor's fatal default
+`doesNotUnderstand:` remain process-fatal as they are in the Zig floor.
+Ordinary absence, failed predicates, and language errors already represented by
+Birnam objects remain recoverable values and must never be converted into Rust
+panics. Internal Rust/Zig panic wording is diagnostic, not a compatibility
+contract.
 
 ## 8. Phase R2 — Heap, vtables, and dispatch proof
 
