@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> and R2.1 through R2.2a complete,
+> and R2.1 through R2.3 complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -938,6 +938,22 @@ Scalar predicate rows remain correctly deferred to R3.2.
 - Test empty, ASCII, non-UTF-8, punctuation/selector, keyword, and repeated names.
 
 **Gate:** symbol identity and C-string lifetime survive unrelated allocations.
+
+#### R2.3 execution record — 2026-07-22
+
+The Rust interner allocates permanent 8-byte C-layout Symbol payloads whose raw
+field points to separately owned, stable, NUL-terminated boxed bytes. Its
+ordered record vector is the sole identity/enumeration/root-order authority;
+an exact address map only validates reverse lookup. Equal byte sequences return
+the same object without appending, embedded NUL is rejected, and all comparisons
+operate on bytes. The implementation never calls `CStr::to_str` or otherwise
+requires UTF-8.
+
+Debug and optimized tests cover empty, ASCII, punctuation, unary and keyword
+selectors, explicit non-UTF-8 bytes, repeated names, embedded-NUL rejection,
+foreign carriers, and stable enumeration. An anchor's object identity and raw
+C-string pointer survive 4,096 additional symbols plus unrelated collectable
+heap allocations. All 20 Rust tests and the strict all-target Clippy gate pass.
 
 ### R2.4 — Implement bind and send
 
