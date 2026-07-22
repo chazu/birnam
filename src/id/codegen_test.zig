@@ -1003,6 +1003,7 @@ export fn birnam_cg_apply2(f: *const fn (c_long, c_long) callconv(.c) c_long) c_
 }
 
 test "integration: [Alien callback:] on a REAL compiled birnam block" {
+    std.mem.doNotOptimizeAway(&birnam_cg_apply2);
     const api = setupFull();
     alien.bringUp(api);
 

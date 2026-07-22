@@ -117,6 +117,7 @@ export fn birnam_probe() callconv(.c) i64 {
 }
 
 test "tcc slice-1: a dylib's undefined external resolves against the host at dlopen" {
+    std.mem.doNotOptimizeAway(&birnam_probe);
     const api = floor.api();
     tcc.bringUp(api);
     const Tcc = api.import("Tcc").?;

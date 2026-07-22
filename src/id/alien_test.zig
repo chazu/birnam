@@ -24,6 +24,7 @@ const Oop = idapi.Oop;
 
 /// The floor + Tcc + Alien only — NO collection (see the first test).
 fn setupBare() *idapi.IdApi {
+    retainExportedFixtures();
     const api = floor.api();
     tcc.bringUp(api);
     alien.bringUp(api);
@@ -199,6 +200,45 @@ export fn birnam_t_applyPt(f: *const fn (CPoint) callconv(.c) c_long) c_long {
 export fn birnam_t_viaPtCb(f: *const fn (c_long) callconv(.c) CPoint, x: c_long) c_long {
     const p = f(x); // struct RETURNED from the callback, by value
     return p.x * 100 + p.y;
+}
+
+/// These fixtures are looked up by exported name, so no ordinary Zig call site
+/// reaches them. Explicit references prevent ReleaseSafe from eliminating the
+/// bodies before the linker can publish the dynamic symbols.
+fn retainExportedFixtures() void {
+    const fixtures = .{
+        &birnam_t_addPoints,
+        &birnam_t_apply,
+        &birnam_t_apply2,
+        &birnam_t_applyD,
+        &birnam_t_applyPt,
+        &birnam_t_applyS,
+        &birnam_t_divmod,
+        &birnam_t_dotVec2,
+        &birnam_t_fillGreeting,
+        &birnam_t_fire,
+        &birnam_t_flipLine,
+        &birnam_t_highPtr,
+        &birnam_t_iota,
+        &birnam_t_makePoint,
+        &birnam_t_mixedVal,
+        &birnam_t_mkBig,
+        &birnam_t_mkMixed,
+        &birnam_t_movePoint,
+        &birnam_t_ptrIdentity,
+        &birnam_t_scaleVec2,
+        &birnam_t_sumArr,
+        &birnam_t_sumBig,
+        &birnam_t_sumBuf,
+        &birnam_t_sumF2,
+        &birnam_t_sumLine,
+        &birnam_t_sumPoint,
+        &birnam_t_uBig,
+        &birnam_t_uIdentity,
+        &birnam_t_uSmall,
+        &birnam_t_viaPtCb,
+    };
+    inline for (fixtures) |fixture| std.mem.doNotOptimizeAway(fixture);
 }
 
 // -- callback responders ----------------------------------------------------------

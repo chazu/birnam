@@ -108,6 +108,7 @@ pub fn build(b: *std.Build) void {
         desc: []const u8, // test step description
         lib_links_tcc: bool = false,
         test_links_tcc: bool = false,
+        test_exports: []const []const u8 = &.{},
     };
     const mods = [_]Mod{
         .{ .name = "birnam_id", .src = "id.zig", .test_src = "id.zig", .step = "test-id", .desc = "libid: the Piumarta object-system bootstrap proof" },
@@ -115,14 +116,53 @@ pub fn build(b: *std.Build) void {
         .{ .name = "birnam_store", .src = "store.zig", .test_src = "store_test.zig", .step = "test-store", .desc = "rung 2: the cell/relational store bootstrap fixpoint" },
         .{ .name = "birnam_id_peg", .src = "peg.zig", .test_src = "peg_test.zig", .step = "test-peg", .desc = "rung 3a: the PEG engine on the libid floor" },
         .{ .name = "birnam_id_lang", .src = "lang.zig", .test_src = "lang_test.zig", .step = "test-lang", .desc = "rung 3b: birnam's grammar + parser via the peg message api" },
-        .{ .name = "birnam_id_tcc", .src = "tcc.zig", .test_src = "tcc_test.zig", .step = "test-tcc", .desc = "rung 3c: libtcc as an id module — C to native", .lib_links_tcc = true, .test_links_tcc = true },
-        .{ .name = "birnam_id_codegen", .src = "codegen.zig", .test_src = "codegen_test.zig", .step = "test-codegen", .desc = "rung 3c: the birnam → C emitter", .test_links_tcc = true },
+        .{ .name = "birnam_id_tcc", .src = "tcc.zig", .test_src = "tcc_test.zig", .step = "test-tcc", .desc = "rung 3c: libtcc as an id module — C to native", .lib_links_tcc = true, .test_links_tcc = true, .test_exports = &.{"birnam_probe"} },
+        .{ .name = "birnam_id_codegen", .src = "codegen.zig", .test_src = "codegen_test.zig", .step = "test-codegen", .desc = "rung 3c: the birnam → C emitter", .test_links_tcc = true, .test_exports = &.{"birnam_cg_apply2"} },
         .{ .name = "birnam_id_prelude", .src = "prelude.zig", .test_src = "prelude_test.zig", .step = "test-prelude", .desc = "the primitive stdlib: Integer/Boolean/System" },
         .{ .name = "birnam_id_collection", .src = "collection.zig", .test_src = "collection_test.zig", .step = "test-collection", .desc = "the id-native collection library: Vector trie + Range" },
         .{ .name = "birnam_id_error", .src = "error.zig", .test_src = "error_test.zig", .step = "test-error", .desc = "F7: the error model (propagating values + DNU swap)" },
         .{ .name = "birnam_id_isolate", .src = "isolate.zig", .test_src = "isolate_test.zig", .step = "test-isolate", .desc = "Blocking isolates and wire-v1" },
         .{ .name = "birnam_id_relational", .src = "relational.zig", .test_src = "relational_test.zig", .step = "test-relational", .desc = "the relational reading: datalog join + pull" },
-        .{ .name = "birnam_id_alien", .src = "alien.zig", .test_src = "alien_test.zig", .step = "test-alien", .desc = "the FFI: wrap + absorb C libraries via Tcc", .test_links_tcc = true },
+        .{
+            .name = "birnam_id_alien",
+            .src = "alien.zig",
+            .test_src = "alien_test.zig",
+            .step = "test-alien",
+            .desc = "the FFI: wrap + absorb C libraries via Tcc",
+            .test_links_tcc = true,
+            .test_exports = &.{
+                "birnam_t_addPoints",
+                "birnam_t_apply",
+                "birnam_t_apply2",
+                "birnam_t_applyD",
+                "birnam_t_applyPt",
+                "birnam_t_applyS",
+                "birnam_t_divmod",
+                "birnam_t_dotVec2",
+                "birnam_t_fillGreeting",
+                "birnam_t_fire",
+                "birnam_t_flipLine",
+                "birnam_t_highPtr",
+                "birnam_t_iota",
+                "birnam_t_makePoint",
+                "birnam_t_mixedVal",
+                "birnam_t_mkBig",
+                "birnam_t_mkMixed",
+                "birnam_t_movePoint",
+                "birnam_t_ptrIdentity",
+                "birnam_t_scaleVec2",
+                "birnam_t_sumArr",
+                "birnam_t_sumBig",
+                "birnam_t_sumBuf",
+                "birnam_t_sumF2",
+                "birnam_t_sumLine",
+                "birnam_t_sumPoint",
+                "birnam_t_uBig",
+                "birnam_t_uIdentity",
+                "birnam_t_uSmall",
+                "birnam_t_viaPtCb",
+            },
+        },
         .{ .name = "birnam_id_image", .src = "image.zig", .test_src = "image_test.zig", .step = "test-image", .desc = "the image: store-reachable durability + mapped code (docs/40)", .test_links_tcc = true },
     };
 
@@ -147,9 +187,16 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        test_mod.export_symbol_names = m.test_exports;
         if (m.test_links_tcc) test_mod.addIncludePath(b.path("vendor/libtcc-src"));
         const tests = b.addTest(.{ .root_module = test_mod });
-        if (m.test_links_tcc) tests.linkLibrary(libtcc_lib);
+        if (m.test_links_tcc) {
+            tests.linkLibrary(libtcc_lib);
+            // TCC integration tests intentionally resolve their exported Zig
+            // fixtures through dlsym(RTLD_DEFAULT). ReleaseSafe otherwise
+            // dead-strips those unreferenced executable symbols.
+            tests.rdynamic = true;
+        }
         tests.linkLibC();
         const run = b.addRunArtifact(tests);
         if (!std.mem.eql(u8, m.test_src, "id.zig")) {

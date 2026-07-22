@@ -586,6 +586,31 @@ comptime {
     @export(&rtCandidateValidateBinding, .{ .name = "birnam_candidate_validate_binding" });
 }
 
+/// Dynamic artifact shims are reached by name rather than ordinary Zig calls.
+/// A dylib retains exports automatically; a ReleaseSafe executable importing
+/// this module may otherwise eliminate the bodies before its linker can publish
+/// them for dlopen resolution.
+fn retainDynamicExports() void {
+    const exports = .{
+        &birnam_codegen_enter_running,
+        &birnam_codegen_begin_quiescence,
+        &birnam_codegen_end_quiescence,
+        &rtGlobal,
+        &rtGlobalB,
+        &rtGlobalSet,
+        &rtRecordGlobalSrc,
+        &rtRecordModuleSource,
+        &rtIsError,
+        &rtInstallMethod,
+        &rtRemoveMethod,
+        &rtCandidateRootSet,
+        &rtCandidateRootGet,
+        &rtCandidatePrepareMode,
+        &rtCandidateValidateBinding,
+    };
+    inline for (exports) |exported| std.mem.doNotOptimizeAway(exported);
+}
+
 /// Register a codegen-owned shim into a unit's pre-relocate symbol window.
 fn addShim(unit: Oop, name: []const u8, fnptr: *const anyopaque) void {
     const name_str = g_api.mkString(name.ptr, name.len);
@@ -4486,6 +4511,7 @@ fn runProgram(src: Oop, persist: bool) Oop {
 // -- bringup / module entrypoint --------------------------------------------
 
 pub fn bringUp(api: *idapi.IdApi) void {
+    retainDynamicExports();
     g_api = api;
     lang = api.import("Lang") orelse @panic("codegen: Lang not loaded");
     tcc = api.import("Tcc") orelse @panic("codegen: Tcc not loaded");
