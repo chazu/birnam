@@ -152,6 +152,30 @@ unsafe extern "C" fn object_does_not_understand(_: Oop, _: *const Oop, _: usize)
     boundary::fatal_invariant("doesNotUnderstand:")
 }
 
+unsafe extern "C" fn object_clone(receiver: Oop, _: *const Oop, _: usize) -> Oop {
+    with_active(|runtime| runtime.clone_object(receiver))
+}
+
+unsafe extern "C" fn string_clone(receiver: Oop, _: *const Oop, _: usize) -> Oop {
+    with_active(|runtime| runtime.clone_string(receiver, crate::public_api::string_finalizer))
+}
+
+unsafe extern "C" fn object_identical(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    if count == 0 || args.is_null() {
+        boundary::fatal_invariant("object == requires one argument");
+    }
+    // SAFETY: the Method ABI promises at least count entries and count > 0.
+    let other = unsafe { args.read() };
+    with_active(|runtime| {
+        let canonical = runtime.canonical();
+        if receiver == other {
+            canonical.true_object
+        } else {
+            canonical.false_object
+        }
+    })
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct BootstrapSelectors {
     pub(crate) lookup: Oop,
@@ -160,6 +184,9 @@ pub(crate) struct BootstrapSelectors {
     pub(crate) allocate: Oop,
     pub(crate) delegated: Oop,
     pub(crate) does_not_understand: Oop,
+    pub(crate) clone: Oop,
+    pub(crate) new: Oop,
+    pub(crate) identical: Oop,
 }
 
 pub(crate) struct Bootstrap {
@@ -213,6 +240,9 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
             symbol_vt,
             b"doesNotUnderstand:",
         ),
+        clone: static_selector(&mut symbols, &mut heap, symbol_vt, b"clone"),
+        new: static_selector(&mut symbols, &mut heap, symbol_vt, b"new"),
+        identical: static_selector(&mut symbols, &mut heap, symbol_vt, b"=="),
     };
 
     let runtime = Runtime::new_with_values(
@@ -262,6 +292,23 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
                 selectors.does_not_understand,
                 object_does_not_understand as crate::abi::Method,
             ),
+            (
+                object_vt,
+                selectors.clone,
+                object_clone as crate::abi::Method,
+            ),
+            (object_vt, selectors.new, object_clone as crate::abi::Method),
+            (
+                object_vt,
+                selectors.identical,
+                object_identical as crate::abi::Method,
+            ),
+            (
+                string_vt,
+                selectors.clone,
+                string_clone as crate::abi::Method,
+            ),
+            (string_vt, selectors.new, string_clone as crate::abi::Method),
         ] {
             let arguments = [selector, MethodAddress::from_method(method).as_oop()];
             let installed = runtime.send_slice(vtable, selectors.add_method, &arguments);
@@ -586,13 +633,16 @@ mod tests {
             assert_eq!(runtime.payload_size(expected), Some(80));
         }
 
-        let selector_names: [&[u8]; 7] = [
+        let selector_names: [&[u8]; 10] = [
             b"lookup",
             b"addMethod",
             b"removeMethod:",
             b"allocate",
             b"delegated",
             b"doesNotUnderstand:",
+            b"clone",
+            b"new",
+            b"==",
             b"Symbol",
         ];
         assert_eq!(runtime.symbol_count(), selector_names.len());
@@ -621,11 +671,115 @@ mod tests {
                 .vtable_selector_at(globals.vtable_vt, meta_selectors.len())
                 .is_null()
         );
-        assert_eq!(
-            runtime.vtable_selector_at(globals.object_vt, 0),
-            bootstrap.selectors.does_not_understand
+        let object_selectors = [
+            bootstrap.selectors.does_not_understand,
+            bootstrap.selectors.clone,
+            bootstrap.selectors.new,
+            bootstrap.selectors.identical,
+        ];
+        for (index, selector) in object_selectors.into_iter().enumerate() {
+            assert_eq!(
+                runtime.vtable_selector_at(globals.object_vt, index),
+                selector
+            );
+        }
+        assert!(
+            runtime
+                .vtable_selector_at(globals.object_vt, object_selectors.len())
+                .is_null()
         );
-        assert!(runtime.vtable_selector_at(globals.object_vt, 1).is_null());
+        assert_eq!(
+            runtime.vtable_selector_at(canonical.string_vt, 0),
+            bootstrap.selectors.clone
+        );
+        assert_eq!(
+            runtime.vtable_selector_at(canonical.string_vt, 1),
+            bootstrap.selectors.new
+        );
+        assert!(runtime.vtable_selector_at(canonical.string_vt, 2).is_null());
+    }
+
+    #[test]
+    fn bootstrap_clone_identity_and_private_vtables_match_the_prototype_model() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let canonical = runtime.canonical();
+
+        let object = runtime.allocate_instance(globals.object_vt, 9);
+        let extent = runtime.payload_size(object).unwrap();
+        // SAFETY: object is a live floor block with extent writable bytes.
+        let payload = unsafe { std::slice::from_raw_parts_mut(object.cast::<u8>(), extent) };
+        for (index, byte) in payload.iter_mut().enumerate() {
+            *byte = (index as u8).wrapping_mul(19).wrapping_add(7);
+        }
+
+        runtime.enter(|| {
+            let clone = runtime.send_slice(object, bootstrap.selectors.clone, &[]);
+            let new = runtime.send_slice(object, bootstrap.selectors.new, &[]);
+            for copy in [clone, new] {
+                assert_ne!(copy, object);
+                assert_eq!(runtime.checked_vtable_of(copy), globals.object_vt);
+                // SAFETY: source and copy are live blocks with the same extent.
+                let copied =
+                    unsafe { std::slice::from_raw_parts(copy.cast::<u8>().cast_const(), extent) };
+                assert_eq!(copied, payload);
+            }
+            assert_eq!(
+                runtime.send_slice(object, bootstrap.selectors.identical, &[object]),
+                canonical.true_object
+            );
+            assert_eq!(
+                runtime.send_slice(object, bootstrap.selectors.identical, &[clone]),
+                canonical.false_object
+            );
+
+            let original = runtime.allocate_string(canonical.string_vt, b"owned\0\xffbytes");
+            let copied = runtime.send_slice(original, bootstrap.selectors.clone, &[]);
+            assert_ne!(copied, original);
+            assert_eq!(runtime.checked_vtable_of(copied), canonical.string_vt);
+            assert_eq!(runtime.string_bytes(copied), runtime.string_bytes(original));
+            assert_ne!(
+                runtime.string_bytes(copied).unwrap().as_ptr(),
+                runtime.string_bytes(original).unwrap().as_ptr()
+            );
+            assert_eq!(runtime.has_finalizer(copied), Some(true));
+        });
+
+        assert_eq!(
+            runtime.ensure_private_vtable(canonical.integer_prototype),
+            canonical.smallint_vt
+        );
+        assert_eq!(
+            runtime.ensure_private_vtable(globals.object_vt),
+            globals.object_vt
+        );
+        assert_eq!(
+            runtime.ensure_private_vtable(canonical.nil),
+            canonical.nil_vt
+        );
+        assert_eq!(
+            runtime.ensure_private_vtable(canonical.true_object),
+            canonical.bool_vt
+        );
+
+        let sibling = runtime.allocate_instance(globals.object_vt, 0);
+        let private = runtime.ensure_private_vtable(object);
+        assert_ne!(private, globals.object_vt);
+        assert_eq!(runtime.ensure_private_vtable(object), private);
+        assert_eq!(runtime.checked_vtable_of(object), private);
+        assert_eq!(runtime.checked_vtable_of(sibling), globals.object_vt);
+        assert_eq!(runtime.vtable_parent(private), globals.object_vt);
+        assert_eq!(runtime.vtable_owner(private), object);
+
+        let false_private = runtime.ensure_private_vtable(canonical.false_object);
+        assert_ne!(false_private, canonical.bool_vt);
+        assert_eq!(runtime.vtable_parent(false_private), canonical.bool_vt);
+        assert_eq!(runtime.vtable_owner(false_private), canonical.false_object);
+        assert_eq!(
+            runtime.checked_vtable_of(canonical.true_object),
+            canonical.bool_vt
+        );
     }
 
     #[test]

@@ -168,6 +168,42 @@ impl Runtime {
         object
     }
 
+    pub(crate) fn clone_object(&self, object: Oop) -> Oop {
+        if object.is_null() {
+            return object;
+        }
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe { (&mut *self.state.get()).heap.clone_collectable(object) }
+            .unwrap_or_else(|| boundary::fatal_invariant("clone receiver is not a floor object"))
+    }
+
+    pub(crate) fn ensure_private_vtable(&self, object: Oop) -> Oop {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        let current = Vtables::checked_vtable_of(&state.heap, object);
+        boundary::require_invariant(
+            !current.is_null(),
+            "ensurePrivateVtable receiver is not a floor object",
+        );
+        if current == state.globals.vtable_vt {
+            return object;
+        }
+        if state.vtables.owner_of(current) == object {
+            return current;
+        }
+        let private = state
+            .vtables
+            .create(&mut state.heap, current, state.globals.vtable_vt);
+        state.vtables.set_owner(private, object);
+        boundary::require_invariant(
+            state.heap.set_vtable(object, private),
+            "private-vtable receiver block was not registered",
+        );
+        private
+    }
+
     pub(crate) fn allocate_empty(&self, vtable: Oop, permanence: Permanence) -> Oop {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
@@ -205,6 +241,32 @@ impl Runtime {
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state.values.allocate_string(&mut state.heap, vtable, bytes)
+    }
+
+    pub(crate) fn clone_string(&self, object: Oop, finalizer: crate::abi::Finalizer) -> Oop {
+        if object.is_null() {
+            return object;
+        }
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        let bytes = state
+            .values
+            .string_bytes(object)
+            .unwrap_or_else(|| boundary::fatal_invariant("String clone lost byte ownership"))
+            .to_vec();
+        let string_vtable = state
+            .canonical
+            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"))
+            .string_vt;
+        let clone = state
+            .values
+            .allocate_string(&mut state.heap, string_vtable, &bytes);
+        boundary::require_invariant(
+            state.heap.set_finalizer(clone, finalizer),
+            "String clone did not retain finalizer metadata",
+        );
+        clone
     }
 
     pub(crate) fn install_canonical(&self, canonical: CanonicalObjects) {

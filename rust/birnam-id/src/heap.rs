@@ -177,6 +177,35 @@ impl Heap {
         true
     }
 
+    /// Shallow-copy one exact live object's padded payload into a fresh
+    /// collectable block with the same vtable. Finalizer metadata is deliberately
+    /// not copied; resource-owning families must override clone and install fresh
+    /// ownership metadata.
+    pub(crate) fn clone_collectable(&mut self, object: Oop) -> Option<Oop> {
+        let source = self.blocks.get(&object.addr())?;
+        let payload_size = source.total_size - VTABLE_HEADER_SIZE;
+        // Copy out before mutating the registry: allocation can grow the map.
+        // SAFETY: exact membership proves the source payload is live for its
+        // recorded padded extent.
+        let bytes = unsafe {
+            std::slice::from_raw_parts(source.payload.as_ptr().cast_const(), payload_size).to_vec()
+        };
+        let vtable = self.vtable_of(object)?;
+        let clone = self.allocate(payload_size, Permanence::Collectable);
+        boundary::require_invariant(
+            self.set_vtable(clone, vtable),
+            "cloned object block was not registered",
+        );
+        if payload_size != 0 {
+            // SAFETY: clone owns payload_size writable bytes and bytes contains
+            // exactly that many initialized source bytes.
+            unsafe {
+                core::ptr::copy_nonoverlapping(bytes.as_ptr(), clone.cast::<u8>(), payload_size)
+            };
+        }
+        Some(clone)
+    }
+
     pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {
         let block = self.blocks.get(&object.addr())?;
         // SAFETY: exact registry membership proves that payload is the start of
@@ -353,6 +382,32 @@ mod tests {
                     .all(|(index, byte)| *byte == (index as u8).wrapping_mul(17).wrapping_add(3))
             );
         }
+    }
+
+    #[test]
+    fn shallow_clone_copies_padded_payload_and_vtable_without_finalizer() {
+        let mut heap = Heap::new();
+        let vtable = fake_vtable();
+        let object = heap.allocate(9, Permanence::Permanent);
+        assert!(heap.set_vtable(object, vtable));
+        assert!(!heap.set_finalizer(object, finalizer));
+        let extent = heap.payload_size(object).unwrap();
+        // SAFETY: object owns its complete reported payload extent.
+        let payload = unsafe { std::slice::from_raw_parts_mut(object.cast::<u8>(), extent) };
+        for (index, byte) in payload.iter_mut().enumerate() {
+            *byte = index as u8 ^ 0xa5;
+        }
+
+        let clone = heap.clone_collectable(object).unwrap();
+        assert_ne!(clone, object);
+        assert_eq!(heap.vtable_of(clone), Some(vtable));
+        assert_eq!(heap.payload_size(clone), Some(extent));
+        assert_eq!(heap.permanence_of(clone), Some(Permanence::Collectable));
+        assert_eq!(heap.has_finalizer(clone), Some(false));
+        // SAFETY: both registered blocks own extent readable bytes.
+        let original = unsafe { std::slice::from_raw_parts(object.cast::<u8>(), extent) };
+        let copied = unsafe { std::slice::from_raw_parts(clone.cast::<u8>(), extent) };
+        assert_eq!(copied, original);
     }
 
     #[test]

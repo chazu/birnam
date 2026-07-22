@@ -123,7 +123,7 @@ unsafe extern "C" fn api_is_word(object: Oop) -> c_int {
     i32::from(runtime().is_word(object))
 }
 
-unsafe extern "C" fn string_finalizer(object: Oop) {
+pub(crate) unsafe extern "C" fn string_finalizer(object: Oop) {
     runtime().release_string(object);
 }
 
@@ -215,6 +215,10 @@ unsafe extern "C" fn api_slot_kind(vtable: Oop, word: usize) -> u8 {
     runtime().slot_kind(vtable, word)
 }
 
+unsafe extern "C" fn api_ensure_private_vtable(object: Oop) -> Oop {
+    runtime().ensure_private_vtable(object)
+}
+
 unsafe extern "C" fn api_set_owner(vtable: Oop, owner: Oop) {
     runtime().set_vtable_owner(vtable, owner);
 }
@@ -255,7 +259,6 @@ macro_rules! fatal_stub {
     };
 }
 
-fatal_stub!(unsupported_ensure_private_vtable(object: Oop) -> Oop, "ensurePrivateVtable");
 fatal_stub!(unsupported_set_method_overwrite_hook(hook: Option<MethodOverwriteHook>) -> (), "setMethodOverwriteHook");
 
 fn table_for(bootstrap: &Bootstrap) -> IdApi {
@@ -303,7 +306,7 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         objectPayloadSize: api_object_payload_size,
         exportedNameOf: api_exported_name_of,
         slotKind: api_slot_kind,
-        ensurePrivateVtable: unsupported_ensure_private_vtable,
+        ensurePrivateVtable: api_ensure_private_vtable,
         setOwner: api_set_owner,
         setParent: api_set_parent,
         setMethodOverwriteHook: unsupported_set_method_overwrite_hook,
