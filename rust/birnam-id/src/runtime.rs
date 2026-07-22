@@ -136,6 +136,20 @@ impl Runtime {
         );
     }
 
+    fn maybe_collect_before_allocation(&self) {
+        // Copy the decision before collection enters foreign root callbacks.
+        // SAFETY: owner-thread serialization and no callback in this scope.
+        let due = unsafe {
+            let state = &*self.state.get();
+            state
+                .metadata
+                .automatic_collection_due(state.heap.bytes_since_collection())
+        };
+        if due {
+            let _ = self.gc_collect();
+        }
+    }
+
     pub(crate) fn globals(&self) -> DispatchGlobals {
         self.assert_owner();
         // SAFETY: owner-thread serialization; copy ends the shared access here.
@@ -206,6 +220,7 @@ impl Runtime {
     pub(crate) fn create_vtable(&self, parent: Oop) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state
@@ -228,6 +243,7 @@ impl Runtime {
     pub(crate) fn allocate_instance(&self, vtable: Oop, payload_size: usize) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         let object = state.heap.allocate(payload_size, Permanence::Collectable);
@@ -244,6 +260,7 @@ impl Runtime {
         }
         self.assert_owner();
         self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         unsafe { (&mut *self.state.get()).heap.clone_collectable(object) }
             .unwrap_or_else(|| boundary::fatal_invariant("clone receiver is not a floor object"))
@@ -252,6 +269,7 @@ impl Runtime {
     pub(crate) fn ensure_private_vtable(&self, object: Oop) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         let current = Vtables::checked_vtable_of(&state.heap, object);
@@ -279,6 +297,7 @@ impl Runtime {
     pub(crate) fn allocate_empty(&self, vtable: Oop, permanence: Permanence) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state
@@ -289,6 +308,7 @@ impl Runtime {
     pub(crate) fn allocate_integer(&self, vtable: Oop, value: i64) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state
@@ -299,6 +319,7 @@ impl Runtime {
     pub(crate) fn allocate_float(&self, vtable: Oop, value: f64) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state.values.allocate_float(&mut state.heap, vtable, value)
@@ -307,6 +328,7 @@ impl Runtime {
     pub(crate) fn allocate_word(&self, vtable: Oop, value: u64) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state.values.allocate_word(&mut state.heap, vtable, value)
@@ -315,6 +337,7 @@ impl Runtime {
     pub(crate) fn allocate_string(&self, vtable: Oop, bytes: &[u8]) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state.values.allocate_string(&mut state.heap, vtable, bytes)
@@ -326,6 +349,7 @@ impl Runtime {
         }
         self.assert_owner();
         self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         let bytes = state

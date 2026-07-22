@@ -195,6 +195,7 @@ pub(crate) unsafe fn invoke_with_mark_callback(
 }
 
 pub(crate) const MAX_ROOT_PROVIDERS: usize = 32;
+pub(crate) const AUTO_COLLECTION_THRESHOLD: usize = 16 << 20;
 
 pub(crate) struct MetadataShell {
     stack_bottom: usize,
@@ -207,7 +208,7 @@ impl MetadataShell {
     pub(crate) fn new() -> Self {
         Self {
             stack_bottom: 0,
-            auto_requested: false,
+            auto_requested: true,
             precise: false,
             root_providers: Vec::new(),
         }
@@ -246,6 +247,12 @@ impl MetadataShell {
         self.auto_requested
     }
 
+    pub(crate) fn automatic_collection_due(&self, allocated_bytes: usize) -> bool {
+        self.auto_requested
+            && self.stack_bottom != 0
+            && allocated_bytes >= AUTO_COLLECTION_THRESHOLD
+    }
+
     pub(crate) fn precise(&self) -> bool {
         self.precise
     }
@@ -267,8 +274,9 @@ mod tests {
     #[test]
     fn shell_retains_settings_and_maximum_provider_mix() {
         let mut metadata = MetadataShell::new();
+        assert!(metadata.auto_requested());
+        assert!(!metadata.automatic_collection_due(AUTO_COLLECTION_THRESHOLD));
         metadata.set_stack_bottom(0x1234_5678);
-        metadata.set_auto_requested(true);
         metadata.set_precise(true);
         for _ in 0..MAX_ROOT_PROVIDERS {
             metadata.register_root_provider(provider);
@@ -277,6 +285,10 @@ mod tests {
         assert!(metadata.auto_requested());
         assert!(metadata.precise());
         assert_eq!(metadata.root_provider_count(), MAX_ROOT_PROVIDERS);
+        assert!(!metadata.automatic_collection_due(AUTO_COLLECTION_THRESHOLD - 1));
+        assert!(metadata.automatic_collection_due(AUTO_COLLECTION_THRESHOLD));
+        metadata.set_auto_requested(false);
+        assert!(!metadata.automatic_collection_due(usize::MAX));
     }
 
     fn write_word(object: crate::abi::Oop, index: usize, value: usize) {
