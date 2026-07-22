@@ -1,6 +1,6 @@
 # 61 — Rust libid Floor Rewrite Plan
 
-> **Status:** Implementation in progress; R0.1 through R0.4 complete,
+> **Status:** Implementation in progress; R0.1 through R0.5 complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -571,6 +571,60 @@ The closing gate passed:
 
 **Gate:** the baseline is reproducible on a second clean run within the existing
 benchmark noise model; unexplained red gates are resolved before Rust work.
+
+#### R0.5 execution record — 2026-07-22
+
+Three clean, non-quick Design 46 development runs were made in ReleaseSafe on
+an Apple Mac15,12. The first-to-third comparison is fully green: the earlier
+second-run macro reds returned to +2.0% for stage1 compilation and -0.2% for the
+primes script, while the surrounding one-shot GC measurements agree within
+0.3%. The second run's isolated GC value is retained as the observed outlier,
+not selected as the reference. The complete third run is committed at
+`bench/baselines/zig-id-r0.5-design46.json`.
+
+`zig build -Doptimize=ReleaseSafe bench-id-membership` now runs one
+selected-floor executable against 1,035, 16,384, and 131,072 registered
+vtables (5,162 through 265,236 live objects). Two independent five-repetition
+runs are aggregated in
+`bench/baselines/zig-id-r0.5-membership.json`. Median net time at the
+smallest and largest populations was:
+
+| Operation | Small ns/call | Large ns/call | scaling exponent |
+|---|---:|---:|---:|
+| `objectPayloadSize` | 1.800 | 4.174 | 0.2092 |
+| `vtableOf` | 1.928 | 4.163 | 0.1904 |
+| rejected `vtableOf` | 1.919 | 1.314 | -0.0960 |
+| `vtableOwner` | 4.003 | 10.996 | 0.2565 |
+| `isSmallInt` | 2.766 | 2.668 | -0.0090 |
+| `isFloat` | 2.357 | 2.692 | 0.0339 |
+| `isWord` | 2.638 | 2.710 | 0.0067 |
+
+The exact-address algorithms remain hash-table O(1); the positive object and
+vtable paths show the recorded sublinear cache-size effect rather than linear
+registry scanning. These values, including their min/max bands, are the Rust
+comparison contract.
+
+The installed ReleaseSafe `libbirnam_id.dylib` is 307,760 bytes with
+SHA-256
+`698f1b2e17cd2e833034231b2d4722133c0c86820b1f94a6848564a3c5ba5711`.
+Its install name is `@rpath/libbirnam_id.dylib` and its sole dynamic
+dependency is `/usr/lib/libSystem.B.dylib`.
+`bench/baselines/zig-id-r0.5-compatibility.json` records the complete
+machine-readable binary, frozen fixture, source-fallback, Alien callback,
+isolate, relocated-install, and GC evidence.
+
+The public GC count probe recorded manual collection
+42 -> 2,042 -> 42 with all 2,000 objects reclaimed, 1,000/1,000 finalizers
+called with the live count returning to 42, and automatic collection limiting
+6,000 allocations of 4,096-byte payloads to a live delta of 1,911.
+
+The ReleaseSafe audit exposed one pre-existing test-link defect before the
+baseline was closed: Zig eliminated exported fixtures and Codegen artifact
+shims reached only by `dlsym` names. TCC-linked test executables now publish
+their declared symbols dynamically, and Alien/Codegen retain name-only exports
+at the compiler boundary. Alien's 42 tests, TCC's 7, and Codegen's 49 pass in
+both Debug and ReleaseSafe. The full `zig build -Doptimize=ReleaseSafe test`
+and final `zig build verify` gates pass.
 
 ## 7. Phase R1 — Rust crate and ABI shell
 
