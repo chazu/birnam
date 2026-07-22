@@ -31,6 +31,15 @@ pub extern "C" fn birnam_id_rust_crate_identity() -> *const c_char {
     RUST_CRATE_IDENTITY.as_ptr().cast()
 }
 
+/// Returns the pointer-free build/test descriptor for the frozen v1 ABI.
+///
+/// The descriptor is diagnostic evidence only. It is not part of `IdApi` and
+/// does not make this shell a usable floor.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_rust_abi_descriptor_v1() -> *const core::ffi::c_void {
+    core::ptr::addr_of!(abi::ABI_DESCRIPTOR_V1).cast()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{RUST_CRATE_IDENTITY, birnam_id_rust_crate_identity};

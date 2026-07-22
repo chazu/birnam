@@ -92,6 +92,170 @@ pub(crate) struct IdApi {
     pub(crate) vtableOwner: unsafe extern "C" fn(Oop) -> Oop,
 }
 
+pub(crate) const ABI_DESCRIPTOR_MAGIC: [u8; 8] = *b"BIRNABI1";
+pub(crate) const ABI_TYPE_COUNT: usize = 8;
+pub(crate) const ABI_FIELD_COUNT: usize = 54;
+
+const LAYOUT_KIND_TYPE: usize = 0;
+const LAYOUT_KIND_DATA_POINTER: usize = 1;
+const LAYOUT_KIND_FUNCTION_POINTER: usize = 2;
+
+/// Pointer-free layout entry used only by the diagnostic R1 ABI probe.
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub(crate) struct AbiLayoutEntryV1 {
+    pub(crate) offset: usize,
+    pub(crate) size: usize,
+    pub(crate) alignment: usize,
+    pub(crate) nullable: usize,
+    pub(crate) kind: usize,
+}
+
+/// Pointer-free diagnostic description of the Rust mirror's actual layout.
+///
+/// Entry order is the canonical order in `abi/idapi-v1.json`. Names and
+/// signatures remain owned by that manifest; this value supplies the Rust
+/// compiler's concrete sizes, alignments, offsets, nullability, and field kind.
+#[repr(C)]
+pub(crate) struct AbiDescriptorV1 {
+    pub(crate) magic: [u8; 8],
+    pub(crate) descriptor_version: usize,
+    pub(crate) descriptor_size: usize,
+    pub(crate) schema_version: usize,
+    pub(crate) target_arch: usize,
+    pub(crate) target_os: usize,
+    pub(crate) target_abi: usize,
+    pub(crate) object_format: usize,
+    pub(crate) endian: usize,
+    pub(crate) pointer_bits: usize,
+    pub(crate) c_int_bits: usize,
+    pub(crate) id_api_size: usize,
+    pub(crate) id_api_alignment: usize,
+    pub(crate) type_count: usize,
+    pub(crate) field_count: usize,
+    pub(crate) types: [AbiLayoutEntryV1; ABI_TYPE_COUNT],
+    pub(crate) fields: [AbiLayoutEntryV1; ABI_FIELD_COUNT],
+    pub(crate) constants: [usize; 4],
+    pub(crate) fingerprint: [u8; 32],
+}
+
+const fn type_layout<T>(nullable: bool) -> AbiLayoutEntryV1 {
+    AbiLayoutEntryV1 {
+        offset: 0,
+        size: size_of::<T>(),
+        alignment: align_of::<T>(),
+        nullable: nullable as usize,
+        kind: LAYOUT_KIND_TYPE,
+    }
+}
+
+macro_rules! field_layout {
+    ($field:ident, $nullable:expr, $kind:expr) => {
+        AbiLayoutEntryV1 {
+            offset: offset_of!(IdApi, $field),
+            size: 8,
+            alignment: 8,
+            nullable: $nullable as usize,
+            kind: $kind,
+        }
+    };
+}
+
+pub(crate) static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
+    magic: ABI_DESCRIPTOR_MAGIC,
+    descriptor_version: 1,
+    descriptor_size: size_of::<AbiDescriptorV1>(),
+    schema_version: 1,
+    target_arch: 1,   // aarch64
+    target_os: 1,     // macOS
+    target_abi: 0,    // none
+    object_format: 1, // Mach-O
+    endian: 0,        // little
+    pointer_bits: usize::BITS as usize,
+    c_int_bits: (size_of::<c_int>() * 8),
+    id_api_size: size_of::<IdApi>(),
+    id_api_alignment: align_of::<IdApi>(),
+    type_count: ABI_TYPE_COUNT,
+    field_count: ABI_FIELD_COUNT,
+    types: [
+        type_layout::<Oop>(true),
+        type_layout::<Method>(false),
+        type_layout::<RootProvider>(false),
+        type_layout::<TraceHook>(false),
+        type_layout::<Finalizer>(false),
+        type_layout::<MethodOverwriteHook>(false),
+        type_layout::<IdInitFn>(false),
+        type_layout::<ModuleInitFn>(false),
+    ],
+    fields: [
+        field_layout!(dlopen, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(dlsym, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(object_vt, true, LAYOUT_KIND_DATA_POINTER),
+        field_layout!(vtable_vt, true, LAYOUT_KIND_DATA_POINTER),
+        field_layout!(symbol_vt, true, LAYOUT_KIND_DATA_POINTER),
+        field_layout!(intern, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(proto, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(method, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(alloc, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(import, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(exportObj, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(isExported, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(send, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(smallint_vt, true, LAYOUT_KIND_DATA_POINTER),
+        field_layout!(nilObj, true, LAYOUT_KIND_DATA_POINTER),
+        field_layout!(trueObj, true, LAYOUT_KIND_DATA_POINTER),
+        field_layout!(falseObj, true, LAYOUT_KIND_DATA_POINTER),
+        field_layout!(mkSmallInt, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(smallIntValue, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(isSmallInt, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(string_vt, true, LAYOUT_KIND_DATA_POINTER),
+        field_layout!(mkString, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(stringBytes, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(symbolName, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(vtableOf, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(gcSetStackBottom, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(gcRegisterRootProvider, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(gcCollect, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(gcLiveCount, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(setTraceHook, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(gcSetAuto, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(float_vt, true, LAYOUT_KIND_DATA_POINTER),
+        field_layout!(mkFloat, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(floatValue, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(isFloat, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(setFinalizer, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(setLayout, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(gcSetPrecise, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(objectPayloadSize, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(exportedNameOf, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(slotKind, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(ensurePrivateVtable, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(setOwner, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(setParent, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(setMethodOverwriteHook, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(vtableCount, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(vtableAt, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(vtableSelectorAt, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(vtableParent, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(mkWord, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(wordValue, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(isWord, false, LAYOUT_KIND_FUNCTION_POINTER),
+        field_layout!(word_vt, true, LAYOUT_KIND_DATA_POINTER),
+        field_layout!(vtableOwner, false, LAYOUT_KIND_FUNCTION_POINTER),
+    ],
+    constants: [
+        SLOT_RAW as usize,
+        SLOT_OOP as usize,
+        SLOT_CODE as usize,
+        SLOT_UNKNOWN as usize,
+    ],
+    fingerprint: [
+        0xb0, 0x46, 0x84, 0xb3, 0x10, 0x79, 0x27, 0xc8, 0x6b, 0x41, 0xe6, 0x13, 0xe9, 0x41, 0xdf,
+        0x16, 0x94, 0xfb, 0x7b, 0x52, 0xec, 0x40, 0x1e, 0x42, 0x36, 0x20, 0xfc, 0xc1, 0x74, 0xa0,
+        0xde, 0xe2,
+    ],
+};
+
 macro_rules! assert_field_offset {
     ($field:ident, $offset:expr) => {
         assert!(offset_of!(IdApi, $field) == $offset);
