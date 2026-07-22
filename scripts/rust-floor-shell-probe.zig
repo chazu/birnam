@@ -50,6 +50,14 @@ pub fn main() !void {
         return error.WrongRustCrateIdentity;
     }
 
+    const floor_identity = dylib.lookup(
+        CrateIdentity,
+        "birnam_id_floor_identity",
+    ) orelse return error.MissingRustFloorIdentity;
+    if (!std.mem.eql(u8, std.mem.span(floor_identity()), "rust-id-v1")) {
+        return error.WrongRustFloorIdentity;
+    }
+
     _ = dylib.lookup(*const anyopaque, "id_init") orelse
         return error.MissingIdInitExport;
 
@@ -69,7 +77,7 @@ pub fn main() !void {
     }
 
     std.debug.print(
-        "rust-floor-shell: spike identity, ABI descriptor, and id_init present\n",
+        "rust-floor-shell: crate/floor identities, ABI descriptor, and id_init present\n",
         .{},
     );
 }

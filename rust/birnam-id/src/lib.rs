@@ -25,6 +25,7 @@ mod vtable;
 use core::ffi::c_char;
 
 const RUST_CRATE_IDENTITY: &[u8] = b"rust-id-spike-r2.6\0";
+const RUST_FLOOR_IDENTITY: &[u8] = b"rust-id-v1\0";
 
 /// Identifies the spike-only R2.6 Rust artifact.
 ///
@@ -37,6 +38,17 @@ pub extern "C" fn birnam_id_rust_crate_identity() -> *const c_char {
         "diagnostic identity lost its C terminator",
     );
     RUST_CRATE_IDENTITY.as_ptr().cast()
+}
+
+/// Identifies this dylib when an isolated selected-floor harness requests Rust.
+/// The ordinary install remains the Zig floor until the later cutover phase.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_floor_identity() -> *const c_char {
+    boundary::require_invariant(
+        RUST_FLOOR_IDENTITY.last() == Some(&0),
+        "selected-floor identity lost its C terminator",
+    );
+    RUST_FLOOR_IDENTITY.as_ptr().cast()
 }
 
 /// Returns the pointer-free build/test descriptor for the frozen v1 ABI.
@@ -133,7 +145,10 @@ pub unsafe extern "C" fn birnam_id_test_active_send(
 
 #[cfg(test)]
 mod tests {
-    use super::{RUST_CRATE_IDENTITY, birnam_id_rust_crate_identity};
+    use super::{
+        RUST_CRATE_IDENTITY, RUST_FLOOR_IDENTITY, birnam_id_floor_identity,
+        birnam_id_rust_crate_identity,
+    };
     use std::ffi::CStr;
 
     #[test]
@@ -147,5 +162,9 @@ mod tests {
         // RUST_CRATE_IDENTITY byte string for the life of the process.
         let identity = unsafe { CStr::from_ptr(birnam_id_rust_crate_identity()) };
         assert_eq!(identity.to_bytes_with_nul(), RUST_CRATE_IDENTITY);
+
+        // SAFETY: same static NUL-terminated contract for selected-floor tests.
+        let floor_identity = unsafe { CStr::from_ptr(birnam_id_floor_identity()) };
+        assert_eq!(floor_identity.to_bytes_with_nul(), RUST_FLOOR_IDENTITY);
     }
 }
