@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.2 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.3 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1604,8 +1604,34 @@ tests, and the complete combined `zig build test` gate pass.
 - Trace only `slot_oop` under precise mode and ignore raw/code slots.
 - Implement `slotKind` and unknown-layout behavior for the image layer.
 
-**Gate:** the same synthetic layouts retain and reclaim the same objects under
-both floors.
+**Gate:** the same synthetic layouts produce the same retained and reclaimable
+sets under both floors. R4.5 verifies that the Rust reclaimable set is physically
+deallocated; R4.3 must not introduce sweep before stack roots and finalizer
+ordering are ready.
+
+#### R4.3 execution record — 2026-07-22
+
+Precise mode now consults the copied instance vtable after a block leaves the
+worklist. When that vtable has a borrowed static descriptor, only prefix or rest
+slots whose kind is exactly `slot_oop` are submitted as candidates. Pointer bits
+in `slot_raw`, `slot_code`, or an unknown kind are ignored. A vtable with no
+layout remains conservative even while precise mode is enabled. The existing
+`slotKind` boundary reports the identical prefix/rest rule and
+`slot_unknown` for an absent descriptor.
+
+Rust graph tests cover mixed prefix kinds, an Oop rest slot, pointer-shaped raw
+and code words, switching back to conservative mode, and the unknown-layout
+fallback. A selected-floor Zig fixture makes the mark decision externally
+observable with per-target trace hooks and a provider-rooted carrier. The same
+two cases pass through the Zig floor, Rust debug, and Rust release; the isolated
+matrix now contains 72 tests per target.
+
+The original gate wording required physical reclamation before R4.5 had
+implemented sweep. That dependency was impossible without either sweeping
+before native roots exist or duplicating the sweep implementation. The gate now
+requires identical retained/reclaimable decisions at R4.3 and reserves actual
+Rust deallocation parity for R4.5. Strict Rust checks, optimized tests, and the
+complete combined `zig build test` gate pass.
 
 ### R4.4 — Native stack and register scanning
 
