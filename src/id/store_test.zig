@@ -641,3 +641,25 @@ test "raw MOP mutation stays unobserved and primitive markers never go stale" {
     try std.testing.expect(cv(api, mop_vt, mop_sel) == null);
     try std.testing.expectEqual(@as(usize, 0), mop_observer_calls);
 }
+
+test "MOP backfill marks real types and excludes internal dictionaries" {
+    const api = floor.api();
+    store.bringUp(api);
+    _ = api.send(store.store_instance, api.intern("backfillMirror"), &.{}, 0);
+
+    const clone = api.intern("clone");
+    try std.testing.expect(cv(api, api.object_vt, clone) == api.intern("primitive"));
+
+    var internal_vtables: usize = 0;
+    var i: usize = 0;
+    while (i < api.vtableCount()) : (i += 1) {
+        const vt = api.vtableAt(i);
+        if (vt == api.object_vt or api.vtableParent(vt) != null) continue;
+        if (api.vtableSelectorAt(vt, 0) == null) continue;
+        internal_vtables += 1;
+        var j: usize = 0;
+        while (api.vtableSelectorAt(vt, j)) |selector| : (j += 1)
+            try std.testing.expect(cv(api, vt, selector) == null);
+    }
+    try std.testing.expect(internal_vtables >= 2); // symbol interner + export environment
+}

@@ -120,6 +120,10 @@ fn gAt(globals: Oop, name: [*:0]const u8) Oop {
     return send(globals, "at:", &.{gapi.intern(name)});
 }
 
+fn mirrorValue(api: *idapi.IdApi, vt: Oop, selector: Oop) Oop {
+    return api.send(api.import("Store"), api.intern("rawCurrentValue:attr:"), &.{ vt, selector }, 2);
+}
+
 fn tmpImagePath(a: std.mem.Allocator, tmp: *std.testing.TmpDir) ![]u8 {
     const dir = try tmp.dir.realpathAlloc(a, ".");
     defer a.free(dir);
@@ -149,6 +153,9 @@ fn corruptFirstCodeUnit(bytes: []u8) !void {
 test "round-trip: leaf + vector + map globals survive save/load" {
     const api = setup();
     const globals = api.import("Globals").?;
+    const clone = api.intern("clone");
+    _ = send(api.import("Store").?, "backfillMirror", &.{});
+    try std.testing.expect(mirrorValue(api, api.object_vt, clone) == api.intern("primitive"));
 
     // int, string, vector #[10 20 30], map {#k -> 7}
     gPut(globals, "gx", api.mkSmallInt(42));
@@ -176,6 +183,9 @@ test "round-trip: leaf + vector + map globals survive save/load" {
     try std.testing.expect(image.saveImage(path));
     gPut(globals, "gx", api.mkSmallInt(999));
     try std.testing.expect(image.loadImage(path));
+    // Primitive markers are excluded from the serialized fact stream; image
+    // load must rebuild them after replacing Store state wholesale.
+    try std.testing.expect(mirrorValue(api, api.object_vt, clone) == api.intern("primitive"));
 
     // Leaves.
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(gAt(globals, "gx")));
