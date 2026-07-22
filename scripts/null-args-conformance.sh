@@ -15,5 +15,5 @@ if [ "$status" -eq 0 ]; then
   echo "null args with nonzero count unexpectedly succeeded" >&2
   exit 1
 fi
-grep -q 'libid: IdApi.send args is null with nonzero count' <<<"$output"
+grep -q 'IdApi.send args is null with nonzero count' <<<"$output"
 echo "IdApi.send null/nonzero contract: correctly rejected in child"
