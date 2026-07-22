@@ -270,7 +270,7 @@ pub fn build(b: *std.Build) void {
     };
     const mods = [_]Mod{
         .{ .name = "birnam_id", .src = "id.zig", .test_src = "id.zig", .step = "test-id", .desc = "libid: the Piumarta object-system bootstrap proof" },
-        .{ .name = "birnam_id_artifact", .src = "artifact_inspector.zig", .test_src = "artifact_inspector.zig", .step = "test-artifact", .desc = "minimal self-describing artifact inspection over IdApi" },
+        .{ .name = "birnam_id_artifact", .src = "artifact_inspector.zig", .test_src = "artifact_inspector_test.zig", .step = "test-artifact", .desc = "minimal self-describing artifact inspection over IdApi" },
         .{ .name = "birnam_store", .src = "store.zig", .test_src = "store_test.zig", .step = "test-store", .desc = "rung 2: the cell/relational store bootstrap fixpoint" },
         .{ .name = "birnam_id_peg", .src = "peg.zig", .test_src = "peg_test.zig", .step = "test-peg", .desc = "rung 3a: the PEG engine on the libid floor" },
         .{ .name = "birnam_id_lang", .src = "lang.zig", .test_src = "lang_test.zig", .step = "test-lang", .desc = "rung 3b: birnam's grammar + parser via the peg message api" },

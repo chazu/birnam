@@ -22,6 +22,7 @@ if [[ -f "$default_floor" ]]; then
 fi
 
 rungs=(
+  test-artifact
   test-artifact-preflight
   test-store
   test-store-image-backfill
