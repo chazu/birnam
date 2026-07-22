@@ -214,6 +214,17 @@ pub fn build(b: *std.Build) void {
     test_prototype_conformance_step.dependOn(&prototype_conformance_smoke.step);
     test_step.dependOn(&prototype_conformance_smoke.step);
 
+    const rust_store_mop_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-store-mop-smoke.sh",
+    });
+    const test_rust_store_mop_step = b.step(
+        "test-rust-store-mop",
+        "Run the Store MOP consistency law against Rust debug and release floors",
+    );
+    test_rust_store_mop_step.dependOn(&rust_store_mop_smoke.step);
+    test_step.dependOn(&rust_store_mop_smoke.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a

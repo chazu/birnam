@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+target_dir="$repo/.cargo-target"
+
+probe_profile() {
+  local profile=$1
+  local dylib="$target_dir/$profile/libbirnam_id.dylib"
+  local cargo_args=(build --workspace --locked --offline)
+  if [[ $profile == release ]]; then
+    cargo_args+=(--release)
+  fi
+
+  CARGO_TARGET_DIR="$target_dir" cargo "${cargo_args[@]}"
+  zig build test-store \
+    -Did-conformance-floor="$dylib" \
+    -Did-conformance-identity=rust-id-v1
+  echo "rust-store-mop: $profile passed the Store consistency-law suite"
+}
+
+probe_profile debug
+probe_profile release

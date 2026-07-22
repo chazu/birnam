@@ -16,6 +16,7 @@
 #   mise run scalar-conformance-smoke # compare boxed scalars on both floors
 #   mise run string-conformance-smoke # compare copied byte Strings on both floors
 #   mise run prototype-conformance-smoke # compare prototypes on both floors
+#   mise run rust-store-mop-smoke # prove Store MOP consistency on Rust
 #   mise run bootstrap-smoke # build a fixture-free source archive with pinned tools
 #   mise run install        # install to a prefix
 #   mise run dist           # build a release tarball for this platform
@@ -88,6 +89,10 @@ run = "bash scripts/string-conformance-smoke.sh"
 [tasks.prototype-conformance-smoke]
 description = "Run prototype and singleton conformance against Zig and Rust floors"
 run = "bash scripts/prototype-conformance-smoke.sh"
+
+[tasks.rust-store-mop-smoke]
+description = "Run Store MOP consistency tests against Rust debug and release floors"
+run = "bash scripts/rust-store-mop-smoke.sh"
 
 [tasks.bootstrap-smoke]
 description = "Cold-build a fixture-free source archive with pinned Zig and Rust"
