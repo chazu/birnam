@@ -32,6 +32,8 @@ rungs=(
   test-store-image-backfill
   test-peg
   test-lang
+  test-tcc
+  test-codegen
   test-prelude
   test-collection
 )
@@ -50,7 +52,7 @@ TMPDIR="$zig_root/tmp" zig build "${rungs[@]}" \
   -Did-conformance-floor="$zig_floor" \
   -Did-conformance-identity=zig-id-v1 \
   -Did-conformance-sha256="$zig_digest"
-echo "lower-rung-matrix: zig-id-v1 passed 111 tests, dylib $zig_digest"
+echo "lower-rung-matrix: zig-id-v1 passed 167 tests, dylib $zig_digest"
 
 CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline
 CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline --release
@@ -77,7 +79,7 @@ probe_rust_profile() {
     -Did-conformance-floor="$selected_floor" \
     -Did-conformance-identity=rust-id-v1 \
     -Did-conformance-sha256="$digest"
-  echo "lower-rung-matrix: rust-id-v1 $profile passed 111 tests, dylib $digest"
+  echo "lower-rung-matrix: rust-id-v1 $profile passed 167 tests, dylib $digest"
 }
 
 probe_rust_profile debug
