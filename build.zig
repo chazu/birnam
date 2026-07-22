@@ -231,7 +231,7 @@ pub fn build(b: *std.Build) void {
     });
     const test_rust_lower_rungs_step = b.step(
         "test-rust-lower-rungs",
-        "Run isolated artifact-preflight, Store, PEG, language, prelude, and non-GC collection matrices",
+        "Run isolated artifact-preflight, GC-layout, Store, PEG, language, prelude, and non-GC collection matrices",
     );
     test_rust_lower_rungs_step.dependOn(&rust_lower_rung_matrix.step);
 
@@ -556,6 +556,24 @@ pub fn build(b: *std.Build) void {
     );
     collection_gc_step.dependOn(&run_collection_gc.step);
     test_step.dependOn(&run_collection_gc.step);
+
+    const gc_layout_mark_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/gc_layout_mark_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const gc_layout_mark_tests = b.addTest(.{ .root_module = gc_layout_mark_mod });
+    gc_layout_mark_tests.linkLibC();
+    const run_gc_layout_mark = b.addRunArtifact(gc_layout_mark_tests);
+    run_gc_layout_mark.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_gc_layout_mark.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_gc_layout_mark.step.dependOn(bootstrap_install);
+    const gc_layout_mark_step = b.step(
+        "test-gc-layout-mark",
+        "Compare precise layout mark decisions through one selected floor",
+    );
+    gc_layout_mark_step.dependOn(&run_gc_layout_mark.step);
+    test_step.dependOn(&run_gc_layout_mark.step);
 
     // Selected-floor native address-registry comparator. The executable refuses
     // non-ReleaseSafe builds; later Rust parity uses the same binary with an

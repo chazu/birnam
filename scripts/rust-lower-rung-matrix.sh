@@ -24,6 +24,7 @@ fi
 rungs=(
   test-artifact
   test-artifact-preflight
+  test-gc-layout-mark
   test-store
   test-store-image-backfill
   test-peg
@@ -39,7 +40,7 @@ TMPDIR="$zig_root/tmp" zig build stage1 "${rungs[@]}" \
 zig_floor="$zig_prefix/lib/libbirnam_id.dylib"
 test -f "$zig_floor"
 zig_digest=$(shasum -a 256 "$zig_floor" | awk '{print $1}')
-echo "lower-rung-matrix: zig-id-v1 passed 70 tests, dylib $zig_digest"
+echo "lower-rung-matrix: zig-id-v1 passed 72 tests, dylib $zig_digest"
 
 CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline
 CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline --release
@@ -65,7 +66,7 @@ probe_rust_profile() {
     -Did-conformance-identity=rust-id-v1
   local digest
   digest=$(shasum -a 256 "$selected_floor" | awk '{print $1}')
-  echo "lower-rung-matrix: rust-id-v1 $profile passed 70 tests, dylib $digest"
+  echo "lower-rung-matrix: rust-id-v1 $profile passed 72 tests, dylib $digest"
 }
 
 probe_rust_profile debug
