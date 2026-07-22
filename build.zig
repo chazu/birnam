@@ -231,7 +231,7 @@ pub fn build(b: *std.Build) void {
     });
     const test_rust_lower_rungs_step = b.step(
         "test-rust-lower-rungs",
-        "Run isolated Store, PEG, language, prelude, and non-GC collection matrices",
+        "Run isolated artifact-preflight, Store, PEG, language, prelude, and non-GC collection matrices",
     );
     test_rust_lower_rungs_step.dependOn(&rust_lower_rung_matrix.step);
 
