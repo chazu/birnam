@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, and R3.0 through R3.1 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, and R3.0 through R3.2 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1227,6 +1227,34 @@ all-target/all-feature Clippy, and combined `zig build test` pass.
 **Gate:** the backend-neutral scalar conformance group passes against both
 floors, canonical identities are unchanged, and scalar predicates remain
 expected O(1) within Design 46's threshold.
+
+#### R3.2 execution record — 2026-07-22
+
+The historical SmallInt API now constructs ordinary boxed i64 objects in the
+existing Integer family; Float and Word likewise use their R2.5 f64/u64 shapes.
+Constructors allocate collectable blocks without replacing the canonical
+prototypes or any family vtable. Accessors preserve all payload bits. The three
+predicates perform exact heap membership before reading the header, then compare
+the copied family identity; null, Method/code, aligned foreign, singleton, and
+cross-family carriers return false without an unsafe dereference.
+
+`test-scalar-conformance` is one frozen `IdApi` client run in separate processes
+against the installed Zig floor and debug/optimized Rust floors. It covers i64
+minimum through maximum, positive/negative zero, 1.25, infinity, a quiet-NaN
+payload, and Word values spanning zero, signed-range top, high-bit-set Alien
+pointer/unsigned cases, and u64 maximum. Every value round-trips, carries the
+expected unchanged vtable, rejects the other two predicates, and leaves the
+published prototype/owner identity intact.
+
+The optimized membership fixture now reports ten rows, adding `isSmallInt`,
+`isFloat`, and `isWord` at 1,029, 16,384, and 131,072 vtables (5,125 through
+265,211 live objects). Every row remains slope-gated at 0.35; scalar rows also
+use the R0.5 Zig per-population maximum plus 10%. Three post-commit runs are
+recorded in `bench/baselines/rust-id-r3.2-scalar-membership.json`. Median scalar
+costs span 1.478-2.340 ns/call; median exponents are 0.0756, 0.0870, and 0.0667.
+The largest exponent anywhere in the ten-row matrix was 0.1377. All 37 Rust
+tests, strict all-target/all-feature Clippy, both-floor scalar conformance, and
+combined `zig build test` pass.
 
 ### R3.3 — String ownership
 
