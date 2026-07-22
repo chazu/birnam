@@ -771,4 +771,59 @@ mod tests {
             assert_eq!(runtime.send_slice(receiver, answer, &[]).addr(), 1);
         });
     }
+
+    #[test]
+    fn canonical_exports_preserve_order_aliases_and_same_name_rebinding() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let canonical = runtime.canonical();
+        let expected: [(&[u8], Oop); 14] = [
+            (b"Object", canonical.object_prototype),
+            (b"Integer", canonical.integer_prototype),
+            (b"Float", canonical.float_prototype),
+            (b"Word", canonical.word_prototype),
+            (b"String", canonical.string_prototype),
+            (b"Boolean", canonical.true_object),
+            (b"Vtable", globals.vtable_vt),
+            (b"Symbol", canonical.symbol_prototype),
+            (b"SymbolVt", globals.symbol_vt),
+            (b"ObjectVt", globals.object_vt),
+            (b"IntegerVt", canonical.smallint_vt),
+            (b"FloatVt", canonical.float_vt),
+            (b"WordVt", canonical.word_vt),
+            (b"StringVt", canonical.string_vt),
+        ];
+
+        runtime.publish_canonical_exports();
+        assert_eq!(runtime.export_count(), expected.len());
+        for (index, (name, value)) in expected.into_iter().enumerate() {
+            let symbol = runtime.export_name_at(index);
+            assert_eq!(runtime.symbol_bytes(symbol), Some(name));
+            assert_eq!(runtime.import(name), Ok(value));
+            assert_eq!(runtime.exported_name(value), runtime.symbol_name(symbol));
+        }
+
+        assert_eq!(
+            runtime.export(b"ObjectAlias", canonical.object_prototype),
+            Ok(canonical.object_prototype)
+        );
+        assert_eq!(
+            // The first insertion remains the reverse-name authority.
+            unsafe { std::ffi::CStr::from_ptr(runtime.exported_name(canonical.object_prototype)) }
+                .to_bytes(),
+            b"Object"
+        );
+        assert_eq!(
+            runtime.export(b"Object", canonical.integer_prototype),
+            Ok(canonical.integer_prototype)
+        );
+        assert_eq!(runtime.export_count(), expected.len() + 1);
+        assert_eq!(runtime.import(b"Object"), Ok(canonical.integer_prototype));
+        assert_eq!(
+            unsafe { std::ffi::CStr::from_ptr(runtime.exported_name(canonical.object_prototype)) }
+                .to_bytes(),
+            b"ObjectAlias"
+        );
+    }
 }

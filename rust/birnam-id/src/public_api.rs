@@ -20,13 +20,48 @@ fn runtime() -> &'static Runtime {
     unsafe { &*pointer }
 }
 
+unsafe extern "C" fn api_dlopen(path: *const c_char, mode: c_int) -> *mut c_void {
+    // SAFETY: this is a transparent pass-through of the platform loader ABI.
+    unsafe { crate::loader::open(path, mode) }
+}
+
+unsafe extern "C" fn api_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
+    // SAFETY: this is a transparent pass-through of the platform loader ABI.
+    unsafe { crate::loader::symbol(handle, name) }
+}
+
 unsafe extern "C" fn api_intern(name: *const c_char) -> Oop {
     boundary::require_invariant(!name.is_null(), "IdApi.intern name is null");
-    // SAFETY: the C ABI requires a live NUL-terminated name pointer.
+    // SAFETY: the C ABI requires a live NUL-terminated name pointer, and the
+    // bytes do not escape this synchronous call.
     let bytes = unsafe { CStr::from_ptr(name) }.to_bytes();
     runtime()
         .intern(bytes)
         .unwrap_or_else(|_| boundary::fatal_invariant("IdApi.intern name contains embedded NUL"))
+}
+
+unsafe extern "C" fn api_import(name: *const c_char) -> Oop {
+    boundary::require_invariant(!name.is_null(), "IdApi.import name is null");
+    // SAFETY: the C ABI requires a live NUL-terminated name pointer, and the
+    // bytes do not escape this synchronous call.
+    let bytes = unsafe { CStr::from_ptr(name) }.to_bytes();
+    runtime()
+        .import(bytes)
+        .unwrap_or_else(|_| boundary::fatal_invariant("IdApi.import name contains embedded NUL"))
+}
+
+unsafe extern "C" fn api_export_object(name: *const c_char, object: Oop) -> Oop {
+    boundary::require_invariant(!name.is_null(), "IdApi.exportObj name is null");
+    // SAFETY: the C ABI requires a live NUL-terminated name pointer, and the
+    // bytes do not escape this synchronous call.
+    let bytes = unsafe { CStr::from_ptr(name) }.to_bytes();
+    runtime()
+        .export(bytes, object)
+        .unwrap_or_else(|_| boundary::fatal_invariant("IdApi.exportObj name contains embedded NUL"))
+}
+
+unsafe extern "C" fn api_is_exported(name: *const c_char) -> c_int {
+    i32::from(!unsafe { api_import(name) }.is_null())
 }
 
 unsafe extern "C" fn api_proto(parent: Oop) -> Oop {
@@ -97,6 +132,10 @@ unsafe extern "C" fn api_object_payload_size(object: Oop) -> usize {
     runtime().payload_size(object).unwrap_or(0)
 }
 
+unsafe extern "C" fn api_exported_name_of(object: Oop) -> *const c_char {
+    runtime().exported_name(object)
+}
+
 unsafe extern "C" fn api_slot_kind(vtable: Oop, word: usize) -> u8 {
     runtime().slot_kind(vtable, word)
 }
@@ -141,11 +180,6 @@ macro_rules! fatal_stub {
     };
 }
 
-fatal_stub!(unsupported_dlopen(path: *const c_char, mode: c_int) -> *mut c_void, "dlopen");
-fatal_stub!(unsupported_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void, "dlsym");
-fatal_stub!(unsupported_import(name: *const c_char) -> Oop, "import");
-fatal_stub!(unsupported_export_object(name: *const c_char, object: Oop) -> Oop, "exportObj");
-fatal_stub!(unsupported_is_exported(name: *const c_char) -> c_int, "isExported");
 fatal_stub!(unsupported_make_smallint(value: i64) -> Oop, "mkSmallInt");
 fatal_stub!(unsupported_smallint_value(object: Oop) -> i64, "smallIntValue");
 fatal_stub!(unsupported_is_smallint(object: Oop) -> c_int, "isSmallInt");
@@ -154,7 +188,6 @@ fatal_stub!(unsupported_string_bytes(object: Oop, length: *mut usize) -> *const 
 fatal_stub!(unsupported_make_float(value: f64) -> Oop, "mkFloat");
 fatal_stub!(unsupported_float_value(object: Oop) -> f64, "floatValue");
 fatal_stub!(unsupported_is_float(object: Oop) -> c_int, "isFloat");
-fatal_stub!(unsupported_exported_name_of(object: Oop) -> *const c_char, "exportedNameOf");
 fatal_stub!(unsupported_ensure_private_vtable(object: Oop) -> Oop, "ensurePrivateVtable");
 fatal_stub!(unsupported_set_method_overwrite_hook(hook: Option<MethodOverwriteHook>) -> (), "setMethodOverwriteHook");
 fatal_stub!(unsupported_make_word(value: u64) -> Oop, "mkWord");
@@ -165,8 +198,8 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
     let globals = bootstrap.runtime.globals();
     let canonical = bootstrap.runtime.canonical();
     IdApi {
-        dlopen: unsupported_dlopen,
-        dlsym: unsupported_dlsym,
+        dlopen: api_dlopen,
+        dlsym: api_dlsym,
         object_vt: globals.object_vt,
         vtable_vt: globals.vtable_vt,
         symbol_vt: globals.symbol_vt,
@@ -174,9 +207,9 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         proto: api_proto,
         method: api_method,
         alloc: api_alloc,
-        import: unsupported_import,
-        exportObj: unsupported_export_object,
-        isExported: unsupported_is_exported,
+        import: api_import,
+        exportObj: api_export_object,
+        isExported: api_is_exported,
         send: api_send,
         smallint_vt: canonical.smallint_vt,
         nilObj: canonical.nil,
@@ -204,7 +237,7 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         setLayout: api_set_layout,
         gcSetPrecise: api_gc_set_precise,
         objectPayloadSize: api_object_payload_size,
-        exportedNameOf: unsupported_exported_name_of,
+        exportedNameOf: api_exported_name_of,
         slotKind: api_slot_kind,
         ensurePrivateVtable: unsupported_ensure_private_vtable,
         setOwner: api_set_owner,
@@ -238,6 +271,7 @@ pub(crate) fn initialize_once() -> *mut IdApi {
             .runtime
             .set_layout(vtable, core::ptr::null(), 0, crate::abi::SLOT_RAW);
     }
+    bootstrap.runtime.publish_canonical_exports();
     let api = Box::new(table_for(&bootstrap));
     let runtime_pointer = core::ptr::from_ref(&bootstrap.runtime).cast_mut();
     if PUBLIC_RUNTIME

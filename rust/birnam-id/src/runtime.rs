@@ -5,6 +5,7 @@ use core::cell::{Cell, UnsafeCell};
 
 use crate::abi::{Method, Oop};
 use crate::boundary;
+use crate::env::Environment;
 use crate::gc::MetadataShell;
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
@@ -53,6 +54,7 @@ struct RuntimeState {
     globals: DispatchGlobals,
     canonical: Option<CanonicalObjects>,
     metadata: MetadataShell,
+    environment: Environment,
 }
 
 /// One runtime owned by the thread that constructed it.
@@ -88,6 +90,7 @@ impl Runtime {
                 globals,
                 canonical: None,
                 metadata: MetadataShell::new(),
+                environment: Environment::new(),
             }),
         }
     }
@@ -232,6 +235,73 @@ impl Runtime {
         // SAFETY: owner-thread serialization; the permanent Symbol record owns
         // the returned NUL-terminated bytes for the runtime lifetime.
         unsafe { (*self.state.get()).symbols.c_name_of(symbol) }
+    }
+
+    pub(crate) fn import(&self, bytes: &[u8]) -> Result<Oop, EmbeddedNul> {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        let symbol = state
+            .symbols
+            .intern(&mut state.heap, state.globals.symbol_vt, bytes)?;
+        Ok(state.environment.import(symbol))
+    }
+
+    pub(crate) fn export(&self, bytes: &[u8], value: Oop) -> Result<Oop, EmbeddedNul> {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        let symbol = state
+            .symbols
+            .intern(&mut state.heap, state.globals.symbol_vt, bytes)?;
+        Ok(state.environment.export(symbol, value))
+    }
+
+    pub(crate) fn exported_name(&self, object: Oop) -> *const core::ffi::c_char {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization; the permanent Symbol record owns
+        // the returned NUL-terminated bytes for the runtime lifetime.
+        let state = unsafe { &*self.state.get() };
+        let symbol = state.environment.exported_name_of(object);
+        state.symbols.c_name_of(symbol)
+    }
+
+    pub(crate) fn publish_canonical_exports(&self) {
+        let globals = self.globals();
+        let canonical = self.canonical();
+        for (name, value) in [
+            (&b"Object"[..], canonical.object_prototype),
+            (&b"Integer"[..], canonical.integer_prototype),
+            (&b"Float"[..], canonical.float_prototype),
+            (&b"Word"[..], canonical.word_prototype),
+            (&b"String"[..], canonical.string_prototype),
+            (&b"Boolean"[..], canonical.true_object),
+            (&b"Vtable"[..], globals.vtable_vt),
+            (&b"Symbol"[..], canonical.symbol_prototype),
+            (&b"SymbolVt"[..], globals.symbol_vt),
+            (&b"ObjectVt"[..], globals.object_vt),
+            (&b"IntegerVt"[..], canonical.smallint_vt),
+            (&b"FloatVt"[..], canonical.float_vt),
+            (&b"WordVt"[..], canonical.word_vt),
+            (&b"StringVt"[..], canonical.string_vt),
+        ] {
+            self.export(name, value)
+                .unwrap_or_else(|_| boundary::fatal_invariant("static export name contains NUL"));
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn export_count(&self) -> usize {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied count.
+        unsafe { (*self.state.get()).environment.count() }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn export_name_at(&self, index: usize) -> Oop {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied identity.
+        unsafe { (*self.state.get()).environment.name_at(index) }
     }
 
     pub(crate) fn vtable_for_valid_receiver(&self, receiver: Oop) -> Oop {
