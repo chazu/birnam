@@ -54,6 +54,16 @@ impl MethodAddress {
         self.0.as_ptr()
     }
 
+    /// Recover an inert Method address returned through an Oop carrier.
+    ///
+    /// # Safety
+    ///
+    /// `value` must be null or a Method address originally placed in a runtime
+    /// method dictionary.
+    pub(crate) unsafe fn from_oop(value: Oop) -> Option<Self> {
+        NonNull::new(value).map(Self)
+    }
+
     /// Recover the callable Method value originally supplied to `from_method`.
     #[allow(dead_code)] // Becomes the sole invocation conversion in R2.4.
     pub(crate) fn to_method(self) -> Method {
