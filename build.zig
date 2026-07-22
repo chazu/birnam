@@ -165,7 +165,7 @@ pub fn build(b: *std.Build) void {
     });
     const test_rust_gc_metadata_step = b.step(
         "test-rust-gc-metadata",
-        "Retain collector metadata while Rust collection remains disabled",
+        "Exercise Rust collector metadata and foreign marking callbacks without sweeping",
     );
     test_rust_gc_metadata_step.dependOn(&rust_gc_metadata_smoke.step);
     test_step.dependOn(&rust_gc_metadata_smoke.step);

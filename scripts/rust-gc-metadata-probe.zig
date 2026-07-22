@@ -1,4 +1,4 @@
-//! External R3.0 collector-metadata fixture; collection itself stays disabled.
+//! External R4.2 collector callback fixture; sweeping remains disabled.
 
 const std = @import("std");
 const idapi = @import("idapi");
@@ -6,13 +6,29 @@ const idapi = @import("idapi");
 var provider_calls: usize = 0;
 var trace_calls: usize = 0;
 var finalizer_calls: usize = 0;
+var provider_root: idapi.Oop = null;
+var trace_child: idapi.Oop = null;
+var retained_mark: ?idapi.MarkFn = null;
+var active_api: ?*idapi.IdApi = null;
 
-fn provider(_: idapi.MarkFn) callconv(.c) void {
+fn provider(mark: idapi.MarkFn) callconv(.c) void {
     provider_calls += 1;
+    const api = active_api.?;
+    _ = api.gcLiveCount();
+    _ = api.vtableOf(provider_root);
+    mark(provider_root);
 }
 
-fn trace(_: idapi.Oop, _: idapi.MarkFn) callconv(.c) void {
+fn trace(instance: idapi.Oop, mark: idapi.MarkFn) callconv(.c) void {
     trace_calls += 1;
+    const api = active_api.?;
+    _ = api.gcLiveCount();
+    _ = api.vtableOf(instance);
+    mark(trace_child);
+}
+
+fn retainingProvider(mark: idapi.MarkFn) callconv(.c) void {
+    retained_mark = mark;
 }
 
 fn finalize(_: idapi.Oop) callconv(.c) void {
@@ -57,21 +73,28 @@ fn runFunctional(api: *idapi.IdApi) !void {
     api.setTraceHook(child, trace);
     const live_before = api.gcLiveCount();
     const object = api.alloc(child, 16);
+    const unreachable_obj = api.alloc(child, 0);
+    const external_child = api.alloc(api.object_vt, 0);
+    provider_root = object;
+    trace_child = external_child;
+    active_api = api;
     api.setFinalizer(object, finalize);
-    try require(api.gcLiveCount() == live_before + 1, error.LiveCountDidNotGrow);
+    try require(api.gcLiveCount() == live_before + 3, error.LiveCountDidNotGrow);
     registerMaximum(api);
     var stack_anchor: usize = 0;
     api.gcSetStackBottom(@intFromPtr(&stack_anchor));
     api.gcSetAuto(1);
     api.gcSetPrecise(1);
     try require(api.gcCollect() == 0, error.DisabledCollectionReclaimed);
-    try require(api.gcLiveCount() == live_before + 1, error.DisabledCollectionChangedLiveSet);
-    try require(provider_calls == 0, error.DisabledCollectionInvokedProvider);
-    try require(trace_calls == 0, error.DisabledCollectionInvokedTraceHook);
+    try require(api.gcLiveCount() == live_before + 3, error.DisabledCollectionChangedLiveSet);
+    try require(provider_calls == 32, error.RootProviderNotInvoked);
+    try require(trace_calls == 1, error.TraceHookReachabilityWrong);
     try require(finalizer_calls == 0, error.DisabledCollectionInvokedFinalizer);
+    try require(api.vtableOf(unreachable_obj) == child, error.UnreachableFixtureChanged);
+    try require(api.vtableOf(external_child) == api.object_vt, error.TraceChildChanged);
     stack_anchor = api.gcLiveCount();
     std.mem.doNotOptimizeAway(&stack_anchor);
-    std.debug.print("rust-gc-metadata: retained maximum metadata with collection disabled\n", .{});
+    std.debug.print("rust-gc-metadata: providers and reachable hooks marked without sweeping\n", .{});
 }
 
 pub fn main() !void {
@@ -96,6 +119,13 @@ pub fn main() !void {
         const child = api.proto(api.object_vt);
         api.setLayout(child, null, 1, idapi.slot_raw);
         return error.InvalidLayoutReturned;
+    }
+    if (std.mem.eql(u8, mode, "retained-mark")) {
+        active_api = api;
+        api.gcRegisterRootProvider(retainingProvider);
+        _ = api.gcCollect();
+        retained_mark.?(api.nilObj);
+        return error.RetainedMarkReturned;
     }
     return error.UnknownMode;
 }

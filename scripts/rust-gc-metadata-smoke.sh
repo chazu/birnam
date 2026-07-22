@@ -48,5 +48,6 @@ probe_profile debug
 probe_profile release
 expect_abort provider-overflow "gc: too many root providers"
 expect_abort invalid-layout "setLayout kinds is null with nonzero count"
+expect_abort retained-mark "GC mark callback escaped its invocation"
 
-echo "rust-gc-metadata: capacity and validation failures terminated with SIGABRT"
+echo "rust-gc-metadata: capacity, validation, and escaped-callback failures terminated with SIGABRT"
