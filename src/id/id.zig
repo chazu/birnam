@@ -139,7 +139,30 @@ var g_method_overwrite_hook: ?MethodOverwriteHook = null;
 // address index is only a membership accelerator: public callers can carry
 // methods, code addresses, and other raw pointers in Oop-typed positions, so
 // vtableOwner must reject them without dereferencing or scanning linearly.
-var g_vtable_by_address: std.AutoHashMapUnmanaged(usize, *Vtable) = .{};
+// Pointer registries sit on the dispatch hot path. AutoHashMap's generic
+// Wyhash hashes all eight address bytes for every send; a multiplicative hash
+// over the aligned address keeps the same exact-key/O(1) semantics without
+// turning provenance validation into the dominant runtime cost.
+const AddressContext = struct {
+    pub fn hash(_: AddressContext, address: usize) u64 {
+        return @as(u64, address >> 3) *% 0x9e3779b97f4a7c15;
+    }
+
+    pub fn eql(_: AddressContext, a: usize, b: usize) bool {
+        return a == b;
+    }
+};
+
+fn AddressMap(comptime Value: type) type {
+    return std.HashMapUnmanaged(
+        usize,
+        Value,
+        AddressContext,
+        std.hash_map.default_max_load_percentage,
+    );
+}
+
+var g_vtable_by_address: AddressMap(*Vtable) = .{};
 
 fn registeredVtable(candidate: Oop) ?*Vtable {
     return g_vtable_by_address.get(@intFromPtr(candidate orelse return null));
@@ -209,7 +232,7 @@ const GcKind = enum(u8) { collectable, permanent };
 // block and leaks whatever it pointed at. The finalizer receives the object and
 // must not allocate id objects (it runs mid-sweep).
 const Block = struct { total: usize, kind: GcKind, mark: bool = false, finalize: ?idapi.Finalizer = null };
-var g_blocks: std.AutoHashMapUnmanaged(usize, Block) = .{};
+var g_blocks: AddressMap(Block) = .{};
 
 // Auto-GC: once this many bytes have been allocated since the last collection, the
 // next allocation triggers one. Safe to collect at an allocation point — every
