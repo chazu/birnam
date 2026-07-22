@@ -46,8 +46,11 @@ expect_abort() {
 
 probe_profile debug
 probe_profile release
+"$probe" "$target_dir/debug/libbirnam_id.dylib" finalizer-reentrant-collect
+"$probe" "$target_dir/release/libbirnam_id.dylib" finalizer-reentrant-collect
 expect_abort provider-overflow "gc: too many root providers"
 expect_abort invalid-layout "setLayout kinds is null with nonzero count"
 expect_abort retained-mark "GC mark callback escaped its invocation"
+expect_abort finalizer-allocation "id allocation attempted during collection"
 
-echo "rust-gc-metadata: capacity, validation, and escaped-callback failures terminated with SIGABRT"
+echo "rust-gc-metadata: finalizer reentrancy was refused and forbidden allocation terminated with SIGABRT"

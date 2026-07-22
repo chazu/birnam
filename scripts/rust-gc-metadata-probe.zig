@@ -11,6 +11,7 @@ var trace_child: idapi.Oop = null;
 var unreachable_address: usize = 0;
 var retained_mark: ?idapi.MarkFn = null;
 var active_api: ?*idapi.IdApi = null;
+var reentrant_result: usize = std.math.maxInt(usize);
 
 fn provider(mark: idapi.MarkFn) callconv(.c) void {
     provider_calls += 1;
@@ -36,9 +37,24 @@ fn finalize(_: idapi.Oop) callconv(.c) void {
     finalizer_calls += 1;
 }
 
+fn reentrantCollectFinalizer(_: idapi.Oop) callconv(.c) void {
+    finalizer_calls += 1;
+    reentrant_result = active_api.?.gcCollect();
+}
+
+fn allocatingFinalizer(_: idapi.Oop) callconv(.c) void {
+    _ = active_api.?.alloc(active_api.?.object_vt, 0);
+}
+
 noinline fn makeUnreachable(api: *idapi.IdApi, vtable: idapi.Oop) void {
     var object = api.alloc(vtable, 0);
     unreachable_address = @intFromPtr(object.?);
+    std.mem.doNotOptimizeAway(&object);
+}
+
+noinline fn makeFinalizableUnreachable(api: *idapi.IdApi, finalizer: idapi.Finalizer) void {
+    var object = api.alloc(api.object_vt, 0);
+    api.setFinalizer(object, finalizer);
     std.mem.doNotOptimizeAway(&object);
 }
 
@@ -142,6 +158,32 @@ pub fn main() !void {
         _ = api.gcCollect();
         retained_mark.?(api.nilObj);
         return error.RetainedMarkReturned;
+    }
+    if (std.mem.eql(u8, mode, "finalizer-reentrant-collect")) {
+        active_api = api;
+        finalizer_calls = 0;
+        reentrant_result = std.math.maxInt(usize);
+        var stack_anchor: usize = 0;
+        api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+        api.gcSetAuto(0);
+        makeFinalizableUnreachable(api, reentrantCollectFinalizer);
+        scrubConservativeStack();
+        try require(api.gcCollect() == 1, error.FinalizerObjectNotReclaimed);
+        try require(finalizer_calls == 1, error.ReentrantFinalizerCountMismatch);
+        try require(reentrant_result == 0, error.ReentrantCollectionWasNotRefused);
+        std.mem.doNotOptimizeAway(&stack_anchor);
+        return;
+    }
+    if (std.mem.eql(u8, mode, "finalizer-allocation")) {
+        active_api = api;
+        var stack_anchor: usize = 0;
+        api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+        api.gcSetAuto(0);
+        makeFinalizableUnreachable(api, allocatingFinalizer);
+        scrubConservativeStack();
+        _ = api.gcCollect();
+        std.mem.doNotOptimizeAway(&stack_anchor);
+        return error.FinalizerAllocationReturned;
     }
     return error.UnknownMode;
 }
