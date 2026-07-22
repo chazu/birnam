@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5 and R1.1 through
-> R1.2 complete,
+> R1.4 complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -710,6 +710,21 @@ and the complete `rust-shell-smoke` pass locally and are wired into CI.
 
 **Gate:** both Rust and Zig descriptors equal the committed R0 manifest exactly.
 
+#### R1.3 execution record — 2026-07-22
+
+`abi.rs` now mirrors all 54 fields of the 432-byte `IdApi` v1 table with
+`#[repr(C)]`. `Oop`, argument buffers, layout arrays, C strings, and opaque
+state use raw pointers; every callable type is `unsafe extern "C" fn`; and
+`Option` appears only for the nullable method-overwrite callback. The eight
+supporting callback/initializer types, four slot constants, pointer width,
+`c_int` width, table size/alignment, and every field offset have compile-time
+assertions plus a Rust runtime layout test. A target guard rejects builds that
+would silently apply this arm64 macOS manifest to another ABI.
+
+Rust check/test, debug and release `cdylib` builds, the direct loader smoke, and
+the independent Zig manifest verifier all pass. No `id_init` implementation or
+normal-build selection was introduced.
+
 ### R1.4 — Add a cross-language ABI probe
 
 - Export a diagnostic ABI descriptor from the Rust dylib without adding it to
@@ -724,6 +739,24 @@ and the complete `rust-shell-smoke` pass locally and are wired into CI.
 **Gate:** exact layout parity is mechanically enforced against an immutable
 expected fingerprint in both local and CI verification. This phase does not call
 `id_init` or run the frozen old-client fixture.
+
+#### R1.4 execution record — 2026-07-22
+
+The Rust shell exports `birnam_id_rust_abi_descriptor_v1`, a pointer-free
+build/test descriptor reporting the Rust compiler's concrete supporting-type
+layouts, all 54 field offsets/sizes/alignments/nullability/kinds, target facts,
+slot constants, and frozen fingerprint. It is a separate diagnostic symbol,
+not an `IdApi` field.
+
+`zig build test-id-abi` now builds the Rust artifact with Cargo
+`--locked --offline`, dynamically loads that artifact from `.cargo-target`,
+asserts that `id_init` is absent, and compares the descriptor entry-by-entry
+with `abi/idapi-v1.json`. It also exercises a reordered descriptor and rejects
+it. A literal negative proof temporarily swapped the local Rust `dlopen` and
+`dlsym` fields: compilation failed at the frozen `dlopen` offset assertion
+before a dylib or function pointer could be used. Restoring the order returned
+the test to green. The combined gate is part of ordinary `zig build test` and
+therefore CI; full `zig build test` and the debug/release Rust shell smoke pass.
 
 ### R1.5 — Establish FFI failure policy
 
