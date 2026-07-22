@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> and R2.1 through R2.3 complete,
+> and R2.1 through R2.4 complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -968,6 +968,33 @@ heap allocations. All 20 Rust tests and the strict all-target Clippy gate pass.
 
 **Gate:** recursive/reentrant sends work without a mutex, aliasing assertion, or
 borrow surviving the foreign call.
+
+#### R2.4 execution record — 2026-07-22
+
+The R2 harness now owns its heap, vtables, interner, and dispatch globals in a
+single-thread-owned `UnsafeCell` runtime. Operation-specific accessors copy raw
+objects and `MethodAddress` values out of runtime state; every collection/state
+access ends before a Method is invoked. A thread-local dynamic-extent pointer
+makes only the currently entered runtime available to synchronous callbacks.
+There is no mutex, `RefCell` borrow flag, or Rust reference/collection guard
+across foreign code. Non-owner-thread and overlapping-runtime entry are fatal
+invariants.
+
+`bind` bottoms out `lookup` on the metavtable and performs ordinary binding by
+sending `lookup` to the receiver's vtable. `send_abi` preserves a null/zero
+argument pair without constructing a Rust slice, rejects null/nonzero, invokes
+copied C-ABI Method pointers, and redispatches overridable
+`doesNotUnderstand:` with the original selector plus at most 16 original
+arguments. Rust tests prove metacircular lookup, the distinct null and non-null
+zero-length paths, DNU capping, and a Rust Method that reenters send.
+
+A feature-gated external harness installs a Zig Method. That Method reenters the
+active Rust dispatcher and reaches an inner Rust Method in both debug and
+optimized dylibs; the inner Method answers 4,242 only when it receives the
+preserved null/zero buffer. All 25 debug/release Rust tests, feature-enabled
+Clippy, `test-rust-dispatch-reentry`, the ordinary-artifact no-test-hook check,
+and combined `zig build test` pass. The dispatcher remains internal: there is
+still no Rust `id_init` or public `IdApi` table.
 
 ### R2.5 — Implement the metacircular bootstrap
 
