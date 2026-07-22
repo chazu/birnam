@@ -30,6 +30,69 @@ fn captureDnu(self: Oop, args: [*]const Oop, count: usize) callconv(.c) Oop {
 
 var null_zero_seen = false;
 const exact_layout = [_]u8{ idapi.slot_oop, idapi.slot_raw, idapi.slot_code };
+const precise_layout = [_]u8{ idapi.slot_oop, idapi.slot_raw };
+
+var gc_roots: [3]Oop = .{ null, null, null };
+var gc_provider_registered = false;
+var gc_provider_calls: usize = 0;
+var precise_followed_address: usize = 0;
+var precise_raw_address: usize = 0;
+var trace_target: Oop = null;
+var trace_calls: usize = 0;
+var finalizer_calls: usize = 0;
+
+fn conformanceRootProvider(mark: idapi.MarkFn) callconv(.c) void {
+    gc_provider_calls += 1;
+    for (gc_roots) |root| if (root != null) mark(root);
+}
+
+fn ensureRootProvider(api: *idapi.IdApi) void {
+    if (gc_provider_registered) return;
+    api.gcRegisterRootProvider(&conformanceRootProvider);
+    gc_provider_registered = true;
+}
+
+fn conformanceTraceHook(_: Oop, mark: idapi.MarkFn) callconv(.c) void {
+    trace_calls += 1;
+    if (trace_target != null) mark(trace_target);
+}
+
+fn conformanceFinalizer(_: Oop) callconv(.c) void {
+    finalizer_calls += 1;
+}
+
+noinline fn makeGarbage(api: *idapi.IdApi, count: usize, payload_size: usize) void {
+    var last: Oop = null;
+    for (0..count) |_| last = api.alloc(api.object_vt, payload_size);
+    std.mem.doNotOptimizeAway(&last);
+}
+
+noinline fn makeFinalizableGarbage(api: *idapi.IdApi, count: usize) void {
+    var last: Oop = null;
+    for (0..count) |_| {
+        last = api.alloc(api.object_vt, 0);
+        api.setFinalizer(last, &conformanceFinalizer);
+    }
+    std.mem.doNotOptimizeAway(&last);
+}
+
+noinline fn makePreciseGraph(api: *idapi.IdApi, container_vt: Oop) void {
+    const followed = api.alloc(api.object_vt, 0);
+    const raw = api.alloc(api.object_vt, 0);
+    const container = api.alloc(container_vt, 2 * @sizeOf(Oop));
+    const slots: [*]Oop = @ptrCast(@alignCast(container.?));
+    slots[0] = followed;
+    slots[1] = raw;
+    precise_followed_address = @intFromPtr(followed.?);
+    precise_raw_address = @intFromPtr(raw.?);
+    gc_roots[0] = container;
+}
+
+noinline fn scrubConservativeStack() void {
+    var scratch: [4096]usize = @splat(0);
+    for (&scratch, 0..) |*word, i| word.* = i;
+    std.mem.doNotOptimizeAway(&scratch);
+}
 
 fn captureNullZero(self: Oop, args: ?[*]const Oop, count: usize) callconv(.c) Oop {
     null_zero_seen = args == null and count == 0;
@@ -352,4 +415,100 @@ test "payload sizes and exact slot layouts are externally observable" {
     try std.testing.expectEqual(@sizeOf(usize), api.objectPayloadSize(rounded));
     try std.testing.expectEqual(3 * @sizeOf(usize), api.objectPayloadSize(exact));
     try std.testing.expectEqual(@as(usize, 0), api.objectPayloadSize(@ptrFromInt(0x1000)));
+}
+
+test "manual GC refuses to sweep without a registered stack bottom" {
+    const api = floor.api();
+    api.gcSetAuto(0);
+    api.gcSetStackBottom(0);
+    makeGarbage(api, 128, 0);
+    const live = api.gcLiveCount();
+    try std.testing.expectEqual(@as(usize, 0), api.gcCollect());
+    try std.testing.expectEqual(live, api.gcLiveCount());
+}
+
+test "root providers, precise layouts, and trace hooks retain exactly their edges" {
+    const api = floor.api();
+    var stack_bottom: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_bottom));
+    api.gcSetAuto(0);
+    ensureRootProvider(api);
+    gc_roots = .{ null, null, null };
+    _ = api.gcCollect();
+
+    const container_vt = api.proto(api.object_vt);
+    api.setLayout(container_vt, &precise_layout, precise_layout.len, idapi.slot_raw);
+    makePreciseGraph(api, container_vt);
+    gc_provider_calls = 0;
+    api.gcSetPrecise(1);
+    for (0..4) |_| {
+        scrubConservativeStack();
+        _ = api.gcCollect();
+    }
+    try std.testing.expect(gc_provider_calls > 0);
+    try std.testing.expect(api.vtableOf(@ptrFromInt(precise_followed_address)) == api.object_vt);
+    try std.testing.expect(api.vtableOf(@ptrFromInt(precise_raw_address)) == null);
+
+    const trace_vt = api.proto(api.object_vt);
+    api.setLayout(trace_vt, null, 0, idapi.slot_raw);
+    api.setTraceHook(trace_vt, &conformanceTraceHook);
+    const traced = api.alloc(trace_vt, 0);
+    trace_target = api.alloc(api.object_vt, 0);
+    const target_address = @intFromPtr(trace_target.?);
+    gc_roots = .{ traced, null, null };
+    trace_calls = 0;
+    _ = api.gcCollect();
+    try std.testing.expect(trace_calls > 0);
+    try std.testing.expect(api.vtableOf(@ptrFromInt(target_address)) == api.object_vt);
+
+    gc_roots = .{ null, null, null };
+    trace_target = null;
+    api.gcSetPrecise(0);
+    std.mem.doNotOptimizeAway(&stack_bottom);
+}
+
+test "manual collection finalizes once and never sweeps permanents" {
+    const api = floor.api();
+    var stack_bottom: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_bottom));
+    api.gcSetAuto(0);
+    gc_roots = .{ null, null, null };
+    _ = api.gcCollect();
+
+    const permanent_index = api.vtableCount();
+    const permanent_vtable = api.proto(api.object_vt);
+    const permanent_symbol = api.intern("conformancePermanentSymbol");
+    finalizer_calls = 0;
+    makeFinalizableGarbage(api, 1000);
+    for (0..4) |_| {
+        scrubConservativeStack();
+        _ = api.gcCollect();
+    }
+    try std.testing.expectEqual(@as(usize, 1000), finalizer_calls);
+    const finalized = finalizer_calls;
+    scrubConservativeStack();
+    _ = api.gcCollect();
+    try std.testing.expectEqual(finalized, finalizer_calls);
+
+    try std.testing.expect(api.vtableAt(permanent_index) == permanent_vtable);
+    try std.testing.expect(api.vtableOf(permanent_vtable) == api.vtable_vt);
+    try std.testing.expect(api.intern("conformancePermanentSymbol") == permanent_symbol);
+    try std.testing.expect(api.vtableOf(api.nilObj) != null);
+    std.mem.doNotOptimizeAway(&stack_bottom);
+}
+
+test "automatic GC bounds the live set during allocation churn" {
+    const api = floor.api();
+    var stack_bottom: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_bottom));
+    api.gcSetAuto(0);
+    gc_roots = .{ null, null, null };
+    _ = api.gcCollect();
+    const before = api.gcLiveCount();
+
+    api.gcSetAuto(1);
+    defer api.gcSetAuto(0);
+    makeGarbage(api, 6000, 4096);
+    try std.testing.expect(api.gcLiveCount() < before + 5000);
+    std.mem.doNotOptimizeAway(&stack_bottom);
 }
