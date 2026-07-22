@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, and R3.0 through R3.4 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, and R3.0 through R3.5 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1375,6 +1375,43 @@ Store-arbitrated and raw/private paths, observes the exact ordering above, and
 never leaves a stale method or `#primitive` fact under the Rust floor. Init and
 post-image backfill, authorizer rejection, and post-commit observer ordering all
 pass without widening `IdApi`.
+
+#### R3.5 execution record — 2026-07-22
+
+The Rust runtime now stores the optional method-overwrite hook and invokes it
+only when a direct binding already exists. Replacement and removal first copy
+the callback and its raw arguments out of runtime state, end every Rust borrow,
+invoke the foreign hook, and only then reacquire state to mutate the ordered
+dictionary. Addition and missing removal remain hook-free; clearing the hook is
+immediate. A Rust test re-enters vtable count/index, direct-selector, parent,
+owner, and method lookup reads from the callback and proves the old binding is
+still authoritative during both replacement and removal. Send and allocation
+remain prohibited by the documented hook contract.
+
+Every vtable remains registered in creation order. The two internal dictionary
+vtables now also expose the symbol interner's ordered keys and the export
+environment's ordered key/value pairs in their raw C-layout views, matching the
+Zig floor. Symbols and the environment remain the Rust-side identity/order
+authorities; synchronization changes neither their lookup rules nor any object
+identity. This closes a discrepancy found by the Store backfill test: populated
+internal dictionaries are now observable and explicitly excluded rather than
+being accidentally empty.
+
+The existing 17-test Store suite passes unchanged against `rust-id-v1` in both
+debug and optimized dylibs. It covers tracked add/replace/remove ordering, raw
+add/replace/remove behavior, exact inheritance recovery, primitive-marker
+invalidation and idempotent backfill, authorizer rejection, completed-state
+observer notification, and internal-dictionary exclusion. A separate
+process-isolated fixture performs the real `imageLoadBegin`/`imageLoadEnd:raw:`
+Store reset and proves `backfillMirror` reconstructs primitive presence under
+both Rust profiles and the default Zig floor. The selectable identity is test
+diagnostic only: ordinary installation still selects Zig.
+
+All 40 Rust tests, strict all-target/all-feature Clippy, both Rust Store profiles,
+the image-reset fixture, all prior cross-floor gates, and combined
+`zig build test` pass. `setMethodOverwriteHook` was the final fatal non-GC table
+slot, so the evolving R2.6 unsupported-field child gate is retired; collection
+remains the deliberately inert R3.0 shell until R4.
 
 ### R3.6 — First downstream rung matrix
 
