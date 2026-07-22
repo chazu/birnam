@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.5 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.6 complete as of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1716,6 +1716,22 @@ checks and the complete combined `zig build test` gate pass.
 
 **Gate:** live-set bounds and finalizer counts match the Zig-floor behavior; no
 threshold-dependent downstream test flakes.
+
+#### R4.6 execution record — 2026-07-22
+
+Every Rust floor allocation contributes its exact padded block size to the
+collection counter. With automatic collection enabled, a valid stack anchor,
+an idle collector, and at least 16 MiB allocated since the last successful
+collection, the next allocation first runs `gcCollect`, matching the Zig
+floor's trigger timing. Disabling automatic collection or omitting the stack
+anchor suppresses the trigger without discarding the accumulated count.
+
+The optimized baseline passes under both Rust debug and Rust release dylibs:
+the manual phase moves from 42 to 2,042 and back to 42 with all 2,000 objects
+reclaimed; the finalizer phase runs and reclaims exactly 1,000 objects; and
+6,000 allocations with 4,096-byte payloads finish with a live-set delta of
+about 1,912 rather than 6,000. The complete downstream gate passes with the
+current threshold unchanged.
 
 ### R4.7 — Image introspection primitives
 
