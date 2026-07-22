@@ -100,6 +100,31 @@ pub unsafe extern "C" fn birnam_id_test_membership_bench(
     1
 }
 
+/// Test-only harness that installs and invokes one foreign reentrant Method.
+#[cfg(feature = "ffi-test-hooks")]
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_test_dispatch_reentry(method: abi::Method) -> usize {
+    dispatch::run_external_reentry(method)
+}
+
+/// Test-only send seam available only during the synchronous reentry harness.
+///
+/// # Safety
+///
+/// The ordinary `IdApi.send` receiver, selector, and argument-buffer contracts
+/// apply.
+#[cfg(feature = "ffi-test-hooks")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_id_test_active_send(
+    receiver: abi::Oop,
+    selector: abi::Oop,
+    args: *const abi::Oop,
+    count: usize,
+) -> abi::Oop {
+    // SAFETY: forwarded caller contract.
+    unsafe { dispatch::active_send(receiver, selector, args, count) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{RUST_CRATE_IDENTITY, birnam_id_rust_crate_identity};

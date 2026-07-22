@@ -9,6 +9,7 @@
 #   mise run rust-ffi-abort-smoke # prove fatal Rust C-ABI boundary behavior
 #   mise run rust-heap-layout-smoke # probe Rust blocks from an external fixture
 #   mise run rust-membership-bench # benchmark optimized Rust membership scaling
+#   mise run rust-dispatch-reentry-smoke # reenter Rust send from a Zig Method
 #   mise run bootstrap-smoke # build a fixture-free source archive with pinned tools
 #   mise run install        # install to a prefix
 #   mise run dist           # build a release tarball for this platform
@@ -53,6 +54,10 @@ run = "bash scripts/rust-heap-layout-smoke.sh"
 [tasks.rust-membership-bench]
 description = "Benchmark optimized Rust exact-address membership scaling"
 run = "bash scripts/rust-membership-bench.sh"
+
+[tasks.rust-dispatch-reentry-smoke]
+description = "Reenter Rust dispatch synchronously from an external Zig Method"
+run = "bash scripts/rust-dispatch-reentry-smoke.sh"
 
 [tasks.bootstrap-smoke]
 description = "Cold-build a fixture-free source archive with pinned Zig and Rust"

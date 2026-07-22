@@ -150,6 +150,58 @@ pub(crate) fn build_harness() -> DispatchHarness {
     }
 }
 
+#[cfg(feature = "ffi-test-hooks")]
+unsafe extern "C" fn external_null_answer(_: Oop, args: *const Oop, count: usize) -> Oop {
+    if args.is_null() && count == 0 {
+        4242usize as Oop
+    } else {
+        core::ptr::null_mut()
+    }
+}
+
+#[cfg(feature = "ffi-test-hooks")]
+pub(crate) fn run_external_reentry(method: crate::abi::Method) -> usize {
+    let harness = build_harness();
+    let inner = harness
+        .runtime
+        .intern(b"externalInner")
+        .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
+    let outer = harness
+        .runtime
+        .intern(b"externalOuter:")
+        .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
+    let receiver = harness.runtime.allocate_instance(harness.object_vtable, 0);
+    let _ = harness
+        .runtime
+        .add_method(harness.object_vtable, inner, external_null_answer);
+    let _ = harness
+        .runtime
+        .add_method(harness.object_vtable, outer, method);
+    harness
+        .runtime
+        .enter(|| harness.runtime.send_slice(receiver, outer, &[inner]))
+        .addr()
+}
+
+/// Reenter the dynamically active R2 dispatch harness from a foreign Method.
+///
+/// # Safety
+///
+/// The ordinary send ABI contract applies to all arguments.
+#[cfg(feature = "ffi-test-hooks")]
+pub(crate) unsafe fn active_send(
+    receiver: Oop,
+    selector: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    with_active(|runtime| {
+        // SAFETY: forwarded caller contract; active runtime remains live for
+        // the complete synchronous callback extent.
+        unsafe { runtime.send_abi(receiver, selector, args, count) }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

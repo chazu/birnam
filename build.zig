@@ -137,6 +137,17 @@ pub fn build(b: *std.Build) void {
         "Benchmark optimized Rust exact-address membership scaling",
     ).dependOn(&rust_membership_bench.step);
 
+    const rust_dispatch_reentry_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-dispatch-reentry-smoke.sh",
+    });
+    const test_rust_dispatch_reentry_step = b.step(
+        "test-rust-dispatch-reentry",
+        "Reenter Rust dispatch synchronously from an external Zig Method",
+    );
+    test_rust_dispatch_reentry_step.dependOn(&rust_dispatch_reentry_smoke.step);
+    test_step.dependOn(&rust_dispatch_reentry_smoke.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a
