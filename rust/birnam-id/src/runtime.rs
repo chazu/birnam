@@ -3,6 +3,7 @@
 
 use core::cell::{Cell, UnsafeCell};
 
+use crate::abi::SLOT_OOP;
 use crate::abi::{Method, MethodOverwriteHook, Oop};
 use crate::boundary;
 use crate::env::Environment;
@@ -590,11 +591,17 @@ impl Runtime {
             // SAFETY: owner-thread serialization and no callback in this scope.
             let hook = unsafe {
                 let state = &mut *state_pointer;
-                marker.trace_conservative_payload(&mut state.heap, address);
                 let object = address as Oop;
                 let vtable = state.heap.vtable_of(object).unwrap_or_else(|| {
                     boundary::fatal_invariant("marked GC block lost its vtable")
                 });
+                if state.metadata.precise() && state.vtables.has_layout(vtable) {
+                    marker.trace_selected_payload(&mut state.heap, address, |word| {
+                        state.vtables.slot_kind(vtable, word) == SLOT_OOP
+                    });
+                } else {
+                    marker.trace_conservative_payload(&mut state.heap, address);
+                }
                 state.vtables.trace_hook(vtable)
             };
             if let Some(hook) = hook {

@@ -262,6 +262,12 @@ impl Vtables {
         unsafe { record.layout_kinds.add(word).read() }
     }
 
+    pub(crate) fn has_layout(&self, vtable: Oop) -> bool {
+        self.by_address
+            .get(&vtable.addr())
+            .is_some_and(|record| record.layout_set)
+    }
+
     pub(crate) fn dictionary_capacity(&self, vtable: Oop) -> usize {
         self.record(vtable).logical_capacity
     }

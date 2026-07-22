@@ -485,6 +485,12 @@ mod tests {
         static GC_TRACE_CALLS: Cell<usize> = const { Cell::new(0) };
     }
 
+    static GC_PRECISE_LAYOUT: [u8; 3] = [
+        crate::abi::SLOT_OOP,
+        crate::abi::SLOT_RAW,
+        crate::abi::SLOT_CODE,
+    ];
+
     unsafe extern "C" fn answer_42(_: Oop, _: *const Oop, _: usize) -> Oop {
         42usize as Oop
     }
@@ -1067,6 +1073,72 @@ mod tests {
         assert_eq!(runtime.is_marked_for_test(unreachable), Some(false));
         GC_PROVIDER_ROOT.set(core::ptr::null_mut());
         GC_TRACE_CHILD.set(core::ptr::null_mut());
+    }
+
+    #[test]
+    fn precise_layout_traces_only_oop_prefix_and_rest_slots() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let precise_vtable = runtime.create_vtable(globals.object_vt);
+        runtime.set_layout(
+            precise_vtable,
+            GC_PRECISE_LAYOUT.as_ptr(),
+            GC_PRECISE_LAYOUT.len(),
+            crate::abi::SLOT_OOP,
+        );
+        let root = runtime.allocate_instance(precise_vtable, 4 * size_of::<Oop>());
+        let oop_child = runtime.allocate_instance(globals.object_vt, 0);
+        let raw_false_positive = runtime.allocate_instance(globals.object_vt, 0);
+        let code_false_positive = runtime.allocate_instance(globals.object_vt, 0);
+        let rest_child = runtime.allocate_instance(globals.object_vt, 0);
+        // SAFETY: root owns four writable, pointer-aligned Oop-sized words. Raw
+        // and code slots intentionally contain pointer-shaped test bits.
+        unsafe {
+            let words = root.cast::<Oop>();
+            words.add(0).write(oop_child);
+            words.add(1).write(raw_false_positive);
+            words.add(2).write(code_false_positive);
+            words.add(3).write(rest_child);
+        }
+        runtime.export(b"PreciseGcRoot", root).unwrap();
+        runtime.gc_set_precise(true);
+
+        runtime.gc_mark_floor_roots_for_test();
+
+        assert_eq!(runtime.is_marked_for_test(root), Some(true));
+        assert_eq!(runtime.is_marked_for_test(oop_child), Some(true));
+        assert_eq!(runtime.is_marked_for_test(rest_child), Some(true));
+        assert_eq!(runtime.is_marked_for_test(raw_false_positive), Some(false));
+        assert_eq!(runtime.is_marked_for_test(code_false_positive), Some(false));
+
+        runtime.gc_set_precise(false);
+        runtime.gc_mark_floor_roots_for_test();
+        assert_eq!(runtime.is_marked_for_test(raw_false_positive), Some(true));
+        assert_eq!(runtime.is_marked_for_test(code_false_positive), Some(true));
+    }
+
+    #[test]
+    fn precise_mode_keeps_unknown_layouts_conservative() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let unknown_vtable = runtime.create_vtable(globals.object_vt);
+        let root = runtime.allocate_instance(unknown_vtable, size_of::<Oop>());
+        let child = runtime.allocate_instance(globals.object_vt, 0);
+        // SAFETY: root owns one writable, pointer-aligned Oop payload slot.
+        unsafe { root.cast::<Oop>().write(child) };
+        runtime.export(b"UnknownLayoutGcRoot", root).unwrap();
+        runtime.gc_set_precise(true);
+
+        runtime.gc_mark_floor_roots_for_test();
+
+        assert_eq!(runtime.is_marked_for_test(root), Some(true));
+        assert_eq!(runtime.is_marked_for_test(child), Some(true));
+        assert_eq!(
+            runtime.slot_kind(unknown_vtable, 0),
+            crate::abi::SLOT_UNKNOWN
+        );
     }
 
     #[test]

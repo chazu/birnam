@@ -53,6 +53,22 @@ impl Marker {
             self.mark_address(heap, candidate);
         }
     }
+
+    pub(crate) fn trace_selected_payload(
+        &mut self,
+        heap: &mut Heap,
+        address: usize,
+        mut traces_word: impl FnMut(usize) -> bool,
+    ) {
+        let words = heap
+            .payload_words(address)
+            .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
+        for (index, candidate) in words.into_iter().enumerate() {
+            if traces_word(index) {
+                self.mark_address(heap, candidate);
+            }
+        }
+    }
 }
 
 struct ActiveMarkContext {
@@ -168,7 +184,6 @@ impl MetadataShell {
         self.auto_requested
     }
 
-    #[cfg(test)]
     pub(crate) fn precise(&self) -> bool {
         self.precise
     }
