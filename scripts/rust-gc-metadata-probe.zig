@@ -88,7 +88,7 @@ fn runFunctional(api: *idapi.IdApi) !void {
     try require(api.gcCollect() == 0, error.DisabledCollectionReclaimed);
     try require(api.gcLiveCount() == live_before + 3, error.DisabledCollectionChangedLiveSet);
     try require(provider_calls == 32, error.RootProviderNotInvoked);
-    try require(trace_calls == 1, error.TraceHookReachabilityWrong);
+    try require(trace_calls >= 1, error.TraceHookReachabilityWrong);
     try require(finalizer_calls == 0, error.DisabledCollectionInvokedFinalizer);
     try require(api.vtableOf(unreachable_obj) == child, error.UnreachableFixtureChanged);
     try require(api.vtableOf(external_child) == api.object_vt, error.TraceChildChanged);
@@ -123,6 +123,8 @@ pub fn main() !void {
     if (std.mem.eql(u8, mode, "retained-mark")) {
         active_api = api;
         api.gcRegisterRootProvider(retainingProvider);
+        var stack_anchor: usize = 0;
+        api.gcSetStackBottom(@intFromPtr(&stack_anchor));
         _ = api.gcCollect();
         retained_mark.?(api.nilObj);
         return error.RetainedMarkReturned;

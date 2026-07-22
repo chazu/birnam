@@ -170,6 +170,17 @@ pub fn build(b: *std.Build) void {
     test_rust_gc_metadata_step.dependOn(&rust_gc_metadata_smoke.step);
     test_step.dependOn(&rust_gc_metadata_smoke.step);
 
+    const rust_stack_root_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-stack-root-smoke.sh",
+    });
+    const test_rust_stack_root_step = b.step(
+        "test-rust-stack-root",
+        "Keep an Oop live in optimized C and recover it from Rust native roots",
+    );
+    test_rust_stack_root_step.dependOn(&rust_stack_root_smoke.step);
+    test_step.dependOn(&rust_stack_root_smoke.step);
+
     const rust_env_loader_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/rust-env-loader-smoke.sh",

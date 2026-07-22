@@ -7,7 +7,7 @@ use crate::abi::SLOT_OOP;
 use crate::abi::{Method, MethodOverwriteHook, Oop};
 use crate::boundary;
 use crate::env::Environment;
-use crate::gc::{Marker, MetadataShell, invoke_with_mark_callback};
+use crate::gc::{Marker, MetadataShell, invoke_with_mark_callback, mark_native_roots};
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
 use crate::symbol::{EmbeddedNul, Symbols};
@@ -545,10 +545,27 @@ impl Runtime {
         // sweeping. Exercise the permanent floor roots, then clear the private
         // marks so the still-disabled public operation remains observationally
         // inert and returns the R3-compatible zero result.
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let state = unsafe { &mut *self.state.get() };
-        state.heap.clear_marks();
-        self.run_mark_phase();
+        // SAFETY: owner-thread serialization and copied metadata only.
+        let stack_bottom = unsafe { (*self.state.get()).metadata.stack_bottom() };
+        if stack_bottom == 0 {
+            // SAFETY: owner-thread serialization and no callback.
+            return unsafe { (*self.state.get()).metadata.collect_disabled() };
+        }
+        let mut marker = Marker::new();
+        // End this state borrow before run_mark_phase can invoke foreign code.
+        // SAFETY: owner-thread serialization and no callback in this scope.
+        let native_roots_ready = unsafe {
+            let state = &mut *self.state.get();
+            state.heap.clear_marks();
+            mark_native_roots(&mut state.heap, &mut marker, stack_bottom)
+        };
+        if !native_roots_ready {
+            // SAFETY: owner-thread serialization and no callback.
+            let state = unsafe { &mut *self.state.get() };
+            state.heap.clear_marks();
+            return state.metadata.collect_disabled();
+        }
+        self.run_mark_phase(marker);
         // SAFETY: all callbacks have returned and owner-thread serialization is
         // restored before marks are cleared.
         let state = unsafe { &mut *self.state.get() };
@@ -562,9 +579,8 @@ impl Runtime {
         unsafe { (*self.state.get()).heap.allocation_count() }
     }
 
-    fn run_mark_phase(&self) {
+    fn run_mark_phase(&self, mut marker: Marker) {
         let state_pointer = self.state.get();
-        let mut marker = Marker::new();
         // Copy callback authority and raw owner pointers, then end the state
         // borrow before the first foreign call.
         // SAFETY: owner-thread serialization and no foreign call in this scope.
@@ -715,7 +731,7 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: test calls remain owner-thread and invoke no foreign code.
         unsafe { (&mut *self.state.get()).heap.clear_marks() };
-        self.run_mark_phase();
+        self.run_mark_phase(Marker::new());
     }
 
     #[cfg(test)]

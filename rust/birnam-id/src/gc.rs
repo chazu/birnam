@@ -6,6 +6,62 @@ use crate::abi::{MarkFn, Oop, RootProvider};
 use crate::boundary;
 use crate::heap::Heap;
 
+const MAX_STACK_SCAN_BYTES: usize = 128 << 20;
+
+#[repr(align(16))]
+struct RegisterSave([usize; 24]);
+
+const _: () = {
+    // Darwin arm64 setjmp.h defines jmp_buf as 48 ints: 192 bytes. Keep the
+    // buffer exact and strengthen its natural alignment for word scanning.
+    assert!(size_of::<RegisterSave>() == 192);
+    assert!(align_of::<RegisterSave>() == 16);
+};
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+unsafe extern "C" {
+    fn _setjmp(buffer: *mut usize) -> core::ffi::c_int;
+}
+
+/// Flush callee-saved registers and conservatively mark the downward-growing
+/// native stack up to the host-provided outer anchor. Returns false rather than
+/// scanning when the anchor is absent, reversed, or implausibly distant.
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub(crate) fn mark_native_roots(heap: &mut Heap, marker: &mut Marker, stack_bottom: usize) -> bool {
+    if stack_bottom == 0 {
+        return false;
+    }
+    let mut registers = RegisterSave([0; 24]);
+    // SAFETY: RegisterSave provides more storage and at least the alignment
+    // required by Darwin arm64's _setjmp implementation.
+    unsafe { _setjmp(registers.0.as_mut_ptr()) };
+    let start = core::ptr::addr_of!(registers).addr();
+    let Some(distance) = stack_bottom.checked_sub(start) else {
+        return false;
+    };
+    if distance > MAX_STACK_SCAN_BYTES {
+        return false;
+    }
+    let mut address = start.next_multiple_of(size_of::<usize>());
+    while address
+        .checked_add(size_of::<usize>())
+        .is_some_and(|end| end <= stack_bottom)
+    {
+        // SAFETY: a validated downward-growing stack interval from this live
+        // frame to the caller-supplied outer anchor remains mapped for the
+        // synchronous collection call. Reads are aligned machine words.
+        let candidate = unsafe { (address as *const usize).read() };
+        marker.mark_address(heap, candidate);
+        address += size_of::<usize>();
+    }
+    true
+}
+
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+pub(crate) fn mark_native_roots(_: &mut Heap, _: &mut Marker, _: usize) -> bool {
+    false
+}
+
 /// One non-reentrant mark phase. Candidate membership is exact: only the
 /// registered payload start of a collectable block can enter the worklist.
 pub(crate) struct Marker {
@@ -174,7 +230,6 @@ impl MetadataShell {
         0
     }
 
-    #[cfg(test)]
     pub(crate) fn stack_bottom(&self) -> usize {
         self.stack_bottom
     }

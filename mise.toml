@@ -75,6 +75,10 @@ run = "bash scripts/rust-id-spike-smoke.sh"
 description = "Retain collector metadata while Rust collection remains disabled"
 run = "bash scripts/rust-gc-metadata-smoke.sh"
 
+[tasks.rust-stack-root-smoke]
+description = "Recover an Oop held across collection by optimized C"
+run = "bash scripts/rust-stack-root-smoke.sh"
+
 [tasks.rust-env-loader-smoke]
 description = "Reflect canonical exports and reload a fixture through Rust"
 run = "bash scripts/rust-env-loader-smoke.sh"
