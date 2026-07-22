@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "purpose": "R2.2a optimized Rust exact-membership scaling gate",
+  "source_commit": "adf9649",
+  "floor_identity": "rust-id-r2.2a",
+  "mode": "release",
+  "iterations": 524288,
+  "repetitions_per_run": 5,
+  "independent_runs": 3,
+  "thresholds": {
+    "maximum_scaling_exponent": 0.35,
+    "absolute_comparison": "R0.5 Zig per-population maximum plus 10 percent",
+    "absolute_cases": {
+      "objectMembership": "objectPayloadSize",
+      "vtableOf": "vtableOf",
+      "vtableOwner": "vtableOwner"
+    }
+  },
+  "cases": [
+    {
+      "name": "objectMembership",
+      "samples": [
+        { "live_objects": 2050, "vtables": 1026, "median_ns_per_call": 0.977, "min_ns_per_call": 0.941, "max_ns_per_call": 1.388 },
+        { "live_objects": 32766, "vtables": 16384, "median_ns_per_call": 1.746, "min_ns_per_call": 0.965, "max_ns_per_call": 2.478 },
+        { "live_objects": 262142, "vtables": 131072, "median_ns_per_call": 1.542, "min_ns_per_call": 1.488, "max_ns_per_call": 1.549 }
+      ],
+      "median_scaling_exponent": 0.0941,
+      "min_scaling_exponent": 0.0226,
+      "max_scaling_exponent": 0.0944
+    },
+    {
+      "name": "vtableOf",
+      "samples": [
+        { "live_objects": 2050, "vtables": 1026, "median_ns_per_call": 1.231, "min_ns_per_call": 1.170, "max_ns_per_call": 1.243 },
+        { "live_objects": 32766, "vtables": 16384, "median_ns_per_call": 1.402, "min_ns_per_call": 1.362, "max_ns_per_call": 1.709 },
+        { "live_objects": 262142, "vtables": 131072, "median_ns_per_call": 1.860, "min_ns_per_call": 1.823, "max_ns_per_call": 2.033 }
+      ],
+      "median_scaling_exponent": 0.0830,
+      "min_scaling_exponent": 0.0809,
+      "max_scaling_exponent": 0.1140
+    },
+    {
+      "name": "vtableOf.method",
+      "samples": [
+        { "live_objects": 2050, "vtables": 1026, "median_ns_per_call": 0.511, "min_ns_per_call": 0.462, "max_ns_per_call": 0.511 },
+        { "live_objects": 32766, "vtables": 16384, "median_ns_per_call": 0.511, "min_ns_per_call": 0.511, "max_ns_per_call": 0.527 },
+        { "live_objects": 262142, "vtables": 131072, "median_ns_per_call": 1.661, "min_ns_per_call": 0.491, "max_ns_per_call": 1.817 }
+      ],
+      "median_scaling_exponent": 0.2431,
+      "min_scaling_exponent": 0.0127,
+      "max_scaling_exponent": 0.2615
+    },
+    {
+      "name": "vtableOf.foreign",
+      "samples": [
+        { "live_objects": 2050, "vtables": 1026, "median_ns_per_call": 1.081, "min_ns_per_call": 1.048, "max_ns_per_call": 1.179 },
+        { "live_objects": 32766, "vtables": 16384, "median_ns_per_call": 1.150, "min_ns_per_call": 1.015, "max_ns_per_call": 1.202 },
+        { "live_objects": 262142, "vtables": 131072, "median_ns_per_call": 1.040, "min_ns_per_call": 0.816, "max_ns_per_call": 1.178 }
+      ],
+      "median_scaling_exponent": -0.0016,
+      "min_scaling_exponent": -0.0759,
+      "max_scaling_exponent": 0.0176
+    },
+    {
+      "name": "vtableOwner",
+      "samples": [
+        { "live_objects": 2050, "vtables": 1026, "median_ns_per_call": 1.378, "min_ns_per_call": 1.330, "max_ns_per_call": 2.721 },
+        { "live_objects": 32766, "vtables": 16384, "median_ns_per_call": 2.319, "min_ns_per_call": 2.314, "max_ns_per_call": 4.464 },
+        { "live_objects": 262142, "vtables": 131072, "median_ns_per_call": 2.753, "min_ns_per_call": 2.677, "max_ns_per_call": 2.963 }
+      ],
+      "median_scaling_exponent": 0.1369,
+      "min_scaling_exponent": 0.0024,
+      "max_scaling_exponent": 0.1651
+    },
+    {
+      "name": "vtableOwner.method",
+      "samples": [
+        { "live_objects": 2050, "vtables": 1026, "median_ns_per_call": 2.179, "min_ns_per_call": 2.032, "max_ns_per_call": 3.148 },
+        { "live_objects": 32766, "vtables": 16384, "median_ns_per_call": 1.902, "min_ns_per_call": 1.837, "max_ns_per_call": 2.031 },
+        { "live_objects": 262142, "vtables": 131072, "median_ns_per_call": 1.953, "min_ns_per_call": 1.887, "max_ns_per_call": 2.030 }
+      ],
+      "median_scaling_exponent": -0.0297,
+      "min_scaling_exponent": -0.0904,
+      "max_scaling_exponent": -0.0081
+    },
+    {
+      "name": "vtableOwner.foreign",
+      "samples": [
+        { "live_objects": 2050, "vtables": 1026, "median_ns_per_call": 1.256, "min_ns_per_call": 1.203, "max_ns_per_call": 1.276 },
+        { "live_objects": 32766, "vtables": 16384, "median_ns_per_call": 1.153, "min_ns_per_call": 1.084, "max_ns_per_call": 3.393 },
+        { "live_objects": 262142, "vtables": 131072, "median_ns_per_call": 1.261, "min_ns_per_call": 1.194, "max_ns_per_call": 3.170 }
+      ],
+      "median_scaling_exponent": 0.0010,
+      "min_scaling_exponent": -0.0136,
+      "max_scaling_exponent": 0.1997
+    }
+  ]
+}
