@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "purpose": "R0.5 Zig floor binary, compatibility, smoke, and GC comparator",
+  "source_commit": "082e0ba",
+  "recorded_at": "2026-07-22",
+  "target": "aarch64-macos",
+  "machine": "Mac15,12",
+  "zig": "0.15.1",
+  "mode": "ReleaseSafe",
+  "floor_identity": "zig-id-v1",
+  "dylib": {
+    "path": "zig-out/lib/libbirnam_id.dylib",
+    "size_bytes": 307760,
+    "sha256": "698f1b2e17cd2e833034231b2d4722133c0c86820b1f94a6848564a3c5ba5711",
+    "install_name": "@rpath/libbirnam_id.dylib",
+    "dependencies": [
+      "/usr/lib/libSystem.B.dylib"
+    ]
+  },
+  "compatibility": {
+    "frozen_native_client": "passed",
+    "frozen_native_module": "passed",
+    "frozen_image_mapped": "passed",
+    "frozen_image_rebuilt_from_source": "passed"
+  },
+  "smokes": {
+    "source_fallback": {
+      "status": "passed",
+      "aot_and_embedded_generation_digest": "25b6deb2abfbabfb3c7ff4044a851346a7d3eecb948b10bacfc075de271c0477"
+    },
+    "alien_release_safe": {
+      "status": "passed",
+      "tests": 42,
+      "covers": [
+        "scalar and aggregate calls",
+        "callbacks",
+        "callback GC retention and release",
+        "full-width words",
+        "out parameters"
+      ]
+    },
+    "isolate": {
+      "status": "passed",
+      "success_output": [
+        "42",
+        "two"
+      ],
+      "failure_output": [
+        "#application",
+        "#timeout",
+        "#exit"
+      ]
+    },
+    "relocated_install": {
+      "status": "passed",
+      "summary": "relocated compiled closure, tools, projects, images, isolates, and diagnostics passed"
+    }
+  },
+  "gc": {
+    "manual": {
+      "before": 42,
+      "peak": 2042,
+      "reclaimed": 2000,
+      "after": 42
+    },
+    "finalizers": {
+      "before": 42,
+      "peak": 1042,
+      "reclaimed": 1000,
+      "after": 42,
+      "calls": 1000
+    },
+    "auto_gc": {
+      "before": 42,
+      "allocations": 6000,
+      "payload_bytes": 4096,
+      "after": 1953,
+      "live_delta": 1911
+    },
+    "design46_known_heap": {
+      "reclaimed_objects_lower_bound": 100000,
+      "retained_live_vector_objects": 20000,
+      "reference_ns": 16460000
+    }
+  }
+}
