@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> and R2.1 complete,
+> and R2.1 through R2.2 complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -859,6 +859,35 @@ dropped while objects are observable. Rust debug/release tests,
 **Gate:** pure Rust vtable tests cover every branch of the current primitive
 dictionary behavior, and membership-index consistency is checked across
 allocation and reclamation.
+
+#### R2.2 execution record — 2026-07-22
+
+Rust vtables now retain the Zig floor's 80-byte C-layout payload while runtime
+records own their ordered selector and native-method arrays. A logical capacity
+grows 0 -> 4 -> 8 by doubling, and raw `size`, `tally`, key/value pointers,
+parent, and owner views stay synchronized. Direct add, exact overwrite, ordered
+removal, direct lookup, parent-chain lookup, parent repointing, ownership, direct
+selector enumeration, and append-only vtable enumeration are implemented.
+Selector equality is pointer identity; removal reveals inherited behavior and
+does not leave a tombstone.
+
+Ordered vectors remain the only enumeration authority. Separate heap and
+vtable `AddressMap` indexes use the same exact aligned-address multiplicative
+hasher as the repaired Zig baseline and are consulted only for provenance and
+reflection. Checked `vtableOf` and `vtableOwner` reject null, Method/code,
+aligned foreign, mapped/unmapped, and misaligned carrier values before any
+dereference. The crate-private unsafe dispatch path reads `object[-1]` without
+a membership lookup only under an explicit exact-live-object precondition.
+Allocation/reclamation tests prove the heap index loses membership before
+storage is freed.
+
+Native Method pointers are converted to inert dictionary words and back only
+inside the audited `MethodAddress` wrapper; no Rust reference is formed to
+foreign code or data. Debug and optimized Rust suites pass 16 tests covering
+raw layout, empty dictionaries, growth boundaries, ordering, overwrites,
+removals, inheritance, parent changes, identical-selector semantics, Method
+addresses, owners, arbitrary carrier values, and reclamation consistency. A
+strict all-target Clippy pass is also clean.
 
 ### R2.2a — Prove membership scaling early
 
