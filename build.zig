@@ -79,6 +79,33 @@ pub fn build(b: *std.Build) void {
     test_id_abi_step.dependOn(&run_idapi_abi_tests.step);
     test_step.dependOn(&run_idapi_abi_tests.step);
 
+    // Build the diagnostic-only Rust cdylib outside the Zig install prefix,
+    // then compare its compiler-derived layout descriptor with the same frozen
+    // manifest. This loads no floor and never calls id_init.
+    const rust_id_build = b.addSystemCommand(&.{
+        "cargo",
+        "build",
+        "--workspace",
+        "--locked",
+        "--offline",
+    });
+    rust_id_build.setEnvironmentVariable("CARGO_TARGET_DIR", ".cargo-target");
+    const rust_id_abi_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_idapi_abi_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    rust_id_abi_test_mod.addImport("idapi_manifest", idapi_manifest_mod);
+    const rust_id_abi_tests = b.addTest(.{ .root_module = rust_id_abi_test_mod });
+    const run_rust_id_abi_tests = b.addRunArtifact(rust_id_abi_tests);
+    run_rust_id_abi_tests.setEnvironmentVariable(
+        "BIRNAM_RUST_ID_DYLIB",
+        b.pathFromRoot(".cargo-target/debug/libbirnam_id.dylib"),
+    );
+    run_rust_id_abi_tests.step.dependOn(&rust_id_build.step);
+    test_id_abi_step.dependOn(&run_rust_id_abi_tests.step);
+    test_step.dependOn(&run_rust_id_abi_tests.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a
