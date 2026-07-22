@@ -40,6 +40,9 @@ jobs:
           CARGO_TARGET_DIR=.cargo-target cargo check --workspace --locked --offline
           CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline
 
+      - name: Probe diagnostic Rust dylib
+        run: bash scripts/rust-floor-shell-smoke.sh
+
       - name: Cold source bootstrap
         run: bash scripts/source-bootstrap-smoke.sh
 

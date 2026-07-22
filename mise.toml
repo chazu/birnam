@@ -5,6 +5,7 @@
 #   mise run verify         # full native + self-hosted + REPL test gate
 #   mise run rust-check     # offline Cargo check for the isolated Rust workspace
 #   mise run rust-test      # offline Cargo tests for the isolated Rust workspace
+#   mise run rust-shell-smoke # build and probe the diagnostic-only Rust dylib
 #   mise run bootstrap-smoke # build a fixture-free source archive with pinned tools
 #   mise run install        # install to a prefix
 #   mise run dist           # build a release tarball for this platform
@@ -33,6 +34,10 @@ run = "CARGO_TARGET_DIR=.cargo-target cargo check --workspace --locked --offline
 [tasks.rust-test]
 description = "Test the Rust floor workspace without network access"
 run = "CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline"
+
+[tasks.rust-shell-smoke]
+description = "Build and directly probe the diagnostic-only Rust floor dylib"
+run = "bash scripts/rust-floor-shell-smoke.sh"
 
 [tasks.bootstrap-smoke]
 description = "Cold-build a fixture-free source archive with pinned Zig and Rust"
