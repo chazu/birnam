@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> and R2.1 through R2.2 complete,
+> and R2.1 through R2.2a complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -905,6 +905,27 @@ strict all-target Clippy pass is also clean.
 **Gate:** membership-backed reflection remains flat across the selected heap
 sizes and meets Design 46's existing regression threshold, or an explicit
 investigation and accepted performance decision lands before R2 continues.
+
+#### R2.2a execution record — 2026-07-22
+
+`bench-rust-id-membership` runs inside the optimized Rust dylib so one outer
+loader call is excluded from the timed loops. It measures exact object
+membership, checked `vtableOf`, and checked `vtableOwner` for registered
+objects/vtables, Method/code addresses, and distinct aligned foreign addresses
+at 1,026, 16,384, and 131,072 vtables. Each sample uses 524,288 calls, five
+repetitions, loop-overhead subtraction, and the median. The gate rejects a
+scaling exponent above 0.35 for any row. Registered membership, `vtableOf`, and
+`vtableOwner` also compare against the corresponding R0.5 Zig per-population
+maximum plus Design 46's 10% micro threshold.
+
+Three independent runs are recorded in
+`bench/baselines/rust-id-r2.2a-membership.json`. Median registered-operation
+ranges were 0.977-1.746 ns for membership, 1.231-1.860 ns for `vtableOf`, and
+1.378-2.753 ns for `vtableOwner`. Every absolute comparison stayed below the
+Zig threshold. The largest observed maximum scaling exponent across all seven
+registered/rejection rows was 0.2615 (`vtableOf.method`), below 0.35; the three
+registered-operation median exponents were 0.0941, 0.0830, and 0.1369.
+Scalar predicate rows remain correctly deferred to R3.2.
 
 ### R2.3 — Implement symbols and interning
 
