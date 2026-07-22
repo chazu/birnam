@@ -5,6 +5,7 @@ use core::cell::{Cell, UnsafeCell};
 
 use crate::abi::{Method, Oop};
 use crate::boundary;
+use crate::gc::MetadataShell;
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
 use crate::symbol::{EmbeddedNul, Symbols};
@@ -51,6 +52,7 @@ struct RuntimeState {
     heap: Heap,
     globals: DispatchGlobals,
     canonical: Option<CanonicalObjects>,
+    metadata: MetadataShell,
 }
 
 /// One runtime owned by the thread that constructed it.
@@ -85,6 +87,7 @@ impl Runtime {
                 heap,
                 globals,
                 canonical: None,
+                metadata: MetadataShell::new(),
             }),
         }
     }
@@ -276,38 +279,125 @@ impl Runtime {
     }
 
     pub(crate) fn vtable_count(&self) -> usize {
-        // SAFETY: test calls remain owner-thread and copy only the count.
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied count.
         unsafe { (*self.state.get()).vtables.count() }
     }
 
     pub(crate) fn vtable_at(&self, index: usize) -> Oop {
-        // SAFETY: test calls remain owner-thread and copy only an identity.
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied identity.
         unsafe { (*self.state.get()).vtables.at(index) }
     }
 
     pub(crate) fn vtable_parent(&self, vtable: Oop) -> Oop {
-        // SAFETY: test calls remain owner-thread and copy only an identity.
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied identity.
         unsafe { (*self.state.get()).vtables.parent_of(vtable) }
     }
 
     pub(crate) fn vtable_owner(&self, vtable: Oop) -> Oop {
-        // SAFETY: test calls remain owner-thread and copy only an identity.
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied identity.
         unsafe { (*self.state.get()).vtables.owner_of(vtable) }
     }
 
     pub(crate) fn vtable_selector_at(&self, vtable: Oop, index: usize) -> Oop {
-        // SAFETY: test calls remain owner-thread and copy only an identity.
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied identity.
         unsafe { (*self.state.get()).vtables.selector_at(vtable, index) }
     }
 
     pub(crate) fn checked_vtable_of(&self, object: Oop) -> Oop {
-        // SAFETY: test calls remain owner-thread; checked lookup copies header.
+        self.assert_owner();
+        // SAFETY: owner-thread serialization; checked lookup copies the header.
         unsafe { Vtables::checked_vtable_of(&(*self.state.get()).heap, object) }
     }
 
     pub(crate) fn payload_size(&self, object: Oop) -> Option<usize> {
-        // SAFETY: test calls remain owner-thread and copy only the size.
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied size.
         unsafe { (*self.state.get()).heap.payload_size(object) }
+    }
+
+    pub(crate) fn gc_set_stack_bottom(&self, address: usize) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe { (&mut *self.state.get()).metadata.set_stack_bottom(address) };
+    }
+
+    pub(crate) fn gc_set_auto_requested(&self, enabled: bool) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe {
+            (&mut *self.state.get())
+                .metadata
+                .set_auto_requested(enabled)
+        };
+    }
+
+    pub(crate) fn gc_set_precise(&self, enabled: bool) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe { (&mut *self.state.get()).metadata.set_precise(enabled) };
+    }
+
+    pub(crate) fn gc_register_root_provider(&self, provider: crate::abi::RootProvider) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe {
+            (&mut *self.state.get())
+                .metadata
+                .register_root_provider(provider)
+        };
+    }
+
+    pub(crate) fn gc_collect_disabled(&self) -> usize {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization; the shell invokes no callbacks.
+        unsafe { (*self.state.get()).metadata.collect_disabled() }
+    }
+
+    pub(crate) fn gc_live_count(&self) -> usize {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied count.
+        unsafe { (*self.state.get()).heap.allocation_count() }
+    }
+
+    pub(crate) fn set_trace_hook(&self, vtable: Oop, hook: crate::abi::TraceHook) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe {
+            (&mut *self.state.get())
+                .vtables
+                .set_trace_hook(vtable, hook)
+        };
+    }
+
+    pub(crate) fn set_finalizer(&self, object: Oop, finalizer: crate::abi::Finalizer) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let _ = unsafe {
+            (&mut *self.state.get())
+                .heap
+                .set_finalizer(object, finalizer)
+        };
+    }
+
+    pub(crate) fn set_layout(&self, vtable: Oop, kinds: *const u8, count: usize, rest: u8) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        unsafe {
+            (&mut *self.state.get())
+                .vtables
+                .set_layout(vtable, kinds, count, rest)
+        };
+    }
+
+    pub(crate) fn slot_kind(&self, vtable: Oop, word: usize) -> u8 {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied slot kind.
+        unsafe { (*self.state.get()).vtables.slot_kind(vtable, word) }
     }
 
     #[cfg(test)]

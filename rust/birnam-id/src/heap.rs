@@ -153,6 +153,17 @@ impl Heap {
             .map(|block| block.finalizer.is_some())
     }
 
+    pub(crate) fn set_finalizer(&mut self, object: Oop, finalizer: Finalizer) -> bool {
+        let Some(block) = self.blocks.get_mut(&object.addr()) else {
+            return false;
+        };
+        if block.permanence == Permanence::Permanent {
+            return false;
+        }
+        block.finalizer = Some(finalizer);
+        true
+    }
+
     pub(crate) fn set_vtable(&mut self, object: Oop, vtable: Oop) -> bool {
         let Some(block) = self.blocks.get(&object.addr()) else {
             return false;
@@ -273,6 +284,8 @@ mod tests {
         core::ptr::addr_of!(MARKER).cast_mut().cast::<c_void>()
     }
 
+    unsafe extern "C" fn finalizer(_: Oop) {}
+
     #[test]
     fn total_size_formula_handles_unaligned_and_overflowing_sizes() {
         for requested in 0..=1025 {
@@ -340,6 +353,18 @@ mod tests {
                     .all(|(index, byte)| *byte == (index as u8).wrapping_mul(17).wrapping_add(3))
             );
         }
+    }
+
+    #[test]
+    fn finalizer_metadata_replaces_on_collectables_and_ignores_other_carriers() {
+        let mut heap = Heap::new();
+        let collectable = heap.allocate(0, Permanence::Collectable);
+        let permanent = heap.allocate(0, Permanence::Permanent);
+        assert!(heap.set_finalizer(collectable, finalizer));
+        assert_eq!(heap.has_finalizer(collectable), Some(true));
+        assert!(!heap.set_finalizer(permanent, finalizer));
+        assert_eq!(heap.has_finalizer(permanent), Some(false));
+        assert!(!heap.set_finalizer(core::ptr::null_mut(), finalizer));
     }
 
     #[test]

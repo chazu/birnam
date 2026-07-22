@@ -4,7 +4,7 @@
 use core::mem::offset_of;
 use core::ptr::NonNull;
 
-use crate::abi::{Method, Oop, TraceHook};
+use crate::abi::{Method, Oop, SLOT_UNKNOWN, TraceHook};
 use crate::boundary;
 use crate::heap::{Heap, Permanence};
 use crate::raw::{AddressMap, MethodAddress};
@@ -49,6 +49,11 @@ struct VtableRecord {
     values: Vec<MethodAddress>,
     parent: Oop,
     owner: Oop,
+    trace_hook: Option<TraceHook>,
+    layout_kinds: *const u8,
+    layout_n: usize,
+    layout_rest: u8,
+    layout_set: bool,
 }
 
 impl VtableRecord {
@@ -69,6 +74,11 @@ impl VtableRecord {
             self.values.as_mut_ptr().cast::<Oop>()
         };
         raw.parent = self.parent;
+        raw.trace_hook = self.trace_hook;
+        raw.layout_kinds = self.layout_kinds;
+        raw.layout_n = self.layout_n;
+        raw.layout_rest = self.layout_rest;
+        raw.layout_set = u8::from(self.layout_set);
         raw.owner = self.owner;
     }
 
@@ -145,6 +155,11 @@ impl Vtables {
                 values: Vec::new(),
                 parent,
                 owner: core::ptr::null_mut(),
+                trace_hook: None,
+                layout_kinds: core::ptr::null(),
+                layout_n: 0,
+                layout_rest: 0,
+                layout_set: false,
             },
         );
         boundary::require_invariant(previous.is_none(), "duplicate vtable address");
@@ -207,6 +222,38 @@ impl Vtables {
         let record = self.record_mut(vtable);
         record.owner = owner;
         record.sync_raw_view();
+    }
+
+    pub(crate) fn set_trace_hook(&mut self, vtable: Oop, hook: TraceHook) {
+        let record = self.record_mut(vtable);
+        record.trace_hook = Some(hook);
+        record.sync_raw_view();
+    }
+
+    pub(crate) fn set_layout(&mut self, vtable: Oop, kinds: *const u8, count: usize, rest: u8) {
+        boundary::require_invariant(
+            count == 0 || !kinds.is_null(),
+            "setLayout kinds is null with nonzero count",
+        );
+        let record = self.record_mut(vtable);
+        record.layout_kinds = kinds;
+        record.layout_n = count;
+        record.layout_rest = rest;
+        record.layout_set = true;
+        record.sync_raw_view();
+    }
+
+    pub(crate) fn slot_kind(&self, vtable: Oop, word: usize) -> u8 {
+        let record = self.record(vtable);
+        if !record.layout_set {
+            return SLOT_UNKNOWN;
+        }
+        if word >= record.layout_n {
+            return record.layout_rest;
+        }
+        // SAFETY: set_layout requires a non-null borrowed static array whenever
+        // layout_n is nonzero; the IdApi contract keeps it live with the vtable.
+        unsafe { record.layout_kinds.add(word).read() }
     }
 
     pub(crate) fn dictionary_capacity(&self, vtable: Oop) -> usize {
@@ -310,6 +357,7 @@ mod tests {
     unsafe extern "C" fn answer_3(_: Oop, _: *const Oop, _: usize) -> Oop {
         3usize as Oop
     }
+    unsafe extern "C" fn trace_hook(_: Oop, _: crate::abi::MarkFn) {}
 
     fn call(method: MethodAddress) -> usize {
         // SAFETY: test methods accept the ABI's null/zero argument form.
@@ -414,6 +462,26 @@ mod tests {
             AddMethod::Overwrote(_)
         ));
         assert_eq!(call(vtables.lookup(child, selector).unwrap()), 3);
+    }
+
+    #[test]
+    fn trace_hook_and_borrowed_layout_metadata_replace_in_place() {
+        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
+        static FIRST: [u8; 3] = [crate::abi::SLOT_OOP, crate::abi::SLOT_RAW, 9];
+        static SECOND: [u8; 1] = [crate::abi::SLOT_CODE];
+
+        assert_eq!(vtables.slot_kind(parent, 0), SLOT_UNKNOWN);
+        vtables.set_trace_hook(parent, trace_hook);
+        vtables.set_layout(parent, FIRST.as_ptr(), FIRST.len(), crate::abi::SLOT_RAW);
+        assert_eq!(vtables.slot_kind(parent, 0), crate::abi::SLOT_OOP);
+        assert_eq!(vtables.slot_kind(parent, 1), crate::abi::SLOT_RAW);
+        assert_eq!(vtables.slot_kind(parent, 2), 9);
+        assert_eq!(vtables.slot_kind(parent, 3), crate::abi::SLOT_RAW);
+
+        vtables.set_layout(parent, SECOND.as_ptr(), SECOND.len(), crate::abi::SLOT_OOP);
+        assert_eq!(vtables.slot_kind(parent, 0), crate::abi::SLOT_CODE);
+        assert_eq!(vtables.slot_kind(parent, 1), crate::abi::SLOT_OOP);
+        assert_eq!(vtables.slot_kind(child, 0), SLOT_UNKNOWN);
     }
 
     #[test]
