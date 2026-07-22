@@ -39,10 +39,10 @@ if [[ $status -ne 134 ]]; then
   cat "$output" >&2
   exit 1
 fi
-if ! grep -q "Rust R2.6 IdApi field is unsupported: mkString" "$output"; then
+if ! grep -q "Rust R2.6 IdApi field is unsupported: ensurePrivateVtable" "$output"; then
   echo "rust-id-spike: unsupported field omitted its exact diagnostic" >&2
   cat "$output" >&2
   exit 1
 fi
 
-echo "rust-id-spike: unsupported mkString terminated with SIGABRT"
+echo "rust-id-spike: unsupported ensurePrivateVtable terminated with SIGABRT"

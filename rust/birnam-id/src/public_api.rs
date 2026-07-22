@@ -123,6 +123,42 @@ unsafe extern "C" fn api_is_word(object: Oop) -> c_int {
     i32::from(runtime().is_word(object))
 }
 
+unsafe extern "C" fn string_finalizer(object: Oop) {
+    runtime().release_string(object);
+}
+
+unsafe extern "C" fn api_make_string(bytes: *const u8, length: usize) -> Oop {
+    boundary::require_invariant(
+        length == 0 || !bytes.is_null(),
+        "IdApi.mkString bytes is null with nonzero length",
+    );
+    let bytes = if length == 0 {
+        &[][..]
+    } else {
+        // SAFETY: the IdApi caller supplies length readable bytes, which are
+        // copied synchronously and never retained through this borrowed slice.
+        unsafe { std::slice::from_raw_parts(bytes, length) }
+    };
+    let canonical = runtime().canonical();
+    let object = runtime().allocate_string(canonical.string_vt, bytes);
+    runtime().set_finalizer(object, string_finalizer);
+    object
+}
+
+unsafe extern "C" fn api_string_bytes(object: Oop, out_length: *mut usize) -> *const u8 {
+    boundary::require_invariant(
+        !out_length.is_null(),
+        "IdApi.stringBytes length output is null",
+    );
+    let bytes = runtime()
+        .string_bytes(object)
+        .unwrap_or_else(|| boundary::fatal_invariant("IdApi.stringBytes object is not a String"));
+    // SAFETY: caller supplies one writable usize and the stable boxed byte owner
+    // remains in the runtime until the object's future finalization.
+    unsafe { out_length.write(bytes.len()) };
+    bytes.as_ptr()
+}
+
 unsafe extern "C" fn api_symbol_name(symbol: Oop) -> *const c_char {
     runtime().symbol_name(symbol)
 }
@@ -219,8 +255,6 @@ macro_rules! fatal_stub {
     };
 }
 
-fatal_stub!(unsupported_make_string(bytes: *const u8, length: usize) -> Oop, "mkString");
-fatal_stub!(unsupported_string_bytes(object: Oop, length: *mut usize) -> *const u8, "stringBytes");
 fatal_stub!(unsupported_ensure_private_vtable(object: Oop) -> Oop, "ensurePrivateVtable");
 fatal_stub!(unsupported_set_method_overwrite_hook(hook: Option<MethodOverwriteHook>) -> (), "setMethodOverwriteHook");
 
@@ -249,8 +283,8 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         smallIntValue: api_smallint_value,
         isSmallInt: api_is_smallint,
         string_vt: canonical.string_vt,
-        mkString: unsupported_make_string,
-        stringBytes: unsupported_string_bytes,
+        mkString: api_make_string,
+        stringBytes: api_string_bytes,
         symbolName: api_symbol_name,
         vtableOf: api_vtable_of,
         gcSetStackBottom: api_gc_set_stack_bottom,
@@ -285,9 +319,7 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
     }
 }
 
-/// Perform the one supported process-lifetime initialization transition.
-pub(crate) fn initialize_once() -> *mut IdApi {
-    let bootstrap = Box::new(build_bootstrap());
+fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
     let canonical = bootstrap.runtime.canonical();
     for vtable in [
         canonical.string_vt,
@@ -302,6 +334,15 @@ pub(crate) fn initialize_once() -> *mut IdApi {
             .set_layout(vtable, core::ptr::null(), 0, crate::abi::SLOT_RAW);
     }
     bootstrap.runtime.publish_canonical_exports();
+    bootstrap
+        .runtime
+        .set_finalizer(canonical.string_prototype, string_finalizer);
+}
+
+/// Perform the one supported process-lifetime initialization transition.
+pub(crate) fn initialize_once() -> *mut IdApi {
+    let bootstrap = Box::new(build_bootstrap());
+    install_bootstrap_metadata(&bootstrap);
     let api = Box::new(table_for(&bootstrap));
     let runtime_pointer = core::ptr::from_ref(&bootstrap.runtime).cast_mut();
     if PUBLIC_RUNTIME
@@ -326,6 +367,7 @@ mod tests {
     #[test]
     fn complete_table_has_bootstrap_identities_and_no_null_function_slots() {
         let bootstrap = build_bootstrap();
+        install_bootstrap_metadata(&bootstrap);
         let table = table_for(&bootstrap);
         let globals = bootstrap.runtime.globals();
         let canonical = bootstrap.runtime.canonical();
@@ -339,6 +381,10 @@ mod tests {
         assert_eq!(table.string_vt, canonical.string_vt);
         assert_eq!(table.float_vt, canonical.float_vt);
         assert_eq!(table.word_vt, canonical.word_vt);
+        assert_eq!(
+            bootstrap.runtime.has_finalizer(canonical.string_prototype),
+            Some(true)
+        );
         assert_eq!(size_of::<IdApi>(), 54 * size_of::<usize>());
     }
 }

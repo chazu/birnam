@@ -129,6 +129,10 @@ impl Values {
     pub(crate) fn string_bytes(&self, object: Oop) -> Option<&[u8]> {
         self.string_bytes.get(&object.addr()).map(Box::as_ref)
     }
+
+    pub(crate) fn release_string(&mut self, object: Oop) -> bool {
+        self.string_bytes.remove(&object.addr()).is_some()
+    }
 }
 
 fn allocate_payload(
@@ -191,6 +195,9 @@ mod tests {
         let raw = unsafe { raw.as_ref() };
         assert_eq!(raw.length, 3);
         assert_eq!(raw.pointer, values.string_bytes(binary).unwrap().as_ptr());
+        assert!(values.release_string(binary));
+        assert_eq!(values.string_bytes(binary), None);
+        assert!(!values.release_string(binary));
     }
 
     #[test]

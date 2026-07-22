@@ -506,11 +506,25 @@ impl Runtime {
         self.checked_vtable_of(object) == self.canonical().word_vt
     }
 
-    #[cfg(test)]
     pub(crate) fn string_bytes(&self, object: Oop) -> Option<&[u8]> {
-        // SAFETY: test supplies the canonical String prototype and performs no
-        // mutation or foreign call while inspecting the owned bytes.
+        self.assert_owner();
+        // SAFETY: caller supplies a String object and performs no mutation or
+        // foreign call while inspecting the owned bytes.
         unsafe { (*self.state.get()).values.string_bytes(object) }
+    }
+
+    pub(crate) fn release_string(&self, object: Oop) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let released = unsafe { (&mut *self.state.get()).values.release_string(object) };
+        boundary::require_invariant(released, "String finalizer lost byte ownership");
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_finalizer(&self, object: Oop) -> Option<bool> {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and a copied metadata bit.
+        unsafe { (*self.state.get()).heap.has_finalizer(object) }
     }
 }
 
