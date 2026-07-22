@@ -176,6 +176,34 @@ impl Heap {
         // makes an unset header null.
         Some(unsafe { slot.read() })
     }
+
+    /// Read the header on the dispatch hot path after the caller has already
+    /// established that `object` is a live floor object.
+    ///
+    /// # Safety
+    ///
+    /// `object` must be the exact non-null payload address of a live block.
+    pub(crate) unsafe fn vtable_of_valid_object(object: Oop) -> Oop {
+        // SAFETY: the caller provides exact live-object provenance.
+        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
+        // SAFETY: the same provenance establishes the preceding header word.
+        let slot = unsafe { vtable_slot_from_payload(payload) };
+        // SAFETY: the live block's header is initialized (possibly to null).
+        unsafe { slot.read() }
+    }
+
+    #[cfg(test)]
+    fn reclaim_for_test(&mut self, object: Oop) -> bool {
+        let Some(block) = self.blocks.remove(&object.addr()) else {
+            return false;
+        };
+        let layout = Layout::from_size_align(block.total_size, BLOCK_ALIGNMENT)
+            .expect("stored block layout must remain valid");
+        // SAFETY: removing exact membership transfers this still-live allocation
+        // to the test teardown path, which deallocates it exactly once.
+        unsafe { dealloc(block.base.as_ptr(), layout) };
+        true
+    }
 }
 
 impl Drop for Heap {
@@ -329,5 +357,20 @@ mod tests {
             assert!(!heap.set_vtable(invalid, fake_vtable()));
         }
         assert!(heap.contains(object));
+    }
+
+    #[test]
+    fn exact_membership_tracks_reclamation_and_fast_path_needs_no_lookup() {
+        let mut heap = Heap::new();
+        let object = heap.allocate(0, Permanence::Collectable);
+        let vtable = fake_vtable();
+        assert!(heap.set_vtable(object, vtable));
+        // SAFETY: object remains an exact live member at this call site.
+        assert_eq!(unsafe { Heap::vtable_of_valid_object(object) }, vtable);
+
+        assert!(heap.reclaim_for_test(object));
+        assert!(!heap.contains(object));
+        assert_eq!(heap.vtable_of(object), None);
+        assert!(!heap.reclaim_for_test(object));
     }
 }
