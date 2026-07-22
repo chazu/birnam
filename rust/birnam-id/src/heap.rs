@@ -4,11 +4,11 @@
 #![allow(dead_code)]
 
 use std::alloc::{Layout, alloc_zeroed, dealloc, handle_alloc_error};
-use std::collections::HashMap;
 use std::ptr::NonNull;
 
 use crate::abi::{Finalizer, Oop};
 use crate::boundary;
+use crate::raw::AddressMap;
 
 #[cfg(feature = "ffi-test-hooks")]
 pub(crate) type LayoutProbe =
@@ -60,13 +60,13 @@ unsafe fn vtable_slot_from_payload(payload: NonNull<u8>) -> *mut Oop {
 /// Registry keys are exact payload addresses. Hash iteration order is never
 /// exposed as language behavior.
 pub(crate) struct Heap {
-    blocks: HashMap<usize, Block>,
+    blocks: AddressMap<Block>,
 }
 
 impl Heap {
     pub(crate) fn new() -> Self {
         Self {
-            blocks: HashMap::new(),
+            blocks: AddressMap::default(),
         }
     }
 
@@ -193,7 +193,7 @@ impl Heap {
     }
 
     #[cfg(test)]
-    fn reclaim_for_test(&mut self, object: Oop) -> bool {
+    pub(crate) fn reclaim_for_test(&mut self, object: Oop) -> bool {
         let Some(block) = self.blocks.remove(&object.addr()) else {
             return false;
         };

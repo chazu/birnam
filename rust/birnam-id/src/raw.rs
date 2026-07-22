@@ -1,10 +1,37 @@
 //! Audited raw object, method, and pointer conversions.
-#![allow(dead_code)] // R2.2 lands this seam immediately before vtable wiring.
 
 use core::ffi::c_void;
+use core::hash::{BuildHasherDefault, Hasher};
 use core::ptr::NonNull;
+use std::collections::HashMap;
 
 use crate::abi::{Method, Oop};
+
+/// Exact address hasher shared by heap and vtable membership registries.
+#[derive(Default)]
+pub(crate) struct AddressHasher(u64);
+
+impl Hasher for AddressHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        // Fallback for completeness; usize keys use write_usize below.
+        let mut hash = 0xcbf29ce484222325u64;
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        self.0 = hash;
+    }
+
+    fn write_usize(&mut self, address: usize) {
+        self.0 = ((address >> 3) as u64).wrapping_mul(0x9e3779b97f4a7c15);
+    }
+}
+
+pub(crate) type AddressMap<Value> = HashMap<usize, Value, BuildHasherDefault<AddressHasher>>;
 
 /// A native Method address stored as inert dictionary data.
 ///
@@ -22,11 +49,13 @@ impl MethodAddress {
         Self(NonNull::new(pointer).expect("Method must be non-null"))
     }
 
+    #[allow(dead_code)] // Reflection/predicate fixtures use this before R2.4 dispatch wiring.
     pub(crate) fn as_oop(self) -> Oop {
         self.0.as_ptr()
     }
 
     /// Recover the callable Method value originally supplied to `from_method`.
+    #[allow(dead_code)] // Becomes the sole invocation conversion in R2.4.
     pub(crate) fn to_method(self) -> Method {
         // SAFETY: MethodAddress can be constructed only from a Method, and the
         // frozen target represents both pointer forms in one 64-bit word.
@@ -37,6 +66,8 @@ impl MethodAddress {
 const _: () = {
     assert!(size_of::<MethodAddress>() == size_of::<Method>());
     assert!(align_of::<MethodAddress>() == align_of::<Method>());
+    assert!(size_of::<MethodAddress>() == size_of::<Oop>());
+    assert!(align_of::<MethodAddress>() == align_of::<Oop>());
 };
 
 #[cfg(test)]
