@@ -30,5 +30,15 @@ jobs:
           tar -xf "${ZIG_ARCHIVE}"
           echo "${GITHUB_WORKSPACE}/zig-aarch64-macos-0.15.1" >> "$GITHUB_PATH"
 
+      - name: Install Rust 1.95.0
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --no-self-update
+          rustup override set 1.95.0
+
+      - name: Verify Rust workspace offline
+        run: |
+          CARGO_TARGET_DIR=.cargo-target cargo check --workspace --locked --offline
+          CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline
+
       - name: Verify
         run: zig build verify

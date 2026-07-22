@@ -1,6 +1,7 @@
 .zig-cache/
 .zig-global-cache/
 zig-out/
+.cargo-target/
 chat.md
 
 # Override global ignore so we can commit vendored libs (dyncall, etc.)
@@ -11,6 +12,7 @@ chat.md
 # mise.toml is the project's pinned toolchain + task runner — track it despite
 # the global ignore (mise is usually a personal/local convention).
 !mise.toml
+!Cargo.lock
 
 # Built first-party wrapped C libraries (produced by `birnam wrap`)
 wrapped/**/lib*.dylib
