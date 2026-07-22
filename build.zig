@@ -281,6 +281,18 @@ pub fn build(b: *std.Build) void {
     image_save_smoke.step.dependOn(stage1);
     b.step("test-image-save", "Run the script-host image-save regression smoke").dependOn(&image_save_smoke.step);
 
+    // Pre-rewrite binaries and image are compatibility evidence, not build
+    // inputs. Keep this gate opt-in so ordinary bootstrap and installation do
+    // not require the fixture directory to exist.
+    const idapi_fixture = b.addSystemCommand(&.{ "bash", "abi/fixtures/idapi-v1/verify.sh" });
+    idapi_fixture.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    idapi_fixture.setEnvironmentVariable("BIRNAM_ID_DYLIB", b.getInstallPath(.lib, "libbirnam_id.dylib"));
+    idapi_fixture.step.dependOn(stage1);
+    b.step(
+        "test-id-abi-fixture",
+        "Run frozen pre-rewrite native and image compatibility fixtures",
+    ).dependOn(&idapi_fixture.step);
+
     const install_smoke = b.addSystemCommand(&.{ "bash", "scripts/install-smoke.sh" });
     install_smoke.setEnvironmentVariable("BIRNAM_PREFIX", b.getInstallPath(.prefix, ""));
     // The install step owns docs and other non-artifact resources in addition

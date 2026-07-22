@@ -435,6 +435,37 @@ that tree without checkout-relative evidence.
 from a clean build; rebuilding current Zig modules is not accepted as a
 substitute for this gate.
 
+#### R0.3 execution record — 2026-07-22
+
+`abi/fixtures/idapi-v1/` now contains the frozen arm64 macOS evidence and its
+reproducible source. The C client dynamically loads one selected floor, calls
+`id_init` exactly once, and covers early and late table entries, null
+zero-argument buffers, scalar and string values, vtable reflection and private
+ownership, layouts, GC callbacks, environment lookup, and module state. Its
+companion dylib is loaded solely through the selected floor's `dlopen` and
+`dlsym` entries. A clean manual source rebuild produced byte-identical native
+artifacts.
+
+The image records canonical prototypes, exported scalar/text/collection values,
+a private receiver and compiled method, an Integer method, and a deferred block
+which closes over a recorded global. Both mapped boot and `--rebuild` return the
+frozen probe sequence `41, 73, 42, 42, 3, 9` through the installed runtime.
+
+The committed artifact hashes are:
+
+| Artifact | SHA-256 |
+|---|---|
+| `idapi-v1-client.arm64-macos` | `1f9161bfef1e5765dd2d949010656677ea4817be00409489ee387f9245ac8e53` |
+| `idapi-v1-module.arm64-macos.dylib` | `8193e8895b07a5ae579b8a76948a06cd50acb3a6e9dddca4a8bea96d29dcfa51` |
+| `pre-rewrite.image` | `b74815c9e8b7daee87a79a5c9134620855f1536c2b9fdaebba2a755bdda9ca51` |
+
+`zig build test-id-abi-fixture` is the explicit compatibility gate and never
+rebuilds the evidence. For the independence proof, the entire fixture directory
+was moved outside the checkout, `zig build install` completed into a new
+isolated prefix (including stage1), and that prefix booted `birnam`; the fixture
+directory was then restored. It is therefore absent from cold-bootstrap,
+ordinary-install, runtime-selection, and stage1 dependency closure.
+
 ### R0.4 — Add floor-behavior conformance tests
 
 Move or duplicate the current externally observable `id.zig` tests into a
