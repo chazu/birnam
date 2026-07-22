@@ -366,6 +366,24 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run.step);
     }
 
+    const artifact_preflight_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/artifact_preflight_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const artifact_preflight_tests = b.addTest(.{ .root_module = artifact_preflight_test_mod });
+    artifact_preflight_tests.linkLibC();
+    const run_artifact_preflight_tests = b.addRunArtifact(artifact_preflight_tests);
+    run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_artifact_preflight_tests.step.dependOn(bootstrap_install);
+    const artifact_preflight_test_step = b.step(
+        "test-artifact-preflight",
+        "Prove pointer-free artifact closure rejection before activation",
+    );
+    artifact_preflight_test_step.dependOn(&run_artifact_preflight_tests.step);
+    test_step.dependOn(&run_artifact_preflight_tests.step);
+
     // -- birnam: the siphon (default install) --------------------------------
     // A minimal host that imports only the IdApi (src/id/idapi.zig) and dlopens
     // the rung dylibs at runtime ($BIRNAM_LIB_DIR / zig-out/lib). `birnam
