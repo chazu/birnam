@@ -159,6 +159,17 @@ pub fn build(b: *std.Build) void {
     test_rust_id_spike_step.dependOn(&rust_id_spike_smoke.step);
     test_step.dependOn(&rust_id_spike_smoke.step);
 
+    const rust_gc_metadata_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-gc-metadata-smoke.sh",
+    });
+    const test_rust_gc_metadata_step = b.step(
+        "test-rust-gc-metadata",
+        "Retain collector metadata while Rust collection remains disabled",
+    );
+    test_rust_gc_metadata_step.dependOn(&rust_gc_metadata_smoke.step);
+    test_step.dependOn(&rust_gc_metadata_smoke.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a

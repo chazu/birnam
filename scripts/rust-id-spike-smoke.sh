@@ -39,10 +39,10 @@ if [[ $status -ne 134 ]]; then
   cat "$output" >&2
   exit 1
 fi
-if ! grep -q "Rust R2.6 IdApi field is unsupported: gcCollect" "$output"; then
+if ! grep -q "Rust R2.6 IdApi field is unsupported: mkSmallInt" "$output"; then
   echo "rust-id-spike: unsupported field omitted its exact diagnostic" >&2
   cat "$output" >&2
   exit 1
 fi
 
-echo "rust-id-spike: unsupported gcCollect terminated with SIGABRT"
+echo "rust-id-spike: unsupported mkSmallInt terminated with SIGABRT"

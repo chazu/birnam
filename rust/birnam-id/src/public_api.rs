@@ -57,8 +57,48 @@ unsafe extern "C" fn api_vtable_of(object: Oop) -> Oop {
     runtime().checked_vtable_of(object)
 }
 
+unsafe extern "C" fn api_gc_set_stack_bottom(address: usize) {
+    runtime().gc_set_stack_bottom(address);
+}
+
+unsafe extern "C" fn api_gc_register_root_provider(provider: RootProvider) {
+    runtime().gc_register_root_provider(provider);
+}
+
+unsafe extern "C" fn api_gc_collect() -> usize {
+    runtime().gc_collect_disabled()
+}
+
+unsafe extern "C" fn api_gc_live_count() -> usize {
+    runtime().gc_live_count()
+}
+
+unsafe extern "C" fn api_set_trace_hook(vtable: Oop, hook: TraceHook) {
+    runtime().set_trace_hook(vtable, hook);
+}
+
+unsafe extern "C" fn api_gc_set_auto(enabled: c_int) {
+    runtime().gc_set_auto_requested(enabled != 0);
+}
+
+unsafe extern "C" fn api_set_finalizer(object: Oop, finalizer: Finalizer) {
+    runtime().set_finalizer(object, finalizer);
+}
+
+unsafe extern "C" fn api_set_layout(vtable: Oop, kinds: *const u8, count: usize, rest: u8) {
+    runtime().set_layout(vtable, kinds, count, rest);
+}
+
+unsafe extern "C" fn api_gc_set_precise(enabled: c_int) {
+    runtime().gc_set_precise(enabled != 0);
+}
+
 unsafe extern "C" fn api_object_payload_size(object: Oop) -> usize {
     runtime().payload_size(object).unwrap_or(0)
+}
+
+unsafe extern "C" fn api_slot_kind(vtable: Oop, word: usize) -> u8 {
+    runtime().slot_kind(vtable, word)
 }
 
 unsafe extern "C" fn api_set_owner(vtable: Oop, owner: Oop) {
@@ -111,20 +151,10 @@ fatal_stub!(unsupported_smallint_value(object: Oop) -> i64, "smallIntValue");
 fatal_stub!(unsupported_is_smallint(object: Oop) -> c_int, "isSmallInt");
 fatal_stub!(unsupported_make_string(bytes: *const u8, length: usize) -> Oop, "mkString");
 fatal_stub!(unsupported_string_bytes(object: Oop, length: *mut usize) -> *const u8, "stringBytes");
-fatal_stub!(unsupported_gc_set_stack_bottom(address: usize) -> (), "gcSetStackBottom");
-fatal_stub!(unsupported_gc_register_root_provider(provider: RootProvider) -> (), "gcRegisterRootProvider");
-fatal_stub!(unsupported_gc_collect() -> usize, "gcCollect");
-fatal_stub!(unsupported_gc_live_count() -> usize, "gcLiveCount");
-fatal_stub!(unsupported_set_trace_hook(vtable: Oop, hook: TraceHook) -> (), "setTraceHook");
-fatal_stub!(unsupported_gc_set_auto(enabled: c_int) -> (), "gcSetAuto");
 fatal_stub!(unsupported_make_float(value: f64) -> Oop, "mkFloat");
 fatal_stub!(unsupported_float_value(object: Oop) -> f64, "floatValue");
 fatal_stub!(unsupported_is_float(object: Oop) -> c_int, "isFloat");
-fatal_stub!(unsupported_set_finalizer(object: Oop, finalizer: Finalizer) -> (), "setFinalizer");
-fatal_stub!(unsupported_set_layout(vtable: Oop, kinds: *const u8, count: usize, rest: u8) -> (), "setLayout");
-fatal_stub!(unsupported_gc_set_precise(enabled: c_int) -> (), "gcSetPrecise");
 fatal_stub!(unsupported_exported_name_of(object: Oop) -> *const c_char, "exportedNameOf");
-fatal_stub!(unsupported_slot_kind(vtable: Oop, word: usize) -> u8, "slotKind");
 fatal_stub!(unsupported_ensure_private_vtable(object: Oop) -> Oop, "ensurePrivateVtable");
 fatal_stub!(unsupported_set_method_overwrite_hook(hook: Option<MethodOverwriteHook>) -> (), "setMethodOverwriteHook");
 fatal_stub!(unsupported_make_word(value: u64) -> Oop, "mkWord");
@@ -160,22 +190,22 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         stringBytes: unsupported_string_bytes,
         symbolName: api_symbol_name,
         vtableOf: api_vtable_of,
-        gcSetStackBottom: unsupported_gc_set_stack_bottom,
-        gcRegisterRootProvider: unsupported_gc_register_root_provider,
-        gcCollect: unsupported_gc_collect,
-        gcLiveCount: unsupported_gc_live_count,
-        setTraceHook: unsupported_set_trace_hook,
-        gcSetAuto: unsupported_gc_set_auto,
+        gcSetStackBottom: api_gc_set_stack_bottom,
+        gcRegisterRootProvider: api_gc_register_root_provider,
+        gcCollect: api_gc_collect,
+        gcLiveCount: api_gc_live_count,
+        setTraceHook: api_set_trace_hook,
+        gcSetAuto: api_gc_set_auto,
         float_vt: canonical.float_vt,
         mkFloat: unsupported_make_float,
         floatValue: unsupported_float_value,
         isFloat: unsupported_is_float,
-        setFinalizer: unsupported_set_finalizer,
-        setLayout: unsupported_set_layout,
-        gcSetPrecise: unsupported_gc_set_precise,
+        setFinalizer: api_set_finalizer,
+        setLayout: api_set_layout,
+        gcSetPrecise: api_gc_set_precise,
         objectPayloadSize: api_object_payload_size,
         exportedNameOf: unsupported_exported_name_of,
-        slotKind: unsupported_slot_kind,
+        slotKind: api_slot_kind,
         ensurePrivateVtable: unsupported_ensure_private_vtable,
         setOwner: api_set_owner,
         setParent: api_set_parent,
@@ -195,6 +225,19 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
 /// Perform the one supported process-lifetime initialization transition.
 pub(crate) fn initialize_once() -> *mut IdApi {
     let bootstrap = Box::new(build_bootstrap());
+    let canonical = bootstrap.runtime.canonical();
+    for vtable in [
+        canonical.string_vt,
+        canonical.smallint_vt,
+        canonical.float_vt,
+        canonical.word_vt,
+        canonical.nil_vt,
+        canonical.bool_vt,
+    ] {
+        bootstrap
+            .runtime
+            .set_layout(vtable, core::ptr::null(), 0, crate::abi::SLOT_RAW);
+    }
     let api = Box::new(table_for(&bootstrap));
     let runtime_pointer = core::ptr::from_ref(&bootstrap.runtime).cast_mut();
     if PUBLIC_RUNTIME

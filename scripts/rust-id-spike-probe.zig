@@ -113,7 +113,7 @@ pub fn main() !void {
 
     if (std.mem.eql(u8, mode, "functional")) return runFunctional(api);
     if (std.mem.eql(u8, mode, "unsupported")) {
-        _ = api.gcCollect();
+        _ = api.mkSmallInt(1);
         return error.UnsupportedFieldReturned;
     }
     return error.UnknownMode;
