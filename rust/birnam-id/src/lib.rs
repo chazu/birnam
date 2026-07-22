@@ -3,6 +3,9 @@
 //! This crate is deliberately not a usable Birnam floor yet: it does not
 //! export `id_init`, and normal Zig builds neither select nor install it.
 
+#[cfg(not(any(test, panic = "abort")))]
+compile_error!("every runnable birnam_id cdylib profile must use panic=abort");
+
 mod abi;
 mod dispatch;
 mod env;

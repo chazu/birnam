@@ -3,14 +3,23 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 target_dir="$repo/.cargo-target"
-dylib="$target_dir/debug/libbirnam_id.dylib"
 zig_floor="$repo/zig-out/lib/libbirnam_id.dylib"
 
-CARGO_TARGET_DIR="$target_dir" \
-  cargo build --workspace --locked --offline
+probe_rust_profile() {
+  local profile=$1
+  local dylib="$target_dir/$profile/libbirnam_id.dylib"
+  local cargo_args=(build --workspace --locked --offline)
+  if [[ $profile == release ]]; then
+    cargo_args+=(--release)
+  fi
 
-test -f "$dylib"
-zig run "$repo/scripts/rust-floor-shell-probe.zig" -- "$dylib"
+  CARGO_TARGET_DIR="$target_dir" cargo "${cargo_args[@]}"
+  test -f "$dylib"
+  zig run "$repo/scripts/rust-floor-shell-probe.zig" -- "$dylib"
+}
+
+probe_rust_profile debug
+probe_rust_profile release
 
 # The diagnostic dylib remains outside Zig's install prefix. Prove that an
 # ordinary build still installs the usable Zig floor under the production name.
