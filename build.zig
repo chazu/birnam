@@ -496,6 +496,24 @@ pub fn build(b: *std.Build) void {
     store_image_backfill_step.dependOn(&run_store_image_backfill.step);
     test_step.dependOn(&run_store_image_backfill.step);
 
+    const collection_gc_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/collection_gc_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const collection_gc_tests = b.addTest(.{ .root_module = collection_gc_mod });
+    collection_gc_tests.linkLibC();
+    const run_collection_gc = b.addRunArtifact(collection_gc_tests);
+    run_collection_gc.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_collection_gc.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_collection_gc.step.dependOn(bootstrap_install);
+    const collection_gc_step = b.step(
+        "test-collection-gc",
+        "Run the R4 tracing/sweeping collection group against an active collector",
+    );
+    collection_gc_step.dependOn(&run_collection_gc.step);
+    test_step.dependOn(&run_collection_gc.step);
+
     // Selected-floor native address-registry comparator. The executable refuses
     // non-ReleaseSafe builds; later Rust parity uses the same binary with an
     // isolated dylib path and expected diagnostic identity.
