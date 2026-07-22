@@ -80,6 +80,7 @@ const USAGE =
 
 const IdApi = idapi.IdApi;
 const Oop = idapi.Oop;
+const FloorIdentity = *const fn () callconv(.c) [*:0]const u8;
 
 // The project adapter is host-side because it owns filesystem traversal and the
 // existing Toml/Codegen seams. ProjectPolicy owns the semantic resolution over
@@ -745,6 +746,46 @@ fn runImageBytes(a: std.mem.Allocator, api: *IdApi, bytes: []const u8, rebuild: 
     return runImage(a, api, tmp, rebuild);
 }
 
+fn verifySelectedFloorDigest(path: []const u8) void {
+    const expected = std.posix.getenv("BIRNAM_ID_FLOOR_SHA256") orelse return;
+    if (expected.len == 0) return;
+    const file = if (std.fs.path.isAbsolute(path))
+        std.fs.openFileAbsolute(path, .{}) catch @panic("selected floor digest: open failed")
+    else
+        std.fs.cwd().openFile(path, .{}) catch @panic("selected floor digest: open failed");
+    defer file.close();
+    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+    var buffer: [16 * 1024]u8 = undefined;
+    while (true) {
+        const count = file.read(&buffer) catch @panic("selected floor digest: read failed");
+        if (count == 0) break;
+        hasher.update(buffer[0..count]);
+    }
+    var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+    hasher.final(&digest);
+    const actual = std.fmt.bytesToHex(digest, .lower);
+    if (!std.mem.eql(u8, &actual, expected)) {
+        std.debug.panic("selected floor digest mismatch: expected {s}, got {s}", .{
+            expected,
+            &actual,
+        });
+    }
+}
+
+fn verifySelectedFloorIdentity(lib: *std.DynLib) void {
+    const expected = std.posix.getenv("BIRNAM_ID_FLOOR_IDENTITY") orelse return;
+    if (expected.len == 0) return;
+    const identity = lib.lookup(FloorIdentity, "birnam_id_floor_identity") orelse
+        @panic("selected floor is missing birnam_id_floor_identity");
+    const actual = std.mem.span(identity());
+    if (!std.mem.eql(u8, actual, expected)) {
+        std.debug.panic("selected floor identity mismatch: expected {s}, got {s}", .{
+            expected,
+            actual,
+        });
+    }
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -803,6 +844,7 @@ pub fn main() !void {
     defer runtime.deinit();
     const id_path = try a.dupe(u8, runtime.id_dylib);
     defer a.free(id_path);
+    verifySelectedFloorDigest(id_path);
 
     // `--bake <image> <out-exe>` — tooling op, no runtime needed yet.
     if (script_path) |sp| {
@@ -825,6 +867,7 @@ pub fn main() !void {
     // to get the id API table. Everything else goes through the api.
     var lib = std.DynLib.open(id_path) catch |err|
         runtimeResourceUnavailable("runtime dylib", id_path, err);
+    verifySelectedFloorIdentity(&lib);
     const id_init = lib.lookup(idapi.IdInitFn, "id_init") orelse return error.NoIdInit;
     const api = id_init();
     defer if (host_isolate_shutdown) |shutdown| shutdown();
