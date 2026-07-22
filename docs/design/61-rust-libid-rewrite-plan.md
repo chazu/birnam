@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> and R2.1 through R2.5 complete as of 2026-07-22. This plan replaces the
+> and R2.1 through R2.6 complete as of 2026-07-22. This plan replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -1070,6 +1070,43 @@ install a fixture method, send, and observe the answer; calling one unsupported
 field fails explicitly in a child process. The canonical identity snapshot from
 R2.5 is unchanged. The frozen old-client fixture remains deferred until every
 field it exercises is implemented.
+
+#### R2.6 execution record — 2026-07-22
+
+The isolated Rust dylib now exports `id_init` and identifies itself as
+`rust-id-spike-r2.6`. Initialization performs one bootstrap transition, leaks
+the owning Bootstrap and full API table for process lifetime, and publishes the
+runtime pointer with release/acquire ordering. A second initialization is a
+fatal invariant; there is deliberately no reset or repeat-call behavior. Every
+public runtime operation still enforces the bootstrap thread as its owner.
+
+The table has the exact frozen 54-field shape. Its ten object fields publish the
+R2.5 canonical identities. Fifteen callable fields use implemented mechanisms:
+`intern`, `proto`, `method`, `alloc`, `send`, `symbolName`, `vtableOf`,
+`objectPayloadSize`, `setOwner`, `setParent`, `vtableCount`, `vtableAt`,
+`vtableSelectorAt`, `vtableParent`, and `vtableOwner`. The other 29 callable
+slots are non-null, field-specific fatal stubs; none returns a plausible dummy
+value. Value constructors remain intentionally fatal until R3.2 even though
+R2.5 already fixed their internal prototype shapes.
+
+The frozen-manifest descriptor test now requires the spike's `id_init` export
+while still comparing every compiler-derived type and field entry. The ordinary
+artifact probe requires the R2.6 identity, descriptor, and entrypoint in debug
+and optimized dylibs and continues to prove that no feature-gated test hook
+leaks. An ordinary Zig build still installs the Zig floor under the production
+library name; the Rust spike remains outside the install prefix and is never
+selected implicitly.
+
+`test-rust-id-spike` compiles a Zig client solely against the frozen `IdApi`.
+Before mutation it checks the 11-entry vtable order, parents, singleton
+families, prototype owners, and canonical payload extents from the R2.5
+snapshot. It then proves stable interning, creates and enumerates a delegated
+vtable, installs a Zig Method, allocates an instance, and observes 4,242 through
+Rust send in debug and optimized builds. A separate process calls the
+unsupported `gcCollect` slot and terminates with SIGABRT after naming that exact
+field. All 32 debug/release Rust tests, strict all-target/all-feature Clippy,
+the updated shell smoke, and combined `zig build test` pass. The frozen
+old-client fixture remains deferred exactly as planned.
 
 ## 9. Phase R3 — Complete non-GC floor behavior
 
