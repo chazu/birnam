@@ -53,6 +53,7 @@ struct RuntimeState {
     heap: Heap,
     globals: DispatchGlobals,
     canonical: Option<CanonicalObjects>,
+    internal_dictionaries: Option<(Oop, Oop)>,
     metadata: MetadataShell,
     environment: Environment,
     method_overwrite_hook: Option<MethodOverwriteHook>,
@@ -90,6 +91,7 @@ impl Runtime {
                 heap,
                 globals,
                 canonical: None,
+                internal_dictionaries: None,
                 metadata: MetadataShell::new(),
                 environment: Environment::new(),
                 method_overwrite_hook: None,
@@ -313,6 +315,23 @@ impl Runtime {
         *slot = Some(canonical);
     }
 
+    pub(crate) fn install_internal_dictionaries(&self, symbols: Oop, environment: Oop) {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        boundary::require_invariant(
+            state.internal_dictionaries.is_none(),
+            "internal dictionaries installed twice",
+        );
+        state.internal_dictionaries = Some((symbols, environment));
+        for index in 0..state.symbols.count() {
+            let symbol = state.symbols.at(index);
+            state
+                .vtables
+                .add_opaque_binding(symbols, symbol, core::ptr::null_mut());
+        }
+    }
+
     pub(crate) fn canonical(&self) -> CanonicalObjects {
         self.assert_owner();
         // SAFETY: owner-thread serialization; the identity set is copied out.
@@ -324,8 +343,7 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
-        let symbol_vtable = state.globals.symbol_vt;
-        state.symbols.intern(&mut state.heap, symbol_vtable, bytes)
+        intern_in_state(state, bytes)
     }
 
     pub(crate) fn symbol_name(&self, symbol: Oop) -> *const core::ffi::c_char {
@@ -339,9 +357,7 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
-        let symbol = state
-            .symbols
-            .intern(&mut state.heap, state.globals.symbol_vt, bytes)?;
+        let symbol = intern_in_state(state, bytes)?;
         Ok(state.environment.import(symbol))
     }
 
@@ -349,10 +365,12 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
-        let symbol = state
-            .symbols
-            .intern(&mut state.heap, state.globals.symbol_vt, bytes)?;
-        Ok(state.environment.export(symbol, value))
+        let symbol = intern_in_state(state, bytes)?;
+        let exported = state.environment.export(symbol, value);
+        if let Some((_, environment)) = state.internal_dictionaries {
+            state.vtables.add_opaque_binding(environment, symbol, value);
+        }
+        Ok(exported)
     }
 
     pub(crate) fn exported_name(&self, object: Oop) -> *const core::ffi::c_char {
@@ -624,6 +642,21 @@ impl Runtime {
         // SAFETY: owner-thread serialization and a copied metadata bit.
         unsafe { (*self.state.get()).heap.has_finalizer(object) }
     }
+}
+
+fn intern_in_state(state: &mut RuntimeState, bytes: &[u8]) -> Result<Oop, EmbeddedNul> {
+    let before = state.symbols.count();
+    let symbol = state
+        .symbols
+        .intern(&mut state.heap, state.globals.symbol_vt, bytes)?;
+    if state.symbols.count() != before
+        && let Some((symbols, _)) = state.internal_dictionaries
+    {
+        state
+            .vtables
+            .add_opaque_binding(symbols, symbol, core::ptr::null_mut());
+    }
+    Ok(symbol)
 }
 
 thread_local! {

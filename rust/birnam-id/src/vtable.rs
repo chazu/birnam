@@ -46,7 +46,7 @@ struct VtableRecord {
     raw: NonNull<RawVtable>,
     logical_capacity: usize,
     keys: Vec<Oop>,
-    values: Vec<MethodAddress>,
+    values: Vec<Oop>,
     parent: Oop,
     owner: Oop,
     trace_hook: Option<TraceHook>,
@@ -71,7 +71,7 @@ impl VtableRecord {
         raw.values = if self.values.is_empty() {
             core::ptr::null_mut()
         } else {
-            self.values.as_mut_ptr().cast::<Oop>()
+            self.values.as_mut_ptr()
         };
         raw.parent = self.parent;
         raw.trace_hook = self.trace_hook;
@@ -274,7 +274,9 @@ impl Vtables {
             .keys
             .iter()
             .position(|candidate| *candidate == selector)
-            .map(|index| record.values[index])
+            // SAFETY: callers use this only for method dictionaries. Opaque
+            // internal dictionaries are enumerated but never dispatched.
+            .and_then(|index| unsafe { MethodAddress::from_oop(record.values[index]) })
     }
 
     pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<MethodAddress> {
@@ -285,7 +287,9 @@ impl Vtables {
                 .iter()
                 .position(|candidate| *candidate == selector)
             {
-                return Some(record.values[index]);
+                // SAFETY: dispatch reaches registered method dictionaries;
+                // opaque internal dictionaries are not receiver families.
+                return unsafe { MethodAddress::from_oop(record.values[index]) };
             }
             vtable = record.parent;
         }
@@ -300,17 +304,37 @@ impl Vtables {
             .iter()
             .position(|candidate| *candidate == selector)
         {
-            let previous = core::mem::replace(&mut record.values[index], method);
+            let previous = core::mem::replace(&mut record.values[index], method.as_oop());
             record.sync_raw_view();
+            let previous = unsafe { MethodAddress::from_oop(previous) }
+                .unwrap_or_else(|| boundary::fatal_invariant("method binding held null data"));
             return AddMethod::Overwrote(previous);
         }
         if record.keys.len() == record.logical_capacity {
             record.grow_dictionary();
         }
         record.keys.push(selector);
-        record.values.push(method);
+        record.values.push(method.as_oop());
         record.sync_raw_view();
         AddMethod::Added
+    }
+
+    /// Synchronize an opaque key/value pair used by the floor's internal symbol
+    /// and export dictionaries. These registered vtables are observable through
+    /// MOP enumeration but are never dispatch families.
+    pub(crate) fn add_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {
+        let record = self.record_mut(vtable);
+        if let Some(index) = record.keys.iter().position(|candidate| *candidate == key) {
+            record.values[index] = value;
+            record.sync_raw_view();
+            return;
+        }
+        if record.keys.len() == record.logical_capacity {
+            record.grow_dictionary();
+        }
+        record.keys.push(key);
+        record.values.push(value);
+        record.sync_raw_view();
     }
 
     pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
@@ -322,7 +346,9 @@ impl Vtables {
         record.keys.remove(index);
         let removed = record.values.remove(index);
         record.sync_raw_view();
-        Some(removed)
+        // SAFETY: remove_method is used only for direct method dictionaries.
+        unsafe { MethodAddress::from_oop(removed) }
+            .or_else(|| boundary::fatal_invariant("method binding held null data"))
     }
 
     /// Checked reflection path: arbitrary carrier values never reach a header

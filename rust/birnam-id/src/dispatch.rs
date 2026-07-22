@@ -258,6 +258,7 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
             does_not_understand: selectors.does_not_understand,
         },
     );
+    runtime.install_internal_dictionaries(symbol_list, environment);
 
     boundary::require_invariant(
         runtime.add_method(vtable_vt, selectors.lookup, vtable_lookup_method)
@@ -742,12 +743,26 @@ mod tests {
             b"Symbol",
         ];
         assert_eq!(runtime.symbol_count(), selector_names.len());
-        for (index, name) in selector_names.into_iter().enumerate() {
+        for (index, name) in selector_names.iter().copied().enumerate() {
             let symbol = runtime.symbol_at(index);
             assert_eq!(runtime.symbol_bytes(symbol), Some(name));
+            assert_eq!(
+                runtime.vtable_selector_at(canonical.symbol_list, index),
+                symbol
+            );
             assert_eq!(runtime.checked_vtable_of(symbol), globals.symbol_vt);
             assert_eq!(runtime.permanence_of(symbol), Some(Permanence::Permanent));
         }
+        assert!(
+            runtime
+                .vtable_selector_at(canonical.symbol_list, selector_names.len())
+                .is_null()
+        );
+        assert!(
+            runtime
+                .vtable_selector_at(canonical.environment, 0)
+                .is_null()
+        );
 
         let meta_selectors = [
             bootstrap.selectors.lookup,
@@ -1047,12 +1062,21 @@ mod tests {
 
         runtime.publish_canonical_exports();
         assert_eq!(runtime.export_count(), expected.len());
-        for (index, (name, value)) in expected.into_iter().enumerate() {
+        for (index, (name, value)) in expected.iter().copied().enumerate() {
             let symbol = runtime.export_name_at(index);
             assert_eq!(runtime.symbol_bytes(symbol), Some(name));
+            assert_eq!(
+                runtime.vtable_selector_at(canonical.environment, index),
+                symbol
+            );
             assert_eq!(runtime.import(name), Ok(value));
             assert_eq!(runtime.exported_name(value), runtime.symbol_name(symbol));
         }
+        assert!(
+            runtime
+                .vtable_selector_at(canonical.environment, expected.len())
+                .is_null()
+        );
 
         assert_eq!(
             runtime.export(b"ObjectAlias", canonical.object_prototype),
