@@ -1005,6 +1005,13 @@ fn gcSetPreciseC(on: c_int) callconv(.c) void {
 
 var g_api: idapi.IdApi = undefined;
 
+/// Test/diagnostic identity outside IdApi: selected-floor harnesses resolve this
+/// before initialization, preventing a requested Rust or Zig run from silently
+/// exercising the other implementation. It is not a language-level capability.
+pub export fn birnam_id_floor_identity() callconv(.c) [*:0]const u8 {
+    return "zig-id-v1";
+}
+
 /// `id_init()` — boot the object system, build the IdApi table, and EXPORT the
 /// id layer's own objects so the siphon (or any module) can re-import them.
 /// Matches the C `_libid_init`: the siphon dlsyms + calls this to get the API.

@@ -231,6 +231,37 @@ pub fn build(b: *std.Build) void {
     }
     b.getInstallStep().dependOn(stage1);
 
+    // External floor conformance imports only IdApi and dynamically loads the
+    // explicitly selected implementation. The default remains the installed Zig
+    // floor; later Rust parity runs override both options in an isolated prefix.
+    const conformance_floor = b.option(
+        []const u8,
+        "id-conformance-floor",
+        "Path to the one floor dylib loaded by test-id-conformance",
+    ) orelse b.getInstallPath(.lib, "libbirnam_id.dylib");
+    const conformance_identity = b.option(
+        []const u8,
+        "id-conformance-identity",
+        "Expected birnam_id_floor_identity for test-id-conformance",
+    ) orelse "zig-id-v1";
+    const conformance_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/conformance_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const conformance_tests = b.addTest(.{ .root_module = conformance_mod });
+    conformance_tests.linkLibC();
+    const run_conformance = b.addRunArtifact(conformance_tests);
+    run_conformance.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_conformance.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_conformance.step.dependOn(bootstrap_install);
+    const conformance_step = b.step(
+        "test-id-conformance",
+        "Run external IdApi behavior against one identified selected floor",
+    );
+    conformance_step.dependOn(&run_conformance.step);
+    test_step.dependOn(&run_conformance.step);
+
     // -- Self-hosted and console integration gates ---------------------------
     // Keep these ordered after stage1: a stale compiled stdlib can mask source
     // changes, while both suites must exercise the exact installed artifact a
