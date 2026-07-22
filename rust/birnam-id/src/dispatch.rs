@@ -995,6 +995,36 @@ mod tests {
     }
 
     #[test]
+    fn floor_mark_roots_cover_exports_without_tracing_permanent_vtable_owners() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let rooted = runtime.allocate_instance(globals.object_vt, size_of::<Oop>());
+        let child = runtime.allocate_instance(globals.object_vt, 0);
+        let unrooted = runtime.allocate_instance(globals.object_vt, 0);
+        // SAFETY: rooted owns one writable, pointer-aligned Oop payload slot.
+        unsafe { rooted.cast::<Oop>().write(child) };
+        runtime.export(b"GcRoot", rooted).unwrap();
+
+        let private_owner = runtime.allocate_instance(globals.object_vt, 0);
+        let private_vtable = runtime.ensure_private_vtable(private_owner);
+        assert_eq!(runtime.vtable_owner(private_vtable), private_owner);
+
+        runtime.gc_mark_floor_roots_for_test();
+
+        assert_eq!(runtime.is_marked_for_test(rooted), Some(true));
+        assert_eq!(runtime.is_marked_for_test(child), Some(true));
+        assert_eq!(runtime.is_marked_for_test(unrooted), Some(false));
+        assert_eq!(runtime.is_marked_for_test(private_owner), Some(false));
+        assert_eq!(runtime.is_marked_for_test(private_vtable), Some(false));
+        assert_eq!(
+            runtime.is_marked_for_test(runtime.intern(b"GcRoot").unwrap()),
+            Some(false),
+            "interned Symbols are permanent rather than mark-bearing"
+        );
+    }
+
+    #[test]
     fn bootstrap_primitives_support_metacircular_dispatch_removal_and_dnu() {
         let bootstrap = build_bootstrap();
         let runtime = &bootstrap.runtime;

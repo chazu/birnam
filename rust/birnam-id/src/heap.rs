@@ -147,6 +147,43 @@ impl Heap {
         self.blocks.get(&object.addr()).map(|block| block.marked)
     }
 
+    /// Mark exactly one registered collectable payload address. Interior,
+    /// header, foreign, null, and permanent addresses are rejected.
+    pub(crate) fn mark_collectable_address(&mut self, address: usize) -> bool {
+        let Some(block) = self.blocks.get_mut(&address) else {
+            return false;
+        };
+        if block.permanence == Permanence::Permanent || block.marked {
+            return false;
+        }
+        block.marked = true;
+        true
+    }
+
+    /// Copy the pointer-sized words in one exact live payload. Marking owns the
+    /// returned snapshot so it can mutate the registry while scanning it.
+    pub(crate) fn payload_words(&self, address: usize) -> Option<Vec<usize>> {
+        let block = self.blocks.get(&address)?;
+        let payload_size = block.total_size - VTABLE_HEADER_SIZE;
+        debug_assert_eq!(payload_size % size_of::<usize>(), 0);
+        // SAFETY: every payload starts pointer-aligned and its padded extent is
+        // a whole number of machine words. The allocation remains live while
+        // the copied snapshot is created.
+        Some(unsafe {
+            std::slice::from_raw_parts(
+                block.payload.as_ptr().cast::<usize>(),
+                payload_size / size_of::<usize>(),
+            )
+            .to_vec()
+        })
+    }
+
+    pub(crate) fn clear_marks(&mut self) {
+        for block in self.blocks.values_mut() {
+            block.marked = false;
+        }
+    }
+
     pub(crate) fn has_finalizer(&self, object: Oop) -> Option<bool> {
         self.blocks
             .get(&object.addr())

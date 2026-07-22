@@ -45,6 +45,12 @@ impl Environment {
             .map_or(core::ptr::null_mut(), |entry| entry.name)
     }
 
+    /// Snapshot values that the process export namespace keeps live. Export
+    /// names are interned permanent Symbols and are rooted by the interner.
+    pub(crate) fn root_values(&self) -> Vec<Oop> {
+        self.ordered.iter().map(|entry| entry.value).collect()
+    }
+
     #[cfg(test)]
     pub(crate) fn count(&self) -> usize {
         self.ordered.len()

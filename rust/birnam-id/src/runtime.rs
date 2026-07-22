@@ -6,7 +6,7 @@ use core::cell::{Cell, UnsafeCell};
 use crate::abi::{Method, MethodOverwriteHook, Oop};
 use crate::boundary;
 use crate::env::Environment;
-use crate::gc::MetadataShell;
+use crate::gc::{Marker, MetadataShell};
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
 use crate::symbol::{EmbeddedNul, Symbols};
@@ -540,8 +540,16 @@ impl Runtime {
 
     pub(crate) fn gc_collect_disabled(&self) -> usize {
         self.assert_owner();
-        // SAFETY: owner-thread serialization; the shell invokes no callbacks.
-        unsafe { (*self.state.get()).metadata.collect_disabled() }
+        // R4.1 activates heap marking but not foreign roots, stack scanning, or
+        // sweeping. Exercise the permanent floor roots, then clear the private
+        // marks so the still-disabled public operation remains observationally
+        // inert and returns the R3-compatible zero result.
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        state.heap.clear_marks();
+        mark_floor_roots(state);
+        state.heap.clear_marks();
+        state.metadata.collect_disabled()
     }
 
     pub(crate) fn gc_live_count(&self) -> usize {
@@ -642,6 +650,34 @@ impl Runtime {
         // SAFETY: owner-thread serialization and a copied metadata bit.
         unsafe { (*self.state.get()).heap.has_finalizer(object) }
     }
+
+    #[cfg(test)]
+    pub(crate) fn gc_mark_floor_roots_for_test(&self) {
+        self.assert_owner();
+        // SAFETY: test calls remain owner-thread and invoke no foreign code.
+        let state = unsafe { &mut *self.state.get() };
+        state.heap.clear_marks();
+        mark_floor_roots(state);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_marked_for_test(&self, object: Oop) -> Option<bool> {
+        self.assert_owner();
+        // SAFETY: test calls remain owner-thread and copy one metadata bit.
+        unsafe { (*self.state.get()).heap.is_marked(object) }
+    }
+}
+
+fn mark_floor_roots(state: &mut RuntimeState) {
+    let export_values = state.environment.root_values();
+    let interned_symbols = (0..state.symbols.count())
+        .map(|index| state.symbols.at(index))
+        .collect::<Vec<_>>();
+    let mut marker = Marker::new();
+    for root in export_values.into_iter().chain(interned_symbols) {
+        marker.mark_oop(&mut state.heap, root);
+    }
+    marker.drain_conservative(&mut state.heap);
 }
 
 fn intern_in_state(state: &mut RuntimeState, bytes: &[u8]) -> Result<Oop, EmbeddedNul> {
