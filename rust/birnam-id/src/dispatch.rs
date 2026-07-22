@@ -479,6 +479,10 @@ mod tests {
         static HOOK_CALLS: Cell<usize> = const { Cell::new(0) };
         static HOOK_SAW_PRE_MUTATION: Cell<bool> = const { Cell::new(false) };
         static HOOK_READ_REFLECTION: Cell<bool> = const { Cell::new(false) };
+        static GC_PROVIDER_ROOT: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
+        static GC_TRACE_CHILD: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
+        static GC_PROVIDER_CALLS: Cell<usize> = const { Cell::new(0) };
+        static GC_TRACE_CALLS: Cell<usize> = const { Cell::new(0) };
     }
 
     unsafe extern "C" fn answer_42(_: Oop, _: *const Oop, _: usize) -> Oop {
@@ -538,6 +542,20 @@ mod tests {
             // SAFETY: receiver/selector are harness objects; null/zero is valid.
             unsafe { runtime.send_abi(receiver, selector, core::ptr::null(), 0) }
         })
+    }
+
+    unsafe extern "C" fn gc_test_provider(mark: crate::abi::MarkFn) {
+        GC_PROVIDER_CALLS.set(GC_PROVIDER_CALLS.get() + 1);
+        // SAFETY: the collector supplies a synchronous dynamically scoped mark
+        // callback and this provider does not retain it.
+        unsafe { mark(GC_PROVIDER_ROOT.get()) };
+    }
+
+    unsafe extern "C" fn gc_test_trace(_: Oop, mark: crate::abi::MarkFn) {
+        GC_TRACE_CALLS.set(GC_TRACE_CALLS.get() + 1);
+        // SAFETY: the collector supplies a synchronous dynamically scoped mark
+        // callback and this hook does not retain it.
+        unsafe { mark(GC_TRACE_CHILD.get()) };
     }
 
     fn selector(runtime: &Runtime, name: &[u8]) -> Oop {
@@ -1022,6 +1040,33 @@ mod tests {
             Some(false),
             "interned Symbols are permanent rather than mark-bearing"
         );
+    }
+
+    #[test]
+    fn foreign_provider_and_reachable_instance_hook_extend_the_mark_graph() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let hooked_vtable = runtime.create_vtable(globals.object_vt);
+        runtime.set_trace_hook(hooked_vtable, gc_test_trace);
+        let provider_root = runtime.allocate_instance(hooked_vtable, 0);
+        let trace_child = runtime.allocate_instance(globals.object_vt, 0);
+        let unreachable = runtime.allocate_instance(hooked_vtable, 0);
+        GC_PROVIDER_ROOT.set(provider_root);
+        GC_TRACE_CHILD.set(trace_child);
+        GC_PROVIDER_CALLS.set(0);
+        GC_TRACE_CALLS.set(0);
+        runtime.gc_register_root_provider(gc_test_provider);
+
+        runtime.gc_mark_floor_roots_for_test();
+
+        assert_eq!(GC_PROVIDER_CALLS.get(), 1);
+        assert_eq!(GC_TRACE_CALLS.get(), 1);
+        assert_eq!(runtime.is_marked_for_test(provider_root), Some(true));
+        assert_eq!(runtime.is_marked_for_test(trace_child), Some(true));
+        assert_eq!(runtime.is_marked_for_test(unreachable), Some(false));
+        GC_PROVIDER_ROOT.set(core::ptr::null_mut());
+        GC_TRACE_CHILD.set(core::ptr::null_mut());
     }
 
     #[test]

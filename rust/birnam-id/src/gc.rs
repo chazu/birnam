@@ -1,6 +1,8 @@
 //! Collector metadata retained while R3 keeps marking and sweeping disabled.
 
-use crate::abi::RootProvider;
+use core::cell::Cell;
+
+use crate::abi::{MarkFn, Oop, RootProvider};
 use crate::boundary;
 use crate::heap::Heap;
 
@@ -32,16 +34,80 @@ impl Marker {
     /// Drain the transitive closure by conservatively interpreting each padded
     /// payload word as an exact-address candidate. Headers and permanent-object
     /// payloads are never scanned.
+    #[cfg(test)]
     pub(crate) fn drain_conservative(&mut self, heap: &mut Heap) {
         while let Some(address) = self.worklist.pop() {
-            let words = heap
-                .payload_words(address)
-                .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
-            for candidate in words {
-                self.mark_address(heap, candidate);
-            }
+            self.trace_conservative_payload(heap, address);
         }
     }
+
+    pub(crate) fn pop(&mut self) -> Option<usize> {
+        self.worklist.pop()
+    }
+
+    pub(crate) fn trace_conservative_payload(&mut self, heap: &mut Heap, address: usize) {
+        let words = heap
+            .payload_words(address)
+            .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
+        for candidate in words {
+            self.mark_address(heap, candidate);
+        }
+    }
+}
+
+struct ActiveMarkContext {
+    heap: *mut Heap,
+    marker: *mut Marker,
+}
+
+thread_local! {
+    static ACTIVE_MARK_CONTEXT: Cell<*mut ActiveMarkContext> = const { Cell::new(core::ptr::null_mut()) };
+}
+
+struct ActiveMarkGuard;
+
+impl Drop for ActiveMarkGuard {
+    fn drop(&mut self) {
+        ACTIVE_MARK_CONTEXT.set(core::ptr::null_mut());
+    }
+}
+
+unsafe extern "C" fn mark_from_foreign(object: Oop) {
+    ACTIVE_MARK_CONTEXT.with(|active| {
+        let context = active.get();
+        boundary::require_invariant(
+            !context.is_null(),
+            "GC mark callback escaped its invocation",
+        );
+        // SAFETY: invoke_with_mark_callback installs live, uniquely used raw
+        // pointers for exactly the synchronous foreign callback extent.
+        let context = unsafe { &mut *context };
+        // SAFETY: the dynamic guard guarantees both owners remain live and no
+        // Rust references to them overlap this reentrant mark operation.
+        unsafe { (&mut *context.marker).mark_oop(&mut *context.heap, object) };
+    });
+}
+
+/// Invoke one foreign provider or trace hook with a dynamically scoped mark
+/// callback. The callback must be used synchronously and must not be retained.
+///
+/// # Safety
+///
+/// `heap` and `marker` must remain live and exclusively available until
+/// `operation` returns. No Rust reference to either may overlap the call.
+pub(crate) unsafe fn invoke_with_mark_callback(
+    heap: *mut Heap,
+    marker: *mut Marker,
+    operation: impl FnOnce(MarkFn),
+) {
+    let mut context = ActiveMarkContext { heap, marker };
+    ACTIVE_MARK_CONTEXT.with(|active| {
+        boundary::require_invariant(active.get().is_null(), "GC mark callback reentered");
+        active.set(core::ptr::from_mut(&mut context));
+    });
+    let guard = ActiveMarkGuard;
+    operation(mark_from_foreign);
+    drop(guard);
 }
 
 pub(crate) const MAX_ROOT_PROVIDERS: usize = 32;
@@ -81,6 +147,10 @@ impl MetadataShell {
             "gc: too many root providers",
         );
         self.root_providers.push(provider);
+    }
+
+    pub(crate) fn root_providers(&self) -> Vec<RootProvider> {
+        self.root_providers.clone()
     }
 
     /// R3 retains all metadata but deliberately performs no mark or sweep.

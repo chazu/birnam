@@ -230,6 +230,12 @@ impl Vtables {
         record.sync_raw_view();
     }
 
+    pub(crate) fn trace_hook(&self, vtable: Oop) -> Option<TraceHook> {
+        self.by_address
+            .get(&vtable.addr())
+            .and_then(|record| record.trace_hook)
+    }
+
     pub(crate) fn set_layout(&mut self, vtable: Oop, kinds: *const u8, count: usize, rest: u8) {
         boundary::require_invariant(
             count == 0 || !kinds.is_null(),

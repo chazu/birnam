@@ -6,7 +6,7 @@ use core::cell::{Cell, UnsafeCell};
 use crate::abi::{Method, MethodOverwriteHook, Oop};
 use crate::boundary;
 use crate::env::Environment;
-use crate::gc::{Marker, MetadataShell};
+use crate::gc::{Marker, MetadataShell, invoke_with_mark_callback};
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
 use crate::symbol::{EmbeddedNul, Symbols};
@@ -547,7 +547,10 @@ impl Runtime {
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state.heap.clear_marks();
-        mark_floor_roots(state);
+        self.run_mark_phase();
+        // SAFETY: all callbacks have returned and owner-thread serialization is
+        // restored before marks are cleared.
+        let state = unsafe { &mut *self.state.get() };
         state.heap.clear_marks();
         state.metadata.collect_disabled()
     }
@@ -556,6 +559,55 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: owner-thread serialization and a copied count.
         unsafe { (*self.state.get()).heap.allocation_count() }
+    }
+
+    fn run_mark_phase(&self) {
+        let state_pointer = self.state.get();
+        let mut marker = Marker::new();
+        // Copy callback authority and raw owner pointers, then end the state
+        // borrow before the first foreign call.
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let (providers, heap_pointer) = unsafe {
+            let state = &mut *state_pointer;
+            mark_floor_roots(state, &mut marker);
+            (
+                state.metadata.root_providers(),
+                core::ptr::addr_of_mut!(state.heap),
+            )
+        };
+        let marker_pointer = core::ptr::addr_of_mut!(marker);
+
+        for provider in providers {
+            // SAFETY: no Rust references to state.heap or marker survive this
+            // call; the provider may use the mark function only synchronously.
+            unsafe {
+                invoke_with_mark_callback(heap_pointer, marker_pointer, |mark| provider(mark))
+            };
+        }
+
+        while let Some(address) = marker.pop() {
+            // Conservative scanning and hook lookup finish before foreign code.
+            // SAFETY: owner-thread serialization and no callback in this scope.
+            let hook = unsafe {
+                let state = &mut *state_pointer;
+                marker.trace_conservative_payload(&mut state.heap, address);
+                let object = address as Oop;
+                let vtable = state.heap.vtable_of(object).unwrap_or_else(|| {
+                    boundary::fatal_invariant("marked GC block lost its vtable")
+                });
+                state.vtables.trace_hook(vtable)
+            };
+            if let Some(hook) = hook {
+                let object = address as Oop;
+                // SAFETY: no Rust references to state.heap or marker survive
+                // this call; the hook may mark only synchronously.
+                unsafe {
+                    invoke_with_mark_callback(heap_pointer, marker_pointer, |mark| {
+                        hook(object, mark)
+                    })
+                };
+            }
+        }
     }
 
     pub(crate) fn set_trace_hook(&self, vtable: Oop, hook: crate::abi::TraceHook) {
@@ -655,9 +707,8 @@ impl Runtime {
     pub(crate) fn gc_mark_floor_roots_for_test(&self) {
         self.assert_owner();
         // SAFETY: test calls remain owner-thread and invoke no foreign code.
-        let state = unsafe { &mut *self.state.get() };
-        state.heap.clear_marks();
-        mark_floor_roots(state);
+        unsafe { (&mut *self.state.get()).heap.clear_marks() };
+        self.run_mark_phase();
     }
 
     #[cfg(test)]
@@ -668,16 +719,14 @@ impl Runtime {
     }
 }
 
-fn mark_floor_roots(state: &mut RuntimeState) {
+fn mark_floor_roots(state: &mut RuntimeState, marker: &mut Marker) {
     let export_values = state.environment.root_values();
     let interned_symbols = (0..state.symbols.count())
         .map(|index| state.symbols.at(index))
         .collect::<Vec<_>>();
-    let mut marker = Marker::new();
     for root in export_values.into_iter().chain(interned_symbols) {
         marker.mark_oop(&mut state.heap, root);
     }
-    marker.drain_conservative(&mut state.heap);
 }
 
 fn intern_in_state(state: &mut RuntimeState, bytes: &[u8]) -> Result<Oop, EmbeddedNul> {
