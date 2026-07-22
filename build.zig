@@ -194,6 +194,18 @@ pub fn build(b: *std.Build) void {
     test_rust_image_save_step.dependOn(&rust_image_save_smoke.step);
     test_step.dependOn(&rust_image_save_smoke.step);
 
+    const rust_id_abi_fixture_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-id-abi-fixture-smoke.sh",
+    });
+    rust_id_abi_fixture_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    const test_rust_id_abi_fixture_step = b.step(
+        "test-rust-id-abi-fixture",
+        "Run the frozen native client and pre-rewrite image against both Rust profiles",
+    );
+    test_rust_id_abi_fixture_step.dependOn(&rust_id_abi_fixture_smoke.step);
+    test_step.dependOn(&rust_id_abi_fixture_smoke.step);
+
     const rust_env_loader_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/rust-env-loader-smoke.sh",
@@ -472,6 +484,7 @@ pub fn build(b: *std.Build) void {
     // compiled self-hosted and production module closure.
     const stage1 = b.step("stage1", "AOT-compile the dependency-ordered self-hosted modules to installable dylibs");
     rust_image_save_smoke.step.dependOn(stage1);
+    rust_id_abi_fixture_smoke.step.dependOn(stage1);
     // Each self-hosted module: `birnam --compile-module <src> <lib>/libbirnam_<name>.dylib`.
     const self_hosted = [_]struct { src: []const u8, name: []const u8 }{
         .{ .src = "src/id/modules.birnam", .name = "modules" },

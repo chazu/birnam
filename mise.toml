@@ -83,6 +83,10 @@ run = "bash scripts/rust-stack-root-smoke.sh"
 description = "Save an image through the CLI with both Rust floor profiles"
 run = "bash scripts/rust-image-save-smoke.sh"
 
+[tasks.rust-id-abi-fixture-smoke]
+description = "Run frozen native and image fixtures against both Rust profiles"
+run = "bash scripts/rust-id-abi-fixture-smoke.sh"
+
 [tasks.rust-env-loader-smoke]
 description = "Reflect canonical exports and reload a fixture through Rust"
 run = "bash scripts/rust-env-loader-smoke.sh"
