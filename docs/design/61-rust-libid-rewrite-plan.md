@@ -1,6 +1,6 @@
 # 61 — Rust libid Floor Rewrite Plan
 
-> **Status:** Implementation in progress; R0.1 through R0.5 complete,
+> **Status:** Implementation in progress; R0.1 through R0.5 and R1.1 complete,
 > 2026-07-22. This plan replaces the implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
 > synchronous `IdApi`, object representation, generated-code ABI, image format,
@@ -648,6 +648,22 @@ but which is not yet selected by normal builds.
 **Gate:** the old `mise run build` and `mise run verify` are unchanged; the new
 Rust tasks work `--locked --offline` on a clean checkout, and the cold-build smoke
 proves that adding Rust did not introduce a network or prebuilt Birnam dependency.
+
+#### R1.1 execution record — 2026-07-22
+
+Rust 1.95.0 is pinned beside Zig 0.15.1 in `mise.toml` and CI. Cargo uses the
+repository-local ignored `.cargo-target` directory, which `mise run clean`
+removes explicitly. `Cargo.lock` is committed, and both `rust-check` and
+`rust-test` run `--locked --offline` against the dependency-free, inert
+`birnam-id` workspace member.
+
+`mise run bootstrap-smoke` exports a clean source archive into a temporary
+directory, removes the generated ABI-fixture evidence directory, rejects any
+pre-existing Birnam executable, image, compiled module, or dynamic library,
+then checks and tests the Rust workspace offline and builds the complete Zig
+toolchain from source. This passed with the pinned toolchains. The unchanged
+`mise run build` and full `mise run verify` gates also passed, including source
+fallback, project, REPL, LSP, image, isolate, and relocated-install coverage.
 
 ### R1.2 — Create the crate without production wiring
 
