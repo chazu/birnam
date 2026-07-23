@@ -656,10 +656,77 @@ pub fn build(b: *std.Build) void {
             run.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
             run.step.dependOn(bootstrap_install);
         }
-        if (rung_selection_check) |check| run.step.dependOn(&check.step);
+        if (rung_selection_check) |check| {
+            run.setEnvironmentVariable("BIRNAM_NATIVE_RUNG", "artifact-inspector");
+            run.setEnvironmentVariable(
+                "BIRNAM_NATIVE_RUNG_IMPLEMENTATION",
+                @tagName(artifact_inspector_impl),
+            );
+            run.setEnvironmentVariable(
+                "BIRNAM_NATIVE_RUNG_DYLIB",
+                b.getInstallPath(.lib, "libbirnam_id_artifact.dylib"),
+            );
+            run.setEnvironmentVariable(
+                "BIRNAM_NATIVE_RUNG_EXPLICIT_DYLIB",
+                b.getInstallPath(.lib, "libbirnam_id_artifact_zig.dylib"),
+            );
+            run.step.dependOn(&check.step);
+        }
         b.step(m.step, m.desc).dependOn(&run.step);
         test_step.dependOn(&run.step);
     }
+
+    const native_rung_singleton_probe_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/native_rung_singleton_probe_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const native_rung_singleton_probe = b.addExecutable(.{
+        .name = "native-rung-singleton-probe",
+        .root_module = native_rung_singleton_probe_mod,
+    });
+    native_rung_singleton_probe.linkLibC();
+    const native_rung_singleton_abort = b.addSystemCommand(&.{
+        "bash",
+        "scripts/assert-child-abort.sh",
+        "native-rung-singleton",
+        "singleton native rung implementation co-existence refused",
+    });
+    native_rung_singleton_abort.addArtifactArg(native_rung_singleton_probe);
+    native_rung_singleton_abort.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    native_rung_singleton_abort.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    native_rung_singleton_abort.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    native_rung_singleton_abort.setEnvironmentVariable("BIRNAM_NATIVE_RUNG", "artifact-inspector");
+    native_rung_singleton_abort.setEnvironmentVariable(
+        "BIRNAM_NATIVE_RUNG_IMPLEMENTATION",
+        @tagName(artifact_inspector_impl),
+    );
+    native_rung_singleton_abort.setEnvironmentVariable(
+        "BIRNAM_NATIVE_RUNG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_artifact.dylib"),
+    );
+    native_rung_singleton_abort.setEnvironmentVariable(
+        "BIRNAM_NATIVE_RUNG_EXPLICIT_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_artifact_zig.dylib"),
+    );
+    native_rung_singleton_abort.step.dependOn(bootstrap_install);
+    const test_native_rung_singleton_step = b.step(
+        "test-native-rung-singleton",
+        "Prove two implementations of a singleton native rung cannot coexist",
+    );
+    test_native_rung_singleton_step.dependOn(&native_rung_singleton_abort.step);
+    test_step.dependOn(&native_rung_singleton_abort.step);
+
+    const native_rung_harness = b.addSystemCommand(&.{
+        "bash",
+        "scripts/native-rung-harness.sh",
+    });
+    const test_native_rung_harness_step = b.step(
+        "test-native-rung-harness",
+        "Run one selected rung and the all-production install in clean processes",
+    );
+    test_native_rung_harness_step.dependOn(&native_rung_harness.step);
+    test_step.dependOn(&native_rung_harness.step);
 
     const artifact_preflight_test_mod = b.createModule(.{
         .root_source_file = b.path("src/id/artifact_preflight_test.zig"),

@@ -14,23 +14,10 @@ expect_abort() {
   local dylib=$2
   local symbol=$3
   local diagnostic=$4
-  local output="$scratch/$profile-$symbol.log"
-
-  set +e
-  "$probe" "$dylib" "$symbol" >"$output" 2>&1
-  local status=$?
-  set -e
-
-  if [[ $status -ne 134 ]]; then
-    echo "rust-ffi-abort: $profile $symbol exited $status, expected SIGABRT status 134" >&2
-    cat "$output" >&2
-    exit 1
-  fi
-  if ! grep -q "$diagnostic" "$output"; then
-    echo "rust-ffi-abort: $profile $symbol omitted its boundary diagnostic" >&2
-    cat "$output" >&2
-    exit 1
-  fi
+  "$repo/scripts/assert-child-abort.sh" \
+    "rust-ffi-abort: $profile $symbol" \
+    "$diagnostic" \
+    "$probe" "$dylib" "$symbol"
 }
 
 probe_profile() {

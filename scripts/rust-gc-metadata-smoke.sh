@@ -29,21 +29,10 @@ probe_profile() {
 expect_abort() {
   local mode=$1
   local diagnostic=$2
-  local output="$scratch/$mode.log"
-  set +e
-  "$probe" "$target_dir/debug/libbirnam_id.dylib" "$mode" >"$output" 2>&1
-  local status=$?
-  set -e
-  if [[ $status -ne 134 ]]; then
-    echo "rust-gc-metadata: $mode exited $status, expected SIGABRT status 134" >&2
-    cat "$output" >&2
-    exit 1
-  fi
-  if ! grep -q "$diagnostic" "$output"; then
-    echo "rust-gc-metadata: $mode omitted its diagnostic" >&2
-    cat "$output" >&2
-    exit 1
-  fi
+  "$repo/scripts/assert-child-abort.sh" \
+    "rust-gc-metadata: $mode" \
+    "$diagnostic" \
+    "$probe" "$target_dir/debug/libbirnam_id.dylib" "$mode"
 }
 
 probe_profile debug

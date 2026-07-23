@@ -1,7 +1,7 @@
 const std = @import("std");
 const artifact_contract = @import("artifact.zig");
-const artifact_inspector = @import("artifact_inspector.zig");
 const idapi = @import("idapi.zig");
+const rung_adapter = @import("rung_adapter_test.zig");
 
 const Oop = idapi.Oop;
 
@@ -51,8 +51,7 @@ fn descriptorBytes(
 
 fn testApi() *idapi.IdApi {
     const api = @import("floor_adapter_test.zig").api();
-    artifact_inspector.bringUp(api);
-    return api;
+    return rung_adapter.loadSelected(api, "artifact-inspector");
 }
 
 fn inspectFixture(api: *idapi.IdApi, bytes: []const u8) !Oop {

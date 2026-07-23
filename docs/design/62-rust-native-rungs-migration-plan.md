@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.3 are complete; N0.4 is next.
+> passes. N0.1 through N0.4 are complete; N0.5 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -427,6 +427,29 @@ pass with the unchanged Zig canonical implementation.
 
 **Gate:** the harness reruns the existing artifact-inspector Zig suite and an
 all-current-production installed smoke without changing results.
+
+#### N0.4 execution record — complete, 2026-07-23
+
+The artifact-inspector suite no longer imports `artifact_inspector.zig`.
+`rung_adapter_test.zig` loads the selected canonical dylib through `module_init`
+after checking its rung identity, implementation-specific filename, and
+byte-for-byte digest against the explicit oracle artifact. It retains the
+handle and reload state for process lifetime and makes an identical repeated
+selection idempotent.
+
+`scripts/native-rung-harness.sh` supplies isolated prefix, cache, temporary
+directory, and process boundaries for either one
+`artifact-inspector=zig` selection or the complete currently migrated
+production set. Every unselected rung remains at its production default. The
+selected mode reruns the four existing inspector tests through the dylib
+boundary; the all-production mode reruns relocated installed-tree smoke.
+
+A dedicated child proves that changing rung implementation or artifact path in
+one process is rejected before a second `dlopen`. The shared
+`assert-child-abort.sh` helper now checks SIGABRT plus a required diagnostic for
+that proof and for the Rust FFI and GC fatal-boundary suites. Focused harness,
+artifact, singleton, FFI-abort, GC-metadata, installed-tree, and complete
+verification gates pass.
 
 ### N0.5 — Capture compatibility and performance baselines
 
