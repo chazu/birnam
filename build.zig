@@ -751,7 +751,7 @@ pub fn build(b: *std.Build) void {
     run_membership_bench.step.dependOn(bootstrap_install);
     b.step(
         "bench-id-membership",
-        "Benchmark selected-floor exact-address predicates (ReleaseSafe only)",
+        "Benchmark selected-floor exact-address and scalar ABI paths (ReleaseSafe only)",
     ).dependOn(&run_membership_bench.step);
 
     const gc_baseline_mod = b.createModule(.{

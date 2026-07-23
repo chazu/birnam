@@ -1,4 +1,5 @@
-//! ReleaseSafe selected-floor benchmark for the exact-address registries.
+//! ReleaseSafe selected-floor benchmark for exact-address registries and hot
+//! scalar ABI paths.
 //! This is deliberately outside the floor implementation: the same executable
 //! will measure Zig and Rust through the frozen IdApi.
 
@@ -21,6 +22,10 @@ const Case = enum {
     is_small_int,
     is_float,
     is_word,
+    small_int_value,
+    float_value,
+    word_value,
+    integer_equality,
 
     fn name(case: Case) []const u8 {
         return switch (case) {
@@ -31,6 +36,10 @@ const Case = enum {
             .is_small_int => "isSmallInt",
             .is_float => "isFloat",
             .is_word => "isWord",
+            .small_int_value => "smallIntValue",
+            .float_value => "floatValue",
+            .word_value => "wordValue",
+            .integer_equality => "integerEquality",
         };
     }
 };
@@ -41,6 +50,7 @@ const Probes = struct {
     objects: [probe_count]Oop,
     vtables: [probe_count]Oop,
     integers: [probe_count]Oop,
+    integer_twins: [probe_count]Oop,
     floats: [probe_count]Oop,
     words: [probe_count]Oop,
 };
@@ -75,6 +85,15 @@ fn runOperation(case: Case, api: *idapi.IdApi, probes: *const Probes) u64 {
             .is_small_int => @intCast(api.isSmallInt(probes.integers[probe])),
             .is_float => @intCast(api.isFloat(probes.floats[probe])),
             .is_word => @intCast(api.isWord(probes.words[probe])),
+            .small_int_value => @bitCast(api.smallIntValue(probes.integers[probe])),
+            .float_value => @bitCast(api.floatValue(probes.floats[probe])),
+            .word_value => api.wordValue(probes.words[probe]),
+            .integer_equality => @intFromBool(
+                api.isSmallInt(probes.integers[probe]) != 0 and
+                    api.isSmallInt(probes.integer_twins[probe]) != 0 and
+                    api.smallIntValue(probes.integers[probe]) ==
+                        api.smallIntValue(probes.integer_twins[probe]),
+            ),
         };
     }
     std.mem.doNotOptimizeAway(&result);
@@ -160,6 +179,7 @@ pub fn main() !void {
     var probes: Probes = undefined;
     for (0..probe_count) |i| {
         probes.integers[i] = api.mkSmallInt(@intCast(i));
+        probes.integer_twins[i] = api.mkSmallInt(@intCast(i));
         probes.floats[i] = api.mkFloat(@floatFromInt(i));
         probes.words[i] = api.mkWord(i);
         probes.objects[i] = api.alloc(api.object_vt, @sizeOf(usize));
