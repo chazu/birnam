@@ -3,8 +3,8 @@
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
-> N3.2b, N3.2c, and N3.3 are complete; N3.4a and N3.4b are complete and N3.4
-> remains in progress.
+> N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4d are complete and
+> N3.4 remains in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1023,6 +1023,28 @@ runtime sends used by the production codegen path; no generated-C ABI or TCC
 ownership change is hidden in this slice. The focused codegen bridge passes on
 both selected IdApi floors. Full generated-C, diagnostics, module metadata, and
 whole-corpus comparison remain open.
+
+#### N3.4c execution record — complete, 2026-07-23
+
+The complete unchanged Zig `lang_test.zig` suite can now select the explicit
+Rust PEG dylib through `BIRNAM_RUST_PEG_DYLIB`; with the variable absent, the
+same test target keeps its canonical Zig PEG behavior. The new
+`test-rust-peg-lang-full` gate runs the existing language corpus, including its
+negative syntax cases, without changing the language rung or its grammar
+authority. It passes with the Rust floor selected and with the Zig floor
+selected, while the Rust PEG remains an explicit test backend rather than the
+canonical installed PEG.
+
+#### N3.4d execution record — complete, 2026-07-23
+
+The complete unchanged Zig `codegen_test.zig` suite now has the same explicit
+Rust PEG override. `test-rust-peg-codegen-full` exercises the existing TCC and
+Codegen corpus, including its expected syntax-error fixture, through Rust PEG
+and passes with both selected IdApi floors. The test links and runtime
+boundaries are unchanged; no generated-C, TCC, or Codegen ownership moved in
+this slice. Full CST comparison, generated-C comparison, diagnostics/module
+metadata comparison, and the whole source corpus remain open before N3.4 is
+closed.
 
 ### N3.5 — Switch and observe
 

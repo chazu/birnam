@@ -8,10 +8,24 @@ const lang = @import("lang.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
+const ModuleInit = *const fn (*idapi.IdApi, ?*anyopaque) callconv(.c) ?*anyopaque;
+
+fn bringPeg(api: *idapi.IdApi) !void {
+    if (std.posix.getenv("BIRNAM_RUST_PEG_DYLIB")) |path| {
+        const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+        defer std.heap.c_allocator.free(path_z);
+        const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustPegDlopenFailed;
+        const raw_init = api.dlsym(handle, "module_init") orelse return error.RustPegModuleInitMissing;
+        const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+        _ = init(api, null);
+    } else {
+        peg.bringUp(api);
+    }
+}
 
 fn setup() *idapi.IdApi {
     const api = floor.api();
-    peg.bringUp(api); // exports "Peg"
+    bringPeg(api) catch @panic("PEG test backend failed to load");
     lang.bringUp(api); // imports "Peg", builds the grammar, exports "Lang"
     return api;
 }
