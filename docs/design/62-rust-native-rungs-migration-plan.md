@@ -840,6 +840,14 @@ operation, after image load, and after compiled-unit activation/rollback.
 **Gate:** all Store consumers, image fixtures, MOP tests, full verify, and the
 N0 performance comparator pass.
 
+#### N2.4a execution record — complete, 2026-07-23
+
+The Rust Store now implements the deterministic `attrCount:` /
+`attrAt:index:` report surface. Reports preserve first-appearance order while
+filtering fully retracted attributes and respecting one/many liveness; an
+out-of-range index returns raw absence exactly like the Zig Store. The
+cross-language test covers ordering and removal on both selected floors.
+
 ### N2.5 — Switch and observe
 
 Make Rust Store the production default in one commit. Retain the Zig Store as an

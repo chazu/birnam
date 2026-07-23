@@ -709,6 +709,54 @@ unsafe extern "C" fn count(
     unsafe { (api(runtime).mkSmallInt)(count as i64) }
 }
 
+fn live_attributes(
+    state: &StoreState,
+    entity: birnam_abi::Oop,
+    runtime: &Runtime,
+) -> Vec<birnam_abi::Oop> {
+    let mut attributes = Vec::new();
+    for fact in &state.facts {
+        if !same(fact.e, entity) || attributes.contains(&fact.a) {
+            continue;
+        }
+        attributes.push(fact.a);
+    }
+    attributes.retain(|attribute| {
+        if cardinality(runtime, state, *attribute) == runtime.many {
+            count_values(state, entity, *attribute) != 0
+        } else {
+            !current_value_raw(state, entity, *attribute).is_null()
+        }
+    });
+    attributes
+}
+
+unsafe extern "C" fn attr_count(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly one argument.
+    let entity = unsafe { *args };
+    let state = unsafe { state_mut(self_object) };
+    let count = live_attributes(state, entity, runtime).len();
+    unsafe { (api(runtime).mkSmallInt)(count as i64) }
+}
+
+unsafe extern "C" fn attr_at(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly two arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 2) };
+    let index = unsafe { (api(runtime).smallIntValue)(args[1]) } as usize;
+    let attributes = live_attributes(unsafe { state_mut(self_object) }, args[0], runtime);
+    attributes.get(index).copied().unwrap_or(ptr::null_mut())
+}
+
 unsafe extern "C" fn history(
     self_object: birnam_abi::Oop,
     args: *const birnam_abi::Oop,
@@ -1153,6 +1201,8 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"currentValue:attr:\0", current_value_method),
         (b"hasValue:attr:\0", has_value),
         (b"count:attr:\0", count),
+        (b"attrCount:\0", attr_count),
+        (b"attrAt:index:\0", attr_at),
         (b"history:attr:\0", history),
         (b"retract:attr:value:\0", retract),
         (b"basis\0", basis),

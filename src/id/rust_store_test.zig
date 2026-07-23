@@ -172,6 +172,33 @@ test "Rust Store history and retraction preserve the opt-in timeline contract" {
     try std.testing.expect(send(api, store, "hasValue:attr:", &.{ e, many_attr }) == api.trueObj);
 }
 
+test "Rust Store attr reports preserve live first-appearance order" {
+    const api = floor.api();
+    const path = std.posix.getenv("BIRNAM_RUST_STORE_DYLIB") orelse
+        return error.MissingRustStoreDylib;
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustStoreDlopenFailed;
+    const raw_init = api.dlsym(handle, "module_init") orelse return error.RustStoreModuleInitMissing;
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
+
+    const store = api.import("Store") orelse return error.RustStoreNotExported;
+    const entity = api.intern("rust_store_attr_report_entity");
+    const first_attr = api.intern("rust_store_attr_report_first");
+    const second_attr = api.intern("rust_store_attr_report_second");
+    _ = send(api, store, "assert:attr:value:", &.{ entity, first_attr, api.intern("first") });
+    _ = send(api, store, "assert:attr:value:", &.{ entity, second_attr, api.intern("second") });
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(send(api, store, "attrCount:", &.{entity})));
+    try std.testing.expect(send(api, store, "attrAt:index:", &.{ entity, api.mkSmallInt(0) }) == first_attr);
+    try std.testing.expect(send(api, store, "attrAt:index:", &.{ entity, api.mkSmallInt(1) }) == second_attr);
+
+    _ = send(api, store, "retract:attr:value:", &.{ entity, first_attr, api.intern("first") });
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, store, "attrCount:", &.{entity})));
+    try std.testing.expect(send(api, store, "attrAt:index:", &.{ entity, api.mkSmallInt(0) }) == second_attr);
+    try std.testing.expect(send(api, store, "attrAt:index:", &.{ entity, api.mkSmallInt(1) }) == null);
+}
+
 test "Rust Store Cells are traced handles over one store entity/attribute pair" {
     const api = floor.api();
     const path = std.posix.getenv("BIRNAM_RUST_STORE_DYLIB") orelse
