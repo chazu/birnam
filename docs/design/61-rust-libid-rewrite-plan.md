@@ -1966,8 +1966,10 @@ the owner check and TLS replacement. The change passes all 51 Rust tests, strict
 Clippy, full Miri, the cross-language reentrant-dispatch probe in debug and
 release, and the 256-test selected Rust-floor lower-rung matrix in both profiles.
 Its performance effect remains unclaimed until the guarded clean pair completes.
-R6 remains open, and R7 must not begin until that pair passes or a separate
-tradeoff record is accepted.
+The complete `zig build verify` gate passed again at `7666f87`, after the
+wrapper-level regression and release pre-build host guard landed. R6 remains
+open, and R7 must not begin until that pair passes or a separate tradeoff record
+is accepted.
 
 ## 13. Phase R7 — Build, install, and default cutover
 
