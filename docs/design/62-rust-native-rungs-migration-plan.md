@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.6 and N1.1–N1.2 are complete; N1.3 is next.
+> passes. N0.1 through N0.6 and N1.1–N1.3 are complete; N1.4 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -627,6 +627,23 @@ Rust as an implemented choice and still rejects unknown implementations.
 **Gate:** the full artifact-preflight matrix passes in clean child processes,
 including a later-invalid sibling that cannot leave an earlier unit activated.
 The closure walker moves only with `birnam-host` in N9.
+
+#### N1.3 execution record — complete, 2026-07-23
+
+`artifact_preflight_test.zig` now loads the selected inspector through the
+backend-neutral rung adapter; it no longer reaches into the Zig inspector
+implementation. The existing seven-case sentinel process therefore exercises
+the exact host closure walker against whichever inspector is selected, while
+retaining the independent aborting artifact initializer proof.
+
+The ordinary Zig and Rust-floor lower-rung matrices continue to run the Zig
+inspector, and each isolated Zig-floor, Rust-debug-floor, and Rust-release-floor
+matrix now adds a separate Rust-inspector preflight process. All cases preserve
+the requested-root identity, kind, dependency identity, missing sibling, cycle
+and activation-order diagnostics. The Rust inspector never activates the
+candidate or dependency initializer during preflight. Focused Zig/Rust
+preflight runs, the expanded lower-rung matrix, and the complete verification
+gate pass.
 
 ### N1.4 — Switch and observe
 

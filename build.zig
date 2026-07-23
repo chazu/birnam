@@ -27,6 +27,10 @@ pub fn build(b: *std.Build) void {
         "artifact-inspector-impl",
         "Artifact-inspector implementation installed under the canonical dylib name (zig or rust)",
     ) orelse .zig;
+    const artifact_explicit_name = if (artifact_inspector_impl == .rust)
+        "libbirnam_id_artifact_rust.dylib"
+    else
+        "libbirnam_id_artifact_zig.dylib";
     // libtcc is presently vendored and configured for arm64 Mach-O, and the
     // runtime resolves Mach-O dylibs by name. Reject other targets before Zig
     // spends time compiling artifacts that cannot link or boot correctly.
@@ -617,10 +621,6 @@ pub fn build(b: *std.Build) void {
 
     inline for (mods) |m| {
         var rung_selection_check: ?*std.Build.Step.Run = null;
-        const explicit_artifact_name = if (artifact_inspector_impl == .rust)
-            "libbirnam_id_artifact_rust.dylib"
-        else
-            "libbirnam_id_artifact_zig.dylib";
 
         // The dylib.
         const lib_mod = b.createModule(.{
@@ -693,7 +693,7 @@ pub fn build(b: *std.Build) void {
                 @tagName(artifact_inspector_impl),
             });
             check.addArg(b.getInstallPath(.lib, "libbirnam_id_artifact.dylib"));
-            check.addArg(b.getInstallPath(.lib, explicit_artifact_name));
+            check.addArg(b.getInstallPath(.lib, artifact_explicit_name));
             check.step.dependOn(selected_artifact_step);
             check.step.dependOn(&install_zig_artifact_oracle.step);
             rung_selection_check = check;
@@ -745,7 +745,7 @@ pub fn build(b: *std.Build) void {
             );
             run.setEnvironmentVariable(
                 "BIRNAM_NATIVE_RUNG_EXPLICIT_DYLIB",
-                b.getInstallPath(.lib, explicit_artifact_name),
+                b.getInstallPath(.lib, artifact_explicit_name),
             );
             run.step.dependOn(&check.step);
         }
@@ -784,7 +784,7 @@ pub fn build(b: *std.Build) void {
     );
     native_rung_singleton_abort.setEnvironmentVariable(
         "BIRNAM_NATIVE_RUNG_EXPLICIT_DYLIB",
-        b.getInstallPath(.lib, "libbirnam_id_artifact_zig.dylib"),
+        b.getInstallPath(.lib, artifact_explicit_name),
     );
     native_rung_singleton_abort.step.dependOn(bootstrap_install);
     const test_native_rung_singleton_step = b.step(
@@ -829,6 +829,19 @@ pub fn build(b: *std.Build) void {
     run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
     run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_artifact_preflight_tests.setEnvironmentVariable("BIRNAM_NATIVE_RUNG", "artifact-inspector");
+    run_artifact_preflight_tests.setEnvironmentVariable(
+        "BIRNAM_NATIVE_RUNG_IMPLEMENTATION",
+        @tagName(artifact_inspector_impl),
+    );
+    run_artifact_preflight_tests.setEnvironmentVariable(
+        "BIRNAM_NATIVE_RUNG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_artifact.dylib"),
+    );
+    run_artifact_preflight_tests.setEnvironmentVariable(
+        "BIRNAM_NATIVE_RUNG_EXPLICIT_DYLIB",
+        b.getInstallPath(.lib, artifact_explicit_name),
+    );
     run_artifact_preflight_tests.step.dependOn(bootstrap_install);
     const artifact_preflight_test_step = b.step(
         "test-artifact-preflight",

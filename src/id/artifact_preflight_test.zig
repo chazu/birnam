@@ -3,10 +3,10 @@
 
 const std = @import("std");
 const artifact_contract = @import("artifact.zig");
-const artifact_inspector = @import("artifact_inspector.zig");
 const artifact_preflight = @import("artifact_preflight.zig");
 const floor = @import("floor_adapter_test.zig");
 const idapi = @import("idapi.zig");
+const rung_adapter = @import("rung_adapter_test.zig");
 
 const Oop = idapi.Oop;
 
@@ -62,8 +62,7 @@ fn inspect(api: *idapi.IdApi, directory: []const u8, filename: []const u8) !Oop 
 
 fn setup() *idapi.IdApi {
     const api = floor.api();
-    artifact_inspector.bringUp(api);
-    return api;
+    return rung_adapter.loadSelected(api, "artifact-inspector");
 }
 
 test "path-only root preflight does not invent identity from filename" {

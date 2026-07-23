@@ -47,6 +47,29 @@ rungs=(
   test-alien
 )
 
+run_rust_artifact_preflight() {
+  local floor_name=$1
+  local prefix=$2
+  local cache=$3
+  local global_cache=$4
+  local tmp_root=$5
+  local floor_path=$6
+  local floor_identity=$7
+  local floor_digest=$8
+  local optimize=${9:-Debug}
+  mkdir -p "$tmp_root"
+  TMPDIR="$tmp_root" zig build test-artifact-preflight \
+    -Dfloor="$floor_name" \
+    -Dartifact-inspector-impl=rust \
+    -Doptimize="$optimize" \
+    --prefix "$prefix" \
+    --cache-dir "$cache" \
+    --global-cache-dir "$global_cache" \
+    -Did-conformance-floor="$floor_path" \
+    -Did-conformance-identity="$floor_identity" \
+    -Did-conformance-sha256="$floor_digest"
+}
+
 if [[ $mode != rust ]]; then
   TMPDIR="$zig_root/tmp" zig build stage1 \
     -Dfloor=zig \
@@ -64,6 +87,15 @@ if [[ $mode != rust ]]; then
     -Did-conformance-floor="$zig_floor" \
     -Did-conformance-identity=zig-id-v1 \
     -Did-conformance-sha256="$zig_digest"
+  run_rust_artifact_preflight \
+    zig \
+    "$zig_prefix" \
+    "$zig_root/cache" \
+    "$zig_root/global-cache" \
+    "$zig_root/tmp/artifact-rust" \
+    "$zig_floor" \
+    zig-id-v1 \
+    "$zig_digest"
   echo "lower-rung-matrix: zig-id-v1 passed 256 tests, dylib $zig_digest"
 fi
 
@@ -96,6 +128,16 @@ probe_rust_profile() {
     -Did-conformance-floor="$selected_floor" \
     -Did-conformance-identity=rust-id-v1 \
     -Did-conformance-sha256="$digest"
+  run_rust_artifact_preflight \
+    rust \
+    "$rust_prefix" \
+    "$rust_root/cache" \
+    "$rust_root/global-cache" \
+    "$profile_tmp/artifact-rust" \
+    "$selected_floor" \
+    rust-id-v1 \
+    "$digest" \
+    "$(if [[ $profile == release ]]; then echo ReleaseSafe; else echo Debug; fi)"
   echo "lower-rung-matrix: rust-id-v1 $profile passed 256 tests, dylib $digest"
 }
 
