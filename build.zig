@@ -321,6 +321,19 @@ pub fn build(b: *std.Build) void {
     test_rust_image_save_step.dependOn(&rust_image_save_smoke.step);
     test_step.dependOn(&rust_image_save_smoke.step);
 
+    const rust_store_stack_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-store-stack-smoke.sh",
+    });
+    rust_store_stack_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    rust_store_stack_smoke.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
+    const test_rust_store_stack_step = b.step(
+        "test-rust-store-stack",
+        "Run image and REPL integration through Rust Store debug and release dylibs",
+    );
+    test_rust_store_stack_step.dependOn(&rust_store_stack_smoke.step);
+    test_step.dependOn(&rust_store_stack_smoke.step);
+
     const rust_id_abi_fixture_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/rust-id-abi-fixture-smoke.sh",
@@ -939,6 +952,7 @@ pub fn build(b: *std.Build) void {
     // compiled self-hosted and production module closure.
     const stage1 = b.step("stage1", "AOT-compile the dependency-ordered self-hosted modules to installable dylibs");
     rust_image_save_smoke.step.dependOn(stage1);
+    rust_store_stack_smoke.step.dependOn(stage1);
     rust_id_abi_fixture_smoke.step.dependOn(stage1);
     // Each self-hosted module: `birnam --compile-module <src> <lib>/libbirnam_<name>.dylib`.
     const self_hosted = [_]struct { src: []const u8, name: []const u8 }{

@@ -2,7 +2,7 @@
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
-> N2.4a, N2.4b, and N2.4c are complete; N2.4d is next.
+> and N2.4a through N2.4d are complete; N2.5 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -874,6 +874,16 @@ addition to the focused cross-language Store tests, strict Clippy, and the
 stage-one build. This is an observation seam, not the N2.5 production switch;
 the Zig Store remains the default until the remaining consumers and gates are
 covered.
+
+#### N2.4d execution record — complete, 2026-07-23
+
+The Rust Store observation seam is now an executable build gate:
+`test-rust-store-stack` builds the debug and release Rust Store dylibs and
+runs both image-save and the complete 26-case REPL golden suite through each
+one. The gate is wired into `zig build test` and therefore `zig build verify`,
+while preserving the installed Zig Store as the default when
+`BIRNAM_STORE_DYLIB` is unset. Both profiles and the complete repository gate
+passed after the wiring change.
 
 ### N2.5 — Switch and observe
 
