@@ -1114,21 +1114,33 @@ fn mGroupBy(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return m;
 }
 
-// The dedicated logic var pull uses to gather an attribute's values via the join.
-fn pullVar() Oop {
-    return mNamed(logicvar_factory, &[_]Oop{g_api.intern("__pullv")}, 1);
-}
+const PullContext = struct {
+    db: Oop,
+    triples: []const Triple,
+};
 
-// All CURRENT values of (e, a) as a Vector — `findAll: ?v where: #[ #[e a ?v] ]`,
-// reusing the join so a :many attribute yields every member.
-fn attrValues(self: Oop, e: Oop, a: Oop) Oop {
-    const vv = pullVar();
-    var clause = send0(vectorFactory(), s_new);
-    clause = send1(clause, s_add, e);
-    clause = send1(clause, s_add, a);
-    clause = send1(clause, s_add, vv);
-    const clauses = send1(send0(vectorFactory(), s_new), s_add, clause);
-    return runQuery(self, vv, clauses, null, null);
+// All CURRENT distinct values of (e, a), in the same first-appearance order as
+// `findAll: ?v where: #[ #[e a ?v] ]`. A pull gathers the representation-free
+// live-triple stream once, then every leaf/nested lookup filters that snapshot
+// with the query engine's exact value policy instead of gathering it again.
+fn attrValues(ctx: *const PullContext, e: Oop, a: Oop) Oop {
+    const em = ValMatcher.init(e);
+    const am = ValMatcher.init(a);
+    var seen: std.ArrayList(ValMatcher) = .{};
+    defer seen.deinit(ca);
+    var out = send0(vectorFactory(), s_new);
+    for (ctx.triples) |tri| {
+        if (!em.matches(tri.e) or !am.matches(tri.a)) continue;
+        var duplicate = false;
+        for (seen.items) |matcher| if (matcher.matches(tri.v)) {
+            duplicate = true;
+            break;
+        };
+        if (duplicate) continue;
+        seen.append(ca, ValMatcher.init(tri.v)) catch @panic("relational: oom");
+        out = send1(out, s_add, tri.v);
+    }
+    return out;
 }
 
 fn isMany(self: Oop, a: Oop) bool {
@@ -1140,7 +1152,7 @@ fn isMany(self: Oop, a: Oop) bool {
 /// attribute) or a NESTED ref spec `#[ #refattr <subspec> ]` (→ pull the entity the
 /// attribute points at with `<subspec>`; a Vector of sub-records for a `:many` ref).
 /// Absent attributes are omitted (no NULL).
-fn pullEntity(self: Oop, e: Oop, spec: Oop) Oop {
+fn pullEntity(ctx: *const PullContext, e: Oop, spec: Oop) Oop {
     var m = send0(mapFactory(), s_new);
     const sz: usize = @intCast(g_api.smallIntValue(send0(spec, s_size)));
     var i: usize = 0;
@@ -1150,27 +1162,27 @@ fn pullEntity(self: Oop, e: Oop, spec: Oop) Oop {
             // Nested ref spec: #[ #refattr <subspec> ].
             const refattr = send1(elem, s_at, g_api.mkSmallInt(0));
             const subspec = send1(elem, s_at, g_api.mkSmallInt(1));
-            const refs = attrValues(self, e, refattr);
+            const refs = attrValues(ctx, e, refattr);
             const rc: usize = @intCast(g_api.smallIntValue(send0(refs, s_size)));
             if (rc == 0) continue;
-            if (isMany(self, refattr)) {
+            if (isMany(ctx.db, refattr)) {
                 var subs = send0(vectorFactory(), s_new);
                 var j: usize = 0;
                 while (j < rc) : (j += 1) {
                     const ref = send1(refs, s_at, g_api.mkSmallInt(@intCast(j)));
-                    subs = send1(subs, s_add, pullEntity(self, ref, subspec));
+                    subs = send1(subs, s_add, pullEntity(ctx, ref, subspec));
                 }
                 m = send2(m, s_atput, refattr, subs);
             } else {
                 const ref = send1(refs, s_at, g_api.mkSmallInt(0));
-                m = send2(m, s_atput, refattr, pullEntity(self, ref, subspec));
+                m = send2(m, s_atput, refattr, pullEntity(ctx, ref, subspec));
             }
         } else {
             // Leaf attribute symbol.
-            const vals = attrValues(self, e, elem);
+            const vals = attrValues(ctx, e, elem);
             const cnt: usize = @intCast(g_api.smallIntValue(send0(vals, s_size)));
             if (cnt == 0) continue;
-            if (isMany(self, elem))
+            if (isMany(ctx.db, elem))
                 m = send2(m, s_atput, elem, vals) // a Vector of members
             else
                 m = send2(m, s_atput, elem, send1(vals, s_at, g_api.mkSmallInt(0)));
@@ -1182,7 +1194,11 @@ fn pullEntity(self: Oop, e: Oop, spec: Oop) Oop {
 /// `[db pull: e spec: #[ #attr | #[#refattr <subspec>] … ]]` — see `pullEntity`.
 fn mPull(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
-    return pullEntity(self, args[0], args[1]);
+    var triples: Triples = .{};
+    defer triples.deinit(ca);
+    gatherTriples(self, &triples, null, null);
+    const ctx: PullContext = .{ .db = self, .triples = triples.items };
+    return pullEntity(&ctx, args[0], args[1]);
 }
 
 // -- bringup -----------------------------------------------------------------
