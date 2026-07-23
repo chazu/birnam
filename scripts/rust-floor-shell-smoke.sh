@@ -3,7 +3,8 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 target_dir="$repo/.cargo-target"
-zig_floor="$repo/zig-out/lib/libbirnam_id.dylib"
+scratch=$(mktemp -d /tmp/birnam-rust-floor-shell.XXXXXX)
+trap 'rm -rf "$scratch"' EXIT
 
 probe_rust_profile() {
   local profile=$1
@@ -25,17 +26,26 @@ probe_rust_profile() {
 probe_rust_profile debug
 probe_rust_profile release
 
-# The spike dylib remains outside Zig's install prefix. Prove that an
-# ordinary build still installs the usable Zig floor under the production name.
-zig build
+# The Rust dylib remains outside the Zig oracle's build path. Probe the oracle
+# through its explicit installed name without mutating the ordinary prefix.
+zig_floor=${BIRNAM_ZIG_ID_DYLIB:-}
+if [[ -z "$zig_floor" ]]; then
+  mkdir -p "$scratch/zig-cache" "$scratch/zig-global-cache"
+  zig build bootstrap-install \
+    -Dfloor=zig \
+    --prefix "$scratch/zig-prefix" \
+    --cache-dir "$scratch/zig-cache" \
+    --global-cache-dir "$scratch/zig-global-cache"
+  zig_floor="$scratch/zig-prefix/lib/libbirnam_id_zig.dylib"
+fi
 test -f "$zig_floor"
 if ! nm -gU "$zig_floor" | grep -q ' _id_init$'; then
-  echo "rust-floor-shell: installed Zig floor does not export id_init" >&2
+  echo "rust-floor-shell: installed Zig oracle does not export id_init" >&2
   exit 1
 fi
 if nm -gU "$zig_floor" | grep -q ' _birnam_id_rust_crate_identity$'; then
-  echo "rust-floor-shell: Rust shell replaced the installed Zig floor" >&2
+  echo "rust-floor-shell: Rust shell replaced the installed Zig oracle" >&2
   exit 1
 fi
 
-echo "rust-floor-shell: Zig remains installed under the production name"
+echo "rust-floor-shell: Zig oracle remains independently loadable"

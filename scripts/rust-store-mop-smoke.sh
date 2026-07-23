@@ -3,6 +3,9 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 target_dir="$repo/.cargo-target"
+scratch=$(mktemp -d /tmp/birnam-rust-store-mop.XXXXXX)
+trap 'rm -rf "$scratch"' EXIT
+mkdir -p "$scratch/cache" "$scratch/global-cache" "$scratch/prefix"
 
 probe_profile() {
   local profile=$1
@@ -14,9 +17,17 @@ probe_profile() {
 
   CARGO_TARGET_DIR="$target_dir" cargo "${cargo_args[@]}"
   zig build test-store \
+    -Dfloor=zig \
+    --prefix "$scratch/prefix" \
+    --cache-dir "$scratch/cache" \
+    --global-cache-dir "$scratch/global-cache" \
     -Did-conformance-floor="$dylib" \
     -Did-conformance-identity=rust-id-v1
   zig build test-store-image-backfill \
+    -Dfloor=zig \
+    --prefix "$scratch/prefix" \
+    --cache-dir "$scratch/cache" \
+    --global-cache-dir "$scratch/global-cache" \
     -Did-conformance-floor="$dylib" \
     -Did-conformance-identity=rust-id-v1
   echo "rust-store-mop: $profile passed the Store consistency-law suite"

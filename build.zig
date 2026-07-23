@@ -401,6 +401,22 @@ pub fn build(b: *std.Build) void {
     // ordinary install step can depend on compiled production units without a
     // dependency cycle.
     const bootstrap_install = b.step("bootstrap-install", "Install the native floor and compiler host needed to build compiled units");
+    const installed_zig_oracle = b.getInstallPath(.lib, "libbirnam_id_zig.dylib");
+    scalar_conformance_smoke.setEnvironmentVariable(
+        "BIRNAM_ZIG_ID_DYLIB",
+        installed_zig_oracle,
+    );
+    scalar_conformance_smoke.step.dependOn(bootstrap_install);
+    string_conformance_smoke.setEnvironmentVariable(
+        "BIRNAM_ZIG_ID_DYLIB",
+        installed_zig_oracle,
+    );
+    string_conformance_smoke.step.dependOn(bootstrap_install);
+    prototype_conformance_smoke.setEnvironmentVariable(
+        "BIRNAM_ZIG_ID_DYLIB",
+        installed_zig_oracle,
+    );
+    prototype_conformance_smoke.step.dependOn(bootstrap_install);
     rust_lower_rung_matrix.step.dependOn(bootstrap_install);
     test_step.dependOn(&rust_lower_rung_matrix.step);
     const rust_floor_profile = if (optimize == .Debug) "debug" else "release";

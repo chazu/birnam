@@ -13,8 +13,18 @@ zig build-exe \
   -Midapi="$repo/src/id/idapi.zig" \
   -femit-bin="$probe"
 
-zig build
-"$probe" "$repo/zig-out/lib/libbirnam_id.dylib" zig
+zig_floor=${BIRNAM_ZIG_ID_DYLIB:-}
+if [[ -z "$zig_floor" ]]; then
+  mkdir -p "$scratch/zig-cache" "$scratch/zig-global-cache"
+  zig build bootstrap-install \
+    -Dfloor=zig \
+    --prefix "$scratch/zig-prefix" \
+    --cache-dir "$scratch/zig-cache" \
+    --global-cache-dir "$scratch/zig-global-cache"
+  zig_floor="$scratch/zig-prefix/lib/libbirnam_id_zig.dylib"
+fi
+test -f "$zig_floor"
+"$probe" "$zig_floor" zig
 
 probe_rust_profile() {
   local profile=$1
