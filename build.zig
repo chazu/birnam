@@ -689,6 +689,29 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_cst_parity_step.dependOn(&run_rust_peg_cst_parity.step);
     test_step.dependOn(&run_rust_peg_cst_parity.step);
 
+    const rust_peg_diagnostics_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_diagnostics_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_peg_diagnostics_tests = b.addTest(.{ .root_module = rust_peg_diagnostics_mod });
+    rust_peg_diagnostics_tests.linkLibC();
+    const run_rust_peg_diagnostics = b.addRunArtifact(rust_peg_diagnostics_tests);
+    run_rust_peg_diagnostics.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_peg_diagnostics.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_peg_diagnostics.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_peg_diagnostics.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_peg_diagnostics.step.dependOn(bootstrap_install);
+    const test_rust_peg_diagnostics_step = b.step(
+        "test-rust-peg-diagnostics",
+        "Compare language syntax-error kind and line/column diagnostics against Rust PEG",
+    );
+    test_rust_peg_diagnostics_step.dependOn(&run_rust_peg_diagnostics.step);
+    test_step.dependOn(&run_rust_peg_diagnostics.step);
+
     const rust_peg_codegen_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_peg_codegen_test.zig"),
         .target = target,
