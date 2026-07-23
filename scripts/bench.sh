@@ -36,6 +36,10 @@ if [ $MODE = release ] && [ -n "$QUICK" ]; then
   exit 1
 fi
 
+if [ "$MODE" = release ]; then
+  scripts/bench-host-check.sh 75 "release benchmark pre-build"
+fi
+
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 FAIL=0
