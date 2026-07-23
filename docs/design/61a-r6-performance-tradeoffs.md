@@ -28,8 +28,10 @@ half of the pair; no source, build input, or selected dylib changed between
 halves. The exact result hashes above prevent that narrow exception from
 becoming a general dirty-tree allowance.
 
-`mise run r6-acceptance` verifies both file hashes, runs the unchanged Design 46
-comparator, and fails unless the only threshold crossings are exactly the two
+`mise run r6-acceptance` first runs the current native-rung baseline checker
+(semantic fixtures, the accepted optimized pair, and the artifact-inspector
+baseline), then verifies both file hashes and runs the unchanged Design 46
+comparator. It fails unless the only threshold crossings are exactly the two
 entries below. Any changed snapshot, missing or unusable case, additional
 regression, or changed accepted measurement fails closed.
 

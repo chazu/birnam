@@ -2,12 +2,18 @@
 # r6-acceptance.sh — close Design 61 R6 against its exact accepted snapshot.
 #
 # This does not weaken the general Design 46 comparator. It proves that the
-# committed, noise-qualified Zig/Rust pair is unchanged and that its only
+# current native-rung semantic/performance baseline still passes, that the
+# committed, noise-qualified Zig/Rust pair is unchanged, and that its only
 # threshold crossings are the two tradeoffs accepted for the Rust-floor
 # cutover. Any changed result or additional regression fails closed.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+# Keep R6 acceptance aligned with the latest N0.5 test set. The checker is
+# fail-closed and validates the semantic fixtures, accepted result pair, and
+# artifact-inspector baseline before the raw comparator is run below.
+python3 scripts/check-native-rung-baseline.py
 
 zig_result="bench/results/v0.11.0-zig-2fe44d2-c8b632e8882358672a0de5a24897a735c09af2f080cb1aea55510e021fc3d6b1.json"
 rust_result="bench/results/v0.11.0-rust-2fe44d2-239d348c297583789c4a4da8d5713ebcfd1b9ba1dbf12c04ecb44e56282ac0ea.json"
