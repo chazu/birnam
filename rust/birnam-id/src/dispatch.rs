@@ -13,14 +13,24 @@ use crate::vtable::Vtables;
 const MAX_DNU_ARGS: usize = 16;
 
 impl Runtime {
-    pub(crate) fn bind(&self, receiver: Oop, selector: Oop) -> Option<MethodAddress> {
-        let receiver_vtable = self.vtable_for_valid_receiver(receiver);
+    /// Resolve one method through the metacircular lookup protocol while this
+    /// runtime is already active on its owner thread.
+    ///
+    /// # Safety
+    ///
+    /// A surrounding `Runtime::enter` must be active, and both arguments must
+    /// be live floor objects.
+    pub(crate) unsafe fn bind_active(&self, receiver: Oop, selector: Oop) -> Option<MethodAddress> {
+        // SAFETY: forwarded active-runtime and live-receiver preconditions.
+        let receiver_vtable = unsafe { self.vtable_for_valid_receiver_active(receiver) };
         if receiver_vtable.is_null() {
             return None;
         }
-        let globals = self.globals();
+        // SAFETY: the surrounding enter serializes RuntimeState access.
+        let globals = unsafe { self.globals_active() };
         if receiver_vtable == globals.vtable_vt && selector == globals.lookup {
-            return self.lookup_method(globals.vtable_vt, globals.lookup);
+            // SAFETY: the surrounding enter serializes RuntimeState access.
+            return unsafe { self.lookup_method_active(globals.vtable_vt, globals.lookup) };
         }
 
         let lookup_args = [selector];
@@ -55,16 +65,18 @@ impl Runtime {
             boundary::fatal_invariant("IdApi.send args is null with nonzero count");
         }
 
-        if let Some(method) = self.bind(receiver, selector) {
+        // SAFETY: send_abi's active-runtime and live-object contract applies.
+        if let Some(method) = unsafe { self.bind_active(receiver, selector) } {
             let callable = method.to_method();
             // No Rust state reference or collection guard survives this call.
             // SAFETY: forwarded ABI contract and dictionary-proven Method.
             return unsafe { callable(receiver, args, count) };
         }
 
-        let globals = self.globals();
-        let handler = self
-            .bind(receiver, globals.does_not_understand)
+        // SAFETY: send_abi requires an active owner-thread runtime.
+        let globals = unsafe { self.globals_active() };
+        // SAFETY: send_abi's active-runtime and live-object contract applies.
+        let handler = unsafe { self.bind_active(receiver, globals.does_not_understand) }
             .unwrap_or_else(|| boundary::fatal_invariant("doesNotUnderstand: is unbound"));
         let mut forwarded = [core::ptr::null_mut(); 1 + MAX_DNU_ARGS];
         forwarded[0] = selector;
@@ -96,8 +108,8 @@ unsafe extern "C" fn vtable_lookup_method(receiver: Oop, args: *const Oop, count
     // SAFETY: the Method ABI promises at least count entries and count > 0.
     let selector = unsafe { args.read() };
     with_active(|runtime| {
-        runtime
-            .lookup_method(receiver, selector)
+        // SAFETY: with_active proves owner-thread dynamic authority.
+        unsafe { runtime.lookup_method_active(receiver, selector) }
             .map(MethodAddress::as_oop)
             .unwrap_or(core::ptr::null_mut())
     })
@@ -586,7 +598,13 @@ mod tests {
         );
 
         let result = harness.runtime.enter(|| {
-            assert!(harness.runtime.bind(harness.meta, harness.lookup).is_some());
+            // SAFETY: this assertion is inside the surrounding enter.
+            assert!(unsafe {
+                harness
+                    .runtime
+                    .bind_active(harness.meta, harness.lookup)
+                    .is_some()
+            });
             harness.runtime.send_slice(receiver, answer, &[])
         });
         assert_eq!(result.addr(), 42);

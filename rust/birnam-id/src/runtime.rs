@@ -164,6 +164,16 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.lookup(vtable, selector) }
     }
 
+    /// Lookup after `enter` has already established owner-thread authority.
+    pub(crate) unsafe fn lookup_method_active(
+        &self,
+        vtable: Oop,
+        selector: Oop,
+    ) -> Option<MethodAddress> {
+        // SAFETY: the active-runtime guard serializes access to RuntimeState.
+        unsafe { (*self.state.get()).vtables.lookup(vtable, selector) }
+    }
+
     pub(crate) fn add_method(&self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
         self.assert_owner();
         // Copy all callback inputs and end the state borrow before foreign code.
@@ -539,6 +549,22 @@ impl Runtime {
         // SAFETY: dispatch callers guarantee a live floor receiver. No runtime
         // collection borrow is needed for the header fast path.
         unsafe { Vtables::dispatch_vtable_of(receiver) }
+    }
+
+    /// Read a dispatch header after `enter` established owner-thread authority.
+    ///
+    /// # Safety
+    ///
+    /// The runtime must be active and `receiver` must be an exact live object.
+    pub(crate) unsafe fn vtable_for_valid_receiver_active(&self, receiver: Oop) -> Oop {
+        // SAFETY: the caller supplies the live receiver precondition.
+        unsafe { Vtables::dispatch_vtable_of(receiver) }
+    }
+
+    /// Copy dispatch globals after `enter` established owner-thread authority.
+    pub(crate) unsafe fn globals_active(&self) -> DispatchGlobals {
+        // SAFETY: the active-runtime guard serializes access to RuntimeState.
+        unsafe { (*self.state.get()).globals }
     }
 
     pub(crate) fn enter<R>(&self, operation: impl FnOnce() -> R) -> R {
