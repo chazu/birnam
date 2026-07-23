@@ -95,6 +95,10 @@ run = "bash scripts/floor-verify.sh zig"
 description = "Run the isolated full Rust-floor verification path"
 run = "bash scripts/floor-verify.sh rust"
 
+[tasks.test-cross-floor-artifacts]
+description = "Compile artifacts with each floor and execute them with both floors"
+run = "bash scripts/cross-floor-artifact-smoke.sh"
+
 [tasks.rust-env-loader-smoke]
 description = "Reflect canonical exports and reload a fixture through Rust"
 run = "bash scripts/rust-env-loader-smoke.sh"
