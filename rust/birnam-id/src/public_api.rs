@@ -168,6 +168,13 @@ unsafe extern "C" fn api_symbol_name(symbol: Oop) -> *const c_char {
 }
 
 unsafe extern "C" fn api_vtable_of(object: Oop) -> Oop {
+    if let Some(vtable) = with_active_if_present(|active| {
+        // SAFETY: with_active_if_present proves a surrounding owner-checked
+        // Runtime::enter; the lookup itself retains exact heap membership.
+        unsafe { active.checked_vtable_of_active(object) }
+    }) {
+        return vtable;
+    }
     runtime().checked_vtable_of(object)
 }
 

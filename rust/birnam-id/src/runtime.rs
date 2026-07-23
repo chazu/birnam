@@ -606,6 +606,14 @@ impl Runtime {
         unsafe { Vtables::checked_vtable_of(&(*self.state.get()).heap, object) }
     }
 
+    /// Perform the same exact-membership vtable lookup after `enter` has already
+    /// established this runtime as active on the owner thread.
+    pub(crate) unsafe fn checked_vtable_of_active(&self, object: Oop) -> Oop {
+        // SAFETY: the active-runtime guard proves owner-thread serialization;
+        // checked_vtable_of still validates exact heap membership before reading.
+        unsafe { Vtables::checked_vtable_of(&(*self.state.get()).heap, object) }
+    }
+
     pub(crate) fn payload_size(&self, object: Oop) -> Option<usize> {
         self.assert_owner();
         // SAFETY: owner-thread serialization and a copied size.
