@@ -3,7 +3,8 @@
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
-> N3.2b, N3.2c, and N3.3 are complete, and N3.4 is next.
+> N3.2b, N3.2c, and N3.3 are complete; N3.4a is complete and N3.4 remains in
+> progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1001,6 +1002,17 @@ test, and both focused floor runs pass.
 Run the unchanged Zig language and codegen rungs on the Rust PEG. Compare full
 CSTs, generated C, diagnostics, module metadata, compiled-unit descriptors, and
 the whole source corpus.
+
+#### N3.4a execution record — complete, 2026-07-23
+
+The unchanged Zig `lang` rung now runs through the explicit Rust PEG matcher in
+`test-rust-peg-lang`. Its grammar construction exercises the ergonomic PEG
+facade (`seqOf:`, `choiceOf:`, prefix combinators, `anyOf:`, and `range:to:`),
+then parses representative lets, blocks, sends, vectors, maps, comments, and
+multi-statement programs. The negative binary-operator case remains rejected.
+The focused bridge passes against both selected IdApi floors, while the normal
+canonical PEG path remains Zig. Full CST/codegen/diagnostic corpus comparison
+is the remaining N3.4 work.
 
 ### N3.5 — Switch and observe
 

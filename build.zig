@@ -619,6 +619,29 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_pattern_step.dependOn(&run_rust_peg_pattern.step);
     test_step.dependOn(&run_rust_peg_pattern.step);
 
+    const rust_peg_lang_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_lang_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_peg_lang_tests = b.addTest(.{ .root_module = rust_peg_lang_mod });
+    rust_peg_lang_tests.linkLibC();
+    const run_rust_peg_lang = b.addRunArtifact(rust_peg_lang_tests);
+    run_rust_peg_lang.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_peg_lang.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_peg_lang.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_peg_lang.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_peg_lang.step.dependOn(bootstrap_install);
+    const test_rust_peg_lang_step = b.step(
+        "test-rust-peg-lang",
+        "Run the unchanged Zig language rung through the explicit Rust PEG matcher",
+    );
+    test_rust_peg_lang_step.dependOn(&run_rust_peg_lang.step);
+    test_step.dependOn(&run_rust_peg_lang.step);
+
     // -- The id rungs: a dylib + its test suite, one row per module ----------
     // Every rung is a dynamic library the siphon dlopens at runtime, plus a test
     // that imports its siblings directly (relative imports unify the IdApi type

@@ -764,6 +764,122 @@ unsafe extern "C" fn peg_grammar(_self_object: Oop, pointer: *const Oop, count: 
     unsafe { new_grammar() }
 }
 
+unsafe fn vector_children(vector: Oop) -> Vec<Oop> {
+    let api = unsafe { api(runtime()) };
+    let size_selector = unsafe { intern(api, b"size\0") };
+    let at_selector = unsafe { intern(api, b"at:\0") };
+    let empty: [Oop; 0] = [];
+    let size = unsafe { (api.send)(vector, size_selector, empty.as_ptr(), 0) };
+    let count = unsafe { (api.smallIntValue)(size) };
+    if count < 0 {
+        abort("Vector size was negative");
+    }
+    let mut children = Vec::with_capacity(count as usize);
+    for index in 0..count as usize {
+        let argument = [unsafe { (api.mkSmallInt)(index as i64) }];
+        children.push(unsafe { (api.send)(vector, at_selector, argument.as_ptr(), 1) });
+    }
+    children
+}
+
+unsafe extern "C" fn peg_seq_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    let values = unsafe { args(pointer, count) };
+    if values.len() != 1 {
+        abort("seqOf: expects one argument");
+    }
+    let object = unsafe { new_pattern(Kind::Seq) };
+    unsafe { state_mut(object).children = vector_children(values[0]) };
+    object
+}
+
+unsafe extern "C" fn peg_choice_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    let values = unsafe { args(pointer, count) };
+    if values.len() != 1 {
+        abort("choiceOf: expects one argument");
+    }
+    let object = unsafe { new_pattern(Kind::Choice) };
+    unsafe { state_mut(object).children = vector_children(values[0]) };
+    object
+}
+
+unsafe extern "C" fn peg_star_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    let values = unsafe { args(pointer, count) };
+    if values.len() != 1 {
+        abort("star: expects one argument");
+    }
+    unsafe { peg_unary(Kind::Star, values[0]) }
+}
+
+unsafe extern "C" fn peg_plus_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    let values = unsafe { args(pointer, count) };
+    if values.len() != 1 {
+        abort("plus: expects one argument");
+    }
+    unsafe { peg_unary(Kind::Plus, values[0]) }
+}
+
+unsafe extern "C" fn peg_opt_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    let values = unsafe { args(pointer, count) };
+    if values.len() != 1 {
+        abort("opt: expects one argument");
+    }
+    unsafe { peg_unary(Kind::Opt, values[0]) }
+}
+
+unsafe extern "C" fn peg_not_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    let values = unsafe { args(pointer, count) };
+    if values.len() != 1 {
+        abort("not: expects one argument");
+    }
+    unsafe { peg_unary(Kind::Not, values[0]) }
+}
+
+unsafe extern "C" fn peg_and_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    let values = unsafe { args(pointer, count) };
+    if values.len() != 1 {
+        abort("and: expects one argument");
+    }
+    unsafe { peg_unary(Kind::And, values[0]) }
+}
+
+unsafe extern "C" fn peg_any_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    let values = unsafe { args(pointer, count) };
+    if values.len() != 1 {
+        abort("anyOf: expects one argument");
+    }
+    let api = unsafe { api(runtime()) };
+    let bytes = unsafe { string_bytes(api, values[0]) };
+    let object = unsafe { new_pattern(Kind::Charset) };
+    let state = unsafe { state_mut(object) };
+    state
+        .ranges
+        .extend(bytes.into_iter().map(|byte| Range { lo: byte, hi: byte }));
+    object
+}
+
+unsafe fn byte_argument(api: &IdApi, object: Oop) -> u8 {
+    if unsafe { (api.vtableOf)(object) } == api.string_vt {
+        return unsafe { string_bytes(api, object) }
+            .first()
+            .copied()
+            .unwrap_or(0);
+    }
+    unsafe { (api.smallIntValue)(object) as u8 }
+}
+
+unsafe extern "C" fn peg_range_to(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    let values = unsafe { args(pointer, count) };
+    if values.len() != 2 {
+        abort("range:to: expects two arguments");
+    }
+    let api = unsafe { api(runtime()) };
+    let lo = unsafe { byte_argument(api, values[0]) };
+    let hi = unsafe { byte_argument(api, values[1]) };
+    let object = unsafe { new_pattern(Kind::Charset) };
+    unsafe { state_mut(object).ranges.push(Range { lo, hi }) };
+    object
+}
+
 unsafe extern "C" fn peg_unary(kind: Kind, self_object: Oop) -> Oop {
     let object = unsafe { new_pattern(kind) };
     unsafe { state_mut(object).children.push(self_object) };
@@ -974,6 +1090,15 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"grammar\0", peg_grammar),
         (b"newGrammar\0", peg_grammar),
         (b"anyByte\0", peg_any),
+        (b"seqOf:\0", peg_seq_of),
+        (b"choiceOf:\0", peg_choice_of),
+        (b"star:\0", peg_star_of),
+        (b"plus:\0", peg_plus_of),
+        (b"opt:\0", peg_opt_of),
+        (b"not:\0", peg_not_of),
+        (b"and:\0", peg_and_of),
+        (b"anyOf:\0", peg_any_of),
+        (b"range:to:\0", peg_range_to),
     ];
     for (selector, method) in peg_methods {
         let selector = unsafe { intern(api, selector) };
