@@ -47,7 +47,7 @@ CARGO_HOME="$tmp/cargo-home" cargo metadata \
   --format-version=1 \
   --manifest-path "$tmp/birnam/share/birnam/src/Cargo.toml" >"$tmp/cargo-metadata.json"
 test "$(jq -r '.workspace_root' "$tmp/cargo-metadata.json")" = "$tmp/birnam/share/birnam/src"
-test "$(jq -r '[.packages[].name] | sort | join(" ")' "$tmp/cargo-metadata.json")" = "birnam-abi birnam-artifact birnam-id birnam-peg birnam-store"
+test "$(jq -r '[.packages[].name] | sort | join(" ")' "$tmp/cargo-metadata.json")" = "birnam-abi birnam-artifact birnam-id birnam-peg birnam-store birnam-tcc"
 
 find docs/guide -type f -name '*.md' -print | sed 's#^docs/guide/##' | sort >"$tmp/expected-guide"
 find "$tmp/birnam/share/birnam/docs/guide" -type f -name '*.md' -print | sed "s#^$tmp/birnam/share/birnam/docs/guide/##" | sort >"$tmp/installed-guide"
@@ -57,6 +57,7 @@ required_dylibs=(
   libbirnam_id.dylib libbirnam_id_zig.dylib libbirnam_id_artifact.dylib
   libbirnam_id_artifact_zig.dylib
   libbirnam_store.dylib libbirnam_id_peg.dylib libbirnam_id_peg_rust.dylib
+  libbirnam_id_tcc_rust.dylib
   libbirnam_id_lang.dylib libbirnam_id_tcc.dylib libbirnam_id_codegen.dylib
   libbirnam_id_prelude.dylib libbirnam_id_collection.dylib
   libbirnam_id_error.dylib libbirnam_id_isolate.dylib

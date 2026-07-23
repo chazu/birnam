@@ -5,6 +5,7 @@ members = [
     "rust/birnam-id",
     "rust/birnam-peg",
     "rust/birnam-store",
+    "rust/birnam-tcc",
 ]
 resolver = "3"
 

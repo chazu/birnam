@@ -845,6 +845,29 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_installed_step.dependOn(&rust_peg_installed_smoke.step);
     test_step.dependOn(&rust_peg_installed_smoke.step);
 
+    const rust_tcc_shell_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_tcc_shell_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_tcc_shell_tests = b.addTest(.{ .root_module = rust_tcc_shell_mod });
+    rust_tcc_shell_tests.linkLibC();
+    const run_rust_tcc_shell = b.addRunArtifact(rust_tcc_shell_tests);
+    run_rust_tcc_shell.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_tcc_shell.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_tcc_shell.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_tcc_shell.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    run_rust_tcc_shell.step.dependOn(bootstrap_install);
+    const test_rust_tcc_shell_step = b.step(
+        "test-rust-tcc-shell",
+        "Verify the explicit Rust TCC shell export boundary",
+    );
+    test_rust_tcc_shell_step.dependOn(&run_rust_tcc_shell.step);
+    test_step.dependOn(&run_rust_tcc_shell.step);
+
     const rust_peg_codegen_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_peg_codegen_test.zig"),
         .target = target,
@@ -1099,6 +1122,21 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_zig_peg.step);
                 bootstrap_install.dependOn(&install_zig_peg.step);
             }
+        } else if (std.mem.eql(u8, m.name, "birnam_id_tcc")) {
+            const install_zig_tcc = b.addInstallArtifact(lib, .{});
+            b.getInstallStep().dependOn(&install_zig_tcc.step);
+            bootstrap_install.dependOn(&install_zig_tcc.step);
+            const install_rust_tcc = b.addInstallFileWithDir(
+                b.path(b.fmt(
+                    ".cargo-target/{s}/libbirnam_tcc.dylib",
+                    .{rust_floor_profile},
+                )),
+                .lib,
+                "libbirnam_id_tcc_rust.dylib",
+            );
+            install_rust_tcc.step.dependOn(&rust_floor_build.step);
+            b.getInstallStep().dependOn(&install_rust_tcc.step);
+            bootstrap_install.dependOn(&install_rust_tcc.step);
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);

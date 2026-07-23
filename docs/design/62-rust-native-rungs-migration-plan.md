@@ -4,7 +4,7 @@
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
-> complete; N3.5.1 through N3.5.3 are complete and N3.5 remains in progress.
+> complete; N3.5.1 through N3.5.3 are complete; N4.1 is in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1151,6 +1151,17 @@ library path, relocation/finalizer behavior, runtime `birnam_*` export, and
 generated-code callback. The inventory assigns TCC-owned forwarding,
 allocation, layout, and C-string symbols separately from Codegen-owned global,
 method-mutation, candidate, quiescence, and lifecycle symbols.
+
+#### N4.1 execution record — in progress, 2026-07-23
+
+The Rust workspace now contains a birnam-tcc dynamic-rung shell with the
+frozen Tcc, TccVt, and TccUnitVt export names plus identity
+rust-tcc-n4.1-shell. It is installed only as
+libbirnam_id_tcc_rust.dylib; Zig TCC remains the canonical
+libbirnam_id_tcc.dylib, and the shell exports no compile/runtime methods yet.
+The cross-language shell test passes on both IdApi floors, Cargo workspace
+tests and strict Clippy pass, and install metadata requires the explicit shell.
+N4.2 owns the unsafe libtcc state machine and runtime-symbol implementation.
 
 ### N4.2 — Port the TccUnit mechanism
 
