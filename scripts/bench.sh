@@ -77,9 +77,14 @@ echo "==> selected $FLOOR_IDENTITY $FLOOR_DIGEST"
 # ---------------------------------------------------------------------------
 SUITE_FILES=()
 
+require_quiet() { # require_quiet <context>
+  [ "$MODE" != release ] || scripts/bench-host-check.sh 75 "$1"
+}
+
 run_suite() { # run_suite <script> <label> <runs>
   local script=$1 label=$2 runs=$3 i out
   for i in $(seq 1 "$runs"); do
+    require_quiet "$label run $i preflight"
     out="$TMP/$label-$i.json"
     echo "==> suite $label (run $i/$runs)"
     if BENCH_OUT="$out" "$BIN" "$script" </dev/null; then
@@ -87,6 +92,7 @@ run_suite() { # run_suite <script> <label> <runs>
     else
       echo "FAIL suite $label run $i" >&2; FAIL=1
     fi
+    require_quiet "$label run $i completion"
   done
 }
 
@@ -125,6 +131,7 @@ print(int((t1 - t0) * 1000000))
 
 macro_case() { # macro_case <name> <reps> cmd...
   local name=$1 reps=$2; shift 2
+  require_quiet "$name preflight"
   echo "==> macro $name"
   local vals=() v i
   for i in $(seq 1 "$reps"); do
@@ -146,6 +153,7 @@ macro_case() { # macro_case <name> <reps> cmd...
   printf '{"name":"%s","wall_us_median":%s,"wall_us_min":%s,"reps":%s,"peak_rss_bytes":%s}\n' \
     "$name" "$median" "$min" "$reps" "$rss" >> "$MACRO_JSON"
   echo "  $name: $((median / 1000)) ms (min $((min / 1000)), rss $((rss / 1048576)) MB)"
+  require_quiet "$name completion"
 }
 
 REP_MACRO=3

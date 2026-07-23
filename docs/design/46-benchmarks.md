@@ -182,6 +182,10 @@ The design that stays honest:
   Rust-floor run also builds the release cdylib into an isolated Cargo target.
   Every benchmark process receives the selected dylib path, floor identity,
   and SHA-256; the host verifies identity and digest before `id_init`.
+- Tracked release runs require AC power and at least 75% idle CPU immediately
+  before and after every suite process and macro group. A busy host fails the
+  run before a tracked snapshot can be emitted; developer/quick runs remain
+  available for diagnosis under load.
 - Runs the micro suite in-process, the relational suite as R fresh
   processes, and the macro cases itself: wall time from the shell, peak RSS
   via `/usr/bin/time -l` (macOS).
