@@ -198,3 +198,7 @@ run = "./scripts/bench.sh --release --floor=rust"
 [tasks.bench-compare]
 description = "Diff two merged benchmark results; exits 1 on regression past threshold"
 run = "./scripts/bench-compare.sh {{arg(name='old')}} {{arg(name='new')}}"
+
+[tasks.r6-acceptance]
+description = "Verify the exact Design 61 R6 snapshot and its two accepted tradeoffs"
+run = "./scripts/r6-acceptance.sh"
