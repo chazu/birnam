@@ -803,6 +803,42 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_source_corpus_step.dependOn(&run_rust_peg_source_corpus.step);
     test_step.dependOn(&run_rust_peg_source_corpus.step);
 
+    const rust_peg_stress_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_stress_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_peg_stress_tests = b.addTest(.{ .root_module = rust_peg_stress_mod });
+    rust_peg_stress_tests.linkLibC();
+    const run_rust_peg_stress = b.addRunArtifact(rust_peg_stress_tests);
+    run_rust_peg_stress.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_peg_stress.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_peg_stress.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_peg_stress.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_peg_stress.step.dependOn(bootstrap_install);
+    const test_rust_peg_stress_step = b.step(
+        "test-rust-peg-stress",
+        "Exercise deep rule chains and long repetitions through the Rust PEG matcher",
+    );
+    test_rust_peg_stress_step.dependOn(&run_rust_peg_stress.step);
+    test_step.dependOn(&run_rust_peg_stress.step);
+
+    const rust_peg_installed_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-peg-installed-smoke.sh",
+    });
+    rust_peg_installed_smoke.setEnvironmentVariable("BIRNAM_PREFIX", b.getInstallPath(.prefix, ""));
+    rust_peg_installed_smoke.step.dependOn(b.getInstallStep());
+    const test_rust_peg_installed_step = b.step(
+        "test-rust-peg-installed",
+        "Run relocated installed source compilation after swapping in Rust PEG",
+    );
+    test_rust_peg_installed_step.dependOn(&rust_peg_installed_smoke.step);
+    test_step.dependOn(&rust_peg_installed_smoke.step);
+
     const rust_peg_codegen_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_peg_codegen_test.zig"),
         .target = target,

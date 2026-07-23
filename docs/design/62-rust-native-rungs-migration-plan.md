@@ -4,7 +4,7 @@
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
-> complete; N3.5 remains in progress.
+> complete; N3.5.1 is complete and N3.5 remains in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1109,6 +1109,17 @@ deep-input robustness, full bootstrap, and installed compilation.
 Switch the PEG dylib only after parser performance, deep-input robustness, full
 bootstrap, and installed compilation pass. Retain the Zig matcher oracle through
 the compiler migration.
+
+#### N3.5.1 execution record — complete, 2026-07-23
+
+The explicit Rust PEG passes the first N3.5 robustness and installed-path gate:
+an adversarial 4,096-rule chain and a 100,000-byte repetition parse without
+stack overflow, with ReleaseSafe timings of roughly 3.4 ms and 1.3 ms on this
+machine. The relocated installed smoke copies the complete install tree,
+replaces only the canonical PEG filename with the Rust PEG dylib, and compiles
+and runs a source file from another working directory. Both Rust-floor and
+Zig-floor installs pass. The canonical PEG remains Zig; performance comparison
+and full-bootstrap observation remain before the switch.
 
 ## 10. Phase N4 — libtcc and generated runtime shim
 
