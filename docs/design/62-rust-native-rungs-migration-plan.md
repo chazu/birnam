@@ -1,7 +1,8 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.6, N1.1–N1.4, and N2.1 are complete; N2.2 is next.
+> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, and N2.2c are complete; N2.3 is
+> next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -759,6 +760,18 @@ tests, the focused Rust Store core test, and the full `zig build verify` gate ar
 the acceptance checks for this slice. MOP policy, historical range semantics,
 image bridging, Cell/Globals protocol, and the production Store selector remain
 outside N2.2b and are intentionally deferred to N2.2c–N2.4.
+
+#### N2.2c execution record — complete, 2026-07-23
+
+The Rust fact log now preserves the Store's history/retraction contract. Default
+history-off `:one` updates replace one retained slot; history-on attributes keep
+assert and retract events; history-off retraction removes the live fact; and
+`:many` reads fold the newest event per member so retracting one member does not
+hide the others. `hasValue:attr:` and `count:attr:` are cardinality-aware, the
+trace hook retains values referenced only by historical retract entries, and the
+cross-language suite covers one-slot compaction, opt-in timelines, many-member
+retraction, and both selected IdApi floors. Rust formatting/Clippy, the focused
+Rust Store tests, and the full repository gate are required before this commit.
 
 ### N2.3 — Implement the MOP chokepoint
 

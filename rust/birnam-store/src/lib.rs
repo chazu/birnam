@@ -2,9 +2,10 @@
 //!
 //! This slice keeps the public protocol deliberately small. It owns the
 //! historied `(entity, attribute, value)` log and the schema-aware raw/flip,
-//! assert, lookup, cardinality, count, and basis operations. MOP, image, cell,
-//! and Globals policy remain in the Zig Store until their dedicated migration
-//! slices; no Rust reference or lock crosses an IdApi callback.
+//! assert, retract, lookup, cardinality, count, history, and basis operations.
+//! MOP, image, cell, and Globals policy remain in the Zig Store until their
+//! dedicated migration slices; no Rust reference or lock crosses an IdApi
+//! callback.
 
 use birnam_abi::IdApi;
 use core::ffi::{c_char, c_void};
@@ -19,6 +20,13 @@ const CELL_VT_NAME: &[u8] = b"CellVt\0";
 const GLOBALS_VT_NAME: &[u8] = b"GlobalsVt\0";
 const GLOBALS_NAME: &[u8] = b"Globals\0";
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum Op {
+    Assert = 0,
+    Retract = 1,
+}
+
 #[derive(Clone, Copy)]
 #[repr(C)]
 struct Fact {
@@ -26,7 +34,7 @@ struct Fact {
     a: birnam_abi::Oop,
     v: birnam_abi::Oop,
     tx: u64,
-    alive: bool,
+    op: Op,
 }
 
 #[repr(C)]
@@ -57,6 +65,7 @@ struct Runtime {
     cardinality: usize,
     one: usize,
     many: usize,
+    history: usize,
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -115,6 +124,7 @@ unsafe fn append_fact(
     e: birnam_abi::Oop,
     a: birnam_abi::Oop,
     v: birnam_abi::Oop,
+    op: Op,
 ) {
     state.tx = state.tx.saturating_add(1);
     state.facts.push(Fact {
@@ -122,7 +132,7 @@ unsafe fn append_fact(
         a,
         v,
         tx: state.tx,
-        alive: true,
+        op,
     });
 }
 
@@ -135,20 +145,38 @@ fn current_value_raw(
         .facts
         .iter()
         .rev()
-        .find(|fact| fact.alive && same(fact.e, e) && same(fact.a, a))
-        .map_or(ptr::null_mut(), |fact| fact.v)
+        .find(|fact| same(fact.e, e) && same(fact.a, a))
+        .map_or(ptr::null_mut(), |fact| {
+            if fact.op == Op::Assert {
+                fact.v
+            } else {
+                ptr::null_mut()
+            }
+        })
 }
 
 fn count_values(state: &StoreState, e: birnam_abi::Oop, a: birnam_abi::Oop) -> usize {
-    state
-        .facts
-        .iter()
-        .filter(|fact| fact.alive && same(fact.e, e) && same(fact.a, a))
-        .count()
+    let mut seen = Vec::new();
+    let mut count = 0;
+    for fact in state.facts.iter().rev() {
+        if !same(fact.e, e) || !same(fact.a, a) || seen.contains(&fact.v) {
+            continue;
+        }
+        seen.push(fact.v);
+        if fact.op == Op::Assert {
+            count += 1;
+        }
+    }
+    count
 }
 
 fn cardinality(runtime: &Runtime, state: &StoreState, attribute: birnam_abi::Oop) -> usize {
-    current_value_raw(state, attribute, as_oop(runtime.cardinality)) as usize
+    let value = current_value_raw(state, attribute, as_oop(runtime.cardinality));
+    if value.is_null() {
+        runtime.one
+    } else {
+        value as usize
+    }
 }
 
 unsafe fn seed(runtime: &Runtime, store: birnam_abi::Oop) {
@@ -161,18 +189,21 @@ unsafe fn seed(runtime: &Runtime, store: birnam_abi::Oop) {
             as_oop(runtime.cardinality),
             as_oop(runtime.cardinality),
             as_oop(runtime.one),
+            Op::Assert,
         );
         append_fact(
             state,
             intern(api(runtime), b"name\0"),
             as_oop(runtime.cardinality),
             as_oop(runtime.one),
+            Op::Assert,
         );
         append_fact(
             state,
             intern(api(runtime), b"history\0"),
             as_oop(runtime.cardinality),
             as_oop(runtime.one),
+            Op::Assert,
         );
     }
     state.raw = false;
@@ -208,13 +239,12 @@ unsafe extern "C" fn trace_store(store: birnam_abi::Oop, mark: birnam_abi::MarkF
         // SAFETY: the vector remains owned by the reachable Store object during
         // this trace and `index` is bounded by its captured length.
         let fact = unsafe { *facts.add(index) };
-        if fact.alive {
-            // SAFETY: the collector supplied the callback and each field is an
-            // Oop carrier retained by the Store's fact log.
-            unsafe { mark(fact.e) };
-            unsafe { mark(fact.a) };
-            unsafe { mark(fact.v) };
-        }
+        // SAFETY: the collector supplied the callback and each field is an Oop
+        // carrier retained by the Store's fact log. Retraction entries retain
+        // their value for history and must therefore remain roots too.
+        unsafe { mark(fact.e) };
+        unsafe { mark(fact.a) };
+        unsafe { mark(fact.v) };
     }
 }
 
@@ -227,7 +257,7 @@ unsafe extern "C" fn raw_assert(
     // SAFETY: IdApi Method calls carry the declared non-null argument buffer
     // for this three-argument selector.
     let args = unsafe { core::slice::from_raw_parts(args, 3) };
-    unsafe { append_fact(state, args[0], args[1], args[2]) };
+    unsafe { append_fact(state, args[0], args[1], args[2], Op::Assert) };
     self_object
 }
 
@@ -250,28 +280,85 @@ unsafe extern "C" fn assert_fact(
     let args = unsafe { core::slice::from_raw_parts(args, 3) };
     let state = unsafe { state_mut(self_object) };
     if state.raw {
-        unsafe { append_fact(state, args[0], args[1], args[2]) };
+        unsafe { append_fact(state, args[0], args[1], args[2], Op::Assert) };
         return self_object;
     }
     let is_many = cardinality(runtime, state, args[1]) == runtime.many;
     if is_many {
-        if state.facts.iter().any(|fact| {
-            fact.alive && same(fact.e, args[0]) && same(fact.a, args[1]) && same(fact.v, args[2])
-        }) {
+        if is_member(state, args[0], args[1], args[2]) {
             return self_object;
         }
+        unsafe { append_fact(state, args[0], args[1], args[2], Op::Assert) };
     } else {
         let old = current_value_raw(state, args[0], args[1]);
         if same(old, args[2]) {
             return self_object;
         }
-        for fact in &mut state.facts {
-            if fact.alive && same(fact.e, args[0]) && same(fact.a, args[1]) {
-                fact.alive = false;
-            }
+        if history_enabled(runtime, state, args[1]) {
+            unsafe { append_fact(state, args[0], args[1], args[2], Op::Assert) };
+        } else {
+            replace_one(state, args[0], args[1], args[2]);
         }
     }
-    unsafe { append_fact(state, args[0], args[1], args[2]) };
+    self_object
+}
+
+fn history_enabled(runtime: &Runtime, state: &StoreState, attribute: birnam_abi::Oop) -> bool {
+    current_value_raw(state, attribute, as_oop(runtime.history)) == unsafe { api(runtime) }.trueObj
+}
+
+fn is_member(
+    state: &StoreState,
+    e: birnam_abi::Oop,
+    a: birnam_abi::Oop,
+    v: birnam_abi::Oop,
+) -> bool {
+    state
+        .facts
+        .iter()
+        .rev()
+        .find(|fact| same(fact.e, e) && same(fact.a, a) && same(fact.v, v))
+        .is_some_and(|fact| fact.op == Op::Assert)
+}
+
+fn replace_one(state: &mut StoreState, e: birnam_abi::Oop, a: birnam_abi::Oop, v: birnam_abi::Oop) {
+    if let Some(fact) = state
+        .facts
+        .iter_mut()
+        .rev()
+        .find(|fact| same(fact.e, e) && same(fact.a, a))
+    {
+        fact.v = v;
+        fact.op = Op::Assert;
+        state.tx = state.tx.saturating_add(1);
+    } else {
+        unsafe { append_fact(state, e, a, v, Op::Assert) };
+    }
+}
+
+fn remove_live(state: &mut StoreState, e: birnam_abi::Oop, a: birnam_abi::Oop, v: birnam_abi::Oop) {
+    state.facts.retain(|fact| {
+        !(same(fact.e, e) && same(fact.a, a) && same(fact.v, v) && fact.op == Op::Assert)
+    });
+}
+
+unsafe extern "C" fn retract(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly three arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 3) };
+    let state = unsafe { state_mut(self_object) };
+    if !is_member(state, args[0], args[1], args[2]) {
+        return self_object;
+    }
+    if history_enabled(runtime, state, args[1]) {
+        unsafe { append_fact(state, args[0], args[1], args[2], Op::Retract) };
+    } else {
+        remove_live(state, args[0], args[1], args[2]);
+    }
     self_object
 }
 
@@ -310,7 +397,12 @@ unsafe extern "C" fn has_value(
     let runtime = runtime();
     // SAFETY: this selector has exactly two arguments.
     let args = unsafe { core::slice::from_raw_parts(args, 2) };
-    let present = !current_value_raw(unsafe { state_mut(self_object) }, args[0], args[1]).is_null();
+    let state = unsafe { state_mut(self_object) };
+    let present = if cardinality(runtime, state, args[1]) == runtime.many {
+        count_values(state, args[0], args[1]) != 0
+    } else {
+        !current_value_raw(state, args[0], args[1]).is_null()
+    };
     if present {
         unsafe { api(runtime) }.trueObj
     } else {
@@ -326,7 +418,12 @@ unsafe extern "C" fn count(
     let runtime = runtime();
     // SAFETY: this selector has exactly two arguments.
     let args = unsafe { core::slice::from_raw_parts(args, 2) };
-    let count = count_values(unsafe { state_mut(self_object) }, args[0], args[1]);
+    let state = unsafe { state_mut(self_object) };
+    let count = if cardinality(runtime, state, args[1]) == runtime.one {
+        usize::from(!current_value_raw(state, args[0], args[1]).is_null())
+    } else {
+        count_values(state, args[0], args[1])
+    };
     // SAFETY: the floor owns the returned boxed integer.
     unsafe { (api(runtime).mkSmallInt)(count as i64) }
 }
@@ -334,9 +431,18 @@ unsafe extern "C" fn count(
 unsafe extern "C" fn history(
     self_object: birnam_abi::Oop,
     args: *const birnam_abi::Oop,
-    count_args: usize,
+    _count: usize,
 ) -> birnam_abi::Oop {
-    unsafe { count(self_object, args, count_args) }
+    let runtime = runtime();
+    // SAFETY: this selector has exactly two arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 2) };
+    let history_len = unsafe { state_mut(self_object) }
+        .facts
+        .iter()
+        .filter(|fact| same(fact.e, args[0]) && same(fact.a, args[1]))
+        .count();
+    // SAFETY: the floor owns the returned boxed integer.
+    unsafe { (api(runtime).mkSmallInt)(history_len as i64) }
 }
 
 unsafe extern "C" fn basis(
@@ -401,6 +507,7 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"hasValue:attr:\0", has_value),
         (b"count:attr:\0", count),
         (b"history:attr:\0", history),
+        (b"retract:attr:value:\0", retract),
         (b"basis\0", basis),
         (b"cardinality:\0", cardinality_method),
         (b"new\0", new_store),
@@ -457,6 +564,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         let cardinality = unsafe { intern(api, b"cardinality\0") };
         let one = unsafe { intern(api, b"one\0") };
         let many = unsafe { intern(api, b"many\0") };
+        let history = unsafe { intern(api, b"history\0") };
         Runtime {
             api: api_pointer as usize,
             store_vt: oop_address(store_vt),
@@ -467,6 +575,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             cardinality: oop_address(cardinality),
             one: oop_address(one),
             many: oop_address(many),
+            history: oop_address(history),
         }
     });
     unsafe { register_methods(&runtime) };

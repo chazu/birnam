@@ -61,3 +61,49 @@ test "Rust Store core owns raw/flip, schema-aware assert, lookup, and basis" {
     try std.testing.expect(fresh != null and fresh != store);
     try std.testing.expect(send(api, fresh, "currentValue:attr:", &.{ api.intern("cardinality"), api.intern("cardinality") }) == api.intern("one"));
 }
+
+test "Rust Store history and retraction preserve the opt-in timeline contract" {
+    const api = floor.api();
+    const path = std.posix.getenv("BIRNAM_RUST_STORE_DYLIB") orelse
+        return error.MissingRustStoreDylib;
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustStoreDlopenFailed;
+    const raw_init = api.dlsym(handle, "module_init") orelse return error.RustStoreModuleInitMissing;
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
+
+    const store = api.import("Store") orelse return error.RustStoreNotExported;
+    const e = api.intern("rust_store_history_entity");
+    const one_attr = api.intern("rust_store_history_one");
+    const first = api.intern("first");
+    const second = api.intern("second");
+    const third = api.intern("third");
+
+    _ = send(api, store, "assert:attr:value:", &.{ e, one_attr, first });
+    _ = send(api, store, "assert:attr:value:", &.{ e, one_attr, second });
+    try std.testing.expect(send(api, store, "currentValue:attr:", &.{ e, one_attr }) == second);
+    try std.testing.expectEqual(@as(usize, 1), count(api, store, e, one_attr));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, store, "history:attr:", &.{ e, one_attr })));
+
+    const history_attr = api.intern("history");
+    _ = send(api, store, "assert:attr:value:", &.{ one_attr, history_attr, api.trueObj });
+    _ = send(api, store, "assert:attr:value:", &.{ e, one_attr, third });
+    _ = send(api, store, "assert:attr:value:", &.{ e, one_attr, second });
+    try std.testing.expect(send(api, store, "currentValue:attr:", &.{ e, one_attr }) == second);
+    try std.testing.expectEqual(@as(usize, 1), count(api, store, e, one_attr));
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, store, "history:attr:", &.{ e, one_attr })));
+
+    const many_attr = api.intern("rust_store_history_many");
+    const many = api.intern("many");
+    const alpha = api.intern("alpha");
+    const beta = api.intern("beta");
+    _ = send(api, store, "assert:attr:value:", &.{ many_attr, api.intern("cardinality"), many });
+    _ = send(api, store, "assert:attr:value:", &.{ many_attr, history_attr, api.trueObj });
+    _ = send(api, store, "assert:attr:value:", &.{ e, many_attr, alpha });
+    _ = send(api, store, "assert:attr:value:", &.{ e, many_attr, beta });
+    _ = send(api, store, "retract:attr:value:", &.{ e, many_attr, alpha });
+    try std.testing.expectEqual(@as(usize, 1), count(api, store, e, many_attr));
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, store, "history:attr:", &.{ e, many_attr })));
+    try std.testing.expect(send(api, store, "hasValue:attr:", &.{ e, many_attr }) == api.trueObj);
+}
