@@ -101,3 +101,61 @@ test "pointer-free artifact inspection rejects unavailable native requirement" {
     try std.testing.expect(try inspectFixture(api, bytes) == api.nilObj);
     try std.testing.expect(api.send(api.import("Artifact").?, api.intern("lastFailure"), &.{}, 0) == api.intern("nativeRequirementUnavailable"));
 }
+
+test "pointer-free artifact inspection rejects a duplicate valid descriptor" {
+    const api = testApi();
+    const first = try descriptorBytes("module", "candidate", artifact_contract.abi, artifact_contract.target, &.{});
+    defer std.testing.allocator.free(first);
+    var bytes: std.ArrayList(u8) = .{};
+    defer bytes.deinit(std.testing.allocator);
+    try bytes.appendSlice(std.testing.allocator, first);
+    try bytes.appendSlice(std.testing.allocator, first);
+
+    try std.testing.expect(try inspectFixture(api, bytes.items) == api.nilObj);
+    try std.testing.expect(api.send(api.import("Artifact").?, api.intern("lastFailure"), &.{}, 0) == api.intern("artifactDescriptionMissing"));
+}
+
+test "pointer-free artifact inspection rejects a truncated descriptor" {
+    const api = testApi();
+    const bytes = try descriptorBytes("module", "candidate", artifact_contract.abi, artifact_contract.target, &.{});
+    defer std.testing.allocator.free(bytes);
+
+    try std.testing.expect(try inspectFixture(api, bytes[0 .. bytes.len - 1]) == api.nilObj);
+    try std.testing.expect(api.send(api.import("Artifact").?, api.intern("lastFailure"), &.{}, 0) == api.intern("artifactDescriptionMissing"));
+}
+
+test "pointer-free artifact inspection rejects an oversized list" {
+    const api = testApi();
+    var native_requires: [4097][]const u8 = undefined;
+    for (&native_requires) |*requirement| requirement.* = "x";
+    const bytes = try descriptorBytes(
+        "module",
+        "candidate",
+        artifact_contract.abi,
+        artifact_contract.target,
+        &native_requires,
+    );
+    defer std.testing.allocator.free(bytes);
+
+    try std.testing.expect(try inspectFixture(api, bytes) == api.nilObj);
+    try std.testing.expect(api.send(api.import("Artifact").?, api.intern("lastFailure"), &.{}, 0) == api.intern("artifactDescriptionMissing"));
+}
+
+test "pointer-free artifact inspection rejects deterministic adversarial bytes" {
+    const api = testApi();
+    var bytes: [257]u8 = undefined;
+    for (0..256) |seed| {
+        var value: u32 = @intCast(seed + 1);
+        for (&bytes) |*byte| {
+            value ^= value << 13;
+            value ^= value >> 17;
+            value ^= value << 5;
+            byte.* = @truncate(value);
+        }
+        // Ensure every case contains a magic candidate but not a complete
+        // descriptor, exercising bounded failure instead of a lucky miss.
+        @memcpy(bytes[1..][0..artifact_contract.descriptor_magic.len], artifact_contract.descriptor_magic);
+        try std.testing.expect(try inspectFixture(api, &bytes) == api.nilObj);
+        try std.testing.expect(api.send(api.import("Artifact").?, api.intern("lastFailure"), &.{}, 0) == api.intern("artifactDescriptionMissing"));
+    }
+}

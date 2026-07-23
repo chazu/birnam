@@ -165,6 +165,31 @@ pub fn build(b: *std.Build) void {
         "CARGO_TARGET_DIR",
         b.pathFromRoot(".cargo-target"),
     );
+
+    // The pointer-free artifact parser is a no-state Rust crate. Keep its
+    // tests on the same locked/offline workspace path as the floor build so
+    // parser behavior is part of the normal test gate before any inspector
+    // dylib can consume it.
+    const rust_artifact_tests = b.addSystemCommand(&.{
+        "cargo",
+        "test",
+        "-p",
+        "birnam-artifact",
+        "--locked",
+        "--offline",
+    });
+    rust_artifact_tests.setEnvironmentVariable(
+        "CARGO_TARGET_DIR",
+        b.pathFromRoot(".cargo-target"),
+    );
+    rust_artifact_tests.step.dependOn(&rust_id_build.step);
+    const test_rust_artifact_step = b.step(
+        "test-rust-artifact",
+        "Run the allocation-free Rust artifact parser contract tests",
+    );
+    test_rust_artifact_step.dependOn(&rust_artifact_tests.step);
+    test_step.dependOn(&rust_artifact_tests.step);
+
     const rust_id_abi_test_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_idapi_abi_test.zig"),
         .target = target,

@@ -1,5 +1,5 @@
 [workspace]
-members = ["rust/birnam-abi", "rust/birnam-id"]
+members = ["rust/birnam-abi", "rust/birnam-artifact", "rust/birnam-id"]
 resolver = "3"
 
 [workspace.package]

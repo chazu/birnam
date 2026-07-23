@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.5 are complete; N0.6 is next.
+> passes. N0.1 through N0.6 are complete; N1.1 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -558,6 +558,26 @@ must run before untrusted activation.
 
 **Gate:** exact accept/reject and diagnostic-category parity; fuzz/property
 inputs cannot panic, allocate unboundedly, or read out of bounds.
+
+#### N1.1 execution record — complete, 2026-07-23
+
+The new `birnam-artifact` workspace crate parses the pointer-free descriptor
+from borrowed byte slices only. It performs bounded magic search, checked
+length arithmetic, all nine field/list reads, the 4096-entry list bound,
+duplicate-valid-record rejection, and ABI/target/identity validation without
+`IdApi`, `dlopen`, object allocation, or activation policy. Malformed magic
+candidates retain the Zig inspector's public `artifactDescriptionMissing`
+category; ABI and target mismatches remain distinct.
+
+The Zig inspector and Rust parser now cover the same valid, ABI/target mismatch,
+garbage, truncated, duplicate, oversized-list, and deterministic adversarial
+byte cases. The Rust adversarial loop exercises 10,000 generated 257-byte
+inputs; the Zig boundary suite exercises the same bounded-failure shape through
+the selected inspector dylib. `cargo test --workspace --locked --offline`,
+`zig build test-rust-artifact`, the focused Zig artifact suite, the relocated
+install smoke, the native-rung inventory, and the complete `zig build verify`
+gate pass. The installed workspace metadata assertion now includes
+`birnam-artifact`.
 
 ### N1.2 — Add the Rust inspector dylib shell
 
