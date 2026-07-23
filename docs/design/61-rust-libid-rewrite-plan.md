@@ -1914,7 +1914,7 @@ The Rust floor is release-ready when functional gates pass and Design 46 reports
 no unaccepted regression. Any accepted performance tradeoff requires a separate
 record naming the case, measured cost, user benefit, and follow-up.
 
-### R6 execution record — in progress, 2026-07-22
+### R6 execution record — complete, 2026-07-23
 
 The non-timing release checks are now executable gates. Debug and release
 cdylibs use `panic=abort`, export only the four specified production symbols,
@@ -2013,6 +2013,22 @@ driver therefore emitted no partial Rust snapshot. R6 remains open pending one
 complete guarded pair on a quiet host; R7 remains prohibited. The complete
 `zig build verify` gate passes at `15d0824` with the active allocation path and
 all of the benchmark-driver hardening in place.
+
+The complete guarded rerun at source commit `2fe44d2` produced the exact
+Zig/Rust result pair recorded by Design 61a. The unchanged Design 46 comparator
+reports two threshold crossings, zero missing cases, and zero unusable cases:
+`query.aggregate` is 1,475,835 -> 1,562,867 ns/op (+5.8%), and
+`compile.stage1-stdlib` is 39,818 -> 44,564 us (+11.9%). The former adds 0.087
+ms per benchmark operation; the latter adds 4.746 ms to a cold whole-process
+compile. Every other case meets its existing threshold, including
+`string.split-native` at +2.4%, while 26 cases improve beyond their threshold.
+
+Design 61a accepts those two tradeoffs only for the exact result-file hashes,
+names their user benefit and bounded follow-up, and makes the decision
+machine-checkable through `mise run r6-acceptance`. The task leaves Design 46's
+comparator and thresholds unchanged and fails on any changed snapshot,
+additional regression, missing case, or unusable value. That acceptance gate
+passes at `fb3652d`. R6 is complete, and R7 may begin.
 
 ## 13. Phase R7 — Build, install, and default cutover
 
@@ -2252,7 +2268,8 @@ may dominate; phase gates take precedence over either estimate.
 - [ ] Symbol interning preserves arbitrary non-NUL byte strings, including
       non-UTF-8 selectors, and `doesNotUnderstand:` preserves the 16-argument
       boundary.
-- [ ] Design 46 comparison reports no unaccepted regression.
+- [x] Design 46 comparison reports no unaccepted regression; Design 61a records
+      the two exact-snapshot tradeoffs.
 - [ ] Rust dylib dependencies and install name are distribution-safe.
 - [ ] Clean build, install, dist, source-free root, and isolate smoke pass.
 - [ ] Documentation says Rust where Rust is authoritative and native where mixed.
