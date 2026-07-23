@@ -103,6 +103,10 @@ run = "bash scripts/cross-floor-artifact-smoke.sh"
 description = "Save images with each floor and semantically boot them with both floors"
 run = "bash scripts/cross-floor-image-smoke.sh"
 
+[tasks.test-cross-floor-errors]
+description = "Compare specified language-visible diagnostics across both floors"
+run = "bash scripts/cross-floor-error-smoke.sh"
+
 [tasks.rust-env-loader-smoke]
 description = "Reflect canonical exports and reload a fixture through Rust"
 run = "bash scripts/rust-env-loader-smoke.sh"
