@@ -78,17 +78,10 @@ unsafe extern "C" fn api_alloc(vtable: Oop, payload_size: usize) -> Oop {
 }
 
 unsafe extern "C" fn api_send(receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
-    if let Some(result) = with_active_if_present(|active| {
-        // SAFETY: with_active_if_present proves a surrounding owner-checked
-        // Runtime::enter; the public wrapper forwards the IdApi argument-buffer
-        // contract, and send_abi retains the metacircular lookup protocol.
-        unsafe { active.send_abi(receiver, selector, args, count) }
-    }) {
-        return result;
-    }
-    runtime().enter(|| {
+    let runtime = runtime();
+    runtime.enter(|| {
         // SAFETY: the public wrapper forwards the IdApi argument-buffer contract.
-        unsafe { runtime().send_abi(receiver, selector, args, count) }
+        unsafe { runtime.send_abi(receiver, selector, args, count) }
     })
 }
 
@@ -108,6 +101,36 @@ pub(crate) unsafe fn test_active_send(
 ) -> Oop {
     // SAFETY: forwarded caller contract.
     unsafe { api_send(receiver, selector, args, count) }
+}
+
+#[cfg(feature = "ffi-test-hooks")]
+unsafe extern "C" fn external_null_answer(_: Oop, args: *const Oop, count: usize) -> Oop {
+    if args.is_null() && count == 0 {
+        4242usize as Oop
+    } else {
+        core::ptr::null_mut()
+    }
+}
+
+/// Install and invoke one foreign reentrant Method through the actual
+/// process-lifetime public runtime.
+#[cfg(feature = "ffi-test-hooks")]
+pub(crate) fn test_dispatch_reentry(method: Method) -> usize {
+    let _ = initialize_once();
+    let runtime = runtime();
+    let globals = runtime.globals();
+    let inner = runtime
+        .intern(b"externalInner")
+        .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
+    let outer = runtime
+        .intern(b"externalOuter:")
+        .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
+    let receiver = runtime.allocate_instance(globals.object_vt, 0);
+    let _ = runtime.add_method(globals.object_vt, inner, external_null_answer);
+    let _ = runtime.add_method(globals.object_vt, outer, method);
+    runtime
+        .enter(|| runtime.send_slice(receiver, outer, &[inner]))
+        .addr()
 }
 
 unsafe extern "C" fn api_make_smallint(value: i64) -> Oop {

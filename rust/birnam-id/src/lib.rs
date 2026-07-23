@@ -138,7 +138,7 @@ pub unsafe extern "C" fn birnam_id_test_membership_bench(
 #[cfg(feature = "ffi-test-hooks")]
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_id_test_dispatch_reentry(method: abi::Method) -> usize {
-    dispatch::run_external_reentry(method)
+    public_api::test_dispatch_reentry(method)
 }
 
 /// Test-only send seam available only during the synchronous reentry harness.

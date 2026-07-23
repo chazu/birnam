@@ -568,13 +568,19 @@ impl Runtime {
     }
 
     pub(crate) fn enter<R>(&self, operation: impl FnOnce() -> R) -> R {
-        self.assert_owner();
         ACTIVE_RUNTIME.with(|active| {
-            let current = active.replace(self as *const Runtime);
+            let current = active.get();
+            if core::ptr::eq(current, self) {
+                // The surrounding dynamic extent already proved owner-thread
+                // authority for this exact runtime.
+                return operation();
+            }
+            self.assert_owner();
             boundary::require_invariant(
-                current.is_null() || core::ptr::eq(current, self),
+                current.is_null(),
                 "two Rust floor runtimes entered on one thread",
             );
+            active.set(self as *const Runtime);
             let guard = ActiveRuntimeGuard {
                 active,
                 previous: current,
@@ -1030,7 +1036,8 @@ pub(crate) fn with_active_if_present<R>(operation: impl FnOnce(&Runtime) -> R) -
 
 #[cfg(test)]
 mod tests {
-    use super::current_thread_token;
+    use super::{current_thread_token, with_active_if_present};
+    use crate::dispatch::build_bootstrap;
 
     #[test]
     fn owner_tokens_are_stable_and_unique_across_threads() {
@@ -1040,5 +1047,29 @@ mod tests {
             .join()
             .expect("token thread completes");
         assert_ne!(other, owner);
+    }
+
+    #[test]
+    fn nested_entry_reuses_and_restores_the_active_runtime() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        assert!(with_active_if_present(|_| ()).is_none());
+
+        runtime.enter(|| {
+            assert!(
+                with_active_if_present(|active| core::ptr::eq(active, runtime)).unwrap_or(false)
+            );
+            runtime.enter(|| {
+                assert!(
+                    with_active_if_present(|active| core::ptr::eq(active, runtime))
+                        .unwrap_or(false)
+                );
+            });
+            assert!(
+                with_active_if_present(|active| core::ptr::eq(active, runtime)).unwrap_or(false)
+            );
+        });
+
+        assert!(with_active_if_present(|_| ()).is_none());
     }
 }
