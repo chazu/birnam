@@ -2,8 +2,8 @@
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
-> and N2.4a through N2.4d are complete; N2.5a through N2.5c are complete, and
-> N3.1 is next.
+> and N2.4a through N2.4d are complete; N2.5a through N2.5c and N3.1 are
+> complete, and N3.2a is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -930,6 +930,16 @@ diagnostics, deep/backtracking inputs, and compile-corpus performance.
 Implement Rust-owned patterns, grammars, CST nodes, exact GC layouts, root
 handling, and current Birnam message protocol. Keep construction semantics out
 of `libid`.
+
+#### N3.2a execution record — complete, 2026-07-23
+
+The workspace now contains a `birnam-peg` Rust `cdylib` shell with a distinct
+`rust-peg-n3.2-shell` identity export and fatal null-`IdApi` boundary. It is
+installed only as `libbirnam_id_peg_rust.dylib`; the Zig PEG remains the
+canonical `libbirnam_id_peg.dylib`, so the shell cannot silently co-own `Peg`.
+Cargo lock/install metadata, strict Clippy, the shell symbol audit, and an
+isolated `zig build install` all pass. The shell exports no runtime objects yet;
+N3.2b owns the first Rust pattern representation.
 
 ### N3.3 — Port the matcher
 

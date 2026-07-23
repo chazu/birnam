@@ -3,6 +3,7 @@ members = [
     "rust/birnam-abi",
     "rust/birnam-artifact",
     "rust/birnam-id",
+    "rust/birnam-peg",
     "rust/birnam-store",
 ]
 resolver = "3"

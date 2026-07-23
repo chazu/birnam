@@ -334,6 +334,17 @@ pub fn build(b: *std.Build) void {
     test_rust_store_stack_step.dependOn(&rust_store_stack_smoke.step);
     test_step.dependOn(&rust_store_stack_smoke.step);
 
+    const rust_peg_shell_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-peg-shell-smoke.sh",
+    });
+    const test_rust_peg_shell_step = b.step(
+        "test-rust-peg-shell",
+        "Build and inspect the explicit Rust PEG dynamic-rung shell",
+    );
+    test_rust_peg_shell_step.dependOn(&rust_peg_shell_smoke.step);
+    test_step.dependOn(&rust_peg_shell_smoke.step);
+
     const rust_id_abi_fixture_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/rust-id-abi-fixture-smoke.sh",
@@ -758,6 +769,18 @@ pub fn build(b: *std.Build) void {
             install_rust_store.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_store.step);
             bootstrap_install.dependOn(&install_rust_store.step);
+        } else if (std.mem.eql(u8, m.name, "birnam_id_peg")) {
+            const install_rust_peg = b.addInstallFileWithDir(
+                b.path(b.fmt(
+                    ".cargo-target/{s}/libbirnam_peg.dylib",
+                    .{rust_floor_profile},
+                )),
+                .lib,
+                "libbirnam_id_peg_rust.dylib",
+            );
+            install_rust_peg.step.dependOn(&rust_floor_build.step);
+            b.getInstallStep().dependOn(&install_rust_peg.step);
+            bootstrap_install.dependOn(&install_rust_peg.step);
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
