@@ -1,8 +1,8 @@
 # 61 — Rust libid Floor Rewrite Plan
 
-> **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, R3.0 through R3.7, R4.1 through R4.7, and R5 complete as
-> of 2026-07-22. This plan
+> **Status:** Implementation in progress; R0 through R6 and R7.1 through R7.4
+> are complete as of 2026-07-23. The R7.5 default switch is implemented and its
+> final aggregate verification is in progress. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -2073,7 +2073,7 @@ unit, Cargo target, or compatibility fixture; it passes Cargo's 54 tests,
 builds and boots the Rust production floor, boots the separately named Zig
 oracle, and builds and boots a second Zig-production rollback prefix. The
 relocated installed-tree smoke also passes against the Rust default. R7.1 is
-complete; the complete R7 verification gate remains pending R7.2-R7.4.
+complete; later subsections record the remaining R7 checkpoints.
 
 ### R7.2 — Update CI and task runner
 
@@ -2081,6 +2081,14 @@ complete; the complete R7 verification gate remains pending R7.2-R7.4.
 - Run Rust unit/ABI tests before full verification.
 - Run the Rust-default full gate and a focused Zig-oracle conformance gate.
 - Keep benchmark execution outside CI under Design 46's current policy.
+
+#### R7.2 execution record — complete, 2026-07-23
+
+Commit `1473b70` pins both toolchains, runs Rust checks/tests before the native
+graph, probes the Rust floor and named Zig oracle, exercises the fixture-free
+cold bootstrap, then runs focused `-Dfloor=zig` conformance and the Rust-default
+`zig build verify`. `mise run zig-oracle-conformance` exposes the focused local
+equivalent. Benchmarks remain outside CI.
 
 ### R7.3 — Update install and distribution
 
@@ -2096,6 +2104,18 @@ complete; the complete R7 verification gate remains pending R7.2-R7.4.
   alternate floor is actually packaged.
 - Confirm missing-floor diagnostics retain their current public path behavior.
 
+#### R7.3 execution record — complete, 2026-07-23
+
+Commit `88c7dcb` installs the complete Rust crate source and Cargo metadata
+needed for offline documentation, the Rust production
+`libbirnam_id.dylib`, and the separately named `libbirnam_id_zig.dylib`.
+Repository-only `abi/idapi-v1.json` remains absent. The relocated install smoke
+compares installed native sources with the checkout and boots both the Rust
+default and explicit Zig oracle. `zig build test-install` and `scripts/dist.sh`
+pass; the signed release tarball contains both unambiguously named dynamic
+libraries and no ABI manifest. The crate has no third-party dependencies, and
+the repository currently has no license file to copy or invent.
+
 ### R7.4 — Make documentation implementation-honest
 
 - Replace “Zig floor” wording with “native floor” where the statement spans the
@@ -2107,16 +2127,39 @@ complete; the complete R7 verification gate remains pending R7.2-R7.4.
   help only where their implementation-language claim changed.
 - Do not rewrite historical documents that are explicitly archival.
 
-### R7.5 — Switch the default
+#### R7.4 execution record — complete, 2026-07-23
+
+Commit `4a814ea` extends the compiler-free native documentation scanner to Rust
+`//!`/`///`, preserves docs across Rust attributes, gives Rust modules distinct
+`rust-*` identities and a `#rustFloor` kind, and threads the installed Rust
+source directory through the runtime resource and CLI boundary. Generated
+reference pages group the Rust floor and Zig oracle separately. The 334-test
+self-hosted suite and relocated `test-install` smoke pass, including a check for
+the extracted `IdApi` documentation. Commit `99c2deb` updates current Designs
+32, 40, 42, 43, 44, 46, and 54, the relevant guides, README, help, task
+descriptions, source comments, and Rust API docs without rewriting archival
+history.
+
+### R7.5 — Confirm and record the default switch
 
 - Make the Rust artifact the normal `libbirnam_id.dylib` in one focused commit.
-- Run the full clean verification, benchmark comparison, isolated install, and
-  distribution build from that exact commit.
+- Consume the exact, executable R6 performance acceptance rather than creating
+  a second benchmark policy during cutover.
+- Run full verification after the CI, distribution, and documentation follow-up
+  commits so the accepted R7 state, not only the switch commit, is covered.
 - Record the cutover commit, the exact developer `-Dfloor=zig` recovery command,
   and the previous-complete-release reinstall path in the release notes.
 
-**Gate:** a clean user build never needs the Zig floor artifact, while developers
-can still select the oracle explicitly.
+Commit `7b35b14` is the focused default switch: ordinary builds install the Rust
+artifact as `libbirnam_id.dylib`; `-Dfloor=zig` is explicit. Design 61a and
+`mise run r6-acceptance` bind cutover to the exact accepted dual-floor results
+and their two named tradeoffs. The remaining R7.5 action is the final aggregate
+verification after the follow-up commits.
+
+**Gate:** a clean default build and ordinary execution select the Rust production
+artifact, never the Zig implementation implicitly. The oracle remains separately
+named and developers can explicitly install it under the production name in an
+isolated prefix.
 
 ## 14. Phase R8 — Observation window and Zig-floor retirement
 
@@ -2181,8 +2224,8 @@ violation.
 
 ## 16. Rollback and checkpoint policy
 
-Until R7.5, rollback is floor selection: the Zig production artifact remains
-untouched and default. After cutover but before R8 retirement there are two
+Before the focused R7.5 cutover commit, rollback was floor selection with Zig
+still the default. After cutover and before R8 retirement there are two
 explicitly different recovery policies:
 
 - **Developer rollback:** `zig build -Dfloor=zig --prefix <isolated-prefix>`
@@ -2194,7 +2237,9 @@ explicitly different recovery policies:
   unpackaged oracle can be selected in the field.
 - Distribution automation records the default and never packages both floors
   ambiguously under the same name.
-- Both recovery paths are exercised before cutover.
+- The developer recovery path is exercised by the cold-bootstrap gate. The
+  previous-release path is a distribution procedure and remains available
+  independently of the source branch.
 
 For either recovery path:
 
