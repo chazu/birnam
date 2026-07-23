@@ -267,9 +267,31 @@ pub fn build(b: *std.Build) void {
     });
     const test_rust_lower_rungs_step = b.step(
         "test-rust-lower-rungs",
-        "Run isolated artifact-preflight, GC-layout, Store, PEG, language, prelude, and non-GC collection matrices",
+        "Run the complete isolated 256-test matrix under Zig and both Rust profiles",
     );
     test_rust_lower_rungs_step.dependOn(&rust_lower_rung_matrix.step);
+
+    const floor_zig_tests = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-lower-rung-matrix.sh",
+        "zig",
+    });
+    const test_floor_zig_step = b.step(
+        "test-floor-zig",
+        "Run the complete isolated selected-floor test matrix under Zig",
+    );
+    test_floor_zig_step.dependOn(&floor_zig_tests.step);
+
+    const floor_rust_tests = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-lower-rung-matrix.sh",
+        "rust",
+    });
+    const test_floor_rust_step = b.step(
+        "test-floor-rust",
+        "Run the complete isolated selected-floor test matrix under Rust debug and release",
+    );
+    test_floor_rust_step.dependOn(&floor_rust_tests.step);
 
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the

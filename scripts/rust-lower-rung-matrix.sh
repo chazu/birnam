@@ -2,6 +2,11 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
+mode=${1:-both}
+if [[ $mode != zig && $mode != rust && $mode != both ]]; then
+  echo "usage: $0 [zig|rust|both]" >&2
+  exit 2
+fi
 scratch=$(mktemp -d /tmp/birnam-rust-lower-rungs.XXXXXX)
 trap 'rm -rf "$scratch"' EXIT
 
@@ -42,28 +47,32 @@ rungs=(
   test-alien
 )
 
-TMPDIR="$zig_root/tmp" zig build stage1 \
-  --prefix "$zig_prefix" \
-  --cache-dir "$zig_root/cache" \
-  --global-cache-dir "$zig_root/global-cache"
-zig_floor="$zig_prefix/lib/libbirnam_id.dylib"
-test -f "$zig_floor"
-zig_digest=$(shasum -a 256 "$zig_floor" | awk '{print $1}')
-TMPDIR="$zig_root/tmp" zig build "${rungs[@]}" \
-  --prefix "$zig_prefix" \
-  --cache-dir "$zig_root/cache" \
-  --global-cache-dir "$zig_root/global-cache" \
-  -Did-conformance-floor="$zig_floor" \
-  -Did-conformance-identity=zig-id-v1 \
-  -Did-conformance-sha256="$zig_digest"
-echo "lower-rung-matrix: zig-id-v1 passed 256 tests, dylib $zig_digest"
+if [[ $mode != rust ]]; then
+  TMPDIR="$zig_root/tmp" zig build stage1 \
+    --prefix "$zig_prefix" \
+    --cache-dir "$zig_root/cache" \
+    --global-cache-dir "$zig_root/global-cache"
+  zig_floor="$zig_prefix/lib/libbirnam_id.dylib"
+  test -f "$zig_floor"
+  zig_digest=$(shasum -a 256 "$zig_floor" | awk '{print $1}')
+  TMPDIR="$zig_root/tmp" zig build "${rungs[@]}" \
+    --prefix "$zig_prefix" \
+    --cache-dir "$zig_root/cache" \
+    --global-cache-dir "$zig_root/global-cache" \
+    -Did-conformance-floor="$zig_floor" \
+    -Did-conformance-identity=zig-id-v1 \
+    -Did-conformance-sha256="$zig_digest"
+  echo "lower-rung-matrix: zig-id-v1 passed 256 tests, dylib $zig_digest"
+fi
 
-CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline
-CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline --release
-TMPDIR="$rust_root/tmp" zig build stage1 \
-  --prefix "$rust_prefix" \
-  --cache-dir "$rust_root/cache" \
-  --global-cache-dir "$rust_root/global-cache"
+if [[ $mode != zig ]]; then
+  CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline
+  CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline --release
+  TMPDIR="$rust_root/tmp" zig build stage1 \
+    --prefix "$rust_prefix" \
+    --cache-dir "$rust_root/cache" \
+    --global-cache-dir "$rust_root/global-cache"
+fi
 
 probe_rust_profile() {
   local profile=$1
@@ -86,17 +95,25 @@ probe_rust_profile() {
   echo "lower-rung-matrix: rust-id-v1 $profile passed 256 tests, dylib $digest"
 }
 
-probe_rust_profile debug
-probe_rust_profile release
+if [[ $mode != zig ]]; then
+  probe_rust_profile debug
+  probe_rust_profile release
+fi
 
-test "$zig_prefix" != "$rust_prefix"
-test "$zig_root/cache" != "$rust_root/cache"
-test -f "$zig_prefix/lib/libbirnam_store.dylib"
-test -f "$rust_prefix/lib/libbirnam_store.dylib"
-test -f "$zig_prefix/lib/libbirnam_stdlib.dylib"
-test -f "$rust_prefix/lib/libbirnam_stdlib.dylib"
-test -f "$rust_prefix/lib/debug/libbirnam_id.dylib"
-test -f "$rust_prefix/lib/release/libbirnam_id.dylib"
+if [[ $mode != rust ]]; then
+  test -f "$zig_prefix/lib/libbirnam_store.dylib"
+  test -f "$zig_prefix/lib/libbirnam_stdlib.dylib"
+fi
+if [[ $mode != zig ]]; then
+  test -f "$rust_prefix/lib/libbirnam_store.dylib"
+  test -f "$rust_prefix/lib/libbirnam_stdlib.dylib"
+  test -f "$rust_prefix/lib/debug/libbirnam_id.dylib"
+  test -f "$rust_prefix/lib/release/libbirnam_id.dylib"
+fi
+if [[ $mode == both ]]; then
+  test "$zig_prefix" != "$rust_prefix"
+  test "$zig_root/cache" != "$rust_root/cache"
+fi
 
 if [[ -n "$default_digest_before" ]]; then
   default_digest_after=$(shasum -a 256 "$default_floor" | awk '{print $1}')
