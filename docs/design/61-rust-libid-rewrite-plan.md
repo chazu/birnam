@@ -2048,6 +2048,33 @@ change.
 - Make `zig build`, `zig build test`, `zig build verify`, and stage1 express their
   dependencies without requiring a pre-existing Cargo artifact.
 
+#### R7.1 execution record — complete, 2026-07-23
+
+Commit `f7cf89a` integrates the Cargo floor into the Zig graph with a
+repository-local target directory, `--locked --offline`, and deterministic
+Debug -> Cargo debug / ReleaseSafe, ReleaseFast, and ReleaseSmall -> Cargo
+release profile mapping. The selected floor is installed directly as
+`libbirnam_id.dylib`; the Zig implementation is also installed as
+`libbirnam_id_zig.dylib`, and `-Dfloor=zig` reinstalls it under the production
+name in the requested prefix.
+
+The first complete Rust-selected native graph exposed a shared-prefix race:
+standalone dual-floor helpers nested an ordinary Zig build while selected-floor
+tests were loading the production path. Commit `abc66d0` makes those helpers
+consume the named oracle or isolated prefixes instead. The complete
+Rust-selected graph then passed, including the 256-test Zig/debug-Rust/
+release-Rust lower-rung matrix.
+
+Commit `7b35b14` makes Rust the default and makes every intentionally Zig or
+dual-floor helper select its floor explicitly. A default `zig build test`
+passes, while default Rust and explicit `-Dfloor=zig` conformance both pass.
+The fixture-free git-archive gate starts with no binary, dylib, image, compiled
+unit, Cargo target, or compatibility fixture; it passes Cargo's 54 tests,
+builds and boots the Rust production floor, boots the separately named Zig
+oracle, and builds and boots a second Zig-production rollback prefix. The
+relocated installed-tree smoke also passes against the Rust default. R7.1 is
+complete; the complete R7 verification gate remains pending R7.2-R7.4.
+
 ### R7.2 — Update CI and task runner
 
 - Install/pin both Rust and Zig in CI.
