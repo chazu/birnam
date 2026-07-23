@@ -3,7 +3,7 @@
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
-> N3.2b, and N3.2c are complete, and N3.2d is next.
+> N3.2b, and N3.2c are complete, and N3.3 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -965,7 +965,7 @@ and traced/finalized rule storage. The `Peg` facade provides `grammar`,
 `newGrammar`, and `anyByte`; Grammar provides `rule:is:` replacement semantics
 and `furthestFail`. Grammar remains a construction-only representation: parse
 diagnostics beyond the initial offset and all matching/CST behavior stay on the
-Zig oracle for N3.2d and N3.3.
+Zig oracle for N3.3.
 
 The focused Rust PEG test loads only the explicit dylib and checks both grammar
 constructors, the Grammar vtable, symbol and String rule names, replacement
