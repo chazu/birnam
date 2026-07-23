@@ -647,6 +647,20 @@ fn callback(api: *idapi.IdApi, resp: Oop, sig: []const u8) Oop {
     return api.send(Alien, api.intern("callback:signature:"), &[_]Oop{ resp, str(api, sig) }, 2);
 }
 
+noinline fn createInvokeReleaseCallback(api: *idapi.IdApi, alien_obj: Oop, resp: Oop) !void {
+    const cb = callback(api, resp, "l l");
+    try std.testing.expect(cb != api.nilObj);
+    const answer = api.send(cb, api.intern("applyWithChurn:"), &[_]Oop{api.mkSmallInt(21)}, 1);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(answer));
+    try std.testing.expect(api.send(alien_obj, api.intern("releaseCallback:"), &[_]Oop{cb}, 1) == api.trueObj);
+}
+
+noinline fn scrubCallbackStack() void {
+    var scratch: [4096]usize = @splat(0);
+    for (&scratch, 0..) |*word, index| word.* = index;
+    std.mem.doNotOptimizeAway(&scratch);
+}
+
 test "alien: callback — C calls back into a value: responder (apply)" {
     const api = setup();
     const cb = callback(api, responder(api, "value:", &rDouble), "l l");
@@ -758,6 +772,25 @@ test "alien: releaseCallback: reclaims a callback and is safe on a stale/bogus a
     try std.testing.expect(isErr(api, api.send(Alien, api.intern("releaseCallback:"), &[_]Oop{api.mkSmallInt(0)}, 1)));
     // A non-address argument → #typeMismatch, not a wild deref.
     try std.testing.expect(isErr(api, api.send(Alien, api.intern("releaseCallback:"), &[_]Oop{str(api, "nope")}, 1)));
+}
+
+test "alien: callback create/invoke/release survives repeated collection cycles" {
+    const api = setup();
+    const alien_obj = api.import("Alien").?;
+    const resp = responder(api, "value:", &rDouble);
+    _ = wrap(api, "birnam_t_apply", "l p l", "applyWithChurn:", api.smallint_vt);
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    api.gcSetAuto(0);
+    for (0..32) |iteration| {
+        try createInvokeReleaseCallback(api, alien_obj, resp);
+        if ((iteration + 1) % 4 == 0) {
+            scrubCallbackStack();
+            for (0..4) |_| _ = api.gcCollect();
+        }
+    }
+    std.mem.doNotOptimizeAway(&stack_anchor);
 }
 
 test "alien: dlopen tracks the handle so dlclose can release it (§G10)" {
