@@ -37,7 +37,7 @@ if [ $MODE = release ] && [ -n "$QUICK" ]; then
 fi
 
 if [ "$MODE" = release ]; then
-  scripts/bench-host-check.sh 75 "release benchmark pre-build"
+  scripts/bench-host-check.sh "release benchmark pre-build"
 fi
 
 TMP=$(mktemp -d)
@@ -82,7 +82,7 @@ echo "==> selected $FLOOR_IDENTITY $FLOOR_DIGEST"
 SUITE_FILES=()
 
 require_quiet() { # require_quiet <context>
-  [ "$MODE" != release ] || scripts/bench-host-check.sh 75 "$1"
+  [ "$MODE" != release ] || scripts/bench-host-check.sh "$1"
 }
 
 run_suite() { # run_suite <script> <label> <runs>

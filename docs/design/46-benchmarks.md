@@ -182,10 +182,19 @@ The design that stays honest:
   Rust-floor run also builds the release cdylib into an isolated Cargo target.
   Every benchmark process receives the selected dylib path, floor identity,
   and SHA-256; the host verifies identity and digest before `id_init`.
-- Tracked release runs require AC power and at least 75% idle CPU before the
-  isolated build, then immediately before and after every suite process and
-  macro group. A busy host fails the run before a tracked snapshot can be
-  emitted; developer/quick runs remain available for diagnosis under load.
+- Tracked release runs require AC power and a stable three-sample CPU window
+  before the isolated build, then immediately before and after every suite
+  process and macro group. By default every sample must show at least 50% idle,
+  the median must show at least 60% idle, the sample spread must be at most 15
+  percentage points, and no competing process may consume more than 80% of one
+  core. These independent limits distinguish sustained usable headroom from
+  both transient sampling noise and a runaway competitor. A host that misses
+  any limit fails the run before a tracked snapshot can be emitted;
+  developer/quick runs remain available for diagnosis under load. The four
+  limits may be tightened for controlled benchmark hosts through
+  `BENCH_HOST_MIN_SAMPLE_IDLE`, `BENCH_HOST_MIN_MEDIAN_IDLE`,
+  `BENCH_HOST_MAX_IDLE_SPREAD`, and `BENCH_HOST_MAX_PROCESS_CPU`; weakening
+  them does not produce standard Design 46 acceptance evidence.
 - Runs the micro suite in-process, the relational suite as R fresh
   processes, and the macro cases itself: wall time from the shell, peak RSS
   via `/usr/bin/time -l` (macOS).
