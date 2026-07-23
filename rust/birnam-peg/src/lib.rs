@@ -49,6 +49,25 @@ struct PatternState {
     rule_name: Oop,
 }
 
+struct Rule {
+    name: Oop,
+    pattern: Oop,
+}
+
+struct GrammarState {
+    rules: Vec<Rule>,
+    furthest_fail: usize,
+}
+
+impl GrammarState {
+    fn new() -> Self {
+        Self {
+            rules: Vec::new(),
+            furthest_fail: 0,
+        }
+    }
+}
+
 impl PatternState {
     fn new(kind: Kind) -> Self {
         Self {
@@ -135,6 +154,24 @@ unsafe extern "C" fn finalize_pattern(object: Oop) {
     }
 }
 
+unsafe extern "C" fn trace_grammar(object: Oop, mark: birnam_abi::MarkFn) {
+    let state = unsafe { &*(object.cast::<GrammarState>()) };
+    for rule in &state.rules {
+        // SAFETY: grammar rules retain both the interned name and Pattern Oop.
+        unsafe {
+            mark(rule.name);
+            mark(rule.pattern);
+        }
+    }
+}
+
+unsafe extern "C" fn finalize_grammar(object: Oop) {
+    if !object.is_null() {
+        // SAFETY: finalization runs once for a live Grammar payload.
+        unsafe { ptr::drop_in_place(object.cast::<GrammarState>()) };
+    }
+}
+
 unsafe fn new_pattern(kind: Kind) -> Oop {
     let runtime = runtime();
     let api = unsafe { api(runtime) };
@@ -145,6 +182,19 @@ unsafe fn new_pattern(kind: Kind) -> Oop {
     // SAFETY: the IdApi allocation has exactly the requested payload size.
     unsafe { ptr::write(object.cast::<PatternState>(), PatternState::new(kind)) };
     unsafe { (api.setFinalizer)(object, finalize_pattern) };
+    object
+}
+
+unsafe fn new_grammar() -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let object = unsafe { (api.alloc)(as_oop(runtime.grammar_vt), size_of::<GrammarState>()) };
+    if object.is_null() {
+        abort("could not allocate Grammar object");
+    }
+    // SAFETY: the IdApi allocation has exactly the requested payload size.
+    unsafe { ptr::write(object.cast::<GrammarState>(), GrammarState::new()) };
+    unsafe { (api.setFinalizer)(object, finalize_grammar) };
     object
 }
 
@@ -160,6 +210,17 @@ unsafe fn string_bytes(api: &IdApi, object: Oop) -> Vec<u8> {
     }
     // SAFETY: IdApi owns the immutable String storage for this call.
     unsafe { slice::from_raw_parts(pointer, length) }.to_vec()
+}
+
+unsafe fn rule_symbol(api: &IdApi, object: Oop) -> Oop {
+    if unsafe { (api.vtableOf)(object) } != api.string_vt {
+        return object;
+    }
+    let bytes = unsafe { string_bytes(api, object) };
+    let mut name = bytes;
+    name.push(0);
+    // SAFETY: `name` is NUL-terminated for the duration of intern.
+    unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
 }
 
 unsafe fn args<'a>(pointer: *const Oop, count: usize) -> &'a [Oop] {
@@ -230,6 +291,13 @@ unsafe extern "C" fn peg_choice(_self_object: Oop, pointer: *const Oop, count: u
     unsafe { peg_nullary(Kind::Choice) }
 }
 
+unsafe extern "C" fn peg_grammar(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    if !unsafe { args(pointer, count) }.is_empty() {
+        abort("grammar expects no arguments");
+    }
+    unsafe { new_grammar() }
+}
+
 unsafe extern "C" fn peg_unary(kind: Kind, self_object: Oop) -> Oop {
     let object = unsafe { new_pattern(kind) };
     unsafe { state_mut(object).children.push(self_object) };
@@ -292,6 +360,38 @@ unsafe extern "C" fn pattern_from_to(self_object: Oop, pointer: *const Oop, coun
     self_object
 }
 
+unsafe extern "C" fn grammar_rule_is(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    let values = unsafe { args(pointer, count) };
+    if values.len() != 2 {
+        abort("rule:is: expects two arguments");
+    }
+    let api = unsafe { api(runtime()) };
+    let name = unsafe { rule_symbol(api, values[0]) };
+    let state = unsafe { &mut *(self_object.cast::<GrammarState>()) };
+    if let Some(rule) = state.rules.iter_mut().find(|rule| rule.name == name) {
+        rule.pattern = values[1];
+    } else {
+        state.rules.push(Rule {
+            name,
+            pattern: values[1],
+        });
+    }
+    self_object
+}
+
+unsafe extern "C" fn grammar_furthest_fail(
+    self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if !unsafe { args(pointer, count) }.is_empty() {
+        abort("furthestFail expects no arguments");
+    }
+    let api = unsafe { api(runtime()) };
+    let state = unsafe { &*(self_object.cast::<GrammarState>()) };
+    unsafe { (api.mkSmallInt)(state.furthest_fail as i64) }
+}
+
 unsafe fn register_methods(runtime: &Runtime) {
     let api = unsafe { api(runtime) };
     let peg_vt = as_oop(runtime.peg_vt);
@@ -304,6 +404,9 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"ruleRef:\0", peg_rule_ref),
         (b"seq\0", peg_seq),
         (b"choice\0", peg_choice),
+        (b"grammar\0", peg_grammar),
+        (b"newGrammar\0", peg_grammar),
+        (b"anyByte\0", peg_any),
     ];
     for (selector, method) in peg_methods {
         let selector = unsafe { intern(api, selector) };
@@ -322,9 +425,24 @@ unsafe fn register_methods(runtime: &Runtime) {
         let selector = unsafe { intern(api, selector) };
         unsafe { (api.method)(pattern_vt, selector, *method) };
     }
+    let grammar_methods: &[(&[u8], birnam_abi::Method)] = &[
+        (b"rule:is:\0", grammar_rule_is),
+        (b"furthestFail\0", grammar_furthest_fail),
+    ];
+    for (selector, method) in grammar_methods {
+        let selector = unsafe { intern(api, selector) };
+        unsafe { (api.method)(as_oop(runtime.grammar_vt), selector, *method) };
+    }
     unsafe {
         (api.setLayout)(pattern_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
         (api.setTraceHook)(pattern_vt, trace_pattern);
+        (api.setLayout)(
+            as_oop(runtime.grammar_vt),
+            ptr::null(),
+            0,
+            birnam_abi::SLOT_RAW,
+        );
+        (api.setTraceHook)(as_oop(runtime.grammar_vt), trace_grammar);
     }
 }
 

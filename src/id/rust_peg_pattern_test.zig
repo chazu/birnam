@@ -21,7 +21,7 @@ fn expectPattern(api: *idapi.IdApi, pattern: Oop, pattern_vt: Oop) !void {
     try std.testing.expectEqual(pattern_vt, api.vtableOf(pattern));
 }
 
-test "Rust PEG patterns expose the frozen constructor and combinator protocol" {
+test "Rust PEG patterns and grammars expose the frozen construction protocol" {
     const api = floor.api();
     const path = std.posix.getenv("BIRNAM_RUST_PEG_DYLIB") orelse
         return error.MissingRustPegDylib;
@@ -68,4 +68,12 @@ test "Rust PEG patterns expose the frozen constructor and combinator protocol" {
 
     const rule = send(api, peg, "ruleRef:", &.{api.intern("start")});
     try expectPattern(api, rule, pattern_vt);
+
+    const grammar_vt = api.import("PegGrammarVt") orelse return error.RustPegGrammarVtNotExported;
+    const grammar = send(api, peg, "newGrammar", &.{});
+    try std.testing.expectEqual(grammar_vt, api.vtableOf(grammar));
+    try std.testing.expectEqual(grammar, send(api, grammar, "rule:is:", &.{ api.intern("start"), literal }));
+    try std.testing.expectEqual(grammar, send(api, grammar, "rule:is:", &.{ string(api, "tail"), rule }));
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, grammar, "furthestFail", &.{})));
+    try std.testing.expectEqual(grammar_vt, api.vtableOf(send(api, peg, "grammar", &.{})));
 }

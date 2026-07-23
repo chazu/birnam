@@ -3,7 +3,7 @@
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
-> and N3.2b are complete, and N3.2c is next.
+> N3.2b, and N3.2c are complete, and N3.2d is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -956,6 +956,22 @@ checks its identity, exported vtables, all constructors, combinators, charset
 range mutation, and rule-reference payload path against both selected IdApi
 floors. Cargo formatting, strict Clippy, the Rust unit test, and both focused
 floor runs pass. N3.2c owns the Grammar representation and parse-facing state.
+
+#### N3.2c execution record — complete, 2026-07-23
+
+Rust now owns the Grammar payload: ordered named rules, String-or-Symbol rule
+name coercion through the shared interner, per-instance furthest-failure state,
+and traced/finalized rule storage. The `Peg` facade provides `grammar`,
+`newGrammar`, and `anyByte`; Grammar provides `rule:is:` replacement semantics
+and `furthestFail`. Grammar remains a construction-only representation: parse
+diagnostics beyond the initial offset and all matching/CST behavior stay on the
+Zig oracle for N3.2d and N3.3.
+
+The focused Rust PEG test loads only the explicit dylib and checks both grammar
+constructors, the Grammar vtable, symbol and String rule names, replacement
+identity, and the initial furthest-failure value against both IdApi floors.
+Cargo formatting, strict Clippy, the Rust unit test, and both focused floor
+runs pass.
 
 ### N3.3 — Port the matcher
 
