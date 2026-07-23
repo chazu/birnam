@@ -4,7 +4,7 @@
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
-> complete; N3.5.1 and N3.5.2 are complete and N3.5 remains in progress.
+> complete; N3.5.1 through N3.5.3 are complete and N3.5 remains in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1131,6 +1131,16 @@ successfully under both Rust and Zig IdApi floors. The relocated source
 compile/eval smoke then passed from another working directory. The default
 selection remains Zig, so this is an observation-capable switch rather than a
 production default change.
+
+#### N3.5.3 execution record — complete, 2026-07-23
+
+ReleaseSafe stress observation recorded the Rust matcher at about 3.4 ms for a
+4,096-rule chain and 1.3 ms for a 100,000-byte repetition on the Rust floor;
+the Zig-floor run measured 3.4 ms and 0.8 ms. Both remain far below the
+five-second fail-safe threshold. The accepted R6 performance comparator still
+governs repository-level PEG/compile/eval tradeoffs; this slice adds no
+unrecorded regression allowance and keeps the Zig PEG oracle available for a
+paired rerun.
 
 ## 10. Phase N4 — libtcc and generated runtime shim
 
