@@ -291,6 +291,17 @@ const ValMatcher = struct {
     }
 };
 
+const ValCtx = struct {
+    pub fn hash(_: ValCtx, key: Oop) u64 {
+        return valHash(key);
+    }
+    pub fn eql(_: ValCtx, a: Oop, b: Oop) bool {
+        return valEq(a, b);
+    }
+};
+
+const ValSet = std.HashMapUnmanaged(Oop, void, ValCtx, std.hash_map.default_max_load_percentage);
+
 const TripleList = std.ArrayList(Triple);
 
 const TripleIndex = struct {
@@ -925,17 +936,12 @@ fn runQuery(self: Oop, result_var: Oop, clauses: Oop, lo: Oop, hi: Oop) Oop {
 
     // Project the result variable, dropping duplicates (set semantics).
     var out = send0(vectorFactory(), s_new);
-    var seen: std.ArrayList(Oop) = .{};
+    var seen: ValSet = .{};
     defer seen.deinit(ca);
     for (sols) |sol| {
         const val = lookup(sol, result_var) orelse continue;
-        var dup = false;
-        for (seen.items) |s| if (valEq(s, val)) {
-            dup = true;
-            break;
-        };
-        if (dup) continue;
-        seen.append(ca, val) catch @panic("relational: oom");
+        const gop = seen.getOrPut(ca, val) catch @panic("relational: oom");
+        if (gop.found_existing) continue;
         out = send1(out, s_add, val);
     }
     return out;
