@@ -44,6 +44,13 @@ struct StoreState {
     tx: u64,
 }
 
+#[repr(C)]
+struct CellState {
+    store: birnam_abi::Oop,
+    entity: birnam_abi::Oop,
+    attribute: birnam_abi::Oop,
+}
+
 impl StoreState {
     fn new() -> Self {
         Self {
@@ -246,6 +253,21 @@ unsafe extern "C" fn trace_store(store: birnam_abi::Oop, mark: birnam_abi::MarkF
         unsafe { mark(fact.a) };
         unsafe { mark(fact.v) };
     }
+}
+
+unsafe extern "C" fn trace_cell(cell: birnam_abi::Oop, mark: birnam_abi::MarkFn) {
+    if cell.is_null() {
+        return;
+    }
+    // SAFETY: Cell objects are allocated with exactly this payload shape and
+    // the callback is synchronous, so copy the carriers before marking.
+    let state = unsafe { &*(cell.cast::<CellState>()) };
+    let (store, entity, attribute) = (state.store, state.entity, state.attribute);
+    // SAFETY: the collector supplied the callback and all three carriers are
+    // retained by the reachable Cell handle.
+    unsafe { mark(store) };
+    unsafe { mark(entity) };
+    unsafe { mark(attribute) };
 }
 
 unsafe extern "C" fn raw_assert(
@@ -485,6 +507,89 @@ unsafe extern "C" fn new_store(
     unsafe { fresh_store(runtime) }
 }
 
+unsafe extern "C" fn cell_for(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly two arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 2) };
+    let api = unsafe { api(runtime) };
+    // SAFETY: the floor allocates a payload of the requested extent and the
+    // Cell vtable carries the trace hook installed during module bring-up.
+    let cell = unsafe { (api.alloc)(as_oop(runtime.cell_vt), size_of::<CellState>()) };
+    if cell.is_null() {
+        abort("could not allocate Rust Cell state");
+    }
+    // SAFETY: this allocation is exclusively owned by the new Cell object.
+    unsafe {
+        ptr::write(
+            cell.cast::<CellState>(),
+            CellState {
+                store: self_object,
+                entity: args[0],
+                attribute: args[1],
+            },
+        )
+    };
+    cell
+}
+
+unsafe extern "C" fn cell_value(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // Copy all carriers before the foreign send so no Rust reference spans the
+    // callback or a possible re-entry into the Store.
+    let (store, entity, attribute) = unsafe {
+        let state = &*(self_object.cast::<CellState>());
+        (state.store, state.entity, state.attribute)
+    };
+    let api = unsafe { api(runtime) };
+    let selector = unsafe { intern(api, b"currentValue:attr:\0") };
+    // SAFETY: selector and argument buffer match the frozen IdApi send ABI.
+    unsafe { (api.send)(store, selector, [entity, attribute].as_ptr(), 2) }
+}
+
+unsafe extern "C" fn cell_set(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly one argument.
+    let value = unsafe { *args };
+    let (store, entity, attribute) = unsafe {
+        let state = &*(self_object.cast::<CellState>());
+        (state.store, state.entity, state.attribute)
+    };
+    let api = unsafe { api(runtime) };
+    let selector = unsafe { intern(api, b"assert:attr:value:\0") };
+    let arguments = [entity, attribute, value];
+    // SAFETY: selector and argument buffer match the frozen IdApi send ABI.
+    unsafe { (api.send)(store, selector, arguments.as_ptr(), arguments.len()) };
+    self_object
+}
+
+unsafe extern "C" fn cell_history(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let (store, entity, attribute) = unsafe {
+        let state = &*(self_object.cast::<CellState>());
+        (state.store, state.entity, state.attribute)
+    };
+    let api = unsafe { api(runtime) };
+    let selector = unsafe { intern(api, b"history:attr:\0") };
+    // SAFETY: selector and argument buffer match the frozen IdApi send ABI.
+    unsafe { (api.send)(store, selector, [entity, attribute].as_ptr(), 2) }
+}
+
 unsafe extern "C" fn backfill(
     self_object: birnam_abi::Oop,
     _args: *const birnam_abi::Oop,
@@ -511,6 +616,7 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"basis\0", basis),
         (b"cardinality:\0", cardinality_method),
         (b"new\0", new_store),
+        (b"cellFor:attr:\0", cell_for),
         (b"backfillMirror\0", backfill),
     ];
     for (selector, method) in methods {
@@ -524,6 +630,26 @@ unsafe fn register_methods(runtime: &Runtime) {
     unsafe {
         (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
         (api.setTraceHook)(vt, trace_store);
+    }
+}
+
+unsafe fn register_cell_methods(runtime: &Runtime) {
+    let api = unsafe { api(runtime) };
+    let vt = as_oop(runtime.cell_vt);
+    let methods: &[(&[u8], birnam_abi::Method)] = &[
+        (b"value\0", cell_value),
+        (b"set:\0", cell_set),
+        (b"history\0", cell_history),
+    ];
+    for (selector, method) in methods {
+        // SAFETY: selector names are static C strings and each function matches
+        // the frozen Method ABI.
+        let selector = unsafe { intern(api, selector) };
+        unsafe { (api.method)(vt, selector, *method) };
+    }
+    unsafe {
+        (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+        (api.setTraceHook)(vt, trace_cell);
     }
 }
 
@@ -578,7 +704,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             history: oop_address(history),
         }
     });
-    unsafe { register_methods(&runtime) };
+    unsafe {
+        register_methods(&runtime);
+        register_cell_methods(&runtime);
+    };
     let store = as_oop(runtime.store);
     let state = unsafe { state_mut(store) };
     if state.facts.is_empty() {

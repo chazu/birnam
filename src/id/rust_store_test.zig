@@ -107,3 +107,32 @@ test "Rust Store history and retraction preserve the opt-in timeline contract" {
     try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, store, "history:attr:", &.{ e, many_attr })));
     try std.testing.expect(send(api, store, "hasValue:attr:", &.{ e, many_attr }) == api.trueObj);
 }
+
+test "Rust Store Cells are traced handles over one store entity/attribute pair" {
+    const api = floor.api();
+    const path = std.posix.getenv("BIRNAM_RUST_STORE_DYLIB") orelse
+        return error.MissingRustStoreDylib;
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustStoreDlopenFailed;
+    const raw_init = api.dlsym(handle, "module_init") orelse return error.RustStoreModuleInitMissing;
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
+
+    const store = api.import("Store") orelse return error.RustStoreNotExported;
+    const entity = api.intern("rust_store_cell_entity");
+    const attribute = api.intern("rust_store_cell_attribute");
+    const first = api.intern("cell_first");
+    const second = api.intern("cell_second");
+    const cell = send(api, store, "cellFor:attr:", &.{ entity, attribute });
+    try std.testing.expect(cell != null);
+    try std.testing.expect(send(api, cell, "value", &.{}) == api.nilObj);
+    _ = send(api, cell, "set:", &.{first});
+    try std.testing.expect(send(api, cell, "value", &.{}) == first);
+    _ = send(api, cell, "set:", &.{second});
+    try std.testing.expect(send(api, cell, "value", &.{}) == second);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, cell, "history", &.{})));
+
+    const second_cell = send(api, store, "cellFor:attr:", &.{ entity, attribute });
+    try std.testing.expect(send(api, second_cell, "value", &.{}) == second);
+}

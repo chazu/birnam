@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, and N2.2c are complete; N2.3 is
+> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, and N2.2d are complete; N2.3 is
 > next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
@@ -772,6 +772,16 @@ trace hook retains values referenced only by historical retract entries, and the
 cross-language suite covers one-slot compaction, opt-in timelines, many-member
 retraction, and both selected IdApi floors. Rust formatting/Clippy, the focused
 Rust Store tests, and the full repository gate are required before this commit.
+
+#### N2.2d execution record — complete, 2026-07-23
+
+The Rust Store now owns the Cell handle protocol: `cellFor:attr:` allocates a
+traced `(store, entity, attribute)` view, while `value`, `set:`, and `history`
+delegate to the Store's schema-aware protocol. A second Cell over the same pair
+observes the first Cell's writes, and the cross-language test passes against the
+selected floor. Cell payloads use an explicit trace hook, and all carriers are
+copied before foreign sends so no Rust reference spans a callback. Globals,
+MOP, image bridging, and production Store selection remain deferred.
 
 ### N2.3 — Implement the MOP chokepoint
 
