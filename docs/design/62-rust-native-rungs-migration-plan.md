@@ -3,8 +3,8 @@
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
-> N3.2b, N3.2c, and N3.3 are complete; N3.4a is complete and N3.4 remains in
-> progress.
+> N3.2b, N3.2c, and N3.3 are complete; N3.4a and N3.4b are complete and N3.4
+> remains in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1013,6 +1013,16 @@ multi-statement programs. The negative binary-operator case remains rejected.
 The focused bridge passes against both selected IdApi floors, while the normal
 canonical PEG path remains Zig. Full CST/codegen/diagnostic corpus comparison
 is the remaining N3.4 work.
+
+#### N3.4b execution record — complete, 2026-07-23
+
+The unchanged Zig TCC and Codegen rungs now evaluate arithmetic, persistent
+`let` bindings, and collection `inject:into:` programs through the explicit Rust
+PEG matcher. The test links the existing libtcc boundary and exercises the same
+runtime sends used by the production codegen path; no generated-C ABI or TCC
+ownership change is hidden in this slice. The focused codegen bridge passes on
+both selected IdApi floors. Full generated-C, diagnostics, module metadata, and
+whole-corpus comparison remain open.
 
 ### N3.5 — Switch and observe
 

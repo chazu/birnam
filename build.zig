@@ -642,6 +642,32 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_lang_step.dependOn(&run_rust_peg_lang.step);
     test_step.dependOn(&run_rust_peg_lang.step);
 
+    const rust_peg_codegen_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_codegen_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_peg_codegen_tests = b.addTest(.{ .root_module = rust_peg_codegen_mod });
+    rust_peg_codegen_tests.addIncludePath(b.path("vendor/libtcc-src"));
+    rust_peg_codegen_tests.linkLibrary(libtcc_lib);
+    rust_peg_codegen_tests.rdynamic = true;
+    rust_peg_codegen_tests.linkLibC();
+    const run_rust_peg_codegen = b.addRunArtifact(rust_peg_codegen_tests);
+    run_rust_peg_codegen.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_peg_codegen.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_peg_codegen.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_peg_codegen.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_peg_codegen.step.dependOn(bootstrap_install);
+    const test_rust_peg_codegen_step = b.step(
+        "test-rust-peg-codegen",
+        "Run the unchanged Zig codegen rung through the explicit Rust PEG matcher",
+    );
+    test_rust_peg_codegen_step.dependOn(&run_rust_peg_codegen.step);
+    test_step.dependOn(&run_rust_peg_codegen.step);
+
     // -- The id rungs: a dylib + its test suite, one row per module ----------
     // Every rung is a dynamic library the siphon dlopens at runtime, plus a test
     // that imports its siblings directly (relative imports unify the IdApi type
