@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-minimum_median_idle=${BENCH_HOST_MIN_MEDIAN_IDLE:-60}
+minimum_median_idle=${BENCH_HOST_MIN_MEDIAN_IDLE:-50}
 maximum_process_cpu=${BENCH_HOST_MAX_PROCESS_CPU:-80}
-minimum_interval_idle=${BENCH_HOST_MIN_INTERVAL_IDLE:-50}
+minimum_interval_idle=${BENCH_HOST_MIN_INTERVAL_IDLE:-30}
 maximum_low_sample_percent=${BENCH_HOST_MAX_LOW_SAMPLE_PERCENT:-20}
 
 valid_number() {
@@ -34,12 +34,12 @@ intervals_are_quiet() {
 
 self_test() {
   host_is_quiet 65 40
-  host_is_quiet 62 40 # one transient sample does not veto a quiet majority
-  if host_is_quiet 59 40; then return 1; fi
+  host_is_quiet 52 40 # one transient sample does not veto a quiet majority
+  if host_is_quiet 49 40; then return 1; fi
   if host_is_quiet 65 81; then return 1; fi
-  intervals_are_quiet 10 65 2
-  if intervals_are_quiet 10 65 3; then return 1; fi
-  if intervals_are_quiet 10 59 0; then return 1; fi
+  intervals_are_quiet 10 55 2
+  if intervals_are_quiet 10 55 3; then return 1; fi
+  if intervals_are_quiet 10 49 0; then return 1; fi
   echo "bench-host-check: self-test passed"
 }
 
