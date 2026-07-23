@@ -49,6 +49,7 @@ rungs=(
 
 if [[ $mode != rust ]]; then
   TMPDIR="$zig_root/tmp" zig build stage1 \
+    -Dfloor=zig \
     --prefix "$zig_prefix" \
     --cache-dir "$zig_root/cache" \
     --global-cache-dir "$zig_root/global-cache"
@@ -56,6 +57,7 @@ if [[ $mode != rust ]]; then
   test -f "$zig_floor"
   zig_digest=$(shasum -a 256 "$zig_floor" | awk '{print $1}')
   TMPDIR="$zig_root/tmp" zig build "${rungs[@]}" \
+    -Dfloor=zig \
     --prefix "$zig_prefix" \
     --cache-dir "$zig_root/cache" \
     --global-cache-dir "$zig_root/global-cache" \
@@ -69,6 +71,7 @@ if [[ $mode != zig ]]; then
   CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline
   CARGO_TARGET_DIR="$rust_target" cargo build --workspace --locked --offline --release
   TMPDIR="$rust_root/tmp" zig build stage1 \
+    -Dfloor=rust \
     --prefix "$rust_prefix" \
     --cache-dir "$rust_root/cache" \
     --global-cache-dir "$rust_root/global-cache"
@@ -86,6 +89,7 @@ probe_rust_profile() {
   digest=$(shasum -a 256 "$selected_floor" | awk '{print $1}')
 
   TMPDIR="$profile_tmp" zig build "${rungs[@]}" \
+    -Dfloor=rust \
     --prefix "$rust_prefix" \
     --cache-dir "$rust_root/cache" \
     --global-cache-dir "$rust_root/global-cache" \

@@ -61,7 +61,7 @@ CARGO_TARGET="$TMP/cargo-target"
 mkdir -p "$PREFIX" "$ZIG_CACHE" "$ZIG_GLOBAL_CACHE" "$ZIG_TMP"
 
 echo "==> build (ReleaseSafe, $FLOOR floor, isolated prefix)"
-TMPDIR="$ZIG_TMP" zig build install -Doptimize=ReleaseSafe \
+TMPDIR="$ZIG_TMP" zig build install -Doptimize=ReleaseSafe -Dfloor=zig \
   --prefix "$PREFIX" \
   --cache-dir "$ZIG_CACHE" \
   --global-cache-dir "$ZIG_GLOBAL_CACHE"

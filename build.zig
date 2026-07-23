@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
         Floor,
         "floor",
         "Native id floor installed as libbirnam_id.dylib (zig or rust)",
-    ) orelse .zig;
+    ) orelse .rust;
 
     // libtcc is presently vendored and configured for arm64 Mach-O, and the
     // runtime resolves Mach-O dylibs by name. Reject other targets before Zig
@@ -710,8 +710,8 @@ pub fn build(b: *std.Build) void {
     b.getInstallStep().dependOn(stage1);
 
     // External floor conformance imports only IdApi and dynamically loads the
-    // explicitly selected implementation. The default remains the installed Zig
-    // floor; later Rust parity runs override both options in an isolated prefix.
+    // explicitly selected implementation. It follows the installed Rust default;
+    // Zig-oracle runs override the floor in an isolated prefix.
     const conformance_mod = b.createModule(.{
         .root_source_file = b.path("src/id/conformance_test.zig"),
         .target = target,

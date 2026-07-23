@@ -17,25 +17,21 @@ prefix="$scratch/prefix"
 cache="$scratch/zig-cache"
 global_cache="$scratch/zig-global-cache"
 tmp="$scratch/tmp"
-cargo_target="$scratch/cargo-target"
 mkdir -p "$prefix" "$cache" "$global_cache" "$tmp"
 
 TMPDIR="$tmp" zig build install \
+  -Dfloor="$floor_kind" \
+  -Doptimize=ReleaseSafe \
   --prefix "$prefix" \
   --cache-dir "$cache" \
   --global-cache-dir "$global_cache"
 
 floor="$prefix/lib/libbirnam_id.dylib"
-identity=zig-id-v1
-if [[ $floor_kind == rust ]]; then
-  CARGO_TARGET_DIR="$cargo_target" \
-    cargo build --workspace --locked --offline --release
-  cp "$cargo_target/release/libbirnam_id.dylib" "$floor"
-  identity=rust-id-v1
-fi
+identity="$floor_kind-id-v1"
 
 test -x "$prefix/bin/birnam"
 test -f "$floor"
+test -f "$prefix/lib/libbirnam_id_zig.dylib"
 digest=$(shasum -a 256 "$floor" | awk '{print $1}')
 
 export BIRNAM_BIN="$prefix/bin/birnam"

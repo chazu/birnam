@@ -13,6 +13,7 @@ cargo_target="$scratch/cargo-target"
 mkdir -p "$prefix" "$zig_cache" "$zig_global_cache" "$zig_tmp"
 
 TMPDIR="$zig_tmp" zig build install \
+  -Dfloor=zig \
   --prefix "$prefix" \
   --cache-dir "$zig_cache" \
   --global-cache-dir "$zig_global_cache"
