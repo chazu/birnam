@@ -49,7 +49,7 @@ loading installs with **no recompile**. No new codegen was needed for this.
   `libbirnam_{modules,stdlib,toml,config}.dylib`.
 - `loadStdlib` **prefers the dylib** (`[Codegen load:]`, no recompile) and **falls
   back to the embedded source** when the dylib is absent, stale, or ABI-mismatched.
-  `BIRNAM_NO_STDLIB=1` skips the whole self-hosted layer (the bare Zig floor).
+  `BIRNAM_NO_STDLIB=1` skips the whole self-hosted layer (the bare native runtime).
 
 > ⚠️ **Authoring gotcha.** Because `loadStdlib` prefers the dylib, **editing a
 > self-hosted source (`stdlib`/`toml`/`config`) has no effect until you refresh the

@@ -1,4 +1,4 @@
-//! Frozen-IdApi client for the isolated R2.6 Rust floor spike.
+//! Frozen-IdApi client retained from the isolated R2.6 Rust-floor phase.
 
 const std = @import("std");
 const idapi = @import("idapi");

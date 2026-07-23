@@ -199,8 +199,8 @@ birnam doc stdlib
 birnam doc compiledUnit
 ```
 
-The source-backed HTML reference includes both Birnam module docs and the Zig
-floor documentation:
+The source-backed HTML reference includes Birnam module docs, production Rust
+floor documentation, and retained Zig-oracle documentation:
 
 ```sh
 birnam docgen /tmp/birnam-docs.html

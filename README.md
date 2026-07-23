@@ -285,8 +285,8 @@ whole-process workloads — always against a ReleaseSafe build.
 
 ```sh
 BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam   # tight dev loop (~5s)
-mise run bench                                          # isolated Zig-floor run
-mise run bench-rust                                     # isolated Rust-floor run
+mise run bench                                          # isolated Zig-oracle run
+mise run bench-rust                                     # isolated production-floor run
 mise run bench-compare <old-floor.json> <new-floor.json>
 ```
 
@@ -314,9 +314,11 @@ methodology and the measured constants.
 
 ## Architecture
 
-The runtime starts as a small native siphon (currently Zig) that loads a set of
-reloadable dynamic libraries through a C ABI. Artifact selection first adds only
-the ID-floor inspector; activation then brings up the required language rungs:
+The runtime starts as a small Zig siphon that loads a set of reloadable dynamic
+libraries through a C ABI. The production `libid` floor is Rust; a separately
+named Zig oracle remains available for conformance and developer rollback.
+Artifact selection first adds only the ID-floor inspector; activation then
+brings up the required language rungs:
 
 ```text
 libid -> Artifact inspector
@@ -329,13 +331,14 @@ Higher rungs add the relational substrate, parser, compiler, native-code
 backend, collections, FFI, and image format. The standard library and most
 application-facing modules are Birnam source. Birnam retains a cold source
 bootstrap through declared non-Birnam toolchains, with no prebuilt Birnam
-artifact required; Design 61 adds Rust for `libid` while Zig remains the current
-host and cold compiler.
+artifact required; Design 61 has moved `libid` to Rust while Zig remains the
+host for the siphon, higher native rungs, and cold compiler.
 
 ## Repository Guide
 
-- `src/id/` — current Zig runtime rungs, compiler, image, FFI, and test suites;
-  Design 61 plans the Rust `libid` floor at `rust/birnam-id/`.
+- `rust/birnam-id/` — authoritative Rust `libid` floor behind the frozen `IdApi`.
+- `src/id/` — retained Zig `libid` oracle plus the Zig runtime rungs, siphon,
+  compiler, image, FFI, and test suites above the floor.
 - `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
   (`Config` for project manifests, `AppConfig` for application startup).
 - `modules/` — authored library, CLI, LSP, documentation, and test sources;
@@ -390,4 +393,4 @@ host and cold compiler.
 - [The Rust libid rewrite plan](docs/design/61-rust-libid-rewrite-plan.md)
   specifies the drop-in floor boundary, unsafe/reentrancy discipline,
   commit-granular initial phases, dual-floor verification, performance gates,
-  cutover, and delayed Zig-floor retirement.
+  completed default cutover, and delayed Zig-oracle retirement.

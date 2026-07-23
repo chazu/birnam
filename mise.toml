@@ -6,12 +6,12 @@
 #   mise run rust-check     # offline Cargo check for the isolated Rust workspace
 #   mise run rust-test      # offline Cargo tests for the isolated Rust workspace
 #   mise run rust-miri      # pure-Rust unsafe-code checks (requires nightly Miri)
-#   mise run rust-shell-smoke # build and probe the spike-only Rust dylib
+#   mise run rust-shell-smoke # build and directly probe the Rust floor dylib
 #   mise run rust-ffi-abort-smoke # prove fatal Rust C-ABI boundary behavior
 #   mise run rust-heap-layout-smoke # probe Rust blocks from an external fixture
 #   mise run rust-membership-bench # benchmark optimized Rust membership scaling
 #   mise run rust-dispatch-reentry-smoke # reenter Rust send from a Zig Method
-#   mise run rust-id-spike-smoke # exercise the spike IdApi from a Zig client
+#   mise run rust-id-spike-smoke # exercise the frozen IdApi from a Zig client
 #   mise run rust-gc-metadata-smoke # exercise GC metadata and marking callbacks
 #   mise run rust-native-memory # run cross-language GC under Darwin heap diagnostics
 #   mise run rust-env-loader-smoke # reflect exports and reload through Rust
@@ -56,7 +56,7 @@ description = "Run the pure-Rust floor tests under nightly Miri"
 run = "cargo +nightly miri test --workspace --locked --offline"
 
 [tasks.rust-shell-smoke]
-description = "Build and directly probe the spike-only Rust floor dylib"
+description = "Build and directly probe the production Rust floor dylib"
 run = "bash scripts/rust-floor-shell-smoke.sh"
 
 [tasks.rust-ffi-abort-smoke]

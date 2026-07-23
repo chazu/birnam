@@ -85,9 +85,9 @@ pub fn build(b: *std.Build) void {
     test_id_abi_step.dependOn(&run_idapi_abi_tests.step);
     test_step.dependOn(&run_idapi_abi_tests.step);
 
-    // Build the spike-only Rust cdylib outside the Zig install prefix,
+    // Build the Rust cdylib in the repository-local Cargo target directory,
     // then compare its compiler-derived layout descriptor with the same frozen
-    // manifest. The test loads the dylib but never calls id_init.
+    // manifest. This test loads the artifact but never calls id_init.
     const rust_id_build = b.addSystemCommand(&.{
         "cargo",
         "build",

@@ -9,6 +9,11 @@
 > Background: [13 — The Object Model](../archive/legacy-kernel/13-object-model.md),
 > [26 — Dispatch](../archive/legacy-kernel/26-dispatch.md), [37 — The Relational Reading](37-the-relational-reading.md),
 > [33 — Rung 2 / the store](33-*), [40 — The Image](40-the-image.md).
+>
+> **Implementation update (2026-07-23):** the canonical-object/derived-mirror
+> polarity is unchanged by the floor rewrite. The Rust floor is authoritative,
+> the Zig floor is the retained oracle, and the same Store MOP consistency law
+> and cross-floor tests apply to both.
 
 ## The reversal
 

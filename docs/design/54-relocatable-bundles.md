@@ -3,7 +3,8 @@
 > **Status:** Implemented through P3, 2026-07-22. P0 and the
 > compiled-production-module P1 landed 2026-07-21; self-describing inspection,
 > pre-activation closure validation, and source-free project roots landed
-> 2026-07-22.
+> 2026-07-22. The 2026-07-23 Rust-floor cutover extends the same fixed layout
+> with complete Rust floor sources and the separately named Zig oracle.
 > This document completes the distribution
 > side of [51 — Project Manifests and Dependency
 > Resolution](51-project-manifests-and-dependency-resolution.md), [52 — Project
@@ -26,7 +27,7 @@ Birnam's runtime is intentionally layered. A usable installation needs:
 - the siphon executable;
 - kernel and self-hosted dylibs;
 - compiled-unit CLI, REPL, LSP, documentation, and library modules;
-- Zig-floor and guide sources for documentation/recovery;
+- Rust-floor, Zig-oracle, and guide sources for documentation/recovery;
 - project-built modules, images, or isolate baselines supplied by a project.
 
 The goal is a bundle that can be unpacked or moved anywhere and still support

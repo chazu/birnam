@@ -4,7 +4,9 @@
 > 2026-07-10 records Phases 1–3 shipped, the measured ~1.5–2µs send constant
 > that now gates migration choices, and the console-REPL target discovered
 > during the subcommand collapse; rev. 4, 2026-07-22, makes the cold-bootstrap
-> invariant toolchain-neutral for Design 61). A findings
+> invariant toolchain-neutral for Design 61; rev. 5, 2026-07-23, records the
+> Rust `libid` cutover and retains the Zig siphon, higher rungs, and cold
+> compiler). A findings
 > document, not a plan of record. Builds on [43 — Modules & the Self-Hosted
 > Layer](43-modules-and-config.md) (the staging model this extends),
 > [42 — Object Canonical](42-object-canonical-relational-derived.md),
@@ -55,7 +57,8 @@ from the self-hosting ratio game (§5) without declaring Zig permanent.
 
 ## 1. Where we are — much further than the ratio suggests
 
-Production Zig (non-test) and birnam today (verified with `wc -l`):
+Production Zig (non-test) and birnam at the 2026-07-09 snapshot (verified with
+`wc -l`):
 
 | Bucket | LOC |
 |---|---:|
@@ -78,15 +81,17 @@ migrations are largely *done*:
   the entire `modules/` library (file, log, time, http, socket, json, lsp, doc,
   process, os — 2,304 LOC) is birnam over `Alien`.
 
-So the remaining Zig is not a big undifferentiated pile of migratable library code.
-It is mostly **floor, driver, perf-core, and the bootstrap compiler** — precisely
-the behaviors that should remain native or independently bootstrappable. The
-honest near-term self-hosting prize is smaller than it looks.
+So the remaining Zig in that snapshot was not a big undifferentiated pile of
+migratable library code. It was mostly **floor, driver, perf-core, and the
+bootstrap compiler**. Design 61 has since replaced the `libid` part of that floor
+with Rust; the Zig driver, higher native rungs, and bootstrap compiler remain.
+The honest near-term self-hosting prize is still smaller than a language LOC
+ratio suggests.
 
 ## 2. The durable native substrate: floor + driver + cold compiler
 
 Three categories of native code remain outside the self-hosted layer. The table
-is a Zig-specific snapshot from 2026-07-09; Design 61 replaces the `id.zig`
+is a Zig-specific snapshot from 2026-07-09; Design 61 has replaced the `id.zig`
 implementation with Rust without changing whether that behavior is floor.
 
 ### 2a. The native floor (~8,000 Zig LOC in this snapshot) — the mechanism sends run on
@@ -96,7 +101,7 @@ syscall bottoms out in.
 
 | File | LOC | Why floor |
 |---|---:|---|
-| `id.zig` | 1,327 | Piumarta object system: vtables, `send`/`bind`, `alloc`, interning. Design 61 replaces this implementation with Rust. |
+| `id.zig` | 1,327 | Piumarta object system: vtables, `send`/`bind`, `alloc`, interning. Design 61 has replaced this production implementation with Rust and retained it as the oracle. |
 | `idapi.zig` | 260 | The C-ABI seam every module binds against. |
 | `store.zig` | 1,001 | Historied cell/fact substrate; dispatch/deref/query bottom out here (perf floor). |
 | `alien.zig` | 960 | The C-ABI/`dlopen` gateway — *how* birnam reaches libc at all (goal #4). |
@@ -293,9 +298,9 @@ them.
   early one.
 - **Phase 3 ✅ SHIPPED — `main.zig` subcommand collapse.** doc/docgen/--lsp/
   --listen route through ONE generic driver (`runCli`: boot + GC anchor + argv
-  handover) to the compiled `#cli` module, whose `[Cli run:source:guides:]`
+  handover) to the compiled `#cli` module, whose `[Cli run:source:rust:guides:]`
   dispatches by driving the modules' own public API (`[Doc cli:]`,
-  `[Doc buildSite:zig:guides:]`,
+  `[Doc buildSite:zig:rust:guides:]`,
   `[Lsp serveStdio]`, `[Repl serveOn:]`) — the CLI is one more client of the
   libraries, and every module stays fully usable from code without it
   (locked in by cli-test.birnam's library-use tests). main.zig 1371→1276; the

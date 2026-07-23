@@ -1,7 +1,7 @@
-//! Dependency-free Rust libid floor candidate.
+//! Dependency-free production Rust libid floor.
 //!
-//! The crate exports the complete frozen `IdApi` implementation. Normal Zig
-//! builds do not select or install it until the explicit cutover phase.
+//! The crate exports the complete frozen `IdApi` implementation installed as
+//! `libbirnam_id.dylib`. The retained Zig oracle is separately named.
 
 #[cfg(not(any(test, panic = "abort")))]
 compile_error!("every runnable birnam_id cdylib profile must use panic=abort");
@@ -27,10 +27,10 @@ use core::ffi::c_char;
 const RUST_CRATE_IDENTITY: &[u8] = b"rust-id-spike-r2.6\0";
 const RUST_FLOOR_IDENTITY: &[u8] = b"rust-id-v1\0";
 
-/// Identifies the spike-only R2.6 Rust artifact.
+/// Returns the legacy R2.6 diagnostic identity retained for frozen probes.
 ///
 /// This intentionally has a different name from the selected-floor identity
-/// export. Its presence does not imply that ordinary Birnam selects this floor.
+/// export and is not used for production floor selection.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_id_rust_crate_identity() -> *const c_char {
     boundary::require_invariant(
@@ -40,8 +40,7 @@ pub extern "C" fn birnam_id_rust_crate_identity() -> *const c_char {
     RUST_CRATE_IDENTITY.as_ptr().cast()
 }
 
-/// Identifies this dylib when an isolated selected-floor harness requests Rust.
-/// The ordinary install remains the Zig floor until the later cutover phase.
+/// Identifies this dylib as the production Rust floor.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_id_floor_identity() -> *const c_char {
     boundary::require_invariant(
@@ -59,7 +58,7 @@ pub extern "C" fn birnam_id_rust_abi_descriptor_v1() -> *const core::ffi::c_void
     core::ptr::addr_of!(abi::ABI_DESCRIPTOR_V1).cast()
 }
 
-/// Initialize the R2.6 spike floor exactly once in this process.
+/// Initialize the Rust floor exactly once in this process.
 #[unsafe(no_mangle)]
 pub extern "C" fn id_init() -> *mut core::ffi::c_void {
     public_api::initialize_once().cast()

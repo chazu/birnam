@@ -109,14 +109,19 @@
 > planned in [49 — Live Module Evolution](49-live-module-evolution.md) was
 > withdrawn after the lower-level candidate boundary shipped.
 >
+> **Floor implementation update (2026-07-23):** images continue to depend only
+> on the frozen `IdApi`, not its implementation language. The default floor is
+> Rust; `image.zig` remains a Zig higher rung, and the separately named Zig floor
+> is retained as the compatibility oracle used by the cross-floor image matrix.
+>
 > Builds on the
 > [running system](../archive/work-breakdowns/36-the-running-system.md) (globals are cells, method source
 > is mirrored into the store) and the codegen/Tcc stack
 > ([rung 3](../archive/work-breakdowns/35-rung-3-front-end.md)). Supersedes the old kernel's
 > `2e-images-aot.md` framing and closes out ADR-image-1's direction on the id
 > stack. The old kernel implementation is preserved only in git history; the
-> active image contract below is implemented by the current `src/id/image.zig`
-> floor.
+> active image contract below is implemented by the current native
+> `src/id/image.zig` image rung.
 
 Today every `birnam` run starts from nothing: REPL bindings, defined
 methods, and store facts all die with the process. The image is the fix — and

@@ -42,7 +42,7 @@ const USAGE =
     \\  birnam doc <mod> [sel]     Print documentation for a module (like `go doc`):
     \\                             its method docstrings, or one selector's doc.
     \\  birnam docgen [out.html]   Generate the full HTML doc reference (every birnam
-    \\                             module + every Zig floor file) to a file.
+    \\                             module + Rust floor and Zig oracle) to a file.
     \\  birnam init                Write a starter birnam.toml (the recognised keys,
     \\                             commented) into the current directory. Refuses to
     \\                             overwrite an existing one.
@@ -73,7 +73,7 @@ const USAGE =
     \\  BIRNAM_LIB_DIR    Directory holding the module dylibs. Overrides the
     \\                    executable-relative runtime lib directory.
     \\  BIRNAM_ID_DYLIB   Path to the id-floor dylib (libbirnam_id.dylib).
-    \\  BIRNAM_NO_STDLIB  If set, skip the self-hosted stdlib (bare Zig floor).
+    \\  BIRNAM_NO_STDLIB  If set, skip the self-hosted stdlib (bare native runtime).
     \\  BIRNAM_GC_PRECISE If set, use the precise (layout-descriptor) GC.
     \\
 ;
@@ -993,9 +993,9 @@ const script_modules = [_][]const u8{
 };
 
 // The self-hosted layer — birnam defining more of its own library on top of the
-// Zig primitives. Each source is embedded so it is ALWAYS available as the boot
+// native primitives. Each source is embedded so it is ALWAYS available as the boot
 // floor; the precompiled dylib (stage-1 build) is preferred when present. Loaded
-// by default, skipped whole with BIRNAM_NO_STDLIB=1 (the bare Zig floor as an
+// by default, skipped whole with BIRNAM_NO_STDLIB=1 (the bare native runtime as an
 // option). `toml` follows `stdlib` — `Toml parse:` calls stdlib methods
 // (`collect:`/`asInteger`) at RUN time, so stdlib must be up before Toml is used.
 const STDLIB_SRC = @embedFile("stdlib.birnam");

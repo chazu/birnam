@@ -28,11 +28,11 @@ Decisions already made:
 
 - **ReleaseSafe always.** Benchmarks run against a ReleaseSafe build — the
   same optimization mode `dist.sh` ships. Debug numbers are not tracked.
-  Nuance the suite must respect: `-Doptimize` affects only the **Zig floor**
-  (dispatch, natives, GC, store); TCC-emitted birnam method bodies are
-  unchanged by it. So ReleaseSafe shifts every native/derived ratio in the
-  natives' favor relative to the Debug-mode numbers recorded in docs/44 —
-  those ratios get **re-baselined**, not assumed.
+  Nuance the suite must respect: `-Doptimize` selects the Zig optimization mode
+  and maps the Rust floor to Cargo debug/release; TCC-emitted Birnam method
+  bodies are unchanged by it. So ReleaseSafe shifts every native/derived ratio
+  in the native runtime's favor relative to the Debug-mode numbers recorded in
+  docs/44 — those ratios get **re-baselined**, not assumed.
 - **Per-tagged-version history.** Each release's snapshot is checked in as
   `bench/results/v<X.Y.Z>.json` and kept forever. Between-version dev runs
   are disposable: they land in an untracked `bench/results/dev/` and are

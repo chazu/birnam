@@ -1,4 +1,4 @@
-//! Direct loader probe for the spike-only R2.6 Rust dylib.
+//! Direct loader probe for the production Rust floor's legacy R2.6 diagnostic.
 
 const std = @import("std");
 

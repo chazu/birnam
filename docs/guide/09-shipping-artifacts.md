@@ -123,8 +123,13 @@ The supported runtime layout is fixed relative to the executable:
 ```text
 prefix/
   bin/birnam
+  lib/libbirnam_id.dylib
+  lib/libbirnam_id_zig.dylib
   lib/libbirnam_*.dylib
   share/birnam/src/id/*.zig
+  share/birnam/src/rust/Cargo.{toml,lock}
+  share/birnam/src/rust/birnam-id/{Cargo.toml,build.rs}
+  share/birnam/src/rust/birnam-id/src/*.rs
   share/birnam/docs/guide/*.md
 ```
 

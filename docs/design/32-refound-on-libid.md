@@ -5,6 +5,11 @@
 > route to it changes. Background: [The Destination](30-the-destination.md),
 > [Work Breakdown](../archive/work-breakdowns/31-destination-work-breakdown.md), [Re-Layering Audit](../archive/legacy-kernel/20a-relayering-coupling-audit.md),
 > `~/dev/c/birnam` (the C reference @ `d35caee`).
+>
+> **Implementation update (2026-07-23):** the refounding and rung construction
+> are complete. The `libid` identity and frozen `IdApi` remain the boundary; its
+> production implementation is now `rust/birnam-id`, with `src/id/id.zig`
+> retained as a separately named conformance and developer-rollback oracle.
 
 ## Context
 

@@ -2,8 +2,8 @@
 
 /// Terminate the process for an invariant failure at an exported boundary.
 ///
-/// This deliberately cannot return or unwind. It matches the existing Zig
-/// floor's fatal treatment of corrupt runtime invariants; recoverable language
+/// This deliberately cannot return or unwind. It matches the retained Zig
+/// oracle's fatal treatment of corrupt runtime invariants; recoverable language
 /// errors must instead be represented as Birnam objects before this boundary.
 #[cold]
 pub(crate) fn fatal_invariant(message: &str) -> ! {

@@ -1,4 +1,4 @@
-//! Collector metadata retained while R3 keeps marking and sweeping disabled.
+//! Root discovery, marking, sweeping, and finalization for the Rust floor.
 
 use core::cell::Cell;
 

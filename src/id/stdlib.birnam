@@ -1,10 +1,10 @@
 // stdlib.birnam — the SELF-HOSTED part of the standard library.
 //
-// The floor (Integer/Boolean/String/System protocol, collections) is provided by
-// the Zig modules (prelude, collection) — those are the irreducible primitives.
+// The base protocol is provided by the Rust id floor plus native Zig higher rungs
+// (prelude, collection) — those are the irreducible primitives.
 // THIS file is birnam defining MORE of its own library, on top of those
 // primitives, via `[Reflect defineMethod: #sel on: T as: aBlock]`. It is loaded by
-// default; `BIRNAM_NO_STDLIB=1` runs on the bare Zig floor instead.
+// default; `BIRNAM_NO_STDLIB=1` runs on the bare native runtime instead.
 //
 // ⚠️ AFTER EDITING THIS FILE: `loadStdlib` PREFERS the compiled dylib
 // (zig-out/lib/libbirnam_stdlib.dylib) over this embedded source, so a stale dylib
@@ -13,7 +13,7 @@
 // source path, or `zig build stage1` to regenerate the dylib. (Same for toml/config.)
 
 // This module's dependency declaration (stage 3): the self-hosted stdlib sits
-// directly on the Zig primitives, so it requires no other self-hosted module.
+// directly on the native primitives, so it requires no other self-hosted module.
 // The module manager is installed first on every supported boot. The tiny
 // fallback keeps stdlib directly evaluable in the native Codegen harness.
 [[Module isNil]
