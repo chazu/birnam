@@ -209,9 +209,9 @@ const Triples = std.ArrayList(Triple);
 // triple pattern names its attribute as a constant (`#[?e #age ?v]`), so the
 // gathered triples are partitioned by attribute ONCE per query and each clause
 // scans only its attribute's partition. This is a pre-filter, not a matcher:
-// `tryClause` still decides every match exactly as before (the partition is
-// keyed by `valEq`, a superset of tryClause's identity match — sound), so
-// results are unchanged. Lives in the query's arena; freed wholesale with it.
+// `tryClause` still decides every match exactly as before (partition contents
+// are selected with `valEq`, a superset of tryClause's identity match — sound),
+// so results are unchanged. Lives in the query's arena; freed wholesale with it.
 
 fn mix64(x0: u64) u64 {
     var x = x0; // splitmix64 finalizer
@@ -291,21 +291,16 @@ const ValMatcher = struct {
     }
 };
 
-const ValCtx = struct {
-    pub fn hash(_: ValCtx, k: Oop) u64 {
-        return valHash(k);
-    }
-    pub fn eql(_: ValCtx, a: Oop, b: Oop) bool {
-        return valEq(a, b);
-    }
-};
-
 const TripleList = std.ArrayList(Triple);
 
 const TripleIndex = struct {
     all: []const Triple,
     aa: std.mem.Allocator, // the query's arena — partitions free with the query
-    by_attr: std.HashMapUnmanaged(Oop, TripleList, ValCtx, std.hash_map.default_max_load_percentage) = .{},
+    // Exact identity is sufficient for this memo key. Equal-valued boxed attrs
+    // may build duplicate partitions, but each partition itself still selects
+    // with `valEq`, so query semantics remain value-aware while the common
+    // interned-symbol path avoids reclassifying the attr for every solution.
+    by_attr: std.AutoHashMapUnmanaged(Oop, TripleList) = .{},
 
     /// The triples a clause whose attr term resolved to `a` can possibly match:
     /// `a`'s partition, built LAZILY on first request (one linear scan per
