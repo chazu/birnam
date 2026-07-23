@@ -3,7 +3,7 @@
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
-> N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4g are complete and
+> N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4h are complete and
 > N3.4 remains in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
@@ -1080,6 +1080,17 @@ explicit Rust PEG reproduces it with both IdApi floors selected. The same gate
 can explicitly load the Zig PEG dylib to re-validate the baseline. The
 generated-C ABI and TCC ownership remain unchanged; whole-source-corpus,
 module-metadata, and compiled-unit descriptor comparisons remain open.
+
+#### N3.4h execution record — complete, 2026-07-23
+
+The unchanged downstream metadata contracts now run through an explicit Rust
+PEG parity gate on both IdApi floors. It checks literal module declarations
+while ignoring legacy-only source, preserves dependency order and names, and
+compiles a self-describing unit whose descriptor remains inert before
+activation. The descriptor assertions freeze the module kind, described
+identity, ordered file/time requirements, described roots, and the
+aarch64-macos target. Existing Zig Codegen and Artifact authorities remain
+unchanged; whole-source-corpus comparison is the remaining N3.4 gap.
 
 ### N3.5 — Switch and observe
 

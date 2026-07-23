@@ -746,6 +746,32 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_codegen_parity_step.dependOn(&run_rust_peg_codegen_parity.step);
     test_step.dependOn(&run_rust_peg_codegen_parity.step);
 
+    const rust_peg_metadata_parity_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_metadata_parity_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    rust_peg_metadata_parity_mod.addIncludePath(b.path("vendor/libtcc-src"));
+    const rust_peg_metadata_parity_tests = b.addTest(.{ .root_module = rust_peg_metadata_parity_mod });
+    rust_peg_metadata_parity_tests.linkLibrary(libtcc_lib);
+    rust_peg_metadata_parity_tests.rdynamic = true;
+    rust_peg_metadata_parity_tests.linkLibC();
+    const run_rust_peg_metadata_parity = b.addRunArtifact(rust_peg_metadata_parity_tests);
+    run_rust_peg_metadata_parity.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_peg_metadata_parity.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_peg_metadata_parity.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_peg_metadata_parity.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_peg_metadata_parity.step.dependOn(bootstrap_install);
+    const test_rust_peg_metadata_parity_step = b.step(
+        "test-rust-peg-metadata-parity",
+        "Compare module metadata and compiled-unit descriptors through Rust PEG",
+    );
+    test_rust_peg_metadata_parity_step.dependOn(&run_rust_peg_metadata_parity.step);
+    test_step.dependOn(&run_rust_peg_metadata_parity.step);
+
     const rust_peg_codegen_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_peg_codegen_test.zig"),
         .target = target,
