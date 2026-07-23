@@ -586,6 +586,14 @@ fn is_type_vtable(api: &birnam_abi::IdApi, vtable: birnam_abi::Oop) -> bool {
     false
 }
 
+fn is_registered_type_vtable(api: &birnam_abi::IdApi, object: birnam_abi::Oop) -> bool {
+    let count = unsafe { (api.vtableCount)() };
+    (0..count).any(|index| {
+        let vtable = unsafe { (api.vtableAt)(index) };
+        vtable == object && is_type_vtable(api, vtable)
+    })
+}
+
 unsafe extern "C" fn backfill_mirror(
     self_object: birnam_abi::Oop,
     _args: *const birnam_abi::Oop,
@@ -641,6 +649,84 @@ unsafe extern "C" fn mirror_overwrite_hook(vtable: birnam_abi::Oop, selector: bi
     if !old.is_null() {
         remove_live(state, vtable, selector, old);
     }
+}
+
+unsafe extern "C" fn image_facts_into(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    // SAFETY: this selector has exactly one argument.
+    let collector = unsafe { *args };
+    let selector = unsafe { intern(api, b"e:a:v:tx:op:\0") };
+    let facts = unsafe { state_mut(self_object) }.facts.clone();
+    for fact in facts {
+        // The MOP mirror is a rebuilt cache, not independently serialized. In
+        // particular, method carriers may be stale raw code pointers and must
+        // never reach the heap codec.
+        if is_registered_type_vtable(api, fact.e) {
+            continue;
+        }
+        let arguments = [
+            fact.e,
+            fact.a,
+            fact.v,
+            unsafe { (api.mkSmallInt)(fact.tx as i64) },
+            unsafe { (api.mkSmallInt)(fact.op as u8 as i64) },
+        ];
+        // SAFETY: the collector owns the frozen five-argument image protocol.
+        let _ = unsafe { (api.send)(collector, selector, arguments.as_ptr(), arguments.len()) };
+    }
+    self_object
+}
+
+unsafe extern "C" fn image_load_begin(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    unsafe { state_mut(self_object) }.facts.clear();
+    self_object
+}
+
+unsafe extern "C" fn image_add_fact(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly five arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 5) };
+    let tx = unsafe { (api(runtime).smallIntValue)(args[3]) } as u64;
+    let op = match unsafe { (api(runtime).smallIntValue)(args[4]) } {
+        0 => Op::Assert,
+        1 => Op::Retract,
+        _ => abort("image fact op was not assert/retract"),
+    };
+    unsafe { state_mut(self_object) }.facts.push(Fact {
+        e: args[0],
+        a: args[1],
+        v: args[2],
+        tx,
+        op,
+    });
+    self_object
+}
+
+unsafe extern "C" fn image_load_end(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly two arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 2) };
+    let state = unsafe { state_mut(self_object) };
+    state.tx = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
+    state.raw = args[1] == unsafe { api(runtime) }.trueObj;
+    self_object
 }
 
 unsafe extern "C" fn raw_current_value(
@@ -1212,6 +1298,10 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"liveTriplesSince:do:\0", live_triples_since_do),
         (b"liveTriplesBetween:and:do:\0", live_triples_between_and_do),
         (b"cardinality:\0", cardinality_method),
+        (b"imageFactsInto:\0", image_facts_into),
+        (b"imageLoadBegin\0", image_load_begin),
+        (b"imageAddFact:attr:value:tx:op:\0", image_add_fact),
+        (b"imageLoadEnd:raw:\0", image_load_end),
         (b"new\0", new_store),
         (b"cellFor:attr:\0", cell_for),
         (b"addMethod:on:with:\0", tracked_add_method),

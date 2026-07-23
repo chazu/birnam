@@ -2,7 +2,7 @@
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, and
-> N2.3c are complete; N2.4 is next.
+> N2.3c and N2.4a are complete; N2.4b is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -847,6 +847,17 @@ The Rust Store now implements the deterministic `attrCount:` /
 filtering fully retracted attributes and respecting one/many liveness; an
 out-of-range index returns raw absence exactly like the Zig Store. The
 cross-language test covers ordering and removal on both selected floors.
+
+#### N2.4b execution record — complete, 2026-07-23
+
+The Rust Store now exposes the raw image fact bridge used by the image codec.
+Export copies each fact's entity, attribute, value, transaction, and assert /
+retract op into the collector protocol while excluding registered type-vtable
+mirror facts. Load begin replaces the fact stream; load add preserves the
+record metadata; load end restores the transaction basis and raw-mode flag.
+The cross-language test covers export, wholesale replacement, assert/retract
+round-trip, and both selected IdApi floors. Image container policy and heap
+object traversal remain in the Zig image module until the next slice.
 
 ### N2.5 — Switch and observe
 

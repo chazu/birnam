@@ -43,6 +43,11 @@ var triple_target_many: Oop = null;
 var triple_one_hits: usize = 0;
 var triple_one_value: Oop = null;
 var triple_many_hits: usize = 0;
+var image_target_entity: Oop = null;
+var image_capture_count: usize = 0;
+var image_last_value: Oop = null;
+var image_last_tx: i64 = -1;
+var image_last_op: i64 = -1;
 
 fn collectTriples(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     if (n == 3 and args[0] == triple_target_entity) {
@@ -61,6 +66,17 @@ fn resetTripleCapture() void {
     triple_one_value = null;
     triple_many_hits = 0;
 }
+
+fn collectImageFact(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    if (n == 5 and args[0] == image_target_entity) {
+        image_capture_count += 1;
+        image_last_value = args[2];
+        image_last_tx = image_api.?.smallIntValue(args[3]);
+        image_last_op = image_api.?.smallIntValue(args[4]);
+    }
+    return self;
+}
+var image_api: ?*idapi.IdApi = null;
 
 var mop_api: ?*idapi.IdApi = null;
 var mop_authorized = true;
@@ -197,6 +213,61 @@ test "Rust Store attr reports preserve live first-appearance order" {
     try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, store, "attrCount:", &.{entity})));
     try std.testing.expect(send(api, store, "attrAt:index:", &.{ entity, api.mkSmallInt(0) }) == second_attr);
     try std.testing.expect(send(api, store, "attrAt:index:", &.{ entity, api.mkSmallInt(1) }) == null);
+}
+
+test "Rust Store image bridge preserves raw facts, transactions, and ops" {
+    const api = floor.api();
+    const path = std.posix.getenv("BIRNAM_RUST_STORE_DYLIB") orelse
+        return error.MissingRustStoreDylib;
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustStoreDlopenFailed;
+    const raw_init = api.dlsym(handle, "module_init") orelse return error.RustStoreModuleInitMissing;
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
+
+    const store = api.import("Store") orelse return error.RustStoreNotExported;
+    const entity = api.intern("rust_store_image_entity");
+    const attribute = api.intern("rust_store_image_attribute");
+    const value = api.intern("rust_store_image_value");
+    image_api = api;
+    image_target_entity = entity;
+    image_capture_count = 0;
+    image_last_value = null;
+    image_last_tx = -1;
+    image_last_op = -1;
+    const collector_vt = api.proto(api.object_vt);
+    api.method(collector_vt, api.intern("e:a:v:tx:op:"), &collectImageFact);
+    const collector = api.alloc(collector_vt, 0);
+
+    _ = send(api, store, "assert:attr:value:", &.{ entity, attribute, value });
+    _ = send(api, store, "imageFactsInto:", &.{collector});
+    try std.testing.expectEqual(@as(usize, 1), image_capture_count);
+    try std.testing.expect(image_last_value == value);
+    try std.testing.expectEqual(@as(i64, 0), image_last_op);
+    const saved_tx = image_last_tx;
+
+    _ = send(api, store, "imageLoadBegin", &.{});
+    try std.testing.expect(send(api, store, "currentValue:attr:", &.{ entity, attribute }) == api.nilObj);
+    _ = send(api, store, "imageAddFact:attr:value:tx:op:", &.{
+        entity,
+        attribute,
+        value,
+        api.mkSmallInt(saved_tx),
+        api.mkSmallInt(0),
+    });
+    _ = send(api, store, "imageLoadEnd:raw:", &.{ api.mkSmallInt(saved_tx + 1), api.falseObj });
+    try std.testing.expect(send(api, store, "currentValue:attr:", &.{ entity, attribute }) == value);
+    try std.testing.expectEqual(saved_tx + 1, api.smallIntValue(send(api, store, "basis", &.{})));
+
+    _ = send(api, store, "imageAddFact:attr:value:tx:op:", &.{
+        entity,
+        attribute,
+        value,
+        api.mkSmallInt(saved_tx + 1),
+        api.mkSmallInt(1),
+    });
+    try std.testing.expect(send(api, store, "currentValue:attr:", &.{ entity, attribute }) == api.nilObj);
 }
 
 test "Rust Store Cells are traced handles over one store entity/attribute pair" {
