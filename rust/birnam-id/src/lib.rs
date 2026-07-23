@@ -155,8 +155,9 @@ pub unsafe extern "C" fn birnam_id_test_active_send(
     args: *const abi::Oop,
     count: usize,
 ) -> abi::Oop {
-    // SAFETY: forwarded caller contract.
-    unsafe { dispatch::active_send(receiver, selector, args, count) }
+    // SAFETY: forwarded caller contract. This deliberately goes through the
+    // exact public wrapper so the already-active fast path is exercised.
+    unsafe { public_api::test_active_send(receiver, selector, args, count) }
 }
 
 #[cfg(test)]

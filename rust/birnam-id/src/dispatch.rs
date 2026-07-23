@@ -458,25 +458,6 @@ pub(crate) fn run_external_reentry(method: crate::abi::Method) -> usize {
         .addr()
 }
 
-/// Reenter the dynamically active R2 dispatch harness from a foreign Method.
-///
-/// # Safety
-///
-/// The ordinary send ABI contract applies to all arguments.
-#[cfg(feature = "ffi-test-hooks")]
-pub(crate) unsafe fn active_send(
-    receiver: Oop,
-    selector: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    with_active(|runtime| {
-        // SAFETY: forwarded caller contract; active runtime remains live for
-        // the complete synchronous callback extent.
-        unsafe { runtime.send_abi(receiver, selector, args, count) }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,4 +1,4 @@
-//! External Zig Method that synchronously reenters the R2 Rust dispatcher.
+//! External Zig Method that synchronously reenters the public Rust IdApi send.
 
 const std = @import("std");
 
@@ -31,5 +31,5 @@ pub fn main() !void {
         return error.MissingDispatchReentryHook;
 
     if (run_reentry(zigReentrant) != 4242) return error.WrongReentrantResult;
-    std.debug.print("rust-dispatch-reentry: Zig Method reentered Rust send\n", .{});
+    std.debug.print("rust-dispatch-reentry: Zig Method reentered public Rust IdApi.send\n", .{});
 }

@@ -92,6 +92,24 @@ unsafe extern "C" fn api_send(receiver: Oop, selector: Oop, args: *const Oop, co
     })
 }
 
+/// Test-only access to the exact public send wrapper while a foreign Method is
+/// executing inside an active runtime.
+///
+/// # Safety
+///
+/// The ordinary `IdApi.send` receiver, selector, and argument-buffer contracts
+/// apply.
+#[cfg(feature = "ffi-test-hooks")]
+pub(crate) unsafe fn test_active_send(
+    receiver: Oop,
+    selector: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    // SAFETY: forwarded caller contract.
+    unsafe { api_send(receiver, selector, args, count) }
+}
+
 unsafe extern "C" fn api_make_smallint(value: i64) -> Oop {
     runtime().make_integer(value)
 }
