@@ -638,8 +638,8 @@ pub fn build(b: *std.Build) void {
     b.getInstallStep().dependOn(&install_siphon.step);
     bootstrap_install.dependOn(&install_siphon.step);
 
-    // Birnam module source is embedded in its compiled unit. Only the native
-    // Zig floor and authored guides remain separate documentation resources.
+    // Birnam module source is embedded in its compiled unit. Native floor
+    // sources and authored guides remain separate documentation resources.
     var source_dir = std.fs.cwd().openDir("src/id", .{ .iterate = true }) catch
         @panic("could not enumerate src/id for installed Zig-floor documentation");
     defer source_dir.close();
@@ -651,6 +651,26 @@ pub fn build(b: *std.Build) void {
             b.path(b.fmt("src/id/{s}", .{entry.name})),
             .prefix,
             b.fmt("share/birnam/src/id/{s}", .{entry.name}),
+        );
+        b.getInstallStep().dependOn(&install_source.step);
+    }
+    b.installDirectory(.{
+        .source_dir = b.path("rust/birnam-id/src"),
+        .install_dir = .prefix,
+        .install_subdir = "share/birnam/src/rust/birnam-id/src",
+        .include_extensions = &.{".rs"},
+    });
+    const rust_source_files = [_]struct { src: []const u8, dest: []const u8 }{
+        .{ .src = "Cargo.toml", .dest = "share/birnam/src/rust/Cargo.toml" },
+        .{ .src = "Cargo.lock", .dest = "share/birnam/src/rust/Cargo.lock" },
+        .{ .src = "rust/birnam-id/Cargo.toml", .dest = "share/birnam/src/rust/birnam-id/Cargo.toml" },
+        .{ .src = "rust/birnam-id/build.rs", .dest = "share/birnam/src/rust/birnam-id/build.rs" },
+    };
+    inline for (rust_source_files) |source| {
+        const install_source = b.addInstallFileWithDir(
+            b.path(source.src),
+            .prefix,
+            source.dest,
         );
         b.getInstallStep().dependOn(&install_source.step);
     }

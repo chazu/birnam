@@ -43,7 +43,8 @@ mkdir -p "$stage/bin" "$stage/lib"
 cp "$prefix/bin/birnam" "$stage/bin/birnam"
 # All supported artifacts are Mach-O dylibs.
 cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/"
-# Native Zig-floor documentation + guides, in the install-relative layout.
+# Native Rust/Zig-floor source documentation + guides, in the
+# install-relative layout.
 cp -R "$prefix/share" "$stage/share"
 
 # Optional wrappers are not copied opportunistically from developer build dirt.

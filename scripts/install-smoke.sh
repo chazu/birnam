@@ -32,12 +32,20 @@ find src/id -type f -name '*.zig' ! -name '*_test.zig' -print | sed 's#^src/id/#
 find "$tmp/birnam/share/birnam/src/id" -type f -name '*.zig' -print | sed "s#^$tmp/birnam/share/birnam/src/id/##" | sort >"$tmp/installed-source"
 diff -u "$tmp/expected-source" "$tmp/installed-source"
 
+find rust/birnam-id/src -type f -name '*.rs' -print | sed 's#^rust/birnam-id/src/##' | sort >"$tmp/expected-rust-source"
+find "$tmp/birnam/share/birnam/src/rust/birnam-id/src" -type f -name '*.rs' -print | sed "s#^$tmp/birnam/share/birnam/src/rust/birnam-id/src/##" | sort >"$tmp/installed-rust-source"
+diff -u "$tmp/expected-rust-source" "$tmp/installed-rust-source"
+cmp Cargo.toml "$tmp/birnam/share/birnam/src/rust/Cargo.toml"
+cmp Cargo.lock "$tmp/birnam/share/birnam/src/rust/Cargo.lock"
+cmp rust/birnam-id/Cargo.toml "$tmp/birnam/share/birnam/src/rust/birnam-id/Cargo.toml"
+cmp rust/birnam-id/build.rs "$tmp/birnam/share/birnam/src/rust/birnam-id/build.rs"
+
 find docs/guide -type f -name '*.md' -print | sed 's#^docs/guide/##' | sort >"$tmp/expected-guide"
 find "$tmp/birnam/share/birnam/docs/guide" -type f -name '*.md' -print | sed "s#^$tmp/birnam/share/birnam/docs/guide/##" | sort >"$tmp/installed-guide"
 diff -u "$tmp/expected-guide" "$tmp/installed-guide"
 
 required_dylibs=(
-  libbirnam_id.dylib libbirnam_id_artifact.dylib
+  libbirnam_id.dylib libbirnam_id_zig.dylib libbirnam_id_artifact.dylib
   libbirnam_store.dylib libbirnam_id_peg.dylib
   libbirnam_id_lang.dylib libbirnam_id_tcc.dylib libbirnam_id_codegen.dylib
   libbirnam_id_prelude.dylib libbirnam_id_collection.dylib
@@ -76,7 +84,11 @@ grep -q 'Blocking process isolates' reference.html
 grep -q 'id="html"' reference.html
 grep -q 'tag:body:' reference.html
 "$bin" --lsp </dev/null >/dev/null
-printf ':quit\n' | "$bin" >/dev/null
+printf ':quit\n' | env BIRNAM_ID_FLOOR_IDENTITY=rust-id-v1 "$bin" >/dev/null
+printf ':quit\n' | env \
+  BIRNAM_ID_DYLIB="$tmp/relocated/lib/libbirnam_id_zig.dylib" \
+  BIRNAM_ID_FLOOR_IDENTITY=zig-id-v1 \
+  "$bin" >/dev/null
 
 # A compiled unit is itself a runnable root. Its identity and requirements are
 # recovered from inert artifact bytes; no source manifest or build receipt is
