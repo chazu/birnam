@@ -86,7 +86,7 @@ const StoreState = struct {
     // per-pair read walks its own few facts instead of the whole log. Holds
     // positions only (no Oops beyond the keys, which live facts already hold),
     // is maintained write-through at the three mutation chokepoints (`appendOp`,
-    // `removeLive`, the image-load appends; `replaceInPlace` is position-stable),
+    // `removeLive`, the image-load appends; `replaceInPlaceKey` is position-stable),
     // and is rebuilt wholesale from the log whenever positions shift. Never
     // serialized: an image load re-derives it.
     ea: EaMap = .{},
@@ -316,8 +316,8 @@ fn isMember(st: *StoreState, e: Oop, a: Oop, v: Oop) bool {
 /// is a `[store basis]` value = the next-tx watermark, so the snapshot excludes
 /// anything committed at/after it). The newest visible matching fact decides; a
 /// retract entry means the value is absent.
-fn currentValueRawAsOf(st: *StoreState, e: Oop, a: Oop, asof: ?u64) Oop {
-    const posts = postingsOf(st, e, a);
+fn currentValueRawAsOfKey(st: *StoreState, key: EaKey, asof: ?u64) Oop {
+    const posts = postingsOfKey(st, key);
     var i = posts.len;
     while (i > 0) {
         i -= 1;
@@ -328,9 +328,17 @@ fn currentValueRawAsOf(st: *StoreState, e: Oop, a: Oop, asof: ?u64) Oop {
     return null;
 }
 
+fn currentValueRawAsOf(st: *StoreState, e: Oop, a: Oop, asof: ?u64) Oop {
+    return currentValueRawAsOfKey(st, eaKey(e, a), asof);
+}
+
 /// The current value of (e, a); null if none/retracted.
 fn currentValueRaw(st: *StoreState, e: Oop, a: Oop) Oop {
     return currentValueRawAsOf(st, e, a, null);
+}
+
+fn currentValueRawKey(st: *StoreState, key: EaKey) Oop {
+    return currentValueRawAsOfKey(st, key, null);
 }
 
 /// The cardinality of attribute `a`, read from the store's OWN schema cells.
@@ -368,8 +376,8 @@ fn historyLen(st: *StoreState, e: Oop, a: Oop) usize {
 /// none exists. The no-history retention path for `:one`. Position-stable: the
 /// newest (e,a) fact is the pair's last posting, and it stays newest (its tx
 /// bumps to the write time), so the index needs no maintenance here.
-fn replaceInPlace(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
-    const posts = postingsOf(st, e, a);
+fn replaceInPlaceKey(st: *StoreState, key: EaKey, v: Oop) void {
+    const posts = postingsOfKey(st, key);
     if (posts.len > 0) {
         const i = posts[posts.len - 1];
         st.facts.items[i].v = v;
@@ -377,7 +385,7 @@ fn replaceInPlace(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
         st.tx += 1;
         return;
     }
-    appendFact(st, e, a, v);
+    appendFact(st, key.e, key.a, v);
 }
 
 /// Distinct currently-present values of (e, a) — the set, for `:many` counting.
@@ -439,13 +447,14 @@ fn mAssert(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
         appendFact(st, e, a, v);
         return self;
     }
+    const pair = eaKey(e, a);
     const card = cardinalityOf(st, a); // the self-consultation
     if (eq(card, s_one)) {
-        if (eq(currentValueRaw(st, e, a), v)) return self; // idempotent: no value change
+        if (eq(currentValueRawKey(st, pair), v)) return self; // idempotent: no value change
         if (eq(historyOf(st, a), s_true))
             appendFact(st, e, a, v) // opt-in: keep the timeline
         else
-            replaceInPlace(st, e, a, v); // default: one slot, no growth (D6)
+            replaceInPlaceKey(st, pair, v); // default: one slot, no growth (D6)
     } else {
         // :many — set semantics; accumulate distinct members (op-aware: a
         // previously-retracted value can be re-added).
