@@ -81,6 +81,7 @@ struct Runtime {
     many: usize,
     history: usize,
     primitive: usize,
+    globals_entity: usize,
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -841,6 +842,101 @@ unsafe extern "C" fn cell_history(
     unsafe { (api.send)(store, selector, [entity, attribute].as_ptr(), 2) }
 }
 
+unsafe extern "C" fn globals_at(
+    _self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly one argument.
+    let key = unsafe { *args };
+    let api = unsafe { api(runtime) };
+    let selector = unsafe { intern(api, b"currentValue:attr:\0") };
+    let arguments = [as_oop(runtime.globals_entity), key];
+    // SAFETY: selector and argument buffer match the frozen IdApi send ABI.
+    unsafe {
+        (api.send)(
+            as_oop(runtime.store),
+            selector,
+            arguments.as_ptr(),
+            arguments.len(),
+        )
+    }
+}
+
+unsafe extern "C" fn globals_at_if_absent(
+    _self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly two arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 2) };
+    let api = unsafe { api(runtime) };
+    let read_selector = unsafe { intern(api, b"rawCurrentValue:attr:\0") };
+    let read_arguments = [as_oop(runtime.globals_entity), args[0]];
+    // SAFETY: the raw read preserves the absent/bound-nil distinction.
+    let value = unsafe {
+        (api.send)(
+            as_oop(runtime.store),
+            read_selector,
+            read_arguments.as_ptr(),
+            read_arguments.len(),
+        )
+    };
+    if !value.is_null() {
+        return value;
+    }
+    let value_selector = unsafe { intern(api, b"value\0") };
+    // SAFETY: the absent block owns the frozen `value` protocol.
+    unsafe { (api.send)(args[1], value_selector, ptr::null(), 0) }
+}
+
+unsafe extern "C" fn globals_at_put(
+    _self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly two arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 2) };
+    let api = unsafe { api(runtime) };
+    let selector = unsafe { intern(api, b"assert:attr:value:\0") };
+    let arguments = [as_oop(runtime.globals_entity), args[0], args[1]];
+    // SAFETY: selector and argument buffer match the frozen IdApi send ABI.
+    unsafe {
+        (api.send)(
+            as_oop(runtime.store),
+            selector,
+            arguments.as_ptr(),
+            arguments.len(),
+        )
+    };
+    args[1]
+}
+
+unsafe extern "C" fn globals_includes(
+    _self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly one argument.
+    let key = unsafe { *args };
+    let api = unsafe { api(runtime) };
+    let selector = unsafe { intern(api, b"hasValue:attr:\0") };
+    let arguments = [as_oop(runtime.globals_entity), key];
+    // SAFETY: selector and argument buffer match the frozen IdApi send ABI.
+    unsafe {
+        (api.send)(
+            as_oop(runtime.store),
+            selector,
+            arguments.as_ptr(),
+            arguments.len(),
+        )
+    }
+}
+
 unsafe fn register_methods(runtime: &Runtime) {
     let api = unsafe { api(runtime) };
     let vt = as_oop(runtime.store_vt);
@@ -898,6 +994,24 @@ unsafe fn register_cell_methods(runtime: &Runtime) {
     }
 }
 
+unsafe fn register_globals_methods(runtime: &Runtime) {
+    let api = unsafe { api(runtime) };
+    let vt = as_oop(runtime.globals_vt);
+    let methods: &[(&[u8], birnam_abi::Method)] = &[
+        (b"at:\0", globals_at),
+        (b"at:ifAbsent:\0", globals_at_if_absent),
+        (b"at:put:\0", globals_at_put),
+        (b"includes:\0", globals_includes),
+    ];
+    for (selector, method) in methods {
+        // SAFETY: selector names are static C strings and each function matches
+        // the frozen Method ABI.
+        let selector = unsafe { intern(api, selector) };
+        unsafe { (api.method)(vt, selector, *method) };
+    }
+    unsafe { (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
+}
+
 unsafe fn bring_up(api_pointer: *mut IdApi) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
@@ -937,6 +1051,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         let many = unsafe { intern(api, b"many\0") };
         let history = unsafe { intern(api, b"history\0") };
         let primitive = unsafe { intern(api, b"primitive\0") };
+        let globals_entity = unsafe { intern(api, b"__globals__\0") };
         Runtime {
             api: api_pointer as usize,
             store_vt: oop_address(store_vt),
@@ -949,11 +1064,13 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             many: oop_address(many),
             history: oop_address(history),
             primitive: oop_address(primitive),
+            globals_entity: oop_address(globals_entity),
         }
     });
     unsafe {
         register_methods(&runtime);
         register_cell_methods(&runtime);
+        register_globals_methods(&runtime);
     };
     let store = as_oop(runtime.store);
     STORE_ROOT.store(runtime.store, Ordering::Release);

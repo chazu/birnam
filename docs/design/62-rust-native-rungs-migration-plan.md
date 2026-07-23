@@ -1,8 +1,8 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, and N2.3a are complete;
-> N2.3b is next.
+> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, and N2.3b are
+> complete; N2.3c is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -793,7 +793,15 @@ notification. The floor overwrite hook retracts stale mirror facts, and
 `backfillMirror` collects only real type-vtable selectors before installing the
 `#primitive` presence marker. A cross-language test covers denial, replacement,
 exact removal, observer counts, raw overwrite invalidation, and both IdApi
-floors. Full MOP/image/compiled-unit parity remains for N2.3b–N2.4.
+floors. Full MOP/image/compiled-unit parity remains for N2.3c–N2.4.
+
+#### N2.3b execution record — complete, 2026-07-23
+
+The Rust rung now provides the exported `Globals` facade over the same Store
+fact log. `at:`, `at:ifAbsent:`, `at:put:`, and `includes:` preserve absent versus
+bound-`nil` semantics, and fallback blocks are invoked only for genuine absence.
+The cross-language suite passes this boundary on both floors; no second global
+environment or per-global native state was introduced.
 
 ### N2.3 — Implement the MOP chokepoint
 

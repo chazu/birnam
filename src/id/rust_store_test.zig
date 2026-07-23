@@ -29,6 +29,13 @@ fn answer7(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return @ptrFromInt(7);
 }
 
+fn answer99(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = args;
+    _ = n;
+    return @ptrFromInt(99);
+}
+
 var mop_api: ?*idapi.IdApi = null;
 var mop_authorized = true;
 var mop_authorizer_calls: usize = 0;
@@ -230,4 +237,38 @@ test "Rust Store MOP preserves authorization, ordering, mirror, and raw invalida
     try std.testing.expect(send(api, store, "rawCurrentValue:attr:", &.{ vt, selector }) != null);
     api.method(vt, selector, &answer7);
     try std.testing.expect(send(api, store, "rawCurrentValue:attr:", &.{ vt, selector }) == null);
+}
+
+test "Rust Store Globals preserve absent versus bound-nil values" {
+    const api = floor.api();
+    const path = std.posix.getenv("BIRNAM_RUST_STORE_DYLIB") orelse
+        return error.MissingRustStoreDylib;
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustStoreDlopenFailed;
+    const raw_init = api.dlsym(handle, "module_init") orelse return error.RustStoreModuleInitMissing;
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
+
+    const globals = api.import("Globals") orelse return error.RustGlobalsNotExported;
+    const missing = api.intern("rust_global_missing");
+    const bound = api.intern("rust_global_bound");
+    const value = api.intern("global_value");
+    try std.testing.expect(send(api, globals, "at:", &.{missing}) == api.nilObj);
+    try std.testing.expect(send(api, globals, "includes:", &.{missing}) == api.falseObj);
+
+    const block_vt = api.proto(api.object_vt);
+    api.method(block_vt, api.intern("value"), &answer99);
+    const fallback = api.alloc(block_vt, 0);
+    try std.testing.expect(@intFromPtr(send(api, globals, "at:ifAbsent:", &.{ missing, fallback })) == 99);
+
+    try std.testing.expect(send(api, globals, "at:put:", &.{ bound, value }) == value);
+    try std.testing.expect(send(api, globals, "at:", &.{bound}) == value);
+    try std.testing.expect(send(api, globals, "includes:", &.{bound}) == api.trueObj);
+    try std.testing.expect(send(api, globals, "at:ifAbsent:", &.{ bound, fallback }) == value);
+
+    _ = send(api, globals, "at:put:", &.{ bound, api.nilObj });
+    try std.testing.expect(send(api, globals, "at:", &.{bound}) == api.nilObj);
+    try std.testing.expect(send(api, globals, "includes:", &.{bound}) == api.trueObj);
+    try std.testing.expect(send(api, globals, "at:ifAbsent:", &.{ bound, fallback }) == api.nilObj);
 }
