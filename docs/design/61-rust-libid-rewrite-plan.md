@@ -1975,8 +1975,9 @@ The foreign reentry fixture now initializes and exercises the actual
 process-lifetime public runtime rather than a private dispatch harness. All 52
 Rust tests, strict Clippy, full Miri, the debug/release foreign reentry probe,
 and both 256-test selected-floor profiles pass. Its timing effect remains
-unclaimed until the guarded pair completes. R6 remains open, and R7 must not
-begin until that pair passes or a separate tradeoff record is accepted.
+unclaimed until the guarded pair completes. The complete `zig build verify`
+gate also passes at `e130f99` with this entry path. R6 remains open, and R7
+must not begin until that pair passes or a separate tradeoff record is accepted.
 
 ## 13. Phase R7 — Build, install, and default cutover
 
