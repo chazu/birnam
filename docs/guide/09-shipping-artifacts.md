@@ -125,6 +125,8 @@ prefix/
   bin/birnam
   lib/libbirnam_id.dylib
   lib/libbirnam_id_zig.dylib
+  lib/libbirnam_id_artifact.dylib
+  lib/libbirnam_id_artifact_zig.dylib
   lib/libbirnam_*.dylib
   share/birnam/src/id/*.zig
   share/birnam/src/rust/Cargo.{toml,lock}

@@ -21,6 +21,19 @@ pub fn build(b: *std.Build) void {
         "floor",
         "Native id floor installed as libbirnam_id.dylib (zig or rust)",
     ) orelse .rust;
+    const RungImpl = enum { zig, rust };
+    const artifact_inspector_impl = b.option(
+        RungImpl,
+        "artifact-inspector-impl",
+        "Artifact-inspector implementation installed under the canonical dylib name (zig or rust)",
+    ) orelse .zig;
+    if (artifact_inspector_impl == .rust) {
+        std.process.fatal(
+            "artifact-inspector implementation 'rust' is not available yet; " ++
+                "N1 must add it before this selector can install or run it",
+            .{},
+        );
+    }
 
     // libtcc is presently vendored and configured for arm64 Mach-O, and the
     // runtime resolves Mach-O dylibs by name. Reject other targets before Zig
@@ -77,6 +90,17 @@ pub fn build(b: *std.Build) void {
     );
     test_native_rung_inventory_step.dependOn(&native_rung_inventory.step);
     test_step.dependOn(&native_rung_inventory.step);
+
+    const native_rung_selection_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/native-rung-selection-smoke.sh",
+    });
+    const test_native_rung_selection_step = b.step(
+        "test-native-rung-selection",
+        "Verify per-rung selection receipts and fail-closed implementation choices",
+    );
+    test_native_rung_selection_step.dependOn(&native_rung_selection_smoke.step);
+    test_step.dependOn(&native_rung_selection_smoke.step);
 
     // Build/test-only ABI evidence. The JSON manifest is deliberately exposed
     // only to this test module; runtime, install, and artifact-selection code do
@@ -547,6 +571,8 @@ pub fn build(b: *std.Build) void {
     };
 
     inline for (mods) |m| {
+        var rung_selection_check: ?*std.Build.Step.Run = null;
+
         // The dylib.
         const lib_mod = b.createModule(.{
             .root_source_file = b.path("src/id/" ++ m.src),
@@ -570,6 +596,36 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_zig_floor.step);
                 bootstrap_install.dependOn(&install_zig_floor.step);
             }
+        } else if (std.mem.eql(u8, m.name, "birnam_id_artifact")) {
+            const install_zig_artifact_oracle = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_artifact_zig.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_artifact_oracle.step);
+            bootstrap_install.dependOn(&install_zig_artifact_oracle.step);
+
+            const install_selected_artifact = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_artifact.dylib",
+            });
+            b.getInstallStep().dependOn(&install_selected_artifact.step);
+            bootstrap_install.dependOn(&install_selected_artifact.step);
+
+            const check = b.addSystemCommand(&.{
+                "bash",
+                "scripts/native-rung-selection.sh",
+                "artifact-inspector",
+                @tagName(artifact_inspector_impl),
+            });
+            check.addArg(b.getInstallPath(.lib, "libbirnam_id_artifact.dylib"));
+            check.addArg(b.getInstallPath(.lib, "libbirnam_id_artifact_zig.dylib"));
+            check.step.dependOn(&install_selected_artifact.step);
+            check.step.dependOn(&install_zig_artifact_oracle.step);
+            rung_selection_check = check;
+
+            const test_artifact_selection_step = b.step(
+                "test-artifact-selection",
+                "Verify the selected artifact-inspector identity and dylib digest",
+            );
+            test_artifact_selection_step.dependOn(&check.step);
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
@@ -600,6 +656,7 @@ pub fn build(b: *std.Build) void {
             run.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
             run.step.dependOn(bootstrap_install);
         }
+        if (rung_selection_check) |check| run.step.dependOn(&check.step);
         b.step(m.step, m.desc).dependOn(&run.step);
         test_step.dependOn(&run.step);
     }

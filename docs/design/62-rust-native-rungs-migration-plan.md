@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 and N0.2 are complete; N0.3 is next.
+> passes. N0.1 through N0.3 are complete; N0.4 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -393,6 +393,27 @@ smoke, and the complete repository verification gate pass.
 
 **Gate:** selecting Zig reproduces the current install tree and verify result;
 selecting the still-empty Rust target fails at build selection, not at runtime.
+
+#### N0.3 execution record — complete, 2026-07-23
+
+`-Dartifact-inspector-impl=zig|rust` is the first per-rung implementation
+selector. Zig remains the default. It is installed under both the canonical
+`libbirnam_id_artifact.dylib` name and the explicit
+`libbirnam_id_artifact_zig.dylib` oracle name; the siphon still loads only the
+canonical name and has no fallback order.
+
+Before the artifact-inspector tests run, the generic selection check proves
+that the canonical artifact is byte-identical to the explicit artifact for the
+declared implementation and emits a JSON receipt containing the rung,
+implementation identity, and SHA-256. The check rejects unknown identities,
+mismatched explicit names, missing artifacts, and digest mismatches.
+
+Because no Rust inspector exists yet, selecting `rust` fails during build-graph
+construction with an explicit N1 diagnostic and installs nothing. An unknown
+enum value is rejected by the Zig build option parser. The focused selector
+smoke exercises both failures in isolated caches and prefixes. Focused
+artifact/selector tests, ordinary install relocation, and full verification
+pass with the unchanged Zig canonical implementation.
 
 ### N0.4 — Generalize the backend-neutral rung harness
 
