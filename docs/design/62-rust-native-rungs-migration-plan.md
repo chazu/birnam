@@ -2,7 +2,7 @@
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
-> and N2.4a through N2.4d are complete; N2.5 is next.
+> and N2.4a through N2.4d are complete; N2.5a is complete and N2.5b is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -890,6 +890,14 @@ passed after the wiring change.
 Make Rust Store the production default in one commit. Retain the Zig Store as an
 explicit oracle through an observation window covering live method
 replacement, image save/load, and project workflows before deletion.
+
+#### N2.5a execution record — complete, 2026-07-23
+
+The installed canonical `libbirnam_store.dylib` is now the Rust Store for both
+debug and release builds. The former Zig implementation remains installed as
+`libbirnam_store_zig.dylib`, and `BIRNAM_STORE_DYLIB` can select either path for
+an explicit observation run. Stage-one compilation, the full `zig build verify`
+gate, and direct image/REPL probes through the retained Zig oracle all passed.
 
 ## 9. Phase N3 — PEG matcher
 

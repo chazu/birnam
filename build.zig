@@ -740,6 +740,24 @@ pub fn build(b: *std.Build) void {
                 "Verify the selected artifact-inspector identity and dylib digest",
             );
             test_artifact_selection_step.dependOn(&check.step);
+        } else if (std.mem.eql(u8, m.name, "birnam_store")) {
+            const install_zig_store_oracle = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_store_zig.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_store_oracle.step);
+            bootstrap_install.dependOn(&install_zig_store_oracle.step);
+
+            const install_rust_store = b.addInstallFileWithDir(
+                b.path(b.fmt(
+                    ".cargo-target/{s}/libbirnam_store.dylib",
+                    .{rust_floor_profile},
+                )),
+                .lib,
+                "libbirnam_store.dylib",
+            );
+            install_rust_store.step.dependOn(&rust_floor_build.step);
+            b.getInstallStep().dependOn(&install_rust_store.step);
+            bootstrap_install.dependOn(&install_rust_store.step);
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
