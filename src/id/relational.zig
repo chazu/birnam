@@ -312,7 +312,8 @@ const TripleIndex = struct {
         const gop = self.by_attr.getOrPut(self.aa, a) catch @panic("relational: oom");
         if (!gop.found_existing) {
             gop.value_ptr.* = .{};
-            for (self.all) |t| if (valEq(t.a, a))
+            const matcher = ValMatcher.init(a);
+            for (self.all) |t| if (matcher.matches(t.a))
                 gop.value_ptr.append(self.aa, t) catch @panic("relational: oom");
         }
         return gop.value_ptr.items;
