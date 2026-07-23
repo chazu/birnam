@@ -489,7 +489,7 @@ mod tests {
             3
         );
 
-        let mut selector_owners: Vec<Box<usize>> = (0..4096).map(|index| Box::new(index)).collect();
+        let mut selector_owners: Vec<Box<usize>> = (0..4096).map(Box::new).collect();
         let selectors: Vec<Oop> = selector_owners
             .iter_mut()
             .map(|owner| core::ptr::from_mut(owner.as_mut()).cast())

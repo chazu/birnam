@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn large_export_churn_preserves_order_and_current_reverse_authority() {
         let mut environment = Environment::new();
-        let mut name_owners: Vec<Box<usize>> = (0..4096).map(|index| Box::new(index)).collect();
+        let mut name_owners: Vec<Box<usize>> = (0..4096).map(Box::new).collect();
         let mut value_owners: Vec<Box<usize>> =
             (0..4096).map(|index| Box::new(index + 4096)).collect();
         let names: Vec<Oop> = name_owners
