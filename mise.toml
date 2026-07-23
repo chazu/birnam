@@ -21,6 +21,7 @@
 #   mise run rust-store-mop-smoke # prove Store MOP consistency on Rust
 #   mise run rust-lower-rung-matrix # isolated first downstream matrix
 #   mise run bootstrap-smoke # build a fixture-free source archive with pinned tools
+#   mise run zig-oracle-conformance # focused external IdApi gate on the Zig oracle
 #   mise run install        # install to a prefix
 #   mise run dist           # build a release tarball for this platform
 #   mise run release minor  # bump version, tag, build, publish a GitHub release
@@ -35,7 +36,7 @@ zig = "0.15.1"
 rust = "1.95.0"
 
 [tasks.build]
-description = "Build everything (Debug)"
+description = "Build everything with the Rust floor default (Debug)"
 run = "zig build"
 
 [tasks.clean]
@@ -159,11 +160,15 @@ description = "Cold-build a fixture-free source archive with pinned Zig and Rust
 run = "bash scripts/source-bootstrap-smoke.sh"
 
 [tasks.verify]
-description = "Run every native, self-hosted, and REPL verification gate"
+description = "Run the Rust-default native, self-hosted, and REPL verification gate"
 run = "zig build verify"
 
+[tasks.zig-oracle-conformance]
+description = "Run focused external IdApi conformance against the Zig oracle"
+run = "zig build test-id-conformance -Dfloor=zig"
+
 [tasks.install]
-description = "Install bin/birnam + module dylibs to a prefix (default ~/.local)"
+description = "Install Rust-default birnam, the Zig oracle, and module dylibs"
 run = """
 zig build install --prefix ${BIRNAM_PREFIX:-$HOME/.local}
 # Stage wrapped C libs (built via `birnam wrap`) into the same known module dir

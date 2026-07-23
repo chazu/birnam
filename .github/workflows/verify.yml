@@ -40,11 +40,14 @@ jobs:
           CARGO_TARGET_DIR=.cargo-target cargo check --workspace --locked --offline
           CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline
 
-      - name: Probe diagnostic Rust dylib
+      - name: Probe Rust floor and Zig oracle
         run: bash scripts/rust-floor-shell-smoke.sh
 
       - name: Cold source bootstrap
         run: bash scripts/source-bootstrap-smoke.sh
 
-      - name: Verify
+      - name: Verify Zig oracle conformance
+        run: zig build test-id-conformance -Dfloor=zig
+
+      - name: Verify Rust-default system
         run: zig build verify
