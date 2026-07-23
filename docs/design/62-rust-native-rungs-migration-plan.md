@@ -3,7 +3,7 @@
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
-> N3.2b, and N3.2c are complete, and N3.3 is next.
+> N3.2b, N3.2c, and N3.3 are complete, and N3.4 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -978,6 +978,23 @@ runs pass.
 Implement the hot iterative/backtracking engine with explicit bounds and
 deterministic furthest-failure behavior. No Birnam send is introduced per input
 byte or backtracking step.
+
+#### N3.3 execution record — complete, 2026-07-23
+
+The explicit Rust PEG dylib now owns ordered choice/backtracking, literal/byte/
+charset/eof terminals, sequence and repetition operators, lookahead and
+negation, rule-boundary packrat memoization, zero-width repetition guards, and
+left-recursion/undefined-rule diagnostics. A transient indexed CST arena is
+converted into traced/finalized `Cst` objects only after matching; scratch roots
+protect partially converted trees across allocation-triggered collections, and
+no Rust borrow or lock spans a foreign send or callback.
+
+The Rust identity is `rust-peg-n3.3-matcher`, while the dylib remains installed
+only as `libbirnam_id_peg_rust.dylib`; the canonical PEG path is still Zig. The
+focused cross-language gate covers ordered backtracking, lookahead, nested rule
+spans, CST accessors, syntax-failure offsets, undefined rules, left recursion,
+and both selected IdApi floors. Cargo formatting, strict Clippy, the Rust unit
+test, and both focused floor runs pass.
 
 ### N3.4 — Prove downstream compiler parity
 

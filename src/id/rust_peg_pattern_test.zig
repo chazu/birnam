@@ -32,7 +32,7 @@ test "Rust PEG patterns and grammars expose the frozen construction protocol" {
     const raw_identity = api.dlsym(handle, "birnam_peg_rust_identity") orelse
         return error.RustPegIdentityMissing;
     const identity: Identity = @ptrCast(@alignCast(raw_identity));
-    try std.testing.expectEqualStrings("rust-peg-n3.2-patterns", std.mem.span(identity()));
+    try std.testing.expectEqualStrings("rust-peg-n3.3-matcher", std.mem.span(identity()));
 
     const raw_init = api.dlsym(handle, "module_init") orelse return error.RustPegModuleInitMissing;
     const init: ModuleInit = @ptrCast(@alignCast(raw_init));
@@ -76,4 +76,62 @@ test "Rust PEG patterns and grammars expose the frozen construction protocol" {
     try std.testing.expectEqual(grammar, send(api, grammar, "rule:is:", &.{ string(api, "tail"), rule }));
     try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, grammar, "furthestFail", &.{})));
     try std.testing.expectEqual(grammar_vt, api.vtableOf(send(api, peg, "grammar", &.{})));
+
+    const cst_vt = api.import("PegCstVt") orelse return error.RustPegCstVtNotExported;
+    const root = send(api, grammar, "parse:from:", &.{ string(api, "abc"), api.intern("start") });
+    try std.testing.expectEqual(cst_vt, api.vtableOf(root));
+    var name_len: usize = 0;
+    const name_bytes = api.stringBytes(send(api, root, "ruleName", &.{}), &name_len);
+    try std.testing.expectEqualStrings("start", name_bytes[0..name_len]);
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, root, "start", &.{})));
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, root, "end", &.{})));
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, root, "childCount", &.{})));
+
+    const ab = send(api, peg, "literal:", &.{string(api, "ab")});
+    const a = send(api, peg, "literal:", &.{string(api, "a")});
+    const c = send(api, peg, "literal:", &.{string(api, "c")});
+    const alternatives = send(api, peg, "choice", &.{});
+    _ = send(api, alternatives, "add:", &.{ab});
+    _ = send(api, alternatives, "add:", &.{a});
+    const backtracking = send(api, peg, "seq", &.{});
+    _ = send(api, backtracking, "add:", &.{alternatives});
+    _ = send(api, backtracking, "add:", &.{c});
+    _ = send(api, grammar, "rule:is:", &.{ api.intern("backtracking"), backtracking });
+    const backtracked = send(api, grammar, "parse:from:", &.{ string(api, "ac"), api.intern("backtracking") });
+    try std.testing.expectEqual(cst_vt, api.vtableOf(backtracked));
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(send(api, backtracked, "end", &.{})));
+
+    const lookahead = send(api, peg, "seq", &.{});
+    _ = send(api, lookahead, "add:", &.{send(api, a, "lookahead", &.{} )});
+    _ = send(api, lookahead, "add:", &.{a});
+    _ = send(api, grammar, "rule:is:", &.{ api.intern("lookahead"), lookahead });
+    const looked = send(api, grammar, "parse:from:", &.{ string(api, "a"), api.intern("lookahead") });
+    try std.testing.expectEqual(cst_vt, api.vtableOf(looked));
+
+    const digit = send(api, peg, "literal:", &.{string(api, "a")});
+    const nested = send(api, peg, "ruleRef:", &.{api.intern("digit")});
+    _ = send(api, grammar, "rule:is:", &.{ api.intern("digit"), digit });
+    _ = send(api, grammar, "rule:is:", &.{ api.intern("nested"), nested });
+    const nested_root = send(api, grammar, "parse:from:", &.{ string(api, "a"), api.intern("nested") });
+    try std.testing.expectEqual(cst_vt, api.vtableOf(nested_root));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, nested_root, "childCount", &.{})));
+    const nested_child = send(api, nested_root, "childAt:", &.{api.mkSmallInt(0)});
+    try std.testing.expectEqual(cst_vt, api.vtableOf(nested_child));
+    var child_name_len: usize = 0;
+    const child_name = api.stringBytes(send(api, nested_child, "ruleName", &.{}), &child_name_len);
+    try std.testing.expectEqualStrings("digit", child_name[0..child_name_len]);
+
+    const failed = send(api, grammar, "parse:from:", &.{ string(api, "ax"), api.intern("start") });
+    try std.testing.expect(api.vtableOf(failed) != cst_vt);
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, grammar, "furthestFail", &.{})));
+
+    const missing_rule = send(api, peg, "ruleRef:", &.{api.intern("missing")});
+    _ = send(api, grammar, "rule:is:", &.{ api.intern("undefined"), missing_rule });
+    const undefined_result = send(api, grammar, "parse:from:", &.{ string(api, ""), api.intern("undefined") });
+    try std.testing.expect(api.vtableOf(undefined_result) != cst_vt);
+
+    const recursive = send(api, peg, "ruleRef:", &.{api.intern("recursive")});
+    _ = send(api, grammar, "rule:is:", &.{ api.intern("recursive"), recursive });
+    const recursive_result = send(api, grammar, "parse:from:", &.{ string(api, ""), api.intern("recursive") });
+    try std.testing.expect(api.vtableOf(recursive_result) != cst_vt);
 }
