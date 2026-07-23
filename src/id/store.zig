@@ -259,9 +259,13 @@ fn rebuildIndex(st: *StoreState) void {
 /// Every per-pair read walks this instead of the whole log; within-pair visit
 /// order is identical to the old full scans, so all fold semantics (newest
 /// decides, op-awareness, tx windows) are unchanged.
-fn postingsOf(st: *StoreState, e: Oop, a: Oop) []const u32 {
-    const p = st.ea.getPtr(eaKey(e, a)) orelse return &.{};
+fn postingsOfKey(st: *StoreState, key: EaKey) []const u32 {
+    const p = st.ea.getPtr(key) orelse return &.{};
     return p.items;
+}
+
+fn postingsOf(st: *StoreState, e: Oop, a: Oop) []const u32 {
+    return postingsOfKey(st, eaKey(e, a));
 }
 
 fn appendOp(st: *StoreState, e: Oop, a: Oop, v: Oop, op: Op) void {
@@ -678,7 +682,7 @@ fn enumerateTriples(st: *StoreState, blk: Oop, lo: ?u64, hi: ?u64) void {
     }
 
     for (pairs.items) |p| {
-        const posts = postingsOf(st, p.e, p.a);
+        const posts = postingsOfKey(st, p);
         if (eq(cardinalityOfAsOf(st, p.a, hi), s_one)) {
             // The deciding fact: newest matching with tx < hi.
             var i = posts.len;
