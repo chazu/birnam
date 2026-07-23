@@ -3,15 +3,15 @@
 // main.zig recognizes a subcommand token, boots the image, loads this compiled
 // module by canonical identity, and hands the whole invocation over in ONE send:
 //
-//   [Cli run: #["doc" "time"] source: "<zig-dir>" rust: "<rust-dir>" guides: "<guide-dir>"]
+//   [Cli run: #["doc" "time"] source: "<zig-dir>" rust: "<rust-dir>" rustAbi: "<abi-dir>" guides: "<guide-dir>"]
 //
 // Cli loads what the subcommand needs and drives the SAME public API any birnam
-// program can call for itself — [Doc cli:], [Doc buildSite:zig:rust:guides:],
+// program can call for itself — [Doc cli:], [Doc buildSite:zig:rust:rustAbi:guides:],
 // [Lsp serveStdio], [Repl serveOn:]. The CLI is one more CLIENT of the module
 // APIs, not their owner: nothing in doc/lsp/repl requires Cli, and loading any
 // of them from code gives the identical API the subcommands use.
 //
-// Contract with the Zig driver: `run:source:rust:guides:` answers a process status —
+// Contract with the Zig driver: `run:source:rust:rustAbi:guides:` answers a process status —
 // 0 for success (usage displays included, matching the old Zig handlers), 1 for
 // failure; the driver exits with it. args[0] is the subcommand token as typed
 // (so the --serve alias arrives as "--serve").
@@ -78,13 +78,13 @@
 
 // -- docgen: `birnam docgen [out.html]` -----------------------------------------
 
-[Reflect defineMethod: #docgen:source:rust:guides: on: Cli as: [:self :args :zdir :rdir :gdir |
+[Reflect defineMethod: #docgen:source:rust:rustAbi:guides: on: Cli as: [:self :args :zdir :rdir :radir :gdir |
   let outPath := [args at: 1 ifAbsent: [| "birnam-docs.html"]];
   let zd := [self ensure: #zigdoc];
   [[zd isError]
     ifTrue: [| [self fail: [zd printString]]]
     ifFalse: [|
-      let built := [Doc buildSite: outPath zig: zdir rust: rdir guides: gdir];
+      let built := [Doc buildSite: outPath zig: zdir rust: rdir rustAbi: radir guides: gdir];
       [[built isError]
         ifTrue: [| [self fail: [built printString]]]
         ifFalse: [|
@@ -299,10 +299,10 @@
 
 // -- the dispatcher --------------------------------------------------------------
 
-[Reflect defineMethod: #run:source:rust:guides: on: Cli as: [:self :args :zdir :rdir :gdir |
+[Reflect defineMethod: #run:source:rust:rustAbi:guides: on: Cli as: [:self :args :zdir :rdir :radir :gdir |
   let cmd := [args at: 0 ifAbsent: [| ""]];
   [[cmd = "doc"] ifTrue: [| [self doc: args source: zdir]] ifFalse: [|
-    [[cmd = "docgen"] ifTrue: [| [self docgen: args source: zdir rust: rdir guides: gdir]] ifFalse: [|
+    [[cmd = "docgen"] ifTrue: [| [self docgen: args source: zdir rust: rdir rustAbi: radir guides: gdir]] ifFalse: [|
       [[cmd = "init"] ifTrue: [| [self initAt: "birnam.toml"]] ifFalse: [|
         [[cmd = "wrap"] ifTrue: [| [self wrap: args]] ifFalse: [|
           [[cmd = "--lsp"] ifTrue: [| [self lsp: args]] ifFalse: [|

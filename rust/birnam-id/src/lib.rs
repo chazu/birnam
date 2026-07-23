@@ -6,7 +6,7 @@
 #[cfg(not(any(test, panic = "abort")))]
 compile_error!("every runnable birnam_id cdylib profile must use panic=abort");
 
-mod abi;
+pub(crate) use birnam_abi as abi;
 mod boundary;
 mod dispatch;
 mod env;

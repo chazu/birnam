@@ -298,9 +298,10 @@ them.
   early one.
 - **Phase 3 ✅ SHIPPED — `main.zig` subcommand collapse.** doc/docgen/--lsp/
   --listen route through ONE generic driver (`runCli`: boot + GC anchor + argv
-  handover) to the compiled `#cli` module, whose `[Cli run:source:rust:guides:]`
+  handover) to the compiled `#cli` module, whose
+  `[Cli run:source:rust:rustAbi:guides:]`
   dispatches by driving the modules' own public API (`[Doc cli:]`,
-  `[Doc buildSite:zig:rust:guides:]`,
+  `[Doc buildSite:zig:rust:rustAbi:guides:]`,
   `[Lsp serveStdio]`, `[Repl serveOn:]`) — the CLI is one more client of the
   libraries, and every module stays fully usable from code without it
   (locked in by cli-test.birnam's library-use tests). main.zig 1371→1276; the

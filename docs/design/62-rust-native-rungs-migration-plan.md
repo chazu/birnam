@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 is complete; N0.2 is next.
+> passes. N0.1 and N0.2 are complete; N0.3 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -361,6 +361,26 @@ unit suite, and whitespace gate pass.
 
 **Gate:** Rust floor tests, Zig oracle tests, old-client fixture, descriptor
 manifest, and full ABI symbol audit are byte-for-byte or behaviorally unchanged.
+
+#### N0.2 execution record — complete, 2026-07-23
+
+The no-state `birnam-abi` workspace crate now owns the frozen `IdApi`, `Oop`,
+callback, layout, slot-kind, and diagnostic descriptor declarations.
+`birnam-id` consumes that crate through a path dependency; it no longer owns a
+private ABI copy. Checked foreign byte and Oop buffer borrowing is centralized
+there without importing runtime state or language policy.
+
+The existing language-neutral `abi/idapi-v1.json` remains authoritative. Its
+Zig, C, and Rust layout checks, the frozen old-client fixture, and the complete
+debug/release exported-symbol audit pass unchanged. The expected Rust dylib
+digest change is recorded by the audit rather than treated as ABI drift.
+
+Both crate sources and manifests are installed. Until N0.6 generalizes the
+installed workspace/resource model, doc generation receives the two Rust source
+roots explicitly and preserves the existing `rust-floor` and `rust-abi`
+classification. Rust workspace tests and strict Clippy, the ABI/old-client
+gates, native-rung inventory, self-hosted 334-test suite, relocated install
+smoke, and the complete repository verification gate pass.
 
 ### N0.3 — Add one per-rung selector
 

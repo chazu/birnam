@@ -567,9 +567,9 @@
   "Load every supported runtime module from its compiled unit so its documentation and source metadata become visible. Answers self."];
 
 // Build the full HTML reference to `out`: load the compiled production closure,
-// extract the separately shipped native Rust-floor and Zig-oracle docs, load authored guides,
+// extract the separately shipped native Rust floor/ABI and Zig-oracle docs, load authored guides,
 // then write `htmlIndex`. Answers `out`.
-[Reflect defineMethod: #buildSite:zig:rust:guides: on: Doc as: [:self :out :zd :rd :gd |
+[Reflect defineMethod: #buildSite:zig:rust:rustAbi:guides: on: Doc as: [:self :out :zd :rd :rad :gd |
   let me := self;
   let loaded := [self loadAllModules];
   [[loaded isError]
@@ -578,9 +578,10 @@
       [self loadGuides: gd];
       [Zigdoc scanDir: zd];
       [Zigdoc scanRustDir: rd];
+      [Zigdoc scanRust: [rad , "/lib.rs"] as: ["rust-abi" asSymbol]];
       [File write: out contents: [me htmlIndex]];
       out]]] doc:
-  "Build the full HTML reference to `out`: load compiled production modules, guides, Rust-floor docs, and Zig-oracle docs, then write htmlIndex. Answers `out`."];
+  "Build the full HTML reference to `out`: load compiled production modules, guides, Rust floor/ABI docs, and Zig-oracle docs, then write htmlIndex. Answers `out`."];
 
 // module:is: predates the #doc registration above (it IS the registrar), so its
 // docstring rides the appended path instead of a doc: define:

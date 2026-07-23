@@ -1,4 +1,4 @@
-//! C-layout mirror of the frozen `IdApi` v1 boundary.
+//! No-state C-layout mirror of the frozen `IdApi` v1 boundary.
 //!
 //! Raw data pointers are intentionally nullable. Function-pointer fields are
 //! non-null except for the explicitly optional method-overwrite hook.
@@ -6,95 +6,140 @@
 use core::ffi::{c_char, c_int, c_void};
 use core::mem::{align_of, offset_of, size_of};
 
-pub(crate) const SLOT_RAW: u8 = 0;
-pub(crate) const SLOT_OOP: u8 = 1;
-pub(crate) const SLOT_CODE: u8 = 2;
-pub(crate) const SLOT_UNKNOWN: u8 = 0xff;
+pub const SLOT_RAW: u8 = 0;
+pub const SLOT_OOP: u8 = 1;
+pub const SLOT_CODE: u8 = 2;
+pub const SLOT_UNKNOWN: u8 = 0xff;
 
-pub(crate) type Oop = *mut c_void;
-pub(crate) type Method = unsafe extern "C" fn(Oop, *const Oop, usize) -> Oop;
-pub(crate) type MarkFn = unsafe extern "C" fn(Oop);
-pub(crate) type RootProvider = unsafe extern "C" fn(MarkFn);
-pub(crate) type TraceHook = unsafe extern "C" fn(Oop, MarkFn);
-pub(crate) type Finalizer = unsafe extern "C" fn(Oop);
-pub(crate) type MethodOverwriteHook = unsafe extern "C" fn(Oop, Oop);
-pub(crate) type IdInitFn = unsafe extern "C" fn() -> *mut IdApi;
-pub(crate) type ModuleInitFn = unsafe extern "C" fn(*mut IdApi, *mut c_void) -> *mut c_void;
+pub type Oop = *mut c_void;
+pub type Method = unsafe extern "C" fn(Oop, *const Oop, usize) -> Oop;
+pub type MarkFn = unsafe extern "C" fn(Oop);
+pub type RootProvider = unsafe extern "C" fn(MarkFn);
+pub type TraceHook = unsafe extern "C" fn(Oop, MarkFn);
+pub type Finalizer = unsafe extern "C" fn(Oop);
+pub type MethodOverwriteHook = unsafe extern "C" fn(Oop, Oop);
+pub type IdInitFn = unsafe extern "C" fn() -> *mut IdApi;
+pub type ModuleInitFn = unsafe extern "C" fn(*mut IdApi, *mut c_void) -> *mut c_void;
+
+/// Borrow a foreign read-only buffer while enforcing the ABI's null/count and
+/// alignment rules.
+///
+/// A zero count always returns an empty slice without dereferencing `pointer`;
+/// null with a nonzero count and a misaligned nonempty pointer return `None`.
+///
+/// # Safety
+///
+/// For a nonzero count, `pointer` must address `count` initialized `T` values
+/// that remain readable for `'a`. This helper validates carrier shape, not
+/// foreign allocation provenance or lifetime.
+pub unsafe fn borrowed_slice<'a, T>(pointer: *const T, count: usize) -> Option<&'a [T]> {
+    if count == 0 {
+        return Some(&[]);
+    }
+    if pointer.is_null() || !(pointer as usize).is_multiple_of(align_of::<T>()) {
+        return None;
+    }
+    // SAFETY: the caller supplies the readable extent/lifetime; the checks
+    // above establish the non-null and alignment preconditions.
+    Some(unsafe { core::slice::from_raw_parts(pointer, count) })
+}
+
+/// Borrow an IdApi Method/send argument buffer under the frozen zero-count/null
+/// exception.
+///
+/// # Safety
+///
+/// For a nonzero count, `pointer` must address `count` initialized `Oop`
+/// carriers that remain readable for `'a`.
+pub unsafe fn borrowed_oop_args<'a>(pointer: *const Oop, count: usize) -> Option<&'a [Oop]> {
+    // SAFETY: forwarded caller contract.
+    unsafe { borrowed_slice(pointer, count) }
+}
+
+/// Borrow bytes supplied through a length-delimited C ABI field.
+///
+/// # Safety
+///
+/// For a nonzero count, `pointer` must address `count` readable bytes for `'a`.
+pub unsafe fn borrowed_bytes<'a>(pointer: *const u8, count: usize) -> Option<&'a [u8]> {
+    // SAFETY: forwarded caller contract.
+    unsafe { borrowed_slice(pointer, count) }
+}
 
 /// Append-only C ABI table returned by `id_init`.
 #[allow(dead_code, non_snake_case)]
 #[repr(C)]
-pub(crate) struct IdApi {
-    pub(crate) dlopen: unsafe extern "C" fn(*const c_char, c_int) -> *mut c_void,
-    pub(crate) dlsym: unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void,
+pub struct IdApi {
+    pub dlopen: unsafe extern "C" fn(*const c_char, c_int) -> *mut c_void,
+    pub dlsym: unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void,
 
-    pub(crate) object_vt: Oop,
-    pub(crate) vtable_vt: Oop,
-    pub(crate) symbol_vt: Oop,
+    pub object_vt: Oop,
+    pub vtable_vt: Oop,
+    pub symbol_vt: Oop,
 
-    pub(crate) intern: unsafe extern "C" fn(*const c_char) -> Oop,
-    pub(crate) proto: unsafe extern "C" fn(Oop) -> Oop,
-    pub(crate) method: unsafe extern "C" fn(Oop, Oop, Method),
-    pub(crate) alloc: unsafe extern "C" fn(Oop, usize) -> Oop,
+    pub intern: unsafe extern "C" fn(*const c_char) -> Oop,
+    pub proto: unsafe extern "C" fn(Oop) -> Oop,
+    pub method: unsafe extern "C" fn(Oop, Oop, Method),
+    pub alloc: unsafe extern "C" fn(Oop, usize) -> Oop,
 
-    pub(crate) import: unsafe extern "C" fn(*const c_char) -> Oop,
-    pub(crate) exportObj: unsafe extern "C" fn(*const c_char, Oop) -> Oop,
-    pub(crate) isExported: unsafe extern "C" fn(*const c_char) -> c_int,
+    pub import: unsafe extern "C" fn(*const c_char) -> Oop,
+    pub exportObj: unsafe extern "C" fn(*const c_char, Oop) -> Oop,
+    pub isExported: unsafe extern "C" fn(*const c_char) -> c_int,
 
-    pub(crate) send: unsafe extern "C" fn(Oop, Oop, *const Oop, usize) -> Oop,
+    pub send: unsafe extern "C" fn(Oop, Oop, *const Oop, usize) -> Oop,
 
-    pub(crate) smallint_vt: Oop,
-    pub(crate) nilObj: Oop,
-    pub(crate) trueObj: Oop,
-    pub(crate) falseObj: Oop,
-    pub(crate) mkSmallInt: unsafe extern "C" fn(i64) -> Oop,
-    pub(crate) smallIntValue: unsafe extern "C" fn(Oop) -> i64,
-    pub(crate) isSmallInt: unsafe extern "C" fn(Oop) -> c_int,
+    pub smallint_vt: Oop,
+    pub nilObj: Oop,
+    pub trueObj: Oop,
+    pub falseObj: Oop,
+    pub mkSmallInt: unsafe extern "C" fn(i64) -> Oop,
+    pub smallIntValue: unsafe extern "C" fn(Oop) -> i64,
+    pub isSmallInt: unsafe extern "C" fn(Oop) -> c_int,
 
-    pub(crate) string_vt: Oop,
-    pub(crate) mkString: unsafe extern "C" fn(*const u8, usize) -> Oop,
-    pub(crate) stringBytes: unsafe extern "C" fn(Oop, *mut usize) -> *const u8,
-    pub(crate) symbolName: unsafe extern "C" fn(Oop) -> *const c_char,
-    pub(crate) vtableOf: unsafe extern "C" fn(Oop) -> Oop,
+    pub string_vt: Oop,
+    pub mkString: unsafe extern "C" fn(*const u8, usize) -> Oop,
+    pub stringBytes: unsafe extern "C" fn(Oop, *mut usize) -> *const u8,
+    pub symbolName: unsafe extern "C" fn(Oop) -> *const c_char,
+    pub vtableOf: unsafe extern "C" fn(Oop) -> Oop,
 
-    pub(crate) gcSetStackBottom: unsafe extern "C" fn(usize),
-    pub(crate) gcRegisterRootProvider: unsafe extern "C" fn(RootProvider),
-    pub(crate) gcCollect: unsafe extern "C" fn() -> usize,
-    pub(crate) gcLiveCount: unsafe extern "C" fn() -> usize,
-    pub(crate) setTraceHook: unsafe extern "C" fn(Oop, TraceHook),
-    pub(crate) gcSetAuto: unsafe extern "C" fn(c_int),
+    pub gcSetStackBottom: unsafe extern "C" fn(usize),
+    pub gcRegisterRootProvider: unsafe extern "C" fn(RootProvider),
+    pub gcCollect: unsafe extern "C" fn() -> usize,
+    pub gcLiveCount: unsafe extern "C" fn() -> usize,
+    pub setTraceHook: unsafe extern "C" fn(Oop, TraceHook),
+    pub gcSetAuto: unsafe extern "C" fn(c_int),
 
-    pub(crate) float_vt: Oop,
-    pub(crate) mkFloat: unsafe extern "C" fn(f64) -> Oop,
-    pub(crate) floatValue: unsafe extern "C" fn(Oop) -> f64,
-    pub(crate) isFloat: unsafe extern "C" fn(Oop) -> c_int,
-    pub(crate) setFinalizer: unsafe extern "C" fn(Oop, Finalizer),
+    pub float_vt: Oop,
+    pub mkFloat: unsafe extern "C" fn(f64) -> Oop,
+    pub floatValue: unsafe extern "C" fn(Oop) -> f64,
+    pub isFloat: unsafe extern "C" fn(Oop) -> c_int,
+    pub setFinalizer: unsafe extern "C" fn(Oop, Finalizer),
 
-    pub(crate) setLayout: unsafe extern "C" fn(Oop, *const u8, usize, u8),
-    pub(crate) gcSetPrecise: unsafe extern "C" fn(c_int),
+    pub setLayout: unsafe extern "C" fn(Oop, *const u8, usize, u8),
+    pub gcSetPrecise: unsafe extern "C" fn(c_int),
 
-    pub(crate) objectPayloadSize: unsafe extern "C" fn(Oop) -> usize,
-    pub(crate) exportedNameOf: unsafe extern "C" fn(Oop) -> *const c_char,
-    pub(crate) slotKind: unsafe extern "C" fn(Oop, usize) -> u8,
-    pub(crate) ensurePrivateVtable: unsafe extern "C" fn(Oop) -> Oop,
-    pub(crate) setOwner: unsafe extern "C" fn(Oop, Oop),
-    pub(crate) setParent: unsafe extern "C" fn(Oop, Oop),
+    pub objectPayloadSize: unsafe extern "C" fn(Oop) -> usize,
+    pub exportedNameOf: unsafe extern "C" fn(Oop) -> *const c_char,
+    pub slotKind: unsafe extern "C" fn(Oop, usize) -> u8,
+    pub ensurePrivateVtable: unsafe extern "C" fn(Oop) -> Oop,
+    pub setOwner: unsafe extern "C" fn(Oop, Oop),
+    pub setParent: unsafe extern "C" fn(Oop, Oop),
 
-    pub(crate) setMethodOverwriteHook: unsafe extern "C" fn(Option<MethodOverwriteHook>),
-    pub(crate) vtableCount: unsafe extern "C" fn() -> usize,
-    pub(crate) vtableAt: unsafe extern "C" fn(usize) -> Oop,
-    pub(crate) vtableSelectorAt: unsafe extern "C" fn(Oop, usize) -> Oop,
-    pub(crate) vtableParent: unsafe extern "C" fn(Oop) -> Oop,
-    pub(crate) mkWord: unsafe extern "C" fn(u64) -> Oop,
-    pub(crate) wordValue: unsafe extern "C" fn(Oop) -> u64,
-    pub(crate) isWord: unsafe extern "C" fn(Oop) -> c_int,
-    pub(crate) word_vt: Oop,
-    pub(crate) vtableOwner: unsafe extern "C" fn(Oop) -> Oop,
+    pub setMethodOverwriteHook: unsafe extern "C" fn(Option<MethodOverwriteHook>),
+    pub vtableCount: unsafe extern "C" fn() -> usize,
+    pub vtableAt: unsafe extern "C" fn(usize) -> Oop,
+    pub vtableSelectorAt: unsafe extern "C" fn(Oop, usize) -> Oop,
+    pub vtableParent: unsafe extern "C" fn(Oop) -> Oop,
+    pub mkWord: unsafe extern "C" fn(u64) -> Oop,
+    pub wordValue: unsafe extern "C" fn(Oop) -> u64,
+    pub isWord: unsafe extern "C" fn(Oop) -> c_int,
+    pub word_vt: Oop,
+    pub vtableOwner: unsafe extern "C" fn(Oop) -> Oop,
 }
 
-pub(crate) const ABI_DESCRIPTOR_MAGIC: [u8; 8] = *b"BIRNABI1";
-pub(crate) const ABI_TYPE_COUNT: usize = 8;
-pub(crate) const ABI_FIELD_COUNT: usize = 54;
+pub const ABI_DESCRIPTOR_MAGIC: [u8; 8] = *b"BIRNABI1";
+pub const ABI_TYPE_COUNT: usize = 8;
+pub const ABI_FIELD_COUNT: usize = 54;
 
 const LAYOUT_KIND_TYPE: usize = 0;
 const LAYOUT_KIND_DATA_POINTER: usize = 1;
@@ -103,12 +148,12 @@ const LAYOUT_KIND_FUNCTION_POINTER: usize = 2;
 /// Pointer-free layout entry used only by the diagnostic R1 ABI probe.
 #[derive(Clone, Copy)]
 #[repr(C)]
-pub(crate) struct AbiLayoutEntryV1 {
-    pub(crate) offset: usize,
-    pub(crate) size: usize,
-    pub(crate) alignment: usize,
-    pub(crate) nullable: usize,
-    pub(crate) kind: usize,
+pub struct AbiLayoutEntryV1 {
+    pub offset: usize,
+    pub size: usize,
+    pub alignment: usize,
+    pub nullable: usize,
+    pub kind: usize,
 }
 
 /// Pointer-free diagnostic description of the Rust mirror's actual layout.
@@ -117,26 +162,26 @@ pub(crate) struct AbiLayoutEntryV1 {
 /// signatures remain owned by that manifest; this value supplies the Rust
 /// compiler's concrete sizes, alignments, offsets, nullability, and field kind.
 #[repr(C)]
-pub(crate) struct AbiDescriptorV1 {
-    pub(crate) magic: [u8; 8],
-    pub(crate) descriptor_version: usize,
-    pub(crate) descriptor_size: usize,
-    pub(crate) schema_version: usize,
-    pub(crate) target_arch: usize,
-    pub(crate) target_os: usize,
-    pub(crate) target_abi: usize,
-    pub(crate) object_format: usize,
-    pub(crate) endian: usize,
-    pub(crate) pointer_bits: usize,
-    pub(crate) c_int_bits: usize,
-    pub(crate) id_api_size: usize,
-    pub(crate) id_api_alignment: usize,
-    pub(crate) type_count: usize,
-    pub(crate) field_count: usize,
-    pub(crate) types: [AbiLayoutEntryV1; ABI_TYPE_COUNT],
-    pub(crate) fields: [AbiLayoutEntryV1; ABI_FIELD_COUNT],
-    pub(crate) constants: [usize; 4],
-    pub(crate) fingerprint: [u8; 32],
+pub struct AbiDescriptorV1 {
+    pub magic: [u8; 8],
+    pub descriptor_version: usize,
+    pub descriptor_size: usize,
+    pub schema_version: usize,
+    pub target_arch: usize,
+    pub target_os: usize,
+    pub target_abi: usize,
+    pub object_format: usize,
+    pub endian: usize,
+    pub pointer_bits: usize,
+    pub c_int_bits: usize,
+    pub id_api_size: usize,
+    pub id_api_alignment: usize,
+    pub type_count: usize,
+    pub field_count: usize,
+    pub types: [AbiLayoutEntryV1; ABI_TYPE_COUNT],
+    pub fields: [AbiLayoutEntryV1; ABI_FIELD_COUNT],
+    pub constants: [usize; 4],
+    pub fingerprint: [u8; 32],
 }
 
 const fn type_layout<T>(nullable: bool) -> AbiLayoutEntryV1 {
@@ -161,7 +206,7 @@ macro_rules! field_layout {
     };
 }
 
-pub(crate) static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
+pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
     magic: ABI_DESCRIPTOR_MAGIC,
     descriptor_version: 1,
     descriptor_size: size_of::<AbiDescriptorV1>(),
@@ -362,6 +407,31 @@ mod tests {
         assert_eq!(
             [SLOT_RAW, SLOT_OOP, SLOT_CODE, SLOT_UNKNOWN],
             [0, 1, 2, 255]
+        );
+    }
+
+    #[test]
+    fn borrowed_buffers_enforce_null_count_and_alignment_shape() {
+        // SAFETY: zero-count buffers are never dereferenced.
+        assert_eq!(
+            unsafe { borrowed_oop_args(core::ptr::null(), 0) },
+            Some(&[][..])
+        );
+        // SAFETY: this deliberately violates only the checked null/count shape.
+        assert_eq!(unsafe { borrowed_oop_args(core::ptr::null(), 1) }, None);
+
+        let values = [core::ptr::null_mut(), 42usize as Oop];
+        // SAFETY: values supplies two initialized Oop carriers for this scope.
+        assert_eq!(
+            unsafe { borrowed_oop_args(values.as_ptr(), values.len()) },
+            Some(&values[..])
+        );
+
+        let bytes = [1u8, 2, 3];
+        // SAFETY: bytes supplies three initialized bytes for this scope.
+        assert_eq!(
+            unsafe { borrowed_bytes(bytes.as_ptr(), bytes.len()) },
+            Some(&bytes[..])
         );
     }
 }

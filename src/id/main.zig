@@ -2005,9 +2005,10 @@ fn runProjectTest(a: std.mem.Allocator, api: *IdApi, options: ProjectTestOptions
 const cli_subcommands = [_][]const u8{ "--listen", "--serve", "--lsp", "doc", "docgen", "init", "wrap" };
 
 /// A token `runCli` handles — a subcommand implemented in birnam. Recognized
-/// here, then handed over whole through `[Cli run:source:rust:guides:]`.
+/// here, then handed over whole through
+/// `[Cli run:source:rust:rustAbi:guides:]`.
 /// Cli drives the same public module API any birnam program can call for itself —
-/// `[Doc cli:]`, `[Doc buildSite:zig:rust:guides:]`, `[Lsp serveStdio]`,
+/// `[Doc cli:]`, `[Doc buildSite:zig:rust:rustAbi:guides:]`, `[Lsp serveStdio]`,
 /// `[Repl serveOn:]` — so the CLI is one more client of the libraries, not their
 /// owner; only the boot + GC-anchored driver frame stays Zig.
 fn isCliSubcommand(tok: []const u8) bool {
@@ -2043,12 +2044,13 @@ fn runCli(a: std.mem.Allocator, api: *IdApi, argv: []const []const u8) !void {
     const args_value = nativeStringVector(api, argv) orelse return error.NoVector;
     var resources = try runtime_resources.resolve(a);
     defer resources.deinit();
-    const res = api.send(cli, api.intern("run:source:rust:guides:"), &[_]Oop{
+    const res = api.send(cli, api.intern("run:source:rust:rustAbi:guides:"), &[_]Oop{
         args_value,
         api.mkString(resources.source_dir.ptr, resources.source_dir.len),
         api.mkString(resources.rust_source_dir.ptr, resources.rust_source_dir.len),
+        api.mkString(resources.rust_abi_source_dir.ptr, resources.rust_abi_source_dir.len),
         api.mkString(resources.guide_dir.ptr, resources.guide_dir.len),
-    }, 4);
+    }, 5);
     const ok = api.send(res, api.intern("="), &[_]Oop{api.mkSmallInt(0)}, 1);
     if (ok == api.trueObj) return;
     const err = api.send(codegen, api.intern("lastError"), &[_]Oop{}, 0);
