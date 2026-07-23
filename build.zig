@@ -293,6 +293,28 @@ pub fn build(b: *std.Build) void {
     );
     test_floor_rust_step.dependOn(&floor_rust_tests.step);
 
+    const floor_zig_verify = b.addSystemCommand(&.{
+        "bash",
+        "scripts/floor-verify.sh",
+        "zig",
+    });
+    const verify_floor_zig_step = b.step(
+        "verify-floor-zig",
+        "Run isolated in-process, CLI, worker, project, and install verification under Zig",
+    );
+    verify_floor_zig_step.dependOn(&floor_zig_verify.step);
+
+    const floor_rust_verify = b.addSystemCommand(&.{
+        "bash",
+        "scripts/floor-verify.sh",
+        "rust",
+    });
+    const verify_floor_rust_step = b.step(
+        "verify-floor-rust",
+        "Run isolated in-process, CLI, worker, project, and install verification under Rust",
+    );
+    verify_floor_rust_step.dependOn(&floor_rust_verify.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a

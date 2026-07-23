@@ -87,6 +87,14 @@ run = "bash scripts/rust-image-save-smoke.sh"
 description = "Run frozen native and image fixtures against both Rust profiles"
 run = "bash scripts/rust-id-abi-fixture-smoke.sh"
 
+[tasks.verify-floor-zig]
+description = "Run the isolated full Zig-floor verification path"
+run = "bash scripts/floor-verify.sh zig"
+
+[tasks.verify-floor-rust]
+description = "Run the isolated full Rust-floor verification path"
+run = "bash scripts/floor-verify.sh rust"
+
 [tasks.rust-env-loader-smoke]
 description = "Reflect canonical exports and reload a fixture through Rust"
 run = "bash scripts/rust-env-loader-smoke.sh"

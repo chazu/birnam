@@ -184,7 +184,8 @@ mv "$time_unit.correct" "$time_unit"
 
 id_dylib="$tmp/relocated/lib/libbirnam_id.dylib"
 mv "$id_dylib" "$id_dylib.unavailable"
-if "$bin" --repl </dev/null >/dev/null 2>"$tmp/missing-id.err"; then
+if env -u BIRNAM_ID_FLOOR_IDENTITY -u BIRNAM_ID_FLOOR_SHA256 \
+  "$bin" --repl </dev/null >/dev/null 2>"$tmp/missing-id.err"; then
   echo "install-smoke: missing id dylib unexpectedly succeeded" >&2
   exit 1
 fi
