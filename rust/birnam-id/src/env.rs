@@ -104,4 +104,43 @@ mod tests {
                 .is_null()
         );
     }
+
+    #[test]
+    fn large_export_churn_preserves_order_and_current_reverse_authority() {
+        let mut environment = Environment::new();
+        let mut name_owners: Vec<Box<usize>> = (0..4096).map(|index| Box::new(index)).collect();
+        let mut value_owners: Vec<Box<usize>> =
+            (0..4096).map(|index| Box::new(index + 4096)).collect();
+        let names: Vec<Oop> = name_owners
+            .iter_mut()
+            .map(|owner| oop(owner.as_mut()))
+            .collect();
+        let values: Vec<Oop> = value_owners
+            .iter_mut()
+            .map(|owner| oop(owner.as_mut()))
+            .collect();
+
+        for (name, value) in names.iter().copied().zip(values.iter().copied()) {
+            assert_eq!(environment.export(name, value), value);
+        }
+        assert_eq!(environment.count(), names.len());
+        for (index, name) in names.iter().copied().enumerate() {
+            assert_eq!(environment.name_at(index), name);
+            assert_eq!(environment.import(name), values[index]);
+            assert_eq!(environment.exported_name_of(values[index]), name);
+        }
+
+        for index in (1..names.len()).step_by(2) {
+            assert_eq!(environment.export(names[index], values[0]), values[0]);
+            assert_eq!(environment.name_at(index), names[index]);
+        }
+        assert_eq!(environment.count(), names.len());
+        assert_eq!(environment.exported_name_of(values[0]), names[0]);
+
+        let replacement = values[1];
+        assert_eq!(environment.export(names[0], replacement), replacement);
+        assert_eq!(environment.name_at(0), names[0]);
+        assert_eq!(environment.exported_name_of(replacement), names[0]);
+        assert_eq!(environment.exported_name_of(values[0]), names[1]);
+    }
 }

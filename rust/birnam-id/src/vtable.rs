@@ -471,6 +471,58 @@ mod tests {
     }
 
     #[test]
+    fn deep_delegation_and_large_dictionary_preserve_lookup_and_order() {
+        let (mut heap, mut vtables, meta, root, _child) = new_hierarchy();
+        let mut inherited_selector = Box::new(0usize);
+        let inherited_selector_oop = core::ptr::from_mut(inherited_selector.as_mut()).cast();
+        assert_eq!(
+            vtables.add_method(root, inherited_selector_oop, answer_3),
+            AddMethod::Added
+        );
+
+        let mut leaf = root;
+        for _ in 0..4096 {
+            leaf = vtables.create(&mut heap, leaf, meta);
+        }
+        assert_eq!(
+            call(vtables.lookup(leaf, inherited_selector_oop).unwrap()),
+            3
+        );
+
+        let mut selector_owners: Vec<Box<usize>> = (0..4096).map(|index| Box::new(index)).collect();
+        let selectors: Vec<Oop> = selector_owners
+            .iter_mut()
+            .map(|owner| core::ptr::from_mut(owner.as_mut()).cast())
+            .collect();
+        for selector in selectors.iter().copied() {
+            assert_eq!(
+                vtables.add_method(leaf, selector, answer_1),
+                AddMethod::Added
+            );
+        }
+        assert_eq!(vtables.dictionary_capacity(leaf), 4096);
+        for (index, selector) in selectors.iter().copied().enumerate() {
+            assert_eq!(vtables.selector_at(leaf, index), selector);
+            assert_eq!(call(vtables.direct_lookup(leaf, selector).unwrap()), 1);
+        }
+
+        for index in [0, 1023, 2047, 4095] {
+            assert!(matches!(
+                vtables.add_method(leaf, selectors[index], answer_2),
+                AddMethod::Overwrote(previous) if call(previous) == 1
+            ));
+            assert_eq!(vtables.selector_at(leaf, index), selectors[index]);
+            assert_eq!(call(vtables.lookup(leaf, selectors[index]).unwrap()), 2);
+        }
+
+        let removed = selectors[2047];
+        assert_eq!(call(vtables.remove_method(leaf, removed).unwrap()), 2);
+        assert!(vtables.direct_lookup(leaf, removed).is_none());
+        assert_eq!(vtables.selector_at(leaf, 2047), selectors[2048]);
+        assert!(vtables.selector_at(leaf, selectors.len() - 1).is_null());
+    }
+
+    #[test]
     fn exact_removal_reveals_parent_and_preserves_remaining_order() {
         let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
         let mut selector = 0usize;
