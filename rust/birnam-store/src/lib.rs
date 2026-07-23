@@ -756,6 +756,23 @@ unsafe extern "C" fn current_value_method(
     }
 }
 
+unsafe extern "C" fn current_value_if_absent(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly three arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 3) };
+    let value = current_value_raw(unsafe { state_mut(self_object) }, args[0], args[1]);
+    if !value.is_null() {
+        return value;
+    }
+    let selector = unsafe { intern(api(runtime), b"value\0") };
+    // SAFETY: the fallback owns the frozen zero-argument `value` protocol.
+    unsafe { (api(runtime).send)(args[2], selector, ptr::null(), 0) }
+}
+
 unsafe extern "C" fn has_value(
     self_object: birnam_abi::Oop,
     args: *const birnam_abi::Oop,
@@ -1285,6 +1302,7 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"assert:attr:value:\0", assert_fact),
         (b"rawCurrentValue:attr:\0", raw_current_value),
         (b"currentValue:attr:\0", current_value_method),
+        (b"currentValue:attr:ifAbsent:\0", current_value_if_absent),
         (b"hasValue:attr:\0", has_value),
         (b"count:attr:\0", count),
         (b"attrCount:\0", attr_count),

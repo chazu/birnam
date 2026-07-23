@@ -116,6 +116,10 @@ test "Rust Store core owns raw/flip, schema-aware assert, lookup, and basis" {
     const first = api.intern("first");
     const second = api.intern("second");
     try std.testing.expect(send(api, store, "currentValue:attr:", &.{ e, attr }) == api.nilObj);
+    const fallback_vt = api.proto(api.object_vt);
+    api.method(fallback_vt, api.intern("value"), &answer99);
+    const fallback = api.alloc(fallback_vt, 0);
+    try std.testing.expect(@intFromPtr(send(api, store, "currentValue:attr:ifAbsent:", &.{ e, attr, fallback })) == 99);
     _ = send(api, store, "rawAssert:attr:value:", &.{ e, attr, first });
     try std.testing.expect(send(api, store, "currentValue:attr:", &.{ e, attr }) == first);
 
@@ -125,6 +129,8 @@ test "Rust Store core owns raw/flip, schema-aware assert, lookup, and basis" {
     try std.testing.expect(send(api, store, "currentValue:attr:", &.{ e, attr }) == second);
     try std.testing.expectEqual(@as(usize, 1), count(api, store, e, attr));
     try std.testing.expect(send(api, store, "hasValue:attr:", &.{ e, attr }) == api.trueObj);
+    _ = send(api, store, "assert:attr:value:", &.{ e, api.intern("bound_nil"), api.nilObj });
+    try std.testing.expect(send(api, store, "currentValue:attr:ifAbsent:", &.{ e, api.intern("bound_nil"), fallback }) == api.nilObj);
 
     const tags = api.intern("rust_store_core_tags");
     const many = api.intern("many");

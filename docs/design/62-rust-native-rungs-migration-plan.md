@@ -1,8 +1,8 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, and
-> N2.3c and N2.4a are complete; N2.4b is next.
+> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
+> N2.4a, N2.4b, and N2.4c are complete; N2.4d is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -858,6 +858,22 @@ record metadata; load end restores the transaction basis and raw-mode flag.
 The cross-language test covers export, wholesale replacement, assert/retract
 round-trip, and both selected IdApi floors. Image container policy and heap
 object traversal remain in the Zig image module until the next slice.
+
+#### N2.4c execution record — complete, 2026-07-23
+
+The host now accepts `BIRNAM_STORE_DYLIB` as an explicit Store-module override
+for integration and observation. The normal installed-module path remains the
+default, while the override loads the Rust Store without changing the dynamic
+rung boundary or the production default. The Rust Store also implements the
+compatibility `currentValue:attr:ifAbsent:` protocol, including the distinction
+between an absent value and a bound `nil` value.
+
+With the override pointed at the debug Rust Store dylib, the full stage-one
+stack passed `image-save-smoke.sh` and `repl-golden.sh` (26/26 cases), in
+addition to the focused cross-language Store tests, strict Clippy, and the
+stage-one build. This is an observation seam, not the N2.5 production switch;
+the Zig Store remains the default until the remaining consumers and gates are
+covered.
 
 ### N2.5 — Switch and observe
 

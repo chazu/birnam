@@ -1182,8 +1182,12 @@ fn resolveLibDir(a: std.mem.Allocator) ![]u8 {
 fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
     const lib_dir = try resolveLibDir(a);
     defer a.free(lib_dir);
+    const store_override = std.posix.getenv("BIRNAM_STORE_DYLIB");
     for (script_modules) |m| {
-        const ps = try std.fmt.allocPrint(a, "{s}/{s}.dylib", .{ lib_dir, m });
+        const ps = if (store_override != null and std.mem.eql(u8, m, "libbirnam_store"))
+            try a.dupe(u8, store_override.?)
+        else
+            try std.fmt.allocPrint(a, "{s}/{s}.dylib", .{ lib_dir, m });
         defer a.free(ps);
         const p = try a.dupeZ(u8, ps);
         defer a.free(p);
