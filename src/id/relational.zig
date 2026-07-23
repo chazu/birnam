@@ -243,6 +243,54 @@ fn valHash(o: Oop) u64 {
     return mix64(@intFromPtr(o.?));
 }
 
+/// A value-policy decision prepared once for a fixed or already-bound term.
+/// Query joins compare that term against many candidate rows; caching its kind
+/// avoids crossing the selected-floor ABI again for every rejected candidate.
+/// Candidate inspection still goes through IdApi, and identity-only objects need
+/// no inspection at all after the pointer fast path fails.
+const ValMatcher = struct {
+    key: Oop,
+    value: union(enum) {
+        identity,
+        integer: i64,
+        string: []const u8,
+        float: f64,
+    },
+
+    fn init(key: Oop) ValMatcher {
+        if (key == null) return .{ .key = key, .value = .identity };
+        const vt = g_api.vtableOf(key);
+        if (vt == g_api.smallint_vt)
+            return .{ .key = key, .value = .{ .integer = g_api.smallIntValue(key) } };
+        if (vt == g_api.string_vt) {
+            var len: usize = 0;
+            const bytes = g_api.stringBytes(key, &len);
+            return .{ .key = key, .value = .{ .string = bytes[0..len] } };
+        }
+        if (vt == g_api.float_vt)
+            return .{ .key = key, .value = .{ .float = g_api.floatValue(key) } };
+        return .{ .key = key, .value = .identity };
+    }
+
+    fn matches(self: ValMatcher, candidate: Oop) bool {
+        if (candidate == self.key) return true;
+        if (candidate == null) return false;
+        return switch (self.value) {
+            .identity => false,
+            .integer => |value| g_api.vtableOf(candidate) == g_api.smallint_vt and
+                g_api.smallIntValue(candidate) == value,
+            .string => |value| blk: {
+                if (g_api.vtableOf(candidate) != g_api.string_vt) break :blk false;
+                var len: usize = 0;
+                const bytes = g_api.stringBytes(candidate, &len);
+                break :blk std.mem.eql(u8, bytes[0..len], value);
+            },
+            .float => |value| g_api.vtableOf(candidate) == g_api.float_vt and
+                g_api.floatValue(candidate) == value,
+        };
+    }
+};
+
 const ValCtx = struct {
     pub fn hash(_: ValCtx, k: Oop) u64 {
         return valHash(k);
@@ -374,15 +422,20 @@ fn tryClause(
     sol: []const Binding,
     pos: [3]Oop,
     pos_is_var: [3]bool,
+    matchers: [3]?ValMatcher,
     tri: Triple,
 ) ?[]Binding {
     const vals = [3]Oop{ tri.e, tri.a, tri.v };
     var fresh: [3]Binding = undefined;
     var nfresh: usize = 0;
-    for (pos, pos_is_var, vals) |p, is_var, val| {
+    for (pos, pos_is_var, matchers, vals) |p, is_var, matcher, val| {
+        if (matcher) |prepared| {
+            if (!prepared.matches(val)) return null;
+            continue;
+        }
         if (is_var) {
             if (lookupWithFresh(sol, fresh[0..nfresh], p)) |existing| {
-                if (!valEq(existing, val)) return null;
+                if (!ValMatcher.init(existing).matches(val)) return null;
             } else {
                 fresh[nfresh] = .{ .v = p, .val = val };
                 nfresh += 1;
@@ -605,19 +658,33 @@ fn matchRuleClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, 
     for (argv, 0..) |*p, i| p.* = send1(clause, s_at, g_api.mkSmallInt(@intCast(2 + i)));
     const arg_is_var = aa.alloc(bool, arity) catch @panic("relational: oom");
     for (arg_is_var, argv) |*is_var, arg| is_var.* = isLogicVar(arg);
+    const fixed_matchers = aa.alloc(?ValMatcher, arity) catch @panic("relational: oom");
+    for (fixed_matchers, argv, arg_is_var) |*matcher, arg, is_var|
+        matcher.* = if (is_var) null else ValMatcher.init(arg);
 
     var next: std.ArrayList([]Binding) = .{};
     var fresh: std.ArrayList(Binding) = .{};
     defer fresh.deinit(ca);
     for (sols) |sol| {
+        const matchers = aa.dupe(?ValMatcher, fixed_matchers) catch @panic("relational: oom");
+        for (matchers, argv, arg_is_var) |*matcher, arg, is_var| {
+            if (is_var) matcher.* = if (lookup(sol, arg)) |existing| ValMatcher.init(existing) else null;
+        }
         for (d.rows.items) |row| {
             if (row.len != arity) continue;
             fresh.clearRetainingCapacity();
             var ok = true;
-            for (argv, arg_is_var, row) |p, is_var, val| {
+            for (argv, arg_is_var, matchers, row) |p, is_var, matcher, val| {
+                if (matcher) |prepared| {
+                    if (!prepared.matches(val)) {
+                        ok = false;
+                        break;
+                    }
+                    continue;
+                }
                 if (is_var) {
                     if (lookupWithFresh(sol, fresh.items, p)) |ex| {
-                        if (!valEq(ex, val)) {
+                        if (!ValMatcher.init(ex).matches(val)) {
                             ok = false;
                             break;
                         }
@@ -691,6 +758,9 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, tidx
     pos[1] = if (csz > 1) send1(clause, s_at, g_api.mkSmallInt(1)) else g_api.nilObj;
     pos[2] = if (csz > 2) send1(clause, s_at, g_api.mkSmallInt(2)) else g_api.nilObj;
     const pos_is_var = [3]bool{ isLogicVar(pos[0]), isLogicVar(pos[1]), isLogicVar(pos[2]) };
+    var fixed_matchers: [3]?ValMatcher = .{ null, null, null };
+    for (&fixed_matchers, pos, pos_is_var) |*matcher, term, is_var|
+        matcher.* = if (is_var) null else ValMatcher.init(term);
 
     var next: std.ArrayList([]Binding) = .{};
     if (predicateOp(pos[1])) |op| {
@@ -711,9 +781,13 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, tidx
         // attr is still unbound. tryClause still decides each match, so this
         // changes wall-time, not results.
         for (sols) |sol| {
+            var matchers = fixed_matchers;
+            for (&matchers, pos, pos_is_var) |*matcher, term, is_var| {
+                if (is_var) matcher.* = if (lookup(sol, term)) |existing| ValMatcher.init(existing) else null;
+            }
             const cand = if (resolveTerm(sol, pos[1])) |a| tidx.candidates(a) else tidx.all;
             for (cand) |tri| {
-                if (tryClause(aa, sol, pos, pos_is_var, tri)) |ns|
+                if (tryClause(aa, sol, pos, pos_is_var, matchers, tri)) |ns|
                     next.append(aa, ns) catch @panic("relational: oom");
             }
         }
@@ -831,22 +905,7 @@ fn applyClauses(aa: std.mem.Allocator, clausesVec: Oop, tidx: *TripleIndex) []co
 fn valEq(a: Oop, b: Oop) bool {
     if (a == b) return true;
     if (a == null or b == null) return false;
-    const av = g_api.vtableOf(a);
-    const bv = g_api.vtableOf(b);
-    if (av == g_api.smallint_vt and bv == g_api.smallint_vt)
-        return g_api.smallIntValue(a) == g_api.smallIntValue(b);
-    if (av == g_api.string_vt and bv == g_api.string_vt) {
-        var la: usize = 0;
-        var lb: usize = 0;
-        const pa = g_api.stringBytes(a, &la);
-        const pb = g_api.stringBytes(b, &lb);
-        return std.mem.eql(u8, pa[0..la], pb[0..lb]);
-    }
-    // Floats by VALUE (IEEE ==), mirroring the prelude's per-type `=` — equal-
-    // valued float bindings are ONE solution under set semantics.
-    if (av == g_api.float_vt and bv == g_api.float_vt)
-        return g_api.floatValue(a) == g_api.floatValue(b);
-    return false;
+    return ValMatcher.init(a).matches(b);
 }
 
 /// Run a `where:` query and project `result_var`, deduped (set semantics) — the
