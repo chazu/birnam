@@ -13,6 +13,7 @@
 #   mise run rust-dispatch-reentry-smoke # reenter Rust send from a Zig Method
 #   mise run rust-id-spike-smoke # exercise the spike IdApi from a Zig client
 #   mise run rust-gc-metadata-smoke # exercise GC metadata and marking callbacks
+#   mise run rust-native-memory # run cross-language GC under Darwin heap diagnostics
 #   mise run rust-env-loader-smoke # reflect exports and reload through Rust
 #   mise run scalar-conformance-smoke # compare boxed scalars on both floors
 #   mise run string-conformance-smoke # compare copied byte Strings on both floors
@@ -88,6 +89,10 @@ run = "bash scripts/rust-id-spike-smoke.sh"
 [tasks.rust-gc-metadata-smoke]
 description = "Exercise Rust collection, foreign marking callbacks, and finalizer guards"
 run = "bash scripts/rust-gc-metadata-smoke.sh"
+
+[tasks.rust-native-memory]
+description = "Run Rust GC/finalizer fixtures under Darwin allocator diagnostics"
+run = "bash scripts/rust-native-memory-smoke.sh"
 
 [tasks.rust-stack-root-smoke]
 description = "Recover an Oop held across collection by optimized C"

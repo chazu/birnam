@@ -191,6 +191,16 @@ pub fn build(b: *std.Build) void {
     test_rust_gc_metadata_step.dependOn(&rust_gc_metadata_smoke.step);
     test_step.dependOn(&rust_gc_metadata_smoke.step);
 
+    const rust_native_memory_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-native-memory-smoke.sh",
+    });
+    const test_rust_native_memory_step = b.step(
+        "test-rust-native-memory",
+        "Run cross-language Rust GC/finalizer fixtures with Darwin allocator diagnostics",
+    );
+    test_rust_native_memory_step.dependOn(&rust_native_memory_smoke.step);
+
     const rust_stack_root_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/rust-stack-root-smoke.sh",
