@@ -4448,6 +4448,13 @@ fn emitProgram(src: Oop, persist: bool, artifact: bool, checked: bool) ?std.Arra
     return buf;
 }
 
+/// Test-only projection of the generated C translation unit. The caller owns
+/// the returned c_allocator-backed buffer. N0.5 uses this to freeze the emitted
+/// boundary without exposing generated C as a production protocol.
+pub fn emitProgramForTesting(src: Oop, artifact: bool) ?std.ArrayList(u8) {
+    return emitProgram(src, false, artifact, true);
+}
+
 fn runProgram(src: Oop, persist: bool) Oop {
     var buf = emitProgram(src, persist, false, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);

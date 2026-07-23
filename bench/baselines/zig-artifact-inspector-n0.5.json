@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "purpose": "Design 62 N0.5 artifact-inspector ReleaseSafe comparator",
+  "recorded_at": "2026-07-23T18:54:46.314338+00:00",
+  "machine": "arm64",
+  "mode": "ReleaseSafe",
+  "floor": {
+    "implementation": "zig",
+    "identity": "zig-id-v1",
+    "sha256": "9f7d64120ba1fcd4c78228952f192cd8876ca87f548ee0facf31b0b3896d4199"
+  },
+  "rung": {
+    "name": "artifact-inspector",
+    "implementation": "zig",
+    "sha256": "abf4b8e24e78aa7819cc8ca6f7c7407a7249097895ea47adf25b712ce3e9415b",
+    "dylib_bytes": 287896
+  },
+  "acceptance": {
+    "time_variance_limit_percent": 10.0,
+    "rss_variance_limit_percent": 5.0
+  },
+  "runs": [
+    {
+      "schema": 1,
+      "case": "artifact.inspect",
+      "iterations": 5000,
+      "elapsed_ns": 36624167,
+      "ns_per_inspection": 7324,
+      "peak_rss_bytes": 13598720
+    },
+    {
+      "schema": 1,
+      "case": "artifact.inspect",
+      "iterations": 5000,
+      "elapsed_ns": 37773667,
+      "ns_per_inspection": 7554,
+      "peak_rss_bytes": 13598720
+    }
+  ],
+  "observed": {
+    "time_variance_percent": 3.14,
+    "rss_variance_percent": 0.0
+  }
+}

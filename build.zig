@@ -77,6 +77,34 @@ pub fn build(b: *std.Build) void {
         "Run the complete native, self-hosted, and REPL verification gate",
     );
 
+    const artifact_benchmark_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/artifact_inspector_benchmark_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const artifact_benchmark = b.addExecutable(.{
+        .name = "artifact-inspector-benchmark",
+        .root_module = artifact_benchmark_mod,
+    });
+    artifact_benchmark.linkLibC();
+    const install_artifact_benchmark = b.addInstallArtifact(artifact_benchmark, .{});
+    const artifact_benchmark_step = b.step(
+        "artifact-inspector-benchmark",
+        "Build the backend-neutral artifact-inspection performance probe",
+    );
+    artifact_benchmark_step.dependOn(&install_artifact_benchmark.step);
+
+    const native_rung_baseline_check = b.addSystemCommand(&.{
+        "python3",
+        "scripts/check-native-rung-baseline.py",
+    });
+    const test_native_rung_baseline_step = b.step(
+        "test-native-rung-baseline",
+        "Verify the frozen native-rung semantic and performance baseline",
+    );
+    test_native_rung_baseline_step.dependOn(&native_rung_baseline_check.step);
+    test_step.dependOn(&native_rung_baseline_check.step);
+
     // Design 62 N0.1: fail closed when a Zig production source, dynamic-rung
     // surface, load-order entry, exported symbol owner, or private Store-Codegen
     // callback boundary appears without an explicit migration assignment.

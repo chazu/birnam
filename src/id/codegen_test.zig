@@ -235,6 +235,23 @@ test "codegen 3c.2: birnam arithmetic → C → native → value" {
     try std.testing.expectEqual(@as(i64, 20), try evalInt(api, "[[2 * 3] + [7 * 2]]"));
 }
 
+test "representative generated C preserves the frozen native-rung boundary" {
+    const api = setupFull();
+    const source = "let x := 41; [x + 1]";
+    var emitted = codegen.emitProgramForTesting(
+        api.mkString(source.ptr, source.len),
+        true,
+    ) orelse return error.EmitFailed;
+    defer emitted.deinit(std.heap.c_allocator);
+
+    const fragments = @embedFile("fixtures/native-rung-v1/generated-c-fragments.txt");
+    var lines = std.mem.splitScalar(u8, fragments, '\n');
+    while (lines.next()) |line| {
+        if (line.len == 0) continue;
+        try std.testing.expect(std.mem.indexOf(u8, emitted.items, line) != null);
+    }
+}
+
 test "Reflect removeMethod:on: removes only an existing stable direct binding" {
     const api = setupFull();
     const target = api.send(api.import("Object").?, api.intern("clone"), &.{}, 0);

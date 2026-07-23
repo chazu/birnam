@@ -95,6 +95,22 @@ test "load rejects a truncated header" {
     try std.testing.expect(!image.validate(trunc));
 }
 
+test "load rejects an older image format before reading records" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ dir, "v3.image" });
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expect(image.writeHeaderOnly(path));
+    var bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, path, 1 << 20);
+    defer std.testing.allocator.free(bytes);
+    std.mem.writeInt(u32, bytes[image.MAGIC.len..][0..4], 3, .little);
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = bytes });
+    try std.testing.expect(!image.validate(path));
+}
+
 // -- The round-trip: a real stack, in-process --------------------------------
 
 var gapi: *idapi.IdApi = undefined;

@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.4 are complete; N0.5 is next.
+> passes. N0.1 through N0.5 are complete; N0.6 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -468,6 +468,39 @@ verification gates pass.
 
 **Gate:** two clean runs are reproducible within existing variance limits.
 No later phase may invent a weaker acceptance rule after seeing its result.
+
+#### N0.5 execution record — complete, 2026-07-23
+
+`abi/native-rung-baseline-v1.json` is the machine-readable compatibility
+contract. Its fail-closed checker freezes the representative inert
+compiled-unit descriptor, generated-C boundary fragments, exact compiler
+diagnostic and project JSON, image-v4 authority and code-unit rules, mapped and
+explicit-rebuild paths, corrupt and older-format rejection, wire-v1 bytes,
+Alien callback values and lifecycle cycles, and installed-tree expectations.
+The generated-C projection exists only for tests; it adds no production
+protocol. An explicit v3-header test closes the previously implicit
+older-format rejection evidence.
+
+The accepted, digest-pinned R6 Zig/Rust Design 46 pair remains the optimized
+comparator for Store and MOP mutation, PEG parsing, compile/eval, collections,
+relational queries, image save/load, and startup. The checker requires the
+ReleaseSafe, non-quick stamps; exact 3/1/5/3/3 suite process counts; macro
+repetition counts and peak RSS; every category's named cases; both result-file
+digests; and the exact two accepted R6 crossings. It cannot silently substitute
+a newer or partial result.
+
+Artifact inspection has its own backend-neutral ReleaseSafe probe so the frozen
+Design 46 micro suite and its loaded-module footprint remain unchanged. Two
+host-guarded clean processes each inspected the same inert descriptor 5,000
+times through the selected dylib boundary. They recorded 7,324 and 7,554
+ns/inspection with identical 13,598,720-byte peak RSS: 3.14% time variance and
+0% RSS variance, within the predeclared 10% and 5% limits. The exact floor and
+rung dylib digests, sizes, measurements, and limits are committed in
+`bench/baselines/zig-artifact-inspector-n0.5.json`.
+
+`zig build test-native-rung-baseline` verifies the complete semantic and
+performance freeze and is part of `zig build test`. Focused ReleaseSafe
+Codegen/Image suites and the baseline gate pass.
 
 ### N0.6 — Generalize installed native-source resources
 

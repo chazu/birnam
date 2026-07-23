@@ -1,0 +1,4 @@
+extern void* birnam_send(void* rcv, void* sel, void** args, long n);
+extern void* birnam_candidate_root_set(unsigned long long salt, long index, void* value);
+void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;
+void __birnam_unit_init(void){
