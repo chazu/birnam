@@ -53,8 +53,12 @@ description = "Build and directly probe the spike-only Rust floor dylib"
 run = "bash scripts/rust-floor-shell-smoke.sh"
 
 [tasks.rust-ffi-abort-smoke]
-description = "Prove Rust panic and invariant failures abort at the C ABI boundary"
+description = "Prove debug and release Rust panic/invariant failures abort at the C ABI"
 run = "bash scripts/rust-ffi-abort-smoke.sh"
+
+[tasks.rust-dylib-audit]
+description = "Audit Rust floor dependencies, install name, paths, and exports"
+run = "bash scripts/rust-dylib-audit.sh"
 
 [tasks.rust-heap-layout-smoke]
 description = "Probe Rust raw block layout from an external C-ABI fixture"

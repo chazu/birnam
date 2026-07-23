@@ -117,6 +117,17 @@ pub fn build(b: *std.Build) void {
     test_rust_ffi_abort_step.dependOn(&rust_ffi_abort_smoke.step);
     test_step.dependOn(&rust_ffi_abort_smoke.step);
 
+    const rust_dylib_audit = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-dylib-audit.sh",
+    });
+    const test_rust_dylib_audit_step = b.step(
+        "test-rust-dylib-audit",
+        "Audit Rust floor dependencies, install name, paths, and exported symbols",
+    );
+    test_rust_dylib_audit_step.dependOn(&rust_dylib_audit.step);
+    test_step.dependOn(&rust_dylib_audit.step);
+
     const rust_heap_layout_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/rust-heap-layout-smoke.sh",
