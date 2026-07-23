@@ -748,6 +748,18 @@ co-loaded. Workspace lock/resource/install metadata includes the new member;
 strict Clippy and the shell unit test pass. N2.2b will add the rung-owned state
 and first raw storage protocol behind this boundary.
 
+#### N2.2b execution record — complete, 2026-07-23
+
+`birnam-store` now owns the first Rust storage core: a traced, allocation-owning
+fact log with transaction basis, schema-as-data seeding, raw assert, `flip`,
+schema-aware one/many `assert`, current-value lookup, presence/count, `basis`,
+and `new`. The cross-language smoke loads this dylib directly and passes against
+both the Rust and Zig IdApi floors. Workspace format, strict Clippy, Rust unit
+tests, the focused Rust Store core test, and the full `zig build verify` gate are
+the acceptance checks for this slice. MOP policy, historical range semantics,
+image bridging, Cell/Globals protocol, and the production Store selector remain
+outside N2.2b and are intentionally deferred to N2.2c–N2.4.
+
 ### N2.3 — Implement the MOP chokepoint
 
 - Port tracked add/remove and the method mutation observer/authorizer.

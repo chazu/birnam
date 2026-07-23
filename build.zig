@@ -548,6 +548,30 @@ pub fn build(b: *std.Build) void {
         "Expected SHA-256 of the selected floor dylib (empty disables the assertion)",
     ) orelse "";
 
+    const rust_store_core_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_store_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_store_core_tests = b.addTest(.{ .root_module = rust_store_core_mod });
+    rust_store_core_tests.linkLibC();
+    const run_rust_store_core = b.addRunArtifact(rust_store_core_tests);
+    run_rust_store_core.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_store_core.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_store_core.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_store_core.setEnvironmentVariable(
+        "BIRNAM_RUST_STORE_DYLIB",
+        b.pathFromRoot(".cargo-target/debug/libbirnam_store.dylib"),
+    );
+    run_rust_store_core.step.dependOn(&rust_id_build.step);
+    run_rust_store_core.step.dependOn(bootstrap_install);
+    const test_rust_store_core_step = b.step(
+        "test-rust-store-core",
+        "Run the first Rust Store storage core against the selected floor",
+    );
+    test_rust_store_core_step.dependOn(&run_rust_store_core.step);
+    test_step.dependOn(&run_rust_store_core.step);
+
     // -- The id rungs: a dylib + its test suite, one row per module ----------
     // Every rung is a dynamic library the siphon dlopens at runtime, plus a test
     // that imports its siblings directly (relative imports unify the IdApi type
