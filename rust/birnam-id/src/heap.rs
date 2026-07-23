@@ -25,6 +25,10 @@ pub(crate) enum Permanence {
 }
 
 struct Block {
+    /// Provenance-carrying allocation base returned by `alloc_zeroed`.
+    base: NonNull<u8>,
+    /// Provenance-carrying start of the object payload.
+    payload: NonNull<u8>,
     total_size: usize,
     permanence: Permanence,
     marked: bool,
@@ -34,13 +38,12 @@ struct Block {
 /// One unreachable allocation detached from the registry before foreign code
 /// runs. Its payload remains live until `reclaim` consumes it.
 pub(crate) struct DetachedBlock {
-    object: Oop,
     block: Block,
 }
 
 impl DetachedBlock {
     pub(crate) fn object(&self) -> Oop {
-        self.object
+        self.block.payload.as_ptr().cast()
     }
 
     pub(crate) fn finalizer(&self) -> Option<Finalizer> {
@@ -56,13 +59,10 @@ impl Drop for DetachedBlock {
     fn drop(&mut self) {
         let layout = Layout::from_size_align(self.block.total_size, BLOCK_ALIGNMENT)
             .unwrap_or_else(|_| boundary::fatal_invariant("stored block layout became invalid"));
-        // SAFETY: DetachedBlock retains the exact live payload identity removed
-        // from the registry, whose allocation begins one header word earlier.
-        let base = unsafe { self.object.cast::<u8>().sub(VTABLE_HEADER_SIZE) };
         // SAFETY: detaching transferred this still-live allocation out of the
         // Heap registry. DetachedBlock is its sole owner and drops exactly once
         // with the same layout used by allocate.
-        unsafe { dealloc(base, layout) };
+        unsafe { dealloc(self.block.base.as_ptr(), layout) };
     }
 }
 
@@ -130,6 +130,8 @@ impl Heap {
         let previous = self.blocks.insert(
             payload_address,
             Block {
+                base,
+                payload,
                 total_size,
                 permanence,
                 marked: false,
@@ -166,11 +168,21 @@ impl Heap {
     pub(crate) fn base_address(&self, object: Oop) -> Option<usize> {
         self.blocks
             .get(&object.addr())
-            .map(|_| object.addr() - VTABLE_HEADER_SIZE)
+            .map(|block| block.base.as_ptr().addr())
     }
 
     pub(crate) fn payload_address(&self, object: Oop) -> Option<usize> {
-        self.blocks.get(&object.addr()).map(|_| object.addr())
+        self.blocks
+            .get(&object.addr())
+            .map(|block| block.payload.as_ptr().addr())
+    }
+
+    /// Recover a live payload pointer without reconstructing it from its
+    /// integer membership key and losing allocation provenance.
+    pub(crate) fn object_at_address(&self, address: usize) -> Option<Oop> {
+        self.blocks
+            .get(&address)
+            .map(|block| block.payload.as_ptr().cast())
     }
 
     /// Report the padded payload extent, matching Zig `objectPayloadSize`.
@@ -213,8 +225,11 @@ impl Heap {
         // a whole number of machine words. The allocation remains live while
         // the copied snapshot is created.
         Some(unsafe {
-            std::slice::from_raw_parts(address as *const usize, payload_size / size_of::<usize>())
-                .to_vec()
+            std::slice::from_raw_parts(
+                block.payload.as_ptr().cast_const().cast::<usize>(),
+                payload_size / size_of::<usize>(),
+            )
+            .to_vec()
         })
     }
 
@@ -246,10 +261,7 @@ impl Heap {
             .blocks
             .remove(&address)
             .unwrap_or_else(|| boundary::fatal_invariant("dead GC block disappeared"));
-        Some(DetachedBlock {
-            object: address as Oop,
-            block,
-        })
+        Some(DetachedBlock { block })
     }
 
     pub(crate) fn has_finalizer(&self, object: Oop) -> Option<bool> {
@@ -358,15 +370,12 @@ impl Drop for Heap {
         // Harness/runtime-owner teardown only: this is not language GC and does
         // not invoke finalizers. The process-lifetime runtime does not drop
         // while Birnam objects remain observable.
-        for (payload_address, block) in &self.blocks {
+        for block in self.blocks.values() {
             let layout = Layout::from_size_align(block.total_size, BLOCK_ALIGNMENT)
                 .expect("stored block layout must remain valid");
-            // SAFETY: every registry key is the exact live payload address for
-            // an allocation whose base is one header word earlier.
-            let base = unsafe { (*payload_address as *mut u8).sub(VTABLE_HEADER_SIZE) };
-            // SAFETY: each base was returned by alloc_zeroed with this exact
+            // SAFETY: each stored base was returned by alloc_zeroed with this exact
             // layout, remains live, and is deallocated exactly once here.
-            unsafe { dealloc(base, layout) };
+            unsafe { dealloc(block.base.as_ptr(), layout) };
         }
     }
 }

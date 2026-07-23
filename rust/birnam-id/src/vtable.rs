@@ -473,6 +473,7 @@ mod tests {
     #[test]
     fn deep_delegation_and_large_dictionary_preserve_lookup_and_order() {
         let (mut heap, mut vtables, meta, root, _child) = new_hierarchy();
+        let count = if cfg!(miri) { 128 } else { 4096 };
         let mut inherited_selector = Box::new(0usize);
         let inherited_selector_oop = core::ptr::from_mut(inherited_selector.as_mut()).cast();
         assert_eq!(
@@ -481,7 +482,7 @@ mod tests {
         );
 
         let mut leaf = root;
-        for _ in 0..4096 {
+        for _ in 0..count {
             leaf = vtables.create(&mut heap, leaf, meta);
         }
         assert_eq!(
@@ -489,7 +490,7 @@ mod tests {
             3
         );
 
-        let mut selector_owners: Vec<Box<usize>> = (0..4096).map(Box::new).collect();
+        let mut selector_owners: Vec<Box<usize>> = (0..count).map(Box::new).collect();
         let selectors: Vec<Oop> = selector_owners
             .iter_mut()
             .map(|owner| core::ptr::from_mut(owner.as_mut()).cast())
@@ -500,13 +501,13 @@ mod tests {
                 AddMethod::Added
             );
         }
-        assert_eq!(vtables.dictionary_capacity(leaf), 4096);
+        assert_eq!(vtables.dictionary_capacity(leaf), count);
         for (index, selector) in selectors.iter().copied().enumerate() {
             assert_eq!(vtables.selector_at(leaf, index), selector);
             assert_eq!(call(vtables.direct_lookup(leaf, selector).unwrap()), 1);
         }
 
-        for index in [0, 1023, 2047, 4095] {
+        for index in [0, count / 4 - 1, count / 2 - 1, count - 1] {
             assert!(matches!(
                 vtables.add_method(leaf, selectors[index], answer_2),
                 AddMethod::Overwrote(previous) if call(previous) == 1
@@ -515,10 +516,14 @@ mod tests {
             assert_eq!(call(vtables.lookup(leaf, selectors[index]).unwrap()), 2);
         }
 
-        let removed = selectors[2047];
+        let removed_index = count / 2 - 1;
+        let removed = selectors[removed_index];
         assert_eq!(call(vtables.remove_method(leaf, removed).unwrap()), 2);
         assert!(vtables.direct_lookup(leaf, removed).is_none());
-        assert_eq!(vtables.selector_at(leaf, 2047), selectors[2048]);
+        assert_eq!(
+            vtables.selector_at(leaf, removed_index),
+            selectors[removed_index + 1]
+        );
         assert!(vtables.selector_at(leaf, selectors.len() - 1).is_null());
     }
 

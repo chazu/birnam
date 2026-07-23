@@ -475,7 +475,7 @@ mod tests {
         static HOOK_RUNTIME: Cell<*const Runtime> = const { Cell::new(core::ptr::null()) };
         static HOOK_VTABLE: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
         static HOOK_SELECTOR: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
-        static HOOK_EXPECTED_METHOD: Cell<usize> = const { Cell::new(0) };
+        static HOOK_EXPECTED_RESULT: Cell<usize> = const { Cell::new(0) };
         static HOOK_CALLS: Cell<usize> = const { Cell::new(0) };
         static HOOK_SAW_PRE_MUTATION: Cell<bool> = const { Cell::new(false) };
         static HOOK_READ_REFLECTION: Cell<bool> = const { Cell::new(false) };
@@ -522,13 +522,18 @@ mod tests {
         // SAFETY: the test installs its live runtime pointer only for the
         // synchronous mutation calls below.
         let runtime = unsafe { &*runtime };
-        let expected = HOOK_EXPECTED_METHOD.get();
+        let expected = HOOK_EXPECTED_RESULT.get();
         HOOK_SAW_PRE_MUTATION.set(
             vtable == HOOK_VTABLE.get()
                 && selector == HOOK_SELECTOR.get()
                 && runtime
                     .lookup_method(vtable, selector)
-                    .is_some_and(|method| method.as_oop().addr() == expected),
+                    .is_some_and(|method| {
+                        // SAFETY: the test dictionary contains only the
+                        // zero-argument answer methods defined in this module.
+                        unsafe { method.to_method()(vtable, core::ptr::null(), 0) }.addr()
+                            == expected
+                    }),
         );
         HOOK_READ_REFLECTION.set(
             runtime.vtable_count() >= 3
@@ -659,30 +664,40 @@ mod tests {
         HOOK_RUNTIME.set(core::ptr::from_ref(runtime));
         HOOK_VTABLE.set(vtable);
         HOOK_SELECTOR.set(selector);
-        HOOK_EXPECTED_METHOD.set(MethodAddress::from_method(answer_42).as_oop().addr());
+        HOOK_EXPECTED_RESULT.set(42);
         HOOK_CALLS.set(0);
         HOOK_SAW_PRE_MUTATION.set(false);
         HOOK_READ_REFLECTION.set(false);
         runtime.set_method_overwrite_hook(Some(observe_overwrite));
 
-        assert!(matches!(
-            runtime.add_method(vtable, selector, answer_77),
-            AddMethod::Overwrote(previous)
-                if previous == MethodAddress::from_method(answer_42)
-        ));
+        let AddMethod::Overwrote(previous) = runtime.add_method(vtable, selector, answer_77) else {
+            panic!("method replacement did not report the previous binding");
+        };
+        // Function-pointer address equality is not portable (and Miri may
+        // materialize distinct shims), so prove the copied binding by calling it.
+        assert_eq!(
+            unsafe { previous.to_method()(vtable, core::ptr::null(), 0) }.addr(),
+            42
+        );
         assert_eq!(HOOK_CALLS.get(), 1);
         assert!(HOOK_SAW_PRE_MUTATION.get());
         assert!(HOOK_READ_REFLECTION.get());
+        let installed = runtime
+            .lookup_method(vtable, selector)
+            .expect("replacement binding remains installed");
         assert_eq!(
-            runtime.lookup_method(vtable, selector),
-            Some(MethodAddress::from_method(answer_77))
+            unsafe { installed.to_method()(vtable, core::ptr::null(), 0) }.addr(),
+            77
         );
 
-        HOOK_EXPECTED_METHOD.set(MethodAddress::from_method(answer_77).as_oop().addr());
+        HOOK_EXPECTED_RESULT.set(77);
         HOOK_SAW_PRE_MUTATION.set(false);
+        let removed = runtime
+            .remove_method(vtable, selector)
+            .expect("replacement binding remains removable");
         assert_eq!(
-            runtime.remove_method(vtable, selector),
-            Some(MethodAddress::from_method(answer_77))
+            unsafe { removed.to_method()(vtable, core::ptr::null(), 0) }.addr(),
+            77
         );
         assert_eq!(HOOK_CALLS.get(), 2);
         assert!(HOOK_SAW_PRE_MUTATION.get());
@@ -848,6 +863,7 @@ mod tests {
         for (index, byte) in payload.iter_mut().enumerate() {
             *byte = (index as u8).wrapping_mul(19).wrapping_add(7);
         }
+        let expected_payload = payload.to_vec();
 
         runtime.enter(|| {
             let clone = runtime.send_slice(object, bootstrap.selectors.clone, &[]);
@@ -858,7 +874,7 @@ mod tests {
                 // SAFETY: source and copy are live blocks with the same extent.
                 let copied =
                     unsafe { std::slice::from_raw_parts(copy.cast::<u8>().cast_const(), extent) };
-                assert_eq!(copied, payload);
+                assert_eq!(copied, expected_payload);
             }
             assert_eq!(
                 runtime.send_slice(object, bootstrap.selectors.identical, &[object]),

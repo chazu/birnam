@@ -188,7 +188,8 @@ mod tests {
         let anchor_pointer = symbols.c_name_of(anchor);
 
         let mut expected = vec![anchor];
-        for index in 0..4096u32 {
+        let count = if cfg!(miri) { 128 } else { 4096 };
+        for index in 0..count {
             let name = format!("symbol-{index}");
             let symbol = symbols
                 .intern(&mut heap, symbol_vtable, name.as_bytes())

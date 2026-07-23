@@ -5,6 +5,7 @@
 #   mise run verify         # full native + self-hosted + REPL test gate
 #   mise run rust-check     # offline Cargo check for the isolated Rust workspace
 #   mise run rust-test      # offline Cargo tests for the isolated Rust workspace
+#   mise run rust-miri      # pure-Rust unsafe-code checks (requires nightly Miri)
 #   mise run rust-shell-smoke # build and probe the spike-only Rust dylib
 #   mise run rust-ffi-abort-smoke # prove fatal Rust C-ABI boundary behavior
 #   mise run rust-heap-layout-smoke # probe Rust blocks from an external fixture
@@ -47,6 +48,10 @@ run = "CARGO_TARGET_DIR=.cargo-target cargo check --workspace --locked --offline
 [tasks.rust-test]
 description = "Test the Rust floor workspace without network access"
 run = "CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline"
+
+[tasks.rust-miri]
+description = "Run the pure-Rust floor tests under nightly Miri"
+run = "cargo +nightly miri test --workspace --locked --offline"
 
 [tasks.rust-shell-smoke]
 description = "Build and directly probe the spike-only Rust floor dylib"

@@ -737,17 +737,18 @@ impl Runtime {
         // Copy callback authority and raw owner pointers, then end the state
         // borrow before the first foreign call.
         // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let (providers, heap_pointer) = unsafe {
+        let providers = unsafe {
             let state = &mut *state_pointer;
             mark_floor_roots(state, &mut marker);
-            (
-                state.metadata.root_providers(),
-                core::ptr::addr_of_mut!(state.heap),
-            )
+            state.metadata.root_providers()
         };
-        let marker_pointer = core::ptr::addr_of_mut!(marker);
 
         for provider in providers {
+            // Form callback pointers only for this invocation. Retaining a
+            // field-derived pointer across a later RuntimeState borrow would
+            // invalidate its stacked-borrows provenance.
+            let heap_pointer = unsafe { core::ptr::addr_of_mut!((*state_pointer).heap) };
+            let marker_pointer = core::ptr::addr_of_mut!(marker);
             // SAFETY: no Rust references to state.heap or marker survive this
             // call; the provider may use the mark function only synchronously.
             unsafe {
@@ -758,9 +759,12 @@ impl Runtime {
         while let Some(address) = marker.pop() {
             // Conservative scanning and hook lookup finish before foreign code.
             // SAFETY: owner-thread serialization and no callback in this scope.
-            let hook = unsafe {
+            let (object, hook) = unsafe {
                 let state = &mut *state_pointer;
-                let object = address as Oop;
+                let object = state
+                    .heap
+                    .object_at_address(address)
+                    .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
                 let vtable = state.heap.vtable_of(object).unwrap_or_else(|| {
                     boundary::fatal_invariant("marked GC block lost its vtable")
                 });
@@ -771,10 +775,11 @@ impl Runtime {
                 } else {
                     marker.trace_conservative_payload(&mut state.heap, address);
                 }
-                state.vtables.trace_hook(vtable)
+                (object, state.vtables.trace_hook(vtable))
             };
             if let Some(hook) = hook {
-                let object = address as Oop;
+                let heap_pointer = unsafe { core::ptr::addr_of_mut!((*state_pointer).heap) };
+                let marker_pointer = core::ptr::addr_of_mut!(marker);
                 // SAFETY: no Rust references to state.heap or marker survive
                 // this call; the hook may mark only synchronously.
                 unsafe {
