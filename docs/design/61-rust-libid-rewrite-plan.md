@@ -2010,7 +2010,9 @@ micro and docgen measurements and waited rather than accepting them, but
 unrelated Go/Rust builds plus macOS PDF and Spotlight work kept the final Rust
 docgen preflight below the idle threshold for the full 900-second budget. The
 driver therefore emitted no partial Rust snapshot. R6 remains open pending one
-complete guarded pair on a quiet host; R7 remains prohibited.
+complete guarded pair on a quiet host; R7 remains prohibited. The complete
+`zig build verify` gate passes at `15d0824` with the active allocation path and
+all of the benchmark-driver hardening in place.
 
 ## 13. Phase R7 — Build, install, and default cutover
 
