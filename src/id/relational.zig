@@ -925,17 +925,17 @@ fn runQuery(self: Oop, result_var: Oop, clauses: Oop, lo: Oop, hi: Oop) Oop {
 
     // Project the result variable, dropping duplicates (set semantics).
     var out = send0(vectorFactory(), s_new);
-    var seen: std.ArrayList(Oop) = .{};
+    var seen: std.ArrayList(ValMatcher) = .{};
     defer seen.deinit(ca);
     for (sols) |sol| {
         const val = lookup(sol, result_var) orelse continue;
         var dup = false;
-        for (seen.items) |s| if (valEq(s, val)) {
+        for (seen.items) |matcher| if (matcher.matches(val)) {
             dup = true;
             break;
         };
         if (dup) continue;
-        seen.append(ca, val) catch @panic("relational: oom");
+        seen.append(ca, ValMatcher.init(val)) catch @panic("relational: oom");
         out = send1(out, s_add, val);
     }
     return out;
