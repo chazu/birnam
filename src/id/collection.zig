@@ -587,8 +587,8 @@ fn fnv1a(bytes: []const u8) u32 {
     return h;
 }
 fn keyHash(k: Oop) u32 {
-    if (g_api.isSmallInt(k) != 0) return mix(@bitCast(g_api.smallIntValue(k)));
     const vt = g_api.vtableOf(k);
+    if (vt == g_api.smallint_vt) return mix(@bitCast(g_api.smallIntValue(k)));
     if (vt == g_api.string_vt) {
         var len: usize = 0;
         const p = g_api.stringBytes(k, &len);
@@ -612,11 +612,13 @@ fn keyHash(k: Oop) u32 {
 }
 fn keyEq(a: Oop, b: Oop) bool {
     if (a == b) return true; // interned symbols + identity
+    const av = g_api.vtableOf(a);
+    const bv = g_api.vtableOf(b);
     // Integers are boxed now (no immediates), so a==b identity is not enough — two
     // `mkSmallInt(1)`s are distinct objects. Compare by value (keyHash already does).
-    if (g_api.isSmallInt(a) != 0 and g_api.isSmallInt(b) != 0)
+    if (av == g_api.smallint_vt and bv == g_api.smallint_vt)
         return g_api.smallIntValue(a) == g_api.smallIntValue(b);
-    if (g_api.vtableOf(a) == g_api.string_vt and g_api.vtableOf(b) == g_api.string_vt) {
+    if (av == g_api.string_vt and bv == g_api.string_vt) {
         var la: usize = 0;
         var lb: usize = 0;
         const pa = g_api.stringBytes(a, &la);
@@ -627,7 +629,7 @@ fn keyEq(a: Oop, b: Oop) bool {
     // two boxed 1.5s are one key; `1.0` never equals the Integer `1`. NaN keeps
     // `=`'s semantics (a distinct equal-bits NaN is NOT equal; the identity
     // fast path above still finds the very same box).
-    if (g_api.vtableOf(a) == g_api.float_vt and g_api.vtableOf(b) == g_api.float_vt)
+    if (av == g_api.float_vt and bv == g_api.float_vt)
         return g_api.floatValue(a) == g_api.floatValue(b);
     return false;
 }

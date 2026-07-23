@@ -228,8 +228,8 @@ fn mix64(x0: u64) u64 {
 /// is non-moving; this structure is per-query, so no image-stability concern).
 fn valHash(o: Oop) u64 {
     if (o == null) return mix64(0);
-    if (g_api.isSmallInt(o) != 0) return mix64(@bitCast(g_api.smallIntValue(o)));
     const vt = g_api.vtableOf(o);
+    if (vt == g_api.smallint_vt) return mix64(@bitCast(g_api.smallIntValue(o)));
     if (vt == g_api.string_vt) {
         var len: usize = 0;
         const p = g_api.stringBytes(o, &len);
@@ -831,9 +831,11 @@ fn applyClauses(aa: std.mem.Allocator, clausesVec: Oop, tidx: *TripleIndex) []co
 fn valEq(a: Oop, b: Oop) bool {
     if (a == b) return true;
     if (a == null or b == null) return false;
-    if (g_api.isSmallInt(a) != 0 and g_api.isSmallInt(b) != 0)
+    const av = g_api.vtableOf(a);
+    const bv = g_api.vtableOf(b);
+    if (av == g_api.smallint_vt and bv == g_api.smallint_vt)
         return g_api.smallIntValue(a) == g_api.smallIntValue(b);
-    if (g_api.vtableOf(a) == g_api.string_vt and g_api.vtableOf(b) == g_api.string_vt) {
+    if (av == g_api.string_vt and bv == g_api.string_vt) {
         var la: usize = 0;
         var lb: usize = 0;
         const pa = g_api.stringBytes(a, &la);
@@ -842,7 +844,7 @@ fn valEq(a: Oop, b: Oop) bool {
     }
     // Floats by VALUE (IEEE ==), mirroring the prelude's per-type `=` — equal-
     // valued float bindings are ONE solution under set semantics.
-    if (g_api.vtableOf(a) == g_api.float_vt and g_api.vtableOf(b) == g_api.float_vt)
+    if (av == g_api.float_vt and bv == g_api.float_vt)
         return g_api.floatValue(a) == g_api.floatValue(b);
     return false;
 }
