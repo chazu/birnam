@@ -153,7 +153,10 @@ unsafe extern "C" fn vtable_allocate(receiver: Oop, args: *const Oop, count: usi
     }
     // SAFETY: the Method ABI promises at least count entries and count > 0.
     let payload_size = unsafe { args.read() }.addr();
-    with_active(|runtime| runtime.allocate_instance(receiver, payload_size))
+    with_active(|runtime| {
+        // SAFETY: with_active supplies the runtime installed by Runtime::enter.
+        unsafe { runtime.allocate_instance_active(receiver, payload_size) }
+    })
 }
 
 unsafe extern "C" fn vtable_delegated(receiver: Oop, _: *const Oop, _: usize) -> Oop {

@@ -253,6 +253,18 @@ impl Runtime {
 
     pub(crate) fn allocate_instance(&self, vtable: Oop, payload_size: usize) -> Oop {
         self.assert_owner();
+        // SAFETY: assert_owner established the same authority as Runtime::enter.
+        unsafe { self.allocate_instance_active(vtable, payload_size) }
+    }
+
+    /// Allocate an ordinary instance after `enter` has established owner-thread
+    /// authority for this runtime.
+    ///
+    /// # Safety
+    ///
+    /// The caller must be executing within this exact runtime's active dynamic
+    /// extent. Collection-phase and automatic-collection checks remain active.
+    pub(crate) unsafe fn allocate_instance_active(&self, vtable: Oop, payload_size: usize) -> Oop {
         self.require_allocation_allowed();
         self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
@@ -393,6 +405,47 @@ impl Runtime {
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
         state.values.allocate_string(&mut state.heap, vtable, bytes)
+    }
+
+    pub(crate) fn make_string_with_finalizer(
+        &self,
+        bytes: &[u8],
+        finalizer: crate::abi::Finalizer,
+    ) -> Oop {
+        self.assert_owner();
+        // SAFETY: assert_owner established the same authority as Runtime::enter.
+        unsafe { self.make_string_with_finalizer_active(bytes, finalizer) }
+    }
+
+    /// Allocate a canonical String and install its finalizer after `enter` has
+    /// established owner-thread authority for this runtime.
+    ///
+    /// # Safety
+    ///
+    /// The caller must be executing within this exact runtime's active dynamic
+    /// extent. Collection-phase and automatic-collection checks remain active.
+    pub(crate) unsafe fn make_string_with_finalizer_active(
+        &self,
+        bytes: &[u8],
+        finalizer: crate::abi::Finalizer,
+    ) -> Oop {
+        self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
+        // SAFETY: active-runtime serialization and no foreign call in this
+        // scope. Automatic collection completed before this state borrow.
+        let state = unsafe { &mut *self.state.get() };
+        let string_vtable = state
+            .canonical
+            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"))
+            .string_vt;
+        let object = state
+            .values
+            .allocate_string(&mut state.heap, string_vtable, bytes);
+        boundary::require_invariant(
+            state.heap.set_finalizer(object, finalizer),
+            "new String did not retain finalizer metadata",
+        );
+        object
     }
 
     pub(crate) fn clone_string(&self, object: Oop, finalizer: crate::abi::Finalizer) -> Oop {
@@ -1027,7 +1080,10 @@ pub(crate) fn with_active_if_present<R>(operation: impl FnOnce(&Runtime) -> R) -
 #[cfg(test)]
 mod tests {
     use super::{current_thread_token, with_active_if_present};
+    use crate::abi::Oop;
     use crate::dispatch::build_bootstrap;
+
+    unsafe extern "C" fn inert_finalizer(_: Oop) {}
 
     #[test]
     fn owner_tokens_are_stable_and_unique_across_threads() {
@@ -1061,5 +1117,36 @@ mod tests {
         });
 
         assert!(with_active_if_present(|_| ()).is_none());
+    }
+
+    #[test]
+    fn active_allocations_preserve_instance_and_string_metadata() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let globals = runtime.globals();
+        let canonical = runtime.canonical();
+
+        runtime.enter(|| {
+            // SAFETY: Runtime::enter established owner-thread authority for
+            // this exact runtime for the complete dynamic extent.
+            let instance = unsafe { runtime.allocate_instance_active(globals.object_vt, 9) };
+            // SAFETY: same active-runtime authority as above.
+            let string =
+                unsafe { runtime.make_string_with_finalizer_active(b"Birnam", inert_finalizer) };
+
+            assert_eq!(
+                runtime.payload_size(instance),
+                Some(2 * core::mem::size_of::<usize>()),
+                "active allocation retains the floor's word-padded extent"
+            );
+            assert_eq!(
+                runtime.checked_vtable_of(instance),
+                globals.object_vt,
+                "active instance allocation retains its requested vtable"
+            );
+            assert_eq!(runtime.string_bytes(string), Some(&b"Birnam"[..]));
+            assert_eq!(runtime.checked_vtable_of(string), canonical.string_vt);
+            assert_eq!(runtime.has_finalizer(string), Some(true));
+        });
     }
 }

@@ -75,6 +75,13 @@ unsafe extern "C" fn api_method(vtable: Oop, selector: Oop, method: Method) {
 }
 
 unsafe extern "C" fn api_alloc(vtable: Oop, payload_size: usize) -> Oop {
+    if let Some(object) = with_active_if_present(|active| {
+        // SAFETY: with_active_if_present proves a surrounding owner-checked
+        // Runtime::enter for this exact runtime.
+        unsafe { active.allocate_instance_active(vtable, payload_size) }
+    }) {
+        return object;
+    }
     runtime().allocate_instance(vtable, payload_size)
 }
 
@@ -195,10 +202,14 @@ unsafe extern "C" fn api_make_string(bytes: *const u8, length: usize) -> Oop {
         // copied synchronously and never retained through this borrowed slice.
         unsafe { std::slice::from_raw_parts(bytes, length) }
     };
-    let canonical = runtime().canonical();
-    let object = runtime().allocate_string(canonical.string_vt, bytes);
-    runtime().set_finalizer(object, string_finalizer);
-    object
+    if let Some(object) = with_active_if_present(|active| {
+        // SAFETY: with_active_if_present proves a surrounding owner-checked
+        // Runtime::enter for this exact runtime.
+        unsafe { active.make_string_with_finalizer_active(bytes, string_finalizer) }
+    }) {
+        return object;
+    }
+    runtime().make_string_with_finalizer(bytes, string_finalizer)
 }
 
 unsafe extern "C" fn api_string_bytes(object: Oop, out_length: *mut usize) -> *const u8 {
