@@ -32,17 +32,22 @@ find src/id -type f -name '*.zig' ! -name '*_test.zig' -print | sed 's#^src/id/#
 find "$tmp/birnam/share/birnam/src/id" -type f -name '*.zig' -print | sed "s#^$tmp/birnam/share/birnam/src/id/##" | sort >"$tmp/installed-source"
 diff -u "$tmp/expected-source" "$tmp/installed-source"
 
-find rust/birnam-id/src -type f -name '*.rs' -print | sed 's#^rust/birnam-id/src/##' | sort >"$tmp/expected-rust-source"
-find "$tmp/birnam/share/birnam/src/rust/birnam-id/src" -type f -name '*.rs' -print | sed "s#^$tmp/birnam/share/birnam/src/rust/birnam-id/src/##" | sort >"$tmp/installed-rust-source"
-diff -u "$tmp/expected-rust-source" "$tmp/installed-rust-source"
-find rust/birnam-abi/src -type f -name '*.rs' -print | sed 's#^rust/birnam-abi/src/##' | sort >"$tmp/expected-rust-abi-source"
-find "$tmp/birnam/share/birnam/src/rust/birnam-abi/src" -type f -name '*.rs' -print | sed "s#^$tmp/birnam/share/birnam/src/rust/birnam-abi/src/##" | sort >"$tmp/installed-rust-abi-source"
-diff -u "$tmp/expected-rust-abi-source" "$tmp/installed-rust-abi-source"
-cmp Cargo.toml "$tmp/birnam/share/birnam/src/rust/Cargo.toml"
-cmp Cargo.lock "$tmp/birnam/share/birnam/src/rust/Cargo.lock"
-cmp rust/birnam-abi/Cargo.toml "$tmp/birnam/share/birnam/src/rust/birnam-abi/Cargo.toml"
-cmp rust/birnam-id/Cargo.toml "$tmp/birnam/share/birnam/src/rust/birnam-id/Cargo.toml"
-cmp rust/birnam-id/build.rs "$tmp/birnam/share/birnam/src/rust/birnam-id/build.rs"
+find rust -type f \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'build.rs' \) -print | sort >"$tmp/expected-rust-workspace"
+find "$tmp/birnam/share/birnam/src/rust" -type f \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'build.rs' \) -print |
+  sed "s#^$tmp/birnam/share/birnam/src/##" | sort >"$tmp/installed-rust-workspace"
+diff -u "$tmp/expected-rust-workspace" "$tmp/installed-rust-workspace"
+cmp Cargo.toml "$tmp/birnam/share/birnam/src/Cargo.toml"
+cmp Cargo.lock "$tmp/birnam/share/birnam/src/Cargo.lock"
+test ! -e "$tmp/birnam/share/birnam/src/rust/Cargo.toml"
+
+mkdir -p "$tmp/cargo-home"
+CARGO_HOME="$tmp/cargo-home" cargo metadata \
+  --offline \
+  --no-deps \
+  --format-version=1 \
+  --manifest-path "$tmp/birnam/share/birnam/src/Cargo.toml" >"$tmp/cargo-metadata.json"
+test "$(jq -r '.workspace_root' "$tmp/cargo-metadata.json")" = "$tmp/birnam/share/birnam/src"
+test "$(jq -r '[.packages[].name] | sort | join(" ")' "$tmp/cargo-metadata.json")" = "birnam-abi birnam-id"
 
 find docs/guide -type f -name '*.md' -print | sed 's#^docs/guide/##' | sort >"$tmp/expected-guide"
 find "$tmp/birnam/share/birnam/docs/guide" -type f -name '*.md' -print | sed "s#^$tmp/birnam/share/birnam/docs/guide/##" | sort >"$tmp/installed-guide"
@@ -89,8 +94,10 @@ grep -q 'Blocking process isolates' reference.html
 grep -q 'id="html"' reference.html
 grep -q 'tag:body:' reference.html
 grep -q 'id="rust-abi"' reference.html
-grep -q 'Append-only C ABI table returned by' reference.html
+grep -q 'id="rust-lib"' reference.html
+grep -q '>Native Rust<' reference.html
 grep -q '>Rust floor<' reference.html
+grep -q 'Append-only C ABI table returned by' reference.html
 "$bin" --lsp </dev/null >/dev/null
 printf ':quit\n' | env BIRNAM_ID_FLOOR_IDENTITY=rust-id-v1 "$bin" >/dev/null
 printf ':quit\n' | env \

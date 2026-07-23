@@ -820,24 +820,18 @@ pub fn build(b: *std.Build) void {
         );
         b.getInstallStep().dependOn(&install_source.step);
     }
+    // Preserve the repository-relative Cargo member paths wholesale. New Rust
+    // crates join the installed audit/doc workspace without another per-crate
+    // build rule.
     b.installDirectory(.{
-        .source_dir = b.path("rust/birnam-abi/src"),
+        .source_dir = b.path("rust"),
         .install_dir = .prefix,
-        .install_subdir = "share/birnam/src/rust/birnam-abi/src",
-        .include_extensions = &.{".rs"},
-    });
-    b.installDirectory(.{
-        .source_dir = b.path("rust/birnam-id/src"),
-        .install_dir = .prefix,
-        .install_subdir = "share/birnam/src/rust/birnam-id/src",
-        .include_extensions = &.{".rs"},
+        .install_subdir = "share/birnam/src/rust",
+        .include_extensions = &.{ ".rs", ".toml" },
     });
     const rust_source_files = [_]struct { src: []const u8, dest: []const u8 }{
-        .{ .src = "Cargo.toml", .dest = "share/birnam/src/rust/Cargo.toml" },
-        .{ .src = "Cargo.lock", .dest = "share/birnam/src/rust/Cargo.lock" },
-        .{ .src = "rust/birnam-abi/Cargo.toml", .dest = "share/birnam/src/rust/birnam-abi/Cargo.toml" },
-        .{ .src = "rust/birnam-id/Cargo.toml", .dest = "share/birnam/src/rust/birnam-id/Cargo.toml" },
-        .{ .src = "rust/birnam-id/build.rs", .dest = "share/birnam/src/rust/birnam-id/build.rs" },
+        .{ .src = "Cargo.toml", .dest = "share/birnam/src/Cargo.toml" },
+        .{ .src = "Cargo.lock", .dest = "share/birnam/src/Cargo.lock" },
     };
     inline for (rust_source_files) |source| {
         const install_source = b.addInstallFileWithDir(

@@ -112,6 +112,10 @@
   [[db findAll: ?m where: #[ #[?m #docKind #rustFloor] ]] includes: mod]] doc:
   "True iff `mod`'s docs came from a Rust-source scan (the #docKind #rustFloor fact) rather than a loadable birnam module."];
 
+[Reflect defineMethod: #isNativeRust: on: Doc as: [:self :mod |
+  [[db findAll: ?m where: #[ #[?m #docKind #nativeRust] ]] includes: mod]] doc:
+  "True iff `mod` belongs to a native Rust crate above or alongside the Rust floor, recorded as #nativeRust."];
+
 // Every documented module, ordered by display name (String `<` under sortBy:).
 [Reflect defineMethod: #sortedModules on: Doc as: [:self |
   let me := self;
@@ -446,7 +450,9 @@
     ifTrue:  [| [Html tag: "span" attrs: [Html attr: "class" value: "kind"] body: "Zig floor"]]
     ifFalse: [| [[self isRustFloor: mod]
       ifTrue:  [| [Html tag: "span" attrs: [Html attr: "class" value: "kind"] body: "Rust floor"]]
-      ifFalse: [| ""]]]];
+      ifFalse: [| [[self isNativeRust: mod]
+        ifTrue:  [| [Html tag: "span" attrs: [Html attr: "class" value: "kind"] body: "Native Rust"]]
+        ifFalse: [| ""]]]]]];
   let header := [self headerOf: mod];
   let notes := [[header isEmpty]
     ifTrue:  [| ""]
@@ -486,11 +492,14 @@
   let me := self;
   let mods := [self sortedModules];
   let birnamMods := [mods inject: #[] into: [:acc :m |
-    [[[me isZigFloor: m] | [me isRustFloor: m]] ifTrue: [| acc] ifFalse: [| [acc add: m]]]]];
+    [[[[me isZigFloor: m] | [me isRustFloor: m]] | [me isNativeRust: m]]
+      ifTrue: [| acc] ifFalse: [| [acc add: m]]]]];
   let zigMods := [mods inject: #[] into: [:acc :m |
     [[me isZigFloor: m] ifTrue: [| [acc add: m]] ifFalse: [| acc]]]];
   let rustMods := [mods inject: #[] into: [:acc :m |
     [[me isRustFloor: m] ifTrue: [| [acc add: m]] ifFalse: [| acc]]]];
+  let nativeRustMods := [mods inject: #[] into: [:acc :m |
+    [[me isNativeRust: m] ifTrue: [| [acc add: m]] ifFalse: [| acc]]]];
   let srcIdx := [self sourceIndex];
   let guides := [[db cellFor: Doc attr: #guides] value];
   let nav := [StringBuilder new];
@@ -512,6 +521,9 @@
   [[rustMods isEmpty] ifTrue: [| nil] ifFalse: [|
     [nav add: [Html tag: "h2" text: "Rust floor"]];
     [nav add: [Html tag: "ul" body: [me navListFor: rustMods]]]]];
+  [[nativeRustMods isEmpty] ifTrue: [| nil] ifFalse: [|
+    [nav add: [Html tag: "h2" text: "Native Rust"]];
+    [nav add: [Html tag: "ul" body: [me navListFor: nativeRustMods]]]]];
   let secs := [StringBuilder new];
   [secs add: [Html tag: "h1" text: "birnam documentation"]];
   [guides do: [:g |
@@ -567,9 +579,9 @@
   "Load every supported runtime module from its compiled unit so its documentation and source metadata become visible. Answers self."];
 
 // Build the full HTML reference to `out`: load the compiled production closure,
-// extract the separately shipped native Rust floor/ABI and Zig-oracle docs, load authored guides,
+// extract the separately shipped Cargo workspace and Zig-oracle docs, load authored guides,
 // then write `htmlIndex`. Answers `out`.
-[Reflect defineMethod: #buildSite:zig:rust:rustAbi:guides: on: Doc as: [:self :out :zd :rd :rad :gd |
+[Reflect defineMethod: #buildSite:zig:rustWorkspace:guides: on: Doc as: [:self :out :zd :rw :gd |
   let me := self;
   let loaded := [self loadAllModules];
   [[loaded isError]
@@ -577,11 +589,10 @@
     ifFalse: [|
       [self loadGuides: gd];
       [Zigdoc scanDir: zd];
-      [Zigdoc scanRustDir: rd];
-      [Zigdoc scanRust: [rad , "/lib.rs"] as: ["rust-abi" asSymbol]];
+      [Zigdoc scanRustWorkspace: rw];
       [File write: out contents: [me htmlIndex]];
       out]]] doc:
-  "Build the full HTML reference to `out`: load compiled production modules, guides, Rust floor/ABI docs, and Zig-oracle docs, then write htmlIndex. Answers `out`."];
+  "Build the full HTML reference to `out`: load compiled production modules, guides, every installed Rust workspace crate, and Zig-oracle docs, then write htmlIndex. Answers `out`."];
 
 // module:is: predates the #doc registration above (it IS the registrar), so its
 // docstring rides the appended path instead of a doc: define:

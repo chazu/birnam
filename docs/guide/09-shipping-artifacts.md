@@ -129,7 +129,7 @@ prefix/
   lib/libbirnam_id_artifact_zig.dylib
   lib/libbirnam_*.dylib
   share/birnam/src/id/*.zig
-  share/birnam/src/rust/Cargo.{toml,lock}
+  share/birnam/src/Cargo.{toml,lock}
   share/birnam/src/rust/birnam-abi/Cargo.toml
   share/birnam/src/rust/birnam-abi/src/*.rs
   share/birnam/src/rust/birnam-id/{Cargo.toml,build.rs}
@@ -137,10 +137,11 @@ prefix/
   share/birnam/docs/guide/*.md
 ```
 
-Moving `prefix/` as a unit preserves lookup. `BIRNAM_LIB_DIR` and
-`BIRNAM_ID_DYLIB` are narrow test/embedding overrides, not required runtime
-manifests. Production lookup does not fall through to the current directory or
-a source checkout.
+Moving `prefix/` as a unit preserves lookup. `BIRNAM_LIB_DIR`,
+`BIRNAM_ID_DYLIB`, and `BIRNAM_RUST_WORKSPACE_DIR` are narrow test/embedding
+overrides, not required runtime manifests. The last names the workspace root
+containing `Cargo.toml`, not an individual crate's `src` directory. Production
+lookup does not fall through to the current directory or a source checkout.
 
 ## Native wrappers
 

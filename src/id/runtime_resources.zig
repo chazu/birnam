@@ -9,6 +9,7 @@ const std = @import("std");
 pub const Overrides = struct {
     lib_dir: ?[]const u8 = null,
     id_dylib: ?[]const u8 = null,
+    rust_workspace_dir: ?[]const u8 = null,
 };
 
 pub const Resources = struct {
@@ -16,8 +17,7 @@ pub const Resources = struct {
     prefix: []u8,
     lib_dir: []u8,
     source_dir: []u8,
-    rust_source_dir: []u8,
-    rust_abi_source_dir: []u8,
+    rust_workspace_dir: []u8,
     guide_dir: []u8,
     id_dylib: []u8,
 
@@ -25,8 +25,7 @@ pub const Resources = struct {
         self.allocator.free(self.prefix);
         self.allocator.free(self.lib_dir);
         self.allocator.free(self.source_dir);
-        self.allocator.free(self.rust_source_dir);
-        self.allocator.free(self.rust_abi_source_dir);
+        self.allocator.free(self.rust_workspace_dir);
         self.allocator.free(self.guide_dir);
         self.allocator.free(self.id_dylib);
         self.* = undefined;
@@ -46,7 +45,7 @@ fn resolvedOverrideOr(
 ///
 ///   <prefix>/bin/birnam
 ///   <prefix>/lib/*.dylib
-///   <prefix>/share/birnam/{src/id,src/rust/{birnam-id,birnam-abi}/src,docs/guide}
+///   <prefix>/share/birnam/{src/{Cargo.toml,Cargo.lock,id,rust/*},docs/guide}
 ///
 /// Explicit overrides replace only their named resource. In particular an id
 /// dylib override is an exact file, while a lib-dir override also supplies the
@@ -62,10 +61,12 @@ pub fn resolveFromExeDir(
     errdefer a.free(lib_dir);
     const source_dir = try std.fs.path.resolve(a, &.{ prefix, "share", "birnam", "src", "id" });
     errdefer a.free(source_dir);
-    const rust_source_dir = try std.fs.path.resolve(a, &.{ prefix, "share", "birnam", "src", "rust", "birnam-id", "src" });
-    errdefer a.free(rust_source_dir);
-    const rust_abi_source_dir = try std.fs.path.resolve(a, &.{ prefix, "share", "birnam", "src", "rust", "birnam-abi", "src" });
-    errdefer a.free(rust_abi_source_dir);
+    const rust_workspace_dir = try resolvedOverrideOr(
+        a,
+        overrides.rust_workspace_dir,
+        &.{ prefix, "share", "birnam", "src" },
+    );
+    errdefer a.free(rust_workspace_dir);
     const guide_dir = try std.fs.path.resolve(a, &.{ prefix, "share", "birnam", "docs", "guide" });
     errdefer a.free(guide_dir);
     const id_dylib = try resolvedOverrideOr(a, overrides.id_dylib, &.{ lib_dir, "libbirnam_id.dylib" });
@@ -75,8 +76,7 @@ pub fn resolveFromExeDir(
         .prefix = prefix,
         .lib_dir = lib_dir,
         .source_dir = source_dir,
-        .rust_source_dir = rust_source_dir,
-        .rust_abi_source_dir = rust_abi_source_dir,
+        .rust_workspace_dir = rust_workspace_dir,
         .guide_dir = guide_dir,
         .id_dylib = id_dylib,
     };
@@ -88,6 +88,7 @@ pub fn resolve(a: std.mem.Allocator) !Resources {
     return resolveFromExeDir(a, exe_dir, .{
         .lib_dir = std.posix.getenv("BIRNAM_LIB_DIR"),
         .id_dylib = std.posix.getenv("BIRNAM_ID_DYLIB"),
+        .rust_workspace_dir = std.posix.getenv("BIRNAM_RUST_WORKSPACE_DIR"),
     });
 }
 
@@ -97,8 +98,7 @@ test "runtime resources use one normalized executable-relative layout" {
     try std.testing.expectEqualStrings("/opt/birnam", resources.prefix);
     try std.testing.expectEqualStrings("/opt/birnam/lib", resources.lib_dir);
     try std.testing.expectEqualStrings("/opt/birnam/share/birnam/src/id", resources.source_dir);
-    try std.testing.expectEqualStrings("/opt/birnam/share/birnam/src/rust/birnam-id/src", resources.rust_source_dir);
-    try std.testing.expectEqualStrings("/opt/birnam/share/birnam/src/rust/birnam-abi/src", resources.rust_abi_source_dir);
+    try std.testing.expectEqualStrings("/opt/birnam/share/birnam/src", resources.rust_workspace_dir);
     try std.testing.expectEqualStrings("/opt/birnam/share/birnam/docs/guide", resources.guide_dir);
     try std.testing.expectEqualStrings("/opt/birnam/lib/libbirnam_id.dylib", resources.id_dylib);
 }
@@ -107,13 +107,13 @@ test "runtime resource overrides remain narrow and exact" {
     var resources = try resolveFromExeDir(std.testing.allocator, "/opt/birnam/bin", .{
         .lib_dir = "/tmp/runtime/lib/../lib",
         .id_dylib = "/tmp/floor/custom-id.dylib",
+        .rust_workspace_dir = "/tmp/native-workspace/../native-workspace",
     });
     defer resources.deinit();
     try std.testing.expectEqualStrings("/tmp/runtime/lib", resources.lib_dir);
     try std.testing.expectEqualStrings("/tmp/floor/custom-id.dylib", resources.id_dylib);
     try std.testing.expectEqualStrings("/opt/birnam/share/birnam/src/id", resources.source_dir);
-    try std.testing.expectEqualStrings("/opt/birnam/share/birnam/src/rust/birnam-id/src", resources.rust_source_dir);
-    try std.testing.expectEqualStrings("/opt/birnam/share/birnam/src/rust/birnam-abi/src", resources.rust_abi_source_dir);
+    try std.testing.expectEqualStrings("/tmp/native-workspace", resources.rust_workspace_dir);
 }
 
 test "a lib override supplies the default id dylib" {

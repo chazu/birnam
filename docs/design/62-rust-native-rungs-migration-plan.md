@@ -519,6 +519,30 @@ smokes pass before the first higher Rust rung lands.
 <prefix>/share/birnam/src/Cargo.toml` resolves the installed workspace without
 network access.
 
+#### N0.6 execution record — complete, 2026-07-23
+
+The installed Rust resource is now one repository-relative workspace:
+`share/birnam/src/Cargo.toml` and `Cargo.lock` remain at the workspace root,
+with every Rust crate copied below `share/birnam/src/rust/<crate>`. The build
+copies the workspace tree wholesale, so adding a crate does not require another
+per-crate install rule. `runtime_resources` resolves the workspace root
+relative to the executable and accepts the narrow `BIRNAM_RUST_WORKSPACE_DIR`
+override; it no longer exposes separate floor and ABI source directories.
+
+The CLI and docgen boundary now pass that one workspace resource. The native
+scanner discovers every crate under `rust/`, preserves the established
+`rust-*` identities for `birnam-id`, gives other crates collision-free
+`rust-<crate>` identities, and records `#rustFloor` only for `birnam-id` while
+recording `#nativeRust` for `birnam-abi` and future higher native crates. The
+HTML reference has separate Rust-floor and Native-Rust groups.
+
+The relocated install smoke compares the complete Rust workspace, rejects the
+old nested Cargo manifest, runs `cargo metadata --offline --no-deps` against
+the installed root manifest, and generates documentation after relocation.
+It also confirms there is no runtime manifest and no loose production Birnam
+source. `zig build test-birnam`, `zig build test-install`, and the focused
+baseline gate pass.
+
 ## 7. Phase N1 — Pointer-free artifact boundary
 
 This is the first production rung because it is small, security-sensitive, and

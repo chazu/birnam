@@ -3,8 +3,9 @@
 > **Status:** Implemented through P3, 2026-07-22. P0 and the
 > compiled-production-module P1 landed 2026-07-21; self-describing inspection,
 > pre-activation closure validation, and source-free project roots landed
-> 2026-07-22. The 2026-07-23 Rust-floor cutover extends the same fixed layout
-> with complete Rust floor sources and the separately named Zig oracle.
+> 2026-07-22. The 2026-07-23 Rust-floor cutover and native-rung migration extend
+> the same fixed layout with the complete Cargo workspace and the separately
+> named Zig oracle.
 > This document completes the distribution
 > side of [51 — Project Manifests and Dependency
 > Resolution](51-project-manifests-and-dependency-resolution.md), [52 — Project
@@ -27,7 +28,7 @@ Birnam's runtime is intentionally layered. A usable installation needs:
 - the siphon executable;
 - kernel and self-hosted dylibs;
 - compiled-unit CLI, REPL, LSP, documentation, and library modules;
-- Rust-floor, Zig-oracle, and guide sources for documentation/recovery;
+- Rust-workspace, Zig-oracle, and guide sources for documentation/recovery;
 - project-built modules, images, or isolate baselines supplied by a project.
 
 The goal is a bundle that can be unpacked or moved anywhere and still support
@@ -162,6 +163,10 @@ birnam-<version>-<target>/
   lib/
     libbirnam_*.dylib
   share/birnam/
+    src/Cargo.toml
+    src/Cargo.lock
+    src/rust/<crate>/Cargo.toml
+    src/rust/<crate>/src/*.rs
     src/id/*.zig
     docs/guide/*.md
 ~~~
@@ -179,7 +184,9 @@ The intended precedence is:
 
 1. exact `BIRNAM_ID_DYLIB` for the id-floor dylib;
 2. `BIRNAM_LIB_DIR` for compiled units and runtime dylibs;
-3. the fixed prefix derived from the running executable.
+3. `BIRNAM_RUST_WORKSPACE_DIR` for the installed documentation/audit
+   workspace; and
+4. the fixed prefix derived from the running executable.
 
 The host resolves these through `src/id/runtime_resources.zig`. Production
 module dependencies resolve by canonical identity and self-description through

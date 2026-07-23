@@ -118,6 +118,10 @@
   [self scan: path as: mod kind: #rustFloor language: "Rust"]] doc:
   "Scan one .rs file at `path` into Doc facts under `mod`, marking it #rustFloor. Answers `mod`."];
 
+[Reflect defineMethod: #scanNativeRust:as: on: Zigdoc as: [:self :path :mod |
+  [self scan: path as: mod kind: #nativeRust language: "Rust"]] doc:
+  "Scan one .rs file at `path` into Doc facts under `mod`, marking it #nativeRust. Answers `mod`."];
+
 // Make `mod` documented if it isn't already: load its compiled unit, and if
 // that identity is not a shipped Birnam module, scan the Zig file at `zp`.
 [Reflect defineMethod: #ensure:zig: on: Zigdoc as: [:self :mod :zp |
@@ -155,4 +159,52 @@
         [acc add: mod]]
       ifFalse: [| acc]]]];
   mods] doc:
-  "Scan every .rs in `dir`, each into module #rust-<basename>; answers the Vector of module symbols documented."]
+  "Scan every .rs in `dir`, each into module #rust-<basename>; answers the Vector of module symbols documented."];
+
+// Scan one Cargo workspace crate. `birnam-id` retains the established
+// #rust-<file> identities and is the #rustFloor. Every other crate is
+// #nativeRust and uses #rust-<crate> for lib.rs or
+// #rust-<crate>-<file> for additional source files, avoiding cross-crate
+// collisions as the workspace grows.
+[Reflect defineMethod: #rustModuleFor:inCrate: on: Zigdoc as: [:self :base :crate |
+  let suffix := [[crate startsWith: "birnam-"]
+    ifTrue: [| [crate copyFrom: 7 to: [crate size]]]
+    ifFalse: [| crate]];
+  [[crate = "birnam-id"]
+    ifTrue: [| ["rust-" , base]]
+    ifFalse: [|
+      [[base = "lib"]
+        ifTrue: [| ["rust-" , suffix]]
+        ifFalse: [| [[["rust-" , suffix] , "-"] , base]]]]]] doc:
+  "The collision-free documentation module name for Rust source `base` in `crate`."];
+
+[Reflect defineMethod: #scanRustCrate:at:kind: on: Zigdoc as: [:self :crate :root :kind |
+  let dir := [[[[root , "/rust/"] , crate] , "/"] , "src"];
+  let listed := [File listDir: dir];
+  let names := [[[listed isNil] ifTrue: [| #[]] ifFalse: [| listed]] sortBy: [:x | x]];
+  let mods := [names inject: #[] into: [:acc :nm |
+    [[nm endsWith: ".rs"]
+      ifTrue: [|
+        let base := [[nm split: "."] first];
+        let label := [self rustModuleFor: base inCrate: crate];
+        let mod := [label asSymbol];
+        [self scan: [[dir , "/"] , nm] as: mod kind: kind language: "Rust"];
+        [acc add: mod]]
+      ifFalse: [| acc]]]];
+  mods] doc:
+  "Scan one installed Cargo workspace crate with collision-free module identities and the explicit documentation `kind`."];
+
+[Reflect defineMethod: #scanRustWorkspace: on: Zigdoc as: [:self :root |
+  let rustRoot := [root , "/rust"];
+  let listed := [File listDir: rustRoot];
+  let crates := [[[listed isNil] ifTrue: [| #[]] ifFalse: [| listed]] sortBy: [:x | x]];
+  let mods := [crates inject: #[] into: [:acc :crate |
+    let cratePath := [[rustRoot , "/"] , crate];
+    [[File isDir: cratePath]
+      ifTrue: [|
+        let kind := [[crate = "birnam-id"] ifTrue: [| #rustFloor] ifFalse: [| #nativeRust]];
+        [[self scanRustCrate: crate at: root kind: kind]
+          inject: acc into: [:all :mod | [all add: mod]]]]
+      ifFalse: [| acc]]]];
+  mods] doc:
+  "Scan every crate under `<workspace>/rust`: birnam-id as #rustFloor and all other native crates as #nativeRust."];

@@ -89,8 +89,9 @@
       "contains": [
         "libbirnam_id.dylib libbirnam_id_zig.dylib libbirnam_id_artifact.dylib",
         "libbirnam_id_artifact_zig.dylib",
-        "find rust/birnam-id/src",
-        "find rust/birnam-abi/src",
+        "find rust -type f",
+        "share/birnam/src/Cargo.toml",
+        "cargo metadata",
         "find docs/guide",
         "relocated compiled closure, tools, projects, images, isolates, and diagnostics passed"
       ]
