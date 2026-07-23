@@ -354,8 +354,9 @@ fn vComma(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
 fn vIndexOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     const v = vec(self);
+    const matcher = KeyMatcher.init(a[0]);
     var i: usize = 0;
-    while (i < v.count) : (i += 1) if (keyEq(vecAt(v, i), a[0])) return mki(@intCast(i));
+    while (i < v.count) : (i += 1) if (matcher.matches(vecAt(v, i))) return mki(@intCast(i));
     return g_api.nilObj;
 }
 /// `[v copyFrom: from to: to]` — the subvector for [from, to) (half-open,
@@ -630,6 +631,47 @@ fn keyEq(a: Oop, b: Oop) bool {
         return g_api.floatValue(a) == g_api.floatValue(b);
     return false;
 }
+
+const KeyMatcher = struct {
+    key: Oop,
+    value: union(enum) {
+        identity,
+        integer: i64,
+        string: []const u8,
+        float: f64,
+    },
+
+    fn init(key: Oop) KeyMatcher {
+        const vt = g_api.vtableOf(key);
+        if (vt == g_api.smallint_vt)
+            return .{ .key = key, .value = .{ .integer = g_api.smallIntValue(key) } };
+        if (vt == g_api.string_vt) {
+            var len: usize = 0;
+            const bytes = g_api.stringBytes(key, &len);
+            return .{ .key = key, .value = .{ .string = bytes[0..len] } };
+        }
+        if (vt == g_api.float_vt)
+            return .{ .key = key, .value = .{ .float = g_api.floatValue(key) } };
+        return .{ .key = key, .value = .identity };
+    }
+
+    fn matches(self: KeyMatcher, candidate: Oop) bool {
+        if (candidate == self.key) return true;
+        return switch (self.value) {
+            .identity => false,
+            .integer => |value| g_api.vtableOf(candidate) == g_api.smallint_vt and
+                g_api.smallIntValue(candidate) == value,
+            .string => |value| blk: {
+                if (g_api.vtableOf(candidate) != g_api.string_vt) break :blk false;
+                var len: usize = 0;
+                const bytes = g_api.stringBytes(candidate, &len);
+                break :blk std.mem.eql(u8, bytes[0..len], value);
+            },
+            .float => |value| g_api.vtableOf(candidate) == g_api.float_vt and
+                g_api.floatValue(candidate) == value,
+        };
+    }
+};
 
 // -- HAMT core (find / assoc), all path-copying ------------------------------
 
@@ -1081,7 +1123,6 @@ fn sbAsString(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     if (s.ptr) |p| return g_api.mkString(p, s.len);
     return g_api.mkString("", 0);
 }
-
 
 /// `aString replace: needle with: repl` → a fresh String with every non-
 /// overlapping occurrence of `needle` replaced by `repl`. An empty needle is a

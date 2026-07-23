@@ -156,6 +156,33 @@ test "collection: the trie overflows the tail correctly (>32 elements)" {
     }
 }
 
+test "collection: Vector indexOf preserves value and identity equality" {
+    const api = setup();
+    const identity_vt = api.proto(api.object_vt);
+    const identity = api.alloc(identity_vt, 0);
+    const equal_shape_but_distinct = api.alloc(identity_vt, 0);
+    const nan = api.mkFloat(std.math.nan(f64));
+
+    var vector = api.import("Vector");
+    for ([_]Oop{
+        api.mkSmallInt(41),
+        api.mkString("same bytes", 10),
+        api.mkFloat(1.25),
+        identity,
+        nan,
+    }) |value| vector = s1(vector, "add:", value);
+
+    try std.testing.expectEqual(@as(i64, 0), ival(s1(vector, "indexOf:", api.mkSmallInt(41))));
+    try std.testing.expectEqual(@as(i64, 1), ival(s1(vector, "indexOf:", api.mkString("same bytes", 10))));
+    try std.testing.expectEqual(@as(i64, 2), ival(s1(vector, "indexOf:", api.mkFloat(1.25))));
+    try std.testing.expectEqual(@as(i64, 3), ival(s1(vector, "indexOf:", identity)));
+    try std.testing.expectEqual(@as(i64, 4), ival(s1(vector, "indexOf:", nan)));
+
+    try std.testing.expect(s1(vector, "indexOf:", api.mkFloat(std.math.nan(f64))) == api.nilObj);
+    try std.testing.expect(s1(vector, "indexOf:", equal_shape_but_distinct) == api.nilObj);
+    try std.testing.expect(s1(vector, "indexOf:", api.mkFloat(41.0)) == api.nilObj);
+}
+
 test "collection: String concatenation builds a fresh String" {
     const api = setup();
     const hello = api.mkString("hello, ", 7);
