@@ -1967,9 +1967,16 @@ Clippy, full Miri, the cross-language reentrant-dispatch probe in debug and
 release, and the 256-test selected Rust-floor lower-rung matrix in both profiles.
 Its performance effect remains unclaimed until the guarded clean pair completes.
 The complete `zig build verify` gate passed again at `7666f87`, after the
-wrapper-level regression and release pre-build host guard landed. R6 remains
-open, and R7 must not begin until that pair passes or a separate tradeoff record
-is accepted.
+wrapper-level regression and release pre-build host guard landed. At `5e9d171`,
+active-runtime reuse moved into `Runtime::enter` itself: a fresh public send now
+performs one TLS lookup and one owner check, while a nested send performs one TLS
+lookup and reuses the previously proved authority without replacing TLS state.
+The foreign reentry fixture now initializes and exercises the actual
+process-lifetime public runtime rather than a private dispatch harness. All 52
+Rust tests, strict Clippy, full Miri, the debug/release foreign reentry probe,
+and both 256-test selected-floor profiles pass. Its timing effect remains
+unclaimed until the guarded pair completes. R6 remains open, and R7 must not
+begin until that pair passes or a separate tradeoff record is accepted.
 
 ## 13. Phase R7 — Build, install, and default cutover
 
