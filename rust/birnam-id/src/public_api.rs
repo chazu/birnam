@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use crate::abi::{Finalizer, IdApi, Method, MethodOverwriteHook, Oop, RootProvider, TraceHook};
 use crate::boundary;
 use crate::dispatch::{Bootstrap, build_bootstrap};
-use crate::runtime::Runtime;
+use crate::runtime::{Runtime, with_active_if_present};
 
 static PUBLIC_RUNTIME: AtomicPtr<Runtime> = AtomicPtr::new(core::ptr::null_mut());
 
@@ -89,6 +89,13 @@ unsafe extern "C" fn api_make_smallint(value: i64) -> Oop {
 }
 
 unsafe extern "C" fn api_smallint_value(object: Oop) -> i64 {
+    if let Some(value) = with_active_if_present(|active| {
+        // SAFETY: with_active_if_present proves a surrounding owner-checked
+        // Runtime::enter; the IdApi contract requires an Integer object.
+        unsafe { active.integer_value_active(object) }
+    }) {
+        return value;
+    }
     runtime().integer_value(object)
 }
 

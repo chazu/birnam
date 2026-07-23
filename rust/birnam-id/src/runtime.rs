@@ -818,6 +818,16 @@ impl Runtime {
         unsafe { (*self.state.get()).values.integer_value(object) }
     }
 
+    /// Read an Integer after `enter` has already established this runtime as
+    /// active on the owner thread. The public ABI uses this only through
+    /// `with_active_if_present`; calls outside that dynamic extent take the
+    /// checked `integer_value` path above.
+    pub(crate) unsafe fn integer_value_active(&self, object: Oop) -> i64 {
+        // SAFETY: the active-runtime guard proves owner-thread serialization;
+        // the public IdApi contract supplies an Integer object.
+        unsafe { (*self.state.get()).values.integer_value(object) }
+    }
+
     pub(crate) fn float_value(&self, object: Oop) -> f64 {
         self.assert_owner();
         // SAFETY: caller supplies a Float object.
@@ -953,6 +963,21 @@ pub(crate) fn with_active<R>(operation: impl FnOnce(&Runtime) -> R) -> R {
         // SAFETY: enter installs a pointer to a live owner-thread Runtime for
         // this dynamic extent, including synchronous reentrant callbacks.
         operation(unsafe { &*runtime })
+    })
+}
+
+/// Run `operation` only when a surrounding `Runtime::enter` has already proved
+/// owner-thread authority. The closure cannot return a borrow of the runtime,
+/// so the TLS-installed pointer cannot escape its guarded dynamic extent.
+pub(crate) fn with_active_if_present<R>(operation: impl FnOnce(&Runtime) -> R) -> Option<R> {
+    ACTIVE_RUNTIME.with(|active| {
+        let runtime = active.get();
+        if runtime.is_null() {
+            return None;
+        }
+        // SAFETY: enter installs this live pointer only after assert_owner and
+        // restores the previous TLS value before its Runtime can go out of scope.
+        Some(operation(unsafe { &*runtime }))
     })
 }
 
