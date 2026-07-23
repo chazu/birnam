@@ -1,8 +1,8 @@
 # 61 — Rust libid Floor Rewrite Plan
 
-> **Status:** Implementation in progress; R0 through R6 and R7.1 through R7.4
-> are complete as of 2026-07-23. The R7.5 default switch is implemented and its
-> final aggregate verification is in progress. This plan
+> **Status:** R0 through R7 are complete as of 2026-07-23. The Rust floor is the
+> verified default, the Zig oracle remains available, and the R8 observation
+> window/retirement checkpoint is pending. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -2153,8 +2153,21 @@ history.
 Commit `7b35b14` is the focused default switch: ordinary builds install the Rust
 artifact as `libbirnam_id.dylib`; `-Dfloor=zig` is explicit. Design 61a and
 `mise run r6-acceptance` bind cutover to the exact accepted dual-floor results
-and their two named tradeoffs. The remaining R7.5 action is the final aggregate
-verification after the follow-up commits.
+and their two named tradeoffs.
+
+The first final aggregate run exposed a pre-existing wall-clock race in the LSP
+project fixture: it rewrote a dependency manifest after ten seconds even when
+the server had not processed both `didOpen` notifications. Commit `3fc0a5f`
+replaces that sleep with JSON-RPC response/diagnostic barriers. The focused
+gate passed three direct repetitions and `zig build test-lsp-project`; the next
+complete `zig build verify` passed. `mise run r6-acceptance` and
+`mise run zig-oracle-conformance` also pass at this checkpoint.
+
+The developer rollback remains
+`zig build -Dfloor=zig --prefix <isolated-prefix>`. The previous complete
+release path was exercised by downloading, extracting, and running the
+published `v0.11.0` `birnam-0.11.0-aarch64-macos.tar.gz` bundle; it reports
+`birnam 0.11.0`. R7 is complete.
 
 **Gate:** a clean default build and ordinary execution select the Rust production
 artifact, never the Zig implementation implicitly. The oracle remains separately
@@ -2304,51 +2317,52 @@ may dominate; phase gates take precedence over either estimate.
 
 ## 19. Final acceptance checklist
 
-- [ ] The committed ABI manifest, Zig descriptor, Rust descriptor, and frozen
+- [x] The committed ABI manifest, Zig descriptor, Rust descriptor, and frozen
       old-binary fixture agree on the complete `IdApi` contract.
-- [ ] The ABI manifest remains build/test-only and is absent from runtime,
+- [x] The ABI manifest remains build/test-only and is absent from runtime,
       install, distribution, and artifact-selection paths.
-- [ ] A clean source checkout cold-builds with the declared Zig and Rust
+- [x] A clean source checkout cold-builds with the declared Zig and Rust
       toolchains and no prebuilt Birnam artifact.
-- [ ] The frozen pre-rewrite image boots under both floors.
-- [ ] Public predicates safely reject Method/code pointers and arbitrary aligned
+- [x] The frozen pre-rewrite image boots under both floors.
+- [x] Public predicates safely reject Method/code pointers and arbitrary aligned
       non-object addresses through expected-O(1) exact membership, with the R2
       and R3 ReleaseSafe scaling gates green and no new membership lookup in
       ordinary dispatch.
-- [ ] Null argument buffers are accepted only for zero-argument sends.
-- [ ] Each test process loads one floor and calls `id_init` exactly once; fresh
+- [x] Null argument buffers are accepted only for zero-argument sends.
+- [x] Each test process loads one floor and calls `id_init` exactly once; fresh
       processes provide reset/isolation.
-- [ ] The Store/MOP addition, replacement, and removal matrix preserves
+- [x] The Store/MOP addition, replacement, and removal matrix preserves
       dictionary authority, exact/`#primitive`/absent mirror states, exact fact
       ordering, seed/image backfill, authorizer rejection, observer ordering,
       inherited revelation, raw-path mirror absence, and marker invalidation.
-- [ ] The floor reflects canonical exports and reopens/inspects its own dylib
+- [x] The floor reflects canonical exports and reopens/inspects its own dylib
       through its `IdApi` loader without a second initialization.
-- [ ] ID-floor artifact preflight rejects kind, identity, target/ABI, native, and
+- [x] ID-floor artifact preflight rejects kind, identity, target/ABI, native, and
       dependency mismatches before higher rungs or any initializer execute.
-- [ ] Rust private tests and shared floor conformance are green.
-- [ ] Every `IdApi` field is implemented; typed construction, symbol scan, and
+- [x] Rust private tests and shared floor conformance are green.
+- [x] Every `IdApi` field is implemented; typed construction, symbol scan, and
       conformance prove no fatal placeholder remains.
-- [ ] Full higher-rung tests pass against both floors.
-- [ ] Zig and Rust runs use isolated outputs and assert floor identity plus
+- [x] Full higher-rung tests pass against both floors.
+- [x] Zig and Rust runs use isolated outputs and assert floor identity plus
       selected dylib digest.
-- [ ] Existing compiled artifacts cross-load under both floors.
-- [ ] The complete Zig/Rust image save-map-rebuild matrix and relocated boot pass.
-- [ ] Alien callbacks, hooks, providers, finalizers, and module reloads pass.
-- [ ] Floor and provider library handles outlive every callback and layout
+- [x] Existing compiled artifacts cross-load under both floors.
+- [x] The complete Zig/Rust image save-map-rebuild matrix and relocated boot pass.
+- [x] Alien callbacks, hooks, providers, finalizers, and module reloads pass.
+- [x] Floor and provider library handles outlive every callback and layout
       pointer, and collector mark callbacks cannot escape their invocation.
-- [ ] Symbol interning preserves arbitrary non-NUL byte strings, including
+- [x] Symbol interning preserves arbitrary non-NUL byte strings, including
       non-UTF-8 selectors, and `doesNotUnderstand:` preserves the 16-argument
       boundary.
 - [x] Design 46 comparison reports no unaccepted regression; Design 61a records
       the two exact-snapshot tradeoffs.
-- [ ] Rust dylib dependencies and install name are distribution-safe.
-- [ ] Clean build, install, dist, source-free root, and isolate smoke pass.
-- [ ] Documentation says Rust where Rust is authoritative and native where mixed.
-- [ ] Default cutover is isolated from Zig retirement.
-- [ ] Developer Zig-floor rebuild and previous-release rollback are both tested
+- [x] Rust dylib dependencies and install name are distribution-safe.
+- [x] Clean build, install, dist, source-free root, and isolate smoke pass.
+- [x] Documentation says Rust where Rust is authoritative and native where mixed.
+- [x] Default cutover is isolated from Zig retirement.
+- [x] Developer Zig-floor rebuild and previous-release rollback are both tested
       and documented without assuming an unshipped oracle.
 - [ ] One observation checkpoint completes before the Zig floor is deleted.
-- [ ] Cold bootstrap passes with frozen ABI/image fixtures unavailable and Cargo
+- [x] Cold bootstrap passes with frozen ABI/image fixtures unavailable and Cargo
       operating `--locked --offline`.
-- [ ] Design 61 is updated from proposed to complete with the cutover evidence.
+- [x] Design 61 records the complete cutover evidence; R8 retirement remains a
+      later checkpoint.
