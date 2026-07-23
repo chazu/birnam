@@ -316,6 +316,21 @@ impl Runtime {
             .allocate_integer(&mut state.heap, vtable, value)
     }
 
+    pub(crate) fn make_integer(&self, value: i64) -> Oop {
+        self.assert_owner();
+        self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        let vtable = state
+            .canonical
+            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"))
+            .smallint_vt;
+        state
+            .values
+            .allocate_integer(&mut state.heap, vtable, value)
+    }
+
     pub(crate) fn allocate_float(&self, vtable: Oop, value: f64) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
@@ -325,12 +340,38 @@ impl Runtime {
         state.values.allocate_float(&mut state.heap, vtable, value)
     }
 
+    pub(crate) fn make_float(&self, value: f64) -> Oop {
+        self.assert_owner();
+        self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        let vtable = state
+            .canonical
+            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"))
+            .float_vt;
+        state.values.allocate_float(&mut state.heap, vtable, value)
+    }
+
     pub(crate) fn allocate_word(&self, vtable: Oop, value: u64) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
         self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
+        state.values.allocate_word(&mut state.heap, vtable, value)
+    }
+
+    pub(crate) fn make_word(&self, value: u64) -> Oop {
+        self.assert_owner();
+        self.require_allocation_allowed();
+        self.maybe_collect_before_allocation();
+        // SAFETY: owner-thread serialization and no foreign call in this scope.
+        let state = unsafe { &mut *self.state.get() };
+        let vtable = state
+            .canonical
+            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"))
+            .word_vt;
         state.values.allocate_word(&mut state.heap, vtable, value)
     }
 

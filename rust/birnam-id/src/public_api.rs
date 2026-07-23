@@ -85,8 +85,7 @@ unsafe extern "C" fn api_send(receiver: Oop, selector: Oop, args: *const Oop, co
 }
 
 unsafe extern "C" fn api_make_smallint(value: i64) -> Oop {
-    let canonical = runtime().canonical();
-    runtime().allocate_integer(canonical.smallint_vt, value)
+    runtime().make_integer(value)
 }
 
 unsafe extern "C" fn api_smallint_value(object: Oop) -> i64 {
@@ -98,8 +97,7 @@ unsafe extern "C" fn api_is_smallint(object: Oop) -> c_int {
 }
 
 unsafe extern "C" fn api_make_float(value: f64) -> Oop {
-    let canonical = runtime().canonical();
-    runtime().allocate_float(canonical.float_vt, value)
+    runtime().make_float(value)
 }
 
 unsafe extern "C" fn api_float_value(object: Oop) -> f64 {
@@ -111,8 +109,7 @@ unsafe extern "C" fn api_is_float(object: Oop) -> c_int {
 }
 
 unsafe extern "C" fn api_make_word(value: u64) -> Oop {
-    let canonical = runtime().canonical();
-    runtime().allocate_word(canonical.word_vt, value)
+    runtime().make_word(value)
 }
 
 unsafe extern "C" fn api_word_value(object: Oop) -> u64 {
