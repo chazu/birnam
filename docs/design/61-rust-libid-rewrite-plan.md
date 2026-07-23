@@ -1955,9 +1955,19 @@ load during a follow-up run. The active-dispatch fix preserves the public owner
 check and the metacircular `lookup` send; three focused fresh processes then
 converged at 1.42-1.43 us unary sends, 1.57-1.64 us three-keyword sends,
 1.56-1.59 us DNU sends, 69-71 ns block sends, and 105-110 ns map hits. A new
-clean paired release run is still required after the host is quiet. R6 remains
-open, and R7 must not begin until that pair passes or a separate tradeoff record
-is accepted.
+clean paired release run is still required after the host is quiet.
+
+Full `zig build verify` passed at `3d4f10a` after those robustness changes. A
+subsequent bounded dispatch change at `1435279` also reuses the already-active
+runtime for nested public `IdApi.send` calls. Calls outside an active dynamic
+extent still enter the runtime and enforce owner-thread authority, while nested
+calls retain the same metacircular method lookup and DNU paths without repeating
+the owner check and TLS replacement. The change passes all 51 Rust tests, strict
+Clippy, full Miri, the cross-language reentrant-dispatch probe in debug and
+release, and the 256-test selected Rust-floor lower-rung matrix in both profiles.
+Its performance effect remains unclaimed until the guarded clean pair completes.
+R6 remains open, and R7 must not begin until that pair passes or a separate
+tradeoff record is accepted.
 
 ## 13. Phase R7 — Build, install, and default cutover
 
