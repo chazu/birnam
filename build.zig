@@ -16,11 +16,17 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const Floor = enum { zig, rust };
+    const PegImpl = enum { zig, rust };
     const selected_floor = b.option(
         Floor,
         "floor",
         "Native id floor installed as libbirnam_id.dylib (zig or rust)",
     ) orelse .rust;
+    const selected_peg = b.option(
+        PegImpl,
+        "peg",
+        "PEG matcher installed as canonical libbirnam_id_peg.dylib (zig or rust)",
+    ) orelse .zig;
     const RungImpl = enum { zig, rust };
     const artifact_inspector_impl = b.option(
         RungImpl,
@@ -1065,10 +1071,6 @@ pub fn build(b: *std.Build) void {
             b.getInstallStep().dependOn(&install_rust_store.step);
             bootstrap_install.dependOn(&install_rust_store.step);
         } else if (std.mem.eql(u8, m.name, "birnam_id_peg")) {
-            const install_zig_peg = b.addInstallArtifact(lib, .{});
-            b.getInstallStep().dependOn(&install_zig_peg.step);
-            bootstrap_install.dependOn(&install_zig_peg.step);
-
             const install_rust_peg = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_peg.dylib",
@@ -1080,6 +1082,23 @@ pub fn build(b: *std.Build) void {
             install_rust_peg.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_peg.step);
             bootstrap_install.dependOn(&install_rust_peg.step);
+            if (selected_peg == .rust) {
+                const install_rust_peg_selected = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_peg.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_peg.dylib",
+                );
+                install_rust_peg_selected.step.dependOn(&rust_floor_build.step);
+                b.getInstallStep().dependOn(&install_rust_peg_selected.step);
+                bootstrap_install.dependOn(&install_rust_peg_selected.step);
+            } else {
+                const install_zig_peg = b.addInstallArtifact(lib, .{});
+                b.getInstallStep().dependOn(&install_zig_peg.step);
+                bootstrap_install.dependOn(&install_zig_peg.step);
+            }
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
