@@ -190,8 +190,9 @@ The design that stays honest:
   spike while still rejecting sustained load; the independent process limit
   rejects a runaway competitor. A host that misses either limit fails the run
   before a tracked snapshot can be emitted. The driver waits up to 15 minutes
-  for a quiet preflight, then samples CPU once per second concurrently with
-  the measured case. The interval median must remain at least 50% idle and at
+  for a quiet preflight, starts the host monitor and confirms its first
+  cumulative sample, then samples CPU once per second concurrently with the
+  measured case. The interval median must remain at least 50% idle and at
   most 20% of intervals may fall below 30% idle. A case shorter than one full
   interval relies on its immediate preflight. If concurrent samples detect
   load, that case's output is discarded and the case is retried, up to four

@@ -94,10 +94,28 @@ wait_for_quiet() { # wait_for_quiet <context>
 }
 
 start_host_monitor() { # start_host_monitor <output>
+  local polls=0
   HOST_MONITOR_PID=
   if [ "$MODE" = release ]; then
     top -l 0 -s 1 -n 0 -stats pid >"$1" 2>/dev/null &
     HOST_MONITOR_PID=$!
+    while [ ! -s "$1" ]; do
+      if ! kill -0 "$HOST_MONITOR_PID" 2>/dev/null; then
+        wait "$HOST_MONITOR_PID" 2>/dev/null || true
+        HOST_MONITOR_PID=
+        echo "FAIL: benchmark host monitor exited before its first sample" >&2
+        return 1
+      fi
+      if [ "$polls" -ge 100 ]; then
+        kill "$HOST_MONITOR_PID" 2>/dev/null || true
+        wait "$HOST_MONITOR_PID" 2>/dev/null || true
+        HOST_MONITOR_PID=
+        echo "FAIL: benchmark host monitor produced no sample within 5 seconds" >&2
+        return 1
+      fi
+      polls=$((polls + 1))
+      sleep 0.05
+    done
   fi
 }
 
