@@ -772,6 +772,37 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_metadata_parity_step.dependOn(&run_rust_peg_metadata_parity.step);
     test_step.dependOn(&run_rust_peg_metadata_parity.step);
 
+    const rust_peg_source_corpus_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_source_corpus_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_peg_source_corpus_tests = b.addTest(.{ .root_module = rust_peg_source_corpus_mod });
+    rust_peg_source_corpus_tests.linkLibC();
+    const run_rust_peg_source_corpus = b.addRunArtifact(rust_peg_source_corpus_tests);
+    run_rust_peg_source_corpus.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_peg_source_corpus.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_peg_source_corpus.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    const source_parity_peg_dylib = b.option(
+        []const u8,
+        "peg-source-dylib",
+        "Explicit PEG dylib used for the whole-source-corpus parity run",
+    ) orelse b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib");
+    const source_parity_digest = b.option(
+        []const u8,
+        "peg-source-digest",
+        "Expected whole-source-corpus digest for the explicitly selected PEG dylib",
+    ) orelse "bf7e0449dfd15d2f";
+    run_rust_peg_source_corpus.setEnvironmentVariable("BIRNAM_RUST_PEG_DYLIB", source_parity_peg_dylib);
+    run_rust_peg_source_corpus.setEnvironmentVariable("BIRNAM_RUST_PEG_SOURCE_DIGEST", source_parity_digest);
+    run_rust_peg_source_corpus.step.dependOn(bootstrap_install);
+    const test_rust_peg_source_corpus_step = b.step(
+        "test-rust-peg-source-corpus",
+        "Compare the complete checked-in Birnam source corpus through an explicitly selected PEG dylib",
+    );
+    test_rust_peg_source_corpus_step.dependOn(&run_rust_peg_source_corpus.step);
+    test_step.dependOn(&run_rust_peg_source_corpus.step);
+
     const rust_peg_codegen_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_peg_codegen_test.zig"),
         .target = target,

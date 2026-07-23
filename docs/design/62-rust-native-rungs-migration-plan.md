@@ -3,8 +3,8 @@
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
-> N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4h are complete and
-> N3.4 remains in progress.
+> N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
+> complete; N3.5 remains in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1091,6 +1091,18 @@ activation. The descriptor assertions freeze the module kind, described
 identity, ordered file/time requirements, described roots, and the
 aarch64-macos target. Existing Zig Codegen and Artifact authorities remain
 unchanged; whole-source-corpus comparison is the remaining N3.4 gap.
+
+#### N3.4i execution record — complete, 2026-07-23
+
+The complete checked-in source corpus is now covered by an executable parity
+gate: 76 deterministic .birnam files under docs, examples, modules, and
+src/id. For each file it hashes the relative path, source bytes, parse
+success/failure, furthest-failure offset, and full CST shape. The canonical Zig
+PEG baseline is bf7e0449dfd15d2f; the explicit Rust PEG reproduces it with
+both IdApi floors selected. The gate supports an explicit Zig PEG baseline
+rerun and leaves the installed canonical PEG unchanged. N3.4 now has its
+requested downstream parity evidence; N3.5 remains gated on performance,
+deep-input robustness, full bootstrap, and installed compilation.
 
 ### N3.5 — Switch and observe
 
