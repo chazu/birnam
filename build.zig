@@ -15,6 +15,12 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const Floor = enum { zig, rust };
+    const selected_floor = b.option(
+        Floor,
+        "floor",
+        "Native id floor installed as libbirnam_id.dylib (zig or rust)",
+    ) orelse .zig;
 
     // libtcc is presently vendored and configured for arm64 Mach-O, and the
     // runtime resolves Mach-O dylibs by name. Reject other targets before Zig
@@ -89,7 +95,10 @@ pub fn build(b: *std.Build) void {
         "--locked",
         "--offline",
     });
-    rust_id_build.setEnvironmentVariable("CARGO_TARGET_DIR", ".cargo-target");
+    rust_id_build.setEnvironmentVariable(
+        "CARGO_TARGET_DIR",
+        b.pathFromRoot(".cargo-target"),
+    );
     const rust_id_abi_test_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_idapi_abi_test.zig"),
         .target = target,
@@ -394,6 +403,32 @@ pub fn build(b: *std.Build) void {
     const bootstrap_install = b.step("bootstrap-install", "Install the native floor and compiler host needed to build compiled units");
     rust_lower_rung_matrix.step.dependOn(bootstrap_install);
     test_step.dependOn(&rust_lower_rung_matrix.step);
+    const rust_floor_profile = if (optimize == .Debug) "debug" else "release";
+    const rust_floor_build = b.addSystemCommand(&.{
+        "cargo",
+        "build",
+        "--workspace",
+        "--locked",
+        "--offline",
+    });
+    rust_floor_build.setEnvironmentVariable(
+        "CARGO_TARGET_DIR",
+        b.pathFromRoot(".cargo-target"),
+    );
+    if (optimize != .Debug) rust_floor_build.addArg("--release");
+    if (selected_floor == .rust) {
+        const install_rust_floor = b.addInstallFileWithDir(
+            b.path(b.fmt(
+                ".cargo-target/{s}/libbirnam_id.dylib",
+                .{rust_floor_profile},
+            )),
+            .lib,
+            "libbirnam_id.dylib",
+        );
+        install_rust_floor.step.dependOn(&rust_floor_build.step);
+        b.getInstallStep().dependOn(&install_rust_floor.step);
+        bootstrap_install.dependOn(&install_rust_floor.step);
+    }
     const conformance_floor = b.option(
         []const u8,
         "id-conformance-floor",
@@ -403,7 +438,7 @@ pub fn build(b: *std.Build) void {
         []const u8,
         "id-conformance-identity",
         "Expected birnam_id_floor_identity for selected-floor tests",
-    ) orelse "zig-id-v1";
+    ) orelse if (selected_floor == .zig) "zig-id-v1" else "rust-id-v1";
     const conformance_digest = b.option(
         []const u8,
         "id-conformance-sha256",
@@ -492,9 +527,24 @@ pub fn build(b: *std.Build) void {
         const lib = b.addLibrary(.{ .name = m.name, .root_module = lib_mod, .linkage = .dynamic });
         if (m.lib_links_tcc) lib.linkLibrary(libtcc_lib);
         lib.linkLibC();
-        const install_lib = b.addInstallArtifact(lib, .{});
-        b.getInstallStep().dependOn(&install_lib.step);
-        bootstrap_install.dependOn(&install_lib.step);
+        if (std.mem.eql(u8, m.name, "birnam_id")) {
+            const install_zig_oracle = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_zig.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_oracle.step);
+            bootstrap_install.dependOn(&install_zig_oracle.step);
+            if (selected_floor == .zig) {
+                const install_zig_floor = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_floor.step);
+                bootstrap_install.dependOn(&install_zig_floor.step);
+            }
+        } else {
+            const install_lib = b.addInstallArtifact(lib, .{});
+            b.getInstallStep().dependOn(&install_lib.step);
+            bootstrap_install.dependOn(&install_lib.step);
+        }
 
         // The test suite.
         const test_mod = b.createModule(.{
