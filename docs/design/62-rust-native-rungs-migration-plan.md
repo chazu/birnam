@@ -737,6 +737,17 @@ the required floor matrix; Zig-Codegen→Rust-Store authorization, denial,
 post-commit observation, reentry, duplicate registration, and lifetime tests
 pass; no borrow or lock spans a callback.
 
+#### N2.2a execution record — complete, 2026-07-23
+
+The workspace now contains a dedicated `birnam-store` `cdylib` member with the
+same `module_init(*IdApi, state)` ABI and a static Rust implementation identity.
+Its current shell is intentionally inert: it validates the host table and
+publishes no Store objects until the storage protocol is ready, so the Zig
+Store remains the production implementation and cannot be accidentally
+co-loaded. Workspace lock/resource/install metadata includes the new member;
+strict Clippy and the shell unit test pass. N2.2b will add the rung-owned state
+and first raw storage protocol behind this boundary.
+
 ### N2.3 — Implement the MOP chokepoint
 
 - Port tracked add/remove and the method mutation observer/authorizer.
