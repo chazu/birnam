@@ -59,7 +59,14 @@ const Op = enum(u8) { assert, retract };
 /// for history-on attributes (assert + retract entries fold on read); for
 /// history-off attributes the log holds only currently-live asserted facts (a
 /// retract physically removes, a `:one` re-assert replaces in place — no growth).
-const Fact = struct { e: Oop, a: Oop, v: Oop, tx: u64, op: Op = .assert };
+const Fact = struct {
+    e: Oop,
+    a: Oop,
+    v: Oop,
+    tx: u64,
+    ea_hash: u64,
+    op: Op = .assert,
+};
 
 /// The store's private backing — held in the Store libid object's payload (the
 /// bytes at `object[-1]+0`, i.e. at the object pointer itself). Consistent with
@@ -203,22 +210,26 @@ fn valHash(o: Oop) u64 {
     return mix64(@intFromPtr(o.?));
 }
 
-const EaKey = struct { e: Oop, a: Oop };
+const EaKey = struct { e: Oop, a: Oop, hash: u64 };
+
+fn eaKey(e: Oop, a: Oop) EaKey {
+    return .{ .e = e, .a = a, .hash = mix64(valHash(e) *% 0x9e3779b97f4a7c15 +% valHash(a)) };
+}
 
 const EaCtx = struct {
     pub fn hash(_: EaCtx, k: EaKey) u64 {
-        return mix64(valHash(k.e) *% 0x9e3779b97f4a7c15 +% valHash(k.a));
+        return k.hash;
     }
     pub fn eql(_: EaCtx, x: EaKey, y: EaKey) bool {
-        return eq(x.e, y.e) and eq(x.a, y.a);
+        return x.hash == y.hash and eq(x.e, y.e) and eq(x.a, y.a);
     }
 };
 
 const Postings = std.ArrayList(u32);
 const EaMap = std.HashMapUnmanaged(EaKey, Postings, EaCtx, std.hash_map.default_max_load_percentage);
 
-fn indexAppend(st: *StoreState, e: Oop, a: Oop, pos: usize) void {
-    const gop = st.ea.getOrPut(ca, .{ .e = e, .a = a }) catch @panic("store: oom");
+fn indexAppend(st: *StoreState, key: EaKey, pos: usize) void {
+    const gop = st.ea.getOrPut(ca, key) catch @panic("store: oom");
     if (!gop.found_existing) gop.value_ptr.* = .{};
     gop.value_ptr.append(ca, @intCast(pos)) catch @panic("store: oom");
 }
@@ -234,7 +245,7 @@ fn clearIndex(st: *StoreState) void {
 /// mutation itself already costs.
 fn rebuildIndex(st: *StoreState) void {
     clearIndex(st);
-    for (st.facts.items, 0..) |f, i| indexAppend(st, f.e, f.a, i);
+    for (st.facts.items, 0..) |f, i| indexAppend(st, .{ .e = f.e, .a = f.a, .hash = f.ea_hash }, i);
 }
 
 /// The log positions of (e,a)'s facts, in log order — empty if the pair has none.
@@ -242,13 +253,14 @@ fn rebuildIndex(st: *StoreState) void {
 /// order is identical to the old full scans, so all fold semantics (newest
 /// decides, op-awareness, tx windows) are unchanged.
 fn postingsOf(st: *StoreState, e: Oop, a: Oop) []const u32 {
-    const p = st.ea.getPtr(.{ .e = e, .a = a }) orelse return &.{};
+    const p = st.ea.getPtr(eaKey(e, a)) orelse return &.{};
     return p.items;
 }
 
 fn appendOp(st: *StoreState, e: Oop, a: Oop, v: Oop, op: Op) void {
-    st.facts.append(ca, .{ .e = e, .a = a, .v = v, .tx = st.tx, .op = op }) catch @panic("store: oom");
-    indexAppend(st, e, a, st.facts.items.len - 1);
+    const key = eaKey(e, a);
+    st.facts.append(ca, .{ .e = e, .a = a, .v = v, .tx = st.tx, .ea_hash = key.hash, .op = op }) catch @panic("store: oom");
+    indexAppend(st, key, st.facts.items.len - 1);
     st.tx += 1;
 }
 fn appendFact(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
@@ -656,9 +668,9 @@ fn enumerateTriples(st: *StoreState, blk: Oop, lo: ?u64, hi: ?u64) void {
     defer seenPair.deinit(ca);
     for (st.facts.items) |f| {
         if (!visibleHi(f.tx, hi)) continue;
-        const gop = seenPair.getOrPut(ca, .{ .e = f.e, .a = f.a }) catch @panic("store: oom");
+        const gop = seenPair.getOrPut(ca, .{ .e = f.e, .a = f.a, .hash = f.ea_hash }) catch @panic("store: oom");
         if (!gop.found_existing)
-            pairs.append(ca, .{ .e = f.e, .a = f.a }) catch @panic("store: oom");
+            pairs.append(ca, .{ .e = f.e, .a = f.a, .hash = f.ea_hash }) catch @panic("store: oom");
     }
 
     for (pairs.items) |p| {
@@ -1068,14 +1080,16 @@ fn mImageLoadBegin(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
 fn mImageAddFact(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     const st = stateOf(self);
+    const key = eaKey(args[0], args[1]);
     st.facts.append(ca, .{
         .e = args[0],
         .a = args[1],
         .v = args[2],
         .tx = @intCast(g_api.smallIntValue(args[3])),
+        .ea_hash = key.hash,
         .op = @enumFromInt(@as(u8, @intCast(g_api.smallIntValue(args[4])))),
     }) catch @panic("store: oom");
-    indexAppend(st, args[0], args[1], st.facts.items.len - 1);
+    indexAppend(st, key, st.facts.items.len - 1);
     return self;
 }
 
