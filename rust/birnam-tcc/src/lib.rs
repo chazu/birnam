@@ -1,18 +1,48 @@
-//! Rust TCC dynamic-rung shell.
+//! Rust TCC dynamic rung.
 //!
-//! N4.1 freezes the load boundary and exported object names before the unsafe
-//! libtcc owner is ported. No compile or runtime-symbol authority moves here:
-//! the Zig TCC dylib remains canonical until a later N4.2/N4.3 cutover.
+//! This crate owns the libtcc state machine and the generated-C callback
+//! boundary.  The object protocol is intentionally the same small surface as
+//! `src/id/tcc.zig`; all calls into the host IdApi happen through short unsafe
+//! sections so no Rust borrow survives a foreign callback.
 
-use birnam_abi::{IdApi, Oop};
-use core::ffi::{c_char, c_void};
+use birnam_abi::{IdApi, Method, Oop, SLOT_OOP, SLOT_RAW, borrowed_oop_args};
+use core::ffi::{c_char, c_int, c_void};
+use core::mem::size_of;
 use core::ptr;
+use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 
-const RUST_TCC_IDENTITY: &[u8] = b"rust-tcc-n4.1-shell\0";
+const RUST_TCC_IDENTITY: &[u8] = b"rust-tcc-n4.2-state\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
 const TCC_VT_NAME: &[u8] = b"TccVt\0";
 const UNIT_VT_NAME: &[u8] = b"TccUnitVt\0";
+
+const TCC_OUTPUT_MEMORY: c_int = 1;
+const TCC_OUTPUT_EXE: c_int = 2;
+const TCC_OUTPUT_OBJ: c_int = 3;
+const TCC_OUTPUT_DLL: c_int = 4;
+
+#[repr(C)]
+struct TccState {
+    _private: [u8; 0],
+}
+
+type TccErrorFunc = unsafe extern "C" fn(*mut c_void, *const c_char);
+
+unsafe extern "C" {
+    fn tcc_new() -> *mut TccState;
+    fn tcc_delete(state: *mut TccState);
+    fn tcc_set_error_func(state: *mut TccState, opaque: *mut c_void, func: Option<TccErrorFunc>);
+    fn tcc_set_output_type(state: *mut TccState, output_type: c_int) -> c_int;
+    fn tcc_compile_string(state: *mut TccState, source: *const c_char) -> c_int;
+    fn tcc_add_library(state: *mut TccState, name: *const c_char) -> c_int;
+    fn tcc_add_library_path(state: *mut TccState, path: *const c_char) -> c_int;
+    fn tcc_add_file(state: *mut TccState, path: *const c_char) -> c_int;
+    fn tcc_add_symbol(state: *mut TccState, name: *const c_char, value: *const c_void) -> c_int;
+    fn tcc_output_file(state: *mut TccState, path: *const c_char) -> c_int;
+    fn tcc_relocate(state: *mut TccState) -> c_int;
+    fn tcc_get_symbol(state: *mut TccState, name: *const c_char) -> *mut c_void;
+}
 
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -23,6 +53,23 @@ struct Runtime {
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UnitPhase {
+    Created = 0,
+    Configured = 1,
+    Relocated = 2,
+    Installed = 3,
+    Disposable = 4,
+    Released = 5,
+}
+
+#[repr(C)]
+struct UnitPayload {
+    state: *mut TccState,
+    phase: UnitPhase,
+}
 
 fn abort(message: &str) -> ! {
     eprintln!("birnam Rust TCC: {message}");
@@ -36,8 +83,766 @@ unsafe fn api_ref(runtime: &Runtime) -> &'static IdApi {
 }
 
 unsafe fn import(api: &IdApi, name: &[u8]) -> Oop {
-    // SAFETY: all shell names are static NUL-terminated strings.
+    // SAFETY: all module names are static NUL-terminated strings.
     unsafe { (api.import)(name.as_ptr().cast::<c_char>()) }
+}
+
+unsafe fn arg(args: *const Oop, count: usize, index: usize) -> Option<Oop> {
+    // SAFETY: the host owns the argument buffer for the duration of this
+    // method call; borrowed_oop_args validates the null/count exception.
+    unsafe { borrowed_oop_args(args, count)?.get(index).copied() }
+}
+
+unsafe fn string_arg(api: &IdApi, object: Oop) -> Option<CString> {
+    let mut length = 0usize;
+    // SAFETY: the Oop is supplied by the host message ABI and the output slot
+    // is valid for the duration of this call.
+    let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+    if length != 0 && bytes.is_null() {
+        return None;
+    }
+    // SAFETY: stringBytes promises a readable byte span for the reported size.
+    let slice = unsafe { core::slice::from_raw_parts(bytes, length) };
+    CString::new(slice).ok()
+}
+
+unsafe fn unit_payload(object: Oop) -> Option<*mut UnitPayload> {
+    if object.is_null() {
+        return None;
+    }
+    Some(object.cast::<UnitPayload>())
+}
+
+unsafe fn unit_snapshot(object: Oop) -> Option<(*mut TccState, UnitPhase)> {
+    let payload = unsafe { unit_payload(object)? };
+    // SAFETY: Unit objects are allocated with this exact raw payload layout.
+    Some(unsafe { ((*payload).state, (*payload).phase) })
+}
+
+unsafe fn release_payload(payload: *mut UnitPayload) {
+    // SAFETY: the finalizer owns the one-way transition and clears the pointer
+    // before calling foreign code, so a repeated finalizer cannot double free.
+    let state = unsafe { (*payload).state };
+    unsafe {
+        (*payload).state = ptr::null_mut();
+        (*payload).phase = UnitPhase::Released;
+    }
+    if !state.is_null() {
+        // SAFETY: state came from tcc_new and has not previously been deleted.
+        unsafe { tcc_delete(state) };
+    }
+}
+
+unsafe extern "C" fn error_silent(_opaque: *mut c_void, _message: *const c_char) {}
+
+unsafe fn new_unit(api: &IdApi, runtime: &Runtime) -> Oop {
+    // SAFETY: libtcc returns an owned state or null.
+    let state = unsafe { tcc_new() };
+    if state.is_null() {
+        return api.nilObj;
+    }
+    // SAFETY: state is live and the callback has no borrowed Rust state.
+    unsafe {
+        tcc_set_error_func(state, ptr::null_mut(), Some(error_silent));
+        if tcc_set_output_type(state, TCC_OUTPUT_MEMORY) < 0 {
+            tcc_delete(state);
+            return api.nilObj;
+        }
+    }
+    // SAFETY: the selected unit vtable is a live Birnam object and the raw
+    // payload is initialized before the object can be observed.
+    let object = unsafe { (api.alloc)(runtime.unit_vt as Oop, size_of::<UnitPayload>()) };
+    if object.is_null() {
+        // SAFETY: state is still owned by this constructor.
+        unsafe { tcc_delete(state) };
+        return api.nilObj;
+    }
+    let payload = object.cast::<UnitPayload>();
+    // SAFETY: alloc returned storage of the requested size and alignment.
+    unsafe {
+        ptr::write(
+            payload,
+            UnitPayload {
+                state,
+                phase: UnitPhase::Created,
+            },
+        );
+    }
+    object
+}
+
+unsafe fn fail_unit(api: &IdApi, object: Oop) -> Oop {
+    if let Some(payload) = unsafe { unit_payload(object) } {
+        unsafe { release_payload(payload) };
+    }
+    api.nilObj
+}
+
+unsafe fn configured_state(object: Oop) -> Option<*mut TccState> {
+    let (state, phase) = unsafe { unit_snapshot(object)? };
+    if state.is_null()
+        || matches!(
+            phase,
+            UnitPhase::Relocated
+                | UnitPhase::Installed
+                | UnitPhase::Disposable
+                | UnitPhase::Released
+        )
+    {
+        return None;
+    }
+    Some(state)
+}
+
+unsafe fn relocated_state(object: Oop) -> Option<*mut TccState> {
+    let (state, phase) = unsafe { unit_snapshot(object)? };
+    if state.is_null() || !matches!(phase, UnitPhase::Relocated | UnitPhase::Installed) {
+        return None;
+    }
+    Some(state)
+}
+
+unsafe extern "C" fn m_new(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let _ = self_object;
+    unsafe { new_unit(api, runtime) }
+}
+
+unsafe extern "C" fn m_compile(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let Some(source_object) = (unsafe { arg(args, count, 0) }) else {
+        return api.nilObj;
+    };
+    let unit = unsafe { new_unit(api, runtime) };
+    if unit == api.nilObj {
+        return unit;
+    }
+    if unsafe { m_compile_into(unit, source_object, api) } == api.nilObj {
+        return unsafe { fail_unit(api, unit) };
+    }
+    // SAFETY: the staged unit owns its state and relocation is the one-way
+    // transition exercised by the public method below.
+    unsafe { m_relocate(unit, ptr::null(), 0) }
+}
+
+unsafe fn m_compile_into(unit: Oop, source_object: Oop, api: &IdApi) -> Oop {
+    let Some(state) = (unsafe { configured_state(unit) }) else {
+        return api.nilObj;
+    };
+    let Some(source) = (unsafe { string_arg(api, source_object) }) else {
+        return api.nilObj;
+    };
+    // SAFETY: CString owns the NUL-terminated source for the duration of TCC.
+    if unsafe { tcc_compile_string(state, source.as_ptr()) } < 0 {
+        return api.nilObj;
+    }
+    if let Some(payload) = unsafe { unit_payload(unit) } {
+        // SAFETY: no foreign call is active while this phase byte is changed.
+        unsafe { (*payload).phase = UnitPhase::Configured };
+    }
+    unit
+}
+
+unsafe extern "C" fn m_compile_into_method(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let Some(source_object) = (unsafe { arg(args, count, 0) }) else {
+        return api.nilObj;
+    };
+    unsafe { m_compile_into(self_object, source_object, api) }
+}
+
+unsafe fn path_method(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+    api: &IdApi,
+    operation: unsafe extern "C" fn(*mut TccState, *const c_char) -> c_int,
+) -> Oop {
+    let Some(argument) = (unsafe { arg(args, count, 0) }) else {
+        return api.nilObj;
+    };
+    let Some(state) = (unsafe { configured_state(self_object) }) else {
+        return api.nilObj;
+    };
+    let Some(path) = (unsafe { string_arg(api, argument) }) else {
+        return api.nilObj;
+    };
+    // SAFETY: path owns the NUL-terminated value and state is in a mutable
+    // pre-relocation phase.
+    if unsafe { operation(state, path.as_ptr()) } < 0 {
+        api.nilObj
+    } else {
+        if let Some(payload) = unsafe { unit_payload(self_object) } {
+            // SAFETY: phase transition happens after the foreign call returns.
+            unsafe { (*payload).phase = UnitPhase::Configured };
+        }
+        self_object
+    }
+}
+
+unsafe extern "C" fn m_add_library(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    unsafe { path_method(self_object, args, count, api, tcc_add_library) }
+}
+
+unsafe extern "C" fn m_add_library_path(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    unsafe { path_method(self_object, args, count, api, tcc_add_library_path) }
+}
+
+unsafe extern "C" fn m_add_file(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    unsafe { path_method(self_object, args, count, api, tcc_add_file) }
+}
+
+unsafe extern "C" fn m_relocate(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let Some((state, phase)) = (unsafe { unit_snapshot(self_object) }) else {
+        return api.nilObj;
+    };
+    if state.is_null()
+        || matches!(
+            phase,
+            UnitPhase::Created | UnitPhase::Disposable | UnitPhase::Released
+        )
+    {
+        return api.nilObj;
+    }
+    if matches!(phase, UnitPhase::Relocated | UnitPhase::Installed) {
+        return self_object;
+    }
+    // SAFETY: this is the one-way libtcc relocation transition.
+    if unsafe { tcc_relocate(state) } < 0 {
+        return api.nilObj;
+    }
+    if let Some(payload) = unsafe { unit_payload(self_object) } {
+        // SAFETY: no foreign call is active while the phase byte changes.
+        unsafe { (*payload).phase = UnitPhase::Relocated };
+    }
+    self_object
+}
+
+unsafe extern "C" fn m_add_symbol(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let (Some(name_object), Some(address_object)) = (unsafe { arg(args, count, 0) }, unsafe {
+        arg(args, count, 1)
+    }) else {
+        return api.nilObj;
+    };
+    let Some(state) = (unsafe { configured_state(self_object) }) else {
+        return api.nilObj;
+    };
+    let Some(name) = (unsafe { string_arg(api, name_object) }) else {
+        return api.nilObj;
+    };
+    // SAFETY: the address is the documented raw pointer carrier.
+    let address = unsafe { (api.smallIntValue)(address_object) } as usize;
+    // SAFETY: name owns the C string and state is pre-relocation.
+    if unsafe { tcc_add_symbol(state, name.as_ptr(), address as *const c_void) } < 0 {
+        api.nilObj
+    } else {
+        if let Some(payload) = unsafe { unit_payload(self_object) } {
+            // SAFETY: phase transition happens after the foreign call returns.
+            unsafe { (*payload).phase = UnitPhase::Configured };
+        }
+        self_object
+    }
+}
+
+unsafe extern "C" fn m_install(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let (Some(name_object), Some(selector), Some(target)) = (
+        unsafe { arg(args, count, 0) },
+        unsafe { arg(args, count, 1) },
+        unsafe { arg(args, count, 2) },
+    ) else {
+        return api.nilObj;
+    };
+    let Some(state) = (unsafe { relocated_state(self_object) }) else {
+        return api.nilObj;
+    };
+    let Some(name) = (unsafe { string_arg(api, name_object) }) else {
+        return api.nilObj;
+    };
+    // SAFETY: name remains live through symbol lookup.
+    let symbol = unsafe { tcc_get_symbol(state, name.as_ptr()) };
+    if symbol.is_null() {
+        return api.nilObj;
+    }
+    // SAFETY: the generated function has the frozen Method ABI.
+    let method: Method = unsafe { core::mem::transmute(symbol) };
+    // SAFETY: these IdApi calls are the host's canonical vtable mutation path;
+    // no Rust reference is held across either callback.
+    let private_vtable = unsafe { (api.ensurePrivateVtable)(target) };
+    unsafe { (api.method)(private_vtable, selector, method) };
+    if let Some(payload) = unsafe { unit_payload(self_object) } {
+        // SAFETY: the unit remains live and no foreign call is active.
+        unsafe { (*payload).phase = UnitPhase::Installed };
+    }
+    private_vtable
+}
+
+unsafe extern "C" fn unit_finalize(object: Oop) {
+    if let Some(payload) = unsafe { unit_payload(object) } {
+        unsafe { release_payload(payload) };
+    }
+}
+
+unsafe extern "C" fn m_disposable(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let Some((state, phase)) = (unsafe { unit_snapshot(self_object) }) else {
+        return api.nilObj;
+    };
+    if state.is_null()
+        || matches!(
+            phase,
+            UnitPhase::Installed | UnitPhase::Disposable | UnitPhase::Released
+        )
+    {
+        return api.nilObj;
+    }
+    if let Some(payload) = unsafe { unit_payload(self_object) } {
+        // SAFETY: the finalizer is registered before this unit is returned to
+        // Birnam and it performs the one-way release transition.
+        unsafe {
+            (*payload).phase = UnitPhase::Disposable;
+            (api.setFinalizer)(self_object, unit_finalize);
+        }
+    }
+    self_object
+}
+
+unsafe extern "C" fn m_symbol(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let Some(name_object) = (unsafe { arg(args, count, 0) }) else {
+        return api.nilObj;
+    };
+    let Some(state) = (unsafe { relocated_state(self_object) }) else {
+        return api.nilObj;
+    };
+    let Some(name) = (unsafe { string_arg(api, name_object) }) else {
+        return api.nilObj;
+    };
+    // SAFETY: name owns the NUL-terminated lookup key.
+    let symbol = unsafe { tcc_get_symbol(state, name.as_ptr()) };
+    if symbol.is_null() {
+        api.nilObj
+    } else {
+        // SAFETY: the ABI carries a raw pointer as a SmallInt bit pattern.
+        unsafe { (api.mkSmallInt)(symbol as usize as i64) }
+    }
+}
+
+fn output_type(api: &IdApi, object: Oop) -> Option<c_int> {
+    // SAFETY: vtableOf and symbolName are read-only IdApi queries.
+    if unsafe { (api.vtableOf)(object) } != api.symbol_vt {
+        return None;
+    }
+    let name = unsafe { CStr::from_ptr((api.symbolName)(object)) };
+    match name.to_bytes() {
+        b"dll" => Some(TCC_OUTPUT_DLL),
+        b"obj" => Some(TCC_OUTPUT_OBJ),
+        b"exe" => Some(TCC_OUTPUT_EXE),
+        _ => None,
+    }
+}
+
+unsafe extern "C" fn m_compile_output(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let (Some(source_object), Some(path_object), Some(kind)) = (
+        unsafe { arg(args, count, 0) },
+        unsafe { arg(args, count, 1) },
+        unsafe { arg(args, count, 2) },
+    ) else {
+        return api.nilObj;
+    };
+    let Some(output) = output_type(api, kind) else {
+        return api.nilObj;
+    };
+    let Some(source) = (unsafe { string_arg(api, source_object) }) else {
+        return api.nilObj;
+    };
+    let Some(path) = (unsafe { string_arg(api, path_object) }) else {
+        return api.nilObj;
+    };
+    // SAFETY: the new state is owned until output succeeds or the error path
+    // deletes it immediately.
+    let state = unsafe { tcc_new() };
+    if state.is_null() {
+        return api.nilObj;
+    }
+    unsafe {
+        tcc_set_error_func(state, ptr::null_mut(), Some(error_silent));
+        if tcc_set_output_type(state, output) < 0
+            || tcc_compile_string(state, source.as_ptr()) < 0
+            || tcc_output_file(state, path.as_ptr()) < 0
+        {
+            tcc_delete(state);
+            return api.nilObj;
+        }
+        tcc_delete(state);
+    }
+    path_object
+}
+
+// -- generated-C runtime symbols -------------------------------------------
+
+unsafe extern "C" fn rt_send(receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).send)(receiver, selector, args, count) }
+}
+
+unsafe extern "C" fn rt_intern(name: *const c_char) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).intern)(name) }
+}
+
+unsafe extern "C" fn rt_mk_small_int(value: i64) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).mkSmallInt)(value) }
+}
+
+unsafe extern "C" fn rt_small_int_value(object: Oop) -> i64 {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).smallIntValue)(object) }
+}
+
+unsafe extern "C" fn rt_mk_float(value: f64) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).mkFloat)(value) }
+}
+
+unsafe extern "C" fn rt_float_value(object: Oop) -> f64 {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).floatValue)(object) }
+}
+
+unsafe extern "C" fn rt_mk_word(value: u64) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).mkWord)(value) }
+}
+
+unsafe extern "C" fn rt_word_value(object: Oop) -> u64 {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).wordValue)(object) }
+}
+
+unsafe extern "C" fn rt_uint_value(object: Oop) -> u64 {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    if unsafe { (api.isWord)(object) } != 0 {
+        unsafe { (api.wordValue)(object) }
+    } else {
+        unsafe { (api.smallIntValue)(object) as u64 }
+    }
+}
+
+unsafe extern "C" fn rt_mk_string(bytes: *const u8, length: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    if length != 0 && bytes.is_null() {
+        return api.nilObj;
+    }
+    unsafe { (api.mkString)(bytes, length) }
+}
+
+unsafe extern "C" fn rt_nil() -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { api_ref(runtime) }.nilObj
+}
+
+unsafe extern "C" fn rt_true() -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { api_ref(runtime) }.trueObj
+}
+
+unsafe extern "C" fn rt_false() -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { api_ref(runtime) }.falseObj
+}
+
+unsafe extern "C" fn rt_object_vt() -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { api_ref(runtime) }.object_vt
+}
+
+unsafe extern "C" fn rt_block_vt() -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let block = unsafe { import(api, b"BlockVt\0") };
+    if block.is_null() {
+        api.object_vt
+    } else {
+        block
+    }
+}
+
+unsafe extern "C" fn rt_proto(parent: Oop) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).proto)(parent) }
+}
+
+unsafe extern "C" fn rt_ensure_private_vtable(object: Oop) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).ensurePrivateVtable)(object) }
+}
+
+unsafe extern "C" fn rt_method(vtable: Oop, selector: Oop, function: *mut c_void) {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    // SAFETY: generated code supplies the frozen Method ABI.
+    let method: Method = unsafe { core::mem::transmute(function) };
+    unsafe { (api_ref(runtime).method)(vtable, selector, method) };
+}
+
+unsafe extern "C" fn rt_alloc(vtable: Oop, bytes: i64) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    if bytes < 0 {
+        return unsafe { api_ref(runtime) }.nilObj;
+    }
+    unsafe { (api_ref(runtime).alloc)(vtable, bytes as usize) }
+}
+
+unsafe extern "C" fn rt_cstr(object: Oop) -> *mut c_char {
+    unsafe extern "C" {
+        fn malloc(size: usize) -> *mut c_void;
+    }
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let mut length = 0usize;
+    let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+    if length != 0 && bytes.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: stringBytes provides the reported readable span.
+    let slice = unsafe { core::slice::from_raw_parts(bytes, length) };
+    let output = unsafe { malloc(length + 1) }.cast::<u8>();
+    if output.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: malloc returned at least length + 1 bytes.
+    unsafe {
+        ptr::copy_nonoverlapping(slice.as_ptr(), output, length);
+        *output.add(length) = 0;
+    }
+    output.cast::<c_char>()
+}
+
+unsafe extern "C" fn rt_free_cstr(pointer: *mut c_char) {
+    unsafe extern "C" {
+        fn free(pointer: *mut c_void);
+    }
+    if !pointer.is_null() {
+        // SAFETY: pointer came from rt_cstr's malloc.
+        unsafe { free(pointer.cast()) };
+    }
+}
+
+unsafe extern "C" fn rt_layout_all_oops(vtable: Oop) {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { (api_ref(runtime).setLayout)(vtable, ptr::null(), 0, SLOT_OOP) };
+}
+
+struct RuntimeSymbol {
+    name: &'static [u8],
+    address: *const c_void,
+}
+
+// Raw function addresses are process-lifetime constants; the table is only
+// consumed by tcc_add_symbol before a unit is relocated.
+unsafe impl Sync for RuntimeSymbol {}
+
+static RUNTIME_SYMBOLS: &[RuntimeSymbol] = &[
+    RuntimeSymbol {
+        name: b"birnam_send\0",
+        address: rt_send as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_intern\0",
+        address: rt_intern as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_mkSmallInt\0",
+        address: rt_mk_small_int as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_smallIntValue\0",
+        address: rt_small_int_value as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_mkFloat\0",
+        address: rt_mk_float as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_floatValue\0",
+        address: rt_float_value as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_mkWord\0",
+        address: rt_mk_word as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_wordValue\0",
+        address: rt_word_value as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_uintValue\0",
+        address: rt_uint_value as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_mkString\0",
+        address: rt_mk_string as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_nil\0",
+        address: rt_nil as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_true\0",
+        address: rt_true as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_false\0",
+        address: rt_false as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_objectVt\0",
+        address: rt_object_vt as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_blockVt\0",
+        address: rt_block_vt as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_proto\0",
+        address: rt_proto as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_ensurePrivateVtable\0",
+        address: rt_ensure_private_vtable as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_method\0",
+        address: rt_method as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_alloc\0",
+        address: rt_alloc as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_cstr\0",
+        address: rt_cstr as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_free_cstr\0",
+        address: rt_free_cstr as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_layoutAllOops\0",
+        address: rt_layout_all_oops as *const c_void,
+    },
+];
+
+unsafe extern "C" fn m_bind_runtime(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let Some(state) = (unsafe { configured_state(self_object) }) else {
+        return api.nilObj;
+    };
+    for symbol in RUNTIME_SYMBOLS {
+        // SAFETY: names and addresses are process-lifetime constants.
+        if unsafe { tcc_add_symbol(state, symbol.name.as_ptr().cast(), symbol.address) } < 0 {
+            return api.nilObj;
+        }
+    }
+    if let Some(payload) = unsafe { unit_payload(self_object) } {
+        // SAFETY: phase transition happens after all foreign calls return.
+        unsafe { (*payload).phase = UnitPhase::Configured };
+    }
+    self_object
 }
 
 unsafe fn bring_up(api_pointer: *mut IdApi) {
@@ -60,7 +865,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             (tcc_vt, unit_vt, tcc)
         };
         if [tcc_vt, unit_vt, tcc].iter().any(|value| value.is_null()) {
-            abort("TCC shell exports were incomplete");
+            abort("TCC exports were incomplete");
         }
         Runtime {
             api: api_pointer as usize,
@@ -69,28 +874,60 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             tcc: tcc as usize,
         }
     });
-
     let api = unsafe { api_ref(&runtime) };
+    let unit_vt = runtime.unit_vt as Oop;
+    // SAFETY: the raw UnitPayload contains only libtcc state and an enum byte.
+    unsafe { (api.setLayout)(unit_vt, ptr::null(), 0, SLOT_RAW) };
+    let tcc_vt = runtime.tcc_vt as Oop;
+    let tcc_methods: &[(&[u8], Method)] = &[
+        (b"compile:\0", m_compile),
+        (b"compile:output:as:\0", m_compile_output),
+        (b"new\0", m_new),
+    ];
+    let unit_methods: &[(&[u8], Method)] = &[
+        (b"compile:\0", m_compile_into_method),
+        (b"addLibrary:\0", m_add_library),
+        (b"addLibraryPath:\0", m_add_library_path),
+        (b"addFile:\0", m_add_file),
+        (b"bindRuntime\0", m_bind_runtime),
+        (b"addSymbol:value:\0", m_add_symbol),
+        (b"relocate\0", m_relocate),
+        (b"disposable\0", m_disposable),
+        (b"install:as:on:\0", m_install),
+        (b"symbol:\0", m_symbol),
+    ];
+    for (name, method) in tcc_methods {
+        // SAFETY: names are static NUL-terminated selectors and method pointers
+        // obey the frozen IdApi Method ABI.
+        let selector = unsafe { (api.intern)(name.as_ptr().cast()) };
+        unsafe { (api.method)(tcc_vt, selector, *method) };
+    }
+    for (name, method) in unit_methods {
+        // SAFETY: names are static NUL-terminated selectors and method pointers
+        // obey the frozen IdApi Method ABI.
+        let selector = unsafe { (api.intern)(name.as_ptr().cast()) };
+        unsafe { (api.method)(unit_vt, selector, *method) };
+    }
     if unsafe { (api.isExported)(TCC_NAME.as_ptr().cast()) } == 0 {
         unsafe {
-            let _ = (api.exportObj)(TCC_VT_NAME.as_ptr().cast(), runtime.tcc_vt as Oop);
-            let _ = (api.exportObj)(UNIT_VT_NAME.as_ptr().cast(), runtime.unit_vt as Oop);
+            let _ = (api.exportObj)(TCC_VT_NAME.as_ptr().cast(), tcc_vt);
+            let _ = (api.exportObj)(UNIT_VT_NAME.as_ptr().cast(), unit_vt);
             let _ = (api.exportObj)(TCC_NAME.as_ptr().cast(), runtime.tcc as Oop);
         }
     }
 }
 
-/// Identifies the explicit N4.1 shell; it does not claim TCC behavior.
+/// Identifies the N4.2 state-machine implementation.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_tcc_rust_identity() -> *const c_char {
     RUST_TCC_IDENTITY.as_ptr().cast()
 }
 
-/// Initialize the TCC shell against the process-owned IdApi.
+/// Initialize the TCC rung against the process-owned IdApi.
 ///
 /// # Safety
 ///
-/// api must be the live host IdApi table or null for the documented fatal
+/// `api` must be the live host IdApi table or null for the documented fatal
 /// boundary.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *mut c_void {
@@ -104,7 +941,7 @@ mod tests {
     use std::ffi::CStr;
 
     #[test]
-    fn shell_identity_is_terminated() {
+    fn state_identity_is_terminated() {
         // SAFETY: the export points to immutable crate storage for process life.
         let identity = unsafe { CStr::from_ptr(birnam_tcc_rust_identity()) };
         assert_eq!(identity.to_bytes_with_nul(), RUST_TCC_IDENTITY);

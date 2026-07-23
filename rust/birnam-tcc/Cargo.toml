@@ -8,6 +8,9 @@ publish = false
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
 
+[build-dependencies]
+cc.workspace = true
+
 [lib]
 name = "birnam_tcc"
 crate-type = ["cdylib"]

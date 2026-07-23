@@ -1152,13 +1152,14 @@ generated-code callback. The inventory assigns TCC-owned forwarding,
 allocation, layout, and C-string symbols separately from Codegen-owned global,
 method-mutation, candidate, quiescence, and lifecycle symbols.
 
-#### N4.1 execution record — in progress, 2026-07-23
+#### N4.1 execution record — complete, 2026-07-23
 
 The Rust workspace now contains a birnam-tcc dynamic-rung shell with the
 frozen Tcc, TccVt, and TccUnitVt export names plus identity
 rust-tcc-n4.1-shell. It is installed only as
 libbirnam_id_tcc_rust.dylib; Zig TCC remains the canonical
-libbirnam_id_tcc.dylib, and the shell exports no compile/runtime methods yet.
+libbirnam_id_tcc.dylib, and the shell initially exported no compile/runtime
+methods.
 The cross-language shell test passes on both IdApi floors, Cargo workspace
 tests and strict Clippy pass, and install metadata requires the explicit shell.
 N4.2 owns the unsafe libtcc state machine and runtime-symbol implementation.
@@ -1168,6 +1169,23 @@ N4.2 owns the unsafe libtcc state machine and runtime-symbol implementation.
 Wrap libtcc in Rust with explicit ownership states: created, configured,
 relocated, installed, disposable, and released. Prevent double release and
 use-after-finalize without holding Rust borrows across libtcc callbacks.
+
+#### N4.2 execution record — in progress, 2026-07-23
+
+`birnam-tcc` now compiles the vendored `libtcc.c` through an offline Cargo
+build and owns a raw `UnitPayload { TCCState*, phase }` with the explicit
+created/configured/relocated/installed/disposable/released transitions. The
+compile, staged compile, library/file, relocation, symbol, install, disposable,
+and AOT output operations are routed through that state machine; relocation is
+idempotent, installed units cannot become disposable, and finalization clears
+the state pointer before calling `tcc_delete`. The generated-C runtime symbol
+table is also registered through the same pre-relocation window.
+
+The Rust TCC integration test compiles and installs a native Method, proves
+idempotent relocation and rejects release of an installed unit. Cargo tests,
+strict Clippy, and the cross-language test pass with both Rust and Zig IdApi
+floors. N4.3 remains responsible for the full generated-C callback and
+relocatable-artifact matrix.
 
 ### N4.3 — Port runtime symbols
 
