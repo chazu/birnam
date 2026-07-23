@@ -1979,6 +1979,39 @@ unclaimed until the guarded pair completes. The complete `zig build verify`
 gate also passes at `e130f99` with this entry path. R6 remains open, and R7
 must not begin until that pair passes or a separate tradeoff record is accepted.
 
+The guarded driver was subsequently hardened without changing Design 46's
+regression thresholds. Tracked runs require AC power, a three-sample host-idle
+median, a hottest-process ceiling, and quiet measurement intervals; a loaded
+measurement is discarded and retried. Micro, GC, and image medians use three
+fresh processes, relational medians use five, and the short macro cases use
+three repetitions. The driver waits up to 900 seconds for a quiet host instead
+of failing immediately or accepting a contaminated sample.
+
+The first complete guarded pair exposed six Rust-floor regressions. Two bounded
+changes removed their measured causes without changing the ABI or MOP: scalar
+payload reads no longer repeat runtime membership/owner lookup after their
+typed public precondition, and GC scans payload words in place rather than
+copying every marked payload. A subsequent pair cleared all six cases. The last
+remaining micro failure, `string.split-native`, came from repeated public
+allocation checks while Zig collection code was synchronously executing inside
+an already owner-proven Rust runtime. Commit `c7a1e28` adds active allocation
+helpers used only through the TLS guard, while retaining collection-phase
+checks, automatic collection, canonical String vtables, and finalizer metadata.
+All 54 Rust tests, strict Clippy, the Store consistency-law suite in both
+profiles, and the complete isolated 256-test Zig/debug-Rust/release-Rust matrix
+pass. In the next tracked pair, `string.split-native` changed from a prior Rust
+median of 2.869 ms to 2.705 ms and matched Zig at +0.0%; the same-floor
+comparison measured a 5.7% Rust improvement.
+
+That pair is still not R6 acceptance evidence. Seven unrelated relational, GC,
+and boot cases crossed their thresholds while the two floor runs experienced
+different external host load. A second guarded attempt discarded contaminated
+micro and docgen measurements and waited rather than accepting them, but
+unrelated Go/Rust builds plus macOS PDF and Spotlight work kept the final Rust
+docgen preflight below the idle threshold for the full 900-second budget. The
+driver therefore emitted no partial Rust snapshot. R6 remains open pending one
+complete guarded pair on a quiet host; R7 remains prohibited.
+
 ## 13. Phase R7 — Build, install, and default cutover
 
 **Goal:** make Rust the default floor without deleting the oracle in the same
