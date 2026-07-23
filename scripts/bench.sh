@@ -9,9 +9,9 @@
 # Builds ReleaseSafe (the only tracked optimize mode), runs the birnam suites
 # (micro / parse / relational / gc / image) plus the whole-process macro cases
 # (boot paths, image boot, stage1 compile, scripts, docgen), and merges
-# everything into ONE stamped JSON. Release runs replicate the micro and
-# relational suites across 3 fresh processes (send cost varies ±8% between
-# processes — layout effects; the compare tool medians across runs).
+# everything into ONE stamped JSON. Release runs replicate micro/GC/image
+# across 3 fresh processes and relational across 5 (layout-sensitive reads
+# need the larger process median; the compare tool medians across runs).
 #
 # For the every-edit loop, run a single suite directly instead:
 #   BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam
@@ -172,13 +172,15 @@ run_suite() { # run_suite <script> <label> <runs>
 
 REP_SUITES=1
 [ $MODE = release ] && REP_SUITES=3
+REP_RELATIONAL=1
+[ $MODE = release ] && REP_RELATIONAL=5
 
 # gc and image are one-shot-per-process, so their only defense against
 # run-to-run noise (gc measured ±5% back-to-back) is process replication —
-# they replicate with micro/relational in release mode.
+# they replicate with micro in release mode.
 run_suite bench/micro.birnam micro $REP_SUITES
 run_suite bench/parse.birnam parse 1
-run_suite bench/relational.birnam relational $REP_SUITES
+run_suite bench/relational.birnam relational $REP_RELATIONAL
 run_suite bench/gc.birnam gc $REP_SUITES
 BENCH_IMG="$TMP/bench.image" run_suite bench/image.birnam image $REP_SUITES
 

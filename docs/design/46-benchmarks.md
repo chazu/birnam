@@ -170,11 +170,15 @@ The design that stays honest:
   number per process, no calibration. The query cases then run against that
   now-stationary base and may calibrate/repeat freely in-process (reads
   don't mutate).
-- `scripts/bench.sh` runs the whole relational suite as **3 fresh processes
-  for tracked (`--release`) runs** (1 in dev mode, like micro) and the
-  compare tool medians per case across them. 10k asserts and multi-clause
-  queries sit far above µs resolution, so cross-process ms timing loses
-  nothing.
+- `scripts/bench.sh` runs the whole relational suite as **5 fresh processes
+  for tracked (`--release`) runs** (1 in dev mode) and the compare tool
+  medians per case across them. Three was insufficient for the demonstrated
+  layout spread in `pull.nested`: two independent clean three-process pairs
+  crossed the 5% threshold in opposite directions, while their combined six
+  samples were only 1.1% apart. Five gives the tracked result an
+  outlier-resistant process median without extending the much more expensive
+  micro suite. 10k asserts and multi-clause queries sit far above µs
+  resolution, so cross-process ms timing loses nothing.
 
 ### Driver: `scripts/bench.sh --floor=zig|rust`
 
