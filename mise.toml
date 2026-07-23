@@ -99,6 +99,10 @@ run = "bash scripts/floor-verify.sh rust"
 description = "Compile artifacts with each floor and execute them with both floors"
 run = "bash scripts/cross-floor-artifact-smoke.sh"
 
+[tasks.test-cross-floor-images]
+description = "Save images with each floor and semantically boot them with both floors"
+run = "bash scripts/cross-floor-image-smoke.sh"
+
 [tasks.rust-env-loader-smoke]
 description = "Reflect canonical exports and reload a fixture through Rust"
 run = "bash scripts/rust-env-loader-smoke.sh"

@@ -325,6 +325,16 @@ pub fn build(b: *std.Build) void {
     );
     cross_floor_artifact_step.dependOn(&cross_floor_artifact_smoke.step);
 
+    const cross_floor_image_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/cross-floor-image-smoke.sh",
+    });
+    const cross_floor_image_step = b.step(
+        "test-cross-floor-images",
+        "Save with each floor and semantically verify mapped and rebuilt images with both",
+    );
+    cross_floor_image_step.dependOn(&cross_floor_image_smoke.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a
