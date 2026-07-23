@@ -78,6 +78,14 @@ unsafe extern "C" fn api_alloc(vtable: Oop, payload_size: usize) -> Oop {
 }
 
 unsafe extern "C" fn api_send(receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
+    if let Some(result) = with_active_if_present(|active| {
+        // SAFETY: with_active_if_present proves a surrounding owner-checked
+        // Runtime::enter; the public wrapper forwards the IdApi argument-buffer
+        // contract, and send_abi retains the metacircular lookup protocol.
+        unsafe { active.send_abi(receiver, selector, args, count) }
+    }) {
+        return result;
+    }
     runtime().enter(|| {
         // SAFETY: the public wrapper forwards the IdApi argument-buffer contract.
         unsafe { runtime().send_abi(receiver, selector, args, count) }
