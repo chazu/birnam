@@ -49,6 +49,12 @@ synchronous ABI and higher Zig/Birnam rungs fixed, proves both floors through a
 dual-backend verification window, and deliberately precedes any Design 60
 execution-model change.
 
+[Design 62](../design/62-rust-native-rungs-migration-plan.md) is the reviewed
+continuation: migrate each higher native dylib, the independent cold compiler,
+and the host to Rust while retaining existing Birnam policy seams. It preserves
+one floor, dynamic rung boundaries, Object Canonical and the MOP law, compiled
+unit authority, image v4, and the current synchronous stack model.
+
 ## Implemented Developer-Experience Sequence
 
 This developer-experience sequence is deliberately orthogonal to those runtime

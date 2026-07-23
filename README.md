@@ -394,3 +394,7 @@ host for the siphon, higher native rungs, and cold compiler.
   specifies the drop-in floor boundary, unsafe/reentrancy discipline,
   commit-granular initial phases, dual-floor verification, performance gates,
   completed default cutover, and delayed Zig-oracle retirement.
+- [The Rust native-rung migration plan](docs/design/62-rust-native-rungs-migration-plan.md)
+  extends that work through the higher dynamic rungs, independent cold compiler,
+  host, project workflow, and eventual Zig-toolchain retirement while preserving
+  Birnam's bootstrap, MOP, artifact, image-v4, and execution-model invariants.
