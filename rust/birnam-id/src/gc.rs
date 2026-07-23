@@ -117,7 +117,11 @@ impl Marker {
         let words = heap
             .payload_words(address)
             .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
-        for candidate in words {
+        for index in 0..words.len() {
+            // SAFETY: the mark phase neither mutates payloads nor changes heap
+            // registry membership. mark_address only toggles mark metadata and
+            // may grow this Marker's separate worklist.
+            let candidate = unsafe { words.read(index) };
             self.mark_address(heap, candidate);
         }
     }
@@ -131,8 +135,12 @@ impl Marker {
         let words = heap
             .payload_words(address)
             .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
-        for (index, candidate) in words.into_iter().enumerate() {
+        for index in 0..words.len() {
             if traces_word(index) {
+                // SAFETY: the mark phase neither mutates payloads nor changes
+                // heap registry membership. The selector closure runs before
+                // this read and cannot receive or retain the payload pointer.
+                let candidate = unsafe { words.read(index) };
                 self.mark_address(heap, candidate);
             }
         }

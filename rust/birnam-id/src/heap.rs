@@ -41,6 +41,36 @@ pub(crate) struct DetachedBlock {
     block: Block,
 }
 
+/// Copied coordinates for scanning one live object's pointer-sized payload
+/// words without allocating a per-object snapshot.
+///
+/// This deliberately carries no Rust borrow of `Heap`: the collector must
+/// mutate mark metadata while reading the separately allocated object payload.
+#[derive(Clone, Copy)]
+pub(crate) struct PayloadWords {
+    pointer: *const usize,
+    length: usize,
+}
+
+impl PayloadWords {
+    pub(crate) fn len(self) -> usize {
+        self.length
+    }
+
+    /// Read one word from the described live payload.
+    ///
+    /// # Safety
+    ///
+    /// The originating block must remain registered and its payload must not
+    /// be mutated for the duration of the scan. `index` must be below `len`.
+    pub(crate) unsafe fn read(self, index: usize) -> usize {
+        debug_assert!(index < self.length);
+        // SAFETY: forwarded caller contract keeps the live aligned allocation
+        // stable and bounds index to this payload range.
+        unsafe { self.pointer.add(index).read() }
+    }
+}
+
 impl DetachedBlock {
     pub(crate) fn object(&self) -> Oop {
         self.block.payload.as_ptr().cast()
@@ -215,21 +245,17 @@ impl Heap {
         true
     }
 
-    /// Copy the pointer-sized words in one exact live payload. Marking owns the
-    /// returned snapshot so it can mutate the registry while scanning it.
-    pub(crate) fn payload_words(&self, address: usize) -> Option<Vec<usize>> {
+    /// Copy only the coordinates of one exact live payload for allocation-free
+    /// GC scanning. The range intentionally does not borrow `Heap`, because
+    /// marking must mutate registry metadata while the separate payload
+    /// allocation remains stable.
+    pub(crate) fn payload_words(&self, address: usize) -> Option<PayloadWords> {
         let block = self.blocks.get(&address)?;
         let payload_size = block.total_size - VTABLE_HEADER_SIZE;
         debug_assert_eq!(payload_size % size_of::<usize>(), 0);
-        // SAFETY: every payload starts pointer-aligned and its padded extent is
-        // a whole number of machine words. The allocation remains live while
-        // the copied snapshot is created.
-        Some(unsafe {
-            std::slice::from_raw_parts(
-                block.payload.as_ptr().cast_const().cast::<usize>(),
-                payload_size / size_of::<usize>(),
-            )
-            .to_vec()
+        Some(PayloadWords {
+            pointer: block.payload.as_ptr().cast_const().cast(),
+            length: payload_size / size_of::<usize>(),
         })
     }
 
@@ -528,6 +554,28 @@ mod tests {
                     .all(|(index, byte)| *byte == (index as u8).wrapping_mul(17).wrapping_add(3))
             );
         }
+    }
+
+    #[test]
+    fn payload_word_range_reads_live_words_without_copying_the_payload() {
+        let mut heap = Heap::new();
+        let object = heap.allocate(3 * size_of::<usize>(), Permanence::Collectable);
+        let expected = [0x1234usize, object.addr(), usize::MAX];
+        // SAFETY: object owns three aligned writable words.
+        unsafe {
+            object
+                .cast::<usize>()
+                .copy_from_nonoverlapping(expected.as_ptr(), expected.len())
+        };
+
+        let words = heap.payload_words(object.addr()).expect("live payload");
+        assert_eq!(words.len(), expected.len());
+        for (index, expected_word) in expected.into_iter().enumerate() {
+            // SAFETY: the registered block remains live and unchanged
+            // throughout this bounded scan.
+            assert_eq!(unsafe { words.read(index) }, expected_word);
+        }
+        assert!(heap.payload_words(object.addr() + 1).is_none());
     }
 
     #[test]
