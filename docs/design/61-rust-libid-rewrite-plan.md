@@ -1,7 +1,8 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** Implementation in progress; R0.1 through R0.5, R1.1 through R1.5,
-> R2.1 through R2.6, R3.0 through R3.7, and R4.1 through R4.7 complete as of 2026-07-22. This plan
+> R2.1 through R2.6, R3.0 through R3.7, R4.1 through R4.7, and R5 complete as
+> of 2026-07-22. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -1841,6 +1842,37 @@ diagnostic differences.
 - every same-floor, cross-floor, rebuild, and frozen-image cell is green;
 - there are no unexplained image, reflection-order, or live-count differences;
 - the Zig floor remains the default.
+
+### R5 execution record — 2026-07-22
+
+Every selected-floor Zig test now reaches `id_init` through the shared adapter;
+no higher-rung test imports the Zig implementation for a private bind assertion.
+The named `test-floor-zig` and `test-floor-rust` paths run the same complete
+256-test matrix from isolated prefixes and caches under Zig, Rust debug, and
+Rust release. The named `verify-floor-zig` and `verify-floor-rust` paths add the
+328-test self-hosted suite, REPL goldens, source fallback, project
+check/build/run/install/test, LSP, image save, isolate, Alien/wrapped-library,
+and relocated-install checks. Each selected process verifies both the floor
+identity export and the exact dylib SHA-256 before `id_init`.
+
+The mixed-generation artifact gate compiles the same self-described module once
+with each floor. All four producer/consumer cells execute its behavior, proving
+both cross-load directions as well as the two controls. The image gate likewise
+saves once with each floor. Its save reports match exactly: 298 durable facts,
+193 source-recovered facts, no recovered slots, and no rejected facts or slots.
+All eight current-image cells (four mapped and four `--rebuild`) preserve the
+same durable application facts, exported `String` identity, heap-slot identity,
+compiled behavior, re-derived closure, and seed `#clone -> #primitive` MOP
+mirror. The committed pre-rewrite native client and image also pass mapped and
+rebuilt under both floors.
+
+The diagnostic gate compares specified language-visible kinds and messages for
+`#doesNotUnderstand`, `#zeroDivide`, `#mustBeBoolean`, and `#notASymbol`, plus
+the located syntax-error report; both floors are byte-for-byte equal. Finally,
+two clean full-verification cycles pass in alternating Zig/Rust then Rust/Zig
+order, with new isolated build trees and verified digests on every run. No test
+is skipped for Rust, no process initializes or loads both floors, and the
+installed/default floor remains Zig.
 
 ## 12. Phase R6 — Performance, robustness, and release readiness
 
