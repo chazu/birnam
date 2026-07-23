@@ -42,7 +42,8 @@ probe_profile() {
   test -f "$dylib"
   expect_abort "$profile" "$dylib" birnam_id_test_panic_across_ffi "intentional Rust FFI panic"
   expect_abort "$profile" "$dylib" birnam_id_test_invariant_abort "intentional Rust FFI invariant failure"
-  echo "rust-ffi-abort: $profile panic and invariant hooks terminated with SIGABRT"
+  expect_abort "$profile" "$dylib" birnam_id_test_non_owner_abort "Rust floor entered from a non-owner thread"
+  echo "rust-ffi-abort: $profile panic, invariant, and non-owner hooks terminated with SIGABRT"
 }
 
 probe_profile debug

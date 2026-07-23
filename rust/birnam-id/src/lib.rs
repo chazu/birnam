@@ -79,6 +79,22 @@ pub extern "C" fn birnam_id_test_invariant_abort() {
     boundary::require_invariant(false, "intentional Rust FFI invariant failure");
 }
 
+/// Test-only proof that the process runtime rejects a different calling thread.
+#[cfg(feature = "ffi-test-hooks")]
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_test_non_owner_abort() {
+    let api_address = public_api::initialize_once() as usize;
+    std::thread::spawn(move || {
+        // SAFETY: initialize_once leaks the complete IdApi table for the process.
+        let api = unsafe { &*(api_address as *const abi::IdApi) };
+        // SAFETY: gcLiveCount takes no foreign pointers; this deliberately
+        // violates only the owner-thread precondition under test.
+        unsafe { (api.gcLiveCount)() };
+    })
+    .join()
+    .expect("non-owner Rust floor call must terminate the process");
+}
+
 /// Test-only bridge through which an external C-layout fixture inspects one
 /// isolated Rust heap block.
 ///

@@ -2,6 +2,7 @@
 #![allow(dead_code)] // R2 harness precedes public id_init wiring.
 
 use core::cell::{Cell, UnsafeCell};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::abi::SLOT_OOP;
 use crate::abi::{Method, MethodOverwriteHook, Oop};
@@ -65,7 +66,7 @@ struct RuntimeState {
 
 /// One runtime owned by the thread that constructed it.
 pub(crate) struct Runtime {
-    owner: std::thread::ThreadId,
+    owner: u64,
     collection_phase: Cell<CollectionPhase>,
     state: UnsafeCell<RuntimeState>,
 }
@@ -105,7 +106,7 @@ impl Runtime {
         globals: DispatchGlobals,
     ) -> Self {
         Self {
-            owner: std::thread::current().id(),
+            owner: current_thread_token(),
             collection_phase: Cell::new(CollectionPhase::Idle),
             state: UnsafeCell::new(RuntimeState {
                 symbols,
@@ -124,7 +125,7 @@ impl Runtime {
 
     fn assert_owner(&self) {
         boundary::require_invariant(
-            std::thread::current().id() == self.owner,
+            current_thread_token() == self.owner,
             "Rust floor entered from a non-owner thread",
         );
     }
@@ -919,8 +920,19 @@ fn intern_in_state(state: &mut RuntimeState, bytes: &[u8]) -> Result<Oop, Embedd
     Ok(symbol)
 }
 
+static NEXT_THREAD_TOKEN: AtomicU64 = AtomicU64::new(1);
+
 thread_local! {
+    static THREAD_TOKEN: u64 = {
+        let token = NEXT_THREAD_TOKEN.fetch_add(1, Ordering::Relaxed);
+        boundary::require_invariant(token != 0, "Rust floor thread identity space exhausted");
+        token
+    };
     static ACTIVE_RUNTIME: Cell<*const Runtime> = const { Cell::new(core::ptr::null()) };
+}
+
+fn current_thread_token() -> u64 {
+    THREAD_TOKEN.with(|token| *token)
 }
 
 struct ActiveRuntimeGuard<'a> {
@@ -942,4 +954,19 @@ pub(crate) fn with_active<R>(operation: impl FnOnce(&Runtime) -> R) -> R {
         // this dynamic extent, including synchronous reentrant callbacks.
         operation(unsafe { &*runtime })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::current_thread_token;
+
+    #[test]
+    fn owner_tokens_are_stable_and_unique_across_threads() {
+        let owner = current_thread_token();
+        assert_eq!(current_thread_token(), owner);
+        let other = std::thread::spawn(current_thread_token)
+            .join()
+            .expect("token thread completes");
+        assert_ne!(other, owner);
+    }
 }
