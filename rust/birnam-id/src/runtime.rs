@@ -789,15 +789,31 @@ impl Runtime {
     }
 
     pub(crate) fn is_integer(&self, object: Oop) -> bool {
-        self.checked_vtable_of(object) == self.canonical().smallint_vt
+        self.has_canonical_vtable(object, |canonical| canonical.smallint_vt)
     }
 
     pub(crate) fn is_float(&self, object: Oop) -> bool {
-        self.checked_vtable_of(object) == self.canonical().float_vt
+        self.has_canonical_vtable(object, |canonical| canonical.float_vt)
     }
 
     pub(crate) fn is_word(&self, object: Oop) -> bool {
-        self.checked_vtable_of(object) == self.canonical().word_vt
+        self.has_canonical_vtable(object, |canonical| canonical.word_vt)
+    }
+
+    fn has_canonical_vtable(
+        &self,
+        object: Oop,
+        select: impl FnOnce(CanonicalObjects) -> Oop,
+    ) -> bool {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization keeps both the exact-address heap
+        // membership query and copied canonical identities in one state access.
+        let state = unsafe { &*self.state.get() };
+        let vtable = Vtables::checked_vtable_of(&state.heap, object);
+        let canonical = state
+            .canonical
+            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"));
+        vtable == select(canonical)
     }
 
     pub(crate) fn string_bytes(&self, object: Oop) -> Option<&[u8]> {
