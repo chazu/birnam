@@ -108,6 +108,10 @@
   [[db findAll: ?m where: #[ #[?m #docKind #zigFloor] ]] includes: mod]] doc:
   "True iff `mod`'s docs came from a Zigdoc scan (the #docKind #zigFloor fact) rather than a loadable birnam module."];
 
+[Reflect defineMethod: #isRustFloor: on: Doc as: [:self :mod |
+  [[db findAll: ?m where: #[ #[?m #docKind #rustFloor] ]] includes: mod]] doc:
+  "True iff `mod`'s docs came from a Rust-source scan (the #docKind #rustFloor fact) rather than a loadable birnam module."];
+
 // Every documented module, ordered by display name (String `<` under sortBy:).
 [Reflect defineMethod: #sortedModules on: Doc as: [:self |
   let me := self;
@@ -431,7 +435,7 @@
     , [Html tag: "dd" body: [[Html escape: txt] , srcHtml]]]] doc:
   "One entry: an anchored <dt> (#modName-sel, selector + receiver badge) and a <dd> with the docstring and any recorded source in <details>."];
 
-// One module's section body: <h2> (self-link + Zig-floor badge), the summary,
+// One module's section body: <h2> (self-link + native-floor badge), the summary,
 // the header prose (when the source records one) in a collapsed <details>, and
 // a <dl> of entries. `srcIdx` is a prebuilt `sourceIndex`.
 [Reflect defineMethod: #htmlForModule:sources: on: Doc as: [:self :mod :srcIdx |
@@ -440,7 +444,9 @@
   let summary := [[db cellFor: mod attr: #docSummary] value];
   let badge := [[self isZigFloor: mod]
     ifTrue:  [| [Html tag: "span" attrs: [Html attr: "class" value: "kind"] body: "Zig floor"]]
-    ifFalse: [| ""]];
+    ifFalse: [| [[self isRustFloor: mod]
+      ifTrue:  [| [Html tag: "span" attrs: [Html attr: "class" value: "kind"] body: "Rust floor"]]
+      ifFalse: [| ""]]]];
   let header := [self headerOf: mod];
   let notes := [[header isEmpty]
     ifTrue:  [| ""]
@@ -454,7 +460,7 @@
     , [Html tag: "p" attrs: [Html attr: "class" value: "summary"] body: [Html escape: summary]]
     , [notes
     , [Html tag: "dl" body: [items asString]]]]] doc:
-  "One module's section body: self-linked <h2> (+ Zig-floor badge), summary, header-prose notes, and a <dl> of entries (`srcIdx` = a prebuilt sourceIndex)."];
+  "One module's section body: self-linked <h2> (+ native-floor badge), summary, header-prose notes, and a <dl> of entries (`srcIdx` = a prebuilt sourceIndex)."];
 
 // The standalone form builds its own source index (whole-site rendering passes
 // one shared index instead — see htmlIndex).
@@ -472,7 +478,7 @@
   "A sidebar list for `mods`: one <li><a href=\"#name\">name</a></li> each."];
 
 // One HTML page for EVERY documented module: a grouped, name-sorted sidebar
-// (birnam modules apart from the Zig floor) + a section each, styled by
+// (birnam modules apart from the Rust floor and Zig oracle) + a section each, styled by
 // `stylesheet`. (Accumulation rides StringBuilder — `secs` is the WHOLE page
 // body, the single biggest string docgen builds; an inject `,` fold would
 // re-copy it per module.)
@@ -480,9 +486,11 @@
   let me := self;
   let mods := [self sortedModules];
   let birnamMods := [mods inject: #[] into: [:acc :m |
-    [[me isZigFloor: m] ifTrue: [| acc] ifFalse: [| [acc add: m]]]]];
+    [[[me isZigFloor: m] | [me isRustFloor: m]] ifTrue: [| acc] ifFalse: [| [acc add: m]]]]];
   let zigMods := [mods inject: #[] into: [:acc :m |
     [[me isZigFloor: m] ifTrue: [| [acc add: m]] ifFalse: [| acc]]]];
+  let rustMods := [mods inject: #[] into: [:acc :m |
+    [[me isRustFloor: m] ifTrue: [| [acc add: m]] ifFalse: [| acc]]]];
   let srcIdx := [self sourceIndex];
   let guides := [[db cellFor: Doc attr: #guides] value];
   let nav := [StringBuilder new];
@@ -501,6 +509,9 @@
   [[zigMods isEmpty] ifTrue: [| nil] ifFalse: [|
     [nav add: [Html tag: "h2" text: "Zig floor"]];
     [nav add: [Html tag: "ul" body: [me navListFor: zigMods]]]]];
+  [[rustMods isEmpty] ifTrue: [| nil] ifFalse: [|
+    [nav add: [Html tag: "h2" text: "Rust floor"]];
+    [nav add: [Html tag: "ul" body: [me navListFor: rustMods]]]]];
   let secs := [StringBuilder new];
   [secs add: [Html tag: "h1" text: "birnam documentation"]];
   [guides do: [:g |
@@ -556,9 +567,9 @@
   "Load every supported runtime module from its compiled unit so its documentation and source metadata become visible. Answers self."];
 
 // Build the full HTML reference to `out`: load the compiled production closure,
-// extract the separately shipped native Zig-floor docs, load authored guides,
+// extract the separately shipped native Rust-floor and Zig-oracle docs, load authored guides,
 // then write `htmlIndex`. Answers `out`.
-[Reflect defineMethod: #buildSite:zig:guides: on: Doc as: [:self :out :zd :gd |
+[Reflect defineMethod: #buildSite:zig:rust:guides: on: Doc as: [:self :out :zd :rd :gd |
   let me := self;
   let loaded := [self loadAllModules];
   [[loaded isError]
@@ -566,9 +577,10 @@
     ifFalse: [|
       [self loadGuides: gd];
       [Zigdoc scanDir: zd];
+      [Zigdoc scanRustDir: rd];
       [File write: out contents: [me htmlIndex]];
       out]]] doc:
-  "Build the full HTML reference to `out`: load compiled production modules, guides, and Zig-floor docs, then write htmlIndex. Answers `out`."];
+  "Build the full HTML reference to `out`: load compiled production modules, guides, Rust-floor docs, and Zig-oracle docs, then write htmlIndex. Answers `out`."];
 
 // module:is: predates the #doc registration above (it IS the registrar), so its
 // docstring rides the appended path instead of a doc: define:

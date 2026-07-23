@@ -83,6 +83,9 @@ grep -q 'System saveImage:' reference.html
 grep -q 'Blocking process isolates' reference.html
 grep -q 'id="html"' reference.html
 grep -q 'tag:body:' reference.html
+grep -q 'id="rust-abi"' reference.html
+grep -q 'Append-only C ABI table returned by' reference.html
+grep -q '>Rust floor<' reference.html
 "$bin" --lsp </dev/null >/dev/null
 printf ':quit\n' | env BIRNAM_ID_FLOOR_IDENTITY=rust-id-v1 "$bin" >/dev/null
 printf ':quit\n' | env \

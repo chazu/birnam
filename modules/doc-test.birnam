@@ -9,8 +9,21 @@
 // loaded so the compiledUnitDocs dependency does not replace that test fixture.
 [Module markLoaded: #doc];
 [Module load: #compiledUnitDocs];
+[Module load: #zigdoc];
 
 let s := [TestSuite named: "Doc" module: #doc];
+
+[s test: "native scanner extracts attributed Rust declarations" do: [:t |
+  let path := "/tmp/birnam-doc-test-native.rs";
+  [File write: path contents: "//! Rust fixture summary.\n/// Documented structure.\n#[repr(C)]\npub(crate) struct NativeThing {\n}\n"];
+  [Zigdoc scanRust: path as: #rustFixture];
+  [t assert: [Doc isRustFloor: #rustFixture] describes: "Rust scan records the distinct doc kind"];
+  [t expect: [[db cellFor: #rustFixture attr: #docSummary] value]
+     equals: "Rust fixture summary."
+     describes: "//! supplies the module summary"];
+  [t assert: [[Doc cli: #rustFixture] includesSubstring: "NativeThing"]
+     describes: "an attribute does not detach /// docs from the Rust declaration"];
+  [File delete: path]]];
 
 // Use a throwaway module symbol so the suite is self-contained and order-stable.
 [s test: "markdown renders summary + ordered method list" do: [:t |
@@ -45,20 +58,24 @@ let s := [TestSuite named: "Doc" module: #doc];
   [t assert: [h includesSubstring: "selectorInSource: on: Doc"]
      describes: "the source shown is this definition's own span"]]];
 
-// The whole-site page: a name-sorted sidebar with the Zig floor grouped apart
-// (Zigdoc asserts `#docKind #zigFloor` when it scans; here the fact is direct).
-[s test: "htmlIndex sorts modules by name and flags the Zig floor" do: [:t |
+// The whole-site page: a name-sorted sidebar with both native source groups apart.
+[s test: "htmlIndex sorts modules and groups both native floors" do: [:t |
   [Doc module: #zzOrderB is: "later"];
   [Doc module: #zzOrderA is: "earlier"];
+  [Doc module: #zzOrderR is: "rust"];
   [db assert: #zzOrderB attr: #docKind value: #zigFloor];
+  [db assert: #zzOrderR attr: #docKind value: #rustFloor];
   [t assert: [Doc isZigFloor: #zzOrderB] describes: "docKind fact makes isZigFloor: true"];
   [t assert: [[Doc isZigFloor: #zzOrderA] not] describes: "unmarked module is not Zig floor"];
+  [t assert: [Doc isRustFloor: #zzOrderR] describes: "docKind fact makes isRustFloor: true"];
+  [t assert: [[Doc isRustFloor: #zzOrderA] not] describes: "unmarked module is not Rust floor"];
   let names := [[Doc sortedModules] inject: "" into: [:acc :m | [[acc , [Doc nameOf: m]] , " "]]];
   [t assert: [[names indexOf: "zzOrderA "] < [names indexOf: "zzOrderB "]]
      describes: "sortedModules orders by display name"];
   let page := [Doc htmlIndex];
   [t assert: [page includesSubstring: "<style>"] describes: "page carries the inline stylesheet"];
   [t assert: [page includesSubstring: "Zig floor"] describes: "nav has the Zig-floor group"];
+  [t assert: [page includesSubstring: "Rust floor"] describes: "nav has the Rust-floor group"];
   [t assert: [page includesSubstring: "<section id=\"zzOrderA\">"] describes: "a section per module"];
   [t assert: [page includesSubstring: "<meta charset=\"utf-8\">"] describes: "charset meta present"]]];
 

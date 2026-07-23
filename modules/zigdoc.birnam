@@ -1,24 +1,24 @@
-// zigdoc.birnam — pull docs (and facts) out of the Zig floor, in pure birnam.
+// zigdoc.birnam — pull docs (and facts) out of native floor sources, in pure birnam.
 //
-// The birnam Doc system documents birnam code; the Zig floor (src/id/*.zig) is
-// separate and must NOT require Zig to run. This module reads a .zig file as TEXT
-// (via the File module) and extracts its `//!` (module) and `///` (declaration)
-// doc-comments — which are already dense — recording them as Doc FACTS under a
-// module symbol. So the Zig docs join the same queryable image: `[Doc text: #alien]`,
-// `birnam doc alien`, and the HTML reference all read them, with zero Zig runtime.
+// The birnam Doc system documents birnam code; the native Rust floor and retained
+// Zig oracle are separate and doc generation must NOT require either compiler.
+// This module reads .rs/.zig files as TEXT (via File) and extracts their shared
+// `//!` (module) and `///` (declaration) doc-comment convention into Doc FACTS.
+// The native docs therefore join the same queryable image and HTML reference.
 //
 // Load it (from the repo root) with:
 //   [Module load: #zigdoc]     (loads File + Doc first)
 //   [Zigdoc scan: "src/id/alien.zig" as: #alien]   "=> records #alien's docs"
 //   [Doc text: #alien]                             "=> the extracted docs"
 //   [Zigdoc scanDir: "src/id"]                     "=> scan every .zig in a dir"
+//   [Zigdoc scanRustDir: "rust/birnam-id/src"]      "=> scan every .rs in a dir"
 
 [Module named: #zigdoc requires: #[#file #doc]];
 [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [Module load: #file]]];
 [[Globals includes: #Doc]  ifTrue: [| nil] ifFalse: [| [Module load: #doc]]];
 
 [Globals at: #Zigdoc put: [Object clone]];
-[Reflect docModule: #zigdoc is: "Zig floor doc extraction — scans //! and /// comments out of .zig files into Doc facts, no Zig runtime."];
+[Reflect docModule: #zigdoc is: "Native floor doc extraction — scans //! and /// comments out of Rust and Zig sources into Doc facts, without either compiler."];
 
 // The text after a `//` marker on `line` (trimmed). `[line split: mark] last` is
 // the tail after the last occurrence of the marker.
@@ -27,8 +27,9 @@
   r] doc:
   "The trimmed text after the last `mark` occurrence on `line` (the whole line, trimmed, when absent)."];
 
-// The declared name on a (trimmed) Zig line, or "" if it isn't a fn/const decl.
-// Takes the identifier after `fn `/`const `, up to the first `(`, ` ` or `=`.
+// The declared name on a trimmed native-source line, or "" if it isn't a
+// recognized Zig/Rust declaration. Takes the identifier after its declaration
+// keyword, up to the first `(`, ` ` or `=`.
 [Reflect defineMethod: #identAfter:mark: on: Zigdoc as: [:self :t :mark |
   let rest := [[t split: mark] last];
   let a := [[rest split: "("] first];
@@ -43,14 +44,27 @@
     ifTrue:  [| [self identAfter: t mark: "fn "]]
     ifFalse: [| [[t includesSubstring: "const "]
       ifTrue:  [| [self identAfter: t mark: "const "]]
-      ifFalse: [| ""]]]];
+      ifFalse: [| [[t includesSubstring: "struct "]
+        ifTrue:  [| [self identAfter: t mark: "struct "]]
+        ifFalse: [| [[t includesSubstring: "enum "]
+          ifTrue:  [| [self identAfter: t mark: "enum "]]
+          ifFalse: [| [[t includesSubstring: "type "]
+            ifTrue:  [| [self identAfter: t mark: "type "]]
+            ifFalse: [| [[t includesSubstring: "trait "]
+              ifTrue:  [| [self identAfter: t mark: "trait "]]
+              ifFalse: [| [[t includesSubstring: "mod "]
+                ifTrue:  [| [self identAfter: t mark: "mod "]]
+                ifFalse: [| [[t includesSubstring: "static "]
+                  ifTrue:  [| [self identAfter: t mark: "static "]]
+                  ifFalse: [| ""]]]]]]]]]]]]]]]];
   r] doc:
-  "The declared fn/const name on a trimmed Zig line, or \"\" if it isn't a declaration."];
+  "The declared fn/const/struct/enum/type/trait/mod/static name on a trimmed native-source line, or \"\"."];
 
 // Process one line against the scanner state (cells: #pending doc, #summary).
 // //! -> module summary (first one wins); /// -> accumulate a pending docstring;
-// any other line either consumes the pending doc (if it's a declaration) or, being
-// non-doc non-decl, drops it (docs must sit immediately above their declaration).
+// any other line either consumes the pending doc (if it's a declaration) or drops
+// it. Native `#[...]` attributes are transparent so Rust docs remain associated
+// with their attributed declaration.
 [Reflect defineMethod: #feedLine:scanner:module: on: Zigdoc as: [:self :line :sc :mod |
   let t := [line trimmed];
   [[line startsWith: "//!"]
@@ -68,31 +82,41 @@
           [[p isEmpty]
             ifTrue:  [| sc]
             ifFalse: [|
-              let nm := [self declName: t];
-              [[nm isEmpty]
-                ifTrue:  [| sc]
-                ifFalse: [| [Doc for: [nm asSymbol] in: mod says: [p trimmed]]]];
-              [[db cellFor: sc attr: #pending] set: ""]]]]]]];
+              [[t startsWith: "#["]
+                ifTrue: [| sc]
+                ifFalse: [|
+                  let nm := [self declName: t];
+                  [[nm isEmpty]
+                    ifTrue:  [| sc]
+                    ifFalse: [| [Doc for: [nm asSymbol] in: mod says: [p trimmed]]]];
+                  [[db cellFor: sc attr: #pending] set: ""]]]]]]]]];
   sc] doc:
-  "Feed one line to scanner `sc`: //! seeds the module summary (first wins), /// accumulates, a declaration consumes the pending doc (other lines drop it)."];
+  "Feed one native-source line to scanner `sc`: //! seeds the module summary, /// accumulates, attributes preserve pending docs, and a declaration consumes them."];
 
-// Scan one .zig file into Doc facts under `mod`. Answers `mod`. Also marks the
-// module `#docKind #zigFloor` — a fact the doc renderers read to badge/group
-// Zig-floor entries apart from loadable birnam modules.
-[Reflect defineMethod: #scan:as: on: Zigdoc as: [:self :path :mod |
+// Scan one native source file into Doc facts under `mod`, assigning its explicit
+// documentation kind and fallback language label. Answers `mod`.
+[Reflect defineMethod: #scan:as:kind:language: on: Zigdoc as: [:self :path :mod :kind :language |
   let text  := [File readText: path];
   let lines := [text split: "\n"];
   let sc := [Object clone];
   [[db cellFor: sc attr: #pending] set: ""];
   [[db cellFor: sc attr: #summary] set: ""];
   [Reflect docModule: mod is: ""];
-  [db assert: mod attr: #docKind value: #zigFloor];
+  [db assert: mod attr: #docKind value: kind];
   [0 to: [[lines size] - 1] do: [:i |
     [self feedLine: [lines at: i] scanner: sc module: mod]]];
   let sum := [[db cellFor: sc attr: #summary] value];
-  [[db cellFor: mod attr: #docSummary] set: [[sum isEmpty] ifTrue: [| [path , " (Zig)"]] ifFalse: [| sum]]];
+  [[db cellFor: mod attr: #docSummary] set: [[sum isEmpty] ifTrue: [| [[path , " ("] , [language , ")"]]] ifFalse: [| sum]]];
   mod] doc:
+  "Scan one native source file into Doc facts under `mod`, marking it with `kind`; answers `mod`."];
+
+[Reflect defineMethod: #scan:as: on: Zigdoc as: [:self :path :mod |
+  [self scan: path as: mod kind: #zigFloor language: "Zig"]] doc:
   "Scan one .zig file at `path` into Doc facts under `mod`, marking it #zigFloor. Answers `mod`."];
+
+[Reflect defineMethod: #scanRust:as: on: Zigdoc as: [:self :path :mod |
+  [self scan: path as: mod kind: #rustFloor language: "Rust"]] doc:
+  "Scan one .rs file at `path` into Doc facts under `mod`, marking it #rustFloor. Answers `mod`."];
 
 // Make `mod` documented if it isn't already: load its compiled unit, and if
 // that identity is not a shipped Birnam module, scan the Zig file at `zp`.
@@ -116,4 +140,19 @@
         [acc add: [base asSymbol]]]
       ifFalse: [| acc]]]];
   mods] doc:
-  "Scan every non-test .zig in `dir`, each into module #<basename>; answers the Vector of module symbols documented."]
+  "Scan every non-test .zig in `dir`, each into module #<basename>; answers the Vector of module symbols documented."];
+
+// Scan every `*.rs` in `dir`, each into module #rust-<basename>. The prefix
+// prevents collisions with Birnam modules and Zig-oracle source identities.
+[Reflect defineMethod: #scanRustDir: on: Zigdoc as: [:self :dir |
+  let names := [File listDir: dir];
+  let mods := [names inject: #[] into: [:acc :nm |
+    [[nm endsWith: ".rs"]
+      ifTrue:  [|
+        let base := [[nm split: "."] first];
+        let mod := [["rust-" , base] asSymbol];
+        [self scanRust: [[dir , "/"] , nm] as: mod];
+        [acc add: mod]]
+      ifFalse: [| acc]]]];
+  mods] doc:
+  "Scan every .rs in `dir`, each into module #rust-<basename>; answers the Vector of module symbols documented."]
