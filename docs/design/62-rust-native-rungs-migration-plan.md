@@ -1,8 +1,8 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, and N2.3b are
-> complete; N2.3c is next.
+> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, and
+> N2.3c are complete; N2.4 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -802,6 +802,20 @@ fact log. `at:`, `at:ifAbsent:`, `at:put:`, and `includes:` preserve absent vers
 bound-`nil` semantics, and fallback blocks are invoked only for genuine absence.
 The cross-language suite passes this boundary on both floors; no second global
 environment or per-global native state was introduced.
+
+#### N2.3c execution record — complete, 2026-07-23
+
+The Rust Store now exposes honest `valueOf:attr:asOf:` reads and the live triple
+window protocol: current, as-of, since, and half-open between enumeration. The
+implementation folds one/many cardinality and retract events before any
+callback, materializes carriers, then sends `value:value:value:` with no Rust
+borrow held across re-entry. History-off overwrite transaction watermarks now
+match the Store basis contract; an unavailable earlier value returns the
+kinded `#historyNotRetained` signal instead of silently fabricating absence.
+The cross-language suite covers current/as-of/since/between behavior, many
+retraction, callback shape, and both selected IdApi floors. Rust formatting,
+strict Clippy, focused Store tests, and the full repository gate are required
+before this commit.
 
 ### N2.3 — Implement the MOP chokepoint
 

@@ -2,9 +2,9 @@
 //!
 //! This slice keeps the public protocol deliberately small. It owns the
 //! historied `(entity, attribute, value)` log and the schema-aware raw/flip,
-//! assert, retract, lookup, cardinality, count, history, and basis operations.
-//! MOP, image, cell, and Globals policy remain in the Zig Store until their
-//! dedicated migration slices; no Rust reference or lock crosses an IdApi
+//! assert, retract, lookup, cardinality, count, history, basis, as-of, and
+//! live-triple operations. Image policy remains in the Zig Store until its
+//! dedicated migration slice; no Rust reference or lock crosses an IdApi
 //! callback.
 
 use birnam_abi::IdApi;
@@ -241,26 +241,24 @@ unsafe fn append_fact(
     v: birnam_abi::Oop,
     op: Op,
 ) {
+    let tx = state.tx;
     state.tx = state.tx.saturating_add(1);
-    state.facts.push(Fact {
-        e,
-        a,
-        v,
-        tx: state.tx,
-        op,
-    });
+    state.facts.push(Fact { e, a, v, tx, op });
 }
 
-fn current_value_raw(
+fn current_value_raw_as_of(
     state: &StoreState,
     e: birnam_abi::Oop,
     a: birnam_abi::Oop,
+    basis: Option<u64>,
 ) -> birnam_abi::Oop {
     state
         .facts
         .iter()
         .rev()
-        .find(|fact| same(fact.e, e) && same(fact.a, a))
+        .find(|fact| {
+            same(fact.e, e) && same(fact.a, a) && basis.is_none_or(|watermark| fact.tx < watermark)
+        })
         .map_or(ptr::null_mut(), |fact| {
             if fact.op == Op::Assert {
                 fact.v
@@ -268,6 +266,14 @@ fn current_value_raw(
                 ptr::null_mut()
             }
         })
+}
+
+fn current_value_raw(
+    state: &StoreState,
+    e: birnam_abi::Oop,
+    a: birnam_abi::Oop,
+) -> birnam_abi::Oop {
+    current_value_raw_as_of(state, e, a, None)
 }
 
 fn count_values(state: &StoreState, e: birnam_abi::Oop, a: birnam_abi::Oop) -> usize {
@@ -460,6 +466,7 @@ fn replace_one(state: &mut StoreState, e: birnam_abi::Oop, a: birnam_abi::Oop, v
     {
         fact.v = v;
         fact.op = Op::Assert;
+        fact.tx = state.tx;
         state.tx = state.tx.saturating_add(1);
     } else {
         unsafe { append_fact(state, e, a, v, Op::Assert) };
@@ -730,6 +737,204 @@ unsafe extern "C" fn basis(
     unsafe { (api(runtime).mkSmallInt)(tx as i64) }
 }
 
+fn history_not_retained_error(runtime: &Runtime) -> birnam_abi::Oop {
+    let api = unsafe { api(runtime) };
+    let error = unsafe { import(api, b"Error\0") };
+    if error.is_null() {
+        return api.nilObj;
+    }
+    let selector = unsafe { intern(api, b"kind:\0") };
+    let kind = unsafe { intern(api, b"historyNotRetained\0") };
+    let arguments = [kind];
+    // SAFETY: the imported Error object owns the frozen `kind:` protocol.
+    unsafe { (api.send)(error, selector, arguments.as_ptr(), arguments.len()) }
+}
+
+unsafe extern "C" fn value_of_as_of(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly three arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 3) };
+    let basis = unsafe { (api(runtime).smallIntValue)(args[2]) } as u64;
+    let state = unsafe { state_mut(self_object) };
+    let value = current_value_raw_as_of(state, args[0], args[1], Some(basis));
+    if !value.is_null() {
+        return value;
+    }
+    let history = current_value_raw(state, args[1], as_oop(runtime.history));
+    let has_later_fact = state
+        .facts
+        .iter()
+        .any(|fact| same(fact.e, args[0]) && same(fact.a, args[1]) && fact.tx >= basis);
+    if history != unsafe { api(runtime) }.trueObj && has_later_fact {
+        return history_not_retained_error(runtime);
+    }
+    unsafe { api(runtime) }.nilObj
+}
+
+#[derive(Clone, Copy)]
+struct Triple {
+    e: birnam_abi::Oop,
+    a: birnam_abi::Oop,
+    v: birnam_abi::Oop,
+}
+
+fn visible(fact: &Fact, hi: Option<u64>) -> bool {
+    hi.is_none_or(|watermark| fact.tx < watermark)
+}
+
+fn in_lower_bound(fact: &Fact, lo: Option<u64>) -> bool {
+    lo.is_none_or(|watermark| fact.tx >= watermark)
+}
+
+fn cardinality_as_of(
+    runtime: &Runtime,
+    state: &StoreState,
+    attribute: birnam_abi::Oop,
+    hi: Option<u64>,
+) -> birnam_abi::Oop {
+    let value = current_value_raw_as_of(state, attribute, as_oop(runtime.cardinality), hi);
+    if value.is_null() {
+        as_oop(runtime.one)
+    } else {
+        value
+    }
+}
+
+fn collect_live_triples(
+    runtime: &Runtime,
+    state: &StoreState,
+    lo: Option<u64>,
+    hi: Option<u64>,
+) -> Vec<Triple> {
+    let mut pairs: Vec<(birnam_abi::Oop, birnam_abi::Oop)> = Vec::new();
+    for fact in &state.facts {
+        if !visible(fact, hi)
+            || pairs
+                .iter()
+                .any(|(entity, attribute)| same(*entity, fact.e) && same(*attribute, fact.a))
+        {
+            continue;
+        }
+        pairs.push((fact.e, fact.a));
+    }
+
+    let mut triples = Vec::new();
+    for (entity, attribute) in pairs {
+        let cardinality = cardinality_as_of(runtime, state, attribute, hi);
+        if cardinality == as_oop(runtime.many) {
+            let mut seen = Vec::new();
+            for fact in state.facts.iter().rev() {
+                if !same(fact.e, entity) || !same(fact.a, attribute) || !visible(fact, hi) {
+                    continue;
+                }
+                if seen.contains(&fact.v) {
+                    continue;
+                }
+                seen.push(fact.v);
+                if fact.op == Op::Assert && in_lower_bound(fact, lo) {
+                    triples.push(Triple {
+                        e: entity,
+                        a: attribute,
+                        v: fact.v,
+                    });
+                }
+            }
+        } else {
+            for fact in state.facts.iter().rev() {
+                if same(fact.e, entity) && same(fact.a, attribute) && visible(fact, hi) {
+                    if fact.op == Op::Assert && in_lower_bound(fact, lo) {
+                        triples.push(Triple {
+                            e: entity,
+                            a: attribute,
+                            v: fact.v,
+                        });
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    triples
+}
+
+unsafe fn emit_live_triples(runtime: &Runtime, block: birnam_abi::Oop, triples: Vec<Triple>) {
+    let api = unsafe { api(runtime) };
+    let selector = unsafe { intern(api, b"value:value:value:\0") };
+    // Materialization above finishes all Store borrows before this first
+    // callback. Each argument array is a local carrier, so no Rust reference
+    // spans a foreign send or a possible re-entry into the Store.
+    for triple in triples {
+        let arguments = [triple.e, triple.a, triple.v];
+        // SAFETY: the block owns the frozen three-argument callback protocol.
+        let _ = unsafe { (api.send)(block, selector, arguments.as_ptr(), arguments.len()) };
+    }
+}
+
+unsafe extern "C" fn live_triples_do(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly one argument.
+    let block = unsafe { *args };
+    let triples = collect_live_triples(runtime, unsafe { state_mut(self_object) }, None, None);
+    unsafe { emit_live_triples(runtime, block, triples) };
+    self_object
+}
+
+unsafe extern "C" fn live_triples_as_of_do(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly two arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 2) };
+    let hi = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
+    let triples = collect_live_triples(runtime, unsafe { state_mut(self_object) }, None, Some(hi));
+    unsafe { emit_live_triples(runtime, args[1], triples) };
+    self_object
+}
+
+unsafe extern "C" fn live_triples_since_do(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly two arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 2) };
+    let lo = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
+    let triples = collect_live_triples(runtime, unsafe { state_mut(self_object) }, Some(lo), None);
+    unsafe { emit_live_triples(runtime, args[1], triples) };
+    self_object
+}
+
+unsafe extern "C" fn live_triples_between_and_do(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly three arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 3) };
+    let lo = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
+    let hi = unsafe { (api(runtime).smallIntValue)(args[1]) } as u64;
+    let triples = collect_live_triples(
+        runtime,
+        unsafe { state_mut(self_object) },
+        Some(lo),
+        Some(hi),
+    );
+    unsafe { emit_live_triples(runtime, args[2], triples) };
+    self_object
+}
+
 unsafe extern "C" fn cardinality_method(
     self_object: birnam_abi::Oop,
     args: *const birnam_abi::Oop,
@@ -951,6 +1156,11 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"history:attr:\0", history),
         (b"retract:attr:value:\0", retract),
         (b"basis\0", basis),
+        (b"valueOf:attr:asOf:\0", value_of_as_of),
+        (b"liveTriplesDo:\0", live_triples_do),
+        (b"liveTriplesAsOf:do:\0", live_triples_as_of_do),
+        (b"liveTriplesSince:do:\0", live_triples_since_do),
+        (b"liveTriplesBetween:and:do:\0", live_triples_between_and_do),
         (b"cardinality:\0", cardinality_method),
         (b"new\0", new_store),
         (b"cellFor:attr:\0", cell_for),
