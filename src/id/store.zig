@@ -681,9 +681,28 @@ fn enumerateTriples(st: *StoreState, blk: Oop, lo: ?u64, hi: ?u64) void {
             pairs.append(ca, .{ .e = f.e, .a = f.a, .hash = f.ea_hash }) catch @panic("store: oom");
     }
 
+    // Schema is data, but one enumeration asks the same attribute cardinality
+    // once for every entity carrying that attribute. Memoize by exact object
+    // identity for this call: equal-valued boxes may occupy separate entries,
+    // which costs only a redundant lookup and cannot change the answer. If a
+    // re-entrant block mutates the store, invalidate before the next pair so the
+    // old observable fresh-read behavior is preserved.
+    var cardinalities: std.AutoHashMapUnmanaged(Oop, Oop) = .{};
+    defer cardinalities.deinit(ca);
+    var cardinalities_tx = st.tx;
+
     for (pairs.items) |p| {
+        if (cardinalities_tx != st.tx) {
+            cardinalities.clearRetainingCapacity();
+            cardinalities_tx = st.tx;
+        }
+        const cardinality = cardinalities.get(p.a) orelse blk: {
+            const value = cardinalityOfAsOf(st, p.a, hi);
+            cardinalities.put(ca, p.a, value) catch @panic("store: oom");
+            break :blk value;
+        };
         const posts = postingsOfKey(st, p);
-        if (eq(cardinalityOfAsOf(st, p.a, hi), s_one)) {
+        if (eq(cardinality, s_one)) {
             // The deciding fact: newest matching with tx < hi.
             var i = posts.len;
             while (i > 0) {
