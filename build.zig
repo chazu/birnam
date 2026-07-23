@@ -596,6 +596,29 @@ pub fn build(b: *std.Build) void {
     test_rust_store_core_step.dependOn(&run_rust_store_core.step);
     test_step.dependOn(&run_rust_store_core.step);
 
+    const rust_peg_pattern_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_pattern_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_peg_pattern_tests = b.addTest(.{ .root_module = rust_peg_pattern_mod });
+    rust_peg_pattern_tests.linkLibC();
+    const run_rust_peg_pattern = b.addRunArtifact(rust_peg_pattern_tests);
+    run_rust_peg_pattern.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_peg_pattern.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_peg_pattern.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_peg_pattern.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_peg_pattern.step.dependOn(bootstrap_install);
+    const test_rust_peg_pattern_step = b.step(
+        "test-rust-peg-pattern",
+        "Exercise the explicit Rust PEG pattern representation against the selected floor",
+    );
+    test_rust_peg_pattern_step.dependOn(&run_rust_peg_pattern.step);
+    test_step.dependOn(&run_rust_peg_pattern.step);
+
     // -- The id rungs: a dylib + its test suite, one row per module ----------
     // Every rung is a dynamic library the siphon dlopens at runtime, plus a test
     // that imports its siblings directly (relative imports unify the IdApi type
@@ -770,6 +793,10 @@ pub fn build(b: *std.Build) void {
             b.getInstallStep().dependOn(&install_rust_store.step);
             bootstrap_install.dependOn(&install_rust_store.step);
         } else if (std.mem.eql(u8, m.name, "birnam_id_peg")) {
+            const install_zig_peg = b.addInstallArtifact(lib, .{});
+            b.getInstallStep().dependOn(&install_zig_peg.step);
+            bootstrap_install.dependOn(&install_zig_peg.step);
+
             const install_rust_peg = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_peg.dylib",

@@ -2,8 +2,8 @@
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
-> and N2.4a through N2.4d are complete; N2.5a through N2.5c and N3.1 are
-> complete, and N3.2a is next.
+> and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
+> and N3.2b are complete, and N3.2c is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -940,6 +940,22 @@ canonical `libbirnam_id_peg.dylib`, so the shell cannot silently co-own `Peg`.
 Cargo lock/install metadata, strict Clippy, the shell symbol audit, and an
 isolated `zig build install` all pass. The shell exports no runtime objects yet;
 N3.2b owns the first Rust pattern representation.
+
+#### N3.2b execution record — complete, 2026-07-23
+
+Rust now owns the PEG pattern payload and constructor/combinator protocol in the
+explicit `birnam-peg` dylib. Pattern objects retain their kind, literal bytes,
+child Oops, charset ranges, and rule symbols in a single traced/finalized
+payload; the `Peg` facade provides `literal:`, `any`, `eof`, `charset`,
+`ruleRef:`, `seq`, and `choice`, while patterns provide `star`, `plus`, `opt`,
+`negate`, `lookahead`, `add:`, and `from:to:`. The grammar and matcher remain
+unimplemented and the Rust dylib is not selected by the normal PEG path.
+
+`zig build test-rust-peg-pattern` loads only the explicit Rust PEG dylib and
+checks its identity, exported vtables, all constructors, combinators, charset
+range mutation, and rule-reference payload path against both selected IdApi
+floors. Cargo formatting, strict Clippy, the Rust unit test, and both focused
+floor runs pass. N3.2c owns the Grammar representation and parse-facing state.
 
 ### N3.3 — Port the matcher
 
