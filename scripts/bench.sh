@@ -65,6 +65,7 @@ fi
 test -x "$BIN"
 test -f "$FLOOR_DYLIB"
 FLOOR_DIGEST=$(shasum -a 256 "$FLOOR_DYLIB" | awk '{print $1}')
+FLOOR_SIZE=$(stat -f %z "$FLOOR_DYLIB")
 export BIRNAM_LIB_DIR="$PREFIX/lib"
 export BIRNAM_ID_DYLIB="$FLOOR_DYLIB"
 export BIRNAM_ID_FLOOR_IDENTITY="$FLOOR_IDENTITY"
@@ -196,8 +197,8 @@ else
 fi
 
 {
-  printf '{"stamp":{"sha":"%s","dirty":%s,"version":"%s","date":"%s","machine":"%s","optimize":"ReleaseSafe","mode":"%s","quick":%s,"floor":"%s","floor_identity":"%s","floor_sha256":"%s"},\n' \
-    "$SHA" "$DIRTY" "$VERSION" "$STAMP_DATE" "$MACHINE" "$MODE" "$QUICK_JSON" "$FLOOR" "$FLOOR_IDENTITY" "$FLOOR_DIGEST"
+  printf '{"stamp":{"sha":"%s","dirty":%s,"version":"%s","date":"%s","machine":"%s","optimize":"ReleaseSafe","mode":"%s","quick":%s,"floor":"%s","floor_identity":"%s","floor_sha256":"%s","floor_dylib_bytes":%s},\n' \
+    "$SHA" "$DIRTY" "$VERSION" "$STAMP_DATE" "$MACHINE" "$MODE" "$QUICK_JSON" "$FLOOR" "$FLOOR_IDENTITY" "$FLOOR_DIGEST" "$FLOOR_SIZE"
   # Each suite element is tagged with its label + run number (parsed from the
   # per-run filename) so release mode's 3 micro runs are distinguishable and a
   # partial failure is visible, not a silent multiset change.

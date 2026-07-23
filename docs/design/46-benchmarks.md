@@ -191,8 +191,8 @@ The design that stays honest:
   quick runs refuse `--release` so a low-rep run can never become the kept
   snapshot), each
   suite element tagged `{label, run, data}`, stamped with sha, dirty flag,
-  version, date, `sysctl hw.model`, build mode, floor identity, and the full
-  selected dylib digest.
+  version, date, `sysctl hw.model`, build mode, floor identity, the full
+  selected dylib digest, and selected dylib byte size.
 
 ### Compare: `scripts/bench-compare.sh a.json b.json`
 
