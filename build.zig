@@ -665,6 +665,30 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_lang_full_step.dependOn(&run_rust_peg_lang_full.step);
     test_step.dependOn(&run_rust_peg_lang_full.step);
 
+    const rust_peg_cst_parity_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_cst_parity_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_peg_cst_parity_tests = b.addTest(.{ .root_module = rust_peg_cst_parity_mod });
+    rust_peg_cst_parity_tests.linkLibC();
+    const run_rust_peg_cst_parity = b.addRunArtifact(rust_peg_cst_parity_tests);
+    run_rust_peg_cst_parity.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_peg_cst_parity.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_peg_cst_parity.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_peg_cst_parity.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_peg_cst_parity.setEnvironmentVariable("BIRNAM_RUST_PEG_CST_DIGEST", "0df93b8aea32fe0d");
+    run_rust_peg_cst_parity.step.dependOn(bootstrap_install);
+    const test_rust_peg_cst_parity_step = b.step(
+        "test-rust-peg-cst-parity",
+        "Compare the frozen language CST corpus against the explicit Rust PEG matcher",
+    );
+    test_rust_peg_cst_parity_step.dependOn(&run_rust_peg_cst_parity.step);
+    test_step.dependOn(&run_rust_peg_cst_parity.step);
+
     const rust_peg_codegen_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_peg_codegen_test.zig"),
         .target = target,

@@ -3,7 +3,7 @@
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
-> N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4d are complete and
+> N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4e are complete and
 > N3.4 remains in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
@@ -1045,6 +1045,18 @@ boundaries are unchanged; no generated-C, TCC, or Codegen ownership moved in
 this slice. Full CST comparison, generated-C comparison, diagnostics/module
 metadata comparison, and the whole source corpus remain open before N3.4 is
 closed.
+
+#### N3.4e execution record — complete, 2026-07-23
+
+The frozen language corpus now has an executable CST parity gate. It walks
+every successful `Lang` tree through the public CST protocol, hashing rule
+names, half-open byte spans, child counts, child order, and deterministic
+furthest-failure offsets for malformed inputs. The canonical Zig PEG produced
+the baseline digest `0df93b8aea32fe0d`; the explicit Rust PEG reproduces that
+digest with both the Rust and Zig IdApi floors selected. The gate is
+`test-rust-peg-cst-parity` and leaves the canonical installed PEG unchanged.
+Whole-source-corpus parity, generated-C parity, diagnostics, module metadata,
+and compiled-unit descriptor comparison remain open.
 
 ### N3.5 — Switch and observe
 
