@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.6 and N1.1–N1.3 are complete; N1.4 is next.
+> passes. N0.1 through N0.6 and N1.1–N1.4 are complete; N2.1 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -408,12 +408,13 @@ declared implementation and emits a JSON receipt containing the rung,
 implementation identity, and SHA-256. The check rejects unknown identities,
 mismatched explicit names, missing artifacts, and digest mismatches.
 
-Because no Rust inspector exists yet, selecting `rust` fails during build-graph
-construction with an explicit N1 diagnostic and installs nothing. An unknown
-enum value is rejected by the Zig build option parser. The focused selector
-smoke exercises both failures in isolated caches and prefixes. Focused
-artifact/selector tests, ordinary install relocation, and full verification
-pass with the unchanged Zig canonical implementation.
+At this checkpoint no Rust inspector existed, so selecting `rust` failed during
+build-graph construction with an explicit N1 diagnostic and installed nothing.
+An unknown enum value was rejected by the Zig build option parser. The focused
+selector smoke exercised both failures in isolated caches and prefixes.
+Focused artifact/selector tests, ordinary install relocation, and full
+verification passed with the unchanged Zig canonical implementation. N1.4
+later changed the default after the Rust shell was proven.
 
 ### N0.4 — Generalize the backend-neutral rung harness
 
@@ -654,6 +655,24 @@ gate pass.
 
 **Gate:** no accepted regression and no artifact-boundary bug through the
 declared observation window.
+
+#### N1.4 execution record — complete, 2026-07-23
+
+The canonical artifact-inspector selection now defaults to Rust. The selected
+Rust dylib remains installed at `libbirnam_id_artifact.dylib`; the Zig
+implementation remains independently installed as
+`libbirnam_id_artifact_zig.dylib` and is still selectable explicitly for oracle
+and rollback checks. No runtime fallback or dual implementation loading was
+added.
+
+The focused default-Rust selector receipt, all seven host preflight cases, and
+relocated install smoke passed in isolated prefixes. The complete `zig build
+verify` gate then passed with Rust selected by default, including both Rust
+floor profiles, the Zig-floor compatibility matrix, Rust-inspector preflight
+for every floor, project build/run, image save/load, old compiled-unit and
+rollback fixtures, and the 343-test self-hosted suite. The observation window
+starts from this commit; the Zig inspector is retained until its declared
+retirement checkpoint.
 
 ## 8. Phase N2 — Store and MOP
 
