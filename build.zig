@@ -64,6 +64,20 @@ pub fn build(b: *std.Build) void {
         "Run the complete native, self-hosted, and REPL verification gate",
     );
 
+    // Design 62 N0.1: fail closed when a Zig production source, dynamic-rung
+    // surface, load-order entry, exported symbol owner, or private Store-Codegen
+    // callback boundary appears without an explicit migration assignment.
+    const native_rung_inventory = b.addSystemCommand(&.{
+        "python3",
+        "scripts/check-native-rung-inventory.py",
+    });
+    const test_native_rung_inventory_step = b.step(
+        "test-native-rung-inventory",
+        "Verify the committed Design 62 native-rung inventory",
+    );
+    test_native_rung_inventory_step.dependOn(&native_rung_inventory.step);
+    test_step.dependOn(&native_rung_inventory.step);
+
     // Build/test-only ABI evidence. The JSON manifest is deliberately exposed
     // only to this test module; runtime, install, and artifact-selection code do
     // not import it.

@@ -91,18 +91,21 @@
 > runtime selector and the old journal example has been removed. The record stream
 > remains an implementation detail of the full image format, not an append journal.
 >
-> **Compiled-unit authority and integrity (2026-07-10):** the `.code` dylibs are
+> **Compiled-unit authority and integrity (2026-07-10; current v4 contract
+> reconciled 2026-07-23):** the `.code` dylib is
 > the image's primary executable layer, not a cache over source or store facts.
-> Format v3 records a checksum with each unit and preflights every record before
-> a load mutates the live store; a corrupt unit rejects the entire load. A full
+> Format v4 records exactly one current-generation authority digest followed by
+> exactly one code unit bound to it, and preflights every record before a load
+> mutates the live store; a corrupt or structurally ambiguous stream rejects the
+> entire load. A full
 > save captures code before classifying dependent meta-facts, then publishes the
 > completed image with one rename. It rejects any durable value without an
 > encoding or declared restoration path instead of silently dropping it. The
 > fact store remains a durable data and reflection API: method facts mirror the
 > compiled dispatch dictionary and are accepted only when the primary unit was
 > captured. `[System imageSaveReport]` exposes saved/recovered/rejected counts,
-> code-unit count, and a reason. v2 images remain readable; v3 is emitted for
-> new images. `--rebuild` and ABI/architecture fallback visibly enter source
+> code-unit count, and a reason. The current implementation accepts and emits
+> v4 only; v2/v3 are rejected. `--rebuild` and ABI/architecture fallback visibly enter source
 > recovery rather than pretending to be normal boot. The next live replacement
 > boundary is [45 — Compiled Units](45-compiled-units.md). Its accepted successor
 > uses one sealed runtime-generation authority; the file-backed evolution workflow

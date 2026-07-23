@@ -1,8 +1,9 @@
 # Compiled Units Are Primary
 
 > **Status:** Current contract, revised 2026-07-22 for self-describing standalone
-> artifacts. This document records the authority model implemented by image
-> format v3 and the live-reload boundary. It
+> artifacts and reconciled 2026-07-23 with the implemented image v4
+> single-generation authority. This document records the authority model
+> implemented by image format v4 and the live-reload boundary. It
 > refines [40 — The Image](40-the-image.md), [42 — Object Canonical](42-object-canonical-relational-derived.md),
 > and [43 — Modules](43-modules-and-config.md).
 
@@ -54,12 +55,16 @@ workflow.
 
 ## What Is Shipped
 
-### Image v3
+### Image v4
 
-`src/id/image.zig` writes v3 images. Each `.code` record contains a checksum and
-its relocatable dylib bytes. Loading preflights the complete record stream,
-including every compiled-unit checksum, before it replaces store state or
-materializes heap objects. v2 images remain readable; new saves emit v3.
+`src/id/image.zig` writes and accepts v4 images. Each image contains exactly one
+current-generation authority record followed by exactly one checksum-bound
+`.code` record with its relocatable dylib bytes. Loading preflights the complete
+record stream before it replaces store state or materializes heap objects.
+Missing, duplicate, reordered, or mismatched authority/code records reject the
+load. Unsupported v2/v3 images remain rejected; compatibility in this contract
+means frozen v4 images from the Zig implementation or a previous compatible
+release.
 
 A full save captures the primary unit before classifying data that depends on
 it, then publishes the completed image with an atomic rename. A rejected save

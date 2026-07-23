@@ -10,10 +10,11 @@ Convention: `[ ]` open, `[~]` in progress, `[x]` done (with commit/date). Severi
 
 ## Current Architecture
 
-- [x] **Compiled-unit-first images** (2026-07-10) — image v3 treats embedded
-  dylibs as the primary executable layer, captures module programs plus method
-  definitions, verifies checksums before mutating live state, publishes full
-  saves atomically, and rejects unsupported durable values with
+- [x] **Compiled-unit-first images** (2026-07-10; v4 authority model
+  reconciled 2026-07-23) — image v4 treats its one authority-bound code unit as
+  the primary executable layer, captures the complete generation, verifies
+  checksums before mutating live state, publishes full saves atomically, and
+  rejects unsupported durable values with
   `[System imageSaveReport]`. See
   [`docs/design/45-compiled-units.md`](../design/45-compiled-units.md).
 - [x] **First-class `CompiledUnit` lifecycle** (2026-07-13; `f21a2ae`,

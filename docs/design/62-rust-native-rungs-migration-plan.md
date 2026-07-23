@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. Approved to begin N0.
+> passes. N0.1 is complete; N0.2 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -333,6 +333,20 @@ N0 creates no new production behavior.
 
 **Gate:** inventory generation is deterministic and covers the installed
 runtime closure exactly; ordinary build output is unchanged.
+
+#### N0.1 execution record — complete, 2026-07-23
+
+`abi/native-rungs-v1.json` assigns all 26 current non-test Zig/build sources,
+records the 13 dynamic rungs in exact load order, names globals, dependencies
+and consumers, and assigns all 41 non-`module_init` exports to one owner.
+Per-rung fingerprints cover method/global/layout/hook/finalizer/import surface
+lines, so an unreviewed native-surface change fails closed.
+
+The inventory also freezes the private Store↔Codegen observer/authorizer seam
+and image format v4. Current Designs 40 and 45 now match the v4-only
+one-authority/one-code-unit implementation instead of claiming v2/v3 support.
+The focused `zig build test-native-rung-inventory`, ordinary `zig build`, image
+unit suite, and whitespace gate pass.
 
 ### N0.2 — Extract the shared ABI crate
 

@@ -26,3 +26,11 @@ versioned manifest and migration decision.
 The fingerprint is SHA-256 over the verifier's deterministic sequence of
 length-prefixed target, type, field, and constant descriptors. It is evidence
 against unnoticed drift, not a runtime ABI-version field.
+
+`native-rungs-v1.json` is the Design 62 transition inventory. It assigns every
+non-test Zig source, freezes native dylib load order, records globals,
+dependencies, consumers, exported-symbol ownership, and the private
+Store-Codegen callback seam, and fingerprints method/export/layout/hook/import
+surface lines. `scripts/check-native-rung-inventory.py` verifies it through
+`zig build test-native-rung-inventory` and the full `zig build verify` gate.
+Like the IdApi manifest, it is build/test evidence and never runtime authority.
