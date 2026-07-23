@@ -345,6 +345,17 @@ pub fn build(b: *std.Build) void {
     );
     cross_floor_error_step.dependOn(&cross_floor_error_smoke.step);
 
+    const repeat_floor_verify = b.addSystemCommand(&.{
+        "bash",
+        "scripts/repeat-floor-verification.sh",
+        "2",
+    });
+    const repeat_floor_verify_step = b.step(
+        "verify-floor-repeat",
+        "Run two clean full-floor verification cycles in alternating order",
+    );
+    repeat_floor_verify_step.dependOn(&repeat_floor_verify.step);
+
     // Stage-1 compilers need a runnable host and native floor before the final
     // install can be complete. Keep that bootstrap closure distinct so the
     // ordinary install step can depend on compiled production units without a

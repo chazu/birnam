@@ -107,6 +107,10 @@ run = "bash scripts/cross-floor-image-smoke.sh"
 description = "Compare specified language-visible diagnostics across both floors"
 run = "bash scripts/cross-floor-error-smoke.sh"
 
+[tasks.verify-floor-repeat]
+description = "Run two clean full-floor verification cycles in alternating order"
+run = "bash scripts/repeat-floor-verification.sh 2"
+
 [tasks.rust-env-loader-smoke]
 description = "Reflect canonical exports and reload a fixture through Rust"
 run = "bash scripts/rust-env-loader-smoke.sh"
