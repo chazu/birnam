@@ -201,3 +201,57 @@ test "peg 3a: opt + star + not, and left-recursion-free repetition" {
     try std.testing.expect(peg.parse(api, na, g, "x", ne) != null);
     try std.testing.expect(peg.parse(api, na, g, "", ne) == null);
 }
+
+test "peg N3.1: ordered backtracking, lookahead, and deep rule spans" {
+    const api = floor.api();
+    peg.bringUp(api);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const na = arena.allocator();
+
+    const g = peg.mkGrammar(api);
+    const backtrack = api.intern("backtrack");
+    // The first branch consumes "ab" but cannot satisfy the following "c";
+    // ordered choice must restore the position before trying the "a" branch.
+    peg.defineRule(g, backtrack, peg.mkSeq(api, &.{
+        peg.mkChoice(api, &.{ peg.mkLiteral(api, "ab"), peg.mkLiteral(api, "a") }),
+        peg.mkLiteral(api, "c"),
+        peg.mkEof(api),
+    }));
+    const backtracked = peg.parse(api, na, g, "ac", backtrack) orelse return error.ParseFailed;
+    try std.testing.expectEqual(@as(usize, 0), backtracked.start);
+    try std.testing.expectEqual(@as(usize, 2), backtracked.end);
+
+    const lookahead = api.intern("lookahead");
+    peg.defineRule(g, lookahead, peg.mkSeq(api, &.{
+        peg.mkAnd(api, peg.mkLiteral(api, "a")),
+        peg.mkLiteral(api, "a"),
+        peg.mkEof(api),
+    }));
+    const peeked = peg.parse(api, na, g, "a", lookahead) orelse return error.ParseFailed;
+    try std.testing.expectEqual(@as(usize, 1), peeked.end);
+
+    // Freeze a bounded deep recursive chain: every rule application contributes
+    // one nested CST node, and all byte spans remain half-open source offsets.
+    const depth = 128;
+    var names: [depth]Oop = undefined;
+    var name_buf: [32]u8 = undefined;
+    for (0..depth) |i| {
+        const z = std.fmt.bufPrintZ(&name_buf, "deep{d}", .{i}) catch unreachable;
+        names[i] = api.intern(z.ptr);
+    }
+    peg.defineRule(g, names[0], peg.mkLiteral(api, "a"));
+    for (1..depth) |i| peg.defineRule(g, names[i], peg.mkRuleRef(api, names[i - 1]));
+
+    var node = peg.parse(api, na, g, "a", names[depth - 1]) orelse return error.ParseFailed;
+    var seen: usize = 0;
+    while (true) {
+        try std.testing.expectEqual(@as(usize, 0), node.start);
+        try std.testing.expectEqual(@as(usize, 1), node.end);
+        seen += 1;
+        if (node.children.len == 0) break;
+        try std.testing.expectEqual(@as(usize, 1), node.children.len);
+        node = node.children[0];
+    }
+    try std.testing.expectEqual(depth, seen);
+}
