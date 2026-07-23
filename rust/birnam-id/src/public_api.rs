@@ -8,6 +8,7 @@ use crate::abi::{Finalizer, IdApi, Method, MethodOverwriteHook, Oop, RootProvide
 use crate::boundary;
 use crate::dispatch::{Bootstrap, build_bootstrap};
 use crate::runtime::{Runtime, with_active_if_present};
+use crate::values::{float_value_unchecked, integer_value_unchecked, word_value_unchecked};
 
 static PUBLIC_RUNTIME: AtomicPtr<Runtime> = AtomicPtr::new(core::ptr::null_mut());
 
@@ -138,14 +139,10 @@ unsafe extern "C" fn api_make_smallint(value: i64) -> Oop {
 }
 
 unsafe extern "C" fn api_smallint_value(object: Oop) -> i64 {
-    if let Some(value) = with_active_if_present(|active| {
-        // SAFETY: with_active_if_present proves a surrounding owner-checked
-        // Runtime::enter; the IdApi contract requires an Integer object.
-        unsafe { active.integer_value_active(object) }
-    }) {
-        return value;
-    }
-    runtime().integer_value(object)
+    // SAFETY: the frozen IdApi contract requires a live Integer object. The
+    // payload read needs no mutable runtime state; callers remain subject to
+    // the floor's owner-thread rule.
+    unsafe { integer_value_unchecked(object) }
 }
 
 unsafe extern "C" fn api_is_smallint(object: Oop) -> c_int {
@@ -157,7 +154,10 @@ unsafe extern "C" fn api_make_float(value: f64) -> Oop {
 }
 
 unsafe extern "C" fn api_float_value(object: Oop) -> f64 {
-    runtime().float_value(object)
+    // SAFETY: the frozen IdApi contract requires a live Float object. The
+    // payload read needs no mutable runtime state; callers remain subject to
+    // the floor's owner-thread rule.
+    unsafe { float_value_unchecked(object) }
 }
 
 unsafe extern "C" fn api_is_float(object: Oop) -> c_int {
@@ -169,7 +169,10 @@ unsafe extern "C" fn api_make_word(value: u64) -> Oop {
 }
 
 unsafe extern "C" fn api_word_value(object: Oop) -> u64 {
-    runtime().word_value(object)
+    // SAFETY: the frozen IdApi contract requires a live Word object. The
+    // payload read needs no mutable runtime state; callers remain subject to
+    // the floor's owner-thread rule.
+    unsafe { word_value_unchecked(object) }
 }
 
 unsafe extern "C" fn api_is_word(object: Oop) -> c_int {

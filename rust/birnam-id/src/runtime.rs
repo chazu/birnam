@@ -871,16 +871,6 @@ impl Runtime {
         unsafe { (*self.state.get()).values.integer_value(object) }
     }
 
-    /// Read an Integer after `enter` has already established this runtime as
-    /// active on the owner thread. The public ABI uses this only through
-    /// `with_active_if_present`; calls outside that dynamic extent take the
-    /// checked `integer_value` path above.
-    pub(crate) unsafe fn integer_value_active(&self, object: Oop) -> i64 {
-        // SAFETY: the active-runtime guard proves owner-thread serialization;
-        // the public IdApi contract supplies an Integer object.
-        unsafe { (*self.state.get()).values.integer_value(object) }
-    }
-
     pub(crate) fn float_value(&self, object: Oop) -> f64 {
         self.assert_owner();
         // SAFETY: caller supplies a Float object.

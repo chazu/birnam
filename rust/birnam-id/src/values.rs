@@ -113,17 +113,17 @@ impl Values {
 
     pub(crate) fn integer_value(&self, object: Oop) -> i64 {
         // SAFETY: internal caller supplies an Integer object with this payload.
-        unsafe { object.cast::<RawInteger>().read().value }
+        unsafe { integer_value_unchecked(object) }
     }
 
     pub(crate) fn float_value(&self, object: Oop) -> f64 {
         // SAFETY: internal caller supplies a Float object with this payload.
-        unsafe { object.cast::<RawFloat>().read().value }
+        unsafe { float_value_unchecked(object) }
     }
 
     pub(crate) fn word_value(&self, object: Oop) -> u64 {
         // SAFETY: internal caller supplies a Word object with this payload.
-        unsafe { object.cast::<RawWord>().read().value }
+        unsafe { word_value_unchecked(object) }
     }
 
     pub(crate) fn string_bytes(&self, object: Oop) -> Option<&[u8]> {
@@ -133,6 +133,42 @@ impl Values {
     pub(crate) fn release_string(&mut self, object: Oop) -> bool {
         self.string_bytes.remove(&object.addr()).is_some()
     }
+}
+
+/// Read an Integer payload without consulting runtime-owned state.
+///
+/// # Safety
+///
+/// `object` must be a live Integer object whose payload has `RawInteger`'s
+/// final ABI shape. The caller must preserve the floor's owner-thread and
+/// object-lifetime rules for the duration of the read.
+pub(crate) unsafe fn integer_value_unchecked(object: Oop) -> i64 {
+    // SAFETY: forwarded caller contract supplies a live, aligned RawInteger.
+    unsafe { object.cast::<RawInteger>().read().value }
+}
+
+/// Read a Float payload without consulting runtime-owned state.
+///
+/// # Safety
+///
+/// `object` must be a live Float object whose payload has `RawFloat`'s final
+/// ABI shape. The caller must preserve the floor's owner-thread and
+/// object-lifetime rules for the duration of the read.
+pub(crate) unsafe fn float_value_unchecked(object: Oop) -> f64 {
+    // SAFETY: forwarded caller contract supplies a live, aligned RawFloat.
+    unsafe { object.cast::<RawFloat>().read().value }
+}
+
+/// Read a Word payload without consulting runtime-owned state.
+///
+/// # Safety
+///
+/// `object` must be a live Word object whose payload has `RawWord`'s final ABI
+/// shape. The caller must preserve the floor's owner-thread and object-lifetime
+/// rules for the duration of the read.
+pub(crate) unsafe fn word_value_unchecked(object: Oop) -> u64 {
+    // SAFETY: forwarded caller contract supplies a live, aligned RawWord.
+    unsafe { object.cast::<RawWord>().read().value }
 }
 
 fn allocate_payload(
@@ -173,6 +209,12 @@ mod tests {
         assert_eq!(values.integer_value(integer), -42);
         assert_eq!(values.float_value(float), 3.25);
         assert_eq!(values.word_value(word), 0xfedc_ba98_7654_3210);
+        // SAFETY: the harness owns live objects of each exact payload type.
+        unsafe {
+            assert_eq!(integer_value_unchecked(integer), -42);
+            assert_eq!(float_value_unchecked(float), 3.25);
+            assert_eq!(word_value_unchecked(word), 0xfedc_ba98_7654_3210);
+        }
         for object in [integer, float, word] {
             assert_eq!(heap.payload_size(object), Some(8));
             assert_eq!(heap.permanence_of(object), Some(Permanence::Collectable));
