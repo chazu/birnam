@@ -5,5 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+birnam-abi = { path = "../birnam-abi" }
+
 [lints]
 workspace = true

@@ -5,6 +5,8 @@
 //! artifact and rejects malformed framing before a higher rung can materialize
 //! any Birnam value.
 
+mod module;
+
 pub const ABI: &[u8] = b"birnam-artifact-generation-v1";
 pub const TARGET: &[u8] = b"aarch64-macos";
 pub const DESCRIPTOR_MAGIC: &[u8] = b"BIRNAM-ARTIFACT-DESCRIPTOR-V1";
@@ -33,6 +35,15 @@ pub struct List<'a> {
 impl<'a> List<'a> {
     pub const fn count(self) -> usize {
         self.count
+    }
+
+    /// Return the length-delimited field bytes after the list count.
+    ///
+    /// The inspector uses this borrowed wire projection when it materializes
+    /// the existing Birnam descriptor object. The parser still owns no state
+    /// and performs no allocation.
+    pub const fn encoded_bytes(self) -> &'a [u8] {
+        self.encoded
     }
 
     pub fn get(self, index: usize) -> Option<&'a [u8]> {

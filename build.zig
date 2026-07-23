@@ -27,14 +27,6 @@ pub fn build(b: *std.Build) void {
         "artifact-inspector-impl",
         "Artifact-inspector implementation installed under the canonical dylib name (zig or rust)",
     ) orelse .zig;
-    if (artifact_inspector_impl == .rust) {
-        std.process.fatal(
-            "artifact-inspector implementation 'rust' is not available yet; " ++
-                "N1 must add it before this selector can install or run it",
-            .{},
-        );
-    }
-
     // libtcc is presently vendored and configured for arm64 Mach-O, and the
     // runtime resolves Mach-O dylibs by name. Reject other targets before Zig
     // spends time compiling artifacts that cannot link or boot correctly.
@@ -625,6 +617,10 @@ pub fn build(b: *std.Build) void {
 
     inline for (mods) |m| {
         var rung_selection_check: ?*std.Build.Step.Run = null;
+        const explicit_artifact_name = if (artifact_inspector_impl == .rust)
+            "libbirnam_id_artifact_rust.dylib"
+        else
+            "libbirnam_id_artifact_zig.dylib";
 
         // The dylib.
         const lib_mod = b.createModule(.{
@@ -656,11 +652,39 @@ pub fn build(b: *std.Build) void {
             b.getInstallStep().dependOn(&install_zig_artifact_oracle.step);
             bootstrap_install.dependOn(&install_zig_artifact_oracle.step);
 
-            const install_selected_artifact = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_artifact.dylib",
-            });
-            b.getInstallStep().dependOn(&install_selected_artifact.step);
-            bootstrap_install.dependOn(&install_selected_artifact.step);
+            const selected_artifact_step: *std.Build.Step = if (artifact_inspector_impl == .rust) blk: {
+                const install_rust_artifact = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_artifact.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_artifact.dylib",
+                );
+                const install_rust_artifact_explicit = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_artifact.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_artifact_rust.dylib",
+                );
+                install_rust_artifact.step.dependOn(&rust_floor_build.step);
+                install_rust_artifact_explicit.step.dependOn(&rust_floor_build.step);
+                install_rust_artifact.step.dependOn(&install_rust_artifact_explicit.step);
+                b.getInstallStep().dependOn(&install_rust_artifact.step);
+                b.getInstallStep().dependOn(&install_rust_artifact_explicit.step);
+                bootstrap_install.dependOn(&install_rust_artifact.step);
+                bootstrap_install.dependOn(&install_rust_artifact_explicit.step);
+                break :blk &install_rust_artifact.step;
+            } else blk: {
+                const install_zig_artifact = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_artifact.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_artifact.step);
+                bootstrap_install.dependOn(&install_zig_artifact.step);
+                break :blk &install_zig_artifact.step;
+            };
 
             const check = b.addSystemCommand(&.{
                 "bash",
@@ -669,8 +693,8 @@ pub fn build(b: *std.Build) void {
                 @tagName(artifact_inspector_impl),
             });
             check.addArg(b.getInstallPath(.lib, "libbirnam_id_artifact.dylib"));
-            check.addArg(b.getInstallPath(.lib, "libbirnam_id_artifact_zig.dylib"));
-            check.step.dependOn(&install_selected_artifact.step);
+            check.addArg(b.getInstallPath(.lib, explicit_artifact_name));
+            check.step.dependOn(selected_artifact_step);
             check.step.dependOn(&install_zig_artifact_oracle.step);
             rung_selection_check = check;
 
@@ -721,7 +745,7 @@ pub fn build(b: *std.Build) void {
             );
             run.setEnvironmentVariable(
                 "BIRNAM_NATIVE_RUNG_EXPLICIT_DYLIB",
-                b.getInstallPath(.lib, "libbirnam_id_artifact_zig.dylib"),
+                b.getInstallPath(.lib, explicit_artifact_name),
             );
             run.step.dependOn(&check.step);
         }

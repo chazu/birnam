@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.6 are complete; N1.1 is next.
+> passes. N0.1 through N0.6 and N1.1–N1.2 are complete; N1.3 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -588,6 +588,27 @@ gate pass. The installed workspace metadata assertion now includes
 
 **Gate:** module initialization and object protocol tests pass in an otherwise
 Zig higher-rung stack.
+
+#### N1.2 execution record — complete, 2026-07-23
+
+`birnam-artifact` now also emits the Rust `cdylib` inspector shell. Its
+`module_init` registers the existing `Artifact`, `ArtifactVt`, and
+`ArtifactDescriptorVt` objects, the exact 13-Oop descriptor layout, all current
+selectors, and the existing reload/export behavior through `birnam-abi`. It
+materializes Birnam objects only after the borrowed parser has accepted the
+inert descriptor and preserves the existing missing/ABI/target/native-resource
+diagnostic categories. File reads are bounded by the same 1 GiB ceiling and
+native requirements are checked relative to the artifact without activation.
+
+`-Dartifact-inspector-impl=rust` now installs and tests the Rust dylib under
+`libbirnam_id_artifact.dylib` plus the explicit
+`libbirnam_id_artifact_rust.dylib` identity; Zig remains the explicit oracle and
+default. The shared artifact-inspector suite exercises both implementations,
+including descriptor fields, counts, indexed access, and the inert Vector
+boundary. Rust workspace tests, strict Clippy, Zig and Rust focused artifact
+selection, ReleaseSafe Rust selection, relocated install verification, and the
+complete `zig build verify` gate pass. The generic selection smoke now treats
+Rust as an implemented choice and still rejects unknown implementations.
 
 ### N1.3 — Prove the unchanged host preflight against both inspectors
 

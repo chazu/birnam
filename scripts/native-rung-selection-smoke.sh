@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Exercise the generic receipt verifier and the artifact-inspector build
-# selector's unavailable/unknown implementation failures.
+# selector's implemented Rust and unknown implementation choices.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -48,16 +48,16 @@ then
 fi
 grep -q 'unknown implementation' "$tmp/unknown.out"
 
-if zig build test-artifact-selection \
+if ! zig build test-artifact-selection \
   -Dartifact-inspector-impl=rust \
   --cache-dir "$tmp/rust-cache" \
   --global-cache-dir "$tmp/rust-global-cache" \
   --prefix "$tmp/rust-prefix" >"$tmp/rust-build.out" 2>&1
 then
-  echo "native-rung-selection-smoke: unavailable Rust implementation built" >&2
+  echo "native-rung-selection-smoke: Rust implementation failed to build" >&2
   exit 1
 fi
-grep -q "implementation 'rust' is not available yet" "$tmp/rust-build.out"
+grep -q '"implementation":"rust"' "$tmp/rust-build.out"
 
 if zig build test-artifact-selection \
   -Dartifact-inspector-impl=other \

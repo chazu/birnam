@@ -65,6 +65,12 @@ fn inspectFixture(api: *idapi.IdApi, bytes: []const u8) !Oop {
     return api.send(api.import("Artifact").?, api.intern("inspect:"), &.{api.mkString(path.ptr, path.len)}, 1);
 }
 
+fn expectString(api: *idapi.IdApi, value: Oop, expected: []const u8) !void {
+    var length: usize = 0;
+    const bytes = api.stringBytes(value, &length)[0..length];
+    try std.testing.expectEqualSlices(u8, expected, bytes);
+}
+
 test "pointer-free artifact inspection needs only the selected ID floor" {
     const api = testApi();
     try std.testing.expect(api.import("Store") == null);
@@ -76,6 +82,27 @@ test "pointer-free artifact inspection needs only the selected ID floor" {
     try std.testing.expect(inspected != api.nilObj);
     try std.testing.expect(api.send(inspected, api.intern("kind"), &.{}, 0) == api.intern("module"));
     try std.testing.expect(api.send(inspected, api.intern("identity"), &.{}, 0) == api.intern("candidate"));
+}
+
+test "pointer-free artifact inspection preserves the complete descriptor protocol" {
+    const api = testApi();
+    const bytes = try descriptorBytes("module", "candidate", artifact_contract.abi, artifact_contract.target, &.{});
+    defer std.testing.allocator.free(bytes);
+    const inspected = try inspectFixture(api, bytes);
+    try std.testing.expect(inspected != api.nilObj);
+
+    try expectString(api, api.send(inspected, api.intern("artifactAbi"), &.{}, 0), artifact_contract.abi);
+    try expectString(api, api.send(inspected, api.intern("target"), &.{}, 0), artifact_contract.target);
+    try std.testing.expect(api.smallIntValue(api.send(inspected, api.intern("rootsCount"), &.{}, 0)) == 1);
+    try std.testing.expect(api.send(inspected, api.intern("rootAt:"), &.{api.mkSmallInt(0)}, 1) == api.intern("candidate"));
+    try std.testing.expect(api.smallIntValue(api.send(inspected, api.intern("requiresCount"), &.{}, 0)) == 0);
+    try std.testing.expect(api.smallIntValue(api.send(inspected, api.intern("nativeRequiresCount"), &.{}, 0)) == 0);
+    try std.testing.expect(api.smallIntValue(api.send(inspected, api.intern("capabilitiesCount"), &.{}, 0)) == 1);
+    try std.testing.expect(api.send(inspected, api.intern("capabilityAt:"), &.{api.mkSmallInt(0)}, 1) == api.intern("activate"));
+
+    // Vector is a higher rung; the pointer-free inspector keeps list
+    // materialization inert when that protocol is not loaded yet.
+    try std.testing.expect(api.send(inspected, api.intern("roots"), &.{}, 0) == api.nilObj);
 }
 
 test "pointer-free artifact inspection rejects ABI mismatch" {
