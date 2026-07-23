@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # bench.sh — the benchmark driver (docs/design/46).
 #
-#   scripts/bench.sh               # dev run     -> bench/results/dev/bench-<sha>.json
-#   scripts/bench.sh --release     # tracked run -> bench/results/v<VERSION>.json
+#   scripts/bench.sh --floor=zig              # dev run, Zig floor
+#   scripts/bench.sh --floor=rust             # dev run, Rust floor
+#   scripts/bench.sh --release --floor=zig    # tracked Zig-floor run
 #   BENCH_QUICK=1 scripts/bench.sh # the fast dev loop (fewer reps everywhere)
 #
 # Builds ReleaseSafe (the only tracked optimize mode), runs the birnam suites
@@ -18,7 +19,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 MODE=dev
-[ "${1:-}" = "--release" ] && MODE=release
+FLOOR=zig
+for arg in "$@"; do
+  case "$arg" in
+    --release) MODE=release ;;
+    --floor=zig) FLOOR=zig ;;
+    --floor=rust) FLOOR=rust ;;
+    *) echo "usage: $0 [--release] [--floor=zig|rust]" >&2; exit 2 ;;
+  esac
+done
 QUICK=${BENCH_QUICK:-}
 
 # A quick run must never become the kept-forever snapshot.
@@ -27,13 +36,40 @@ if [ $MODE = release ] && [ -n "$QUICK" ]; then
   exit 1
 fi
 
-echo "==> build (ReleaseSafe)"
-zig build install stage1 -Doptimize=ReleaseSafe
-BIN=./zig-out/bin/birnam
-
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 FAIL=0
+
+PREFIX="$TMP/prefix"
+ZIG_CACHE="$TMP/zig-cache"
+ZIG_GLOBAL_CACHE="$TMP/zig-global-cache"
+ZIG_TMP="$TMP/zig-tmp"
+CARGO_TARGET="$TMP/cargo-target"
+mkdir -p "$PREFIX" "$ZIG_CACHE" "$ZIG_GLOBAL_CACHE" "$ZIG_TMP"
+
+echo "==> build (ReleaseSafe, $FLOOR floor, isolated prefix)"
+TMPDIR="$ZIG_TMP" zig build install -Doptimize=ReleaseSafe \
+  --prefix "$PREFIX" \
+  --cache-dir "$ZIG_CACHE" \
+  --global-cache-dir "$ZIG_GLOBAL_CACHE"
+
+BIN="$PREFIX/bin/birnam"
+FLOOR_IDENTITY=zig-id-v1
+FLOOR_DYLIB="$PREFIX/lib/libbirnam_id.dylib"
+if [ "$FLOOR" = rust ]; then
+  CARGO_TARGET_DIR="$CARGO_TARGET" \
+    cargo build --workspace --locked --offline --release
+  FLOOR_IDENTITY=rust-id-v1
+  FLOOR_DYLIB="$CARGO_TARGET/release/libbirnam_id.dylib"
+fi
+test -x "$BIN"
+test -f "$FLOOR_DYLIB"
+FLOOR_DIGEST=$(shasum -a 256 "$FLOOR_DYLIB" | awk '{print $1}')
+export BIRNAM_LIB_DIR="$PREFIX/lib"
+export BIRNAM_ID_DYLIB="$FLOOR_DYLIB"
+export BIRNAM_ID_FLOOR_IDENTITY="$FLOOR_IDENTITY"
+export BIRNAM_ID_FLOOR_SHA256="$FLOOR_DIGEST"
+echo "==> selected $FLOOR_IDENTITY $FLOOR_DIGEST"
 
 # ---------------------------------------------------------------------------
 # birnam suites — each process writes its own JSON via BENCH_OUT.
@@ -120,11 +156,11 @@ REP_HEAVY=$(( REP_MACRO < 2 ? REP_MACRO : 2 ))   # docgen/compile: cap at 2
 # loadStdlib falls back to embedded source exactly (docs/46).
 DECOY="$TMP/decoylib"
 mkdir -p "$DECOY"
-for f in zig-out/lib/*.dylib; do
+for f in "$PREFIX"/lib/*.dylib; do
   b=$(basename "$f")
   case "$b" in
     libbirnam_modules.dylib|libbirnam_stdlib.dylib|libbirnam_toml.dylib|libbirnam_config.dylib) ;;
-    *) ln -sf "$(pwd)/$f" "$DECOY/$b" ;;
+    *) ln -sf "$f" "$DECOY/$b" ;;
   esac
 done
 
@@ -152,15 +188,16 @@ MACHINE=$(sysctl -n hw.model 2>/dev/null || echo unknown)
 QUICK_JSON=$([ -n "$QUICK" ] && echo true || echo false)
 
 if [ $MODE = release ]; then
-  OUT="bench/results/v${VERSION}.json"
+  mkdir -p bench/results
+  OUT="bench/results/v${VERSION}-${FLOOR}-${SHA}-${FLOOR_DIGEST}.json"
 else
   mkdir -p bench/results/dev
-  OUT="bench/results/dev/bench-${SHA}.json"
+  OUT="bench/results/dev/bench-${SHA}-${FLOOR}-${FLOOR_DIGEST}.json"
 fi
 
 {
-  printf '{"stamp":{"sha":"%s","dirty":%s,"version":"%s","date":"%s","machine":"%s","optimize":"ReleaseSafe","mode":"%s","quick":%s},\n' \
-    "$SHA" "$DIRTY" "$VERSION" "$STAMP_DATE" "$MACHINE" "$MODE" "$QUICK_JSON"
+  printf '{"stamp":{"sha":"%s","dirty":%s,"version":"%s","date":"%s","machine":"%s","optimize":"ReleaseSafe","mode":"%s","quick":%s,"floor":"%s","floor_identity":"%s","floor_sha256":"%s"},\n' \
+    "$SHA" "$DIRTY" "$VERSION" "$STAMP_DATE" "$MACHINE" "$MODE" "$QUICK_JSON" "$FLOOR" "$FLOOR_IDENTITY" "$FLOOR_DIGEST"
   # Each suite element is tagged with its label + run number (parsed from the
   # per-run filename) so release mode's 3 micro runs are distinguishable and a
   # partial failure is visible, not a silent multiset change.

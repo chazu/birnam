@@ -176,20 +176,23 @@ The design that stays honest:
   queries sit far above µs resolution, so cross-process ms timing loses
   nothing.
 
-### Driver: `scripts/bench.sh`
+### Driver: `scripts/bench.sh --floor=zig|rust`
 
-- Builds ReleaseSafe itself (`zig build install stage1
-  -Doptimize=ReleaseSafe`) — zig's cache makes this cheap when current, and
-  building in-driver is what guarantees the binary matches the mode (the
-  binary does not expose its optimize mode, so there is nothing to "check").
+- Builds ReleaseSafe itself into a fresh prefix with isolated Zig caches. A
+  Rust-floor run also builds the release cdylib into an isolated Cargo target.
+  Every benchmark process receives the selected dylib path, floor identity,
+  and SHA-256; the host verifies identity and digest before `id_init`.
 - Runs the micro suite in-process, the relational suite as R fresh
   processes, and the macro cases itself: wall time from the shell, peak RSS
   via `/usr/bin/time -l` (macOS).
-- Merges all three into `bench/results/dev/bench-<sha>.json` (or
-  `bench/results/v<X.Y.Z>.json` with `--release`; quick runs refuse
-  `--release` so a low-rep run can never become the kept snapshot), each
+- Merges all three into
+  `bench/results/dev/bench-<sha>-<floor>-<dylib-sha256>.json` (or
+  `bench/results/v<X.Y.Z>-<floor>-<sha>-<dylib-sha256>.json` with `--release`;
+  quick runs refuse `--release` so a low-rep run can never become the kept
+  snapshot), each
   suite element tagged `{label, run, data}`, stamped with sha, dirty flag,
-  version, date, `sysctl hw.model`, and build mode.
+  version, date, `sysctl hw.model`, build mode, floor identity, and the full
+  selected dylib digest.
 
 ### Compare: `scripts/bench-compare.sh a.json b.json`
 
@@ -208,8 +211,10 @@ compare tool.
 
 ### Wiring
 
-- `mise run bench` → `scripts/bench.sh` (dev mode).
-- `mise run bench-release` → the checked-in snapshot, run **after**
+- `mise run bench` and `mise run bench-rust` run isolated Zig- and Rust-floor
+  dev snapshots respectively.
+- `mise run bench-release` and `mise run bench-release-rust` produce the two
+  checked-in snapshots, run **after**
   `release.sh` on the tagged commit; committing the result is part of the
   release procedure (documented in this doc and in `mise.toml`'s comment
   header). Deliberately **not** inside `release.sh`: bench noise must not be

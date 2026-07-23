@@ -8,9 +8,11 @@ this page is what you need day to day.
 
 ```
 BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam   # tight dev loop, ~5s
-mise run bench                                          # full instrument -> bench/results/dev/
-mise run bench-release                                  # tracked snapshot -> bench/results/v<X.Y.Z>.json
-mise run bench-compare bench/results/v0.8.0.json bench/results/dev/bench-<sha>.json
+mise run bench                                          # isolated Zig-floor instrument
+mise run bench-rust                                     # isolated Rust-floor instrument
+mise run bench-release                                  # tracked Zig-floor snapshot
+mise run bench-release-rust                             # tracked Rust-floor snapshot
+mise run bench-compare <old-floor.json> <new-floor.json>
 ```
 
 Everything runs **ReleaseSafe** (the driver builds it; Debug numbers are not
@@ -29,12 +31,15 @@ sub-5% claims need a deliberate same-boot A/B.
   bench/relational.birnam` — ~a minute since the 2026-07-12 index arc
   (queries are ms-scale; the join and rule-fixpoint cases still run
   ~¼–⅔s each and dominate the wall time).
-- **Before merging / when you want the full picture**: `mise run bench`,
-  then `mise run bench-compare <last-release-snapshot> <your-dev-result>`.
+- **Before merging / when you want the full picture**: run `mise run bench`
+  and `mise run bench-rust`, then compare like-for-like floor snapshots with
+  `mise run bench-compare <last-release-floor-snapshot> <your-dev-result>`.
 - **After cutting a release** (part of the release process): on the tagged
-  commit, on a quiet machine, `mise run bench-release`, then **commit
-  `bench/results/v<X.Y.Z>.json`**. That file is the baseline every future
-  run is compared against, and it is kept forever. This step is deliberately
+  commit, on a quiet machine, run `mise run bench-release` and `mise run
+  bench-release-rust`, then **commit both
+  `bench/results/v<X.Y.Z>-<floor>-<sha>-<dylib-sha256>.json` files**. They are
+  the floor-specific baselines future runs compare against and are kept
+  forever. This step is deliberately
   NOT inside `release.sh`: bench noise must never block a release, and the
   snapshot deserves a deliberate, quiet run.
 

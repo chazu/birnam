@@ -22,10 +22,11 @@
 #   mise run install        # install to a prefix
 #   mise run dist           # build a release tarball for this platform
 #   mise run release minor  # bump version, tag, build, publish a GitHub release
-#   mise run bench          # full benchmark run (ReleaseSafe) -> bench/results/dev/
-#   mise run bench-release  # tracked snapshot -> bench/results/v<VERSION>.json
-#                           # (run AFTER release, on the tagged commit; commit the file)
-#   mise run bench-compare bench/results/v0.8.0.json bench/results/dev/bench-<sha>.json
+#   mise run bench          # isolated Zig-floor ReleaseSafe benchmark
+#   mise run bench-rust     # isolated Rust-floor ReleaseSafe benchmark
+#   mise run bench-release  # tracked Zig snapshot; run bench-release-rust too
+#                           # (run AFTER release, on the tagged commit; commit both files)
+#   mise run bench-compare <old-floor.json> <new-floor.json>
 
 [tools]
 zig = "0.15.1"
@@ -161,12 +162,20 @@ description = "Bump version, build, tag, and publish a GitHub release (patch|min
 run = "./scripts/release.sh {{arg(name='level')}}"
 
 [tasks.bench]
-description = "Run the full benchmark suite (ReleaseSafe) — results to bench/results/dev/ (docs/misc/BENCHMARKS.md)"
-run = "./scripts/bench.sh"
+description = "Run the full Zig-floor benchmark suite in an isolated ReleaseSafe prefix"
+run = "./scripts/bench.sh --floor=zig"
+
+[tasks.bench-rust]
+description = "Run the full Rust-floor benchmark suite in an isolated ReleaseSafe prefix"
+run = "./scripts/bench.sh --floor=rust"
 
 [tasks.bench-release]
-description = "Tracked benchmark snapshot -> bench/results/v<VERSION>.json (run after a release, on the tagged commit, quiet machine; then commit the file)"
-run = "./scripts/bench.sh --release"
+description = "Tracked Zig-floor benchmark snapshot with commit and dylib digest"
+run = "./scripts/bench.sh --release --floor=zig"
+
+[tasks.bench-release-rust]
+description = "Tracked Rust-floor benchmark snapshot with commit and dylib digest"
+run = "./scripts/bench.sh --release --floor=rust"
 
 [tasks.bench-compare]
 description = "Diff two merged benchmark results; exits 1 on regression past threshold"

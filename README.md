@@ -285,8 +285,9 @@ whole-process workloads — always against a ReleaseSafe build.
 
 ```sh
 BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam   # tight dev loop (~5s)
-mise run bench                                          # full run -> bench/results/dev/
-mise run bench-compare bench/results/v0.8.0.json bench/results/dev/bench-<sha>.json
+mise run bench                                          # isolated Zig-floor run
+mise run bench-rust                                     # isolated Rust-floor run
+mise run bench-compare <old-floor.json> <new-floor.json>
 ```
 
 When to run: the affected suite before and after any perf-relevant change
@@ -300,10 +301,12 @@ commit and a quiet machine, run
 
 ```sh
 mise run bench-release
-git add bench/results/v<X.Y.Z>.json && git commit
+mise run bench-release-rust
+git add bench/results/v<X.Y.Z>-*.json && git commit
 ```
 
-The committed snapshot is the baseline all future runs compare against.
+The committed floor-labelled snapshots are the baselines future runs compare
+against; filenames and JSON stamps include the commit and selected dylib digest.
 (This step is intentionally outside `release.sh` — bench noise must never
 block a release.) `docs/misc/BENCHMARKS.md` is the full operational guide;
 [docs/design/46-benchmarks.md](docs/design/46-benchmarks.md) records the

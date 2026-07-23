@@ -94,6 +94,7 @@ NOTES
 )"
 
 echo "==> released ${tag}"
-echo "==> next: capture the benchmark snapshot on this tagged commit (quiet machine):"
-echo "      mise run bench-release && git add bench/results/v${new}.json \\"
+echo "==> next: capture both floor snapshots on this tagged commit (quiet machine):"
+echo "      mise run bench-release && mise run bench-release-rust \\"
+echo "        && git add bench/results/v${new}-*.json \\"
 echo "        && git commit -m 'bench: v${new} snapshot' && git push"
