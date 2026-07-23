@@ -31,9 +31,29 @@ rustc --version | grep -q '^rustc 1\.95\.0 '
     cargo check --workspace --locked --offline
   CARGO_TARGET_DIR="$scratch/.cargo-target" \
     cargo test --workspace --locked --offline
-  zig build
+  zig build -Dfloor=rust
 )
 
 test -x "$scratch/zig-out/bin/birnam"
 test -f "$scratch/zig-out/lib/libbirnam_id.dylib"
-echo "source-bootstrap: fixture-free Zig/Rust cold build passed"
+test -f "$scratch/zig-out/lib/libbirnam_id_zig.dylib"
+BIRNAM_LIB_DIR="$scratch/zig-out/lib" \
+  BIRNAM_ID_FLOOR_IDENTITY=rust-id-v1 \
+  "$scratch/zig-out/bin/birnam" "$scratch/bench/nil.birnam"
+BIRNAM_LIB_DIR="$scratch/zig-out/lib" \
+  BIRNAM_ID_DYLIB="$scratch/zig-out/lib/libbirnam_id_zig.dylib" \
+  BIRNAM_ID_FLOOR_IDENTITY=zig-id-v1 \
+  "$scratch/zig-out/bin/birnam" "$scratch/bench/nil.birnam"
+
+(
+  cd "$scratch"
+  zig build -Dfloor=zig --prefix "$scratch/zig-oracle-prefix"
+)
+cmp \
+  "$scratch/zig-oracle-prefix/lib/libbirnam_id.dylib" \
+  "$scratch/zig-oracle-prefix/lib/libbirnam_id_zig.dylib"
+BIRNAM_LIB_DIR="$scratch/zig-oracle-prefix/lib" \
+  BIRNAM_ID_FLOOR_IDENTITY=zig-id-v1 \
+  "$scratch/zig-oracle-prefix/bin/birnam" "$scratch/bench/nil.birnam"
+
+echo "source-bootstrap: fixture-free Rust production and Zig rollback builds passed"
