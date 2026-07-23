@@ -128,6 +128,16 @@ pub fn build(b: *std.Build) void {
     test_rust_dylib_audit_step.dependOn(&rust_dylib_audit.step);
     test_step.dependOn(&rust_dylib_audit.step);
 
+    const rust_runtime_churn = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-runtime-churn-smoke.sh",
+    });
+    const test_rust_runtime_churn_step = b.step(
+        "test-rust-runtime-churn",
+        "Stress Rust-floor module loads, image boots, and isolate process lifecycles",
+    );
+    test_rust_runtime_churn_step.dependOn(&rust_runtime_churn.step);
+
     const rust_heap_layout_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/rust-heap-layout-smoke.sh",

@@ -60,6 +60,10 @@ run = "bash scripts/rust-ffi-abort-smoke.sh"
 description = "Audit Rust floor dependencies, install name, paths, and exports"
 run = "bash scripts/rust-dylib-audit.sh"
 
+[tasks.rust-runtime-churn]
+description = "Stress Rust-floor repeated module loads, image boots, and isolates"
+run = "bash scripts/rust-runtime-churn-smoke.sh"
+
 [tasks.rust-heap-layout-smoke]
 description = "Probe Rust raw block layout from an external C-ABI fixture"
 run = "bash scripts/rust-heap-layout-smoke.sh"
