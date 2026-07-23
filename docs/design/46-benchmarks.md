@@ -189,8 +189,14 @@ The design that stays honest:
   consume more than 80% of one core. The median ignores one isolated sampling
   spike while still rejecting sustained load; the independent process limit
   rejects a runaway competitor. A host that misses either limit fails the run
-  before a tracked snapshot can be emitted;
-  developer/quick runs remain available for diagnosis under load. The two
+  before a tracked snapshot can be emitted. The driver waits up to 15 minutes
+  for a quiet preflight. If the completion check detects load that appeared
+  during a case, that case's output is discarded and the case is retried, up
+  to four total attempts; an exhausted wait or retry budget fails the run.
+  `BENCH_HOST_WAIT_SECONDS`, `BENCH_HOST_RETRY_SECONDS`, and
+  `BENCH_CASE_ATTEMPTS` may adjust those progress budgets without changing
+  acceptance criteria. Developer/quick runs remain available for diagnosis
+  under load. The two
   limits may be tightened for controlled benchmark hosts through
   `BENCH_HOST_MIN_MEDIAN_IDLE` and `BENCH_HOST_MAX_PROCESS_CPU`; weakening them
   does not produce standard Design 46 acceptance evidence.

@@ -27,6 +27,23 @@ self_test() {
   echo "bench-host-check: self-test passed"
 }
 
+if [[ ${1:-} == --wait ]]; then
+  shift
+  context=${1:-benchmark}
+  wait_seconds=${BENCH_HOST_WAIT_SECONDS:-900}
+  retry_seconds=${BENCH_HOST_RETRY_SECONDS:-10}
+  deadline=$((SECONDS + wait_seconds))
+  while ! "$0" "$context"; do
+    if (( SECONDS >= deadline )); then
+      echo "bench-host-check: $context did not become quiet within ${wait_seconds}s" >&2
+      exit 1
+    fi
+    echo "bench-host-check: waiting ${retry_seconds}s before retrying $context" >&2
+    sleep "$retry_seconds"
+  done
+  exit
+fi
+
 if [[ ${1:-} == --self-test ]]; then
   self_test
   exit

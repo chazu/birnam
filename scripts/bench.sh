@@ -37,7 +37,7 @@ if [ $MODE = release ] && [ -n "$QUICK" ]; then
 fi
 
 if [ "$MODE" = release ]; then
-  scripts/bench-host-check.sh "release benchmark pre-build"
+  scripts/bench-host-check.sh --wait "release benchmark pre-build"
 fi
 
 TMP=$(mktemp -d)
@@ -81,22 +81,41 @@ echo "==> selected $FLOOR_IDENTITY $FLOOR_DIGEST"
 # ---------------------------------------------------------------------------
 SUITE_FILES=()
 
-require_quiet() { # require_quiet <context>
+wait_for_quiet() { # wait_for_quiet <context>
+  [ "$MODE" != release ] || scripts/bench-host-check.sh --wait "$1"
+}
+
+stayed_quiet() { # stayed_quiet <context>
   [ "$MODE" != release ] || scripts/bench-host-check.sh "$1"
 }
 
 run_suite() { # run_suite <script> <label> <runs>
-  local script=$1 label=$2 runs=$3 i out
+  local script=$1 label=$2 runs=$3 i out attempt
+  local maximum_attempts=${BENCH_CASE_ATTEMPTS:-4}
   for i in $(seq 1 "$runs"); do
-    require_quiet "$label run $i preflight"
-    out="$TMP/$label-$i.json"
-    echo "==> suite $label (run $i/$runs)"
-    if BENCH_OUT="$out" "$BIN" "$script" </dev/null; then
-      SUITE_FILES+=("$out")
-    else
-      echo "FAIL suite $label run $i" >&2; FAIL=1
-    fi
-    require_quiet "$label run $i completion"
+    attempt=1
+    while true; do
+      wait_for_quiet "$label run $i preflight"
+      out="$TMP/$label-$i.json"
+      echo "==> suite $label (run $i/$runs, attempt $attempt/$maximum_attempts)"
+      if ! BENCH_OUT="$out" "$BIN" "$script" </dev/null; then
+        echo "FAIL suite $label run $i" >&2
+        FAIL=1
+        break
+      fi
+      if stayed_quiet "$label run $i completion"; then
+        SUITE_FILES+=("$out")
+        break
+      fi
+      rm -f "$out"
+      if [ "$attempt" -ge "$maximum_attempts" ]; then
+        echo "FAIL suite $label run $i: host load spoiled $maximum_attempts attempts" >&2
+        FAIL=1
+        break
+      fi
+      attempt=$((attempt + 1))
+      echo "==> discard suite $label run $i: host load appeared during measurement"
+    done
   done
 }
 
@@ -135,29 +154,42 @@ print(int((t1 - t0) * 1000000))
 
 macro_case() { # macro_case <name> <reps> cmd...
   local name=$1 reps=$2; shift 2
-  require_quiet "$name preflight"
-  echo "==> macro $name"
-  local vals=() v i
-  for i in $(seq 1 "$reps"); do
-    v=$(wall_us "$@")
-    case "$v" in
-      FAIL*) echo "FAIL macro $name: exit ${v#FAIL }" >&2; FAIL=1; return ;;
-      *) vals+=("$v") ;;
-    esac
+  local maximum_attempts=${BENCH_CASE_ATTEMPTS:-4}
+  local attempt=1
+  while true; do
+    wait_for_quiet "$name preflight"
+    echo "==> macro $name (attempt $attempt/$maximum_attempts)"
+    local vals=() v i
+    for i in $(seq 1 "$reps"); do
+      v=$(wall_us "$@")
+      case "$v" in
+        FAIL*) echo "FAIL macro $name: exit ${v#FAIL }" >&2; FAIL=1; return ;;
+        *) vals+=("$v") ;;
+      esac
+    done
+    local sorted median min
+    sorted=$(printf '%s\n' "${vals[@]}" | sort -n)
+    median=$(printf '%s\n' "$sorted" | awk -v n="$reps" 'NR == int(n/2)+1 {print; exit}')
+    min=$(printf '%s\n' "$sorted" | head -1)
+    # One extra (unmeasured) run for peak RSS (bytes on macOS). Guarded: a
+    # flake here must not `set -e`-abort the driver after all timed runs passed.
+    local rss
+    rss=$(/usr/bin/time -l "$@" </dev/null 2>&1 >/dev/null | awk '/maximum resident set size/{print $1}') || rss=0
+    [ -n "$rss" ] || rss=0
+    if stayed_quiet "$name completion"; then
+      printf '{"name":"%s","wall_us_median":%s,"wall_us_min":%s,"reps":%s,"peak_rss_bytes":%s}\n' \
+        "$name" "$median" "$min" "$reps" "$rss" >> "$MACRO_JSON"
+      echo "  $name: $((median / 1000)) ms (min $((min / 1000)), rss $((rss / 1048576)) MB)"
+      return
+    fi
+    if [ "$attempt" -ge "$maximum_attempts" ]; then
+      echo "FAIL macro $name: host load spoiled $maximum_attempts attempts" >&2
+      FAIL=1
+      return
+    fi
+    attempt=$((attempt + 1))
+    echo "==> discard macro $name: host load appeared during measurement"
   done
-  local sorted median min
-  sorted=$(printf '%s\n' "${vals[@]}" | sort -n)
-  median=$(printf '%s\n' "$sorted" | awk -v n="$reps" 'NR == int(n/2)+1 {print; exit}')
-  min=$(printf '%s\n' "$sorted" | head -1)
-  # One extra (unmeasured) run for peak RSS (bytes on macOS). Guarded: a
-  # flake here must not `set -e`-abort the driver after all timed runs passed.
-  local rss
-  rss=$(/usr/bin/time -l "$@" </dev/null 2>&1 >/dev/null | awk '/maximum resident set size/{print $1}') || rss=0
-  [ -n "$rss" ] || rss=0
-  printf '{"name":"%s","wall_us_median":%s,"wall_us_min":%s,"reps":%s,"peak_rss_bytes":%s}\n' \
-    "$name" "$median" "$min" "$reps" "$rss" >> "$MACRO_JSON"
-  echo "  $name: $((median / 1000)) ms (min $((min / 1000)), rss $((rss / 1048576)) MB)"
-  require_quiet "$name completion"
 }
 
 REP_MACRO=3
