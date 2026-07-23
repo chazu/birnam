@@ -2207,6 +2207,31 @@ not recover by downloading or selecting a prebuilt Birnam artifact. Temporarily
 remove the frozen compatibility-fixture directory for this proof so it cannot
 become an accidental bootstrap input.
 
+### R8.0 — Observation window opened, 2026-07-23
+
+The observation baseline is `ed47556`, which records the completed R7 cutover
+after a green Rust-default `zig build verify`, exact `mise run r6-acceptance`,
+focused `mise run zig-oracle-conformance`, relocated install/distribution
+smokes, and an exercised v0.11.0 release rollback. Commit `3fc0a5f` within that
+baseline fixes the only final-gate failure: a wall-clock race in an LSP fixture,
+not a Rust-floor semantic difference. No Rust-floor bug has been observed at
+entry.
+
+The published v0.11.0 release predates the default switch. It is valid rollback
+evidence but **does not** count as the required post-cutover observation
+checkpoint. R8 retirement may begin only after one of these is recorded:
+
+1. a complete release built from a descendant of this baseline, with the
+   Rust-default verify, distribution, and release benchmark gates green; or
+2. an explicitly agreed equivalent observation window that names its duration,
+   exercised workloads, Rust-floor regressions (including none), and final
+   dual-floor comparison evidence.
+
+Until then the five retirement steps above are deliberately blocked. Ordinary
+development continues on the Rust floor; any floor defect must add a
+language-neutral regression and run it against the Zig oracle before the fix is
+accepted.
+
 Git history is the implementation archive. Do not keep a dead second floor in
 the production tree indefinitely.
 
