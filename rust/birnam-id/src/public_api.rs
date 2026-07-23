@@ -164,6 +164,13 @@ unsafe extern "C" fn api_string_bytes(object: Oop, out_length: *mut usize) -> *c
 }
 
 unsafe extern "C" fn api_symbol_name(symbol: Oop) -> *const c_char {
+    if let Some(name) = with_active_if_present(|active| {
+        // SAFETY: with_active_if_present proves a surrounding owner-checked
+        // Runtime::enter; Symbol names are permanent runtime-owned bytes.
+        unsafe { active.symbol_name_active(symbol) }
+    }) {
+        return name;
+    }
     runtime().symbol_name(symbol)
 }
 

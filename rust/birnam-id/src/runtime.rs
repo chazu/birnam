@@ -459,6 +459,14 @@ impl Runtime {
         unsafe { (*self.state.get()).symbols.c_name_of(symbol) }
     }
 
+    /// Return a permanent Symbol name after `enter` has already established
+    /// this runtime as active on the owner thread.
+    pub(crate) unsafe fn symbol_name_active(&self, symbol: Oop) -> *const core::ffi::c_char {
+        // SAFETY: the active-runtime guard proves owner-thread serialization;
+        // the permanent Symbol record owns the returned bytes for runtime life.
+        unsafe { (*self.state.get()).symbols.c_name_of(symbol) }
+    }
+
     pub(crate) fn import(&self, bytes: &[u8]) -> Result<Oop, EmbeddedNul> {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
