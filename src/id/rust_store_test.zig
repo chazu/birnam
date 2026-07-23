@@ -15,6 +15,37 @@ fn count(api: *idapi.IdApi, store: Oop, e: Oop, attr: Oop) usize {
     return @intCast(api.smallIntValue(send(api, store, "count:attr:", &.{ e, attr })));
 }
 
+fn answer42(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = args;
+    _ = n;
+    return @ptrFromInt(42);
+}
+
+fn answer7(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = self;
+    _ = args;
+    _ = n;
+    return @ptrFromInt(7);
+}
+
+var mop_api: ?*idapi.IdApi = null;
+var mop_authorized = true;
+var mop_authorizer_calls: usize = 0;
+var mop_observer_calls: usize = 0;
+
+fn authorizeMop() callconv(.c) Oop {
+    mop_authorizer_calls += 1;
+    return if (mop_authorized) mop_api.?.trueObj else mop_api.?.falseObj;
+}
+
+fn observeMop(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = args;
+    _ = n;
+    mop_observer_calls += 1;
+    return self;
+}
+
 test "Rust Store core owns raw/flip, schema-aware assert, lookup, and basis" {
     const api = floor.api();
     const path = std.posix.getenv("BIRNAM_RUST_STORE_DYLIB") orelse
@@ -135,4 +166,68 @@ test "Rust Store Cells are traced handles over one store entity/attribute pair" 
 
     const second_cell = send(api, store, "cellFor:attr:", &.{ entity, attribute });
     try std.testing.expect(send(api, second_cell, "value", &.{}) == second);
+}
+
+test "Rust Store MOP preserves authorization, ordering, mirror, and raw invalidation" {
+    const api = floor.api();
+    const path = std.posix.getenv("BIRNAM_RUST_STORE_DYLIB") orelse
+        return error.MissingRustStoreDylib;
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustStoreDlopenFailed;
+    const raw_init = api.dlsym(handle, "module_init") orelse return error.RustStoreModuleInitMissing;
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
+
+    const store = api.import("Store") orelse return error.RustStoreNotExported;
+    mop_api = api;
+    const vt = api.proto(api.object_vt);
+    const owner = api.alloc(vt, 0);
+    api.setOwner(vt, owner);
+    const selector = api.intern("rust_store_mop_selector");
+    const method42: Oop = @ptrCast(@constCast(&answer42));
+    const method7: Oop = @ptrCast(@constCast(&answer7));
+    const observer_vt = api.proto(api.object_vt);
+    api.method(observer_vt, api.intern("managedMethodChanged:on:"), &observeMop);
+    const observer = api.alloc(observer_vt, 0);
+    _ = send(api, store, "setMethodMutationObserver:", &.{observer});
+    const authorizer_address: i64 = @intCast(@intFromPtr(&authorizeMop));
+    _ = send(api, store, "setMethodMutationAuthorizer:", &.{api.mkSmallInt(authorizer_address)});
+
+    mop_authorized = false;
+    mop_authorizer_calls = 0;
+    mop_observer_calls = 0;
+    try std.testing.expect(send(api, store, "addMethod:on:with:", &.{ selector, vt, method42 }) == api.falseObj);
+    try std.testing.expectEqual(@as(usize, 1), mop_authorizer_calls);
+    try std.testing.expectEqual(@as(usize, 0), mop_observer_calls);
+    try std.testing.expect(send(api, store, "rawCurrentValue:attr:", &.{ vt, selector }) == null);
+
+    mop_authorized = true;
+    _ = send(api, store, "addMethod:on:with:", &.{ selector, vt, method42 });
+    try std.testing.expectEqual(@as(usize, 1), mop_observer_calls);
+    try std.testing.expect(send(api, store, "rawCurrentValue:attr:", &.{ vt, selector }) == method42);
+    const instance = api.alloc(vt, 0);
+    try std.testing.expect(@intFromPtr(send(api, instance, "rust_store_mop_selector", &.{})) == 42);
+
+    _ = send(api, store, "addMethod:on:with:", &.{ selector, vt, method7 });
+    try std.testing.expectEqual(@as(usize, 2), mop_observer_calls);
+    try std.testing.expect(send(api, store, "rawCurrentValue:attr:", &.{ vt, selector }) == method7);
+    try std.testing.expect(@intFromPtr(send(api, instance, "rust_store_mop_selector", &.{})) == 7);
+
+    mop_authorized = false;
+    try std.testing.expect(send(api, store, "removeMethod:on:", &.{ selector, vt }) == api.falseObj);
+    try std.testing.expectEqual(@as(usize, 2), mop_observer_calls);
+    try std.testing.expect(send(api, store, "rawCurrentValue:attr:", &.{ vt, selector }) == method7);
+
+    mop_authorized = true;
+    _ = send(api, store, "removeMethod:on:", &.{ selector, vt });
+    try std.testing.expectEqual(@as(usize, 3), mop_observer_calls);
+    try std.testing.expect(send(api, store, "rawCurrentValue:attr:", &.{ vt, selector }) == null);
+
+    // A raw overwrite is visible to the floor but cannot leave a stale mirror.
+    api.method(vt, selector, &answer42);
+    _ = send(api, store, "backfillMirror", &.{});
+    try std.testing.expect(send(api, store, "rawCurrentValue:attr:", &.{ vt, selector }) != null);
+    api.method(vt, selector, &answer7);
+    try std.testing.expect(send(api, store, "rawCurrentValue:attr:", &.{ vt, selector }) == null);
 }

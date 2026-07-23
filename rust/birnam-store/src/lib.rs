@@ -12,6 +12,7 @@ use core::ffi::{c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 const RUST_STORE_IDENTITY: &[u8] = b"rust-store-n2.2-core\0";
 const STORE_NAME: &[u8] = b"Store\0";
@@ -19,6 +20,12 @@ const STORE_VT_NAME: &[u8] = b"StoreVt\0";
 const CELL_VT_NAME: &[u8] = b"CellVt\0";
 const GLOBALS_VT_NAME: &[u8] = b"GlobalsVt\0";
 const GLOBALS_NAME: &[u8] = b"Globals\0";
+
+static METHOD_OBSERVER: AtomicUsize = AtomicUsize::new(0);
+static METHOD_AUTHORIZER: AtomicUsize = AtomicUsize::new(0);
+static STORE_ROOT: AtomicUsize = AtomicUsize::new(0);
+static ROOT_PROVIDER_REGISTERED: AtomicBool = AtomicBool::new(false);
+static OVERWRITE_HOOK_REGISTERED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -73,6 +80,7 @@ struct Runtime {
     one: usize,
     many: usize,
     history: usize,
+    primitive: usize,
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -124,6 +132,105 @@ unsafe fn state_mut(store: birnam_abi::Oop) -> &'static mut StoreState {
 
 fn same(a: birnam_abi::Oop, b: birnam_abi::Oop) -> bool {
     a == b
+}
+
+type MethodMutationAuthorizer = unsafe extern "C" fn() -> birnam_abi::Oop;
+
+fn mop_error(runtime: &Runtime, kind: &[u8]) -> birnam_abi::Oop {
+    let api = unsafe { api(runtime) };
+    let error = unsafe { import(api, b"Error\0") };
+    if error.is_null() {
+        return api.nilObj;
+    }
+    let selector = unsafe { intern(api, b"kind:\0") };
+    let kind = unsafe { intern(api, kind) };
+    let arguments = [kind];
+    // SAFETY: the imported Error object owns the frozen `kind:` protocol.
+    unsafe { (api.send)(error, selector, arguments.as_ptr(), arguments.len()) }
+}
+
+unsafe extern "C" fn mark_mop_roots(mark: birnam_abi::MarkFn) {
+    let observer = METHOD_OBSERVER.load(Ordering::Acquire);
+    if observer != 0 {
+        // SAFETY: the observer is an Oop registered through the live IdApi and
+        // remains process-owned until the provider is replaced (which is
+        // rejected by the registration law).
+        unsafe { mark(observer as birnam_abi::Oop) };
+    }
+}
+
+fn authorize(runtime: &Runtime) -> Option<birnam_abi::Oop> {
+    let encoded = METHOD_AUTHORIZER.load(Ordering::Acquire);
+    if encoded == 0 {
+        return None;
+    }
+    // SAFETY: registration accepts only the encoded C callback address; the
+    // provider dylib remains pinned for process lifetime by the host.
+    let callback: MethodMutationAuthorizer = unsafe { core::mem::transmute(encoded) };
+    Some(unsafe { callback() }).filter(|answer| *answer != unsafe { api(runtime) }.trueObj)
+}
+
+unsafe extern "C" fn set_method_observer(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    // SAFETY: this selector has exactly one argument.
+    let candidate = unsafe { *args } as usize;
+    let current = METHOD_OBSERVER.load(Ordering::Acquire);
+    if current != 0 && current != candidate {
+        return mop_error(runtime, b"methodMutationObserverAlreadySet\0");
+    }
+    if current == 0 {
+        let _ = METHOD_OBSERVER.compare_exchange(0, candidate, Ordering::AcqRel, Ordering::Acquire);
+    }
+    self_object
+}
+
+unsafe extern "C" fn set_method_authorizer(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    // SAFETY: this selector has exactly one SmallInt argument carrying the
+    // callback address, matching the existing Zig Store ABI.
+    let candidate = unsafe { (api.smallIntValue)(*args) } as usize;
+    let current = METHOD_AUTHORIZER.load(Ordering::Acquire);
+    if current != 0 && current != candidate {
+        return mop_error(runtime, b"methodMutationAuthorizerAlreadySet\0");
+    }
+    if current == 0 {
+        let _ =
+            METHOD_AUTHORIZER.compare_exchange(0, candidate, Ordering::AcqRel, Ordering::Acquire);
+    }
+    self_object
+}
+
+unsafe extern "C" fn notify_method_observer(
+    runtime: &Runtime,
+    selector: birnam_abi::Oop,
+    vtable: birnam_abi::Oop,
+) {
+    let observer = METHOD_OBSERVER.load(Ordering::Acquire);
+    if observer == 0 {
+        return;
+    }
+    let api = unsafe { api(runtime) };
+    let message = unsafe { intern(api, b"managedMethodChanged:on:\0") };
+    let arguments = [selector, vtable];
+    // SAFETY: observer registration roots the receiver and the callback's
+    // answer is deliberately ignored by the MOP law.
+    let _ = unsafe {
+        (api.send)(
+            observer as birnam_abi::Oop,
+            message,
+            arguments.as_ptr(),
+            arguments.len(),
+        )
+    };
 }
 
 unsafe fn append_fact(
@@ -384,6 +491,150 @@ unsafe extern "C" fn retract(
     self_object
 }
 
+unsafe extern "C" fn tracked_add_method(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    if let Some(answer) = authorize(runtime) {
+        return answer;
+    }
+    // SAFETY: this selector has exactly three arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 3) };
+    let (selector, vtable, method_carrier) = (args[0], args[1], args[2]);
+    let old = current_value_raw(unsafe { state_mut(self_object) }, vtable, selector);
+    if !old.is_null() {
+        let retract_args = [vtable, selector, old];
+        unsafe { retract(self_object, retract_args.as_ptr(), retract_args.len()) };
+    }
+    let api = unsafe { api(runtime) };
+    // SAFETY: the tracked MOP ABI carries the C Method address in an Oop-sized
+    // carrier; the IdApi method table stores the same pointer representation.
+    let method: birnam_abi::Method = unsafe { core::mem::transmute(method_carrier) };
+    unsafe { (api.method)(vtable, selector, method) };
+    // The derived mirror is committed only after the authoritative dictionary
+    // write has succeeded. This preserves retract -> dict -> assert ordering.
+    let mirror_args = [vtable, selector, method_carrier];
+    unsafe { assert_fact(self_object, mirror_args.as_ptr(), mirror_args.len()) };
+    unsafe { notify_method_observer(runtime, selector, vtable) };
+    self_object
+}
+
+unsafe extern "C" fn tracked_remove_method(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    if let Some(answer) = authorize(runtime) {
+        return answer;
+    }
+    // SAFETY: this selector has exactly two arguments.
+    let args = unsafe { core::slice::from_raw_parts(args, 2) };
+    let selector = args[0];
+    let vtable = args[1];
+    let api = unsafe { api(runtime) };
+    if unsafe { (api.vtableOwner)(vtable) }.is_null() {
+        return mop_error(runtime, b"unstableMethodTarget\0");
+    }
+    let mut direct = false;
+    let mut index = 0;
+    loop {
+        let bound = unsafe { (api.vtableSelectorAt)(vtable, index) };
+        if bound.is_null() {
+            break;
+        }
+        if bound == selector {
+            direct = true;
+            break;
+        }
+        index += 1;
+    }
+    if !direct {
+        return mop_error(runtime, b"missingDirectMethod\0");
+    }
+    let old = current_value_raw(unsafe { state_mut(self_object) }, vtable, selector);
+    if !old.is_null() {
+        let retract_args = [vtable, selector, old];
+        unsafe { retract(self_object, retract_args.as_ptr(), retract_args.len()) };
+    }
+    let remove_selector = unsafe { intern(api, b"removeMethod:\0") };
+    let remove_args = [selector];
+    // SAFETY: the vtable owns the frozen floor `removeMethod:` protocol.
+    let _ = unsafe { (api.send)(vtable, remove_selector, remove_args.as_ptr(), 1) };
+    unsafe { notify_method_observer(runtime, selector, vtable) };
+    self_object
+}
+
+fn is_type_vtable(api: &birnam_abi::IdApi, vtable: birnam_abi::Oop) -> bool {
+    let mut current = vtable;
+    while !current.is_null() {
+        if current == api.object_vt {
+            return true;
+        }
+        current = unsafe { (api.vtableParent)(current) };
+    }
+    false
+}
+
+unsafe extern "C" fn backfill_mirror(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    // Collect the foreign vtable/selector carriers before borrowing StoreState;
+    // vtable enumeration is an IdApi callback boundary.
+    let mut pairs = Vec::new();
+    let vtable_count = unsafe { (api.vtableCount)() };
+    for index in 0..vtable_count {
+        let vtable = unsafe { (api.vtableAt)(index) };
+        if vtable.is_null() || !is_type_vtable(api, vtable) {
+            continue;
+        }
+        let mut selector_index = 0;
+        loop {
+            let selector = unsafe { (api.vtableSelectorAt)(vtable, selector_index) };
+            if selector.is_null() {
+                break;
+            }
+            pairs.push((vtable, selector));
+            selector_index += 1;
+        }
+    }
+    let state = unsafe { state_mut(self_object) };
+    for (vtable, selector) in pairs {
+        if current_value_raw(state, vtable, selector).is_null() {
+            unsafe {
+                append_fact(
+                    state,
+                    vtable,
+                    selector,
+                    as_oop(runtime.primitive),
+                    Op::Assert,
+                )
+            };
+        }
+    }
+    self_object
+}
+
+unsafe extern "C" fn mirror_overwrite_hook(vtable: birnam_abi::Oop, selector: birnam_abi::Oop) {
+    let store = STORE_ROOT.load(Ordering::Acquire);
+    if store == 0 {
+        return;
+    }
+    // SAFETY: the Store object is rooted by the provider registered at bring-up
+    // and its payload shape is fixed for this Rust rung.
+    let state = unsafe { state_mut(store as birnam_abi::Oop) };
+    let old = current_value_raw(state, vtable, selector);
+    if !old.is_null() {
+        remove_live(state, vtable, selector, old);
+    }
+}
+
 unsafe extern "C" fn raw_current_value(
     self_object: birnam_abi::Oop,
     args: *const birnam_abi::Oop,
@@ -590,16 +841,6 @@ unsafe extern "C" fn cell_history(
     unsafe { (api.send)(store, selector, [entity, attribute].as_ptr(), 2) }
 }
 
-unsafe extern "C" fn backfill(
-    self_object: birnam_abi::Oop,
-    _args: *const birnam_abi::Oop,
-    _count: usize,
-) -> birnam_abi::Oop {
-    // MOP backfill is intentionally deferred to N2.3; this is an inert
-    // protocol placeholder so storage-core tests can load the rung safely.
-    self_object
-}
-
 unsafe fn register_methods(runtime: &Runtime) {
     let api = unsafe { api(runtime) };
     let vt = as_oop(runtime.store_vt);
@@ -617,7 +858,11 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"cardinality:\0", cardinality_method),
         (b"new\0", new_store),
         (b"cellFor:attr:\0", cell_for),
-        (b"backfillMirror\0", backfill),
+        (b"addMethod:on:with:\0", tracked_add_method),
+        (b"removeMethod:on:\0", tracked_remove_method),
+        (b"setMethodMutationObserver:\0", set_method_observer),
+        (b"setMethodMutationAuthorizer:\0", set_method_authorizer),
+        (b"backfillMirror\0", backfill_mirror),
     ];
     for (selector, method) in methods {
         // SAFETY: selector names are static C strings and each function matches
@@ -691,6 +936,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         let one = unsafe { intern(api, b"one\0") };
         let many = unsafe { intern(api, b"many\0") };
         let history = unsafe { intern(api, b"history\0") };
+        let primitive = unsafe { intern(api, b"primitive\0") };
         Runtime {
             api: api_pointer as usize,
             store_vt: oop_address(store_vt),
@@ -702,6 +948,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             one: oop_address(one),
             many: oop_address(many),
             history: oop_address(history),
+            primitive: oop_address(primitive),
         }
     });
     unsafe {
@@ -709,6 +956,13 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         register_cell_methods(&runtime);
     };
     let store = as_oop(runtime.store);
+    STORE_ROOT.store(runtime.store, Ordering::Release);
+    if !ROOT_PROVIDER_REGISTERED.swap(true, Ordering::AcqRel) {
+        unsafe { (api.gcRegisterRootProvider)(mark_mop_roots) };
+    }
+    if !OVERWRITE_HOOK_REGISTERED.swap(true, Ordering::AcqRel) {
+        unsafe { (api.setMethodOverwriteHook)(Some(mirror_overwrite_hook)) };
+    }
     let state = unsafe { state_mut(store) };
     if state.facts.is_empty() {
         unsafe { seed(&runtime, store) };

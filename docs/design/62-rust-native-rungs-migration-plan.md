@@ -1,8 +1,8 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, and N2.2d are complete; N2.3 is
-> next.
+> passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, and N2.3a are complete;
+> N2.3b is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -782,6 +782,18 @@ observes the first Cell's writes, and the cross-language test passes against the
 selected floor. Cell payloads use an explicit trace hook, and all carriers are
 copied before foreign sends so no Rust reference spans a callback. Globals,
 MOP, image bridging, and production Store selection remain deferred.
+
+#### N2.3a execution record — complete, 2026-07-23
+
+The Rust Store now owns the first MOP chokepoint slice. Tracked add/remove
+registers the single-provider authorizer and observer, rejects denied writes
+before either representation changes, commits retract → dictionary → mirror
+assert ordering, and ignores the observer's answer after post-commit
+notification. The floor overwrite hook retracts stale mirror facts, and
+`backfillMirror` collects only real type-vtable selectors before installing the
+`#primitive` presence marker. A cross-language test covers denial, replacement,
+exact removal, observer counts, raw overwrite invalidation, and both IdApi
+floors. Full MOP/image/compiled-unit parity remains for N2.3b–N2.4.
 
 ### N2.3 — Implement the MOP chokepoint
 
