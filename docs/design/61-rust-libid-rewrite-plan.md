@@ -1914,6 +1914,51 @@ The Rust floor is release-ready when functional gates pass and Design 46 reports
 no unaccepted regression. Any accepted performance tradeoff requires a separate
 record naming the case, measured cost, user benefit, and follow-up.
 
+### R6 execution record — in progress, 2026-07-22
+
+The non-timing release checks are now executable gates. Debug and release
+cdylibs use `panic=abort`, export only the four specified production symbols,
+carry `@rpath/libbirnam_id.dylib` as their install name, depend only on
+`/usr/lib/libSystem.B.dylib`, and retain no repository path. Darwin allocator
+diagnostics run the cross-language provider, trace-hook, sweep, finalizer, and
+fatal-guard fixture with fresh/freed storage scribbling, guarded large
+allocations, and periodic heap checks. The shared Alien suite also performs 32
+callback create, C-invoke, release, and forced-collection cycles under either
+floor. Existing stress gates cover 4,096-deep delegation, 4,096-entry ordered
+dictionaries and export/symbol registries, 1,000 repeated module loads, 16
+mapped plus 16 rebuilt image boots, 32 isolate lifecycles, and 256 repeated
+finalizer/collection cycles per Rust profile.
+
+The complete 51-test pure-Rust suite passes Miri on `rustc 1.97.0-nightly
+(8b03437a8 2026-05-12)`. Miri found and drove fixes for two real unsafe-code
+defects: allocator provenance had been discarded before teardown and marked
+object traversal, and a field-derived raw heap pointer survived a later unique
+borrow of the complete runtime state. Large registry stress counts reduce to
+128 only under `cfg(miri)` so the same invariants complete in useful time; the
+ordinary suite retains 4,096. This evidence covers Rust allocation, pointer,
+registry, dispatch, and callback-state code. It does not cover native stack
+scanning, generated C, dynamic-loader behavior, or actual foreign callbacks;
+the cross-language and Darwin allocator gates cover those separately.
+
+The selected-floor live-count probe is byte-for-byte equal. Manual collection
+reports 42 -> 2,042 -> 42 and reclaims 2,000 objects. The finalizer case reports
+42 -> 1,042 -> 42, reclaims 1,000 objects, and calls exactly 1,000 finalizers.
+After 6,000 automatic-GC allocations with 4 KiB payloads, both floors report a
+live delta of 1,911.
+
+The latest complete diagnostic benchmark pair at `50ef02e` records a 307,824
+byte Zig dylib and a 450,672 byte Rust dylib, along with startup, peak RSS, GC
+pause, and the full Design 46 suite. It is not acceptance evidence: its
+comparator reports nine regressions, and subsequent diagnosis found redundant
+owner checks inside an already owner-proven active send plus severe external
+load during a follow-up run. The active-dispatch fix preserves the public owner
+check and the metacircular `lookup` send; three focused fresh processes then
+converged at 1.42-1.43 us unary sends, 1.57-1.64 us three-keyword sends,
+1.56-1.59 us DNU sends, 69-71 ns block sends, and 105-110 ns map hits. A new
+clean paired release run is still required after the host is quiet. R6 remains
+open, and R7 must not begin until that pair passes or a separate tradeoff record
+is accepted.
+
 ## 13. Phase R7 — Build, install, and default cutover
 
 **Goal:** make Rust the default floor without deleting the oracle in the same
