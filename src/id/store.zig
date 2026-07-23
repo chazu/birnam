@@ -64,8 +64,11 @@ const Fact = struct {
     a: Oop,
     v: Oop,
     tx: u64,
+    // Derived access-path metadata: neither field is serialized or authoritative.
+    // Both are rebuilt from the canonical log whenever fact positions shift.
     ea_hash: u64,
     op: Op = .assert,
+    pair_first: bool = false,
 };
 
 /// The store's private backing — held in the Store libid object's payload (the
@@ -228,10 +231,13 @@ const EaCtx = struct {
 const Postings = std.ArrayList(u32);
 const EaMap = std.HashMapUnmanaged(EaKey, Postings, EaCtx, std.hash_map.default_max_load_percentage);
 
-fn indexAppend(st: *StoreState, key: EaKey, pos: usize) void {
+/// Add a fact position to the postings cache and report whether this fact is the
+/// pair's first physical appearance in the canonical log.
+fn indexAppend(st: *StoreState, key: EaKey, pos: usize) bool {
     const gop = st.ea.getOrPut(ca, key) catch @panic("store: oom");
     if (!gop.found_existing) gop.value_ptr.* = .{};
     gop.value_ptr.append(ca, @intCast(pos)) catch @panic("store: oom");
+    return !gop.found_existing;
 }
 
 fn clearIndex(st: *StoreState) void {
@@ -245,7 +251,8 @@ fn clearIndex(st: *StoreState) void {
 /// mutation itself already costs.
 fn rebuildIndex(st: *StoreState) void {
     clearIndex(st);
-    for (st.facts.items, 0..) |f, i| indexAppend(st, .{ .e = f.e, .a = f.a, .hash = f.ea_hash }, i);
+    for (st.facts.items, 0..) |*f, i|
+        f.pair_first = indexAppend(st, .{ .e = f.e, .a = f.a, .hash = f.ea_hash }, i);
 }
 
 /// The log positions of (e,a)'s facts, in log order — empty if the pair has none.
@@ -260,7 +267,7 @@ fn postingsOf(st: *StoreState, e: Oop, a: Oop) []const u32 {
 fn appendOp(st: *StoreState, e: Oop, a: Oop, v: Oop, op: Op) void {
     const key = eaKey(e, a);
     st.facts.append(ca, .{ .e = e, .a = a, .v = v, .tx = st.tx, .ea_hash = key.hash, .op = op }) catch @panic("store: oom");
-    indexAppend(st, key, st.facts.items.len - 1);
+    st.facts.items[st.facts.items.len - 1].pair_first = indexAppend(st, key, st.facts.items.len - 1);
     st.tx += 1;
 }
 fn appendFact(st: *StoreState, e: Oop, a: Oop, v: Oop) void {
@@ -660,16 +667,13 @@ fn inLo(tx: u64, lo: ?u64) bool {
 /// fact is an assert AND its `tx >= lo`.
 fn enumerateTriples(st: *StoreState, blk: Oop, lo: ?u64, hi: ?u64) void {
     // Distinct (e,a) pairs in first-appearance order, among facts within `hi` —
-    // the same scan-order contract as ever, with a hash SET as the seen-check so
-    // the pass is O(F), not O(F²).
+    // the same scan-order contract as ever. `pair_first` is rebuilt together
+    // with the postings cache, so enumeration need not allocate and re-hash a
+    // temporary seen-pair set on every query.
     var pairs: std.ArrayList(EaKey) = .{};
     defer pairs.deinit(ca);
-    var seenPair: std.HashMapUnmanaged(EaKey, void, EaCtx, std.hash_map.default_max_load_percentage) = .{};
-    defer seenPair.deinit(ca);
     for (st.facts.items) |f| {
-        if (!visibleHi(f.tx, hi)) continue;
-        const gop = seenPair.getOrPut(ca, .{ .e = f.e, .a = f.a, .hash = f.ea_hash }) catch @panic("store: oom");
-        if (!gop.found_existing)
+        if (visibleHi(f.tx, hi) and f.pair_first)
             pairs.append(ca, .{ .e = f.e, .a = f.a, .hash = f.ea_hash }) catch @panic("store: oom");
     }
 
@@ -1089,7 +1093,7 @@ fn mImageAddFact(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
         .ea_hash = key.hash,
         .op = @enumFromInt(@as(u8, @intCast(g_api.smallIntValue(args[4])))),
     }) catch @panic("store: oom");
-    indexAppend(st, key, st.facts.items.len - 1);
+    st.facts.items[st.facts.items.len - 1].pair_first = indexAppend(st, key, st.facts.items.len - 1);
     return self;
 }
 
