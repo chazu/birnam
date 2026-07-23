@@ -166,6 +166,21 @@ fn lookupMethod(api: *idapi.IdApi, vt: Oop, sel: Oop) Oop {
     return api.send(vt, mop_lookup, &.{sel}, 1);
 }
 
+/// Return only a direct dictionary binding. Ordinary `lookup` walks the parent
+/// chain, while the MOP law is about the direct `(vtable, selector)` entry.
+fn directMethod(api: *idapi.IdApi, vt: Oop, sel: Oop) Oop {
+    var i: usize = 0;
+    while (api.vtableSelectorAt(vt, i)) |bound| : (i += 1) {
+        if (bound == sel) return lookupMethod(api, vt, sel);
+    }
+    return null;
+}
+
+fn expectMopState(api: *idapi.IdApi, vt: Oop, sel: Oop, expected_dict: Oop, expected_mirror: Oop) !void {
+    try std.testing.expect(directMethod(api, vt, sel) == expected_dict);
+    try std.testing.expect(cv(api, vt, sel) == expected_mirror);
+}
+
 fn authorizeMopMutation() callconv(.c) Oop {
     const api = mop_api.?;
     mop_authorizer_calls += 1;
@@ -182,6 +197,15 @@ fn observeMopMutation(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop 
         lookupMethod(api, mop_vt, mop_sel) == mop_expected_after and
         cv(api, mop_vt, mop_sel) == mop_expected_after;
     return self;
+}
+
+fn observeMopMutationFalse(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
+    _ = observeMopMutation(self, args, n);
+    return mop_api.?.falseObj;
+}
+
+fn authorizeMopMutationOther() callconv(.c) Oop {
+    return mop_api.?.trueObj;
 }
 
 fn retract3(api: *idapi.IdApi, e: Oop, a: Oop, v: Oop) void {
@@ -662,4 +686,107 @@ test "MOP backfill marks real types and excludes internal dictionaries" {
             try std.testing.expect(cv(api, vt, selector) == null);
     }
     try std.testing.expect(internal_vtables >= 2); // symbol interner + export environment
+}
+
+test "N2.1: tracked/raw MOP transitions preserve the canonical dictionary law" {
+    const api = floor.api();
+    store.bringUp(api);
+    errmod.bringUp(api);
+    mop_api = api;
+    mop_lookup = api.intern("lookup");
+
+    const vt = api.proto(api.object_vt);
+    const owner = api.alloc(vt, 0);
+    api.setOwner(vt, owner);
+    const sel = api.intern("n2CharacterizationMethod");
+    const m42: Oop = @ptrCast(@constCast(&answer42));
+    const m7: Oop = @ptrCast(@constCast(&answer7));
+    const primitive = api.intern("primitive");
+
+    // The full transition matrix starts from an absent direct entry.
+    try expectMopState(api, vt, sel, null, null);
+
+    // Tracked add and replace preserve the exact method in both projections.
+    _ = api.send(store.store_instance, store.s_addMethodOn, &.{ sel, vt, m42 }, 3);
+    try expectMopState(api, vt, sel, m42, m42);
+    _ = api.send(store.store_instance, store.s_addMethodOn, &.{ sel, vt, m7 }, 3);
+    try expectMopState(api, vt, sel, m7, m7);
+
+    // Tracked removal removes only the direct entry and its mirror; it does not
+    // install an inherited pointer or tombstone.
+    _ = api.send(store.store_instance, store.s_removeMethodOn, &.{ sel, vt }, 2);
+    try expectMopState(api, vt, sel, null, null);
+
+    // A raw add is an honest escape hatch: dispatch sees the direct method, but
+    // the MOP remains absent until a deliberate backfill discovers it.
+    api.method(vt, sel, &answer42);
+    try expectMopState(api, vt, sel, m42, null);
+    _ = api.send(store.store_instance, api.intern("backfillMirror"), &.{}, 0);
+    try expectMopState(api, vt, sel, m42, primitive);
+
+    // Raw replacement retracts any marker before changing the canonical dict;
+    // it can never leave the old exact method or primitive marker behind.
+    api.method(vt, sel, &answer7);
+    try expectMopState(api, vt, sel, m7, null);
+    _ = api.send(store.store_instance, api.intern("backfillMirror"), &.{}, 0);
+    try expectMopState(api, vt, sel, m7, primitive);
+
+    // A tracked add upgrades a primitive marker to the exact method, and raw
+    // removal returns to honest absence.
+    _ = api.send(store.store_instance, store.s_addMethodOn, &.{ sel, vt, m42 }, 3);
+    try expectMopState(api, vt, sel, m42, m42);
+    _ = api.send(vt, api.intern("removeMethod:"), &.{sel}, 1);
+    try expectMopState(api, vt, sel, null, null);
+
+    // Backfill is idempotent and never invents a marker for an absent binding.
+    _ = api.send(store.store_instance, api.intern("backfillMirror"), &.{}, 0);
+    _ = api.send(store.store_instance, api.intern("backfillMirror"), &.{}, 0);
+    try expectMopState(api, vt, sel, null, null);
+}
+
+test "N2.1: MOP provider registration is single-owner and observer answers are ignored" {
+    const api = floor.api();
+    store.bringUp(api);
+    errmod.bringUp(api);
+    mop_api = api;
+    mop_lookup = api.intern("lookup");
+    mop_vt = api.proto(api.object_vt);
+    const owner = api.alloc(mop_vt, 0);
+    api.setOwner(mop_vt, owner);
+    mop_sel = api.intern("n2ProviderRegistrationMethod");
+    mop_expected_before_dict = null;
+    mop_expected_before_mirror = null;
+    mop_expected_after = @ptrCast(@constCast(&answer42));
+    mop_authorized = true;
+    mop_authorizer_calls = 0;
+    mop_observer_calls = 0;
+
+    const observer_vt = api.proto(api.object_vt);
+    api.method(observer_vt, api.intern("managedMethodChanged:on:"), &observeMopMutationFalse);
+    const observer = api.alloc(observer_vt, 0);
+    const observer2 = api.alloc(observer_vt, 0);
+    const setObserver = api.intern("setMethodMutationObserver:");
+    try std.testing.expect(api.send(store.store_instance, setObserver, &.{observer}, 1) == store.store_instance);
+    try std.testing.expect(api.send(store.store_instance, setObserver, &.{observer}, 1) == store.store_instance);
+    const duplicateObserver = api.send(store.store_instance, setObserver, &.{observer2}, 1);
+    try std.testing.expect(api.send(duplicateObserver, api.intern("kind"), &.{}, 0) == api.intern("methodMutationObserverAlreadySet"));
+
+    const authorize = api.intern("setMethodMutationAuthorizer:");
+    const first_authorizer: i64 = @intCast(@intFromPtr(&authorizeMopMutation));
+    const other_authorizer: i64 = @intCast(@intFromPtr(&authorizeMopMutationOther));
+    try std.testing.expect(api.send(store.store_instance, authorize, &.{api.mkSmallInt(first_authorizer)}, 1) == store.store_instance);
+    try std.testing.expect(api.send(store.store_instance, authorize, &.{api.mkSmallInt(first_authorizer)}, 1) == store.store_instance);
+    const duplicateAuthorizer = api.send(store.store_instance, authorize, &.{api.mkSmallInt(other_authorizer)}, 1);
+    try std.testing.expect(api.send(duplicateAuthorizer, api.intern("kind"), &.{}, 0) == api.intern("methodMutationAuthorizerAlreadySet"));
+
+    // The authorizer observes the pre-mutation state; the observer observes the
+    // completed state. Its false answer is intentionally ignored by the MOP.
+    const m42: Oop = @ptrCast(@constCast(&answer42));
+    mop_expected_before_dict = null;
+    mop_expected_before_mirror = null;
+    mop_expected_after = m42;
+    _ = api.send(store.store_instance, store.s_addMethodOn, &.{ mop_sel, mop_vt, m42 }, 3);
+    try std.testing.expectEqual(@as(usize, 1), mop_authorizer_calls);
+    try std.testing.expectEqual(@as(usize, 1), mop_observer_calls);
+    try expectMopState(api, mop_vt, mop_sel, m42, m42);
 }

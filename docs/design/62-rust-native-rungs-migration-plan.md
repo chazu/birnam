@@ -1,7 +1,7 @@
 # 62 — Rust Native-Rung Migration Plan
 
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
-> passes. N0.1 through N0.6 and N1.1–N1.4 are complete; N2.1 is next.
+> passes. N0.1 through N0.6, N1.1–N1.4, and N2.1 are complete; N2.2 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -696,6 +696,29 @@ canonical MOP law through the Rust implementation.
 **Gate:** the new suite passes against the Zig Store and the Rust floor plus
 either the live Design 61 oracle or the frozen compatibility fixture specified
 in §5.4.
+
+#### N2.1 execution record — complete, 2026-07-23
+
+The Store characterization suite now has a complete direct-MOP transition
+matrix: tracked add/replace/remove, raw add/replace/remove, primitive-marker
+backfill, repeated backfill, and the absent-after-removal boundary. Each step
+checks the canonical direct dictionary and the derived mirror independently, so
+an inherited method, stale exact method, or stale `#primitive` marker cannot
+make the test pass accidentally.
+
+The suite also freezes pre-mutation authorizer observation, post-commit
+observer notification, ignored observer answers, synchronous observer
+re-entry, duplicate observer/authorizer registration, and same-provider
+idempotence. The existing history, cardinality, Globals, image backfill,
+precise tracing, and raw-mutation tests remain in the same process-level
+characterization boundary.
+
+`rust-store-mop-smoke.sh` now runs the 19-test Zig Store suite against the live
+Zig-floor oracle and Rust debug/release floors, plus the Store image-backfill
+fixture for each floor. The expanded matrix passes in clean prefixes and the
+Rust lower-rung/full verification gates remain green. No Rust Store
+implementation has been introduced in this phase; N2.2 owns that shell and
+storage core.
 
 ### N2.2 — Add the Rust Store shell and storage core
 
