@@ -41,6 +41,7 @@ if [ "$MODE" = release ]; then
 fi
 
 TMP=$(mktemp -d)
+touch "$TMP/.metadata_never_index"
 HOST_MONITOR_PID=
 cleanup() {
   if [ -n "$HOST_MONITOR_PID" ]; then

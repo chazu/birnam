@@ -180,6 +180,9 @@ The design that stays honest:
 
 - Builds ReleaseSafe itself into a fresh prefix with isolated Zig caches. A
   Rust-floor run also builds the release cdylib into an isolated Cargo target.
+  The temporary build tree carries macOS's `.metadata_never_index` marker so
+  the isolated build does not provoke Spotlight work during the measurements
+  that follow.
   Every benchmark process receives the selected dylib path, floor identity,
   and SHA-256; the host verifies identity and digest before `id_init`.
 - Tracked release runs require AC power and a stable three-sample CPU window
