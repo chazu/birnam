@@ -190,16 +190,19 @@ The design that stays honest:
   spike while still rejecting sustained load; the independent process limit
   rejects a runaway competitor. A host that misses either limit fails the run
   before a tracked snapshot can be emitted. The driver waits up to 15 minutes
-  for a quiet preflight. If the completion check detects load that appeared
-  during a case, that case's output is discarded and the case is retried, up
-  to four total attempts; an exhausted wait or retry budget fails the run.
+  for a quiet preflight, then samples CPU once per second concurrently with
+  the measured case. The interval median must remain at least 60% idle and at
+  most 20% of intervals may fall below 50% idle. A case shorter than one full
+  interval relies on its immediate preflight. If concurrent samples detect
+  load, that case's output is discarded and the case is retried, up to four
+  total attempts; an exhausted wait or retry budget fails the run.
   `BENCH_HOST_WAIT_SECONDS`, `BENCH_HOST_RETRY_SECONDS`, and
   `BENCH_CASE_ATTEMPTS` may adjust those progress budgets without changing
   acceptance criteria. Developer/quick runs remain available for diagnosis
-  under load. The two
-  limits may be tightened for controlled benchmark hosts through
-  `BENCH_HOST_MIN_MEDIAN_IDLE` and `BENCH_HOST_MAX_PROCESS_CPU`; weakening them
-  does not produce standard Design 46 acceptance evidence.
+  under load. The limits may be tightened for controlled benchmark hosts
+  through `BENCH_HOST_MIN_MEDIAN_IDLE`, `BENCH_HOST_MAX_PROCESS_CPU`,
+  `BENCH_HOST_MIN_INTERVAL_IDLE`, and `BENCH_HOST_MAX_LOW_SAMPLE_PERCENT`;
+  weakening them does not produce standard Design 46 acceptance evidence.
 - Runs the micro suite in-process, the relational suite as R fresh
   processes, and the macro cases itself: wall time from the shell, peak RSS
   via `/usr/bin/time -l` (macOS).

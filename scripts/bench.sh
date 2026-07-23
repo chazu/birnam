@@ -41,7 +41,15 @@ if [ "$MODE" = release ]; then
 fi
 
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+HOST_MONITOR_PID=
+cleanup() {
+  if [ -n "$HOST_MONITOR_PID" ]; then
+    kill "$HOST_MONITOR_PID" 2>/dev/null || true
+    wait "$HOST_MONITOR_PID" 2>/dev/null || true
+  fi
+  rm -rf "$TMP"
+}
+trap cleanup EXIT
 FAIL=0
 
 PREFIX="$TMP/prefix"
@@ -85,25 +93,49 @@ wait_for_quiet() { # wait_for_quiet <context>
   [ "$MODE" != release ] || scripts/bench-host-check.sh --wait "$1"
 }
 
-stayed_quiet() { # stayed_quiet <context>
-  [ "$MODE" != release ] || scripts/bench-host-check.sh "$1"
+start_host_monitor() { # start_host_monitor <output>
+  HOST_MONITOR_PID=
+  if [ "$MODE" = release ]; then
+    top -l 0 -s 1 -n 0 -stats pid >"$1" 2>/dev/null &
+    HOST_MONITOR_PID=$!
+  fi
+}
+
+stop_host_monitor() {
+  if [ -n "$HOST_MONITOR_PID" ]; then
+    kill "$HOST_MONITOR_PID" 2>/dev/null || true
+    wait "$HOST_MONITOR_PID" 2>/dev/null || true
+    HOST_MONITOR_PID=
+  fi
+}
+
+measurement_stayed_quiet() { # measurement_stayed_quiet <samples> <context>
+  [ "$MODE" != release ] || scripts/bench-host-check.sh --samples "$1" "$2"
 }
 
 run_suite() { # run_suite <script> <label> <runs>
-  local script=$1 label=$2 runs=$3 i out attempt
+  local script=$1 label=$2 runs=$3 i out attempt monitor command_ok
   local maximum_attempts=${BENCH_CASE_ATTEMPTS:-4}
   for i in $(seq 1 "$runs"); do
     attempt=1
     while true; do
       wait_for_quiet "$label run $i preflight"
       out="$TMP/$label-$i.json"
+      monitor="$TMP/$label-$i-attempt-$attempt.host"
       echo "==> suite $label (run $i/$runs, attempt $attempt/$maximum_attempts)"
-      if ! BENCH_OUT="$out" "$BIN" "$script" </dev/null; then
+      start_host_monitor "$monitor"
+      if BENCH_OUT="$out" "$BIN" "$script" </dev/null; then
+        command_ok=1
+      else
+        command_ok=0
+      fi
+      stop_host_monitor
+      if [ "$command_ok" = 0 ]; then
         echo "FAIL suite $label run $i" >&2
         FAIL=1
         break
       fi
-      if stayed_quiet "$label run $i completion"; then
+      if measurement_stayed_quiet "$monitor" "$label run $i measurement"; then
         SUITE_FILES+=("$out")
         break
       fi
@@ -155,18 +187,25 @@ print(int((t1 - t0) * 1000000))
 macro_case() { # macro_case <name> <reps> cmd...
   local name=$1 reps=$2; shift 2
   local maximum_attempts=${BENCH_CASE_ATTEMPTS:-4}
-  local attempt=1
+  local attempt=1 monitor case_failed
   while true; do
     wait_for_quiet "$name preflight"
+    monitor="$TMP/macro-$name-attempt-$attempt.host"
     echo "==> macro $name (attempt $attempt/$maximum_attempts)"
+    start_host_monitor "$monitor"
+    case_failed=0
     local vals=() v i
     for i in $(seq 1 "$reps"); do
       v=$(wall_us "$@")
       case "$v" in
-        FAIL*) echo "FAIL macro $name: exit ${v#FAIL }" >&2; FAIL=1; return ;;
+        FAIL*) echo "FAIL macro $name: exit ${v#FAIL }" >&2; FAIL=1; case_failed=1; break ;;
         *) vals+=("$v") ;;
       esac
     done
+    if [ "$case_failed" = 1 ]; then
+      stop_host_monitor
+      return
+    fi
     local sorted median min
     sorted=$(printf '%s\n' "${vals[@]}" | sort -n)
     median=$(printf '%s\n' "$sorted" | awk -v n="$reps" 'NR == int(n/2)+1 {print; exit}')
@@ -176,7 +215,8 @@ macro_case() { # macro_case <name> <reps> cmd...
     local rss
     rss=$(/usr/bin/time -l "$@" </dev/null 2>&1 >/dev/null | awk '/maximum resident set size/{print $1}') || rss=0
     [ -n "$rss" ] || rss=0
-    if stayed_quiet "$name completion"; then
+    stop_host_monitor
+    if measurement_stayed_quiet "$monitor" "$name measurement"; then
       printf '{"name":"%s","wall_us_median":%s,"wall_us_min":%s,"reps":%s,"peak_rss_bytes":%s}\n' \
         "$name" "$median" "$min" "$reps" "$rss" >> "$MACRO_JSON"
       echo "  $name: $((median / 1000)) ms (min $((min / 1000)), rss $((rss / 1048576)) MB)"

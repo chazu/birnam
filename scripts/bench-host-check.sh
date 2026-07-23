@@ -3,6 +3,8 @@ set -euo pipefail
 
 minimum_median_idle=${BENCH_HOST_MIN_MEDIAN_IDLE:-60}
 maximum_process_cpu=${BENCH_HOST_MAX_PROCESS_CPU:-80}
+minimum_interval_idle=${BENCH_HOST_MIN_INTERVAL_IDLE:-50}
+maximum_low_sample_percent=${BENCH_HOST_MAX_LOW_SAMPLE_PERCENT:-20}
 
 valid_number() {
   awk -v value="$1" 'BEGIN {exit !(value ~ /^[0-9]+([.][0-9]+)?$/)}'
@@ -19,13 +21,75 @@ host_is_quiet() {
     'BEGIN {exit !(median >= minimum_median && hottest <= maximum_process)}'
 }
 
+intervals_are_quiet() {
+  local count=$1 median=$2 low_count=$3
+  awk \
+    -v count="$count" \
+    -v median="$median" \
+    -v low_count="$low_count" \
+    -v minimum_median="$minimum_median_idle" \
+    -v maximum_low_percent="$maximum_low_sample_percent" \
+    'BEGIN {exit !(median >= minimum_median && low_count * 100 <= count * maximum_low_percent)}'
+}
+
 self_test() {
   host_is_quiet 65 40
   host_is_quiet 62 40 # one transient sample does not veto a quiet majority
   if host_is_quiet 59 40; then return 1; fi
   if host_is_quiet 65 81; then return 1; fi
+  intervals_are_quiet 10 65 2
+  if intervals_are_quiet 10 65 3; then return 1; fi
+  if intervals_are_quiet 10 59 0; then return 1; fi
   echo "bench-host-check: self-test passed"
 }
+
+if [[ ${1:-} == --samples ]]; then
+  sample_file=$2
+  context=${3:-benchmark}
+  samples=()
+  while IFS= read -r idle; do
+    samples+=("$idle")
+  done < <(
+    awk '
+      /CPU usage/ {
+        value = $(NF - 1)
+        sub(/%/, "", value)
+        print value
+      }
+    ' "$sample_file"
+  )
+  if [[ ${#samples[@]} -eq 0 ]]; then
+    echo "bench-host-check: $context monitor produced no CPU samples" >&2
+    exit 1
+  fi
+
+  # The first streaming top sample is cumulative. A command that completes
+  # before the next one-second interval relies on its immediate preflight.
+  samples=("${samples[@]:1}")
+  if [[ ${#samples[@]} -eq 0 ]]; then
+    echo "bench-host-check: $context completed before one interval sample; preflight applies"
+    exit
+  fi
+  for idle in "${samples[@]}"; do
+    if ! valid_number "$idle"; then
+      echo "bench-host-check: $context got an invalid interval sample: $idle" >&2
+      exit 1
+    fi
+  done
+
+  count=${#samples[@]}
+  sorted=$(printf '%s\n' "${samples[@]}" | sort -n)
+  median=$(awk -v rank=$((count / 2 + 1)) 'NR == rank {print; exit}' <<<"$sorted")
+  low_count=$(awk -v minimum="$minimum_interval_idle" '$1 < minimum {count++} END {print count + 0}' <<<"$sorted")
+  if ! intervals_are_quiet "$count" "$median" "$low_count"; then
+    echo "bench-host-check: $context observed load during measurement" >&2
+    echo "  interval samples: $count, median ${median}%, below ${minimum_interval_idle}%: $low_count" >&2
+    echo "  required: median ${minimum_median_idle}%, at most ${maximum_low_sample_percent}% low intervals" >&2
+    exit 1
+  fi
+  echo "bench-host-check: $context stayed quiet for $count intervals; median ${median}%, low intervals $low_count"
+  exit
+fi
 
 if [[ ${1:-} == --wait ]]; then
   shift
