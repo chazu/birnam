@@ -22,6 +22,8 @@ probe_profile() {
   fi
   CARGO_TARGET_DIR="$target_dir" cargo "${cargo_args[@]}"
   "$probe" "$dylib" functional
+  "$probe" "$dylib" finalizer-cycles
+  echo "rust-gc-metadata: $profile passed 256 finalizer/collection cycles"
 }
 
 expect_abort() {

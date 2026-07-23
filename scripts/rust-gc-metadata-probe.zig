@@ -127,6 +127,25 @@ fn runFunctional(api: *idapi.IdApi) !void {
     std.debug.print("rust-gc-metadata: providers and hooks retained roots while sweep reclaimed garbage\n", .{});
 }
 
+fn runFinalizerCycles(api: *idapi.IdApi) !void {
+    active_api = api;
+    finalizer_calls = 0;
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    api.gcSetAuto(0);
+    const live_before = api.gcLiveCount();
+
+    for (0..256) |_| {
+        makeFinalizableUnreachable(api, finalize);
+        scrubConservativeStack();
+        try require(api.gcCollect() == 1, error.FinalizerCycleReclaimMismatch);
+    }
+    try require(finalizer_calls == 256, error.FinalizerCycleCountMismatch);
+    try require(api.gcLiveCount() == live_before, error.FinalizerCycleLiveCountMismatch);
+    stack_anchor = api.gcLiveCount();
+    std.mem.doNotOptimizeAway(&stack_anchor);
+}
+
 pub fn main() !void {
     var args = std.process.args();
     _ = args.next();
@@ -140,6 +159,7 @@ pub fn main() !void {
     const api = init();
 
     if (std.mem.eql(u8, mode, "functional")) return runFunctional(api);
+    if (std.mem.eql(u8, mode, "finalizer-cycles")) return runFinalizerCycles(api);
     if (std.mem.eql(u8, mode, "provider-overflow")) {
         registerMaximum(api);
         api.gcRegisterRootProvider(provider);
