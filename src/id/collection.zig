@@ -93,12 +93,25 @@ var s_lt: Oop = null; // "<" — the sort comparator (sortBy:)
 const BITS: u6 = 5;
 const WIDTH: usize = 1 << BITS; // 32
 const MASK: usize = WIDTH - 1; // 31
+const SHIFT_MASK: usize = 0x3f;
+
+/// Conservative element-kind metadata carried in Vec.shift's otherwise-unused
+/// high bits. The trie shift needs at most six bits on a 64-bit target. Keeping
+/// the tag in an existing raw word preserves the durable Vec payload shape: old
+/// images decode with `.unknown`, while new persistent updates propagate a tag
+/// only as long as every element has the same floor value kind.
+const ElementKind = enum(u2) {
+    unknown,
+    integer,
+    string,
+    float,
+};
 
 /// A vector's payload. `root` is the trie root (an internal node); `tail` is a
 /// leaf node holding the last `tail_len` elements not yet pushed into the trie.
 const Vec = extern struct {
     count: usize, // total element count
-    shift: usize, // root-level shift in bits (BITS * (height-1)); u6 when shifting
+    shift: usize, // low 6 bits: root shift; high bits: conservative ElementKind
     root: Oop,
     tail: Oop,
     tail_len: usize,
@@ -148,13 +161,36 @@ fn copyNode(node: Oop) Oop {
 fn vec(o: Oop) *Vec {
     return @ptrCast(@alignCast(o.?));
 }
-fn mkVec(count: usize, shift: usize, root: Oop, tail: Oop, tail_len: usize) Oop {
+fn trieShift(v: *const Vec) usize {
+    return v.shift & SHIFT_MASK;
+}
+fn elementKind(v: *const Vec) ElementKind {
+    return @enumFromInt((v.shift >> 6) & 0x3);
+}
+fn packedShift(shift: usize, kind: ElementKind) usize {
+    return (shift & SHIFT_MASK) | (@as(usize, @intFromEnum(kind)) << 6);
+}
+fn classifyElement(o: Oop) ElementKind {
+    if (o == null) return .unknown;
+    const vt = g_api.vtableOf(o);
+    if (vt == g_api.smallint_vt) return .integer;
+    if (vt == g_api.string_vt) return .string;
+    if (vt == g_api.float_vt) return .float;
+    return .unknown;
+}
+fn appendedKind(v: *const Vec, value: Oop) ElementKind {
+    const added = classifyElement(value);
+    if (v.count == 0) return added;
+    const existing = elementKind(v);
+    return if (existing != .unknown and existing == added) existing else .unknown;
+}
+fn mkVec(count: usize, shift: usize, root: Oop, tail: Oop, tail_len: usize, kind: ElementKind) Oop {
     const o = g_api.alloc(vector_vt, @sizeOf(Vec));
-    vec(o).* = .{ .count = count, .shift = shift, .root = root, .tail = tail, .tail_len = tail_len };
+    vec(o).* = .{ .count = count, .shift = packedShift(shift, kind), .root = root, .tail = tail, .tail_len = tail_len };
     return o;
 }
 fn emptyVec() Oop {
-    return mkVec(0, BITS, newNode(), newNode(), 0);
+    return mkVec(0, BITS, newNode(), newNode(), 0, .unknown);
 }
 
 fn tailoff(v: *Vec) usize {
@@ -165,7 +201,7 @@ fn tailoff(v: *Vec) usize {
 fn arrayFor(v: *Vec, i: usize) Oop {
     if (i >= tailoff(v)) return v.tail;
     var node = v.root;
-    var level: u6 = @intCast(v.shift);
+    var level: u6 = @intCast(trieShift(v));
     while (level > 0) : (level -= BITS) {
         node = nodeSlots(node)[(i >> level) & MASK];
     }
@@ -204,29 +240,31 @@ fn pushTail(old_count: usize, level: u6, parent: Oop, tailnode: Oop) Oop {
 /// Persistent append — returns a NEW vector sharing structure with the old one.
 fn vecCons(o: Oop, val: Oop) Oop {
     const v = vec(o);
+    const shift = trieShift(v);
+    const kind = appendedKind(v, val);
     // Room in the tail: copy it, append, done (the common path).
     if (v.tail_len < WIDTH) {
         const ntail = copyNode(v.tail);
         nodeSlots(ntail)[v.tail_len] = val;
-        return mkVec(v.count + 1, v.shift, v.root, ntail, v.tail_len + 1);
+        return mkVec(v.count + 1, shift, v.root, ntail, v.tail_len + 1, kind);
     }
     // Tail full: it becomes a leaf in the trie; the new value starts a fresh tail.
     const tailnode = v.tail;
-    const shift: u6 = @intCast(v.shift);
-    var nshift = v.shift;
+    const tree_shift: u6 = @intCast(shift);
+    var nshift = shift;
     var nroot: Oop = undefined;
-    if ((v.count >> BITS) > (@as(usize, 1) << shift)) {
+    if ((v.count >> BITS) > (@as(usize, 1) << tree_shift)) {
         // Root overflow: grow the trie one level taller.
         nroot = newNode();
         nodeSlots(nroot)[0] = v.root;
-        nodeSlots(nroot)[1] = newPath(shift, tailnode);
-        nshift = v.shift + BITS;
+        nodeSlots(nroot)[1] = newPath(tree_shift, tailnode);
+        nshift = shift + BITS;
     } else {
-        nroot = pushTail(v.count, shift, v.root, tailnode);
+        nroot = pushTail(v.count, tree_shift, v.root, tailnode);
     }
     const ntail = newNode();
     nodeSlots(ntail)[0] = val;
-    return mkVec(v.count + 1, nshift, nroot, ntail, 1);
+    return mkVec(v.count + 1, nshift, nroot, ntail, 1, kind);
 }
 
 // -- Vector methods ----------------------------------------------------------
@@ -355,8 +393,9 @@ fn vIndexOf(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     _ = n;
     const v = vec(self);
     const matcher = KeyMatcher.init(a[0]);
+    const kind = elementKind(v);
     var i: usize = 0;
-    while (i < v.count) : (i += 1) if (matcher.matches(vecAt(v, i))) return mki(@intCast(i));
+    while (i < v.count) : (i += 1) if (matcher.matchesKnown(vecAt(v, i), kind)) return mki(@intCast(i));
     return g_api.nilObj;
 }
 /// `[v copyFrom: from to: to]` — the subvector for [from, to) (half-open,
@@ -671,6 +710,34 @@ const KeyMatcher = struct {
             },
             .float => |value| g_api.vtableOf(candidate) == g_api.float_vt and
                 g_api.floatValue(candidate) == value,
+        };
+    }
+
+    /// Match within a Vector whose persistent metadata proves every element has
+    /// one floor value kind. Direct accessors are sound under that proof and save
+    /// the otherwise-redundant per-element vtable query. Unknown/mixed and legacy
+    /// vectors retain the general value-policy path above.
+    fn matchesKnown(self: KeyMatcher, candidate: Oop, kind: ElementKind) bool {
+        if (kind == .unknown) return self.matches(candidate);
+        if (candidate == self.key) return true;
+        return switch (kind) {
+            .integer => switch (self.value) {
+                .integer => |value| g_api.smallIntValue(candidate) == value,
+                else => false,
+            },
+            .string => switch (self.value) {
+                .string => |value| blk: {
+                    var len: usize = 0;
+                    const bytes = g_api.stringBytes(candidate, &len);
+                    break :blk std.mem.eql(u8, bytes[0..len], value);
+                },
+                else => false,
+            },
+            .float => switch (self.value) {
+                .float => |value| g_api.floatValue(candidate) == value,
+                else => false,
+            },
+            .unknown => unreachable,
         };
     }
 };

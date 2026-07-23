@@ -181,6 +181,31 @@ test "collection: Vector indexOf preserves value and identity equality" {
     try std.testing.expect(s1(vector, "indexOf:", api.mkFloat(std.math.nan(f64))) == api.nilObj);
     try std.testing.expect(s1(vector, "indexOf:", equal_shape_but_distinct) == api.nilObj);
     try std.testing.expect(s1(vector, "indexOf:", api.mkFloat(41.0)) == api.nilObj);
+
+    // Homogeneous vectors take the prepared-kind path. Exercise every cached
+    // value kind plus a cross-kind miss; the mixed vector above exercises the
+    // conservative fallback.
+    const integers = rangeVec(1, 100);
+    try std.testing.expectEqual(@as(i64, 40), ival(s1(integers, "indexOf:", api.mkSmallInt(41))));
+    try std.testing.expect(s1(integers, "indexOf:", api.mkFloat(41.0)) == api.nilObj);
+
+    var duplicates = api.import("Vector");
+    for ([_]i64{ 1, 2, 2, 3 }) |value| duplicates = s1(duplicates, "add:", api.mkSmallInt(value));
+    try std.testing.expectEqual(@as(i64, 1), ival(s1(duplicates, "indexOf:", api.mkSmallInt(2))));
+
+    var unsorted = api.import("Vector");
+    for ([_]i64{ 3, 1, 2 }) |value| unsorted = s1(unsorted, "add:", api.mkSmallInt(value));
+    try std.testing.expectEqual(@as(i64, 1), ival(s1(unsorted, "indexOf:", api.mkSmallInt(1))));
+
+    var strings = api.import("Vector");
+    strings = s1(strings, "add:", api.mkString("one", 3));
+    strings = s1(strings, "add:", api.mkString("two", 3));
+    try std.testing.expectEqual(@as(i64, 1), ival(s1(strings, "indexOf:", api.mkString("two", 3))));
+
+    var floats = api.import("Vector");
+    floats = s1(floats, "add:", api.mkFloat(1.25));
+    floats = s1(floats, "add:", api.mkFloat(2.5));
+    try std.testing.expectEqual(@as(i64, 1), ival(s1(floats, "indexOf:", api.mkFloat(2.5))));
 }
 
 test "collection: String concatenation builds a fresh String" {

@@ -198,6 +198,7 @@ test "round-trip: leaf + vector + map globals survive save/load" {
     const gv = gAt(globals, "gv");
     try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(gv, "size", &.{})));
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(gv, "at:", &.{api.mkSmallInt(1)})));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(gv, "indexOf:", &.{api.mkSmallInt(20)})));
 
     // HAMT: the symbol key resolves after re-interning (the keyHash fix).
     const gm = gAt(globals, "gm");
