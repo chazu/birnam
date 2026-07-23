@@ -30,3 +30,23 @@ probe_profile() {
 
 probe_profile debug
 probe_profile release
+
+oracle="$libdir/libbirnam_store_zig.dylib"
+test -f "$oracle"
+BIRNAM_BIN="$bin" \
+  BIRNAM_LIB_DIR="$libdir" \
+  BIRNAM_STORE_DYLIB="$oracle" \
+  bash "$repo/scripts/image-save-smoke.sh"
+BIRNAM_BIN="$bin" \
+  BIRNAM_LIB_DIR="$libdir" \
+  BIRNAM_STORE_DYLIB="$oracle" \
+  bash "$repo/scripts/repl-golden.sh"
+BIRNAM_BIN="$bin" \
+  BIRNAM_LIB_DIR="$libdir" \
+  BIRNAM_STORE_DYLIB="$oracle" \
+  bash "$repo/scripts/project-check-smoke.sh"
+BIRNAM_BIN="$bin" \
+  BIRNAM_LIB_DIR="$libdir" \
+  BIRNAM_STORE_DYLIB="$oracle" \
+  bash "$repo/scripts/lsp-project-smoke.sh"
+echo "rust-store-stack: Zig Store oracle passed image, REPL, project, and LSP integration"
