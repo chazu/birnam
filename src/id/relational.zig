@@ -369,12 +369,18 @@ fn lookupWithFresh(sol: []const Binding, fresh: []const Binding, v: Oop) ?Oop {
 /// null on mismatch. Matches BEFORE allocating: the miss path is the common one
 /// in a scan (copying the binding list per candidate was join-3way's bound), so
 /// fresh bindings collect in a stack buffer and the single copy happens on match.
-fn tryClause(aa: std.mem.Allocator, sol: []const Binding, pos: [3]Oop, tri: Triple) ?[]Binding {
+fn tryClause(
+    aa: std.mem.Allocator,
+    sol: []const Binding,
+    pos: [3]Oop,
+    pos_is_var: [3]bool,
+    tri: Triple,
+) ?[]Binding {
     const vals = [3]Oop{ tri.e, tri.a, tri.v };
     var fresh: [3]Binding = undefined;
     var nfresh: usize = 0;
-    for (pos, vals) |p, val| {
-        if (isLogicVar(p)) {
+    for (pos, pos_is_var, vals) |p, is_var, val| {
+        if (is_var) {
             if (lookupWithFresh(sol, fresh[0..nfresh], p)) |existing| {
                 if (!valEq(existing, val)) return null;
             } else {
@@ -495,7 +501,6 @@ fn mRebuildRules(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {
     return self;
 }
 
-
 fn ensureSet(aa: std.mem.Allocator, name: Oop) *DerivedSet {
     if (g_active.get(name)) |d| return d;
     const d = aa.create(DerivedSet) catch @panic("relational: oom");
@@ -598,6 +603,8 @@ fn matchRuleClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, 
     // same copy-on-match shape as tryClause, with rule arity in place of 3.
     const argv = aa.alloc(Oop, arity) catch @panic("relational: oom");
     for (argv, 0..) |*p, i| p.* = send1(clause, s_at, g_api.mkSmallInt(@intCast(2 + i)));
+    const arg_is_var = aa.alloc(bool, arity) catch @panic("relational: oom");
+    for (arg_is_var, argv) |*is_var, arg| is_var.* = isLogicVar(arg);
 
     var next: std.ArrayList([]Binding) = .{};
     var fresh: std.ArrayList(Binding) = .{};
@@ -607,8 +614,8 @@ fn matchRuleClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, 
             if (row.len != arity) continue;
             fresh.clearRetainingCapacity();
             var ok = true;
-            for (argv, row) |p, val| {
-                if (isLogicVar(p)) {
+            for (argv, arg_is_var, row) |p, is_var, val| {
+                if (is_var) {
                     if (lookupWithFresh(sol, fresh.items, p)) |ex| {
                         if (!valEq(ex, val)) {
                             ok = false;
@@ -683,6 +690,7 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, tidx
     pos[0] = pos0;
     pos[1] = if (csz > 1) send1(clause, s_at, g_api.mkSmallInt(1)) else g_api.nilObj;
     pos[2] = if (csz > 2) send1(clause, s_at, g_api.mkSmallInt(2)) else g_api.nilObj;
+    const pos_is_var = [3]bool{ isLogicVar(pos[0]), isLogicVar(pos[1]), isLogicVar(pos[2]) };
 
     var next: std.ArrayList([]Binding) = .{};
     if (predicateOp(pos[1])) |op| {
@@ -705,7 +713,7 @@ fn applyClause(aa: std.mem.Allocator, sols: []const []Binding, clause: Oop, tidx
         for (sols) |sol| {
             const cand = if (resolveTerm(sol, pos[1])) |a| tidx.candidates(a) else tidx.all;
             for (cand) |tri| {
-                if (tryClause(aa, sol, pos, tri)) |ns|
+                if (tryClause(aa, sol, pos, pos_is_var, tri)) |ns|
                     next.append(aa, ns) catch @panic("relational: oom");
             }
         }
