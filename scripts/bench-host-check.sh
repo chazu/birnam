@@ -2,8 +2,6 @@
 set -euo pipefail
 
 minimum_median_idle=${BENCH_HOST_MIN_MEDIAN_IDLE:-60}
-minimum_sample_idle=${BENCH_HOST_MIN_SAMPLE_IDLE:-50}
-maximum_idle_spread=${BENCH_HOST_MAX_IDLE_SPREAD:-15}
 maximum_process_cpu=${BENCH_HOST_MAX_PROCESS_CPU:-80}
 
 valid_number() {
@@ -11,26 +9,21 @@ valid_number() {
 }
 
 host_is_quiet() {
-  local minimum=$1 median=$2 maximum=$3 spread=$4 hottest_cpu=$5
+  local median=$1 hottest_cpu=$2
 
   awk \
-    -v minimum="$minimum" \
     -v median="$median" \
-    -v spread="$spread" \
     -v hottest="$hottest_cpu" \
-    -v minimum_sample="$minimum_sample_idle" \
     -v minimum_median="$minimum_median_idle" \
-    -v maximum_spread="$maximum_idle_spread" \
     -v maximum_process="$maximum_process_cpu" \
-    'BEGIN {exit !(minimum >= minimum_sample && median >= minimum_median && spread <= maximum_spread && hottest <= maximum_process)}'
+    'BEGIN {exit !(median >= minimum_median && hottest <= maximum_process)}'
 }
 
 self_test() {
-  host_is_quiet 62 65 68 6 40
-  if host_is_quiet 49 65 68 19 40; then return 1; fi
-  if host_is_quiet 52 59 63 11 40; then return 1; fi
-  if host_is_quiet 52 65 69 17 40; then return 1; fi
-  if host_is_quiet 62 65 68 6 81; then return 1; fi
+  host_is_quiet 65 40
+  host_is_quiet 62 40 # one transient sample does not veto a quiet majority
+  if host_is_quiet 59 40; then return 1; fi
+  if host_is_quiet 65 81; then return 1; fi
   echo "bench-host-check: self-test passed"
 }
 
@@ -91,10 +84,10 @@ if ! valid_number "$hottest_cpu"; then
   exit 1
 fi
 
-if ! host_is_quiet "$minimum" "$median" "$maximum" "$spread" "$hottest_cpu"; then
+if ! host_is_quiet "$median" "$hottest_cpu"; then
   echo "bench-host-check: $context host is not stable enough for tracked timing" >&2
   echo "  idle samples: ${samples[*]}% (minimum ${minimum}%, median ${median}%, spread ${spread} points)" >&2
-  echo "  required: minimum ${minimum_sample_idle}%, median ${minimum_median_idle}%, spread <= ${maximum_idle_spread} points" >&2
+  echo "  required: median ${minimum_median_idle}% (two of three samples), hottest process <= ${maximum_process_cpu}% of one core" >&2
   echo "  hottest process: $hottest (limit ${maximum_process_cpu}% of one core)" >&2
   ps -axo pid,%cpu,comm | sort -k2,2nr | sed -n '1,8p' >&2
   exit 1

@@ -184,17 +184,16 @@ The design that stays honest:
   and SHA-256; the host verifies identity and digest before `id_init`.
 - Tracked release runs require AC power and a stable three-sample CPU window
   before the isolated build, then immediately before and after every suite
-  process and macro group. By default every sample must show at least 50% idle,
-  the median must show at least 60% idle, the sample spread must be at most 15
-  percentage points, and no competing process may consume more than 80% of one
-  core. These independent limits distinguish sustained usable headroom from
-  both transient sampling noise and a runaway competitor. A host that misses
-  any limit fails the run before a tracked snapshot can be emitted;
-  developer/quick runs remain available for diagnosis under load. The four
+  process and macro group. By default the median must show at least 60% idle
+  (so two of three samples meet that limit), and no competing process may
+  consume more than 80% of one core. The median ignores one isolated sampling
+  spike while still rejecting sustained load; the independent process limit
+  rejects a runaway competitor. A host that misses either limit fails the run
+  before a tracked snapshot can be emitted;
+  developer/quick runs remain available for diagnosis under load. The two
   limits may be tightened for controlled benchmark hosts through
-  `BENCH_HOST_MIN_SAMPLE_IDLE`, `BENCH_HOST_MIN_MEDIAN_IDLE`,
-  `BENCH_HOST_MAX_IDLE_SPREAD`, and `BENCH_HOST_MAX_PROCESS_CPU`; weakening
-  them does not produce standard Design 46 acceptance evidence.
+  `BENCH_HOST_MIN_MEDIAN_IDLE` and `BENCH_HOST_MAX_PROCESS_CPU`; weakening them
+  does not produce standard Design 46 acceptance evidence.
 - Runs the micro suite in-process, the relational suite as R fresh
   processes, and the macro cases itself: wall time from the shell, peak RSS
   via `/usr/bin/time -l` (macOS).
