@@ -254,7 +254,7 @@ macro_case() { # macro_case <name> <reps> cmd...
 REP_MACRO=3
 [ $MODE = release ] && REP_MACRO=5
 [ -n "$QUICK" ] && REP_MACRO=2
-REP_HEAVY=$(( REP_MACRO < 2 ? REP_MACRO : 2 ))   # docgen/compile: cap at 2
+REP_HEAVY=$(( REP_MACRO < 3 ? REP_MACRO : 3 ))   # tracked heavy macros need an outlier-resistant median
 
 # The source-boot decoy: every dylib EXCEPT the self-hosted four, so
 # loadStdlib falls back to embedded source exactly (docs/46).

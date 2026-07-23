@@ -365,6 +365,13 @@ avoids adding one. Two cases that need in-process timing — `image.save` and
 `bench/gc.birnam`, via `[Bench record:us:ops:]`): they report µs like the
 other suites and carry no RSS.
 
+Tracked heavy macros (`compile.stage1-stdlib` and `docgen.full`) use three
+repetitions rather than the general five. Three is the minimum that gives a
+real median: the former two-repetition cap reported the upper sample, so one
+sub-second load spike could create a false regression even when the other
+sample and historical runs agreed. Quick mode retains its two-repetition
+upper-middle diagnostic because it is never accepted as a release snapshot.
+
 | case | pins |
 |---|---|
 | `boot.bare` / `boot.stdlib-dylib` / `boot.stdlib-source` | boot paths via the stub; dylib-vs-source is the stage1 payoff. Forcing the source path: `BIRNAM_LIB_DIR` points at a decoy dir holding symlinks to every dylib EXCEPT the four self-hosted ones (modules/stdlib/toml/config) — the id floor resolves normally, `loadStdlib` finds no dylib and falls back to embedded source |
