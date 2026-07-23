@@ -3,7 +3,7 @@
 > **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
-> N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4f are complete and
+> N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4g are complete and
 > N3.4 remains in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
@@ -1068,6 +1068,18 @@ already covered by the CST corpus. The gate passes through the explicit Rust
 PEG with both IdApi floors selected, and the canonical Zig PEG baseline passes
 the same assertions. Undefined-rule and left-recursion error-value parity is
 covered by the lower PEG protocol gate; whole-source diagnostics remain open.
+
+#### N3.4g execution record — complete, 2026-07-23
+
+The unchanged Zig Codegen emitter now has a frozen generated-C parity corpus.
+The gate hashes the complete emitted translation unit for representative
+arithmetic, persistent bindings, collection folds, literals, blocks, and
+commented multi-statement programs. The canonical Zig PEG baseline is
+2b8293bb3ae6f625e68060ce7a02795a9802e41e6c611b08b5b18eb637dbb0dc; the
+explicit Rust PEG reproduces it with both IdApi floors selected. The same gate
+can explicitly load the Zig PEG dylib to re-validate the baseline. The
+generated-C ABI and TCC ownership remain unchanged; whole-source-corpus,
+module-metadata, and compiled-unit descriptor comparisons remain open.
 
 ### N3.5 — Switch and observe
 

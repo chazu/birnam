@@ -712,6 +712,40 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_diagnostics_step.dependOn(&run_rust_peg_diagnostics.step);
     test_step.dependOn(&run_rust_peg_diagnostics.step);
 
+    const rust_peg_codegen_parity_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_codegen_parity_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    rust_peg_codegen_parity_mod.addIncludePath(b.path("vendor/libtcc-src"));
+    const rust_peg_codegen_parity_tests = b.addTest(.{ .root_module = rust_peg_codegen_parity_mod });
+    rust_peg_codegen_parity_tests.linkLibrary(libtcc_lib);
+    rust_peg_codegen_parity_tests.rdynamic = true;
+    rust_peg_codegen_parity_tests.linkLibC();
+    const run_rust_peg_codegen_parity = b.addRunArtifact(rust_peg_codegen_parity_tests);
+    run_rust_peg_codegen_parity.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_peg_codegen_parity.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_peg_codegen_parity.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    const parity_peg_dylib = b.option(
+        []const u8,
+        "peg-parity-dylib",
+        "Explicit PEG dylib used to establish or check the generated-C parity baseline",
+    ) orelse b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib");
+    const parity_codegen_digest = b.option(
+        []const u8,
+        "peg-parity-digest",
+        "Expected generated-C SHA-256 for the explicitly selected PEG dylib",
+    ) orelse "2b8293bb3ae6f625e68060ce7a02795a9802e41e6c611b08b5b18eb637dbb0dc";
+    run_rust_peg_codegen_parity.setEnvironmentVariable("BIRNAM_RUST_PEG_DYLIB", parity_peg_dylib);
+    run_rust_peg_codegen_parity.setEnvironmentVariable("BIRNAM_RUST_PEG_CODEGEN_DIGEST", parity_codegen_digest);
+    run_rust_peg_codegen_parity.step.dependOn(bootstrap_install);
+    const test_rust_peg_codegen_parity_step = b.step(
+        "test-rust-peg-codegen-parity",
+        "Compare frozen generated-C output through an explicitly selected PEG dylib",
+    );
+    test_rust_peg_codegen_parity_step.dependOn(&run_rust_peg_codegen_parity.step);
+    test_step.dependOn(&run_rust_peg_codegen_parity.step);
+
     const rust_peg_codegen_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_peg_codegen_test.zig"),
         .target = target,
