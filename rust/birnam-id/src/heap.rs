@@ -25,8 +25,6 @@ pub(crate) enum Permanence {
 }
 
 struct Block {
-    base: NonNull<u8>,
-    payload: NonNull<u8>,
     total_size: usize,
     permanence: Permanence,
     marked: bool,
@@ -58,10 +56,13 @@ impl Drop for DetachedBlock {
     fn drop(&mut self) {
         let layout = Layout::from_size_align(self.block.total_size, BLOCK_ALIGNMENT)
             .unwrap_or_else(|_| boundary::fatal_invariant("stored block layout became invalid"));
+        // SAFETY: DetachedBlock retains the exact live payload identity removed
+        // from the registry, whose allocation begins one header word earlier.
+        let base = unsafe { self.object.cast::<u8>().sub(VTABLE_HEADER_SIZE) };
         // SAFETY: detaching transferred this still-live allocation out of the
         // Heap registry. DetachedBlock is its sole owner and drops exactly once
         // with the same layout used by allocate.
-        unsafe { dealloc(self.block.base.as_ptr(), layout) };
+        unsafe { dealloc(base, layout) };
     }
 }
 
@@ -129,8 +130,6 @@ impl Heap {
         let previous = self.blocks.insert(
             payload_address,
             Block {
-                base,
-                payload,
                 total_size,
                 permanence,
                 marked: false,
@@ -167,13 +166,11 @@ impl Heap {
     pub(crate) fn base_address(&self, object: Oop) -> Option<usize> {
         self.blocks
             .get(&object.addr())
-            .map(|block| block.base.as_ptr().addr())
+            .map(|_| object.addr() - VTABLE_HEADER_SIZE)
     }
 
     pub(crate) fn payload_address(&self, object: Oop) -> Option<usize> {
-        self.blocks
-            .get(&object.addr())
-            .map(|block| block.payload.as_ptr().addr())
+        self.blocks.get(&object.addr()).map(|_| object.addr())
     }
 
     /// Report the padded payload extent, matching Zig `objectPayloadSize`.
@@ -216,11 +213,8 @@ impl Heap {
         // a whole number of machine words. The allocation remains live while
         // the copied snapshot is created.
         Some(unsafe {
-            std::slice::from_raw_parts(
-                block.payload.as_ptr().cast::<usize>(),
-                payload_size / size_of::<usize>(),
-            )
-            .to_vec()
+            std::slice::from_raw_parts(address as *const usize, payload_size / size_of::<usize>())
+                .to_vec()
         })
     }
 
@@ -276,13 +270,16 @@ impl Heap {
     }
 
     pub(crate) fn set_vtable(&mut self, object: Oop, vtable: Oop) -> bool {
-        let Some(block) = self.blocks.get(&object.addr()) else {
+        if !self.blocks.contains_key(&object.addr()) {
             return false;
-        };
+        }
+        // SAFETY: exact registry membership proves this non-null address is the
+        // payload start of the live floor allocation owned by this Heap.
+        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
         // SAFETY: exact registry membership proves that payload is the start of
         // the live floor allocation owned by this Heap.
-        let slot = unsafe { vtable_slot_from_payload(block.payload) };
-        debug_assert_eq!(slot.addr(), block.base.as_ptr().addr());
+        let slot = unsafe { vtable_slot_from_payload(payload) };
+        debug_assert_eq!(slot.addr(), object.addr() - VTABLE_HEADER_SIZE);
         // SAFETY: slot addresses the live, pointer-aligned header word.
         unsafe { slot.write(vtable) };
         true
@@ -299,7 +296,7 @@ impl Heap {
         // SAFETY: exact membership proves the source payload is live for its
         // recorded padded extent.
         let bytes = unsafe {
-            std::slice::from_raw_parts(source.payload.as_ptr().cast_const(), payload_size).to_vec()
+            std::slice::from_raw_parts(object.cast::<u8>().cast_const(), payload_size).to_vec()
         };
         let vtable = self.vtable_of(object)?;
         let clone = self.allocate(payload_size, Permanence::Collectable);
@@ -318,11 +315,14 @@ impl Heap {
     }
 
     pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {
-        let block = self.blocks.get(&object.addr())?;
+        self.blocks.get(&object.addr())?;
+        // SAFETY: exact registry membership proves this non-null address is the
+        // payload start of the live floor allocation owned by this Heap.
+        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
         // SAFETY: exact registry membership proves that payload is the start of
         // the live floor allocation owned by this Heap.
-        let slot = unsafe { vtable_slot_from_payload(block.payload) };
-        debug_assert_eq!(slot.addr(), block.base.as_ptr().addr());
+        let slot = unsafe { vtable_slot_from_payload(payload) };
+        debug_assert_eq!(slot.addr(), object.addr() - VTABLE_HEADER_SIZE);
         // SAFETY: slot addresses the initialized header word. alloc_zeroed
         // makes an unset header null.
         Some(unsafe { slot.read() })
@@ -358,12 +358,15 @@ impl Drop for Heap {
         // Harness/runtime-owner teardown only: this is not language GC and does
         // not invoke finalizers. The process-lifetime runtime does not drop
         // while Birnam objects remain observable.
-        for block in self.blocks.values() {
+        for (payload_address, block) in &self.blocks {
             let layout = Layout::from_size_align(block.total_size, BLOCK_ALIGNMENT)
                 .expect("stored block layout must remain valid");
+            // SAFETY: every registry key is the exact live payload address for
+            // an allocation whose base is one header word earlier.
+            let base = unsafe { (*payload_address as *mut u8).sub(VTABLE_HEADER_SIZE) };
             // SAFETY: each base was returned by alloc_zeroed with this exact
             // layout, remains live, and is deallocated exactly once here.
-            unsafe { dealloc(block.base.as_ptr(), layout) };
+            unsafe { dealloc(base, layout) };
         }
     }
 }
