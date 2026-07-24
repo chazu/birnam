@@ -473,6 +473,18 @@ test "Rust Codegen retains registered module sources across collection" {
         api.trueObj,
         api.send(codegen, api.intern("endImageDispatchRecovery"), &.{}, 0),
     );
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0),
+    );
+    try std.testing.expectEqual(
+        @as(i64, 0),
+        api.smallIntValue(api.send(codegen, api.intern("replayAliens"), &.{}, 0)),
+    );
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("endImageDispatchRecovery"), &.{}, 0),
+    );
     try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("currentGenerationDigest"), &.{}, 0));
     var image_tmp = std.testing.tmpDir(.{});
     defer image_tmp.cleanup();
