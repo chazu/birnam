@@ -51,8 +51,8 @@ grep -Fq 'test-rust-codegen-runtime success' "$functional" || {
   echo "r6-acceptance: Rust Codegen runtime target was not executed" >&2
   exit 1
 }
-grep -Eq '^\+- run test 19 passed ' "$functional" || {
-  echo "r6-acceptance: Rust Codegen runtime test set no longer has 19 passing tests" >&2
+grep -Eq '^\+- run test 20 passed ' "$functional" || {
+  echo "r6-acceptance: Rust Codegen runtime test set no longer has 20 passing tests" >&2
   exit 1
 }
 

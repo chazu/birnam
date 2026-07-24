@@ -135,3 +135,14 @@ Codegen boundary now rejects mapping outside image recovery and maps a
 checksum-verified captured dylib through the existing Rust artifact loader.
 The R6 pin advances to 19/19 functional tests; this adds no benchmark case or
 performance exception.
+
+The scalar-fact recovery handoff landed at `89c6283`. The 20-test Rust
+Codegen boundary now preflights all scalar fact values before entering Rust
+Store image-load mode; heap references remain explicitly rejected until heap
+materialization lands. This is functional coverage only, so the R6 benchmark
+pair and its two accepted crossings are unchanged.
+
+The complete R6 acceptance script then passed at `89c6283`: 20/20 focused Rust
+tests, the known `sortedModules` fixture exception in optimized verification,
+and the existing two benchmark crossings (`query.aggregate` and
+`compile.stage1-stdlib`).

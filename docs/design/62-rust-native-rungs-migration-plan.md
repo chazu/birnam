@@ -1876,6 +1876,20 @@ materialization and Store replay remain outside this narrow slice. The focused
 Rust Codegen target is now pinned at 19/19 tests; this is functional coverage
 only and does not widen the R6 performance exception.
 
+The scalar fact replay slice is now executable at `89c6283`. Opt-in Rust
+`replayImageFacts:` requires image recovery, validates every facts record before
+mutating Store, materializes scalar/symbol/string/export fields, rejects heap
+references with a stable diagnostic, then performs the existing
+`imageLoadBegin`/`imageAddFact...`/`imageLoadEnd:raw:` sequence and mirror
+backfill. The gate reads the restored value (`42`) through Rust Store. Heap
+materialization, relocation, and full image authority remain later N6.6 work;
+the focused Rust Codegen target is now pinned at 20/20 tests.
+
+The complete R6 acceptance script also passed at `89c6283`, including the
+20/20 focused target, the documented `sortedModules` fixture exception, and
+only the two existing benchmark crossings (`query.aggregate` and
+`compile.stage1-stdlib`).
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
