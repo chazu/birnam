@@ -33,6 +33,7 @@ const STORE_NAME: &[u8] = b"Store\0";
 const VECTOR_NAME: &[u8] = b"Vector\0";
 const VECTOR_VT_NAME: &[u8] = b"VectorVt\0";
 const PEG_CST_VT_NAME: &[u8] = b"PegCstVt\0";
+const ERROR_VT_NAME: &[u8] = b"ErrorVt\0";
 const PARSE_SELECTOR: &[u8] = b"parse:\0";
 const FURTHEST_FAIL_SELECTOR: &[u8] = b"furthestFail\0";
 const RULE_NAME_SELECTOR: &[u8] = b"ruleName\0";
@@ -64,6 +65,7 @@ const GENERATION_METHOD_SOURCES_SELECTOR: &[u8] = b"generationMethodSources\0";
 const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
 const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
 const REPLAY_METHODS_SELECTOR: &[u8] = b"replayMethods\0";
+const REPLAY_ALIENS_SELECTOR: &[u8] = b"replayAliens\0";
 const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
 const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
 const CANDIDATE_MAPPED_SELECTOR: &[u8] = b"candidateMapped:\0";
@@ -1851,6 +1853,84 @@ unsafe extern "C" fn rust_codegen_replay_methods(
                 note_error(b"RustCodegen image method replay failed");
                 return api.nilObj;
             }
+            replayed += 1;
+        }
+    }
+    unsafe { (api.mkSmallInt)(replayed as i64) }
+}
+
+unsafe extern "C" fn rust_codegen_replay_aliens(
+    self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen replayAliens: expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
+    {
+        note_error(b"RustCodegen alien replay requires image recovery");
+        return api.nilObj;
+    }
+    let store = runtime.store as Oop;
+    if store.is_null() || store == api.nilObj {
+        return unsafe { (api.mkSmallInt)(0) };
+    }
+    let entity = unsafe { intern(api, b"__aliens__\0") };
+    let attr_count = unsafe { send(api, store, b"attrCount:\0", &[entity]) };
+    if unsafe { (api.isSmallInt)(attr_count) } == 0 {
+        note_error(b"RustCodegen alien replay journal is malformed");
+        return api.nilObj;
+    }
+    let count = unsafe { (api.smallIntValue)(attr_count) };
+    let mut records = Vec::new();
+    for index in 0..count {
+        let attr = unsafe {
+            send(
+                api,
+                store,
+                b"attrAt:index:\0",
+                &[entity, (api.mkSmallInt)(index)],
+            )
+        };
+        let Some(name) = (unsafe { symbol_bytes(api, attr) }) else {
+            continue;
+        };
+        let Some(index) = name
+            .strip_prefix(b"__alien_")
+            .and_then(|suffix| core::str::from_utf8(suffix).ok())
+            .and_then(|suffix| suffix.parse::<i64>().ok())
+        else {
+            continue;
+        };
+        let source = unsafe { send(api, store, CURRENT_VALUE_SELECTOR, &[entity, attr]) };
+        if source.is_null()
+            || source == api.nilObj
+            || unsafe { string_bytes(api, source) }.is_none()
+        {
+            continue;
+        }
+        records.push((index, source));
+    }
+    records.sort_by_key(|(index, _)| *index);
+    let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
+    let mut replayed = 0usize;
+    for (_, source) in records {
+        clear_error();
+        let result = unsafe { send(api, self_object, EVAL_SELECTOR, &[source]) };
+        if result == api.nilObj
+            && (error_vt.is_null() || unsafe { (api.vtableOf)(result) } != error_vt)
+            && LAST_ERROR.lock().ok().is_some_and(|error| error.is_some())
+        {
+            continue;
+        }
+        if result != api.nilObj
+            && (error_vt.is_null() || unsafe { (api.vtableOf)(result) } != error_vt)
+        {
             replayed += 1;
         }
     }
@@ -4347,6 +4427,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, REPLAY_METHODS_SELECTOR),
             rust_codegen_replay_methods,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, REPLAY_ALIENS_SELECTOR),
+            rust_codegen_replay_aliens,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
