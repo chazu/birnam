@@ -269,7 +269,8 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try appendImageFact(&facts, std.testing.allocator, 11, "factSymbol", 5, "payloadSymbol");
     try appendImageFact(&facts, std.testing.allocator, 12, "factString", 6, "payloadString");
     try appendImageFact(&facts, std.testing.allocator, 13, "factNil", 0, &.{});
-    std.mem.writeInt(u32, facts.items[8..12], 7, .little);
+    try appendImageFact(&facts, std.testing.allocator, 14, "factExport", 9, "Store");
+    std.mem.writeInt(u32, facts.items[8..12], 8, .little);
 
     var image: std.ArrayList(u8) = .{};
     defer image.deinit(std.testing.allocator);
@@ -355,7 +356,7 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     );
     const replayed = api.send(codegen, api.intern("replayImageFacts:"), &.{image_object}, 1);
     try std.testing.expect(api.isSmallInt(replayed) != 0);
-    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(replayed));
+    try std.testing.expectEqual(@as(i64, 8), api.smallIntValue(replayed));
     const entity = api.intern("factEntity");
     const attribute = api.intern("factAttr");
     const value = api.send(store, api.intern("currentValue:attr:"), &.{ entity, attribute }, 2);
@@ -383,6 +384,10 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try std.testing.expectEqual(
         api.nilObj,
         api.send(store, api.intern("currentValue:attr:"), &.{ entity, api.intern("factNil") }, 2),
+    );
+    try std.testing.expectEqual(
+        store,
+        api.send(store, api.intern("currentValue:attr:"), &.{ entity, api.intern("factExport") }, 2),
     );
     try std.testing.expectEqual(
         api.trueObj,
