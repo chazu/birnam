@@ -5,7 +5,8 @@
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
 > complete; N3.5.1 through N3.5.4 and N4.1 through N4.4 are complete; N5.1
-> through N5.4 and N6.1 are complete; N6.2 is in progress.
+> through N5.4 and N6.1 are complete; N6.2 through N6.6 have executable
+> opt-in slices in progress; N6.7 remains pending.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
