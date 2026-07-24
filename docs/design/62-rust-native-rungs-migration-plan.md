@@ -1710,6 +1710,16 @@ rollback, and the resulting Store state. Predecessor composition, quiescence,
 publication events, observer/authorizer callbacks, and multi-generation
 reconciliation remain open.
 
+The Rust runtime now also carries the Store callback seam needed by the final
+authority switch. Its managed-method observer watches active candidate
+bindings and marks `drifted`/`rollbackAvailable = false` when a post-activation
+raw carrier changes; candidate-owned activation and rollback mutations are
+guarded from self-observation. In a Rust-only stack, the first Rust candidate
+map conditionally installs this observer and a permissive authorizer; a mixed
+stack leaves the existing Zig Codegen callback owner untouched, honoring the
+Store single-registration law. Runtime-phase/quiescence denial and the full
+Zig↔Rust callback matrix remain a later hardening gate.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
