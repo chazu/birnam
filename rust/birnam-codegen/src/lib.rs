@@ -101,7 +101,7 @@ pub trait CstNode {
 /// An owned CST projection used at the runtime boundary. The core emitter does
 /// not know about IdApi or Oop objects; the Rust PEG adapter materializes its
 /// transient nodes into this byte-owned tree before lowering.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OwnedCst {
     rule: Vec<u8>,
     start: usize,
