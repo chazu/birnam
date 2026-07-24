@@ -417,6 +417,17 @@ test "Rust Codegen retains registered module sources across collection" {
     const method_sources = api.send(codegen, api.intern("generationMethodSources"), &.{}, 0);
     try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(api.send(method_sources, api.intern("size"), &.{}, 0)));
     try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("currentGenerationDigest"), &.{}, 0));
+    var image_tmp = std.testing.tmpDir(.{});
+    defer image_tmp.cleanup();
+    const image_directory = try image_tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(image_directory);
+    const image_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_image_generation.dylib", .{image_directory});
+    defer std.testing.allocator.free(image_path);
+    const image_output = api.mkString(image_path.ptr, image_path.len);
+    try std.testing.expectEqual(image_output, api.send(codegen, api.intern("compileImageCode:"), &.{image_output}, 1));
+    const image_artifact = try std.fs.openFileAbsolute(image_path, .{});
+    defer image_artifact.close();
+    try std.testing.expect((try image_artifact.stat()).size > 0);
     const changed_text = "[Module named: #rustRegisteredModule requires: #[]]; 8";
     const changed_source = api.mkString(changed_text.ptr, changed_text.len);
     const changed_revision = api.send(codegen, api.intern("sourceRevisionOf:"), &.{changed_source}, 1);

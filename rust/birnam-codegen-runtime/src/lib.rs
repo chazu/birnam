@@ -62,6 +62,7 @@ const SUCCESSOR_GENERATION_PROJECTION_SELECTOR: &[u8] =
 const GENERATION_SOURCES_SELECTOR: &[u8] = b"generationSources\0";
 const GENERATION_METHOD_SOURCES_SELECTOR: &[u8] = b"generationMethodSources\0";
 const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
+const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
 const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
 const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
 const CANDIDATE_MAPPED_SELECTOR: &[u8] = b"candidateMapped:\0";
@@ -1688,6 +1689,48 @@ unsafe extern "C" fn rust_codegen_current_generation_digest(
         return api.nilObj;
     }
     unsafe { vector_item(api, generation as Oop, 2) }
+}
+
+unsafe extern "C" fn rust_codegen_compile_image_code(
+    self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen compileImageCode: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen compileImageCode: expects one output path");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+    let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
+        note_error(b"RustCodegen image source ordering failed");
+        return api.nilObj;
+    };
+    if sources.is_empty() {
+        note_error(b"RustCodegen image has no generation sources");
+        return api.nilObj;
+    }
+    let mut program = Vec::new();
+    for source in sources {
+        let Some(bytes) = (unsafe { string_bytes(api, source) }) else {
+            note_error(b"RustCodegen image source is not a String");
+            return api.nilObj;
+        };
+        program.extend_from_slice(&bytes);
+        program.extend_from_slice(b";\n");
+    }
+    let source_object = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
+    let arguments = [source_object, values[0]];
+    unsafe { rust_codegen_compile_output(self_object, arguments.as_ptr(), arguments.len()) }
 }
 
 unsafe fn emit_source(
@@ -4152,6 +4195,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, CURRENT_GENERATION_DIGEST_SELECTOR),
             rust_codegen_current_generation_digest,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, COMPILE_IMAGE_CODE_SELECTOR),
+            rust_codegen_compile_image_code,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
