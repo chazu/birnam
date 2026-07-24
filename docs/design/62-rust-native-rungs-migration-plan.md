@@ -1787,7 +1787,12 @@ allocation; it is a format decoder, not yet the loader's swizzling authority.
 The borrowed facts iterator now validates the 12-byte basis/count prefix,
 walks each `op`/transaction and three tagged values, and rejects truncated or
 trailing payloads. It still leaves heap-reference resolution and Store
-mutation to the later runtime handoff.
+mutation to the later runtime handoff. A layout-driven heap iterator now
+validates each vtable-name/word-count header and consumes Oop fields, raw
+machine words, and elided code slots without copying; the caller supplies the
+live layout after peeking the vtable name. It returns borrowed encoded bytes,
+not materialized objects, so vtable relinking, heap-reference swizzling, and
+GC integration remain later work.
 
 The mapped-candidate observation surface is complete for this slice as well:
 `candidateMapped:` reports the retained native handle, while
