@@ -1717,6 +1717,12 @@ candidate drifted and disable rollback. The installed gate covers both healthy
 single-candidate and all-candidate reconciliation; predecessor-ledger
 composition and persisted generation reconciliation remain later work.
 
+The mapped-candidate observation surface is complete for this slice as well:
+`candidateMapped:` reports the retained native handle, while
+`candidateContentPath:` materializes and verifies the immutable checksum path
+and returns it as a String. Both paths stay read-only with respect to dispatch;
+they are intended for the later loader/image handoff.
+
 The Rust runtime now also carries the Store callback seam needed by the final
 authority switch. Its managed-method observer watches active candidate
 bindings and marks `drifted`/`rollbackAvailable = false` when a post-activation
