@@ -16,18 +16,19 @@ cd "$(dirname "$0")/.."
 # artifact-inspector baseline before the raw comparator is run below.
 python3 scripts/check-native-rung-baseline.py
 
-# Keep the R6 acceptance boundary aligned with the latest N5.1-N5.4 test set.
+# Keep the R6 acceptance boundary aligned with the latest replacement test set.
 # These are the unchanged grammar suite, frozen CST parity, syntax diagnostics,
-# canonical/rollback selection checks, and the optimized native-rung harness
-# that verifies child builds inherit the selected profile. The full optimized
-# verify below remains the cross-layer acceptance gate; the focused set keeps
-# failures attributable to the latest replacement rung.
+# canonical/rollback selection checks, optimized native-rung harness, and the
+# explicit Rust Codegen runtime boundary. The full optimized verify below
+# remains the cross-layer acceptance gate; the focused set keeps failures
+# attributable to the latest replacement rung.
 latest_tests=(
   test-rust-lang
   test-rust-lang-parity
   test-rust-lang-diagnostics
   test-lang-selection
   test-native-rung-harness
+  test-rust-codegen-runtime
 )
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 trap 'rm -f "$functional"' EXIT
