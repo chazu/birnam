@@ -2040,6 +2040,16 @@ activation, publication, or residual rollback state. The R6 exact-output pin
 advanced to 23 at `42513c7`; the complete gate passed with the same fixture
 quarantine and benchmark allowance.
 
+The Rust candidate compiler slice landed at `6375156`: the opt-in
+`compileCandidate:named:output:` path now emits the operation program through
+Rust PEG/Codegen, publishes the frozen candidate artifact and sidecar envelope,
+and passes inspect/map/prepare/commit activation through the existing mixed
+stack. The focused Rust Codegen boundary advances to 24/24. This remains a
+transitional seam: the generated candidate calls the legacy Zig Codegen's
+callback-owner symbols while that owner is present, so no duplicate dynamic
+`birnam_*` export is introduced. Full Rust Reflect/callback ownership remains
+an open N6.5/N6.6 cutover item.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

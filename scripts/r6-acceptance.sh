@@ -53,9 +53,9 @@ rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$func
   echo "r6-acceptance: Rust Codegen runtime target was not executed" >&2
   exit 1
 }
-rust_codegen_test_count=$(grep -Ec '^\+- run test 23 passed ' "$functional" || true)
+rust_codegen_test_count=$(grep -Ec '^\+- run test 24 passed ' "$functional" || true)
 [ "$rust_codegen_test_count" -eq 1 ] || {
-  echo "r6-acceptance: Rust Codegen runtime test set no longer has 23 passing tests" >&2
+  echo "r6-acceptance: Rust Codegen runtime test set no longer has 24 passing tests" >&2
   exit 1
 }
 

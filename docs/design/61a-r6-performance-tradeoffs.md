@@ -281,3 +281,13 @@ has executable coverage that consumes a mapped candidate's preparation token
 without activation or Store state publication. The R6 pin advanced to 23 at
 `42513c7`; the complete gate passed with 23/23 focused tests and no change to
 the accepted benchmark snapshot.
+
+The Rust candidate compiler slice landed at `6375156`: the opt-in
+`compileCandidate:named:output:` path now emits the operation program through
+Rust PEG/Codegen, publishes the frozen candidate artifact and sidecar envelope,
+and passes inspect/map/prepare/commit activation through the existing mixed
+stack. The focused Rust Codegen boundary advances to 24/24. This does not add a
+second dynamic callback owner: candidate validation and prepare-mode symbols
+remain supplied by the legacy Zig Codegen while that mixed stack is active.
+The complete R6 gate must still pass with the same two accepted benchmark
+crossings before this slice is considered closed.
