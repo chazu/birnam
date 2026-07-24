@@ -1548,6 +1548,13 @@ literal paths in source order, and does not read files or mutate Store state;
 the runtime test covers duplicates and nested blocks. This is the input needed
 for project-level asset digests before full candidate/image orchestration.
 
+The loader compatibility seam now covers both compiler directions. The
+installed gate compiles a scalar artifact with Zig Codegen and loads it through
+Rust Codegen, then compiles with Rust Codegen and loads through the unchanged
+Zig Codegen loader. Rust accepts the older Zig descriptor framing by deriving
+the payload length from the mandatory magic/header when Zig's optional length
+symbol is absent; both directions return `7` through the frozen Method ABI.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
