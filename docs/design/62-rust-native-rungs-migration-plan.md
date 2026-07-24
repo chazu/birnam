@@ -1644,8 +1644,9 @@ It validates the runtime ABI, candidate ABI 3, aarch64-macos platform, exact
 64-character artifact digest, manifest framing, and byte-exact source length.
 The same boundary now parses the `v2` pipe-delimited manifest and exposes
 borrowed dependency and operation rows with target, selector, kind, and arity
-validation. Eleven artifact tests (including adversarial malformed-input
-probes) pass. This is only the inert candidate boundary; candidate compilation,
+validation; envelope inspection invokes this manifest validation before
+returning. Eleven artifact tests (including adversarial malformed-input probes)
+pass. This is only the inert candidate boundary; candidate compilation,
 mapping, Store publication, rollback, and image composition remain unported
 N6.5/N6.6 work.
 
