@@ -868,6 +868,24 @@ pub fn build(b: *std.Build) void {
     test_rust_tcc_shell_step.dependOn(&run_rust_tcc_shell.step);
     test_step.dependOn(&run_rust_tcc_shell.step);
 
+    const rust_tcc_artifact_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-tcc-artifact-smoke.sh",
+    });
+    rust_tcc_artifact_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    rust_tcc_artifact_smoke.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
+    rust_tcc_artifact_smoke.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    rust_tcc_artifact_smoke.step.dependOn(bootstrap_install);
+    const test_rust_tcc_artifact_step = b.step(
+        "test-rust-tcc-artifact",
+        "Compile and activate a Rust-TCC artifact from a separate process",
+    );
+    test_rust_tcc_artifact_step.dependOn(&rust_tcc_artifact_smoke.step);
+    test_step.dependOn(&rust_tcc_artifact_smoke.step);
+
     const rust_peg_codegen_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_peg_codegen_test.zig"),
         .target = target,

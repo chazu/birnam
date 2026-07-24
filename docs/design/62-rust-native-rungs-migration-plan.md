@@ -4,7 +4,8 @@
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
-> complete; N3.5.1 through N3.5.3 are complete; N4.1 is in progress.
+> complete; N3.5.1 through N3.5.3 and N4.1 through N4.3 are complete; N4.4 is
+> in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1170,7 +1171,7 @@ Wrap libtcc in Rust with explicit ownership states: created, configured,
 relocated, installed, disposable, and released. Prevent double release and
 use-after-finalize without holding Rust borrows across libtcc callbacks.
 
-#### N4.2 execution record — in progress, 2026-07-23
+#### N4.2 execution record — complete, 2026-07-23
 
 `birnam-tcc` now compiles the vendored `libtcc.c` through an offline Cargo
 build and owns a raw `UnitPayload { TCCState*, phase }` with the explicit
@@ -1184,8 +1185,7 @@ table is also registered through the same pre-relocation window.
 The Rust TCC integration test compiles and installs a native Method, proves
 idempotent relocation and rejects release of an installed unit. Cargo tests,
 strict Clippy, and the cross-language test pass with both Rust and Zig IdApi
-floors. N4.3 remains responsible for the full generated-C callback and
-relocatable-artifact matrix.
+floors. N4.3 closes the generated-C callback and relocatable-artifact matrix.
 
 ### N4.3 — Port runtime symbols
 
@@ -1195,7 +1195,7 @@ where the current compiled-unit contract permits it. The still-Zig Codegen
 continues to own its disjoint symbol set until N6; no mixed stack contains two
 providers for one symbol.
 
-#### N4.3 execution record — in progress, 2026-07-23
+#### N4.3 execution record — complete, 2026-07-23
 
 The Rust TCC rung now exports the complete current `birnam_*` set under the
 canonical dynamic names and registers the same addresses in libtcc's
@@ -1204,14 +1204,17 @@ pre-relocation symbol window. A generated C Method calling
 the Rust TCC module on both IdApi floors. The shell test also audits every
 runtime export with `dlsym`.
 
-The remaining N4.3 evidence is the existing full Codegen/Alien matrix through
-the Rust TCC selection and a separate-process load of an emitted artifact.
-
 The complete unchanged 50-test Codegen suite now runs with both the explicit
 Rust PEG and Rust TCC dylibs and passes on the Rust floor. The Zig TCC oracle's
 runtime symbols are hidden from test executables, preventing a host-export
 collision from masking the selected Rust callback provider. The separate
-process artifact-load check remains before N4.3 closes.
+process artifact-load check passes with no authoring-process state dependency.
+
+The installed `BIRNAM_TCC_DYLIB` override selects the explicit Rust TCC while
+leaving the canonical Zig TCC untouched. The separate-process AOT smoke compiles
+an installable module with that override and activates it from a fresh process;
+both Rust- and Zig-floor runs pass. This closes N4.3 without changing the
+production default.
 
 ### N4.4 — Switch and observe
 
@@ -1219,6 +1222,13 @@ Require generated-C execution, callback reentry, compiled dylibs in another
 process, old compiled units, Alien, image composition, and optimized compile
 performance before switching. An installed symbol audit must prove exactly one
 owner for every generated-C symbol before and after the switch.
+
+#### N4.4 execution record — in progress, 2026-07-23
+
+The Rust TCC selection seam and separate-process AOT evidence are executable,
+while the installed canonical TCC remains Zig. The next slice is the
+old-artifact, image, Alien, and optimized compile observation matrix before any
+canonical TCC cutover.
 
 ## 11. Phase N5 — Rust language-parser rung
 
