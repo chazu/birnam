@@ -1596,6 +1596,14 @@ malformed vectors, and top-level-evolution attempts fail closed. It still does
 not publish a Store generation or mutate dispatch; those are deliberately
 reserved for the transactional N6.5 implementation.
 
+The projection boundary now validates the complete seven-field revision shape:
+the tag, symbolic module identity, symbolic requirements vector, authored
+source String, and all three 64-character hexadecimal digest Strings. It also
+requires each source-map entry name to equal its revision name and type-checks
+String payloads before calling the invariant-enforcing IdApi byte accessor. A
+regression fixture proves that a partially malformed successor revision is
+rejected without recomputing or publishing a generation.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
