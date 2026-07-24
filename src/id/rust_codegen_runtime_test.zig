@@ -219,6 +219,22 @@ test "Rust Codegen rejects a stale image authority before recovery" {
     try std.testing.expect(
         std.mem.indexOf(u8, diagnostic_bytes[0..diagnostic_len], "authority") != null,
     );
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0),
+    );
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(codegen, api.intern("mapImageCode:"), &.{image}, 1),
+    );
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(codegen, api.intern("replayImageFacts:"), &.{image}, 1),
+    );
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("endImageDispatchRecovery"), &.{}, 0),
+    );
     _ = api.send(active_generation_cell, api.intern("set:"), &.{api.nilObj}, 1);
 }
 
