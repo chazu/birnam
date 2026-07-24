@@ -63,6 +63,7 @@ const GENERATION_SOURCES_SELECTOR: &[u8] = b"generationSources\0";
 const GENERATION_METHOD_SOURCES_SELECTOR: &[u8] = b"generationMethodSources\0";
 const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
 const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
+const REPLAY_METHODS_SELECTOR: &[u8] = b"replayMethods\0";
 const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
 const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
 const CANDIDATE_MAPPED_SELECTOR: &[u8] = b"candidateMapped:\0";
@@ -1731,6 +1732,39 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
     let source_object = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
     let arguments = [source_object, values[0]];
     unsafe { rust_codegen_compile_output(self_object, arguments.as_ptr(), arguments.len()) }
+}
+
+unsafe extern "C" fn rust_codegen_replay_methods(
+    self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen replayMethods: expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
+    {
+        note_error(b"RustCodegen method replay requires image recovery");
+        return api.nilObj;
+    }
+    let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
+        note_error(b"RustCodegen image method source ordering failed");
+        return api.nilObj;
+    };
+    let mut replayed = 0usize;
+    for source in sources {
+        let result = unsafe { send(api, self_object, EVAL_SELECTOR, &[source]) };
+        if result == api.nilObj && LAST_ERROR.lock().ok().is_some_and(|error| error.is_some()) {
+            note_error(b"RustCodegen image method replay failed");
+            return api.nilObj;
+        }
+        replayed += 1;
+    }
+    unsafe { (api.mkSmallInt)(replayed as i64) }
 }
 
 unsafe fn emit_source(
@@ -4200,6 +4234,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, COMPILE_IMAGE_CODE_SELECTOR),
             rust_codegen_compile_image_code,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, REPLAY_METHODS_SELECTOR),
+            rust_codegen_replay_methods,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
