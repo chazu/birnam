@@ -152,6 +152,21 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expectEqualStrings("4.0", float_rendered_bytes[0..float_rendered_len]);
     try std.testing.expect(api.isFloat(send(api, three, "asFloat", &.{})) != 0);
 
+    const plain_object_vt = api.proto(api.object_vt);
+    const plain_object = api.alloc(plain_object_vt, 0);
+    const object_rendered = send(api, plain_object, "printString", &.{});
+    var object_rendered_len: usize = 0;
+    const object_rendered_bytes = api.stringBytes(object_rendered, &object_rendered_len);
+    try std.testing.expectEqualStrings("anObject", object_rendered_bytes[0..object_rendered_len]);
+    const object_as_string = send(api, plain_object, "asString", &.{});
+    var object_as_string_len: usize = 0;
+    const object_as_string_bytes = api.stringBytes(object_as_string, &object_as_string_len);
+    try std.testing.expectEqualStrings("anObject", object_as_string_bytes[0..object_as_string_len]);
+    const symbol_rendered = send(api, api.intern("rustPrelude"), "printString", &.{});
+    var symbol_rendered_len: usize = 0;
+    const symbol_rendered_bytes = api.stringBytes(symbol_rendered, &symbol_rendered_len);
+    try std.testing.expectEqualStrings("#rustPrelude", symbol_rendered_bytes[0..symbol_rendered_len]);
+
     const branch_vt = api.proto(api.object_vt);
     const branch = api.alloc(branch_vt, 0);
     api.method(branch_vt, api.intern("value"), &valueSelf);
@@ -195,7 +210,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expect(saw_write_file);
     try std.testing.expect(saw_get_env);
     try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{}));
-    try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{api.trueObj}));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{ api.trueObj, api.nilObj }));
     try std.testing.expectEqual(api.nilObj, send(api, system, "readFile:", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "writeFile:contents:", &.{ api.trueObj, api.trueObj }));
     try std.testing.expectEqual(api.nilObj, send(api, system, "getEnv:", &.{api.trueObj}));

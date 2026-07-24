@@ -544,6 +544,51 @@ unsafe extern "C" fn float_print_string(
     unsafe { (api.mkString)(text.as_ptr(), text.len()) }
 }
 
+unsafe extern "C" fn object_print_string(
+    _self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { (api.mkString)(b"anObject".as_ptr(), b"anObject".len()) }
+}
+
+unsafe extern "C" fn object_as_string(
+    self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { send0(api, self_object, b"printString\0") }
+}
+
+unsafe extern "C" fn symbol_print_string(
+    self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let name = unsafe { (api.symbolName)(self_object) };
+    if name.is_null() {
+        return api.nilObj;
+    }
+    // SAFETY: symbolName returns a process-owned NUL-terminated symbol name.
+    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+    let mut rendered = Vec::with_capacity(name.len().saturating_add(1));
+    rendered.push(b'#');
+    rendered.extend_from_slice(name);
+    unsafe { (api.mkString)(rendered.as_ptr(), rendered.len()) }
+}
+
 unsafe fn boolean_value(api: &IdApi, value: Oop) -> Option<bool> {
     if value == api.trueObj {
         Some(true)
@@ -1061,11 +1106,22 @@ unsafe fn system_output(
     let Some(value) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    let Some(bytes) = (unsafe { string_bytes(api, value) }) else {
+    let Some(bytes) = (unsafe { printable_string(api, value) }) else {
         return api.nilObj;
     };
     write_system_output(bytes, newline);
     self_object
+}
+
+unsafe fn printable_string(api: &IdApi, value: Oop) -> Option<&[u8]> {
+    if let Some(bytes) = unsafe { string_bytes(api, value) } {
+        return Some(bytes);
+    }
+    if value.is_null() {
+        return None;
+    }
+    let rendered = unsafe { send0(api, value, b"printString\0") };
+    unsafe { string_bytes(api, rendered) }
 }
 
 unsafe extern "C" fn system_print(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -1200,6 +1256,14 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         let symbol = unsafe { intern(api, selector) };
         // SAFETY: both singleton booleans share this vtable for the process lifetime.
         unsafe { (api.method)(boolean_vt, symbol, *method) };
+    }
+    let print_string = unsafe { intern(api, b"printString\0") };
+    let as_string = unsafe { intern(api, b"asString\0") };
+    let symbol_print_string = print_string;
+    unsafe {
+        (api.method)(api.object_vt, print_string, object_print_string);
+        (api.method)(api.object_vt, as_string, object_as_string);
+        (api.method)(api.symbol_vt, symbol_print_string, self::symbol_print_string);
     }
     unsafe { install_block_protocol(api) };
     unsafe { install_error_protocol(api) };
