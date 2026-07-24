@@ -1680,6 +1680,19 @@ maps a Zig-produced candidate and verifies that transition. Candidate prepare,
 activation, rollback, and Store observer/authorizer integration remain open
 N6.5 slices.
 
+The first explicit Rust lifecycle token slice now follows mapping. Rust
+`prepareActivation:` revalidates the mapped candidate, calls its exported
+prepare hook while the artifact's preparation mode suppresses dispatch
+mutation, and returns a rooted process-local token. `commitPrepared:` consumes
+that token, calls the retained activation hook, marks the unit active and
+rollback-available in Store, and only then releases the token root;
+`discardPrepared:` consumes a prepared token without activation. The installed
+gate now proves inspect → map → prepare → commit, observes the active Store
+fact, and dispatches the newly installed method. This is deliberately only the
+activation happy path: explicit publication plans, quiescence, predecessor
+ledgers, rollback, drift reconciliation, and the Rust Store observer/authorizer
+matrix remain subsequent N6.5 hardening slices.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
