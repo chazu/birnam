@@ -1699,6 +1699,17 @@ IdApi sends. Global lookup follows the frozen late-bound rule: Store bindings
 win, then exported prototypes such as `Integer` are imported. These snapshots
 are the native inputs for the upcoming exact rollback and drift checks.
 
+The symmetric rollback token path is now executable for a single active
+candidate. `prepareRollback:` compares every current raw method carrier with
+the recorded post-activation carrier and fail-closes as `drifted`, disabling
+rollback when an external mutation intervened. `commitPreparedRollback:` then
+restores prior carriers in reverse manifest order through Store's tracked
+`addMethod:on:with:`/`removeMethod:on:` surface, marks the unit `rolledBack`,
+and consumes the token. The installed gate now proves active dispatch, exact
+rollback, and the resulting Store state. Predecessor composition, quiescence,
+publication events, observer/authorizer callbacks, and multi-generation
+reconciliation remain open.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
