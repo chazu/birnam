@@ -3,6 +3,7 @@
 const std = @import("std");
 const floor = @import("floor_adapter_test.zig");
 const artifact_inspector = @import("artifact_inspector.zig");
+const collection = @import("collection.zig");
 const peg = @import("peg.zig");
 const lang = @import("lang.zig");
 const idapi = @import("idapi.zig");
@@ -22,6 +23,7 @@ fn load(api: *idapi.IdApi, variable: []const u8) !void {
 fn setup() !*idapi.IdApi {
     const api = floor.api();
     artifact_inspector.bringUp(api);
+    collection.bringUp(api);
     try load(api, "BIRNAM_RUST_PEG_DYLIB");
     lang.bringUp(api);
     try load(api, "BIRNAM_RUST_TCC_DYLIB");
@@ -263,4 +265,20 @@ test "Rust Codegen compile root anchors embedded files independently of source p
     var loaded_len: usize = 0;
     const loaded_bytes = api.stringBytes(loaded, &loaded_len);
     try std.testing.expectEqualSlices(u8, "rooted", loaded_bytes[0..loaded_len]);
+}
+
+test "Rust Codegen reports distinct embedded file literals" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const source_text =
+        "[System embedFile: \"a.txt\"]; [[:x | [System embedFile: \"b.bin\"]] value: 1]; [System embedFile: \"a.txt\"]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const files = api.send(codegen, api.intern("embeddedFilesOf:"), &.{source}, 1);
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(files, api.intern("size"), &.{}, 0)));
+    const first = api.send(files, api.intern("at:"), &.{api.mkSmallInt(0)}, 1);
+    const second = api.send(files, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
+    var first_len: usize = 0;
+    var second_len: usize = 0;
+    try std.testing.expectEqualStrings("a.txt", api.stringBytes(first, &first_len)[0..first_len]);
+    try std.testing.expectEqualStrings("b.bin", api.stringBytes(second, &second_len)[0..second_len]);
 }
