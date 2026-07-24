@@ -66,6 +66,8 @@ const PREPARE_ROLLBACK_SELECTOR: &[u8] = b"prepareRollback:\0";
 const COMMIT_PREPARED_SELECTOR: &[u8] = b"commitPrepared:\0";
 const COMMIT_PREPARED_ROLLBACK_SELECTOR: &[u8] = b"commitPreparedRollback:\0";
 const DISCARD_PREPARED_SELECTOR: &[u8] = b"discardPrepared:\0";
+const RECONCILE_CANDIDATE_SELECTOR: &[u8] = b"reconcileCandidate:\0";
+const RECONCILE_ALL_CANDIDATES_SELECTOR: &[u8] = b"reconcileAllCandidates\0";
 const MANAGED_METHOD_CHANGED_SELECTOR: &[u8] = b"managedMethodChanged:on:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
@@ -2852,6 +2854,110 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
     unit as Oop
 }
 
+unsafe fn candidate_operations_match_post(
+    api: &IdApi,
+    runtime: &Runtime,
+    operations: &[CandidateOperationState],
+) -> bool {
+    for operation in operations {
+        let selector = unsafe { intern_bytes(api, &operation.selector) };
+        let current = unsafe {
+            send(
+                api,
+                runtime.store as Oop,
+                STORE_RAW_CURRENT_SELECTOR,
+                &[operation.vtable as Oop, selector],
+            )
+        };
+        let current_present = !current.is_null();
+        if current_present != operation.post_present
+            || (current_present && current as usize != operation.post_method)
+        {
+            return false;
+        }
+    }
+    true
+}
+
+unsafe extern "C" fn rust_codegen_reconcile_candidate(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen reconcileCandidate: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen reconcileCandidate: expects one unit");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let (active, operations) = {
+        let Ok(candidates) = CANDIDATES.lock() else {
+            note_error(b"RustCodegen candidate registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(candidate) = candidates
+            .iter()
+            .find(|candidate| candidate.unit == values[0] as usize)
+        else {
+            note_error(b"RustCodegen candidate unit is unknown");
+            return api.nilObj;
+        };
+        (candidate.active, candidate.operations.clone())
+    };
+    if !active {
+        return values[0];
+    }
+    if unsafe { candidate_operations_match_post(api, runtime, &operations) } {
+        return values[0];
+    }
+    let drifted = unsafe { intern(api, b"drifted\0") };
+    let _ = unsafe { assert_candidate_fact(api, runtime, values[0], b"state\0", drifted) };
+    let _ = unsafe {
+        assert_candidate_fact(
+            api,
+            runtime,
+            values[0],
+            b"rollbackAvailable\0",
+            api.falseObj,
+        )
+    };
+    note_error(b"RustCodegen candidate dispatch drifted");
+    api.nilObj
+}
+
+unsafe extern "C" fn rust_codegen_reconcile_all_candidates(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen reconcileAllCandidates: expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let units = if let Ok(candidates) = CANDIDATES.lock() {
+        candidates
+            .iter()
+            .filter(|candidate| candidate.active)
+            .map(|candidate| candidate.unit as Oop)
+            .collect::<Vec<_>>()
+    } else {
+        note_error(b"RustCodegen candidate registry is unavailable");
+        return api.nilObj;
+    };
+    for unit in units {
+        let result =
+            unsafe { rust_codegen_reconcile_candidate(runtime.rust_codegen as Oop, &unit, 1) };
+        if result == api.nilObj {
+            return api.nilObj;
+        }
+    }
+    api.trueObj
+}
+
 unsafe extern "C" fn rust_codegen_prepare_rollback(
     _self_object: Oop,
     pointer: *const Oop,
@@ -3341,6 +3447,16 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, DISCARD_PREPARED_SELECTOR),
             rust_codegen_discard_prepared,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, RECONCILE_CANDIDATE_SELECTOR),
+            rust_codegen_reconcile_candidate,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, RECONCILE_ALL_CANDIDATES_SELECTOR),
+            rust_codegen_reconcile_all_candidates,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

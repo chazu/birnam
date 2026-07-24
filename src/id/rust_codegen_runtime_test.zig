@@ -550,6 +550,8 @@ test "Rust Codegen inspects and maps a Zig candidate" {
         api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2),
     );
     try std.testing.expectEqual(@as(i64, 123), api.smallIntValue(api.send(api.mkSmallInt(3), api.intern("rustCandidateAnswer"), &.{}, 0)));
+    try std.testing.expectEqual(unit, api.send(rust_codegen, api.intern("reconcileCandidate:"), &.{unit}, 1));
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("reconcileAllCandidates"), &.{}, 0));
     const rollback_token = api.send(rust_codegen, api.intern("prepareRollback:"), &.{unit}, 1);
     try std.testing.expect(rollback_token != api.nilObj);
     const rolled_back = api.send(rust_codegen, api.intern("commitPreparedRollback:"), &.{rollback_token}, 1);
