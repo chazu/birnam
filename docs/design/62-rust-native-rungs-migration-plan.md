@@ -1520,6 +1520,15 @@ filesystem access outside the pure emitter and leaves project-root embedding,
 dependency-list derivation, host-capability policy, and image handoff for the
 remaining N6.4 work.
 
+Rust artifact descriptors now also derive static module metadata from the Rust
+PEG tree: `Module named:requires:` supplies the identity and Birnam dependency
+symbols, while canonical `Alien dlopen:` sends supply distinct native-library
+strings. The existing inert Artifact inspector verifies the resulting counts
+and identity before any initializer runs. Descriptor fallback still uses the
+output filename for source without a module declaration; source/revision
+digest enrichment and capability-policy enforcement remain subsequent N6.4
+slices.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
