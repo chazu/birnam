@@ -1239,6 +1239,11 @@ platform skips on both floors. It covers mapped compiled code, image save/load,
 compiled-unit replay, and the existing image composition paths without changing
 the canonical Zig TCC selection.
 
+The installed Rust TCC audit now fails closed on its exact 22 runtime exports,
+`module_init`, `@rpath/libbirnam_id_tcc_rust.dylib` install name, and allowed
+Darwin dependency set. It also caught and closed the Cargo build-tree install
+name before the audit was added.
+
 The benchmark driver now accepts `BENCH_TCC=rust` as an observation-only
 override. A quick ReleaseSafe Rust-floor run through the explicit Rust TCC
 completed the full suite; `compile.stage1-stdlib` measured 40,682 µs median
