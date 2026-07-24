@@ -497,7 +497,7 @@ test "Rust Codegen retains registered module sources across collection" {
     );
 }
 
-test "Rust Codegen inspects a Zig candidate before mapping" {
+test "Rust Codegen inspects and maps a Zig candidate" {
     const api = try setup();
     const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
     const old_codegen = api.import("Codegen") orelse return error.MissingCodegen;
@@ -533,6 +533,12 @@ test "Rust Codegen inspects a Zig candidate before mapping" {
     );
     try std.testing.expectEqual(
         api.falseObj,
+        api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("mapped") }, 2),
+    );
+    const mapped = api.send(rust_codegen, api.intern("mapCandidate:"), &.{unit}, 1);
+    try std.testing.expectEqual(unit, mapped);
+    try std.testing.expectEqual(
+        api.trueObj,
         api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("mapped") }, 2),
     );
 }

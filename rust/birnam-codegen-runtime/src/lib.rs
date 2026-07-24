@@ -14,9 +14,11 @@ use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::ffi::{CStr, OsStr};
+use std::ffi::{CStr, OsStr, OsString};
 use std::fs;
-use std::os::unix::ffi::OsStrExt;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
@@ -57,6 +59,7 @@ const INITIAL_GENERATION_PROJECTION_SELECTOR: &[u8] = b"initialGenerationProject
 const SUCCESSOR_GENERATION_PROJECTION_SELECTOR: &[u8] =
     b"successorGenerationProjection:replacing:with:unit:\0";
 const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
+const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -69,6 +72,8 @@ const GLOBAL_AT_PUT_SELECTOR: &[u8] = b"at:put:\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const STORE_ASSERT_SELECTOR: &[u8] = b"assert:attr:value:\0";
+const MODULE_NAME: &[u8] = b"Module\0";
+const MODULE_IS_LOADED_SELECTOR: &[u8] = b"isLoaded:\0";
 const MAX_CST_DEPTH: usize = 4096;
 const ARTIFACT_ABI: &[u8] = b"birnam-artifact-generation-v1";
 const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
@@ -94,6 +99,10 @@ static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 
+unsafe extern "C" {
+    fn dlclose(handle: *mut c_void) -> i32;
+}
+
 #[allow(dead_code)]
 struct CandidateState {
     unit: usize,
@@ -106,6 +115,12 @@ struct CandidateState {
     method_digest: [u8; 64],
     revision_digest: [u8; 64],
     manifest: Vec<u8>,
+    requires: Vec<Vec<u8>>,
+    handle: usize,
+    validate: usize,
+    prepare: usize,
+    activate: usize,
+    rollback: usize,
 }
 
 fn abort(message: &str) -> ! {
@@ -443,6 +458,13 @@ unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
     debug_assert_eq!(name.last(), Some(&0));
     // SAFETY: names are static NUL-terminated selector/export bytes.
     unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
+}
+
+unsafe fn intern_bytes(api: &IdApi, name: &[u8]) -> Oop {
+    let mut terminated = Vec::with_capacity(name.len() + 1);
+    terminated.extend_from_slice(name);
+    terminated.push(0);
+    unsafe { (api.intern)(terminated.as_ptr().cast::<c_char>()) }
 }
 
 unsafe fn send(api: &IdApi, receiver: Oop, selector: &[u8], args: &[Oop]) -> Oop {
@@ -1886,6 +1908,60 @@ fn fixed_macho_name(bytes: &[u8]) -> Option<&[u8]> {
     Some(&bytes[..end])
 }
 
+fn publish_exclusive(path: &Path, bytes: &[u8]) -> Option<()> {
+    match fs::read(path) {
+        Ok(existing) => return (existing == bytes).then_some(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return None,
+    }
+    let mut file = match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            return fs::read(path)
+                .ok()
+                .filter(|existing| existing == bytes)
+                .map(|_| ());
+        }
+        Err(_) => return None,
+    };
+    if file.write_all(bytes).is_err() || file.sync_all().is_err() {
+        drop(file);
+        let _ = fs::remove_file(path);
+        return None;
+    }
+    Some(())
+}
+
+fn ensure_candidate_content_path(author_path: &[u8], checksum: &[u8; 64]) -> Option<Vec<u8>> {
+    let source_path = Path::new(OsStr::from_bytes(author_path));
+    let parent = source_path
+        .parent()
+        .unwrap_or_else(|| Path::new(OsStr::from_bytes(b".")));
+    let object_dir = parent.join(".birnam-candidates");
+    fs::create_dir_all(&object_dir).ok()?;
+
+    let source = fs::read(source_path).ok()?;
+    if sha256_hex(&source) != *checksum {
+        return None;
+    }
+    let mut file_name = OsString::from_vec(checksum.to_vec());
+    file_name.push(".dylib");
+    let destination = object_dir.join(file_name);
+    publish_exclusive(&destination, &source)?;
+    let published = fs::read(&destination).ok()?;
+    if sha256_hex(&published) != *checksum {
+        return None;
+    }
+
+    let mut author_sidecar = author_path.to_vec();
+    author_sidecar.extend_from_slice(b".candidate");
+    let sidecar = fs::read(Path::new(OsStr::from_bytes(&author_sidecar))).ok()?;
+    let mut destination_sidecar = destination.as_os_str().as_bytes().to_vec();
+    destination_sidecar.extend_from_slice(b".candidate");
+    publish_exclusive(Path::new(OsStr::from_bytes(&destination_sidecar)), &sidecar)?;
+    Some(destination.as_os_str().as_bytes().to_vec())
+}
+
 /// Apply the frozen candidate Mach-O policy before any `dlopen` or initializer
 /// can run. This mirrors the Zig Codegen check byte-for-byte at the contract
 /// level: thin arm64 dylib, no init sections, and only libSystem as a load
@@ -1986,7 +2062,7 @@ unsafe fn candidate_manifest_vector(api: &IdApi, metadata: &RevisionMetadata) ->
     }
     let mut values = unsafe { send0(api, vector, NEW_SELECTOR) };
     for requirement in &metadata.requires {
-        let requirement = unsafe { (api.intern)(requirement.as_ptr().cast()) };
+        let requirement = unsafe { intern_bytes(api, requirement) };
         values = unsafe { send(api, values, b"add:\0", &[requirement]) };
     }
     values
@@ -2070,7 +2146,7 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
         note_error(b"RustCodegen candidate metadata mismatches source");
         return api.nilObj;
     }
-    let name = unsafe { (api.intern)(metadata.name.as_ptr().cast()) };
+    let name = unsafe { intern_bytes(api, &metadata.name) };
     if let Ok(candidates) = CANDIDATES.lock()
         && let Some(existing) = candidates
             .iter()
@@ -2143,11 +2219,224 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             method_digest: metadata.method_digest,
             revision_digest: metadata.revision_digest,
             manifest: envelope.manifest.to_vec(),
+            requires: metadata.requires.clone(),
+            handle: 0,
+            validate: 0,
+            prepare: 0,
+            activate: 0,
+            rollback: 0,
         });
         return values[1];
     }
     note_error(b"RustCodegen candidate registry is unavailable");
     api.nilObj
+}
+
+unsafe fn map_candidate_failure(api: &IdApi, handle: *mut c_void, message: &[u8]) -> Oop {
+    if !handle.is_null() {
+        // SAFETY: the handle came from this map attempt and has not been
+        // retained in the live candidate registry.
+        unsafe { dlclose(handle) };
+    }
+    note_error(message);
+    api.nilObj
+}
+
+unsafe fn direct_method_present(api: &IdApi, target: Oop, selector: Oop) -> bool {
+    let vtable = unsafe { (api.vtableOf)(target) };
+    if vtable.is_null() {
+        return false;
+    }
+    let mut index = 0;
+    loop {
+        let entry = unsafe { (api.vtableSelectorAt)(vtable, index) };
+        if entry.is_null() {
+            return false;
+        }
+        if entry == selector {
+            return true;
+        }
+        index = index.saturating_add(1);
+    }
+}
+
+unsafe extern "C" fn rust_codegen_map_candidate(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen mapCandidate: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen mapCandidate: expects one unit");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+
+    let (author_path, checksum, manifest, requires, existing_handle) = {
+        let Ok(candidates) = CANDIDATES.lock() else {
+            note_error(b"RustCodegen candidate registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(candidate) = candidates
+            .iter()
+            .find(|candidate| candidate.unit == values[0] as usize)
+        else {
+            note_error(b"RustCodegen candidate unit is unknown");
+            return api.nilObj;
+        };
+        (
+            candidate.author_path.clone(),
+            candidate.checksum,
+            candidate.manifest.clone(),
+            candidate.requires.clone(),
+            candidate.handle,
+        )
+    };
+    if existing_handle != 0 {
+        let _ = unsafe { assert_candidate_fact(api, runtime, values[0], b"mapped\0", api.trueObj) };
+        return values[0];
+    }
+
+    if !requires.is_empty() {
+        let module = unsafe { (api.import)(MODULE_NAME.as_ptr().cast()) };
+        if module.is_null() || module == api.nilObj {
+            note_error(b"RustCodegen candidate dependencies are missing");
+            return api.nilObj;
+        }
+        for requirement in &requires {
+            let requirement = unsafe { intern_bytes(api, requirement) };
+            if unsafe { send(api, module, MODULE_IS_LOADED_SELECTOR, &[requirement]) }
+                != api.trueObj
+            {
+                note_error(b"RustCodegen candidate dependencies are missing");
+                return api.nilObj;
+            }
+        }
+    }
+
+    let Some(content_path) = ensure_candidate_content_path(&author_path, &checksum) else {
+        note_error(b"RustCodegen candidate publication failed");
+        return api.nilObj;
+    };
+    let mut content_path_z = content_path;
+    content_path_z.push(0);
+    // RTLD_LAZY | RTLD_GLOBAL: candidates resolve the frozen birnam_* ABI from
+    // the already-loaded native rung set, matching the Zig mapper.
+    let handle = unsafe { (api.dlopen)(content_path_z.as_ptr().cast(), 9) };
+    if handle.is_null() {
+        note_error(b"RustCodegen candidate mapping failed");
+        return api.nilObj;
+    }
+    let abi_symbol = unsafe { (api.dlsym)(handle, c"__birnam_artifact_abi".as_ptr()) };
+    if abi_symbol.is_null()
+        || unsafe { CStr::from_ptr(abi_symbol.cast::<c_char>()) }.to_bytes() != ARTIFACT_ABI
+    {
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen candidate ABI mismatches")
+        };
+    }
+    let manifest_symbol = unsafe { (api.dlsym)(handle, c"__birnam_candidate_manifest".as_ptr()) };
+    if manifest_symbol.is_null()
+        || unsafe { CStr::from_ptr(manifest_symbol.cast::<c_char>()) }.to_bytes() != manifest
+    {
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen candidate manifest mismatches")
+        };
+    }
+    let validate_symbol = unsafe { (api.dlsym)(handle, c"__birnam_candidate_validate".as_ptr()) };
+    let prepare_symbol = unsafe { (api.dlsym)(handle, c"__birnam_candidate_prepare".as_ptr()) };
+    let activate_symbol = unsafe { (api.dlsym)(handle, c"__birnam_candidate_activate".as_ptr()) };
+    let rollback_symbol = unsafe { (api.dlsym)(handle, c"__birnam_candidate_rollback".as_ptr()) };
+    let init_symbol = unsafe { (api.dlsym)(handle, c"__birnam_unit_init".as_ptr()) };
+    if validate_symbol.is_null()
+        || prepare_symbol.is_null()
+        || activate_symbol.is_null()
+        || rollback_symbol.is_null()
+        || init_symbol.is_null()
+    {
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen candidate hooks are unavailable")
+        };
+    }
+
+    // SAFETY: the generated candidate ABI exports these exact function
+    // signatures, and all calls occur while the dlopen handle is retained.
+    let init: unsafe extern "C" fn() = unsafe { core::mem::transmute(init_symbol) };
+    let validate: Method = unsafe { core::mem::transmute(validate_symbol) };
+    unsafe { init() };
+    if unsafe { validate(api.nilObj, ptr::null(), 0) } != api.trueObj {
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen candidate validation failed")
+        };
+    }
+
+    let Ok(parsed_manifest) = inspect_manifest(&manifest) else {
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen candidate manifest is invalid")
+        };
+    };
+    for index in 0..parsed_manifest.operation_count() {
+        let Some(operation) = parsed_manifest.operation(index) else {
+            return unsafe {
+                map_candidate_failure(api, handle, b"RustCodegen candidate manifest is invalid")
+            };
+        };
+        if operation.install {
+            continue;
+        }
+        let target_name = unsafe { intern_bytes(api, operation.target) };
+        let target = unsafe {
+            send(
+                api,
+                runtime.globals as Oop,
+                GLOBAL_AT_SELECTOR,
+                &[target_name],
+            )
+        };
+        let selector = unsafe { intern_bytes(api, operation.selector) };
+        if target.is_null()
+            || target == api.nilObj
+            || !unsafe { direct_method_present(api, target, selector) }
+        {
+            return unsafe {
+                map_candidate_failure(api, handle, b"RustCodegen candidate validation failed")
+            };
+        }
+    }
+
+    let mapped =
+        unsafe { assert_candidate_fact(api, runtime, values[0], b"mapped\0", api.trueObj) };
+    if !mapped {
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen candidate Store is unavailable")
+        };
+    }
+    let Ok(mut candidates) = CANDIDATES.lock() else {
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen candidate registry is unavailable",
+            )
+        };
+    };
+    let Some(candidate) = candidates
+        .iter_mut()
+        .find(|candidate| candidate.unit == values[0] as usize)
+    else {
+        drop(candidates);
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen candidate unit is unknown")
+        };
+    };
+    candidate.handle = handle as usize;
+    candidate.validate = validate_symbol as usize;
+    candidate.prepare = prepare_symbol as usize;
+    candidate.activate = activate_symbol as usize;
+    candidate.rollback = rollback_symbol as usize;
+    values[0]
 }
 
 unsafe extern "C" fn rust_codegen_load(
@@ -2361,6 +2650,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, INSPECT_CANDIDATE_SELECTOR),
             rust_codegen_inspect_candidate,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, MAP_CANDIDATE_SELECTOR),
+            rust_codegen_map_candidate,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
