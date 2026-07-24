@@ -2293,6 +2293,10 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
                 return api.nilObj;
             };
             let Some(fact) = next else { break };
+            if fact.op > 1 {
+                note_error(b"RustCodegen image facts operation is invalid");
+                return api.nilObj;
+            }
             let Ok(entity) = (unsafe {
                 materialize_image_field_with_relocations(api, fact.entity, Some(&relocations))
             }) else {

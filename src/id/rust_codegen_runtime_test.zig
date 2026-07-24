@@ -303,6 +303,23 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try image.appendSlice(std.testing.allocator, facts.items);
     try tmp.dir.writeFile(.{ .sub_path = "facts.image", .data = image.items });
 
+    const invalid_op_image_path = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "{s}/invalid-op-facts.image",
+        .{directory},
+    );
+    defer std.testing.allocator.free(invalid_op_image_path);
+    var invalid_op_image: std.ArrayList(u8) = .{};
+    defer invalid_op_image.deinit(std.testing.allocator);
+    try invalid_op_image.appendSlice(std.testing.allocator, image.items);
+    // Header (28) + authority record (76) + facts record header (12) + basis
+    // and count (12) reaches the first fact's op byte.
+    invalid_op_image.items[128] = 2;
+    try tmp.dir.writeFile(.{
+        .sub_path = "invalid-op-facts.image",
+        .data = invalid_op_image.items,
+    });
+
     // An unresolved heap reference must fail before Rust Store can observe a
     // partial fact. A second image below supplies the heap record and proves
     // the relocation path succeeds.
@@ -444,6 +461,10 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     });
 
     const image_object = api.mkString(image_path.ptr, image_path.len);
+    const invalid_op_image_object = api.mkString(
+        invalid_op_image_path.ptr,
+        invalid_op_image_path.len,
+    );
     const heap_image_object = api.mkString(heap_image_path.ptr, heap_image_path.len);
     const materialized_heap_image_object = api.mkString(
         materialized_heap_image_path.ptr,
@@ -467,6 +488,32 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try std.testing.expectEqual(
         api.trueObj,
         api.send(codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0),
+    );
+    const invalid_op_rejected = api.send(
+        codegen,
+        api.intern("replayImageFacts:"),
+        &.{invalid_op_image_object},
+        1,
+    );
+    try std.testing.expectEqual(api.nilObj, invalid_op_rejected);
+    const invalid_op_diagnostic = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    var invalid_op_diagnostic_len: usize = 0;
+    const invalid_op_diagnostic_bytes = api.stringBytes(invalid_op_diagnostic, &invalid_op_diagnostic_len);
+    try std.testing.expect(
+        std.mem.indexOf(
+            u8,
+            invalid_op_diagnostic_bytes[0..invalid_op_diagnostic_len],
+            "operation is invalid",
+        ) != null,
+    );
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(
+            store,
+            api.intern("currentValue:attr:"),
+            &.{ api.intern("factEntity"), api.intern("factAttr") },
+            2,
+        ),
     );
     const heap_rejected = api.send(codegen, api.intern("replayImageFacts:"), &.{heap_image_object}, 1);
     try std.testing.expectEqual(api.nilObj, heap_rejected);
