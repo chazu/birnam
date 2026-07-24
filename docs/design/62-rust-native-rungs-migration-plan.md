@@ -1438,10 +1438,12 @@ and lower through the pure emitter. `eval:` then drives the explicit Rust TCC
 object through `new`, `compile:`, `bindRuntime`, `relocate`, and
 `install:as:on:` before dispatching the generated `__ev` Method. The dedicated
 IdApi test now passes both deterministic emission and scalar native evaluation
-(`7 -> 7`) with Rust PEG and Rust TCC loaded from installed paths. This slice
-does not yet implement persistent globals, error publication, closure-owner
-lifetime, compile-to-dylib output, metadata, candidate lifecycle, or image
-recovery; those remain N6.3–N6.6 gates.
+(`7 -> 7`) with Rust PEG and Rust TCC loaded from installed paths. It also
+invokes an emitted identity block immediately (`[:x | x] value: 4 -> 4`), but
+does not yet claim post-collection closure ownership: each eval has no
+disposable-unit or registered-owner protocol. Persistent globals, error
+publication, compile-to-dylib output, metadata, candidate lifecycle, and image
+recovery remain N6.3–N6.6 gates.
 
 ### N6.3 — Port eval and compile orchestration
 
