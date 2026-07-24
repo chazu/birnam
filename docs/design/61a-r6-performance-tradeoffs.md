@@ -275,3 +275,9 @@ replacement now proves the Rust reconciliation boundary marks the candidate
 `drifted`, disables `rollbackAvailable`, and rejects rollback preparation. The
 R6 functional pin advanced to 22 at `d7820a3`; the complete gate passed with
 22/22 focused tests and the same two accepted benchmark crossings.
+
+The prepared-token discard fixture landed at `bf9e12e`: `discardPrepared:` now
+has executable coverage that consumes a mapped candidate's preparation token
+without activation or Store state publication. The R6 pin advanced to 23 at
+`42513c7`; the complete gate passed with 23/23 focused tests and no change to
+the accepted benchmark snapshot.

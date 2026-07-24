@@ -2034,6 +2034,12 @@ rollback preparation. The R6 exact-output pin advanced to 22 at `d7820a3`; the
 complete gate passed with the same fixture quarantine and only the two accepted
 benchmark crossings.
 
+The N6.5 token checkpoint at `bf9e12e` adds coverage for
+`discardPrepared:`: a mapped candidate's prepared token is consumed without
+activation, publication, or residual rollback state. The R6 exact-output pin
+advanced to 23 at `42513c7`; the complete gate passed with the same fixture
+quarantine and benchmark allowance.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
