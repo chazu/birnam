@@ -330,18 +330,19 @@ fn append_c_string(output: &mut Vec<u8>, bytes: &[u8]) {
 fn artifact_source(
     source: &[u8],
     identity: &[u8],
+    source_digest: &[u8; 64],
+    revision_digest: &[u8; 64],
     requires: &[Vec<u8>],
     native_requires: &[Vec<u8>],
     generated: &[u8],
 ) -> Vec<u8> {
-    let digest = sha256_hex(source);
     let mut payload = Vec::new();
     descriptor_field(&mut payload, b"module");
     descriptor_field(&mut payload, identity);
     descriptor_field(&mut payload, ARTIFACT_ABI);
     descriptor_field(&mut payload, ARTIFACT_TARGET);
-    descriptor_field(&mut payload, &digest);
-    descriptor_field(&mut payload, &digest);
+    descriptor_field(&mut payload, source_digest);
+    descriptor_field(&mut payload, revision_digest);
     descriptor_owned_list(&mut payload, requires);
     descriptor_owned_list(&mut payload, native_requires);
     descriptor_list(&mut payload, &[b"activate", b"source", b"reflection"]);
@@ -1770,9 +1771,15 @@ unsafe fn rust_codegen_compile_output_impl(
         }
         None => (artifact_identity(&path_bytes), Vec::new(), Vec::new()),
     };
+    let source_digest = sha256_hex(&source_bytes);
+    let revision_digest = unsafe { parse_revision_metadata(api, values[0]) }
+        .map(|(_, metadata)| metadata.revision_digest)
+        .unwrap_or(source_digest);
     let artifact = artifact_source(
         &source_bytes,
         &identity,
+        &source_digest,
+        &revision_digest,
         &requires,
         &native_requires,
         &source,
@@ -2099,6 +2106,8 @@ mod tests {
         let output = artifact_source(
             b"7",
             b"rust-codegen",
+            &sha256_hex(b"7"),
+            &sha256_hex(b"7"),
             &[],
             &[],
             b"void* __ev(void* self, void** args, long n){}",

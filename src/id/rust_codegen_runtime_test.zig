@@ -232,6 +232,11 @@ test "Rust Codegen descriptors preserve module and native requirements" {
     try std.testing.expectEqual(api.intern("metadataProbe"), api.send(descriptor, api.intern("identity"), &.{}, 0));
     try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(descriptor, api.intern("requiresCount"), &.{}, 0)));
     try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(descriptor, api.intern("nativeRequiresCount"), &.{}, 0)));
+    var descriptor_source_len: usize = 0;
+    var descriptor_revision_len: usize = 0;
+    const descriptor_source = api.stringBytes(api.send(descriptor, api.intern("sourceDigest"), &.{}, 0), &descriptor_source_len);
+    const descriptor_revision = api.stringBytes(api.send(descriptor, api.intern("revisionDigest"), &.{}, 0), &descriptor_revision_len);
+    try std.testing.expect(!std.mem.eql(u8, descriptor_source[0..descriptor_source_len], descriptor_revision[0..descriptor_revision_len]));
     try tmp.dir.deleteFile("libnative.dylib");
     const loaded = api.send(codegen, api.intern("load:"), &.{output}, 1);
     try std.testing.expectEqual(api.nilObj, loaded);
