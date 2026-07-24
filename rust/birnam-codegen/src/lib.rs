@@ -1,8 +1,10 @@
 //! Pure deterministic C-emission primitives for the N6.2 Codegen port.
 //!
 //! This crate deliberately has no IdApi, loader, allocator, or runtime
-//! dependency. It owns only byte-buffer construction; CST walking and runtime
-//! orchestration arrive in later N6.2/N6.3 slices.
+//! dependency. It owns byte-buffer construction and a pure CST-to-expression
+//! adapter; runtime orchestration arrives in later N6.2/N6.3 slices.
+
+use std::borrow::Cow;
 
 /// A bounded-independent byte emitter. Callers retain ownership of the returned
 /// translation-unit bytes and may compare them byte-for-byte with the Zig oracle.
@@ -38,7 +40,7 @@ pub enum Expr<'a> {
     False,
     Send {
         receiver: Box<Expr<'a>>,
-        selector: &'a [u8],
+        selector: Cow<'a, [u8]>,
         args: Vec<Expr<'a>>,
     },
 }
@@ -68,6 +70,7 @@ pub enum LowerError {
     InvalidSpan,
     MissingChild,
     InvalidSymbol,
+    InvalidShape,
     UnsupportedRule,
 }
 
@@ -78,34 +81,148 @@ pub enum LowerError {
 /// collections, and logic variables deliberately remain unsupported until the
 /// corresponding CST-shape slices are frozen.
 pub fn lower_literal<'a, N: CstNode>(node: &N, source: &'a [u8]) -> Result<Expr<'a>, LowerError> {
+    let node = skip_wrappers(node)?;
+    let span = span(node, source)?;
+    match node.rule() {
+        b"number" => Ok(Expr::SmallIntLiteral(span)),
+        b"float" => Ok(Expr::Float(span)),
+        b"string" => Ok(Expr::StringLiteral(span)),
+        b"symbol" => span
+            .strip_prefix(b"#")
+            .map(Expr::Symbol)
+            .ok_or(LowerError::InvalidSymbol),
+        b"ident" => match span {
+            b"nil" => Ok(Expr::Nil),
+            b"true" => Ok(Expr::True),
+            b"false" => Ok(Expr::False),
+            _ => Ok(Expr::Global(span)),
+        },
+        _ => Err(LowerError::UnsupportedRule),
+    }
+}
+
+fn skip_wrappers<N: CstNode>(node: &N) -> Result<&N, LowerError> {
     let mut current = node;
     for _ in 0..MAX_CST_WRAPPER_DEPTH {
         let rule = current.rule();
         if matches!(rule, b"expr" | b"primary" | b"message") && current.child_count() == 1 {
             current = current.child(0).ok_or(LowerError::MissingChild)?;
         } else {
-            let span = source
-                .get(current.start()..current.end())
-                .ok_or(LowerError::InvalidSpan)?;
-            return match rule {
-                b"number" => Ok(Expr::SmallIntLiteral(span)),
-                b"float" => Ok(Expr::Float(span)),
-                b"string" => Ok(Expr::StringLiteral(span)),
-                b"symbol" => span
-                    .strip_prefix(b"#")
-                    .map(Expr::Symbol)
-                    .ok_or(LowerError::InvalidSymbol),
-                b"ident" => match span {
-                    b"nil" => Ok(Expr::Nil),
-                    b"true" => Ok(Expr::True),
-                    b"false" => Ok(Expr::False),
-                    _ => Ok(Expr::Global(span)),
-                },
-                _ => Err(LowerError::UnsupportedRule),
-            };
+            return Ok(current);
         }
     }
     Err(LowerError::DepthLimit)
+}
+
+fn span<'a, N: CstNode>(node: &N, source: &'a [u8]) -> Result<&'a [u8], LowerError> {
+    source
+        .get(node.start()..node.end())
+        .ok_or(LowerError::InvalidSpan)
+}
+
+/// Lower an expression and its send/message shape without touching the
+/// runtime. The recursive depth bound is shared with emission so a malformed
+/// or adversarial CST cannot force unbounded native recursion.
+pub fn lower_expr<'a, N: CstNode>(node: &N, source: &'a [u8]) -> Result<Expr<'a>, LowerError> {
+    lower_expr_at_depth(node, source, 0)
+}
+
+fn lower_expr_at_depth<'a, N: CstNode>(
+    node: &N,
+    source: &'a [u8],
+    depth: usize,
+) -> Result<Expr<'a>, LowerError> {
+    if depth >= MAX_EXPR_DEPTH {
+        return Err(LowerError::DepthLimit);
+    }
+    let node = skip_wrappers(node)?;
+    match node.rule() {
+        b"number" | b"float" | b"string" | b"symbol" | b"ident" => lower_literal(node, source),
+        b"send" => lower_send(node, source, depth + 1),
+        _ => Err(LowerError::UnsupportedRule),
+    }
+}
+
+fn lower_send<'a, N: CstNode>(
+    node: &N,
+    source: &'a [u8],
+    depth: usize,
+) -> Result<Expr<'a>, LowerError> {
+    if node.child_count() != 2 {
+        return Err(LowerError::InvalidShape);
+    }
+    let receiver = lower_expr_at_depth(
+        node.child(0).ok_or(LowerError::MissingChild)?,
+        source,
+        depth,
+    )?;
+    let message = skip_wrappers(node.child(1).ok_or(LowerError::MissingChild)?)?;
+    if message.rule() == b"message" && message.child_count() > 1 {
+        let mut accumulated = receiver;
+        for index in 0..message.child_count() {
+            let part = message.child(index).ok_or(LowerError::MissingChild)?;
+            accumulated = lower_message(accumulated, part, source, depth)?;
+        }
+        return Ok(accumulated);
+    }
+    lower_message(receiver, message, source, depth)
+}
+
+fn lower_message<'a, N: CstNode>(
+    receiver: Expr<'a>,
+    message: &N,
+    source: &'a [u8],
+    depth: usize,
+) -> Result<Expr<'a>, LowerError> {
+    let message = skip_wrappers(message)?;
+    let (selector, args) = match message.rule() {
+        b"binaryMsg" => {
+            if message.child_count() != 2 {
+                return Err(LowerError::InvalidShape);
+            }
+            let selector = Cow::Borrowed(span(
+                message.child(0).ok_or(LowerError::MissingChild)?,
+                source,
+            )?);
+            let arg = lower_expr_at_depth(
+                message.child(1).ok_or(LowerError::MissingChild)?,
+                source,
+                depth,
+            )?;
+            (selector, vec![arg])
+        }
+        b"unaryMsg" => {
+            let selector = Cow::Borrowed(span(message, source)?);
+            (selector, Vec::new())
+        }
+        b"keywordMsg" => {
+            if message.child_count() == 0 || message.child_count() % 2 != 0 {
+                return Err(LowerError::InvalidShape);
+            }
+            let mut selector = Vec::new();
+            let mut args = Vec::with_capacity(message.child_count() / 2);
+            let mut index = 0;
+            while index < message.child_count() {
+                selector.extend_from_slice(span(
+                    message.child(index).ok_or(LowerError::MissingChild)?,
+                    source,
+                )?);
+                args.push(lower_expr_at_depth(
+                    message.child(index + 1).ok_or(LowerError::MissingChild)?,
+                    source,
+                    depth,
+                )?);
+                index += 2;
+            }
+            (Cow::Owned(selector), args)
+        }
+        _ => return Err(LowerError::UnsupportedRule),
+    };
+    Ok(Expr::Send {
+        receiver: Box::new(receiver),
+        selector,
+        args,
+    })
 }
 
 const C_RUNTIME_PRELUDE: &[u8] = br#"extern void* birnam_mkSmallInt(long v);
@@ -357,7 +474,7 @@ impl Emitter {
                 self.bytes.extend_from_slice(b"birnam_send(");
                 self.emit_expr_at_depth(receiver, depth + 1)?;
                 self.bytes.extend_from_slice(b", ");
-                self.emit_symbol(selector);
+                self.emit_symbol(selector.as_ref());
                 self.bytes.extend_from_slice(b", (void*[]){");
                 for (index, arg) in args.iter().enumerate() {
                     if index != 0 {
@@ -381,7 +498,11 @@ impl Emitter {
 
 #[cfg(test)]
 mod tests {
-    use super::{CstNode, EmitError, Emitter, Expr, LowerError, TranslationUnit, lower_literal};
+    use std::borrow::Cow;
+
+    use super::{
+        CstNode, EmitError, Emitter, Expr, LowerError, TranslationUnit, lower_expr, lower_literal,
+    };
 
     struct TestNode {
         rule: &'static [u8],
@@ -449,7 +570,7 @@ mod tests {
     fn emits_pure_expression_ir_and_refuses_unbounded_depth() {
         let expression = Expr::Send {
             receiver: Box::new(Expr::Global(b"Integer")),
-            selector: b"at:",
+            selector: Cow::Borrowed(b"at:"),
             args: vec![Expr::String(b"answer")],
         };
         let mut emitter = Emitter::new();
@@ -463,7 +584,7 @@ mod tests {
         for _ in 0..4096 {
             deep = Expr::Send {
                 receiver: Box::new(deep),
-                selector: b"value",
+                selector: Cow::Borrowed(b"value"),
                 args: Vec::new(),
             };
         }
@@ -475,7 +596,7 @@ mod tests {
     fn emits_float_singletons_and_source_string_escapes_like_zig() {
         let expression = Expr::Send {
             receiver: Box::new(Expr::Float(b"-0.25")),
-            selector: b"ifTrue:ifFalse:",
+            selector: Cow::Borrowed(b"ifTrue:ifFalse:"),
             args: vec![Expr::True, Expr::StringLiteral(br#""a\n\c""#)],
         };
         let mut emitter = Emitter::new();
@@ -547,6 +668,156 @@ mod tests {
         let mut emitter = Emitter::new();
         emitter.emit_expr(&Expr::SmallIntLiteral(b"-42")).unwrap();
         assert_eq!(emitter.finish(), b"MKV(-42L)");
+    }
+
+    #[test]
+    fn lowers_cst_sends_and_keyword_selector_parts_deterministically() {
+        let binary_source = b"[3 + 4]";
+        let binary = node(
+            b"send",
+            0,
+            binary_source.len(),
+            vec![
+                node(
+                    b"expr",
+                    1,
+                    2,
+                    vec![node(b"primary", 1, 2, vec![node(b"number", 1, 2, vec![])])],
+                ),
+                node(
+                    b"message",
+                    3,
+                    6,
+                    vec![node(
+                        b"binaryMsg",
+                        3,
+                        6,
+                        vec![
+                            node(b"binops", 3, 4, vec![]),
+                            node(
+                                b"expr",
+                                5,
+                                6,
+                                vec![node(b"primary", 5, 6, vec![node(b"number", 5, 6, vec![])])],
+                            ),
+                        ],
+                    )],
+                ),
+            ],
+        );
+        let mut emitter = Emitter::new();
+        emitter
+            .emit_expr(&lower_expr(&binary, binary_source).unwrap())
+            .unwrap();
+        assert_eq!(
+            emitter.finish(),
+            b"birnam_send(MKV(3L), birnam_intern(\"+\"), (void*[]){MKV(4L)}, 1L)"
+        );
+
+        let keyword_source = b"[x foo: 1 bar: 2]";
+        let keyword = node(
+            b"send",
+            0,
+            keyword_source.len(),
+            vec![
+                node(
+                    b"expr",
+                    1,
+                    2,
+                    vec![node(b"primary", 1, 2, vec![node(b"ident", 1, 2, vec![])])],
+                ),
+                node(
+                    b"message",
+                    3,
+                    16,
+                    vec![node(
+                        b"keywordMsg",
+                        3,
+                        16,
+                        vec![
+                            node(b"keyword", 3, 7, vec![]),
+                            node(
+                                b"expr",
+                                8,
+                                9,
+                                vec![node(b"primary", 8, 9, vec![node(b"number", 8, 9, vec![])])],
+                            ),
+                            node(b"keyword", 10, 14, vec![]),
+                            node(
+                                b"expr",
+                                15,
+                                16,
+                                vec![node(
+                                    b"primary",
+                                    15,
+                                    16,
+                                    vec![node(b"number", 15, 16, vec![])],
+                                )],
+                            ),
+                        ],
+                    )],
+                ),
+            ],
+        );
+        let mut emitter = Emitter::new();
+        emitter
+            .emit_expr(&lower_expr(&keyword, keyword_source).unwrap())
+            .unwrap();
+        assert_eq!(
+            emitter.finish(),
+            b"birnam_send(birnam_global(\"x\"), birnam_intern(\"foo:bar:\"), (void*[]){MKV(1L), MKV(2L)}, 2L)"
+        );
+    }
+
+    #[test]
+    fn folds_same_category_cst_message_chains_left_to_right() {
+        let source = b"[1 + 2 + 3]";
+        let number = |start, end| {
+            node(
+                b"expr",
+                start,
+                end,
+                vec![node(
+                    b"primary",
+                    start,
+                    end,
+                    vec![node(b"number", start, end, vec![])],
+                )],
+            )
+        };
+        let binary_message = |start, end, arg_start, arg_end| {
+            node(
+                b"binaryMsg",
+                start,
+                end,
+                vec![
+                    node(b"binops", start, start + 1, vec![]),
+                    number(arg_start, arg_end),
+                ],
+            )
+        };
+        let send = node(
+            b"send",
+            0,
+            source.len(),
+            vec![
+                number(1, 2),
+                node(
+                    b"message",
+                    3,
+                    10,
+                    vec![binary_message(3, 6, 5, 6), binary_message(7, 10, 9, 10)],
+                ),
+            ],
+        );
+        let mut emitter = Emitter::new();
+        emitter
+            .emit_expr(&lower_expr(&send, source).unwrap())
+            .unwrap();
+        assert_eq!(
+            emitter.finish(),
+            b"birnam_send(birnam_send(MKV(1L), birnam_intern(\"+\"), (void*[]){MKV(2L)}, 1L), birnam_intern(\"+\"), (void*[]){MKV(3L)}, 1L)"
+        );
     }
 
     #[test]
