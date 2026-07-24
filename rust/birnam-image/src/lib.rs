@@ -159,6 +159,20 @@ impl<'a> Image<'a> {
     pub fn records(&self) -> Records<'a> {
         self.records
     }
+
+    /// Validate every facts record's count and tagged-field framing without
+    /// resolving any symbol, export, or heap reference.
+    pub fn validate_facts(&self) -> Result<(), Error> {
+        let mut records = self.records();
+        while let Some(record) = records.next_record()? {
+            if record.kind != RecordKind::Facts {
+                continue;
+            }
+            let mut facts = Facts::parse(record.payload)?;
+            while facts.next_fact()?.is_some() {}
+        }
+        Ok(())
+    }
 }
 
 /// The v4 authority record is exactly one borrowed 64-byte generation digest.

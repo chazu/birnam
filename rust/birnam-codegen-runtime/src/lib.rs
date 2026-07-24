@@ -1997,8 +1997,12 @@ unsafe extern "C" fn rust_codegen_preflight_image(
         note_error(b"RustCodegen image preflight could not read the image");
         return api.nilObj;
     };
-    if Image::parse(&bytes).is_err() {
+    let Ok(image) = Image::parse(&bytes) else {
         note_error(b"RustCodegen image preflight framing is invalid");
+        return api.nilObj;
+    };
+    if image.validate_facts().is_err() {
+        note_error(b"RustCodegen image preflight facts are invalid");
         return api.nilObj;
     }
     api.trueObj

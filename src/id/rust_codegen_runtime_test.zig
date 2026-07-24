@@ -63,7 +63,7 @@ test "Rust Codegen preflights v4 image framing without loading it" {
     defer std.testing.allocator.free(directory);
     const valid_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/valid.image", .{directory});
     defer std.testing.allocator.free(valid_path);
-    var bytes: [28 + 12 + 64]u8 = undefined;
+    var bytes: [28 + 12 + 64 + 12 + 12]u8 = undefined;
     @memcpy(bytes[0..8], "BIRNAMIM");
     std.mem.writeInt(u32, bytes[8..12], 4, .little);
     std.mem.writeInt(u32, bytes[12..16], 0x0102_0304, .little);
@@ -72,6 +72,8 @@ test "Rust Codegen preflights v4 image framing without loading it" {
     std.mem.writeInt(u32, bytes[28..32], 5, .little);
     std.mem.writeInt(u64, bytes[32..40], 64, .little);
     @memset(bytes[40..], 0);
+    std.mem.writeInt(u32, bytes[104..108], 2, .little);
+    std.mem.writeInt(u64, bytes[108..116], 12, .little);
     try tmp.dir.writeFile(.{ .sub_path = "valid.image", .data = &bytes });
 
     const valid = api.mkString(valid_path.ptr, valid_path.len);
@@ -80,6 +82,23 @@ test "Rust Codegen preflights v4 image framing without loading it" {
         api.send(codegen, api.intern("preflightImage:"), &.{valid}, 1),
     );
 
+    std.mem.writeInt(u32, bytes[124..128], 1, .little);
+    try tmp.dir.writeFile(.{ .sub_path = "invalid-facts.image", .data = &bytes });
+    const invalid_facts_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/invalid-facts.image", .{directory});
+    defer std.testing.allocator.free(invalid_facts_path);
+    const invalid_facts = api.mkString(invalid_facts_path.ptr, invalid_facts_path.len);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(codegen, api.intern("preflightImage:"), &.{invalid_facts}, 1),
+    );
+    const facts_diagnostic = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    var facts_diagnostic_len: usize = 0;
+    const facts_diagnostic_bytes = api.stringBytes(facts_diagnostic, &facts_diagnostic_len);
+    try std.testing.expect(
+        std.mem.indexOf(u8, facts_diagnostic_bytes[0..facts_diagnostic_len], "facts") != null,
+    );
+
+    std.mem.writeInt(u32, bytes[124..128], 0, .little);
     bytes[0] = 'X';
     try tmp.dir.writeFile(.{ .sub_path = "invalid.image", .data = &bytes });
     const invalid_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/invalid.image", .{directory});
