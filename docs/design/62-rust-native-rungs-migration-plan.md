@@ -2211,6 +2211,13 @@ full R6 rerun passed at 42/42 with no benchmark allowance change. Numeric
 fault construction, self-hosted handlers, and canonical prelude cutover
 remain open.
 
+The numeric fault slice landed at `20a3847`. Rust division and modulo by zero
+now construct `zeroDivide` Errors, and negative Float `sqrt` constructs a
+`domain` Error through the shared two-OOP payload. The focused dynamic test
+covers integer, mixed, and Float zero-divide paths plus the negative-root
+path; the full R6 rerun passed at 42/42 with no benchmark allowance change.
+Self-hosted handlers and canonical prelude cutover remain open.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

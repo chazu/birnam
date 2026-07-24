@@ -426,3 +426,9 @@ body instead of discarding it, while ordinary body values remain discarded.
 The focused condition/body checks and the full 42/42 R6 rerun passed with no
 benchmark allowance change. Numeric fault construction, self-hosted handlers,
 and canonical prelude cutover remain open N7.1 work.
+
+The numeric fault slice landed at `20a3847`: Rust division and modulo by zero
+now construct `zeroDivide` Errors, and negative Float `sqrt` constructs a
+`domain` Error through the shared two-OOP payload. The focused numeric checks
+and the full 42/42 R6 rerun passed with no benchmark allowance change.
+Self-hosted handlers and canonical prelude cutover remain open N7.1 work.
