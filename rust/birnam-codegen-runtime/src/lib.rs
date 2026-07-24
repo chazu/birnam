@@ -3808,6 +3808,16 @@ unsafe extern "C" fn rust_codegen_enter_running(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
+    // A host calls enterRunning only after selecting the complete stack. In a
+    // Rust-only stack this is the first safe point to claim Store callbacks;
+    // when Zig Codegen is present, ensure_store_callbacks leaves its owner
+    // untouched under the single-registration law.
+    let legacy_codegen_present = unsafe { (api.isExported)(CODEGEN_NAME.as_ptr().cast()) != 0 };
+    unsafe { ensure_store_callbacks(api, runtime) };
+    if !legacy_codegen_present && !STORE_CALLBACKS_REGISTERED.load(Ordering::Acquire) {
+        note_error(b"RustCodegen cannot enter running without Store callbacks");
+        return api.nilObj;
+    }
     if RUNTIME_PHASE
         .compare_exchange(
             PHASE_BOOTSTRAPPING,

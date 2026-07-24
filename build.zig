@@ -640,6 +640,42 @@ pub fn build(b: *std.Build) void {
     );
     test_rust_codegen_runtime_step.dependOn(&run_rust_codegen_runtime_test.step);
     test_step.dependOn(&run_rust_codegen_runtime_test.step);
+
+    const rust_codegen_stack_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_codegen_stack_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_codegen_stack_test = b.addTest(.{ .root_module = rust_codegen_stack_test_mod });
+    const run_rust_codegen_stack_test = b.addRunArtifact(rust_codegen_stack_test);
+    run_rust_codegen_stack_test.setEnvironmentVariable(
+        "BIRNAM_ID_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id.dylib"),
+    );
+    run_rust_codegen_stack_test.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", "rust-id-v1");
+    run_rust_codegen_stack_test.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_codegen_stack_test.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    run_rust_codegen_stack_test.setEnvironmentVariable(
+        "BIRNAM_RUST_STORE_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
+    );
+    run_rust_codegen_stack_test.setEnvironmentVariable(
+        "BIRNAM_RUST_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
+    );
+    run_rust_codegen_stack_test.step.dependOn(bootstrap_install);
+    const test_rust_codegen_stack_step = b.step(
+        "test-rust-codegen-stack",
+        "Exercise Rust Codegen as the sole Rust Store callback owner",
+    );
+    test_rust_codegen_stack_step.dependOn(&run_rust_codegen_stack_test.step);
+    test_step.dependOn(&run_rust_codegen_stack_test.step);
     if (selected_floor == .rust) {
         const install_rust_floor = b.addInstallFileWithDir(
             b.path(b.fmt(
