@@ -1463,6 +1463,18 @@ full Error-object propagation and source-span formatting required by N6.3. The
 compile-output test also proves a lowering failure returns `nil` without
 creating the requested dylib.
 
+The generated-C global-read path is now wired through the installed Rust Store
+without adding a second global environment. `RustCodegen` imports the live
+`Globals` singleton, exports a narrow `birnam_global(const char*)` shim, and
+binds that symbol through the Rust TCC unit's `addSymbol:value:` boundary before
+relocation. The shared C prelude declares the shim explicitly, avoiding an
+implicit-function ABI mismatch on aarch64. The installed six-test runtime gate
+now stores `rust_codegen_answer` through `Globals at:put:` and proves that
+`rust_codegen_answer` evaluates to `41`; the existing scalar, block/GC,
+artifact-cleanup, and diagnostic checks remain green. This closes the global
+read portion of N6.3; full Error-object propagation, source-path metadata,
+candidate lifecycle, and image recovery remain open.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,

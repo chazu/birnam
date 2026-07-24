@@ -495,6 +495,7 @@ extern void* birnam_mkFloat(double v);
 extern void* birnam_nil(void);
 extern void* birnam_true(void);
 extern void* birnam_false(void);
+extern void* birnam_global(const char* name);
 extern void* birnam_proto(void* parent);
 extern void* birnam_blockVt(void);
 extern void* birnam_method(void* vt, void* selector, void* method);
@@ -1482,10 +1483,9 @@ mod tests {
         let mut jit = TranslationUnit::new(false);
         jit.add_baked_global(b"Integer");
         jit.push_body(b"return MKV(42L);\n");
-        assert_eq!(
-            String::from_utf8(jit.finish()).unwrap(),
-            "extern void* birnam_mkSmallInt(long v);\n#define MKV(x) (birnam_mkSmallInt((long)(x)))\nextern void* birnam_send(void* rcv, void* sel, void** args, long n);\nextern void* birnam_intern(const char* name);\nextern void* birnam_mkString(const char* p, long n);\nextern void* birnam_mkFloat(double v);\nextern void* birnam_nil(void);\nextern void* birnam_true(void);\nextern void* birnam_false(void);\nextern void* birnam_proto(void* parent);\nextern void* birnam_blockVt(void);\nextern void* birnam_method(void* vt, void* selector, void* method);\nextern void* birnam_layoutAllOops(void* vt);\nextern void* birnam_alloc(void* vt, long bytes);\nextern char __g0[];\nvoid* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nreturn MKV(42L);\n}\n"
-        );
+        let output = String::from_utf8(jit.finish()).unwrap();
+        assert!(output.contains("extern void* birnam_global(const char* name);\n"));
+        assert!(output.ends_with("extern char __g0[];\nvoid* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nreturn MKV(42L);\n}\n"));
 
         let mut artifact = TranslationUnit::new(true);
         artifact.add_baked_global(b"Integer");

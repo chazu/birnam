@@ -16,6 +16,7 @@ const RUST_CODEGEN_NAME: &[u8] = b"RustCodegen\0";
 const RUST_CODEGEN_VT_NAME: &[u8] = b"RustCodegenVt\0";
 const LANG_NAME: &[u8] = b"Lang\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
+const GLOBALS_NAME: &[u8] = b"Globals\0";
 const PEG_CST_VT_NAME: &[u8] = b"PegCstVt\0";
 const PARSE_SELECTOR: &[u8] = b"parse:\0";
 const RULE_NAME_SELECTOR: &[u8] = b"ruleName\0";
@@ -32,6 +33,8 @@ const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
 const RELOCATE_SELECTOR: &[u8] = b"relocate\0";
 const DISPOSABLE_SELECTOR: &[u8] = b"disposable\0";
+const ADD_SYMBOL_SELECTOR: &[u8] = b"addSymbol:value:\0";
+const GLOBAL_AT_SELECTOR: &[u8] = b"at:\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const MAX_CST_DEPTH: usize = 4096;
@@ -42,6 +45,7 @@ struct Runtime {
     rust_codegen_vt: usize,
     rust_codegen: usize,
     tcc: usize,
+    globals: usize,
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -83,6 +87,30 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
         // by this provider until process teardown.
         unsafe { mark(unit as Oop) };
     }
+}
+
+#[unsafe(no_mangle)]
+/// Resolve a generated global name through the live `Globals` object.
+///
+/// # Safety
+///
+/// `name` must be a readable NUL-terminated C string for the duration of the
+/// call, as required by the generated-C shim ABI.
+pub unsafe extern "C" fn birnam_global(name: *const c_char) -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let globals = runtime.globals as Oop;
+    if globals.is_null() || name.is_null() {
+        return api.nilObj;
+    }
+    let key = unsafe { (api.intern)(name) };
+    unsafe { send(api, globals, GLOBAL_AT_SELECTOR, &[key]) }
+}
+
+unsafe fn bind_global_shim(api: &IdApi, unit: Oop) -> bool {
+    let name = unsafe { (api.mkString)(b"birnam_global".as_ptr(), 13) };
+    let address = unsafe { (api.mkSmallInt)(birnam_global as *const () as usize as i64) };
+    unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) != api.nilObj }
 }
 
 fn retain_unit(unit: Oop) {
@@ -234,6 +262,7 @@ unsafe extern "C" fn rust_codegen_eval(
     }
     let c_source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
+        || !unsafe { bind_global_shim(api, unit) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
     {
@@ -350,11 +379,13 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         if tcc.is_null() {
             abort("RustCodegen requires Tcc to be loaded");
         }
+        let globals = unsafe { (host_api.import)(GLOBALS_NAME.as_ptr().cast()) };
         Runtime {
             api: api_pointer as usize,
             rust_codegen_vt: rust_codegen_vt as usize,
             rust_codegen: rust_codegen as usize,
             tcc: tcc as usize,
+            globals: globals as usize,
         }
     });
     let api = unsafe { api(&runtime) };

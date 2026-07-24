@@ -626,6 +626,10 @@ pub fn build(b: *std.Build) void {
         b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
     );
     run_rust_codegen_runtime_test.setEnvironmentVariable(
+        "BIRNAM_RUST_STORE_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
+    );
+    run_rust_codegen_runtime_test.setEnvironmentVariable(
         "BIRNAM_RUST_CODEGEN_DYLIB",
         b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
     );

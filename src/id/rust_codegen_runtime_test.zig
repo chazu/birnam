@@ -23,6 +23,7 @@ fn setup() !*idapi.IdApi {
     try load(api, "BIRNAM_RUST_PEG_DYLIB");
     lang.bringUp(api);
     try load(api, "BIRNAM_RUST_TCC_DYLIB");
+    try load(api, "BIRNAM_RUST_STORE_DYLIB");
     try load(api, "BIRNAM_RUST_CODEGEN_DYLIB");
     return api;
 }
@@ -114,4 +115,17 @@ test "Rust Codegen publishes and clears a diagnostic" {
     const value = api.send(codegen, api.intern("eval:"), &.{good_source}, 1);
     try std.testing.expect(api.isSmallInt(value) != 0);
     try std.testing.expect(api.send(codegen, api.intern("lastError"), &.{}, 0) == api.nilObj);
+}
+
+test "Rust Codegen resolves a global through Rust Store" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const globals = api.import("Globals") orelse return error.MissingGlobals;
+    const key = api.intern("rust_codegen_answer");
+    const value = api.mkSmallInt(41);
+    _ = api.send(globals, api.intern("at:put:"), &.{ key, value }, 2);
+    const source = api.mkString("rust_codegen_answer", 19);
+    const result = api.send(codegen, api.intern("eval:"), &.{source}, 1);
+    try std.testing.expect(api.isSmallInt(result) != 0);
+    try std.testing.expectEqual(@as(i64, 41), api.smallIntValue(result));
 }
