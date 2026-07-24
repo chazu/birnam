@@ -1465,6 +1465,14 @@ opens the resulting dylib and verifies both descriptor symbols before any
 initializer or entry point is invoked. Embedded source, dependency derivation,
 runtime initialization, and loader acceptance remain N6.4 work.
 
+The opt-in runtime now also exposes `RustCodegen load:` for that artifact
+boundary. It opens with lazy/global resolution, validates the ABI marker before
+calling `__birnam_unit_init`, dispatches the frozen `__ev` Method ABI, and
+retains successful handles for process lifetime. The installed gate compiles
+`7`, verifies the descriptor symbols, loads the dylib through Rust Codegen, and
+observes `7` again. Full descriptor inspection, host-capability policy, and
+image-generation handoff remain open.
+
 The diagnostic seam is also executable: every opt-in emit/eval/compile-output
 operation clears a process-local `lastError`, records a first failure message,
 and exposes it through `RustCodegen lastError`. The focused test proves a bad

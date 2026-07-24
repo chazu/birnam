@@ -9,6 +9,7 @@ use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use birnam_codegen::{Emitter, OwnedCst, TranslationUnit, lower_program};
 use core::ffi::{c_char, c_void};
 use core::ptr;
+use std::ffi::CStr;
 use std::sync::{Mutex, OnceLock};
 
 const IDENTITY: &[u8] = b"rust-codegen-n6.3-emitter\0";
@@ -30,6 +31,7 @@ const EVAL_PERSISTING_SELECTOR: &[u8] = b"evalPersisting:\0";
 const NEW_SELECTOR: &[u8] = b"new\0";
 const COMPILE_SELECTOR: &[u8] = b"compile:\0";
 const COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:\0";
+const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
 const RELOCATE_SELECTOR: &[u8] = b"relocate\0";
@@ -57,6 +59,7 @@ struct Runtime {
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static LAST_ERROR: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 static LIVE_UNITS: Mutex<Vec<usize>> = Mutex::new(Vec::new());
+static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 
 fn abort(message: &str) -> ! {
@@ -588,6 +591,60 @@ unsafe extern "C" fn rust_codegen_compile_output(
     }
 }
 
+unsafe extern "C" fn rust_codegen_load(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen load: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen load: expects one path argument");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let Some(mut path) = (unsafe { string_bytes(api, values[0]) }) else {
+        note_error(b"RustCodegen load path was not a String");
+        return api.nilObj;
+    };
+    path.push(0);
+    // RTLD_LAZY | RTLD_GLOBAL: generated artifacts intentionally resolve their
+    // frozen birnam_* runtime ABI from the loaded native rung set.
+    let handle = unsafe { (api.dlopen)(path.as_ptr().cast(), 9) };
+    if handle.is_null() {
+        note_error(b"RustCodegen could not open the compiled dylib");
+        return api.nilObj;
+    }
+    let abi_symbol = unsafe { (api.dlsym)(handle, c"__birnam_artifact_abi".as_ptr()) };
+    if abi_symbol.is_null() {
+        note_error(b"RustCodegen artifact ABI marker is missing");
+        return api.nilObj;
+    }
+    // SAFETY: the artifact contract requires a NUL-terminated immutable ABI
+    // marker exported alongside the descriptor.
+    let abi = unsafe { CStr::from_ptr(abi_symbol.cast::<c_char>()) };
+    if abi.to_bytes() != ARTIFACT_ABI {
+        note_error(b"RustCodegen artifact ABI marker is incompatible");
+        return api.nilObj;
+    }
+    let init_symbol = unsafe { (api.dlsym)(handle, c"__birnam_unit_init".as_ptr()) };
+    let entry_symbol = unsafe { (api.dlsym)(handle, c"__ev".as_ptr()) };
+    if init_symbol.is_null() || entry_symbol.is_null() {
+        note_error(b"RustCodegen artifact entry points are incomplete");
+        return api.nilObj;
+    }
+    // SAFETY: validated artifact exports use the frozen no-argument initializer
+    // and Method ABI entry point.
+    let init: unsafe extern "C" fn() = unsafe { core::mem::transmute(init_symbol) };
+    let entry: Method = unsafe { core::mem::transmute(entry_symbol) };
+    unsafe { init() };
+    if let Ok(mut handles) = LIVE_ARTIFACT_HANDLES.lock() {
+        handles.push(handle as usize);
+    }
+    unsafe { entry(api.nilObj, ptr::null(), 0) }
+}
+
 unsafe extern "C" fn rust_codegen_last_error(
     _self_object: Oop,
     _pointer: *const Oop,
@@ -661,6 +718,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, COMPILE_OUTPUT_SELECTOR),
             rust_codegen_compile_output,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, LOAD_SELECTOR),
+            rust_codegen_load,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

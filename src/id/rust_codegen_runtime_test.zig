@@ -109,6 +109,9 @@ test "Rust Codegen writes a compiled dylib through Rust TCC" {
     try std.testing.expectEqualStrings("birnam-artifact-generation-v1", std.mem.span(abi));
     _ = api.dlsym(handle, "__birnam_artifact_descriptor") orelse
         return error.ArtifactDescriptorMissing;
+    const loaded = api.send(codegen, api.intern("load:"), &.{output}, 1);
+    try std.testing.expect(api.isSmallInt(loaded) != 0);
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(loaded));
 
     const bad_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_codegen_bad.dylib", .{directory});
     defer std.testing.allocator.free(bad_path);
