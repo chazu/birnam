@@ -169,6 +169,64 @@ test "Rust Codegen preflights v4 image framing without loading it" {
     try std.testing.expect(
         std.mem.indexOf(u8, diagnostic_bytes[0..diagnostic_len], "framing") != null,
     );
+
+    // The runtime boundary preserves v4's one-authority/one-code policy; a
+    // second authority or a second code record is not an append-image format.
+    var duplicate_authority: [28 + 12 + 64 + 12 + 64]u8 = undefined;
+    @memcpy(duplicate_authority[0..28], bytes[0..28]);
+    std.mem.writeInt(u32, duplicate_authority[28..32], 5, .little);
+    std.mem.writeInt(u64, duplicate_authority[32..40], 64, .little);
+    @memset(duplicate_authority[40..104], 0);
+    std.mem.writeInt(u32, duplicate_authority[104..108], 5, .little);
+    std.mem.writeInt(u64, duplicate_authority[108..116], 64, .little);
+    @memset(duplicate_authority[116..], 0);
+    try tmp.dir.writeFile(.{ .sub_path = "duplicate-authority.image", .data = &duplicate_authority });
+    const duplicate_authority_path = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "{s}/duplicate-authority.image",
+        .{directory},
+    );
+    defer std.testing.allocator.free(duplicate_authority_path);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(
+            codegen,
+            api.intern("preflightImage:"),
+            &.{api.mkString(duplicate_authority_path.ptr, duplicate_authority_path.len)},
+            1,
+        ),
+    );
+
+    var duplicate_code: [28 + 12 + 64 + 12 + 72 + 12 + 72]u8 = undefined;
+    @memcpy(duplicate_code[0..28], bytes[0..28]);
+    var offset: usize = 28;
+    std.mem.writeInt(u32, @ptrCast(&duplicate_code[offset]), 5, .little);
+    std.mem.writeInt(u64, @ptrCast(&duplicate_code[offset + 4]), 64, .little);
+    @memset(duplicate_code[offset + 12 .. offset + 76], 0);
+    offset += 76;
+    for (0..2) |_| {
+        std.mem.writeInt(u32, @ptrCast(&duplicate_code[offset]), 4, .little);
+        std.mem.writeInt(u64, @ptrCast(&duplicate_code[offset + 4]), 72, .little);
+        std.mem.writeInt(u64, @ptrCast(&duplicate_code[offset + 12]), std.hash.Wyhash.hash(0, &.{}), .little);
+        @memset(duplicate_code[offset + 20 .. offset + 84], 0);
+        offset += 84;
+    }
+    try tmp.dir.writeFile(.{ .sub_path = "duplicate-code.image", .data = &duplicate_code });
+    const duplicate_code_path = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "{s}/duplicate-code.image",
+        .{directory},
+    );
+    defer std.testing.allocator.free(duplicate_code_path);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(
+            codegen,
+            api.intern("preflightImage:"),
+            &.{api.mkString(duplicate_code_path.ptr, duplicate_code_path.len)},
+            1,
+        ),
+    );
 }
 
 test "Rust Codegen rejects a stale image authority before recovery" {
