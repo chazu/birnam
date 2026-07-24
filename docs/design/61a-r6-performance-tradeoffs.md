@@ -410,3 +410,8 @@ The Block loop slice landed at `36091e7`: the Rust prelude creates or reuses
 the exported `Block`/`BlockVt` family and installs stack-flat
 `whileTrue:`/`whileFalse:` native loops. Its focused 1/1 test and the full
 42/42 R6 rerun passed with no benchmark allowance changes.
+
+The System output slice landed at `25a877e`: the Rust prelude creates or
+reuses the exported `System`/`SystemVt` singleton and installs String-only
+`print:`/`println:` callbacks. Its focused checks and the full 42/42 R6 rerun
+passed with no benchmark allowance changes.

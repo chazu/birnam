@@ -2185,6 +2185,15 @@ three-check/two-body loop and passes at 1/1; the complete R6 rerun under the
 propagation from loop bodies, System, and canonical prelude cutover remain
 open N7.1 work.
 
+The System output slice landed at `25a877e`. The Rust prelude now creates or
+reuses the exported `System`/`SystemVt` singleton family and installs safe
+String-only `print:` and `println:` callbacks. The focused test checks both
+direct selector bindings and fail-closed count/type handling without writing
+into the test-runner protocol; Cargo check/test/clippy and the complete R6 gate
+passed, still with 42/42 focused tests and only the two existing benchmark
+crossings. File I/O, auto-stringification, Error-valued failures, and
+canonical prelude cutover remain open.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
