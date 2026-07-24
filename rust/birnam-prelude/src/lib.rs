@@ -155,20 +155,26 @@ unsafe extern "C" fn integer_div(self_object: Oop, args: *const Oop, count: usiz
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
         return api.nilObj;
     };
+    let zero_divide = match right {
+        Numeric::Integer(value) => value == 0,
+        Numeric::Float(value) => value == 0.0,
+    };
+    if zero_divide {
+        return unsafe { numeric_error(api, b"zeroDivide\0", b"division by zero") };
+    }
     match (left, right) {
-        (Numeric::Integer(left), Numeric::Integer(right)) if right != 0 => unsafe {
+        (Numeric::Integer(left), Numeric::Integer(right)) => unsafe {
             result(api, (left as i128) / (right as i128))
         },
-        (Numeric::Integer(left), Numeric::Float(right)) if right != 0.0 => unsafe {
+        (Numeric::Integer(left), Numeric::Float(right)) => unsafe {
             (api.mkFloat)(left as f64 / right)
         },
-        (Numeric::Float(left), Numeric::Integer(right)) if right != 0 => unsafe {
+        (Numeric::Float(left), Numeric::Integer(right)) => unsafe {
             (api.mkFloat)(left / right as f64)
         },
-        (Numeric::Float(left), Numeric::Float(right)) if right != 0.0 => unsafe {
+        (Numeric::Float(left), Numeric::Float(right)) => unsafe {
             (api.mkFloat)(left / right)
         },
-        _ => api.nilObj,
     }
 }
 
@@ -187,7 +193,7 @@ unsafe extern "C" fn integer_mod(self_object: Oop, args: *const Oop, count: usiz
         return api.nilObj;
     };
     if right == 0 {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"zeroDivide\0", b"division by zero") };
     }
     unsafe { result(api, (left as i128) % (right as i128)) }
 }
@@ -350,7 +356,7 @@ unsafe extern "C" fn float_div(self_object: Oop, args: *const Oop, count: usize)
         Numeric::Float(value) => value,
     };
     if right == 0.0 {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"zeroDivide\0", b"division by zero") };
     }
     unsafe { (api.mkFloat)(left / right) }
 }
@@ -510,7 +516,7 @@ unsafe extern "C" fn float_sqrt(self_object: Oop, _args: *const Oop, count: usiz
         return api.nilObj;
     };
     if value < 0.0 {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"domain\0", b"square root of a negative number") };
     }
     unsafe { (api.mkFloat)(value.sqrt()) }
 }
@@ -758,6 +764,12 @@ unsafe fn make_error(api: &IdApi, kind: Oop, message: Oop) -> Oop {
         (object as *mut ErrorPayload).write(ErrorPayload { kind, message });
     }
     object
+}
+
+unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
+    let kind = unsafe { intern(api, kind) };
+    let message = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+    unsafe { make_error(api, kind, message) }
 }
 
 unsafe extern "C" fn error_dnu(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {

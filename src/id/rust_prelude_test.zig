@@ -102,7 +102,24 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
         api.floatValue(send(api, two_point_five, "/", &.{api.mkSmallInt(2)})),
         0.000001,
     );
-    try std.testing.expectEqual(api.nilObj, send(api, two_point_five, "/", &.{api.mkSmallInt(0)}));
+    const zero_divide_kind = api.intern("zeroDivide");
+    const integer_zero_divide = send(api, three, "/", &.{api.mkSmallInt(0)});
+    try std.testing.expectEqual(api.trueObj, send(api, integer_zero_divide, "isError", &.{}));
+    try std.testing.expectEqual(zero_divide_kind, send(api, integer_zero_divide, "kind", &.{}));
+    var integer_zero_message_len: usize = 0;
+    const integer_zero_message = api.stringBytes(
+        send(api, integer_zero_divide, "message", &.{}),
+        &integer_zero_message_len,
+    );
+    try std.testing.expectEqualStrings("division by zero", integer_zero_message[0..integer_zero_message_len]);
+    const integer_mod_zero = send(api, three, "mod:", &.{api.mkSmallInt(0)});
+    try std.testing.expectEqual(zero_divide_kind, send(api, integer_mod_zero, "kind", &.{}));
+    const mixed_zero_divide = send(api, two_point_five, "/", &.{api.mkSmallInt(0)});
+    try std.testing.expectEqual(zero_divide_kind, send(api, mixed_zero_divide, "kind", &.{}));
+    const integer_float_zero_divide = send(api, three, "/", &.{api.mkFloat(0.0)});
+    try std.testing.expectEqual(zero_divide_kind, send(api, integer_float_zero_divide, "kind", &.{}));
+    const float_zero_divide = send(api, two_point_five, "/", &.{api.mkFloat(0.0)});
+    try std.testing.expectEqual(zero_divide_kind, send(api, float_zero_divide, "kind", &.{}));
     try std.testing.expectEqual(api.falseObj, send(api, two_point_five, "=", &.{api.mkSmallInt(5)}));
     try std.testing.expectEqual(api.falseObj, send(api, two_point_five, ">", &.{three}));
     try std.testing.expectEqual(api.trueObj, send(api, two_point_five, "<", &.{api.mkFloat(3.0)}));
@@ -121,7 +138,9 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
         api.floatValue(send(api, api.mkFloat(9.0), "sqrt", &.{})),
         0.000001,
     );
-    try std.testing.expectEqual(api.nilObj, send(api, api.mkFloat(-1.0), "sqrt", &.{}));
+    const domain_error = send(api, api.mkFloat(-1.0), "sqrt", &.{});
+    try std.testing.expectEqual(api.trueObj, send(api, domain_error, "isError", &.{}));
+    try std.testing.expectEqual(api.intern("domain"), send(api, domain_error, "kind", &.{}));
 
     const rendered = send(api, api.mkSmallInt(-42), "printString", &.{});
     var rendered_len: usize = 0;
