@@ -213,3 +213,9 @@ proving that cumulative relocation IDs survive record boundaries while forward
 Oop references and raw words still swizzle correctly. R6 passed again at that
 checkpoint with 20/20 focused Rust tests, the documented fixture exception, and
 the same two accepted benchmark crossings.
+
+Code-slot reconstruction was hardened at `6c85f4f`: v4 elides code payloads,
+so Rust now explicitly zeros those words until mapped-unit recovery fills them.
+A custom layout fixture checks the zeroed code slot alongside Oop and raw-word
+reconstruction. Cargo/clippy, the focused 20/20 target, and the complete R6
+acceptance script all passed with no new benchmark exception.

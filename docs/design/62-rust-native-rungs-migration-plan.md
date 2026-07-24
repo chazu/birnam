@@ -1960,6 +1960,12 @@ including a forward Oop reference and raw-word preservation; the focused Rust
 Codegen target remains 20/20 and the complete R6 gate passed again with the
 documented fixture exception and the same two accepted crossings.
 
+Code-slot reconstruction was hardened at `6c85f4f`: because v4 elides code
+payloads, Rust now writes zero into each code slot during the heap second pass,
+matching the Zig loader until mapped-unit recovery supplies executable carriers.
+The focused fixture covers the code, Oop, and raw layout kinds; Cargo/clippy,
+20/20 Rust Codegen tests, and the complete R6 gate remain green.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
