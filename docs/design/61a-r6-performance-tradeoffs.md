@@ -100,9 +100,10 @@ accepted result-file hashes and the exact two-tradeoff boundary are unchanged.
 
 After the artifact dependency-loader gate and its Rust Codegen regression test
 landed at `13ec3d3`, the complete acceptance script was rerun at `3d55d58`.
-The focused Rust Codegen target now passes 17/17 tests, including the new
-dependency-rejection case; optimized verify reproduced the exact quarantined
-`sortedModules` fixture signature, and the digest-pinned comparator again
-reported the same two crossings with zero missing or unusable cases. The
-additional test changes only the functional coverage; it does not widen the
-R6 performance exception or alter the accepted benchmark snapshot.
+The focused Rust Codegen target now passes 18/18 tests, including the new
+dependency-rejection and v4 image-framing preflight cases; optimized verify
+reproduced the exact quarantined `sortedModules` fixture signature, and the
+digest-pinned comparator again reported the same two crossings with zero
+missing or unusable cases. The additional tests change only the functional
+coverage; they do not widen the R6 performance exception or alter the accepted
+benchmark snapshot.

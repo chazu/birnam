@@ -509,7 +509,7 @@ Codegen/Image suites and the baseline gate pass.
 
 The R6 acceptance script was rerun after the Rust source-registration and
 revision-metadata slices (`aafb835`, documented by `5c155af`). The native-rung
-baseline, all six focused replacement gates (including the 17-test Rust
+baseline, all six focused replacement gates (including the 18-test Rust
 Codegen runtime suite), and the full optimized closure passed. Full verify
 still reports only the exact quarantined `run-tests.birnam`/`sortedModules`
 fixture crash; the fixed-hash comparator reports no missing or unusable cases
@@ -522,6 +522,13 @@ including dependency rejection before artifact initialization; the optimized
 closure retained the exact quarantined fixture signature, and the comparator
 retained the same digest-pinned pair and two accepted crossings. This is a
 functional coverage update only, not a new performance exception.
+
+After the Rust image framing preflight entered the opt-in Codegen boundary at
+`f7a1de7`, the acceptance pin advanced to 18/18 Rust Codegen tests. The new
+case validates a v4 authority envelope and rejects a bad magic without loading,
+swizzling, or mutating Store state; it leaves mapped-unit composition and
+materialization for N6.6. The gate continues to accept only the same exact
+benchmark snapshot and two recorded crossings.
 
 ### N0.6 — Generalize installed native-source resources
 
