@@ -1637,6 +1637,15 @@ legacy/non-indexable sources conservatively use the source digest in both
 slots. The installed descriptor gate proves the two values diverge for a
 module-bearing source with non-method content.
 
+The first N6.5 candidate slice is now independent and executable in Rust:
+`birnam-artifact::candidate::inspect` parses the frozen
+`BIRNAM-CANDIDATE-2` sidecar without allocation, dylib loading, or IdApi state.
+It validates the runtime ABI, candidate ABI 3, aarch64-macos platform, exact
+64-character artifact digest, manifest framing, and byte-exact source length.
+Nine artifact tests (including adversarial malformed-input probes) pass. This
+is only the inert candidate boundary; candidate compilation, mapping, Store
+publication, rollback, and image composition remain unported N6.5/N6.6 work.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
