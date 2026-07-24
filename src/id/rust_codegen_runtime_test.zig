@@ -426,6 +426,10 @@ test "Rust Codegen retains registered module sources across collection" {
     );
     _ = api.send(active_generation_cell, api.intern("set:"), &.{generation}, 1);
     try std.testing.expectEqual(base_digest, api.send(codegen, api.intern("currentGenerationDigest"), &.{}, 0));
+    const malformed_digest = api.mkString("0000000000000000000000000000000000000000000000000000000000000000", 64);
+    _ = api.send(base_digest_cell, api.intern("set:"), &.{malformed_digest}, 1);
+    try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("currentGenerationDigest"), &.{}, 0));
+    _ = api.send(base_digest_cell, api.intern("set:"), &.{base_digest}, 1);
     _ = api.send(active_generation_cell, api.intern("set:"), &.{api.nilObj}, 1);
     const revision = api.send(entry, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
     const successor_unit = api.mkSmallInt(99);
