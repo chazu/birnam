@@ -1859,7 +1859,7 @@ Zig Wyhash v4 checksum before an image is considered preflightable. Authority
 mismatch is reported before checksum failure, duplicate-code ordering remains
 fail-closed, and the Rust test vectors match Zig's implementation. The loader
 still does not map or retain the unit at this boundary. The complete R6 gate
-was rerun after this hardening at `a2b331f`: the 18-test focused boundary,
+was rerun on current head `a2b331f` after hardening commit `49c79e1`: the 18-test focused boundary,
 optimized closure, exact fixture quarantine, and digest-pinned comparator all
 remained green with no additional performance exception.
 
