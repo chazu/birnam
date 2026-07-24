@@ -2114,8 +2114,9 @@ frozen legacy names. The focused candidate fixture passes inspect/map/prepare/
 commit, executes a precompiled candidate trampoline (71), and then proves
 synchronous observer-drift reentry against both Rust Store and Zig Store after
 an external replacement (77). Full generated candidate method-install
-semantics are now covered for this slice; the remaining N6.5 work is the full
-callback/rollback matrix. The complete R6 gate passed with 25/25 Rust Codegen
+semantics are now covered for this slice. The complete three-combination
+callback/rollback matrix is green in the focused R6 targets, and the complete
+R6 gate passed with 25/25 Rust Codegen
 runtime tests, both callback variants at 3/3, and no benchmark change: only
 `query.aggregate` (+5.8%) and
 `compile.stage1-stdlib` (+11.9%) remain accepted for this snapshot.
