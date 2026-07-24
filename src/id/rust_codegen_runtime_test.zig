@@ -501,7 +501,16 @@ test "Rust Codegen retains registered module sources across collection" {
     const image_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_image_generation.dylib", .{image_directory});
     defer std.testing.allocator.free(image_path);
     const image_output = api.mkString(image_path.ptr, image_path.len);
+    _ = api.send(active_generation_cell, api.intern("set:"), &.{generation}, 1);
     try std.testing.expectEqual(image_output, api.send(codegen, api.intern("compileImageCode:"), &.{image_output}, 1));
+    const stale_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_image_stale.dylib", .{image_directory});
+    defer std.testing.allocator.free(stale_path);
+    const stale_output = api.mkString(stale_path.ptr, stale_path.len);
+    const wrong_digest = api.mkString("0000000000000000000000000000000000000000000000000000000000000000", 64);
+    _ = api.send(base_digest_cell, api.intern("set:"), &.{wrong_digest}, 1);
+    try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("compileImageCode:"), &.{stale_output}, 1));
+    _ = api.send(base_digest_cell, api.intern("set:"), &.{base_digest}, 1);
+    _ = api.send(active_generation_cell, api.intern("set:"), &.{api.nilObj}, 1);
     const image_artifact = try std.fs.openFileAbsolute(image_path, .{});
     defer image_artifact.close();
     try std.testing.expect((try image_artifact.stat()).size > 0);
