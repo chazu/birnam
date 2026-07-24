@@ -396,4 +396,6 @@ The follow-up numeric slice landed at `31f8984`: the opt-in Rust prelude now
 covers Float receivers, mixed Integer/Float arithmetic and comparisons,
 Float-to-Integer conversion and rounding, `abs`, `sqrt`, and canonical float
 printing. Its focused target remains 1/1; no benchmark allowance changes and
-the Zig prelude remains the behavioral oracle.
+the Zig prelude remains the behavioral oracle. The complete R6 rerun after
+this slice passed with 42/42 focused tests and the unchanged two accepted
+benchmark crossings.

@@ -2166,6 +2166,8 @@ Float-to-Integer conversion and rounding, `abs`, `sqrt`, and canonical float
 printing. The focused target remains 1/1 and the Zig prelude remains the
 behavioral oracle; Error-valued arithmetic, Boolean/Block/System behavior, and
 the default prelude switch are still intentionally deferred.
+The complete R6 rerun after this slice also passed with 42/42 focused tests and
+the unchanged two accepted benchmark crossings.
 
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
