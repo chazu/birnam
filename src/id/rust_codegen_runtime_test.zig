@@ -4,12 +4,23 @@ const std = @import("std");
 const floor = @import("floor_adapter_test.zig");
 const artifact_inspector = @import("artifact_inspector.zig");
 const collection = @import("collection.zig");
+const zig_error = @import("error.zig");
 const zig_codegen = @import("codegen.zig");
 const peg = @import("peg.zig");
 const lang = @import("lang.zig");
 const idapi = @import("idapi.zig");
 
 const ModuleInit = *const fn (*idapi.IdApi, ?*anyopaque) callconv(.c) ?*anyopaque;
+
+fn duplicateMopObserver(self: idapi.Oop, args: [*]const idapi.Oop, n: usize) callconv(.c) idapi.Oop {
+    _ = args;
+    _ = n;
+    return self;
+}
+
+fn duplicateMopAuthorizer() callconv(.c) idapi.Oop {
+    return null;
+}
 
 fn load(api: *idapi.IdApi, variable: []const u8) !void {
     const path = std.posix.getenv(variable) orelse return error.MissingDylib;
@@ -1363,6 +1374,35 @@ test "Rust Codegen inspects and maps a Zig candidate" {
     const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
     const old_codegen = api.import("Codegen") orelse return error.MissingCodegen;
     const store = api.import("Store") orelse return error.MissingStore;
+    zig_error.bringUp(api);
+
+    // This is the mixed-stack callback boundary: Zig Codegen registered the
+    // Rust Store's single observer/authorizer slots during bring-up, so the
+    // opt-in Rust Codegen must not replace either owner.
+    const duplicate_observer_vt = api.proto(api.object_vt);
+    api.method(duplicate_observer_vt, api.intern("managedMethodChanged:on:"), &duplicateMopObserver);
+    const duplicate_observer = api.alloc(duplicate_observer_vt, 0);
+    const duplicate_observer_error = api.send(
+        store,
+        api.intern("setMethodMutationObserver:"),
+        &.{duplicate_observer},
+        1,
+    );
+    try std.testing.expectEqual(
+        api.intern("methodMutationObserverAlreadySet"),
+        api.send(duplicate_observer_error, api.intern("kind"), &.{}, 0),
+    );
+    const duplicate_authorizer = api.send(
+        store,
+        api.intern("setMethodMutationAuthorizer:"),
+        &.{api.mkSmallInt(@intCast(@intFromPtr(&duplicateMopAuthorizer)))},
+        1,
+    );
+    try std.testing.expectEqual(
+        api.intern("methodMutationAuthorizerAlreadySet"),
+        api.send(duplicate_authorizer, api.intern("kind"), &.{}, 0),
+    );
+
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
