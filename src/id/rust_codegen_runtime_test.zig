@@ -285,6 +285,21 @@ test "Rust Codegen reports distinct embedded file literals" {
     try std.testing.expectEqualStrings("b.bin", api.stringBytes(second, &second_len)[0..second_len]);
 }
 
+test "Rust Codegen exposes module metadata without evaluating source" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const source_text = "[Module named: #rustMetadata requires: #[#depA #depB]]; [Alien dlopen: \"libdep.dylib\"]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const metadata = api.send(codegen, api.intern("moduleMetadataOf:"), &.{source}, 1);
+    try std.testing.expect(metadata != api.nilObj);
+    try std.testing.expectEqual(api.intern("moduleMetadata"), api.send(metadata, api.intern("at:"), &.{api.mkSmallInt(0)}, 1));
+    try std.testing.expectEqual(api.intern("rustMetadata"), api.send(metadata, api.intern("at:"), &.{api.mkSmallInt(1)}, 1));
+    const requires = api.send(metadata, api.intern("at:"), &.{api.mkSmallInt(2)}, 1);
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(requires, api.intern("size"), &.{}, 0)));
+    const legacy = api.mkString("7", 1);
+    try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("moduleMetadataOf:"), &.{legacy}, 1));
+}
+
 test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
     const api = try setup();
     const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
