@@ -2027,6 +2027,13 @@ image activation, preserving the one-authority/one-code invariant at the
 runtime boundary. The focused 21/21 target and complete R6 gate passed with the
 same fixture quarantine and only the two accepted benchmark crossings.
 
+The N6.5 drift checkpoint at `de05a57` adds a mixed-stack lifecycle fixture that
+replaces an active candidate's method through Store, then requires Rust
+`reconcileCandidate:` to mark the unit `drifted`, disable rollback, and reject
+rollback preparation. The R6 exact-output pin advanced to 22 at `d7820a3`; the
+complete gate passed with the same fixture quarantine and only the two accepted
+benchmark crossings.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

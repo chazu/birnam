@@ -269,3 +269,9 @@ authority and at most one code record, rather than treating duplicate records
 as an append format. The complete `mise run r6-acceptance` run passed at this
 checkpoint with the 21/21 focused target, the documented fixture quarantine,
 and only the two accepted benchmark crossings.
+
+The candidate-drift fixture landed at `de05a57`: an external Store method
+replacement now proves the Rust reconciliation boundary marks the candidate
+`drifted`, disables `rollbackAvailable`, and rejects rollback preparation. The
+R6 functional pin advanced to 22 at `d7820a3`; the complete gate passed with
+22/22 focused tests and the same two accepted benchmark crossings.
