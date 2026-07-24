@@ -376,6 +376,7 @@ test "Rust Codegen partitions method and non-method revision digests" {
 test "Rust Codegen retains registered module sources across collection" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const store = api.import("Store") orelse return error.MissingStore;
     const name = api.intern("rustRegisteredModule");
     const source_text = "[Module named: #rustRegisteredModule requires: #[]]; [Reflect defineMethod: #rustRegisteredAnswer on: Integer as: [:self | 321]]; 7";
     const source = api.mkString(source_text.ptr, source_text.len);
@@ -399,6 +400,33 @@ test "Rust Codegen retains registered module sources across collection" {
     var digest_len: usize = 0;
     _ = api.stringBytes(api.send(projection, api.intern("at:"), &.{api.mkSmallInt(2)}, 1), &digest_len);
     try std.testing.expectEqual(@as(usize, 64), digest_len);
+    const object = api.import("Object") orelse return error.MissingObject;
+    const generation = api.send(object, api.intern("clone"), &.{}, 0);
+    const source_map_value = api.send(projection, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
+    const base_digest = api.send(projection, api.intern("at:"), &.{api.mkSmallInt(2)}, 1);
+    const source_map_cell = api.send(
+        store,
+        api.intern("cellFor:attr:"),
+        &.{ generation, api.intern("sourceMap") },
+        2,
+    );
+    _ = api.send(source_map_cell, api.intern("set:"), &.{source_map_value}, 1);
+    const base_digest_cell = api.send(
+        store,
+        api.intern("cellFor:attr:"),
+        &.{ generation, api.intern("baseDigest") },
+        2,
+    );
+    _ = api.send(base_digest_cell, api.intern("set:"), &.{base_digest}, 1);
+    const active_generation_cell = api.send(
+        store,
+        api.intern("cellFor:attr:"),
+        &.{ api.intern("dispatch"), api.intern("activeGeneration") },
+        2,
+    );
+    _ = api.send(active_generation_cell, api.intern("set:"), &.{generation}, 1);
+    try std.testing.expectEqual(base_digest, api.send(codegen, api.intern("currentGenerationDigest"), &.{}, 0));
+    _ = api.send(active_generation_cell, api.intern("set:"), &.{api.nilObj}, 1);
     const revision = api.send(entry, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
     const successor_unit = api.mkSmallInt(99);
     const successor = api.send(
