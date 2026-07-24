@@ -1729,7 +1729,10 @@ current-generation fallback rejects stale plans at preparation and commit. When
 the durable `dispatch.activeGeneration` fact is present, Rust additionally
 requires canonical source-map/base-digest projections, compares the plan's
 expected generation to that Store fact at both boundaries, and advances the
-Store cell only on a successful publication.
+Store cell only on a successful publication. Activation and rollback also
+validate the expected/successor entry topology: predecessor and delta-unit
+facts must point at the units named by the plan, so a canonical digest cannot
+mask a structurally inconsistent generation.
 
 Rust `reconcileCandidate:` and `reconcileAllCandidates` now expose the same
 post-carrier check without requiring a rollback attempt. They return the unit
