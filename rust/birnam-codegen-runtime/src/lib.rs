@@ -60,6 +60,9 @@ const SUCCESSOR_GENERATION_PROJECTION_SELECTOR: &[u8] =
     b"successorGenerationProjection:replacing:with:unit:\0";
 const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
 const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
+const PREPARE_ACTIVATION_SELECTOR: &[u8] = b"prepareActivation:\0";
+const COMMIT_PREPARED_SELECTOR: &[u8] = b"commitPrepared:\0";
+const DISCARD_PREPARED_SELECTOR: &[u8] = b"discardPrepared:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -97,6 +100,7 @@ static MODULE_SOURCES: Mutex<Vec<(usize, usize)>> = Mutex::new(Vec::new());
 static INITIAL_GENERATION_SEALED: Mutex<bool> = Mutex::new(false);
 static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
+static PREPARED: Mutex<Vec<PreparedState>> = Mutex::new(Vec::new());
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 
 unsafe extern "C" {
@@ -121,6 +125,13 @@ struct CandidateState {
     prepare: usize,
     activate: usize,
     rollback: usize,
+    prepared: usize,
+    active: bool,
+}
+
+struct PreparedState {
+    token: usize,
+    unit: usize,
 }
 
 fn abort(message: &str) -> ! {
@@ -191,6 +202,13 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
                 mark(candidate.name as Oop);
                 mark(candidate.source as Oop);
             }
+        }
+    }
+    if let Ok(prepared) = PREPARED.lock() {
+        for token in prepared.iter().map(|prepared| prepared.token) {
+            // SAFETY: prepared tokens are Object instances retained by this
+            // process-local lifecycle registry until consumed or discarded.
+            unsafe { mark(token as Oop) };
         }
     }
 }
@@ -2225,6 +2243,8 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             prepare: 0,
             activate: 0,
             rollback: 0,
+            prepared: 0,
+            active: false,
         });
         return values[1];
     }
@@ -2437,6 +2457,210 @@ unsafe extern "C" fn rust_codegen_map_candidate(
     candidate.activate = activate_symbol as usize;
     candidate.rollback = rollback_symbol as usize;
     values[0]
+}
+
+unsafe extern "C" fn rust_codegen_prepare_activation(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen prepareActivation: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen prepareActivation: expects one unit");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let (validate, prepare, prepared, active) = {
+        let Ok(candidates) = CANDIDATES.lock() else {
+            note_error(b"RustCodegen candidate registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(candidate) = candidates
+            .iter()
+            .find(|candidate| candidate.unit == values[0] as usize)
+        else {
+            note_error(b"RustCodegen candidate unit is unknown");
+            return api.nilObj;
+        };
+        (
+            candidate.validate,
+            candidate.prepare,
+            candidate.prepared,
+            candidate.active,
+        )
+    };
+    if validate == 0 || prepare == 0 {
+        note_error(b"RustCodegen candidate is not mapped");
+        return api.nilObj;
+    }
+    if prepared != 0 {
+        note_error(b"RustCodegen candidate is already prepared");
+        return api.nilObj;
+    }
+    if active {
+        note_error(b"RustCodegen candidate is already active");
+        return api.nilObj;
+    }
+    // SAFETY: hook addresses were checked and retained by the mapping boundary.
+    let validate: Method = unsafe { core::mem::transmute(validate) };
+    let prepare: Method = unsafe { core::mem::transmute(prepare) };
+    if unsafe { validate(api.nilObj, ptr::null(), 0) } != api.trueObj {
+        note_error(b"RustCodegen candidate validation failed");
+        return api.nilObj;
+    }
+    if unsafe { prepare(api.nilObj, ptr::null(), 0) } == api.nilObj {
+        note_error(b"RustCodegen candidate preparation failed");
+        return api.nilObj;
+    }
+    let object = unsafe { (api.import)(c"Object".as_ptr()) };
+    let token = if object.is_null() || object == api.nilObj {
+        api.nilObj
+    } else {
+        unsafe { send0(api, object, NEW_SELECTOR) }
+    };
+    if token.is_null() || token == api.nilObj {
+        note_error(b"RustCodegen prepared token allocation failed");
+        return api.nilObj;
+    }
+    let Ok(mut prepared_states) = PREPARED.lock() else {
+        note_error(b"RustCodegen prepared registry is unavailable");
+        return api.nilObj;
+    };
+    if let Ok(mut candidates) = CANDIDATES.lock()
+        && let Some(candidate) = candidates
+            .iter_mut()
+            .find(|candidate| candidate.unit == values[0] as usize)
+    {
+        candidate.prepared = token as usize;
+        prepared_states.push(PreparedState {
+            token: token as usize,
+            unit: values[0] as usize,
+        });
+        return token;
+    }
+    note_error(b"RustCodegen candidate registry is unavailable");
+    api.nilObj
+}
+
+unsafe extern "C" fn rust_codegen_commit_prepared(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen commitPrepared: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen commitPrepared: expects one token");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let token = values[0] as usize;
+    let unit = {
+        let Ok(prepared) = PREPARED.lock() else {
+            note_error(b"RustCodegen prepared registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(state) = prepared.iter().find(|state| state.token == token) else {
+            note_error(b"RustCodegen prepared token is invalid");
+            return api.nilObj;
+        };
+        state.unit
+    };
+    let activate = {
+        let Ok(candidates) = CANDIDATES.lock() else {
+            note_error(b"RustCodegen candidate registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(candidate) = candidates.iter().find(|candidate| candidate.unit == unit) else {
+            note_error(b"RustCodegen candidate unit is unknown");
+            return api.nilObj;
+        };
+        if candidate.prepared != token || candidate.active || candidate.activate == 0 {
+            note_error(b"RustCodegen prepared token is invalid");
+            return api.nilObj;
+        }
+        candidate.activate
+    };
+    // SAFETY: the hook is retained by the mapped candidate handle.
+    let activate: Method = unsafe { core::mem::transmute(activate) };
+    let result = unsafe { activate(api.nilObj, ptr::null(), 0) };
+    if result == api.nilObj {
+        note_error(b"RustCodegen candidate activation failed");
+        return api.nilObj;
+    }
+    let active = unsafe { intern(api, b"active\0") };
+    if !(unsafe { assert_candidate_fact(api, runtime, unit as Oop, b"state\0", active) }) {
+        note_error(b"RustCodegen candidate Store is unavailable");
+        return api.nilObj;
+    }
+    let _ = unsafe {
+        assert_candidate_fact(
+            api,
+            runtime,
+            unit as Oop,
+            b"rollbackAvailable\0",
+            api.trueObj,
+        )
+    };
+    if let Ok(mut candidates) = CANDIDATES.lock()
+        && let Some(candidate) = candidates
+            .iter_mut()
+            .find(|candidate| candidate.unit == unit)
+    {
+        candidate.active = true;
+        candidate.prepared = 0;
+    }
+    if let Ok(mut prepared) = PREPARED.lock() {
+        prepared.retain(|state| state.token != token);
+    }
+    unit as Oop
+}
+
+unsafe extern "C" fn rust_codegen_discard_prepared(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen discardPrepared: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen discardPrepared: expects one token");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let token = values[0] as usize;
+    let unit = {
+        let Ok(prepared) = PREPARED.lock() else {
+            note_error(b"RustCodegen prepared registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(state) = prepared.iter().find(|state| state.token == token) else {
+            note_error(b"RustCodegen prepared token is invalid");
+            return api.nilObj;
+        };
+        state.unit
+    };
+    if let Ok(mut candidates) = CANDIDATES.lock()
+        && let Some(candidate) = candidates
+            .iter_mut()
+            .find(|candidate| candidate.unit == unit)
+    {
+        if candidate.prepared != token {
+            note_error(b"RustCodegen prepared token is invalid");
+            return api.nilObj;
+        }
+        candidate.prepared = 0;
+    }
+    if let Ok(mut prepared) = PREPARED.lock() {
+        prepared.retain(|state| state.token != token);
+        return api.trueObj;
+    }
+    note_error(b"RustCodegen prepared registry is unavailable");
+    api.nilObj
 }
 
 unsafe extern "C" fn rust_codegen_load(
@@ -2655,6 +2879,21 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, MAP_CANDIDATE_SELECTOR),
             rust_codegen_map_candidate,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, PREPARE_ACTIVATION_SELECTOR),
+            rust_codegen_prepare_activation,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, COMMIT_PREPARED_SELECTOR),
+            rust_codegen_commit_prepared,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, DISCARD_PREPARED_SELECTOR),
+            rust_codegen_discard_prepared,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

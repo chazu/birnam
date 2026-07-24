@@ -541,6 +541,15 @@ test "Rust Codegen inspects and maps a Zig candidate" {
         api.trueObj,
         api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("mapped") }, 2),
     );
+    const token = api.send(rust_codegen, api.intern("prepareActivation:"), &.{unit}, 1);
+    try std.testing.expect(token != api.nilObj);
+    const committed = api.send(rust_codegen, api.intern("commitPrepared:"), &.{token}, 1);
+    try std.testing.expectEqual(unit, committed);
+    try std.testing.expectEqual(
+        api.intern("active"),
+        api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2),
+    );
+    try std.testing.expectEqual(@as(i64, 123), api.smallIntValue(api.send(api.mkSmallInt(3), api.intern("rustCandidateAnswer"), &.{}, 0)));
 }
 
 test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
