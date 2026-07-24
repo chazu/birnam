@@ -38,6 +38,7 @@ pub enum Expr<'a> {
     Nil,
     True,
     False,
+    Block(Box<Block<'a>>),
     Send {
         receiver: Box<Expr<'a>>,
         selector: Cow<'a, [u8]>,
@@ -45,9 +46,22 @@ pub enum Expr<'a> {
     },
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Block<'a> {
+    pub params: Vec<&'a [u8]>,
+    pub body: Vec<Statement<'a>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Statement<'a> {
+    Let { name: &'a [u8], value: Expr<'a> },
+    Expr(Expr<'a>),
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum EmitError {
     DepthLimit,
+    Unsupported,
 }
 
 const MAX_EXPR_DEPTH: usize = 4096;
@@ -142,8 +156,64 @@ fn lower_expr_at_depth<'a, N: CstNode>(
         b"vectorLit" => lower_vector(node, source, depth + 1),
         b"mapLit" => lower_map(node, source, depth + 1),
         b"logicVar" => lower_logic_var(node, source),
+        b"block" => lower_block(node, source, depth + 1).map(|block| Expr::Block(Box::new(block))),
         _ => Err(LowerError::UnsupportedRule),
     }
+}
+
+fn lower_block<'a, N: CstNode>(
+    node: &N,
+    source: &'a [u8],
+    depth: usize,
+) -> Result<Block<'a>, LowerError> {
+    let mut params = Vec::new();
+    let mut body = Vec::new();
+    for index in 0..node.child_count() {
+        let child = node.child(index).ok_or(LowerError::MissingChild)?;
+        match child.rule() {
+            b"ident" => params.push(span(child, source)?),
+            b"statements" => {
+                if !body.is_empty() {
+                    return Err(LowerError::InvalidShape);
+                }
+                body = lower_statements(child, source, depth)?;
+            }
+            _ => return Err(LowerError::InvalidShape),
+        }
+    }
+    Ok(Block { params, body })
+}
+
+fn lower_statements<'a, N: CstNode>(
+    node: &N,
+    source: &'a [u8],
+    depth: usize,
+) -> Result<Vec<Statement<'a>>, LowerError> {
+    let mut statements = Vec::with_capacity(node.child_count());
+    for index in 0..node.child_count() {
+        let statement = node.child(index).ok_or(LowerError::MissingChild)?;
+        if statement.rule() != b"statement" || statement.child_count() != 1 {
+            return Err(LowerError::InvalidShape);
+        }
+        let inner = statement.child(0).ok_or(LowerError::MissingChild)?;
+        match inner.rule() {
+            b"letBinding" => {
+                if inner.child_count() != 2 {
+                    return Err(LowerError::InvalidShape);
+                }
+                let name = span(inner.child(0).ok_or(LowerError::MissingChild)?, source)?;
+                let value = lower_expr_at_depth(
+                    inner.child(1).ok_or(LowerError::MissingChild)?,
+                    source,
+                    depth,
+                )?;
+                statements.push(Statement::Let { name, value });
+            }
+            b"expr" => statements.push(Statement::Expr(lower_expr_at_depth(inner, source, depth)?)),
+            _ => return Err(LowerError::InvalidShape),
+        }
+    }
+    Ok(statements)
 }
 
 fn lower_vector<'a, N: CstNode>(
@@ -544,6 +614,7 @@ impl Emitter {
             Expr::Nil => self.emit_nil(),
             Expr::True => self.emit_true(),
             Expr::False => self.emit_false(),
+            Expr::Block(_) => return Err(EmitError::Unsupported),
             Expr::Send {
                 receiver,
                 selector,
@@ -583,7 +654,8 @@ mod tests {
     use std::borrow::Cow;
 
     use super::{
-        CstNode, EmitError, Emitter, Expr, LowerError, TranslationUnit, lower_expr, lower_literal,
+        CstNode, EmitError, Emitter, Expr, LowerError, Statement, TranslationUnit, lower_expr,
+        lower_literal,
     };
 
     struct TestNode {
@@ -962,6 +1034,64 @@ mod tests {
             emitter.finish(),
             b"birnam_send(birnam_global(\"LogicVar\"), birnam_intern(\"named:\"), (void*[]){birnam_intern(\"p\")}, 1L)"
         );
+    }
+
+    #[test]
+    fn lowers_block_parameters_and_statement_bindings_before_emission() {
+        let source = b"[:x | let y := x; y]";
+        let block = node(
+            b"block",
+            0,
+            source.len(),
+            vec![
+                node(b"ident", 2, 3, vec![]),
+                node(
+                    b"statements",
+                    5,
+                    19,
+                    vec![
+                        node(
+                            b"statement",
+                            6,
+                            16,
+                            vec![node(
+                                b"letBinding",
+                                6,
+                                16,
+                                vec![
+                                    node(b"ident", 10, 11, vec![]),
+                                    node(b"expr", 15, 16, vec![node(b"ident", 15, 16, vec![])]),
+                                ],
+                            )],
+                        ),
+                        node(
+                            b"statement",
+                            18,
+                            19,
+                            vec![node(b"expr", 18, 19, vec![node(b"ident", 18, 19, vec![])])],
+                        ),
+                    ],
+                ),
+            ],
+        );
+        let lowered = lower_expr(&block, source).unwrap();
+        let Expr::Block(block) = &lowered else {
+            panic!("expected block expression");
+        };
+        assert_eq!(block.params, vec![b"x".as_slice()]);
+        assert_eq!(
+            block.body,
+            vec![
+                Statement::Let {
+                    name: b"y",
+                    value: Expr::Global(b"x"),
+                },
+                Statement::Expr(Expr::Global(b"y")),
+            ]
+        );
+
+        let mut emitter = Emitter::new();
+        assert_eq!(emitter.emit_expr(&lowered), Err(EmitError::Unsupported));
     }
 
     #[test]
