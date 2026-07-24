@@ -1745,6 +1745,12 @@ published successor digest when an explicit plan has committed. These methods
 are read-only source composition; image replay, alien derivation, and durable
 generation authority remain N6.6 work.
 
+`compileImageCode:` now consumes the ordered Rust generation-source handoff and
+emits one TCC-backed dylib at the requested output path. It is intentionally a
+source-backed image compiler: mapped-unit reuse, replay of durable image facts,
+global/method derivation, and explicit rebuild policy remain subsequent N6.6
+slices.
+
 The mapped-candidate observation surface is complete for this slice as well:
 `candidateMapped:` reports the retained native handle, while
 `candidateContentPath:` materializes and verifies the immutable checksum path
