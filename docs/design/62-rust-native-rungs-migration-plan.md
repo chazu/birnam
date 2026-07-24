@@ -1717,8 +1717,16 @@ candidate's activation and post-carrier checks succeed. Rollback captures that
 predecessor, restores the exact prior method carriers, reasserts the prior
 `active` state, and reactivates its registry entry. The installed gate now
 exercises A → B → rollback B → A, including the Store state transitions and
-observable dispatch result. This is predecessor composition, not yet the
-generation/publication-plan or quiescence protocol.
+observable dispatch result.
+
+The Rust boundary also accepts the frozen eight-field publication-plan shape
+through `prepareActivation:plan:` and `prepareRollback:plan:`. It copies the
+event, basis, generation handles, and predecessor identity into the rooted
+prepared state; commit requires bootstrapping or quiescence, asserts the event
+facts, and consumes the plan token only after the exact MOP mutation succeeds.
+The installed gate exercises both explicit plan selectors. Canonical generation
+digest/current-generation comparison and stale-plan rejection remain the next
+publication hardening slice.
 
 Rust `reconcileCandidate:` and `reconcileAllCandidates` now expose the same
 post-carrier check without requiring a rollback attempt. They return the unit
@@ -1746,7 +1754,7 @@ same transitions through the Rust Codegen surface. In a Rust-only stack, the
 first Rust candidate map conditionally installs this observer and authorizer;
 a mixed stack leaves the existing Zig Codegen callback owner untouched,
 honoring the Store single-registration law. The full Zig↔Rust callback matrix
-and publication-plan quiescence handoff remain later hardening gates.
+and publication-plan generation/currentness checks remain later hardening gates.
 
 The image handoff now has explicit Rust `beginImageDispatchRecovery` and
 `endImageDispatchRecovery` methods. The begin gate suppresses candidate
