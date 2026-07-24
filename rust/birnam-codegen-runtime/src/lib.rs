@@ -7,8 +7,8 @@
 
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use birnam_artifact::candidate::{
-    Manifest as CandidateManifest, Operation as CandidateOperation, inspect as inspect_candidate,
-    inspect_manifest,
+    CANDIDATE_ABI, CANDIDATE_MAGIC, CANDIDATE_PLATFORM, Manifest as CandidateManifest,
+    Operation as CandidateOperation, inspect as inspect_candidate, inspect_manifest,
 };
 use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
@@ -53,6 +53,7 @@ const COMPILE_SELECTOR: &[u8] = b"compile:\0";
 const COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:\0";
 const COMPILE_OUTPUT_FROM_SELECTOR: &[u8] = b"compile:output:from:\0";
 const COMPILE_OUTPUT_ROOT_SELECTOR: &[u8] = b"compile:output:root:\0";
+const COMPILE_CANDIDATE_SELECTOR: &[u8] = b"compileCandidate:named:output:\0";
 const EMBEDDED_FILES_SELECTOR: &[u8] = b"embeddedFilesOf:\0";
 const MODULE_METADATA_SELECTOR: &[u8] = b"moduleMetadataOf:\0";
 const SOURCE_REVISION_SELECTOR: &[u8] = b"sourceRevisionOf:\0";
@@ -561,6 +562,92 @@ fn artifact_source(
     output.extend_from_slice(descriptor.len().to_string().as_bytes());
     output.extend_from_slice(b"UL;\n");
     output.extend_from_slice(generated);
+    output
+}
+
+fn candidate_manifest(metadata: &RevisionMetadata, source_digest: &[u8; 64]) -> Vec<u8> {
+    let mut manifest = Vec::new();
+    manifest.extend_from_slice(b"v2|");
+    manifest.extend_from_slice(ARTIFACT_ABI);
+    manifest.push(b'|');
+    manifest.extend_from_slice(&metadata.name);
+    manifest.push(b'|');
+    manifest.extend_from_slice(source_digest);
+    manifest.push(b'|');
+    manifest.extend_from_slice(&metadata.non_method_digest);
+    manifest.push(b'|');
+    manifest.extend_from_slice(&metadata.method_digest);
+    manifest.push(b'|');
+    manifest.extend_from_slice(&metadata.revision_digest);
+    manifest.push(b'|');
+    for (index, requirement) in metadata.requires.iter().enumerate() {
+        if index != 0 {
+            manifest.push(b',');
+        }
+        manifest.extend_from_slice(requirement);
+    }
+    manifest.push(b'|');
+    for (index, operation) in metadata.operations.iter().enumerate() {
+        if index != 0 {
+            manifest.push(b';');
+        }
+        manifest.extend_from_slice(&operation.target);
+        manifest.push(b',');
+        manifest.extend_from_slice(&operation.selector);
+        manifest.push(b',');
+        manifest.push(if operation.install { b'I' } else { b'R' });
+        manifest.push(b',');
+        manifest.extend_from_slice(selector_arity(&operation.selector).to_string().as_bytes());
+    }
+    manifest
+}
+
+fn candidate_generated(
+    generated: &[u8],
+    manifest: &[u8],
+    operations: &[RevisionOperation],
+) -> Vec<u8> {
+    // The mixed stack still owns the candidate callback ABI in Zig Codegen.
+    // Keep these declarations local to the candidate instead of exporting a
+    // second Rust owner for the same dynamic symbols before the final cutover.
+    let mut output = Vec::with_capacity(generated.len() + manifest.len() + 512);
+    output.extend_from_slice(b"extern void birnam_candidate_prepare_mode(long on);\n".as_slice());
+    output.extend_from_slice(
+        b"extern void* birnam_candidate_validate_binding(const char*, const char*, long, long);\n"
+            .as_slice(),
+    );
+    output.extend_from_slice(b"const char __birnam_candidate_manifest[] = \"");
+    append_c_string(&mut output, manifest);
+    output.extend_from_slice(b"\";\n");
+    output.extend_from_slice(generated);
+    output.extend_from_slice(
+        b"void* __birnam_candidate_validate(void* s, void** a, long n){(void)s;(void)a;(void)n;\n"
+            .as_slice(),
+    );
+    for operation in operations {
+        output.extend_from_slice(b"if(birnam_candidate_validate_binding(\"");
+        append_c_string(&mut output, &operation.target);
+        output.extend_from_slice(b"\",\"");
+        append_c_string(&mut output, &operation.selector);
+        output.extend_from_slice(b"\",");
+        output.extend_from_slice(selector_arity(&operation.selector).to_string().as_bytes());
+        output.extend_from_slice(b"L,");
+        output.extend_from_slice(if operation.install { b"0L" } else { b"1L" });
+        output.extend_from_slice(b")!=birnam_true())return birnam_false();\n");
+    }
+    output.extend_from_slice(b"return birnam_true();}\n");
+    output.extend_from_slice(
+        b"void* __birnam_candidate_prepare(void* s, void** a, long n){birnam_candidate_prepare_mode(1L);(void)__ev(s,a,n);birnam_candidate_prepare_mode(0L);return birnam_true();}\n"
+            .as_slice(),
+    );
+    output.extend_from_slice(
+        b"void* __birnam_candidate_activate(void* s, void** a, long n){return __ev(s,a,n);}\n"
+            .as_slice(),
+    );
+    output.extend_from_slice(
+        b"void* __birnam_candidate_rollback(void* s, void** a, long n){(void)s;(void)a;(void)n;return birnam_nil();}\n"
+            .as_slice(),
+    );
     output
 }
 
@@ -3151,6 +3238,135 @@ unsafe fn rust_codegen_compile_output_impl(
     }
 }
 
+unsafe extern "C" fn rust_codegen_compile_candidate(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
+        abort("RustCodegen compileCandidate:named:output: received invalid arguments")
+    });
+    if values.len() != 3 {
+        abort("RustCodegen compileCandidate:named:output: expects source, name, and output");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+
+    let Some(source_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
+        note_error(b"RustCodegen candidate source was not a String");
+        return api.nilObj;
+    };
+    let Some(name) = (unsafe { symbol_bytes(api, values[1]) }) else {
+        note_error(b"RustCodegen candidate name was not a Symbol");
+        return api.nilObj;
+    };
+    let Some(path_bytes) = (unsafe { string_bytes(api, values[2]) }) else {
+        note_error(b"RustCodegen candidate output path was not a String");
+        return api.nilObj;
+    };
+    if path_bytes.is_empty() || path_bytes.contains(&0) {
+        note_error(b"RustCodegen candidate output path is invalid");
+        return api.nilObj;
+    }
+    let Some((_, metadata)) = (unsafe { parse_revision_metadata(api, values[0]) }) else {
+        note_error(b"RustCodegen candidate source is not indexable");
+        return api.nilObj;
+    };
+    if metadata.name != name {
+        note_error(b"RustCodegen candidate metadata mismatches name");
+        return api.nilObj;
+    }
+    if metadata.operations.is_empty() {
+        note_error(b"RustCodegen candidate has no method delta");
+        return api.nilObj;
+    }
+
+    let mut program = Vec::new();
+    for operation in &metadata.operations {
+        program.extend_from_slice(&operation.source);
+        program.extend_from_slice(b";\n");
+    }
+    let program_object = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
+    let Some(generated) = (unsafe { emit_source(api, program_object, true, false, None, false) })
+    else {
+        note_error(b"RustCodegen candidate source could not be emitted");
+        return api.nilObj;
+    };
+    let native_requires = unsafe { artifact_metadata(api, values[0]) }
+        .map(|(_, native_requires)| native_requires)
+        .unwrap_or_default();
+    let source_digest = sha256_hex(&source_bytes);
+    let manifest = candidate_manifest(&metadata, &source_digest);
+    let candidate_generated = candidate_generated(&generated, &manifest, &metadata.operations);
+    let artifact = artifact_source(
+        &source_bytes,
+        &metadata.name,
+        &source_digest,
+        &metadata.revision_digest,
+        &metadata.requires,
+        &native_requires,
+        &candidate_generated,
+    );
+    let tcc = runtime.tcc as Oop;
+    if tcc.is_null() || tcc == api.nilObj {
+        note_error(b"RustCodegen Tcc is unavailable");
+        return api.nilObj;
+    }
+    let c_source = unsafe { (api.mkString)(artifact.as_ptr(), artifact.len()) };
+    let kind = unsafe { intern(api, b"dll\0") };
+    let result = unsafe {
+        send(
+            api,
+            tcc,
+            TCC_COMPILE_OUTPUT_SELECTOR,
+            &[c_source, values[2], kind],
+        )
+    };
+    if result == api.nilObj {
+        note_error(b"RustCodegen candidate could not write the compiled dylib");
+        return api.nilObj;
+    }
+    let output_path = Path::new(OsStr::from_bytes(&path_bytes));
+    let Ok(artifact_bytes) = fs::read(output_path) else {
+        note_error(b"RustCodegen candidate artifact is unreadable");
+        return api.nilObj;
+    };
+    let checksum = sha256_hex(&artifact_bytes);
+    let mut sidecar = Vec::new();
+    sidecar.extend_from_slice(CANDIDATE_MAGIC);
+    sidecar.push(b'\n');
+    sidecar.extend_from_slice(b"artifact=");
+    sidecar.extend_from_slice(&checksum);
+    sidecar.extend_from_slice(b"\nruntime=");
+    sidecar.extend_from_slice(ARTIFACT_ABI);
+    sidecar.extend_from_slice(b"\ncandidate=");
+    sidecar.extend_from_slice(CANDIDATE_ABI.to_string().as_bytes());
+    sidecar.extend_from_slice(b"\nplatform=");
+    sidecar.extend_from_slice(CANDIDATE_PLATFORM);
+    sidecar.extend_from_slice(b"\nmanifest=");
+    sidecar.extend_from_slice(&manifest);
+    sidecar.extend_from_slice(b"\nsource=");
+    sidecar.extend_from_slice(source_bytes.len().to_string().as_bytes());
+    sidecar.push(b'\n');
+    sidecar.extend_from_slice(&source_bytes);
+    let mut sidecar_path = path_bytes;
+    sidecar_path.extend_from_slice(b".candidate");
+    if write_atomic(Path::new(OsStr::from_bytes(&sidecar_path)), &sidecar).is_none() {
+        note_error(b"RustCodegen candidate manifest could not be written");
+        return api.nilObj;
+    }
+    values[2]
+}
+
 fn fixed_macho_name(bytes: &[u8]) -> Option<&[u8]> {
     let end = bytes.iter().position(|byte| *byte == 0)?;
     Some(&bytes[..end])
@@ -3175,6 +3391,32 @@ fn publish_exclusive(path: &Path, bytes: &[u8]) -> Option<()> {
     if file.write_all(bytes).is_err() || file.sync_all().is_err() {
         drop(file);
         let _ = fs::remove_file(path);
+        return None;
+    }
+    Some(())
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> Option<()> {
+    let sequence = IMAGE_CODE_LOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let mut temporary = path.as_os_str().as_bytes().to_vec();
+    temporary.extend_from_slice(b".tmp.");
+    temporary.extend_from_slice(std::process::id().to_string().as_bytes());
+    temporary.push(b'.');
+    temporary.extend_from_slice(sequence.to_string().as_bytes());
+    let temporary = Path::new(OsStr::from_bytes(&temporary));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(temporary)
+        .ok()?;
+    if file.write_all(bytes).is_err() || file.sync_all().is_err() {
+        drop(file);
+        let _ = fs::remove_file(temporary);
+        return None;
+    }
+    drop(file);
+    if fs::rename(temporary, path).is_err() {
+        let _ = fs::remove_file(temporary);
         return None;
     }
     Some(())
@@ -5414,6 +5656,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, COMPILE_OUTPUT_ROOT_SELECTOR),
             rust_codegen_compile_output_root,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, COMPILE_CANDIDATE_SELECTOR),
+            rust_codegen_compile_candidate,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

@@ -1134,6 +1134,48 @@ test "Rust Codegen exposes immutable source revisions" {
     try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("sourceRevisionOf:"), &.{legacy}, 1));
 }
 
+test "Rust Codegen compiles and activates a candidate through the frozen ABI" {
+    const api = try setup();
+    const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const store = api.import("Store") orelse return error.MissingStore;
+    zig_error.bringUp(api);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust_rust_candidate.dylib", .{directory});
+    defer std.testing.allocator.free(path);
+    const source_text = "[Module named: #rustRustCandidate requires: #[]]; [Reflect defineMethod: #rustRustCandidateAnswer on: Integer as: [:self | 123]]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const output = api.mkString(path.ptr, path.len);
+    try std.testing.expectEqual(
+        output,
+        api.send(
+            rust_codegen,
+            api.intern("compileCandidate:named:output:"),
+            &.{ source, api.intern("rustRustCandidate"), output },
+            3,
+        ),
+    );
+
+    const object = api.import("Object") orelse return error.MissingObject;
+    const unit = api.send(object, api.intern("clone"), &.{}, 0);
+    try std.testing.expectEqual(unit, api.send(rust_codegen, api.intern("inspectCandidate:into:"), &.{ output, unit }, 2));
+    try std.testing.expectEqual(unit, api.send(rust_codegen, api.intern("mapCandidate:"), &.{unit}, 1));
+    const token = api.send(rust_codegen, api.intern("prepareActivation:"), &.{unit}, 1);
+    try std.testing.expect(token != api.nilObj);
+    try std.testing.expectEqual(unit, api.send(rust_codegen, api.intern("commitPrepared:"), &.{token}, 1));
+    try std.testing.expectEqual(
+        api.intern("active"),
+        api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2),
+    );
+    try std.testing.expectEqual(
+        @as(i64, 123),
+        api.smallIntValue(api.send(api.mkSmallInt(3), api.intern("rustRustCandidateAnswer"), &.{}, 0)),
+    );
+}
+
 test "Rust Codegen partitions method and non-method revision digests" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
