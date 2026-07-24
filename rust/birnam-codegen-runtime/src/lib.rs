@@ -189,6 +189,10 @@ struct PreparedState {
 
 #[derive(Clone, Copy, Default)]
 struct PublicationPlanState {
+    unit: usize,
+    name: usize,
+    prior: usize,
+    rollback: bool,
     event: usize,
     basis: usize,
     expected_generation: usize,
@@ -3528,6 +3532,14 @@ unsafe fn parse_publication_plan(
             prior as usize
         },
         PublicationPlanState {
+            unit: unit as usize,
+            name: name as usize,
+            prior: if prior == api.nilObj {
+                0
+            } else {
+                prior as usize
+            },
+            rollback: action == b"rollback\0",
             event: event as usize,
             basis: basis as usize,
             expected_generation: expected_generation as usize,
@@ -3540,9 +3552,30 @@ unsafe fn parse_publication_plan(
 unsafe fn publication_plan_is_current(api: &IdApi, plan: PublicationPlanState) -> bool {
     let durable = unsafe { durable_current_generation(api) };
     if durable != api.nilObj {
+        let prior = if plan.prior == 0 {
+            api.nilObj
+        } else {
+            plan.prior as Oop
+        };
+        let action = if plan.rollback {
+            b"rollback\0".as_slice()
+        } else {
+            b"activate\0".as_slice()
+        };
         return durable == plan.expected_generation as Oop
             && unsafe { durable_generation_is_canonical(api, plan.expected_generation as Oop) }
-            && unsafe { durable_generation_is_canonical(api, plan.successor_generation as Oop) };
+            && unsafe { durable_generation_is_canonical(api, plan.successor_generation as Oop) }
+            && unsafe {
+                durable_generation_plan_is_valid(
+                    api,
+                    plan.unit as Oop,
+                    plan.name as Oop,
+                    prior,
+                    plan.expected_generation as Oop,
+                    plan.successor_generation as Oop,
+                    action,
+                )
+            };
     }
     let current = ACTIVE_GENERATION.load(Ordering::Acquire);
     current == 0 || current == plan.expected_generation
