@@ -351,6 +351,13 @@ synchronous observer-drift reentry against both Rust Store and Zig Store after
 an external replacement (77). Full generated candidate method-install
 semantics are now covered for this slice; the remaining N6.5 work is the full
 callback/rollback matrix. The complete R6 gate passed with 25/25 Rust Codegen
-runtime tests, both callback variants, and no benchmark change: only
+runtime tests, both callback variants at 3/3, and no benchmark change: only
 `query.aggregate` (+5.8%) and
 `compile.stage1-stdlib` (+11.9%) remain accepted for this snapshot.
+
+The Rust-only predecessor rollback boundary landed at `8a5080f`. A base
+candidate returning 81 is activated, a successor returning 82 is prepared and
+committed, GC runs before rollback preparation, and the exact predecessor
+dispatch carrier is restored; the successor is marked rolled back. The fixture
+passes for both Rust Store and Zig Store, each at 3/3 in the focused matrix.
+The full R6 gate passed again with no new benchmark exception.
