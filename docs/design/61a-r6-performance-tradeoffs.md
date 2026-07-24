@@ -399,3 +399,9 @@ printing. Its focused target remains 1/1; no benchmark allowance changes and
 the Zig prelude remains the behavioral oracle. The complete R6 rerun after
 this slice passed with 42/42 focused tests and the unchanged two accepted
 benchmark crossings.
+
+The Boolean core slice landed at `79eadbd`. The Rust prelude identity now names
+the combined N7.1 core, and the focused target covers conditional branches,
+eager and block-taking Boolean operators, `not`, and Boolean printing at 1/1.
+The full R6 rerun passed with 42/42 focused tests and no benchmark change; the
+same two accepted crossings remain the only allowance.

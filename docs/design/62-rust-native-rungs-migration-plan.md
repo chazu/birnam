@@ -2169,6 +2169,14 @@ the default prelude switch are still intentionally deferred.
 The complete R6 rerun after this slice also passed with 42/42 focused tests and
 the unchanged two accepted benchmark crossings.
 
+The Boolean core slice landed at `79eadbd`. The Rust prelude identity now names
+the combined N7.1 core, and the dynamic rung installs `ifTrue:ifFalse:`,
+`ifTrue:`, `ifFalse:`, eager and block-taking `&`/`|`, `not`, and Boolean
+`printString` over the shared singleton vtable. The focused target remains
+1/1; the full R6 rerun passed with 42/42 focused tests and no benchmark change.
+Block loop ownership, System I/O, Error-valued propagation, and canonical
+prelude cutover remain open.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
