@@ -245,6 +245,7 @@ pub fn inspect(bytes: &[u8]) -> Result<Envelope<'_>, Error> {
     if source.len() != source_length {
         return Err(Error::SourceLengthMismatch);
     }
+    inspect_manifest(manifest)?;
     Ok(Envelope {
         artifact_digest,
         runtime_abi,
@@ -260,6 +261,7 @@ mod tests {
     use super::*;
 
     fn fixture(source: &[u8]) -> Vec<u8> {
+        let digest = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
         let mut bytes = Vec::new();
         bytes.extend_from_slice(CANDIDATE_MAGIC);
         bytes.push(b'\n');
@@ -271,8 +273,13 @@ mod tests {
         bytes.extend_from_slice(crate::ABI);
         bytes.push(b'\n');
         bytes.extend_from_slice(
-            b"candidate=3\nplatform=aarch64-macos\nmanifest=v2|runtime|candidate|digest\nsource=",
+            b"candidate=3\nplatform=aarch64-macos\nmanifest=v2|birnam-artifact-generation-v1|candidate|",
         );
+        for _ in 0..4 {
+            bytes.extend_from_slice(digest);
+            bytes.push(b'|');
+        }
+        bytes.extend_from_slice(b"|Target,selector,I,1\nsource=");
         bytes.extend_from_slice(source.len().to_string().as_bytes());
         bytes.push(b'\n');
         bytes.extend_from_slice(source);
@@ -287,7 +294,11 @@ mod tests {
         assert_eq!(envelope.runtime_abi, crate::ABI);
         assert_eq!(envelope.candidate_abi, CANDIDATE_ABI);
         assert_eq!(envelope.platform, CANDIDATE_PLATFORM);
-        assert_eq!(envelope.manifest, b"v2|runtime|candidate|digest");
+        assert!(
+            envelope
+                .manifest
+                .starts_with(b"v2|birnam-artifact-generation-v1|candidate|")
+        );
         assert_eq!(envelope.source, b"module source");
     }
 
