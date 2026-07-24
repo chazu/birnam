@@ -507,6 +507,15 @@ rung dylib digests, sizes, measurements, and limits are committed in
 performance freeze and is part of `zig build test`. Focused ReleaseSafe
 Codegen/Image suites and the baseline gate pass.
 
+The R6 acceptance script was rerun after the Rust source-registration and
+revision-metadata slices (`aafb835`, documented by `5c155af`). The native-rung
+baseline, all six focused replacement gates (including the 15-test Rust
+Codegen runtime suite), and the full optimized closure passed. Full verify
+still reports only the exact quarantined `run-tests.birnam`/`sortedModules`
+fixture crash; the fixed-hash comparator reports no missing or unusable cases
+and exactly the accepted `query.aggregate +5.8%` and
+`compile.stage1-stdlib +11.9%` crossings.
+
 ### N0.6 — Generalize installed native-source resources
 
 - Install the complete Rust workspace under the fixed layout defined in §4.
