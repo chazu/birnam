@@ -1859,9 +1859,12 @@ Zig Wyhash v4 checksum before an image is considered preflightable. Authority
 mismatch is reported before checksum failure, duplicate-code ordering remains
 fail-closed, and the Rust test vectors match Zig's implementation. The loader
 still does not map or retain the unit at this boundary. The complete R6 gate
-was rerun on current head `a2b331f` after hardening commit `49c79e1`: the 18-test focused boundary,
-optimized closure, exact fixture quarantine, and digest-pinned comparator all
-remained green with no additional performance exception.
+was rerun on current head `ff67918` after correcting the fourth Wyhash secret
+and adding the remaining long-input reference vectors: the 18-test focused
+boundary, optimized closure, exact fixture quarantine, and digest-pinned
+comparator all remained green with no additional performance exception. The
+workspace image tests and clippy also pass, and the comparator retains zero
+missing/unusable cases plus only the two accepted R6 crossings.
 
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface

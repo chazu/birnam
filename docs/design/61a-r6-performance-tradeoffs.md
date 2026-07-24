@@ -121,3 +121,11 @@ Rust Codegen boundary, pure image tests, optimized verify closure, and
 digest-pinned comparator all remained green; the only verify observation was
 the same quarantined `sortedModules` fixture, and the comparator retained zero
 missing/unusable cases plus the same two accepted crossings.
+
+The checksum implementation was then corrected to use Zig's fourth Wyhash
+secret exactly (`...4cc3`) and extended with all seven Zig reference vectors at
+`ff67918`. The complete R6 script passed at that head: the 18-test focused
+boundary, workspace tests and clippy, optimized verify closure, exact fixture
+quarantine, and digest-pinned comparator all remained green. The comparator
+still reports zero missing or unusable cases and only the two accepted
+crossings (`query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`).
