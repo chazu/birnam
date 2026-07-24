@@ -1430,6 +1430,19 @@ not yet perform persistent global writes or runtime error publication; those
 remain deliberately gated under N6.3 orchestration. Eleven Codegen tests and
 the full workspace suite pass for the current pure crate.
 
+The first N6.3 runtime boundary is now executable but remains opt-in. The
+installed `birnam-codegen-runtime` dylib exports `RustCodegen emit:` and
+`RustCodegen eval:` without claiming the frozen `Codegen` authority. Both
+methods parse through the live Rust PEG object, materialize a bounded owned CST,
+and lower through the pure emitter. `eval:` then drives the explicit Rust TCC
+object through `new`, `compile:`, `bindRuntime`, `relocate`, and
+`install:as:on:` before dispatching the generated `__ev` Method. The dedicated
+IdApi test now passes both deterministic emission and scalar native evaluation
+(`7 -> 7`) with Rust PEG and Rust TCC loaded from installed paths. This slice
+does not yet implement persistent globals, error publication, closure-owner
+lifetime, compile-to-dylib output, metadata, candidate lifecycle, or image
+recovery; those remain N6.3–N6.6 gates.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
