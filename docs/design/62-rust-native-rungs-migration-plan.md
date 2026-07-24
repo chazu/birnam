@@ -1733,6 +1733,13 @@ stack leaves the existing Zig Codegen callback owner untouched, honoring the
 Store single-registration law. Runtime-phase/quiescence denial and the full
 Zig↔Rust callback matrix remain a later hardening gate.
 
+The image handoff now has explicit Rust `beginImageDispatchRecovery` and
+`endImageDispatchRecovery` methods. The begin gate suppresses candidate
+activity/observer reactions while the image loader relinks durable state; the
+end gate releases that guard. This is only the dispatch-recovery boundary—the
+portable heap/fact codec, mapped-unit composition, and source replay remain
+N6.6 work.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
