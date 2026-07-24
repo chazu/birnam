@@ -160,6 +160,68 @@ test "Rust Codegen preflights v4 image framing without loading it" {
     );
 }
 
+test "Rust Codegen rejects a stale image authority before recovery" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const store = api.import("Store") orelse return error.MissingStore;
+    const projection = api.send(codegen, api.intern("initialGenerationProjection"), &.{}, 0);
+    const object = api.import("Object") orelse return error.MissingObject;
+    const generation = api.send(object, api.intern("clone"), &.{}, 0);
+    const source_map = api.send(projection, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
+    const base_digest = api.send(projection, api.intern("at:"), &.{api.mkSmallInt(2)}, 1);
+    const source_map_cell = api.send(
+        store,
+        api.intern("cellFor:attr:"),
+        &.{ generation, api.intern("sourceMap") },
+        2,
+    );
+    _ = api.send(source_map_cell, api.intern("set:"), &.{source_map}, 1);
+    const base_digest_cell = api.send(
+        store,
+        api.intern("cellFor:attr:"),
+        &.{ generation, api.intern("baseDigest") },
+        2,
+    );
+    _ = api.send(base_digest_cell, api.intern("set:"), &.{base_digest}, 1);
+    const active_generation_cell = api.send(
+        store,
+        api.intern("cellFor:attr:"),
+        &.{ api.intern("dispatch"), api.intern("activeGeneration") },
+        2,
+    );
+    _ = api.send(active_generation_cell, api.intern("set:"), &.{generation}, 1);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const image_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/stale.image", .{directory});
+    defer std.testing.allocator.free(image_path);
+    var bytes: [28 + 12 + 64]u8 = undefined;
+    @memcpy(bytes[0..8], "BIRNAMIM");
+    std.mem.writeInt(u32, bytes[8..12], 4, .little);
+    std.mem.writeInt(u32, bytes[12..16], 0x0102_0304, .little);
+    std.mem.writeInt(u32, bytes[16..20], 1, .little);
+    std.mem.writeInt(u64, bytes[20..28], 0, .little);
+    std.mem.writeInt(u32, bytes[28..32], 5, .little);
+    std.mem.writeInt(u64, bytes[32..40], 64, .little);
+    @memset(bytes[40..], 0);
+    try tmp.dir.writeFile(.{ .sub_path = "stale.image", .data = &bytes });
+
+    const image = api.mkString(image_path.ptr, image_path.len);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(codegen, api.intern("preflightImage:"), &.{image}, 1),
+    );
+    const diagnostic = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    var diagnostic_len: usize = 0;
+    const diagnostic_bytes = api.stringBytes(diagnostic, &diagnostic_len);
+    try std.testing.expect(
+        std.mem.indexOf(u8, diagnostic_bytes[0..diagnostic_len], "authority") != null,
+    );
+    _ = api.send(active_generation_cell, api.intern("set:"), &.{api.nilObj}, 1);
+}
+
 test "Rust Codegen maps a verified v4 code unit during image recovery" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;

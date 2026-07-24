@@ -1489,6 +1489,30 @@ unsafe fn image_generation_matches_durable(api: &IdApi) -> bool {
     projection_bytes == durable_bytes
 }
 
+/// A portable image is authorized by the generation digest embedded in its
+/// authority record. Once Store has a durable active generation, stale images
+/// must fail before code mapping or fact mutation; data-only runtimes without
+/// that authority retain the lower-level format behavior.
+unsafe fn image_authority_matches_durable(api: &IdApi, authority: &[u8; 64]) -> bool {
+    let durable = unsafe { durable_current_generation(api) };
+    if durable.is_null() || durable == api.nilObj {
+        return true;
+    }
+    if !unsafe { durable_generation_is_canonical(api, durable) } {
+        return false;
+    }
+    let store = runtime().store as Oop;
+    let recorded = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[durable, intern(api, b"baseDigest\0")],
+        )
+    };
+    unsafe { string_bytes(api, recorded) }.is_some_and(|digest| digest == authority)
+}
+
 unsafe fn durable_generation_entry(api: &IdApi, generation: Oop, name: Oop) -> Option<Oop> {
     let store = runtime().store as Oop;
     let source_map = unsafe {
@@ -2009,6 +2033,10 @@ unsafe extern "C" fn rust_codegen_preflight_image(
         note_error(b"RustCodegen image preflight facts are invalid");
         return api.nilObj;
     }
+    if !unsafe { image_authority_matches_durable(api, image.authority.digest) } {
+        note_error(b"RustCodegen image preflight authority is stale");
+        return api.nilObj;
+    }
     api.trueObj
 }
 
@@ -2049,6 +2077,10 @@ unsafe extern "C" fn rust_codegen_map_image_code(
     };
     if image.validate_facts().is_err() {
         note_error(b"RustCodegen image code mapping facts are invalid");
+        return api.nilObj;
+    }
+    if !unsafe { image_authority_matches_durable(api, image.authority.digest) } {
+        note_error(b"RustCodegen image code mapping authority is stale");
         return api.nilObj;
     }
     let Some(code) = image.code() else {
@@ -2248,6 +2280,10 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
     };
     if image.validate_facts().is_err() {
         note_error(b"RustCodegen image facts framing is invalid");
+        return api.nilObj;
+    }
+    if !unsafe { image_authority_matches_durable(api, image.authority.digest) } {
+        note_error(b"RustCodegen image facts authority is stale");
         return api.nilObj;
     }
 
